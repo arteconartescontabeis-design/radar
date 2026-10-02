@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Radar Artecon — Curadoria</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --marinho:#011F48; --azul:#569DCC; --azul-claro:#E8F1F9; --vermelho:#BC151B; --cinza:#4F4C4D;
+  --cinza-claro:#DEDEDE; --linha:#E3E7EC; --fundo:#FBFEFE; --branco:#fff;
+  --ok:#1E7B4A; --ok-fundo:#E6F4EC; --alerta:#9A6200; --alerta-fundo:#FFF4D9; --erro:#BC151B; --erro-fundo:#FBE9EA;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"DM Sans",system-ui,sans-serif;color:var(--cinza);background:var(--fundo);font-size:15px;line-height:1.45}
+h1,h2,h3{font-family:"Playfair Display",Georgia,serif;color:var(--marinho);margin:0 0 .5em}
+h1{font-size:1.5rem} h2{font-size:1.25rem} h3{font-size:1.05rem}
+a{color:#1B5E9B}
+button,input,select,textarea{font:inherit;color:inherit}
+.topo{background:linear-gradient(90deg,var(--marinho),#1B5E9B);border-bottom:3px solid var(--azul);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.marca{font-family:"Playfair Display",serif;font-weight:700;font-size:1.25rem;letter-spacing:.3px}
+.marca small{font-family:"DM Sans",sans-serif;font-weight:400;font-size:.8rem;opacity:.85;margin-left:6px}
+.versao{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:1px 10px;font-size:.78rem;cursor:pointer;color:#fff}
+.quem{margin-left:auto;font-size:.85rem;display:flex;gap:10px;align-items:center}
+.quem button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer}
+nav.abas{background:#fff;border-bottom:1px solid var(--linha);display:flex;gap:2px;padding:0 10px;overflow-x:auto}
+nav.abas button{background:none;border:0;border-bottom:3px solid transparent;padding:11px 12px;cursor:pointer;white-space:nowrap;color:var(--cinza)}
+nav.abas button.ativa{border-bottom-color:var(--vermelho);color:var(--marinho);font-weight:700}
+nav.abas .conta{background:var(--vermelho);color:#fff;border-radius:999px;font-size:.72rem;padding:0 6px;margin-left:4px}
+main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
+.cartoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.cartao{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left}
+.cartao b{display:block;font-size:1.7rem;color:var(--marinho);font-family:"Playfair Display",serif}
+.cartao span{font-size:.82rem}
+.cartao.alerta b{color:var(--vermelho)}
+.painel{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:16px;margin-bottom:16px}
+.linha-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=datetime-local],select,textarea{
+  border:1px solid #C9D2DC;border-radius:7px;padding:7px 9px;background:#fff;max-width:100%}
+textarea{width:100%;min-height:90px;resize:vertical}
+label{display:block;font-size:.8rem;font-weight:700;color:var(--marinho);margin:8px 0 3px}
+.grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.grade input,.grade select{width:100%}
+.btn{background:var(--marinho);color:#fff;border:0;border-radius:7px;padding:7px 13px;cursor:pointer}
+.btn:hover{background:#0A3470}
+.btn.sec{background:#fff;color:var(--marinho);border:1px solid var(--marinho)}
+.btn.perigo{background:#fff;color:var(--vermelho);border:1px solid var(--vermelho)}
+.btn.verde{background:var(--ok)}
+.btn.peq{padding:3px 9px;font-size:.82rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:.78rem;text-transform:uppercase;letter-spacing:.4px;color:var(--marinho);border-bottom:2px solid var(--linha);padding:7px 8px}
+td{border-bottom:1px solid var(--linha);padding:8px;vertical-align:top}
+.rolagem{overflow-x:auto}
+td.email{min-width:170px}
+.selo{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:700;white-space:nowrap;background:var(--azul-claro);color:var(--marinho)}
+.selo.ok{background:var(--ok-fundo);color:var(--ok)}
+.selo.alerta{background:var(--alerta-fundo);color:var(--alerta)}
+.selo.erro{background:var(--erro-fundo);color:var(--erro)}
+.selo.neutro{background:#EEF0F2;color:var(--cinza)}
+.sub{font-size:.82rem;color:#5A636D}
+.aviso .sub{color:inherit}
+main{overflow-wrap:anywhere}
+.titulo-link{background:none;border:0;padding:0;font-weight:700;color:var(--marinho);cursor:pointer;text-align:left}
+.titulo-link:hover,.titulo-link:focus-visible{text-decoration:underline}
+body.ocupado{cursor:progress}
+.texto-oficial{border:1px solid var(--linha);border-radius:8px;background:#FCFDFE;padding:12px;max-height:300px;overflow:auto;white-space:pre-wrap;font-size:.92rem;user-select:text}
+.evidencia{border-left:4px solid var(--ok);background:var(--ok-fundo);padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0}
+.evidencia.nao{border-left-color:var(--erro);background:var(--erro-fundo)}
+.evidencia q{font-style:italic}
+.aviso{border-radius:8px;padding:10px 12px;margin:10px 0}
+.aviso.erro{background:var(--erro-fundo);color:var(--erro);border:1px solid #F0C2C4}
+.aviso.alerta{background:var(--alerta-fundo);color:var(--alerta);border:1px solid #F1DDA5}
+.aviso.info{background:var(--azul-claro);color:var(--marinho);border:1px solid #C9DDEE}
+.previa{border:1px dashed #B8C4D0;border-radius:8px;padding:14px;background:#fff}
+.previa h2,.previa h3{margin-top:.8em}
+.acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.entrada{max-width:380px;margin:9vh auto;background:#fff;border:1px solid var(--linha);border-radius:12px;padding:26px}
+.entrada input{width:100%}
+.logo-nome{font-family:"Playfair Display",serif;font-size:2rem;font-weight:700;color:var(--cinza);line-height:1}
+.logo-sub{color:var(--vermelho);letter-spacing:3px;font-size:.8rem;text-transform:lowercase;margin-bottom:16px}
+#recado{position:fixed;right:16px;bottom:16px;max-width:min(440px,calc(100vw - 32px));z-index:50;display:grid;gap:8px}
+#recado div{background:var(--marinho);color:#fff;border-radius:8px;padding:10px 14px;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+#recado div.erro{background:var(--vermelho)}
+.voltar{background:none;border:0;color:#1B5E9B;cursor:pointer;padding:0;margin-bottom:10px}
+.clicavel{cursor:pointer}
+.clicavel:hover td{background:#F5F9FC}
+details summary{cursor:pointer;color:#1B5E9B}
+.previa table,.tabela-texto{border-collapse:collapse;margin:10px 0}
+.previa td,.previa th{border:1px solid #9AA7B4;padding:5px 8px;text-transform:none;letter-spacing:0;font-size:inherit}
+.miniatura{max-width:220px;max-height:140px;border:1px solid var(--linha);border-radius:8px;display:block;margin:6px 0}
+.agenda-ed td{vertical-align:top} .agenda-ed textarea{min-height:0} .btn{white-space:nowrap}
+textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
+@media (max-width:640px){ main{padding:12px 16px 60px} td,th{padding:6px 5px} .quem{margin-left:0} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="recado" role="status" aria-live="polite"></div>
+
+<script src="radar-config.js"></script>
+<script>
+"use strict";
+/* ====================================================================
+   RADAR ARTECON — Central de Curadoria
+   ==================================================================== */
+const VERSAO = "0.4.0";
+const VERSOES = [
+  ["0.4.0", "02/10/2026", [
+    "Informativo Mensal: nova aba para montar cada edição (agenda de obrigações calculada pelas regras do escritório, artigos aprovados em ordem, Fale Conosco e fecho) e página pronta para imprimir ou salvar em PDF no papel timbrado.",
+    "Conteúdos com imagem de capa, autor (“Texto elaborado por”) e fonte; tabelas no texto (linhas iniciadas por “|”).",
+    "Assunto criado pela equipe, sem depender de captura do robô, para os artigos do informativo e do site.",
+    "Botões para copiar o título e o texto formatado e baixar a imagem, para colar no site da Artecon.",
+    "Artecon Informa no modelo das notícias do site: imagem de capa, autor, fonte e chamada para o Fale Conosco e o WhatsApp.",
+    "Configurações (administrador): agenda de obrigações, feriados locais, Fale Conosco e assinatura."
+  ]],
+  ["0.3.0", "02/10/2026", [
+    "Inteligência artificial (OpenAI) na tela do assunto: sugerir classificação, buscar trechos de fundamentação e gerar conteúdo.",
+    "Tudo o que a IA produz é rascunho: os trechos só entram se existirem literalmente no texto oficial, e o texto gerado vem com a lista de pontos a conferir (normas, artigos, números e datas que não aparecem no texto oficial).",
+    "Painel mostra o consumo da IA no mês.",
+    "Fontes ajustadas ao que os sites reais mostraram: notícias da Receita pela página “Últimas notícias”; atos normativos da Receita por período, com várias páginas e ementa; data das notícias do CGIBS lida do próprio texto."
+  ]],
+  ["0.2.0", "02/10/2026", [
+    "Primeira versão das telas: painel do dia, fila de capturas, assuntos, evidências por seleção do texto oficial, conteúdos, aprovação e publicação.",
+    "Página pública Artecon Informa (informa.html), com fundamentação e fontes oficiais em cada publicação.",
+    "Saúde das fontes, usuários e trilha de auditoria (administrador).",
+    "Banco v0.2.0: fundamentação congelada na publicação, endereço automático, fila de triagem e números do painel."
+  ]],
+  ["0.1.0", "01/10/2026", [
+    "Banco de dados com as regras de fundamentação, aprovação, publicação e auditoria.",
+    "Robô de coleta de seis fontes oficiais e diagnóstico das fontes."
+  ]]
+];
+
+const CFG = window.RADAR_CONFIG || {};
+const URL_BASE = String(CFG.SUPABASE_URL || "").replace(/\/+$/, "");
+const CHAVE = String(CFG.SUPABASE_ANON_KEY || "");
+const CONFIGURADO = /^https?:\/\//.test(URL_BASE) && CHAVE.length > 20 && !CHAVE.startsWith("COLE_");
+
+const ROTULOS = {
+  situacao: {confirmado_oficialmente:"Confirmado oficialmente", confirmado_fontes_confiaveis:"Confirmado por fontes confiáveis",
+             em_verificacao:"Em verificação", nao_confirmado:"Não confirmado", divergencia_identificada:"Divergência identificada"},
+  status: {capturado:"Capturado", classificado:"Classificado", analisado:"Analisado", selecionado:"Selecionado",
+           conteudo_gerado:"Conteúdo gerado", revisao:"Em revisão", aprovado:"Aprovado", publicado:"Publicado",
+           ignorado:"Ignorado", arquivado:"Arquivado"},
+  conteudo: {rascunho:"Rascunho", em_revisao:"Em revisão", aprovado:"Aprovado", rejeitado:"Rejeitado"},
+  formato: {flash:"Flash", informativo:"Informativo", artigo:"Artigo técnico"},
+  relevancia: {alta:"Alta", media:"Média", baixa:"Baixa"},
+  abrangencia: {federal:"Federal", estadual_sc:"Estadual/SC", municipal:"Municipal", geral:"Geral"},
+  natureza: {fato_oficial:"Fato oficial", interpretacao_tecnica:"Interpretação técnica", hipotese:"Hipótese"},
+  publicacao: {rascunho:"Rascunho", publicado:"No ar", despublicado:"Fora do ar"},
+  saude: {ok:"Funcionando", instavel:"Instável", falhando:"Falhando", atrasada:"Atrasada",
+          nunca_executou:"Nunca executou", nunca_funcionou:"Nunca funcionou", inativa:"Inativa"},
+  papel: {admin:"Administrador", editor:"Editor", leitor:"Leitor"}
+};
+const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## Quem será afetado?", "",
+  "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
+
+const E = { sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"} };
+
+/* ----------------------------------------------------------- utilidades */
+const $ = (s, r=document) => r.querySelector(s);
+function h(v){ return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function data(v){ if(!v) return "—"; const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(v) ? v+"T12:00:00" : v); return isNaN(d) ? "—" : d.toLocaleDateString("pt-BR"); }
+function dataHora(v){ if(!v) return "—"; const d = new Date(v); return isNaN(d) ? "—" : d.toLocaleString("pt-BR", {dateStyle:"short", timeStyle:"short"}); }
+function selo(texto, tipo=""){ return `<span class="selo ${tipo}">${h(texto)}</span>`; }
+function opcoes(mapa, atual, vazio){ return (vazio!==undefined ? `<option value="">${h(vazio)}</option>` : "") +
+  Object.entries(mapa).map(([k,v]) => `<option value="${h(k)}"${k===atual?" selected":""}>${h(v)}</option>`).join(""); }
+function recado(msg, erro=false){
+  const d = document.createElement("div"); if(erro) d.className = "erro"; d.textContent = msg;
+  $("#recado").appendChild(d); setTimeout(() => d.remove(), erro ? 9000 : 4000);
+}
+function urlSegura(u){ return /^https?:\/\//i.test(String(u || "")) ? String(u) : ""; }
+function linkFonte(u, rotulo){ const s = urlSegura(u); return s ? `<a href="${h(s)}" target="_blank" rel="noopener noreferrer">${h(rotulo || s)}</a>` : `<span class="sub">${h(rotulo || u || "")}</span>`; }
+const semCodigo = m => String(m || "").replace(/^RADAR\d+:\s*/, "");
+const podeEditar = () => ["admin","editor"].includes(E.perfil?.papel);
+const ehAdmin = () => E.perfil?.papel === "admin";
+
+/* Texto → HTML seguro. Nada do texto entra como HTML: cada pedaço é escapado; os únicos
+   elementos criados são subtítulos, listas, negrito e links para endereços http(s). */
+function renderTexto(t){
+  const linhas = String(t ?? "").split(/\r?\n/); let html = "", lista = false, par = [], tab = [];
+  const fechaPar = () => { if(par.length){ html += `<p>${par.join("<br>")}</p>`; par = []; } };
+  // tabela: linhas seguidas iniciadas por "|"; a primeira é o cabeçalho; a linha |---|---| é ignorada
+  const fechaTab = () => {
+    if(tab.length > 1 && tab[1].every(c => /^:?-+:?$/.test(c))) tab.splice(1, 1);        // linha |---|---| logo abaixo do cabeçalho
+    tab = tab.filter(cel => cel.some(c => c)); if(!tab.length) return;
+    const n = Math.max(...tab.map(cel => cel.length));                                    // todas as linhas com o mesmo nº de colunas
+    html += `<table class="tabela-texto">` + tab.map((cel, i) => `<tr>${Array.from({length:n}, (_, k) => i ? `<td>${enfeita(cel[k] || "")}</td>` : `<th>${enfeita(cel[k] || "")}</th>`).join("")}</tr>`).join("") + "</table>"; tab = []; };
+  const fechaLista = () => { if(lista){ html += "</ul>"; lista = false; } };
+  const ligar = bruto => bruto.split(/(https?:\/\/[^\s<>"']+)/i).map((p, i) => {
+    if(i % 2 === 0) return h(p);
+    let fim = /[.,;:!?*)]*$/.exec(p)[0];                     // pontuação colada no fim não faz parte do endereço
+    while(fim.includes(")") && p.slice(0, p.length - fim.length).split("(").length > p.slice(0, p.length - fim.length).split(")").length)
+      fim = fim.slice(fim.indexOf(")") + 1);                 // …a não ser o ")" que fecha um "(" do próprio endereço
+    const u = p.slice(0, p.length - fim.length);
+    return `<a href="${h(u)}" target="_blank" rel="noopener noreferrer">${h(u)}</a>${h(fim)}`;
+  }).join("");
+  // negrito primeiro (sobre o texto bruto); dentro e fora dele, os endereços viram link
+  const enfeita = bruto => bruto.split(/\*\*(\S|\S.*?\S)\*\*/).map((p, i) => i % 2 ? `<strong>${ligar(p)}</strong>` : ligar(p)).join("");
+  for(const l of linhas){
+    if(!/^\s*\|/.test(l)) fechaTab();
+    if(/^\s*\|/.test(l)){ fechaPar(); fechaLista();
+      tab.push(l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim())); }
+    else if(/^##\s+/.test(l)){ fechaPar(); fechaLista(); html += `<h3>${enfeita(l.replace(/^##\s+/, ""))}</h3>`; }
+    else if(/^#\s+/.test(l)){ fechaPar(); fechaLista(); html += `<h2>${enfeita(l.replace(/^#\s+/, ""))}</h2>`; }
+    else if(/^[-•]\s+/.test(l)){ fechaPar(); if(!lista){ html += "<ul>"; lista = true; } html += `<li>${enfeita(l.replace(/^[-•]\s+/, ""))}</li>`; }
+    else if(!l.trim()){ fechaPar(); fechaLista(); }
+    else { fechaLista(); par.push(enfeita(l)); }
+  }
+  fechaPar(); fechaLista(); fechaTab(); return html;
+}
+
+/* ------------------------------------------------- agenda de obrigações */
+const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const DIAS_SEMANA = ["Domingo","Segunda-Feira","Terça-Feira","Quarta-Feira","Quinta-Feira","Sexta-Feira","Sábado"];
+const REGRAS = ["quinto_dia_util","dia","ultimo_dia_util"], AJUSTES = ["antecipa","posterga","nenhum"];
+const isoDia = d => d.toISOString().slice(0, 10);
+function pascoa(ano){
+  const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
+    g = Math.floor((b - f + 1) / 3), x = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4,
+    l = (32 + 2 * e + 2 * i - x - k) % 7, m = Math.floor((a + 11 * x + 22 * l) / 451), n = x + l - 7 * m + 114;
+  return new Date(Date.UTC(ano, Math.floor(n / 31) - 1, (n % 31) + 1));
+}
+/* Feriados nacionais, Carnaval (segunda e terça), Sexta-feira Santa, Corpus Christi e o último dia útil do ano, mais os extras
+   das Configurações: "AAAA-MM-DD" (uma vez) ou "MM-DD" (todo ano); também aceita {data, nome}. */
+function feriados(ano, extras){
+  const s = new Set();
+  for(const a of [ano - 1, ano, ano + 1]){
+    for(const f of ["01-01","04-21","05-01","09-07","10-12","11-02","11-15","11-20","12-25"]) s.add(a + "-" + f);
+    const p = pascoa(a); for(const n of [-48, -47, -2, 60]) s.add(isoDia(new Date(p.getTime() + n * 864e5)));
+    let fim = new Date(Date.UTC(a, 11, 31)); while([0, 6].includes(fim.getUTCDay())) fim = new Date(fim.getTime() - 864e5);
+    s.add(isoDia(fim));                            // último dia útil do ano: sem expediente bancário
+    for(const e of Array.isArray(extras) ? extras : []){ const d = String((e && typeof e === "object" ? e.data : e) || "");
+      if(/^\d{4}-\d{2}-\d{2}$/.test(d)) s.add(d); else if(/^\d{2}-\d{2}$/.test(d)) s.add(a + "-" + d); }
+  }
+  return s;
+}
+/* Calcula a agenda do mês (1 a 12) pelas regras de radar_config.obrigacoes. É uma SUGESTÃO: a equipe confere. */
+function calcularAgenda(ano, mes, obrigacoes, extras){
+  const fer = feriados(ano, extras), ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  const util = (d, sabadoConta) => d.getUTCDay() !== 0 && (sabadoConta || d.getUTCDay() !== 6) && !fer.has(isoDia(d));
+  const mover = (d, passo) => { while(!util(d)) d = new Date(d.getTime() + passo * 864e5); return d; };
+  const porData = new Map();
+  for(const o of Array.isArray(obrigacoes) ? obrigacoes : []){
+    if(!o || !o.nome) continue; let d;
+    if(o.regra === "quinto_dia_util"){             // sábado conta como dia útil; se o 5º cair no sábado, antecipa
+      let n = 0, dia = 0; while(n < 5){ dia++; d = new Date(Date.UTC(ano, mes - 1, dia)); if(util(d, true)) n++; }
+      d = mover(d, -1);
+    }else if(o.regra === "ultimo_dia_util") d = mover(new Date(Date.UTC(ano, mes - 1, ultimo)), -1);
+    else if(o.regra === "dia" && Number(o.dia) >= 1 && Number(o.dia) <= 31){
+      d = new Date(Date.UTC(ano, mes - 1, Math.min(Number(o.dia), ultimo)));
+      if(o.ajuste === "posterga") d = mover(d, 1); else if(o.ajuste !== "nenhum") d = mover(d, -1);
+    }else continue;
+    const k = isoDia(d); if(!porData.has(k)) porData.set(k, []); porData.get(k).push(String(o.nome));
+  }
+  return [...porData.keys()].sort().map(k => ({data:k, obrigacoes:porData.get(k)}));
+}
+const dataAgenda = iso => { const d = new Date(iso + "T12:00:00Z"); return isNaN(d) ? iso : `${iso.slice(8,10)}/${iso.slice(5,7)}/${iso.slice(0,4)} (${DIAS_SEMANA[d.getUTCDay()]})`; };
+const mesExtenso = iso => `${MESES[Number(String(iso).slice(5,7)) - 1]} de ${String(iso).slice(0,4)}`;
+const numInformativo = i => `${String(i.numero).padStart(4, "0")}/${i.ano}`;
+
+/* ------------------------------------------------------------------ API */
+class ErroApi extends Error{ constructor(msg, status){ super(msg); this.status = status; } }
+function mensagemDoErro(corpo, status){
+  const m = corpo && (corpo.message || corpo.msg || corpo.error_description || corpo.error) || "";
+  const radar = /RADAR\d+:\s*(.*)/s.exec(m);
+  if(radar) return radar[1];
+  if(corpo?.code === "42501" || status === 403) return "Seu perfil não tem permissão para esta ação.";
+  if(corpo?.code === "23505") return "Já existe um registro igual.";
+  if(corpo?.code === "23514") return "Um dos campos está com valor fora do permitido.";
+  if(corpo?.code === "23502") return "Há um campo obrigatório vazio.";
+  if(/email not confirmed/i.test(m)) return "Este e-mail ainda não foi confirmado.";
+  if(/invalid login credentials/i.test(m)) return "E-mail ou senha incorretos.";
+  if(corpo?.code === "23503") return "Este registro está em uso por outro e não pode ser removido.";
+  if(status === 401) return "Sessão expirada. Entre novamente.";
+  return m || `Erro ${status}`;
+}
+async function pedir(metodo, caminho, {params, corpo, prefer, semSessao, tempo} = {}, repetiu = false){
+  const url = new URL(URL_BASE + caminho);
+  for(const [k,v] of Object.entries(params || {})) url.searchParams.set(k, v);
+  const cab = {"apikey": CHAVE, "Content-Type": "application/json"};
+  cab.Authorization = "Bearer " + (!semSessao && E.sessao ? E.sessao.access_token : CHAVE);
+  if(prefer) cab.Prefer = prefer;
+  let r; const limite = new AbortController(), relogio = setTimeout(() => limite.abort(), tempo || 25000);
+  try { r = await fetch(url, {method: metodo, headers: cab, body: corpo === undefined ? undefined : JSON.stringify(corpo), signal: limite.signal}); }
+  catch(e){ throw new ErroApi(e.name === "AbortError" ? "O servidor demorou demais para responder. Tente de novo."
+                                                      : "Sem conexão com o servidor. Verifique a internet e tente de novo.", 0); }
+  finally { clearTimeout(relogio); }
+  let dados = null; const texto = await r.text();
+  if(texto){ try { dados = JSON.parse(texto); } catch(e){ dados = {message: texto}; } }
+  if(r.status === 401 && !semSessao && E.sessao && !repetiu && await renovarSessao()) return pedir(metodo, caminho, {params, corpo, prefer, tempo}, true);
+  if(!r.ok) throw new ErroApi(mensagemDoErro(dados, r.status), r.status);
+  return dados;
+}
+const rest = (metodo, tabela, o) => pedir(metodo, "/rest/v1/" + tabela, o);
+const ler = (tabela, params) => rest("GET", tabela, {params});
+const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
+/* Função de IA (Edge Function radar-ia). Pode levar mais de um minuto para redigir. */
+async function ia(acao, extra = {}){
+  try{ return await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, assunto_id:E.assunto, ...extra}, tempo:150000}); }
+  catch(e){ if(e.status === 404) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (veja o passo da IA no LEIAME).", 404); throw e; }
+}
+/* Alterar/apagar SEMPRE confere se alguma linha foi atingida: se a permissão caiu ou o registro
+   sumiu, o servidor responde "ok, zero linhas" — e isso não pode virar "salvo". */
+async function gravar(metodo, tabela, params, corpo){
+  const linhas = await rest(metodo, tabela, {params, corpo, prefer:"return=representation"});
+  if(!Array.isArray(linhas) || !linhas.length){
+    E.perfil = null;      // força reler o perfil: ele pode ter sido desativado ou rebaixado
+    throw new ErroApi("Nada foi alterado: o registro não existe mais ou o seu perfil não permite esta ação.");
+  }
+  return linhas;
+}
+const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo);
+const apagar = (tabela, params) => gravar("DELETE", tabela, params);
+
+/* ---------------------------------------------------------------- sessão */
+function limparEstado(){ E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
+function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
+function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
+async function entrar(email, senha){
+  const s = await pedir("POST", "/auth/v1/token", {params:{grant_type:"password"}, corpo:{email, password:senha}, semSessao:true});
+  guardarSessao(s);
+}
+async function renovarSessao(){
+  if(!E.sessao?.refresh_token) return false;
+  // outra aba (ou a página do informativo) pode já ter renovado: usa a sessão que ela guardou
+  try{ const g = JSON.parse(localStorage.getItem("radar_sessao") || "null");
+    if(sessaoValida(g) && g.user.id === E.sessao.user.id && g.access_token !== E.sessao.access_token){ E.sessao = g; return true; } }catch(e){}
+  try{
+    const s = await pedir("POST", "/auth/v1/token", {params:{grant_type:"refresh_token"}, corpo:{refresh_token:E.sessao.refresh_token}, semSessao:true});
+    guardarSessao(s); return true;
+  }catch(e){
+    if(e.status === 0) return false;        // sem internet: mantém a sessão e a tela; o usuário tenta de novo
+    guardarSessao(null); limparEstado(); desenhar(); return false;
+  }
+}
+async function sair(){ try{ await pedir("POST", "/auth/v1/logout"); }catch(e){} guardarSessao(null); limparEstado(); desenhar(); }
+async function carregarPerfil(){
+  const p = await ler("radar_perfis", {select:"*", user_id:"eq." + E.sessao.user.id});
+  E.perfil = p[0] && p[0].ativo ? p[0] : null;
+  if(E.perfil){ E.categorias = await ler("radar_categorias", {select:"*", order:"ordem"}); }
+}
+const catMapa = () => Object.fromEntries(E.categorias.map(c => [c.slug, c.nome]));
+function papelDaChave(){ try{ return JSON.parse(atob(CHAVE.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).role || ""; }catch(e){ return ""; } }
+
+/* ------------------------------------------------------------- estrutura */
+const ABAS = [["painel","Painel"],["fila","Capturas"],["assuntos","Assuntos"],["informativos","Informativos"],["publicacoes","Publicações"],
+              ["fontes","Fontes"],["usuarios","Usuários",true],["configuracoes","Configurações",true],["auditoria","Histórico",true],["versoes","Versões"]];
+function moldura(conteudo){
+  return `<header class="topo"><span class="marca">Radar Artecon<small>Inteligência Contábil e Tributária</small></span>
+    <button class="versao" data-acao="aba" data-aba="versoes" title="Ver o histórico de versões">v${VERSAO}</button>
+    <span class="quem"><span>${h(E.perfil.nome)} · ${h(ROTULOS.papel[E.perfil.papel])}</span>
+    <a href="informa.html" target="_blank" rel="noopener" style="color:#fff">Artecon Informa ↗</a>
+    <button data-acao="sair">Sair</button></span></header>
+    <nav class="abas">${ABAS.filter(a => !a[2] || ehAdmin()).map(([id,nome]) =>
+      `<button data-acao="aba" data-aba="${id}" class="${E.aba===id?"ativa":""}">${nome}${E.contagem[id] ? `<span class="conta">${E.contagem[id]}</span>` : ""}</button>`).join("")}</nav>
+    <main id="conteudo">${conteudo}</main>`;
+}
+let GERACAO = 0;
+async function desenhar(){
+  const app = $("#app"), g = ++GERACAO;       // se outro desenho começar depois, este é descartado
+  if(!CONFIGURADO){ app.innerHTML = `<div class="entrada"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+    <h2>Falta configurar</h2><p>Abra o arquivo <b>radar-config.js</b> e preencha a URL do projeto Supabase e a chave <b>anon</b>.</p></div>`; return; }
+  if(papelDaChave() === "service_role" || /^sb_secret_/.test(CHAVE)){ app.innerHTML = `<div class="entrada"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+    <h2>Chave errada no radar-config.js</h2><div class="aviso erro">O arquivo está com a chave <b>service_role</b> (secreta). Troque pela chave <b>anon</b> e gere uma nova service_role no Supabase, porque esta ficou exposta.</div></div>`; return; }
+  if(!E.sessao){ app.innerHTML = telaEntrada(); return; }
+  if(!E.perfil){
+    try{ await carregarPerfil(); }
+    catch(e){ if(!E.sessao || g !== GERACAO) return;
+      app.innerHTML = e.status === 0 ? `<div class="entrada"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+        <h2>Sem conexão</h2><div class="aviso erro">${h(e.message)}</div><button class="btn" data-acao="recarregar">Tentar de novo</button></div>` : telaEntrada(e.message);
+      return; }
+    if(!E.sessao || g !== GERACAO) return;
+    if(!E.perfil){ app.innerHTML = `<div class="entrada"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+      <h2>Acesso não liberado</h2><p>Seu usuário (${h(E.sessao.user.email)}) ainda não tem perfil ativo no Radar. Peça ao administrador.</p>
+      <button class="btn sec" data-acao="sair">Sair</button></div>`; return; }
+  }
+  // a tela antiga sai na hora: ninguém digita num formulário que está prestes a ser recarregado
+  app.innerHTML = moldura(`<p class="sub">Carregando…</p>`);
+  try{
+    const [n] = await ler("radar_v_painel", {select:"na_fila,requer_revisao,aguardando_aprovacao"});
+    E.contagem = {fila:n.na_fila, publicacoes:n.requer_revisao, assuntos:n.aguardando_aprovacao};
+    const html = E.assunto ? await telaAssunto(E.assunto) : await TELAS[E.aba]();
+    if(g === GERACAO){ app.innerHTML = moldura(html);
+      const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi); }
+  }catch(e){ if(g === GERACAO && E.sessao && E.perfil) app.innerHTML = moldura(`<div class="aviso erro">${h(e.message)}</div>`); }
+}
+function telaEntrada(erro){
+  return `<form class="entrada" data-form="entrar"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+    <h2>Radar — Central de Curadoria</h2>
+    ${erro ? `<div class="aviso erro">${h(erro)}</div>` : ""}
+    <label for="email">E-mail</label><input id="email" name="email" type="email" required autocomplete="username">
+    <label for="senha">Senha</label><input id="senha" name="senha" type="password" required autocomplete="current-password">
+    <div class="acoes"><button class="btn">Entrar</button><span class="sub">v${VERSAO}</span></div></form>`;
+}
+
+/* ----------------------------------------------------------------- telas */
+const TELAS = {
+  async painel(){
+    const [p] = await ler("radar_v_painel", {select:"*"});
+    const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
+    const revisao = await ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,atualizado_em", status:"eq.em_revisao", order:"atualizado_em.desc", limit:"10"});
+    const sinal = await ler("radar_publicacoes", {select:"id,titulo,motivo_revisao,slug", status:"eq.publicado", requer_revisao:"eq.true"});
+    const [mesIa] = await ler("radar_v_ia_mes", {select:"*"});
+    const c = (n, rotulo, aba, alerta) => `<button class="cartao ${alerta && n ? "alerta" : ""}" data-acao="aba" data-aba="${aba}"><b>${n}</b><span>${rotulo}</span></button>`;
+    return `<h1>Painel do dia</h1>
+      <div class="cartoes">
+        ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
+        ${c(p.capturas_24h, "Capturas nas últimas 24h", "fila")}
+        ${c(p.na_fila, "Aguardando triagem", "fila")}
+        ${c(p.alta_relevancia, "Alta relevância em aberto", "assuntos")}
+        ${c(p.em_verificacao, "Em verificação", "assuntos")}
+        ${c(p.aguardando_aprovacao, "Aguardando aprovação", "assuntos")}
+        ${c(p.no_ar, "Publicações no ar", "publicacoes")}
+        ${c(p.agendadas, "Publicações agendadas", "publicacoes")}
+        ${c(p.requer_revisao, "Publicações a revisar", "publicacoes", true)}
+      </div>
+      ${sinal.length ? `<div class="painel"><h2>Publicações no ar que precisam de revisão</h2>${sinal.map(s =>
+        `<div class="aviso alerta"><b>${h(s.titulo)}</b><br>${h(semCodigo(s.motivo_revisao))}</div>`).join("")}
+        <button class="btn sec" data-acao="aba" data-aba="publicacoes">Abrir publicações</button></div>` : ""}
+      <div class="painel"><h2>Conteúdos aguardando aprovação</h2>
+        ${revisao.length ? `<div class="rolagem"><table><tr><th>Título</th><th>Formato</th><th>Atualizado</th></tr>${revisao.map(r =>
+          `<tr class="clicavel" data-acao="abrir-assunto" data-id="${r.assunto_id}"><td><button class="titulo-link" data-acao="abrir-assunto" data-id="${r.assunto_id}">${h(r.titulo)}</button></td><td>${h(ROTULOS.formato[r.formato])}</td><td>${dataHora(r.atualizado_em)}</td></tr>`).join("")}</table></div>`
+          : `<p class="sub">Nenhum conteúdo aguardando aprovação.</p>`}</div>
+      <div class="painel"><h2>Fontes que pedem atenção</h2>
+        ${fontes.length ? fontes.map(f => `<div class="aviso ${["falhando","nunca_funcionou"].includes(f.saude) ? "erro" : "alerta"}">
+          <b>${h(f.nome)}</b> — ${h(ROTULOS.saude[f.saude] || f.saude)}${f.ultimo_erro ? `<br><span class="sub">${h(f.ultimo_erro)}</span>` : ""}</div>`).join("")
+          : `<p class="sub">Todas as fontes ativas estão funcionando.</p>`}</div>
+      <div class="painel"><h2>Uso da IA neste mês</h2>
+        <p id="uso-ia">${mesIa.chamadas ? `${mesIa.chamadas} pedido(s) · ${Number(mesIa.tokens).toLocaleString("pt-BR")} tokens (${Number(mesIa.tokens_entrada).toLocaleString("pt-BR")} de leitura e ${Number(mesIa.tokens_saida).toLocaleString("pt-BR")} de escrita)`
+          : "Nenhum pedido à IA neste mês."}</p></div>`;
+  },
+
+  async fila(){
+    const itens = await ler("radar_v_fila", {select:"*", order:"capturado_em.desc", limit:"200"});
+    const fontes = [...new Set(itens.map(i => i.fonte_nome))].sort();
+    return `<h1>Capturas aguardando triagem</h1>
+      <p class="sub">O que o robô encontrou nas fontes oficiais e ainda não virou assunto. Abra um assunto para trabalhar o item, ou ignore.</p>
+      ${itens.length >= 200 ? `<div class="aviso info">Mostrando as 200 capturas mais recentes de ${E.contagem.fila}. As demais aparecem conforme a fila for sendo triada.</div>` : ""}
+      <div class="linha-filtros"><input type="text" id="busca-fila" placeholder="Buscar no título…" data-filtro="fila" aria-label="Buscar no título">
+        <select id="fonte-fila" data-filtro="fila" aria-label="Fonte"><option value="">Todas as fontes</option>${fontes.map(f => `<option>${h(f)}</option>`).join("")}</select></div>
+      ${itens.length ? `<div class="painel rolagem"><table id="tab-fila"><tr><th>Data</th><th>Item</th><th>Fonte</th><th></th></tr>${itens.map(i => `
+        <tr data-fonte="${h(i.fonte_nome)}" data-texto="${h((i.titulo || "").toLowerCase())}">
+          <td>${data(i.data_publicacao)}<br><span class="sub">capt. ${dataHora(i.capturado_em)}</span></td>
+          <td><b>${h(i.titulo)}</b> ${i.tem_texto ? "" : selo("sem texto","alerta")} ${i.duplicata_de ? selo("possível duplicata","neutro") : ""} ${i.versao > 1 ? selo("texto alterado · v"+i.versao,"alerta") : ""}
+            ${i.resumo_fonte ? `<br><span class="sub">${h(i.resumo_fonte.slice(0,220))}</span>` : ""}
+            <br>${linkFonte(i.url, "abrir na fonte ↗")}</td>
+          <td>${h(i.orgao)}<br>${selo(ROTULOS.abrangencia[i.abrangencia])}</td>
+          <td>${podeEditar() ? `<div class="acoes" style="margin:0"><button class="btn peq" data-acao="abrir-da-captura" data-id="${i.id}">Abrir assunto</button>
+            <button class="btn peq sec" data-acao="ignorar-captura" data-id="${i.id}">Ignorar</button></div>` : ""}</td></tr>`).join("")}</table></div>`
+        : `<div class="painel"><p class="sub">Nada na fila. Quando o robô capturar novidades, elas aparecem aqui.</p></div>`}`;
+  },
+
+  async assuntos(){
+    const f = E.filtros.assuntos;
+    const params = {select:"*", order:"atualizado_em.desc", limit:"300"};
+    if(f === "abertos") params.status = "not.in.(publicado,ignorado,arquivado)";
+    else if(f !== "todos") params.status = "eq." + f;
+    const itens = await ler("radar_v_assuntos", params); const cat = catMapa();
+    return `<h1>Assuntos</h1>
+      <div class="linha-filtros"><select data-filtro="assuntos" id="filtro-assuntos" aria-label="Situação do assunto">
+        <option value="abertos"${f==="abertos"?" selected":""}>Em andamento</option>
+        <option value="todos"${f==="todos"?" selected":""}>Todos</option>${Object.entries(ROTULOS.status).map(([k,v]) => `<option value="${k}"${f===k?" selected":""}>${v}</option>`).join("")}</select></div>
+      ${podeEditar() ? `<form class="painel" data-form="novoAssunto"><label for="na-titulo">Novo assunto criado pela equipe (sem captura do robô)</label>
+        <div class="linha-filtros" style="margin:0"><input id="na-titulo" type="text" name="titulo" required minlength="5" maxlength="200" placeholder="Título do assunto ou do artigo" style="flex:1;min-width:240px">
+        <button class="btn">Criar assunto</button></div>
+        <p class="sub" style="margin:6px 0 0">Para os artigos do Informativo Mensal e do site. A publicação na Artecon Informa continua exigindo fonte oficial conferida.</p></form>` : ""}
+      ${itens.length >= 300 ? `<div class="aviso info">Mostrando os 300 assuntos alterados mais recentemente. Use o filtro de situação para ver os demais.</div>` : ""}
+      ${itens.length ? `<div class="painel rolagem"><table><tr><th>Assunto</th><th>Confirmação</th><th>Relevância</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
+        <tr class="clicavel" data-acao="abrir-assunto" data-id="${a.id}">
+          <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${a.id}">${h(a.titulo)}</button><br><span class="sub">${h(cat[a.categoria] || "sem categoria")} · ${h(a.orgaos || "sem captura vinculada")}</span></td>
+          <td>${seloSituacao(a.situacao_confirmacao)}</td>
+          <td>${selo(ROTULOS.relevancia[a.relevancia], a.relevancia==="alta" ? "erro" : a.relevancia==="media" ? "" : "neutro")}</td>
+          <td>${selo(ROTULOS.status[a.status], a.status==="publicado" ? "ok" : "neutro")}${a.em_revisao ? " " + selo("aguarda aprovação","alerta") : ""}</td>
+          <td>${a.evidencias_conferidas}/${a.evidencias} conferidas</td></tr>`).join("")}</table></div>`
+        : `<div class="painel"><p class="sub">Nenhum assunto nesta situação.</p></div>`}`;
+  },
+
+  async publicacoes(){
+    const itens = await ler("radar_publicacoes", {select:"*,radar_conteudos(assunto_id)", order:"criado_em.desc", limit:"300"}); const cat = catMapa();
+    return `<h1>Publicações</h1>
+      ${itens.length ? `<div class="painel rolagem"><table><tr><th>Publicação</th><th>Situação</th><th>Data</th><th></th></tr>${itens.map(p => {
+        const futuro = p.status === "publicado" && new Date(p.publicar_em) > new Date();
+        return `<tr><td><b>${h(p.titulo)}</b><br><span class="sub">${h(cat[p.categoria] || "sem categoria")} · ${h(ROTULOS.formato[p.formato] || "")}</span>
+            ${p.requer_revisao ? `<div class="aviso alerta"><b>Requer revisão:</b> ${h(semCodigo(p.motivo_revisao))}</div>` : ""}
+            ${p.errata ? `<div class="sub"><b>Errata:</b> ${h(p.errata)}</div>` : ""}</td>
+          <td>${futuro ? selo("Agendada","alerta") : selo(ROTULOS.publicacao[p.status], p.status==="publicado" ? "ok" : "neutro")}</td>
+          <td>${dataHora(p.publicar_em)}</td>
+          <td><div class="acoes" style="margin:0">
+            <button class="btn peq sec" data-acao="abrir-assunto" data-id="${p.radar_conteudos?.assunto_id}">Abrir assunto</button>
+            ${p.status==="publicado" && !futuro ? `<a class="btn peq sec" style="text-decoration:none" href="informa.html?p=${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">Ver ↗</a>` : ""}
+            ${podeEditar() && p.status==="publicado" ? `<button class="btn peq sec" data-acao="errata" data-id="${p.id}" data-atual="${h(p.errata || "")}">Errata</button>
+              <button class="btn peq perigo" data-acao="despublicar" data-id="${p.id}">Tirar do ar</button>` : ""}
+            ${podeEditar() && p.status!=="publicado" ? `<button class="btn peq" data-acao="republicar" data-id="${p.id}">Publicar</button>` : ""}
+            ${podeEditar() && p.requer_revisao ? `<button class="btn peq sec" data-acao="limpar-sinal" data-id="${p.id}">Marcar como revisada</button>` : ""}
+          </div></td></tr>`; }).join("")}</table></div>`
+        : `<div class="painel"><p class="sub">Ainda não há publicações.</p></div>`}`;
+  },
+
+  async fontes(){
+    const fontes = await ler("radar_fontes", {select:"*", order:"id"});
+    const saude = Object.fromEntries((await ler("radar_v_saude_fontes", {select:"id,saude"})).map(s => [s.id, s.saude]));
+    const exec = await ler("radar_execucoes", {select:"*,radar_fontes(slug)", order:"iniciado_em.desc", limit:"30"});
+    const tipoSaude = s => s==="ok" ? "ok" : ["falhando","nunca_funcionou"].includes(s) ? "erro" : s==="inativa" ? "neutro" : "alerta";
+    return `<h1>Fontes oficiais</h1>
+      <div class="painel rolagem"><table><tr><th>Fonte</th><th>Saúde</th><th>Último sucesso</th><th>A cada</th>${ehAdmin() ? "<th></th>" : ""}</tr>${fontes.map(f => `
+        <tr><td><b>${h(f.nome)}</b> ${f.validada ? "" : selo("a validar","alerta")}<br><span class="sub">${h(f.orgao)} · ${h(f.tipo_coletor)}</span>
+            <br>${linkFonte(f.url, f.url)}
+            ${f.ultimo_erro ? `<div class="aviso erro">${h(f.ultimo_erro)}</div>` : ""}</td>
+          <td>${selo(ROTULOS.saude[saude[f.id]] || saude[f.id] || "—", tipoSaude(saude[f.id]))}</td>
+          <td>${dataHora(f.ultimo_sucesso_em)}</td><td>${f.frequencia_horas} h</td>
+          ${ehAdmin() ? `<td><button class="btn peq sec" data-acao="editar-fonte" data-id="${f.id}">Configurar</button></td>` : ""}</tr>
+        <tr id="edicao-fonte-${f.id}" hidden><td colspan="5"></td></tr>`).join("")}</table></div>
+      <div class="painel rolagem"><h2>Últimas execuções do robô</h2>
+        ${exec.length ? `<table><tr><th>Quando</th><th>Fonte</th><th>Resultado</th><th>Novos</th><th>Alterados</th><th>Sem texto</th><th>Observação</th></tr>${exec.map(x => `
+          <tr><td>${dataHora(x.iniciado_em)}</td><td>${h(x.radar_fontes?.slug || "")}</td>
+          <td>${selo(x.status, x.status==="ok" ? "ok" : x.status==="em_andamento" ? "neutro" : "erro")}</td>
+          <td>${x.itens_novos}</td><td>${x.itens_atualizados}</td><td>${x.itens_sem_texto}</td><td class="sub">${h(x.erro || "")}</td></tr>`).join("")}</table>`
+          : `<p class="sub">O robô ainda não executou.</p>`}</div>`;
+  },
+
+  async usuarios(){
+    const us = await rpc("radar_admin_usuarios");
+    return `<h1>Usuários</h1>
+      <p class="sub">A conta é criada no Supabase (Authentication → Users). Aqui você define o que cada pessoa pode fazer no Radar. Quem está “sem acesso” não entra.</p>
+      <div class="painel rolagem"><table><tr><th>E-mail</th><th>Nome</th><th>Perfil</th><th>Ativo</th><th></th></tr>${us.map(u => `
+        <tr data-usuario="${h(u.user_id)}" data-tinha="${u.papel ? 1 : ""}"><td class="email">${h(u.email)}${u.user_id === E.sessao.user.id ? " " + selo("você","neutro") : ""}</td>
+          <td><input type="text" name="nome" value="${h(u.nome || "")}" placeholder="Nome" aria-label="Nome"></td>
+          <td><select name="papel" aria-label="Perfil">${opcoes(ROTULOS.papel, u.papel || "", "sem acesso")}</select></td>
+          <td><input type="checkbox" name="ativo" ${u.ativo !== false ? "checked" : ""} aria-label="Ativo"></td>
+          <td><button class="btn peq" data-acao="salvar-usuario" data-id="${h(u.user_id)}">Salvar</button></td></tr>`).join("")}</table></div>
+      <div class="aviso info"><b>Leitor</b> só consulta. <b>Editor</b> cria assuntos, escreve, aprova e publica. <b>Administrador</b> também configura fontes, usuários e vê o histórico.</div>`;
+  },
+
+  async auditoria(){
+    const itens = await ler("radar_auditoria", {select:"*", order:"id.desc", limit:"200"});
+    const nomes = Object.fromEntries((await rpc("radar_admin_usuarios")).map(u => [u.user_id, u.nome || u.email]));
+    const acao = {INSERT:"criou", UPDATE:"alterou", DELETE:"apagou"};
+    const resumo = a => { if(a.acao !== "UPDATE" || !a.antes || !a.depois) return "";
+      return Object.keys(a.depois).filter(k => !["atualizado_em","conferido_em"].includes(k) && JSON.stringify(a.antes[k]) !== JSON.stringify(a.depois[k]))
+        .map(k => `${k}: ${String(a.antes[k] ?? "—").slice(0,40)} → ${String(a.depois[k] ?? "—").slice(0,40)}`).join(" · "); };
+    return `<h1>Histórico de alterações</h1><p class="sub">Trilha de auditoria: não pode ser alterada nem apagada. Últimos 200 registros.</p>
+      <div class="painel rolagem"><table><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Detalhe</th></tr>${itens.map(a => `
+        <tr><td>${dataHora(a.em)}</td><td>${h(a.usuario ? (nomes[a.usuario] || "usuário removido") : "sistema")}</td>
+        <td>${h(acao[a.acao] || a.acao)} ${h(a.tabela.replace("radar_",""))} nº ${h(a.registro_id)}</td><td class="sub">${h(resumo(a))}</td></tr>`).join("")}</table></div>`;
+  },
+
+  async informativos(){
+    if(E.informativo) return telaInformativo(E.informativo);
+    const itens = await ler("radar_informativos", {select:"*,radar_informativo_itens(conteudo_id)", order:"ano.desc,numero.desc", limit:"100"});
+    const hoje = new Date(), ano = hoje.getFullYear(), prox = Math.max(0, ...itens.filter(i => i.ano === ano).map(i => i.numero)) + 1;
+    return `<h1>Informativo Mensal</h1>
+      <p class="sub">Cada edição reúne a agenda de obrigações do mês e os conteúdos aprovados, no padrão do informativo enviado aos clientes. Depois de montar, abra para imprimir ou salvar em PDF.</p>
+      ${podeEditar() ? `<form class="painel" data-form="novoInformativo"><h2>Nova edição</h2><div class="grade">
+        <div><label for="ni-num">Número</label><input id="ni-num" type="number" name="numero" min="1" max="9999" required value="${prox}"></div>
+        <div><label for="ni-mes">Mês da agenda</label><input id="ni-mes" type="month" name="mes" required value="${ano}-${String(hoje.getMonth() + 1).padStart(2, "0")}"></div>
+        </div><div class="acoes"><button class="btn">Criar edição</button><span class="sub">A agenda já vem calculada pelas regras das Configurações.</span></div></form>` : ""}
+      ${itens.length ? `<div class="painel rolagem"><table><tr><th>Edição</th><th>Mês da agenda</th><th>Artigos</th><th>Situação</th><th></th></tr>${itens.map(i => `
+        <tr><td><button class="titulo-link" data-acao="abrir-informativo" data-id="${i.id}">N.º ${h(numInformativo(i))}</button></td>
+          <td>${h(mesExtenso(i.mes))}</td><td>${i.radar_informativo_itens.length}</td>
+          <td>${selo(i.status === "fechado" ? "Fechado" : "Em montagem", i.status === "fechado" ? "ok" : "alerta")}</td>
+          <td><div class="acoes" style="margin:0"><button class="btn peq sec" data-acao="abrir-informativo" data-id="${i.id}">Abrir</button>
+            <a class="btn peq sec" style="text-decoration:none" href="informativo.html?id=${i.id}" target="_blank" rel="noopener">Imprimir / PDF ↗</a></div></td></tr>`).join("")}</table></div>`
+        : `<div class="painel"><p class="sub">Nenhuma edição criada ainda.</p></div>`}`;
+  },
+
+  async configuracoes(){
+    const conf = Object.fromEntries((await ler("radar_config", {select:"*"})).map(c => [c.chave, c]));
+    const bloco = (chave, titulo, ajuda) => `<form class="painel" data-form="config" data-chave="${chave}"><h2>${titulo}</h2><p class="sub">${ajuda}</p>
+      <label for="cfg-${chave}">Conteúdo (JSON)</label><textarea class="json" id="cfg-${chave}" name="valor" spellcheck="false">${h(JSON.stringify(conf[chave]?.valor ?? null, null, 2))}</textarea>
+      <div class="acoes"><button class="btn">Salvar</button>${conf[chave] ? `<span class="sub">alterado em ${dataHora(conf[chave].atualizado_em)}</span>` : ""}</div></form>`;
+    return `<h1>Configurações</h1><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
+      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”.`)}
+      ${bloco("feriados_extras", "Feriados locais e pontos facultativos", `Os feriados nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente bancário) já são considerados. Acrescente aqui os demais: "AAAA-MM-DD" (uma data) ou "MM-DD" (todo ano). Exemplo: ["2026-12-24", "04-24"].`)}
+      ${bloco("fale_conosco", "Fale Conosco", `Quadro da última página. Cada setor tem <b>rotulo</b>, <b>telefones</b>, <b>emails</b> e <b>equipe</b> (listas). <b>observacao</b> é uma linha livre abaixo do quadro (ex.: contadores responsáveis).`)}
+      ${bloco("assinatura", "Fecho e assinatura", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo.`)}`;
+  },
+
+  async versoes(){
+    return `<h1>Versões</h1><p class="sub">Versão em uso: <b>v${VERSAO}</b></p>${VERSOES.map(([v, d, itens]) =>
+      `<div class="painel"><h2>v${h(v)} <span class="sub">— ${h(d)}</span></h2><ul>${itens.map(i => `<li>${h(i)}</li>`).join("")}</ul></div>`).join("")}`;
+  }
+};
+function seloSituacao(s){ return selo(ROTULOS.situacao[s], s==="confirmado_oficialmente" ? "ok" : s==="divergencia_identificada" || s==="nao_confirmado" ? "erro" : "alerta"); }
+
+/* ------------------------------------------------- tela do informativo */
+let CONF_AGENDA = {obrigacoes:[], feriados_extras:[]};
+function linhaAgenda(l, des){
+  return `<tr class="ag-linha"><td><input type="date" name="ag-data" value="${h(l.data || "")}" aria-label="Dia de vencimento"${des}></td>
+    <td><textarea name="ag-obr" rows="${Math.max(2, (Array.isArray(l.obrigacoes) ? l.obrigacoes.length : 0) + 1)}" aria-label="Obrigações (uma por linha)"${des}>${h((Array.isArray(l.obrigacoes) ? l.obrigacoes : []).join("\n"))}</textarea></td>
+    <td>${des ? "" : `<button class="btn peq perigo" type="button" data-acao="ag-remover">Remover</button>`}</td></tr>`;
+}
+async function telaInformativo(id){
+  const [i] = await ler("radar_informativos", {select:"*", id:"eq." + id});
+  if(!i) return `<button class="voltar" data-acao="voltar">← Voltar</button><div class="aviso erro">Informativo não encontrado.</div>`;
+  const [itens, aprovados, conf] = await Promise.all([
+    ler("radar_informativo_itens", {select:"ordem,conteudo_id,radar_conteudos(id,titulo,status,formato,autor,assunto_id,imagem_id,atualizado_em)", informativo_id:"eq." + id, order:"ordem,conteudo_id"}),
+    ler("radar_conteudos", {select:"id,titulo,formato,aprovado_em", status:"eq.aprovado", order:"aprovado_em.desc", limit:"200"}),
+    ler("radar_config", {select:"chave,valor", chave:"in.(obrigacoes,feriados_extras)"})]);
+  CONF_AGENDA = Object.fromEntries(conf.map(c => [c.chave, c.valor]));
+  const fechado = i.status === "fechado", ed = podeEditar() && !fechado, des = ed ? "" : " disabled";
+  const dentro = new Set(itens.map(x => x.conteudo_id)), livres = aprovados.filter(c => !dentro.has(c.id));
+  const pendentes = itens.filter(x => x.radar_conteudos.status !== "aprovado");
+  const mudados = fechado && i.fechado_em ? itens.filter(x => new Date(x.radar_conteudos.atualizado_em) > new Date(i.fechado_em)) : [];
+  return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
+    <h1>Informativo Mensal N.º ${h(numInformativo(i))}</h1>
+    <p>${selo(fechado ? "Fechado" : "Em montagem", fechado ? "ok" : "alerta")} <a href="informativo.html?id=${i.id}" target="_blank" rel="noopener">Abrir para imprimir / salvar em PDF ↗</a></p>
+    ${pendentes.length ? `<div class="aviso erro"><b>Há ${pendentes.length} conteúdo(s) que deixaram de estar aprovados.</b> Aprove de novo ou remova antes de fechar e enviar.</div>` : ""}
+    ${mudados.length ? `<div class="aviso erro"><b>${mudados.length} artigo(s) foram alterados depois que a edição foi fechada</b> (${h(mudados.map(x => x.radar_conteudos.titulo).join("; "))}). O PDF gerado agora sai com o texto novo, diferente do que foi conferido no fechamento.</div>` : ""}
+    <form class="painel" data-form="informativo" data-id="${i.id}" data-lido="${h(i.atualizado_em)}"><h2>Dados da edição</h2>
+      <div class="grade">
+        <div><label for="i-num">Número</label><input id="i-num" type="number" name="numero" min="1" max="9999" required value="${i.numero}"${des}></div>
+        <div><label for="i-ano">Ano</label><input id="i-ano" type="number" name="ano" min="2000" max="2100" required value="${i.ano}"${des}></div>
+        <div><label for="i-mes">Mês da agenda</label><input id="i-mes" type="month" name="mes" required value="${h(String(i.mes).slice(0,7))}"${des}></div>
+        <div><label for="i-data">Data do fecho (assinatura)</label><input id="i-data" type="date" name="data_assinatura" required value="${h(i.data_assinatura)}"${des}></div>
+      </div>
+      <h3 style="margin-top:16px">Agenda de obrigações</h3>
+      <p class="sub">Datas calculadas pelas regras das Configurações (dias úteis e feriados). <b>Confira antes de enviar</b>: feriados locais e prorrogações oficiais precisam ser ajustados aqui.</p>
+      <div class="rolagem"><table class="agenda-ed"><thead><tr><th style="width:170px">Dia de vencimento</th><th>Obrigações (uma por linha)</th><th style="width:110px"></th></tr></thead>
+        <tbody id="ag-corpo">${(Array.isArray(i.agenda) ? i.agenda : []).filter(l => l && typeof l === "object").map(l => linhaAgenda(l, des)).join("")}</tbody></table></div>
+      ${ed ? `<div class="acoes"><button class="btn sec" type="button" data-acao="ag-linha">Adicionar linha</button>
+        <button class="btn sec" type="button" data-acao="ag-recalcular">Recalcular pelo mês escolhido</button></div>
+        <div class="acoes"><button class="btn">Salvar edição</button></div>` : ""}
+    </form>
+    <div class="painel"><h2>Artigos desta edição</h2>
+      ${itens.length ? `<div class="rolagem"><table id="tab-itens"><tr><th>Ordem</th><th>Artigo</th><th></th></tr>${itens.map((x, n) => { const c = x.radar_conteudos; return `
+        <tr><td>${n + 1}</td><td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button>
+            ${c.status !== "aprovado" ? " " + selo("não aprovado: " + ROTULOS.conteudo[c.status], "erro") : ""}
+            <br><span class="sub">${h(ROTULOS.formato[c.formato] || "")}${c.autor ? " · " + h(c.autor) : ""}${c.imagem_id ? " · com imagem" : ""}</span></td>
+          <td>${ed ? `<div class="acoes" style="margin:0">
+            <button class="btn peq sec" data-acao="item-mover" data-id="${c.id}" data-passo="-1"${n ? "" : " disabled"} aria-label="Subir">↑</button>
+            <button class="btn peq sec" data-acao="item-mover" data-id="${c.id}" data-passo="1"${n < itens.length - 1 ? "" : " disabled"} aria-label="Descer">↓</button>
+            <button class="btn peq perigo" data-acao="item-remover" data-id="${c.id}">Remover</button></div>` : ""}</td></tr>`; }).join("")}</table></div>`
+        : `<p class="sub">Nenhum artigo incluído ainda.</p>`}
+      ${ed ? (livres.length ? `<div class="acoes"><select id="item-novo" aria-label="Conteúdo aprovado" style="max-width:520px">${livres.map(c => `<option value="${c.id}">${h(c.titulo)}</option>`).join("")}</select>
+        <button class="btn" data-acao="item-incluir">Incluir artigo</button></div>`
+        : `<p class="sub">Não há outros conteúdos aprovados para incluir. Aprove um conteúdo na aba Assuntos e ele aparece aqui.</p>`) : ""}
+    </div>
+    <div class="painel"><h2>Fechamento</h2>
+      ${fechado ? `<p>Edição fechada: não pode mais ser alterada.</p>${ehAdmin() ? `<button class="btn sec" data-acao="informativo-status" data-status="rascunho">Reabrir edição</button>` : `<p class="sub">Só o administrador reabre.</p>`}`
+        : ed ? `<p class="sub">Feche quando o informativo estiver conferido. Depois de fechado, só o administrador reabre.</p>
+          <button class="btn verde" data-acao="informativo-status" data-status="fechado">Fechar edição</button>` : `<p class="sub">Edição em montagem.</p>`}
+      ${ehAdmin() ? ` <button class="btn perigo" data-acao="informativo-excluir">Excluir edição</button>` : ""}
+    </div>`;
+}
+function agendaDoFormulario(f){
+  const linhas = [...f.querySelectorAll("tr.ag-linha")].map(tr => ({data:$("[name=ag-data]", tr).value,
+    obrigacoes:$("[name=ag-obr]", tr).value.split(/\r?\n/).map(x => x.trim().replace(/^[-•]\s*/, "").replace(/;$/, "")).filter(Boolean)})).filter(l => l.data || l.obrigacoes.length);
+  if(linhas.some(l => !/^\d{4}-\d{2}-\d{2}$/.test(l.data))) throw new ErroApi("Há linha da agenda sem o dia de vencimento.");
+  if(linhas.some(l => !l.obrigacoes.length)) throw new ErroApi("Há linha da agenda sem nenhuma obrigação.");
+  return linhas.sort((a, b) => a.data.localeCompare(b.data));
+}
+const estadoEdicao = f => JSON.stringify([f.numero.value, f.ano.value, f.mes.value, f.data_assinatura.value,
+  [...f.querySelectorAll("tr.ag-linha")].map(tr => [$("[name=ag-data]", tr).value, $("[name=ag-obr]", tr).value])]);
+const numeroRepetido = e => { if(e.message === "Já existe um registro igual.") throw new ErroApi("Já existe uma edição com este número neste ano. Troque o número.", e.status); throw e; };
+async function salvarInformativo(f){
+  if(!f.reportValidity()) throw new ErroApi("Preencha os dados da edição.");
+  const agenda = agendaDoFormulario(f);
+  if(agenda.length && !agenda.some(l => l.data.startsWith(f.mes.value)))
+    throw new ErroApi("As datas da agenda não são de " + mesExtenso(f.mes.value) + ". Clique em “Recalcular pelo mês escolhido” ou ajuste as datas.");
+  // só grava se a edição ainda for a que foi aberta nesta tela (outra pessoa ou outra aba pode ter salvo antes)
+  const r = await rest("PATCH", "radar_informativos", {params:{id:"eq." + f.dataset.id, atualizado_em:"eq." + f.dataset.lido},
+    corpo:{numero:Number(f.numero.value), ano:Number(f.ano.value), mes:f.mes.value + "-01", data_assinatura:f.data_assinatura.value, agenda},
+    prefer:"return=representation"}).catch(numeroRepetido);
+  if(!Array.isArray(r) || !r.length)
+    throw new ErroApi("Esta edição foi alterada em outra tela (ou o seu perfil não permite salvar). Nada foi gravado: anote o que você mudou, recarregue a página e refaça.");
+  f.dataset.lido = r[0].atualizado_em; f.dataset.original = estadoEdicao(f);
+}
+/* antes de mexer nos artigos ou fechar, o que foi digitado e ainda não salvo na edição é gravado */
+const salvarEdicaoAberta = async () => { const f = $("form[data-form=informativo]");
+  if(f && !f.numero.disabled && estadoEdicao(f) !== f.dataset.original) await salvarInformativo(f); };
+async function reordenarItens(ids){
+  for(const [n, id] of ids.entries()) await alterar("radar_informativo_itens", {informativo_id:"eq." + E.informativo, conteudo_id:"eq." + id}, {ordem:(n + 1) * 10});
+}
+
+/* ------------------------------------------------------ tela do assunto */
+async function telaAssunto(id){
+  const [a] = await ler("radar_assuntos", {select:"*", id:"eq." + id});
+  if(!a) return `<button class="voltar" data-acao="voltar">← Voltar</button><div class="aviso erro">Assunto não encontrado.</div>`;
+  const [vinc, evid, cont] = await Promise.all([
+    ler("radar_assunto_capturas", {select:"radar_capturas(id,titulo,url,data_publicacao,texto,versao,capturado_em,metadados,radar_fontes(nome,orgao,oficial))", assunto_id:"eq." + id}),
+    ler("radar_evidencias", {select:"*,radar_normas(tipo,numero,orgao)", assunto_id:"eq." + id, order:"id"}),
+    ler("radar_conteudos", {select:"*", assunto_id:"eq." + id, order:"id"})]);
+  const pubs = cont.length ? await ler("radar_publicacoes", {select:"*", conteudo_id:"in.(" + cont.map(c => c.id).join(",") + ")", order:"id"}) : [];
+  const idsImg = [...new Set(cont.map(c => c.imagem_id).filter(Boolean))];
+  const imgs = Object.fromEntries((idsImg.length ? await ler("radar_imagens", {select:"id,dados", id:"in.(" + idsImg.join(",") + ")"}) : []).map(i => [i.id, i.dados]));
+  const ed = podeEditar(), des = ed ? "" : " disabled";
+  const conferidas = evid.filter(e => e.trecho_conferido).length;
+  const pronto = a.situacao_confirmacao === "confirmado_oficialmente" && conferidas > 0;
+  return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
+    <h1>${h(a.titulo)}</h1>
+    <p>${seloSituacao(a.situacao_confirmacao)} ${selo(ROTULOS.status[a.status],"neutro")} ${selo(conferidas + " trecho(s) conferido(s)", conferidas ? "ok" : "erro")}</p>
+    ${pronto ? "" : `<div class="aviso alerta"><b>Ainda não pode ser publicado na Artecon Informa.</b> ${a.situacao_confirmacao !== "confirmado_oficialmente" ? "O assunto precisa estar marcado como “Confirmado oficialmente”. " : ""}${conferidas ? "" : "É preciso ao menos um trecho conferido em fonte oficial (FUNDAMENTAÇÃO NÃO CONFIRMADA)."} <span class="sub">O Informativo Mensal e a cópia para o site exigem só o conteúdo aprovado.</span></div>`}
+
+    <form class="painel" data-form="assunto" data-id="${a.id}"><h2>Dados do assunto</h2>
+      <label for="a-titulo">Título</label><input id="a-titulo" type="text" name="titulo" value="${h(a.titulo)}" style="width:100%"${des}>
+      <div class="grade">
+        <div><label for="a-cat">Categoria</label><select id="a-cat" name="categoria"${des}>${opcoes(catMapa(), a.categoria || "", "— escolher —")}</select></div>
+        <div><label for="a-abr">Abrangência</label><select id="a-abr" name="abrangencia"${des}>${opcoes(ROTULOS.abrangencia, a.abrangencia)}</select></div>
+        <div><label for="a-rel">Relevância</label><select id="a-rel" name="relevancia"${des}>${opcoes(ROTULOS.relevancia, a.relevancia)}</select></div>
+        <div><label for="a-sit">Situação da confirmação</label><select id="a-sit" name="situacao_confirmacao"${des}>${opcoes(ROTULOS.situacao, a.situacao_confirmacao)}</select></div>
+        <div><label for="a-sta">Etapa</label><select id="a-sta" name="status"${des}>${opcoes(ROTULOS.status, a.status)}</select></div>
+        <div><label for="a-sub">Subcategoria</label><input id="a-sub" type="text" name="subcategoria" value="${h(a.subcategoria || "")}"${des}></div>
+      </div>
+      <label for="a-res">Resumo objetivo</label><textarea id="a-res" name="resumo"${des}>${h(a.resumo || "")}</textarea>
+      <label for="a-pub">Público potencialmente afetado</label><input id="a-pub" type="text" name="publico_afetado" value="${h(a.publico_afetado || "")}" style="width:100%"${des}>
+      ${ed ? `<div class="acoes"><button class="btn">Salvar dados do assunto</button>
+        <button class="btn sec" type="button" data-acao="ia-classificar">Sugerir classificação com IA</button></div>` : ""}
+    </form>
+
+    <div class="painel"><h2>Texto oficial capturado</h2>
+      ${ed ? `<p class="sub">Para fundamentar: selecione o trecho exato no texto abaixo e clique em “Usar trecho selecionado” — ou clique sem selecionar e cole o trecho. O sistema confere se ele existe mesmo no texto oficial.</p>` : ""}
+      ${vinc.length ? vinc.map(v => { const c = v.radar_capturas; return `
+        <div style="margin-bottom:14px"><b>${h(c.titulo)}</b> ${c.radar_fontes.oficial ? selo("fonte oficial","ok") : selo("fonte não oficial","alerta")} ${c.versao > 1 ? selo("texto alterado · versão " + c.versao, "alerta") : ""}
+          <br><span class="sub">${h(c.radar_fontes.orgao)} · publicado em ${data(c.data_publicacao)} · capturado em ${dataHora(c.capturado_em)} · </span>${linkFonte(c.url, "abrir na fonte ↗")}
+          ${c.metadados?.texto_parcial ? `<div class="aviso info">Desta fonte só a <b>ementa</b> é capturada. O texto integral está no endereço da fonte; a fundamentação aqui fica limitada à ementa.</div>` : ""}
+          ${c.texto ? `<div class="texto-oficial" data-captura="${c.id}" tabindex="0">${h(c.texto)}</div>
+            ${ed ? `<div class="acoes"><button class="btn sec" data-acao="usar-trecho" data-captura="${c.id}">Usar trecho selecionado como evidência</button></div>` : ""}`
+            : `<div class="aviso alerta">O texto desta captura ainda não foi obtido pelo robô. Abra na fonte para conferir.</div>`}
+        </div>`; }).join("") : `<p class="sub">Nenhuma captura vinculada: assunto criado pela equipe. O conteúdo aprovado pode entrar no Informativo Mensal e ser copiado para o site.</p>`}
+      <div id="form-evidencia"></div>
+    </div>
+
+    <div class="painel"><h2>Fundamentação</h2>
+      ${evid.length ? evid.map(e => `<div class="evidencia ${e.trecho_conferido ? "" : "nao"}">
+          ${e.trecho_conferido ? selo("Conferido no texto oficial","ok") : selo("NÃO CONFERIDO — o trecho não está no texto oficial","erro")}
+          ${selo(ROTULOS.natureza[e.natureza],"neutro")} ${e.dispositivo ? selo(e.dispositivo,"neutro") : ""}
+          ${e.radar_normas ? selo(`${e.radar_normas.tipo} nº ${e.radar_normas.numero} — ${e.radar_normas.orgao}`,"") : ""}
+          <br><q>${h(e.trecho_literal)}</q>
+          ${ehAdmin() ? `<div class="acoes"><button class="btn peq perigo" data-acao="apagar-evidencia" data-id="${e.id}">Remover</button></div>` : ""}</div>`).join("")
+        : `<div class="aviso erro"><b>FUNDAMENTAÇÃO NÃO CONFIRMADA</b> — necessária análise técnica. Nenhum trecho foi indicado ainda.</div>`}
+      ${ed ? `<div class="acoes"><button class="btn sec" data-acao="ia-fundamentar">Buscar trechos com IA</button>
+        <span class="sub">A IA propõe; só entram os trechos que existem literalmente no texto oficial.</span></div><div id="ia-descartadas"></div>` : ""}
+    </div>
+
+    <div class="painel"><h2>Conteúdos</h2>
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id])).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+      ${ed ? `<div class="acoes"><select id="novo-formato" aria-label="Formato do novo conteúdo">${opcoes(ROTULOS.formato, "informativo")}</select>
+        <button class="btn" data-acao="novo-conteudo" data-id="${a.id}">Novo conteúdo</button>
+        <button class="btn sec" data-acao="ia-gerar">Gerar com IA</button>
+        <span class="sub">A IA redige um rascunho a partir do texto oficial. Revisar e aprovar continua sendo da equipe.</span></div>` : ""}
+    </div>`;
+}
+function blocoConteudo(c, pubs, ed, imagem){
+  const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
+  const noAr = pubs.find(p => p.status === "publicado");
+  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">
+    <p>${selo(ROTULOS.formato[c.formato])} ${selo(ROTULOS.conteudo[c.status], tipo)} ${selo(c.gerado_por === "ia" ? "gerado por IA" : "escrito pela equipe","neutro")}
+      ${c.aprovado_em ? `<span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span>` : ""}</p>
+    ${Array.isArray(c.avisos_ia) && c.avisos_ia.length ? `<div class="aviso alerta avisos-ia"><b>Pontos a conferir neste texto gerado pela IA</b> (verificação automática contra o texto oficial, feita na geração; não lê números por extenso nem avalia a interpretação):
+      <ul>${c.avisos_ia.map(a => `<li>${h(a)}</li>`).join("")}</ul></div>`
+      : c.gerado_por === "ia" ? `<div class="aviso info avisos-ia">Texto gerado pela IA. A verificação automática não achou, fora do texto oficial, número de norma, artigo, percentual, valor, data ou prazo. Ela não lê números por extenso nem avalia a interpretação: a revisão técnica continua necessária.</div>` : ""}
+    <label for="c-titulo-${c.id}">Título</label><input id="c-titulo-${c.id}" type="text" name="titulo" value="${h(c.titulo)}" style="width:100%"${ed ? "" : " disabled"}>
+    <label for="c-corpo-${c.id}">Texto</label><textarea id="c-corpo-${c.id}" name="corpo" style="min-height:220px" maxlength="60000"${ed ? "" : " disabled"}>${h(c.corpo)}</textarea>
+    <p class="sub">Formatação: “## ” inicia um subtítulo, “- ” um item de lista, **texto** fica em negrito e linhas iniciadas por “|” formam uma tabela (colunas separadas por “|”; a primeira linha é o cabeçalho).</p>
+    <div class="grade">
+      <div><label for="c-autor-${c.id}">Texto elaborado por (opcional)</label><input id="c-autor-${c.id}" type="text" name="autor" maxlength="120" value="${h(c.autor || "")}"${ed ? "" : " disabled"}></div>
+      <div><label for="c-fonte-${c.id}">Fonte (opcional)</label><input id="c-fonte-${c.id}" type="text" name="fonte_credito" maxlength="300" value="${h(c.fonte_credito || "")}" placeholder="Ex.: Receita Federal"${ed ? "" : " disabled"}></div>
+    </div>
+    <label for="c-img-${c.id}">Imagem de capa (opcional)</label>
+    ${imagem && /^data:image\/(jpeg|png|webp);base64,/.test(imagem) ? `<img class="miniatura" src="${h(imagem)}" alt="Imagem de capa do conteúdo">` : `<p class="sub" style="margin:0">Sem imagem.</p>`}
+    ${ed ? `<div class="acoes" style="margin-top:4px"><input id="c-img-${c.id}" type="file" accept="image/jpeg,image/png,image/webp" data-imagem="${c.id}">
+      ${c.imagem_id ? `<button class="btn peq perigo" type="button" data-acao="remover-imagem" data-id="${c.id}">Remover imagem</button>` : ""}
+      <span class="sub">A imagem é reduzida automaticamente antes de enviar.</span></div>` : ""}
+    <details><summary>Ver como vai aparecer</summary><div class="previa"><h2>${h(c.titulo)}</h2>${imagem ? `<img class="miniatura" style="max-width:100%;max-height:260px" src="${h(imagem)}" alt="">` : ""}${renderTexto(c.corpo)}${creditos(c)}</div></details>
+    ${c.status === "aprovado" ? `<div class="aviso info">Se você alterar o título, o texto, o autor, a fonte ou a imagem, o conteúdo volta para revisão e precisa ser aprovado de novo.</div>
+      <div class="acoes"><b class="sub">Para o site da Artecon:</b>
+        <button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
+        <button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
+        ${imagem ? `<a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>` : ""}
+    ${ed ? `<div class="acoes">
+      <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
+      <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
+      ${c.status === "rascunho" || c.status === "rejeitado" ? `<button class="btn" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="em_revisao">Enviar para revisão</button>` : ""}
+      ${c.status === "em_revisao" ? `<button class="btn verde" type="button" data-acao="aprovar" data-id="${c.id}">Aprovar</button>
+        <button class="btn perigo" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="rejeitado">Rejeitar</button>` : ""}
+    </div>` : ""}
+    ${pubs.map(p => { const futuro = p.status === "publicado" && new Date(p.publicar_em) > new Date(); return `<div class="aviso ${p.status==="publicado" ? "info" : "alerta"}"><b>Publicação:</b> ${futuro ? "Agendada" : h(ROTULOS.publicacao[p.status])}
+        ${futuro ? ` para ${dataHora(p.publicar_em)} — só aparece na Artecon Informa a partir dessa data` : ""}
+        ${p.status==="publicado" && !futuro ? ` desde ${dataHora(p.publicar_em)} — <a href="informa.html?p=${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">ver na Artecon Informa ↗</a>` : ""}
+        ${p.requer_revisao ? `<br><b>Requer revisão:</b> ${h(semCodigo(p.motivo_revisao))}` : ""}</div>`; }).join("")}
+    ${ed && c.status === "aprovado" && !noAr ? `<div class="acoes">
+        <button class="btn verde" type="button" data-acao="publicar" data-id="${c.id}">Publicar agora</button>
+        <label for="quando-${c.id}" style="margin:0">ou agendar para</label><input type="datetime-local" id="quando-${c.id}">
+        <button class="btn sec" type="button" data-acao="publicar" data-id="${c.id}" data-agendar="1">Agendar</button></div>` : ""}
+  </form>`;
+}
+
+/* ------------------------------------------------------------------ ações */
+const ACOES = {
+  aba(el){ E.aba = el.dataset.aba; E.assunto = null; E.informativo = null; return desenhar(); },
+  recarregar(){ return desenhar(); },
+  sair(){ return sair(); },
+  voltar(){ if(E.assunto) E.assunto = null; else E.informativo = null; return desenhar(); },
+  "abrir-assunto"(el){ if(!el.dataset.id || el.dataset.id === "undefined") return; E.assunto = Number(el.dataset.id); window.scrollTo(0,0); return desenhar(); },
+  async "abrir-da-captura"(el){ E.assunto = await rpc("radar_abrir_assunto", {p_captura:Number(el.dataset.id)}); E.aba = "assuntos"; return desenhar(); },
+  async "ignorar-captura"(el){ await rpc("radar_abrir_assunto", {p_captura:Number(el.dataset.id), p_ignorar:true}); await desenhar(); recado("Captura ignorada."); return; },
+
+  async "ia-classificar"(){
+    const r = await ia("classificar"), f = $("form[data-form=assunto]"), s = r.sugestao;
+    for(const [campo, valor] of Object.entries({categoria:s.categoria, abrangencia:s.abrangencia, relevancia:s.relevancia,
+        subcategoria:s.subcategoria, resumo:s.resumo, publico_afetado:s.publico_afetado})){
+      if(!f[campo] || !valor) continue;
+      const antes = f[campo].value; f[campo].value = valor;
+      if(f[campo].value !== String(valor)) f[campo].value = antes;      // sugestão fora das opções não apaga o que já estava
+    }
+    recado("Sugestão da IA preenchida no formulário. Confira e clique em “Salvar dados do assunto”." + (s.motivo_da_relevancia ? " Motivo da relevância: " + s.motivo_da_relevancia : ""));
+  },
+  async "ia-fundamentar"(){
+    const r = await ia("fundamentar");
+    await desenhar();
+    recado(`IA: ${r.inseridas.length} trecho(s) conferido(s) e registrado(s); ${r.descartadas.length} descartado(s).`, !r.inseridas.length);
+    const d = $("#ia-descartadas");
+    if(d && r.descartadas.length) d.innerHTML = `<details open><summary>Trechos propostos pela IA e descartados (${r.descartadas.length})</summary>
+      <ul>${r.descartadas.map(x => `<li><q>${h(x.trecho)}</q> — ${h(x.motivo)}</li>`).join("")}</ul></details>`;
+  },
+  async "ia-gerar"(){
+    const r = await ia("gerar", {formato:$("#novo-formato").value});
+    await desenhar();
+    recado(r.avisos.length ? `Rascunho gerado pela IA com ${r.avisos.length} ponto(s) a conferir.` : "Rascunho gerado pela IA.", r.avisos.length > 0);
+  },
+
+  "usar-trecho"(el){
+    const caixa = $(`.texto-oficial[data-captura="${el.dataset.captura}"]`), sel = window.getSelection();
+    const trecho = sel && sel.rangeCount && caixa.contains(sel.anchorNode) && caixa.contains(sel.focusNode) ? sel.toString().trim() : "";
+    if(trecho.length < 20) recado("Nenhum trecho selecionado: cole ou digite abaixo o trecho exato do texto oficial (mínimo de 20 caracteres).");
+    $("#form-evidencia").innerHTML = `<form class="painel" style="background:var(--azul-claro)" data-form="evidencia" data-captura="${h(el.dataset.captura)}">
+      <h3>Nova evidência</h3><label for="ev-trecho">Trecho literal</label><textarea id="ev-trecho" name="trecho_literal" required minlength="20">${h(trecho.length >= 20 ? trecho : "")}</textarea>
+      <div class="grade">
+        <div><label for="ev-disp">Dispositivo (opcional)</label><input id="ev-disp" type="text" name="dispositivo" placeholder="art. 2º, § 1º"></div>
+        <div><label for="ev-nat">Natureza</label><select id="ev-nat" name="natureza">${opcoes(ROTULOS.natureza, "fato_oficial")}</select></div>
+        <div><label for="ev-tipo">Norma — tipo (opcional)</label><input id="ev-tipo" type="text" name="norma_tipo" placeholder="Instrução Normativa"></div>
+        <div><label for="ev-num">Norma — número</label><input id="ev-num" type="text" name="norma_numero" placeholder="2.290/2026"></div>
+        <div><label for="ev-org">Norma — órgão</label><input id="ev-org" type="text" name="norma_orgao" placeholder="RFB"></div>
+      </div><div class="acoes"><button class="btn">Registrar evidência</button><button class="btn sec" type="button" data-acao="cancelar-evidencia">Cancelar</button></div></form>`;
+    $("#form-evidencia").scrollIntoView({behavior:"smooth", block:"center"}); $("#ev-trecho").focus({preventScroll:true});
+  },
+  "cancelar-evidencia"(){ $("#form-evidencia").innerHTML = ""; },
+  async "apagar-evidencia"(el){ if(!confirm("Remover esta evidência?")) return; await apagar("radar_evidencias", {id:"eq." + el.dataset.id}); await desenhar(); recado("Evidência removida."); },
+
+  async "novo-conteudo"(el){
+    const [a] = await ler("radar_assuntos", {select:"titulo", id:"eq." + el.dataset.id});
+    await rest("POST", "radar_conteudos", {corpo:{assunto_id:Number(el.dataset.id), formato:$("#novo-formato").value, titulo:a.titulo,
+      corpo:ESTRUTURA_PADRAO, gerado_por:"humano", status:"rascunho"}});
+    await desenhar(); recado("Conteúdo criado como rascunho."); return;
+  },
+  "abrir-informativo"(el){ E.informativo = Number(el.dataset.id); E.assunto = null; E.aba = "informativos"; window.scrollTo(0,0); return desenhar(); },
+  "ag-linha"(){ $("#ag-corpo").insertAdjacentHTML("beforeend", linhaAgenda({}, "")); },
+  "ag-remover"(el){ el.closest("tr").remove(); },
+  "ag-recalcular"(el){
+    const f = el.closest("form"), m = /^(\d{4})-(\d{2})$/.exec(f.mes.value);
+    if(!m){ recado("Escolha o mês da agenda.", true); return; }
+    if($("#ag-corpo").children.length && !confirm("Substituir a agenda desta tela pela calculada para " + mesExtenso(f.mes.value) + "?")) return;
+    const linhas = calcularAgenda(Number(m[1]), Number(m[2]), CONF_AGENDA.obrigacoes, CONF_AGENDA.feriados_extras);
+    $("#ag-corpo").innerHTML = linhas.map(l => linhaAgenda(l, "")).join("");
+    recado(linhas.length ? "Agenda recalculada. Confira as datas e clique em “Salvar edição”." : "Não há obrigações configuradas (veja a aba Configurações).", !linhas.length);
+  },
+  async "item-incluir"(){
+    await salvarEdicaoAberta();
+    const atuais = await ler("radar_informativo_itens", {select:"ordem", informativo_id:"eq." + E.informativo});
+    await rest("POST", "radar_informativo_itens", {corpo:{informativo_id:E.informativo, conteudo_id:Number($("#item-novo").value), ordem:Math.max(0, ...atuais.map(a => a.ordem)) + 10}});
+    await desenhar(); recado("Artigo incluído.");
+  },
+  async "item-remover"(el){
+    await salvarEdicaoAberta();
+    await apagarItem(el.dataset.id); await desenhar(); recado("Artigo removido da edição.");
+  },
+  async "item-mover"(el){
+    await salvarEdicaoAberta();
+    const ids = (await ler("radar_informativo_itens", {select:"conteudo_id", informativo_id:"eq." + E.informativo, order:"ordem,conteudo_id"})).map(x => x.conteudo_id);
+    const de = ids.indexOf(Number(el.dataset.id)), para = de + Number(el.dataset.passo);
+    if(de < 0 || para < 0 || para >= ids.length){ await desenhar(); return; }
+    [ids[de], ids[para]] = [ids[para], ids[de]];
+    await reordenarItens(ids); await desenhar();
+  },
+  async "informativo-status"(el){
+    const fechar = el.dataset.status === "fechado";
+    if(fechar){ if(!confirm("Fechar esta edição? Depois de fechada, só o administrador reabre.")) return; await salvarEdicaoAberta(); }
+    await alterar("radar_informativos", {id:"eq." + E.informativo}, {status:el.dataset.status});
+    await desenhar(); recado(fechar ? "Edição fechada." : "Edição reaberta.");
+  },
+  async "informativo-excluir"(){
+    if(!confirm("Excluir esta edição do informativo? Os conteúdos continuam existindo.")) return;
+    await apagar("radar_informativos", {id:"eq." + E.informativo}); E.informativo = null; await desenhar(); recado("Edição excluída.");
+  },
+  async "remover-imagem"(el){
+    if(sujo(el.closest("form"))){ recado("Há alterações não salvas. Salve o conteúdo antes de mexer na imagem.", true); return; }
+    if(!confirm("Remover a imagem deste conteúdo?")) return;
+    await alterar("radar_conteudos", {id:"eq." + el.dataset.id}, {imagem_id:null}); await desenhar(); recado("Imagem removida."); },
+  async "copiar-titulo"(el){ await copiar(el.closest("form").titulo.defaultValue); recado("Título copiado."); },
+  async "copiar-texto"(el){
+    const f = el.closest("form"), c = {autor:f.autor.defaultValue, fonte_credito:f.fonte_credito.defaultValue};
+    const plano = f.corpo.defaultValue.replace(/^#{1,2}\s+/gm, "").replace(/\*\*/g, "") + (c.autor ? "\n\nTexto elaborado por: " + c.autor : "") + (c.fonte_credito ? "\nFonte: " + c.fonte_credito : "");
+    await copiar(plano, renderTexto(f.corpo.defaultValue) + creditos(c));
+    recado("Texto copiado com a formatação. Cole no editor do site."); },
+  estrutura(el){ const t = $(`#c-corpo-${el.dataset.id}`); t.value = (t.value.trim() ? t.value.trimEnd() + "\n\n" : "") + ESTRUTURA_PADRAO; t.focus(); },
+  async "mudar-conteudo"(el){ await salvarConteudo(el.closest("form"), {status: el.dataset.status}); await desenhar();
+    recado(el.dataset.status === "em_revisao" ? "Conteúdo enviado para revisão." : "Conteúdo rejeitado."); },
+  async aprovar(el){
+    const f = el.closest("form");
+    if(sujo(f)){ recado("Há alterações não salvas. Salve antes de aprovar.", true); return; }
+    // só aprova se o texto ainda for o que foi aberto nesta tela
+    const r = await rest("PATCH", "radar_conteudos", {params:{id:"eq." + el.dataset.id, atualizado_em:"eq." + f.dataset.lido},
+      corpo:{status:"aprovado"}, prefer:"return=representation"});
+    if(!r.length){ await desenhar(); recado("O texto foi alterado depois que você abriu esta tela. Confira de novo antes de aprovar.", true); return; }
+    await desenhar(); recado("Conteúdo aprovado."); return;
+  },
+  async publicar(el){
+    const corpo = {conteudo_id:Number(el.dataset.id), status:"publicado"};
+    if(el.dataset.agendar){ const v = $(`#quando-${el.dataset.id}`).value; if(!v){ recado("Informe a data e a hora do agendamento.", true); return; }
+      corpo.publicar_em = new Date(v).toISOString();
+      if(new Date(v) <= new Date()){ recado("A data do agendamento precisa estar no futuro. Para publicar já, use “Publicar agora”.", true); return; } }
+    // cada conteúdo tem uma única publicação: se já existe (rascunho ou fora do ar), é ela que volta ao ar
+    const anteriores = await ler("radar_publicacoes", {select:"id", conteudo_id:"eq." + el.dataset.id});
+    if(anteriores.length) await alterar("radar_publicacoes", {id:"eq." + anteriores[0].id},
+      {status:"publicado", publicar_em: corpo.publicar_em || new Date().toISOString()});
+    else await rest("POST", "radar_publicacoes", {corpo});
+    await desenhar(); recado(el.dataset.agendar ? "Publicação agendada." : "Publicado na Artecon Informa."); return;
+  },
+  async despublicar(el){ if(!confirm("Tirar esta publicação do ar?")) return;
+    await alterar("radar_publicacoes", {id:"eq." + el.dataset.id}, {status:"despublicado"}); await desenhar(); recado("Publicação fora do ar."); return; },
+  async republicar(el){ await alterar("radar_publicacoes", {id:"eq." + el.dataset.id}, {status:"publicado", publicar_em:new Date().toISOString()});
+    await desenhar(); recado("Publicado na Artecon Informa."); return; },
+  async errata(el){ const t = prompt("Texto da errata (aparece para o público junto da publicação). Deixe vazio para remover:", el.dataset.atual || "");
+    if(t === null) return; await alterar("radar_publicacoes", {id:"eq." + el.dataset.id}, {errata:t.trim() || null}); await desenhar(); recado("Errata salva."); return; },
+  async "limpar-sinal"(el){ if(!confirm("Confirma que a publicação foi revisada e pode continuar no ar como está?")) return;
+    await alterar("radar_publicacoes", {id:"eq." + el.dataset.id}, {requer_revisao:false, motivo_revisao:null}); await desenhar(); recado("Publicação marcada como revisada."); },
+
+  async "editar-fonte"(el){
+    const linha = $(`#edicao-fonte-${el.dataset.id}`); if(!linha.hidden){ linha.hidden = true; return; }
+    const [f] = await ler("radar_fontes", {select:"*", id:"eq." + el.dataset.id});
+    linha.firstElementChild.innerHTML = `<form data-form="fonte" data-id="${f.id}" class="painel" style="background:var(--azul-claro)">
+      <div class="grade"><div><label for="f-freq-${f.id}">Verificar a cada (horas)</label><input id="f-freq-${f.id}" type="number" name="frequencia_horas" min="1" max="168" required value="${f.frequencia_horas}"></div>
+      <div><label><input type="checkbox" name="ativo" ${f.ativo ? "checked" : ""}> Fonte ativa</label><label><input type="checkbox" name="validada" ${f.validada ? "checked" : ""}> Validada no diagnóstico</label>
+        <label><input type="checkbox" name="oficial" ${f.oficial ? "checked" : ""}> Fonte oficial</label></div></div>
+      <label for="f-url-${f.id}">Endereço</label><input id="f-url-${f.id}" type="text" name="url" value="${h(f.url)}" style="width:100%">
+      <label for="f-cfg-${f.id}">Configuração de leitura (JSON)</label><textarea id="f-cfg-${f.id}" name="config" style="font-family:monospace;min-height:150px">${h(JSON.stringify(f.config, null, 2))}</textarea>
+      <div class="acoes"><button class="btn">Salvar fonte</button></div></form>`;
+    linha.hidden = false;
+  },
+  async "salvar-usuario"(el){
+    const tr = el.closest("tr"), papel = $("[name=papel]", tr).value, nome = $("[name=nome]", tr).value.trim();
+    const eu = el.dataset.id === E.sessao.user.id;
+    if(!papel){
+      if(!tr.dataset.tinha){ recado("Este usuário já está sem acesso."); return; }
+      if(!confirm(eu ? "Você vai remover o SEU PRÓPRIO acesso ao Radar. Confirma?" : "Remover o acesso deste usuário ao Radar?")) return;
+      await apagar("radar_perfis", {user_id:"eq." + el.dataset.id}); if(eu) E.perfil = null; await desenhar(); recado("Acesso removido."); return; }
+    if(!nome){ recado("Informe o nome.", true); return; }
+    if(eu && (papel !== "admin" || !$("[name=ativo]", tr).checked) && !confirm("Você vai reduzir o SEU PRÓPRIO acesso e deixará de ser administrador. Confirma?")) return;
+    await rest("POST", "radar_perfis", {params:{on_conflict:"user_id"}, corpo:{user_id:el.dataset.id, nome, papel, ativo:$("[name=ativo]", tr).checked},
+      prefer:"resolution=merge-duplicates"});
+    if(eu) E.perfil = null; await desenhar(); recado("Usuário salvo."); return;
+  }
+};
+async function salvarConteudo(f, extra = {}){
+  const corpo = {titulo:f.titulo.value.trim(), corpo:f.corpo.value, autor:f.autor.value.trim() || null, fonte_credito:f.fonte_credito.value.trim() || null, ...extra};
+  if(!corpo.titulo){ throw new ErroApi("O título não pode ficar vazio."); }
+  await alterar("radar_conteudos", {id:"eq." + f.dataset.id}, corpo);
+}
+/* formulário com algo digitado e ainda não salvo */
+function sujo(f){ return [...f.elements].some(c => c.name && c.type !== "file" && (c.type === "checkbox" ? c.checked !== c.defaultChecked : c.value !== c.defaultValue && c.tagName !== "SELECT")); }
+function creditos(c){ return (c.autor ? `<p style="text-align:right"><em>Texto elaborado por: <strong>${h(c.autor)}</strong></em></p>` : "") +
+  (c.fonte_credito ? `<p style="text-align:right"><em>Fonte: ${h(c.fonte_credito)}</em></p>` : ""); }
+async function copiar(texto, html){
+  try{
+    if(html && window.ClipboardItem && navigator.clipboard?.write)
+      return await navigator.clipboard.write([new ClipboardItem({"text/html": new Blob([html], {type:"text/html"}), "text/plain": new Blob([texto], {type:"text/plain"})})]);
+    await navigator.clipboard.writeText(texto);
+  }catch(e){ throw new ErroApi("O navegador não permitiu copiar. Selecione o texto em “Ver como vai aparecer” e copie manualmente."); }
+}
+/* Reduz a imagem no navegador (lado maior até 1200 px, JPEG) para caber no banco e abrir rápido. */
+const LIMITE_IMAGEM = 600000;
+async function reduzirImagem(arquivo){
+  if(!/^image\/(jpeg|png|webp)$/.test(arquivo.type)) throw new ErroApi("Use uma imagem JPG, PNG ou WebP.");
+  const img = await new Promise((ok, falha) => { const i = new Image(), u = URL.createObjectURL(arquivo);
+    i.onload = () => { URL.revokeObjectURL(u); ok(i); }; i.onerror = () => { URL.revokeObjectURL(u); falha(new ErroApi("Não foi possível ler esta imagem.")); }; i.src = u; });
+  if(!img.naturalWidth || !img.naturalHeight) throw new ErroApi("Não foi possível ler esta imagem.");
+  for(const lado of [1200, 1000, 800, 640, 480]) for(const q of [0.85, 0.7, 0.55]){
+    const f = Math.min(1, lado / Math.max(img.naturalWidth, img.naturalHeight));
+    const cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(img.naturalWidth * f)); cv.height = Math.max(1, Math.round(img.naturalHeight * f));
+    const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0, cv.width, cv.height);
+    const dados = cv.toDataURL("image/jpeg", q);
+    if(dados.length <= LIMITE_IMAGEM) return {dados, largura:cv.width, altura:cv.height};
+  }
+  throw new ErroApi("Não foi possível reduzir esta imagem o suficiente. Tente outra.");
+}
+async function enviarImagem(campo){
+  const f = campo.closest("form"), arquivo = campo.files[0]; if(!arquivo) return;
+  campo.value = "";                 // a mesma imagem pode ser escolhida de novo depois
+  if(sujo(f)) throw new ErroApi("Há alterações não salvas. Salve o conteúdo antes de enviar a imagem.");
+  const img = await reduzirImagem(arquivo);
+  const [nova] = await rest("POST", "radar_imagens", {corpo:img, params:{select:"id"}, prefer:"return=representation"});
+  await alterar("radar_conteudos", {id:"eq." + campo.dataset.imagem}, {imagem_id:nova.id});
+  await desenhar(); recado("Imagem enviada.");
+}
+
+/* a chave do item é composta: o DELETE confere pelo retorno, como os demais */
+const apagarItem = id => apagar("radar_informativo_itens", {informativo_id:"eq." + E.informativo, conteudo_id:"eq." + id});
+function validarConfig(chave, v){
+  const lista = Array.isArray(v), obj = v && typeof v === "object" && !lista;
+  if(chave === "obrigacoes"){
+    if(!lista) return "A agenda precisa ser uma lista [ … ].";
+    for(const [n, o] of v.entries()){
+      if(!o || typeof o.nome !== "string" || !o.nome.trim()) return `Item ${n + 1}: falta o nome.`;
+      if(!REGRAS.includes(o.regra)) return `“${o.nome}”: regra inválida.`;
+      if(o.regra === "dia" && !(Number.isInteger(o.dia) && o.dia >= 1 && o.dia <= 31)) return `“${o.nome}”: informe o dia (1 a 31).`;
+      if(o.regra === "dia" && !AJUSTES.includes(o.ajuste)) return `“${o.nome}”: ajuste deve ser antecipa, posterga ou nenhum.`;
+    }
+  }
+  if(chave === "feriados_extras"){
+    if(!lista) return "Os feriados precisam ser uma lista [ … ].";
+    for(const e of v){ const d = e && typeof e === "object" ? e.data : e;
+      if(!/^(\d{4}-)?\d{2}-\d{2}$/.test(String(d || ""))) return `Data inválida: ${JSON.stringify(e)}. Use "AAAA-MM-DD" ou "MM-DD".`; }
+  }
+  if(chave === "fale_conosco"){
+    if(!obj || !Array.isArray(v.setores)) return "Precisa ter a lista “setores”.";
+    for(const s of v.setores) for(const c of ["telefones","emails","equipe"])
+      if(!s || typeof s.rotulo !== "string" || !Array.isArray(s[c])) return "Cada setor precisa de “rotulo” e das listas “telefones”, “emails” e “equipe”.";
+  }
+  if(chave === "assinatura" && !(obj && ["local","empresa","responsavel"].every(c => typeof v[c] === "string"))) return "Informe “local”, “empresa” e “responsavel”.";
+  return "";
+}
+
+const FORMS = {
+  async novoInformativo(f){
+    const m = /^(\d{4})-(\d{2})$/.exec(f.mes.value); if(!m){ recado("Escolha o mês da agenda.", true); return; }
+    const conf = Object.fromEntries((await ler("radar_config", {select:"chave,valor", chave:"in.(obrigacoes,feriados_extras)"})).map(c => [c.chave, c.valor]));
+    const [i] = await rest("POST", "radar_informativos", {corpo:{numero:Number(f.numero.value), ano:Number(m[1]), mes:f.mes.value + "-01",
+      data_assinatura:new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
+      agenda:calcularAgenda(Number(m[1]), Number(m[2]), conf.obrigacoes, conf.feriados_extras)}, prefer:"return=representation"}).catch(numeroRepetido);
+    E.informativo = i.id; window.scrollTo(0,0); return desenhar();
+  },
+  async informativo(f){ await salvarInformativo(f); await desenhar(); recado("Edição salva."); },
+  async config(f){
+    let valor; try{ valor = JSON.parse(f.valor.value); }catch(e){ recado("O conteúdo não é um JSON válido: " + e.message, true); return; }
+    const problema = validarConfig(f.dataset.chave, valor); if(problema){ recado(problema, true); return; }
+    const r = await rest("POST", "radar_config", {params:{on_conflict:"chave"}, corpo:{chave:f.dataset.chave, valor}, prefer:"resolution=merge-duplicates,return=representation"});
+    if(!Array.isArray(r) || !r.length) throw new ErroApi("Nada foi alterado: o seu perfil não permite esta ação.");
+    await desenhar(); recado("Configuração salva.");
+  },
+  async novoAssunto(f){
+    if(f.titulo.value.trim().length < 5){ recado("Informe o título do assunto (ao menos 5 caracteres).", true); return; }
+    const [a] = await rest("POST", "radar_assuntos", {corpo:{titulo:f.titulo.value.trim(), abrangencia:"geral", status:"selecionado"}, prefer:"return=representation"});
+    E.assunto = a.id; window.scrollTo(0,0); return desenhar();
+  },
+  async entrar(f){ limparEstado(); try{ await entrar(f.email.value.trim(), f.senha.value); }
+    catch(e){ $("#app").innerHTML = telaEntrada(e.message); return; }
+    return desenhar(); },
+  async assunto(f){
+    const corpo = {}; for(const c of ["titulo","categoria","abrangencia","relevancia","situacao_confirmacao","status","subcategoria","resumo","publico_afetado"]) corpo[c] = f[c].value.trim() || null;
+    if(!corpo.titulo){ recado("O título não pode ficar vazio.", true); return; }
+    await alterar("radar_assuntos", {id:"eq." + f.dataset.id}, corpo); await desenhar(); recado("Assunto salvo."); return;
+  },
+  async evidencia(f){
+    let norma_id = null; const tipo = f.norma_tipo.value.trim(), numero = f.norma_numero.value.trim(), orgao = f.norma_orgao.value.trim();
+    if(tipo || numero || orgao){
+      if(!(tipo && numero && orgao)){ recado("Para vincular uma norma, informe tipo, número e órgão.", true); return; }
+      const existe = await ler("radar_normas", {select:"id", tipo:"eq." + tipo, numero:"eq." + numero, orgao:"eq." + orgao});
+      norma_id = existe.length ? existe[0].id : (await rest("POST", "radar_normas", {corpo:{tipo, numero, orgao}, prefer:"return=representation"}))[0].id;
+    }
+    const [e] = await rest("POST", "radar_evidencias", {corpo:{assunto_id:E.assunto, captura_id:Number(f.dataset.captura), trecho_literal:f.trecho_literal.value.trim(),
+      dispositivo:f.dispositivo.value.trim() || null, natureza:f.natureza.value, norma_id}, prefer:"return=representation"});
+    await desenhar();
+    recado(e.trecho_conferido ? "Trecho conferido no texto oficial." : "Atenção: o trecho NÃO foi encontrado no texto oficial.", !e.trecho_conferido);
+  },
+  async conteudo(f){ await salvarConteudo(f); await desenhar(); recado("Conteúdo salvo."); },
+  async fonte(f){
+    let config; try{ config = JSON.parse(f.config.value); if(!config || typeof config !== "object" || Array.isArray(config)) throw 0; }
+    catch(e){ recado("A configuração não é um JSON válido.", true); return; }
+    if(!urlSegura(f.url.value.trim())){ recado("O endereço da fonte precisa começar com http:// ou https://.", true); return; }
+    await alterar("radar_fontes", {id:"eq." + f.dataset.id}, {frequencia_horas:Number(f.frequencia_horas.value), ativo:f.ativo.checked,
+      validada:f.validada.checked, oficial:f.oficial.checked, url:f.url.value.trim(), config});
+    await desenhar(); recado("Fonte salva."); return;
+  }
+};
+
+/* ----------------------------------------------------------------- eventos */
+/* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
+   são feitas uma por vez, para um clique duplo não repetir a operação. */
+const NAVEGACAO = new Set(["aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
+  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular"]);
+let OCUPADO = false;
+async function executar(fn, livre, ...args){
+  if(!livre){ if(OCUPADO) return; OCUPADO = true; document.body.classList.add("ocupado"); }
+  try{ await fn(...args); }
+  catch(e){ recado(e.message || "Erro inesperado.", true); if(E.sessao && !E.perfil){ try{ await desenhar(); }catch(x){} } }
+  finally{ if(!livre){ OCUPADO = false; document.body.classList.remove("ocupado"); } }
+}
+document.addEventListener("click", ev => {
+  const el = ev.target.closest("[data-acao]"); if(!el || el.disabled) return;
+  if(el.tagName === "A") return;
+  const acao = ACOES[el.dataset.acao];
+  if(el.dataset.acao === "salvar-conteudo") return;            // é o botão de envio do formulário
+  if(acao){ ev.preventDefault(); executar(acao, NAVEGACAO.has(el.dataset.acao), el); }
+});
+document.addEventListener("submit", ev => {
+  const f = ev.target.closest("[data-form]"); if(!f) return; ev.preventDefault();
+  executar(FORMS[f.dataset.form], false, f);
+});
+document.addEventListener("input", ev => {
+  if(ev.target.dataset.filtro !== "fila") return;
+  const busca = $("#busca-fila").value.trim().toLowerCase(), fonte = $("#fonte-fila").value;
+  document.querySelectorAll("#tab-fila tr[data-fonte]").forEach(tr => {
+    tr.hidden = (busca && !tr.dataset.texto.includes(busca)) || (fonte && tr.dataset.fonte !== fonte); });
+});
+document.addEventListener("change", ev => {
+  if(ev.target.dataset.imagem){
+    if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha a imagem de novo.", true); return; }
+    executar(enviarImagem, false, ev.target); return; }
+  if(ev.target.id === "filtro-assuntos"){ E.filtros.assuntos = ev.target.value; desenhar(); }
+});
+
+try{ E.sessao = JSON.parse(localStorage.getItem("radar_sessao") || "null"); }catch(e){ E.sessao = null; }
+if(!sessaoValida(E.sessao)) E.sessao = null;
+desenhar();
+</script>
+</body>
+</html>

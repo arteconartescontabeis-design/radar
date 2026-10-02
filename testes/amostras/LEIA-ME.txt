@@ -1,0 +1,8 @@
+AMOSTRAS DE TESTE — origem
+
+O ambiente em que o Bloco 1 foi desenvolvido não alcança os sites oficiais
+diretamente. Estas amostras foram RECONSTRUÍDAS no formato de cada fonte, com
+títulos, endereços e datas REAIS lidos em 01/10/2026. Elas provam a lógica dos
+leitores; a fidelidade ao HTML real de cada site é conferida pelo workflow
+"Radar — diagnóstico das fontes", que baixa as páginas verdadeiras.
+Quando o diagnóstico rodar, as páginas reais substituem estas amostras.

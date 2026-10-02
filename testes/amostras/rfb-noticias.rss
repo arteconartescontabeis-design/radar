@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:syn="http://purl.org/rss/1.0/modules/syndication/" xmlns="http://purl.org/rss/1.0/">
+  <channel rdf:about="https://www.gov.br/receitafederal/pt-br/assuntos/noticias/RSS">
+    <title>Notícias</title>
+    <link>https://www.gov.br/receitafederal/pt-br/assuntos/noticias</link>
+    <description></description>
+    <items><rdf:Seq>
+      <rdf:li rdf:resource="https://www.gov.br/receitafederal/pt-br/assuntos/noticias/parana-apreensao.png/view"/>
+    </rdf:Seq></items>
+  </channel>
+  <item rdf:about="https://www.gov.br/receitafederal/pt-br/assuntos/noticias/parana-apreensao.png/view">
+    <title>Foz do Iguaçu</title>
+    <link>https://www.gov.br/receitafederal/pt-br/assuntos/noticias/parana-apreensao.png/view</link>
+    <description></description>
+    <dc:date>2025-12-29T13:21:23Z</dc:date>
+    <dc:type>Image</dc:type>
+  </item>
+  <item rdf:about="https://www.gov.br/receitafederal/pt-br/assuntos/noticias/carrossel">
+    <title>Carrossel</title>
+    <link>https://www.gov.br/receitafederal/pt-br/assuntos/noticias/carrossel</link>
+    <description></description>
+    <dc:date>2022-06-30T23:13:14Z</dc:date>
+    <dc:type>Folder</dc:type>
+  </item>
+  <item rdf:about="https://www.gov.br/receitafederal/pt-br/assuntos/noticias/receita-federal-disponibilizara-a-versao-web-da-ditr-2026">
+    <title>Receita Federal disponibilizará a versão web da DITR 2026</title>
+    <link>https://www.gov.br/receitafederal/pt-br/assuntos/noticias/receita-federal-disponibilizara-a-versao-web-da-ditr-2026</link>
+    <description>Nova versão permite o preenchimento &lt;b&gt;online&lt;/b&gt; da declaração, sem instalar programa.</description>
+    <dc:publisher>No publisher</dc:publisher>
+    <dc:date>2026-07-22T16:51:56Z</dc:date>
+    <dc:type>collective.nitf.content</dc:type>
+  </item>
+  <item rdf:about="https://www.gov.br/receitafederal/pt-br/assuntos/noticias/colecao">
+    <title>Coleção</title>
+    <link>https://www.gov.br/receitafederal/pt-br/assuntos/noticias/colecao</link>
+    <description></description>
+    <dc:date>2022-08-25T14:46:41Z</dc:date>
+    <dc:type>Collection</dc:type>
+  </item>
+  <item rdf:about="https://www.gov.br/receitafederal/pt-br/assuntos/noticias/receita-federal-informa-parada-programada-do-sistema-de-leilao-eletronico">
+    <title>Receita Federal informa parada programada do Sistema de Leilão Eletrônico</title>
+    <link>https://www.gov.br/receitafederal/pt-br/assuntos/noticias/receita-federal-informa-parada-programada-do-sistema-de-leilao-eletronico</link>
+    <description></description>
+    <dc:date>2026-07-20T19:54:16Z</dc:date>
+    <dc:type>collective.nitf.content</dc:type>
+  </item>
+</rdf:RDF>

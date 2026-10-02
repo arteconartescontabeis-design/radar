@@ -1,0 +1,101 @@
+[
+  {
+    "slug": "rfb-noticias",
+    "nome": "Receita Federal — Notícias",
+    "orgao": "Receita Federal do Brasil",
+    "abrangencia": "federal",
+    "tipo_coletor": "html_links",
+    "url": "https://www.gov.br/receitafederal/pt-br/assuntos/noticias/ultimas-noticias",
+    "categoria_padrao": "federal",
+    "frequencia_horas": 6,
+    "config": {
+      "janela_dias": 30,
+      "padrao_url": "/receitafederal/pt-br/assuntos/noticias/\\d{4}/[a-z]+/[^/?#]+$",
+      "seletor_texto": "[property='rnews:articleBody'], #parent-fieldname-text, #content-core, article, main"
+    }
+  },
+  {
+    "slug": "pgfn-noticias",
+    "nome": "PGFN — Notícias",
+    "orgao": "Procuradoria-Geral da Fazenda Nacional",
+    "abrangencia": "federal",
+    "tipo_coletor": "html_links",
+    "url": "https://www.gov.br/pgfn/pt-br/assuntos/noticias",
+    "categoria_padrao": "pgfn",
+    "frequencia_horas": 6,
+    "config": {
+      "janela_dias": 30,
+      "padrao_url": "/pgfn/pt-br/assuntos/noticias/\\d{4}/[^/?#]+$",
+      "seletor_texto": "[property='rnews:articleBody'], #parent-fieldname-text, #content-core, article, main"
+    }
+  },
+  {
+    "slug": "simples-noticias",
+    "nome": "Simples Nacional — Notícias",
+    "orgao": "Comitê Gestor do Simples Nacional",
+    "abrangencia": "federal",
+    "tipo_coletor": "html_links",
+    "url": "https://www8.receita.fazenda.gov.br/SimplesNacional/Noticias/TodasNoticias.aspx",
+    "categoria_padrao": "simples-nacional",
+    "frequencia_horas": 12,
+    "config": {
+      "janela_dias": 60,
+      "padrao_url": "NoticiaCompleta\\.aspx\\?id=[0-9a-fA-F-]{36}",
+      "seletor_texto": "#conteudo, .conteudo, form, body"
+    }
+  },
+  {
+    "slug": "rfb-normas",
+    "nome": "Receita Federal — Atos normativos (Normas)",
+    "orgao": "Receita Federal do Brasil",
+    "abrangencia": "federal",
+    "tipo_coletor": "normas_rfb",
+    "url": "http://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?tipoData=2&dt_inicio={inicio}&dt_fim={fim}&optOrdem=Publicacao_DESC&p={p}",
+    "categoria_padrao": "federal",
+    "frequencia_horas": 6,
+    "config": {
+      "janela_dias": 10,
+      "paginas_max": 6,
+      "itens_por_pagina": 100,
+      "max_itens": 300,
+      "excluir_orgao": "^(SRRF|DRF|ALF|IRF|DERAT|DEFIS|DELEX|DECEX|DEMAC|DRJ|ARF|DISIT)",
+      "sem_pagina_de_texto": true,
+      "diagnostico_urls": [
+        "http://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=153881",
+        "https://normasinternet2.receita.fazenda.gov.br/"
+      ]
+    }
+  },
+  {
+    "slug": "sefsc-legislacao",
+    "nome": "SEF/SC — Últimas legislações",
+    "orgao": "Secretaria de Estado da Fazenda de Santa Catarina",
+    "abrangencia": "estadual_sc",
+    "tipo_coletor": "html_links",
+    "url": "https://www.sef.sc.gov.br/",
+    "categoria_padrao": "santa-catarina",
+    "frequencia_horas": 12,
+    "config": {
+      "janela_dias": 30,
+      "padrao_url": "legislacao\\.sef\\.sc\\.gov\\.br/html/.+\\.html?$",
+      "titulo_do_contexto": true,
+      "seletor_texto": "body"
+    }
+  },
+  {
+    "slug": "cgibs-noticias",
+    "nome": "Comitê Gestor do IBS — Notícias",
+    "orgao": "Comitê Gestor do IBS",
+    "abrangencia": "federal",
+    "tipo_coletor": "html_links",
+    "url": "https://www.cgibs.gov.br/",
+    "categoria_padrao": "reforma-tributaria",
+    "frequencia_horas": 12,
+    "config": {
+      "janela_dias": 30,
+      "padrao_url": "^https://www\\.cgibs\\.gov\\.br/[a-z0-9]+(-[a-z0-9]+){4,}$",
+      "data_do_texto": true,
+      "seletor_texto": "article, main, #content, body"
+    }
+  }
+]

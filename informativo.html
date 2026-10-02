@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Informativo Mensal Artecon</title>
+<style>
+/* Radar Artecon — Informativo Mensal (v0.4.0): folha A4 no papel timbrado, para imprimir ou salvar em PDF. */
+:root{ --marinho:#011F48; --azul:#569DCC; --vermelho:#BC151B; }
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#8A929B;font-family:"Times New Roman",Times,"Liberation Serif",serif;font-size:11pt;line-height:1.3;color:#000}
+.barra{position:sticky;top:0;z-index:5;background:var(--marinho);color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-family:system-ui,sans-serif;font-size:14px}
+.barra button{background:#fff;color:var(--marinho);border:0;border-radius:6px;padding:7px 14px;font:inherit;font-weight:700;cursor:pointer}
+.barra a{color:#fff}
+.alerta{background:#FBE9EA;color:#8E1014;border:1px solid #F0C2C4;padding:10px 16px;font-family:system-ui,sans-serif;font-size:14px}
+.mensagem{max-width:520px;margin:12vh auto;background:#fff;border-radius:10px;padding:26px;font-family:system-ui,sans-serif;font-size:15px}
+.folha{width:210mm;max-width:100%;margin:14px auto;background:#fff;border-collapse:collapse;box-shadow:0 2px 14px rgba(0,0,0,.35)}
+.folha>thead>tr>td,.folha>tfoot>tr>td,.folha>tbody>tr>td{padding:0;border:0}
+.folha>thead>tr>td{padding-bottom:5mm}        /* respiro entre o timbrado e o texto em TODAS as páginas */
+.timbre{display:block;width:100%;height:auto}
+.espaco-rodape{min-height:25mm;display:flex;align-items:flex-end}
+.rodape-fixo{display:none}
+.rodape-tela{display:block}
+.miolo{padding:0 17mm 4mm;text-align:justify;overflow-wrap:anywhere}
+h1.titulo{font-size:12pt;text-align:center;text-decoration:underline;margin:0 0 6pt;line-height:1.25}
+.assuntos{border-top:1.5pt solid #000;border-bottom:1.5pt solid #000;padding:6pt 4pt;margin:0 0 10pt;font-size:9.5pt}
+.assuntos b{display:block;margin-bottom:3pt}
+.assuntos ul{margin:0;padding-left:28pt}
+h2.secao{font-size:12pt;text-align:center;text-decoration:underline;margin:10pt 0 12pt}
+table.agenda{width:100%;border-collapse:collapse;border:1.5pt solid #000;font-size:10pt;text-align:left}
+table.agenda th{border:1pt solid #000;padding:9pt 6pt;text-align:center;font-size:10.5pt}
+table.agenda td{border:1pt solid #000;padding:2pt 8pt;vertical-align:middle}
+table.agenda td.dia{width:28%;white-space:nowrap}
+table.agenda ul{margin:0;padding-left:30pt}
+table.agenda tr{break-inside:avoid}
+.artigo{border-top:1.5pt solid #000;margin-top:16pt;padding-top:14pt}
+.artigo.primeiro{border-top:0;margin-top:0;padding-top:0;break-before:page}
+.artigo h2{font-size:13pt;text-align:center;text-decoration:underline;text-transform:uppercase;margin:0 0 14pt;line-height:1.25;break-after:avoid}
+.artigo h3{font-size:11pt;text-decoration:underline;margin:14pt 0 8pt;text-align:left;break-after:avoid}
+.artigo p{margin:0 0 10pt;orphans:2;widows:2}
+.artigo ul{margin:0 0 10pt;padding-left:30pt}
+.artigo li{margin-bottom:1pt}
+.artigo img.capa{display:block;max-width:100%;max-height:75mm;margin:0 auto 14pt;break-inside:avoid}
+.artigo a{color:#0B3FBF}
+.tabela-texto{border-collapse:collapse;margin:0 auto 10pt;font-size:10pt;text-align:left;break-inside:avoid}
+.tabela-texto th,.tabela-texto td{border:1pt solid #000;padding:3pt 7pt;vertical-align:top}
+.tabela-texto th{text-align:center}
+.credito{text-align:right;font-style:italic;margin:0 0 4pt;break-before:avoid}
+.credito .u{text-decoration:underline}
+.fale{break-before:page;break-inside:avoid;font-family:"Times New Roman",Times,serif}
+table.contatos{width:100%;border-collapse:collapse;font-size:9pt;text-align:left;border:1pt solid #C9D2DC}
+table.contatos caption{background:var(--marinho);color:#fff;padding:9pt 6pt 7pt;font-size:14pt;font-weight:700;text-align:center;letter-spacing:.5pt}
+table.contatos caption small{display:block;font-size:8pt;font-weight:400;font-style:italic;color:#B9D3EA;letter-spacing:0}
+table.contatos th{background:#E8F1F9;color:var(--marinho);padding:5pt 8pt;border-bottom:1pt solid #C9D2DC}
+table.contatos td{padding:6pt 8pt;border-bottom:1pt solid #E3E7EC;vertical-align:middle}
+table.contatos tr.setor td{background:#1B5E9B;color:#fff;font-weight:700;padding:4pt 8pt}
+table.contatos td.meio{text-align:center}
+table.contatos td.meio b{color:var(--marinho);display:block}
+table.contatos tr.obs td{text-align:center;background:#E8F1F9;color:var(--marinho);font-weight:700}
+.fecho{text-align:center;margin-top:16pt;break-inside:avoid}
+.fecho .assinatura{height:22mm}
+@page{size:A4;margin:0}
+@media print{
+  body{background:#fff}
+  .barra,.alerta,.rodape-tela{display:none!important}
+  .folha{width:210mm;margin:0;box-shadow:none}
+  .rodape-fixo{display:block;position:fixed;left:0;bottom:0;width:210mm}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div id="app"><div class="mensagem">Carregando…</div></div>
+
+<script src="radar-config.js"></script>
+<script>
+"use strict";
+/* ====================================================================
+   RADAR ARTECON — Informativo Mensal para impressão / PDF   (v0.4.0)
+   Usa a sessão aberta no painel (index.html): só a equipe vê.
+   ==================================================================== */
+const CFG = window.RADAR_CONFIG || {};
+const URL_BASE = String(CFG.SUPABASE_URL || "").replace(/\/+$/, "");
+const CHAVE = String(CFG.SUPABASE_ANON_KEY || "");
+const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const DIAS_SEMANA = ["Domingo","Segunda-Feira","Terça-Feira","Quarta-Feira","Quinta-Feira","Sexta-Feira","Sábado"];
+const $ = s => document.querySelector(s);
+function h(v){ return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* Texto → HTML seguro. Nada do texto entra como HTML: cada pedaço é escapado; os únicos
+   elementos criados são subtítulos, listas, tabelas, negrito e links para endereços http(s). */
+function renderTexto(t){
+  const linhas = String(t ?? "").split(/\r?\n/); let html = "", lista = false, par = [], tab = [];
+  const fechaPar = () => { if(par.length){ html += `<p>${par.join("<br>")}</p>`; par = []; } };
+  const fechaTab = () => {
+    if(tab.length > 1 && tab[1].every(c => /^:?-+:?$/.test(c))) tab.splice(1, 1);        // linha |---|---| logo abaixo do cabeçalho
+    tab = tab.filter(cel => cel.some(c => c)); if(!tab.length) return;
+    const n = Math.max(...tab.map(cel => cel.length));                                    // todas as linhas com o mesmo nº de colunas
+    html += `<table class="tabela-texto">` + tab.map((cel, i) => `<tr>${Array.from({length:n}, (_, k) => i ? `<td>${enfeita(cel[k] || "")}</td>` : `<th>${enfeita(cel[k] || "")}</th>`).join("")}</tr>`).join("") + "</table>"; tab = []; };
+  const fechaLista = () => { if(lista){ html += "</ul>"; lista = false; } };
+  const ligar = bruto => bruto.split(/(https?:\/\/[^\s<>"']+)/i).map((p, i) => {
+    if(i % 2 === 0) return h(p);
+    let fim = /[.,;:!?*)]*$/.exec(p)[0];
+    while(fim.includes(")") && p.slice(0, p.length - fim.length).split("(").length > p.slice(0, p.length - fim.length).split(")").length)
+      fim = fim.slice(fim.indexOf(")") + 1);
+    const u = p.slice(0, p.length - fim.length);
+    return `<a href="${h(u)}" target="_blank" rel="noopener noreferrer">${h(u)}</a>${h(fim)}`;
+  }).join("");
+  const enfeita = bruto => bruto.split(/\*\*(\S|\S.*?\S)\*\*/).map((p, i) => i % 2 ? `<strong>${ligar(p)}</strong>` : ligar(p)).join("");
+  for(const l of linhas){
+    if(!/^\s*\|/.test(l)) fechaTab();
+    if(/^\s*\|/.test(l)){ fechaPar(); fechaLista();
+      tab.push(l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim())); }
+    else if(/^##\s+/.test(l)){ fechaPar(); fechaLista(); html += `<h3>${enfeita(l.replace(/^##\s+/, ""))}</h3>`; }
+    else if(/^#\s+/.test(l)){ fechaPar(); fechaLista(); html += `<h3>${enfeita(l.replace(/^#\s+/, ""))}</h3>`; }
+    else if(/^[-•]\s+/.test(l)){ fechaPar(); if(!lista){ html += "<ul>"; lista = true; } html += `<li>${enfeita(l.replace(/^[-•]\s+/, ""))}</li>`; }
+    else if(!l.trim()){ fechaPar(); fechaLista(); }
+    else { fechaLista(); par.push(enfeita(l)); }
+  }
+  fechaPar(); fechaLista(); fechaTab(); return html;
+}
+
+let SESSAO = null;
+try{ SESSAO = JSON.parse(localStorage.getItem("radar_sessao") || "null"); }catch(e){}
+class Erro extends Error{ constructor(m, status){ super(m); this.status = status; } }
+async function renovar(){
+  if(!SESSAO?.refresh_token) return false;
+  // o painel (outra aba) pode já ter renovado: usa a sessão que ele guardou
+  try{ const g = JSON.parse(localStorage.getItem("radar_sessao") || "null");
+    if(g?.access_token && g.user?.id === SESSAO.user?.id && g.access_token !== SESSAO.access_token){ SESSAO = g; return true; } }catch(e){}
+  try{
+    const r = await fetch(URL_BASE + "/auth/v1/token?grant_type=refresh_token", {method:"POST", headers:{apikey:CHAVE, "Content-Type":"application/json", Authorization:"Bearer " + CHAVE},
+      body:JSON.stringify({refresh_token:SESSAO.refresh_token})});
+    if(!r.ok) return false;
+    SESSAO = await r.json(); try{ localStorage.setItem("radar_sessao", JSON.stringify(SESSAO)); }catch(e){} return true;
+  }catch(e){ return false; }
+}
+async function ler(tabela, params, repetiu){
+  const url = new URL(URL_BASE + "/rest/v1/" + tabela);
+  for(const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  let r; try{ r = await fetch(url, {headers:{apikey:CHAVE, Authorization:"Bearer " + SESSAO.access_token}}); }
+  catch(e){ throw new Erro("Sem conexão com o servidor. Verifique a internet e recarregue a página.", 0); }
+  if(r.status === 401 && !repetiu && await renovar()) return ler(tabela, params, true);
+  if(r.status === 401) throw new Erro("Sessão expirada.", 401);
+  if(!r.ok) throw new Erro("Não foi possível carregar o informativo (erro " + r.status + ").", r.status);
+  return r.json();
+}
+
+const dataAgenda = iso => { const d = new Date(iso + "T12:00:00Z"); return isNaN(d) ? iso : `${iso.slice(8,10)}/${iso.slice(5,7)}/${iso.slice(0,4)} (${DIAS_SEMANA[d.getUTCDay()]})`; };
+const mesExtenso = iso => `${MESES[Number(String(iso).slice(5,7)) - 1]} de ${String(iso).slice(0,4)}`;
+const dataExtenso = iso => `${String(iso).slice(8,10)} de ${mesExtenso(iso)}`;
+const semPonto = t => String(t || "").trim().replace(/[.;]+$/, "");
+const imagemValida = d => /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(d || ""));
+const telefoneLimpo = t => String(t).replace(/[^\d+]/g, "");
+
+function entrada(msg){
+  $("#app").innerHTML = `<div class="mensagem"><h2 style="margin-top:0">Informativo Mensal Artecon</h2><p>${h(msg)}</p>
+    <p><a href="index.html">Abrir o Radar</a></p></div>`;
+}
+
+function quadroContatos(fc){
+  const setores = (Array.isArray(fc?.setores) ? fc.setores : []).filter(s => s && typeof s === "object");
+  if(!setores.length) return "";
+  const lista = (itens, f) => (Array.isArray(itens) ? itens : []).map(f).join("");
+  return `<table class="contatos"><caption>FALE CONOSCO<small>Entre em contato com o setor desejado</small></caption>
+    <tr><th style="width:27%">Telefone</th><th style="width:38%;text-align:center">Setor / E-mail</th><th>Equipe</th></tr>
+    ${setores.map(s => `<tr class="setor"><td colspan="3">${h(s.nome || s.rotulo || "")}</td></tr>
+      <tr><td>${lista(s.telefones, t => `<div>${h(t)}</div>`)}</td>
+        <td class="meio"><b>${h(s.rotulo || s.nome || "")}</b>${lista(s.emails, e => `<div>${h(e)}</div>`)}</td>
+        <td>${h((Array.isArray(s.equipe) ? s.equipe : []).join(" | "))}</td></tr>`).join("")}
+    ${fc.observacao ? `<tr class="obs"><td colspan="3">${h(fc.observacao)}</td></tr>` : ""}</table>`;
+}
+
+async function iniciar(){
+  const id = Number(new URLSearchParams(location.search).get("id"));
+  if(!/^https?:\/\//.test(URL_BASE) || CHAVE.startsWith("COLE_")) return entrada("Falta configurar o arquivo radar-config.js.");
+  if(!SESSAO?.access_token) return entrada("Entre no Radar e abra o informativo pela aba Informativos.");
+  if(!Number.isInteger(id) || id <= 0) return entrada("Informativo não indicado. Abra pela aba Informativos do Radar.");
+  let inf, itens, conf, imgs = {};
+  try{
+    [[inf], itens, conf] = await Promise.all([
+      ler("radar_informativos", {select:"*", id:"eq." + id}),
+      ler("radar_informativo_itens", {select:"ordem,conteudo_id,radar_conteudos(id,titulo,corpo,status,autor,fonte_credito,imagem_id,atualizado_em)", informativo_id:"eq." + id, order:"ordem,conteudo_id"}),
+      ler("radar_config", {select:"chave,valor", chave:"in.(fale_conosco,assinatura)"})]);
+    if(!inf) return entrada("Informativo não encontrado, ou o seu usuário não tem acesso ao Radar.");
+    const ids = [...new Set(itens.map(x => x.radar_conteudos.imagem_id).filter(Boolean))];
+    if(ids.length) imgs = Object.fromEntries((await ler("radar_imagens", {select:"id,dados", id:"in.(" + ids.join(",") + ")"})).map(i => [i.id, i.dados]));
+  }catch(e){ return entrada(e.status === 401 ? "Sua sessão expirou. Entre de novo no Radar e reabra o informativo." : e.message); }
+
+  const c = Object.fromEntries(conf.map(x => [x.chave, x.valor])), ass = c.assinatura && typeof c.assinatura === "object" ? c.assinatura : {};
+  const numero = String(inf.numero).padStart(4, "0") + "/" + inf.ano, mes = mesExtenso(inf.mes);
+  const agenda = (Array.isArray(inf.agenda) ? inf.agenda : []).filter(l => l && typeof l === "object");
+  const artigos = itens.map(x => x.radar_conteudos).filter(Boolean);
+  const pendentes = artigos.filter(a => a.status !== "aprovado");
+  const mudados = inf.status === "fechado" && inf.fechado_em ? artigos.filter(a => new Date(a.atualizado_em) > new Date(inf.fechado_em)) : [];
+  document.title = `INFORMATIVO n.º ${String(inf.numero).padStart(5, "0")}-${inf.ano}`;      // vira o nome do arquivo ao salvar em PDF
+
+  $("#app").innerHTML = `
+    <div class="barra"><button id="imprimir">Imprimir / salvar em PDF</button>
+      <span>Informativo N.º ${h(numero)} · ${inf.status === "fechado" ? "edição fechada" : "edição em montagem (rascunho)"}</span>
+      <span>Na janela de impressão: papel A4, margens “Nenhuma” e “Gráficos de segundo plano” marcado.</span></div>
+    ${pendentes.length ? `<div class="alerta"><b>Atenção:</b> ${pendentes.length} artigo(s) desta edição não estão aprovados (${h(pendentes.map(a => a.titulo).join("; "))}). Não envie aos clientes antes de aprovar.</div>` : ""}
+    ${mudados.length ? `<div class="alerta"><b>Atenção:</b> ${mudados.length} artigo(s) foram alterados depois que a edição foi fechada (${h(mudados.map(a => a.titulo).join("; "))}). Este PDF sai com o texto novo, diferente do que foi conferido no fechamento.</div>` : ""}
+    <img class="timbre rodape-fixo" src="radar-timbrado-rodape.png" alt="">
+    <table class="folha">
+      <thead><tr><td><img class="timbre" src="radar-timbrado-topo.png" alt="Artecon Artes Contábeis — Rua Livorno, nº 15, Sala 101, Palhoça/SC"></td></tr></thead>
+      <tfoot><tr><td><div class="espaco-rodape"><img class="timbre rodape-tela" src="radar-timbrado-rodape.png" alt=""></div></td></tr></tfoot>
+      <tbody><tr><td><div class="miolo">
+        <h1 class="titulo">INFORMATIVO MENSAL ARTECON<br>N.º ${h(numero)}</h1>
+        <div class="assuntos"><b>ASSUNTOS DO MÊS:</b><ul>
+          ${agenda.length ? `<li>Agenda de obrigações mês de ${h(mes)};</li>` : ""}
+          ${artigos.map(a => `<li>${h(semPonto(a.titulo))};</li>`).join("")}
+          <li>Fale conosco.</li></ul></div>
+        ${agenda.length ? `<h2 class="secao">AGENDA DE OBRIGAÇÕES MÊS DE ${h(mes.toUpperCase())}</h2>
+          <table class="agenda"><tr><th>DIA DE VENCIMENTO</th><th>OBRIGAÇÕES DA EMPRESA</th></tr>
+          ${agenda.map(l => `<tr><td class="dia">${h(dataAgenda(String(l.data || "")))}</td><td><ul>${(Array.isArray(l.obrigacoes) ? l.obrigacoes : []).map(o => `<li>${h(semPonto(o))};</li>`).join("")}</ul></td></tr>`).join("")}
+          </table>` : ""}
+        ${artigos.map((a, n) => `<section class="artigo${n ? "" : " primeiro"}">
+          <h2>${h(semPonto(a.titulo))}</h2>
+          ${imagemValida(imgs[a.imagem_id]) ? `<img class="capa" src="${h(imgs[a.imagem_id])}" alt="">` : ""}
+          ${renderTexto(a.corpo)}
+          ${a.autor ? `<p class="credito"><span class="u">Texto elaborado por:</span> <b class="u">${h(a.autor)}</b></p>` : ""}
+          ${a.fonte_credito ? `<p class="credito">Fonte: ${h(a.fonte_credito)}</p>` : ""}
+        </section>`).join("")}
+        <section class="fale">${quadroContatos(c.fale_conosco)}
+          <div class="fecho"><div>${h(ass.local || "Palhoça, SC")}, ${h(dataExtenso(inf.data_assinatura))}.</div>
+            <div class="assinatura"></div><div>${h(ass.empresa || "")}</div><div>${h(ass.responsavel || "")}</div></div>
+        </section>
+      </div></td></tr></tbody>
+    </table>`;
+  $("#imprimir").addEventListener("click", () => window.print());
+  document.body.dataset.pronto = "1";
+}
+iniciar().catch(() => entrada("Não foi possível montar o informativo. Confira os dados da edição e as Configurações no Radar."));
+</script>
+</body>
+</html>
