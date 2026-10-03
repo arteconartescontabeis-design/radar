@@ -1,0 +1,45 @@
+name: Radar — coleta das fontes oficiais
+
+on:
+  schedule:
+    # a cada 6 horas (00:17, 06:17, 12:17 e 18:17 de Brasília)
+    - cron: "17 3,9,15,21 * * *"
+  workflow_dispatch:
+    inputs:
+      fonte:
+        description: "Slug de uma única fonte (vazio = todas)"
+        required: false
+        default: ""
+      forcar:
+        description: "Ignorar a frequência configurada"
+        type: boolean
+        default: true
+
+concurrency:
+  group: radar-coletar
+  cancel-in-progress: false
+
+jobs:
+  coletar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: robo/requirements.txt
+      - run: pip install -r robo/requirements.txt
+      - name: Coletar
+        working-directory: robo
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+          FONTE: ${{ github.event.inputs.fonte }}
+          FORCAR: ${{ github.event.inputs.forcar }}
+        run: |
+          ARGS=""
+          if [ -n "$FONTE" ]; then ARGS="$ARGS --fonte $FONTE"; fi
+          if [ "$FORCAR" = "true" ]; then ARGS="$ARGS --forcar"; fi
+          python radar_coletar.py $ARGS
