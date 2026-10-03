@@ -141,8 +141,14 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.6.0";
+const VERSAO = "0.6.1";
 const VERSOES = [
+  ["0.6.1", "03/10/2026", [
+    "A IA do Radar passa a usar a IA Central do Portal Artecon: o texto (classificar, fundamentar e gerar) é feito pela Anthropic e a ilustração de capa pela OpenAI. As chaves das duas contas ficam só na IA Central; o Radar guarda apenas o seu token.",
+    "O custo do Radar aparece no Portal → Consumo de IA, com limite mensal e diário próprios, junto com os demais aplicativos. Os avisos por e-mail (crédito acabando, limite atingido) e o relatório mensal são os da IA Central e trazem o link da página de recarga.",
+    "O teste em Configurações → Inteligência artificial confere o token do Radar na IA Central e os modelos, e explica o que fazer quando o limite ou o crédito acabam.",
+    "Nenhuma mudança no banco do Radar nesta versão."
+  ]],
   ["0.6.0", "03/10/2026", [
     "Filtro de relevância: cada captura recebe uma nota (alta, média ou baixa) pelas regras de Configurações → Relevância das capturas. A tela de Capturas abre só com o que é relevante; o que é de baixa relevância (apreensões, leilões, atos individuais, eventos) fica separado e pode ser ignorado de uma vez.",
     "Capturas remodeladas: cartões com a relevância, o motivo da nota, o resumo e os botões no mesmo lugar; as mais relevantes aparecem primeiro.",
@@ -672,7 +678,7 @@ const TELAS = {
       <div class="acoes"><button class="btn">Salvar</button>${conf[chave] ? `<span class="sub">alterado em ${dataHora(conf[chave].atualizado_em)}</span>` : ""}</div></form>`;
     return `<h1>Configurações</h1>
       <div class="painel" id="painel-ia"><h2>Inteligência artificial</h2>
-        <p class="sub">A IA do Radar é uma função instalada no Supabase (Edge Function <b>radar-ia</b>) que usa a sua chave da OpenAI. O teste abaixo confere a instalação e diz o que falta.</p>
+        <p class="sub">A IA do Radar é uma função instalada no Supabase (Edge Function <b>radar-ia</b>) que fala com a <b>IA Central</b> do Portal Artecon: texto pela Anthropic, imagens pela OpenAI. O custo, os limites e a recarga ficam em <a href="https://arteconartescontabeis-design.github.io/portal/" target="_blank" rel="noopener noreferrer">Portal → Consumo de IA</a>. O teste abaixo confere a instalação e diz o que falta.</p>
         <div class="acoes"><button class="btn" data-acao="testar-ia">Testar a IA</button></div><div id="diag-ia"></div></div>
       ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira.`)}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
@@ -1088,7 +1094,8 @@ const ACOES = {
     const d = $("#diag-ia"); d.innerHTML = `<p class="sub">Testando… pode levar alguns segundos.</p>`;
     const passos = `<ol><li>No Supabase, abra <b>Edge Functions</b> e crie a função com o nome exato <b>radar-ia</b> (Deploy a new function → Via Editor).</li>
       <li>Apague o código de exemplo, cole o conteúdo do arquivo <b>supabase/functions/radar-ia/index.ts</b> do pacote do Radar e clique em <b>Deploy</b>.</li>
-      <li>Em <b>Edge Functions → Secrets</b>, crie <b>OPENAI_API_KEY</b> com a chave da sua conta da OpenAI (platform.openai.com → API keys). A conta precisa ter crédito.</li>
+      <li>No <b>Portal Artecon → Consumo de IA</b>, no cartão do Radar, clique em <b>Gerar token</b> e copie o token (começa com iagw_radar_).</li>
+      <li>De volta ao Supabase do Radar, em <b>Edge Functions → Secrets</b>, crie <b>IA_GATEWAY_TOKEN</b> com esse token. Não é preciso nenhuma chave da Anthropic ou da OpenAI aqui.</li>
       <li>Volte aqui e clique em <b>Testar a IA</b>.</li></ol>`;
     let r; try{ r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao:"diagnostico"}, tempo:150000}); }
     catch(e){
@@ -1098,8 +1105,8 @@ const ACOES = {
       return; }
     const itens = Array.isArray(r.itens) ? r.itens : [];
     d.innerHTML = `<ul class="diag">${itens.map(i => `<li>${selo(i.ok ? "OK" : "Falhou", i.ok ? "ok" : "erro")} <b>${h(i.item)}</b><br><span class="sub">${h(i.detalhe)}</span></li>`).join("")}</ul>
-      ${r.tudo_certo ? `<div class="aviso info"><b>A IA está funcionando.</b> Função v${h(r.versao)}. Lembre: a IA só trabalha em assunto que tenha texto oficial capturado.${r.versao !== VERSAO ? ` <b>Atenção:</b> a função instalada é a v${h(r.versao)} e o painel é o v${VERSAO}; cole de novo o index.ts desta versão para ter os recursos novos.` : ""}</div>`
-        : `<div class="aviso erro"><b>Há item a corrigir</b> (veja acima). Os segredos ficam em Supabase → Edge Functions → Secrets; depois de alterar, teste de novo.</div>`}`;
+      ${r.tudo_certo ? `<div class="aviso info"><b>A IA está funcionando.</b> Função v${h(r.versao)}${r.central ? `, pela IA Central (${h(r.central)})` : ""}. O teste cobre o texto (Anthropic); a ilustração (OpenAI) não é testada aqui para não gastar — se falhar, a mensagem diz o motivo. Lembre: a IA só trabalha em assunto que tenha texto oficial capturado.${r.versao !== VERSAO ? ` <b>Atenção:</b> a função instalada é a v${h(r.versao)} e o painel é o v${VERSAO}; cole de novo o index.ts desta versão para ter os recursos novos.` : ""}</div>`
+        : `<div class="aviso erro"><b>Há item a corrigir</b> (veja acima). O segredo do Radar fica em Supabase → Edge Functions → Secrets; limites, crédito e modelos liberados ficam em Portal → Consumo de IA. Depois de alterar, teste de novo.</div>`}`;
   },
 
   async "ia-classificar"(){
