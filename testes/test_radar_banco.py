@@ -629,7 +629,7 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                               and (has_function_privilege('anon', p.oid, 'execute')
                                    or (p.proname not in ('radar_papel', 'radar_abrir_assunto', 'radar_admin_usuarios',
                                                            'radar_registrar_uso_ia', 'radar_registrar_evidencia_ia',
-                                                           'radar_incluir_texto_oficial')
+                                                           'radar_incluir_texto_oficial', 'radar_ignorar_capturas')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -1002,7 +1002,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.5.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.6.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1249,11 +1249,11 @@ def test_trocar_imagem_autor_ou_fonte_de_conteudo_aprovado_volta_para_revisao(li
 
 def test_configuracoes_iniciais_e_quem_pode_alterar(limpo):
     conf = dict(limpo.execute("select chave, valor from radar_config").fetchall())
-    assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura"}
+    assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia"}
     assert len(conf["obrigacoes"]) == 22 and conf["assinatura"]["responsavel"] == "Cleiver Gonçalves"
     assert all(o["regra"] in ("quinto_dia_util", "dia", "ultimo_dia_util") for o in conf["obrigacoes"])
     with como("authenticated", LEITOR) as c:
-        assert c.execute("select count(*) from radar_config").fetchone()[0] == 4          # a equipe lê
+        assert c.execute("select count(*) from radar_config").fetchone()[0] == 5          # a equipe lê
     with como("authenticated", EDITOR) as c:
         assert c.execute("update radar_config set valor = '[]' where chave = 'feriados_extras' returning chave").fetchone() is None
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -1492,9 +1492,9 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (21, 6, 8, 4, 1, 0)
+        assert _resumo("radar_sem_tx") == (21, 6, 8, 5, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.5.0", [], 21)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.6.0", [], 21)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1515,7 +1515,7 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (21, 6, 8, 4, 2, 0)
+        assert _resumo("radar_parcial") == (21, 6, 8, 5, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
@@ -1542,7 +1542,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (21, 6, 8, 4, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (21, 6, 8, 5, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -1966,3 +1966,135 @@ def test_endereco_em_forma_unica():
                                ("https://x.gov.br/a?id=1&utm_source=z", "https://x.gov.br/a?id=1"), ("https://x.gov.br/a?utm_source=z&id=1", "https://x.gov.br/a?id=1"),
                                ("  https://x.gov.br/a?id=1  ", "https://x.gov.br/a?id=1"), ("https://x.gov.br/a?fbclid=q", "https://x.gov.br/a")]:
             assert c.execute("select radar_url_base(%s)", (entrada,)).fetchone()[0] == saida, entrada
+
+
+# ----------------------------------------------------------------------- relevância das capturas (v0.6.0)
+def _cap(db, titulo, resumo="", n=[0]):
+    n[0] += 1
+    return db.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo, resumo_fonte)
+                         select id, %s, %s, md5(%s), %s from radar_fontes where slug = 'rfb-noticias'
+                         returning id, relevancia, relevancia_pontos, relevancia_motivos""",
+                      (f"https://www.gov.br/receitafederal/rel-{n[0]}", titulo, titulo + str(n[0]), resumo)).fetchone()
+
+
+@pytest.mark.parametrize("titulo,esperado", [
+    ("Receita prorroga prazo de adesão ao Simples Nacional", "alta"),
+    ("Comitê Gestor do IBS publica orientação sobre a CBS", "alta"),
+    ("Instrução Normativa altera regras da DCTFWeb", "alta"),
+    ("Receita Federal apreende 2 toneladas de maconha no porto de Itajaí", "baixa"),
+    ("Leilão de mercadorias apreendidas tem lances até sexta", "baixa"),
+    ("Receita Federal agora está no Instagram", "baixa"),
+    ("Nota sobre o atendimento na próxima semana", "baixa"),
+    ("Receita publica novo guia para o cidadão", "media"),
+])
+def test_relevancia_calculada_na_captura(limpo, titulo, esperado):
+    assert _cap(limpo, titulo)[1] == esperado
+
+
+def test_relevancia_titulo_vale_o_dobro_palavra_inteira_e_sem_acento(limpo):
+    _, nivel, pontos, motivos = _cap(limpo, "Novidade no ICMS")                 # título: 4 x 2
+    assert (nivel, pontos) == ("alta", 8) and motivos == [{"termo": "ICMS", "pontos": 8}]
+    _, nivel, pontos, _ = _cap(limpo, "Comunicado geral", resumo="Trata do icms de SC")   # só no resumo: 4
+    assert (nivel, pontos) == ("media", 4)
+    assert _cap(limpo, "O meio de transporte foi alterado")[2] == 0             # "MEI" não casa com "meio"
+    assert _cap(limpo, "SUBSTITUICAO TRIBUTARIA sem acento e em maiúsculas")[2] >= 8
+    assert _cap(limpo, "Reunião sobre a NFS-e hoje")[2] == 8                    # termo com hífen
+
+
+def test_relevancia_fila_painel_e_assunto_herdam(limpo):
+    alta = _cap(limpo, "Prazo do Simples Nacional é prorrogado")[0]
+    baixa = _cap(limpo, "Apreensão de cigarros na fronteira")[0]
+    with como("authenticated", EDITOR) as c:
+        fila = dict(c.execute("select id, relevancia from radar_v_fila").fetchall())
+        assert fila == {alta: "alta", baixa: "baixa"}
+        assert c.execute("select na_fila, na_fila_alta, na_fila_baixa from radar_v_painel").fetchone() == (1, 1, 1)
+        a = c.execute("select radar_abrir_assunto(%s)", (alta,)).fetchone()[0]
+        assert c.execute("select relevancia from radar_assuntos where id = %s", (a,)).fetchone()[0] == "alta"
+
+
+def test_relevancia_mudar_as_regras_reavalia_a_fila_e_so_admin_muda(limpo):
+    cap = _cap(limpo, "Prefeitura de Palhoça divulga calendário do alvará")[0]
+    assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "baixa"
+    antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    novo = dict(antes, termos=antes["termos"] + [{"termo": "alvará", "pontos": 6}])
+    try:
+        with como("authenticated", EDITOR) as c:
+            c.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(novo),))
+            assert c.execute("select valor = %s::jsonb from radar_config where chave = 'relevancia'", (json.dumps(antes),)).fetchone()[0]
+        with como("authenticated", ADMIN) as c:
+            c.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(novo),))
+        assert limpo.execute("select relevancia, relevancia_pontos from radar_capturas where id = %s", (cap,)).fetchone() == ("alta", 12)
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))
+    assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "baixa"
+
+
+def test_relevancia_regras_malformadas_nao_travam_a_coleta(limpo):
+    antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    try:
+        for ruim in ['{"termos": "x"}', '[]', '{"termos": [{"termo": "(", "pontos": 5}, {"termo": "a+*[", "pontos": 5}, 7, {"termo": "x"}, {"termo": "prazo", "pontos": "3"}]}']:
+            limpo.execute("update radar_config set valor = %s::jsonb where chave = 'relevancia'", (ruim,))
+            assert _cap(limpo, "Prazo ( com a+*[ no título")[1] in ("alta", "media", "baixa")
+        # números absurdos são contidos: a coleta do robô não trava e salvar não dá erro
+        limpo.execute("""update radar_config set valor = '{"limite_alta": 1e30, "limite_media": -1e30, "termos": [{"termo": "prazo", "pontos": 1500000000}]}'::jsonb where chave = 'relevancia'""")
+        with como("service_role") as c:
+            c.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo) select id, 'https://www.gov.br/receitafederal/absurdo', 'Prazo novo', 'x1' from radar_fontes where slug = 'rfb-noticias'""")
+        assert limpo.execute("select relevancia, relevancia_pontos from radar_capturas where titulo = 'Prazo novo'").fetchone() == ("media", 2000)
+        limpo.execute("delete from radar_config where chave = 'relevancia'")
+        assert _cap(limpo, "Apreensão de cigarros")[1] == "media"               # sem regras, nada é escondido
+    finally:
+        limpo.execute("insert into radar_config (chave, valor) values ('relevancia', %s) on conflict (chave) do update set valor = excluded.valor", (json.dumps(antes),))
+
+
+def test_ignorar_capturas_em_lote(limpo):
+    ids = [_cap(limpo, f"Apreensão de cigarros número {i}")[0] for i in range(4)]
+    with como("authenticated", LEITOR) as c:
+        with pytest.raises(psycopg.Error):
+            c.execute("select radar_ignorar_capturas(%s)", (ids,))
+    with como("authenticated", EDITOR) as c:
+        a = c.execute("select radar_abrir_assunto(%s)", (ids[0],)).fetchone()[0]                    # já tem assunto: fica como está
+        assert c.execute("select radar_ignorar_capturas(%s)", (ids + [ids[1]],)).fetchone()[0] == 3
+        assert c.execute("select count(*) from radar_v_fila").fetchone()[0] == 0
+        assert c.execute("select status from radar_assuntos where id = %s", (a,)).fetchone()[0] == "capturado"
+        assert c.execute("select count(*) from radar_assuntos where status = 'ignorado'").fetchone()[0] == 3
+        with pytest.raises(psycopg.Error, match="RADAR043"):
+            c.execute("select radar_ignorar_capturas(%s)", (list(range(1, 502)),))
+    with como("anon") as c:
+        with pytest.raises(psycopg.Error):
+            c.execute("select radar_ignorar_capturas(%s)", (ids,))
+
+
+def test_reavaliacao_so_mexe_na_fila_e_nao_gera_auditoria_nem_versao(limpo):
+    triada = _cap(limpo, "Calendário do alvará — já triada")[0]
+    fila = _cap(limpo, "Calendário do alvará — na fila")[0]
+    with como("authenticated", EDITOR) as c:
+        c.execute("select radar_abrir_assunto(%s)", (triada,))
+    antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    aud = limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_capturas'").fetchone()[0]
+    try:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'",
+                      (json.dumps(dict(antes, termos=antes["termos"] + [{"termo": "alvará", "pontos": 6}])),))
+        assert dict(limpo.execute("select id, relevancia from radar_capturas").fetchall()) == {triada: "baixa", fila: "alta"}
+        assert limpo.execute("select count(*) from radar_capturas_versoes").fetchone()[0] == 0
+        assert limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_capturas'").fetchone()[0] == aud
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))
+
+
+def test_imagem_trocada_ou_de_conteudo_apagado_nao_fica_sobrando(limpo):
+    a = novo_assunto(limpo)
+    with como("authenticated", EDITOR) as c:
+        img = [c.execute("insert into radar_imagens (dados, largura, altura) values ('data:image/jpeg;base64,' || repeat('A', 200), 10, 10) returning id").fetchone()[0] for _ in range(3)]
+        c1 = c.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, imagem_id) values (%s, 'flash', 'Um', 'Texto do conteúdo um.', %s) returning id", (a, img[0])).fetchone()[0]
+        c2 = c.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, imagem_id) values (%s, 'flash', 'Dois', 'Texto do conteúdo dois.', %s) returning id", (a, img[0])).fetchone()[0]
+        c.execute("update radar_conteudos set imagem_id = %s where id = %s", (img[1], c1))          # a antiga ainda é usada pelo outro
+        assert c.execute("select count(*) from radar_imagens").fetchone()[0] == 3
+        c.execute("update radar_conteudos set imagem_id = %s where id = %s", (img[2], c2))          # agora ninguém usa a primeira
+        assert [r[0] for r in c.execute("select id from radar_imagens order by id").fetchall()] == img[1:]
+        c.execute("update radar_conteudos set imagem_id = null where id = %s", (c1,))
+        assert [r[0] for r in c.execute("select id from radar_imagens order by id").fetchall()] == img[2:]
+        c.execute("update radar_conteudos set titulo = 'Dois, revisto' where id = %s", (c2,))        # mexer em outro campo não apaga nada
+        assert c.execute("select count(*) from radar_imagens").fetchone()[0] == 1
+    with como("authenticated", ADMIN) as c:
+        c.execute("delete from radar_conteudos where id = %s", (c2,))
+        assert c.execute("select count(*) from radar_imagens").fetchone()[0] == 0

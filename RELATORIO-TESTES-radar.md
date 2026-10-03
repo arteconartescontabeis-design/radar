@@ -1,11 +1,51 @@
-# Radar Artecon — Relatório de testes (v0.5.0)
+# Radar Artecon — Relatório de testes (v0.6.0)
 
-Data: 02/10/2026. Resultado: **341 testes automatizados, 341 aprovados** (suíte executada
+Data: 03/10/2026. Resultado: **368 testes automatizados, 368 aprovados** (suíte executada
 duas vezes seguidas).
 
-Além da suíte, o código passou por oito rodadas de revisão independente (duas do banco e
-do robô, duas das telas, uma da IA, uma do Informativo Mensal e duas da v0.5.0), que
-tentaram quebrar as regras por experimento.
+Além da suíte, o código passou por nove rodadas de revisão independente (a nona, desta
+versão), que tentaram quebrar as regras por experimento.
+
+## v0.6.0 — relevância, telas mais simples, capa automática e final do informativo
+
+O que foi comprovado:
+
+- **Filtro de relevância:** títulos do tipo dos que o robô trouxe na primeira coleta real
+  ficam onde se espera (Simples Nacional, IBS/CBS, instrução normativa → alta; apreensão,
+  leilão, Instagram → baixa); termo no título vale o dobro; só casa palavra inteira ("MEI"
+  não casa com "meio"); acento e maiúscula não importam. A fila, o painel e o contador da
+  aba contam só o relevante; o assunto herda a relevância. Só o administrador muda as
+  regras, e mudar reavalia a fila sem gerar auditoria nem versão de captura. Regras
+  malformadas ou com números absurdos não travam a coleta do robô.
+- **Capturas:** a tela abre só com alta e média, a mais relevante primeiro; "Ignorar as N
+  desta lista" ignora só o que está visível (a busca conta) e o leitor não tem o botão.
+- **Assunto:** os cinco passos e o "Próximo passo" acompanham o trabalho do início ao
+  registro no site; não diz "Concluído" quando o texto mudou depois do registro, quando a
+  fundamentação caiu ou quando há outro conteúdo pendente; conteúdo rejeitado e assunto
+  ignorado ou arquivado têm orientação própria; os botões do alto não descartam o que foi
+  digitado e não salvo.
+- **Capa automática:** todo conteúdo novo nasce com a capa de 1200 × 630 (conferido que é
+  um desenho de verdade, não folha em branco); se a capa falhar, o aviso diz isso; a imagem
+  trocada não fica sobrando no banco.
+- **IA:** "Preparar com IA" registra os trechos e cria o rascunho com capa; a ilustração
+  manda à OpenAI só o tema (nunca o texto oficial) e entra no consumo; o teste em
+  Configurações mostra função não instalada, chave recusada e modelo indisponível, sem
+  revelar a chave; só o administrador roda o teste.
+- **Informativo:** o Fale Conosco segue o modelo (WhatsApp x telefone fixo, equipe em duas
+  colunas, contadores responsáveis, legenda); com a quantidade real de telefones e pessoas,
+  o quadro e o fecho cabem juntos na última página; dados maliciosos ou malformados
+  aparecem como texto.
+- **Atualização:** o script foi aplicado por cima da v0.5.0 com dados, duas vezes seguidas.
+
+O que a revisão independente desta versão achou e foi corrigido: salvar as regras ficava
+lento demais com o banco grande (agora só a fila é reavaliada e a conta ficou cerca de dez
+vezes mais rápida); número absurdo nas regras travava a coleta; "Concluído" aparecia com
+pendência; o fecho do informativo caía sozinho numa terceira página; a capa que falhava
+era anunciada como gerada; imagens trocadas se acumulavam; o rótulo do botão de ignorar em
+lote não acompanhava a busca; o teste da IA estava aberto ao editor.
+
+Não corrigido, por escolha: o teste da IA faz dois pedidos mínimos e pagos à OpenAI (frações
+de centavo) a cada clique, porque só assim confere chave, crédito e modelo de uma vez.
 
 ## v0.5.0 — sem página pública; registro do que foi ao site
 
@@ -130,11 +170,15 @@ bloqueia os servidores do GitHub Actions.
 
 | Item | Por quê | Como será coberto |
 |---|---|---|
+| O site da Artecon | o ambiente não conseguiu abrir www.artecon.cnt.br; a capa automática segue a identidade do papel timbrado e do logotipo, não uma cópia das notícias do site | me envie o link ou a imagem de uma notícia do site para aproximar |
+| Ilustração por IA de verdade | a OpenAI é simulada; a qualidade e o custo da imagem só aparecem com a chave real | primeiro uso |
+| Regras de relevância no dia a dia | calibradas com os títulos da primeira coleta; é filtro por palavras, não por entendimento | ajustar a lista em Configurações conforme o uso |
+| Tempo limite do Supabase ao salvar as regras | medido aqui: cerca de 0,7 ms por captura na fila | se a fila passar de alguns milhares de itens, ignore as de baixa relevância antes |
 | OpenAI de verdade | sem chave; os testes usam uma OpenAI simulada. A qualidade do texto gerado, os nomes dos modelos padrão e o formato exato da API não foram exercitados contra o serviço real | primeiro uso no Passo 7 |
 | Função de IA dentro do Supabase | aqui ela roda no Deno local; limites de tempo e de memória da plataforma não foram medidos | primeiro uso no Passo 7 |
 | HTML real dos sites lido pelo robô | ambiente sem acesso direto aos sites | diagnóstico (Passo 1) |
 | Login contra o Supabase Auth de verdade | não testado por mim; **você entrou no painel em 02/10/2026** com a v0.4 (tela do Painel enviada) | — |
-| `radar-setup-v0.5.0.sql` no seu Supabase | a v0.4.1 foi instalada por você e a evidência conferiu (20 tabelas, 56 políticas, 34 gatilhos); a v0.5.0 ainda não foi executada aí. Aqui, a atualização da v0.4 para a v0.5.0 foi testada | evidência depois de executar |
+| `radar-setup-v0.6.0.sql` no seu Supabase | a v0.5.0 foi instalada por você e a evidência conferiu; a v0.6.0 ainda não foi executada aí. Aqui, a atualização da v0.5.0 para a v0.6.0 foi testada | evidência depois de executar |
 | Instalação no Supabase, GitHub Pages e GitHub Actions | só no seu ambiente | evidência do Passo 2 e primeira execução de cada rotina |
 | Fontes do Google nas telas | bloqueadas no ambiente de teste | conferência visual no seu navegador |
 | Estabilidade do hash em páginas com trechos dinâmicos | só aparece com visitas reais em dias diferentes | observar "Alterados" nas primeiras semanas |
@@ -246,3 +290,11 @@ segunda revisão independente.
 11. **Número sugerido da nova edição** considera o ano corrente; se o mês escolhido for de
     outro ano, ajuste o número à mão.
 12. **Envio de imagem que falha no meio** pode deixar uma imagem sem uso no banco.
+19. **Relevância é por palavras:** uma notícia importante escrita sem nenhum dos termos
+    fica como baixa. Vale olhar o filtro "Baixa relevância" de vez em quando e ajustar a
+    lista.
+20. **Termos com pontuação nas pontas** (ex.: "S.A.") não são aceitos nas regras: o Radar
+    compara palavras inteiras.
+21. **A capa automática não é refeita sozinha** quando o título muda: use o botão.
+22. **Painel novo com função de IA antiga:** os recursos novos da IA só funcionam depois de
+    colar o `index.ts` desta versão; o painel avisa.

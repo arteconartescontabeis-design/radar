@@ -1,10 +1,12 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.5.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.6.0)
 //
-// Três ações, sempre pedidas por um usuário logado (editor ou administrador):
+// Cinco ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
 //   fundamentar  → propõe trechos LITERAIS do texto oficial; só entram os que conferem
 //   gerar        → redige um conteúdo (rascunho) e aponta o que precisa ser conferido
+//   ilustrar     → cria uma ilustração de capa (sem texto, sem marcas, sem pessoas reais); não grava nada
+//   diagnostico  → testa a instalação (chave, modelos) e devolve o que está errado, em português
 //
 // Princípios:
 //   * a função NÃO usa a chave service_role: tudo é lido e gravado com o token do
@@ -17,11 +19,12 @@
 //   OPENAI_API_KEY                 obrigatório
 //   RADAR_OPENAI_MODELO            padrão: gpt-6.1-sol   (fundamentar e gerar)
 //   RADAR_OPENAI_MODELO_RAPIDO     padrão: gpt-6-luna    (classificar)
+//   RADAR_OPENAI_MODELO_IMAGEM     padrão: gpt-image-1   (ilustrar)
 //   RADAR_OPENAI_API               "responses" (padrão) ou "chat"
 //   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês)
 // =====================================================================
 
-const VERSAO = "0.5.0";
+const VERSAO = "0.6.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -29,6 +32,7 @@ const SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY");
 const OPENAI_URL = env("OPENAI_BASE_URL", "https://api.openai.com/v1").replace(/\/+$/, "");
 const MODELO = env("RADAR_OPENAI_MODELO", "gpt-6.1-sol");
 const MODELO_RAPIDO = env("RADAR_OPENAI_MODELO_RAPIDO", "gpt-6-luna");
+const MODELO_IMAGEM = env("RADAR_OPENAI_MODELO_IMAGEM", "gpt-image-1");
 const API_OPENAI = env("RADAR_OPENAI_API", "responses");
 const LIMITE_MENSAL = Number(env("RADAR_IA_LIMITE_MENSAL_TOKENS", "3000000"));
 
@@ -157,6 +161,15 @@ function conferirGerado(gerado: string, oficial: string, temEvidencia: boolean):
 type Uso = { entrada: number; saida: number; modelo: string };
 /** Consumo do pedido em andamento (um por pedido): é registrado mesmo que algo falhe depois da resposta da OpenAI. */
 type Registro = { uso: Uso | null };
+/** Erro da OpenAI traduzido para o que o administrador precisa fazer. */
+function erroOpenAI(status: number, m: string, modelo: string, segredo: string): Erro {
+  if (status === 401) return new Erro(503, "A OpenAI recusou a chave configurada (segredo OPENAI_API_KEY): confira se a chave foi copiada inteira e se continua ativa na conta da OpenAI.");
+  if (status === 429) return new Erro(429, "A OpenAI recusou por limite de uso ou falta de crédito na conta (confira o saldo em platform.openai.com → Billing). Detalhe: " + m.slice(0, 200));
+  if (status === 404 || /model.*(not exist|not found|does not have access)|invalid model/i.test(m)) {
+    return new Erro(503, `O modelo "${modelo}" não está disponível nesta conta da OpenAI. No Supabase → Edge Functions → Secrets, crie ou ajuste ${segredo} com um modelo que a sua conta tenha. Detalhe: ` + m.slice(0, 200));
+  }
+  return new Erro(502, "A OpenAI devolveu erro: " + m.slice(0, 300));
+}
 async function perguntar(reg: Registro, modelo: string, instrucoes: string, entrada: string, nome: string, esquema: unknown): Promise<{ json: any }> {
   const chave = env("OPENAI_API_KEY");
   if (!chave) throw new Erro(503, "A chave da OpenAI não está configurada na função (segredo OPENAI_API_KEY).");
@@ -176,11 +189,8 @@ async function perguntar(reg: Registro, modelo: string, instrucoes: string, entr
   }
   const dados: any = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const m = String(dados?.error?.message ?? `HTTP ${r.status}`);
-    if (r.status === 401) throw new Erro(503, "A OpenAI recusou a chave configurada (OPENAI_API_KEY).");
-    if (r.status === 429) throw new Erro(429, "A OpenAI recusou por limite de uso ou falta de crédito na conta. Detalhe: " + m.slice(0, 200));
-    if (r.status === 404) throw new Erro(503, `O modelo "${modelo}" não existe nesta conta da OpenAI. Ajuste o segredo RADAR_OPENAI_MODELO. Detalhe: ` + m.slice(0, 200));
-    throw new Erro(502, "A OpenAI devolveu erro: " + m.slice(0, 300));
+    throw erroOpenAI(r.status, String(dados?.error?.message ?? `HTTP ${r.status}`), modelo,
+      modelo === MODELO ? "RADAR_OPENAI_MODELO" : "RADAR_OPENAI_MODELO_RAPIDO");
   }
   const u = dados.usage ?? {};
   reg.uso = { entrada: Number(u.input_tokens ?? u.prompt_tokens ?? 0) || 0, saida: Number(u.output_tokens ?? u.completion_tokens ?? 0) || 0, modelo };
@@ -366,6 +376,60 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
   return { conteudo_id: linha.id, avisos };
 }
 
+// ------------------------------------------------------------------ ilustração de capa
+/** Ilustração para a capa do conteúdo. O pedido leva só o tema (título e resumo do assunto), nunca o texto oficial.
+ *  Nada é gravado aqui: a imagem volta para a tela, que reduz e grava como qualquer imagem enviada pela equipe. */
+async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: string) {
+  const chave = env("OPENAI_API_KEY");
+  if (!chave) throw new Erro(503, "A chave da OpenAI não está configurada na função (segredo OPENAI_API_KEY).");
+  const tema = normalizarEspacos(titulo || ctx.assunto.titulo).slice(0, 200);
+  const resumo = normalizarEspacos(String(ctx.assunto.resumo ?? "")).slice(0, 300);
+  const pedido = "Ilustração editorial para a capa de uma notícia de um escritório de contabilidade brasileiro. " +
+    `Tema: ${tema}.${resumo ? " Contexto: " + resumo : ""} ` +
+    "Estilo: fotografia de banco de imagens ou ilustração realista, sóbria e profissional, em tons de azul-marinho e azul-claro, " +
+    "com objetos de escritório e contabilidade (documentos, calculadora, gráficos, notebook, calendário). " +
+    "PROIBIDO: qualquer texto, letra, número, logotipo, brasão, bandeira, marca ou rosto de pessoa identificável. Formato paisagem.";
+  let r: Response;
+  try {
+    r = await fetch(`${OPENAI_URL}/images/generations`, {
+      method: "POST", headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: MODELO_IMAGEM, prompt: pedido, size: "1536x1024", quality: "medium", n: 1 }), signal: AbortSignal.timeout(110_000),
+    });
+  } catch (e) {
+    throw new Erro(504, "A OpenAI não respondeu a tempo. Tente de novo. (" + (e instanceof Error ? e.name : "erro") + ")");
+  }
+  const dados: any = await r.json().catch(() => ({}));
+  if (!r.ok) throw erroOpenAI(r.status, String(dados?.error?.message ?? `HTTP ${r.status}`), MODELO_IMAGEM, "RADAR_OPENAI_MODELO_IMAGEM");
+  const u = dados.usage ?? {};
+  ctx.reg.uso = { entrada: Number(u.input_tokens ?? 0) || 0, saida: Number(u.output_tokens ?? 0) || 0, modelo: MODELO_IMAGEM };
+  const b64 = String(dados?.data?.[0]?.b64_json ?? "");
+  if (!/^[A-Za-z0-9+/=]{1000,}$/.test(b64)) throw new Erro(502, "A IA não devolveu a imagem. Tente de novo.");
+  const tipo = b64.startsWith("/9j/") ? "jpeg" : b64.startsWith("UklGR") ? "webp" : "png";
+  return { imagem: `data:image/${tipo};base64,${b64}` };
+}
+
+// ------------------------------------------------------------------ diagnóstico
+/** Testa a instalação de ponta a ponta com um pedido mínimo a cada modelo. Nunca devolve a chave. */
+async function diagnostico() {
+  const chave = env("OPENAI_API_KEY");
+  const itens: { item: string; ok: boolean; detalhe: string }[] = [];
+  itens.push({ item: "Função radar-ia instalada", ok: true, detalhe: "versão " + VERSAO });
+  itens.push({ item: "Segredo OPENAI_API_KEY", ok: !!chave,
+    detalhe: chave ? "configurado (termina em …" + chave.slice(-4) + ")" : "não configurado: Supabase → Edge Functions → Secrets → crie OPENAI_API_KEY com a chave da OpenAI" });
+  if (chave) {
+    const esquema = { type: "object", additionalProperties: false, required: ["ok"], properties: { ok: { type: "boolean" } } };
+    for (const [papel, modelo] of [["Modelo que redige e fundamenta", MODELO], ["Modelo que classifica", MODELO_RAPIDO]] as const) {
+      try {
+        await perguntar({ uso: null }, modelo, "Responda apenas com o JSON pedido.", "Devolva ok = true.", "teste", esquema);
+        itens.push({ item: `${papel} (${modelo})`, ok: true, detalhe: "respondeu" });
+      } catch (e) {
+        itens.push({ item: `${papel} (${modelo})`, ok: false, detalhe: e instanceof Error ? e.message : "erro" });
+      }
+    }
+  }
+  return { itens, tudo_certo: itens.every((i) => i.ok), api: API_OPENAI, modelo_imagem: MODELO_IMAGEM, limite_mensal: LIMITE_MENSAL };
+}
+
 // ------------------------------------------------------------------ entrada
 async function tratar(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -378,12 +442,17 @@ async function tratar(req: Request): Promise<Response> {
     const pedido = await req.json().catch(() => null);
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
-    if (!["classificar", "fundamentar", "gerar"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
-    if (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0) throw new Erro(400, "Assunto inválido.");
-    assuntoId = pedido.assunto_id;
+    if (!["classificar", "fundamentar", "gerar", "ilustrar", "diagnostico"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    const diag = acao === "diagnostico";
+    if (!diag && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
+    assuntoId = diag ? 0 : pedido.assunto_id;
 
     const papel = await banco(token, "POST", "rpc/radar_papel", {});
     if (!["admin", "editor"].includes(papel)) throw new Erro(403, "Seu perfil não permite usar a IA.");
+    if (diag) {
+      if (papel !== "admin") throw new Erro(403, "Só o administrador testa a instalação da IA.");
+      return responder(200, { ...(await diagnostico()), versao: VERSAO });
+    }
 
     const [mes] = await banco(token, "GET", "radar_v_ia_mes?select=tokens");
     if (LIMITE_MENSAL > 0 && Number(mes?.tokens ?? 0) >= LIMITE_MENSAL) {
@@ -395,6 +464,7 @@ async function tratar(req: Request): Promise<Response> {
     reg = ctx.reg;
     const resultado = acao === "classificar" ? await classificar(token, ctx)
       : acao === "fundamentar" ? await fundamentar(token, ctx)
+      : acao === "ilustrar" ? await ilustrar(ctx, typeof pedido.titulo === "string" ? pedido.titulo : "")
       : await gerar(token, ctx, String(pedido.formato ?? "informativo"));
     const usado = reg.uso;
     return responder(200, { ...resultado, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });

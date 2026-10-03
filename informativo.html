@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <title>Informativo Mensal Artecon</title>
 <style>
-/* Radar Artecon — Informativo Mensal (v0.5.0): folha A4 no papel timbrado, para imprimir ou salvar em PDF. */
+/* Radar Artecon — Informativo Mensal (v0.6.0): folha A4 no papel timbrado, para imprimir ou salvar em PDF. */
 :root{ --marinho:#011F48; --azul:#569DCC; --vermelho:#BC151B; }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -50,17 +50,29 @@ table.agenda tr{break-inside:avoid}
 .credito{text-align:right;font-style:italic;margin:0 0 4pt;break-before:avoid}
 .credito .u{text-decoration:underline}
 .fale{break-before:page;break-inside:avoid;font-family:"Times New Roman",Times,serif}
-table.contatos{width:100%;border-collapse:collapse;font-size:9pt;text-align:left;border:1pt solid #C9D2DC}
-table.contatos caption{background:var(--marinho);color:#fff;padding:9pt 6pt 7pt;font-size:14pt;font-weight:700;text-align:center;letter-spacing:.5pt}
-table.contatos caption small{display:block;font-size:8pt;font-weight:400;font-style:italic;color:#B9D3EA;letter-spacing:0}
-table.contatos th{background:#E8F1F9;color:var(--marinho);padding:5pt 8pt;border-bottom:1pt solid #C9D2DC}
-table.contatos td{padding:6pt 8pt;border-bottom:1pt solid #E3E7EC;vertical-align:middle}
-table.contatos tr.setor td{background:#1B5E9B;color:#fff;font-weight:700;padding:4pt 8pt}
-table.contatos td.meio{text-align:center}
-table.contatos td.meio b{color:var(--marinho);display:block}
-table.contatos tr.obs td{text-align:center;background:#E8F1F9;color:var(--marinho);font-weight:700}
-.fecho{text-align:center;margin-top:16pt;break-inside:avoid}
-.fecho .assinatura{height:22mm}
+/* Fale Conosco no modelo do informativo: cabeçalho marinho, faixa azul por setor, ícones e equipe em duas colunas */
+table.contatos{width:100%;border-collapse:collapse;font-size:9pt;text-align:left;border:.75pt solid #C9D5E6}
+table.contatos caption{background:#1F3864;color:#fff;padding:6pt 6pt 5pt;font-size:13pt;font-weight:700;text-align:center}
+table.contatos caption small{display:block;font-size:8.5pt;font-weight:400;font-style:italic;color:#DCE6F5;margin-top:1pt}
+table.contatos th{background:#E9EFF8;color:#1F3864;padding:3.5pt 8pt;font-size:9pt;border-right:.75pt solid #F4F7FB}
+table.contatos td{padding:3.5pt 8pt;vertical-align:middle;background:#F4F7FD;border-right:.75pt solid #E3E9F3}
+table.contatos tr.setor td{background:#2E5DAA;color:#fff;font-weight:700;font-size:10pt;padding:4pt 8pt;border:0}
+table.contatos td.fones{width:27%}
+table.contatos td.meio{width:42%;text-align:center;background:#fff}
+table.contatos td.meio b{color:#1F3864;display:block;margin-bottom:2pt}
+table.contatos td.meio a{color:#1B4FA0;text-decoration:underline}
+table.contatos td.equipe{background:#fff}
+table.contatos tr.resp td,table.contatos tr.obs td,table.contatos tr.legenda td{text-align:center;background:#E9EFF8;color:#1F3864;border:0}
+table.contatos tr.resp td b{margin-right:6pt}
+table.contatos tr.resp span,table.contatos tr.legenda span{display:inline-block;margin:0 9pt;white-space:nowrap;color:#222}
+.ic{width:10.5pt;height:10.5pt;vertical-align:-2pt;margin-right:3pt}
+.fones-grade{display:grid;grid-template-columns:1fr 1fr;gap:1pt 4pt}
+.fones-grade.um{grid-template-columns:1fr}
+.fones-grade div{white-space:nowrap}
+.equipe-grade{display:grid;grid-template-columns:1fr 1fr;gap:1pt 0;color:#444}
+.equipe-grade div:nth-child(even){border-left:.75pt solid #9AA7B4;padding-left:6pt}
+.fecho{text-align:center;margin-top:8pt;break-inside:avoid;break-before:avoid;font-size:12pt}
+.fecho .assinatura{height:12mm}
 @page{size:A4;margin:0}
 @media print{
   body{background:#fff}
@@ -78,7 +90,7 @@ table.contatos tr.obs td{text-align:center;background:#E8F1F9;color:var(--marinh
 <script>
 "use strict";
 /* ====================================================================
-   RADAR ARTECON — Informativo Mensal para impressão / PDF   (v0.5.0)
+   RADAR ARTECON — Informativo Mensal para impressão / PDF   (v0.6.0)
    Usa a sessão aberta no painel (index.html): só a equipe vê.
    ==================================================================== */
 const CFG = window.RADAR_CONFIG || {};
@@ -160,17 +172,41 @@ function entrada(msg){
     <p><a href="index.html">Abrir o Radar</a></p></div>`;
 }
 
+/* Ícones do quadro (desenhados aqui: nenhuma imagem externa) */
+const IC = {
+  fone: `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1F3864"/><path fill="#fff" d="M8.1 5.6c.3-.3.8-.3 1.1 0l1.7 2c.3.3.2.8 0 1.1l-1 1.1c.8 1.7 2.1 3 3.8 3.800l1.100-1c.3-.3.8-.3 1.100 0l2 1.700c.3.3.3.8 0 1.100l-1 1.100c-.6.600-1.500.800-2.300.500-4.200-1.400-7.200-4.400-8.600-8.600-.3-.800-.100-1.700.500-2.300z"/></svg>`,
+  zap: `<svg class="ic" viewBox="0 0 24 24" role="img" aria-label="WhatsApp"><circle cx="12" cy="12" r="12" fill="#25D366"/><path fill="#fff" d="M12 4.800a7.200 7.200 0 0 0-6.200 10.900L4.800 19.200l3.600-.900A7.200 7.200 0 1 0 12 4.800zm0 1.500a5.700 5.700 0 1 1-2.900 10.600l-.300-.200-1.900.500.500-1.800-.200-.300A5.700 5.700 0 0 1 12 6.300zm-2.300 2.600c-.2 0-.400.100-.500.300-.300.400-.600.900-.600 1.500 0 .900.600 1.800 1.300 2.600.900 1 2 1.700 3.300 2 .500.100 1.100.100 1.600-.200.400-.200.700-.600.800-1 0-.200 0-.300-.100-.400l-1.300-.600c-.200-.100-.300 0-.400.100l-.500.600c-.100.100-.200.100-.400.100-.900-.400-1.700-1.100-2.200-2-.100-.100 0-.300.100-.400l.400-.500c.100-.100.100-.300 0-.400l-.600-1.400c-.100-.200-.200-.300-.400-.300z"/></svg>`,
+  mail: `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#2E6FD0"/><path fill="#fff" d="M6 8h12c.3 0 .500.200.500.500v7c0 .300-.200.500-.500.500H6a.5.5 0 0 1-.5-.5v-7c0-.3.2-.5.5-.5zm.800 1.200 5.200 3.600 5.200-3.600zm-.100 1.400v4.200h10.600v-4.200L12 14.300z"/></svg>`,
+  pessoa: `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1F3864"/><circle cx="12" cy="9.500" r="2.800" fill="#fff"/><path fill="#fff" d="M6.500 17.500c0-2.800 2.500-4.300 5.500-4.300s5.500 1.500 5.500 4.300z"/></svg>`
+};
+/* Telefone do quadro: texto simples (fixo) ou {numero, whatsapp, nome}. */
+function telefoneHtml(t){
+  const o = t && typeof t === "object" ? t : {numero:t}, numero = String(o.numero ?? o.telefone ?? "").trim();
+  if(!numero) return "";
+  return `<div>${o.whatsapp ? IC.zap : IC.fone}${h(numero)}${o.nome ? ` (${h(o.nome)})` : ""}</div>`;
+}
 function quadroContatos(fc){
   const setores = (Array.isArray(fc?.setores) ? fc.setores : []).filter(s => s && typeof s === "object");
   if(!setores.length) return "";
-  const lista = (itens, f) => (Array.isArray(itens) ? itens : []).map(f).join("");
+  const lista = v => (Array.isArray(v) ? v : []);
+  let temZap = false, temFixo = false;
+  const marcar = t => { if(t && typeof t === "object" && t.whatsapp) temZap = true; else temFixo = true; };
+  const linhas = setores.map(s => {
+    const fones = lista(s.telefones).filter(t => String((t && typeof t === "object" ? (t.numero ?? t.telefone) : t) ?? "").trim());
+    const resp = lista(s.responsaveis).filter(r => r && typeof r === "object" && String(r.nome || "").trim());
+    const equipe = lista(s.equipe).map(e => String(e ?? "").trim()).filter(Boolean);
+    fones.forEach(marcar); resp.forEach(marcar);
+    return `<tr class="setor"><td colspan="3">${IC.fone} ${h(s.nome || s.rotulo || "")}</td></tr>
+      <tr><td class="fones"><div class="fones-grade${fones.length < 2 ? " um" : ""}">${fones.map(telefoneHtml).join("")}</div></td>
+        <td class="meio"><b>${h(s.rotulo || s.nome || "")}</b>${lista(s.emails).map(e => `<div>${IC.mail}<a href="mailto:${h(String(e).trim())}">${h(e)}</a></div>`).join("")}</td>
+        <td class="equipe"><div class="equipe-grade">${equipe.map(e => `<div>${IC.pessoa}${h(e)}</div>`).join("")}</div></td></tr>
+      ${resp.length ? `<tr class="resp"><td colspan="3"><b>${h(s.responsaveis_rotulo || "Responsáveis")}:</b>${resp.map(r =>
+        `<span>${r.whatsapp ? IC.zap : IC.fone}${h(r.nome)} ${h(String(r.telefone ?? r.numero ?? ""))}</span>`).join("")}</td></tr>` : ""}`; }).join("");
   return `<table class="contatos"><caption>FALE CONOSCO<small>Entre em contato com o setor desejado</small></caption>
-    <tr><th style="width:27%">Telefone</th><th style="width:38%;text-align:center">Setor / E-mail</th><th>Equipe</th></tr>
-    ${setores.map(s => `<tr class="setor"><td colspan="3">${h(s.nome || s.rotulo || "")}</td></tr>
-      <tr><td>${lista(s.telefones, t => `<div>${h(t)}</div>`)}</td>
-        <td class="meio"><b>${h(s.rotulo || s.nome || "")}</b>${lista(s.emails, e => `<div>${h(e)}</div>`)}</td>
-        <td>${h((Array.isArray(s.equipe) ? s.equipe : []).join(" | "))}</td></tr>`).join("")}
-    ${fc.observacao ? `<tr class="obs"><td colspan="3">${h(fc.observacao)}</td></tr>` : ""}</table>`;
+    <tr><th>${IC.fone}Telefone</th><th style="text-align:center">${IC.mail}Setor / E-mail</th><th>${IC.pessoa}Equipe</th></tr>
+    ${linhas}
+    ${fc.observacao ? `<tr class="obs"><td colspan="3"><b>${h(fc.observacao)}</b></td></tr>` : ""}
+    ${temZap || temFixo ? `<tr class="legenda"><td colspan="3">${temZap ? `<span>${IC.zap}WhatsApp disponível</span>` : ""}${temFixo ? `<span>${IC.fone}Telefone fixo</span>` : ""}</td></tr>` : ""}</table>`;
 }
 
 async function iniciar(){
@@ -226,7 +262,7 @@ async function iniciar(){
         </section>`).join("")}
         <section class="fale">${quadroContatos(c.fale_conosco)}
           <div class="fecho"><div>${h(ass.local || "Palhoça, SC")}, ${h(dataExtenso(inf.data_assinatura))}.</div>
-            <div class="assinatura"></div><div>${h(ass.empresa || "")}</div><div>${h(ass.responsavel || "")}</div></div>
+            <div class="assinatura" title="Espaço da assinatura digital"></div><div>${h(ass.empresa || "")}</div><div>${h(ass.responsavel || "")}</div></div>
         </section>
       </div></td></tr></tbody>
     </table>`;

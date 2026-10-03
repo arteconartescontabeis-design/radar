@@ -1,4 +1,4 @@
-# Radar Artecon — v0.5.0
+# Radar Artecon — v0.6.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,13 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.6.0 trata de quatro coisas: **filtro de relevância** das capturas (a triagem abre só
+com o que interessa ao escritório), telas de **Capturas e Assunto mais simples** (cartões,
+cinco passos e "Próximo passo"), **imagem de capa automática** em todo conteúdo e o **final
+do Informativo Mensal no modelo do escritório** (Fale Conosco com ícones, contadores
+responsáveis, legenda e fecho). Traz também um **teste da IA** em Configurações, que diz o
+que falta quando a IA não funciona.
 
 A v0.5.0 **retira a página pública "Artecon Informa"**: as publicações são feitas nas
 páginas da Artecon. O Radar passa a registrar o que foi ao site (link, data e a cópia do
@@ -29,8 +36,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.5.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.5.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
+| `sql/radar-setup-v0.6.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.6.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
 | `.github/workflows/` | Rotinas do GitHub Actions: diagnóstico, coleta agendada e testes. |
@@ -76,10 +83,10 @@ O caminho previsto é o INLABS (XML oficial, exige cadastro gratuito).
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.5.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.6.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
    Esperado: 21 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão `v0.5.0`.
+   `instalacoes concluidas` com ao menos 1 e a versão `v0.6.0`.
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -126,7 +133,15 @@ Os demais usuários você cria no Supabase e libera pela aba **Usuários** do da
    conteúdo de `supabase/functions/radar-ia/index.ts` → Deploy. Deixe ligada a opção de
    verificar o JWT.
 3. Edge Functions → Secrets → crie `OPENAI_API_KEY` com a chave da OpenAI.
-4. No dashboard, abra um assunto e clique em "Sugerir classificação com IA".
+4. No dashboard: **Configurações → Inteligência artificial → Testar a IA**. O teste diz se a
+   função está instalada, se a chave foi aceita e se os modelos respondem, e o que corrigir.
+5. Abra um assunto que tenha texto oficial e clique em "Preparar com IA".
+
+Se a IA "não funciona", o teste do item 4 mostra a causa. As mais comuns: a função
+`radar-ia` não foi criada (ou foi criada com outro nome); falta o segredo `OPENAI_API_KEY`;
+a conta da OpenAI está sem crédito; o modelo padrão não existe na conta (ajuste
+`RADAR_OPENAI_MODELO` e `RADAR_OPENAI_MODELO_RAPIDO`); a função instalada é de versão
+anterior (cole de novo o `index.ts`).
 
 Segredos opcionais:
 
@@ -134,6 +149,7 @@ Segredos opcionais:
 |---|---|---|
 | `RADAR_OPENAI_MODELO` | `gpt-6.1-sol` | modelo que busca trechos e redige |
 | `RADAR_OPENAI_MODELO_RAPIDO` | `gpt-6-luna` | modelo que classifica |
+| `RADAR_OPENAI_MODELO_IMAGEM` | `gpt-image-1` | modelo da ilustração de capa por IA |
 | `RADAR_IA_LIMITE_MENSAL_TOKENS` | `3000000` | teto de consumo por mês dentro do Radar |
 | `RADAR_OPENAI_API` | `responses` | use `chat` se a conta só aceitar a API antiga |
 
@@ -188,6 +204,41 @@ repositório). A assinatura digital continua sendo aplicada por você no PDF.
 
 Perfis: **leitor** só consulta; **editor** cria assuntos, escreve, aprova e registra o que
 foi ao site; **administrador** também configura fontes, usuários e vê o histórico.
+
+### Relevância das capturas (v0.6.0)
+
+O banco dá uma nota a cada captura no momento em que ela entra, pelas regras guardadas em
+**Configurações → Relevância das capturas** (`radar_config`, chave `relevancia`):
+
+- `termos`: palavras ou expressões com `pontos` positivos (somam) ou negativos (tiram).
+  No título o termo vale o dobro; no resumo e no começo do texto, os pontos simples. Só
+  casa palavra inteira; maiúsculas e acentos não fazem diferença.
+- `limite_alta` e `limite_media`: a partir de quantos pontos a captura é alta ou média.
+  Abaixo de `limite_media` é baixa.
+
+A tela de Capturas abre com alta e média, da maior nota para a menor; as de baixa
+relevância ficam no botão "Baixa relevância", onde "Ignorar as N desta lista" tira todas da
+fila de uma vez. Nada é apagado: o que foi ignorado continua em Assuntos → Ignorado. Cada
+cartão mostra "Por que apareceu" (os termos que pesaram). Ao salvar as regras, as capturas
+são reavaliadas. O assunto aberto a partir de uma captura herda a relevância dela. É um
+filtro por palavras, não por entendimento do texto: ajuste a lista conforme o uso.
+
+### Imagem de capa (v0.6.0)
+
+Todo conteúdo novo (escrito pela equipe ou gerado pela IA) recebe uma capa de 1200 × 630
+no padrão da Artecon — logotipo, faixa, categoria e o título —, desenhada no próprio
+navegador, sem depender de IA. No conteúdo há três opções: "Gerar capa padrão Artecon"
+(refaz com o título atual), "Gerar ilustração com IA" (imagem sem texto, pela OpenAI) e o
+envio de uma imagem própria. Trocar a imagem de um conteúdo aprovado devolve-o à revisão.
+
+### Fale Conosco do informativo (v0.6.0)
+
+A última página segue o modelo do escritório. Em Configurações → Fale Conosco, cada setor
+tem `nome`, `rotulo`, `telefones`, `emails`, `equipe` e, opcionalmente, `responsaveis` (com
+`responsaveis_rotulo`). Telefone é um texto (telefone fixo) ou
+`{"numero": "…", "whatsapp": true, "nome": "opcional"}`. O arquivo
+`radar-fale-conosco-v0.6.0.json`, entregue à parte, já vem preenchido: copie o conteúdo
+para o campo e salve. Ele não vai no repositório porque traz nomes e celulares da equipe.
 
 ## Regras que o banco garante
 
@@ -311,7 +362,12 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
 
 ## Atualizações futuras
 
-Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.5.0.sql` no SQL
+**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.6.0.sql` no SQL Editor; (2) envie
+`index.html` e `informativo.html` ao repositório; (3) cole o `radar-fale-conosco-v0.6.0.json`
+em Configurações → Fale Conosco; (4) se usa a IA, cole de novo o `index.ts` na função
+`radar-ia` e faça o Deploy. O robô não mudou de comportamento (só o número da versão).
+
+Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.6.0.sql` no SQL
 Editor (ele atualiza sem apagar dados), envie os arquivos novos ao repositório, **apague o
 `informa.html` do repositório** e, se a função de IA já estiver instalada, cole de novo o
 `index.ts`.

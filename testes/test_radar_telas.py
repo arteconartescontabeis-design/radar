@@ -84,6 +84,14 @@ class Servidor(BaseHTTPRequestHandler):
             cab = {k: v for k, v in self.headers.items() if k.lower() in ("authorization", "apikey", "content-type")}
             r = requests.request(self.command, f"http://127.0.0.1:{PORTA_IA}/", headers=cab, data=corpo, timeout=60)
             return self._responder(r.status_code, r.content, extras={k: v for k, v in r.headers.items() if k.lower().startswith("access-control")})
+        if u.path == "/openai/v1/images/generations":
+            pedido = json.loads(corpo or b"{}")
+            OPENAI["pedidos"].append({"caminho": u.path, "corpo": pedido, "cabecalhos": dict(self.headers)})
+            if OPENAI["status"] != 200:
+                return self._responder(OPENAI["status"], json.dumps({"error": {"message": "erro simulado da OpenAI"}}).encode())
+            import base64 as _b64
+            png = _b64.b64encode((RAIZ / "radar-logo-artecon.png").read_bytes()).decode()
+            return self._responder(200, json.dumps({"data": [{"b64_json": png}], "usage": {"input_tokens": 60, "output_tokens": 4000}}).encode())
         if u.path in ("/openai/v1/responses", "/openai/v1/chat/completions"):
             pedido = json.loads(corpo or b"{}")
             OPENAI["pedidos"].append({"caminho": u.path, "corpo": pedido, "cabecalhos": dict(self.headers)})
@@ -208,7 +216,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.5.0"
+    assert pagina.inner_text(".versao") == "v0.6.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -258,11 +266,18 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
 
     # triagem: ignora uma, abre assunto da outra
     pagina.click("nav.abas >> text=Capturas")
-    pagina.wait_for_selector("text=Notícia irrelevante sobre leilão")
+    # a tela abre só com o que é relevante; o leilão (baixa relevância) fica no filtro próprio
+    pagina.wait_for_selector("article.cap.rel-alta >> text=IN RFB nº 2.290")
+    assert pagina.locator("text=Notícia irrelevante sobre leilão").count() == 0
+    assert "Por que apareceu: CBS" in pagina.inner_text("article.cap")
     pagina.screenshot(path=str(FOTOS / "02-fila.png"), full_page=True)
-    pagina.locator("tr", has_text="Notícia irrelevante").locator("text=Ignorar").click()
+    pagina.click("#filtro-fila >> text=Baixa relevância")
+    pagina.wait_for_selector("text=Notícia irrelevante sobre leilão")
+    assert "Pesou contra: leilão" in pagina.inner_text("article.cap") and pagina.locator("article.cap").count() == 1
+    pagina.locator("article", has_text="Notícia irrelevante").locator("text=Ignorar").click()
     pagina.wait_for_selector("text=Captura ignorada.")
     pagina.wait_for_selector("text=Notícia irrelevante sobre leilão", state="detached")
+    pagina.click("#filtro-fila >> text=Relevantes")
     pagina.click("text=Abrir assunto")
     pagina.wait_for_selector("text=Dados do assunto")
     assert "Ainda não pode ser registrado como publicado no site" in pagina.inner_text("main")
@@ -932,7 +947,7 @@ def test_ia_recusa_quem_nao_pode_e_pedidos_invalidos(limpo, openai, navegador):
 def test_ia_limite_mensal_e_erros_da_openai_viram_mensagens_claras(pagina, limpo, openai):
     a, _ = assunto_com_texto(limpo)
     openai["respostas"]["classificacao"] = SUGESTAO
-    for status, trecho in [(401, "recusou a chave"), (429, "limite de uso ou falta de crédito"), (404, "não existe nesta conta"), (500, "devolveu erro")]:
+    for status, trecho in [(401, "recusou a chave"), (429, "limite de uso ou falta de crédito"), (404, "não está disponível nesta conta"), (500, "devolveu erro")]:
         openai["status"] = status
         r = pedir_ia({"acao": "classificar", "assunto_id": a})
         assert r.status_code >= 400 and trecho in r.json()["message"], status
@@ -1165,12 +1180,12 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     form.locator("input[type=file]").set_input_files(foto)
     pagina.wait_for_selector("#recado .erro >> text=Salve o conteúdo antes de enviar a imagem")
     assert form.locator("[name=corpo]").input_value() == ARTIGO
-    assert limpo.execute("select count(*) from radar_imagens").fetchone()[0] == 0
+    assert limpo.execute("select count(*) from radar_imagens").fetchone()[0] == 1      # só a capa automática
     form.locator("button", has_text="Salvar").first.click()
     pagina.wait_for_selector("text=Conteúdo salvo.")
     pagina.locator("form[data-form=conteudo] input[type=file]").set_input_files(foto)
     pagina.wait_for_selector("text=Imagem enviada.")
-    larg, alt, tam, tipo = limpo.execute("select largura, altura, length(dados), left(dados, 22) from radar_imagens").fetchone()
+    larg, alt, tam, tipo = limpo.execute("select largura, altura, length(dados), left(dados, 22) from radar_imagens order by id desc limit 1").fetchone()
     assert (larg, alt) == (1200, 800) and tam <= 600000 and tipo == "data:image/jpeg;base64"      # reduzida no navegador
     assert pagina.locator("form[data-form=conteudo] > img.miniatura").count() == 1
     pagina.click("text=Enviar para revisão")
@@ -1393,7 +1408,7 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
         pagina.wait_for_selector("text=Painel do dia")
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
-        assert pagina.locator("form[data-form=config]").count() == 4
+        assert pagina.locator("form[data-form=config]").count() == 5
         campo = pagina.locator("#cfg-feriados_extras")
         salvar = pagina.locator("form[data-chave=feriados_extras] button")
         for ruim, aviso in [("[", "não é um JSON válido"), ('{"a": 1}', "precisam ser uma lista"), ('["24/12/2026"]', "Data inválida")]:
@@ -1491,9 +1506,9 @@ def test_tabela_e_campos_novos_nao_executam_html(pagina, limpo):
     assert pagina.evaluate("window.__xss") is None                                   # nada executou no painel
     pagina.goto(f"{BASE}/informativo.html?id={iid}")
     pagina.wait_for_selector("body[data-pronto]")
-    assert pagina.locator(".miolo script, .miolo img[src=x], .miolo svg").count() == 0
+    assert pagina.locator(".miolo script, .miolo img[src=x], .miolo svg:not(.ic)").count() == 0
     assert "<script>" in pagina.inner_text(".miolo") and "<svg onload" in pagina.inner_text(".miolo")
-    assert pagina.locator(".miolo a").count() == 1 and pagina.locator(".miolo a").get_attribute("href") == "https://exemplo.com/a"
+    assert pagina.locator(".miolo .artigo a").count() == 1 and pagina.locator(".miolo .artigo a").get_attribute("href") == "https://exemplo.com/a"
     assert pagina.evaluate("window.__xss") is None
 
 
@@ -2021,7 +2036,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.5.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.6.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2040,3 +2055,347 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     pagina.click("nav.abas >> text=Versões")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Fontes em aberto" in pagina.inner_text("main") and "A exigência de fonte oficial continua" in pagina.inner_text("main")
+
+
+# ============================================================ v0.6.0 — relevância, passos do assunto, capa, teste da IA
+def _captura_rel(db, titulo, n=[0]):
+    n[0] += 1
+    return captura(db, titulo, f"https://www.gov.br/exemplo/rel-{n[0]}", "rfb-noticias")
+
+
+def test_capturas_abrem_so_com_o_relevante_e_as_de_baixa_saem_de_uma_vez(pagina, limpo):
+    _captura_rel(limpo, "Receita prorroga prazo do Simples Nacional")
+    for i in range(3):
+        _captura_rel(limpo, f"Receita apreende cigarros na fronteira — operação {i}")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    assert "mais 3 de baixa relevância" in pagina.inner_text(".cartoes")
+    assert pagina.inner_text("nav.abas >> text=Capturas").endswith("1")            # o contador da aba só conta o relevante
+    pagina.click("nav.abas >> text=Capturas")
+    pagina.wait_for_selector("article.cap")
+    assert pagina.locator("article.cap").count() == 1 and "Relevância alta" in pagina.inner_text("article.cap")
+    assert [c.replace("\n", "") for c in pagina.locator("#filtro-fila .chip").all_inner_texts()] == ["Relevantes1", "Só alta1", "Baixa relevância3", "Todas4"]
+    assert pagina.locator("text=Ignorar as").count() == 0                           # só aparece no filtro de baixa relevância
+    pagina.click("#filtro-fila >> text=Todas")
+    pagina.wait_for_selector("article.cap.rel-baixa")
+    assert pagina.locator("article.cap").count() == 4
+    assert "rel-alta" in pagina.locator("article.cap").first.get_attribute("class")   # o mais relevante vem primeiro
+    pagina.click("#filtro-fila >> text=Baixa relevância")
+    pagina.wait_for_selector("text=Ignorar as 3 desta lista")
+    pagina.fill("#busca-fila", "operação 1")                                       # o que a busca escondeu não é ignorado
+    pagina.click("text=Ignorar as 1 desta lista")
+    pagina.wait_for_selector("text=1 captura(s) ignorada(s).")
+    pagina.wait_for_selector("text=Ignorar as 2 desta lista")
+    pagina.click("text=Ignorar as 2 desta lista")
+    pagina.wait_for_selector("text=2 captura(s) ignorada(s).")
+    pagina.wait_for_selector("text=Nenhuma captura de baixa relevância na fila.")
+    assert limpo.execute("select count(*) from radar_assuntos where status = 'ignorado'").fetchone()[0] == 3
+    assert limpo.execute("select count(*) from radar_v_fila").fetchone()[0] == 1
+    assert sem_rolagem_lateral(pagina)
+
+
+def test_capturas_leitor_ve_a_relevancia_mas_nao_ignora(pagina, limpo):
+    _captura_rel(limpo, "Leilão de mercadorias apreendidas <img src=x onerror=window.__xss=1>")
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Capturas")
+    pagina.wait_for_selector("text=Nenhuma captura relevante aguardando triagem.")
+    pagina.click("#filtro-fila >> text=Baixa relevância")
+    pagina.wait_for_selector("article.cap")
+    assert "<img src=x" in pagina.inner_text("article.cap h3") and pagina.evaluate("window.__xss") is None
+    assert pagina.locator("text=Ignorar").count() == 0 and pagina.locator("main img").count() == 0
+
+
+def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
+    a, cap = assunto_com_texto(limpo)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.wait_for_selector("#proximo-passo")
+    assert pagina.locator(".trilha li").count() == 5 and pagina.locator(".trilha li.feito").count() == 1
+    assert "Escrever o conteúdo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo >> text=Preparar com IA").count() == 1
+    assert not pagina.locator("#a-pub").is_visible()                                # campos raros recolhidos
+    pagina.click("text=Mais campos")
+    assert pagina.locator("#a-pub").is_visible()
+    pagina.click("#proximo-passo >> text=Escrever sem IA")
+    pagina.click("text=Novo conteúdo")
+    pagina.wait_for_selector("text=Revisar o rascunho")
+    pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
+    pagina.wait_for_selector("#proximo-passo >> text=Aprovar o conteúdo")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#proximo-passo >> text=Para o site: fundamentar")
+    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a, cap, TRECHO))
+    pagina.reload()
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.wait_for_selector("#proximo-passo >> text=Para o site: confirmar o assunto")
+    assert pagina.locator("[data-acao=registrar-site]").count() == 0
+    pagina.click("text=Marcar como confirmado oficialmente")
+    pagina.wait_for_selector("#proximo-passo >> text=Publicar no site e registrar")
+    assert pagina.locator(".trilha li.feito").count() == 4
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
+    pagina.click("text=Registrar publicação no site")
+    pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
+    assert pagina.locator(".trilha li.feito").count() == 5
+    assert limpo.execute("select situacao_confirmacao from radar_assuntos where id = %s", (a,)).fetchone()[0] == "confirmado_oficialmente"
+
+
+def test_assunto_leitor_ve_os_passos_sem_botoes(pagina, limpo):
+    assunto_com_texto(limpo)
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.wait_for_selector(".trilha")
+    assert pagina.locator("#proximo-passo").count() == 0 and pagina.locator("text=Preparar com IA").count() == 0
+
+
+def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
+    assunto_com_texto(limpo, "Título com <b>marcação</b> e \"aspas\" bem comprido " + "muito " * 30)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=Título com")
+    pagina.click("text=Novo conteúdo")
+    pagina.wait_for_selector("form[data-form=conteudo] > img.miniatura")
+    img = limpo.execute("select id, largura, altura, left(dados, 23), length(dados) from radar_imagens").fetchall()
+    assert len(img) == 1 and img[0][1:4] == (1200, 630, "data:image/jpeg;base64,") and 10000 < img[0][4] < 600000
+    assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] == img[0][0]
+    # a capa é um desenho de verdade (não uma folha em branco): tem o azul-marinho do fundo
+    cor = pagina.evaluate("""async () => { const i = new Image(); i.src = document.querySelector('img.miniatura').src; await i.decode();
+        const c = document.createElement('canvas'); c.width = 1200; c.height = 630; const x = c.getContext('2d'); x.drawImage(i, 0, 0);
+        return [...x.getImageData(20, 320, 1, 1).data]; }""")
+    assert cor[2] > cor[0] + 30 and cor[0] < 60, cor
+    # gerar de novo depois de mudar o título: pede para salvar antes, confirma a troca e cria outra imagem
+    form = pagina.locator("form[data-form=conteudo]")
+    form.locator("[name=titulo]").fill("Novo título")
+    pagina.click("text=Gerar capa padrão Artecon")
+    pagina.wait_for_selector("text=Salve o conteúdo antes de gerar a capa.")
+    form.locator("button", has_text="Salvar").first.click()
+    pagina.wait_for_selector("text=Conteúdo salvo.")
+    pagina.click("text=Gerar capa padrão Artecon")
+    pagina.wait_for_selector("text=Capa gerada no padrão da Artecon.")
+    assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] != img[0][0]
+    pagina.screenshot(path=str(FOTOS / "10-capa.png"), full_page=True)
+
+
+def test_ia_preparar_tudo_e_ilustracao(pagina, limpo, openai):
+    a, cap = assunto_com_texto(limpo)
+    openai["respostas"]["fundamentacao"] = {"trechos": [{"captura_id": cap, "trecho_literal": TRECHO, "dispositivo": "Art. 2º", "motivo": "regra"}]}
+    openai["respostas"]["conteudo"] = {"titulo": "CBS destacada no documento fiscal", "corpo": "A CBS será destacada no documento fiscal à alíquota de 0,9%.\n\n## Análise Artecon\nRecomenda-se avaliar o cadastro fiscal das empresas."}
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.click("text=Preparar com IA")
+    pagina.wait_for_selector("text=1 trecho(s) de fundamentação e um rascunho")
+    assert limpo.execute("select count(*) from radar_evidencias where trecho_conferido").fetchone()[0] == 1
+    assert limpo.execute("select gerado_por, status, imagem_id is not null from radar_conteudos").fetchall() == [("ia", "rascunho", True)]
+    antes = limpo.execute("select imagem_id from radar_conteudos").fetchone()[0]
+    pagina.click("text=Gerar ilustração com IA")
+    pagina.wait_for_selector("text=Ilustração gerada pela IA.")
+    depois = limpo.execute("select imagem_id from radar_conteudos").fetchone()[0]
+    assert depois != antes and limpo.execute("select largura, altura from radar_imagens where id = %s", (depois,)).fetchone() == (1200, 630)
+    pedido = [x for x in openai["pedidos"] if x["caminho"].endswith("images/generations")][0]["corpo"]
+    assert "CBS destacada no documento fiscal" in pedido["prompt"] and TRECHO not in pedido["prompt"]     # só o tema vai; o texto oficial não
+    assert limpo.execute("select acao, tokens_saida from radar_ia_uso order by id desc limit 1").fetchone() == ("ilustrar", 4000)
+    # erro da OpenAI na ilustração vira mensagem clara e não troca a imagem
+    openai["status"] = 429
+    pagina.click("text=Gerar ilustração com IA")
+    pagina.wait_for_selector("text=limite de uso ou falta de crédito")
+    assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] == depois
+    assert pedir_ia({"acao": "ilustrar", "assunto_id": a}, uid=LEITOR).status_code == 403
+
+
+def test_ia_teste_em_configuracoes_diz_o_que_falta(pagina, limpo, openai):
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Configurações")
+    openai["respostas"]["teste"] = {"ok": True}
+    pagina.click("text=Testar a IA")
+    pagina.wait_for_selector("text=A IA está funcionando.")
+    texto = pagina.inner_text("#diag-ia")
+    assert "termina em …enai" in texto and "chave-de-teste" not in texto and texto.count("OK") == 4
+    assert limpo.execute("select count(*) from radar_ia_uso").fetchone()[0] == 0          # o teste não entra no consumo
+    openai["status"] = 401
+    pagina.click("text=Testar a IA")
+    pagina.wait_for_selector("text=Há item a corrigir")
+    assert "recusou a chave configurada" in pagina.inner_text("#diag-ia")
+    openai["status"] = 404
+    pagina.click("text=Testar a IA")
+    pagina.wait_for_selector("text=não está disponível nesta conta")
+    openai["instalada"] = False
+    pagina.click("text=Testar a IA")
+    pagina.wait_for_selector("text=A função radar-ia não está instalada neste projeto do Supabase.")
+    assert "OPENAI_API_KEY" in pagina.inner_text("#diag-ia") and "index.ts" in pagina.inner_text("#diag-ia")
+    openai["instalada"] = True
+    assert pedir_ia({"acao": "diagnostico"}, uid=LEITOR).status_code == 403
+    assert pedir_ia({"acao": "diagnostico"}, uid=None).status_code == 401
+    assert pedir_ia({"acao": "diagnostico"}).status_code == 403                          # editor usa a IA, mas o teste da instalação é do administrador
+    assert "chave-de-teste" not in pedir_ia({"acao": "diagnostico"}, uid=ADMIN).text
+
+
+def test_configuracao_da_relevancia_valida_e_reavalia_a_fila(pagina, limpo):
+    original = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    cap = _captura_rel(limpo, "Calendário do alvará municipal")
+    try:
+        entrar(pagina, "admin@artecon.test")
+        pagina.wait_for_selector("text=Painel do dia")
+        pagina.click("nav.abas >> text=Configurações")
+        campo, salvar = pagina.locator("#cfg-relevancia"), pagina.locator("form[data-chave=relevancia] button")
+        for ruim, aviso in [('{"termos": []}', "Informe “limite_alta”"), ('{"limite_alta": 3, "limite_media": 8, "termos": []}', "não pode ser maior"),
+                            ('{"limite_alta": 8, "limite_media": 3, "termos": [{"termo": "x", "pontos": 5}]}', "de 2 a 80 caracteres"),
+                            ('{"limite_alta": 8, "limite_media": 3, "termos": [{"termo": "alvará", "pontos": 0}]}', "diferente de zero")]:
+            campo.fill(ruim)
+            salvar.click()
+            pagina.wait_for_selector(f"text={aviso}")
+        assert limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0] == original
+        campo.fill(json.dumps(dict(original, termos=original["termos"] + [{"termo": "alvará", "pontos": 5}])))
+        salvar.click()
+        pagina.wait_for_selector("text=As capturas da fila foram reavaliadas.")
+        assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "alta"
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(original),))
+
+
+def test_informativo_fale_conosco_no_modelo(pagina, limpo, tmp_path):
+    original = limpo.execute("select valor from radar_config where chave = 'fale_conosco'").fetchone()[0]
+    fc = {"setores": [
+        {"nome": "Geral", "rotulo": "Atendimento Geral", "telefones": [{"numero": "48-3242-0530", "whatsapp": True}, "48-3033-4978", "48-3033-4126"],
+         "emails": ["artecon@artecon.cnt.br"], "equipe": ["Ana", "Beto"]},
+        {"nome": "Setor Contábil", "rotulo": "Setor Contábil", "telefones": [], "emails": ["dc@artecon.cnt.br"], "equipe": ["Carla", "Davi", "<b>Eva</b>"],
+         "responsaveis_rotulo": "Contadores Responsáveis", "responsaveis": [{"nome": "Fulano", "telefone": "48-90000-0001", "whatsapp": True}, {"nome": "Sicrana", "telefone": "48-3000-0002"}]},
+        {"nome": "Setor Institucional", "rotulo": "Setor Institucional", "telefones": [{"numero": "48-90000-0003", "whatsapp": True, "nome": "Gil"}],
+         "emails": ["a@artecon.cnt.br", "\"><img src=x onerror=window.__xss=1>"], "equipe": []}], "observacao": ""}
+    try:
+        entrar(pagina, "admin@artecon.test")
+        pagina.wait_for_selector("text=Painel do dia")
+        pagina.click("nav.abas >> text=Configurações")
+        pagina.locator("#cfg-fale_conosco").fill(json.dumps(dict(fc, setores=[dict(fc["setores"][0], telefones=[{"whatsapp": True}])])))
+        pagina.locator("form[data-chave=fale_conosco] button").click()
+        pagina.wait_for_selector("text=cada telefone é um texto ou")
+        pagina.locator("#cfg-fale_conosco").fill(json.dumps(fc))
+        pagina.locator("form[data-chave=fale_conosco] button").click()
+        pagina.wait_for_selector("text=Configuração salva.")
+        iid = limpo.execute("insert into radar_informativos (numero, ano, mes, data_assinatura, agenda) values (10, 2026, '2026-10-01', '2026-10-01', '[]') returning id").fetchone()[0]
+        pagina.goto(f"{BASE}/informativo.html?id={iid}")
+        pagina.wait_for_selector("body[data-pronto]")
+        quadro = pagina.locator("table.contatos")
+        assert quadro.locator("tr.setor").count() == 3
+        assert quadro.locator("svg[aria-label=WhatsApp]").count() == 4            # geral, responsável, institucional e a legenda
+        texto = quadro.inner_text()
+        assert "Contadores Responsáveis:" in texto and "Fulano 48-90000-0001" in texto and "48-90000-0003 (Gil)" in texto
+        assert "WhatsApp disponível" in texto and "Telefone fixo" in texto and "<b>Eva</b>" in texto
+        assert quadro.locator("a[href='mailto:artecon@artecon.cnt.br']").count() == 1
+        assert quadro.locator("img, b >> text=Eva").count() == 0 and pagina.evaluate("window.__xss") is None
+        fecho = pagina.inner_text(".fecho")
+        assert "Palhoça, SC, 01 de outubro de 2026." in fecho and "Artecon Artes Contábeis ME" in fecho and "Cleiver Gonçalves" in fecho
+        # o quadro e o fecho ficam juntos numa página
+        pdf = tmp_path / "inf.pdf"
+        pagina.pdf(path=str(pdf), prefer_css_page_size=True, print_background=True)
+        assert pdf.stat().st_size > 20000
+        pagina.screenshot(path=str(FOTOS / "11-fale-conosco.png"), full_page=True)
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'fale_conosco'", (json.dumps(original),))
+
+
+def test_fale_conosco_do_tamanho_real_cabe_com_o_fecho_na_mesma_pagina(pagina, limpo, tmp_path):
+    """Quadro com a mesma quantidade de telefones, e-mails e pessoas do informativo real (nomes fictícios)."""
+    original = limpo.execute("select valor from radar_config where chave = 'fale_conosco'").fetchone()[0]
+    gente = lambda n: [f"Pessoa{i}" for i in range(n)]
+    fc = {"setores": [
+        {"nome": "Geral", "rotulo": "Atendimento Geral", "telefones": [{"numero": "48-3000-0000", "whatsapp": True}] + [f"48-3000-000{i}" for i in range(1, 7)],
+         "emails": ["geral@exemplo.com.br"], "equipe": gente(2)},
+        {"nome": "Setor Contábil", "rotulo": "Setor Contábil", "telefones": [], "emails": ["dc@exemplo.com.br"], "equipe": gente(10),
+         "responsaveis_rotulo": "Contadores Responsáveis", "responsaveis": [{"nome": "Um", "telefone": "48-90000-0001", "whatsapp": True}, {"nome": "Dois", "telefone": "48-90000-0002", "whatsapp": True}]},
+        {"nome": "Setor Fiscal", "rotulo": "Setor Fiscal", "telefones": [], "emails": ["df@exemplo.com.br"], "equipe": gente(8)},
+        {"nome": "Departamento Pessoal", "rotulo": "Departamento Pessoal", "telefones": [], "emails": ["rh@exemplo.com.br"], "equipe": gente(6)},
+        {"nome": "Setor Institucional", "rotulo": "Setor Institucional", "telefones": [{"numero": "48-90000-0003", "whatsapp": True, "nome": "Três"}],
+         "emails": ["a@exemplo.com.br", "b@exemplo.com.br"], "equipe": gente(3)}], "observacao": ""}
+    try:
+        limpo.execute("update radar_config set valor = %s where chave = 'fale_conosco'", (json.dumps(fc),))
+        iid = limpo.execute("insert into radar_informativos (numero, ano, mes, data_assinatura, agenda) values (11, 2026, '2026-10-01', '2026-10-01', '[]') returning id").fetchone()[0]
+        entrar(pagina)
+        pagina.wait_for_selector("text=Painel do dia")
+        pagina.goto(f"{BASE}/informativo.html?id={iid}")
+        pagina.wait_for_selector("body[data-pronto]")
+        pdf = tmp_path / "inf.pdf"
+        pagina.pdf(path=str(pdf), prefer_css_page_size=True, print_background=True)
+        info = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True).stdout
+        assert re.search(r"Pages:\s+2\b", info), info                      # capa/assuntos + Fale Conosco: o fecho não vai para uma 3ª página
+        ultima = subprocess.run(["pdftotext", "-f", "2", "-l", "2", "-layout", str(pdf), "-"], capture_output=True, text=True).stdout
+        assert "FALE CONOSCO" in ultima and "Telefone fixo" in ultima and "Cleiver Gonçalves" in ultima and "01 de outubro de 2026" in ultima
+        shutil.copy(pdf, FOTOS / "INFORMATIVO-teste-fale-conosco.pdf")
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'fale_conosco'", (json.dumps(original),))
+
+
+def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
+    a, cap = assunto_com_texto(limpo)
+    limpo.execute("update radar_assuntos set situacao_confirmacao = 'confirmado_oficialmente' where id = %s", (a,))
+    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a, cap, TRECHO))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.click("text=Novo conteúdo")
+    pagina.wait_for_selector("text=Revisar o rascunho")
+    pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
+    pagina.wait_for_selector("form[data-form=conteudo] >> text=Rejeitar")
+    pagina.click("form[data-form=conteudo] >> text=Rejeitar")
+    pagina.wait_for_selector("#proximo-passo >> text=Conteúdo rejeitado")
+    pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
+    pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#proximo-passo >> text=Publicar no site e registrar")
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
+    pagina.click("text=Registrar publicação no site")
+    pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
+    # texto alterado e aprovado de novo depois do registro: não está concluído
+    form = pagina.locator("form[data-form=conteudo]")
+    form.locator("[name=corpo]").fill("Texto corrigido depois de publicado, com mais de trinta caracteres.")
+    # com alteração não salva na tela, os botões do alto não descartam o que foi digitado
+    limpo.execute("update radar_assuntos set situacao_confirmacao = 'em_verificacao' where id = %s", (a,))
+    form.locator("button", has_text="Salvar").first.click()
+    pagina.wait_for_selector("text=Conteúdo salvo.")                                # aprovado e alterado: volta sozinho para revisão
+    pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#proximo-passo >> text=Para o site: confirmar o assunto")
+    assert pagina.locator("text=Concluído").count() == 0
+    form.locator("[name=autor]").fill("Digitado e não salvo")
+    pagina.click("text=Marcar como confirmado oficialmente")
+    pagina.wait_for_selector("text=Há alterações não salvas nesta tela.")
+    assert form.locator("[name=autor]").input_value() == "Digitado e não salvo"
+    form.locator("[name=autor]").fill("")
+    pagina.click("text=Marcar como confirmado oficialmente")
+    pagina.wait_for_selector("#proximo-passo >> text=Atualizar o site e registrar de novo")
+    assert "rever" in pagina.inner_text(".trilha")
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
+    pagina.click("text=Registrar publicação no site")
+    pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
+    # segundo conteúdo em rascunho: o quadro avisa
+    pagina.click("text=Novo conteúdo")
+    pagina.wait_for_selector("text=Há outro conteúdo deste assunto ainda em rascunho ou em revisão.")
+    assert limpo.execute("select count(*) from radar_imagens").fetchone()[0] == 2            # uma capa por conteúdo, nenhuma sobrando
+
+
+def test_capa_que_falha_e_avisada_e_botao_de_lote_acompanha_a_busca(pagina, limpo):
+    assunto_com_texto(limpo)
+    for i in range(3):
+        _captura_rel(limpo, f"Leilão de mercadorias — lote {i}")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Capturas")
+    pagina.click("#filtro-fila >> text=Baixa relevância")
+    pagina.wait_for_selector("text=Ignorar as 3 desta lista")
+    pagina.fill("#busca-fila", "lote 2")
+    pagina.wait_for_selector("text=Ignorar as 1 desta lista")
+    pagina.fill("#busca-fila", "nada parecido")
+    assert pagina.locator("#ignorar-lista").is_disabled()
+    pagina.route("**/rest/v1/radar_imagens**", lambda rota: rota.fulfill(status=500, body='{"message":"falha simulada"}', content_type="application/json"))
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.click("text=Novo conteúdo")
+    pagina.wait_for_selector("text=A capa automática não pôde ser gerada agora")
+    assert limpo.execute("select count(*), count(imagem_id) from radar_conteudos").fetchone() == (1, 0)
