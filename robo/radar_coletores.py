@@ -157,7 +157,12 @@ def listar_html_links(conteudo: str, fonte: dict, hoje: date | None = None) -> L
     encontrada no cartão.
     """
     config = fonte.get("config") or {}
-    padrao = re.compile(config["padrao_url"], re.I)
+    if not config.get("padrao_url"):
+        raise ValueError("falta o padrão dos links (padrao_url) no cadastro da fonte")
+    try:
+        padrao = re.compile(config["padrao_url"], re.I)
+    except re.error as e:
+        raise ValueError(f"o padrão dos links (padrao_url) não é uma expressão válida: {e}") from e
     excluir = re.compile(config["excluir_url"], re.I) if config.get("excluir_url") else None
     base = fonte["url"]
     sopa = BeautifulSoup(conteudo or "", "lxml")

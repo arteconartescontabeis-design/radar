@@ -1,21 +1,70 @@
-# Radar Artecon — Relatório de testes (v0.4.0)
+# Radar Artecon — Relatório de testes (v0.5.0)
 
-Data: 02/10/2026. Resultado: **313 testes automatizados, 313 aprovados** (suíte executada
-duas vezes seguidas, sem falha intermitente).
+Data: 02/10/2026. Resultado: **341 testes automatizados, 341 aprovados** (suíte executada
+duas vezes seguidas).
 
-Além da suíte, o código passou por seis rodadas de revisão independente (duas do banco e
-do robô, duas das telas, uma da IA e uma do Informativo Mensal), que tentaram quebrar as
-regras por experimento. Os
+Além da suíte, o código passou por oito rodadas de revisão independente (duas do banco e
+do robô, duas das telas, uma da IA, uma do Informativo Mensal e duas da v0.5.0), que
+tentaram quebrar as regras por experimento.
+
+## v0.5.0 — sem página pública; registro do que foi ao site
+
+Por decisão sua, a página pública "Artecon Informa" foi retirada: as publicações são
+feitas nas páginas da Artecon e o Radar registra o link, a data e a cópia do texto
+aprovado que saiu. O que foi comprovado:
+
+- **Fonte oficial:** o registro no site é recusado sem o assunto confirmado oficialmente e
+  sem trecho conferido em fonte oficial (trecho inventado ou de fonte não oficial não
+  conta); a fundamentação fica guardada no registro. O Informativo Mensal segue exigindo
+  só o conteúdo aprovado.
+- **Fontes em aberto:** o administrador cadastra, altera e exclui fontes pela tela; editor
+  e leitor não. O robô, lendo o banco de teste, coletou uma fonte gravada no banco com os
+  mesmos campos que a tela grava e registrou, sem parar as demais, três cadastros errados
+  (sem padrão, padrão inválido, padrão que não casa com nada). A cadeia tela → banco e a
+  cadeia banco → robô foram testadas separadamente, não em um único teste de ponta a ponta.
+- **Texto oficial incluído pela equipe:** só editor e administrador; fica marcado como
+  manual e auditado; endereço de outro site é recusado; não substitui captura que já tem
+  texto (nem com barra no fim, âncora ou outra fonte); completa captura que o robô deixou
+  sem texto; trecho inventado continua recusado; quando o robô lê depois, a origem fica
+  anotada.
+- **Registro mostra a fundamentação** guardada e avisa quando a base cai depois.
+- **Sem leitura pública:** quem não fez login não lê nem grava nada — nenhuma tabela, visão
+  ou função. Conferido em banco novo e em banco com a v0.4 instalada e atualizado para a
+  v0.5.0 (é o caso do seu Supabase): as permissões públicas antigas são retiradas.
+- **Registro:** só de conteúdo aprovado; a cópia do título e do texto não se forja nem se
+  altera depois; só vale se o texto ainda for o que estava na tela de quem registrou;
+  link fora do padrão (javascript:, espaços, aspas, caracteres invisíveis) e data futura
+  são recusados; leitor não registra; só o administrador exclui.
+- **Avisos:** conteúdo alterado depois do registro é sinalizado; quando há registro mais
+  novo com o texto atual, o antigo aparece só como "versão anterior".
+- **Fila:** conteúdo marcado como "não vai ao site" (só do Informativo Mensal) sai da fila
+  sem deixar de estar aprovado.
+
+Os testes da antiga página pública (página, agendamento, errata, "tirar do ar") foram
+retirados junto com ela. As regras antigas de publicação continuam testadas no banco. Os
 defeitos encontrados foram corrigidos e viraram teste.
+
+## Correção da v0.4.1 (erro na instalação real)
+
+Na primeira instalação no Supabase, o `radar-setup-v0.4.0.sql` parou no fim com
+`relation "_radar_antes" does not exist`. O script guardava o "estado antes" numa tabela
+temporária que só vive dentro da transação; reproduzi o mesmo erro aqui executando o script
+sem a transação (cada instrução confirmada à parte). A causa exata dentro do SQL Editor não
+foi confirmada — a reprodução mostra o mecanismo, não prova que foi isso que o editor fez.
+
+A v0.4.1 não usa tabela temporária e não depende da transação. Três testes novos: instala
+sem transação; conclui por cima de um banco deixado pelo erro da v0.4.0, preservando
+ajustes; e uma execução interrompida fica registrada sem contar como instalada. Os testes
+anteriores não pegaram o defeito porque sempre executavam o script com a transação íntegra.
 
 ## O que foi testado
 
 | Grupo | Testes | Como |
 |---|---:|---|
-| Banco: instalação, atualização da v0.1.0, permissões, fundamentação, aprovação, publicação, auditoria, uso da IA, imagens, configurações e informativo | 110 | PostgreSQL 16 local, com os papéis e os privilégios padrão do Supabase reproduzidos |
+| Banco: instalação, atualização da v0.1.0, permissões, fundamentação, aprovação, publicação, auditoria, uso da IA, imagens, configurações, informativo e registro de publicações no site, fontes e texto oficial | 130 | PostgreSQL 16 local, com os papéis e os privilégios padrão do Supabase reproduzidos |
 | Leitores das fontes e utilidades | 69 | amostras no formato de cada fonte e os **endereços, títulos e datas reais** lidos em 02/10/2026 |
-| Robô de ponta a ponta: robô → API → banco | 26 | PostgREST real (o motor de API do Supabase) e "sites" simulados |
-| Telas, IA, Informativo Mensal e PDF em navegador (Chromium) | 108 | banco e API reais; a função de IA rodando de verdade (Deno); login do Supabase e OpenAI simulados |
+| Robô de ponta a ponta: robô → API → banco | 27 | PostgREST real (o motor de API do Supabase) e "sites" simulados |
+| Telas, IA, Informativo Mensal e PDF em navegador (Chromium) | 115 | banco e API reais; a função de IA rodando de verdade (Deno); login do Supabase e OpenAI simulados |
 
 ## Conferência das fontes nos sites reais (02/10/2026)
 
@@ -53,11 +102,11 @@ bloqueia os servidores do GitHub Actions.
   artigo; só o administrador reabre; não fecha com artigo não aprovado; artigo alterado
   depois do fechamento gera aviso na edição e na página de impressão.
 - **Imagens:** a foto é reduzida no navegador (2400×1600 virou 1200×800, JPEG); o banco
-  recusa o que não for JPG, PNG ou WebP; o visitante só baixa imagem de publicação no ar.
+  recusa o que não for JPG, PNG ou WebP; só a equipe lê as imagens.
 - **Cópia para o site:** título e texto vão para a área de transferência com subtítulos,
   negrito, lista e tabela.
 - **Segurança:** HTML digitado em título, texto, tabela, autor, fonte, agenda e
-  configurações aparece como texto nas três páginas; nada executa.
+  configurações aparece como texto nas duas páginas; nada executa.
 
 ## IA: o que foi comprovado
 
@@ -84,7 +133,8 @@ bloqueia os servidores do GitHub Actions.
 | OpenAI de verdade | sem chave; os testes usam uma OpenAI simulada. A qualidade do texto gerado, os nomes dos modelos padrão e o formato exato da API não foram exercitados contra o serviço real | primeiro uso no Passo 7 |
 | Função de IA dentro do Supabase | aqui ela roda no Deno local; limites de tempo e de memória da plataforma não foram medidos | primeiro uso no Passo 7 |
 | HTML real dos sites lido pelo robô | ambiente sem acesso direto aos sites | diagnóstico (Passo 1) |
-| Login contra o Supabase Auth de verdade | sem acesso ao seu projeto | primeiro acesso (Passo 6) |
+| Login contra o Supabase Auth de verdade | não testado por mim; **você entrou no painel em 02/10/2026** com a v0.4 (tela do Painel enviada) | — |
+| `radar-setup-v0.5.0.sql` no seu Supabase | a v0.4.1 foi instalada por você e a evidência conferiu (20 tabelas, 56 políticas, 34 gatilhos); a v0.5.0 ainda não foi executada aí. Aqui, a atualização da v0.4 para a v0.5.0 foi testada | evidência depois de executar |
 | Instalação no Supabase, GitHub Pages e GitHub Actions | só no seu ambiente | evidência do Passo 2 e primeira execução de cada rotina |
 | Fontes do Google nas telas | bloqueadas no ambiente de teste | conferência visual no seu navegador |
 | Estabilidade do hash em páginas com trechos dinâmicos | só aparece com visitas reais em dias diferentes | observar "Alterados" nas primeiras semanas |
@@ -134,10 +184,34 @@ do texto e da imagem. Seis testes que a revisão apontou como frouxos foram endu
 
 Antes da revisão, os próprios testes já tinham revelado um defeito: a regra que libera a
 imagem ao visitante dependia de uma coluna que ele não podia ler, e a capa não apareceria
-na página pública.
+na página pública (hoje extinta).
 
-As correções das duas últimas rodadas (IA e Informativo) foram cobertas por testes, mas não
-passaram por uma segunda revisão independente.
+**v0.5.0 (registro do que foi ao site), uma rodada.** Nenhum crítico: o visitante ficou sem
+acesso algum, inclusive em banco atualizado, e não houve XSS nem como forjar o registro.
+Pontos importantes corrigidos:
+
+- Enter no campo do link salvava o conteúdo em vez de registrar, e o link digitado sumia;
+- o registro guardava o texto do momento do registro, que podia ser diferente do que
+  estava na tela de quem copiou para o site;
+- conteúdo que só vai ao Informativo Mensal ficava para sempre na fila "a publicar";
+- este relatório não tinha sido atualizado.
+
+Corrigidos também: regra do link mais frouxa no banco que na tela; data futura aceita;
+avisos de "texto alterado" que nunca sumiam de registros antigos; assunto arquivado que
+voltava como aprovado; corrida entre excluir e incluir registro; respostas com o texto
+inteiro ao corrigir o link; avisos na tela que cobriam botões.
+
+**v0.5.0, segunda parte (fonte oficial, fontes em aberto, texto oficial, visual), uma
+rodada.** Nenhum crítico. Pontos importantes corrigidos: o texto colado aceitava endereço
+de qualquer site sob qualquer fonte oficial; uma barra no fim do endereço criava captura
+paralela à do robô; endereço que o robô registrou sem texto não aceitava o texto colado;
+a regra de formato das fontes podia travar a atualização de saúde feita pelo robô em fonte
+antiga; a fundamentação guardada não aparecia em nenhuma tela; a marca "manual" sumia
+quando o robô atualizava a captura. Ficou sem correção, por ser de baixo risco (só o
+administrador cadastra): padrão de links muito complexo pode atrasar a coleta.
+
+As correções das quatro últimas rodadas foram cobertas por testes, mas não passaram por uma
+segunda revisão independente.
 
 ## Pendências conhecidas
 
@@ -152,6 +226,18 @@ passaram por uma segunda revisão independente.
 5. **Listas longas mostram só os itens mais recentes**, com aviso; ainda não há paginação.
 6. **Aviso por e-mail** de fonte com falha ainda não existe; a falha aparece no painel.
 7. **Diário Oficial da União** fora desta versão.
+16. **Texto oficial incluído pela equipe depende de quem inclui:** o sistema limita o
+    endereço ao site da fonte e marca a origem, mas não compara o texto colado com a
+    página. Um editor sozinho consegue satisfazer a exigência de fonte oficial.
+17. **Sem limite de tempo por fonte no robô:** um padrão de links mal escrito pode atrasar
+    a coleta.
+18. **Diagnóstico das fontes** (Passo 1) só cobre as seis fontes iniciais.
+13. **O Radar não confere o site:** o registro depende de alguém informar o link certo. Se
+    a notícia for alterada ou retirada no site, o Radar não fica sabendo.
+14. **Tabela `radar_publicacoes` sem uso:** continua no banco, com as regras antigas, e
+    ainda pode ser gravada por um editor pela API (nenhuma tela mostra essas linhas).
+15. **Assunto com dois conteúdos:** ao registrar um, o assunto passa a "Publicado" e sai da
+    lista "Em andamento"; o outro conteúdo aparece pela aba Publicações.
 8. **Edição fechada não guarda cópia dos artigos:** o registro definitivo é o PDF salvo.
    Alteração posterior é avisada, não impedida.
 9. **Imagens substituídas ficam no banco** sem uso; não há tela de limpeza.

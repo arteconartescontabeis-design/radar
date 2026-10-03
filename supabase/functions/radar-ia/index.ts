@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.4.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.5.0)
 //
 // Três ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
@@ -21,7 +21,7 @@
 //   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês)
 // =====================================================================
 
-const VERSAO = "0.4.0";
+const VERSAO = "0.5.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");

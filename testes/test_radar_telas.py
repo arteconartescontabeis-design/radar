@@ -1,6 +1,6 @@
 """Testes das telas em navegador de verdade (Chromium via Playwright).
 
-O dashboard (index.html) e a página pública (informa.html) rodam contra o PostgREST real
+O dashboard (index.html) e a página do informativo (informativo.html) rodam contra o PostgREST real
 e o banco real. O login do Supabase é simulado por um servidor local que emite o mesmo
 tipo de token (JWT) que o Supabase Auth emite. Sem Playwright ou PostgREST, o arquivo é pulado.
 """
@@ -62,9 +62,9 @@ class Servidor(BaseHTTPRequestHandler):
         if u.path == "/radar-config.js":
             js = f'window.RADAR_CONFIG = {{SUPABASE_URL: "{BASE}", SUPABASE_ANON_KEY: "{jwt("anon")}"}};'
             return self._responder(200, js.encode(), "application/javascript")
-        if u.path in ("/radar-timbrado-topo.png", "/radar-timbrado-rodape.png"):
+        if u.path in ("/radar-timbrado-topo.png", "/radar-timbrado-rodape.png", "/radar-logo-artecon.png"):
             return self._responder(200, (RAIZ / u.path.lstrip("/")).read_bytes(), "image/png")
-        if u.path in ("/", "/index.html", "/informa.html", "/informativo.html"):
+        if u.path in ("/", "/index.html", "/informativo.html"):
             arquivo = RAIZ / ("index.html" if u.path == "/" else u.path.lstrip("/"))
             return self._responder(200, arquivo.read_bytes(), "text/html; charset=utf-8")
         if u.path == "/auth/v1/token":
@@ -208,7 +208,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.4.0"
+    assert pagina.inner_text(".versao") == "v0.5.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -248,7 +248,7 @@ def test_sair_volta_para_a_tela_de_entrada(pagina):
 
 
 # ---------------------------------------------------------------- ciclo completo
-def test_ciclo_completo_da_captura_ate_a_pagina_publica(pagina, limpo):
+def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     captura(limpo)
     captura(limpo, "Notícia irrelevante sobre leilão", "https://www.gov.br/exemplo/leilao", "rfb-noticias")
     entrar(pagina)
@@ -265,7 +265,7 @@ def test_ciclo_completo_da_captura_ate_a_pagina_publica(pagina, limpo):
     pagina.wait_for_selector("text=Notícia irrelevante sobre leilão", state="detached")
     pagina.click("text=Abrir assunto")
     pagina.wait_for_selector("text=Dados do assunto")
-    assert "Ainda não pode ser publicado" in pagina.inner_text("main")
+    assert "Ainda não pode ser registrado como publicado no site" in pagina.inner_text("main")
     assert "FUNDAMENTAÇÃO NÃO CONFIRMADA" in pagina.inner_text("main")
 
     # evidência por seleção do texto oficial → conferida
@@ -299,43 +299,58 @@ def test_ciclo_completo_da_captura_ate_a_pagina_publica(pagina, limpo):
     pagina.wait_for_selector("text=Conteúdo aprovado.")
     pagina.screenshot(path=str(FOTOS / "03-assunto.png"), full_page=True)
 
-    # publicar antes da confirmação oficial: o banco barra e a tela explica
-    pagina.click("text=Publicar agora")
-    pagina.wait_for_selector("#recado .erro >> text=CONFIRMADO OFICIALMENTE")
-    assert limpo.execute("select count(*) from radar_publicacoes where status = 'publicado'").fetchone()[0] == 0
-
-    # confirma oficialmente, categoriza e publica
+    # v0.5.0: não há página pública nem botão Publicar; publica-se no site da Artecon e registra-se o link aqui
+    assert pagina.locator("text=Publicar agora").count() == 0 and pagina.locator("text=Artecon Informa").count() == 0
+    assert pagina.locator("a[href*='informa.html']").count() == 0
+    # a exigência de fonte oficial continua: sem o assunto confirmado, não há como registrar
+    assert pagina.locator("text=Registrar publicação no site").count() == 0
+    assert "confirmado oficialmente" in pagina.inner_text(".sem-fonte")
     pagina.select_option("#a-sit", "confirmado_oficialmente")
     pagina.select_option("#a-cat", "reforma-tributaria")
     pagina.click("text=Salvar dados do assunto")
     pagina.wait_for_selector("text=Assunto salvo.")
-    pagina.click("text=Publicar agora")
-    pagina.wait_for_selector("text=Publicado na Artecon Informa.")
-    slug, autor = limpo.execute("select slug, publicado_por::text from radar_publicacoes").fetchone()
-    assert slug == "cbs-na-transicao-o-que-muda-em-2027" and autor == EDITOR
+    assert pagina.locator(".sem-fonte").count() == 0
+    pagina.click("text=Registrar publicação no site")
+    pagina.wait_for_selector("#recado .erro >> text=Informe o link completo")
+    for n, ruim in enumerate(["javascript:alert(1)", "https://artecon.cnt.br/a b", 'https://artecon.cnt.br/"><b>', "https://artecon.cnt.br/a\u00a0b"], 1):
+        pagina.fill("[id^=site-url-]", ruim)
+        pagina.click("text=Registrar publicação no site")
+        pagina.wait_for_selector(f"#recado .erro >> text=Informe o link completo >> nth={n}")
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs-na-transicao")
+    pagina.fill("[id^=site-data-]", "2099-12-31")
+    pagina.click("text=Registrar publicação no site")
+    pagina.wait_for_selector("#recado .erro >> text=não pode estar no futuro")
+    assert limpo.execute("select count(*) from radar_divulgacoes").fetchone()[0] == 0
+    registrar_no_site(pagina, "https://artecon.cnt.br/news/cbs-na-transicao")
+    url, quando, titulo, corpo, quem = limpo.execute("select url, publicado_em::text, titulo, corpo, registrado_por::text from radar_divulgacoes").fetchone()
+    assert (url, quando, titulo, quem) == ("https://artecon.cnt.br/news/cbs-na-transicao", "2026-10-02", "CBS na transição: o que muda em 2027", EDITOR)
+    assert corpo.startswith("## O que mudou?")                                  # cópia do texto aprovado que saiu
+    fund = limpo.execute("select fundamentacao from radar_divulgacoes").fetchone()[0]
+    assert len(fund) == 1 and fund[0]["trecho"] == TRECHO and fund[0]["dispositivo"] == "art. 2º"      # só o trecho conferido
+    assert limpo.execute("select status from radar_assuntos where titulo like 'IN RFB%'").fetchone()[0] == "publicado"
+    assert limpo.execute("select count(*) from radar_publicacoes").fetchone()[0] == 0
+    aviso = pagina.locator(".registro-site")
+    assert "Publicado no site" in aviso.inner_text() and "02/10/2026" in aviso.inner_text()
+    assert aviso.locator("a").first.get_attribute("href") == "https://artecon.cnt.br/news/cbs-na-transicao"
+    assert "Fundamentação guardada (1 trecho)" in aviso.inner_text()
 
-    # página pública: publicação com texto formatado e fundamentação (só o trecho conferido)
-    pagina.goto(f"{BASE}/informa.html?p={slug}")
-    pagina.wait_for_selector("h1 >> text=CBS na transição: o que muda em 2027")
-    artigo = pagina.inner_text("article")
-    assert "Reforma Tributária" in artigo and "Análise Artecon" in artigo
-    assert pagina.locator("article h3").count() == 2 and pagina.locator("article li").count() == 2
-    assert pagina.inner_text("article strong") == "0,9%"
-    fontes = pagina.locator(".fonte")
-    assert fontes.count() == 1
-    assert TRECHO in fontes.inner_text() and "Instrução Normativa nº 2.290/2026 — RFB" in fontes.inner_text() and "art. 2º" in fontes.inner_text()
-    assert fontes.locator("a").get_attribute("href") == "https://www.gov.br/exemplo/in-2290"
-    assert "1,5%" not in artigo
-    pagina.screenshot(path=str(FOTOS / "04-informa-publicacao.png"), full_page=True)
-
-    # lista e filtro por categoria
-    pagina.goto(BASE + "/informa.html")
-    pagina.wait_for_selector(".cartao >> text=CBS na transição")
-    pagina.screenshot(path=str(FOTOS / "05-informa-lista.png"), full_page=True)
-    pagina.click("nav.cats >> text=Simples Nacional")
-    pagina.wait_for_selector("text=Ainda não há publicações nesta categoria.")
-    pagina.click("nav.cats >> text=Reforma Tributária")
-    pagina.wait_for_selector(".cartao >> text=CBS na transição")
+    # aba Publicações: registro do que foi ao site
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-site")
+    linha = pagina.locator("#tab-site tr").nth(1)
+    assert "CBS na transição: o que muda em 2027" in linha.inner_text() and "02/10/2026" in linha.inner_text()
+    assert linha.locator("a").first.get_attribute("href") == "https://artecon.cnt.br/news/cbs-na-transicao"
+    assert "Nenhum conteúdo aprovado aguardando publicação" in pagina.inner_text("main")
+    assert pagina.locator("text=Excluir registro").count() == 0                 # só o administrador exclui
+    pagina.screenshot(path=str(FOTOS / "04-publicacoes-no-site.png"), full_page=True)
+    pagina.resposta_dialogo = "https://artecon.cnt.br/news/cbs-na-transicao-2027"
+    pagina.click("text=Corrigir link")
+    pagina.wait_for_selector("text=Link corrigido.")
+    assert limpo.execute("select url from radar_divulgacoes").fetchone()[0] == "https://artecon.cnt.br/news/cbs-na-transicao-2027"
+    pagina.click("nav.abas >> text=Painel")
+    pagina.wait_for_selector("text=Painel do dia")
+    cartoes = pagina.inner_text(".cartoes")
+    assert "Publicados no site" in cartoes and "Aprovados a publicar no site" in cartoes and "Publicações no ar" not in cartoes
 
 
 # -------------------------------------------------------------- regras na tela
@@ -347,6 +362,15 @@ def preparar_aprovado(db, corpo="Texto do informativo.", titulo="Informativo de 
     c = db.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por) "
                    "values (%s, 'informativo', %s, %s, 'em_revisao', 'humano') returning id", (a, titulo, corpo)).fetchone()[0]
     return a, c
+
+
+def registrar_no_site(pg, url="https://artecon.cnt.br/news/noticia-de-teste", quando="2026-10-02", n=0):
+    """Na tela do assunto: informa o link e a data da notícia publicada no site e registra."""
+    antes = pg.locator(".registro-site").count()
+    pg.locator("[id^=site-url-]").nth(n).fill(url)
+    pg.locator("[id^=site-data-]").nth(n).fill(quando)
+    pg.locator("text=Registrar publicação no site").nth(n).click()
+    pg.wait_for_function("n => document.querySelectorAll('.registro-site').length > n", arg=antes)   # a tela já redesenhou com o registro novo
 
 
 def abrir_assunto(pg, titulo):
@@ -382,74 +406,31 @@ def test_nao_aprova_com_alteracao_nao_salva(pagina, limpo):
     assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"
 
 
-def test_editar_texto_aprovado_volta_para_revisao_e_sinaliza_a_publicacao(pagina, limpo):
+def test_editar_texto_depois_de_publicado_no_site_avisa_e_o_registro_guarda_o_que_saiu(pagina, limpo):
     a, c = preparar_aprovado(limpo)
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("text=Conteúdo aprovado.")
-    pagina.click("text=Publicar agora")
-    pagina.wait_for_selector("text=Publicado na Artecon Informa.")
+    registrar_no_site(pagina)
     pagina.locator("form[data-form=conteudo] [name=corpo]").fill("Texto reescrito depois de publicado.")
     pagina.locator("form[data-form=conteudo] button", has_text="Salvar").first.click()
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Em revisão")
-    pagina.wait_for_selector("text=Requer revisão:")
-    # o que está no ar continua sendo o texto aprovado
-    assert limpo.execute("select corpo, requer_revisao from radar_publicacoes").fetchone() == ("Texto do informativo.", True)
-    pagina.click("nav.abas >> text=Painel")
-    pagina.wait_for_selector("text=Publicações no ar que precisam de revisão")
-    pagina.screenshot(path=str(FOTOS / "06-painel-sinalizado.png"), full_page=True)
-
-
-def test_agendamento_tirar_do_ar_errata_e_republicacao(pagina, limpo):
-    a, c = preparar_aprovado(limpo, titulo="Agendada de teste")
-    entrar(pagina)
-    pagina.wait_for_selector("text=Painel do dia")
-    abrir_assunto(pagina, "Agendada de teste")
-    pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
-    pagina.click("button:has-text('Agendar')")
-    pagina.wait_for_selector("#recado .erro >> text=Informe a data e a hora")
-    pagina.fill(f"#quando-{c}", "2031-01-15T09:00")
-    pagina.click("button:has-text('Agendar')")
-    pagina.wait_for_selector("text=Publicação agendada.")
-    slug = limpo.execute("select slug from radar_publicacoes").fetchone()[0]
-
+    pagina.wait_for_selector(".registro-site >> text=O conteúdo foi alterado depois deste registro")
+    assert pagina.locator("text=Registrar publicação no site").count() == 0     # em revisão: não registra de novo
+    # o registro continua com o texto aprovado que saiu
+    assert limpo.execute("select corpo from radar_divulgacoes").fetchone()[0] == "Texto do informativo."
     pagina.click("nav.abas >> text=Publicações")
-    pagina.wait_for_selector("text=Agendada")
-    publica = pagina.context.new_page()
-    publica.goto(BASE + "/informa.html")
-    publica.wait_for_selector("text=Ainda não há publicações.")                 # agendada não aparece
-    publica.goto(f"{BASE}/informa.html?p={slug}")
-    publica.wait_for_selector("text=Publicação não encontrada")
-
-    # adianta a data: aparece; errata; tira do ar: some; publica de novo: volta
-    limpo.execute("update radar_publicacoes set publicar_em = now() - interval '1 minute'")
-    publica.goto(BASE + "/informa.html")
-    publica.wait_for_selector(".cartao >> text=Agendada de teste")
-    pagina.click("nav.abas >> text=Publicações")
-    pagina.resposta_dialogo = "Onde se lê 0,9%, leia-se 0,9% a.a."
-    pagina.click("text=Errata")
-    pagina.wait_for_selector("text=Onde se lê 0,9%")
-    publica.goto(f"{BASE}/informa.html?p={slug}")
-    publica.wait_for_selector(".errata >> text=Onde se lê 0,9%, leia-se 0,9% a.a.")
-    pagina.click("text=Tirar do ar")
-    pagina.wait_for_selector("text=Publicação fora do ar.")
-    publica.reload()
-    publica.wait_for_selector("text=Publicação não encontrada")
-    pagina.locator("tr", has_text="Agendada de teste").locator("button", has_text="Publicar").click()
-    pagina.wait_for_selector("text=Publicado na Artecon Informa.")
-    publica.reload()
-    publica.wait_for_selector("h1 >> text=Agendada de teste")
-    publica.close()
+    pagina.wait_for_selector("#tab-site >> text=ainda não está aprovado de novo")
+    pagina.screenshot(path=str(FOTOS / "06-publicacao-alterada-depois.png"), full_page=True)
 
 
 # ------------------------------------------------------------------- segurança
 ATAQUE = '<img src=x onerror="window.__invadido=1"><script>window.__invadido=2</script>'
 
 
-def test_conteudo_malicioso_e_exibido_como_texto_nas_duas_telas(pagina, limpo):
+def test_conteudo_malicioso_e_exibido_como_texto_no_painel(pagina, limpo):
     cap = captura(limpo, titulo="Captura " + ATAQUE, url="https://www.gov.br/exemplo/outra", texto=TEXTO + " " + ATAQUE)
     a, c = preparar_aprovado(limpo, corpo="## Subtítulo " + ATAQUE + "\nParágrafo " + ATAQUE + "\n- item " + ATAQUE
                              + "\n[x](javascript:alert(1)) javascript:alert(1) https://ok.gov.br/a\"onmouseover=\"window.__invadido=3",
@@ -466,56 +447,15 @@ def test_conteudo_malicioso_e_exibido_como_texto_nas_duas_telas(pagina, limpo):
     pagina.click("summary >> text=Ver como vai aparecer")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("text=Conteúdo aprovado.")
-    pagina.click("text=Publicar agora")
-    pagina.wait_for_selector("text=Publicado na Artecon Informa.")
-    pagina.resposta_dialogo = ATAQUE
+    registrar_no_site(pagina)
+    limpo.execute("update radar_divulgacoes set observacao = %s", (ATAQUE,))
     pagina.click("nav.abas >> text=Publicações")
-    pagina.click("text=Errata")
-    pagina.wait_for_selector("td >> text=Errata:")
+    pagina.wait_for_selector("#tab-site")
+    assert "<img src=x" in pagina.inner_text("#tab-site")                      # aparece como texto, não como imagem
     assert pagina.evaluate("window.__invadido") is None
-    assert pagina.locator("main img, main script").count() == 0
-
-    slug = limpo.execute("select slug from radar_publicacoes").fetchone()[0]
-    assert re.fullmatch(r"[a-z0-9-]+", slug)
-    for url in [f"{BASE}/informa.html?p={slug}", BASE + "/informa.html",
-                BASE + "/informa.html?c=" + requests.utils.quote(ATAQUE), BASE + "/informa.html?p=" + requests.utils.quote(ATAQUE)]:
-        pagina.goto(url)
-        pagina.wait_for_load_state("networkidle")
-        assert pagina.evaluate("window.__invadido") is None, url
-        assert pagina.locator("main img, main script").count() == 0, url
-    pagina.goto(f"{BASE}/informa.html?p={slug}")
-    pagina.wait_for_selector("article h1")
-    assert "<img src=x" in pagina.inner_text("article h1")                  # aparece como texto, não como imagem
-    links = pagina.eval_on_selector_all("article a", "els => els.map(a => a.getAttribute('href'))")
-    assert all(l.startswith(("https://", "http://", "informa.html")) for l in links), links
-    assert pagina.locator("article [onmouseover]").count() == 0
-
-
-def test_fundamentacao_com_endereco_perigoso_nao_vira_link(pagina, limpo):
-    a, c = preparar_aprovado(limpo)
-    limpo.execute("update radar_capturas set url = 'javascript:alert(1)'")
-    entrar(pagina)
-    pagina.wait_for_selector("text=Painel do dia")
-    abrir_assunto(pagina, "Informativo de teste")
-    pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
-    pagina.click("text=Publicar agora")
-    pagina.wait_for_selector("text=Publicado na Artecon Informa.")
-    slug = limpo.execute("select slug from radar_publicacoes").fetchone()[0]
-    pagina.goto(f"{BASE}/informa.html?p={slug}")
-    pagina.wait_for_selector(".fonte")
-    assert pagina.locator(".fonte a").count() == 0
-
-
-def test_pagina_publica_nao_envia_token_de_usuario_e_so_pede_colunas_de_vitrine(pagina, limpo):
-    pedidos = []
-    pagina.on("request", lambda r: pedidos.append(r) if "/rest/v1/" in r.url else None)
-    pagina.goto(BASE + "/informa.html")
-    pagina.wait_for_selector("text=Ainda não há publicações.")
-    anon = jwt("anon")
-    assert pedidos and all(r.headers.get("authorization") == "Bearer " + anon for r in pedidos)
-    pub = [r.url for r in pedidos if "radar_publicacoes" in r.url]
-    assert pub and all("select=id%2Cslug%2Ctitulo%2Ccorpo%2Cformato%2Ccategoria%2Cpublicar_em%2Cerrata%2Cfundamentacao%2Catualizado_em" in u for u in pub)
+    assert pagina.locator("main img, main script, main [onmouseover]").count() == 0
+    links = pagina.eval_on_selector_all("main a", "els => els.map(a => a.getAttribute('href'))")
+    assert links and all(l.startswith(("https://", "http://")) for l in links), links
 
 
 # --------------------------------------------------------------- administração
@@ -543,21 +483,31 @@ def test_admin_gerencia_usuarios_fontes_e_ve_o_historico(pagina, limpo):
     pagina.click("nav.abas >> text=Fontes")
     pagina.locator("tr", has_text="PGFN — Notícias").locator("text=Configurar").click()
     form = pagina.locator("form[data-form=fonte]")
+    assert form.locator("[name=padrao_url]").input_value() == "/pgfn/pt-br/assuntos/noticias/\\d{4}/[^/?#]+$"
+    form.locator("summary").click()
+    assert form.locator("[name=config]").input_value().strip() == "{}"            # padrão, seletor e janela ficam nos campos próprios
     form.locator("[name=config]").fill("{isto não é json")
     form.locator("text=Salvar fonte").click()
-    pagina.wait_for_selector("#recado .erro >> text=não é um JSON válido")
-    form.locator("[name=config]").fill('{"janela_dias": 45, "padrao_url": "/pgfn/pt-br/assuntos/noticias/\\\\d{4}/"}')
+    pagina.wait_for_selector("#recado .erro >> text=não são um JSON válido")
+    form.locator("[name=config]").fill('{"revisitar_dias": 5}')
+    form.locator("[name=padrao_url]").fill("/pgfn/(")
+    form.locator("text=Salvar fonte").click()
+    pagina.wait_for_selector("#recado .erro >> text=não é uma expressão válida")
+    form.locator("[name=padrao_url]").fill("/pgfn/pt-br/assuntos/noticias/\\d{4}/")
+    form.locator("[name=janela_dias]").fill("45")
     form.locator("[name=frequencia_horas]").fill("8")
     form.locator("text=Salvar fonte").click()
     pagina.wait_for_selector("text=Fonte salva.")
-    assert limpo.execute("select frequencia_horas, config->>'janela_dias' from radar_fontes where slug = 'pgfn-noticias'").fetchone() == (8, "45")
+    assert limpo.execute("select frequencia_horas, config, nome, slug from radar_fontes where slug = 'pgfn-noticias'").fetchone() == \
+        (8, {"janela_dias": 45, "padrao_url": "/pgfn/pt-br/assuntos/noticias/\\d{4}/", "revisitar_dias": 5,
+             "seletor_texto": "[property='rnews:articleBody'], #parent-fieldname-text, #content-core, article, main"}, "PGFN — Notícias", "pgfn-noticias")
     pagina.screenshot(path=str(FOTOS / "08-fontes.png"), full_page=True)
 
     pagina.click("nav.abas >> text=Histórico")
     pagina.wait_for_selector("text=Trilha de auditoria")
     historico = pagina.inner_text("main")
     assert "alterou fontes" in historico and "frequencia_horas: 6 → 8" in historico and "Admin" in historico
-    limpo.execute("update radar_fontes set frequencia_horas = 6, config = config where slug = 'pgfn-noticias'")
+    limpo.execute("""update radar_fontes set frequencia_horas = 6, config = '{"janela_dias": 30, "padrao_url": "/pgfn/pt-br/assuntos/noticias/\\\\d{4}/[^/?#]+$", "seletor_texto": "[property=''rnews:articleBody''], #parent-fieldname-text, #content-core, article, main"}'::jsonb where slug = 'pgfn-noticias'""")
 
 
 def test_editor_nao_ve_abas_de_administracao_e_o_banco_recusa_mesmo_forcando(pagina, limpo):
@@ -584,7 +534,7 @@ def test_telas_cabem_no_celular_sem_rolagem_lateral(navegador, limpo):
     entrar(pg)
     pg.wait_for_selector("text=Painel do dia")
     assert sem_rolagem_lateral(pg), "painel"
-    for aba in ["Capturas", "Assuntos", "Informativos", "Fontes", "Versões"]:
+    for aba in ["Capturas", "Assuntos", "Informativos", "Publicações", "Fontes", "Como usar", "Versões"]:
         pg.click(f"nav.abas >> text={aba}")
         pg.wait_for_timeout(300)
         assert sem_rolagem_lateral(pg), aba
@@ -593,14 +543,12 @@ def test_telas_cabem_no_celular_sem_rolagem_lateral(navegador, limpo):
     pg.screenshot(path=str(FOTOS / "09-celular-assunto.png"), full_page=True)
     pg.click("form[data-form=conteudo] >> text=Aprovar")
     pg.wait_for_selector("text=Conteúdo aprovado.")
-    pg.click("text=Publicar agora")
-    pg.wait_for_selector("text=Publicado na Artecon Informa.")
-    slug = limpo.execute("select slug from radar_publicacoes").fetchone()[0]
-    for url in [BASE + "/informa.html", f"{BASE}/informa.html?p={slug}"]:
-        pg.goto(url)
-        pg.wait_for_load_state("networkidle")
-        assert sem_rolagem_lateral(pg), url
-    pg.screenshot(path=str(FOTOS / "10-celular-informa.png"), full_page=True)
+    registrar_no_site(pg, "https://artecon.cnt.br/news/um-endereco-bem-comprido-para-testar-a-quebra-de-linha-em-telas-estreitas-de-celular-item-12345")
+    assert sem_rolagem_lateral(pg), "assunto com registro no site"
+    pg.click("nav.abas >> text=Publicações")
+    pg.wait_for_selector("#tab-site")
+    assert sem_rolagem_lateral(pg), "publicações"
+    pg.screenshot(path=str(FOTOS / "10-celular-publicacoes.png"), full_page=True)
     contexto.close()
 
 
@@ -612,13 +560,11 @@ def test_sem_configuracao_as_telas_avisam_em_vez_de_quebrar(navegador):
     pg = contexto.new_page()
     pg.goto(BASE + "/index.html")
     pg.wait_for_selector("text=Falta configurar")
-    pg.goto(BASE + "/informa.html")
-    pg.wait_for_selector("text=Página em configuração.")
     contexto.close()
 
 
 # ------------------------------------------- pontos da revisão independente das telas
-def test_clique_duplo_nao_duplica_assunto_conteudo_nem_publicacao(pagina, limpo):
+def test_clique_duplo_nao_duplica_assunto_conteudo_nem_registro_no_site(pagina, limpo):
     captura(limpo)
     pagina.route("**/rest/v1/**", lambda rota: (time.sleep(0.15), rota.continue_()))      # latência de rede
     entrar(pagina)
@@ -636,11 +582,12 @@ def test_clique_duplo_nao_duplica_assunto_conteudo_nem_publicacao(pagina, limpo)
     pagina.click("text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.dblclick("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Publicar agora")
-    pagina.dblclick("text=Publicar agora")
-    pagina.wait_for_selector("text=ver na Artecon Informa")
+    pagina.wait_for_selector("text=Registrar publicação no site")
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/clique-duplo")
+    pagina.dblclick("text=Registrar publicação no site")
+    pagina.wait_for_selector(".registro-site")
     pagina.wait_for_timeout(600)
-    assert limpo.execute("select count(*) from radar_publicacoes").fetchone()[0] == 1
+    assert limpo.execute("select count(*) from radar_divulgacoes").fetchone()[0] == 1
     assert pagina.locator("#recado .erro").count() == 0          # nenhum recado de erro falso
 
 
@@ -708,6 +655,10 @@ def test_novo_usuario_ja_vem_marcado_como_ativo(pagina, limpo):
 
 def test_endereco_perigoso_nao_vira_link_no_dashboard(pagina, limpo):
     cap = captura(limpo, url="javascript:alert(document.domain)")
+    # o banco já recusa esse endereço (RADAR090); o gatilho é suspenso aqui para provar que a TELA também se defende
+    with pytest.raises(Exception, match="RADAR090"):
+        limpo.execute("update radar_fontes set url = 'javascript:alert(1)' where slug = 'cgibs-noticias'")
+    limpo.execute("alter table radar_fontes disable trigger radar_tg_fonte_formato")
     limpo.execute("update radar_fontes set url = 'javascript:alert(1)' where slug = 'cgibs-noticias'")
     try:
         entrar(pagina)
@@ -724,6 +675,7 @@ def test_endereco_perigoso_nao_vira_link_no_dashboard(pagina, limpo):
         assert not any(h.lower().startswith("javascript") for h in hrefs)
     finally:
         limpo.execute("update radar_fontes set url = 'https://www.cgibs.gov.br/' where slug = 'cgibs-noticias'")
+        limpo.execute("alter table radar_fontes enable trigger radar_tg_fonte_formato")
 
 
 def test_assunto_e_evidencia_pelo_teclado(pagina, limpo):
@@ -748,7 +700,7 @@ def test_assunto_e_evidencia_pelo_teclado(pagina, limpo):
     pagina.wait_for_selector("text=Conferido no texto oficial")
 
 
-def test_links_e_negrito_no_texto_publicado(pagina, limpo):
+def test_links_e_negrito_no_texto(pagina, limpo):
     corpo = ('Veja "https://www.gov.br/x" e <https://a.gov.br/c>. Fonte: https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/'
              + "um-endereco-muito-comprido-" * 8 + "fim.\n1 ** 2 ** 3 e **negrito de verdade**.\n**a** e **b c** e **https://a.com/x** e HTTPS://A.COM/Caminho(1). (veja https://b.com/y).")
     a, c = preparar_aprovado(limpo, corpo=corpo)
@@ -757,27 +709,14 @@ def test_links_e_negrito_no_texto_publicado(pagina, limpo):
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("text=Conteúdo aprovado.")
-    pagina.click("text=Publicar agora")
-    pagina.wait_for_selector("text=ver na Artecon Informa")
-    slug = limpo.execute("select slug from radar_publicacoes").fetchone()[0]
     pagina.set_viewport_size({"width": 375, "height": 740})
     pagina.click("summary >> text=Ver como vai aparecer")
-    assert sem_rolagem_lateral(pagina), "prévia no dashboard"
-    pagina.goto(f"{BASE}/informa.html?p={slug}")
-    pagina.wait_for_selector("article h1")
-    hrefs = pagina.eval_on_selector_all("article p a", "els => els.map(a => a.getAttribute('href'))")
+    assert sem_rolagem_lateral(pagina), "prévia com endereço comprido"
+    hrefs = pagina.eval_on_selector_all(".previa p a", "els => els.map(a => a.getAttribute('href'))")
     assert hrefs[0] == "https://www.gov.br/x" and hrefs[1] == "https://a.gov.br/c" and hrefs[2].endswith("fim")
     assert hrefs[3:6] == ["https://a.com/x", "HTTPS://A.COM/Caminho(1)", "https://b.com/y"]
-    assert pagina.eval_on_selector_all("article > p strong", "els => els.map(e => e.textContent)") == ["negrito de verdade", "a", "b c", "https://a.com/x"]
-    assert "**" not in pagina.inner_text("article").replace("1 ** 2 ** 3", "")
-    assert sem_rolagem_lateral(pagina), "endereço comprido na página pública"
-
-
-def test_categoria_inexistente_na_url_nao_mostra_lixo(pagina, limpo):
-    for c in ["constructor", "__proto__", "toString"]:
-        pagina.goto(f"{BASE}/informa.html?c={c}")
-        pagina.wait_for_selector("main h1")
-        assert pagina.inner_text("main h1") == "Publicações"
+    assert pagina.eval_on_selector_all(".previa > p strong", "els => els.map(e => e.textContent)") == ["negrito de verdade", "a", "b c", "https://a.com/x"]
+    assert "**" not in pagina.inner_text(".previa").replace("1 ** 2 ** 3", "")
 
 
 def test_chave_service_role_no_arquivo_de_configuracao_e_recusada(navegador, limpo):
@@ -790,8 +729,6 @@ def test_chave_service_role_no_arquivo_de_configuracao_e_recusada(navegador, lim
     pg.on("request", lambda r: pedidos.append(r.url) if "/rest/v1/" in r.url or "/auth/v1/" in r.url else None)
     pg.goto(BASE + "/index.html")
     pg.wait_for_selector("text=Chave errada no radar-config.js")
-    pg.goto(BASE + "/informa.html")
-    pg.wait_for_selector("text=Página em configuração.")
     assert pedidos == []                 # a chave secreta nem chega a ser usada
     contexto.close()
 
@@ -813,38 +750,6 @@ def test_navegar_nunca_fica_travado_mesmo_com_o_servidor_lento(pagina, limpo):
     pagina.click("text=Sair")                            # sair também não espera
     pagina.wait_for_selector("#email", timeout=2000)
     lento["ligado"] = False
-
-
-def test_agendar_no_passado_e_recusado_com_explicacao(pagina, limpo):
-    a, c = preparar_aprovado(limpo)
-    entrar(pagina)
-    pagina.wait_for_selector("text=Painel do dia")
-    abrir_assunto(pagina, "Informativo de teste")
-    pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
-    pagina.fill(f"#quando-{c}", "2020-01-15T09:00")
-    pagina.click("button:has-text('Agendar')")
-    pagina.wait_for_selector("#recado .erro >> text=precisa estar no futuro")
-    assert limpo.execute("select count(*) from radar_publicacoes").fetchone()[0] == 0
-
-
-def test_motivo_da_revisao_aparece_sem_codigo_tecnico(pagina, limpo):
-    a, c = preparar_aprovado(limpo)
-    entrar(pagina)
-    pagina.wait_for_selector("text=Painel do dia")
-    abrir_assunto(pagina, "Informativo de teste")
-    pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
-    pagina.click("text=Publicar agora")
-    pagina.wait_for_selector("text=Publicado na Artecon Informa.")
-    limpo.execute("update radar_assuntos set situacao_confirmacao = 'divergencia_identificada'")
-    pagina.click("nav.abas >> text=Publicações")
-    pagina.wait_for_selector("text=Requer revisão:")
-    texto = pagina.inner_text("main")
-    assert "não está CONFIRMADO OFICIALMENTE" in texto and "RADAR031" not in texto
-    pagina.click("text=Marcar como revisada")
-    pagina.wait_for_selector("text=Publicação marcada como revisada.")
-    assert limpo.execute("select requer_revisao from radar_publicacoes").fetchone()[0] is False
 
 
 # ====================================================================== IA (Bloco 2)
@@ -1178,9 +1083,19 @@ def foto_de_teste(caminho, tamanho=(2400, 1600)):
     return str(caminho)
 
 
-def artigo_aprovado(db, titulo="CGSN prorroga prazo para adesão ao Simples Nacional até 15 de outubro", corpo=ARTIGO, autor="Marcos Vinicius Martins da Silva"):
-    """Assunto criado pela equipe (sem captura) com conteúdo aprovado pela editora."""
+_n_artigo = iter(range(1, 100000))
+
+
+def artigo_aprovado(db, titulo="CGSN prorroga prazo para adesão ao Simples Nacional até 15 de outubro", corpo=ARTIGO, autor="Marcos Vinicius Martins da Silva",
+                    fundamentado=False):
+    """Assunto criado pela equipe com conteúdo aprovado pela editora. Com fundamentado=True, o assunto fica
+    confirmado oficialmente e com um trecho conferido em fonte oficial (o que o registro no site exige)."""
     a = db.execute("insert into radar_assuntos (titulo, abrangencia, status) values (%s, 'geral', 'selecionado') returning id", (titulo,)).fetchone()[0]
+    if fundamentado:
+        n = next(_n_artigo)
+        cap = captura(db, f"Ato oficial de teste nº {n}", f"https://www.gov.br/exemplo/ato-{n}")
+        db.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a, cap, TRECHO))
+        db.execute("update radar_assuntos set situacao_confirmacao = 'confirmado_oficialmente' where id = %s", (a,))
     c = db.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por, autor) "
                    "values (%s, 'informativo', %s, %s, 'em_revisao', 'humano', %s) returning id", (a, titulo, corpo, autor)).fetchone()[0]
     with como_editor(db) as ed:
@@ -1263,10 +1178,7 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("text=Conteúdo aprovado.")
     pagina.screenshot(path=str(FOTOS / "20-assunto-manual.png"), full_page=True)
-    # sem fonte oficial, não vai para a Artecon Informa — mas entra no Informativo Mensal
-    pagina.click("text=Publicar agora")
-    pagina.wait_for_selector("#recado .erro")
-    assert limpo.execute("select count(*) from radar_publicacoes where status = 'publicado'").fetchone()[0] == 0
+    assert pagina.locator("text=Publicar agora").count() == 0                   # não há mais página pública
     artigo_aprovado(limpo, "PGFN abre negociação de débitos de FGTS e contribuições sociais",
                     "A Procuradoria-Geral da Fazenda Nacional publicou edital.\n\n## Quem pode aderir\n\n" + "Parágrafo de teste do artigo. " * 120, autor=None)
 
@@ -1555,65 +1467,6 @@ def test_copiar_para_o_site_leva_titulo_e_texto_formatado(navegador, limpo):
     contexto.close()
 
 
-def test_imagem_de_capa_autor_e_chamada_na_pagina_publica(pagina, limpo, tmp_path):
-    a, c = preparar_aprovado(limpo, corpo="Abertura do texto.\n\n| Prazo | Regra |\n|---|---|\n| 15/10 | Adesão |\n\nFim.", titulo="Notícia com capa")
-    preparar_sem_capa = limpo.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por) "
-                                      "values (%s, 'flash', 'Notícia sem capa', 'Texto curto.', 'em_revisao', 'humano') returning id", (a,)).fetchone()[0]
-    entrar(pagina)
-    pagina.wait_for_selector("text=Painel do dia")
-    abrir_assunto(pagina, "Notícia com capa")
-    bloco = pagina.locator("form[data-form=conteudo]", has=pagina.locator("input[value='Notícia com capa']"))
-    bloco.locator("input[type=file]").set_input_files(foto_de_teste(tmp_path / "capa.png", (900, 500)))
-    pagina.wait_for_selector("text=Imagem enviada.")
-    bloco = pagina.locator("form[data-form=conteudo]", has=pagina.locator("input[value='Notícia com capa']"))
-    bloco.locator("[name=autor]").fill("Equipe Fiscal Artecon")
-    bloco.locator("[name=fonte_credito]").fill("Receita Federal")
-    bloco.locator("button", has_text="Salvar").first.click()
-    pagina.wait_for_selector("text=Conteúdo salvo.")
-    for titulo in ["Notícia com capa", "Notícia sem capa"]:
-        bloco = pagina.locator("form[data-form=conteudo]", has=pagina.locator(f"input[value='{titulo}']"))
-        bloco.locator("button", has_text="Aprovar").click()
-        pagina.wait_for_selector("text=Conteúdo aprovado.")
-        pagina.wait_for_selector("#recado div", state="detached")
-        bloco = pagina.locator("form[data-form=conteudo]", has=pagina.locator(f"input[value='{titulo}']"))
-        bloco.locator("text=Publicar agora").click()
-        pagina.wait_for_selector("text=Publicado na Artecon Informa.")
-        pagina.wait_for_selector("#recado div", state="detached")
-    bloco = pagina.locator("form[data-form=conteudo]", has=pagina.locator("input[value='Notícia com capa']"))
-    baixar = bloco.locator("a", has_text="Baixar imagem")
-    assert baixar.get_attribute("download").startswith("radar-imagem-") and baixar.get_attribute("href").startswith("data:image/jpeg;base64,")
-    img, autor, fonte = limpo.execute("select imagem_id, autor, fonte_credito from radar_publicacoes where titulo = 'Notícia com capa'").fetchone()
-    assert img and (autor, fonte) == ("Equipe Fiscal Artecon", "Receita Federal")
-    # trocar a imagem de conteúdo aprovado devolve para revisão e sinaliza a publicação no ar (que mantém a capa antiga)
-    bloco.locator("input[type=file]").set_input_files(foto_de_teste(tmp_path / "outra.png", (600, 600)))
-    pagina.wait_for_selector("text=Imagem enviada.")
-    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "em_revisao"
-    assert limpo.execute("select imagem_id, requer_revisao from radar_publicacoes where titulo = 'Notícia com capa'").fetchone() == (img, True)
-
-    # página pública (visitante sem login)
-    pedidos = []
-    pagina.on("request", lambda r: pedidos.append(r.url) if "/rest/v1/radar_imagens" in r.url else None)
-    pagina.goto(BASE + "/informa.html")
-    pagina.wait_for_selector(".cartao >> text=Notícia com capa")
-    pagina.wait_for_function("document.querySelector('.cartao .mini')?.style.backgroundImage.startsWith('url(\"data:image/jpeg')")
-    assert pagina.locator(".cartao .mini").count() == 1 and len(pedidos) == 1        # só a capa que existe é baixada
-    assert "| Prazo" not in pagina.inner_text(".cartao.com-capa")                    # a tabela não vaza para o resumo
-    pagina.click(".cartao >> text=Notícia com capa")
-    pagina.wait_for_selector("article img.capa")
-    assert pagina.evaluate("document.querySelector('article img.capa').naturalWidth") == 900
-    artigo = pagina.inner_text("article")
-    assert "Texto elaborado por: Equipe Fiscal Artecon" in artigo and "Fonte: Receita Federal" in artigo
-    assert pagina.locator("article table.tabela-texto td").all_inner_texts() == ["15/10", "Adesão"]
-    assert pagina.locator("a.botao", has_text="Fale conosco").get_attribute("href") == "https://artecon.cnt.br/contact"
-    assert pagina.locator("a.botao.zap").get_attribute("href") == "https://wa.me/554832420530"
-    pagina.screenshot(path=str(FOTOS / "23-informa-com-capa.png"), full_page=True)
-    # o visitante não baixa imagem que não está em publicação no ar
-    solta = limpo.execute("select id from radar_imagens where id <> %s", (img,)).fetchone()[0]
-    r = requests.get(f"{BASE}/rest/v1/radar_imagens?select=id", headers={"Authorization": "Bearer " + jwt("anon")})
-    assert r.status_code == 200 and [x["id"] for x in r.json()] == [img] and solta != img
-    assert preparar_sem_capa
-
-
 def test_tabela_e_campos_novos_nao_executam_html(pagina, limpo):
     mal = "| <img src=x onerror=window.__xss=1> | **<script>window.__xss=1</script>** |\n|---|---|\n| javascript:alert(1) | https://exemplo.com/a|b |"
     a, c = artigo_aprovado(limpo, "Título <script>window.__xss=1</script>", mal, autor='"><img src=x onerror=window.__xss=1>')
@@ -1766,7 +1619,424 @@ def test_tabelas_no_texto_casos_de_borda(pagina, texto, esperado):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     assert pagina.evaluate("t => renderTexto(t)", texto) == esperado
-    for outra in ("informativo.html?id=0", "informa.html"):          # as três cópias dão o mesmo resultado
+    for outra in ("informativo.html?id=0",):                          # as duas cópias dão o mesmo resultado
         pagina.goto(f"{BASE}/{outra}")
         pagina.wait_for_load_state("networkidle")
-        assert pagina.evaluate("t => renderTexto(t)", texto).replace('<div class="rolagem">', "").replace("</div>", "") == esperado
+        assert pagina.evaluate("t => renderTexto(t)", texto) == esperado
+
+
+# ============================================================ v0.5.0 — sem página pública; registro do que foi ao site
+def test_nao_existe_mais_pagina_publica_e_o_visitante_nao_le_nada(pagina, limpo):
+    assert not (RAIZ / "informa.html").exists()
+    for arquivo in ("index.html", "informativo.html"):
+        assert "informa.html" not in (RAIZ / arquivo).read_text(encoding="utf-8").replace("(informa.html)", "")
+    assert requests.get(BASE + "/informa.html").status_code == 404
+    a, c = artigo_aprovado(limpo, fundamentado=True)
+    with como_editor(limpo) as ed:
+        ed.execute("insert into radar_divulgacoes (conteudo_id, url) values (%s, 'https://artecon.cnt.br/news/x')", (c,))
+    anon = {"Authorization": "Bearer " + jwt("anon")}
+    for consulta in ["radar_publicacoes?select=titulo", "radar_divulgacoes", "radar_v_divulgacoes", "radar_conteudos", "radar_categorias",
+                     "radar_imagens", "radar_informativos", "radar_config", "radar_v_painel"]:
+        assert requests.get(f"{BASE}/rest/v1/{consulta}", headers=anon).status_code in (401, 403), consulta
+    # a tela de entrada não pede nada ao banco antes do login
+    pedidos = []
+    pagina.on("request", lambda r: pedidos.append(r.url) if "/rest/v1/" in r.url else None)
+    pagina.goto(BASE + "/index.html")
+    pagina.wait_for_selector("#email")
+    assert pedidos == []
+
+
+def test_publicacoes_lista_pendentes_e_registrados_e_respeita_os_perfis(pagina, limpo):
+    a1, c1 = artigo_aprovado(limpo, "Artigo já publicado no site", "Texto um.", autor=None, fundamentado=True)
+    a2, c2 = artigo_aprovado(limpo, "Artigo aprovado esperando", "Texto dois.", autor=None, fundamentado=True)
+    with como_editor(limpo) as ed:
+        ed.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em, observacao) values (%s, 'https://artecon.cnt.br/news/um', '2026-09-30', 'Destaque da home')", (c1,))
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    assert pagina.locator("nav.abas button", has_text="Publicações").locator(".conta").inner_text() == "1"      # 1 aprovado a publicar
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-site")
+    assert "Artigo aprovado esperando" in pagina.inner_text("#tab-pendentes") and "Artigo já publicado" not in pagina.inner_text("#tab-pendentes")
+    assert "Artigo já publicado no site" in pagina.inner_text("#tab-site") and "30/09/2026" in pagina.inner_text("#tab-site") and "Destaque da home" in pagina.inner_text("#tab-site")
+    assert pagina.locator("text=Corrigir link").count() == 0 and pagina.locator("text=Excluir registro").count() == 0
+    pagina.click("text=Abrir para copiar e registrar")
+    pagina.wait_for_selector("text=Dados do assunto")
+    assert pagina.locator("text=Registrar publicação no site").count() == 0     # leitor não registra
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    # administrador: exclui o registro e o conteúdo volta para "a publicar"
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-site")
+    pagina.resposta_dialogo = "sem-https.com/x"
+    pagina.click("text=Corrigir link")
+    pagina.wait_for_selector("#recado .erro >> text=precisa começar com https://")
+    assert limpo.execute("select url from radar_divulgacoes").fetchone()[0] == "https://artecon.cnt.br/news/um"
+    pagina.click("text=Excluir registro")
+    pagina.wait_for_selector("text=Registro excluído.")
+    assert limpo.execute("select count(*) from radar_divulgacoes").fetchone()[0] == 0
+    assert pagina.locator("#tab-pendentes tr").count() == 3 and "Nenhuma publicação registrada ainda" in pagina.inner_text("main")
+    assert limpo.execute("select status from radar_assuntos where id = %s", (a1,)).fetchone()[0] == "aprovado"
+
+
+def test_registro_no_site_pede_para_salvar_antes_e_aceita_mais_de_um_registro(pagina, limpo, tmp_path):
+    a, c = artigo_aprovado(limpo, fundamentado=True)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CGSN prorroga")
+    form = pagina.locator("form[data-form=conteudo]")
+    # imagem de capa, baixar imagem e cópia continuam no conteúdo aprovado
+    form.locator("input[type=file]").set_input_files(foto_de_teste(tmp_path / "capa.png", (900, 500)))
+    pagina.wait_for_selector("text=Imagem enviada.")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    baixar = pagina.locator("form[data-form=conteudo] a", has_text="Baixar imagem")
+    assert baixar.get_attribute("download").startswith("radar-imagem-") and baixar.get_attribute("href").startswith("data:image/jpeg;base64,")
+    # com texto digitado e não salvo, o registro é recusado (registraria um texto que não é o aprovado)
+    pagina.locator("form[data-form=conteudo] [name=autor]").fill("Outro autor")
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cgsn")
+    pagina.click("text=Registrar publicação no site")
+    pagina.wait_for_selector("#recado .erro >> text=Salve o conteúdo antes de registrar")
+    assert limpo.execute("select count(*) from radar_divulgacoes").fetchone()[0] == 0
+    pagina.locator("form[data-form=conteudo] [name=autor]").fill("Marcos Vinicius Martins da Silva")
+    registrar_no_site(pagina, "https://artecon.cnt.br/news/cgsn")
+    registrar_no_site(pagina, "https://www.instagram.com/p/abc123/", "2026-10-01")
+    assert limpo.execute("select url, publicado_em::text from radar_divulgacoes order by id").fetchall() == \
+        [("https://artecon.cnt.br/news/cgsn", "2026-10-02"), ("https://www.instagram.com/p/abc123/", "2026-10-01")]
+    assert pagina.locator(".registro-site").count() == 2
+    pagina.screenshot(path=str(FOTOS / "24-assunto-com-registro-no-site.png"), full_page=True)
+
+
+def test_enter_no_campo_do_link_registra_em_vez_de_salvar_o_conteudo(pagina, limpo):
+    a, c = artigo_aprovado(limpo, fundamentado=True)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CGSN prorroga")
+    pagina.fill("[id^=site-obs-]", "Destaque da home")
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cgsn")
+    pagina.locator("[id^=site-url-]").press("Enter")
+    pagina.wait_for_selector("text=Publicação no site registrada.")
+    assert pagina.locator("text=Conteúdo salvo.").count() == 0
+    assert limpo.execute("select url, observacao from radar_divulgacoes").fetchall() == [("https://artecon.cnt.br/news/cgsn", "Destaque da home")]
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
+    assert "Destaque da home" in pagina.inner_text(".registro-site")
+
+
+def test_registro_no_site_recusa_quando_o_texto_mudou_com_a_tela_aberta(pagina, limpo):
+    a, c = artigo_aprovado(limpo, fundamentado=True)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CGSN prorroga")
+    limpo.execute("select set_config('request.jwt.claims', %s, false)", (json.dumps({"role": "authenticated", "sub": ADMIN}),))
+    limpo.execute("update radar_conteudos set corpo = 'TEXTO B que a editora nunca viu' where id = %s", (c,))
+    limpo.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    limpo.execute("select set_config('request.jwt.claims', '', false)")
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cgsn")
+    pagina.click("text=Registrar publicação no site")
+    pagina.wait_for_selector("#recado .erro >> text=o conteúdo foi alterado depois que esta tela foi aberta")
+    assert limpo.execute("select count(*) from radar_divulgacoes").fetchone()[0] == 0
+
+
+def test_conteudo_so_do_informativo_sai_da_fila_de_publicacoes(pagina, limpo):
+    a, c = artigo_aprovado(limpo)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    assert pagina.locator("nav.abas button", has_text="Publicações").locator(".conta").inner_text() == "1"
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-pendentes")
+    pagina.click("text=Não vai ao site")
+    pagina.wait_for_selector("text=Conteúdo fora da fila de publicações.")
+    assert pagina.locator("#tab-pendentes").count() == 0
+    assert pagina.locator("nav.abas button", has_text="Publicações").locator(".conta").count() == 0
+    assert limpo.execute("select fora_do_site, status from radar_conteudos where id = %s", (c,)).fetchone() == (True, "aprovado")
+    # continua disponível para o Informativo Mensal e pode voltar para a fila
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.select_option("#filtro-assuntos", "todos")
+    pagina.locator("tr.clicavel", has_text="CGSN prorroga").click()
+    pagina.wait_for_selector(".fora-do-site")
+    pagina.click("text=Voltar para a fila")
+    pagina.wait_for_selector("text=Conteúdo de volta à fila de publicações.")
+    assert limpo.execute("select fora_do_site from radar_conteudos where id = %s", (c,)).fetchone()[0] is False
+
+
+def test_corrigir_e_excluir_registro_nao_trafegam_o_texto_inteiro(pagina, limpo):
+    a, c = artigo_aprovado(limpo, "Artigo enorme", "x" * 59000, autor=None, fundamentado=True)
+    with como_editor(limpo) as ed:
+        ed.execute("insert into radar_divulgacoes (conteudo_id, url) values (%s, 'https://artecon.cnt.br/news/um')", (c,))
+    tamanhos = []
+    pagina.on("response", lambda r: tamanhos.append((r.request.method, len(r.body()))) if "/rest/v1/radar_" in r.url and "divulgacoes" in r.url else None)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-site")
+    pagina.resposta_dialogo = "https://artecon.cnt.br/news/dois"
+    pagina.click("text=Corrigir link")
+    pagina.wait_for_selector("text=Link corrigido.")
+    pagina.click("text=Excluir registro")
+    pagina.wait_for_selector("text=Registro excluído.")
+    assert {m for m, _ in tamanhos} >= {"GET", "PATCH", "DELETE"} and max(t for _, t in tamanhos) < 5000, tamanhos
+
+
+# ============================================================ v0.5.0 — fonte oficial exigida, fontes em aberto, texto oficial manual, visual e ajuda
+def test_assunto_da_equipe_so_registra_no_site_depois_de_incluir_texto_oficial_e_fundamentar(pagina, limpo):
+    a, c = artigo_aprovado(limpo)                        # sem captura: serve para o informativo, não para o site
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CGSN prorroga")
+    assert "Ainda não pode ser registrado como publicado no site" in pagina.inner_text("main")
+    assert pagina.locator("text=Registrar publicação no site").count() == 0 and pagina.locator(".sem-fonte").count() == 1
+    assert pagina.locator("text=Copiar texto formatado").count() == 1          # copiar para o site continua disponível
+
+    # inclui o texto oficial colado da fonte
+    pagina.click("text=Incluir texto oficial")
+    form = pagina.locator("form[data-form=textoOficial]")
+    form.locator("[name=fonte]").select_option(label="Simples Nacional — Notícias")
+    form.locator("[name=url]").fill("javascript:alert(1)")
+    form.locator("[name=titulo]").fill("Resolução CGSN nº 194, de 2026")
+    form.locator("[name=texto]").fill("Art. 1º Fica prorrogado até 15 de outubro de 2026 o prazo para a opção pelo Simples Nacional. Art. 2º Esta Resolução entra em vigor na data de sua publicação.")
+    form.locator("button", has_text="Incluir texto oficial").click()
+    pagina.wait_for_selector("#recado .erro >> text=Informe o endereço completo da página oficial")
+    assert limpo.execute("select count(*) from radar_capturas").fetchone()[0] == 0
+    form.locator("[name=url]").fill("https://www8.receita.fazenda.gov.br/SimplesNacional/Noticias/NoticiaCompleta.aspx?id=abc")
+    form.locator("[name=data]").fill("2026-09-30")
+    form.locator("button", has_text="Incluir texto oficial").click()
+    pagina.wait_for_selector("text=Texto oficial incluído.")
+    assert "incluído pela equipe" in pagina.inner_text("main") and pagina.locator(".aviso.manual").count() == 1
+    meta, texto = limpo.execute("select metadados, texto from radar_capturas").fetchone()
+    assert meta["manual"] is True and meta["incluido_por"] == EDITOR and texto.startswith("Art. 1º Fica prorrogado")
+
+    # fundamenta por seleção do trecho e confirma o assunto
+    selecionar(pagina, "prorrogado até 15 de outubro de 2026 o prazo")
+    pagina.click("text=Usar trecho selecionado como evidência")
+    pagina.click("text=Registrar evidência")
+    pagina.wait_for_selector("text=Conferido no texto oficial")
+    assert pagina.locator("text=Registrar publicação no site").count() == 0      # ainda falta confirmar o assunto
+    pagina.select_option("#a-sit", "confirmado_oficialmente")
+    pagina.click("text=Salvar dados do assunto")
+    pagina.wait_for_selector("text=Assunto salvo.")
+    assert pagina.locator(".sem-fonte").count() == 0 and "Ainda não pode ser registrado" not in pagina.inner_text("main")
+    registrar_no_site(pagina, "https://artecon.cnt.br/news/cgsn-prorroga")
+    fund = limpo.execute("select fundamentacao from radar_divulgacoes").fetchone()[0]
+    assert len(fund) == 1 and fund[0]["manual"] is True and fund[0]["trecho"] == "prorrogado até 15 de outubro de 2026 o prazo"
+    assert fund[0]["url"].startswith("https://www8.receita.fazenda.gov.br/")
+    pagina.screenshot(path=str(FOTOS / "25-assunto-texto-oficial-manual.png"), full_page=True)
+
+    # o mesmo endereço de novo: não substitui o texto, só avisa
+    pagina.click("text=Incluir texto oficial")
+    form = pagina.locator("form[data-form=textoOficial]")
+    form.locator("[name=fonte]").select_option(label="Simples Nacional — Notícias")
+    form.locator("[name=url]").fill("https://www8.receita.fazenda.gov.br/SimplesNacional/Noticias/NoticiaCompleta.aspx?id=abc")
+    form.locator("[name=titulo]").fill("Outro título qualquer")
+    form.locator("[name=texto]").fill("Texto diferente colado depois, com mais de cinquenta caracteres para passar na validação.")
+    form.locator("button", has_text="Incluir texto oficial").click()
+    pagina.wait_for_selector("#recado .erro >> text=já tinha sido capturado")
+    assert limpo.execute("select count(*), max(versao) from radar_capturas").fetchone() == (1, 1)
+    # endereço de outro site sob a fonte escolhida: recusado com explicação
+    pagina.click("text=Incluir texto oficial")
+    form = pagina.locator("form[data-form=textoOficial]")
+    form.locator("[name=fonte]").select_option(label="Simples Nacional — Notícias")
+    form.locator("[name=url]").fill("https://site-qualquer.com.br/noticia")
+    form.locator("[name=titulo]").fill("Notícia de outro site")
+    form.locator("[name=texto]").fill("Texto de um site que não é o da fonte escolhida, com mais de cinquenta caracteres no total.")
+    form.locator("button", has_text="Incluir texto oficial").click()
+    pagina.wait_for_selector("#recado .erro >> text=não é do site da fonte escolhida")
+    assert limpo.execute("select count(*) from radar_capturas").fetchone()[0] == 1
+    # o registro mostra a fundamentação guardada, com a marca de texto incluído pela equipe
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-site")
+    pagina.click("#tab-site details.fundamentacao summary")
+    quadro = pagina.inner_text("#tab-site details.fundamentacao")
+    assert "prorrogado até 15 de outubro de 2026 o prazo" in quadro and "texto incluído pela equipe" in quadro and "Comitê Gestor do Simples Nacional" in quadro
+    assert pagina.locator(".base-caiu").count() == 0
+    limpo.execute("update radar_assuntos set situacao_confirmacao = 'divergencia_identificada'")
+    pagina.click("nav.abas >> text=Painel")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector(".base-caiu >> text=deixou de estar completa")
+
+
+def test_aviso_diz_o_motivo_quando_o_trecho_conferido_e_de_fonte_nao_oficial(pagina, limpo):
+    a, c = artigo_aprovado(limpo, fundamentado=True)
+    limpo.execute("update radar_fontes set oficial = false where slug = 'rfb-normas'")
+    try:
+        entrar(pagina)
+        pagina.wait_for_selector("text=Painel do dia")
+        abrir_assunto(pagina, "CGSN prorroga")
+        aviso = pagina.inner_text(".aviso.alerta >> nth=0")
+        assert "Ainda não pode ser registrado" in aviso and "são de fonte não oficial" in aviso
+        assert pagina.locator("text=Registrar publicação no site").count() == 0
+    finally:
+        limpo.execute("update radar_fontes set oficial = true where slug = 'rfb-normas'")
+
+
+def test_formularios_novos_cabem_no_celular(navegador, limpo):
+    artigo_aprovado(limpo)
+    contexto = navegador.new_context(viewport={"width": 375, "height": 740}, locale="pt-BR")
+    contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
+    pg = contexto.new_page()
+    entrar(pg, "admin@artecon.test")
+    pg.wait_for_selector("text=Painel do dia")
+    pg.click("nav.abas >> text=Fontes")
+    pg.wait_for_selector("#tab-fontes")
+    pg.click("text=Nova fonte")
+    assert sem_rolagem_lateral(pg), "nova fonte"
+    pg.locator("#tab-fontes tr", has_text="PGFN").locator("text=Configurar").click()
+    pg.wait_for_selector("#tab-fontes form[data-form=fonte]")
+    caixa = pg.locator("#tab-fontes form[data-form=fonte]").bounding_box()
+    assert sem_rolagem_lateral(pg) and caixa["x"] >= 0 and caixa["x"] + caixa["width"] <= 376, caixa      # o formulário inteiro fica na tela
+    pg.screenshot(path=str(FOTOS / "29-celular-configurar-fonte.png"), full_page=True)
+    abrir_assunto(pg, "CGSN prorroga")
+    pg.click("text=Incluir texto oficial")
+    pg.wait_for_selector("form[data-form=textoOficial]")
+    assert sem_rolagem_lateral(pg), "texto oficial"
+    contexto.close()
+
+
+def test_leitor_nao_inclui_texto_oficial_nem_cadastra_fonte(pagina, limpo):
+    artigo_aprovado(limpo)
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CGSN prorroga")
+    assert pagina.locator("text=Incluir texto oficial").count() == 0
+    pagina.click("nav.abas >> text=Fontes")
+    pagina.wait_for_selector("#tab-fontes")
+    assert pagina.locator("text=Nova fonte").count() == 0 and pagina.locator("text=Configurar").count() == 0
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina)                                       # editora: também não cadastra fonte
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Fontes")
+    pagina.wait_for_selector("#tab-fontes")
+    assert pagina.locator("text=Nova fonte").count() == 0
+
+
+def test_administrador_cadastra_fonte_nova_pela_tela_e_o_robo_passa_a_ver(pagina, limpo):
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Fontes")
+    pagina.wait_for_selector("#tab-fontes")
+    pagina.click("text=Nova fonte")
+    form = pagina.locator("#nova-fonte form[data-form=fonte]")
+    form.locator("[name=nome]").fill("Prefeitura de Palhoça — Notícias")
+    form.locator("[name=orgao]").fill("Prefeitura de Palhoça")
+    form.locator("[name=abrangencia]").select_option("municipal")
+    form.locator("[name=url]").fill("www.palhoca.sc.gov.br/noticias")
+    form.locator("button", has_text="Cadastrar fonte").click()
+    pagina.wait_for_selector("#recado .erro >> text=precisa ser completo")
+    form.locator("[name=url]").fill("https://www.palhoca.sc.gov.br/noticias")
+    form.locator("button", has_text="Cadastrar fonte").click()
+    pagina.wait_for_selector("#recado .erro >> text=informe o padrão dos links")
+    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 6
+    assert form.locator("[name=nome]").input_value() == "Prefeitura de Palhoça — Notícias"        # nada do que foi digitado se perdeu
+    assert form.locator("[name=tipo_coletor] option").all_inner_texts() == ["Página com lista de links", "Feed RSS"]
+    form.locator("[name=padrao_url]").fill("/noticias/(\\d+)+$")
+    form.locator("button", has_text="Cadastrar fonte").click()
+    pagina.wait_for_selector("#recado .erro >> text=repetição dentro de outra")
+    form.locator("[name=padrao_url]").fill("/noticias/\\d+")
+    form.locator("button", has_text="Cadastrar fonte").click()
+    pagina.wait_for_selector("text=Fonte cadastrada.")
+    linha = limpo.execute("""select slug, nome, orgao, abrangencia, tipo_coletor, url, config, frequencia_horas, ativo, validada, oficial
+                             from radar_fontes where slug like 'prefeitura%'""").fetchone()
+    assert linha == ("prefeitura-de-palhoca-noticias", "Prefeitura de Palhoça — Notícias", "Prefeitura de Palhoça", "municipal", "html_links",
+                     "https://www.palhoca.sc.gov.br/noticias", {"padrao_url": "/noticias/\\d+", "janela_dias": 30, "seletor_texto": "article, main, #content, body"},
+                     12, True, False, True)
+    tr_nova = pagina.locator("#tab-fontes tr", has_text="Prefeitura de Palhoça — Notícias")
+    assert "a validar" in tr_nova.inner_text() and "Nunca executou" in tr_nova.inner_text() and "Página com lista de links" in tr_nova.inner_text()
+    pagina.screenshot(path=str(FOTOS / "26-fontes-cadastro.png"), full_page=True)
+    # o robô lê as fontes ativas do banco: a nova já entra na próxima coleta
+    lidas = requests.get(f"{BASE}/rest/v1/radar_fontes?select=slug&ativo=eq.true&order=id", headers={"Authorization": "Bearer " + jwt("service_role")}).json()
+    assert lidas[-1]["slug"] == "prefeitura-de-palhoca-noticias" and len(lidas) == 7
+    # mesmo nome de novo: recusado com explicação
+    pagina.click("text=Nova fonte")
+    form = pagina.locator("#nova-fonte form[data-form=fonte]")
+    form.locator("[name=nome]").fill("Prefeitura de Palhoça — Notícias")
+    form.locator("[name=orgao]").fill("Prefeitura")
+    form.locator("[name=url]").fill("https://www.palhoca.sc.gov.br/outra")
+    form.locator("[name=padrao_url]").fill("/x/")
+    form.locator("button", has_text="Cadastrar fonte").click()
+    pagina.wait_for_selector("#recado .erro >> text=Já existe uma fonte com este nome")
+    # nome diferente que geraria o mesmo identificador: cadastra com um número no fim
+    form.locator("[name=nome]").fill("Prefeitura de Palhoca: noticias!")
+    form.locator("button", has_text="Cadastrar fonte").click()
+    pagina.wait_for_selector("text=Fonte cadastrada. >> nth=1")
+    assert [r[0] for r in limpo.execute("select slug from radar_fontes where slug like 'prefeitura%' order by id").fetchall()] == \
+        ["prefeitura-de-palhoca-noticias", "prefeitura-de-palhoca-noticias-2"]
+    limpo.execute("delete from radar_fontes where slug = 'prefeitura-de-palhoca-noticias-2'")
+    pagina.click("nav.abas >> text=Painel")
+    pagina.click("nav.abas >> text=Fontes")
+    pagina.wait_for_selector("#tab-fontes")
+    tr_nova = pagina.locator("#tab-fontes tr", has_text="Prefeitura de Palhoça — Notícias")
+    # altera pelo formulário completo, desativa e exclui
+    tr_nova.locator("text=Configurar").click()
+    edicao = pagina.locator("#tab-fontes form[data-form=fonte]")
+    edicao.locator("[name=tipo_coletor]").select_option("rss")
+    edicao.locator("[name=padrao_url]").fill("")
+    edicao.locator("[name=ativo]").uncheck()
+    edicao.locator("[name=oficial]").uncheck()
+    edicao.locator("text=Salvar fonte").click()
+    pagina.wait_for_selector("text=Fonte salva.")
+    assert limpo.execute("select tipo_coletor, ativo, oficial, config ? 'padrao_url', slug from radar_fontes where slug like 'prefeitura%'").fetchone() == \
+        ("rss", False, False, False, "prefeitura-de-palhoca-noticias")
+    tr_nova = pagina.locator("#tab-fontes tr", has_text="Prefeitura de Palhoça — Notícias")
+    assert "inativa" in tr_nova.inner_text() and "não oficial" in tr_nova.inner_text()
+    tr_nova.locator("text=Configurar").click()
+    pagina.locator("#tab-fontes form[data-form=fonte] >> text=Excluir fonte").click()
+    pagina.wait_for_selector("text=Fonte excluída.")
+    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 6
+    # fonte que já tem captura não é excluída: a tela explica o que fazer
+    captura(limpo)
+    pagina.locator("#tab-fontes tr", has_text="Receita Federal — Atos normativos").locator("text=Configurar").click()
+    pagina.locator("#tab-fontes form[data-form=fonte] >> text=Excluir fonte").click()
+    pagina.wait_for_selector("#recado .erro >> text=desmarque “Fonte ativa”")
+    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 6
+
+
+def test_fonte_com_dados_maliciosos_aparece_como_texto(pagina, limpo):
+    limpo.execute("alter table radar_fontes disable trigger user")
+    limpo.execute("""insert into radar_fontes (slug, nome, orgao, tipo_coletor, url, config, ultimo_erro)
+                     values ('teste-xss', %s, %s, 'rss', 'https://x.gov.br/rss', %s::jsonb, %s)""",
+                  ("Fonte " + ATAQUE, "Órgão " + ATAQUE, json.dumps({"padrao_url": '"><img src=x onerror=window.__invadido=5>', "seletor_texto": ATAQUE}), ATAQUE))
+    limpo.execute("alter table radar_fontes enable trigger user")
+    artigo_aprovado(limpo)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Fontes")
+    pagina.wait_for_selector("#tab-fontes")
+    pagina.locator("#tab-fontes tr", has_text="Fonte <img").locator("text=Configurar").click()
+    pagina.wait_for_selector("#tab-fontes form[data-form=fonte]")
+    assert pagina.locator("#tab-fontes form [name=padrao_url]").input_value() == '"><img src=x onerror=window.__invadido=5>'
+    abrir_assunto(pagina, "CGSN prorroga")
+    pagina.click("text=Incluir texto oficial")
+    assert "Fonte <img" in pagina.inner_text("#to-fonte")
+    assert pagina.evaluate("window.__invadido") is None and pagina.locator("main img[src=x], main script").count() == 0
+
+
+def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
+    pagina.goto(BASE + "/index.html")
+    pagina.wait_for_selector("#email")
+    assert pagina.evaluate("(() => { const i = document.querySelector('.logo-entrada'); return i.complete && i.naturalWidth > 100; })()")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    assert pagina.evaluate("(() => { const i = document.querySelector('.topo .logo'); return i.complete && i.naturalWidth > 100; })()")
+    assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
+    assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
+    rodape = pagina.inner_text("footer.rodape")
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.5.0" in rodape
+    pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
+    pagina.click("nav.abas >> text=Como usar")
+    pagina.wait_for_selector("h1 >> text=Como usar o Radar")
+    ajuda = pagina.inner_text("main")
+    for trecho in ["O caminho de uma publicação", "Incluir texto oficial", "Registrar publicação no site", "Informativo Mensal", "O que o sistema exige",
+                   "assunto confirmado oficialmente e ao menos um trecho conferido em fonte oficial", "Formatação do texto"]:
+        assert trecho in ajuda, trecho
+    assert "Cadastrar uma fonte nova" not in ajuda and "Histórico" not in ajuda              # só para o administrador
+    pagina.screenshot(path=str(FOTOS / "28-como-usar.png"), full_page=True)
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Como usar")
+    pagina.wait_for_selector("text=Cadastrar uma fonte nova")
+    pagina.click("nav.abas >> text=Versões")
+    pagina.wait_for_selector("text=Versão em uso")
+    assert "Fontes em aberto" in pagina.inner_text("main") and "A exigência de fonte oficial continua" in pagina.inner_text("main")

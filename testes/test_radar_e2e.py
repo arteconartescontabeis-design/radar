@@ -108,7 +108,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.4.0", True), ("ok", 1, 200, "0.4.0", True)]
+    assert ex == [("ok", 2, 200, "0.5.0", True), ("ok", 1, 200, "0.5.0", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -238,12 +238,13 @@ def test_api_publica_nao_expoe_dados_internos(cenario):
     for tabela in ["radar_capturas", "radar_fontes", "radar_execucoes", "radar_auditoria", "radar_perfis", "radar_assuntos"]:
         assert requests.get(f"{API}/{tabela}", timeout=5).status_code in (401, 403), tabela
         assert requests.post(f"{API}/{tabela}", json={}, timeout=5).status_code in (401, 403), tabela
-    assert requests.get(f"{API}/radar_publicacoes?select=slug,titulo,corpo,categoria,publicar_em,errata", timeout=5).json() == []
-    assert requests.get(f"{API}/radar_publicacoes?select=criado_por", timeout=5).status_code in (401, 403)
+    for consulta in ["radar_publicacoes?select=slug,titulo,corpo", "radar_publicacoes?select=criado_por", "radar_imagens?select=id",
+                     "radar_divulgacoes", "radar_v_divulgacoes", "radar_informativos", "radar_config"]:
+        assert requests.get(f"{API}/{consulta}", timeout=5).status_code in (401, 403), consulta
     assert requests.get(f"{API}/radar_v_saude_fontes", timeout=5).status_code in (401, 403)
     for funcao in ["radar_papel", "radar_trecho_confere", "radar_normalizar", "radar_hash_texto", "radar_sinalizar_assunto"]:
         assert requests.post(f"{API}/rpc/{funcao}", json={}, timeout=5).status_code in (401, 403, 404), funcao
-    assert len(requests.get(f"{API}/radar_categorias", timeout=5).json()) == 8
+    assert requests.get(f"{API}/radar_categorias", timeout=5).status_code in (401, 403)       # v0.5.0: sem página pública, sem leitura pública
 
 
 def test_codigos_de_saida_do_robo(cenario, monkeypatch):
@@ -397,3 +398,24 @@ def test_pagina_2_com_erro_aproveita_a_1_e_marca_parcial(cenario):
                     (SITE + "/n/c?p={p}", json.dumps({"janela_dias": 10, "paginas_max": 3, "itens_por_pagina": 3, "sem_pagina_de_texto": True})))
     r, _ = robo("teste-normas")
     assert (r["teste-normas"]["status"], r["teste-normas"]["novos"]) == ("parcial", 3) and "página 2" in r["teste-normas"]["erro"]
+
+
+# ------------------------------------------------------------ v0.5.0 — fontes cadastradas pela tela
+def test_fonte_cadastrada_pela_tela_e_lida_na_coleta_seguinte_e_erro_de_cadastro_nao_derruba_as_outras(cenario):
+    """A fonte nova entra pelo banco (como a tela grava). Cadastro errado vira falha registrada daquela fonte, sem afetar as demais."""
+    for slug, config in [("teste-nova-ok", {"padrao_url": "/a/noticias/\\d{4}/", "janela_dias": 30, "seletor_texto": "#content-core"}),
+                         ("teste-sem-padrao", {"janela_dias": 30}),                                     # faltou o padrão dos links
+                         ("teste-padrao-invalido", {"padrao_url": "/a/(noticias"}),                    # expressão que o Python não aceita
+                         ("teste-padrao-errado", {"padrao_url": "/isto-nao-existe/\\d+"})]:            # não casa com nenhum link
+        cenario.execute("""insert into radar_fontes (slug, nome, orgao, abrangencia, tipo_coletor, url, config)
+                           values (%s, %s, 'Órgão de teste', 'municipal', 'html_links', %s, %s::jsonb)""",
+                        (slug, "Fonte " + slug, SITE + "/a/lista", json.dumps(config)))
+    r, _ = robo()
+    assert (r["teste-nova-ok"]["status"], r["teste-nova-ok"]["novos"]) == ("ok", 2)
+    assert r["teste-sem-padrao"]["status"] == "falha" and r["teste-padrao-invalido"]["status"] == "falha"
+    assert r["teste-padrao-errado"]["status"] == "vazio_suspeito"
+    assert (r["teste-a"]["status"], r["teste-b"]["status"]) == ("ok", "ok")                           # as outras seguiram
+    erros = dict(cenario.execute("select slug, ultimo_erro from radar_fontes where slug like 'teste-%' and ultimo_erro is not null").fetchall())
+    assert set(erros) == {"teste-sem-padrao", "teste-padrao-invalido", "teste-padrao-errado"}
+    assert "falta o padrão dos links" in erros["teste-sem-padrao"]                                     # a mensagem diz o que corrigir
+    assert "não é uma expressão válida" in erros["teste-padrao-invalido"]

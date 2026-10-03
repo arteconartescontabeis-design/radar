@@ -15,28 +15,42 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0}
-body{font-family:"DM Sans",system-ui,sans-serif;color:var(--cinza);background:var(--fundo);font-size:15px;line-height:1.45}
+body{font-family:"DM Sans",system-ui,sans-serif;color:var(--cinza);background:#F1F4F7;font-size:15px;line-height:1.45}
 h1,h2,h3{font-family:"Playfair Display",Georgia,serif;color:var(--marinho);margin:0 0 .5em}
 h1{font-size:1.5rem} h2{font-size:1.25rem} h3{font-size:1.05rem}
 a{color:#1B5E9B}
 button,input,select,textarea{font:inherit;color:inherit}
-.topo{background:linear-gradient(90deg,var(--marinho),#1B5E9B);border-bottom:3px solid var(--azul);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.marca{font-family:"Playfair Display",serif;font-weight:700;font-size:1.25rem;letter-spacing:.3px}
-.marca small{font-family:"DM Sans",sans-serif;font-weight:400;font-size:.8rem;opacity:.85;margin-left:6px}
-.versao{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:1px 10px;font-size:.78rem;cursor:pointer;color:#fff}
+/* cabeçalho no padrão do papel timbrado: logotipo sobre branco e a faixa marinho → azul */
+.tricolor{height:4px;background:linear-gradient(90deg,var(--vermelho) 0 68%,#00AEEF 68% 90%,#FFD700 90% 100%)}
+.topo{background:#fff;color:var(--cinza);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.topo .logo{height:52px;width:auto;display:block}
+.marca{font-family:"Playfair Display",serif;font-weight:700;font-size:1.35rem;color:var(--marinho);line-height:1.1;border-left:2px solid var(--linha);padding-left:16px}
+.marca small{display:block;font-family:"DM Sans",sans-serif;font-weight:500;font-size:.72rem;color:var(--vermelho);letter-spacing:1.6px;text-transform:uppercase;margin-top:3px}
+.versao{background:var(--azul-claro);border:1px solid #C9DDEE;border-radius:999px;padding:2px 11px;font-size:.78rem;cursor:pointer;color:var(--marinho);font-weight:700}
 .quem{margin-left:auto;font-size:.85rem;display:flex;gap:10px;align-items:center}
-.quem button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer}
+.quem button{background:#fff;border:1px solid var(--marinho);color:var(--marinho);border-radius:6px;padding:4px 12px;cursor:pointer}
+.faixa{height:7px;background:linear-gradient(90deg,var(--marinho) 0%,#1B5E9B 55%,var(--azul) 100%)}
+.rodape{max-width:1180px;margin:0 auto;padding:0 16px 28px;font-size:.78rem;color:#6B7480;text-align:center}
+.rodape b{color:var(--marinho)}
+.logo-entrada{display:block;width:210px;max-width:70%;height:auto;margin:0 auto 14px}
+.passos{counter-reset:passo;list-style:none;padding:0;margin:0}
+.passos>li{counter-increment:passo;position:relative;padding:0 0 14px 46px}
+.passos>li::before{content:counter(passo);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;background:var(--marinho);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center}
+.passos>li b:first-child{color:var(--marinho)}
 nav.abas{background:#fff;border-bottom:1px solid var(--linha);display:flex;gap:2px;padding:0 10px;overflow-x:auto}
 nav.abas button{background:none;border:0;border-bottom:3px solid transparent;padding:11px 12px;cursor:pointer;white-space:nowrap;color:var(--cinza)}
 nav.abas button.ativa{border-bottom-color:var(--vermelho);color:var(--marinho);font-weight:700}
 nav.abas .conta{background:var(--vermelho);color:#fff;border-radius:999px;font-size:.72rem;padding:0 6px;margin-left:4px}
 main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
 .cartoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
-.cartao{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left}
+.cartao{background:#fff;border:1px solid var(--linha);border-top:3px solid var(--azul);border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left;box-shadow:0 1px 2px rgba(1,31,72,.06)}
+.cartao.alerta{border-top-color:var(--vermelho)}
 .cartao b{display:block;font-size:1.7rem;color:var(--marinho);font-family:"Playfair Display",serif}
 .cartao span{font-size:.82rem}
 .cartao.alerta b{color:var(--vermelho)}
-.painel{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:16px;margin-bottom:16px}
+.painel{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:0 1px 2px rgba(1,31,72,.06)}
+main h1{border-left:5px solid var(--vermelho);padding-left:12px}
+#tab-fontes form{position:sticky;left:0;max-width:calc(100vw - 68px)}
 .linha-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
 input[type=text],input[type=email],input[type=password],input[type=number],input[type=datetime-local],select,textarea{
   border:1px solid #C9D2DC;border-radius:7px;padding:7px 9px;background:#fff;max-width:100%}
@@ -52,7 +66,7 @@ label{display:block;font-size:.8rem;font-weight:700;color:var(--marinho);margin:
 .btn.peq{padding:3px 9px;font-size:.82rem}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 table{width:100%;border-collapse:collapse}
-th{text-align:left;font-size:.78rem;text-transform:uppercase;letter-spacing:.4px;color:var(--marinho);border-bottom:2px solid var(--linha);padding:7px 8px}
+th{white-space:nowrap;text-align:left;font-size:.78rem;text-transform:uppercase;letter-spacing:.4px;color:var(--marinho);border-bottom:2px solid var(--linha);padding:7px 8px}
 td{border-bottom:1px solid var(--linha);padding:8px;vertical-align:top}
 .rolagem{overflow-x:auto}
 td.email{min-width:170px}
@@ -78,11 +92,11 @@ body.ocupado{cursor:progress}
 .previa{border:1px dashed #B8C4D0;border-radius:8px;padding:14px;background:#fff}
 .previa h2,.previa h3{margin-top:.8em}
 .acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
-.entrada{max-width:380px;margin:9vh auto;background:#fff;border:1px solid var(--linha);border-radius:12px;padding:26px}
+.entrada{max-width:380px;margin:8vh auto;background:#fff;border:1px solid var(--linha);border-top:6px solid var(--marinho);border-radius:12px;padding:26px;box-shadow:0 6px 24px rgba(1,31,72,.10)}
 .entrada input{width:100%}
 .logo-nome{font-family:"Playfair Display",serif;font-size:2rem;font-weight:700;color:var(--cinza);line-height:1}
 .logo-sub{color:var(--vermelho);letter-spacing:3px;font-size:.8rem;text-transform:lowercase;margin-bottom:16px}
-#recado{position:fixed;right:16px;bottom:16px;max-width:min(440px,calc(100vw - 32px));z-index:50;display:grid;gap:8px}
+#recado{pointer-events:none;position:fixed;right:16px;bottom:16px;max-width:min(440px,calc(100vw - 32px));z-index:50;display:grid;gap:8px}
 #recado div{background:var(--marinho);color:#fff;border-radius:8px;padding:10px 14px;box-shadow:0 6px 18px rgba(0,0,0,.2)}
 #recado div.erro{background:var(--vermelho)}
 .voltar{background:none;border:0;color:#1B5E9B;cursor:pointer;padding:0;margin-bottom:10px}
@@ -94,7 +108,7 @@ details summary{cursor:pointer;color:#1B5E9B}
 .miniatura{max-width:220px;max-height:140px;border:1px solid var(--linha);border-radius:8px;display:block;margin:6px 0}
 .agenda-ed td{vertical-align:top} .agenda-ed textarea{min-height:0} .btn{white-space:nowrap}
 textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
-@media (max-width:640px){ main{padding:12px 16px 60px} td,th{padding:6px 5px} .quem{margin-left:0} }
+@media (max-width:640px){ main{padding:12px 16px 60px} td,th{padding:6px 5px} .quem{margin-left:0} .topo{padding:8px 14px;gap:10px} .topo .logo{height:38px} .marca{font-size:1.1rem;padding-left:10px} }
 </style>
 </head>
 <body>
@@ -107,8 +121,23 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.4.0";
+const VERSAO = "0.5.0";
 const VERSOES = [
+  ["0.5.0", "02/10/2026", [
+    "A página pública “Artecon Informa” foi retirada: as publicações são feitas nas páginas da Artecon. O botão “Publicar” e o agendamento saíram.",
+    "A aba Publicações virou o registro do que foi ao site: no conteúdo aprovado, informe o link e a data da notícia publicada. O Radar guarda a cópia do texto que saiu e avisa se o conteúdo for alterado depois.",
+    "Painel mostra quantos conteúdos aprovados ainda não foram publicados no site e quantos já foram.",
+    "Banco: o visitante sem login não lê mais nada do Radar (antes lia as publicações no ar).",
+    "A exigência de fonte oficial continua: para registrar a publicação no site, o assunto precisa estar confirmado oficialmente e ter ao menos um trecho conferido em fonte oficial. O registro guarda também a fundamentação.",
+    "Fontes em aberto: o administrador cadastra, altera e exclui fontes na aba Fontes, sem mexer no sistema. O robô passa a ler a fonte nova na coleta seguinte.",
+    "Texto oficial incluído pela equipe: na tela do assunto, cole o texto e o endereço da fonte oficial quando o robô ainda não capturou; a captura fica marcada como incluída manualmente.",
+    "Apresentação no padrão da Artecon: logotipo, faixa do timbrado e rodapé com os dados do escritório.",
+    "Nova aba “Como usar”, com o passo a passo do trabalho no Radar."
+  ]],
+  ["0.4.1", "02/10/2026", [
+    "Instalação do banco corrigida: o script falhava no fim no SQL Editor do Supabase (erro “_radar_antes does not exist”). Agora não depende de tabela temporária e pode ser executado de novo por cima de uma instalação que parou no meio.",
+    "Nenhuma mudança nas telas além deste registro."
+  ]],
   ["0.4.0", "02/10/2026", [
     "Informativo Mensal: nova aba para montar cada edição (agenda de obrigações calculada pelas regras do escritório, artigos aprovados em ordem, Fale Conosco e fecho) e página pronta para imprimir ou salvar em PDF no papel timbrado.",
     "Conteúdos com imagem de capa, autor (“Texto elaborado por”) e fonte; tabelas no texto (linhas iniciadas por “|”).",
@@ -154,7 +183,8 @@ const ROTULOS = {
   publicacao: {rascunho:"Rascunho", publicado:"No ar", despublicado:"Fora do ar"},
   saude: {ok:"Funcionando", instavel:"Instável", falhando:"Falhando", atrasada:"Atrasada",
           nunca_executou:"Nunca executou", nunca_funcionou:"Nunca funcionou", inativa:"Inativa"},
-  papel: {admin:"Administrador", editor:"Editor", leitor:"Leitor"}
+  papel: {admin:"Administrador", editor:"Editor", leitor:"Leitor"},
+  coletor: {html_links:"Página com lista de links", rss:"Feed RSS", normas_rfb:"Atos normativos da Receita (Normas)"}
 };
 const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## Quem será afetado?", "",
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
@@ -172,6 +202,16 @@ function opcoes(mapa, atual, vazio){ return (vazio!==undefined ? `<option value=
 function recado(msg, erro=false){
   const d = document.createElement("div"); if(erro) d.className = "erro"; d.textContent = msg;
   $("#recado").appendChild(d); setTimeout(() => d.remove(), erro ? 9000 : 4000);
+}
+/* link de publicação: completo, só com caracteres visíveis comuns (igual à regra do banco) */
+const linkValido = (u, max = 500) => /^https?:\/\/[!-~]+$/.test(u) && !/[<>"'`]/.test(u) && u.length <= max;
+/* fundamentação guardada num registro de publicação (fotografia das evidências conferidas em fonte oficial) */
+function fundamentacaoHtml(lista){
+  const f = Array.isArray(lista) ? lista.filter(x => x && typeof x === "object") : [];
+  if(!f.length) return `<span class="sub">Registro sem fundamentação guardada.</span>`;
+  return `<details class="fundamentacao"><summary>Fundamentação guardada (${f.length} trecho${f.length > 1 ? "s" : ""})</summary>${f.map(x => `
+    <div class="evidencia"><b>${h(x.orgao || "")}</b>${x.norma ? ` — ${h(x.norma)}` : ""}${x.dispositivo ? `, ${h(x.dispositivo)}` : ""} ${x.manual ? selo("texto incluído pela equipe","alerta") : ""}
+      <br>${linkFonte(x.url, x.titulo || x.url)}${x.data ? ` <span class="sub">(${data(x.data)})</span>` : ""}<br><q>${h(x.trecho || "")}</q></div>`).join("")}</details>`;
 }
 function urlSegura(u){ return /^https?:\/\//i.test(String(u || "")) ? String(u) : ""; }
 function linkFonte(u, rotulo){ const s = urlSegura(u); return s ? `<a href="${h(s)}" target="_blank" rel="noopener noreferrer">${h(rotulo || s)}</a>` : `<span class="sub">${h(rotulo || u || "")}</span>`; }
@@ -261,6 +301,7 @@ function calcularAgenda(ano, mes, obrigacoes, extras){
 }
 const dataAgenda = iso => { const d = new Date(iso + "T12:00:00Z"); return isNaN(d) ? iso : `${iso.slice(8,10)}/${iso.slice(5,7)}/${iso.slice(0,4)} (${DIAS_SEMANA[d.getUTCDay()]})`; };
 const mesExtenso = iso => `${MESES[Number(String(iso).slice(5,7)) - 1]} de ${String(iso).slice(0,4)}`;
+const hojeLocal = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const numInformativo = i => `${String(i.numero).padStart(4, "0")}/${i.ano}`;
 
 /* ------------------------------------------------------------------ API */
@@ -349,48 +390,50 @@ function papelDaChave(){ try{ return JSON.parse(atob(CHAVE.split(".")[1].replace
 
 /* ------------------------------------------------------------- estrutura */
 const ABAS = [["painel","Painel"],["fila","Capturas"],["assuntos","Assuntos"],["informativos","Informativos"],["publicacoes","Publicações"],
-              ["fontes","Fontes"],["usuarios","Usuários",true],["configuracoes","Configurações",true],["auditoria","Histórico",true],["versoes","Versões"]];
+              ["fontes","Fontes"],["usuarios","Usuários",true],["configuracoes","Configurações",true],["auditoria","Histórico",true],["ajuda","Como usar"],["versoes","Versões"]];
+const LOGO = `<img class="logo-entrada" src="radar-logo-artecon.png" alt="Artecon Artes Contábeis">`;
 function moldura(conteudo){
-  return `<header class="topo"><span class="marca">Radar Artecon<small>Inteligência Contábil e Tributária</small></span>
+  return `<div class="tricolor"></div><header class="topo"><img class="logo" src="radar-logo-artecon.png" alt="Artecon Artes Contábeis">
+    <span class="marca">Radar<small>Inteligência Contábil e Tributária</small></span>
     <button class="versao" data-acao="aba" data-aba="versoes" title="Ver o histórico de versões">v${VERSAO}</button>
     <span class="quem"><span>${h(E.perfil.nome)} · ${h(ROTULOS.papel[E.perfil.papel])}</span>
-    <a href="informa.html" target="_blank" rel="noopener" style="color:#fff">Artecon Informa ↗</a>
-    <button data-acao="sair">Sair</button></span></header>
+    <button data-acao="sair">Sair</button></span></header><div class="faixa"></div>
     <nav class="abas">${ABAS.filter(a => !a[2] || ehAdmin()).map(([id,nome]) =>
       `<button data-acao="aba" data-aba="${id}" class="${E.aba===id?"ativa":""}">${nome}${E.contagem[id] ? `<span class="conta">${E.contagem[id]}</span>` : ""}</button>`).join("")}</nav>
-    <main id="conteudo">${conteudo}</main>`;
+    <main id="conteudo">${conteudo}</main>
+    <footer class="rodape"><b>Artecon Artes Contábeis</b> · Rua Livorno, nº 15, Sala 101 · Parque Residencial Pagani · Palhoça/SC · (48) 3242-0530 · www.artecon.cnt.br<br>Radar v${VERSAO} · uso interno</footer>`;
 }
 let GERACAO = 0;
 async function desenhar(){
   const app = $("#app"), g = ++GERACAO;       // se outro desenho começar depois, este é descartado
-  if(!CONFIGURADO){ app.innerHTML = `<div class="entrada"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+  if(!CONFIGURADO){ app.innerHTML = `<div class="entrada">${LOGO}
     <h2>Falta configurar</h2><p>Abra o arquivo <b>radar-config.js</b> e preencha a URL do projeto Supabase e a chave <b>anon</b>.</p></div>`; return; }
-  if(papelDaChave() === "service_role" || /^sb_secret_/.test(CHAVE)){ app.innerHTML = `<div class="entrada"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+  if(papelDaChave() === "service_role" || /^sb_secret_/.test(CHAVE)){ app.innerHTML = `<div class="entrada">${LOGO}
     <h2>Chave errada no radar-config.js</h2><div class="aviso erro">O arquivo está com a chave <b>service_role</b> (secreta). Troque pela chave <b>anon</b> e gere uma nova service_role no Supabase, porque esta ficou exposta.</div></div>`; return; }
   if(!E.sessao){ app.innerHTML = telaEntrada(); return; }
   if(!E.perfil){
     try{ await carregarPerfil(); }
     catch(e){ if(!E.sessao || g !== GERACAO) return;
-      app.innerHTML = e.status === 0 ? `<div class="entrada"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+      app.innerHTML = e.status === 0 ? `<div class="entrada">${LOGO}
         <h2>Sem conexão</h2><div class="aviso erro">${h(e.message)}</div><button class="btn" data-acao="recarregar">Tentar de novo</button></div>` : telaEntrada(e.message);
       return; }
     if(!E.sessao || g !== GERACAO) return;
-    if(!E.perfil){ app.innerHTML = `<div class="entrada"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+    if(!E.perfil){ app.innerHTML = `<div class="entrada">${LOGO}
       <h2>Acesso não liberado</h2><p>Seu usuário (${h(E.sessao.user.email)}) ainda não tem perfil ativo no Radar. Peça ao administrador.</p>
       <button class="btn sec" data-acao="sair">Sair</button></div>`; return; }
   }
   // a tela antiga sai na hora: ninguém digita num formulário que está prestes a ser recarregado
   app.innerHTML = moldura(`<p class="sub">Carregando…</p>`);
   try{
-    const [n] = await ler("radar_v_painel", {select:"na_fila,requer_revisao,aguardando_aprovacao"});
-    E.contagem = {fila:n.na_fila, publicacoes:n.requer_revisao, assuntos:n.aguardando_aprovacao};
+    const [n] = await ler("radar_v_painel", {select:"na_fila,aprovados_sem_site,aguardando_aprovacao"});
+    E.contagem = {fila:n.na_fila, publicacoes:n.aprovados_sem_site, assuntos:n.aguardando_aprovacao};
     const html = E.assunto ? await telaAssunto(E.assunto) : await TELAS[E.aba]();
     if(g === GERACAO){ app.innerHTML = moldura(html);
       const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi); }
   }catch(e){ if(g === GERACAO && E.sessao && E.perfil) app.innerHTML = moldura(`<div class="aviso erro">${h(e.message)}</div>`); }
 }
 function telaEntrada(erro){
-  return `<form class="entrada" data-form="entrar"><div class="logo-nome">Artecon</div><div class="logo-sub">artes contábeis</div>
+  return `<form class="entrada" data-form="entrar">${LOGO}
     <h2>Radar — Central de Curadoria</h2>
     ${erro ? `<div class="aviso erro">${h(erro)}</div>` : ""}
     <label for="email">E-mail</label><input id="email" name="email" type="email" required autocomplete="username">
@@ -404,7 +447,6 @@ const TELAS = {
     const [p] = await ler("radar_v_painel", {select:"*"});
     const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
     const revisao = await ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,atualizado_em", status:"eq.em_revisao", order:"atualizado_em.desc", limit:"10"});
-    const sinal = await ler("radar_publicacoes", {select:"id,titulo,motivo_revisao,slug", status:"eq.publicado", requer_revisao:"eq.true"});
     const [mesIa] = await ler("radar_v_ia_mes", {select:"*"});
     const c = (n, rotulo, aba, alerta) => `<button class="cartao ${alerta && n ? "alerta" : ""}" data-acao="aba" data-aba="${aba}"><b>${n}</b><span>${rotulo}</span></button>`;
     return `<h1>Painel do dia</h1>
@@ -415,13 +457,9 @@ const TELAS = {
         ${c(p.alta_relevancia, "Alta relevância em aberto", "assuntos")}
         ${c(p.em_verificacao, "Em verificação", "assuntos")}
         ${c(p.aguardando_aprovacao, "Aguardando aprovação", "assuntos")}
-        ${c(p.no_ar, "Publicações no ar", "publicacoes")}
-        ${c(p.agendadas, "Publicações agendadas", "publicacoes")}
-        ${c(p.requer_revisao, "Publicações a revisar", "publicacoes", true)}
+        ${c(p.aprovados_sem_site, "Aprovados a publicar no site", "publicacoes", true)}
+        ${c(p.no_site, "Publicados no site", "publicacoes")}
       </div>
-      ${sinal.length ? `<div class="painel"><h2>Publicações no ar que precisam de revisão</h2>${sinal.map(s =>
-        `<div class="aviso alerta"><b>${h(s.titulo)}</b><br>${h(semCodigo(s.motivo_revisao))}</div>`).join("")}
-        <button class="btn sec" data-acao="aba" data-aba="publicacoes">Abrir publicações</button></div>` : ""}
       <div class="painel"><h2>Conteúdos aguardando aprovação</h2>
         ${revisao.length ? `<div class="rolagem"><table><tr><th>Título</th><th>Formato</th><th>Atualizado</th></tr>${revisao.map(r =>
           `<tr class="clicavel" data-acao="abrir-assunto" data-id="${r.assunto_id}"><td><button class="titulo-link" data-acao="abrir-assunto" data-id="${r.assunto_id}">${h(r.titulo)}</button></td><td>${h(ROTULOS.formato[r.formato])}</td><td>${dataHora(r.atualizado_em)}</td></tr>`).join("")}</table></div>`
@@ -468,7 +506,7 @@ const TELAS = {
       ${podeEditar() ? `<form class="painel" data-form="novoAssunto"><label for="na-titulo">Novo assunto criado pela equipe (sem captura do robô)</label>
         <div class="linha-filtros" style="margin:0"><input id="na-titulo" type="text" name="titulo" required minlength="5" maxlength="200" placeholder="Título do assunto ou do artigo" style="flex:1;min-width:240px">
         <button class="btn">Criar assunto</button></div>
-        <p class="sub" style="margin:6px 0 0">Para os artigos do Informativo Mensal e do site. A publicação na Artecon Informa continua exigindo fonte oficial conferida.</p></form>` : ""}
+        <p class="sub" style="margin:6px 0 0">Para os artigos do Informativo Mensal e do site da Artecon. Para o site, inclua depois o texto oficial e a fundamentação.</p></form>` : ""}
       ${itens.length >= 300 ? `<div class="aviso info">Mostrando os 300 assuntos alterados mais recentemente. Use o filtro de situação para ver os demais.</div>` : ""}
       ${itens.length ? `<div class="painel rolagem"><table><tr><th>Assunto</th><th>Confirmação</th><th>Relevância</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
         <tr class="clicavel" data-acao="abrir-assunto" data-id="${a.id}">
@@ -481,24 +519,33 @@ const TELAS = {
   },
 
   async publicacoes(){
-    const itens = await ler("radar_publicacoes", {select:"*,radar_conteudos(assunto_id)", order:"criado_em.desc", limit:"300"}); const cat = catMapa();
-    return `<h1>Publicações</h1>
-      ${itens.length ? `<div class="painel rolagem"><table><tr><th>Publicação</th><th>Situação</th><th>Data</th><th></th></tr>${itens.map(p => {
-        const futuro = p.status === "publicado" && new Date(p.publicar_em) > new Date();
-        return `<tr><td><b>${h(p.titulo)}</b><br><span class="sub">${h(cat[p.categoria] || "sem categoria")} · ${h(ROTULOS.formato[p.formato] || "")}</span>
-            ${p.requer_revisao ? `<div class="aviso alerta"><b>Requer revisão:</b> ${h(semCodigo(p.motivo_revisao))}</div>` : ""}
-            ${p.errata ? `<div class="sub"><b>Errata:</b> ${h(p.errata)}</div>` : ""}</td>
-          <td>${futuro ? selo("Agendada","alerta") : selo(ROTULOS.publicacao[p.status], p.status==="publicado" ? "ok" : "neutro")}</td>
-          <td>${dataHora(p.publicar_em)}</td>
-          <td><div class="acoes" style="margin:0">
-            <button class="btn peq sec" data-acao="abrir-assunto" data-id="${p.radar_conteudos?.assunto_id}">Abrir assunto</button>
-            ${p.status==="publicado" && !futuro ? `<a class="btn peq sec" style="text-decoration:none" href="informa.html?p=${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">Ver ↗</a>` : ""}
-            ${podeEditar() && p.status==="publicado" ? `<button class="btn peq sec" data-acao="errata" data-id="${p.id}" data-atual="${h(p.errata || "")}">Errata</button>
-              <button class="btn peq perigo" data-acao="despublicar" data-id="${p.id}">Tirar do ar</button>` : ""}
-            ${podeEditar() && p.status!=="publicado" ? `<button class="btn peq" data-acao="republicar" data-id="${p.id}">Publicar</button>` : ""}
-            ${podeEditar() && p.requer_revisao ? `<button class="btn peq sec" data-acao="limpar-sinal" data-id="${p.id}">Marcar como revisada</button>` : ""}
-          </div></td></tr>`; }).join("")}</table></div>`
-        : `<div class="painel"><p class="sub">Ainda não há publicações.</p></div>`}`;
+    const [regs, aprovados] = await Promise.all([
+      ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:"300"}),
+      ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id)", status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"})]);
+    const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length);
+    return `<h1>Publicações no site</h1>
+      <p class="sub">A publicação é feita nas páginas da Artecon. Aqui fica o registro: o que já foi ao site (com o link e a data) e o que está aprovado esperando.</p>
+      <div class="painel"><h2>Aprovados ainda não publicados no site</h2>
+        ${pendentes.length ? `<div class="rolagem"><table id="tab-pendentes"><tr><th>Conteúdo</th><th>Aprovado em</th><th></th></tr>${pendentes.map(c => `
+          <tr><td><b>${h(c.titulo)}</b><br><span class="sub">${h(ROTULOS.formato[c.formato] || "")}</span></td><td>${dataHora(c.aprovado_em)}</td>
+            <td><div class="acoes" style="margin:0"><button class="btn peq" data-acao="abrir-assunto" data-id="${c.assunto_id}">Abrir para copiar e registrar</button>
+              ${podeEditar() ? `<button class="btn peq sec" data-acao="fora-do-site" data-id="${c.id}" data-valor="1">Não vai ao site</button>` : ""}</div></td></tr>`).join("")}</table></div>`
+          : `<p class="sub">Nenhum conteúdo aprovado aguardando publicação.</p>`}
+        <p class="sub">“Não vai ao site” tira da fila o conteúdo que é só do Informativo Mensal. Dá para desfazer na tela do assunto.</p></div>
+      <div class="painel"><h2>Publicados no site</h2>
+        ${regs.length >= 300 ? `<div class="aviso info">Mostrando os 300 registros mais recentes.</div>` : ""}
+        ${regs.length ? `<div class="rolagem"><table id="tab-site"><tr><th>Data</th><th>Publicação</th><th></th></tr>${regs.map(r => `
+          <tr><td style="white-space:nowrap">${data(r.publicado_em)}</td>
+            <td><b>${h(r.titulo)}</b><br>${linkFonte(r.url, r.url)}
+              ${r.observacao ? `<br><span class="sub">${h(r.observacao)}</span>` : ""}
+              <br>${fundamentacaoHtml(r.fundamentacao)}
+              ${r.base_caiu ? `<div class="aviso alerta base-caiu">A fundamentação deste assunto deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Revise o que está no site.</div>` : ""}
+              ${r.versao_anterior ? `<br><span class="sub">Registro de uma versão anterior do texto (há registro mais novo com o texto atual).</span>`
+                : r.texto_mudou ? `<div class="aviso alerta">O conteúdo foi alterado depois deste registro${r.conteudo_status === "aprovado" ? "" : " e ainda não está aprovado de novo"}. O que está no site pode estar diferente do texto atual.</div>` : ""}</td>
+            <td><div class="acoes" style="margin:0"><button class="btn peq sec" data-acao="abrir-assunto" data-id="${r.assunto_id}">Abrir assunto</button>
+              ${podeEditar() ? `<button class="btn peq sec" data-acao="corrigir-site" data-id="${r.id}" data-url="${h(r.url)}">Corrigir link</button>` : ""}
+              ${ehAdmin() ? `<button class="btn peq perigo" data-acao="excluir-site" data-id="${r.id}">Excluir registro</button>` : ""}</div></td></tr>`).join("")}</table></div>`
+          : `<p class="sub">Nenhuma publicação registrada ainda.</p>`}</div>`;
   },
 
   async fontes(){
@@ -507,8 +554,10 @@ const TELAS = {
     const exec = await ler("radar_execucoes", {select:"*,radar_fontes(slug)", order:"iniciado_em.desc", limit:"30"});
     const tipoSaude = s => s==="ok" ? "ok" : ["falhando","nunca_funcionou"].includes(s) ? "erro" : s==="inativa" ? "neutro" : "alerta";
     return `<h1>Fontes oficiais</h1>
-      <div class="painel rolagem"><table><tr><th>Fonte</th><th>Saúde</th><th>Último sucesso</th><th>A cada</th>${ehAdmin() ? "<th></th>" : ""}</tr>${fontes.map(f => `
-        <tr><td><b>${h(f.nome)}</b> ${f.validada ? "" : selo("a validar","alerta")}<br><span class="sub">${h(f.orgao)} · ${h(f.tipo_coletor)}</span>
+      ${ehAdmin() ? `<div class="acoes" style="margin:0 0 12px"><button class="btn" data-acao="nova-fonte">Nova fonte</button>
+        <span class="sub">Cadastre aqui os sites que o robô deve acompanhar. Não é preciso alterar o sistema.</span></div><div id="nova-fonte"></div>` : ""}
+      <div class="painel rolagem"><table id="tab-fontes"><tr><th>Fonte</th><th>Saúde</th><th>Último sucesso</th><th>A cada</th>${ehAdmin() ? "<th></th>" : ""}</tr>${fontes.map(f => `
+        <tr><td><b>${h(f.nome)}</b> ${f.validada ? "" : selo("a validar","alerta")}${f.ativo ? "" : " " + selo("inativa","neutro")} ${f.oficial ? "" : selo("não oficial","alerta")}<br><span class="sub">${h(f.orgao)} · ${h(ROTULOS.coletor[f.tipo_coletor] || f.tipo_coletor)}</span>
             <br>${linkFonte(f.url, f.url)}
             ${f.ultimo_erro ? `<div class="aviso erro">${h(f.ultimo_erro)}</div>` : ""}</td>
           <td>${selo(ROTULOS.saude[saude[f.id]] || saude[f.id] || "—", tipoSaude(saude[f.id]))}</td>
@@ -533,7 +582,7 @@ const TELAS = {
           <td><select name="papel" aria-label="Perfil">${opcoes(ROTULOS.papel, u.papel || "", "sem acesso")}</select></td>
           <td><input type="checkbox" name="ativo" ${u.ativo !== false ? "checked" : ""} aria-label="Ativo"></td>
           <td><button class="btn peq" data-acao="salvar-usuario" data-id="${h(u.user_id)}">Salvar</button></td></tr>`).join("")}</table></div>
-      <div class="aviso info"><b>Leitor</b> só consulta. <b>Editor</b> cria assuntos, escreve, aprova e publica. <b>Administrador</b> também configura fontes, usuários e vê o histórico.</div>`;
+      <div class="aviso info"><b>Leitor</b> só consulta. <b>Editor</b> cria assuntos, escreve, aprova e registra o que foi ao site. <b>Administrador</b> também configura fontes, usuários e vê o histórico.</div>`;
   },
 
   async auditoria(){
@@ -580,12 +629,96 @@ const TELAS = {
       ${bloco("assinatura", "Fecho e assinatura", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo.`)}`;
   },
 
+  async ajuda(){
+    const adm = ehAdmin();
+    return `<h1>Como usar o Radar</h1>
+      <p class="sub">O Radar acompanha as fontes oficiais, ajuda a escrever e a conferir, e guarda o registro do que foi divulgado. A publicação é feita nas páginas da Artecon.</p>
+      <div class="painel"><h2>O caminho de uma publicação</h2><ol class="passos">
+        <li><b>Capturas.</b> O robô lê as fontes cadastradas e traz as novidades. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>.</li>
+        <li><b>Assunto.</b> Classifique: categoria, abrangência, relevância e situação da confirmação. Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
+        <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
+        <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). Preencha autor, fonte e imagem de capa. Salve, envie para revisão e <b>aprove</b>.</li>
+        <li><b>Site da Artecon.</b> No conteúdo aprovado, use <b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>, e publique no site.</li>
+        <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
+      </ol></div>
+      <div class="painel"><h2>Informativo Mensal</h2><ol class="passos">
+        <li><b>Artigos.</b> Em Assuntos, use <b>Novo assunto criado pela equipe</b>, escreva o conteúdo e aprove. Para o informativo basta estar aprovado.</li>
+        <li><b>Edição.</b> Em Informativos, informe o número e o mês e clique em <b>Criar edição</b>. A agenda de obrigações já vem calculada: confira as datas.</li>
+        <li><b>Montagem.</b> Inclua os artigos aprovados e ordene com as setas.</li>
+        <li><b>PDF.</b> Clique em <b>Abrir para imprimir / salvar em PDF</b>. Na janela de impressão do Chrome ou Edge: papel A4, margens “Nenhuma” e “Gráficos de segundo plano” marcado.</li>
+        <li><b>Fechamento.</b> Com tudo conferido, clique em <b>Fechar edição</b>. Depois disso só o administrador reabre.</li>
+      </ol><p class="sub">Artigo que é só do informativo: na aba Publicações, clique em “Não vai ao site” para tirá-lo da fila.</p></div>
+      <div class="painel"><h2>O que o sistema exige</h2><ul>
+        <li><b>Para aprovar:</b> uma pessoa com perfil de editor ou administrador. A IA e o robô não aprovam.</li>
+        <li><b>Para registrar a publicação no site:</b> conteúdo aprovado, assunto confirmado oficialmente e ao menos um trecho conferido em fonte oficial.</li>
+        <li><b>Para o Informativo Mensal:</b> conteúdo aprovado.</li>
+        <li><b>Texto alterado depois de aprovado</b> volta para revisão e precisa ser aprovado de novo.</li>
+      </ul></div>
+      <div class="painel"><h2>Onde fica cada coisa</h2><div class="rolagem"><table>
+        <tr><th>Aba</th><th>Para quê</th></tr>
+        <tr><td><b>Painel</b></td><td>Resumo do dia: fontes, capturas, o que aguarda aprovação e o que falta publicar.</td></tr>
+        <tr><td><b>Capturas</b></td><td>O que o robô encontrou e ainda não foi triado.</td></tr>
+        <tr><td><b>Assuntos</b></td><td>Onde o trabalho acontece: classificação, fundamentação e conteúdos.</td></tr>
+        <tr><td><b>Informativos</b></td><td>Edições do Informativo Mensal e o PDF.</td></tr>
+        <tr><td><b>Publicações</b></td><td>Aprovados que faltam publicar no site e o registro do que já foi.</td></tr>
+        <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
+        ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
+        <tr><td><b>Configurações</b></td><td>Agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
+        <tr><td><b>Histórico</b></td><td>Trilha de auditoria: quem fez o quê.</td></tr>` : ""}
+        <tr><td><b>Versões</b></td><td>O que mudou em cada versão.</td></tr></table></div></div>
+      ${adm ? `<div class="painel"><h2>Cadastrar uma fonte nova</h2><ol class="passos">
+        <li><b>Fontes → Nova fonte.</b> Informe nome, órgão e o endereço da página que lista as novidades.</li>
+        <li><b>Padrão dos links.</b> Abra duas notícias da página e veja o que os endereços têm em comum; esse trecho é o padrão.</li>
+        <li><b>Cadastrar.</b> A fonte entra como “a validar” e o robô passa a lê-la na coleta seguinte.</li>
+        <li><b>Conferir.</b> Em “Últimas execuções do robô”, veja se vieram itens. Se vier “vazio_suspeito” ou “falha”, ajuste o padrão. Quando estiver lendo certo, marque “Validada”.</li>
+      </ol></div>` : ""}
+      <div class="painel"><h2>Formatação do texto</h2><ul>
+        <li><code>## Subtítulo</code> inicia um subtítulo.</li><li><code>- item</code> faz uma lista.</li><li><code>**texto**</code> fica em negrito.</li>
+        <li>Linhas iniciadas por <code>|</code> formam uma tabela; a primeira linha é o cabeçalho.</li></ul></div>`;
+  },
+
   async versoes(){
     return `<h1>Versões</h1><p class="sub">Versão em uso: <b>v${VERSAO}</b></p>${VERSOES.map(([v, d, itens]) =>
       `<div class="painel"><h2>v${h(v)} <span class="sub">— ${h(d)}</span></h2><ul>${itens.map(i => `<li>${h(i)}</li>`).join("")}</ul></div>`).join("")}`;
   }
 };
 function seloSituacao(s){ return selo(ROTULOS.situacao[s], s==="confirmado_oficialmente" ? "ok" : s==="divergencia_identificada" || s==="nao_confirmado" ? "erro" : "alerta"); }
+
+/* --------------------------------------------------- formulário da fonte */
+let FONTES_LISTA = [];
+function formFonte(f){
+  const c = f.config && typeof f.config === "object" ? f.config : {}, id = f.id || "nova";
+  const outras = Object.fromEntries(Object.entries(c).filter(([k]) => !["padrao_url","seletor_texto","janela_dias"].includes(k)));
+  return `<form data-form="fonte" data-id="${f.id || ""}" class="painel" style="background:var(--azul-claro)">
+    <h3>${f.id ? "Configurar fonte" : "Nova fonte"}</h3>
+    <div class="grade">
+      <div><label for="f-nome-${id}">Nome</label><input id="f-nome-${id}" type="text" name="nome" required minlength="3" maxlength="200" value="${h(f.nome || "")}" placeholder="Ex.: Prefeitura de Palhoça — Notícias"></div>
+      <div><label for="f-orgao-${id}">Órgão</label><input id="f-orgao-${id}" type="text" name="orgao" required minlength="2" maxlength="200" value="${h(f.orgao || "")}" placeholder="Ex.: Prefeitura de Palhoça"></div>
+      <div><label for="f-abr-${id}">Abrangência</label><select id="f-abr-${id}" name="abrangencia">${opcoes(ROTULOS.abrangencia, f.abrangencia || "federal")}</select></div>
+      <div><label for="f-cat-${id}">Categoria dos assuntos</label><select id="f-cat-${id}" name="categoria_padrao">${opcoes(catMapa(), f.categoria_padrao || "", "— nenhuma —")}</select></div>
+    </div>
+    <label for="f-url-${id}">Endereço da página que lista as novidades</label><input id="f-url-${id}" type="text" name="url" required maxlength="1000" value="${h(f.url || "")}" placeholder="https://www.exemplo.gov.br/noticias" style="width:100%">
+    <div class="grade">
+      <div><label for="f-tipo-${id}">Como o robô lê</label><select id="f-tipo-${id}" name="tipo_coletor">${opcoes(f.tipo_coletor === "normas_rfb" ? ROTULOS.coletor : {html_links:ROTULOS.coletor.html_links, rss:ROTULOS.coletor.rss}, f.tipo_coletor || "html_links")}</select></div>
+      <div><label for="f-freq-${id}">Verificar a cada (horas)</label><input id="f-freq-${id}" type="number" name="frequencia_horas" min="1" max="168" required value="${f.frequencia_horas || 12}"></div>
+      <div><label for="f-jan-${id}">Idade máxima dos itens (dias)</label><input id="f-jan-${id}" type="number" name="janela_dias" min="1" max="3650" value="${h(c.janela_dias ?? "")}"></div>
+    </div>
+    <label for="f-pad-${id}">Padrão dos links (obrigatório para “Página com lista de links”)</label>
+    <input id="f-pad-${id}" type="text" name="padrao_url" value="${h(c.padrao_url || "")}" placeholder="/noticias/\\d{4}/" style="width:100%;font-family:monospace">
+    <p class="sub" style="margin:4px 0 0">É o trecho que aparece no endereço de cada notícia ou ato e não aparece nos links de menu. Abra duas notícias da página e veja o que os endereços têm em comum. Exemplo: se as notícias são <i>…/noticias/2026/outubro/titulo</i>, use <code>/noticias/\\d{4}/</code> (<code>\\d{4}</code> = quatro algarismos).</p>
+    <label for="f-sel-${id}">Onde está o texto na página do item (seletor CSS; em dúvida, deixe como está)</label>
+    <input id="f-sel-${id}" type="text" name="seletor_texto" value="${h(c.seletor_texto || "")}" style="width:100%;font-family:monospace">
+    <div class="acoes"><label style="margin:0"><input type="checkbox" name="oficial" ${f.oficial ? "checked" : ""}> Fonte oficial</label>
+      <label style="margin:0"><input type="checkbox" name="ativo" ${f.ativo ? "checked" : ""}> Fonte ativa</label>
+      <label style="margin:0"><input type="checkbox" name="validada" ${f.validada ? "checked" : ""}> Validada (já conferi que está lendo certo)</label></div>
+    <details><summary>Outras opções de leitura (JSON)</summary>
+      <p class="sub" style="margin:4px 0">O padrão dos links, o seletor do texto e a idade máxima ficam nos campos acima (se escritos aqui, valem os campos).</p>
+      <textarea id="f-cfg-${id}" name="config" aria-label="Outras opções de leitura (JSON)" style="font-family:monospace;min-height:110px" spellcheck="false">${h(JSON.stringify(outras, null, 2))}</textarea></details>
+    <div class="acoes"><button class="btn">${f.id ? "Salvar fonte" : "Cadastrar fonte"}</button>
+      ${f.id ? `<button class="btn perigo" type="button" data-acao="excluir-fonte" data-id="${f.id}">Excluir fonte</button>` : `<button class="btn sec" type="button" data-acao="nova-fonte">Cancelar</button>`}</div>
+    ${f.id ? "" : `<div class="aviso info">A fonte entra como <b>a validar</b>. O robô passa a lê-la na próxima coleta (a cada 6 horas, ou no GitHub em Actions → “Radar — coleta das fontes oficiais” → Run workflow). O resultado aparece abaixo, em “Últimas execuções do robô”: se vier <b>vazio_suspeito</b> ou <b>falha</b>, ajuste o padrão dos links. Marque “Fonte oficial” só para sites de órgãos públicos: é isso que permite fundamentar uma publicação.</div>`}
+  </form>`;
+}
 
 /* ------------------------------------------------- tela do informativo */
 let CONF_AGENDA = {obrigacoes:[], feriados_extras:[]};
@@ -685,16 +818,19 @@ async function telaAssunto(id){
     ler("radar_assunto_capturas", {select:"radar_capturas(id,titulo,url,data_publicacao,texto,versao,capturado_em,metadados,radar_fontes(nome,orgao,oficial))", assunto_id:"eq." + id}),
     ler("radar_evidencias", {select:"*,radar_normas(tipo,numero,orgao)", assunto_id:"eq." + id, order:"id"}),
     ler("radar_conteudos", {select:"*", assunto_id:"eq." + id, order:"id"})]);
-  const pubs = cont.length ? await ler("radar_publicacoes", {select:"*", conteudo_id:"in.(" + cont.map(c => c.id).join(",") + ")", order:"id"}) : [];
+  const pubs = cont.length ? await ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + cont.map(c => c.id).join(",") + ")", order:"id"}) : [];
   const idsImg = [...new Set(cont.map(c => c.imagem_id).filter(Boolean))];
   const imgs = Object.fromEntries((idsImg.length ? await ler("radar_imagens", {select:"id,dados", id:"in.(" + idsImg.join(",") + ")"}) : []).map(i => [i.id, i.dados]));
   const ed = podeEditar(), des = ed ? "" : " disabled";
   const conferidas = evid.filter(e => e.trecho_conferido).length;
-  const pronto = a.situacao_confirmacao === "confirmado_oficialmente" && conferidas > 0;
+  const oficiais = new Set(vinc.filter(v => v.radar_capturas.radar_fontes.oficial).map(v => v.radar_capturas.id));
+  const conferidasOficiais = evid.filter(e => e.trecho_conferido && oficiais.has(e.captura_id)).length;
+  const pronto = a.situacao_confirmacao === "confirmado_oficialmente" && conferidasOficiais > 0;
+  if(ed) FONTES_LISTA = await ler("radar_fontes", {select:"id,nome,oficial", order:"nome"});
   return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
     <h1>${h(a.titulo)}</h1>
     <p>${seloSituacao(a.situacao_confirmacao)} ${selo(ROTULOS.status[a.status],"neutro")} ${selo(conferidas + " trecho(s) conferido(s)", conferidas ? "ok" : "erro")}</p>
-    ${pronto ? "" : `<div class="aviso alerta"><b>Ainda não pode ser publicado na Artecon Informa.</b> ${a.situacao_confirmacao !== "confirmado_oficialmente" ? "O assunto precisa estar marcado como “Confirmado oficialmente”. " : ""}${conferidas ? "" : "É preciso ao menos um trecho conferido em fonte oficial (FUNDAMENTAÇÃO NÃO CONFIRMADA)."} <span class="sub">O Informativo Mensal e a cópia para o site exigem só o conteúdo aprovado.</span></div>`}
+    ${pronto ? "" : `<div class="aviso alerta"><b>Ainda não pode ser registrado como publicado no site.</b> ${a.situacao_confirmacao !== "confirmado_oficialmente" ? "O assunto precisa estar marcado como “Confirmado oficialmente”. " : ""}${conferidasOficiais ? "" : conferidas ? "Os trechos conferidos são de fonte não oficial: é preciso ao menos um trecho conferido em fonte oficial. " : "É preciso ao menos um trecho conferido em fonte oficial (FUNDAMENTAÇÃO NÃO CONFIRMADA). "}<span class="sub">O Informativo Mensal exige só o conteúdo aprovado.</span></div>`}
 
     <form class="painel" data-form="assunto" data-id="${a.id}"><h2>Dados do assunto</h2>
       <label for="a-titulo">Título</label><input id="a-titulo" type="text" name="titulo" value="${h(a.titulo)}" style="width:100%"${des}>
@@ -715,13 +851,17 @@ async function telaAssunto(id){
     <div class="painel"><h2>Texto oficial capturado</h2>
       ${ed ? `<p class="sub">Para fundamentar: selecione o trecho exato no texto abaixo e clique em “Usar trecho selecionado” — ou clique sem selecionar e cole o trecho. O sistema confere se ele existe mesmo no texto oficial.</p>` : ""}
       ${vinc.length ? vinc.map(v => { const c = v.radar_capturas; return `
-        <div style="margin-bottom:14px"><b>${h(c.titulo)}</b> ${c.radar_fontes.oficial ? selo("fonte oficial","ok") : selo("fonte não oficial","alerta")} ${c.versao > 1 ? selo("texto alterado · versão " + c.versao, "alerta") : ""}
+        <div style="margin-bottom:14px"><b>${h(c.titulo)}</b> ${c.radar_fontes.oficial ? selo("fonte oficial","ok") : selo("fonte não oficial","alerta")} ${c.versao > 1 ? selo("texto alterado · versão " + c.versao, "alerta") : ""} ${c.metadados?.manual ? selo("incluído pela equipe","neutro") : ""}
           <br><span class="sub">${h(c.radar_fontes.orgao)} · publicado em ${data(c.data_publicacao)} · capturado em ${dataHora(c.capturado_em)} · </span>${linkFonte(c.url, "abrir na fonte ↗")}
+          ${c.metadados?.manual ? `<div class="aviso info manual">Texto colado pela equipe em ${dataHora(c.metadados.incluido_em)}, não capturado pelo robô. Antes de fundamentar, confira com a página oficial.</div>` : ""}
+          ${c.metadados?.origem_manual ? `<div class="aviso info origem-manual">Este endereço foi incluído pela equipe em ${dataHora(c.metadados.origem_manual.em)} e depois lido pelo robô: o texto abaixo é o capturado pelo robô (${c.metadados.origem_manual.texto_igual ? "igual ao que tinha sido colado" : "diferente do que tinha sido colado; as evidências foram reconferidas"}).</div>` : ""}
           ${c.metadados?.texto_parcial ? `<div class="aviso info">Desta fonte só a <b>ementa</b> é capturada. O texto integral está no endereço da fonte; a fundamentação aqui fica limitada à ementa.</div>` : ""}
           ${c.texto ? `<div class="texto-oficial" data-captura="${c.id}" tabindex="0">${h(c.texto)}</div>
             ${ed ? `<div class="acoes"><button class="btn sec" data-acao="usar-trecho" data-captura="${c.id}">Usar trecho selecionado como evidência</button></div>` : ""}`
             : `<div class="aviso alerta">O texto desta captura ainda não foi obtido pelo robô. Abra na fonte para conferir.</div>`}
-        </div>`; }).join("") : `<p class="sub">Nenhuma captura vinculada: assunto criado pela equipe. O conteúdo aprovado pode entrar no Informativo Mensal e ser copiado para o site.</p>`}
+        </div>`; }).join("") : `<p class="sub">Nenhum texto oficial vinculado: assunto criado pela equipe. O conteúdo aprovado já pode entrar no Informativo Mensal; para registrar a publicação no site, inclua o texto oficial e fundamente.</p>`}
+      ${ed ? `<div class="acoes"><button class="btn sec" data-acao="incluir-texto">Incluir texto oficial</button>
+        <span class="sub">Para quando o robô ainda não capturou a página da fonte.</span></div><div id="form-texto-oficial"></div>` : ""}
       <div id="form-evidencia"></div>
     </div>
 
@@ -738,16 +878,15 @@ async function telaAssunto(id){
     </div>
 
     <div class="painel"><h2>Conteúdos</h2>
-      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id])).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
       ${ed ? `<div class="acoes"><select id="novo-formato" aria-label="Formato do novo conteúdo">${opcoes(ROTULOS.formato, "informativo")}</select>
         <button class="btn" data-acao="novo-conteudo" data-id="${a.id}">Novo conteúdo</button>
         <button class="btn sec" data-acao="ia-gerar">Gerar com IA</button>
         <span class="sub">A IA redige um rascunho a partir do texto oficial. Revisar e aprovar continua sendo da equipe.</span></div>` : ""}
     </div>`;
 }
-function blocoConteudo(c, pubs, ed, imagem){
+function blocoConteudo(c, pubs, ed, imagem, pronto){
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
-  const noAr = pubs.find(p => p.status === "publicado");
   return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">
     <p>${selo(ROTULOS.formato[c.formato])} ${selo(ROTULOS.conteudo[c.status], tipo)} ${selo(c.gerado_por === "ia" ? "gerado por IA" : "escrito pela equipe","neutro")}
       ${c.aprovado_em ? `<span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span>` : ""}</p>
@@ -779,14 +918,20 @@ function blocoConteudo(c, pubs, ed, imagem){
       ${c.status === "em_revisao" ? `<button class="btn verde" type="button" data-acao="aprovar" data-id="${c.id}">Aprovar</button>
         <button class="btn perigo" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="rejeitado">Rejeitar</button>` : ""}
     </div>` : ""}
-    ${pubs.map(p => { const futuro = p.status === "publicado" && new Date(p.publicar_em) > new Date(); return `<div class="aviso ${p.status==="publicado" ? "info" : "alerta"}"><b>Publicação:</b> ${futuro ? "Agendada" : h(ROTULOS.publicacao[p.status])}
-        ${futuro ? ` para ${dataHora(p.publicar_em)} — só aparece na Artecon Informa a partir dessa data` : ""}
-        ${p.status==="publicado" && !futuro ? ` desde ${dataHora(p.publicar_em)} — <a href="informa.html?p=${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">ver na Artecon Informa ↗</a>` : ""}
-        ${p.requer_revisao ? `<br><b>Requer revisão:</b> ${h(semCodigo(p.motivo_revisao))}` : ""}</div>`; }).join("")}
-    ${ed && c.status === "aprovado" && !noAr ? `<div class="acoes">
-        <button class="btn verde" type="button" data-acao="publicar" data-id="${c.id}">Publicar agora</button>
-        <label for="quando-${c.id}" style="margin:0">ou agendar para</label><input type="datetime-local" id="quando-${c.id}">
-        <button class="btn sec" type="button" data-acao="publicar" data-id="${c.id}" data-agendar="1">Agendar</button></div>` : ""}
+    ${pubs.map(p => `<div class="aviso ${(p.texto_mudou && !p.versao_anterior) || p.base_caiu ? "alerta" : "info"} registro-site"><b>Publicado no site</b> em ${data(p.publicado_em)} — ${linkFonte(p.url, p.url)}
+        ${p.observacao ? `<br><span class="sub">${h(p.observacao)}</span>` : ""}
+        <br>${fundamentacaoHtml(p.fundamentacao)}
+        ${p.base_caiu ? `<br><b>A fundamentação deixou de estar completa depois deste registro.</b> Revise o que está no site.` : ""}
+        ${p.versao_anterior ? `<br><span class="sub">Registro de uma versão anterior do texto.</span>`
+          : p.texto_mudou ? `<br><b>O conteúdo foi alterado depois deste registro.</b> Se a correção vale para o site, atualize a notícia lá e registre de novo.` : ""}</div>`).join("")}
+    ${c.fora_do_site ? `<div class="aviso info fora-do-site">Marcado como <b>não vai ao site</b> (fica fora da fila de publicações).
+        ${ed ? ` <button class="btn peq sec" type="button" data-acao="fora-do-site" data-id="${c.id}" data-valor="">Voltar para a fila</button>` : ""}</div>` : ""}
+    ${ed && c.status === "aprovado" && !pronto ? `<div class="aviso alerta sem-fonte">Para registrar a publicação no site, o assunto precisa estar <b>confirmado oficialmente</b> e ter ao menos um <b>trecho conferido em fonte oficial</b>. No Informativo Mensal este conteúdo já pode entrar.</div>` : ""}
+    ${ed && c.status === "aprovado" && pronto ? `<div class="acoes registrar-site"><b class="sub">Depois de publicar no site:</b>
+        <input type="text" id="site-url-${c.id}" data-enter="registrar-site" placeholder="Link da notícia (https://artecon.cnt.br/…)" aria-label="Link da notícia no site" style="flex:1;min-width:240px" maxlength="500">
+        <input type="date" id="site-data-${c.id}" data-enter="registrar-site" aria-label="Data da publicação no site" value="${hojeLocal()}" max="${hojeLocal()}">
+        <input type="text" id="site-obs-${c.id}" data-enter="registrar-site" placeholder="Observação (opcional)" aria-label="Observação" maxlength="500" style="min-width:160px">
+        <button class="btn verde" type="button" data-acao="registrar-site" data-id="${c.id}">Registrar publicação no site</button></div>` : ""}
   </form>`;
 }
 
@@ -909,38 +1054,67 @@ const ACOES = {
     if(!r.length){ await desenhar(); recado("O texto foi alterado depois que você abriu esta tela. Confira de novo antes de aprovar.", true); return; }
     await desenhar(); recado("Conteúdo aprovado."); return;
   },
-  async publicar(el){
-    const corpo = {conteudo_id:Number(el.dataset.id), status:"publicado"};
-    if(el.dataset.agendar){ const v = $(`#quando-${el.dataset.id}`).value; if(!v){ recado("Informe a data e a hora do agendamento.", true); return; }
-      corpo.publicar_em = new Date(v).toISOString();
-      if(new Date(v) <= new Date()){ recado("A data do agendamento precisa estar no futuro. Para publicar já, use “Publicar agora”.", true); return; } }
-    // cada conteúdo tem uma única publicação: se já existe (rascunho ou fora do ar), é ela que volta ao ar
-    const anteriores = await ler("radar_publicacoes", {select:"id", conteudo_id:"eq." + el.dataset.id});
-    if(anteriores.length) await alterar("radar_publicacoes", {id:"eq." + anteriores[0].id},
-      {status:"publicado", publicar_em: corpo.publicar_em || new Date().toISOString()});
-    else await rest("POST", "radar_publicacoes", {corpo});
-    await desenhar(); recado(el.dataset.agendar ? "Publicação agendada." : "Publicado na Artecon Informa."); return;
+  async "registrar-site"(el){
+    const f = el.closest("form"), url = $(`#site-url-${el.dataset.id}`).value.trim(), quando = $(`#site-data-${el.dataset.id}`).value;
+    if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de registrar.", true); return; }
+    if(!linkValido(url)){ recado("Informe o link completo da notícia no site, começando com https:// (sem espaços nem aspas).", true); return; }
+    if(!quando){ recado("Informe a data da publicação no site.", true); return; }
+    if(quando > hojeLocal()){ recado("A data da publicação no site não pode estar no futuro.", true); return; }
+    // conteudo_lido_em: o banco só registra se o texto ainda for o que estava nesta tela
+    await rest("POST", "radar_divulgacoes", {corpo:{conteudo_id:Number(el.dataset.id), url, publicado_em:quando,
+      observacao:$(`#site-obs-${el.dataset.id}`).value.trim() || null, conteudo_lido_em:f.dataset.lido}});
+    await desenhar(); recado("Publicação no site registrada.");
   },
-  async despublicar(el){ if(!confirm("Tirar esta publicação do ar?")) return;
-    await alterar("radar_publicacoes", {id:"eq." + el.dataset.id}, {status:"despublicado"}); await desenhar(); recado("Publicação fora do ar."); return; },
-  async republicar(el){ await alterar("radar_publicacoes", {id:"eq." + el.dataset.id}, {status:"publicado", publicar_em:new Date().toISOString()});
-    await desenhar(); recado("Publicado na Artecon Informa."); return; },
-  async errata(el){ const t = prompt("Texto da errata (aparece para o público junto da publicação). Deixe vazio para remover:", el.dataset.atual || "");
-    if(t === null) return; await alterar("radar_publicacoes", {id:"eq." + el.dataset.id}, {errata:t.trim() || null}); await desenhar(); recado("Errata salva."); return; },
-  async "limpar-sinal"(el){ if(!confirm("Confirma que a publicação foi revisada e pode continuar no ar como está?")) return;
-    await alterar("radar_publicacoes", {id:"eq." + el.dataset.id}, {requer_revisao:false, motivo_revisao:null}); await desenhar(); recado("Publicação marcada como revisada."); },
+  async "corrigir-site"(el){
+    const url = prompt("Link correto da notícia no site:", el.dataset.url || ""); if(url === null) return;
+    if(!linkValido(url.trim())){ recado("O link precisa começar com https:// e não ter espaços nem aspas.", true); return; }
+    await alterar("radar_divulgacoes", {id:"eq." + el.dataset.id, select:"id"}, {url:url.trim()}); await desenhar(); recado("Link corrigido.");
+  },
+  async "excluir-site"(el){
+    if(!confirm("Excluir este registro? Isso não tira a notícia do site; só apaga o registro no Radar.")) return;
+    await apagar("radar_divulgacoes", {id:"eq." + el.dataset.id, select:"id"}); await desenhar(); recado("Registro excluído.");
+  },
+  async "fora-do-site"(el){
+    const fora = !!el.dataset.valor, f = el.closest("form");
+    if(f && sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes.", true); return; }
+    await alterar("radar_conteudos", {id:"eq." + el.dataset.id, select:"id"}, {fora_do_site:fora});
+    await desenhar(); recado(fora ? "Conteúdo fora da fila de publicações." : "Conteúdo de volta à fila de publicações.");
+  },
 
   async "editar-fonte"(el){
     const linha = $(`#edicao-fonte-${el.dataset.id}`); if(!linha.hidden){ linha.hidden = true; return; }
     const [f] = await ler("radar_fontes", {select:"*", id:"eq." + el.dataset.id});
-    linha.firstElementChild.innerHTML = `<form data-form="fonte" data-id="${f.id}" class="painel" style="background:var(--azul-claro)">
-      <div class="grade"><div><label for="f-freq-${f.id}">Verificar a cada (horas)</label><input id="f-freq-${f.id}" type="number" name="frequencia_horas" min="1" max="168" required value="${f.frequencia_horas}"></div>
-      <div><label><input type="checkbox" name="ativo" ${f.ativo ? "checked" : ""}> Fonte ativa</label><label><input type="checkbox" name="validada" ${f.validada ? "checked" : ""}> Validada no diagnóstico</label>
-        <label><input type="checkbox" name="oficial" ${f.oficial ? "checked" : ""}> Fonte oficial</label></div></div>
-      <label for="f-url-${f.id}">Endereço</label><input id="f-url-${f.id}" type="text" name="url" value="${h(f.url)}" style="width:100%">
-      <label for="f-cfg-${f.id}">Configuração de leitura (JSON)</label><textarea id="f-cfg-${f.id}" name="config" style="font-family:monospace;min-height:150px">${h(JSON.stringify(f.config, null, 2))}</textarea>
-      <div class="acoes"><button class="btn">Salvar fonte</button></div></form>`;
+    linha.firstElementChild.innerHTML = formFonte(f);
     linha.hidden = false;
+  },
+  "nova-fonte"(){
+    const d = $("#nova-fonte"); if(d.innerHTML){ d.innerHTML = ""; return; }
+    d.innerHTML = formFonte({oficial:true, ativo:true, frequencia_horas:12, abrangencia:"federal", tipo_coletor:"html_links",
+      config:{janela_dias:30, seletor_texto:"article, main, #content, body"}});
+    $("#nova-fonte [name=nome]").focus();
+  },
+  async "excluir-fonte"(el){
+    if(!confirm("Excluir esta fonte? Só é possível se ela ainda não tiver nenhuma captura (se tiver, desmarque “Fonte ativa”). O histórico de execuções do robô nesta fonte é apagado junto.")) return;
+    try{ await apagar("radar_fontes", {id:"eq." + el.dataset.id, select:"id"}); }
+    catch(e){ if(/em uso/.test(e.message)) throw new ErroApi("Esta fonte já tem capturas e não pode ser excluída. Para o robô parar de ler, desmarque “Fonte ativa” e salve."); throw e; }
+    await desenhar(); recado("Fonte excluída.");
+  },
+  "incluir-texto"(){
+    const d = $("#form-texto-oficial"); if(d.innerHTML){ d.innerHTML = ""; return; }
+    d.innerHTML = `<form class="painel" style="background:var(--azul-claro)" data-form="textoOficial">
+      <h3>Incluir texto oficial</h3>
+      <p class="sub">Use quando o robô ainda não capturou a página. Abra a fonte oficial, copie o texto e cole aqui com o endereço. A captura fica marcada como incluída pela equipe.</p>
+      <div class="grade">
+        <div><label for="to-fonte">Fonte</label><select id="to-fonte" name="fonte" required><option value="">— escolher —</option>${FONTES_LISTA.map(f =>
+          `<option value="${f.id}">${h(f.nome)}${f.oficial ? "" : " (não oficial)"}</option>`).join("")}</select></div>
+        <div><label for="to-data">Data de publicação na fonte (opcional)</label><input id="to-data" type="date" name="data" max="${hojeLocal()}"></div>
+      </div>
+      <label for="to-url">Endereço da página oficial</label><input id="to-url" type="text" name="url" required maxlength="1000" placeholder="https://www.gov.br/…" style="width:100%">
+      <label for="to-titulo">Título do ato ou da notícia</label><input id="to-titulo" type="text" name="titulo" required minlength="5" maxlength="300" style="width:100%">
+      <label for="to-texto">Texto oficial (copiado da fonte, sem alterar)</label><textarea id="to-texto" name="texto" required minlength="50" style="min-height:200px"></textarea>
+      <div class="acoes"><button class="btn">Incluir texto oficial</button><button class="btn sec" type="button" data-acao="incluir-texto">Cancelar</button>
+        <span class="sub">Se a fonte não está na lista, o administrador cadastra na aba Fontes.</span></div></form>`;
+    $("#to-fonte").focus();
   },
   async "salvar-usuario"(el){
     const tr = el.closest("tr"), papel = $("[name=papel]", tr).value, nome = $("[name=nome]", tr).value.trim();
@@ -1030,7 +1204,7 @@ const FORMS = {
     const m = /^(\d{4})-(\d{2})$/.exec(f.mes.value); if(!m){ recado("Escolha o mês da agenda.", true); return; }
     const conf = Object.fromEntries((await ler("radar_config", {select:"chave,valor", chave:"in.(obrigacoes,feriados_extras)"})).map(c => [c.chave, c.valor]));
     const [i] = await rest("POST", "radar_informativos", {corpo:{numero:Number(f.numero.value), ano:Number(m[1]), mes:f.mes.value + "-01",
-      data_assinatura:new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
+      data_assinatura:hojeLocal(),
       agenda:calcularAgenda(Number(m[1]), Number(m[2]), conf.obrigacoes, conf.feriados_extras)}, prefer:"return=representation"}).catch(numeroRepetido);
     E.informativo = i.id; window.scrollTo(0,0); return desenhar();
   },
@@ -1069,12 +1243,44 @@ const FORMS = {
   },
   async conteudo(f){ await salvarConteudo(f); await desenhar(); recado("Conteúdo salvo."); },
   async fonte(f){
-    let config; try{ config = JSON.parse(f.config.value); if(!config || typeof config !== "object" || Array.isArray(config)) throw 0; }
-    catch(e){ recado("A configuração não é um JSON válido.", true); return; }
-    if(!urlSegura(f.url.value.trim())){ recado("O endereço da fonte precisa começar com http:// ou https://.", true); return; }
-    await alterar("radar_fontes", {id:"eq." + f.dataset.id}, {frequencia_horas:Number(f.frequencia_horas.value), ativo:f.ativo.checked,
-      validada:f.validada.checked, oficial:f.oficial.checked, url:f.url.value.trim(), config});
-    await desenhar(); recado("Fonte salva."); return;
+    let config; try{ config = JSON.parse(f.config.value || "{}"); if(!config || typeof config !== "object" || Array.isArray(config)) throw 0; }
+    catch(e){ recado("As outras opções de leitura não são um JSON válido (use { } se não houver nenhuma).", true); return; }
+    const nome = f.nome.value.trim(), orgao = f.orgao.value.trim(), url = f.url.value.trim(), tipo = f.tipo_coletor.value;
+    const padrao = f.padrao_url.value.trim(), seletor = f.seletor_texto.value.trim(), janela = f.janela_dias.value.trim();
+    if(nome.length < 3){ recado("Informe o nome da fonte.", true); return; }
+    if(orgao.length < 2){ recado("Informe o órgão.", true); return; }
+    if(!/^https?:\/\/[!-~]+$/.test(url)){ recado("O endereço da fonte precisa ser completo, começando com https:// e sem espaços.", true); return; }
+    if(tipo === "html_links" && !padrao){ recado("Para “Página com lista de links”, informe o padrão dos links (o trecho do endereço que identifica uma notícia ou um ato).", true); return; }
+    if(padrao){ try{ new RegExp(padrao); }catch(e){ recado("O padrão dos links não é uma expressão válida: " + e.message, true); return; } }
+    // repetição dentro de repetição, como (a+)+, pode travar o robô
+    if(/\([^()]*[+*][^()]*\)[+*{]/.test(padrao)){ recado("O padrão dos links tem uma repetição dentro de outra — algo como (a+)+ —, o que pode travar o robô. Simplifique o padrão.", true); return; }
+    if(janela && !(Number(janela) >= 1 && Number(janela) <= 3650)){ recado("A idade máxima dos itens deve ficar entre 1 e 3650 dias.", true); return; }
+    for(const [chave, valor] of [["padrao_url", padrao], ["seletor_texto", seletor], ["janela_dias", janela ? Number(janela) : ""]]){
+      if(valor === "") delete config[chave]; else config[chave] = valor; }
+    const corpo = {nome, orgao, abrangencia:f.abrangencia.value, categoria_padrao:f.categoria_padrao.value || null, tipo_coletor:tipo, url, config,
+      frequencia_horas:Number(f.frequencia_horas.value), ativo:f.ativo.checked, validada:f.validada.checked, oficial:f.oficial.checked};
+    if(f.dataset.id) await alterar("radar_fontes", {id:"eq." + f.dataset.id, select:"id"}, corpo);
+    else{
+      const base = nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "") || "fonte";
+      if((await ler("radar_fontes", {select:"id", nome:"eq." + nome})).length){ recado("Já existe uma fonte com este nome. Use outro nome.", true); return; }
+      // o identificador sai do nome; se outro nome já gerou o mesmo, ganha um número no fim
+      const usados = new Set((await ler("radar_fontes", {select:"slug", slug:"like." + base + "*"})).map(x => x.slug));
+      corpo.slug = base; for(let n = 2; usados.has(corpo.slug); n++) corpo.slug = base + "-" + n;
+      await rest("POST", "radar_fontes", {corpo}).catch(e => { if(e.message === "Já existe um registro igual.") throw new ErroApi("Outra fonte foi cadastrada agora com o mesmo identificador. Tente de novo.", e.status); throw e; });
+    }
+    await desenhar(); recado(f.dataset.id ? "Fonte salva." : "Fonte cadastrada. O robô passa a ler na próxima coleta; acompanhe em “Últimas execuções do robô”."); return;
+  },
+  async textoOficial(f){
+    const url = f.url.value.trim();
+    if(!linkValido(url, 1000)){ recado("Informe o endereço completo da página oficial, começando com https:// (sem espaços nem aspas, até 1000 caracteres).", true); return; }
+    if(f.texto.value.trim().length < 50){ recado("Cole o texto oficial (no mínimo 50 caracteres).", true); return; }
+    if(f.texto.value.trim().length > 500000){ recado("O texto colado é grande demais (máximo de 500 mil caracteres). Cole só o ato ou a notícia.", true); return; }
+    const r = await rpc("radar_incluir_texto_oficial", {p_assunto:E.assunto, p_fonte:Number(f.fonte.value), p_url:url, p_titulo:f.titulo.value.trim(),
+      p_data:f.data.value || null, p_texto:f.texto.value});
+    await desenhar();
+    recado(!r.texto_incluido ? "Este endereço já tinha sido capturado: o texto que já existia foi vinculado ao assunto (o texto colado não foi usado)."
+         : r.ja_existia ? "O robô já tinha registrado este endereço, mas sem conseguir ler o texto: o texto colado foi incluído. Agora selecione o trecho e registre a evidência."
+         : "Texto oficial incluído. Agora selecione o trecho e registre a evidência.", !r.texto_incluido);
   }
 };
 
@@ -1082,7 +1288,7 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular"]);
+  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","nova-fonte","incluir-texto"]);
 let OCUPADO = false;
 async function executar(fn, livre, ...args){
   if(!livre){ if(OCUPADO) return; OCUPADO = true; document.body.classList.add("ocupado"); }
@@ -1096,6 +1302,11 @@ document.addEventListener("click", ev => {
   const acao = ACOES[el.dataset.acao];
   if(el.dataset.acao === "salvar-conteudo") return;            // é o botão de envio do formulário
   if(acao){ ev.preventDefault(); executar(acao, NAVEGACAO.has(el.dataset.acao), el); }
+});
+document.addEventListener("keydown", ev => {
+  if(ev.key !== "Enter" || !ev.target.dataset?.enter) return;
+  ev.preventDefault();                                   // Enter nos campos do registro não é "Salvar conteúdo"
+  ev.target.closest("form")?.querySelector(`[data-acao="${ev.target.dataset.enter}"]`)?.click();
 });
 document.addEventListener("submit", ev => {
   const f = ev.target.closest("[data-form]"); if(!f) return; ev.preventDefault();

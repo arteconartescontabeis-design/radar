@@ -17,8 +17,8 @@ sys.path.insert(0, str(RAIZ / "robo"))
 PG = {"host": os.environ.get("RADAR_PGHOST", "/tmp"), "port": os.environ.get("RADAR_PGPORT", "5544"),
       "user": os.environ.get("RADAR_PGUSER", "postgres")}
 BANCO = "radar_teste"
-SETUP = RAIZ / "sql" / "radar-setup-v0.4.0.sql"
-REVERSAO = RAIZ / "sql" / "radar-reversao-v0.4.0.sql"
+SETUP = RAIZ / "sql" / "radar-setup-v0.5.0.sql"
+REVERSAO = RAIZ / "sql" / "radar-reversao-v0.5.0.sql"
 
 ADMIN = "00000000-0000-0000-0000-00000000000a"
 EDITOR = "00000000-0000-0000-0000-00000000000e"
@@ -83,7 +83,7 @@ def limpo(db):
     db.execute("""truncate radar_publicacao_normas, radar_publicacoes, radar_conteudos, radar_evidencias,
                   radar_assunto_capturas, radar_assuntos, radar_normas, radar_capturas_versoes,
                   radar_capturas, radar_execucoes, radar_auditoria, radar_ia_uso, radar_informativo_itens,
-                  radar_informativos, radar_imagens restart identity cascade""")
+                  radar_informativos, radar_imagens, radar_divulgacoes restart identity cascade""")
     db.execute("update radar_fontes set ultimo_sucesso_em = null, ultima_falha_em = null, "
                "falhas_consecutivas = 0, ultimo_erro = null")
     db.execute("delete from radar_fontes where slug like 'teste-%'")
@@ -132,7 +132,7 @@ server-port = {PORTA_API}
     proc = subprocess.Popen(["postgrest", str(conf)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(50):
         try:
-            if requests.get(API + "/radar_categorias", timeout=1).status_code == 200:
+            if requests.get(API + "/radar_categorias", timeout=1).status_code in (200, 401, 403):   # respondeu (o visitante não lê nada)
                 break
         except requests.RequestException:
             pass
