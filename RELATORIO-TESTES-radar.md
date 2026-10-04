@@ -370,7 +370,9 @@ segunda revisão independente.
     lista.
 20. **Termos com pontuação nas pontas** (ex.: "S.A.") não são aceitos nas regras: o Radar
     compara palavras inteiras.
-21. **A capa automática não é refeita sozinha** quando o título muda: use o botão.
+21. **A capa automática não é refeita sozinha** quando o título muda (o banco não guarda se a
+    imagem é a capa padrão, uma foto enviada ou a ilustração da IA, e trocar sozinho poderia
+    apagar uma imagem escolhida): ao salvar um título novo, a tela avisa ao lado da imagem.
 22. **Painel novo com função de IA antiga:** os recursos novos da IA só funcionam depois de
     colar o `index.ts` desta versão; o painel avisa.
 23. **A nota da IA usa só título e resumo:** notícia importante com título vago pode receber

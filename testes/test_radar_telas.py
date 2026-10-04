@@ -2351,9 +2351,18 @@ def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
     pagina.wait_for_selector("text=Salve o conteúdo antes de gerar a capa.")
     form.locator("button", has_text="Salvar").first.click()
     pagina.wait_for_selector("text=Conteúdo salvo.")
-    pagina.click("text=Gerar capa padrão Artecon")
+    # a imagem não é trocada sozinha, mas fica o lembrete de que o título mudou
+    pagina.wait_for_selector(".capa-antiga >> text=O título mudou")
+    assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] == img[0][0]
+    pagina.click("[data-acao=capa-auto]")
     pagina.wait_for_selector("text=Capa gerada no padrão da Artecon.")
     assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] != img[0][0]
+    assert pagina.locator(".capa-antiga").count() == 0
+    # salvar sem mudar o título não traz o lembrete
+    form.locator("[name=corpo]").fill("Só o texto mudou.")
+    form.locator("button", has_text="Salvar").first.click()
+    pagina.wait_for_selector("text=Conteúdo salvo.")
+    assert pagina.locator(".capa-antiga").count() == 0
     pagina.screenshot(path=str(FOTOS / "10-capa.png"), full_page=True)
 
 

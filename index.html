@@ -420,7 +420,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -1143,6 +1143,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
     ${ed ? `<div class="acoes" style="margin-top:4px"><input id="c-img-${c.id}" type="file" accept="image/jpeg,image/png,image/webp" data-imagem="${c.id}">
       ${c.imagem_id ? `<button class="btn peq perigo" type="button" data-acao="remover-imagem" data-id="${c.id}">Remover imagem</button>` : ""}
       <span class="sub">A imagem é reduzida automaticamente antes de enviar.</span></div>
+      ${E.capaAntiga === c.id && c.imagem_id ? `<div class="aviso alerta capa-antiga">O título mudou. Se a imagem é a capa padrão, ela ainda mostra o título antigo: use “Gerar capa padrão Artecon” para atualizar.</div>` : ""}
       <div class="acoes" style="margin-top:4px"><button class="btn peq sec" type="button" data-acao="capa-auto" data-id="${c.id}">Gerar capa padrão Artecon</button>
         <span class="sub">A capa padrão leva o título atual; depois de mudar o título, gere de novo.</span></div>
       <div class="acoes" style="margin-top:4px"><input type="text" id="img-desc-${c.id}" data-enter="capa-ia" maxlength="200" value="${h((E.imgDesc || {})[c.id] || "")}" style="flex:1;min-width:240px"
@@ -1234,7 +1235,7 @@ const ACOES = {
     const f = el.closest("form");
     if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de gerar a capa.", true); return; }
     if(f.dataset.temImagem && !confirm("Substituir a imagem atual pela capa automática?" + (f.dataset.aprovado ? "\n\nO conteúdo está aprovado: ao trocar a imagem ele volta para revisão." : ""))) return;
-    await capaAutomatica(Number(el.dataset.id), true); await desenhar(); recado("Capa gerada no padrão da Artecon.");
+    await capaAutomatica(Number(el.dataset.id), true); E.capaAntiga = null; await desenhar(); recado("Capa gerada no padrão da Artecon.");
   },
   async "capa-ia"(el){
     const f = el.closest("form");
@@ -1602,7 +1603,7 @@ async function enviarImagem(campo){
   const img = await reduzirImagem(arquivo);
   const [nova] = await rest("POST", "radar_imagens", {corpo:img, params:{select:"id"}, prefer:"return=representation"});
   await alterar("radar_conteudos", {id:"eq." + campo.dataset.imagem}, {imagem_id:nova.id});
-  await desenhar(); recado("Imagem enviada.");
+  E.capaAntiga = null; await desenhar(); recado("Imagem enviada.");
 }
 
 /* a chave do item é composta: o DELETE confere pelo retorno, como os demais */
@@ -1692,7 +1693,13 @@ const FORMS = {
     await desenhar();
     recado(e.trecho_conferido ? "Trecho conferido no texto oficial." : "Atenção: o trecho NÃO foi encontrado no texto oficial.", !e.trecho_conferido);
   },
-  async conteudo(f){ await salvarConteudo(f); await desenhar(); recado("Conteúdo salvo."); },
+  async conteudo(f){
+    const mudouTitulo = f.titulo.value.trim() !== f.titulo.defaultValue.trim();
+    await salvarConteudo(f);
+    // a capa (automática ou não) não é trocada sozinha: fica o lembrete ao lado da imagem
+    E.capaAntiga = mudouTitulo && f.dataset.temImagem ? Number(f.dataset.id) : E.capaAntiga;
+    await desenhar(); recado("Conteúdo salvo.");
+  },
   async fonte(f){
     let config; try{ config = JSON.parse(f.config.value || "{}"); if(!config || typeof config !== "object" || Array.isArray(config)) throw 0; }
     catch(e){ recado("As outras opções de leitura não são um JSON válido (use { } se não houver nenhuma).", true); return; }
