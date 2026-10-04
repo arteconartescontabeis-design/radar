@@ -17,7 +17,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-from radar_coletores import listar_paginas
+from radar_coletores import enderecos_da_listagem as listar_enderecos, listar_paginas
 from radar_util import VERSAO, ErroDownload, baixar, extrair_texto
 
 AQUI = Path(__file__).resolve().parent
@@ -37,7 +37,31 @@ def estrutura_da_pagina(html: str) -> dict:
         "links": len(links), "amostra_links": links[:25],
         "inicio_texto": normalizar(sopa.get_text(" ", strip=True))[:1500],
         "inicio_html": re.sub(r"\s+", " ", html or "")[:3000],
+        "scripts_src": [t["src"] for t in BeautifulSoup(html or "", "lxml").find_all("script", src=True)][:10],
     }
+
+
+RE_ENDERECO = re.compile(r"""["'`]((?:https?://[^"'`\s]{4,200})|(?:/[A-Za-z0-9_\-]*(?:api|rest|consulta|servico|service|ato|norma)[A-Za-z0-9_\-/.{}$]*))["'`]""", re.I)
+
+
+def enderecos_nos_scripts(url: str, scripts: list[str], sessao: requests.Session) -> dict:
+    """Página montada por JavaScript: baixa os scripts e lista os endereços que aparecem neles
+    (é onde fica a API de onde a página tira os dados)."""
+    from urllib.parse import urljoin
+    r = sessao.get(url, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon"})
+    final = r.url
+    achados: dict[str, list[str]] = {"_final": [final]}
+    for src in scripts:
+        endereco = urljoin(final, src)
+        try:
+            js = sessao.get(endereco, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon"}).text
+        except requests.RequestException as e:
+            achados[endereco] = [f"erro: {e}"]
+            continue
+        vistos = sorted({m.group(1) for m in RE_ENDERECO.finditer(js)
+                         if not re.search(r"\.(css|svg|png|woff2?|ttf|ico)$|w3\.org|angular\.io|github\.com", m.group(1))})
+        achados[endereco] = [f"{len(js)} bytes"] + vistos[:80]
+    return achados
 
 
 def normalizar(t: str) -> str:
@@ -83,6 +107,12 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
         if r["brutos"] == 0:
             r["veredito"] = "REVISAR — nenhum item reconhecido"
             r["estrutura"] = estrutura_da_pagina(paginas[0] if paginas else "")
+            if r["estrutura"]["scripts_src"] and not r["estrutura"]["links"]:
+                try:
+                    r["estrutura"]["enderecos_js"] = enderecos_nos_scripts(
+                        listar_enderecos(fonte)[0], r["estrutura"]["scripts_src"], sessao)
+                except Exception as e:
+                    r["estrutura"]["enderecos_js"] = {"erro": [f"{type(e).__name__}: {e}"]}
         elif r["na_janela"] and r["texto_primeiro_item"] < (40 if config.get("sem_pagina_de_texto") else 200):
             r["veredito"] = "REVISAR — lista ok, texto do item não extraído"
         elif any(i["data"] is None for i in r["amostra"]):
@@ -117,6 +147,8 @@ def relatorio_md(resultados: list[dict]) -> str:
                           f"{e['formularios']} formulário(s), {e['scripts']} script(s), {e['links']} link(s).")
             linhas += ["", "Links (amostra):", *[f"- `{l}`" for l in e["amostra_links"]]]
             linhas += ["", f"Texto: _{e['inicio_texto']}_", "", "```html", e["inicio_html"], "```"]
+            for js, lista in (e.get("enderecos_js") or {}).items():
+                linhas += ["", f"Endereços em `{js}`:", *[f"- `{x}`" for x in lista]]
     return "\n".join(linhas)
 
 
