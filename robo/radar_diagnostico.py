@@ -65,19 +65,21 @@ def enderecos_nos_scripts(url: str, scripts: list[str], sessao: requests.Session
         achados[endereco] = [f"{len(js)} bytes"] + [v for v in vistos if not re.search(r"schemas\.|openoffice|oasis|purl\.|sheetjs|jspdf|macVml", v)][:40]
         # o endereço da API costuma ser montado em pedaços: mostra o código em volta das chamadas
         trechos = []
-        for m in re.finditer(r"apiBaseUrl[}+]|dataUrl[}+,)]", js):
-            trecho = re.sub(r"\s+", " ", js[max(0, m.start() - 120): m.end() + 260])
+        for m in re.finditer(r"\.getAtosPorFiltro\(|\.pesquisarIndexacaoAto\(", js):
+            trecho = re.sub(r"\s+", " ", js[max(0, m.start() - 900): m.end() + 300])
             if trecho not in trechos:
                 trechos.append(trecho)
             if len(trechos) >= 40:
                 break
         achados[endereco] += [f"…{t}…" for t in trechos]
-    for extra in ("assets/data.json",):
+    api = urljoin(raiz, "api/indexacao/ato/pesquisar")
+    for corpo in ({}, {"pagina": 1, "tamanhoPagina": 5}, {"dataInicio": "2026-09-24", "dataFim": "2026-10-04"}):
         try:
-            d = sessao.get(urljoin(raiz, extra), timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon"})
-            achados[urljoin(raiz, extra)] = [f"HTTP {d.status_code}, {len(d.text)} bytes", re.sub(r"\s+", " ", d.text[:2500])]
+            d = sessao.post(api, json=corpo, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon",
+                                                                  "Content-Type": "application/json; charset=UTF-8"})
+            achados[f"POST {api} {json.dumps(corpo)}"] = [f"HTTP {d.status_code}, {len(d.text)} bytes", re.sub(r"\s+", " ", d.text[:2500])]
         except requests.RequestException as e:
-            achados[extra] = [f"erro: {e}"]
+            achados[f"POST {api} {json.dumps(corpo)}"] = [f"erro: {e}"]
     return achados
 
 
