@@ -12,12 +12,36 @@ import os
 import sys
 from pathlib import Path
 
+import re
+
 import requests
+from bs4 import BeautifulSoup
 
 from radar_coletores import listar_paginas
 from radar_util import VERSAO, ErroDownload, baixar, extrair_texto
 
 AQUI = Path(__file__).resolve().parent
+
+
+def estrutura_da_pagina(html: str) -> dict:
+    """Resumo da página que o robô não entendeu, para ajustar a fonte só pelo log do GitHub:
+    título, quantas tabelas/linhas/formulários há, links e o começo do texto e do HTML."""
+    sopa = BeautifulSoup(html or "", "lxml")
+    links = [f"{normalizar(a.get_text(' ', strip=True))[:60]} -> {a['href'][:160]}" for a in sopa.find_all("a", href=True)]
+    for lixo in sopa(["script", "style", "noscript"]):
+        lixo.decompose()
+    return {
+        "titulo": normalizar(sopa.title.get_text()) if sopa.title else "",
+        "tabelas": len(sopa.find_all("table")), "linhas": len(sopa.find_all("tr")),
+        "formularios": len(sopa.find_all("form")), "scripts": html.count("<script"),
+        "links": len(links), "amostra_links": links[:25],
+        "inicio_texto": normalizar(sopa.get_text(" ", strip=True))[:1500],
+        "inicio_html": re.sub(r"\s+", " ", html or "")[:3000],
+    }
+
+
+def normalizar(t: str) -> str:
+    return re.sub(r"\s+", " ", t or "").strip()
 
 
 def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
@@ -58,6 +82,7 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
             r["inicio_texto"] = texto[:300]
         if r["brutos"] == 0:
             r["veredito"] = "REVISAR — nenhum item reconhecido"
+            r["estrutura"] = estrutura_da_pagina(paginas[0] if paginas else "")
         elif r["na_janela"] and r["texto_primeiro_item"] < (40 if config.get("sem_pagina_de_texto") else 200):
             r["veredito"] = "REVISAR — lista ok, texto do item não extraído"
         elif any(i["data"] is None for i in r["amostra"]):
@@ -86,6 +111,12 @@ def relatorio_md(resultados: list[dict]) -> str:
             linhas.append(f"- {a['data'] or 'sem data'} — {a['titulo']}  \n  {a['url']}")
         if r["inicio_texto"]:
             linhas.append(f"\nInício do texto extraído: _{r['inicio_texto']}_")
+        if r.get("estrutura"):
+            e = r["estrutura"]
+            linhas.append(f"\nPágina não reconhecida — título: _{e['titulo']}_; {e['tabelas']} tabela(s), {e['linhas']} linha(s), "
+                          f"{e['formularios']} formulário(s), {e['scripts']} script(s), {e['links']} link(s).")
+            linhas += ["", "Links (amostra):", *[f"- `{l}`" for l in e["amostra_links"]]]
+            linhas += ["", f"Texto: _{e['inicio_texto']}_", "", "```html", e["inicio_html"], "```"]
     return "\n".join(linhas)
 
 
