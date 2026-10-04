@@ -73,13 +73,17 @@ def enderecos_nos_scripts(url: str, scripts: list[str], sessao: requests.Session
                 break
         achados[endereco] += [f"…{t}…" for t in trechos]
     api = urljoin(raiz, "api/indexacao/ato/pesquisar")
-    for corpo in ({}, {"pagina": 1, "tamanhoPagina": 5}, {"dataInicio": "2026-09-24", "dataFim": "2026-10-04"}):
-        try:
-            d = sessao.post(api, json=corpo, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon",
-                                                                  "Content-Type": "application/json; charset=UTF-8"})
-            achados[f"POST {api} {json.dumps(corpo)}"] = [f"HTTP {d.status_code}, {len(d.text)} bytes", re.sub(r"\s+", " ", d.text[:2500])]
-        except requests.RequestException as e:
-            achados[f"POST {api} {json.dumps(corpo)}"] = [f"erro: {e}"]
+    filtro = {"tipoPesquisa": "atosDia", "internet": True, "orgaosSelecionados": "", "tiposAtosSelecionados": "",
+              "refino": {}, "tipoData": "dataPublicacao", "ordenacaoColuna": "publicacao", "ordenacaoDirecao": "desc",
+              "paginacaoPaginaAtual": 1, "paginacaoQuantidadePorPagina": 5, "skipAggregations": True}
+    navegador = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+                 "Accept": "application/json, text/plain, */*", "Accept-Language": "pt-BR,pt;q=0.9",
+                 "Content-Type": "application/json; charset=UTF-8", "Origin": raiz.rstrip("/"), "Referer": final}
+    try:
+        d = sessao.post(api, data=json.dumps(filtro), timeout=40, headers=navegador)
+        achados[f"POST {api} (filtro da página)"] = [f"HTTP {d.status_code}, {len(d.text)} bytes", re.sub(r"\s+", " ", d.text[:3000])]
+    except requests.RequestException as e:
+        achados[f"POST {api} (filtro da página)"] = [f"erro: {e}"]
     return achados
 
 
