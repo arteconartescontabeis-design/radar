@@ -236,6 +236,10 @@ def test_robo_com_banco_sem_o_sql_novo_segue_sem_a_limpeza(monkeypatch):
     assert "não foi feita" in radar_coletar.limpar_imagens(BancoFora())
 
 
+def sem_rede(url):
+    raise AssertionError(f"não deveria acessar {url}")
+
+
 class GitHubFalso:
     """Imita a API de issues do GitHub: guarda os avisos em memória."""
     def __init__(self, abertos=None):
@@ -252,6 +256,13 @@ class GitHubFalso:
         self.criados.append((self.prox, radar_alertas.titulo(f["slug"]), radar_alertas.corpo_aviso(f)))
         return self.prox
 
+    def abrir_link(self, reg, status):
+        import radar_alertas
+        self.prox += 1
+        self.avisos[radar_alertas.titulo_link(reg["url"])] = self.prox
+        self.criados.append((self.prox, radar_alertas.titulo_link(reg["url"]), radar_alertas.corpo_link(reg, status)))
+        return self.prox
+
     def fechar(self, numero, motivo):
         self.avisos = {t: n for t, n in self.avisos.items() if n != numero}
         self.fechados.append((numero, motivo))
@@ -264,16 +275,16 @@ def test_fonte_que_falha_3_vezes_abre_aviso_uma_vez_e_fecha_quando_volta(cenario
     PAGINAS["/a/lista"] = (503, "Service Unavailable")
     for vez in range(1, 4):
         robo()
-        feito = radar_alertas.executar(banco, gh)
+        feito = radar_alertas.executar(banco, gh, sem_rede)
         assert (feito == []) == (vez < 3)                       # só na 3ª falha seguida
     assert [t for _, t, _ in gh.criados] == ["Radar: fonte com falha — teste-a"]
     corpo = gh.criados[0][2]
     assert "falhou nas últimas **3** coletas" in corpo and "503" in corpo and "Fonte ativa" in corpo
-    robo(); radar_alertas.executar(banco, gh)                   # 4ª falha: o aviso aberto não se repete
+    robo(); radar_alertas.executar(banco, gh, sem_rede)                   # 4ª falha: o aviso aberto não se repete
     assert len(gh.criados) == 1 and gh.fechados == []
     PAGINAS["/a/lista"] = (200, lista([("/a/noticias/2026/prazo-do-simples-prorrogado", "Prazo do Simples Nacional é prorrogado", "30/09/2026")]))
     robo()
-    assert radar_alertas.executar(banco, gh) == [f"aviso #{gh.criados[0][0]} fechado: " + gh.fechados[0][1]]
+    assert radar_alertas.executar(banco, gh, sem_rede) == [f"aviso #{gh.criados[0][0]} fechado: " + gh.fechados[0][1]]
     assert "voltou a funcionar" in gh.fechados[0][1] and gh.avisos == {}
 
 
@@ -282,9 +293,49 @@ def test_aviso_de_fonte_desligada_ou_apagada_e_fechado(cenario):
     banco = Banco(API, jwt("service_role"), prefixo="")
     gh = GitHubFalso({"Radar: fonte com falha — teste-a": 7, "Radar: fonte com falha — sumiu": 8})
     cenario.execute("update radar_fontes set ativo = false, falhas_consecutivas = 5 where slug = 'teste-a'")
-    radar_alertas.executar(banco, gh)
+    radar_alertas.executar(banco, gh, sem_rede)
     assert sorted(gh.fechados) == [(7, "A fonte foi desligada na aba Fontes."), (8, "A fonte não existe mais no Radar.")]
     assert gh.criados == []                                     # fonte desligada não abre aviso, mesmo falhando
+
+
+def test_link_publicado_fora_do_ar_abre_aviso_e_fecha_quando_volta_ou_e_excluido():
+    import radar_alertas
+    regs = [{"id": 1, "url": "https://artecon.cnt.br/news/a", "titulo": "Prazo do Simples"},
+            {"id": 2, "url": "https://artecon.cnt.br/news/a", "titulo": "Prazo do Simples (versão anterior)"},
+            {"id": 3, "url": "https://artecon.cnt.br/news/b", "titulo": "CBS"},
+            {"id": 4, "url": "https://artecon.cnt.br/news/c", "titulo": "Lento"},
+            {"id": 5, "url": "javascript:alert(1)", "titulo": "Endereço inválido"}]
+    respostas, pedidos = {"https://artecon.cnt.br/news/a": 404, "https://artecon.cnt.br/news/b": 200,
+                          "https://artecon.cnt.br/news/c": None}, []
+    status = lambda u: (pedidos.append(u), respostas[u])[1]
+    fora = radar_alertas.conferir_links(regs, status)
+    a = "https://artecon.cnt.br/news/a"
+    assert {u: (r["id"], st) for u, (r, st) in fora.items()} == {a: (2, 404)}   # um por link (o registro mais novo)
+    assert sorted(pedidos) == sorted(respostas)                       # cada endereço uma vez; o inválido nem é acessado
+    abrir, fechar = radar_alertas.decidir_links(regs, fora, {})
+    assert [(r["id"], st) for r, st in abrir] == [(2, 404)] and fechar == []
+    corpo = radar_alertas.corpo_link(regs[0], 404)
+    assert "HTTP 404" in corpo and "Corrigir link" in corpo and a in corpo
+    t = radar_alertas.titulo_link
+    abertos = {t(a): 11, t("https://artecon.cnt.br/news/b"): 12, t("https://artecon.cnt.br/news/velha"): 13,
+               "Radar: fonte com falha — pgfn": 14}                   # aviso de fonte não é mexido aqui
+    abrir, fechar = radar_alertas.decidir_links(regs, fora, abertos)
+    assert abrir == []                                                # o de "a" já está aberto
+    assert sorted(fechar) == [(12, "O link voltou a abrir."),
+                              (13, "O link não está mais registrado no Radar (corrigido ou excluído).")]
+
+
+def test_robo_le_os_links_publicados_pela_api(cenario):
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    assert banco.links_publicados() == []                             # sem registros: lista vazia, sem erro
+
+
+def test_status_http_devolve_o_codigo_ou_none_em_erro_de_rede(servicos):
+    import radar_alertas
+    PAGINAS["/existe"] = (200, "ok")
+    assert radar_alertas.status_http(SITE + "/existe") == 200
+    assert radar_alertas.status_http(SITE + "/nao-existe") == 404
+    assert radar_alertas.status_http("http://127.0.0.1:9/qualquer") is None
 
 
 def test_avisos_conversam_com_a_api_do_github_no_formato_certo():

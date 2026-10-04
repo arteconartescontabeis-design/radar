@@ -106,3 +106,7 @@ class Banco:
         """Situação de cada fonte (falhas seguidas, último erro), para os avisos de fonte com falha."""
         return self._pedir("GET", "radar_v_saude_fontes", params={
             "select": "slug,nome,ativo,saude,falhas_consecutivas,ultimo_erro,ultimo_sucesso_em", "order": "id"}) or []
+
+    def links_publicados(self) -> list[dict]:
+        """Links registrados em "Publicações no site", para conferir se continuam no ar."""
+        return self._pedir("GET", "radar_divulgacoes", params={"select": "id,url,titulo", "order": "id"}) or []

@@ -457,7 +457,10 @@ parcial), o robô abre no repositório do GitHub um aviso (issue) "Radar: fonte 
 o último erro e o que fazer. O GitHub manda e-mail ao dono do repositório quando o aviso é aberto
 (confira em github.com → Settings → Notifications se "Issues" está com e-mail ligado). Há no máximo
 um aviso aberto por fonte; ele fecha sozinho, com um comentário, quando a fonte volta a funcionar
-ou é desligada.
+ou é desligada. A cada coleta o robô também confere os links registrados em **Publicações no site**:
+o que responder "página não encontrada" (404 ou 410) abre o aviso "Radar: link publicado fora do ar",
+que fecha quando o link volta a abrir ou o registro é corrigido ou excluído. Erro de rede ou do site
+(tempo esgotado, erro 500) não abre aviso, porque costuma ser passageiro.
 
 Como ler o resultado da primeira coleta: **ok** com itens novos = funcionando;
 **vazio_suspeito** = o padrão dos links não casou com nada (ajuste o padrão); **falha** =
