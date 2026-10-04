@@ -328,6 +328,38 @@ def test_diagnostico_classifica_cada_situacao(tmp_path, monkeypatch):
     assert normas["inicio_texto"].startswith("Instrução Normativa RFB nº 2290") and (tmp_path / "rfb-normas-lista.txt").exists()
     texto = radar_diagnostico.relatorio_md([ok, mudou, bloqueada])
     assert "| pgfn-noticias | 200 | 4 |" in texto and "HTTP 403" in texto
+    # página não reconhecida: o relatório mostra a estrutura, para ajustar a fonte só pelo log
+    assert mudou["estrutura"]["titulo"] == "Portal em manutenção" and mudou["estrutura"]["links"] == 1
+    assert "Página não reconhecida — título: _Portal em manutenção_" in texto and "/novo-portal" in texto
+    assert "estrutura" not in ok
+
+
+def test_diagnostico_de_pagina_montada_por_javascript_lista_os_enderecos_dos_scripts():
+    import radar_diagnostico
+    html = '<html><head><title>Normas</title><base href="/"></head><body><app-root></app-root>' \
+           '<script src="main-X.js"></script></body></html>'
+    js = 'class S{constructor(){this.apiBaseUrl=globalThis.location.origin+"/api"}' \
+         'pesquisar(i){let r=`${this.apiBaseUrl}/indexacao/ato/pesquisar`;return this.http.post(r,i)}}' \
+         'const x="http://schemas.openxmlformats.org/x";'
+    pedidos = []
+
+    class Resposta:
+        def __init__(self, url, text):
+            self.url, self.text = url, text
+
+    class Sessao:
+        def get(self, url, **_):
+            pedidos.append(url)
+            return Resposta(url, js if url.endswith(".js") else html)
+
+    e = radar_diagnostico.estrutura_da_pagina(html)
+    assert e["scripts_src"] == ["main-X.js"] and e["links"] == 0 and e["tabelas"] == 0
+    achados = radar_diagnostico.enderecos_nos_scripts("https://ex.gov.br/consulta/pagina.action?p=1", e["scripts_src"], Sessao())
+    assert "https://ex.gov.br/main-X.js" in achados          # <base href="/">: o script é procurado na raiz
+    lista = achados["https://ex.gov.br/main-X.js"]
+    enderecos = [x for x in lista if not x.startswith("…")]          # endereços soltos; os trechos de código vêm com "…"
+    assert "/api" in enderecos and not any("schemas.openxmlformats" in x for x in enderecos)
+    assert any(x.startswith("…") and "/indexacao/ato/pesquisar" in x for x in lista)
 
 
 def test_enderecos_que_nao_sao_http_sao_descartados():

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
-
-import re
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -47,7 +47,6 @@ RE_ENDERECO = re.compile(r"""["'`]((?:https?://[^"'`\s]{4,200})|(?:/[A-Za-z0-9_\
 def enderecos_nos_scripts(url: str, scripts: list[str], sessao: requests.Session) -> dict:
     """Página montada por JavaScript: baixa os scripts e lista os endereços que aparecem neles
     (é onde fica a API de onde a página tira os dados)."""
-    from urllib.parse import urljoin
     r = sessao.get(url, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon"})
     final = r.url
     base = BeautifulSoup(r.text, "lxml").find("base", href=True)
@@ -65,25 +64,13 @@ def enderecos_nos_scripts(url: str, scripts: list[str], sessao: requests.Session
         achados[endereco] = [f"{len(js)} bytes"] + [v for v in vistos if not re.search(r"schemas\.|openoffice|oasis|purl\.|sheetjs|jspdf|macVml", v)][:40]
         # o endereço da API costuma ser montado em pedaços: mostra o código em volta das chamadas
         trechos = []
-        for m in re.finditer(r"\.getAtosPorFiltro\(|\.pesquisarIndexacaoAto\(", js):
-            trecho = re.sub(r"\s+", " ", js[max(0, m.start() - 900): m.end() + 300])
+        for m in re.finditer(r"`\$\{this\.\w*(?:[Uu]rl|[Aa]pi)\w*\}[^`]{0,120}`", js):
+            trecho = re.sub(r"\s+", " ", js[max(0, m.start() - 80): m.end() + 120])
             if trecho not in trechos:
                 trechos.append(trecho)
             if len(trechos) >= 40:
                 break
         achados[endereco] += [f"…{t}…" for t in trechos]
-    api = urljoin(raiz, "api/indexacao/ato/pesquisar")
-    filtro = {"tipoPesquisa": "atosDia", "internet": True, "orgaosSelecionados": "", "tiposAtosSelecionados": "",
-              "refino": {}, "tipoData": "dataPublicacao", "ordenacaoColuna": "publicacao", "ordenacaoDirecao": "desc",
-              "paginacaoPaginaAtual": 1, "paginacaoQuantidadePorPagina": 5, "skipAggregations": True}
-    navegador = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-                 "Accept": "application/json, text/plain, */*", "Accept-Language": "pt-BR,pt;q=0.9",
-                 "Content-Type": "application/json; charset=UTF-8", "Origin": raiz.rstrip("/"), "Referer": final}
-    try:
-        d = sessao.post(api, data=json.dumps(filtro), timeout=40, headers=navegador)
-        achados[f"POST {api} (filtro da página)"] = [f"HTTP {d.status_code}, {len(d.text)} bytes", re.sub(r"\s+", " ", d.text[:3000])]
-    except requests.RequestException as e:
-        achados[f"POST {api} (filtro da página)"] = [f"erro: {e}"]
     return achados
 
 
