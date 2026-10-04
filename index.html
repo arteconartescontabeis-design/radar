@@ -162,6 +162,8 @@ const VERSOES = [
     "Depois de mudar o título de um conteúdo com imagem, aparece o lembrete de gerar a capa de novo (a imagem não é trocada sozinha).",
     "Regras de relevância aceitam termos com pontuação, como “S.A.” e “Ltda.”.",
     "Robô: cada fonte tem até 5 minutos por coleta (ajustável); a que travar é interrompida sem atrasar as outras. Ao fim de cada coleta, as imagens que ficaram sem uso são apagadas.",
+    "Aviso por e-mail de fonte com falha: quando uma fonte falha 3 coletas seguidas, o robô abre um aviso (issue) no repositório do GitHub, e o GitHub manda o e-mail. O aviso fecha sozinho quando a fonte volta a funcionar ou é desligada.",
+    "Tabela no texto: para uma barra dentro da célula, escreva “\\|”.",
     "Diagnóstico das fontes: confere as fontes ativas do banco (inclusive as cadastradas pela tela) e mostra como está montada a página que não reconheceu.",
     "Atos normativos da Receita: o site passou para o novo sistema “Normas”, que não permite leitura automática; desligue a fonte em Fontes até haver outro caminho.",
     "Banco v0.7.1 (rodar o radar-setup-v0.7.1.sql) e robô v0.7.1. A função de IA não mudou."
@@ -315,10 +317,12 @@ function renderTexto(t){
   }).join("");
   // negrito primeiro (sobre o texto bruto); dentro e fora dele, os endereços viram link
   const enfeita = bruto => bruto.split(/\*\*(\S|\S.*?\S)\*\*/).map((p, i) => i % 2 ? `<strong>${ligar(p)}</strong>` : ligar(p)).join("");
+  // células: "|" separa colunas; "\\|" é uma barra dentro da célula
+  const celulas = l => l.trim().replace(/^\|/, "").replace(/(^|[^\\])\|$/, "$1").split(/(?<!\\)\|/).map(c => c.replace(/\\\|/g, "|").trim());
   for(const l of linhas){
     if(!/^\s*\|/.test(l)) fechaTab();
     if(/^\s*\|/.test(l)){ fechaPar(); fechaLista();
-      tab.push(l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim())); }
+      tab.push(celulas(l)); }
     else if(/^##\s+/.test(l)){ fechaPar(); fechaLista(); html += `<h3>${enfeita(l.replace(/^##\s+/, ""))}</h3>`; }
     else if(/^#\s+/.test(l)){ fechaPar(); fechaLista(); html += `<h2>${enfeita(l.replace(/^#\s+/, ""))}</h2>`; }
     else if(/^[-•]\s+/.test(l)){ fechaPar(); if(!lista){ html += "<ul>"; lista = true; } html += `<li>${enfeita(l.replace(/^[-•]\s+/, ""))}</li>`; }
@@ -797,7 +801,7 @@ const TELAS = {
       <div class="painel"><h2>Formatação do texto</h2><ul>
         <li>O texto sai <b>justificado</b> na prévia, no que é copiado para o site e no Informativo.</li>
         <li><code>## Subtítulo</code> inicia um subtítulo.</li><li><code>- item</code> faz uma lista.</li><li><code>**texto**</code> fica em negrito.</li>
-        <li>Linhas iniciadas por <code>|</code> formam uma tabela; a primeira linha é o cabeçalho.</li></ul></div>`;
+        <li>Linhas iniciadas por <code>|</code> formam uma tabela; a primeira linha é o cabeçalho. Para uma barra dentro da célula, escreva <code>\\|</code>.</li></ul></div>`;
   },
 
   async versoes(){
@@ -1153,7 +1157,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
       : c.gerado_por === "ia" ? `<div class="aviso info avisos-ia">Texto gerado pela IA. A verificação automática não achou, fora do texto oficial, número de norma, artigo, percentual, valor, data ou prazo. Ela não lê números por extenso nem avalia a interpretação: a revisão técnica continua necessária.</div>` : ""}
     <label for="c-titulo-${c.id}">Título</label><input id="c-titulo-${c.id}" type="text" name="titulo" value="${h(c.titulo)}" style="width:100%"${ed ? "" : " disabled"}>
     <label for="c-corpo-${c.id}">Texto</label><textarea id="c-corpo-${c.id}" name="corpo" style="min-height:220px" maxlength="60000"${ed ? "" : " disabled"}>${h(c.corpo)}</textarea>
-    <p class="sub">Formatação: “## ” inicia um subtítulo, “- ” um item de lista, **texto** fica em negrito e linhas iniciadas por “|” formam uma tabela (colunas separadas por “|”; a primeira linha é o cabeçalho).</p>
+    <p class="sub">Formatação: “## ” inicia um subtítulo, “- ” um item de lista, **texto** fica em negrito e linhas iniciadas por “|” formam uma tabela (colunas separadas por “|”; a primeira linha é o cabeçalho; para uma barra dentro da célula, escreva “\\|”).</p>
     <div class="grade">
       <div><label for="c-autor-${c.id}">Texto elaborado por (opcional)</label><input id="c-autor-${c.id}" type="text" name="autor" maxlength="120" value="${h(c.autor || "")}"${ed ? "" : " disabled"}></div>
       <div><label for="c-fonte-${c.id}">Fonte (já vem com o órgão da captura; pode alterar)</label><input id="c-fonte-${c.id}" type="text" name="fonte_credito" maxlength="300" value="${h(c.fonte_credito || "")}" placeholder="Ex.: Receita Federal"${ed ? "" : " disabled"}></div>

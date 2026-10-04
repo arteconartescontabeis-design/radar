@@ -236,6 +236,98 @@ def test_robo_com_banco_sem_o_sql_novo_segue_sem_a_limpeza(monkeypatch):
     assert "não foi feita" in radar_coletar.limpar_imagens(BancoFora())
 
 
+class GitHubFalso:
+    """Imita a API de issues do GitHub: guarda os avisos em memória."""
+    def __init__(self, abertos=None):
+        self.avisos = dict(abertos or {})          # título -> número
+        self.criados, self.fechados, self.prox = [], [], 100
+
+    def avisos_abertos(self):
+        return dict(self.avisos)
+
+    def abrir(self, f):
+        import radar_alertas
+        self.prox += 1
+        self.avisos[radar_alertas.titulo(f["slug"])] = self.prox
+        self.criados.append((self.prox, radar_alertas.titulo(f["slug"]), radar_alertas.corpo_aviso(f)))
+        return self.prox
+
+    def fechar(self, numero, motivo):
+        self.avisos = {t: n for t, n in self.avisos.items() if n != numero}
+        self.fechados.append((numero, motivo))
+
+
+def test_fonte_que_falha_3_vezes_abre_aviso_uma_vez_e_fecha_quando_volta(cenario):
+    import radar_alertas
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso()
+    PAGINAS["/a/lista"] = (503, "Service Unavailable")
+    for vez in range(1, 4):
+        robo()
+        feito = radar_alertas.executar(banco, gh)
+        assert (feito == []) == (vez < 3)                       # só na 3ª falha seguida
+    assert [t for _, t, _ in gh.criados] == ["Radar: fonte com falha — teste-a"]
+    corpo = gh.criados[0][2]
+    assert "falhou nas últimas **3** coletas" in corpo and "503" in corpo and "Fonte ativa" in corpo
+    robo(); radar_alertas.executar(banco, gh)                   # 4ª falha: o aviso aberto não se repete
+    assert len(gh.criados) == 1 and gh.fechados == []
+    PAGINAS["/a/lista"] = (200, lista([("/a/noticias/2026/prazo-do-simples-prorrogado", "Prazo do Simples Nacional é prorrogado", "30/09/2026")]))
+    robo()
+    assert radar_alertas.executar(banco, gh) == [f"aviso #{gh.criados[0][0]} fechado: " + gh.fechados[0][1]]
+    assert "voltou a funcionar" in gh.fechados[0][1] and gh.avisos == {}
+
+
+def test_aviso_de_fonte_desligada_ou_apagada_e_fechado(cenario):
+    import radar_alertas
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso({"Radar: fonte com falha — teste-a": 7, "Radar: fonte com falha — sumiu": 8})
+    cenario.execute("update radar_fontes set ativo = false, falhas_consecutivas = 5 where slug = 'teste-a'")
+    radar_alertas.executar(banco, gh)
+    assert sorted(gh.fechados) == [(7, "A fonte foi desligada na aba Fontes."), (8, "A fonte não existe mais no Radar.")]
+    assert gh.criados == []                                     # fonte desligada não abre aviso, mesmo falhando
+
+
+def test_avisos_conversam_com_a_api_do_github_no_formato_certo():
+    import radar_alertas
+    pedidos = []
+
+    class Resposta:
+        def __init__(self, status, dados):
+            self.status_code, self.dados = status, dados
+            self.text = json.dumps(dados) if dados is not None else ""
+        def json(self):
+            return self.dados
+
+    class Sessao:
+        headers = {}
+        def request(self, metodo, url, **kw):
+            pedidos.append((metodo, url.split("/repos/")[1], kw.get("params"), kw.get("json")))
+            if metodo == "GET":
+                return Resposta(200, [{"number": 3, "title": "Radar: fonte com falha — pgfn"},
+                                      {"number": 4, "title": "Radar: fonte com falha — x", "pull_request": {}},
+                                      {"number": 5, "title": "Outro assunto"}])
+            return Resposta(201, {"number": 9})
+
+    gh = radar_alertas.GitHub("dono/radar", "tok", Sessao())
+    assert gh.avisos_abertos() == {"Radar: fonte com falha — pgfn": 3}     # pull request e outros avisos ficam de fora
+    assert gh.abrir({"slug": "rfb", "nome": "Receita", "falhas_consecutivas": 3, "ultimo_erro": "x"}) == 9
+    gh.fechar(3, "voltou")
+    assert [(m, c) for m, c, _, _ in pedidos] == [("GET", "dono/radar/issues"), ("POST", "dono/radar/issues"),
+                                                  ("POST", "dono/radar/issues/3/comments"), ("PATCH", "dono/radar/issues/3")]
+    assert pedidos[1][3]["title"] == "Radar: fonte com falha — rfb" and pedidos[3][3] == {"state": "closed", "state_reason": "completed"}
+    assert Sessao.headers["Authorization"] == "Bearer tok"
+
+
+def test_avisos_sem_variaveis_ou_com_erro_nunca_derrubam_a_coleta(monkeypatch, capsys):
+    import radar_alertas
+    for v in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "GITHUB_TOKEN", "GITHUB_REPOSITORY"):
+        monkeypatch.delenv(v, raising=False)
+    assert radar_alertas.main() == 0 and "nada a fazer" in capsys.readouterr().out
+    monkeypatch.setenv("SUPABASE_URL", "http://127.0.0.1:9"); monkeypatch.setenv("SUPABASE_SERVICE_KEY", "x")
+    monkeypatch.setenv("GITHUB_TOKEN", "t"); monkeypatch.setenv("GITHUB_REPOSITORY", "a/b")
+    assert radar_alertas.main() == 0 and "não foram atualizados" in capsys.readouterr().err
+
+
 def test_tempo_maximo_invalido_volta_ao_padrao():
     assert radar_coletar.tempo_maximo({}) == radar_coletar.TEMPO_MAX_PADRAO
     assert radar_coletar.tempo_maximo({"tempo_max_segundos": 45}) == 45

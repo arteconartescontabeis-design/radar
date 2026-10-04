@@ -28,6 +28,13 @@ O que foi comprovado:
 - **Número da edição** acompanha o ano do mês, sem trocar o que foi digitado; **lembrete de capa**
   aparece ao salvar título novo e some ao gerar a capa.
 - **Função de IA da versão anterior** (v0.7.0) não é apontada como antiga pelo painel v0.7.1.
+- **Aviso de fonte com falha:** a fonte que falha 3 coletas seguidas abre um aviso só (a 4ª falha
+  não repete), com o erro e o que fazer; ao voltar a funcionar, o aviso é comentado e fechado.
+  Fonte desligada ou apagada fecha o aviso e não abre outro. Pull request e outros avisos do
+  repositório não são confundidos; sem as variáveis, ou com o banco ou o GitHub fora do ar, a
+  coleta não fica vermelha.
+- **Tabela no texto:** "\\|" vira uma barra dentro da célula (também no fim da linha), igual no
+  painel e no Informativo.
 - **Workflows em Node 24:** o diagnóstico rodou no GitHub com as ações novas, sem o aviso de Node 20.
 
 ## v0.7.0 — em alta, sem repetição, texto original, imagem realista e assunto por etapas
@@ -374,7 +381,6 @@ segunda revisão independente.
    número, e não avalia a interpretação.
 3. **Teto mensal de tokens** pode ser ultrapassado por pedidos simultâneos; a trava real é
    o limite de gasto na conta da OpenAI.
-6. **Aviso por e-mail** de fonte com falha ainda não existe; a falha aparece no painel.
 7. **Diário Oficial da União** fora desta versão.
 16. **Texto oficial incluído pela equipe depende de quem inclui:** o sistema limita o
     endereço ao site da fonte e marca a origem, mas não compara o texto colado com a
@@ -387,8 +393,8 @@ segunda revisão independente.
     lista "Em andamento"; o outro conteúdo aparece pela aba Publicações.
 8. **Edição fechada não guarda cópia dos artigos:** o registro definitivo é o PDF salvo.
    Alteração posterior é avisada, não impedida.
-10. **Tabela no texto:** o caractere "|" sempre separa colunas (não dá para usá-lo dentro
-    de uma célula) e a linha de título não se repete quando a tabela atravessa a página.
+10. **Tabela no texto:** a linha de título não se repete quando a tabela atravessa a página
+    (para uma barra dentro da célula, escreva "\\|").
 19. **Relevância é por palavras:** uma notícia importante escrita sem nenhum dos termos
     fica como baixa. Vale olhar o filtro "Baixa relevância" de vez em quando e ajustar a
     lista.
