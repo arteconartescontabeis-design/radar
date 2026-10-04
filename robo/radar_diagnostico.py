@@ -50,9 +50,11 @@ def enderecos_nos_scripts(url: str, scripts: list[str], sessao: requests.Session
     from urllib.parse import urljoin
     r = sessao.get(url, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon"})
     final = r.url
-    achados: dict[str, list[str]] = {"_final": [final]}
+    base = BeautifulSoup(r.text, "lxml").find("base", href=True)
+    raiz = urljoin(final, base["href"]) if base else final      # <base href="/">: scripts ficam na raiz do site
+    achados: dict[str, list[str]] = {"_final": [final, "base: " + raiz]}
     for src in scripts:
-        endereco = urljoin(final, src)
+        endereco = urljoin(raiz, src)
         try:
             js = sessao.get(endereco, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon"}).text
         except requests.RequestException as e:
