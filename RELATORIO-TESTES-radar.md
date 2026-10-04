@@ -347,7 +347,6 @@ segunda revisão independente.
    número, e não avalia a interpretação.
 3. **Teto mensal de tokens** pode ser ultrapassado por pedidos simultâneos; a trava real é
    o limite de gasto na conta da OpenAI.
-4. **Texto digitado e não salvo se perde** se a sessão cair de vez no meio da edição.
 5. **Listas longas mostram só os itens mais recentes**, com aviso; ainda não há paginação.
 6. **Aviso por e-mail** de fonte com falha ainda não existe; a falha aparece no painel.
 7. **Diário Oficial da União** fora desta versão.
@@ -365,8 +364,6 @@ segunda revisão independente.
 9. **Imagens substituídas ficam no banco** sem uso; não há tela de limpeza.
 10. **Tabela no texto:** o caractere "|" sempre separa colunas (não dá para usá-lo dentro
     de uma célula) e a linha de título não se repete quando a tabela atravessa a página.
-11. **Número sugerido da nova edição** considera o ano corrente; se o mês escolhido for de
-    outro ano, ajuste o número à mão.
 12. **Envio de imagem que falha no meio** pode deixar uma imagem sem uso no banco.
 19. **Relevância é por palavras:** uma notícia importante escrita sem nenhum dos termos
     fica como baixa. Vale olhar o filtro "Baixa relevância" de vez em quando e ajustar a
