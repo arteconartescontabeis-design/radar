@@ -25,6 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 import requests
 
 from radar_banco import Banco, ErroBanco
+import radar_ia
 from radar_coletores import Item, data_no_texto, listar_paginas
 from radar_util import (VERSAO, ErroDownload, agora_iso, baixar, extrair_texto,
                         hash_conteudo, hash_titulo)
@@ -212,10 +213,27 @@ def executar(banco: Banco, slug: str | None = None, forcar: bool = False,
     return resultados, pulados
 
 
+def avaliar_com_ia(banco: Banco, sem_ia: bool = False) -> dict:
+    """Nota da IA para as capturas novas. Nunca derruba a coleta: qualquer problema vira aviso no resumo."""
+    token = os.environ.get("RADAR_IA_GATEWAY_TOKEN", "").strip()
+    if sem_ia:
+        return {"pulado": "opção --sem-ia."}
+    if not token:
+        return {"pulado": "falta o segredo RADAR_IA_GATEWAY_TOKEN no GitHub (token do Radar na IA Central)."}
+    try:
+        r = radar_ia.avaliar_capturas(banco, token, os.environ.get("IA_GATEWAY_URL") or radar_ia.GATEWAY_PADRAO,
+                                      os.environ.get("RADAR_IA_MODELO_RAPIDO") or radar_ia.MODELO_PADRAO)
+    except Exception as e:                      # noqa: BLE001 — a avaliação é um extra da coleta
+        return {"pulado": radar_ia._sem_segredo(f"erro inesperado ({type(e).__name__}: {str(e)[:200]}).", token)}
+    print(f"IA: {r['avaliadas']} de {r['pendentes']} avaliada(s), {r['repetidas']} repetição(ões)" + (f" — {r['erro']}" if r["erro"] else ""))
+    return r
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Radar Artecon — coleta das fontes oficiais")
     ap.add_argument("--fonte", help="slug de uma única fonte")
     ap.add_argument("--forcar", action="store_true", help="ignora a frequência configurada")
+    ap.add_argument("--sem-ia", action="store_true", help="não pede à IA a nota das capturas novas")
     args = ap.parse_args(argv)
 
     print(f"Radar Artecon — robô de coleta v{VERSAO}")
@@ -227,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     texto = resumo_markdown(resultados, pulados)
+    texto += radar_ia.resumo_markdown(avaliar_com_ia(banco, args.sem_ia))
     print("\n" + texto)
     destino = os.environ.get("GITHUB_STEP_SUMMARY")
     if destino:
