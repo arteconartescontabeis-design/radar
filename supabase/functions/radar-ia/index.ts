@@ -1,14 +1,19 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.6.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.7.0)
 //
 // Cinco ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
 //   fundamentar  → propõe trechos LITERAIS do texto oficial; só entram os que conferem
 //   gerar        → redige um conteúdo (rascunho) e aponta o que precisa ser conferido
 //   ilustrar     → cria uma ilustração de capa (sem texto, sem marcas, sem pessoas reais); não grava nada
-//   diagnostico  → testa a instalação (chave, modelos) e devolve o que está errado, em português
+//   diagnostico  → testa a instalação (token, modelos) e devolve o que está errado, em português
 //
-// Princípios:
+// v0.6.1 — a IA passa pela IA CENTRAL do Portal Artecon (função ia-gateway do projeto do DP):
+//   * texto pela Anthropic e imagens pela OpenAI, as duas contas ficam SÓ na IA Central;
+//   * este projeto guarda apenas o token do Radar (iagw_radar_...), gerado no Portal → Consumo de IA;
+//   * limites, custo, avisos por e-mail e relatório mensal são os da IA Central.
+//
+// Princípios (inalterados):
 //   * a função NÃO usa a chave service_role: tudo é lido e gravado com o token do
 //     próprio usuário, então valem as mesmas regras (RLS) e a auditoria registra quem pediu;
 //   * a IA não aprova nem publica — só produz rascunho e sugestão;
@@ -16,24 +21,25 @@
 //   * o que a IA afirma é conferido por código contra o texto oficial.
 //
 // Segredos (Supabase → Edge Functions → Secrets):
-//   OPENAI_API_KEY                 obrigatório
-//   RADAR_OPENAI_MODELO            padrão: gpt-6.1-sol   (fundamentar e gerar)
-//   RADAR_OPENAI_MODELO_RAPIDO     padrão: gpt-6-luna    (classificar)
-//   RADAR_OPENAI_MODELO_IMAGEM     padrão: gpt-image-1   (ilustrar)
-//   RADAR_OPENAI_API               "responses" (padrão) ou "chat"
-//   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês)
+//   IA_GATEWAY_TOKEN               obrigatório: token do aplicativo "radar" na IA Central
+//   IA_GATEWAY_URL                 padrão: https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway
+//   RADAR_IA_MODELO                padrão: claude-sonnet-4-6   (fundamentar e gerar)
+//   RADAR_IA_MODELO_RAPIDO         padrão: claude-haiku-4-5    (classificar)
+//   RADAR_IA_MODELO_IMAGEM         padrão: gpt-image-2         (ilustrar)
+//   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês; trava própria do Radar,
+//                                  além dos limites em dólar da IA Central)
+// Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.6.0";
+const VERSAO = "0.7.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
 const SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY");
-const OPENAI_URL = env("OPENAI_BASE_URL", "https://api.openai.com/v1").replace(/\/+$/, "");
-const MODELO = env("RADAR_OPENAI_MODELO", "gpt-6.1-sol");
-const MODELO_RAPIDO = env("RADAR_OPENAI_MODELO_RAPIDO", "gpt-6-luna");
-const MODELO_IMAGEM = env("RADAR_OPENAI_MODELO_IMAGEM", "gpt-image-1");
-const API_OPENAI = env("RADAR_OPENAI_API", "responses");
+const GATEWAY_URL = env("IA_GATEWAY_URL", "https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway").replace(/\/+$/, "");
+const MODELO = env("RADAR_IA_MODELO", "claude-sonnet-4-6");
+const MODELO_RAPIDO = env("RADAR_IA_MODELO_RAPIDO", "claude-haiku-4-5");
+const MODELO_IMAGEM = env("RADAR_IA_MODELO_IMAGEM", "gpt-image-2");
 const LIMITE_MENSAL = Number(env("RADAR_IA_LIMITE_MENSAL_TOKENS", "3000000"));
 
 const MAX_TEXTO_POR_CAPTURA = 40000;   // caracteres enviados à IA por texto oficial
@@ -157,55 +163,71 @@ function conferirGerado(gerado: string, oficial: string, temEvidencia: boolean):
   return avisos;
 }
 
-// ------------------------------------------------------------------ OpenAI
+// ------------------------------------------------------------------ IA Central (ia-gateway)
 type Uso = { entrada: number; saida: number; modelo: string };
-/** Consumo do pedido em andamento (um por pedido): é registrado mesmo que algo falhe depois da resposta da OpenAI. */
-type Registro = { uso: Uso | null };
-/** Erro da OpenAI traduzido para o que o administrador precisa fazer. */
-function erroOpenAI(status: number, m: string, modelo: string, segredo: string): Erro {
-  if (status === 401) return new Erro(503, "A OpenAI recusou a chave configurada (segredo OPENAI_API_KEY): confira se a chave foi copiada inteira e se continua ativa na conta da OpenAI.");
-  if (status === 429) return new Erro(429, "A OpenAI recusou por limite de uso ou falta de crédito na conta (confira o saldo em platform.openai.com → Billing). Detalhe: " + m.slice(0, 200));
-  if (status === 404 || /model.*(not exist|not found|does not have access)|invalid model/i.test(m)) {
-    return new Erro(503, `O modelo "${modelo}" não está disponível nesta conta da OpenAI. No Supabase → Edge Functions → Secrets, crie ou ajuste ${segredo} com um modelo que a sua conta tenha. Detalhe: ` + m.slice(0, 200));
+/** Consumo do pedido em andamento (um por pedido): é registrado mesmo que algo falhe depois da resposta da IA.
+ *  "quem" é o e-mail de quem pediu: vai para a IA Central aparecer em "Últimas chamadas". */
+type Registro = { uso: Uso | null; quem?: string };
+
+/** Erro vindo da IA Central (limite, token, modelo) ou repassado da Anthropic/OpenAI, em português. */
+function erroIA(status: number, dados: any, modelo: string): Erro {
+  const tipo = String(dados?.error?.type ?? "");
+  const m = String(dados?.error?.message ?? `HTTP ${status}`);
+  if (tipo.startsWith("artecon_ia_central")) {
+    if (status === 401) return new Erro(503, "A IA Central não aceitou o token do Radar (segredo IA_GATEWAY_TOKEN). Gere o token do aplicativo Radar em Portal → Consumo de IA e grave no segredo. Detalhe: " + m.slice(0, 200));
+    if (status === 429) return new Erro(429, m.slice(0, 400));                // limite do mês ou do dia: a mensagem da IA Central já explica
+    if (status === 403) return new Erro(503, m.slice(0, 400));                // modelo não liberado ou IA do aplicativo desligada
+    return new Erro(502, "A IA Central respondeu com erro: " + m.slice(0, 300));
   }
-  return new Erro(502, "A OpenAI devolveu erro: " + m.slice(0, 300));
+  if (tipo === "openai_erro") return new Erro(status === 429 ? 429 : 502, m.slice(0, 400));
+  if (status === 401 && !tipo) return new Erro(503, "A IA Central (função ia-gateway) recusou a chamada antes de recebê-la. Confira se ela está publicada com \"Verify JWT\" DESLIGADO e se o endereço (segredo IA_GATEWAY_URL) está certo.");
+  if (status === 404 && !tipo) return new Erro(503, "A IA Central (função ia-gateway) não foi encontrada no endereço configurado (segredo IA_GATEWAY_URL).");
+  if (/credit balance/i.test(m)) return new Erro(429, "A conta da Anthropic está sem crédito. O administrador recarrega pelo link em Portal → Consumo de IA.");
+  if (status === 401 || tipo === "authentication_error") return new Erro(503, "A Anthropic recusou a chave da IA Central (segredo ANTHROPIC_API_KEY do ia-gateway).");
+  if (status === 404 || tipo === "not_found_error") return new Erro(503, `O modelo "${modelo}" não existe na conta da Anthropic. Ajuste o segredo RADAR_IA_MODELO (ou RADAR_IA_MODELO_RAPIDO). Detalhe: ` + m.slice(0, 200));
+  if (status === 429 || tipo === "rate_limit_error") return new Erro(429, "A Anthropic recusou por excesso de pedidos no momento. Tente de novo em um minuto.");
+  if (status === 529 || tipo === "overloaded_error") return new Erro(503, "A Anthropic está sobrecarregada agora. Tente de novo em alguns minutos.");
+  return new Erro(502, "A IA devolveu erro: " + m.slice(0, 300));
 }
-async function perguntar(reg: Registro, modelo: string, instrucoes: string, entrada: string, nome: string, esquema: unknown): Promise<{ json: any }> {
-  const chave = env("OPENAI_API_KEY");
-  if (!chave) throw new Erro(503, "A chave da OpenAI não está configurada na função (segredo OPENAI_API_KEY).");
-  const responses = API_OPENAI !== "chat";
-  const corpo = responses
-    ? { model: modelo, instructions: instrucoes, input: entrada, store: false, text: { format: { type: "json_schema", name: nome, schema: esquema, strict: true } } }
-    : { model: modelo, messages: [{ role: "system", content: instrucoes }, { role: "user", content: entrada }],
-        response_format: { type: "json_schema", json_schema: { name: nome, schema: esquema, strict: true } } };
+
+async function chamarGateway(reg: Registro, caminho: string, corpo: unknown, modelo: string): Promise<any> {
+  const token = env("IA_GATEWAY_TOKEN");
+  if (!token) throw new Erro(503, "O token do Radar na IA Central não está configurado nesta função (segredo IA_GATEWAY_TOKEN).");
   let r: Response;
   try {
-    r = await fetch(`${OPENAI_URL}/${responses ? "responses" : "chat/completions"}`, {
-      method: "POST", headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
+    r = await fetch(GATEWAY_URL + caminho, {
+      method: "POST",
+      headers: { "x-api-key": token, "content-type": "application/json", "anthropic-version": "2023-06-01",
+                 ...(reg.quem ? { "x-ia-usuario": reg.quem } : {}) },
       body: JSON.stringify(corpo), signal: AbortSignal.timeout(110_000),
     });
   } catch (e) {
-    throw new Erro(504, "A OpenAI não respondeu a tempo. Tente de novo. (" + (e instanceof Error ? e.name : "erro") + ")");
+    const nome = e instanceof Error ? e.name : "erro";
+    throw new Erro(504, nome === "TimeoutError" ? "A IA não respondeu a tempo. Tente de novo."
+      : "Não foi possível falar com a IA Central (" + nome + "). Confira o endereço em IA_GATEWAY_URL e tente de novo.");
   }
   const dados: any = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    throw erroOpenAI(r.status, String(dados?.error?.message ?? `HTTP ${r.status}`), modelo,
-      modelo === MODELO ? "RADAR_OPENAI_MODELO" : "RADAR_OPENAI_MODELO_RAPIDO");
-  }
+  if (!r.ok) throw erroIA(r.status, dados, modelo);
+  return dados;
+}
+
+/** Pergunta à Anthropic exigindo a resposta no formato do esquema (uso forçado de ferramenta). */
+async function perguntar(reg: Registro, modelo: string, instrucoes: string, entrada: string, nome: string, esquema: unknown,
+                         maxTokens = 4000): Promise<{ json: any }> {
+  const dados = await chamarGateway(reg, "", {
+    model: modelo, max_tokens: maxTokens, system: instrucoes,
+    messages: [{ role: "user", content: entrada }],
+    tools: [{ name: nome, description: "Registra a resposta no formato pedido.", input_schema: esquema }],
+    tool_choice: { type: "tool", name: nome },
+  }, modelo);
   const u = dados.usage ?? {};
-  reg.uso = { entrada: Number(u.input_tokens ?? u.prompt_tokens ?? 0) || 0, saida: Number(u.output_tokens ?? u.completion_tokens ?? 0) || 0, modelo };
-  let texto = "";
-  if (responses) {
-    if (typeof dados.output_text === "string") texto = dados.output_text;
-    else for (const item of dados.output ?? []) for (const c of item.content ?? []) if (c.type === "output_text") texto += c.text ?? "";
-    if (dados.status === "incomplete") throw new Erro(502, "A resposta da IA veio incompleta (limite de tamanho). Tente de novo.");
-  } else {
-    texto = dados.choices?.[0]?.message?.content ?? "";
-    if (dados.choices?.[0]?.message?.refusal) throw new Erro(502, "A IA se recusou a responder a este pedido.");
-  }
-  let json: any;
-  try { json = JSON.parse(texto); } catch { throw new Erro(502, "A IA devolveu uma resposta fora do formato esperado. Tente de novo."); }
-  if (!json || typeof json !== "object") throw new Erro(502, "A IA devolveu uma resposta fora do formato esperado. Tente de novo.");
+  reg.uso = { entrada: (Number(u.input_tokens ?? 0) || 0) + (Number(u.cache_creation_input_tokens ?? 0) || 0) + (Number(u.cache_read_input_tokens ?? 0) || 0),
+              saida: Number(u.output_tokens ?? 0) || 0, modelo: String(dados.model ?? modelo) };
+  if (dados.stop_reason === "max_tokens") throw new Erro(502, "A resposta da IA veio incompleta (limite de tamanho). Tente de novo; se repetir, o administrador aumenta o tamanho máximo da resposta do Radar em Portal → Consumo de IA.");
+  if (dados.stop_reason === "refusal") throw new Erro(502, "A IA se recusou a responder a este pedido.");
+  const bloco = (Array.isArray(dados.content) ? dados.content : []).find((c: any) => c?.type === "tool_use" && c?.name === nome);
+  const json = bloco?.input;
+  if (!json || typeof json !== "object" || Array.isArray(json)) throw new Erro(502, "A IA devolveu uma resposta fora do formato esperado. Tente de novo.");
   return { json };
 }
 
@@ -224,7 +246,7 @@ async function carregar(token: string, assuntoId: number) {
     data_publicacao: v.radar_capturas.data_publicacao, orgao: v.radar_capturas.radar_fontes.orgao, oficial: v.radar_capturas.radar_fontes.oficial,
   }));
   const evidencias = await banco(token, "GET", `radar_evidencias?select=*&assunto_id=eq.${assuntoId}&order=id`);
-  return { assunto, capturas, evidencias, reg: { uso: null } as Registro };
+  return { assunto, capturas, evidencias, reg: { uso: null } as Registro };   // "quem" é preenchido na entrada
 }
 function blocoOficial(capturas: Captura[]): { bloco: string; texto: string } {
   let restante = MAX_TEXTO_TOTAL, bloco = "", texto = "";
@@ -264,7 +286,7 @@ async function classificar(token: string, ctx: Awaited<ReturnType<typeof carrega
     "clientes de um escritório contábil; 'baixa' é para notícia institucional, operação policial, evento ou ato individual; " +
     "(3) público afetado: quem precisa agir ou saber (ex.: optantes do Simples Nacional), em até 200 caracteres; " +
     "(4) subcategoria: 1 a 4 palavras. " + REGRA_DADOS + "\nCategorias possíveis: " + categorias.map((c) => `${c.slug} (${c.nome})`).join(", ") + ".";
-  const { json } = await perguntar(ctx.reg, MODELO_RAPIDO, instrucoes, `Assunto: ${ctx.assunto.titulo}\n\n${bloco}`, "classificacao", esquema);
+  const { json } = await perguntar(ctx.reg, MODELO_RAPIDO, instrucoes, `Assunto: ${ctx.assunto.titulo}\n\n${bloco}`, "classificacao", esquema, 1200);
   // só passam adiante os campos esperados, e só com valores que o banco aceita
   const dentro = (v: unknown, lista: string[]) => lista.includes(String(v)) ? String(v) : "";
   const sugestao = {
@@ -306,7 +328,7 @@ async function fundamentar(token: string, ctx: Awaited<ReturnType<typeof carrega
     "não resuma, não corrija, não junte passagens distantes, não use reticências; (2) cada trecho tem de 40 a 600 caracteres; " +
     "(3) captura_id é o id do texto de onde o trecho foi copiado; (4) dispositivo: 'art. 2º, § 1º' quando o trecho estiver dentro de um " +
     "artigo identificável, senão string vazia — nunca invente dispositivo; (5) se o texto não trouxer base para o assunto, devolva lista vazia. " + REGRA_DADOS;
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, `Assunto: ${ctx.assunto.titulo}\nResumo: ${ctx.assunto.resumo ?? ""}\n\n${bloco}`, "fundamentacao", esquema);
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, `Assunto: ${ctx.assunto.titulo}\nResumo: ${ctx.assunto.resumo ?? ""}\n\n${bloco}`, "fundamentacao", esquema, 3500);
 
   const jaExistem = new Set(ctx.evidencias.map((e: any) => `${e.captura_id}|${normalizar(e.trecho_literal)}`));
   const inseridas: any[] = [], descartadas: { trecho: string; motivo: string }[] = [];
@@ -359,11 +381,15 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     "(4) a seção 'Análise Artecon' é interpretação: use linguagem condicional ('pode', 'tende a', 'recomenda-se avaliar') e não crie obrigações que o texto não traz; " +
     "(5) não prometa resultado, não dê orientação individual e não use superlativos; " +
     "(6) formatação: só '## ' para subtítulo, '- ' para lista e **negrito**; sem HTML, sem tabelas, sem links; " +
-    "(7) título com até 110 caracteres, informativo, sem ponto final e sem sensacionalismo. " + REGRA_DADOS;
+    "(7) título com até 110 caracteres, informativo, sem ponto final e sem sensacionalismo; " +
+    "(8) TEXTO ORIGINAL, NUNCA CÓPIA: escreva com palavras e frases próprias. Não reproduza frases nem parágrafos do texto oficial, " +
+    "nem com pequenas trocas de palavras; não repita a ordem dos parágrafos da fonte. Reorganize a informação do ponto de vista da empresa cliente " +
+    "(o que muda, para quem, quando, o que fazer). Só é permitido transcrever, entre aspas e com no máximo 25 palavras, o trecho de um dispositivo " +
+    "legal quando a redação exata for indispensável; nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte. " + REGRA_DADOS;
   const entrada = `Assunto: ${ctx.assunto.titulo}\nCategoria: ${ctx.assunto.categoria ?? "—"}\nResumo da equipe: ${ctx.assunto.resumo ?? "—"}\n` +
     `Público afetado: ${ctx.assunto.publico_afetado ?? "—"}\n\nTrechos já conferidos pela equipe (use-os como base):\n` +
     (conferidas.map((e: any) => `- ${e.dispositivo ? e.dispositivo + ": " : ""}"${e.trecho_literal}"`).join("\n") || "(nenhum)") + `\n\n${bloco}`;
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "conteudo", esquema);
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "conteudo", esquema, 6000);
 
   const titulo = normalizarEspacos(String(json.titulo ?? "")).slice(0, 200) || ctx.assunto.titulo;
   // tira marcação HTML (<b>, </p>…), mas preserva comparações do texto ("receita < R$ 500 e multa > 2%")
@@ -377,29 +403,50 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
 }
 
 // ------------------------------------------------------------------ ilustração de capa
+// Filtro por palavras da descrição pedida (o pedido à OpenAI leva as proibições de qualquer forma).
+// "antes"/"depois": a palavra não pode estar colada a outra letra — \b não entende acento ("diálogo" não é "logo").
+const ANTES = "(?<![\\p{L}\\p{N}])", DEPOIS = "(?![\\p{L}\\p{N}])";
+const DESCRICAO_PROIBIDA = new RegExp(ANTES + "(" +
+  "logotipos?|logomarcas?|logos?\\s+d[aeo]s?\\s|(o|os|um|uns|do|dos|no|com|sem|seu|nosso)\\s+logos?" + DEPOIS +
+  "|marcas?\\s+(d[aeo]s?\\s|registradas?)|marca[- ]d.?[aá]gua|bras[aã]o|bras[oõ]es|s[ií]mbolos?\\s+d[aeo]s?\\s|bandeiras?\\s+d[aeo]s?\\s" +
+  "|assinaturas?\\s+d[aeo]s?\\s+(autor|autora|artista|fot[oó]graf[oa]|pintor|pintora)|assinad[oa]s?\\s+por\\s|com\\s+(a\\s+)?assinatura\\s+(no|na|em|ao)\\s" +
+  "|[àa]\\s+moda\\s+de\\s|famos[oa]s?" + DEPOIS + "|celebridades?" + DEPOIS +
+  "|presidentes?\\s+(da\\s+rep[uú]blica|do\\s+brasil|lula|bolsonaro)|ministr[oa]s?" + DEPOIS + "|governador(a|es|as)?" + DEPOIS +
+  "|senador(a|es|as)?" + DEPOIS + "|deputad[oa]s?" + DEPOIS + "|prefeit[oa]s?" + DEPOIS + ")", "iu");
+// Aqui a maiúscula importa: "no estilo de Fulano", "estilo Pixar", "inspirado em Van Gogh", "quadro de Portinari"
+// são pedidos de autoria; "estilo realista", "estilo de vida" e "inspirado em tons claros" não são.
+const OBRA_DE_AUTOR = new RegExp(ANTES + "(" +
+  "[Ee]stilo\\s+((de|do|da|dos|das)\\s+)?\\p{Lu}|[Ii]nspirad[oa]s?\\s+(em|no|na|nos|nas)\\s+\\p{Lu}" +
+  "|([Oo]bra|[Qq]uadro|[Pp]intura|[Dd]esenho)s?\\s+(de|do|da)\\s+\\p{Lu})", "u");
+
 /** Ilustração para a capa do conteúdo. O pedido leva só o tema (título e resumo do assunto), nunca o texto oficial.
  *  Nada é gravado aqui: a imagem volta para a tela, que reduz e grava como qualquer imagem enviada pela equipe. */
-async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: string) {
-  const chave = env("OPENAI_API_KEY");
-  if (!chave) throw new Erro(503, "A chave da OpenAI não está configurada na função (segredo OPENAI_API_KEY).");
+async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: string, descricao: string) {
   const tema = normalizarEspacos(titulo || ctx.assunto.titulo).slice(0, 200);
   const resumo = normalizarEspacos(String(ctx.assunto.resumo ?? "")).slice(0, 300);
-  const pedido = "Ilustração editorial para a capa de uma notícia de um escritório de contabilidade brasileiro. " +
-    `Tema: ${tema}.${resumo ? " Contexto: " + resumo : ""} ` +
-    "Estilo: fotografia de banco de imagens ou ilustração realista, sóbria e profissional, em tons de azul-marinho e azul-claro, " +
-    "com objetos de escritório e contabilidade (documentos, calculadora, gráficos, notebook, calendário). " +
-    "PROIBIDO: qualquer texto, letra, número, logotipo, brasão, bandeira, marca ou rosto de pessoa identificável. Formato paisagem.";
-  let r: Response;
-  try {
-    r = await fetch(`${OPENAI_URL}/images/generations`, {
-      method: "POST", headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: MODELO_IMAGEM, prompt: pedido, size: "1536x1024", quality: "medium", n: 1 }), signal: AbortSignal.timeout(110_000),
-    });
-  } catch (e) {
-    throw new Erro(504, "A OpenAI não respondeu a tempo. Tente de novo. (" + (e instanceof Error ? e.name : "erro") + ")");
+  // o que a pessoa pediu para a imagem (opcional): entra como descrição da cena; as proibições abaixo valem sempre
+  const desejo = normalizarEspacos(descricao);
+  if (desejo.length > 200) throw new Erro(400, "A descrição da imagem pode ter até 200 caracteres.");
+  // pedido de marca, assinatura ou do estilo de um autor é recusado antes de gerar (e de cobrar): a imagem não pode ter autoria
+  if (DESCRICAO_PROIBIDA.test(desejo) || OBRA_DE_AUTOR.test(desejo)) {
+    throw new Erro(400, "A descrição da imagem não pode pedir marca, logotipo, assinatura, pessoa conhecida nem o estilo de um autor. " +
+      "Descreva só a cena (ex.: contadora atendendo um casal de empresários).");
   }
-  const dados: any = await r.json().catch(() => ({}));
-  if (!r.ok) throw erroOpenAI(r.status, String(dados?.error?.message ?? `HTTP ${r.status}`), MODELO_IMAGEM, "RADAR_OPENAI_MODELO_IMAGEM");
+  const pedido = "Fotografia realista, com aparência de foto profissional de banco de imagens, para a capa de uma notícia de um " +
+    "escritório de contabilidade brasileiro. " +
+    (desejo ? `Cena pedida: ${desejo}. Assunto da notícia: ${tema}. `
+            : `Assunto da notícia: ${tema}.${resumo ? " Contexto: " + resumo : ""} Escolha a cena que melhor represente o assunto ` +
+              "(por exemplo: empresário ou contadora analisando documentos, reunião de trabalho, comércio, indústria, escritório, " +
+              "calculadora e relatórios, notebook com gráficos). ") +
+    "Luz natural, cores sóbrias, enquadramento horizontal, sem aparência de desenho ou de ilustração digital. " +
+    "Pessoas são permitidas, desde que sejam pessoas genéricas e fictícias, adultas, em ambiente profissional: " +
+    "NUNCA uma pessoa real, pública ou identificável, nem parecida com alguém conhecido. " +
+    "PROIBIDO na imagem: qualquer texto, letra, número ou legenda; logotipo, marca, brasão, bandeira ou símbolo oficial; " +
+    "marca-d'água, assinatura, crédito ou carimbo de autoria; personagem, obra, fotografia ou estilo de artista ou de fotógrafo existente. " +
+    "A imagem precisa ser inteiramente original.";
+  // a imagem é gerada pela OpenAI, pela IA Central (?acao=imagem): o custo fica registrado lá, por imagem
+  const dados = await chamarGateway(ctx.reg, "?acao=imagem",
+    { model: MODELO_IMAGEM, prompt: pedido, size: "1536x1024", quality: "medium", n: 1 }, MODELO_IMAGEM);
   const u = dados.usage ?? {};
   ctx.reg.uso = { entrada: Number(u.input_tokens ?? 0) || 0, saida: Number(u.output_tokens ?? 0) || 0, modelo: MODELO_IMAGEM };
   const b64 = String(dados?.data?.[0]?.b64_json ?? "");
@@ -410,27 +457,40 @@ async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: strin
 
 // ------------------------------------------------------------------ diagnóstico
 /** Testa a instalação de ponta a ponta com um pedido mínimo a cada modelo. Nunca devolve a chave. */
-async function diagnostico() {
-  const chave = env("OPENAI_API_KEY");
+async function diagnostico(quem: string) {
+  const token = env("IA_GATEWAY_TOKEN");
   const itens: { item: string; ok: boolean; detalhe: string }[] = [];
   itens.push({ item: "Função radar-ia instalada", ok: true, detalhe: "versão " + VERSAO });
-  itens.push({ item: "Segredo OPENAI_API_KEY", ok: !!chave,
-    detalhe: chave ? "configurado (termina em …" + chave.slice(-4) + ")" : "não configurado: Supabase → Edge Functions → Secrets → crie OPENAI_API_KEY com a chave da OpenAI" });
-  if (chave) {
+  itens.push({ item: "Token do Radar na IA Central (segredo IA_GATEWAY_TOKEN)", ok: /^iagw_/.test(token),
+    detalhe: !token ? "não configurado: gere o token do aplicativo Radar em Portal → Consumo de IA e crie o segredo IA_GATEWAY_TOKEN nesta função"
+      : /^iagw_/.test(token) ? "configurado (termina em …" + token.slice(-4) + ")"
+      : "o valor gravado não é um token da IA Central (deve começar com iagw_radar_)" });
+  if (/^iagw_/.test(token)) {
     const esquema = { type: "object", additionalProperties: false, required: ["ok"], properties: { ok: { type: "boolean" } } };
     for (const [papel, modelo] of [["Modelo que redige e fundamenta", MODELO], ["Modelo que classifica", MODELO_RAPIDO]] as const) {
       try {
-        await perguntar({ uso: null }, modelo, "Responda apenas com o JSON pedido.", "Devolva ok = true.", "teste", esquema);
-        itens.push({ item: `${papel} (${modelo})`, ok: true, detalhe: "respondeu" });
+        await perguntar({ uso: null, quem }, modelo, "Responda apenas pela ferramenta.", "Devolva ok = true.", "teste", esquema, 64);
+        itens.push({ item: `${papel} (${modelo})`, ok: true, detalhe: "respondeu pela IA Central" });
       } catch (e) {
         itens.push({ item: `${papel} (${modelo})`, ok: false, detalhe: e instanceof Error ? e.message : "erro" });
       }
     }
   }
-  return { itens, tudo_certo: itens.every((i) => i.ok), api: API_OPENAI, modelo_imagem: MODELO_IMAGEM, limite_mensal: LIMITE_MENSAL };
+  return { itens, tudo_certo: itens.every((i) => i.ok), modelo_imagem: MODELO_IMAGEM, limite_mensal: LIMITE_MENSAL,
+           central: GATEWAY_URL.replace(/^https:\/\/([^/]+).*$/, "$1") };
 }
 
 // ------------------------------------------------------------------ entrada
+/** E-mail de quem pediu (para a IA Central mostrar quem usou). Se não der para saber, segue sem. */
+async function emailDoUsuario(token: string): Promise<string> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: token }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return "";
+    const u: any = await r.json();
+    return String(u?.email ?? "").toLowerCase().slice(0, 120);
+  } catch { return ""; }
+}
+
 async function tratar(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   let token = "", acao = "", assuntoId = 0, reg: Registro = { uso: null };
@@ -451,7 +511,7 @@ async function tratar(req: Request): Promise<Response> {
     if (!["admin", "editor"].includes(papel)) throw new Erro(403, "Seu perfil não permite usar a IA.");
     if (diag) {
       if (papel !== "admin") throw new Erro(403, "Só o administrador testa a instalação da IA.");
-      return responder(200, { ...(await diagnostico()), versao: VERSAO });
+      return responder(200, { ...(await diagnostico(await emailDoUsuario(token))), versao: VERSAO });
     }
 
     const [mes] = await banco(token, "GET", "radar_v_ia_mes?select=tokens");
@@ -462,9 +522,11 @@ async function tratar(req: Request): Promise<Response> {
 
     const ctx = await carregar(token, assuntoId);
     reg = ctx.reg;
+    reg.quem = await emailDoUsuario(token);
     const resultado = acao === "classificar" ? await classificar(token, ctx)
       : acao === "fundamentar" ? await fundamentar(token, ctx)
-      : acao === "ilustrar" ? await ilustrar(ctx, typeof pedido.titulo === "string" ? pedido.titulo : "")
+      : acao === "ilustrar" ? await ilustrar(ctx, typeof pedido.titulo === "string" ? pedido.titulo : "",
+                                             typeof pedido.descricao === "string" ? pedido.descricao : "")
       : await gerar(token, ctx, String(pedido.formato ?? "informativo"));
     const usado = reg.uso;
     return responder(200, { ...resultado, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
