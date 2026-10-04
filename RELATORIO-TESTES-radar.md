@@ -347,7 +347,6 @@ segunda revisão independente.
    número, e não avalia a interpretação.
 3. **Teto mensal de tokens** pode ser ultrapassado por pedidos simultâneos; a trava real é
    o limite de gasto na conta da OpenAI.
-4. **Texto digitado e não salvo se perde** se a sessão cair de vez no meio da edição.
 5. **Listas longas mostram só os itens mais recentes**, com aviso; ainda não há paginação.
 6. **Aviso por e-mail** de fonte com falha ainda não existe; a falha aparece no painel.
 7. **Diário Oficial da União** fora desta versão.
@@ -365,15 +364,15 @@ segunda revisão independente.
 9. **Imagens substituídas ficam no banco** sem uso; não há tela de limpeza.
 10. **Tabela no texto:** o caractere "|" sempre separa colunas (não dá para usá-lo dentro
     de uma célula) e a linha de título não se repete quando a tabela atravessa a página.
-11. **Número sugerido da nova edição** considera o ano corrente; se o mês escolhido for de
-    outro ano, ajuste o número à mão.
 12. **Envio de imagem que falha no meio** pode deixar uma imagem sem uso no banco.
 19. **Relevância é por palavras:** uma notícia importante escrita sem nenhum dos termos
     fica como baixa. Vale olhar o filtro "Baixa relevância" de vez em quando e ajustar a
     lista.
 20. **Termos com pontuação nas pontas** (ex.: "S.A.") não são aceitos nas regras: o Radar
     compara palavras inteiras.
-21. **A capa automática não é refeita sozinha** quando o título muda: use o botão.
+21. **A capa automática não é refeita sozinha** quando o título muda (o banco não guarda se a
+    imagem é a capa padrão, uma foto enviada ou a ilustração da IA, e trocar sozinho poderia
+    apagar uma imagem escolhida): ao salvar um título novo, a tela avisa ao lado da imagem.
 22. **Painel novo com função de IA antiga:** os recursos novos da IA só funcionam depois de
     colar o `index.ts` desta versão; o painel avisa.
 23. **A nota da IA usa só título e resumo:** notícia importante com título vago pode receber

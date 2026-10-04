@@ -197,6 +197,9 @@ O mesmo passo a passo está dentro do sistema, na aba **Como usar**.
 4. **Conteúdo:** escreva (flash, informativo ou artigo), envie para revisão e aprove.
    Com a IA: "Sugerir classificação", "Buscar trechos" e "Gerar" produzem sugestão e
    rascunho; o texto gerado vem com a lista de "Pontos a conferir".
+   O título e o texto digitados ficam guardados no navegador até serem salvos: se a sessão
+   cair no meio da edição, ao abrir o conteúdo de novo aparece "Recuperar o texto não salvo".
+   "Sair" com texto não salvo pede confirmação e apaga esses rascunhos do navegador.
 5. **Publicação:** é feita no site da Artecon. No conteúdo aprovado, use "Copiar título",
    "Copiar texto formatado" e "Baixar imagem", publique no site e volte para informar o
    link e a data em "Registrar publicação no site". A aba **Publicações** mostra o que

@@ -488,6 +488,59 @@ def test_nao_aprova_com_alteracao_nao_salva(pagina, limpo):
     assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"
 
 
+def test_texto_nao_salvo_sobrevive_a_queda_da_sessao_e_pode_ser_recuperado(pagina, limpo):
+    a, c = preparar_aprovado(limpo)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    form = pagina.locator("form[data-form=conteudo]")
+    form.locator("[name=titulo]").fill("Título reescrito antes da queda")
+    form.locator("[name=corpo]").fill("Parágrafo longo digitado com calma e ainda não salvo.")
+    # a sessão cai de vez (navegador fechado, sessão expirada): volta para a tela de entrada
+    pagina.evaluate("localStorage.removeItem('radar_sessao')")
+    pagina.reload()
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.wait_for_selector(".rascunho >> text=Texto não salvo")
+    assert form.locator("[name=corpo]").input_value() == "Texto do informativo."          # nada foi trocado sozinho
+    pagina.click("text=Recuperar o texto não salvo")
+    assert form.locator("[name=titulo]").input_value() == "Título reescrito antes da queda"
+    assert form.locator("[name=corpo]").input_value() == "Parágrafo longo digitado com calma e ainda não salvo."
+    assert pagina.locator(".rascunho").count() == 0
+    assert limpo.execute("select corpo from radar_conteudos where id = %s", (c,)).fetchone()[0] == "Texto do informativo."
+    pagina.click("form[data-form=conteudo] [data-acao=salvar-conteudo]")
+    pagina.wait_for_selector("#recado >> text=Conteúdo salvo.")
+    assert limpo.execute("select titulo, corpo from radar_conteudos where id = %s", (c,)).fetchone() == \
+        ("Título reescrito antes da queda", "Parágrafo longo digitado com calma e ainda não salvo.")
+    assert pagina.evaluate("Object.keys(localStorage).filter(k => k.startsWith('radar_rascunho_')).length") == 0
+    # descartar: o aviso some e não volta
+    form.locator("[name=corpo]").fill("Outro texto que a pessoa desistiu de usar.")
+    pagina.click("nav.abas >> text=Assuntos")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.click(".rascunho >> text=Descartar")
+    assert pagina.locator(".rascunho").count() == 0
+    abrir_assunto(pagina, "Informativo de teste")
+    assert pagina.locator(".rascunho").count() == 0
+
+
+def test_sair_com_texto_nao_salvo_pede_confirmacao_e_apaga_os_rascunhos(pagina, limpo):
+    preparar_aprovado(limpo)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.locator("form[data-form=conteudo] [name=corpo]").fill("Rascunho que vai embora.")
+    pagina.evaluate("window.perguntas = []; window.confirm = m => (window.perguntas.push(m), false); 0")   # a pessoa desiste
+    pagina.click("header >> text=Sair")
+    assert "não salvo" in pagina.evaluate("window.perguntas[0]")
+    assert pagina.locator("form[data-form=conteudo]").count() == 1                      # continua na tela, com o texto
+    assert pagina.locator("form[data-form=conteudo] [name=corpo]").input_value() == "Rascunho que vai embora."
+    pagina.evaluate("window.confirm = () => true; 0")                                    # agora confirma
+    pagina.click("header >> text=Sair")
+    pagina.wait_for_selector("input[type=password]")
+    assert pagina.evaluate("Object.keys(localStorage).filter(k => k.startsWith('radar_rascunho_')).length") == 0
+
+
 def test_editar_texto_depois_de_publicado_no_site_avisa_e_o_registro_guarda_o_que_saiu(pagina, limpo):
     a, c = preparar_aprovado(limpo)
     entrar(pagina)
@@ -1381,6 +1434,27 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     assert "CGSN PRORROGA" in por_pagina[1]
     assert "FALE CONOSCO" in por_pagina[-1] and "Cleiver Gonçalves" in por_pagina[-1]
     assert "Imprimir" not in "".join(por_pagina)                                                       # a barra da tela não sai no papel
+
+
+def test_numero_sugerido_da_edicao_acompanha_o_ano_do_mes_escolhido(pagina, limpo):
+    ano = limpo.execute("select extract(year from now())::int").fetchone()[0]
+    limpo.execute("insert into radar_informativos (numero, ano, mes, data_assinatura) values (9, %s, make_date(%s, 9, 1), make_date(%s, 9, 1))",
+                  (ano, ano, ano))
+    limpo.execute("insert into radar_informativos (numero, ano, mes, data_assinatura) values (12, %s, make_date(%s, 12, 1), make_date(%s, 12, 1))",
+                  (ano - 1, ano - 1, ano - 1))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Informativos")
+    pagina.wait_for_selector("text=Nova edição")
+    assert pagina.input_value("#ni-num") == "10"
+    pagina.fill("#ni-mes", f"{ano + 1}-01")                      # janeiro do ano seguinte: a numeração recomeça
+    assert pagina.input_value("#ni-num") == "1"
+    pagina.fill("#ni-mes", f"{ano - 1}-12")                      # ano anterior: continua a numeração dele
+    assert pagina.input_value("#ni-num") == "13"
+    pagina.fill("#ni-num", "7")
+    pagina.dispatch_event("#ni-num", "change")
+    pagina.fill("#ni-mes", f"{ano}-11")                          # número digitado à mão não é trocado
+    assert pagina.input_value("#ni-num") == "7"
 
 
 def test_informativo_fechar_reabrir_e_avisos(pagina, limpo):
@@ -2277,9 +2351,18 @@ def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
     pagina.wait_for_selector("text=Salve o conteúdo antes de gerar a capa.")
     form.locator("button", has_text="Salvar").first.click()
     pagina.wait_for_selector("text=Conteúdo salvo.")
-    pagina.click("text=Gerar capa padrão Artecon")
+    # a imagem não é trocada sozinha, mas fica o lembrete de que o título mudou
+    pagina.wait_for_selector(".capa-antiga >> text=O título mudou")
+    assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] == img[0][0]
+    pagina.click("[data-acao=capa-auto]")
     pagina.wait_for_selector("text=Capa gerada no padrão da Artecon.")
     assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] != img[0][0]
+    assert pagina.locator(".capa-antiga").count() == 0
+    # salvar sem mudar o título não traz o lembrete
+    form.locator("[name=corpo]").fill("Só o texto mudou.")
+    form.locator("button", has_text="Salvar").first.click()
+    pagina.wait_for_selector("text=Conteúdo salvo.")
+    assert pagina.locator(".capa-antiga").count() == 0
     pagina.screenshot(path=str(FOTOS / "10-capa.png"), full_page=True)
 
 

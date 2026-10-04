@@ -420,7 +420,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -440,7 +440,7 @@ async function renovarSessao(){
     guardarSessao(null); limparEstado(); desenhar(); return false;
   }
 }
-async function sair(){ try{ await pedir("POST", "/auth/v1/logout"); }catch(e){} guardarSessao(null); limparEstado(); desenhar(); }
+async function sair(){ try{ await pedir("POST", "/auth/v1/logout"); }catch(e){} apagarRascunhos(); guardarSessao(null); limparEstado(); desenhar(); }
 async function carregarPerfil(){
   const p = await ler("radar_perfis", {select:"*", user_id:"eq." + E.sessao.user.id});
   E.perfil = p[0] && p[0].ativo ? p[0] : null;
@@ -688,10 +688,12 @@ const TELAS = {
   async informativos(){
     if(E.informativo) return telaInformativo(E.informativo);
     const itens = await ler("radar_informativos", {select:"*,radar_informativo_itens(conteudo_id)", order:"ano.desc,numero.desc", limit:"100"});
-    const hoje = new Date(), ano = hoje.getFullYear(), prox = Math.max(0, ...itens.filter(i => i.ano === ano).map(i => i.numero)) + 1;
+    const hoje = new Date(), ano = hoje.getFullYear(), proxPorAno = {};
+    for(const i of itens) proxPorAno[i.ano] = Math.max(proxPorAno[i.ano] || 1, i.numero + 1);   // próximo número de cada ano
+    const prox = proxPorAno[ano] || 1;
     return `<h1>Informativo Mensal</h1>
       <p class="sub">Cada edição reúne a agenda de obrigações do mês e os conteúdos aprovados, no padrão do informativo enviado aos clientes. Depois de montar, abra para imprimir ou salvar em PDF.</p>
-      ${podeEditar() ? `<form class="painel" data-form="novoInformativo"><h2>Nova edição</h2><div class="grade">
+      ${podeEditar() ? `<form class="painel" data-form="novoInformativo" data-proximos="${h(JSON.stringify(proxPorAno))}"><h2>Nova edição</h2><div class="grade">
         <div><label for="ni-num">Número</label><input id="ni-num" type="number" name="numero" min="1" max="9999" required value="${prox}"></div>
         <div><label for="ni-mes">Mês da agenda</label><input id="ni-mes" type="month" name="mes" required value="${ano}-${String(hoje.getMonth() + 1).padStart(2, "0")}"></div>
         </div><div class="acoes"><button class="btn">Criar edição</button><span class="sub">A agenda já vem calculada pelas regras das Configurações.</span></div></form>` : ""}
@@ -1100,10 +1102,27 @@ function trechosCopiados(corpo, fontes){
   }
   return achados.sort((a, b) => b.palavras - a.palavras);
 }
+/* Rascunho local: o título e o texto digitados num conteúdo ficam guardados neste navegador até serem salvos,
+   para não se perderem se a sessão cair no meio da edição. Um por usuário e conteúdo; "Sair" apaga todos. */
+const chaveRascunho = id => `radar_rascunho_${E.sessao?.user?.id || "anonimo"}_${id}`;
+function lerRascunho(id){ try{ return JSON.parse(localStorage.getItem(chaveRascunho(id)) || "null"); }catch(e){ return null; } }
+function guardarRascunho(f){
+  try{ localStorage.setItem(chaveRascunho(f.dataset.id), JSON.stringify({titulo:f.titulo.value, corpo:f.corpo.value, base:f.dataset.lido, quando:new Date().toISOString()})); }catch(e){}
+}
+function apagarRascunho(id){ try{ localStorage.removeItem(chaveRascunho(id)); }catch(e){} }
+function apagarRascunhos(){ try{ Object.keys(localStorage).filter(k => k.startsWith("radar_rascunho_")).forEach(k => localStorage.removeItem(k)); }catch(e){} }
+function avisoRascunho(c){
+  const r = lerRascunho(c.id);
+  if(!r || typeof r.corpo !== "string" || typeof r.titulo !== "string" || (r.titulo === c.titulo && r.corpo === c.corpo)) return "";
+  return `<div class="aviso alerta rascunho"><b>Texto não salvo.</b> Há uma versão deste conteúdo digitada neste navegador em ${h(dataHora(r.quando))} que não chegou a ser salva${r.base !== c.atualizado_em ? " (e o conteúdo foi alterado depois disso: confira antes de salvar)" : ""}.
+    <div class="acoes"><button class="btn peq" type="button" data-acao="recuperar-rascunho" data-id="${c.id}">Recuperar o texto não salvo</button>
+      <button class="btn peq sec" type="button" data-acao="descartar-rascunho" data-id="${c.id}">Descartar</button></div></div>`;
+}
 function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
   const copia = trechosCopiados(c.corpo, fontes);
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
   return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}">
+    ${ed ? avisoRascunho(c) : ""}
     ${copia.length ? `<div class="aviso erro copia"><b>Texto igual ao da fonte em ${copia.length} trecho(s).</b> O conteúdo não pode ser aprovado assim: reescreva com as suas palavras. Se for a transcrição de um dispositivo legal, cite só o essencial entre aspas (até ${CITACAO_MAXIMA} palavras por citação).
       <ul>${copia.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span></li>`).join("")}</ul>${copia.length > 4 ? `<span class="sub">e mais ${copia.length - 4}.</span>` : ""}</div>`
       : fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é só com o texto das capturas deste assunto; não detecta paráfrase muito próxima nem cópia de outras páginas.">(só contra as capturas deste assunto)</span></p>` : ""}
@@ -1124,6 +1143,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
     ${ed ? `<div class="acoes" style="margin-top:4px"><input id="c-img-${c.id}" type="file" accept="image/jpeg,image/png,image/webp" data-imagem="${c.id}">
       ${c.imagem_id ? `<button class="btn peq perigo" type="button" data-acao="remover-imagem" data-id="${c.id}">Remover imagem</button>` : ""}
       <span class="sub">A imagem é reduzida automaticamente antes de enviar.</span></div>
+      ${E.capaAntiga === c.id && c.imagem_id ? `<div class="aviso alerta capa-antiga">O título mudou. Se a imagem é a capa padrão, ela ainda mostra o título antigo: use “Gerar capa padrão Artecon” para atualizar.</div>` : ""}
       <div class="acoes" style="margin-top:4px"><button class="btn peq sec" type="button" data-acao="capa-auto" data-id="${c.id}">Gerar capa padrão Artecon</button>
         <span class="sub">A capa padrão leva o título atual; depois de mudar o título, gere de novo.</span></div>
       <div class="acoes" style="margin-top:4px"><input type="text" id="img-desc-${c.id}" data-enter="capa-ia" maxlength="200" value="${h((E.imgDesc || {})[c.id] || "")}" style="flex:1;min-width:240px"
@@ -1164,7 +1184,10 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
 const ACOES = {
   aba(el){ E.etapa = null; E.aba = el.dataset.aba; E.assunto = null; E.informativo = null; return desenhar(); },
   recarregar(){ return desenhar(); },
-  sair(){ return sair(); },
+  sair(){
+    if(telaSuja() && !confirm("Há texto digitado e não salvo nesta tela. Sair agora descarta esse texto. Sair mesmo assim?")) return;
+    return sair();
+  },
   voltar(){ E.etapa = null; if(E.assunto) E.assunto = null; else E.informativo = null; return desenhar(); },
   "abrir-assunto"(el){ if(!el.dataset.id || el.dataset.id === "undefined") return; E.etapa = null; E.assunto = Number(el.dataset.id); window.scrollTo(0,0); return desenhar(); },
   async "abrir-da-captura"(el){ E.etapa = null; E.assunto = await rpc("radar_abrir_assunto", {p_captura:Number(el.dataset.id)}); E.aba = "assuntos"; return desenhar(); },
@@ -1212,7 +1235,7 @@ const ACOES = {
     const f = el.closest("form");
     if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de gerar a capa.", true); return; }
     if(f.dataset.temImagem && !confirm("Substituir a imagem atual pela capa automática?" + (f.dataset.aprovado ? "\n\nO conteúdo está aprovado: ao trocar a imagem ele volta para revisão." : ""))) return;
-    await capaAutomatica(Number(el.dataset.id), true); await desenhar(); recado("Capa gerada no padrão da Artecon.");
+    await capaAutomatica(Number(el.dataset.id), true); E.capaAntiga = null; await desenhar(); recado("Capa gerada no padrão da Artecon.");
   },
   async "capa-ia"(el){
     const f = el.closest("form");
@@ -1301,6 +1324,13 @@ const ACOES = {
   "abrir-informativo"(el){ E.informativo = Number(el.dataset.id); E.assunto = null; E.aba = "informativos"; window.scrollTo(0,0); return desenhar(); },
   "ag-linha"(){ $("#ag-corpo").insertAdjacentHTML("beforeend", linhaAgenda({}, "")); },
   "ag-remover"(el){ el.closest("tr").remove(); },
+  "recuperar-rascunho"(el){
+    const f = el.closest("form"), r = lerRascunho(el.dataset.id);
+    if(r){ f.titulo.value = r.titulo; f.corpo.value = r.corpo; }
+    el.closest(".rascunho").remove();
+    recado("Texto recuperado. Ele ainda não está salvo: confira e clique em “Salvar”.");
+  },
+  "descartar-rascunho"(el){ apagarRascunho(el.dataset.id); el.closest(".rascunho").remove(); },
   "ag-recalcular"(el){
     const f = el.closest("form"), m = /^(\d{4})-(\d{2})$/.exec(f.mes.value);
     if(!m){ recado("Escolha o mês da agenda.", true); return; }
@@ -1441,6 +1471,7 @@ async function salvarConteudo(f, extra = {}){
   const corpo = {titulo:f.titulo.value.trim(), corpo:f.corpo.value, autor:f.autor.value.trim() || null, fonte_credito:f.fonte_credito.value.trim() || null, ...extra};
   if(!corpo.titulo){ throw new ErroApi("O título não pode ficar vazio."); }
   await alterar("radar_conteudos", {id:"eq." + f.dataset.id}, corpo);
+  apagarRascunho(f.dataset.id);
 }
 /* formulário com algo digitado e ainda não salvo */
 const telaSuja = () => [...document.querySelectorAll("main form[data-form]")].some(sujo);
@@ -1572,7 +1603,7 @@ async function enviarImagem(campo){
   const img = await reduzirImagem(arquivo);
   const [nova] = await rest("POST", "radar_imagens", {corpo:img, params:{select:"id"}, prefer:"return=representation"});
   await alterar("radar_conteudos", {id:"eq." + campo.dataset.imagem}, {imagem_id:nova.id});
-  await desenhar(); recado("Imagem enviada.");
+  E.capaAntiga = null; await desenhar(); recado("Imagem enviada.");
 }
 
 /* a chave do item é composta: o DELETE confere pelo retorno, como os demais */
@@ -1662,7 +1693,13 @@ const FORMS = {
     await desenhar();
     recado(e.trecho_conferido ? "Trecho conferido no texto oficial." : "Atenção: o trecho NÃO foi encontrado no texto oficial.", !e.trecho_conferido);
   },
-  async conteudo(f){ await salvarConteudo(f); await desenhar(); recado("Conteúdo salvo."); },
+  async conteudo(f){
+    const mudouTitulo = f.titulo.value.trim() !== f.titulo.defaultValue.trim();
+    await salvarConteudo(f);
+    // a capa (automática ou não) não é trocada sozinha: fica o lembrete ao lado da imagem
+    E.capaAntiga = mudouTitulo && f.dataset.temImagem ? Number(f.dataset.id) : E.capaAntiga;
+    await desenhar(); recado("Conteúdo salvo.");
+  },
   async fonte(f){
     let config; try{ config = JSON.parse(f.config.value || "{}"); if(!config || typeof config !== "object" || Array.isArray(config)) throw 0; }
     catch(e){ recado("As outras opções de leitura não são um JSON válido (use { } se não houver nenhuma).", true); return; }
@@ -1709,7 +1746,7 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","nova-fonte","incluir-texto"]);
+  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","nova-fonte","incluir-texto"]);
 let OCUPADO = false;
 async function executar(fn, livre, ...args){
   if(!livre){ if(OCUPADO) return; OCUPADO = true; document.body.classList.add("ocupado"); }
@@ -1738,6 +1775,8 @@ document.addEventListener("submit", ev => {
   executar(FORMS[f.dataset.form], false, f);
 });
 document.addEventListener("input", ev => {
+  const fc = ev.target.closest?.('form[data-form="conteudo"]');
+  if(fc && (ev.target.name === "titulo" || ev.target.name === "corpo") && !ev.target.disabled) guardarRascunho(fc);
   if(ev.target.dataset.filtro !== "fila") return;
   const busca = $("#busca-fila").value.trim().toLowerCase(), fonte = $("#fonte-fila").value;
   document.querySelectorAll("#tab-fila [data-fonte]").forEach(tr => {
@@ -1750,6 +1789,13 @@ document.addEventListener("change", ev => {
     if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha a imagem de novo.", true); return; }
     executar(enviarImagem, false, ev.target); return; }
   if(ev.target.id === "filtro-assuntos"){ E.filtros.assuntos = ev.target.value; desenhar(); }
+  if(ev.target.id === "ni-num") ev.target.dataset.manual = "1";
+  if(ev.target.id === "ni-mes"){
+    // a numeração recomeça a cada ano: troca o número sugerido conforme o ano do mês escolhido (se não foi digitado à mão)
+    const num = $("#ni-num"), ano = /^(\d{4})-/.exec(ev.target.value);
+    let proximos = {}; try{ proximos = JSON.parse(ev.target.form.dataset.proximos || "{}"); }catch(e){}
+    if(num && ano && !num.dataset.manual) num.value = proximos[ano[1]] || 1;
+  }
 });
 
 try{ E.sessao = JSON.parse(localStorage.getItem("radar_sessao") || "null"); }catch(e){ E.sessao = null; }
