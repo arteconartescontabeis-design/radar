@@ -1436,6 +1436,33 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     assert "Imprimir" not in "".join(por_pagina)                                                       # a barra da tela não sai no papel
 
 
+def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
+    for n in range(160):
+        captura(limpo, f"Captura de teste número {n:03d}", f"https://www.gov.br/exemplo/lista-{n}")
+    limpo.execute("""insert into radar_assuntos (titulo, abrangencia, status)
+                     select 'Assunto em lote ' || g, 'geral', 'selecionado' from generate_series(1, 301) g""")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Capturas")
+    pagina.click("[data-acao=filtro-fila][data-valor=todas]")
+    pagina.wait_for_selector(".mostrar-mais >> text=Mostrar mais capturas")
+    assert pagina.locator("#tab-fila article").count() == 150
+    assert "Mostrando 150 de 160 capturas" in pagina.inner_text(".mostrar-mais")
+    pagina.click("text=Mostrar mais capturas")
+    pagina.wait_for_function("document.querySelectorAll('#tab-fila article').length === 160")
+    assert pagina.locator(".mostrar-mais").count() == 0                     # chegou ao fim: o botão some
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.wait_for_selector(".mostrar-mais >> text=Mostrar mais assuntos")
+    assert pagina.locator("tr.clicavel").count() == 300
+    pagina.click("text=Mostrar mais assuntos")
+    pagina.wait_for_function("document.querySelectorAll('tr.clicavel').length === 301")
+    assert pagina.locator(".mostrar-mais").count() == 0
+    # cada filtro conta separado: "Todas" volta a abrir com uma leva só
+    pagina.select_option("#filtro-assuntos", "todos")
+    pagina.wait_for_selector(".mostrar-mais >> text=Mostrar mais assuntos")
+    assert pagina.locator("tr.clicavel").count() == 300
+
+
 def test_numero_sugerido_da_edicao_acompanha_o_ano_do_mes_escolhido(pagina, limpo):
     ano = limpo.execute("select extract(year from now())::int").fetchone()[0]
     limpo.execute("insert into radar_informativos (numero, ano, mes, data_assinatura) values (9, %s, make_date(%s, 9, 1), make_date(%s, 9, 1))",

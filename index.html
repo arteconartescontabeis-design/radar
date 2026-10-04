@@ -245,7 +245,11 @@ const ROTULOS = {
 const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## Quem será afetado?", "",
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
 
-const E = { etapa:null, sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"} };
+const E = { etapa:null, sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"}, mais:{} };
+/* Listas longas: carregam uma leva por vez; "Mostrar mais" traz a seguinte (a contagem vale por tela e filtro) */
+const limiteDe = (chave, base) => base * Math.max(1, (E.mais || {})[chave] || 1);
+const botaoMais = (chave, n, limite, rotulo, total) => n >= limite
+  ? `<div class="acoes mostrar-mais"><button class="btn sec" data-acao="mostrar-mais" data-chave="${h(chave)}">Mostrar mais ${rotulo}</button><span class="sub">Mostrando ${n}${total ? ` de ${total}` : ""} ${rotulo}.</span></div>` : "";
 
 /* ----------------------------------------------------------- utilidades */
 const $ = (s, r=document) => r.querySelector(s);
@@ -420,7 +424,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -537,7 +541,7 @@ const TELAS = {
   async fila(){
     const f = E.filtros.fila || "emalta";
     const ordem = "nota_grupo.desc.nullslast,relevancia_pontos.desc,capturado_em.desc,id.desc";
-    const params = {select:"*", order:ordem, limit:"150"};
+    const lim = limiteDe("fila:" + f, 150), params = {select:"*", order:ordem, limit:String(lim)};
     if(f === "relevantes"){ params.relevancia = "in.(alta,media)"; params.principal = "is.true"; }
     else if(f === "baixa") params.relevancia = "eq.baixa";
     const [itens, [n]] = await Promise.all([ler(f === "emalta" ? "radar_v_em_alta" : "radar_v_fila", params),
@@ -560,7 +564,6 @@ const TELAS = {
         <select id="fonte-fila" data-filtro="fila" aria-label="Fonte"><option value="">Todas as fontes</option>${fontes.map(x => `<option>${h(x)}</option>`).join("")}</select>
         ${(f === "baixa" || f === "relevantes") && itens.length && podeEditar() ? `<button class="btn sec" data-acao="ignorar-lista" id="ignorar-lista">Ignorar as ${itens.length} desta lista</button>` : ""}</div>
       ${f === "emalta" && n.sem_avaliacao_ia ? `<div class="aviso info" id="sem-nota">${n.sem_avaliacao_ia} captura(s) ainda sem a nota da IA: o robô avalia na próxima coleta. Enquanto isso, valem as palavras do título.</div>` : ""}
-      ${f !== "emalta" && itens.length >= 150 ? `<div class="aviso info">Mostrando as 150 primeiras de ${total[f]}. As demais aparecem conforme a fila for sendo triada.</div>` : ""}
       ${itens.length ? `<div id="tab-fila">${itens.map(i => `
         <article class="cap rel-${h(i.relevancia)}" data-fonte="${h(i.fonte_nome)}" data-texto="${h((i.titulo || "").toLowerCase())}" data-id="${i.id}">
           <div>${nota(i)} ${selo("Relevância " + (ROTULOS.relevancia[i.relevancia] || "").toLowerCase(), i.relevancia === "alta" ? "erro" : i.relevancia === "media" ? "" : "neutro")}
@@ -577,12 +580,13 @@ const TELAS = {
             <button class="btn peq sec" data-acao="ignorar-captura" data-id="${i.id}">Ignorar</button>` : ""}
             ${linkFonte(i.url, "abrir na fonte ↗")}</div></article>`).join("")}</div>`
         : `<div class="painel"><p class="sub">${vazio[f]}</p></div>`}
+      ${f !== "emalta" ? botaoMais("fila:" + f, itens.length, lim, "capturas", total[f]) : ""}
       <p class="sub">A nota da IA vem do robô, depois de cada coleta; antes dela, um filtro por palavras separa o que é de baixa relevância. ${ehAdmin() ? "As regras, a nota de corte e a quantidade ficam em Configurações → Relevância das capturas." : "O administrador ajusta as regras em Configurações."}</p>`;
   },
 
   async assuntos(){
     const f = E.filtros.assuntos;
-    const params = {select:"*", order:"atualizado_em.desc", limit:"300"};
+    const lim = limiteDe("assuntos:" + f, 300), params = {select:"*", order:"atualizado_em.desc", limit:String(lim)};
     if(f === "abertos") params.status = "not.in.(publicado,ignorado,arquivado)";
     else if(f !== "todos") params.status = "eq." + f;
     const itens = await ler("radar_v_assuntos", params); const cat = catMapa();
@@ -594,7 +598,6 @@ const TELAS = {
         <div class="linha-filtros" style="margin:0"><input id="na-titulo" type="text" name="titulo" required minlength="5" maxlength="200" placeholder="Título do assunto ou do artigo" style="flex:1;min-width:240px">
         <button class="btn">Criar assunto</button></div>
         <p class="sub" style="margin:6px 0 0">Para os artigos do Informativo Mensal e do site da Artecon. Para o site, inclua depois o texto oficial e a fundamentação.</p></form>` : ""}
-      ${itens.length >= 300 ? `<div class="aviso info">Mostrando os 300 assuntos alterados mais recentemente. Use o filtro de situação para ver os demais.</div>` : ""}
       ${itens.length ? `<div class="painel rolagem"><table><tr><th>Assunto</th><th>Relevância</th><th>Confirmação</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
         <tr class="clicavel" data-acao="abrir-assunto" data-id="${a.id}">
           <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${a.id}">${h(a.titulo)}</button><br><span class="sub">${h(cat[a.categoria] || "sem categoria")} · ${h(a.orgaos || "sem captura vinculada")}</span></td>
@@ -602,12 +605,13 @@ const TELAS = {
           <td>${seloSituacao(a.situacao_confirmacao)}</td>
           <td>${selo(ROTULOS.status[a.status], a.status==="publicado" ? "ok" : "neutro")}${a.em_revisao ? " " + selo("aguarda aprovação","alerta") : ""}</td>
           <td>${a.evidencias_conferidas}/${a.evidencias} conferidas</td></tr>`).join("")}</table></div>`
-        : `<div class="painel"><p class="sub">Nenhum assunto nesta situação.</p></div>`}`;
+        : `<div class="painel"><p class="sub">Nenhum assunto nesta situação.</p></div>`}
+      ${botaoMais("assuntos:" + f, itens.length, lim, "assuntos")}`;
   },
 
   async publicacoes(){
     const [regs, aprovados] = await Promise.all([
-      ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:"300"}),
+      ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
       ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id)", status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"})]);
     const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length);
     return `<h1>Publicações no site</h1>
@@ -620,7 +624,6 @@ const TELAS = {
           : `<p class="sub">Nenhum conteúdo aprovado aguardando publicação.</p>`}
         <p class="sub">“Não vai ao site” tira da fila o conteúdo que é só do Informativo Mensal. Dá para desfazer na tela do assunto.</p></div>
       <div class="painel"><h2>Publicados no site</h2>
-        ${regs.length >= 300 ? `<div class="aviso info">Mostrando os 300 registros mais recentes.</div>` : ""}
         ${regs.length ? `<div class="rolagem"><table id="tab-site"><tr><th>Data</th><th>Publicação</th><th></th></tr>${regs.map(r => `
           <tr><td style="white-space:nowrap">${data(r.publicado_em)}</td>
             <td><b>${h(r.titulo)}</b><br>${linkFonte(r.url, r.url)}
@@ -632,7 +635,8 @@ const TELAS = {
             <td><div class="acoes" style="margin:0"><button class="btn peq sec" data-acao="abrir-assunto" data-id="${r.assunto_id}">Abrir assunto</button>
               ${podeEditar() ? `<button class="btn peq sec" data-acao="corrigir-site" data-id="${r.id}" data-url="${h(r.url)}">Corrigir link</button>` : ""}
               ${ehAdmin() ? `<button class="btn peq perigo" data-acao="excluir-site" data-id="${r.id}">Excluir registro</button>` : ""}</div></td></tr>`).join("")}</table></div>`
-          : `<p class="sub">Nenhuma publicação registrada ainda.</p>`}</div>`;
+          : `<p class="sub">Nenhuma publicação registrada ainda.</p>`}
+        ${botaoMais("site", regs.length, limiteDe("site", 300), "registros")}</div>`;
   },
 
   async fontes(){
@@ -673,21 +677,22 @@ const TELAS = {
   },
 
   async auditoria(){
-    const itens = await ler("radar_auditoria", {select:"*", order:"id.desc", limit:"200"});
+    const lim = limiteDe("auditoria", 200), itens = await ler("radar_auditoria", {select:"*", order:"id.desc", limit:String(lim)});
     const nomes = Object.fromEntries((await rpc("radar_admin_usuarios")).map(u => [u.user_id, u.nome || u.email]));
     const acao = {INSERT:"criou", UPDATE:"alterou", DELETE:"apagou"};
     const resumo = a => { if(a.acao !== "UPDATE" || !a.antes || !a.depois) return "";
       return Object.keys(a.depois).filter(k => !["atualizado_em","conferido_em"].includes(k) && JSON.stringify(a.antes[k]) !== JSON.stringify(a.depois[k]))
         .map(k => `${k}: ${String(a.antes[k] ?? "—").slice(0,40)} → ${String(a.depois[k] ?? "—").slice(0,40)}`).join(" · "); };
-    return `<h1>Histórico de alterações</h1><p class="sub">Trilha de auditoria: não pode ser alterada nem apagada. Últimos 200 registros.</p>
+    return `<h1>Histórico de alterações</h1><p class="sub">Trilha de auditoria: não pode ser alterada nem apagada. Os mais recentes primeiro.</p>
       <div class="painel rolagem"><table><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Detalhe</th></tr>${itens.map(a => `
         <tr><td>${dataHora(a.em)}</td><td>${h(a.usuario ? (nomes[a.usuario] || "usuário removido") : "sistema")}</td>
-        <td>${h(acao[a.acao] || a.acao)} ${h(a.tabela.replace("radar_",""))} nº ${h(a.registro_id)}</td><td class="sub">${h(resumo(a))}</td></tr>`).join("")}</table></div>`;
+        <td>${h(acao[a.acao] || a.acao)} ${h(a.tabela.replace("radar_",""))} nº ${h(a.registro_id)}</td><td class="sub">${h(resumo(a))}</td></tr>`).join("")}</table></div>
+      ${botaoMais("auditoria", itens.length, lim, "registros")}`;
   },
 
   async informativos(){
     if(E.informativo) return telaInformativo(E.informativo);
-    const itens = await ler("radar_informativos", {select:"*,radar_informativo_itens(conteudo_id)", order:"ano.desc,numero.desc", limit:"100"});
+    const lim = limiteDe("informativos", 100), itens = await ler("radar_informativos", {select:"*,radar_informativo_itens(conteudo_id)", order:"ano.desc,numero.desc", limit:String(lim)});
     const hoje = new Date(), ano = hoje.getFullYear(), proxPorAno = {};
     for(const i of itens) proxPorAno[i.ano] = Math.max(proxPorAno[i.ano] || 1, i.numero + 1);   // próximo número de cada ano
     const prox = proxPorAno[ano] || 1;
@@ -703,7 +708,8 @@ const TELAS = {
           <td>${selo(i.status === "fechado" ? "Fechado" : "Em montagem", i.status === "fechado" ? "ok" : "alerta")}</td>
           <td><div class="acoes" style="margin:0"><button class="btn peq sec" data-acao="abrir-informativo" data-id="${i.id}">Abrir</button>
             <a class="btn peq sec" style="text-decoration:none" href="informativo.html?id=${i.id}" target="_blank" rel="noopener">Imprimir / PDF ↗</a></div></td></tr>`).join("")}</table></div>`
-        : `<div class="painel"><p class="sub">Nenhuma edição criada ainda.</p></div>`}`;
+        : `<div class="painel"><p class="sub">Nenhuma edição criada ainda.</p></div>`}
+      ${botaoMais("informativos", itens.length, lim, "edições")}`;
   },
 
   async configuracoes(){
@@ -1194,6 +1200,7 @@ const ACOES = {
   async "ignorar-captura"(el){ await rpc("radar_abrir_assunto", {p_captura:Number(el.dataset.id), p_ignorar:true}); await desenhar(); recado("Captura ignorada."); return; },
 
   "filtro-fila"(el){ E.filtros.fila = el.dataset.valor; return desenhar(); },
+  "mostrar-mais"(el){ const k = el.dataset.chave; E.mais[k] = ((E.mais || {})[k] || 1) + 1; return desenhar(); },
   async "ignorar-lista"(){
     const ids = [...document.querySelectorAll("#tab-fila [data-fonte]")].filter(x => !x.hidden).map(x => Number(x.dataset.id));
     if(!ids.length){ recado("Nenhuma captura na lista."); return; }
@@ -1746,7 +1753,7 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","nova-fonte","incluir-texto"]);
+  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto"]);
 let OCUPADO = false;
 async function executar(fn, livre, ...args){
   if(!livre){ if(OCUPADO) return; OCUPADO = true; document.body.classList.add("ocupado"); }

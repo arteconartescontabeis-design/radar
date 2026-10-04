@@ -347,7 +347,6 @@ segunda revisão independente.
    número, e não avalia a interpretação.
 3. **Teto mensal de tokens** pode ser ultrapassado por pedidos simultâneos; a trava real é
    o limite de gasto na conta da OpenAI.
-5. **Listas longas mostram só os itens mais recentes**, com aviso; ainda não há paginação.
 6. **Aviso por e-mail** de fonte com falha ainda não existe; a falha aparece no painel.
 7. **Diário Oficial da União** fora desta versão.
 16. **Texto oficial incluído pela equipe depende de quem inclui:** o sistema limita o
