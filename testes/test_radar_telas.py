@@ -1842,6 +1842,9 @@ def test_dados_malformados_nao_derrubam_as_telas_do_informativo(pagina, limpo):
     ("| Faixa | Var |\n|---|---|\n| 1ª | -- |\n| -- | -- |", "<table class=\"tabela-texto\"><tr><th>Faixa</th><th>Var</th></tr><tr><td>1ª</td><td>--</td></tr><tr><td>--</td><td>--</td></tr></table>"),
     ("|\n| |\ntexto", "<p>texto</p>"),
     ("| **negrito** | <i>x</i> |", "<table class=\"tabela-texto\"><tr><th><strong>negrito</strong></th><th>&lt;i&gt;x&lt;/i&gt;</th></tr></table>"),
+    # v0.7.1: "\\|" é uma barra dentro da célula (inclusive no fim da linha)
+    ("| Tributo | Alíquota |\n| ICMS \\| ST | 18% |", "<table class=\"tabela-texto\"><tr><th>Tributo</th><th>Alíquota</th></tr><tr><td>ICMS | ST</td><td>18%</td></tr></table>"),
+    ("| a | b \\|", "<table class=\"tabela-texto\"><tr><th>a</th><th>b |</th></tr></table>"),
 ])
 def test_tabelas_no_texto_casos_de_borda(pagina, texto, esperado):
     entrar(pagina)

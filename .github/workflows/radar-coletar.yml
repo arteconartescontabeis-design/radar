@@ -22,6 +22,9 @@ concurrency:
 jobs:
   coletar:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write          # aviso (issue) de fonte que falhou 3 vezes seguidas; o GitHub manda e-mail
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -45,3 +48,11 @@ jobs:
           if [ -n "$FONTE" ]; then ARGS="$ARGS --fonte $FONTE"; fi
           if [ "$FORCAR" = "true" ]; then ARGS="$ARGS --forcar"; fi
           python radar_coletar.py $ARGS
+      - name: Avisar fontes com falha
+        if: always()
+        working-directory: robo
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python radar_alertas.py

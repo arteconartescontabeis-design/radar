@@ -121,10 +121,12 @@ function renderTexto(t){
     return `<a href="${h(u)}" target="_blank" rel="noopener noreferrer">${h(u)}</a>${h(fim)}`;
   }).join("");
   const enfeita = bruto => bruto.split(/\*\*(\S|\S.*?\S)\*\*/).map((p, i) => i % 2 ? `<strong>${ligar(p)}</strong>` : ligar(p)).join("");
+  // células: "|" separa colunas; "\\|" é uma barra dentro da célula
+  const celulas = l => l.trim().replace(/^\|/, "").replace(/(^|[^\\])\|$/, "$1").split(/(?<!\\)\|/).map(c => c.replace(/\\\|/g, "|").trim());
   for(const l of linhas){
     if(!/^\s*\|/.test(l)) fechaTab();
     if(/^\s*\|/.test(l)){ fechaPar(); fechaLista();
-      tab.push(l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim())); }
+      tab.push(celulas(l)); }
     else if(/^##\s+/.test(l)){ fechaPar(); fechaLista(); html += `<h3>${enfeita(l.replace(/^##\s+/, ""))}</h3>`; }
     else if(/^#\s+/.test(l)){ fechaPar(); fechaLista(); html += `<h3>${enfeita(l.replace(/^#\s+/, ""))}</h3>`; }
     else if(/^[-•]\s+/.test(l)){ fechaPar(); if(!lista){ html += "<ul>"; lista = true; } html += `<li>${enfeita(l.replace(/^[-•]\s+/, ""))}</li>`; }

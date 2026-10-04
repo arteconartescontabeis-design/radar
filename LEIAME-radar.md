@@ -18,6 +18,9 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
   ser salvo; se a sessão cair, aparece "Recuperar o texto não salvo".
 - **Listas longas com "Mostrar mais"** em vez de cortar nos itens mais recentes.
 - **Robô**: cada fonte tem até 5 minutos por coleta, e as imagens sem uso são apagadas ao fim de cada coleta.
+- **Aviso por e-mail de fonte com falha**: depois de 3 falhas seguidas, o robô abre um aviso (issue)
+  no repositório do GitHub, e o GitHub manda e-mail ao dono do repositório; o aviso fecha sozinho
+  quando a fonte volta ou é desligada (veja "Fontes: cadastrar e ajustar").
 - **Diagnóstico** confere as fontes ativas do banco e explica a página que não reconheceu.
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
@@ -448,6 +451,13 @@ workflow). O resultado aparece em "Últimas execuções do robô".
 | Idade máxima dos itens | itens mais antigos que isso são ignorados |
 | Fonte oficial | marque só para órgãos públicos: é o que permite fundamentar |
 | Validada | marque depois de conferir que a fonte está lendo certo |
+
+**Aviso por e-mail.** Quando uma fonte ativa falha 3 coletas seguidas (falha, vazio_suspeito ou
+parcial), o robô abre no repositório do GitHub um aviso (issue) "Radar: fonte com falha — slug", com
+o último erro e o que fazer. O GitHub manda e-mail ao dono do repositório quando o aviso é aberto
+(confira em github.com → Settings → Notifications se "Issues" está com e-mail ligado). Há no máximo
+um aviso aberto por fonte; ele fecha sozinho, com um comentário, quando a fonte volta a funcionar
+ou é desligada.
 
 Como ler o resultado da primeira coleta: **ok** com itens novos = funcionando;
 **vazio_suspeito** = o padrão dos links não casou com nada (ajuste o padrão); **falha** =
