@@ -33,6 +33,9 @@ O que foi comprovado:
   Fonte desligada ou apagada fecha o aviso e não abre outro. Pull request e outros avisos do
   repositório não são confundidos; sem as variáveis, ou com o banco ou o GitHub fora do ar, a
   coleta não fica vermelha.
+- **Link publicado fora do ar:** o link que responde 404 ou 410 abre um aviso (um por link, mesmo
+  com vários registros dele); erro de rede e 200 não contam; endereço que não é http(s) nem é
+  acessado; o aviso fecha quando o link volta ou deixa de estar registrado.
 - **Tabela no texto:** "\\|" vira uma barra dentro da célula (também no fim da linha), igual no
   painel e no Informativo.
 - **Workflows em Node 24:** o diagnóstico rodou no GitHub com as ações novas, sem o aviso de Node 20.
@@ -385,8 +388,9 @@ segunda revisão independente.
 16. **Texto oficial incluído pela equipe depende de quem inclui:** o sistema limita o
     endereço ao site da fonte e marca a origem, mas não compara o texto colado com a
     página. Um editor sozinho consegue satisfazer a exigência de fonte oficial.
-13. **O Radar não confere o site:** o registro depende de alguém informar o link certo. Se
-    a notícia for alterada ou retirada no site, o Radar não fica sabendo.
+13. **O Radar confere só se o link do site abre:** a notícia retirada (404/410) gera aviso por
+    e-mail, mas texto alterado no site não é percebido, e o registro continua dependendo de
+    alguém informar o link certo.
 14. **Tabela `radar_publicacoes` sem uso:** continua no banco, com as regras antigas, e
     ainda pode ser gravada por um editor pela API (nenhuma tela mostra essas linhas).
 15. **Assunto com dois conteúdos:** ao registrar um, o assunto passa a "Publicado" e sai da
