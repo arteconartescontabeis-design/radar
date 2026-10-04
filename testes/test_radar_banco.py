@@ -1002,7 +1002,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.7.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.7.1"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1494,7 +1494,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (21, 6, 8, 5, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.7.0", [], 21)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.7.1", [], 21)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -2001,6 +2001,23 @@ def test_relevancia_titulo_vale_o_dobro_palavra_inteira_e_sem_acento(limpo):
     assert _cap(limpo, "Reunião sobre a NFS-e hoje")[2] == 8                    # termo com hífen
 
 
+def test_relevancia_aceita_termo_com_pontuacao_nas_pontas(limpo):
+    antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    novo = dict(antes, termos=antes["termos"] + [{"termo": "S.A.", "pontos": 5}, {"termo": "Ltda.", "pontos": 3}, {"termo": ".gov", "pontos": 2}])
+    nossos = {"S.A.", "Ltda.", ".gov"}
+    casou = lambda titulo: [m for m in _cap(limpo, titulo)[3] if m["termo"] in nossos]   # só os termos deste teste
+    try:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(novo),))
+        assert casou("Petrobras S.A. anuncia mudança") == [{"termo": "S.A.", "pontos": 10}]
+        assert casou("Comunicado da Petrobras S.A., hoje") == [{"termo": "S.A.", "pontos": 10}]     # pontuação colada depois
+        assert casou("Mercado Ltda. muda de endereço") == [{"termo": "Ltda.", "pontos": 6}]
+        assert casou("Portal www.exemplo.gov fora do ar") == [{"termo": ".gov", "pontos": 4}]
+        assert casou("Sigla SS.A. não é a mesma coisa") == []                 # "S.A." precisa começar como palavra
+        assert casou("Empresa Ltdax sem ponto") == []
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))
+
+
 def test_relevancia_fila_painel_e_assunto_herdam(limpo):
     alta = _cap(limpo, "Prazo do Simples Nacional é prorrogado")[0]
     baixa = _cap(limpo, "Apreensão de cigarros na fronteira")[0]
@@ -2286,7 +2303,54 @@ def test_fonte_do_conteudo_ja_vem_com_o_orgao_da_captura_oficial(limpo):
         assert c.execute("select fonte_credito from radar_conteudos where id = %s", (c3,)).fetchone()[0] is None
 
 
-def test_atualizacao_da_v0_6_0_em_producao_para_a_v0_7_0_preserva_os_dados_e_aplica_duas_vezes():
+def test_imagens_sem_uso_sao_apagadas_so_pelo_robo_e_so_as_antigas(limpo):
+    usada = limpo.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+    antiga = limpo.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+    recente = limpo.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+    limpo.execute("update radar_imagens set criado_em = now() - interval '3 days' where id in (%s, %s)", (usada, antiga))
+    cid = novo_conteudo(limpo, novo_assunto(limpo))
+    limpo.execute("update radar_conteudos set imagem_id = %s where id = %s", (usada, cid))
+    for papel, uid in (("authenticated", ADMIN), ("authenticated", EDITOR), ("anon", None)):
+        with como(papel, uid) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute("select radar_limpar_imagens_sem_uso()")
+    with como("service_role") as c:
+        assert c.execute("select radar_limpar_imagens_sem_uso()").fetchone()[0] == 1
+        assert c.execute("select radar_limpar_imagens_sem_uso(0)").fetchone()[0] == 0        # nunca menos de 1 hora
+    restantes = {r[0] for r in limpo.execute("select id from radar_imagens").fetchall()}
+    assert restantes == {usada, recente}                    # a usada e a recém-enviada ficam
+
+
+def test_atualizacao_da_v0_7_0_para_a_v0_7_1_preserva_os_dados_e_aplica_duas_vezes():
+    with conectar("postgres") as c:
+        c.execute("drop database if exists radar_up7 with (force)")
+        c.execute("create database radar_up7")
+    try:
+        assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_up7").returncode == 0
+        r = psql(RAIZ / "testes" / "radar-setup-v0.7.0-referencia.sql", "radar_up7")
+        assert r.returncode == 0, r.stderr
+        with conectar("radar_up7") as c:
+            cap = nova_captura(c)
+            a = novo_assunto(c)
+            c.execute("insert into radar_assunto_capturas values (%s, %s)", (a, cap))
+            cid = novo_conteudo(c, a)
+            img = c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+            c.execute("update radar_conteudos set imagem_id = %s where id = %s", (img, cid))
+            antes = c.execute("select count(*) from radar_capturas").fetchone()[0]
+        for _ in range(2):
+            r = psql(SETUP, "radar_up7")
+            assert r.returncode == 0, r.stderr
+        with conectar("radar_up7") as c:
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.7.0", "v0.7.1"]
+            assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
+            assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
+            assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
+            assert c.execute("select count(*) from radar_instalacoes where depois is null").fetchone()[0] == 0
+    finally:
+        with conectar("postgres") as c:
+            c.execute("drop database if exists radar_up7 with (force)")
+
+
+def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_duas_vezes():
     with conectar("postgres") as c:
         c.execute("drop database if exists radar_up6 with (force)")
         c.execute("create database radar_up6")
@@ -2306,7 +2370,7 @@ def test_atualizacao_da_v0_6_0_em_producao_para_a_v0_7_0_preserva_os_dados_e_apl
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.6.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.6.0", "v0.7.1"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido

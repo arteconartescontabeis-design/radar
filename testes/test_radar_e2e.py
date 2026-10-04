@@ -128,7 +128,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.7.0", True), ("ok", 1, 200, "0.7.0", True)]
+    assert ex == [("ok", 2, 200, "0.7.1", True), ("ok", 1, 200, "0.7.1", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -210,6 +210,30 @@ def test_diagnostico_confere_as_fontes_ativas_do_banco_e_na_falta_usa_o_arquivo(
     assert origem == "robo/radar_fontes.json" and len(fontes) == 6
     monkeypatch.delenv("SUPABASE_URL")
     assert radar_diagnostico.carregar_fontes()[1] == "robo/radar_fontes.json"
+
+
+def test_robo_apaga_as_imagens_sem_uso_ao_fim_da_coleta(cenario):
+    pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    orfa = cenario.execute("insert into radar_imagens (dados) values (%s) returning id", (pixel,)).fetchone()[0]
+    cenario.execute("update radar_imagens set criado_em = now() - interval '2 days' where id = %s", (orfa,))   # o gatilho de inclusão fixa a data
+    nova = cenario.execute("insert into radar_imagens (dados) values (%s) returning id", (pixel,)).fetchone()[0]
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    assert radar_coletar.limpar_imagens(banco) == "\n\n_Imagens sem uso apagadas: 1._"
+    assert [r[0] for r in cenario.execute("select id from radar_imagens order by id").fetchall()] == [nova]
+    assert radar_coletar.limpar_imagens(banco) == ""                       # nada a apagar: o resumo não fala nada
+    assert orfa != nova
+
+
+def test_robo_com_banco_sem_o_sql_novo_segue_sem_a_limpeza(monkeypatch):
+    class BancoAntigo:
+        def limpar_imagens_sem_uso(self):
+            raise ErroBanco("POST rpc/radar_limpar_imagens_sem_uso: HTTP 404 — function not found")
+
+    class BancoFora:
+        def limpar_imagens_sem_uso(self):
+            raise ErroBanco("POST rpc/x: sem conexão com o banco")
+    assert radar_coletar.limpar_imagens(BancoAntigo()) == ""
+    assert "não foi feita" in radar_coletar.limpar_imagens(BancoFora())
 
 
 def test_tempo_maximo_invalido_volta_ao_padrao():

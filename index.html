@@ -150,8 +150,22 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.7.0";
+const VERSAO = "0.7.1";
+const FUNCAO_MINIMA = "0.7.0";      // versão da função radar-ia que este painel exige (a v0.7.1 não mudou a função)
+const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+  for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.7.1", "04/10/2026", [
+    "Texto não salvo não se perde: o título e o texto digitados num conteúdo ficam guardados neste navegador até serem salvos. Se a sessão cair no meio da edição, ao abrir o conteúdo de novo aparece “Recuperar o texto não salvo”. “Sair” com texto não salvo pede confirmação.",
+    "Listas longas (capturas, assuntos, publicações, histórico e edições) carregam uma leva por vez, com o botão “Mostrar mais”, em vez de cortar nos itens mais recentes.",
+    "Nova edição do informativo: o número sugerido acompanha o ano do mês escolhido (a numeração recomeça a cada ano).",
+    "Depois de mudar o título de um conteúdo com imagem, aparece o lembrete de gerar a capa de novo (a imagem não é trocada sozinha).",
+    "Regras de relevância aceitam termos com pontuação, como “S.A.” e “Ltda.”.",
+    "Robô: cada fonte tem até 5 minutos por coleta (ajustável); a que travar é interrompida sem atrasar as outras. Ao fim de cada coleta, as imagens que ficaram sem uso são apagadas.",
+    "Diagnóstico das fontes: confere as fontes ativas do banco (inclusive as cadastradas pela tela) e mostra como está montada a página que não reconheceu.",
+    "Atos normativos da Receita: o site passou para o novo sistema “Normas”, que não permite leitura automática; desligue a fonte em Fontes até haver outro caminho.",
+    "Banco v0.7.1 (rodar o radar-setup-v0.7.1.sql) e robô v0.7.1. A função de IA não mudou."
+  ]],
   ["0.7.0", "03/10/2026", [
     "Só o que está em alta: depois de cada coleta, a IA dá a cada captura uma nota de 0 a 10 pelo interesse para os clientes do escritório. A tela de Capturas abre com as 10 melhores; o restante fica em “Relevantes” e “Todas”. A nota de corte e a quantidade ficam em Configurações → Relevância das capturas.",
     "Sem informação repetida: a IA reconhece quando duas capturas tratam do mesmo fato. As repetições ficam recolhidas atrás de uma delas (o cartão diz quantas são); ao abrir ou ignorar esse cartão, elas vão junto. A repetição que chegar depois entra sozinha no assunto em andamento (com o botão “Não é o mesmo fato” para desfazer); se o assunto já foi ignorado ou publicado, ela aparece na triagem avisando de qual assunto parece ser — nada some sem alguém ver.",
@@ -1271,7 +1285,7 @@ const ACOES = {
       return; }
     const itens = Array.isArray(r.itens) ? r.itens : [];
     d.innerHTML = `<ul class="diag">${itens.map(i => `<li>${selo(i.ok ? "OK" : "Falhou", i.ok ? "ok" : "erro")} <b>${h(i.item)}</b><br><span class="sub">${h(i.detalhe)}</span></li>`).join("")}</ul>
-      ${r.tudo_certo ? `<div class="aviso info"><b>A IA está funcionando.</b> Função v${h(r.versao)}${r.central ? `, pela IA Central (${h(r.central)})` : ""}. O teste cobre o texto (Anthropic); a ilustração (OpenAI) não é testada aqui para não gastar — se falhar, a mensagem diz o motivo. Lembre: a IA só trabalha em assunto que tenha texto oficial capturado.${r.versao !== VERSAO ? ` <b>Atenção:</b> a função instalada é a v${h(r.versao)} e o painel é o v${VERSAO}; cole de novo o index.ts desta versão para ter os recursos novos.` : ""}</div>`
+      ${r.tudo_certo ? `<div class="aviso info"><b>A IA está funcionando.</b> Função v${h(r.versao)}${r.central ? `, pela IA Central (${h(r.central)})` : ""}. O teste cobre o texto (Anthropic); a ilustração (OpenAI) não é testada aqui para não gastar — se falhar, a mensagem diz o motivo. Lembre: a IA só trabalha em assunto que tenha texto oficial capturado.${versaoMenor(r.versao, FUNCAO_MINIMA) ? ` <b>Atenção:</b> a função instalada é a v${h(r.versao)} e este painel precisa da v${FUNCAO_MINIMA} ou mais nova; cole de novo o index.ts desta versão para ter os recursos novos.` : ""}</div>`
         : `<div class="aviso erro"><b>Há item a corrigir</b> (veja acima). O segredo do Radar fica em Supabase → Edge Functions → Secrets; limites, crédito e modelos liberados ficam em Portal → Consumo de IA. Depois de alterar, teste de novo.</div>`}`;
   },
 
@@ -1650,7 +1664,7 @@ function validarConfig(chave, v){
     if(v.quantidade !== undefined && !(Number.isInteger(v.quantidade) && v.quantidade >= 1 && v.quantidade <= 100)) return "“quantidade” é quantas capturas a lista “Em alta” mostra: número inteiro de 1 a 100.";
     for(const [n, t] of v.termos.entries()){
       if(!t || typeof t.termo !== "string" || t.termo.trim().length < 2 || t.termo.trim().length > 80) return `Termo ${n + 1}: informe “termo” (de 2 a 80 caracteres).`;
-      if(!/^[\p{L}\p{N}]/u.test(t.termo.trim()) || !/[\p{L}\p{N}]$/u.test(t.termo.trim())) return `“${t.termo}”: o termo precisa começar e terminar com letra ou número (o Radar compara palavras inteiras).`;
+      if((t.termo.match(/[\p{L}\p{N}]/gu) || []).length < 2) return `“${t.termo}”: o termo precisa ter ao menos duas letras ou números.`;
       if(!Number.isInteger(t.pontos) || t.pontos === 0 || Math.abs(t.pontos) > 100) return `“${t.termo}”: “pontos” deve ser um número inteiro diferente de zero (até 100).`;
     }
   }

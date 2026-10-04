@@ -277,6 +277,17 @@ def avaliar_com_ia(banco: Banco, sem_ia: bool = False) -> dict:
     return r
 
 
+def limpar_imagens(banco: Banco) -> str:
+    """Faxina das imagens sem uso; é um extra da coleta: banco antigo ou erro não derrubam nada."""
+    try:
+        n = banco.limpar_imagens_sem_uso()
+    except ErroBanco as e:
+        if "radar_limpar_imagens_sem_uso" in str(e):
+            return ""                                   # banco ainda sem o SQL da v0.7.1
+        return f"\n\n_Limpeza de imagens sem uso não foi feita: {str(e)[:200]}_"
+    return f"\n\n_Imagens sem uso apagadas: {n}._" if n else ""
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Radar Artecon — coleta das fontes oficiais")
     ap.add_argument("--fonte", help="slug de uma única fonte")
@@ -294,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
 
     texto = resumo_markdown(resultados, pulados)
     texto += radar_ia.resumo_markdown(avaliar_com_ia(banco, args.sem_ia))
+    texto += limpar_imagens(banco)
     print("\n" + texto)
     destino = os.environ.get("GITHUB_STEP_SUMMARY")
     if destino:
