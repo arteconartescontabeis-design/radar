@@ -1,6 +1,8 @@
-"""Radar Artecon — diagnóstico das fontes (NÃO usa banco nem chaves).
+"""Radar Artecon — diagnóstico das fontes (só lê; não grava nada no banco).
 
-Baixa cada fonte de radar_fontes.json, tenta reconhecer os itens, baixa o
+Com SUPABASE_URL e SUPABASE_SERVICE_KEY, confere as fontes ATIVAS do banco (inclusive as
+cadastradas pela tela); sem elas, ou se o banco não responder, usa robo/radar_fontes.json.
+Para cada fonte, tenta reconhecer os itens, baixa o
 texto do primeiro item e grava tudo em ./diagnostico/ (páginas originais +
 relatorio.json + relatorio.md). Serve para validar as fontes reais antes de
 ligar a coleta e para reajustar a configuração quando um site mudar.
@@ -17,6 +19,7 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
+from radar_banco import Banco, ErroBanco
 from radar_coletores import enderecos_da_listagem as listar_enderecos, listar_paginas
 from radar_util import VERSAO, ErroDownload, baixar, extrair_texto
 
@@ -162,8 +165,20 @@ def relatorio_md(resultados: list[dict]) -> str:
     return "\n".join(linhas)
 
 
+def carregar_fontes() -> tuple[list[dict], str]:
+    """Fontes ativas do banco quando há chave; senão, as do arquivo. Devolve (fontes, origem)."""
+    url, chave = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
+    if url and chave:
+        try:
+            return Banco(url, chave).fontes_ativas(), "fontes ativas do banco"
+        except ErroBanco as e:
+            print(f"! banco indisponível ({e}); usando robo/radar_fontes.json", file=sys.stderr)
+    return json.loads((AQUI / "radar_fontes.json").read_text(encoding="utf-8")), "robo/radar_fontes.json"
+
+
 def main() -> int:
-    fontes = json.loads((AQUI / "radar_fontes.json").read_text(encoding="utf-8"))
+    fontes, origem = carregar_fontes()
+    print(f"Fontes conferidas: {len(fontes)} ({origem})")
     pasta = Path("diagnostico")
     pasta.mkdir(exist_ok=True)
     sessao = requests.Session()
@@ -174,7 +189,7 @@ def main() -> int:
         print(f"  {r['veredito']} (HTTP {r['http']}, {r['brutos']} reconhecidos, {r['na_janela']} na janela)")
         resultados.append(r)
     (pasta / "relatorio.json").write_text(json.dumps(resultados, ensure_ascii=False, indent=2), encoding="utf-8")
-    texto = relatorio_md(resultados)
+    texto = relatorio_md(resultados) + f"\n\n_Fontes conferidas: {len(fontes)} ({origem})._"
     (pasta / "relatorio.md").write_text(texto, encoding="utf-8")
     destino = os.environ.get("GITHUB_STEP_SUMMARY")
     if destino:

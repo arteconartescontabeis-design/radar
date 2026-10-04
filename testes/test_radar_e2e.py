@@ -197,6 +197,21 @@ def test_fonte_que_passa_do_tempo_maximo_e_interrompida_e_nao_trava_as_outras(ce
     assert "passou de 1 s" in cenario.execute("select ultimo_erro from radar_fontes where slug = 'teste-a'").fetchone()[0]
 
 
+def test_diagnostico_confere_as_fontes_ativas_do_banco_e_na_falta_usa_o_arquivo(cenario, monkeypatch):
+    import radar_diagnostico
+    monkeypatch.setenv("SUPABASE_URL", API)
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", jwt("service_role"))
+    monkeypatch.setattr(radar_diagnostico, "Banco", lambda url, chave: Banco(url, chave, prefixo=""))
+    fontes, origem = radar_diagnostico.carregar_fontes()
+    assert origem == "fontes ativas do banco" and [f["slug"] for f in fontes] == ["teste-a", "teste-b"]   # as desligadas ficam de fora
+    assert fontes[0]["config"]["padrao_url"] == "/a/noticias/\\d{4}/"
+    monkeypatch.setenv("SUPABASE_URL", "http://127.0.0.1:9")                  # banco fora do ar: segue com o arquivo
+    fontes, origem = radar_diagnostico.carregar_fontes()
+    assert origem == "robo/radar_fontes.json" and len(fontes) == 6
+    monkeypatch.delenv("SUPABASE_URL")
+    assert radar_diagnostico.carregar_fontes()[1] == "robo/radar_fontes.json"
+
+
 def test_tempo_maximo_invalido_volta_ao_padrao():
     assert radar_coletar.tempo_maximo({}) == radar_coletar.TEMPO_MAX_PADRAO
     assert radar_coletar.tempo_maximo({"tempo_max_segundos": 45}) == 45
