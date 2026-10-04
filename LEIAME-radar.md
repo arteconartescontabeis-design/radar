@@ -1,4 +1,4 @@
-# Radar Artecon — v0.6.0
+# Radar Artecon — v0.7.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,27 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
+
+- **Só o que está em alta.** Depois de cada coleta, o robô pede à IA uma nota de 0 a 10 para cada
+  captura nova (pelo título e pelo resumo) e a tela de Capturas abre com as 10 melhores.
+- **Sem repetição.** A IA aponta quando duas capturas tratam do mesmo fato; as repetições ficam
+  recolhidas atrás de uma delas (o cartão diz quantas são) e entram junto no assunto. Só vai junto
+  o que o cartão anuncia; se a IA juntar errado, o botão "Não é o mesmo fato" desfaz.
+- **Fonte já preenchida** no conteúdo, com o órgão da captura oficial.
+- **Texto nunca copiado.** A IA redige com palavras próprias e o Radar compara o texto com a
+  fonte: trecho de 12 palavras ou mais igual impede a aprovação (citação curta entre aspas é aceita).
+- **Texto justificado** na prévia, no texto copiado para o site e no Informativo.
+- **Imagens realistas**, com pessoas fictícias quando fizer sentido, sem texto, marca,
+  assinatura nem estilo de autor; campo opcional para dizer como você quer a imagem.
+- **Assunto por etapas**: Fonte e fundamentação, Conteúdo e Classificação, uma de cada vez.
+
+Mudam o banco (`radar-setup-v0.7.0.sql`), o robô, a função `radar-ia` e o `index.html`.
+
+A v0.6.1 ligou a IA do Radar à **IA Central do Portal Artecon**: texto pela Anthropic, imagens
+pela OpenAI, custo e limites no Portal → Consumo de IA. Mudam só o `index.html` e a função
+`radar-ia`; o banco e o robô são os da v0.6.0.
 
 A v0.6.0 trata de quatro coisas: **filtro de relevância** das capturas (a triagem abre só
 com o que interessa ao escritório), telas de **Capturas e Assunto mais simples** (cartões,
@@ -36,8 +57,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.6.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.6.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
+| `sql/radar-setup-v0.7.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.7.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
 | `.github/workflows/` | Rotinas do GitHub Actions: diagnóstico, coleta agendada e testes. |
@@ -83,10 +104,10 @@ O caminho previsto é o INLABS (XML oficial, exige cadastro gratuito).
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.6.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.7.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
    Esperado: 21 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão `v0.6.0`.
+   `instalacoes concluidas` com ao menos 1 e a versão `v0.7.0`.
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -125,37 +146,44 @@ select id, 'Cleiver', 'admin' from auth.users where email = 'SEU-EMAIL';
 
 Os demais usuários você cria no Supabase e libera pela aba **Usuários** do dashboard.
 
-### Passo 7 — Inteligência artificial (OpenAI)
+### Passo 7 — Inteligência artificial (pela IA Central do Portal Artecon)
 
-1. Na OpenAI (platform.openai.com): crie uma chave de API e defina um **limite mensal de
-   gasto** na conta. Esse limite é a trava real de custo.
-2. No Supabase: Edge Functions → criar função pelo editor → nome **`radar-ia`** → cole o
-   conteúdo de `supabase/functions/radar-ia/index.ts` → Deploy. Deixe ligada a opção de
-   verificar o JWT.
-3. Edge Functions → Secrets → crie `OPENAI_API_KEY` com a chave da OpenAI.
-4. No dashboard: **Configurações → Inteligência artificial → Testar a IA**. O teste diz se a
-   função está instalada, se a chave foi aceita e se os modelos respondem, e o que corrigir.
+Desde a v0.6.1 o Radar não guarda chave da OpenAI nem da Anthropic. Ele usa a **IA Central**
+(função `ia-gateway` do projeto Departamento Pessoal): texto pela Anthropic, imagens pela OpenAI.
+Custo, limites, avisos por e-mail, relatório mensal e link de recarga ficam em
+**Portal → Consumo de IA**.
+
+Pré-requisito: IA Central v1.1.0 instalada (pacote `ia-central-v1.1.0`) e Portal v1.4.0.
+
+1. No Portal → Consumo de IA, no cartão **Radar — informativos e publicações**, clique em
+   **Gerar token** e copie (começa com `iagw_radar_`; aparece uma única vez).
+2. No Supabase do Radar: Edge Functions → função **`radar-ia`** (o nome precisa ser exatamente
+   este) → cole o conteúdo de `supabase/functions/radar-ia/index.ts` → Deploy. Deixe ligada a
+   opção de verificar o JWT.
+3. Edge Functions → Secrets → crie **`IA_GATEWAY_TOKEN`** com o token do item 1. Se existir um
+   `OPENAI_API_KEY` neste projeto, pode excluir: não é mais usado.
+4. No Radar: **Configurações → Inteligência artificial → Testar a IA**. O teste confere a
+   função, o token e os dois modelos de texto, e diz o que corrigir.
 5. Abra um assunto que tenha texto oficial e clique em "Preparar com IA".
 
-Se a IA "não funciona", o teste do item 4 mostra a causa. As mais comuns: a função
-`radar-ia` não foi criada (ou foi criada com outro nome); falta o segredo `OPENAI_API_KEY`;
-a conta da OpenAI está sem crédito; o modelo padrão não existe na conta (ajuste
-`RADAR_OPENAI_MODELO` e `RADAR_OPENAI_MODELO_RAPIDO`); a função instalada é de versão
-anterior (cole de novo o `index.ts`).
-
-Segredos opcionais:
+Segredos opcionais (no projeto do Radar):
 
 | Segredo | Padrão | Para quê |
 |---|---|---|
-| `RADAR_OPENAI_MODELO` | `gpt-6.1-sol` | modelo que busca trechos e redige |
-| `RADAR_OPENAI_MODELO_RAPIDO` | `gpt-6-luna` | modelo que classifica |
-| `RADAR_OPENAI_MODELO_IMAGEM` | `gpt-image-1` | modelo da ilustração de capa por IA |
-| `RADAR_IA_LIMITE_MENSAL_TOKENS` | `3000000` | teto de consumo por mês dentro do Radar |
-| `RADAR_OPENAI_API` | `responses` | use `chat` se a conta só aceitar a API antiga |
+| `RADAR_IA_MODELO` | `claude-sonnet-4-6` | modelo que busca trechos e redige |
+| `RADAR_IA_MODELO_RAPIDO` | `claude-haiku-4-5` | modelo que classifica |
+| `RADAR_IA_MODELO_IMAGEM` | `gpt-image-2` | modelo da ilustração de capa (OpenAI) |
+| `RADAR_IA_LIMITE_MENSAL_TOKENS` | `3000000` | teto de consumo por mês dentro do Radar, além dos limites em dólar da IA Central |
+| `IA_GATEWAY_URL` | endereço do `ia-gateway` do projeto do DP | só muda se a IA Central mudar de projeto |
 
-Os nomes dos modelos padrão foram lidos da documentação da OpenAI em 02/10/2026. Se a
-sua conta não tiver um deles, a tela mostra a mensagem dizendo qual segredo ajustar.
-A função não usa a chave service_role: age com a sessão de quem clicou.
+Os modelos são os que a IA Central já tem com preço cadastrado e que os outros aplicativos usam.
+Para usar outro modelo, cadastre o preço em `core.ia_precos` e libere em `core.ia_apps.modelos`
+do aplicativo `radar` antes de trocar o segredo; senão a IA Central recusa a chamada.
+
+Quando a IA "não funciona", o teste do item 4 mostra a causa. As mais comuns: a função `radar-ia`
+não foi criada com esse nome; falta o segredo `IA_GATEWAY_TOKEN` ou o token foi trocado no
+Portal; o limite do dia ou do mês do Radar foi atingido; a conta da Anthropic ou da OpenAI está
+sem crédito (o aviso chega por e-mail com o link de recarga).
 
 ## Como é o trabalho no dashboard
 
@@ -223,11 +251,81 @@ cartão mostra "Por que apareceu" (os termos que pesaram). Ao salvar as regras, 
 são reavaliadas. O assunto aberto a partir de uma captura herda a relevância dela. É um
 filtro por palavras, não por entendimento do texto: ajuste a lista conforme o uso.
 
+### O que está em alta e o que é repetição (v0.7.0)
+
+Depois de cada coleta, o robô (`robo/radar_ia.py`) envia à IA, pela IA Central, o título, o resumo,
+o órgão e a data das capturas novas que passaram pelo filtro de palavras (as de baixa relevância
+não vão). A IA devolve, para cada uma: **nota** de 0 a 10, **motivo**, **tema** e, se for o caso,
+de qual outra captura ela é **repetição**. O banco valida cada item (`radar_gravar_avaliacao_ia`).
+
+- **Em alta** = capturas que não são repetição nem de baixa relevância, com nota a partir do corte,
+  da maior para a menor. Padrão: nota de corte 6, 10 itens. Para mudar, acrescente em
+  Configurações → Relevância das capturas: `"nota_corte": 7, "quantidade": 15`.
+- **Repetição**: enquanto a origem está na fila, a captura repetida fica recolhida atrás dela (não
+  aparece em "Em alta" nem em "Relevantes"; em "Todas" aparece com o selo). O grupo vale pela
+  maior nota entre a origem e as repetições. Ao abrir ou ignorar o cartão, vão junto as repetições
+  recolhidas atrás dele ("Mesmo fato em mais N capturas"). Em "Todas", abrir pela repetição leva
+  a origem e as demais; ignorar a repetição ignora só ela. Se a repetição chegar depois:
+  - há assunto **em andamento** com alguma captura do mesmo fato → ela entra sozinha nele, marcada como "repetição do mesmo
+    fato, apontada pela IA", com registro na auditoria. O botão **Não é o mesmo fato** devolve a
+    captura para a triagem (só não desfaz se já houver evidência registrada nela);
+  - só há assunto **ignorado, publicado ou arquivado** → ela **não** entra sozinha: aparece na
+    triagem, com cartão próprio e o aviso "Parece o mesmo fato do assunto …". Você decide: Ignorar
+    ou abrir assunto novo (abrir uma não leva as outras que têm cartão próprio).
+  Se a IA apontar muitas capturas do mesmo lote para a mesma origem (mais de um terço do lote,
+  direto ou em cadeia), o robô trata como erro e não esconde nenhuma. Título alterado na fonte pede nova avaliação.
+- **Custo**: modelo rápido (`claude-haiku-4-5`), cerca de US$ 0,01 a cada 25 capturas, registrado no
+  Portal em nome de "robô de coleta", dentro dos limites do Radar.
+- **Se a IA faltar** (sem crédito, limite do dia, token errado), a coleta não falha: as capturas
+  ficam "aguardando nota da IA", entram em "Em alta" pela ordem das palavras e são avaliadas na
+  coleta seguinte. O motivo aparece no resumo da execução, no GitHub.
+- É uma avaliação por título e resumo, feita por IA: pode errar a nota ou juntar fatos diferentes.
+  "Relevantes" mostra todas as de alta e média relevância (sem as repetições recolhidas) e "Todas"
+  mostra tudo, inclusive as repetições e as de baixa relevância.
+- O resumo da execução nunca mostra o token (`iagw_…` aparece como `iagw_***`).
+
+### Texto original, nunca cópia (v0.7.0)
+
+A IA recebe a regra de redigir com palavras próprias e só transcrever, entre aspas e com no máximo
+25 palavras, o trecho de dispositivo legal cuja redação exata seja indispensável. Além disso, o
+Radar compara cada conteúdo (escrito pela equipe ou pela IA) com o texto das capturas do assunto:
+sequência de 12 palavras ou mais igual à fonte aparece num quadro vermelho e o botão Aprovar
+recusa. A comparação ignora maiúsculas, acentos e pontuação. Não contam para as 12 palavras:
+números, datas, nomes próprios e siglas, o nome de uma norma ("Instrução Normativa RFB nº 2.300,
+de 5 de março de 2026") e as palavras de ligação entre eles ("de", "e", "na"). Citação entre aspas é aceita quando curta:
+até 40 palavras cada e 120 no total do texto — pôr o texto inteiro entre aspas não adianta. O
+título do conteúdo não entra na comparação.
+
+Limites: a comparação é só com o texto capturado do próprio assunto (não com a internet nem com
+outros sites de notícia), não detecta paráfrase muito próxima — quem troca uma palavra a cada
+poucas escapa —, pode barrar por engano um trecho legítimo muito parecido com a fonte (basta
+reescrever ou citar entre aspas) e é feita na tela: quem grava direto no banco não passa por ela. É um apoio à
+revisão, não um detector de plágio. O campo **Fonte** é preenchido só na criação do conteúdo
+(com os órgãos das capturas oficiais do assunto); capturas incluídas depois não o alteram.
+
+### Assunto por etapas (v0.7.0)
+
+A tela do assunto mostra uma etapa de cada vez: **Fonte e fundamentação** (texto oficial e
+trechos), **Conteúdo** (escrever, aprovar e registrar no site) e **Classificação** (dados do
+assunto). Abre na etapa que falta; os cinco passos do alto e o "Próximo passo" trocam de etapa.
+Trocar de etapa não perde o que foi digitado, e uma ação feita em outra etapa (salvar a
+classificação, por exemplo) também não: o que estava digitado ou escolhido e não salvo é devolvido
+aos campos. Se houver um formulário de evidência ou de texto oficial aberto e preenchido em outra
+etapa, a ação é barrada com o aviso de onde está a pendência.
+Os passos do alto funcionam também pelo teclado. "Mostrar tudo numa página" volta ao formato
+anterior e a escolha fica guardada no navegador.
+
 ### Imagem de capa (v0.6.0)
 
 Todo conteúdo novo (escrito pela equipe ou gerado pela IA) recebe uma capa de 1200 × 630
 no padrão da Artecon — logotipo, faixa, categoria e o título —, desenhada no próprio
-navegador, sem depender de IA. No conteúdo há três opções: "Gerar capa padrão Artecon"
+navegador, sem depender de IA. Desde a v0.7.0 a ilustração por IA é uma fotografia realista, pode
+ter pessoas (sempre fictícias) e tem um campo opcional para dizer como você quer a imagem; o pedido
+proíbe texto, marca, assinatura, pessoa real e estilo de autor, e a descrição (até 200 caracteres)
+é recusada, antes de gerar e de cobrar, se pedir marca, logotipo, brasão, assinatura de autor,
+autoridade ou pessoa famosa, ou "no estilo de" alguém. É um filtro por palavras: não reconhece
+nome de pessoa real escrito sem cargo, nem confere o título do conteúdo — por isso o pedido
+enviado à OpenAI repete sempre as proibições, e a imagem deve ser conferida antes de aprovar. No conteúdo há três opções: "Gerar capa padrão Artecon"
 (refaz com o título atual), "Gerar ilustração com IA" (imagem sem texto, pela OpenAI) e o
 envio de uma imagem própria. Trocar a imagem de um conteúdo aprovado devolve-o à revisão.
 
@@ -362,12 +460,33 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
 
 ## Atualizações futuras
 
-**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.6.0.sql` no SQL Editor; (2) envie
+**Da v0.6.1 para a v0.7.0**, nesta ordem:
+
+1. Supabase radar-artecon → SQL Editor → execute `sql/radar-setup-v0.7.0.sql`. Guarde a evidência.
+2. GitHub, repositório `radar` → envie `index.html` e a pasta `robo/` (arquivos novos e alterados:
+   `radar_ia.py`, `radar_coletar.py`, `radar_util.py`).
+3. GitHub → abra `.github/workflows/radar-coletar.yml` → lápis (Edit) → substitua o conteúdo pelo
+   do pacote → Commit. A única mudança é a linha `RADAR_IA_GATEWAY_TOKEN`.
+4. GitHub → Settings → Secrets and variables → Actions → New repository secret →
+   **`RADAR_IA_GATEWAY_TOKEN`** = o token do Radar na IA Central (o mesmo do segredo
+   `IA_GATEWAY_TOKEN` da função `radar-ia`). Se não tiver mais o token guardado, gere outro no
+   Portal → Consumo de IA → Radar → Trocar token e grave o novo **nos dois lugares**: neste
+   segredo do GitHub e no `IA_GATEWAY_TOKEN` do Supabase do Radar.
+5. Supabase radar-artecon → Edge Functions → `radar-ia` → cole o `index.ts` novo → Deploy.
+6. GitHub → Actions → "Radar — coleta das fontes oficiais" → Run workflow. No resumo da execução
+   aparece a linha **Avaliação da IA** com quantas capturas receberam nota. Na primeira vez, as
+   que já estavam na fila são avaliadas (até 150 por execução).
+
+**Da v0.6.0 para a v0.6.1:** (1) instale a IA Central v1.1.0 e o Portal v1.4.0; (2) envie o
+`index.html` ao repositório do Radar; (3) siga o Passo 7 (função `radar-ia`, segredo
+`IA_GATEWAY_TOKEN`). Não há SQL novo para o Radar.
+
+**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.7.0.sql` no SQL Editor; (2) envie
 `index.html` e `informativo.html` ao repositório; (3) cole o `radar-fale-conosco-v0.6.0.json`
 em Configurações → Fale Conosco; (4) se usa a IA, cole de novo o `index.ts` na função
 `radar-ia` e faça o Deploy. O robô não mudou de comportamento (só o número da versão).
 
-Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.6.0.sql` no SQL
+Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.7.0.sql` no SQL
 Editor (ele atualiza sem apagar dados), envie os arquivos novos ao repositório, **apague o
 `informa.html` do repositório** e, se a função de IA já estiver instalada, cole de novo o
 `index.ts`.

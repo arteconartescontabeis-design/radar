@@ -1,10 +1,81 @@
-# Radar Artecon — Relatório de testes (v0.6.0)
+# Radar Artecon — Relatório de testes (v0.7.0)
 
-Data: 03/10/2026. Resultado: **368 testes automatizados, 368 aprovados** (suíte executada
-duas vezes seguidas).
+Data: 03/10/2026. Resultado: **395 testes automatizados do Radar, 395 aprovados** (suíte executada
+duas vezes seguidas). A IA Central não mudou nesta versão (v1.1.0, 15 testes).
 
-Além da suíte, o código passou por nove rodadas de revisão independente (a nona, desta
-versão), que tentaram quebrar as regras por experimento.
+## v0.7.0 — em alta, sem repetição, texto original, imagem realista e assunto por etapas
+
+O que foi comprovado:
+
+- **Nota da IA no robô:** só título, resumo, órgão e data vão para a IA (o texto oficial e a chave
+  do banco não); capturas de baixa relevância nem são enviadas; nota fora de 0 a 10, id inventado
+  e item repetido na resposta são descartados; só o robô grava a avaliação (editor, administrador
+  e visitante são recusados).
+- **IA indisponível não derruba a coleta:** sem o segredo, com limite atingido na IA Central e com
+  endereço errado, a coleta termina normalmente, o resumo diz o motivo e as capturas são avaliadas
+  na coleta seguinte.
+- **Em alta:** a tela abre com as 10 de maior nota, sem repetição e sem baixa relevância; o
+  contador da aba e o cartão do painel acompanham; nota de corte e quantidade configuráveis, com
+  valores inválidos voltando ao padrão.
+- **Repetição:** não aponta para si mesma nem forma ciclo; repetição de repetição sobe até a
+  origem; abrir (ou ignorar) leva as repetições junto; a repetição que chega depois entra sozinha
+  só em assunto em andamento, com marca e registro na auditoria, e "Não é o mesmo fato" a devolve
+  para a triagem (recusado para leitor, visitante e robô, e quando há evidência na captura);
+  repetição de assunto ignorado fica na triagem com o aviso de qual assunto parece ser; o grupo
+  entra em "Em alta" pela maior nota; muitos itens do lote apontando para a mesma origem (direto
+  ou em cadeia) são descartados como erro da IA; título alterado pede nova avaliação; só vai
+  junto o que o cartão anuncia (ignorar a repetição recolhida ignora só ela; repetições com
+  cartão próprio não são levadas por outra); a junção automática procura assunto em andamento
+  no grupo todo; o editor não consegue marcar à mão um vínculo como "juntado pela IA".
+- **Robô resistente a resposta estranha:** resposta que não é JSON, lista no lugar de objeto,
+  campos de tipo errado e lote sem nenhum item aproveitável param a avaliação com aviso, sem
+  derrubar a coleta; o token nunca aparece no resumo; as capturas mais novas são avaliadas
+  primeiro; resposta parcial é avisada no resumo.
+- **Fonte preenchida** com o órgão da captura oficial; o que a pessoa informa ou apaga é respeitado.
+- **Cópia da fonte:** trecho de 12 palavras ou mais igual ao texto oficial é apontado e impede a
+  aprovação; trocar maiúsculas, acentos e pontuação não disfarça (nem escrever tudo em
+  maiúsculas); citação curta entre aspas deixa de contar, mas aspas em volta do texto inteiro ou
+  muitas citações somadas não livram; citar o nome da norma com número e data (ou várias normas
+  em sequência) não é cópia; aspas vazias, "##" no meio da linha e caractere invisível dentro das
+  palavras não disfarçam; o título não é comparado; reescrito, aprova.
+- **Imagem:** a descrição opcional entra no pedido; sem ela a IA escolhe; as proibições (texto,
+  marca, assinatura, pessoa real, estilo de autor) vêm sempre depois e uma descrição que manda
+  ignorar as regras não as remove do pedido; descrição que pede logotipo, marca, brasão,
+  assinatura de autor, autoridade ou "estilo de" alguém, ou com mais de 200 caracteres, é recusada
+  antes de gerar (nenhuma imagem é pedida nem cobrada); palavras parecidas ("diálogo",
+  "assinatura de um contrato", "presidente da empresa", "foto de Florianópolis") não são
+  recusadas; a descrição continua no campo depois de gerar.
+- **Assunto por etapas:** abre na etapa que falta, os passos e o "Próximo passo" trocam de etapa,
+  o que foi digitado ou escolhido em lista não se perde — nem ao trocar de etapa nem quando se
+  salva em outra etapa; formulário de evidência aberto e preenchido em outra etapa barra a ação —,
+  os passos do alto respondem ao teclado e "Mostrar tudo numa página" fica guardado.
+- **Atualização:** o SQL v0.7.0 foi aplicado por cima do SQL da v0.6.0 (o que está em produção)
+  com dados, duas vezes seguidas, e a reversão foi executada em seguida.
+- **Achado dos testes:** a gravação da junção automática na auditoria falhava por permissão (o
+  robô só lê a auditoria) e a junção era descartada em silêncio; corrigido antes da entrega.
+
+## v0.6.1 — IA pela IA Central (Anthropic no texto, OpenAI nas imagens)
+
+Como foi testado: a função `radar-ia` e o `ia-gateway` v1.1.0 rodaram de verdade (Deno), com o
+banco `core` montado como réplica da produção (v1.0.0 mais as diferenças lidas da produção em
+03/10/2026) e o `ia_central_v1.1.0.sql` por cima. Só a Anthropic, a OpenAI e o hub de e-mail foram
+imitados. O que foi comprovado:
+
+- **Caminho completo:** classificar, fundamentar, gerar, "Preparar com IA", ilustração e o teste
+  de Configurações passam pela IA Central. À Anthropic vai a chave da IA Central; o token do
+  Radar, o token do usuário e o e-mail de quem pediu não saem da Artecon.
+- **Custo no Portal:** cada chamada fica em `core.ia_uso` com aplicativo, quem pediu e o custo
+  (texto pelos tokens; imagem por unidade, na conta da OpenAI). O saldo de uma conta não se
+  mistura com o da outra.
+- **Limites e bloqueios:** limite do dia, modelo não liberado, IA do aplicativo desligada e token
+  trocado no Portal chegam ao Radar com mensagem que diz o que fazer, sem gastar.
+- **Avisos por e-mail:** crédito acabando e crédito esgotado saem uma vez, por conta, com o link
+  da página de recarga certa; o relatório mensal traz as duas contas e os dois links.
+- **Compatibilidade:** depois do SQL novo, as chamadas no formato do `ia-gateway` v1.0.0 e do
+  Portal v1.3.0 continuam aceitas; o Portal v1.4.0 com a IA Central antiga mostra só a Anthropic.
+- **Migração e reversão:** o SQL roda duas vezes seguidas sem erro, preserva o uso e o saldo que
+  existiam (marcados como Anthropic) e a reversão devolve funções, colunas e aplicativos ao
+  estado anterior.
 
 ## v0.6.0 — relevância, telas mais simples, capa automática e final do informativo
 
@@ -174,7 +245,12 @@ bloqueia os servidores do GitHub Actions.
 | Ilustração por IA de verdade | a OpenAI é simulada; a qualidade e o custo da imagem só aparecem com a chave real | primeiro uso |
 | Regras de relevância no dia a dia | calibradas com os títulos da primeira coleta; é filtro por palavras, não por entendimento | ajustar a lista em Configurações conforme o uso |
 | Tempo limite do Supabase ao salvar as regras | medido aqui: cerca de 0,7 ms por captura na fila | se a fila passar de alguns milhares de itens, ignore as de baixa relevância antes |
-| OpenAI de verdade | sem chave; os testes usam uma OpenAI simulada. A qualidade do texto gerado, os nomes dos modelos padrão e o formato exato da API não foram exercitados contra o serviço real | primeiro uso no Passo 7 |
+| A nota da IA de verdade | a IA é imitada nos testes; se as notas fazem sentido para o seu escritório só aparece com as capturas reais | olhar "Em alta" e "Relevantes" nos primeiros dias e ajustar a nota de corte |
+| Se a imagem obedece às proibições | o pedido leva as regras, mas quem gera é a OpenAI: pode sair texto ou marca na imagem | conferir cada imagem antes de aprovar |
+| Plágio fora do texto capturado | a comparação é só com as capturas do próprio assunto | revisão humana |
+| Anthropic e OpenAI de verdade | as duas são imitadas nos testes. A qualidade do texto e da ilustração, o formato exato das respostas e se `gpt-image-2` existe na sua conta da OpenAI só aparecem com as chaves reais | "Testar a IA" e o primeiro uso |
+| `ia_central_v1.1.0.sql` no projeto do DP | testado numa réplica montada a partir do que a produção devolveu em 03/10/2026, não na produção | evidência depois de executar |
+| Portal inteiro | só a tela Consumo de IA foi exercitada (com o código do Portal v1.4.0, sem o login) | conferência na tela |
 | Função de IA dentro do Supabase | aqui ela roda no Deno local; limites de tempo e de memória da plataforma não foram medidos | primeiro uso no Passo 7 |
 | HTML real dos sites lido pelo robô | ambiente sem acesso direto aos sites | diagnóstico (Passo 1) |
 | Login contra o Supabase Auth de verdade | não testado por mim; **você entrou no painel em 02/10/2026** com a v0.4 (tela do Painel enviada) | — |
@@ -298,3 +374,16 @@ segunda revisão independente.
 21. **A capa automática não é refeita sozinha** quando o título muda: use o botão.
 22. **Painel novo com função de IA antiga:** os recursos novos da IA só funcionam depois de
     colar o `index.ts` desta versão; o painel avisa.
+23. **A nota da IA usa só título e resumo:** notícia importante com título vago pode receber
+    nota baixa. Ela continua em "Relevantes".
+26. **Repetição apontada pela IA pode estar errada:** por isso a que entra sozinha num assunto
+    vem marcada e tem o botão "Não é o mesmo fato", e a de assunto ignorado ou publicado fica
+    na triagem com aviso em vez de sumir.
+27. **A verificação de cópia pode ser contornada** (trocar uma palavra a cada poucas, por
+    exemplo) e só compara com as capturas do próprio assunto: é apoio à revisão, não garantia.
+28. **A recusa de descrição de imagem é por palavras:** não reconhece nome de pessoa real
+    escrito sem cargo ("foto de Fulano de Tal"), nem variações que não estão na lista, e não
+    confere o título do conteúdo. A proteção principal é o pedido à OpenAI, que repete sempre
+    as proibições — e a conferência da imagem por quem aprova.
+29. **Formulário de evidência ou de texto oficial aberto** em outra etapa barra as ações que
+    redesenham a tela até ser registrado ou cancelado.
