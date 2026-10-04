@@ -183,6 +183,27 @@ def test_mudanca_de_layout_vira_vazio_suspeito_e_nao_apaga_nada(cenario):
     assert "nenhum item foi reconhecido" in f[0] and f[1] == 1
 
 
+def test_fonte_que_passa_do_tempo_maximo_e_interrompida_e_nao_trava_as_outras(cenario):
+    # padrão de links mal escrito que nunca termina diante de um endereço comprido
+    cenario.execute("""update radar_fontes set config = config || '{"padrao_url": "(a+)+$", "tempo_max_segundos": 1}'::jsonb
+                       where slug = 'teste-a'""")
+    PAGINAS["/a/lista"] = (200, lista([("/" + "a" * 40 + "b", "Endereço que trava a expressão", "30/09/2026")]))
+    inicio = time.monotonic()
+    r, _ = robo()
+    assert time.monotonic() - inicio < 15
+    assert r["teste-a"]["status"] == "falha" and "passou de 1 s" in r["teste-a"]["erro"]
+    assert r["teste-b"]["status"] == "ok" and r["teste-b"]["novos"] == 1
+    assert cenario.execute("select status from radar_execucoes order by id").fetchall() == [("falha",), ("ok",)]
+    assert "passou de 1 s" in cenario.execute("select ultimo_erro from radar_fontes where slug = 'teste-a'").fetchone()[0]
+
+
+def test_tempo_maximo_invalido_volta_ao_padrao():
+    assert radar_coletar.tempo_maximo({}) == radar_coletar.TEMPO_MAX_PADRAO
+    assert radar_coletar.tempo_maximo({"tempo_max_segundos": 45}) == 45
+    for ruim in ("muito", 0, -5, 999999, None):
+        assert radar_coletar.tempo_maximo({"tempo_max_segundos": ruim}) == radar_coletar.TEMPO_MAX_PADRAO
+
+
 def test_lista_valida_sem_itens_recentes_e_ok_e_nao_suspeita(cenario):
     PAGINAS["/a/lista"] = (200, lista([("/a/noticias/2026/noticia-antiga-de-janeiro", "Notícia antiga de janeiro", "05/01/2026")]))
     r, _ = robo("teste-a")

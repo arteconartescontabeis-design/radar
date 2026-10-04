@@ -354,8 +354,6 @@ segunda revisão independente.
 16. **Texto oficial incluído pela equipe depende de quem inclui:** o sistema limita o
     endereço ao site da fonte e marca a origem, mas não compara o texto colado com a
     página. Um editor sozinho consegue satisfazer a exigência de fonte oficial.
-17. **Sem limite de tempo por fonte no robô:** um padrão de links mal escrito pode atrasar
-    a coleta.
 18. **Diagnóstico das fontes** (Passo 1) só cobre as seis fontes iniciais.
 13. **O Radar não confere o site:** o registro depende de alguém informar o link certo. Se
     a notícia for alterada ou retirada no site, o Radar não fica sabendo.
