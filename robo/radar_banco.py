@@ -97,3 +97,7 @@ class Banco:
         if not linhas:
             raise ErroBanco(f"captura {captura_id} não encontrada para atualizar")
         return linhas[0]
+
+    def limpar_imagens_sem_uso(self, horas: int = 24) -> int:
+        """Apaga as imagens que nenhum conteúdo usa há mais de `horas` (v0.7.1). Devolve quantas."""
+        return int(self._pedir("POST", "rpc/radar_limpar_imagens_sem_uso", corpo={"p_horas": horas}) or 0)

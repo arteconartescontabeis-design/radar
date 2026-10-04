@@ -1,7 +1,34 @@
-# Radar Artecon — Relatório de testes (v0.7.0)
+# Radar Artecon — Relatório de testes (v0.7.1)
 
-Data: 03/10/2026. Resultado: **395 testes automatizados do Radar, 395 aprovados** (suíte executada
-duas vezes seguidas). A IA Central não mudou nesta versão (v1.1.0, 15 testes).
+Data: 04/10/2026. Resultado neste ambiente: **348 aprovados, 0 falhas, 61 pulados**. Os pulados são os
+testes de tela que sobem a IA Central de verdade (pacote `ia-central-v1.1.0`, fora deste repositório);
+eles foram executados na v0.7.0 (395 de 395) e não dependem do que mudou aqui. A função `radar-ia`
+e a IA Central não mudaram.
+
+## v0.7.1 — manutenção e conforto
+
+O que foi comprovado:
+
+- **Atualização:** o SQL v0.7.1 foi aplicado por cima do SQL v0.7.0 (o que está em produção) com
+  dados, duas vezes seguidas: capturas, conteúdos e imagens preservados, nenhuma execução pela metade.
+  Também por cima da v0.6.0 e da v0.1.0, e a reversão continua apagando tudo.
+- **Termos com pontuação:** "S.A.", "Ltda." e ".gov" pontuam (inclusive com vírgula colada depois);
+  "SS.A." e "Ltdax" não. A tela aceita esses termos e recusa os que têm menos de duas letras ou números.
+- **Imagens sem uso:** só o robô (service_role) apaga; administrador, editor e visitante são recusados.
+  Ficam a imagem usada por um conteúdo e a enviada há menos de 24 horas. Banco ainda sem o SQL novo
+  ou fora do ar não derruba a coleta.
+- **Limite de tempo por fonte:** um padrão de links que nunca termina é cortado em 1 s (no teste) e a
+  outra fonte coleta normalmente; valor inválido volta aos 5 minutos.
+- **Diagnóstico:** lê as fontes ativas do banco (as desligadas ficam de fora); sem chave ou com o
+  banco fora do ar, usa o arquivo. Página não reconhecida e página montada por JavaScript são descritas.
+- **Texto não salvo:** sobrevive à queda da sessão; recuperar não grava sozinho; salvar e descartar
+  apagam o rascunho; "Sair" pede confirmação e apaga os rascunhos.
+- **"Mostrar mais":** 160 capturas e 301 assuntos — o botão traz o resto e some no fim; trocar o filtro
+  recomeça a contagem.
+- **Número da edição** acompanha o ano do mês, sem trocar o que foi digitado; **lembrete de capa**
+  aparece ao salvar título novo e some ao gerar a capa.
+- **Função de IA da versão anterior** (v0.7.0) não é apontada como antiga pelo painel v0.7.1.
+- **Workflows em Node 24:** o diagnóstico rodou no GitHub com as ações novas, sem o aviso de Node 20.
 
 ## v0.7.0 — em alta, sem repetição, texto original, imagem realista e assunto por etapas
 
@@ -360,15 +387,11 @@ segunda revisão independente.
     lista "Em andamento"; o outro conteúdo aparece pela aba Publicações.
 8. **Edição fechada não guarda cópia dos artigos:** o registro definitivo é o PDF salvo.
    Alteração posterior é avisada, não impedida.
-9. **Imagens substituídas ficam no banco** sem uso; não há tela de limpeza.
 10. **Tabela no texto:** o caractere "|" sempre separa colunas (não dá para usá-lo dentro
     de uma célula) e a linha de título não se repete quando a tabela atravessa a página.
-12. **Envio de imagem que falha no meio** pode deixar uma imagem sem uso no banco.
 19. **Relevância é por palavras:** uma notícia importante escrita sem nenhum dos termos
     fica como baixa. Vale olhar o filtro "Baixa relevância" de vez em quando e ajustar a
     lista.
-20. **Termos com pontuação nas pontas** (ex.: "S.A.") não são aceitos nas regras: o Radar
-    compara palavras inteiras.
 21. **A capa automática não é refeita sozinha** quando o título muda (o banco não guarda se a
     imagem é a capa padrão, uma foto enviada ou a ilustração da IA, e trocar sozinho poderia
     apagar uma imagem escolhida): ao salvar um título novo, a tela avisa ao lado da imagem.

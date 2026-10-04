@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.7.0"
+    assert pagina.inner_text(".versao") == "v0.7.1"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -1436,6 +1436,16 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     assert "Imprimir" not in "".join(por_pagina)                                                       # a barra da tela não sai no papel
 
 
+def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_antiga(pagina):
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    valida = lambda termo: pagina.evaluate("t => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [{termo: t, pontos: 5}]})", termo)
+    assert valida("S.A.") == "" and valida("Ltda.") == "" and valida(".gov") == "" and valida("NFS-e") == ""
+    assert "duas letras" in valida("..") and "duas letras" in valida("a.")
+    # a v0.7.1 não mudou a função de IA: a função v0.7.0 não deve ser apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.7.0', FUNCAO_MINIMA), versaoMenor('0.6.1', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [False, True, False]
+
+
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
     for n in range(160):
         captura(limpo, f"Captura de teste número {n:03d}", f"https://www.gov.br/exemplo/lista-{n}")
@@ -2240,7 +2250,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.7.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.7.1" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
