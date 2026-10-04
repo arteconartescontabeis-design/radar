@@ -36,6 +36,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+          # token do aplicativo "radar" na IA Central (Portal → Consumo de IA); sem ele a coleta roda, só sem a nota da IA
+          RADAR_IA_GATEWAY_TOKEN: ${{ secrets.RADAR_IA_GATEWAY_TOKEN }}
           FONTE: ${{ github.event.inputs.fonte }}
           FORCAR: ${{ github.event.inputs.forcar }}
         run: |
