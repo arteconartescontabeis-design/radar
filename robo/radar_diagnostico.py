@@ -62,7 +62,16 @@ def enderecos_nos_scripts(url: str, scripts: list[str], sessao: requests.Session
             continue
         vistos = sorted({m.group(1) for m in RE_ENDERECO.finditer(js)
                          if not re.search(r"\.(css|svg|png|woff2?|ttf|ico)$|w3\.org|angular\.io|github\.com", m.group(1))})
-        achados[endereco] = [f"{len(js)} bytes"] + vistos[:80]
+        achados[endereco] = [f"{len(js)} bytes"] + [v for v in vistos if not re.search(r"schemas\.|openoffice|oasis|purl\.|sheetjs|jspdf|macVml", v)][:40]
+        # o endereço da API costuma ser montado em pedaços: mostra o código em volta das chamadas
+        trechos = []
+        for m in re.finditer(r"/api\b|apiUrl|baseUrl|urlApi|\.(?:get|post)\(`|\.(?:get|post)\([a-zA-Z_.$]+\s*\+", js):
+            trecho = re.sub(r"\s+", " ", js[max(0, m.start() - 160): m.end() + 220])
+            if trecho not in trechos:
+                trechos.append(trecho)
+            if len(trechos) >= 40:
+                break
+        achados[endereco] += [f"…{t}…" for t in trechos]
     return achados
 
 
