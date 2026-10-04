@@ -443,11 +443,16 @@ Fonte que já tem capturas não é excluída: desmarque "Fonte ativa". Excluir u
 capturas apaga junto o histórico de execuções dela. O tipo "Atos normativos da Receita" é
 específico do site Normas e não aparece para fontes novas. O padrão dos links é conferido
 pelo navegador; o robô usa Python, que recusa algumas construções aceitas pelo navegador
-(nesse caso a execução vem como "falha", com o motivo). Não há limite de tempo por fonte:
-um padrão muito complexo pode atrasar a coleta inteira. O robô acessa o endereço
-cadastrado a partir do GitHub; cadastre só sites públicos. O diagnóstico do
-Passo 1 continua lendo só as seis fontes iniciais (arquivo `robo/radar_fontes.json`); as
-fontes cadastradas pela tela são conferidas pela própria coleta.
+(nesse caso a execução vem como "falha", com o motivo). Cada fonte tem até 5 minutos por
+coleta: passou disso (padrão muito complexo, site lento demais), a fonte é interrompida e vem
+como "falha" (ou "parcial", se já tinha gravado algo), sem atrasar as outras. Para mudar o
+limite, escreva em "Outras opções de leitura" `"tempo_max_segundos": 120` (de 1 a 3600). O robô acessa o endereço
+cadastrado a partir do GitHub; cadastre só sites públicos. O diagnóstico
+(Actions → "Radar — diagnóstico das fontes") confere as fontes **ativas** do banco, inclusive
+as cadastradas pela tela; antes do Passo 3 (sem as chaves), confere as seis fontes iniciais do
+arquivo `robo/radar_fontes.json`. Quando uma fonte não é reconhecida, o relatório mostra como a
+página está montada (título, tabelas, links e, se ela for montada por JavaScript, os endereços
+de dados que aparecem nos scripts).
 
 Outras opções, no campo "Outras opções de leitura (JSON)":
 

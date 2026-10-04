@@ -335,9 +335,14 @@ segunda revisão independente.
 
 ## Pendências conhecidas
 
-1. **Texto integral dos atos da Receita:** só a ementa é capturada. Para citar artigo de
-   uma instrução normativa, a pessoa precisa abrir a fonte; a fundamentação automática
-   desses atos fica limitada à ementa.
+1. **Atos normativos da Receita fora do ar para o robô (desde 04/10/2026):** o endereço da
+   consulta (`sijut2consulta/consulta.action`) passou a abrir o novo sistema "Normas", que monta a
+   tela por JavaScript; a página chega sem nenhum ato e a fonte `rfb-normas` fica em
+   "vazio suspeito". Os dados vêm de `POST /api/indexacao/ato/pesquisar`, mas essa API responde
+   403 ("Request forbidden by administrative rules") ao acesso automático feito do GitHub, mesmo
+   com o filtro idêntico ao da página. Até haver outro caminho (o DOU pelo INLABS, por exemplo),
+   as instruções normativas chegam só pelas notícias da Receita. Antes disso, só a ementa era
+   capturada (sem texto integral).
 2. **Verificação da IA tem limites:** não lê números por extenso, incisos nem normas sem
    número, e não avalia a interpretação.
 3. **Teto mensal de tokens** pode ser ultrapassado por pedidos simultâneos; a trava real é
@@ -349,9 +354,6 @@ segunda revisão independente.
 16. **Texto oficial incluído pela equipe depende de quem inclui:** o sistema limita o
     endereço ao site da fonte e marca a origem, mas não compara o texto colado com a
     página. Um editor sozinho consegue satisfazer a exigência de fonte oficial.
-17. **Sem limite de tempo por fonte no robô:** um padrão de links mal escrito pode atrasar
-    a coleta.
-18. **Diagnóstico das fontes** (Passo 1) só cobre as seis fontes iniciais.
 13. **O Radar não confere o site:** o registro depende de alguém informar o link certo. Se
     a notícia for alterada ou retirada no site, o Radar não fica sabendo.
 14. **Tabela `radar_publicacoes` sem uso:** continua no banco, com as regras antigas, e

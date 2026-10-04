@@ -1,6 +1,8 @@
-"""Radar Artecon — diagnóstico das fontes (NÃO usa banco nem chaves).
+"""Radar Artecon — diagnóstico das fontes (só lê; não grava nada no banco).
 
-Baixa cada fonte de radar_fontes.json, tenta reconhecer os itens, baixa o
+Com SUPABASE_URL e SUPABASE_SERVICE_KEY, confere as fontes ATIVAS do banco (inclusive as
+cadastradas pela tela); sem elas, ou se o banco não responder, usa robo/radar_fontes.json.
+Para cada fonte, tenta reconhecer os itens, baixa o
 texto do primeiro item e grava tudo em ./diagnostico/ (páginas originais +
 relatorio.json + relatorio.md). Serve para validar as fontes reais antes de
 ligar a coleta e para reajustar a configuração quando um site mudar.
@@ -9,15 +11,74 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 import requests
+from bs4 import BeautifulSoup
 
-from radar_coletores import listar_paginas
+from radar_banco import Banco, ErroBanco
+from radar_coletores import enderecos_da_listagem as listar_enderecos, listar_paginas
 from radar_util import VERSAO, ErroDownload, baixar, extrair_texto
 
 AQUI = Path(__file__).resolve().parent
+
+
+def estrutura_da_pagina(html: str) -> dict:
+    """Resumo da página que o robô não entendeu, para ajustar a fonte só pelo log do GitHub:
+    título, quantas tabelas/linhas/formulários há, links e o começo do texto e do HTML."""
+    sopa = BeautifulSoup(html or "", "lxml")
+    links = [f"{normalizar(a.get_text(' ', strip=True))[:60]} -> {a['href'][:160]}" for a in sopa.find_all("a", href=True)]
+    for lixo in sopa(["script", "style", "noscript"]):
+        lixo.decompose()
+    return {
+        "titulo": normalizar(sopa.title.get_text()) if sopa.title else "",
+        "tabelas": len(sopa.find_all("table")), "linhas": len(sopa.find_all("tr")),
+        "formularios": len(sopa.find_all("form")), "scripts": html.count("<script"),
+        "links": len(links), "amostra_links": links[:25],
+        "inicio_texto": normalizar(sopa.get_text(" ", strip=True))[:1500],
+        "inicio_html": re.sub(r"\s+", " ", html or "")[:3000],
+        "scripts_src": [t["src"] for t in BeautifulSoup(html or "", "lxml").find_all("script", src=True)][:10],
+    }
+
+
+RE_ENDERECO = re.compile(r"""["'`]((?:https?://[^"'`\s]{4,200})|(?:/[A-Za-z0-9_\-]*(?:api|rest|consulta|servico|service|ato|norma)[A-Za-z0-9_\-/.{}$]*))["'`]""", re.I)
+
+
+def enderecos_nos_scripts(url: str, scripts: list[str], sessao: requests.Session) -> dict:
+    """Página montada por JavaScript: baixa os scripts e lista os endereços que aparecem neles
+    (é onde fica a API de onde a página tira os dados)."""
+    r = sessao.get(url, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon"})
+    final = r.url
+    base = BeautifulSoup(r.text, "lxml").find("base", href=True)
+    raiz = urljoin(final, base["href"]) if base else final      # <base href="/">: scripts ficam na raiz do site
+    achados: dict[str, list[str]] = {"_final": [final, "base: " + raiz]}
+    for src in scripts:
+        endereco = urljoin(raiz, src)
+        try:
+            js = sessao.get(endereco, timeout=40, headers={"User-Agent": "Mozilla/5.0 RadarArtecon"}).text
+        except requests.RequestException as e:
+            achados[endereco] = [f"erro: {e}"]
+            continue
+        vistos = sorted({m.group(1) for m in RE_ENDERECO.finditer(js)
+                         if not re.search(r"\.(css|svg|png|woff2?|ttf|ico)$|w3\.org|angular\.io|github\.com", m.group(1))})
+        achados[endereco] = [f"{len(js)} bytes"] + [v for v in vistos if not re.search(r"schemas\.|openoffice|oasis|purl\.|sheetjs|jspdf|macVml", v)][:40]
+        # o endereço da API costuma ser montado em pedaços: mostra o código em volta das chamadas
+        trechos = []
+        for m in re.finditer(r"`\$\{this\.\w*(?:[Uu]rl|[Aa]pi)\w*\}[^`]{0,120}`", js):
+            trecho = re.sub(r"\s+", " ", js[max(0, m.start() - 80): m.end() + 120])
+            if trecho not in trechos:
+                trechos.append(trecho)
+            if len(trechos) >= 40:
+                break
+        achados[endereco] += [f"…{t}…" for t in trechos]
+    return achados
+
+
+def normalizar(t: str) -> str:
+    return re.sub(r"\s+", " ", t or "").strip()
 
 
 def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
@@ -58,6 +119,13 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
             r["inicio_texto"] = texto[:300]
         if r["brutos"] == 0:
             r["veredito"] = "REVISAR — nenhum item reconhecido"
+            r["estrutura"] = estrutura_da_pagina(paginas[0] if paginas else "")
+            if r["estrutura"]["scripts_src"] and not r["estrutura"]["links"]:
+                try:
+                    r["estrutura"]["enderecos_js"] = enderecos_nos_scripts(
+                        listar_enderecos(fonte)[0], r["estrutura"]["scripts_src"], sessao)
+                except Exception as e:
+                    r["estrutura"]["enderecos_js"] = {"erro": [f"{type(e).__name__}: {e}"]}
         elif r["na_janela"] and r["texto_primeiro_item"] < (40 if config.get("sem_pagina_de_texto") else 200):
             r["veredito"] = "REVISAR — lista ok, texto do item não extraído"
         elif any(i["data"] is None for i in r["amostra"]):
@@ -86,11 +154,31 @@ def relatorio_md(resultados: list[dict]) -> str:
             linhas.append(f"- {a['data'] or 'sem data'} — {a['titulo']}  \n  {a['url']}")
         if r["inicio_texto"]:
             linhas.append(f"\nInício do texto extraído: _{r['inicio_texto']}_")
+        if r.get("estrutura"):
+            e = r["estrutura"]
+            linhas.append(f"\nPágina não reconhecida — título: _{e['titulo']}_; {e['tabelas']} tabela(s), {e['linhas']} linha(s), "
+                          f"{e['formularios']} formulário(s), {e['scripts']} script(s), {e['links']} link(s).")
+            linhas += ["", "Links (amostra):", *[f"- `{l}`" for l in e["amostra_links"]]]
+            linhas += ["", f"Texto: _{e['inicio_texto']}_", "", "```html", e["inicio_html"], "```"]
+            for js, lista in (e.get("enderecos_js") or {}).items():
+                linhas += ["", f"Endereços em `{js}`:", *[f"- `{x}`" for x in lista]]
     return "\n".join(linhas)
 
 
+def carregar_fontes() -> tuple[list[dict], str]:
+    """Fontes ativas do banco quando há chave; senão, as do arquivo. Devolve (fontes, origem)."""
+    url, chave = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
+    if url and chave:
+        try:
+            return Banco(url, chave).fontes_ativas(), "fontes ativas do banco"
+        except ErroBanco as e:
+            print(f"! banco indisponível ({e}); usando robo/radar_fontes.json", file=sys.stderr)
+    return json.loads((AQUI / "radar_fontes.json").read_text(encoding="utf-8")), "robo/radar_fontes.json"
+
+
 def main() -> int:
-    fontes = json.loads((AQUI / "radar_fontes.json").read_text(encoding="utf-8"))
+    fontes, origem = carregar_fontes()
+    print(f"Fontes conferidas: {len(fontes)} ({origem})")
     pasta = Path("diagnostico")
     pasta.mkdir(exist_ok=True)
     sessao = requests.Session()
@@ -101,7 +189,7 @@ def main() -> int:
         print(f"  {r['veredito']} (HTTP {r['http']}, {r['brutos']} reconhecidos, {r['na_janela']} na janela)")
         resultados.append(r)
     (pasta / "relatorio.json").write_text(json.dumps(resultados, ensure_ascii=False, indent=2), encoding="utf-8")
-    texto = relatorio_md(resultados)
+    texto = relatorio_md(resultados) + f"\n\n_Fontes conferidas: {len(fontes)} ({origem})._"
     (pasta / "relatorio.md").write_text(texto, encoding="utf-8")
     destino = os.environ.get("GITHUB_STEP_SUMMARY")
     if destino:

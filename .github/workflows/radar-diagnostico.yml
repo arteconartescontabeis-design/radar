@@ -1,6 +1,7 @@
 name: Radar — diagnóstico das fontes
 
-# Não usa banco nem chaves: baixa as páginas reais e mostra o que o robô reconhece.
+# Baixa as páginas reais e mostra o que o robô reconhece. Só lê: com as chaves do robô,
+# confere as fontes ativas do banco; sem elas, as do arquivo robo/radar_fontes.json.
 on:
   workflow_dispatch:
 
@@ -16,6 +17,9 @@ jobs:
       - run: pip install -r robo/requirements.txt
       - name: Diagnosticar
         working-directory: robo
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
         run: python radar_diagnostico.py
       - name: Guardar páginas e relatório
         if: always()

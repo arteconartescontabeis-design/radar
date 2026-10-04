@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import sys
+import threading
 import time
 import traceback
 from datetime import date, datetime, timedelta, timezone
@@ -72,6 +74,47 @@ def obter_texto(item: Item, config: dict, sessao: requests.Session) -> tuple[str
     return texto, None
 
 
+TEMPO_MAX_PADRAO = 300     # segundos por fonte; ajustável em config.tempo_max_segundos
+
+
+class TempoEsgotado(BaseException):
+    """A fonte passou do tempo máximo (padrão de links mal escrito, site lento demais...).
+    BaseException: nenhum "except Exception" pelo caminho (requests, leitura das páginas) a engole."""
+
+
+class limite_de_tempo:
+    """Interrompe o bloco depois de `segundos` (só no Linux/macOS e na thread principal;
+    fora disso, roda sem limite). Interrompe até uma expressão regular que não termina."""
+
+    def __init__(self, segundos: float):
+        self.segundos = segundos
+        self.ativo = (segundos > 0 and hasattr(signal, "SIGALRM")
+                      and threading.current_thread() is threading.main_thread())
+
+    def _estourou(self, *_):
+        raise TempoEsgotado(f"a fonte passou de {self.segundos:g} s e foi interrompida")
+
+    def __enter__(self):
+        if self.ativo:
+            self.anterior = signal.signal(signal.SIGALRM, self._estourou)
+            signal.setitimer(signal.ITIMER_REAL, self.segundos)
+        return self
+
+    def __exit__(self, *_):
+        if self.ativo:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, self.anterior)
+        return False
+
+
+def tempo_maximo(config: dict) -> float:
+    try:
+        valor = float(config.get("tempo_max_segundos", TEMPO_MAX_PADRAO))
+    except (TypeError, ValueError):
+        return TEMPO_MAX_PADRAO
+    return valor if 0 < valor <= 3600 else TEMPO_MAX_PADRAO
+
+
 def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
                   hoje: date | None = None, pausa: float = 1.0) -> dict:
     config = fonte.get("config") or {}
@@ -81,81 +124,86 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
     execucao = banco.abrir_execucao(fonte["id"])      # se nem isto funcionar, o banco está fora: aborta
     http = None
     try:
-        listagem, http = listar_paginas(lambda url: baixar(url, sessao), fonte, hoje)
-        resultado["encontrados"] = len(listagem.itens)
+        with limite_de_tempo(tempo_maximo(config)):
+            listagem, http = listar_paginas(lambda url: baixar(url, sessao), fonte, hoje)
+            resultado["encontrados"] = len(listagem.itens)
 
-        if listagem.brutos == 0:
-            resultado["status"] = "vazio_suspeito"
-            resultado["erro"] = ("a página respondeu, mas nenhum item foi reconhecido — "
-                                 "possível mudança de layout; revisar a configuração da fonte")
-        else:
-            existentes = banco.capturas_da_fonte(fonte["id"])
-            ja_rendeu_texto = any(e.get("hash_conteudo") for e in existentes.values())
-            novos_tentados = novos_sem_texto = textos_obtidos = 0
-            for item in listagem.itens:
-                existente = existentes.get(item.url)
-                if existente and not deve_revisitar(existente, config, agora):
-                    continue
-                texto, erro_texto = obter_texto(item, config, sessao)
-                if not config.get("sem_pagina_de_texto"):
-                    time.sleep(pausa)                          # gentileza com o site (só quando houve pedido)
-                if item.data is None and texto and config.get("data_do_texto"):
-                    item.data, na_janela = data_no_texto(texto, config, hoje)    # a listagem não traz data
-                    if not na_janela and existente is None:
-                        continue                               # notícia antiga: fica fora, como as demais
-                if existente is None:
-                    novos_tentados += 1
-                    novos_sem_texto += 0 if texto else 1
-                textos_obtidos += 1 if texto else 0
-                h_conteudo = hash_conteudo(texto) if texto else None
-                metadados = dict(item.metadados)
-                if config.get("sem_pagina_de_texto") and texto:
-                    metadados["texto_parcial"] = True          # só a ementa; o texto integral está na fonte
-                if erro_texto:
-                    metadados["erro_texto"] = erro_texto
-                    resultado["sem_texto"] += 1
-                try:
-                    if existente is None:
-                        h_titulo = hash_titulo(item.titulo)
-                        gravada = banco.gravar_captura({
-                            "fonte_id": fonte["id"], "url": item.url, "titulo": item.titulo,
-                            "data_publicacao": item.data.isoformat() if item.data else None,
-                            "resumo_fonte": item.resumo, "texto": texto, "hash_titulo": h_titulo,
-                            "duplicata_de": banco.buscar_duplicata(fonte["id"], h_titulo, h_conteudo),
-                            "metadados": metadados, "verificado_em": agora_iso(),
-                        })
-                        if gravada is not None:
-                            resultado["novos"] += 1
-                    elif texto and h_conteudo != existente.get("hash_conteudo"):
-                        eh_alteracao = bool(existente.get("hash_conteudo"))
-                        banco.atualizar_captura(existente["id"], {
-                            "titulo": item.titulo, "texto": texto,
-                            "metadados": metadados, "verificado_em": agora_iso()})
-                        if eh_alteracao:
-                            resultado["atualizados"] += 1
-                    elif texto:
-                        banco.atualizar_captura(existente["id"], {"verificado_em": agora_iso()})
-                    # sem texto: não marca como verificado — a conferência não aconteceu
-                except ErroBanco as e:
-                    # um item recusado pelo banco não derruba os demais nem as outras fontes
-                    resultado["com_erro"] += 1
-                    resultado["erro"] = resultado["erro"] or f"item '{item.titulo[:60]}': {e}"
-
-            if listagem.incompleta:
-                resultado["status"] = "parcial"
-                resultado["erro"] = resultado["erro"] or listagem.incompleta
-            elif resultado["com_erro"]:
-                resultado["status"] = "parcial"
-            elif resultado["sem_texto"] and textos_obtidos == 0 and (
-                    (novos_tentados and novos_sem_texto == novos_tentados) or not ja_rendeu_texto):
-                # nenhum item NOVO veio com texto, ou a fonte nunca entregou texto algum.
-                # (Um item isolado sem texto — ex.: link para PDF — não derruba a fonte.)
-                resultado["status"] = "parcial"
-                resultado["erro"] = ("a lista foi lida, mas nenhum item trouxe ementa" if config.get("sem_pagina_de_texto") else
-                                     "a lista foi lida, mas o texto de nenhum item pôde ser obtido — "
-                                     "revisar 'seletor_texto'/'url_texto' da fonte ou bloqueio do site")
+            if listagem.brutos == 0:
+                resultado["status"] = "vazio_suspeito"
+                resultado["erro"] = ("a página respondeu, mas nenhum item foi reconhecido — "
+                                     "possível mudança de layout; revisar a configuração da fonte")
             else:
-                resultado["status"] = "ok"
+                existentes = banco.capturas_da_fonte(fonte["id"])
+                ja_rendeu_texto = any(e.get("hash_conteudo") for e in existentes.values())
+                novos_tentados = novos_sem_texto = textos_obtidos = 0
+                for item in listagem.itens:
+                    existente = existentes.get(item.url)
+                    if existente and not deve_revisitar(existente, config, agora):
+                        continue
+                    texto, erro_texto = obter_texto(item, config, sessao)
+                    if not config.get("sem_pagina_de_texto"):
+                        time.sleep(pausa)                          # gentileza com o site (só quando houve pedido)
+                    if item.data is None and texto and config.get("data_do_texto"):
+                        item.data, na_janela = data_no_texto(texto, config, hoje)    # a listagem não traz data
+                        if not na_janela and existente is None:
+                            continue                               # notícia antiga: fica fora, como as demais
+                    if existente is None:
+                        novos_tentados += 1
+                        novos_sem_texto += 0 if texto else 1
+                    textos_obtidos += 1 if texto else 0
+                    h_conteudo = hash_conteudo(texto) if texto else None
+                    metadados = dict(item.metadados)
+                    if config.get("sem_pagina_de_texto") and texto:
+                        metadados["texto_parcial"] = True          # só a ementa; o texto integral está na fonte
+                    if erro_texto:
+                        metadados["erro_texto"] = erro_texto
+                        resultado["sem_texto"] += 1
+                    try:
+                        if existente is None:
+                            h_titulo = hash_titulo(item.titulo)
+                            gravada = banco.gravar_captura({
+                                "fonte_id": fonte["id"], "url": item.url, "titulo": item.titulo,
+                                "data_publicacao": item.data.isoformat() if item.data else None,
+                                "resumo_fonte": item.resumo, "texto": texto, "hash_titulo": h_titulo,
+                                "duplicata_de": banco.buscar_duplicata(fonte["id"], h_titulo, h_conteudo),
+                                "metadados": metadados, "verificado_em": agora_iso(),
+                            })
+                            if gravada is not None:
+                                resultado["novos"] += 1
+                        elif texto and h_conteudo != existente.get("hash_conteudo"):
+                            eh_alteracao = bool(existente.get("hash_conteudo"))
+                            banco.atualizar_captura(existente["id"], {
+                                "titulo": item.titulo, "texto": texto,
+                                "metadados": metadados, "verificado_em": agora_iso()})
+                            if eh_alteracao:
+                                resultado["atualizados"] += 1
+                        elif texto:
+                            banco.atualizar_captura(existente["id"], {"verificado_em": agora_iso()})
+                        # sem texto: não marca como verificado — a conferência não aconteceu
+                    except ErroBanco as e:
+                        # um item recusado pelo banco não derruba os demais nem as outras fontes
+                        resultado["com_erro"] += 1
+                        resultado["erro"] = resultado["erro"] or f"item '{item.titulo[:60]}': {e}"
+
+                if listagem.incompleta:
+                    resultado["status"] = "parcial"
+                    resultado["erro"] = resultado["erro"] or listagem.incompleta
+                elif resultado["com_erro"]:
+                    resultado["status"] = "parcial"
+                elif resultado["sem_texto"] and textos_obtidos == 0 and (
+                        (novos_tentados and novos_sem_texto == novos_tentados) or not ja_rendeu_texto):
+                    # nenhum item NOVO veio com texto, ou a fonte nunca entregou texto algum.
+                    # (Um item isolado sem texto — ex.: link para PDF — não derruba a fonte.)
+                    resultado["status"] = "parcial"
+                    resultado["erro"] = ("a lista foi lida, mas nenhum item trouxe ementa" if config.get("sem_pagina_de_texto") else
+                                         "a lista foi lida, mas o texto de nenhum item pôde ser obtido — "
+                                         "revisar 'seletor_texto'/'url_texto' da fonte ou bloqueio do site")
+                else:
+                    resultado["status"] = "ok"
+    except TempoEsgotado as e:
+        # o que já foi gravado fica; a fonte é marcada para revisão
+        resultado["status"] = "parcial" if resultado["novos"] or resultado["atualizados"] else "falha"
+        resultado["erro"] = f"{e} — revisar o padrão de links da fonte ou a lentidão do site"
     except ErroDownload as e:
         http = e.http_status or http
         resultado["erro"] = str(e)
