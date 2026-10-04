@@ -639,8 +639,9 @@ def test_sem_configuracao_as_telas_avisam_em_vez_de_quebrar(navegador):
     contexto = navegador.new_context()
     contexto.add_init_script(TUDO)
     contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
+    # configuração em branco (o radar-config.js do repositório já vem preenchido com o projeto real)
     contexto.route("**/radar-config.js", lambda rota: rota.fulfill(
-        body=(RAIZ / "radar-config.js").read_text(encoding="utf-8"), content_type="application/javascript"))
+        body='window.RADAR_CONFIG = { SUPABASE_URL: "", SUPABASE_ANON_KEY: "" };', content_type="application/javascript"))
     pg = contexto.new_page()
     pg.goto(BASE + "/index.html")
     pg.wait_for_selector("text=Falta configurar")
