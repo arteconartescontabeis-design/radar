@@ -566,6 +566,21 @@ exception when others then
   return query select 'media'::text, 0, '[]'::jsonb;
 end $$;
 
+-- v0.8.0: nota alta da IA tira a captura de "baixa". A lista de palavras não cobre tudo: notícia importante
+-- escrita sem nenhum termo da lista ficava escondida. Com nota da IA a partir de radar_config.relevancia.nota_promove
+-- (padrão 8), "baixa" vira "média" e o motivo fica anotado. Nunca rebaixa nem passa de "média" (a IA não decide sozinha).
+create or replace function public.radar_relevancia_com_ia(p_nivel text, p_motivos jsonb, p_nota smallint)
+returns table (nivel text, motivos jsonb)
+language sql stable security definer set search_path = public as $$
+  select case when p_nivel = 'baixa' and p_nota >= l.limite then 'media' else p_nivel end,
+         case when p_nivel = 'baixa' and p_nota >= l.limite
+              then coalesce(p_motivos, '[]'::jsonb) || jsonb_build_object('termo', 'nota da IA ' || p_nota, 'pontos', 0)
+              else p_motivos end
+    from (select coalesce((select case when jsonb_typeof(c.valor->'nota_promove') = 'number'
+                                       then least(greatest((c.valor->>'nota_promove')::numeric, 0), 11) end
+                             from public.radar_config c where c.chave = 'relevancia'), 8) as limite) l;
+$$;
+
 create or replace function public.radar_fn_captura_relevancia() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
@@ -576,12 +591,14 @@ begin
     return new;                          -- reavaliação geral em curso (radar_reavaliar_capturas)
   end if;
   if tg_op = 'UPDATE' and new.titulo is not distinct from old.titulo and new.resumo_fonte is not distinct from old.resumo_fonte
-     and new.texto is not distinct from old.texto then
+     and new.texto is not distinct from old.texto and new.ia_nota is not distinct from old.ia_nota then
     new.relevancia := old.relevancia; new.relevancia_pontos := old.relevancia_pontos; new.relevancia_motivos := old.relevancia_motivos;
-    return new;                          -- ninguém marca relevância à mão: só muda quando o item muda (ou as regras)
+    return new;                          -- ninguém marca relevância à mão: só muda quando o item, a nota da IA ou as regras mudam
   end if;
   select r.nivel, r.pontos, r.motivos into new.relevancia, new.relevancia_pontos, new.relevancia_motivos
     from public.radar_avaliar_relevancia(new.titulo, new.resumo_fonte, new.texto) r;
+  select x.nivel, x.motivos into new.relevancia, new.relevancia_motivos
+    from public.radar_relevancia_com_ia(new.relevancia, new.relevancia_motivos, new.ia_nota) x;
   return new;
 end $$;
 
@@ -593,11 +610,12 @@ declare v_n int;
 begin
   perform set_config('radar.reavaliando', '1', true);        -- só nesta transação: deixa o gatilho aceitar o valor recalculado
   update public.radar_capturas c
-     set relevancia = r.nivel, relevancia_pontos = r.pontos, relevancia_motivos = r.motivos
+     set relevancia = x.nivel, relevancia_pontos = r.pontos, relevancia_motivos = x.motivos
     from public.radar_capturas k cross join lateral public.radar_avaliar_relevancia(k.titulo, k.resumo_fonte, k.texto) r
+         cross join lateral public.radar_relevancia_com_ia(r.nivel, r.motivos, k.ia_nota) x
    where k.id = c.id
      and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = k.id)
-     and (c.relevancia, c.relevancia_pontos, c.relevancia_motivos) is distinct from (r.nivel, r.pontos, r.motivos);
+     and (c.relevancia, c.relevancia_pontos, c.relevancia_motivos) is distinct from (x.nivel, r.pontos, x.motivos);
   get diagnostics v_n = row_count;
   perform set_config('radar.reavaliando', '', true);
   return v_n;

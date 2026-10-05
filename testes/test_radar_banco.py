@@ -2433,3 +2433,25 @@ def test_boletim_por_email_grava_cada_materia_uma_vez(limpo):
         limpo.execute("delete from radar_capturas where fonte_id in (select id from radar_fontes where slug = 'itc-email')")
         limpo.execute("delete from radar_fontes where slug in ('dou-destaques','econet-blog',"
                       "'portalcontabilsc-noticias','dou-inlabs','itc-email')")
+
+
+# ------------------------------------------------ v0.8.0: nota alta da IA tira a captura de "baixa"
+def test_nota_alta_da_ia_leva_captura_baixa_para_media_e_nunca_rebaixa(limpo):
+    cap = _cap(limpo, "Prefeitura de Palhoça divulga calendário do alvará")[0]
+    assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "baixa"
+    limpo.execute("update radar_capturas set ia_nota = 7 where id = %s", (cap,))
+    assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "baixa"   # 7 < 8
+    limpo.execute("select radar_gravar_avaliacao_ia(%s::jsonb)", (json.dumps([{"id": cap, "nota": 9, "motivo": "prazo municipal"}]),))
+    nivel, motivos = limpo.execute("select relevancia, relevancia_motivos from radar_capturas where id = %s", (cap,)).fetchone()
+    assert nivel == "media" and {"termo": "nota da IA 9", "pontos": 0} in motivos
+    alta = _cap(limpo, "Prazo do Simples Nacional é prorrogado")[0]
+    limpo.execute("update radar_capturas set ia_nota = 0 where id = %s", (alta,))
+    assert limpo.execute("select relevancia from radar_capturas where id = %s", (alta,)).fetchone()[0] == "alta"  # a IA não rebaixa
+    antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    try:                                                                   # regras salvas de novo: a promoção continua valendo
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(dict(antes, quantidade=12)),))
+        assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "media"
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(dict(antes, nota_promove=11)),))
+        assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "baixa"   # 11 desliga
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))
