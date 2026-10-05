@@ -193,16 +193,20 @@ class GitHub:
             raise RuntimeError(f"GitHub {metodo} {caminho}: HTTP {r.status_code} — {r.text[:300]}")
         return r.json() if r.text else None
 
-    def avisos_abertos(self) -> dict[str, int]:
+    def avisos_abertos(self, *prefixos: str) -> dict[str, int]:
+        prefixos = prefixos or (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO)
         abertos, pagina = {}, 1
         while True:
             lote = self._pedir("GET", "/issues", params={"state": "open", "per_page": 100, "page": pagina})
             for i in lote:
-                if "pull_request" not in i and str(i.get("title", "")).startswith((PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO)):
+                if "pull_request" not in i and str(i.get("title", "")).startswith(prefixos):
                     abertos[i["title"]] = i["number"]
             if len(lote) < 100:
                 return abertos
             pagina += 1
+
+    def abrir_aviso(self, titulo_aviso: str, corpo: str) -> int:
+        return self._pedir("POST", "/issues", json={"title": titulo_aviso[:250], "body": corpo})["number"]
 
     def abrir(self, f: dict) -> int:
         return self._pedir("POST", "/issues", json={"title": titulo(f["slug"]), "body": corpo_aviso(f)})["number"]

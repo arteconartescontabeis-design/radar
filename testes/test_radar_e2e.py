@@ -15,7 +15,7 @@ import shutil
 import subprocess
 import threading
 import time
-from datetime import date
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -939,3 +939,54 @@ def test_banco_le_aprovados_sem_registro_e_registra_publicacao_pela_api(limpo, a
         assert banco.config("site") == {"desligado": True}
     finally:
         limpo.execute("delete from radar_config where chave = 'site'")
+
+
+# ============================================================ v0.8.0 — resumo semanal
+def test_resumo_semanal_agrupa_por_tema_esconde_o_boletim_e_fecha_o_anterior():
+    import radar_resumo
+    from datetime import datetime, timezone
+    site = {"nome": "Receita Federal — Notícias", "oficial": True, "config": {}}
+    portal = {"nome": "Econet — Blog", "oficial": False, "config": {}}
+    itc = {"nome": "ITC", "oficial": False, "config": {"origem": "email"}}
+    caps = [{"titulo": "Prazo do Simples prorrogado", "url": "https://gov.br/a", "relevancia": "alta", "ia_nota": 9, "ia_tema": "Simples Nacional", "radar_fontes": site},
+            {"titulo": "Repetição do prazo", "url": "https://gov.br/b", "relevancia": "alta", "ia_nota": 9, "ia_tema": "Simples Nacional", "duplicata_de": 1, "radar_fontes": site},
+            {"titulo": "Nota alta sem palavras", "url": "https://blog/c", "relevancia": "media", "ia_nota": 8, "ia_tema": "", "radar_fontes": portal},
+            {"titulo": "Pouco relevante", "url": "https://gov.br/d", "relevancia": "media", "ia_nota": 3, "radar_fontes": site},
+            {"titulo": "MATÉRIA PAGA DA ITC", "url": "https://www.itcnet.com.br/?radar=1", "relevancia": "alta", "ia_nota": 9, "radar_fontes": itc}]
+    itens, do_email = radar_resumo.selecionar(caps)
+    assert [c["titulo"] for c in itens] == ["Prazo do Simples prorrogado", "Nota alta sem palavras"] and do_email == 1
+
+    class BancoResumo:
+        def capturas_entre(self, i, f): self.periodo = (i, f); return caps
+        def numeros_da_semana(self, i, f): return {"aprovados": 2, "publicados": 1}
+
+    class GH:
+        def __init__(self, abertos): self.abertos, self.abertos_novos, self.fechados = abertos, [], []
+        def avisos_abertos(self, *prefixos): assert prefixos == (radar_resumo.PREFIXO_RESUMO,); return dict(self.abertos)
+        def abrir_aviso(self, t, corpo): self.abertos_novos.append((t, corpo)); return 50
+        def fechar(self, n, motivo): self.fechados.append(n)
+
+    banco, gh = BancoResumo(), GH({"Radar: resumo da semana — 21/09 a 27/09/2026": 40})
+    agora = datetime(2026, 10, 5, 11, 47, tzinfo=timezone.utc)                     # segunda, 08:47 em Brasília
+    feito = radar_resumo.executar(banco, gh, agora)
+    titulo, corpo = gh.abertos_novos[0]
+    assert titulo == "Radar: resumo da semana — 28/09 a 04/10/2026" and gh.fechados == [40]
+    assert banco.periodo[0].isoformat() == "2026-09-28T00:00:00-03:00" and banco.periodo[1].isoformat() == "2026-10-05T00:00:00-03:00"
+    assert "### Simples Nacional" in corpo and "### Outros" in corpo and "[Prazo do Simples prorrogado](https://gov.br/a)" in corpo
+    assert "(não oficial)" in corpo and "Capturas novas na semana: **5**" in corpo and "aprovados: **2**" in corpo
+    assert "MATÉRIA PAGA" not in corpo and "itcnet" not in corpo and "Mais **1** matéria" in corpo   # repositório público
+    assert "Repetição" not in corpo and "Pouco relevante" not in corpo
+    assert feito[0].startswith("resumo #50 aberto") and feito[1] == "resumo anterior #40 fechado"
+    gh2 = GH({titulo: 50})
+    assert radar_resumo.executar(banco, gh2, agora) == ["resumo já aberto (#50)"] and gh2.abertos_novos == []   # rodou duas vezes
+
+
+def test_banco_le_capturas_e_numeros_da_semana_pela_api(cenario):
+    from datetime import datetime, timezone
+    r, _ = robo()
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    agora = datetime.now(timezone.utc)
+    caps = banco.capturas_entre(agora - timedelta(days=1), agora + timedelta(minutes=1))
+    assert len(caps) == 3 and caps[0]["radar_fontes"]["nome"].startswith("teste-")
+    assert banco.capturas_entre(agora - timedelta(days=30), agora - timedelta(days=20)) == []
+    assert banco.numeros_da_semana(agora - timedelta(days=7), agora) == {"aprovados": 0, "publicados": 0}

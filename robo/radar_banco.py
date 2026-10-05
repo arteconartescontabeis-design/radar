@@ -131,3 +131,19 @@ class Banco:
             "conteudo_id": conteudo_id, "url": url, "publicado_em": publicado_em.isoformat(),
             "observacao": observacao}, prefer="return=representation")
         return linhas[0]
+
+    # ------------------------------------------------------- resumo semanal (v0.8.0)
+    def capturas_entre(self, inicio, fim) -> list[dict]:
+        """Capturas gravadas no período, com a fonte (nome, oficial, config), para o resumo semanal."""
+        return self._pedir("GET", "radar_capturas", params=[
+            ("select", "id,titulo,url,relevancia,ia_nota,ia_tema,duplicata_de,radar_fontes(nome,oficial,config)"),
+            ("capturado_em", f"gte.{inicio.isoformat()}"), ("capturado_em", f"lt.{fim.isoformat()}"),
+            ("order", "id"), ("limit", "5000")]) or []
+
+    def numeros_da_semana(self, inicio, fim) -> dict:
+        def contar(tabela: str, coluna: str, extra=()) -> int:
+            linhas = self._pedir("GET", tabela, params=[("select", "id"), (coluna, f"gte.{inicio.isoformat()}"),
+                                                        (coluna, f"lt.{fim.isoformat()}"), *extra, ("limit", "5000")]) or []
+            return len(linhas)
+        return {"aprovados": contar("radar_conteudos", "aprovado_em", [("status", "eq.aprovado")]),
+                "publicados": contar("radar_divulgacoes", "registrado_em")}
