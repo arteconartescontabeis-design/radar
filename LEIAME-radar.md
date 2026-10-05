@@ -48,7 +48,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.9.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -144,8 +144,8 @@ O caminho previsto é o INLABS (XML oficial, exige cadastro gratuito).
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
 3. SQL Editor → cole e execute `sql/radar-setup-v0.9.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
-   Esperado: 21 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão `v0.7.1`.
+   Esperado: 19 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.9.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -447,18 +447,22 @@ para o campo e salve. Ele não vai no repositório porque traz nomes e celulares
   aprovado de novo).
 - Duas pessoas na mesma edição: quem salvar por último com a tela desatualizada recebe um
   aviso e nada é gravado por cima; é preciso recarregar e refazer a alteração.
-- Imagem substituída não é apagada do banco (fica sem uso); a limpeza é do administrador.
+- Imagem substituída ou sem uso é apagada sozinha (na hora, ou pelo robô ao fim da coleta, depois de 24 h).
 - A coleta só deixa o workflow vermelho quando **nenhuma** fonte funciona. Falha isolada
-  aparece no painel ("Fontes que pedem atenção"). Aviso por e-mail ainda não existe.
+  aparece no painel ("Fontes que pedem atenção") e, depois de 3 falhas seguidas, vira aviso por
+  e-mail (issue no GitHub).
 - Reexecutar o setup refaz permissões e políticas `radar_*` do zero, mas não altera dados
   nem fontes já configuradas.
 - A verificação do texto gerado pela IA não lê números por extenso, incisos nem normas
   citadas sem número (CTN, CLT), e não avalia a interpretação. A revisão técnica continua
   sendo de uma pessoa.
 - O teto mensal de tokens é conferido antes de cada pedido; pedidos simultâneos podem
-  ultrapassá-lo um pouco. Por isso o limite de gasto na conta da OpenAI é indispensável.
-- O texto oficial capturado é enviado à OpenAI para análise. Nada de dados de clientes,
-  tokens ou e-mails de usuários é enviado.
+  ultrapassá-lo um pouco. Por isso os limites de gasto da IA Central (Portal → Consumo de IA)
+  continuam indispensáveis. O uso da IA pelo robô (nota das capturas e rascunhos automáticos)
+  aparece só na IA Central, não no painel do Radar.
+- O texto oficial capturado é enviado à IA (Anthropic, pela IA Central do Portal) para análise;
+  a ilustração de capa vai à OpenAI só com o tema. Nada de dados de clientes, tokens ou
+  e-mails de usuários é enviado.
 
 ## Fontes: cadastrar e ajustar sem mexer em código
 
@@ -602,7 +606,7 @@ se ainda não rodou, `sql/radar-fontes-novas-2026-10.sql`. A tela e o robô cheg
 A função `radar-ia` não muda. Para o DOU completo (INLABS), veja "Diário Oficial pelo INLABS".
 
 **Da v0.7.0 para a v0.7.1:** Supabase radar-artecon → SQL Editor → cole e execute
-`sql/radar-setup-v0.7.1.sql` inteiro e guarde a evidência (a linha `instalacoes concluidas` deve
+`sql/radar-setup-v0.9.0.sql` inteiro (o nome muda a cada versão) e guarde a evidência (a linha `instalacoes concluidas` deve
 mostrar `v0.7.1`). O resto já chega pelo repositório: a tela (GitHub Pages; Ctrl+F5 no Radar) e o
 robô (próxima coleta). A função `radar-ia` não muda. Antes do SQL, o robô novo funciona normalmente,
 só sem a limpeza de imagens; os termos com pontuação nas regras só passam a pontuar depois dele.
