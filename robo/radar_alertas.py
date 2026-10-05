@@ -9,6 +9,9 @@ Também confere os links registrados em "Publicações no site": o que responder
 que não existe mais) abre um aviso; quando o link volta a abrir, ou o registro é corrigido ou
 excluído, o aviso fecha. Erro de rede ou do site (tempo esgotado, 5xx) não conta: pode ser passageiro.
 
+Fonte ativa que ficou mais de 3 ciclos sem rodar ("atrasada") também abre aviso (v0.9.0). É o vigia da
+rotina diária do boletim da ITC, que não passa pelo robô: se ela parar, o aviso chega em até 3 dias.
+
 E confere, nas notícias do próprio site da Artecon, se a página ainda traz o texto que foi aprovado e
 registrado (v0.8.0): se mais da metade das palavras sumiu, abre o aviso "texto do site diferente do
 aprovado"; ele fecha quando o texto volta, ou o registro é corrigido ou excluído.
@@ -32,6 +35,8 @@ from radar_util import ErroDownload, baixar
 PREFIXO = "Radar: fonte com falha — "
 PREFIXO_LINK = "Radar: link publicado fora do ar — "
 PREFIXO_TEXTO = "Radar: texto do site diferente do aprovado — "
+PREFIXO_PARADA = "Radar: fonte parada — "
+PREFIXOS_PADRAO = (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO, PREFIXO_PARADA)   # os avisos que o executar() abre e fecha
 FORA_DO_AR = (404, 410)
 FALHAS_PARA_AVISAR = 3
 API = "https://api.github.com"
@@ -74,6 +79,41 @@ def decidir(saude: list[dict], abertos: dict[str, int]) -> tuple[list[dict], lis
             fechar.append((numero, "A fonte foi desligada na aba Fontes."))
         elif (f.get("falhas_consecutivas") or 0) == 0:
             fechar.append((numero, f"A fonte voltou a funcionar (último sucesso: {f.get('ultimo_sucesso_em')})."))
+    return abrir, fechar
+
+
+def corpo_parada(f: dict) -> str:
+    sucesso = f.get("ultimo_sucesso_em") or "nunca"
+    if (f.get("config") or {}).get("origem") == "email":
+        oque = ("A rotina diária que lê o boletim no e-mail e grava no Radar não rodou nos últimos dias.\n\n"
+                "O que fazer: peça ao Claude, na conversa do Radar, para conferir a rotina do boletim "
+                "(Outlook e Supabase conectados, rotina ligada).")
+    else:
+        oque = ("O robô não conseguiu passar por ela no prazo esperado.\n\n"
+                "O que fazer: GitHub → Actions → \"Radar — coleta\": confira se as coletas estão rodando.")
+    return (f"A fonte **{f.get('nome') or f['slug']}** (`{f['slug']}`) está parada: último funcionamento em {sucesso}.\n\n"
+            f"{oque}\n\nEste aviso fecha sozinho quando a fonte voltar a funcionar ou for desligada.")
+
+
+def decidir_paradas(saude: list[dict], abertos: dict[str, int]) -> tuple[list[dict], list[tuple[int, str]]]:
+    """Fonte ativa "atrasada" (passou de 3 ciclos sem funcionar): abre um aviso; fecha quando volta ou é desligada."""
+    abrir, fechar = [], []
+    por_slug = {f["slug"]: f for f in saude}
+    for f in saude:
+        if f.get("ativo") and f.get("saude") == "atrasada" and PREFIXO_PARADA + f["slug"] not in abertos:
+            abrir.append(f)
+    for t, numero in abertos.items():
+        if not t.startswith(PREFIXO_PARADA):
+            continue
+        f = por_slug.get(t[len(PREFIXO_PARADA):])
+        if f is None:
+            fechar.append((numero, "A fonte não existe mais no Radar."))
+        elif not f.get("ativo"):
+            fechar.append((numero, "A fonte foi desligada na aba Fontes."))
+        elif f.get("saude") != "atrasada":
+            fechar.append((numero, f"A fonte voltou a funcionar (último sucesso: {f.get('ultimo_sucesso_em')})."
+                           if f.get("saude") != "falhando" else
+                           "A fonte voltou a rodar, mas com falhas: o aviso de fonte com falha cuida dela daqui em diante."))
     return abrir, fechar
 
 
@@ -194,7 +234,7 @@ class GitHub:
         return r.json() if r.text else None
 
     def avisos_abertos(self, *prefixos: str) -> dict[str, int]:
-        prefixos = prefixos or (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO)
+        prefixos = prefixos or PREFIXOS_PADRAO
         abertos, pagina = {}, 1
         while True:
             lote = self._pedir("GET", "/issues", params={"state": "open", "per_page": 100, "page": pagina})
@@ -211,6 +251,9 @@ class GitHub:
     def abrir(self, f: dict) -> int:
         return self._pedir("POST", "/issues", json={"title": titulo(f["slug"]), "body": corpo_aviso(f)})["number"]
 
+    def abrir_parada(self, f: dict) -> int:
+        return self.abrir_aviso(PREFIXO_PARADA + f["slug"], corpo_parada(f))
+
     def abrir_link(self, reg: dict, status: int) -> int:
         return self._pedir("POST", "/issues", json={"title": titulo_link(reg["url"]), "body": corpo_link(reg, status)})["number"]
 
@@ -224,10 +267,15 @@ class GitHub:
 
 def executar(banco: Banco, github: GitHub, status_de=status_http, pagina_de=html_ou_nada) -> list[str]:
     abertos = github.avisos_abertos()
-    abrir, fechar = decidir(banco.saude_fontes(), abertos)
+    saude = banco.saude_fontes()
+    abrir, fechar = decidir(saude, abertos)
     feito = []
     for f in abrir:
         feito.append(f"aviso #{github.abrir(f)} aberto: {f['slug']} ({f.get('falhas_consecutivas')} falhas seguidas)")
+    abrir_p, fechar_p = decidir_paradas(saude, abertos)
+    for f in abrir_p:
+        feito.append(f"aviso #{github.abrir_parada(f)} aberto: {f['slug']} parada")
+    fechar += fechar_p
     registros = banco.links_publicados()
     fora = conferir_links(registros, status_de)
     abrir_l, fechar_l = decidir_links(registros, fora, abertos)

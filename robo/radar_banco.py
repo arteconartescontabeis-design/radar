@@ -1,6 +1,8 @@
 """Radar Artecon — acesso ao Supabase (PostgREST) com a chave service_role."""
 from __future__ import annotations
 
+from datetime import datetime
+
 import requests
 
 from radar_util import VERSAO, agora_iso
@@ -112,10 +114,30 @@ class Banco:
         """Apaga as imagens que nenhum conteúdo usa há mais de `horas` (v0.7.1). Devolve quantas."""
         return int(self._pedir("POST", "rpc/radar_limpar_imagens_sem_uso", corpo={"p_horas": horas}) or 0)
 
+    def arquivar_fila(self) -> int:
+        """Tira da triagem o que ficou velho e sem importância (v0.9.0). Devolve quantas capturas saíram."""
+        return int(self._pedir("POST", "rpc/radar_arquivar_fila", corpo={"p_limite": 100}) or 0)   # aos poucos: cabe no tempo da API
+
     def saude_fontes(self) -> list[dict]:
         """Situação de cada fonte (falhas seguidas, último erro), para os avisos de fonte com falha."""
-        return self._pedir("GET", "radar_v_saude_fontes", params={
+        saude = self._pedir("GET", "radar_v_saude_fontes", params={
             "select": "slug,nome,ativo,saude,falhas_consecutivas,ultimo_erro,ultimo_sucesso_em", "order": "id"}) or []
+        config = {f["slug"]: f.get("config") or {} for f in self._pedir("GET", "radar_fontes", params={"select": "slug,config"}) or []}
+        return [dict(f, config=config.get(f["slug"], {})) for f in saude]
+
+    def fontes_sem_novidade(self, desde) -> list[dict]:
+        """Fontes ativas sem nenhuma captura nova desde `desde` (v0.9.0; banco antigo: lista vazia)."""
+        try:
+            linhas = self._pedir("GET", "radar_v_saude_fontes", params={
+                "select": "slug,nome,ultima_captura_em", "ativo": "is.true", "order": "id"}) or []
+        except ErroBanco:
+            return []                                   # banco ainda sem o SQL da v0.9.0
+        def antes(valor) -> bool:
+            try:
+                return datetime.fromisoformat(str(valor).replace("Z", "+00:00")) < desde
+            except ValueError:
+                return False
+        return [f for f in linhas if not f.get("ultima_captura_em") or antes(f["ultima_captura_em"])]
 
     def links_publicados(self) -> list[dict]:
         """Links registrados em "Publicações no site", para conferir se continuam no ar (e com o mesmo texto)."""
