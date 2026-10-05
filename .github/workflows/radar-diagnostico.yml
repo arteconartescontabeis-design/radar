@@ -4,6 +4,15 @@ name: Radar — diagnóstico das fontes
 # confere as fontes ativas do banco; sem elas, as do arquivo robo/radar_fontes.json.
 on:
   workflow_dispatch:
+    inputs:
+      enderecos:
+        description: "Testar endereços antes de cadastrar (separe por espaço). Vazio = fontes ativas"
+        required: false
+        default: ""
+      padrao:
+        description: "Padrão dos links para os endereços testados (opcional)"
+        required: false
+        default: ""
 
 jobs:
   diagnosticar:
@@ -20,6 +29,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+          ENDERECOS: ${{ github.event.inputs.enderecos }}
+          PADRAO: ${{ github.event.inputs.padrao }}
         run: python radar_diagnostico.py
       - name: Guardar páginas e relatório
         if: always()
