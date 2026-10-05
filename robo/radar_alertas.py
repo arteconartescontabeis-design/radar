@@ -1,4 +1,4 @@
-"""Radar Artecon — avisos por e-mail: fonte com falha e link publicado fora do ar (v0.7.1).
+"""Radar Artecon — avisos por e-mail: fonte com falha e link publicado fora do ar ou com texto diferente (v0.8.0).
 
 Depois da coleta, abre um aviso (issue) no repositório do GitHub para cada fonte ativa que falhou
 3 vezes seguidas. O GitHub manda e-mail ao dono do repositório quando um aviso é aberto, então não
@@ -8,6 +8,10 @@ Quando a fonte volta a funcionar (ou é desligada na aba Fontes), o aviso é fec
 Também confere os links registrados em "Publicações no site": o que responder 404 ou 410 (página
 que não existe mais) abre um aviso; quando o link volta a abrir, ou o registro é corrigido ou
 excluído, o aviso fecha. Erro de rede ou do site (tempo esgotado, 5xx) não conta: pode ser passageiro.
+
+E confere, nas notícias do próprio site da Artecon, se a página ainda traz o texto que foi aprovado e
+registrado (v0.8.0): se mais da metade das palavras sumiu, abre o aviso "texto do site diferente do
+aprovado"; ele fecha quando o texto volta, ou o registro é corrigido ou excluído.
 
 Uso (no workflow, depois da coleta):
     python radar_alertas.py
@@ -21,10 +25,13 @@ import sys
 
 import requests
 
+import radar_site
 from radar_banco import Banco, ErroBanco
+from radar_util import ErroDownload, baixar
 
 PREFIXO = "Radar: fonte com falha — "
 PREFIXO_LINK = "Radar: link publicado fora do ar — "
+PREFIXO_TEXTO = "Radar: texto do site diferente do aprovado — "
 FORA_DO_AR = (404, 410)
 FALHAS_PARA_AVISAR = 3
 API = "https://api.github.com"
@@ -111,6 +118,58 @@ def decidir_links(registros: list[dict], fora: dict[str, tuple[dict, int]], aber
     return abrir, fechar
 
 
+def titulo_texto(url: str) -> str:
+    return (PREFIXO_TEXTO + url)[:250]
+
+
+def corpo_texto(reg: dict) -> str:
+    return (f"A notícia publicada no site para \"{reg.get('titulo') or '—'}\" não traz mais a maior parte do texto "
+            f"que foi aprovado e registrado no Radar:\n\n{reg['url']}\n\n"
+            "O que fazer: compare a página com o conteúdo aprovado (aba **Publicações**). Se a mudança no site foi "
+            "de propósito, aprove o texto novo no Radar e registre de novo; se não foi, corrija a notícia no site."
+            "\n\nEste aviso fecha sozinho quando o texto do site voltar a corresponder ao registrado, ou o registro "
+            "for corrigido ou excluído.")
+
+
+def conferir_textos(registros: list[dict], cfg: dict, pagina_de) -> tuple[dict[str, dict], set[str]]:
+    """({link: registro mais novo} das notícias do site da Artecon cujo texto mudou, {links que não abriram}).
+    `pagina_de(url)` devolve o HTML ou None (erro de rede: o link fica sem conferir, o aviso não muda)."""
+    por_url: dict[str, dict] = {}
+    for r in registros:
+        url = r.get("url") or ""
+        if url.startswith(("http://", "https://")) and radar_site.no_site(url, cfg) and (url not in por_url or r["id"] > por_url[url]["id"]):
+            por_url[url] = r
+    alterados, sem_conferir = {}, set()
+    for url, reg in por_url.items():
+        html = pagina_de(url)
+        if html is None:
+            sem_conferir.add(url)
+        elif radar_site.texto_alterado(reg.get("corpo"), html):
+            alterados[url] = reg
+    return alterados, sem_conferir
+
+
+def decidir_textos(registros: list[dict], alterados: dict[str, dict], abertos: dict[str, int], sem_conferir: set[str]):
+    """Um aviso por link. Link que não pôde ser conferido (fora do ar, erro de rede) não abre nem fecha aviso."""
+    abrir = [reg for url, reg in alterados.items() if titulo_texto(url) not in abertos]
+    em_uso = {titulo_texto(r["url"]) for r in registros if r.get("url")}
+    manter = {titulo_texto(url) for url in alterados} | {titulo_texto(url) for url in sem_conferir}
+    fechar = []
+    for t, numero in abertos.items():
+        if not t.startswith(PREFIXO_TEXTO) or t in manter:
+            continue
+        fechar.append((numero, "O texto do site voltou a corresponder ao registrado." if t in em_uso
+                       else "O link não está mais registrado no Radar (corrigido ou excluído)."))
+    return abrir, fechar
+
+
+def html_ou_nada(url: str) -> str | None:
+    try:
+        return baixar(url, tentativas=2)[1]
+    except ErroDownload:
+        return None
+
+
 def status_http(url: str, sessao: requests.Session | None = None) -> int | None:
     try:
         r = (sessao or requests).get(url, timeout=20, allow_redirects=True, stream=True,
@@ -139,7 +198,7 @@ class GitHub:
         while True:
             lote = self._pedir("GET", "/issues", params={"state": "open", "per_page": 100, "page": pagina})
             for i in lote:
-                if "pull_request" not in i and str(i.get("title", "")).startswith((PREFIXO, PREFIXO_LINK)):
+                if "pull_request" not in i and str(i.get("title", "")).startswith((PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO)):
                     abertos[i["title"]] = i["number"]
             if len(lote) < 100:
                 return abertos
@@ -151,22 +210,32 @@ class GitHub:
     def abrir_link(self, reg: dict, status: int) -> int:
         return self._pedir("POST", "/issues", json={"title": titulo_link(reg["url"]), "body": corpo_link(reg, status)})["number"]
 
+    def abrir_texto(self, reg: dict) -> int:
+        return self._pedir("POST", "/issues", json={"title": titulo_texto(reg["url"]), "body": corpo_texto(reg)})["number"]
+
     def fechar(self, numero: int, motivo: str) -> None:
         self._pedir("POST", f"/issues/{numero}/comments", json={"body": motivo})
         self._pedir("PATCH", f"/issues/{numero}", json={"state": "closed", "state_reason": "completed"})
 
 
-def executar(banco: Banco, github: GitHub, status_de=status_http) -> list[str]:
+def executar(banco: Banco, github: GitHub, status_de=status_http, pagina_de=html_ou_nada) -> list[str]:
     abertos = github.avisos_abertos()
     abrir, fechar = decidir(banco.saude_fontes(), abertos)
     feito = []
     for f in abrir:
         feito.append(f"aviso #{github.abrir(f)} aberto: {f['slug']} ({f.get('falhas_consecutivas')} falhas seguidas)")
     registros = banco.links_publicados()
-    abrir_l, fechar_l = decidir_links(registros, conferir_links(registros, status_de), abertos)
+    fora = conferir_links(registros, status_de)
+    abrir_l, fechar_l = decidir_links(registros, fora, abertos)
     for reg, st in abrir_l:
         feito.append(f"aviso #{github.abrir_link(reg, st)} aberto: {reg['url']} responde {st}")
     fechar += fechar_l
+    alterados, sem_conferir = conferir_textos([r for r in registros if r.get("url") not in fora],
+                                              radar_site.configuracao(banco), pagina_de)
+    abrir_t, fechar_t = decidir_textos(registros, alterados, abertos, sem_conferir | set(fora))
+    for reg in abrir_t:
+        feito.append(f"aviso #{github.abrir_texto(reg)} aberto: texto diferente em {reg['url']}")
+    fechar += fechar_t
     for numero, motivo in fechar:
         github.fechar(numero, motivo)
         feito.append(f"aviso #{numero} fechado: {motivo}")

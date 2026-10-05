@@ -1623,9 +1623,15 @@ def test_registro_no_site_quem_pode(limpo):
     for uid in (LEITOR, SEM_PERFIL):
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             registrar_site(c1, uid)
-    for papel in ("anon", "service_role"):
-        with como(papel) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
-            c.execute("insert into radar_divulgacoes (conteudo_id, url) values (%s, 'https://artecon.cnt.br/x')", (c1,))
+    with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        c.execute("insert into radar_divulgacoes (conteudo_id, url) values (%s, 'https://artecon.cnt.br/x')", (c1,))
+    # v0.8.0: o robô (service_role) inclui o registro que achou no site, mas não altera nem apaga
+    with como("service_role") as c:
+        robo = c.execute("insert into radar_divulgacoes (conteudo_id, url) values (%s, 'https://artecon.cnt.br/x') returning id", (c1,)).fetchone()[0]
+    for sql in ("update radar_divulgacoes set url = 'https://x.com/y' where id = %s", "delete from radar_divulgacoes where id = %s"):
+        with como("service_role") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute(sql, (robo,))
+    limpo.execute("delete from radar_divulgacoes where id = %s", (robo,))
     d = registrar_site(c1)
     with como("authenticated", LEITOR) as c:
         assert c.execute("select count(*) from radar_divulgacoes").fetchone()[0] == 1          # a equipe consulta

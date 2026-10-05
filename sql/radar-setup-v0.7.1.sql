@@ -1768,8 +1768,10 @@ begin
 end $$;
 
 -- service_role (robô e, no Bloco 2, a função de IA): só o que precisa gravar.
--- NÃO grava auditoria, publicações, perfis, fontes, versões nem apaga nada.
+-- NÃO grava auditoria, perfis, fontes, versões nem apaga nada.
 grant insert, update on public.radar_execucoes, public.radar_capturas to service_role;
+-- v0.8.0: o robô registra a publicação que encontrou no site (só inclui; as regras do registro valem igual)
+grant insert on public.radar_divulgacoes to service_role;
 grant insert, update on public.radar_assuntos, public.radar_assunto_capturas, public.radar_evidencias,
                         public.radar_conteudos, public.radar_normas to service_role;
 

@@ -48,6 +48,13 @@ jobs:
           if [ -n "$FONTE" ]; then ARGS="$ARGS --fonte $FONTE"; fi
           if [ "$FORCAR" = "true" ]; then ARGS="$ARGS --forcar"; fi
           python radar_coletar.py $ARGS
+      - name: Registrar publicações encontradas no site
+        if: always()
+        working-directory: robo
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+        run: python radar_site.py
       - name: Avisar fontes com falha
         if: always()
         working-directory: robo

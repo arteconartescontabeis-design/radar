@@ -108,5 +108,26 @@ class Banco:
             "select": "slug,nome,ativo,saude,falhas_consecutivas,ultimo_erro,ultimo_sucesso_em", "order": "id"}) or []
 
     def links_publicados(self) -> list[dict]:
-        """Links registrados em "Publicações no site", para conferir se continuam no ar."""
-        return self._pedir("GET", "radar_divulgacoes", params={"select": "id,url,titulo", "order": "id"}) or []
+        """Links registrados em "Publicações no site", para conferir se continuam no ar (e com o mesmo texto)."""
+        return self._pedir("GET", "radar_divulgacoes", params={"select": "id,url,titulo,corpo", "order": "id"}) or []
+
+    # ------------------------------------------------- publicações no site (v0.8.0)
+    def config(self, chave: str):
+        """Valor de uma chave de Configurações (radar_config), ou None."""
+        linhas = self._pedir("GET", "radar_config", params={"select": "valor", "chave": f"eq.{chave}"}) or []
+        return linhas[0]["valor"] if linhas else None
+
+    def conteudos_aprovados_sem_site(self, limite: int = 200) -> list[dict]:
+        """Conteúdos aprovados que ainda não têm registro em "Publicações no site" (os mais novos primeiro)."""
+        linhas = self._pedir("GET", "radar_conteudos", params={
+            "select": "id,titulo,corpo,radar_divulgacoes(id)", "status": "eq.aprovado",
+            "order": "aprovado_em.desc.nullslast,id.desc", "limit": str(limite)}) or []
+        return [{k: v for k, v in c.items() if k != "radar_divulgacoes"} for c in linhas if not c.get("radar_divulgacoes")]
+
+    def registrar_divulgacao(self, conteudo_id: int, url: str, publicado_em, observacao: str) -> dict:
+        """Mesmo registro de "Registrar publicação no site"; o banco confere as regras (conteúdo aprovado,
+        assunto sem pendência) e guarda a cópia do texto e da fundamentação."""
+        linhas = self._pedir("POST", "radar_divulgacoes", corpo={
+            "conteudo_id": conteudo_id, "url": url, "publicado_em": publicado_em.isoformat(),
+            "observacao": observacao}, prefer="return=representation")
+        return linhas[0]
