@@ -1,0 +1,27 @@
+name: Radar — teste do site
+
+# Só leitura: entra no painel do site da Artecon com o usuário do Radar, acha o formulário de cadastro
+# de notícias e lista os campos. NÃO envia, não cadastra e não publica nada.
+# Precisa dos segredos ARTECON_SITE_USUARIO e ARTECON_SITE_SENHA.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconhecer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r robo/requirements.txt
+      - name: Reconhecer o painel (sem enviar nada)
+        working-directory: robo
+        env:
+          ARTECON_SITE_USUARIO: ${{ secrets.ARTECON_SITE_USUARIO }}
+          ARTECON_SITE_SENHA: ${{ secrets.ARTECON_SITE_SENHA }}
+        run: python radar_site_admin.py
