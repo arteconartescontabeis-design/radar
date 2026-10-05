@@ -787,3 +787,24 @@ def test_as_capturas_mais_novas_sao_avaliadas_primeiro_e_as_sem_nota_servem_de_c
     vistos, novos = entrada.split("NOVOS (avalie cada um):")
     assert [json.loads(l)["id"] for l in novos.strip().splitlines()] == ids[:2]
     assert f'"id": {ids[2]},' in vistos                    # a que ficou fora do lote entra como "já vista", mesmo sem nota
+
+
+def test_feed_com_texto_completo_dispensa_a_pagina_e_fonte_de_email_nao_e_visitada(cenario):
+    corpo = "A Receita Federal prorrogou o prazo de entrega da declaração para 30 de novembro. " * 3
+    PAGINAS["/c/feed"] = (200, f"""<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+      <channel><item><title>Prazo da declaração é prorrogado</title><link>{SITE}/c/noticia-lenta</link>
+      <pubDate>Wed, 30 Sep 2026 10:00:00 -0300</pubDate><description>Resumo curto</description>
+      <content:encoded><![CDATA[<p>{corpo}</p>]]></content:encoded></item></channel></rss>""")
+    PAGINAS["/c/noticia-lenta"] = (500, "erro do site")              # a página da notícia falha; o feed basta
+    cenario.execute("update radar_fontes set ativo = false where slug like 'teste-%'")
+    cenario.execute("""insert into radar_fontes (slug, nome, orgao, tipo_coletor, url, config, oficial) values
+        ('teste-feed', 'Portal de teste', 'Portal', 'rss', %s, '{"janela_dias": 30, "texto_do_feed": true}'::jsonb, false),
+        ('teste-email', 'Boletim por e-mail', 'Consultoria', 'rss', %s, '{"origem": "email"}'::jsonb, false)""",
+                    (SITE + "/c/feed", SITE + "/nao-existe"))
+    r, pulados = robo()
+    assert set(r) == {"teste-feed"} and "teste-email" not in pulados
+    assert (r["teste-feed"]["status"], r["teste-feed"]["novos"], r["teste-feed"]["sem_texto"]) == ("ok", 1, 0)
+    texto, = cenario.execute("select texto from radar_capturas").fetchone()
+    assert texto.startswith("A Receita Federal prorrogou o prazo") and "Resumo curto" not in texto
+    assert cenario.execute("""select count(*) from radar_execucoes e join radar_fontes f on f.id = e.fonte_id
+                              where f.slug = 'teste-email'""").fetchone()[0] == 0

@@ -128,7 +128,11 @@ def listar_rss(conteudo: str, fonte: dict, hoje: date | None = None) -> Listagem
         resumo = campos.get("description") or campos.get("summary")
         if resumo:
             resumo = normalizar_espacos(BeautifulSoup(resumo, "lxml").get_text(" ", strip=True)) or None
-        itens.append(Item(url=url, titulo=titulo, data=quando, resumo=resumo))
+        # <content:encoded> (WordPress) ou <content> (Atom): o texto completo da notícia, no próprio feed
+        completo = campos.get("encoded") or campos.get("content")
+        if completo:
+            completo = normalizar_espacos(BeautifulSoup(completo, "lxml").get_text(" ", strip=True)) or None
+        itens.append(Item(url=url, titulo=titulo, data=quando, resumo=resumo, texto_da_listagem=completo))
     return _finalizar(itens, config, hoje)
 
 

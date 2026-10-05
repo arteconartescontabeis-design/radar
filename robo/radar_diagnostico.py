@@ -37,10 +37,13 @@ def estrutura_da_pagina(html: str) -> dict:
         "titulo": normalizar(sopa.title.get_text()) if sopa.title else "",
         "tabelas": len(sopa.find_all("table")), "linhas": len(sopa.find_all("tr")),
         "formularios": len(sopa.find_all("form")), "scripts": html.count("<script"),
-        "links": len(links), "amostra_links": links[:25],
+        "links": len(links), "amostra_links": links[:40],
         "inicio_texto": normalizar(sopa.get_text(" ", strip=True))[:1500],
         "inicio_html": re.sub(r"\s+", " ", html or "")[:3000],
         "scripts_src": [t["src"] for t in BeautifulSoup(html or "", "lxml").find_all("script", src=True)][:10],
+        # feed RSS/Atom anunciado pela página: é o jeito mais estável de ler um site de notícias
+        "feeds": [f"{l.get('title') or ''} -> {l['href']}" for l in BeautifulSoup(html or "", "lxml").find_all("link", href=True)
+                  if "rss" in (l.get("type") or "") or "atom" in (l.get("type") or "")][:5],
     }
 
 
@@ -101,7 +104,8 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
         r["brutos"], r["na_janela"] = listagem.brutos, len(listagem.itens)
         r["amostra"] = [{"titulo": i.titulo, "data": i.data.isoformat() if i.data else None, "url": i.url}
                         for i in listagem.itens[:5]]
-        if listagem.itens and config.get("sem_pagina_de_texto"):
+        if listagem.itens and (config.get("sem_pagina_de_texto")
+                               or (config.get("texto_do_feed") and listagem.itens[0].texto_da_listagem)):
             r["texto_primeiro_item"] = len(listagem.itens[0].texto_da_listagem or "")
             r["inicio_texto"] = (listagem.itens[0].texto_da_listagem or "")[:300]
             for extra in config.get("diagnostico_urls", []):      # páginas guardadas só para estudo
@@ -117,9 +121,11 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
             texto = extrair_texto(html, config.get("seletor_texto"))
             r["texto_primeiro_item"] = len(texto)
             r["inicio_texto"] = texto[:300]
+        if fonte.get("avulsa"):                     # teste de site novo: sempre mostra como a página está montada
+            r["estrutura"] = estrutura_da_pagina(paginas[0] if paginas else "")
         if r["brutos"] == 0:
             r["veredito"] = "REVISAR — nenhum item reconhecido"
-            r["estrutura"] = estrutura_da_pagina(paginas[0] if paginas else "")
+            r["estrutura"] = r.get("estrutura") or estrutura_da_pagina(paginas[0] if paginas else "")
             if r["estrutura"]["scripts_src"] and not r["estrutura"]["links"]:
                 try:
                     r["estrutura"]["enderecos_js"] = enderecos_nos_scripts(
@@ -156,8 +162,10 @@ def relatorio_md(resultados: list[dict]) -> str:
             linhas.append(f"\nInício do texto extraído: _{r['inicio_texto']}_")
         if r.get("estrutura"):
             e = r["estrutura"]
-            linhas.append(f"\nPágina não reconhecida — título: _{e['titulo']}_; {e['tabelas']} tabela(s), {e['linhas']} linha(s), "
+            linhas.append(f"\n{'Como a página está montada' if r['brutos'] else 'Página não reconhecida'} — título: _{e['titulo']}_; {e['tabelas']} tabela(s), {e['linhas']} linha(s), "
                           f"{e['formularios']} formulário(s), {e['scripts']} script(s), {e['links']} link(s).")
+            if e.get("feeds"):
+                linhas += ["", "Feeds RSS/Atom anunciados:", *[f"- `{f}`" for f in e["feeds"]]]
             linhas += ["", "Links (amostra):", *[f"- `{l}`" for l in e["amostra_links"]]]
             linhas += ["", f"Texto: _{e['inicio_texto']}_", "", "```html", e["inicio_html"], "```"]
             for js, lista in (e.get("enderecos_js") or {}).items():
@@ -165,12 +173,26 @@ def relatorio_md(resultados: list[dict]) -> str:
     return "\n".join(linhas)
 
 
+def fontes_avulsas(enderecos: str, padrao: str = "") -> list[dict]:
+    """Endereços para testar antes de cadastrar (Actions → diagnóstico → "endereços"): cada um vira uma fonte
+    provisória do tipo "página com lista de links"; sem padrão, todos os links contam."""
+    fontes = []
+    for n, url in enumerate([u for u in re.split(r"[\s,;]+", enderecos or "") if u.startswith(("http://", "https://"))][:10], 1):
+        fontes.append({"slug": f"teste-{n}", "url": url, "tipo_coletor": "rss" if re.search(r"(rss|feed|atom)", url, re.I) else "html_links",
+                       "config": {"padrao_url": padrao or ".", "janela_dias": 30, "texto_do_feed": True}, "avulsa": True})
+    return fontes
+
+
 def carregar_fontes() -> tuple[list[dict], str]:
-    """Fontes ativas do banco quando há chave; senão, as do arquivo. Devolve (fontes, origem)."""
+    """Endereços avulsos (variável ENDERECOS); senão, fontes ativas do banco quando há chave; senão, as do arquivo."""
+    avulsas = fontes_avulsas(os.environ.get("ENDERECOS", ""), os.environ.get("PADRAO", ""))
+    if avulsas:
+        return avulsas, "endereços informados para teste"
     url, chave = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
     if url and chave:
         try:
-            return Banco(url, chave).fontes_ativas(), "fontes ativas do banco"
+            fontes = [f for f in Banco(url, chave).fontes_ativas() if (f.get("config") or {}).get("origem") != "email"]
+            return fontes, "fontes ativas do banco"
         except ErroBanco as e:
             print(f"! banco indisponível ({e}); usando robo/radar_fontes.json", file=sys.stderr)
     return json.loads((AQUI / "radar_fontes.json").read_text(encoding="utf-8")), "robo/radar_fontes.json"
