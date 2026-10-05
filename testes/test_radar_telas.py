@@ -2164,6 +2164,9 @@ def test_administrador_cadastra_fonte_nova_pela_tela_e_o_robo_passa_a_ver(pagina
     form.locator("[name=padrao_url]").fill("/noticias/(\\d+)+$")
     form.locator("button", has_text="Cadastrar fonte").click()
     pagina.wait_for_selector("#recado .erro >> text=repetição dentro de outra")
+    # grupo que começa por um separador fixo não trava o robô: o padrão da fonte do CGIBS pode ser salvo
+    assert pagina.evaluate(r"repeticaoPerigosa('^https://www\\.cgibs\\.gov\\.br/[a-z0-9]+(-[a-z0-9]+){4,}$')") is False
+    assert pagina.evaluate(r"repeticaoPerigosa('(-[a-z-]+)+') && repeticaoPerigosa('(-.+)+') && !repeticaoPerigosa('(/[^/]+)+$')") is True
     form.locator("[name=padrao_url]").fill("/noticias/\\d+")
     form.locator("button", has_text="Cadastrar fonte").click()
     pagina.wait_for_selector("text=Fonte cadastrada.")
