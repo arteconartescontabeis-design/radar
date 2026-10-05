@@ -9,7 +9,7 @@ Para não haver enxurrada, só entram os atos dos órgãos e tipos escolhidos na
     config.tipos        expressão sobre o tipo do ato (artType), ex.: "Instrução Normativa|Ato Declaratório"
     config.excluir_orgao expressão para tirar unidades regionais, ex.: "Superintendência Regional|Delegacia"
     config.secoes       seções do DOU (padrão ["DO1", "DO1E"]: seção 1 e edição extra)
-    config.janela_dias  quantos dias para trás (padrão 3)
+    config.janela_dias  quantos dias para trás (padrão 5: cobre fim de semana e feriado emendado)
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from radar_coletores import Item, Listagem, _finalizar
-from radar_util import ErroDownload, normalizar_espacos
+from radar_util import ErroDownload, hoje_brasilia, normalizar_espacos
 
 BASE = "https://inlabs.in.gov.br"
 LEITURA = "https://www.in.gov.br/leiturajornal?data={data}&secao={secao}"
@@ -116,25 +116,30 @@ def baixar_secao(sessao: requests.Session, dia: date, secao: str) -> bytes | Non
                        headers={"origem": "736372697074"})
     except requests.RequestException as e:
         raise ErroDownload(f"INLABS {arquivo}: {type(e).__name__}: {e}") from e
-    if r.status_code == 404 or not r.content.startswith(b"PK"):
-        return None
+    if r.status_code == 404:
+        return None                      # não houve edição (fim de semana, feriado, sem extra)
     if r.status_code != 200:
         raise ErroDownload(f"INLABS {arquivo}: HTTP {r.status_code}", r.status_code)
+    if not r.content.startswith(b"PK"):
+        if b"logar" in r.content[:20000].lower() or b"password" in r.content[:20000].lower():
+            raise ErroDownload("INLABS: a sessão não foi aceita (o site pediu login de novo)")
+        return None                      # página de aviso no lugar do arquivo: não houve edição
     return r.content
 
 
 def listar_paginas(sessao: requests.Session, fonte: dict, hoje: date | None = None) -> tuple[Listagem, int | None]:
     config = fonte.get("config") or {}
-    hoje = hoje or date.today()
+    hoje = hoje or hoje_brasilia()
+    janela = int(config.get("janela_dias", 5))
     entrar(sessao)
     atos = []
-    for n in range(int(config.get("janela_dias", 3))):
+    for n in range(janela):
         dia = hoje - timedelta(days=n)
         for secao in config.get("secoes") or ["DO1", "DO1E"]:
             dados = baixar_secao(sessao, dia, secao)
             if dados:
                 atos += atos_do_zip(dados)
     escolhidos = filtrar(atos, config)
-    resultado = _finalizar([para_item(a) for a in escolhidos], dict(config, janela_dias=int(config.get("janela_dias", 3)) + 1), hoje)
+    resultado = _finalizar([para_item(a) for a in escolhidos], dict(config, janela_dias=janela + 1), hoje)
     resultado.brutos = len(atos)
     return resultado, 200

@@ -281,17 +281,35 @@ function recado(msg, erro=false){
 }
 /* link de publicação: completo, só com caracteres visíveis comuns (igual à regra do banco) */
 // Repetição dentro de repetição, como (a+)+, pode travar o robô. Não é perigosa quando cada volta do grupo
-// começa por um separador fixo que a parte repetida não aceita: (-[a-z0-9]+){4,} só avança de "-" em "-".
+// começa (ou termina) por um separador fixo que a parte repetida não aceita: (-[a-z0-9]+){4,} só avança de "-" em "-".
+// Grupo repetido com outro grupo dentro, ou com alternativa ("|"), é sempre recusado: o robô não consegue garantir.
 function repeticaoPerigosa(padrao){
-  const grupos = /\((?:\?:)?([^()]*[+*][^()]*)\)[+*{]/g;
-  for(let m; (m = grupos.exec(padrao || ""));){
-    const corpo = m[1], sep = corpo.match(/^(?:\\([^a-zA-Z0-9])|([^\\[\](){}.*+?^$|]))(?![+*?{])/);
-    if(!sep) return true;
-    const c = sep[1] || sep[2], resto = corpo.slice(sep[0].length);
-    if(/(^|[^\\])\./.test(resto)) return true;
+  const p = padrao || "", pilha = [];
+  const aceita = (k, c) => { try{ return new RegExp(k).test(c); }catch(e){ return true; } };
+  const separadorSeguro = (c, resto) => {
+    if(/(^|[^\\])\./.test(resto)) return false;
     const classes = [...resto.matchAll(/\[((?:\\.|[^\]\\])*)\]/g)].map(x => "[" + x[1] + "]")
       .concat([...resto.replace(/\[(?:\\.|[^\]\\])*\]/g, "").matchAll(/\\[a-zA-Z]/g)].map(x => x[0]));
-    if(classes.some(k => { try{ return new RegExp(k).test(c); }catch(e){ return true; } })) return true;
+    return !classes.some(k => aceita(k, c));
+  };
+  for(let i = 0; i < p.length; i++){
+    const ch = p[i];
+    if(ch === "\\"){ i++; continue; }
+    if(ch === "["){ i++; while(i < p.length && p[i] !== "]"){ if(p[i] === "\\") i++; i++; } continue; }
+    if(ch === "("){ pilha.push(i); continue; }
+    if(ch !== ")" || !pilha.length) continue;
+    const ini = pilha.pop(), depois = p[i + 1];
+    if(!["+", "*", "{"].includes(depois)) continue;
+    const corpo = p.slice(ini + 1, i).replace(/^\?:/, "");
+    const semClasses = corpo.replace(/\\./g, "").replace(/\[(?:\\.|[^\]\\])*\]/g, "");
+    if(!/[+*]|\{\d+,\d*\}/.test(semClasses)) continue;                 // nada repetido dentro: seguro
+    if(/[()|]/.test(semClasses)) return true;                           // grupo dentro de grupo, ou alternativa
+    const sep = '(?:\\\\([^a-zA-Z0-9])|([^\\\\[\\](){}.*+?^$|]))';
+    const ini_ = corpo.match(new RegExp("^" + sep + "(?![+*?{])"));
+    if(ini_ && separadorSeguro(ini_[1] || ini_[2], corpo.slice(ini_[0].length))) continue;
+    const fim_ = corpo.match(new RegExp(sep + "$"));
+    if(fim_ && separadorSeguro(fim_[1] || fim_[2], corpo.slice(0, corpo.length - fim_[0].length))) continue;
+    return true;
   }
   return false;
 }
@@ -1196,7 +1214,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria){
         <span class="sub">1.</span><button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
         <span class="sub">2.</span><button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
         ${imagem ? `<span class="sub">3.</span><a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>
-      ${CATEGORIA_SITE[categoria] || !pubs.length ? `<p class="sub dica-site">${CATEGORIA_SITE[categoria] ? `Categoria no site: <b>${h(CATEGORIA_SITE[categoria])}</b>. ` : ""}${pubs.length ? "" : "Depois de publicar, o robô encontra a notícia no site e registra o link sozinho na próxima coleta (a cada 6 horas); se preferir, registre agora."}</p>` : ""}` : ""}
+      ${CATEGORIA_SITE[categoria] || (!pubs.length && !c.fora_do_site) ? `<p class="sub dica-site">${CATEGORIA_SITE[categoria] ? `Categoria no site: <b>${h(CATEGORIA_SITE[categoria])}</b>. ` : ""}${pubs.length || c.fora_do_site ? "" : "Depois de publicar, o robô encontra a notícia no site e registra o link sozinho na próxima coleta (a cada 6 horas); se preferir, registre agora."}</p>` : ""}` : ""}
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
       <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
@@ -1758,7 +1776,7 @@ const FORMS = {
     if(tipo === "html_links" && !padrao){ recado("Para “Página com lista de links”, informe o padrão dos links (o trecho do endereço que identifica uma notícia ou um ato).", true); return; }
     if(padrao){ try{ new RegExp(padrao); }catch(e){ recado("O padrão dos links não é uma expressão válida: " + e.message, true); return; } }
     // repetição dentro de repetição, como (a+)+, pode travar o robô
-    if(repeticaoPerigosa(padrao)){ recado("O padrão dos links tem uma repetição dentro de outra — algo como (a+)+ —, o que pode travar o robô. Simplifique o padrão.", true); return; }
+    if(repeticaoPerigosa(padrao) || repeticaoPerigosa(typeof config.excluir_url === "string" ? config.excluir_url : "")){ recado("O padrão dos links tem uma repetição dentro de outra — algo como (a+)+ —, o que pode travar o robô. Simplifique o padrão.", true); return; }
     if(janela && !(Number(janela) >= 1 && Number(janela) <= 3650)){ recado("A idade máxima dos itens deve ficar entre 1 e 3650 dias.", true); return; }
     for(const [chave, valor] of [["padrao_url", padrao], ["seletor_texto", seletor], ["janela_dias", janela ? Number(janela) : ""]]){
       if(valor === "") delete config[chave]; else config[chave] = valor; }

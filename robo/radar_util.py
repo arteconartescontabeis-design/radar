@@ -27,6 +27,11 @@ RE_DATA_EXTENSO = re.compile(r"\b(\d{1,2})º?\s+(?:de\s+)?([a-zç]{3,9})\.?\s+(?
 BRASILIA = timezone(timedelta(hours=-3))
 
 
+def hoje_brasilia() -> date:
+    """O dia em Brasília (o robô roda no GitHub, em UTC: às 21h de Brasília já é o dia seguinte lá)."""
+    return datetime.now(BRASILIA).date()
+
+
 class ErroDownload(Exception):
     def __init__(self, mensagem: str, http_status: int | None = None):
         super().__init__(mensagem)

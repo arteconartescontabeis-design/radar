@@ -28,7 +28,8 @@ from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 
 from radar_banco import Banco, ErroBanco
-from radar_util import ErroDownload, baixar, canonizar_url, extrair_texto, interpretar_data, normalizar_espacos, sem_acentos
+from radar_util import (ErroDownload, baixar, canonizar_url, extrair_texto, hoje_brasilia, interpretar_data,
+                        normalizar_espacos, sem_acentos)
 
 CONFIG_PADRAO = {"lista": "https://artecon.cnt.br/news", "padrao": r"/news/view/[^/?#]+$", "max_noticias": 15}
 SELETOR_TEXTO = "article, .news-content, .content, main, body"
@@ -40,6 +41,8 @@ TEXTO_COM_TITULO = 0.5     # ...e metade das palavras do texto aprovado na pági
 TITULO_PARECIDO = 0.5      # título só parecido exige o texto quase todo na página
 TEXTO_QUASE_TODO = 0.75
 TEXTO_ALTERADO = 0.5       # página com menos da metade das palavras do texto registrado: o texto mudou
+PALAVRAS_MINIMAS = 20      # texto aprovado mais curto que isso não é comparado (caberia em qualquer página do tema)
+MESES = {"janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"}
 
 
 def palavras(texto: str | None) -> set[str]:
@@ -56,6 +59,19 @@ def contido(trecho: str | None, texto: str | None) -> float:
     """Que parte das palavras de `trecho` aparece em `texto`."""
     pt = palavras(trecho)
     return len(pt & palavras(texto)) / len(pt) if pt else 0.0
+
+
+def chave_url(url: str) -> str:
+    """Mesmo endereço com ou sem www e http/https (registro manual × link da lista do site)."""
+    u = canonizar_url(url)
+    partes = urlsplit(u)
+    host = (partes.hostname or "").removeprefix("www.")
+    return f"{host}{partes.path}{'?' + partes.query if partes.query else ''}".lower()
+
+
+def marcas(titulo: str | None) -> set[str]:
+    """Números, meses e anos do título: "Agenda de outubro de 2026" × "Agenda de novembro de 2026" não são a mesma."""
+    return {p for p in palavras(titulo) if p.isdigit() or p in MESES}
 
 
 def links_da_lista(html: str, base: str, padrao: str, limite: int) -> list[str]:
@@ -83,6 +99,11 @@ def escolher(noticia: dict, candidatos: list[dict]) -> dict | None:
     """O conteúdo aprovado que corresponde à notícia, só se houver um, sem dúvida."""
     aceitos = []
     for c in candidatos:
+        if len(palavras(c.get("corpo"))) < PALAVRAS_MINIMAS or marcas(c["titulo"]) != marcas(noticia["titulo"]):
+            continue
+        aprovado = str(c.get("aprovado_em") or "")[:10]
+        if noticia["data"] and aprovado and noticia["data"].isoformat() < aprovado:
+            continue                     # publicada antes de o conteúdo ser aprovado: não é ele
         tit, txt = semelhanca(noticia["titulo"], c["titulo"]), contido(c.get("corpo"), noticia["texto"])
         if (tit >= TITULO_IGUAL and txt >= TEXTO_COM_TITULO) or (tit >= TITULO_PARECIDO and txt >= TEXTO_QUASE_TODO):
             aceitos.append((tit + txt, c))
@@ -103,10 +124,22 @@ def no_site(url: str, cfg: dict) -> bool:
 
 
 def configuracao(banco: Banco) -> dict:
-    cfg = dict(CONFIG_PADRAO)
+    """Padrão, com o que for válido da chave `site` de Configurações (valor estranho volta ao padrão)."""
+    cfg = dict(CONFIG_PADRAO, desligado=False)
     proprio = banco.config("site")
-    if isinstance(proprio, dict):
-        cfg.update({k: v for k, v in proprio.items() if k in ("lista", "padrao", "max_noticias", "desligado")})
+    if not isinstance(proprio, dict):
+        return cfg
+    if isinstance(proprio.get("lista"), str) and re.match(r"https?://[!-~]+$", proprio["lista"]):
+        cfg["lista"] = proprio["lista"]
+    if isinstance(proprio.get("padrao"), str) and proprio["padrao"].strip():
+        try:
+            re.compile(proprio["padrao"])
+            cfg["padrao"] = proprio["padrao"]
+        except re.error:
+            pass
+    if isinstance(proprio.get("max_noticias"), int) and not isinstance(proprio["max_noticias"], bool):
+        cfg["max_noticias"] = min(max(proprio["max_noticias"], 1), 50)
+    cfg["desligado"] = proprio.get("desligado") is True
     return cfg
 
 
@@ -117,10 +150,11 @@ def executar(banco: Banco, baixar_pagina=lambda url: baixar(url, tentativas=2)[1
     candidatos = banco.conteudos_aprovados_sem_site()
     if not candidatos:
         return []
-    registrados = {canonizar_url(r["url"]) for r in banco.links_publicados() if r.get("url")}
+    registrados = {chave_url(r["url"]) for r in banco.links_publicados() if r.get("url")}
+    hoje = hoje or hoje_brasilia()
     feito = []
     for url in links_da_lista(baixar_pagina(cfg["lista"]), cfg["lista"], cfg["padrao"], int(cfg["max_noticias"])):
-        if url in registrados or not candidatos:
+        if chave_url(url) in registrados or not no_site(url, cfg) or not candidatos:
             continue
         try:
             noticia = ler_noticia(baixar_pagina(url))
@@ -130,7 +164,7 @@ def executar(banco: Banco, baixar_pagina=lambda url: baixar(url, tentativas=2)[1
         conteudo = escolher(noticia, candidatos)
         if conteudo is None:
             continue
-        quando = noticia["data"] if noticia["data"] and noticia["data"] <= (hoje or date.today()) else (hoje or date.today())
+        quando = noticia["data"] if noticia["data"] and noticia["data"] <= hoje else hoje
         try:
             banco.registrar_divulgacao(conteudo["id"], url, quando, OBSERVACAO)
         except ErroBanco as e:          # pendência no assunto, conteúdo alterado...: fica para o registro manual
@@ -148,8 +182,8 @@ def main() -> int:
         return 0
     try:
         feito = executar(Banco(url, chave))
-    except (ErroBanco, ErroDownload, re.error) as e:
-        print(f"! publicações no site não foram conferidas: {e}", file=sys.stderr)
+    except Exception as e:      # nunca deixa a coleta vermelha: o registro manual continua valendo
+        print(f"! publicações no site não foram conferidas: {type(e).__name__}: {e}", file=sys.stderr)
         return 0
     print("Publicações no site: " + ("; ".join(feito) if feito else "nada novo para registrar."))
     return 0

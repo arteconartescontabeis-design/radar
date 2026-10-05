@@ -274,6 +274,16 @@ begin
   if to_regclass('public.radar_publicacoes') is not null then
     if exists (select 1 from public.radar_publicacoes) then
       raise notice 'radar_publicacoes tem registros antigos: a tabela fica guardada como arquivo (sem uso pelo Radar)';
+      -- arquivo só de leitura: sem as regras antigas, ninguém grava nele; e ele não prende imagens nem normas
+      alter table public.radar_publicacoes drop constraint if exists radar_publicacoes_imagem_id_fkey;
+      alter table public.radar_publicacao_normas drop constraint if exists radar_publicacao_normas_norma_id_fkey;
+      drop policy if exists radar_publicacoes_ins on public.radar_publicacoes;
+      drop policy if exists radar_publicacoes_upd on public.radar_publicacoes;
+      drop policy if exists radar_publicacoes_del on public.radar_publicacoes;
+      revoke insert, update, delete on public.radar_publicacoes, public.radar_publicacao_normas from authenticated, service_role, anon;
+      execute 'drop policy if exists radar_publicacao_normas_ins on public.radar_publicacao_normas';
+      execute 'drop policy if exists radar_publicacao_normas_upd on public.radar_publicacao_normas';
+      execute 'drop policy if exists radar_publicacao_normas_del on public.radar_publicacao_normas';
     else
       drop table if exists public.radar_publicacao_normas cascade;
       drop table public.radar_publicacoes cascade;
@@ -554,19 +564,22 @@ end $$;
 -- v0.8.0: nota alta da IA tira a captura de "baixa". A lista de palavras não cobre tudo: notícia importante
 -- escrita sem nenhum termo da lista ficava escondida. Com nota da IA a partir de radar_config.relevancia.nota_promove
 -- (padrão 8), "baixa" vira "média" e o motivo fica anotado. Nunca rebaixa nem passa de "média" (a IA não decide sozinha).
--- Só vale para a captura que ficou baixa por FALTA de palavras (pontos >= 0): a que foi rebaixada por termos
--- negativos da lista (apreensão, concurso, leilão...) continua baixa — essa exclusão é decisão do escritório.
+-- Só vale para a captura que ficou baixa por FALTA de palavras: a que tem qualquer termo negativo da lista
+-- (apreensão, concurso, leilão...) continua baixa, mesmo com termos positivos — essa exclusão é do escritório.
 drop function if exists public.radar_relevancia_com_ia(text, jsonb, smallint);
 create or replace function public.radar_relevancia_com_ia(p_nivel text, p_pontos int, p_motivos jsonb, p_nota smallint)
 returns table (nivel text, motivos jsonb)
 language sql stable security definer set search_path = public as $$
-  select case when p_nivel = 'baixa' and p_pontos >= 0 and p_nota >= l.limite then 'media' else p_nivel end,
-         case when p_nivel = 'baixa' and p_pontos >= 0 and p_nota >= l.limite
+  select case when p_nivel = 'baixa' and l.sem_negativo and p_nota >= l.limite then 'media' else p_nivel end,
+         case when p_nivel = 'baixa' and l.sem_negativo and p_nota >= l.limite
               then coalesce(p_motivos, '[]'::jsonb) || jsonb_build_object('termo', 'nota da IA ' || p_nota, 'pontos', 0)
               else p_motivos end
     from (select coalesce((select case when jsonb_typeof(c.valor->'nota_promove') = 'number'
                                        then least(greatest((c.valor->>'nota_promove')::numeric, 0), 11) end
-                             from public.radar_config c where c.chave = 'relevancia'), 8) as limite) l;
+                             from public.radar_config c where c.chave = 'relevancia'), 8) as limite,
+                 p_pontos >= 0 and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_motivos) = 'array'
+                                                                                 then p_motivos else '[]'::jsonb end) m
+                                               where jsonb_typeof(m->'pontos') = 'number' and (m->>'pontos')::numeric < 0) as sem_negativo) l;
 $$;
 
 create or replace function public.radar_fn_captura_relevancia() returns trigger
@@ -1474,7 +1487,9 @@ select f.*
                    from public.radar_config c where c.chave = 'relevancia'), 10);
 
 -- Assuntos com os números que a lista do dashboard mostra
-create or replace view public.radar_v_assuntos
+-- drop + create: a coluna publicacoes_no_ar saiu na v0.8.0 (create or replace não remove coluna)
+drop view if exists public.radar_v_assuntos;
+create view public.radar_v_assuntos
 with (security_invoker = true) as
 select a.*,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id) as evidencias,

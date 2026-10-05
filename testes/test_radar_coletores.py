@@ -581,3 +581,23 @@ def test_inlabs_baixa_os_dias_da_janela_e_pede_o_cadastro_quando_falta():
         assert listagem.brutos == 1 and [i.titulo for i in listagem.itens] == ["IN RFB Nº 2.300"]
     finally:
         os.environ.pop("INLABS_EMAIL", None); os.environ.pop("INLABS_SENHA", None)
+
+
+
+def test_inlabs_erro_do_servidor_ou_sessao_perdida_nao_vira_dia_sem_edicao():
+    import radar_inlabs
+    from radar_util import ErroDownload
+
+    class Resp:
+        def __init__(self, status, content=b""): self.status_code, self.content = status, content
+
+    class Sessao:
+        def __init__(self, resposta): self.resposta = resposta
+        def get(self, url, params, timeout, headers): return self.resposta
+
+    assert radar_inlabs.baixar_secao(Sessao(Resp(404)), date(2026, 10, 4), "DO1") is None
+    assert radar_inlabs.baixar_secao(Sessao(Resp(200, b"<html>Nao ha edicao</html>")), date(2026, 10, 4), "DO1") is None
+    with pytest.raises(ErroDownload, match="HTTP 500"):
+        radar_inlabs.baixar_secao(Sessao(Resp(500)), date(2026, 10, 5), "DO1")
+    with pytest.raises(ErroDownload, match="pediu login"):
+        radar_inlabs.baixar_secao(Sessao(Resp(200, b"<form action='logar.php'><input name='password'>")), date(2026, 10, 5), "DO1")

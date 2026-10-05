@@ -928,7 +928,10 @@ def test_banco_le_aprovados_sem_registro_e_registra_publicacao_pela_api(limpo, a
     a2, c2 = fundamentado(limpo)
     aprovar(c1); aprovar(c2)
     assert {c["id"] for c in banco.conteudos_aprovados_sem_site()} == {c1, c2}
-    assert set(banco.conteudos_aprovados_sem_site()[0]) == {"id", "titulo", "corpo"}
+    assert set(banco.conteudos_aprovados_sem_site()[0]) == {"id", "titulo", "corpo", "aprovado_em"}
+    limpo.execute("update radar_conteudos set fora_do_site = true where id = %s", (c2,))       # só do informativo: o robô não registra
+    assert [c["id"] for c in banco.conteudos_aprovados_sem_site()] == [c1]
+    limpo.execute("update radar_conteudos set fora_do_site = false where id = %s", (c2,))
     banco.registrar_divulgacao(c1, "https://artecon.cnt.br/news/view/cbs", date(2026, 10, 2), "pelo robô")
     assert [c["id"] for c in banco.conteudos_aprovados_sem_site()] == [c2]
     linha = limpo.execute("select url, publicado_em::text, observacao, registrado_por, titulo from radar_divulgacoes").fetchone()
@@ -1013,3 +1016,36 @@ def test_fonte_do_inlabs_grava_os_atos_com_o_texto_do_xml(cenario, monkeypatch):
     r, _ = robo()
     assert vistos == ["teste-inlabs"] and (r["teste-inlabs"]["status"], r["teste-inlabs"]["novos"]) == ("ok", 1)
     assert cenario.execute("select texto from radar_capturas").fetchone()[0] == texto
+
+
+
+def test_robo_nao_confunde_www_mes_diferente_texto_curto_nem_noticia_anterior_a_aprovacao():
+    import radar_site
+    base = "https://artecon.cnt.br"
+    agenda = ("Confira as obrigações do mês: DCTFWeb, EFD-Reinf, FGTS Digital, eSocial, GPS, DARF do IRRF e o DAS do Simples "
+              "Nacional. Os prazos mudam quando o dia cai em fim de semana ou feriado, então confira com a equipe.")
+    paginas = {base + "/news": lista_site(["agenda-novembro", "ja-registrada", "curta"]),
+               base + "/news/view/agenda-novembro": pagina_site("Agenda tributária de novembro de 2026", agenda),
+               base + "/news/view/curta": pagina_site("Prazo do Simples", "Prazo do Simples prorrogado. " + CORPO_APROVADO)}
+    pedidos = []
+    baixar = lambda u: (pedidos.append(u), paginas[u])[1]
+    candidatos = [{"id": 1, "titulo": "Agenda tributária de outubro de 2026", "corpo": agenda},       # outro mês: não é ela
+                  {"id": 2, "titulo": "Prazo do Simples", "corpo": "Prazo do Simples prorrogado."}]  # curto demais para comparar
+    banco = BancoSite(candidatos, registrados=["https://www.artecon.cnt.br/news/view/ja-registrada/"])
+    assert radar_site.executar(banco, baixar, hoje=date(2026, 10, 5)) == [] and banco.gravados == []
+    assert base + "/news/view/ja-registrada" not in pedidos                       # com www e barra no fim: é o mesmo endereço
+    antes = [{"id": 3, "titulo": "Prazo do Simples Nacional é prorrogado", "corpo": CORPO_APROVADO, "aprovado_em": "2026-10-04T10:00:00Z"}]
+    paginas[base + "/news"] = lista_site(["antiga"])
+    paginas[base + "/news/view/antiga"] = pagina_site("Prazo do Simples Nacional é prorrogado", CORPO_APROVADO, "02 de Outubro de 2026")
+    banco = BancoSite(antes)
+    assert radar_site.executar(banco, baixar, hoje=date(2026, 10, 5)) == [] and banco.gravados == []   # publicada antes de aprovar
+    assert radar_site.chave_url("http://www.artecon.cnt.br/news/view/x/") == radar_site.chave_url("https://artecon.cnt.br/news/view/x")
+
+
+def test_configuracao_do_site_com_valor_estranho_volta_ao_padrao():
+    import radar_site
+    for ruim in ({"max_noticias": "15a"}, {"padrao": None}, {"padrao": "(["}, {"lista": "javascript:alert(1)"}, {"desligado": "sim"}, [1, 2]):
+        cfg = radar_site.configuracao(BancoSite([], config=ruim))
+        assert (cfg["lista"], cfg["padrao"], cfg["max_noticias"], cfg["desligado"]) == (
+            radar_site.CONFIG_PADRAO["lista"], radar_site.CONFIG_PADRAO["padrao"], 15, False), ruim
+    assert radar_site.configuracao(BancoSite([], config={"max_noticias": 500}))["max_noticias"] == 50

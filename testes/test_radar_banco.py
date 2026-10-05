@@ -676,6 +676,10 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
         with conectar("radar_up") as c:
             # v0.8.0: a publicação antiga não se perde — a tabela com registros fica guardada como arquivo
             assert c.execute("select slug, status from radar_publicacoes").fetchone() == ("antiga", "publicado")
+            assert c.execute("""select count(*) from pg_constraint where conname = 'radar_publicacoes_imagem_id_fkey'""").fetchone()[0] == 0
+            assert c.execute("select has_table_privilege('authenticated', 'radar_publicacoes', 'insert'), "
+                             "has_table_privilege('authenticated', 'radar_publicacoes', 'select')").fetchone() == (False, True)
+            assert c.execute("select count(*) from radar_v_assuntos").fetchone()[0] == 1          # a visão nova foi criada
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
@@ -2071,6 +2075,13 @@ def test_boletim_por_email_grava_cada_materia_uma_vez(limpo):
         from radar_util import hash_titulo                                                 # o mesmo hash do robô
         assert hash_titulo(itens[2]["titulo"]) in {h for _, _, h in linhas}
         assert limpo.execute("select ultimo_sucesso_em is not null from radar_fontes where slug = 'itc-email'").fetchone()[0]
+        ruim = [{"titulo": "Data no formato errado", "data": "15/10/2026"}, {"titulo": "Data impossível", "data": "2026-02-31"},
+                {"titulo": "Instrução Normativa RFB nº 2.300", "data": "2026-10-02"}]
+        r = limpo.execute("select radar_receber_email('itc-email', %s::jsonb)", (json.dumps(ruim),)).fetchone()[0]
+        assert r["novos"] == 3                                                       # data ruim vira "sem data"; nada é perdido
+        assert limpo.execute("select count(*) from radar_capturas where titulo like 'Data%%' and data_publicacao is null").fetchone()[0] == 2
+        assert limpo.execute("select hash_titulo from radar_capturas where titulo like 'Instrução%%'").fetchone()[0] == hash_titulo(
+            "Instrução Normativa RFB nº 2.300")                                       # "nº" igual ao robô
         with pytest.raises(Exception, match="RADAR095"):
             limpo.execute("select radar_receber_email('rfb-noticias', '[]'::jsonb)")
     finally:
@@ -2088,6 +2099,9 @@ def test_nota_alta_da_ia_leva_captura_baixa_para_media_e_nunca_rebaixa(limpo):
     limpo.execute("select radar_gravar_avaliacao_ia(%s::jsonb)", (json.dumps([{"id": cap, "nota": 9, "motivo": "prazo municipal"}]),))
     nivel, motivos = limpo.execute("select relevancia, relevancia_motivos from radar_capturas where id = %s", (cap,)).fetchone()
     assert nivel == "media" and {"termo": "nota da IA 9", "pontos": 0} in motivos
+    mista = _cap(limpo, "Leilão de bens: prazo do ICMS")[0]                     # termo negativo + positivos: continua baixa
+    limpo.execute("update radar_capturas set ia_nota = 10 where id = %s", (mista,))
+    assert limpo.execute("select relevancia from radar_capturas where id = %s", (mista,)).fetchone()[0] == "baixa"
     negativa = _cap(limpo, "Apreensão de cigarros na fronteira")[0]          # rebaixada por termos negativos: fica baixa
     limpo.execute("update radar_capturas set ia_nota = 10 where id = %s", (negativa,))
     assert limpo.execute("select relevancia from radar_capturas where id = %s", (negativa,)).fetchone()[0] == "baixa"
