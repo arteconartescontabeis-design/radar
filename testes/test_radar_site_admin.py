@@ -50,8 +50,12 @@ def test_reconhece_o_formulario_sem_enviar_nada_alem_do_login():
 
 
 def test_para_no_captcha_e_no_login_recusado():
-    with pytest.raises(sa.Parada, match="não sou um robô"):
-        sa.entrar(Sessao({sa.LOGIN: LOGIN_OK + '<div class="g-recaptcha"></div>'}, ""), "u", "s")
+    com = LOGIN_OK + '<div class="g-recaptcha"></div>'
+    s = Sessao({sa.LOGIN: com}, PAINEL)
+    sa.entrar(s, "u", "s")                                                             # liberado: entra sem resolver nada
+    assert not any("captcha" in k for k in s.posts[0][1])                               # nenhum campo de verificação enviado
+    with pytest.raises(sa.Parada, match="exigiu a verificação"):
+        sa.entrar(Sessao({sa.LOGIN: com}, com), "u", "s")                               # o site pediu: para
     with pytest.raises(sa.Parada, match="não foi aceito"):
         sa.entrar(Sessao({sa.LOGIN: LOGIN_OK}, LOGIN_OK), "u", "s")                  # voltou para a tela de senha
 
