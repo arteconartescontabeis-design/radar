@@ -1,4 +1,4 @@
-# Radar Artecon — v0.7.1
+# Radar Artecon — v0.8.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,18 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
+
+- **Publicação no site registrada sozinha** (o robô acha a notícia em artecon.cnt.br/news) e aviso quando
+  o texto do site deixa de bater com o aprovado.
+- **Para o site** com passos numerados e a categoria do site indicada.
+- **Resumo semanal**: um único e-mail por semana com o mais relevante, agrupado por tema.
+- **Diário Oficial completo pelo INLABS** (Receita, PGFN, CGSN e CGIBS), desligado até o cadastro.
+- **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
+- **Limpeza** da antiga publicação dentro do Radar.
+
+Mudam o banco (`radar-setup-v0.8.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -72,8 +84,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.7.1.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.7.1.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
+| `sql/radar-setup-v0.8.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.8.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
 | `.github/workflows/` | Rotinas do GitHub Actions: diagnóstico, coleta agendada e testes. |
@@ -119,7 +131,7 @@ O caminho previsto é o INLABS (XML oficial, exige cadastro gratuito).
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.7.1.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.8.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
    Esperado: 21 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
    `instalacoes concluidas` com ao menos 1 e a versão `v0.7.1`.
@@ -410,11 +422,14 @@ para o campo e salve. Ele não vai no repositório porque traz nomes e celulares
 - Qualquer evidência conferida em fonte oficial satisfaz a exigência, inclusive as
   marcadas como "interpretação técnica" ou "hipótese", e o sistema não avalia se o trecho
   tem relação com o texto escrito. Era assim na antiga publicação e continua.
-- O Radar não publica nem altera nada no site da Artecon: o registro depende de alguém
-  informar o link. Um conteúdo pode ter mais de um registro (site, rede social,
+- O Radar não publica nem altera nada no site da Artecon (o login do painel do site tem
+  reCAPTCHA, que não deve ser contornado). Desde a v0.8.0, o robô **encontra sozinho** a notícia
+  publicada em artecon.cnt.br/news e preenche o registro (link e data) quando o título e a maior
+  parte do texto batem com um conteúdo aprovado sem registro; na dúvida, não registra e o
+  registro manual continua valendo. Um conteúdo pode ter mais de um registro (site, rede social,
   republicação).
-- As tabelas e regras da antiga página pública (`radar_publicacoes`) continuam no banco,
-  sem uso pelas telas, para o caso de a publicação automática voltar na parte oficial.
+- A antiga página pública (`radar_publicacoes`) saiu na v0.8.0. As tabelas só são apagadas se
+  estiverem vazias; uma instalação antiga com registros as mantém como arquivo, sem uso.
 - Uma edição fechada do informativo aponta para os conteúdos, não guarda cópia do texto:
   o registro definitivo é o PDF que você salva e assina. Se um artigo for alterado depois
   do fechamento, a edição e a página de impressão avisam (mesmo que ele tenha sido
@@ -493,15 +508,43 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
 | `texto_do_feed` | feed RSS que já traz a notícia inteira (`content:encoded`): o texto vem do feed e a página da notícia não é aberta (site lento ou que recusa robôs) |
 | `origem: "email"` | fonte alimentada por fora (boletim lido no e-mail): o robô não visita o endereço |
 
+### Publicação no site, avisos e resumo semanal (v0.8.0)
+
+- **Registro automático:** a cada coleta, o robô lê `artecon.cnt.br/news`, abre as notícias ainda não
+  registradas e, quando uma corresponde a um conteúdo aprovado sem registro (título parecido e a maior
+  parte do texto presente), registra link e data em "Publicações no site". Para desligar ou mudar o
+  endereço: Configurações, chave `site` = `{"desligado": true}` ou `{"lista": "...", "padrao": "..."}`.
+- **Texto do site diferente:** se a página publicada deixar de trazer a maior parte do texto registrado,
+  abre o aviso "Radar: texto do site diferente do aprovado" (fecha sozinho quando volta a bater).
+- **Para o site:** no conteúdo aprovado, os botões estão numerados (1. título, 2. texto, 3. imagem) e a
+  tela indica a categoria correspondente no site.
+- **Resumo semanal:** toda segunda-feira, 08h47, um único aviso "Radar: resumo da semana" com as notícias
+  de relevância alta (ou nota da IA 7 ou mais), agrupadas por tema. O anterior é fechado. Como o
+  repositório é público, o boletim da ITC aparece só como contagem. Rodar à mão: Actions →
+  "Radar — resumo semanal" → Run workflow.
+- **Nota da IA na relevância:** captura que ficou "baixa" por falta de palavras da lista sobe para
+  "média" quando a IA dá nota 8 ou mais (`nota_promove` em Configurações → Relevância; 11 desliga).
+  A que foi rebaixada por termos negativos (apreensão, concurso, leilão...) continua baixa.
+
+### Diário Oficial pelo INLABS (v0.8.0)
+
+A fonte "Diário Oficial da União — atos da Receita, PGFN e CGSN (INLABS)" lê os XML oficiais do DOU
+(seção 1 e edição extra) e guarda só os atos normativos desses órgãos, sem as unidades regionais.
+Ela entra **desligada**. Para ligar:
+1. Cadastre-se de graça em https://inlabs.in.gov.br.
+2. GitHub → repositório `radar` → Settings → Secrets and variables → Actions → New repository secret:
+   `INLABS_EMAIL` (o e-mail do cadastro) e `INLABS_SENHA` (a senha). Nunca mande a senha pelo chat.
+3. Radar → Fontes → a fonte do INLABS → Configurar → Fonte ativa → Salvar.
+Os filtros (órgãos, tipos de ato, regionais excluídas, dias) ficam em "Outras opções de leitura".
+
 ### Fontes novas de outubro/2026
 
 Rode uma vez `sql/radar-fontes-novas-2026-10.sql` no SQL Editor (pode rodar de novo sem
-estragar nada). Ele cadastra, **desligadas**, quatro fontes testadas pelo diagnóstico:
+estragar nada). Ele cadastra, **desligadas**, três fontes testadas pelo diagnóstico:
 
 | Fonte | Oficial | Observação |
 |---|---|---|
 | Diário Oficial da União — Destaques | sim | só a seleção diária da Imprensa Nacional (pouco volume, sem enxurrada) |
-| Contábeis — Notícias (RSS) | não | texto completo no feed |
 | Econet Editora — Blog (RSS) | não | a área de assinantes pede login e fica de fora |
 | Portal Contábil SC — Notícias (RSS) | não | site lento: o texto vem do feed |
 
@@ -515,6 +558,11 @@ repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
 
+**Da v0.7.1 para a v0.8.0:** Supabase radar-artecon → SQL Editor → execute
+`sql/radar-setup-v0.8.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar `v0.8.0`) e,
+se ainda não rodou, `sql/radar-fontes-novas-2026-10.sql`. A tela e o robô chegam pelo repositório.
+A função `radar-ia` não muda. Para o DOU completo (INLABS), veja "Diário Oficial pelo INLABS".
+
 **Da v0.7.0 para a v0.7.1:** Supabase radar-artecon → SQL Editor → cole e execute
 `sql/radar-setup-v0.7.1.sql` inteiro e guarde a evidência (a linha `instalacoes concluidas` deve
 mostrar `v0.7.1`). O resto já chega pelo repositório: a tela (GitHub Pages; Ctrl+F5 no Radar) e o
@@ -523,7 +571,7 @@ só sem a limpeza de imagens; os termos com pontuação nas regras só passam a 
 
 **Da v0.6.1 para a v0.7.0**, nesta ordem:
 
-1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.7.1.sql`). Guarde a evidência.
+1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.8.0.sql`). Guarde a evidência.
 2. GitHub, repositório `radar` → envie `index.html` e a pasta `robo/` (arquivos novos e alterados:
    `radar_ia.py`, `radar_coletar.py`, `radar_util.py`).
 3. GitHub → abra `.github/workflows/radar-coletar.yml` → lápis (Edit) → substitua o conteúdo pelo
@@ -542,12 +590,12 @@ só sem a limpeza de imagens; os termos com pontuação nas regras só passam a 
 `index.html` ao repositório do Radar; (3) siga o Passo 7 (função `radar-ia`, segredo
 `IA_GATEWAY_TOKEN`). Não há SQL novo para o Radar.
 
-**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.7.1.sql` no SQL Editor; (2) envie
+**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.8.0.sql` no SQL Editor; (2) envie
 `index.html` e `informativo.html` ao repositório; (3) cole o `radar-fale-conosco-v0.6.0.json`
 em Configurações → Fale Conosco; (4) se usa a IA, cole de novo o `index.ts` na função
 `radar-ia` e faça o Deploy. O robô não mudou de comportamento (só o número da versão).
 
-Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.7.1.sql` no SQL
+Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.8.0.sql` no SQL
 Editor (ele atualiza sem apagar dados), envie os arquivos novos ao repositório, **apague o
 `informa.html` do repositório** e, se a função de IA já estiver instalada, cole de novo o
 `index.ts`.

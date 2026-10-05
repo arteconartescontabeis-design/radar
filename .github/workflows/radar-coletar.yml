@@ -41,6 +41,9 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
           # token do aplicativo "radar" na IA Central (Portal → Consumo de IA); sem ele a coleta roda, só sem a nota da IA
           RADAR_IA_GATEWAY_TOKEN: ${{ secrets.RADAR_IA_GATEWAY_TOKEN }}
+          # acesso ao INLABS (DOU completo); sem eles, a fonte do INLABS fica em falha e as demais seguem normais
+          INLABS_EMAIL: ${{ secrets.INLABS_EMAIL }}
+          INLABS_SENHA: ${{ secrets.INLABS_SENHA }}
           FONTE: ${{ github.event.inputs.fonte }}
           FORCAR: ${{ github.event.inputs.forcar }}
         run: |
@@ -48,6 +51,13 @@ jobs:
           if [ -n "$FONTE" ]; then ARGS="$ARGS --fonte $FONTE"; fi
           if [ "$FORCAR" = "true" ]; then ARGS="$ARGS --forcar"; fi
           python radar_coletar.py $ARGS
+      - name: Registrar publicações encontradas no site
+        if: always()
+        working-directory: robo
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+        run: python radar_site.py
       - name: Avisar fontes com falha
         if: always()
         working-directory: robo

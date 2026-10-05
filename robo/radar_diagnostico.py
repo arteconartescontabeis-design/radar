@@ -19,6 +19,7 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
+import radar_inlabs
 from radar_banco import Banco, ErroBanco
 from radar_coletores import enderecos_da_listagem as listar_enderecos, listar_paginas
 from radar_util import VERSAO, ErroDownload, baixar, extrair_texto
@@ -99,7 +100,10 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
             (pasta / f"{slug}-lista{sufixo}.txt").write_text(conteudo, encoding="utf-8")
             return status, conteudo
 
-        listagem, r["http"] = listar_paginas(baixar_e_guardar, fonte)
+        if fonte.get("tipo_coletor") == "inlabs":
+            listagem, r["http"] = radar_inlabs.listar_paginas(sessao, fonte)
+        else:
+            listagem, r["http"] = listar_paginas(baixar_e_guardar, fonte)
         r["bytes"] = sum(len(c.encode("utf-8")) for c in paginas)
         r["brutos"], r["na_janela"] = listagem.brutos, len(listagem.itens)
         r["amostra"] = [{"titulo": i.titulo, "data": i.data.isoformat() if i.data else None, "url": i.url}

@@ -31,6 +31,8 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
           ENDERECOS: ${{ github.event.inputs.enderecos }}
           PADRAO: ${{ github.event.inputs.padrao }}
+          INLABS_EMAIL: ${{ secrets.INLABS_EMAIL }}
+          INLABS_SENHA: ${{ secrets.INLABS_SENHA }}
         run: python radar_diagnostico.py
       - name: Guardar páginas e relatório
         if: always()

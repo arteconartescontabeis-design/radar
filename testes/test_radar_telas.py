@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.7.1"
+    assert pagina.inner_text(".versao") == "v0.8.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -410,7 +410,7 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     fund = limpo.execute("select fundamentacao from radar_divulgacoes").fetchone()[0]
     assert len(fund) == 1 and fund[0]["trecho"] == TRECHO and fund[0]["dispositivo"] == "art. 2º"      # só o trecho conferido
     assert limpo.execute("select status from radar_assuntos where titulo like 'IN RFB%'").fetchone()[0] == "publicado"
-    assert limpo.execute("select count(*) from radar_publicacoes").fetchone()[0] == 0
+    assert limpo.execute("select to_regclass('radar_publicacoes')").fetchone()[0] is None       # v0.8.0: a publicação antiga saiu
     aviso = pagina.locator(".registro-site")
     assert "Publicado no site" in aviso.inner_text() and "02/10/2026" in aviso.inner_text()
     assert aviso.locator("a").first.get_attribute("href") == "https://artecon.cnt.br/news/cbs-na-transicao"
@@ -1442,7 +1442,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     valida = lambda termo: pagina.evaluate("t => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [{termo: t, pontos: 5}]})", termo)
     assert valida("S.A.") == "" and valida("Ltda.") == "" and valida(".gov") == "" and valida("NFS-e") == ""
     assert "duas letras" in valida("..") and "duas letras" in valida("a.")
-    # a v0.7.1 não mudou a função de IA: a função v0.7.0 não deve ser apontada como antiga
+    # a v0.7.1 e a v0.8.0 não mudaram a função de IA: a função v0.7.0 não deve ser apontada como antiga
     assert pagina.evaluate("[versaoMenor('0.7.0', FUNCAO_MINIMA), versaoMenor('0.6.1', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [False, True, False]
 
 
@@ -1667,7 +1667,8 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
 
 
 def test_copiar_para_o_site_leva_titulo_e_texto_formatado(navegador, limpo):
-    artigo_aprovado(limpo)
+    a, _ = artigo_aprovado(limpo)
+    limpo.execute("update radar_assuntos set categoria = 'simples-nacional' where id = %s", (a,))
     contexto = navegador.new_context(viewport={"width": 1280, "height": 900}, locale="pt-BR")
     contexto.add_init_script(TUDO)
     contexto.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
@@ -1691,6 +1692,9 @@ def test_copiar_para_o_site_leva_titulo_e_texto_formatado(navegador, limpo):
     assert "Texto elaborado por: <strong>Marcos Vinicius Martins da Silva</strong>" in html
     assert "Confira os principais prazos" in plano and "##" not in plano and "**" not in plano and "Texto elaborado por: Marcos" in plano
     assert pg.locator("text=Baixar imagem").count() == 0                           # este conteúdo não tem imagem
+    dica = pg.locator(".dica-site").inner_text()                                    # v0.8.0: categoria do site e registro automático
+    assert "Categoria no site: Simples Nacional." in dica and "o robô encontra a notícia no site" in dica
+    assert pg.locator(".para-site").inner_text().replace("\n", " ").count("1.") == 1
     assert erros == []
     contexto.close()
 
@@ -1866,7 +1870,7 @@ def test_nao_existe_mais_pagina_publica_e_o_visitante_nao_le_nada(pagina, limpo)
     with como_editor(limpo) as ed:
         ed.execute("insert into radar_divulgacoes (conteudo_id, url) values (%s, 'https://artecon.cnt.br/news/x')", (c,))
     anon = {"Authorization": "Bearer " + jwt("anon")}
-    for consulta in ["radar_publicacoes?select=titulo", "radar_divulgacoes", "radar_v_divulgacoes", "radar_conteudos", "radar_categorias",
+    for consulta in ["radar_divulgacoes", "radar_v_divulgacoes", "radar_conteudos", "radar_categorias",
                      "radar_imagens", "radar_informativos", "radar_config", "radar_v_painel"]:
         assert requests.get(f"{BASE}/rest/v1/{consulta}", headers=anon).status_code in (401, 403), consulta
     # a tela de entrada não pede nada ao banco antes do login
@@ -2167,6 +2171,11 @@ def test_administrador_cadastra_fonte_nova_pela_tela_e_o_robo_passa_a_ver(pagina
     # grupo que começa por um separador fixo não trava o robô: o padrão da fonte do CGIBS pode ser salvo
     assert pagina.evaluate(r"repeticaoPerigosa('^https://www\\.cgibs\\.gov\\.br/[a-z0-9]+(-[a-z0-9]+){4,}$')") is False
     assert pagina.evaluate(r"repeticaoPerigosa('(-[a-z-]+)+') && repeticaoPerigosa('(-.+)+') && !repeticaoPerigosa('(/[^/]+)+$')") is True
+    for perigoso in [r"((a+))+", r"(?:(\d+))+", r"(-|\d+)+", r"(-\d+|\d+-)+"]:                       # grupo dentro de grupo, alternativa
+        assert pagina.evaluate("p => repeticaoPerigosa(p)", perigoso) is True, perigoso
+    assert pagina.evaluate("p => repeticaoPerigosa(p)", r"(a|aa)+$") is True                       # alternativa longa repetida
+    for seguro in [r"([a-z]+/)+", r"(?:/[\w-]+)+", r"(a|b)+", r"(/[a-z0-9.-]+)+", r"/news/view/([\w.-]+/)+"]:                                        # separador no fim; alternativa sem repetição
+        assert pagina.evaluate("p => repeticaoPerigosa(p)", seguro) is False, seguro
     form.locator("[name=padrao_url]").fill("/noticias/\\d+")
     form.locator("button", has_text="Cadastrar fonte").click()
     pagina.wait_for_selector("text=Fonte cadastrada.")
@@ -2256,7 +2265,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.7.1" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.8.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")

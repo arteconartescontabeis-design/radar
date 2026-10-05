@@ -12,7 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from bs4 import BeautifulSoup
 
-VERSAO = "0.7.1"
+VERSAO = "0.8.0"
 AGENTE = f"ArteconRadar/{VERSAO} (+https://www.artecon.cnt.br; monitoramento de fontes oficiais)"
 
 MESES = {
@@ -25,6 +25,11 @@ RE_DATA_BR = re.compile(r"\b(\d{1,2})º?[/.](\d{1,2})[/.](\d{4})\b")
 RE_DATA_ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?)?")
 RE_DATA_EXTENSO = re.compile(r"\b(\d{1,2})º?\s+(?:de\s+)?([a-zç]{3,9})\.?\s+(?:de\s+)?(\d{4})\b", re.I)
 BRASILIA = timezone(timedelta(hours=-3))
+
+
+def hoje_brasilia() -> date:
+    """O dia em Brasília (o robô roda no GitHub, em UTC: às 21h de Brasília já é o dia seguinte lá)."""
+    return datetime.now(BRASILIA).date()
 
 
 class ErroDownload(Exception):

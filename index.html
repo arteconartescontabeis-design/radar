@@ -150,11 +150,22 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.7.1";
-const FUNCAO_MINIMA = "0.7.0";      // versão da função radar-ia que este painel exige (a v0.7.1 não mudou a função)
+const VERSAO = "0.8.0";
+const FUNCAO_MINIMA = "0.7.0";      // versão da função radar-ia que este painel exige (a v0.7.1 e a v0.8.0 não mudaram a função)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.8.0", "05/10/2026", [
+    "Publicação no site registrada sozinha: a cada coleta, o robô procura a notícia em artecon.cnt.br/news e, quando ela corresponde a um conteúdo aprovado (título e texto), preenche o link e a data em “Publicações no site”. Na dúvida, não registra; o registro manual continua igual.",
+    "Aviso por e-mail quando o texto publicado no site deixa de corresponder ao texto aprovado no Radar (fecha sozinho quando volta a bater).",
+    "Para o site: os botões do conteúdo aprovado estão numerados (1. título, 2. texto, 3. imagem) e a tela indica a categoria correspondente no site.",
+    "Resumo semanal: toda segunda-feira, um único e-mail (aviso no GitHub) com as notícias mais relevantes da semana, agrupadas por tema. Nada de um aviso por notícia.",
+    "Diário Oficial completo pelo INLABS: atos da Receita, PGFN, CGSN e CGIBS, sem as unidades regionais. A fonte vem desligada; para ligar, cadastre-se no INLABS e grave o acesso nos segredos do GitHub (veja o LEIAME).",
+    "Fontes novas (desligadas até você ligar): DOU Destaques, blog da Econet e Portal Contábil SC (o texto vem do próprio feed). Boletim da ITC lido no e-mail todo dia às 02h55.",
+    "Relevância: notícia que ficou “baixa” só por não ter palavras da lista sobe para “média” quando a IA dá nota 8 ou mais (opção nota_promove). A que tem termo negativo (apreensão, concurso, leilão...) continua baixa.",
+    "Tela de fontes: o aviso de padrão perigoso não barra mais o padrão do CGIBS e passa a recusar formas que travariam o robô.",
+    "Limpeza: saiu a antiga publicação dentro do Radar (tabelas vazias). Banco v0.8.0 (rodar o radar-setup-v0.8.0.sql) e robô v0.8.0. A função de IA não mudou."
+  ]],
   ["0.7.1", "04/10/2026", [
     "Texto não salvo não se perde: o título e o texto digitados num conteúdo ficam guardados neste navegador até serem salvos. Se a sessão cair no meio da edição, ao abrir o conteúdo de novo aparece “Recuperar o texto não salvo”. “Sair” com texto não salvo pede confirmação.",
     "Listas longas (capturas, assuntos, publicações, histórico e edições) carregam uma leva por vez, com o botão “Mostrar mais”, em vez de cortar nos itens mais recentes.",
@@ -256,7 +267,7 @@ const ROTULOS = {
   saude: {ok:"Funcionando", instavel:"Instável", falhando:"Falhando", atrasada:"Atrasada",
           nunca_executou:"Nunca executou", nunca_funcionou:"Nunca funcionou", inativa:"Inativa"},
   papel: {admin:"Administrador", editor:"Editor", leitor:"Leitor"},
-  coletor: {html_links:"Página com lista de links", rss:"Feed RSS", normas_rfb:"Atos normativos da Receita (Normas)"}
+  coletor: {html_links:"Página com lista de links", rss:"Feed RSS", normas_rfb:"Atos normativos da Receita (Normas)", inlabs:"Diário Oficial da União (INLABS)"}
 };
 const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## Quem será afetado?", "",
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
@@ -281,17 +292,36 @@ function recado(msg, erro=false){
 }
 /* link de publicação: completo, só com caracteres visíveis comuns (igual à regra do banco) */
 // Repetição dentro de repetição, como (a+)+, pode travar o robô. Não é perigosa quando cada volta do grupo
-// começa por um separador fixo que a parte repetida não aceita: (-[a-z0-9]+){4,} só avança de "-" em "-".
+// começa (ou termina) por um separador fixo que a parte repetida não aceita: (-[a-z0-9]+){4,} só avança de "-" em "-".
+// Grupo repetido com outro grupo dentro, ou com alternativa ("|"), é sempre recusado: o robô não consegue garantir.
 function repeticaoPerigosa(padrao){
-  const grupos = /\((?:\?:)?([^()]*[+*][^()]*)\)[+*{]/g;
-  for(let m; (m = grupos.exec(padrao || ""));){
-    const corpo = m[1], sep = corpo.match(/^(?:\\([^a-zA-Z0-9])|([^\\[\](){}.*+?^$|]))(?![+*?{])/);
-    if(!sep) return true;
-    const c = sep[1] || sep[2], resto = corpo.slice(sep[0].length);
-    if(/(^|[^\\])\./.test(resto)) return true;
+  const p = padrao || "", pilha = [];
+  const aceita = (k, c) => { try{ return new RegExp(k).test(c); }catch(e){ return true; } };
+  const separadorSeguro = (c, resto) => {
+    if(/(^|[^\\])\./.test(resto.replace(/\[(?:\\.|[^\]\\])*\]/g, ""))) return false;   // "." solto (dentro de [...] é ponto mesmo)
     const classes = [...resto.matchAll(/\[((?:\\.|[^\]\\])*)\]/g)].map(x => "[" + x[1] + "]")
       .concat([...resto.replace(/\[(?:\\.|[^\]\\])*\]/g, "").matchAll(/\\[a-zA-Z]/g)].map(x => x[0]));
-    if(classes.some(k => { try{ return new RegExp(k).test(c); }catch(e){ return true; } })) return true;
+    return !classes.some(k => aceita(k, c));
+  };
+  for(let i = 0; i < p.length; i++){
+    const ch = p[i];
+    if(ch === "\\"){ i++; continue; }
+    if(ch === "["){ i++; while(i < p.length && p[i] !== "]"){ if(p[i] === "\\") i++; i++; } continue; }
+    if(ch === "("){ pilha.push(i); continue; }
+    if(ch !== ")" || !pilha.length) continue;
+    const ini = pilha.pop(), depois = p[i + 1];
+    if(!["+", "*", "{"].includes(depois)) continue;
+    const corpo = p.slice(ini + 1, i).replace(/^\?:/, "");
+    const semClasses = corpo.replace(/\\./g, "").replace(/\[(?:\\.|[^\]\\])*\]/g, "");
+    if(/\|/.test(semClasses) && /[^|(?:]{2,}\|?|\|[^|)]{2,}/.test(semClasses.replace(/\|/g, "|"))) return true;   // alternativa com mais de um caractere
+    if(!/[+*]|\{\d+,\d*\}/.test(semClasses)) continue;                 // nada repetido dentro: seguro
+    if(/[()|]/.test(semClasses)) return true;                           // grupo dentro de grupo, ou alternativa
+    const sep = '(?:\\\\([^a-zA-Z0-9])|([^\\\\[\\](){}.*+?^$|]))';
+    const ini_ = corpo.match(new RegExp("^" + sep + "(?![+*?{])"));
+    if(ini_ && separadorSeguro(ini_[1] || ini_[2], corpo.slice(ini_[0].length))) continue;
+    const fim_ = corpo.match(new RegExp(sep + "$"));
+    if(fim_ && separadorSeguro(fim_[1] || fim_[2], corpo.slice(0, corpo.length - fim_[0].length))) continue;
+    return true;
   }
   return false;
 }
@@ -754,7 +784,7 @@ const TELAS = {
       <div class="painel" id="painel-ia"><h2>Inteligência artificial</h2>
         <p class="sub">A IA do Radar é uma função instalada no Supabase (Edge Function <b>radar-ia</b>) que fala com a <b>IA Central</b> do Portal Artecon: texto pela Anthropic, imagens pela OpenAI. O custo, os limites e a recarga ficam em <a href="https://arteconartescontabeis-design.github.io/portal/" target="_blank" rel="noopener noreferrer">Portal → Consumo de IA</a>. O teste abaixo confere a instalação e diz o que falta.</p>
         <div class="acoes"><button class="btn" data-acao="testar-ia">Testar a IA</button></div><div id="diag-ia"></div></div>
-      ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10).`)}
+      ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10) e <b>nota_promove</b> (nota da IA que tira a captura de “baixa” e a leva para “média”, mesmo sem palavras da lista; padrão 8; use 11 para desligar).`)}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
       ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”.`)}
       ${bloco("feriados_extras", "Feriados locais e pontos facultativos", `Os feriados nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente bancário) já são considerados. Acrescente aqui os demais: "AAAA-MM-DD" (uma data) ou "MM-DD" (todo ano). Exemplo: ["2026-12-24", "04-24"].`)}
@@ -771,7 +801,7 @@ const TELAS = {
         <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Preparar com IA</b> busca os trechos e redige o rascunho. Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem) ou envie uma imagem. O Radar compara o texto com a fonte: trecho copiado precisa ser reescrito ou citado entre aspas antes de aprovar. Salve, envie para revisão e <b>aprove</b>.</li>
-        <li><b>Site da Artecon.</b> No conteúdo aprovado, use <b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>, e publique no site.</li>
+        <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
         <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
       </ol></div>
       <div class="painel"><h2>Informativo Mensal</h2><ol class="passos">
@@ -841,7 +871,8 @@ function formFonte(f){
     </div>
     <label for="f-url-${id}">Endereço da página que lista as novidades</label><input id="f-url-${id}" type="text" name="url" required maxlength="1000" value="${h(f.url || "")}" placeholder="https://www.exemplo.gov.br/noticias" style="width:100%">
     <div class="grade">
-      <div><label for="f-tipo-${id}">Como o robô lê</label><select id="f-tipo-${id}" name="tipo_coletor">${opcoes(f.tipo_coletor === "normas_rfb" ? ROTULOS.coletor : {html_links:ROTULOS.coletor.html_links, rss:ROTULOS.coletor.rss}, f.tipo_coletor || "html_links")}</select></div>
+      <div><label for="f-tipo-${id}">Como o robô lê</label><select id="f-tipo-${id}" name="tipo_coletor">${opcoes({html_links:ROTULOS.coletor.html_links, rss:ROTULOS.coletor.rss,
+          ...(ROTULOS.coletor[f.tipo_coletor] && !["html_links","rss"].includes(f.tipo_coletor) ? {[f.tipo_coletor]:ROTULOS.coletor[f.tipo_coletor]} : {})}, f.tipo_coletor || "html_links")}</select></div>
       <div><label for="f-freq-${id}">Verificar a cada (horas)</label><input id="f-freq-${id}" type="number" name="frequencia_horas" min="1" max="168" required value="${f.frequencia_horas || 12}"></div>
       <div><label for="f-jan-${id}">Idade máxima dos itens (dias)</label><input id="f-jan-${id}" type="number" name="janela_dias" min="1" max="3650" value="${h(c.janela_dias ?? "")}"></div>
     </div>
@@ -1079,7 +1110,7 @@ async function telaAssunto(id){
     <section data-etapa="conteudo"${oculta("conteudo")}>
     ${pronto || tudo || !cont.length ? "" : avisoRegistro}
     <div class="painel" id="sec-conteudos"><h2>Conteúdos</h2>
-      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
       ${ed ? `<div class="acoes"><select id="novo-formato" aria-label="Formato do novo conteúdo">${opcoes(ROTULOS.formato, "informativo")}</select>
         <button class="btn" data-acao="novo-conteudo" data-id="${a.id}">Novo conteúdo</button>
         <button class="btn sec" data-acao="ia-gerar">Gerar com IA</button>
@@ -1157,7 +1188,7 @@ function avisoRascunho(c){
     <div class="acoes"><button class="btn peq" type="button" data-acao="recuperar-rascunho" data-id="${c.id}">Recuperar o texto não salvo</button>
       <button class="btn peq sec" type="button" data-acao="descartar-rascunho" data-id="${c.id}">Descartar</button></div></div>`;
 }
-function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
+function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria){
   const copia = trechosCopiados(c.corpo, fontes);
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
   return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}">
@@ -1191,10 +1222,11 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
       <p class="sub" style="margin:4px 0 0">Em branco, a IA escolhe a cena pela notícia. A imagem é uma foto realista criada pela IA, pode ter pessoas (sempre fictícias) e não leva texto, marca nem assinatura. Cada imagem gerada é cobrada.</p>` : ""}
     <details><summary>Ver como vai aparecer</summary><div class="previa"><h2>${h(c.titulo)}</h2>${imagem ? `<img class="miniatura" style="max-width:100%;max-height:260px" src="${h(imagem)}" alt="">` : ""}${renderTexto(c.corpo)}${creditos(c)}</div></details>
     ${c.status === "aprovado" ? `<div class="aviso info">Se você alterar o título, o texto, o autor, a fonte ou a imagem, o conteúdo volta para revisão e precisa ser aprovado de novo.</div>
-      <div class="acoes"><b class="sub">Para o site da Artecon:</b>
-        <button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
-        <button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
-        ${imagem ? `<a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>` : ""}
+      <div class="acoes para-site"><b class="sub">Para o site da Artecon:</b>
+        <span class="sub">1.</span><button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
+        <span class="sub">2.</span><button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
+        ${imagem ? `<span class="sub">3.</span><a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>
+      ${CATEGORIA_SITE[categoria] || (!pubs.length && !c.fora_do_site) ? `<p class="sub dica-site">${CATEGORIA_SITE[categoria] ? `Categoria no site: <b>${h(CATEGORIA_SITE[categoria])}</b>. ` : ""}${pubs.length || c.fora_do_site ? "" : "Depois de publicar, o robô encontra a notícia no site e registra o link sozinho na próxima coleta (a cada 6 horas); se preferir, registre agora."}</p>` : ""}` : ""}
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
       <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
@@ -1417,7 +1449,7 @@ const ACOES = {
     const plano = f.corpo.defaultValue.replace(/^#{1,2}\s+/gm, "").replace(/\*\*/g, "") + (c.autor ? "\n\nTexto elaborado por: " + c.autor : "") + (c.fonte_credito ? "\nFonte: " + c.fonte_credito : "");
     const justificado = renderTexto(f.corpo.defaultValue).replace(/<(p|li)>/g, '<$1 style="text-align:justify">');
     await copiar(plano, justificado + creditos(c));
-    recado("Texto copiado com a formatação. Cole no editor do site."); },
+    recado("Texto copiado com a formatação. Cole no editor do site (campo do texto da notícia)."); },
   estrutura(el){ const t = $(`#c-corpo-${el.dataset.id}`); t.value = (t.value.trim() ? t.value.trimEnd() + "\n\n" : "") + ESTRUTURA_PADRAO; t.focus(); },
   async "mudar-conteudo"(el){ await salvarConteudo(el.closest("form"), {status: el.dataset.status}); await desenhar();
     recado(el.dataset.status === "em_revisao" ? "Conteúdo enviado para revisão." : "Conteúdo rejeitado."); },
@@ -1542,6 +1574,10 @@ function avisoSujo(){
 }
 const AVISO_SUJO = "Há alterações não salvas nesta tela. Salve (ou recarregue a página para descartar) antes de continuar.";
 function sujo(f){ return [...f.elements].some(c => c.name && c.type !== "file" && (c.type === "checkbox" ? c.checked !== c.defaultChecked : c.value !== c.defaultValue && c.tagName !== "SELECT")); }
+// categoria do Radar → categoria correspondente no site da Artecon (artecon.cnt.br/news)
+const CATEGORIA_SITE = {"reforma-tributaria":"Tributário", "simples-nacional":"Simples Nacional", "federal":"Legislação Federal",
+  "santa-catarina":"Legislação Estadual (SC)", "trabalhista":"Área Trabalhista e Previdenciária", "contabilidade":"Economia",
+  "pgfn":"Tributário", "informativos":"Economia"};
 function creditos(c){ return (c.autor ? `<p style="text-align:right"><em>Texto elaborado por: <strong>${h(c.autor)}</strong></em></p>` : "") +
   (c.fonte_credito ? `<p style="text-align:right"><em>Fonte: ${h(c.fonte_credito)}</em></p>` : ""); }
 async function copiar(texto, html){
@@ -1680,6 +1716,7 @@ function validarConfig(chave, v){
     for(const c of ["limite_alta","limite_media"]) if(!Number.isInteger(v[c]) || Math.abs(v[c]) > 1000) return `Informe “${c}” (número inteiro, até 1000).`;
     if(v.limite_media > v.limite_alta) return "“limite_media” não pode ser maior que “limite_alta”.";
     if(v.nota_corte !== undefined && !(Number.isInteger(v.nota_corte) && v.nota_corte >= 0 && v.nota_corte <= 10)) return "“nota_corte” é a nota mínima da IA para entrar em “Em alta”: número inteiro de 0 a 10.";
+    if(v.nota_promove !== undefined && !(Number.isInteger(v.nota_promove) && v.nota_promove >= 0 && v.nota_promove <= 11)) return "“nota_promove” é a nota da IA que tira a captura de “baixa”: número inteiro de 0 a 11 (11 desliga).";
     if(v.quantidade !== undefined && !(Number.isInteger(v.quantidade) && v.quantidade >= 1 && v.quantidade <= 100)) return "“quantidade” é quantas capturas a lista “Em alta” mostra: número inteiro de 1 a 100.";
     for(const [n, t] of v.termos.entries()){
       if(!t || typeof t.termo !== "string" || t.termo.trim().length < 2 || t.termo.trim().length > 80) return `Termo ${n + 1}: informe “termo” (de 2 a 80 caracteres).`;
@@ -1751,7 +1788,7 @@ const FORMS = {
     if(tipo === "html_links" && !padrao){ recado("Para “Página com lista de links”, informe o padrão dos links (o trecho do endereço que identifica uma notícia ou um ato).", true); return; }
     if(padrao){ try{ new RegExp(padrao); }catch(e){ recado("O padrão dos links não é uma expressão válida: " + e.message, true); return; } }
     // repetição dentro de repetição, como (a+)+, pode travar o robô
-    if(repeticaoPerigosa(padrao)){ recado("O padrão dos links tem uma repetição dentro de outra — algo como (a+)+ —, o que pode travar o robô. Simplifique o padrão.", true); return; }
+    if(repeticaoPerigosa(padrao) || repeticaoPerigosa(typeof config.excluir_url === "string" ? config.excluir_url : "")){ recado("O padrão dos links tem uma repetição dentro de outra — algo como (a+)+ —, o que pode travar o robô. Simplifique o padrão.", true); return; }
     if(janela && !(Number(janela) >= 1 && Number(janela) <= 3650)){ recado("A idade máxima dos itens deve ficar entre 1 e 3650 dias.", true); return; }
     for(const [chave, valor] of [["padrao_url", padrao], ["seletor_texto", seletor], ["janela_dias", janela ? Number(janela) : ""]]){
       if(valor === "") delete config[chave]; else config[chave] = valor; }

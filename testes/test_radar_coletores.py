@@ -496,3 +496,108 @@ def test_diagnostico_testa_enderecos_avulsos_antes_de_cadastrar(monkeypatch):
     assert radar_diagnostico.carregar_fontes()[1] == "endereços informados para teste"
     html = '<html><head><title>T</title><link rel="alternate" type="application/rss+xml" title="Notícias" href="/rss/"></head><body></body></html>'
     assert radar_diagnostico.estrutura_da_pagina(html)["feeds"] == ["Notícias -> /rss/"]
+
+
+# ============================================================ v0.8.0 — DOU pelo INLABS
+def _xml_dou(id_, tipo, orgao, titulo, ementa="", texto="<p>Art. 1º Fica alterado.</p>", data="02/10/2026", pagina=True):
+    pdf = f' pdfPage="http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data={data}&amp;jornal=515&amp;pagina=19"' if pagina else ""
+    return (f'<?xml version="1.0" encoding="UTF-8"?><xml><article id="{id_}" idMateria="{id_}" name="{titulo}" pubName="DO1" '
+            f'artType="{tipo}" pubDate="{data}" artCategory="{orgao}"{pdf}><body><Identifica><![CDATA[{titulo}]]></Identifica>'
+            f'<Ementa><![CDATA[{ementa}]]></Ementa><Texto><![CDATA[{texto}]]></Texto></body></article></xml>').encode("utf-8")
+
+
+def _zip_dou(xmls) -> bytes:
+    import io
+    import zipfile
+    mem = io.BytesIO()
+    with zipfile.ZipFile(mem, "w") as z:
+        for n, x in enumerate(xmls):
+            z.writestr(f"ato-{n}.xml", x)
+        z.writestr("quebrado.xml", b"<xml><article")          # arquivo estragado não derruba o dia
+        z.writestr("leia-me.txt", b"nada")
+    return mem.getvalue()
+
+
+CONFIG_INLABS = {"janela_dias": 2, "secoes": ["DO1"], "orgaos": "Receita Federal|Procuradoria-Geral da Fazenda Nacional",
+                 "tipos": "Instrução Normativa|Portaria", "excluir_orgao": "Superintendência Regional|Delegacia",
+                 "texto_do_feed": True, "texto_minimo": 1}
+
+
+def test_inlabs_le_o_xml_oficial_e_filtra_orgao_tipo_e_regionais():
+    import radar_inlabs
+    zip_ = _zip_dou([
+        _xml_dou("111", "Instrução Normativa", "Ministério da Fazenda/Secretaria Especial da Receita Federal do Brasil",
+                 "INSTRUÇÃO NORMATIVA RFB Nº 2.300, DE 1º DE OUTUBRO DE 2026", "Altera a IN RFB nº 2.005.", "<p>Art. 1º A DCTFWeb passa a...</p>"),
+        _xml_dou("222", "Portaria", "Ministério da Fazenda/Procuradoria-Geral da Fazenda Nacional", "PORTARIA PGFN Nº 9, DE 1º DE OUTUBRO DE 2026", pagina=False),
+        _xml_dou("333", "Portaria", "Ministério da Fazenda/Secretaria Especial da Receita Federal do Brasil/Superintendência Regional da 9ª Região",
+                 "PORTARIA SRRF09 Nº 1"),
+        _xml_dou("444", "Portaria", "Ministério da Saúde", "PORTARIA MS Nº 5"),
+        _xml_dou("555", "Aviso", "Ministério da Fazenda/Secretaria Especial da Receita Federal do Brasil", "AVISO DE LICITAÇÃO")])
+    atos = radar_inlabs.atos_do_zip(zip_)
+    assert len(atos) == 5
+    escolhidos = radar_inlabs.filtrar(atos, CONFIG_INLABS)
+    assert [a["id"] for a in escolhidos] == ["111", "222"]
+    it = radar_inlabs.para_item(escolhidos[0])
+    assert it.titulo == "INSTRUÇÃO NORMATIVA RFB Nº 2.300, DE 1º DE OUTUBRO DE 2026" and it.data == date(2026, 10, 2)
+    assert it.url == "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=02/10/2026&jornal=515&pagina=19&materia=111"
+    assert it.texto_da_listagem.startswith("INSTRUÇÃO NORMATIVA RFB") and "Art. 1º A DCTFWeb" in it.texto_da_listagem and "<p>" not in it.texto_da_listagem
+    assert it.resumo == "Altera a IN RFB nº 2.005." and it.metadados["orgao"].endswith("Receita Federal do Brasil")
+    assert radar_inlabs.para_item(escolhidos[1]).url == "https://www.in.gov.br/leiturajornal?data=02-10-2026&secao=do1&materia=222"
+
+
+def test_inlabs_baixa_os_dias_da_janela_e_pede_o_cadastro_quando_falta():
+    import radar_inlabs
+    from radar_util import ErroDownload
+
+    class Resp:
+        def __init__(self, status, content=b""): self.status_code, self.content = status, content
+
+    class Sessao:
+        def __init__(self, aceita=True):
+            self.pedidos, self.aceita, self.cookies = [], aceita, {}
+        def post(self, url, data, timeout):
+            assert url.endswith("/logar.php") and data == {"email": "a@b.c", "password": "s"}
+            if self.aceita:
+                self.cookies["inlabs_session_cookie"] = "x"
+            return Resp(200)
+        def get(self, url, params, timeout, headers):
+            self.pedidos.append(params["dl"])
+            if params["dl"] == "2026-10-02-DO1.zip":
+                return Resp(200, _zip_dou([_xml_dou("111", "Instrução Normativa", "Secretaria Especial da Receita Federal do Brasil", "IN RFB Nº 2.300")]))
+            return Resp(200, b"<html>sem edicao</html>")                # fim de semana: o INLABS devolve uma página, não um zip
+
+    import os
+    fonte = {"slug": "dou-inlabs", "tipo_coletor": "inlabs", "config": CONFIG_INLABS}
+    os.environ.pop("INLABS_EMAIL", None); os.environ.pop("INLABS_SENHA", None)
+    with pytest.raises(ErroDownload, match="INLABS_EMAIL e INLABS_SENHA"):
+        radar_inlabs.listar_paginas(Sessao(), fonte, date(2026, 10, 3))
+    os.environ.update(INLABS_EMAIL="a@b.c", INLABS_SENHA="s")
+    try:
+        with pytest.raises(ErroDownload, match="login não foi aceito"):
+            radar_inlabs.listar_paginas(Sessao(aceita=False), fonte, date(2026, 10, 3))
+        s = Sessao()
+        listagem, http = radar_inlabs.listar_paginas(s, fonte, date(2026, 10, 3))
+        assert s.pedidos == ["2026-10-03-DO1.zip", "2026-10-02-DO1.zip"] and http == 200
+        assert listagem.brutos == 1 and [i.titulo for i in listagem.itens] == ["IN RFB Nº 2.300"]
+    finally:
+        os.environ.pop("INLABS_EMAIL", None); os.environ.pop("INLABS_SENHA", None)
+
+
+
+def test_inlabs_erro_do_servidor_ou_sessao_perdida_nao_vira_dia_sem_edicao():
+    import radar_inlabs
+    from radar_util import ErroDownload
+
+    class Resp:
+        def __init__(self, status, content=b""): self.status_code, self.content = status, content
+
+    class Sessao:
+        def __init__(self, resposta): self.resposta = resposta
+        def get(self, url, params, timeout, headers): return self.resposta
+
+    assert radar_inlabs.baixar_secao(Sessao(Resp(404)), date(2026, 10, 4), "DO1") is None
+    assert radar_inlabs.baixar_secao(Sessao(Resp(200, b"<html>Nao ha edicao</html>")), date(2026, 10, 4), "DO1") is None
+    with pytest.raises(ErroDownload, match="HTTP 500"):
+        radar_inlabs.baixar_secao(Sessao(Resp(500)), date(2026, 10, 5), "DO1")
+    with pytest.raises(ErroDownload, match="pediu login"):
+        radar_inlabs.baixar_secao(Sessao(Resp(200, b"<form action='logar.php'><input name='password'>")), date(2026, 10, 5), "DO1")

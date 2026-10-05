@@ -3,7 +3,7 @@
 -- Rode UMA vez no Supabase (SQL Editor) depois da v0.7.1. Pode rodar de novo:
 -- fonte que já existe (mesmo identificador) não é alterada.
 --
--- As quatro fontes de sites entram DESLIGADAS (ativo = false) e "a validar":
+-- As fontes de sites e a do INLABS entram DESLIGADAS (ativo = false) e "a validar":
 -- ligue cada uma na aba Fontes → Configurar → Fonte ativa, depois de rodar o
 -- diagnóstico. Só o DOU é fonte oficial; as demais são portais e consultorias
 -- (servem de alerta e pauta, não de fundamentação).
@@ -21,10 +21,6 @@ from (values
    'https://www.in.gov.br/web/guest/servicos/diario-oficial-da-uniao/destaques-do-diario-oficial-da-uniao',
    '{"janela_dias": 10, "padrao_url": "/web/dou/-/[^?#]+-\\d{6,}$", "seletor_texto": ".texto-dou, #materia, article, main", "max_itens": 60}'::jsonb,
    'federal', 12),
-  ('contabeis-noticias', 'Contábeis — Notícias', 'Portal Contábeis', 'geral', false, false, 'rss',
-   'https://www.contabeis.com.br/rss/noticias/',
-   '{"janela_dias": 10, "texto_do_feed": true, "seletor_texto": "article, main"}'::jsonb,
-   null, 12),
   ('econet-blog', 'Econet Editora — Blog', 'Econet Editora', 'geral', false, false, 'rss',
    'https://blog.econeteditora.com.br/feed/',
    '{"janela_dias": 15, "texto_do_feed": true, "seletor_texto": "article, .entry-content, main"}'::jsonb,
@@ -33,6 +29,10 @@ from (values
    'https://portalcontabilsc.com.br/categoria/noticias/feed/',
    '{"janela_dias": 10, "texto_do_feed": true, "seletor_texto": "article, .entry-content, main", "tempo_max_segundos": 240}'::jsonb,
    'santa-catarina', 24),
+  ('dou-inlabs', 'Diário Oficial da União — atos da Receita, PGFN e CGSN (INLABS)', 'Imprensa Nacional', 'federal', true, false, 'inlabs',
+   'https://inlabs.in.gov.br/',
+   '{"janela_dias": 5, "secoes": ["DO1", "DO1E"], "orgaos": "Receita Federal|Procuradoria-Geral da Fazenda Nacional|Comitê Gestor do Simples Nacional|Comitê Gestor do Imposto sobre Bens e Serviços", "tipos": "Instrução Normativa|Ato Declaratório|Resolução|Portaria|Solução de Consulta|Parecer Normativo|Lei|Decreto|Medida Provisória", "excluir_orgao": "Superintendência Regional|Delegacia|Alfândega|Inspetoria|Divisão de Tributação|Disit", "texto_do_feed": true, "texto_minimo": 1, "max_itens": 80, "tempo_max_segundos": 600}'::jsonb,
+   'federal', 12),
   ('itc-email', 'ITC Consultoria — boletim por e-mail', 'ITC Consultoria', 'geral', false, true, 'rss',
    'https://www.itcnet.com.br/',
    '{"origem": "email", "remetente": "itc@itcnet.com.br"}'::jsonb,
@@ -45,6 +45,15 @@ on conflict (slug) do nothing;
 -- p_itens: [{"titulo": "...", "data": "AAAA-MM-DD", "area": "...", "texto": "...", "assunto_email": "..."}, ...]
 -- Cada matéria vira uma captura da fonte; a mesma manchete em dois boletins (ITCNET Mail e
 -- Legislação & Tribunais) entra uma vez só. Devolve quantas entraram e quantas já existiam.
+create or replace function public.radar_data_valida(p text) returns boolean
+language plpgsql immutable set search_path = public as $$
+begin
+  perform p::date;
+  return true;
+exception when others then
+  return false;
+end $$;
+
 create or replace function public.radar_receber_email(p_fonte text, p_itens jsonb) returns jsonb
 language plpgsql set search_path = public as $$
 declare
@@ -63,9 +72,12 @@ begin
            nullif(btrim(i.texto), '') as texto, i.assunto_email,
            -- o mesmo cálculo do robô (radar_util.hash_titulo): sem acento, sem pontuação, minúsculas
            encode(sha256(convert_to(btrim(regexp_replace(regexp_replace(lower(translate(btrim(i.titulo),
-             'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ', 'aaaaaeeeeiiiiooooouuuucnAAAAAEEEEIIIIOOOOOUUUUCN')),
+             'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑºª¹²³', 'aaaaaeeeeiiiiooooouuuucnAAAAAEEEEIIIIOOOOOUUUUCNoa123')),
              '[^a-z0-9 ]+', ' ', 'g'), '\s+', ' ', 'g')), 'UTF8')), 'hex') as h
-      from jsonb_to_recordset(p_itens) as i(titulo text, data date, area text, texto text, assunto_email text)
+      from (select j.titulo, j.area, j.texto, j.assunto_email,
+                   -- data só no formato AAAA-MM-DD e válida; o resto vira "sem data" (um item ruim não derruba o boletim)
+                   case when j.data ~ '^\d{4}-\d{2}-\d{2}$' and public.radar_data_valida(j.data) then j.data::date end as data
+              from jsonb_to_recordset(p_itens) as j(titulo text, data text, area text, texto text, assunto_email text)) i
      where length(btrim(coalesce(i.titulo, ''))) between 5 and 300
        and (i.data is null or i.data <= current_date + 1)
   ), unicos as (
@@ -85,8 +97,8 @@ begin
    where id = v_fonte;
   return jsonb_build_object('recebidos', v_recebidos, 'novos', v_novos, 'ja_existiam', v_recebidos - v_novos);
 end $$;
-revoke all on function public.radar_receber_email(text, jsonb) from public, anon, authenticated;
+revoke all on function public.radar_receber_email(text, jsonb) from public, anon, authenticated, service_role;
 
 select slug, nome, ativo, oficial from public.radar_fontes
- where slug in ('dou-destaques','contabeis-noticias','econet-blog','portalcontabilsc-noticias','itc-email')
+ where slug in ('dou-destaques','econet-blog','portalcontabilsc-noticias','dou-inlabs','itc-email')
  order by id;

@@ -17,8 +17,8 @@ sys.path.insert(0, str(RAIZ / "robo"))
 PG = {"host": os.environ.get("RADAR_PGHOST", "/tmp"), "port": os.environ.get("RADAR_PGPORT", "5544"),
       "user": os.environ.get("RADAR_PGUSER", "postgres")}
 BANCO = "radar_teste"
-SETUP = RAIZ / "sql" / "radar-setup-v0.7.1.sql"
-REVERSAO = RAIZ / "sql" / "radar-reversao-v0.7.1.sql"
+SETUP = RAIZ / "sql" / "radar-setup-v0.8.0.sql"
+REVERSAO = RAIZ / "sql" / "radar-reversao-v0.8.0.sql"
 
 ADMIN = "00000000-0000-0000-0000-00000000000a"
 EDITOR = "00000000-0000-0000-0000-00000000000e"
@@ -80,7 +80,7 @@ def como(papel: str, uid: str | None = None):
 def limpo(db):
     """Zera os dados operacionais entre testes (mantém fontes, categorias e perfis)."""
     db.execute("alter table radar_auditoria disable trigger user")
-    db.execute("""truncate radar_publicacao_normas, radar_publicacoes, radar_conteudos, radar_evidencias,
+    db.execute("""truncate radar_conteudos, radar_evidencias,
                   radar_assunto_capturas, radar_assuntos, radar_normas, radar_capturas_versoes,
                   radar_capturas, radar_execucoes, radar_auditoria, radar_ia_uso, radar_informativo_itens,
                   radar_informativos, radar_imagens, radar_divulgacoes restart identity cascade""")

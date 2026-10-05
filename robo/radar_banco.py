@@ -35,6 +35,16 @@ class Banco:
             raise ErroBanco(f"{metodo} {caminho}: HTTP {r.status_code} — {r.text[:400]}")
         return r.json() if r.text else None
 
+    def _todos(self, caminho: str, params: list[tuple[str, str]], pagina: int = 1000) -> list[dict]:
+        """Todas as linhas, de mil em mil (o Supabase devolve no máximo 1000 por pedido, sem avisar do corte)."""
+        linhas, inicio = [], 0
+        while True:
+            lote = self._pedir("GET", caminho, params=[*params, ("limit", str(pagina)), ("offset", str(inicio))]) or []
+            linhas += lote
+            if len(lote) < pagina:
+                return linhas
+            inicio += pagina
+
     # ---------------------------------------------------------------- fontes
     def fontes_ativas(self, slug: str | None = None) -> list[dict]:
         params = {"select": "*", "ativo": "eq.true", "order": "id"}
@@ -108,5 +118,40 @@ class Banco:
             "select": "slug,nome,ativo,saude,falhas_consecutivas,ultimo_erro,ultimo_sucesso_em", "order": "id"}) or []
 
     def links_publicados(self) -> list[dict]:
-        """Links registrados em "Publicações no site", para conferir se continuam no ar."""
-        return self._pedir("GET", "radar_divulgacoes", params={"select": "id,url,titulo", "order": "id"}) or []
+        """Links registrados em "Publicações no site", para conferir se continuam no ar (e com o mesmo texto)."""
+        return self._todos("radar_divulgacoes", [("select", "id,url,titulo,corpo"), ("order", "id")])
+
+    # ------------------------------------------------- publicações no site (v0.8.0)
+    def config(self, chave: str):
+        """Valor de uma chave de Configurações (radar_config), ou None."""
+        linhas = self._pedir("GET", "radar_config", params={"select": "valor", "chave": f"eq.{chave}"}) or []
+        return linhas[0]["valor"] if linhas else None
+
+    def conteudos_aprovados_sem_site(self) -> list[dict]:
+        """Conteúdos aprovados, que vão ao site e ainda não têm registro em "Publicações no site" (todos)."""
+        linhas = self._todos("radar_conteudos", [
+            ("select", "id,titulo,corpo,aprovado_em,radar_divulgacoes!left(id)"), ("status", "eq.aprovado"),
+            ("fora_do_site", "is.false"), ("radar_divulgacoes", "is.null"), ("order", "id")])
+        return [{k: v for k, v in c.items() if k != "radar_divulgacoes"} for c in linhas]
+
+    def registrar_divulgacao(self, conteudo_id: int, url: str, publicado_em, observacao: str) -> dict:
+        """Mesmo registro de "Registrar publicação no site"; o banco confere as regras (conteúdo aprovado,
+        assunto sem pendência) e guarda a cópia do texto e da fundamentação."""
+        linhas = self._pedir("POST", "radar_divulgacoes", corpo={
+            "conteudo_id": conteudo_id, "url": url, "publicado_em": publicado_em.isoformat(),
+            "observacao": observacao}, prefer="return=representation")
+        return linhas[0]
+
+    # ------------------------------------------------------- resumo semanal (v0.8.0)
+    def capturas_entre(self, inicio, fim) -> list[dict]:
+        """Capturas gravadas no período, com a fonte (nome, oficial, config), para o resumo semanal."""
+        return self._todos("radar_capturas", [
+            ("select", "id,titulo,url,relevancia,ia_nota,ia_tema,duplicata_de,radar_fontes(nome,oficial,config)"),
+            ("capturado_em", f"gte.{inicio.isoformat()}"), ("capturado_em", f"lt.{fim.isoformat()}"), ("order", "id")])
+
+    def numeros_da_semana(self, inicio, fim) -> dict:
+        def contar(tabela: str, coluna: str, extra=()) -> int:
+            return len(self._todos(tabela, [("select", "id"), (coluna, f"gte.{inicio.isoformat()}"),
+                                            (coluna, f"lt.{fim.isoformat()}"), *extra, ("order", "id")]))
+        return {"aprovados": contar("radar_conteudos", "aprovado_em", [("status", "eq.aprovado")]),
+                "publicados": contar("radar_divulgacoes", "registrado_em")}

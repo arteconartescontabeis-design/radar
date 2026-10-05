@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.7.1.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.8.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.7.1.sql
+-- Reversão: radar-reversao-v0.8.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.7.1', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.8.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -63,7 +63,7 @@ create table if not exists public.radar_fontes (
                        check (abrangencia in ('federal','estadual_sc','municipal','geral')),
   oficial              boolean     not null default true,
   tipo_coletor         text        not null
-                       check (tipo_coletor in ('rss','html_links','normas_rfb')),
+                       check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs')),
   url                  text        not null,
   config               jsonb       not null default '{}'::jsonb,
   categoria_padrao     text        references public.radar_categorias(slug),
@@ -266,36 +266,34 @@ begin
   end if;
 end $$;
 
-create table if not exists public.radar_publicacoes (
-  id            bigint generated always as identity primary key,
-  conteudo_id   bigint      not null references public.radar_conteudos(id) on delete restrict,
-  slug          text        not null unique,
-  titulo        text        not null default '',   -- sempre copiado do conteúdo aprovado
-  corpo         text        not null default '',   -- idem (texto; a vitrine é que formata)
-  categoria     text        references public.radar_categorias(slug),
-  status        text        not null default 'rascunho'
-                check (status in ('rascunho','publicado','despublicado')),
-  publicar_em   timestamptz not null default now(),
-  errata        text,
-  requer_revisao boolean    not null default false,
-  motivo_revisao text,
-  criado_por    uuid        references auth.users(id) on delete set null,
-  publicado_por uuid        references auth.users(id) on delete set null,
-  publicado_em  timestamptz,
-  criado_em     timestamptz not null default now(),
-  atualizado_em timestamptz not null default now()
-);
-alter table public.radar_publicacoes add column if not exists formato text;
-alter table public.radar_publicacoes add column if not exists fundamentacao jsonb not null default '[]'::jsonb;
--- um conteúdo tem no máximo UMA publicação (republicar reaproveita a mesma)
-create unique index if not exists radar_publicacoes_conteudo_uk on public.radar_publicacoes (conteudo_id);
-create index if not exists radar_publicacoes_vitrine_idx on public.radar_publicacoes (status, publicar_em desc);
-
-create table if not exists public.radar_publicacao_normas (
-  publicacao_id bigint not null references public.radar_publicacoes(id) on delete cascade,
-  norma_id      bigint not null references public.radar_normas(id) on delete restrict,
-  primary key (publicacao_id, norma_id)
-);
+-- v0.8.0: a antiga publicação dentro do próprio Radar (radar_publicacoes, com a vitrine e a sinalização de revisão)
+-- saiu. A publicação é feita no site da Artecon e registrada em radar_divulgacoes. As tabelas só são apagadas
+-- se estiverem vazias; uma instalação antiga que tenha publicações guardadas mantém as tabelas como arquivo.
+do $$
+begin
+  if to_regclass('public.radar_publicacoes') is not null then
+    if exists (select 1 from public.radar_publicacoes) then
+      raise notice 'radar_publicacoes tem registros antigos: a tabela fica guardada como arquivo (sem uso pelo Radar)';
+      -- arquivo só de leitura: sem as regras antigas, ninguém grava nele; e ele não prende imagens nem normas
+      alter table public.radar_publicacoes drop constraint if exists radar_publicacoes_imagem_id_fkey;
+      alter table public.radar_publicacao_normas drop constraint if exists radar_publicacao_normas_norma_id_fkey;
+      drop policy if exists radar_publicacoes_ins on public.radar_publicacoes;
+      drop policy if exists radar_publicacoes_upd on public.radar_publicacoes;
+      drop policy if exists radar_publicacoes_del on public.radar_publicacoes;
+      revoke insert, update, delete on public.radar_publicacoes, public.radar_publicacao_normas from authenticated, service_role, anon;
+      execute 'drop policy if exists radar_publicacao_normas_ins on public.radar_publicacao_normas';
+      execute 'drop policy if exists radar_publicacao_normas_upd on public.radar_publicacao_normas';
+      execute 'drop policy if exists radar_publicacao_normas_del on public.radar_publicacao_normas';
+    else
+      drop table if exists public.radar_publicacao_normas cascade;
+      drop table public.radar_publicacoes cascade;
+    end if;
+  end if;
+end $$;
+drop function if exists public.radar_fn_publicacao_portao() cascade;
+drop function if exists public.radar_fn_publicacao_efeitos() cascade;
+drop function if exists public.radar_fn_sinalizar() cascade;
+drop function if exists public.radar_sinalizar_assunto(bigint) cascade;
 
 -- imagens dos conteúdos (reduzidas no navegador antes de enviar)
 create table if not exists public.radar_imagens (
@@ -312,9 +310,6 @@ alter table public.radar_conteudos   add column if not exists autor         text
 alter table public.radar_conteudos   add column if not exists fonte_credito text;
 -- conteúdo que não vai ao site (ex.: só para o Informativo Mensal): sai da fila "aprovados a publicar"
 alter table public.radar_conteudos   add column if not exists fora_do_site  boolean not null default false;
-alter table public.radar_publicacoes add column if not exists imagem_id     bigint references public.radar_imagens(id) on delete restrict;
-alter table public.radar_publicacoes add column if not exists autor         text;
-alter table public.radar_publicacoes add column if not exists fonte_credito text;
 
 -- Registro do que foi publicado no site da Artecon (v0.5.0): a publicação é feita no site;
 -- aqui fica a data, o link e a cópia do texto aprovado que saiu.
@@ -336,6 +331,10 @@ create index if not exists radar_divulgacoes_conteudo_idx on public.radar_divulg
 alter table public.radar_divulgacoes add column if not exists fundamentacao jsonb not null default '[]'::jsonb;
 alter table public.radar_divulgacoes add column if not exists conteudo_lido_em timestamptz;
 
+-- v0.8.0: o Diário Oficial da União pelo INLABS é um tipo de leitura a mais
+alter table public.radar_fontes drop constraint if exists radar_fontes_tipo_coletor_check;
+alter table public.radar_fontes add constraint radar_fontes_tipo_coletor_check
+  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs'));
 -- (o formato do cadastro de fontes é conferido pelo gatilho radar_fn_fonte_formato, mais abaixo)
 alter table public.radar_fontes drop constraint if exists radar_fontes_formato;
 
@@ -562,6 +561,27 @@ exception when others then
   return query select 'media'::text, 0, '[]'::jsonb;
 end $$;
 
+-- v0.8.0: nota alta da IA tira a captura de "baixa". A lista de palavras não cobre tudo: notícia importante
+-- escrita sem nenhum termo da lista ficava escondida. Com nota da IA a partir de radar_config.relevancia.nota_promove
+-- (padrão 8), "baixa" vira "média" e o motivo fica anotado. Nunca rebaixa nem passa de "média" (a IA não decide sozinha).
+-- Só vale para a captura que ficou baixa por FALTA de palavras: a que tem qualquer termo negativo da lista
+-- (apreensão, concurso, leilão...) continua baixa, mesmo com termos positivos — essa exclusão é do escritório.
+drop function if exists public.radar_relevancia_com_ia(text, jsonb, smallint);
+create or replace function public.radar_relevancia_com_ia(p_nivel text, p_pontos int, p_motivos jsonb, p_nota smallint)
+returns table (nivel text, motivos jsonb)
+language sql stable security definer set search_path = public as $$
+  select case when p_nivel = 'baixa' and l.sem_negativo and p_nota >= l.limite then 'media' else p_nivel end,
+         case when p_nivel = 'baixa' and l.sem_negativo and p_nota >= l.limite
+              then coalesce(p_motivos, '[]'::jsonb) || jsonb_build_object('termo', 'nota da IA ' || p_nota, 'pontos', 0)
+              else p_motivos end
+    from (select coalesce((select case when jsonb_typeof(c.valor->'nota_promove') = 'number'
+                                       then least(greatest((c.valor->>'nota_promove')::numeric, 0), 11) end
+                             from public.radar_config c where c.chave = 'relevancia'), 8) as limite,
+                 p_pontos >= 0 and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_motivos) = 'array'
+                                                                                 then p_motivos else '[]'::jsonb end) m
+                                               where jsonb_typeof(m->'pontos') = 'number' and (m->>'pontos')::numeric < 0) as sem_negativo) l;
+$$;
+
 create or replace function public.radar_fn_captura_relevancia() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
@@ -572,12 +592,14 @@ begin
     return new;                          -- reavaliação geral em curso (radar_reavaliar_capturas)
   end if;
   if tg_op = 'UPDATE' and new.titulo is not distinct from old.titulo and new.resumo_fonte is not distinct from old.resumo_fonte
-     and new.texto is not distinct from old.texto then
+     and new.texto is not distinct from old.texto and new.ia_nota is not distinct from old.ia_nota then
     new.relevancia := old.relevancia; new.relevancia_pontos := old.relevancia_pontos; new.relevancia_motivos := old.relevancia_motivos;
-    return new;                          -- ninguém marca relevância à mão: só muda quando o item muda (ou as regras)
+    return new;                          -- ninguém marca relevância à mão: só muda quando o item, a nota da IA ou as regras mudam
   end if;
   select r.nivel, r.pontos, r.motivos into new.relevancia, new.relevancia_pontos, new.relevancia_motivos
     from public.radar_avaliar_relevancia(new.titulo, new.resumo_fonte, new.texto) r;
+  select x.nivel, x.motivos into new.relevancia, new.relevancia_motivos
+    from public.radar_relevancia_com_ia(new.relevancia, new.relevancia_pontos, new.relevancia_motivos, new.ia_nota) x;
   return new;
 end $$;
 
@@ -589,11 +611,12 @@ declare v_n int;
 begin
   perform set_config('radar.reavaliando', '1', true);        -- só nesta transação: deixa o gatilho aceitar o valor recalculado
   update public.radar_capturas c
-     set relevancia = r.nivel, relevancia_pontos = r.pontos, relevancia_motivos = r.motivos
+     set relevancia = x.nivel, relevancia_pontos = r.pontos, relevancia_motivos = x.motivos
     from public.radar_capturas k cross join lateral public.radar_avaliar_relevancia(k.titulo, k.resumo_fonte, k.texto) r
+         cross join lateral public.radar_relevancia_com_ia(r.nivel, r.pontos, r.motivos, k.ia_nota) x
    where k.id = c.id
      and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = k.id)
-     and (c.relevancia, c.relevancia_pontos, c.relevancia_motivos) is distinct from (r.nivel, r.pontos, r.motivos);
+     and (c.relevancia, c.relevancia_pontos, c.relevancia_motivos) is distinct from (x.nivel, r.pontos, x.motivos);
   get diagnostics v_n = row_count;
   perform set_config('radar.reavaliando', '', true);
   return v_n;
@@ -616,8 +639,7 @@ begin
   if old.imagem_id is not null and (tg_op = 'DELETE' or new.imagem_id is distinct from old.imagem_id) then
     delete from public.radar_imagens i
      where i.id = old.imagem_id
-       and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id)
-       and not exists (select 1 from public.radar_publicacoes p where p.imagem_id = i.id);
+       and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id);
   end if;
   return null;
 end $$;
@@ -634,8 +656,7 @@ declare v_n int;
 begin
   delete from public.radar_imagens i
    where i.criado_em < now() - make_interval(hours => least(greatest(coalesce(p_horas, 24), 1), 8760))
-     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id)
-     and not exists (select 1 from public.radar_publicacoes p where p.imagem_id = i.id);
+     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id);
   get diagnostics v_n = row_count;
   return v_n;
 end $$;
@@ -793,152 +814,6 @@ language sql stable security definer set search_path = public as $$
   left join public.radar_normas n on n.id = e.norma_id
   where e.assunto_id = p_assunto and e.trecho_conferido and f.oficial;
 $$;
-
--- Portão de publicação.
---  * título e corpo NUNCA vêm de quem grava: são copiados do conteúdo;
---  * publicar exige pessoa (editor/admin), conteúdo aprovado, assunto confirmado
---    oficialmente e ao menos uma evidência conferida em fonte oficial;
---  * depois de publicado, o texto, o endereço e o vínculo ficam travados
---    (para corrigir: despublicar, revisar o conteúdo e publicar de novo; ou errata).
-create or replace function public.radar_fn_publicacao_portao() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare
-  v_conteudo  public.radar_conteudos%rowtype;
-  v_pendencia text;
-begin
-  if tg_op = 'INSERT' then
-    new.fundamentacao := '[]'::jsonb;
-    new.criado_por    := auth.uid();
-    new.criado_em     := now();
-    new.publicado_por := null;
-    new.publicado_em  := null;
-    new.requer_revisao := false;
-    new.motivo_revisao := null;
-  else
-    new.criado_por := public.radar_manter_usuario(old.criado_por, new.criado_por);
-    new.criado_em  := old.criado_em;
-    if new.conteudo_id is distinct from old.conteudo_id and old.status <> 'publicado' then
-      raise exception 'RADAR035: uma publicação não pode ser apontada para outro conteúdo'
-        using errcode = 'P0001';
-    end if;
-  end if;
-
-  if tg_op = 'UPDATE' and old.status = 'publicado' and new.status = 'publicado' then
-    if new.conteudo_id is distinct from old.conteudo_id or new.titulo is distinct from old.titulo
-       or new.corpo is distinct from old.corpo or new.slug is distinct from old.slug then
-      raise exception 'RADAR034: publicação no ar não pode ter texto, endereço ou conteúdo trocados — despublique, revise e publique de novo, ou registre uma errata'
-        using errcode = 'P0001';
-    end if;
-    new.publicado_por := public.radar_manter_usuario(old.publicado_por, new.publicado_por);
-    new.publicado_em  := old.publicado_em;
-    new.formato       := old.formato;
-    new.fundamentacao := old.fundamentacao;
-    new.imagem_id     := old.imagem_id;
-    new.autor         := old.autor;
-    new.fonte_credito := old.fonte_credito;
-    return new;
-  end if;
-
-  -- "for share": uma edição simultânea do conteúdo espera a publicação terminar (e vice-versa)
-  select * into v_conteudo from public.radar_conteudos c where c.id = new.conteudo_id for share;
-  new.titulo  := coalesce(v_conteudo.titulo, '');
-  new.corpo   := coalesce(v_conteudo.corpo, '');
-  new.formato := v_conteudo.formato;
-  new.imagem_id     := v_conteudo.imagem_id;
-  new.autor         := v_conteudo.autor;
-  new.fonte_credito := v_conteudo.fonte_credito;
-  if tg_op = 'INSERT' then
-    -- endereço: o informado (higienizado) ou gerado do título; o nº garante que não repete
-    new.slug := btrim(left(public.radar_slug(coalesce(nullif(btrim(new.slug), ''), new.titulo)), 80), '-');
-    if new.slug = '' then new.slug := 'publicacao'; end if;
-    if exists (select 1 from public.radar_publicacoes p where p.slug = new.slug) then
-      new.slug := new.slug || '-' || new.id;
-      while exists (select 1 from public.radar_publicacoes p where p.slug = new.slug) loop
-        new.slug := new.slug || '-' || substr(md5(random()::text), 1, 4);
-      end loop;
-    end if;
-  else
-    new.slug          := old.slug;        -- endereço não muda depois de criado
-    new.fundamentacao := old.fundamentacao;
-  end if;
-  if new.categoria is null then
-    select a.categoria into new.categoria from public.radar_assuntos a where a.id = v_conteudo.assunto_id;
-  end if;
-
-  if new.status <> 'publicado' then
-    if tg_op = 'UPDATE' then
-      new.publicado_por := public.radar_manter_usuario(old.publicado_por, new.publicado_por);
-      new.publicado_em  := old.publicado_em;
-    end if;
-    return new;
-  end if;
-
-  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
-    raise exception 'RADAR033: a publicação exige um usuário com perfil de editor ou administrador (o robô e a IA não publicam)'
-      using errcode = 'P0001';
-  end if;
-  if v_conteudo.status is distinct from 'aprovado' then
-    raise exception 'RADAR030: só é possível publicar conteúdo aprovado (situação atual: %)',
-      coalesce(v_conteudo.status, 'inexistente') using errcode = 'P0001';
-  end if;
-  v_pendencia := public.radar_pendencia_assunto(v_conteudo.assunto_id);
-  if v_pendencia is not null then
-    raise exception '%', v_pendencia using errcode = 'P0001';
-  end if;
-
-  -- A fundamentação que o público vê é uma fotografia das evidências conferidas
-  -- em fonte oficial no momento da publicação (fica travada junto com o texto).
-  select coalesce(jsonb_agg(jsonb_build_object(
-           'orgao', f.orgao, 'fonte', f.nome, 'titulo', c.titulo, 'url', c.url,
-           'data', c.data_publicacao, 'dispositivo', e.dispositivo, 'trecho', e.trecho_literal,
-           'natureza', e.natureza,
-           'norma', case when n.id is not null then n.tipo || ' nº ' || n.numero || ' — ' || n.orgao end,
-           'norma_url', n.url_oficial) order by e.id), '[]'::jsonb)
-    into new.fundamentacao
-  from public.radar_evidencias e
-  join public.radar_capturas c on c.id = e.captura_id
-  join public.radar_fontes   f on f.id = c.fonte_id
-  left join public.radar_normas n on n.id = e.norma_id
-  where e.assunto_id = v_conteudo.assunto_id and e.trecho_conferido and f.oficial;
-
-  new.publicado_por  := auth.uid();
-  new.publicado_em   := now();
-  new.requer_revisao := false;
-  new.motivo_revisao := null;
-  if tg_op = 'UPDATE' and new.errata is not distinct from old.errata
-     and (new.titulo is distinct from old.titulo or new.corpo is distinct from old.corpo) then
-    new.errata := null;       -- voltou ao ar com texto NOVO: a errata do texto antigo não o acompanha
-  end if;
-  return new;
-end $$;
-
--- Depois de publicar: o assunto passa a "publicado" e as normas citadas ficam
--- vinculadas à publicação (base do acompanhamento de normas alteradas).
-create or replace function public.radar_fn_publicacao_efeitos() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare
-  v_assunto bigint;
-begin
-  select c.assunto_id into v_assunto from public.radar_conteudos c where c.id = new.conteudo_id;
-  if new.status = 'publicado' and (tg_op = 'INSERT' or old.status is distinct from 'publicado') then
-    update public.radar_assuntos set status = 'publicado' where id = v_assunto and status <> 'publicado';
-    delete from public.radar_publicacao_normas where publicacao_id = new.id;
-    insert into public.radar_publicacao_normas (publicacao_id, norma_id)
-    select distinct new.id, e.norma_id
-    from public.radar_evidencias e
-    join public.radar_capturas c on c.id = e.captura_id
-    join public.radar_fontes   f on f.id = c.fonte_id
-    where e.assunto_id = v_assunto and e.norma_id is not null and e.trecho_conferido and f.oficial
-    on conflict do nothing;
-  elsif tg_op = 'UPDATE' and old.status = 'publicado' and new.status <> 'publicado' then
-    -- saiu do ar: se nada mais do assunto está publicado, ele volta a aparecer como "em andamento"
-    update public.radar_assuntos a set status = 'aprovado'
-     where a.id = v_assunto and a.status = 'publicado'
-       and not exists (select 1 from public.radar_publicacoes p join public.radar_conteudos c on c.id = p.conteudo_id
-                       where c.assunto_id = v_assunto and p.status = 'publicado');
-  end if;
-  return null;
-end $$;
 
 -- Uso da IA: quem registra é sempre o próprio usuário, na hora em que acontece
 create or replace function public.radar_fn_ia_uso() returns trigger
@@ -1106,9 +981,7 @@ begin
     update public.radar_assuntos a set status = 'aprovado'
      where a.id = v_assunto and a.status = 'publicado'
        and not exists (select 1 from public.radar_divulgacoes d join public.radar_conteudos c on c.id = d.conteudo_id
-                       where c.assunto_id = v_assunto)
-       and not exists (select 1 from public.radar_publicacoes p join public.radar_conteudos c on c.id = p.conteudo_id
-                       where c.assunto_id = v_assunto and p.status = 'publicado');
+                       where c.assunto_id = v_assunto);
   end if;
   return null;
 end $$;
@@ -1420,46 +1293,6 @@ begin
     order by u.email;
 end $$;
 
--- Se um pré-requisito cai DEPOIS da publicação (conteúdo volta para revisão,
--- assunto deixa de estar confirmado, evidência deixa de conferir, fonte deixa
--- de ser oficial), a publicação é sinalizada para revisão. A retirada do ar é
--- decisão humana — o sistema avisa, não despublica sozinho.
-create or replace function public.radar_sinalizar_assunto(p_assunto bigint) returns void
-language plpgsql security definer set search_path = public as $$
-declare
-  v_pendencia text := public.radar_pendencia_assunto(p_assunto);
-begin
-  update public.radar_publicacoes p
-     set requer_revisao = true,
-         motivo_revisao = coalesce(v_pendencia, 'o conteúdo publicado voltou para revisão ou foi rejeitado')
-    from public.radar_conteudos c
-   where c.id = p.conteudo_id and c.assunto_id = p_assunto and p.status = 'publicado'
-     and (v_pendencia is not null or c.status <> 'aprovado')
-     and (p.requer_revisao is not true
-          or p.motivo_revisao is distinct from coalesce(v_pendencia, 'o conteúdo publicado voltou para revisão ou foi rejeitado'));
-end $$;
-
-create or replace function public.radar_fn_sinalizar() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare
-  r record;
-begin
-  if tg_table_name = 'radar_fontes' then
-    if new.oficial is distinct from old.oficial then
-      for r in select distinct e.assunto_id from public.radar_evidencias e
-               join public.radar_capturas c on c.id = e.captura_id where c.fonte_id = new.id loop
-        perform public.radar_sinalizar_assunto(r.assunto_id);
-      end loop;
-    end if;
-  elsif tg_table_name = 'radar_assuntos' then
-    perform public.radar_sinalizar_assunto(new.id);
-  elsif tg_op = 'DELETE' then
-    perform public.radar_sinalizar_assunto(old.assunto_id);
-  else
-    perform public.radar_sinalizar_assunto(new.assunto_id);
-  end if;
-  return null;
-end $$;
 
 -- Saúde da fonte é atualizada pelo próprio banco ao fechar cada execução
 create or replace function public.radar_fn_execucao_saude() returns trigger
@@ -1498,10 +1331,6 @@ drop trigger if exists radar_tg_conteudos_atualizado on public.radar_conteudos;
 create trigger radar_tg_conteudos_atualizado before update on public.radar_conteudos
   for each row execute function public.radar_fn_atualizado_em();
 
-drop trigger if exists radar_tg_publicacoes_atualizado on public.radar_publicacoes;
-create trigger radar_tg_publicacoes_atualizado before update on public.radar_publicacoes
-  for each row execute function public.radar_fn_atualizado_em();
-
 drop trigger if exists radar_tg_normas_atualizado on public.radar_normas;
 create trigger radar_tg_normas_atualizado before update on public.radar_normas
   for each row execute function public.radar_fn_atualizado_em();
@@ -1533,22 +1362,6 @@ drop trigger if exists radar_tg_conteudo_aprovacao on public.radar_conteudos;
 create trigger radar_tg_conteudo_aprovacao before insert or update on public.radar_conteudos
   for each row execute function public.radar_fn_conteudo_aprovacao();
 
-drop trigger if exists radar_tg_publicacao_portao on public.radar_publicacoes;
-create trigger radar_tg_publicacao_portao before insert or update on public.radar_publicacoes
-  for each row execute function public.radar_fn_publicacao_portao();
-
-drop trigger if exists radar_tg_sinalizar on public.radar_assuntos;
-create trigger radar_tg_sinalizar after update on public.radar_assuntos
-  for each row execute function public.radar_fn_sinalizar();
-drop trigger if exists radar_tg_sinalizar on public.radar_conteudos;
-create trigger radar_tg_sinalizar after update on public.radar_conteudos
-  for each row execute function public.radar_fn_sinalizar();
-drop trigger if exists radar_tg_sinalizar on public.radar_evidencias;
-create trigger radar_tg_sinalizar after update or delete on public.radar_evidencias
-  for each row execute function public.radar_fn_sinalizar();
-drop trigger if exists radar_tg_sinalizar on public.radar_fontes;
-create trigger radar_tg_sinalizar after update of oficial on public.radar_fontes
-  for each row execute function public.radar_fn_sinalizar();
 
 drop trigger if exists radar_tg_informativo on public.radar_informativos;
 create trigger radar_tg_informativo before insert or update on public.radar_informativos
@@ -1583,10 +1396,6 @@ drop trigger if exists radar_tg_ultimo_admin on public.radar_perfis;
 create trigger radar_tg_ultimo_admin after update or delete on public.radar_perfis
   for each row execute function public.radar_fn_ultimo_admin();
 
-drop trigger if exists radar_tg_publicacao_efeitos on public.radar_publicacoes;
-create trigger radar_tg_publicacao_efeitos after insert or update on public.radar_publicacoes
-  for each row execute function public.radar_fn_publicacao_efeitos();
-
 drop trigger if exists radar_tg_execucao_saude on public.radar_execucoes;
 create trigger radar_tg_execucao_saude after insert or update on public.radar_execucoes
   for each row execute function public.radar_fn_execucao_saude();
@@ -1603,7 +1412,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['radar_perfis','radar_fontes','radar_normas','radar_assuntos',
-                           'radar_evidencias','radar_conteudos','radar_publicacoes',
+                           'radar_evidencias','radar_conteudos',
                            'radar_informativos','radar_config','radar_divulgacoes'] loop
     execute format('drop trigger if exists radar_tg_auditar on public.%I', t);
     execute format('create trigger radar_tg_auditar after insert or update or delete on public.%I
@@ -1678,15 +1487,15 @@ select f.*
                    from public.radar_config c where c.chave = 'relevancia'), 10);
 
 -- Assuntos com os números que a lista do dashboard mostra
-create or replace view public.radar_v_assuntos
+-- drop + create: a coluna publicacoes_no_ar saiu na v0.8.0 (create or replace não remove coluna)
+drop view if exists public.radar_v_assuntos;
+create view public.radar_v_assuntos
 with (security_invoker = true) as
 select a.*,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id) as evidencias,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id and e.trecho_conferido) as evidencias_conferidas,
        (select count(*) from public.radar_conteudos c where c.assunto_id = a.id) as conteudos,
        (select count(*) from public.radar_conteudos c where c.assunto_id = a.id and c.status = 'em_revisao') as em_revisao,
-       (select count(*) from public.radar_publicacoes p join public.radar_conteudos c on c.id = p.conteudo_id
-         where c.assunto_id = a.id and p.status = 'publicado') as publicacoes_no_ar,
        (select string_agg(distinct f.orgao, ' · ') from public.radar_assunto_capturas ac
           join public.radar_capturas c on c.id = ac.captura_id
           join public.radar_fontes f on f.id = c.fonte_id where ac.assunto_id = a.id) as orgaos
@@ -1715,9 +1524,6 @@ select (select count(*) from public.radar_v_saude_fontes where ativo) as fontes_
        (select count(*) from public.radar_assuntos
          where situacao_confirmacao = 'em_verificacao' and status not in ('publicado','ignorado','arquivado')) as em_verificacao,
        (select count(*) from public.radar_conteudos where status = 'em_revisao') as aguardando_aprovacao,
-       (select count(*) from public.radar_publicacoes where status = 'publicado' and publicar_em <= now()) as no_ar,
-       (select count(*) from public.radar_publicacoes where status = 'publicado' and requer_revisao) as requer_revisao,
-       (select count(*) from public.radar_publicacoes where status = 'publicado' and publicar_em > now()) as agendadas,
        (select count(*) from public.radar_v_fila where relevancia = 'baixa') as na_fila_baixa,
        (select count(*) from public.radar_v_fila where relevancia = 'alta') as na_fila_alta,
        (select count(*) from public.radar_v_em_alta) as em_alta,
@@ -1756,8 +1562,8 @@ declare t text;
 begin
   foreach t in array array['radar_instalacoes','radar_perfis','radar_categorias','radar_fontes',
       'radar_execucoes','radar_capturas','radar_capturas_versoes','radar_normas','radar_assuntos',
-      'radar_assunto_capturas','radar_evidencias','radar_conteudos','radar_publicacoes',
-      'radar_publicacao_normas','radar_auditoria','radar_ia_uso','radar_imagens','radar_config',
+      'radar_assunto_capturas','radar_evidencias','radar_conteudos',
+      'radar_auditoria','radar_ia_uso','radar_imagens','radar_config',
       'radar_informativos','radar_informativo_itens','radar_divulgacoes'] loop
     execute format('alter table public.%I enable row level security', t);
     -- parte do zero: o Supabase concede tudo a esses papéis por padrão
@@ -1768,8 +1574,10 @@ begin
 end $$;
 
 -- service_role (robô e, no Bloco 2, a função de IA): só o que precisa gravar.
--- NÃO grava auditoria, publicações, perfis, fontes, versões nem apaga nada.
+-- NÃO grava auditoria, perfis, fontes, versões nem apaga nada.
 grant insert, update on public.radar_execucoes, public.radar_capturas to service_role;
+-- v0.8.0: o robô registra a publicação que encontrou no site (só inclui; as regras do registro valem igual)
+grant insert on public.radar_divulgacoes to service_role;
 grant insert, update on public.radar_assuntos, public.radar_assunto_capturas, public.radar_evidencias,
                         public.radar_conteudos, public.radar_normas to service_role;
 
@@ -1859,7 +1667,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['radar_normas','radar_assuntos','radar_assunto_capturas',
-                           'radar_evidencias','radar_conteudos','radar_publicacao_normas',
+                           'radar_evidencias','radar_conteudos',
                            'radar_imagens','radar_informativos','radar_informativo_itens','radar_divulgacoes'] loop
     execute format('drop policy if exists %I on public.%I', t || '_sel', t);
     execute format('create policy %I on public.%I for select to authenticated
@@ -1881,22 +1689,6 @@ end $$;
 drop policy if exists radar_informativo_itens_del on public.radar_informativo_itens;
 create policy radar_informativo_itens_del on public.radar_informativo_itens for delete to authenticated
   using ((select public.radar_papel()) in ('admin','editor'));
-
--- publicações: a vitrine pública deixou de existir na v0.5.0 (a política antiga é removida)
-drop policy if exists radar_publicacoes_vitrine on public.radar_publicacoes;
-drop policy if exists radar_publicacoes_sel on public.radar_publicacoes;
-create policy radar_publicacoes_sel on public.radar_publicacoes for select to authenticated
-  using ((select public.radar_papel()) is not null);
-drop policy if exists radar_publicacoes_ins on public.radar_publicacoes;
-create policy radar_publicacoes_ins on public.radar_publicacoes for insert to authenticated
-  with check ((select public.radar_papel()) in ('admin','editor'));
-drop policy if exists radar_publicacoes_upd on public.radar_publicacoes;
-create policy radar_publicacoes_upd on public.radar_publicacoes for update to authenticated
-  using ((select public.radar_papel()) in ('admin','editor'))
-  with check ((select public.radar_papel()) in ('admin','editor'));
-drop policy if exists radar_publicacoes_del on public.radar_publicacoes;
-create policy radar_publicacoes_del on public.radar_publicacoes for delete to authenticated
-  using ((select public.radar_papel()) = 'admin');
 
 -- imagens: sem acesso público (a política antiga da vitrine é removida)
 drop policy if exists radar_imagens_vitrine on public.radar_imagens;
@@ -1981,7 +1773,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 21 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.7.1).
+-- Esperado: 19 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.8.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos
