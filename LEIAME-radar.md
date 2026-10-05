@@ -410,11 +410,14 @@ para o campo e salve. Ele não vai no repositório porque traz nomes e celulares
 - Qualquer evidência conferida em fonte oficial satisfaz a exigência, inclusive as
   marcadas como "interpretação técnica" ou "hipótese", e o sistema não avalia se o trecho
   tem relação com o texto escrito. Era assim na antiga publicação e continua.
-- O Radar não publica nem altera nada no site da Artecon: o registro depende de alguém
-  informar o link. Um conteúdo pode ter mais de um registro (site, rede social,
+- O Radar não publica nem altera nada no site da Artecon (o login do painel do site tem
+  reCAPTCHA, que não deve ser contornado). Desde a v0.8.0, o robô **encontra sozinho** a notícia
+  publicada em artecon.cnt.br/news e preenche o registro (link e data) quando o título e a maior
+  parte do texto batem com um conteúdo aprovado sem registro; na dúvida, não registra e o
+  registro manual continua valendo. Um conteúdo pode ter mais de um registro (site, rede social,
   republicação).
-- As tabelas e regras da antiga página pública (`radar_publicacoes`) continuam no banco,
-  sem uso pelas telas, para o caso de a publicação automática voltar na parte oficial.
+- A antiga página pública (`radar_publicacoes`) saiu na v0.8.0. As tabelas só são apagadas se
+  estiverem vazias; uma instalação antiga com registros as mantém como arquivo, sem uso.
 - Uma edição fechada do informativo aponta para os conteúdos, não guarda cópia do texto:
   o registro definitivo é o PDF que você salva e assina. Se um artigo for alterado depois
   do fechamento, a edição e a página de impressão avisam (mesmo que ele tenha sido
@@ -493,6 +496,35 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
 | `texto_do_feed` | feed RSS que já traz a notícia inteira (`content:encoded`): o texto vem do feed e a página da notícia não é aberta (site lento ou que recusa robôs) |
 | `origem: "email"` | fonte alimentada por fora (boletim lido no e-mail): o robô não visita o endereço |
 
+### Publicação no site, avisos e resumo semanal (v0.8.0)
+
+- **Registro automático:** a cada coleta, o robô lê `artecon.cnt.br/news`, abre as notícias ainda não
+  registradas e, quando uma corresponde a um conteúdo aprovado sem registro (título parecido e a maior
+  parte do texto presente), registra link e data em "Publicações no site". Para desligar ou mudar o
+  endereço: Configurações, chave `site` = `{"desligado": true}` ou `{"lista": "...", "padrao": "..."}`.
+- **Texto do site diferente:** se a página publicada deixar de trazer a maior parte do texto registrado,
+  abre o aviso "Radar: texto do site diferente do aprovado" (fecha sozinho quando volta a bater).
+- **Para o site:** no conteúdo aprovado, os botões estão numerados (1. título, 2. texto, 3. imagem) e a
+  tela indica a categoria correspondente no site.
+- **Resumo semanal:** toda segunda-feira, 08h47, um único aviso "Radar: resumo da semana" com as notícias
+  de relevância alta (ou nota da IA 7 ou mais), agrupadas por tema. O anterior é fechado. Como o
+  repositório é público, o boletim da ITC aparece só como contagem. Rodar à mão: Actions →
+  "Radar — resumo semanal" → Run workflow.
+- **Nota da IA na relevância:** captura que ficou "baixa" por falta de palavras da lista sobe para
+  "média" quando a IA dá nota 8 ou mais (`nota_promove` em Configurações → Relevância; 11 desliga).
+  A que foi rebaixada por termos negativos (apreensão, concurso, leilão...) continua baixa.
+
+### Diário Oficial pelo INLABS (v0.8.0)
+
+A fonte "Diário Oficial da União — atos da Receita, PGFN e CGSN (INLABS)" lê os XML oficiais do DOU
+(seção 1 e edição extra) e guarda só os atos normativos desses órgãos, sem as unidades regionais.
+Ela entra **desligada**. Para ligar:
+1. Cadastre-se de graça em https://inlabs.in.gov.br.
+2. GitHub → repositório `radar` → Settings → Secrets and variables → Actions → New repository secret:
+   `INLABS_EMAIL` (o e-mail do cadastro) e `INLABS_SENHA` (a senha). Nunca mande a senha pelo chat.
+3. Radar → Fontes → a fonte do INLABS → Configurar → Fonte ativa → Salvar.
+Os filtros (órgãos, tipos de ato, regionais excluídas, dias) ficam em "Outras opções de leitura".
+
 ### Fontes novas de outubro/2026
 
 Rode uma vez `sql/radar-fontes-novas-2026-10.sql` no SQL Editor (pode rodar de novo sem
@@ -513,6 +545,11 @@ boletins da ITC entra uma vez só). O robô não visita essa fonte. Os boletins 
 repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
+
+**Da v0.7.1 para a v0.8.0:** Supabase radar-artecon → SQL Editor → execute
+`sql/radar-setup-v0.8.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar `v0.8.0`) e,
+se ainda não rodou, `sql/radar-fontes-novas-2026-10.sql`. A tela e o robô chegam pelo repositório.
+A função `radar-ia` não muda. Para o DOU completo (INLABS), veja "Diário Oficial pelo INLABS".
 
 **Da v0.7.0 para a v0.7.1:** Supabase radar-artecon → SQL Editor → cole e execute
 `sql/radar-setup-v0.7.1.sql` inteiro e guarde a evidência (a linha `instalacoes concluidas` deve
