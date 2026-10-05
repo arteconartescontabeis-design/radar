@@ -410,7 +410,7 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     fund = limpo.execute("select fundamentacao from radar_divulgacoes").fetchone()[0]
     assert len(fund) == 1 and fund[0]["trecho"] == TRECHO and fund[0]["dispositivo"] == "art. 2º"      # só o trecho conferido
     assert limpo.execute("select status from radar_assuntos where titulo like 'IN RFB%'").fetchone()[0] == "publicado"
-    assert limpo.execute("select count(*) from radar_publicacoes").fetchone()[0] == 0
+    assert limpo.execute("select to_regclass('radar_publicacoes')").fetchone()[0] is None       # v0.8.0: a publicação antiga saiu
     aviso = pagina.locator(".registro-site")
     assert "Publicado no site" in aviso.inner_text() and "02/10/2026" in aviso.inner_text()
     assert aviso.locator("a").first.get_attribute("href") == "https://artecon.cnt.br/news/cbs-na-transicao"
@@ -1870,7 +1870,7 @@ def test_nao_existe_mais_pagina_publica_e_o_visitante_nao_le_nada(pagina, limpo)
     with como_editor(limpo) as ed:
         ed.execute("insert into radar_divulgacoes (conteudo_id, url) values (%s, 'https://artecon.cnt.br/news/x')", (c,))
     anon = {"Authorization": "Bearer " + jwt("anon")}
-    for consulta in ["radar_publicacoes?select=titulo", "radar_divulgacoes", "radar_v_divulgacoes", "radar_conteudos", "radar_categorias",
+    for consulta in ["radar_divulgacoes", "radar_v_divulgacoes", "radar_conteudos", "radar_categorias",
                      "radar_imagens", "radar_informativos", "radar_config", "radar_v_painel"]:
         assert requests.get(f"{BASE}/rest/v1/{consulta}", headers=anon).status_code in (401, 403), consulta
     # a tela de entrada não pede nada ao banco antes do login

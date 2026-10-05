@@ -461,7 +461,7 @@ def test_api_publica_nao_expoe_dados_internos(cenario):
     for tabela in ["radar_capturas", "radar_fontes", "radar_execucoes", "radar_auditoria", "radar_perfis", "radar_assuntos"]:
         assert requests.get(f"{API}/{tabela}", timeout=5).status_code in (401, 403), tabela
         assert requests.post(f"{API}/{tabela}", json={}, timeout=5).status_code in (401, 403), tabela
-    for consulta in ["radar_publicacoes?select=slug,titulo,corpo", "radar_publicacoes?select=criado_por", "radar_imagens?select=id",
+    for consulta in ["radar_imagens?select=id",
                      "radar_divulgacoes", "radar_v_divulgacoes", "radar_informativos", "radar_config"]:
         assert requests.get(f"{API}/{consulta}", timeout=5).status_code in (401, 403), consulta
     assert requests.get(f"{API}/radar_v_saude_fontes", timeout=5).status_code in (401, 403)
@@ -541,12 +541,14 @@ def test_gravar_captura_repetida_nao_sobrescreve_o_que_ja_esta_guardado(cenario)
 
 def test_robo_nao_consegue_publicar_nem_mexer_na_auditoria_pela_api(cenario):
     chave = {"apikey": jwt("service_role"), "Authorization": "Bearer " + jwt("service_role")}
-    for tabela, corpo in [("radar_publicacoes", {"conteudo_id": 1, "slug": "x", "status": "publicado"}),
-                          ("radar_auditoria", {"tabela": "x", "registro_id": "1", "acao": "FORJADO"}),
+    for tabela, corpo in [("radar_auditoria", {"tabela": "x", "registro_id": "1", "acao": "FORJADO"}),
                           ("radar_perfis", {"user_id": "00000000-0000-0000-0000-000000000009", "nome": "x", "papel": "admin"})]:
         assert requests.post(f"{API}/{tabela}", json=corpo, headers=chave, timeout=5).status_code in (401, 403), tabela
     assert requests.delete(f"{API}/radar_capturas?id=gt.0", headers=chave, timeout=5).status_code in (401, 403)
     assert requests.patch(f"{API}/radar_fontes?id=gt.0", json={"oficial": False}, headers=chave, timeout=5).status_code in (401, 403)
+    # v0.8.0: o robô inclui o registro de publicação que achou no site, mas não corrige nem apaga registros
+    assert requests.patch(f"{API}/radar_divulgacoes?id=gt.0", json={"url": "https://x.com"}, headers=chave, timeout=5).status_code in (401, 403)
+    assert requests.delete(f"{API}/radar_divulgacoes?id=gt.0", headers=chave, timeout=5).status_code in (401, 403)
 
 
 def test_item_isolado_sem_texto_nao_derruba_a_saude_da_fonte(cenario):

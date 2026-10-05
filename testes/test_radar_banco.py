@@ -39,10 +39,10 @@ def aprovar(conteudo, uid=EDITOR):
 
 
 # ------------------------------------------------------------------ instalação
-def test_instalacao_cria_21_tabelas_com_rls(db):
+def test_instalacao_cria_19_tabelas_com_rls(db):
     linhas = db.execute("""select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
                            where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'""").fetchall()
-    assert len(linhas) == 21
+    assert len(linhas) == 19       # v0.8.0: saíram radar_publicacoes e radar_publicacao_normas
     assert all(rls for _, rls in linhas), [n for n, rls in linhas if not rls]
 
 
@@ -70,7 +70,7 @@ def test_setup_e_idempotente(db):
     assert db.execute("select frequencia_horas, ativo from radar_fontes where slug = 'pgfn-noticias'").fetchone() == (9, False)
     db.execute("update radar_fontes set frequencia_horas = 6, ativo = true where slug = 'pgfn-noticias'")
     reg = db.execute("select antes, depois from radar_instalacoes order by id desc limit 1").fetchone()
-    assert len(reg[0]) == 21 and len(reg[1]) == 21   # 2ª execução: já havia 21 antes
+    assert len(reg[0]) == 19 and len(reg[1]) == 19   # 2ª execução: já havia 19 antes
 
 
 def test_fontes_do_sql_espelham_o_json_do_robo(db):
@@ -88,12 +88,12 @@ def test_anonimo_nao_le_nada_do_radar(limpo):
     no_ar(limpo)
     tabelas = [r[0] for r in limpo.execute("""select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                              where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'radar\\_%'""").fetchall()]
-    assert len(tabelas) == 28 and "radar_publicacoes" in tabelas and "radar_v_divulgacoes" in tabelas
+    assert len(tabelas) == 26 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas
     with como("anon") as c:
         for tabela in tabelas:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 c.execute(f"select * from {tabela}")
-        for sql in ["select titulo from radar_publicacoes", "select count(*) from radar_categorias", "select id from radar_imagens",
+        for sql in ["select titulo from radar_divulgacoes", "select count(*) from radar_categorias", "select id from radar_imagens",
                     "select count(*) from radar_divulgacoes"]:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 c.execute(sql)
@@ -269,13 +269,6 @@ def test_texto_alterado_depois_de_aprovado_volta_para_revisao(limpo):
 
 
 # ------------------------------------------------------------------ publicação
-def publicar(conteudo, uid=EDITOR, slug="cbs-o-que-muda", quando="now()"):
-    with como("authenticated", uid) as c:
-        return c.execute(f"""insert into radar_publicacoes (conteudo_id, slug, status, publicar_em)
-                             values (%s, %s, 'publicado', {quando})
-                             returning id, publicado_por::text""", (conteudo, slug)).fetchone()
-
-
 def cenario_publicavel(db, situacao="confirmado_oficialmente", trecho="à alíquota de 0,9% (nove décimos por cento)",
                        slug_fonte="rfb-normas"):
     cap = nova_captura(db, slug=slug_fonte)
@@ -284,106 +277,6 @@ def cenario_publicavel(db, situacao="confirmado_oficialmente", trecho="à alíqu
         db.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a, cap, trecho))
     c1 = novo_conteudo(db, a)
     return a, c1
-
-
-def test_nao_publica_conteudo_nao_aprovado(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    with pytest.raises(psycopg.errors.RaiseException, match="RADAR030"):
-        publicar(c1)
-
-
-def test_nao_publica_assunto_sem_confirmacao_oficial(limpo):
-    for i, situacao in enumerate(["confirmado_fontes_confiaveis", "em_verificacao", "nao_confirmado", "divergencia_identificada"]):
-        limpo.execute("truncate radar_assuntos, radar_capturas restart identity cascade")
-        _, c1 = cenario_publicavel(limpo, situacao)
-        aprovar(c1)
-        with pytest.raises(psycopg.errors.RaiseException, match="RADAR031"):
-            publicar(c1, slug=f"s{i}")
-
-
-def test_nao_publica_sem_evidencia(limpo):
-    _, c1 = cenario_publicavel(limpo, trecho=None)
-    aprovar(c1)
-    with pytest.raises(psycopg.errors.RaiseException, match="RADAR032.*FUNDAMENTAÇÃO NÃO CONFIRMADA"):
-        publicar(c1)
-
-
-def test_nao_publica_com_evidencia_que_nao_confere(limpo):
-    _, c1 = cenario_publicavel(limpo, trecho="Art. 7º Fica instituída multa de 75% sobre o valor não destacado")
-    aprovar(c1)
-    with pytest.raises(psycopg.errors.RaiseException, match="RADAR032"):
-        publicar(c1)
-
-
-def test_evidencia_de_fonte_nao_oficial_nao_libera_publicacao(limpo):
-    limpo.execute("""insert into radar_fontes (slug, nome, orgao, oficial, tipo_coletor, url)
-                     values ('teste-portal', 'Portal de notícias', 'Imprensa', false, 'rss', 'https://portal.exemplo/rss')""")
-    _, c1 = cenario_publicavel(limpo, slug_fonte="teste-portal")
-    aprovar(c1)
-    with pytest.raises(psycopg.errors.RaiseException, match="RADAR032"):
-        publicar(c1)
-
-
-def test_publica_quando_tudo_confere(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    aprovar(c1)
-    pid, quem = publicar(c1)
-    assert quem == EDITOR
-    with como("authenticated", LEITOR) as c:
-        assert c.execute("select slug from radar_publicacoes").fetchall() == [("cbs-o-que-muda",)]
-
-
-
-
-
-def test_rascunho_de_publicacao_nao_passa_pelo_portao(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    with como("authenticated", EDITOR) as c:   # rascunho não passa pelo portão
-        pid = c.execute("insert into radar_publicacoes (conteudo_id, slug) values (%s, 'r') returning id", (c1,)).fetchone()[0]
-        with pytest.raises(psycopg.errors.RaiseException, match="RADAR030"):
-            c.execute("update radar_publicacoes set status = 'publicado' where id = %s", (pid,))
-    aprovar(c1)
-    with como("authenticated", EDITOR) as c:
-        c.execute("update radar_publicacoes set status = 'publicado' where id = %s", (pid,))
-        c.execute("update radar_publicacoes set status = 'despublicado' where id = %s", (pid,))
-
-
-def test_anonimo_nao_grava_publicacao(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    aprovar(c1)
-    pid, _ = publicar(c1)
-    with como("anon") as c:
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            c.execute("update radar_publicacoes set titulo = 'invadido' where id = %s", (pid,))
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            c.execute("delete from radar_publicacoes")
-
-
-def test_errata_em_publicacao_ja_publicada_e_permitida(limpo):
-    a, c1 = cenario_publicavel(limpo)
-    aprovar(c1)
-    pid, _ = publicar(c1)
-    limpo.execute("update radar_assuntos set situacao_confirmacao = 'divergencia_identificada' where id = %s", (a,))
-    with como("authenticated", EDITOR) as c:
-        assert c.execute("update radar_publicacoes set errata = 'Corrigida a alíquota.' where id = %s", (pid,)).rowcount == 1
-        aprovar(c1)   # (a mudança no assunto não derruba a aprovação do texto; o que barra é o portão)
-        # mas REpublicar depois de despublicar passa de novo pelo portão
-        c.execute("update radar_publicacoes set status = 'despublicado' where id = %s", (pid,))
-        with pytest.raises(psycopg.errors.RaiseException, match="RADAR031"):
-            c.execute("update radar_publicacoes set status = 'publicado' where id = %s", (pid,))
-
-
-def test_vinculo_publicacao_norma(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    aprovar(c1)
-    pid, _ = publicar(c1)
-    with como("authenticated", EDITOR) as c:
-        n = c.execute("""insert into radar_normas (tipo, numero, orgao, data_norma) values ('Instrução Normativa', '2290', 'RFB', '2026-09-30')
-                         returning id""").fetchone()[0]
-        c.execute("insert into radar_publicacao_normas values (%s, %s)", (pid, n))
-    # norma vinculada a publicação não pode ser apagada por engano
-    with pytest.raises(psycopg.errors.ForeignKeyViolation):
-        limpo.execute("delete from radar_normas where id = %s", (n,))
 
 
 # ------------------------------------------------------------------- auditoria
@@ -468,59 +361,10 @@ def test_reversao_remove_tudo_e_o_setup_reinstala():
 
 # ------------------------------------------- atalhos tentados pela revisão independente
 def no_ar(db):
+    """Conteúdo aprovado e registrado como publicado no site (v0.8.0: o registro substitui a publicação antiga)."""
     a, c1 = cenario_publicavel(db)
     aprovar(c1)
-    pid, _ = publicar(c1)
-    return a, c1, pid
-
-
-def test_titulo_e_corpo_da_publicacao_vem_sempre_do_conteudo_aprovado(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    aprovar(c1)
-    with como("authenticated", EDITOR) as c:
-        linha = c.execute("""insert into radar_publicacoes (conteudo_id, slug, titulo, corpo, status)
-                             values (%s, 'x', 'Qualquer coisa', '<script>alert(1)</script>', 'publicado')
-                             returning titulo, corpo""", (c1,)).fetchone()
-    assert linha == ("CBS: o que muda", "Texto do informativo.")
-
-
-def test_publicacao_no_ar_nao_aceita_troca_de_texto_endereco_nem_conteudo(limpo):
-    a, c1, pid = no_ar(limpo)
-    outro = novo_conteudo(limpo, novo_assunto(limpo, "em_verificacao"), "rascunho")
-    with como("authenticated", EDITOR) as c:
-        for campo, valor in [("conteudo_id", outro), ("titulo", "FALSO"), ("corpo", "texto nunca aprovado"), ("slug", "outro-endereco")]:
-            with pytest.raises(psycopg.errors.RaiseException, match="RADAR034"):
-                c.execute(f"update radar_publicacoes set {campo} = %s where id = %s", (valor, pid))
-        # o que continua permitido no ar: errata, categoria e reagendamento
-        assert c.execute("update radar_publicacoes set errata = 'x', categoria = 'federal', publicar_em = now() where id = %s", (pid,)).rowcount == 1
-    assert limpo.execute("select titulo, corpo, conteudo_id from radar_publicacoes where id = %s", (pid,)).fetchone() == \
-        ("CBS: o que muda", "Texto do informativo.", c1)
-
-
-def test_autoria_da_publicacao_nao_pode_ser_forjada(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    aprovar(c1)
-    with como("authenticated", EDITOR) as c:
-        linha = c.execute("""insert into radar_publicacoes (conteudo_id, slug, status, criado_por, publicado_por, publicado_em)
-                             values (%s, 'y', 'publicado', %s, %s, '2020-01-01')
-                             returning criado_por::text, publicado_por::text, publicado_em > now() - interval '1 minute', id""",
-                          (c1, ADMIN, ADMIN)).fetchone()
-        assert linha[:3] == (EDITOR, EDITOR, True)
-        depois = c.execute("update radar_publicacoes set criado_por = %s, publicado_por = %s, criado_em = '2020-01-01' where id = %s "
-                           "returning criado_por::text, publicado_por::text, criado_em > now() - interval '1 minute'",
-                           (ADMIN, ADMIN, linha[3])).fetchone()
-        assert depois == (EDITOR, EDITOR, True)
-
-
-def test_robo_e_ia_nao_publicam_nem_tem_permissao_na_tabela(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    aprovar(c1)
-    with como("service_role") as c:
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            c.execute("insert into radar_publicacoes (conteudo_id, slug, status) values (%s, 'robo', 'publicado')", (c1,))
-    # mesmo quem roda SQL direto (sem usuário logado) esbarra no portão
-    with pytest.raises(psycopg.errors.RaiseException, match="RADAR033"):
-        limpo.execute("insert into radar_publicacoes (conteudo_id, slug, status) values (%s, 'sql', 'publicado')", (c1,))
+    return a, c1, registrar_site(c1)
 
 
 def test_aprovador_e_data_nao_podem_ser_forjados_depois_de_aprovado(limpo):
@@ -543,38 +387,6 @@ def test_conteudo_nao_muda_de_assunto_e_mudar_formato_derruba_aprovacao(limpo):
                 c.execute("update radar_conteudos set assunto_id = %s where id = %s", (outro, c1))
     with como("authenticated", EDITOR) as c:
         assert c.execute("update radar_conteudos set formato = 'artigo' where id = %s returning status", (c1,)).fetchone()[0] == "em_revisao"
-
-
-@pytest.mark.parametrize("acao, motivo", [
-    ("update radar_assuntos set situacao_confirmacao = 'divergencia_identificada' where id = %(a)s", "RADAR031"),
-    ("delete from radar_evidencias where assunto_id = %(a)s", "RADAR032"),
-    ("update radar_capturas set texto = 'Texto oficial substituído, sem o trecho citado na evidência.' "
-     "where id in (select captura_id from radar_evidencias where assunto_id = %(a)s)", "RADAR032"),
-    ("update radar_fontes set oficial = false where slug = 'rfb-normas'", "RADAR032"),
-    ("update radar_conteudos set status = 'rejeitado' where id = %(c)s", "voltou para revisão"),
-    ("update radar_conteudos set corpo = 'Texto reescrito.' where id = %(c)s", "voltou para revisão"),
-])
-def test_publicacao_no_ar_e_sinalizada_quando_um_prerequisito_cai(limpo, acao, motivo):
-    a, c1, pid = no_ar(limpo)
-    assert limpo.execute("select requer_revisao from radar_publicacoes where id = %s", (pid,)).fetchone()[0] is False
-    try:
-        limpo.execute(acao, {"a": a, "c": c1})
-        linha = limpo.execute("select requer_revisao, motivo_revisao, status from radar_publicacoes where id = %s", (pid,)).fetchone()
-        assert linha[0] is True and motivo in linha[1]
-        assert linha[2] == "publicado"       # o sistema avisa; tirar do ar é decisão humana
-    finally:
-        limpo.execute("update radar_fontes set oficial = true where slug = 'rfb-normas'")
-
-
-def test_republicar_limpa_a_sinalizacao(limpo):
-    a, c1, pid = no_ar(limpo)
-    with como("authenticated", EDITOR) as c:
-        c.execute("update radar_conteudos set corpo = 'Texto corrigido.' where id = %s", (c1,))
-        c.execute("update radar_publicacoes set status = 'despublicado' where id = %s", (pid,))
-        c.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c1,))
-        linha = c.execute("update radar_publicacoes set status = 'publicado' where id = %s "
-                          "returning corpo, requer_revisao, motivo_revisao", (pid,)).fetchone()
-    assert linha == ("Texto corrigido.", False, None)
 
 
 def test_service_role_nao_grava_auditoria_nem_apaga_historico(limpo):
@@ -728,18 +540,17 @@ def test_excluir_usuario_nao_trava_nem_deixa_autoria_orfa(limpo):
     limpo.execute("insert into radar_perfis (user_id, nome, papel) values (%s, 'Temporária', 'editor')", (temp,))
     _, c1 = cenario_publicavel(limpo)
     aprovar(c1, temp)
-    pid, quem = publicar(c1, temp)
-    assert quem == temp
+    d = registrar_site(c1, temp)
     # enquanto a pessoa existe, ninguém apaga a autoria
     with como("authenticated", EDITOR) as c:
         c.execute("update radar_conteudos set aprovado_por = null where id = %s", (c1,))
-        c.execute("update radar_publicacoes set criado_por = null, publicado_por = null where id = %s", (pid,))
+        c.execute("update radar_divulgacoes set registrado_por = null where id = %s", (d,))
     assert limpo.execute("select aprovado_por::text from radar_conteudos where id = %s", (c1,)).fetchone()[0] == temp
-    assert limpo.execute("select criado_por::text, publicado_por::text from radar_publicacoes where id = %s", (pid,)).fetchone() == (temp, temp)
+    assert limpo.execute("select registrado_por::text from radar_divulgacoes where id = %s", (d,)).fetchone()[0] == temp
     # excluir a pessoa funciona e os campos ficam nulos (a trilha de auditoria guarda quem foi)
     limpo.execute("delete from auth.users where id = %s", (temp,))
     assert limpo.execute("select status, aprovado_por from radar_conteudos where id = %s", (c1,)).fetchone() == ("aprovado", None)
-    assert limpo.execute("select status, criado_por, publicado_por from radar_publicacoes where id = %s", (pid,)).fetchone() == ("publicado", None, None)
+    assert limpo.execute("select registrado_por from radar_divulgacoes where id = %s", (d,)).fetchone()[0] is None
     assert limpo.execute("select count(*) from radar_auditoria where usuario = %s", (temp,)).fetchone()[0] >= 2
 
 
@@ -751,95 +562,7 @@ def test_origem_do_texto_nao_se_reescreve(limpo):
     assert linha == ("ia", "aprovado")
 
 
-def test_logado_sem_perfil_nao_ve_publicacoes_por_dentro(limpo):
-    no_ar(limpo)
-    with como("authenticated", SEM_PERFIL) as c:
-        assert c.execute("select count(*) from radar_publicacoes").fetchone()[0] == 0
-    with como("authenticated", LEITOR) as c:
-        assert c.execute("select count(*) from radar_publicacoes").fetchone()[0] == 1
-
-
 # ============================================================ v0.2.0 — apoio às telas
-def test_endereco_e_gerado_do_titulo_higienizado_e_nao_repete(limpo):
-    a, c1 = cenario_publicavel(limpo)
-    limpo.execute("update radar_conteudos set titulo = 'CBS: o que muda — transição (2027)!' where id = %s", (c1,))
-    c2 = novo_conteudo(limpo, a)
-    limpo.execute("update radar_conteudos set titulo = 'CBS: o que muda — transição (2027)!' where id = %s", (c2,))
-    c3 = novo_conteudo(limpo, a)
-    c4 = novo_conteudo(limpo, a)
-    limpo.execute("update radar_conteudos set titulo = %s where id = %s", ("Título muito comprido " * 8, c4))
-    with como("authenticated", EDITOR) as c:
-        s1 = c.execute("insert into radar_publicacoes (conteudo_id) values (%s) returning slug, id", (c1,)).fetchone()
-        s2 = c.execute("insert into radar_publicacoes (conteudo_id) values (%s) returning slug, id", (c2,)).fetchone()
-        s3 = c.execute("insert into radar_publicacoes (conteudo_id, slug) values (%s, ' Meu Endereço <b>/../x ') returning slug", (c3,)).fetchone()
-        s4 = c.execute("insert into radar_publicacoes (conteudo_id) values (%s) returning slug", (c4,)).fetchone()
-        assert s1[0] == "cbs-o-que-muda-transicao-2027"
-        assert s2[0] == f"cbs-o-que-muda-transicao-2027-{s2[1]}"
-        assert s3[0] == "meu-endereco-b-x"
-        assert len(s4[0]) <= 80 and not s4[0].endswith("-")
-        # endereço não muda depois de criado, nem em rascunho
-        assert c.execute("update radar_publicacoes set slug = 'outro' where id = %s returning slug", (s1[1],)).fetchone()[0] == s1[0]
-
-
-def test_endereco_nao_colide_nem_em_caso_armado(limpo):
-    a, c1 = cenario_publicavel(limpo)
-    c2, c3 = novo_conteudo(limpo, a), novo_conteudo(limpo, a)
-    with como("authenticated", EDITOR) as c:
-        c.execute("insert into radar_publicacoes (conteudo_id, slug) values (%s, 'colide')", (c1,))
-        prox = c.execute("select max(id) + 2 from radar_publicacoes").fetchone()[0]
-        c.execute("insert into radar_publicacoes (conteudo_id, slug) values (%s, %s)", (c2, f"colide-{prox}"))
-        s3 = c.execute("insert into radar_publicacoes (conteudo_id, slug) values (%s, 'colide') returning slug, id", (c3,)).fetchone()
-    assert s3[1] == prox and s3[0].startswith(f"colide-{prox}-")
-
-
-def test_um_conteudo_tem_uma_unica_publicacao_e_ela_nao_troca_de_conteudo(limpo):
-    a, c1 = cenario_publicavel(limpo)
-    outro = novo_conteudo(limpo, a)
-    aprovar(c1)
-    pid, _ = publicar(c1)
-    with como("authenticated", EDITOR) as c:
-        with pytest.raises(psycopg.errors.UniqueViolation):
-            c.execute("insert into radar_publicacoes (conteudo_id, status) values (%s, 'publicado')", (c1,))
-        c.execute("update radar_publicacoes set status = 'despublicado' where id = %s", (pid,))
-        with pytest.raises(psycopg.errors.UniqueViolation):
-            c.execute("insert into radar_publicacoes (conteudo_id) values (%s)", (c1,))
-        with pytest.raises(psycopg.errors.RaiseException, match="RADAR035"):
-            c.execute("update radar_publicacoes set conteudo_id = %s where id = %s", (outro, pid))
-
-
-def test_tirar_do_ar_devolve_o_assunto_e_voltar_ao_ar_o_marca_publicado(limpo):
-    a, c1, pid = no_ar(limpo)
-    with como("authenticated", EDITOR) as c:
-        c.execute("update radar_publicacoes set errata = 'errata da versão antiga' where id = %s", (pid,))
-        c.execute("update radar_publicacoes set status = 'despublicado' where id = %s", (pid,))
-        assert c.execute("select status from radar_assuntos where id = %s", (a,)).fetchone()[0] == "aprovado"
-        c.execute("update radar_publicacoes set status = 'publicado' where id = %s", (pid,))
-        assert c.execute("select status from radar_assuntos where id = %s", (a,)).fetchone()[0] == "publicado"
-
-
-def test_vinculo_de_normas_segue_so_evidencia_oficial_e_e_refeito_ao_republicar(limpo):
-    limpo.execute("insert into radar_fontes (slug, nome, orgao, oficial, tipo_coletor, url) values ('teste-portal', 'Portal de notícias', 'Imprensa', false, 'rss', 'https://portal.exemplo/rss')")
-    cap_of, cap_nao = nova_captura(limpo), nova_captura(limpo, slug="teste-portal", url="https://portal.exemplo/x")
-    a = novo_assunto(limpo)
-    n1 = limpo.execute("insert into radar_normas (tipo, numero, orgao) values ('IN', '1', 'RFB') returning id").fetchone()[0]
-    n2 = limpo.execute("insert into radar_normas (tipo, numero, orgao) values ('IN', '2', 'RFB') returning id").fetchone()[0]
-    trecho = "O contribuinte deverá destacar a CBS no documento fiscal"
-    e1 = limpo.execute("insert into radar_evidencias (assunto_id, captura_id, norma_id, trecho_literal) values (%s, %s, %s, %s) returning id",
-                       (a, cap_of, n1, trecho)).fetchone()[0]
-    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, norma_id, trecho_literal) values (%s, %s, %s, %s)", (a, cap_nao, n2, trecho))
-    c1 = novo_conteudo(limpo, a)
-    aprovar(c1)
-    pid, _ = publicar(c1)
-    assert limpo.execute("select norma_id from radar_publicacao_normas where publicacao_id = %s", (pid,)).fetchall() == [(n1,)]
-    limpo.execute("update radar_evidencias set norma_id = null where id = %s", (e1,))
-    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, norma_id, trecho_literal) values (%s, %s, %s, %s)",
-                  (a, cap_of, n2, "Esta Instrução Normativa entra em vigor na data"))
-    with como("authenticated", EDITOR) as c:
-        c.execute("update radar_publicacoes set status = 'despublicado' where id = %s", (pid,))
-        c.execute("update radar_publicacoes set status = 'publicado' where id = %s", (pid,))
-    assert limpo.execute("select norma_id from radar_publicacao_normas where publicacao_id = %s", (pid,)).fetchall() == [(n2,)]
-
-
 def test_radar_nao_fica_sem_administrador(limpo):
     with como("authenticated", ADMIN) as c:
         for sql in ["update radar_perfis set papel = 'leitor' where user_id = %s", "update radar_perfis set ativo = false where user_id = %s",
@@ -870,51 +593,6 @@ def test_abrir_assunto_simultaneo_nao_duplica(limpo):
     [f.join() for f in fios]
     assert erros == [] and len(set(ids)) == 1
     assert limpo.execute("select count(*) from radar_assuntos").fetchone()[0] == 1
-
-
-def test_painel_separa_no_ar_de_agendadas(limpo):
-    a, c1 = cenario_publicavel(limpo)
-    aprovar(c1)
-    publicar(c1, quando="now() + interval '3 days'")
-    assert limpo.execute("select no_ar, agendadas from radar_v_painel").fetchone() == (0, 1)
-
-
-def test_publicacao_congela_a_fundamentacao_conferida(limpo):
-    cap = nova_captura(limpo)
-    a = novo_assunto(limpo)
-    limpo.execute("update radar_assuntos set categoria = 'reforma-tributaria' where id = %s", (a,))
-    n = limpo.execute("insert into radar_normas (tipo, numero, orgao) values ('Instrução Normativa', '2290', 'RFB') returning id").fetchone()[0]
-    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, norma_id, dispositivo, trecho_literal) values (%s, %s, %s, 'art. 2º', %s)",
-                  (a, cap, n, "à alíquota de 0,9% (nove décimos por cento)"))
-    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, 'Art. 9º dispositivo inventado que não existe')", (a, cap))
-    c1 = novo_conteudo(limpo, a)
-    aprovar(c1)
-    pid, _ = publicar(c1)
-    with como("authenticated", LEITOR) as c:
-        formato, categoria, fund = c.execute("select formato, categoria, fundamentacao from radar_publicacoes").fetchone()
-    assert (formato, categoria) == ("informativo", "reforma-tributaria")
-    assert len(fund) == 1                                   # a evidência não conferida fica de fora
-    assert fund[0]["trecho"] == "à alíquota de 0,9% (nove décimos por cento)" and fund[0]["dispositivo"] == "art. 2º"
-    assert fund[0]["orgao"] == "Receita Federal do Brasil" and fund[0]["url"] == "https://exemplo.gov.br/in-2290"
-    assert fund[0]["norma"] == "Instrução Normativa nº 2290 — RFB"
-    # efeitos: assunto publicado e norma vinculada à publicação
-    assert limpo.execute("select status from radar_assuntos where id = %s", (a,)).fetchone()[0] == "publicado"
-    assert limpo.execute("select norma_id from radar_publicacao_normas where publicacao_id = %s", (pid,)).fetchall() == [(n,)]
-    # mexer nas evidências depois não altera o que está no ar; forjar a coluna também não
-    limpo.execute("update radar_evidencias set trecho_literal = 'Art. 3º Esta Instrução Normativa entra em vigor' where assunto_id = %s", (a,))
-    with como("authenticated", EDITOR) as c:
-        c.execute("update radar_publicacoes set fundamentacao = '[{\"trecho\": \"forjado\"}]'::jsonb, formato = 'flash' where id = %s", (pid,))
-    assert limpo.execute("select fundamentacao, formato from radar_publicacoes where id = %s", (pid,)).fetchone() == (fund, "informativo")
-
-
-def test_fundamentacao_nao_pode_ser_informada_em_rascunho(limpo):
-    _, c1 = cenario_publicavel(limpo)
-    with como("authenticated", EDITOR) as c:
-        linha = c.execute("""insert into radar_publicacoes (conteudo_id, fundamentacao) values (%s, '[{"trecho": "forjado"}]'::jsonb)
-                             returning fundamentacao, id""", (c1,)).fetchone()
-        assert linha[0] == []
-        assert c.execute("update radar_publicacoes set fundamentacao = '[{\"trecho\": \"x\"}]'::jsonb where id = %s returning fundamentacao",
-                         (linha[1],)).fetchone()[0] == []
 
 
 def test_abrir_assunto_a_partir_da_captura_e_fila_de_triagem(limpo):
@@ -960,15 +638,14 @@ def test_painel_e_lista_de_assuntos_trazem_os_numeros_certos(limpo):
     limpo.execute("update radar_assuntos set relevancia = 'alta' where id = %s", (outro,))
     novo_conteudo(limpo, outro)
     with como("authenticated", LEITOR) as c:
-        p = c.execute("select fontes_ativas, na_fila, alta_relevancia, em_verificacao, aguardando_aprovacao, no_ar, requer_revisao "
+        p = c.execute("select fontes_ativas, na_fila, alta_relevancia, em_verificacao, aguardando_aprovacao, no_site "
                       "from radar_v_painel").fetchone()
-        assert p == (6, 1, 1, 1, 1, 1, 0)
-        assert c.execute("select agendadas from radar_v_painel").fetchone()[0] == 0
-        linha = c.execute("select evidencias, evidencias_conferidas, conteudos, publicacoes_no_ar, orgaos, status "
+        assert p == (6, 1, 1, 1, 1, 1)
+        linha = c.execute("select evidencias, evidencias_conferidas, conteudos, orgaos, status "
                           "from radar_v_assuntos where id = %s", (a,)).fetchone()
-        assert linha == (1, 1, 1, 1, "Receita Federal do Brasil", "publicado")
+        assert linha == (1, 1, 1, "Receita Federal do Brasil", "publicado")
     with como("authenticated", SEM_PERFIL) as c:
-        assert c.execute("select na_fila, no_ar from radar_v_painel").fetchone() == (0, 0)
+        assert c.execute("select na_fila, no_site from radar_v_painel").fetchone() == (0, 0)
         assert c.execute("select count(*) from radar_v_assuntos").fetchone()[0] == 0
 
 
@@ -997,8 +674,8 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
         r = psql(SETUP, "radar_up")
         assert r.returncode == 0, r.stderr
         with conectar("radar_up") as c:
-            assert c.execute("select slug, status, titulo, corpo, fundamentacao, publicado_por::text from radar_publicacoes").fetchone() == \
-                ("antiga", "publicado", "CBS: o que muda", "Texto do informativo.", [], EDITOR)
+            # v0.8.0: a publicação antiga não se perde — a tabela com registros fica guardada como arquivo
+            assert c.execute("select slug, status from radar_publicacoes").fetchone() == ("antiga", "publicado")
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
@@ -1045,20 +722,6 @@ def test_abrir_assunto_com_numero_enorme_da_mensagem_clara(limpo):
             c.execute("select radar_abrir_assunto(3000000000)")
 
 
-def test_errata_so_some_quando_o_texto_republicado_e_outro(limpo):
-    a, c1, pid = no_ar(limpo)
-    with como("authenticated", EDITOR) as c:
-        c.execute("update radar_publicacoes set errata = 'correção 1' where id = %s", (pid,))
-        c.execute("update radar_publicacoes set status = 'despublicado' where id = %s", (pid,))
-        # mesmo texto volta ao ar: a errata continua valendo
-        assert c.execute("update radar_publicacoes set status = 'publicado' where id = %s returning errata", (pid,)).fetchone()[0] == "correção 1"
-        # texto novo aprovado volta ao ar: a errata antiga sai; uma errata nova informada junto fica
-        c.execute("update radar_publicacoes set status = 'despublicado' where id = %s", (pid,))
-        c.execute("update radar_conteudos set corpo = 'Texto novo.' where id = %s", (c1,))
-        c.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c1,))
-        assert c.execute("update radar_publicacoes set status = 'publicado' where id = %s returning errata, corpo", (pid,)).fetchone() == (None, "Texto novo.")
-
-
 def test_setup_atualiza_visao_do_painel_de_uma_copia_intermediaria():
     with conectar("postgres") as c:
         c.execute("drop database if exists radar_vp with (force)")
@@ -1072,7 +735,7 @@ def test_setup_atualiza_visao_do_painel_de_uma_copia_intermediaria():
         r = psql(SETUP, "radar_vp")
         assert r.returncode == 0, r.stderr
         with conectar("radar_vp") as c:
-            assert c.execute("select no_ar, agendadas from radar_v_painel").fetchone() == (0, 0)
+            assert c.execute("select na_fila, no_site from radar_v_painel").fetchone() == (0, 0)
             assert c.execute("select has_table_privilege('authenticated', 'radar_v_painel', 'select'), "
                              "has_table_privilege('anon', 'radar_v_painel', 'select')").fetchone() == (True, False)
     finally:
@@ -1209,31 +872,12 @@ def test_imagem_so_e_lida_pela_equipe(limpo):
     usada = nova_imagem()
     limpo.execute("update radar_conteudos set imagem_id = %s, autor = 'Marcos Vinicius', fonte_credito = 'Receita Federal' where id = %s", (usada, c1))
     aprovar(c1)
-    publicar(c1)
     with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
         c.execute("select id from radar_imagens")
     with como("authenticated", SEM_PERFIL) as c:
         assert c.execute("select count(*) from radar_imagens").fetchone()[0] == 0
     with como("authenticated", LEITOR) as c:
         assert c.execute("select id from radar_imagens").fetchall() == [(usada,)]
-        assert c.execute("select imagem_id, autor, fonte_credito from radar_publicacoes").fetchone() == (usada, "Marcos Vinicius", "Receita Federal")
-
-
-def test_imagem_autor_e_fonte_da_publicacao_vem_do_conteudo_e_nao_mudam_no_ar(limpo):
-    a, _ = cenario_publicavel(limpo)
-    c1 = novo_conteudo(limpo, a)
-    img, outra = nova_imagem(), nova_imagem()
-    limpo.execute("update radar_conteudos set imagem_id = %s, autor = 'Equipe Fiscal' where id = %s", (img, c1))
-    aprovar(c1)
-    with como("authenticated", EDITOR) as c:        # tentar informar outros valores na publicação não adianta
-        pid = c.execute("""insert into radar_publicacoes (conteudo_id, slug, status, imagem_id, autor, fonte_credito)
-                           values (%s, 'x', 'publicado', %s, 'Forjado', 'Forjada') returning id""", (c1, outra)).fetchone()[0]
-        assert c.execute("select imagem_id, autor, fonte_credito from radar_publicacoes where id = %s", (pid,)).fetchone() == (img, "Equipe Fiscal", "Receita Federal do Brasil")   # v0.7.0: a fonte já vem preenchida com o órgão da captura oficial
-        c.execute("update radar_publicacoes set imagem_id = %s, autor = 'Outro', fonte_credito = 'Outra' where id = %s", (outra, pid))
-        assert c.execute("select imagem_id, autor, fonte_credito from radar_publicacoes where id = %s", (pid,)).fetchone() == (img, "Equipe Fiscal", "Receita Federal do Brasil")   # v0.7.0: a fonte já vem preenchida com o órgão da captura oficial
-    # imagem usada por publicação não pode ser apagada nem pelo administrador
-    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.ForeignKeyViolation):
-        c.execute("delete from radar_imagens where id = %s", (img,))
 
 
 def test_trocar_imagem_autor_ou_fonte_de_conteudo_aprovado_volta_para_revisao(limpo):
@@ -1492,9 +1136,9 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (21, 6, 8, 5, 1, 0)
+        assert _resumo("radar_sem_tx") == (19, 6, 8, 5, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.7.1", [], 21)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.7.1", [], 19)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1515,14 +1159,14 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (21, 6, 8, 5, 2, 0)
+        assert _resumo("radar_parcial") == (19, 6, 8, 5, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
             assert c.execute("""select (select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from information_schema.column_privileges where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from pg_policies where schemaname = 'public' and 'anon' = any(roles))""").fetchone()[0] == 0
-            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (21,)]
+            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (19,)]     # a v0.4 tinha 20; as 2 tabelas vazias da publicação antiga saem
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_parcial with (force)")
@@ -1542,7 +1186,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (21, 6, 8, 5, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (19, 6, 8, 5, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -2444,6 +2088,9 @@ def test_nota_alta_da_ia_leva_captura_baixa_para_media_e_nunca_rebaixa(limpo):
     limpo.execute("select radar_gravar_avaliacao_ia(%s::jsonb)", (json.dumps([{"id": cap, "nota": 9, "motivo": "prazo municipal"}]),))
     nivel, motivos = limpo.execute("select relevancia, relevancia_motivos from radar_capturas where id = %s", (cap,)).fetchone()
     assert nivel == "media" and {"termo": "nota da IA 9", "pontos": 0} in motivos
+    negativa = _cap(limpo, "Apreensão de cigarros na fronteira")[0]          # rebaixada por termos negativos: fica baixa
+    limpo.execute("update radar_capturas set ia_nota = 10 where id = %s", (negativa,))
+    assert limpo.execute("select relevancia from radar_capturas where id = %s", (negativa,)).fetchone()[0] == "baixa"
     alta = _cap(limpo, "Prazo do Simples Nacional é prorrogado")[0]
     limpo.execute("update radar_capturas set ia_nota = 0 where id = %s", (alta,))
     assert limpo.execute("select relevancia from radar_capturas where id = %s", (alta,)).fetchone()[0] == "alta"  # a IA não rebaixa
