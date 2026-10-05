@@ -535,6 +535,16 @@ Substitua `index.html`, `informativo.html`, as imagens do timbrado e as pastas `
 `radar-setup`, execute-o no SQL Editor. A versão em uso aparece no topo do dashboard e
 a aba **Versões** lista o que mudou.
 
+## Ideias anotadas para o futuro
+
+Pedidos do escritório para quando chegar a hora (não implementados):
+
+- **Instagram (05/10/2026):** quando o Radar for integrado ao Instagram, ver a possibilidade de
+  **buscar o que mais está sendo publicado** sobre os temas do escritório (hashtags e perfis de
+  contabilidade e tributação), para sugerir assuntos e comparar com o que o Radar já capturou.
+- **Diário Oficial da União:** entrar pelo INLABS (XML oficial, cadastro gratuito), com filtro forte
+  por órgão e assunto para **não gerar enxurrada de notificações** diárias.
+
 ## Rodar os testes
 
 No GitHub: Actions → "Radar — testes". Localmente: PostgreSQL 16, `postgrest` no PATH,

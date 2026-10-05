@@ -483,3 +483,16 @@ def test_paginacao_limite_vale_para_o_conjunto_e_pagina_com_erro_nao_perde_as_an
 def test_data_lida_do_texto_prefere_a_de_publicacao_e_recusa_futura(texto, esperado):
     from radar_coletores import data_no_texto
     assert data_no_texto(texto, {"janela_dias": 30}, DIA) == esperado
+
+
+def test_diagnostico_testa_enderecos_avulsos_antes_de_cadastrar(monkeypatch):
+    import radar_diagnostico
+    fontes = radar_diagnostico.fontes_avulsas("https://ex.com.br/noticias, https://ex.com.br/rss/ javascript:x  nada", "/noticias/\\d+")
+    assert [(f["slug"], f["url"], f["tipo_coletor"]) for f in fontes] == [
+        ("teste-1", "https://ex.com.br/noticias", "html_links"), ("teste-2", "https://ex.com.br/rss/", "rss")]
+    assert fontes[0]["config"]["padrao_url"] == "/noticias/\\d+" and fontes[0]["avulsa"]
+    assert radar_diagnostico.fontes_avulsas("https://a.b/x")[0]["config"]["padrao_url"] == "."      # sem padrão: todos os links
+    monkeypatch.setenv("ENDERECOS", "https://ex.com.br/")
+    assert radar_diagnostico.carregar_fontes()[1] == "endereços informados para teste"
+    html = '<html><head><title>T</title><link rel="alternate" type="application/rss+xml" title="Notícias" href="/rss/"></head><body></body></html>'
+    assert radar_diagnostico.estrutura_da_pagina(html)["feeds"] == ["Notícias -> /rss/"]
