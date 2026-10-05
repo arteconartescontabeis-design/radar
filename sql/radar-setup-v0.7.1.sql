@@ -63,7 +63,7 @@ create table if not exists public.radar_fontes (
                        check (abrangencia in ('federal','estadual_sc','municipal','geral')),
   oficial              boolean     not null default true,
   tipo_coletor         text        not null
-                       check (tipo_coletor in ('rss','html_links','normas_rfb')),
+                       check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs')),
   url                  text        not null,
   config               jsonb       not null default '{}'::jsonb,
   categoria_padrao     text        references public.radar_categorias(slug),
@@ -336,6 +336,10 @@ create index if not exists radar_divulgacoes_conteudo_idx on public.radar_divulg
 alter table public.radar_divulgacoes add column if not exists fundamentacao jsonb not null default '[]'::jsonb;
 alter table public.radar_divulgacoes add column if not exists conteudo_lido_em timestamptz;
 
+-- v0.8.0: o Diário Oficial da União pelo INLABS é um tipo de leitura a mais
+alter table public.radar_fontes drop constraint if exists radar_fontes_tipo_coletor_check;
+alter table public.radar_fontes add constraint radar_fontes_tipo_coletor_check
+  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs'));
 -- (o formato do cadastro de fontes é conferido pelo gatilho radar_fn_fonte_formato, mais abaixo)
 alter table public.radar_fontes drop constraint if exists radar_fontes_formato;
 

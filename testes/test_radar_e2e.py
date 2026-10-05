@@ -990,3 +990,24 @@ def test_banco_le_capturas_e_numeros_da_semana_pela_api(cenario):
     assert len(caps) == 3 and caps[0]["radar_fontes"]["nome"].startswith("teste-")
     assert banco.capturas_entre(agora - timedelta(days=30), agora - timedelta(days=20)) == []
     assert banco.numeros_da_semana(agora - timedelta(days=7), agora) == {"aprovados": 0, "publicados": 0}
+
+
+def test_fonte_do_inlabs_grava_os_atos_com_o_texto_do_xml(cenario, monkeypatch):
+    import radar_inlabs
+    from radar_coletores import Item, Listagem
+    texto = "INSTRUÇÃO NORMATIVA RFB Nº 2.300 Altera a IN RFB nº 2.005. Art. 1º A DCTFWeb passa a ter novo prazo de entrega."
+    vistos = []
+
+    def falso(sessao, fonte, hoje=None):
+        vistos.append(fonte["slug"])
+        return Listagem(brutos=40, itens=[Item(url="http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=30/09/2026&pagina=19&materia=111",
+                                               titulo="INSTRUÇÃO NORMATIVA RFB Nº 2.300", data=date(2026, 9, 30),
+                                               resumo="Altera a IN RFB nº 2.005.", texto_da_listagem=texto)]), 200
+    monkeypatch.setattr(radar_inlabs, "listar_paginas", falso)
+    cenario.execute("update radar_fontes set ativo = false where slug like 'teste-%'")
+    cenario.execute("""insert into radar_fontes (slug, nome, orgao, tipo_coletor, url, config) values
+        ('teste-inlabs', 'DOU pelo INLABS', 'Imprensa Nacional', 'inlabs', 'https://inlabs.in.gov.br/',
+         '{"texto_do_feed": true, "texto_minimo": 1}'::jsonb)""")
+    r, _ = robo()
+    assert vistos == ["teste-inlabs"] and (r["teste-inlabs"]["status"], r["teste-inlabs"]["novos"]) == ("ok", 1)
+    assert cenario.execute("select texto from radar_capturas").fetchone()[0] == texto

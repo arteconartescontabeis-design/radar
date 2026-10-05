@@ -256,7 +256,7 @@ const ROTULOS = {
   saude: {ok:"Funcionando", instavel:"Instável", falhando:"Falhando", atrasada:"Atrasada",
           nunca_executou:"Nunca executou", nunca_funcionou:"Nunca funcionou", inativa:"Inativa"},
   papel: {admin:"Administrador", editor:"Editor", leitor:"Leitor"},
-  coletor: {html_links:"Página com lista de links", rss:"Feed RSS", normas_rfb:"Atos normativos da Receita (Normas)"}
+  coletor: {html_links:"Página com lista de links", rss:"Feed RSS", normas_rfb:"Atos normativos da Receita (Normas)", inlabs:"Diário Oficial da União (INLABS)"}
 };
 const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## Quem será afetado?", "",
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
@@ -841,7 +841,8 @@ function formFonte(f){
     </div>
     <label for="f-url-${id}">Endereço da página que lista as novidades</label><input id="f-url-${id}" type="text" name="url" required maxlength="1000" value="${h(f.url || "")}" placeholder="https://www.exemplo.gov.br/noticias" style="width:100%">
     <div class="grade">
-      <div><label for="f-tipo-${id}">Como o robô lê</label><select id="f-tipo-${id}" name="tipo_coletor">${opcoes(f.tipo_coletor === "normas_rfb" ? ROTULOS.coletor : {html_links:ROTULOS.coletor.html_links, rss:ROTULOS.coletor.rss}, f.tipo_coletor || "html_links")}</select></div>
+      <div><label for="f-tipo-${id}">Como o robô lê</label><select id="f-tipo-${id}" name="tipo_coletor">${opcoes({html_links:ROTULOS.coletor.html_links, rss:ROTULOS.coletor.rss,
+          ...(ROTULOS.coletor[f.tipo_coletor] && !["html_links","rss"].includes(f.tipo_coletor) ? {[f.tipo_coletor]:ROTULOS.coletor[f.tipo_coletor]} : {})}, f.tipo_coletor || "html_links")}</select></div>
       <div><label for="f-freq-${id}">Verificar a cada (horas)</label><input id="f-freq-${id}" type="number" name="frequencia_horas" min="1" max="168" required value="${f.frequencia_horas || 12}"></div>
       <div><label for="f-jan-${id}">Idade máxima dos itens (dias)</label><input id="f-jan-${id}" type="number" name="janela_dias" min="1" max="3650" value="${h(c.janela_dias ?? "")}"></div>
     </div>

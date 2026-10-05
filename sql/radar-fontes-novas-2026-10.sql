@@ -3,7 +3,7 @@
 -- Rode UMA vez no Supabase (SQL Editor) depois da v0.7.1. Pode rodar de novo:
 -- fonte que já existe (mesmo identificador) não é alterada.
 --
--- As três fontes de sites entram DESLIGADAS (ativo = false) e "a validar":
+-- As fontes de sites e a do INLABS entram DESLIGADAS (ativo = false) e "a validar":
 -- ligue cada uma na aba Fontes → Configurar → Fonte ativa, depois de rodar o
 -- diagnóstico. Só o DOU é fonte oficial; as demais são portais e consultorias
 -- (servem de alerta e pauta, não de fundamentação).
@@ -29,6 +29,10 @@ from (values
    'https://portalcontabilsc.com.br/categoria/noticias/feed/',
    '{"janela_dias": 10, "texto_do_feed": true, "seletor_texto": "article, .entry-content, main", "tempo_max_segundos": 240}'::jsonb,
    'santa-catarina', 24),
+  ('dou-inlabs', 'Diário Oficial da União — atos da Receita, PGFN e CGSN (INLABS)', 'Imprensa Nacional', 'federal', true, false, 'inlabs',
+   'https://inlabs.in.gov.br/',
+   '{"janela_dias": 3, "secoes": ["DO1", "DO1E"], "orgaos": "Receita Federal|Procuradoria-Geral da Fazenda Nacional|Comitê Gestor do Simples Nacional|Comitê Gestor do Imposto sobre Bens e Serviços", "tipos": "Instrução Normativa|Ato Declaratório|Resolução|Portaria|Solução de Consulta|Parecer Normativo|Lei|Decreto|Medida Provisória", "excluir_orgao": "Superintendência Regional|Delegacia|Alfândega|Inspetoria|Divisão de Tributação|Disit", "texto_do_feed": true, "texto_minimo": 1, "max_itens": 80, "tempo_max_segundos": 600}'::jsonb,
+   'federal', 12),
   ('itc-email', 'ITC Consultoria — boletim por e-mail', 'ITC Consultoria', 'geral', false, true, 'rss',
    'https://www.itcnet.com.br/',
    '{"origem": "email", "remetente": "itc@itcnet.com.br"}'::jsonb,
@@ -84,5 +88,5 @@ end $$;
 revoke all on function public.radar_receber_email(text, jsonb) from public, anon, authenticated;
 
 select slug, nome, ativo, oficial from public.radar_fontes
- where slug in ('dou-destaques','econet-blog','portalcontabilsc-noticias','itc-email')
+ where slug in ('dou-destaques','econet-blog','portalcontabilsc-noticias','dou-inlabs','itc-email')
  order by id;

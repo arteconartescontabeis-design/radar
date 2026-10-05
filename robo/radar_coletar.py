@@ -26,8 +26,9 @@ from datetime import date, datetime, timedelta, timezone
 
 import requests
 
-from radar_banco import Banco, ErroBanco
 import radar_ia
+import radar_inlabs
+from radar_banco import Banco, ErroBanco
 from radar_coletores import Item, data_no_texto, listar_paginas
 from radar_util import (VERSAO, ErroDownload, agora_iso, baixar, extrair_texto,
                         hash_conteudo, hash_titulo)
@@ -129,7 +130,10 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
     http = None
     try:
         with limite_de_tempo(tempo_maximo(config)):
-            listagem, http = listar_paginas(lambda url: baixar(url, sessao), fonte, hoje)
+            if fonte.get("tipo_coletor") == "inlabs":
+                listagem, http = radar_inlabs.listar_paginas(sessao, fonte, hoje)
+            else:
+                listagem, http = listar_paginas(lambda url: baixar(url, sessao), fonte, hoje)
             resultado["encontrados"] = len(listagem.itens)
 
             if listagem.brutos == 0:

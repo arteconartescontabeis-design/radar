@@ -41,6 +41,9 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
           # token do aplicativo "radar" na IA Central (Portal → Consumo de IA); sem ele a coleta roda, só sem a nota da IA
           RADAR_IA_GATEWAY_TOKEN: ${{ secrets.RADAR_IA_GATEWAY_TOKEN }}
+          # acesso ao INLABS (DOU completo); sem eles, a fonte do INLABS fica em falha e as demais seguem normais
+          INLABS_EMAIL: ${{ secrets.INLABS_EMAIL }}
+          INLABS_SENHA: ${{ secrets.INLABS_SENHA }}
           FONTE: ${{ github.event.inputs.fonte }}
           FORCAR: ${{ github.event.inputs.forcar }}
         run: |
