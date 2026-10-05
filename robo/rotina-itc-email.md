@@ -39,5 +39,6 @@ Tarefa diária do Radar Artecon: copiar para o banco as matérias do boletim da 
 
 Feito em 05/10/2026: Supabase conectado ao Claude, `sql/radar-fontes-novas-2026-10.sql`
 aplicado no banco e rotina "Radar — boletim ITC (e-mail)" criada (agenda
-`CRON_TZ=America/Sao_Paulo 55 2 * * *`, sessão nova a cada execução, conectores Microsoft 365
-e Supabase, sem notificação). Para pausar: claude.ai → Code → Rotinas, ou peça ao Claude.
+`CRON_TZ=America/Sao_Paulo 55 2 * * *`). A rotina acorda a própria conversa do Claude Code em que
+o Radar é desenvolvido, que já tem os conectores Microsoft 365 e Supabase; não precisa configurar
+conector na rotina. Para pausar ou apagar, peça ao Claude.
