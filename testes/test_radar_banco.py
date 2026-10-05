@@ -2392,13 +2392,13 @@ def test_fontes_novas_entram_desligadas_e_o_sql_pode_rodar_de_novo(limpo):
     assert psql(FONTES_NOVAS).returncode == 0
     linhas = dict((s, (a, o)) for s, a, o in limpo.execute(
         "select slug, ativo, oficial from radar_fontes where slug in "
-        "('dou-destaques','contabeis-noticias','econet-blog','portalcontabilsc-noticias','itc-email')").fetchall())
-    assert linhas == {"dou-destaques": (False, True), "contabeis-noticias": (False, False), "econet-blog": (False, False),
+        "('dou-destaques','econet-blog','portalcontabilsc-noticias','itc-email')").fetchall())
+    assert linhas == {"dou-destaques": (False, True), "econet-blog": (False, False),
                       "portalcontabilsc-noticias": (False, False), "itc-email": (True, False)}
     limpo.execute("update radar_fontes set ativo = true where slug = 'econet-blog'")
     assert psql(FONTES_NOVAS).returncode == 0                   # de novo: não desfaz o que você ligou
     assert limpo.execute("select ativo from radar_fontes where slug = 'econet-blog'").fetchone()[0] is True
-    limpo.execute("delete from radar_fontes where slug in ('dou-destaques','contabeis-noticias','econet-blog',"
+    limpo.execute("delete from radar_fontes where slug in ('dou-destaques','econet-blog',"
                   "'portalcontabilsc-noticias','itc-email')")
 
 
@@ -2425,5 +2425,5 @@ def test_boletim_por_email_grava_cada_materia_uma_vez(limpo):
             limpo.execute("select radar_receber_email('rfb-noticias', '[]'::jsonb)")
     finally:
         limpo.execute("delete from radar_capturas where fonte_id in (select id from radar_fontes where slug = 'itc-email')")
-        limpo.execute("delete from radar_fontes where slug in ('dou-destaques','contabeis-noticias','econet-blog',"
+        limpo.execute("delete from radar_fontes where slug in ('dou-destaques','econet-blog',"
                       "'portalcontabilsc-noticias','itc-email')")

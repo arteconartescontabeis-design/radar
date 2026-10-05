@@ -496,12 +496,11 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
 ### Fontes novas de outubro/2026
 
 Rode uma vez `sql/radar-fontes-novas-2026-10.sql` no SQL Editor (pode rodar de novo sem
-estragar nada). Ele cadastra, **desligadas**, quatro fontes testadas pelo diagnóstico:
+estragar nada). Ele cadastra, **desligadas**, três fontes testadas pelo diagnóstico:
 
 | Fonte | Oficial | Observação |
 |---|---|---|
 | Diário Oficial da União — Destaques | sim | só a seleção diária da Imprensa Nacional (pouco volume, sem enxurrada) |
-| Contábeis — Notícias (RSS) | não | texto completo no feed |
 | Econet Editora — Blog (RSS) | não | a área de assinantes pede login e fica de fora |
 | Portal Contábil SC — Notícias (RSS) | não | site lento: o texto vem do feed |
 

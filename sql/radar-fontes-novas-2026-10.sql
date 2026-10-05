@@ -3,7 +3,7 @@
 -- Rode UMA vez no Supabase (SQL Editor) depois da v0.7.1. Pode rodar de novo:
 -- fonte que já existe (mesmo identificador) não é alterada.
 --
--- As quatro fontes de sites entram DESLIGADAS (ativo = false) e "a validar":
+-- As três fontes de sites entram DESLIGADAS (ativo = false) e "a validar":
 -- ligue cada uma na aba Fontes → Configurar → Fonte ativa, depois de rodar o
 -- diagnóstico. Só o DOU é fonte oficial; as demais são portais e consultorias
 -- (servem de alerta e pauta, não de fundamentação).
@@ -21,10 +21,6 @@ from (values
    'https://www.in.gov.br/web/guest/servicos/diario-oficial-da-uniao/destaques-do-diario-oficial-da-uniao',
    '{"janela_dias": 10, "padrao_url": "/web/dou/-/[^?#]+-\\d{6,}$", "seletor_texto": ".texto-dou, #materia, article, main", "max_itens": 60}'::jsonb,
    'federal', 12),
-  ('contabeis-noticias', 'Contábeis — Notícias', 'Portal Contábeis', 'geral', false, false, 'rss',
-   'https://www.contabeis.com.br/rss/noticias/',
-   '{"janela_dias": 10, "texto_do_feed": true, "seletor_texto": "article, main"}'::jsonb,
-   null, 12),
   ('econet-blog', 'Econet Editora — Blog', 'Econet Editora', 'geral', false, false, 'rss',
    'https://blog.econeteditora.com.br/feed/',
    '{"janela_dias": 15, "texto_do_feed": true, "seletor_texto": "article, .entry-content, main"}'::jsonb,
@@ -88,5 +84,5 @@ end $$;
 revoke all on function public.radar_receber_email(text, jsonb) from public, anon, authenticated;
 
 select slug, nome, ativo, oficial from public.radar_fontes
- where slug in ('dou-destaques','contabeis-noticias','econet-blog','portalcontabilsc-noticias','itc-email')
+ where slug in ('dou-destaques','econet-blog','portalcontabilsc-noticias','itc-email')
  order by id;
