@@ -771,7 +771,7 @@ const TELAS = {
         <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Preparar com IA</b> busca os trechos e redige o rascunho. Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem) ou envie uma imagem. O Radar compara o texto com a fonte: trecho copiado precisa ser reescrito ou citado entre aspas antes de aprovar. Salve, envie para revisão e <b>aprove</b>.</li>
-        <li><b>Site da Artecon.</b> No conteúdo aprovado, use <b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>, e publique no site.</li>
+        <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
         <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
       </ol></div>
       <div class="painel"><h2>Informativo Mensal</h2><ol class="passos">
@@ -1079,7 +1079,7 @@ async function telaAssunto(id){
     <section data-etapa="conteudo"${oculta("conteudo")}>
     ${pronto || tudo || !cont.length ? "" : avisoRegistro}
     <div class="painel" id="sec-conteudos"><h2>Conteúdos</h2>
-      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
       ${ed ? `<div class="acoes"><select id="novo-formato" aria-label="Formato do novo conteúdo">${opcoes(ROTULOS.formato, "informativo")}</select>
         <button class="btn" data-acao="novo-conteudo" data-id="${a.id}">Novo conteúdo</button>
         <button class="btn sec" data-acao="ia-gerar">Gerar com IA</button>
@@ -1157,7 +1157,7 @@ function avisoRascunho(c){
     <div class="acoes"><button class="btn peq" type="button" data-acao="recuperar-rascunho" data-id="${c.id}">Recuperar o texto não salvo</button>
       <button class="btn peq sec" type="button" data-acao="descartar-rascunho" data-id="${c.id}">Descartar</button></div></div>`;
 }
-function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
+function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria){
   const copia = trechosCopiados(c.corpo, fontes);
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
   return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}">
@@ -1191,10 +1191,11 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes){
       <p class="sub" style="margin:4px 0 0">Em branco, a IA escolhe a cena pela notícia. A imagem é uma foto realista criada pela IA, pode ter pessoas (sempre fictícias) e não leva texto, marca nem assinatura. Cada imagem gerada é cobrada.</p>` : ""}
     <details><summary>Ver como vai aparecer</summary><div class="previa"><h2>${h(c.titulo)}</h2>${imagem ? `<img class="miniatura" style="max-width:100%;max-height:260px" src="${h(imagem)}" alt="">` : ""}${renderTexto(c.corpo)}${creditos(c)}</div></details>
     ${c.status === "aprovado" ? `<div class="aviso info">Se você alterar o título, o texto, o autor, a fonte ou a imagem, o conteúdo volta para revisão e precisa ser aprovado de novo.</div>
-      <div class="acoes"><b class="sub">Para o site da Artecon:</b>
-        <button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
-        <button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
-        ${imagem ? `<a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>` : ""}
+      <div class="acoes para-site"><b class="sub">Para o site da Artecon:</b>
+        <span class="sub">1.</span><button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
+        <span class="sub">2.</span><button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
+        ${imagem ? `<span class="sub">3.</span><a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>
+      ${CATEGORIA_SITE[categoria] || !pubs.length ? `<p class="sub dica-site">${CATEGORIA_SITE[categoria] ? `Categoria no site: <b>${h(CATEGORIA_SITE[categoria])}</b>. ` : ""}${pubs.length ? "" : "Depois de publicar, o robô encontra a notícia no site e registra o link sozinho na próxima coleta (a cada 6 horas); se preferir, registre agora."}</p>` : ""}` : ""}
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
       <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
@@ -1417,7 +1418,7 @@ const ACOES = {
     const plano = f.corpo.defaultValue.replace(/^#{1,2}\s+/gm, "").replace(/\*\*/g, "") + (c.autor ? "\n\nTexto elaborado por: " + c.autor : "") + (c.fonte_credito ? "\nFonte: " + c.fonte_credito : "");
     const justificado = renderTexto(f.corpo.defaultValue).replace(/<(p|li)>/g, '<$1 style="text-align:justify">');
     await copiar(plano, justificado + creditos(c));
-    recado("Texto copiado com a formatação. Cole no editor do site."); },
+    recado("Texto copiado com a formatação. Cole no editor do site (campo do texto da notícia)."); },
   estrutura(el){ const t = $(`#c-corpo-${el.dataset.id}`); t.value = (t.value.trim() ? t.value.trimEnd() + "\n\n" : "") + ESTRUTURA_PADRAO; t.focus(); },
   async "mudar-conteudo"(el){ await salvarConteudo(el.closest("form"), {status: el.dataset.status}); await desenhar();
     recado(el.dataset.status === "em_revisao" ? "Conteúdo enviado para revisão." : "Conteúdo rejeitado."); },
@@ -1542,6 +1543,10 @@ function avisoSujo(){
 }
 const AVISO_SUJO = "Há alterações não salvas nesta tela. Salve (ou recarregue a página para descartar) antes de continuar.";
 function sujo(f){ return [...f.elements].some(c => c.name && c.type !== "file" && (c.type === "checkbox" ? c.checked !== c.defaultChecked : c.value !== c.defaultValue && c.tagName !== "SELECT")); }
+// categoria do Radar → categoria correspondente no site da Artecon (artecon.cnt.br/news)
+const CATEGORIA_SITE = {"reforma-tributaria":"Tributário", "simples-nacional":"Simples Nacional", "federal":"Legislação Federal",
+  "santa-catarina":"Legislação Estadual (SC)", "trabalhista":"Área Trabalhista e Previdenciária", "contabilidade":"Economia",
+  "pgfn":"Tributário", "informativos":"Economia"};
 function creditos(c){ return (c.autor ? `<p style="text-align:right"><em>Texto elaborado por: <strong>${h(c.autor)}</strong></em></p>` : "") +
   (c.fonte_credito ? `<p style="text-align:right"><em>Fonte: ${h(c.fonte_credito)}</em></p>` : ""); }
 async function copiar(texto, html){

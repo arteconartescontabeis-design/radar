@@ -1667,7 +1667,8 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
 
 
 def test_copiar_para_o_site_leva_titulo_e_texto_formatado(navegador, limpo):
-    artigo_aprovado(limpo)
+    a, _ = artigo_aprovado(limpo)
+    limpo.execute("update radar_assuntos set categoria = 'simples-nacional' where id = %s", (a,))
     contexto = navegador.new_context(viewport={"width": 1280, "height": 900}, locale="pt-BR")
     contexto.add_init_script(TUDO)
     contexto.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
@@ -1691,6 +1692,9 @@ def test_copiar_para_o_site_leva_titulo_e_texto_formatado(navegador, limpo):
     assert "Texto elaborado por: <strong>Marcos Vinicius Martins da Silva</strong>" in html
     assert "Confira os principais prazos" in plano and "##" not in plano and "**" not in plano and "Texto elaborado por: Marcos" in plano
     assert pg.locator("text=Baixar imagem").count() == 0                           # este conteúdo não tem imagem
+    dica = pg.locator(".dica-site").inner_text()                                    # v0.8.0: categoria do site e registro automático
+    assert "Categoria no site: Simples Nacional." in dica and "o robô encontra a notícia no site" in dica
+    assert pg.locator(".para-site").inner_text().replace("\n", " ").count("1.") == 1
     assert erros == []
     contexto.close()
 
