@@ -490,6 +490,28 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
 | `excluir_url` / `excluir_orgao` | o que ignorar |
 | `revisitar_dias` | por quantos dias um item é relido para detectar alteração |
 | `data_do_texto` | ler a data de publicação no texto do item, quando a lista não traz |
+| `texto_do_feed` | feed RSS que já traz a notícia inteira (`content:encoded`): o texto vem do feed e a página da notícia não é aberta (site lento ou que recusa robôs) |
+| `origem: "email"` | fonte alimentada por fora (boletim lido no e-mail): o robô não visita o endereço |
+
+### Fontes novas de outubro/2026
+
+Rode uma vez `sql/radar-fontes-novas-2026-10.sql` no SQL Editor (pode rodar de novo sem
+estragar nada). Ele cadastra, **desligadas**, quatro fontes testadas pelo diagnóstico:
+
+| Fonte | Oficial | Observação |
+|---|---|---|
+| Diário Oficial da União — Destaques | sim | só a seleção diária da Imprensa Nacional (pouco volume, sem enxurrada) |
+| Contábeis — Notícias (RSS) | não | texto completo no feed |
+| Econet Editora — Blog (RSS) | não | a área de assinantes pede login e fica de fora |
+| Portal Contábil SC — Notícias (RSS) | não | site lento: o texto vem do feed |
+
+Ligue cada uma em Fontes → Configurar → Fonte ativa. Fontes não oficiais servem de alerta e pauta;
+a fundamentação continua vindo só das oficiais.
+
+O mesmo SQL cadastra **ITC Consultoria — boletim por e-mail** (`itc-email`) e a função
+`radar_receber_email`, que grava as matérias do boletim lido no e-mail (a mesma manchete nos dois
+boletins da ITC entra uma vez só). O robô não visita essa fonte. Os boletins **não** vão para o
+repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
 

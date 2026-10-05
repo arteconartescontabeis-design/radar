@@ -64,12 +64,16 @@ def obter_texto(item: Item, config: dict, sessao: requests.Session) -> tuple[str
         # a fonte não oferece o texto integral por endereço direto: guarda-se o que a
         # listagem oficial traz (ementa) e isso fica anotado na captura
         return (item.texto_da_listagem, None) if item.texto_da_listagem else (None, "a listagem não trouxe ementa")
+    minimo = int(config.get("texto_minimo", 80))
+    if config.get("texto_do_feed") and len(item.texto_da_listagem or "") >= minimo:
+        # o feed já traz a notícia inteira: não é preciso abrir a página (site lento ou que recusa robôs)
+        return item.texto_da_listagem, None
     try:
         _, html = baixar(item.url_texto or item.url, sessao, tentativas=2)
     except ErroDownload as e:
         return None, str(e)
     texto = extrair_texto(html, config.get("seletor_texto"))
-    if len(texto) < int(config.get("texto_minimo", 80)):
+    if len(texto) < minimo:
         return None, f"texto curto demais ({len(texto)} caracteres)"
     return texto, None
 
@@ -141,7 +145,7 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
                     if existente and not deve_revisitar(existente, config, agora):
                         continue
                     texto, erro_texto = obter_texto(item, config, sessao)
-                    if not config.get("sem_pagina_de_texto"):
+                    if not (config.get("sem_pagina_de_texto") or config.get("texto_do_feed")):
                         time.sleep(pausa)                          # gentileza com o site (só quando houve pedido)
                     if item.data is None and texto and config.get("data_do_texto"):
                         item.data, na_janela = data_no_texto(texto, config, hoje)    # a listagem não traz data
@@ -238,6 +242,11 @@ def resumo_markdown(resultados: list[dict], pulados: list[str]) -> str:
     return "\n".join(linhas)
 
 
+def alimentada_por_fora(fonte: dict) -> bool:
+    """Fonte cujas capturas chegam por outro caminho (ex.: e-mail lido pela rotina diária): o robô não a visita."""
+    return (fonte.get("config") or {}).get("origem") == "email"
+
+
 def executar(banco: Banco, slug: str | None = None, forcar: bool = False,
              hoje: date | None = None, pausa: float = 1.0) -> tuple[list[dict], list[str]]:
     orfas = banco.encerrar_execucoes_orfas()
@@ -250,6 +259,8 @@ def executar(banco: Banco, slug: str | None = None, forcar: bool = False,
     sessao = requests.Session()
     resultados, pulados = [], []
     for fonte in fontes:
+        if alimentada_por_fora(fonte):
+            continue
         if not forcar and not fonte_esta_na_hora(fonte, agora):
             pulados.append(fonte["slug"])
             continue

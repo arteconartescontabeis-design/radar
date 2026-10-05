@@ -2382,3 +2382,48 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_up6 with (force)")
+
+
+# ------------------------------------------------ fontes novas (outubro/2026) e boletim por e-mail
+FONTES_NOVAS = RAIZ / "sql" / "radar-fontes-novas-2026-10.sql"
+
+
+def test_fontes_novas_entram_desligadas_e_o_sql_pode_rodar_de_novo(limpo):
+    assert psql(FONTES_NOVAS).returncode == 0
+    linhas = dict((s, (a, o)) for s, a, o in limpo.execute(
+        "select slug, ativo, oficial from radar_fontes where slug in "
+        "('dou-destaques','contabeis-noticias','econet-blog','portalcontabilsc-noticias','itc-email')").fetchall())
+    assert linhas == {"dou-destaques": (False, True), "contabeis-noticias": (False, False), "econet-blog": (False, False),
+                      "portalcontabilsc-noticias": (False, False), "itc-email": (True, False)}
+    limpo.execute("update radar_fontes set ativo = true where slug = 'econet-blog'")
+    assert psql(FONTES_NOVAS).returncode == 0                   # de novo: não desfaz o que você ligou
+    assert limpo.execute("select ativo from radar_fontes where slug = 'econet-blog'").fetchone()[0] is True
+    limpo.execute("delete from radar_fontes where slug in ('dou-destaques','contabeis-noticias','econet-blog',"
+                  "'portalcontabilsc-noticias','itc-email')")
+
+
+def test_boletim_por_email_grava_cada_materia_uma_vez(limpo):
+    assert psql(FONTES_NOVAS).returncode == 0
+    try:
+        itens = [{"titulo": "SIMPLES NACIONAL: PRAZO DE OPÇÃO PARA 2027 É PRORROGADO", "data": "2026-09-29",
+                  "area": "Área Federal", "texto": "O prazo de opção foi prorrogado até 15 de outubro.", "assunto_email": "ITCNET Mail"},
+                 {"titulo": "Simples Nacional - prazo de opção para 2027 é prorrogado", "data": "2026-09-29",
+                  "area": "Área Federal", "texto": "Repetida no outro boletim.", "assunto_email": "Legislação & Tribunais"},
+                 {"titulo": "ESOCIAL: ALTERAÇÕES NOS EVENTOS S-2410 E S-2416", "data": "2026-09-30", "area": "Trabalhista"},
+                 {"titulo": "x", "data": "2026-09-30"}]                                       # título curto: ignorado
+        r = limpo.execute("select radar_receber_email('itc-email', %s::jsonb)", (json.dumps(itens),)).fetchone()[0]
+        assert r == {"recebidos": 2, "novos": 2, "ja_existiam": 0}
+        r = limpo.execute("select radar_receber_email('itc-email', %s::jsonb)", (json.dumps(itens[:1]),)).fetchone()[0]
+        assert r == {"recebidos": 1, "novos": 0, "ja_existiam": 1}                         # no dia seguinte, de novo
+        linhas = limpo.execute("""select c.url, c.metadados->>'origem', c.hash_titulo from radar_capturas c
+                                  join radar_fontes f on f.id = c.fonte_id where f.slug = 'itc-email' order by c.id""").fetchall()
+        assert len(linhas) == 2 and all(u.startswith("https://www.itcnet.com.br/?radar=") and o == "email" for u, o, _ in linhas)
+        from radar_util import hash_titulo                                                 # o mesmo hash do robô
+        assert hash_titulo(itens[2]["titulo"]) in {h for _, _, h in linhas}
+        assert limpo.execute("select ultimo_sucesso_em is not null from radar_fontes where slug = 'itc-email'").fetchone()[0]
+        with pytest.raises(Exception, match="RADAR095"):
+            limpo.execute("select radar_receber_email('rfb-noticias', '[]'::jsonb)")
+    finally:
+        limpo.execute("delete from radar_capturas where fonte_id in (select id from radar_fontes where slug = 'itc-email')")
+        limpo.execute("delete from radar_fontes where slug in ('dou-destaques','contabeis-noticias','econet-blog',"
+                      "'portalcontabilsc-noticias','itc-email')")

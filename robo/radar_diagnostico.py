@@ -104,7 +104,8 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
         r["brutos"], r["na_janela"] = listagem.brutos, len(listagem.itens)
         r["amostra"] = [{"titulo": i.titulo, "data": i.data.isoformat() if i.data else None, "url": i.url}
                         for i in listagem.itens[:5]]
-        if listagem.itens and config.get("sem_pagina_de_texto"):
+        if listagem.itens and (config.get("sem_pagina_de_texto")
+                               or (config.get("texto_do_feed") and listagem.itens[0].texto_da_listagem)):
             r["texto_primeiro_item"] = len(listagem.itens[0].texto_da_listagem or "")
             r["inicio_texto"] = (listagem.itens[0].texto_da_listagem or "")[:300]
             for extra in config.get("diagnostico_urls", []):      # páginas guardadas só para estudo
@@ -178,7 +179,7 @@ def fontes_avulsas(enderecos: str, padrao: str = "") -> list[dict]:
     fontes = []
     for n, url in enumerate([u for u in re.split(r"[\s,;]+", enderecos or "") if u.startswith(("http://", "https://"))][:10], 1):
         fontes.append({"slug": f"teste-{n}", "url": url, "tipo_coletor": "rss" if re.search(r"(rss|feed|atom)", url, re.I) else "html_links",
-                       "config": {"padrao_url": padrao or ".", "janela_dias": 30}, "avulsa": True})
+                       "config": {"padrao_url": padrao or ".", "janela_dias": 30, "texto_do_feed": True}, "avulsa": True})
     return fontes
 
 
@@ -190,7 +191,8 @@ def carregar_fontes() -> tuple[list[dict], str]:
     url, chave = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
     if url and chave:
         try:
-            return Banco(url, chave).fontes_ativas(), "fontes ativas do banco"
+            fontes = [f for f in Banco(url, chave).fontes_ativas() if (f.get("config") or {}).get("origem") != "email"]
+            return fontes, "fontes ativas do banco"
         except ErroBanco as e:
             print(f"! banco indisponível ({e}); usando robo/radar_fontes.json", file=sys.stderr)
     return json.loads((AQUI / "radar_fontes.json").read_text(encoding="utf-8")), "robo/radar_fontes.json"
