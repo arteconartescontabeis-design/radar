@@ -150,11 +150,22 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.7.1";
-const FUNCAO_MINIMA = "0.7.0";      // versão da função radar-ia que este painel exige (a v0.7.1 não mudou a função)
+const VERSAO = "0.8.0";
+const FUNCAO_MINIMA = "0.7.0";      // versão da função radar-ia que este painel exige (a v0.7.1 e a v0.8.0 não mudaram a função)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.8.0", "05/10/2026", [
+    "Publicação no site registrada sozinha: a cada coleta, o robô procura a notícia em artecon.cnt.br/news e, quando ela corresponde a um conteúdo aprovado (título e texto), preenche o link e a data em “Publicações no site”. Na dúvida, não registra; o registro manual continua igual.",
+    "Aviso por e-mail quando o texto publicado no site deixa de corresponder ao texto aprovado no Radar (fecha sozinho quando volta a bater).",
+    "Para o site: os botões do conteúdo aprovado estão numerados (1. título, 2. texto, 3. imagem) e a tela indica a categoria correspondente no site.",
+    "Resumo semanal: toda segunda-feira, um único e-mail (aviso no GitHub) com as notícias mais relevantes da semana, agrupadas por tema. Nada de um aviso por notícia.",
+    "Diário Oficial completo pelo INLABS: atos da Receita, PGFN, CGSN e CGIBS, sem as unidades regionais. A fonte vem desligada; para ligar, cadastre-se no INLABS e grave o acesso nos segredos do GitHub (veja o LEIAME).",
+    "Fontes novas (desligadas até você ligar): DOU Destaques, blog da Econet e Portal Contábil SC (o texto vem do próprio feed). Boletim da ITC lido no e-mail todo dia às 02h55.",
+    "Relevância: notícia que ficou “baixa” só por não ter palavras da lista sobe para “média” quando a IA dá nota 8 ou mais (opção nota_promove). A que tem termo negativo (apreensão, concurso, leilão...) continua baixa.",
+    "Tela de fontes: o aviso de padrão perigoso não barra mais o padrão do CGIBS e passa a recusar formas que travariam o robô.",
+    "Limpeza: saiu a antiga publicação dentro do Radar (tabelas vazias). Banco v0.8.0 (rodar o radar-setup-v0.8.0.sql) e robô v0.8.0. A função de IA não mudou."
+  ]],
   ["0.7.1", "04/10/2026", [
     "Texto não salvo não se perde: o título e o texto digitados num conteúdo ficam guardados neste navegador até serem salvos. Se a sessão cair no meio da edição, ao abrir o conteúdo de novo aparece “Recuperar o texto não salvo”. “Sair” com texto não salvo pede confirmação.",
     "Listas longas (capturas, assuntos, publicações, histórico e edições) carregam uma leva por vez, com o botão “Mostrar mais”, em vez de cortar nos itens mais recentes.",

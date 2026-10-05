@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.7.1.sql
--- DESFAZ a instalação do radar-setup-v0.7.1.sql.
+-- RADAR ARTECON — radar-reversao-v0.8.0.sql
+-- DESFAZ a instalação do radar-setup-v0.8.0.sql.
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
 -- =====================================================================
