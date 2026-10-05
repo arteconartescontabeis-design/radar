@@ -50,6 +50,9 @@ class Site(BaseHTTPRequestHandler):
             dados = IA["bruto"].encode()
         elif IA["status"] != 200:
             dados = json.dumps({"type": "error", "error": {"type": "artecon_ia_central", "message": IA["mensagem"]}}).encode()
+        elif corpo.get("tools", [{}])[0].get("name") == "conteudo":        # v0.9.0: rascunho automático
+            dados = json.dumps({"type": "message", "model": corpo["model"], "stop_reason": "tool_use", "usage": {"input_tokens": 5000, "output_tokens": 900},
+                                "content": [{"type": "tool_use", "name": "conteudo", "input": IA["conteudo"]}]}).encode()
         else:
             ids = [json.loads(l)["id"] for l in corpo["messages"][0]["content"].split("NOVOS (avalie cada um):\n")[1].splitlines()]
             itens = IA["responder"](ids) if IA["responder"] else [{"id": i, "nota": 7, "motivo": "m", "tema": "t", "igual_a": None} for i in ids]
@@ -128,7 +131,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.8.0", True), ("ok", 1, 200, "0.8.0", True)]
+    assert ex == [("ok", 2, 200, "0.9.0", True), ("ok", 1, 200, "0.9.0", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -236,6 +239,19 @@ def test_robo_com_banco_sem_o_sql_novo_segue_sem_a_limpeza(monkeypatch):
     assert "não foi feita" in radar_coletar.limpar_imagens(BancoFora())
 
 
+def test_robo_arquiva_a_fila_antiga_e_segue_com_banco_antigo():
+    class Banco_:
+        def __init__(self, r): self.r = r
+        def arquivar_fila(self):
+            if isinstance(self.r, Exception):
+                raise self.r
+            return self.r
+    assert "tiradas da fila" in radar_coletar.arquivar_fila(Banco_(4)) and ": 4." in radar_coletar.arquivar_fila(Banco_(4))
+    assert radar_coletar.arquivar_fila(Banco_(0)) == ""
+    assert radar_coletar.arquivar_fila(Banco_(ErroBanco("POST rpc/radar_arquivar_fila: HTTP 404 — function not found"))) == ""
+    assert "não foi feito" in radar_coletar.arquivar_fila(Banco_(ErroBanco("POST rpc/x: sem conexão com o banco")))
+
+
 def sem_rede(url):
     raise AssertionError(f"não deveria acessar {url}")
 
@@ -261,6 +277,13 @@ class GitHubFalso:
         self.prox += 1
         self.avisos[radar_alertas.titulo_link(reg["url"])] = self.prox
         self.criados.append((self.prox, radar_alertas.titulo_link(reg["url"]), radar_alertas.corpo_link(reg, status)))
+        return self.prox
+
+    def abrir_parada(self, f):
+        import radar_alertas
+        self.prox += 1
+        self.avisos[radar_alertas.PREFIXO_PARADA + f["slug"]] = self.prox
+        self.criados.append((self.prox, radar_alertas.PREFIXO_PARADA + f["slug"], radar_alertas.corpo_parada(f)))
         return self.prox
 
     def fechar(self, numero, motivo):
@@ -296,6 +319,24 @@ def test_aviso_de_fonte_desligada_ou_apagada_e_fechado(cenario):
     radar_alertas.executar(banco, gh, sem_rede)
     assert sorted(gh.fechados) == [(7, "A fonte foi desligada na aba Fontes."), (8, "A fonte não existe mais no Radar.")]
     assert gh.criados == []                                     # fonte desligada não abre aviso, mesmo falhando
+
+
+def test_rotina_do_boletim_parada_abre_aviso_e_fecha_quando_volta(cenario):
+    import radar_alertas
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso({"Radar: fonte parada — sumiu": 9})
+    cenario.execute("""update radar_fontes set config = config || '{"origem": "email"}', frequencia_horas = 24,
+                       ultimo_sucesso_em = now() - interval '4 days' where slug = 'teste-a'""")
+    feito = radar_alertas.executar(banco, gh, sem_rede)
+    assert [t for _, t, _ in gh.criados] == ["Radar: fonte parada — teste-a"] and (9, "A fonte não existe mais no Radar.") in gh.fechados
+    assert "rotina diária" in gh.criados[0][2] and any("parada" in x for x in feito)
+    radar_alertas.executar(banco, gh, sem_rede)
+    assert len(gh.criados) == 1                                       # não repete enquanto estiver aberto
+    cenario.execute("update radar_fontes set ultimo_sucesso_em = now() where slug = 'teste-a'")   # a rotina rodou
+    radar_alertas.executar(banco, gh, sem_rede)
+    assert gh.fechados[-1][0] == gh.criados[0][0] and "voltou a funcionar" in gh.fechados[-1][1]
+    f = {"slug": "x", "nome": "X", "config": {}, "ultimo_sucesso_em": None}
+    assert "Actions" in radar_alertas.corpo_parada(f)                 # fonte do robô: outro conselho
 
 
 def test_link_publicado_fora_do_ar_abre_aviso_e_fecha_quando_volta_ou_e_excluido():
@@ -964,6 +1005,10 @@ def test_resumo_semanal_agrupa_por_tema_esconde_o_boletim_e_fecha_o_anterior():
     class BancoResumo:
         def capturas_entre(self, i, f): self.periodo = (i, f); return caps
         def numeros_da_semana(self, i, f): return {"aprovados": 2, "publicados": 1}
+        def fontes_sem_novidade(self, desde):
+            self.desde = desde
+            return [{"slug": "econet-blog", "nome": "Econet — Blog", "ultima_captura_em": "2026-09-25T10:00:00+00:00"},
+                    {"slug": "nova", "nome": "Fonte nova", "ultima_captura_em": None}]
 
     class GH:
         def __init__(self, abertos): self.abertos, self.abertos_novos, self.fechados = abertos, [], []
@@ -981,6 +1026,9 @@ def test_resumo_semanal_agrupa_por_tema_esconde_o_boletim_e_fecha_o_anterior():
     assert "(não oficial)" in corpo and "Capturas novas na semana: **5**" in corpo and "aprovados: **2**" in corpo
     assert "MATÉRIA PAGA" not in corpo and "itcnet" not in corpo and "Mais **1** matéria" in corpo   # repositório público
     assert "Repetição" not in corpo and "Pouco relevante" not in corpo
+    assert banco.desde.isoformat() == "2026-09-30T00:00:00-03:00"                      # v0.9.0: fontes sem novidade
+    assert "Fontes sem notícia nova há mais de 5 dias" in corpo and "Econet — Blog — última em 25/09/2026" in corpo
+    assert "Fonte nova — nunca trouxe nada" in corpo
     assert feito[0].startswith("resumo #50 aberto") and feito[1] == "resumo anterior #40 fechado"
     gh2 = GH({titulo: 50})
     assert radar_resumo.executar(banco, gh2, agora) == ["resumo já aberto (#50)"] and gh2.abertos_novos == []   # rodou duas vezes
@@ -995,6 +1043,8 @@ def test_banco_le_capturas_e_numeros_da_semana_pela_api(cenario):
     assert len(caps) == 3 and caps[0]["radar_fontes"]["nome"].startswith("teste-")
     assert banco.capturas_entre(agora - timedelta(days=30), agora - timedelta(days=20)) == []
     assert banco.numeros_da_semana(agora - timedelta(days=7), agora) == {"aprovados": 0, "publicados": 0}
+    assert banco.fontes_sem_novidade(agora - timedelta(days=5)) == []                    # v0.9.0: as duas trouxeram hoje
+    assert banco.fontes_sem_novidade(agora + timedelta(minutes=1))                       # nada depois de "agora"
 
 
 def test_fonte_do_inlabs_grava_os_atos_com_o_texto_do_xml(cenario, monkeypatch):
@@ -1064,3 +1114,54 @@ def test_numero_curto_no_titulo_e_aprovacao_a_noite_em_brasilia():
     banco = BancoSite(noite)                                              # aprovada às 22h30 de 05/10 em Brasília
     radar_site.executar(banco, paginas.get, hoje=date(2026, 10, 6))
     assert banco.gravados and banco.gravados[0][:3] == (2, base + "/news/view/portaria-45", date(2026, 10, 5))
+
+
+# ============================================================ v0.9.0 — rascunhos automáticos
+def test_robo_prepara_o_rascunho_da_noticia_de_topo_e_respeita_o_limite_do_dia(ia):
+    import radar_rascunhos
+    from datetime import datetime, timezone
+    robo()
+    simples = ia.execute("select id from radar_capturas where titulo = 'Prazo do Simples Nacional é prorrogado'").fetchone()[0]
+    pgfn = ia.execute("select id from radar_capturas where titulo = 'PGFN abre nova transação tributária'").fetchone()[0]
+    ia.execute("update radar_fontes set oficial = true where slug like 'teste-%'")
+    ia.execute("update radar_capturas set ia_nota = 9 where id = %s", (simples,))
+    ia.execute("update radar_capturas set ia_nota = 6 where id = %s", (pgfn,))                    # abaixo da nota mínima
+    assert ia.execute("select relevancia from radar_capturas where id = %s", (simples,)).fetchone()[0] == "alta"
+    IA["conteudo"] = {"titulo": "Prazo de opção pelo Simples vai até 31 de janeiro de 2027",
+                      "corpo": "## O que muda\nO prazo de opção foi estendido até **31 de janeiro de 2027**, com multa de 20% para quem perder. "
+                               "<b>Confira</b> as condições com a equipe. [VERIFICAR: quem pode optar]"}
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    agora = datetime.now(timezone.utc)
+    ia.execute("update radar_config set valor = '{\"por_dia\": 1}' where chave = 'rascunhos'")
+    try:
+        r = radar_rascunhos.executar(banco, "iagw_radar_teste", SITE + "/gateway", agora=agora)
+        assert r["erro"] is None and len(r["feitos"]) == 1
+        pedido = IA["pedidos"][-1]
+        assert pedido["corpo"]["model"] == "claude-sonnet-4-6" and "TEXTO ORIGINAL, NUNCA CÓPIA" in pedido["corpo"]["system"]
+        assert "prorrogado até 31 de janeiro de 2027" in pedido["corpo"]["messages"][0]["content"]       # foi o texto oficial
+        assert pedido["cab"]["x-ia-usuario"] == "robô de rascunhos"
+        cont = ia.execute("""select c.titulo, c.corpo, c.status, c.gerado_por, c.modelo_ia, c.avisos_ia, a.status
+                             from radar_conteudos c join radar_assuntos a on a.id = c.assunto_id""").fetchall()
+        assert len(cont) == 1
+        titulo, corpo, status, gerado, modelo, avisos, st_assunto = cont[0]
+        assert (status, gerado, modelo, st_assunto) == ("rascunho", "ia", "claude-sonnet-4-6 (robô)", "conteudo_gerado")
+        assert "<b>" not in corpo and avisos[0] == radar_rascunhos.AVISO_ROBO
+        assert any("20%" in a for a in avisos) and any("[VERIFICAR]" in a for a in avisos)
+        assert not any("31 de janeiro de 2027" in a for a in avisos)
+        assert simples not in {x[0] for x in ia.execute("select id from radar_v_fila").fetchall()}   # saiu da triagem
+        assert ia.execute("select rascunhos_robo from radar_v_painel").fetchone()[0] == 1
+        ia.execute("update radar_capturas set ia_nota = 10 where id = %s", (pgfn,))
+        n = len(IA["pedidos"])
+        assert radar_rascunhos.executar(banco, "iagw_radar_teste", SITE + "/gateway", agora=agora)["feitos"] == []   # 1 por dia
+        assert len(IA["pedidos"]) == n
+        ia.execute("update radar_config set valor = '{\"por_dia\": 3}' where chave = 'rascunhos'")
+        IA.update(status=429, mensagem="limite do mês")
+        r = radar_rascunhos.executar(banco, "iagw_radar_teste", SITE + "/gateway", agora=agora)
+        assert "limite do mês" in r["erro"] and r["feitos"] == []
+        assert pgfn in {x[0] for x in ia.execute("select id from radar_v_fila").fetchall()}       # IA fora: nada foi aberto
+        ia.execute("update radar_config set valor = '{\"ligado\": false}' where chave = 'rascunhos'")
+        assert radar_rascunhos.executar(banco, "iagw_radar_teste", SITE + "/gateway", agora=agora)["pulado"]
+    finally:
+        ia.execute("""update radar_config set valor = '{"ligado": true, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}'
+                      where chave = 'rascunhos'""")
+        ia.execute("delete from radar_assuntos")

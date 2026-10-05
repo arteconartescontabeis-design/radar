@@ -30,8 +30,11 @@ Tarefa diária do Radar Artecon: copiar para o banco as matérias do boletim da 
    onde a lista é [{"titulo": "...", "data": "AAAA-MM-DD", "area": "...", "texto": "...",
    "assunto_email": "<assunto do e-mail>"}, ...]. Escape aspas simples dobrando-as ('').
    A função ignora repetidas (a mesma manchete nos dois boletins entra uma vez).
-4. Se não houver e-mail da ITC no período, não faça nada. Não altere nenhuma outra tabela,
-   não rode outro SQL, não crie arquivos no repositório, não abra PR nem issue.
+4. Se não houver e-mail da ITC no período, chame mesmo assim com a lista vazia:
+   select public.radar_receber_email('itc-email', '[]'::jsonb);
+   (isso registra que a rotina rodou; se ela parar, o Radar abre o aviso "fonte parada" em até 3 dias).
+   Não altere nenhuma outra tabela, não rode outro SQL, não crie arquivos no repositório,
+   não abra PR nem issue.
 5. Termine com uma linha: quantos e-mails lidos, quantas matérias enviadas e o retorno da função.
 ```
 
@@ -42,3 +45,10 @@ aplicado no banco e rotina "Radar — boletim ITC (e-mail)" criada (agenda
 `CRON_TZ=America/Sao_Paulo 55 2 * * *`). A rotina acorda a própria conversa do Claude Code em que
 o Radar é desenvolvido, que já tem os conectores Microsoft 365 e Supabase; não precisa configurar
 conector na rotina. Para pausar ou apagar, peça ao Claude.
+
+v0.9.0: a rotina passa a chamar a função mesmo sem boletim (lista vazia), e o robô abre o aviso
+"Radar: fonte parada — itc-email" se ela ficar 3 dias sem rodar (a conversa foi encerrada, um
+conector caiu...). O resumo de segunda também lista o boletim se ele ficar mais de 5 dias sem
+matéria nova. Tentou-se uma rotina que abre uma sessão nova a cada dia, mas por esse caminho ela
+não recebe os conectores; para isso, crie a rotina pela tela de rotinas do claude.ai, com os
+conectores Microsoft 365 e Supabase, usando o texto acima.

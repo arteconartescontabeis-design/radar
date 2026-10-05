@@ -19,7 +19,7 @@ select v.slug, v.nome, v.orgao, v.abrangencia, v.oficial, v.ativo, v.tipo_coleto
 from (values
   ('dou-destaques', 'Diário Oficial da União — Destaques', 'Imprensa Nacional', 'federal', true, false, 'html_links',
    'https://www.in.gov.br/web/guest/servicos/diario-oficial-da-uniao/destaques-do-diario-oficial-da-uniao',
-   '{"janela_dias": 10, "padrao_url": "/web/dou/-/[^?#]+-\\d{6,}$", "seletor_texto": ".texto-dou, #materia, article, main", "max_itens": 60}'::jsonb,
+   '{"janela_dias": 10, "padrao_url": "/web/dou/-/(?:lei-|decreto-n-|medida-provisoria-|[^?#]*(?:rfb|pgfn|cgsn|cgibs|cosit|receita|fazenda|[-/]mf[-/]))[^?#]*-\\d{6,}$", "seletor_texto": ".texto-dou, #materia, article, main", "max_itens": 60}'::jsonb,
    'federal', 12),
   ('econet-blog', 'Econet Editora — Blog', 'Econet Editora', 'geral', false, false, 'rss',
    'https://blog.econeteditora.com.br/feed/',

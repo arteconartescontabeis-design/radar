@@ -150,11 +150,19 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.8.0";
-const FUNCAO_MINIMA = "0.7.0";      // versão da função radar-ia que este painel exige (a v0.7.1 e a v0.8.0 não mudaram a função)
+const VERSAO = "0.9.0";
+const FUNCAO_MINIMA = "0.7.0";      // versão da função radar-ia que este painel exige (a v0.7.1, a v0.8.0 e a v0.9.0 não mudaram a função)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.9.0", "05/10/2026", [
+    "Rascunhos automáticos: o robô prepara sozinho o rascunho das notícias de topo (fonte oficial, relevância alta, nota da IA 9 ou mais; no máximo 2 por dia), com as mesmas regras do “Gerar com IA”. Aparecem no Painel em “Rascunhos preparados pelo robô”. O robô não envia para revisão, não aprova e não publica. Ajuste em Configurações → Rascunhos automáticos.",
+    "Relevância: notícia “alta” só por palavras genéricas da lista (decreto, portaria, prazo...) com nota da IA até 3 desce para “média” (opção nota_rebaixa; -1 desliga). Sai do topo, mas continua na fila.",
+    "A fila não acumula: o que está na triagem há mais de 10 dias e é baixa, ou tem nota da IA até 2, sai sozinho e vai para Assuntos → Ignorado (opções arquivar_dias e arquivar_nota; 0 dias desliga).",
+    "DOU Destaques: só entram os atos fiscais (Receita, PGFN, CGSN, CGIBS, Fazenda) e as leis, decretos e medidas provisórias.",
+    "Aviso “fonte parada”: se uma fonte ativa ficar 3 ciclos sem funcionar (por exemplo, a rotina diária do boletim da ITC parou), abre um aviso por e-mail; ele fecha sozinho quando a fonte volta.",
+    "Resumo de segunda: passa a listar as fontes ativas sem notícia nova há mais de 5 dias. Banco v0.9.0 e robô v0.9.0. A função de IA não mudou."
+  ]],
   ["0.8.0", "05/10/2026", [
     "Publicação no site registrada sozinha: a cada coleta, o robô procura a notícia em artecon.cnt.br/news e, quando ela corresponde a um conteúdo aprovado (título e texto), preenche o link e a data em “Publicações no site”. Na dúvida, não registra; o registro manual continua igual.",
     "Aviso por e-mail quando o texto publicado no site deixa de corresponder ao texto aprovado no Radar (fecha sozinho quando volta a bater).",
@@ -575,6 +583,7 @@ const TELAS = {
     const [p] = await ler("radar_v_painel", {select:"*"});
     const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
     const revisao = await ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,atualizado_em", status:"eq.em_revisao", order:"atualizado_em.desc", limit:"10"});
+    const doRobo = p.rascunhos_robo ? await ler("radar_conteudos", {select:"id,titulo,assunto_id,criado_em,avisos_ia", status:"eq.rascunho", modelo_ia:"like.*(robô)", order:"criado_em.desc", limit:"10"}) : [];
     const [mesIa] = await ler("radar_v_ia_mes", {select:"*"});
     const c = (n, rotulo, aba, alerta) => `<button class="cartao ${alerta && n ? "alerta" : ""}" data-acao="aba" data-aba="${aba}"><b>${n}</b><span>${rotulo}</span></button>`;
     return `<h1>Painel do dia</h1>
@@ -584,6 +593,7 @@ const TELAS = {
         ${c(p.em_alta, `Aguardando triagem (em alta)${p.na_fila + p.na_fila_baixa > p.em_alta ? ` · mais ${p.na_fila + p.na_fila_baixa - p.em_alta} fora da lista principal` : ""}`, "fila")}
         ${c(p.alta_relevancia, "Alta relevância em aberto", "assuntos")}
         ${c(p.em_verificacao, "Em verificação", "assuntos")}
+        ${p.rascunhos_robo ? c(p.rascunhos_robo, "Rascunhos preparados pelo robô", "assuntos") : ""}
         ${c(p.aguardando_aprovacao, "Aguardando aprovação", "assuntos")}
         ${c(p.aprovados_sem_site, "Aprovados a publicar no site", "publicacoes", true)}
         ${c(p.no_site, "Publicados no site", "publicacoes")}
@@ -592,6 +602,9 @@ const TELAS = {
         ${revisao.length ? `<div class="rolagem"><table><tr><th>Título</th><th>Formato</th><th>Atualizado</th></tr>${revisao.map(r =>
           `<tr class="clicavel" data-acao="abrir-assunto" data-id="${r.assunto_id}"><td><button class="titulo-link" data-acao="abrir-assunto" data-id="${r.assunto_id}">${h(r.titulo)}</button></td><td>${h(ROTULOS.formato[r.formato])}</td><td>${dataHora(r.atualizado_em)}</td></tr>`).join("")}</table></div>`
           : `<p class="sub">Nenhum conteúdo aguardando aprovação.</p>`}</div>
+      ${doRobo.length ? `<div class="painel" id="rascunhos-robo"><h2>Rascunhos preparados pelo robô</h2><p class="sub">Notícias de topo que o robô já redigiu. Confira o texto e os pontos marcados, gere a capa e envie para revisão (ou exclua, se não servir).</p>
+        <div class="rolagem"><table><tr><th>Título</th><th>Pontos a conferir</th><th>Preparado em</th></tr>${doRobo.map(r =>
+          `<tr class="clicavel" data-acao="abrir-assunto" data-id="${r.assunto_id}"><td><button class="titulo-link" data-acao="abrir-assunto" data-id="${r.assunto_id}">${h(r.titulo)}</button></td><td>${Math.max((r.avisos_ia || []).length - 1, 0)}</td><td>${dataHora(r.criado_em)}</td></tr>`).join("")}</table></div></div>` : ""}
       <div class="painel"><h2>Fontes que pedem atenção</h2>
         ${fontes.length ? fontes.map(f => `<div class="aviso ${["falhando","nunca_funcionou"].includes(f.saude) ? "erro" : "alerta"}">
           <b>${h(f.nome)}</b> — ${h(ROTULOS.saude[f.saude] || f.saude)}${f.ultimo_erro ? `<br><span class="sub">${h(f.ultimo_erro)}</span>` : ""}</div>`).join("")
@@ -784,7 +797,8 @@ const TELAS = {
       <div class="painel" id="painel-ia"><h2>Inteligência artificial</h2>
         <p class="sub">A IA do Radar é uma função instalada no Supabase (Edge Function <b>radar-ia</b>) que fala com a <b>IA Central</b> do Portal Artecon: texto pela Anthropic, imagens pela OpenAI. O custo, os limites e a recarga ficam em <a href="https://arteconartescontabeis-design.github.io/portal/" target="_blank" rel="noopener noreferrer">Portal → Consumo de IA</a>. O teste abaixo confere a instalação e diz o que falta.</p>
         <div class="acoes"><button class="btn" data-acao="testar-ia">Testar a IA</button></div><div id="diag-ia"></div></div>
-      ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10) e <b>nota_promove</b> (nota da IA que tira a captura de “baixa” e a leva para “média”, mesmo sem palavras da lista; padrão 8; use 11 para desligar).`)}
+      ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10) e <b>nota_promove</b> (nota da IA que tira a captura de “baixa” e a leva para “média”, mesmo sem palavras da lista; padrão 8; use 11 para desligar) e <b>nota_rebaixa</b> (captura “alta” com nota da IA até este valor desce para “média”; padrão 3; use -1 para desligar). Fila: <b>arquivar_dias</b> (a captura que está na fila há mais dias que isso e é baixa, ou tem nota da IA até <b>arquivar_nota</b>, sai sozinha da triagem e vai para Assuntos → Ignorado; padrão 10 dias e nota 2; use 0 dias para desligar).`)}
+      ${bloco("rascunhos", "Rascunhos automáticos", `O robô prepara sozinho o rascunho das notícias de topo (Assuntos → “Conteúdo gerado”), com as mesmas regras do “Gerar com IA”. Ele não envia para revisão, não aprova e não publica. Só entram capturas de <b>fonte oficial</b>, com o texto oficial capturado, relevância alta, ainda na fila e com nota da IA a partir de <b>nota_minima</b> (padrão 9). <b>por_dia</b>: no máximo quantos rascunhos por dia (padrão 2; 0 desliga); <b>dias</b>: só capturas destes últimos dias (padrão 3); <b>formato</b>: “flash”, “informativo” ou “artigo”; <b>ligado</b>: true ou false.`)}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
       ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”.`)}
       ${bloco("feriados_extras", "Feriados locais e pontos facultativos", `Os feriados nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente bancário) já são considerados. Acrescente aqui os demais: "AAAA-MM-DD" (uma data) ou "MM-DD" (todo ano). Exemplo: ["2026-12-24", "04-24"].`)}
@@ -1196,7 +1210,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria){
     ${copia.length ? `<div class="aviso erro copia"><b>Texto igual ao da fonte em ${copia.length} trecho(s).</b> O conteúdo não pode ser aprovado assim: reescreva com as suas palavras. Se for a transcrição de um dispositivo legal, cite só o essencial entre aspas (até ${CITACAO_MAXIMA} palavras por citação).
       <ul>${copia.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span></li>`).join("")}</ul>${copia.length > 4 ? `<span class="sub">e mais ${copia.length - 4}.</span>` : ""}</div>`
       : fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é só com o texto das capturas deste assunto; não detecta paráfrase muito próxima nem cópia de outras páginas.">(só contra as capturas deste assunto)</span></p>` : ""}
-    <p>${selo(ROTULOS.formato[c.formato])} ${selo(ROTULOS.conteudo[c.status], tipo)} ${selo(c.gerado_por === "ia" ? "gerado por IA" : "escrito pela equipe","neutro")}
+    <p>${selo(ROTULOS.formato[c.formato])} ${selo(ROTULOS.conteudo[c.status], tipo)} ${selo(c.gerado_por === "ia" ? (/\(robô\)$/.test(c.modelo_ia || "") ? "preparado pelo robô" : "gerado por IA") : "escrito pela equipe","neutro")}
       ${c.aprovado_em ? `<span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span>` : ""}</p>
     ${Array.isArray(c.avisos_ia) && c.avisos_ia.length ? `<div class="aviso alerta avisos-ia"><b>Pontos a conferir neste texto gerado pela IA</b> (verificação automática contra o texto oficial, feita na geração; não lê números por extenso nem avalia a interpretação):
       <ul>${c.avisos_ia.map(a => `<li>${h(a)}</li>`).join("")}</ul></div>`
@@ -1686,6 +1700,14 @@ async function enviarImagem(campo){
 const apagarItem = id => apagar("radar_informativo_itens", {informativo_id:"eq." + E.informativo, conteudo_id:"eq." + id});
 function validarConfig(chave, v){
   const lista = Array.isArray(v), obj = v && typeof v === "object" && !lista;
+  if(chave === "rascunhos"){
+    if(!obj) return "Os rascunhos automáticos precisam ser um objeto { … }.";
+    if(v.ligado !== undefined && typeof v.ligado !== "boolean") return "“ligado” é true ou false.";
+    if(v.nota_minima !== undefined && !(Number.isInteger(v.nota_minima) && v.nota_minima >= 0 && v.nota_minima <= 10)) return "“nota_minima” é a nota da IA a partir da qual o robô prepara o rascunho: número inteiro de 0 a 10.";
+    if(v.por_dia !== undefined && !(Number.isInteger(v.por_dia) && v.por_dia >= 0 && v.por_dia <= 10)) return "“por_dia” é quantos rascunhos o robô prepara por dia: número inteiro de 0 a 10 (0 desliga).";
+    if(v.dias !== undefined && !(Number.isInteger(v.dias) && v.dias >= 1 && v.dias <= 30)) return "“dias” é de quantos dias para trás vale a captura: número inteiro de 1 a 30.";
+    if(v.formato !== undefined && !["flash","informativo","artigo"].includes(v.formato)) return "“formato” é “flash”, “informativo” ou “artigo”.";
+  }
   if(chave === "obrigacoes"){
     if(!lista) return "A agenda precisa ser uma lista [ … ].";
     for(const [n, o] of v.entries()){
@@ -1717,6 +1739,9 @@ function validarConfig(chave, v){
     if(v.limite_media > v.limite_alta) return "“limite_media” não pode ser maior que “limite_alta”.";
     if(v.nota_corte !== undefined && !(Number.isInteger(v.nota_corte) && v.nota_corte >= 0 && v.nota_corte <= 10)) return "“nota_corte” é a nota mínima da IA para entrar em “Em alta”: número inteiro de 0 a 10.";
     if(v.nota_promove !== undefined && !(Number.isInteger(v.nota_promove) && v.nota_promove >= 0 && v.nota_promove <= 11)) return "“nota_promove” é a nota da IA que tira a captura de “baixa”: número inteiro de 0 a 11 (11 desliga).";
+    if(v.arquivar_dias !== undefined && !(Number.isInteger(v.arquivar_dias) && v.arquivar_dias >= 0 && v.arquivar_dias <= 365)) return "“arquivar_dias” é quantos dias a captura sem importância fica na fila: número inteiro de 0 a 365 (0 desliga).";
+    if(v.arquivar_nota !== undefined && !(Number.isInteger(v.arquivar_nota) && v.arquivar_nota >= -1 && v.arquivar_nota <= 10)) return "“arquivar_nota” é a nota da IA até a qual a captura velha sai da fila: número inteiro de -1 a 10.";
+    if(v.nota_rebaixa !== undefined && !(Number.isInteger(v.nota_rebaixa) && v.nota_rebaixa >= -1 && v.nota_rebaixa <= 10)) return "“nota_rebaixa” é a nota da IA até a qual a captura “alta” desce para “média”: número inteiro de -1 a 10 (-1 desliga).";
     if(v.quantidade !== undefined && !(Number.isInteger(v.quantidade) && v.quantidade >= 1 && v.quantidade <= 100)) return "“quantidade” é quantas capturas a lista “Em alta” mostra: número inteiro de 1 a 100.";
     for(const [n, t] of v.termos.entries()){
       if(!t || typeof t.termo !== "string" || t.termo.trim().length < 2 || t.termo.trim().length > 80) return `Termo ${n + 1}: informe “termo” (de 2 a 80 caracteres).`;

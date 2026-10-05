@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.8.0"
+    assert pagina.inner_text(".versao") == "v0.9.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -1442,7 +1442,11 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     valida = lambda termo: pagina.evaluate("t => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [{termo: t, pontos: 5}]})", termo)
     assert valida("S.A.") == "" and valida("Ltda.") == "" and valida(".gov") == "" and valida("NFS-e") == ""
     assert "duas letras" in valida("..") and "duas letras" in valida("a.")
-    # a v0.7.1 e a v0.8.0 não mudaram a função de IA: a função v0.7.0 não deve ser apontada como antiga
+    nota = lambda n: pagina.evaluate("n => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], nota_rebaixa: n})", n)
+    assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
+    fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
+    assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
+    # a v0.7.1, a v0.8.0 e a v0.9.0 não mudaram a função de IA: a função v0.7.0 não deve ser apontada como antiga
     assert pagina.evaluate("[versaoMenor('0.7.0', FUNCAO_MINIMA), versaoMenor('0.6.1', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [False, True, False]
 
 
@@ -1619,7 +1623,7 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
         pagina.wait_for_selector("text=Painel do dia")
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
-        assert pagina.locator("form[data-form=config]").count() == 5
+        assert pagina.locator("form[data-form=config]").count() == 6                # v0.9.0: + rascunhos automáticos
         campo = pagina.locator("#cfg-feriados_extras")
         salvar = pagina.locator("form[data-chave=feriados_extras] button")
         for ruim, aviso in [("[", "não é um JSON válido"), ('{"a": 1}', "precisam ser uma lista"), ('["24/12/2026"]', "Data inválida")]:
@@ -2265,7 +2269,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.8.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.9.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2963,3 +2967,20 @@ def test_digitacao_em_outra_etapa_nao_se_perde_por_acao_feita_em_outra(pagina, l
     pagina.click("form[data-form=conteudo] >> text=Salvar")
     pagina.wait_for_selector("#recado .erro >> text=alterações não salvas na etapa “Fonte e fundamentação”")
     assert limpo.execute("select autor from radar_conteudos").fetchone()[0] is None
+
+
+# ------------------------------------------------------------ v0.9.0 — rascunhos do robô no painel
+def test_painel_mostra_os_rascunhos_preparados_pelo_robo(pagina, limpo):
+    aid = limpo.execute("insert into radar_assuntos (titulo, status) values ('Prazo do Simples', 'conteudo_gerado') returning id").fetchone()[0]
+    limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia)
+                     values (%s, 'informativo', 'Rascunho do robô sobre o Simples', 'Texto.', 'ia', 'claude-sonnet-4-6 (robô)', 'rascunho',
+                             '["Rascunho preparado automaticamente pelo robô", "Percentual que não aparece: 20%%."]'::jsonb)""", (aid,))
+    entrar(pagina)
+    pagina.wait_for_selector("#rascunhos-robo")
+    assert "Rascunho do robô sobre o Simples" in pagina.inner_text("#rascunhos-robo")
+    assert "Rascunhos preparados pelo robô" in pagina.inner_text(".cartoes")
+    pagina.click("#rascunhos-robo button.titulo-link")
+    pagina.wait_for_selector("text=preparado pelo robô")
+    assert pagina.evaluate("validarConfig('rascunhos', {por_dia: 2, formato: 'flash'})") == ""
+    assert "formato" in pagina.evaluate("validarConfig('rascunhos', {formato: 'poema'})")
+    assert "por_dia" in pagina.evaluate("validarConfig('rascunhos', {por_dia: 11})")

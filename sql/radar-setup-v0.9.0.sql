@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.8.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.9.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.8.0.sql
+-- Reversão: radar-reversao-v0.9.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.8.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.9.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -563,23 +563,33 @@ end $$;
 
 -- v0.8.0: nota alta da IA tira a captura de "baixa". A lista de palavras não cobre tudo: notícia importante
 -- escrita sem nenhum termo da lista ficava escondida. Com nota da IA a partir de radar_config.relevancia.nota_promove
--- (padrão 8), "baixa" vira "média" e o motivo fica anotado. Nunca rebaixa nem passa de "média" (a IA não decide sozinha).
+-- (padrão 8), "baixa" vira "média" e o motivo fica anotado. Nunca passa de "média" (a IA não decide sozinha).
 -- Só vale para a captura que ficou baixa por FALTA de palavras: a que tem qualquer termo negativo da lista
 -- (apreensão, concurso, leilão...) continua baixa, mesmo com termos positivos — essa exclusão é do escritório.
+-- v0.9.0: e o contrário. Captura "alta" só por palavras genéricas da lista (decreto, portaria, prazo...) com nota da IA
+-- até radar_config.relevancia.nota_rebaixa (padrão 3; -1 desliga) desce para "média": continua na fila, mas sai do topo.
+-- Sem nota da IA (ainda não avaliada), nada muda.
 drop function if exists public.radar_relevancia_com_ia(text, jsonb, smallint);
 create or replace function public.radar_relevancia_com_ia(p_nivel text, p_pontos int, p_motivos jsonb, p_nota smallint)
 returns table (nivel text, motivos jsonb)
 language sql stable security definer set search_path = public as $$
-  select case when p_nivel = 'baixa' and l.sem_negativo and p_nota >= l.limite then 'media' else p_nivel end,
-         case when p_nivel = 'baixa' and l.sem_negativo and p_nota >= l.limite
+  select case when l.promove then 'media' when l.rebaixa then 'media' else p_nivel end,
+         case when l.promove
               then coalesce(p_motivos, '[]'::jsonb) || jsonb_build_object('termo', 'nota da IA ' || p_nota, 'pontos', 0)
+              when l.rebaixa
+              then coalesce(p_motivos, '[]'::jsonb) || jsonb_build_object('termo', 'nota da IA ' || p_nota || ' (rebaixada)', 'pontos', 0)
               else p_motivos end
-    from (select coalesce((select case when jsonb_typeof(c.valor->'nota_promove') = 'number'
-                                       then least(greatest((c.valor->>'nota_promove')::numeric, 0), 11) end
-                             from public.radar_config c where c.chave = 'relevancia'), 8) as limite,
-                 p_pontos >= 0 and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_motivos) = 'array'
-                                                                                 then p_motivos else '[]'::jsonb end) m
-                                               where jsonb_typeof(m->'pontos') = 'number' and (m->>'pontos')::numeric < 0) as sem_negativo) l;
+    from (select p_nivel = 'baixa' and x.sem_negativo and p_nota >= x.limite as promove,
+                 p_nivel = 'alta' and p_nota <= x.rebaixa as rebaixa
+            from (select coalesce((select case when jsonb_typeof(c.valor->'nota_promove') = 'number'
+                                               then least(greatest((c.valor->>'nota_promove')::numeric, 0), 11) end
+                                     from public.radar_config c where c.chave = 'relevancia'), 8) as limite,
+                         coalesce((select case when jsonb_typeof(c.valor->'nota_rebaixa') = 'number'
+                                               then least(greatest((c.valor->>'nota_rebaixa')::numeric, -1), 10) end
+                                     from public.radar_config c where c.chave = 'relevancia'), 3) as rebaixa,
+                         p_pontos >= 0 and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_motivos) = 'array'
+                                                                                         then p_motivos else '[]'::jsonb end) m
+                                                       where jsonb_typeof(m->'pontos') = 'number' and (m->>'pontos')::numeric < 0) as sem_negativo) x) l;
 $$;
 
 create or replace function public.radar_fn_captura_relevancia() returns trigger
@@ -965,6 +975,37 @@ begin
     raise exception 'RADAR072: a data da publicação no site não pode estar no futuro' using errcode = 'P0001';
   end if;
   return new;
+end $$;
+
+-- v0.9.0: a fila não acumula. Ao fim de cada coleta, o robô tira da triagem (como "Ignorado", em Assuntos) o que
+-- está na fila há mais de radar_config.relevancia.arquivar_dias (padrão 10; 0 desliga) e é de relevância baixa ou
+-- tem nota da IA até arquivar_nota (padrão 2). Vale o mesmo caminho do "Ignorar" (as repetições vão junto).
+-- No máximo p_limite por vez. Devolve quantas capturas saíram da fila.
+create or replace function public.radar_arquivar_fila(p_limite int default 500) returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  v_conf jsonb := coalesce((select c.valor from public.radar_config c where c.chave = 'relevancia'), '{}'::jsonb);
+  v_dias int := case when jsonb_typeof(v_conf->'arquivar_dias') = 'number'
+                     then least(greatest((v_conf->>'arquivar_dias')::numeric, 0), 365)::int else 10 end;
+  v_nota int := case when jsonb_typeof(v_conf->'arquivar_nota') = 'number'
+                     then least(greatest((v_conf->>'arquivar_nota')::numeric, -1), 10)::int else 2 end;
+  v_antes int;
+  v_id bigint;
+begin
+  if v_dias = 0 then
+    return 0;
+  end if;
+  select count(*) into v_antes from public.radar_v_fila;
+  for v_id in select f.id from public.radar_v_fila f
+               where f.principal and f.capturado_em < now() - make_interval(days => v_dias)
+                 and (f.relevancia = 'baixa' or f.nota_grupo <= v_nota)
+               order by f.capturado_em
+               limit least(greatest(coalesce(p_limite, 500), 1), 500) loop
+    if not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = v_id) then
+      perform public.radar_abrir_assunto(v_id, true);
+    end if;
+  end loop;
+  return v_antes - (select count(*) from public.radar_v_fila);
 end $$;
 
 create or replace function public.radar_fn_divulgacao_efeitos() returns trigger
@@ -1435,7 +1476,9 @@ select f.id, f.slug, f.nome, f.orgao, f.ativo, f.validada, f.frequencia_horas,
          when f.ultimo_sucesso_em < now() - make_interval(hours => f.frequencia_horas * 3) then 'atrasada'
          when f.falhas_consecutivas > 0 then 'instavel'
          else 'ok'
-       end as saude
+       end as saude,
+       -- v0.9.0: quando entrou a última captura (fonte que roda sem erro mas não traz nada novo há dias)
+       (select max(c.capturado_em) from public.radar_capturas c where c.fonte_id = f.id) as ultima_captura_em
 from public.radar_fontes f;
 
 -- Fila de triagem: capturas que ainda não viraram assunto (nem foram ignoradas)
@@ -1531,7 +1574,9 @@ select (select count(*) from public.radar_v_saude_fontes where ativo) as fontes_
        (select count(*) from public.radar_v_fila where relevancia <> 'baixa' and principal) as na_fila_principal,
        (select count(distinct conteudo_id) from public.radar_divulgacoes) as no_site,
        (select count(*) from public.radar_conteudos c where c.status = 'aprovado' and not c.fora_do_site
-          and not exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = c.id)) as aprovados_sem_site;
+          and not exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = c.id)) as aprovados_sem_site,
+       -- v0.9.0: rascunhos que o robô preparou e ninguém mexeu ainda
+       (select count(*) from public.radar_conteudos c where c.status = 'rascunho' and c.modelo_ia like '%(robô)') as rascunhos_robo;
 
 -- registro das publicações no site, com o estado atual do conteúdo (sem o texto, que é grande)
 drop view if exists public.radar_v_divulgacoes;
@@ -1617,10 +1662,13 @@ begin
 end $$;
 grant execute on function public.radar_papel() to authenticated, service_role;
 grant execute on function public.radar_abrir_assunto(bigint, boolean) to authenticated;
+-- v0.9.0: o robô abre o assunto da notícia de topo para deixar o rascunho pronto (rascunhos automáticos)
+grant execute on function public.radar_abrir_assunto(bigint, boolean) to service_role;
 revoke all on function public.radar_ignorar_capturas(bigint[]) from public, anon;
 grant execute on function public.radar_ignorar_capturas(bigint[]) to authenticated;
 grant execute on function public.radar_gravar_avaliacao_ia(jsonb) to service_role;
 grant execute on function public.radar_limpar_imagens_sem_uso(int) to service_role;
+grant execute on function public.radar_arquivar_fila(int) to service_role;
 grant execute on function public.radar_separar_captura(bigint, bigint) to authenticated;
 grant execute on function public.radar_admin_usuarios() to authenticated;
 grant execute on function public.radar_registrar_uso_ia(text, text, int, int, bigint) to authenticated;
@@ -1755,6 +1803,7 @@ insert into public.radar_config (chave, valor) values
   ('feriados_extras', '[]'::jsonb),
   ('fale_conosco', '{"setores": [{"nome": "Geral", "rotulo": "Atendimento Geral", "telefones": [{"numero": "48-3242-0530", "whatsapp": true}], "emails": ["artecon@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Contábil", "rotulo": "Setor Contábil", "telefones": [], "emails": ["dc@artecon.cnt.br"], "equipe": [], "responsaveis_rotulo": "Contadores Responsáveis", "responsaveis": []}, {"nome": "Setor Fiscal", "rotulo": "Setor Fiscal", "telefones": [], "emails": ["df@artecon.cnt.br"], "equipe": []}, {"nome": "Departamento Pessoal", "rotulo": "Departamento Pessoal", "telefones": [], "emails": ["rh@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Institucional", "rotulo": "Setor Institucional", "telefones": [], "emails": ["societario@artecon.cnt.br"], "equipe": []}], "observacao": ""}'::jsonb),
   ('assinatura', '{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves"}'::jsonb),
+  ('rascunhos', '{"ligado": true, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}'::jsonb),
   ('relevancia', '{"limite_alta": 8, "limite_media": 3, "termos": [{"termo": "reforma tributária", "pontos": 5}, {"termo": "IBS", "pontos": 5}, {"termo": "CBS", "pontos": 5}, {"termo": "imposto seletivo", "pontos": 5}, {"termo": "Simples Nacional", "pontos": 5}, {"termo": "MEI", "pontos": 5}, {"termo": "microempreendedor", "pontos": 5}, {"termo": "prorroga", "pontos": 5}, {"termo": "prorrogado", "pontos": 5}, {"termo": "prorrogados", "pontos": 5}, {"termo": "prorrogação", "pontos": 5}, {"termo": "prazo", "pontos": 5}, {"termo": "prazos", "pontos": 5}, {"termo": "lei complementar", "pontos": 5}, {"termo": "transação", "pontos": 5}, {"termo": "parcelamento", "pontos": 5}, {"termo": "regularização", "pontos": 5}, {"termo": "Refis", "pontos": 5}, {"termo": "instrução normativa", "pontos": 4}, {"termo": "vencimento", "pontos": 4}, {"termo": "obrigação acessória", "pontos": 4}, {"termo": "DCTF", "pontos": 4}, {"termo": "DCTFWeb", "pontos": 4}, {"termo": "EFD", "pontos": 4}, {"termo": "ECF", "pontos": 4}, {"termo": "ECD", "pontos": 4}, {"termo": "eSocial", "pontos": 4}, {"termo": "Reinf", "pontos": 4}, {"termo": "imposto de renda", "pontos": 4}, {"termo": "IRPF", "pontos": 4}, {"termo": "IRPJ", "pontos": 4}, {"termo": "CSLL", "pontos": 4}, {"termo": "PIS", "pontos": 4}, {"termo": "Cofins", "pontos": 4}, {"termo": "ICMS", "pontos": 4}, {"termo": "ISS", "pontos": 4}, {"termo": "substituição tributária", "pontos": 4}, {"termo": "DIFAL", "pontos": 4}, {"termo": "NFS-e", "pontos": 4}, {"termo": "NF-e", "pontos": 4}, {"termo": "nota fiscal", "pontos": 4}, {"termo": "FGTS", "pontos": 4}, {"termo": "INSS", "pontos": 4}, {"termo": "contribuição previdenciária", "pontos": 4}, {"termo": "folha de pagamento", "pontos": 4}, {"termo": "desoneração", "pontos": 4}, {"termo": "lucro presumido", "pontos": 4}, {"termo": "lucro real", "pontos": 4}, {"termo": "dividendos", "pontos": 4}, {"termo": "distribuição de lucros", "pontos": 4}, {"termo": "edital", "pontos": 4}, {"termo": "editais", "pontos": 4}, {"termo": "Regularize", "pontos": 4}, {"termo": "exclusão", "pontos": 4}, {"termo": "opção", "pontos": 4}, {"termo": "decreto", "pontos": 3}, {"termo": "medida provisória", "pontos": 3}, {"termo": "alíquota", "pontos": 3}, {"termo": "alíquotas", "pontos": 3}, {"termo": "tabela", "pontos": 3}, {"termo": "CNPJ", "pontos": 3}, {"termo": "contribuinte", "pontos": 3}, {"termo": "contribuintes", "pontos": 3}, {"termo": "empresas", "pontos": 3}, {"termo": "tributária", "pontos": 3}, {"termo": "tributário", "pontos": 3}, {"termo": "tributos", "pontos": 3}, {"termo": "benefício fiscal", "pontos": 3}, {"termo": "TTD", "pontos": 3}, {"termo": "Santa Catarina", "pontos": 3}, {"termo": "salário mínimo", "pontos": 3}, {"termo": "perguntas e respostas", "pontos": 3}, {"termo": "orientação", "pontos": 3}, {"termo": "guia", "pontos": 3}, {"termo": "CGIBS", "pontos": 3}, {"termo": "CGSN", "pontos": 3}, {"termo": "restituição", "pontos": 3}, {"termo": "compensação", "pontos": 3}, {"termo": "crédito", "pontos": 3}, {"termo": "declaração", "pontos": 3}, {"termo": "malha", "pontos": 3}, {"termo": "débitos", "pontos": 3}, {"termo": "dívida ativa", "pontos": 3}, {"termo": "solução de consulta", "pontos": 2}, {"termo": "portaria", "pontos": 2}, {"termo": "resolução", "pontos": 2}, {"termo": "ato DIAT", "pontos": 2}, {"termo": "ato declaratório executivo", "pontos": -3}, {"termo": "apreende", "pontos": -8}, {"termo": "apreensão", "pontos": -8}, {"termo": "apreendidos", "pontos": -8}, {"termo": "apreendidas", "pontos": -8}, {"termo": "contrabando", "pontos": -8}, {"termo": "descaminho", "pontos": -8}, {"termo": "leilão", "pontos": -8}, {"termo": "maconha", "pontos": -8}, {"termo": "cocaína", "pontos": -8}, {"termo": "drogas", "pontos": -8}, {"termo": "haxixe", "pontos": -8}, {"termo": "cigarros", "pontos": -8}, {"termo": "armas", "pontos": -8}, {"termo": "aduana", "pontos": -8}, {"termo": "alfândega", "pontos": -8}, {"termo": "alfandegado", "pontos": -8}, {"termo": "aeroporto", "pontos": -8}, {"termo": "fronteira", "pontos": -8}, {"termo": "concurso", "pontos": -8}, {"termo": "servidores", "pontos": -8}, {"termo": "nomeia", "pontos": -8}, {"termo": "designa", "pontos": -8}, {"termo": "delega", "pontos": -8}, {"termo": "credenciamento", "pontos": -8}, {"termo": "despachante", "pontos": -8}, {"termo": "Instagram", "pontos": -8}, {"termo": "homenagem", "pontos": -8}, {"termo": "prêmio", "pontos": -8}, {"termo": "seminário", "pontos": -8}]}'::jsonb)
 on conflict (chave) do nothing;
 
@@ -1773,7 +1822,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 19 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.8.0).
+-- Esperado: 19 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.9.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

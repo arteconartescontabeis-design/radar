@@ -28,6 +28,7 @@ import requests
 
 import radar_ia
 import radar_inlabs
+import radar_rascunhos
 from radar_banco import Banco, ErroBanco
 from radar_coletores import Item, data_no_texto, listar_paginas
 from radar_util import (VERSAO, ErroDownload, agora_iso, baixar, extrair_texto,
@@ -292,6 +293,19 @@ def avaliar_com_ia(banco: Banco, sem_ia: bool = False) -> dict:
     return r
 
 
+def preparar_rascunhos(banco: Banco, sem_ia: bool = False) -> str:
+    """Rascunhos das notícias de topo (v0.9.0). Extra da coleta: sem token, banco antigo ou erro não derrubam nada."""
+    token = os.environ.get("RADAR_IA_GATEWAY_TOKEN", "").strip()
+    if sem_ia or not token:
+        return ""
+    try:
+        r = radar_rascunhos.executar(banco, token, os.environ.get("IA_GATEWAY_URL") or radar_ia.GATEWAY_PADRAO,
+                                     os.environ.get("RADAR_IA_MODELO") or radar_rascunhos.MODELO_PADRAO)
+    except Exception as e:                      # noqa: BLE001 — os rascunhos são um extra da coleta
+        return "\n\n_Rascunhos automáticos não foram feitos: " + radar_ia._sem_segredo(f"{type(e).__name__}: {str(e)[:200]}", token) + "_"
+    return radar_rascunhos.resumo_markdown(r)
+
+
 def limpar_imagens(banco: Banco) -> str:
     """Faxina das imagens sem uso; é um extra da coleta: banco antigo ou erro não derrubam nada."""
     try:
@@ -301,6 +315,17 @@ def limpar_imagens(banco: Banco) -> str:
             return ""                                   # banco ainda sem o SQL da v0.7.1
         return f"\n\n_Limpeza de imagens sem uso não foi feita: {str(e)[:200]}_"
     return f"\n\n_Imagens sem uso apagadas: {n}._" if n else ""
+
+
+def arquivar_fila(banco: Banco) -> str:
+    """Fila antiga e sem importância sai da triagem (v0.9.0); extra da coleta: banco antigo ou erro não derrubam nada."""
+    try:
+        n = banco.arquivar_fila()
+    except ErroBanco as e:
+        if "radar_arquivar_fila" in str(e):
+            return ""                                   # banco ainda sem o SQL da v0.9.0
+        return f"\n\n_Arquivamento da fila antiga não foi feito: {str(e)[:200]}_"
+    return f"\n\n_Capturas antigas e sem importância tiradas da fila (Assuntos → Ignorado): {n}._" if n else ""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -320,7 +345,9 @@ def main(argv: list[str] | None = None) -> int:
 
     texto = resumo_markdown(resultados, pulados)
     texto += radar_ia.resumo_markdown(avaliar_com_ia(banco, args.sem_ia))
+    texto += preparar_rascunhos(banco, args.sem_ia)
     texto += limpar_imagens(banco)
+    texto += arquivar_fila(banco)
     print("\n" + texto)
     destino = os.environ.get("GITHUB_STEP_SUMMARY")
     if destino:

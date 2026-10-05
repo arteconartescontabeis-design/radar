@@ -25,6 +25,7 @@ from radar_util import BRASILIA
 PREFIXO_RESUMO = "Radar: resumo da semana — "
 MAX_ITENS = 25
 NOTA_MINIMA = 7          # nota da IA que basta para entrar, mesmo sem relevância "alta" pelas palavras
+DIAS_SEM_NOVIDADE = 5    # fonte ativa sem nada novo há mais que isso aparece no resumo (site mudou? boletim parou?)
 
 
 def periodo(agora: datetime) -> tuple[datetime, datetime]:
@@ -53,7 +54,8 @@ def selecionar(capturas: list[dict]) -> tuple[list[dict], int]:
     return publicos[:MAX_ITENS], do_email
 
 
-def corpo_resumo(itens: list[dict], do_email: int, numeros: dict, inicio: datetime, fim: datetime) -> str:
+def corpo_resumo(itens: list[dict], do_email: int, numeros: dict, inicio: datetime, fim: datetime,
+                 sem_novidade: list[dict] | None = None) -> str:
     linhas = [f"Resumo do Radar de **{inicio:%d/%m} a {(fim - timedelta(days=1)):%d/%m/%Y}**.", "",
               f"- Capturas novas na semana: **{numeros.get('capturas', 0)}**",
               f"- Conteúdos aprovados: **{numeros.get('aprovados', 0)}** · publicações registradas no site: **{numeros.get('publicados', 0)}**", ""]
@@ -73,6 +75,14 @@ def corpo_resumo(itens: list[dict], do_email: int, numeros: dict, inicio: dateti
     if do_email:
         linhas += [f"Mais **{do_email}** matéria(s) relevante(s) do boletim da ITC — veja no Radar (o conteúdo do boletim "
                    "não é reproduzido aqui).", ""]
+    if sem_novidade:
+        linhas += [f"### Fontes sem notícia nova há mais de {DIAS_SEM_NOVIDADE} dias", ""]
+        for f in sem_novidade:
+            quando = str(f.get("ultima_captura_em") or "")[:10]
+            linhas.append(f"- {f.get('nome') or f['slug']} — " + (f"última em {quando[8:10]}/{quando[5:7]}/{quando[:4]}"
+                                                                   if quando else "nunca trouxe nada"))
+        linhas += ["", "Pode ser só uma semana fraca. Se continuar, rode o diagnóstico da fonte "
+                   "(Actions → \"Radar — diagnóstico das fontes\"); no boletim por e-mail, confira a rotina diária.", ""]
     linhas.append("Para abrir um assunto, use a triagem do Radar. Este aviso é fechado sozinho quando sair o próximo resumo.")
     return "\n".join(linhas)
 
@@ -82,11 +92,12 @@ def executar(banco: Banco, github: GitHub, agora: datetime | None = None) -> lis
     capturas = banco.capturas_entre(inicio, fim)
     itens, do_email = selecionar(capturas)
     numeros = {"capturas": len(capturas), **banco.numeros_da_semana(inicio, fim)}
+    sem_novidade = banco.fontes_sem_novidade(fim - timedelta(days=DIAS_SEM_NOVIDADE))
     titulo = titulo_resumo(inicio, fim)
     abertos = github.avisos_abertos(PREFIXO_RESUMO)
     if titulo in abertos:
         return [f"resumo já aberto (#{abertos[titulo]})"]
-    feito = [f"resumo #{github.abrir_aviso(titulo, corpo_resumo(itens, do_email, numeros, inicio, fim))} aberto: "
+    feito = [f"resumo #{github.abrir_aviso(titulo, corpo_resumo(itens, do_email, numeros, inicio, fim, sem_novidade))} aberto: "
              f"{len(itens)} notícia(s), {do_email} do boletim por e-mail"]
     for t, numero in abertos.items():
         github.fechar(numero, "Substituído pelo resumo desta semana.")
