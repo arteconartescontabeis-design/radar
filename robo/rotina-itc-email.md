@@ -17,11 +17,15 @@ Tarefa diária do Radar Artecon: copiar para o banco as matérias do boletim da 
 2. Em cada e-mail, leia o corpo e separe cada matéria: título (a manchete), área (o cabeçalho
    da seção, ex.: "Área Federal", "Área Trabalhista e Previdenciária", "Área Estadual"), texto
    (o parágrafo de chamada que vem logo abaixo da manchete, sem alterar) e data (a data do
-   boletim, AAAA-MM-DD). Ignore propaganda de cursos, eventos "AO VIVO", "CURSO PRESENCIAL",
-   rodapé, links de descadastro e o "Visualizar este e-mail como página web". Não guarde links
-   do e-mail (são links de rastreio pessoais). Itens de lista de atos ("Lei nº ... (DOU DE ...)")
-   também contam como matérias: título = o nome do ato; texto = a ementa.
-3. No Supabase (projeto radar-artecon), execute uma única chamada:
+   boletim, AAAA-MM-DD). Não guarde links do e-mail (são links de rastreio pessoais).
+   Fica de fora (para não encher o Radar): "Capacitação profissional" (cursos, "AO VIVO",
+   "CURSO PRESENCIAL"), "Artigos/Matérias - Últimas Publicações", "Vencimentos", "Nota ITC",
+   rodapé e "Visualizar este e-mail como página web". Nas áreas estaduais (notícias e
+   legislação), só Santa Catarina (SC) e o que vale para todos os estados; ignore os outros
+   estados. Na "Legislação Federal - Últimas Publicações", cada ato conta como matéria:
+   título = o nome do ato, ex.: "Lei nº 15526/2026 (DOU DE 30/09/2026)"; texto = a ementa.
+   Subtítulos de local ("Todos os Municípios", "Santa Catarina") não são matérias.
+3. No Supabase (projeto radar-artecon, id jhxlsvzvqvufyhkjnmeq), execute uma única chamada:
    select public.radar_receber_email('itc-email', '<lista JSON>'::jsonb);
    onde a lista é [{"titulo": "...", "data": "AAAA-MM-DD", "area": "...", "texto": "...",
    "assunto_email": "<assunto do e-mail>"}, ...]. Escape aspas simples dobrando-as ('').
@@ -33,8 +37,8 @@ Tarefa diária do Radar Artecon: copiar para o banco as matérias do boletim da 
 
 ## Como criar (uma vez)
 
-1. claude.ai → Configurações → Conectores: conecte **Supabase** (o Microsoft 365 já está conectado).
-2. Rode `sql/radar-fontes-novas-2026-10.sql` no SQL Editor do Supabase.
-3. Peça ao Claude, numa sessão nova, para criar a rotina com o texto acima
-   (agenda `CRON_TZ=America/Sao_Paulo 55 2 * * *`, sessão nova a cada execução,
-   conectores Microsoft 365 e Supabase).
+Feito em 05/10/2026: Supabase conectado ao Claude, `sql/radar-fontes-novas-2026-10.sql`
+aplicado no banco e rotina "Radar — boletim ITC (e-mail)" criada (agenda
+`CRON_TZ=America/Sao_Paulo 55 2 * * *`). A rotina acorda a própria conversa do Claude Code em que
+o Radar é desenvolvido, que já tem os conectores Microsoft 365 e Supabase; não precisa configurar
+conector na rotina. Para pausar ou apagar, peça ao Claude.
