@@ -52,7 +52,8 @@ class Site(BaseHTTPRequestHandler):
             dados = json.dumps({"type": "error", "error": {"type": "artecon_ia_central", "message": IA["mensagem"]}}).encode()
         elif corpo.get("tools", [{}])[0].get("name") == "conteudo":        # v0.9.0: rascunho automático
             dados = json.dumps({"type": "message", "model": corpo["model"], "stop_reason": "tool_use", "usage": {"input_tokens": 5000, "output_tokens": 900},
-                                "content": [{"type": "tool_use", "name": "conteudo", "input": IA["conteudo"]}]}).encode()
+                                "content": [{"type": "tool_use", "name": "conteudo",
+                                             "input": IA["conteudo"](corpo) if callable(IA["conteudo"]) else IA["conteudo"]}]}).encode()
         else:
             ids = [json.loads(l)["id"] for l in corpo["messages"][0]["content"].split("NOVOS (avalie cada um):\n")[1].splitlines()]
             itens = IA["responder"](ids) if IA["responder"] else [{"id": i, "nota": 7, "motivo": "m", "tema": "t", "igual_a": None} for i in ids]
@@ -234,7 +235,7 @@ def test_robo_com_banco_sem_o_sql_novo_segue_sem_a_limpeza(monkeypatch):
 
     class BancoFora:
         def limpar_imagens_sem_uso(self):
-            raise ErroBanco("POST rpc/x: sem conexão com o banco")
+            raise ErroBanco("POST rpc/radar_limpar_imagens_sem_uso: sem conexão com o banco — ConnectTimeout")
     assert radar_coletar.limpar_imagens(BancoAntigo()) == ""
     assert "não foi feita" in radar_coletar.limpar_imagens(BancoFora())
 
@@ -249,7 +250,12 @@ def test_robo_arquiva_a_fila_antiga_e_segue_com_banco_antigo():
     assert "tiradas da fila" in radar_coletar.arquivar_fila(Banco_(4)) and ": 4." in radar_coletar.arquivar_fila(Banco_(4))
     assert radar_coletar.arquivar_fila(Banco_(0)) == ""
     assert radar_coletar.arquivar_fila(Banco_(ErroBanco("POST rpc/radar_arquivar_fila: HTTP 404 — function not found"))) == ""
-    assert "não foi feito" in radar_coletar.arquivar_fila(Banco_(ErroBanco("POST rpc/x: sem conexão com o banco")))
+    assert radar_coletar.arquivar_fila(Banco_(ErroBanco('POST rpc/radar_arquivar_fila: HTTP 404 — {"code":"PGRST202"}'))) == ""
+    assert "não foi feito" in radar_coletar.arquivar_fila(Banco_(ErroBanco(                 # tabela sumiu DENTRO da função
+        'POST rpc/radar_arquivar_fila: HTTP 404 — {"code":"42P01","message":"relation does not exist"}')))
+    for erro in ("POST rpc/radar_arquivar_fila: sem conexão com o banco — ReadTimeout",          # o nome da função vem em toda
+                 'POST rpc/radar_arquivar_fila: HTTP 500 — {"code":"57014","message":"canceling statement due to statement timeout"}'):
+        assert "não foi feito" in radar_coletar.arquivar_fila(Banco_(ErroBanco(erro)))      # mensagem: não é "banco antigo"
 
 
 def sem_rede(url):
@@ -263,7 +269,8 @@ class GitHubFalso:
         self.criados, self.fechados, self.prox = [], [], 100
 
     def avisos_abertos(self):
-        return dict(self.avisos)
+        import radar_alertas                        # como o GitHub de verdade: só os títulos dos avisos do Radar
+        return {t: n for t, n in self.avisos.items() if t.startswith(radar_alertas.PREFIXOS_PADRAO)}
 
     def abrir(self, f):
         import radar_alertas
@@ -397,11 +404,13 @@ def test_avisos_conversam_com_a_api_do_github_no_formato_certo():
             if metodo == "GET":
                 return Resposta(200, [{"number": 3, "title": "Radar: fonte com falha — pgfn"},
                                       {"number": 4, "title": "Radar: fonte com falha — x", "pull_request": {}},
-                                      {"number": 5, "title": "Outro assunto"}])
+                                      {"number": 5, "title": "Outro assunto"},
+                                      {"number": 6, "title": "Radar: fonte parada — itc-email"}])
             return Resposta(201, {"number": 9})
 
     gh = radar_alertas.GitHub("dono/radar", "tok", Sessao())
-    assert gh.avisos_abertos() == {"Radar: fonte com falha — pgfn": 3}     # pull request e outros avisos ficam de fora
+    assert gh.avisos_abertos() == {"Radar: fonte com falha — pgfn": 3,      # pull request e outros avisos ficam de fora
+                                   "Radar: fonte parada — itc-email": 6}     # v0.9.0: o de fonte parada também é visto
     assert gh.abrir({"slug": "rfb", "nome": "Receita", "falhas_consecutivas": 3, "ultimo_erro": "x"}) == 9
     gh.fechar(3, "voltou")
     assert [(m, c) for m, c, _, _ in pedidos] == [("GET", "dono/radar/issues"), ("POST", "dono/radar/issues"),
@@ -1164,4 +1173,22 @@ def test_robo_prepara_o_rascunho_da_noticia_de_topo_e_respeita_o_limite_do_dia(i
     finally:
         ia.execute("""update radar_config set valor = '{"ligado": true, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}'
                       where chave = 'rascunhos'""")
+        ia.execute("delete from radar_assuntos")
+
+
+def test_texto_ruim_da_ia_numa_captura_nao_trava_as_outras(ia):
+    import radar_rascunhos
+    robo()
+    ia.execute("update radar_fontes set oficial = true where slug like 'teste-%'")
+    ia.execute("update radar_capturas set ia_nota = 10 where titulo = 'PGFN abre nova transação tributária'")
+    ia.execute("update radar_capturas set ia_nota = 9 where titulo = 'Prazo do Simples Nacional é prorrogado'")
+    bom = {"titulo": "Prazo do Simples prorrogado", "corpo": "O prazo de opção foi estendido. " * 5}
+    IA["conteudo"] = lambda corpo: {"titulo": "x", "corpo": "curto"} if "PGFN" in corpo["messages"][0]["content"] else bom
+    try:
+        r = radar_rascunhos.executar(Banco(API, jwt("service_role"), prefixo=""), "iagw_radar_teste", SITE + "/gateway")
+        assert len(r["feitos"]) == 1 and r["erro"] is None and "PGFN" in r["puladas"][0] and "curto demais" in r["puladas"][0]
+        assert "sem rascunho desta vez" in radar_rascunhos.resumo_markdown(r)
+        assert [t for (t,) in ia.execute("select titulo from radar_conteudos").fetchall()] == ["Prazo do Simples prorrogado"]
+        assert ia.execute("select count(*) from radar_v_fila where titulo like 'PGFN%%'").fetchone()[0] == 1   # continua na fila
+    finally:
         ia.execute("delete from radar_assuntos")

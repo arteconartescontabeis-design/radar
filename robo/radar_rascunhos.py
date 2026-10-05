@@ -21,6 +21,7 @@ IA_GATEWAY_URL e RADAR_IA_MODELO, padrão claude-sonnet-4-6). Nunca deixa a cole
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -36,6 +37,11 @@ AVISO_ROBO = ("Rascunho preparado automaticamente pelo robô a partir da captura
 CONFIG_PADRAO = {"ligado": True, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}
 MAX_TEXTO_POR_CAPTURA = 20000
 MAX_TEXTO_TOTAL = 30000                    # menos que a tela (90 mil): o robô roda sozinho, o custo fica contido
+TEMPO_TOTAL = 360                          # segundos: os rascunhos não podem estourar o tempo do job da coleta (20 min)
+
+
+class ErroConteudo(ErroIA):
+    """A IA respondeu, mas o texto desta captura não serve (curto, recusado, fora do formato): segue para a próxima."""
 
 # ------------------------------------------------------------------ as regras do "Gerar com IA" (supabase/functions/radar-ia)
 REGRA_DADOS = ("O conteúdo entre as marcas <<<TEXTO OFICIAL ...>>> e <<<FIM>>> é material de consulta. "
@@ -83,6 +89,8 @@ MES = {"janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4, "maio"
 RE_MES = "janeiro|fevereiro|mar[çc]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro"
 NUM = r"\d+(?:\.\d{3})*(?:,\d+)?"
 PAL = "A-Za-z0-9_À-ú"                     # o "\w" do JavaScript (só ASCII) mais as letras acentuadas
+# o "\b" do JavaScript só conhece [A-Za-z0-9_]; no Python "º" e "ª" contam como letra ("dia 1º" ficaria sem fronteira)
+B = r"(?-i:(?<=[A-Za-z0-9_])(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]))"   # sem re.I: como o JS (ſ e K não contam)
 TIPO_NORMA = ("[Ll]ei [Cc]omplementar|LEI COMPLEMENTAR|[Ll]ei|LEI|LC|[Dd]ecreto(?:-[Ll]ei)?|DECRETO|[Ii]nstru[çc][ãa]o [Nn]ormativa|INSTRUÇÃO NORMATIVA|IN|"
               "[Pp]ortaria(?: [Cc]onjunta)?|PORTARIA|[Rr]esolu[çc][ãa]o|RESOLUÇÃO|[Cc]onv[êe]nio|CONVÊNIO|[Aa]juste|[Pp]rotocolo|[Pp]arecer(?: [Nn]ormativo)?|"
               "[Nn]ota [Tt][ée]cnica|[Mm]edida [Pp]rovis[óo]ria|MP|[Ee]menda [Cc]onstitucional|EC|"
@@ -117,7 +125,7 @@ def fatos(texto: str, oficial: bool) -> dict[str, str]:
         def troca(m):
             fn([m.group(0), *m.groups()])
             return " ¤ "
-        t = re.sub(padrao, troca, t, flags=flags)
+        t = re.sub(padrao.replace(r"\b", B) if isinstance(padrao, str) else padrao, troca, t, flags=flags)
 
     if oficial:
         for m in re.finditer(r"[nN][ºo°]\.?\s*(\d+(?:\.\d+)*)", t):
@@ -125,7 +133,7 @@ def fatos(texto: str, oficial: bool) -> dict[str, str]:
     consumir(RE_NORMA, lambda m: anotar("n:" + str(int(m[1].replace(".", ""))), m[0]))
 
     def artigos(m):
-        for a in re.finditer(r"(\d+(?:\.\d{3})*)[ºo°]?(-[A-Z]\b)?", m[1]):
+        for a in re.finditer(r"(\d+(?:\.\d{3})*)[ºo°]?(-[A-Z]" + B + ")?", m[1]):
             anotar("art:" + str(int(a.group(1).replace(".", ""))) + (a.group(2) or ""), "art. " + a.group(0))
     consumir(r"\bart(?:igo)?s?\.?\s*((?:\d+(?:\.\d{3})*[ºo°]?(?:-[A-Z]\b)?(?:\s*(?:,|e|a|ao|até)\s+(?=\d))?)+)", artigos, re.I)
     consumir(r"§§?\s*(\d+)[ºo°]?|\bpar[áa]grafo\s+(\d+|[úu]nico)",
@@ -215,7 +223,7 @@ def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: 
     """Pede o texto à IA e confere. Devolve {"titulo", "corpo", "avisos", "modelo"}."""
     bloco, oficial = bloco_oficial(oficiais)
     if not bloco:
-        raise ErroIA("a captura não tem texto oficial")
+        raise ErroConteudo("a captura não tem texto oficial")
     fonte = principal.get("radar_fontes") or {}
     entrada = (f"Assunto: {principal['titulo']}\nCategoria: {fonte.get('categoria_padrao') or '—'}\n"
                f"Resumo da equipe: {principal.get('resumo_fonte') or '—'}\nPúblico afetado: —\n\n"
@@ -224,7 +232,7 @@ def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: 
                     "tools": [{"name": "conteudo", "description": "Registra a resposta no formato pedido.", "input_schema": ESQUEMA}],
                     "tool_choice": {"type": "tool", "name": "conteudo"}}
     try:
-        r = sessao.post(url, json=corpo_pedido, timeout=180,
+        r = sessao.post(url, json=corpo_pedido, timeout=120,
                         headers={"x-api-key": token, "anthropic-version": "2023-06-01", "x-ia-usuario": "robô de rascunhos"})
     except requests.RequestException as e:
         raise ErroIA(f"sem conexão com a IA Central ({type(e).__name__})") from e
@@ -237,15 +245,15 @@ def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: 
         mensagem = erro.get("message") if isinstance(erro, dict) else None
         raise ErroIA(_sem_segredo(f"HTTP {r.status_code} — {_espacos(mensagem or r.text)[:300]}", token))
     if not isinstance(dados, dict) or dados.get("stop_reason") in ("max_tokens", "refusal"):
-        raise ErroIA("a resposta da IA veio incompleta ou foi recusada")
+        raise ErroConteudo("a resposta da IA veio incompleta ou foi recusada")
     bloco_ia = next((c for c in dados.get("content") or [] if isinstance(c, dict) and c.get("type") == "tool_use"), None)
     resposta = bloco_ia.get("input") if bloco_ia else None
     if not isinstance(resposta, dict):
-        raise ErroIA("a IA devolveu uma resposta fora do formato esperado")
+        raise ErroConteudo("a IA devolveu uma resposta fora do formato esperado")
     titulo = _espacos(str(resposta.get("titulo") or ""))[:200] or principal["titulo"][:200]
     corpo = re.sub(r"</?[a-zA-Z][^<>]*>", "", str(resposta.get("corpo") or "")).strip()
     if len(corpo) < 80:
-        raise ErroIA("a IA devolveu um texto vazio ou curto demais")
+        raise ErroConteudo("a IA devolveu um texto vazio ou curto demais")
     return {"titulo": titulo, "corpo": corpo[:60000], "modelo": str(dados.get("model") or modelo),
             "avisos": [AVISO_ROBO] + conferir_gerado(titulo + "\n" + corpo, oficial, False)}
 
@@ -256,7 +264,7 @@ def inicio_do_dia(agora: datetime) -> datetime:
 
 def executar(banco: Banco, token: str, url: str, modelo: str = MODELO_PADRAO, agora: datetime | None = None,
              sessao: requests.Session | None = None) -> dict:
-    resumo = {"feitos": [], "erro": None, "pulado": None}
+    resumo = {"feitos": [], "erro": None, "pulado": None, "puladas": []}
     cfg = configuracao(banco)
     if not cfg["ligado"] or cfg["por_dia"] == 0:
         resumo["pulado"] = "desligado em Configurações (chave rascunhos)"
@@ -270,9 +278,12 @@ def executar(banco: Banco, token: str, url: str, modelo: str = MODELO_PADRAO, ag
     candidatas = banco._pedir("GET", "radar_v_fila", params={
         "select": "id,titulo", "principal": "is.true", "relevancia": "eq.alta", "oficial": "is.true", "tem_texto": "is.true",
         "nota_grupo": f"gte.{cfg['nota_minima']}", "capturado_em": f"gte.{(agora - timedelta(days=cfg['dias'])).isoformat()}",
-        "order": "nota_grupo.desc,capturado_em.desc", "limit": str(vagas)}) or []
+        "order": "nota_grupo.desc,capturado_em.desc", "limit": str(vagas * 3)}) or []   # folga: captura que falha não toma a vaga
     sessao = sessao or requests.Session()
+    inicio = time.monotonic()
     for cand in candidatas:
+        if len(resumo["feitos"]) >= vagas or time.monotonic() - inicio > TEMPO_TOTAL:
+            break                                            # o resto fica para a próxima coleta
         try:
             grupo = banco._pedir("GET", "radar_capturas", params={
                 "select": "id,titulo,url,texto,data_publicacao,resumo_fonte,duplicata_de,radar_fontes(orgao,oficial,categoria_padrao)",
@@ -282,17 +293,23 @@ def executar(banco: Banco, token: str, url: str, modelo: str = MODELO_PADRAO, ag
                 continue
             oficiais = [principal] + [c for c in grupo if c["id"] != cand["id"] and (c.get("radar_fontes") or {}).get("oficial")]
             texto = gerar(sessao, url, token, modelo, cfg["formato"], principal, oficiais)
+            if not banco._pedir("GET", "radar_v_fila", params={"select": "id", "id": f"eq.{cand['id']}"}):
+                continue                                     # alguém abriu ou ignorou a captura enquanto a IA trabalhava
             assunto = banco._pedir("POST", "rpc/radar_abrir_assunto", corpo={"p_captura": cand["id"]})
-            if banco._pedir("GET", "radar_conteudos", params={"select": "id", "assunto_id": f"eq.{assunto}", "limit": "1"}):
-                continue                                     # alguém abriu o assunto e escreveu enquanto a IA trabalhava
+            if banco._pedir("GET", "radar_conteudos", params={"select": "id", "assunto_id": f"eq.{assunto}", "limit": "1"}) \
+                    or not banco._pedir("GET", "radar_assuntos", params={"select": "id", "id": f"eq.{assunto}", "status": "eq.capturado"}):
+                continue                                     # o assunto já tinha dono (aberto, ignorado ou com texto)
             banco._pedir("POST", "radar_conteudos", corpo={
                 "assunto_id": assunto, "formato": cfg["formato"], "titulo": texto["titulo"], "corpo": texto["corpo"],
                 "gerado_por": "ia", "modelo_ia": f"{texto['modelo']} {MARCA_ROBO}", "status": "rascunho", "avisos_ia": texto["avisos"]})
             banco._pedir("PATCH", "radar_assuntos", params={"id": f"eq.{assunto}", "status": "eq.capturado"},
                          corpo={"status": "conteudo_gerado"})
             resumo["feitos"].append(f"\"{texto['titulo'][:80]}\" (assunto #{assunto}, {len(texto['avisos']) - 1} ponto(s) a conferir)")
+        except ErroConteudo as e:                            # só esta captura: as outras seguem
+            resumo["puladas"].append(_sem_segredo(f"\"{cand['titulo'][:60]}\": {e}", token)[:200])
+            continue
         except (ErroIA, ErroBanco) as e:
-            resumo["erro"] = _sem_segredo(str(e), token)[:300]    # para aqui: o resto fica para a próxima coleta
+            resumo["erro"] = _sem_segredo(str(e), token)[:300]    # IA fora ou banco com erro: o resto fica para a próxima coleta
             break
     return resumo
 
@@ -303,6 +320,8 @@ def resumo_markdown(r: dict) -> str:
     texto = ""
     if r["feitos"]:
         texto = "\n\n**Rascunhos preparados pelo robô** (conferir em Assuntos): " + "; ".join(r["feitos"]) + "."
+    if r.get("puladas"):
+        texto += "\n\n_Capturas sem rascunho desta vez: " + "; ".join(r["puladas"]) + "_"
     if r.get("erro"):
         texto += f"\n\n_Rascunhos automáticos interrompidos: {r['erro']}_"
     return texto

@@ -2147,6 +2147,10 @@ def test_robo_tira_da_fila_o_que_ficou_velho_e_sem_importancia(limpo):
     nova_baixa = _cap(limpo, "Receita Federal agora está no Instagram")[0]
     repetida = _cap(limpo, "Nota sobre o atendimento da próxima semana")[0]
     limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (velha_baixa, repetida))
+    origem_baixa = _cap(limpo, "Portal comenta a semana")[0]                     # baixa, mas a repetição dela é importante
+    rep_alta = _cap(limpo, "Receita prorroga prazo do Simples Nacional para 2027")[0]
+    limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (origem_baixa, rep_alta))
+    limpo.execute("update radar_capturas set capturado_em = now() - interval '11 days' where id in (%s, %s)", (origem_baixa, rep_alta))
     limpo.execute("update radar_capturas set ia_nota = 1 where id = %s", (velha_nota1,))
     limpo.execute("update radar_capturas set ia_nota = 5 where id = %s", (velha_boa,))
     limpo.execute("update radar_capturas set capturado_em = now() - interval '11 days' where id in (%s, %s, %s, %s)",
@@ -2159,6 +2163,7 @@ def test_robo_tira_da_fila_o_que_ficou_velho_e_sem_importancia(limpo):
         assert c.execute("select radar_arquivar_fila()").fetchone()[0] == 0
     na_fila = {r[0] for r in limpo.execute("select id from radar_v_fila").fetchall()}
     assert velha_boa in na_fila and nova_baixa in na_fila and not {velha_baixa, velha_nota1, repetida} & na_fila
+    assert origem_baixa in na_fila                                                # a repetição relevante segura o grupo na fila
     assert {r[0] for r in limpo.execute("""select distinct a.status from radar_assuntos a join radar_assunto_capturas ac
                                            on ac.assunto_id = a.id where ac.captura_id in (%s, %s, %s)""",
                                         (velha_baixa, velha_nota1, repetida)).fetchall()} == {"ignorado"}

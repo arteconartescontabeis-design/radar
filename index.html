@@ -157,7 +157,7 @@ const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = 
 const VERSOES = [
   ["0.9.0", "05/10/2026", [
     "Rascunhos automáticos: o robô prepara sozinho o rascunho das notícias de topo (fonte oficial, relevância alta, nota da IA 9 ou mais; no máximo 2 por dia), com as mesmas regras do “Gerar com IA”. Aparecem no Painel em “Rascunhos preparados pelo robô”. O robô não envia para revisão, não aprova e não publica. Ajuste em Configurações → Rascunhos automáticos.",
-    "Relevância: notícia “alta” só por palavras genéricas da lista (decreto, portaria, prazo...) com nota da IA até 3 desce para “média” (opção nota_rebaixa; -1 desliga). Sai do topo, mas continua na fila.",
+    "Relevância: notícia “alta” pelas palavras da lista (muitas vezes só genéricas: decreto, portaria, prazo...) com nota da IA até 3 desce para “média” (opção nota_rebaixa; -1 desliga). Sai do topo, mas continua na fila.",
     "A fila não acumula: o que está na triagem há mais de 10 dias e é baixa, ou tem nota da IA até 2, sai sozinho e vai para Assuntos → Ignorado (opções arquivar_dias e arquivar_nota; 0 dias desliga).",
     "DOU Destaques: só entram os atos fiscais (Receita, PGFN, CGSN, CGIBS, Fazenda) e as leis, decretos e medidas provisórias.",
     "Aviso “fonte parada”: se uma fonte ativa ficar 3 ciclos sem funcionar (por exemplo, a rotina diária do boletim da ITC parou), abre um aviso por e-mail; ele fecha sozinho quando a fonte volta.",

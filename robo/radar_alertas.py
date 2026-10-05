@@ -36,6 +36,7 @@ PREFIXO = "Radar: fonte com falha — "
 PREFIXO_LINK = "Radar: link publicado fora do ar — "
 PREFIXO_TEXTO = "Radar: texto do site diferente do aprovado — "
 PREFIXO_PARADA = "Radar: fonte parada — "
+PREFIXOS_PADRAO = (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO, PREFIXO_PARADA)   # os avisos que o executar() abre e fecha
 FORA_DO_AR = (404, 410)
 FALHAS_PARA_AVISAR = 3
 API = "https://api.github.com"
@@ -110,7 +111,9 @@ def decidir_paradas(saude: list[dict], abertos: dict[str, int]) -> tuple[list[di
         elif not f.get("ativo"):
             fechar.append((numero, "A fonte foi desligada na aba Fontes."))
         elif f.get("saude") != "atrasada":
-            fechar.append((numero, f"A fonte voltou a funcionar (último sucesso: {f.get('ultimo_sucesso_em')})."))
+            fechar.append((numero, f"A fonte voltou a funcionar (último sucesso: {f.get('ultimo_sucesso_em')})."
+                           if f.get("saude") != "falhando" else
+                           "A fonte voltou a rodar, mas com falhas: o aviso de fonte com falha cuida dela daqui em diante."))
     return abrir, fechar
 
 
@@ -231,7 +234,7 @@ class GitHub:
         return r.json() if r.text else None
 
     def avisos_abertos(self, *prefixos: str) -> dict[str, int]:
-        prefixos = prefixos or (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO)
+        prefixos = prefixos or PREFIXOS_PADRAO
         abertos, pagina = {}, 1
         while True:
             lote = self._pedir("GET", "/issues", params={"state": "open", "per_page": 100, "page": pagina})

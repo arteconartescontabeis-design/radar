@@ -293,6 +293,12 @@ def avaliar_com_ia(banco: Banco, sem_ia: bool = False) -> dict:
     return r
 
 
+def banco_sem_funcao(e: Exception) -> bool:
+    """A função ainda não existe no banco (SQL da versão não aplicado). Outro erro (tempo, 500, rede) não é isso."""
+    s = str(e)          # 404 com código do Postgres (42P01, 42883) é erro DENTRO da função, não falta dela
+    return "PGRST202" in s or ("HTTP 404" in s and '"code":"42' not in s)
+
+
 def preparar_rascunhos(banco: Banco, sem_ia: bool = False) -> str:
     """Rascunhos das notícias de topo (v0.9.0). Extra da coleta: sem token, banco antigo ou erro não derrubam nada."""
     token = os.environ.get("RADAR_IA_GATEWAY_TOKEN", "").strip()
@@ -311,7 +317,7 @@ def limpar_imagens(banco: Banco) -> str:
     try:
         n = banco.limpar_imagens_sem_uso()
     except ErroBanco as e:
-        if "radar_limpar_imagens_sem_uso" in str(e):
+        if banco_sem_funcao(e):
             return ""                                   # banco ainda sem o SQL da v0.7.1
         return f"\n\n_Limpeza de imagens sem uso não foi feita: {str(e)[:200]}_"
     return f"\n\n_Imagens sem uso apagadas: {n}._" if n else ""
@@ -322,7 +328,7 @@ def arquivar_fila(banco: Banco) -> str:
     try:
         n = banco.arquivar_fila()
     except ErroBanco as e:
-        if "radar_arquivar_fila" in str(e):
+        if banco_sem_funcao(e):
             return ""                                   # banco ainda sem o SQL da v0.9.0
         return f"\n\n_Arquivamento da fila antiga não foi feito: {str(e)[:200]}_"
     return f"\n\n_Capturas antigas e sem importância tiradas da fila (Assuntos → Ignorado): {n}._" if n else ""
@@ -345,9 +351,9 @@ def main(argv: list[str] | None = None) -> int:
 
     texto = resumo_markdown(resultados, pulados)
     texto += radar_ia.resumo_markdown(avaliar_com_ia(banco, args.sem_ia))
-    texto += preparar_rascunhos(banco, args.sem_ia)
     texto += limpar_imagens(banco)
     texto += arquivar_fila(banco)
+    texto += preparar_rascunhos(banco, args.sem_ia)                # por último: é o passo mais demorado
     print("\n" + texto)
     destino = os.environ.get("GITHUB_STEP_SUMMARY")
     if destino:

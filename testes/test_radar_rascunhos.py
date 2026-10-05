@@ -19,6 +19,7 @@ AMOSTRAS = [
     ("O MEI tem até 31 de janeiro de 2027 para optar. Faturamento de R$ 81.000,00 e alíquota de 4,5%; prazo de 12 (doze) meses.",
      "O prazo de opção foi prorrogado até 31 de janeiro de 2027. Limite de R$ 81.000,00 por ano."),
     ("Texto sem nenhum número.", "Texto oficial sem números."),
+    ("Vence no dia 1º, conforme o nº15 meses e o dia 2ª; art. 3º-A e §1º.", "O prazo vence no dia 1º de cada mês (art. 3º-A)."),   # º/ª e fronteira de palavra
 ]
 
 

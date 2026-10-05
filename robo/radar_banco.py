@@ -116,7 +116,7 @@ class Banco:
 
     def arquivar_fila(self) -> int:
         """Tira da triagem o que ficou velho e sem importância (v0.9.0). Devolve quantas capturas saíram."""
-        return int(self._pedir("POST", "rpc/radar_arquivar_fila", corpo={}) or 0)
+        return int(self._pedir("POST", "rpc/radar_arquivar_fila", corpo={"p_limite": 100}) or 0)   # aos poucos: cabe no tempo da API
 
     def saude_fontes(self) -> list[dict]:
         """Situação de cada fonte (falhas seguidas, último erro), para os avisos de fonte com falha."""

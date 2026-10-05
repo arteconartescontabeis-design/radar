@@ -16,7 +16,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 
 - **Rascunhos automáticos**: o robô prepara sozinho o rascunho das notícias de topo (fonte oficial,
   relevância alta, nota da IA 9+, no máximo 2 por dia). A equipe confere, gera a capa e envia para revisão.
-- **Nota da IA rebaixa**: "alta" só por palavras genéricas, com nota da IA até 3, desce para "média".
+- **Nota da IA rebaixa**: "alta" pelas palavras da lista, mas com nota da IA até 3, desce para "média".
 - **A fila não acumula**: o que ficou mais de 10 dias na triagem sem importância sai sozinho (vai para Ignorado).
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
