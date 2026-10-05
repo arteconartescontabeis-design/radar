@@ -287,7 +287,7 @@ function repeticaoPerigosa(padrao){
   const p = padrao || "", pilha = [];
   const aceita = (k, c) => { try{ return new RegExp(k).test(c); }catch(e){ return true; } };
   const separadorSeguro = (c, resto) => {
-    if(/(^|[^\\])\./.test(resto)) return false;
+    if(/(^|[^\\])\./.test(resto.replace(/\[(?:\\.|[^\]\\])*\]/g, ""))) return false;   // "." solto (dentro de [...] é ponto mesmo)
     const classes = [...resto.matchAll(/\[((?:\\.|[^\]\\])*)\]/g)].map(x => "[" + x[1] + "]")
       .concat([...resto.replace(/\[(?:\\.|[^\]\\])*\]/g, "").matchAll(/\\[a-zA-Z]/g)].map(x => x[0]));
     return !classes.some(k => aceita(k, c));
@@ -302,6 +302,7 @@ function repeticaoPerigosa(padrao){
     if(!["+", "*", "{"].includes(depois)) continue;
     const corpo = p.slice(ini + 1, i).replace(/^\?:/, "");
     const semClasses = corpo.replace(/\\./g, "").replace(/\[(?:\\.|[^\]\\])*\]/g, "");
+    if(/\|/.test(semClasses) && /[^|(?:]{2,}\|?|\|[^|)]{2,}/.test(semClasses.replace(/\|/g, "|"))) return true;   // alternativa com mais de um caractere
     if(!/[+*]|\{\d+,\d*\}/.test(semClasses)) continue;                 // nada repetido dentro: seguro
     if(/[()|]/.test(semClasses)) return true;                           // grupo dentro de grupo, ou alternativa
     const sep = '(?:\\\\([^a-zA-Z0-9])|([^\\\\[\\](){}.*+?^$|]))';

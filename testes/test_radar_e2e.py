@@ -1049,3 +1049,18 @@ def test_configuracao_do_site_com_valor_estranho_volta_ao_padrao():
         assert (cfg["lista"], cfg["padrao"], cfg["max_noticias"], cfg["desligado"]) == (
             radar_site.CONFIG_PADRAO["lista"], radar_site.CONFIG_PADRAO["padrao"], 15, False), ruim
     assert radar_site.configuracao(BancoSite([], config={"max_noticias": 500}))["max_noticias"] == 50
+
+
+def test_numero_curto_no_titulo_e_aprovacao_a_noite_em_brasilia():
+    import radar_site
+    base = "https://artecon.cnt.br"
+    corpo = ("A Secretaria da Fazenda prorrogou o prazo de recolhimento do ICMS das empresas do comércio varejista para o dia "
+             "vinte do mês seguinte. A medida vale para os fatos geradores de outubro e não altera as obrigações acessórias.")
+    paginas = {base + "/news": lista_site(["portaria-45"]),
+               base + "/news/view/portaria-45": pagina_site("Portaria SEF nº 45 prorroga prazo do ICMS", corpo, "05 de Outubro de 2026")}
+    banco = BancoSite([{"id": 1, "titulo": "Portaria SEF nº 46 prorroga prazo do ICMS", "corpo": corpo}])
+    assert radar_site.executar(banco, paginas.get, hoje=date(2026, 10, 5)) == [] and banco.gravados == []    # nº 45 ≠ nº 46
+    noite = [{"id": 2, "titulo": "Portaria SEF nº 45 prorroga prazo do ICMS", "corpo": corpo, "aprovado_em": "2026-10-06T01:30:00+00:00"}]
+    banco = BancoSite(noite)                                              # aprovada às 22h30 de 05/10 em Brasília
+    radar_site.executar(banco, paginas.get, hoje=date(2026, 10, 6))
+    assert banco.gravados and banco.gravados[0][:3] == (2, base + "/news/view/portaria-45", date(2026, 10, 5))

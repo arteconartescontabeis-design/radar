@@ -22,13 +22,13 @@ from __future__ import annotations
 import os
 import re
 import sys
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
 from radar_banco import Banco, ErroBanco
-from radar_util import (ErroDownload, baixar, canonizar_url, extrair_texto, hoje_brasilia, interpretar_data,
+from radar_util import (BRASILIA, ErroDownload, baixar, canonizar_url, extrair_texto, hoje_brasilia, interpretar_data,
                         normalizar_espacos, sem_acentos)
 
 CONFIG_PADRAO = {"lista": "https://artecon.cnt.br/news", "padrao": r"/news/view/[^/?#]+$", "max_noticias": 15}
@@ -70,8 +70,10 @@ def chave_url(url: str) -> str:
 
 
 def marcas(titulo: str | None) -> set[str]:
-    """Números, meses e anos do título: "Agenda de outubro de 2026" × "Agenda de novembro de 2026" não são a mesma."""
-    return {p for p in palavras(titulo) if p.isdigit() or p in MESES}
+    """Números, meses e anos do título: "Agenda de outubro de 2026" × "Agenda de novembro de 2026", ou
+    "Portaria nº 45" × "Portaria nº 46", não são a mesma notícia."""
+    texto = sem_acentos(titulo or "").lower()
+    return set(re.findall(r"\d+", texto)) | {p for p in re.findall(r"[a-z]+", texto) if p in MESES}
 
 
 def links_da_lista(html: str, base: str, padrao: str, limite: int) -> list[str]:
@@ -95,14 +97,22 @@ def ler_noticia(html: str) -> dict:
     return {"titulo": titulo, "data": interpretar_data(m.group(1)) if m else None, "texto": texto}
 
 
+def dia_brasilia(instante) -> date | None:
+    """O dia, em Brasília, de um carimbo do banco (que vem em UTC: 22h30 de Brasília já é o dia seguinte lá)."""
+    try:
+        return datetime.fromisoformat(str(instante).replace("Z", "+00:00")).astimezone(BRASILIA).date() if instante else None
+    except ValueError:
+        return None
+
+
 def escolher(noticia: dict, candidatos: list[dict]) -> dict | None:
     """O conteúdo aprovado que corresponde à notícia, só se houver um, sem dúvida."""
     aceitos = []
     for c in candidatos:
         if len(palavras(c.get("corpo"))) < PALAVRAS_MINIMAS or marcas(c["titulo"]) != marcas(noticia["titulo"]):
             continue
-        aprovado = str(c.get("aprovado_em") or "")[:10]
-        if noticia["data"] and aprovado and noticia["data"].isoformat() < aprovado:
+        aprovado = dia_brasilia(c.get("aprovado_em"))
+        if noticia["data"] and aprovado and noticia["data"] < aprovado:
             continue                     # publicada antes de o conteúdo ser aprovado: não é ele
         tit, txt = semelhanca(noticia["titulo"], c["titulo"]), contido(c.get("corpo"), noticia["texto"])
         if (tit >= TITULO_IGUAL and txt >= TEXTO_COM_TITULO) or (tit >= TITULO_PARECIDO and txt >= TEXTO_QUASE_TODO):
