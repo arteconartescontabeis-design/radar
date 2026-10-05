@@ -1851,9 +1851,10 @@ const NAVEGACAO = new Set(["etapa","filtro-fila","ir","aba","sair","voltar","rec
   "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto"]);
 let OCUPADO = false;
 async function executar(fn, livre, ...args){
-  if(!livre){ if(OCUPADO) return; OCUPADO = true; document.body.classList.add("ocupado"); }
+  if(!livre && OCUPADO) return;
   const avulso = livre ? null : avulsoEscondido();
-  if(avulso){ recado(avisoEtapa(avulso), true); return; }
+  if(avulso){ recado(avisoEtapa(avulso), true); return; }      // antes de marcar "ocupado": senão nada mais salvaria
+  if(!livre){ OCUPADO = true; document.body.classList.add("ocupado"); }
   const digitado = livre ? [] : guardarDigitado();
   try{ await fn(...args); }
   catch(e){ recado(e.message || "Erro inesperado.", true); if(E.sessao && !E.perfil){ try{ await desenhar(); }catch(x){} } }

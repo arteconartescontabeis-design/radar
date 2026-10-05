@@ -6,7 +6,8 @@ Regras combinadas com o escritório (05/10/2026):
   * o robô só usa a opção de cadastrar notícias; nada de mexer em outras áreas do painel;
   * nenhuma notícia vai ao ar sem autorização expressa do escritório: o robô só grava como rascunho
     (não publicada). Se o formulário não tiver como gravar sem publicar, o robô NÃO envia nada;
-  * se o login pedir "não sou um robô" (reCAPTCHA), o robô para: não se contorna.
+  * o "não sou um robô" (reCAPTCHA) nunca é resolvido nem contornado: o login vai sem ele (o usuário do Radar foi
+    liberado pelo site); se o site exigir, o robô para.
 
 Este arquivo, por enquanto, só RECONHECE o painel (modo padrão): entra, acha o formulário de cadastro
 de notícias e lista os campos dele, sem enviar nada. O relatório não traz senha, cookie nem conteúdo,
@@ -70,9 +71,9 @@ def entrar(sessao: requests.Session, usuario: str, senha: str) -> str:
     """Faz o login e devolve o HTML da primeira página do painel."""
     r = sessao.get(LOGIN, timeout=40)
     r.raise_for_status()
-    if CAPTCHA.search(r.text):
-        raise Parada("a tela de login ainda pede verificação \"não sou um robô\" (reCAPTCHA). O robô não contorna: "
-                     "peça ao desenvolvedor para liberar este usuário da verificação.")
+    # A página carrega o "não sou um robô" para todos; o usuário do Radar foi liberado pelo site para entrar só com
+    # usuário e senha. O robô NÃO resolve nem contorna a verificação: envia o login sem ela; se o site exigir, para.
+    com_captcha = bool(CAPTCHA.search(r.text))
     form = next((f for f in formularios(r.text, r.url) if any(c["tipo"] == "password" for c in f["campos"])), None)
     if form is None:
         raise Parada("não achei o formulário de login na página /admin/signin")
@@ -85,6 +86,9 @@ def entrar(sessao: requests.Session, usuario: str, senha: str) -> str:
     dados[texto], dados[oculto] = usuario, senha
     r = sessao.post(form["acao"], data=dados, timeout=40, allow_redirects=True)
     if r.status_code >= 400 or any(c["tipo"] == "password" for f in formularios(r.text, r.url) for c in f["campos"]):
+        if com_captcha:
+            raise Parada("o site exigiu a verificação \"não sou um robô\" (reCAPTCHA) para este usuário. O robô não contorna: "
+                         "peça ao desenvolvedor para dispensar a verificação para o usuário do Radar.")
         raise Parada(f"o login não foi aceito (HTTP {r.status_code}); confira usuário e senha nos segredos do GitHub")
     return r.text if mesmo_site(r.url) else ""
 

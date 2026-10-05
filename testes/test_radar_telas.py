@@ -2967,6 +2967,8 @@ def test_digitacao_em_outra_etapa_nao_se_perde_por_acao_feita_em_outra(pagina, l
     pagina.click("form[data-form=conteudo] >> text=Salvar")
     pagina.wait_for_selector("#recado .erro >> text=alterações não salvas na etapa “Fonte e fundamentação”")
     assert limpo.execute("select autor from radar_conteudos").fetchone()[0] is None
+    # o aviso não deixa a tela "ocupada": as próximas ações continuam funcionando (v0.9.1)
+    assert pagina.evaluate("OCUPADO") is False and not pagina.evaluate("document.body.classList.contains('ocupado')")
 
 
 # ------------------------------------------------------------ v0.9.0 — rascunhos do robô no painel
