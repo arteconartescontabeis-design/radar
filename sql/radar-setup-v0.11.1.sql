@@ -1276,10 +1276,12 @@ begin
      where f.oficial and c.duplicata_de is null and c.hash_titulo = new.hash_titulo and c.fonte_id <> new.fonte_id
      order by c.id limit 1;
   end if;
+  -- (se o boletim já virou assunto, o vínculo fica: a oficial entra nesse assunto ou mostra o aviso "parece o mesmo fato")
   if new.duplicata_de is not null
      and (select f.oficial from public.radar_fontes f where f.id = new.fonte_id)
      and not coalesce((select f.oficial from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
-                        where c.id = new.duplicata_de), false) then
+                        where c.id = new.duplicata_de), false)
+     and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = new.duplicata_de) then
     new.duplicata_de := null;
   end if;
   return new;
@@ -1294,7 +1296,8 @@ begin
      or not exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
                      where c.id = p_oficial and f.oficial and c.duplicata_de is null)
      or not exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
-                     where c.id = p_outra and not f.oficial and c.duplicata_de is null) then
+                     where c.id = p_outra and not f.oficial and c.duplicata_de is null
+                       and not (coalesce(c.metadados, '{}'::jsonb) ? 'separada_em')) then   -- a equipe disse que não é o mesmo fato
     return 0;
   end if;
   update public.radar_capturas c set duplicata_de = p_oficial
@@ -1358,8 +1361,9 @@ begin
         -- v0.11.1: captura oficial igual a um boletim não oficial: o boletim é que vira a repetição
         if v_raiz is not null and exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id where c.id = v_id and f.oficial)
            and not exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id where c.id = v_raiz and f.oficial) then
-          perform public.radar_promover_oficial(v_id, v_raiz);
-          v_raiz := null;
+          if public.radar_promover_oficial(v_id, v_raiz) > 0 then
+            v_raiz := null;                    -- (boletim que já é assunto: a oficial segue para o assunto, como antes)
+          end if;
         end if;
       end if;
       update public.radar_capturas c
@@ -1416,7 +1420,9 @@ begin
     raise exception 'RADAR047: o assunto ficaria sem nenhuma captura' using errcode = 'P0001';
   end if;
   delete from public.radar_assunto_capturas ac where ac.assunto_id = p_assunto and ac.captura_id = p_captura;
-  update public.radar_capturas set duplicata_de = null where id = p_captura;
+  update public.radar_capturas set duplicata_de = null,
+         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now())   -- v0.11.1: não volta a ser agrupada sozinha
+   where id = p_captura;
   -- se era a origem do grupo, as demais deixam de apontar para ela
   update public.radar_capturas set duplicata_de = null where duplicata_de = p_captura;
   insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes)
@@ -2073,6 +2079,7 @@ begin
              join public.radar_capturas o on o.id = c.duplicata_de join public.radar_fontes fo on fo.id = o.fonte_id
             where f.oficial and not fo.oficial
               and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = c.id)
+              and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = o.id)
             order by c.id loop
     continue when (select c.duplicata_de from public.radar_capturas c where c.id = r.id) is distinct from r.outra;   -- já arrumada no passo anterior
     update public.radar_capturas set duplicata_de = null where id = r.id;

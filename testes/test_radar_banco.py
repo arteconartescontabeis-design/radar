@@ -2332,13 +2332,16 @@ def test_captura_oficial_nunca_fica_atras_de_boletim_nao_oficial(limpo):
     b4 = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=4", "h4")
     with como("authenticated", EDITOR) as c:
         c.execute("select radar_abrir_assunto(%s)", (b4,))
-    o4 = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o4", "h4", dup=b4)
+    o4 = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o4", "h4")
     assert (dup(o4), dup(b4)) == (None, None)
+    # ...mas se o robô ou a IA dizem que a oficial é o mesmo fato do boletim que já é assunto, o vínculo fica (aviso na triagem)
+    o4b = _cap_em(limpo, "rfb-normas", "https://www.gov.br/receitafederal/o4b", "h4b", dup=b4)
+    assert dup(o4b) == b4
     # oficial repetição de oficial continua valendo
     o5 = _cap_em(limpo, "rfb-normas", "https://www.gov.br/receitafederal/o5", "h5", dup=o3)
     assert dup(o5) == o3
     principais = {r[0] for r in limpo.execute("select id from radar_v_fila where principal").fetchall()}
-    assert {o1, o2, o3, o4} <= principais and not {b1, b2, b3} & principais
+    assert {o1, o2, o3, o4, o4b} <= principais and not {b1, b2, b3} & principais     # o4b: a origem está em assunto
 
 
 def test_ia_que_junta_oficial_a_boletim_poe_o_boletim_atras_da_oficial(limpo):
@@ -2359,3 +2362,24 @@ def test_consumo_de_ia_do_mes_conta_o_mes_de_brasilia(limpo):
     # 22h do último dia do mês passado em Brasília já é dia 1º em UTC: não entra no mês
     with como("authenticated", EDITOR) as c:
         assert c.execute("select tokens from radar_v_ia_mes").fetchone()[0] == 100
+
+
+def test_oficial_igual_a_boletim_que_ja_e_assunto_entra_no_assunto_e_separacao_da_equipe_vale(limpo):
+    _boletim(limpo)
+    b = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=7", "h7")
+    with como("authenticated", EDITOR) as c:
+        a = c.execute("select radar_abrir_assunto(%s)", (b,)).fetchone()[0]
+    o = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o7", "outro-7")
+    with como("service_role") as c:
+        r = c.execute("select radar_gravar_avaliacao_ia(%s::jsonb)", (json.dumps([{"id": o, "nota": 8, "igual_a": b}]),)).fetchone()[0]
+    assert (r["repetidas"], r["juntadas_a_assunto"]) == (1, 1)            # o texto oficial chega ao assunto aberto pelo boletim
+    assert limpo.execute("select count(*) from radar_assunto_capturas where assunto_id = %s", (a,)).fetchone()[0] == 2
+    # a equipe diz "não é o mesmo fato" para um boletim agrupado atrás de uma oficial: outra oficial igual não o reagrupa
+    b2 = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=8", "h8")
+    o8 = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o8", "h8")
+    assert limpo.execute("select duplicata_de from radar_capturas where id = %s", (b2,)).fetchone()[0] == o8
+    with como("authenticated", EDITOR) as c:
+        a8 = c.execute("select radar_abrir_assunto(%s)", (o8,)).fetchone()[0]
+        c.execute("select radar_separar_captura(%s, %s)", (a8, b2))
+    _cap_em(limpo, "rfb-normas", "https://www.gov.br/receitafederal/o8b", "h8")
+    assert limpo.execute("select duplicata_de from radar_capturas where id = %s", (b2,)).fetchone()[0] is None

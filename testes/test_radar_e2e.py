@@ -1202,7 +1202,7 @@ def test_texto_ruim_da_ia_numa_captura_nao_trava_as_outras(ia):
 def test_prazo_da_rodada_deixa_para_a_proxima_a_fonte_que_nao_cabe(cenario):
     """v0.11.1: a coleta tem prazo total; a fonte que não cabe não é visitada, não conta como falha e fica para a próxima."""
     banco = Banco(API, jwt("service_role"), prefixo="")
-    prazo = time.monotonic() + radar_coletar.FOLGA_FONTE - 1          # já sem tempo para começar outra fonte
+    prazo = time.monotonic() + radar_coletar.TEMPO_MAX_PADRAO        # não cabe uma fonte inteira (tempo máximo + folga)
     resultados, _ = radar_coletar.executar(banco, None, True, hoje=HOJE, pausa=0, prazo=prazo)
     assert {r["fonte"]: r["status"] for r in resultados} == {"teste-a": "sem tempo", "teste-b": "sem tempo"}
     assert cenario.execute("select count(*) from radar_execucoes").fetchone()[0] == 0
@@ -1219,3 +1219,9 @@ def test_ia_e_rascunhos_ficam_para_a_proxima_quando_o_prazo_acabou(monkeypatch):
     assert "próxima coleta" in radar_coletar.preparar_rascunhos(None, prazo=sem_tempo)
     monkeypatch.setenv("RADAR_PRAZO_MINUTOS", "60")                     # nunca passa do corte do GitHub (16 min)
     assert radar_coletar.prazo_da_rodada() - time.monotonic() <= 14 * 60
+
+
+def test_fonte_ha_mais_tempo_sem_visita_vai_primeiro(cenario):
+    cenario.execute("update radar_fontes set ultimo_sucesso_em = now() where slug = 'teste-a'")
+    r, _ = robo()
+    assert list(r) == ["teste-b", "teste-a"]          # se o prazo acabar, quem ficou de fora abre a próxima rodada

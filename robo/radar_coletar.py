@@ -84,7 +84,7 @@ TEMPO_MAX_PADRAO = 300     # segundos por fonte; ajustável em config.tempo_max_
 # v0.11.1: prazo da rodada inteira. O passo "Coletar" do GitHub tem 16 minutos; o robô para antes, guarda o que fez
 # e deixa o resto para a próxima coleta (6 h depois). Ajustável pela variável RADAR_PRAZO_MINUTOS.
 PRAZO_PADRAO_MIN = 13
-FOLGA_FONTE = 30           # com menos que isto, a fonte fica para a próxima rodada
+FOLGA_FONTE = 5            # a fonte só começa se couber inteira (tempo máximo dela + esta folga): o prazo nunca a corta no meio
 FOLGA_IA = 150             # uma chamada à IA pode levar até 120 s
 
 
@@ -139,7 +139,7 @@ def tempo_maximo(config: dict) -> float:
 
 
 def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
-                  hoje: date | None = None, pausa: float = 1.0, limite: float | None = None) -> dict:
+                  hoje: date | None = None, pausa: float = 1.0) -> dict:
     config = fonte.get("config") or {}
     agora = datetime.now(timezone.utc)
     resultado = {"fonte": fonte["slug"], "status": "falha", "encontrados": 0, "novos": 0,
@@ -147,7 +147,7 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
     execucao = banco.abrir_execucao(fonte["id"])      # se nem isto funcionar, o banco está fora: aborta
     http = None
     try:
-        with limite_de_tempo(min(tempo_maximo(config), limite) if limite else tempo_maximo(config)):
+        with limite_de_tempo(tempo_maximo(config)):
             if fonte.get("tipo_coletor") == "inlabs":
                 listagem, http = radar_inlabs.listar_paginas(sessao, fonte, hoje)
             else:
@@ -280,20 +280,22 @@ def executar(banco: Banco, slug: str | None = None, forcar: bool = False,
     agora = datetime.now(timezone.utc)
     sessao = requests.Session()
     resultados, pulados = [], []
+    # v0.11.1: a fonte há mais tempo sem visita vai primeiro; se o prazo da rodada acabar, a que ficou de fora abre a próxima
+    fontes = sorted(fontes, key=lambda f: max(f.get("ultimo_sucesso_em") or "", f.get("ultima_falha_em") or ""))
     for fonte in fontes:
         if alimentada_por_fora(fonte):
             continue
         if not forcar and not fonte_esta_na_hora(fonte, agora):
             pulados.append(fonte["slug"])
             continue
-        if restante(prazo) < FOLGA_FONTE:
+        if restante(prazo) < tempo_maximo(fonte.get("config") or {}) + FOLGA_FONTE:
             # o prazo da rodada acabou: a fonte não é visitada (nem conta como falha) e entra na próxima coleta
             resultados.append({"fonte": fonte["slug"], "status": "sem tempo", "encontrados": 0, "novos": 0, "atualizados": 0,
                                "sem_texto": 0, "com_erro": 0, "erro": "o prazo desta rodada acabou; fica para a próxima coleta"})
             print(f"→ {fonte['slug']}: sem tempo nesta rodada")
             continue
         print(f"→ {fonte['slug']}")
-        r = coletar_fonte(banco, fonte, sessao, hoje, pausa, None if prazo is None else restante(prazo) - 5)
+        r = coletar_fonte(banco, fonte, sessao, hoje, pausa)
         print(f"  {r['status']}: {r['encontrados']} na janela, {r['novos']} novos, "
               f"{r['atualizados']} alterados" + (f" — {r['erro']}" if r["erro"] else ""))
         resultados.append(r)
