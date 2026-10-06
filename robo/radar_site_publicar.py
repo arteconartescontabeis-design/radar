@@ -184,6 +184,10 @@ def _quando(valor) -> datetime | None:
         return None
 
 
+class SiteFora(Exception):
+    """O site não respondeu antes do envio (fora do ar, lento): nada foi enviado; a autorização continua valendo."""
+
+
 class Publicador:
     def __init__(self, banco: Banco, usuario: str, senha: str, sessao: requests.Session | None = None,
                  baixar_pagina=lambda url: baixar(url, tentativas=2)[1], agora=None):
@@ -212,7 +216,7 @@ class Publicador:
 
     def conteudo(self, conteudo_id: int) -> dict | None:
         linhas = self.banco._pedir("GET", "radar_conteudos", params={
-            "select": "id,titulo,corpo,status,atualizado_em,aprovado_em,fora_do_site,imagem_id,autor,fonte_credito,radar_divulgacoes!left(id,url)",
+            "select": "id,assunto_id,titulo,corpo,status,atualizado_em,aprovado_em,fora_do_site,imagem_id,autor,fonte_credito,radar_divulgacoes!left(id,url)",
             "id": f"eq.{conteudo_id}"}) or []
         return linhas[0] if linhas else None
 
@@ -222,9 +226,15 @@ class Publicador:
             admin.entrar(self.sessao, self.usuario, self.senha)
             self.logado = True
 
-    def enviar(self, envio: dict, c: dict):
-        self.entrar()
-        r = self.sessao.get(admin.BASE + CADASTRO, timeout=40)
+    def preparar(self, envio: dict, c: dict) -> tuple[str, dict, dict | None]:
+        """Login, página de cadastro e campos preenchidos — tudo ANTES de marcar "enviando": falha aqui não envia nada."""
+        try:
+            self.entrar()
+            r = self.sessao.get(admin.BASE + CADASTRO, timeout=40)
+        except requests.RequestException as e:
+            raise SiteFora(f"o site não respondeu ({type(e).__name__})") from e
+        if r.status_code >= 500:
+            raise SiteFora(f"o site respondeu HTTP {r.status_code}")
         if r.status_code >= 400 or not admin.mesmo_site(r.url):
             raise admin.Parada(f"a página de cadastro de notícias não abriu (HTTP {r.status_code})")
         acao, dados, categorias, tipos = formulario_cadastro(r.text, r.url)
@@ -244,8 +254,11 @@ class Publicador:
             arquivo = imagem_do_banco(img[0]["dados"]) if img else None
             if arquivo:
                 arquivos = {"image": arquivo}
+        return acao, dados, arquivos
+
+    def enviar(self, envio: dict, acao: str, dados: dict, arquivos):
+        """O único passo que pode ter chegado ao site mesmo dando erro: depois dele, nunca "erro" direto."""
         resposta = self.sessao.post(acao, data=dados, files=arquivos, timeout=90, allow_redirects=True)
-        # depois do envio, nada de "erro" direto: a notícia pode ter sido gravada mesmo assim. Fica "enviando" e o robô procura no site.
         if resposta.status_code >= 400:
             self.feito.append(f"envio {envio['id']}: o site respondeu HTTP {resposta.status_code} ao gravar")
 
@@ -282,20 +295,27 @@ class Publicador:
         for envio in envios:
             try:
                 self.um(envio)
-            except admin.Parada as e:
+            except SiteFora as e:                           # nada foi enviado: continua autorizado, tenta na próxima rodada
+                self.feito.append(f"envio {envio['id']}: {e}; tenta de novo na próxima rodada")
+                break
+            except admin.Parada as e:                       # nada foi enviado: pode autorizar de novo depois de resolver
                 self.feito.append(f"envio {envio['id']}: parou")
-                if envio["situacao"] == "autorizado":
-                    # nada foi enviado: pode autorizar de novo depois de resolver
-                    self.marcar(envio, "enviando", situacao="erro", erro=f"Não publicado: {e}.")
+                self.marcar(envio, envio["situacao"], situacao="erro", erro=f"Não publicado: {e}.")
                 if "reCAPTCHA" in str(e) or "login" in str(e):
-                    break                       # sem login, as outras também não vão: tentam na próxima rodada
+                    break                                   # sem login, as outras também não vão
+            except Exception as e:                          # imprevisto: registra e segue com as outras (o estado fica como estava)
+                self.feito.append(self._limpo(f"envio {envio['id']}: erro inesperado ({type(e).__name__}: {e})"))
         return self.feito
 
     def um(self, envio: dict):
         c = self.conteudo(envio["conteudo_id"])
         if envio["situacao"] == "enviando":                 # rodada anterior interrompida: só procura, nunca reenvia
-            url = self.procurar(c) if c else None
-            if url:
+            registrado = (c or {}).get("radar_divulgacoes") or []
+            url = registrado[-1]["url"] if registrado else (self.procurar(c) if c else None)
+            if registrado:                                  # a coleta (radar_site.py) já achou e registrou a notícia
+                self.marcar(envio, "enviando", situacao="publicado", url=url, erro=None)
+                self.feito.append(f"envio {envio['id']}: publicado (registro já feito pela coleta)")
+            elif url:
                 self.concluir(envio, c, url)
             elif (self.agora() - (_quando(envio.get("enviado_em")) or self.agora())) > ESPERA_MAXIMA:
                 self.marcar(envio, "enviando", situacao="erro", erro="O envio ao site foi interrompido e a notícia não apareceu em "
@@ -313,22 +333,28 @@ class Publicador:
             motivo = "o conteúdo mudou depois de autorizado"
         elif c.get("radar_divulgacoes"):
             motivo = "o conteúdo já tem publicação registrada no site"
+        else:                                               # o assunto pode ter perdido a confirmação ou o trecho oficial depois
+            pendencia = self.banco._pedir("POST", "rpc/radar_pendencia_assunto", corpo={"p_assunto": c["assunto_id"]})
+            if pendencia:
+                motivo = "o assunto deixou de cumprir as exigências do site (" + re.sub(r"^RADAR\d+:\s*", "", str(pendencia))[:200] + ")"
         if motivo:
             self.marcar(envio, "autorizado", situacao="cancelado", erro=f"Autorização cancelada pelo robô: {motivo}. Confira e autorize de novo.")
             self.feito.append(f"envio {envio['id']}: cancelado")
             return
+        acao, dados, arquivos = self.preparar(envio, c)     # login e formulário antes: se falhar, nada foi enviado
         if not self.marcar(envio, "autorizado", situacao="enviando", enviado_em=self.agora().isoformat()):
             return                                          # cancelado pelo administrador agora há pouco
         envio = dict(envio, situacao="enviando")
         try:
-            self.enviar(envio, c)
-        except admin.Parada:
-            raise
+            self.enviar(envio, acao, dados, arquivos)
         except requests.RequestException as e:
             # pode ter chegado ao site ou não: fica "enviando" e as próximas rodadas procuram a notícia
             self.feito.append(f"envio {envio['id']}: sem resposta do site ({type(e).__name__}); vai procurar na próxima rodada")
             return
-        url = self.procurar(c)
+        try:
+            url = self.procurar(c)
+        except ErroDownload:
+            url = None
         if url:
             self.concluir(envio, c, url)
         else:

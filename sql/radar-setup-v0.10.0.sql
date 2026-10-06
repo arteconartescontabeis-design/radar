@@ -1041,7 +1041,8 @@ begin
   if exists (select 1 from public.radar_site_envios e where e.conteudo_id = p_conteudo and e.situacao in ('autorizado','enviando')) then
     raise exception 'RADAR116: a publicação deste conteúdo já está autorizada e aguardando o robô' using errcode = 'P0001';
   end if;
-  if exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = p_conteudo) then
+  if exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = p_conteudo)
+     or exists (select 1 from public.radar_site_envios e where e.conteudo_id = p_conteudo and e.situacao = 'publicado') then
     raise exception 'RADAR117: este conteúdo já tem publicação registrada no site; para mudar a notícia, altere no painel do site' using errcode = 'P0001';
   end if;
   insert into public.radar_site_envios (conteudo_id, categoria, conteudo_lido_em, autorizado_por)
@@ -1794,6 +1795,8 @@ grant execute on function public.radar_incluir_texto_oficial(bigint, bigint, tex
 -- v0.10.0: autorização de publicação no site (a função confere que é o administrador)
 grant execute on function public.radar_autorizar_site(bigint, text, timestamptz) to authenticated;
 grant execute on function public.radar_cancelar_site(bigint) to authenticated;
+-- o robô confere de novo as exigências do assunto logo antes de enviar ao site
+grant execute on function public.radar_pendencia_assunto(bigint) to service_role;
 
 -- perfis
 drop policy if exists radar_perfis_sel on public.radar_perfis;

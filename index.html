@@ -1066,6 +1066,7 @@ async function telaAssunto(id){
   const envioDe = c => envios.find(e => e.conteudo_id === c.id);                                         // a autorização mais recente
   const aguardando = faltamRegistrar.filter(c => ["autorizado","enviando"].includes(envioDe(c)?.situacao));
   const falhou = faltamRegistrar.find(c => envioDe(c)?.situacao === "erro");
+  const semRegistro = faltamRegistrar.find(c => envioDe(c)?.situacao === "publicado");     // o robô publicou, mas o registro não entrou
   const passos = [
     ["Conferir a fonte", pronto, pronto ? "fundamentação confirmada" : !temTexto ? "sem texto oficial" : conferidasOficiais ? "falta confirmar" : "falta o trecho que comprova"],
     ["Escrever", cont.length > 0, cont.length ? cont.length + " escrito(s)" : "falta"],
@@ -1090,6 +1091,8 @@ async function telaAssunto(id){
   else if(!pronto) prox = ["Para o site: confirmar o assunto", "Há trecho conferido em fonte oficial. Se você conferiu a informação na fonte, marque o assunto como confirmado oficialmente.",
     `<button class="btn verde" data-acao="confirmar-oficial">Marcar como confirmado oficialmente</button>`];
   else if(aguardando.length === faltamRegistrar.length) prox = ["Aguardando o robô publicar", "A publicação foi autorizada. O robô cadastra a notícia no site em até 15 minutos e registra o link aqui sozinho.", ir("#sec-publicar", "Ver a publicação")];
+  else if(semRegistro) prox = ["Registrar o link da notícia publicada", "O robô publicou a notícia no site, mas o registro em “Publicações no site” não entrou" +
+    (envioDe(semRegistro).erro ? ": " + h(envioDe(semRegistro).erro) : ".") + " Confira e registre o link à mão (não autorize de novo, para não duplicar).", ir("#sec-conteudos", "Ir para registrar")];
   else if(falhou) prox = ["Publicação não concluída", h(envioDe(falhou).erro || "O robô não conseguiu publicar."), ir("#sec-publicar", "Ir para publicar")];
   else if(jaRegistrado) prox = ["Atualizar o site e registrar de novo", "O conteúdo foi alterado depois do registro. Atualize a notícia no site da Artecon e registre de novo, para o Radar guardar o texto que está no ar.", ir("#sec-conteudos", "Ir para copiar e registrar")];
   else prox = ["Publicar no site", ehAdmin() ? "Confira a prévia, escolha a categoria e autorize: o robô cadastra a notícia no site em até 15 minutos e registra o link aqui."
@@ -1204,7 +1207,7 @@ async function telaAssunto(id){
     <div class="painel" id="sec-publicar"><h2>4. Publicar no site</h2>
       ${!aprovados.length ? `<p class="sub">Disponível depois que o conteúdo for aprovado (passo 3).</p>`
         : !vaoAoSite.length ? `<p class="sub">O conteúdo aprovado está marcado como “não vai ao site”: fica só para o Informativo Mensal.</p>`
-        : (pronto ? "" : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id && !p.versao_anterior), pronto, a.categoria)).join("")}
+        : (pronto ? "" : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id), pronto, a.categoria)).join("")}
     </div>
     </section>
     </div>
@@ -1213,9 +1216,12 @@ async function telaAssunto(id){
 /* O passo 4 de um conteúdo aprovado: prévia, autorização (só o administrador) e o andamento do robô. */
 function blocoPublicar(c, envio, pubs, pronto, categoria){
   const sugerida = CATEGORIA_SITE[categoria] || "";
-  const atual = pubs.find(p => !p.texto_mudou);
+  const atual = pubs.find(p => !p.texto_mudou && !p.versao_anterior);
   let corpo;
   if(atual) corpo = `<div class="aviso info envio-site"><b>Publicado no site e registrado</b> em ${data(atual.publicado_em)} — ${linkFonte(atual.url, atual.url)}</div>`;
+  // já foi ao site (texto mudou depois, ou o robô publicou e o registro não entrou): autorizar de novo duplicaria a notícia
+  else if(pubs.length) corpo = `<div class="aviso alerta envio-site"><b>Esta notícia já está no site</b> (${linkFonte(pubs[pubs.length - 1].url, pubs[pubs.length - 1].url)}), com um texto anterior. Para não duplicar, atualize a notícia no painel do site e registre de novo no passo 2 (“Depois de publicar no site”).</div>`;
+  else if(envio?.situacao === "publicado") corpo = `<div class="aviso alerta envio-site"><b>Publicado no site pelo robô</b> — ${envio.url ? linkFonte(envio.url, envio.url) : ""}${envio.erro ? `<br>${h(envio.erro)}` : ""}<br><span class="sub">Para não duplicar, não é possível autorizar de novo; se precisar, registre o link à mão no passo 2.</span></div>`;
   else if(envio?.situacao === "autorizado") corpo = `<div class="aviso alerta envio-site"><b>Autorizado em ${dataHora(envio.autorizado_em)}</b> (categoria ${h(envio.categoria)}) — aguardando o robô, que publica em até 15 minutos.
       ${ehAdmin() ? `<div class="acoes"><button class="btn peq sec" type="button" data-acao="cancelar-site" data-envio="${envio.id}">Cancelar autorização</button></div>` : ""}</div>`;
   else if(envio?.situacao === "enviando") corpo = `<div class="aviso alerta envio-site"><b>O robô está publicando</b> (desde ${dataHora(envio.enviado_em)}). Assim que a notícia aparecer no site, o link é registrado aqui.</div>`;
@@ -1721,12 +1727,12 @@ const mexido = f => [...f.elements].some(alterado);
 function guardarDigitado(){
   // o que está digitado nos passos escondidos e nos dados do assunto (quadro ao lado) sobrevive ao redesenho
   return [...document.querySelectorAll("main section[data-etapa][hidden] form[data-form][data-id], main .lateral form[data-form][data-id]")].filter(mexido)
-    .map(f => ({form:f.dataset.form, id:f.dataset.id, campos:[...f.elements].filter(alterado).map(c => [c.name, c.type === "checkbox" ? c.checked : c.value])}));
+    .map(f => ({el:f, form:f.dataset.form, id:f.dataset.id, campos:[...f.elements].filter(alterado).map(c => [c.name, c.type === "checkbox" ? c.checked : c.value])}));
 }
 function devolverDigitado(guardados){
   for(const g of guardados){
     const f = [...document.querySelectorAll("main form[data-form][data-id]")].find(x => x.dataset.form === g.form && x.dataset.id === g.id);
-    if(!f) continue;
+    if(!f || f === g.el) continue;                       // não foi redesenhado: o que está nele agora é o que vale (ex.: sugestão da IA)
     for(const [nome, valor] of g.campos){ const c = f.elements[nome]; if(!c || c.disabled) continue;
       if(c.type === "checkbox") c.checked = valor; else c.value = valor; }
   }

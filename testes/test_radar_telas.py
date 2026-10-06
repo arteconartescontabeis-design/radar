@@ -3074,3 +3074,27 @@ def test_so_o_administrador_autoriza_e_pode_cancelar(pagina, limpo):
     pagina.evaluate("desenhar()")                                                          # redesenha a tela aberta
     pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
     assert pagina.locator(".trilha li.feito").count() == 4
+
+
+def test_noticia_ja_no_site_nao_oferece_autorizar_de_novo(pagina, limpo):
+    a, c = pronto_para_o_site(limpo)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    with como("authenticated", ADMIN) as x:
+        envio = x.execute("select radar_autorizar_site(%s, 'Tributário', %s)", (c, lido)).fetchone()[0]
+    limpo.execute("""update radar_site_envios set situacao = 'publicado', url = 'https://artecon.cnt.br/news/view/cbs',
+                     erro = 'Publicado no site, mas o registro foi recusado.' where id = %s""", (envio,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    assert "Registrar o link da notícia publicada" in pagina.inner_text("#proximo-passo")
+    assert "Publicado no site pelo robô" in pagina.inner_text("#sec-publicar") and pagina.locator("[data-acao=autorizar-site]").count() == 0
+    # registrado e depois alterado e aprovado de novo: já está no site, atualiza-se lá
+    limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c,))
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set corpo = corpo || ' Mais uma frase.' where id = %s", (c,))
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    pagina.evaluate("desenhar()")
+    pagina.wait_for_selector("text=Esta notícia já está no site")
+    assert pagina.locator("[data-acao=autorizar-site]").count() == 0

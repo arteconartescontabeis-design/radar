@@ -25,7 +25,7 @@ from test_radar_banco import aprovar, cenario_publicavel
 PORTA = 3997
 BASE = f"http://127.0.0.1:{PORTA}"
 MESES = "Janeiro Fevereiro Março Abril Maio Junho Julho Agosto Setembro Outubro Novembro Dezembro".split()
-SITE = {"noticias": [], "envios": [], "logins": 0, "exigir_captcha": False, "publicar": True, "categorias": None}
+SITE = {"noticias": [], "envios": [], "logins": 0, "exigir_captcha": False, "publicar": True, "categorias": None, "fora": False}
 FORM = """<form method="post" action="/admin/news/register" enctype="multipart/form-data">
   <input type="hidden" name="_token" value="tok123">
   <label for="t">Título</label><input id="t" name="title" type="text" required>
@@ -52,6 +52,8 @@ class Site(BaseHTTPRequestHandler):
         return "sessao=ok" in (self.headers.get("Cookie") or "")
 
     def do_GET(self):
+        if SITE["fora"] and self.path.startswith("/admin"):
+            return self._html(503, "fora do ar")
         if self.path == "/admin/signin":
             return self._html(200, LOGIN)
         if self.path == "/admin":
@@ -112,7 +114,7 @@ def site():
 
 @pytest.fixture()
 def cenario(api_postgrest, site, limpo):
-    SITE.update(noticias=[], envios=[], logins=0, exigir_captcha=False, publicar=True, categorias=None)
+    SITE.update(noticias=[], envios=[], logins=0, exigir_captcha=False, publicar=True, categorias=None, fora=False)
     limpo.execute("insert into radar_config (chave, valor) values ('site', %s::jsonb) "
                   "on conflict (chave) do update set valor = excluded.valor", (f'{{"lista": "{BASE}/news"}}',))
     yield limpo
@@ -218,3 +220,36 @@ def test_texto_vira_html_do_site():
     assert "&lt;script&gt;" in h and "<h2>Prazos</h2>" in h and "<li><strong>Até 31/01</strong>: opção</li>" in h
     assert "<td>a | b</td><td>c</td>" in h and "---" not in h
     assert pub.resumo("## Título\n" + "palavra " * 60).endswith("…") and len(pub.resumo("x " * 200)) <= 156
+
+
+def test_site_fora_do_ar_antes_do_envio_mantem_a_autorizacao(cenario):
+    c, envio = autorizado(cenario)
+    SITE["fora"] = True
+    feito = rodar()
+    assert "tenta de novo na próxima rodada" in feito[0] and SITE["envios"] == []
+    assert situacao(cenario, envio)[0] == "autorizado"                       # nada foi enviado: segue valendo
+    SITE["fora"] = False
+    assert rodar() == [f"envio {envio}: publicado"]
+
+
+def test_assunto_que_perdeu_a_confirmacao_nao_vai_ao_site(cenario):
+    c, envio = autorizado(cenario)
+    a = cenario.execute("select assunto_id from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    cenario.execute("update radar_assuntos set situacao_confirmacao = 'em_verificacao' where id = %s", (a,))
+    assert rodar() == [f"envio {envio}: cancelado"] and SITE["envios"] == []
+    assert "exigências do site" in situacao(cenario, envio)[2]
+
+
+def test_registro_feito_pela_coleta_encerra_o_envio_e_publicado_nao_se_autoriza_de_novo(cenario):
+    c, envio = autorizado(cenario)
+    SITE["publicar"] = False
+    rodar()
+    assert situacao(cenario, envio)[0] == "enviando"
+    cenario.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, %s, current_date)",
+                    (c, BASE + "/news/view/achada-pela-coleta"))
+    assert rodar() == [f"envio {envio}: publicado (registro já feito pela coleta)"]
+    assert situacao(cenario, envio)[:2] == ("publicado", BASE + "/news/view/achada-pela-coleta")
+    cenario.execute("delete from radar_divulgacoes")                       # registro apagado: mesmo assim não publica de novo
+    lido = cenario.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    with como("authenticated", ADMIN) as x, pytest.raises(Exception, match="RADAR117"):
+        x.execute("select radar_autorizar_site(%s, 'Simples Nacional', %s)", (c, lido))
