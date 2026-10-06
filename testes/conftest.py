@@ -17,8 +17,8 @@ sys.path.insert(0, str(RAIZ / "robo"))
 PG = {"host": os.environ.get("RADAR_PGHOST", "/tmp"), "port": os.environ.get("RADAR_PGPORT", "5544"),
       "user": os.environ.get("RADAR_PGUSER", "postgres")}
 BANCO = "radar_teste"
-SETUP = RAIZ / "sql" / "radar-setup-v0.11.1.sql"
-REVERSAO = RAIZ / "sql" / "radar-reversao-v0.11.1.sql"
+SETUP = RAIZ / "sql" / "radar-setup-v0.12.0.sql"
+REVERSAO = RAIZ / "sql" / "radar-reversao-v0.12.0.sql"
 
 ADMIN = "00000000-0000-0000-0000-00000000000a"
 EDITOR = "00000000-0000-0000-0000-00000000000e"

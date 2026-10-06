@@ -183,11 +183,15 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.11.1";
+const VERSAO = "0.12.0";
 const FUNCAO_MINIMA = "0.11.0";     // versão da função radar-ia que este painel exige (texto para análise)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.12.0", "06/10/2026", [
+    "Boletim da ITC dentro do aplicativo: a função radar-itc lê os e-mails da ITC no Outlook (Microsoft Graph) a cada 2 horas, a IA separa as matérias e elas entram na triagem como antes. Não depende mais de uma conversa aberta. Na aba Fontes, o administrador tem “Ler boletim agora” e “Testar conexão com o e-mail”.",
+    "Publicação no site com o texto justificado (como já era na prévia e no “Copiar texto”); os créditos continuam à direita."
+  ]],
   ["0.11.1", "06/10/2026", [
     "IA: a consulta fica presa ao assunto em que foi pedida; se você trocar de tela enquanto ela trabalha, o resultado não é aplicado no outro assunto (e o aviso diz onde ficou).",
     "Clique em “Salvar” ou em outra ação enquanto uma ação longa está em andamento agora avisa para aguardar, em vez de não fazer nada.",
@@ -863,7 +867,10 @@ const TELAS = {
       <div class="painel rolagem"><table id="tab-fontes"><tr><th>Fonte</th><th>Saúde</th><th>Último sucesso</th><th>A cada</th>${ehAdmin() ? "<th></th>" : ""}</tr>${fontes.map(f => `
         <tr><td><b>${h(f.nome)}</b> ${f.validada ? "" : selo("a validar","alerta")}${f.ativo ? "" : " " + selo("inativa","neutro")} ${f.oficial ? "" : selo("não oficial","alerta")}<br><span class="sub">${h(f.orgao)} · ${h(ROTULOS.coletor[f.tipo_coletor] || f.tipo_coletor)}</span>
             <br>${linkFonte(f.url, f.url)}
-            ${f.ultimo_erro ? `<div class="aviso erro">${h(f.ultimo_erro)}</div>` : ""}</td>
+            ${f.ultimo_erro ? `<div class="aviso erro">${h(f.ultimo_erro)}</div>` : ""}
+            ${f.config?.origem === "email" ? `<br><span class="sub">Lido no e-mail pela função radar-itc (Microsoft Graph), a cada 2 horas.</span>
+              ${ehAdmin() ? `<div class="acoes" style="margin:6px 0 0"><button class="btn peq sec" data-acao="itc-ler">Ler boletim agora</button>
+                <button class="btn peq sec" data-acao="itc-testar">Testar conexão com o e-mail</button></div><div id="itc-resultado"></div>` : ""}` : ""}</td>
           <td>${selo(ROTULOS.saude[saude[f.id]] || saude[f.id] || "—", tipoSaude(saude[f.id]))}</td>
           <td>${dataHora(f.ultimo_sucesso_em)}</td><td>${f.frequencia_horas} h</td>
           ${ehAdmin() ? `<td><button class="btn peq sec" data-acao="editar-fonte" data-id="${f.id}">Configurar</button></td>` : ""}</tr>
@@ -1603,6 +1610,23 @@ const ACOES = {
         : `<div class="aviso erro"><b>Há item a corrigir</b> (veja acima). O segredo do Radar fica em Supabase → Edge Functions → Secrets; limites, crédito e modelos liberados ficam em Portal → Consumo de IA. Depois de alterar, teste de novo.</div>`}`;
   },
 
+  /* v0.12.0: boletim da ITC lido no e-mail pela função radar-itc (Microsoft Graph). O resultado traz só contagens. */
+  async "itc-ler"(){
+    const d = $("#itc-resultado"); if(d) d.innerHTML = `<p class="sub">Lendo os boletins dos últimos 3 dias… pode levar 1 ou 2 minutos.</p>`;
+    let r; try{ r = await pedir("POST", "/functions/v1/radar-itc", {corpo:{acao:"ler", horas:72}, tempo:280000}); }
+    catch(e){ if(d) d.innerHTML = `<div class="aviso erro">${h(e.status === 404 ? "A função radar-itc ainda não foi instalada no Supabase (veja o LEIAME, v0.12.0)." : e.message)}</div>`; return; }
+    const falhas = Array.isArray(r.falhas) ? r.falhas : [];
+    if(d) d.innerHTML = `<div class="aviso ${falhas.length ? "alerta" : "info"}">${r.emails} boletim(ns) encontrado(s), ${r.ja_lidos} já lido(s) antes;
+      ${r.materias} matéria(s) separada(s), ${r.novas} nova(s) na triagem.${r.para_depois ? ` ${r.para_depois} boletim(ns) ficaram para a próxima leitura (clique de novo ou aguarde a agenda).` : ""}${falhas.map(x => `<br>${h(x)}`).join("")}</div>`;
+    recado(r.novas ? `${r.novas} matéria(s) nova(s) do boletim da ITC na triagem.` : "Leitura do boletim feita: nenhuma matéria nova.");
+  },
+  async "itc-testar"(){
+    const d = $("#itc-resultado"); if(d) d.innerHTML = `<p class="sub">Testando… pode levar alguns segundos.</p>`;
+    let r; try{ r = await pedir("POST", "/functions/v1/radar-itc", {corpo:{acao:"diagnostico"}, tempo:60000}); }
+    catch(e){ if(d) d.innerHTML = `<div class="aviso erro">${h(e.status === 404 ? "A função radar-itc ainda não foi instalada no Supabase (veja o LEIAME, v0.12.0)." : e.message)}</div>`; return; }
+    const itens = Array.isArray(r.itens) ? r.itens : [];
+    if(d) d.innerHTML = `<ul class="diag">${itens.map(i => `<li>${selo(i.ok ? "OK" : "Falhou", i.ok ? "ok" : "erro")} <b>${h(i.item)}</b><br><span class="sub">${h(i.detalhe)}</span></li>`).join("")}</ul>`;
+  },
   async "ia-classificar"(){
     if(!(await liberarIA())) return;
     const assunto = E.assunto, r = await ia("classificar", {assunto_id:assunto});

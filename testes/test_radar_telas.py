@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.11.1"
+    assert pagina.inner_text(".versao") == "v0.12.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -2274,7 +2274,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.11.1" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.12.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3252,3 +3252,37 @@ def test_publicacoes_mostram_o_que_foi_e_o_que_falta_em_cada_canal(pagina, limpo
     assert linha("Segundo informativo").locator("[data-canal=site]").inner_text() == "Falta"
     assert linha("Segundo informativo").locator("[data-canal=instagram]").inner_text() == "em breve"
     assert linha("Segundo informativo").locator("[data-canal=facebook]").inner_text() == "em breve"
+
+
+# ------------------------------------------------------------ v0.12.0 — boletim da ITC lido pela função radar-itc
+def test_fontes_tem_ler_boletim_e_testar_conexao_so_para_o_administrador(pagina, limpo, request):
+    from test_radar_banco import FONTES_NOVAS
+    from conftest import psql
+    assert psql(FONTES_NOVAS).returncode == 0
+    request.addfinalizer(lambda: limpo.execute("delete from radar_fontes where slug in "
+                                               "('dou-destaques','econet-blog','portalcontabilsc-noticias','dou-inlabs','itc-email')"))
+    pedidos = []
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        pedidos.append(corpo)
+        r = ({"emails": 2, "ja_lidos": 1, "materias": 7, "novas": 5, "ja_existiam": 2, "falhas": [], "para_depois": 0, "tokens": 9000}
+             if corpo.get("acao") == "ler" else
+             {"tudo_certo": False, "itens": [{"item": "Segredos do Microsoft Graph", "ok": False, "detalhe": "faltam: GRAPH_CLIENT_SECRET"}]})
+        rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
+    pagina.route("**/functions/v1/radar-itc", responder)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Fontes")
+    linha = pagina.locator("tr", has_text="ITC Consultoria — boletim por e-mail")
+    linha.locator("text=Ler boletim agora").click()
+    pagina.wait_for_selector("#itc-resultado >> text=5 nova(s) na triagem")
+    assert pedidos[-1] == {"acao": "ler", "horas": 72}
+    linha.locator("text=Testar conexão com o e-mail").click()
+    pagina.wait_for_selector("#itc-resultado >> text=faltam: GRAPH_CLIENT_SECRET")
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina)                                                   # editora: vê a fonte, sem os botões
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Fontes")
+    pagina.wait_for_selector("text=Lido no e-mail pela função radar-itc")
+    assert pagina.locator("text=Ler boletim agora").count() == 0
