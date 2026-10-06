@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -155,7 +156,8 @@ def conferir(itens: list, novos: list[dict], vistos: list[dict]) -> list[dict]:
 
 
 def avaliar_capturas(banco: Banco, token: str, url: str = GATEWAY_PADRAO, modelo: str = MODELO_PADRAO,
-                     maximo: int = MAXIMO_POR_EXECUCAO, lote: int = LOTE, sessao: requests.Session | None = None) -> dict:
+                     maximo: int = MAXIMO_POR_EXECUCAO, lote: int = LOTE, sessao: requests.Session | None = None,
+                     prazo: float | None = None) -> dict:
     """Avalia as capturas da fila que passaram no filtro de palavras e ainda não têm nota. Devolve o resumo."""
     resumo = {"pendentes": 0, "avaliadas": 0, "repetidas": 0, "juntadas_a_assunto": 0, "erro": None}
     # as mais novas primeiro: se houver mais do que cabe numa execução, o que acabou de sair é avaliado antes
@@ -174,6 +176,8 @@ def avaliar_capturas(banco: Banco, token: str, url: str = GATEWAY_PADRAO, modelo
         if v["id"] not in ids_pendentes][:CONTEXTO]
     sessao = sessao or requests.Session()
     for inicio in range(0, len(pendentes), lote):
+        if prazo is not None and inicio and time.monotonic() > prazo:
+            break                                                    # prazo da coleta: o resto fica para a próxima
         novos = pendentes[inicio:inicio + lote]
         try:
             bons = conferir(perguntar(sessao, url, token, modelo, novos, vistos), novos, vistos)

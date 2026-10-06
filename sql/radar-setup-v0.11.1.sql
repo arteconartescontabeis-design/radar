@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.11.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.11.1.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.11.0.sql
+-- Reversão: radar-reversao-v0.11.1.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.11.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.11.1', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -1263,6 +1263,66 @@ end $$;
 -- se a original já virou assunto (ou foi ignorada), a repetição entra no mesmo assunto e não volta à triagem.
 -- Só o robô (service_role) executa. Itens inválidos são pulados, nunca derrubam o lote.
 -- security definer: precisa escrever na auditoria (que o robô só lê). Quem pode chamar é só o service_role (grant abaixo).
+-- v0.11.1: fonte NÃO oficial (boletim, portal, editora) nunca é a "origem" de uma captura oficial. Se o mesmo fato
+-- chegou antes por um boletim, a captura oficial fica como principal e o boletim passa a ser a repetição dela.
+create or replace function public.radar_fn_captura_origem() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  -- boletim que chega depois da publicação oficial do mesmo fato (mesmo título): entra como repetição dela
+  if tg_op = 'INSERT' and new.duplicata_de is null
+     and not coalesce((select f.oficial from public.radar_fontes f where f.id = new.fonte_id), false) then
+    select c.id into new.duplicata_de
+      from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+     where f.oficial and c.duplicata_de is null and c.hash_titulo = new.hash_titulo and c.fonte_id <> new.fonte_id
+     order by c.id limit 1;
+  end if;
+  -- (se o boletim já virou assunto, o vínculo fica: a oficial entra nesse assunto ou mostra o aviso "parece o mesmo fato")
+  if new.duplicata_de is not null
+     and (select f.oficial from public.radar_fontes f where f.id = new.fonte_id)
+     and not coalesce((select f.oficial from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+                        where c.id = new.duplicata_de), false)
+     and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = new.duplicata_de) then
+    new.duplicata_de := null;
+  end if;
+  return new;
+end $$;
+
+-- Põe a captura não oficial p_outra (e as repetições dela) atrás da oficial p_oficial. Não mexe no que já virou assunto.
+create or replace function public.radar_promover_oficial(p_oficial bigint, p_outra bigint) returns int
+language plpgsql security definer set search_path = public as $$
+declare v_n int;
+begin
+  if p_oficial is null or p_outra is null or p_oficial = p_outra
+     or not exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+                     where c.id = p_oficial and f.oficial and c.duplicata_de is null)
+     or not exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+                     where c.id = p_outra and not f.oficial and c.duplicata_de is null
+                       and c.metadados->'separada_em' is null) then   -- a equipe disse que não é o mesmo fato
+    return 0;
+  end if;
+  update public.radar_capturas c set duplicata_de = p_oficial
+   where (c.id = p_outra or c.duplicata_de = p_outra) and c.id <> p_oficial
+     and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = c.id)
+     and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = p_outra);
+  get diagnostics v_n = row_count;
+  return v_n;
+end $$;
+
+-- Captura oficial nova: o boletim que trouxe o mesmo fato antes (mesmo título ou mesmo texto) vai para trás dela.
+create or replace function public.radar_fn_captura_promover() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_outra bigint;
+begin
+  if new.duplicata_de is null and (select f.oficial from public.radar_fontes f where f.id = new.fonte_id) then
+    for v_outra in select c.id from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+                    where c.duplicata_de is null and c.id <> new.id and not f.oficial
+                      and (c.hash_titulo = new.hash_titulo or (new.hash_conteudo is not null and c.hash_conteudo = new.hash_conteudo)) loop
+      perform public.radar_promover_oficial(new.id, v_outra);
+    end loop;
+  end if;
+  return null;
+end $$;
+
 create or replace function public.radar_gravar_avaliacao_ia(p_itens jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -1297,6 +1357,13 @@ begin
         end loop;
         if v_raiz = v_id or exists (select 1 from public.radar_capturas c where c.duplicata_de = v_id) then
           v_raiz := null;                      -- não aponta para si mesma nem vira repetição quem já é origem de outras
+        end if;
+        -- v0.11.1: captura oficial igual a um boletim não oficial: o boletim é que vira a repetição
+        if v_raiz is not null and exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id where c.id = v_id and f.oficial)
+           and not exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id where c.id = v_raiz and f.oficial) then
+          if public.radar_promover_oficial(v_id, v_raiz) > 0 then
+            v_raiz := null;                    -- (boletim que já é assunto: a oficial segue para o assunto, como antes)
+          end if;
         end if;
       end if;
       update public.radar_capturas c
@@ -1353,7 +1420,9 @@ begin
     raise exception 'RADAR047: o assunto ficaria sem nenhuma captura' using errcode = 'P0001';
   end if;
   delete from public.radar_assunto_capturas ac where ac.assunto_id = p_assunto and ac.captura_id = p_captura;
-  update public.radar_capturas set duplicata_de = null where id = p_captura;
+  update public.radar_capturas set duplicata_de = null,
+         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now())   -- v0.11.1: não volta a ser agrupada sozinha
+   where id = p_captura;
   -- se era a origem do grupo, as demais deixam de apontar para ela
   update public.radar_capturas set duplicata_de = null where duplicata_de = p_captura;
   insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes)
@@ -1546,6 +1615,13 @@ drop trigger if exists radar_tg_captura_versionar on public.radar_capturas;
 create trigger radar_tg_captura_versionar before insert or update on public.radar_capturas
   for each row execute function public.radar_fn_captura_versionar();
 
+drop trigger if exists radar_tg_captura_origem on public.radar_capturas;
+create trigger radar_tg_captura_origem before insert or update of duplicata_de on public.radar_capturas
+  for each row execute function public.radar_fn_captura_origem();
+drop trigger if exists radar_tg_captura_promover on public.radar_capturas;
+create trigger radar_tg_captura_promover after insert on public.radar_capturas
+  for each row execute function public.radar_fn_captura_promover();
+
 drop trigger if exists radar_tg_captura_relevancia on public.radar_capturas;
 create trigger radar_tg_captura_relevancia before insert or update on public.radar_capturas
   for each row execute function public.radar_fn_captura_relevancia();
@@ -1722,7 +1798,7 @@ select count(*)::int as chamadas,
        coalesce(sum(tokens_saida::bigint), 0)::bigint as tokens_saida,
        coalesce(sum(tokens_entrada::bigint + tokens_saida::bigint), 0)::bigint as tokens
 from public.radar_ia_uso
-where em >= date_trunc('month', now());
+where em >= (date_trunc('month', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo');   -- mês de Brasília (v0.11.1)
 
 -- Números do painel do dia (uma linha). É recriada: assim colunas novas entram em qualquer atualização.
 drop view if exists public.radar_v_painel;
@@ -1994,6 +2070,23 @@ update public.radar_fontes
          to_jsonb('/web/dou/-/(?:lei-|decreto-n-|medida-provisoria-|[^?#]*(?:rfb|pgfn|cgsn|cgibs|cosit|receita|fazenda|[-/]mf[-/]))[^?#]*-\d{6,}$'::text))
  where slug = 'dou-destaques' and config->>'padrao_url' = '/web/dou/-/[^?#]+-\d{6,}$';
 
+-- v0.11.1: captura oficial que tinha ficado atrás de um boletim não oficial volta a ser a principal (fora as que já viraram assunto)
+do $$
+declare r record;
+begin
+  for r in select c.id, c.duplicata_de as outra
+             from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+             join public.radar_capturas o on o.id = c.duplicata_de join public.radar_fontes fo on fo.id = o.fonte_id
+            where f.oficial and not fo.oficial
+              and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = c.id)
+              and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = o.id)
+            order by c.id loop
+    continue when (select c.duplicata_de from public.radar_capturas c where c.id = r.id) is distinct from r.outra;   -- já arrumada no passo anterior
+    update public.radar_capturas set duplicata_de = null where id = r.id;
+    perform public.radar_promover_oficial(r.id, r.outra);
+  end loop;
+end $$;
+
 -- capturas que já estavam no banco são avaliadas pelas regras em vigor
 select public.radar_reavaliar_capturas() as capturas_reavaliadas;
 
@@ -2009,7 +2102,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 20 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.11.0).
+-- Esperado: 20 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.11.1).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

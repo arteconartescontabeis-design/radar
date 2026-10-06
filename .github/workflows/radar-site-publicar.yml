@@ -32,6 +32,8 @@ jobs:
           if [ "$resposta" = "[]" ]; then echo "pendente=nao" >> "$GITHUB_OUTPUT"; else echo "pendente=sim" >> "$GITHUB_OUTPUT"; fi
       - if: steps.fila.outputs.pendente == 'sim'
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - if: steps.fila.outputs.pendente == 'sim'
         uses: actions/setup-python@v6
         with:

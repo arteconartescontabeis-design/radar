@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.11.0"
+    assert pagina.inner_text(".versao") == "v0.11.1"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -2274,7 +2274,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.11.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.11.1" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3134,6 +3134,34 @@ def ia_de_mentira(pg, db, pedidos):
             r = {"message": "Ação desconhecida."}
         rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
     pg.route("**/functions/v1/radar-ia", responder)
+
+
+def test_trocar_de_assunto_enquanto_a_ia_trabalha_nao_grava_nem_aplica_no_outro(pagina, limpo):
+    a1, _ = assunto_com_texto(limpo)
+    cap2 = captura(limpo, "Outra norma da CBS", "https://www.gov.br/exemplo/outra")
+    a2 = limpo.execute("insert into radar_assuntos (titulo, resumo) values ('Outro assunto', 'Outro.') returning id").fetchone()[0]
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a2, cap2))
+    pedidos, presos = [], []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    def segurar(rota):                                       # a 1ª busca de trecho fica "trabalhando" até o teste soltar
+        if json.loads(rota.request.post_data or "{}").get("acao") == "fundamentar" and not presos:
+            presos.append(rota)
+        else:
+            rota.fallback()
+    pagina.route("**/functions/v1/radar-ia", segurar)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click("text=Preparar tudo com IA")
+    pagina.wait_for_selector("#ia-trabalhando")
+    abrir_assunto(pagina, "Outro assunto")                   # navegar continua livre
+    presos[0].fallback()
+    pagina.wait_for_selector("text=A tela mudou enquanto a IA trabalhava")
+    pagina.wait_for_selector("#ia-trabalhando", state="detached")
+    assert [p["assunto_id"] for p in pedidos] == [a1, a1, a1]          # fundamentar, gerar e ilustrar: todos no assunto pedido
+    assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s", (a2,)).fetchone()[0] == 0
+    assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s", (a1,)).fetchone()[0] == 1
+    assert pagina.locator("form[data-form=conteudo]").count() == 0     # a tela do outro assunto não ganhou o rascunho
 
 
 def test_ia_mostra_que_esta_trabalhando_e_pede_senha_a_partir_da_segunda_consulta(pagina, limpo):

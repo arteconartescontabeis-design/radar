@@ -15,7 +15,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from radar_util import RE_DATA_BR, RE_DATA_EXTENSO, canonizar_url, interpretar_data, normalizar_espacos
+from radar_util import RE_DATA_BR, RE_DATA_EXTENSO, canonizar_url, hoje_brasilia, interpretar_data, normalizar_espacos
 
 RE_ANCORA_GENERICA = re.compile(
     r"^(acess(e|ar)|baix(e|ar)|leia|saiba|ver|veja|clique|continue|mais|download|abrir)\b", re.I)
@@ -68,7 +68,7 @@ def data_no_texto(texto: str, config: dict, hoje: date | None = None) -> tuple[d
     """Data de publicação lida do próprio texto (quando a listagem não traz). Prefere a que vem
     depois de "Publicado em"/"Atualizado em"; data futura não vale (é prazo ou vigência).
     Devolve (data, está na janela de coleta?)."""
-    hoje = hoje or date.today()
+    hoje = hoje or hoje_brasilia()
     inicio = (texto or "")[:1500]
     m = re.search(r"(?:publicad[oa]|atualizad[oa])\s+em\s*:?\s*(\d{1,2}º?[/.]\d{1,2}[/.]\d{4})", inicio, re.I)
     candidatas = [m.group(1)] if m else [x.group(0) for x in RE_DATA_BR.finditer(inicio)]
@@ -80,7 +80,7 @@ def data_no_texto(texto: str, config: dict, hoje: date | None = None) -> tuple[d
 
 
 def _finalizar(itens: list[Item], config: dict, hoje: date | None) -> Listagem:
-    hoje = hoje or date.today()
+    hoje = hoje or hoje_brasilia()
     vistos: dict[str, Item] = {}
     for it in itens:
         if not re.match(r"https?://", it.url, re.I):
@@ -275,7 +275,7 @@ def listar_normas_rfb(conteudo: str, fonte: dict, hoje: date | None = None) -> L
 def enderecos_da_listagem(fonte: dict, hoje: date | None = None) -> list[str]:
     """Endereços a baixar para montar a listagem. Aceita no endereço da fonte os marcadores
     {inicio} e {fim} (janela de datas, dd/mm/aaaa) e {p} (número da página)."""
-    hoje = hoje or date.today()
+    hoje = hoje or hoje_brasilia()
     config = fonte.get("config") or {}
     url = fonte["url"]
     datas = {"inicio": f"{hoje - timedelta(days=int(config.get('janela_dias', 30))):%d/%m/%Y}", "fim": f"{hoje:%d/%m/%Y}"}
