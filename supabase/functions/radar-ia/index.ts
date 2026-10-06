@@ -1,10 +1,11 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.7.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.10.0)
 //
-// Cinco ações, sempre pedidas por um usuário logado (editor ou administrador):
+// Seis ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
 //   fundamentar  → propõe trechos LITERAIS do texto oficial; só entram os que conferem
-//   gerar        → redige um conteúdo (rascunho) e aponta o que precisa ser conferido
+//   gerar        → redige um conteúdo (rascunho), com 3 outras opções de título, e aponta o que precisa ser conferido
+//   titulos      → sugere outros títulos para um conteúdo (não grava nada)
 //   ilustrar     → cria uma ilustração de capa (sem texto, sem marcas, sem pessoas reais); não grava nada
 //   diagnostico  → testa a instalação (token, modelos) e devolve o que está errado, em português
 //
@@ -85,7 +86,7 @@ async function banco(token: string, metodo: string, caminho: string, corpo?: unk
 /** Mesma normalização da função radar_normalizar do banco. */
 function normalizar(t: string): string {
   return (t ?? "").toLowerCase()
-    .replace(/ /g, " ").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[–—]/g, "-")
+    .replace(/\u00a0/g, " ").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[–—]/g, "-")
     // mesmos caracteres que o "\s" do PostgreSQL trata como espaço (U+202F e U+FEFF ficam de fora, como lá)
     .replace(/[\t\n\v\f\r \u1680\u2000-\u200a\u2028\u2029\u205f\u3000]+/g, " ").trim();
 }
