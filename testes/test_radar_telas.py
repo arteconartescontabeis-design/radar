@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.10.0"
+    assert pagina.inner_text(".versao") == "v0.11.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -1449,8 +1449,8 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
-    # a v0.10.0 mudou a função de IA (opções de título): a v0.7.0 passa a ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.7.0', FUNCAO_MINIMA), versaoMenor('0.10.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    # a v0.11.0 mudou a função de IA (texto para análise): a v0.10.0 passa a ser apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.10.0', FUNCAO_MINIMA), versaoMenor('0.11.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2274,7 +2274,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.10.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.11.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3100,3 +3100,127 @@ def test_noticia_ja_no_site_nao_oferece_autorizar_de_novo(pagina, limpo):
     pagina.evaluate("desenhar()")
     pagina.wait_for_selector("text=Esta notícia já está no site")
     assert pagina.locator("[data-acao=autorizar-site]").count() == 0
+
+
+# ------------------------------------------------------------ v0.11.0 — IA com aviso e senha, análise, canais, link da fonte
+def _png_base64():
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (300, 200), (30, 90, 150)).save(buf, "PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def ia_de_mentira(pg, db, pedidos):
+    """Responde no lugar da função radar-ia (a IA Central não roda aqui): grava o rascunho como a função faria."""
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        pedidos.append(corpo)
+        acao = corpo.get("acao")
+        if acao == "classificar":
+            r = {"sugestao": {"categoria": "reforma-tributaria", "relevancia": "alta", "resumo": "Resumo da IA."}}
+        elif acao == "fundamentar":
+            r = {"inseridas": [], "descartadas": []}
+        elif acao == "gerar":
+            analise = corpo.get("analise") is True
+            avisos = ["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC Consultoria)."] if analise else []
+            cid = db.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia)
+                                values (%s, 'informativo', 'Texto da IA', 'Corpo do texto gerado pela IA com tamanho suficiente.', 'ia', 'modelo', 'rascunho', %s)
+                                returning id""", (corpo["assunto_id"], json.dumps(avisos))).fetchone()[0]
+            r = {"conteudo_id": cid, "avisos": avisos, "titulos": []}
+        elif acao == "ilustrar":
+            r = {"imagem": _png_base64()}
+        else:
+            r = {"message": "Ação desconhecida."}
+        rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
+    pg.route("**/functions/v1/radar-ia", responder)
+
+
+def test_ia_mostra_que_esta_trabalhando_e_pede_senha_a_partir_da_segunda_consulta(pagina, limpo):
+    assunto_com_texto(limpo)
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.evaluate("""() => { window.__aviso = [];                                            // o que o aviso mostrou enquanto a IA trabalhava
+        new MutationObserver(() => { const a = document.querySelector('#ia-trabalhando .txt'); if(a) window.__aviso.push(a.textContent); })
+          .observe(document.body, {childList: true, subtree: true, characterData: true}); }""")
+    pagina.click("text=Classificar com IA")
+    pagina.wait_for_selector("text=Sugestão da IA preenchida")
+    assert "A IA está classificando o assunto…" in pagina.evaluate("window.__aviso")
+    assert pagina.locator("#ia-trabalhando").count() == 0 and len(pedidos) == 1
+    pagina.click("text=Classificar com IA")                                                    # 2ª consulta: senha
+    pagina.wait_for_selector("#senha-ia")
+    assert pagina.locator("#senha-ia-campo").get_attribute("type") == "password" and len(pedidos) == 1
+    pagina.fill("#senha-ia-campo", "errada")
+    pagina.click("#senha-ia >> text=Confirmar e consultar")
+    pagina.wait_for_selector("#senha-ia >> text=Senha incorreta.")
+    assert len(pedidos) == 1
+    pagina.fill("#senha-ia-campo", SENHA)
+    pagina.click("#senha-ia >> text=Confirmar e consultar")
+    pagina.wait_for_selector("#senha-ia", state="detached")
+    for _ in range(50):                                     # o aviso da 1ª consulta pode ainda estar na tela: espera o pedido
+        if len(pedidos) == 2:
+            break
+        pagina.wait_for_timeout(100)
+    pagina.wait_for_selector("#ia-trabalhando", state="detached")
+    assert len(pedidos) == 2
+    pagina.click("text=Classificar com IA")                                                    # cancelar não consulta
+    pagina.click("#senha-ia >> text=Cancelar")
+    pagina.wait_for_selector("text=Consulta à IA cancelada.")
+    assert len(pedidos) == 2
+
+
+def test_preparar_tudo_cria_a_ilustracao_e_texto_para_analise_sem_fonte_oficial(pagina, limpo, request):
+    a, cap = assunto_com_texto(limpo)
+    limpo.execute("update radar_fontes set oficial = false, orgao = 'ITC Consultoria' where slug = 'cgibs-noticias'")   # faz as vezes do boletim
+    request.addfinalizer(lambda: limpo.execute("update radar_fontes set oficial = true, orgao = 'Comitê Gestor do IBS' where slug = 'cgibs-noticias'"))
+    itc = captura(limpo, "ITC: novidade do Simples", "https://www.itcnet.com.br/?radar=abc123", "cgibs-noticias",
+                  "Chamada do boletim sobre o Simples Nacional, com o que mudou e para quando.")
+    b = limpo.execute("insert into radar_assuntos (titulo) values ('Só do boletim') returning id").fetchone()[0]
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (b, itc))
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click("#proximo-passo >> text=Preparar com IA")
+    pagina.wait_for_selector("text=a ilustração da capa.")
+    assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "ilustrar"] and pagina.locator("#senha-ia").count() == 0
+    assert limpo.execute("select imagem_id is not null from radar_conteudos where assunto_id = %s", (a,)).fetchone()[0]
+    # o link da fonte aparece no conteúdo e na prévia
+    assert "https://www.gov.br/exemplo/in-2290" in pagina.inner_text(".link-fonte")
+    pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
+    assert pagina.locator("#previa-site a[href='https://www.gov.br/exemplo/in-2290']").count() == 1
+    pagina.keyboard.press("Escape")
+    # assunto só com fonte não oficial: texto para análise
+    pagina.click("text=Voltar para a lista")
+    pagina.locator("tr.clicavel", has_text="Só do boletim").click()
+    pagina.wait_for_selector("#proximo-passo >> text=Gerar texto para análise")
+    assert pagina.locator("[data-acao=ia-gerar], [data-acao=ia-tudo]").count() == 0
+    pagina.click("#proximo-passo >> text=Gerar texto para análise")
+    pagina.wait_for_selector("text=Texto para análise gerado a partir de fonte não oficial")
+    assert pedidos[-1]["acao"] == "gerar" and pedidos[-1]["analise"] is True
+    assert "TEXTO PARA ANÁLISE" in pagina.inner_text(".avisos-ia")
+    assert "https://www.itcnet.com.br/" in pagina.inner_text(".link-fonte") and "radar=" not in pagina.inner_text(".link-fonte")
+
+
+def test_publicacoes_mostram_o_que_foi_e_o_que_falta_em_cada_canal(pagina, limpo):
+    a, c = pronto_para_o_site(limpo)
+    a2 = limpo.execute("insert into radar_assuntos (titulo) values ('Segundo informativo') returning id").fetchone()[0]
+    c2 = limpo.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por) "
+                       "values (%s, 'informativo', 'Segundo informativo', 'Texto.', 'em_revisao', 'humano') returning id", (a2,)).fetchone()[0]
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id in (%s, %s)", (c, c2))
+    limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/x', current_date)", (c,))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    assert "Site: 1 publicado(s) e 1 faltando" in pagina.inner_text("#resumo-canais")
+    linha = lambda t: pagina.locator("#tab-canais tr", has_text=t)
+    assert "✓" in linha("Informativo de teste").locator("[data-canal=site]").inner_text()
+    assert linha("Segundo informativo").locator("[data-canal=site]").inner_text() == "Falta"
+    assert linha("Segundo informativo").locator("[data-canal=instagram]").inner_text() == "em breve"
+    assert linha("Segundo informativo").locator("[data-canal=facebook]").inner_text() == "em breve"

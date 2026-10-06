@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.10.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.11.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.10.0.sql
+-- Reversão: radar-reversao-v0.11.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.10.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.11.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -621,6 +621,24 @@ language sql stable security definer set search_path = public as $$
                                                        where jsonb_typeof(m->'pontos') = 'number' and (m->>'pontos')::numeric < 0) as sem_negativo) x) l;
 $$;
 
+-- v0.11.0: notícia com mais de radar_config.relevancia.dias_baixa dias (padrão 5; 0 desliga) vira "baixa" — conta a data da
+-- notícia (ou, sem ela, a da captura), no dia de Brasília. O motivo fica anotado com "idade": true, e a limpeza da fila
+-- (radar_arquivar_fila) não arquiva por esse motivo: a notícia velha mas relevante continua em "Baixa relevância".
+create or replace function public.radar_relevancia_idade(p_nivel text, p_motivos jsonb, p_data date, p_capturado timestamptz)
+returns table (nivel text, motivos jsonb)
+language sql stable security definer set search_path = public as $$
+  select case when x.velha then 'baixa' else p_nivel end,
+         case when x.velha
+              then coalesce(p_motivos, '[]'::jsonb) || jsonb_build_object('termo', 'notícia com mais de ' || x.dias || ' dias', 'pontos', 0, 'idade', true, 'antes', p_nivel)
+              else p_motivos end
+    from (select d.dias, d.dias > 0 and p_nivel is distinct from 'baixa'
+                 and coalesce(p_data, (coalesce(p_capturado, now()) at time zone 'America/Sao_Paulo')::date)
+                     < (now() at time zone 'America/Sao_Paulo')::date - d.dias as velha
+            from (select coalesce((select case when jsonb_typeof(c.valor->'dias_baixa') = 'number'
+                                               then least(greatest((c.valor->>'dias_baixa')::numeric, 0), 365)::int end
+                                     from public.radar_config c where c.chave = 'relevancia'), 5) as dias) d) x;
+$$;
+
 create or replace function public.radar_fn_captura_relevancia() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
@@ -631,7 +649,8 @@ begin
     return new;                          -- reavaliação geral em curso (radar_reavaliar_capturas)
   end if;
   if tg_op = 'UPDATE' and new.titulo is not distinct from old.titulo and new.resumo_fonte is not distinct from old.resumo_fonte
-     and new.texto is not distinct from old.texto and new.ia_nota is not distinct from old.ia_nota then
+     and new.texto is not distinct from old.texto and new.ia_nota is not distinct from old.ia_nota
+     and new.data_publicacao is not distinct from old.data_publicacao then
     new.relevancia := old.relevancia; new.relevancia_pontos := old.relevancia_pontos; new.relevancia_motivos := old.relevancia_motivos;
     return new;                          -- ninguém marca relevância à mão: só muda quando o item, a nota da IA ou as regras mudam
   end if;
@@ -639,6 +658,10 @@ begin
     from public.radar_avaliar_relevancia(new.titulo, new.resumo_fonte, new.texto) r;
   select x.nivel, x.motivos into new.relevancia, new.relevancia_motivos
     from public.radar_relevancia_com_ia(new.relevancia, new.relevancia_pontos, new.relevancia_motivos, new.ia_nota) x;
+  if tg_op = 'INSERT' or not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = new.id) then
+    select y.nivel, y.motivos into new.relevancia, new.relevancia_motivos      -- a que já virou assunto não envelhece
+      from public.radar_relevancia_idade(new.relevancia, new.relevancia_motivos, new.data_publicacao, new.capturado_em) y;
+  end if;
   return new;
 end $$;
 
@@ -650,12 +673,13 @@ declare v_n int;
 begin
   perform set_config('radar.reavaliando', '1', true);        -- só nesta transação: deixa o gatilho aceitar o valor recalculado
   update public.radar_capturas c
-     set relevancia = x.nivel, relevancia_pontos = r.pontos, relevancia_motivos = x.motivos
+     set relevancia = y.nivel, relevancia_pontos = r.pontos, relevancia_motivos = y.motivos
     from public.radar_capturas k cross join lateral public.radar_avaliar_relevancia(k.titulo, k.resumo_fonte, k.texto) r
          cross join lateral public.radar_relevancia_com_ia(r.nivel, r.pontos, r.motivos, k.ia_nota) x
+         cross join lateral public.radar_relevancia_idade(x.nivel, x.motivos, k.data_publicacao, k.capturado_em) y
    where k.id = c.id
      and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = k.id)
-     and (c.relevancia, c.relevancia_pontos, c.relevancia_motivos) is distinct from (x.nivel, r.pontos, x.motivos);
+     and (c.relevancia, c.relevancia_pontos, c.relevancia_motivos) is distinct from (y.nivel, r.pontos, y.motivos);
   get diagnostics v_n = row_count;
   perform set_config('radar.reavaliando', '', true);
   return v_n;
@@ -766,6 +790,11 @@ begin
   end if;
 
   if new.status = 'aprovado' and (tg_op = 'INSERT' or old.status is distinct from 'aprovado') then
+    -- v0.11.0: o texto para análise (escrito pela IA a partir de fonte não oficial) é só para estudo: não se aprova
+    if coalesce(new.avisos_ia->>0, '') like 'TEXTO PARA ANÁLISE%' then
+      raise exception 'RADAR023: texto para análise (escrito a partir de fonte não oficial) não pode ser aprovado; inclua o texto oficial e gere ou escreva um conteúdo novo'
+        using errcode = 'P0001';
+    end if;
     if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
       raise exception 'RADAR020: a aprovação exige um usuário com perfil de editor ou administrador (o robô e a IA não aprovam)'
         using errcode = 'P0001';
@@ -1025,6 +1054,9 @@ begin
   if v_c.status is distinct from 'aprovado' then
     raise exception 'RADAR112: só conteúdo aprovado pode ser publicado no site' using errcode = 'P0001';
   end if;
+  if coalesce(v_c.avisos_ia->>0, '') like 'TEXTO PARA ANÁLISE%' then
+    raise exception 'RADAR119: texto para análise não vai ao site' using errcode = 'P0001';
+  end if;
   if v_c.fora_do_site then
     raise exception 'RADAR113: este conteúdo está marcado como "não vai ao site"' using errcode = 'P0001';
   end if;
@@ -1082,6 +1114,24 @@ begin
   return null;
 end $$;
 
+-- v0.11.0: só as capturas da fila que passaram agora de dias_baixa dias (e ainda não estão baixas) descem para "baixa";
+-- não recalcula a fila inteira a cada coleta. Devolve quantas desceram.
+create or replace function public.radar_envelhecer_fila() returns int
+language plpgsql security definer set search_path = public as $$
+declare v_n int;
+begin
+  perform set_config('radar.reavaliando', '1', true);
+  update public.radar_capturas c
+     set relevancia = y.nivel, relevancia_motivos = y.motivos
+    from public.radar_capturas k
+         cross join lateral public.radar_relevancia_idade(k.relevancia, k.relevancia_motivos, k.data_publicacao, k.capturado_em) y
+   where k.id = c.id and k.relevancia <> 'baixa' and y.nivel = 'baixa'
+     and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = k.id);
+  get diagnostics v_n = row_count;
+  perform set_config('radar.reavaliando', '', true);
+  return v_n;
+end $$;
+
 -- v0.9.0: a fila não acumula. Ao fim de cada coleta, o robô tira da triagem (como "Ignorado", em Assuntos) o que
 -- está na fila há mais de radar_config.relevancia.arquivar_dias (padrão 10; 0 desliga) e é de relevância baixa ou
 -- tem nota da IA até arquivar_nota (padrão 2). Vale o mesmo caminho do "Ignorar" (as repetições vão junto).
@@ -1097,6 +1147,7 @@ declare
   v_antes int;
   v_id bigint;
 begin
+  perform public.radar_envelhecer_fila();               -- v0.11.0: a notícia que passou de dias_baixa dias desce para "baixa"
   if v_dias = 0 then
     return 0;
   end if;
@@ -1105,6 +1156,8 @@ begin
                where f.principal and f.capturado_em < now() - make_interval(days => v_dias)
                  and (f.nota_grupo <= v_nota                       -- nota do grupo: a maior entre a captura e as repetições
                       or (f.relevancia = 'baixa'                   -- baixa, desde que nenhuma repetição na fila seja relevante
+                          -- baixa só pela idade sai depois de 3 vezes o prazo (v0.11.0): relevante, mas velha demais
+                          and (not (f.relevancia_motivos @> '[{"idade": true}]') or f.capturado_em < now() - make_interval(days => v_dias * 3))
                           and not exists (select 1 from public.radar_capturas r
                                            where r.duplicata_de = f.id and r.relevancia <> 'baixa'
                                              and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = r.id))))
@@ -1176,7 +1229,11 @@ begin
   end if;
   insert into public.radar_assuntos (titulo, categoria, abrangencia, status, resumo, relevancia)
   select c.titulo, f.categoria_padrao, f.abrangencia,
-         case when p_ignorar then 'ignorado' else 'capturado' end, c.resumo_fonte, c.relevancia
+         case when p_ignorar then 'ignorado' else 'capturado' end, c.resumo_fonte,
+         -- v0.11.0: a idade só ordena a triagem; o assunto guarda a importância do conteúdo
+         coalesce((select m->>'antes' from jsonb_array_elements(case when jsonb_typeof(c.relevancia_motivos) = 'array'
+                                                                     then c.relevancia_motivos else '[]'::jsonb end) m
+                    where m->>'idade' = 'true' and m->>'antes' in ('alta','media') limit 1), c.relevancia)
   from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
   where c.id = p_captura
   returning id into v_id;
@@ -1952,7 +2009,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 20 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.10.0).
+-- Esperado: 20 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.11.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

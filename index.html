@@ -146,6 +146,15 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 .opcoes-titulo{margin:6px 0 4px} .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .chip{border:1px solid #C5DBEE;background:#F5F9FD;color:#1F4E79;border-radius:16px;padding:4px 11px;cursor:pointer;font-size:.88rem;text-align:left}
 .chip:hover{background:var(--azul-claro)} .chip.outro{border-style:dashed;background:#fff;color:var(--cinza)}
+.canal{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.78rem;font-weight:700;white-space:nowrap}
+.canal.ok{background:var(--ok-fundo);color:var(--ok)} .canal.espera{background:var(--alerta-fundo);color:var(--alerta)}
+.canal.erro{background:var(--erro-fundo);color:var(--erro)} .canal.falta{background:#EEF0F2;color:var(--cinza)} .canal.breve{background:#F5F6F8;color:#8A9099;font-weight:500}
+#ia-trabalhando{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:60;background:var(--marinho);color:#fff;border-radius:999px;padding:9px 18px;
+  display:flex;gap:10px;align-items:center;box-shadow:0 6px 24px rgba(1,31,72,.35);font-weight:500;max-width:calc(100vw - 24px)}
+#ia-trabalhando .sub{color:#CFE0EF}
+.giro{width:16px;height:16px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:giro 1s linear infinite;flex:none}
+@keyframes giro{to{transform:rotate(360deg)}}
+.caixa-senha{max-width:420px}
 .publicar-item{border:1px solid var(--linha);border-radius:8px;padding:12px;margin-bottom:12px;background:#FCFDFE}
 .fundo-previa{position:fixed;inset:0;background:rgba(1,31,72,.55);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow:auto}
 .caixa-previa{background:#fff;border-radius:12px;max-width:820px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25);overflow:hidden}
@@ -174,11 +183,20 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.10.0";
-const FUNCAO_MINIMA = "0.10.0";     // versão da função radar-ia que este painel exige (opções de título)
+const VERSAO = "0.11.0";
+const FUNCAO_MINIMA = "0.11.0";     // versão da função radar-ia que este painel exige (texto para análise)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.11.0", "06/10/2026", [
+    "IA: enquanto ela trabalha, um aviso no alto da tela diz o que está fazendo (buscando o trecho, escrevendo, criando a ilustração…) e há quantos segundos.",
+    "IA: no mesmo assunto, a 1ª consulta é livre; a partir da 2ª, o Radar pede a senha de quem está logado. “Preparar tudo” conta como uma consulta só.",
+    "“Preparar tudo com IA” passa a criar também a ilustração da capa com IA; se ela falhar, fica a capa padrão Artecon.",
+    "“Gerar texto para análise”: em assunto que só tem fonte não oficial (ITC, Econet, Portal Contábil), a IA escreve um texto para estudo, marcado como tal. Ele não vai ao site: para publicar, inclua o texto oficial.",
+    "A fonte sai sempre com o link da notícia ou norma de origem no fim do texto (na prévia, no “Copiar texto” e na publicação no site).",
+    "Publicações: novo quadro “Onde cada conteúdo já foi publicado”, com Site (publicado, aguardando o robô ou falta) e as colunas de Instagram e Facebook, que entram em breve.",
+    "Capturas: notícia com mais de 5 dias (pela data da notícia ou, sem ela, da captura) vira baixa relevância e mostra o selo “notícia com mais de 5 dias”. Ajuste em Configurações → Relevância das capturas (dias_baixa; 0 desliga). Banco v0.11.0 e função de IA v0.11.0."
+  ]],
   ["0.10.0", "06/10/2026", [
     "Tela do assunto em 4 passos: 1. Conferir a fonte (com o título original da captura, o órgão, a data e o link para a fonte), 2. Escrever, 3. Revisar e aprovar, 4. Publicar no site. O próximo passo aparece em destaque, com o botão para fazer.",
     "Quadro ao lado: base do texto (texto oficial, trechos que comprovam, confirmação), capa e “Mais detalhes” (categoria, relevância, público, etapa).",
@@ -505,15 +523,65 @@ async function pedir(metodo, caminho, {params, corpo, prefer, semSessao, tempo} 
 const rest = (metodo, tabela, o) => pedir(metodo, "/rest/v1/" + tabela, o);
 const ler = (tabela, params) => rest("GET", tabela, {params});
 const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
-/* Função de IA (Edge Function radar-ia). Pode levar mais de um minuto para redigir. */
+/* Função de IA (Edge Function radar-ia). Pode levar mais de um minuto para redigir.
+   v0.11.0: enquanto a IA trabalha, um aviso fixo diz o que ela está fazendo e há quanto tempo; e, no mesmo assunto,
+   a partir da 2ª consulta o Radar pede a senha de quem está logado (evita consulta repetida sem querer, e gasto). */
+const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo o texto (até 1 minuto)",
+  classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a ilustração da capa (até 1 minuto)"};
+function avisoIA(texto){
+  let a = $("#ia-trabalhando");
+  if(!texto){ clearInterval(a?._relogio); a?.remove(); return; }
+  if(!a){ document.body.insertAdjacentHTML("beforeend", `<div id="ia-trabalhando" role="status" aria-live="polite"><span class="giro" aria-hidden="true"></span><span class="txt"></span><span class="seg sub"></span></div>`);
+    a = $("#ia-trabalhando"); const ini = Date.now();
+    a._relogio = setInterval(() => { const s = Math.round((Date.now() - ini) / 1000); a.querySelector(".seg").textContent = s >= 3 ? ` · ${s}s` : ""; }, 1000); }
+  a.querySelector(".txt").textContent = "A IA está " + texto + "…";
+}
+const chaveUsoIA = () => `radar_ia_${E.sessao?.user?.id || "x"}_${E.assunto || 0}`;
+function usosIA(){ try{ return Number(sessionStorage.getItem(chaveUsoIA()) || 0); }catch(e){ return 0; } }
+function contarUsoIA(){ try{ sessionStorage.setItem(chaveUsoIA(), String(usosIA() + 1)); }catch(e){} }
+/* Pede a senha numa janela (campo de senha de verdade, não o prompt do navegador) e confere com o login. */
+function pedirSenha(){
+  return new Promise(resolver => {
+    document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="senha-ia"><form class="caixa-previa caixa-senha" role="dialog" aria-modal="true" aria-label="Confirmar com a senha">
+      <div class="barra-previa"><span>Nova consulta à IA neste assunto</span></div>
+      <div style="padding:16px 18px"><p style="margin-top:0">Para consultar a IA de novo, confirme com a sua senha do Radar.</p>
+        <label for="senha-ia-campo">Senha</label><input id="senha-ia-campo" type="password" autocomplete="current-password" style="width:100%" required>
+        <p class="sub erro-senha" hidden style="color:var(--erro)">Senha incorreta.</p>
+        <div class="acoes"><button class="btn">Confirmar e consultar</button><button class="btn sec" type="button" data-cancelar>Cancelar</button></div></div></form></div>`);
+    const caixa = $("#senha-ia"), form = caixa.querySelector("form"), campo = $("#senha-ia-campo");
+    const fim = ok => { caixa.remove(); resolver(ok); };
+    caixa.querySelector("[data-cancelar]").onclick = () => fim(false);
+    caixa.addEventListener("keydown", ev => { if(ev.key === "Escape"){ ev.stopPropagation(); fim(false); } });
+    form.onsubmit = async ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      const b = form.querySelector("button"); b.disabled = true;
+      try{ await entrar(E.sessao.user.email, campo.value); fim(true); }
+      catch(e){ b.disabled = false; const msg = form.querySelector(".erro-senha");
+        msg.textContent = e.status === 400 ? "Senha incorreta." : (e.message || "Não foi possível conferir a senha agora."); msg.hidden = false;
+        campo.value = ""; campo.focus(); }
+    };
+    campo.focus();
+  });
+}
+/* Antes de cada consulta à IA no assunto: a 1ª é livre; a partir da 2ª, senha. "Preparar tudo" conta como uma consulta só. */
+async function liberarIA(){
+  const assunto = E.assunto;
+  if(usosIA() >= 1 && !(await pedirSenha())){ recado("Consulta à IA cancelada."); return false; }
+  if(E.assunto !== assunto){ recado("A tela mudou enquanto a senha era pedida: a consulta não foi feita."); return false; }
+  return true;
+}
 async function ia(acao, extra = {}){
-  try{ return await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, assunto_id:E.assunto, ...extra}, tempo:150000}); }
+  avisoIA(IA_FAZENDO[acao] || "trabalhando");
+  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, assunto_id:E.assunto, ...extra}, tempo:150000});
+    contarUsoIA();                                         // só a consulta que deu certo conta para pedir a senha depois
+    return r; }
   catch(e){
     if(e.status === 404 && !/Assunto não encontrado/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
     if(e.status === 0) throw new ErroApi("Não foi possível falar com a função de IA (sem resposta). Confira a internet; se persistir, o administrador pode testar em Configurações → Inteligência artificial.", 0);
     if(/Ação desconhecida/.test(e.message)) throw new ErroApi("A função de IA instalada no Supabase é de uma versão anterior e não tem este recurso. O administrador precisa colar de novo o arquivo index.ts desta versão na função radar-ia (Configurações → Inteligência artificial).", e.status);
     if(/invalid jwt|missing authorization/i.test(e.message)) throw new ErroApi("A função de IA recusou a sessão. Saia do Radar, entre de novo e repita.", e.status);
     throw e; }
+  finally{ avisoIA(null); }
 }
 /* Alterar/apagar SEMPRE confere se alguma linha foi atingida: se a permissão caiu ou o registro
    sumiu, o servidor responde "ok, zero linhas" — e isso não pode virar "salvo". */
@@ -679,6 +747,7 @@ const TELAS = {
         <article class="cap rel-${h(i.relevancia)}" data-fonte="${h(i.fonte_nome)}" data-texto="${h((i.titulo || "").toLowerCase())}" data-id="${i.id}">
           <div>${nota(i)} ${selo("Relevância " + (ROTULOS.relevancia[i.relevancia] || "").toLowerCase(), i.relevancia === "alta" ? "erro" : i.relevancia === "media" ? "" : "neutro")}
             ${selo(i.orgao, "neutro")} ${selo(ROTULOS.abrangencia[i.abrangencia] || "", "neutro")}
+            ${(i.relevancia_motivos || []).find?.(m => m && m.idade) ? selo((i.relevancia_motivos.find(m => m && m.idade).termo || "notícia antiga"), "neutro") : ""}
             ${i.tem_texto ? "" : selo("sem texto","alerta")} ${i.duplicata_de && !i.principal ? selo("repetição de outra captura","neutro") : ""} ${i.versao > 1 ? selo("texto alterado · v"+i.versao,"alerta") : ""}
             <span class="sub">publicado em ${data(i.data_publicacao)} · capturado em ${dataHora(i.capturado_em)}</span></div>
           <h3>${h(i.titulo)}</h3>
@@ -723,10 +792,26 @@ const TELAS = {
   async publicacoes(){
     const [regs, aprovados] = await Promise.all([
       ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
-      ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id)", status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"})]);
-    const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length);
+      ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url)",
+        status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"})]);
+    const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length && !(c.radar_site_envios || []).some(e => e.situacao === "publicado"));
+    // v0.11.0: cada conteúdo aprovado e em que canal ele já está (site hoje; Instagram e Facebook entram depois)
+    const noSite = c => { const d = [...c.radar_divulgacoes].sort((x, y) => y.id - x.id)[0];
+      if(d) return `<span class="canal ok">✓ ${data(d.publicado_em)}</span><br>${linkFonte(d.url, "ver no site ↗")}`;
+      const e = [...(c.radar_site_envios || [])].sort((x, y) => y.id - x.id)[0];
+      if(e && e.situacao === "publicado") return `<span class="canal ok">✓ pelo robô</span>${e.url ? `<br>${linkFonte(e.url, "ver no site ↗")}` : ""}`;
+      return e && ["autorizado","enviando"].includes(e.situacao) ? `<span class="canal espera">Autorizado — aguardando o robô</span>`
+        : e && e.situacao === "erro" ? `<span class="canal erro">Não concluída</span>` : `<span class="canal falta">Falta</span>`; };
+    const emBreve = `<span class="canal breve" title="A integração com esta rede ainda vai ser feita">em breve</span>`;
+    const nSite = aprovados.length - pendentes.length;
     return `<h1>Publicações no site</h1>
       <p class="sub">A publicação é feita nas páginas da Artecon. Aqui fica o registro: o que já foi ao site (com o link e a data) e o que está aprovado esperando.</p>
+      <div class="painel"><h2>Onde cada conteúdo já foi publicado</h2>
+        <p class="sub" id="resumo-canais">Site: <b>${nSite}</b> publicado(s) e <b>${pendentes.length}</b> faltando · Instagram e Facebook: em breve.</p>
+        ${aprovados.length ? `<div class="rolagem"><table id="tab-canais"><tr><th>Conteúdo aprovado</th><th>Site</th><th>Instagram</th><th>Facebook</th></tr>${aprovados.map(c => `
+          <tr><td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span></td>
+            <td data-canal="site">${noSite(c)}</td><td data-canal="instagram">${emBreve}</td><td data-canal="facebook">${emBreve}</td></tr>`).join("")}</table></div>`
+          : `<p class="sub">Nenhum conteúdo aprovado para publicar.</p>`}</div>
       <div class="painel"><h2>Aprovados ainda não publicados no site</h2>
         ${pendentes.length ? `<div class="rolagem"><table id="tab-pendentes"><tr><th>Conteúdo</th><th>Aprovado em</th><th></th></tr>${pendentes.map(c => `
           <tr><td><b>${h(c.titulo)}</b><br><span class="sub">${h(ROTULOS.formato[c.formato] || "")}</span></td><td>${dataHora(c.aprovado_em)}</td>
@@ -832,7 +917,7 @@ const TELAS = {
       <div class="painel" id="painel-ia"><h2>Inteligência artificial</h2>
         <p class="sub">A IA do Radar é uma função instalada no Supabase (Edge Function <b>radar-ia</b>) que fala com a <b>IA Central</b> do Portal Artecon: texto pela Anthropic, imagens pela OpenAI. O custo, os limites e a recarga ficam em <a href="https://arteconartescontabeis-design.github.io/portal/" target="_blank" rel="noopener noreferrer">Portal → Consumo de IA</a>. O teste abaixo confere a instalação e diz o que falta.</p>
         <div class="acoes"><button class="btn" data-acao="testar-ia">Testar a IA</button></div><div id="diag-ia"></div></div>
-      ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10) e <b>nota_promove</b> (nota da IA que tira a captura de “baixa” e a leva para “média”, mesmo sem palavras da lista; padrão 8; use 11 para desligar) e <b>nota_rebaixa</b> (captura “alta” com nota da IA até este valor desce para “média”; padrão 3; use -1 para desligar). Fila: <b>arquivar_dias</b> (a captura que está na fila há mais dias que isso e é baixa, ou tem nota da IA até <b>arquivar_nota</b>, sai sozinha da triagem e vai para Assuntos → Ignorado; padrão 10 dias e nota 2; use 0 dias para desligar).`)}
+      ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10) e <b>nota_promove</b> (nota da IA que tira a captura de “baixa” e a leva para “média”, mesmo sem palavras da lista; padrão 8; use 11 para desligar) e <b>nota_rebaixa</b> (captura “alta” com nota da IA até este valor desce para “média”; padrão 3; use -1 para desligar). Fila: <b>arquivar_dias</b> (a captura que está na fila há mais dias que isso e é baixa, ou tem nota da IA até <b>arquivar_nota</b>, sai sozinha da triagem e vai para Assuntos → Ignorado; padrão 10 dias e nota 2; use 0 dias para desligar). <b>dias_baixa</b>: notícia com mais dias que isso (pela data da notícia ou, sem ela, da captura) vira baixa relevância; padrão 5; 0 desliga. A que ficou baixa só pela idade continua em “Baixa relevância” e não sai sozinha da fila.`)}
       ${bloco("rascunhos", "Rascunhos automáticos", `O robô prepara sozinho o rascunho das notícias de topo (Assuntos → “Conteúdo gerado”), com as mesmas regras do “Gerar com IA”. Ele não envia para revisão, não aprova e não publica. Só entram capturas de <b>fonte oficial</b>, com o texto oficial capturado, relevância alta, ainda na fila e com nota da IA a partir de <b>nota_minima</b> (padrão 9). <b>por_dia</b>: no máximo quantos rascunhos por dia (padrão 2; 0 desliga); <b>dias</b>: só capturas destes últimos dias (padrão 3); <b>formato</b>: “flash”, “informativo” ou “artigo”; <b>ligado</b>: true ou false.`)}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
       ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”.`)}
@@ -1080,8 +1165,9 @@ async function telaAssunto(id){
   else if(a.status === "ignorado" || a.status === "arquivado") prox = [a.status === "ignorado" ? "Assunto ignorado" : "Assunto arquivado", "Este item está fora do trabalho do dia. Para retomar, troque a etapa em “Mais detalhes” e salve.", ir("#mais-campos", "Abrir “Mais detalhes”", "sec")];
   else if(!cont.length && temOficial) prox = ["Escrever o conteúdo", "O texto oficial já está aqui. A IA pode buscar o trecho que comprova e escrever o rascunho de uma vez; ou escreva você mesmo.",
     `<button class="btn" data-acao="ia-tudo">Preparar com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec")];
-  else if(!cont.length) prox = ["Escrever o conteúdo", "Assunto sem texto de fonte oficial. Para o Informativo Mensal basta escrever e aprovar; para o site, inclua antes o texto oficial.",
-    ir("#sec-conteudos", "Escrever o conteúdo") + ir("#sec-texto", "Ir para o texto oficial", "sec")];
+  else if(!cont.length) prox = ["Escrever o conteúdo", "Assunto sem texto de fonte oficial. Para o Informativo Mensal basta escrever e aprovar; para o site, inclua antes o texto oficial." +
+    (temTexto ? " A IA pode escrever um texto para análise a partir da fonte não oficial." : ""),
+    (temTexto ? `<button class="btn" data-acao="ia-analise">Gerar texto para análise</button>` : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec")];
   else if(!aprovados.length && !revisando.length && !rascunhos.length && rejeitados.length) prox = ["Conteúdo rejeitado", "O conteúdo foi rejeitado na revisão. Corrija o texto, salve e mande de novo para a revisão — ou escreva outro.", ir("#sec-conteudos", "Ir para o conteúdo")];
   else if(!aprovados.length && !revisando.length) prox = ["Revisar o rascunho", "Escolha o título, confira o texto e a capa, salve e mande para a revisão.", ir("#sec-conteudos", "Ir para o conteúdo")];
   else if(!aprovados.length) prox = ["Aprovar o conteúdo", "O conteúdo está em revisão. Leia com atenção (use “Ver como fica no site”) e clique em “Aprovar” (ou “Rejeitar”).", ir("#sec-conteudos", "Ir para o conteúdo")];
@@ -1110,6 +1196,8 @@ async function telaAssunto(id){
   // a captura que originou o assunto: a oficial com texto, se houver
   const origem = (vinc.find(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial) || vinc[0])?.radar_capturas;
   const capa = cont.map(c => imgs[c.imagem_id]).find(i => i && /^data:image\/(jpeg|png|webp);base64,/.test(i));
+  const porId = [...vinc].sort((x, y) => (y.radar_capturas.radar_fontes.oficial - x.radar_capturas.radar_fontes.oficial) || (x.radar_capturas.id - y.radar_capturas.id));
+  const urlFonte = linkDaCaptura(porId[0]?.radar_capturas.url || "");          // a mesma que o robô usa ao publicar
   return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
     <h1>${h(a.titulo)}</h1>
     <p>${seloSituacao(a.situacao_confirmacao)} ${selo(ROTULOS.status[a.status],"neutro")} ${selo(conferidas + " trecho(s) conferido(s)", conferidas ? "ok" : "erro")}${origem ? ` <span class="sub">${h(origem.radar_fontes.orgao)} · capturado em ${data(origem.capturado_em)}</span>` : ""}</p>
@@ -1197,11 +1285,14 @@ async function telaAssunto(id){
     <div class="painel" id="sec-conteudos"><h2>2. Escrever · 3. Revisar e aprovar</h2>
       ${ed ? `<div class="acoes ia-barra"><label for="novo-formato" style="margin:0">Tamanho do texto</label>
         <select id="novo-formato">${opcoes(TAMANHO_TEXTO, "informativo")}</select>
-        <button class="btn sec" data-acao="ia-gerar">Gerar texto com IA</button>
-        <button class="btn sec" data-acao="ia-tudo">Preparar tudo com IA</button>
+        ${temOficial ? `<button class="btn sec" data-acao="ia-gerar">Gerar texto com IA</button>
+        <button class="btn sec" data-acao="ia-tudo">Preparar tudo com IA</button>`
+          : temTexto ? `<button class="btn sec" data-acao="ia-analise">Gerar texto para análise</button>` : ""}
         <button class="btn sec" data-acao="novo-conteudo" data-id="${a.id}">Novo conteúdo (sem IA)</button></div>
-        <p class="sub" style="margin-top:0">A IA escreve um rascunho a partir do texto oficial, com outras opções de título. Revisar e aprovar continua sendo da equipe.</p>` : ""}
-      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+        <p class="sub" style="margin-top:0">${temOficial ? "A IA escreve um rascunho a partir do texto oficial, com outras opções de título. Revisar e aprovar continua sendo da equipe."
+          : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve um texto <b>para análise</b>, marcado como tal, que não vai ao site. Para publicar, inclua o texto oficial no passo 1."
+          : "Sem texto capturado: escreva sem IA, ou inclua o texto oficial no passo 1."}</p>` : ""}
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
     </div>
     </section>
 
@@ -1236,7 +1327,9 @@ function blocoPublicar(c, envio, pubs, pronto, categoria){
       : `<p class="sub">Só o administrador autoriza a publicação no site.</p>`);
   }
   return `<div class="publicar-item" data-conteudo="${c.id}"><h3>${h(c.titulo)}</h3>
-    <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>${corpo}</div>`;
+    <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>${corpo}
+    <p class="sub canais" style="margin:8px 0 0"><b>Canais:</b> Site — ${atual ? "publicado" : envio && ["autorizado","enviando"].includes(envio.situacao) ? "aguardando o robô" : pubs.length || envio?.situacao === "publicado" ? "já está no site" : "falta"} ·
+      Instagram — em breve · Facebook — em breve</p></div>`;
 }
 /* Prévia: monta a notícia como ela fica em artecon.cnt.br/news, com o que está digitado agora na tela. */
 function abrirPrevia(id){
@@ -1249,7 +1342,7 @@ function abrirPrevia(id){
     <div class="caixa-previa" role="dialog" aria-modal="true" aria-label="Prévia da notícia no site">
       <div class="barra-previa"><span>Prévia — assim a notícia vai aparecer em artecon.cnt.br/news</span><button class="btn peq" type="button" data-acao="fechar-previa">Fechar</button></div>
       <div class="previa"><span class="sub">${cat ? h(cat) + " · " : ""}Publicada em ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}</span>
-        <h2>${h(f.titulo.value)}</h2>${/^data:image\/(jpeg|png|webp);base64,/.test(img) ? `<img class="capa-previa" src="${h(img)}" alt="">` : ""}${renderTexto(f.corpo.value)}${creditos({autor:f.autor?.value.trim(), fonte_credito:f.fonte_credito?.value.trim()})}</div>
+        <h2>${h(f.titulo.value)}</h2>${/^data:image\/(jpeg|png|webp);base64,/.test(img) ? `<img class="capa-previa" src="${h(img)}" alt="">` : ""}${renderTexto(f.corpo.value)}${creditos({autor:f.autor?.value.trim(), fonte_credito:f.fonte_credito?.value.trim(), fonte_url:f.dataset.fonteUrl})}</div>
     </div></div>`);
   $("#previa-site .barra-previa button").focus();
 }
@@ -1327,10 +1420,11 @@ function avisoRascunho(c){
 /* As opções de título que a IA sugeriu (clique troca o título; nada é gravado até "Salvar") e o pedido de outras. */
 const chipsTitulo = (id, lista) => (Array.isArray(lista) ? lista : []).map(t => `<button class="chip" type="button" data-acao="usar-titulo" data-id="${id}" data-titulo="${h(t)}">${h(t)}</button>`).join("") +
   `<button class="chip outro" type="button" data-acao="ia-titulos" data-id="${id}">↻ Sugerir ${Array.isArray(lista) && lista.length ? "outros" : "títulos com IA"}</button>`;
-function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria){
+function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = ""){
+  const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const copia = trechosCopiados(c.corpo, fontes);
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
-  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}" data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}">
+  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}" data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
     ${ed ? avisoRascunho(c) : ""}
     ${copia.length ? `<div class="aviso erro copia"><b>Texto igual ao da fonte em ${copia.length} trecho(s).</b> O conteúdo não pode ser aprovado assim: reescreva com as suas palavras. Se for a transcrição de um dispositivo legal, cite só o essencial entre aspas (até ${CITACAO_MAXIMA} palavras por citação).
       <ul>${copia.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span></li>`).join("")}</ul>${copia.length > 4 ? `<span class="sub">e mais ${copia.length - 4}.</span>` : ""}</div>`
@@ -1349,6 +1443,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria){
       <div><label for="c-autor-${c.id}">Texto elaborado por (opcional)</label><input id="c-autor-${c.id}" type="text" name="autor" maxlength="120" value="${h(c.autor || "")}"${ed ? "" : " disabled"}></div>
       <div><label for="c-fonte-${c.id}">Fonte (já vem com o órgão da captura; pode alterar)</label><input id="c-fonte-${c.id}" type="text" name="fonte_credito" maxlength="300" value="${h(c.fonte_credito || "")}" placeholder="Ex.: Receita Federal"${ed ? "" : " disabled"}></div>
     </div>
+    ${urlFonte ? `<p class="sub link-fonte" style="margin:2px 0 0">No fim do texto, a fonte sai com o link: ${linkFonte(urlFonte, urlFonte.length > 70 ? urlFonte.slice(0, 70) + "…" : urlFonte)}</p>` : ""}
     <label for="c-img-${c.id}">Imagem de capa</label>
     ${imagem && /^data:image\/(jpeg|png|webp);base64,/.test(imagem) ? `<img class="miniatura" src="${h(imagem)}" alt="Imagem de capa do conteúdo">` : `<p class="sub" style="margin:0">Sem imagem.</p>`}
     ${ed ? `<div class="acoes" style="margin-top:4px"><input id="c-img-${c.id}" type="file" accept="image/jpeg,image/png,image/webp" data-imagem="${c.id}">
@@ -1371,8 +1466,9 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria){
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
       <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
-      ${c.status === "rascunho" || c.status === "rejeitado" ? `<button class="btn" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="em_revisao">Enviar para revisão</button>` : ""}
-      ${c.status === "em_revisao" ? `<button class="btn verde" type="button" data-acao="aprovar" data-id="${c.id}">Aprovar</button>
+      ${analise ? `<span class="sub analise">Texto para análise: não vai para revisão nem ao site. Inclua o texto oficial e gere (ou escreva) um conteúdo novo.</span>`
+        : c.status === "rascunho" || c.status === "rejeitado" ? `<button class="btn" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="em_revisao">Enviar para revisão</button>` : ""}
+      ${c.status === "em_revisao" && !analise ? `<button class="btn verde" type="button" data-acao="aprovar" data-id="${c.id}">Aprovar</button>
         <button class="btn perigo" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="rejeitado">Rejeitar</button>` : ""}
     </div>` : ""}
     ${pubs.map(p => `<div class="aviso ${(p.texto_mudou && !p.versao_anterior) || p.base_caiu ? "alerta" : "info"} registro-site"><b>Publicado no site</b> em ${data(p.publicado_em)} — ${linkFonte(p.url, p.url)}
@@ -1437,13 +1533,19 @@ const ACOES = {
     await desenhar(); recado("Assunto marcado como confirmado oficialmente."); },
   async "ia-tudo"(){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
+    if(!(await liberarIA())) return;                                    // trecho + texto + títulos + ilustração contam como uma consulta
     const r = await ia("fundamentar");
     let g; try{ g = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo"}); }
     catch(e){ await desenhar(); throw new ErroApi(`Trechos registrados: ${r.inseridas.length}. O rascunho não foi gerado: ${e.message}`); }
-    const capa = await capaAutomatica(g.conteudo_id);
+    // v0.11.0: a capa é a ilustração da IA; se ela falhar, fica a capa padrão Artecon
+    let capa = "ilustração";
+    try{ await ilustracaoIA(g.conteudo_id); }
+    catch(e){ capa = (await capaAutomatica(g.conteudo_id)) ? "padrão" : ""; }
     E.etapa = "conteudo";
     await desenhar();
-    recado(`IA: ${r.inseridas.length} trecho(s) de fundamentação e um rascunho${g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : ""}. Revise antes de mandar para a revisão.${capa ? "" : SEM_CAPA}`, g.avisos.length > 0 ? "aviso" : false);
+    recado(`IA: ${r.inseridas.length} trecho(s) de fundamentação, um rascunho${g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : ""} e ` +
+      (capa === "ilustração" ? "a ilustração da capa." : capa === "padrão" ? "a capa padrão (a ilustração com IA não deu certo agora; tente pelo botão dela)." : "nenhuma capa." + SEM_CAPA) +
+      " Revise antes de mandar para a revisão.", g.avisos.length > 0 || capa !== "ilustração" ? "aviso" : false);
   },
   async "capa-auto"(el){
     const f = el.closest("form");
@@ -1455,12 +1557,10 @@ const ACOES = {
     const f = el.closest("form");
     if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de gerar a ilustração.", true); return; }
     if(f.dataset.temImagem && !confirm("Substituir a imagem atual por uma ilustração gerada pela IA?" + (f.dataset.aprovado ? "\n\nO conteúdo está aprovado: ao trocar a imagem ele volta para revisão." : ""))) return;
-    recado("Gerando a ilustração… pode levar até um minuto.");
     const descricao = ($(`#img-desc-${el.dataset.id}`)?.value || "").trim();
     (E.imgDesc = E.imgDesc || {})[el.dataset.id] = descricao;
-    const r = await ia("ilustrar", {titulo:f.titulo.defaultValue, descricao});
-    if(!/^data:image\/(png|jpeg|webp);base64,/.test(String(r.imagem || ""))) throw new ErroApi("A IA não devolveu uma imagem válida. Tente de novo.");
-    await gravarImagem(Number(el.dataset.id), await reduzirImagemDe(r.imagem, 1200, 630));
+    if(!(await liberarIA())) return;
+    await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao);
     await desenhar(); recado("Ilustração gerada pela IA. Confira se combina com o assunto antes de aprovar.");
   },
   async "testar-ia"(){
@@ -1483,6 +1583,7 @@ const ACOES = {
   },
 
   async "ia-classificar"(){
+    if(!(await liberarIA())) return;
     const r = await ia("classificar"), f = $("form[data-form=assunto]"), s = r.sugestao;
     for(const [campo, valor] of Object.entries({categoria:s.categoria, abrangencia:s.abrangencia, relevancia:s.relevancia,
         subcategoria:s.subcategoria, resumo:s.resumo, publico_afetado:s.publico_afetado})){
@@ -1495,6 +1596,7 @@ const ACOES = {
     recado("Sugestão da IA preenchida no formulário. Confira e clique em “Salvar dados do assunto”." + (s.motivo_da_relevancia ? " Motivo da relevância: " + s.motivo_da_relevancia : ""));
   },
   async "ia-fundamentar"(){
+    if(!(await liberarIA())) return;
     const r = await ia("fundamentar");
     await desenhar();
     recado(`IA: ${r.inseridas.length} trecho(s) conferido(s) e registrado(s); ${r.descartadas.length} descartado(s).`, !r.inseridas.length);
@@ -1502,7 +1604,17 @@ const ACOES = {
     if(d && r.descartadas.length) d.innerHTML = `<details open><summary>Trechos propostos pela IA e descartados (${r.descartadas.length})</summary>
       <ul>${r.descartadas.map(x => `<li><q>${h(x.trecho)}</q> — ${h(x.motivo)}</li>`).join("")}</ul></details>`;
   },
+  async "ia-analise"(){
+    if(telaSuja()){ recado(avisoSujo(), true); return; }
+    if(!(await liberarIA())) return;
+    const r = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo", analise:true});
+    const capa = await capaAutomatica(r.conteudo_id);
+    E.etapa = "conteudo";
+    await desenhar();
+    recado("Texto para análise gerado a partir de fonte não oficial. Ele não vai ao site: para publicar, inclua o texto oficial no passo 1." + (capa ? "" : SEM_CAPA), "aviso");
+  },
   async "ia-gerar"(){
+    if(!(await liberarIA())) return;
     const r = await ia("gerar", {formato:$("#novo-formato").value});
     const capa = await capaAutomatica(r.conteudo_id);
     E.etapa = "conteudo";
@@ -1521,7 +1633,7 @@ const ACOES = {
     const f = $(`form[data-form=conteudo][data-id="${el.dataset.id}"]`); if(!f) return;
     const caixa = $(`#titulos-${el.dataset.id}`);
     const ja = [...caixa.querySelectorAll("[data-titulo]")].map(b => b.dataset.titulo);
-    recado("A IA está pensando em outros títulos…");
+    if(!(await liberarIA())) return;
     const r = await ia("titulos", {conteudo_id:Number(el.dataset.id), evitar:[f.titulo.value, ...ja]});
     caixa.innerHTML = chipsTitulo(el.dataset.id, r.titulos);
     caixa.closest(".opcoes-titulo").querySelector(".sub").textContent = "Outras opções da IA — clique para usar:";
@@ -1618,8 +1730,9 @@ const ACOES = {
     await alterar("radar_conteudos", {id:"eq." + el.dataset.id}, {imagem_id:null}); await desenhar(); recado("Imagem removida."); },
   async "copiar-titulo"(el){ await copiar(el.closest("form").titulo.defaultValue); recado("Título copiado."); },
   async "copiar-texto"(el){
-    const f = el.closest("form"), c = {autor:f.autor.defaultValue, fonte_credito:f.fonte_credito.defaultValue};
-    const plano = f.corpo.defaultValue.replace(/^#{1,2}\s+/gm, "").replace(/\*\*/g, "") + (c.autor ? "\n\nTexto elaborado por: " + c.autor : "") + (c.fonte_credito ? "\nFonte: " + c.fonte_credito : "");
+    const f = el.closest("form"), c = {autor:f.autor.defaultValue, fonte_credito:f.fonte_credito.defaultValue, fonte_url:f.dataset.fonteUrl};
+    const plano = f.corpo.defaultValue.replace(/^#{1,2}\s+/gm, "").replace(/\*\*/g, "") + (c.autor ? "\n\nTexto elaborado por: " + c.autor : "") +
+      (c.fonte_credito || urlDaFonte(c.fonte_url) ? "\nFonte: " + [c.fonte_credito, urlDaFonte(c.fonte_url)].filter(Boolean).join(" — ") : "");
     const justificado = renderTexto(f.corpo.defaultValue).replace(/<(p|li)>/g, '<$1 style="text-align:justify">');
     await copiar(plano, justificado + creditos(c));
     recado("Texto copiado com a formatação. Cole no editor do site (campo do texto da notícia)."); },
@@ -1753,8 +1866,17 @@ function sujo(f){ return [...f.elements].some(c => c.name && c.type !== "file" &
 const CATEGORIA_SITE = {"reforma-tributaria":"Tributário", "simples-nacional":"Simples Nacional", "federal":"Legislação Federal",
   "santa-catarina":"Legislação Estadual (SC)", "trabalhista":"Área Trabalhista e Previdenciária", "contabilidade":"Economia",
   "pgfn":"Tributário", "informativos":"Economia"};
-function creditos(c){ return (c.autor ? `<p style="text-align:right"><em>Texto elaborado por: <strong>${h(c.autor)}</strong></em></p>` : "") +
-  (c.fonte_credito ? `<p style="text-align:right"><em>Fonte: ${h(c.fonte_credito)}</em></p>` : ""); }
+/* v0.11.0: a fonte sai sempre com o link da notícia ou norma de origem (quando há). */
+const urlDaFonte = u => linkValido(String(u || ""), 1000) ? String(u) : "";
+function creditos(c){
+  const url = urlDaFonte(c.fonte_url), nome = c.fonte_credito || "";
+  const fonte = nome || url ? `<p style="text-align:right"><em>Fonte: ${url ? `<a href="${h(url)}" target="_blank" rel="noopener">${h(nome || url)}</a>` : h(nome)}</em></p>` : "";
+  return (c.autor ? `<p style="text-align:right"><em>Texto elaborado por: <strong>${h(c.autor)}</strong></em></p>` : "") + fonte;
+}
+/* Link público da captura: o boletim por e-mail não tem página própria (o endereço é um marcador interno "?radar="). */
+function linkDaCaptura(url){
+  try{ const u = new URL(url); if(u.searchParams.has("radar")){ u.search = ""; u.hash = ""; } return urlDaFonte(u.href); }catch(e){ return ""; }
+}
 async function copiar(texto, html){
   try{
     if(html && window.ClipboardItem && navigator.clipboard?.write)
@@ -1837,6 +1959,13 @@ async function desenharCapa(titulo, rotulo){
   cx.font = '500 22px "DM Sans", Arial, sans-serif'; cx.fillStyle = "#DCEBF7"; cx.fillText("Artecon Artes Contábeis  ·  www.artecon.cnt.br", 60, A - 36);
   return {dados:cv.toDataURL("image/jpeg", 0.86), largura:L, altura:A};
 }
+/* Ilustração da capa pela IA (foto realista, sem texto nem marca), reduzida e gravada como a imagem do conteúdo. */
+async function ilustracaoIA(conteudoId, titulo, descricao = ""){
+  if(titulo === undefined) titulo = (await ler("radar_conteudos", {select:"titulo", id:"eq." + conteudoId}))[0]?.titulo || "";
+  const r = await ia("ilustrar", {titulo, descricao});
+  if(!/^data:image\/(png|jpeg|webp);base64,/.test(String(r.imagem || ""))) throw new ErroApi("A IA não devolveu uma imagem válida. Tente de novo.");
+  await gravarImagem(conteudoId, await reduzirImagemDe(r.imagem, 1200, 630));
+}
 /* Capa automática do conteúdo. Na criação é um extra: se falhar, o conteúdo fica sem imagem e nada mais é afetado. */
 const SEM_CAPA = " A capa automática não pôde ser gerada agora: use o botão “Gerar capa padrão Artecon” no conteúdo.";
 async function capaAutomatica(conteudoId, obrigatoria){
@@ -1903,6 +2032,7 @@ function validarConfig(chave, v){
     if(v.arquivar_dias !== undefined && !(Number.isInteger(v.arquivar_dias) && v.arquivar_dias >= 0 && v.arquivar_dias <= 365)) return "“arquivar_dias” é quantos dias a captura sem importância fica na fila: número inteiro de 0 a 365 (0 desliga).";
     if(v.arquivar_nota !== undefined && !(Number.isInteger(v.arquivar_nota) && v.arquivar_nota >= -1 && v.arquivar_nota <= 10)) return "“arquivar_nota” é a nota da IA até a qual a captura velha sai da fila: número inteiro de -1 a 10.";
     if(v.nota_rebaixa !== undefined && !(Number.isInteger(v.nota_rebaixa) && v.nota_rebaixa >= -1 && v.nota_rebaixa <= 10)) return "“nota_rebaixa” é a nota da IA até a qual a captura “alta” desce para “média”: número inteiro de -1 a 10 (-1 desliga).";
+    if(v.dias_baixa !== undefined && !(Number.isInteger(v.dias_baixa) && v.dias_baixa >= 0 && v.dias_baixa <= 365)) return "“dias_baixa” é a partir de quantos dias a notícia vira baixa relevância: número inteiro de 0 a 365 (0 desliga).";
     if(v.quantidade !== undefined && !(Number.isInteger(v.quantidade) && v.quantidade >= 1 && v.quantidade <= 100)) return "“quantidade” é quantas capturas a lista “Em alta” mostra: número inteiro de 1 a 100.";
     for(const [n, t] of v.termos.entries()){
       if(!t || typeof t.termo !== "string" || t.termo.trim().length < 2 || t.termo.trim().length > 80) return `Termo ${n + 1}: informe “termo” (de 2 a 80 caracteres).`;

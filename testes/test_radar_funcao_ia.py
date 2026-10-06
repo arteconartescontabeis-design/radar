@@ -1,6 +1,6 @@
-"""Função radar-ia (v0.10.0) rodando de verdade no Deno, com o banco real (PostgREST) e uma IA Central de mentira.
+"""Função radar-ia (v0.11.0) rodando de verdade no Deno, com o banco real (PostgREST) e uma IA Central de mentira.
 
-Confere o que a v0.10.0 mudou: o "Gerar" guarda as outras opções de título e pede a escrita natural; a ação nova
+Confere o que a v0.11.0 mudou: o "Gerar" guarda as outras opções de título e pede a escrita natural; a ação nova
 "titulos" só sugere (não grava nada) e não repete o que já foi sugerido. Sem o Deno instalado, o arquivo é pulado.
 """
 from __future__ import annotations
@@ -126,3 +126,24 @@ def test_titulos_so_sugere_e_nao_repete(funcao, limpo):
     assert status == 404 and "não encontrado" in r["message"]
     status, r = pedir("titulos", assunto_id=a, conteudo_id="x")
     assert status == 400
+
+
+def test_texto_para_analise_so_com_fonte_nao_oficial_e_marcado(funcao, limpo, request):
+    limpo.execute("update radar_fontes set oficial = false where slug = 'cgibs-noticias'")
+    request.addfinalizer(lambda: limpo.execute("update radar_fontes set oficial = true where slug = 'cgibs-noticias'"))
+    cap = limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                           select id, 'https://www.cgibs.gov.br/x', 'Boletim: novidade', 'Chamada do boletim com a novidade sobre o Simples.', md5('b')
+                             from radar_fontes where slug = 'cgibs-noticias' returning id""").fetchone()[0]
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Só do boletim') returning id").fetchone()[0]
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, cap))
+    IA["respostas"]["conteudo"] = {"titulo": "Novidade do Simples para análise", "titulos": [],
+                                   "corpo": "Segundo o boletim, há novidade sobre o Simples. [VERIFICAR: norma e prazo] " * 3}
+    n = len(IA["pedidos"])
+    status, r = pedir("gerar", assunto_id=a, formato="flash")                     # sem "analise": recusa, como antes
+    assert status == 400 and "fonte oficial" in r["message"] and len(IA["pedidos"]) == n
+    status, r = pedir("gerar", assunto_id=a, formato="flash", analise=True)
+    assert status == 200, r
+    pedido = IA["pedidos"][-1]
+    assert "PARA ANÁLISE INTERNA" in pedido["system"] and "<<<TEXTO DE FONTE NÃO OFICIAL" in pedido["messages"][0]["content"]
+    assert r["avisos"][0].startswith("TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (Comitê Gestor do IBS)")
+    assert limpo.execute("select avisos_ia->>0 from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()[0].startswith("TEXTO PARA ANÁLISE")

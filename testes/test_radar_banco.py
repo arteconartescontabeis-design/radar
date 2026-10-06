@@ -685,7 +685,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.10.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.11.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1144,7 +1144,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (20, 6, 8, 6, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.10.0", [], 20)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.11.0", [], 20)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1996,7 +1996,7 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.10.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.11.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2026,7 +2026,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.10.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.11.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -2239,3 +2239,62 @@ def test_autorizacao_exige_assunto_pronto_e_cai_se_o_conteudo_mudar(limpo):
         envio = c.execute("select radar_autorizar_site(%s, 'Simples Nacional', %s)", (c2, lido)).fetchone()[0]
         assert c.execute("select radar_cancelar_site(%s)", (envio,)).fetchone()[0] is True
     assert limpo.execute("select situacao, cancelado_por::text from radar_site_envios where id = %s", (envio,)).fetchone() == ("cancelado", ADMIN)
+
+
+# ------------------------------------------------ v0.11.0: notícia com mais de 5 dias é baixa
+def test_noticia_com_mais_de_cinco_dias_desce_para_baixa_e_nao_e_arquivada_por_isso(limpo):
+    antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    titulo = "Receita prorroga prazo do Simples Nacional para 2027"
+    try:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(dict(antes, dias_baixa=5)),))
+        nova = _cap(limpo, titulo)
+        assert nova[1] == "alta"
+        velha = _cap(limpo, titulo + " (antiga)")[0]
+        limpo.execute("update radar_capturas set data_publicacao = (now() at time zone 'America/Sao_Paulo')::date - 6 where id = %s", (velha,))
+        sem_data = _cap(limpo, titulo + " (sem data)")[0]
+        limpo.execute("update radar_capturas set capturado_em = now() - interval '11 days' where id = %s", (sem_data,))
+        cinco = _cap(limpo, titulo + " (cinco dias)")[0]
+        limpo.execute("update radar_capturas set data_publicacao = (now() at time zone 'America/Sao_Paulo')::date - 5 where id = %s", (cinco,))
+        with como("service_role") as c:
+            assert c.execute("select radar_arquivar_fila()").fetchone()[0] == 0          # reavalia, mas baixa pela idade não sai
+        rel = dict(limpo.execute("select id, relevancia from radar_capturas").fetchall())
+        assert rel == {nova[0]: "alta", velha: "baixa", sem_data: "baixa", cinco: "alta"}  # 5 dias ainda vale; 6 já é velha
+        motivo = limpo.execute("select relevancia_motivos from radar_capturas where id = %s", (velha,)).fetchone()[0]
+        assert {"termo": "notícia com mais de 5 dias", "pontos": 0, "idade": True, "antes": "alta"} in motivo
+        assert velha not in {r[0] for r in limpo.execute("select id from radar_v_em_alta").fetchall()}
+        assert {velha, sem_data} <= {r[0] for r in limpo.execute("select id from radar_v_fila").fetchall()}   # continuam na triagem
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(dict(antes, dias_baixa=0)),))
+        assert limpo.execute("select relevancia from radar_capturas where id = %s", (velha,)).fetchone()[0] == "alta"   # 0 desliga
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))
+
+
+def test_texto_para_analise_nao_se_aprova_nem_vai_ao_site_e_a_idade_nao_passa_ao_assunto(limpo):
+    a, _ = cenario_publicavel(limpo)
+    c1 = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia, fora_do_site)
+                          values (%s, 'flash', 'Para análise', 'Texto para análise.', 'ia', 'm', 'em_revisao',
+                                  '["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC)."]', true) returning id""", (a,)).fetchone()[0]
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR023"):
+        c.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c1,))
+    # a idade rebaixa a captura na triagem, mas o assunto aberto dela guarda a relevância do conteúdo
+    antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    try:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(dict(antes, dias_baixa=5)),))
+        cap = _cap(limpo, "Receita prorroga prazo do Simples Nacional para 2027")[0]
+        limpo.execute("update radar_capturas set data_publicacao = current_date - 9 where id = %s", (cap,))   # a data mudou: recalcula
+        assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "baixa"
+        with como("authenticated", EDITOR) as c:
+            novo = c.execute("select radar_abrir_assunto(%s)", (cap,)).fetchone()[0]
+        assert limpo.execute("select relevancia from radar_assuntos where id = %s", (novo,)).fetchone()[0] == "alta"
+        # já é assunto: uma nova versão do texto não a rebaixa
+        limpo.execute("update radar_capturas set data_publicacao = current_date where id = %s", (cap,))
+        limpo.execute("update radar_capturas set data_publicacao = current_date - 20, texto = 'novo texto' where id = %s", (cap,))
+        assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "alta"
+        # a coleta só rebaixa as que passaram da idade; a que ficou velha demais (3x o prazo da fila) sai
+        velha = _cap(limpo, "Receita prorroga prazo do Simples Nacional — outra")[0]
+        limpo.execute("update radar_capturas set data_publicacao = current_date - 40, capturado_em = now() - interval '31 days' where id = %s", (velha,))
+        with como("service_role") as c:
+            assert c.execute("select radar_arquivar_fila()").fetchone()[0] == 1
+        assert velha not in {r[0] for r in limpo.execute("select id from radar_v_fila").fetchall()}
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))

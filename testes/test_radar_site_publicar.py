@@ -157,7 +157,8 @@ def test_publica_so_o_autorizado_registra_o_link_e_nunca_reenvia(cenario):
     e = SITE["envios"][0]
     assert e["_token"] == "tok123" and e["category"] == "2" and e["title"].startswith("Prazo de opção pelo Simples")
     assert "<h2>Quem pode optar</h2>" in e["text"] and "<strong>31 de janeiro de 2027</strong>" in e["text"]
-    assert "Texto elaborado por: <strong>Equipe Artecon</strong>" in e["text"] and "Fonte: Receita Federal" in e["text"]
+    assert "Texto elaborado por: <strong>Equipe Artecon</strong>" in e["text"]
+    assert 'Fonte: <a href="https://exemplo.gov.br/in-2290" target="_blank" rel="noopener">Receita Federal</a>' in e["text"]   # v0.11.0
     assert e["image"][0] == "capa-radar.png" and e["image"][1].startswith(b"\x89PNG")
     assert len(e["metadescription"]) <= 160 and "**" not in e["metadescription"]
     assert situacao(cenario, envio) == ("publicado", BASE + "/news/view/noticia-1", None)

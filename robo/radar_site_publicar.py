@@ -33,6 +33,7 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -61,7 +62,7 @@ def _celulas(linha: str) -> list[str]:
     return [p.replace("\\|", "|").strip() for p in re.split(r"(?<!\\)\|", t)]
 
 
-def para_html(corpo: str, autor: str | None = None, fonte: str | None = None) -> str:
+def para_html(corpo: str, autor: str | None = None, fonte: str | None = None, fonte_url: str | None = None) -> str:
     """A mesma formatação da tela ("## " subtítulo, "- " lista, **negrito**, linhas com "|" tabela) e os créditos no fim."""
     saida, paragrafo, lista, tabela = [], [], [], []
 
@@ -101,8 +102,11 @@ def para_html(corpo: str, autor: str | None = None, fonte: str | None = None) ->
     fechar()
     if autor:
         saida.append(f'<p style="text-align:right"><em>Texto elaborado por: <strong>{html_lib.escape(autor)}</strong></em></p>')
-    if fonte:
-        saida.append(f'<p style="text-align:right"><em>Fonte: {html_lib.escape(fonte)}</em></p>')
+    url = fonte_url if fonte_url and re.match(r"https?://[^\s\"'<>`]+$", fonte_url) else None
+    if fonte or url:                                         # v0.11.0: a fonte sai com o link da origem
+        nome = html_lib.escape(fonte or url)
+        saida.append(f'<p style="text-align:right"><em>Fonte: '
+                     + (f'<a href="{html_lib.escape(url, quote=True)}" target="_blank" rel="noopener">{nome}</a>' if url else nome) + '</em></p>')
     return "\n".join(saida)
 
 
@@ -243,7 +247,8 @@ class Publicador:
         valor = categorias.get(envio["categoria"])
         if not valor:
             raise admin.Parada(f"a categoria \"{envio['categoria']}\" não existe mais no site; escolha outra e autorize de novo")
-        dados.update({"title": c["titulo"], "text": para_html(c["corpo"], c.get("autor"), c.get("fonte_credito")), "category": valor})
+        dados.update({"title": c["titulo"], "text": para_html(c["corpo"], c.get("autor"), c.get("fonte_credito"), self.link_fonte(c)),
+                      "category": valor})
         if "keywords" in tipos:
             dados["keywords"] = ", ".join(x for x in (envio["categoria"], c.get("fonte_credito") or "", "Artecon") if x)[:250]
         if "metadescription" in tipos:
@@ -255,6 +260,19 @@ class Publicador:
             if arquivo:
                 arquivos = {"image": arquivo}
         return acao, dados, arquivos
+
+    def link_fonte(self, c: dict) -> str | None:
+        """Link da notícia ou norma de origem: a captura de fonte oficial do assunto (ou, sem ela, a primeira)."""
+        vinc = self.banco._pedir("GET", "radar_assunto_capturas", params={
+            "select": "radar_capturas(id,url,radar_fontes(oficial))", "assunto_id": f"eq.{c['assunto_id']}"}) or []
+        caps = sorted((v["radar_capturas"] for v in vinc if v.get("radar_capturas")),
+                      key=lambda x: (not (x.get("radar_fontes") or {}).get("oficial"), x["id"]))
+        if not caps:
+            return None
+        partes = urlsplit(caps[0]["url"])
+        if "radar" in parse_qs(partes.query):               # boletim por e-mail: o endereço é só um marcador interno
+            return urlunsplit((partes.scheme, partes.netloc, partes.path or "/", "", ""))
+        return caps[0]["url"]
 
     def enviar(self, envio: dict, acao: str, dados: dict, arquivos):
         """O único passo que pode ter chegado ao site mesmo dando erro: depois dele, nunca "erro" direto."""
