@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.12.0.sql
--- DESFAZ a instalação do radar-setup-v0.12.0.sql.
+-- RADAR ARTECON — radar-reversao-v0.12.1.sql
+-- DESFAZ a instalação do radar-setup-v0.12.1.sql.
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
 -- =====================================================================
@@ -21,7 +21,7 @@ drop view if exists public.radar_v_assuntos;
 drop view if exists public.radar_v_fila;
 drop view if exists public.radar_v_saude_fontes;
 
--- v0.12.0: a agenda da leitura do boletim da ITC (pg_cron), se existir
+-- v0.12.1: a agenda da leitura do boletim da ITC (pg_cron), se existir
 do $$
 begin
   if exists (select 1 from pg_namespace where nspname = 'cron') then
@@ -119,6 +119,7 @@ drop function if exists public.radar_itc_marcar_lido(text, text, timestamptz, in
 drop function if exists public.radar_itc_conferir_agenda(text);
 drop function if exists public.radar_itc_registrar_falha(text);
 drop function if exists public.radar_liberar_sem_fundamentacao(bigint, text);
+drop function if exists public.radar_converter_analise(bigint);
 drop function if exists public.radar_fn_assunto_liberacao() cascade;
 
 commit;

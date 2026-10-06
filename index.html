@@ -183,11 +183,14 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.12.0";
+const VERSAO = "0.12.1";
 const FUNCAO_MINIMA = "0.11.0";     // versão da função radar-ia que este painel exige (texto para análise)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.12.1", "06/10/2026", [
+    "Texto para análise com a publicação liberada (“Publicar mesmo assim”): o administrador tem “Transformar em texto para publicar”, que cria uma cópia normal do texto em rascunho; ela segue revisão, aprovação e autorização do site como qualquer conteúdo. Banco v0.12.1."
+  ]],
   ["0.12.0", "06/10/2026", [
     "Boletim da ITC dentro do aplicativo: a função radar-itc lê os e-mails da ITC no Outlook (Microsoft Graph) 1 vez por dia, às 02h55, a IA separa as matérias e elas entram na triagem como antes. Não depende mais de uma conversa aberta. Na aba Fontes, o administrador tem “Ler boletim agora” e “Testar conexão com o e-mail”.",
     "Publicação no site com o texto justificado (como já era na prévia e no “Copiar texto”); os créditos continuam à direita.",
@@ -1329,7 +1332,7 @@ async function telaAssunto(id){
         <p class="sub" style="margin-top:0">${temOficial ? "A IA escreve um rascunho a partir do texto oficial, com outras opções de título. Revisar e aprovar continua sendo da equipe."
           : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve um texto <b>para análise</b>, marcado como tal, que não vai ao site. Para publicar, inclua o texto oficial no passo 1."
           : "Sem texto capturado: escreva sem IA, ou inclua o texto oficial no passo 1."}</p>` : ""}
-      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
     </div>
     </section>
 
@@ -1457,7 +1460,7 @@ function avisoRascunho(c){
 /* As opções de título que a IA sugeriu (clique troca o título; nada é gravado até "Salvar") e o pedido de outras. */
 const chipsTitulo = (id, lista) => (Array.isArray(lista) ? lista : []).map(t => `<button class="chip" type="button" data-acao="usar-titulo" data-id="${id}" data-titulo="${h(t)}">${h(t)}</button>`).join("") +
   `<button class="chip outro" type="button" data-acao="ia-titulos" data-id="${id}">↻ Sugerir ${Array.isArray(lista) && lista.length ? "outros" : "títulos com IA"}</button>`;
-function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = ""){
+function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const copia = trechosCopiados(c.corpo, fontes);
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
@@ -1503,7 +1506,9 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
       <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
-      ${analise ? `<span class="sub analise">Texto para análise: não vai para revisão nem ao site. Inclua o texto oficial e gere (ou escreva) um conteúdo novo.</span>`
+      ${analise ? (liberado && ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${c.id}">Transformar em texto para publicar</button>
+          <span class="sub analise">A publicação deste assunto foi liberada: o botão cria uma cópia normal deste texto, que segue revisão e aprovação.</span>`
+        : `<span class="sub analise">Texto para análise: não vai para revisão nem ao site. Inclua o texto oficial e gere (ou escreva) um conteúdo novo${ehAdmin() ? ", ou use “Publicar mesmo assim” no aviso de publicação" : ""}.</span>`)
         : c.status === "rascunho" || c.status === "rejeitado" ? `<button class="btn" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="em_revisao">Enviar para revisão</button>` : ""}
       ${c.status === "em_revisao" && !analise ? `<button class="btn verde" type="button" data-acao="aprovar" data-id="${c.id}">Aprovar</button>
         <button class="btn perigo" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="rejeitado">Rejeitar</button>` : ""}
@@ -1641,6 +1646,13 @@ const ACOES = {
     if(motivo.length < 10){ recado("Escreva um motivo com pelo menos 10 caracteres.", true); return; }
     await rpc("radar_liberar_sem_fundamentacao", {p_assunto:E.assunto, p_motivo:motivo});
     await desenhar(); recado("Publicação liberada. Agora é só autorizar no passo 4.", "aviso");
+  },
+  async "converter-analise"(el){
+    if(telaSuja()){ recado(avisoSujo(), true); return; }
+    if(!confirm("Criar uma cópia deste texto para publicar?\n\nEla entra como rascunho, sem a marca de “texto para análise”, e segue revisão e aprovação. Confira os números, datas e normas antes de aprovar (a fonte não é oficial).")) return;
+    await rpc("radar_converter_analise", {p_conteudo:Number(el.dataset.id)});
+    E.etapa = "conteudo"; await desenhar();
+    recado("Cópia criada como rascunho. Revise, envie para revisão e aprove; depois autorize a publicação no passo 4.", "aviso");
   },
   async "desfazer-liberacao"(){
     if(!confirm("Desfazer a liberação? O assunto volta a exigir a fundamentação oficial para ir ao site.")) return;
