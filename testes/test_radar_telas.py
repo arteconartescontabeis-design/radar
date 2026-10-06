@@ -3159,8 +3159,13 @@ def test_ia_mostra_que_esta_trabalhando_e_pede_senha_a_partir_da_segunda_consult
     assert len(pedidos) == 1
     pagina.fill("#senha-ia-campo", SENHA)
     pagina.click("#senha-ia >> text=Confirmar e consultar")
-    pagina.wait_for_selector("text=Sugestão da IA preenchida")
-    assert len(pedidos) == 2 and pagina.locator("#senha-ia").count() == 0
+    pagina.wait_for_selector("#senha-ia", state="detached")
+    for _ in range(50):                                     # o aviso da 1ª consulta pode ainda estar na tela: espera o pedido
+        if len(pedidos) == 2:
+            break
+        pagina.wait_for_timeout(100)
+    pagina.wait_for_selector("#ia-trabalhando", state="detached")
+    assert len(pedidos) == 2
     pagina.click("text=Classificar com IA")                                                    # cancelar não consulta
     pagina.click("#senha-ia >> text=Cancelar")
     pagina.wait_for_selector("text=Consulta à IA cancelada.")
