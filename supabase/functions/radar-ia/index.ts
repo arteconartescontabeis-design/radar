@@ -434,6 +434,7 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
   const titulos_sugeridos = limparTitulos(json.titulos, titulo);
   const [linha] = await banco(token, "POST", "radar_conteudos", {
     assunto_id: ctx.assunto.id, formato, titulo, corpo, gerado_por: "ia", modelo_ia: MODELO, status: "rascunho", avisos_ia: avisos, titulos_sugeridos,
+    ...(naoOficial ? { fora_do_site: true } : {}),          // texto para análise: fora da fila do site (e o banco não deixa aprovar)
   }, "return=representation");
   return { conteudo_id: linha.id, avisos, titulos: titulos_sugeridos };
 }

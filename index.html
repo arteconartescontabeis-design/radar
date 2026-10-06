@@ -556,19 +556,25 @@ function pedirSenha(){
       ev.preventDefault(); ev.stopPropagation();
       const b = form.querySelector("button"); b.disabled = true;
       try{ await entrar(E.sessao.user.email, campo.value); fim(true); }
-      catch(e){ b.disabled = false; form.querySelector(".erro-senha").hidden = false; campo.value = ""; campo.focus(); }
+      catch(e){ b.disabled = false; const msg = form.querySelector(".erro-senha");
+        msg.textContent = e.status === 400 ? "Senha incorreta." : (e.message || "Não foi possível conferir a senha agora."); msg.hidden = false;
+        campo.value = ""; campo.focus(); }
     };
     campo.focus();
   });
 }
 /* Antes de cada consulta à IA no assunto: a 1ª é livre; a partir da 2ª, senha. "Preparar tudo" conta como uma consulta só. */
 async function liberarIA(){
-  if(usosIA() >= 1 && !(await pedirSenha())) throw new ErroApi("Consulta à IA cancelada.");
-  contarUsoIA();
+  const assunto = E.assunto;
+  if(usosIA() >= 1 && !(await pedirSenha())){ recado("Consulta à IA cancelada."); return false; }
+  if(E.assunto !== assunto){ recado("A tela mudou enquanto a senha era pedida: a consulta não foi feita."); return false; }
+  return true;
 }
 async function ia(acao, extra = {}){
   avisoIA(IA_FAZENDO[acao] || "trabalhando");
-  try{ return await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, assunto_id:E.assunto, ...extra}, tempo:150000}); }
+  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, assunto_id:E.assunto, ...extra}, tempo:150000});
+    contarUsoIA();                                         // só a consulta que deu certo conta para pedir a senha depois
+    return r; }
   catch(e){
     if(e.status === 404 && !/Assunto não encontrado/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
     if(e.status === 0) throw new ErroApi("Não foi possível falar com a função de IA (sem resposta). Confira a internet; se persistir, o administrador pode testar em Configurações → Inteligência artificial.", 0);
@@ -786,13 +792,14 @@ const TELAS = {
   async publicacoes(){
     const [regs, aprovados] = await Promise.all([
       ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
-      ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em)",
+      ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url)",
         status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"})]);
-    const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length);
+    const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length && !(c.radar_site_envios || []).some(e => e.situacao === "publicado"));
     // v0.11.0: cada conteúdo aprovado e em que canal ele já está (site hoje; Instagram e Facebook entram depois)
     const noSite = c => { const d = [...c.radar_divulgacoes].sort((x, y) => y.id - x.id)[0];
       if(d) return `<span class="canal ok">✓ ${data(d.publicado_em)}</span><br>${linkFonte(d.url, "ver no site ↗")}`;
       const e = [...(c.radar_site_envios || [])].sort((x, y) => y.id - x.id)[0];
+      if(e && e.situacao === "publicado") return `<span class="canal ok">✓ pelo robô</span>${e.url ? `<br>${linkFonte(e.url, "ver no site ↗")}` : ""}`;
       return e && ["autorizado","enviando"].includes(e.situacao) ? `<span class="canal espera">Autorizado — aguardando o robô</span>`
         : e && e.situacao === "erro" ? `<span class="canal erro">Não concluída</span>` : `<span class="canal falta">Falta</span>`; };
     const emBreve = `<span class="canal breve" title="A integração com esta rede ainda vai ser feita">em breve</span>`;
@@ -1189,7 +1196,8 @@ async function telaAssunto(id){
   // a captura que originou o assunto: a oficial com texto, se houver
   const origem = (vinc.find(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial) || vinc[0])?.radar_capturas;
   const capa = cont.map(c => imgs[c.imagem_id]).find(i => i && /^data:image\/(jpeg|png|webp);base64,/.test(i));
-  const urlFonte = linkDaCaptura((vinc.find(v => v.radar_capturas.radar_fontes.oficial) || vinc[0])?.radar_capturas.url || "");
+  const porId = [...vinc].sort((x, y) => (y.radar_capturas.radar_fontes.oficial - x.radar_capturas.radar_fontes.oficial) || (x.radar_capturas.id - y.radar_capturas.id));
+  const urlFonte = linkDaCaptura(porId[0]?.radar_capturas.url || "");          // a mesma que o robô usa ao publicar
   return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
     <h1>${h(a.titulo)}</h1>
     <p>${seloSituacao(a.situacao_confirmacao)} ${selo(ROTULOS.status[a.status],"neutro")} ${selo(conferidas + " trecho(s) conferido(s)", conferidas ? "ok" : "erro")}${origem ? ` <span class="sub">${h(origem.radar_fontes.orgao)} · capturado em ${data(origem.capturado_em)}</span>` : ""}</p>
@@ -1413,6 +1421,7 @@ function avisoRascunho(c){
 const chipsTitulo = (id, lista) => (Array.isArray(lista) ? lista : []).map(t => `<button class="chip" type="button" data-acao="usar-titulo" data-id="${id}" data-titulo="${h(t)}">${h(t)}</button>`).join("") +
   `<button class="chip outro" type="button" data-acao="ia-titulos" data-id="${id}">↻ Sugerir ${Array.isArray(lista) && lista.length ? "outros" : "títulos com IA"}</button>`;
 function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = ""){
+  const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const copia = trechosCopiados(c.corpo, fontes);
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
   return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}" data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
@@ -1457,8 +1466,9 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
       <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
-      ${c.status === "rascunho" || c.status === "rejeitado" ? `<button class="btn" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="em_revisao">Enviar para revisão</button>` : ""}
-      ${c.status === "em_revisao" ? `<button class="btn verde" type="button" data-acao="aprovar" data-id="${c.id}">Aprovar</button>
+      ${analise ? `<span class="sub analise">Texto para análise: não vai para revisão nem ao site. Inclua o texto oficial e gere (ou escreva) um conteúdo novo.</span>`
+        : c.status === "rascunho" || c.status === "rejeitado" ? `<button class="btn" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="em_revisao">Enviar para revisão</button>` : ""}
+      ${c.status === "em_revisao" && !analise ? `<button class="btn verde" type="button" data-acao="aprovar" data-id="${c.id}">Aprovar</button>
         <button class="btn perigo" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="rejeitado">Rejeitar</button>` : ""}
     </div>` : ""}
     ${pubs.map(p => `<div class="aviso ${(p.texto_mudou && !p.versao_anterior) || p.base_caiu ? "alerta" : "info"} registro-site"><b>Publicado no site</b> em ${data(p.publicado_em)} — ${linkFonte(p.url, p.url)}
@@ -1523,7 +1533,7 @@ const ACOES = {
     await desenhar(); recado("Assunto marcado como confirmado oficialmente."); },
   async "ia-tudo"(){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
-    await liberarIA();                                    // trecho + texto + títulos + ilustração contam como uma consulta
+    if(!(await liberarIA())) return;                                    // trecho + texto + títulos + ilustração contam como uma consulta
     const r = await ia("fundamentar");
     let g; try{ g = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo"}); }
     catch(e){ await desenhar(); throw new ErroApi(`Trechos registrados: ${r.inseridas.length}. O rascunho não foi gerado: ${e.message}`); }
@@ -1549,7 +1559,7 @@ const ACOES = {
     if(f.dataset.temImagem && !confirm("Substituir a imagem atual por uma ilustração gerada pela IA?" + (f.dataset.aprovado ? "\n\nO conteúdo está aprovado: ao trocar a imagem ele volta para revisão." : ""))) return;
     const descricao = ($(`#img-desc-${el.dataset.id}`)?.value || "").trim();
     (E.imgDesc = E.imgDesc || {})[el.dataset.id] = descricao;
-    await liberarIA();
+    if(!(await liberarIA())) return;
     await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao);
     await desenhar(); recado("Ilustração gerada pela IA. Confira se combina com o assunto antes de aprovar.");
   },
@@ -1573,7 +1583,7 @@ const ACOES = {
   },
 
   async "ia-classificar"(){
-    await liberarIA();
+    if(!(await liberarIA())) return;
     const r = await ia("classificar"), f = $("form[data-form=assunto]"), s = r.sugestao;
     for(const [campo, valor] of Object.entries({categoria:s.categoria, abrangencia:s.abrangencia, relevancia:s.relevancia,
         subcategoria:s.subcategoria, resumo:s.resumo, publico_afetado:s.publico_afetado})){
@@ -1586,7 +1596,7 @@ const ACOES = {
     recado("Sugestão da IA preenchida no formulário. Confira e clique em “Salvar dados do assunto”." + (s.motivo_da_relevancia ? " Motivo da relevância: " + s.motivo_da_relevancia : ""));
   },
   async "ia-fundamentar"(){
-    await liberarIA();
+    if(!(await liberarIA())) return;
     const r = await ia("fundamentar");
     await desenhar();
     recado(`IA: ${r.inseridas.length} trecho(s) conferido(s) e registrado(s); ${r.descartadas.length} descartado(s).`, !r.inseridas.length);
@@ -1596,7 +1606,7 @@ const ACOES = {
   },
   async "ia-analise"(){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
-    await liberarIA();
+    if(!(await liberarIA())) return;
     const r = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo", analise:true});
     const capa = await capaAutomatica(r.conteudo_id);
     E.etapa = "conteudo";
@@ -1604,7 +1614,7 @@ const ACOES = {
     recado("Texto para análise gerado a partir de fonte não oficial. Ele não vai ao site: para publicar, inclua o texto oficial no passo 1." + (capa ? "" : SEM_CAPA), "aviso");
   },
   async "ia-gerar"(){
-    await liberarIA();
+    if(!(await liberarIA())) return;
     const r = await ia("gerar", {formato:$("#novo-formato").value});
     const capa = await capaAutomatica(r.conteudo_id);
     E.etapa = "conteudo";
@@ -1623,7 +1633,7 @@ const ACOES = {
     const f = $(`form[data-form=conteudo][data-id="${el.dataset.id}"]`); if(!f) return;
     const caixa = $(`#titulos-${el.dataset.id}`);
     const ja = [...caixa.querySelectorAll("[data-titulo]")].map(b => b.dataset.titulo);
-    await liberarIA();
+    if(!(await liberarIA())) return;
     const r = await ia("titulos", {conteudo_id:Number(el.dataset.id), evitar:[f.titulo.value, ...ja]});
     caixa.innerHTML = chipsTitulo(el.dataset.id, r.titulos);
     caixa.closest(".opcoes-titulo").querySelector(".sub").textContent = "Outras opções da IA — clique para usar:";

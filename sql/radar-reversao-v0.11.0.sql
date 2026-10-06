@@ -85,6 +85,7 @@ drop function if exists public.radar_fn_imagem_sem_uso() cascade;
 drop function if exists public.radar_avaliar_relevancia(text, text, text);
 drop function if exists public.radar_relevancia_com_ia(text, int, jsonb, smallint);
 drop function if exists public.radar_relevancia_idade(text, jsonb, date, timestamptz);
+drop function if exists public.radar_envelhecer_fila();
 drop function if exists public.radar_relevancia_com_ia(text, jsonb, smallint);
 drop function if exists public.radar_sem_acento(text);
 drop function if exists public.radar_fn_divulgacao();

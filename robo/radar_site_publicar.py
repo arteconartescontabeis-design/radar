@@ -33,7 +33,7 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -270,7 +270,7 @@ class Publicador:
         if not caps:
             return None
         partes = urlsplit(caps[0]["url"])
-        if "radar=" in partes.query:                         # boletim por e-mail: o endereço é só um marcador interno
+        if "radar" in parse_qs(partes.query):               # boletim por e-mail: o endereço é só um marcador interno
             return urlunsplit((partes.scheme, partes.netloc, partes.path or "/", "", ""))
         return caps[0]["url"]
 

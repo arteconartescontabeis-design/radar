@@ -2260,10 +2260,41 @@ def test_noticia_com_mais_de_cinco_dias_desce_para_baixa_e_nao_e_arquivada_por_i
         rel = dict(limpo.execute("select id, relevancia from radar_capturas").fetchall())
         assert rel == {nova[0]: "alta", velha: "baixa", sem_data: "baixa", cinco: "alta"}  # 5 dias ainda vale; 6 já é velha
         motivo = limpo.execute("select relevancia_motivos from radar_capturas where id = %s", (velha,)).fetchone()[0]
-        assert {"termo": "notícia com mais de 5 dias", "pontos": 0, "idade": True} in motivo
+        assert {"termo": "notícia com mais de 5 dias", "pontos": 0, "idade": True, "antes": "alta"} in motivo
         assert velha not in {r[0] for r in limpo.execute("select id from radar_v_em_alta").fetchall()}
         assert {velha, sem_data} <= {r[0] for r in limpo.execute("select id from radar_v_fila").fetchall()}   # continuam na triagem
         limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(dict(antes, dias_baixa=0)),))
         assert limpo.execute("select relevancia from radar_capturas where id = %s", (velha,)).fetchone()[0] == "alta"   # 0 desliga
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))
+
+
+def test_texto_para_analise_nao_se_aprova_nem_vai_ao_site_e_a_idade_nao_passa_ao_assunto(limpo):
+    a, _ = cenario_publicavel(limpo)
+    c1 = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia, fora_do_site)
+                          values (%s, 'flash', 'Para análise', 'Texto para análise.', 'ia', 'm', 'em_revisao',
+                                  '["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC)."]', true) returning id""", (a,)).fetchone()[0]
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR021"):
+        c.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c1,))
+    # a idade rebaixa a captura na triagem, mas o assunto aberto dela guarda a relevância do conteúdo
+    antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
+    try:
+        limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(dict(antes, dias_baixa=5)),))
+        cap = _cap(limpo, "Receita prorroga prazo do Simples Nacional para 2027")[0]
+        limpo.execute("update radar_capturas set data_publicacao = current_date - 9 where id = %s", (cap,))   # a data mudou: recalcula
+        assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "baixa"
+        with como("authenticated", EDITOR) as c:
+            novo = c.execute("select radar_abrir_assunto(%s)", (cap,)).fetchone()[0]
+        assert limpo.execute("select relevancia from radar_assuntos where id = %s", (novo,)).fetchone()[0] == "alta"
+        # já é assunto: uma nova versão do texto não a rebaixa
+        limpo.execute("update radar_capturas set data_publicacao = current_date where id = %s", (cap,))
+        limpo.execute("update radar_capturas set data_publicacao = current_date - 20, texto = 'novo texto' where id = %s", (cap,))
+        assert limpo.execute("select relevancia from radar_capturas where id = %s", (cap,)).fetchone()[0] == "alta"
+        # a coleta só rebaixa as que passaram da idade; a que ficou velha demais (3x o prazo da fila) sai
+        velha = _cap(limpo, "Receita prorroga prazo do Simples Nacional — outra")[0]
+        limpo.execute("update radar_capturas set data_publicacao = current_date - 40, capturado_em = now() - interval '31 days' where id = %s", (velha,))
+        with como("service_role") as c:
+            assert c.execute("select radar_arquivar_fila()").fetchone()[0] == 1
+        assert velha not in {r[0] for r in limpo.execute("select id from radar_v_fila").fetchall()}
     finally:
         limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))
