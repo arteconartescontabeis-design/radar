@@ -132,7 +132,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.11.0", True), ("ok", 1, 200, "0.11.0", True)]
+    assert ex == [("ok", 2, 200, "0.11.1", True), ("ok", 1, 200, "0.11.1", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -1197,3 +1197,25 @@ def test_texto_ruim_da_ia_numa_captura_nao_trava_as_outras(ia):
         assert ia.execute("select count(*) from radar_v_fila where titulo like 'PGFN%%'").fetchone()[0] == 1   # continua na fila
     finally:
         ia.execute("delete from radar_assuntos")
+
+
+def test_prazo_da_rodada_deixa_para_a_proxima_a_fonte_que_nao_cabe(cenario):
+    """v0.11.1: a coleta tem prazo total; a fonte que não cabe não é visitada, não conta como falha e fica para a próxima."""
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    prazo = time.monotonic() + radar_coletar.FOLGA_FONTE - 1          # já sem tempo para começar outra fonte
+    resultados, _ = radar_coletar.executar(banco, None, True, hoje=HOJE, pausa=0, prazo=prazo)
+    assert {r["fonte"]: r["status"] for r in resultados} == {"teste-a": "sem tempo", "teste-b": "sem tempo"}
+    assert cenario.execute("select count(*) from radar_execucoes").fetchone()[0] == 0
+    assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and falhas_consecutivas > 0").fetchone()[0] == 0
+    assert "sem tempo" in radar_coletar.resumo_markdown(resultados, [])
+    r, _ = robo()                                                        # na rodada seguinte, as duas são coletadas
+    assert (r["teste-a"]["status"], r["teste-b"]["status"]) == ("ok", "ok")
+
+
+def test_ia_e_rascunhos_ficam_para_a_proxima_quando_o_prazo_acabou(monkeypatch):
+    monkeypatch.setenv("RADAR_IA_GATEWAY_TOKEN", "iagw_radar_teste")
+    sem_tempo = time.monotonic() + 10
+    assert "prazo" in radar_coletar.avaliar_com_ia(None, prazo=sem_tempo)["pulado"]
+    assert "próxima coleta" in radar_coletar.preparar_rascunhos(None, prazo=sem_tempo)
+    monkeypatch.setenv("RADAR_PRAZO_MINUTOS", "60")                     # nunca passa do corte do GitHub (16 min)
+    assert radar_coletar.prazo_da_rodada() - time.monotonic() <= 14 * 60

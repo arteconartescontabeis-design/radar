@@ -81,6 +81,23 @@ def obter_texto(item: Item, config: dict, sessao: requests.Session) -> tuple[str
 
 
 TEMPO_MAX_PADRAO = 300     # segundos por fonte; ajustável em config.tempo_max_segundos
+# v0.11.1: prazo da rodada inteira. O passo "Coletar" do GitHub tem 16 minutos; o robô para antes, guarda o que fez
+# e deixa o resto para a próxima coleta (6 h depois). Ajustável pela variável RADAR_PRAZO_MINUTOS.
+PRAZO_PADRAO_MIN = 13
+FOLGA_FONTE = 30           # com menos que isto, a fonte fica para a próxima rodada
+FOLGA_IA = 150             # uma chamada à IA pode levar até 120 s
+
+
+def prazo_da_rodada() -> float:
+    try:
+        minutos = float(os.environ.get("RADAR_PRAZO_MINUTOS") or PRAZO_PADRAO_MIN)
+    except ValueError:
+        minutos = PRAZO_PADRAO_MIN
+    return time.monotonic() + max(1.0, min(minutos, 14.0)) * 60      # o passo do GitHub corta em 16 min
+
+
+def restante(prazo: float | None) -> float:
+    return float("inf") if prazo is None else prazo - time.monotonic()
 
 
 class TempoEsgotado(BaseException):
@@ -122,7 +139,7 @@ def tempo_maximo(config: dict) -> float:
 
 
 def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
-                  hoje: date | None = None, pausa: float = 1.0) -> dict:
+                  hoje: date | None = None, pausa: float = 1.0, limite: float | None = None) -> dict:
     config = fonte.get("config") or {}
     agora = datetime.now(timezone.utc)
     resultado = {"fonte": fonte["slug"], "status": "falha", "encontrados": 0, "novos": 0,
@@ -130,7 +147,7 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
     execucao = banco.abrir_execucao(fonte["id"])      # se nem isto funcionar, o banco está fora: aborta
     http = None
     try:
-        with limite_de_tempo(tempo_maximo(config)):
+        with limite_de_tempo(min(tempo_maximo(config), limite) if limite else tempo_maximo(config)):
             if fonte.get("tipo_coletor") == "inlabs":
                 listagem, http = radar_inlabs.listar_paginas(sessao, fonte, hoje)
             else:
@@ -253,7 +270,7 @@ def alimentada_por_fora(fonte: dict) -> bool:
 
 
 def executar(banco: Banco, slug: str | None = None, forcar: bool = False,
-             hoje: date | None = None, pausa: float = 1.0) -> tuple[list[dict], list[str]]:
+             hoje: date | None = None, pausa: float = 1.0, prazo: float | None = None) -> tuple[list[dict], list[str]]:
     orfas = banco.encerrar_execucoes_orfas()
     if orfas:
         print(f"! {orfas} execução(ões) anterior(es) ficou(aram) sem terminar e foi(ram) marcada(s) como falha")
@@ -269,24 +286,33 @@ def executar(banco: Banco, slug: str | None = None, forcar: bool = False,
         if not forcar and not fonte_esta_na_hora(fonte, agora):
             pulados.append(fonte["slug"])
             continue
+        if restante(prazo) < FOLGA_FONTE:
+            # o prazo da rodada acabou: a fonte não é visitada (nem conta como falha) e entra na próxima coleta
+            resultados.append({"fonte": fonte["slug"], "status": "sem tempo", "encontrados": 0, "novos": 0, "atualizados": 0,
+                               "sem_texto": 0, "com_erro": 0, "erro": "o prazo desta rodada acabou; fica para a próxima coleta"})
+            print(f"→ {fonte['slug']}: sem tempo nesta rodada")
+            continue
         print(f"→ {fonte['slug']}")
-        r = coletar_fonte(banco, fonte, sessao, hoje, pausa)
+        r = coletar_fonte(banco, fonte, sessao, hoje, pausa, None if prazo is None else restante(prazo) - 5)
         print(f"  {r['status']}: {r['encontrados']} na janela, {r['novos']} novos, "
               f"{r['atualizados']} alterados" + (f" — {r['erro']}" if r["erro"] else ""))
         resultados.append(r)
     return resultados, pulados
 
 
-def avaliar_com_ia(banco: Banco, sem_ia: bool = False) -> dict:
+def avaliar_com_ia(banco: Banco, sem_ia: bool = False, prazo: float | None = None) -> dict:
     """Nota da IA para as capturas novas. Nunca derruba a coleta: qualquer problema vira aviso no resumo."""
     token = os.environ.get("RADAR_IA_GATEWAY_TOKEN", "").strip()
     if sem_ia:
         return {"pulado": "opção --sem-ia."}
     if not token:
         return {"pulado": "falta o segredo RADAR_IA_GATEWAY_TOKEN no GitHub (token do Radar na IA Central)."}
+    if restante(prazo) < FOLGA_IA:
+        return {"pulado": "o prazo desta rodada acabou; as notas ficam para a próxima coleta."}
     try:
         r = radar_ia.avaliar_capturas(banco, token, os.environ.get("IA_GATEWAY_URL") or radar_ia.GATEWAY_PADRAO,
-                                      os.environ.get("RADAR_IA_MODELO_RAPIDO") or radar_ia.MODELO_PADRAO)
+                                      os.environ.get("RADAR_IA_MODELO_RAPIDO") or radar_ia.MODELO_PADRAO,
+                                      prazo=None if prazo is None else prazo - FOLGA_IA)
     except Exception as e:                      # noqa: BLE001 — a avaliação é um extra da coleta
         return {"pulado": radar_ia._sem_segredo(f"erro inesperado ({type(e).__name__}: {str(e)[:200]}).", token)}
     print(f"IA: {r['avaliadas']} de {r['pendentes']} avaliada(s), {r['repetidas']} repetição(ões)" + (f" — {r['erro']}" if r["erro"] else ""))
@@ -299,14 +325,17 @@ def banco_sem_funcao(e: Exception) -> bool:
     return "PGRST202" in s or ("HTTP 404" in s and '"code":"42' not in s)
 
 
-def preparar_rascunhos(banco: Banco, sem_ia: bool = False) -> str:
+def preparar_rascunhos(banco: Banco, sem_ia: bool = False, prazo: float | None = None) -> str:
     """Rascunhos das notícias de topo (v0.9.0). Extra da coleta: sem token, banco antigo ou erro não derrubam nada."""
     token = os.environ.get("RADAR_IA_GATEWAY_TOKEN", "").strip()
     if sem_ia or not token:
         return ""
+    if restante(prazo) < FOLGA_IA + 30:
+        return "\n\n_Rascunhos automáticos ficaram para a próxima coleta (o prazo desta rodada acabou)._"
     try:
         r = radar_rascunhos.executar(banco, token, os.environ.get("IA_GATEWAY_URL") or radar_ia.GATEWAY_PADRAO,
-                                     os.environ.get("RADAR_IA_MODELO") or radar_rascunhos.MODELO_PADRAO)
+                                     os.environ.get("RADAR_IA_MODELO") or radar_rascunhos.MODELO_PADRAO,
+                                     tempo_total=None if prazo is None else min(radar_rascunhos.TEMPO_TOTAL, restante(prazo) - FOLGA_IA))
     except Exception as e:                      # noqa: BLE001 — os rascunhos são um extra da coleta
         return "\n\n_Rascunhos automáticos não foram feitos: " + radar_ia._sem_segredo(f"{type(e).__name__}: {str(e)[:200]}", token) + "_"
     return radar_rascunhos.resumo_markdown(r)
@@ -342,25 +371,27 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     print(f"Radar Artecon — robô de coleta v{VERSAO}")
+    prazo = prazo_da_rodada()
     try:
         banco = Banco(os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_SERVICE_KEY", ""))
-        resultados, pulados = executar(banco, args.fonte, args.forcar)
+        resultados, pulados = executar(banco, args.fonte, args.forcar, prazo=prazo)
     except ErroBanco as e:
         print(f"ERRO DE BANCO: {e}", file=sys.stderr)
         return 2
 
-    texto = resumo_markdown(resultados, pulados)
-    texto += radar_ia.resumo_markdown(avaliar_com_ia(banco, args.sem_ia))
-    texto += limpar_imagens(banco)
-    texto += arquivar_fila(banco)
-    texto += preparar_rascunhos(banco, args.sem_ia)                # por último: é o passo mais demorado
-    print("\n" + texto)
     destino = os.environ.get("GITHUB_STEP_SUMMARY")
-    if destino:
-        with open(destino, "a", encoding="utf-8") as f:
-            f.write(texto + "\n")
+    def registrar(parte: str) -> None:            # o resumo é gravado aos poucos: se o passo for interrompido, o feito fica
+        print(parte)
+        if destino and parte:
+            with open(destino, "a", encoding="utf-8") as f:
+                f.write(parte + "\n")
 
-    if resultados and all(r["status"] != "ok" for r in resultados):
+    registrar("\n" + resumo_markdown(resultados, pulados))
+    registrar(radar_ia.resumo_markdown(avaliar_com_ia(banco, args.sem_ia, prazo)))
+    registrar(limpar_imagens(banco) + arquivar_fila(banco))
+    registrar(preparar_rascunhos(banco, args.sem_ia, prazo))      # por último: é o passo mais demorado
+
+    if resultados and all(r["status"] not in ("ok", "sem tempo") for r in resultados):
         return 1   # nenhuma fonte funcionou: o workflow fica vermelho
     return 0
 

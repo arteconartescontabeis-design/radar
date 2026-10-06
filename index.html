@@ -183,11 +183,17 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.11.0";
+const VERSAO = "0.11.1";
 const FUNCAO_MINIMA = "0.11.0";     // versão da função radar-ia que este painel exige (texto para análise)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.11.1", "06/10/2026", [
+    "IA: a consulta fica presa ao assunto em que foi pedida; se você trocar de tela enquanto ela trabalha, o resultado não é aplicado no outro assunto (e o aviso diz onde ficou).",
+    "Clique em “Salvar” ou em outra ação enquanto uma ação longa está em andamento agora avisa para aguardar, em vez de não fazer nada.",
+    "Triagem: a notícia oficial nunca fica escondida atrás do boletim da ITC (ou de outra fonte não oficial) — o boletim é que vira a repetição dela.",
+    "Consumo de IA do mês contado no mês de Brasília. Coleta com prazo total: o que não couber fica para a próxima rodada, sem travar o robô. Banco v0.11.1 e função de IA v0.11.1."
+  ]],
   ["0.11.0", "06/10/2026", [
     "IA: enquanto ela trabalha, um aviso no alto da tela diz o que está fazendo (buscando o trecho, escrevendo, criando a ilustração…) e há quantos segundos.",
     "IA: no mesmo assunto, a 1ª consulta é livre; a partir da 2ª, o Radar pede a senha de quem está logado. “Preparar tudo” conta como uma consulta só.",
@@ -2161,12 +2167,14 @@ const FORMS = {
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto"]);
-let OCUPADO = false;
+let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
-  if(!livre && OCUPADO){ recado("Aguarde a ação em andamento terminar.", true); return; }
+  if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa
+    if(Date.now() - OCUPADO_DESDE > 1500) recado("Aguarde: a ação anterior ainda está em andamento.", "aviso");
+    return; }
   const avulso = livre ? null : avulsoEscondido();
   if(avulso){ recado(avisoEtapa(avulso), true); return; }      // antes de marcar "ocupado": senão nada mais salvaria
-  if(!livre){ OCUPADO = true; document.body.classList.add("ocupado"); }
+  if(!livre){ OCUPADO = true; OCUPADO_DESDE = Date.now(); document.body.classList.add("ocupado"); }
   const digitado = livre ? [] : guardarDigitado();
   try{ await fn(...args); }
   catch(e){ recado(e.message || "Erro inesperado.", true); if(E.sessao && !E.perfil){ try{ await desenhar(); }catch(x){} } }

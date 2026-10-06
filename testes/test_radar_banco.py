@@ -685,7 +685,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.11.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.11.1"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1144,7 +1144,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (20, 6, 8, 6, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.11.0", [], 20)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.11.1", [], 20)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1996,7 +1996,7 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.11.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.11.1", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2026,7 +2026,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.11.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.11.1", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -2298,3 +2298,64 @@ def test_texto_para_analise_nao_se_aprova_nem_vai_ao_site_e_a_idade_nao_passa_ao
         assert velha not in {r[0] for r in limpo.execute("select id from radar_v_fila").fetchall()}
     finally:
         limpo.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(antes),))
+
+
+# ------------------------------------------------ v0.11.1: boletim não oficial nunca esconde a captura oficial
+def _boletim(db):
+    return db.execute("""insert into radar_fontes (slug, nome, orgao, oficial, tipo_coletor, url)
+                         values ('teste-boletim', 'Boletim', 'Consultoria', false, 'rss', 'https://boletim.exemplo/') returning id""").fetchone()[0]
+
+
+def _cap_em(db, slug, url, h, dup=None):
+    return db.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo, duplicata_de)
+                         select id, %s, 'Prazo do Simples prorrogado', %s, %s from radar_fontes where slug = %s returning id""",
+                      (url, h, dup, slug)).fetchone()[0]
+
+
+def test_captura_oficial_nunca_fica_atras_de_boletim_nao_oficial(limpo):
+    _boletim(limpo)
+    dup = lambda i: limpo.execute("select duplicata_de from radar_capturas where id = %s", (i,)).fetchone()[0]
+    # boletim chegou antes; o robô (versão antiga) grava a oficial como repetição dele: o banco inverte
+    b1 = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=1", "h1")
+    b1r = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=1b", "h1x", dup=b1)
+    o1 = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o1", "h1", dup=b1)
+    assert (dup(o1), dup(b1), dup(b1r)) == (None, o1, o1)
+    # oficial grava sem repetição, mas o boletim com o mesmo título estava na fila: vai para trás dela
+    b2 = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=2", "h2")
+    o2 = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o2", "h2")
+    assert (dup(o2), dup(b2)) == (None, o2)
+    # boletim que chega depois da oficial entra como repetição dela
+    o3 = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o3", "h3")
+    b3 = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=3", "h3")
+    assert (dup(o3), dup(b3)) == (None, o3)
+    # boletim que já virou assunto não sai do lugar; a oficial fica com cartão próprio
+    b4 = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=4", "h4")
+    with como("authenticated", EDITOR) as c:
+        c.execute("select radar_abrir_assunto(%s)", (b4,))
+    o4 = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o4", "h4", dup=b4)
+    assert (dup(o4), dup(b4)) == (None, None)
+    # oficial repetição de oficial continua valendo
+    o5 = _cap_em(limpo, "rfb-normas", "https://www.gov.br/receitafederal/o5", "h5", dup=o3)
+    assert dup(o5) == o3
+    principais = {r[0] for r in limpo.execute("select id from radar_v_fila where principal").fetchall()}
+    assert {o1, o2, o3, o4} <= principais and not {b1, b2, b3} & principais
+
+
+def test_ia_que_junta_oficial_a_boletim_poe_o_boletim_atras_da_oficial(limpo):
+    _boletim(limpo)
+    b = _cap_em(limpo, "teste-boletim", "https://boletim.exemplo/?radar=9", "h9")
+    o = _cap_em(limpo, "rfb-noticias", "https://www.gov.br/receitafederal/o9", "outro-titulo")
+    with como("service_role") as c:
+        r = c.execute("select radar_gravar_avaliacao_ia(%s::jsonb)", (json.dumps([{"id": o, "nota": 8, "igual_a": b}]),)).fetchone()[0]
+    assert r["gravadas"] == 1 and r["repetidas"] == 0
+    assert limpo.execute("select id, duplicata_de from radar_capturas order by id").fetchall() == [(b, o), (o, None)]
+
+
+def test_consumo_de_ia_do_mes_conta_o_mes_de_brasilia(limpo):
+    limpo.execute("insert into radar_ia_uso (acao, modelo, tokens_entrada) values ('gerar', 'm', 100), ('gerar', 'm', 7)")
+    limpo.execute("""update radar_ia_uso set em = (date_trunc('month', now() at time zone 'America/Sao_Paulo')
+                                                   + case when tokens_entrada = 100 then interval '30 minutes' else interval '-2 hours' end)
+                                                  at time zone 'America/Sao_Paulo'""")     # o registro sempre grava "agora"
+    # 22h do último dia do mês passado em Brasília já é dia 1º em UTC: não entra no mês
+    with como("authenticated", EDITOR) as c:
+        assert c.execute("select tokens from radar_v_ia_mes").fetchone()[0] == 100

@@ -282,7 +282,7 @@ def inicio_do_dia(agora: datetime) -> datetime:
 
 
 def executar(banco: Banco, token: str, url: str, modelo: str = MODELO_PADRAO, agora: datetime | None = None,
-             sessao: requests.Session | None = None) -> dict:
+             sessao: requests.Session | None = None, tempo_total: float | None = None) -> dict:
     resumo = {"feitos": [], "erro": None, "pulado": None, "puladas": []}
     cfg = configuracao(banco)
     if not cfg["ligado"] or cfg["por_dia"] == 0:
@@ -301,7 +301,7 @@ def executar(banco: Banco, token: str, url: str, modelo: str = MODELO_PADRAO, ag
     sessao = sessao or requests.Session()
     inicio = time.monotonic()
     for cand in candidatas:
-        if len(resumo["feitos"]) >= vagas or time.monotonic() - inicio > TEMPO_TOTAL:
+        if len(resumo["feitos"]) >= vagas or time.monotonic() - inicio > (TEMPO_TOTAL if tempo_total is None else tempo_total):
             break                                            # o resto fica para a próxima coleta
         try:
             grupo = banco._pedir("GET", "radar_capturas", params={

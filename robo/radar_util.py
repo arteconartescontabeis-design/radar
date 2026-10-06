@@ -12,7 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from bs4 import BeautifulSoup
 
-VERSAO = "0.11.0"
+VERSAO = "0.11.1"
 AGENTE = f"ArteconRadar/{VERSAO} (+https://www.artecon.cnt.br; monitoramento de fontes oficiais)"
 
 MESES = {
@@ -58,7 +58,7 @@ def hash_titulo(titulo: str) -> str:
 
 
 def _data_valida(ano: int, mes: int, dia: int) -> date | None:
-    if not 1990 <= ano <= date.today().year + 1:   # "Lei 9999-12-31" não é data
+    if not 1990 <= ano <= hoje_brasilia().year + 1:   # "Lei 9999-12-31" não é data
         return None
     try:
         return date(ano, mes, dia)

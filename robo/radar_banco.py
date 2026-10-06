@@ -80,8 +80,10 @@ class Banco:
         if hash_conteudo:
             filtros.append(f"hash_conteudo.eq.{hash_conteudo}")
         linhas = self._pedir("GET", "radar_capturas", params={
-            "select": "id", "fonte_id": f"neq.{fonte_id}", "duplicata_de": "is.null",
-            "or": "(" + ",".join(filtros) + ")", "order": "id", "limit": "1"})
+            "select": "id,radar_fontes(oficial)", "fonte_id": f"neq.{fonte_id}", "duplicata_de": "is.null",
+            "or": "(" + ",".join(filtros) + ")", "order": "id", "limit": "20"})
+        # v0.11.1: a origem preferida é a de fonte oficial (o banco não deixa uma oficial ficar atrás de um boletim)
+        linhas.sort(key=lambda l: not (l.get("radar_fontes") or {}).get("oficial"))
         return linhas[0]["id"] if linhas else None
 
     def gravar_captura(self, registro: dict) -> dict | None:
