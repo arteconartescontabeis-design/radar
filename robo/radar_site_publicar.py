@@ -62,16 +62,20 @@ def _celulas(linha: str) -> list[str]:
     return [p.replace("\\|", "|").strip() for p in re.split(r"(?<!\\)\|", t)]
 
 
+# v0.12.0: o texto da notícia vai justificado (como na prévia e no "Copiar texto"); os créditos continuam à direita
+JUSTIFICADO = "text-align:justify"
+
+
 def para_html(corpo: str, autor: str | None = None, fonte: str | None = None, fonte_url: str | None = None) -> str:
     """A mesma formatação da tela ("## " subtítulo, "- " lista, **negrito**, linhas com "|" tabela) e os créditos no fim."""
     saida, paragrafo, lista, tabela = [], [], [], []
 
     def fechar():
         if paragrafo:
-            saida.append("<p>" + "<br>".join(_inline(l) for l in paragrafo) + "</p>")
+            saida.append(f'<p style="{JUSTIFICADO}">' + "<br>".join(_inline(l) for l in paragrafo) + "</p>")
             paragrafo.clear()
         if lista:
-            saida.append("<ul>" + "".join(f"<li>{_inline(i)}</li>" for i in lista) + "</ul>")
+            saida.append("<ul>" + "".join(f'<li style="{JUSTIFICADO}">{_inline(i)}</li>' for i in lista) + "</ul>")
             lista.clear()
         if tabela:
             cab, *resto = tabela

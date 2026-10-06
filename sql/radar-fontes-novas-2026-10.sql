@@ -9,7 +9,7 @@
 -- (servem de alerta e pauta, não de fundamentação).
 --
 -- A fonte "ITC Consultoria (e-mail)" não é visitada pelo robô (config.origem = email):
--- as capturas dela são gravadas pela rotina diária que lê o boletim no e-mail.
+-- as capturas dela são gravadas pela função radar-itc, que lê o boletim no e-mail (v0.12.0; antes, uma rotina diária).
 -- =====================================================================
 
 insert into public.radar_fontes (slug, nome, orgao, abrangencia, oficial, ativo, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
@@ -55,7 +55,7 @@ exception when others then
 end $$;
 
 create or replace function public.radar_receber_email(p_fonte text, p_itens jsonb) returns jsonb
-language plpgsql set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
 declare
   v_fonte bigint; v_url_base text; v_recebidos int; v_novos int;
 begin
@@ -98,6 +98,8 @@ begin
   return jsonb_build_object('recebidos', v_recebidos, 'novos', v_novos, 'ja_existiam', v_recebidos - v_novos);
 end $$;
 revoke all on function public.radar_receber_email(text, jsonb) from public, anon, authenticated, service_role;
+-- v0.12.0: a função radar-itc (Microsoft Graph) grava pelo papel do robô
+grant execute on function public.radar_receber_email(text, jsonb) to service_role;
 
 select slug, nome, ativo, oficial from public.radar_fontes
  where slug in ('dou-destaques','econet-blog','portalcontabilsc-noticias','dou-inlabs','itc-email')

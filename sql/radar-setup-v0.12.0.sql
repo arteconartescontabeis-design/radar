@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.11.1.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.12.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.11.1.sql
+-- Reversão: radar-reversao-v0.12.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.11.1', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.12.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -191,6 +191,10 @@ create table if not exists public.radar_assuntos (
   atualizado_em         timestamptz not null default now()
 );
 create index if not exists radar_assuntos_status_idx on public.radar_assuntos (status, relevancia);
+-- v0.12.0: o administrador pode liberar a publicação no site sem a fundamentação oficial (com o motivo, que fica registrado)
+alter table public.radar_assuntos add column if not exists liberado_sem_base_por    uuid references auth.users(id) on delete set null;
+alter table public.radar_assuntos add column if not exists liberado_sem_base_em     timestamptz;
+alter table public.radar_assuntos add column if not exists liberado_sem_base_motivo text check (length(liberado_sem_base_motivo) between 10 and 500);
 
 create table if not exists public.radar_assunto_capturas (
   assunto_id  bigint not null references public.radar_assuntos(id) on delete cascade,
@@ -255,6 +259,19 @@ create table if not exists public.radar_ia_uso (
   em              timestamptz not null default now()
 );
 create index if not exists radar_ia_uso_em_idx on public.radar_ia_uso (em desc);
+
+-- v0.12.0: boletins da ITC já lidos pela função radar-itc (Microsoft Graph). Só o identificador do e-mail e contagens:
+-- o conteúdo do boletim (pago) fica só nas capturas, como antes.
+create table if not exists public.radar_itc_lidos (
+  message_id   text        primary key check (length(message_id) between 1 and 400),
+  assunto      text        check (length(assunto) <= 200),
+  recebido_em  timestamptz,
+  lido_em      timestamptz not null default now(),
+  materias     int         not null default 0 check (materias >= 0),
+  novas        int         not null default 0 check (novas >= 0),
+  tentativas   int         not null default 1 check (tentativas >= 1)   -- leituras sem matéria (ou com erro): desiste na 3ª
+);
+alter table public.radar_itc_lidos add column if not exists tentativas int not null default 1 check (tentativas >= 1);
 -- v0.6.0: a ilustração de capa por IA também é registrada no consumo
 alter table public.radar_ia_uso drop constraint if exists radar_ia_uso_acao_check;
 alter table public.radar_ia_uso add constraint radar_ia_uso_acao_check check (acao in ('classificar','fundamentar','gerar','ilustrar'));
@@ -820,6 +837,10 @@ declare
   v_situacao text;
 begin
   select a.situacao_confirmacao into v_situacao from public.radar_assuntos a where a.id = p_assunto;
+  -- v0.12.0: liberado pelo administrador ("Publicar mesmo assim"): a exigência de fundamentação não vale para este assunto
+  if exists (select 1 from public.radar_assuntos a where a.id = p_assunto and a.liberado_sem_base_em is not null) then
+    return null;
+  end if;
   if v_situacao is distinct from 'confirmado_oficialmente' then
     return format('RADAR031: o assunto não está CONFIRMADO OFICIALMENTE (situação atual: %s)',
                   coalesce(v_situacao, 'inexistente'));
@@ -834,6 +855,44 @@ begin
     return 'RADAR032: FUNDAMENTAÇÃO NÃO CONFIRMADA — necessária análise técnica (nenhum trecho conferido em fonte oficial)';
   end if;
   return null;
+end $$;
+
+-- v0.12.0: "Publicar mesmo assim" — só o administrador, com motivo. p_motivo nulo desfaz a liberação.
+create or replace function public.radar_liberar_sem_fundamentacao(p_assunto bigint, p_motivo text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR120: só o administrador libera a publicação sem a fundamentação oficial' using errcode = '42501';
+  end if;
+  if p_motivo is not null and length(btrim(p_motivo)) not between 10 and 500 then
+    raise exception 'RADAR121: escreva o motivo da liberação (de 10 a 500 caracteres)' using errcode = 'P0001';
+  end if;
+  perform set_config('radar.liberando', '1', true);
+  update public.radar_assuntos
+     set liberado_sem_base_por = case when p_motivo is null then null else auth.uid() end,
+         liberado_sem_base_em = case when p_motivo is null then null else now() end,
+         liberado_sem_base_motivo = nullif(btrim(p_motivo), '')
+   where id = p_assunto;
+  if not found then
+    raise exception 'RADAR122: assunto não encontrado' using errcode = 'P0001';
+  end if;
+  perform set_config('radar.liberando', '', true);
+end $$;
+
+-- a liberação só muda pela função acima (a equipe edita o assunto, mas não esses campos)
+create or replace function public.radar_fn_assunto_liberacao() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(current_setting('radar.liberando', true), '') = '1' then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    new.liberado_sem_base_por := null; new.liberado_sem_base_em := null; new.liberado_sem_base_motivo := null;
+  else
+    new.liberado_sem_base_por := public.radar_manter_usuario(old.liberado_sem_base_por, new.liberado_sem_base_por);
+    new.liberado_sem_base_em := old.liberado_sem_base_em; new.liberado_sem_base_motivo := old.liberado_sem_base_motivo;
+  end if;
+  return new;
 end $$;
 
 -- Cadastro de fontes pela tela: formato mínimo. Só é conferido quando o cadastro muda — a atualização
@@ -1592,6 +1651,104 @@ begin
   return null;
 end $$;
 
+-- v0.12.0: boletim por e-mail. A função radar_receber_email (antes só em radar-fontes-novas-2026-10.sql) passa a
+-- fazer parte do setup e a rodar com o dono (a função radar-itc grava pelo papel do robô).
+-- Recebe as matérias de um boletim lido no e-mail (usada pela rotina diária da ITC).
+-- p_itens: [{"titulo": "...", "data": "AAAA-MM-DD", "area": "...", "texto": "...", "assunto_email": "..."}, ...]
+-- Cada matéria vira uma captura da fonte; a mesma manchete em dois boletins (ITCNET Mail e
+-- Legislação & Tribunais) entra uma vez só. Devolve quantas entraram e quantas já existiam.
+create or replace function public.radar_data_valida(p text) returns boolean
+language plpgsql immutable set search_path = public as $$
+begin
+  perform p::date;
+  return true;
+exception when others then
+  return false;
+end $$;
+
+create or replace function public.radar_receber_email(p_fonte text, p_itens jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_fonte bigint; v_url_base text; v_recebidos int; v_novos int;
+begin
+  select f.id, rtrim(f.url, '/') into v_fonte, v_url_base
+    from public.radar_fontes f where f.slug = p_fonte and f.config->>'origem' = 'email';
+  if v_fonte is null then
+    raise exception 'RADAR095: fonte de e-mail "%" não cadastrada (rode sql/radar-fontes-novas-2026-10.sql)', p_fonte using errcode = 'P0001';
+  end if;
+  if jsonb_typeof(p_itens) is distinct from 'array' then
+    raise exception 'RADAR096: as matérias precisam vir numa lista JSON' using errcode = 'P0001';
+  end if;
+  with itens as (
+    select btrim(i.titulo) as titulo, i.data, nullif(btrim(i.area), '') as area,
+           nullif(btrim(i.texto), '') as texto, i.assunto_email,
+           -- o mesmo cálculo do robô (radar_util.hash_titulo): sem acento, sem pontuação, minúsculas
+           encode(sha256(convert_to(btrim(regexp_replace(regexp_replace(lower(translate(btrim(i.titulo),
+             'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑºª¹²³', 'aaaaaeeeeiiiiooooouuuucnAAAAAEEEEIIIIOOOOOUUUUCNoa123')),
+             '[^a-z0-9 ]+', ' ', 'g'), '\s+', ' ', 'g')), 'UTF8')), 'hex') as h
+      from (select j.titulo, j.area, j.texto, j.assunto_email,
+                   -- data só no formato AAAA-MM-DD e válida; o resto vira "sem data" (um item ruim não derruba o boletim)
+                   case when j.data ~ '^\d{4}-\d{2}-\d{2}$' and public.radar_data_valida(j.data) then j.data::date end as data
+              from jsonb_to_recordset(p_itens) as j(titulo text, data text, area text, texto text, assunto_email text)) i
+     where length(btrim(coalesce(i.titulo, ''))) between 5 and 300
+       and (i.data is null or i.data <= current_date + 1)
+  ), unicos as (
+    select distinct on (h) * from itens order by h, length(coalesce(texto, '')) desc
+  ), gravados as (
+    insert into public.radar_capturas (fonte_id, url, titulo, data_publicacao, resumo_fonte, texto, hash_titulo, metadados, verificado_em)
+    select v_fonte, v_url_base || '/?radar=' || left(u.h, 16), u.titulo, u.data, u.area, u.texto, u.h,
+           jsonb_build_object('origem', 'email', 'texto_parcial', true, 'area', u.area, 'assunto_email', u.assunto_email),
+           now()
+      from unicos u
+    on conflict (fonte_id, url) do nothing
+    returning 1
+  )
+  select (select count(*) from unicos), (select count(*) from gravados) into v_recebidos, v_novos;
+  -- a tela mostra a fonte como funcionando (o mesmo campo que o robô atualiza nas outras fontes)
+  update public.radar_fontes set ultimo_sucesso_em = now(), ultimo_erro = null, falhas_consecutivas = 0
+   where id = v_fonte;
+  return jsonb_build_object('recebidos', v_recebidos, 'novos', v_novos, 'ja_existiam', v_recebidos - v_novos);
+end $$;
+
+-- v0.12.0: quais destes e-mails a função radar-itc já leu (para não gastar IA de novo com o mesmo boletim).
+-- Lido = trouxe matérias, ou já foi tentado 3 vezes sem resultado (a IA ou a leitura falharam): aí desiste.
+create or replace function public.radar_itc_ja_lidos(p_ids text[]) returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(l.message_id), '{}') from public.radar_itc_lidos l
+   where l.message_id = any(coalesce(p_ids, '{}')) and (l.materias > 0 or l.tentativas >= 3);
+$$;
+
+-- p_materias = 0: tentativa sem resultado (conta mais uma). Com matérias, fica registrado de vez.
+create or replace function public.radar_itc_marcar_lido(p_id text, p_assunto text, p_recebido timestamptz, p_materias int, p_novas int)
+returns void language sql security definer set search_path = public as $$
+  insert into public.radar_itc_lidos as l (message_id, assunto, recebido_em, materias, novas)
+  values (p_id, left(p_assunto, 200), p_recebido, greatest(coalesce(p_materias, 0), 0), greatest(coalesce(p_novas, 0), 0))
+  on conflict (message_id) do update
+     set tentativas = l.tentativas + case when excluded.materias > 0 then 0 else 1 end,
+         materias = greatest(l.materias, excluded.materias), novas = l.novas + excluded.novas, lido_em = now()
+   where l.materias = 0;
+$$;
+
+-- a falha da leitura aparece na aba Fontes (só o motivo; o conteúdo do boletim nunca); a próxima leitura boa apaga
+create or replace function public.radar_itc_registrar_falha(p_motivo text) returns void
+language sql security definer set search_path = public as $$
+  update public.radar_fontes set ultimo_erro = left('Leitura do boletim: ' || coalesce(p_motivo, 'falhou'), 500), ultima_falha_em = now()
+   where slug = 'itc-email';
+$$;
+
+-- v0.12.0: a agenda do banco (pg_cron, sql/radar-itc-agenda.sql) chama a função radar-itc com uma chave guardada no Vault.
+-- Sem o Vault (ou sem a chave), nunca confere.
+create or replace function public.radar_itc_conferir_agenda(p_chave text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare v_certa text;
+begin
+  if length(coalesce(p_chave, '')) < 32 then return false; end if;
+  execute 'select decrypted_secret from vault.decrypted_secrets where name = ''radar_itc_agenda'' limit 1' into v_certa;
+  return v_certa is not null and length(v_certa) >= 32 and v_certa = p_chave;
+exception when others then
+  return false;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- 3. GATILHOS
 -- ---------------------------------------------------------------------
@@ -1602,6 +1759,10 @@ create trigger radar_tg_fontes_atualizado before update on public.radar_fontes
 drop trigger if exists radar_tg_assuntos_atualizado on public.radar_assuntos;
 create trigger radar_tg_assuntos_atualizado before update on public.radar_assuntos
   for each row execute function public.radar_fn_atualizado_em();
+
+drop trigger if exists radar_tg_assunto_liberacao on public.radar_assuntos;
+create trigger radar_tg_assunto_liberacao before insert or update on public.radar_assuntos
+  for each row execute function public.radar_fn_assunto_liberacao();
 
 drop trigger if exists radar_tg_conteudos_atualizado on public.radar_conteudos;
 create trigger radar_tg_conteudos_atualizado before update on public.radar_conteudos
@@ -1780,7 +1941,9 @@ select f.*
 drop view if exists public.radar_v_assuntos;
 create view public.radar_v_assuntos
 with (security_invoker = true) as
-select a.*,
+-- colunas listadas (não a.*): coluna nova em radar_assuntos (ex.: a liberação da v0.12.0) não muda esta lista
+select a.id, a.titulo, a.categoria, a.subcategoria, a.abrangencia, a.relevancia, a.situacao_confirmacao, a.status,
+       a.resumo, a.publico_afetado, a.responsavel, a.criado_em, a.atualizado_em,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id) as evidencias,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id and e.trecho_conferido) as evidencias_conferidas,
        (select count(*) from public.radar_conteudos c where c.assunto_id = a.id) as conteudos,
@@ -1836,11 +1999,11 @@ select d.id, d.conteudo_id, d.url, d.publicado_em, d.observacao, d.titulo, d.reg
                  and n.titulo = c.titulo and n.corpo = c.corpo) as versao_anterior,
        d.fundamentacao,
        -- a base que sustentava o registro deixou de existir (assunto desconfirmado ou sem trecho conferido em fonte oficial)
-       (a.situacao_confirmacao <> 'confirmado_oficialmente' or not exists (
+       (a.liberado_sem_base_em is null and (a.situacao_confirmacao <> 'confirmado_oficialmente' or not exists (
           select 1 from public.radar_evidencias e
           join public.radar_capturas k on k.id = e.captura_id
           join public.radar_fontes   f on f.id = k.fonte_id
-          where e.assunto_id = c.assunto_id and e.trecho_conferido and f.oficial)) as base_caiu
+          where e.assunto_id = c.assunto_id and e.trecho_conferido and f.oficial))) as base_caiu
 from public.radar_divulgacoes d
 join public.radar_conteudos c on c.id = d.conteudo_id
 join public.radar_assuntos  a on a.id = c.assunto_id;
@@ -1855,7 +2018,7 @@ begin
       'radar_execucoes','radar_capturas','radar_capturas_versoes','radar_normas','radar_assuntos',
       'radar_assunto_capturas','radar_evidencias','radar_conteudos',
       'radar_auditoria','radar_ia_uso','radar_imagens','radar_config',
-      'radar_informativos','radar_informativo_itens','radar_divulgacoes','radar_site_envios'] loop
+      'radar_informativos','radar_informativo_itens','radar_divulgacoes','radar_site_envios','radar_itc_lidos'] loop
     execute format('alter table public.%I enable row level security', t);
     -- parte do zero: o Supabase concede tudo a esses papéis por padrão
     execute format('revoke all on public.%I from public, anon, authenticated, service_role', t);
@@ -1891,6 +2054,7 @@ grant select on public.radar_v_saude_fontes, public.radar_v_fila, public.radar_v
 revoke insert, update, delete on public.radar_ia_uso from authenticated;
 -- v0.10.0: autorizações de publicação no site: a equipe só lê; quem grava são radar_autorizar_site/radar_cancelar_site e o robô
 revoke insert, update, delete on public.radar_site_envios from authenticated;
+revoke insert, update, delete on public.radar_itc_lidos from authenticated;   -- v0.12.0: só a função radar-itc grava
 
 -- sequências das colunas identity: ninguém precisa de acesso direto
 do $$
@@ -1930,6 +2094,13 @@ grant execute on function public.radar_autorizar_site(bigint, text, timestamptz)
 grant execute on function public.radar_cancelar_site(bigint) to authenticated;
 -- o robô confere de novo as exigências do assunto logo antes de enviar ao site
 grant execute on function public.radar_pendencia_assunto(bigint) to service_role;
+grant execute on function public.radar_liberar_sem_fundamentacao(bigint, text) to authenticated;   -- a função confere que é o administrador
+-- v0.12.0: a função radar-itc grava o boletim pelo papel do robô
+grant execute on function public.radar_receber_email(text, jsonb) to service_role;
+grant execute on function public.radar_itc_ja_lidos(text[]) to service_role;
+grant execute on function public.radar_itc_marcar_lido(text, text, timestamptz, int, int) to service_role;
+grant execute on function public.radar_itc_conferir_agenda(text) to service_role;
+grant execute on function public.radar_itc_registrar_falha(text) to service_role;
 
 -- perfis
 drop policy if exists radar_perfis_sel on public.radar_perfis;
@@ -2014,6 +2185,9 @@ drop policy if exists radar_ia_uso_ins on public.radar_ia_uso;
 -- auditoria e instalações: só admin lê; ninguém grava pela API
 drop policy if exists radar_auditoria_sel on public.radar_auditoria;
 create policy radar_auditoria_sel on public.radar_auditoria for select to authenticated
+  using ((select public.radar_papel()) = 'admin');
+drop policy if exists radar_itc_lidos_sel on public.radar_itc_lidos;
+create policy radar_itc_lidos_sel on public.radar_itc_lidos for select to authenticated
   using ((select public.radar_papel()) = 'admin');
 drop policy if exists radar_instalacoes_sel on public.radar_instalacoes;
 create policy radar_instalacoes_sel on public.radar_instalacoes for select to authenticated
@@ -2102,7 +2276,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 20 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.11.1).
+-- Esperado: 21 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.12.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

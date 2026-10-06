@@ -218,7 +218,9 @@ def test_envio_interrompido_so_procura_e_depois_pede_conferencia(cenario):
 
 def test_texto_vira_html_do_site():
     h = pub.para_html("Abre com **negrito** e <script>x</script>.\n\n## Prazos\n- **Até 31/01**: opção\n\n| A | B |\n|---|---|\n| a \\| b | c |")
-    assert "&lt;script&gt;" in h and "<h2>Prazos</h2>" in h and "<li><strong>Até 31/01</strong>: opção</li>" in h
+    assert "&lt;script&gt;" in h and "<h2>Prazos</h2>" in h and '<li style="text-align:justify"><strong>Até 31/01</strong>: opção</li>' in h
+    assert '<p style="text-align:justify">Abre com <strong>negrito</strong>' in h        # v0.12.0: texto justificado
+    assert 'text-align:right' in pub.para_html("Texto.", autor="Equipe Artecon")           # créditos continuam à direita
     assert "<td>a | b</td><td>c</td>" in h and "---" not in h
     assert pub.resumo("## Título\n" + "palavra " * 60).endswith("…") and len(pub.resumo("x " * 200)) <= 156
 

@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.11.1.sql
--- DESFAZ a instalação do radar-setup-v0.11.1.sql.
+-- RADAR ARTECON — radar-reversao-v0.12.0.sql
+-- DESFAZ a instalação do radar-setup-v0.12.0.sql.
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
 -- =====================================================================
@@ -21,7 +21,17 @@ drop view if exists public.radar_v_assuntos;
 drop view if exists public.radar_v_fila;
 drop view if exists public.radar_v_saude_fontes;
 
+-- v0.12.0: a agenda da leitura do boletim da ITC (pg_cron), se existir
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'cron') then
+    perform cron.unschedule(j.jobid) from cron.job j where j.jobname like 'radar-itc%';
+  end if;
+exception when others then null;
+end $$;
+
 drop table if exists
+  public.radar_itc_lidos,
   public.radar_site_envios,
   public.radar_informativo_itens,
   public.radar_informativos,
@@ -104,6 +114,12 @@ drop function if exists public.radar_cancelar_site(bigint);
 drop function if exists public.radar_fn_conteudo_envio();
 drop function if exists public.radar_receber_email(text, jsonb);
 drop function if exists public.radar_data_valida(text);
+drop function if exists public.radar_itc_ja_lidos(text[]);
+drop function if exists public.radar_itc_marcar_lido(text, text, timestamptz, int, int);
+drop function if exists public.radar_itc_conferir_agenda(text);
+drop function if exists public.radar_itc_registrar_falha(text);
+drop function if exists public.radar_liberar_sem_fundamentacao(bigint, text);
+drop function if exists public.radar_fn_assunto_liberacao() cascade;
 
 commit;
 
