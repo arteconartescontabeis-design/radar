@@ -39,7 +39,7 @@ class Parada(Exception):
 
 
 def mesmo_site(url: str) -> bool:
-    return (urlsplit(url).hostname or "").removeprefix("www.") == "artecon.cnt.br"
+    return (urlsplit(url).hostname or "").removeprefix("www.") == (urlsplit(BASE).hostname or "").removeprefix("www.")
 
 
 def formularios(html: str, base: str) -> list[dict]:
