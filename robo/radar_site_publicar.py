@@ -292,12 +292,15 @@ class Publicador:
         envios = self.banco._pedir("GET", "radar_site_envios", params={
             "select": "id,conteudo_id,categoria,conteudo_lido_em,situacao,enviado_em", "situacao": "in.(autorizado,enviando)",
             "order": "id"}) or []
+        fora = False
         for envio in envios:
+            if fora and envio["situacao"] == "autorizado":
+                continue                                    # site fora do ar: as autorizadas esperam a próxima rodada
             try:
                 self.um(envio)
             except SiteFora as e:                           # nada foi enviado: continua autorizado, tenta na próxima rodada
                 self.feito.append(f"envio {envio['id']}: {e}; tenta de novo na próxima rodada")
-                break
+                fora = True
             except admin.Parada as e:                       # nada foi enviado: pode autorizar de novo depois de resolver
                 self.feito.append(f"envio {envio['id']}: parou")
                 self.marcar(envio, envio["situacao"], situacao="erro", erro=f"Não publicado: {e}.")

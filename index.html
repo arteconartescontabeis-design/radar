@@ -1066,7 +1066,7 @@ async function telaAssunto(id){
   const envioDe = c => envios.find(e => e.conteudo_id === c.id);                                         // a autorização mais recente
   const aguardando = faltamRegistrar.filter(c => ["autorizado","enviando"].includes(envioDe(c)?.situacao));
   const falhou = faltamRegistrar.find(c => envioDe(c)?.situacao === "erro");
-  const semRegistro = faltamRegistrar.find(c => envioDe(c)?.situacao === "publicado");     // o robô publicou, mas o registro não entrou
+  const semRegistro = faltamRegistrar.find(c => envioDe(c)?.situacao === "publicado" && !pubs.some(p => p.conteudo_id === c.id));     // o robô publicou, mas o registro não entrou
   const passos = [
     ["Conferir a fonte", pronto, pronto ? "fundamentação confirmada" : !temTexto ? "sem texto oficial" : conferidasOficiais ? "falta confirmar" : "falta o trecho que comprova"],
     ["Escrever", cont.length > 0, cont.length ? cont.length + " escrito(s)" : "falta"],
@@ -1734,7 +1734,8 @@ function devolverDigitado(guardados){
     const f = [...document.querySelectorAll("main form[data-form][data-id]")].find(x => x.dataset.form === g.form && x.dataset.id === g.id);
     if(!f || f === g.el) continue;                       // não foi redesenhado: o que está nele agora é o que vale (ex.: sugestão da IA)
     for(const [nome, valor] of g.campos){ const c = f.elements[nome]; if(!c || c.disabled) continue;
-      if(c.type === "checkbox") c.checked = valor; else c.value = valor; }
+      if(c.type === "checkbox") c.checked = valor;
+      else if(String(valor).trim() !== String(c.value).trim()) c.value = valor; }     // o que foi salvo (sem os espaços das pontas) não volta a parecer "não salvo"
   }
 }
 /* formulário aberto na hora (evidência, texto oficial), preenchido e escondido em outra etapa: não dá para recriá-lo depois do redesenho */
