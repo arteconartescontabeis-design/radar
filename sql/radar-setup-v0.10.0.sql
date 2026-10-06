@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.9.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.10.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.9.0.sql
+-- Reversão: radar-reversao-v0.10.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.9.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.10.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -330,6 +330,34 @@ create index if not exists radar_divulgacoes_conteudo_idx on public.radar_divulg
 -- fotografia das evidências conferidas em fonte oficial no momento do registro
 alter table public.radar_divulgacoes add column if not exists fundamentacao jsonb not null default '[]'::jsonb;
 alter table public.radar_divulgacoes add column if not exists conteudo_lido_em timestamptz;
+
+-- v0.10.0: títulos alternativos sugeridos pela IA (a pessoa escolhe com um clique na tela do assunto)
+alter table public.radar_conteudos add column if not exists titulos_sugeridos jsonb not null default '[]'::jsonb;
+
+-- v0.10.0: autorização de publicação no site da Artecon. O administrador autoriza na tela do assunto; o robô
+-- (workflow "Radar — publicar no site") cadastra a notícia no painel do site — que publica na hora — e registra o
+-- link em radar_divulgacoes. Nada vai ao ar sem esta autorização. O robô nunca envia duas vezes a mesma autorização:
+-- passa para "enviando" antes de enviar e, se cair no meio, só confere no site se a notícia saiu.
+create table if not exists public.radar_site_envios (
+  id               bigint generated always as identity primary key,
+  conteudo_id      bigint      not null references public.radar_conteudos(id) on delete restrict,
+  categoria        text        not null check (length(categoria) between 2 and 80),
+  conteudo_lido_em timestamptz not null,          -- versão do texto que foi vista e autorizada
+  situacao         text        not null default 'autorizado'
+                   check (situacao in ('autorizado','enviando','publicado','erro','cancelado')),
+  autorizado_por   uuid        references auth.users(id) on delete set null,
+  autorizado_em    timestamptz not null default now(),
+  cancelado_por    uuid        references auth.users(id) on delete set null,
+  cancelado_em     timestamptz,
+  enviado_em       timestamptz,
+  url              text        check (url is null or (url ~ '^https?://[!-~]+$' and length(url) <= 500)),
+  erro             text        check (length(erro) <= 1000),
+  atualizado_em    timestamptz not null default now()
+);
+create index if not exists radar_site_envios_conteudo_idx on public.radar_site_envios (conteudo_id);
+-- uma autorização em aberto por conteúdo
+create unique index if not exists radar_site_envios_aberto_uk on public.radar_site_envios (conteudo_id)
+  where situacao in ('autorizado','enviando');
 
 -- v0.8.0: o Diário Oficial da União pelo INLABS é um tipo de leitura a mais
 alter table public.radar_fontes drop constraint if exists radar_fontes_tipo_coletor_check;
@@ -978,6 +1006,82 @@ begin
   return new;
 end $$;
 
+-- v0.10.0: o administrador autoriza a publicação no site. Valem as mesmas exigências do registro (conteúdo aprovado,
+-- assunto confirmado oficialmente, trecho conferido em fonte oficial) e o texto tem de ser o que estava na tela.
+create or replace function public.radar_autorizar_site(p_conteudo bigint, p_categoria text, p_lido timestamptz)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare
+  v_c public.radar_conteudos%rowtype;
+  v_pendencia text;
+  v_id bigint;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR110: só o administrador autoriza a publicação no site' using errcode = '42501';
+  end if;
+  select * into v_c from public.radar_conteudos c where c.id = p_conteudo for update;
+  if v_c.id is null then
+    raise exception 'RADAR111: conteúdo não encontrado' using errcode = 'P0001';
+  end if;
+  if v_c.status is distinct from 'aprovado' then
+    raise exception 'RADAR112: só conteúdo aprovado pode ser publicado no site' using errcode = 'P0001';
+  end if;
+  if v_c.fora_do_site then
+    raise exception 'RADAR113: este conteúdo está marcado como "não vai ao site"' using errcode = 'P0001';
+  end if;
+  if p_lido is distinct from v_c.atualizado_em then
+    raise exception 'RADAR114: o conteúdo foi alterado depois que esta tela foi aberta; recarregue, confira e autorize de novo' using errcode = 'P0001';
+  end if;
+  if length(btrim(coalesce(p_categoria, ''))) not between 2 and 80 then
+    raise exception 'RADAR115: escolha a categoria do site' using errcode = 'P0001';
+  end if;
+  v_pendencia := public.radar_pendencia_assunto(v_c.assunto_id);
+  if v_pendencia is not null then
+    raise exception '%', v_pendencia using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.radar_site_envios e where e.conteudo_id = p_conteudo and e.situacao in ('autorizado','enviando')) then
+    raise exception 'RADAR116: a publicação deste conteúdo já está autorizada e aguardando o robô' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = p_conteudo)
+     or exists (select 1 from public.radar_site_envios e where e.conteudo_id = p_conteudo and e.situacao = 'publicado') then
+    raise exception 'RADAR117: este conteúdo já tem publicação registrada no site; para mudar a notícia, altere no painel do site' using errcode = 'P0001';
+  end if;
+  insert into public.radar_site_envios (conteudo_id, categoria, conteudo_lido_em, autorizado_por)
+  values (p_conteudo, btrim(p_categoria), v_c.atualizado_em, auth.uid())
+  returning id into v_id;
+  return v_id;
+end $$;
+
+-- Cancelar a autorização enquanto o robô ainda não começou a enviar.
+create or replace function public.radar_cancelar_site(p_envio bigint) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR110: só o administrador mexe na autorização de publicação' using errcode = '42501';
+  end if;
+  update public.radar_site_envios
+     set situacao = 'cancelado', cancelado_por = auth.uid(), cancelado_em = now(), atualizado_em = now()
+   where id = p_envio and situacao = 'autorizado';
+  if not found then
+    raise exception 'RADAR118: não dá mais para cancelar: o robô já começou a publicar (ou a autorização não existe)' using errcode = 'P0001';
+  end if;
+  return true;
+end $$;
+
+-- Conteúdo alterado depois de autorizado (e antes de o robô começar): a autorização cai — o que vai ao ar é só o que foi visto.
+create or replace function public.radar_fn_conteudo_envio() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.titulo is distinct from old.titulo or new.corpo is distinct from old.corpo or new.status is distinct from old.status
+     or new.imagem_id is distinct from old.imagem_id or new.autor is distinct from old.autor
+     or new.fonte_credito is distinct from old.fonte_credito or new.fora_do_site is distinct from old.fora_do_site then
+    update public.radar_site_envios
+       set situacao = 'cancelado', cancelado_em = now(), atualizado_em = now(),
+           erro = 'Autorização cancelada sozinha: o conteúdo mudou depois de autorizado. Confira e autorize de novo.'
+     where conteudo_id = new.id and situacao = 'autorizado';
+  end if;
+  return null;
+end $$;
+
 -- v0.9.0: a fila não acumula. Ao fim de cada coleta, o robô tira da triagem (como "Ignorado", em Assuntos) o que
 -- está na fila há mais de radar_config.relevancia.arquivar_dias (padrão 10; 0 desliga) e é de relevância baixa ou
 -- tem nota da IA até arquivar_nota (padrão 2). Vale o mesmo caminho do "Ignorar" (as repetições vão junto).
@@ -1404,6 +1508,10 @@ drop trigger if exists radar_tg_evidencia_conferir on public.radar_evidencias;
 create trigger radar_tg_evidencia_conferir before insert or update on public.radar_evidencias
   for each row execute function public.radar_fn_evidencia_conferir();
 
+drop trigger if exists radar_tg_conteudo_envio on public.radar_conteudos;
+create trigger radar_tg_conteudo_envio after update on public.radar_conteudos
+  for each row execute function public.radar_fn_conteudo_envio();
+
 drop trigger if exists radar_tg_conteudo_aprovacao on public.radar_conteudos;
 create trigger radar_tg_conteudo_aprovacao before insert or update on public.radar_conteudos
   for each row execute function public.radar_fn_conteudo_aprovacao();
@@ -1459,7 +1567,7 @@ declare t text;
 begin
   foreach t in array array['radar_perfis','radar_fontes','radar_normas','radar_assuntos',
                            'radar_evidencias','radar_conteudos',
-                           'radar_informativos','radar_config','radar_divulgacoes'] loop
+                           'radar_informativos','radar_config','radar_divulgacoes','radar_site_envios'] loop
     execute format('drop trigger if exists radar_tg_auditar on public.%I', t);
     execute format('create trigger radar_tg_auditar after insert or update or delete on public.%I
                     for each row execute function public.radar_fn_auditar()', t);
@@ -1614,7 +1722,7 @@ begin
       'radar_execucoes','radar_capturas','radar_capturas_versoes','radar_normas','radar_assuntos',
       'radar_assunto_capturas','radar_evidencias','radar_conteudos',
       'radar_auditoria','radar_ia_uso','radar_imagens','radar_config',
-      'radar_informativos','radar_informativo_itens','radar_divulgacoes'] loop
+      'radar_informativos','radar_informativo_itens','radar_divulgacoes','radar_site_envios'] loop
     execute format('alter table public.%I enable row level security', t);
     -- parte do zero: o Supabase concede tudo a esses papéis por padrão
     execute format('revoke all on public.%I from public, anon, authenticated, service_role', t);
@@ -1628,6 +1736,9 @@ end $$;
 grant insert, update on public.radar_execucoes, public.radar_capturas to service_role;
 -- v0.8.0: o robô registra a publicação que encontrou no site (só inclui; as regras do registro valem igual)
 grant insert on public.radar_divulgacoes to service_role;
+
+-- v0.10.0: o robô que publica no site marca o andamento de cada autorização (nunca cria nem apaga)
+grant update on public.radar_site_envios to service_role;
 grant insert, update on public.radar_assuntos, public.radar_assunto_capturas, public.radar_evidencias,
                         public.radar_conteudos, public.radar_normas to service_role;
 
@@ -1645,6 +1756,8 @@ grant select on public.radar_v_saude_fontes, public.radar_v_fila, public.radar_v
   to authenticated, service_role;
 -- uso da IA: só se consulta; quem grava é a função radar_registrar_uso_ia
 revoke insert, update, delete on public.radar_ia_uso from authenticated;
+-- v0.10.0: autorizações de publicação no site: a equipe só lê; quem grava são radar_autorizar_site/radar_cancelar_site e o robô
+revoke insert, update, delete on public.radar_site_envios from authenticated;
 
 -- sequências das colunas identity: ninguém precisa de acesso direto
 do $$
@@ -1679,6 +1792,11 @@ grant execute on function public.radar_admin_usuarios() to authenticated;
 grant execute on function public.radar_registrar_uso_ia(text, text, int, int, bigint) to authenticated;
 grant execute on function public.radar_registrar_evidencia_ia(bigint, bigint, text, text) to authenticated;
 grant execute on function public.radar_incluir_texto_oficial(bigint, bigint, text, text, date, text) to authenticated;
+-- v0.10.0: autorização de publicação no site (a função confere que é o administrador)
+grant execute on function public.radar_autorizar_site(bigint, text, timestamptz) to authenticated;
+grant execute on function public.radar_cancelar_site(bigint) to authenticated;
+-- o robô confere de novo as exigências do assunto logo antes de enviar ao site
+grant execute on function public.radar_pendencia_assunto(bigint) to service_role;
 
 -- perfis
 drop policy if exists radar_perfis_sel on public.radar_perfis;
@@ -1708,7 +1826,7 @@ create policy radar_fontes_adm on public.radar_fontes for all to authenticated
 do $$
 declare t text;
 begin
-  foreach t in array array['radar_execucoes','radar_capturas','radar_capturas_versoes'] loop
+  foreach t in array array['radar_execucoes','radar_capturas','radar_capturas_versoes','radar_site_envios'] loop
     execute format('drop policy if exists %I on public.%I', t || '_sel', t);
     execute format('create policy %I on public.%I for select to authenticated
                     using ((select public.radar_papel()) is not null)', t || '_sel', t);
@@ -1834,7 +1952,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 19 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.9.0).
+-- Esperado: 20 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.10.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

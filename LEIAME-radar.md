@@ -1,4 +1,4 @@
-# Radar Artecon — v0.9.0
+# Radar Artecon — v0.10.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,6 +12,20 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
+A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
+
+- **4 passos**: 1. Conferir a fonte (título original da captura, órgão, data e "Abrir na fonte") →
+  2. Escrever → 3. Revisar e aprovar → 4. Publicar no site, com o **próximo passo** em destaque.
+- **Quadro ao lado**: base do texto (texto oficial, trechos que comprovam, confirmação), capa e "Mais detalhes".
+- **Opções de título** sugeridas pela IA (clique para usar; "↻ Sugerir outros" pede mais) e
+  **Tamanho do texto** Curto (aviso rápido), Médio (notícia) ou Longo (artigo). A IA escreve de forma mais natural.
+- **Ver como fica no site**: a notícia como vai aparecer em artecon.cnt.br/news, com o que está na tela.
+- **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
+  e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
+
+Mudam o banco (`radar-setup-v0.10.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
+
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 
 - **Rascunhos automáticos**: o robô prepara sozinho o rascunho das notícias de topo (fonte oficial,
@@ -21,7 +35,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.10.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -33,7 +47,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.9.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.10.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -48,7 +62,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.10.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -95,8 +109,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.9.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.9.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
+| `sql/radar-setup-v0.10.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.10.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
 | `.github/workflows/` | Rotinas do GitHub Actions: diagnóstico, coleta agendada e testes. |
@@ -142,10 +156,10 @@ O caminho previsto é o INLABS (XML oficial, exige cadastro gratuito).
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.9.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.10.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
-   Esperado: 21 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão `v0.7.1`.
+   Esperado: 19 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.10.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -344,11 +358,15 @@ reescrever ou citar entre aspas) e é feita na tela: quem grava direto no banco 
 revisão, não um detector de plágio. O campo **Fonte** é preenchido só na criação do conteúdo
 (com os órgãos das capturas oficiais do assunto); capturas incluídas depois não o alteram.
 
-### Assunto por etapas (v0.7.0)
+### Assunto em 4 passos (v0.10.0; por etapas desde a v0.7.0)
 
-A tela do assunto mostra uma etapa de cada vez: **Fonte e fundamentação** (texto oficial e
-trechos), **Conteúdo** (escrever, aprovar e registrar no site) e **Classificação** (dados do
-assunto). Abre na etapa que falta; os cinco passos do alto e o "Próximo passo" trocam de etapa.
+A tela do assunto mostra um passo de cada vez: **1. Conferir a fonte** (título original, órgão, data,
+texto oficial e trechos que comprovam; botões "Buscar trecho que comprova com IA" e "Classificar com IA"),
+**2. Escrever** e **3. Revisar e aprovar** (o conteúdo, com as opções de título, o tamanho do texto,
+"Texto elaborado por", a fonte já preenchida com o órgão, a capa e "Ver como fica no site") e
+**4. Publicar no site** (prévia, categoria do site e autorização). Os dados do assunto (categoria,
+relevância, situação, público, etapa) ficam ao lado, em "Mais detalhes". Abre no passo que falta;
+os passos do alto e o "Próximo passo" trocam de passo.
 Trocar de etapa não perde o que foi digitado, e uma ação feita em outra etapa (salvar a
 classificação, por exemplo) também não: o que estava digitado ou escolhido e não salvo é devolvido
 aos campos. Se houver um formulário de evidência ou de texto oficial aberto e preenchido em outra
@@ -447,18 +465,22 @@ para o campo e salve. Ele não vai no repositório porque traz nomes e celulares
   aprovado de novo).
 - Duas pessoas na mesma edição: quem salvar por último com a tela desatualizada recebe um
   aviso e nada é gravado por cima; é preciso recarregar e refazer a alteração.
-- Imagem substituída não é apagada do banco (fica sem uso); a limpeza é do administrador.
+- Imagem substituída ou sem uso é apagada sozinha (na hora, ou pelo robô ao fim da coleta, depois de 24 h).
 - A coleta só deixa o workflow vermelho quando **nenhuma** fonte funciona. Falha isolada
-  aparece no painel ("Fontes que pedem atenção"). Aviso por e-mail ainda não existe.
+  aparece no painel ("Fontes que pedem atenção") e, depois de 3 falhas seguidas, vira aviso por
+  e-mail (issue no GitHub).
 - Reexecutar o setup refaz permissões e políticas `radar_*` do zero, mas não altera dados
   nem fontes já configuradas.
 - A verificação do texto gerado pela IA não lê números por extenso, incisos nem normas
   citadas sem número (CTN, CLT), e não avalia a interpretação. A revisão técnica continua
   sendo de uma pessoa.
 - O teto mensal de tokens é conferido antes de cada pedido; pedidos simultâneos podem
-  ultrapassá-lo um pouco. Por isso o limite de gasto na conta da OpenAI é indispensável.
-- O texto oficial capturado é enviado à OpenAI para análise. Nada de dados de clientes,
-  tokens ou e-mails de usuários é enviado.
+  ultrapassá-lo um pouco. Por isso os limites de gasto da IA Central (Portal → Consumo de IA)
+  continuam indispensáveis. O uso da IA pelo robô (nota das capturas e rascunhos automáticos)
+  aparece só na IA Central, não no painel do Radar.
+- O texto oficial capturado é enviado à IA (Anthropic, pela IA Central do Portal) para análise;
+  a ilustração de capa vai à OpenAI só com o tema. Nada de dados de clientes, tokens ou
+  e-mails de usuários é enviado.
 
 ## Fontes: cadastrar e ajustar sem mexer em código
 
@@ -537,6 +559,33 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
   "média" quando a IA dá nota 8 ou mais (`nota_promove` em Configurações → Relevância; 11 desliga).
   A que foi rebaixada por termos negativos (apreensão, concurso, leilão...) continua baixa.
 
+### Publicar no site com autorização (v0.10.0)
+
+Regras combinadas com o escritório: o robô **só cadastra notícias** no painel do site
+(artecon.cnt.br/admin → Notícias → cadastrar) e **nada vai ao ar sem a autorização** do administrador.
+
+1. Conteúdo aprovado e assunto pronto para o site (confirmado oficialmente e com trecho conferido
+   em fonte oficial) → passo 4 → confira em **Ver como fica no site**, escolha a **categoria do site**
+   e clique em **Autorizar publicação no site** (só o administrador vê o botão).
+2. A cada 15 minutos o workflow `radar-site-publicar.yml` confere se há autorização. Havendo, o robô
+   (`robo/radar_site_publicar.py`) marca "enviando" (nunca reenvia), entra no painel do site, preenche
+   título, palavras-chave, descrição, texto (com subtítulos, listas e negrito), categoria e capa, e clica
+   em "Gravar notícia" — **o site publica na hora**.
+3. Em seguida o robô acha a notícia em artecon.cnt.br/news, registra o link em "Publicações no site"
+   e marca "publicado". Se a notícia não aparecer em 2 horas, marca "erro" e pede para conferir no
+   painel do site antes de autorizar de novo (para não duplicar).
+
+- **Cancelar**: enquanto o robô não começou, "Cancelar autorização" no passo 4.
+- **Texto mudou depois de autorizado** (título, texto, autor, fonte, capa, situação): a autorização cai
+  sozinha e é preciso autorizar de novo.
+- **reCAPTCHA**: o usuário do Radar foi liberado pelo site para entrar só com usuário e senha. O robô
+  nunca resolve nem contorna a verificação: se o site passar a exigir, ele para e mostra o motivo no passo 4.
+- **Segredos do GitHub**: `ARTECON_SITE_USUARIO` e `ARTECON_SITE_SENHA` (além dos do banco). Nunca no código,
+  no banco ou no chat. O registro do GitHub Actions não mostra texto, usuário, senha nem cookie.
+- **Sessão no site**: o login do robô pode encerrar a sessão de quem estiver usando o mesmo usuário no
+  painel do site. O ideal é um usuário só do Radar, com acesso apenas ao cadastro de notícias.
+- O registro manual ("Registrar publicação no site") e o registro automático da v0.8.0 continuam valendo.
+
 ### Fila, rascunhos automáticos e vigia das fontes (v0.9.0)
 
 - **Nota da IA rebaixa:** captura "alta" com nota da IA até 3 desce para "média" (sai do topo, continua
@@ -592,24 +641,30 @@ repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
 
+**Da v0.9.0 para a v0.10.0**, nesta ordem: (1) Supabase radar-artecon → SQL Editor → execute
+`sql/radar-setup-v0.10.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar `v0.10.0`);
+(2) Edge Functions → `radar-ia` → cole o `supabase/functions/radar-ia/index.ts` desta versão e faça o Deploy
+(Configurações → Inteligência artificial → Testar deve mostrar a função v0.10.0); (3) a tela e os robôs chegam
+pelo repositório (Ctrl+F5 no Radar). Segredos: `ARTECON_SITE_USUARIO` e `ARTECON_SITE_SENHA` já cadastrados.
+
 **Da v0.8.0 para a v0.9.0:** Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.9.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar `v0.9.0`).
+`sql/radar-setup-v0.10.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar `v0.9.0`).
 A tela e o robô chegam pelo repositório. A função `radar-ia` não muda. Nada de segredo novo.
 
 **Da v0.7.1 para a v0.8.0:** Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.9.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar a versão) e,
+`sql/radar-setup-v0.10.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar a versão) e,
 se ainda não rodou, `sql/radar-fontes-novas-2026-10.sql`. A tela e o robô chegam pelo repositório.
 A função `radar-ia` não muda. Para o DOU completo (INLABS), veja "Diário Oficial pelo INLABS".
 
 **Da v0.7.0 para a v0.7.1:** Supabase radar-artecon → SQL Editor → cole e execute
-`sql/radar-setup-v0.7.1.sql` inteiro e guarde a evidência (a linha `instalacoes concluidas` deve
+`sql/radar-setup-v0.10.0.sql` inteiro (o nome muda a cada versão) e guarde a evidência (a linha `instalacoes concluidas` deve
 mostrar `v0.7.1`). O resto já chega pelo repositório: a tela (GitHub Pages; Ctrl+F5 no Radar) e o
 robô (próxima coleta). A função `radar-ia` não muda. Antes do SQL, o robô novo funciona normalmente,
 só sem a limpeza de imagens; os termos com pontuação nas regras só passam a pontuar depois dele.
 
 **Da v0.6.1 para a v0.7.0**, nesta ordem:
 
-1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.9.0.sql`). Guarde a evidência.
+1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.10.0.sql`). Guarde a evidência.
 2. GitHub, repositório `radar` → envie `index.html` e a pasta `robo/` (arquivos novos e alterados:
    `radar_ia.py`, `radar_coletar.py`, `radar_util.py`).
 3. GitHub → abra `.github/workflows/radar-coletar.yml` → lápis (Edit) → substitua o conteúdo pelo
@@ -628,12 +683,12 @@ só sem a limpeza de imagens; os termos com pontuação nas regras só passam a 
 `index.html` ao repositório do Radar; (3) siga o Passo 7 (função `radar-ia`, segredo
 `IA_GATEWAY_TOKEN`). Não há SQL novo para o Radar.
 
-**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.9.0.sql` no SQL Editor; (2) envie
+**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.10.0.sql` no SQL Editor; (2) envie
 `index.html` e `informativo.html` ao repositório; (3) cole o `radar-fale-conosco-v0.6.0.json`
 em Configurações → Fale Conosco; (4) se usa a IA, cole de novo o `index.ts` na função
 `radar-ia` e faça o Deploy. O robô não mudou de comportamento (só o número da versão).
 
-Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.9.0.sql` no SQL
+Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.10.0.sql` no SQL
 Editor (ele atualiza sem apagar dados), envie os arquivos novos ao repositório, **apague o
 `informa.html` do repositório** e, se a função de IA já estiver instalada, cole de novo o
 `index.ts`.

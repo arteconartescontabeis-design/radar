@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import requests
 
-from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SEM_PERFIL, jwt
+from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SEM_PERFIL, como, jwt
 
 sync_api = pytest.importorskip("playwright.sync_api")
 
@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.9.0"
+    assert pagina.inner_text(".versao") == "v0.10.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -346,8 +346,8 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     pagina.wait_for_selector("text=Notícia irrelevante sobre leilão", state="detached")
     pagina.click("#filtro-fila >> text=Relevantes")
     pagina.click("text=Abrir assunto")
-    pagina.wait_for_selector("text=Dados do assunto")
-    assert "Ainda não pode ser registrado como publicado no site" in pagina.inner_text("main")
+    pagina.wait_for_selector("#base-texto")
+    assert "Ainda não pode ser publicado no site" in pagina.inner_text("main")
     assert "FUNDAMENTAÇÃO NÃO CONFIRMADA" in pagina.inner_text("main")
 
     # evidência por seleção do texto oficial → conferida
@@ -387,6 +387,7 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     # a exigência de fonte oficial continua: sem o assunto confirmado, não há como registrar
     assert pagina.locator("text=Registrar publicação no site").count() == 0
     assert "confirmado oficialmente" in pagina.inner_text(".sem-fonte")
+    detalhes(pagina)
     pagina.select_option("#a-sit", "confirmado_oficialmente")
     pagina.select_option("#a-cat", "reforma-tributaria")
     pagina.click("text=Salvar dados do assunto")
@@ -458,7 +459,7 @@ def registrar_no_site(pg, url="https://artecon.cnt.br/news/noticia-de-teste", qu
 def abrir_assunto(pg, titulo):
     pg.click("nav.abas >> text=Assuntos")
     pg.locator("tr.clicavel", has_text=titulo).click()
-    pg.wait_for_selector("text=Dados do assunto")
+    pg.wait_for_selector("#base-texto")
 
 
 def test_aprovacao_so_vale_para_o_texto_que_estava_na_tela(pagina, limpo):
@@ -579,7 +580,9 @@ def test_conteudo_malicioso_e_exibido_como_texto_no_painel(pagina, limpo):
         pagina.click(f"nav.abas >> text={aba}")
         pagina.wait_for_timeout(250)
     abrir_assunto(pagina, "Título <img")
-    pagina.click("summary >> text=Ver como vai aparecer")
+    pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
+    assert pagina.evaluate("window.__invadido") is None
+    pagina.keyboard.press("Escape")                                           # fecha a prévia
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("text=Conteúdo aprovado.")
     registrar_no_site(pagina)
@@ -709,7 +712,7 @@ def test_clique_duplo_nao_duplica_assunto_conteudo_nem_registro_no_site(pagina, 
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Capturas")
     pagina.dblclick("text=Abrir assunto")
-    pagina.wait_for_selector("text=Dados do assunto")
+    pagina.wait_for_selector("#base-texto")
     assert limpo.execute("select count(*) from radar_assuntos").fetchone()[0] == 1
     pagina.dblclick("text=Novo conteúdo")
     pagina.wait_for_selector("form[data-form=conteudo]")
@@ -808,7 +811,7 @@ def test_endereco_perigoso_nao_vira_link_no_dashboard(pagina, limpo):
             assert not any(h.lower().startswith("javascript") for h in hrefs), (aba, hrefs)
         pagina.click("nav.abas >> text=Capturas")
         pagina.click("text=Abrir assunto")
-        pagina.wait_for_selector("text=Dados do assunto")
+        pagina.wait_for_selector("#base-texto")
         hrefs = pagina.eval_on_selector_all("main a", "els => els.map(a => a.getAttribute('href'))")
         assert not any(h.lower().startswith("javascript") for h in hrefs)
     finally:
@@ -826,7 +829,7 @@ def test_assunto_e_evidencia_pelo_teclado(pagina, limpo):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.focus("button.titulo-link")
     pagina.keyboard.press("Enter")
-    pagina.wait_for_selector("text=Dados do assunto")
+    pagina.wait_for_selector("#base-texto")
     pagina.focus("text=Usar trecho selecionado como evidência")
     pagina.keyboard.press("Enter")                              # sem seleção: abre para colar o trecho
     pagina.wait_for_selector("#ev-trecho")
@@ -848,7 +851,7 @@ def test_links_e_negrito_no_texto(pagina, limpo):
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("text=Conteúdo aprovado.")
     pagina.set_viewport_size({"width": 375, "height": 740})
-    pagina.click("summary >> text=Ver como vai aparecer")
+    pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
     assert sem_rolagem_lateral(pagina), "prévia com endereço comprido"
     hrefs = pagina.eval_on_selector_all(".previa p a", "els => els.map(a => a.getAttribute('href'))")
     assert hrefs[0] == "https://www.gov.br/x" and hrefs[1] == "https://a.gov.br/c" and hrefs[2].endswith("fim")
@@ -917,7 +920,7 @@ def test_ia_classificar_preenche_o_formulario_e_so_grava_quando_a_pessoa_salva(p
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("text=Sugerir classificação com IA")
+    pagina.click("text=Classificar com IA")
     pagina.wait_for_selector("text=Sugestão da IA preenchida no formulário")
     assert pagina.input_value("#a-cat") == "reforma-tributaria" and pagina.input_value("#a-rel") == "alta"
     assert pagina.input_value("#a-res").startswith("A norma disciplina o destaque da CBS")
@@ -947,7 +950,7 @@ def test_ia_fundamentar_so_aceita_trechos_literais_do_texto_oficial(pagina, limp
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("text=Buscar trechos com IA")
+    pagina.click("text=Buscar trecho que comprova com IA")
     pagina.wait_for_selector("text=IA: 2 trecho(s) conferido(s) e registrado(s); 3 descartado(s).")
     linhas = limpo.execute("select trecho_literal, trecho_conferido, dispositivo from radar_evidencias order by id").fetchall()
     assert linhas == [(TRECHO, True, "Art. 2º"),
@@ -957,7 +960,7 @@ def test_ia_fundamentar_so_aceita_trechos_literais_do_texto_oficial(pagina, limp
     assert pagina.locator(".evidencia.nao").count() == 0            # nada "não conferido" fica na tela
     pagina.screenshot(path=str(FOTOS / "11-ia-fundamentacao.png"), full_page=True)
     # pedir de novo não duplica
-    pagina.click("text=Buscar trechos com IA")
+    pagina.click("text=Buscar trecho que comprova com IA")
     pagina.wait_for_selector("text=IA: 0 trecho(s) conferido(s) e registrado(s); 5 descartado(s).")
     assert limpo.execute("select count(*) from radar_evidencias").fetchone()[0] == 2
 
@@ -977,7 +980,7 @@ def test_ia_gerar_cria_rascunho_e_aponta_o_que_nao_esta_no_texto_oficial(pagina,
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("text=Gerar com IA")
+    pagina.click("text=Gerar texto com IA")
     pagina.wait_for_selector("text=Rascunho gerado pela IA com 4 ponto(s) a conferir.")
     status, origem, modelo, corpo, avisos = limpo.execute("select status, gerado_por, modelo_ia, corpo, avisos_ia from radar_conteudos").fetchone()
     assert (status, origem, modelo) == ("rascunho", "ia", "claude-sonnet-4-6")
@@ -1119,7 +1122,7 @@ def test_ia_limite_mensal_e_erros_da_openai_viram_mensagens_claras(pagina, limpo
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("text=Sugerir classificação com IA")
+    pagina.click("text=Classificar com IA")
     pagina.wait_for_selector("#recado .erro >> text=limite mensal de uso da IA")
     assert len(openai["pedidos"]) == antes                           # barrado antes de gastar
 
@@ -1130,7 +1133,7 @@ def test_ia_nao_instalada_tem_aviso_proprio(pagina, limpo, openai):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("text=Gerar com IA")
+    pagina.click("text=Gerar texto com IA")
     pagina.wait_for_selector("#recado .erro >> text=A função de IA ainda não foi instalada")
 
 
@@ -1147,7 +1150,7 @@ def test_leitor_nao_ve_botoes_de_ia(pagina, limpo, openai):
     entrar(pagina, "leitor@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    for texto in ["Sugerir classificação com IA", "Buscar trechos com IA", "Gerar com IA"]:
+    for texto in ["Classificar com IA", "Buscar trecho que comprova com IA", "Gerar texto com IA"]:
         assert pagina.locator(f"text={texto}").count() == 0
 
 
@@ -1213,7 +1216,7 @@ def test_ia_classificacao_fora_das_opcoes_nao_apaga_o_que_ja_estava(pagina, limp
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("text=Sugerir classificação com IA")
+    pagina.click("text=Classificar com IA")
     pagina.wait_for_selector("text=Sugestão da IA preenchida no formulário")
     assert pagina.input_value("#a-cat") == "federal" and pagina.input_value("#a-rel") == "alta"
 
@@ -1446,8 +1449,8 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
-    # a v0.7.1, a v0.8.0 e a v0.9.0 não mudaram a função de IA: a função v0.7.0 não deve ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.7.0', FUNCAO_MINIMA), versaoMenor('0.6.1', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [False, True, False]
+    # a v0.10.0 mudou a função de IA (opções de título): a v0.7.0 passa a ser apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.7.0', FUNCAO_MINIMA), versaoMenor('0.10.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -1716,10 +1719,11 @@ def test_tabela_e_campos_novos_nao_executam_html(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Assuntos")
     pagina.locator("tr.clicavel").first.click()
-    pagina.wait_for_selector("text=Dados do assunto")
-    pagina.click("text=Ver como vai aparecer")
+    pagina.wait_for_selector("#base-texto")
+    pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
     assert pagina.locator(".previa table td").count() == 3 and pagina.locator(".previa script, .previa img[src=x], .previa svg").count() == 0
     assert pagina.locator("form[data-form=conteudo] [name=autor]").input_value() == '"><img src=x onerror=window.__xss=1>'
+    pagina.click("#previa-site >> text=Fechar")
     pagina.click("nav.abas >> text=Informativos")
     pagina.click("text=N.º 0007/2026")
     pagina.wait_for_selector("text=Dados da edição")
@@ -1899,7 +1903,7 @@ def test_publicacoes_lista_pendentes_e_registrados_e_respeita_os_perfis(pagina, 
     assert "Artigo já publicado no site" in pagina.inner_text("#tab-site") and "30/09/2026" in pagina.inner_text("#tab-site") and "Destaque da home" in pagina.inner_text("#tab-site")
     assert pagina.locator("text=Corrigir link").count() == 0 and pagina.locator("text=Excluir registro").count() == 0
     pagina.click("text=Abrir para copiar e registrar")
-    pagina.wait_for_selector("text=Dados do assunto")
+    pagina.wait_for_selector("#base-texto")
     assert pagina.locator("text=Registrar publicação no site").count() == 0     # leitor não registra
     pagina.click("text=Sair")
     pagina.wait_for_selector("#email")
@@ -2023,7 +2027,7 @@ def test_assunto_da_equipe_so_registra_no_site_depois_de_incluir_texto_oficial_e
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CGSN prorroga")
-    assert "Ainda não pode ser registrado como publicado no site" in pagina.inner_text("main")
+    assert "Ainda não pode ser publicado no site" in pagina.inner_text("main")
     assert pagina.locator("text=Registrar publicação no site").count() == 0 and pagina.locator(".sem-fonte").count() == 1
     assert pagina.locator("text=Copiar texto formatado").count() == 1          # copiar para o site continua disponível
 
@@ -2051,10 +2055,11 @@ def test_assunto_da_equipe_so_registra_no_site_depois_de_incluir_texto_oficial_e
     pagina.click("text=Registrar evidência")
     pagina.wait_for_selector("text=Conferido no texto oficial")
     assert pagina.locator("text=Registrar publicação no site").count() == 0      # ainda falta confirmar o assunto
+    detalhes(pagina)
     pagina.select_option("#a-sit", "confirmado_oficialmente")
     pagina.click("text=Salvar dados do assunto")
     pagina.wait_for_selector("text=Assunto salvo.")
-    assert pagina.locator(".sem-fonte").count() == 0 and "Ainda não pode ser registrado" not in pagina.inner_text("main")
+    assert pagina.locator(".sem-fonte").count() == 0 and "Ainda não pode ser publicado no site" not in pagina.inner_text("main")
     registrar_no_site(pagina, "https://artecon.cnt.br/news/cgsn-prorroga")
     fund = limpo.execute("select fundamentacao from radar_divulgacoes").fetchone()[0]
     assert len(fund) == 1 and fund[0]["manual"] is True and fund[0]["trecho"] == "prorrogado até 15 de outubro de 2026 o prazo"
@@ -2102,7 +2107,7 @@ def test_aviso_diz_o_motivo_quando_o_trecho_conferido_e_de_fonte_nao_oficial(pag
         pagina.wait_for_selector("text=Painel do dia")
         abrir_assunto(pagina, "CGSN prorroga")
         aviso = pagina.inner_text(".aviso.alerta >> nth=0")
-        assert "Ainda não pode ser registrado" in aviso and "são de fonte não oficial" in aviso
+        assert "Ainda não pode ser publicado no site" in aviso and "são de fonte não oficial" in aviso
         assert pagina.locator("text=Registrar publicação no site").count() == 0
     finally:
         limpo.execute("update radar_fontes set oficial = true where slug = 'rfb-normas'")
@@ -2269,7 +2274,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.9.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.10.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2339,6 +2344,11 @@ def test_capturas_leitor_ve_a_relevancia_mas_nao_ignora(pagina, limpo):
     assert pagina.locator("text=Ignorar").count() == 0 and pagina.locator("main img").count() == 0
 
 
+def detalhes(pg):
+    """Abre o quadro "Mais detalhes" (dados do assunto), recolhido ao lado da tela do assunto."""
+    pg.evaluate("document.querySelector('#mais-detalhes').open = true")
+
+
 def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     a, cap = assunto_com_texto(limpo)
     entrar(pagina)
@@ -2346,9 +2356,13 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector("#proximo-passo")
-    assert pagina.locator(".trilha li").count() == 5 and pagina.locator(".trilha li.feito").count() == 1
+    assert pagina.locator(".trilha li").all_inner_texts()[0].startswith("1. Conferir a fonte")
+    assert pagina.locator(".trilha li").count() == 4 and pagina.locator(".trilha li.feito").count() == 0
     assert "Escrever o conteúdo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo >> text=Preparar com IA").count() == 1
-    assert not pagina.locator("#a-pub").is_visible()                                # campos raros recolhidos
+    assert "Título original da captura" in pagina.inner_text("#sec-origem") and pagina.locator("#sec-origem >> text=Abrir na fonte").count() == 1
+    assert not pagina.locator("#a-cat").is_visible() and not pagina.locator("#a-pub").is_visible()    # dados do assunto recolhidos ao lado
+    pagina.click("#mais-detalhes summary")
+    assert pagina.locator("#a-cat").is_visible() and not pagina.locator("#a-pub").is_visible()
     pagina.click("text=Mais campos")
     assert pagina.locator("#a-pub").is_visible()
     pagina.click("#proximo-passo >> text=Escrever sem IA")
@@ -2365,12 +2379,12 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     pagina.wait_for_selector("#proximo-passo >> text=Para o site: confirmar o assunto")
     assert pagina.locator("[data-acao=registrar-site]").count() == 0
     pagina.click("text=Marcar como confirmado oficialmente")
-    pagina.wait_for_selector("#proximo-passo >> text=Publicar no site e registrar")
-    assert pagina.locator(".trilha li.feito").count() == 4
-    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
+    pagina.wait_for_selector("#proximo-passo >> text=Próximo passo: Publicar no site")
+    assert pagina.locator(".trilha li.feito").count() == 3
+    pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")                # o registro manual continua valendo
     pagina.click("text=Registrar publicação no site")
     pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
-    assert pagina.locator(".trilha li.feito").count() == 5
+    assert pagina.locator(".trilha li.feito").count() == 4
     assert limpo.execute("select situacao_confirmacao from radar_assuntos where id = %s", (a,)).fetchone()[0] == "confirmado_oficialmente"
 
 
@@ -2600,7 +2614,7 @@ def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("#proximo-passo >> text=Publicar no site e registrar")
+    pagina.wait_for_selector("#proximo-passo >> text=Próximo passo: Publicar no site")
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
     pagina.click("text=Registrar publicação no site")
     pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
@@ -2706,24 +2720,25 @@ def test_assunto_abre_uma_etapa_de_cada_vez_e_guarda_o_que_foi_digitado(pagina, 
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
-    pagina.wait_for_selector("nav.etapas")
-    visiveis = lambda: [x for x in ("#sec-texto", "#sec-fundamentacao", "#sec-conteudos", "form[data-form=assunto]") if pagina.locator(x).is_visible()]
-    assert [b.strip() for b in pagina.locator("nav.etapas [data-etapa]").all_inner_texts()] == ["Fonte e fundamentação", "Conteúdo", "Classificação"]
+    pagina.wait_for_selector(".trilha.passos4")
+    visiveis = lambda: [x for x in ("#sec-texto", "#sec-fundamentacao", "#sec-conteudos", "#sec-publicar") if pagina.locator(x).is_visible()]
+    assert [t.split("\n")[0] for t in pagina.locator(".trilha li").all_inner_texts()] == \
+        ["1. Conferir a fonte", "2. Escrever", "3. Revisar e aprovar", "4. Publicar no site"]
     assert visiveis() == ["#sec-texto", "#sec-fundamentacao"]                             # sem conteúdo ainda: abre na fonte
-    assert "Ainda não pode ser registrado" not in pagina.inner_text("main")               # o aviso geral saiu: o "Próximo passo" já orienta
-    pagina.click("nav.etapas >> text=Classificação")
-    assert visiveis() == ["form[data-form=assunto]"]
+    assert "Ainda não pode ser publicado no site" not in pagina.inner_text("main")               # o aviso geral saiu: o "Próximo passo" já orienta
+    detalhes(pagina)                                                                      # os dados do assunto ficam ao lado, em qualquer passo
     pagina.fill("#a-titulo", "CBS na transição — título digitado")
     pagina.click("#proximo-passo >> text=Escrever sem IA")                                # o botão do próximo passo troca de etapa
     assert visiveis() == ["#sec-conteudos"]
-    pagina.click(".trilha li >> text=1. Texto oficial")                                   # os passos do alto também
+    pagina.click(".trilha li >> text=1. Conferir a fonte")                                # os passos do alto também
     assert visiveis() == ["#sec-texto", "#sec-fundamentacao"]
-    pagina.click("nav.etapas >> text=Classificação")
-    assert pagina.input_value("#a-titulo") == "CBS na transição — título digitado"        # trocar de etapa não perde o que foi digitado
+    pagina.click(".trilha li >> text=4. Publicar no site")
+    assert visiveis() == ["#sec-publicar"] and "depois que o conteúdo for aprovado" in pagina.inner_text("#sec-publicar")
+    assert pagina.input_value("#a-titulo") == "CBS na transição — título digitado"        # trocar de passo não perde o que foi digitado
     pagina.click("text=Salvar dados do assunto")
     pagina.wait_for_selector("text=Assunto salvo.")
-    assert visiveis() == ["form[data-form=assunto]"]                                      # depois de salvar, continua na mesma etapa
-    pagina.click("nav.etapas >> text=Conteúdo")
+    assert visiveis() == ["#sec-publicar"]                                                # depois de salvar, continua no mesmo passo
+    pagina.click(".trilha li >> text=2. Escrever")
     pagina.click("text=Novo conteúdo")
     pagina.wait_for_selector("form[data-form=conteudo]")
     assert visiveis() == ["#sec-conteudos"]
@@ -2735,8 +2750,8 @@ def test_assunto_abre_uma_etapa_de_cada_vez_e_guarda_o_que_foi_digitado(pagina, 
     assert visiveis() == ["#sec-conteudos"]
     # quem prefere vê tudo numa página; a escolha fica guardada
     pagina.click("text=Mostrar tudo numa página")
-    pagina.wait_for_selector("text=Mostrar uma etapa de cada vez")
-    assert len(visiveis()) == 4 and pagina.locator("nav.etapas [data-etapa]").count() == 0
+    pagina.wait_for_selector("text=Mostrar um passo de cada vez")
+    assert len(visiveis()) == 4
     assert pagina.evaluate("localStorage.getItem('radar_tudo')") == "1"
     assert sem_rolagem_lateral(pagina)
     pagina.screenshot(path=str(FOTOS / "12-assunto-etapas.png"), full_page=True)
@@ -2873,7 +2888,7 @@ def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_originalidad
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
-    pagina.click("text=Gerar com IA")
+    pagina.click("text=Gerar texto com IA")
     pagina.wait_for_selector("#recado .aviso >> text=ponto(s) a conferir")
     assert pagina.locator("#recado .erro").count() == 0
     sistema = [x["corpo"]["system"] for x in openai["pedidos"] if "system" in x["corpo"]][-1]
@@ -2935,7 +2950,7 @@ def test_digitacao_em_outra_etapa_nao_se_perde_por_acao_feita_em_outra(pagina, l
     pagina.keyboard.press("Enter")
     assert pagina.locator("#sec-fundamentacao").is_visible() and not pagina.locator("#sec-conteudos").is_visible()
     # salvar em OUTRA etapa redesenha a tela: o que estava digitado e não salvo na etapa Conteúdo continua lá
-    pagina.click("nav.etapas >> text=Classificação")
+    detalhes(pagina)
     pagina.fill("#a-titulo", "CBS na transição — novo título")
     pagina.click("text=Salvar dados do assunto")
     pagina.wait_for_selector("text=Assunto salvo.")
@@ -2943,29 +2958,28 @@ def test_digitacao_em_outra_etapa_nao_se_perde_por_acao_feita_em_outra(pagina, l
     assert limpo.execute("select corpo from radar_conteudos").fetchone()[0] == "Texto do conteúdo com tamanho suficiente."
     # ação que não pode seguir com alteração pendente diz em que etapa ela está
     pagina.click("text=Mostrar tudo numa página")
-    pagina.wait_for_selector("#recado .erro >> text=alterações não salvas na etapa “Conteúdo”")
-    pagina.click("nav.etapas >> text=Conteúdo")
+    pagina.wait_for_selector("#recado .erro >> text=alterações não salvas no passo “2. Escrever”")
+    pagina.click(".trilha li >> text=2. Escrever")
     assert pagina.input_value("form[data-form=conteudo] [name=corpo]").startswith("Texto digitado e ainda não salvo")
     # com conteúdo e sem fundamentação confirmada, a etapa Conteúdo explica por que ainda não dá para registrar no site
-    assert "Ainda não pode ser registrado como publicado no site." in pagina.inner_text("section[data-etapa=conteudo]")
-    # lista trocada (e não salva) na Classificação: salvar o Conteúdo não a desfaz
-    pagina.click("nav.etapas >> text=Classificação")
+    assert "Ainda não pode ser publicado no site." in pagina.inner_text("section[data-etapa=conteudo]")
+    # lista trocada (e não salva) nos dados do assunto: salvar o conteúdo não a desfaz
     pagina.select_option("#a-rel", "baixa")
-    pagina.click("nav.etapas >> text=Conteúdo")
+    pagina.click(".trilha li >> text=2. Escrever")
     pagina.click("form[data-form=conteudo] >> text=Salvar")
     pagina.wait_for_selector("text=Conteúdo salvo")
     assert limpo.execute("select corpo from radar_conteudos").fetchone()[0].startswith("Texto digitado e ainda não salvo")
     assert pagina.evaluate("document.querySelector('#a-rel').value") == "baixa"
     assert limpo.execute("select relevancia from radar_assuntos where id = %s", (a,)).fetchone()[0] != "baixa"
     # formulário aberto na hora (evidência) e preenchido, escondido em outra etapa: a ação é barrada com o aviso
-    pagina.click("nav.etapas >> text=Fonte e fundamentação")
+    pagina.click(".trilha li >> text=1. Conferir a fonte")
     pagina.click("text=Usar trecho selecionado como evidência")
     pagina.wait_for_selector("#form-evidencia form")
     pagina.fill("#form-evidencia textarea", "trecho digitado e ainda não registrado")
-    pagina.click("nav.etapas >> text=Conteúdo")
+    pagina.click(".trilha li >> text=2. Escrever")
     pagina.fill("form[data-form=conteudo] [name=autor]", "Equipe Artecon")
     pagina.click("form[data-form=conteudo] >> text=Salvar")
-    pagina.wait_for_selector("#recado .erro >> text=alterações não salvas na etapa “Fonte e fundamentação”")
+    pagina.wait_for_selector("#recado .erro >> text=alterações não salvas no passo “1. Conferir a fonte”")
     assert limpo.execute("select autor from radar_conteudos").fetchone()[0] is None
     # o aviso não deixa a tela "ocupada": as próximas ações continuam funcionando (v0.9.1)
     assert pagina.evaluate("OCUPADO") is False and not pagina.evaluate("document.body.classList.contains('ocupado')")
@@ -2986,3 +3000,102 @@ def test_painel_mostra_os_rascunhos_preparados_pelo_robo(pagina, limpo):
     assert pagina.evaluate("validarConfig('rascunhos', {por_dia: 2, formato: 'flash'})") == ""
     assert "formato" in pagina.evaluate("validarConfig('rascunhos', {formato: 'poema'})")
     assert "por_dia" in pagina.evaluate("validarConfig('rascunhos', {por_dia: 11})")
+
+
+# ------------------------------------------------------------ v0.10.0 — tela do assunto em 4 passos
+def pronto_para_o_site(db, corpo="Texto do informativo com **negrito** e tamanho suficiente.\n\n## Prazo\n- **Até 31/01**: opção"):
+    a, c = preparar_aprovado(db, corpo=corpo)
+    cap = db.execute("select captura_id from radar_evidencias where assunto_id = %s", (a,)).fetchone()[0]
+    db.execute("insert into radar_assunto_capturas values (%s, %s) on conflict do nothing", (a, cap))
+    db.execute("update radar_conteudos set titulos_sugeridos = %s, autor = 'Equipe Artecon', fonte_credito = 'Receita Federal' where id = %s",
+               (json.dumps(["CBS: o que muda na apuração em 2027", "Apuração da CBS ganha regra de transição"]), c))
+    return a, c
+
+
+def test_opcoes_de_titulo_e_previa_como_no_site(pagina, limpo):
+    a, c = pronto_para_o_site(limpo)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    assert "Outras opções da IA" in pagina.inner_text(".opcoes-titulo")
+    assert pagina.locator(".chips >> text=Sugerir outros").count() == 1
+    pagina.click(".chip >> text=Apuração da CBS ganha regra de transição")
+    assert pagina.input_value(f"#c-titulo-{c}") == "Apuração da CBS ganha regra de transição"
+    assert limpo.execute("select titulo from radar_conteudos where id = %s", (c,)).fetchone()[0] == "Informativo de teste"   # só ao salvar
+    pagina.fill(f"#c-autor-{c}", "Cleiver")
+    pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
+    previa = pagina.locator("#previa-site")
+    assert previa.is_visible() and "Legislação Federal · Publicada em" in previa.inner_text()        # a categoria do site já sugerida
+    assert previa.locator("h2").first.inner_text() == "Apuração da CBS ganha regra de transição"     # o que está digitado, mesmo sem salvar
+    assert previa.locator(".previa > ul li strong").inner_text() == "Até 31/01"
+    assert "Texto elaborado por: Cleiver" in previa.inner_text() and "Fonte: Receita Federal" in previa.inner_text()
+    pagina.set_viewport_size({"width": 375, "height": 740})
+    assert sem_rolagem_lateral(pagina)
+    pagina.screenshot(path=str(FOTOS / "13-previa-no-site.png"))
+    pagina.keyboard.press("Escape")
+    assert pagina.locator("#previa-site").count() == 0
+    pagina.set_viewport_size({"width": 1280, "height": 900})
+    assert pagina.locator("select#novo-formato option").all_inner_texts() == ["Curto (aviso rápido)", "Médio (notícia)", "Longo (artigo)"]
+
+
+def test_so_o_administrador_autoriza_e_pode_cancelar(pagina, limpo):
+    a, c = pronto_para_o_site(limpo)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    entrar(pagina)                                                                        # editora: vê o passo 4, sem o botão
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.wait_for_selector("#proximo-passo >> text=Próximo passo: Publicar no site")
+    assert "Falta o administrador autorizar" in pagina.inner_text("#proximo-passo")
+    assert pagina.locator("[data-acao=autorizar-site]").count() == 0 and "Só o administrador autoriza" in pagina.inner_text("#sec-publicar")
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")                                                    # saída concluída antes de entrar de novo
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.click("#proximo-passo >> text=Ir para publicar")
+    assert pagina.input_value(f"#site-cat-{c}") == "Legislação Federal"
+    pagina.select_option(f"#site-cat-{c}", "Tributário")
+    pagina.click("text=Autorizar publicação no site")
+    pagina.wait_for_selector("text=Publicação autorizada.")
+    assert limpo.execute("select situacao, categoria, autorizado_por::text from radar_site_envios").fetchone() == ("autorizado", "Tributário", ADMIN)
+    assert "Aguardando o robô publicar" in pagina.inner_text("#proximo-passo") and "aguardando o robô" in pagina.inner_text(".trilha")
+    pagina.screenshot(path=str(FOTOS / "14-publicar-autorizado.png"), full_page=True)
+    pagina.click("text=Cancelar autorização")
+    pagina.wait_for_selector("text=Autorização cancelada.")
+    assert limpo.execute("select situacao from radar_site_envios").fetchone()[0] == "cancelado"
+    # o robô publicou: o passo 4 mostra o link e o assunto fica concluído
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    with como("authenticated", ADMIN) as x:
+        envio = x.execute("select radar_autorizar_site(%s, 'Tributário', %s)", (c, lido)).fetchone()[0]
+    limpo.execute("update radar_site_envios set situacao = 'erro', erro = 'Não publicado: o site exigiu a verificação.' where id = %s", (envio,))
+    pagina.evaluate("desenhar()")                                                          # redesenha a tela aberta
+    assert "Publicação não concluída" in pagina.inner_text("#proximo-passo") and "o site exigiu a verificação" in pagina.inner_text("#proximo-passo")
+    limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c,))
+    pagina.evaluate("desenhar()")                                                          # redesenha a tela aberta
+    pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
+    assert pagina.locator(".trilha li.feito").count() == 4
+
+
+def test_noticia_ja_no_site_nao_oferece_autorizar_de_novo(pagina, limpo):
+    a, c = pronto_para_o_site(limpo)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    with como("authenticated", ADMIN) as x:
+        envio = x.execute("select radar_autorizar_site(%s, 'Tributário', %s)", (c, lido)).fetchone()[0]
+    limpo.execute("""update radar_site_envios set situacao = 'publicado', url = 'https://artecon.cnt.br/news/view/cbs',
+                     erro = 'Publicado no site, mas o registro foi recusado.' where id = %s""", (envio,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    assert "Registrar o link da notícia publicada" in pagina.inner_text("#proximo-passo")
+    assert "Publicado no site pelo robô" in pagina.inner_text("#sec-publicar") and pagina.locator("[data-acao=autorizar-site]").count() == 0
+    # registrado e depois alterado e aprovado de novo: já está no site, atualiza-se lá
+    limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c,))
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set corpo = corpo || ' Mais uma frase.' where id = %s", (c,))
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    pagina.evaluate("desenhar()")
+    pagina.wait_for_selector("text=Esta notícia já está no site")
+    assert pagina.locator("[data-acao=autorizar-site]").count() == 0

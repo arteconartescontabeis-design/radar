@@ -1,0 +1,51 @@
+name: Radar — publicar no site
+
+# Publica no site da Artecon SÓ as notícias que o administrador autorizou na tela do assunto (passo 4).
+# Sem autorização pendente, termina em segundos, sem entrar no site.
+# Precisa dos segredos RADAR_SUPABASE_URL, RADAR_SUPABASE_SERVICE_KEY, ARTECON_SITE_USUARIO e ARTECON_SITE_SENHA.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-site-publicar
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Há autorização pendente?
+        id: fila
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+        run: |
+          resposta=$(curl -sS --fail --max-time 30 \
+            -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            "${SUPABASE_URL%/}/rest/v1/radar_site_envios?select=id&situacao=in.(autorizado,enviando)&limit=1") || resposta="erro"
+          if [ "$resposta" = "[]" ]; then echo "pendente=nao" >> "$GITHUB_OUTPUT"; else echo "pendente=sim" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.fila.outputs.pendente == 'sim'
+        uses: actions/checkout@v5
+      - if: steps.fila.outputs.pendente == 'sim'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: robo/requirements.txt
+      - if: steps.fila.outputs.pendente == 'sim'
+        run: pip install -r robo/requirements.txt
+      - name: Publicar o que foi autorizado
+        if: steps.fila.outputs.pendente == 'sim'
+        working-directory: robo
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+          ARTECON_SITE_USUARIO: ${{ secrets.ARTECON_SITE_USUARIO }}
+          ARTECON_SITE_SENHA: ${{ secrets.ARTECON_SITE_SENHA }}
+        run: python radar_site_publicar.py
