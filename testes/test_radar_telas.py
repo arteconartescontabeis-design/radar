@@ -2317,7 +2317,7 @@ def test_capturas_abrem_so_com_o_relevante_e_as_de_baixa_saem_de_uma_vez(pagina,
     pagina.click("#filtro-fila >> text=Todas")
     pagina.wait_for_selector("article.cap.rel-baixa")
     assert pagina.locator("article.cap").count() == 4
-    assert "rel-alta" in pagina.locator("article.cap").first.get_attribute("class")   # o mais relevante vem primeiro
+    assert "operação 2" in pagina.locator("article.cap").first.inner_text()            # a mais recente vem primeiro (v0.10.1)
     pagina.click("#filtro-fila >> text=Baixa relevância")
     pagina.wait_for_selector("text=Ignorar as 3 desta lista")
     pagina.fill("#busca-fila", "operação 1")                                       # o que a busca escondeu não é ignorado
@@ -2692,7 +2692,8 @@ def test_capturas_abrem_com_as_dez_em_alta_e_a_repeticao_entra_junto_no_assunto(
     pagina.wait_for_selector("article.cap")
     cartoes = pagina.locator("article.cap")
     assert cartoes.count() == 10 and [c.replace("\n", "") for c in pagina.locator("#filtro-fila .chip").all_inner_texts()] == ["Em alta10", "Relevantes14", "Baixa relevância0", "Todas15"]
-    primeiro = cartoes.first.inner_text()
+    assert "caso 10" in cartoes.first.inner_text() and "caso 0" in cartoes.last.inner_text()  # as mais recentes no alto (v0.10.1)
+    primeiro = pagina.locator("article.cap", has_text="— caso 0").inner_text()                # a de nota 10 continua entre as em alta
     assert "Nota da IA 10/10" in primeiro and "caso 0" in primeiro and "IA: motivo <b>10</b>" in primeiro and "Mesmo fato em mais 1 captura" in primeiro
     assert pagina.locator("article.cap b >> text=10").count() == 0                       # o motivo da IA é texto, não HTML
     assert "Simples Nacional: prazo alterado" not in pagina.inner_text("#tab-fila") and "caso 11" not in pagina.inner_text("#tab-fila")
@@ -2704,7 +2705,7 @@ def test_capturas_abrem_com_as_dez_em_alta_e_a_repeticao_entra_junto_no_assunto(
     pagina.wait_for_selector("text=repetição de outra captura")
     pagina.click("#filtro-fila >> text=Em alta")
     pagina.wait_for_selector("article.cap >> text=caso 0")
-    cartoes.first.locator("text=Abrir assunto").click()
+    pagina.locator("article.cap", has_text="— caso 0").locator("text=Abrir assunto").click()
     pagina.wait_for_selector("text=Texto oficial capturado")
     # o assunto nasce com as duas fontes do mesmo fato; a fila perde as duas
     assert sorted(x[0] for x in limpo.execute("select captura_id from radar_assunto_capturas").fetchall()) == sorted([ids[0], outra])
