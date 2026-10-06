@@ -186,6 +186,7 @@ const VERSOES = [
     "“Tamanho do texto”: Curto (aviso rápido), Médio (notícia) ou Longo (artigo). A IA passou a escrever de forma mais natural, como um contador explicando ao cliente.",
     "“Ver como fica no site”: abre a notícia como ela vai aparecer em artecon.cnt.br/news (categoria, data, título, capa, texto, autor e fonte), com o que está digitado na tela.",
     "Publicar no site com autorização: no passo 4, o administrador escolhe a categoria e clica em “Autorizar publicação no site”; o robô cadastra a notícia no site em até 15 minutos e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar depois de autorizado, a autorização cai sozinha.",
+    "Capturas: as mais recentes aparecem primeiro (pela data da notícia). “Em alta” continua escolhendo as de maior nota da IA.",
     "Banco v0.10.0, robô v0.10.0 e função de IA v0.10.0. O restante do Radar não mudou."
   ]],
   ["0.9.0", "05/10/2026", [
@@ -649,7 +650,8 @@ const TELAS = {
 
   async fila(){
     const f = E.filtros.fila || "emalta";
-    const ordem = "nota_grupo.desc.nullslast,relevancia_pontos.desc,capturado_em.desc,id.desc";
+    // as mais recentes no alto (a data da notícia; sem data, a da captura). Em alta continua escolhendo as de maior nota.
+    const ordem = "data_publicacao.desc.nullslast,capturado_em.desc,id.desc";
     const lim = limiteDe("fila:" + f, 150), params = {select:"*", order:ordem, limit:String(lim)};
     if(f === "relevantes"){ params.relevancia = "in.(alta,media)"; params.principal = "is.true"; }
     else if(f === "baixa") params.relevancia = "eq.baixa";
@@ -690,7 +692,7 @@ const TELAS = {
             ${linkFonte(i.url, "abrir na fonte ↗")}</div></article>`).join("")}</div>`
         : `<div class="painel"><p class="sub">${vazio[f]}</p></div>`}
       ${f !== "emalta" ? botaoMais("fila:" + f, itens.length, lim, "capturas", total[f]) : ""}
-      <p class="sub">A nota da IA vem do robô, depois de cada coleta; antes dela, um filtro por palavras separa o que é de baixa relevância. ${ehAdmin() ? "As regras, a nota de corte e a quantidade ficam em Configurações → Relevância das capturas." : "O administrador ajusta as regras em Configurações."}</p>`;
+      <p class="sub">As mais recentes aparecem primeiro. A nota da IA vem do robô, depois de cada coleta; antes dela, um filtro por palavras separa o que é de baixa relevância. ${ehAdmin() ? "As regras, a nota de corte e a quantidade ficam em Configurações → Relevância das capturas." : "O administrador ajusta as regras em Configurações."}</p>`;
   },
 
   async assuntos(){
