@@ -3136,6 +3136,34 @@ def ia_de_mentira(pg, db, pedidos):
     pg.route("**/functions/v1/radar-ia", responder)
 
 
+def test_trocar_de_assunto_enquanto_a_ia_trabalha_nao_grava_nem_aplica_no_outro(pagina, limpo):
+    a1, _ = assunto_com_texto(limpo)
+    cap2 = captura(limpo, "Outra norma da CBS", "https://www.gov.br/exemplo/outra")
+    a2 = limpo.execute("insert into radar_assuntos (titulo, resumo) values ('Outro assunto', 'Outro.') returning id").fetchone()[0]
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a2, cap2))
+    pedidos, presos = [], []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    def segurar(rota):                                       # a 1ª busca de trecho fica "trabalhando" até o teste soltar
+        if json.loads(rota.request.post_data or "{}").get("acao") == "fundamentar" and not presos:
+            presos.append(rota)
+        else:
+            rota.fallback()
+    pagina.route("**/functions/v1/radar-ia", segurar)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click("text=Preparar tudo com IA")
+    pagina.wait_for_selector("#ia-trabalhando")
+    abrir_assunto(pagina, "Outro assunto")                   # navegar continua livre
+    presos[0].fallback()
+    pagina.wait_for_selector("text=A tela mudou enquanto a IA trabalhava")
+    pagina.wait_for_selector("#ia-trabalhando", state="detached")
+    assert [p["assunto_id"] for p in pedidos] == [a1, a1, a1]          # fundamentar, gerar e ilustrar: todos no assunto pedido
+    assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s", (a2,)).fetchone()[0] == 0
+    assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s", (a1,)).fetchone()[0] == 1
+    assert pagina.locator("form[data-form=conteudo]").count() == 0     # a tela do outro assunto não ganhou o rascunho
+
+
 def test_ia_mostra_que_esta_trabalhando_e_pede_senha_a_partir_da_segunda_consulta(pagina, limpo):
     assunto_com_texto(limpo)
     pedidos = []

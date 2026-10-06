@@ -511,10 +511,12 @@ async function pedir(metodo, caminho, {params, corpo, prefer, semSessao, tempo} 
   if(prefer) cab.Prefer = prefer;
   let r; const limite = new AbortController(), relogio = setTimeout(() => limite.abort(), tempo || 25000);
   try { r = await fetch(url, {method: metodo, headers: cab, body: corpo === undefined ? undefined : JSON.stringify(corpo), signal: limite.signal}); }
-  catch(e){ throw new ErroApi(e.name === "AbortError" ? "O servidor demorou demais para responder. Tente de novo."
+  catch(e){ clearTimeout(relogio); throw new ErroApi(e.name === "AbortError" ? "O servidor demorou demais para responder. Tente de novo."
                                                       : "Sem conexão com o servidor. Verifique a internet e tente de novo.", 0); }
+  let dados = null, texto;
+  try { texto = await r.text(); }                        // o prazo vale também para a leitura da resposta
+  catch(e){ throw new ErroApi("A resposta do servidor foi interrompida. Tente de novo.", 0); }
   finally { clearTimeout(relogio); }
-  let dados = null; const texto = await r.text();
   if(texto){ try { dados = JSON.parse(texto); } catch(e){ dados = {message: texto}; } }
   if(r.status === 401 && !semSessao && E.sessao && !repetiu && await renovarSessao()) return pedir(metodo, caminho, {params, corpo, prefer, tempo}, true);
   if(!r.ok) throw new ErroApi(mensagemDoErro(dados, r.status), r.status);
@@ -536,9 +538,16 @@ function avisoIA(texto){
     a._relogio = setInterval(() => { const s = Math.round((Date.now() - ini) / 1000); a.querySelector(".seg").textContent = s >= 3 ? ` · ${s}s` : ""; }, 1000); }
   a.querySelector(".txt").textContent = "A IA está " + texto + "…";
 }
-const chaveUsoIA = () => `radar_ia_${E.sessao?.user?.id || "x"}_${E.assunto || 0}`;
-function usosIA(){ try{ return Number(sessionStorage.getItem(chaveUsoIA()) || 0); }catch(e){ return 0; } }
-function contarUsoIA(){ try{ sessionStorage.setItem(chaveUsoIA(), String(usosIA() + 1)); }catch(e){} }
+const chaveUsoIA = (assunto = E.assunto) => `radar_ia_${E.sessao?.user?.id || "x"}_${assunto || 0}`;
+function usosIA(assunto){ try{ return Number(sessionStorage.getItem(chaveUsoIA(assunto)) || 0); }catch(e){ return 0; } }
+function contarUsoIA(assunto){ try{ sessionStorage.setItem(chaveUsoIA(assunto), String(usosIA(assunto) + 1)); }catch(e){} }
+/* A navegação continua livre enquanto a IA trabalha: o resultado só é aplicado se a tela ainda for a do assunto pedido. */
+function telaDoAssunto(assunto, soSugestao){
+  if(E.assunto === assunto) return true;
+  recado(soSugestao ? "A tela mudou enquanto a IA trabalhava: a sugestão dela não foi aplicada."
+                    : "A tela mudou enquanto a IA trabalhava. O que a IA gravou ficou no assunto de origem; abra-o para conferir.", "aviso");
+  return false;
+}
 /* Pede a senha numa janela (campo de senha de verdade, não o prompt do navegador) e confere com o login. */
 function pedirSenha(){
   return new Promise(resolver => {
@@ -555,6 +564,7 @@ function pedirSenha(){
     form.onsubmit = async ev => {
       ev.preventDefault(); ev.stopPropagation();
       const b = form.querySelector("button"); b.disabled = true;
+      if(!E.sessao?.user?.email) return fim(false);             // a sessão caiu com a janela aberta
       try{ await entrar(E.sessao.user.email, campo.value); fim(true); }
       catch(e){ b.disabled = false; const msg = form.querySelector(".erro-senha");
         msg.textContent = e.status === 400 ? "Senha incorreta." : (e.message || "Não foi possível conferir a senha agora."); msg.hidden = false;
@@ -571,9 +581,10 @@ async function liberarIA(){
   return true;
 }
 async function ia(acao, extra = {}){
+  const assunto = extra.assunto_id ?? E.assunto;                  // fixo no início: trocar de tela no meio não muda o destino
   avisoIA(IA_FAZENDO[acao] || "trabalhando");
-  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, assunto_id:E.assunto, ...extra}, tempo:150000});
-    contarUsoIA();                                         // só a consulta que deu certo conta para pedir a senha depois
+  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, ...extra, assunto_id:assunto}, tempo:150000});
+    contarUsoIA(assunto);                                         // só a consulta que deu certo conta para pedir a senha depois
     return r; }
   catch(e){
     if(e.status === 404 && !/Assunto não encontrado/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
@@ -1534,13 +1545,15 @@ const ACOES = {
   async "ia-tudo"(){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     if(!(await liberarIA())) return;                                    // trecho + texto + títulos + ilustração contam como uma consulta
-    const r = await ia("fundamentar");
-    let g; try{ g = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo"}); }
-    catch(e){ await desenhar(); throw new ErroApi(`Trechos registrados: ${r.inseridas.length}. O rascunho não foi gerado: ${e.message}`); }
+    const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo";
+    const r = await ia("fundamentar", {assunto_id:assunto});
+    let g; try{ g = await ia("gerar", {formato, assunto_id:assunto}); }
+    catch(e){ if(E.assunto === assunto) await desenhar(); throw new ErroApi(`Trechos registrados: ${r.inseridas.length}. O rascunho não foi gerado: ${e.message}`); }
     // v0.11.0: a capa é a ilustração da IA; se ela falhar, fica a capa padrão Artecon
     let capa = "ilustração";
-    try{ await ilustracaoIA(g.conteudo_id); }
+    try{ await ilustracaoIA(g.conteudo_id, undefined, "", assunto); }
     catch(e){ capa = (await capaAutomatica(g.conteudo_id)) ? "padrão" : ""; }
+    if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo";
     await desenhar();
     recado(`IA: ${r.inseridas.length} trecho(s) de fundamentação, um rascunho${g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : ""} e ` +
@@ -1560,7 +1573,9 @@ const ACOES = {
     const descricao = ($(`#img-desc-${el.dataset.id}`)?.value || "").trim();
     (E.imgDesc = E.imgDesc || {})[el.dataset.id] = descricao;
     if(!(await liberarIA())) return;
-    await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao);
+    const assunto = E.assunto;
+    await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao, assunto);
+    if(!telaDoAssunto(assunto)) return;
     await desenhar(); recado("Ilustração gerada pela IA. Confira se combina com o assunto antes de aprovar.");
   },
   async "testar-ia"(){
@@ -1584,7 +1599,9 @@ const ACOES = {
 
   async "ia-classificar"(){
     if(!(await liberarIA())) return;
-    const r = await ia("classificar"), f = $("form[data-form=assunto]"), s = r.sugestao;
+    const assunto = E.assunto, r = await ia("classificar", {assunto_id:assunto});
+    if(!telaDoAssunto(assunto, true)) return;                           // a sugestão não é aplicada no formulário de outro assunto
+    const f = $("form[data-form=assunto]"), s = r.sugestao;
     for(const [campo, valor] of Object.entries({categoria:s.categoria, abrangencia:s.abrangencia, relevancia:s.relevancia,
         subcategoria:s.subcategoria, resumo:s.resumo, publico_afetado:s.publico_afetado})){
       if(!f[campo] || !valor) continue;
@@ -1597,7 +1614,8 @@ const ACOES = {
   },
   async "ia-fundamentar"(){
     if(!(await liberarIA())) return;
-    const r = await ia("fundamentar");
+    const assunto = E.assunto, r = await ia("fundamentar", {assunto_id:assunto});
+    if(!telaDoAssunto(assunto)) return;
     await desenhar();
     recado(`IA: ${r.inseridas.length} trecho(s) conferido(s) e registrado(s); ${r.descartadas.length} descartado(s).`, !r.inseridas.length);
     const d = $("#ia-descartadas");
@@ -1607,16 +1625,18 @@ const ACOES = {
   async "ia-analise"(){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     if(!(await liberarIA())) return;
-    const r = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo", analise:true});
+    const assunto = E.assunto, r = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo", analise:true, assunto_id:assunto});
     const capa = await capaAutomatica(r.conteudo_id);
+    if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo";
     await desenhar();
     recado("Texto para análise gerado a partir de fonte não oficial. Ele não vai ao site: para publicar, inclua o texto oficial no passo 1." + (capa ? "" : SEM_CAPA), "aviso");
   },
   async "ia-gerar"(){
     if(!(await liberarIA())) return;
-    const r = await ia("gerar", {formato:$("#novo-formato").value});
+    const assunto = E.assunto, r = await ia("gerar", {formato:$("#novo-formato").value, assunto_id:assunto});
     const capa = await capaAutomatica(r.conteudo_id);
+    if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo";
     await desenhar();
     recado((r.avisos.length ? `Rascunho gerado pela IA com ${r.avisos.length} ponto(s) a conferir.` : "Rascunho gerado pela IA.") + (capa ? "" : SEM_CAPA), r.avisos.length > 0 ? "aviso" : false);
@@ -1634,7 +1654,8 @@ const ACOES = {
     const caixa = $(`#titulos-${el.dataset.id}`);
     const ja = [...caixa.querySelectorAll("[data-titulo]")].map(b => b.dataset.titulo);
     if(!(await liberarIA())) return;
-    const r = await ia("titulos", {conteudo_id:Number(el.dataset.id), evitar:[f.titulo.value, ...ja]});
+    const assunto = E.assunto, r = await ia("titulos", {conteudo_id:Number(el.dataset.id), evitar:[f.titulo.value, ...ja], assunto_id:assunto});
+    if(!telaDoAssunto(assunto, true) || !caixa.isConnected) return;
     caixa.innerHTML = chipsTitulo(el.dataset.id, r.titulos);
     caixa.closest(".opcoes-titulo").querySelector(".sub").textContent = "Outras opções da IA — clique para usar:";
     recado("Novas opções de título. Clique numa delas para usar (e depois em “Salvar”).");
@@ -1960,9 +1981,9 @@ async function desenharCapa(titulo, rotulo){
   return {dados:cv.toDataURL("image/jpeg", 0.86), largura:L, altura:A};
 }
 /* Ilustração da capa pela IA (foto realista, sem texto nem marca), reduzida e gravada como a imagem do conteúdo. */
-async function ilustracaoIA(conteudoId, titulo, descricao = ""){
+async function ilustracaoIA(conteudoId, titulo, descricao = "", assunto = E.assunto){
   if(titulo === undefined) titulo = (await ler("radar_conteudos", {select:"titulo", id:"eq." + conteudoId}))[0]?.titulo || "";
-  const r = await ia("ilustrar", {titulo, descricao});
+  const r = await ia("ilustrar", {titulo, descricao, assunto_id:assunto});
   if(!/^data:image\/(png|jpeg|webp);base64,/.test(String(r.imagem || ""))) throw new ErroApi("A IA não devolveu uma imagem válida. Tente de novo.");
   await gravarImagem(conteudoId, await reduzirImagemDe(r.imagem, 1200, 630));
 }
@@ -2142,7 +2163,7 @@ const NAVEGACAO = new Set(["etapa","previa","fechar-previa","usar-titulo","filtr
   "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto"]);
 let OCUPADO = false;
 async function executar(fn, livre, ...args){
-  if(!livre && OCUPADO) return;
+  if(!livre && OCUPADO){ recado("Aguarde a ação em andamento terminar.", true); return; }
   const avulso = livre ? null : avulsoEscondido();
   if(avulso){ recado(avisoEtapa(avulso), true); return; }      // antes de marcar "ocupado": senão nada mais salvaria
   if(!livre){ OCUPADO = true; document.body.classList.add("ocupado"); }
