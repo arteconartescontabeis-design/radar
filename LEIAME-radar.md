@@ -14,11 +14,16 @@ site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) e
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
 
-- **Boletim da ITC pela função `radar-itc`**: lê no Outlook (Microsoft Graph) os e-mails de itc@itcnet.com.br a cada 2 horas,
+- **Boletim da ITC pela função `radar-itc`**: lê no Outlook (Microsoft Graph) os e-mails de itc@itcnet.com.br 1 vez por dia, às 02h55,
   a IA separa as matérias e elas entram na triagem como antes. Não depende mais de uma conversa do Claude aberta. Só leitura:
   o e-mail não é marcado como lido, movido nem respondido; nada do boletim vai para o GitHub (que é público) nem para os logs.
 - Na aba **Fontes**, o administrador tem **"Ler boletim agora"** (últimos 3 dias) e **"Testar conexão com o e-mail"**.
 - **Texto justificado** na notícia que o robô cadastra no site (a prévia e o "Copiar texto" já eram); os créditos continuam à direita.
+- **"Ainda não pode ser publicado no site"** agora traz os botões para resolver ("Marcar como confirmado oficialmente", "Buscar o
+  trecho que comprova") e, para o administrador, **"Publicar mesmo assim"**: pede o motivo, que fica registrado no histórico do
+  assunto, e pode ser desfeito. O texto para análise continua sem ir ao site.
+- **Ilustração:** "Gerar texto para análise" também cria a ilustração com IA; "Preparar tudo" num assunto sem fonte oficial prepara
+  o texto para análise com a ilustração; se a ilustração falhar, a próxima tentativa pelo botão dela não pede senha.
 
 Mudam o banco (`radar-setup-v0.12.0.sql`: tabela `radar_itc_lidos` e as funções do boletim), o `index.html`, o robô de
 publicação e entra a função nova `radar-itc`. A função `radar-ia` não muda. Configuração: "Boletim da ITC pelo Microsoft Graph".
@@ -147,7 +152,7 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-reversao-v0.12.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0). |
-| `sql/radar-itc-agenda.sql` | Agenda (a cada 2 horas) da leitura do boletim da ITC; roda uma vez no Supabase. |
+| `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase. |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes e testes. |
 | `testes/` | Suíte de testes automatizados. |
@@ -701,7 +706,7 @@ no Microsoft Entra, feito uma vez por quem administra o Microsoft 365 do escrit�
    `GRAPH_CLIENT_ID` (ID do aplicativo), `GRAPH_CLIENT_SECRET` (o Valor do passo 4) e `ITC_CAIXA` (o e-mail da caixa onde o
    boletim chega). **Nunca mande esses valores pelo chat.** O `IA_GATEWAY_TOKEN` já existe (é o mesmo da função radar-ia).
 7. Radar → **Fontes** → boletim da ITC → **Testar conexão com o e-mail**: todos os itens devem ficar OK.
-8. Rode uma vez `sql/radar-itc-agenda.sql` no SQL Editor (liga a agenda a cada 2 horas). Daí em diante, a rotina antiga
+8. Rode uma vez `sql/radar-itc-agenda.sql` no SQL Editor (liga a leitura diária às 02h55; se ficar boletim para depois, ela se completa às 03h10 e às 03h25). Daí em diante, a rotina antiga
    (que dependia da conversa do Claude) pode ser desligada.
 
 Opcional: `RADAR_ITC_MODELO` (padrão `claude-haiku-4-5`) e `ITC_REMETENTE` (padrão `itc@itcnet.com.br`). Cada leitura com

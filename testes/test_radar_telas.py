@@ -3229,7 +3229,9 @@ def test_preparar_tudo_cria_a_ilustracao_e_texto_para_analise_sem_fonte_oficial(
     assert pagina.locator("[data-acao=ia-gerar], [data-acao=ia-tudo]").count() == 0
     pagina.click("#proximo-passo >> text=Gerar texto para análise")
     pagina.wait_for_selector("text=Texto para análise gerado a partir de fonte não oficial")
-    assert pedidos[-1]["acao"] == "gerar" and pedidos[-1]["analise"] is True
+    assert pedidos[-2]["acao"] == "gerar" and pedidos[-2]["analise"] is True
+    assert pedidos[-1]["acao"] == "ilustrar"                                       # v0.12.0: com a ilustração da IA
+    pagina.wait_for_selector("text=A capa é a ilustração da IA.")
     assert "TEXTO PARA ANÁLISE" in pagina.inner_text(".avisos-ia")
     assert "https://www.itcnet.com.br/" in pagina.inner_text(".link-fonte") and "radar=" not in pagina.inner_text(".link-fonte")
 
@@ -3286,3 +3288,20 @@ def test_fontes_tem_ler_boletim_e_testar_conexao_so_para_o_administrador(pagina,
     pagina.click("nav.abas >> text=Fontes")
     pagina.wait_for_selector("text=Lido no e-mail pela função radar-itc")
     assert pagina.locator("text=Ler boletim agora").count() == 0
+
+
+# ------------------------------------------------------------ v0.12.0 — "Publicar mesmo assim" e nova tentativa da ilustração
+def test_aviso_de_publicacao_tem_os_botoes_e_o_administrador_libera_com_motivo(pagina, limpo):
+    a, c = pronto_para_o_site(limpo)
+    limpo.execute("update radar_assuntos set situacao_confirmacao = 'em_verificacao' where id = %s", (a,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    aviso = pagina.locator(".aviso:visible", has_text="Ainda não pode ser publicado no site")
+    assert aviso.locator("text=Marcar como confirmado oficialmente").count() == 1
+    pagina.resposta_dialogo = "Confirmado por telefone com a Receita Federal"
+    aviso.locator("text=Publicar mesmo assim").click()
+    pagina.wait_for_selector("text=Publicação liberada sem a fundamentação oficial")
+    assert pagina.locator("text=Motivo: Confirmado por telefone com a Receita Federal").count() == 1
+    assert limpo.execute("select liberado_sem_base_motivo from radar_assuntos where id = %s", (a,)).fetchone()[0].startswith("Confirmado")
+    assert pagina.locator(".aviso:visible", has_text="Ainda não pode ser publicado no site").count() == 0

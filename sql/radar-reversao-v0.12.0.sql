@@ -117,6 +117,9 @@ drop function if exists public.radar_data_valida(text);
 drop function if exists public.radar_itc_ja_lidos(text[]);
 drop function if exists public.radar_itc_marcar_lido(text, text, timestamptz, int, int);
 drop function if exists public.radar_itc_conferir_agenda(text);
+drop function if exists public.radar_itc_registrar_falha(text);
+drop function if exists public.radar_liberar_sem_fundamentacao(bigint, text);
+drop function if exists public.radar_fn_assunto_liberacao() cascade;
 
 commit;
 

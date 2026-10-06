@@ -191,6 +191,10 @@ create table if not exists public.radar_assuntos (
   atualizado_em         timestamptz not null default now()
 );
 create index if not exists radar_assuntos_status_idx on public.radar_assuntos (status, relevancia);
+-- v0.12.0: o administrador pode liberar a publicação no site sem a fundamentação oficial (com o motivo, que fica registrado)
+alter table public.radar_assuntos add column if not exists liberado_sem_base_por    uuid references auth.users(id) on delete set null;
+alter table public.radar_assuntos add column if not exists liberado_sem_base_em     timestamptz;
+alter table public.radar_assuntos add column if not exists liberado_sem_base_motivo text check (length(liberado_sem_base_motivo) between 10 and 500);
 
 create table if not exists public.radar_assunto_capturas (
   assunto_id  bigint not null references public.radar_assuntos(id) on delete cascade,
@@ -264,8 +268,10 @@ create table if not exists public.radar_itc_lidos (
   recebido_em  timestamptz,
   lido_em      timestamptz not null default now(),
   materias     int         not null default 0 check (materias >= 0),
-  novas        int         not null default 0 check (novas >= 0)
+  novas        int         not null default 0 check (novas >= 0),
+  tentativas   int         not null default 1 check (tentativas >= 1)   -- leituras sem matéria (ou com erro): desiste na 3ª
 );
+alter table public.radar_itc_lidos add column if not exists tentativas int not null default 1 check (tentativas >= 1);
 -- v0.6.0: a ilustração de capa por IA também é registrada no consumo
 alter table public.radar_ia_uso drop constraint if exists radar_ia_uso_acao_check;
 alter table public.radar_ia_uso add constraint radar_ia_uso_acao_check check (acao in ('classificar','fundamentar','gerar','ilustrar'));
@@ -831,6 +837,10 @@ declare
   v_situacao text;
 begin
   select a.situacao_confirmacao into v_situacao from public.radar_assuntos a where a.id = p_assunto;
+  -- v0.12.0: liberado pelo administrador ("Publicar mesmo assim"): a exigência de fundamentação não vale para este assunto
+  if exists (select 1 from public.radar_assuntos a where a.id = p_assunto and a.liberado_sem_base_em is not null) then
+    return null;
+  end if;
   if v_situacao is distinct from 'confirmado_oficialmente' then
     return format('RADAR031: o assunto não está CONFIRMADO OFICIALMENTE (situação atual: %s)',
                   coalesce(v_situacao, 'inexistente'));
@@ -845,6 +855,44 @@ begin
     return 'RADAR032: FUNDAMENTAÇÃO NÃO CONFIRMADA — necessária análise técnica (nenhum trecho conferido em fonte oficial)';
   end if;
   return null;
+end $$;
+
+-- v0.12.0: "Publicar mesmo assim" — só o administrador, com motivo. p_motivo nulo desfaz a liberação.
+create or replace function public.radar_liberar_sem_fundamentacao(p_assunto bigint, p_motivo text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR120: só o administrador libera a publicação sem a fundamentação oficial' using errcode = '42501';
+  end if;
+  if p_motivo is not null and length(btrim(p_motivo)) not between 10 and 500 then
+    raise exception 'RADAR121: escreva o motivo da liberação (de 10 a 500 caracteres)' using errcode = 'P0001';
+  end if;
+  perform set_config('radar.liberando', '1', true);
+  update public.radar_assuntos
+     set liberado_sem_base_por = case when p_motivo is null then null else auth.uid() end,
+         liberado_sem_base_em = case when p_motivo is null then null else now() end,
+         liberado_sem_base_motivo = nullif(btrim(p_motivo), '')
+   where id = p_assunto;
+  if not found then
+    raise exception 'RADAR122: assunto não encontrado' using errcode = 'P0001';
+  end if;
+  perform set_config('radar.liberando', '', true);
+end $$;
+
+-- a liberação só muda pela função acima (a equipe edita o assunto, mas não esses campos)
+create or replace function public.radar_fn_assunto_liberacao() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(current_setting('radar.liberando', true), '') = '1' then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    new.liberado_sem_base_por := null; new.liberado_sem_base_em := null; new.liberado_sem_base_motivo := null;
+  else
+    new.liberado_sem_base_por := public.radar_manter_usuario(old.liberado_sem_base_por, new.liberado_sem_base_por);
+    new.liberado_sem_base_em := old.liberado_sem_base_em; new.liberado_sem_base_motivo := old.liberado_sem_base_motivo;
+  end if;
+  return new;
 end $$;
 
 -- Cadastro de fontes pela tela: formato mínimo. Só é conferido quando o cadastro muda — a atualização
@@ -1662,17 +1710,30 @@ begin
   return jsonb_build_object('recebidos', v_recebidos, 'novos', v_novos, 'ja_existiam', v_recebidos - v_novos);
 end $$;
 
--- v0.12.0: quais destes e-mails a função radar-itc já leu (para não gastar IA de novo com o mesmo boletim)
+-- v0.12.0: quais destes e-mails a função radar-itc já leu (para não gastar IA de novo com o mesmo boletim).
+-- Lido = trouxe matérias, ou já foi tentado 3 vezes sem resultado (a IA ou a leitura falharam): aí desiste.
 create or replace function public.radar_itc_ja_lidos(p_ids text[]) returns text[]
 language sql stable security definer set search_path = public as $$
-  select coalesce(array_agg(l.message_id), '{}') from public.radar_itc_lidos l where l.message_id = any(coalesce(p_ids, '{}'));
+  select coalesce(array_agg(l.message_id), '{}') from public.radar_itc_lidos l
+   where l.message_id = any(coalesce(p_ids, '{}')) and (l.materias > 0 or l.tentativas >= 3);
 $$;
 
+-- p_materias = 0: tentativa sem resultado (conta mais uma). Com matérias, fica registrado de vez.
 create or replace function public.radar_itc_marcar_lido(p_id text, p_assunto text, p_recebido timestamptz, p_materias int, p_novas int)
 returns void language sql security definer set search_path = public as $$
-  insert into public.radar_itc_lidos (message_id, assunto, recebido_em, materias, novas)
+  insert into public.radar_itc_lidos as l (message_id, assunto, recebido_em, materias, novas)
   values (p_id, left(p_assunto, 200), p_recebido, greatest(coalesce(p_materias, 0), 0), greatest(coalesce(p_novas, 0), 0))
-  on conflict (message_id) do nothing;
+  on conflict (message_id) do update
+     set tentativas = l.tentativas + case when excluded.materias > 0 then 0 else 1 end,
+         materias = greatest(l.materias, excluded.materias), novas = l.novas + excluded.novas, lido_em = now()
+   where l.materias = 0;
+$$;
+
+-- a falha da leitura aparece na aba Fontes (só o motivo; o conteúdo do boletim nunca); a próxima leitura boa apaga
+create or replace function public.radar_itc_registrar_falha(p_motivo text) returns void
+language sql security definer set search_path = public as $$
+  update public.radar_fontes set ultimo_erro = left('Leitura do boletim: ' || coalesce(p_motivo, 'falhou'), 500), ultima_falha_em = now()
+   where slug = 'itc-email';
 $$;
 
 -- v0.12.0: a agenda do banco (pg_cron, sql/radar-itc-agenda.sql) chama a função radar-itc com uma chave guardada no Vault.
@@ -1698,6 +1759,10 @@ create trigger radar_tg_fontes_atualizado before update on public.radar_fontes
 drop trigger if exists radar_tg_assuntos_atualizado on public.radar_assuntos;
 create trigger radar_tg_assuntos_atualizado before update on public.radar_assuntos
   for each row execute function public.radar_fn_atualizado_em();
+
+drop trigger if exists radar_tg_assunto_liberacao on public.radar_assuntos;
+create trigger radar_tg_assunto_liberacao before insert or update on public.radar_assuntos
+  for each row execute function public.radar_fn_assunto_liberacao();
 
 drop trigger if exists radar_tg_conteudos_atualizado on public.radar_conteudos;
 create trigger radar_tg_conteudos_atualizado before update on public.radar_conteudos
@@ -1876,7 +1941,9 @@ select f.*
 drop view if exists public.radar_v_assuntos;
 create view public.radar_v_assuntos
 with (security_invoker = true) as
-select a.*,
+-- colunas listadas (não a.*): coluna nova em radar_assuntos (ex.: a liberação da v0.12.0) não muda esta lista
+select a.id, a.titulo, a.categoria, a.subcategoria, a.abrangencia, a.relevancia, a.situacao_confirmacao, a.status,
+       a.resumo, a.publico_afetado, a.responsavel, a.criado_em, a.atualizado_em,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id) as evidencias,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id and e.trecho_conferido) as evidencias_conferidas,
        (select count(*) from public.radar_conteudos c where c.assunto_id = a.id) as conteudos,
@@ -1932,11 +1999,11 @@ select d.id, d.conteudo_id, d.url, d.publicado_em, d.observacao, d.titulo, d.reg
                  and n.titulo = c.titulo and n.corpo = c.corpo) as versao_anterior,
        d.fundamentacao,
        -- a base que sustentava o registro deixou de existir (assunto desconfirmado ou sem trecho conferido em fonte oficial)
-       (a.situacao_confirmacao <> 'confirmado_oficialmente' or not exists (
+       (a.liberado_sem_base_em is null and (a.situacao_confirmacao <> 'confirmado_oficialmente' or not exists (
           select 1 from public.radar_evidencias e
           join public.radar_capturas k on k.id = e.captura_id
           join public.radar_fontes   f on f.id = k.fonte_id
-          where e.assunto_id = c.assunto_id and e.trecho_conferido and f.oficial)) as base_caiu
+          where e.assunto_id = c.assunto_id and e.trecho_conferido and f.oficial))) as base_caiu
 from public.radar_divulgacoes d
 join public.radar_conteudos c on c.id = d.conteudo_id
 join public.radar_assuntos  a on a.id = c.assunto_id;
@@ -2027,11 +2094,13 @@ grant execute on function public.radar_autorizar_site(bigint, text, timestamptz)
 grant execute on function public.radar_cancelar_site(bigint) to authenticated;
 -- o robô confere de novo as exigências do assunto logo antes de enviar ao site
 grant execute on function public.radar_pendencia_assunto(bigint) to service_role;
+grant execute on function public.radar_liberar_sem_fundamentacao(bigint, text) to authenticated;   -- a função confere que é o administrador
 -- v0.12.0: a função radar-itc grava o boletim pelo papel do robô
 grant execute on function public.radar_receber_email(text, jsonb) to service_role;
 grant execute on function public.radar_itc_ja_lidos(text[]) to service_role;
 grant execute on function public.radar_itc_marcar_lido(text, text, timestamptz, int, int) to service_role;
 grant execute on function public.radar_itc_conferir_agenda(text) to service_role;
+grant execute on function public.radar_itc_registrar_falha(text) to service_role;
 
 -- perfis
 drop policy if exists radar_perfis_sel on public.radar_perfis;

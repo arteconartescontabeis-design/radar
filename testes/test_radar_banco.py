@@ -443,7 +443,7 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                    or (p.proname not in ('radar_papel', 'radar_abrir_assunto', 'radar_admin_usuarios',
                                                            'radar_registrar_uso_ia', 'radar_registrar_evidencia_ia',
                                                            'radar_incluir_texto_oficial', 'radar_ignorar_capturas', 'radar_separar_captura',
-                                                           'radar_autorizar_site', 'radar_cancelar_site')
+                                                           'radar_autorizar_site', 'radar_cancelar_site', 'radar_liberar_sem_fundamentacao')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -2407,3 +2407,33 @@ def test_funcoes_do_boletim_so_para_o_robo_e_lista_de_lidos_so_para_o_admin(limp
     with como("authenticated", EDITOR) as c:
         assert c.execute("select count(*) from radar_itc_lidos").fetchone()[0] == 0          # editor não vê
     limpo.execute("truncate radar_itc_lidos")
+
+
+def test_publicar_mesmo_assim_so_o_administrador_com_motivo_e_o_texto_para_analise_continua_barrado(limpo):
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Sem fundamentação') returning id").fetchone()[0]
+    with como("service_role") as c:
+        assert c.execute("select radar_pendencia_assunto(%s)", (a,)).fetchone()[0].startswith("RADAR031")
+    with como("authenticated", EDITOR) as c:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR120"):
+            c.execute("select radar_liberar_sem_fundamentacao(%s, 'motivo qualquer longo')", (a,))
+        # a equipe edita o assunto, mas não consegue se liberar pela tabela
+        c.execute("update radar_assuntos set liberado_sem_base_em = now(), liberado_sem_base_motivo = 'tentativa direta' where id = %s", (a,))
+    assert limpo.execute("select liberado_sem_base_em from radar_assuntos where id = %s", (a,)).fetchone()[0] is None
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR121"):
+            c.execute("select radar_liberar_sem_fundamentacao(%s, 'curto')", (a,))
+        c.execute("select radar_liberar_sem_fundamentacao(%s, 'Notícia da ITC confirmada por telefone com a Receita')", (a,))
+    por, motivo = limpo.execute("select liberado_sem_base_por, liberado_sem_base_motivo from radar_assuntos where id = %s", (a,)).fetchone()
+    assert str(por) == ADMIN and motivo.startswith("Notícia da ITC")
+    with como("service_role") as c:
+        assert c.execute("select radar_pendencia_assunto(%s)", (a,)).fetchone()[0] is None
+    # aprovado e liberado: a autorização do site passa; texto para análise continua barrado
+    c1 = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, status)
+                          values (%s, 'flash', 'Liberado', 'Texto da equipe.', 'humano', 'em_revisao') returning id""", (a,)).fetchone()[0]
+    aprovar(c1, ADMIN)
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c1,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_autorizar_site(%s, 'Notícias', %s)", (c1, lido)).fetchone()[0] > 0
+        c.execute("select radar_liberar_sem_fundamentacao(%s, null)", (a,))                # desfazer
+    with como("service_role") as c:
+        assert c.execute("select radar_pendencia_assunto(%s)", (a,)).fetchone()[0].startswith("RADAR031")

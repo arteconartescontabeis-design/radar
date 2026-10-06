@@ -1,6 +1,6 @@
 # Rotina diária — boletim da ITC Consultoria (e-mail → Radar)
 
-> **v0.12.0:** substituída pela função `radar-itc` (Microsoft Graph, dentro do Supabase), que roda a cada 2 horas sem
+> **v0.12.0:** substituída pela função `radar-itc` (Microsoft Graph, dentro do Supabase), que roda 1 vez por dia (02h55) sem
 > depender de uma conversa aberta. Veja "Boletim da ITC pelo Microsoft Graph" no LEIAME. Este texto fica como registro e
 > como plano B enquanto o registro de aplicativo no Microsoft 365 não estiver pronto.
 

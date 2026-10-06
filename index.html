@@ -189,8 +189,10 @@ const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = 
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
   ["0.12.0", "06/10/2026", [
-    "Boletim da ITC dentro do aplicativo: a função radar-itc lê os e-mails da ITC no Outlook (Microsoft Graph) a cada 2 horas, a IA separa as matérias e elas entram na triagem como antes. Não depende mais de uma conversa aberta. Na aba Fontes, o administrador tem “Ler boletim agora” e “Testar conexão com o e-mail”.",
-    "Publicação no site com o texto justificado (como já era na prévia e no “Copiar texto”); os créditos continuam à direita."
+    "Boletim da ITC dentro do aplicativo: a função radar-itc lê os e-mails da ITC no Outlook (Microsoft Graph) 1 vez por dia, às 02h55, a IA separa as matérias e elas entram na triagem como antes. Não depende mais de uma conversa aberta. Na aba Fontes, o administrador tem “Ler boletim agora” e “Testar conexão com o e-mail”.",
+    "Publicação no site com o texto justificado (como já era na prévia e no “Copiar texto”); os créditos continuam à direita.",
+    "Aviso “Ainda não pode ser publicado no site”: agora com os botões “Marcar como confirmado oficialmente”, “Buscar o trecho que comprova” e, para o administrador, “Publicar mesmo assim” (pede o motivo, que fica registrado; dá para desfazer). O texto para análise continua sem ir ao site.",
+    "“Gerar texto para análise” cria também a ilustração com IA; “Preparar tudo” num assunto sem fonte oficial prepara o texto para análise com a ilustração. Se a ilustração falhar, a próxima tentativa pelo botão dela não pede senha."
   ]],
   ["0.11.1", "06/10/2026", [
     "IA: a consulta fica presa ao assunto em que foi pedida; se você trocar de tela enquanto ela trabalha, o resultado não é aplicado no outro assunto (e o aviso diz onde ficou).",
@@ -584,8 +586,12 @@ function pedirSenha(){
   });
 }
 /* Antes de cada consulta à IA no assunto: a 1ª é livre; a partir da 2ª, senha. "Preparar tudo" conta como uma consulta só. */
-async function liberarIA(){
+/* v0.12.0: quando a ilustração do "Preparar tudo" (ou do texto para análise) falha, a próxima "Gerar ilustração com IA"
+   neste assunto não pede senha: a falha não conta como consulta. */
+const CREDITO_ILUSTRACAO = new Set();
+async function liberarIA(ilustracao){
   const assunto = E.assunto;
+  if(ilustracao && CREDITO_ILUSTRACAO.has(assunto)){ CREDITO_ILUSTRACAO.delete(assunto); return true; }
   if(usosIA() >= 1 && !(await pedirSenha())){ recado("Consulta à IA cancelada."); return false; }
   if(E.assunto !== assunto){ recado("A tela mudou enquanto a senha era pedida: a consulta não foi feita."); return false; }
   return true;
@@ -868,7 +874,7 @@ const TELAS = {
         <tr><td><b>${h(f.nome)}</b> ${f.validada ? "" : selo("a validar","alerta")}${f.ativo ? "" : " " + selo("inativa","neutro")} ${f.oficial ? "" : selo("não oficial","alerta")}<br><span class="sub">${h(f.orgao)} · ${h(ROTULOS.coletor[f.tipo_coletor] || f.tipo_coletor)}</span>
             <br>${linkFonte(f.url, f.url)}
             ${f.ultimo_erro ? `<div class="aviso erro">${h(f.ultimo_erro)}</div>` : ""}
-            ${f.config?.origem === "email" ? `<br><span class="sub">Lido no e-mail pela função radar-itc (Microsoft Graph), a cada 2 horas.</span>
+            ${f.config?.origem === "email" ? `<br><span class="sub">Lido no e-mail pela função radar-itc (Microsoft Graph), 1 vez por dia, às 02h55.</span>
               ${ehAdmin() ? `<div class="acoes" style="margin:6px 0 0"><button class="btn peq sec" data-acao="itc-ler">Ler boletim agora</button>
                 <button class="btn peq sec" data-acao="itc-testar">Testar conexão com o e-mail</button></div><div id="itc-resultado"></div>` : ""}` : ""}</td>
           <td>${selo(ROTULOS.saude[saude[f.id]] || saude[f.id] || "—", tipoSaude(saude[f.id]))}</td>
@@ -1163,7 +1169,8 @@ async function telaAssunto(id){
   const conferidas = evid.filter(e => e.trecho_conferido).length;
   const oficiais = new Set(vinc.filter(v => v.radar_capturas.radar_fontes.oficial).map(v => v.radar_capturas.id));
   const conferidasOficiais = evid.filter(e => e.trecho_conferido && oficiais.has(e.captura_id)).length;
-  const pronto = a.situacao_confirmacao === "confirmado_oficialmente" && conferidasOficiais > 0;
+  const liberado = !!a.liberado_sem_base_em;                            // v0.12.0: "Publicar mesmo assim" do administrador
+  const pronto = liberado || (a.situacao_confirmacao === "confirmado_oficialmente" && conferidasOficiais > 0);
   if(ed) FONTES_LISTA = await ler("radar_fontes", {select:"id,nome,oficial", order:"nome"});
   // os quatro passos do trabalho e o que falta agora
   const temTexto = vinc.some(v => v.radar_capturas.texto), temOficial = vinc.some(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial);
@@ -1216,7 +1223,13 @@ async function telaAssunto(id){
   const ETAPA_DO_PASSO = ["fonte", "conteudo", "conteudo", "publicar"];
   const oculta = e => tudo || E.etapa === e ? "" : " hidden";
   const fontesTxt = vinc.map(v => v.radar_capturas.texto).filter(Boolean);
-  const avisoRegistro = `<div class="aviso alerta"><b>Ainda não pode ser publicado no site.</b> ${a.situacao_confirmacao !== "confirmado_oficialmente" ? "O assunto precisa estar marcado como “Confirmado oficialmente”. " : ""}${conferidasOficiais ? "" : conferidas ? "Os trechos conferidos são de fonte não oficial: é preciso ao menos um trecho conferido em fonte oficial. " : "É preciso ao menos um trecho conferido em fonte oficial (FUNDAMENTAÇÃO NÃO CONFIRMADA). "}<span class="sub">O Informativo Mensal exige só o conteúdo aprovado.</span></div>`;
+  const avisoRegistro = `<div class="aviso alerta"><b>Ainda não pode ser publicado no site.</b> ${a.situacao_confirmacao !== "confirmado_oficialmente" ? "O assunto precisa estar marcado como “Confirmado oficialmente”. " : ""}${conferidasOficiais ? "" : conferidas ? "Os trechos conferidos são de fonte não oficial: é preciso ao menos um trecho conferido em fonte oficial. " : "É preciso ao menos um trecho conferido em fonte oficial (FUNDAMENTAÇÃO NÃO CONFIRMADA). "}<span class="sub">O Informativo Mensal exige só o conteúdo aprovado.</span>
+    ${podeEditar() ? `<div class="acoes" style="margin:8px 0 0">${a.situacao_confirmacao !== "confirmado_oficialmente" ? `<button class="btn peq verde" data-acao="confirmar-oficial">Marcar como confirmado oficialmente</button>` : ""}
+      ${conferidasOficiais ? "" : `<button class="btn peq sec" data-acao="etapa" data-etapa="fonte">Buscar o trecho que comprova (passo 1)</button>`}
+      ${ehAdmin() ? `<button class="btn peq perigo" data-acao="liberar-publicacao">Publicar mesmo assim</button>` : ""}</div>` : ""}</div>`;
+  const avisoLiberado = liberado ? `<div class="aviso alerta"><b>Publicação liberada sem a fundamentação oficial</b> pelo administrador em ${dataHora(a.liberado_sem_base_em)}.
+    <br><span class="sub">Motivo: ${h(a.liberado_sem_base_motivo || "")}</span>
+    ${ehAdmin() ? `<div class="acoes" style="margin:8px 0 0"><button class="btn peq sec" data-acao="desfazer-liberacao">Desfazer a liberação</button></div>` : ""}</div>` : "";
   // a captura que originou o assunto: a oficial com texto, se houver
   const origem = (vinc.find(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial) || vinc[0])?.radar_capturas;
   const capa = cont.map(c => imgs[c.imagem_id]).find(i => i && /^data:image\/(jpeg|png|webp);base64,/.test(i));
@@ -1228,7 +1241,7 @@ async function telaAssunto(id){
     <ol class="trilha passos4" aria-label="Passos do assunto">${passos.map(([nome, feito, nota], n) => `<li class="${feito ? "feito" : n === atual ? "agora" : ""}${!tudo && ETAPA_DO_PASSO[n] === E.etapa ? " aberta" : ""}" data-acao="etapa" data-etapa="${ETAPA_DO_PASSO[n]}" role="button" tabindex="0" title="Ir para este passo"><b>${feito ? "✓ " : ""}${n + 1}. ${nome}</b><span>${h(nota)}</span></li>`).join("")}</ol>
     ${prox ? `<div class="proximo" id="proximo-passo"><div><h2>Próximo passo: ${prox[0]}</h2><p style="margin:0">${prox[1]}</p></div><div class="acoes">${prox[2]}</div></div>`
       : ed && (noSite || foraDoSite) ? `<div class="proximo fim" id="proximo-passo"><h2>${noSite ? "Concluído: publicado no site e registrado" : "Concluído: conteúdo aprovado, só do Informativo Mensal"}</h2><p style="margin:0">${revisando.length || rascunhos.length ? "Há outro conteúdo deste assunto ainda em rascunho ou em revisão." : "Nada pendente neste assunto."}</p></div>` : ""}
-    ${pronto || !tudo ? "" : avisoRegistro}
+    ${!tudo ? "" : (pronto ? avisoLiberado : avisoRegistro)}
 
     <nav class="etapas" aria-label="Modo de exibição"><button class="voltar modo" data-acao="modo-tudo" style="margin:0">${tudo ? "Mostrar um passo de cada vez" : "Mostrar tudo numa página"}</button></nav>
 
@@ -1305,7 +1318,7 @@ async function telaAssunto(id){
     </section>
 
     <section data-etapa="conteudo"${oculta("conteudo")}>
-    ${pronto || tudo || !cont.length ? "" : avisoRegistro}
+    ${tudo || !cont.length ? "" : (pronto ? avisoLiberado : avisoRegistro)}
     <div class="painel" id="sec-conteudos"><h2>2. Escrever · 3. Revisar e aprovar</h2>
       ${ed ? `<div class="acoes ia-barra"><label for="novo-formato" style="margin:0">Tamanho do texto</label>
         <select id="novo-formato">${opcoes(TAMANHO_TEXTO, "informativo")}</select>
@@ -1324,7 +1337,7 @@ async function telaAssunto(id){
     <div class="painel" id="sec-publicar"><h2>4. Publicar no site</h2>
       ${!aprovados.length ? `<p class="sub">Disponível depois que o conteúdo for aprovado (passo 3).</p>`
         : !vaoAoSite.length ? `<p class="sub">O conteúdo aprovado está marcado como “não vai ao site”: fica só para o Informativo Mensal.</p>`
-        : (pronto ? "" : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id), pronto, a.categoria)).join("")}
+        : (pronto ? avisoLiberado : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id), pronto, a.categoria)).join("")}
     </div>
     </section>
     </div>
@@ -1559,18 +1572,27 @@ const ACOES = {
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     if(!(await liberarIA())) return;                                    // trecho + texto + títulos + ilustração contam como uma consulta
     const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo";
-    const r = await ia("fundamentar", {assunto_id:assunto});
+    let r;
+    try{ r = await ia("fundamentar", {assunto_id:assunto}); }
+    catch(e){
+      if(!/não tem texto de fonte oficial/i.test(e.message)) throw e;
+      // assunto só com fonte não oficial (ITC, portais): o "tudo" vira o texto para análise, com a ilustração
+      const g = await ia("gerar", {formato, analise:true, assunto_id:assunto});
+      const capa = await capaComIA(g.conteudo_id, assunto);
+      if(!telaDoAssunto(assunto)) return;
+      E.etapa = "conteudo"; await desenhar();
+      recado("Este assunto não tem fonte oficial: a IA preparou um texto PARA ANÁLISE (não vai ao site)." + avisoCapa(capa), "aviso");
+      return;
+    }
     let g; try{ g = await ia("gerar", {formato, assunto_id:assunto}); }
     catch(e){ if(E.assunto === assunto) await desenhar(); throw new ErroApi(`Trechos registrados: ${r.inseridas.length}. O rascunho não foi gerado: ${e.message}`); }
     // v0.11.0: a capa é a ilustração da IA; se ela falhar, fica a capa padrão Artecon
-    let capa = "ilustração";
-    try{ await ilustracaoIA(g.conteudo_id, undefined, "", assunto); }
-    catch(e){ capa = (await capaAutomatica(g.conteudo_id)) ? "padrão" : ""; }
+    const capa = await capaComIA(g.conteudo_id, assunto);
     if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo";
     await desenhar();
     recado(`IA: ${r.inseridas.length} trecho(s) de fundamentação, um rascunho${g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : ""} e ` +
-      (capa === "ilustração" ? "a ilustração da capa." : capa === "padrão" ? "a capa padrão (a ilustração com IA não deu certo agora; tente pelo botão dela)." : "nenhuma capa." + SEM_CAPA) +
+      (capa === "ilustração" ? "a ilustração da capa." : capa === "padrão" ? "a capa padrão (a ilustração com IA não deu certo agora; tente pelo botão dela, sem senha)." : "nenhuma capa." + SEM_CAPA) +
       " Revise antes de mandar para a revisão.", g.avisos.length > 0 || capa !== "ilustração" ? "aviso" : false);
   },
   async "capa-auto"(el){
@@ -1585,7 +1607,7 @@ const ACOES = {
     if(f.dataset.temImagem && !confirm("Substituir a imagem atual por uma ilustração gerada pela IA?" + (f.dataset.aprovado ? "\n\nO conteúdo está aprovado: ao trocar a imagem ele volta para revisão." : ""))) return;
     const descricao = ($(`#img-desc-${el.dataset.id}`)?.value || "").trim();
     (E.imgDesc = E.imgDesc || {})[el.dataset.id] = descricao;
-    if(!(await liberarIA())) return;
+    if(!(await liberarIA(true))) return;
     const assunto = E.assunto;
     await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao, assunto);
     if(!telaDoAssunto(assunto)) return;
@@ -1611,6 +1633,20 @@ const ACOES = {
   },
 
   /* v0.12.0: boletim da ITC lido no e-mail pela função radar-itc (Microsoft Graph). O resultado traz só contagens. */
+  /* v0.12.0: "Publicar mesmo assim" — o administrador assume a publicação sem a fundamentação oficial, com o motivo registrado */
+  async "liberar-publicacao"(){
+    if(telaSuja()){ recado(avisoSujo(), true); return; }
+    const motivo = (prompt("Publicar no site SEM a fundamentação oficial.\n\nEscreva o motivo (fica registrado no histórico do assunto):") || "").trim();
+    if(!motivo){ recado("Liberação cancelada."); return; }
+    if(motivo.length < 10){ recado("Escreva um motivo com pelo menos 10 caracteres.", true); return; }
+    await rpc("radar_liberar_sem_fundamentacao", {p_assunto:E.assunto, p_motivo:motivo});
+    await desenhar(); recado("Publicação liberada. Agora é só autorizar no passo 4.", "aviso");
+  },
+  async "desfazer-liberacao"(){
+    if(!confirm("Desfazer a liberação? O assunto volta a exigir a fundamentação oficial para ir ao site.")) return;
+    await rpc("radar_liberar_sem_fundamentacao", {p_assunto:E.assunto, p_motivo:null});
+    await desenhar(); recado("Liberação desfeita.");
+  },
   async "itc-ler"(){
     const d = $("#itc-resultado"); if(d) d.innerHTML = `<p class="sub">Lendo os boletins dos últimos 3 dias… pode levar 1 ou 2 minutos.</p>`;
     let r; try{ r = await pedir("POST", "/functions/v1/radar-itc", {corpo:{acao:"ler", horas:72}, tempo:280000}); }
@@ -1656,11 +1692,11 @@ const ACOES = {
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     if(!(await liberarIA())) return;
     const assunto = E.assunto, r = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo", analise:true, assunto_id:assunto});
-    const capa = await capaAutomatica(r.conteudo_id);
+    const capa = await capaComIA(r.conteudo_id, assunto);                // v0.12.0: com a ilustração da IA, como o "Preparar tudo"
     if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo";
     await desenhar();
-    recado("Texto para análise gerado a partir de fonte não oficial. Ele não vai ao site: para publicar, inclua o texto oficial no passo 1." + (capa ? "" : SEM_CAPA), "aviso");
+    recado("Texto para análise gerado a partir de fonte não oficial. Ele não vai ao site: para publicar, inclua o texto oficial no passo 1." + avisoCapa(capa), "aviso");
   },
   async "ia-gerar"(){
     if(!(await liberarIA())) return;
@@ -2017,6 +2053,13 @@ async function ilustracaoIA(conteudoId, titulo, descricao = "", assunto = E.assu
   if(!/^data:image\/(png|jpeg|webp);base64,/.test(String(r.imagem || ""))) throw new ErroApi("A IA não devolveu uma imagem válida. Tente de novo.");
   await gravarImagem(conteudoId, await reduzirImagemDe(r.imagem, 1200, 630));
 }
+/* v0.12.0: capa do conteúdo novo: a ilustração da IA; se ela falhar, a capa padrão Artecon (e a próxima tentativa sai sem senha) */
+async function capaComIA(conteudoId, assunto){
+  try{ await ilustracaoIA(conteudoId, undefined, "", assunto); return "ilustração"; }
+  catch(e){ CREDITO_ILUSTRACAO.add(assunto); return (await capaAutomatica(conteudoId)) ? "padrão" : ""; }
+}
+const avisoCapa = capa => capa === "ilustração" ? " A capa é a ilustração da IA." : capa === "padrão"
+  ? " A ilustração com IA não deu certo agora: ficou a capa padrão (tente pelo botão “Gerar ilustração com IA”, sem senha)." : SEM_CAPA;
 /* Capa automática do conteúdo. Na criação é um extra: se falhar, o conteúdo fica sem imagem e nada mais é afetado. */
 const SEM_CAPA = " A capa automática não pôde ser gerada agora: use o botão “Gerar capa padrão Artecon” no conteúdo.";
 async function capaAutomatica(conteudoId, obrigatoria){

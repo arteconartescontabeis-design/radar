@@ -6,11 +6,12 @@
 // dependia de uma conversa do Claude aberta.
 //
 // Quem pode chamar:
-//   * a agenda do banco (pg_cron, 2x por dia), com o cabeçalho x-radar-agenda (chave guardada no Vault);
+//   * a agenda do banco (pg_cron, 1 vez por dia às 02h55; completa às 03h10/03h25 só se ficou boletim para depois),
+//     com o cabeçalho x-radar-agenda (chave guardada no Vault);
 //   * o administrador, pelo botão "Ler boletim agora" / "Testar conexão" na aba Fontes (token da sessão).
 //
 // Ações:
-//   ler          → lê os e-mails das últimas N horas (padrão 26), pula os já lidos, grava as matérias
+//   ler          → lê os e-mails das últimas N horas (padrão 50), pula os já lidos, grava as matérias
 //   diagnostico  → confere a configuração e o acesso à caixa, sem ler conteúdo (só o administrador)
 //
 // Privacidade: o repositório é público. O boletim é pago: nada do conteúdo vai para log, resposta ou
@@ -20,6 +21,8 @@
 //   GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET   registro de aplicativo no Microsoft Entra (Mail.Read)
 //   ITC_CAIXA                                               a caixa onde o boletim chega (ex.: contato@artecon.cnt.br)
 //   ITC_REMETENTE                                           padrão: itc@itcnet.com.br
+//   ITC_PASTA                                               padrão: inbox (Caixa de Entrada; nunca o Lixo Eletrônico).
+//                                                           Se uma regra do Outlook move o boletim, informe o id da pasta.
 //   IA_GATEWAY_TOKEN, IA_GATEWAY_URL                        os mesmos da função radar-ia (IA Central)
 //   RADAR_ITC_MODELO                                        padrão: claude-haiku-4-5
 // SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY o Supabase já fornece.
@@ -36,11 +39,15 @@ const MODELO = env("RADAR_ITC_MODELO", "claude-haiku-4-5");   // separar matéri
 const LOGIN_URL = env("GRAPH_LOGIN_URL", "https://login.microsoftonline.com").replace(/\/+$/, "");
 const GRAPH_URL = env("GRAPH_URL", "https://graph.microsoft.com/v1.0").replace(/\/+$/, "");
 const REMETENTE = env("ITC_REMETENTE", "itc@itcnet.com.br").trim().toLowerCase();
+const PASTA = env("ITC_PASTA", "inbox").trim() || "inbox";
 const FONTE = "itc-email";
 const MAX_EMAILS = 10;            // por execução (são ~3 por dia)
 const MAX_TEXTO = 60000;          // caracteres do corpo enviados à IA
-// o Supabase encerra a chamada perto de 150 s: um e-mail novo só começa se der tempo; o resto fica para a próxima leitura
-const COMECAR_ATE_MS = 55_000, TEMPO_IA_MS = 85_000;
+// o Supabase encerra a chamada perto de 150 s (contados do início do pedido): um e-mail novo só começa se der tempo, e a
+// espera pela IA nunca passa do que sobra; o resto fica para a próxima leitura
+const LIMITE_MS = 140_000, COMECAR_ATE_MS = 50_000, TEMPO_IA_MS = 85_000;
+let INICIO = Date.now();
+const restanteMs = () => LIMITE_MS - (Date.now() - INICIO);
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -130,7 +137,8 @@ async function lerEmails(token: string, horas: number, comCorpo = true): Promise
   const desde = new Date(Date.now() - horas * 3600_000).toISOString().replace(/\.\d{3}Z$/, "Z");
   const filtro = `receivedDateTime ge ${desde} and from/emailAddress/address eq '${REMETENTE.replace(/'/g, "''")}'`;
   const campos = comCorpo ? "id,subject,receivedDateTime,body" : "id,subject,receivedDateTime";
-  const url = `${GRAPH_URL}/users/${encodeURIComponent(c.caixa)}/messages?$filter=${encodeURIComponent(filtro)}` +
+  // só a pasta do boletim (Caixa de Entrada): um e-mail forjado que foi para o Lixo Eletrônico não entra no Radar
+  const url = `${GRAPH_URL}/users/${encodeURIComponent(c.caixa)}/mailFolders/${encodeURIComponent(PASTA)}/messages?$filter=${encodeURIComponent(filtro)}` +
     `&$orderby=receivedDateTime desc&$top=${MAX_EMAILS}&$select=${campos}`;
   let r: Response;
   try {
@@ -142,8 +150,8 @@ async function lerEmails(token: string, horas: number, comCorpo = true): Promise
     const cod = String(d?.error?.code ?? r.status);
     const dica = r.status === 403 || /AccessDenied|Authorization/i.test(cod)
       ? "O aplicativo não tem permissão de ler esta caixa: confira a permissão Mail.Read (de aplicativo) com o consentimento do administrador."
-      : r.status === 404 || /ResourceNotFound|MailboxNotEnabled|ErrorInvalidUser/i.test(cod)
-      ? "A caixa informada em ITC_CAIXA não foi encontrada." : "Erro ao ler a caixa de e-mail.";
+      : r.status === 404 || /ResourceNotFound|MailboxNotEnabled|ErrorInvalidUser|ErrorInvalidIdMalformed/i.test(cod)
+      ? "A caixa informada em ITC_CAIXA (ou a pasta em ITC_PASTA) não foi encontrada." : "Erro ao ler a caixa de e-mail.";
     throw new Erro(502, `${dica} (código ${cod})`);
   }
   return (Array.isArray(d.value) ? d.value : []).map((m: any) => ({
@@ -186,7 +194,7 @@ async function separarMaterias(email: Email, uso: Uso): Promise<Materia[]> {
         tools: [{ name: "materias", description: "Registra as matérias do boletim.", input_schema: esquema }],
         tool_choice: { type: "tool", name: "materias" },
       }),
-      signal: AbortSignal.timeout(TEMPO_IA_MS),
+      signal: AbortSignal.timeout(Math.max(10_000, Math.min(TEMPO_IA_MS, restanteMs() - 15_000))),
     });
   } catch { throw new Erro(504, "A IA não respondeu a tempo ao separar as matérias. Tente de novo."); }
   const d: any = await r.json().catch(() => ({}));
@@ -220,26 +228,35 @@ async function ler(horas: number) {
   const resumo = { emails: emails.length, ja_lidos: emails.length - novos.length, materias: 0, novas: 0, ja_existiam: 0, falhas: [] as string[],
                    para_depois: 0, tokens: 0, versao: VERSAO };
   const uso: Uso = { entrada: 0, saida: 0 };
-  const inicio = Date.now();
+  const marcar = (e: Email, materias: number, novas: number) => banco(servico, "POST", "rpc/radar_itc_marcar_lido", {
+    p_id: e.id, p_assunto: e.assunto, p_recebido: e.recebido || null, p_materias: materias, p_novas: novas });
   for (const e of novos) {
-    if (Date.now() - inicio > COMECAR_ATE_MS) { resumo.para_depois++; continue; }      // a próxima leitura pega
+    if (Date.now() - INICIO > COMECAR_ATE_MS) { resumo.para_depois++; continue; }      // a próxima leitura pega
     try {
       const data = diaBrasilia(e.recebido);
       const materias = await separarMaterias(e, uso);
-      const r = await banco(servico, "POST", "rpc/radar_receber_email", {
-        p_fonte: FONTE, p_itens: materias.map((m) => ({ ...m, data, assunto_email: e.assunto })) });
-      await banco(servico, "POST", "rpc/radar_itc_marcar_lido", {
-        p_id: e.id, p_assunto: e.assunto, p_recebido: e.recebido || null, p_materias: materias.length, p_novas: Number(r?.novos ?? 0) });
+      const r = materias.length ? await banco(servico, "POST", "rpc/radar_receber_email", {
+        p_fonte: FONTE, p_itens: materias.map((m) => ({ ...m, data, assunto_email: e.assunto })) }) : null;
+      // sem matéria conta como tentativa: o banco relê o e-mail até 3 vezes antes de desistir (a IA pode ter errado)
+      await marcar(e, materias.length, Number(r?.novos ?? 0));
+      if (!materias.length) resumo.falhas.push(`e-mail de ${diaBrasilia(e.recebido) ?? "data desconhecida"}: a IA não encontrou matérias (será lido de novo)`);
       resumo.materias += materias.length;
       resumo.novas += Number(r?.novos ?? 0);
       resumo.ja_existiam += Number(r?.ja_existiam ?? 0);
     } catch (x) {
       // o assunto do e-mail não vai para a resposta (pode ter dados do boletim): só a data e o motivo
       resumo.falhas.push(`e-mail de ${diaBrasilia(e.recebido) ?? "data desconhecida"}: ${x instanceof Error ? x.message : "erro"}`.slice(0, 300));
+      await marcar(e, 0, 0).catch(() => {});                 // conta a tentativa: depois de 3, o e-mail não é mais tentado
     }
   }
   // sem boletim novo, registra mesmo assim que a leitura aconteceu (a fonte aparece como funcionando)
   if (!novos.length) await banco(servico, "POST", "rpc/radar_receber_email", { p_fonte: FONTE, p_itens: [] });
+  // a agenda completa a leitura às 03h10/03h25 quando aparece esta frase (sql/radar-itc-agenda.sql)
+  if (resumo.para_depois) resumo.falhas.push(`${resumo.para_depois} boletim(ns) ficaram para a próxima leitura`);
+  // falha fica à vista na aba Fontes (só o motivo, nunca o conteúdo); a próxima leitura boa apaga
+  if (resumo.falhas.length) {
+    await banco(servico, "POST", "rpc/radar_itc_registrar_falha", { p_motivo: resumo.falhas.join(" · ") }).catch(() => {});
+  }
   resumo.tokens = uso.entrada + uso.saida;
   return resumo;
 }
@@ -267,6 +284,7 @@ async function diagnostico() {
 
 async function tratar(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  INICIO = Date.now();
   try {
     if (req.method !== "POST") throw new Erro(405, "Use POST.");
     if (!SUPABASE_URL) throw new Erro(503, "A função está sem SUPABASE_URL.");
@@ -278,7 +296,7 @@ async function tratar(req: Request): Promise<Response> {
       return responder(200, await diagnostico());
     }
     if (acao !== "ler") throw new Erro(400, "Ação desconhecida.");
-    const horas = Number.isInteger(pedido?.horas) && pedido.horas >= 1 && pedido.horas <= 168 ? pedido.horas : 26;
+    const horas = Number.isInteger(pedido?.horas) && pedido.horas >= 1 && pedido.horas <= 168 ? pedido.horas : 50;
     const r = await ler(horas);
     console.log(`radar-itc (${quem}): ${r.emails} e-mail(s), ${r.ja_lidos} já lido(s), ${r.materias} matéria(s), ${r.novas} nova(s), ${r.falhas.length} falha(s)`);
     return responder(200, r);

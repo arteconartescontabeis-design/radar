@@ -24,7 +24,7 @@ from test_radar_banco import FONTES_NOVAS
 PORTA_PONTE, PORTA_FUNCAO = 3992, 3991
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
 CAIXA = "contato@artecon.test"
-ESTADO = {"emails": [], "graph": [], "ia": [], "token_ok": True}
+ESTADO = {"emails": [], "graph": [], "ia": [], "token_ok": True, "materias": None}
 
 BOLETIM = """ITCNET Mail - 05/10/2026
 Área Federal
@@ -53,7 +53,7 @@ class Ponte(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/rest/v1/"):
             return self._rest()
-        if self.path.startswith(f"/graph/users/{CAIXA.replace('@', '%40')}/messages"):
+        if self.path.startswith(f"/graph/users/{CAIXA.replace('@', '%40')}/mailFolders/inbox/messages"):   # só a Caixa de Entrada
             q = parse_qs(urlparse(self.path).query)
             ESTADO["graph"].append({"filtro": q["$filter"][0], "select": q["$select"][0], "prefer": self.headers.get("Prefer"),
                                     "auth": self.headers.get("Authorization")})
@@ -74,6 +74,8 @@ class Ponte(BaseHTTPRequestHandler):
         materias = [{"titulo": "SIMPLES NACIONAL: PRAZO DE OPÇÃO PARA 2027 É PRORROGADO", "area": "Área Federal",
                      "texto": "O prazo foi prorrogado até 15 de outubro. Leia mais: https://rastreio.itcnet.com.br/abc?u=123"},
                     {"titulo": "x", "area": "", "texto": ""}]                       # título curto: descartado
+        if ESTADO["materias"] is not None:
+            materias = ESTADO["materias"]
         self._responder(200, {"type": "message", "model": corpo["model"], "stop_reason": "tool_use",
                               "usage": {"input_tokens": 3000, "output_tokens": 400},
                               "content": [{"type": "tool_use", "name": "materias", "input": {"materias": materias}}]})
@@ -110,7 +112,7 @@ def funcao(api_postgrest):
 def itc(funcao, limpo):
     assert psql(FONTES_NOVAS).returncode == 0
     limpo.execute("truncate radar_itc_lidos")
-    ESTADO.update(emails=[], graph=[], ia=[], token_ok=True)
+    ESTADO.update(emails=[], graph=[], ia=[], token_ok=True, materias=None)
     yield limpo
     limpo.execute("truncate radar_itc_lidos")
     limpo.execute("delete from radar_capturas where fonte_id in (select id from radar_fontes where slug in "
@@ -176,3 +178,22 @@ def test_diagnostico_mostra_o_que_falta_sem_ler_conteudo(itc):
     status, r = pedir({"acao": "diagnostico"})
     assert r["tudo_certo"] is False and "invalid_client" in json.dumps(r) and "segredo-de-teste" not in json.dumps(r)
     assert pedir({"acao": "diagnostico"}, uid=EDITOR)[0] == 403
+
+
+def test_boletim_sem_materia_e_relido_ate_3_vezes_e_a_falha_aparece_na_fonte(itc):
+    ESTADO["emails"], ESTADO["materias"] = [email("AAMk-7")], []                 # a IA errou: nenhuma matéria
+    for tentativa in (1, 2, 3):
+        status, r = pedir()
+        assert status == 200 and r["ja_lidos"] == 0 and len(r["falhas"]) == 1, (tentativa, r)
+    assert itc.execute("select tentativas, materias from radar_itc_lidos").fetchall() == [(3, 0)]
+    erro = itc.execute("select ultimo_erro from radar_fontes where slug = 'itc-email'").fetchone()[0]
+    assert erro.startswith("Leitura do boletim:") and "não encontrou matérias" in erro and "PRAZO" not in erro
+    status, r = pedir()                                                          # 4ª: desistiu, não gasta IA de novo
+    assert r["ja_lidos"] == 1 and len(ESTADO["ia"]) == 3
+    # um boletim que dá certo depois de uma tentativa vazia fica registrado de vez
+    ESTADO["emails"], ESTADO["materias"] = [email("AAMk-8")], []
+    pedir()
+    ESTADO["materias"] = None
+    status, r = pedir()
+    assert r["novas"] == 1 and itc.execute("select tentativas, materias from radar_itc_lidos where message_id = 'AAMk-8'").fetchone() == (1, 1)
+    assert itc.execute("select ultimo_erro from radar_fontes where slug = 'itc-email'").fetchone()[0] is None   # leitura boa apaga
