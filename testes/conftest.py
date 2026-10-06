@@ -17,8 +17,8 @@ sys.path.insert(0, str(RAIZ / "robo"))
 PG = {"host": os.environ.get("RADAR_PGHOST", "/tmp"), "port": os.environ.get("RADAR_PGPORT", "5544"),
       "user": os.environ.get("RADAR_PGUSER", "postgres")}
 BANCO = "radar_teste"
-SETUP = RAIZ / "sql" / "radar-setup-v0.10.0.sql"
-REVERSAO = RAIZ / "sql" / "radar-reversao-v0.10.0.sql"
+SETUP = RAIZ / "sql" / "radar-setup-v0.11.0.sql"
+REVERSAO = RAIZ / "sql" / "radar-reversao-v0.11.0.sql"
 
 ADMIN = "00000000-0000-0000-0000-00000000000a"
 EDITOR = "00000000-0000-0000-0000-00000000000e"
@@ -87,6 +87,10 @@ def limpo(db):
     db.execute("update radar_fontes set ultimo_sucesso_em = null, ultima_falha_em = null, "
                "falhas_consecutivas = 0, ultimo_erro = null")
     db.execute("delete from radar_fontes where slug like 'teste-%'")
+    # v0.11.0: as datas dos testes são fixas (setembro/outubro de 2026); a regra "notícia com mais de 5 dias é baixa"
+    # fica desligada aqui e é ligada só no teste dela
+    db.execute("""update radar_config set valor = valor || '{"dias_baixa": 0}'::jsonb
+                  where chave = 'relevancia' and valor->'dias_baixa' is distinct from '0'::jsonb""")
     db.execute("truncate radar_auditoria restart identity")
     db.execute("alter table radar_auditoria enable trigger user")
     return db

@@ -1,10 +1,11 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.10.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.11.0)
 //
 // Seis ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
 //   fundamentar  → propõe trechos LITERAIS do texto oficial; só entram os que conferem
-//   gerar        → redige um conteúdo (rascunho), com 3 outras opções de título, e aponta o que precisa ser conferido
+//   gerar        → redige um conteúdo (rascunho), com 3 outras opções de título, e aponta o que precisa ser conferido;
+//                  com "analise": true e sem texto oficial, redige um texto PARA ANÁLISE a partir da fonte não oficial (v0.11.0)
 //   titulos      → sugere outros títulos para um conteúdo (não grava nada)
 //   ilustrar     → cria uma ilustração de capa (sem texto, sem marcas, sem pessoas reais); não grava nada
 //   diagnostico  → testa a instalação (token, modelos) e devolve o que está errado, em português
@@ -32,7 +33,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.10.0";
+const VERSAO = "0.11.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -251,14 +252,14 @@ async function carregar(token: string, assuntoId: number) {
   const evidencias = await banco(token, "GET", `radar_evidencias?select=*&assunto_id=eq.${assuntoId}&order=id`);
   return { assunto, capturas, evidencias, reg: { uso: null } as Registro };   // "quem" é preenchido na entrada
 }
-function blocoOficial(capturas: Captura[]): { bloco: string; texto: string } {
+function blocoOficial(capturas: Captura[], rotulo = "TEXTO OFICIAL"): { bloco: string; texto: string } {
   let restante = MAX_TEXTO_TOTAL, bloco = "", texto = "";
   for (const c of capturas) {
     if (!c.texto || restante <= 0) continue;
     const parte = c.texto.slice(0, Math.min(MAX_TEXTO_POR_CAPTURA, restante));
     restante -= parte.length;
     const quando = c.data_publicacao ? c.data_publicacao.split("-").reverse().join("/") : "sem data";
-    bloco += `<<<TEXTO OFICIAL id=${c.id} | órgão: ${c.orgao} | título: ${c.titulo} | publicado em: ${quando}>>>\n${parte}\n<<<FIM>>>\n\n`;
+    bloco += `<<<${rotulo} id=${c.id} | órgão: ${c.orgao} | título: ${c.titulo} | publicado em: ${quando}>>>\n${parte}\n<<<FIM>>>\n\n`;
     texto += `${c.titulo}. Publicado em ${quando}.\n${parte}\n`;
   }
   return { bloco, texto };
@@ -379,9 +380,21 @@ const FORMATOS: Record<string, string> = {
     "Encerre com a seção '## Análise Artecon'.",
   artigo: "ARTIGO TÉCNICO: aprofundado, de 3.500 a 7.000 caracteres, com a mesma organização do informativo (abertura, seções temáticas, Análise Artecon) e, quando o texto oficial permitir, exemplos.",
 };
-async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, formato: string) {
+// v0.11.0: texto para análise, quando o assunto só tem fonte NÃO oficial (boletim, editora, portal). Nunca vai ao site
+// por este caminho: o banco continua exigindo texto oficial conferido para registrar ou autorizar a publicação.
+const REGRA_ANALISE = "ATENÇÃO: o material fornecido é de fonte NÃO OFICIAL (boletim, editora ou portal), muitas vezes só um resumo. " +
+  "Escreva um texto PARA ANÁLISE INTERNA do escritório: explique o que a fonte informa, deixe claro que a informação ainda precisa ser " +
+  "conferida na norma ou no comunicado oficial, e marque com [VERIFICAR: ...] todo número, data, prazo, alíquota e norma que precise de conferência. " +
+  "Nas regras abaixo, onde se lê 'texto oficial', entenda 'o material fornecido'. ";
+async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, formato: string, analise = false) {
   if (!Object.hasOwn(FORMATOS, formato)) throw new Erro(400, "Formato inválido.");
-  const { bloco, texto: oficial } = blocoOficial(ctx.capturas.filter((c) => c.oficial));
+  let { bloco, texto: oficial } = blocoOficial(ctx.capturas.filter((c) => c.oficial));
+  let naoOficial = false;
+  if (!bloco && analise) {
+    ({ bloco, texto: oficial } = blocoOficial(ctx.capturas, "TEXTO DE FONTE NÃO OFICIAL"));
+    naoOficial = !!bloco;
+    if (!bloco) throw new Erro(400, "Este assunto não tem nenhum texto capturado para a IA analisar.");
+  }
   if (!bloco) throw new Erro(400, "Este assunto não tem texto de fonte oficial capturado. A IA só redige a partir do texto oficial.");
   const conferidas = ctx.evidencias.filter((e: any) => e.trecho_conferido);
   const esquema = {
@@ -389,6 +402,7 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     properties: { titulo: { type: "string" }, titulos: { type: "array", items: { type: "string" } }, corpo: { type: "string" } },
   };
   const instrucoes = "Você redige conteúdo contábil e tributário para a Artecon Artes Contábeis (Palhoça/SC), em português do Brasil. " +
+    (naoOficial ? REGRA_ANALISE : "") +
     "Formato pedido — " + FORMATOS[formato] + " Regras OBRIGATÓRIAS: " +
     "(1) afirme como fato SOMENTE o que estiver no texto oficial fornecido; " +
     "(2) NÃO cite lei, decreto, instrução normativa, artigo, alíquota, valor, prazo ou data que não apareça no texto oficial — nada de conhecimento de memória; " +
@@ -412,6 +426,11 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
   const corpo = String(json.corpo ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, "").trim();
   if (corpo.length < 80) throw new Erro(502, "A IA devolveu um texto vazio ou curto demais. Tente de novo.");
   const avisos = conferirGerado(titulo + "\n" + corpo, oficial, conferidas.length > 0);
+  if (naoOficial) {
+    const orgaos = [...new Set(ctx.capturas.filter((c) => c.texto).map((c) => c.orgao))].join(", ");
+    avisos.unshift(`TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (${orgaos}). Não vai ao site: confira na norma ou no comunicado oficial, ` +
+      "inclua o texto oficial no passo 1 e fundamente antes de publicar.");
+  }
   const titulos_sugeridos = limparTitulos(json.titulos, titulo);
   const [linha] = await banco(token, "POST", "radar_conteudos", {
     assunto_id: ctx.assunto.id, formato, titulo, corpo, gerado_por: "ia", modelo_ia: MODELO, status: "rascunho", avisos_ia: avisos, titulos_sugeridos,
@@ -565,7 +584,7 @@ async function tratar(req: Request): Promise<Response> {
       : acao === "titulos" ? await titulos(token, ctx, pedido.conteudo_id, pedido.evitar)
       : acao === "ilustrar" ? await ilustrar(ctx, typeof pedido.titulo === "string" ? pedido.titulo : "",
                                              typeof pedido.descricao === "string" ? pedido.descricao : "")
-      : await gerar(token, ctx, String(pedido.formato ?? "informativo"));
+      : await gerar(token, ctx, String(pedido.formato ?? "informativo"), pedido.analise === true);
     const usado = reg.uso;
     return responder(200, { ...resultado, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
   } catch (e) {
