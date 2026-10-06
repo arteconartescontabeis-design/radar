@@ -792,7 +792,7 @@ begin
   if new.status = 'aprovado' and (tg_op = 'INSERT' or old.status is distinct from 'aprovado') then
     -- v0.11.0: o texto para análise (escrito pela IA a partir de fonte não oficial) é só para estudo: não se aprova
     if coalesce(new.avisos_ia->>0, '') like 'TEXTO PARA ANÁLISE%' then
-      raise exception 'RADAR021: texto para análise (escrito a partir de fonte não oficial) não pode ser aprovado; inclua o texto oficial e gere ou escreva um conteúdo novo'
+      raise exception 'RADAR023: texto para análise (escrito a partir de fonte não oficial) não pode ser aprovado; inclua o texto oficial e gere ou escreva um conteúdo novo'
         using errcode = 'P0001';
     end if;
     if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then

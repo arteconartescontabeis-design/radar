@@ -2274,7 +2274,7 @@ def test_texto_para_analise_nao_se_aprova_nem_vai_ao_site_e_a_idade_nao_passa_ao
     c1 = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia, fora_do_site)
                           values (%s, 'flash', 'Para análise', 'Texto para análise.', 'ia', 'm', 'em_revisao',
                                   '["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC)."]', true) returning id""", (a,)).fetchone()[0]
-    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR021"):
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR023"):
         c.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c1,))
     # a idade rebaixa a captura na triagem, mas o assunto aberto dela guarda a relevância do conteúdo
     antes = limpo.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
