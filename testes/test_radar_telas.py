@@ -2734,7 +2734,7 @@ def test_assunto_abre_uma_etapa_de_cada_vez_e_guarda_o_que_foi_digitado(pagina, 
     pagina.click(".trilha li >> text=1. Conferir a fonte")                                # os passos do alto também
     assert visiveis() == ["#sec-texto", "#sec-fundamentacao"]
     pagina.click(".trilha li >> text=4. Publicar no site")
-    assert visiveis() == ["#sec-publicar"] and "depois que o conteúdo for aprovado" in pagina.inner_text("#sec-publicar")
+    assert visiveis() == ["#sec-publicar"] and "depois que um conteúdo for aprovado" in pagina.inner_text("#sec-publicar")
     assert pagina.input_value("#a-titulo") == "CBS na transição — título digitado"        # trocar de passo não perde o que foi digitado
     pagina.click("text=Salvar dados do assunto")
     pagina.wait_for_selector("text=Assunto salvo.")
