@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.12.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.12.1.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.12.0.sql
+-- Reversão: radar-reversao-v0.12.1.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.12.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.12.1', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -877,6 +877,35 @@ begin
     raise exception 'RADAR122: assunto não encontrado' using errcode = 'P0001';
   end if;
   perform set_config('radar.liberando', '', true);
+end $$;
+
+-- v0.12.1: com a publicação liberada pelo administrador, o texto para análise (fonte não oficial) pode virar um conteúdo
+-- normal: é criada uma CÓPIA em rascunho, sem a marca de análise, que segue revisão e aprovação como qualquer outro.
+-- O texto para análise original fica como está (fora do site).
+create or replace function public.radar_converter_analise(p_conteudo bigint) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  v_c public.radar_conteudos%rowtype;
+  v_id bigint;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR123: só o administrador transforma o texto para análise em texto para publicar' using errcode = '42501';
+  end if;
+  select * into v_c from public.radar_conteudos c where c.id = p_conteudo;
+  if v_c.id is null or coalesce(v_c.avisos_ia->>0, '') not like 'TEXTO PARA ANÁLISE%' then
+    raise exception 'RADAR124: este conteúdo não é um texto para análise' using errcode = 'P0001';
+  end if;
+  if not exists (select 1 from public.radar_assuntos a where a.id = v_c.assunto_id and a.liberado_sem_base_em is not null) then
+    raise exception 'RADAR125: primeiro libere a publicação deste assunto ("Publicar mesmo assim", com o motivo)' using errcode = 'P0001';
+  end if;
+  insert into public.radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia,
+                                      titulos_sugeridos, imagem_id, autor, fonte_credito, fora_do_site)
+  values (v_c.assunto_id, v_c.formato, v_c.titulo, v_c.corpo, v_c.gerado_por, v_c.modelo_ia, 'rascunho',
+          jsonb_build_array('Feito a partir do texto para análise (fonte NÃO oficial), com a publicação liberada pelo administrador. ' ||
+                            'Confira cada número, data e norma e resolva os [VERIFICAR] antes de aprovar.') || (v_c.avisos_ia - 0),
+          v_c.titulos_sugeridos, v_c.imagem_id, v_c.autor, v_c.fonte_credito, false)
+  returning id into v_id;
+  return v_id;
 end $$;
 
 -- a liberação só muda pela função acima (a equipe edita o assunto, mas não esses campos)
@@ -2095,6 +2124,7 @@ grant execute on function public.radar_cancelar_site(bigint) to authenticated;
 -- o robô confere de novo as exigências do assunto logo antes de enviar ao site
 grant execute on function public.radar_pendencia_assunto(bigint) to service_role;
 grant execute on function public.radar_liberar_sem_fundamentacao(bigint, text) to authenticated;   -- a função confere que é o administrador
+grant execute on function public.radar_converter_analise(bigint) to authenticated;                 -- idem (v0.12.1)
 -- v0.12.0: a função radar-itc grava o boletim pelo papel do robô
 grant execute on function public.radar_receber_email(text, jsonb) to service_role;
 grant execute on function public.radar_itc_ja_lidos(text[]) to service_role;
@@ -2276,7 +2306,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 21 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.12.0).
+-- Esperado: 21 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.12.1).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos
