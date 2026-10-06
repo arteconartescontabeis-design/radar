@@ -83,12 +83,14 @@ async function banco(token: string, metodo: string, caminho: string, corpo?: unk
 }
 
 // ------------------------------------------------------------------ texto
+// mesmos caracteres que o "\s" do PostgreSQL trata como espaço (U+202F e U+FEFF ficam de fora, como lá); em texto, não em
+// expressão literal: U+2028/U+2029 escritos como caractere quebrariam a expressão literal
+const ESPACOS_PG = new RegExp("[\\t\\n\\v\\f\\r \u1680\u2000-\u200a\u2028\u2029\u205f\u3000]+", "g");
 /** Mesma normalização da função radar_normalizar do banco. */
 function normalizar(t: string): string {
   return (t ?? "").toLowerCase()
     .replace(/\u00a0/g, " ").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[–—]/g, "-")
-    // mesmos caracteres que o "\s" do PostgreSQL trata como espaço (U+202F e U+FEFF ficam de fora, como lá)
-    .replace(/[\t\n\v\f\r \u1680\u2000-\u200a\u2028\u2029\u205f\u3000]+/g, " ").trim();
+    .replace(ESPACOS_PG, " ").trim();
 }
 /** Mesmo critério de radar_trecho_confere: literal, ≥ 20 caracteres e ≥ 15 letras/algarismos. */
 function trechoConfere(trecho: string, texto: string): boolean {
