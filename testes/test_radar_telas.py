@@ -3049,6 +3049,7 @@ def test_so_o_administrador_autoriza_e_pode_cancelar(pagina, limpo):
     assert "Falta o administrador autorizar" in pagina.inner_text("#proximo-passo")
     assert pagina.locator("[data-acao=autorizar-site]").count() == 0 and "Só o administrador autoriza" in pagina.inner_text("#sec-publicar")
     pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")                                                    # saída concluída antes de entrar de novo
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Informativo de teste")
