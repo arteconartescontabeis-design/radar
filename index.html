@@ -189,6 +189,7 @@ const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = 
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
   ["0.12.1", "06/10/2026", [
+    "O texto para análise vai por último na lista; depois de transformado, o botão some e a tela vai até a cópia. O passo 4 sem conteúdo aprovado diz o que falta e leva ao conteúdo em revisão.",
     "Texto para análise com a publicação liberada (“Publicar mesmo assim”): o administrador tem “Transformar em texto para publicar”, que cria uma cópia normal do texto em rascunho; ela segue revisão, aprovação e autorização do site como qualquer conteúdo. Banco v0.12.1."
   ]],
   ["0.12.0", "06/10/2026", [
@@ -1163,6 +1164,10 @@ async function telaAssunto(id){
     ler("radar_assunto_capturas", {select:"juntada_pela_ia_em,radar_capturas(id,titulo,url,data_publicacao,texto,versao,capturado_em,metadados,radar_fontes(nome,orgao,oficial))", assunto_id:"eq." + id}),
     ler("radar_evidencias", {select:"*,radar_normas(tipo,numero,orgao)", assunto_id:"eq." + id, order:"id"}),
     ler("radar_conteudos", {select:"*", assunto_id:"eq." + id, order:"id"})]);
+  // v0.12.1: o texto para análise vai por último (os textos que podem ir ao site aparecem primeiro)
+  const ehAnalise = c => Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
+  cont.sort((x, y) => ehAnalise(x) - ehAnalise(y) || x.id - y.id);
+  const jaConvertido = cont.some(c => Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("Feito a partir do texto para análise"));
   const idsCont = cont.map(c => c.id).join(",");
   const [pubs, envios] = cont.length ? await Promise.all([ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id"}),
     ler("radar_site_envios", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"})]) : [[], []];
@@ -1332,13 +1337,15 @@ async function telaAssunto(id){
         <p class="sub" style="margin-top:0">${temOficial ? "A IA escreve um rascunho a partir do texto oficial, com outras opções de título. Revisar e aprovar continua sendo da equipe."
           : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve um texto <b>para análise</b>, marcado como tal, que não vai ao site. Para publicar, inclua o texto oficial no passo 1."
           : "Sem texto capturado: escreva sem IA, ou inclua o texto oficial no passo 1."}</p>` : ""}
-      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado, jaConvertido)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
     </div>
     </section>
 
     <section data-etapa="publicar"${oculta("publicar")}>
     <div class="painel" id="sec-publicar"><h2>4. Publicar no site</h2>
-      ${!aprovados.length ? `<p class="sub">Disponível depois que o conteúdo for aprovado (passo 3).</p>`
+      ${!aprovados.length ? `<div class="aviso info"><b>Ainda não há conteúdo aprovado.</b> A publicação no site aparece aqui depois que um conteúdo for aprovado no passo 3.
+          ${revisando.length ? `<br>Há ${revisando.length} conteúdo(s) em revisão esperando o “Aprovar”.` : ""}
+          <div class="acoes" style="margin:8px 0 0"><button class="btn peq" data-acao="ir-conteudo" data-id="${(revisando[0] || cont.find(c => !ehAnalise(c)) || cont[0] || {}).id || ""}">Ir para o conteúdo${revisando.length ? " em revisão" : ""}</button></div></div>`
         : !vaoAoSite.length ? `<p class="sub">O conteúdo aprovado está marcado como “não vai ao site”: fica só para o Informativo Mensal.</p>`
         : (pronto ? avisoLiberado : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id), pronto, a.categoria)).join("")}
     </div>
@@ -1460,7 +1467,7 @@ function avisoRascunho(c){
 /* As opções de título que a IA sugeriu (clique troca o título; nada é gravado até "Salvar") e o pedido de outras. */
 const chipsTitulo = (id, lista) => (Array.isArray(lista) ? lista : []).map(t => `<button class="chip" type="button" data-acao="usar-titulo" data-id="${id}" data-titulo="${h(t)}">${h(t)}</button>`).join("") +
   `<button class="chip outro" type="button" data-acao="ia-titulos" data-id="${id}">↻ Sugerir ${Array.isArray(lista) && lista.length ? "outros" : "títulos com IA"}</button>`;
-function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false){
+function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const copia = trechosCopiados(c.corpo, fontes);
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
@@ -1506,7 +1513,8 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
       <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
-      ${analise ? (liberado && ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${c.id}">Transformar em texto para publicar</button>
+      ${analise ? (jaConvertido ? `<span class="sub analise">Este texto já foi transformado em texto para publicar: a cópia está acima, para revisar e aprovar.</span>`
+        : liberado && ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${c.id}">Transformar em texto para publicar</button>
           <span class="sub analise">A publicação deste assunto foi liberada: o botão cria uma cópia normal deste texto, que segue revisão e aprovação.</span>`
         : `<span class="sub analise">Texto para análise: não vai para revisão nem ao site. Inclua o texto oficial e gere (ou escreva) um conteúdo novo${ehAdmin() ? ", ou use “Publicar mesmo assim” no aviso de publicação" : ""}.</span>`)
         : c.status === "rascunho" || c.status === "rejeitado" ? `<button class="btn" type="button" data-acao="mudar-conteudo" data-id="${c.id}" data-status="em_revisao">Enviar para revisão</button>` : ""}
@@ -1650,9 +1658,15 @@ const ACOES = {
   async "converter-analise"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     if(!confirm("Criar uma cópia deste texto para publicar?\n\nEla entra como rascunho, sem a marca de “texto para análise”, e segue revisão e aprovação. Confira os números, datas e normas antes de aprovar (a fonte não é oficial).")) return;
-    await rpc("radar_converter_analise", {p_conteudo:Number(el.dataset.id)});
+    const novo = await rpc("radar_converter_analise", {p_conteudo:Number(el.dataset.id)});
     E.etapa = "conteudo"; await desenhar();
+    $(`form[data-form=conteudo][data-id="${novo}"]`)?.scrollIntoView({behavior:"smooth", block:"start"});
     recado("Cópia criada como rascunho. Revise, envie para revisão e aprove; depois autorize a publicação no passo 4.", "aviso");
+  },
+  "ir-conteudo"(el){
+    mostrarEtapa("conteudo");
+    const f = $(`form[data-form=conteudo][data-id="${el.dataset.id}"]`) || $("#sec-conteudos");
+    f?.scrollIntoView({behavior:"smooth", block:"start"});
   },
   async "desfazer-liberacao"(){
     if(!confirm("Desfazer a liberação? O assunto volta a exigir a fundamentação oficial para ir ao site.")) return;
@@ -2244,7 +2258,7 @@ const FORMS = {
 /* ----------------------------------------------------------------- eventos */
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
-const NAVEGACAO = new Set(["etapa","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
+const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto"]);
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){

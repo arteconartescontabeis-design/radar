@@ -3305,3 +3305,26 @@ def test_aviso_de_publicacao_tem_os_botoes_e_o_administrador_libera_com_motivo(p
     assert pagina.locator("text=Motivo: Confirmado por telefone com a Receita Federal").count() == 1
     assert limpo.execute("select liberado_sem_base_motivo from radar_assuntos where id = %s", (a,)).fetchone()[0].startswith("Confirmado")
     assert pagina.locator(".aviso:visible", has_text="Ainda não pode ser publicado no site").count() == 0
+
+
+def test_texto_para_analise_transformado_vai_para_baixo_e_o_passo_4_diz_o_que_falta(pagina, limpo):
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Só do boletim liberado') returning id").fetchone()[0]
+    analise = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia, fora_do_site)
+                               values (%s, 'flash', 'Texto do boletim', 'Corpo do texto para análise com tamanho suficiente.', 'ia', 'm',
+                                       'rascunho', '["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC)."]', true) returning id""", (a,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_liberar_sem_fundamentacao(%s, 'Autorizado pelo responsável técnico')", (a,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Só do boletim liberado")
+    pagina.once("dialog", lambda d: d.accept())
+    pagina.click("text=Transformar em texto para publicar")
+    pagina.wait_for_selector("text=Cópia criada como rascunho")
+    ids = [int(x) for x in pagina.eval_on_selector_all("form[data-form=conteudo]", "fs => fs.map(f => f.dataset.id)")]
+    assert ids[-1] == analise and len(ids) == 2                                   # a cópia vem antes do texto para análise
+    assert pagina.locator("text=Transformar em texto para publicar").count() == 0   # não dá para transformar de novo
+    assert pagina.locator("text=já foi transformado em texto para publicar").count() == 1
+    pagina.click(".trilha >> text=Publicar no site")
+    pagina.wait_for_selector("text=Ainda não há conteúdo aprovado.")
+    pagina.click("#sec-publicar >> text=Ir para o conteúdo")
+    assert pagina.locator(f"form[data-form=conteudo][data-id='{ids[0]}']").is_visible()
