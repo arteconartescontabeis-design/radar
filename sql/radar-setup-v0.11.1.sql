@@ -1297,7 +1297,7 @@ begin
                      where c.id = p_oficial and f.oficial and c.duplicata_de is null)
      or not exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
                      where c.id = p_outra and not f.oficial and c.duplicata_de is null
-                       and not (coalesce(c.metadados, '{}'::jsonb) ? 'separada_em')) then   -- a equipe disse que não é o mesmo fato
+                       and c.metadados->'separada_em' is null) then   -- a equipe disse que não é o mesmo fato
     return 0;
   end if;
   update public.radar_capturas c set duplicata_de = p_oficial
