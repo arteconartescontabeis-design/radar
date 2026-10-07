@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.12.2"
+    assert pagina.inner_text(".versao") == "v0.13.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -2274,7 +2274,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.12.2" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.13.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2359,7 +2359,7 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     assert pagina.locator(".trilha li").all_inner_texts()[0].split("\n")[:2] == ["1", "Fonte"]
     assert pagina.locator(".trilha li").count() == 7 and pagina.locator(".trilha li.feito").count() == 0
     assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "texto"          # um passo de cada vez
-    assert pagina.locator(".autorizacao li.breve").count() == 2                                    # Instagram e Facebook, em breve
+    assert pagina.locator(".autorizacao li.espera[data-passo=instagram]").count() == 1                # Instagram e Facebook depois do site
     assert "Escrever o conteúdo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo >> text=Preparar com IA").count() == 1
     assert "Título original da captura" in pagina.inner_text("#sec-origem") and pagina.locator("#sec-origem >> text=Abrir na fonte").count() == 1
     assert not pagina.locator("#a-cat").is_visible() and not pagina.locator("#a-pub").is_visible()    # dados do assunto recolhidos ao lado
@@ -2385,7 +2385,7 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     assert pagina.locator(".trilha li.feito").count() == 4
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")                # o registro manual continua valendo
     pagina.click("text=Registrar publicação no site")
-    pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
+    pagina.wait_for_selector(".autorizacao li[data-passo=site].feito")
     assert pagina.locator(".trilha li.feito").count() == 5
     assert limpo.execute("select situacao_confirmacao from radar_assuntos where id = %s", (a,)).fetchone()[0] == "confirmado_oficialmente"
 
@@ -2619,7 +2619,7 @@ def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
     pagina.wait_for_selector("#proximo-passo >> text=Publicar no site")
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
     pagina.click("text=Registrar publicação no site")
-    pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
+    pagina.wait_for_selector(".autorizacao li[data-passo=site].feito")
     # texto alterado e aprovado de novo depois do registro: não está concluído
     form = pagina.locator("form[data-form=conteudo]")
     form.locator("[name=corpo]").fill("Texto corrigido depois de publicado, com mais de trinta caracteres.")
@@ -2641,7 +2641,9 @@ def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
     assert "rever" in pagina.inner_text(".trilha")
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
     pagina.click("text=Registrar publicação no site")
-    pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
+    pagina.wait_for_selector(".autorizacao li[data-passo=site].feito")
+    limpo.execute("""insert into radar_redes_envios (conteudo_id, canal, legenda, conteudo_lido_em, situacao)
+                     select id, k, '(não publicado neste canal)', atualizado_em, 'dispensado' from radar_conteudos, unnest(array['instagram','facebook']) k""")
     # segundo conteúdo em rascunho: o quadro avisa
     pagina.click("text=Novo conteúdo")
     pagina.wait_for_selector("text=Há outro conteúdo deste assunto ainda em rascunho ou em revisão.")
@@ -3076,7 +3078,7 @@ def test_so_o_administrador_autoriza_e_pode_cancelar(pagina, limpo):
     assert "Publicação não concluída" in pagina.inner_text("#proximo-passo") and "o site exigiu a verificação" in pagina.inner_text("#proximo-passo")
     limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c,))
     pagina.evaluate("desenhar()")                                                          # redesenha a tela aberta
-    pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
+    pagina.wait_for_selector(".autorizacao li[data-passo=site].feito")
     assert pagina.locator(".trilha li.feito").count() == 5
 
 
@@ -3254,8 +3256,8 @@ def test_publicacoes_mostram_o_que_foi_e_o_que_falta_em_cada_canal(pagina, limpo
     linha = lambda t: pagina.locator("#tab-canais tr", has_text=t)
     assert "✓" in linha("Informativo de teste").locator("[data-canal=site]").inner_text()
     assert linha("Segundo informativo").locator("[data-canal=site]").inner_text() == "Falta"
-    assert linha("Segundo informativo").locator("[data-canal=instagram]").inner_text() == "em breve"
-    assert linha("Segundo informativo").locator("[data-canal=facebook]").inner_text() == "em breve"
+    assert linha("Segundo informativo").locator("[data-canal=instagram]").inner_text() == "Falta"
+    assert linha("Segundo informativo").locator("[data-canal=facebook]").inner_text() == "Falta"
 
 
 # ------------------------------------------------------------ v0.12.0 — boletim da ITC lido pela função radar-itc
@@ -3349,7 +3351,7 @@ def test_trilha_de_autorizacao_mostra_um_passo_de_cada_vez_com_os_botoes(pagina,
     # só o texto para análise e sem fonte oficial: o passo de agora é a fonte, com "Publicar mesmo assim"
     assert agora() == "fonte" and trilha.locator("li.agora .btn").count() >= 2
     assert trilha.locator("li[data-passo=texto] .btn").count() == 0 and "aguardando" in trilha.locator("li[data-passo=texto]").inner_text().lower()
-    assert "em breve" in trilha.locator("li[data-passo=instagram]").inner_text().lower() and "em breve" in trilha.locator("li[data-passo=facebook]").inner_text().lower()
+    assert "aguardando" in trilha.locator("li[data-passo=instagram]").inner_text().lower() and "aguardando" in trilha.locator("li[data-passo=facebook]").inner_text().lower()
     trilha.locator("li.agora .btn", has_text="Publicar mesmo assim").click()
     pagina.fill("#motivo-liberar", "curto")
     pagina.click("text=Liberar sem fonte oficial")
@@ -3383,3 +3385,85 @@ def test_trilha_desfaz_a_liberacao_e_leitor_nao_ve_botoes(pagina, limpo):
     abrir_assunto(pagina, "Liberado e desfeito")
     assert pagina.locator(".autorizacao .btn").count() == 0 and pagina.locator(".autorizacao >> text=Desfazer").count() == 0
     assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "texto"
+
+
+# ------------------------------------------------------------ v0.13.0 — Instagram e Facebook na trilha
+def abrir_por_id(pg, a):
+    pg.evaluate(f"E.assunto = {a}; desenhar()")                         # assunto publicado sai da lista de abertos
+    pg.wait_for_selector("#base-texto")
+
+
+def no_site(db):
+    a, c = pronto_para_o_site(db)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    db.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c,))
+    return a, c
+
+def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo):
+    a, c = no_site(limpo)
+    pedidos = []
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        pedidos.append(corpo)
+        if corpo.get("acao") == "publicar":
+            limpo.execute("""update radar_redes_envios set situacao = 'publicado', publicado_em = now(), url = 'https://www.instagram.com/p/ABC/',
+                             imagem = null where id = %s""", (corpo["envio"],))
+            return rota.fulfill(status=200, content_type="application/json", body=json.dumps({"situacao": "publicado", "url": "https://www.instagram.com/p/ABC/"}))
+        rota.fulfill(status=200, content_type="application/json", body=json.dumps({"tudo_certo": True, "itens": [{"item": "Página do Facebook", "ok": True, "detalhe": "Artecon"}]}))
+    pagina.route("**/functions/v1/radar-redes", responder)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    trilha = pagina.locator(".autorizacao")
+    assert trilha.locator("li.agora").get_attribute("data-passo") == "instagram"
+    pagina.wait_for_function("() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
+    tamanho = pagina.evaluate("() => { const i = document.querySelector('#rede-imagem'); return [i.naturalWidth, i.naturalHeight]; }")
+    assert tamanho == [1080, 1080]
+    legenda = pagina.input_value("#rede-legenda")
+    assert legenda.startswith("Informativo de teste") and "link na bio" in legenda and "#Contabilidade" in legenda and "**" not in legenda
+    pagina.fill("#rede-legenda", legenda + "\n\nEditado na tela.")
+    pagina.screenshot(path=str(FOTOS / "30-redes-instagram.png"), full_page=True)
+    pagina.once("dialog", lambda d: d.accept())
+    trilha.locator("li.agora .btn", has_text="Autorizar e publicar no Instagram").click()
+    pagina.wait_for_selector("text=Publicado no Instagram.")
+    linha = limpo.execute("select canal, legenda, autorizado_por::text from radar_redes_envios").fetchone()
+    assert linha[0] == "instagram" and linha[1].endswith("Editado na tela.") and linha[2] == ADMIN
+    assert pedidos[-1]["acao"] == "publicar"
+    # Facebook: a legenda leva o link clicável do site; o administrador escolhe não publicar
+    assert trilha.locator("li.agora").get_attribute("data-passo") == "facebook"
+    assert "Leia a matéria completa: https://artecon.cnt.br/news/view/cbs" in pagina.input_value("#rede-legenda")
+    assert "ver no Instagram" in trilha.locator("li[data-passo=instagram]").inner_text()
+    pagina.once("dialog", lambda d: d.accept())
+    trilha.locator("li.agora .btn", has_text="Não publicar no Facebook").click()
+    pagina.wait_for_selector("text=Concluído: publicado no site e no Instagram")
+    assert trilha.locator("li[data-passo=facebook] >> text=Desfazer").count() == 1
+    # Publicações › Canais
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    linha_c = pagina.locator("#tab-canais tr", has_text="Informativo de teste")
+    assert "✓" in linha_c.locator("[data-canal=instagram]").inner_text() and linha_c.locator("[data-canal=facebook]").inner_text() == "Não vai"
+    pagina.click("text=Testar conexão com o Instagram e o Facebook")
+    pagina.wait_for_selector("#redes-resultado >> text=Página do Facebook")
+
+
+def test_redes_sem_a_funcao_instalada_a_autorizacao_fica_guardada_e_editor_nao_autoriza(pagina, limpo):
+    a, c = no_site(limpo)
+    pagina.route("**/functions/v1/radar-redes", lambda rota: rota.fulfill(status=404, content_type="application/json", body='{"message":"not found"}'))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function("() => /^data:image/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
+    pagina.once("dialog", lambda d: d.accept())
+    pagina.click("text=Autorizar e publicar no Instagram")
+    pagina.wait_for_selector("text=A função radar-redes ainda não foi instalada")
+    assert limpo.execute("select situacao from radar_redes_envios").fetchone()[0] == "autorizado"
+    assert pagina.locator(".autorizacao li.agora >> text=Publicar agora").count() == 1
+    pagina.click("text=Cancelar autorização")
+    pagina.wait_for_selector("#rede-legenda")                                              # volta a montar a publicação
+    assert limpo.execute("select situacao from radar_redes_envios").fetchone()[0] == "cancelado"
+    pagina.click("text=Sair")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    assert "Falta o administrador autorizar" in pagina.inner_text(".autorizacao li.agora") and pagina.locator("#rede-legenda").count() == 0
