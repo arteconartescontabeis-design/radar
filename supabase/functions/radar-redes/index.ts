@@ -101,7 +101,9 @@ let tokenGuardado: { de: string; token: string; origem: string } | null = null;
 async function tokenDaPagina(): Promise<{ token: string; origem: string }> {
   const c = configMeta("facebook");
   if (tokenGuardado?.de === c.token) return tokenGuardado;
-  const d = await chamarMeta("GET", c.pagina, { fields: "access_token" }, c.token).catch(() => null);
+  // Meta fora do ar não vira "token sem acesso": só a recusa da Meta segue para a conferência abaixo
+  const d = await chamarMeta("GET", c.pagina, { fields: "access_token" }, c.token)
+    .catch((e) => { if (e instanceof Erro && e.status === 504) throw e; return null; });
   let r: { token: string; origem: string } | null = null;
   if (typeof d?.access_token === "string" && d.access_token) {
     r = { token: d.access_token, origem: d.access_token === c.token ? "META_PAGE_TOKEN é o token da própria Página"
