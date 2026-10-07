@@ -746,7 +746,10 @@ A função `radar-redes` publica o que o administrador autorizou nos passos 6 e 
    - `META_PAGE_TOKEN`: o token do **usuário do sistema** (business.facebook.com → Usuários do sistema → Gerar token, expiração
      "Nunca", com a Página atribuída com controle total). A função `radar-redes` (v0.14.1) busca sozinha o token da Página a
      partir dele; o próprio token da Página também é aceito;
-   - `META_IG_USER_ID`: id da conta do Instagram profissional ligada à Página;
+   - `META_IG_USER_ID`: id da conta do Instagram profissional ligada à Página (o "Testar conexão" mostra o número a gravar);
+   - `META_IG_TOKEN` (v0.14.4, opcional): token do usuário do sistema gerado no aplicativo do Instagram (caso de uso
+     "Gerenciar mensagens e conteúdo no Instagram", com `instagram_basic` e `instagram_content_publish`). Sem ele, o
+     Instagram usa o mesmo token da Página;
    - opcional `META_GRAPH_URL` (padrão `https://graph.facebook.com/v23.0`).
 4. **Instalar a função:** Supabase → Edge Functions → nova função `radar-redes` com o arquivo `supabase/functions/radar-redes/index.ts`
    (com "Verify JWT" ligado). A função cria sozinha o armazenamento público `radar-redes` das imagens (a Meta só aceita
