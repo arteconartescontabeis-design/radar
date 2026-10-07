@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.13.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.14.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.13.0.sql
+-- Reversão: radar-reversao-v0.14.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.13.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.14.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -195,6 +195,10 @@ create index if not exists radar_assuntos_status_idx on public.radar_assuntos (s
 alter table public.radar_assuntos add column if not exists liberado_sem_base_por    uuid references auth.users(id) on delete set null;
 alter table public.radar_assuntos add column if not exists liberado_sem_base_em     timestamptz;
 alter table public.radar_assuntos add column if not exists liberado_sem_base_motivo text check (length(liberado_sem_base_motivo) between 10 and 500);
+-- v0.14.0: resultado da verificação em fontes oficiais feita pela IA na internet (situação, resumo e as fontes oficiais
+-- encontradas, com o link). É só apoio: a fundamentação continua sendo o texto oficial incluído e o trecho conferido.
+alter table public.radar_assuntos add column if not exists verificacao   jsonb check (verificacao is null or jsonb_typeof(verificacao) = 'object');
+alter table public.radar_assuntos add column if not exists verificado_em timestamptz;
 
 create table if not exists public.radar_assunto_capturas (
   assunto_id  bigint not null references public.radar_assuntos(id) on delete cascade,
@@ -910,6 +914,18 @@ begin
   perform set_config('radar.liberando', '', true);
 end $$;
 
+-- v0.14.0: tira do texto as linhas que só avisam a origem ("este informativo é baseado em material de fonte não oficial",
+-- "Fonte não oficial: boletim X"): esse aviso é interno (fica em avisos_ia), não vai para o leitor. Parágrafo que fala de
+-- fonte não oficial como assunto ("boletos de fontes não oficiais são golpe") fica.
+create or replace function public.radar_tirar_aviso_fonte(p_texto text) returns text
+language sql immutable set search_path = public as $$
+  select btrim(regexp_replace(
+           regexp_replace(coalesce(p_texto, ''),
+             '^[ \t*_>]*((este|esta|o presente|a presente)\s+(informativo|texto|conte[úu]do|material|an[áa]lise|not[íi]cia|artigo)\y[^\n]*?(baseado|baseada|com base|elaborado|elaborada|escrito|escrita|produzido|produzida|feito|feita|a partir)[^\n]*fontes?\s+n[ãa]o[\s-]+oficia(l|is)|fontes?\s+n[ãa]o[\s-]+oficia(l|is)\s*:)[^\n]*(\n|$)',
+             '', 'gin'),
+           '\n{3,}', E'\n\n', 'g'), E' \n')
+$$;
+
 -- v0.12.1: com a publicação liberada pelo administrador, o texto para análise (fonte não oficial) pode virar um conteúdo
 -- normal: é criada uma CÓPIA em rascunho, sem a marca de análise, que segue revisão e aprovação como qualquer outro.
 -- O texto para análise original fica como está (fora do site).
@@ -931,7 +947,7 @@ begin
   end if;
   insert into public.radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia,
                                       titulos_sugeridos, imagem_id, autor, fonte_credito, fora_do_site)
-  values (v_c.assunto_id, v_c.formato, v_c.titulo, v_c.corpo, v_c.gerado_por, v_c.modelo_ia, 'rascunho',
+  values (v_c.assunto_id, v_c.formato, v_c.titulo, public.radar_tirar_aviso_fonte(v_c.corpo), v_c.gerado_por, v_c.modelo_ia, 'rascunho',
           jsonb_build_array('Feito a partir do texto para análise (fonte NÃO oficial), com a publicação liberada pelo administrador. ' ||
                             'Confira cada número, data e norma e resolva os [VERIFICAR] antes de aprovar.') || (v_c.avisos_ia - 0),
           v_c.titulos_sugeridos, v_c.imagem_id, v_c.autor, v_c.fonte_credito, false)
@@ -2497,7 +2513,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.13.0).
+-- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.14.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

@@ -1,7 +1,7 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.11.1)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.14.0)
 //
-// Seis ações, sempre pedidas por um usuário logado (editor ou administrador):
+// Oito ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
 //   fundamentar  → propõe trechos LITERAIS do texto oficial; só entram os que conferem
 //   gerar        → redige um conteúdo (rascunho), com 3 outras opções de título, e aponta o que precisa ser conferido;
@@ -9,6 +9,9 @@
 //   titulos      → sugere outros títulos para um conteúdo (não grava nada)
 //   ilustrar     → cria uma ilustração de capa (sem texto, sem marcas, sem pessoas reais); não grava nada
 //   diagnostico  → testa a instalação (token, modelos) e devolve o que está errado, em português
+//   verificar    → (v0.14.0) procura o assunto na internet, só em sites de órgão público (gov.br, jus.br, leg.br...), e grava no
+//                  assunto o resultado: confirmado, parcialmente, não encontrado ou divergente, com as páginas oficiais encontradas
+//   pagina       → (v0.14.0) traz o texto de uma página oficial (só de órgão público) para a equipe incluir como texto oficial
 //
 // v0.6.1 — a IA passa pela IA CENTRAL do Portal Artecon (função ia-gateway do projeto do DP):
 //   * texto pela Anthropic e imagens pela OpenAI, as duas contas ficam SÓ na IA Central;
@@ -33,7 +36,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.11.1";
+const VERSAO = "0.14.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -194,7 +197,7 @@ function erroIA(status: number, dados: any, modelo: string): Erro {
   return new Erro(502, "A IA devolveu erro: " + m.slice(0, 300));
 }
 
-async function chamarGateway(reg: Registro, caminho: string, corpo: unknown, modelo: string): Promise<any> {
+async function chamarGateway(reg: Registro, caminho: string, corpo: unknown, modelo: string, tempo = 110_000): Promise<any> {
   const token = env("IA_GATEWAY_TOKEN");
   if (!token) throw new Erro(503, "O token do Radar na IA Central não está configurado nesta função (segredo IA_GATEWAY_TOKEN).");
   let r: Response;
@@ -203,7 +206,7 @@ async function chamarGateway(reg: Registro, caminho: string, corpo: unknown, mod
       method: "POST",
       headers: { "x-api-key": token, "content-type": "application/json", "anthropic-version": "2023-06-01",
                  ...(reg.quem ? { "x-ia-usuario": reg.quem } : {}) },
-      body: JSON.stringify(corpo), signal: AbortSignal.timeout(110_000),
+      body: JSON.stringify(corpo), signal: AbortSignal.timeout(tempo),
     });
   } catch (e) {
     const nome = e instanceof Error ? e.name : "erro";
@@ -379,14 +382,18 @@ const FORMATOS: Record<string, string> = {
     "Comece com um parágrafo de abertura que diga quem decidiu o quê e para quando (sem subtítulo). Depois, de 2 a 5 seções com subtítulos curtos e específicos do tema " +
     "(linhas iniciadas por '## ', por exemplo 'Confira os principais prazos', 'Quem pode aderir', 'Como funciona'), com parágrafos curtos. " +
     "Prazos, condições e modalidades vão em lista ('- '), com o termo ou a data inicial em **negrito** seguido de dois-pontos. Destaque em **negrito** datas-limite e valores. " +
-    "Encerre com a seção '## Análise Artecon'.",
+    "Encerre com a seção '## Análise Artecon': em 2 a 4 parágrafos curtos (ou uma lista curta), diga quem é afetado e de que forma, " +
+    "o que a empresa deve conferir ou providenciar e até quando, o risco de não agir e quando vale procurar a Artecon. " +
+    "Não repita a notícia, não use frases genéricas e não comente a origem da informação.",
   artigo: "ARTIGO TÉCNICO: aprofundado, de 3.500 a 7.000 caracteres, com a mesma organização do informativo (abertura, seções temáticas, Análise Artecon) e, quando o texto oficial permitir, exemplos.",
 };
 // v0.11.0: texto para análise, quando o assunto só tem fonte NÃO oficial (boletim, editora, portal). Nunca vai ao site
 // por este caminho: o banco continua exigindo texto oficial conferido para registrar ou autorizar a publicação.
 const REGRA_ANALISE = "ATENÇÃO: o material fornecido é de fonte NÃO OFICIAL (boletim, editora ou portal), muitas vezes só um resumo. " +
-  "Escreva um texto PARA ANÁLISE INTERNA do escritório: explique o que a fonte informa, deixe claro que a informação ainda precisa ser " +
-  "conferida na norma ou no comunicado oficial, e marque com [VERIFICAR: ...] todo número, data, prazo, alíquota e norma que precise de conferência. " +
+  "Escreva um texto PARA ANÁLISE INTERNA do escritório: explique o que a fonte informa e marque com [VERIFICAR: ...] todo número, data, prazo, " +
+  "alíquota e norma que precise de conferência (menos o que a VERIFICAÇÃO EM FONTES OFICIAIS, se houver, já confirmou). " +
+  "NÃO escreva no texto avisos sobre a origem da informação (como 'este informativo é baseado em material de fonte não oficial'): " +
+  "esse aviso é interno e fica fora do texto. " +
   "Nas regras abaixo, onde se lê 'texto oficial', entenda 'o material fornecido'. ";
 async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, formato: string, analise = false) {
   if (!Object.hasOwn(FORMATOS, formato)) throw new Erro(400, "Formato inválido.");
@@ -417,15 +424,16 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     "nem com pequenas trocas de palavras; não repita a ordem dos parágrafos da fonte. Reorganize a informação do ponto de vista da empresa cliente " +
     "(o que muda, para quem, quando, o que fazer). Só é permitido transcrever, entre aspas e com no máximo 25 palavras, o trecho de um dispositivo " +
     "legal quando a redação exata for indispensável; nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; " +
-    REGRA_ESTILO + REGRA_TITULOS + REGRA_DADOS;
+    REGRA_ESTILO + REGRA_TITULOS + REGRA_VERIFICACAO + REGRA_DADOS;
   const entrada = `Assunto: ${ctx.assunto.titulo}\nCategoria: ${ctx.assunto.categoria ?? "—"}\nResumo da equipe: ${ctx.assunto.resumo ?? "—"}\n` +
     `Público afetado: ${ctx.assunto.publico_afetado ?? "—"}\n\nTrechos já conferidos pela equipe (use-os como base):\n` +
-    (conferidas.map((e: any) => `- ${e.dispositivo ? e.dispositivo + ": " : ""}"${e.trecho_literal}"`).join("\n") || "(nenhum)") + `\n\n${bloco}`;
+    (conferidas.map((e: any) => `- ${e.dispositivo ? e.dispositivo + ": " : ""}"${e.trecho_literal}"`).join("\n") || "(nenhum)") + `\n\n${bloco}` +
+    blocoVerificacao(ctx.assunto.verificacao);
   const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "conteudo", esquema, 6000);
 
   const titulo = normalizarEspacos(String(json.titulo ?? "")).slice(0, 200) || ctx.assunto.titulo;
   // tira marcação HTML (<b>, </p>…), mas preserva comparações do texto ("receita < R$ 500 e multa > 2%")
-  const corpo = String(json.corpo ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, "").trim();
+  const corpo = tirarAvisoFonte(String(json.corpo ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, ""));
   if (corpo.length < 80) throw new Erro(502, "A IA devolveu um texto vazio ou curto demais. Tente de novo.");
   const avisos = conferirGerado(titulo + "\n" + corpo, oficial, conferidas.length > 0);
   if (naoOficial) {
@@ -439,6 +447,215 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     ...(naoOficial ? { fora_do_site: true } : {}),          // texto para análise: fora da fila do site (e o banco não deixa aprovar)
   }, "return=representation");
   return { conteudo_id: linha.id, avisos, titulos: titulos_sugeridos };
+}
+
+// ------------------------------------------------------------------ verificação em fontes oficiais (v0.14.0)
+// A IA procura o assunto na internet (busca e leitura de páginas pela própria Anthropic), SÓ em sites de órgão público.
+// O que ela devolve é conferido por código: só ficam as páginas oficiais que apareceram de fato nos resultados da busca.
+const DOMINIOS_OFICIAIS = ["gov.br", "jus.br", "leg.br", "mp.br", "def.br"];   // cobrem os subdomínios (in.gov.br, sef.sc.gov.br, stf.jus.br…)
+// só para os testes: hosts extras aceitos (e por http); em produção fica vazio
+const DOMINIOS_EXTRA = env("RADAR_DOMINIOS_EXTRA").split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+function urlOficial(endereco: string): URL | null {
+  let u: URL;
+  try { u = new URL(endereco); } catch { return null; }
+  const host = u.hostname.toLowerCase(), extra = DOMINIOS_EXTRA.includes(host);
+  if (u.username || u.password || !(u.protocol === "https:" || (extra && u.protocol === "http:"))) return null;
+  return extra || DOMINIOS_OFICIAIS.some((d) => host === d || host.endsWith("." + d)) ? u : null;
+}
+const chaveUrl = (u: string) => { try { const x = new URL(u); x.hash = ""; return x.toString().replace(/\/+$/, ""); } catch { return u; } };
+const SITUACOES = ["confirmada", "parcialmente_confirmada", "nao_encontrada", "divergente"];
+const ROTULO_SITUACAO: Record<string, string> = { confirmada: "CONFIRMADA", parcialmente_confirmada: "PARCIALMENTE CONFIRMADA",
+  nao_encontrada: "NÃO ENCONTRADA", divergente: "DIVERGENTE" };
+const REGRA_VERIFICACAO = "(11) se vier uma VERIFICAÇÃO EM FONTES OFICIAIS, trate como confirmado o que ela diz que as páginas oficiais confirmam, " +
+  "cite o órgão oficial pelo nome (sem link) e não marque [VERIFICAR] nesses pontos; o que ela não confirmar continua com [VERIFICAR]; " +
+  "se ela apontar divergência, siga a fonte oficial e diga o que mudou; ";
+// só a linha que É o aviso ("Este informativo é baseado em … fonte não oficial…", "Fonte não oficial: boletim X"); um parágrafo
+// que fala de fonte não oficial como assunto ("boletos de fontes não oficiais são golpe") fica
+const RE_AVISO_FONTE = /^[ \t*_>]*(?:(?:este|esta|o presente|a presente)\s+(?:informativo|texto|conte[úu]do|material|an[áa]lise|not[íi]cia|artigo)\b[^\n]*?(?:baseado|baseada|com base|elaborado|elaborada|escrito|escrita|produzido|produzida|feito|feita|a partir)[^\n]*fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)|fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)\s*:)[^\n]*(?:\n|$)/gim;
+/** Tira do texto as linhas que só avisam a origem ("baseado em material de fonte não oficial"): o aviso é interno. */
+const tirarAvisoFonte = (t: string) => t.replace(RE_AVISO_FONTE, "").replace(/\n{3,}/g, "\n\n").trim();
+
+function blocoVerificacao(v: any): string {
+  if (!v || typeof v !== "object" || !SITUACOES.includes(v.situacao)) return "";
+  const fontes = (Array.isArray(v.fontes) ? v.fontes : []).slice(0, 6)
+    .map((f: any) => `- ${f.orgao || "órgão público"} — ${f.titulo || "página oficial"}${f.data ? " (" + f.data + ")" : ""}: ${f.confirma || ""}`).join("\n");
+  const div = (Array.isArray(v.divergencias) ? v.divergencias : []).map((d: any) => `- ${d}`).join("\n");
+  const quando = v.em ? String(v.em).slice(0, 10).split("-").reverse().join("/") : "";
+  return `\n\n<<<VERIFICAÇÃO EM FONTES OFICIAIS | feita na internet em ${quando} | situação: ${ROTULO_SITUACAO[v.situacao]}>>>\n` +
+    `${v.resumo ?? ""}\n${fontes ? "Páginas oficiais:\n" + fontes + "\n" : ""}${div ? "Divergências:\n" + div + "\n" : ""}<<<FIM>>>\n`;
+}
+
+// Claude Opus 5.5, Sonnet 5.5, Fable 5.1 e Mythos 5.1 recusam tool_choice "tool": neles a última rodada só pede por escrito
+const FORCA_FERRAMENTA = !/opus-5-5|sonnet-5-5|fable-5-1|mythos-5-1/i.test(MODELO);
+const NOVA_GERACAO = (m: string) => !/haiku|sonnet-4-5|opus-4-5|opus-4-1|sonnet-4-2|claude-3/i.test(m);
+async function verificar(token: string, ctx: Awaited<ReturnType<typeof carregar>>) {
+  const inicio = Date.now();
+  let material = "";
+  for (const c of ctx.capturas.filter((c) => c.texto).slice(0, 4)) {
+    const quando = c.data_publicacao ? c.data_publicacao.split("-").reverse().join("/") : "sem data";
+    material += `<<<TEXTO capturado | órgão: ${c.orgao} (${c.oficial ? "fonte oficial" : "fonte NÃO oficial"}) | título: ${c.titulo} | publicado em: ${quando}>>>\n` +
+      `${String(c.texto).slice(0, 5000)}\n<<<FIM>>>\n\n`;
+  }
+  if (!material) throw new Erro(400, "Este assunto não tem texto capturado para a IA verificar.");
+  const esquema = {
+    type: "object", additionalProperties: false, required: ["situacao", "resumo", "fontes", "divergencias"],
+    properties: {
+      situacao: { type: "string", enum: SITUACOES },
+      resumo: { type: "string" },
+      fontes: { type: "array", items: { type: "object", additionalProperties: false, required: ["url", "titulo", "orgao", "data", "confirma"],
+        properties: { url: { type: "string" }, titulo: { type: "string" }, orgao: { type: "string" }, data: { type: "string" }, confirma: { type: "string" } } } },
+      divergencias: { type: "array", items: { type: "string" } },
+    },
+  };
+  const instrucoes = "Você confere notícias contábeis e tributárias para a Artecon Artes Contábeis (Palhoça/SC), em português do Brasil. " +
+    "Tarefa: procurar na internet a FONTE OFICIAL do fato descrito no material (Diário Oficial da União, Planalto, Receita Federal, PGFN, " +
+    "Ministério da Fazenda, Comitê Gestor do IBS, CONFAZ, Secretaria da Fazenda de SC, tribunais e demais órgãos públicos) e dizer se ela confirma o material. " +
+    "Use a busca (web_search) com termos específicos (número e tipo da norma, órgão, tema) e, se precisar ler a página, a leitura (web_fetch). " +
+    "No fim, chame a ferramenta 'verificacao' uma única vez. Regras: (1) em 'fontes', liste só páginas de órgão público que apareceram nos resultados " +
+    "da busca, com o endereço exato; nunca invente endereço; (2) em 'confirma', diga em uma frase o que a página confirma, sem acrescentar nada que ela não diga; " +
+    "(3) situação: 'confirmada' quando a fonte oficial confirma o essencial (o fato, a norma e os prazos ou valores principais), " +
+    "'parcialmente_confirmada' quando confirma só parte, 'divergente' quando a fonte oficial diz algo diferente (explique em 'divergencias'), " +
+    "'nao_encontrada' quando não achou fonte oficial; (4) conhecimento de memória não confirma nada; (5) 'resumo' com até 600 caracteres, " +
+    "dizendo o que foi confirmado e o que ficou sem confirmação; 'data' é a data da publicação oficial (DD/MM/AAAA) ou vazio. " + REGRA_DADOS;
+  const entrada = `Assunto: ${ctx.assunto.titulo}\nResumo da equipe: ${ctx.assunto.resumo ?? "—"}\n\n${material}`;
+  const novo = NOVA_GERACAO(MODELO);
+  const ferramentas = (restringir: boolean) => [
+    { name: "verificacao", description: "Registra o resultado da verificação em fontes oficiais.", input_schema: esquema },
+    { type: novo ? "web_search_20260209" : "web_search_20250305", name: "web_search", max_uses: 4,
+      ...(restringir ? { allowed_domains: DOMINIOS_OFICIAIS } : {}), user_location: { type: "approximate", country: "BR", region: "Santa Catarina" } },
+    { type: novo ? "web_fetch_20260209" : "web_fetch_20250910", name: "web_fetch", max_uses: 2, max_content_tokens: 8000,
+      ...(restringir ? { allowed_domains: DOMINIOS_OFICIAIS } : {}) },
+  ];
+  const mensagens: any[] = [{ role: "user", content: entrada }];
+  const vistos = new Set<string>();
+  let entradaTok = 0, saidaTok = 0, buscas = 0, modeloUsado = MODELO, restringir = true, resultado: any = null;
+  for (let volta = 0; volta < 5 && !resultado; volta++) {
+    const resta = 140_000 - (Date.now() - inicio);
+    if (resta < 15_000) throw new Erro(504, "A verificação demorou demais. Tente de novo.");
+    // pouco tempo sobrando: a rodada não busca mais, só registra o que já foi encontrado (a busca não cabe no tempo)
+    const ultima = resta < 45_000 || volta === 4;
+    if (ultima && mensagens.length > 1 && mensagens[mensagens.length - 1].role === "assistant") {
+      mensagens.push({ role: "user", content: "Não há mais tempo para buscar. Registre agora o resultado com a ferramenta 'verificacao', usando o que você já encontrou." });
+    }
+    let dados: any;
+    try {
+      dados = await chamarGateway(ctx.reg, "", { model: MODELO, max_tokens: 4000, system: instrucoes, messages: mensagens,
+        // na última rodada a ferramenta de registro é obrigatória (nos modelos que aceitam escolha forçada): a IA não busca mais
+        tools: ferramentas(restringir), tool_choice: ultima && FORCA_FERRAMENTA ? { type: "tool", name: "verificacao" } : { type: "auto" } },
+        MODELO, Math.min(110_000, resta - 5_000));
+    } catch (e) {
+      // se a Anthropic não aceitar a lista de domínios, a busca roda sem ela (o código continua aceitando só páginas oficiais)
+      if (restringir && e instanceof Erro && /allowed_domains|domain/i.test(e.message)) { restringir = false; volta--; continue; }
+      throw e;
+    }
+    const u = dados.usage ?? {};
+    entradaTok += (Number(u.input_tokens ?? 0) || 0) + (Number(u.cache_creation_input_tokens ?? 0) || 0) + (Number(u.cache_read_input_tokens ?? 0) || 0);
+    saidaTok += Number(u.output_tokens ?? 0) || 0;
+    buscas += Number(u.server_tool_use?.web_search_requests ?? 0) || 0;
+    modeloUsado = String(dados.model ?? MODELO);
+    ctx.reg.uso = { entrada: entradaTok, saida: saidaTok, modelo: modeloUsado };
+    if (dados.stop_reason === "refusal") throw new Erro(502, "A IA se recusou a fazer esta verificação.");
+    const conteudo = Array.isArray(dados.content) ? dados.content : [];
+    for (const b of conteudo) {
+      if (b?.type === "web_search_tool_result" && Array.isArray(b.content)) for (const r of b.content) if (r?.url) vistos.add(chaveUrl(String(r.url)));
+      if (b?.type === "web_fetch_tool_result" && b.content?.url) vistos.add(chaveUrl(String(b.content.url)));
+    }
+    const pedido = conteudo.find((b: any) => b?.type === "tool_use" && b?.name === "verificacao");
+    if (pedido) { resultado = pedido.input; break; }
+    mensagens.push({ role: "assistant", content: conteudo });
+    if (dados.stop_reason !== "pause_turn") {
+      mensagens.push({ role: "user", content: "Registre agora o resultado com a ferramenta 'verificacao', usando o que você já encontrou." });
+    }
+  }
+  if (!resultado || typeof resultado !== "object") throw new Erro(502, "A IA não concluiu a verificação. Tente de novo.");
+  const curto = (v: unknown, n: number) => normalizarEspacos(String(v ?? "")).slice(0, n);
+  const fontes: any[] = [];
+  for (const f of Array.isArray(resultado.fontes) ? resultado.fontes : []) {
+    const url = String(f?.url ?? "").trim();
+    if (!urlOficial(url) || !vistos.has(chaveUrl(url)) || fontes.some((x) => chaveUrl(x.url) === chaveUrl(url))) continue;  // só o que a busca trouxe de verdade
+    fontes.push({ url: url.slice(0, 1000), titulo: curto(f.titulo, 300), orgao: curto(f.orgao, 120), data: curto(f.data, 20), confirma: curto(f.confirma, 500) });
+    if (fontes.length >= 6) break;
+  }
+  let situacao = SITUACOES.includes(resultado.situacao) ? resultado.situacao : "nao_encontrada";
+  let resumo = curto(resultado.resumo, 800);
+  if (!fontes.length && situacao !== "nao_encontrada") {
+    situacao = "nao_encontrada";
+    resumo = (resumo ? resumo + " " : "") + "(A IA não indicou nenhuma página oficial que tenha aparecido na busca: o resultado não vale como confirmação.)";
+  }
+  const verificacao = { situacao, resumo, fontes, buscas, modelo: modeloUsado,
+    divergencias: (Array.isArray(resultado.divergencias) ? resultado.divergencias : []).map((d: unknown) => curto(d, 300)).filter(Boolean).slice(0, 5),
+    em: new Date().toISOString(), por: ctx.reg.quem ?? null };
+  await banco(token, "PATCH", `radar_assuntos?id=eq.${ctx.assunto.id}`, { verificacao, verificado_em: verificacao.em }, "return=minimal");
+  return { verificacao };
+}
+
+// Traz o texto de uma página oficial para a equipe incluir como "texto oficial" (a equipe confere antes de gravar).
+function htmlParaTexto(html: string): { titulo: string; texto: string; data: string } {
+  const titulo = normalizarEspacos(decodificar((/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i.exec(html) ??
+                                               /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html) ?? [])[1] ?? "")).slice(0, 300);
+  const iso = /<meta[^>]+(?:article:published_time|dateModified|datePublished)["'][^>]+content=["'](\d{4}-\d{2}-\d{2})/i.exec(html)?.[1] ??
+    (/(?:publicado|publicada)\s+em:?\s*(\d{2})\/(\d{2})\/(\d{4})/i.exec(html.replace(/<[^>]+>/g, " ")) ?? []).slice(1).reverse().join("-");
+  let corpo = html.replace(/<(script|style|noscript|svg|nav|header|footer|aside|form)\b[\s\S]*?<\/\1>/gi, " ");
+  const artigo = [...corpo.matchAll(/<(article|main)\b[^>]*>([\s\S]*?)<\/\1>/gi)].map((m) => m[2]).sort((a, b) => b.length - a.length)[0];
+  if (artigo && artigo.length > 500) corpo = artigo;
+  const texto = decodificar(corpo.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|h[1-6]|tr|section|blockquote)>/gi, "\n").replace(/<[^>]+>/g, " "))
+    .split("\n").map(normalizarEspacos).filter((l, i, todas) => l && l !== todas[i - 1]).join("\n").slice(0, 60000);
+  return { titulo, texto, data: /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : "" };
+}
+function decodificar(t: string): string {
+  const ent: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ordm: "º", ordf: "ª", sect: "§", deg: "°" };
+  return t.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, c: string) => c[0] === "#"
+    ? ((n: number) => Number.isInteger(n) && n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : " ")(
+        parseInt(c[1].toLowerCase() === "x" ? c.slice(2) : c.slice(1), c[1].toLowerCase() === "x" ? 16 : 10))
+    : ent[c.toLowerCase()] ?? m);
+}
+const MAX_PAGINA = 3_000_000;   // bytes lidos da página oficial
+async function pagina(endereco: unknown) {
+  let u = urlOficial(String(endereco ?? "").trim());
+  if (!u) throw new Erro(400, "Só dá para trazer páginas de órgão público (endereços gov.br, jus.br ou leg.br, com https).");
+  // cada redirecionamento é conferido ANTES de ser seguido: nunca sai de um órgão público
+  let r: Response | null = null;
+  const prazo = AbortSignal.timeout(25_000);
+  for (let salto = 0; salto <= 5; salto++) {
+    try {
+      r = await fetch(u, { redirect: "manual", signal: prazo,
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; RadarArtecon/" + VERSAO + ")", Accept: "text/html,application/xhtml+xml,text/plain" } });
+    } catch { throw new Erro(504, "Não foi possível abrir a página oficial agora. Tente de novo ou copie o texto à mão."); }
+    if (r.status < 300 || r.status >= 400) break;
+    await r.body?.cancel();
+    const destino = r.headers.get("location");
+    if (!destino) throw new Erro(502, `A página oficial respondeu ${r.status} sem endereço. Copie o texto à mão.`);
+    let proximo: URL | null = null;
+    try { proximo = urlOficial(new URL(destino, u).toString()); } catch { proximo = null; }
+    if (!proximo) throw new Erro(400, "A página oficial redirecionou para fora de um órgão público.");
+    u = proximo; r = null;
+  }
+  if (!r) throw new Erro(502, "A página oficial redirecionou vezes demais. Copie o texto à mão.");
+  if (!r.ok) { await r.body?.cancel(); throw new Erro(502, `A página oficial respondeu com erro ${r.status}. Copie o texto à mão.`); }
+  const tipo = r.headers.get("content-type") ?? "";
+  if (!/html|text\/plain/i.test(tipo)) { await r.body?.cancel(); throw new Erro(400, "A página não é texto (pode ser PDF): copie o texto à mão."); }
+  // lê no máximo MAX_PAGINA bytes (a página pode ser enorme) e respeita a codificação declarada (há páginas antigas em Latin-1)
+  const partes: Uint8Array[] = [];
+  let total = 0;
+  const leitor = r.body?.getReader();
+  try {
+    while (leitor && total < MAX_PAGINA) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      partes.push(value); total += value.length;
+    }
+  } catch { throw new Erro(504, "A página oficial demorou demais para carregar. Tente de novo ou copie o texto à mão."); }
+  await leitor?.cancel().catch(() => {});
+  const bytes = new Uint8Array(Math.min(total, MAX_PAGINA));
+  let pos = 0;
+  for (const p of partes) { const pedaco = p.subarray(0, bytes.length - pos); bytes.set(pedaco, pos); pos += pedaco.length; if (pos >= bytes.length) break; }
+  const cabeca = new TextDecoder("latin1").decode(bytes.subarray(0, 4096));
+  const charset = (/charset=["']?([\w-]+)/i.exec(tipo)?.[1] ?? /<meta[^>]+charset=["']?([\w-]+)/i.exec(cabeca)?.[1] ?? "utf-8").toLowerCase();
+  let html: string;
+  try { html = new TextDecoder(charset).decode(bytes); } catch { html = new TextDecoder("utf-8").decode(bytes); }
+  const lido = htmlParaTexto(html);
+  if (lido.texto.length < 50) throw new Erro(502, "A página oficial não trouxe texto legível. Copie o texto à mão.");
+  return { url: u.toString(), ...lido };
 }
 
 // ------------------------------------------------------------------ outras opções de título (v0.10.0)
@@ -561,7 +778,7 @@ async function tratar(req: Request): Promise<Response> {
     const pedido = await req.json().catch(() => null);
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
-    if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
     const diag = acao === "diagnostico";
     if (!diag && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
     assuntoId = diag ? 0 : pedido.assunto_id;
@@ -573,6 +790,8 @@ async function tratar(req: Request): Promise<Response> {
       return responder(200, { ...(await diagnostico(await emailDoUsuario(token))), versao: VERSAO });
     }
 
+    if (acao === "pagina") return responder(200, { ...(await pagina(pedido.url)), versao: VERSAO });   // não usa IA: não conta no limite
+
     const [mes] = await banco(token, "GET", "radar_v_ia_mes?select=tokens");
     if (LIMITE_MENSAL > 0 && Number(mes?.tokens ?? 0) >= LIMITE_MENSAL) {
       throw new Erro(429, `O limite mensal de uso da IA (${LIMITE_MENSAL.toLocaleString("pt-BR")} tokens) foi atingido. ` +
@@ -583,6 +802,7 @@ async function tratar(req: Request): Promise<Response> {
     reg = ctx.reg;
     reg.quem = await emailDoUsuario(token);
     const resultado = acao === "classificar" ? await classificar(token, ctx)
+      : acao === "verificar" ? await verificar(token, ctx)
       : acao === "fundamentar" ? await fundamentar(token, ctx)
       : acao === "titulos" ? await titulos(token, ctx, pedido.conteudo_id, pedido.evitar)
       : acao === "ilustrar" ? await ilustrar(ctx, typeof pedido.titulo === "string" ? pedido.titulo : "",
@@ -599,7 +819,7 @@ async function tratar(req: Request): Promise<Response> {
     const usado = reg.uso;
     if (usado && token) {
       await banco(token, "POST", "rpc/radar_registrar_uso_ia", {
-        p_acao: acao === "titulos" ? "gerar" : acao, p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
+        p_acao: acao === "titulos" ? "gerar" : acao === "verificar" ? "fundamentar" : acao, p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
       }).catch((e) => console.error("uso da IA não registrado:", e?.message));
     }
   }

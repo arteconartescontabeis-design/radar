@@ -160,6 +160,9 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 .link{background:none;border:0;padding:0;color:var(--azul);text-decoration:underline;cursor:pointer;font:inherit}
 .motivo-liberar{border:1px dashed var(--erro);border-radius:8px;padding:10px 12px;margin:8px 0 0;background:#fff} .motivo-liberar label{color:var(--erro);margin-top:0}
 .motivo-liberar input{width:100%} .motivo-liberar .acoes{align-items:center}
+/* v0.14.0: verificação em fontes oficiais */
+.verificacao .fontes-verif{margin:6px 0;padding-left:18px} .verificacao .fontes-verif li{margin:0 0 8px}
+.acoes .btn{max-width:100%;white-space:normal}
 /* v0.13.0: montagem da publicação nas redes */
 .rede-montagem{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:14px;margin:10px 0 0;align-items:start}
 .rede-imagem{width:100%;aspect-ratio:1;max-width:100%;border-radius:8px;border:1px solid var(--linha);background:var(--azul-claro);object-fit:cover}
@@ -214,11 +217,15 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.13.0";
-const FUNCAO_MINIMA = "0.11.0";     // versão da função radar-ia que este painel exige (texto para análise)
+const VERSAO = "0.14.0";
+const FUNCAO_MINIMA = "0.14.0";     // versão da função radar-ia que este painel exige (v0.14.0: verificação em fontes oficiais)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.14.0", "07/10/2026", [
+    "Verificação em fontes oficiais: no passo 1, “Verificar em fontes oficiais” faz a IA procurar o assunto na internet, só em sites de órgão público (gov.br, jus.br, leg.br), e mostra se a informação foi confirmada, confirmada em parte, não encontrada ou se diverge, com o link de cada página oficial. “Incluir como texto oficial” traz o texto da página para o formulário: é só conferir e gravar.",
+    "Textos melhores: a “Análise Artecon” passa a dizer quem é afetado, o que conferir ou providenciar e até quando, o risco de não agir e quando procurar a Artecon. O texto não traz mais avisos como “este informativo é baseado em material de fonte não oficial” (o aviso continua interno, nos pontos a conferir). Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR]. Banco v0.14.0 e função radar-ia v0.14.0."
+  ]],
   ["0.13.0", "07/10/2026", [
     "Instagram e Facebook na trilha de autorização (passos 6 e 7): depois que a notícia está no site, o administrador confere a imagem quadrada (montada a partir da capa) e a legenda (título, começo do texto, fonte e o caminho até o site; no Instagram, as hashtags), e clica em “Autorizar e publicar”. A publicação sai na hora pela API da Meta e o link fica registrado. Também dá para escolher “Não publicar”.",
     "Publicações › Canais mostra o Instagram e o Facebook de cada conteúdo, e o administrador tem “Testar conexão com o Instagram e o Facebook”. Banco v0.13.0 (tabela radar_redes_envios) e função nova radar-redes no Supabase. Funciona assim que a Meta estiver configurada (segredos META_PAGE_ID, META_PAGE_TOKEN e META_IG_USER_ID)."
@@ -584,7 +591,8 @@ const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
    v0.11.0: enquanto a IA trabalha, um aviso fixo diz o que ela está fazendo e há quanto tempo; e, no mesmo assunto,
    a partir da 2ª consulta o Radar pede a senha de quem está logado (evita consulta repetida sem querer, e gasto). */
 const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo o texto (até 1 minuto)",
-  classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a ilustração da capa (até 1 minuto)"};
+  classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a ilustração da capa (até 1 minuto)",
+  verificar:"procurando a fonte oficial na internet (até 2 minutos)"};
 function avisoIA(texto){
   let a = $("#ia-trabalhando");
   if(!texto){ clearInterval(a?._relogio); a?.remove(); return; }
@@ -1228,7 +1236,7 @@ async function telaAssunto(id){
   const conferidasOficiais = evid.filter(e => e.trecho_conferido && oficiais.has(e.captura_id)).length;
   const liberado = !!a.liberado_sem_base_em;                            // v0.12.0: "Publicar mesmo assim" do administrador
   const pronto = liberado || (a.situacao_confirmacao === "confirmado_oficialmente" && conferidasOficiais > 0);
-  if(ed) FONTES_LISTA = await ler("radar_fontes", {select:"id,nome,oficial", order:"nome"});
+  if(ed) FONTES_LISTA = await ler("radar_fontes", {select:"id,nome,oficial,url", order:"nome"});
   // os quatro passos do trabalho e o que falta agora
   const temTexto = vinc.some(v => v.radar_capturas.texto), temOficial = vinc.some(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial);
   const paraPublicar = cont.filter(c => !ehAnalise(c)), analises = cont.filter(ehAnalise);   // o texto para análise não entra na revisão
@@ -1272,6 +1280,8 @@ async function telaAssunto(id){
         feitoTxt:r?.situacao === "publicado" ? `Publicado em ${dataHora(r.publicado_em)}${r.url ? " — " + linkFonte(r.url, "ver no " + nome + " ↗") : "."}` : "Não publicado neste canal.",
         desfazer:r?.situacao === "dispensado" && ehAdmin() ? `<button class="link" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Desfazer</button>` : ""}; })];
   const ir = (alvo, rotulo, classe = "") => `<button class="btn ${classe}" data-acao="ir" data-alvo="${alvo}">${rotulo}</button>`;
+  // v0.14.0: a IA procura a fonte oficial na internet (se já procurou, o botão leva ao resultado)
+  const verificarBtn = a.verificacao ? ir("#sec-verificacao", "Ver a verificação em fontes oficiais", "sec") : `<button class="btn" data-acao="ia-verificar">Verificar em fontes oficiais</button>`;
   const semFonte = ehAdmin() ? `<button class="btn perigo" type="button" data-acao="abrir-motivo">Publicar mesmo assim…</button>` : "";
   const paraRevisar = rascunhos[0] || rejeitados[0];
   let prox;                                   // [título, explicação, botões, passo (0 a 4; -1 fora da trilha)]
@@ -1280,16 +1290,16 @@ async function telaAssunto(id){
   else if(!cont.length && temOficial) prox = ["Escrever o conteúdo", "O texto oficial já está aqui. A IA pode buscar o trecho que comprova e escrever o rascunho de uma vez; ou escreva você mesmo.",
     `<button class="btn" data-acao="ia-tudo">Preparar com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
   else if(!cont.length) prox = ["Escrever o conteúdo", "Assunto sem texto de fonte oficial. Para o Informativo Mensal basta escrever e aprovar; para o site, inclua antes o texto oficial." +
-    (temTexto ? " A IA pode escrever um texto para análise a partir da fonte não oficial." : ""),
-    (temTexto ? `<button class="btn" data-acao="ia-analise">Gerar texto para análise</button>` : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec"), 1];
+    (temTexto ? " A IA pode procurar a fonte oficial na internet e escrever um texto para análise a partir da fonte não oficial." : ""),
+    (temTexto ? verificarBtn.replace('class="btn"', 'class="btn sec"') + `<button class="btn" data-acao="ia-analise">Gerar texto para análise</button>` : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec"), 1];
   else if(!paraPublicar.length && !aprovados.length){                 // só o texto para análise (fonte não oficial)
     if(liberado) prox = ["Transformar o texto para análise", "O texto para análise não vai ao site. " + (ehAdmin() ? "Transforme-o em texto para publicar: a cópia entra como rascunho, com o aviso de fonte não oficial, e segue revisão e aprovação."
       : "O administrador transforma o texto para análise em texto para publicar."),
       ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${analises[0].id}">Transformar em texto para publicar</button>` : ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 1];
     else if(pronto) prox = ["Escrever o texto para publicar", "A fonte oficial está conferida. Gere o texto com IA ou escreva você mesmo; o texto para análise fica só como apoio.",
       `<button class="btn" data-acao="ia-gerar">Gerar texto com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
-    else prox = ["Conferir a fonte", "Só há texto para análise, feito a partir de fonte não oficial. Para publicar no site, inclua o texto oficial e fundamente" + (ehAdmin() ? ", ou libere a publicação sem a fonte oficial (o motivo fica registrado)." : "."),
-      ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
+    else prox = ["Conferir a fonte", "Só há texto para análise, feito a partir de fonte não oficial. A IA pode procurar a fonte oficial na internet; com ela, inclua o texto oficial e fundamente" + (ehAdmin() ? ", ou libere a publicação sem a fonte oficial (o motivo fica registrado)." : "."),
+      verificarBtn + ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
   }
   else if(!aprovados.length && !revisando.length && !rascunhos.length && rejeitados.length) prox = ["Conteúdo rejeitado", "O conteúdo foi rejeitado na revisão. Corrija o texto, salve e mande de novo para a revisão — ou escreva outro.",
     ir("#sec-conteudos", "Ir para o conteúdo"), 2];
@@ -1301,7 +1311,7 @@ async function telaAssunto(id){
   else if(noSite) prox = proxRede(redeAgora, redeDe(redeAgora), cRede, imgs[cRede.imagem_id], a.categoria, pubs.find(p => p.conteudo_id === cRede.id && !p.versao_anterior)?.url || "",
                                   redes.find(r => r.conteudo_id === cRede.id && r.canal === redeAgora));
   else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação"), 0];
-  else if(!pronto && !temOficial) prox = ["Para o site: incluir o texto oficial", "O conteúdo aprovado já pode entrar no Informativo Mensal. Para publicar no site, inclua o texto da fonte oficial e fundamente.", ir("#sec-texto", "Ir para o texto oficial") + semFonte, 0];
+  else if(!pronto && !temOficial) prox = ["Para o site: incluir o texto oficial", "O conteúdo aprovado já pode entrar no Informativo Mensal. Para publicar no site, inclua o texto da fonte oficial e fundamente (a IA pode procurar a fonte oficial na internet).", verificarBtn + ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
   else if(!pronto && !conferidasOficiais) prox = ["Para o site: fundamentar", "Falta ao menos um trecho conferido em fonte oficial. Selecione o trecho no texto oficial, ou peça à IA.",
     ir("#sec-texto", "Selecionar trecho no texto") + ir("#sec-fundamentacao", "Ir para a fundamentação", "sec") + semFonte, 0];
   else if(!pronto) prox = ["Para o site: confirmar o assunto", "Há trecho conferido em fonte oficial. Se você conferiu a informação na fonte, marque o assunto como confirmado oficialmente.",
@@ -1362,6 +1372,7 @@ async function telaAssunto(id){
           <li class="${temOficial ? "ok" : "falta"}">${temOficial ? "✓" : "✗"} Texto oficial${origem && temOficial ? ": " + h(origem.radar_fontes.orgao) : temTexto ? " (só de fonte não oficial)" : ""}</li>
           <li class="${conferidasOficiais ? "ok" : "falta"}">${conferidasOficiais ? "✓" : "✗"} ${conferidasOficiais || "Nenhum"} trecho(s) que comprova(m)</li>
           <li class="${a.situacao_confirmacao === "confirmado_oficialmente" ? "ok" : "falta"}">${a.situacao_confirmacao === "confirmado_oficialmente" ? "✓ Conferido na fonte oficial" : "✗ Ainda não confirmado oficialmente"}</li>
+          ${a.verificacao ? `<li class="${["confirmada","parcialmente_confirmada"].includes(a.verificacao.situacao) ? "ok" : "falta"}">${["confirmada","parcialmente_confirmada"].includes(a.verificacao.situacao) ? "✓" : "✗"} Verificação na internet: ${h(SITUACAO_VERIF[a.verificacao.situacao] || "—")}</li>` : ""}
         </ul>
         ${vinc.length ? `<button class="btn peq sec" data-acao="etapa" data-etapa="fonte">Ver o texto oficial</button>` : ""}
       </div>
@@ -1393,10 +1404,12 @@ async function telaAssunto(id){
       ${origem ? `<div class="original"><span class="sub">Título original da captura</span><b>${h(origem.titulo)}</b>
         <span class="sub">Fonte: <b>${h(origem.radar_fontes.orgao)}</b>${origem.data_publicacao ? ` · publicado em ${data(origem.data_publicacao)}` : ""} · </span>${linkFonte(origem.url, "Abrir na fonte ↗")}</div>`
         : `<p class="sub">Assunto criado pela equipe, sem captura de origem.</p>`}
-      ${ed ? `<div class="acoes ia-barra"><button class="btn sec" data-acao="ia-fundamentar">Buscar trecho que comprova com IA</button>
+      ${ed ? `<div class="acoes ia-barra"><button class="btn sec" data-acao="ia-verificar">Verificar em fontes oficiais</button>
+        <button class="btn sec" data-acao="ia-fundamentar">Buscar trecho que comprova com IA</button>
         <button class="btn sec" type="button" data-acao="ia-classificar">Classificar com IA</button>
         <span class="sub">A IA propõe; só entram os trechos que existem literalmente no texto oficial. A classificação vai para “Mais detalhes”.</span></div>` : ""}
     </div>
+    ${painelVerificacao(a.verificacao, ed)}
     <div class="painel" id="sec-texto"><h2>Texto oficial capturado</h2>
       ${ed ? `<p class="sub">Para fundamentar: selecione o trecho exato no texto abaixo e clique em “Usar trecho selecionado” — ou clique sem selecionar e cole o trecho. O sistema confere se ele existe mesmo no texto oficial.</p>` : ""}
       ${vinc.length ? vinc.map(v => { const c = v.radar_capturas; return `
@@ -1455,6 +1468,30 @@ async function telaAssunto(id){
     </div>
     </div>`;
 }
+/* v0.14.0: verificação em fontes oficiais pela IA (busca na internet, só em sites de órgão público) */
+const SITUACAO_VERIF = {confirmada:"confirmada", parcialmente_confirmada:"parcialmente confirmada", nao_encontrada:"fonte oficial não encontrada", divergente:"divergente"};
+function painelVerificacao(v, ed){
+  if(!v || !SITUACAO_VERIF[v.situacao]) return "";
+  const tipo = v.situacao === "confirmada" ? "ok" : v.situacao === "divergente" ? "erro" : "alerta";
+  const fontes = Array.isArray(v.fontes) ? v.fontes : [], div = Array.isArray(v.divergencias) ? v.divergencias : [];
+  return `<div class="painel verificacao" id="sec-verificacao"><h2>Verificação em fontes oficiais</h2>
+    <p>${selo(SITUACAO_VERIF[v.situacao], tipo)} <span class="sub">pela IA, na internet, em ${dataHora(v.em)}${v.buscas ? ` · ${Number(v.buscas)} busca(s)` : ""}</span></p>
+    ${v.resumo ? `<p>${h(v.resumo)}</p>` : ""}
+    ${fontes.length ? `<ul class="fontes-verif">${fontes.map((f, n) => `<li><b>${h(f.orgao || "Órgão público")}</b> — ${linkFonte(f.url, f.titulo || f.url)}${f.data ? ` <span class="sub">(${h(f.data)})</span>` : ""}
+        ${f.confirma ? `<br><span class="sub">Confirma: ${h(f.confirma)}</span>` : ""}
+        ${ed ? `<div class="acoes" style="margin:4px 0 0"><button class="btn peq sec" type="button" data-acao="verif-incluir" data-n="${n}">Incluir como texto oficial</button></div>` : ""}</li>`).join("")}</ul>` : ""}
+    ${div.length ? `<div class="aviso erro"><b>Divergências:</b><ul>${div.map(d => `<li>${h(d)}</li>`).join("")}</ul></div>` : ""}
+    <p class="sub" style="margin:6px 0 0">A verificação é apoio. Para publicar no site, inclua o texto oficial (o botão traz a página para você conferir), marque o trecho que comprova e confirme o assunto.${ed ? " Para refazer, use “Verificar em fontes oficiais” de novo." : ""}</p></div>`;
+}
+/* A fonte cadastrada do mesmo site da página (a inclusão do texto oficial exige a fonte certa). */
+function fonteDoEndereco(url){
+  let host; try{ host = new URL(url).hostname.replace(/^www\./, ""); }catch(e){ return null; }
+  const casa = f => { try{ const fh = new URL(f.url).hostname.replace(/^www\./, ""); return host === fh || host.endsWith("." + fh); }catch(e){ return false; } };
+  // entre as do mesmo site (várias ficam em www.gov.br), a de caminho mais parecido; a oficial antes da não oficial
+  const caminho = f => { try{ const c = new URL(f.url).pathname.replace(/\/+$/, ""); return url.includes(c) ? c.length : 0; }catch(e){ return 0; } };
+  return FONTES_LISTA.filter(casa).sort((x, y) => (y.oficial - x.oficial) || (caminho(y) - caminho(x)))[0] || null;
+}
+
 /* v0.13.0: Instagram e Facebook */
 const NOME_REDE = {instagram:"Instagram", facebook:"Facebook"};
 const situacaoRede = r => !r ? "falta" : {autorizado:"autorizado", enviando:"publicando", erro:"não concluída", publicado:"publicado", dispensado:"não vai"}[r.situacao] || "falta";
@@ -1929,6 +1966,41 @@ const ACOES = {
     for(const d of ["#mais-detalhes", "#mais-campos"]) if($(d)) $(d).open = true;
     $("#mais-detalhes")?.scrollIntoView({behavior:"smooth", block:"start"});
     recado("Sugestão da IA preenchida no formulário. Confira e clique em “Salvar dados do assunto”." + (s.motivo_da_relevancia ? " Motivo da relevância: " + s.motivo_da_relevancia : ""));
+  },
+  async "ia-verificar"(){
+    if(!(await liberarIA())) return;
+    const assunto = E.assunto, r = await ia("verificar", {assunto_id:assunto});
+    if(!telaDoAssunto(assunto)) return;
+    E.etapa = "fonte"; await desenhar();
+    $("#sec-verificacao")?.scrollIntoView({behavior:"smooth", block:"start"});
+    const v = r.verificacao || {};
+    recado(v.situacao === "confirmada" ? `A IA encontrou a fonte oficial (${(v.fontes || []).length} página(s)). Inclua o texto oficial e fundamente.`
+      : v.situacao === "parcialmente_confirmada" ? "A fonte oficial confirma só parte do assunto: confira o resumo da verificação."
+      : v.situacao === "divergente" ? "Atenção: a fonte oficial diverge do que foi capturado. Confira as divergências." : "A IA não encontrou a fonte oficial na internet.",
+      v.situacao === "confirmada" ? undefined : "aviso");
+  },
+  /* traz a página oficial para o formulário "Incluir texto oficial": a equipe confere e grava */
+  async "verif-incluir"(el){
+    const [a] = await ler("radar_assuntos", {select:"verificacao", id:"eq." + E.assunto});
+    const f = (a?.verificacao?.fontes || [])[Number(el.dataset.n)]; if(!f) return;
+    mostrarEtapa("fonte");
+    if(!$("#form-texto-oficial")?.innerHTML) ACOES["incluir-texto"]();
+    const form = $("#form-texto-oficial form"); if(!form) return;
+    if(form.texto.value.trim() && form.url.value.trim() !== f.url && !confirm("O formulário já tem um texto oficial digitado. Trocar pelo da página escolhida?")) return;
+    form.url.value = f.url; form.titulo.value = (f.titulo || "").slice(0, 300); form.texto.value = "";
+    const dt = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(f.data || ""); form.data.value = dt ? `${dt[3]}-${dt[2]}-${dt[1]}` : "";
+    const fonte = fonteDoEndereco(f.url);
+    form.fonte.value = fonte ? String(fonte.id) : "";
+    form.scrollIntoView({behavior:"smooth", block:"start"});
+    recado("Trazendo o texto da página oficial…", "aviso");
+    try{
+      const p = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao:"pagina", url:f.url, assunto_id:E.assunto}, tempo:40000});
+      if(!form.isConnected || form.url.value !== f.url) return;          // a pessoa trocou de página enquanto esta carregava
+      form.texto.value = p.texto || ""; if(!form.titulo.value && p.titulo) form.titulo.value = p.titulo.slice(0, 300);
+      if(!form.data.value && p.data) form.data.value = p.data;
+      recado(fonte ? "Texto da página oficial trazido. Confira (tire menus e rodapés, se sobrarem) e clique em “Incluir texto oficial”."
+        : "Texto trazido, mas não há fonte cadastrada para este site: escolha a fonte certa ou peça ao administrador para cadastrá-la na aba Fontes.", fonte ? undefined : "aviso");
+    }catch(e){ recado((e.message || "Não foi possível trazer a página.") + " Copie o texto da página oficial e cole no formulário.", true); }
   },
   async "ia-fundamentar"(){
     if(!(await liberarIA())) return;
