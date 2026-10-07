@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.12.1"
+    assert pagina.inner_text(".versao") == "v0.12.2"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -2274,7 +2274,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.12.1" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.12.2" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2356,8 +2356,10 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector("#proximo-passo")
-    assert pagina.locator(".trilha li").all_inner_texts()[0].startswith("1. Conferir a fonte")
-    assert pagina.locator(".trilha li").count() == 4 and pagina.locator(".trilha li.feito").count() == 0
+    assert pagina.locator(".trilha li").all_inner_texts()[0].split("\n")[:2] == ["1", "Fonte"]
+    assert pagina.locator(".trilha li").count() == 7 and pagina.locator(".trilha li.feito").count() == 0
+    assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "texto"          # um passo de cada vez
+    assert pagina.locator(".autorizacao li.breve").count() == 2                                    # Instagram e Facebook, em breve
     assert "Escrever o conteúdo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo >> text=Preparar com IA").count() == 1
     assert "Título original da captura" in pagina.inner_text("#sec-origem") and pagina.locator("#sec-origem >> text=Abrir na fonte").count() == 1
     assert not pagina.locator("#a-cat").is_visible() and not pagina.locator("#a-pub").is_visible()    # dados do assunto recolhidos ao lado
@@ -2379,12 +2381,12 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     pagina.wait_for_selector("#proximo-passo >> text=Para o site: confirmar o assunto")
     assert pagina.locator("[data-acao=registrar-site]").count() == 0
     pagina.click("text=Marcar como confirmado oficialmente")
-    pagina.wait_for_selector("#proximo-passo >> text=Próximo passo: Publicar no site")
-    assert pagina.locator(".trilha li.feito").count() == 3
+    pagina.wait_for_selector("#proximo-passo >> text=Publicar no site")
+    assert pagina.locator(".trilha li.feito").count() == 4
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")                # o registro manual continua valendo
     pagina.click("text=Registrar publicação no site")
     pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
-    assert pagina.locator(".trilha li.feito").count() == 4
+    assert pagina.locator(".trilha li.feito").count() == 5
     assert limpo.execute("select situacao_confirmacao from radar_assuntos where id = %s", (a,)).fetchone()[0] == "confirmado_oficialmente"
 
 
@@ -2614,7 +2616,7 @@ def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("#proximo-passo >> text=Próximo passo: Publicar no site")
+    pagina.wait_for_selector("#proximo-passo >> text=Publicar no site")
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
     pagina.click("text=Registrar publicação no site")
     pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
@@ -2721,25 +2723,25 @@ def test_assunto_abre_uma_etapa_de_cada_vez_e_guarda_o_que_foi_digitado(pagina, 
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
-    pagina.wait_for_selector(".trilha.passos4")
+    pagina.wait_for_selector(".trilha.passos7")
     visiveis = lambda: [x for x in ("#sec-texto", "#sec-fundamentacao", "#sec-conteudos", "#sec-publicar") if pagina.locator(x).is_visible()]
-    assert [t.split("\n")[0] for t in pagina.locator(".trilha li").all_inner_texts()] == \
-        ["1. Conferir a fonte", "2. Escrever", "3. Revisar e aprovar", "4. Publicar no site"]
+    assert [t.split("\n")[1] for t in pagina.locator(".trilha li").all_inner_texts()] == \
+        ["Fonte", "Texto", "Revisão", "Aprovar", "Site", "Instagram", "Facebook"]
     assert visiveis() == ["#sec-texto", "#sec-fundamentacao"]                             # sem conteúdo ainda: abre na fonte
     assert "Ainda não pode ser publicado no site" not in pagina.inner_text("main")               # o aviso geral saiu: o "Próximo passo" já orienta
     detalhes(pagina)                                                                      # os dados do assunto ficam ao lado, em qualquer passo
     pagina.fill("#a-titulo", "CBS na transição — título digitado")
     pagina.click("#proximo-passo >> text=Escrever sem IA")                                # o botão do próximo passo troca de etapa
     assert visiveis() == ["#sec-conteudos"]
-    pagina.click(".trilha li >> text=1. Conferir a fonte")                                # os passos do alto também
+    pagina.click(".trilha li[data-passo=fonte]")                                # os passos do alto também
     assert visiveis() == ["#sec-texto", "#sec-fundamentacao"]
-    pagina.click(".trilha li >> text=4. Publicar no site")
+    pagina.click(".trilha li[data-passo=site]")
     assert visiveis() == ["#sec-publicar"] and "depois que um conteúdo for aprovado" in pagina.inner_text("#sec-publicar")
     assert pagina.input_value("#a-titulo") == "CBS na transição — título digitado"        # trocar de passo não perde o que foi digitado
     pagina.click("text=Salvar dados do assunto")
     pagina.wait_for_selector("text=Assunto salvo.")
     assert visiveis() == ["#sec-publicar"]                                                # depois de salvar, continua no mesmo passo
-    pagina.click(".trilha li >> text=2. Escrever")
+    pagina.click(".trilha li[data-passo=texto]")
     pagina.click("text=Novo conteúdo")
     pagina.wait_for_selector("form[data-form=conteudo]")
     assert visiveis() == ["#sec-conteudos"]
@@ -2960,24 +2962,24 @@ def test_digitacao_em_outra_etapa_nao_se_perde_por_acao_feita_em_outra(pagina, l
     # ação que não pode seguir com alteração pendente diz em que etapa ela está
     pagina.click("text=Mostrar tudo numa página")
     pagina.wait_for_selector("#recado .erro >> text=alterações não salvas no passo “2. Escrever”")
-    pagina.click(".trilha li >> text=2. Escrever")
+    pagina.click(".trilha li[data-passo=texto]")
     assert pagina.input_value("form[data-form=conteudo] [name=corpo]").startswith("Texto digitado e ainda não salvo")
     # com conteúdo e sem fundamentação confirmada, a etapa Conteúdo explica por que ainda não dá para registrar no site
     assert "Ainda não pode ser publicado no site." in pagina.inner_text("section[data-etapa=conteudo]")
     # lista trocada (e não salva) nos dados do assunto: salvar o conteúdo não a desfaz
     pagina.select_option("#a-rel", "baixa")
-    pagina.click(".trilha li >> text=2. Escrever")
+    pagina.click(".trilha li[data-passo=texto]")
     pagina.click("form[data-form=conteudo] >> text=Salvar")
     pagina.wait_for_selector("text=Conteúdo salvo")
     assert limpo.execute("select corpo from radar_conteudos").fetchone()[0].startswith("Texto digitado e ainda não salvo")
     assert pagina.evaluate("document.querySelector('#a-rel').value") == "baixa"
     assert limpo.execute("select relevancia from radar_assuntos where id = %s", (a,)).fetchone()[0] != "baixa"
     # formulário aberto na hora (evidência) e preenchido, escondido em outra etapa: a ação é barrada com o aviso
-    pagina.click(".trilha li >> text=1. Conferir a fonte")
+    pagina.click(".trilha li[data-passo=fonte]")
     pagina.click("text=Usar trecho selecionado como evidência")
     pagina.wait_for_selector("#form-evidencia form")
     pagina.fill("#form-evidencia textarea", "trecho digitado e ainda não registrado")
-    pagina.click(".trilha li >> text=2. Escrever")
+    pagina.click(".trilha li[data-passo=texto]")
     pagina.fill("form[data-form=conteudo] [name=autor]", "Equipe Artecon")
     pagina.click("form[data-form=conteudo] >> text=Salvar")
     pagina.wait_for_selector("#recado .erro >> text=alterações não salvas no passo “1. Conferir a fonte”")
@@ -3046,7 +3048,7 @@ def test_so_o_administrador_autoriza_e_pode_cancelar(pagina, limpo):
     entrar(pagina)                                                                        # editora: vê o passo 4, sem o botão
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Informativo de teste")
-    pagina.wait_for_selector("#proximo-passo >> text=Próximo passo: Publicar no site")
+    pagina.wait_for_selector("#proximo-passo >> text=Publicar no site")
     assert "Falta o administrador autorizar" in pagina.inner_text("#proximo-passo")
     assert pagina.locator("[data-acao=autorizar-site]").count() == 0 and "Só o administrador autoriza" in pagina.inner_text("#sec-publicar")
     pagina.click("text=Sair")
@@ -3075,7 +3077,7 @@ def test_so_o_administrador_autoriza_e_pode_cancelar(pagina, limpo):
     limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c,))
     pagina.evaluate("desenhar()")                                                          # redesenha a tela aberta
     pagina.wait_for_selector("text=Concluído: publicado no site e registrado")
-    assert pagina.locator(".trilha li.feito").count() == 4
+    assert pagina.locator(".trilha li.feito").count() == 5
 
 
 def test_noticia_ja_no_site_nao_oferece_autorizar_de_novo(pagina, limpo):
@@ -3299,10 +3301,13 @@ def test_aviso_de_publicacao_tem_os_botoes_e_o_administrador_libera_com_motivo(p
     abrir_assunto(pagina, "Informativo de teste")
     aviso = pagina.locator(".aviso:visible", has_text="Ainda não pode ser publicado no site")
     assert aviso.locator("text=Marcar como confirmado oficialmente").count() == 1
-    pagina.resposta_dialogo = "Confirmado por telefone com a Receita Federal"
-    aviso.locator("text=Publicar mesmo assim").click()
+    aviso.locator("text=Publicar mesmo assim").click()                            # v0.12.2: o motivo é digitado na própria tela
+    pagina.click("text=Liberar sem fonte oficial")
+    pagina.wait_for_selector("text=Escreva o motivo da liberação.")
+    pagina.fill("#motivo-liberar", "Confirmado por telefone com a Receita Federal")
+    pagina.press("#motivo-liberar", "Enter")
     pagina.wait_for_selector("text=Publicação liberada sem a fundamentação oficial")
-    assert pagina.locator("text=Motivo: Confirmado por telefone com a Receita Federal").count() == 1
+    assert pagina.locator(".autorizacao li[data-passo=fonte] >> text=Motivo: Confirmado por telefone com a Receita Federal").count() == 1
     assert limpo.execute("select liberado_sem_base_motivo from radar_assuntos where id = %s", (a,)).fetchone()[0].startswith("Confirmado")
     assert pagina.locator(".aviso:visible", has_text="Ainda não pode ser publicado no site").count() == 0
 
@@ -3324,7 +3329,57 @@ def test_texto_para_analise_transformado_vai_para_baixo_e_o_passo_4_diz_o_que_fa
     assert ids[-1] == analise and len(ids) == 2                                   # a cópia vem antes do texto para análise
     assert pagina.locator("text=Transformar em texto para publicar").count() == 0   # não dá para transformar de novo
     assert pagina.locator("text=já foi transformado em texto para publicar").count() == 1
-    pagina.click(".trilha >> text=Publicar no site")
+    pagina.click(".trilha li[data-passo=site]")
     pagina.wait_for_selector("text=Ainda não há conteúdo aprovado.")
     pagina.click("#sec-publicar >> text=Ir para o conteúdo")
     assert pagina.locator(f"form[data-form=conteudo][data-id='{ids[0]}']").is_visible()
+
+
+# ------------------------------------------------------------ v0.12.2 — trilha de autorização
+def test_trilha_de_autorizacao_mostra_um_passo_de_cada_vez_com_os_botoes(pagina, limpo):
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Desenrola na trilha') returning id").fetchone()[0]
+    limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia, fora_do_site)
+                     values (%s, 'flash', 'Texto do boletim', 'Corpo do texto para análise com tamanho suficiente.', 'ia', 'm',
+                             'rascunho', '["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC)."]', true)""", (a,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Desenrola na trilha")
+    trilha = pagina.locator(".autorizacao")
+    agora = lambda: trilha.locator("li.agora").get_attribute("data-passo")
+    # só o texto para análise e sem fonte oficial: o passo de agora é a fonte, com "Publicar mesmo assim"
+    assert agora() == "fonte" and trilha.locator("li.agora .btn").count() >= 2
+    assert trilha.locator("li[data-passo=texto] .btn").count() == 0 and "aguardando" in trilha.locator("li[data-passo=texto]").inner_text().lower()
+    assert "em breve" in trilha.locator("li[data-passo=instagram]").inner_text().lower() and "em breve" in trilha.locator("li[data-passo=facebook]").inner_text().lower()
+    trilha.locator("li.agora .btn", has_text="Publicar mesmo assim").click()
+    pagina.fill("#motivo-liberar", "curto")
+    pagina.click("text=Liberar sem fonte oficial")
+    pagina.wait_for_selector("text=Escreva um motivo com pelo menos 10 caracteres.")
+    pagina.fill("#motivo-liberar", "Autorizado pelo responsável técnico")
+    pagina.click("text=Liberar sem fonte oficial")
+    pagina.wait_for_selector(".autorizacao li[data-passo=fonte].feito")
+    assert "Motivo: Autorizado pelo responsável técnico" in trilha.locator("li[data-passo=fonte]").inner_text()
+    assert trilha.locator("li[data-passo=fonte] >> text=Desfazer").count() == 1
+    # passo 2: transformar; passo 3: enviar para revisão; passo 4: aprovar — tudo pela trilha
+    assert agora() == "texto"
+    pagina.once("dialog", lambda d: d.accept())
+    trilha.locator("li.agora .btn", has_text="Transformar em texto para publicar").click()
+    pagina.wait_for_selector(".autorizacao li[data-passo=revisao].agora")
+    trilha.locator("li.agora .btn", has_text="Enviar para revisão").click()
+    pagina.wait_for_selector(".autorizacao li[data-passo=aprovar].agora")
+    trilha.locator("li.agora .btn", has_text="Aprovar").click()
+    pagina.wait_for_selector(".autorizacao li[data-passo=site].agora")
+    assert pagina.locator(".trilha li.feito").count() == 4
+    assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s and status = 'aprovado'", (a,)).fetchone()[0] == 1
+    trilha.locator("li.agora .btn", has_text="Ir para publicar").click()
+    assert pagina.locator("[data-acao=autorizar-site]").is_visible()
+
+
+def test_trilha_desfaz_a_liberacao_e_leitor_nao_ve_botoes(pagina, limpo):
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Liberado e desfeito') returning id").fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_liberar_sem_fundamentacao(%s, 'Autorizado pelo responsável técnico')", (a,))
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Liberado e desfeito")
+    assert pagina.locator(".autorizacao .btn").count() == 0 and pagina.locator(".autorizacao >> text=Desfazer").count() == 0
+    assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "texto"

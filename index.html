@@ -135,6 +135,32 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 .trilha.passos4 li.aberta{background:var(--marinho);border-color:var(--marinho)} .trilha.passos4 li.aberta b,.trilha.passos4 li.aberta span{color:#fff}
 .proximo{display:flex;gap:14px;align-items:center;flex-wrap:wrap} .proximo > div:first-child{flex:1;min-width:240px} .proximo .acoes{margin:0}
 .proximo .acoes .btn{padding:10px 18px;font-weight:700}
+/* v0.12.2: trilha de autorização — barra numerada e um passo de cada vez, com os botões só no passo de agora */
+.trilha.passos7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.trilha.passos7 li{min-width:0;background:none;border:0;border-radius:8px;padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;font-size:.78rem}
+.trilha.passos7 li i{font-style:normal;width:34px;height:34px;border-radius:50%;border:2px solid #C9D2DC;background:#fff;color:#8A96A3;font-weight:700;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.trilha.passos7 li b{color:#8A96A3} .trilha.passos7 li span{color:#8A96A3;font-size:.72rem;overflow-wrap:anywhere}
+.trilha.passos7 li.feito i{background:var(--ok);border-color:var(--ok);color:#fff} .trilha.passos7 li.feito b,.trilha.passos7 li.feito span{color:var(--ok)}
+.trilha.passos7 li.agora i{border-color:var(--azul);color:var(--marinho);box-shadow:0 0 0 4px var(--azul-claro)} .trilha.passos7 li.agora b{color:var(--marinho)}
+.trilha.passos7 li.pendente i{border-color:var(--alerta);color:var(--alerta)}
+.trilha.passos7 li.breve{cursor:default} .trilha.passos7 li.breve i{border-style:dashed}
+.trilha.passos7 li.aberta{background:var(--azul-claro);box-shadow:none}
+.autorizacao{list-style:none;padding:0;margin:0 0 16px;display:flex;flex-direction:column;gap:8px}
+.passo-a{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:10px 14px;display:grid;grid-template-columns:30px minmax(0,1fr);gap:2px 12px;align-items:start}
+.passo-a .num{width:30px;height:30px;border-radius:50%;border:2px solid #C9D2DC;color:#8A96A3;font-weight:700;display:flex;align-items:center;justify-content:center;grid-row:span 2;font-variant-numeric:tabular-nums}
+.passo-a .cab{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;min-width:0} .passo-a h3{font-size:1rem;margin:0}
+.passo-a .estado{font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:999px;padding:2px 9px;background:#EEF1F4;color:#7A8591}
+.passo-a .corpo{grid-column:2;min-width:0;font-size:.9rem} .passo-a .corpo p{margin:2px 0 0} .passo-a .corpo .acoes{margin:8px 0 0}
+.passo-a.feito .num{background:var(--ok);border-color:var(--ok);color:#fff} .passo-a.feito .estado{background:var(--ok-fundo);color:var(--ok)}
+.passo-a.agora{border-color:var(--azul);box-shadow:0 0 0 3px var(--azul-claro);padding:14px 16px} .passo-a.agora .num{border-color:var(--azul);color:var(--marinho)}
+.passo-a.agora .estado{background:var(--azul-claro);color:var(--marinho)} .passo-a.agora .acoes .btn{padding:10px 18px;font-weight:700}
+.passo-a.pendente .num{border-color:var(--alerta);color:var(--alerta)} .passo-a.pendente .estado{background:var(--alerta-fundo);color:var(--alerta)}
+.passo-a.espera,.passo-a.breve{background:transparent;color:#7A8591} .passo-a.espera h3,.passo-a.breve h3{color:#7A8591} .passo-a.breve .num{border-style:dashed}
+.prox-titulo{color:var(--marinho);display:block}
+.link{background:none;border:0;padding:0;color:var(--azul);text-decoration:underline;cursor:pointer;font:inherit}
+.motivo-liberar{border:1px dashed var(--erro);border-radius:8px;padding:10px 12px;margin:8px 0 0;background:#fff} .motivo-liberar label{color:var(--erro);margin-top:0}
+.motivo-liberar input{width:100%} .motivo-liberar .acoes{align-items:center}
+@media (max-width:560px){.trilha.passos7 li i{width:28px;height:28px}.trilha.passos7 li span,.trilha.passos7 li b{display:none}}
 .assunto-corpo{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
 .lateral .painel{padding:14px} .lateral h3{margin-bottom:6px} .lateral label{display:block;margin-top:8px}
 .lateral input,.lateral select,.lateral textarea{width:100%}
@@ -183,11 +209,15 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.12.1";
+const VERSAO = "0.12.2";
 const FUNCAO_MINIMA = "0.11.0";     // versão da função radar-ia que este painel exige (texto para análise)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.12.2", "06/10/2026", [
+    "Trilha de autorização no assunto: no alto, os passos numerados (1 Fonte, 2 Texto, 3 Revisão, 4 Aprovar, 5 Site; Instagram e Facebook em breve) e, abaixo, um passo de cada vez. Só o passo de agora tem os botões; os feitos mostram o que foi feito e os seguintes ficam aguardando.",
+    "“Publicar mesmo assim…” abre o campo do motivo na própria tela (sem a janelinha do navegador). “Enviar para revisão” e “Aprovar” também ficam na trilha. Só a tela mudou: o banco continua na v0.12.1."
+  ]],
   ["0.12.1", "06/10/2026", [
     "O texto para análise vai por último na lista; depois de transformado, o botão some e a tela vai até a cópia. O passo 4 sem conteúdo aprovado diz o que falta e leva ao conteúdo em revisão.",
     "Texto para análise com a publicação liberada (“Publicar mesmo assim”): o administrador tem “Transformar em texto para publicar”, que cria uma cópia normal do texto em rascunho; ela segue revisão, aprovação e autorização do site como qualquer conteúdo. Banco v0.12.1."
@@ -1182,8 +1212,9 @@ async function telaAssunto(id){
   if(ed) FONTES_LISTA = await ler("radar_fontes", {select:"id,nome,oficial", order:"nome"});
   // os quatro passos do trabalho e o que falta agora
   const temTexto = vinc.some(v => v.radar_capturas.texto), temOficial = vinc.some(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial);
-  const aprovados = cont.filter(c => c.status === "aprovado"), revisando = cont.filter(c => c.status === "em_revisao");
-  const rejeitados = cont.filter(c => c.status === "rejeitado"), rascunhos = cont.filter(c => c.status === "rascunho");
+  const paraPublicar = cont.filter(c => !ehAnalise(c)), analises = cont.filter(ehAnalise);   // o texto para análise não entra na revisão
+  const aprovados = cont.filter(c => c.status === "aprovado"), revisando = paraPublicar.filter(c => c.status === "em_revisao");
+  const rejeitados = paraPublicar.filter(c => c.status === "rejeitado"), rascunhos = paraPublicar.filter(c => c.status === "rascunho");
   const vaoAoSite = aprovados.filter(c => !c.fora_do_site);
   const emDia = c => pubs.some(p => p.conteudo_id === c.id && !p.texto_mudou && !p.versao_anterior);      // registro que vale para o texto atual
   const faltamRegistrar = vaoAoSite.filter(c => !emDia(c)), baseCaiu = pubs.some(p => p.base_caiu && !p.versao_anterior);
@@ -1193,48 +1224,85 @@ async function telaAssunto(id){
   const aguardando = faltamRegistrar.filter(c => ["autorizado","enviando"].includes(envioDe(c)?.situacao));
   const falhou = faltamRegistrar.find(c => envioDe(c)?.situacao === "erro");
   const semRegistro = faltamRegistrar.find(c => envioDe(c)?.situacao === "publicado" && !pubs.some(p => p.conteudo_id === c.id));     // o robô publicou, mas o registro não entrou
+  // v0.12.2: trilha de autorização — cinco passos em sequência (mais Instagram e Facebook, em breve); só o passo de agora mostra os botões
+  const ultimoAprovado = aprovados.map(c => c.aprovado_em).filter(Boolean).sort().pop();
   const passos = [
-    ["Conferir a fonte", pronto, pronto ? "fundamentação confirmada" : !temTexto ? "sem texto oficial" : conferidasOficiais ? "falta confirmar" : "falta o trecho que comprova"],
-    ["Escrever", cont.length > 0, cont.length ? cont.length + " escrito(s)" : "falta"],
-    ["Revisar e aprovar", aprovados.length > 0, aprovados.length ? "aprovado" : revisando.length ? "em revisão" : "falta"],
-    ["Publicar no site", noSite || foraDoSite, noSite ? "publicado" : foraDoSite ? "não vai ao site" : aguardando.length ? "aguardando o robô" : jaRegistrado || baseCaiu ? "rever" : "falta"]];
+    {chave:"fonte", nome:"Fonte", titulo:"Conferir a fonte", etapa:"fonte", feito:pronto,
+      nota:pronto ? (liberado ? "liberada sem fonte oficial" : "fundamentação confirmada") : !temTexto ? "sem texto oficial" : !temOficial ? "só fonte não oficial" : conferidasOficiais ? "falta confirmar" : "falta o trecho que comprova",
+      feitoTxt:liberado ? `Liberado sem fonte oficial pelo administrador em ${dataHora(a.liberado_sem_base_em)}. Motivo: ${h(a.liberado_sem_base_motivo || "")}`
+        : `Fonte oficial confirmada, com ${conferidasOficiais} trecho(s) conferido(s) em fonte oficial.`,
+      desfazer:liberado && ehAdmin() ? `<button class="link" type="button" data-acao="desfazer-liberacao">Desfazer</button>` : ""},
+    {chave:"texto", nome:"Texto", titulo:"Escrever o texto para publicar", etapa:"conteudo", feito:paraPublicar.length > 0,
+      nota:paraPublicar.length ? paraPublicar.length + " escrito(s)" : analises.length ? "só texto para análise" : "falta",
+      feitoTxt:`${paraPublicar.length} texto(s) para publicar.`},
+    {chave:"revisao", nome:"Revisão", titulo:"Revisão", etapa:"conteudo", feito:aprovados.length > 0 || revisando.length > 0,
+      nota:aprovados.length ? "feita" : revisando.length ? "em revisão" : rejeitados.length && !rascunhos.length ? "rejeitado" : "falta",
+      feitoTxt:aprovados.length ? "Revisão concluída." : `${revisando.length} conteúdo(s) em revisão.`},
+    {chave:"aprovar", nome:"Aprovar", titulo:"Aprovação", etapa:"conteudo", feito:aprovados.length > 0,
+      nota:aprovados.length ? "aprovado" : "falta", feitoTxt:"Aprovado" + (ultimoAprovado ? " em " + dataHora(ultimoAprovado) : "") + "."},
+    {chave:"site", nome:"Site", titulo:"Autorização do site", etapa:"publicar", feito:noSite || foraDoSite,
+      nota:noSite ? "publicado" : foraDoSite ? "não vai ao site" : aguardando.length ? "aguardando o robô" : jaRegistrado || baseCaiu ? "rever" : "falta",
+      feitoTxt:noSite ? "Publicado no site e registrado." : "O conteúdo aprovado não vai ao site: fica só para o Informativo Mensal."},
+    {chave:"instagram", nome:"Instagram", titulo:"Autorização do Instagram", breve:true},
+    {chave:"facebook", nome:"Facebook", titulo:"Autorização do Facebook", breve:true}];
   const ir = (alvo, rotulo, classe = "") => `<button class="btn ${classe}" data-acao="ir" data-alvo="${alvo}">${rotulo}</button>`;
-  let prox;                                   // [título, explicação, botões]
+  const semFonte = ehAdmin() ? `<button class="btn perigo" type="button" data-acao="abrir-motivo">Publicar mesmo assim…</button>` : "";
+  const paraRevisar = rascunhos[0] || rejeitados[0];
+  let prox;                                   // [título, explicação, botões, passo (0 a 4; -1 fora da trilha)]
   if(!ed) prox = null;
-  else if(a.status === "ignorado" || a.status === "arquivado") prox = [a.status === "ignorado" ? "Assunto ignorado" : "Assunto arquivado", "Este item está fora do trabalho do dia. Para retomar, troque a etapa em “Mais detalhes” e salve.", ir("#mais-campos", "Abrir “Mais detalhes”", "sec")];
+  else if(a.status === "ignorado" || a.status === "arquivado") prox = [a.status === "ignorado" ? "Assunto ignorado" : "Assunto arquivado", "Este item está fora do trabalho do dia. Para retomar, troque a etapa em “Mais detalhes” e salve.", ir("#mais-campos", "Abrir “Mais detalhes”", "sec"), -1];
   else if(!cont.length && temOficial) prox = ["Escrever o conteúdo", "O texto oficial já está aqui. A IA pode buscar o trecho que comprova e escrever o rascunho de uma vez; ou escreva você mesmo.",
-    `<button class="btn" data-acao="ia-tudo">Preparar com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec")];
+    `<button class="btn" data-acao="ia-tudo">Preparar com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
   else if(!cont.length) prox = ["Escrever o conteúdo", "Assunto sem texto de fonte oficial. Para o Informativo Mensal basta escrever e aprovar; para o site, inclua antes o texto oficial." +
     (temTexto ? " A IA pode escrever um texto para análise a partir da fonte não oficial." : ""),
-    (temTexto ? `<button class="btn" data-acao="ia-analise">Gerar texto para análise</button>` : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec")];
-  else if(!aprovados.length && !revisando.length && !rascunhos.length && rejeitados.length) prox = ["Conteúdo rejeitado", "O conteúdo foi rejeitado na revisão. Corrija o texto, salve e mande de novo para a revisão — ou escreva outro.", ir("#sec-conteudos", "Ir para o conteúdo")];
-  else if(!aprovados.length && !revisando.length) prox = ["Revisar o rascunho", "Escolha o título, confira o texto e a capa, salve e mande para a revisão.", ir("#sec-conteudos", "Ir para o conteúdo")];
-  else if(!aprovados.length) prox = ["Aprovar o conteúdo", "O conteúdo está em revisão. Leia com atenção (use “Ver como fica no site”) e clique em “Aprovar” (ou “Rejeitar”).", ir("#sec-conteudos", "Ir para o conteúdo")];
+    (temTexto ? `<button class="btn" data-acao="ia-analise">Gerar texto para análise</button>` : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec"), 1];
+  else if(!paraPublicar.length && !aprovados.length){                 // só o texto para análise (fonte não oficial)
+    if(liberado) prox = ["Transformar o texto para análise", "O texto para análise não vai ao site. " + (ehAdmin() ? "Transforme-o em texto para publicar: a cópia entra como rascunho, com o aviso de fonte não oficial, e segue revisão e aprovação."
+      : "O administrador transforma o texto para análise em texto para publicar."),
+      ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${analises[0].id}">Transformar em texto para publicar</button>` : ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 1];
+    else if(pronto) prox = ["Escrever o texto para publicar", "A fonte oficial está conferida. Gere o texto com IA ou escreva você mesmo; o texto para análise fica só como apoio.",
+      `<button class="btn" data-acao="ia-gerar">Gerar texto com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
+    else prox = ["Conferir a fonte", "Só há texto para análise, feito a partir de fonte não oficial. Para publicar no site, inclua o texto oficial e fundamente" + (ehAdmin() ? ", ou libere a publicação sem a fonte oficial (o motivo fica registrado)." : "."),
+      ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
+  }
+  else if(!aprovados.length && !revisando.length && !rascunhos.length && rejeitados.length) prox = ["Conteúdo rejeitado", "O conteúdo foi rejeitado na revisão. Corrija o texto, salve e mande de novo para a revisão — ou escreva outro.",
+    ir("#sec-conteudos", "Ir para o conteúdo"), 2];
+  else if(!aprovados.length && !revisando.length) prox = ["Revisar o rascunho", "Escolha o título, confira o texto e a capa e mande para a revisão. O que estiver digitado é salvo junto.",
+    (paraRevisar ? `<button class="btn" type="button" data-acao="trilha-clicar" data-botao="revisao" data-id="${paraRevisar.id}">Enviar para revisão</button>` : "") + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 2];
+  else if(!aprovados.length) prox = ["Aprovar o conteúdo", "O conteúdo está em revisão. Leia com atenção (use “Ver como fica no site”) e clique em “Aprovar” (ou “Rejeitar”).",
+    `<button class="btn verde" type="button" data-acao="trilha-clicar" data-botao="aprovar" data-id="${revisando[0].id}">✓ Aprovar</button>` + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 3];
   else if(noSite || foraDoSite) prox = null;
-  else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação")];
-  else if(!temOficial) prox = ["Para o site: incluir o texto oficial", "O conteúdo aprovado já pode entrar no Informativo Mensal. Para publicar no site, inclua o texto da fonte oficial e fundamente.", ir("#sec-texto", "Ir para o texto oficial")];
-  else if(!conferidasOficiais) prox = ["Para o site: fundamentar", "Falta ao menos um trecho conferido em fonte oficial. Selecione o trecho no texto oficial, ou peça à IA.",
-    ir("#sec-texto", "Selecionar trecho no texto") + ir("#sec-fundamentacao", "Ir para a fundamentação", "sec")];
+  else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação"), 0];
+  else if(!pronto && !temOficial) prox = ["Para o site: incluir o texto oficial", "O conteúdo aprovado já pode entrar no Informativo Mensal. Para publicar no site, inclua o texto da fonte oficial e fundamente.", ir("#sec-texto", "Ir para o texto oficial") + semFonte, 0];
+  else if(!pronto && !conferidasOficiais) prox = ["Para o site: fundamentar", "Falta ao menos um trecho conferido em fonte oficial. Selecione o trecho no texto oficial, ou peça à IA.",
+    ir("#sec-texto", "Selecionar trecho no texto") + ir("#sec-fundamentacao", "Ir para a fundamentação", "sec") + semFonte, 0];
   else if(!pronto) prox = ["Para o site: confirmar o assunto", "Há trecho conferido em fonte oficial. Se você conferiu a informação na fonte, marque o assunto como confirmado oficialmente.",
-    `<button class="btn verde" data-acao="confirmar-oficial">Marcar como confirmado oficialmente</button>`];
-  else if(aguardando.length === faltamRegistrar.length) prox = ["Aguardando o robô publicar", "A publicação foi autorizada. O robô cadastra a notícia no site em até 15 minutos e registra o link aqui sozinho.", ir("#sec-publicar", "Ver a publicação")];
+    `<button class="btn verde" data-acao="confirmar-oficial">✓ Marcar como confirmado oficialmente</button>` + semFonte, 0];
+  else if(aguardando.length === faltamRegistrar.length) prox = ["Aguardando o robô publicar", "A publicação foi autorizada. O robô cadastra a notícia no site em até 15 minutos e registra o link aqui sozinho.", ir("#sec-publicar", "Ver a publicação"), 4];
   else if(semRegistro) prox = ["Registrar o link da notícia publicada", "O robô publicou a notícia no site, mas o registro em “Publicações no site” não entrou" +
-    (envioDe(semRegistro).erro ? ": " + h(envioDe(semRegistro).erro) : ".") + " Confira e registre o link à mão (não autorize de novo, para não duplicar).", ir("#sec-conteudos", "Ir para registrar")];
-  else if(falhou) prox = ["Publicação não concluída", h(envioDe(falhou).erro || "O robô não conseguiu publicar."), ir("#sec-publicar", "Ir para publicar")];
-  else if(jaRegistrado) prox = ["Atualizar o site e registrar de novo", "O conteúdo foi alterado depois do registro. Atualize a notícia no site da Artecon e registre de novo, para o Radar guardar o texto que está no ar.", ir("#sec-conteudos", "Ir para copiar e registrar")];
+    (envioDe(semRegistro).erro ? ": " + h(envioDe(semRegistro).erro) : ".") + " Confira e registre o link à mão (não autorize de novo, para não duplicar).", ir("#sec-conteudos", "Ir para registrar"), 4];
+  else if(falhou) prox = ["Publicação não concluída", h(envioDe(falhou).erro || "O robô não conseguiu publicar."), ir("#sec-publicar", "Ir para publicar"), 4];
+  else if(jaRegistrado) prox = ["Atualizar o site e registrar de novo", "O conteúdo foi alterado depois do registro. Atualize a notícia no site da Artecon e registre de novo, para o Radar guardar o texto que está no ar.", ir("#sec-conteudos", "Ir para copiar e registrar"), 4];
   else prox = ["Publicar no site", ehAdmin() ? "Confira a prévia, escolha a categoria e autorize: o robô cadastra a notícia no site em até 15 minutos e registra o link aqui."
-    : "O conteúdo está pronto para o site. Falta o administrador autorizar a publicação.", ir("#sec-publicar", "Ir para publicar")];
-  const atual = passos.findIndex(x => !x[1]);
+    : "O conteúdo está pronto para o site. Falta o administrador autorizar a publicação.", ir("#sec-publicar", "Ir para publicar"), 4];
+  const atual = prox ? prox[3] : ed ? -1 : passos.findIndex(x => !x.breve && !x.feito);
+  const estado = (x, n) => n === atual && prox ? "agora" : x.feito ? "feito" : n === atual ? "agora" : x.breve ? "breve" : n < atual ? "pendente" : "espera";
+  const ROTULO_ESTADO = {feito:"Feito", agora:"Agora", breve:"Em breve", pendente:"Falta", espera:"Aguardando"};
+  const corpoPasso = (x, n, st) => st === "feito" ? `<p class="feito-info">${x.feitoTxt}${x.desfazer ? " " + x.desfazer : ""}</p>`
+    : st === "agora" && prox ? `<p><b class="prox-titulo">${prox[0]}</b> ${prox[1]}</p><div class="acoes">${prox[2]}</div>`
+    : st === "agora" ? `<p>${h(x.nota)}.</p>`
+    : st === "breve" ? `<p>Em breve. Vai seguir a mesma regra do site: só publica depois da autorização do administrador.</p>`
+    : st === "pendente" ? `<p>${h(x.nota)}. ${x.chave === "fonte" ? "Necessário só para o site; o Informativo Mensal não exige." : ""}</p>`
+    : `<p>${x.chave === "site" ? "Precisa da fonte (passo 1) e do conteúdo aprovado (passo 4)." : `Vem depois do passo ${n}.`}</p>`;
   // uma etapa de cada vez (ou tudo numa página, para quem preferir); abre na etapa que falta fazer
   const tudo = modoTudo();
   if(!["fonte","conteudo","publicar"].includes(E.etapa)) E.etapa = !cont.length && vinc.length ? "fonte" : aprovados.length && !noSite && !foraDoSite && pronto ? "publicar" : "conteudo";
-  const ETAPA_DO_PASSO = ["fonte", "conteudo", "conteudo", "publicar"];
   const oculta = e => tudo || E.etapa === e ? "" : " hidden";
   const fontesTxt = vinc.map(v => v.radar_capturas.texto).filter(Boolean);
   const avisoRegistro = `<div class="aviso alerta"><b>Ainda não pode ser publicado no site.</b> ${a.situacao_confirmacao !== "confirmado_oficialmente" ? "O assunto precisa estar marcado como “Confirmado oficialmente”. " : ""}${conferidasOficiais ? "" : conferidas ? "Os trechos conferidos são de fonte não oficial: é preciso ao menos um trecho conferido em fonte oficial. " : "É preciso ao menos um trecho conferido em fonte oficial (FUNDAMENTAÇÃO NÃO CONFIRMADA). "}<span class="sub">O Informativo Mensal exige só o conteúdo aprovado.</span>
     ${podeEditar() ? `<div class="acoes" style="margin:8px 0 0">${a.situacao_confirmacao !== "confirmado_oficialmente" ? `<button class="btn peq verde" data-acao="confirmar-oficial">Marcar como confirmado oficialmente</button>` : ""}
       ${conferidasOficiais ? "" : `<button class="btn peq sec" data-acao="etapa" data-etapa="fonte">Buscar o trecho que comprova (passo 1)</button>`}
-      ${ehAdmin() ? `<button class="btn peq perigo" data-acao="liberar-publicacao">Publicar mesmo assim</button>` : ""}</div>` : ""}</div>`;
+      ${ehAdmin() ? `<button class="btn peq perigo" type="button" data-acao="abrir-motivo">Publicar mesmo assim…</button>` : ""}</div>` : ""}</div>`;
   const avisoLiberado = liberado ? `<div class="aviso alerta"><b>Publicação liberada sem a fundamentação oficial</b> pelo administrador em ${dataHora(a.liberado_sem_base_em)}.
     <br><span class="sub">Motivo: ${h(a.liberado_sem_base_motivo || "")}</span>
     ${ehAdmin() ? `<div class="acoes" style="margin:8px 0 0"><button class="btn peq sec" data-acao="desfazer-liberacao">Desfazer a liberação</button></div>` : ""}</div>` : "";
@@ -1246,9 +1314,13 @@ async function telaAssunto(id){
   return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
     <h1>${h(a.titulo)}</h1>
     <p>${seloSituacao(a.situacao_confirmacao)} ${selo(ROTULOS.status[a.status],"neutro")} ${selo(conferidas + " trecho(s) conferido(s)", conferidas ? "ok" : "erro")}${origem ? ` <span class="sub">${h(origem.radar_fontes.orgao)} · capturado em ${data(origem.capturado_em)}</span>` : ""}</p>
-    <ol class="trilha passos4" aria-label="Passos do assunto">${passos.map(([nome, feito, nota], n) => `<li class="${feito ? "feito" : n === atual ? "agora" : ""}${!tudo && ETAPA_DO_PASSO[n] === E.etapa ? " aberta" : ""}" data-acao="etapa" data-etapa="${ETAPA_DO_PASSO[n]}" role="button" tabindex="0" title="Ir para este passo"><b>${feito ? "✓ " : ""}${n + 1}. ${nome}</b><span>${h(nota)}</span></li>`).join("")}</ol>
-    ${prox ? `<div class="proximo" id="proximo-passo"><div><h2>Próximo passo: ${prox[0]}</h2><p style="margin:0">${prox[1]}</p></div><div class="acoes">${prox[2]}</div></div>`
-      : ed && (noSite || foraDoSite) ? `<div class="proximo fim" id="proximo-passo"><h2>${noSite ? "Concluído: publicado no site e registrado" : "Concluído: conteúdo aprovado, só do Informativo Mensal"}</h2><p style="margin:0">${revisando.length || rascunhos.length ? "Há outro conteúdo deste assunto ainda em rascunho ou em revisão." : "Nada pendente neste assunto."}</p></div>` : ""}
+    <ol class="trilha passos7" aria-label="Andamento da autorização">${passos.map((x, n) => { const st = estado(x, n);
+      return `<li class="${st}${!tudo && x.etapa === E.etapa ? " aberta" : ""}" data-passo="${x.chave}"${x.etapa ? ` data-acao="etapa" data-etapa="${x.etapa}" role="button" tabindex="0" title="Ir para este passo"` : ""}><i>${x.feito ? "✓" : n + 1}</i><b>${x.nome}</b><span>${h(x.breve ? "em breve" : x.nota)}</span></li>`; }).join("")}</ol>
+    ${prox && prox[3] < 0 ? `<div class="proximo" id="proximo-passo"><div><h2>${prox[0]}</h2><p style="margin:0">${prox[1]}</p></div><div class="acoes">${prox[2]}</div></div>` : ""}
+    <ol class="autorizacao" aria-label="Trilha de autorização">${passos.map((x, n) => { const st = estado(x, n);
+      return `<li class="passo-a ${st}" data-passo="${x.chave}"${st === "agora" && prox ? ` id="proximo-passo"` : ""}><span class="num">${x.feito ? "✓" : n + 1}</span>
+        <div class="cab"><h3>${x.titulo}</h3><span class="estado">${ROTULO_ESTADO[st]}</span></div><div class="corpo">${corpoPasso(x, n, st)}</div></li>`; }).join("")}</ol>
+    ${ed && (noSite || foraDoSite) ? `<div class="proximo fim" id="proximo-passo"><h2>${noSite ? "Concluído: publicado no site e registrado" : "Concluído: conteúdo aprovado, só do Informativo Mensal"}</h2><p style="margin:0">${revisando.length || rascunhos.length ? "Há outro conteúdo deste assunto ainda em rascunho ou em revisão." : "Nada pendente neste assunto."}</p></div>` : ""}
     ${!tudo ? "" : (pronto ? avisoLiberado : avisoRegistro)}
 
     <nav class="etapas" aria-label="Modo de exibição"><button class="voltar modo" data-acao="modo-tudo" style="margin:0">${tudo ? "Mostrar um passo de cada vez" : "Mostrar tudo numa página"}</button></nav>
@@ -1647,13 +1719,29 @@ const ACOES = {
 
   /* v0.12.0: boletim da ITC lido no e-mail pela função radar-itc (Microsoft Graph). O resultado traz só contagens. */
   /* v0.12.0: "Publicar mesmo assim" — o administrador assume a publicação sem a fundamentação oficial, com o motivo registrado */
+  /* v0.12.2: o motivo é digitado na própria tela, num quadro que abre abaixo do botão */
+  "abrir-motivo"(el){
+    $(".motivo-liberar")?.remove();
+    (el.closest(".acoes") || el).insertAdjacentHTML("afterend", `<div class="motivo-liberar"><label for="motivo-liberar">Publicar no site SEM a fundamentação oficial: escreva o motivo (fica registrado com o seu nome)</label>
+      <input type="text" id="motivo-liberar" maxlength="500" data-enter="liberar-publicacao" placeholder="Ex.: autorizado por Cleiver">
+      <div class="acoes"><button class="btn peq perigo" type="button" data-acao="liberar-publicacao">Liberar sem fonte oficial</button><button class="link" type="button" data-acao="fechar-motivo">Cancelar</button></div></div>`);
+    $("#motivo-liberar").focus();
+  },
+  "fechar-motivo"(el){ el.closest(".motivo-liberar")?.remove(); },
   async "liberar-publicacao"(){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
-    const motivo = (prompt("Publicar no site SEM a fundamentação oficial.\n\nEscreva o motivo (fica registrado no histórico do assunto):") || "").trim();
-    if(!motivo){ recado("Liberação cancelada."); return; }
-    if(motivo.length < 10){ recado("Escreva um motivo com pelo menos 10 caracteres.", true); return; }
+    const campo = $("#motivo-liberar"), motivo = (campo?.value || "").trim();
+    if(!motivo){ recado("Escreva o motivo da liberação.", true); campo?.focus(); return; }
+    if(motivo.length < 10){ recado("Escreva um motivo com pelo menos 10 caracteres.", true); campo?.focus(); return; }
     await rpc("radar_liberar_sem_fundamentacao", {p_assunto:E.assunto, p_motivo:motivo});
-    await desenhar(); recado("Publicação liberada. Agora é só autorizar no passo 4.", "aviso");
+    await desenhar(); recado("Publicação liberada. Siga o próximo passo da trilha.", "aviso");
+  },
+  /* v0.12.2: "Enviar para revisão" e "Aprovar" da trilha usam os botões do próprio conteúdo (salvam o que estiver digitado) */
+  "trilha-clicar"(el){
+    mostrarEtapa("conteudo");
+    const f = $(`form[data-form=conteudo][data-id="${el.dataset.id}"]`); if(!f) return;
+    f.scrollIntoView({behavior:"smooth", block:"start"});
+    f.querySelector(el.dataset.botao === "aprovar" ? '[data-acao="aprovar"]' : '[data-acao="mudar-conteudo"][data-status="em_revisao"]')?.click();
   },
   async "converter-analise"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
@@ -2259,7 +2347,7 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto"]);
+  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar"]);
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa
@@ -2287,7 +2375,7 @@ document.addEventListener("keydown", ev => {
   if((ev.key === "Enter" || ev.key === " ") && ev.target.matches?.(".trilha li[data-acao]")){ ev.preventDefault(); ev.target.click(); return; }
   if(ev.key !== "Enter" || !ev.target.dataset?.enter) return;
   ev.preventDefault();                                   // Enter nos campos do registro não é "Salvar conteúdo"
-  ev.target.closest("form")?.querySelector(`[data-acao="${ev.target.dataset.enter}"]`)?.click();
+  (ev.target.closest("form") || ev.target.closest(".motivo-liberar"))?.querySelector(`[data-acao="${ev.target.dataset.enter}"]`)?.click();
 });
 document.addEventListener("submit", ev => {
   const f = ev.target.closest("[data-form]"); if(!f) return; ev.preventDefault();
