@@ -3424,7 +3424,6 @@ def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo
     assert legenda.startswith("Informativo de teste") and "link na bio" in legenda and "#Contabilidade" in legenda and "**" not in legenda
     pagina.fill("#rede-legenda", legenda + "\n\nEditado na tela.")
     pagina.screenshot(path=str(FOTOS / "30-redes-instagram.png"), full_page=True)
-    pagina.once("dialog", lambda d: d.accept())
     trilha.locator("li.agora .btn", has_text="Autorizar e publicar no Instagram").click()
     pagina.wait_for_selector("text=Publicado no Instagram.")
     linha = limpo.execute("select canal, legenda, autorizado_por::text from radar_redes_envios").fetchone()
@@ -3434,7 +3433,6 @@ def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo
     assert trilha.locator("li.agora").get_attribute("data-passo") == "facebook"
     assert "Leia a matéria completa: https://artecon.cnt.br/news/view/cbs" in pagina.input_value("#rede-legenda")
     assert "ver no Instagram" in trilha.locator("li[data-passo=instagram]").inner_text()
-    pagina.once("dialog", lambda d: d.accept())
     trilha.locator("li.agora .btn", has_text="Não publicar no Facebook").click()
     pagina.wait_for_selector("text=Concluído: publicado no site e no Instagram")
     assert trilha.locator("li[data-passo=facebook] >> text=Desfazer").count() == 1
@@ -3447,14 +3445,13 @@ def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo
     pagina.wait_for_selector("#redes-resultado >> text=Página do Facebook")
 
 
-def test_redes_sem_a_funcao_instalada_a_autorizacao_fica_guardada_e_editor_nao_autoriza(pagina, limpo):
+def test_redes_sem_a_funcao_instalada_a_autorizacao_fica_guardada(pagina, limpo):
     a, c = no_site(limpo)
     pagina.route("**/functions/v1/radar-redes", lambda rota: rota.fulfill(status=404, content_type="application/json", body='{"message":"not found"}'))
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abrir_por_id(pagina, a)
     pagina.wait_for_function("() => /^data:image/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
-    pagina.once("dialog", lambda d: d.accept())
     pagina.click("text=Autorizar e publicar no Instagram")
     pagina.wait_for_selector("text=A função radar-redes ainda não foi instalada")
     assert limpo.execute("select situacao from radar_redes_envios").fetchone()[0] == "autorizado"
@@ -3462,7 +3459,10 @@ def test_redes_sem_a_funcao_instalada_a_autorizacao_fica_guardada_e_editor_nao_a
     pagina.click("text=Cancelar autorização")
     pagina.wait_for_selector("#rede-legenda")                                              # volta a montar a publicação
     assert limpo.execute("select situacao from radar_redes_envios").fetchone()[0] == "cancelado"
-    pagina.click("text=Sair")
+
+
+def test_redes_editor_ve_o_passo_sem_os_botoes(pagina, limpo):
+    a, c = no_site(limpo)
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_por_id(pagina, a)
