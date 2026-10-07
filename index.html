@@ -217,11 +217,14 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.14.0";
+const VERSAO = "0.14.3";
 const FUNCAO_MINIMA = "0.14.0";     // versão da função radar-ia que este painel exige (v0.14.0: verificação em fontes oficiais)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.14.3", "07/10/2026", [
+    "Nenhum ponto marcado com [VERIFICAR] vai ao leitor: enquanto o título, o texto ou a legenda tiver alguma marca, o Radar não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem de erro mostra cada marca que falta resolver. O quadro vermelho no conteúdo aponta as marcas antes mesmo de tentar.",
+    "Instagram e Facebook: o META_PAGE_TOKEN aceita o token do usuário do sistema (o Radar busca sozinho o token da Página), e as funções radar-redes e radar-itc passaram a usar a chave interna nova do Supabase."]],
   ["0.14.0", "07/10/2026", [
     "Verificação em fontes oficiais: no passo 1, “Verificar em fontes oficiais” faz a IA procurar o assunto na internet, só em sites de órgão público (gov.br, jus.br, leg.br), e mostra se a informação foi confirmada, confirmada em parte, não encontrada ou se diverge, com o link de cada página oficial. “Incluir como texto oficial” traz o texto da página para o formulário: é só conferir e gravar.",
     "Textos melhores: a “Análise Artecon” passa a dizer quem é afetado, o que conferir ou providenciar e até quando, o risco de não agir e quando procurar a Artecon. O texto não traz mais avisos como “este informativo é baseado em material de fonte não oficial” (o aviso continua interno, nos pontos a conferir). Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR]. Banco v0.14.0 e função radar-ia v0.14.0."
@@ -1626,6 +1629,13 @@ function mostrarEtapa(e){
    nº 2.300, de 5 de março de 2026" é citar, não copiar. Citação entre aspas é aceita quando curta (até 40 palavras
    cada, 120 no total): aspas em volta do texto inteiro não livram da comparação. */
 const COPIA_MINIMA = 12, CITACAO_MAXIMA = 40, CITACOES_TOTAL = 120;
+/* v0.14.3: marcas [VERIFICAR …] deixadas pela IA. Com alguma no título, no texto ou na legenda, nada é aprovado nem publicado
+   (o banco também confere: radar_marcas_verificar) */
+const marcasVerificar = (...textos) => textos.join("\n").match(/\[\s*verificar[^\]\n]{0,250}\]?/gi)?.map(m => m.replace(/\s+/g, " ").trim().slice(0, 160)) || [];
+const msgMarcas = (lista, acao = "liberar") => `Resolva antes de ${acao}: ${lista.length} ponto(s) marcado(s) com [VERIFICAR] — ` +
+  lista.map(m => `“${m}”`).join("; ") + ". Troque cada marca pela informação conferida (ou tire o trecho), salve e tente de novo.";
+const marcasDoConteudo = id => { const f = $(`form[data-form=conteudo][data-id="${id}"]`);
+  return f ? marcasVerificar(f.querySelector("[name=titulo]")?.value || "", f.querySelector("[name=corpo]")?.value || "") : []; };
 const COPIA_NEUTRAS = new Set(("janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro lei leis decreto decretos instrucao normativa portaria resolucao " +
   "medida provisoria complementar emenda constitucional ato declaratorio executivo convenio ajuste solucao consulta parecer n nº art arts artigo artigos inciso paragrafo").split(" "));
 const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" "));       // não contam quando encostadas em número, data, norma ou nome próprio
@@ -1688,9 +1698,12 @@ const chipsTitulo = (id, lista) => (Array.isArray(lista) ? lista : []).map(t => 
 function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const copia = trechosCopiados(c.corpo, fontes);
+  const marcas = marcasVerificar(c.titulo || "", c.corpo || "");
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
   return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}" data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
     ${ed ? avisoRascunho(c) : ""}
+    ${marcas.length ? `<div class="aviso erro marcas-verificar"><b>${marcas.length} ponto(s) marcado(s) com [VERIFICAR] — resolva antes de liberar ou publicar.</b>
+      <ul>${marcas.map(m => `<li><span class="copiado">${h(m)}</span></li>`).join("")}</ul>Troque cada marca pela informação conferida (ou tire o trecho) e salve. Enquanto houver marca, o Radar não aprova nem publica.</div>` : ""}
     ${copia.length ? `<div class="aviso erro copia"><b>Texto igual ao da fonte em ${copia.length} trecho(s).</b> O conteúdo não pode ser aprovado assim: reescreva com as suas palavras. Se for a transcrição de um dispositivo legal, cite só o essencial entre aspas (até ${CITACAO_MAXIMA} palavras por citação).
       <ul>${copia.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span></li>`).join("")}</ul>${copia.length > 4 ? `<span class="sub">e mais ${copia.length - 4}.</span>` : ""}</div>`
       : fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é só com o texto das capturas deste assunto; não detecta paráfrase muito próxima nem cópia de outras páginas.">(só contra as capturas deste assunto)</span></p>` : ""}
@@ -1889,6 +1902,8 @@ const ACOES = {
     if(!img || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
     if(img.dataset.conteudo !== el.dataset.id){ await desenhar(); recado("A tela mudou: confira a imagem de novo e autorize.", true); return; }
     if(legenda.length < 10){ recado("Escreva a legenda (pelo menos 10 caracteres).", true); $("#rede-legenda")?.focus(); return; }
+    const marcas = [...marcasVerificar(legenda), ...marcasDoConteudo(el.dataset.id)];
+    if(marcas.length){ recado(msgMarcas(marcas, `publicar no ${nome}`), true); $("#rede-legenda")?.focus(); return; }
     if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem e a legenda vão ao ar como estão na tela.`)) return;
     const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido});
     if(E.legendas) delete E.legendas[el.dataset.id + ":" + canal];
@@ -2054,6 +2069,8 @@ const ACOES = {
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const cat = $(`#site-cat-${el.dataset.id}`)?.value || "";
     if(!cat){ recado("Escolha a categoria do site antes de autorizar.", true); return; }
+    const marcas = marcasDoConteudo(el.dataset.id);
+    if(marcas.length){ recado(msgMarcas(marcas, "publicar no site"), true); return; }
     if(!confirm(`Autorizar a publicação desta notícia no site da Artecon, na categoria “${cat}”?\n\nO robô cadastra a notícia em até 15 minutos e o site publica na hora. Dá para cancelar enquanto o robô não começou.`)) return;
     await rpc("radar_autorizar_site", {p_conteudo:Number(el.dataset.id), p_categoria:cat, p_lido:el.dataset.lido});
     await desenhar(); recado("Publicação autorizada. O robô publica em até 15 minutos e registra o link aqui.");
@@ -2153,6 +2170,8 @@ const ACOES = {
   async aprovar(el){
     const f = el.closest("form");
     if(sujo(f)){ recado("Há alterações não salvas. Salve antes de aprovar.", true); return; }
+    const marcas = marcasDoConteudo(el.dataset.id);
+    if(marcas.length){ recado(msgMarcas(marcas, "aprovar"), true); f.querySelector(".marcas-verificar")?.scrollIntoView({behavior:"smooth", block:"center"}); return; }
     if(Number(f.dataset.copiados) > 0){ recado("Este conteúdo tem trecho igual ao texto da fonte (veja o quadro vermelho). Reescreva com as suas palavras, ou coloque a citação entre aspas, e salve antes de aprovar.", true); return; }
     // só aprova se o texto ainda for o que foi aberto nesta tela
     const r = await rest("PATCH", "radar_conteudos", {params:{id:"eq." + el.dataset.id, atualizado_em:"eq." + f.dataset.lido},

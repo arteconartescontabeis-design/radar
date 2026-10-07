@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.14.0"
+    assert pagina.inner_text(".versao") == "v0.14.3"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -2274,7 +2274,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.14.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.14.3" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3513,3 +3513,31 @@ def test_verificacao_em_fontes_oficiais_mostra_o_resultado_e_traz_a_pagina_para_
     pagina.wait_for_selector("text=Texto oficial incluído")
     assert limpo.execute("""select count(*) from radar_assunto_capturas ac join radar_capturas c on c.id = ac.captura_id
                             where ac.assunto_id = %s and c.url = %s""", (a, oficial)).fetchone()[0] == 1
+
+
+# ------------------------------------------------------------ v0.14.3 — [VERIFICAR] não vai ao leitor
+def test_marca_verificar_aparece_em_vermelho_e_barra_aprovar_e_publicar_nas_redes(pagina, limpo):
+    corpo = "O governo não publicou, até [VERIFICAR: sexta-feira, dia 2 de outubro de 2026], a Medida Provisória do Imposto Seletivo."
+    a, c = preparar_aprovado(limpo, corpo=corpo, titulo="Imposto Seletivo atrasado")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Imposto Seletivo atrasado")
+    quadro = pagina.locator("form[data-form=conteudo] .marcas-verificar")
+    assert "1 ponto(s) marcado(s) com [VERIFICAR]" in quadro.inner_text()
+    assert "[VERIFICAR: sexta-feira, dia 2 de outubro de 2026]" in quadro.inner_text()
+    pagina.click("form[data-form=conteudo] [data-acao=aprovar]")          # o quadro vermelho também diz "aprovar"
+    erro = pagina.wait_for_selector("#recado .erro >> text=Resolva antes de aprovar")
+    assert "“[VERIFICAR: sexta-feira, dia 2 de outubro de 2026]”" in erro.inner_text()
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "em_revisao"
+
+
+def test_legenda_com_marca_verificar_nao_e_autorizada(pagina, limpo):
+    a, c = no_site(limpo)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function("() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
+    pagina.fill("#rede-legenda", pagina.input_value("#rede-legenda") + "\n\nPrazo: [VERIFICAR data]")
+    pagina.locator(".autorizacao li.agora .btn", has_text="Autorizar e publicar no Instagram").click()
+    pagina.wait_for_selector("#recado .erro >> text=Resolva antes de publicar no Instagram: 1 ponto(s)")
+    assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
