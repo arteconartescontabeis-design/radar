@@ -2572,7 +2572,7 @@ def test_redes_cancelar_e_dispensado_desfeito(limpo):
 def test_transformar_analise_tira_o_aviso_de_fonte_nao_oficial_do_texto(limpo):
     a = limpo.execute("insert into radar_assuntos (titulo) values ('Boletim com aviso') returning id").fetchone()[0]
     corpo = ("*Este informativo é baseado em material de fonte não oficial e precisa ser conferido.*\n\n"
-             "O prazo foi prorrogado.\n\nFonte NÃO-oficial: boletim ITC\n\n\nBoletos de fontes não oficiais são golpe.\n\n## Análise Artecon\nOrganize os documentos.")
+             "O prazo foi prorrogado.\n***\nFonte NÃO-oficial: boletim ITC\n\n\nBoletos de fontes não oficiais são golpe.\n\nEsta notícia alerta para boletos de fontes não oficiais.\n\n## Análise Artecon\nOrganize os documentos.")
     c = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia, fora_do_site)
                          values (%s, 'flash', 'Boletim', %s, 'ia', 'm', 'rascunho', '["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC)."]', true)
                          returning id""", (a, corpo)).fetchone()[0]
@@ -2580,7 +2580,8 @@ def test_transformar_analise_tira_o_aviso_de_fonte_nao_oficial_do_texto(limpo):
         k.execute("select radar_liberar_sem_fundamentacao(%s, 'Autorizado pelo responsável técnico')", (a,))
         novo = k.execute("select radar_converter_analise(%s)", (c,)).fetchone()[0]
     copia = limpo.execute("select corpo from radar_conteudos where id = %s", (novo,)).fetchone()[0]
-    assert copia == "O prazo foi prorrogado.\n\nBoletos de fontes não oficiais são golpe.\n\n## Análise Artecon\nOrganize os documentos."
+    assert copia == ("O prazo foi prorrogado.\n***\n\nBoletos de fontes não oficiais são golpe.\n\nEsta notícia alerta para boletos de fontes não oficiais."
+                     "\n\n## Análise Artecon\nOrganize os documentos.")
     assert limpo.execute("select corpo from radar_conteudos where id = %s", (c,)).fetchone()[0] == corpo   # o original fica como estava
 
 

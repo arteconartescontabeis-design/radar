@@ -471,7 +471,7 @@ const REGRA_VERIFICACAO = "(11) se vier uma VERIFICAÇÃO EM FONTES OFICIAIS, tr
   "se ela apontar divergência, siga a fonte oficial e diga o que mudou; ";
 // só a linha que É o aviso ("Este informativo é baseado em … fonte não oficial…", "Fonte não oficial: boletim X"); um parágrafo
 // que fala de fonte não oficial como assunto ("boletos de fontes não oficiais são golpe") fica
-const RE_AVISO_FONTE = /^[\s*_>]*(?:(?:este|esta|o presente|a presente)\s+(?:informativo|texto|conte[úu]do|material|an[áa]lise|not[íi]cia|artigo)\b[^\n]*fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)|fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)\s*:)[^\n]*(?:\n|$)/gim;
+const RE_AVISO_FONTE = /^[ \t*_>]*(?:(?:este|esta|o presente|a presente)\s+(?:informativo|texto|conte[úu]do|material|an[áa]lise|not[íi]cia|artigo)\b[^\n]*?(?:baseado|baseada|com base|elaborado|elaborada|escrito|escrita|produzido|produzida|feito|feita|a partir)[^\n]*fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)|fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)\s*:)[^\n]*(?:\n|$)/gim;
 /** Tira do texto as linhas que só avisam a origem ("baseado em material de fonte não oficial"): o aviso é interno. */
 const tirarAvisoFonte = (t: string) => t.replace(RE_AVISO_FONTE, "").replace(/\n{3,}/g, "\n\n").trim();
 
@@ -485,6 +485,8 @@ function blocoVerificacao(v: any): string {
     `${v.resumo ?? ""}\n${fontes ? "Páginas oficiais:\n" + fontes + "\n" : ""}${div ? "Divergências:\n" + div + "\n" : ""}<<<FIM>>>\n`;
 }
 
+// Claude Opus 5.5, Sonnet 5.5, Fable 5.1 e Mythos 5.1 recusam tool_choice "tool": neles a última rodada só pede por escrito
+const FORCA_FERRAMENTA = !/opus-5-5|sonnet-5-5|fable-5-1|mythos-5-1/i.test(MODELO);
 const NOVA_GERACAO = (m: string) => !/haiku|sonnet-4-5|opus-4-5|opus-4-1|sonnet-4-2|claude-3/i.test(m);
 async function verificar(token: string, ctx: Awaited<ReturnType<typeof carregar>>) {
   const inicio = Date.now();
@@ -538,7 +540,9 @@ async function verificar(token: string, ctx: Awaited<ReturnType<typeof carregar>
     let dados: any;
     try {
       dados = await chamarGateway(ctx.reg, "", { model: MODELO, max_tokens: 4000, system: instrucoes, messages: mensagens,
-        tools: ultima ? ferramentas(restringir).slice(0, 1) : ferramentas(restringir), tool_choice: { type: "auto" } }, MODELO, Math.min(110_000, resta - 5_000));
+        // na última rodada a ferramenta de registro é obrigatória (nos modelos que aceitam escolha forçada): a IA não busca mais
+        tools: ferramentas(restringir), tool_choice: ultima && FORCA_FERRAMENTA ? { type: "tool", name: "verificacao" } : { type: "auto" } },
+        MODELO, Math.min(110_000, resta - 5_000));
     } catch (e) {
       // se a Anthropic não aceitar a lista de domínios, a busca roda sem ela (o código continua aceitando só páginas oficiais)
       if (restringir && e instanceof Erro && /allowed_domains|domain/i.test(e.message)) { restringir = false; volta--; continue; }
@@ -619,7 +623,10 @@ async function pagina(endereco: unknown) {
     } catch { throw new Erro(504, "Não foi possível abrir a página oficial agora. Tente de novo ou copie o texto à mão."); }
     if (r.status < 300 || r.status >= 400) break;
     await r.body?.cancel();
-    const proximo = urlOficial(new URL(r.headers.get("location") ?? "", u).toString());
+    const destino = r.headers.get("location");
+    if (!destino) throw new Erro(502, `A página oficial respondeu ${r.status} sem endereço. Copie o texto à mão.`);
+    let proximo: URL | null = null;
+    try { proximo = urlOficial(new URL(destino, u).toString()); } catch { proximo = null; }
     if (!proximo) throw new Erro(400, "A página oficial redirecionou para fora de um órgão público.");
     u = proximo; r = null;
   }
@@ -631,11 +638,13 @@ async function pagina(endereco: unknown) {
   const partes: Uint8Array[] = [];
   let total = 0;
   const leitor = r.body?.getReader();
-  while (leitor && total < MAX_PAGINA) {
-    const { done, value } = await leitor.read();
-    if (done) break;
-    partes.push(value); total += value.length;
-  }
+  try {
+    while (leitor && total < MAX_PAGINA) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      partes.push(value); total += value.length;
+    }
+  } catch { throw new Erro(504, "A página oficial demorou demais para carregar. Tente de novo ou copie o texto à mão."); }
   await leitor?.cancel().catch(() => {});
   const bytes = new Uint8Array(Math.min(total, MAX_PAGINA));
   let pos = 0;

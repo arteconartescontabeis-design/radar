@@ -921,7 +921,7 @@ create or replace function public.radar_tirar_aviso_fonte(p_texto text) returns 
 language sql immutable set search_path = public as $$
   select btrim(regexp_replace(
            regexp_replace(coalesce(p_texto, ''),
-             '^[\s*_>]*((este|esta|o presente|a presente)\s+(informativo|texto|conte[úu]do|material|an[áa]lise|not[íi]cia|artigo)\y[^\n]*fontes?\s+n[ãa]o[\s-]+oficia(l|is)|fontes?\s+n[ãa]o[\s-]+oficia(l|is)\s*:)[^\n]*(\n|$)',
+             '^[ \t*_>]*((este|esta|o presente|a presente)\s+(informativo|texto|conte[úu]do|material|an[áa]lise|not[íi]cia|artigo)\y[^\n]*?(baseado|baseada|com base|elaborado|elaborada|escrito|escrita|produzido|produzida|feito|feita|a partir)[^\n]*fontes?\s+n[ãa]o[\s-]+oficia(l|is)|fontes?\s+n[ãa]o[\s-]+oficia(l|is)\s*:)[^\n]*(\n|$)',
              '', 'gin'),
            '\n{3,}', E'\n\n', 'g'), E' \n')
 $$;
