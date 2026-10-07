@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.12.1.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.13.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.12.1.sql
+-- Reversão: radar-reversao-v0.13.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.12.1', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.13.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -376,6 +376,35 @@ create index if not exists radar_site_envios_conteudo_idx on public.radar_site_e
 create unique index if not exists radar_site_envios_aberto_uk on public.radar_site_envios (conteudo_id)
   where situacao in ('autorizado','enviando');
 
+-- v0.13.0: publicação no Instagram e no Facebook (API da Meta), sempre depois da autorização do administrador.
+-- A tela monta a imagem quadrada (1080×1080, JPEG) e a legenda; o administrador confere e autoriza; a função radar-redes
+-- (Supabase) envia a imagem ao armazenamento público, publica e registra o link. "dispensado" = não vai a este canal.
+-- Nunca publica duas vezes: só uma autorização em andamento ou concluída por conteúdo e canal.
+create table if not exists public.radar_redes_envios (
+  id               bigint generated always as identity primary key,
+  conteudo_id      bigint      not null references public.radar_conteudos(id) on delete restrict,
+  canal            text        not null check (canal in ('instagram','facebook')),
+  legenda          text        not null check (length(legenda) between 10 and 2200),
+  imagem           text        check (imagem is null or (imagem like 'data:image/jpeg;base64,%' and length(imagem) <= 3000000)),
+  conteudo_lido_em timestamptz not null,          -- versão do texto que foi vista e autorizada
+  situacao         text        not null default 'autorizado'
+                   check (situacao in ('autorizado','enviando','publicado','erro','cancelado','dispensado')),
+  autorizado_por   uuid        references auth.users(id) on delete set null,
+  autorizado_em    timestamptz not null default now(),
+  cancelado_por    uuid        references auth.users(id) on delete set null,
+  cancelado_em     timestamptz,
+  enviado_em       timestamptz,
+  publicado_em     timestamptz,
+  post_id          text        check (length(post_id) <= 100),
+  url              text        check (url is null or (url ~ '^https://[!-~]+$' and length(url) <= 500)),
+  imagem_url       text        check (imagem_url is null or (imagem_url ~ '^https?://[!-~]+$' and length(imagem_url) <= 500)),
+  erro             text        check (length(erro) <= 1000),
+  atualizado_em    timestamptz not null default now()
+);
+create index if not exists radar_redes_envios_conteudo_idx on public.radar_redes_envios (conteudo_id);
+create unique index if not exists radar_redes_envios_aberto_uk on public.radar_redes_envios (conteudo_id, canal)
+  where situacao in ('autorizado','enviando','erro','publicado','dispensado');
+
 -- v0.8.0: o Diário Oficial da União pelo INLABS é um tipo de leitura a mais
 alter table public.radar_fontes drop constraint if exists radar_fontes_tipo_coletor_check;
 alter table public.radar_fontes add constraint radar_fontes_tipo_coletor_check
@@ -488,6 +517,8 @@ create or replace function public.radar_fn_auditar() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   v_reg jsonb;
+  -- v0.13.0: a imagem da publicação nas redes (até 3 MB) não vai para a trilha; ficam quem, quando, canal, legenda e link
+  v_tira text[] := case when tg_table_name = 'radar_redes_envios' then array['imagem'] else array[]::text[] end;
 begin
   if tg_op = 'DELETE' then v_reg := to_jsonb(old); else v_reg := to_jsonb(new); end if;
   -- atualização que só mexe nos campos de saúde/relógio (feita pelo próprio banco
@@ -501,8 +532,8 @@ begin
   values (tg_table_name,
           coalesce(v_reg->>'id', v_reg->>'user_id', v_reg->>'slug', v_reg->>'chave', '?'),
           tg_op, auth.uid(),
-          case when tg_op <> 'INSERT' then to_jsonb(old) end,
-          case when tg_op <> 'DELETE' then to_jsonb(new) end);
+          case when tg_op <> 'INSERT' then to_jsonb(old) - v_tira end,
+          case when tg_op <> 'DELETE' then to_jsonb(new) - v_tira end);
   if tg_op = 'DELETE' then return old; end if;
   return new;
 end $$;
@@ -1198,8 +1229,160 @@ begin
        set situacao = 'cancelado', cancelado_em = now(), atualizado_em = now(),
            erro = 'Autorização cancelada sozinha: o conteúdo mudou depois de autorizado. Confira e autorize de novo.'
      where conteudo_id = new.id and situacao = 'autorizado';
+    -- v0.13.0: o mesmo para o Instagram e o Facebook (a que deu erro também: o texto que iria já não é o aprovado)
+    update public.radar_redes_envios
+       set situacao = 'cancelado', cancelado_em = now(), atualizado_em = now(),
+           erro = 'Autorização cancelada sozinha: o conteúdo mudou depois de autorizado. Confira e autorize de novo.'
+     where conteudo_id = new.id and situacao in ('autorizado','erro');
   end if;
   return null;
+end $$;
+
+-- v0.13.0: Instagram e Facebook. Valem as exigências do site (conteúdo aprovado, assunto com fundamentação — ou liberado
+-- pelo administrador) e mais uma: a notícia já precisa estar no site (a legenda leva o leitor até ela).
+create or replace function public.radar_autorizar_rede(p_conteudo bigint, p_canal text, p_legenda text, p_imagem text, p_lido timestamptz)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare
+  v_c public.radar_conteudos%rowtype;
+  v_pendencia text;
+  v_id bigint;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR130: só o administrador autoriza a publicação no Instagram e no Facebook' using errcode = '42501';
+  end if;
+  if p_canal is null or p_canal not in ('instagram','facebook') then
+    raise exception 'RADAR131: canal desconhecido' using errcode = 'P0001';
+  end if;
+  select * into v_c from public.radar_conteudos c where c.id = p_conteudo for update;
+  if v_c.id is null then
+    raise exception 'RADAR111: conteúdo não encontrado' using errcode = 'P0001';
+  end if;
+  if v_c.status is distinct from 'aprovado' or coalesce(v_c.avisos_ia->>0, '') like 'TEXTO PARA ANÁLISE%' then
+    raise exception 'RADAR132: só conteúdo aprovado (que não seja texto para análise) vai para as redes' using errcode = 'P0001';
+  end if;
+  if p_lido is distinct from v_c.atualizado_em then
+    raise exception 'RADAR114: o conteúdo foi alterado depois que esta tela foi aberta; recarregue, confira e autorize de novo' using errcode = 'P0001';
+  end if;
+  v_pendencia := public.radar_pendencia_assunto(v_c.assunto_id);
+  if v_pendencia is not null then
+    raise exception '%', v_pendencia using errcode = 'P0001';
+  end if;
+  if not exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = p_conteudo) then
+    raise exception 'RADAR133: publique primeiro no site: a legenda leva o leitor até a notícia' using errcode = 'P0001';
+  end if;
+  if length(btrim(coalesce(p_legenda, ''))) not between 10 and 2200 then
+    raise exception 'RADAR134: a legenda precisa ter de 10 a 2.200 caracteres' using errcode = 'P0001';
+  end if;
+  if p_imagem is null or p_imagem not like 'data:image/jpeg;base64,%' or length(p_imagem) > 3000000 then
+    raise exception 'RADAR135: falta a imagem (JPEG) da publicação' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.radar_redes_envios e where e.conteudo_id = p_conteudo and e.canal = p_canal
+              and e.situacao in ('autorizado','enviando','erro','publicado','dispensado')) then
+    raise exception 'RADAR136: este conteúdo já tem publicação autorizada, feita ou dispensada neste canal' using errcode = 'P0001';
+  end if;
+  insert into public.radar_redes_envios (conteudo_id, canal, legenda, imagem, conteudo_lido_em, autorizado_por)
+  values (p_conteudo, p_canal, btrim(p_legenda), p_imagem, v_c.atualizado_em, auth.uid())
+  returning id into v_id;
+  return v_id;
+end $$;
+
+-- "Não publicar neste canal": o passo da trilha fica resolvido sem publicar.
+create or replace function public.radar_dispensar_rede(p_conteudo bigint, p_canal text) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  v_c public.radar_conteudos%rowtype;
+  v_id bigint;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR130: só o administrador autoriza a publicação no Instagram e no Facebook' using errcode = '42501';
+  end if;
+  if p_canal is null or p_canal not in ('instagram','facebook') then
+    raise exception 'RADAR131: canal desconhecido' using errcode = 'P0001';
+  end if;
+  select * into v_c from public.radar_conteudos c where c.id = p_conteudo for update;
+  if v_c.id is null then
+    raise exception 'RADAR111: conteúdo não encontrado' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.radar_redes_envios e where e.conteudo_id = p_conteudo and e.canal = p_canal
+              and e.situacao in ('autorizado','enviando','erro','publicado','dispensado')) then
+    raise exception 'RADAR136: este conteúdo já tem publicação autorizada, feita ou dispensada neste canal' using errcode = 'P0001';
+  end if;
+  insert into public.radar_redes_envios (conteudo_id, canal, legenda, conteudo_lido_em, situacao, autorizado_por)
+  values (p_conteudo, p_canal, '(não publicado neste canal)', v_c.atualizado_em, 'dispensado', auth.uid())
+  returning id into v_id;
+  return v_id;
+end $$;
+
+-- Cancelar: autorizada (ainda não enviada), com erro ou dispensada. "Enviando" só depois de 10 minutos parada
+-- (a função caiu no meio): confira na rede se saiu antes de autorizar de novo.
+create or replace function public.radar_cancelar_rede(p_envio bigint) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR130: só o administrador mexe na autorização das redes' using errcode = '42501';
+  end if;
+  update public.radar_redes_envios
+     set situacao = 'cancelado', cancelado_por = auth.uid(), cancelado_em = now(), atualizado_em = now(), imagem = null
+   where id = p_envio
+     and (situacao in ('autorizado','erro','dispensado') or (situacao = 'enviando' and enviado_em < now() - interval '10 minutes'));
+  if not found then
+    raise exception 'RADAR137: não dá para cancelar agora (a publicação está saindo, já saiu ou não existe)' using errcode = 'P0001';
+  end if;
+  return true;
+end $$;
+
+-- A função radar-redes pega a autorização para enviar (uma vez só) e confere de novo as exigências.
+create or replace function public.radar_rede_iniciar(p_envio bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_e public.radar_redes_envios%rowtype;
+  v_c public.radar_conteudos%rowtype;
+  v_pendencia text;
+begin
+  select * into v_e from public.radar_redes_envios where id = p_envio for update;
+  if v_e.id is null or v_e.situacao not in ('autorizado','erro') then
+    raise exception 'RADAR138: esta autorização não está aguardando envio (já saiu, foi cancelada ou está saindo)' using errcode = 'P0001';
+  end if;
+  select * into v_c from public.radar_conteudos where id = v_e.conteudo_id;
+  if v_c.status is distinct from 'aprovado' or v_c.atualizado_em is distinct from v_e.conteudo_lido_em then
+    update public.radar_redes_envios set situacao = 'cancelado', cancelado_em = now(), atualizado_em = now(), imagem = null,
+           erro = 'Autorização cancelada sozinha: o conteúdo mudou depois de autorizado. Confira e autorize de novo.'
+     where id = p_envio;
+    return jsonb_build_object('cancelado', true);
+  end if;
+  v_pendencia := public.radar_pendencia_assunto(v_c.assunto_id);
+  if v_pendencia is not null then
+    update public.radar_redes_envios set situacao = 'erro', erro = left(v_pendencia, 1000), atualizado_em = now() where id = p_envio;
+    return jsonb_build_object('erro', v_pendencia);
+  end if;
+  if v_e.imagem is null and v_e.imagem_url is null then
+    update public.radar_redes_envios set situacao = 'erro', erro = 'A imagem da publicação se perdeu: cancele e autorize de novo.', atualizado_em = now()
+     where id = p_envio;
+    return jsonb_build_object('erro', 'sem imagem');
+  end if;
+  update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, atualizado_em = now() where id = p_envio;
+  return jsonb_build_object('id', v_e.id, 'canal', v_e.canal, 'conteudo_id', v_e.conteudo_id, 'legenda', v_e.legenda,
+                            'imagem', v_e.imagem, 'imagem_url', v_e.imagem_url);
+end $$;
+
+-- Resultado do envio. A imagem guardada é apagada quando já está no armazenamento público (fica o link).
+-- "erro" só quando a Meta recusou com certeza (pode tentar de novo); se não deu para saber se saiu, a função deixa "enviando".
+create or replace function public.radar_rede_concluir(p_envio bigint, p_ok boolean, p_post_id text, p_url text, p_imagem_url text, p_erro text)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare
+  v_img text := case when p_imagem_url ~ '^https?://[!-~]+$' and length(p_imagem_url) <= 500 then p_imagem_url end;
+begin
+  update public.radar_redes_envios
+     set situacao = case when p_ok then 'publicado' else 'erro' end,
+         publicado_em = case when p_ok then now() end,
+         post_id = case when p_ok then left(p_post_id, 100) end,
+         url = case when p_ok and p_url ~ '^https://[!-~]+$' and length(p_url) <= 500 then p_url end,
+         imagem_url = coalesce(v_img, imagem_url),
+         imagem = case when coalesce(v_img, imagem_url) is not null then null else imagem end,
+         erro = case when p_ok then null else left(coalesce(nullif(btrim(p_erro), ''), 'Erro sem descrição.'), 1000) end,
+         atualizado_em = now()
+   where id = p_envio and situacao = 'enviando';
+  return found;
 end $$;
 
 -- v0.11.0: só as capturas da fila que passaram agora de dias_baixa dias (e ainda não estão baixas) descem para "baixa";
@@ -1890,7 +2073,7 @@ declare t text;
 begin
   foreach t in array array['radar_perfis','radar_fontes','radar_normas','radar_assuntos',
                            'radar_evidencias','radar_conteudos',
-                           'radar_informativos','radar_config','radar_divulgacoes','radar_site_envios'] loop
+                           'radar_informativos','radar_config','radar_divulgacoes','radar_site_envios','radar_redes_envios'] loop
     execute format('drop trigger if exists radar_tg_auditar on public.%I', t);
     execute format('create trigger radar_tg_auditar after insert or update or delete on public.%I
                     for each row execute function public.radar_fn_auditar()', t);
@@ -2047,7 +2230,8 @@ begin
       'radar_execucoes','radar_capturas','radar_capturas_versoes','radar_normas','radar_assuntos',
       'radar_assunto_capturas','radar_evidencias','radar_conteudos',
       'radar_auditoria','radar_ia_uso','radar_imagens','radar_config',
-      'radar_informativos','radar_informativo_itens','radar_divulgacoes','radar_site_envios','radar_itc_lidos'] loop
+      'radar_informativos','radar_informativo_itens','radar_divulgacoes','radar_site_envios','radar_itc_lidos',
+      'radar_redes_envios'] loop
     execute format('alter table public.%I enable row level security', t);
     -- parte do zero: o Supabase concede tudo a esses papéis por padrão
     execute format('revoke all on public.%I from public, anon, authenticated, service_role', t);
@@ -2084,6 +2268,7 @@ revoke insert, update, delete on public.radar_ia_uso from authenticated;
 -- v0.10.0: autorizações de publicação no site: a equipe só lê; quem grava são radar_autorizar_site/radar_cancelar_site e o robô
 revoke insert, update, delete on public.radar_site_envios from authenticated;
 revoke insert, update, delete on public.radar_itc_lidos from authenticated;   -- v0.12.0: só a função radar-itc grava
+revoke insert, update, delete on public.radar_redes_envios from authenticated; -- v0.13.0: só pelas funções de autorização
 
 -- sequências das colunas identity: ninguém precisa de acesso direto
 do $$
@@ -2131,6 +2316,12 @@ grant execute on function public.radar_itc_ja_lidos(text[]) to service_role;
 grant execute on function public.radar_itc_marcar_lido(text, text, timestamptz, int, int) to service_role;
 grant execute on function public.radar_itc_conferir_agenda(text) to service_role;
 grant execute on function public.radar_itc_registrar_falha(text) to service_role;
+-- v0.13.0: Instagram e Facebook — o administrador autoriza (as funções conferem); a função radar-redes envia
+grant execute on function public.radar_autorizar_rede(bigint, text, text, text, timestamptz) to authenticated;
+grant execute on function public.radar_dispensar_rede(bigint, text) to authenticated;
+grant execute on function public.radar_cancelar_rede(bigint) to authenticated;
+grant execute on function public.radar_rede_iniciar(bigint) to service_role;
+grant execute on function public.radar_rede_concluir(bigint, boolean, text, text, text, text) to service_role;
 
 -- perfis
 drop policy if exists radar_perfis_sel on public.radar_perfis;
@@ -2160,7 +2351,7 @@ create policy radar_fontes_adm on public.radar_fontes for all to authenticated
 do $$
 declare t text;
 begin
-  foreach t in array array['radar_execucoes','radar_capturas','radar_capturas_versoes','radar_site_envios'] loop
+  foreach t in array array['radar_execucoes','radar_capturas','radar_capturas_versoes','radar_site_envios','radar_redes_envios'] loop
     execute format('drop policy if exists %I on public.%I', t || '_sel', t);
     execute format('create policy %I on public.%I for select to authenticated
                     using ((select public.radar_papel()) is not null)', t || '_sel', t);
@@ -2306,7 +2497,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 21 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.12.1).
+-- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.13.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

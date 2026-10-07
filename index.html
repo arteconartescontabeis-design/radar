@@ -160,6 +160,11 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 .link{background:none;border:0;padding:0;color:var(--azul);text-decoration:underline;cursor:pointer;font:inherit}
 .motivo-liberar{border:1px dashed var(--erro);border-radius:8px;padding:10px 12px;margin:8px 0 0;background:#fff} .motivo-liberar label{color:var(--erro);margin-top:0}
 .motivo-liberar input{width:100%} .motivo-liberar .acoes{align-items:center}
+/* v0.13.0: montagem da publicação nas redes */
+.rede-montagem{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:14px;margin:10px 0 0;align-items:start}
+.rede-imagem{width:100%;aspect-ratio:1;max-width:100%;border-radius:8px;border:1px solid var(--linha);background:var(--azul-claro);object-fit:cover}
+.rede-legenda{display:flex;flex-direction:column;gap:4px;min-width:0} .rede-legenda label{margin:0} .rede-legenda textarea{min-height:200px;width:100%}
+@media (max-width:640px){.rede-montagem{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:560px){.trilha.passos7 li i{width:28px;height:28px}.trilha.passos7 li span,.trilha.passos7 li b{display:none}}
 .assunto-corpo{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
 .lateral .painel{padding:14px} .lateral h3{margin-bottom:6px} .lateral label{display:block;margin-top:8px}
@@ -209,11 +214,15 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.12.2";
+const VERSAO = "0.13.0";
 const FUNCAO_MINIMA = "0.11.0";     // versão da função radar-ia que este painel exige (texto para análise)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.13.0", "07/10/2026", [
+    "Instagram e Facebook na trilha de autorização (passos 6 e 7): depois que a notícia está no site, o administrador confere a imagem quadrada (montada a partir da capa) e a legenda (título, começo do texto, fonte e o caminho até o site; no Instagram, as hashtags), e clica em “Autorizar e publicar”. A publicação sai na hora pela API da Meta e o link fica registrado. Também dá para escolher “Não publicar”.",
+    "Publicações › Canais mostra o Instagram e o Facebook de cada conteúdo, e o administrador tem “Testar conexão com o Instagram e o Facebook”. Banco v0.13.0 (tabela radar_redes_envios) e função nova radar-redes no Supabase. Funciona assim que a Meta estiver configurada (segredos META_PAGE_ID, META_PAGE_TOKEN e META_IG_USER_ID)."
+  ]],
   ["0.12.2", "06/10/2026", [
     "Trilha de autorização no assunto: no alto, os passos numerados (1 Fonte, 2 Texto, 3 Revisão, 4 Aprovar, 5 Site; Instagram e Facebook em breve) e, abaixo, um passo de cada vez. Só o passo de agora tem os botões; os feitos mostram o que foi feito e os seguintes ficam aguardando.",
     "“Publicar mesmo assim…” abre o campo do motivo na própria tela (sem a janelinha do navegador). “Enviar para revisão” e “Aprovar” também ficam na trilha. Só a tela mudou: o banco continua na v0.12.1."
@@ -658,7 +667,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -726,9 +735,11 @@ async function desenhar(){
   try{
     const [n] = await ler("radar_v_painel", {select:"em_alta,aprovados_sem_site,aguardando_aprovacao"});     // em_alta: as melhores, sem repetição
     E.contagem = {fila:n.em_alta, publicacoes:n.aprovados_sem_site, assuntos:n.aguardando_aprovacao};
+    E.redeCapa = {};
     const html = E.assunto ? await telaAssunto(E.assunto) : await TELAS[E.aba]();
     if(g === GERACAO){ app.innerHTML = moldura(html);
-      const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi); }
+      const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi);
+      montarImagemRede(); }
   }catch(e){ if(g === GERACAO && E.sessao && E.perfil) app.innerHTML = moldura(`<div class="aviso erro">${h(e.message)}</div>`); }
 }
 function telaEntrada(erro){
@@ -853,7 +864,7 @@ const TELAS = {
   async publicacoes(){
     const [regs, aprovados] = await Promise.all([
       ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
-      ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url)",
+      ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url),radar_redes_envios(id,canal,situacao,url,publicado_em)",
         status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"})]);
     const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length && !(c.radar_site_envios || []).some(e => e.situacao === "publicado"));
     // v0.11.0: cada conteúdo aprovado e em que canal ele já está (site hoje; Instagram e Facebook entram depois)
@@ -863,15 +874,22 @@ const TELAS = {
       if(e && e.situacao === "publicado") return `<span class="canal ok">✓ pelo robô</span>${e.url ? `<br>${linkFonte(e.url, "ver no site ↗")}` : ""}`;
       return e && ["autorizado","enviando"].includes(e.situacao) ? `<span class="canal espera">Autorizado — aguardando o robô</span>`
         : e && e.situacao === "erro" ? `<span class="canal erro">Não concluída</span>` : `<span class="canal falta">Falta</span>`; };
-    const emBreve = `<span class="canal breve" title="A integração com esta rede ainda vai ser feita">em breve</span>`;
+    // v0.13.0: Instagram e Facebook (a autorização mais recente que não foi cancelada)
+    const naRede = (c, k) => { const r = [...(c.radar_redes_envios || [])].filter(x => x.canal === k && x.situacao !== "cancelado").sort((x, y) => y.id - x.id)[0];
+      if(!r) return `<span class="canal falta">Falta</span>`;
+      if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}`;
+      return r.situacao === "dispensado" ? `<span class="canal breve">Não vai</span>` : r.situacao === "erro" ? `<span class="canal erro">Não concluída</span>`
+        : `<span class="canal espera">${r.situacao === "enviando" ? "Publicando" : "Autorizado"}</span>`; };
+    const nRede = k => aprovados.filter(c => (c.radar_redes_envios || []).some(x => x.canal === k && x.situacao === "publicado")).length;
     const nSite = aprovados.length - pendentes.length;
     return `<h1>Publicações no site</h1>
       <p class="sub">A publicação é feita nas páginas da Artecon. Aqui fica o registro: o que já foi ao site (com o link e a data) e o que está aprovado esperando.</p>
       <div class="painel"><h2>Onde cada conteúdo já foi publicado</h2>
-        <p class="sub" id="resumo-canais">Site: <b>${nSite}</b> publicado(s) e <b>${pendentes.length}</b> faltando · Instagram e Facebook: em breve.</p>
+        <p class="sub" id="resumo-canais">Site: <b>${nSite}</b> publicado(s) e <b>${pendentes.length}</b> faltando · Instagram: <b>${nRede("instagram")}</b> · Facebook: <b>${nRede("facebook")}</b>.</p>
+        ${ehAdmin() ? `<div class="acoes"><button class="btn peq sec" data-acao="redes-testar">Testar conexão com o Instagram e o Facebook</button></div><div id="redes-resultado"></div>` : ""}
         ${aprovados.length ? `<div class="rolagem"><table id="tab-canais"><tr><th>Conteúdo aprovado</th><th>Site</th><th>Instagram</th><th>Facebook</th></tr>${aprovados.map(c => `
           <tr><td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span></td>
-            <td data-canal="site">${noSite(c)}</td><td data-canal="instagram">${emBreve}</td><td data-canal="facebook">${emBreve}</td></tr>`).join("")}</table></div>`
+            <td data-canal="site">${noSite(c)}</td><td data-canal="instagram">${naRede(c, "instagram")}</td><td data-canal="facebook">${naRede(c, "facebook")}</td></tr>`).join("")}</table></div>`
           : `<p class="sub">Nenhum conteúdo aprovado para publicar.</p>`}</div>
       <div class="painel"><h2>Aprovados ainda não publicados no site</h2>
         ${pendentes.length ? `<div class="rolagem"><table id="tab-pendentes"><tr><th>Conteúdo</th><th>Aprovado em</th><th></th></tr>${pendentes.map(c => `
@@ -1199,8 +1217,9 @@ async function telaAssunto(id){
   cont.sort((x, y) => ehAnalise(x) - ehAnalise(y) || x.id - y.id);
   const jaConvertido = cont.some(c => Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("Feito a partir do texto para análise"));
   const idsCont = cont.map(c => c.id).join(",");
-  const [pubs, envios] = cont.length ? await Promise.all([ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id"}),
-    ler("radar_site_envios", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"})]) : [[], []];
+  const [pubs, envios, redes] = cont.length ? await Promise.all([ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id"}),
+    ler("radar_site_envios", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
+    ler("radar_redes_envios", {select:"id,conteudo_id,canal,situacao,url,erro,autorizado_em,enviado_em,publicado_em", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"})]) : [[], [], []];
   const idsImg = [...new Set(cont.map(c => c.imagem_id).filter(Boolean))];
   const imgs = Object.fromEntries((idsImg.length ? await ler("radar_imagens", {select:"id,dados", id:"in.(" + idsImg.join(",") + ")"}) : []).map(i => [i.id, i.dados]));
   const ed = podeEditar(), des = ed ? "" : " disabled";
@@ -1226,6 +1245,10 @@ async function telaAssunto(id){
   const semRegistro = faltamRegistrar.find(c => envioDe(c)?.situacao === "publicado" && !pubs.some(p => p.conteudo_id === c.id));     // o robô publicou, mas o registro não entrou
   // v0.12.2: trilha de autorização — cinco passos em sequência (mais Instagram e Facebook, em breve); só o passo de agora mostra os botões
   const ultimoAprovado = aprovados.map(c => c.aprovado_em).filter(Boolean).sort().pop();
+  // v0.13.0: Instagram e Facebook depois do site — o conteúdo que já está no site (a legenda leva até ele)
+  const cRede = noSite ? vaoAoSite.find(emDia) : null;
+  const redeDe = canal => cRede && redes.find(r => r.conteudo_id === cRede.id && r.canal === canal && r.situacao !== "cancelado");
+  const redeAgora = cRede ? ["instagram", "facebook"].find(canal => !["publicado","dispensado"].includes(redeDe(canal)?.situacao)) : null;
   const passos = [
     {chave:"fonte", nome:"Fonte", titulo:"Conferir a fonte", etapa:"fonte", feito:pronto,
       nota:pronto ? (liberado ? "liberada sem fonte oficial" : "fundamentação confirmada") : !temTexto ? "sem texto oficial" : !temOficial ? "só fonte não oficial" : conferidasOficiais ? "falta confirmar" : "falta o trecho que comprova",
@@ -1243,8 +1266,11 @@ async function telaAssunto(id){
     {chave:"site", nome:"Site", titulo:"Autorização do site", etapa:"publicar", feito:noSite || foraDoSite,
       nota:noSite ? "publicado" : foraDoSite ? "não vai ao site" : aguardando.length ? "aguardando o robô" : jaRegistrado || baseCaiu ? "rever" : "falta",
       feitoTxt:noSite ? "Publicado no site e registrado." : "O conteúdo aprovado não vai ao site: fica só para o Informativo Mensal."},
-    {chave:"instagram", nome:"Instagram", titulo:"Autorização do Instagram", breve:true},
-    {chave:"facebook", nome:"Facebook", titulo:"Autorização do Facebook", breve:true}];
+    ...["instagram", "facebook"].map(canal => { const r = redeDe(canal), nome = NOME_REDE[canal];
+      return {chave:canal, nome, titulo:"Autorização do " + nome, etapa:"publicar", feito:!!r && ["publicado","dispensado"].includes(r.situacao),
+        nota:!cRede ? "depois do site" : !r ? "falta" : {autorizado:"autorizado", enviando:"publicando", erro:"não concluída", publicado:"publicado", dispensado:"não vai"}[r.situacao] || "falta",
+        feitoTxt:r?.situacao === "publicado" ? `Publicado em ${dataHora(r.publicado_em)}${r.url ? " — " + linkFonte(r.url, "ver no " + nome + " ↗") : "."}` : "Não publicado neste canal.",
+        desfazer:r?.situacao === "dispensado" && ehAdmin() ? `<button class="link" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Desfazer</button>` : ""}; })];
   const ir = (alvo, rotulo, classe = "") => `<button class="btn ${classe}" data-acao="ir" data-alvo="${alvo}">${rotulo}</button>`;
   const semFonte = ehAdmin() ? `<button class="btn perigo" type="button" data-acao="abrir-motivo">Publicar mesmo assim…</button>` : "";
   const paraRevisar = rascunhos[0] || rejeitados[0];
@@ -1271,7 +1297,9 @@ async function telaAssunto(id){
     (paraRevisar ? `<button class="btn" type="button" data-acao="trilha-clicar" data-botao="revisao" data-id="${paraRevisar.id}">Enviar para revisão</button>` : "") + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 2];
   else if(!aprovados.length) prox = ["Aprovar o conteúdo", "O conteúdo está em revisão. Leia com atenção (use “Ver como fica no site”) e clique em “Aprovar” (ou “Rejeitar”).",
     `<button class="btn verde" type="button" data-acao="trilha-clicar" data-botao="aprovar" data-id="${revisando[0].id}">✓ Aprovar</button>` + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 3];
-  else if(noSite || foraDoSite) prox = null;
+  else if(foraDoSite || (noSite && !redeAgora)) prox = null;
+  else if(noSite) prox = proxRede(redeAgora, redeDe(redeAgora), cRede, imgs[cRede.imagem_id], a.categoria, pubs.find(p => p.conteudo_id === cRede.id && !p.versao_anterior)?.url || "",
+                                  redes.find(r => r.conteudo_id === cRede.id && r.canal === redeAgora));
   else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação"), 0];
   else if(!pronto && !temOficial) prox = ["Para o site: incluir o texto oficial", "O conteúdo aprovado já pode entrar no Informativo Mensal. Para publicar no site, inclua o texto da fonte oficial e fundamente.", ir("#sec-texto", "Ir para o texto oficial") + semFonte, 0];
   else if(!pronto && !conferidasOficiais) prox = ["Para o site: fundamentar", "Falta ao menos um trecho conferido em fonte oficial. Selecione o trecho no texto oficial, ou peça à IA.",
@@ -1285,7 +1313,7 @@ async function telaAssunto(id){
   else if(jaRegistrado) prox = ["Atualizar o site e registrar de novo", "O conteúdo foi alterado depois do registro. Atualize a notícia no site da Artecon e registre de novo, para o Radar guardar o texto que está no ar.", ir("#sec-conteudos", "Ir para copiar e registrar"), 4];
   else prox = ["Publicar no site", ehAdmin() ? "Confira a prévia, escolha a categoria e autorize: o robô cadastra a notícia no site em até 15 minutos e registra o link aqui."
     : "O conteúdo está pronto para o site. Falta o administrador autorizar a publicação.", ir("#sec-publicar", "Ir para publicar"), 4];
-  const atual = prox ? prox[3] : ed ? -1 : passos.findIndex(x => !x.breve && !x.feito);
+  const atual = prox ? prox[3] : ed ? -1 : passos.findIndex(x => !x.feito);
   const estado = (x, n) => n === atual && prox ? "agora" : x.feito ? "feito" : n === atual ? "agora" : x.breve ? "breve" : n < atual ? "pendente" : "espera";
   const ROTULO_ESTADO = {feito:"Feito", agora:"Agora", breve:"Em breve", pendente:"Falta", espera:"Aguardando"};
   const corpoPasso = (x, n, st) => st === "feito" ? `<p class="feito-info">${x.feitoTxt}${x.desfazer ? " " + x.desfazer : ""}</p>`
@@ -1293,7 +1321,8 @@ async function telaAssunto(id){
     : st === "agora" ? `<p>${h(x.nota)}.</p>`
     : st === "breve" ? `<p>Em breve. Vai seguir a mesma regra do site: só publica depois da autorização do administrador.</p>`
     : st === "pendente" ? `<p>${h(x.nota)}. ${x.chave === "fonte" ? "Necessário só para o site; o Informativo Mensal não exige." : ""}</p>`
-    : `<p>${x.chave === "site" ? "Precisa da fonte (passo 1) e do conteúdo aprovado (passo 4)." : `Vem depois do passo ${n}.`}</p>`;
+    : `<p>${x.chave === "site" ? "Precisa da fonte (passo 1) e do conteúdo aprovado (passo 4)."
+        : x.chave === "instagram" || x.chave === "facebook" ? (foraDoSite ? "Este conteúdo não vai ao site; as redes ficam de fora." : "Depois que a notícia estiver no site (passo 5).") : `Vem depois do passo ${n}.`}</p>`;
   // uma etapa de cada vez (ou tudo numa página, para quem preferir); abre na etapa que falta fazer
   const tudo = modoTudo();
   if(!["fonte","conteudo","publicar"].includes(E.etapa)) E.etapa = !cont.length && vinc.length ? "fonte" : aprovados.length && !noSite && !foraDoSite && pronto ? "publicar" : "conteudo";
@@ -1320,7 +1349,8 @@ async function telaAssunto(id){
     <ol class="autorizacao" aria-label="Trilha de autorização">${passos.map((x, n) => { const st = estado(x, n);
       return `<li class="passo-a ${st}" data-passo="${x.chave}"${st === "agora" && prox ? ` id="proximo-passo"` : ""}><span class="num">${x.feito ? "✓" : n + 1}</span>
         <div class="cab"><h3>${x.titulo}</h3><span class="estado">${ROTULO_ESTADO[st]}</span></div><div class="corpo">${corpoPasso(x, n, st)}</div></li>`; }).join("")}</ol>
-    ${ed && (noSite || foraDoSite) ? `<div class="proximo fim" id="proximo-passo"><h2>${noSite ? "Concluído: publicado no site e registrado" : "Concluído: conteúdo aprovado, só do Informativo Mensal"}</h2><p style="margin:0">${revisando.length || rascunhos.length ? "Há outro conteúdo deste assunto ainda em rascunho ou em revisão." : "Nada pendente neste assunto."}</p></div>` : ""}
+    ${ed && (foraDoSite || (noSite && !redeAgora)) ? `<div class="proximo fim" id="proximo-passo"><h2>${noSite ? "Concluído: publicado no site" +
+      ["instagram", "facebook"].filter(k => redeDe(k)?.situacao === "publicado").map(k => " e no " + NOME_REDE[k]).join("") : "Concluído: conteúdo aprovado, só do Informativo Mensal"}</h2><p style="margin:0">${revisando.length || rascunhos.length ? "Há outro conteúdo deste assunto ainda em rascunho ou em revisão." : "Nada pendente neste assunto."}</p></div>` : ""}
     ${!tudo ? "" : (pronto ? avisoLiberado : avisoRegistro)}
 
     <nav class="etapas" aria-label="Modo de exibição"><button class="voltar modo" data-acao="modo-tudo" style="margin:0">${tudo ? "Mostrar um passo de cada vez" : "Mostrar tudo numa página"}</button></nav>
@@ -1419,14 +1449,93 @@ async function telaAssunto(id){
           ${revisando.length ? `<br>Há ${revisando.length} conteúdo(s) em revisão esperando o “Aprovar”.` : ""}
           <div class="acoes" style="margin:8px 0 0"><button class="btn peq" data-acao="ir-conteudo" data-id="${(revisando[0] || cont.find(c => !ehAnalise(c)) || cont[0] || {}).id || ""}">Ir para o conteúdo${revisando.length ? " em revisão" : ""}</button></div></div>`
         : !vaoAoSite.length ? `<p class="sub">O conteúdo aprovado está marcado como “não vai ao site”: fica só para o Informativo Mensal.</p>`
-        : (pronto ? avisoLiberado : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id), pronto, a.categoria)).join("")}
+        : (pronto ? avisoLiberado : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id), pronto, a.categoria, redes.filter(r => r.conteudo_id === c.id))).join("")}
     </div>
     </section>
     </div>
     </div>`;
 }
+/* v0.13.0: Instagram e Facebook */
+const NOME_REDE = {instagram:"Instagram", facebook:"Facebook"};
+const situacaoRede = r => !r ? "falta" : {autorizado:"autorizado", enviando:"publicando", erro:"não concluída", publicado:"publicado", dispensado:"não vai"}[r.situacao] || "falta";
+/* O próximo passo da trilha num canal: monta a imagem quadrada e a legenda para o administrador conferir e autorizar. */
+function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
+  const nome = NOME_REDE[canal], adm = ehAdmin(), passo = canal === "instagram" ? 5 : 6;
+  const cancelar = r => adm ? `<button class="btn sec" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Cancelar autorização</button>` : "";
+  if(r?.situacao === "autorizado") return [`Publicar no ${nome}`, `A publicação foi autorizada em ${dataHora(r.autorizado_em)} e ainda não saiu (a Meta pode não estar configurada).`,
+    adm ? `<button class="btn" type="button" data-acao="tentar-rede" data-envio="${r.id}" data-canal="${canal}">Publicar agora</button>` + cancelar(r) : "", passo];
+  if(r?.situacao === "enviando") return [`Publicando no ${nome}…`, `A publicação está saindo (desde ${dataHora(r.enviado_em)}). Recarregue em instantes.`,
+    adm && Date.now() - new Date(r.enviado_em).getTime() > 10 * 60000 ? `<span class="sub">Parada há mais de 10 minutos: confira no ${nome} se saiu antes de cancelar.</span>` + cancelar(r) : "", passo];
+  if(r?.situacao === "erro") return [`Publicação no ${nome} não concluída`, h(r.erro || "A Meta não confirmou a publicação."),
+    adm ? `<button class="btn" type="button" data-acao="tentar-rede" data-envio="${r.id}" data-canal="${canal}">Tentar de novo</button>` + cancelar(r) : "", passo];
+  if(!adm) return [`Publicar no ${nome}`, `Falta o administrador autorizar a publicação no ${nome}.`, "", passo];
+  (E.redeCapa ||= {})[c.id] = {capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};     // por conteúdo: um desenho atrasado não troca a imagem
+  const chave = c.id + ":" + canal, legenda = (E.legendas || {})[chave] ?? legendaRede(c, canal, urlSite, categoria);
+  const caiu = ultima?.situacao === "cancelado" && ultima.erro ? `<div class="aviso alerta">${h(ultima.erro)}</div>` : "";
+  return [`Publicar no ${nome}`, `Confira a imagem e a legenda. Ao autorizar, a publicação sai na hora no ${nome} da Artecon.`,
+    `${caiu}<div class="rede-montagem"><img id="rede-imagem" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem da publicação no ${nome} (montando…)">
+      <div class="rede-legenda"><label for="rede-legenda">Legenda</label><textarea id="rede-legenda" maxlength="2200" data-chave="${chave}">${h(legenda)}</textarea>
+      <span class="sub">${canal === "instagram" ? "No Instagram o link da legenda não é clicável: a legenda indica o link na bio." : "No Facebook o link da legenda é clicável."} Até 2.200 caracteres.</span></div></div>
+    <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}</button>
+      <button class="btn sec" type="button" data-acao="dispensar-rede" data-canal="${canal}" data-id="${c.id}">Não publicar no ${nome}</button></div>`, passo];
+}
+/* Legenda: título, o começo do texto (sem a formatação), o caminho até o site, a fonte e, no Instagram, as hashtags. */
+function legendaRede(c, canal, urlSite, categoria){
+  const linhas = String(c.corpo || "").split("\n").map(l => l.trim())
+    .filter(l => l && !/^(##|\|)/.test(l)).map(l => l.replace(/^[-*]\s+/, "").replace(/\*\*/g, ""));
+  let resumo = "";
+  for(const l of linhas){ if(resumo.length >= 280) break; resumo += (resumo ? " " : "") + l; }
+  if(resumo.length > 600){ const corte = resumo.slice(0, 600), fim = corte.lastIndexOf(". "); resumo = fim > 200 ? corte.slice(0, fim + 1) : corte.trimEnd() + "…"; }
+  const tag = t => "#" + String(t).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+(.)?/g, (_, l) => (l || "").toUpperCase());
+  const cat = CATEGORIA_SITE[categoria];
+  return [c.titulo, resumo,
+    canal === "instagram" ? "Leia a matéria completa no site da Artecon (link na bio)." : urlSite ? "Leia a matéria completa: " + urlSite : "Leia a matéria completa no site da Artecon.",
+    c.fonte_credito ? "Fonte: " + c.fonte_credito : "",
+    canal === "instagram" ? ["#Contabilidade", "#ArteconContabeis", cat ? tag(cat) : ""].filter(Boolean).join(" ") : ""].filter(Boolean).join("\n\n").slice(0, 2200);
+}
+/* Imagem quadrada (1080×1080) para as redes: a capa do conteúdo (ou a capa padrão) no meio, a marca no alto e o site embaixo. */
+async function desenharQuadrado(capa, titulo, rotulo){
+  if(!/^data:image\/(jpeg|png|webp);base64,/.test(String(capa || ""))) capa = (await desenharCapa(titulo, rotulo)).dados;
+  const L = 1080, cv = document.createElement("canvas"); cv.width = L; cv.height = L;
+  const cx = cv.getContext("2d");
+  try{ await Promise.race([document.fonts.load('700 40px "DM Sans"'), new Promise(ok => setTimeout(ok, 1500))]); }catch(e){}
+  const carregar = src => new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
+  const fundo = cx.createLinearGradient(0, 0, L, L); fundo.addColorStop(0, "#011F48"); fundo.addColorStop(1, "#1B5E9B");
+  cx.fillStyle = fundo; cx.fillRect(0, 0, L, L);
+  cx.fillStyle = "#BC151B"; cx.fillRect(0, 0, L * .68, 14); cx.fillStyle = "#00AEEF"; cx.fillRect(L * .68, 0, L * .22, 14); cx.fillStyle = "#FFD700"; cx.fillRect(L * .9, 0, L * .1, 14);
+  cx.textBaseline = "alphabetic"; cx.fillStyle = "#fff"; cx.font = '700 38px "DM Sans", Arial, sans-serif'; cx.fillText("ARTECON INFORMA", 60, 120);
+  const r = String(rotulo || "").toUpperCase(); cx.font = '500 28px "DM Sans", Arial, sans-serif'; cx.fillStyle = "#DCEBF7";
+  cx.fillText(r.length > 48 ? r.slice(0, 47).trimEnd() + "…" : r, 60, 168);
+  const img = await carregar(capa);
+  if(!img || !img.naturalWidth) throw new ErroApi("Não foi possível montar a imagem da publicação.");
+  const alt = Math.min(L * img.naturalHeight / img.naturalWidth, 700), y0 = 210 + (700 - alt) / 2;
+  cx.drawImage(img, 0, y0, L, alt);
+  cx.fillStyle = "#DCEBF7"; cx.font = '500 30px "DM Sans", Arial, sans-serif'; cx.fillText("Leia a matéria completa em", 60, 980);
+  cx.fillStyle = "#fff"; cx.font = '700 44px "DM Sans", Arial, sans-serif'; cx.fillText("www.artecon.cnt.br", 60, 1036);
+  return cv.toDataURL("image/jpeg", 0.88);
+}
+async function montarImagemRede(){
+  const img = $("#rede-imagem[data-pendente]"), d = img && (E.redeCapa || {})[img.dataset.conteudo]; if(!img || !d) return;
+  try{ const dados = await desenharQuadrado(d.capa, d.titulo, d.rotulo);
+    if(img.isConnected){ img.src = dados; img.removeAttribute("data-pendente"); img.alt = img.alt.replace(" (montando…)", ""); } }
+  catch(e){ if(img.isConnected) img.insertAdjacentHTML("afterend", `<div class="aviso erro">${h(e.message || "Não foi possível montar a imagem.")}</div>`); }
+}
+/* Chama a função radar-redes para publicar a autorização (logo depois de autorizar, ou de novo depois de um erro). */
+async function publicarRede(envio, canal){
+  const nome = NOME_REDE[canal] || "canal";
+  recado(`Publicando no ${nome}… pode levar até 1 minuto.`, "aviso");
+  let r;
+  try{ r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"publicar", envio:Number(envio)}, tempo:150000}); }
+  catch(e){ await desenhar();
+    recado(e.status === 404 ? "A função radar-redes ainda não foi instalada no Supabase (veja o LEIAME, v0.13.0). A autorização ficou guardada: publique depois."
+      : e.status === 0 ? `Não deu para confirmar a resposta da publicação. Confira no ${nome} se saiu antes de qualquer coisa (não autorize de novo sem conferir) e recarregue esta tela em alguns minutos.`
+      : e.message, true); return; }
+  await desenhar();
+  if(r?.situacao === "publicado") recado(r.mensagem ? `Publicado no ${nome}. ${r.mensagem}` : `Publicado no ${nome}.`, r.mensagem ? true : undefined);
+  else recado(r?.mensagem || `A publicação no ${nome} não foi concluída.`, true);
+}
 /* O passo 4 de um conteúdo aprovado: prévia, autorização (só o administrador) e o andamento do robô. */
-function blocoPublicar(c, envio, pubs, pronto, categoria){
+function blocoPublicar(c, envio, pubs, pronto, categoria, redes = []){
   const sugerida = CATEGORIA_SITE[categoria] || "";
   const atual = pubs.find(p => !p.texto_mudou && !p.versao_anterior);
   let corpo;
@@ -1448,7 +1557,7 @@ function blocoPublicar(c, envio, pubs, pronto, categoria){
   return `<div class="publicar-item" data-conteudo="${c.id}"><h3>${h(c.titulo)}</h3>
     <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>${corpo}
     <p class="sub canais" style="margin:8px 0 0"><b>Canais:</b> Site — ${atual ? "publicado" : envio && ["autorizado","enviando"].includes(envio.situacao) ? "aguardando o robô" : pubs.length || envio?.situacao === "publicado" ? "já está no site" : "falta"} ·
-      Instagram — em breve · Facebook — em breve</p></div>`;
+      ${["instagram", "facebook"].map(k => NOME_REDE[k] + " — " + situacaoRede(redes.find(r => r.canal === k && r.situacao !== "cancelado"))).join(" · ")}</p></div>`;
 }
 /* Prévia: monta a notícia como ela fica em artecon.cnt.br/news, com o que está digitado agora na tela. */
 function abrirPrevia(id){
@@ -1735,6 +1844,35 @@ const ACOES = {
     if(motivo.length < 10){ recado("Escreva um motivo com pelo menos 10 caracteres.", true); campo?.focus(); return; }
     await rpc("radar_liberar_sem_fundamentacao", {p_assunto:E.assunto, p_motivo:motivo});
     await desenhar(); recado("Publicação liberada. Siga o próximo passo da trilha.", "aviso");
+  },
+  /* v0.13.0: Instagram e Facebook — autorizar e publicar na hora (só o administrador; as funções do banco conferem) */
+  async "autorizar-rede"(el){
+    if(telaSuja()){ recado(avisoSujo(), true); return; }
+    const canal = el.dataset.canal, nome = NOME_REDE[canal], img = $("#rede-imagem"), legenda = ($("#rede-legenda")?.value || "").trim();
+    if(!img || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
+    if(img.dataset.conteudo !== el.dataset.id){ await desenhar(); recado("A tela mudou: confira a imagem de novo e autorize.", true); return; }
+    if(legenda.length < 10){ recado("Escreva a legenda (pelo menos 10 caracteres).", true); $("#rede-legenda")?.focus(); return; }
+    if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem e a legenda vão ao ar como estão na tela.`)) return;
+    const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido});
+    if(E.legendas) delete E.legendas[el.dataset.id + ":" + canal];
+    await publicarRede(envio, canal);
+  },
+  async "tentar-rede"(el){ await publicarRede(el.dataset.envio, el.dataset.canal); },
+  async "dispensar-rede"(el){
+    if(!confirm(`Não publicar este conteúdo no ${NOME_REDE[el.dataset.canal]}? Dá para desfazer depois.`)) return;
+    await rpc("radar_dispensar_rede", {p_conteudo:Number(el.dataset.id), p_canal:el.dataset.canal});
+    await desenhar(); recado(`Combinado: não vai ao ${NOME_REDE[el.dataset.canal]}.`);
+  },
+  async "cancelar-rede"(el){
+    await rpc("radar_cancelar_rede", {p_envio:Number(el.dataset.envio)});
+    await desenhar(); recado("Feito.");
+  },
+  async "redes-testar"(){
+    const d = $("#redes-resultado"); if(d) d.innerHTML = `<p class="sub">Testando… pode levar alguns segundos.</p>`;
+    let r; try{ r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"diagnostico"}, tempo:60000}); }
+    catch(e){ if(d) d.innerHTML = `<div class="aviso erro">${h(e.status === 404 ? "A função radar-redes ainda não foi instalada no Supabase (veja o LEIAME, v0.13.0)." : e.message)}</div>`; return; }
+    const itens = Array.isArray(r.itens) ? r.itens : [];
+    if(d) d.innerHTML = `<ul class="diag">${itens.map(i => `<li>${selo(i.ok ? "OK" : "Falhou", i.ok ? "ok" : "erro")} <b>${h(i.item)}</b><br><span class="sub">${h(i.detalhe)}</span></li>`).join("")}</ul>`;
   },
   /* v0.12.2: "Enviar para revisão" e "Aprovar" da trilha usam os botões do próprio conteúdo (salvam o que estiver digitado) */
   "trilha-clicar"(el){
@@ -2347,7 +2485,7 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar"]);
+  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar"]);
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa
@@ -2382,6 +2520,7 @@ document.addEventListener("submit", ev => {
   executar(FORMS[f.dataset.form], false, f);
 });
 document.addEventListener("input", ev => {
+  if(ev.target.id === "rede-legenda") (E.legendas ||= {})[ev.target.dataset.chave] = ev.target.value;   // a legenda editada sobrevive ao redesenho
   const fc = ev.target.closest?.('form[data-form="conteudo"]');
   if(fc && (ev.target.name === "titulo" || ev.target.name === "corpo") && !ev.target.disabled) guardarRascunho(fc);
   if(ev.target.dataset.filtro !== "fila") return;
