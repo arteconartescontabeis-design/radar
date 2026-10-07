@@ -1525,9 +1525,11 @@ async function publicarRede(envio, canal){
   const nome = NOME_REDE[canal] || "canal";
   recado(`Publicando no ${nome}… pode levar até 1 minuto.`, "aviso");
   let r;
-  try{ r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"publicar", envio:Number(envio)}, tempo:120000}); }
+  try{ r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"publicar", envio:Number(envio)}, tempo:150000}); }
   catch(e){ await desenhar();
-    recado(e.status === 404 ? "A função radar-redes ainda não foi instalada no Supabase (veja o LEIAME, v0.13.0). A autorização ficou guardada: publique depois." : e.message, true); return; }
+    recado(e.status === 404 ? "A função radar-redes ainda não foi instalada no Supabase (veja o LEIAME, v0.13.0). A autorização ficou guardada: publique depois."
+      : e.status === 0 ? `Não deu para confirmar a resposta da publicação. Confira no ${nome} se saiu antes de qualquer coisa (não autorize de novo sem conferir) e recarregue esta tela em alguns minutos.`
+      : e.message, true); return; }
   await desenhar();
   if(r?.situacao === "publicado") recado(r.mensagem ? `Publicado no ${nome}. ${r.mensagem}` : `Publicado no ${nome}.`, r.mensagem ? true : undefined);
   else recado(r?.mensagem || `A publicação no ${nome} não foi concluída.`, true);
