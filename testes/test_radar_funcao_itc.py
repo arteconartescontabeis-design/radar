@@ -170,8 +170,13 @@ def test_sem_boletim_registra_que_a_leitura_aconteceu(itc):
 def test_so_o_administrador_ou_a_agenda_com_a_chave_certa(itc):
     assert pedir(uid=EDITOR)[0] == 403
     assert pedir(cab={})[0] == 401
-    # no banco de teste não há Vault: nenhuma chave confere
-    assert pedir(cab={"x-radar-agenda": "a" * 64})[0] == 401
+    # no banco de teste não há Vault: nenhuma chave confere. A conferência chega ao banco com a chave interna só no apikey
+    # (v0.14.2: se ela fosse como "Authorization: Bearer", o Supabase recusaria e a agenda das 02h55 nunca passaria daqui)
+    ESTADO["chaves"] = []
+    status, r = pedir(cab={"x-radar-agenda": "a" * 64})
+    assert status == 401 and r["message"] == "Chave da agenda não confere.", r
+    assert [c for c in ESTADO["chaves"] if c[0] == "/rest/v1/rpc/radar_itc_conferir_agenda"] == [
+        ("/rest/v1/rpc/radar_itc_conferir_agenda", SECRETA[:10], "")]
     assert ESTADO["graph"] == []
 
 
