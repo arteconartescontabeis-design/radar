@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.14.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.14.3.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.14.0.sql
+-- Reversão: radar-reversao-v0.14.3.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.14.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.14.3', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -819,6 +819,8 @@ $$;
 -- Aprovação: só pessoa (admin/editor); texto alterado depois de aprovado volta para revisão
 create or replace function public.radar_fn_conteudo_aprovacao() returns trigger
 language plpgsql security definer set search_path = public as $$
+declare
+  v_marcas text;
 begin
   if tg_op = 'UPDATE' and new.assunto_id is distinct from old.assunto_id then
     raise exception 'RADAR021: um conteúdo não pode ser transferido para outro assunto'
@@ -846,6 +848,11 @@ begin
     if coalesce(new.avisos_ia->>0, '') like 'TEXTO PARA ANÁLISE%' then
       raise exception 'RADAR023: texto para análise (escrito a partir de fonte não oficial) não pode ser aprovado; inclua o texto oficial e gere ou escreva um conteúdo novo'
         using errcode = 'P0001';
+    end if;
+    -- v0.14.3: ponto marcado com [VERIFICAR] não vai ao leitor
+    v_marcas := public.radar_marcas_verificar(coalesce(new.titulo, '') || E'\n' || coalesce(new.corpo, ''));
+    if v_marcas is not null then
+      raise exception '%', v_marcas using errcode = 'P0001';
     end if;
     if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
       raise exception 'RADAR020: a aprovação exige um usuário com perfil de editor ou administrador (o robô e a IA não aprovam)'
@@ -913,6 +920,19 @@ begin
   end if;
   perform set_config('radar.liberando', '', true);
 end $$;
+
+-- v0.14.3: marcas [VERIFICAR …] que a IA deixa onde falta conferir uma informação. Enquanto houver alguma no título, no texto
+-- ou na legenda, nada é aprovado nem publicado. Devolve a mensagem com cada marca encontrada (NULL quando não há nenhuma).
+create or replace function public.radar_marcas_verificar(p_texto text) returns text
+language sql immutable set search_path = public as $$
+  select case when count(*) = 0 then null
+    else 'RADAR139: resolva antes de liberar: ' || count(*) || ' ponto(s) marcado(s) com [VERIFICAR] — ' ||
+         string_agg('"' || left(regexp_replace(m[1], '\s+', ' ', 'g'), 160) || '"', '; ') ||
+         '. Troque cada marca pela informação conferida (ou tire o trecho), salve e tente de novo.'
+  end
+  from regexp_matches(coalesce(p_texto, ''), '(\[[\s\u00a0]*verificar[^]\n]{0,250}\]?)', 'gi') as m
+$$;
+revoke all on function public.radar_marcas_verificar(text) from public, anon, authenticated, service_role;
 
 -- v0.14.0: tira do texto as linhas que só avisam a origem ("este informativo é baseado em material de fonte não oficial",
 -- "Fonte não oficial: boletim X"): esse aviso é interno (fica em avisos_ia), não vai para o leitor. Parágrafo que fala de
@@ -1201,6 +1221,10 @@ begin
   if length(btrim(coalesce(p_categoria, ''))) not between 2 and 80 then
     raise exception 'RADAR115: escolha a categoria do site' using errcode = 'P0001';
   end if;
+  v_pendencia := public.radar_marcas_verificar(coalesce(v_c.titulo, '') || E'\n' || coalesce(v_c.corpo, ''));   -- v0.14.3
+  if v_pendencia is not null then
+    raise exception '%', v_pendencia using errcode = 'P0001';
+  end if;
   v_pendencia := public.radar_pendencia_assunto(v_c.assunto_id);
   if v_pendencia is not null then
     raise exception '%', v_pendencia using errcode = 'P0001';
@@ -1289,6 +1313,11 @@ begin
   if length(btrim(coalesce(p_legenda, ''))) not between 10 and 2200 then
     raise exception 'RADAR134: a legenda precisa ter de 10 a 2.200 caracteres' using errcode = 'P0001';
   end if;
+  -- v0.14.3: nem na legenda nem no texto do site pode sobrar ponto marcado com [VERIFICAR]
+  v_pendencia := public.radar_marcas_verificar(coalesce(p_legenda, '') || E'\n' || coalesce(v_c.titulo, '') || E'\n' || coalesce(v_c.corpo, ''));
+  if v_pendencia is not null then
+    raise exception '%', v_pendencia using errcode = 'P0001';
+  end if;
   if p_imagem is null or p_imagem not like 'data:image/jpeg;base64,%' or length(p_imagem) > 3000000 then
     raise exception 'RADAR135: falta a imagem (JPEG) da publicação' using errcode = 'P0001';
   end if;
@@ -1366,7 +1395,9 @@ begin
      where id = p_envio;
     return jsonb_build_object('cancelado', true);
   end if;
-  v_pendencia := public.radar_pendencia_assunto(v_c.assunto_id);
+  v_pendencia := coalesce(public.radar_pendencia_assunto(v_c.assunto_id),
+                           -- v0.14.3: autorização antiga (de antes da trava) com [VERIFICAR] na legenda ou no texto também não sai
+                           public.radar_marcas_verificar(coalesce(v_e.legenda, '') || E'\n' || coalesce(v_c.titulo, '') || E'\n' || coalesce(v_c.corpo, '')));
   if v_pendencia is not null then
     update public.radar_redes_envios set situacao = 'erro', erro = left(v_pendencia, 1000), atualizado_em = now() where id = p_envio;
     return jsonb_build_object('erro', v_pendencia);
@@ -2513,7 +2544,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.14.0).
+-- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.14.3).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

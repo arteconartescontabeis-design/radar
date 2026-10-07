@@ -687,7 +687,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.14.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.14.3"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1146,7 +1146,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (22, 6, 8, 6, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.14.0", [], 22)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.14.3", [], 22)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1998,7 +1998,7 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.14.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.14.3", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2028,7 +2028,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.14.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.14.3", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -2458,7 +2458,10 @@ def test_texto_para_analise_vira_texto_para_publicar_so_com_a_publicacao_liberad
     assert (st, fora, corpo) == ("rascunho", False, "Texto da IA [VERIFICAR: prazo].")
     assert avisos[0].startswith("Feito a partir do texto para análise") and "[VERIFICAR]" in avisos[1] and len(avisos) == 2
     limpo.execute("update radar_conteudos set status = 'em_revisao' where id = %s", (novo,))
-    assert aprovar(novo, ADMIN) is not None                                                 # a cópia se aprova normalmente
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR139"):                      # v0.14.3: com a marca, não aprova
+        aprovar(novo, ADMIN)
+    limpo.execute("update radar_conteudos set corpo = 'Texto da IA, prazo conferido.' where id = %s", (novo,))
+    assert aprovar(novo, ADMIN) is not None                                                 # resolvida a marca, aprova normalmente
     lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (novo,)).fetchone()[0]
     with como("authenticated", ADMIN) as k:
         assert k.execute("select radar_autorizar_site(%s, 'Notícias', %s)", (novo, lido)).fetchone()[0] > 0
@@ -2593,3 +2596,77 @@ def test_verificacao_fica_no_assunto_e_a_equipe_le(limpo):
             c.execute("update radar_assuntos set verificacao = '[1, 2]' where id = %s", (a,))
     with como("authenticated", LEITOR) as c:
         assert c.execute("select verificacao->>'situacao' from radar_assuntos where id = %s", (a,)).fetchone()[0] == "confirmada"
+
+
+# ------------------------------------------------ v0.14.3: ponto marcado com [VERIFICAR] não é aprovado nem publicado
+MARCADO = "O governo não publicou, até [VERIFICAR: sexta-feira, dia 2 de outubro de 2026], a MP. Falta ainda [verificar a alíquota]."
+
+
+def test_marca_verificar_trava_a_aprovacao_e_a_mensagem_lista_cada_marca(limpo):
+    a, c1 = cenario_publicavel(limpo)
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s", (MARCADO, c1))
+    with como("authenticated", EDITOR) as c, pytest.raises(
+            psycopg.errors.RaiseException,
+            match=r"RADAR139: resolva antes de liberar: 2 ponto\(s\) .*\"\[VERIFICAR: sexta-feira, dia 2 de outubro de 2026\]\"; \"\[verificar a alíquota\]\""):
+        c.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c1,))
+    # no título também conta
+    limpo.execute("update radar_conteudos set corpo = 'Texto conferido do informativo.', titulo = 'Prazo [VERIFICAR data] prorrogado' where id = %s", (c1,))
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match=r"RADAR139: .*1 ponto\(s\).*\[VERIFICAR data\]"):
+        c.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c1,))
+    # colchete que não é marca não atrapalha
+    limpo.execute("update radar_conteudos set titulo = 'Prazo prorrogado', corpo = 'Veja o art. 5º [revogado] e o anexo [I].' where id = %s", (c1,))
+    assert aprovar(c1) == (EDITOR,)
+
+
+def test_conteudo_aprovado_com_marca_nao_vai_ao_site_nem_as_redes(limpo):
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    registrar_site(c1)
+    # aprovado antes da trava, com a marca no texto (o gatilho fica de fora só para montar o cenário antigo)
+    limpo.execute("set session_replication_role = replica")
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s", (MARCADO, c1))
+    limpo.execute("set session_replication_role = origin")
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c1,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match=r"RADAR139: .*2 ponto\(s\)"):
+            c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s)", (c1, LEGENDA, IMG, lido))
+    limpo.execute("set session_replication_role = replica")
+    limpo.execute("update radar_conteudos set corpo = 'Texto conferido do informativo.' where id = %s", (c1,))
+    limpo.execute("set session_replication_role = origin")
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c1,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match=r"RADAR139: .*\[VERIFICAR: link\]"):   # a legenda também
+            c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s)", (c1, LEGENDA + " [VERIFICAR: link]", IMG, lido))
+        assert c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s)", (c1, LEGENDA, IMG, lido)).fetchone()[0]
+    assert limpo.execute("select count(*) from radar_redes_envios where conteudo_id = %s", (c1,)).fetchone()[0] == 1
+
+
+def test_site_nao_aceita_autorizacao_de_conteudo_com_marca(limpo):
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    limpo.execute("set session_replication_role = replica")
+    limpo.execute("update radar_conteudos set titulo = 'Prazo [VERIFICAR] prorrogado' where id = %s", (c1,))
+    limpo.execute("set session_replication_role = origin")
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c1,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match=r"RADAR139: .*\[VERIFICAR\]"):
+        c.execute("select radar_autorizar_site(%s, 'Tributário', %s)", (c1, lido))
+    assert limpo.execute("select count(*) from radar_site_envios where conteudo_id = %s", (c1,)).fetchone()[0] == 0
+
+
+def test_autorizacao_antiga_com_marca_nao_sai_na_nova_tentativa(limpo):
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    registrar_site(c1)
+    with como("authenticated", ADMIN) as c:
+        envio = c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
+    # autorizada antes da trava, com a marca na legenda (cenário montado por fora)
+    limpo.execute("update radar_redes_envios set legenda = legenda || ' [VERIFICAR: prazo]' where id = %s", (envio,))
+    with como("service_role") as c:
+        r = c.execute("select radar_rede_iniciar(%s)", (envio,)).fetchone()[0]
+    assert r["erro"].startswith("RADAR139:") and "[VERIFICAR: prazo]" in r["erro"]
+    assert limpo.execute("select situacao from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == "erro"
+
+
+def test_marca_com_espaco_especial_tambem_conta(limpo):
+    assert limpo.execute("select radar_marcas_verificar(%s)", ("Prazo [\u00a0VERIFICAR data] ok",)).fetchone()[0].startswith("RADAR139")
+    assert limpo.execute("select radar_marcas_verificar('Texto [verificado] e [Verificação] ok')").fetchone()[0] is None
