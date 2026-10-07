@@ -283,7 +283,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.13.0"
+    assert pagina.inner_text(".versao") == "v0.14.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -1449,8 +1449,8 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
-    # a v0.11.0 mudou a função de IA (texto para análise): a v0.10.0 passa a ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.10.0', FUNCAO_MINIMA), versaoMenor('0.11.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    # a v0.14.0 mudou a função de IA (verificação em fontes oficiais): a v0.13.0 passa a ser apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.13.0', FUNCAO_MINIMA), versaoMenor('0.14.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2274,7 +2274,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.13.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.14.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3467,3 +3467,49 @@ def test_redes_editor_ve_o_passo_sem_os_botoes(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     abrir_por_id(pagina, a)
     assert "Falta o administrador autorizar" in pagina.inner_text(".autorizacao li.agora") and pagina.locator("#rede-legenda").count() == 0
+
+
+# ------------------------------------------------------------ v0.14.0 — verificação em fontes oficiais
+def test_verificacao_em_fontes_oficiais_mostra_o_resultado_e_traz_a_pagina_para_incluir(pagina, limpo, request):
+    limpo.execute("update radar_fontes set oficial = false where slug = 'cgibs-noticias'")
+    request.addfinalizer(lambda: limpo.execute("update radar_fontes set oficial = true where slug = 'cgibs-noticias'"))
+    cap = limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                           select id, 'https://www.cgibs.gov.br/z', 'Boletim: prazo do Simples', 'O prazo de opção pelo Simples foi prorrogado.', md5('z')
+                             from radar_fontes where slug = 'cgibs-noticias' returning id""").fetchone()[0]
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Prazo do Simples prorrogado') returning id").fetchone()[0]
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, cap))
+    oficial = "https://www.gov.br/receitafederal/pt-br/assuntos/noticias/ultimas-noticias/prazo-simples"
+    verif = {"situacao": "confirmada", "resumo": "A Receita Federal confirma a prorrogação até 15 de outubro.", "buscas": 2,
+             "em": "2026-10-07T10:00:00Z", "divergencias": [],
+             "fontes": [{"url": oficial, "titulo": "Receita prorroga prazo", "orgao": "Receita Federal", "data": "05/10/2026", "confirma": "Prazo até 15/10."}]}
+    pedidos = []
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        pedidos.append(corpo)
+        if corpo["acao"] == "verificar":
+            limpo.execute("update radar_assuntos set verificacao = %s, verificado_em = now() where id = %s", (json.dumps(verif), a))
+            return rota.fulfill(status=200, content_type="application/json", body=json.dumps({"verificacao": verif}))
+        rota.fulfill(status=200, content_type="application/json", body=json.dumps(
+            {"url": oficial, "titulo": "Receita prorroga prazo | Gov.br", "data": "2026-10-05", "texto": "O prazo de opção pelo Simples Nacional foi prorrogado até 15 de outubro."}))
+    pagina.route("**/functions/v1/radar-ia", responder)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Prazo do Simples prorrogado")
+    assert pagina.locator(".autorizacao li.agora .btn", has_text="Verificar em fontes oficiais").count() == 1
+    pagina.locator(".autorizacao li.agora .btn", has_text="Verificar em fontes oficiais").click()
+    pagina.wait_for_selector("#sec-verificacao >> text=Receita Federal")
+    painel = pagina.inner_text("#sec-verificacao")
+    assert "confirmada" in painel and "A Receita Federal confirma" in painel and "2 busca(s)" in painel
+    assert pagina.locator(f"#sec-verificacao a[href='{oficial}']").count() == 1
+    assert "Verificação na internet: confirmada" in pagina.inner_text("#base-texto")
+    pagina.click("text=Incluir como texto oficial")
+    pagina.wait_for_function("() => (document.querySelector('#to-texto')?.value || '').includes('prorrogado até 15')")
+    assert pagina.input_value("#to-url") == oficial and pagina.input_value("#to-titulo") == "Receita prorroga prazo"
+    assert pagina.input_value("#to-data") == "2026-10-05"
+    rfb = limpo.execute("select id from radar_fontes where slug = 'rfb-noticias'").fetchone()[0]
+    assert pagina.input_value("#to-fonte") == str(rfb)                         # a fonte do mesmo site, de caminho mais parecido
+    assert [p["acao"] for p in pedidos] == ["verificar", "pagina"] and pedidos[1]["url"] == oficial
+    pagina.locator("#form-texto-oficial button", has_text="Incluir texto oficial").click()
+    pagina.wait_for_selector("text=Texto oficial incluído")
+    assert limpo.execute("""select count(*) from radar_assunto_capturas ac join radar_capturas c on c.id = ac.captura_id
+                            where ac.assunto_id = %s and c.url = %s""", (a, oficial)).fetchone()[0] == 1

@@ -60,7 +60,9 @@ FORMATOS = {
         "Comece com um parágrafo de abertura que diga quem decidiu o quê e para quando (sem subtítulo). Depois, de 2 a 5 seções com subtítulos curtos e específicos do tema "
         "(linhas iniciadas por '## ', por exemplo 'Confira os principais prazos', 'Quem pode aderir', 'Como funciona'), com parágrafos curtos. "
         "Prazos, condições e modalidades vão em lista ('- '), com o termo ou a data inicial em **negrito** seguido de dois-pontos. Destaque em **negrito** datas-limite e valores. "
-        "Encerre com a seção '## Análise Artecon'."),
+        "Encerre com a seção '## Análise Artecon': em 2 a 4 parágrafos curtos (ou uma lista curta), diga quem é afetado e de que forma, "
+        "o que a empresa deve conferir ou providenciar e até quando, o risco de não agir e quando vale procurar a Artecon. "
+        "Não repita a notícia, não use frases genéricas e não comente a origem da informação."),
     "artigo": ("ARTIGO TÉCNICO: aprofundado, de 3.500 a 7.000 caracteres, com a mesma organização do informativo (abertura, seções temáticas, "
                "Análise Artecon) e, quando o texto oficial permitir, exemplos."),
 }

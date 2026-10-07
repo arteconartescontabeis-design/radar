@@ -687,7 +687,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.13.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.14.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1146,7 +1146,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (22, 6, 8, 6, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.13.0", [], 22)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.14.0", [], 22)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1998,7 +1998,7 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.13.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.14.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2028,7 +2028,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.13.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.14.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -2566,3 +2566,29 @@ def test_redes_cancelar_e_dispensado_desfeito(limpo):
         c.execute("select radar_rede_iniciar(%s)", (outro,))
         c.execute("select radar_rede_concluir(%s, false, null, null, %s, 'falhou')", (outro, "https://x.co/" + "a" * 600))
     assert limpo.execute("select imagem, imagem_url from radar_redes_envios where id = %s", (outro,)).fetchone() == (IMG, None)
+
+
+# ------------------------------------------------ v0.14.0: verificação em fontes oficiais e textos sem aviso de origem
+def test_transformar_analise_tira_o_aviso_de_fonte_nao_oficial_do_texto(limpo):
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Boletim com aviso') returning id").fetchone()[0]
+    corpo = ("*Este informativo é baseado em material de fonte não oficial e precisa ser conferido.*\n\n"
+             "O prazo foi prorrogado.\n\nFonte NÃO-oficial: boletim ITC\n\n\n## Análise Artecon\nOrganize os documentos.")
+    c = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia, fora_do_site)
+                         values (%s, 'flash', 'Boletim', %s, 'ia', 'm', 'rascunho', '["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC)."]', true)
+                         returning id""", (a, corpo)).fetchone()[0]
+    with como("authenticated", ADMIN) as k:
+        k.execute("select radar_liberar_sem_fundamentacao(%s, 'Autorizado pelo responsável técnico')", (a,))
+        novo = k.execute("select radar_converter_analise(%s)", (c,)).fetchone()[0]
+    copia = limpo.execute("select corpo from radar_conteudos where id = %s", (novo,)).fetchone()[0]
+    assert copia == "O prazo foi prorrogado.\n\n## Análise Artecon\nOrganize os documentos."
+    assert limpo.execute("select corpo from radar_conteudos where id = %s", (c,)).fetchone()[0] == corpo   # o original fica como estava
+
+
+def test_verificacao_fica_no_assunto_e_a_equipe_le(limpo):
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Verificado') returning id").fetchone()[0]
+    with como("authenticated", EDITOR) as c:                                    # a função de IA grava com o token de quem pediu
+        c.execute("""update radar_assuntos set verificacao = '{"situacao": "confirmada", "fontes": []}', verificado_em = now() where id = %s""", (a,))
+        with pytest.raises(psycopg.errors.CheckViolation):
+            c.execute("update radar_assuntos set verificacao = '[1, 2]' where id = %s", (a,))
+    with como("authenticated", LEITOR) as c:
+        assert c.execute("select verificacao->>'situacao' from radar_assuntos where id = %s", (a,)).fetchone()[0] == "confirmada"
