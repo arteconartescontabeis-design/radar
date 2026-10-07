@@ -426,6 +426,13 @@ etapa, a ação é barrada com o aviso de onde está a pendência.
 Os passos do alto funcionam também pelo teclado. "Mostrar tudo numa página" volta ao formato
 anterior e a escolha fica guardada no navegador.
 
+**Trilha de autorização (v0.12.2).** No alto do assunto ficam os passos numerados — 1 Fonte, 2 Texto,
+3 Revisão, 4 Aprovar, 5 Site (Instagram e Facebook aparecem como "em breve") — e, abaixo, a trilha com
+um passo de cada vez: o passo de **Agora** tem os botões (por exemplo "Enviar para revisão", "✓ Aprovar",
+"Transformar em texto para publicar", "Ir para publicar"); os **Feitos** dizem o que foi feito (a liberação
+sem fonte oficial mostra o motivo e, para o administrador, "Desfazer"); os seguintes ficam **Aguardando**.
+"Publicar mesmo assim…" abre o campo do motivo na própria tela (mínimo de 10 caracteres).
+
 ### Imagem de capa (v0.6.0)
 
 Todo conteúdo novo (escrito pela equipe ou gerado pela IA) recebe uma capa de 1200 × 630
