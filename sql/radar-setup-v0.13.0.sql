@@ -517,6 +517,8 @@ create or replace function public.radar_fn_auditar() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   v_reg jsonb;
+  -- v0.13.0: a imagem da publicação nas redes (até 3 MB) não vai para a trilha; ficam quem, quando, canal, legenda e link
+  v_tira text[] := case when tg_table_name = 'radar_redes_envios' then array['imagem'] else array[]::text[] end;
 begin
   if tg_op = 'DELETE' then v_reg := to_jsonb(old); else v_reg := to_jsonb(new); end if;
   -- atualização que só mexe nos campos de saúde/relógio (feita pelo próprio banco
@@ -530,8 +532,8 @@ begin
   values (tg_table_name,
           coalesce(v_reg->>'id', v_reg->>'user_id', v_reg->>'slug', v_reg->>'chave', '?'),
           tg_op, auth.uid(),
-          case when tg_op <> 'INSERT' then to_jsonb(old) end,
-          case when tg_op <> 'DELETE' then to_jsonb(new) end);
+          case when tg_op <> 'INSERT' then to_jsonb(old) - v_tira end,
+          case when tg_op <> 'DELETE' then to_jsonb(new) - v_tira end);
   if tg_op = 'DELETE' then return old; end if;
   return new;
 end $$;
@@ -1364,16 +1366,19 @@ begin
 end $$;
 
 -- Resultado do envio. A imagem guardada é apagada quando já está no armazenamento público (fica o link).
+-- "erro" só quando a Meta recusou com certeza (pode tentar de novo); se não deu para saber se saiu, a função deixa "enviando".
 create or replace function public.radar_rede_concluir(p_envio bigint, p_ok boolean, p_post_id text, p_url text, p_imagem_url text, p_erro text)
 returns boolean language plpgsql security definer set search_path = public as $$
+declare
+  v_img text := case when p_imagem_url ~ '^https?://[!-~]+$' and length(p_imagem_url) <= 500 then p_imagem_url end;
 begin
   update public.radar_redes_envios
      set situacao = case when p_ok then 'publicado' else 'erro' end,
          publicado_em = case when p_ok then now() end,
          post_id = case when p_ok then left(p_post_id, 100) end,
          url = case when p_ok and p_url ~ '^https://[!-~]+$' and length(p_url) <= 500 then p_url end,
-         imagem_url = coalesce(case when p_imagem_url ~ '^https?://[!-~]+$' and length(p_imagem_url) <= 500 then p_imagem_url end, imagem_url),
-         imagem = case when coalesce(case when p_imagem_url ~ '^https?://[!-~]+$' then p_imagem_url end, imagem_url) is not null then null else imagem end,
+         imagem_url = coalesce(v_img, imagem_url),
+         imagem = case when coalesce(v_img, imagem_url) is not null then null else imagem end,
          erro = case when p_ok then null else left(coalesce(nullif(btrim(p_erro), ''), 'Erro sem descrição.'), 1000) end,
          atualizado_em = now()
    where id = p_envio and situacao = 'enviando';

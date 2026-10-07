@@ -2555,3 +2555,14 @@ def test_redes_cancelar_e_dispensado_desfeito(limpo):
     with como("authenticated", ADMIN) as c:                                                 # parada há mais de 10 min: cancela
         assert c.execute("select radar_cancelar_rede(%s)", (envio,)).fetchone()[0] is True
     assert limpo.execute("select situacao, imagem from radar_redes_envios where id = %s", (envio,)).fetchone() == ("cancelado", None)
+    # a imagem (até 3 MB) não vai para a trilha de auditoria; quem autorizou e a legenda vão
+    trilha = limpo.execute("select antes, depois from radar_auditoria where tabela = 'radar_redes_envios'").fetchall()
+    assert trilha and all("imagem" not in (x or {}) for par in trilha for x in par)
+    assert any((d or {}).get("legenda") == LEGENDA for _, d in trilha)
+    # link da imagem inválido (longo demais) não apaga a imagem guardada
+    with como("authenticated", ADMIN) as c:
+        outro = c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
+    with como("service_role") as c:
+        c.execute("select radar_rede_iniciar(%s)", (outro,))
+        c.execute("select radar_rede_concluir(%s, false, null, null, %s, 'falhou')", (outro, "https://x.co/" + "a" * 600))
+    assert limpo.execute("select imagem, imagem_url from radar_redes_envios where id = %s", (outro,)).fetchone() == (IMG, None)

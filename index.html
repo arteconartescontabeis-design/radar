@@ -667,7 +667,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -735,7 +735,7 @@ async function desenhar(){
   try{
     const [n] = await ler("radar_v_painel", {select:"em_alta,aprovados_sem_site,aguardando_aprovacao"});     // em_alta: as melhores, sem repetição
     E.contagem = {fila:n.em_alta, publicacoes:n.aprovados_sem_site, assuntos:n.aguardando_aprovacao};
-    E.redeCapa = null;
+    E.redeCapa = {};
     const html = E.assunto ? await telaAssunto(E.assunto) : await TELAS[E.aba]();
     if(g === GERACAO){ app.innerHTML = moldura(html);
       const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi);
@@ -1469,11 +1469,12 @@ function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
   if(r?.situacao === "erro") return [`Publicação no ${nome} não concluída`, h(r.erro || "A Meta não confirmou a publicação."),
     adm ? `<button class="btn" type="button" data-acao="tentar-rede" data-envio="${r.id}" data-canal="${canal}">Tentar de novo</button>` + cancelar(r) : "", passo];
   if(!adm) return [`Publicar no ${nome}`, `Falta o administrador autorizar a publicação no ${nome}.`, "", passo];
-  E.redeCapa = {conteudo:c.id, capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};
+  (E.redeCapa ||= {})[c.id] = {capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};     // por conteúdo: um desenho atrasado não troca a imagem
+  const chave = c.id + ":" + canal, legenda = (E.legendas || {})[chave] ?? legendaRede(c, canal, urlSite, categoria);
   const caiu = ultima?.situacao === "cancelado" && ultima.erro ? `<div class="aviso alerta">${h(ultima.erro)}</div>` : "";
   return [`Publicar no ${nome}`, `Confira a imagem e a legenda. Ao autorizar, a publicação sai na hora no ${nome} da Artecon.`,
-    `${caiu}<div class="rede-montagem"><img id="rede-imagem" class="rede-imagem" data-pendente="1" alt="Imagem da publicação no ${nome} (montando…)">
-      <div class="rede-legenda"><label for="rede-legenda">Legenda</label><textarea id="rede-legenda" maxlength="2200">${h(legendaRede(c, canal, urlSite, categoria))}</textarea>
+    `${caiu}<div class="rede-montagem"><img id="rede-imagem" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem da publicação no ${nome} (montando…)">
+      <div class="rede-legenda"><label for="rede-legenda">Legenda</label><textarea id="rede-legenda" maxlength="2200" data-chave="${chave}">${h(legenda)}</textarea>
       <span class="sub">${canal === "instagram" ? "No Instagram o link da legenda não é clicável: a legenda indica o link na bio." : "No Facebook o link da legenda é clicável."} Até 2.200 caracteres.</span></div></div>
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}</button>
       <button class="btn sec" type="button" data-acao="dispensar-rede" data-canal="${canal}" data-id="${c.id}">Não publicar no ${nome}</button></div>`, passo];
@@ -1514,7 +1515,7 @@ async function desenharQuadrado(capa, titulo, rotulo){
   return cv.toDataURL("image/jpeg", 0.88);
 }
 async function montarImagemRede(){
-  const img = $("#rede-imagem[data-pendente]"), d = E.redeCapa; if(!img || !d) return;
+  const img = $("#rede-imagem[data-pendente]"), d = img && (E.redeCapa || {})[img.dataset.conteudo]; if(!img || !d) return;
   try{ const dados = await desenharQuadrado(d.capa, d.titulo, d.rotulo);
     if(img.isConnected){ img.src = dados; img.removeAttribute("data-pendente"); img.alt = img.alt.replace(" (montando…)", ""); } }
   catch(e){ if(img.isConnected) img.insertAdjacentHTML("afterend", `<div class="aviso erro">${h(e.message || "Não foi possível montar a imagem.")}</div>`); }
@@ -1528,7 +1529,7 @@ async function publicarRede(envio, canal){
   catch(e){ await desenhar();
     recado(e.status === 404 ? "A função radar-redes ainda não foi instalada no Supabase (veja o LEIAME, v0.13.0). A autorização ficou guardada: publique depois." : e.message, true); return; }
   await desenhar();
-  if(r?.situacao === "publicado") recado(`Publicado no ${nome}.`);
+  if(r?.situacao === "publicado") recado(r.mensagem ? `Publicado no ${nome}. ${r.mensagem}` : `Publicado no ${nome}.`, r.mensagem ? true : undefined);
   else recado(r?.mensagem || `A publicação no ${nome} não foi concluída.`, true);
 }
 /* O passo 4 de um conteúdo aprovado: prévia, autorização (só o administrador) e o andamento do robô. */
@@ -1847,9 +1848,11 @@ const ACOES = {
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const canal = el.dataset.canal, nome = NOME_REDE[canal], img = $("#rede-imagem"), legenda = ($("#rede-legenda")?.value || "").trim();
     if(!img || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
+    if(img.dataset.conteudo !== el.dataset.id){ await desenhar(); recado("A tela mudou: confira a imagem de novo e autorize.", true); return; }
     if(legenda.length < 10){ recado("Escreva a legenda (pelo menos 10 caracteres).", true); $("#rede-legenda")?.focus(); return; }
     if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem e a legenda vão ao ar como estão na tela.`)) return;
     const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido});
+    if(E.legendas) delete E.legendas[el.dataset.id + ":" + canal];
     await publicarRede(envio, canal);
   },
   async "tentar-rede"(el){ await publicarRede(el.dataset.envio, el.dataset.canal); },
@@ -2515,6 +2518,7 @@ document.addEventListener("submit", ev => {
   executar(FORMS[f.dataset.form], false, f);
 });
 document.addEventListener("input", ev => {
+  if(ev.target.id === "rede-legenda") (E.legendas ||= {})[ev.target.dataset.chave] = ev.target.value;   // a legenda editada sobrevive ao redesenho
   const fc = ev.target.closest?.('form[data-form="conteudo"]');
   if(fc && (ev.target.name === "titulo" || ev.target.name === "corpo") && !ev.target.disabled) guardarRascunho(fc);
   if(ev.target.dataset.filtro !== "fila") return;

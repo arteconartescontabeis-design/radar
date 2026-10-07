@@ -46,6 +46,12 @@ class Erro extends Error {
   status: number;
   constructor(status: number, mensagem: string) { super(mensagem); this.status = status; }
 }
+/** Falha depois de o pedido de publicação ter sido enviado sem resposta clara: pode ter saído. Nunca vira "erro" (que deixa
+ *  tentar de novo): a autorização fica "enviando" e a tela pede para conferir na rede antes de qualquer coisa. */
+class Incerto extends Erro {}
+// o Supabase encerra a chamada perto de 150 s: a publicação só é pedida se ainda houver tempo para a resposta chegar
+let INICIO = Date.now();
+const LIMITE_PUBLICAR_MS = 75_000, TEMPO_PUBLICAR_MS = 45_000;
 const responder = (status: number, corpo: unknown) =>
   new Response(JSON.stringify(corpo), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
@@ -87,16 +93,23 @@ function configMeta(canal?: string) {
 }
 
 /** Chama a Graph API. O token vai no corpo/consulta e nunca aparece em mensagem de erro. */
-async function meta(metodo: "GET" | "POST", caminho: string, params: Record<string, string>): Promise<any> {
+async function meta(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, publicacao = false): Promise<any> {
   const c = configMeta("facebook");
   const p = new URLSearchParams({ ...params, access_token: c.token });
+  const tempo = publicacao ? TEMPO_PUBLICAR_MS : metodo === "GET" ? 10_000 : 30_000;
+  const incerto = () => new Incerto(504, "A Meta não respondeu se a publicação saiu. Confira na rede antes de qualquer coisa: " +
+    "se saiu, não publique de novo; se não saiu, espere 10 minutos, cancele a autorização e autorize de novo.");
   let r: Response;
   try {
     r = metodo === "GET"
-      ? await fetch(`${GRAPH}/${caminho}?${p}`, { signal: AbortSignal.timeout(30_000) })
-      : await fetch(`${GRAPH}/${caminho}`, { method: "POST", body: p, signal: AbortSignal.timeout(60_000),
+      ? await fetch(`${GRAPH}/${caminho}?${p}`, { signal: AbortSignal.timeout(tempo) })
+      : await fetch(`${GRAPH}/${caminho}`, { method: "POST", body: p, signal: AbortSignal.timeout(tempo),
                                              headers: { "Content-Type": "application/x-www-form-urlencoded" } });
-  } catch { throw new Erro(504, "Não foi possível falar com a Meta agora. Tente de novo em alguns minutos."); }
+  } catch {
+    if (publicacao) throw incerto();
+    throw new Erro(504, "Não foi possível falar com a Meta agora. Tente de novo em alguns minutos.");
+  }
+  if (publicacao && r.status >= 500) throw incerto();               // erro do lado da Meta: não dá para saber se saiu
   const d: any = await r.json().catch(() => ({}));
   if (!r.ok || d?.error) {
     const e = d?.error ?? {};
@@ -136,18 +149,22 @@ async function enviarImagem(dataUrl: string, nome: string): Promise<string> {
 
 // ------------------------------------------------------------------ publicar
 const dormir = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+const aindaDaTempo = () => {
+  if (Date.now() - INICIO > LIMITE_PUBLICAR_MS) throw new Erro(504, "A Meta demorou para preparar a publicação. Nada foi publicado: tente de novo.");
+};
 
 async function publicarInstagram(imagemUrl: string, legenda: string) {
   const c = configMeta("instagram");
   const cont = await meta("POST", `${c.ig}/media`, { image_url: imagemUrl, caption: legenda });
-  for (let t = 0; t * PASSO_IG_MS <= ESPERA_IG_MS; t++) {
+  for (let t = 0; t * PASSO_IG_MS <= ESPERA_IG_MS && Date.now() - INICIO < LIMITE_PUBLICAR_MS; t++) {
     const s = await meta("GET", cont.id, { fields: "status_code" });
     if (s.status_code === "FINISHED") break;
     if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new Erro(502, "O Instagram não aceitou a imagem (contêiner com erro).");
     if ((t + 1) * PASSO_IG_MS > ESPERA_IG_MS) throw new Erro(504, "O Instagram demorou para processar a imagem. Tente de novo.");
     await dormir(PASSO_IG_MS);
   }
-  const pub = await meta("POST", `${c.ig}/media_publish`, { creation_id: cont.id });
+  aindaDaTempo();
+  const pub = await meta("POST", `${c.ig}/media_publish`, { creation_id: cont.id }, true);
   let url = "";
   try { url = (await meta("GET", pub.id, { fields: "permalink" })).permalink ?? ""; } catch { /* o post saiu; o link é só conveniência */ }
   return { post_id: String(pub.id), url };
@@ -155,7 +172,8 @@ async function publicarInstagram(imagemUrl: string, legenda: string) {
 
 async function publicarFacebook(imagemUrl: string, legenda: string) {
   const c = configMeta("facebook");
-  const pub = await meta("POST", `${c.pagina}/photos`, { url: imagemUrl, message: legenda });
+  aindaDaTempo();
+  const pub = await meta("POST", `${c.pagina}/photos`, { url: imagemUrl, message: legenda }, true);
   const post = String(pub.post_id ?? pub.id);
   let url = "";
   try { url = (await meta("GET", post, { fields: "permalink_url" })).permalink_url ?? ""; } catch { /* idem */ }
@@ -179,10 +197,15 @@ async function publicar(envio: number) {
   try {
     if (!imagemUrl) imagemUrl = await enviarImagem(e.imagem, `${e.conteudo_id}-${e.canal}-${e.id}.jpg`);
     const r = e.canal === "instagram" ? await publicarInstagram(imagemUrl, e.legenda) : await publicarFacebook(imagemUrl, e.legenda);
-    await banco(servico, "POST", "rpc/radar_rede_concluir",
-                { p_envio: envio, p_ok: true, p_post_id: r.post_id, p_url: r.url || null, p_imagem_url: imagemUrl, p_erro: null });
+    // saiu: o registro tenta duas vezes; se não entrar, a autorização fica "enviando" (nunca "erro", que deixaria publicar de novo)
+    const fim = { p_envio: envio, p_ok: true, p_post_id: r.post_id, p_url: r.url || null, p_imagem_url: imagemUrl, p_erro: null };
+    try { await banco(servico, "POST", "rpc/radar_rede_concluir", fim); }
+    catch { try { await dormir(1000); await banco(servico, "POST", "rpc/radar_rede_concluir", fim); }
+            catch { return { situacao: "publicado", url: r.url, post_id: r.post_id,
+                             mensagem: "Publicado, mas o registro no Radar não entrou. Não publique de novo." }; } }
     return { situacao: "publicado", url: r.url, post_id: r.post_id };
   } catch (x) {
+    if (x instanceof Incerto) throw x;                                     // fica "enviando": não oferece "tentar de novo"
     const msg = x instanceof Erro ? x.message : "Erro inesperado ao publicar.";
     await banco(servico, "POST", "rpc/radar_rede_concluir",
                 { p_envio: envio, p_ok: false, p_post_id: null, p_url: null, p_imagem_url: imagemUrl || null, p_erro: msg }).catch(() => {});
@@ -214,6 +237,7 @@ async function diagnostico() {
 
 async function tratar(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  INICIO = Date.now();
   try {
     if (req.method !== "POST") throw new Erro(405, "Use POST.");
     if (!SUPABASE_URL) throw new Erro(503, "A função está sem SUPABASE_URL.");

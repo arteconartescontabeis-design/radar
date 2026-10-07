@@ -27,7 +27,7 @@ PORTA_PONTE, PORTA_FUNCAO, PORTA_SEM_META = 3994, 3993, 3995
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
 TOKEN = "EAAtokenSecreto123"
 JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
-ESTADO = {"meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"]}
+ESTADO = {"meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False}
 
 
 class Ponte(BaseHTTPRequestHandler):
@@ -67,6 +67,8 @@ class Ponte(BaseHTTPRequestHandler):
         if caminho == "ig-1/media":
             return self._responder(200, {"id": "cont-1"})
         if caminho == "ig-1/media_publish":
+            if ESTADO["cai_publicar"]:
+                return self._responder(503, {"error": {"code": 2, "message": "Service temporarily unavailable"}})
             return self._responder(200, {"id": "midia-1"})
         if caminho == "pagina-1/photos":
             return self._responder(200, {"id": "foto-9", "post_id": "pagina-1_post-9"})
@@ -134,7 +136,7 @@ def funcao(api_postgrest):
 
 @pytest.fixture()
 def redes(funcao, limpo):
-    ESTADO.update(meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"])
+    ESTADO.update(meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False)
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
     registrar_site(c1)
@@ -215,3 +217,16 @@ def test_so_o_administrador_e_o_diagnostico_confere_pagina_e_conta(redes):
     status, r = pedir({"acao": "diagnostico"})
     assert status == 200 and r["tudo_certo"] is True
     assert [i["detalhe"] for i in r["itens"][1:3]] == ["Artecon Contábeis", "@arteconcontabeis"]
+
+
+def test_sem_resposta_clara_da_publicacao_nao_deixa_tentar_de_novo(redes):
+    db, c1 = redes
+    envio = autorizar(db, c1, "instagram")
+    ESTADO["cai_publicar"] = True                                               # a Meta caiu no meio do media_publish: pode ter saído
+    status, r = pedir({"acao": "publicar", "envio": envio})
+    assert status == 504 and "Confira na rede" in r["message"]
+    assert db.execute("select situacao from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == "enviando"
+    ESTADO["cai_publicar"] = False
+    status, r = pedir({"acao": "publicar", "envio": envio})                      # o mesmo botão não publica de novo
+    assert status == 400 and "não está aguardando envio" in r["message"]
+    assert [p for m, p, _ in ESTADO["meta"]].count("ig-1/media_publish") == 1
