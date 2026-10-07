@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.14.1)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.14.2)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha). Nada sai sem essa autorização: a função só envia
@@ -24,15 +24,14 @@
 //                      função busca sozinha o token da Página (GET /{page-id}?fields=access_token) antes de falar com a Meta
 //   META_IG_USER_ID    id da conta do Instagram profissional ligada à Página (só para o Instagram)
 //   META_GRAPH_URL     opcional; padrão https://graph.facebook.com/v23.0
-// SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY o Supabase já fornece.
+// SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.14.1";
+const VERSAO = "0.14.2";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
 const ANON = env("SUPABASE_ANON_KEY");
-const SERVICO = env("SUPABASE_SERVICE_ROLE_KEY");
 const GRAPH = env("META_GRAPH_URL", "https://graph.facebook.com/v23.0").replace(/\/+$/, "");
 const BUCKET = "radar-redes";
 // a Meta às vezes demora para baixar a imagem: o contêiner do Instagram é consultado por até ~40 s
@@ -58,10 +57,11 @@ const responder = (status: number, corpo: unknown) =>
   new Response(JSON.stringify(corpo), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 // ------------------------------------------------------------------ banco
-async function banco(chave: string, metodo: string, caminho: string, corpo?: unknown, tempo = 30_000): Promise<any> {
+/** "quem" é a sessão do usuário ("Bearer …", com a chave pública) ou os cabeçalhos da chave interna (comoServico). */
+async function banco(quem: string | Record<string, string>, metodo: string, caminho: string, corpo?: unknown, tempo = 30_000): Promise<any> {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${caminho}`, {
     method: metodo,
-    headers: { apikey: ANON || chave, Authorization: chave, "Content-Type": "application/json" },
+    headers: { ...(typeof quem === "string" ? { apikey: ANON || quem, Authorization: quem } : quem), "Content-Type": "application/json" },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
     signal: AbortSignal.timeout(tempo),
   });
@@ -75,9 +75,23 @@ async function banco(chave: string, metodo: string, caminho: string, corpo?: unk
   }
   return dados;
 }
-const comoServico = () => {
-  if (!SERVICO) throw new Erro(503, "A função está sem a chave interna do Supabase (SUPABASE_SERVICE_ROLE_KEY).");
-  return "Bearer " + SERVICO;
+// v0.14.2: chave interna do Supabase. A nova (sb_secret_…, em SUPABASE_SECRET_KEYS — e, em projetos novos, também no lugar da
+// antiga em SUPABASE_SERVICE_ROLE_KEY) só vale no cabeçalho apikey: mandada como "Authorization: Bearer", o Supabase recusa
+// ("Invalid Compact JWS"). A antiga (JWT service_role) continua indo nos dois cabeçalhos.
+function chaveInterna(): string {
+  try {
+    const k = JSON.parse(env("SUPABASE_SECRET_KEYS") || "{}");
+    const v = k?.default ?? Object.values(k ?? {}).find((x) => typeof x === "string" && x);
+    if (typeof v === "string" && v.trim()) return v.trim();
+  } catch { /* sem a lista nova: fica a antiga */ }
+  return env("SUPABASE_SERVICE_ROLE_KEY").trim();
+}
+const ehJwt = (k: string) => /^[\w-]+\.[\w-]+\.[\w-]+$/.test(k);
+/** Cabeçalhos para falar com o banco e o armazenamento como a própria função (acima das regras de acesso). */
+const comoServico = (): Record<string, string> => {
+  const k = chaveInterna();
+  if (!k) throw new Erro(503, "A função está sem a chave interna do Supabase (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY).");
+  return ehJwt(k) ? { apikey: k, Authorization: "Bearer " + k } : { apikey: k };
 };
 
 async function exigirAdmin(req: Request) {
@@ -159,13 +173,17 @@ async function chamarMeta(metodo: "GET" | "POST", caminho: string, params: Recor
 
 // ------------------------------------------------------------------ armazenamento público da imagem
 async function garantirBucket() {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${BUCKET}`, { headers: { Authorization: comoServico(), apikey: ANON || SERVICO } });
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${BUCKET}`, { headers: comoServico() });
+  await r.body?.cancel();
   if (r.ok) return;
   const c = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
-    method: "POST", headers: { Authorization: comoServico(), apikey: ANON || SERVICO, "Content-Type": "application/json" },
+    method: "POST", headers: { ...comoServico(), "Content-Type": "application/json" },
     body: JSON.stringify({ id: BUCKET, name: BUCKET, public: true, file_size_limit: 8 * 1024 * 1024, allowed_mime_types: ["image/jpeg"] }),
   });
-  if (!c.ok && c.status !== 409) throw new Erro(502, `Não foi possível criar o armazenamento das imagens (${c.status}).`);
+  const d: any = await c.json().catch(() => ({}));
+  // já existe (o Supabase responde 409, ou 400 com statusCode "409"): está pronto
+  if (c.ok || c.status === 409 || String(d?.statusCode ?? "") === "409") return;
+  throw new Erro(502, `Não foi possível criar o armazenamento das imagens (${c.status}${d?.message ? ": " + String(d.message).slice(0, 120) : ""}).`);
 }
 
 async function enviarImagem(dataUrl: string, nome: string): Promise<string> {
@@ -175,7 +193,7 @@ async function enviarImagem(dataUrl: string, nome: string): Promise<string> {
   await garantirBucket();
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${nome}`, {
     method: "POST", body: bytes,
-    headers: { Authorization: comoServico(), apikey: ANON || SERVICO, "Content-Type": "image/jpeg", "x-upsert": "true" },
+    headers: { ...comoServico(), "Content-Type": "image/jpeg", "x-upsert": "true" },
   });
   if (!r.ok) throw new Erro(502, `Não foi possível guardar a imagem para a Meta (${r.status}).`);
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${nome}`;

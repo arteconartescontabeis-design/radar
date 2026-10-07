@@ -1,4 +1,4 @@
-"""Função radar-redes (v0.13.0; v0.14.1: token do usuário do sistema) rodando de verdade no Deno, com o banco real (PostgREST), uma Meta (Graph API) de mentira
+"""Função radar-redes (v0.13.0; v0.14.1: token do usuário do sistema; v0.14.2: chave interna nova do Supabase) rodando de verdade no Deno, com o banco real (PostgREST), uma Meta (Graph API) de mentira
 e um armazenamento (Supabase Storage) de mentira. Sem o Deno instalado, o arquivo é pulado.
 
 Confere: só o administrador chama; sem os segredos da Meta a autorização continua guardada; o Instagram publica em
@@ -20,16 +20,17 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 import requests
 
-from conftest import ADMIN, API, EDITOR, RAIZ, como, jwt
+from conftest import ADMIN, API, EDITOR, RAIZ, SECRETA, como, gateway, jwt
 from test_radar_banco import aprovar, cenario_publicavel, registrar_site
 
 PORTA_PONTE, PORTA_FUNCAO, PORTA_SEM_META, PORTA_TOKEN_PAGINA, PORTA_SEM_ACESSO = 3994, 3993, 3995, 3996, 3997
+PORTA_CHAVE_NOVA, PORTA_LISTA_NOVA = 3988, 3987          # v0.14.2: SUPABASE_SERVICE_ROLE_KEY = sb_secret_…; SUPABASE_SECRET_KEYS
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
 TOKEN = "EAAtokenSecreto123"                  # token do usuário do sistema (o que fica no META_PAGE_TOKEN)
 TOKEN_PAGINA = "EAApaginaSecreta456"          # token da Página, que a Meta devolve para o token do usuário do sistema
 TOKEN_OUTRO = "EAAsemAcesso789"               # usuário do sistema sem a Página atribuída
 JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
-ESTADO = {"busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False}
+ESTADO = {"chaves": [], "bucket_get_falha": False, "busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False}
 
 
 class Ponte(BaseHTTPRequestHandler):
@@ -42,9 +43,29 @@ class Ponte(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(dados)
 
+    def _anotar(self):
+        apikey, auth = self.headers.get("apikey") or "", self.headers.get("Authorization") or ""
+        ESTADO["chaves"].append((self.command, self.path.split("?")[0], apikey[:10], auth.removeprefix("Bearer ")[:10]))
+
+    def _armazenamento_ok(self):
+        """O armazenamento de verdade: chave nova no Authorization → 400 "Invalid Compact JWS"; sem a chave interna → sem permissão."""
+        self._anotar()
+        auth = gateway(self.headers)
+        if auth is None:
+            self._responder(400, {"statusCode": "403", "error": "Unauthorized", "message": "Invalid Compact JWS"})
+            return False
+        if auth != "Bearer " + jwt("service_role"):
+            self._responder(400, {"statusCode": "403", "error": "Unauthorized", "message": "new row violates row-level security policy"})
+            return False
+        return True
+
     def _rest(self):
+        self._anotar()
+        auth = gateway(self.headers)
+        if auth is None:
+            return self._responder(401, {"message": "Invalid Compact JWS"})
         corpo = self.rfile.read(int(self.headers.get("Content-Length") or 0)) or None
-        cab = {k: v for k, v in self.headers.items() if k.lower() in ("authorization", "content-type", "prefer")}
+        cab = {k: v for k, v in self.headers.items() if k.lower() in ("content-type", "prefer")} | ({"Authorization": auth} if auth else {})
         r = requests.request(self.command, API + self.path.removeprefix("/rest/v1"), headers=cab, data=corpo, timeout=30)
         self._responder(r.status_code, r.content)
 
@@ -92,7 +113,11 @@ class Ponte(BaseHTTPRequestHandler):
         if self.path.startswith("/rest/v1/"):
             return self._rest()
         if self.path.startswith("/storage/v1/bucket/"):
+            if not self._armazenamento_ok():
+                return
             nome = self.path.rsplit("/", 1)[1]
+            if ESTADO["bucket_get_falha"]:
+                return self._responder(400, {"statusCode": "404", "error": "Bucket not found", "message": "Bucket not found"})
             return self._responder(200 if nome in ESTADO["buckets"] else 404, {"name": nome} if nome in ESTADO["buckets"] else {"error": "Bucket not found"})
         if self.path.startswith("/meta/"):
             return self._meta({k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()})
@@ -102,8 +127,12 @@ class Ponte(BaseHTTPRequestHandler):
         if self.path.startswith("/rest/v1/"):
             return self._rest()
         corpo = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if self.path.startswith("/storage/v1/") and not self._armazenamento_ok():
+            return
         if self.path == "/storage/v1/bucket":
             b = json.loads(corpo)
+            if b["id"] in ESTADO["buckets"]:                                      # já existe: o Supabase responde 400 com "409"
+                return self._responder(400, {"statusCode": "409", "error": "Duplicate", "message": "The resource already exists"})
             ESTADO["buckets"].add(b["id"])
             assert b["public"] is True
             return self._responder(200, {"name": b["id"]})
@@ -121,7 +150,9 @@ class Ponte(BaseHTTPRequestHandler):
 def _subir(porta, extra):
     ambiente = dict(os.environ, SUPABASE_URL=PONTE, SUPABASE_ANON_KEY=jwt("anon"), SUPABASE_SERVICE_ROLE_KEY=jwt("service_role"),
                     META_GRAPH_URL=PONTE + "/meta", RADAR_REDES_PASSO_MS="50", RADAR_REDES_ESPERA_MS="2000",
-                    RADAR_PORTA_LOCAL=str(porta), NO_COLOR="1", **extra)
+                    RADAR_PORTA_LOCAL=str(porta), NO_COLOR="1")
+    ambiente.pop("SUPABASE_SECRET_KEYS", None)                  # só o que o teste pedir
+    ambiente.update(extra)
     proc = subprocess.Popen(["deno", "run", "--allow-net", "--allow-env", "--no-prompt",
                              str(RAIZ / "supabase" / "functions" / "radar-redes" / "index.ts")],
                             env=ambiente, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -144,15 +175,18 @@ def funcao(api_postgrest):
     sem = _subir(PORTA_SEM_META, {})
     pag = _subir(PORTA_TOKEN_PAGINA, {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN_PAGINA, "META_IG_USER_ID": "ig-1"})
     fora = _subir(PORTA_SEM_ACESSO, {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN_OUTRO, "META_IG_USER_ID": "ig-1"})
+    meta_ok = {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN, "META_IG_USER_ID": "ig-1"}
+    nova = _subir(PORTA_CHAVE_NOVA, {**meta_ok, "SUPABASE_SERVICE_ROLE_KEY": SECRETA})          # como no projeto da Artecon
+    lista = _subir(PORTA_LISTA_NOVA, {**meta_ok, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA})})   # a antiga ainda é JWT
     yield
-    for p in (com, sem, pag, fora):
+    for p in (com, sem, pag, fora, nova, lista):
         p.terminate()
     ponte.shutdown()
 
 
 @pytest.fixture()
 def redes(funcao, limpo):
-    ESTADO.update(busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False)
+    ESTADO.update(chaves=[], bucket_get_falha=False, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False)
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
     registrar_site(c1)
@@ -277,3 +311,34 @@ def test_token_que_nao_alcanca_a_pagina_para_antes_de_publicar_e_explica(redes):
     assert status == 502 and "não alcança a Página" in r["message"] and TOKEN_OUTRO not in json.dumps(r)
     assert not [c for c in ESTADO["meta"] if c[1] == "pagina-1/photos"]            # nada foi pedido para publicar
     assert db.execute("select situacao from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == "erro"   # dá para tentar de novo
+
+
+# ------------------------------------------------ v0.14.2: chave interna nova do Supabase (sb_secret_…)
+def _so_no_apikey():
+    """Chamadas com a chave interna: a nova vai só no apikey, nunca no Authorization."""
+    internas = [c for c in ESTADO["chaves"] if c[2].startswith("sb_secret_")]
+    assert internas and all(not auth.startswith("sb_") for *_, auth in ESTADO["chaves"])
+    return internas
+
+
+@pytest.mark.parametrize("porta", [PORTA_CHAVE_NOVA, PORTA_LISTA_NOVA], ids=["service_role_key-nova", "secret_keys"])
+def test_chave_interna_nova_vai_so_no_apikey_e_o_armazenamento_funciona(redes, porta):
+    db, c1 = redes
+    status, r = pedir({"acao": "diagnostico"}, porta=porta)
+    assert status == 200 and r["itens"][-1] == {"item": "Armazenamento das imagens", "ok": True, "detalhe": 'bucket público "radar-redes"'}
+    envio = autorizar(db, c1, "facebook")
+    status, r = pedir({"acao": "publicar", "envio": envio}, porta=porta)
+    assert status == 200 and r["situacao"] == "publicado", r
+    caminhos = {c[1] for c in _so_no_apikey()}
+    assert "/rest/v1/rpc/radar_rede_iniciar" in caminhos and "/rest/v1/rpc/radar_rede_concluir" in caminhos
+    assert any(c.startswith("/storage/v1/object/radar-redes/") for c in caminhos)
+    assert db.execute("select situacao from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == "publicado"
+
+
+def test_chave_antiga_continua_nos_dois_cabecalhos_e_bucket_que_ja_existe_nao_e_erro(redes):
+    db, c1 = redes
+    ESTADO["buckets"].add("radar-redes")
+    ESTADO["bucket_get_falha"] = True                         # a consulta falhou, mas o bucket existe: o Supabase responde "409"
+    status, r = pedir({"acao": "diagnostico"})
+    assert status == 200 and r["itens"][-1]["ok"] is True, r
+    assert all(ak == jwt("service_role")[:10] and auth == ak for _, caminho, ak, auth in ESTADO["chaves"] if caminho.startswith("/storage/"))
