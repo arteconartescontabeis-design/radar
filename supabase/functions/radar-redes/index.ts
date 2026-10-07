@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.14.2)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.14.4)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha). Nada sai sem essa autorização: a função só envia
@@ -22,12 +22,14 @@
 //   META_PAGE_TOKEN    token do usuário do sistema (Business → Usuários do sistema → Gerar token, "Nunca expira") ou o próprio
 //                      token da Página; nunca vai para o GitHub nem para o chat. v0.14.1: com o token do usuário do sistema, a
 //                      função busca sozinha o token da Página (GET /{page-id}?fields=access_token) antes de falar com a Meta
-//   META_IG_USER_ID    id da conta do Instagram profissional ligada à Página (só para o Instagram)
+//   META_IG_USER_ID    id da conta do Instagram profissional ligada à Página (só para o Instagram; o "Testar conexão" mostra qual é)
+//   META_IG_TOKEN      v0.14.4, opcional: token do usuário do sistema gerado no aplicativo do Instagram (instagram_basic,
+//                      instagram_content_publish). Sem ele, o Instagram usa o mesmo token da Página.
 //   META_GRAPH_URL     opcional; padrão https://graph.facebook.com/v23.0
 // SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.14.2";
+const VERSAO = "0.14.4";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -139,9 +141,15 @@ async function meta(metodo: "GET" | "POST", caminho: string, params: Record<stri
   catch (e) { if (e instanceof Erro && /\(190\)/.test(e.message)) tokenGuardado = null; throw e; }   // token revogado: busca de novo na próxima
 }
 
+/** v0.14.4: chamadas do Instagram usam o META_IG_TOKEN (aplicativo do Instagram) quando ele existe. */
+async function metaIg(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, publicacao = false): Promise<any> {
+  const ig = env("META_IG_TOKEN").trim();
+  return ig ? chamarMeta(metodo, caminho, params, ig, publicacao, "META_IG_TOKEN") : meta(metodo, caminho, params, publicacao);
+}
+
 /** Chama a Graph API. O token vai no corpo/consulta e nunca aparece em mensagem de erro. */
 async function chamarMeta(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, token: string,
-                          publicacao = false): Promise<any> {
+                          publicacao = false, segredo = "META_PAGE_TOKEN"): Promise<any> {
   const c = configMeta("facebook");
   const p = new URLSearchParams({ ...params, access_token: token });
   const tempo = publicacao ? TEMPO_PUBLICAR_MS : metodo === "GET" ? 8_000 : 30_000;
@@ -162,8 +170,8 @@ async function chamarMeta(metodo: "GET" | "POST", caminho: string, params: Recor
   if (!r.ok || d?.error) {
     const e = d?.error ?? {};
     const msg = String(e.error_user_msg || e.message || `erro ${r.status}`).slice(0, 300);
-    const limpa = [c.token, token].filter(Boolean).reduce((m, t) => m.split(t).join("***"), msg);
-    const dica = e.code === 190 ? " O token venceu, foi revogado ou foi copiado errado: gere outro no Business (Usuários do sistema) e troque o META_PAGE_TOKEN."
+    const limpa = [c.token, token, env("META_IG_TOKEN").trim()].filter(Boolean).reduce((m, t) => m.split(t).join("***"), msg);
+    const dica = e.code === 190 ? ` O token venceu, foi revogado ou foi copiado errado: gere outro no Business (Usuários do sistema) e troque o ${segredo}.`
       : e.code === 10 || e.code === 200 ? " Falta permissão no aplicativo da Meta (instagram_content_publish / pages_manage_posts)."
       : e.code === 4 || e.code === 32 || e.code === 613 ? " Limite de publicações da Meta atingido: tente mais tarde." : "";
     throw new Erro(502, `A Meta recusou (${e.code ?? r.status}): ${limpa}.${dica}`);
@@ -207,18 +215,18 @@ const aindaDaTempo = (inicio: number) => {
 
 async function publicarInstagram(imagemUrl: string, legenda: string, inicio: number) {
   const c = configMeta("instagram");
-  const cont = await meta("POST", `${c.ig}/media`, { image_url: imagemUrl, caption: legenda });
+  const cont = await metaIg("POST", `${c.ig}/media`, { image_url: imagemUrl, caption: legenda });
   for (let t = 0; t * PASSO_IG_MS <= ESPERA_IG_MS && Date.now() - inicio < LIMITE_PUBLICAR_MS; t++) {
-    const s = await meta("GET", cont.id, { fields: "status_code" });
+    const s = await metaIg("GET", cont.id, { fields: "status_code" });
     if (s.status_code === "FINISHED") break;
     if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new Erro(502, "O Instagram não aceitou a imagem (contêiner com erro).");
     if ((t + 1) * PASSO_IG_MS > ESPERA_IG_MS) throw new Erro(504, "O Instagram demorou para processar a imagem. Tente de novo.");
     await dormir(PASSO_IG_MS);
   }
   aindaDaTempo(inicio);
-  const pub = await meta("POST", `${c.ig}/media_publish`, { creation_id: cont.id }, true);
+  const pub = await metaIg("POST", `${c.ig}/media_publish`, { creation_id: cont.id }, true);
   let url = "";
-  try { url = (await meta("GET", pub.id, { fields: "permalink" })).permalink ?? ""; } catch { /* o post saiu; o link é só conveniência */ }
+  try { url = (await metaIg("GET", pub.id, { fields: "permalink" })).permalink ?? ""; } catch { /* o post saiu; o link é só conveniência */ }
   return { post_id: String(pub.id), url };
 }
 
@@ -282,8 +290,18 @@ async function diagnostico() {
   }
   if (c.ig && c.token) {
     try {
-      const ig = await meta("GET", c.ig, { fields: "username" });
-      itens.push({ item: "Conta do Instagram", ok: true, detalhe: "@" + String(ig.username ?? c.ig) });
+      const ig = await metaIg("GET", c.ig, { fields: "username" });
+      itens.push({ item: "Conta do Instagram", ok: true, detalhe: "@" + String(ig.username ?? c.ig) +
+        (env("META_IG_TOKEN").trim() ? " (pelo META_IG_TOKEN)" : " (pelo token da Página)") });
+    } catch (e) { itens.push({ item: "Conta do Instagram", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
+  } else if (c.pagina && c.token) {
+    // v0.14.4: sem o META_IG_USER_ID, procura a conta do Instagram ligada à Página e mostra o número a gravar
+    try {
+      const p = await metaIg("GET", c.pagina, { fields: "instagram_business_account{id,username}" });
+      const conta = p?.instagram_business_account;
+      itens.push({ item: "Conta do Instagram", ok: false, detalhe: conta?.id
+        ? `Encontrada: @${conta.username ?? "?"}. Grave o segredo META_IG_USER_ID = ${conta.id} (Supabase → Edge Functions → Secrets).`
+        : "Nenhuma conta do Instagram profissional ligada à Página (ou o token não tem instagram_basic). Ligue a conta à Página no Business." });
     } catch (e) { itens.push({ item: "Conta do Instagram", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
   }
   try { await garantirBucket(); itens.push({ item: "Armazenamento das imagens", ok: true, detalhe: `bucket público "${BUCKET}"` }); }

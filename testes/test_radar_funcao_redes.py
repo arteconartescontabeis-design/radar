@@ -24,11 +24,13 @@ from conftest import ADMIN, API, EDITOR, RAIZ, SECRETA, como, gateway, jwt
 from test_radar_banco import aprovar, cenario_publicavel, registrar_site
 
 PORTA_PONTE, PORTA_FUNCAO, PORTA_SEM_META, PORTA_TOKEN_PAGINA, PORTA_SEM_ACESSO = 3994, 3993, 3995, 3996, 3997
-PORTA_CHAVE_NOVA, PORTA_LISTA_NOVA = 3988, 3987          # v0.14.2: SUPABASE_SERVICE_ROLE_KEY = sb_secret_…; SUPABASE_SECRET_KEYS
+PORTA_CHAVE_NOVA, PORTA_LISTA_NOVA = 3988, 3987
+PORTA_IG_TOKEN, PORTA_IG_SEM_ID = 3986, 3985               # v0.14.4: META_IG_TOKEN; e sem o META_IG_USER_ID          # v0.14.2: SUPABASE_SERVICE_ROLE_KEY = sb_secret_…; SUPABASE_SECRET_KEYS
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
 TOKEN = "EAAtokenSecreto123"                  # token do usuário do sistema (o que fica no META_PAGE_TOKEN)
 TOKEN_PAGINA = "EAApaginaSecreta456"          # token da Página, que a Meta devolve para o token do usuário do sistema
 TOKEN_OUTRO = "EAAsemAcesso789"               # usuário do sistema sem a Página atribuída
+TOKEN_IG = "EAAinstagramSecreto321"           # v0.14.4: token gerado no aplicativo do Instagram (META_IG_TOKEN)
 JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
 ESTADO = {"chaves": [], "bucket_get_falha": False, "busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False}
 
@@ -84,7 +86,7 @@ class Ponte(BaseHTTPRequestHandler):
                 return self._responder(200, {"access_token": TOKEN_PAGINA, "id": "pagina-1"})
             return self._responder(400, {"error": {"code": 100, "message": "Unsupported get request"}})
         ESTADO["meta"].append((self.command, caminho, params))
-        if tk != TOKEN_PAGINA:
+        if tk not in (TOKEN_PAGINA, TOKEN_IG):
             return self._responder(400, {"error": {"code": 190, "message": "Invalid OAuth access token"}})
         if ESTADO["erro_meta"]:
             return self._responder(400, {"error": {"code": 10, "message": ESTADO["erro_meta"] + " " + TOKEN + " " + TOKEN_PAGINA}})
@@ -95,6 +97,8 @@ class Ponte(BaseHTTPRequestHandler):
                 return self._responder(200, {"permalink": "https://www.instagram.com/p/ABC123/"})
             if caminho == "pagina-1_post-9":
                 return self._responder(200, {"permalink_url": "https://www.facebook.com/artecon/posts/9"})
+            if caminho == "pagina-1" and params.get("fields", "").startswith("instagram_business_account"):
+                return self._responder(200, {"instagram_business_account": {"id": "ig-1", "username": "arteconcontabeis"}, "id": "pagina-1"})
             if caminho == "pagina-1":
                 return self._responder(200, {"name": "Artecon Contábeis"})
             if caminho == "ig-1":
@@ -178,7 +182,9 @@ def funcao(api_postgrest):
                              (PORTA_TOKEN_PAGINA, {**meta_ok, "META_PAGE_TOKEN": TOKEN_PAGINA}),
                              (PORTA_SEM_ACESSO, {**meta_ok, "META_PAGE_TOKEN": TOKEN_OUTRO}),
                              (PORTA_CHAVE_NOVA, {**meta_ok, "SUPABASE_SERVICE_ROLE_KEY": SECRETA}),        # como no projeto da Artecon
-                             (PORTA_LISTA_NOVA, {**meta_ok, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA})})):  # a antiga ainda é JWT
+                             (PORTA_LISTA_NOVA, {**meta_ok, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA})}),  # a antiga ainda é JWT
+                             (PORTA_IG_TOKEN, {**meta_ok, "META_IG_TOKEN": TOKEN_IG}),
+                             (PORTA_IG_SEM_ID, {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN, "META_IG_TOKEN": TOKEN_IG})):
             processos.append(_subir(porta, extra))
         yield
     finally:
@@ -269,7 +275,7 @@ def test_so_o_administrador_e_o_diagnostico_confere_pagina_e_conta(redes):
     assert ESTADO["meta"] == [] and db.execute("select situacao from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == "autorizado"
     status, r = pedir({"acao": "diagnostico"})
     assert status == 200 and r["tudo_certo"] is True
-    assert [i["detalhe"] for i in r["itens"][1:4]] == ["token da Página obtido pelo token do usuário do sistema", "Artecon Contábeis", "@arteconcontabeis"]
+    assert [i["detalhe"] for i in r["itens"][1:4]] == ["token da Página obtido pelo token do usuário do sistema", "Artecon Contábeis", "@arteconcontabeis (pelo token da Página)"]
 
 
 def test_sem_resposta_clara_da_publicacao_nao_deixa_tentar_de_novo(redes):
@@ -345,3 +351,23 @@ def test_chave_antiga_continua_nos_dois_cabecalhos_e_bucket_que_ja_existe_nao_e_
     status, r = pedir({"acao": "diagnostico"})
     assert status == 200 and r["itens"][-1]["ok"] is True, r
     assert all(ak == jwt("service_role")[:10] and auth == ak for _, caminho, ak, auth in ESTADO["chaves"] if caminho.startswith("/storage/"))
+
+
+# ------------------------------------------------ v0.14.4: token próprio do Instagram (META_IG_TOKEN)
+def test_instagram_usa_o_meta_ig_token_e_o_facebook_continua_com_o_da_pagina(redes):
+    db, c1 = redes
+    for canal in ("instagram", "facebook"):
+        status, r = pedir({"acao": "publicar", "envio": autorizar(db, c1, canal)}, porta=PORTA_IG_TOKEN)
+        assert status == 200 and r["situacao"] == "publicado", r
+    usados = {(m, p): prm["access_token"] for m, p, prm in ESTADO["meta"]}
+    assert usados[("POST", "ig-1/media")] == TOKEN_IG and usados[("POST", "ig-1/media_publish")] == TOKEN_IG
+    assert usados[("POST", "pagina-1/photos")] == TOKEN_PAGINA
+    status, r = pedir({"acao": "diagnostico"}, porta=PORTA_IG_TOKEN)
+    assert r["tudo_certo"] is True and "@arteconcontabeis (pelo META_IG_TOKEN)" in [i["detalhe"] for i in r["itens"]]
+
+
+def test_sem_o_ig_user_id_o_diagnostico_mostra_o_numero_a_gravar(redes):
+    status, r = pedir({"acao": "diagnostico"}, porta=PORTA_IG_SEM_ID)
+    conta = next(i for i in r["itens"] if i["item"] == "Conta do Instagram")
+    assert conta["ok"] is False and "META_IG_USER_ID = ig-1" in conta["detalhe"] and "@arteconcontabeis" in conta["detalhe"]
+    assert TOKEN_IG not in json.dumps(r)
