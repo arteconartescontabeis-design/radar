@@ -171,17 +171,20 @@ def funcao(api_postgrest):
         pytest.skip("deno não instalado")
     ponte = ThreadingHTTPServer(("127.0.0.1", PORTA_PONTE), Ponte)
     threading.Thread(target=ponte.serve_forever, daemon=True).start()
-    com = _subir(PORTA_FUNCAO, {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN, "META_IG_USER_ID": "ig-1"})
-    sem = _subir(PORTA_SEM_META, {})
-    pag = _subir(PORTA_TOKEN_PAGINA, {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN_PAGINA, "META_IG_USER_ID": "ig-1"})
-    fora = _subir(PORTA_SEM_ACESSO, {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN_OUTRO, "META_IG_USER_ID": "ig-1"})
     meta_ok = {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN, "META_IG_USER_ID": "ig-1"}
-    nova = _subir(PORTA_CHAVE_NOVA, {**meta_ok, "SUPABASE_SERVICE_ROLE_KEY": SECRETA})          # como no projeto da Artecon
-    lista = _subir(PORTA_LISTA_NOVA, {**meta_ok, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA})})   # a antiga ainda é JWT
-    yield
-    for p in (com, sem, pag, fora, nova, lista):
-        p.terminate()
-    ponte.shutdown()
+    processos = []                    # encerrados mesmo se a subida de um deles falhar (senão ficam presos nas portas dos outros testes)
+    try:
+        for porta, extra in ((PORTA_FUNCAO, meta_ok), (PORTA_SEM_META, {}),
+                             (PORTA_TOKEN_PAGINA, {**meta_ok, "META_PAGE_TOKEN": TOKEN_PAGINA}),
+                             (PORTA_SEM_ACESSO, {**meta_ok, "META_PAGE_TOKEN": TOKEN_OUTRO}),
+                             (PORTA_CHAVE_NOVA, {**meta_ok, "SUPABASE_SERVICE_ROLE_KEY": SECRETA}),        # como no projeto da Artecon
+                             (PORTA_LISTA_NOVA, {**meta_ok, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA})})):  # a antiga ainda é JWT
+            processos.append(_subir(porta, extra))
+        yield
+    finally:
+        for p in processos:
+            p.terminate()
+        ponte.shutdown()
 
 
 @pytest.fixture()
