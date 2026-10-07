@@ -1,4 +1,4 @@
-"""Função radar-itc (v0.12.0) rodando de verdade no Deno, com o banco real (PostgREST), um Microsoft Graph de mentira
+"""Função radar-itc (v0.12.0; v0.14.2: chave interna nova do Supabase) rodando de verdade no Deno, com o banco real (PostgREST), um Microsoft Graph de mentira
 e uma IA Central de mentira. Sem o Deno instalado, o arquivo é pulado.
 
 Confere: só o administrador (ou a agenda, com a chave do Vault) chama; cada boletim vira matérias na fonte itc-email;
@@ -18,13 +18,13 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 import requests
 
-from conftest import ADMIN, API, EDITOR, RAIZ, jwt, psql
+from conftest import ADMIN, API, EDITOR, RAIZ, SECRETA, gateway, jwt, psql
 from test_radar_banco import FONTES_NOVAS
 
 PORTA_PONTE, PORTA_FUNCAO = 3992, 3991
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
 CAIXA = "contato@artecon.test"
-ESTADO = {"emails": [], "graph": [], "ia": [], "token_ok": True, "materias": None}
+ESTADO = {"emails": [], "graph": [], "ia": [], "token_ok": True, "materias": None, "chaves": []}
 
 BOLETIM = """ITCNET Mail - 05/10/2026
 Área Federal
@@ -45,8 +45,13 @@ class Ponte(BaseHTTPRequestHandler):
         self.wfile.write(dados)
 
     def _rest(self):
+        apikey, auth = self.headers.get("apikey") or "", self.headers.get("Authorization") or ""
+        ESTADO["chaves"].append((self.path.split("?")[0], apikey[:10], auth.removeprefix("Bearer ")[:10]))
+        auth = gateway(self.headers)                                    # v0.14.2: o gateway do Supabase
+        if auth is None:
+            return self._responder(401, {"message": "Invalid Compact JWS"})
         corpo = self.rfile.read(int(self.headers.get("Content-Length") or 0)) or None
-        cab = {k: v for k, v in self.headers.items() if k.lower() in ("authorization", "content-type", "prefer")}
+        cab = {k: v for k, v in self.headers.items() if k.lower() in ("content-type", "prefer")} | ({"Authorization": auth} if auth else {})
         r = requests.request(self.command, API + self.path.removeprefix("/rest/v1"), headers=cab, data=corpo, timeout=30)
         self._responder(r.status_code, r.content)
 
@@ -90,7 +95,9 @@ def funcao(api_postgrest):
         pytest.skip("deno não instalado")
     ponte = ThreadingHTTPServer(("127.0.0.1", PORTA_PONTE), Ponte)
     threading.Thread(target=ponte.serve_forever, daemon=True).start()
-    ambiente = dict(os.environ, SUPABASE_URL=PONTE, SUPABASE_ANON_KEY=jwt("anon"), SUPABASE_SERVICE_ROLE_KEY=jwt("service_role"),
+    # como no projeto da Artecon: a chave interna é a nova (sb_secret_…), na lista nova e no lugar da antiga
+    ambiente = dict(os.environ, SUPABASE_URL=PONTE, SUPABASE_ANON_KEY=jwt("anon"), SUPABASE_SERVICE_ROLE_KEY=SECRETA,
+                    SUPABASE_SECRET_KEYS=json.dumps({"default": SECRETA}),
                     IA_GATEWAY_TOKEN="iagw_radar_teste", IA_GATEWAY_URL=PONTE + "/gw", GRAPH_LOGIN_URL=PONTE + "/login",
                     GRAPH_URL=PONTE + "/graph", GRAPH_TENANT_ID="tenant-teste", GRAPH_CLIENT_ID="cliente-teste",
                     GRAPH_CLIENT_SECRET="segredo-de-teste", ITC_CAIXA=CAIXA, RADAR_PORTA_LOCAL=str(PORTA_FUNCAO), NO_COLOR="1")
@@ -112,7 +119,7 @@ def funcao(api_postgrest):
 def itc(funcao, limpo):
     assert psql(FONTES_NOVAS).returncode == 0
     limpo.execute("truncate radar_itc_lidos")
-    ESTADO.update(emails=[], graph=[], ia=[], token_ok=True, materias=None)
+    ESTADO.update(emails=[], graph=[], ia=[], token_ok=True, materias=None, chaves=[])
     yield limpo
     limpo.execute("truncate radar_itc_lidos")
     limpo.execute("delete from radar_capturas where fonte_id in (select id from radar_fontes where slug in "
@@ -163,8 +170,13 @@ def test_sem_boletim_registra_que_a_leitura_aconteceu(itc):
 def test_so_o_administrador_ou_a_agenda_com_a_chave_certa(itc):
     assert pedir(uid=EDITOR)[0] == 403
     assert pedir(cab={})[0] == 401
-    # no banco de teste não há Vault: nenhuma chave confere
-    assert pedir(cab={"x-radar-agenda": "a" * 64})[0] == 401
+    # no banco de teste não há Vault: nenhuma chave confere. A conferência chega ao banco com a chave interna só no apikey
+    # (v0.14.2: se ela fosse como "Authorization: Bearer", o Supabase recusaria e a agenda das 02h55 nunca passaria daqui)
+    ESTADO["chaves"] = []
+    status, r = pedir(cab={"x-radar-agenda": "a" * 64})
+    assert status == 401 and r["message"] == "Chave da agenda não confere.", r
+    assert [c for c in ESTADO["chaves"] if c[0] == "/rest/v1/rpc/radar_itc_conferir_agenda"] == [
+        ("/rest/v1/rpc/radar_itc_conferir_agenda", SECRETA[:10], "")]
     assert ESTADO["graph"] == []
 
 
@@ -197,3 +209,13 @@ def test_boletim_sem_materia_e_relido_ate_3_vezes_e_a_falha_aparece_na_fonte(itc
     status, r = pedir()
     assert r["novas"] == 1 and itc.execute("select tentativas, materias from radar_itc_lidos where message_id = 'AAMk-8'").fetchone() == (1, 1)
     assert itc.execute("select ultimo_erro from radar_fontes where slug = 'itc-email'").fetchone()[0] is None   # leitura boa apaga
+
+
+def test_chave_interna_nova_vai_so_no_apikey(itc):
+    """v0.14.2: a chave nova (sb_secret_…) mandada como "Authorization: Bearer" é recusada pelo Supabase."""
+    ESTADO["emails"] = [email("m-chave")]
+    status, r = pedir()
+    assert status == 200, r
+    internas = [c for c in ESTADO["chaves"] if c[1].startswith("sb_secret_")]
+    assert {"/rest/v1/rpc/radar_itc_ja_lidos", "/rest/v1/rpc/radar_receber_email"} <= {c[0] for c in internas}
+    assert all(not auth.startswith("sb_") for *_, auth in ESTADO["chaves"])

@@ -120,6 +120,23 @@ def jwt(papel: str, sub: str | None = None, exp: int | None = None) -> str:
     return f"{cab}.{corpo}." + b64(hmac.new(SEGREDO.encode(), f"{cab}.{corpo}".encode(), hashlib.sha256).digest())
 
 
+# v0.14.2: chave interna nova do Supabase (sb_secret_…, não é JWT). O gateway de verdade aceita essa chave SÓ no cabeçalho
+# apikey (e troca por um JWT de service_role para o banco e o armazenamento); no "Authorization: Bearer" ela é recusada.
+SECRETA = "sb_secret_testeRadar0123456789abcdef"
+
+
+def gateway(cab) -> str | None:
+    """Faz o papel do gateway do Supabase. Devolve o Authorization a repassar (vazio: visitante) ou None (recusado)."""
+    apikey, auth = cab.get("apikey") or "", cab.get("Authorization") or ""
+    if auth.removeprefix("Bearer ").startswith("sb_"):
+        return None                                                    # "Invalid Compact JWS"
+    if apikey.startswith("sb_secret_"):
+        if apikey != SECRETA:
+            return None
+        return auth or "Bearer " + jwt("service_role")
+    return auth
+
+
 @pytest.fixture(scope="session")
 def api_postgrest(banco_pronto, tmp_path_factory):
     if shutil.which("postgrest") is None:

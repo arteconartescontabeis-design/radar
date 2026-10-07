@@ -735,8 +735,10 @@ A função `radar-redes` publica o que o administrador autorizou nos passos 6 e 
 2. **Permissões do aplicativo** (pedidas na análise da Meta): `instagram_basic`, `instagram_content_publish`, `pages_show_list`,
    `pages_read_engagement`, `pages_manage_posts` e `business_management`.
 3. **Segredos no Supabase** (Edge Functions → Secrets; nunca pelo chat nem no GitHub):
-   - `META_PAGE_ID`: id da Página do Facebook;
-   - `META_PAGE_TOKEN`: token de acesso da Página, de longa duração;
+   - `META_PAGE_ID`: id da Página do Facebook (business.facebook.com → Contas → Páginas → a Página → ID);
+   - `META_PAGE_TOKEN`: o token do **usuário do sistema** (business.facebook.com → Usuários do sistema → Gerar token, expiração
+     "Nunca", com a Página atribuída com controle total). A função `radar-redes` (v0.14.1) busca sozinha o token da Página a
+     partir dele; o próprio token da Página também é aceito;
    - `META_IG_USER_ID`: id da conta do Instagram profissional ligada à Página;
    - opcional `META_GRAPH_URL` (padrão `https://graph.facebook.com/v23.0`).
 4. **Instalar a função:** Supabase → Edge Functions → nova função `radar-redes` com o arquivo `supabase/functions/radar-redes/index.ts`

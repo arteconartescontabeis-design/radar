@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.13.0)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.14.2)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha). Nada sai sem essa autorização: a função só envia
@@ -19,18 +19,19 @@
 //
 // Segredos (Supabase → Edge Functions → Secrets):
 //   META_PAGE_ID       id da Página do Facebook da Artecon
-//   META_PAGE_TOKEN    token de acesso da Página (de longa duração; nunca vai para o GitHub nem para o chat)
+//   META_PAGE_TOKEN    token do usuário do sistema (Business → Usuários do sistema → Gerar token, "Nunca expira") ou o próprio
+//                      token da Página; nunca vai para o GitHub nem para o chat. v0.14.1: com o token do usuário do sistema, a
+//                      função busca sozinha o token da Página (GET /{page-id}?fields=access_token) antes de falar com a Meta
 //   META_IG_USER_ID    id da conta do Instagram profissional ligada à Página (só para o Instagram)
 //   META_GRAPH_URL     opcional; padrão https://graph.facebook.com/v23.0
-// SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY o Supabase já fornece.
+// SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.13.0";
+const VERSAO = "0.14.2";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
 const ANON = env("SUPABASE_ANON_KEY");
-const SERVICO = env("SUPABASE_SERVICE_ROLE_KEY");
 const GRAPH = env("META_GRAPH_URL", "https://graph.facebook.com/v23.0").replace(/\/+$/, "");
 const BUCKET = "radar-redes";
 // a Meta às vezes demora para baixar a imagem: o contêiner do Instagram é consultado por até ~40 s
@@ -56,10 +57,11 @@ const responder = (status: number, corpo: unknown) =>
   new Response(JSON.stringify(corpo), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 // ------------------------------------------------------------------ banco
-async function banco(chave: string, metodo: string, caminho: string, corpo?: unknown, tempo = 30_000): Promise<any> {
+/** "quem" é a sessão do usuário ("Bearer …", com a chave pública) ou os cabeçalhos da chave interna (comoServico). */
+async function banco(quem: string | Record<string, string>, metodo: string, caminho: string, corpo?: unknown, tempo = 30_000): Promise<any> {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${caminho}`, {
     method: metodo,
-    headers: { apikey: ANON || chave, Authorization: chave, "Content-Type": "application/json" },
+    headers: { ...(typeof quem === "string" ? { apikey: ANON || quem, Authorization: quem } : quem), "Content-Type": "application/json" },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
     signal: AbortSignal.timeout(tempo),
   });
@@ -73,9 +75,23 @@ async function banco(chave: string, metodo: string, caminho: string, corpo?: unk
   }
   return dados;
 }
-const comoServico = () => {
-  if (!SERVICO) throw new Erro(503, "A função está sem a chave interna do Supabase (SUPABASE_SERVICE_ROLE_KEY).");
-  return "Bearer " + SERVICO;
+// v0.14.2: chave interna do Supabase. A nova (sb_secret_…, em SUPABASE_SECRET_KEYS — e, em projetos novos, também no lugar da
+// antiga em SUPABASE_SERVICE_ROLE_KEY) só vale no cabeçalho apikey: mandada como "Authorization: Bearer", o Supabase recusa
+// ("Invalid Compact JWS"). A antiga (JWT service_role) continua indo nos dois cabeçalhos.
+function chaveInterna(): string {
+  try {
+    const k = JSON.parse(env("SUPABASE_SECRET_KEYS") || "{}");
+    const v = k?.default ?? Object.values(k ?? {}).find((x) => typeof x === "string" && x);
+    if (typeof v === "string" && v.trim()) return v.trim();
+  } catch { /* sem a lista nova: fica a antiga */ }
+  return env("SUPABASE_SERVICE_ROLE_KEY").trim();
+}
+const ehJwt = (k: string) => /^[\w-]+\.[\w-]+\.[\w-]+$/.test(k);
+/** Cabeçalhos para falar com o banco e o armazenamento como a própria função (acima das regras de acesso). */
+const comoServico = (): Record<string, string> => {
+  const k = chaveInterna();
+  if (!k) throw new Erro(503, "A função está sem a chave interna do Supabase (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY).");
+  return ehJwt(k) ? { apikey: k, Authorization: "Bearer " + k } : { apikey: k };
 };
 
 async function exigirAdmin(req: Request) {
@@ -92,10 +108,42 @@ function configMeta(canal?: string) {
            token: env("META_PAGE_TOKEN").trim(), ig: env("META_IG_USER_ID").trim() };
 }
 
-/** Chama a Graph API. O token vai no corpo/consulta e nunca aparece em mensagem de erro. */
-async function meta(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, publicacao = false): Promise<any> {
+// v0.14.1: token da Página obtido a partir do META_PAGE_TOKEN (fica guardado enquanto a função estiver de pé; só o que deu certo)
+let tokenGuardado: { de: string; token: string; origem: string } | null = null;
+/** Token para falar com a Página e com o Instagram. Com o token do usuário do sistema, a Meta devolve o token da Página;
+ *  se o cadastrado já for o token da Página, ele é usado como está. Se o token não alcança a Página, para AQUI, antes de publicar. */
+async function tokenDaPagina(): Promise<{ token: string; origem: string }> {
   const c = configMeta("facebook");
-  const p = new URLSearchParams({ ...params, access_token: c.token });
+  if (tokenGuardado?.de === c.token) return tokenGuardado;
+  // Meta fora do ar não vira "token sem acesso": só a recusa da Meta segue para a conferência abaixo
+  const d = await chamarMeta("GET", c.pagina, { fields: "access_token" }, c.token)
+    .catch((e) => { if (e instanceof Erro && e.status === 504) throw e; return null; });
+  let r: { token: string; origem: string } | null = null;
+  if (typeof d?.access_token === "string" && d.access_token) {
+    r = { token: d.access_token, origem: d.access_token === c.token ? "META_PAGE_TOKEN é o token da própria Página"
+                                                                    : "token da Página obtido pelo token do usuário do sistema" };
+  } else {
+    const eu = await chamarMeta("GET", "me", { fields: "id" }, c.token);    // erro de token (190) aparece aqui, em português
+    if (String(eu?.id ?? "") === c.pagina) r = { token: c.token, origem: "META_PAGE_TOKEN é o token da própria Página" };
+  }
+  if (!r) throw new Erro(502, "O token cadastrado (META_PAGE_TOKEN) não alcança a Página do META_PAGE_ID. No Business, em Usuários do sistema → " +
+    "Atribuir ativos → Páginas, dê à Página da Artecon controle total para o usuário do sistema e confira o META_PAGE_ID.");
+  tokenGuardado = { de: c.token, ...r };
+  return tokenGuardado;
+}
+
+/** Chama a Graph API com o token da Página. */
+async function meta(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, publicacao = false): Promise<any> {
+  const { token } = await tokenDaPagina();
+  try { return await chamarMeta(metodo, caminho, params, token, publicacao); }
+  catch (e) { if (e instanceof Erro && /\(190\)/.test(e.message)) tokenGuardado = null; throw e; }   // token revogado: busca de novo na próxima
+}
+
+/** Chama a Graph API. O token vai no corpo/consulta e nunca aparece em mensagem de erro. */
+async function chamarMeta(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, token: string,
+                          publicacao = false): Promise<any> {
+  const c = configMeta("facebook");
+  const p = new URLSearchParams({ ...params, access_token: token });
   const tempo = publicacao ? TEMPO_PUBLICAR_MS : metodo === "GET" ? 8_000 : 30_000;
   const incerto = () => new Incerto(504, "A Meta não respondeu se a publicação saiu. Confira na rede antes de qualquer coisa: " +
     "se saiu, não publique de novo; se não saiu, espere 10 minutos, cancele a autorização e autorize de novo.");
@@ -114,8 +162,8 @@ async function meta(metodo: "GET" | "POST", caminho: string, params: Record<stri
   if (!r.ok || d?.error) {
     const e = d?.error ?? {};
     const msg = String(e.error_user_msg || e.message || `erro ${r.status}`).slice(0, 300);
-    const limpa = c.token ? msg.split(c.token).join("***") : msg;
-    const dica = e.code === 190 ? " O token da Página venceu ou foi revogado: gere outro e troque o META_PAGE_TOKEN."
+    const limpa = [c.token, token].filter(Boolean).reduce((m, t) => m.split(t).join("***"), msg);
+    const dica = e.code === 190 ? " O token venceu, foi revogado ou foi copiado errado: gere outro no Business (Usuários do sistema) e troque o META_PAGE_TOKEN."
       : e.code === 10 || e.code === 200 ? " Falta permissão no aplicativo da Meta (instagram_content_publish / pages_manage_posts)."
       : e.code === 4 || e.code === 32 || e.code === 613 ? " Limite de publicações da Meta atingido: tente mais tarde." : "";
     throw new Erro(502, `A Meta recusou (${e.code ?? r.status}): ${limpa}.${dica}`);
@@ -125,13 +173,17 @@ async function meta(metodo: "GET" | "POST", caminho: string, params: Record<stri
 
 // ------------------------------------------------------------------ armazenamento público da imagem
 async function garantirBucket() {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${BUCKET}`, { headers: { Authorization: comoServico(), apikey: ANON || SERVICO } });
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${BUCKET}`, { headers: comoServico() });
+  await r.body?.cancel();
   if (r.ok) return;
   const c = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
-    method: "POST", headers: { Authorization: comoServico(), apikey: ANON || SERVICO, "Content-Type": "application/json" },
+    method: "POST", headers: { ...comoServico(), "Content-Type": "application/json" },
     body: JSON.stringify({ id: BUCKET, name: BUCKET, public: true, file_size_limit: 8 * 1024 * 1024, allowed_mime_types: ["image/jpeg"] }),
   });
-  if (!c.ok && c.status !== 409) throw new Erro(502, `Não foi possível criar o armazenamento das imagens (${c.status}).`);
+  const d: any = await c.json().catch(() => ({}));
+  // já existe (o Supabase responde 409, ou 400 com statusCode "409"): está pronto
+  if (c.ok || c.status === 409 || String(d?.statusCode ?? "") === "409") return;
+  throw new Erro(502, `Não foi possível criar o armazenamento das imagens (${c.status}${d?.message ? ": " + String(d.message).slice(0, 120) : ""}).`);
 }
 
 async function enviarImagem(dataUrl: string, nome: string): Promise<string> {
@@ -141,7 +193,7 @@ async function enviarImagem(dataUrl: string, nome: string): Promise<string> {
   await garantirBucket();
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${nome}`, {
     method: "POST", body: bytes,
-    headers: { Authorization: comoServico(), apikey: ANON || SERVICO, "Content-Type": "image/jpeg", "x-upsert": "true" },
+    headers: { ...comoServico(), "Content-Type": "image/jpeg", "x-upsert": "true" },
   });
   if (!r.ok) throw new Erro(502, `Não foi possível guardar a imagem para a Meta (${r.status}).`);
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${nome}`;
@@ -219,6 +271,10 @@ async function diagnostico() {
   itens.push({ item: "Segredos da Meta", ok: !c.faltam.length,
                detalhe: c.faltam.length ? "Faltam: " + c.faltam.join(", ") : "META_PAGE_ID, META_PAGE_TOKEN e META_IG_USER_ID cadastrados" });
   if (c.pagina && c.token) {
+    try {
+      const t = await tokenDaPagina();
+      itens.push({ item: "Token de acesso", ok: true, detalhe: t.origem });
+    } catch (e) { itens.push({ item: "Token de acesso", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
     try {
       const p = await meta("GET", c.pagina, { fields: "name" });
       itens.push({ item: "Página do Facebook", ok: true, detalhe: String(p.name ?? c.pagina) });
