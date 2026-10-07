@@ -1986,15 +1986,16 @@ const ACOES = {
     mostrarEtapa("fonte");
     if(!$("#form-texto-oficial")?.innerHTML) ACOES["incluir-texto"]();
     const form = $("#form-texto-oficial form"); if(!form) return;
-    form.url.value = f.url; form.titulo.value = (f.titulo || "").slice(0, 300);
-    const dt = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(f.data || ""); if(dt) form.data.value = `${dt[3]}-${dt[2]}-${dt[1]}`;
+    if(form.texto.value.trim() && form.url.value.trim() !== f.url && !confirm("O formulário já tem um texto oficial digitado. Trocar pelo da página escolhida?")) return;
+    form.url.value = f.url; form.titulo.value = (f.titulo || "").slice(0, 300); form.texto.value = "";
+    const dt = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(f.data || ""); form.data.value = dt ? `${dt[3]}-${dt[2]}-${dt[1]}` : "";
     const fonte = fonteDoEndereco(f.url);
-    if(fonte) form.fonte.value = String(fonte.id);
+    form.fonte.value = fonte ? String(fonte.id) : "";
     form.scrollIntoView({behavior:"smooth", block:"start"});
     recado("Trazendo o texto da página oficial…", "aviso");
     try{
       const p = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao:"pagina", url:f.url, assunto_id:E.assunto}, tempo:40000});
-      if(!form.isConnected) return;
+      if(!form.isConnected || form.url.value !== f.url) return;          // a pessoa trocou de página enquanto esta carregava
       form.texto.value = p.texto || ""; if(!form.titulo.value && p.titulo) form.titulo.value = p.titulo.slice(0, 300);
       if(!form.data.value && p.data) form.data.value = p.data;
       recado(fonte ? "Texto da página oficial trazido. Confira (tire menus e rodapés, se sobrarem) e clique em “Incluir texto oficial”."
@@ -2556,7 +2557,7 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar","verif-incluir"]);
+  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar"]);
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa

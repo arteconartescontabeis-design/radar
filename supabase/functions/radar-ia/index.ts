@@ -469,7 +469,9 @@ const ROTULO_SITUACAO: Record<string, string> = { confirmada: "CONFIRMADA", parc
 const REGRA_VERIFICACAO = "(11) se vier uma VERIFICAÇÃO EM FONTES OFICIAIS, trate como confirmado o que ela diz que as páginas oficiais confirmam, " +
   "cite o órgão oficial pelo nome (sem link) e não marque [VERIFICAR] nesses pontos; o que ela não confirmar continua com [VERIFICAR]; " +
   "se ela apontar divergência, siga a fonte oficial e diga o que mudou; ";
-const RE_AVISO_FONTE = /^[^\n]*fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)[^\n]*(?:\n|$)/gim;
+// só a linha que É o aviso ("Este informativo é baseado em … fonte não oficial…", "Fonte não oficial: boletim X"); um parágrafo
+// que fala de fonte não oficial como assunto ("boletos de fontes não oficiais são golpe") fica
+const RE_AVISO_FONTE = /^[\s*_>]*(?:(?:este|esta|o presente|a presente)\s+(?:informativo|texto|conte[úu]do|material|an[áa]lise|not[íi]cia|artigo)\b[^\n]*fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)|fontes?\s+n[ãa]o[\s-]+oficia(?:l|is)\s*:)[^\n]*(?:\n|$)/gim;
 /** Tira do texto as linhas que só avisam a origem ("baseado em material de fonte não oficial"): o aviso é interno. */
 const tirarAvisoFonte = (t: string) => t.replace(RE_AVISO_FONTE, "").replace(/\n{3,}/g, "\n\n").trim();
 
@@ -528,10 +530,15 @@ async function verificar(token: string, ctx: Awaited<ReturnType<typeof carregar>
   for (let volta = 0; volta < 5 && !resultado; volta++) {
     const resta = 140_000 - (Date.now() - inicio);
     if (resta < 15_000) throw new Erro(504, "A verificação demorou demais. Tente de novo.");
+    // pouco tempo sobrando: a rodada não busca mais, só registra o que já foi encontrado (a busca não cabe no tempo)
+    const ultima = resta < 45_000 || volta === 4;
+    if (ultima && mensagens.length > 1 && mensagens[mensagens.length - 1].role === "assistant") {
+      mensagens.push({ role: "user", content: "Não há mais tempo para buscar. Registre agora o resultado com a ferramenta 'verificacao', usando o que você já encontrou." });
+    }
     let dados: any;
     try {
       dados = await chamarGateway(ctx.reg, "", { model: MODELO, max_tokens: 4000, system: instrucoes, messages: mensagens,
-        tools: ferramentas(restringir), tool_choice: { type: "auto" } }, MODELO, Math.min(110_000, resta - 5_000));
+        tools: ultima ? ferramentas(restringir).slice(0, 1) : ferramentas(restringir), tool_choice: { type: "auto" } }, MODELO, Math.min(110_000, resta - 5_000));
     } catch (e) {
       // se a Anthropic não aceitar a lista de domínios, a busca roda sem ela (o código continua aceitando só páginas oficiais)
       if (restringir && e instanceof Erro && /allowed_domains|domain/i.test(e.message)) { restringir = false; volta--; continue; }
@@ -594,23 +601,52 @@ function htmlParaTexto(html: string): { titulo: string; texto: string; data: str
 function decodificar(t: string): string {
   const ent: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ordm: "º", ordf: "ª", sect: "§", deg: "°" };
   return t.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, c: string) => c[0] === "#"
-    ? String.fromCodePoint(parseInt(c[1].toLowerCase() === "x" ? c.slice(2) : c.slice(1), c[1].toLowerCase() === "x" ? 16 : 10) || 32)
+    ? ((n: number) => Number.isInteger(n) && n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : " ")(
+        parseInt(c[1].toLowerCase() === "x" ? c.slice(2) : c.slice(1), c[1].toLowerCase() === "x" ? 16 : 10))
     : ent[c.toLowerCase()] ?? m);
 }
+const MAX_PAGINA = 3_000_000;   // bytes lidos da página oficial
 async function pagina(endereco: unknown) {
-  const u = urlOficial(String(endereco ?? "").trim());
+  let u = urlOficial(String(endereco ?? "").trim());
   if (!u) throw new Erro(400, "Só dá para trazer páginas de órgão público (endereços gov.br, jus.br ou leg.br, com https).");
-  let r: Response;
-  try {
-    r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(20_000),
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; RadarArtecon/" + VERSAO + ")", Accept: "text/html,application/xhtml+xml,text/plain" } });
-  } catch { throw new Erro(504, "Não foi possível abrir a página oficial agora. Tente de novo ou copie o texto à mão."); }
-  if (!urlOficial(r.url || u.toString())) throw new Erro(400, "A página oficial redirecionou para fora de um órgão público.");
-  if (!r.ok) throw new Erro(502, `A página oficial respondeu com erro ${r.status}. Copie o texto à mão.`);
-  if (!/html|text\/plain/i.test(r.headers.get("content-type") ?? "")) throw new Erro(400, "A página não é texto (pode ser PDF): copie o texto à mão.");
-  const lido = htmlParaTexto((await r.text()).slice(0, 3_000_000));
+  // cada redirecionamento é conferido ANTES de ser seguido: nunca sai de um órgão público
+  let r: Response | null = null;
+  const prazo = AbortSignal.timeout(25_000);
+  for (let salto = 0; salto <= 5; salto++) {
+    try {
+      r = await fetch(u, { redirect: "manual", signal: prazo,
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; RadarArtecon/" + VERSAO + ")", Accept: "text/html,application/xhtml+xml,text/plain" } });
+    } catch { throw new Erro(504, "Não foi possível abrir a página oficial agora. Tente de novo ou copie o texto à mão."); }
+    if (r.status < 300 || r.status >= 400) break;
+    await r.body?.cancel();
+    const proximo = urlOficial(new URL(r.headers.get("location") ?? "", u).toString());
+    if (!proximo) throw new Erro(400, "A página oficial redirecionou para fora de um órgão público.");
+    u = proximo; r = null;
+  }
+  if (!r) throw new Erro(502, "A página oficial redirecionou vezes demais. Copie o texto à mão.");
+  if (!r.ok) { await r.body?.cancel(); throw new Erro(502, `A página oficial respondeu com erro ${r.status}. Copie o texto à mão.`); }
+  const tipo = r.headers.get("content-type") ?? "";
+  if (!/html|text\/plain/i.test(tipo)) { await r.body?.cancel(); throw new Erro(400, "A página não é texto (pode ser PDF): copie o texto à mão."); }
+  // lê no máximo MAX_PAGINA bytes (a página pode ser enorme) e respeita a codificação declarada (há páginas antigas em Latin-1)
+  const partes: Uint8Array[] = [];
+  let total = 0;
+  const leitor = r.body?.getReader();
+  while (leitor && total < MAX_PAGINA) {
+    const { done, value } = await leitor.read();
+    if (done) break;
+    partes.push(value); total += value.length;
+  }
+  await leitor?.cancel().catch(() => {});
+  const bytes = new Uint8Array(Math.min(total, MAX_PAGINA));
+  let pos = 0;
+  for (const p of partes) { const pedaco = p.subarray(0, bytes.length - pos); bytes.set(pedaco, pos); pos += pedaco.length; if (pos >= bytes.length) break; }
+  const cabeca = new TextDecoder("latin1").decode(bytes.subarray(0, 4096));
+  const charset = (/charset=["']?([\w-]+)/i.exec(tipo)?.[1] ?? /<meta[^>]+charset=["']?([\w-]+)/i.exec(cabeca)?.[1] ?? "utf-8").toLowerCase();
+  let html: string;
+  try { html = new TextDecoder(charset).decode(bytes); } catch { html = new TextDecoder("utf-8").decode(bytes); }
+  const lido = htmlParaTexto(html);
   if (lido.texto.length < 50) throw new Erro(502, "A página oficial não trouxe texto legível. Copie o texto à mão.");
-  return { url: r.url || u.toString(), ...lido };
+  return { url: u.toString(), ...lido };
 }
 
 // ------------------------------------------------------------------ outras opções de título (v0.10.0)
@@ -745,6 +781,8 @@ async function tratar(req: Request): Promise<Response> {
       return responder(200, { ...(await diagnostico(await emailDoUsuario(token))), versao: VERSAO });
     }
 
+    if (acao === "pagina") return responder(200, { ...(await pagina(pedido.url)), versao: VERSAO });   // não usa IA: não conta no limite
+
     const [mes] = await banco(token, "GET", "radar_v_ia_mes?select=tokens");
     if (LIMITE_MENSAL > 0 && Number(mes?.tokens ?? 0) >= LIMITE_MENSAL) {
       throw new Erro(429, `O limite mensal de uso da IA (${LIMITE_MENSAL.toLocaleString("pt-BR")} tokens) foi atingido. ` +
@@ -756,7 +794,6 @@ async function tratar(req: Request): Promise<Response> {
     reg.quem = await emailDoUsuario(token);
     const resultado = acao === "classificar" ? await classificar(token, ctx)
       : acao === "verificar" ? await verificar(token, ctx)
-      : acao === "pagina" ? await pagina(pedido.url)
       : acao === "fundamentar" ? await fundamentar(token, ctx)
       : acao === "titulos" ? await titulos(token, ctx, pedido.conteudo_id, pedido.evitar)
       : acao === "ilustrar" ? await ilustrar(ctx, typeof pedido.titulo === "string" ? pedido.titulo : "",

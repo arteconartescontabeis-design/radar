@@ -22,7 +22,7 @@ from test_radar_banco import cenario_publicavel
 PORTA_PONTE, PORTA_FUNCAO = 3994, 3993
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
 IA = {"pedidos": [], "respostas": {}, "fila": []}
-PAGINA = {"html": "", "status": 200}
+PAGINA = {"html": "", "status": 200, "tipo": "text/html; charset=utf-8", "bytes": None}
 
 
 class Ponte(BaseHTTPRequestHandler):
@@ -46,10 +46,22 @@ class Ponte(BaseHTTPRequestHandler):
             return self._rest()
         if self.path == "/auth/v1/user":
             return self._responder(200, {"id": EDITOR, "email": "editora@artecon.test"})
+        if self.path.startswith("/pagina-oficial/vai-para-fora"):
+            self.send_response(302)
+            self.send_header("Location", "http://169.254.169.254/latest/meta-data")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if self.path.startswith("/pagina-oficial/redireciona"):
+            self.send_response(301)
+            self.send_header("Location", "/pagina-oficial/final")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if self.path.startswith("/pagina-oficial"):                  # "site oficial" de mentira (RADAR_DOMINIOS_EXTRA)
-            dados = PAGINA["html"].encode()
+            dados = PAGINA["bytes"] if PAGINA["bytes"] is not None else PAGINA["html"].encode()
             self.send_response(PAGINA["status"])
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", PAGINA["tipo"])
             self.send_header("Content-Length", str(len(dados)))
             self.end_headers()
             return self.wfile.write(dados)
@@ -216,7 +228,8 @@ def test_gerar_usa_a_verificacao_e_tira_o_aviso_de_origem_do_texto(funcao, limpo
                      "divergencias": []}' where id = %s""", (a,))
     IA["respostas"]["conteudo"] = {"titulo": "Prazo do Simples vai até 15 de outubro", "titulos": [],
         "corpo": "*Este informativo é baseado em material de fonte não oficial e precisa ser conferido.*\n\nO prazo de opção foi prorrogado até 15 de outubro, "
-                 "segundo a Receita Federal.\n\n## Análise Artecon\nQuem pretende optar deve organizar os documentos antes do novo prazo."}
+                 "segundo a Receita Federal.\n\nA Receita alerta que boletos enviados por fontes não oficiais são golpe.\n\n"
+                 "## Análise Artecon\nQuem pretende optar deve organizar os documentos antes do novo prazo."}
     status, r = pedir("gerar", assunto_id=a, formato="informativo", analise=True)
     assert status == 200, r
     pedido = IA["pedidos"][-1]
@@ -224,7 +237,8 @@ def test_gerar_usa_a_verificacao_e_tira_o_aviso_de_origem_do_texto(funcao, limpo
     assert "(11) se vier uma VERIFICAÇÃO EM FONTES OFICIAIS" in pedido["system"] and "NÃO escreva no texto avisos sobre a origem" in pedido["system"]
     assert "quem é afetado" in pedido["system"]                                  # Análise Artecon mais útil
     corpo = limpo.execute("select corpo from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()[0]
-    assert "fonte não oficial" not in corpo.lower() and corpo.startswith("O prazo de opção")
+    assert "baseado em material" not in corpo and corpo.startswith("O prazo de opção")
+    assert "boletos enviados por fontes não oficiais são golpe" in corpo          # parágrafo de verdade fica
 
 
 def test_pagina_traz_o_texto_so_de_site_oficial(funcao, limpo, request):
@@ -242,3 +256,17 @@ def test_pagina_traz_o_texto_so_de_site_oficial(funcao, limpo, request):
     assert status == 400 and "órgão público" in r["message"]
     status, r = pedir("pagina", assunto_id=a, url="http://www.gov.br/x")         # só https
     assert status == 400
+
+
+
+def test_pagina_confere_cada_redirecionamento_e_le_latin1_e_entidades(funcao, limpo, request):
+    a = _assunto_do_boletim(limpo, request)
+    status, r = pedir("pagina", assunto_id=a, url=f"{PONTE}/pagina-oficial/vai-para-fora")
+    assert status == 400 and "fora de um órgão público" in r["message"]
+    html = ("<html><head><title>Lei de 2026</title></head><body><article><p>Disposições sobre a contribuição e o preço médio; "
+            "ação de cobrança &#x110000; &#99999999; &#55296; fim.</p>" + "<p>Parágrafo com acentuação: ação, opção, é.</p>" * 20 + "</article></body></html>")
+    PAGINA.update(bytes=html.encode("latin-1"), tipo="text/html; charset=ISO-8859-1")
+    request.addfinalizer(lambda: PAGINA.update(bytes=None, tipo="text/html; charset=utf-8"))
+    status, r = pedir("pagina", assunto_id=a, url=f"{PONTE}/pagina-oficial/redireciona")
+    assert status == 200, r
+    assert r["url"].endswith("/pagina-oficial/final") and "contribuição e o preço médio" in r["texto"] and "ação, opção, é" in r["texto"]
