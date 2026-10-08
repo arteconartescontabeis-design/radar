@@ -113,6 +113,7 @@ def funcao(api_postgrest):
     yield
     proc.terminate()
     ponte.shutdown()
+    ponte.server_close()          # libera a porta na hora: outro módulo de teste usa a mesma
 
 
 @pytest.fixture()

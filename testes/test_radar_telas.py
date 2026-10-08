@@ -208,6 +208,7 @@ def navegador(api_postgrest, tmp_path_factory):
     for f in funcoes:
         f.terminate()
     servidor.shutdown()
+    servidor.server_close()
 
 
 @pytest.fixture()
@@ -283,7 +284,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.14.3"
+    assert pagina.inner_text(".versao") == "v0.15.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -2274,7 +2275,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.14.3" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.15.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3541,3 +3542,33 @@ def test_legenda_com_marca_verificar_nao_e_autorizada(pagina, limpo):
     pagina.locator(".autorizacao li.agora .btn", has_text="Autorizar e publicar no Instagram").click()
     pagina.wait_for_selector("#recado .erro >> text=Resolva antes de publicar no Instagram: 1 ponto(s)")
     assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
+
+
+# ------------------------------------------------------------ v0.15.0 — fundamentação legal na aba Capturas
+def test_capturas_dizem_se_tem_fundamentacao_legal_e_quais_normas(pagina, limpo):
+    captura(limpo, "Receita prorroga prazo do Simples Nacional", "https://www.gov.br/exemplo/bl-1", "rfb-noticias",
+            "O prazo foi prorrogado pela Resolução CGSN nº 140/2018, com base na LC 123/2006.")
+    captura(limpo, "Receita prorroga prazo do MEI", "https://www.gov.br/exemplo/bl-2", "rfb-noticias",
+            "A Receita Federal informou que o prazo foi prorrogado.")
+    captura(limpo, "Solução de Consulta Cosit nº 190, de 30/09/2026", "https://www.gov.br/exemplo/bl-3", "rfb-normas",
+            "Dispositivos Legais: Lei nº 9.430, de 1996, art. 1º.")
+    entrar(pagina, "leitor@artecon.test")                            # quem só lê também vê
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Capturas")
+    pagina.click("#filtro-fila >> text=Todas")
+    pagina.wait_for_selector("article.cap >> nth=2")
+    cartao = lambda t: pagina.locator("article.cap", has=pagina.locator("h3", has_text=t))
+    com = cartao("prazo do Simples Nacional")
+    assert "com fundamentação legal" in com.locator(".selo.ok").all_inner_texts()
+    assert com.locator(".base-legal").inner_text() == \
+        "Fundamentação legal: Resolução CGSN nº 140/2018; Lei Complementar nº 123/2006."
+    sem = cartao("prazo do MEI")
+    assert "sem fundamentação legal" in sem.locator(".selo.alerta").all_inner_texts()
+    assert "não cita lei, decreto, instrução normativa nem outro ato normativo" in sem.locator(".base-legal.sem").inner_text()
+    assert "Confira na fonte antes de usar." in sem.locator(".base-legal.sem").inner_text()
+    ato = cartao("Solução de Consulta Cosit nº 190")
+    assert ato.locator(".base-legal").inner_text() == \
+        "Fundamentação legal: é o próprio ato — Solução de Consulta Cosit nº 190/2026. Cita também: Lei nº 9.430/1996."
+    assert sem_rolagem_lateral(pagina)
+    pagina.set_viewport_size({"width": 390, "height": 844})          # celular
+    assert sem_rolagem_lateral(pagina)

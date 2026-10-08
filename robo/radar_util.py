@@ -12,7 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from bs4 import BeautifulSoup
 
-VERSAO = "0.14.3"
+VERSAO = "0.15.0"
 AGENTE = f"ArteconRadar/{VERSAO} (+https://www.artecon.cnt.br; monitoramento de fontes oficiais)"
 
 MESES = {

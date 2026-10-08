@@ -75,6 +75,7 @@ def servicos(api_postgrest):
     threading.Thread(target=site.serve_forever, daemon=True).start()
     yield
     site.shutdown()
+    site.server_close()
 
 
 def artigo(texto: str) -> str:
@@ -132,7 +133,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.14.3", True), ("ok", 1, 200, "0.14.3", True)]
+    assert ex == [("ok", 2, 200, "0.15.0", True), ("ok", 1, 200, "0.15.0", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 

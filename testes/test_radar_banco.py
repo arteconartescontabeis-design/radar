@@ -687,7 +687,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.14.3"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.15.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1146,7 +1146,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (22, 6, 8, 6, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.14.3", [], 22)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.15.0", [], 22)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1998,7 +1998,7 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.14.3", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.15.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2028,7 +2028,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.14.3", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.15.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -2670,3 +2670,92 @@ def test_autorizacao_antiga_com_marca_nao_sai_na_nova_tentativa(limpo):
 def test_marca_com_espaco_especial_tambem_conta(limpo):
     assert limpo.execute("select radar_marcas_verificar(%s)", ("Prazo [\u00a0VERIFICAR data] ok",)).fetchone()[0].startswith("RADAR139")
     assert limpo.execute("select radar_marcas_verificar('Texto [verificado] e [Verificação] ok')").fetchone()[0] is None
+
+
+# ------------------------------------------------ v0.15.0: fundamentação legal citada no texto capturado
+def _base(db, titulo, texto=None, resumo=None):
+    return db.execute("select radar_base_legal(%s, %s, %s)", (titulo, resumo, texto)).fetchone()[0]
+
+
+@pytest.mark.parametrize("texto, normas", [
+    ("A Lei Complementar nº 214, de 16 de janeiro de 2025, regulamenta o IBS. Ver também a LC 214/2025, art. 12.",
+     ["Lei Complementar nº 214/2025"]),                                                       # a mesma norma escrita de dois jeitos
+    ("Conforme a IN RFB nº 2.229/2024 e a Instrução Normativa nº 2229.", ["Instrução Normativa RFB nº 2.229/2024"]),
+    ("Leis nºs 10.637/2002 e 10.833/2003; Decreto-Lei nº 1.598/1977; Decreto nº 9.580, de 22 de novembro de 2018",
+     ["Lei nº 10.637/2002", "Lei nº 10.833/2003", "Decreto-Lei nº 1.598/1977", "Decreto nº 9.580/2018"]),
+    ("Resolução CGSN nº 140/2018 e Resolução CGIBS nº 6/2026", ["Resolução CGSN nº 140/2018", "Resolução CGIBS nº 6/2026"]),
+    ("Portaria MF nº 12 e Portaria RFB nº 12", ["Portaria MF nº 12", "Portaria RFB nº 12"]),                 # órgãos diferentes
+    ("MP 1.303/2025 e Medida Provisória nº 1.303, de 11 de junho de 2025", ["Medida Provisória nº 1.303/2025"]),
+    ("Convênio ICMS 52/17, Ajuste SINIEF nº 7/2005 e Protocolo ICMS 41/08",
+     ["Convênio ICMS nº 52/17", "Ajuste SINIEF nº 7/2005", "Protocolo ICMS nº 41/08"]),
+    ("LEI COMPLEMENTAR Nº 123, DE 14 DE DEZEMBRO DE 2006", ["Lei Complementar nº 123/2006"]),
+    ("Lei n.º 12.546/2011, Lei n° 12.973/14 e Parecer Normativo Cosit nº 1/2018",
+     ["Lei nº 12.546/2011", "Lei nº 12.973/14", "Parecer Normativo Cosit nº 1/2018"]),
+    ("art. 150 da Constituição Federal, art. 3º do CTN e o RIR/2018",
+     ["Constituição Federal", "Código Tributário Nacional (CTN)", "Regulamento do Imposto de Renda (RIR/2018)"]),
+    ("Opção pelo Simei permanece em janeiro", []),
+    ("O MP 2 de Santa Catarina, o leilão da Receita, a eleição e a lei 2 vezes citada", []),     # nada disso é norma
+    ("O decreto de 5 de março e a resolução de conflitos", []),                                 # sem número não é citação
+])
+def test_fundamentacao_legal_le_as_normas_citadas(limpo, texto, normas):
+    b = _base(limpo, "Notícia", texto)
+    assert b["normas"] == normas and b["total"] == len(normas) and b["ato"] is None
+
+
+def test_fundamentacao_legal_reconhece_a_captura_que_e_o_proprio_ato(limpo):
+    b = _base(limpo, "Solução de Consulta Cosit nº 190, de 30/09/2026", "Assunto: IRPJ. Dispositivos: Lei nº 9.430, de 1996, art. 1º.")
+    assert b == {"ato": "Solução de Consulta Cosit nº 190/2026", "total": 2,
+                 "normas": ["Solução de Consulta Cosit nº 190/2026", "Lei nº 9.430/1996"]}
+    assert _base(limpo, "ATO DIAT Nº 063/2026")["ato"] == "Ato DIAT nº 063/2026"
+    assert _base(limpo, "Receita publica a Instrução Normativa RFB nº 2.300")["ato"] is None   # notícia sobre o ato não é o ato
+    assert _base(limpo, "Lei nº 15.270/2025")["ato"] == "Lei nº 15.270/2025"           # espaço especial
+
+
+def test_fundamentacao_legal_guarda_ate_12_e_conta_todas(limpo):
+    texto = "; ".join(f"Portaria RFB nº {n}" for n in range(101, 121))
+    b = _base(limpo, "Notícia", texto)
+    assert b["total"] == 20 and len(b["normas"]) == 12 and b["normas"][0] == "Portaria RFB nº 101"
+
+
+def test_fundamentacao_legal_em_texto_grande_e_rapida(limpo):
+    texto = ("Considerando o disposto no art. 5º da Lei nº 9.430, de 27 de dezembro de 1996, e na Instrução Normativa RFB nº 2.229, "
+             "de 2024, resolve: " + "Parágrafo sem norma nenhuma, com números 1.234,56 e datas 01/02/2026. " * 80) * 12
+    assert len(texto) > 60000
+    t0 = datetime.now(timezone.utc)
+    b = _base(limpo, "Portaria do DOU", texto)
+    assert (datetime.now(timezone.utc) - t0).total_seconds() < 5
+    assert b["normas"] == ["Lei nº 9.430/1996", "Instrução Normativa RFB nº 2.229/2024"]
+
+
+def test_fundamentacao_legal_e_calculada_pelo_banco_na_captura(limpo):
+    with como("service_role") as c:
+        cap = c.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                           select id, 'https://x.gov.br/bl', 'Prazo do Simei', 'Sem norma citada.', 'h' from radar_fontes
+                            where slug = 'rfb-noticias' returning id""").fetchone()[0]
+        assert c.execute("select base_legal from radar_capturas where id = %s", (cap,)).fetchone()[0] == {"normas": [], "total": 0, "ato": None}
+        # o texto mudou: lê de novo
+        c.execute("update radar_capturas set texto = 'Conforme a Resolução CGSN nº 140/2018.' where id = %s", (cap,))
+        assert c.execute("select base_legal->'normas' from radar_capturas where id = %s", (cap,)).fetchone()[0] == ["Resolução CGSN nº 140/2018"]
+        # ninguém marca à mão: o valor gravado por fora é ignorado
+        c.execute("""update radar_capturas set base_legal = '{"normas": ["Lei nº 1"], "total": 1, "ato": null}' where id = %s""", (cap,))
+        assert c.execute("select base_legal->'normas' from radar_capturas where id = %s", (cap,)).fetchone()[0] == ["Resolução CGSN nº 140/2018"]
+        assert c.execute("select base_legal->>'total' from radar_v_fila where id = %s", (cap,)).fetchone()[0] == "1"
+        assert c.execute("select versao from radar_capturas where id = %s", (cap,)).fetchone()[0] == 2   # só a mudança de texto contou
+    with como("authenticated", LEITOR) as c:                         # a equipe vê pela fila; "Em alta" tem a mesma coluna
+        assert c.execute("select base_legal->'normas' from radar_v_fila where id = %s", (cap,)).fetchone()[0] == ["Resolução CGSN nº 140/2018"]
+        assert "base_legal" in [d.name for d in c.execute("select * from radar_v_em_alta limit 0").description]
+
+
+def test_recalcular_fundamentacao_legal_le_as_capturas_que_ja_estavam(limpo):
+    cap = nova_captura(limpo, texto="Art. 1º Fica alterada a Lei Complementar nº 123, de 14 de dezembro de 2006.")
+    limpo.execute("set session_replication_role = replica")          # captura de antes da v0.15.0, ainda sem a leitura
+    limpo.execute("update radar_capturas set base_legal = null where id = %s", (cap,))
+    limpo.execute("set session_replication_role = origin")
+    relev = limpo.execute("select relevancia, relevancia_pontos, versao, atualizado_em from radar_capturas where id = %s", (cap,)).fetchone()
+    assert limpo.execute("select radar_recalcular_base_legal()").fetchone()[0] == 1
+    assert limpo.execute("select radar_recalcular_base_legal()").fetchone()[0] == 0          # nada mudou na segunda vez
+    assert limpo.execute("select base_legal->'normas' from radar_capturas where id = %s", (cap,)).fetchone()[0] == \
+        ["Instrução Normativa RFB nº 2290", "Lei Complementar nº 123/2006"]
+    assert limpo.execute("select relevancia, relevancia_pontos, versao, atualizado_em from radar_capturas where id = %s", (cap,)).fetchone() == relev
+    with como("service_role") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        c.execute("select radar_recalcular_base_legal()")
