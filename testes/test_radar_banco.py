@@ -2754,6 +2754,13 @@ def _base(db, titulo, texto=None, resumo=None):
      ["Lei nº 5.172/1966", "Decreto nº 9.580/2018"]),                                      # o CTN é a própria Lei 5.172
     ("IN RFB nº 1.187, 29 de agosto de 2011; IN RFB nº 2342/2026 e IN RFB nº 2.342",
      ["Instrução Normativa RFB nº 1.187/2011", "Instrução Normativa RFB nº 2.342/2026"]),
+    # (SEF/SC, Simples Nacional, Econet)
+    ("Atos Diat 29/09/2026 ATO DIAT Nº 061/2026 Altera o RICMS. Portarias 06/10/2026 PORTARIA SEF N° 317/2026",
+     ["Ato DIAT nº 061/2026", "Portaria SEF nº 317/2026", "RICMS"]),                  # a data do cabeçalho não é norma
+    ("às Leis Complementares nº 214, de 2025, e nº 227, de 2026; Lei federal nº 5.172 , de 25 de outubro de 1966 (Código Tributário Nacional)",
+     ["Lei Complementar nº 214/2025", "Lei Complementar nº 227/2026", "Lei federal nº 5.172/1966"]),
+    ("A Resposta à Consulta Tributária nº 33.130/2026 da Sefaz-SP; o Regulamento do ICMS",
+     ["Resposta à Consulta Tributária nº 33.130/2026", "RICMS"]),
 ])
 def test_fundamentacao_legal_le_as_normas_citadas(limpo, texto, normas):
     b = _base(limpo, "Notícia", texto)

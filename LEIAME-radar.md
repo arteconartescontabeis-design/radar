@@ -16,7 +16,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
 
 - **"com fundamentação legal"** (selo verde) e a linha *Fundamentação legal:* com as normas citadas no texto capturado: lei,
   lei complementar, decreto, decreto-lei, medida provisória, emenda constitucional, instrução normativa, resolução, portaria,
-  solução de consulta ou de divergência, ato declaratório, ato conjunto e ato técnico conjunto (RFB/CGIBS), parecer normativo,
+  solução de consulta ou de divergência, resposta à consulta tributária, ato declaratório, ato conjunto e ato técnico conjunto (RFB/CGIBS), parecer normativo,
   convênio ICMS, ajuste SINIEF, protocolo ICMS, ato COTEPE, ato DIAT, edital de transação e súmula (também pelas siglas LC, MP,
   IN, EC e DL e pelas abreviaturas Res., Dec. e Port.), e os códigos citados pelo nome (Constituição Federal, CTN, RIR, RICMS,
   Código Civil e CLT; o código que já aparece pela lei que o criou, como a Lei nº 5.172/1966 do CTN, não se repete). A mesma norma escrita de jeitos diferentes ("LC 214/2025" e "Lei Complementar

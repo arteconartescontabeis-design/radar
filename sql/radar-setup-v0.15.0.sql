@@ -790,6 +790,7 @@ language sql immutable set search_path = public as $$
     when k ~ '^portarias?$' then 'Portaria'
     when k ~ '^soluc(ao|oes) de consulta$' then 'Solução de Consulta'
     when k ~ '^soluc(ao|oes) de divergencia$' then 'Solução de Divergência'
+    when k ~ '^respostas? a consulta( tributaria)?$' then 'Resposta à Consulta Tributária'
     when k ~ '^atos? declaratorios?$' then 'Ato Declaratório'
     when k ~ '^atos? tecnicos? conjuntos?$' then 'Ato Técnico Conjunto'
     when k ~ '^atos? conjuntos?$' then 'Ato Conjunto'
@@ -816,6 +817,7 @@ language sql immutable set search_path = public as $$
            'decretos', 'decreto', 'leis', 'lei', 'medidas provisorias', 'medida provisoria', 'emendas constitucionais', 'emenda constitucional',
            'instrucoes normativas', 'instrucao normativa', 'resolucoes', 'resolucao', 'portarias', 'portaria',
            'solucoes de consulta', 'solucao de consulta', 'solucoes de divergencia', 'solucao de divergencia',
+           'respostas a consulta tributaria', 'resposta a consulta tributaria', 'respostas a consulta', 'resposta a consulta',
            'atos declaratorios', 'ato declaratorio', 'atos tecnicos conjuntos', 'ato tecnico conjunto', 'atos conjuntos', 'ato conjunto',
            'editais de transacao', 'edital de transacao', 'editais', 'edital', 'pareceres normativos', 'parecer normativo',
            'convenios icms', 'convenio icms', 'ajustes sinief', 'ajuste sinief', 'protocolos icms', 'protocolo icms',
@@ -828,12 +830,12 @@ $$;
 -- 1992"), ", de 24/09/2026", ", de 05.07.2022", ", de 1996" e ", de 2002 e 2003, respectivamente" (esta não diz qual é de qual)
 create or replace function public.radar_base_legal_ano_rx() returns text
 language sql immutable set search_path = public as $$
-  select '\s*/\s*(?:\d{4}|\d{2})(?![\d])'
-      || '|,?\s+[Dd][Ee]\s+\d{1,2}[º°o]?\s+[Dd][Ee]\s+[A-Za-zÇç]+\s+(?:[Dd][Ee]\s+)?\d{4}'
-      || '|,\s*\d{1,2}[º°o]?\s+[Dd][Ee]\s+[A-Za-zÇç]+\s+[Dd][Ee]\s+\d{4}'
-      || '|,?\s+[Dd][Ee]\s+\d{1,2}/\d{1,2}/\d{4}'
-      || '|,?\s+[Dd][Ee]\s+\d{1,2}[º°]?\.\d{1,2}\.(?:\d{4}|\d{2})(?![\d])'
-      || '|,?\s+[Dd][Ee]\s+(?:19|20)\d{2}(?:\s*(?:,|\s[eE])\s*(?:19|20)\d{2})*(?:,?\s*respectivamente)?(?![\d])';
+  select '\s*/\s*(?:\d{4}|\d{2})(?![\d])(?!\s*[/.]\s*\d)'                  -- "29/09/2026" logo depois do nome é data, não norma
+      || '|\s*,?\s+[Dd][Ee]\s+\d{1,2}[º°o]?\s+[Dd][Ee]\s+[A-Za-zÇç]+\s+(?:[Dd][Ee]\s+)?\d{4}'
+      || '|\s*,\s*\d{1,2}[º°o]?\s+[Dd][Ee]\s+[A-Za-zÇç]+\s+[Dd][Ee]\s+\d{4}'
+      || '|\s*,?\s+[Dd][Ee]\s+\d{1,2}/\d{1,2}/\d{4}'
+      || '|\s*,?\s+[Dd][Ee]\s+\d{1,2}[º°]?\.\d{1,2}\.(?:\d{4}|\d{2})(?![\d])'
+      || '|\s*,?\s+[Dd][Ee]\s+(?:19|20)\d{2}(?:\s*(?:,|\s[eE])\s*(?:19|20)\d{2})*(?:,?\s*respectivamente)?(?![\d])';
 $$;
 
 -- O ano, com 4 dígitos, do trecho casado por radar_base_legal_ano_rx; null se não tem ou se tem mais de um ("de 2002 e 2003,
@@ -928,6 +930,7 @@ language sql immutable set search_path = public as $$
   select '(?:^|[^[:alnum:]])('
       || (select string_agg(public.radar_rx_termo(x), '|' order by o) from unnest(array[
            'constituicao federal', 'constituicao da republica', 'codigo tributario nacional', 'regulamento do imposto de renda',
+           'regulamento do icms',
            'codigo civil', 'consolidacao das leis do trabalho']) with ordinality as u(x, o))
       -- "da CF" (não o "CF-e", cupom fiscal) e "da Constituição" seguida de pontuação, "Federal", "de 1988" ou "da República"
       -- ("a Constituição de Empresas", "na Constituição Estadual" e "da Constituição de Santa Catarina" não são a Federal)
@@ -1022,6 +1025,7 @@ begin
       when public.radar_base_legal_chave(m[1]) ~ '(^|\s)(constituicao|cf)' then 'Constituição Federal'
       when public.radar_base_legal_chave(m[1]) ~ '^(codigo tributario|ctn)' then 'Código Tributário Nacional (CTN)'
       when m[1] ~ '^RIR' then 'Regulamento do Imposto de Renda (RIR/' || public.radar_base_legal_ano(m[1]) || ')'
+      when public.radar_base_legal_chave(m[1]) ~ '^regulamento do icms' then 'RICMS'
       when public.radar_base_legal_chave(m[1]) ~ '^regulamento' then 'Regulamento do Imposto de Renda'
       when m[1] ~ '^RICMS' then 'RICMS' || coalesce('/' || substring(m[1] from '[/-]\s*([A-Z]{2})$'), '')
       when public.radar_base_legal_chave(m[1]) ~ '^codigo civil' then 'Código Civil'
