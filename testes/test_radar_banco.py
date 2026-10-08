@@ -2687,15 +2687,42 @@ def _base(db, titulo, texto=None, resumo=None):
     ("Portaria MF nº 12 e Portaria RFB nº 12", ["Portaria MF nº 12", "Portaria RFB nº 12"]),                 # órgãos diferentes
     ("MP 1.303/2025 e Medida Provisória nº 1.303, de 11 de junho de 2025", ["Medida Provisória nº 1.303/2025"]),
     ("Convênio ICMS 52/17, Ajuste SINIEF nº 7/2005 e Protocolo ICMS 41/08",
-     ["Convênio ICMS nº 52/17", "Ajuste SINIEF nº 7/2005", "Protocolo ICMS nº 41/08"]),
+     ["Convênio ICMS nº 52/2017", "Ajuste SINIEF nº 7/2005", "Protocolo ICMS nº 41/2008"]),                  # ano com 4 dígitos
     ("LEI COMPLEMENTAR Nº 123, DE 14 DE DEZEMBRO DE 2006", ["Lei Complementar nº 123/2006"]),
     ("Lei n.º 12.546/2011, Lei n° 12.973/14 e Parecer Normativo Cosit nº 1/2018",
-     ["Lei nº 12.546/2011", "Lei nº 12.973/14", "Parecer Normativo Cosit nº 1/2018"]),
+     ["Lei nº 12.546/2011", "Lei nº 12.973/2014", "Parecer Normativo Cosit nº 1/2018"]),
     ("art. 150 da Constituição Federal, art. 3º do CTN e o RIR/2018",
      ["Constituição Federal", "Código Tributário Nacional (CTN)", "Regulamento do Imposto de Renda (RIR/2018)"]),
     ("Opção pelo Simei permanece em janeiro", []),
     ("O MP 2 de Santa Catarina, o leilão da Receita, a eleição e a lei 2 vezes citada", []),     # nada disso é norma
     ("O decreto de 5 de março e a resolução de conflitos", []),                                 # sem número não é citação
+    # o que a varredura da v0.15.0 achou
+    ("a Lei estadual nº 17.763/2019, o Decreto estadual nº 48.123, de 2025, e a Portaria conjunta RFB/PGFN nº 1/2025",
+     ["Lei estadual nº 17.763/2019", "Decreto estadual nº 48.123/2025", "Portaria conjunta RFB/PGFN nº 1/2025"]),
+    ("o Projeto de Lei nº 1.087/2025, o Projeto de Lei Complementar (PLP) nº 108/2024, a PROPOSTA DE EMENDA CONSTITUCIONAL Nº 45 "
+     "e a minuta de Instrução Normativa nº 2.400", []),                                         # ainda não são norma
+    ("LEI NO 9.430/1996; Decreto Número 9.580/2018; IN RFB No 2.229/2024 e IN RFB nº 2.229/2024",
+     ["Lei nº 9.430/1996", "Decreto nº 9.580/2018", "Instrução Normativa RFB nº 2.229/2024"]),
+    ("Lei Kandir 25 anos depois; Decreto Altera 3 Regras; Compensações da Lei Kandir 2025; Portaria MF 12", ["Portaria MF nº 12"]),
+    ("o decreto no 1º dia útil; a lei no 2º turno; as portarias nos 30 dias; a resolução no 3º trimestre", []),
+    ("A denúncia do MP no 2º grau, o MP Eleitoral 2, LC nº 87, EC nº 42 e IN RFB nº 20",
+     ["Lei Complementar nº 87", "Emenda Constitucional nº 42", "Instrução Normativa RFB nº 20"]),
+    ("Resolução CGSN nº 140/2018 e a Resolução do CGSN nº 140; Portaria Conjunta RFB/PGFN nº 1/2025 e Portaria Conjunta nº 1/2025",
+     ["Resolução CGSN nº 140/2018", "Portaria Conjunta RFB/PGFN nº 1/2025"]),
+    ("Resolução CGIBS nº 1/2025 e Resolução CGIBS nº 1/2026; Convênio ICMS 52/2017 e 52/17; Resolução CGIBS nº 1",
+     ["Resolução CGIBS nº 1/2025", "Resolução CGIBS nº 1/2026", "Convênio ICMS nº 52/2017"]),        # o ano separa
+    ("Convênios ICMS nºs 52/17 e 53/17; Súmulas CARF nºs 10 e 11; Lei Geral de Proteção de Dados (LGPD) nº 13.709/2018",
+     ["Convênio ICMS nº 52/2017", "Convênio ICMS nº 53/2017", "Súmula CARF nº 10", "Súmula CARF nº 11",
+      "Lei Geral de Proteção de Dados nº 13.709/2018"]),
+    ("RIR/2018 e RIR/18; RICMS/SP e RICMS-SP", ["Regulamento do Imposto de Renda (RIR/2018)", "RICMS/SP"]),
+    ("fere o art. 195 da CF e o art. 150, VI, da Constituição; a Constituição Estadual e a constituição da empresa",
+     ["Constituição Federal"]),
+    # o que a conferência nas capturas reais achou
+    ("Altera o Ato COTEPE/ICMS nº 23, de 27 de março de 2018, e o Ato COTEPE/PMPF nº 27/2026",
+     ["Ato COTEPE/ICMS nº 23/2018", "Ato COTEPE/PMPF nº 27/2026"]),
+    ("as Leis nºs 14.596, de 14 de junho de 2023, 14.597, de 14 de junho de 2023 (Lei Geral do Esporte), e 15.421, de 1º de junho "
+     "de 2026; LEI Nº 12.973, DE 2014; Portaria SEF nº 164, de 2004",
+     ["Lei nº 14.596/2023", "Lei nº 14.597/2023", "Lei nº 15.421/2026", "Lei nº 12.973/2014", "Portaria SEF nº 164/2004"]),
 ])
 def test_fundamentacao_legal_le_as_normas_citadas(limpo, texto, normas):
     b = _base(limpo, "Notícia", texto)
@@ -2708,7 +2735,26 @@ def test_fundamentacao_legal_reconhece_a_captura_que_e_o_proprio_ato(limpo):
                  "normas": ["Solução de Consulta Cosit nº 190/2026", "Lei nº 9.430/1996"]}
     assert _base(limpo, "ATO DIAT Nº 063/2026")["ato"] == "Ato DIAT nº 063/2026"
     assert _base(limpo, "Receita publica a Instrução Normativa RFB nº 2.300")["ato"] is None   # notícia sobre o ato não é o ato
+    assert _base(limpo, "Lei nº 15.270/2025: o que muda no Imposto de Renda")["ato"] is None
+    assert _base(limpo, "LC 87 completa 30 anos", "Lei Complementar nº 87, de 13 de setembro de 1996")["ato"] is None
+    assert _base(limpo, "Decreto nº 12.955, de 2026 - Regulamenta a CBS")["ato"] == "Decreto nº 12.955/2026"
+    assert _base(limpo, "PORTARIA RFB Nº 1, DE 2 DE OUTUBRO DE 2026")["ato"] == "Portaria RFB nº 1/2026"
+    assert _base(limpo, "Ato COTEPE/PMPF nº 27/2026 (DOU DE 29/09/2026)")["ato"] == "Ato COTEPE/PMPF nº 27/2026"
+
+
+def test_fundamentacao_legal_avisa_quando_o_texto_capturado_esta_cortado(limpo):
+    b = _base(limpo, "Área Federal", "A Receita informou que o prazo do parcelamento foi prorrogado e que as empresas devem...")
+    assert b == {"ato": None, "total": 0, "normas": [], "cortado": True}
+    assert "cortado" not in _base(limpo, "Notícia", "Texto inteiro, sem norma.")
     assert _base(limpo, "Lei nº 15.270/2025")["ato"] == "Lei nº 15.270/2025"           # espaço especial
+
+
+def test_fundamentacao_legal_nao_passa_de_uma_parte_para_outra_e_aceita_acento_separado(limpo):
+    # o título termina com "portaria" e o resumo começa pela IN: a IN não vira "Portaria Instrução Normativa..."
+    assert _base(limpo, "Receita publica portaria", resumo="Instrução Normativa RFB nº 2.300/2026 altera a CBS.")["normas"] == \
+        ["Instrução Normativa RFB nº 2.300/2026"]
+    nfd = limpo.execute("select normalize('Conforme a Resolução CGSN nº 140/2018 e a Constituição Federal', NFD)").fetchone()[0]
+    assert _base(limpo, "Notícia", nfd)["normas"] == ["Resolução CGSN nº 140/2018", "Constituição Federal"]
 
 
 def test_fundamentacao_legal_guarda_ate_12_e_conta_todas(limpo):
@@ -2725,6 +2771,12 @@ def test_fundamentacao_legal_em_texto_grande_e_rapida(limpo):
     b = _base(limpo, "Portaria do DOU", texto)
     assert (datetime.now(timezone.utc) - t0).total_seconds() < 5
     assert b["normas"] == ["Lei nº 9.430/1996", "Instrução Normativa RFB nº 2.229/2024"]
+    # muitas normas diferentes (um regulamento consolidado): o tempo não cresce com o quadrado das citações
+    texto = " ".join(f"Art. {n}. Altera a Lei nº {1000 + n}, de 2020, e o Decreto nº {5000 + n}/2021." for n in range(1, 1501))
+    t0 = datetime.now(timezone.utc)
+    b = _base(limpo, "Regulamento", texto)
+    assert (datetime.now(timezone.utc) - t0).total_seconds() < 5
+    assert b["total"] == 3000 and len(b["normas"]) == 12
 
 
 def test_fundamentacao_legal_e_calculada_pelo_banco_na_captura(limpo):
@@ -2748,14 +2800,39 @@ def test_fundamentacao_legal_e_calculada_pelo_banco_na_captura(limpo):
 
 def test_recalcular_fundamentacao_legal_le_as_capturas_que_ja_estavam(limpo):
     cap = nova_captura(limpo, texto="Art. 1º Fica alterada a Lei Complementar nº 123, de 14 de dezembro de 2006.")
-    limpo.execute("set session_replication_role = replica")          # captura de antes da v0.15.0, ainda sem a leitura
+    velha = nova_captura(limpo, url="https://exemplo.gov.br/velha", texto="Conforme a Lei nº 9.430/1996.")
+    limpo.execute("set session_replication_role = replica")          # captura de antes da v0.15.0, ainda sem a leitura,
     limpo.execute("update radar_capturas set base_legal = null where id = %s", (cap,))
-    limpo.execute("set session_replication_role = origin")
+    limpo.execute("""update radar_capturas set base_legal = '{"normas": [], "total": 0, "ato": null}' where id = %s""", (velha,))
+    limpo.execute("set session_replication_role = origin")             # e outra lida por uma regra mais antiga
     relev = limpo.execute("select relevancia, relevancia_pontos, versao, atualizado_em from radar_capturas where id = %s", (cap,)).fetchone()
-    assert limpo.execute("select radar_recalcular_base_legal()").fetchone()[0] == 1
+    assert limpo.execute("select radar_recalcular_base_legal()").fetchone()[0] == 2
     assert limpo.execute("select radar_recalcular_base_legal()").fetchone()[0] == 0          # nada mudou na segunda vez
+    assert limpo.execute("select base_legal->'normas' from radar_capturas where id = %s", (velha,)).fetchone()[0] == \
+        ["Instrução Normativa RFB nº 2290", "Lei nº 9.430/1996"]
     assert limpo.execute("select base_legal->'normas' from radar_capturas where id = %s", (cap,)).fetchone()[0] == \
         ["Instrução Normativa RFB nº 2290", "Lei Complementar nº 123/2006"]
     assert limpo.execute("select relevancia, relevancia_pontos, versao, atualizado_em from radar_capturas where id = %s", (cap,)).fetchone() == relev
     with como("service_role") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
         c.execute("select radar_recalcular_base_legal()")
+
+
+def test_instalacao_le_a_fundamentacao_das_capturas_que_ja_estavam(db, limpo):
+    cap = nova_captura(limpo, texto="Conforme a Resolução CGSN nº 140/2018.")
+    limpo.execute("set session_replication_role = replica")          # como ficam as capturas de antes da v0.15.0
+    limpo.execute("update radar_capturas set base_legal = null")
+    limpo.execute("set session_replication_role = origin")
+    r = psql(SETUP)
+    assert r.returncode == 0, r.stderr
+    assert limpo.execute("select count(*) from radar_capturas where base_legal is null").fetchone()[0] == 0
+    assert "Resolução CGSN nº 140/2018" in limpo.execute("select base_legal->'normas' from radar_capturas where id = %s", (cap,)).fetchone()[0]
+
+
+def test_fila_mostra_a_fundamentacao_de_uma_repeticao(limpo):
+    a = nova_captura(limpo, url="https://exemplo.gov.br/a", texto="A Receita prorrogou o prazo.")
+    b = nova_captura(limpo, url="https://exemplo.gov.br/b", texto="Conforme a Resolução CGSN nº 183, de 1º de outubro de 2026.")
+    limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (a, b))
+    r = limpo.execute("select base_legal_repeticao->'normas' from radar_v_fila where id = %s", (a,)).fetchone()[0]
+    assert "Resolução CGSN nº 183/2026" in r
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (novo_assunto(limpo), b))   # a repetição saiu da fila
+    assert limpo.execute("select base_legal_repeticao from radar_v_fila where id = %s", (a,)).fetchone()[0] is None

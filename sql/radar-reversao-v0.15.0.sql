@@ -134,7 +134,12 @@ drop function if exists public.radar_recalcular_base_legal();
 drop function if exists public.radar_base_legal(text, text, text);
 drop function if exists public.radar_base_legal_codigos_rx();
 drop function if exists public.radar_base_legal_rx();
+drop function if exists public.radar_base_legal_lista_rx();
+drop function if exists public.radar_base_legal_ano_rx();
 drop function if exists public.radar_base_legal_tipo(text);
+drop function if exists public.radar_base_legal_valida(text[]);
+drop function if exists public.radar_base_legal_preparar(text);
+drop function if exists public.radar_base_legal_chave(text);
 drop function if exists public.radar_rx_termo(text);
 
 commit;

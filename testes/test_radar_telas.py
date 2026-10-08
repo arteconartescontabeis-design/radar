@@ -3572,3 +3572,31 @@ def test_capturas_dizem_se_tem_fundamentacao_legal_e_quais_normas(pagina, limpo)
     assert sem_rolagem_lateral(pagina)
     pagina.set_viewport_size({"width": 390, "height": 844})          # celular
     assert sem_rolagem_lateral(pagina)
+
+
+def test_capturas_mostram_a_fundamentacao_da_repeticao_e_quantas_faltam(pagina, limpo):
+    a = captura(limpo, "Receita prorroga prazo do Simples Nacional", "https://www.gov.br/exemplo/rp-1", "rfb-noticias",
+                "A Receita Federal informou que o prazo foi prorrogado.")
+    b = captura(limpo, "CGSN prorroga prazo do Simples Nacional", "https://www.gov.br/exemplo/rp-2", "rfb-noticias",
+                "Conforme a Resolução CGSN nº 183, de 1º de outubro de 2026.")
+    limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (a, b))
+    captura(limpo, "Receita atualiza tabela de códigos de receita", "https://www.gov.br/exemplo/rp-3", "rfb-noticias",
+            "; ".join(f"Portaria RFB nº {n}" for n in range(101, 116)))
+    captura(limpo, "Receita prorroga prazo do parcelamento", "https://www.gov.br/exemplo/rp-4", "rfb-noticias",
+            "A Receita informou que o prazo do parcelamento foi prorrogado e que as empresas devem...")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Capturas")
+    pagina.click("#filtro-fila >> text=Todas")
+    pagina.wait_for_selector("article.cap >> nth=2")
+    cartao = lambda t: pagina.locator("article.cap", has=pagina.locator("h3", has_text=t))
+    principal = cartao("Receita prorroga prazo do Simples")            # não cita, mas a repetição cita
+    assert "com fundamentação legal" in principal.locator(".selo.ok").all_inner_texts()
+    assert principal.locator(".base-legal").inner_text() == \
+        "Fundamentação legal: esta captura não cita norma; outra captura do mesmo fato cita Resolução CGSN nº 183/2026."
+    linha = cartao("tabela de códigos").locator(".base-legal").inner_text()
+    assert linha.startswith("Fundamentação legal: Portaria RFB nº 101; Portaria RFB nº 102;")
+    assert linha.endswith("Portaria RFB nº 112 e mais 3.")                 # 15 citadas, 12 mostradas
+    cortado = cartao("prazo do parcelamento")                          # texto cortado: não afirma que não há norma
+    assert "fundamentação legal não identificada" in cortado.locator(".selo.alerta").all_inner_texts()
+    assert "o trecho capturado está cortado e não cita norma" in cortado.locator(".base-legal").inner_text()

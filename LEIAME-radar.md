@@ -19,12 +19,16 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   solução de consulta ou de divergência, ato declaratório, parecer normativo, convênio ICMS, ajuste SINIEF, protocolo ICMS,
   ato COTEPE, ato DIAT e súmula (também pelas siglas LC, MP, IN, EC e DL), e os códigos citados pelo nome (Constituição
   Federal, CTN, RIR, RICMS, Código Civil e CLT). A mesma norma escrita de jeitos diferentes ("LC 214/2025" e "Lei Complementar
-  nº 214, de 16 de janeiro de 2025") aparece uma vez só. Mostra até 12 e diz quantas faltam.
-- Quando a captura **é o próprio ato** (o título começa pela norma, como "Solução de Consulta Cosit nº 190, de 30/09/2026"),
-  a linha diz "é o próprio ato" e o que ele cita.
+  nº 214, de 16 de janeiro de 2025") aparece uma vez só; o mesmo número em anos diferentes (Resolução CGIBS nº 1/2025 e
+  nº 1/2026) são duas. Mostra até 12 e diz quantas faltam.
+- Quando a captura **é o próprio ato** (o título é a norma, sozinha ou seguida de " - ementa", como "Solução de Consulta
+  Cosit nº 190, de 30/09/2026"), a linha diz "é o próprio ato" e o que ele cita. "Lei nº 15.270/2025: o que muda" é notícia
+  sobre a lei, não a lei.
 - **"sem fundamentação legal"** (selo amarelo): o texto capturado não cita norma nenhuma. Confira na fonte antes de usar.
+  Se outra captura do mesmo fato, ainda na fila, cita norma, o cartão mostra a dela.
 - É uma **leitura do texto**, feita pelo banco, sem custo de IA: diz o que está citado, não se a citação está certa nem se a
-  norma está em vigor. Jurisprudência (Tema, RE, ADI) fica de fora.
+  norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
+  minutas. Não muda a nota nem a relevância.
 
 Muda só o banco (`radar-setup-v0.15.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
@@ -256,8 +260,8 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
 3. SQL Editor → cole e execute `sql/radar-setup-v0.15.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
-   Esperado: 21 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.12.0`).
+   Esperado: 22 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.15.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -811,9 +815,9 @@ repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
 
-**Da v0.14.x para a v0.15.0:** (1) SQL Editor → execute `sql/radar-setup-v0.15.0.sql` (ou a atualização rápida do pacote
-zip; a linha `capturas_base_legal` diz quantas capturas já tinham a fundamentação lida); (2) Ctrl+F5 no Radar. Robô, funções e
-segredos não mudam.
+**Da v0.14.3 (ou v0.14.4) para a v0.15.0:** (1) SQL Editor → execute `sql/radar-setup-v0.15.0.sql` (ou a atualização
+rápida do pacote zip, que é só a partir da v0.14.3; no fim ela mostra `capturas com fundamentacao lida`, que deve ser "N de N");
+(2) Ctrl+F5 no Radar. Robô, funções e segredos não mudam. De versões anteriores, use o `radar-setup-v0.15.0.sql` inteiro.
 
 **Da v0.11.1 para a v0.12.0:** (1) SQL Editor → execute `sql/radar-setup-v0.15.0.sql` (ou a atualização rápida do pacote
 zip); (2) Edge Functions → crie a função `radar-itc` com o `index.ts` desta versão (com **Verify JWT desligado**: a função confere
