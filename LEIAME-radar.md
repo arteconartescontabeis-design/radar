@@ -16,16 +16,20 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
 
 - **"com fundamentação legal"** (selo verde) e a linha *Fundamentação legal:* com as normas citadas no texto capturado: lei,
   lei complementar, decreto, decreto-lei, medida provisória, emenda constitucional, instrução normativa, resolução, portaria,
-  solução de consulta ou de divergência, ato declaratório, parecer normativo, convênio ICMS, ajuste SINIEF, protocolo ICMS,
-  ato COTEPE, ato DIAT e súmula (também pelas siglas LC, MP, IN, EC e DL), e os códigos citados pelo nome (Constituição
-  Federal, CTN, RIR, RICMS, Código Civil e CLT). A mesma norma escrita de jeitos diferentes ("LC 214/2025" e "Lei Complementar
+  solução de consulta ou de divergência, ato declaratório, ato conjunto e ato técnico conjunto (RFB/CGIBS), parecer normativo,
+  convênio ICMS, ajuste SINIEF, protocolo ICMS, ato COTEPE, ato DIAT, edital de transação e súmula (também pelas siglas LC, MP,
+  IN, EC e DL e pelas abreviaturas Res., Dec. e Port.), e os códigos citados pelo nome (Constituição Federal, CTN, RIR, RICMS,
+  Código Civil e CLT; o código que já aparece pela lei que o criou, como a Lei nº 5.172/1966 do CTN, não se repete). A mesma norma escrita de jeitos diferentes ("LC 214/2025" e "Lei Complementar
   nº 214, de 16 de janeiro de 2025") aparece uma vez só; o mesmo número em anos diferentes (Resolução CGIBS nº 1/2025 e
-  nº 1/2026) são duas. Mostra até 12 e diz quantas faltam.
+  Resolução CGIBS nº 1/2026) são duas. Mostra até 12 e diz quantas faltam.
 - Quando a captura **é o próprio ato** (o título é a norma, sozinha ou seguida de " - ementa", como "Solução de Consulta
   Cosit nº 190, de 30/09/2026"), a linha diz "é o próprio ato" e o que ele cita. "Lei nº 15.270/2025: o que muda" é notícia
   sobre a lei, não a lei.
 - **"sem fundamentação legal"** (selo amarelo): o texto capturado não cita norma nenhuma. Confira na fonte antes de usar.
   Se outra captura do mesmo fato, ainda na fila, cita norma, o cartão mostra a dela.
+- **"fundamentação legal não identificada"** (selo amarelo): o texto capturado está cortado (termina em "...", "…" ou
+  "Leia mais", ou é a parte inicial de uma matéria, como a do boletim da ITC) e não cita norma; ela pode estar no restante.
+  Confira na fonte antes de usar.
 - É uma **leitura do texto**, feita pelo banco, sem custo de IA: diz o que está citado, não se a citação está certa nem se a
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
