@@ -825,8 +825,8 @@ const TELAS = {
       const {n, lista, mais} = normasDe(b), r = i.base_legal_repeticao;
       if(!n && r && Array.isArray(r.normas) && Number(r.total) > 0){ const x = normasDe(r);
         return {selo:selo("com fundamentação legal", "ok"), linha:`<p class="sub base-legal"><b>Fundamentação legal:</b> esta captura não cita norma; outra captura do mesmo fato cita ${h(x.lista.join("; "))}${x.mais}.</p>`}; }
-      if(!n && b.cortado) return {selo:selo("fundamentação legal não identificada", "alerta"), linha:`<p class="sub base-legal sem"><b>Fundamentação legal:</b> o trecho capturado está cortado e não cita norma; ela pode estar no restante. Confira na fonte antes de usar.</p>`};
-      if(!n) return {selo:selo("sem fundamentação legal", "alerta"), linha:`<p class="sub base-legal sem"><b>Fundamentação legal:</b> o texto capturado não cita lei, decreto, instrução normativa nem outro ato normativo${i.tem_texto ? "" : " (só o título e o resumo foram lidos)"}. Confira na fonte antes de usar.</p>`};
+      if(!n && (b.cortado || !i.tem_texto)) return {selo:selo("fundamentação legal não identificada", "alerta"), linha:`<p class="sub base-legal sem"><b>Fundamentação legal:</b> ${i.tem_texto ? "o trecho capturado está cortado e não cita norma; ela pode estar no restante" : "o texto da notícia não foi capturado e o título e o resumo não citam norma"}. Confira na fonte antes de usar.</p>`};
+      if(!n) return {selo:selo("sem fundamentação legal", "alerta"), linha:`<p class="sub base-legal sem"><b>Fundamentação legal:</b> o texto capturado não cita lei, decreto, instrução normativa nem outro ato normativo. Confira na fonte antes de usar.</p>`};
       const outras = b.ato ? lista.filter(x => x !== b.ato) : lista;
       return {selo:selo("com fundamentação legal", "ok"), linha:`<p class="sub base-legal"><b>Fundamentação legal:</b> ${b.ato ? `é o próprio ato — ${h(b.ato)}${outras.length ? `. Cita também: ${h(outras.join("; "))}${mais}` : ""}` : h(outras.join("; ")) + mais}.</p>`}; };
     const nota = i => { const v = i.principal && i.nota_grupo != null ? i.nota_grupo : i.ia_nota;

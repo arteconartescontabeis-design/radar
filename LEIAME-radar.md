@@ -17,11 +17,14 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
 - **"com fundamentação legal"** (selo verde) e a linha *Fundamentação legal:* com as normas citadas no texto capturado: lei,
   lei complementar, decreto, decreto-lei, medida provisória, emenda constitucional, instrução normativa, resolução, portaria,
   solução de consulta ou de divergência, resposta à consulta tributária, ato declaratório, ato conjunto e ato técnico conjunto (RFB/CGIBS), parecer normativo,
-  convênio ICMS, ajuste SINIEF, protocolo ICMS, ato COTEPE, ato DIAT, edital de transação e súmula (também pelas siglas LC, MP,
-  IN, EC e DL e pelas abreviaturas Res., Dec. e Port.), e os códigos citados pelo nome (Constituição Federal, CTN, RIR, RICMS,
-  Código Civil e CLT; o código que já aparece pela lei que o criou, como a Lei nº 5.172/1966 do CTN, não se repete). A mesma norma escrita de jeitos diferentes ("LC 214/2025" e "Lei Complementar
+  convênio ICMS, ajuste SINIEF, protocolo ICMS, ato COTEPE, ato DIAT, edital de transação (o "Edital" sozinho, só o da PGFN,
+  PGDAU, PGF, AGU ou RFB — edital de concurso ou de licitação não conta) e súmula (também pelas siglas LC, MP, IN, EC e DL, no
+  singular e no plural, e pelas abreviaturas Res., Dec., Dec.-Lei e Port.), e os códigos citados pelo nome (Constituição Federal,
+  ADCT, CTN, RIR, RICMS, Código Civil e CLT; o código que já aparece pela lei que o criou, como a Lei nº 5.172/1966 do CTN, não se
+  repete). O órgão por extenso e a sigla são o mesmo ("Comitê Gestor do Simples Nacional" = CGSN). Do texto, são lidos os
+  primeiros 100 mil caracteres. A mesma norma escrita de jeitos diferentes ("LC 214/2025" e "Lei Complementar
   nº 214, de 16 de janeiro de 2025") aparece uma vez só; o mesmo número em anos diferentes (Resolução CGIBS nº 1/2025 e
-  Resolução CGIBS nº 1/2026) são duas. Mostra até 12 e diz quantas faltam.
+  Resolução CGIBS nº 1/2026) são duas. Mostra até 12 e diz quantas faltam; a Constituição e os códigos não ficam escondidos.
 - Quando a captura **é o próprio ato** (o título é a norma, sozinha ou seguida de " - ementa", como "Solução de Consulta
   Cosit nº 190, de 30/09/2026"), a linha diz "é o próprio ato" e o que ele cita. "Lei nº 15.270/2025: o que muda" é notícia
   sobre a lei, não a lei.
