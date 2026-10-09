@@ -440,7 +440,6 @@ def test_robo_so_publica_o_que_foi_autorizado_junto_com_o_site(redes):
 def test_robo_com_a_chave_antiga_e_aceito_quando_a_funcao_tem_a_chave_nova(redes):
     """Como na Artecon: a função tem a chave interna nova (sb_secret) e o robô do GitHub usa a antiga (JWT service_role).
     Quem confere a chave do robô é o banco; uma chave falsificada com o papel service_role é recusada."""
-    import jwt as pyjwt
     db, c1 = redes
     a2, c2 = cenario_publicavel(db, slug_fonte="rfb-noticias")
     aprovar(c2)
@@ -448,7 +447,7 @@ def test_robo_com_a_chave_antiga_e_aceito_quando_a_funcao_tem_a_chave_nova(redes
     with como("authenticated", ADMIN) as c:
         r = c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, null, %s)", (c2, lido, JPEG, "Leia: {LINK DO SITE}")).fetchone()[0]
     registrar_site(c2, url="https://artecon.cnt.br/news/view/chave")
-    falsa = pyjwt.encode({"role": "service_role", "iss": "supabase"}, "outro-segredo-qualquer-com-32-caracteres", algorithm="HS256")
+    falsa = jwt("service_role", segredo="outro-segredo-qualquer-com-32-caracteres")
     st, res = pedir({"acao": "publicar", "envio": r["facebook"]}, porta=PORTA_CHAVE_NOVA, cab={"Authorization": "Bearer " + falsa, "apikey": falsa})
     assert st in (401, 403) and db.execute("select situacao from radar_redes_envios where id = %s", (r["facebook"],)).fetchone()[0] == "autorizado"
     robo = {"Authorization": "Bearer " + jwt("service_role"), "apikey": jwt("service_role")}

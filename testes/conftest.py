@@ -108,7 +108,7 @@ PORTA_API = 3999
 API = f"http://127.0.0.1:{PORTA_API}"
 
 
-def jwt(papel: str, sub: str | None = None, exp: int | None = None) -> str:
+def jwt(papel: str, sub: str | None = None, exp: int | None = None, segredo: str = SEGREDO) -> str:
     def b64(b: bytes) -> str:
         return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
     carga = {"role": papel}
@@ -117,7 +117,7 @@ def jwt(papel: str, sub: str | None = None, exp: int | None = None) -> str:
     if exp:
         carga["exp"] = exp
     cab, corpo = b64(b'{"alg":"HS256","typ":"JWT"}'), b64(json.dumps(carga).encode())
-    return f"{cab}.{corpo}." + b64(hmac.new(SEGREDO.encode(), f"{cab}.{corpo}".encode(), hashlib.sha256).digest())
+    return f"{cab}.{corpo}." + b64(hmac.new(segredo.encode(), f"{cab}.{corpo}".encode(), hashlib.sha256).digest())
 
 
 # v0.14.2: chave interna nova do Supabase (sb_secret_…, não é JWT). O gateway de verdade aceita essa chave SÓ no cabeçalho
