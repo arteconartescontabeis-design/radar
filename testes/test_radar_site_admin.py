@@ -90,6 +90,9 @@ def test_reconhece_a_lista_sem_abrir_excluir_nem_mostrar_token():
     assert "formulário POST → /admin/news/12 ocultos=['_token', '_method=DELETE']" in texto
     assert "tokenSecreto" not in texto and "abcdefghij" not in texto                  # valores ocultos e códigos longos não aparecem
     assert "/admin/news?page=2" in texto and "/js/admin.js" in texto and "Prazo do IRPF" in texto
+    s.paginas[sa.BASE + "/js/admin.js"] = "$('#tab').DataTable({ajax: '/admin/news/list'}); $(document).on('click', '.del', function(){ swal('Excluir?') })"
+    scripts = sa.scripts_do_painel(s, url, html)
+    assert "/admin/news/list" in scripts and "swal" in scripts and len(s.posts) == 1 and not any(sa.APAGA.search(g) for g in s.gets)
 
 
 def test_lista_nao_encontrada_para_com_aviso():

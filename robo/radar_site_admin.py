@@ -206,7 +206,36 @@ def relatorio_lista(url: str, html: str) -> str:
     linhas.append("Scripts da página que tratam exclusão/confirmação:" + ("".join(f"\n  - {t}" for t in trechos[:6]) if trechos else " nenhum"))
     externos = [_caminho(url, s["src"]) for s in sopa.find_all("script", src=True)][:12]
     linhas.append(f"Scripts externos: {externos or 'nenhum'}")
+    for t in sopa.find_all("table")[:2]:
+        attrs = {k: (" ".join(v) if isinstance(v, list) else v) for k, v in t.attrs.items()}
+        linhas.append(f"Atributos da tabela: {{{', '.join(f'{k}={_curto(v, 80)}' for k, v in attrs.items())}}}")
     return "\n".join(linhas)
+
+
+def trechos_script(js: str, limite: int = 14) -> list[str]:
+    """Trechos do script do painel que montam a lista e tratam a exclusão (endereços, método, confirmação)."""
+    saida, fim = [], -1
+    for m in re.finditer(r"(?i)news|delete|destroy|excluir|ajax|swal|datatable|_token|csrf|\$\.(post|get)|fetch\(", js or ""):
+        if m.start() < fim:
+            continue
+        ini, fim = max(0, m.start() - 160), m.start() + 320
+        saida.append(_curto(js[ini:fim], 480))
+        if len(saida) >= limite:
+            break
+    return saida
+
+
+def scripts_do_painel(sessao: requests.Session, url: str, html: str) -> str:
+    """Lê (GET) os scripts próprios do painel citados na página da lista — nunca os de bibliotecas — e mostra os trechos."""
+    linhas = []
+    for s in BeautifulSoup(html or "", "lxml").find_all("script", src=True):
+        alvo = urljoin(url, s["src"])
+        if not mesmo_site(alvo) or "/lib/" in alvo or APAGA.search(urlsplit(alvo).path):
+            continue
+        r = sessao.get(alvo, timeout=40)
+        linhas.append(f"Script {urlsplit(alvo).path} (HTTP {r.status_code}, {len(r.text)} caracteres):")
+        linhas += [f"  - {t}" for t in trechos_script(r.text)] or ["  (nada sobre notícias ou exclusão)"]
+    return "\n".join(linhas) or "Scripts próprios do painel: nenhum"
 
 
 def achar_lista(sessao: requests.Session, html: str, base: str) -> tuple[str, str]:
@@ -244,7 +273,8 @@ def main() -> int:
         url, form = achar_cadastro(sessao, painel, BASE + "/admin")
         texto = relatorio(url, form)
         try:                                               # v0.17.0: a lista (só leitura) para preparar a exclusão
-            texto += "\n\n" + relatorio_lista(*achar_lista(sessao, painel, BASE + "/admin"))
+            url_lista, html_lista = achar_lista(sessao, painel, BASE + "/admin")
+            texto += "\n\n" + relatorio_lista(url_lista, html_lista) + "\n\n" + scripts_do_painel(sessao, url_lista, html_lista)
         except Parada as e:
             texto += f"\n\nLista de notícias: {e}"
     except Parada as e:
