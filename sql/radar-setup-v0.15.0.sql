@@ -925,7 +925,7 @@ $$;
 -- normativa" ficam de fora (ainda não são norma)
 create or replace function public.radar_base_legal_preparar(p text) returns text
 language sql immutable set search_path = public as $$
-  select regexp_replace(regexp_replace(translate(normalize(coalesce(p, ''), NFC), E'\u00a0', ' '),
+  select regexp_replace(regexp_replace(translate(normalize(coalesce(p, ''), NFC), chr(160), ' '),
            '((?:[Pp]rojetos?|PROJETOS?|[Aa]nteprojetos?|ANTEPROJETOS?|[Pp]ropostas?|PROPOSTAS?|[Mm]inutas?|MINUTAS?)\s+(?:[Dd][EeAaOo]s?|D[EAO]S?)\s+)',
            '\1x', 'g'),
            '((?:[Ee]mendas?|EMENDAS?)\s+(?:[àaÀA]\s+)?)((?:[Cc]onstitui|CONSTITUI))', '\1x\2', 'g');
