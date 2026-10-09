@@ -110,6 +110,7 @@ def site():
     yield
     radar_site_admin.BASE, radar_site_admin.LOGIN = antes
     servidor.shutdown()
+    servidor.server_close()
 
 
 @pytest.fixture()

@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.14.3.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.15.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.14.3.sql
+-- Reversão: radar-reversao-v0.15.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.14.3', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.15.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -140,6 +140,8 @@ begin
   end if;
 end $$;
 create index if not exists radar_capturas_duplicata_idx on public.radar_capturas (duplicata_de) where duplicata_de is not null;
+-- v0.15.0: fundamentação legal citada no texto capturado (normas e códigos), calculada pelo banco — null = ainda não lida
+alter table public.radar_capturas add column if not exists base_legal jsonb;
 
 create table if not exists public.radar_capturas_versoes (
   id             bigint generated always as identity primary key,
@@ -744,6 +746,420 @@ begin
     perform public.radar_reavaliar_capturas();
   end if;
   return null;
+end $$;
+
+-- ---------------------------------------------------------------- fundamentação legal das capturas (v0.15.0)
+-- Expressão que casa a palavra em maiúsculas ou minúsculas, com ou sem acento ("instrucao" casa "Instrução", "INSTRUÇÃO")
+-- Feita sem upper()/lower() do banco: o resultado não depende da configuração de idioma do servidor.
+create or replace function public.radar_rx_termo(p text) returns text
+language sql immutable set search_path = public as $$
+  select string_agg(case
+           when ch = ' ' then '\s+'
+           when ch = '-' then '[-\s]?'
+           when ch = 'a' then '[aáàâãAÁÀÂÃ]'
+           when ch = 'e' then '[eéêEÉÊ]'
+           when ch = 'i' then '[iíIÍ]'
+           when ch = 'o' then '[oóôõOÓÔÕ]'
+           when ch = 'u' then '[uúüUÚÜ]'
+           when ch = 'c' then '[cçCÇ]'
+           when ch ~ '[a-z]' then '[' || ch || translate(ch, 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') || ']'
+           else ch end, '' order by n)
+    from regexp_split_to_table(p, '') with ordinality as t(ch, n);
+$$;
+
+-- Minúsculas e sem acento, sem depender da configuração de idioma do servidor ("INSTRUÇÕES" → "instrucoes")
+create or replace function public.radar_base_legal_chave(p text) returns text
+language sql immutable set search_path = public as $$
+  select lower(translate(coalesce(p, ''), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇáàâãäéèêëíìîïóòôõöúùûüç', 'AAAAAEEEEIIIIOOOOOUUUUCaaaaaeeeeiiiiooooouuuuc'));
+$$;
+
+-- Nome da norma como o Radar mostra ("instrucoes normativas" → "Instrução Normativa")
+create or replace function public.radar_base_legal_tipo(p text) returns text
+language sql immutable set search_path = public as $$
+  with t as (select regexp_replace(public.radar_base_legal_chave(p), '[-\s]+', ' ', 'g') as k)
+  select case
+    when k ~ '^(leis? complementar(es)?|lcs?)$' then 'Lei Complementar'
+    when k ~ '^(decretos? ?leis?|dls?|dec\.? ?leis?)$' then 'Decreto-Lei'
+    when k ~ '^decretos? legislativos?$' then 'Decreto Legislativo'
+    when k ~ '^decretos?$' then 'Decreto'
+    when k ~ '^leis?$' then 'Lei'
+    when k ~ '^(medidas? provisorias?|mpv?s?)$' then 'Medida Provisória'
+    when k ~ '^(emendas? constituciona(l|is)|ecs?)$' then 'Emenda Constitucional'
+    when k ~ '^(instruc(ao|oes) normativas?|ins?)$' then 'Instrução Normativa'
+    when k ~ '^resoluc(ao|oes)$' then 'Resolução'
+    when k ~ '^portarias?$' then 'Portaria'
+    when k ~ '^soluc(ao|oes) de consulta$' then 'Solução de Consulta'
+    when k ~ '^soluc(ao|oes) de divergencia$' then 'Solução de Divergência'
+    when k ~ '^respostas? a consulta( tributaria)?$' then 'Resposta à Consulta Tributária'
+    when k ~ '^atos? declaratorios?$' then 'Ato Declaratório'
+    when k ~ '^atos? tecnicos? conjuntos?$' then 'Ato Técnico Conjunto'
+    when k ~ '^atos? conjuntos?$' then 'Ato Conjunto'
+    when k ~ '^edita(l|is) de transacao( por adesao)?$' then 'Edital de Transação'
+    when k ~ '^(editais|edital)$' then 'Edital'
+    when k ~ '^res\.$' then 'Resolução'
+    when k ~ '^dec\.$' then 'Decreto'
+    when k ~ '^port\.$' then 'Portaria'
+    when k ~ '^parecer(es)? normativos?$' then 'Parecer Normativo'
+    when k ~ '^convenios? icms$' then 'Convênio ICMS'
+    when k ~ '^ajustes? sinief$' then 'Ajuste SINIEF'
+    when k ~ '^protocolos? icms$' then 'Protocolo ICMS'
+    when k ~ '^atos? cotepe$' then 'Ato COTEPE'
+    when k ~ '^atos? diat$' then 'Ato DIAT'
+    when k ~ '^sumulas?$' then 'Súmula'
+  end from t;
+$$;
+
+-- Os nomes de norma, em qualquer caixa e com ou sem acento
+create or replace function public.radar_base_legal_nomes_rx() returns text
+language sql immutable set search_path = public as $$
+  select (select string_agg(public.radar_rx_termo(x), '|' order by o) from unnest(array[
+           'leis complementares', 'lei complementar', 'decretos-leis', 'decretos-lei', 'decreto-lei', 'decretos legislativos', 'decreto legislativo',
+           'decretos', 'decreto', 'leis', 'lei', 'medidas provisorias', 'medida provisoria', 'emendas constitucionais', 'emenda constitucional',
+           'instrucoes normativas', 'instrucao normativa', 'resolucoes', 'resolucao', 'portarias', 'portaria',
+           'solucoes de consulta', 'solucao de consulta', 'solucoes de divergencia', 'solucao de divergencia',
+           'respostas a consulta tributaria', 'resposta a consulta tributaria', 'respostas a consulta', 'resposta a consulta',
+           'atos declaratorios', 'ato declaratorio', 'atos tecnicos conjuntos', 'ato tecnico conjunto', 'atos conjuntos', 'ato conjunto',
+           'editais de transacao por adesao', 'edital de transacao por adesao', 'editais de transacao', 'edital de transacao',
+           'editais', 'edital', 'pareceres normativos', 'parecer normativo',
+           'convenios icms', 'convenio icms', 'ajustes sinief', 'ajuste sinief', 'protocolos icms', 'protocolo icms',
+           'atos cotepe', 'ato cotepe', 'atos diat', 'ato diat', 'sumulas', 'sumula']) with ordinality as u(x, o))
+      -- abreviaturas: "Res. Gecex nº 272", "Dec.-Lei nº 1.598", "Dec. nº 11.158", "Port. RFB nº 1"
+      || '|[Rr]es\.|RES\.|[Dd]ec\.?\s*-\s*[Ll]ei|DEC\.?\s*-\s*LEI|[Dd]ec\.|DEC\.|[Pp]ort\.|PORT\.';
+$$;
+
+-- O ano de uma citação: "/2025", "/96", ", de 16 de janeiro de 2025" (também ", 16 de janeiro de 2025" e "de 27 de janeiro
+-- 1992"), ", de 24/09/2026", ", de 05.07.2022", ", de 1996" e ", de 2002 e 2003, respectivamente" (esta não diz qual é de qual)
+create or replace function public.radar_base_legal_ano_rx() returns text
+language sql immutable set search_path = public as $$
+  select '\s*/\s*(?:\d{4}|\d{2})(?![\d])(?![/.]\d)'                          -- "29/09/2026" logo depois do nome é data, não norma
+      || '|\s*,?\s+[Dd][Ee]\s+\d{1,2}[º°o]?\s+[Dd][Ee]\s+[A-Za-zÇç]+\s+(?:[Dd][Ee]\s+)?\d{4}'
+      || '|\s*,\s*\d{1,2}[º°o]?\s+[Dd][Ee]\s+[A-Za-zÇç]+\s+[Dd][Ee]\s+\d{4}'
+      || '|\s*,?\s+[Dd][Ee]\s+\d{1,2}/\d{1,2}/\d{4}'
+      || '|\s*,?\s+[Dd][Ee]\s+\d{1,2}[º°]?\.\d{1,2}\.(?:\d{4}|\d{2})(?![\d])'
+      || '|\s*,?\s+[Dd][Ee]\s+(?:19|20)\d{2}(?:\s*(?:,|\s[eE])\s*(?:19|20)\d{2})*(?:,?\s*respectivamente)?(?![\d])';
+$$;
+
+-- O ano, com 4 dígitos, do trecho casado por radar_base_legal_ano_rx; null se não tem ou se tem mais de um ("de 2002 e 2003,
+-- respectivamente"). Ano com 2 dígitos: até 30 é deste século ("/26" = 2026), depois é do passado ("/43" = 1943) — rever em 2030.
+create or replace function public.radar_base_legal_ano(p text) returns text
+language sql immutable set search_path = public as $$
+  select case when p is null or regexp_count(p, '(?:19|20)\d{2}(?![\d])') > 1 then null
+              else (select case when length(a) = 2 then case when a::int > 30 then '19' else '20' end || a else a end
+                      from substring(p from '(\d{4}|\d{2})\D*$') a) end;
+$$;
+
+-- Apelido entre parênteses depois da norma ("(LGPD)", "(Lei Geral do Esporte)", "(DOU de 29/09/2026)"). O parêntese com
+-- outra norma dentro ("(com a redação dada pela Lei nº 12.973/2014)") não é apelido: fica para a leitura seguinte.
+create or replace function public.radar_base_legal_apelido_rx() returns text
+language sql immutable set search_path = public as $$
+  select '(?:\s*\((?![^()\n]*(?:' || public.radar_base_legal_nomes_rx() || '|(?:LC|MPV?|IN|EC|DL)(?![[:alnum:]]))'
+      || '(?:\s+(?:(?:[Dd][aeo]s?|D[AEO]S?|[eE])\s+)?[A-Za-zÀ-ÿ/-]+){0,7}\s*(?:[Nn]\s?[º°oª.]|\d))[^()\n]{1,120}\))?';
+$$;
+
+-- Um número da lista que vem depois de um nome no plural, com o ano e o apelido
+-- ("Leis nºs 14.596, de 14 de junho de 2023, 14.597, de 2023 (Lei Geral do Esporte), e 15.421"). Grupos: 1 o número; 2 o ano.
+create or replace function public.radar_base_legal_lista_rx() returns text
+language sql immutable set search_path = public as $$
+  select '((?:\d{1,3}(?:\.\d{3})+|\d+)(?:-\d{1,2}(?![\d.]))?)(?![\dº°ª])(' || public.radar_base_legal_ano_rx() || ')?' || public.radar_base_legal_apelido_rx();
+$$;
+
+-- Expressão de uma citação de norma com número. Grupos: 1 o nome; 2 o órgão ou a qualificação ("RFB", "Executivo Coana",
+-- "Conjunta RFB/PGFN", "do CGSN", "estadual", "da Procuradoria-Geral da Fazenda Nacional", o "/ICMS" de "Ato COTEPE/ICMS");
+-- 3 o "nº"; 4 o número; 5 o ano; 6 os outros números da lista depois de um nome no plural ("Leis nºs 10.637/2002 e 10.833/2003").
+create or replace function public.radar_base_legal_rx() returns text
+language sql immutable set search_path = public as $$
+  select '(?:^|[^[:alnum:]])(' || public.radar_base_legal_nomes_rx() || '|LCs|MPVs|MPs|INs|ECs|DLs|LC|MPV|MP|IN|EC|DL)'
+      -- ponto solto antes do "nº" ("Decreto. nº 11.158") e sigla entre parênteses ("Lei Complementar (LC) nº 123",
+      -- "Instrução Normativa (IN) RFB nº 2.229")
+      || '(?:\.(?=\s*[Nn][º°]))?(?:\s*\([A-Z]{2,5}\))?'
+      -- órgão ou qualificação: até 6 palavras com inicial maiúscula ou da lista em minúscula, com "do/da/de" entre elas. Não
+      -- valem como órgão o "No"/"Número" (são o "nº"), o artigo ("A Portaria") e outro nome de norma ("Nova portaria A Portaria nº 5")
+      || '((?:/[A-Z]{2,6})?(?:\s+(?:(?:[Dd][aeo]s?|D[AEO]S?|[eE])\s+)?'
+      ||     '(?!(?:N[oOº°ª][sS]?|N[úÚuU]mero|NÚMERO|[AaOoEe]s?|[Dd][AaEeOo][sS]?|LC|MPV?|IN|EC|DL|' || public.radar_base_legal_nomes_rx()
+      ||     ')(?![A-Za-zÀ-ÿ]))'
+      ||     '(?:[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9]*(?:[-/][A-Za-zÀ-ÿ0-9]+)*|estadual|federal|municipal|distrital|conjunta|interministerial)){0,6})'
+      || '(?:\s*\([A-Z]{2,5}\))?\s*'
+      || '([Nn](?:\.\s?|\s)?[º°ª][sS]?\.?\s*|[Nn](?:\.\s?)?[oO][sS]?\.?\s*|[Nn]\.\s*|[Nn][úu]mero\s+|NÚMERO\s+)?'
+      -- o número (nunca ordinal: "no 1º dia"; nem o dia de uma data: "Portaria SEF 03.10.2026"), com a reedição da MP ("2.158-35")
+      || '((?:\d{1,3}(?:\.\d{3})+|\d+)(?:-\d{1,2}(?![\d.]))?)(?![\dº°ª])(?![/.]\d{1,2}[/.](?:\d{4}|\d{2})(?!\d))'
+      || '(' || public.radar_base_legal_ano_rx() || ')?'
+      || public.radar_base_legal_apelido_rx()
+      -- a lista do plural: os mesmos itens de radar_base_legal_lista_rx, aqui sem grupos
+      || '((?:\s*(?:,\s*(?:[eE]\s+)?|\s[eE]\s+)(?:[Nn][º°oO][sS]?\.?\s*)?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:-\d{1,2}(?![\d.]))?(?![\dº°ª])'
+      ||     '(?:' || public.radar_base_legal_ano_rx() || ')?' || public.radar_base_legal_apelido_rx() || ')*)';
+$$;
+
+-- A citação casada pela expressão é mesmo de uma norma? (m = os grupos de radar_base_legal_rx)
+create or replace function public.radar_base_legal_valida(m text[], p_tipo text default null) returns boolean
+language sql immutable set search_path = public as $$
+  with x as (select coalesce(p_tipo, public.radar_base_legal_tipo(m[1])) as tipo,
+                    length(replace(m[4], '.', '')) as dig, m[5] is not null as com_ano, coalesce(m[3], '') as no,
+                    regexp_replace(btrim(regexp_replace(coalesce(m[2], ''), '\s+', ' ', 'g')), '^(?:[Dd][aeo]s?|D[AEO]S?)\s+', '') as qual)
+  select tipo is not null
+     and ltrim(replace(m[4], '.', ''), '0') <> ''
+     -- sigla com número de 1 ou 2 dígitos só com o ano ou com "nº"/"n.": "MP 2", "MP Eleitoral 2" e "MP no 2º grau" não são norma
+     and not (m[1] in ('LC','MP','MPV','IN','EC','DL','LCs','MPs','MPVs','INs','ECs','DLs') and dig < 3 and not com_ano
+              and no !~ '[º°ª]|^[Nn]\.')
+     -- "no"/"nos" do português: só depois do nome com maiúscula ("Lei no 9.430") e com 3 ou mais dígitos ou o ano
+     -- ("as portarias nos 30 dias", "as instruções normativas nos 100 primeiros dias" não são norma)
+     and not (no ~ '^[Nn][oO][sS]?\s*$' and ((dig < 3 and not com_ano) or m[1] !~ '^[A-ZÀ-Ý]'))
+     -- "nos" no plural só com uma lista ("Leis nos 10.637 e 10.833"); "Portarias Nos 100 Primeiros Dias" não é norma
+     and not (no ~ '^[Nn][oO][sS]\s*$' and coalesce(m[6], '') = '')
+     -- "Edital" sozinho só o da transação tributária (PGFN, PGDAU, PGF, AGU, RFB); edital de concurso ou licitação não é norma
+     and (tipo is distinct from 'Edital' or qual ~* '(^|[\s/])(pgfn|pgdau|pgf|agu|rfb)($|[\s/])')
+     -- sem "nº" e sem ano, o número não pode ser um ano ("Lei do IRPF 2026") e só vale depois do nome sozinho (3 ou mais
+     -- dígitos: "Lei 9.430") ou de um órgão conhecido ("Portaria MF 12"); "Lei Kandir 25 anos", "Decreto Altera 3 Regras" e
+     -- "PORTARIA COM 12 NOVAS REGRAS" não são norma
+     and (no <> '' or com_ano
+          or (m[4] !~ '^(19|20)\d{2}$'
+              and ((qual = '' and dig >= 3)
+                   or (qual <> '' and (select bool_and(p ~ '/' or public.radar_base_legal_chave(p) ~ ('^(rfb|srf|mf|me|mte|mps|mtp|pgfn|cgsn|cgibs|'
+                          || 'confaz|cotepe|sinief|icms|sefaz|sef|carf|cvm|bcb|bacen|cmn|inss|secex|gecex|camex|mdic|anpd|cosit|coana|cosar|sutri|'
+                          || 'disit|cst|cfc|pge|federal|estadual|municipal|distrital|conjunta|interministerial|executivo|interpretativo|normativo)$'))
+                                       from regexp_split_to_table(qual, ' ') p)))))
+  from x;
+$$;
+
+-- Texto preparado para a leitura: Unicode composto (o acento separado da letra, comum em PDF, vira um só caractere),
+-- espaço especial como espaço comum, e "projeto de lei", "proposta de emenda (à Constituição)", "minuta de instrução
+-- normativa" ficam de fora (ainda não são norma)
+create or replace function public.radar_base_legal_preparar(p text) returns text
+language sql immutable set search_path = public as $$
+  select regexp_replace(regexp_replace(translate(normalize(coalesce(p, ''), NFC), chr(160), ' '),
+           '((?:[Pp]rojetos?|PROJETOS?|[Aa]nteprojetos?|ANTEPROJETOS?|[Pp]ropostas?|PROPOSTAS?|[Mm]inutas?|MINUTAS?)\s+(?:[Dd][EeAaOo]s?|D[EAO]S?)\s+)',
+           '\1x', 'g'),
+           '((?:[Ee]mendas?|EMENDAS?)\s+(?:[àaÀA]\s+)?)((?:[Cc]onstitui|CONSTITUI))', '\1x\2', 'g');
+$$;
+
+-- Leis e códigos citados só pelo nome, sem número: "Constituição Federal", "art. 195 da CF", "art. 150 da Constituição",
+-- "CF/88", "CTN", "RIR/2018", "RICMS/SC", "Código Civil", "CLT"
+create or replace function public.radar_base_legal_codigos_rx() returns text
+language sql immutable set search_path = public as $$
+  select '(?:^|[^[:alnum:]])('
+      || (select string_agg(public.radar_rx_termo(x), '|' order by o) from unnest(array[
+           'ato das disposicoes constitucionais transitorias', 'constituicao federal', 'constituicao da republica',
+           'codigo tributario nacional', 'regulamento do imposto de renda', 'regulamento do icms',
+           'codigo civil', 'consolidacao das leis do trabalho']) with ordinality as u(x, o))
+      -- "da CF" (não o "CF-e", cupom fiscal) e "da Constituição" seguida de pontuação, "Federal", "de 1988" ou "da República"
+      -- ("a Constituição de Empresas", "na Constituição Estadual" e "da Constituição de Santa Catarina" não são a Federal)
+      || '|(?:[Dd][AaOo]|[Nn][AaOo]|[àÀ]|[aA]|[Pp][Ee][Ll][Aa])\s+CF(?![-/[:alnum:]])|CF(?=\s*,\s*[Aa][Rr][Tt])|(?<=,\s)CF(?=\s*\))'
+      || '|(?:d[ao]|n[ao]|à|a|pela)\s+(?:Constitui[çc][ãa]o|CONSTITUI[ÇC][ÃA]O)'
+      ||   '(?=\s*[.,;:)]|\s*$|\s+(?:[Ff]ederal|FEDERAL|[Dd][Ee]\s+1988|[Dd][Aa]\s+[Rr][Ee][Pp]|[-–—]))'
+      || '|CF\s*/\s*(?:19)?88|CTN|ADCT|RIR\s*/\s*(?:\d{4}|\d{2})|RICMS(?:\s*[/-]\s*[A-Z]{2})?|CLT)(?![[:alnum:]])';
+$$;
+
+-- Chave do órgão para juntar a mesma norma escrita de jeitos diferentes: sem acento, em maiúsculas, sem o "do/da" do
+-- começo, o nome por extenso trocado pela sigla ("Comitê Gestor do Simples Nacional" = "CGSN") e sem o ministério no fim
+-- ("PGFN/MF" = "PGFN")
+create or replace function public.radar_base_legal_orgao(p text) returns text
+language sql immutable set search_path = public as $$
+  select regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+           upper(public.radar_base_legal_chave(regexp_replace(btrim(coalesce(p, '')), '^(?:[Dd][aeo]s?|D[AEO]S?)\s+', ''))),
+           '^(SECRETARIA (ESPECIAL )?DA )?RECEITA FEDERAL( DO BRASIL)?$', 'RFB'),
+           '^PROCURADORIA-GERAL DA FAZENDA NACIONAL$', 'PGFN'),
+           '^COMITE GESTOR DO SIMPLES NACIONAL$', 'CGSN'),
+           '^COMITE GESTOR DO (IBS|IMPOSTO SOBRE BENS E SERVICOS)$', 'CGIBS'),
+           '^(MINISTERIO|MINISTRO( DE ESTADO)?) DA FAZENDA$', 'MF'),
+           '^MINISTERIO DO TRABALHO E EMPREGO$', 'MTE'),
+           '^([A-Z]+)/M[EF]$', '\1');
+$$;
+
+-- O órgão como o cartão mostra: o "DO/DA" do título em maiúsculas em minúscula e as palavras comuns com inicial maiúscula
+-- ("PORTARIA CONJUNTA RFB/PGFN" → "Portaria Conjunta RFB/PGFN"); siglas ficam como estão
+create or replace function public.radar_base_legal_orgao_exibir(p text) returns text
+language sql immutable set search_path = public as $$
+  select string_agg(case
+           when w ~ '^(D[AEO]S?|E)$' then lower(w)
+           when public.radar_base_legal_chave(w) ~ ('^(normativ[ao]s?|conjunt[ao]s?|executiv[ao]s?|interpretativ[ao]s?|tecnic[ao]s?|federal|'
+                || 'estadual|municipal|distrital|interministerial|ministro|ministerio|estado|fazenda|secretaria|especial|receita|brasil|'
+                || 'nacional|comite|gestor|simples|diretoria|colegiada|trabalho|emprego|imposto|sobre|bens|servicos|procuradoria-geral)$')
+                and w !~ '[a-zà-ÿ]'
+             then substr(w, 1, 1) || lower(translate(substr(w, 2), 'ÁÀÂÃÉÊÍÓÔÕÚÇ', 'áàâãéêíóôõúç'))
+           else w end, ' ' order by n)
+    from regexp_split_to_table(btrim(coalesce(p, '')), '\s+') with ordinality t(w, n);
+$$;
+
+-- Fundamentação legal citada no texto capturado: as normas (lei, lei complementar, decreto, instrução normativa,
+-- resolução, portaria, solução de consulta, convênio ICMS...) e os códigos (Constituição, CTN, RIR, RICMS, CLT).
+-- Devolve {"normas": [até 12, na ordem em que aparecem], "total": quantas, "ato": a norma que a captura é, quando o
+-- título é a própria norma (ex.: "Solução de Consulta Cosit nº 190, de 30/09/2026"), senão null}.
+-- É uma leitura do texto, não uma conferência: diz o que está citado, não se a citação está certa.
+create or replace function public.radar_base_legal(p_titulo text, p_resumo text, p_texto text) returns jsonb
+language plpgsql immutable set search_path = public as $$
+declare
+  v_rx    text := public.radar_base_legal_rx();
+  v_lrx   text := public.radar_base_legal_lista_rx();
+  v_tit   text := public.radar_base_legal_preparar(p_titulo);
+  -- título, resumo e texto são lidos juntos, mas uma citação não passa de uma parte para outra (o ¶ separa). Do texto, só os
+  -- primeiros 100 mil caracteres: a leitura roda dentro da gravação da captura e precisa caber no tempo-limite do Supabase
+  v_txt   text := v_tit || E'\n¶\n' || public.radar_base_legal_preparar(p_resumo) || E'\n¶\n' || public.radar_base_legal_preparar(left(p_texto, 100000));
+  v_fim   text := coalesce(nullif(btrim(p_texto), ''), p_resumo, '');
+  v_lista jsonb;          -- [{nome, tipo, dig, ano}] uma por norma, na ordem da primeira citação
+  v_saida text[];
+  v_cod   text[] := '{}';
+  v_nome  text;
+  v_ato   text;
+  m       text[];
+begin
+  with bruto as (
+    select r.o, r.m, public.radar_base_legal_tipo(r.m[1]) as tipo from regexp_matches(v_txt, v_rx, 'g') with ordinality r(m, o)
+  ), cit as (                                      -- cada número citado (no plural, também os da lista)
+    select b.o, x.k, b.tipo,
+           btrim(regexp_replace(coalesce(b.m[2], ''), '\s+', ' ', 'g')) as qual,
+           -- o sufixo "-35" só é reedição na medida provisória; nas outras normas fica de fora
+           case when b.tipo = 'Medida Provisória' then x.num else regexp_replace(x.num, '-\d{1,2}$', '') end as num,
+           x.ano
+      from bruto b
+      cross join lateral (
+        -- a lista com um ano só, no fim e por extenso ("Portarias SEF nºs 250 e 251, de 2026"): o ano vale para todos
+        select y.k, y.num, coalesce(y.ano, case when y.anos = 1 and y.ult_ano is not null and y.ult_bruto !~ '^\s*/' then y.ult_ano end) as ano
+          from (select z.*, count(z.ano) over () as anos,
+                       last_value(z.ano) over (order by z.k rows between unbounded preceding and unbounded following) as ult_ano,
+                       last_value(z.bruto) over (order by z.k rows between unbounded preceding and unbounded following) as ult_bruto
+                  from (select 0::bigint as k, b.m[4] as num, b.m[5] as bruto, public.radar_base_legal_ano(b.m[5]) as ano
+                        union all
+                        select l.k, l.n[1], l.n[2], public.radar_base_legal_ano(l.n[2])
+                          from regexp_matches(coalesce(b.m[6], ''), v_lrx, 'g') with ordinality l(n, k)
+                         where public.radar_base_legal_chave(b.m[1]) ~ ('^(leis|decretos|medidas|emendas|instrucoes|resolucoes|portarias|'
+                                 || 'solucoes|respostas|atos|pareceres|editais|convenios|ajustes|protocolos|sumulas|lcs|ins|mps|mpvs|ecs|dls)')
+                           -- na lista, um ano solto ("de 2002 e 2003") ou uma quantidade sem ano ("e 12 outras") não é norma
+                           and not (l.n[1] ~ '^(19|20)\d{2}$' and l.n[2] is null)
+                           and not (length(replace(l.n[1], '.', '')) < 3 and length(replace(b.m[4], '.', '')) >= 3 and l.n[2] is null)) z) y
+      ) x
+     where public.radar_base_legal_valida(b.m, b.tipo)
+  ), comchave as (
+    -- "Edital de Transação PGFN/RFB nº 5/2026" e "Edital nº 5/2026" são a mesma norma
+    select c.*, case when c.tipo = 'Edital de Transação' then 'Edital' else c.tipo end as tipo_g,
+           ltrim(replace(c.num, '.', ''), '0') as dig, public.radar_base_legal_orgao(c.qual) as chave
+      from cit c where ltrim(replace(regexp_replace(c.num, '-\d{1,2}$', ''), '.', ''), '0') <> ''
+  ), chaves as (
+    select c.tipo_g, c.dig, c.chave, coalesce(string_to_array(nullif(c.chave, ''), ' '), '{}') as partes, min(array[c.o, c.k]) as primeiro
+      from comchave c group by c.tipo_g, c.dig, c.chave
+  ), orgao as (
+    -- a mesma norma citada com e sem o órgão ("IN RFB nº 2.229" e "IN nº 2.229"), ou com parte dele ("Ato Declaratório Coana"
+    -- e "Ato Declaratório Executivo Coana", "Portaria RFB/PGFN" e "Portaria Conjunta RFB/PGFN") é uma só: fica com o órgão mais
+    -- completo que contém o seu. Órgãos diferentes são normas diferentes (Portaria MF nº 12 e Portaria RFB nº 12)
+    select distinct on (c.o, c.k) c.*, coalesce(k.chave, c.chave) as ck
+      from comchave c
+      left join chaves k on k.tipo_g = c.tipo_g and k.dig = c.dig and k.partes @> coalesce(string_to_array(nullif(c.chave, ''), ' '), '{}')
+     order by c.o, c.k, cardinality(k.partes) desc nulls last, k.primeiro
+  ), ano as (
+    -- o ano separa as normas que recomeçam a numeração (Resolução CGIBS nº 1/2025 e nº 1/2026); a citação sem ano fica
+    -- com a primeira que tem
+    select c.*, coalesce(c.ano, first_value(c.ano) over (partition by c.tipo_g, c.dig, c.ck order by c.ano is null, c.o, c.k)) as ak
+      from orgao c
+  ), grupo as (
+    select (array_agg(g.tipo order by length(g.tipo) desc, g.o, g.k))[1] as tipo, g.dig, g.ak, min(array[g.o, g.k]) as primeiro,
+           -- "Atos Declaratórios Executivos Corat" → "Ato Declaratório Executivo Corat"
+           regexp_replace(public.radar_base_legal_orgao_exibir(
+                            coalesce((array_agg(g.qual order by cardinality(string_to_array(nullif(g.chave, ''), ' ')) desc nulls last, g.o, g.k)
+                                        filter (where g.chave = g.ck))[1], '')),
+                          '(Executiv|Interpretativ|Normativ|T[ée]cnic|Conjunt)([oa])s(?![[:alpha:]])', '\1\2', 'g') as qual,
+           (array_agg(g.num order by g.num like '%.%' desc, g.o, g.k))[1] as num       -- "2.342" antes de "2342"
+      from ano g
+     group by g.tipo_g, g.dig, g.ck, g.ak
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'nome', g.tipo || case when g.qual ~ '^/' then g.qual when g.qual <> '' then ' ' || g.qual else '' end
+                   || ' nº ' || g.num || coalesce('/' || g.ak, ''),
+           'tipo', g.tipo, 'dig', g.dig, 'ano', g.ak) order by g.primeiro), '[]'::jsonb)
+    into v_lista
+    from grupo g;
+  select coalesce(array_agg(j->>'nome' order by o), '{}') into v_saida from jsonb_array_elements(v_lista) with ordinality e(j, o);
+  -- a captura é o próprio ato: o título é a norma, sozinha ou seguida de " - " e da ementa ("– Altera…", "– Dispõe…");
+  -- "Lei nº 15.270/2025: o que muda" e "Lei nº 15.270/2025 – entenda" são notícias sobre a lei, não a lei
+  m := regexp_match(v_tit, '^\s*' || substr(v_rx, length('(?:^|[^[:alnum:]])') + 1) || '\s*(?:\([^()]*\))?\s*\.?\s*(?:$|[-–—]\s+(?:'
+       || (select string_agg(public.radar_rx_termo(x), '|') from unnest(array['dispoe', 'altera', 'aprova', 'institui', 'estabelece',
+            'prorroga', 'regulamenta', 'divulga', 'disciplina', 'define', 'fixa', 'revoga', 'torna', 'autoriza', 'retifica', 'reduz',
+            'concede', 'homologa', 'habilita', 'cancela', 'designa', 'dispensa', 'suspende', 'acrescenta', 'consolida']) x) || '))');
+  if m is not null and public.radar_base_legal_valida(m) then
+    select j->>'nome' into v_ato
+      from jsonb_array_elements(v_lista) with ordinality e(j, o)
+     where (case when j->>'tipo' = 'Edital de Transação' then 'Edital' else j->>'tipo' end)
+             = (case when public.radar_base_legal_tipo(m[1]) = 'Edital de Transação' then 'Edital' else public.radar_base_legal_tipo(m[1]) end)
+       and j->>'dig' = ltrim(replace(m[4], '.', ''), '0')
+     order by o limit 1;
+  end if;
+  -- códigos citados pelo nome (o mesmo código escrito de dois jeitos conta uma vez: "RIR/18" = "RIR/2018")
+  for m in select regexp_matches(v_txt, public.radar_base_legal_codigos_rx(), 'g') loop
+    v_nome := case
+      when m[1] ~ '^ADCT' or public.radar_base_legal_chave(m[1]) ~ '^ato das disposicoes' then 'Ato das Disposições Constitucionais Transitórias (ADCT)'
+      when public.radar_base_legal_chave(m[1]) ~ '(^|\s)(constituicao|cf)' or m[1] = 'CF' then 'Constituição Federal'
+      when public.radar_base_legal_chave(m[1]) ~ '^(codigo tributario|ctn)' then 'Código Tributário Nacional (CTN)'
+      when m[1] ~ '^RIR' then 'Regulamento do Imposto de Renda (RIR/' || public.radar_base_legal_ano(m[1]) || ')'
+      when public.radar_base_legal_chave(m[1]) ~ '^regulamento do icms' then 'RICMS'
+      when public.radar_base_legal_chave(m[1]) ~ '^regulamento' then 'Regulamento do Imposto de Renda'
+      when m[1] ~ '^RICMS' then 'RICMS' || coalesce('/' || substring(m[1] from '[/-]\s*([A-Z]{2})$'), '')
+      when public.radar_base_legal_chave(m[1]) ~ '^codigo civil' then 'Código Civil'
+      else 'Consolidação das Leis do Trabalho (CLT)' end;
+    -- o código que já está na lista pela lei que o criou não entra de novo ("Lei nº 5.172/1966 (Código Tributário Nacional)")
+    continue when exists (select 1 from jsonb_array_elements(v_lista) j
+                           where (j->>'tipo') || '|' || (j->>'dig') = case v_nome
+                                   when 'Código Tributário Nacional (CTN)' then 'Lei|5172'
+                                   when 'Consolidação das Leis do Trabalho (CLT)' then 'Decreto-Lei|5452'
+                                   when 'Código Civil' then 'Lei|10406'
+                                   when 'Regulamento do Imposto de Renda (RIR/2018)' then 'Decreto|9580'
+                                   when 'Regulamento do Imposto de Renda (RIR/1999)' then 'Decreto|3000' end
+                              or (v_nome in ('Regulamento do Imposto de Renda') and (j->>'tipo') || '|' || (j->>'dig') in ('Decreto|9580', 'Decreto|3000'))
+                              or (v_nome in ('RICMS', 'RICMS/SC') and (j->>'tipo') || '|' || (j->>'dig') || '|' || coalesce(j->>'ano', '') = 'Decreto|2870|2001'));
+    if not v_nome = any(v_cod) then v_cod := v_cod || v_nome; end if;
+  end loop;
+  -- o nome genérico some quando o mesmo código aparece com o estado ou o ano ("Regulamento do ICMS (RICMS/SC)")
+  if exists (select 1 from unnest(v_cod) c where c like 'RICMS/%') then v_cod := array_remove(v_cod, 'RICMS'); end if;
+  if exists (select 1 from unnest(v_cod) c where c like 'Regulamento do Imposto de Renda (%') then
+    v_cod := array_remove(v_cod, 'Regulamento do Imposto de Renda');
+  end if;
+  -- com mais de 12, os códigos (a Constituição, o CTN...) não ficam escondidos no "e mais": entram no fim das 12
+  return jsonb_build_object('normas', to_jsonb(coalesce(v_saida[1:12 - least(coalesce(array_length(v_cod, 1), 0), 12)] || v_cod, '{}')),
+                            'total', coalesce(array_length(v_saida, 1), 0) + coalesce(array_length(v_cod, 1), 0),
+                            'ato', v_ato)
+         -- o texto capturado termina em "..." (resumo cortado, como o do boletim da ITC): a norma pode estar no restante. O "…"
+         -- do fim de um endereço encurtado ("Acesse: https://www.gov.br/…/programas…") não conta
+         || case when v_fim ~* '(\.\.\.|…|\[(…|\.\.\.)\]|leia mais:?)\s*$' and v_fim !~* '(https?://|www\.)\S*(\.\.\.|…)\s*$'
+                 then '{"cortado": true}'::jsonb else '{}'::jsonb end;
+end $$;
+
+-- Captura gravada como texto parcial (metadados.texto_parcial: o boletim da ITC, que traz só o começo da matéria) que não
+-- cita norma fica como "cortado": a norma pode estar no restante
+create or replace function public.radar_base_legal_parcial(p_base jsonb, p_metadados jsonb) returns jsonb
+language sql immutable set search_path = public as $$
+  select p_base || case when coalesce(p_metadados->>'texto_parcial', '') = 'true' and coalesce((p_base->>'total')::int, 0) = 0
+                        then '{"cortado": true}'::jsonb else '{}'::jsonb end;
+$$;
+
+-- A fundamentação legal da captura é sempre calculada pelo banco (ninguém marca à mão): na entrada e quando o título,
+-- o resumo ou o texto mudam. A captura que o robô só reconfere, sem mudança, não é lida de novo.
+create or replace function public.radar_fn_captura_base_legal() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(current_setting('radar.base_legal', true), '') = '1' then
+    return new;                          -- recálculo geral em curso (radar_recalcular_base_legal)
+  end if;
+  if tg_op = 'INSERT' or old.base_legal is null or new.titulo is distinct from old.titulo
+     or new.resumo_fonte is distinct from old.resumo_fonte or new.texto is distinct from old.texto
+     or (new.metadados->>'texto_parcial') is distinct from (old.metadados->>'texto_parcial') then
+    new.base_legal := public.radar_base_legal_parcial(public.radar_base_legal(new.titulo, new.resumo_fonte, new.texto), new.metadados);
+  else
+    new.base_legal := old.base_legal;
+  end if;
+  return new;
+end $$;
+
+-- Lê de novo a fundamentação legal de todas as capturas (na instalação e quando a leitura das normas melhora).
+-- Devolve quantas mudaram.
+create or replace function public.radar_recalcular_base_legal() returns int
+language plpgsql security definer set search_path = public as $$
+declare v_n int;
+begin
+  perform set_config('radar.base_legal', '1', true);        -- só nesta transação: deixa o gatilho aceitar o valor recalculado
+  update public.radar_capturas c
+     set base_legal = x.b
+    from (select k.id, public.radar_base_legal_parcial(public.radar_base_legal(k.titulo, k.resumo_fonte, k.texto), k.metadados) as b
+            from public.radar_capturas k) x
+   where x.id = c.id and c.base_legal is distinct from x.b;
+  get diagnostics v_n = row_count;
+  perform set_config('radar.base_legal', '', true);
+  return v_n;
 end $$;
 
 -- Imagem trocada ou conteúdo apagado: a imagem que ninguém mais usa é removida (v0.6.0 — todo conteúdo nasce com capa,
@@ -2045,6 +2461,9 @@ create trigger radar_tg_captura_promover after insert on public.radar_capturas
 drop trigger if exists radar_tg_captura_relevancia on public.radar_capturas;
 create trigger radar_tg_captura_relevancia before insert or update on public.radar_capturas
   for each row execute function public.radar_fn_captura_relevancia();
+drop trigger if exists radar_tg_captura_base_legal on public.radar_capturas;
+create trigger radar_tg_captura_base_legal before insert or update on public.radar_capturas
+  for each row execute function public.radar_fn_captura_base_legal();
 drop trigger if exists radar_tg_config_relevancia on public.radar_config;
 create trigger radar_tg_config_relevancia after insert or update or delete on public.radar_config
   for each row execute function public.radar_fn_config_relevancia();
@@ -2166,7 +2585,16 @@ select c.id, c.fonte_id, f.slug as fonte_slug, f.nome as fonte_nome, f.orgao, f.
           and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = r.id))) as nota_grupo,
        -- assunto em que a origem da repetição está (para avisar "parece o mesmo fato de …")
        -- (procura no grupo todo e prefere o assunto em andamento)
-       o.id as origem_assunto_id, o.titulo || ' (' || o.status || ')' as origem_assunto
+       o.id as origem_assunto_id, o.titulo || ' (' || o.status || ')' as origem_assunto,
+       c.base_legal,                                   -- v0.15.0: normas citadas no texto capturado
+       -- v0.15.0: a captura que não cita norma mostra a de outra captura do mesmo fato que ainda está na fila e cita
+       -- (a origem, as repetições dela ou as irmãs)
+       (select r.base_legal from public.radar_capturas r
+         where r.id <> c.id
+           and (r.duplicata_de = c.id or r.id = c.duplicata_de or (c.duplicata_de is not null and r.duplicata_de = c.duplicata_de))
+           and coalesce((r.base_legal->>'total')::int, 0) > 0
+           and not exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = r.id)
+         order by (r.id = c.duplicata_de) desc, r.id limit 1) as base_legal_repeticao
 from public.radar_capturas c
 join public.radar_fontes f on f.id = c.fonte_id
 left join lateral (
@@ -2531,6 +2959,8 @@ end $$;
 
 -- capturas que já estavam no banco são avaliadas pelas regras em vigor
 select public.radar_reavaliar_capturas() as capturas_reavaliadas;
+-- v0.15.0: e têm a fundamentação legal lida pelas regras em vigor
+select public.radar_recalcular_base_legal() as capturas_base_legal;
 
 -- ---------------------------------------------------------------------
 -- 7. REGISTRO DA INSTALAÇÃO E EVIDÊNCIA
@@ -2544,7 +2974,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.14.3).
+-- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.15.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

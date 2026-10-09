@@ -217,11 +217,13 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.14.3";
+const VERSAO = "0.15.0";
 const FUNCAO_MINIMA = "0.14.0";     // versão da função radar-ia que este painel exige (v0.14.0: verificação em fontes oficiais)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.15.0", "08/10/2026", [
+    "Capturas: cada cartão diz se a notícia tem fundamentação legal — “com fundamentação legal” (e quais leis, decretos, instruções normativas, resoluções, portarias, soluções de consulta ou convênios ela cita) ou “sem fundamentação legal” (o texto não cita norma nenhuma: confira na fonte antes de usar); se o texto capturado estiver cortado, “fundamentação legal não identificada”. Quando a captura é o próprio ato (ex.: uma Solução de Consulta), o cartão diz qual é. Se a captura não cita norma, mas outra captura do mesmo fato cita, o cartão mostra a da outra. A leitura é feita pelo banco no texto capturado, sem custo de IA, e vale também para as capturas que já estavam na fila; projeto de lei e decisão judicial não contam."]],
   ["0.14.3", "07/10/2026", [
     "Nenhum ponto marcado com [VERIFICAR] vai ao leitor: enquanto o título, o texto ou a legenda tiver alguma marca, o Radar não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem de erro mostra cada marca que falta resolver. O quadro vermelho no conteúdo aponta as marcas antes mesmo de tentar.",
     "Instagram e Facebook: o META_PAGE_TOKEN aceita o token do usuário do sistema (o Radar busca sozinho o token da Página), e as funções radar-redes e radar-itc passaram a usar a chave interna nova do Supabase."]],
@@ -813,6 +815,20 @@ const TELAS = {
     const chip = (id, nome) => `<button class="chip ${f === id ? "ativa" : ""}" data-acao="filtro-fila" data-valor="${id}" aria-pressed="${f === id}">${nome}<b>${total[id]}</b></button>`;
     const motivos = i => (Array.isArray(i.relevancia_motivos) ? i.relevancia_motivos : []).filter(m => m && m.pontos > 0).map(m => String(m.termo)).slice(0, 6);
     const contra = i => (Array.isArray(i.relevancia_motivos) ? i.relevancia_motivos : []).filter(m => m && m.pontos < 0).map(m => String(m.termo)).slice(0, 4);
+    // v0.15.0: fundamentação legal citada no texto capturado (lida pelo banco: radar_base_legal). A captura que não cita
+    // norma, mas tem repetição na fila que cita, mostra a da repetição (base_legal_repeticao)
+    const normasDe = b => { const n = Number(b.total) || 0, lista = b.normas.map(String);
+      const fora = b.ato && !lista.includes(b.ato) ? 1 : 0, resto = n - lista.length - fora;
+      return {n, lista, mais: resto > 0 ? ` e mais ${resto}` : ""}; };
+    const baseLegal = i => { const b = i.base_legal;
+      if(!b || !Array.isArray(b.normas)) return {selo:"", linha:""};
+      const {n, lista, mais} = normasDe(b), r = i.base_legal_repeticao;
+      if(!n && r && Array.isArray(r.normas) && Number(r.total) > 0){ const x = normasDe(r);
+        return {selo:selo("com fundamentação legal", "ok"), linha:`<p class="sub base-legal"><b>Fundamentação legal:</b> esta captura não cita norma; outra captura do mesmo fato cita ${h(x.lista.join("; "))}${x.mais}.</p>`}; }
+      if(!n && (b.cortado || !i.tem_texto)) return {selo:selo("fundamentação legal não identificada", "alerta"), linha:`<p class="sub base-legal sem"><b>Fundamentação legal:</b> ${i.tem_texto ? "o trecho capturado está cortado e não cita norma; ela pode estar no restante" : "o texto da notícia não foi capturado e o título e o resumo não citam norma"}. Confira na fonte antes de usar.</p>`};
+      if(!n) return {selo:selo("sem fundamentação legal", "alerta"), linha:`<p class="sub base-legal sem"><b>Fundamentação legal:</b> o texto capturado não cita lei, decreto, instrução normativa nem outro ato normativo. Confira na fonte antes de usar.</p>`};
+      const outras = b.ato ? lista.filter(x => x !== b.ato) : lista;
+      return {selo:selo("com fundamentação legal", "ok"), linha:`<p class="sub base-legal"><b>Fundamentação legal:</b> ${b.ato ? `é o próprio ato — ${h(b.ato)}${outras.length ? `. Cita também: ${h(outras.join("; "))}${mais}` : ""}` : h(outras.join("; ")) + mais}.</p>`}; };
     const nota = i => { const v = i.principal && i.nota_grupo != null ? i.nota_grupo : i.ia_nota;
       return (i.ia_avaliado_em || (i.principal && i.nota_grupo != null)) && v != null ? selo(`Nota da IA ${v}/10`, v >= 8 ? "erro" : v >= 6 ? "alerta" : "neutro")
       : i.relevancia === "baixa" ? "" : selo("aguardando nota da IA", "neutro"); };
@@ -829,13 +845,14 @@ const TELAS = {
       ${itens.length ? `<div id="tab-fila">${itens.map(i => `
         <article class="cap rel-${h(i.relevancia)}" data-fonte="${h(i.fonte_nome)}" data-texto="${h((i.titulo || "").toLowerCase())}" data-id="${i.id}">
           <div>${nota(i)} ${selo("Relevância " + (ROTULOS.relevancia[i.relevancia] || "").toLowerCase(), i.relevancia === "alta" ? "erro" : i.relevancia === "media" ? "" : "neutro")}
-            ${selo(i.orgao, "neutro")} ${selo(ROTULOS.abrangencia[i.abrangencia] || "", "neutro")}
+            ${baseLegal(i).selo} ${selo(i.orgao, "neutro")} ${selo(ROTULOS.abrangencia[i.abrangencia] || "", "neutro")}
             ${(i.relevancia_motivos || []).find?.(m => m && m.idade) ? selo((i.relevancia_motivos.find(m => m && m.idade).termo || "notícia antiga"), "neutro") : ""}
             ${i.tem_texto ? "" : selo("sem texto","alerta")} ${i.duplicata_de && !i.principal ? selo("repetição de outra captura","neutro") : ""} ${i.versao > 1 ? selo("texto alterado · v"+i.versao,"alerta") : ""}
             <span class="sub">publicado em ${data(i.data_publicacao)} · capturado em ${dataHora(i.capturado_em)}</span></div>
           <h3>${h(i.titulo)}</h3>
           ${i.resumo_fonte ? `<p class="sub">${h(i.resumo_fonte.slice(0,260))}</p>` : ""}
           ${i.ia_motivo ? `<p class="sub nota-ia"><b>IA:</b> ${h(i.ia_motivo)}</p>` : ""}
+          ${baseLegal(i).linha}
           ${motivos(i).length || contra(i).length ? `<p class="sub motivos">${motivos(i).length ? `<b>Por que apareceu:</b> ${h(motivos(i).join(", "))}. ` : ""}${contra(i).length ? `<b>Pesou contra:</b> ${h(contra(i).join(", "))}.` : ""}</p>` : ""}
           ${i.duplicata_de && i.principal && i.origem_assunto_id ? `<p class="sub mesmo-fato"><b>Parece o mesmo fato do assunto:</b> ${h(i.origem_assunto)}. <button class="voltar" style="margin:0" data-acao="abrir-assunto" data-id="${i.origem_assunto_id}">ver o assunto</button><br>Se for mesmo, clique em Ignorar; se trouxer novidade, abra um assunto novo.</p>` : ""}
           ${i.repetidas ? `<p class="sub repetidas"><b>Mesmo fato em mais ${i.repetidas} captura(s):</b> entram juntas no assunto e saem da fila.</p>` : ""}
@@ -1024,7 +1041,7 @@ const TELAS = {
     return `<h1>Como usar o Radar</h1>
       <p class="sub">O Radar acompanha as fontes oficiais, ajuda a escrever e a conferir, e guarda o registro do que foi divulgado. A publicação é feita nas páginas da Artecon.</p>
       <div class="painel"><h2>O caminho de uma publicação</h2><ol class="passos">
-        <li><b>Capturas.</b> O robô lê as fontes cadastradas e, depois de cada coleta, a IA dá uma nota a cada novidade. A tela abre só com o que está <b>em alta</b>: as 10 de maior nota, sem repetição. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>. O restante fica em “Relevantes”, “Baixa relevância” e “Todas”, e pode ser ignorado de uma vez.</li>
+        <li><b>Capturas.</b> O robô lê as fontes cadastradas e, depois de cada coleta, a IA dá uma nota a cada novidade. A tela abre só com o que está <b>em alta</b>: as 10 de maior nota, sem repetição. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>. Cada cartão diz se a notícia tem <b>fundamentação legal</b>: “com fundamentação legal” mostra as normas que o texto capturado cita (lei, lei complementar, decreto, medida provisória, instrução normativa, resolução, portaria, solução de consulta, ato declaratório, ato conjunto do CGIBS, convênio ICMS, edital de transação e outros atos, além da Constituição, do CTN, do RIR, do RICMS e da CLT); “sem fundamentação legal” quer dizer que o texto não cita nenhuma, e “fundamentação legal não identificada”, que o texto capturado está cortado e não cita norma no trecho que veio — nos dois casos, confira na fonte antes de usar. É uma leitura automática do texto: diz o que está citado, não se a citação está certa nem se a norma está em vigor; decisões judiciais (Tema, RE, ADI) e projetos de lei não contam. Não muda a nota nem a relevância. O restante fica em “Relevantes”, “Baixa relevância” e “Todas”, e pode ser ignorado de uma vez.</li>
         <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Preparar com IA</b> busca os trechos e redige o rascunho. Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem) ou envie uma imagem. O Radar compara o texto com a fonte: trecho copiado precisa ser reescrito ou citado entre aspas antes de aprovar. Salve, envie para revisão e <b>aprove</b>.</li>
