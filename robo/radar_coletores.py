@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 from html.entities import name2codepoint
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -111,14 +111,25 @@ def _parece_html(texto: str) -> bool:
 
 
 def feed_da_pagina(conteudo: str, base: str) -> str | None:
-    """O feed que a página anuncia (<link rel="alternate" type="application/rss+xml" href="...">)."""
+    """O feed que a página anuncia (<link rel="alternate" type="application/rss+xml" href="...">). Página de categoria
+    (…/categoria/noticias/) fica com o feed dela, não com o geral do site; feed de comentários só se não houver outro."""
+    candidatos = []
     for link in BeautifulSoup(conteudo or "", "lxml").find_all("link", href=True):
         rel = [r.lower() for r in (link.get("rel") or [])]
         if "alternate" in rel and (link.get("type") or "").lower() in ("application/rss+xml", "application/atom+xml", "application/rdf+xml"):
             url = urljoin(base, link["href"].strip())
             if re.match(r"https?://", url, re.I):
+                candidatos.append((url, (link.get("title") or "").lower()))
+    if not candidatos:
+        return None
+    sem_comentarios = [c for c in candidatos if "/comments/" not in c[0].lower() and not re.search(r"coment|comment", c[1])] or candidatos
+    partes = [p for p in urlsplit(base).path.split("/") if p]
+    for n in range(len(partes), min(2, len(partes)) - 1, -1):   # …/categoria/noticias/page/2/ → …/categoria/noticias/ (não sobe a /categoria/)
+        prefixo = "/" + "/".join(partes[:n]) + "/"
+        for url, _ in sem_comentarios:
+            if urlsplit(url).path.startswith(prefixo):
                 return url
-    return None
+    return sem_comentarios[0][0]
 
 
 def _entidades_html(texto: str) -> str:
@@ -349,6 +360,9 @@ def listar_paginas(baixar_pagina, fonte: dict, hoje: date | None = None) -> tupl
                 raise
             http, conteudo = baixar_pagina(e.feed)
             parte = listar(conteudo, dict(fonte, url=e.feed, config=sem_corte), hoje)
+            brutos += parte.brutos
+            itens += parte.itens
+            break                       # o feed anunciado substitui a listagem paginada: não baixa a página 2
         brutos += parte.brutos
         itens += parte.itens
         if not por_pagina or parte.brutos < por_pagina:

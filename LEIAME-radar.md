@@ -17,23 +17,31 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
 - **Sem marca nem comentário de dúvida no texto.** A IA não escreve mais "[VERIFICAR: a fonte indica 30/9, mas não especifica
   o ano]" nem "a fonte cita tanto ADI 5.161 quanto ADI nº 5.161/DF". O que não está confirmado sai do texto (ou é escrito sem o
   detalhe incerto) e vai para os pontos a conferir, na linha "Ficou fora do texto por falta de confirmação". Diferença só de
-  grafia entre fontes não é dúvida: a IA usa a forma mais completa. No "Gerar texto para análise" (e no "Preparar tudo") de
-  assunto sem fonte oficial, a IA primeiro procura a fonte oficial na internet (uma vez por assunto) e usa o que ela confirmar.
+  grafia entre fontes não é dúvida: a IA usa a forma mais completa. Comentário de dúvida escrito sem colchetes ("a fonte não
+  especifica o ano") também é apanhado. No "Gerar texto para análise" (e no "Preparar tudo") de assunto sem fonte oficial, a IA
+  primeiro procura a fonte oficial na internet (uma vez por assunto) e usa o que ela confirmar; no texto para análise o dado da
+  fonte não oficial fica no texto, atribuído a ela, e vai para os pontos a conferir.
 - **Sem cópia.** A IA diz de onde veio a informação ("segundo a Receita Federal…"). Se o texto gerado ainda tiver marca
   [VERIFICAR] ou trecho igual ao da fonte (o mesmo detector da tela: 12 palavras seguidas), uma segunda passada da IA corrige
-  só isso antes de gravar; se ela falhar, o texto fica como veio e os pontos a conferir avisam. No conteúdo, o quadro "Texto
-  igual ao da fonte" traz **Revisar com IA** (reescreve só esses trechos, citando a fonte, e também resolve as marcas) e
-  **Autorizar mesmo assim** (editor ou administrador, com o motivo; vale para o texto atual e cai se o texto mudar). Os pontos a
-  conferir agora só crescem: a revisão acrescenta o que tirou do texto, ninguém apaga o que a IA apontou.
+  só isso antes de gravar (no botão "Gerar com IA" e também nos rascunhos automáticos do robô); se ela falhar, o texto fica como
+  veio e os pontos a conferir avisam. Na revisão, só o texto oficial (ou a verificação em fontes oficiais) confirma uma
+  informação. No conteúdo, o quadro "Texto igual ao da fonte" traz **Revisar com IA** (reescreve só esses trechos, citando a
+  fonte, e também resolve as marcas; o que ela afirmar é conferido de novo contra o texto oficial) e **Autorizar mesmo assim**
+  (editor ou administrador, com o motivo; vale para o texto atual e cai se o texto mudar; a revisão não mexe no trecho
+  autorizado). Se a revisão mudar o título, a capa com a ilustração é refeita sozinha. Os pontos a conferir agora só crescem:
+  a revisão acrescenta o que tirou do texto, ninguém apaga o que a IA apontou.
 - **Capa com imagem.** A capa feita pela IA é a ilustração ao fundo com o logotipo da Artecon, a categoria e o título por cima
   (antes ficava só a foto). A ilustração fica guardada: depois de trocar o título, **Atualizar a capa** refaz a capa sem gerar
   outra imagem; **Capa padrão, sem a ilustração** volta ao fundo marinho.
 - **Triagem.** A IA não junta mais como "mesmo fato" notícias que citam tributos diferentes (caso do ITC de 09/10: "STF exclui
   créditos presumidos de ICMS da base do PIS e da Cofins" tinha ido para trás de "crédito presumido de ICMS na base do IRPJ e
-  da CSLL"). O cartão da captura mostra os títulos das repetições, cada uma com **Não é o mesmo fato**, que a devolve à lista.
+  da CSLL"), nem pelo caminho até a origem nem com o que já está no grupo dela. O cartão da captura mostra os títulos das
+  repetições, cada uma com **Não é o mesmo fato**, que a devolve à lista; a decisão fica, mesmo que a fonte mude o texto e a IA
+  avalie de novo.
 - **Fontes.** Fonte RSS cadastrada com o endereço da página do site (e não do feed) passa a funcionar: o robô segue o feed que
-  a página anuncia; se ela não anunciar, o erro diz o que cadastrar (antes: "ParseError: undefined entity"). Feed com entidades
-  do HTML (&nbsp;) também é lido. A fonte nova começa como **não oficial**.
+  a página anuncia (a página de uma categoria fica com o feed da categoria); se ela não anunciar, o erro diz o que cadastrar
+  (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
+  **não oficial**.
 
 Mudam o banco (`radar-setup-v0.16.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a

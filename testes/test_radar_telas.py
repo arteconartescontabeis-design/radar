@@ -3144,11 +3144,14 @@ def ia_de_mentira(pg, db, pedidos):
             v = {"situacao": "nao_encontrada", "resumo": "Nada oficial encontrado.", "fontes": [], "divergencias": [], "em": "2026-10-09T12:00:00Z"}
             db.execute("update radar_assuntos set verificacao = %s, verificado_em = now() where id = %s", (json.dumps(v), corpo["assunto_id"]))
             r = {"verificacao": v}
-        elif acao == "revisar":                              # v0.16.0: reescreve o texto sem a cópia e sem a marca
+        elif acao == "revisar":                              # v0.16.0: reescreve o texto sem a cópia e sem a marca (e o título, se tiver marca)
+            antes = db.execute("select titulo from radar_conteudos where id = %s", (corpo["conteudo_id"],)).fetchone()[0]
             db.execute("""update radar_conteudos set corpo = 'Segundo a Receita Federal, a regra nova explica como calcular a CBS na transição.',
+                          titulo = regexp_replace(titulo, '\\s*\\[VERIFICAR[^]]*\\]', '', 'g'),
                           avisos_ia = avisos_ia || '["Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): prazo."]'
                           where id = %s""", (corpo["conteudo_id"],))
-            r = {"conteudo_id": corpo["conteudo_id"], "pendencias": ["prazo"], "marcas": 0, "copias": 1, "restam": {"marcas": 0, "copias": 0}}
+            r = {"conteudo_id": corpo["conteudo_id"], "pendencias": ["prazo"], "marcas": 0, "copias": 1, "restam": {"marcas": 0, "copias": 0},
+                 "avisos_gravados": True, "titulo_mudou": "[VERIFICAR" in antes, "autorizacao_caiu": False}
         else:
             r = {"message": "Ação desconhecida."}
         rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
@@ -3743,3 +3746,30 @@ def test_capturas_listam_as_repeticoes_e_separam_o_que_nao_e_o_mesmo_fato(pagina
     pagina.wait_for_selector("text=Captura separada: agora ela aparece sozinha na lista.")
     assert limpo.execute("select duplicata_de from radar_capturas where id = %s", (b,)).fetchone()[0] is None
     assert cartao("Subvenção").locator(".repetidas").count() == 0
+
+
+def test_revisar_com_ia_que_muda_o_titulo_refaz_a_capa_e_nao_apaga_texto_nao_salvo(pagina, limpo):
+    a, _ = assunto_com_texto(limpo)
+    c = _conteudo(limpo, a, COPIA + " Texto próprio.", "ia")
+    limpo.execute("update radar_conteudos set titulo = 'CBS [VERIFICAR: alíquota] na transição' where id = %s", (c,))
+    ilus, capa = (limpo.execute("insert into radar_imagens (dados, largura, altura) values (%s, 300, 200) returning id", (_png_base64(),)).fetchone()[0]
+                  for _ in range(2))
+    limpo.execute("update radar_conteudos set imagem_id = %s, ilustracao_id = %s where id = %s", (capa, ilus, c))
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.wait_for_selector("form[data-form=conteudo] .marcas-verificar")
+    # há texto digitado e não salvo neste navegador: a revisão não começa (ele sumiria)
+    pagina.evaluate(f"""() => {{ localStorage.setItem(chaveRascunho({c}), JSON.stringify({{titulo:'CBS', corpo:'Texto digitado e não salvo.',
+        base:document.querySelector('form[data-form=conteudo]').dataset.lido, quando:new Date().toISOString()}})); return desenhar(); }}""")
+    pagina.wait_for_selector("form[data-form=conteudo] .rascunho")
+    pagina.locator("form[data-form=conteudo] .marcas-verificar [data-acao=ia-revisar]").click()
+    pagina.wait_for_selector("#recado .erro >> text=Há um texto não salvo deste conteúdo neste navegador")
+    assert len(pedidos) == 0
+    pagina.locator("form[data-form=conteudo] [data-acao=descartar-rascunho]").click()
+    pagina.locator("form[data-form=conteudo] .marcas-verificar [data-acao=ia-revisar]").click()
+    pagina.wait_for_selector("text=O título mudou: a capa foi refeita com o título novo.")
+    titulo, capa2, ilus2 = limpo.execute("select titulo, imagem_id, ilustracao_id from radar_conteudos where id = %s", (c,)).fetchone()
+    assert titulo == "CBS na transição" and capa2 != capa and ilus2 == ilus and [p["acao"] for p in pedidos] == ["revisar"]

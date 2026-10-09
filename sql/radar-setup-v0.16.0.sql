@@ -581,6 +581,10 @@ begin
   elsif old.metadados ? 'origem_manual' and not (new.metadados ? 'origem_manual') then
     new.metadados := new.metadados || jsonb_build_object('origem_manual', old.metadados->'origem_manual');
   end if;
+  -- v0.16.0: a decisão da equipe "não é o mesmo fato" também fica (o robô regrava os metadados quando o texto muda)
+  if old.metadados ? 'separada_em' and not (coalesce(new.metadados, '{}'::jsonb) ? 'separada_em') then
+    new.metadados := coalesce(new.metadados, '{}'::jsonb) || jsonb_build_object('separada_em', old.metadados->'separada_em');
+  end if;
   if new.hash_conteudo is distinct from old.hash_conteudo and old.hash_conteudo is not null then
     insert into public.radar_capturas_versoes (captura_id, versao, titulo, texto, hash_conteudo)
     values (old.id, old.versao, old.titulo, old.texto, old.hash_conteudo)
@@ -2139,8 +2143,10 @@ begin
         v_puladas := v_puladas + 1; continue;
       end if;
       -- origem da repetição: sobe até a captura que não é repetição de ninguém (no máximo 5 passos, sem voltar a si mesma)
+      -- v0.16.0: a captura que a equipe separou ("não é o mesmo fato") não volta a ser juntada pela IA
       v_raiz := null;
-      if jsonb_typeof(v_item->'igual_a') = 'number' then
+      if jsonb_typeof(v_item->'igual_a') = 'number'
+         and not exists (select 1 from public.radar_capturas c where c.id = v_id and c.metadados ? 'separada_em') then
         v_raiz := (v_item->>'igual_a')::numeric::bigint;
         for v_n in 1..5 loop
           select c.duplicata_de into v_prox from public.radar_capturas c where c.id = v_raiz;

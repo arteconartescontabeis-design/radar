@@ -207,6 +207,11 @@ function trechosCopiados(corpo: string, fontes: string[]): { palavras: number; t
 /** Marcas [VERIFICAR …] no texto (o mesmo critério da tela e do banco). */
 const marcasVerificar = (...textos: string[]) =>
   textos.join("\n").match(/\[\s*verificar[^\]\n]{0,250}\]?/gi)?.map((m) => m.replace(/\s+/g, " ").trim().slice(0, 160)) ?? [];
+/** Comentário de dúvida da redação escrito sem colchetes ("a fonte não especifica o ano", "a fonte cita tanto X quanto Y").
+ *  "A fonte pagadora/retentora" (imposto na fonte) não conta. */
+const RE_DUVIDA = /(?<![\p{L}\p{N}])(?:a|as|o|os)\s+(?:fontes?(?!\s+(?:pagadoras?|retentoras?|de\s+renda|de\s+recursos))|materia(?:l|is))(?![\p{L}\p{N}])[^.;\n]{0,60}?(?<![\p{L}\p{N}])(?:n[ãa]o\s+(?:informa|especifica|menciona|traz|indica|detalha|esclarece|confirma|deixa\s+claro|diz)m?|cita(?:m)?\s+tanto|(?:é|s[ãa]o)\s+omiss[ao]s?)(?![\p{L}\p{N}])[^\n.;)]{0,120}/giu;
+const comentariosDuvida = (...textos: string[]) =>
+  (textos.join("\n").replace(/\[\s*verificar[^\]\n]{0,250}\]?/gi, " ").match(RE_DUVIDA) ?? []).map((m) => m.replace(/\s+/g, " ").trim().slice(0, 160));
 
 /** Confere por código o que o texto gerado afirma. Devolve os pontos que uma pessoa precisa olhar.
  *  Cobre: nº de normas, artigos e parágrafos, percentuais, valores em R$, datas, mês/ano, prazos e anos.
@@ -216,6 +221,8 @@ function conferirGerado(gerado: string, oficial: string, temEvidencia: boolean):
   if (!temEvidencia) avisos.push("Gerado sem nenhum trecho conferido: FUNDAMENTAÇÃO NÃO CONFIRMADA — necessária análise técnica.");
   const marcas = (gerado.match(/\[VERIFICAR[^\]]*\]/gi) ?? []).length;
   if (marcas) avisos.push(`O texto tem ${marcas} ponto(s) marcados com [VERIFICAR]: resolva antes de enviar para revisão.`);
+  const duvidas = comentariosDuvida(gerado);
+  if (duvidas.length) avisos.push(`O texto tem ${duvidas.length} comentário(s) sobre dúvida da redação (ex.: “${duvidas[0]}”): tire do texto antes de enviar para revisão.`);
 
   const noOficial = fatos(oficial, true), grupos: Record<string, string[]> = { norma: [], dispositivo: [], numero: [] };
   for (const [chave, escrito] of fatos(gerado.replace(/\[VERIFICAR[^\]]*\]/gi, " "), false)) {
@@ -314,8 +321,8 @@ async function carregar(token: string, assuntoId: number) {
   const evidencias = await banco(token, "GET", `radar_evidencias?select=*&assunto_id=eq.${assuntoId}&order=id`);
   return { assunto, capturas, evidencias, reg: { uso: null } as Registro };   // "quem" é preenchido na entrada
 }
-function blocoOficial(capturas: Captura[], rotulo = "TEXTO OFICIAL"): { bloco: string; texto: string } {
-  let restante = MAX_TEXTO_TOTAL, bloco = "", texto = "";
+function blocoOficial(capturas: Captura[], rotulo = "TEXTO OFICIAL", limite = MAX_TEXTO_TOTAL): { bloco: string; texto: string } {
+  let restante = limite, bloco = "", texto = "";
   for (const c of capturas) {
     if (!c.texto || restante <= 0) continue;
     const parte = c.texto.slice(0, Math.min(MAX_TEXTO_POR_CAPTURA, restante));
@@ -458,8 +465,9 @@ const FORMATOS: Record<string, string> = {
 // por este caminho: o banco continua exigindo texto oficial conferido para registrar ou autorizar a publicação.
 const REGRA_ANALISE = "ATENÇÃO: o material fornecido é de fonte NÃO OFICIAL (boletim, editora ou portal), muitas vezes só um resumo. " +
   "Escreva um texto PARA ANÁLISE INTERNA do escritório: explique o que a fonte informa, dizendo de onde veio a informação " +
-  "('segundo o Portal Contábil SC', 'de acordo com o boletim da ITC'), e liste em 'pendencias' todo número, data, prazo, alíquota e norma " +
-  "que precise de conferência na fonte oficial (menos o que a VERIFICAÇÃO EM FONTES OFICIAIS, se houver, já confirmou). " +
+  "('segundo o Portal Contábil SC', 'de acordo com o boletim da ITC'). O que a fonte informa fica no texto, atribuído a ela, e também vai " +
+  "para 'pendencias' quando for número, data, prazo, alíquota ou norma a conferir na fonte oficial (menos o que a VERIFICAÇÃO EM FONTES " +
+  "OFICIAIS, se houver, já confirmou); a regra (3) vale para o que o material não informa. " +
   "NÃO escreva no texto avisos sobre a origem da informação (como 'este informativo é baseado em material de fonte não oficial'): " +
   "esse aviso é interno e fica fora do texto. " +
   "Nas regras abaixo, onde se lê 'texto oficial', entenda 'o material fornecido'. ";
@@ -509,14 +517,14 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
   // v0.16.0: sobrou marca [VERIFICAR] ou trecho igual ao da fonte? Uma segunda passada corrige só isso (dentro do prazo do pedido)
   const extra: string[] = [];
   try {
-    const r = await revisarTexto(ctx.reg, titulo, corpo, fontesDoAssunto(ctx), bloco + blocoVerificacao(ctx.assunto.verificacao), inicio);
+    const r = await revisarTexto(ctx.reg, titulo, corpo, fontesDoAssunto(ctx), bloco + blocoVerificacao(ctx.assunto.verificacao), inicio, naoOficial);
     if (r) { titulo = r.titulo; corpo = r.corpo; pendencias = listaPendencias([...pendencias, ...r.pendencias]); }
   } catch (e) {
     extra.push("A revisão automática (marcas e trechos iguais ao da fonte) não pôde ser feita agora" +
       (e instanceof Erro ? ` (${e.message})` : "") + ": use o botão “Revisar com IA” no conteúdo.");
   }
   const avisos = conferirGerado(titulo + "\n" + corpo, oficial, conferidas.length > 0);
-  if (pendencias.length) avisos.push(avisoPendencias(pendencias));
+  if (pendencias.length) avisos.push(avisoPendencias(pendencias, naoOficial));
   avisos.push(...extra);
   if (naoOficial) {
     const orgaos = [...new Set(ctx.capturas.filter((c) => c.texto).map((c) => c.orgao))].join(", ");
@@ -536,16 +544,31 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
 const limparCorpo = (t: unknown) => tirarAvisoFonte(String(t ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, ""));
 const listaPendencias = (lista: unknown) => (Array.isArray(lista) ? lista : [])
   .map((p) => normalizarEspacos(String(p ?? "")).replace(/^\[?\s*verificar\s*:?\s*/i, "").replace(/\]$/, "").slice(0, 300))
-  .filter((p, i, todas) => p.length >= 3 && todas.indexOf(p) === i).slice(0, 10);
-const avisoPendencias = (lista: string[]) =>
-  "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): " + lista.join("; ") + ".";
+  .filter((p, i, todas) => p.length >= 3 && todas.indexOf(p) === i).slice(0, 30);
+/** Um aviso só, com até 1.900 caracteres (o banco recusa ponto a conferir com mais de 2.000): o que não couber vira "(e mais N)".
+ *  No texto para análise o dado fica no texto, atribuído à fonte não oficial; no texto normal, ele saiu do texto. */
+function avisoPendencias(lista: string[], analise = false): string {
+  let texto = analise ? "Pontos a conferir na fonte oficial antes de publicar (no texto, atribuídos à fonte não oficial): "
+                      : "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): ", n = 0;
+  for (const p of lista) {
+    if ((texto + (n ? "; " : "") + p).length > 1900) break;
+    texto += (n ? "; " : "") + p; n++;
+  }
+  return texto + (n < lista.length ? ` (e mais ${lista.length - n})` : "") + ".";
+}
 const fontesDoAssunto = (ctx: Awaited<ReturnType<typeof carregar>>) => ctx.capturas.map((c) => c.texto ?? "").filter(Boolean);
+/** O material da revisão: o texto oficial com o rótulo de oficial e as demais capturas como fonte NÃO oficial (só o oficial confirma). */
+function materialDoAssunto(ctx: Awaited<ReturnType<typeof carregar>>) {
+  const of = blocoOficial(ctx.capturas.filter((c) => c.oficial));
+  const nao = blocoOficial(ctx.capturas.filter((c) => !c.oficial), "TEXTO DE FONTE NÃO OFICIAL", Math.max(0, MAX_TEXTO_TOTAL - of.texto.length));
+  return { material: of.bloco + nao.bloco + blocoVerificacao(ctx.assunto.verificacao), oficial: of.texto, todos: of.texto + nao.texto };
+}
 const PRAZO_PEDIDO = 140_000;          // a tela espera até 150 s pela resposta
 
 /** Segunda passada da IA, só quando o texto tem marca [VERIFICAR] ou trecho igual ao da fonte: corrige isso e mais nada.
  *  Devolve null quando não há o que corrigir. Se a IA devolver texto curto demais (cortado), fica o texto original. */
-async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes: string[], material: string, inicio: number) {
-  const marcas = marcasVerificar(titulo, corpo), copias = trechosCopiados(corpo, fontes);
+async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes: string[], material: string, inicio: number, analise = false) {
+  const marcas = [...marcasVerificar(titulo, corpo), ...comentariosDuvida(titulo, corpo)], copias = trechosCopiados(corpo, fontes);
   if (!marcas.length && !copias.length) return null;
   const resta = PRAZO_PEDIDO - (Date.now() - inicio);
   if (resta < 25_000) throw new Erro(504, "sem tempo para a segunda passada");
@@ -555,16 +578,19 @@ async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes
   };
   const instrucoes = "Você revisa um texto contábil e tributário da Artecon Artes Contábeis (Palhoça/SC), em português do Brasil, antes de ele ir à equipe. " +
     "Faça SOMENTE estas correções e devolva o título e o texto inteiros: " +
-    "(a) cada marca [VERIFICAR …] sai do texto: se o material de consulta confirmar a informação, escreva-a; se não confirmar, reescreva a frase " +
-    "sem o detalhe incerto (sem supor e sem comentar a dúvida) e registre o ponto em 'pendencias'. Diferença só de grafia entre fontes " +
-    "(ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa; " +
+    "(a) cada marca [VERIFICAR …] e cada comentário sobre dúvida da redação listado ('a fonte não informa…', 'a fonte cita tanto X quanto Y') " +
+    "sai do texto: se o TEXTO OFICIAL ou a VERIFICAÇÃO EM FONTES OFICIAIS do material confirmar a informação, escreva-a; " +
+    (analise ? "se só a fonte não oficial a informar, escreva-a atribuída a ela ('segundo o boletim…') e registre o ponto em 'pendencias'; "
+             : "o que estiver só no TEXTO DE FONTE NÃO OFICIAL não está confirmado; ") +
+    "se não houver confirmação, reescreva a frase sem o detalhe incerto (sem supor e sem comentar a dúvida) e registre o ponto em 'pendencias'. " +
+    "Diferença só de grafia entre fontes (ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa; " +
     "(b) cada TRECHO IGUAL AO DA FONTE listado é reescrito com palavras e estrutura próprias, mantendo o sentido, e diz de onde veio a informação " +
     "('segundo a Receita Federal', 'conforme a Portaria …', 'de acordo com o Portal Contábil SC'); se a redação exata for indispensável " +
     "(texto de lei), transcreva no máximo 40 palavras entre aspas, com a fonte; nomes de normas, órgãos, programas, datas e valores podem continuar iguais; " +
-    "(c) o resto fica como está: mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; " +
+    "(c) o resto fica como está, inclusive as citações entre aspas: mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; " +
     "(d) nada de HTML, links, colchetes ou comentários sobre a revisão no texto. " + REGRA_DADOS;
   const entrada = `Título: ${titulo}\n\n<<<TEXTO A REVISAR>>>\n${corpo}\n<<<FIM>>>\n\n` +
-    (marcas.length ? "Marcas a resolver:\n" + marcas.map((m) => `- ${m}`).join("\n") + "\n\n" : "") +
+    (marcas.length ? "Marcas e comentários de dúvida a resolver:\n" + marcas.map((m) => `- ${m}`).join("\n") + "\n\n" : "") +
     (copias.length ? "Trechos iguais ao da fonte (reescreva e diga a fonte):\n" + copias.slice(0, 12).map((c) => `- "${c.texto}"`).join("\n") + "\n\n" : "") +
     `Material de consulta (as fontes do assunto):\n${material}`;
   const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "revisao", esquema, 6000, Math.min(110_000, resta - 5_000));
@@ -579,22 +605,35 @@ async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes
  *  (como o usuário: valem as regras do banco — o aprovado volta para revisão) e acrescenta o que ficou fora aos pontos a conferir. */
 async function revisar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, conteudoId: unknown, lido: unknown) {
   if (typeof conteudoId !== "number" || !Number.isSafeInteger(conteudoId) || conteudoId <= 0) throw new Erro(400, "Conteúdo inválido.");
-  const [c] = await banco(token, "GET", `radar_conteudos?select=id,titulo,corpo,avisos_ia,atualizado_em&id=eq.${conteudoId}&assunto_id=eq.${ctx.assunto.id}`);
+  const [c] = await banco(token, "GET",
+    `radar_conteudos?select=id,titulo,corpo,avisos_ia,atualizado_em,copia_autorizada_em&id=eq.${conteudoId}&assunto_id=eq.${ctx.assunto.id}`);
   if (!c) throw new Erro(404, "Conteúdo não encontrado neste assunto.");
   if (typeof lido === "string" && lido && Date.parse(lido) !== Date.parse(c.atualizado_em)) {
     throw new Erro(409, "O conteúdo foi alterado depois que a tela foi aberta. Atualize a tela e tente de novo.");
   }
-  const { bloco } = blocoOficial(ctx.capturas);
-  const r = await revisarTexto(ctx.reg, String(c.titulo ?? ""), String(c.corpo ?? ""), fontesDoAssunto(ctx),
-                               bloco + blocoVerificacao(ctx.assunto.verificacao), Date.now());
-  if (!r) throw new Erro(400, "Este texto não tem marca [VERIFICAR] nem trecho igual ao da fonte: não há o que revisar.");
-  const avisos = Array.isArray(c.avisos_ia) ? c.avisos_ia : [];
-  const novos = r.pendencias.length ? [...avisos, avisoPendencias(r.pendencias)] : avisos;
+  const avisos: string[] = Array.isArray(c.avisos_ia) ? c.avisos_ia : [];
+  const analise = String(avisos[0] ?? "").startsWith("TEXTO PARA ANÁLISE");
+  const m = materialDoAssunto(ctx);
+  // o trecho igual ao da fonte que a equipe autorizou fica: a revisão cuida só das marcas
+  const fontes = c.copia_autorizada_em ? [] : fontesDoAssunto(ctx);
+  const r = await revisarTexto(ctx.reg, String(c.titulo ?? ""), String(c.corpo ?? ""), fontes, m.material, Date.now(), analise);
+  if (!r) throw new Erro(400, "Este texto não tem marca [VERIFICAR], comentário de dúvida nem trecho igual ao da fonte: não há o que revisar.");
+  // o que a revisão afirma é conferido por código, como no "gerar"; os pontos novos se somam aos que já estavam
+  const quando = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const conferidos = conferirGerado(r.titulo + "\n" + r.corpo, analise ? m.todos : m.oficial, true)
+    .filter((a) => !a.startsWith("O texto tem ") && !avisos.includes(a));
+  const novos = [...avisos,
+    `Revisado com IA em ${quando}: ${r.marcas} marca(s) ou comentário(s) de dúvida e ${r.copias} trecho(s) igual(is) ao da fonte corrigidos.`,
+    ...(r.pendencias.length ? [avisoPendencias(r.pendencias, analise)] : []), ...conferidos].slice(0, avisos.length + 10);
   const linhas = await banco(token, "PATCH", `radar_conteudos?id=eq.${conteudoId}&atualizado_em=eq.${encodeURIComponent(c.atualizado_em)}`,
     { titulo: r.titulo, corpo: r.corpo, avisos_ia: novos }, "return=representation");
   if (!Array.isArray(linhas) || !linhas.length) throw new Erro(409, "O conteúdo foi alterado enquanto a IA revisava. Atualize a tela e tente de novo.");
-  return { conteudo_id: conteudoId, pendencias: r.pendencias, marcas: r.marcas, copias: r.copias,
-           restam: { marcas: marcasVerificar(r.titulo, r.corpo).length, copias: trechosCopiados(r.corpo, fontesDoAssunto(ctx)).length } };
+  const gravados = Array.isArray(linhas[0].avisos_ia) && linhas[0].avisos_ia.length === novos.length;
+  return { conteudo_id: conteudoId, titulo: r.titulo, pendencias: r.pendencias, marcas: r.marcas, copias: r.copias, avisos_gravados: gravados,
+           titulo_mudou: normalizarEspacos(r.titulo) !== normalizarEspacos(String(c.titulo ?? "")),
+           autorizacao_caiu: !!c.copia_autorizada_em && r.corpo !== c.corpo,
+           restam: { marcas: marcasVerificar(r.titulo, r.corpo).length + comentariosDuvida(r.titulo, r.corpo).length,
+                     copias: trechosCopiados(r.corpo, fontes).length } };
 }
 
 // ------------------------------------------------------------------ verificação em fontes oficiais (v0.14.0)
@@ -615,7 +654,8 @@ const SITUACOES = ["confirmada", "parcialmente_confirmada", "nao_encontrada", "d
 const ROTULO_SITUACAO: Record<string, string> = { confirmada: "CONFIRMADA", parcialmente_confirmada: "PARCIALMENTE CONFIRMADA",
   nao_encontrada: "NÃO ENCONTRADA", divergente: "DIVERGENTE" };
 const REGRA_VERIFICACAO = "(11) se vier uma VERIFICAÇÃO EM FONTES OFICIAIS, trate como confirmado o que ela diz que as páginas oficiais confirmam, " +
-  "cite o órgão oficial pelo nome (sem link); o que ela não confirmar fica fora do texto (ou atribuído à fonte que o informa) e vai para 'pendencias'; " +
+  "cite o órgão oficial pelo nome (sem link); o que NÃO estiver no texto oficial fornecido e ela não confirmar fica fora do texto (ou atribuído " +
+  "à fonte que o informa) e vai para 'pendencias' — o texto oficial fornecido vale mesmo que a verificação não o cite; " +
   "se ela apontar divergência, siga a fonte oficial e diga o que mudou; ";
 // só a linha que É o aviso ("Este informativo é baseado em … fonte não oficial…", "Fonte não oficial: boletim X"); um parágrafo
 // que fala de fonte não oficial como assunto ("boletos de fontes não oficiais são golpe") fica

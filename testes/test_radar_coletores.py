@@ -637,3 +637,25 @@ def test_pagina_sem_feed_cadastrada_como_rss_da_erro_que_explica():
     # bytes também são reconhecidos
     with pytest.raises(coletores.PaginaNaoEhFeed):
         coletores.listar_rss(PAGINA_WP.encode(), fonte)
+
+
+def test_pagina_de_categoria_segue_o_feed_da_categoria_e_paginada_nao_baixa_a_segunda():
+    # WordPress: o feed geral e o de comentários vêm antes do feed da categoria
+    categoria = ('<!DOCTYPE html><html><head>'
+                 '<link rel="alternate" type="application/rss+xml" title="Portal &raquo; Feed" href="https://portalcontabilsc.com.br/feed/">'
+                 '<link rel="alternate" type="application/rss+xml" title="Portal &raquo; Feed de comentários" href="https://portalcontabilsc.com.br/comments/feed/">'
+                 '<link rel="alternate" type="application/rss+xml" title="Feed da categoria Notícias" href="https://portalcontabilsc.com.br/categoria/noticias/feed/">'
+                 '</head><body></body></html>')
+    assert coletores.feed_da_pagina(categoria, "https://portalcontabilsc.com.br/categoria/noticias/") == "https://portalcontabilsc.com.br/categoria/noticias/feed/"
+    assert coletores.feed_da_pagina(categoria, "https://portalcontabilsc.com.br/") == "https://portalcontabilsc.com.br/feed/"
+    so_comentarios = '<html><head><link rel="alternate" type="application/rss+xml" title="Comentários" href="/comments/feed/"></head></html>'
+    assert coletores.feed_da_pagina(so_comentarios, "https://x.com.br/") == "https://x.com.br/comments/feed/"
+    pedidos = []
+    def baixar(url):
+        pedidos.append(url)
+        return 200, (FEED_COM_ENTIDADES if url.endswith("/categoria/noticias/feed/") else categoria)
+    fonte = {"slug": "pcsc", "url": "https://portalcontabilsc.com.br/categoria/noticias/page/{p}/", "tipo_coletor": "rss",
+             "config": {"janela_dias": 30, "paginas_max": 3, "itens_por_pagina": 1}}
+    listagem, _ = coletores.listar_paginas(baixar, fonte, date(2026, 10, 9))
+    assert pedidos == ["https://portalcontabilsc.com.br/categoria/noticias/page/1/", "https://portalcontabilsc.com.br/categoria/noticias/feed/"]
+    assert [i.url for i in listagem.itens] == ["https://portalcontabilsc.com.br/stf-exclui"]

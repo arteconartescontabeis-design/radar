@@ -1860,9 +1860,12 @@ def test_nao_e_o_mesmo_fato_devolve_a_captura_para_a_triagem(limpo):
         assert sorted(x[0] for x in k.execute("select id from radar_v_fila").fetchall()) == [b, c]
     assert limpo.execute("select acao, usuario::text, antes->>'motivo' from radar_auditoria where tabela = 'radar_assunto_capturas' and registro_id = %s order by id desc limit 1",
                          (f"{assunto}:{c}",)).fetchone() == ("DELETE", EDITOR, "não é o mesmo fato")
-    # com evidência registrada na captura, ela não sai do assunto
+    # v0.16.0: separada pela equipe, a IA não junta de novo (nem se avaliar outra vez dizendo que é igual)
     _avaliar([{"id": c, "nota": 7, "igual_a": a}])
-    assert limpo.execute("select count(*) from radar_assunto_capturas where captura_id = %s and juntada_pela_ia_em is not null", (c,)).fetchone()[0] == 1
+    assert limpo.execute("select count(*) from radar_assunto_capturas where captura_id = %s", (c,)).fetchone()[0] == 0
+    assert limpo.execute("select duplicata_de from radar_capturas where id = %s", (c,)).fetchone()[0] is None
+    # com evidência registrada na captura, ela não sai do assunto (juntada de novo à mão, como a IA faria)
+    limpo.execute("insert into radar_assunto_capturas (assunto_id, captura_id, juntada_pela_ia_em) values (%s, %s, now())", (assunto, c))
     limpo.execute("update radar_capturas set texto = 'O prazo fica prorrogado até 31 de março.' where id = %s", (c,))
     limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, 'O prazo fica prorrogado até 31 de março.')", (assunto, c))
     with como("authenticated", EDITOR) as k:
@@ -3052,3 +3055,24 @@ def test_separar_repeticao_na_fila(limpo):
     limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (novo_assunto(limpo), outra))
     with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR141"):
         c.execute("select radar_separar_repeticao(%s)", (outra,))
+
+
+def test_separada_na_triagem_nao_volta_a_ser_juntada(limpo):
+    def cap(url, titulo, slug="rfb-noticias"):
+        return limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                                select id, %s, %s, 'texto', md5(%s) from radar_fontes where slug = %s returning id""",
+                             (url, titulo, url, slug)).fetchone()[0]
+    origem = cap("https://x.gov.br/o", "Crédito presumido de ICMS na base do IRPJ e da CSLL")
+    b = cap("https://x.gov.br/b", "STF exclui créditos presumidos de ICMS da base do PIS e da Cofins")
+    limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (origem, b))
+    with como("authenticated", EDITOR) as c:
+        c.execute("select radar_separar_repeticao(%s)", (b,))
+    # o robô regrava o texto e os metadados da captura (a fonte mudou a matéria): a decisão da equipe fica
+    with como("service_role") as c:
+        c.execute("update radar_capturas set texto = 'texto novo da fonte', titulo = titulo || ' (atualizado)', metadados = '{}' where id = %s", (b,))
+    assert limpo.execute("select metadados ? 'separada_em' from radar_capturas where id = %s", (b,)).fetchone()[0]
+    # a IA avalia de novo e diz que é igual à origem: não volta a ser juntada
+    with como("service_role") as c:
+        r = c.execute("select radar_gravar_avaliacao_ia(%s)", (json.dumps([{"id": b, "nota": 7, "igual_a": origem}]),)).fetchone()[0]
+    assert r["gravadas"] == 1 and r["repetidas"] == 0
+    assert limpo.execute("select duplicata_de, ia_nota from radar_capturas where id = %s", (b,)).fetchone() == (None, 7)

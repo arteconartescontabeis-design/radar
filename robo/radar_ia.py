@@ -123,16 +123,27 @@ _TRIBUTOS = [(re.compile(p, re.I), t) for p, t in [
     (r"\bIRPF\b|imposto de renda (?:da |de )?pessoas? f[íi]sicas?", "IRPF"), (r"\bIRRF\b|imposto de renda retido", "IRRF"),
     (r"(?-i:\bIR\b)|imposto de renda", "IR"), (r"\bICMS\b|\bDIFAL\b", "ICMS"), (r"\bISSQN\b|\bISS\b", "ISS"), (r"\bIPI\b", "IPI"),
     (r"\bIOF\b", "IOF"), (r"\bIBS\b|\bCBS\b", "IBS/CBS"), (r"imposto seletivo", "IS"), (r"\bINSS\b|previdenci[áa]ri", "INSS"),
-    (r"\bCPRB\b", "CPRB"), (r"\bFGTS\b", "FGTS"), (r"\bITCMD\b|\bITCD\b", "ITCMD"), (r"\bIPVA\b", "IPVA"),
+    (r"\bCPRB\b|contribui[çc][ãa]o previdenci[áa]ria sobre a receita bruta", "CPRB"), (r"\bFGTS\b", "FGTS"), (r"\bITCMD\b|\bITCD\b", "ITCMD"), (r"\bIPVA\b", "IPVA"),
     (r"\bIPTU\b", "IPTU"), (r"\bITBI\b", "ITBI")]]
 _IR_ESPECIFICO = {"IRPJ", "IRPF", "IRRF"}
+
+
+# título todo em maiúsculas (boletim da ITC): "VÃO IR À RECEITA" é o verbo, não o imposto de renda
+_IR_VERBO = re.compile(r"\b(?:VAI|VÃO|VAO|DEVE|DEVEM|PODE|PODEM|PRECISA|PRECISAM|PARA|QUER|QUEREM|DEVERÁ|DEVERÃO|PODERÁ|PODERÃO)\s+IR\b"
+                       r"|\bIR\s+(?:À|ÀS|AO|AOS|A|ATÉ|PARA|ALÉM|EMBORA)\b")
 
 
 def tributos(titulo: str | None) -> set[str]:
     texto = str(titulo or "")
     achados = {t for r, t in _TRIBUTOS if r.search(texto)}
-    if achados & _IR_ESPECIFICO and not re.search(r"\bIR\b", texto):
-        achados.discard("IR")                                    # "imposto de renda da pessoa física" já virou IRPF
+    if "IR" in achados and not re.search(r"imposto de renda", texto, re.I):
+        letras = [ch for ch in texto if ch.isalpha()]
+        if letras and sum(ch.isupper() for ch in letras) > 0.8 * len(letras) and not re.search(r"\bIR\b", _IR_VERBO.sub(" ", texto)):
+            achados.discard("IR")
+    if achados & _IR_ESPECIFICO:
+        achados.discard("IR")                                    # o específico (IRPJ, IRPF, IRRF) diz qual é
+    if "CPRB" in achados:
+        achados.add("INSS")                                      # a CPRB substitui a contribuição previdenciária
     return achados
 
 
@@ -141,17 +152,18 @@ def mesmos_tributos(a: str | None, b: str | None) -> bool:
     x, y = tributos(a), tributos(b)
     if not x or not y:
         return True
-    # "IR" sem dizer qual vale pelo imposto de renda específico do outro título
-    if "IR" in x and y & _IR_ESPECIFICO:
+    # "IR" sem dizer qual vale pelo imposto de renda específico do outro título (só de quem não tem o seu)
+    if "IR" in x and y & _IR_ESPECIFICO and not x & _IR_ESPECIFICO:
         x = (x - {"IR"}) | (y & _IR_ESPECIFICO)
-    if "IR" in y and x & _IR_ESPECIFICO:
+    if "IR" in y and x & _IR_ESPECIFICO and not y & _IR_ESPECIFICO:
         y = (y - {"IR"}) | (x & _IR_ESPECIFICO)
     return x <= y or y <= x
 
 
-def conferir(itens: list, novos: list[dict], vistos: list[dict]) -> list[dict]:
+def conferir(itens: list, novos: list[dict], vistos: list[dict], grupos: dict[int, list] | None = None) -> list[dict]:
     """Só passa adiante o que é de um item pedido, com nota de 0 a 10; "igual_a" tem de ser um id conhecido e ANTERIOR.
-    v0.16.0: e não pode apontar para um título que cita tributos diferentes."""
+    v0.16.0: e não pode juntar títulos que citam tributos diferentes — nem com o item apontado, nem com o caminho até a
+    origem, nem com o que já está no grupo dela (`grupos`: origem → títulos das repetições; é atualizado aqui)."""
     ordem = {n["id"]: i for i, n in enumerate(novos)}
     conhecidos = {v["id"] for v in vistos}
     titulo_de = {**{v["id"]: v.get("titulo") for v in vistos}, **{n["id"]: n.get("titulo") for n in novos}}
@@ -175,6 +187,20 @@ def conferir(itens: list, novos: list[dict], vistos: list[dict]) -> list[dict]:
     # A conta é pela origem final: "B igual a A, C igual a B" são duas repetições de A (o banco também sobe até a origem).
     limite = max(3, len(novos) // 3)
     aponta = {b["id"]: b["igual_a"] for b in bons}
+    grupos = grupos if grupos is not None else {}
+    aceitos: dict[int, list] = {}                                 # repetições deste lote, por origem
+    for b in sorted(bons, key=lambda b: ordem[b["id"]]):            # na ordem do lote: o item recusado não vira ponte
+        if b["igual_a"] is None:
+            continue
+        caminho, i = [], b["igual_a"]
+        while i is not None and i not in caminho:
+            caminho.append(i)
+            i = aponta.get(i)
+        comparar = [titulo_de.get(c) for c in caminho] + grupos.get(caminho[-1], []) + aceitos.get(caminho[-1], [])
+        if any(not mesmos_tributos(titulo_de.get(b["id"]), t) for t in comparar):
+            b["igual_a"] = aponta[b["id"]] = None
+        else:
+            aceitos.setdefault(caminho[-1], []).append(titulo_de.get(b["id"]))
 
     def origem(i: int) -> int:
         for _ in range(len(aponta) + 1):
@@ -190,6 +216,9 @@ def conferir(itens: list, novos: list[dict], vistos: list[dict]) -> list[dict]:
     for b in bons:
         if b["igual_a"] is not None and contagem[raiz[b["id"]]] > limite:
             b["igual_a"] = None
+    for b in bons:                                                 # o grupo cresce: o próximo lote compara com estes também
+        if b["igual_a"] is not None:
+            grupos.setdefault(raiz[b["id"]], []).append(titulo_de.get(b["id"]))
     return bons
 
 
@@ -212,13 +241,19 @@ def avaliar_capturas(banco: Banco, token: str, url: str = GATEWAY_PADRAO, modelo
         "select": "id,titulo", "duplicata_de": "is.null", "relevancia": "in.(alta,media)",
         "capturado_em": f"gte.{desde}", "order": "capturado_em.desc", "limit": str(CONTEXTO + len(pendentes))})
         if v["id"] not in ids_pendentes][:CONTEXTO]
+    # v0.16.0: o que já está agrupado atrás de cada origem (a trava de tributos compara com o grupo todo)
+    grupos: dict[int, list] = {}
+    if vistos:
+        for r in banco._pedir("GET", "radar_capturas", params={
+                "select": "titulo,duplicata_de", "duplicata_de": "in.(" + ",".join(str(v["id"]) for v in vistos) + ")", "limit": "1000"}) or []:
+            grupos.setdefault(r["duplicata_de"], []).append(r.get("titulo"))
     sessao = sessao or requests.Session()
     for inicio in range(0, len(pendentes), lote):
         if prazo is not None and inicio and time.monotonic() > prazo:
             break                                                    # prazo da coleta: o resto fica para a próxima
         novos = pendentes[inicio:inicio + lote]
         try:
-            bons = conferir(perguntar(sessao, url, token, modelo, novos, vistos), novos, vistos)
+            bons = conferir(perguntar(sessao, url, token, modelo, novos, vistos), novos, vistos, grupos)
             gravadas = 0
             if bons:
                 r = banco._pedir("POST", "rpc/radar_gravar_avaliacao_ia", corpo={"p_itens": bons})

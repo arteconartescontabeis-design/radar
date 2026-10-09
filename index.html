@@ -1731,7 +1731,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
   const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
   const autorizada = copia.length && c.copia_autorizada_em;
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
-  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}"${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
+  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.ilustracao_id ? ` data-ilustracao="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}"${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
     ${ed ? avisoRascunho(c) : ""}
     ${marcas.length ? `<div class="aviso erro marcas-verificar"><b>${marcas.length} ponto(s) marcado(s) com [VERIFICAR] — resolva antes de liberar ou publicar.</b>
       <ul>${marcas.map(m => `<li><span class="copiado">${h(m)}</span></li>`).join("")}</ul>Troque cada marca pela informação conferida (ou tire o trecho) e salve${ed ? ", ou clique em “Revisar com IA”: a IA tira as marcas e o que não estiver confirmado vai para os pontos a conferir" : ""}. Enquanto houver marca, o Radar não aprova nem publica.
@@ -1838,17 +1838,27 @@ const ACOES = {
     if(modoTudo()) document.querySelector(`section[data-etapa="${el.dataset.etapa}"]`)?.scrollIntoView({behavior:"smooth", block:"start"}); },
   /* v0.16.0: a IA reescreve só os pontos marcados com [VERIFICAR] e os trechos iguais ao da fonte (citando de onde veio) */
   async "ia-revisar"(el){
-    const f = el.closest("form");
+    const f = el.closest("form"), id = Number(el.dataset.id);
     if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de pedir a revisão.", true); return; }
+    // texto digitado e não salvo guardado neste navegador: a revisão parte do texto salvo, então ele não pode sumir sem a pessoa decidir
+    if(f.querySelector(".rascunho")){ recado("Há um texto não salvo deste conteúdo neste navegador (quadro “Texto não salvo”): recupere e salve, ou descarte, antes de pedir a revisão.", true); return; }
+    apagarRascunho(id);                                   // sem o quadro, o que houver guardado é igual ao texto salvo
     if(f.dataset.aprovado && !confirm("O conteúdo está aprovado: ao mudar o texto ele volta para revisão. Continuar?")) return;
     if(!(await liberarIA())) return;
-    const assunto = E.assunto, r = await ia("revisar", {conteudo_id:Number(el.dataset.id), lido:f.dataset.lido});
-    apagarRascunho(el.dataset.id);
+    const assunto = E.assunto, r = await ia("revisar", {conteudo_id:id, lido:f.dataset.lido});
+    // o título mudou: a capa (que leva o título) é refeita com a mesma ilustração, sem custo; sem ilustração guardada, fica o lembrete
+    let capa = "";
+    if(r.titulo_mudou && f.dataset.temImagem){
+      if(f.dataset.ilustracao && await capaAutomatica(id, false, false, true)) capa = " O título mudou: a capa foi refeita com o título novo.";
+      else{ E.capaAntiga = id; capa = " O título mudou: atualize a capa."; }
+    }
     if(!telaDoAssunto(assunto)) return;
     await desenhar();
     const resta = (r.restam?.marcas || 0) + (r.restam?.copias || 0);
-    recado(`IA: texto revisado${r.pendencias?.length ? `; ${r.pendencias.length} ponto(s) sem confirmação saíram do texto e estão nos pontos a conferir` : ""}.` +
-      (resta ? ` Ainda sobrou ${resta} ponto(s) a resolver (veja os quadros no conteúdo).` : " Confira o texto antes de enviar para revisão."), resta ? "aviso" : false);
+    recado(`IA: texto revisado${r.pendencias?.length ? `; ${r.pendencias.length} ponto(s) sem confirmação ${r.avisos_gravados === false ? "saíram do texto, mas NÃO puderam ser anotados nos pontos a conferir — confira o texto" : "saíram do texto e estão nos pontos a conferir"}` : ""}.` +
+      (r.autorizacao_caiu ? " O texto mudou, então a autorização do trecho igual ao da fonte caiu." : "") + capa +
+      (resta ? ` Ainda sobrou ${resta} ponto(s) a resolver (veja os quadros no conteúdo).` : " Confira o texto antes de enviar para revisão."),
+      resta || r.avisos_gravados === false || r.autorizacao_caiu ? "aviso" : false);
   },
   /* v0.16.0: "Autorizar mesmo assim" o texto com trecho igual ao da fonte — o motivo é digitado num quadro abaixo do botão */
   "abrir-autorizar-copia"(el){
@@ -2516,10 +2526,10 @@ const avisoCapa = capa => capa === "ilustração" ? " A capa tem a ilustração 
    v0.16.0: se o conteúdo tem a ilustração da IA guardada, a capa é refeita com ela (e o título atual); "semIlustracao" faz a
    capa padrão sem foto e deixa de usar a ilustração. */
 const SEM_CAPA = " A capa automática não pôde ser gerada agora: use o botão “Atualizar a capa” no conteúdo.";
-async function capaAutomatica(conteudoId, obrigatoria, semIlustracao){
+async function capaAutomatica(conteudoId, obrigatoria, semIlustracao, refazer){
   try{
     const [c] = await ler("radar_conteudos", {select:"titulo,imagem_id,ilustracao_id,assunto_id,radar_assuntos(categoria)", id:"eq." + conteudoId});
-    if(!c) return false; if(c.imagem_id && !obrigatoria) return true;
+    if(!c) return false; if(c.imagem_id && !obrigatoria && !(refazer && c.ilustracao_id)) return true;
     const fundo = c.ilustracao_id && !semIlustracao ? (await ler("radar_imagens", {select:"dados", id:"eq." + c.ilustracao_id}))[0]?.dados : null;
     const capa = await desenharCapa(c.titulo, catMapa()[c.radar_assuntos?.categoria] || "Artecon Informa", fundo);
     const [nova] = await rest("POST", "radar_imagens", {corpo:capa, params:{select:"id"}, prefer:"return=representation"});

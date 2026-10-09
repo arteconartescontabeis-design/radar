@@ -54,6 +54,10 @@ class Site(BaseHTTPRequestHandler):
             dados = json.dumps({"type": "message", "model": corpo["model"], "stop_reason": "tool_use", "usage": {"input_tokens": 5000, "output_tokens": 900},
                                 "content": [{"type": "tool_use", "name": "conteudo",
                                              "input": IA["conteudo"](corpo) if callable(IA["conteudo"]) else IA["conteudo"]}]}).encode()
+        elif corpo.get("tools", [{}])[0].get("name") == "revisao":         # v0.16.0: a segunda passada do rascunho
+            rev = IA.get("revisao")
+            dados = json.dumps({"type": "message", "model": corpo["model"], "stop_reason": "tool_use", "usage": {"input_tokens": 3000, "output_tokens": 800},
+                                "content": [{"type": "tool_use", "name": "revisao", "input": rev(corpo) if callable(rev) else rev}]}).encode()
         else:
             ids = [json.loads(l)["id"] for l in corpo["messages"][0]["content"].split("NOVOS (avalie cada um):\n")[1].splitlines()]
             itens = IA["responder"](ids) if IA["responder"] else [{"id": i, "nota": 7, "motivo": "m", "tema": "t", "igual_a": None} for i in ids]
@@ -703,7 +707,7 @@ import radar_ia
 
 @pytest.fixture()
 def ia(cenario):
-    IA.update(pedidos=[], status=200, mensagem="", responder=None, bruto=None)
+    IA.update(pedidos=[], status=200, mensagem="", responder=None, bruto=None, revisao=None)
     original = cenario.execute("select valor from radar_config where chave = 'relevancia'").fetchone()[0]
     yield cenario
     cenario.execute("update radar_config set valor = %s where chave = 'relevancia'", (json.dumps(original),))
@@ -828,6 +832,25 @@ def test_repeticao_entre_titulos_de_tributos_diferentes_e_descartada():
     assert [b["igual_a"] for b in radar_ia.conferir(itens, novos, vistos)] == [None, 379, 275, 345, 36, None, None]
     assert radar_ia.tributos("Empresas vão ir à Receita") == set()
     assert radar_ia.tributos("Imposto de Renda da Pessoa Física: declaração") == {"IRPF"}
+    # varredura: o verbo IR em título todo em maiúsculas (ITC) não é imposto de renda; a CPRB é contribuição previdenciária
+    assert not radar_ia.mesmos_tributos("EMPRESAS VÃO IR À RECEITA: PRAZO DO IRPJ MUDA", "IRPF: novo prazo")
+    assert radar_ia.tributos("SEM FAIXA DE TRANSIÇÃO, RETENÇÃO DE IR SOBRE DIVIDENDOS É INCONSTITUCIONAL") == {"IR"}
+    assert radar_ia.mesmos_tributos("Receita orienta sobre a CPRB em 2025", "Contribuição previdenciária sobre a receita bruta: Receita orienta")
+    assert not radar_ia.mesmos_tributos("CPRB: novas regras", "PIS/Cofins: novas regras")
+    # a trava vale para o caminho até a origem (2 → 1, 3 → 2) e para o grupo que já está atrás da origem
+    vistos = [{"id": 1, "titulo": "STF: crédito presumido de ICMS não entra na base do IRPJ e da CSLL"},
+              {"id": 275, "titulo": "STF recomeça julgamento sobre tributação de créditos presumidos de ICMS"}]
+    novos = [{"id": 2, "titulo": "STF conclui julgamento sobre crédito presumido de ICMS"},
+             {"id": 3, "titulo": "Crédito presumido de ICMS fora da base do PIS/Cofins, decide STF"},
+             {"id": 9, "titulo": "IRPJ/CSLL: STF RECOMEÇA JULGAMENTO SOBRE CRÉDITOS PRESUMIDOS DE ICMS"},
+             {"id": 10, "titulo": "STF RECOMEÇA JULGAMENTO DOS CRÉDITOS PRESUMIDOS DE ICMS"}]
+    grupos = {275: ["PIS/COFINS: STF RECOMEÇA JULGAMENTO SOBRE TRIBUTAÇÃO DE CRÉDITOS PRESUMIDOS DE ICMS"]}
+    itens = [{"id": 2, "nota": 8, "igual_a": 1}, {"id": 3, "nota": 8, "igual_a": 2},
+             {"id": 9, "nota": 7, "igual_a": 275}, {"id": 10, "nota": 7, "igual_a": 275}]
+    assert [b["igual_a"] for b in radar_ia.conferir(itens, novos, vistos, grupos)] == [1, None, None, 275]
+    assert grupos == {275: ["PIS/COFINS: STF RECOMEÇA JULGAMENTO SOBRE TRIBUTAÇÃO DE CRÉDITOS PRESUMIDOS DE ICMS",
+                            "STF RECOMEÇA JULGAMENTO DOS CRÉDITOS PRESUMIDOS DE ICMS"],
+                      1: ["STF conclui julgamento sobre crédito presumido de ICMS"]}
 
 
 @pytest.mark.parametrize("bruto,esperado", [
@@ -1166,13 +1189,19 @@ def test_robo_prepara_o_rascunho_da_noticia_de_topo_e_respeita_o_limite_do_dia(i
                                   "Curto", "Simples Nacional: opção para 2027 ganha mais prazo", "Empresas têm até 31/01/2027 para optar pelo Simples"],
                       "corpo": "## O que muda\nO prazo de opção foi estendido até **31 de janeiro de 2027**, com multa de 20% para quem perder. "
                                "<b>Confira</b> as condições com a equipe. [VERIFICAR: quem pode optar]"}
+    # v0.16.0: sobrou a marca [VERIFICAR]: a segunda passada tira a marca e o ponto vai para os pontos a conferir
+    IA["revisao"] = {"titulo": IA["conteudo"]["titulo"], "pendencias": ["quem pode optar"],
+                     "corpo": "## O que muda\nO prazo de opção foi estendido até **31 de janeiro de 2027**, com multa de 20% para quem perder. "
+                              "Confira as condições com a equipe."}
     banco = Banco(API, jwt("service_role"), prefixo="")
     agora = datetime.now(timezone.utc)
     ia.execute("update radar_config set valor = '{\"por_dia\": 1}' where chave = 'rascunhos'")
     try:
         r = radar_rascunhos.executar(banco, "iagw_radar_teste", SITE + "/gateway", agora=agora)
         assert r["erro"] is None and len(r["feitos"]) == 1
-        pedido = IA["pedidos"][-1]
+        pedido, revisao = IA["pedidos"][-2:]
+        assert revisao["corpo"]["tools"][0]["name"] == "revisao" and "[VERIFICAR: quem pode optar]" in revisao["corpo"]["messages"][0]["content"]
+        assert "NUNCA escreva nele marcas" in pedido["corpo"]["system"] and "'pendencias'" in pedido["corpo"]["system"]
         assert pedido["corpo"]["model"] == "claude-sonnet-4-6" and "TEXTO ORIGINAL, NUNCA CÓPIA" in pedido["corpo"]["system"]
         assert "prorrogado até 31 de janeiro de 2027" in pedido["corpo"]["messages"][0]["content"]       # foi o texto oficial
         assert pedido["cab"]["x-ia-usuario"] == "robô de rascunhos"
@@ -1184,8 +1213,9 @@ def test_robo_prepara_o_rascunho_da_noticia_de_topo_e_respeita_o_limite_do_dia(i
         assert len(cont) == 1
         titulo, corpo, status, gerado, modelo, avisos, st_assunto = cont[0]
         assert (status, gerado, modelo, st_assunto) == ("rascunho", "ia", "claude-sonnet-4-6 (robô)", "conteudo_gerado")
-        assert "<b>" not in corpo and avisos[0] == radar_rascunhos.AVISO_ROBO
-        assert any("20%" in a for a in avisos) and any("[VERIFICAR]" in a for a in avisos)
+        assert "<b>" not in corpo and avisos[0] == radar_rascunhos.AVISO_ROBO and "[VERIFICAR" not in corpo
+        assert any("20%" in a for a in avisos) and not any("[VERIFICAR]" in a for a in avisos)
+        assert "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): quem pode optar." in avisos
         assert not any("31 de janeiro de 2027" in a for a in avisos)
         assert simples not in {x[0] for x in ia.execute("select id from radar_v_fila").fetchall()}   # saiu da triagem
         assert ia.execute("select rascunhos_robo from radar_v_painel").fetchone()[0] == 1
@@ -1250,3 +1280,24 @@ def test_fonte_ha_mais_tempo_sem_visita_vai_primeiro(cenario):
     cenario.execute("update radar_fontes set ultimo_sucesso_em = now() where slug = 'teste-a'")
     r, _ = robo()
     assert list(r) == ["teste-b", "teste-a"]          # se o prazo acabar, quem ficou de fora abre a próxima rodada
+
+
+def test_rascunho_do_robo_com_copia_passa_pela_revisao_e_sem_ela_fica_com_aviso(ia):
+    import radar_rascunhos
+    robo()
+    ia.execute("update radar_fontes set oficial = true where slug like 'teste-%'")
+    ia.execute("update radar_capturas set ia_nota = 10 where titulo = 'Prazo do Simples Nacional é prorrogado'")
+    oficial = ia.execute("select texto from radar_capturas where titulo = 'Prazo do Simples Nacional é prorrogado'").fetchone()[0]
+    copia = " ".join(oficial.split()[:40])                                        # 40 palavras seguidas do texto oficial
+    IA["conteudo"] = {"titulo": "Prazo do Simples prorrogado", "titulos": [], "pendencias": [], "corpo": copia + " Texto próprio da análise. " * 3}
+    IA["revisao"] = None                                                          # a segunda passada falha (resposta fora do formato)
+    try:
+        r = radar_rascunhos.executar(Banco(API, jwt("service_role"), prefixo=""), "iagw_radar_teste", SITE + "/gateway")
+        assert len(r["feitos"]) == 1 and r["erro"] is None
+        assert IA["pedidos"][-1]["corpo"]["tools"][0]["name"] == "revisao" and "Trechos iguais ao da fonte" in IA["pedidos"][-1]["corpo"]["messages"][0]["content"]
+        corpo, avisos = ia.execute("select corpo, avisos_ia from radar_conteudos").fetchone()
+        assert corpo.startswith(copia)                                            # a primeira passada não se perdeu
+        assert any(a.startswith("O texto tem 1 trecho(s) igual(is) ao da fonte") for a in avisos)
+        assert any(a.startswith("A revisão automática (marcas e trechos iguais ao da fonte) não pôde ser feita agora") for a in avisos)
+    finally:
+        ia.execute("delete from radar_assuntos")
