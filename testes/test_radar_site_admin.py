@@ -93,6 +93,16 @@ def test_reconhece_a_lista_sem_abrir_excluir_nem_mostrar_token():
     s.paginas[sa.BASE + "/js/admin.js"] = "$('#tab').DataTable({ajax: '/admin/news/list'}); $(document).on('click', '.del', function(){ swal('Excluir?') })"
     scripts = sa.scripts_do_painel(s, url, html)
     assert "/admin/news/list" in scripts and "swal" in scripts and len(s.posts) == 1 and not any(sa.APAGA.search(g) for g in s.gets)
+    # os dados da lista (GET no data-url da tabela, como o painel faz): a notícia e as ações dela, sem abrir nenhuma
+    tabela = '<table class="table datatable" data-url="https://artecon.cnt.br/admin/news/list"></table>'
+    s.paginas[sa.BASE + "/admin/news/list"] = ('{"data": [["Prazo do IRPF", "<img src=x>", "Federal", "01/10/2026", "Robo", '
+        '"<a href=\\"https://artecon.cnt.br/admin/news/edit/7\\">Editar</a> <a href=\\"https://artecon.cnt.br/admin/news/delete/7\\" '
+        'data-confirm=\\"Excluir?\\">Excluir</a>"]], "recordsTotal": 1}')
+    s.get = lambda u, **k: (s.gets.append(u), type("R", (), {"url": u, "text": s.paginas.get(u, ""), "status_code": 200,
+                            "headers": {"content-type": "application/json"}, "json": lambda self: __import__("json").loads(s.paginas[u])})())[1]
+    dados = sa.dados_da_lista(s, sa.BASE + "/admin/news", tabela)
+    assert "1 notícia(s)" in dados and "Prazo do IRPF" in dados and "/admin/news/delete/7 data-confirm=Excluir?" in dados
+    assert not any(sa.APAGA.search(g) for g in s.gets)
 
 
 def test_lista_nao_encontrada_para_com_aviso():

@@ -234,8 +234,39 @@ def scripts_do_painel(sessao: requests.Session, url: str, html: str) -> str:
             continue
         r = sessao.get(alvo, timeout=40)
         linhas.append(f"Script {urlsplit(alvo).path} (HTTP {r.status_code}, {len(r.text)} caracteres):")
-        linhas += [f"  - {t}" for t in trechos_script(r.text)] or ["  (nada sobre notícias ou exclusão)"]
+        i = r.text.find("data-confirm")
+        if i >= 0:                                         # a confirmação da exclusão: o trecho inteiro
+            linhas.append("  confirmação: " + _curto(r.text[i - 40: i + 1400], 1500))
+        else:
+            linhas += [f"  - {t}" for t in trechos_script(r.text)] or ["  (nada sobre notícias ou exclusão)"]
     return "\n".join(linhas) or "Scripts próprios do painel: nenhum"
+
+
+def dados_da_lista(sessao: requests.Session, url: str, html: str) -> str:
+    """A lista em si (data-url da tabela, lida por GET como o painel faz): quantas notícias e as 2 primeiras, com as ações."""
+    tabela = BeautifulSoup(html or "", "lxml").find("table", attrs={"data-url": True})
+    if tabela is None:
+        return "Dados da lista: a tabela não indica de onde vêm as linhas"
+    alvo = urljoin(url, tabela["data-url"])
+    if not mesmo_site(alvo) or APAGA.search(urlsplit(alvo).path):
+        return f"Dados da lista: endereço não lido ({_caminho(url, alvo)})"
+    r = sessao.get(alvo, timeout=40, headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"})
+    linhas = [f"Dados da lista: GET {urlsplit(alvo).path} → HTTP {r.status_code}, {r.headers.get('content-type', '?')}"]
+    try:
+        dados = r.json()
+    except ValueError:
+        return "\n".join(linhas + ["  (não é JSON) " + _curto(r.text, 200)])
+    linhas.append(f"  chaves: {list(dados)[:10] if isinstance(dados, dict) else type(dados).__name__}")
+    itens = dados.get("data") if isinstance(dados, dict) else dados
+    itens = itens if isinstance(itens, list) else []
+    linhas.append(f"  {len(itens)} notícia(s) na resposta; recordsTotal={dados.get('recordsTotal') if isinstance(dados, dict) else '?'}")
+    for k, item in enumerate(itens[:2], 1):
+        celulas = item if isinstance(item, list) else list(item.values()) if isinstance(item, dict) else [item]
+        linhas.append(f"  notícia {k}: " + " | ".join(_curto(BeautifulSoup(str(c), "lxml").get_text(" "), 60) for c in celulas))
+        for c in celulas:
+            if "<" in str(c):
+                linhas += [f"     {x}" for x in _acoes(BeautifulSoup(str(c), "lxml"), alvo)]
+    return "\n".join(linhas)
 
 
 def achar_lista(sessao: requests.Session, html: str, base: str) -> tuple[str, str]:
@@ -274,7 +305,8 @@ def main() -> int:
         texto = relatorio(url, form)
         try:                                               # v0.17.0: a lista (só leitura) para preparar a exclusão
             url_lista, html_lista = achar_lista(sessao, painel, BASE + "/admin")
-            texto += "\n\n" + relatorio_lista(url_lista, html_lista) + "\n\n" + scripts_do_painel(sessao, url_lista, html_lista)
+            texto += "\n\n" + relatorio_lista(url_lista, html_lista) + "\n\n" + scripts_do_painel(sessao, url_lista, html_lista) \
+                     + "\n\n" + dados_da_lista(sessao, url_lista, html_lista)
         except Parada as e:
             texto += f"\n\nLista de notícias: {e}"
     except Parada as e:
