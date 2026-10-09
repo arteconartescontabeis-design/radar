@@ -1,7 +1,9 @@
 name: Radar — publicar no site
 
 # Publica no site da Artecon SÓ as notícias que o administrador autorizou na tela do assunto (passo 4).
-# Sem autorização pendente, termina em segundos, sem entrar no site.
+# v0.17.0: na mesma rodada, manda publicar o Instagram e o Facebook autorizados junto com o site ("Publicar em todos")
+# e exclui do site as notícias que o administrador pediu para excluir (aba Publicações).
+# Sem nada pendente, termina em segundos, sem entrar no site.
 # Precisa dos segredos RADAR_SUPABASE_URL, RADAR_SUPABASE_SERVICE_KEY, ARTECON_SITE_USUARIO e ARTECON_SITE_SENHA.
 on:
   schedule:
@@ -18,7 +20,7 @@ concurrency:
 jobs:
   publicar:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 14
     steps:
       - name: Há autorização pendente?
         id: fila
@@ -26,10 +28,16 @@ jobs:
           SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
         run: |
-          resposta=$(curl -sS --fail --max-time 30 \
-            -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            "${SUPABASE_URL%/}/rest/v1/radar_site_envios?select=id&situacao=in.(autorizado,enviando)&limit=1") || resposta="erro"
-          if [ "$resposta" = "[]" ]; then echo "pendente=nao" >> "$GITHUB_OUTPUT"; else echo "pendente=sim" >> "$GITHUB_OUTPUT"; fi
+          pendente=nao
+          for consulta in "radar_site_envios?select=id&situacao=in.(autorizado,enviando)&limit=1" \
+                          "radar_redes_envios?select=id&situacao=eq.autorizado&junto_com_site=eq.true&limit=1" \
+                          "radar_site_exclusoes?select=id&situacao=in.(pedido,excluindo)&limit=1"; do
+            resposta=$(curl -sS --fail --max-time 30 \
+              -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+              "${SUPABASE_URL%/}/rest/v1/$consulta") || resposta="erro"
+            if [ "$resposta" != "[]" ]; then pendente=sim; fi
+          done
+          echo "pendente=$pendente" >> "$GITHUB_OUTPUT"
       - if: steps.fila.outputs.pendente == 'sim'
         uses: actions/checkout@v5
         with:
@@ -42,7 +50,7 @@ jobs:
           cache-dependency-path: robo/requirements.txt
       - if: steps.fila.outputs.pendente == 'sim'
         run: pip install -r robo/requirements.txt
-      - name: Publicar o que foi autorizado
+      - name: Publicar o que foi autorizado (e excluir o que foi pedido)
         if: steps.fila.outputs.pendente == 'sim'
         working-directory: robo
         env:

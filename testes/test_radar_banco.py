@@ -44,7 +44,7 @@ def aprovar(conteudo, uid=EDITOR):
 def test_instalacao_cria_19_tabelas_com_rls(db):
     linhas = db.execute("""select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
                            where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'""").fetchall()
-    assert len(linhas) == 22       # v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
+    assert len(linhas) == 23       # v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
     assert all(rls for _, rls in linhas), [n for n, rls in linhas if not rls]
 
 
@@ -72,7 +72,7 @@ def test_setup_e_idempotente(db):
     assert db.execute("select frequencia_horas, ativo from radar_fontes where slug = 'pgfn-noticias'").fetchone() == (9, False)
     db.execute("update radar_fontes set frequencia_horas = 6, ativo = true where slug = 'pgfn-noticias'")
     reg = db.execute("select antes, depois from radar_instalacoes order by id desc limit 1").fetchone()
-    assert len(reg[0]) == 22 and len(reg[1]) == 22   # 2ª execução: já havia 22 antes
+    assert len(reg[0]) == 23 and len(reg[1]) == 23   # 2ª execução: já havia 23 antes
 
 
 def test_fontes_do_sql_espelham_o_json_do_robo(db):
@@ -90,7 +90,7 @@ def test_anonimo_nao_le_nada_do_radar(limpo):
     no_ar(limpo)
     tabelas = [r[0] for r in limpo.execute("""select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                              where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'radar\\_%'""").fetchall()]
-    assert len(tabelas) == 29 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas
+    assert len(tabelas) == 30 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas
     with como("anon") as c:
         for tabela in tabelas:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -446,7 +446,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_incluir_texto_oficial', 'radar_ignorar_capturas', 'radar_separar_captura',
                                                            'radar_autorizar_site', 'radar_cancelar_site', 'radar_liberar_sem_fundamentacao', 'radar_converter_analise',
                                                            'radar_autorizar_rede', 'radar_dispensar_rede', 'radar_cancelar_rede',
-                                                           'radar_separar_repeticao', 'radar_autorizar_copia')
+                                                           'radar_separar_repeticao', 'radar_autorizar_copia',
+                                                           'radar_autorizar_todos', 'radar_rede_marcar_excluida', 'radar_pedir_exclusao_site',
+                                                           'radar_cancelar_exclusao_site')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -688,7 +690,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.16.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.17.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1145,9 +1147,9 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (22, 6, 8, 6, 1, 0)
+        assert _resumo("radar_sem_tx") == (23, 6, 8, 6, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.16.0", [], 22)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.17.0", [], 23)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1168,14 +1170,14 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (22, 6, 8, 6, 2, 0)
+        assert _resumo("radar_parcial") == (23, 6, 8, 6, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
             assert c.execute("""select (select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from information_schema.column_privileges where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from pg_policies where schemaname = 'public' and 'anon' = any(roles))""").fetchone()[0] == 0
-            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (22,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0) e radar_redes_envios (v0.13.0)
+            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (23,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0) e radar_redes_envios (v0.13.0)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_parcial with (force)")
@@ -1195,7 +1197,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (22, 6, 8, 6, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (23, 6, 8, 6, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -2002,7 +2004,7 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.16.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.17.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2032,7 +2034,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.16.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.17.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -3107,3 +3109,127 @@ def test_separada_tambem_nao_e_juntada_pelo_outro_lado(limpo):
         c.execute("select radar_separar_captura(%s, %s)", (assunto, z))
     assert sorted(limpo.execute("select metadados->'separada_de' from radar_capturas where id = %s", (z,)).fetchone()[0]) == sorted([x, y])
     assert limpo.execute("select metadados->'separada_de' from radar_capturas where id = %s", (x,)).fetchone()[0] == [z]
+
+
+# ------------------------------------------------------------------- v0.17.0: "Publicar em todos" e exclusão
+LEG_IG = "Prazo do Simples prorrogado. Leia no site da Artecon (link na bio)."
+LEG_FB = "Prazo do Simples prorrogado. Leia a matéria completa: {LINK DO SITE}"
+
+
+def test_publicar_em_todos_espera_o_site_e_sai_com_o_link(limpo):
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    lido = _lido(limpo, c1)
+    todos = "select radar_autorizar_todos(%s, 'Tributário', %s, %s, %s, %s)"
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR110"):
+        c.execute(todos, (c1, lido, IMG, LEG_IG, LEG_FB))
+    with como("authenticated", ADMIN) as c:
+        for args, erro in [((IMG, None, "  "), "RADAR153"), ((IMG, "curta", LEG_FB), "RADAR154"), ((IMG, "x" * 2001, None), "RADAR154"),
+                           (("data:image/png;base64,AAAA", LEG_IG, LEG_FB), "RADAR135"), ((IMG, LEG_IG + " [VERIFICAR: ano]", None), "RADAR139")]:
+            with pytest.raises(psycopg.errors.RaiseException, match=erro):
+                c.execute(todos, (c1, lido, *args))
+        r = c.execute(todos, (c1, lido, IMG, LEG_IG, LEG_FB)).fetchone()[0]
+        assert set(r) == {"site", "instagram", "facebook"}
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR136"):                # não autoriza duas vezes
+            c.execute(todos, (c1, lido, IMG, LEG_IG, LEG_FB))
+    assert limpo.execute("select situacao from radar_site_envios where id = %s", (r["site"],)).fetchone()[0] == "autorizado"
+    assert limpo.execute("select array_agg(distinct situacao), bool_and(junto_com_site) from radar_redes_envios where conteudo_id = %s",
+                         (c1,)).fetchone() == (["aguardando_site"], True)
+    with como("service_role") as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR138"):
+        c.execute("select radar_rede_iniciar(%s)", (r["instagram"],))                       # antes do site, as redes não saem
+    # o robô publica no site e registra o link: as redes ficam prontas, com o link no lugar de {LINK DO SITE}
+    with como("service_role") as c:
+        c.execute("update radar_site_envios set situacao = 'enviando' where id = %s", (r["site"],))
+        c.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/prazo', current_date)", (c1,))
+    fb, ig = (limpo.execute("select situacao, legenda from radar_redes_envios where id = %s", (r[k],)).fetchone() for k in ("facebook", "instagram"))
+    assert fb == ("autorizado", "Prazo do Simples prorrogado. Leia a matéria completa: https://artecon.cnt.br/news/view/prazo")
+    assert ig == ("autorizado", LEG_IG)
+    with como("service_role") as c:
+        assert c.execute("select radar_rede_iniciar(%s)", (r["facebook"],)).fetchone()[0]["legenda"].endswith("/news/view/prazo")
+
+
+def test_publicar_em_todos_cai_junto_se_o_site_nao_sair(limpo):
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    todos = "select radar_autorizar_todos(%s, 'Tributário', %s, %s, %s, %s)"
+    situacoes = lambda: limpo.execute("select situacao, erro from radar_redes_envios where conteudo_id = %s order by id desc limit 1", (c1,)).fetchone()
+    with como("authenticated", ADMIN) as c:                                                  # só o Instagram, e o administrador cancela o site
+        r = c.execute(todos, (c1, _lido(limpo, c1), IMG, LEG_IG, None)).fetchone()[0]
+        assert "facebook" not in r
+        c.execute("select radar_cancelar_site(%s)", (r["site"],))
+    assert situacoes()[0] == "cancelado" and "autorização cancelada" in situacoes()[1]
+    with como("authenticated", ADMIN) as c:                                                  # o robô não consegue publicar
+        r = c.execute(todos, (c1, _lido(limpo, c1), IMG, LEG_IG, None)).fetchone()[0]
+    with como("service_role") as c:
+        c.execute("update radar_site_envios set situacao = 'erro', erro = 'categoria sumiu' where id = %s", (r["site"],))
+    assert situacoes()[0] == "cancelado" and "o robô não conseguiu" in situacoes()[1]
+    with como("authenticated", ADMIN) as c:                                                  # o texto muda antes de sair
+        r = c.execute(todos, (c1, _lido(limpo, c1), IMG, LEG_IG, None)).fetchone()[0]
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_conteudos set titulo = 'Outro título' where id = %s", (c1,))
+    assert situacoes()[0] == "cancelado"
+    with como("authenticated", ADMIN) as c:                                                  # e o administrador pode cancelar só a rede
+        aprovar(c1)
+        r = c.execute(todos, (c1, _lido(limpo, c1), IMG, None, LEG_FB)).fetchone()[0]
+        assert c.execute("select radar_cancelar_rede(%s)", (r["facebook"],)).fetchone()[0] is True
+    assert limpo.execute("select situacao from radar_site_envios where id = %s", (r["site"],)).fetchone()[0] == "autorizado"
+
+
+def test_exclusao_da_publicacao_no_site_e_nas_redes(limpo):
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR151"):
+        c.execute("select radar_pedir_exclusao_site(%s)", (c1,))                               # nada no site ainda
+    registrar_site(c1)
+    with como("authenticated", ADMIN) as c:
+        ig = c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
+    with como("service_role") as c:
+        c.execute("select radar_rede_iniciar(%s)", (ig,))
+        c.execute("select radar_rede_concluir(%s, true, '1789', 'https://www.instagram.com/p/abc/', null, null)", (ig,))
+    # Instagram: só o administrador registra a exclusão (a função radar-redes depois da Meta, ou ele mesmo, se apagou à mão)
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR130"):
+        c.execute("select radar_rede_marcar_excluida(%s, 'manual')", (ig,))
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR155"):
+            c.execute("select radar_rede_marcar_excluida(%s, 'qualquer')", (ig,))
+        assert c.execute("select radar_rede_marcar_excluida(%s, 'manual')", (ig,)).fetchone()[0] is True
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR156"):
+            c.execute("select radar_rede_marcar_excluida(%s, 'manual')", (ig,))
+        # excluída, pode publicar de novo no mesmo canal
+        assert c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
+    assert limpo.execute("select situacao, excluido_como, excluido_por::text from radar_redes_envios where id = %s", (ig,)).fetchone() == \
+        ("excluido", "manual", ADMIN)
+    # site: pedido do administrador, o robô exclui e conclui; o registro em "Publicações no site" sai
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR150"):
+        c.execute("select radar_pedir_exclusao_site(%s)", (c1,))
+    with como("authenticated", ADMIN) as c:
+        x = c.execute("select radar_pedir_exclusao_site(%s)", (c1,)).fetchone()[0]
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR152"):
+            c.execute("select radar_pedir_exclusao_site(%s)", (c1,))
+        assert c.execute("select radar_cancelar_exclusao_site(%s)", (x,)).fetchone()[0] is True
+        x = c.execute("select radar_pedir_exclusao_site(%s)", (c1,)).fetchone()[0]
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):                              # a tela não grava direto
+            c.execute("update radar_site_exclusoes set situacao = 'excluido' where id = %s", (x,))
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute("select radar_site_exclusao_concluir(%s, true, null)", (x,))           # só o robô conclui
+    assert limpo.execute("select url, titulo from radar_site_exclusoes where id = %s", (x,)).fetchone() == \
+        ("https://artecon.cnt.br/news/cgsn-prorroga-prazo", limpo.execute("select titulo from radar_conteudos where id = %s", (c1,)).fetchone()[0])
+    with como("service_role") as c:
+        assert c.execute("update radar_site_exclusoes set situacao = 'excluindo', iniciado_em = now() where id = %s returning id", (x,)).fetchone()
+        assert c.execute("select radar_site_exclusao_concluir(%s, true, null)", (x,)).fetchone()[0] is True
+        assert c.execute("select radar_site_exclusao_concluir(%s, true, null)", (x,)).fetchone()[0] is False   # já concluída
+    assert limpo.execute("select count(*) from radar_divulgacoes where conteudo_id = %s", (c1,)).fetchone()[0] == 0
+    assert limpo.execute("select situacao from radar_site_exclusoes where id = %s", (x,)).fetchone()[0] == "excluido"
+    assert limpo.execute("select status from radar_assuntos where id = %s", (a,)).fetchone()[0] == "aprovado"   # volta a "em andamento"
+    with como("authenticated", LEITOR) as c:                                                  # a equipe vê o histórico
+        assert c.execute("select count(*) from radar_site_exclusoes").fetchone()[0] == 2
+    # exclusão que não deu certo: fica "erro", com o motivo, e o administrador pode desistir
+    registrar_site(c1)
+    with como("authenticated", ADMIN) as c:
+        x = c.execute("select radar_pedir_exclusao_site(%s)", (c1,)).fetchone()[0]
+    with como("service_role") as c:
+        c.execute("select radar_site_exclusao_concluir(%s, false, 'há 2 notícias com este título')", (x,))
+    assert limpo.execute("select situacao, erro from radar_site_exclusoes where id = %s", (x,)).fetchone() == ("erro", "há 2 notícias com este título")
+    assert limpo.execute("select count(*) from radar_divulgacoes where conteudo_id = %s", (c1,)).fetchone()[0] == 1
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_cancelar_exclusao_site(%s)", (x,)).fetchone()[0] is True

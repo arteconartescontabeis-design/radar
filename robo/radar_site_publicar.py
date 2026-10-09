@@ -1,4 +1,4 @@
-"""Radar Artecon — publicação no site da Artecon com autorização (v0.10.0).
+"""Radar Artecon — publicação no site da Artecon com autorização (v0.10.0; v0.17.0: redes junto e exclusão).
 
 Na tela do assunto, o administrador clica em "Autorizar publicação no site" (passo 4). Isso grava uma linha em
 radar_site_envios (situação "autorizado"). A cada 15 minutos este robô:
@@ -20,6 +20,11 @@ Se o envio for interrompido no meio (queda, tempo esgotado), a linha fica "envia
 só PROCURA a notícia no site; se não achar em 2 horas, marca "erro" e pede para conferir no painel do site antes
 de autorizar de novo (para não duplicar).
 
+v0.17.0, na mesma rodada:
+  * "Publicar em todos": o Instagram e o Facebook que o administrador autorizou junto com o site ficam prontos quando a
+    notícia entra no site; o robô pede à função radar-redes (Supabase) que publique — a função confere tudo de novo;
+  * exclusão pedida pelo administrador na aba Publicações: radar_site_excluir.py tira a notícia do site.
+
 O registro público do GitHub Actions não recebe texto da notícia, usuário, senha nem cookie.
 
 Uso (workflow "Radar — publicar no site"):  python radar_site_publicar.py
@@ -40,6 +45,7 @@ from bs4 import BeautifulSoup
 
 import radar_site
 import radar_site_admin as admin
+import radar_site_excluir
 from radar_banco import Banco, ErroBanco
 from radar_util import ErroDownload, baixar, hoje_brasilia
 
@@ -386,6 +392,32 @@ class Publicador:
             self.feito.append(f"envio {envio['id']}: enviado; a notícia ainda não apareceu na lista do site")
 
 
+# ------------------------------------------------------------------ v0.17.0: as redes autorizadas junto com o site
+NOME_REDE = {"instagram": "Instagram", "facebook": "Facebook"}
+
+
+def publicar_redes(banco: Banco, url: str, chave: str, post=requests.post) -> list[str]:
+    """Pede à função radar-redes que publique o Instagram e o Facebook autorizados junto com o site ("Publicar em todos")
+    e que já estão prontos (a notícia entrou no site). A função confere de novo as exigências e registra o resultado."""
+    envios = banco._pedir("GET", "radar_redes_envios", params={
+        "select": "id,canal", "situacao": "eq.autorizado", "junto_com_site": "eq.true", "order": "id"}) or []
+    feito = []
+    for e in envios:
+        nome = NOME_REDE.get(e["canal"], e["canal"])
+        try:
+            r = post(url.rstrip("/") + "/functions/v1/radar-redes", json={"acao": "publicar", "envio": e["id"]}, timeout=170,
+                     headers={"apikey": chave, "Authorization": f"Bearer {chave}", "Content-Type": "application/json"})
+            dados = r.json() if r.text else {}
+        except (requests.RequestException, ValueError) as x:
+            feito.append(f"{nome} (envio {e['id']}): sem resposta da função radar-redes ({type(x).__name__}); confira na tela")
+            continue
+        if r.status_code >= 400:
+            feito.append(f"{nome} (envio {e['id']}): {str(dados.get('message') or f'HTTP {r.status_code}')[:200]}")
+        else:
+            feito.append(f"{nome} (envio {e['id']}): {dados.get('situacao', '?')}")
+    return feito
+
+
 def main() -> int:
     url, chave = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
     usuario, senha = os.environ.get("ARTECON_SITE_USUARIO", ""), os.environ.get("ARTECON_SITE_SENHA", "")
@@ -403,7 +435,24 @@ def main() -> int:
         print("! publicar no site: " + p._limpo(f"{type(e).__name__}: {e}"), file=sys.stderr)
         return 1
     print("Publicar no site: " + ("; ".join(feito) if feito else "nenhuma autorização pendente."))
-    return 0
+    erro = 0
+    try:                                                    # v0.17.0: Instagram e Facebook que iam junto com o site
+        redes = publicar_redes(banco, url, chave)
+        if redes:
+            print("Instagram e Facebook junto com o site: " + "; ".join(redes))
+    except ErroBanco as e:
+        print("! redes junto com o site: " + p._limpo(str(e)), file=sys.stderr)
+        erro = 1
+    ex = radar_site_excluir.Excluidor(banco, usuario, senha, sessao=p.sessao)
+    ex.logado = p.logado                                    # aproveita o login da publicação, se houve
+    try:                                                    # v0.17.0: exclusões pedidas pelo administrador
+        excluidas = ex.executar()
+        if excluidas:
+            print("Excluir do site: " + "; ".join(excluidas))
+    except (ErroBanco, requests.RequestException) as e:
+        print("! excluir do site: " + ex._limpo(f"{type(e).__name__}: {e}"), file=sys.stderr)
+        erro = 1
+    return erro
 
 
 if __name__ == "__main__":

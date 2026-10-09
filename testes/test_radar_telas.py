@@ -284,7 +284,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.16.0"
+    assert pagina.inner_text(".versao") == "v0.17.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -425,7 +425,7 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     assert "CBS na transição: o que muda em 2027" in linha.inner_text() and "02/10/2026" in linha.inner_text()
     assert linha.locator("a").first.get_attribute("href") == "https://artecon.cnt.br/news/cbs-na-transicao"
     assert "Nenhum conteúdo aprovado aguardando publicação" in pagina.inner_text("main")
-    assert pagina.locator("text=Excluir registro").count() == 0                 # só o administrador exclui
+    assert pagina.locator("text=Excluir só o registro").count() == 0                 # só o administrador exclui
     pagina.screenshot(path=str(FOTOS / "04-publicacoes-no-site.png"), full_page=True)
     pagina.resposta_dialogo = "https://artecon.cnt.br/news/cbs-na-transicao-2027"
     pagina.click("text=Corrigir link")
@@ -1902,7 +1902,7 @@ def test_publicacoes_lista_pendentes_e_registrados_e_respeita_os_perfis(pagina, 
     pagina.wait_for_selector("#tab-site")
     assert "Artigo aprovado esperando" in pagina.inner_text("#tab-pendentes") and "Artigo já publicado" not in pagina.inner_text("#tab-pendentes")
     assert "Artigo já publicado no site" in pagina.inner_text("#tab-site") and "30/09/2026" in pagina.inner_text("#tab-site") and "Destaque da home" in pagina.inner_text("#tab-site")
-    assert pagina.locator("text=Corrigir link").count() == 0 and pagina.locator("text=Excluir registro").count() == 0
+    assert pagina.locator("text=Corrigir link").count() == 0 and pagina.locator("text=Excluir só o registro").count() == 0
     pagina.click("text=Abrir para copiar e registrar")
     pagina.wait_for_selector("#base-texto")
     assert pagina.locator("text=Registrar publicação no site").count() == 0     # leitor não registra
@@ -1917,7 +1917,7 @@ def test_publicacoes_lista_pendentes_e_registrados_e_respeita_os_perfis(pagina, 
     pagina.click("text=Corrigir link")
     pagina.wait_for_selector("#recado .erro >> text=precisa começar com https://")
     assert limpo.execute("select url from radar_divulgacoes").fetchone()[0] == "https://artecon.cnt.br/news/um"
-    pagina.click("text=Excluir registro")
+    pagina.click("text=Excluir só o registro")
     pagina.wait_for_selector("text=Registro excluído.")
     assert limpo.execute("select count(*) from radar_divulgacoes").fetchone()[0] == 0
     assert pagina.locator("#tab-pendentes tr").count() == 3 and "Nenhuma publicação registrada ainda" in pagina.inner_text("main")
@@ -2017,7 +2017,7 @@ def test_corrigir_e_excluir_registro_nao_trafegam_o_texto_inteiro(pagina, limpo)
     pagina.resposta_dialogo = "https://artecon.cnt.br/news/dois"
     pagina.click("text=Corrigir link")
     pagina.wait_for_selector("text=Link corrigido.")
-    pagina.click("text=Excluir registro")
+    pagina.click("text=Excluir só o registro")
     pagina.wait_for_selector("text=Registro excluído.")
     assert {m for m, _ in tamanhos} >= {"GET", "PATCH", "DELETE"} and max(t for _, t in tamanhos) < 5000, tamanhos
 
@@ -2277,7 +2277,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.16.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.17.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3788,3 +3788,143 @@ def test_comentario_de_duvida_aparece_com_revisar_com_ia_e_nao_trava_a_aprovacao
     pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
     pagina.wait_for_selector("text=Conteúdo aprovado.")                                        # não impede aprovar
     assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
+
+
+# ------------------------------------------------------------ v0.17.0 — "Publicar em todos" e exclusão da publicação
+def test_publicar_em_todos_de_uma_vez(pagina, limpo):
+    a, c = pronto_para_o_site(limpo)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.click("#proximo-passo >> text=Ir para publicar")
+    pagina.select_option(f"#site-cat-{c}", "Tributário")
+    pagina.click(f"#todos-{c} summary")
+    pagina.wait_for_function(f"() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#todos-imagem-{c}')?.getAttribute('src') || '')")
+    ig, fb = pagina.input_value(f"#todos-legenda-instagram-{c}"), pagina.input_value(f"#todos-legenda-facebook-{c}")
+    assert "link na bio" in ig and "#Contabilidade" in ig and "Leia a matéria completa: {LINK DO SITE}" in fb
+    pagina.fill(f"#todos-legenda-facebook-{c}", fb + "\n\nEditado na tela.")
+    pagina.screenshot(path=str(FOTOS / "40-publicar-em-todos.png"), full_page=True)
+    pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
+    pagina.wait_for_selector("text=Autorizado em todos.")
+    assert limpo.execute("select situacao, categoria from radar_site_envios").fetchone() == ("autorizado", "Tributário")
+    redes = limpo.execute("select canal, situacao, junto_com_site, legenda from radar_redes_envios order by canal").fetchall()
+    assert [(r[0], r[1], r[2]) for r in redes] == [("facebook", "aguardando_site", True), ("instagram", "aguardando_site", True)]
+    assert redes[0][3].endswith("Editado na tela.") and "{LINK DO SITE}" in redes[0][3]
+    assert "saem logo depois que a notícia entrar no site" in pagina.inner_text("#proximo-passo")
+    assert "vai junto com o site" in pagina.inner_text(".trilha li[data-passo=instagram]")
+    assert pagina.locator(f"#todos-{c}").count() == 0                                      # já autorizado: o quadro some
+    # o robô publicou no site: as redes ficam prontas, com o link no lugar de {LINK DO SITE}
+    limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/todos', current_date)", (c,))
+    assert limpo.execute("select legenda from radar_redes_envios where canal = 'facebook'").fetchone()[0].startswith("Informativo de teste")
+    assert "https://artecon.cnt.br/news/view/todos" in limpo.execute("select legenda from radar_redes_envios where canal = 'facebook'").fetchone()[0]
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    assert pagina.locator("#tab-canais tr", has_text="Informativo de teste").locator("[data-canal=instagram]").inner_text() == "Autorizado"
+
+
+def test_publicar_em_todos_exige_categoria_e_legenda(pagina, limpo):
+    a, c = pronto_para_o_site(limpo)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.click("#proximo-passo >> text=Ir para publicar")
+    pagina.select_option(f"#site-cat-{c}", "")
+    pagina.click(f"#todos-{c} summary")
+    pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
+    pagina.wait_for_selector("text=Escolha a categoria do site antes de autorizar.")
+    pagina.select_option(f"#site-cat-{c}", "Tributário")
+    pagina.wait_for_function(f"() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#todos-imagem-{c}')?.getAttribute('src') || '')")
+    for k in ("instagram", "facebook"):
+        pagina.uncheck(f"#todos-{c} .todos-canal[data-canal={k}]")
+    pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
+    pagina.wait_for_selector("text=Marque o Instagram, o Facebook ou os dois.")
+    pagina.check(f"#todos-{c} .todos-canal[data-canal=instagram]")
+    pagina.fill(f"#todos-legenda-instagram-{c}", "curta")
+    pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
+    pagina.wait_for_selector("text=Escreva a legenda do Instagram")
+    pagina.fill(f"#todos-legenda-instagram-{c}", "Legenda com [VERIFICAR: data] que não pode sair")
+    pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
+    pagina.wait_for_selector("text=VERIFICAR")
+    assert limpo.execute("select count(*) from radar_site_envios").fetchone()[0] == 0
+    assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
+
+
+def _publicado_nas_redes(db, c, canais=("instagram", "facebook")):
+    lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    for k in canais:
+        db.execute("""insert into radar_redes_envios (conteudo_id, canal, legenda, conteudo_lido_em, situacao, post_id, url, publicado_em)
+                      values (%s, %s, 'Legenda publicada nas redes.', %s, 'publicado', %s, %s, now())""",
+                   (c, k, lido, f"post-{k}-{c}", f"https://www.{k}.com/p/{c}/"))
+
+
+def test_excluir_publicacoes_individual_e_em_grupo(pagina, limpo):
+    a, c = no_site(limpo)
+    _publicado_nas_redes(limpo, c)
+    a2 = limpo.execute("insert into radar_assuntos (titulo) values ('Segundo informativo') returning id").fetchone()[0]
+    c2 = limpo.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por) "
+                       "values (%s, 'informativo', 'Segundo informativo', 'Texto.', 'em_revisao', 'humano') returning id", (a2,)).fetchone()[0]
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c2,))
+    limpo.execute("alter table radar_divulgacoes disable trigger radar_tg_divulgacao")       # o segundo não tem fundamentação: registro direto
+    try:
+        limpo.execute("insert into radar_divulgacoes (conteudo_id, url, titulo) values (%s, 'https://artecon.cnt.br/news/view/dois', 'Segundo informativo')", (c2,))
+    finally:
+        limpo.execute("alter table radar_divulgacoes enable trigger radar_tg_divulgacao")
+    _publicado_nas_redes(limpo, c2, ("instagram",))
+    pedidos = []
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        pedidos.append(corpo)
+        canal, cont = limpo.execute("select canal, conteudo_id from radar_redes_envios where id = %s", (corpo["envio"],)).fetchone()
+        if cont == c2:                                                    # a Meta não deixa apagar este
+            return rota.fulfill(status=502, content_type="application/json",
+                                body=json.dumps({"message": "A Meta não deixou apagar este post pelo Radar. Confira no Instagram."}))
+        limpo.execute("update radar_redes_envios set situacao = 'excluido', excluido_em = now(), excluido_como = 'api' where id = %s", (corpo["envio"],))
+        rota.fulfill(status=200, content_type="application/json", body=json.dumps({"situacao": "excluido", "canal": canal}))
+    pagina.route("**/functions/v1/radar-redes", responder)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    linha = lambda t: pagina.locator("#tab-canais tr", has_text=t)
+    # individual: o Instagram do primeiro sai na hora
+    linha("Informativo de teste").locator("[data-canal=instagram] >> text=Excluir").click()
+    pagina.wait_for_selector("text=Excluída do Instagram.")
+    assert "Excluída em" in linha("Informativo de teste").locator("[data-canal=instagram]").inner_text()
+    assert pedidos[-1]["acao"] == "excluir"
+    # individual: o site fica pedido, e dá para cancelar enquanto o robô não começou
+    linha("Informativo de teste").locator("[data-canal=site] >> text=Excluir").click()
+    pagina.wait_for_selector("text=Pedido registrado: o robô exclui a notícia do site em até 15 minutos.")
+    assert "Exclusão pedida — aguardando o robô" in linha("Informativo de teste").locator("[data-canal=site]").inner_text()
+    linha("Informativo de teste").locator("text=Cancelar a exclusão").click()
+    pagina.wait_for_selector("text=Pedido de exclusão cancelado.")
+    # em grupo: os dois conteúdos, no site e no Facebook (o Instagram desmarcado)
+    pagina.screenshot(path=str(FOTOS / "41-excluir-publicacoes.png"), full_page=True)
+    pagina.check("#marcar-todas")
+    assert pagina.locator("#tab-canais .sel-pub:checked").count() == 2
+    pagina.uncheck("#exc-instagram")
+    pagina.click("text=Excluir as selecionadas")
+    pagina.wait_for_selector("text=3 de 3 exclusão(ões) feita(s) ou pedida(s).")
+    assert limpo.execute("select count(*) from radar_site_exclusoes where situacao = 'pedido'").fetchone()[0] == 2
+    assert limpo.execute("select situacao from radar_redes_envios where conteudo_id = %s and canal = 'facebook'", (c,)).fetchone()[0] == "excluido"
+    assert limpo.execute("select situacao from radar_redes_envios where conteudo_id = %s and canal = 'instagram'", (c2,)).fetchone()[0] == "publicado"
+    # a Meta não deixa apagar: “Já apaguei” registra a exclusão feita direto na rede (o diálogo é aceito)
+    linha("Segundo informativo").locator("[data-canal=instagram] >> text=Excluir").click()
+    pagina.wait_for_selector("text=Registrado: excluída do Instagram à mão.")
+    assert limpo.execute("select situacao, excluido_como from radar_redes_envios where conteudo_id = %s and canal = 'instagram'", (c2,)).fetchone() == \
+        ("excluido", "manual")
+
+
+def test_editor_nao_ve_os_botoes_de_excluir(pagina, limpo):
+    a, c = no_site(limpo)
+    _publicado_nas_redes(limpo, c)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    assert pagina.locator("[data-acao=excluir-pub]").count() == 0 and pagina.locator("#excluir-grupo").count() == 0
+    assert pagina.locator("#tab-canais .sel-pub").count() == 0

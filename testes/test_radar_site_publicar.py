@@ -5,6 +5,7 @@ de /admin/news/register (title, keywords, metadescription, text, category, image
 """
 from __future__ import annotations
 
+import json
 import re
 import threading
 from datetime import datetime, timedelta, timezone
@@ -25,7 +26,8 @@ from test_radar_banco import aprovar, cenario_publicavel
 PORTA = 3997
 BASE = f"http://127.0.0.1:{PORTA}"
 MESES = "Janeiro Fevereiro Março Abril Maio Junho Julho Agosto Setembro Outubro Novembro Dezembro".split()
-SITE = {"noticias": [], "envios": [], "logins": 0, "exigir_captcha": False, "publicar": True, "categorias": None, "fora": False}
+SITE = {"noticias": [], "envios": [], "logins": 0, "exigir_captcha": False, "publicar": True, "categorias": None, "fora": False,
+        "exclusoes": [], "excluir": True}
 FORM = """<form method="post" action="/admin/news/register" enctype="multipart/form-data">
   <input type="hidden" name="_token" value="tok123">
   <label for="t">Título</label><input id="t" name="title" type="text" required>
@@ -60,6 +62,19 @@ class Site(BaseHTTPRequestHandler):
             return self._html(200, "<a href='/admin/news'>Notícias</a>" if self._logado() else LOGIN)
         if self.path == "/admin/news":
             return self._html(200, "<h1>Notícias</h1>" if self._logado() else LOGIN)
+        if self.path == "/admin/news/list":                         # v0.17.0: a lista do painel (como o site real: JSON do DataTables)
+            if not self._logado():
+                return self._html(302, "", [("Location", "/admin/signin")])
+            linhas = [[n["title"], "<img src='x.jpg'>", "Tributário", "09/10/2026 10:00", "Robo",
+                       f"<a href='{BASE}/admin/news/register/ed-{n['slug']}'><i></i></a> <a href='{BASE}/admin/news/delete/tk-{n['slug']}' "
+                       "class='text-danger' data-confirm='Tem certeza que deseja excluir esta notícia?'><i></i></a>"] for n in SITE["noticias"]]
+            return self._html(200, json.dumps({"data": linhas}))
+        m = re.fullmatch(r"/admin/news/delete/tk-(.+)", self.path)
+        if m and self._logado():
+            SITE["exclusoes"].append(m.group(1))
+            if SITE["excluir"]:
+                SITE["noticias"] = [n for n in SITE["noticias"] if n["slug"] != m.group(1)]
+            return self._html(302, "", [("Location", "/admin/news")])
         if self.path == "/admin/news/register":
             if not self._logado():
                 return self._html(302, "", [("Location", "/admin/signin")])
@@ -115,7 +130,7 @@ def site():
 
 @pytest.fixture()
 def cenario(api_postgrest, site, limpo):
-    SITE.update(noticias=[], envios=[], logins=0, exigir_captcha=False, publicar=True, categorias=None, fora=False)
+    SITE.update(noticias=[], envios=[], logins=0, exigir_captcha=False, publicar=True, categorias=None, fora=False, exclusoes=[], excluir=True)
     limpo.execute("insert into radar_config (chave, valor) values ('site', %s::jsonb) "
                   "on conflict (chave) do update set valor = excluded.valor", (f'{{"lista": "{BASE}/news"}}',))
     yield limpo
@@ -257,3 +272,121 @@ def test_registro_feito_pela_coleta_encerra_o_envio_e_publicado_nao_se_autoriza_
     lido = cenario.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
     with como("authenticated", ADMIN) as x, pytest.raises(Exception, match="RADAR117"):
         x.execute("select radar_autorizar_site(%s, 'Simples Nacional', %s)", (c, lido))
+
+
+
+# ------------------------------------------------------------------- v0.17.0: exclusão no site e redes junto com o site
+import radar_site_excluir as exc                                        # noqa: E402
+
+
+def excluir(agora=None):
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    return exc.Excluidor(banco, "robo@artecon", "s3nha", agora=agora).executar()
+
+
+def pedir_exclusao(c):
+    with como("authenticated", ADMIN) as x:
+        return x.execute("select radar_pedir_exclusao_site(%s)", (c,)).fetchone()[0]
+
+
+def test_exclui_do_site_so_com_pedido_e_confere_que_saiu(cenario):
+    c, envio = autorizado(cenario)
+    rodar()
+    assert excluir() == [] and SITE["exclusoes"] == []                     # sem pedido, nada é excluído (nem entra no site)
+    outra = {"slug": "outra", "title": "Outra notícia que fica", "text": "x"}
+    SITE["noticias"].append(outra)
+    x = pedir_exclusao(c)
+    assert excluir() == [f"exclusão {x}: excluída do site"]
+    assert SITE["exclusoes"] == ["noticia-1"] and SITE["noticias"] == [outra]     # só a pedida saiu
+    assert cenario.execute("select situacao from radar_site_exclusoes where id = %s", (x,)).fetchone()[0] == "excluido"
+    assert cenario.execute("select count(*) from radar_divulgacoes where conteudo_id = %s", (c,)).fetchone()[0] == 0
+    assert situacao(cenario, envio)[0] == "excluido"
+    assert excluir() == []                                                 # concluído: não volta ao site
+
+
+def test_exclusao_na_duvida_nao_exclui_nada(cenario):
+    c, envio = autorizado(cenario)
+    rodar()
+    titulo = SITE["noticias"][0]["title"]
+    SITE["noticias"].append({"slug": "copia", "title": titulo, "text": "x"})         # duas com o mesmo título
+    x = pedir_exclusao(c)
+    assert excluir() == [f"exclusão {x}: não concluída"] and SITE["exclusoes"] == []
+    sit, erro = cenario.execute("select situacao, erro from radar_site_exclusoes where id = %s", (x,)).fetchone()
+    assert sit == "erro" and "há 2 notícias com este título" in erro and "tk-" not in erro and "s3nha" not in erro
+    assert cenario.execute("select count(*) from radar_divulgacoes where conteudo_id = %s", (c,)).fetchone()[0] == 1
+    # título mudado no site (não está na lista do painel) e a página ainda no ar: não exclui
+    SITE["noticias"] = [{"slug": "noticia-1", "title": "Título mudado à mão no site", "text": "x"}]
+    with como("authenticated", ADMIN) as a:
+        a.execute("select radar_cancelar_exclusao_site(%s)", (x,))
+    x = pedir_exclusao(c)
+    assert excluir() == [f"exclusão {x}: não concluída"] and SITE["exclusoes"] == []
+    assert "não achei a notícia com este título" in cenario.execute("select erro from radar_site_exclusoes where id = %s", (x,)).fetchone()[0]
+    # o site não excluiu de fato: erro para conferir
+    SITE["noticias"] = [{"slug": "noticia-1", "title": titulo, "text": "x"}]
+    SITE["excluir"] = False
+    with como("authenticated", ADMIN) as a:
+        a.execute("select radar_cancelar_exclusao_site(%s)", (x,))
+    x = pedir_exclusao(c)
+    assert excluir() == [f"exclusão {x}: não concluída"] and SITE["exclusoes"] == ["noticia-1"]
+    assert "o site não excluiu" in cenario.execute("select erro from radar_site_exclusoes where id = %s", (x,)).fetchone()[0]
+    # já não está no painel nem no ar (excluída à mão): conclui
+    SITE["noticias"], SITE["excluir"] = [], True
+    with como("authenticated", ADMIN) as a:
+        a.execute("select radar_cancelar_exclusao_site(%s)", (x,))
+    x = pedir_exclusao(c)
+    assert excluir() == [f"exclusão {x}: excluída do site"]
+
+
+def test_exclusao_com_o_site_fora_do_ar_tenta_de_novo_e_desiste_depois_de_2_horas(cenario):
+    c, envio = autorizado(cenario)
+    rodar()
+    x = pedir_exclusao(c)
+    SITE["fora"] = True
+    assert "tenta de novo na próxima rodada" in excluir()[0]
+    assert cenario.execute("select situacao from radar_site_exclusoes where id = %s", (x,)).fetchone()[0] == "excluindo"
+    depois = lambda: datetime.now(timezone.utc) + timedelta(hours=3)
+    assert excluir(agora=depois) == [f"exclusão {x}: não concluída"]
+    assert "não respondeu por 2 horas" in cenario.execute("select erro from radar_site_exclusoes where id = %s", (x,)).fetchone()[0]
+
+
+def test_redes_que_iam_junto_com_o_site_sao_mandadas_para_a_funcao(cenario):
+    c, envio = autorizado(cenario)
+    with como("authenticated", ADMIN) as x:                                # a autorização do site já existe: aqui só as redes
+        x.execute("select radar_cancelar_site(%s)", (envio,))
+        lido = x.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+        r = x.execute("select radar_autorizar_todos(%s, 'Simples Nacional', %s, %s, %s, %s)",
+                      (c, lido, "data:image/jpeg;base64," + "A" * 200, "Legenda do Instagram com link na bio", "Leia: {LINK DO SITE}")).fetchone()[0]
+    chamadas = []
+
+    class Resp:
+        status_code, text = 200, "{}"
+        def json(self):
+            return {"situacao": "publicado"}
+
+    def post(url, json=None, headers=None, timeout=None):
+        chamadas.append((url, json, headers["Authorization"]))
+        return Resp()
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    assert pub.publicar_redes(banco, "https://projeto.supabase.co", "chave-interna", post=post) == []   # o site ainda não saiu
+    rodar()                                                                 # o robô publica no site: as redes ficam prontas
+    feito = pub.publicar_redes(banco, "https://projeto.supabase.co", "chave-interna", post=post)
+    assert feito == [f"Instagram (envio {r['instagram']}): publicado", f"Facebook (envio {r['facebook']}): publicado"]
+    assert chamadas == [("https://projeto.supabase.co/functions/v1/radar-redes", {"acao": "publicar", "envio": r[k]}, "Bearer chave-interna")
+                        for k in ("instagram", "facebook")]
+    fb = cenario.execute("select legenda from radar_redes_envios where id = %s", (r["facebook"],)).fetchone()[0]
+    assert fb == "Leia: " + BASE + "/news/view/noticia-1"
+
+
+def test_sem_a_funcao_de_concluir_no_banco_nao_exclui_nada_do_site(cenario):
+    c, envio = autorizado(cenario)
+    rodar()
+    pedir_exclusao(c)
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    original = banco._pedir
+    def sem_funcao(metodo, caminho, **k):
+        if caminho == "rpc/radar_site_exclusao_concluir":
+            raise pub.ErroBanco("POST rpc/radar_site_exclusao_concluir: HTTP 404 — {\"code\":\"PGRST202\"}")
+        return original(metodo, caminho, **k)
+    banco._pedir = sem_funcao
+    feito = exc.Excluidor(banco, "robo@artecon", "s3nha").executar()
+    assert "falta aplicar no banco" in feito[0] and SITE["exclusoes"] == [] and len(SITE["noticias"]) == 1 and SITE["logins"] == 1
