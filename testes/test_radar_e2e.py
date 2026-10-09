@@ -837,6 +837,9 @@ def test_repeticao_entre_titulos_de_tributos_diferentes_e_descartada():
     assert radar_ia.tributos("SEM FAIXA DE TRANSIÇÃO, RETENÇÃO DE IR SOBRE DIVIDENDOS É INCONSTITUCIONAL") == {"IR"}
     assert radar_ia.mesmos_tributos("Receita orienta sobre a CPRB em 2025", "Contribuição previdenciária sobre a receita bruta: Receita orienta")
     assert not radar_ia.mesmos_tributos("CPRB: novas regras", "PIS/Cofins: novas regras")
+    for t in ("TABELA DO IR PARA 2026", "ISENÇÃO DO IR ATÉ R$ 5 MIL: CÂMARA APROVA", "RETENÇÃO DE IR AOS SÓCIOS", "NOVAS REGRAS PARA IR SOBRE JUROS"):
+        assert radar_ia.tributos(t) == {"IR"}, t                                  # depois de artigo ou preposição é o imposto
+    assert not radar_ia.mesmos_tributos("ISENÇÃO DO IR PARA QUEM GANHA ATÉ R$ 5 MIL", "PIS/COFINS: CÂMARA APROVA MUDANÇAS")
     # a trava vale para o caminho até a origem (2 → 1, 3 → 2) e para o grupo que já está atrás da origem
     vistos = [{"id": 1, "titulo": "STF: crédito presumido de ICMS não entra na base do IRPJ e da CSLL"},
               {"id": 275, "titulo": "STF recomeça julgamento sobre tributação de créditos presumidos de ICMS"}]

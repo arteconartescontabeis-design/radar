@@ -3682,7 +3682,7 @@ def test_revisar_com_ia_tira_a_copia_e_a_marca(pagina, limpo):
     assert marcas.locator("[data-acao=ia-revisar]").count() == 1 and "“Revisar com IA”" in marcas.inner_text()
     lido = pagina.get_attribute("form[data-form=conteudo]", "data-lido")
     pagina.locator("form[data-form=conteudo] .aviso.copia [data-acao=ia-revisar]").click()
-    pagina.wait_for_selector("text=IA: texto revisado; 1 ponto(s) sem confirmação saíram do texto e estão nos pontos a conferir.")
+    pagina.wait_for_selector("text=IA: texto revisado; 1 ponto(s) a conferir na fonte oficial saíram do texto e estão nos pontos a conferir.")
     assert pedidos[-1] == {"acao": "revisar", "conteudo_id": c, "lido": lido, "assunto_id": a}
     assert pagina.locator(".aviso.copia, .marcas-verificar").count() == 0
     assert "Ficou fora do texto por falta de confirmação" in pagina.inner_text(".avisos-ia")
@@ -3773,3 +3773,18 @@ def test_revisar_com_ia_que_muda_o_titulo_refaz_a_capa_e_nao_apaga_texto_nao_sal
     pagina.wait_for_selector("text=O título mudou: a capa foi refeita com o título novo.")
     titulo, capa2, ilus2 = limpo.execute("select titulo, imagem_id, ilustracao_id from radar_conteudos where id = %s", (c,)).fetchone()
     assert titulo == "CBS na transição" and capa2 != capa and ilus2 == ilus and [p["acao"] for p in pedidos] == ["revisar"]
+
+
+def test_comentario_de_duvida_aparece_com_revisar_com_ia_e_nao_trava_a_aprovacao(pagina, limpo):
+    a, _ = assunto_com_texto(limpo)
+    c = _conteudo(limpo, a, "A sessão será em 30 de setembro (a fonte não especifica o ano). Quando a fonte não informa o CPF, o rendimento fica sem vínculo.")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    caixa = pagina.locator("form[data-form=conteudo] .aviso.duvidas")
+    caixa.wait_for()
+    assert caixa.locator("li").all_inner_texts() == ["a fonte não especifica o ano"]          # a condicional ("quando a fonte…") não conta
+    assert caixa.locator("[data-acao=ia-revisar]").count() == 1
+    pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
+    pagina.wait_for_selector("text=Conteúdo aprovado.")                                        # não impede aprovar
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"

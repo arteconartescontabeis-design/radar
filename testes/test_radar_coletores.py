@@ -648,6 +648,10 @@ def test_pagina_de_categoria_segue_o_feed_da_categoria_e_paginada_nao_baixa_a_se
                  '</head><body></body></html>')
     assert coletores.feed_da_pagina(categoria, "https://portalcontabilsc.com.br/categoria/noticias/") == "https://portalcontabilsc.com.br/categoria/noticias/feed/"
     assert coletores.feed_da_pagina(categoria, "https://portalcontabilsc.com.br/") == "https://portalcontabilsc.com.br/feed/"
+    um_nivel = ('<html><head><link rel="alternate" type="application/rss+xml" href="https://s.com.br/feed/">'
+                '<link rel="alternate" type="application/rss+xml" href="https://s.com.br/noticias/feed/"></head></html>')
+    assert coletores.feed_da_pagina(um_nivel, "https://s.com.br/noticias/page/1/") == "https://s.com.br/noticias/feed/"   # sem /categoria/
+    assert coletores.feed_da_pagina(um_nivel, "https://s.com.br/page/2/") == "https://s.com.br/feed/"
     so_comentarios = '<html><head><link rel="alternate" type="application/rss+xml" title="Comentários" href="/comments/feed/"></head></html>'
     assert coletores.feed_da_pagina(so_comentarios, "https://x.com.br/") == "https://x.com.br/comments/feed/"
     pedidos = []

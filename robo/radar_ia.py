@@ -129,8 +129,9 @@ _IR_ESPECIFICO = {"IRPJ", "IRPF", "IRRF"}
 
 
 # título todo em maiúsculas (boletim da ITC): "VÃO IR À RECEITA" é o verbo, não o imposto de renda
-_IR_VERBO = re.compile(r"\b(?:VAI|VÃO|VAO|DEVE|DEVEM|PODE|PODEM|PRECISA|PRECISAM|PARA|QUER|QUEREM|DEVERÁ|DEVERÃO|PODERÁ|PODERÃO)\s+IR\b"
-                       r"|\bIR\s+(?:À|ÀS|AO|AOS|A|ATÉ|PARA|ALÉM|EMBORA)\b")
+# ("TABELA DO IR PARA 2026", "RETENÇÃO DE IR AOS SÓCIOS": depois de artigo ou preposição é o imposto)
+_IR_VERBO = re.compile(r"\b(?:VAI|VÃO|VAO|DEVE|DEVEM|PODE|PODEM|PRECISA|PRECISAM|QUER|QUEREM|DEVERÁ|DEVERÃO|PODERÁ|PODERÃO)\s+IR\b"
+                       r"|(?<!\bDO\s)(?<!\bDE\s)(?<!\bNO\s)(?<!\bO\s)(?<!\bAO\s)(?<!\bPELO\s)(?<!\bSEM\s)(?<!\bCOM\s)\bIR\s+(?:À|ÀS|AO|AOS|A|ATÉ|PARA|ALÉM|EMBORA)\b")
 
 
 def tributos(titulo: str | None) -> set[str]:

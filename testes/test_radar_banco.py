@@ -3076,3 +3076,34 @@ def test_separada_na_triagem_nao_volta_a_ser_juntada(limpo):
         r = c.execute("select radar_gravar_avaliacao_ia(%s)", (json.dumps([{"id": b, "nota": 7, "igual_a": origem}]),)).fetchone()[0]
     assert r["gravadas"] == 1 and r["repetidas"] == 0
     assert limpo.execute("select duplicata_de, ia_nota from radar_capturas where id = %s", (b,)).fetchone() == (None, 7)
+
+
+def test_separada_tambem_nao_e_juntada_pelo_outro_lado(limpo):
+    def cap(url, titulo):
+        return limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                                select id, %s, %s, 'texto', md5(%s) from radar_fontes where slug = 'rfb-noticias' returning id""",
+                             (url, titulo, url)).fetchone()[0]
+    o = cap("https://x.gov.br/o2", "Crédito presumido de ICMS na base do IRPJ e da CSLL")
+    b = cap("https://x.gov.br/b2", "STF exclui créditos presumidos de ICMS da base do PIS e da Cofins")
+    with como("service_role") as c:
+        c.execute("select radar_gravar_avaliacao_ia(%s)", (json.dumps([{"id": b, "nota": 8, "igual_a": o}]),))
+    with como("authenticated", EDITOR) as c:
+        c.execute("select radar_separar_repeticao(%s)", (b,))
+    assert limpo.execute("select metadados->'separada_de' from radar_capturas where id = %s", (b,)).fetchone()[0] == [o]
+    assert limpo.execute("select metadados->'separada_de' from radar_capturas where id = %s", (o,)).fetchone()[0] == [b]
+    # a origem é avaliada de novo e a IA diz que ela é igual à separada: não junta pelo outro lado
+    with como("service_role") as c:
+        r = c.execute("select radar_gravar_avaliacao_ia(%s)", (json.dumps([{"id": o, "nota": 7, "igual_a": b}]),)).fetchone()[0]
+    assert r["repetidas"] == 0 and limpo.execute("select duplicata_de from radar_capturas where id = %s", (o,)).fetchone()[0] is None
+    # separada do assunto: lembra da origem e das outras capturas do assunto
+    x, y, z = (cap(f"https://x.gov.br/a{i}", f"Receita prorroga prazo — fonte {i}") for i in range(3))
+    with como("service_role") as c:
+        c.execute("select radar_gravar_avaliacao_ia(%s)", (json.dumps([{"id": x, "nota": 9}, {"id": y, "nota": 8, "igual_a": x}]),))
+    with como("authenticated", EDITOR) as c:
+        assunto = c.execute("select radar_abrir_assunto(%s)", (x,)).fetchone()[0]
+    with como("service_role") as c:
+        c.execute("select radar_gravar_avaliacao_ia(%s)", (json.dumps([{"id": z, "nota": 7, "igual_a": x}]),))
+    with como("authenticated", EDITOR) as c:
+        c.execute("select radar_separar_captura(%s, %s)", (assunto, z))
+    assert sorted(limpo.execute("select metadados->'separada_de' from radar_capturas where id = %s", (z,)).fetchone()[0]) == sorted([x, y])
+    assert limpo.execute("select metadados->'separada_de' from radar_capturas where id = %s", (x,)).fetchone()[0] == [z]

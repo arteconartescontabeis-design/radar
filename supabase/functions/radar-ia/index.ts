@@ -207,9 +207,15 @@ function trechosCopiados(corpo: string, fontes: string[]): { palavras: number; t
 /** Marcas [VERIFICAR …] no texto (o mesmo critério da tela e do banco). */
 const marcasVerificar = (...textos: string[]) =>
   textos.join("\n").match(/\[\s*verificar[^\]\n]{0,250}\]?/gi)?.map((m) => m.replace(/\s+/g, " ").trim().slice(0, 160)) ?? [];
-/** Comentário de dúvida da redação escrito sem colchetes ("a fonte não especifica o ano", "a fonte cita tanto X quanto Y").
- *  "A fonte pagadora/retentora" (imposto na fonte) não conta. */
-const RE_DUVIDA = /(?<![\p{L}\p{N}])(?:a|as|o|os)\s+(?:fontes?(?!\s+(?:pagadoras?|retentoras?|de\s+renda|de\s+recursos))|materia(?:l|is))(?![\p{L}\p{N}])[^.;\n]{0,60}?(?<![\p{L}\p{N}])(?:n[ãa]o\s+(?:informa|especifica|menciona|traz|indica|detalha|esclarece|confirma|deixa\s+claro|diz)m?|cita(?:m)?\s+tanto|(?:é|s[ãa]o)\s+omiss[ao]s?)(?![\p{L}\p{N}])[^\n.;)]{0,120}/giu;
+/** Comentário de dúvida da redação escrito sem colchetes ("a fonte não especifica o ano", "o boletim não informou o ano",
+ *  "a fonte cita tanto X quanto Y", "ano não informado pela fonte"). Não contam: "a fonte pagadora/retentora" (imposto na fonte),
+ *  a oração condicional ou temporal ("quando a fonte não informa o CPF…") e o sujeito de outra oração (não atravessa vírgula).
+ *  A mesma expressão está na tela (index.html) e no robô (radar_rascunhos.py). */
+const RE_DUVIDA = new RegExp("(?<![\\p{L}\\p{N}])(?<!quando\\s)(?<!se\\s)(?<!caso\\s)(?<!enquanto\\s)(?<!que\\s)(?:a|as|o|os)\\s+" +
+  "(?:fontes?(?!\\s+(?:pagadoras?|retentoras?|de\\s+renda|de\\s+recursos))|boletim|boletins|not[íi]cias?|comunicados?|publica[çc](?:ão|ões)|portal|texto\\s+oficial)" +
+  "(?![\\p{L}\\p{N}])[^.;,:()\\n]{0,40}?(?<![\\p{L}\\p{N}])(?:n[ãa]o\\s+(?:inform|especific|mencion|indic|detalh|confirm)(?:a|am|ou|aram)|n[ãa]o\\s+(?:esclarec(?:e|em|eu|eram)|traz|trazem|trouxe|trouxeram|diz|dizem|disse|disseram)" +
+  "|n[ãa]o\\s+deix(?:a|ou|am|aram)\\s+claro|cita(?:m)?\\s+tanto|(?:é|s[ãa]o)\\s+omiss[ao]s?)(?![\\p{L}\\p{N}])[^\\n.;)]{0,120}" +
+  "|(?<![\\p{L}\\p{N}])n[ãa]o\\s+informad[oa]s?\\s+(?:pela|na|no)\\s+(?:fonte|boletim|not[íi]cia|portal)(?![\\p{L}\\p{N}])", "giu");
 const comentariosDuvida = (...textos: string[]) =>
   (textos.join("\n").replace(/\[\s*verificar[^\]\n]{0,250}\]?/gi, " ").match(RE_DUVIDA) ?? []).map((m) => m.replace(/\s+/g, " ").trim().slice(0, 160));
 
@@ -629,7 +635,7 @@ async function revisar(token: string, ctx: Awaited<ReturnType<typeof carregar>>,
     { titulo: r.titulo, corpo: r.corpo, avisos_ia: novos }, "return=representation");
   if (!Array.isArray(linhas) || !linhas.length) throw new Erro(409, "O conteúdo foi alterado enquanto a IA revisava. Atualize a tela e tente de novo.");
   const gravados = Array.isArray(linhas[0].avisos_ia) && linhas[0].avisos_ia.length === novos.length;
-  return { conteudo_id: conteudoId, titulo: r.titulo, pendencias: r.pendencias, marcas: r.marcas, copias: r.copias, avisos_gravados: gravados,
+  return { conteudo_id: conteudoId, titulo: r.titulo, pendencias: r.pendencias, marcas: r.marcas, copias: r.copias, avisos_gravados: gravados, analise,
            titulo_mudou: normalizarEspacos(r.titulo) !== normalizarEspacos(String(c.titulo ?? "")),
            autorizacao_caiu: !!c.copia_autorizada_em && r.corpo !== c.corpo,
            restam: { marcas: marcasVerificar(r.titulo, r.corpo).length + comentariosDuvida(r.titulo, r.corpo).length,

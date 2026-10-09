@@ -123,7 +123,7 @@ def feed_da_pagina(conteudo: str, base: str) -> str | None:
     if not candidatos:
         return None
     sem_comentarios = [c for c in candidatos if "/comments/" not in c[0].lower() and not re.search(r"coment|comment", c[1])] or candidatos
-    partes = [p for p in urlsplit(base).path.split("/") if p]
+    partes = [p for p in re.sub(r"/page/\d+/?$", "/", urlsplit(base).path).split("/") if p]     # sem a paginação do WordPress
     for n in range(len(partes), min(2, len(partes)) - 1, -1):   # …/categoria/noticias/page/2/ → …/categoria/noticias/ (não sobe a /categoria/)
         prefixo = "/" + "/".join(partes[:n]) + "/"
         for url, _ in sem_comentarios:

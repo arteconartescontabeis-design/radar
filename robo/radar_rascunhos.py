@@ -285,10 +285,15 @@ def trechos_copiados(corpo: str, fontes: list[str]) -> list[dict]:
     return sorted(achados, key=lambda a: -a["palavras"])
 
 
-# comentário de dúvida escrito sem colchetes ("a fonte não especifica o ano"); "a fonte pagadora" (imposto na fonte) não conta
-RE_DUVIDA = re.compile(r"(?<!\w)(?:a|as|o|os)\s+(?:fontes?(?!\s+(?:pagadoras?|retentoras?|de\s+renda|de\s+recursos))|materia(?:l|is))(?!\w)"
-                       r"[^.;\n]{0,60}?(?<!\w)(?:n[ãa]o\s+(?:informa|especifica|menciona|traz|indica|detalha|esclarece|confirma|deixa\s+claro|diz)m?"
-                       r"|cita(?:m)?\s+tanto|(?:é|s[ãa]o)\s+omiss[ao]s?)(?!\w)[^\n.;)]{0,120}", re.I)
+# comentário de dúvida escrito sem colchetes ("a fonte não especifica o ano", "o boletim não informou o ano"); "a fonte pagadora"
+# (imposto na fonte), a oração condicional ("quando a fonte não informa o CPF…") e o sujeito de outra oração não contam.
+# A mesma expressão da tela e da função radar-ia (lá, [\p{L}\p{N}] no lugar do \w)
+RE_DUVIDA = re.compile(
+    r"(?<!\w)(?<!quando\s)(?<!se\s)(?<!caso\s)(?<!enquanto\s)(?<!que\s)(?:a|as|o|os)\s+"
+    r"(?:fontes?(?!\s+(?:pagadoras?|retentoras?|de\s+renda|de\s+recursos))|boletim|boletins|not[íi]cias?|comunicados?|publica[çc](?:ão|ões)|portal|texto\s+oficial)"
+    r"(?!\w)[^.;,:()\n]{0,40}?(?<!\w)(?:n[ãa]o\s+(?:inform|especific|mencion|indic|detalh|confirm)(?:a|am|ou|aram)|n[ãa]o\s+(?:esclarec(?:e|em|eu|eram)|traz|trazem|trouxe|trouxeram|diz|dizem|disse|disseram)"
+    r"|n[ãa]o\s+deix(?:a|ou|am|aram)\s+claro|cita(?:m)?\s+tanto|(?:é|s[ãa]o)\s+omiss[ao]s?)(?!\w)[^\n.;)]{0,120}"
+    r"|(?<!\w)n[ãa]o\s+informad[oa]s?\s+(?:pela|na|no)\s+(?:fonte|boletim|not[íi]cia|portal)(?!\w)", re.I)
 RE_MARCA = re.compile(r"\[\s*verificar[^\]\n]{0,250}\]?", re.I)
 
 

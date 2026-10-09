@@ -1660,6 +1660,15 @@ const COPIA_MINIMA = 12, CITACAO_MAXIMA = 40, CITACOES_TOTAL = 120;
 /* v0.14.3: marcas [VERIFICAR …] deixadas pela IA. Com alguma no título, no texto ou na legenda, nada é aprovado nem publicado
    (o banco também confere: radar_marcas_verificar) */
 const marcasVerificar = (...textos) => textos.join("\n").match(/\[\s*verificar[^\]\n]{0,250}\]?/gi)?.map(m => m.replace(/\s+/g, " ").trim().slice(0, 160)) || [];
+/* v0.16.0: comentário de dúvida da redação escrito sem colchetes ("a fonte não especifica o ano"). Não impede aprovar: aparece num
+   quadro com "Revisar com IA". A mesma expressão está na função radar-ia e no robô de rascunhos (mantenha as três iguais). */
+const RE_DUVIDA = new RegExp("(?<![\\p{L}\\p{N}])(?<!quando\\s)(?<!se\\s)(?<!caso\\s)(?<!enquanto\\s)(?<!que\\s)(?:a|as|o|os)\\s+" +
+  "(?:fontes?(?!\\s+(?:pagadoras?|retentoras?|de\\s+renda|de\\s+recursos))|boletim|boletins|not[íi]cias?|comunicados?|publica[çc](?:ão|ões)|portal|texto\\s+oficial)" +
+  "(?![\\p{L}\\p{N}])[^.;,:()\\n]{0,40}?(?<![\\p{L}\\p{N}])(?:n[ãa]o\\s+(?:inform|especific|mencion|indic|detalh|confirm)(?:a|am|ou|aram)|n[ãa]o\\s+(?:esclarec(?:e|em|eu|eram)|traz|trazem|trouxe|trouxeram|diz|dizem|disse|disseram)" +
+  "|n[ãa]o\\s+deix(?:a|ou|am|aram)\\s+claro|cita(?:m)?\\s+tanto|(?:é|s[ãa]o)\\s+omiss[ao]s?)(?![\\p{L}\\p{N}])[^\\n.;)]{0,120}" +
+  "|(?<![\\p{L}\\p{N}])n[ãa]o\\s+informad[oa]s?\\s+(?:pela|na|no)\\s+(?:fonte|boletim|not[íi]cia|portal)(?![\\p{L}\\p{N}])", "giu");
+const comentariosDuvida = (...textos) =>
+  (textos.join("\n").replace(/\[\s*verificar[^\]\n]{0,250}\]?/gi, " ").match(RE_DUVIDA) ?? []).map((m) => m.replace(/\s+/g, " ").trim().slice(0, 160));
 const msgMarcas = (lista, acao = "liberar") => `Resolva antes de ${acao}: ${lista.length} ponto(s) marcado(s) com [VERIFICAR] — ` +
   lista.map(m => `“${m}”`).join("; ") + ". Troque cada marca pela informação conferida (ou tire o trecho), salve e tente de novo.";
 const marcasDoConteudo = id => { const f = $(`form[data-form=conteudo][data-id="${id}"]`);
@@ -1726,7 +1735,7 @@ const chipsTitulo = (id, lista) => (Array.isArray(lista) ? lista : []).map(t => 
 function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const copia = trechosCopiados(c.corpo, fontes);
-  const marcas = marcasVerificar(c.titulo || "", c.corpo || "");
+  const marcas = marcasVerificar(c.titulo || "", c.corpo || ""), duvidas = comentariosDuvida(c.titulo || "", c.corpo || "");
   // v0.16.0: "Revisar com IA" reescreve só as marcas e os trechos iguais ao da fonte; "Autorizar mesmo assim" deixa a cópia (com motivo)
   const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
   const autorizada = copia.length && c.copia_autorizada_em;
@@ -1736,6 +1745,9 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${marcas.length ? `<div class="aviso erro marcas-verificar"><b>${marcas.length} ponto(s) marcado(s) com [VERIFICAR] — resolva antes de liberar ou publicar.</b>
       <ul>${marcas.map(m => `<li><span class="copiado">${h(m)}</span></li>`).join("")}</ul>Troque cada marca pela informação conferida (ou tire o trecho) e salve${ed ? ", ou clique em “Revisar com IA”: a IA tira as marcas e o que não estiver confirmado vai para os pontos a conferir" : ""}. Enquanto houver marca, o Radar não aprova nem publica.
       ${ed ? `<div class="acoes">${revisarIA}</div>` : ""}</div>` : ""}
+    ${duvidas.length ? `<div class="aviso alerta duvidas"><b>Comentário sobre dúvida da redação no texto (${duvidas.length}).</b> O leitor não deve ver isso: tire do texto${ed ? " ou clique em “Revisar com IA”" : ""}; o que faltar confirmar vai para os pontos a conferir.
+      <ul>${duvidas.map(d => `<li><span class="copiado">${h(d)}</span></li>`).join("")}</ul>
+      ${ed && !marcas.length ? `<div class="acoes">${revisarIA}</div>` : ""}</div>` : ""}
     ${copia.length ? `<div class="aviso ${autorizada ? "alerta copia-autorizada" : "erro"} copia"><b>Texto igual ao da fonte em ${copia.length} trecho(s).</b> ${autorizada
         ? `<b>Autorizado mesmo assim</b> em ${dataHora(c.copia_autorizada_em)}${c.copia_autorizada_motivo ? ` — motivo: “${h(c.copia_autorizada_motivo)}”` : ""}. A autorização vale para este texto: se ele mudar, cai.`
         : `O conteúdo não pode ser aprovado assim: reescreva com as suas palavras, dizendo de onde veio a informação (“segundo a Receita Federal…”). Se for a transcrição de um dispositivo legal, cite só o essencial entre aspas (até ${CITACAO_MAXIMA} palavras por citação).`}
@@ -1849,13 +1861,16 @@ const ACOES = {
     // o título mudou: a capa (que leva o título) é refeita com a mesma ilustração, sem custo; sem ilustração guardada, fica o lembrete
     let capa = "";
     if(r.titulo_mudou && f.dataset.temImagem){
-      if(f.dataset.ilustracao && await capaAutomatica(id, false, false, true)) capa = " O título mudou: a capa foi refeita com o título novo.";
+      if(f.dataset.ilustracao && await capaAutomatica(id, false, false, true)){ if(E.capaAntiga === id) E.capaAntiga = null; capa = " O título mudou: a capa foi refeita com o título novo."; }
       else{ E.capaAntiga = id; capa = " O título mudou: atualize a capa."; }
     }
     if(!telaDoAssunto(assunto)) return;
     await desenhar();
     const resta = (r.restam?.marcas || 0) + (r.restam?.copias || 0);
-    recado(`IA: texto revisado${r.pendencias?.length ? `; ${r.pendencias.length} ponto(s) sem confirmação ${r.avisos_gravados === false ? "saíram do texto, mas NÃO puderam ser anotados nos pontos a conferir — confira o texto" : "saíram do texto e estão nos pontos a conferir"}` : ""}.` +
+    // no texto para análise o que a fonte não oficial informa fica no texto, atribuído a ela; no texto normal, sai do texto
+    const onde = r.analise ? "ficaram no texto atribuídos à fonte não oficial, ou saíram dele," : "saíram do texto e";
+    recado(`IA: texto revisado${r.pendencias?.length ? `; ${r.pendencias.length} ponto(s) a conferir na fonte oficial ${r.avisos_gravados === false
+      ? `${r.analise ? "foram apontados" : "saíram do texto"}, mas NÃO puderam ser anotados nos pontos a conferir — confira o texto` : `${onde} estão nos pontos a conferir`}` : ""}.` +
       (r.autorizacao_caiu ? " O texto mudou, então a autorização do trecho igual ao da fonte caiu." : "") + capa +
       (resta ? ` Ainda sobrou ${resta} ponto(s) a resolver (veja os quadros no conteúdo).` : " Confira o texto antes de enviar para revisão."),
       resta || r.avisos_gravados === false || r.autorizacao_caiu ? "aviso" : false);

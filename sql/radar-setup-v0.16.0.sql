@@ -585,6 +585,9 @@ begin
   if old.metadados ? 'separada_em' and not (coalesce(new.metadados, '{}'::jsonb) ? 'separada_em') then
     new.metadados := coalesce(new.metadados, '{}'::jsonb) || jsonb_build_object('separada_em', old.metadados->'separada_em');
   end if;
+  if old.metadados ? 'separada_de' and not (coalesce(new.metadados, '{}'::jsonb) ? 'separada_de') then
+    new.metadados := coalesce(new.metadados, '{}'::jsonb) || jsonb_build_object('separada_de', old.metadados->'separada_de');
+  end if;
   if new.hash_conteudo is distinct from old.hash_conteudo and old.hash_conteudo is not null then
     insert into public.radar_capturas_versoes (captura_id, versao, titulo, texto, hash_conteudo)
     values (old.id, old.versao, old.titulo, old.texto, old.hash_conteudo)
@@ -2157,6 +2160,12 @@ begin
         if v_raiz = v_id or exists (select 1 from public.radar_capturas c where c.duplicata_de = v_id) then
           v_raiz := null;                      -- não aponta para si mesma nem vira repetição quem já é origem de outras
         end if;
+        -- v0.16.0: a equipe disse que estas duas não são o mesmo fato (vale nos dois sentidos)
+        if v_raiz is not null and exists (select 1 from public.radar_capturas c
+             where (c.id = v_id and coalesce(c.metadados->'separada_de', '[]'::jsonb) @> to_jsonb(v_raiz))
+                or (c.id = v_raiz and coalesce(c.metadados->'separada_de', '[]'::jsonb) @> to_jsonb(v_id))) then
+          v_raiz := null;
+        end if;
         -- v0.11.1: captura oficial igual a um boletim não oficial: o boletim é que vira a repetição
         if v_raiz is not null and exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id where c.id = v_id and f.oficial)
            and not exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id where c.id = v_raiz and f.oficial) then
@@ -2204,6 +2213,7 @@ end $$;
 -- e sem evidência registrada nessa captura (a fundamentação nunca é desfeita por aqui).
 create or replace function public.radar_separar_captura(p_assunto bigint, p_captura bigint)
 returns void language plpgsql security definer set search_path = public as $$
+declare v_outras jsonb;
 begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
     raise exception 'permission denied for function radar_separar_captura' using errcode = '42501';
@@ -2218,10 +2228,18 @@ begin
   if (select count(*) from public.radar_assunto_capturas ac where ac.assunto_id = p_assunto) < 2 then
     raise exception 'RADAR047: o assunto ficaria sem nenhuma captura' using errcode = 'P0001';
   end if;
+  -- v0.16.0: de quem ela foi separada (a origem e as demais capturas do assunto): a IA não junta de novo, em nenhum sentido
+  select coalesce(jsonb_agg(x.id), '[]'::jsonb) into v_outras
+    from (select c.duplicata_de as id from public.radar_capturas c where c.id = p_captura and c.duplicata_de is not null
+          union select ac.captura_id from public.radar_assunto_capturas ac where ac.assunto_id = p_assunto and ac.captura_id <> p_captura) x;
   delete from public.radar_assunto_capturas ac where ac.assunto_id = p_assunto and ac.captura_id = p_captura;
   update public.radar_capturas set duplicata_de = null,
-         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now())   -- v0.11.1: não volta a ser agrupada sozinha
+         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now(),   -- v0.11.1: não volta a ser agrupada sozinha
+                       'separada_de', coalesce(metadados->'separada_de', '[]'::jsonb) || v_outras)
    where id = p_captura;
+  update public.radar_capturas c
+     set metadados = coalesce(c.metadados, '{}'::jsonb) || jsonb_build_object('separada_de', coalesce(c.metadados->'separada_de', '[]'::jsonb) || to_jsonb(p_captura))
+   where c.id in (select (jsonb_array_elements_text(v_outras))::bigint);
   -- se era a origem do grupo, as demais deixam de apontar para ela
   update public.radar_capturas set duplicata_de = null where duplicata_de = p_captura;
   insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes)
@@ -2246,8 +2264,12 @@ begin
     raise exception 'RADAR142: esta captura não está marcada como repetição de outra' using errcode = 'P0001';
   end if;
   update public.radar_capturas set duplicata_de = null,
-         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now())
+         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now(),
+                       'separada_de', coalesce(metadados->'separada_de', '[]'::jsonb) || to_jsonb(v_origem))
    where id = p_captura;
+  update public.radar_capturas            -- e na origem: a IA não junta as duas de novo, nem pelo outro lado
+     set metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_de', coalesce(metadados->'separada_de', '[]'::jsonb) || to_jsonb(p_captura))
+   where id = v_origem;
   insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes, depois)
   values ('radar_capturas', p_captura::text, 'UPDATE', auth.uid(), jsonb_build_object('duplicata_de', v_origem),
           jsonb_build_object('duplicata_de', null, 'motivo', 'não é o mesmo fato (separada na triagem)'));

@@ -105,3 +105,32 @@ def test_detector_de_copia_do_robo_e_igual_ao_da_tela_e_da_funcao(tmp_path):
         saida = subprocess.run(["deno", "run", "--allow-read", "--no-prompt", str(arq)], capture_output=True, text=True, timeout=60)
         assert saida.returncode == 0, saida.stderr
         assert json.loads(saida.stdout) == esperado, nome
+
+
+DUVIDAS_SIM = ["(a fonte não especifica o ano)", "(a fonte não informou o ano)", "(o boletim não informa o ano)", "(ano não informado pela fonte)",
+               "A fonte cita tanto ADI 5.161 quanto ADI nº 5.161/DF.", "a fonte indica 30/9 mas não especifica o ano", "o texto oficial não especifica o ano"]
+DUVIDAS_NAO = ["Para o material de uso e consumo, a LC 87/96 não traz direito ao crédito antes de 2033.",
+               "Quando a fonte não informa o CPF do beneficiário na EFD-Reinf, o rendimento fica sem vínculo.",
+               "Se a fonte não confirma o valor retido, o beneficiário não pode compensar.",
+               "O material de construção aplicado na obra não traz crédito de PIS/Cofins.",
+               "A fonte pagadora não informa o valor retido.", "O imposto retido na fonte não informa nada.",
+               "Segundo a fonte, o prazo vai até 31/10.", "[VERIFICAR: a fonte não especifica o ano]"]
+
+
+def test_comentario_de_duvida_igual_no_robo_na_tela_e_na_funcao(tmp_path):
+    assert all(rr.comentarios_duvida(t) for t in DUVIDAS_SIM)
+    assert not any(rr.comentarios_duvida(t) for t in DUVIDAS_NAO)
+    if shutil.which("deno") is None:
+        pytest.skip("deno não instalado")
+    casos = DUVIDAS_SIM + DUVIDAS_NAO
+    esperado = [rr.comentarios_duvida(t) for t in casos]
+    (tmp_path / "duvidas.json").write_text(json.dumps(casos, ensure_ascii=False), encoding="utf-8")
+    fim = "slice(0, 160));"
+    for nome, arquivo in (("tela.ts", "index.html"), ("funcao.ts", "supabase/functions/radar-ia/index.ts")):
+        codigo = _extrair((RAIZ / arquivo).read_text(encoding="utf-8"), "const RE_DUVIDA", fim)
+        arq = tmp_path / nome
+        arq.write_text("// @ts-nocheck\n" + codigo + f"\nconsole.log(JSON.stringify(JSON.parse(Deno.readTextFileSync({json.dumps(str(tmp_path / 'duvidas.json'))}))"
+                       ".map((t) => comentariosDuvida(t))));\n", encoding="utf-8")
+        saida = subprocess.run(["deno", "run", "--allow-read", "--no-prompt", str(arq)], capture_output=True, text=True, timeout=60)
+        assert saida.returncode == 0, saida.stderr
+        assert json.loads(saida.stdout) == esperado, nome
