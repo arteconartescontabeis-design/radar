@@ -168,6 +168,9 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 .rede-imagem{width:100%;aspect-ratio:1;max-width:100%;border-radius:8px;border:1px solid var(--linha);background:var(--azul-claro);object-fit:cover}
 .rede-legenda{display:flex;flex-direction:column;gap:4px;min-width:0} .rede-legenda label{margin:0} .rede-legenda textarea{min-height:200px;width:100%}
 @media (max-width:640px){.rede-montagem{grid-template-columns:minmax(0,1fr)}}
+.excluir-grupo{align-items:center} .excluir-grupo label{display:inline-flex;gap:4px;align-items:center;margin:0}
+details.todos{margin:12px 0 0} details.todos summary{cursor:pointer} .rede-legenda label input{width:auto;margin:0 4px 0 0}
+details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 @media (max-width:560px){.trilha.passos7 li i{width:28px;height:28px}.trilha.passos7 li span,.trilha.passos7 li b{display:none}}
 .assunto-corpo{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
 .lateral .painel{padding:14px} .lateral h3{margin-bottom:6px} .lateral label{display:block;margin-top:8px}
@@ -217,11 +220,14 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.16.0";
+const VERSAO = "0.17.0";
 const FUNCAO_MINIMA = "0.16.0";     // versão da função radar-ia que este painel exige (v0.16.0: "Revisar com IA")
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.17.0", "09/10/2026", [
+    "Publicar em todos: no passo da publicação, “Publicar em todos de uma vez” autoriza o site, o Instagram e o Facebook com um clique só, depois de conferir a categoria, a imagem e as duas legendas. O robô publica no site em até 15 minutos e, logo que a notícia entra no site, publica no Instagram e no Facebook (o link da notícia entra no lugar de {LINK DO SITE}). Se o site não sair ou o texto mudar, as redes caem junto.",
+    "Excluir publicação: na aba Publicações, cada canal publicado tem o botão “Excluir”, e dá para marcar vários conteúdos e excluir de uma vez, escolhendo site, Instagram e Facebook. No Instagram e no Facebook a exclusão é na hora, pela Meta; no site, o robô entra no painel e exclui a notícia em até 15 minutos (só com o pedido do administrador, e só quando acha exatamente uma notícia com aquele título). Se a Meta não deixar apagar pelo Radar, apague direto na rede e registre com “Já apaguei”."]],
   ["0.16.0", "09/10/2026", [
     "Texto da IA sem marca nem comentário de dúvida: nada de “[VERIFICAR: a fonte indica 30/9, mas não especifica o ano]” ou “a fonte cita tanto ADI 5.161 quanto ADI nº 5.161/DF” dentro do texto. O que não está confirmado sai do texto (ou é escrito sem o detalhe incerto) e aparece nos pontos a conferir, em “Ficou fora do texto por falta de confirmação”. No “Gerar texto para análise” (e no “Preparar tudo”) de assunto sem fonte oficial, a IA primeiro procura a fonte oficial na internet (uma vez por assunto), para confirmar o que puder.",
     "Sem cópia: a IA diz de onde veio a informação (“segundo a Receita Federal…”) e, se ainda sobrar trecho igual ao da fonte, uma segunda passada reescreve antes de gravar. No quadro “Texto igual ao da fonte” há dois botões: “Revisar com IA”, que reescreve só esses trechos citando a fonte, e “Autorizar mesmo assim”, com o motivo registrado (vale para o texto atual; se o texto mudar, a autorização cai). “Revisar com IA” também resolve as marcas [VERIFICAR].",
@@ -901,14 +907,27 @@ const TELAS = {
   },
 
   async publicacoes(){
-    const [regs, aprovados] = await Promise.all([
+    const SEL_CONT = "id,titulo,formato,status,assunto_id,aprovado_em,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url)," +
+      "radar_redes_envios(id,canal,situacao,url,publicado_em,excluido_em,erro),radar_site_exclusoes(id,situacao,pedido_em,excluido_em,erro,url)";
+    const [regs, aprovados, redesNoAr] = await Promise.all([
       ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
-      ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,aprovado_em,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url),radar_redes_envios(id,canal,situacao,url,publicado_em)",
-        status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"})]);
+      ler("radar_conteudos", {select:SEL_CONT, status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"}),
+      ler("radar_redes_envios", {select:"conteudo_id", situacao:"eq.publicado", limit:"1000"})]);
+    // v0.17.0: também o que está publicado e deixou de estar aprovado (texto em revisão, por exemplo): dá para excluir
+    const jaListados = new Set(aprovados.map(c => c.id));
+    const outros = [...new Set([...regs.map(r => r.conteudo_id), ...redesNoAr.map(r => r.conteudo_id)])].filter(id => !jaListados.has(id)).slice(0, 200);
+    const lista = aprovados.concat(outros.length ? await ler("radar_conteudos", {select:SEL_CONT, id:"in.(" + outros.join(",") + ")", order:"id.desc"}) : []);
     const pendentes = aprovados.filter(c => !c.radar_divulgacoes.length && !(c.radar_site_envios || []).some(e => e.situacao === "publicado"));
-    // v0.11.0: cada conteúdo aprovado e em que canal ele já está (site hoje; Instagram e Facebook entram depois)
-    const noSite = c => { const d = [...c.radar_divulgacoes].sort((x, y) => y.id - x.id)[0];
-      if(d) return `<span class="canal ok">✓ ${data(d.publicado_em)}</span><br>${linkFonte(d.url, "ver no site ↗")}`;
+    const adm = ehAdmin();
+    const exclusaoDe = c => [...(c.radar_site_exclusoes || [])].filter(x => x.situacao !== "cancelado").sort((x, y) => y.id - x.id)[0];
+    const btnExcluir = (c, canal, envio) => adm ? ` <button class="btn peq perigo" type="button" data-acao="excluir-pub" data-id="${c.id}" data-rede="${canal}"${envio ? ` data-envio="${envio}"` : ""}>Excluir</button>` : "";
+    // v0.11.0: cada conteúdo e em que canal ele está (site, Instagram e Facebook); v0.17.0: com a exclusão
+    const noSite = c => { const d = [...c.radar_divulgacoes].sort((x, y) => y.id - x.id)[0], x = exclusaoDe(c);
+      if(x && ["pedido","excluindo"].includes(x.situacao)) return `<span class="canal espera">${x.situacao === "excluindo" ? "Excluindo do site" : "Exclusão pedida — aguardando o robô"}</span>` +
+        (adm && x.situacao === "pedido" ? `<br><button class="link" type="button" data-acao="cancelar-exclusao-site" data-id="${x.id}">Cancelar a exclusão</button>` : "");
+      const errExc = x && x.situacao === "erro" ? `<div class="aviso erro">A exclusão não foi concluída: ${h(x.erro || "")}</div>` : "";
+      if(d) return `<span class="canal ok">✓ ${data(d.publicado_em)}</span><br>${linkFonte(d.url, "ver no site ↗")}${btnExcluir(c, "site")}${errExc}`;
+      if(x && x.situacao === "excluido") return `<span class="canal breve">Excluída do site em ${data(x.excluido_em)}</span>`;
       const e = [...(c.radar_site_envios || [])].sort((x, y) => y.id - x.id)[0];
       if(e && e.situacao === "publicado") return `<span class="canal ok">✓ pelo robô</span>${e.url ? `<br>${linkFonte(e.url, "ver no site ↗")}` : ""}`;
       return e && ["autorizado","enviando"].includes(e.situacao) ? `<span class="canal espera">Autorizado — aguardando o robô</span>`
@@ -916,20 +935,32 @@ const TELAS = {
     // v0.13.0: Instagram e Facebook (a autorização mais recente que não foi cancelada)
     const naRede = (c, k) => { const r = [...(c.radar_redes_envios || [])].filter(x => x.canal === k && x.situacao !== "cancelado").sort((x, y) => y.id - x.id)[0];
       if(!r) return `<span class="canal falta">Falta</span>`;
-      if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}`;
+      if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}${btnExcluir(c, k, r.id)}`;
+      if(r.situacao === "excluido") return `<span class="canal breve">Excluída em ${data(r.excluido_em)}</span>`;
+      if(r.situacao === "aguardando_site") return `<span class="canal espera">Vai junto com o site</span>`;
       return r.situacao === "dispensado" ? `<span class="canal breve">Não vai</span>` : r.situacao === "erro" ? `<span class="canal erro">Não concluída</span>`
         : `<span class="canal espera">${r.situacao === "enviando" ? "Publicando" : "Autorizado"}</span>`; };
-    const nRede = k => aprovados.filter(c => (c.radar_redes_envios || []).some(x => x.canal === k && x.situacao === "publicado")).length;
-    const nSite = aprovados.length - pendentes.length;
+    const nRede = k => lista.filter(c => (c.radar_redes_envios || []).some(x => x.canal === k && x.situacao === "publicado")).length;
+    const nSite = lista.filter(c => c.radar_divulgacoes.length).length;
+    const excluidas = lista.flatMap(c => (c.radar_site_exclusoes || []).filter(x => x.situacao === "excluido").map(x => ({...x, titulo:c.titulo})))
+      .sort((x, y) => String(y.excluido_em).localeCompare(String(x.excluido_em))).slice(0, 30);
     return `<h1>Publicações no site</h1>
       <p class="sub">A publicação é feita nas páginas da Artecon. Aqui fica o registro: o que já foi ao site (com o link e a data) e o que está aprovado esperando.</p>
       <div class="painel"><h2>Onde cada conteúdo já foi publicado</h2>
         <p class="sub" id="resumo-canais">Site: <b>${nSite}</b> publicado(s) e <b>${pendentes.length}</b> faltando · Instagram: <b>${nRede("instagram")}</b> · Facebook: <b>${nRede("facebook")}</b>.</p>
-        ${ehAdmin() ? `<div class="acoes"><button class="btn peq sec" data-acao="redes-testar">Testar conexão com o Instagram e o Facebook</button></div><div id="redes-resultado"></div>` : ""}
-        ${aprovados.length ? `<div class="rolagem"><table id="tab-canais"><tr><th>Conteúdo aprovado</th><th>Site</th><th>Instagram</th><th>Facebook</th></tr>${aprovados.map(c => `
-          <tr><td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span></td>
+        ${adm ? `<div class="acoes"><button class="btn peq sec" data-acao="redes-testar">Testar conexão com o Instagram e o Facebook</button></div><div id="redes-resultado"></div>` : ""}
+        ${adm && lista.length ? `<div class="acoes excluir-grupo" id="excluir-grupo"><b>Excluir publicações selecionadas:</b>
+            <label><input type="checkbox" id="exc-site" checked> site</label><label><input type="checkbox" id="exc-instagram" checked> Instagram</label>
+            <label><input type="checkbox" id="exc-facebook" checked> Facebook</label>
+            <button class="btn peq perigo" type="button" data-acao="excluir-selecionadas">Excluir as selecionadas</button></div>
+          <p class="sub">Marque os conteúdos na primeira coluna. No Instagram e no Facebook a exclusão é na hora; no site, o robô exclui em até 15 minutos.</p>` : ""}
+        ${lista.length ? `<div class="rolagem"><table id="tab-canais"><tr>${adm ? `<th><input type="checkbox" id="marcar-todas" aria-label="Selecionar todos"></th>` : ""}<th>Conteúdo</th><th>Site</th><th>Instagram</th><th>Facebook</th></tr>${lista.map(c => `
+          <tr data-conteudo="${c.id}">${adm ? `<td><input type="checkbox" class="sel-pub" value="${c.id}" aria-label="Selecionar ${h(c.titulo)}"></td>` : ""}
+            <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">${c.status === "aprovado" ? "aprovado em " + dataHora(c.aprovado_em) : "publicado; o texto agora está: " + h((ROTULOS.conteudo[c.status] || c.status).toLowerCase())}</span></td>
             <td data-canal="site">${noSite(c)}</td><td data-canal="instagram">${naRede(c, "instagram")}</td><td data-canal="facebook">${naRede(c, "facebook")}</td></tr>`).join("")}</table></div>`
-          : `<p class="sub">Nenhum conteúdo aprovado para publicar.</p>`}</div>
+          : `<p class="sub">Nenhum conteúdo aprovado para publicar.</p>`}
+        ${excluidas.length ? `<details class="excluidas"><summary>Excluídas do site (${excluidas.length})</summary><ul>${excluidas.map(x =>
+          `<li>${data(x.excluido_em)} — <b>${h(x.titulo)}</b> <span class="sub">(${h(x.url)})</span></li>`).join("")}</ul></details>` : ""}</div>
       <div class="painel"><h2>Aprovados ainda não publicados no site</h2>
         ${pendentes.length ? `<div class="rolagem"><table id="tab-pendentes"><tr><th>Conteúdo</th><th>Aprovado em</th><th></th></tr>${pendentes.map(c => `
           <tr><td><b>${h(c.titulo)}</b><br><span class="sub">${h(ROTULOS.formato[c.formato] || "")}</span></td><td>${dataHora(c.aprovado_em)}</td>
@@ -948,7 +979,7 @@ const TELAS = {
                 : r.texto_mudou ? `<div class="aviso alerta">O conteúdo foi alterado depois deste registro${r.conteudo_status === "aprovado" ? "" : " e ainda não está aprovado de novo"}. O que está no site pode estar diferente do texto atual.</div>` : ""}</td>
             <td><div class="acoes" style="margin:0"><button class="btn peq sec" data-acao="abrir-assunto" data-id="${r.assunto_id}">Abrir assunto</button>
               ${podeEditar() ? `<button class="btn peq sec" data-acao="corrigir-site" data-id="${r.id}" data-url="${h(r.url)}">Corrigir link</button>` : ""}
-              ${ehAdmin() ? `<button class="btn peq perigo" data-acao="excluir-site" data-id="${r.id}">Excluir registro</button>` : ""}</div></td></tr>`).join("")}</table></div>`
+              ${ehAdmin() ? `<button class="btn peq sec" data-acao="excluir-site" data-id="${r.id}" title="Apaga só o registro no Radar; a notícia continua no site">Excluir só o registro</button>` : ""}</div></td></tr>`).join("")}</table></div>`
           : `<p class="sub">Nenhuma publicação registrada ainda.</p>`}
         ${botaoMais("site", regs.length, limiteDe("site", 300), "registros")}</div>`;
   },
@@ -1306,8 +1337,9 @@ async function telaAssunto(id){
       nota:noSite ? "publicado" : foraDoSite ? "não vai ao site" : aguardando.length ? "aguardando o robô" : jaRegistrado || baseCaiu ? "rever" : "falta",
       feitoTxt:noSite ? "Publicado no site e registrado." : "O conteúdo aprovado não vai ao site: fica só para o Informativo Mensal."},
     ...["instagram", "facebook"].map(canal => { const r = redeDe(canal), nome = NOME_REDE[canal];
+      const junto = redes.some(x => x.canal === canal && x.situacao === "aguardando_site" && vaoAoSite.some(c => c.id === x.conteudo_id));   // v0.17.0
       return {chave:canal, nome, titulo:"Autorização do " + nome, etapa:"publicar", feito:!!r && ["publicado","dispensado"].includes(r.situacao),
-        nota:!cRede ? "depois do site" : !r ? "falta" : {autorizado:"autorizado", enviando:"publicando", erro:"não concluída", publicado:"publicado", dispensado:"não vai"}[r.situacao] || "falta",
+        nota:!cRede ? (junto ? "vai junto com o site" : "depois do site") : situacaoRede(r),
         feitoTxt:r?.situacao === "publicado" ? `Publicado em ${dataHora(r.publicado_em)}${r.url ? " — " + linkFonte(r.url, "ver no " + nome + " ↗") : "."}` : "Não publicado neste canal.",
         desfazer:r?.situacao === "dispensado" && ehAdmin() ? `<button class="link" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Desfazer</button>` : ""}; })];
   const ir = (alvo, rotulo, classe = "") => `<button class="btn ${classe}" data-acao="ir" data-alvo="${alvo}">${rotulo}</button>`;
@@ -1347,7 +1379,8 @@ async function telaAssunto(id){
     ir("#sec-texto", "Selecionar trecho no texto") + ir("#sec-fundamentacao", "Ir para a fundamentação", "sec") + semFonte, 0];
   else if(!pronto) prox = ["Para o site: confirmar o assunto", "Há trecho conferido em fonte oficial. Se você conferiu a informação na fonte, marque o assunto como confirmado oficialmente.",
     `<button class="btn verde" data-acao="confirmar-oficial">✓ Marcar como confirmado oficialmente</button>` + semFonte, 0];
-  else if(aguardando.length === faltamRegistrar.length) prox = ["Aguardando o robô publicar", "A publicação foi autorizada. O robô cadastra a notícia no site em até 15 minutos e registra o link aqui sozinho.", ir("#sec-publicar", "Ver a publicação"), 4];
+  else if(aguardando.length === faltamRegistrar.length) prox = ["Aguardando o robô publicar", "A publicação foi autorizada. O robô cadastra a notícia no site em até 15 minutos e registra o link aqui sozinho." +
+    (redes.some(x => x.situacao === "aguardando_site") ? " O Instagram e o Facebook autorizados junto saem logo depois que a notícia entrar no site." : ""), ir("#sec-publicar", "Ver a publicação"), 4];
   else if(semRegistro) prox = ["Registrar o link da notícia publicada", "O robô publicou a notícia no site, mas o registro em “Publicações no site” não entrou" +
     (envioDe(semRegistro).erro ? ": " + h(envioDe(semRegistro).erro) : ".") + " Confira e registre o link à mão (não autorize de novo, para não duplicar).", ir("#sec-conteudos", "Ir para registrar"), 4];
   else if(falhou) prox = ["Publicação não concluída", h(envioDe(falhou).erro || "O robô não conseguiu publicar."), ir("#sec-publicar", "Ir para publicar"), 4];
@@ -1493,7 +1526,7 @@ async function telaAssunto(id){
           ${revisando.length ? `<br>Há ${revisando.length} conteúdo(s) em revisão esperando o “Aprovar”.` : ""}
           <div class="acoes" style="margin:8px 0 0"><button class="btn peq" data-acao="ir-conteudo" data-id="${(revisando[0] || cont.find(c => !ehAnalise(c)) || cont[0] || {}).id || ""}">Ir para o conteúdo${revisando.length ? " em revisão" : ""}</button></div></div>`
         : !vaoAoSite.length ? `<p class="sub">O conteúdo aprovado está marcado como “não vai ao site”: fica só para o Informativo Mensal.</p>`
-        : (pronto ? avisoLiberado : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id), pronto, a.categoria, redes.filter(r => r.conteudo_id === c.id))).join("")}
+        : (pronto ? avisoLiberado : avisoRegistro) + vaoAoSite.map(c => blocoPublicar(c, envioDe(c), pubs.filter(p => p.conteudo_id === c.id), pronto, a.categoria, redes.filter(r => r.conteudo_id === c.id), imgs[c.imagem_id])).join("")}
     </div>
     </section>
     </div>
@@ -1525,7 +1558,8 @@ function fonteDoEndereco(url){
 
 /* v0.13.0: Instagram e Facebook */
 const NOME_REDE = {instagram:"Instagram", facebook:"Facebook"};
-const situacaoRede = r => !r ? "falta" : {autorizado:"autorizado", enviando:"publicando", erro:"não concluída", publicado:"publicado", dispensado:"não vai"}[r.situacao] || "falta";
+const situacaoRede = r => !r ? "falta" : {aguardando_site:"vai junto com o site", autorizado:"autorizado", enviando:"publicando", erro:"não concluída",
+  publicado:"publicado", dispensado:"não vai", excluido:"excluída"}[r.situacao] || "falta";
 /* O próximo passo da trilha num canal: monta a imagem quadrada e a legenda para o administrador conferir e autorizar. */
 function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
   const nome = NOME_REDE[canal], adm = ehAdmin(), passo = canal === "instagram" ? 5 : 6;
@@ -1583,10 +1617,12 @@ async function desenharQuadrado(capa, titulo, rotulo){
   return cv.toDataURL("image/jpeg", 0.88);
 }
 async function montarImagemRede(){
-  const img = $("#rede-imagem[data-pendente]"), d = img && (E.redeCapa || {})[img.dataset.conteudo]; if(!img || !d) return;
-  try{ const dados = await desenharQuadrado(d.capa, d.titulo, d.rotulo);
-    if(img.isConnected){ img.src = dados; img.removeAttribute("data-pendente"); img.alt = img.alt.replace(" (montando…)", ""); } }
-  catch(e){ if(img.isConnected) img.insertAdjacentHTML("afterend", `<div class="aviso erro">${h(e.message || "Não foi possível montar a imagem.")}</div>`); }
+  for(const img of document.querySelectorAll("img.rede-imagem[data-pendente]")){
+    const d = (E.redeCapa || {})[img.dataset.conteudo]; if(!d) continue;
+    try{ const dados = await desenharQuadrado(d.capa, d.titulo, d.rotulo);
+      if(img.isConnected){ img.src = dados; img.removeAttribute("data-pendente"); img.alt = img.alt.replace(" (montando…)", ""); } }
+    catch(e){ if(img.isConnected) img.insertAdjacentHTML("afterend", `<div class="aviso erro">${h(e.message || "Não foi possível montar a imagem.")}</div>`); }
+  }
 }
 /* Chama a função radar-redes para publicar a autorização (logo depois de autorizar, ou de novo depois de um erro). */
 async function publicarRede(envio, canal){
@@ -1602,8 +1638,30 @@ async function publicarRede(envio, canal){
   if(r?.situacao === "publicado") recado(r.mensagem ? `Publicado no ${nome}. ${r.mensagem}` : `Publicado no ${nome}.`, r.mensagem ? true : undefined);
   else recado(r?.mensagem || `A publicação no ${nome} não foi concluída.`, true);
 }
+/* v0.17.0: exclusão de uma publicação. Site: grava o pedido (o robô exclui). Instagram/Facebook: a função radar-redes apaga
+   na hora; se a Meta não deixar, oferece registrar “Já apaguei” (o administrador apagou direto na rede). Nunca lança erro:
+   devolve {ok, msg} para a exclusão em grupo seguir com as outras. */
+async function excluirPublicacao(conteudo, canal, envio, emGrupo = false){
+  const titulo = $(`#tab-canais tr[data-conteudo="${conteudo}"] .titulo-link`)?.textContent || `conteúdo ${conteudo}`;
+  try{
+    if(canal === "site"){
+      await rpc("radar_pedir_exclusao_site", {p_conteudo:conteudo});
+      return {ok:true, msg:"Pedido registrado: o robô exclui a notícia do site em até 15 minutos."};
+    }
+    const r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"excluir", envio}, tempo:60000});
+    return {ok:r?.situacao === "excluido", msg:`Excluída do ${NOME_REDE[canal]}.`};
+  }catch(e){
+    const msg = e.status === 404 && canal !== "site" ? "A função radar-redes desta versão ainda não foi instalada no Supabase." : (e.message || "Erro inesperado.");
+    if(canal !== "site" && e.status !== 404 && !emGrupo &&
+       confirm(`Não deu para excluir do ${NOME_REDE[canal]} pelo Radar:\n\n${msg}\n\nSe você já apagou este post direto no ${NOME_REDE[canal]}, clique em OK para registrar como excluído (“Já apaguei”).`)){
+      try{ await rpc("radar_rede_marcar_excluida", {p_envio:envio, p_como:"manual"}); return {ok:true, msg:`Registrado: excluída do ${NOME_REDE[canal]} à mão.`}; }
+      catch(x){ return {ok:false, msg:x.message}; }
+    }
+    return {ok:false, msg:`${titulo} (${canal === "site" ? "site" : NOME_REDE[canal]}): ${msg}`};
+  }
+}
 /* O passo 4 de um conteúdo aprovado: prévia, autorização (só o administrador) e o andamento do robô. */
-function blocoPublicar(c, envio, pubs, pronto, categoria, redes = []){
+function blocoPublicar(c, envio, pubs, pronto, categoria, redes = [], capa = null){
   const sugerida = CATEGORIA_SITE[categoria] || "";
   const atual = pubs.find(p => !p.texto_mudou && !p.versao_anterior);
   let corpo;
@@ -1619,13 +1677,32 @@ function blocoPublicar(c, envio, pubs, pronto, categoria, redes = []){
     corpo = ultimo + (!pronto ? "" : ehAdmin() ? `<div class="acoes autorizar-site"><label for="site-cat-${c.id}" style="margin:0">Categoria no site</label>
         <select id="site-cat-${c.id}">${opcoes(Object.fromEntries(CATEGORIAS_DO_SITE.map(x => [x, x])), sugerida, "— escolher —")}</select>
         <button class="btn verde" type="button" data-acao="autorizar-site" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar publicação no site</button></div>
-        <p class="sub">Ao autorizar, o robô cadastra a notícia no site em até 15 minutos (o site publica na hora) e registra o link aqui. Dá para cancelar enquanto o robô não começou.</p>`
+        <p class="sub">Ao autorizar, o robô cadastra a notícia no site em até 15 minutos (o site publica na hora) e registra o link aqui. Dá para cancelar enquanto o robô não começou.</p>
+        ${blocoTodos(c, categoria, capa, redes)}`
       : `<p class="sub">Só o administrador autoriza a publicação no site.</p>`);
   }
   return `<div class="publicar-item" data-conteudo="${c.id}"><h3>${h(c.titulo)}</h3>
     <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>${corpo}
     <p class="sub canais" style="margin:8px 0 0"><b>Canais:</b> Site — ${atual ? "publicado" : envio && ["autorizado","enviando"].includes(envio.situacao) ? "aguardando o robô" : pubs.length || envio?.situacao === "publicado" ? "já está no site" : "falta"} ·
       ${["instagram", "facebook"].map(k => NOME_REDE[k] + " — " + situacaoRede(redes.find(r => r.canal === k && r.situacao !== "cancelado"))).join(" · ")}</p></div>`;
+}
+/* v0.17.0: "Publicar em todos de uma vez": a categoria do site (a de cima), a imagem quadrada e as legendas do Instagram e do
+   Facebook, conferidas antes; o robô publica no site e, logo que a notícia entra no site, as redes saem sozinhas. */
+function blocoTodos(c, categoria, capa, redes){
+  const livre = k => !redes.some(r => r.canal === k && ["aguardando_site","autorizado","enviando","erro","publicado","dispensado"].includes(r.situacao));
+  const canais = ["instagram", "facebook"].filter(livre);
+  if(!canais.length) return "";
+  (E.redeCapa ||= {})[c.id] = {capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};
+  const legenda = k => (E.legendas || {})[c.id + ":todos-" + k] ?? legendaRede(c, k, "{LINK DO SITE}", categoria);
+  return `<details class="todos painel" id="todos-${c.id}"${E.todosAberto === c.id ? " open" : ""}><summary><b>Publicar em todos de uma vez</b> — site, ${canais.map(k => NOME_REDE[k]).join(" e ")}</summary>
+    <p class="sub">Confira a categoria acima, a imagem e as legendas. Ao autorizar, o robô publica no site em até 15 minutos e, logo que a notícia entrar no site,
+      publica ${canais.length > 1 ? "no Instagram e no Facebook" : "no " + NOME_REDE[canais[0]]} (no Facebook, o link da notícia entra no lugar de {LINK DO SITE}).
+      Se a publicação no site não sair, ou o texto mudar, ${canais.length > 1 ? "as redes caem" : "a rede cai"} junto.</p>
+    <div class="rede-montagem"><img id="todos-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">
+      <div class="rede-legenda">${canais.map(k => `<label><input type="checkbox" class="todos-canal" data-canal="${k}" checked> ${NOME_REDE[k]}</label>
+        <textarea id="todos-legenda-${k}-${c.id}" maxlength="2000" data-chave="${c.id}:todos-${k}" aria-label="Legenda do ${NOME_REDE[k]}">${h(legenda(k))}</textarea>`).join("")}
+        <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.000 caracteres em cada legenda.</span></div></div>
+    <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-todos" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar em todos</button></div></details>`;
 }
 /* Prévia: monta a notícia como ela fica em artecon.cnt.br/news, com o que está digitado agora na tela. */
 function abrirPrevia(id){
@@ -2184,6 +2261,66 @@ const ACOES = {
     await rpc("radar_cancelar_site", {p_envio:Number(el.dataset.envio)});
     await desenhar(); recado("Autorização cancelada. Nada foi enviado ao site.");
   },
+  /* v0.17.0: "Publicar em todos de uma vez" (site, Instagram e Facebook), depois de conferir a categoria, a imagem e as legendas */
+  async "autorizar-todos"(el){
+    if(telaSuja()){ recado(avisoSujo(), true); return; }
+    const id = el.dataset.id, cat = $(`#site-cat-${id}`)?.value || "", caixa = $(`#todos-${id}`), img = $(`#todos-imagem-${id}`);
+    if(!cat){ recado("Escolha a categoria do site antes de autorizar.", true); $(`#site-cat-${id}`)?.focus(); return; }
+    if(!img || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem das redes ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
+    const legendas = {};
+    for(const x of caixa?.querySelectorAll(".todos-canal:checked") || []){
+      const k = x.dataset.canal, l = ($(`#todos-legenda-${k}-${id}`)?.value || "").trim();
+      if(l.length < 10){ recado(`Escreva a legenda do ${NOME_REDE[k]} (pelo menos 10 caracteres) ou desmarque o ${NOME_REDE[k]}.`, true); $(`#todos-legenda-${k}-${id}`)?.focus(); return; }
+      legendas[k] = l;
+    }
+    if(!Object.keys(legendas).length){ recado("Marque o Instagram, o Facebook ou os dois. Para publicar só no site, use “Autorizar publicação no site”.", true); return; }
+    const marcas = [...Object.values(legendas).flatMap(l => marcasVerificar(l)), ...marcasDoConteudo(id)];
+    if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
+    const redesTxt = Object.keys(legendas).map(k => NOME_REDE[k]).join(" e ");
+    if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em até 15 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.`)) return;
+    await rpc("radar_autorizar_todos", {p_conteudo:Number(id), p_categoria:cat, p_lido:el.dataset.lido, p_imagem:img.getAttribute("src"),
+      p_legenda_instagram:legendas.instagram || null, p_legenda_facebook:legendas.facebook || null});
+    if(E.legendas) for(const k of ["instagram", "facebook"]) delete E.legendas[id + ":todos-" + k];
+    E.todosAberto = null;
+    await desenhar(); recado(`Autorizado em todos. O robô publica no site em até 15 minutos; o ${redesTxt} sai logo depois que a notícia entrar no site.`);
+  },
+  /* v0.17.0: excluir a publicação de um canal (Publicações) */
+  async "excluir-pub"(el){
+    const canal = el.dataset.rede, titulo = el.closest("tr")?.querySelector(".titulo-link")?.textContent || "este conteúdo";
+    const onde = canal === "site" ? "do site da Artecon" : "do " + NOME_REDE[canal];
+    if(!confirm(`Excluir “${titulo}” ${onde}?\n\n${canal === "site" ? "O robô entra no painel do site e exclui a notícia em até 15 minutos." : "A publicação é apagada agora, pela Meta."}`)) return;
+    const r = await excluirPublicacao(Number(el.dataset.id), canal, Number(el.dataset.envio || 0));
+    await desenhar(); recado(r.msg, !r.ok);
+  },
+  async "excluir-selecionadas"(){
+    const ids = [...document.querySelectorAll("#tab-canais .sel-pub:checked")].map(x => Number(x.value));
+    const canais = ["site", "instagram", "facebook"].filter(k => $(`#exc-${k}`)?.checked);
+    if(!ids.length){ recado("Marque na primeira coluna os conteúdos cujas publicações devem ser excluídas.", true); return; }
+    if(!canais.length){ recado("Escolha onde excluir: site, Instagram e/ou Facebook.", true); return; }
+    // só o que está publicado em cada canal escolhido (o botão “Excluir” da célula diz o que existe)
+    const tarefas = [];
+    for(const id of ids) for(const k of canais){
+      const b = $(`#tab-canais tr[data-conteudo="${id}"] td[data-canal="${k}"] [data-acao="excluir-pub"]`);
+      if(b) tarefas.push({id, canal:k, envio:Number(b.dataset.envio || 0)});
+    }
+    if(!tarefas.length){ recado("Nos conteúdos marcados não há publicação nesses canais para excluir.", true); return; }
+    const conta = k => tarefas.filter(x => x.canal === k).length;
+    if(!confirm(`Excluir ${tarefas.length} publicação(ões)?\n\nSite: ${conta("site")} (o robô exclui em até 15 minutos)\nInstagram: ${conta("instagram")}\nFacebook: ${conta("facebook")}\n\nNo Instagram e no Facebook a exclusão é na hora.`)) return;
+    const falhas = [];
+    let ok = 0;
+    for(const [i, x] of tarefas.entries()){
+      recado(`Excluindo ${i + 1} de ${tarefas.length}…`, "aviso");
+      const r = await excluirPublicacao(x.id, x.canal, x.envio, true);
+      if(r.ok) ok++; else falhas.push(r.msg);
+    }
+    await desenhar();
+    recado(`${ok} de ${tarefas.length} exclusão(ões) feita(s) ou pedida(s).` + (falhas.length ? " Não deu: " + falhas.join(" · ") : ""), falhas.length > 0);
+  },
+  async "cancelar-exclusao-site"(el){
+    if(!confirm("Cancelar o pedido de exclusão? A notícia continua no site.")) return;
+    await rpc("radar_cancelar_exclusao_site", {p_exclusao:Number(el.dataset.id)});
+    await desenhar(); recado("Pedido de exclusão cancelado. A notícia continua no site.");
+  },
   "usar-trecho"(el){
     const caixa = $(`.texto-oficial[data-captura="${el.dataset.captura}"]`), sel = window.getSelection();
     const trecho = sel && sel.rangeCount && caixa.contains(sel.anchorNode) && caixa.contains(sel.focusNode) ? sel.toString().trim() : "";
@@ -2737,7 +2874,12 @@ document.addEventListener("click", ev => {
   if(acao){ ev.preventDefault(); executar(acao, NAVEGACAO.has(el.dataset.acao), el); }
 });
 document.addEventListener("click", ev => { if(ev.target.id === "previa-site") fecharPrevia(); });
-document.addEventListener("toggle", ev => { if(ev.target.id === "mais-detalhes") E.maisDetalhes = ev.target.open; }, true);   // continua aberto depois de salvar
+document.addEventListener("toggle", ev => { if(ev.target.id === "mais-detalhes") E.maisDetalhes = ev.target.open;   // continua aberto depois de salvar
+  if(ev.target.classList?.contains("todos")) E.todosAberto = ev.target.open ? Number(ev.target.id.slice(6)) : null; }, true);
+// v0.17.0: Publicações — marcar todos os conteúdos para excluir em grupo
+document.addEventListener("change", ev => {
+  if(ev.target.id === "marcar-todas") document.querySelectorAll("#tab-canais .sel-pub").forEach(x => { x.checked = ev.target.checked; });
+});
 document.addEventListener("keydown", ev => {
   if(ev.key === "Escape" && $("#previa-site")){ fecharPrevia(); return; }
   if((ev.key === "Enter" || ev.key === " ") && ev.target.matches?.(".trilha li[data-acao]")){ ev.preventDefault(); ev.target.click(); return; }
@@ -2750,7 +2892,7 @@ document.addEventListener("submit", ev => {
   executar(FORMS[f.dataset.form], false, f);
 });
 document.addEventListener("input", ev => {
-  if(ev.target.id === "rede-legenda") (E.legendas ||= {})[ev.target.dataset.chave] = ev.target.value;   // a legenda editada sobrevive ao redesenho
+  if(ev.target.matches?.("#rede-legenda, textarea[data-chave]")) (E.legendas ||= {})[ev.target.dataset.chave] = ev.target.value;   // a legenda editada sobrevive ao redesenho
   const fc = ev.target.closest?.('form[data-form="conteudo"]');
   if(fc && (ev.target.name === "titulo" || ev.target.name === "corpo") && !ev.target.disabled) guardarRascunho(fc);
   if(ev.target.dataset.filtro !== "fila") return;

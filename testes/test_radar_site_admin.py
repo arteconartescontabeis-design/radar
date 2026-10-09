@@ -69,3 +69,43 @@ def test_sem_segredos_nao_tenta(monkeypatch, capsys):
     monkeypatch.delenv("ARTECON_SITE_USUARIO", raising=False)
     monkeypatch.delenv("ARTECON_SITE_SENHA", raising=False)
     assert sa.main() == 1 and "ARTECON_SITE_USUARIO" in capsys.readouterr().out
+
+
+# v0.17.0: reconhecimento da lista de notícias (para a exclusão pedida pelo administrador) — só lê
+LISTA_TABELA = """<meta name="csrf-token" content="abcdefghijklmnopqrstuvwxyz0123456789ABCD"><a href="/admin/news/register">Nova notícia</a>
+<table><tr><th>Título</th><th>Ações</th></tr>
+<tr><td>Prazo do IRPF</td><td><a href="/admin/news/edit/12">Editar</a>
+<form method="post" action="/admin/news/12" onsubmit="return confirm('Excluir?')"><input type="hidden" name="_token" value="tokenSecretoDoFormularioXXXXXXXXXXXXXXXX">
+<input type="hidden" name="_method" value="DELETE"><button>Excluir</button></form></td></tr></table>
+<a href="/admin/news?page=2">2</a><script src="/js/admin.js"></script>"""
+
+
+def test_reconhece_a_lista_sem_abrir_excluir_nem_mostrar_token():
+    painel = PAINEL + '<a href="/admin/news/delete/9">Excluir</a>'
+    s = Sessao({sa.LOGIN: LOGIN_OK, sa.BASE + "/admin/news": LISTA_TABELA}, painel)
+    url, html = sa.achar_lista(s, sa.entrar(s, "u", "segredo"), sa.BASE + "/admin")
+    texto = sa.relatorio_lista(url, html)
+    assert url.endswith("/admin/news") and len(s.posts) == 1                          # só o login foi enviado
+    assert not any(sa.APAGA.search(g) for g in s.gets)                                # nunca abre "excluir" nem "sair"
+    assert "formulário POST → /admin/news/12 ocultos=['_token', '_method=DELETE']" in texto
+    assert "tokenSecreto" not in texto and "abcdefghij" not in texto                  # valores ocultos e códigos longos não aparecem
+    assert "/admin/news?page=2" in texto and "/js/admin.js" in texto and "Prazo do IRPF" in texto
+    s.paginas[sa.BASE + "/js/admin.js"] = "$('#tab').DataTable({ajax: '/admin/news/list'}); $(document).on('click', '.del', function(){ swal('Excluir?') })"
+    scripts = sa.scripts_do_painel(s, url, html)
+    assert "/admin/news/list" in scripts and "swal" in scripts and len(s.posts) == 1 and not any(sa.APAGA.search(g) for g in s.gets)
+    # os dados da lista (GET no data-url da tabela, como o painel faz): a notícia e as ações dela, sem abrir nenhuma
+    tabela = '<table class="table datatable" data-url="https://artecon.cnt.br/admin/news/list"></table>'
+    s.paginas[sa.BASE + "/admin/news/list"] = ('{"data": [["Prazo do IRPF", "<img src=x>", "Federal", "01/10/2026", "Robo", '
+        '"<a href=\\"https://artecon.cnt.br/admin/news/edit/7\\">Editar</a> <a href=\\"https://artecon.cnt.br/admin/news/delete/7\\" '
+        'data-confirm=\\"Excluir?\\">Excluir</a>"]], "recordsTotal": 1}')
+    s.get = lambda u, **k: (s.gets.append(u), type("R", (), {"url": u, "text": s.paginas.get(u, ""), "status_code": 200,
+                            "headers": {"content-type": "application/json"}, "json": lambda self: __import__("json").loads(s.paginas[u])})())[1]
+    dados = sa.dados_da_lista(s, sa.BASE + "/admin/news", tabela)
+    assert "1 notícia(s)" in dados and "Prazo do IRPF" in dados and "/admin/news/delete/7 data-confirm=Excluir?" in dados
+    assert not any(sa.APAGA.search(g) for g in s.gets)
+
+
+def test_lista_nao_encontrada_para_com_aviso():
+    s = Sessao({sa.LOGIN: LOGIN_OK, sa.BASE + "/admin/news": "<p>vazio</p>"}, PAINEL)
+    with pytest.raises(sa.Parada, match="não achei a lista"):
+        sa.achar_lista(s, sa.entrar(s, "u", "s"), sa.BASE + "/admin")

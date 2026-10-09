@@ -90,6 +90,10 @@ class Ponte(BaseHTTPRequestHandler):
             return self._responder(400, {"error": {"code": 190, "message": "Invalid OAuth access token"}})
         if ESTADO["erro_meta"]:
             return self._responder(400, {"error": {"code": 10, "message": ESTADO["erro_meta"] + " " + TOKEN + " " + TOKEN_PAGINA}})
+        if self.command == "DELETE":                                       # v0.17.0: exclusão do post
+            if caminho in ("midia-1", "pagina-1_post-9"):
+                return self._responder(200, {"success": True})
+            return self._responder(400, {"error": {"code": 100, "message": "Unsupported delete request."}})
         if self.command == "GET":
             if caminho == "cont-1":
                 return self._responder(200, {"status_code": ESTADO["status_ig"].pop(0) if len(ESTADO["status_ig"]) > 1 else ESTADO["status_ig"][0]})
@@ -123,6 +127,11 @@ class Ponte(BaseHTTPRequestHandler):
             if ESTADO["bucket_get_falha"]:
                 return self._responder(400, {"statusCode": "404", "error": "Bucket not found", "message": "Bucket not found"})
             return self._responder(200 if nome in ESTADO["buckets"] else 404, {"name": nome} if nome in ESTADO["buckets"] else {"error": "Bucket not found"})
+        if self.path.startswith("/meta/"):
+            return self._meta({k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()})
+        self._responder(404, {})
+
+    def do_DELETE(self):
         if self.path.startswith("/meta/"):
             return self._meta({k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()})
         self._responder(404, {})
@@ -372,3 +381,75 @@ def test_sem_o_ig_user_id_o_diagnostico_mostra_o_numero_a_gravar(redes):
     conta = next(i for i in r["itens"] if i["item"] == "Conta do Instagram")
     assert conta["ok"] is False and "META_IG_USER_ID = ig-1" in conta["detalhe"] and "@arteconcontabeis" in conta["detalhe"]
     assert TOKEN_IG not in json.dumps(r)
+
+
+
+# ------------------------------------------------------------------- v0.17.0: excluir e o robô do "Publicar em todos"
+def test_excluir_apaga_na_meta_e_registra(redes):
+    db, c1 = redes
+    ig, fb = autorizar(db, c1, "instagram"), None
+    assert pedir({"acao": "publicar", "envio": ig})[0] == 200
+    fb = autorizar(db, c1, "facebook")
+    assert pedir({"acao": "publicar", "envio": fb})[0] == 200
+    assert pedir({"acao": "excluir", "envio": ig}, uid=EDITOR)[0] == 403           # só o administrador
+    assert pedir({"acao": "excluir", "envio": ig}) == (200, {"situacao": "excluido", "canal": "instagram"})
+    assert pedir({"acao": "excluir", "envio": fb}) == (200, {"situacao": "excluido", "canal": "facebook"})
+    apagados = [(m[1], m[2]["access_token"]) for m in ESTADO["meta"] if m[0] == "DELETE"]
+    assert apagados == [("midia-1", TOKEN_PAGINA), ("pagina-1_post-9", TOKEN_PAGINA)]
+    linhas = db.execute("select situacao, excluido_como, excluido_por::text from radar_redes_envios where id in (%s, %s) order by id", (ig, fb)).fetchall()
+    assert linhas == [("excluido", "api", ADMIN)] * 2
+    st, r = pedir({"acao": "excluir", "envio": ig})
+    assert st == 400 and "não está publicada" in r["message"]
+
+
+def test_excluir_que_a_meta_recusa_fica_publicado_e_explica(redes):
+    db, c1 = redes
+    ig = autorizar(db, c1, "instagram")
+    assert pedir({"acao": "publicar", "envio": ig})[0] == 200
+    ESTADO["erro_meta"] = "Unsupported delete request."
+    st, r = pedir({"acao": "excluir", "envio": ig})
+    assert st == 502 and "Já apaguei" in r["message"] and TOKEN not in r["message"] and TOKEN_PAGINA not in r["message"]
+    assert db.execute("select situacao from radar_redes_envios where id = %s", (ig,)).fetchone()[0] == "publicado"
+
+
+def test_robo_so_publica_o_que_foi_autorizado_junto_com_o_site(redes):
+    db, c1 = redes
+    robo = {"Authorization": "Bearer " + jwt("service_role"), "apikey": jwt("service_role")}
+    avulsa = autorizar(db, c1, "instagram")                                         # autorização comum: só o administrador manda
+    st, r = pedir({"acao": "publicar", "envio": avulsa}, cab=robo)
+    assert st == 403 and "junto com o site" in r["message"]
+    assert db.execute("select situacao from radar_redes_envios where id = %s", (avulsa,)).fetchone()[0] == "autorizado"
+    # "Publicar em todos" de outro conteúdo: depois que a notícia entra no site, o robô manda publicar
+    a2, c2 = cenario_publicavel(db, slug_fonte="rfb-noticias")
+    aprovar(c2)
+    lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c2,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        r = c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, null, %s)",
+                      (c2, lido, JPEG, "Leia a matéria completa: {LINK DO SITE}")).fetchone()[0]
+    registrar_site(c2, url="https://artecon.cnt.br/news/view/todos")
+    st, res = pedir({"acao": "publicar", "envio": r["facebook"]}, cab=robo)
+    assert (st, res["situacao"]) == (200, "publicado")
+    publicado = [m for m in ESTADO["meta"] if m[1] == "pagina-1/photos"][-1][2]
+    assert publicado["message"] == "Leia a matéria completa: https://artecon.cnt.br/news/view/todos"
+    for corpo in ({"acao": "excluir", "envio": r["facebook"]}, {"acao": "diagnostico"}):      # o robô só publica
+        assert pedir(corpo, cab=robo)[0] == 403
+    assert pedir({"acao": "publicar", "envio": r["facebook"]}, cab={"Authorization": "Bearer " + jwt("anon")})[0] in (401, 403)
+
+
+
+def test_robo_com_a_chave_antiga_e_aceito_quando_a_funcao_tem_a_chave_nova(redes):
+    """Como na Artecon: a função tem a chave interna nova (sb_secret) e o robô do GitHub usa a antiga (JWT service_role).
+    Quem confere a chave do robô é o banco; uma chave falsificada com o papel service_role é recusada."""
+    db, c1 = redes
+    a2, c2 = cenario_publicavel(db, slug_fonte="rfb-noticias")
+    aprovar(c2)
+    lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c2,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        r = c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, null, %s)", (c2, lido, JPEG, "Leia: {LINK DO SITE}")).fetchone()[0]
+    registrar_site(c2, url="https://artecon.cnt.br/news/view/chave")
+    falsa = jwt("service_role", segredo="outro-segredo-qualquer-com-32-caracteres")
+    st, res = pedir({"acao": "publicar", "envio": r["facebook"]}, porta=PORTA_CHAVE_NOVA, cab={"Authorization": "Bearer " + falsa, "apikey": falsa})
+    assert st in (401, 403) and db.execute("select situacao from radar_redes_envios where id = %s", (r["facebook"],)).fetchone()[0] == "autorizado"
+    robo = {"Authorization": "Bearer " + jwt("service_role"), "apikey": jwt("service_role")}
+    st, res = pedir({"acao": "publicar", "envio": r["facebook"]}, porta=PORTA_CHAVE_NOVA, cab=robo)
+    assert (st, res["situacao"]) == (200, "publicado")

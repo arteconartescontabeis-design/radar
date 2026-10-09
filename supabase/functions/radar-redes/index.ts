@@ -1,19 +1,24 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.14.4)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.17.0)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha). Nada sai sem essa autorização: a função só envia
 // autorizações registradas por radar_autorizar_rede, uma vez cada (radar_rede_iniciar marca "enviando").
 //
-// Quem pode chamar: só o administrador logado (o botão "Autorizar e publicar" da tela chama logo depois de autorizar).
+// Quem pode chamar: o administrador logado (o botão "Autorizar e publicar" da tela chama logo depois de autorizar) e,
+// v0.17.0, o robô do site com a chave interna — só para as autorizações do "Publicar em todos" (feitas pelo administrador
+// junto com o site), logo depois que a notícia entra no site.
 //
 // Ações:
 //   publicar     { envio }  → envia a imagem ao armazenamento público, publica e registra o link do post
+//   excluir      { envio }  → v0.17.0: apaga a publicação na rede (pedido do administrador) e registra a exclusão
 //   diagnostico             → confere os segredos, a Página do Facebook, a conta do Instagram e o armazenamento
 //
 // Como publica:
 //   Instagram: POST /{ig-user-id}/media (image_url + caption) → espera o contêiner ficar pronto → POST /{ig-user-id}/media_publish
 //   Facebook:  POST /{page-id}/photos (url + message)
+// Como exclui (v0.17.0): DELETE /{id do post} — no Facebook com o token da Página (pages_manage_posts); no Instagram com o
+// token do Instagram. Se a Meta não deixar apagar pelo aplicativo, a tela oferece "Já apaguei na rede" para registrar à mão.
 // A imagem (JPEG quadrado montado pela tela) vai para o bucket público "radar-redes" do Supabase Storage, porque a
 // Meta só aceita imagem por link público.
 //
@@ -29,7 +34,7 @@
 // SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.14.4";
+const VERSAO = "0.17.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -96,11 +101,31 @@ const comoServico = (): Record<string, string> => {
   return ehJwt(k) ? { apikey: k, Authorization: "Bearer " + k } : { apikey: k };
 };
 
-async function exigirAdmin(req: Request) {
+/** v0.17.0: a chamada vem do robô do site com a chave interna do projeto? Vale a mesma chave que o Supabase dá a esta função
+ *  ou a chave antiga do robô (JWT service_role, a do GitHub) — essa quem confere é o próprio banco: só o papel do robô executa
+ *  radar_pendencia_assunto (a pergunta é por um assunto que não existe; não muda nada). */
+async function ehRobo(req: Request): Promise<boolean> {
+  const auth = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim(), apikey = (req.headers.get("apikey") ?? "").trim();
+  const chaves = [env("SUPABASE_SERVICE_ROLE_KEY").trim()];
+  try { chaves.push(...Object.values(JSON.parse(env("SUPABASE_SECRET_KEYS") || "{}") ?? {}).filter((v): v is string => typeof v === "string")); }
+  catch { /* sem a lista nova */ }
+  if (chaves.some((k) => k.length >= 20 && (k === auth || k === apikey))) return true;
+  if (!ehJwt(auth)) return false;
+  let papel = "";
+  try { papel = String(JSON.parse(atob(auth.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))?.role ?? ""); } catch { return false; }
+  if (papel !== "service_role") return false;
+  try { await banco({ apikey: auth, Authorization: "Bearer " + auth }, "POST", "rpc/radar_pendencia_assunto", { p_assunto: 0 }, 10_000); return true; }
+  catch { return false; }
+}
+
+/** Quem chamou: o administrador logado (devolve a sessão dele) ou o robô (null). Qualquer outro é recusado. */
+async function quemChamou(req: Request): Promise<string | null> {
+  if (await ehRobo(req)) return null;
   const token = req.headers.get("Authorization") ?? "";
   if (!/^Bearer\s+\S+/.test(token)) throw new Erro(401, "Sessão não informada.");
   const papel = await banco(token, "POST", "rpc/radar_papel", {});
   if (papel !== "admin") throw new Erro(403, "Só o administrador publica no Instagram e no Facebook.");
+  return token;
 }
 
 // ------------------------------------------------------------------ Meta
@@ -135,20 +160,20 @@ async function tokenDaPagina(): Promise<{ token: string; origem: string }> {
 }
 
 /** Chama a Graph API com o token da Página. */
-async function meta(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, publicacao = false): Promise<any> {
+async function meta(metodo: "GET" | "POST" | "DELETE", caminho: string, params: Record<string, string>, publicacao = false): Promise<any> {
   const { token } = await tokenDaPagina();
   try { return await chamarMeta(metodo, caminho, params, token, publicacao); }
   catch (e) { if (e instanceof Erro && /\(190\)/.test(e.message)) tokenGuardado = null; throw e; }   // token revogado: busca de novo na próxima
 }
 
 /** v0.14.4: chamadas do Instagram usam o META_IG_TOKEN (aplicativo do Instagram) quando ele existe. */
-async function metaIg(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, publicacao = false): Promise<any> {
+async function metaIg(metodo: "GET" | "POST" | "DELETE", caminho: string, params: Record<string, string>, publicacao = false): Promise<any> {
   const ig = env("META_IG_TOKEN").trim();
   return ig ? chamarMeta(metodo, caminho, params, ig, publicacao, "META_IG_TOKEN") : meta(metodo, caminho, params, publicacao);
 }
 
 /** Chama a Graph API. O token vai no corpo/consulta e nunca aparece em mensagem de erro. */
-async function chamarMeta(metodo: "GET" | "POST", caminho: string, params: Record<string, string>, token: string,
+async function chamarMeta(metodo: "GET" | "POST" | "DELETE", caminho: string, params: Record<string, string>, token: string,
                           publicacao = false, segredo = "META_PAGE_TOKEN"): Promise<any> {
   const c = configMeta("facebook");
   const p = new URLSearchParams({ ...params, access_token: token });
@@ -157,8 +182,8 @@ async function chamarMeta(metodo: "GET" | "POST", caminho: string, params: Recor
     "se saiu, não publique de novo; se não saiu, espere 10 minutos, cancele a autorização e autorize de novo.");
   let r: Response;
   try {
-    r = metodo === "GET"
-      ? await fetch(`${GRAPH}/${caminho}?${p}`, { signal: AbortSignal.timeout(tempo) })
+    r = metodo !== "POST"
+      ? await fetch(`${GRAPH}/${caminho}?${p}`, { method: metodo, signal: AbortSignal.timeout(tempo) })
       : await fetch(`${GRAPH}/${caminho}`, { method: "POST", body: p, signal: AbortSignal.timeout(tempo),
                                              headers: { "Content-Type": "application/x-www-form-urlencoded" } });
   } catch {
@@ -240,11 +265,13 @@ async function publicarFacebook(imagemUrl: string, legenda: string, inicio: numb
   return { post_id: post, url };
 }
 
-async function publicar(envio: number, inicio: number) {
+async function publicar(envio: number, inicio: number, peloRobo = false) {
   const servico = comoServico();
   // confere a configuração ANTES de pegar a autorização: sem a Meta configurada, ela continua aguardando
-  const [linha] = await banco(servico, "GET", `radar_redes_envios?select=canal,situacao&id=eq.${envio}`);
+  const [linha] = await banco(servico, "GET", `radar_redes_envios?select=canal,situacao,junto_com_site&id=eq.${envio}`);
   if (!linha) throw new Erro(404, "Autorização não encontrada.");
+  // v0.17.0: o robô só manda o que o administrador autorizou junto com o site ("Publicar em todos")
+  if (peloRobo && !linha.junto_com_site) throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
   const cfg = configMeta(linha.canal);
   if (cfg.faltam.length) {
     throw new Erro(503, `${linha.canal === "instagram" ? "O Instagram" : "O Facebook"} ainda não está configurado: faltam os segredos ` +
@@ -271,6 +298,32 @@ async function publicar(envio: number, inicio: number) {
                 { p_envio: envio, p_ok: false, p_post_id: null, p_url: null, p_imagem_url: imagemUrl || null, p_erro: msg }).catch(() => {});
     throw x instanceof Erro ? x : new Erro(500, msg);
   }
+}
+
+// ------------------------------------------------------------------ excluir (v0.17.0)
+/** Apaga a publicação na rede, a pedido do administrador, e registra (como ele: a função do banco confere o perfil). */
+async function excluir(envio: number, sessao: string) {
+  const [e] = await banco(comoServico(), "GET", `radar_redes_envios?select=id,canal,situacao,post_id,url&id=eq.${envio}`);
+  if (!e) throw new Erro(404, "Publicação não encontrada.");
+  if (e.situacao !== "publicado") throw new Erro(400, "Esta publicação não está publicada (já foi excluída ou não saiu).");
+  const nome = e.canal === "instagram" ? "Instagram" : "Facebook";
+  if (!e.post_id) throw new Erro(400, `O Radar não guardou o número do post no ${nome}: apague direto no ${nome} e clique em “Já apaguei”.`);
+  const cfg = configMeta(e.canal);
+  if (cfg.faltam.length) throw new Erro(503, `O ${nome} não está configurado: faltam os segredos ${cfg.faltam.join(", ")}.`);
+  try {
+    const r = e.canal === "instagram" ? await metaIg("DELETE", e.post_id, {}) : await meta("DELETE", e.post_id, {});
+    if (r?.success === false) throw new Erro(502, `A Meta não confirmou a exclusão no ${nome}.`);
+  } catch (x) {
+    // nada é dado como excluído sem a confirmação da Meta ("Unsupported delete request" tanto pode ser post que não existe mais
+    // quanto rede que não deixa apagar pelo aplicativo): quem confere e registra, nesse caso, é o administrador
+    const msg = x instanceof Erro ? x.message : "Erro inesperado ao excluir.";
+    const naoDeixa = /Unsupported delete|\((10|200|3)\)/i.test(msg);
+    throw new Erro(x instanceof Erro && x.status < 500 ? x.status : 502,
+      (naoDeixa ? `A Meta não deixou apagar este post pelo Radar (${msg.replace(/\.$/, "")}).` : msg) +
+      ` Confira no ${nome}: se o post ainda estiver lá, apague direto no ${nome}; depois clique em “Já apaguei” para registrar.`);
+  }
+  await banco(sessao, "POST", "rpc/radar_rede_marcar_excluida", { p_envio: envio, p_como: "api" });
+  return { situacao: "excluido", canal: e.canal };
 }
 
 async function diagnostico() {
@@ -315,14 +368,20 @@ async function tratar(req: Request): Promise<Response> {
   try {
     if (req.method !== "POST") throw new Erro(405, "Use POST.");
     if (!SUPABASE_URL) throw new Erro(503, "A função está sem SUPABASE_URL.");
-    await exigirAdmin(req);
+    const sessao = await quemChamou(req);                     // null = o robô do site (só "publicar" do que foi junto com o site)
     const pedido = await req.json().catch(() => ({}));
     const acao = String(pedido?.acao ?? "");
+    if (!["publicar", "excluir", "diagnostico"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    if (sessao === null && acao !== "publicar") throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
     if (acao === "diagnostico") return responder(200, await diagnostico());
-    if (acao !== "publicar") throw new Erro(400, "Ação desconhecida.");
     const envio = Number(pedido?.envio);
     if (!Number.isSafeInteger(envio) || envio <= 0) throw new Erro(400, "Informe a autorização (envio).");
-    const r = await publicar(envio, inicio);
+    if (acao === "excluir") {
+      const x = await excluir(envio, sessao as string);
+      console.log(`radar-redes: envio ${envio} → excluído`);
+      return responder(200, x);
+    }
+    const r = await publicar(envio, inicio, sessao === null);
     console.log(`radar-redes: envio ${envio} → ${r.situacao}`);
     return responder(200, r);
   } catch (e) {

@@ -1,7 +1,8 @@
 name: Radar — teste do site
 
 # Só leitura: entra no painel do site da Artecon com o usuário do Radar, acha o formulário de cadastro
-# de notícias e lista os campos. NÃO envia, não cadastra e não publica nada.
+# de notícias e lista os campos; v0.17.0: mostra também como é a lista de notícias do painel (para a exclusão
+# pedida pelo administrador). NÃO envia, não cadastra, não exclui e não publica nada.
 # Precisa dos segredos ARTECON_SITE_USUARIO e ARTECON_SITE_SENHA.
 on:
   workflow_dispatch:

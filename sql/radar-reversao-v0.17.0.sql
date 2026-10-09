@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.16.0.sql
--- DESFAZ a instalação do radar-setup-v0.16.0.sql.
+-- RADAR ARTECON — radar-reversao-v0.17.0.sql
+-- DESFAZ a instalação do radar-setup-v0.17.0.sql.
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
 -- =====================================================================
@@ -31,6 +31,7 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_site_exclusoes,
   public.radar_redes_envios,
   public.radar_itc_lidos,
   public.radar_site_envios,
@@ -82,6 +83,12 @@ drop function if exists public.radar_arquivar_fila(int);
 drop function if exists public.radar_separar_captura(bigint, bigint);
 drop function if exists public.radar_separar_repeticao(bigint);
 drop function if exists public.radar_autorizar_copia(bigint, text, timestamptz);
+drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text);
+drop function if exists public.radar_fn_site_envio_redes();
+drop function if exists public.radar_rede_marcar_excluida(bigint, text);
+drop function if exists public.radar_pedir_exclusao_site(bigint);
+drop function if exists public.radar_cancelar_exclusao_site(bigint);
+drop function if exists public.radar_site_exclusao_concluir(bigint, boolean, text);
 drop function if exists public.radar_avisos_acrescimo(jsonb, jsonb);
 drop function if exists public.radar_fn_conteudo_fonte() cascade;
 drop function if exists public.radar_abrir_assunto(bigint, boolean);
