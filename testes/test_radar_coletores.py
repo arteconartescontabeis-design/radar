@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import radar_coletores as coletores
 from radar_coletores import listar, listar_html_links, listar_normas_rfb, listar_rss
 from radar_util import canonizar_url, extrair_texto, hash_conteudo, hash_titulo, interpretar_data
 
@@ -601,3 +602,38 @@ def test_inlabs_erro_do_servidor_ou_sessao_perdida_nao_vira_dia_sem_edicao():
         radar_inlabs.baixar_secao(Sessao(Resp(500)), date(2026, 10, 5), "DO1")
     with pytest.raises(ErroDownload, match="pediu login"):
         radar_inlabs.baixar_secao(Sessao(Resp(200, b"<form action='logar.php'><input name='password'>")), date(2026, 10, 5), "DO1")
+
+
+# ---------------------------------------------------------------- v0.16.0: página cadastrada como fonte RSS
+PAGINA_WP = ('<!DOCTYPE html>\n<html lang="pt-BR"><head><meta charset="UTF-8">\n'
+             '<link rel="alternate" type="application/rss+xml" title="Portal &raquo; Feed" href="https://portalcontabilsc.com.br/feed/">\n'
+             '<link rel="alternate" type="application/rss+xml" title="Comentários" href="https://portalcontabilsc.com.br/comments/feed/">\n'
+             '</head><body><p>&nbsp;Portal</p></body></html>')
+FEED_COM_ENTIDADES = ('<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Portal</title>'
+                      '<item><title>STF exclui cr&eacute;ditos presumidos&nbsp;de ICMS &amp; PIS</title>'
+                      '<link>https://portalcontabilsc.com.br/stf-exclui/</link><pubDate>Thu, 09 Oct 2026 10:00:00 +0000</pubDate>'
+                      '<description>Texto&nbsp;do resumo</description></item></channel></rss>')
+
+
+def test_fonte_rss_cadastrada_com_a_pagina_segue_o_feed_que_ela_anuncia():
+    fonte = {"slug": "pcsc", "url": "https://portalcontabilsc.com.br/", "tipo_coletor": "rss", "config": {"janela_dias": 30}}
+    pedidos = []
+    def baixar(url):
+        pedidos.append(url)
+        return 200, {"https://portalcontabilsc.com.br/": PAGINA_WP, "https://portalcontabilsc.com.br/feed/": FEED_COM_ENTIDADES}[url]
+    listagem, http = coletores.listar_paginas(baixar, fonte, date(2026, 10, 9))
+    assert pedidos == ["https://portalcontabilsc.com.br/", "https://portalcontabilsc.com.br/feed/"] and http == 200
+    assert [(i.titulo, i.url, i.resumo) for i in listagem.itens] == [
+        ("STF exclui créditos presumidos de ICMS & PIS", "https://portalcontabilsc.com.br/stf-exclui", "Texto do resumo")]
+
+
+def test_pagina_sem_feed_cadastrada_como_rss_da_erro_que_explica():
+    fonte = {"slug": "x", "url": "https://exemplo.com.br/", "tipo_coletor": "rss", "config": {}}
+    with pytest.raises(coletores.PaginaNaoEhFeed, match="não um feed RSS; cadastre o endereço do feed"):
+        coletores.listar_paginas(lambda url: (200, "<html><body>&nbsp;Início</body></html>"), fonte, date(2026, 10, 9))
+    # o feed anunciado que também é página não vira laço: o erro diz qual endereço cadastrar
+    with pytest.raises(coletores.PaginaNaoEhFeed, match="o feed que ela anuncia é https://portalcontabilsc.com.br/feed/"):
+        coletores.listar_paginas(lambda url: (200, PAGINA_WP), dict(fonte, url="https://portalcontabilsc.com.br/"), date(2026, 10, 9))
+    # bytes também são reconhecidos
+    with pytest.raises(coletores.PaginaNaoEhFeed):
+        coletores.listar_rss(PAGINA_WP.encode(), fonte)

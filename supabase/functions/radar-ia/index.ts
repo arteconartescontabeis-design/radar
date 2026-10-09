@@ -1,7 +1,7 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.14.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.16.0)
 //
-// Oito ações, sempre pedidas por um usuário logado (editor ou administrador):
+// Nove ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
 //   fundamentar  → propõe trechos LITERAIS do texto oficial; só entram os que conferem
 //   gerar        → redige um conteúdo (rascunho), com 3 outras opções de título, e aponta o que precisa ser conferido;
@@ -12,6 +12,12 @@
 //   verificar    → (v0.14.0) procura o assunto na internet, só em sites de órgão público (gov.br, jus.br, leg.br...), e grava no
 //                  assunto o resultado: confirmado, parcialmente, não encontrado ou divergente, com as páginas oficiais encontradas
 //   pagina       → (v0.14.0) traz o texto de uma página oficial (só de órgão público) para a equipe incluir como texto oficial
+//   revisar      → (v0.16.0) reescreve num conteúdo só os pontos marcados com [VERIFICAR] e os trechos iguais ao da fonte
+//                  (citando de onde veio a informação); o que ficar sem confirmação vai para os pontos a conferir
+//
+// v0.16.0 — o texto gerado não leva marca nem comentário sobre dúvida ("[VERIFICAR: …]", "a fonte cita tanto X quanto Y"):
+//   o que não está confirmado sai do texto e vai para os pontos a conferir; se sobrar marca ou trecho copiado, uma
+//   segunda passada da IA corrige antes de gravar.
 //
 // v0.6.1 — a IA passa pela IA CENTRAL do Portal Artecon (função ia-gateway do projeto do DP):
 //   * texto pela Anthropic e imagens pela OpenAI, as duas contas ficam SÓ na IA Central;
@@ -36,7 +42,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.14.0";
+const VERSAO = "0.16.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -150,6 +156,58 @@ function fatos(texto: string, oficial: boolean): Map<string, string> {
   return f;
 }
 
+// v0.16.0: o mesmo detector da tela (index.html, trechosCopiados): sequências com 12 palavras "que contam" ou mais iguais
+// ao texto das capturas do assunto. Números, datas, nomes próprios, siglas e nomes de norma não contam; citação curta entre
+// aspas (até 40 palavras cada, 120 no total) é aceita. Mantenha os dois iguais.
+const COPIA_MINIMA = 12, CITACAO_MAXIMA = 40, CITACOES_TOTAL = 120;
+const COPIA_NEUTRAS = new Set(("janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro lei leis decreto decretos instrucao normativa portaria resolucao " +
+  "medida provisoria complementar emenda constitucional ato declaratorio executivo convenio ajuste solucao consulta parecer n nº art arts artigo artigos inciso paragrafo").split(" "));
+const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" "));
+function trechosCopiados(corpo: string, fontes: string[]): { palavras: number; texto: string }[] {
+  const N = 6, invisiveis = /[​-‍⁠­﻿]/g;
+  const limpa = (t: string) => String(t || "").replace(invisiveis, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
+  const gramas = new Set<string>();
+  for (const f of fontes || []) { const w = limpa(f).split(" "); for (let i = 0; i + N <= w.length; i++) gramas.add(w.slice(i, i + N).join(" ")); }
+  if (!gramas.size) return [];
+  let citadas = 0;
+  const citacao = (_tudo: string, dentro: string) => {
+    const n = dentro.split(/\s+/).filter(Boolean).length;
+    if (n < 3 || n > CITACAO_MAXIMA || citadas + n > CITACOES_TOTAL) return " " + dentro + " ";
+    citadas += n; return " ¶ ";
+  };
+  const semCitacoes = String(corpo || "").replace(invisiveis, "").replace(/^#{1,2}\s/gm, " ¶ ")
+    .replace(/“([^“”]{0,600})”/g, citacao).replace(/"([^"\n]{0,600})"/g, citacao);
+  const palavras = semCitacoes.split(/\s+/).filter(Boolean);
+  const fichas: [string | null, number, number][] = [];
+  palavras.forEach((p, i) => {
+    if (p === "¶") { fichas.push([null, i, 2]); return; }
+    const propria = /^[^\p{L}\p{N}]*\p{Lu}/u.test(p);
+    for (const t of limpa(p).split(" ")) if (t) fichas.push([t, i, /\d/.test(t) || COPIA_NEUTRAS.has(t) ? 2 : propria ? 1 : 0]);
+  });
+  fichas.forEach((x, i) => {
+    if (x[2] === 0 && COPIA_LIGACAO.has(x[0] as string) && [fichas[i - 1], fichas[i + 1]].some((v) => v && v[0] && (v[2] === 1 || v[2] === 2))) x[2] = 3;
+  });
+  const igual = new Array(fichas.length).fill(false);
+  for (let i = 0; i + N <= fichas.length; i++) {
+    const parte = fichas.slice(i, i + N);
+    if (parte.every((x) => x[0]) && gramas.has(parte.map((x) => x[0]).join(" "))) for (let k = i; k < i + N; k++) igual[k] = true;
+  }
+  const achados: { palavras: number; texto: string }[] = [];
+  for (let i = 0; i < fichas.length; i++) {
+    if (!igual[i]) continue;
+    let j = i; while (j + 1 < fichas.length && igual[j + 1]) j++;
+    const trecho = fichas.slice(i, j + 1), proprias = trecho.filter((x) => x[2] === 1).length;
+    const gritado = proprias * 2 > trecho.length;
+    const contam = trecho.filter((x) => x[2] === 0 || (gritado && (x[2] === 1 || x[2] === 3))).length;
+    if (contam >= COPIA_MINIMA) achados.push({ palavras: j - i + 1, texto: palavras.slice(fichas[i][1], fichas[j][1] + 1).join(" ") });
+    i = j;
+  }
+  return achados.sort((a, b) => b.palavras - a.palavras);
+}
+/** Marcas [VERIFICAR …] no texto (o mesmo critério da tela e do banco). */
+const marcasVerificar = (...textos: string[]) =>
+  textos.join("\n").match(/\[\s*verificar[^\]\n]{0,250}\]?/gi)?.map((m) => m.replace(/\s+/g, " ").trim().slice(0, 160)) ?? [];
+
 /** Confere por código o que o texto gerado afirma. Devolve os pontos que uma pessoa precisa olhar.
  *  Cobre: nº de normas, artigos e parágrafos, percentuais, valores em R$, datas, mês/ano, prazos e anos.
  *  NÃO cobre: números por extenso, incisos, normas citadas sem número (CTN, CLT) e a interpretação em si. */
@@ -220,16 +278,17 @@ async function chamarGateway(reg: Registro, caminho: string, corpo: unknown, mod
 
 /** Pergunta à Anthropic exigindo a resposta no formato do esquema (uso forçado de ferramenta). */
 async function perguntar(reg: Registro, modelo: string, instrucoes: string, entrada: string, nome: string, esquema: unknown,
-                         maxTokens = 4000): Promise<{ json: any }> {
+                         maxTokens = 4000, tempo = 110_000): Promise<{ json: any }> {
   const dados = await chamarGateway(reg, "", {
     model: modelo, max_tokens: maxTokens, system: instrucoes,
     messages: [{ role: "user", content: entrada }],
     tools: [{ name: nome, description: "Registra a resposta no formato pedido.", input_schema: esquema }],
     tool_choice: { type: "tool", name: nome },
-  }, modelo);
+  }, modelo, tempo);
   const u = dados.usage ?? {};
-  reg.uso = { entrada: (Number(u.input_tokens ?? 0) || 0) + (Number(u.cache_creation_input_tokens ?? 0) || 0) + (Number(u.cache_read_input_tokens ?? 0) || 0),
-              saida: Number(u.output_tokens ?? 0) || 0, modelo: String(dados.model ?? modelo) };
+  // v0.16.0: soma — o "gerar" pode fazer uma segunda chamada (a revisão) no mesmo pedido
+  reg.uso = { entrada: (reg.uso?.entrada ?? 0) + (Number(u.input_tokens ?? 0) || 0) + (Number(u.cache_creation_input_tokens ?? 0) || 0) + (Number(u.cache_read_input_tokens ?? 0) || 0),
+              saida: (reg.uso?.saida ?? 0) + (Number(u.output_tokens ?? 0) || 0), modelo: String(dados.model ?? modelo) };
   if (dados.stop_reason === "max_tokens") throw new Erro(502, "A resposta da IA veio incompleta (limite de tamanho). Tente de novo; se repetir, o administrador aumenta o tamanho máximo da resposta do Radar em Portal → Consumo de IA.");
   if (dados.stop_reason === "refusal") throw new Erro(502, "A IA se recusou a responder a este pedido.");
   const bloco = (Array.isArray(dados.content) ? dados.content : []).find((c: any) => c?.type === "tool_use" && c?.name === nome);
@@ -364,6 +423,14 @@ async function fundamentar(token: string, ctx: Awaited<ReturnType<typeof carrega
   return { inseridas, descartadas };
 }
 
+// v0.16.0: nada de marca ou comentário sobre dúvida dentro do texto (ex.: "[VERIFICAR: a fonte indica 30/9, mas não especifica o ano]",
+// "a fonte cita tanto ADI 5.161 quanto ADI nº 5.161/DF"): o que não está confirmado sai do texto e vai para a lista de pendências,
+// que a equipe vê nos "pontos a conferir" (o robô de rascunhos usa a mesma regra)
+const REGRA_PENDENCIAS = "(3) o texto vai para o leitor: NUNCA escreva nele marcas, colchetes ou comentários sobre dúvidas da redação " +
+  "(nada de '[VERIFICAR …]', 'a fonte não informa o ano', 'a fonte cita tanto X quanto Y'). Quando faltar uma informação ou ela não estiver " +
+  "confirmada, escreva a frase sem esse detalhe, sem supor (ex.: 'a sessão está marcada para 30 de setembro' em vez de inventar o ano), " +
+  "ou deixe o ponto de fora, e registre-o em 'pendencias' (lista curta, só para a equipe, cada item dizendo o que falta conferir). " +
+  "Diferença só de grafia entre as fontes (ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa, sem comentar; "
 // v0.10.0: texto com cara de gente, não de máquina (o robô de rascunhos usa a mesma regra)
 const REGRA_ESTILO = "(9) ESCRITA NATURAL: escreva como um contador experiente explicando o assunto a um cliente, em tom de conversa profissional. " +
   "Varie o tamanho das frases, prefira a voz ativa e palavras do dia a dia; explique o termo técnico na primeira vez que aparecer. " +
@@ -390,8 +457,9 @@ const FORMATOS: Record<string, string> = {
 // v0.11.0: texto para análise, quando o assunto só tem fonte NÃO oficial (boletim, editora, portal). Nunca vai ao site
 // por este caminho: o banco continua exigindo texto oficial conferido para registrar ou autorizar a publicação.
 const REGRA_ANALISE = "ATENÇÃO: o material fornecido é de fonte NÃO OFICIAL (boletim, editora ou portal), muitas vezes só um resumo. " +
-  "Escreva um texto PARA ANÁLISE INTERNA do escritório: explique o que a fonte informa e marque com [VERIFICAR: ...] todo número, data, prazo, " +
-  "alíquota e norma que precise de conferência (menos o que a VERIFICAÇÃO EM FONTES OFICIAIS, se houver, já confirmou). " +
+  "Escreva um texto PARA ANÁLISE INTERNA do escritório: explique o que a fonte informa, dizendo de onde veio a informação " +
+  "('segundo o Portal Contábil SC', 'de acordo com o boletim da ITC'), e liste em 'pendencias' todo número, data, prazo, alíquota e norma " +
+  "que precise de conferência na fonte oficial (menos o que a VERIFICAÇÃO EM FONTES OFICIAIS, se houver, já confirmou). " +
   "NÃO escreva no texto avisos sobre a origem da informação (como 'este informativo é baseado em material de fonte não oficial'): " +
   "esse aviso é interno e fica fora do texto. " +
   "Nas regras abaixo, onde se lê 'texto oficial', entenda 'o material fornecido'. ";
@@ -405,17 +473,19 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     if (!bloco) throw new Erro(400, "Este assunto não tem nenhum texto capturado para a IA analisar.");
   }
   if (!bloco) throw new Erro(400, "Este assunto não tem texto de fonte oficial capturado. A IA só redige a partir do texto oficial.");
+  const inicio = Date.now();
   const conferidas = ctx.evidencias.filter((e: any) => e.trecho_conferido);
   const esquema = {
-    type: "object", additionalProperties: false, required: ["titulo", "titulos", "corpo"],
-    properties: { titulo: { type: "string" }, titulos: { type: "array", items: { type: "string" } }, corpo: { type: "string" } },
+    type: "object", additionalProperties: false, required: ["titulo", "titulos", "corpo", "pendencias"],
+    properties: { titulo: { type: "string" }, titulos: { type: "array", items: { type: "string" } }, corpo: { type: "string" },
+                  pendencias: { type: "array", items: { type: "string" } } },
   };
   const instrucoes = "Você redige conteúdo contábil e tributário para a Artecon Artes Contábeis (Palhoça/SC), em português do Brasil. " +
     (naoOficial ? REGRA_ANALISE : "") +
     "Formato pedido — " + FORMATOS[formato] + " Regras OBRIGATÓRIAS: " +
     "(1) afirme como fato SOMENTE o que estiver no texto oficial fornecido; " +
     "(2) NÃO cite lei, decreto, instrução normativa, artigo, alíquota, valor, prazo ou data que não apareça no texto oficial — nada de conhecimento de memória; " +
-    "(3) quando faltar uma informação necessária (ex.: data de vigência não informada), escreva [VERIFICAR: o que falta] em vez de supor; " +
+    REGRA_PENDENCIAS +
     "(4) a seção 'Análise Artecon' é interpretação: use linguagem condicional ('pode', 'tende a', 'recomenda-se avaliar') e não crie obrigações que o texto não traz; " +
     "(5) não prometa resultado, não dê orientação individual e não use superlativos; " +
     "(6) formatação: só '## ' para subtítulo, '- ' para lista e **negrito**; sem HTML, sem tabelas, sem links; " +
@@ -424,6 +494,7 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     "nem com pequenas trocas de palavras; não repita a ordem dos parágrafos da fonte. Reorganize a informação do ponto de vista da empresa cliente " +
     "(o que muda, para quem, quando, o que fazer). Só é permitido transcrever, entre aspas e com no máximo 25 palavras, o trecho de um dispositivo " +
     "legal quando a redação exata for indispensável; nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; " +
+    "diga de onde veio a informação ('segundo a Receita Federal', 'conforme a Portaria …'): o texto atribui, não copia; " +
     REGRA_ESTILO + REGRA_TITULOS + REGRA_VERIFICACAO + REGRA_DADOS;
   const entrada = `Assunto: ${ctx.assunto.titulo}\nCategoria: ${ctx.assunto.categoria ?? "—"}\nResumo da equipe: ${ctx.assunto.resumo ?? "—"}\n` +
     `Público afetado: ${ctx.assunto.publico_afetado ?? "—"}\n\nTrechos já conferidos pela equipe (use-os como base):\n` +
@@ -431,11 +502,22 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     blocoVerificacao(ctx.assunto.verificacao);
   const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "conteudo", esquema, 6000);
 
-  const titulo = normalizarEspacos(String(json.titulo ?? "")).slice(0, 200) || ctx.assunto.titulo;
-  // tira marcação HTML (<b>, </p>…), mas preserva comparações do texto ("receita < R$ 500 e multa > 2%")
-  const corpo = tirarAvisoFonte(String(json.corpo ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, ""));
+  let titulo = normalizarEspacos(String(json.titulo ?? "")).slice(0, 200) || ctx.assunto.titulo;
+  let corpo = limparCorpo(json.corpo);
   if (corpo.length < 80) throw new Erro(502, "A IA devolveu um texto vazio ou curto demais. Tente de novo.");
+  let pendencias = listaPendencias(json.pendencias);
+  // v0.16.0: sobrou marca [VERIFICAR] ou trecho igual ao da fonte? Uma segunda passada corrige só isso (dentro do prazo do pedido)
+  const extra: string[] = [];
+  try {
+    const r = await revisarTexto(ctx.reg, titulo, corpo, fontesDoAssunto(ctx), bloco + blocoVerificacao(ctx.assunto.verificacao), inicio);
+    if (r) { titulo = r.titulo; corpo = r.corpo; pendencias = listaPendencias([...pendencias, ...r.pendencias]); }
+  } catch (e) {
+    extra.push("A revisão automática (marcas e trechos iguais ao da fonte) não pôde ser feita agora" +
+      (e instanceof Erro ? ` (${e.message})` : "") + ": use o botão “Revisar com IA” no conteúdo.");
+  }
   const avisos = conferirGerado(titulo + "\n" + corpo, oficial, conferidas.length > 0);
+  if (pendencias.length) avisos.push(avisoPendencias(pendencias));
+  avisos.push(...extra);
   if (naoOficial) {
     const orgaos = [...new Set(ctx.capturas.filter((c) => c.texto).map((c) => c.orgao))].join(", ");
     avisos.unshift(`TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (${orgaos}). Não vai ao site: confira na norma ou no comunicado oficial, ` +
@@ -447,6 +529,72 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     ...(naoOficial ? { fora_do_site: true } : {}),          // texto para análise: fora da fila do site (e o banco não deixa aprovar)
   }, "return=representation");
   return { conteudo_id: linha.id, avisos, titulos: titulos_sugeridos };
+}
+
+// ------------------------------------------------------------------ revisão: marcas e cópia (v0.16.0)
+// tira marcação HTML (<b>, </p>…), mas preserva comparações do texto ("receita < R$ 500 e multa > 2%")
+const limparCorpo = (t: unknown) => tirarAvisoFonte(String(t ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, ""));
+const listaPendencias = (lista: unknown) => (Array.isArray(lista) ? lista : [])
+  .map((p) => normalizarEspacos(String(p ?? "")).replace(/^\[?\s*verificar\s*:?\s*/i, "").replace(/\]$/, "").slice(0, 300))
+  .filter((p, i, todas) => p.length >= 3 && todas.indexOf(p) === i).slice(0, 10);
+const avisoPendencias = (lista: string[]) =>
+  "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): " + lista.join("; ") + ".";
+const fontesDoAssunto = (ctx: Awaited<ReturnType<typeof carregar>>) => ctx.capturas.map((c) => c.texto ?? "").filter(Boolean);
+const PRAZO_PEDIDO = 140_000;          // a tela espera até 150 s pela resposta
+
+/** Segunda passada da IA, só quando o texto tem marca [VERIFICAR] ou trecho igual ao da fonte: corrige isso e mais nada.
+ *  Devolve null quando não há o que corrigir. Se a IA devolver texto curto demais (cortado), fica o texto original. */
+async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes: string[], material: string, inicio: number) {
+  const marcas = marcasVerificar(titulo, corpo), copias = trechosCopiados(corpo, fontes);
+  if (!marcas.length && !copias.length) return null;
+  const resta = PRAZO_PEDIDO - (Date.now() - inicio);
+  if (resta < 25_000) throw new Erro(504, "sem tempo para a segunda passada");
+  const esquema = {
+    type: "object", additionalProperties: false, required: ["titulo", "corpo", "pendencias"],
+    properties: { titulo: { type: "string" }, corpo: { type: "string" }, pendencias: { type: "array", items: { type: "string" } } },
+  };
+  const instrucoes = "Você revisa um texto contábil e tributário da Artecon Artes Contábeis (Palhoça/SC), em português do Brasil, antes de ele ir à equipe. " +
+    "Faça SOMENTE estas correções e devolva o título e o texto inteiros: " +
+    "(a) cada marca [VERIFICAR …] sai do texto: se o material de consulta confirmar a informação, escreva-a; se não confirmar, reescreva a frase " +
+    "sem o detalhe incerto (sem supor e sem comentar a dúvida) e registre o ponto em 'pendencias'. Diferença só de grafia entre fontes " +
+    "(ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa; " +
+    "(b) cada TRECHO IGUAL AO DA FONTE listado é reescrito com palavras e estrutura próprias, mantendo o sentido, e diz de onde veio a informação " +
+    "('segundo a Receita Federal', 'conforme a Portaria …', 'de acordo com o Portal Contábil SC'); se a redação exata for indispensável " +
+    "(texto de lei), transcreva no máximo 40 palavras entre aspas, com a fonte; nomes de normas, órgãos, programas, datas e valores podem continuar iguais; " +
+    "(c) o resto fica como está: mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; " +
+    "(d) nada de HTML, links, colchetes ou comentários sobre a revisão no texto. " + REGRA_DADOS;
+  const entrada = `Título: ${titulo}\n\n<<<TEXTO A REVISAR>>>\n${corpo}\n<<<FIM>>>\n\n` +
+    (marcas.length ? "Marcas a resolver:\n" + marcas.map((m) => `- ${m}`).join("\n") + "\n\n" : "") +
+    (copias.length ? "Trechos iguais ao da fonte (reescreva e diga a fonte):\n" + copias.slice(0, 12).map((c) => `- "${c.texto}"`).join("\n") + "\n\n" : "") +
+    `Material de consulta (as fontes do assunto):\n${material}`;
+  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "revisao", esquema, 6000, Math.min(110_000, resta - 5_000));
+  const novo = limparCorpo(json.corpo);
+  // texto muito menor que o original é sinal de resposta cortada: fica o original (a tela continua mostrando o problema)
+  if (novo.length < 80 || novo.length < corpo.length * 0.6) throw new Erro(502, "a IA devolveu um texto incompleto");
+  return { titulo: normalizarEspacos(String(json.titulo ?? "")).slice(0, 200) || titulo, corpo: novo,
+           pendencias: listaPendencias(json.pendencias), marcas: marcas.length, copias: copias.length };
+}
+
+/** Ação "revisar" (botão "Revisar com IA" no conteúdo): a mesma segunda passada, num conteúdo já gravado. Grava o texto novo
+ *  (como o usuário: valem as regras do banco — o aprovado volta para revisão) e acrescenta o que ficou fora aos pontos a conferir. */
+async function revisar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, conteudoId: unknown, lido: unknown) {
+  if (typeof conteudoId !== "number" || !Number.isSafeInteger(conteudoId) || conteudoId <= 0) throw new Erro(400, "Conteúdo inválido.");
+  const [c] = await banco(token, "GET", `radar_conteudos?select=id,titulo,corpo,avisos_ia,atualizado_em&id=eq.${conteudoId}&assunto_id=eq.${ctx.assunto.id}`);
+  if (!c) throw new Erro(404, "Conteúdo não encontrado neste assunto.");
+  if (typeof lido === "string" && lido && Date.parse(lido) !== Date.parse(c.atualizado_em)) {
+    throw new Erro(409, "O conteúdo foi alterado depois que a tela foi aberta. Atualize a tela e tente de novo.");
+  }
+  const { bloco } = blocoOficial(ctx.capturas);
+  const r = await revisarTexto(ctx.reg, String(c.titulo ?? ""), String(c.corpo ?? ""), fontesDoAssunto(ctx),
+                               bloco + blocoVerificacao(ctx.assunto.verificacao), Date.now());
+  if (!r) throw new Erro(400, "Este texto não tem marca [VERIFICAR] nem trecho igual ao da fonte: não há o que revisar.");
+  const avisos = Array.isArray(c.avisos_ia) ? c.avisos_ia : [];
+  const novos = r.pendencias.length ? [...avisos, avisoPendencias(r.pendencias)] : avisos;
+  const linhas = await banco(token, "PATCH", `radar_conteudos?id=eq.${conteudoId}&atualizado_em=eq.${encodeURIComponent(c.atualizado_em)}`,
+    { titulo: r.titulo, corpo: r.corpo, avisos_ia: novos }, "return=representation");
+  if (!Array.isArray(linhas) || !linhas.length) throw new Erro(409, "O conteúdo foi alterado enquanto a IA revisava. Atualize a tela e tente de novo.");
+  return { conteudo_id: conteudoId, pendencias: r.pendencias, marcas: r.marcas, copias: r.copias,
+           restam: { marcas: marcasVerificar(r.titulo, r.corpo).length, copias: trechosCopiados(r.corpo, fontesDoAssunto(ctx)).length } };
 }
 
 // ------------------------------------------------------------------ verificação em fontes oficiais (v0.14.0)
@@ -467,7 +615,7 @@ const SITUACOES = ["confirmada", "parcialmente_confirmada", "nao_encontrada", "d
 const ROTULO_SITUACAO: Record<string, string> = { confirmada: "CONFIRMADA", parcialmente_confirmada: "PARCIALMENTE CONFIRMADA",
   nao_encontrada: "NÃO ENCONTRADA", divergente: "DIVERGENTE" };
 const REGRA_VERIFICACAO = "(11) se vier uma VERIFICAÇÃO EM FONTES OFICIAIS, trate como confirmado o que ela diz que as páginas oficiais confirmam, " +
-  "cite o órgão oficial pelo nome (sem link) e não marque [VERIFICAR] nesses pontos; o que ela não confirmar continua com [VERIFICAR]; " +
+  "cite o órgão oficial pelo nome (sem link); o que ela não confirmar fica fora do texto (ou atribuído à fonte que o informa) e vai para 'pendencias'; " +
   "se ela apontar divergência, siga a fonte oficial e diga o que mudou; ";
 // só a linha que É o aviso ("Este informativo é baseado em … fonte não oficial…", "Fonte não oficial: boletim X"); um parágrafo
 // que fala de fonte não oficial como assunto ("boletos de fontes não oficiais são golpe") fica
@@ -778,7 +926,7 @@ async function tratar(req: Request): Promise<Response> {
     const pedido = await req.json().catch(() => null);
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
-    if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
     const diag = acao === "diagnostico";
     if (!diag && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
     assuntoId = diag ? 0 : pedido.assunto_id;
@@ -805,6 +953,7 @@ async function tratar(req: Request): Promise<Response> {
       : acao === "verificar" ? await verificar(token, ctx)
       : acao === "fundamentar" ? await fundamentar(token, ctx)
       : acao === "titulos" ? await titulos(token, ctx, pedido.conteudo_id, pedido.evitar)
+      : acao === "revisar" ? await revisar(token, ctx, pedido.conteudo_id, pedido.lido)
       : acao === "ilustrar" ? await ilustrar(ctx, typeof pedido.titulo === "string" ? pedido.titulo : "",
                                              typeof pedido.descricao === "string" ? pedido.descricao : "")
       : await gerar(token, ctx, String(pedido.formato ?? "informativo"), pedido.analise === true);
@@ -819,7 +968,7 @@ async function tratar(req: Request): Promise<Response> {
     const usado = reg.uso;
     if (usado && token) {
       await banco(token, "POST", "rpc/radar_registrar_uso_ia", {
-        p_acao: acao === "titulos" ? "gerar" : acao === "verificar" ? "fundamentar" : acao, p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
+        p_acao: acao === "titulos" || acao === "revisar" ? "gerar" : acao === "verificar" ? "fundamentar" : acao, p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
       }).catch((e) => console.error("uso da IA não registrado:", e?.message));
     }
   }

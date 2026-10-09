@@ -2,8 +2,9 @@
 
 Depois da coleta e da nota da IA, o robô prepara sozinho o RASCUNHO das notícias de topo, para a equipe
 só conferir: abre o assunto, pede à IA o texto no formato do informativo (as mesmas regras do botão
-"Gerar com IA": só o que está no texto oficial, nada de memória, [VERIFICAR] quando falta informação,
-texto original e nunca cópia) e grava o conteúdo como rascunho, com os pontos a conferir.
+"Gerar com IA": só o que está no texto oficial, nada de memória, nada de marca ou comentário sobre dúvida no
+texto — o que falta confirmar vai para os pontos a conferir (v0.16.0) —, texto original e nunca cópia) e grava o
+conteúdo como rascunho, com os pontos a conferir.
 
 O robô não envia para revisão, não aprova e não publica: isso continua com a equipe. Quando a API do
 site da Artecon existir, estes rascunhos são o ponto de partida do envio automático.
@@ -51,6 +52,11 @@ REGRA_ESTILO = ("(9) ESCRITA NATURAL: escreva como um contador experiente explic
                 "Evite as fórmulas típicas de texto automático: 'vale ressaltar', 'é importante destacar', 'cabe salientar', 'neste contexto', 'nesse sentido', "
                 "'em suma', 'em resumo', 'desempenha um papel', 'no cenário atual', 'diante disso', 'por fim, mas não menos importante'; "
                 "não empilhe três adjetivos, não abuse de travessões nem de listas, e não feche com um parágrafo que só repete o que já foi dito; ")
+REGRA_PENDENCIAS = ("(3) o texto vai para o leitor: NUNCA escreva nele marcas, colchetes ou comentários sobre dúvidas da redação "
+                    "(nada de '[VERIFICAR …]', 'a fonte não informa o ano', 'a fonte cita tanto X quanto Y'). Quando faltar uma informação ou ela não estiver "
+                    "confirmada, escreva a frase sem esse detalhe, sem supor (ex.: 'a sessão está marcada para 30 de setembro' em vez de inventar o ano), "
+                    "ou deixe o ponto de fora, e registre-o em 'pendencias' (lista curta, só para a equipe, cada item dizendo o que falta conferir). "
+                    "Diferença só de grafia entre as fontes (ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa, sem comentar; ")
 REGRA_TITULOS = ("(10) em 'titulos', proponha 3 outros títulos para a mesma notícia, diferentes entre si e do título principal "
                  "(um mais direto, um que destaque o prazo ou o impacto para a empresa, um mais curto), cada um com até 110 caracteres, sem ponto final e sem sensacionalismo; ")
 FORMATOS = {
@@ -73,7 +79,7 @@ def instrucoes(formato: str) -> str:
             "Formato pedido — " + FORMATOS[formato] + " Regras OBRIGATÓRIAS: "
             "(1) afirme como fato SOMENTE o que estiver no texto oficial fornecido; "
             "(2) NÃO cite lei, decreto, instrução normativa, artigo, alíquota, valor, prazo ou data que não apareça no texto oficial — nada de conhecimento de memória; "
-            "(3) quando faltar uma informação necessária (ex.: data de vigência não informada), escreva [VERIFICAR: o que falta] em vez de supor; "
+            + REGRA_PENDENCIAS +
             "(4) a seção 'Análise Artecon' é interpretação: use linguagem condicional ('pode', 'tende a', 'recomenda-se avaliar') e não crie obrigações que o texto não traz; "
             "(5) não prometa resultado, não dê orientação individual e não use superlativos; "
             "(6) formatação: só '## ' para subtítulo, '- ' para lista e **negrito**; sem HTML, sem tabelas, sem links; "
@@ -82,11 +88,23 @@ def instrucoes(formato: str) -> str:
             "nem com pequenas trocas de palavras; não repita a ordem dos parágrafos da fonte. Reorganize a informação do ponto de vista da empresa cliente "
             "(o que muda, para quem, quando, o que fazer). Só é permitido transcrever, entre aspas e com no máximo 25 palavras, o trecho de um dispositivo "
             "legal quando a redação exata for indispensável; nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; "
+            "diga de onde veio a informação ('segundo a Receita Federal', 'conforme a Portaria …'): o texto atribui, não copia; "
             + REGRA_ESTILO + REGRA_TITULOS + REGRA_DADOS)
 
 
-ESQUEMA = {"type": "object", "additionalProperties": False, "required": ["titulo", "titulos", "corpo"],
-           "properties": {"titulo": {"type": "string"}, "titulos": {"type": "array", "items": {"type": "string"}}, "corpo": {"type": "string"}}}
+ESQUEMA = {"type": "object", "additionalProperties": False, "required": ["titulo", "titulos", "corpo", "pendencias"],
+           "properties": {"titulo": {"type": "string"}, "titulos": {"type": "array", "items": {"type": "string"}}, "corpo": {"type": "string"},
+                          "pendencias": {"type": "array", "items": {"type": "string"}}}}
+
+
+def limpar_pendencias(lista) -> list[str]:
+    """O que a IA deixou fora do texto por falta de confirmação: até 10, sem repetir (como na função radar-ia)."""
+    saida: list[str] = []
+    for p in lista if isinstance(lista, list) else []:
+        p = re.sub(r"\]$", "", re.sub(r"^\[?\s*verificar\s*:?\s*", "", _espacos(str(p or "")), flags=re.I))[:300]
+        if len(p) >= 3 and p not in saida:
+            saida.append(p)
+    return saida[:10]
 
 
 def limpar_titulos(lista, principal: str) -> list[str]:
@@ -274,9 +292,12 @@ def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: 
     corpo = re.sub(r"</?[a-zA-Z][^<>]*>", "", str(resposta.get("corpo") or "")).strip()
     if len(corpo) < 80:
         raise ErroConteudo("a IA devolveu um texto vazio ou curto demais")
+    pendencias = limpar_pendencias(resposta.get("pendencias"))
     return {"titulo": titulo, "corpo": corpo[:60000], "modelo": str(dados.get("model") or modelo),
             "titulos": limpar_titulos(resposta.get("titulos"), titulo),
-            "avisos": [AVISO_ROBO] + conferir_gerado(titulo + "\n" + corpo, oficial, False)}
+            "avisos": [AVISO_ROBO] + conferir_gerado(titulo + "\n" + corpo, oficial, False)
+                      + (["Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): "
+                          + "; ".join(pendencias) + "."] if pendencias else [])}
 
 
 def inicio_do_dia(agora: datetime) -> datetime:

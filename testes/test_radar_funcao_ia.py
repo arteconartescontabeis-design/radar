@@ -127,7 +127,7 @@ def test_gerar_guarda_as_opcoes_de_titulo_e_pede_escrita_natural(funcao, limpo):
     assert status == 200, r
     pedido = IA["pedidos"][-1]
     assert "ESCRITA NATURAL" in pedido["system"] and "'titulos'" in pedido["system"]
-    assert pedido["tools"][0]["input_schema"]["required"] == ["titulo", "titulos", "corpo"]
+    assert pedido["tools"][0]["input_schema"]["required"] == ["titulo", "titulos", "corpo", "pendencias"]
     esperado = ["CBS: alíquota de 0,9% na fase de transição", "O que muda com a CBS a 0,9%", "Quarto título que sobra"]
     assert r["titulos"] == esperado
     assert limpo.execute("select titulos_sugeridos from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()[0] == esperado
@@ -164,12 +164,110 @@ def test_texto_para_analise_so_com_fonte_nao_oficial_e_marcado(funcao, limpo, re
     n = len(IA["pedidos"])
     status, r = pedir("gerar", assunto_id=a, formato="flash")                     # sem "analise": recusa, como antes
     assert status == 400 and "fonte oficial" in r["message"] and len(IA["pedidos"]) == n
+    # v0.16.0: o texto veio com marca [VERIFICAR]: a segunda passada tira a marca e o ponto vai para os pontos a conferir
+    IA["respostas"]["revisao"] = {"titulo": "Novidade do Simples para análise", "pendencias": ["[VERIFICAR: norma e prazo]"],
+                                  "corpo": "Segundo o boletim, há novidade sobre o Simples, ainda sem a norma publicada. " * 3}
     status, r = pedir("gerar", assunto_id=a, formato="flash", analise=True)
     assert status == 200, r
-    pedido = IA["pedidos"][-1]
+    pedido, revisao = IA["pedidos"][-2:]
     assert "PARA ANÁLISE INTERNA" in pedido["system"] and "<<<TEXTO DE FONTE NÃO OFICIAL" in pedido["messages"][0]["content"]
+    assert "'segundo o Portal Contábil SC'" in pedido["system"] and "marque com [VERIFICAR" not in pedido["system"]
+    assert revisao["tools"][0]["name"] == "revisao" and "[VERIFICAR: norma e prazo]" in revisao["messages"][0]["content"]
     assert r["avisos"][0].startswith("TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (Comitê Gestor do IBS)")
-    assert limpo.execute("select avisos_ia->>0 from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()[0].startswith("TEXTO PARA ANÁLISE")
+    corpo, avisos = limpo.execute("select corpo, avisos_ia from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
+    assert avisos[0].startswith("TEXTO PARA ANÁLISE") and "[VERIFICAR" not in corpo
+    assert "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): norma e prazo." in avisos
+    assert not any("marcados com [VERIFICAR]" in x for x in avisos)
+
+
+# ------------------------------------------------ v0.16.0: o texto não leva marca nem cópia
+COPIADO = ("A norma dispõe sobre a apuração da Contribuição Social sobre Bens e Serviços (CBS) no período de transição. "
+           "Art. 2º O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9%. ")
+REVISADO = ("Segundo a Receita Federal, a regra nova explica como calcular a CBS durante a transição, e a empresa precisa "
+            "mostrar o tributo na nota fiscal com alíquota de 0,9%. ")
+
+
+def _assunto_com_texto(db):
+    a, c = cenario_publicavel(db)
+    db.execute("insert into radar_assunto_capturas select %s, captura_id from radar_evidencias where assunto_id = %s on conflict do nothing", (a, a))
+    return a, c
+
+
+def test_gerar_sem_marca_nem_copia_faz_uma_chamada_so_e_guarda_as_pendencias(funcao, limpo):
+    a, _ = _assunto_com_texto(limpo)
+    IA["respostas"]["conteudo"] = {"titulo": "CBS de 0,9% na transição", "titulos": [],
+                                   "corpo": "Segundo a Receita Federal, a CBS entra com alíquota de 0,9% e precisa aparecer na nota fiscal. " * 2,
+                                   "pendencias": ["[VERIFICAR: data da sessão presencial]", "data da sessão presencial", "x"]}
+    n = len(IA["pedidos"])
+    status, r = pedir("gerar", assunto_id=a, formato="flash")
+    assert status == 200, r
+    assert len(IA["pedidos"]) == n + 1                                         # nada a revisar: uma chamada só
+    sistema = IA["pedidos"][-1]["system"]
+    assert "NUNCA escreva nele marcas" in sistema and "'pendencias'" in sistema and "'ADI 5.161' e 'ADI nº 5.161/DF'" in sistema
+    assert "diga de onde veio a informação" in sistema and "[VERIFICAR: o que falta]" not in sistema
+    assert "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): data da sessão presencial." in r["avisos"]
+
+
+def test_gerar_com_marca_ou_copia_pede_a_revisao_e_grava_o_texto_revisado(funcao, limpo):
+    a, _ = _assunto_com_texto(limpo)
+    IA["respostas"]["conteudo"] = {"titulo": "CBS de 0,9% na transição", "titulos": [], "pendencias": [],
+                                   "corpo": COPIADO + "A sessão será em 30 de setembro [VERIFICAR: a fonte indica 30/9, mas não especifica o ano]. "
+                                            + "Texto próprio sobre a CBS. " * 4}
+    IA["respostas"]["revisao"] = {"titulo": "CBS de 0,9% na transição", "pendencias": ["ano da sessão presencial"],
+                                  "corpo": REVISADO + "A sessão está marcada para 30 de setembro. " + "Texto próprio sobre a CBS. " * 4}
+    n = len(IA["pedidos"])
+    status, r = pedir("gerar", assunto_id=a, formato="flash")
+    assert status == 200, r
+    assert len(IA["pedidos"]) == n + 2
+    rev = IA["pedidos"][-1]
+    assert rev["tools"][0]["name"] == "revisao" and "Você revisa" in rev["system"] and "diz de onde veio a informação" in rev["system"]
+    msg = rev["messages"][0]["content"]
+    assert "Marcas a resolver" in msg and "a fonte indica 30/9" in msg
+    assert "Trechos iguais ao da fonte" in msg and "contribuinte deverá destacar a CBS no documento fiscal" in msg
+    assert "<<<TEXTO OFICIAL" in msg                                           # o material para confirmar o que puder
+    corpo, avisos = limpo.execute("select corpo, avisos_ia from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
+    assert corpo.startswith(REVISADO.strip()) and "[VERIFICAR" not in corpo
+    assert "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): ano da sessão presencial." in avisos
+    assert not any("marcados com [VERIFICAR]" in x or "revisão automática" in x for x in avisos)
+    assert limpo.execute("select acao, tokens_entrada, tokens_saida from radar_ia_uso order by id desc limit 1").fetchone() == ("gerar", 2000, 600)
+
+
+def test_revisao_que_volta_cortada_deixa_o_texto_original_com_aviso(funcao, limpo):
+    a, _ = _assunto_com_texto(limpo)
+    original = "A sessão será em 30 de setembro [VERIFICAR: ano]. " + "Texto próprio sobre a CBS. " * 6
+    IA["respostas"]["conteudo"] = {"titulo": "CBS de 0,9% na transição", "titulos": [], "pendencias": [], "corpo": original}
+    IA["respostas"]["revisao"] = {"titulo": "CBS", "pendencias": [], "corpo": "Texto próprio sobre a CBS. " * 4}   # bem menor: cortado
+    status, r = pedir("gerar", assunto_id=a, formato="flash")
+    assert status == 200, r
+    corpo, avisos = limpo.execute("select corpo, avisos_ia from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
+    assert corpo == original.strip()
+    assert any("marcados com [VERIFICAR]" in x for x in avisos)
+    assert any(x.startswith("A revisão automática (marcas e trechos iguais ao da fonte) não pôde ser feita agora (a IA devolveu um texto incompleto)")
+               and "Revisar com IA" in x for x in avisos)
+
+
+def test_revisar_reescreve_um_conteudo_ja_gravado(funcao, limpo):
+    a, c = _assunto_com_texto(limpo)
+    limpo.execute("update radar_conteudos set corpo = %s, avisos_ia = '[\"aviso antigo\"]' where id = %s",
+                  (COPIADO + "O prazo de adesão [VERIFICAR: prazo de adesão] ainda será definido. " + "Texto próprio sobre a CBS. " * 4, c))
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0].isoformat()
+    IA["respostas"]["revisao"] = {"titulo": "CBS: o que muda", "pendencias": ["prazo de adesão"],
+                                  "corpo": REVISADO + "O prazo de adesão ainda será definido. " + "Texto próprio sobre a CBS. " * 4}
+    n = len(IA["pedidos"])
+    status, r = pedir("revisar", assunto_id=a, conteudo_id=c, lido="2020-01-01T00:00:00+00:00")     # tela velha: não mexe
+    assert status == 409 and len(IA["pedidos"]) == n
+    status, r = pedir("revisar", assunto_id=a + 1000, conteudo_id=c, lido=lido)
+    assert status == 404
+    status, r = pedir("revisar", assunto_id=a, conteudo_id=c, lido=lido)
+    assert status == 200, r
+    assert r["pendencias"] == ["prazo de adesão"] and r["restam"] == {"marcas": 0, "copias": 0} and r["marcas"] == 1 and r["copias"] == 1
+    corpo, avisos, status_c = limpo.execute("select corpo, avisos_ia, status from radar_conteudos where id = %s", (c,)).fetchone()
+    assert corpo.startswith(REVISADO.strip()) and status_c == "em_revisao"
+    assert avisos == ["aviso antigo", "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): prazo de adesão."]
+    assert limpo.execute("select acao from radar_ia_uso order by id desc limit 1").fetchone()[0] == "gerar"
+    n = len(IA["pedidos"])
+    status, r = pedir("revisar", assunto_id=a, conteudo_id=c)                  # nada mais a revisar: nem chama a IA
+    assert status == 400 and "não há o que revisar" in r["message"] and len(IA["pedidos"]) == n
 
 
 

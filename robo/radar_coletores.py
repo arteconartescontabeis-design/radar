@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from html.entities import name2codepoint
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from urllib.parse import urljoin
@@ -95,13 +96,53 @@ def _finalizar(itens: list[Item], config: dict, hoje: date | None) -> Listagem:
 
 
 # ---------------------------------------------------------------- RSS / Atom
+class PaginaNaoEhFeed(ValueError):
+    """v0.16.0: o endereço de uma fonte RSS devolveu uma página (HTML), não o feed. `feed` é o que a página anuncia, se anunciar."""
+    def __init__(self, feed: str | None):
+        self.feed = feed
+        super().__init__("o endereço cadastrado é uma página do site, não um feed RSS; " +
+                         (f"o feed que ela anuncia é {feed}: cadastre esse endereço" if feed
+                          else "cadastre o endereço do feed (em sites WordPress, costuma ser o endereço do site com /feed/ no fim)"))
+
+
+def _parece_html(texto: str) -> bool:
+    inicio = re.sub(r"^(\s|<\?xml[^>]*\?>|<!--.*?-->)*", "", texto[:4000].lstrip("\ufeff"), flags=re.S)
+    return bool(re.match(r"<(!doctype\s+html|html[\s>])", inicio, re.I))
+
+
+def feed_da_pagina(conteudo: str, base: str) -> str | None:
+    """O feed que a página anuncia (<link rel="alternate" type="application/rss+xml" href="...">)."""
+    for link in BeautifulSoup(conteudo or "", "lxml").find_all("link", href=True):
+        rel = [r.lower() for r in (link.get("rel") or [])]
+        if "alternate" in rel and (link.get("type") or "").lower() in ("application/rss+xml", "application/atom+xml", "application/rdf+xml"):
+            url = urljoin(base, link["href"].strip())
+            if re.match(r"https?://", url, re.I):
+                return url
+    return None
+
+
+def _entidades_html(texto: str) -> str:
+    """Feeds que usam entidades do HTML (&nbsp;, &ccedil;…), que o XML não conhece: viram o número do caractere."""
+    return re.sub(r"&([A-Za-z][A-Za-z0-9]{1,30});", lambda m: m.group(0) if m.group(1) in ("amp", "lt", "gt", "quot", "apos")
+                  else f"&#{name2codepoint[m.group(1)]};" if m.group(1) in name2codepoint else m.group(0), texto)
+
+
 def listar_rss(conteudo: str, fonte: dict, hoje: date | None = None) -> Listagem:
     """RSS 1.0 (RDF, usado pelo gov.br), RSS 2.0 e Atom."""
     config = fonte.get("config") or {}
     excluir = re.compile(config["excluir_url"], re.I) if config.get("excluir_url") else None
+    if isinstance(conteudo, bytes):
+        try:
+            texto = conteudo.decode("utf-8")
+        except UnicodeDecodeError:
+            texto = None
+        if texto is not None and _parece_html(texto):
+            raise PaginaNaoEhFeed(feed_da_pagina(texto, fonte["url"]))
     if isinstance(conteudo, str):
+        if _parece_html(conteudo):
+            raise PaginaNaoEhFeed(feed_da_pagina(conteudo, fonte["url"]))
         # o texto já foi decodificado: a declaração <?xml encoding=...?> não vale mais
-        conteudo = re.sub(r"^\s*<\?xml[^>]*\?>", "", conteudo.lstrip("\ufeff")).encode("utf-8")
+        conteudo = _entidades_html(re.sub(r"^\s*<\?xml[^>]*\?>", "", conteudo.lstrip("\ufeff"))).encode("utf-8")
     raiz = ET.fromstring(conteudo)
     itens: list[Item] = []
     for no in raiz.iter():
@@ -300,7 +341,14 @@ def listar_paginas(baixar_pagina, fonte: dict, hoje: date | None = None) -> tupl
                 raise
             incompleta = f"a página {n} da listagem não pôde ser lida ({e}); itens das páginas anteriores foram aproveitados"
             break
-        parte = listar(conteudo, dict(fonte, url=url, config=sem_corte), hoje)
+        try:
+            parte = listar(conteudo, dict(fonte, url=url, config=sem_corte), hoje)
+        except PaginaNaoEhFeed as e:
+            # v0.16.0: cadastraram a página do site como fonte RSS: segue (uma vez) o feed que a página anuncia
+            if not e.feed or n > 1 or e.feed == url:
+                raise
+            http, conteudo = baixar_pagina(e.feed)
+            parte = listar(conteudo, dict(fonte, url=e.feed, config=sem_corte), hoje)
         brutos += parte.brutos
         itens += parte.itens
         if not por_pagina or parte.brutos < por_pagina:

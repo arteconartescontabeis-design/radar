@@ -133,7 +133,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.15.0", True), ("ok", 1, 200, "0.15.0", True)]
+    assert ex == [("ok", 2, 200, "0.16.0", True), ("ok", 1, 200, "0.16.0", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -804,6 +804,30 @@ def test_muitos_itens_apontando_para_a_mesma_origem_sao_tratados_como_erro_da_ia
     # tipos estranhos não passam: id como texto ou verdadeiro/falso, nota como texto, item que não é objeto
     assert radar_ia.conferir([{"id": "1", "nota": 5}, {"id": True, "nota": 5}, {"id": 2, "nota": "9"}, "x", None, {"id": 3, "nota": 7, "igual_a": "1"}], novos, []) == \
         [{"id": 3, "nota": 7, "motivo": "", "tema": "", "igual_a": None}]
+
+
+def test_repeticao_entre_titulos_de_tributos_diferentes_e_descartada():
+    # v0.16.0: caso real do ITC de 09/10 — a IA juntou a decisão do STF sobre PIS/Cofins à notícia sobre IRPJ/CSLL
+    vistos = [{"id": 317, "titulo": "SUBVENÇÃO GOVERNAMENTAL - CRÉDITO PRESUMIDO DE ICMS NÃO PODE MAIS SER EXCLUÍDO DA BASE DE CÁLCULO DO IRPJ E DA CSLL"},
+              {"id": 275, "titulo": "STF recomeça julgamento sobre tributação de créditos presumidos de ICMS"},
+              {"id": 345, "titulo": "Sem faixa de transição, retenção de IR sobre dividendos é inconstitucional"},
+              {"id": 36, "titulo": "CGSN define prazos de opção pelo Simples Nacional e pelo regime regular do IBS e da CBS para 2027"}]
+    novos = [{"id": 379, "titulo": "STF EXCLUI CRÉDITOS PRESUMIDOS DE ICMS DA BASE DE CÁLCULO DO PIS E DA COFINS"},
+             {"id": 400, "titulo": "STF exclui créditos presumidos de ICMS da base de cálculo do PIS e da Cofins"},
+             {"id": 223, "titulo": "PIS/COFINS: STF RECOMEÇA JULGAMENTO SOBRE TRIBUTAÇÃO DE CRÉDITOS PRESUMIDOS DE ICMS"},
+             {"id": 366, "titulo": "SEM FAIXA DE TRANSIÇÃO, RETENÇÃO DE IRRF SOBRE DIVIDENDOS É INCONSTITUCIONAL"},
+             {"id": 12, "titulo": "Simples Nacional 2027: entenda os novos prazos e faça sua escolha"},
+             {"id": 13, "titulo": "IRPF: novo prazo"}, {"id": 14, "titulo": "Empresas vão ir à Receita: prazo do IRPJ muda"}]
+    itens = [{"id": 379, "nota": 8, "igual_a": 317},          # ICMS + PIS/Cofins ≠ ICMS + IRPJ/CSLL: descartada
+             {"id": 400, "nota": 8, "igual_a": 379},          # mesma notícia, mesmos tributos: vale
+             {"id": 223, "nota": 6, "igual_a": 275},          # PIS/Cofins + ICMS contém ICMS: vale
+             {"id": 366, "nota": 8, "igual_a": 345},          # "IR" sem dizer qual vale pelo IRRF
+             {"id": 12, "nota": 7, "igual_a": 36},            # título sem tributo: decide a IA
+             {"id": 13, "nota": 5, "igual_a": None},
+             {"id": 14, "nota": 5, "igual_a": 13}]            # IRPJ ≠ IRPF ("ir", verbo, não é imposto de renda)
+    assert [b["igual_a"] for b in radar_ia.conferir(itens, novos, vistos)] == [None, 379, 275, 345, 36, None, None]
+    assert radar_ia.tributos("Empresas vão ir à Receita") == set()
+    assert radar_ia.tributos("Imposto de Renda da Pessoa Física: declaração") == {"IRPF"}
 
 
 @pytest.mark.parametrize("bruto,esperado", [

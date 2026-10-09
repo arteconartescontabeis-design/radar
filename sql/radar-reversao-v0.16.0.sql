@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.15.0.sql
--- DESFAZ a instalação do radar-setup-v0.15.0.sql.
+-- RADAR ARTECON — radar-reversao-v0.16.0.sql
+-- DESFAZ a instalação do radar-setup-v0.16.0.sql.
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
 -- =====================================================================
@@ -80,6 +80,9 @@ drop function if exists public.radar_gravar_avaliacao_ia(jsonb);
 drop function if exists public.radar_limpar_imagens_sem_uso(int);
 drop function if exists public.radar_arquivar_fila(int);
 drop function if exists public.radar_separar_captura(bigint, bigint);
+drop function if exists public.radar_separar_repeticao(bigint);
+drop function if exists public.radar_autorizar_copia(bigint, text, timestamptz);
+drop function if exists public.radar_avisos_acrescimo(jsonb, jsonb);
 drop function if exists public.radar_fn_conteudo_fonte() cascade;
 drop function if exists public.radar_abrir_assunto(bigint, boolean);
 drop function if exists public.radar_admin_usuarios();
