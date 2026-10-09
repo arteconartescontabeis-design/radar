@@ -135,6 +135,102 @@ def relatorio(url: str, form: dict) -> str:
     return "\n".join(linhas)
 
 
+# v0.17.0: reconhecimento da LISTA de notícias do painel (para a exclusão pedida pelo administrador). Só lê: nunca abre
+# link de excluir/sair e não envia formulário nenhum. Valores de campos ocultos e códigos longos não vão para o relatório.
+APAGA = re.compile(r"delete|excluir|destroy|remove|apagar|logout|sair", re.I)
+ACAO = re.compile(r"delete|excluir|destroy|remove|apagar|edit|editar|alterar|show|ver|visualizar|news/\d|/\d+", re.I)
+
+
+def _curto(t: str, n: int = 80) -> str:
+    t = " ".join(str(t or "").split())
+    return re.sub(r"[A-Za-z0-9+/=_-]{30,}", "…", t)[:n]
+
+
+def _caminho(base: str, href: str) -> str:
+    u = urlsplit(urljoin(base, href or ""))
+    return (u.path or "/") + (("?" + u.query) if u.query else "") if mesmo_site(u.geturl()) or not u.netloc else u.geturl()[:80]
+
+
+def _acoes(no, base: str) -> list[str]:
+    """Links e formulários de uma linha da lista: texto, endereço, método e o que confirma (nunca valores digitados)."""
+    saida = []
+    for a in no.find_all("a"):
+        attrs = {k: v for k, v in a.attrs.items() if k.startswith("data-") or k in ("onclick", "target", "class", "title")}
+        extra = " ".join(f"{k}={_curto(' '.join(v) if isinstance(v, list) else v, 60)}" for k, v in attrs.items())
+        saida.append(f"link “{_curto(a.get_text(' '), 30)}” → {_caminho(base, a.get('href'))} {extra}".rstrip())
+    for f in no.find_all("form"):
+        ocultos = [(i.get("name") or "") + ("=" + _curto(i.get("value"), 20) if (i.get("name") or "") == "_method" else "")
+                   for i in f.find_all("input", type="hidden")]
+        botoes = [_curto(b.get_text(" ") or b.get("value"), 30) for b in f.find_all(["button", "input"])
+                  if (b.get("type") or "submit").lower() in ("submit", "button")]
+        conf = " onsubmit=" + _curto(f.get("onsubmit"), 60) if f.get("onsubmit") else ""
+        saida.append(f"formulário {(f.get('method') or 'get').upper()} → {_caminho(base, f.get('action'))} ocultos={ocultos} botões={botoes}{conf}")
+    for b in no.find_all("button"):
+        if b.find_parent("form") is None:
+            attrs = {k: v for k, v in b.attrs.items() if k.startswith("data-") or k in ("onclick", "class")}
+            saida.append(f"botão “{_curto(b.get_text(' '), 30)}” " + " ".join(f"{k}={_curto(' '.join(v) if isinstance(v, list) else v, 60)}"
+                                                                         for k, v in attrs.items()))
+    return saida
+
+
+def relatorio_lista(url: str, html: str) -> str:
+    sopa = BeautifulSoup(html or "", "lxml")
+    linhas = [f"Lista de notícias: {urlsplit(url).path}"]
+    for n, t in enumerate(sopa.find_all("table")[:3], 1):
+        cab = [_curto(th.get_text(" "), 30) for th in t.find_all("th")]
+        linhas.append(f"Tabela {n}: colunas {cab}")
+        for k, tr in enumerate([tr for tr in t.find_all("tr") if tr.find("td")][:4], 1):
+            linhas.append(f"  linha {k}: " + " | ".join(_curto(td.get_text(" "), 50) for td in tr.find_all("td")))
+            linhas += [f"     {x}" for x in _acoes(tr, url)]
+        linhas.append(f"  ({len([tr for tr in t.find_all('tr') if tr.find('td')])} linhas nesta página)")
+    if not sopa.find_all("table"):                       # lista sem tabela (cartões): mostra os blocos com ação
+        blocos = [b for b in sopa.find_all(["li", "div", "article"]) if b.find("a", href=APAGA) or b.find("form")][:4]
+        for k, b in enumerate(blocos, 1):
+            linhas.append(f"  bloco {k}: {_curto(b.get_text(' '), 100)}")
+            linhas += [f"     {x}" for x in _acoes(b, url)]
+    soltos = [f for f in sopa.find_all("form") if not f.find_parent("table")]
+    if soltos:
+        linhas.append("Formulários fora da tabela:")
+        for f in soltos[:5]:
+            linhas += [f"  {x}" for x in _acoes(f.parent or f, url) if x.startswith("formulário")][:1]
+    pags = sorted({_caminho(url, a["href"]) for a in sopa.find_all("a", href=True) if re.search(r"page=|pagina=|/page/", a["href"])})[:5]
+    linhas.append(f"Paginação: {pags or 'nenhuma'}")
+    meta = [m.get("name") for m in sopa.find_all("meta") if "csrf" in (m.get("name") or "").lower()]
+    linhas.append(f"Meta CSRF: {meta or 'não'}")
+    trechos = []
+    for s in sopa.find_all("script"):
+        txt = s.string or ""
+        m = re.search(r"(?i)(delete|destroy|excluir|swal|confirm\(|_method)", txt)
+        if m:
+            trechos.append(_curto(txt[max(0, m.start() - 120): m.start() + 240], 360))
+    linhas.append("Scripts da página que tratam exclusão/confirmação:" + ("".join(f"\n  - {t}" for t in trechos[:6]) if trechos else " nenhum"))
+    externos = [_caminho(url, s["src"]) for s in sopa.find_all("script", src=True)][:12]
+    linhas.append(f"Scripts externos: {externos or 'nenhum'}")
+    return "\n".join(linhas)
+
+
+def achar_lista(sessao: requests.Session, html: str, base: str) -> tuple[str, str]:
+    """A página com a lista das notícias cadastradas (segue só links de notícia do menu; nunca abre excluir nem sair)."""
+    sopa = BeautifulSoup(html or "", "lxml")
+    candidatos = [BASE + "/admin/news"]
+    for a in sopa.find_all("a", href=True):
+        url, texto = urljoin(base, a["href"]), " ".join(a.get_text(" ").split())
+        if mesmo_site(url) and "/admin" in url and (NOTICIA.search(url) or NOTICIA.search(texto)) and not CRIAR.search(url):
+            candidatos.append(url)
+    vistos = set()
+    for url in candidatos:
+        if url in vistos or APAGA.search(url) or len(vistos) >= 5:
+            continue
+        vistos.add(url)
+        r = sessao.get(url, timeout=40)
+        if r.status_code >= 400 or not mesmo_site(r.url):
+            continue
+        pagina = BeautifulSoup(r.text, "lxml")
+        if pagina.find("table") is not None or pagina.find("a", href=APAGA) is not None:
+            return r.url, r.text
+    raise Parada(f"não achei a lista de notícias do painel (abri: {', '.join(urlsplit(u).path for u in vistos)})")
+
+
 def main() -> int:
     usuario, senha = os.environ.get("ARTECON_SITE_USUARIO", ""), os.environ.get("ARTECON_SITE_SENHA", "")
     if not (usuario and senha):
@@ -147,6 +243,10 @@ def main() -> int:
         print("Login: aceito.")
         url, form = achar_cadastro(sessao, painel, BASE + "/admin")
         texto = relatorio(url, form)
+        try:                                               # v0.17.0: a lista (só leitura) para preparar a exclusão
+            texto += "\n\n" + relatorio_lista(*achar_lista(sessao, painel, BASE + "/admin"))
+        except Parada as e:
+            texto += f"\n\nLista de notícias: {e}"
     except Parada as e:
         texto = f"PAROU: {e}"
     except requests.RequestException as e:
