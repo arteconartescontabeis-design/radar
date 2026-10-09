@@ -1554,7 +1554,7 @@ function legendaRede(c, canal, urlSite, categoria){
   let resumo = "";
   for(const l of linhas){ if(resumo.length >= 280) break; resumo += (resumo ? " " : "") + l; }
   if(resumo.length > 600){ const corte = resumo.slice(0, 600), fim = corte.lastIndexOf(". "); resumo = fim > 200 ? corte.slice(0, fim + 1) : corte.trimEnd() + "…"; }
-  const tag = t => "#" + String(t).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+(.)?/g, (_, l) => (l || "").toUpperCase());
+  const tag = t => "#" + String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+(.)?/g, (_, l) => (l || "").toUpperCase());
   const cat = CATEGORIA_SITE[categoria];
   return [c.titulo, resumo,
     canal === "instagram" ? "Leia a matéria completa no site da Artecon (link na bio)." : urlSite ? "Leia a matéria completa: " + urlSite : "Leia a matéria completa no site da Artecon.",
@@ -1677,8 +1677,8 @@ const COPIA_NEUTRAS = new Set(("janeiro fevereiro marco abril maio junho julho a
   "medida provisoria complementar emenda constitucional ato declaratorio executivo convenio ajuste solucao consulta parecer n nº art arts artigo artigos inciso paragrafo").split(" "));
 const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" "));       // não contam quando encostadas em número, data, norma ou nome próprio
 function trechosCopiados(corpo, fontes){
-  const N = 6, invisiveis = /[​-‍⁠­﻿]/g;
-  const limpa = t => String(t || "").replace(invisiveis, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
+  const N = 6, invisiveis = /[\u200b-\u200d\u2060\u00ad\ufeff]/g;
+  const limpa = t => String(t || "").replace(invisiveis, "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
   const gramas = new Set();
   for(const f of fontes || []){ const w = limpa(f).split(" "); for(let i = 0; i + N <= w.length; i++) gramas.add(w.slice(i, i + N).join(" ")); }
   if(!gramas.size) return [];

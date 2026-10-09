@@ -164,8 +164,8 @@ const COPIA_NEUTRAS = new Set(("janeiro fevereiro marco abril maio junho julho a
   "medida provisoria complementar emenda constitucional ato declaratorio executivo convenio ajuste solucao consulta parecer n nº art arts artigo artigos inciso paragrafo").split(" "));
 const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" "));
 function trechosCopiados(corpo: string, fontes: string[]): { palavras: number; texto: string }[] {
-  const N = 6, invisiveis = /[​-‍⁠­﻿]/g;
-  const limpa = (t: string) => String(t || "").replace(invisiveis, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
+  const N = 6, invisiveis = /[\u200b-\u200d\u2060\u00ad\ufeff]/g;
+  const limpa = (t: string) => String(t || "").replace(invisiveis, "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
   const gramas = new Set<string>();
   for (const f of fontes || []) { const w = limpa(f).split(" "); for (let i = 0; i + N <= w.length; i++) gramas.add(w.slice(i, i + N).join(" ")); }
   if (!gramas.size) return [];
