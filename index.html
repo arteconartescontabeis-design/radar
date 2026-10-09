@@ -217,11 +217,16 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.15.0";
-const FUNCAO_MINIMA = "0.14.0";     // versão da função radar-ia que este painel exige (v0.14.0: verificação em fontes oficiais)
+const VERSAO = "0.16.0";
+const FUNCAO_MINIMA = "0.16.0";     // versão da função radar-ia que este painel exige (v0.16.0: "Revisar com IA")
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.16.0", "09/10/2026", [
+    "Texto da IA sem marca nem comentário de dúvida: nada de “[VERIFICAR: a fonte indica 30/9, mas não especifica o ano]” ou “a fonte cita tanto ADI 5.161 quanto ADI nº 5.161/DF” dentro do texto. O que não está confirmado sai do texto (ou é escrito sem o detalhe incerto) e aparece nos pontos a conferir, em “Ficou fora do texto por falta de confirmação”. No “Gerar texto para análise” (e no “Preparar tudo”) de assunto sem fonte oficial, a IA primeiro procura a fonte oficial na internet (uma vez por assunto), para confirmar o que puder.",
+    "Sem cópia: a IA diz de onde veio a informação (“segundo a Receita Federal…”) e, se ainda sobrar trecho igual ao da fonte, uma segunda passada reescreve antes de gravar. No quadro “Texto igual ao da fonte” há dois botões: “Revisar com IA”, que reescreve só esses trechos citando a fonte, e “Autorizar mesmo assim”, com o motivo registrado (vale para o texto atual; se o texto mudar, a autorização cai). “Revisar com IA” também resolve as marcas [VERIFICAR].",
+    "Capa com imagem: a capa feita pela IA agora é a ilustração ao fundo com o logotipo da Artecon, a categoria e o título por cima. A ilustração fica guardada: depois de trocar o título, “Atualizar a capa” refaz a capa com o título novo sem gerar outra imagem.",
+    "Capturas: a IA da triagem não junta mais como “mesmo fato” notícias de tributos diferentes (ex.: crédito presumido de ICMS na base do PIS/Cofins e na base do IRPJ/CSLL). O cartão mostra os títulos das repetições, cada uma com o botão “Não é o mesmo fato”, que a devolve à lista."]],
   ["0.15.0", "08/10/2026", [
     "Capturas: cada cartão diz se a notícia tem fundamentação legal — “com fundamentação legal” (e quais leis, decretos, instruções normativas, resoluções, portarias, soluções de consulta ou convênios ela cita) ou “sem fundamentação legal” (o texto não cita norma nenhuma: confira na fonte antes de usar); se o texto capturado estiver cortado, “fundamentação legal não identificada”. Quando a captura é o próprio ato (ex.: uma Solução de Consulta), o cartão diz qual é. Se a captura não cita norma, mas outra captura do mesmo fato cita, o cartão mostra a da outra. A leitura é feita pelo banco no texto capturado, sem custo de IA, e vale também para as capturas que já estavam na fila; projeto de lei e decisão judicial não contam."]],
   ["0.14.3", "07/10/2026", [
@@ -811,6 +816,10 @@ const TELAS = {
     const [itens, [n]] = await Promise.all([ler(f === "emalta" ? "radar_v_em_alta" : "radar_v_fila", params),
       ler("radar_v_painel", {select:"na_fila,na_fila_principal,na_fila_baixa,em_alta,sem_avaliacao_ia"})]);
     const total = {emalta:n.em_alta, relevantes:n.na_fila_principal, baixa:n.na_fila_baixa, todas:n.na_fila + n.na_fila_baixa};
+    // v0.16.0: os títulos das repetições recolhidas atrás de cada cartão (cada uma com "Não é o mesmo fato")
+    const comRep = itens.filter(i => i.repetidas > 0).map(i => i.id);
+    const reps = comRep.length ? await ler("radar_v_fila", {select:"id,titulo,fonte_nome,url,duplicata_de", duplicata_de:"in.(" + comRep.join(",") + ")", order:"id", limit:"500"}) : [];
+    const separar = id => podeEditar() ? `<button class="btn peq sec" data-acao="separar-repeticao" data-id="${id}">Não é o mesmo fato</button>` : "";
     const fontes = [...new Set(itens.map(i => i.fonte_nome))].sort();
     const chip = (id, nome) => `<button class="chip ${f === id ? "ativa" : ""}" data-acao="filtro-fila" data-valor="${id}" aria-pressed="${f === id}">${nome}<b>${total[id]}</b></button>`;
     const motivos = i => (Array.isArray(i.relevancia_motivos) ? i.relevancia_motivos : []).filter(m => m && m.pontos > 0).map(m => String(m.termo)).slice(0, 6);
@@ -854,10 +863,12 @@ const TELAS = {
           ${i.ia_motivo ? `<p class="sub nota-ia"><b>IA:</b> ${h(i.ia_motivo)}</p>` : ""}
           ${baseLegal(i).linha}
           ${motivos(i).length || contra(i).length ? `<p class="sub motivos">${motivos(i).length ? `<b>Por que apareceu:</b> ${h(motivos(i).join(", "))}. ` : ""}${contra(i).length ? `<b>Pesou contra:</b> ${h(contra(i).join(", "))}.` : ""}</p>` : ""}
-          ${i.duplicata_de && i.principal && i.origem_assunto_id ? `<p class="sub mesmo-fato"><b>Parece o mesmo fato do assunto:</b> ${h(i.origem_assunto)}. <button class="voltar" style="margin:0" data-acao="abrir-assunto" data-id="${i.origem_assunto_id}">ver o assunto</button><br>Se for mesmo, clique em Ignorar; se trouxer novidade, abra um assunto novo.</p>` : ""}
-          ${i.repetidas ? `<p class="sub repetidas"><b>Mesmo fato em mais ${i.repetidas} captura(s):</b> entram juntas no assunto e saem da fila.</p>` : ""}
+          ${i.duplicata_de && i.principal && i.origem_assunto_id ? `<p class="sub mesmo-fato"><b>Parece o mesmo fato do assunto:</b> ${h(i.origem_assunto)}. <button class="voltar" style="margin:0" data-acao="abrir-assunto" data-id="${i.origem_assunto_id}">ver o assunto</button><br>Se for mesmo, clique em Ignorar; se trouxer novidade, clique em “Não é o mesmo fato” ou abra um assunto novo.</p>` : ""}
+          ${i.repetidas ? `<div class="sub repetidas"><b>Mesmo fato em mais ${i.repetidas} captura(s)</b> (entram juntas no assunto e saem da fila):
+            <ul>${reps.filter(r => r.duplicata_de === i.id).map(r => `<li data-repeticao="${r.id}">${h(r.titulo)} <span class="sub">· ${h(r.fonte_nome)}</span> ${linkFonte(r.url, "↗")} ${separar(r.id)}</li>`).join("")}</ul></div>` : ""}
           <div class="acoes">${podeEditar() ? `<button class="btn peq" data-acao="abrir-da-captura" data-id="${i.id}">Abrir assunto</button>
             <button class="btn peq sec" data-acao="ignorar-captura" data-id="${i.id}">Ignorar</button>` : ""}
+            ${i.duplicata_de ? separar(i.id) : ""}
             ${linkFonte(i.url, "abrir na fonte ↗")}</div></article>`).join("")}</div>`
         : `<div class="painel"><p class="sub">${vazio[f]}</p></div>`}
       ${f !== "emalta" ? botaoMais("fila:" + f, itens.length, lim, "capturas", total[f]) : ""}
@@ -1044,7 +1055,7 @@ const TELAS = {
         <li><b>Capturas.</b> O robô lê as fontes cadastradas e, depois de cada coleta, a IA dá uma nota a cada novidade. A tela abre só com o que está <b>em alta</b>: as 10 de maior nota, sem repetição. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>. Cada cartão diz se a notícia tem <b>fundamentação legal</b>: “com fundamentação legal” mostra as normas que o texto capturado cita (lei, lei complementar, decreto, medida provisória, instrução normativa, resolução, portaria, solução de consulta, ato declaratório, ato conjunto do CGIBS, convênio ICMS, edital de transação e outros atos, além da Constituição, do CTN, do RIR, do RICMS e da CLT); “sem fundamentação legal” quer dizer que o texto não cita nenhuma, e “fundamentação legal não identificada”, que o texto capturado está cortado e não cita norma no trecho que veio — nos dois casos, confira na fonte antes de usar. É uma leitura automática do texto: diz o que está citado, não se a citação está certa nem se a norma está em vigor; decisões judiciais (Tema, RE, ADI) e projetos de lei não contam. Não muda a nota nem a relevância. O restante fica em “Relevantes”, “Baixa relevância” e “Todas”, e pode ser ignorado de uma vez.</li>
         <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Preparar com IA</b> busca os trechos e redige o rascunho. Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
-        <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem) ou envie uma imagem. O Radar compara o texto com a fonte: trecho copiado precisa ser reescrito ou citado entre aspas antes de aprovar. Salve, envie para revisão e <b>aprove</b>.</li>
+        <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem; a capa sai com ela ao fundo e o título por cima) ou envie uma imagem. O Radar compara o texto com a fonte: trecho copiado precisa ser reescrito (o botão <b>Revisar com IA</b> reescreve citando de onde veio a informação) ou citado entre aspas antes de aprovar — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Salve, envie para revisão e <b>aprove</b>.</li>
         <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
         <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
       </ol></div>
@@ -1543,7 +1554,7 @@ function legendaRede(c, canal, urlSite, categoria){
   let resumo = "";
   for(const l of linhas){ if(resumo.length >= 280) break; resumo += (resumo ? " " : "") + l; }
   if(resumo.length > 600){ const corte = resumo.slice(0, 600), fim = corte.lastIndexOf(". "); resumo = fim > 200 ? corte.slice(0, fim + 1) : corte.trimEnd() + "…"; }
-  const tag = t => "#" + String(t).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+(.)?/g, (_, l) => (l || "").toUpperCase());
+  const tag = t => "#" + String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+(.)?/g, (_, l) => (l || "").toUpperCase());
   const cat = CATEGORIA_SITE[categoria];
   return [c.titulo, resumo,
     canal === "instagram" ? "Leia a matéria completa no site da Artecon (link na bio)." : urlSite ? "Leia a matéria completa: " + urlSite : "Leia a matéria completa no site da Artecon.",
@@ -1649,6 +1660,15 @@ const COPIA_MINIMA = 12, CITACAO_MAXIMA = 40, CITACOES_TOTAL = 120;
 /* v0.14.3: marcas [VERIFICAR …] deixadas pela IA. Com alguma no título, no texto ou na legenda, nada é aprovado nem publicado
    (o banco também confere: radar_marcas_verificar) */
 const marcasVerificar = (...textos) => textos.join("\n").match(/\[\s*verificar[^\]\n]{0,250}\]?/gi)?.map(m => m.replace(/\s+/g, " ").trim().slice(0, 160)) || [];
+/* v0.16.0: comentário de dúvida da redação escrito sem colchetes ("a fonte não especifica o ano"). Não impede aprovar: aparece num
+   quadro com "Revisar com IA". A mesma expressão está na função radar-ia e no robô de rascunhos (mantenha as três iguais). */
+const RE_DUVIDA = new RegExp("(?<![\\p{L}\\p{N}])(?<!quando\\s)(?<!se\\s)(?<!caso\\s)(?<!enquanto\\s)(?<!que\\s)(?:a|as|o|os)\\s+" +
+  "(?:fontes?(?!\\s+(?:pagadoras?|retentoras?|de\\s+renda|de\\s+recursos))|boletim|boletins|not[íi]cias?|comunicados?|publica[çc](?:ão|ões)|portal|texto\\s+oficial)" +
+  "(?![\\p{L}\\p{N}])[^.;,:()\\n]{0,40}?(?<![\\p{L}\\p{N}])(?:n[ãa]o\\s+(?:inform|especific|mencion|indic|detalh|confirm)(?:a|am|ou|aram)|n[ãa]o\\s+(?:esclarec(?:e|em|eu|eram)|traz|trazem|trouxe|trouxeram|diz|dizem|disse|disseram)" +
+  "|n[ãa]o\\s+deix(?:a|ou|am|aram)\\s+claro|cita(?:m)?\\s+tanto|(?:é|s[ãa]o)\\s+omiss[ao]s?)(?![\\p{L}\\p{N}])[^\\n.;)]{0,120}" +
+  "|(?<![\\p{L}\\p{N}])n[ãa]o\\s+informad[oa]s?\\s+(?:pela|na|no)\\s+(?:fonte|boletim|not[íi]cia|portal)(?![\\p{L}\\p{N}])", "giu");
+const comentariosDuvida = (...textos) =>
+  (textos.join("\n").replace(/\[\s*verificar[^\]\n]{0,250}\]?/gi, " ").match(RE_DUVIDA) ?? []).map((m) => m.replace(/\s+/g, " ").trim().slice(0, 160));
 const msgMarcas = (lista, acao = "liberar") => `Resolva antes de ${acao}: ${lista.length} ponto(s) marcado(s) com [VERIFICAR] — ` +
   lista.map(m => `“${m}”`).join("; ") + ". Troque cada marca pela informação conferida (ou tire o trecho), salve e tente de novo.";
 const marcasDoConteudo = id => { const f = $(`form[data-form=conteudo][data-id="${id}"]`);
@@ -1657,8 +1677,8 @@ const COPIA_NEUTRAS = new Set(("janeiro fevereiro marco abril maio junho julho a
   "medida provisoria complementar emenda constitucional ato declaratorio executivo convenio ajuste solucao consulta parecer n nº art arts artigo artigos inciso paragrafo").split(" "));
 const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" "));       // não contam quando encostadas em número, data, norma ou nome próprio
 function trechosCopiados(corpo, fontes){
-  const N = 6, invisiveis = /[​-‍⁠­﻿]/g;
-  const limpa = t => String(t || "").replace(invisiveis, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
+  const N = 6, invisiveis = /[\u200b-\u200d\u2060\u00ad\ufeff]/g;
+  const limpa = t => String(t || "").replace(invisiveis, "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
   const gramas = new Set();
   for(const f of fontes || []){ const w = limpa(f).split(" "); for(let i = 0; i + N <= w.length; i++) gramas.add(w.slice(i, i + N).join(" ")); }
   if(!gramas.size) return [];
@@ -1715,14 +1735,25 @@ const chipsTitulo = (id, lista) => (Array.isArray(lista) ? lista : []).map(t => 
 function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const copia = trechosCopiados(c.corpo, fontes);
-  const marcas = marcasVerificar(c.titulo || "", c.corpo || "");
+  const marcas = marcasVerificar(c.titulo || "", c.corpo || ""), duvidas = comentariosDuvida(c.titulo || "", c.corpo || "");
+  // v0.16.0: "Revisar com IA" reescreve só as marcas e os trechos iguais ao da fonte; "Autorizar mesmo assim" deixa a cópia (com motivo)
+  const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
+  const autorizada = copia.length && c.copia_autorizada_em;
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
-  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}" data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
+  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.ilustracao_id ? ` data-ilustracao="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}"${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
     ${ed ? avisoRascunho(c) : ""}
     ${marcas.length ? `<div class="aviso erro marcas-verificar"><b>${marcas.length} ponto(s) marcado(s) com [VERIFICAR] — resolva antes de liberar ou publicar.</b>
-      <ul>${marcas.map(m => `<li><span class="copiado">${h(m)}</span></li>`).join("")}</ul>Troque cada marca pela informação conferida (ou tire o trecho) e salve. Enquanto houver marca, o Radar não aprova nem publica.</div>` : ""}
-    ${copia.length ? `<div class="aviso erro copia"><b>Texto igual ao da fonte em ${copia.length} trecho(s).</b> O conteúdo não pode ser aprovado assim: reescreva com as suas palavras. Se for a transcrição de um dispositivo legal, cite só o essencial entre aspas (até ${CITACAO_MAXIMA} palavras por citação).
-      <ul>${copia.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span></li>`).join("")}</ul>${copia.length > 4 ? `<span class="sub">e mais ${copia.length - 4}.</span>` : ""}</div>`
+      <ul>${marcas.map(m => `<li><span class="copiado">${h(m)}</span></li>`).join("")}</ul>Troque cada marca pela informação conferida (ou tire o trecho) e salve${ed ? ", ou clique em “Revisar com IA”: a IA tira as marcas e o que não estiver confirmado vai para os pontos a conferir" : ""}. Enquanto houver marca, o Radar não aprova nem publica.
+      ${ed ? `<div class="acoes">${revisarIA}</div>` : ""}</div>` : ""}
+    ${duvidas.length ? `<div class="aviso alerta duvidas"><b>Comentário sobre dúvida da redação no texto (${duvidas.length}).</b> O leitor não deve ver isso: tire do texto${ed ? " ou clique em “Revisar com IA”" : ""}; o que faltar confirmar vai para os pontos a conferir.
+      <ul>${duvidas.map(d => `<li><span class="copiado">${h(d)}</span></li>`).join("")}</ul>
+      ${ed && !marcas.length ? `<div class="acoes">${revisarIA}</div>` : ""}</div>` : ""}
+    ${copia.length ? `<div class="aviso ${autorizada ? "alerta copia-autorizada" : "erro"} copia"><b>Texto igual ao da fonte em ${copia.length} trecho(s).</b> ${autorizada
+        ? `<b>Autorizado mesmo assim</b> em ${dataHora(c.copia_autorizada_em)}${c.copia_autorizada_motivo ? ` — motivo: “${h(c.copia_autorizada_motivo)}”` : ""}. A autorização vale para este texto: se ele mudar, cai.`
+        : `O conteúdo não pode ser aprovado assim: reescreva com as suas palavras, dizendo de onde veio a informação (“segundo a Receita Federal…”). Se for a transcrição de um dispositivo legal, cite só o essencial entre aspas (até ${CITACAO_MAXIMA} palavras por citação).`}
+      <ul>${copia.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span></li>`).join("")}</ul>${copia.length > 4 ? `<span class="sub">e mais ${copia.length - 4}.</span>` : ""}
+      ${ed && !autorizada ? `<div class="acoes">${revisarIA}<button class="btn peq sec" type="button" data-acao="abrir-autorizar-copia" data-id="${c.id}">Autorizar mesmo assim</button>
+        <span class="sub">“Revisar com IA” reescreve só esses trechos, citando a fonte.</span></div>` : ""}</div>`
       : fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é só com o texto das capturas deste assunto; não detecta paráfrase muito próxima nem cópia de outras páginas.">(só contra as capturas deste assunto)</span></p>` : ""}
     <p>${selo(ROTULOS.formato[c.formato])} ${selo(ROTULOS.conteudo[c.status], tipo)} ${selo(c.gerado_por === "ia" ? (/\(robô\)$/.test(c.modelo_ia || "") ? "preparado pelo robô" : "gerado por IA") : "escrito pela equipe","neutro")}
       ${c.aprovado_em ? `<span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span>` : ""}</p>
@@ -1744,13 +1775,14 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${ed ? `<div class="acoes" style="margin-top:4px"><input id="c-img-${c.id}" type="file" accept="image/jpeg,image/png,image/webp" data-imagem="${c.id}">
       ${c.imagem_id ? `<button class="btn peq perigo" type="button" data-acao="remover-imagem" data-id="${c.id}">Remover imagem</button>` : ""}
       <span class="sub">A imagem é reduzida automaticamente antes de enviar.</span></div>
-      ${E.capaAntiga === c.id && c.imagem_id ? `<div class="aviso alerta capa-antiga">O título mudou. Se a imagem é a capa padrão, ela ainda mostra o título antigo: use “Gerar capa padrão Artecon” para atualizar.</div>` : ""}
-      <div class="acoes" style="margin-top:4px"><button class="btn peq sec" type="button" data-acao="capa-auto" data-id="${c.id}">Gerar capa padrão Artecon</button>
-        <span class="sub">A capa padrão leva o título atual; depois de mudar o título, gere de novo.</span></div>
+      ${E.capaAntiga === c.id && c.imagem_id ? `<div class="aviso alerta capa-antiga">O título mudou. Se a imagem é a capa da Artecon, ela ainda mostra o título antigo: use “Atualizar a capa”${c.ilustracao_id ? " (a ilustração continua a mesma, sem custo)" : ""}.</div>` : ""}
+      <div class="acoes" style="margin-top:4px"><button class="btn peq sec" type="button" data-acao="capa-auto" data-id="${c.id}">${c.ilustracao_id ? "Atualizar a capa (com a ilustração)" : "Atualizar a capa (padrão Artecon)"}</button>
+        ${c.ilustracao_id ? `<button class="btn peq sec" type="button" data-acao="capa-auto" data-sem-ilustracao="1" data-id="${c.id}">Capa padrão, sem a ilustração</button>` : ""}
+        <span class="sub">A capa leva o título atual; depois de mudar o título, atualize.</span></div>
       <div class="acoes" style="margin-top:4px"><input type="text" id="img-desc-${c.id}" data-enter="capa-ia" maxlength="200" value="${h((E.imgDesc || {})[c.id] || "")}" style="flex:1;min-width:240px"
           aria-label="Como você quer a imagem (opcional)" placeholder="Como você quer a imagem (opcional). Ex.: contadora atendendo um casal de empresários">
         <button class="btn peq sec" type="button" data-acao="capa-ia" data-id="${c.id}">Gerar ilustração com IA</button></div>
-      <p class="sub" style="margin:4px 0 0">Em branco, a IA escolhe a cena pela notícia. A imagem é uma foto realista criada pela IA, pode ter pessoas (sempre fictícias) e não leva texto, marca nem assinatura. Cada imagem gerada é cobrada.</p>` : ""}
+      <p class="sub" style="margin:4px 0 0">Em branco, a IA escolhe a cena pela notícia. A imagem é uma foto realista criada pela IA, pode ter pessoas (sempre fictícias) e não leva texto, marca nem assinatura; a capa sai com ela ao fundo e o logotipo, a categoria e o título por cima. Cada imagem gerada é cobrada.</p>` : ""}
     <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>
     ${c.status === "aprovado" ? `<div class="aviso info">Se você alterar o título, o texto, o autor, a fonte ou a imagem, o conteúdo volta para revisão e precisa ser aprovado de novo.</div>
       <div class="acoes para-site"><b class="sub">Para o site da Artecon:</b>
@@ -1798,6 +1830,12 @@ const ACOES = {
   "abrir-assunto"(el){ if(!el.dataset.id || el.dataset.id === "undefined") return; E.etapa = null; E.assunto = Number(el.dataset.id); window.scrollTo(0,0); return desenhar(); },
   async "abrir-da-captura"(el){ E.etapa = null; E.assunto = await rpc("radar_abrir_assunto", {p_captura:Number(el.dataset.id)}); E.aba = "assuntos"; return desenhar(); },
   async "ignorar-captura"(el){ await rpc("radar_abrir_assunto", {p_captura:Number(el.dataset.id), p_ignorar:true}); await desenhar(); recado("Captura ignorada."); return; },
+  /* v0.16.0: a IA da triagem juntou como "mesmo fato" o que não é: a captura volta a aparecer sozinha na lista */
+  async "separar-repeticao"(el){
+    if(!confirm("Esta captura não trata do mesmo fato? Ela volta para a lista como um item próprio, com a nota dela.")) return;
+    await rpc("radar_separar_repeticao", {p_captura:Number(el.dataset.id)});
+    await desenhar(); recado("Captura separada: agora ela aparece sozinha na lista.");
+  },
 
   "filtro-fila"(el){ E.filtros.fila = el.dataset.valor; return desenhar(); },
   "mostrar-mais"(el){ const k = el.dataset.chave; E.mais[k] = ((E.mais || {})[k] || 1) + 1; return desenhar(); },
@@ -1810,6 +1848,51 @@ const ACOES = {
   },
   etapa(el){ mostrarEtapa(el.dataset.etapa);
     if(modoTudo()) document.querySelector(`section[data-etapa="${el.dataset.etapa}"]`)?.scrollIntoView({behavior:"smooth", block:"start"}); },
+  /* v0.16.0: a IA reescreve só os pontos marcados com [VERIFICAR] e os trechos iguais ao da fonte (citando de onde veio) */
+  async "ia-revisar"(el){
+    const f = el.closest("form"), id = Number(el.dataset.id);
+    if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de pedir a revisão.", true); return; }
+    // texto digitado e não salvo guardado neste navegador: a revisão parte do texto salvo, então ele não pode sumir sem a pessoa decidir
+    if(f.querySelector(".rascunho")){ recado("Há um texto não salvo deste conteúdo neste navegador (quadro “Texto não salvo”): recupere e salve, ou descarte, antes de pedir a revisão.", true); return; }
+    apagarRascunho(id);                                   // sem o quadro, o que houver guardado é igual ao texto salvo
+    if(f.dataset.aprovado && !confirm("O conteúdo está aprovado: ao mudar o texto ele volta para revisão. Continuar?")) return;
+    if(!(await liberarIA())) return;
+    const assunto = E.assunto, r = await ia("revisar", {conteudo_id:id, lido:f.dataset.lido});
+    // o título mudou: a capa (que leva o título) é refeita com a mesma ilustração, sem custo; sem ilustração guardada, fica o lembrete
+    let capa = "";
+    if(r.titulo_mudou && f.dataset.temImagem){
+      if(f.dataset.ilustracao && await capaAutomatica(id, false, false, true)){ if(E.capaAntiga === id) E.capaAntiga = null; capa = " O título mudou: a capa foi refeita com o título novo."; }
+      else{ E.capaAntiga = id; capa = " O título mudou: atualize a capa."; }
+    }
+    if(!telaDoAssunto(assunto)) return;
+    await desenhar();
+    const resta = (r.restam?.marcas || 0) + (r.restam?.copias || 0);
+    // no texto para análise o que a fonte não oficial informa fica no texto, atribuído a ela; no texto normal, sai do texto
+    const onde = r.analise ? "ficaram no texto atribuídos à fonte não oficial, ou saíram dele," : "saíram do texto e";
+    recado(`IA: texto revisado${r.pendencias?.length ? `; ${r.pendencias.length} ponto(s) a conferir na fonte oficial ${r.avisos_gravados === false
+      ? `${r.analise ? "foram apontados" : "saíram do texto"}, mas NÃO puderam ser anotados nos pontos a conferir — confira o texto` : `${onde} estão nos pontos a conferir`}` : ""}.` +
+      (r.autorizacao_caiu ? " O texto mudou, então a autorização do trecho igual ao da fonte caiu." : "") + capa +
+      (resta ? ` Ainda sobrou ${resta} ponto(s) a resolver (veja os quadros no conteúdo).` : " Confira o texto antes de enviar para revisão."),
+      resta || r.avisos_gravados === false || r.autorizacao_caiu ? "aviso" : false);
+  },
+  /* v0.16.0: "Autorizar mesmo assim" o texto com trecho igual ao da fonte — o motivo é digitado num quadro abaixo do botão */
+  "abrir-autorizar-copia"(el){
+    $(".motivo-copia")?.remove();
+    (el.closest(".acoes") || el).insertAdjacentHTML("afterend", `<div class="motivo-copia"><label for="motivo-copia">Autorizar o trecho igual ao da fonte: escreva o motivo (fica registrado com o seu nome)</label>
+      <input type="text" id="motivo-copia" maxlength="500" data-enter="autorizar-copia" data-id="${el.dataset.id}" placeholder="Ex.: transcrição do artigo da lei, com a fonte citada">
+      <div class="acoes"><button class="btn peq perigo" type="button" data-acao="autorizar-copia" data-id="${el.dataset.id}">Autorizar mesmo assim</button><button class="link" type="button" data-acao="fechar-motivo-copia">Cancelar</button></div></div>`);
+    $("#motivo-copia").focus();
+  },
+  "fechar-motivo-copia"(el){ el.closest(".motivo-copia")?.remove(); },
+  async "autorizar-copia"(el){
+    const f = $(`form[data-form=conteudo][data-id="${el.dataset.id}"]`);
+    if(!f){ await desenhar(); return; }
+    if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de autorizar: a autorização vale para o texto salvo.", true); return; }
+    const campo = $("#motivo-copia"), motivo = (campo?.value || "").trim();
+    if(motivo.length < 5){ recado("Escreva o motivo (pelo menos 5 caracteres).", true); campo?.focus(); return; }
+    await rpc("radar_autorizar_copia", {p_conteudo:Number(el.dataset.id), p_motivo:motivo, p_lido:f.dataset.lido});
+    await desenhar(); recado("Trecho igual ao da fonte autorizado. Se o texto mudar, a autorização cai.", "aviso");
+  },
   async "separar-captura"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     if(!confirm("Tirar esta captura do assunto? Ela volta para a triagem como um item próprio.")) return;
@@ -1838,11 +1921,12 @@ const ACOES = {
     catch(e){
       if(!/não tem texto de fonte oficial/i.test(e.message)) throw e;
       // assunto só com fonte não oficial (ITC, portais): o "tudo" vira o texto para análise, com a ilustração
+      const busca = await buscarFonteOficial(assunto);
       const g = await ia("gerar", {formato, analise:true, assunto_id:assunto});
       const capa = await capaComIA(g.conteudo_id, assunto);
       if(!telaDoAssunto(assunto)) return;
       E.etapa = "conteudo"; await desenhar();
-      recado("Este assunto não tem fonte oficial: a IA preparou um texto PARA ANÁLISE (não vai ao site)." + avisoCapa(capa), "aviso");
+      recado("Este assunto não tem fonte oficial: a IA preparou um texto PARA ANÁLISE (não vai ao site)." + busca + avisoCapa(capa), "aviso");
       return;
     }
     let g; try{ g = await ia("gerar", {formato, assunto_id:assunto}); }
@@ -1853,14 +1937,16 @@ const ACOES = {
     E.etapa = "conteudo";
     await desenhar();
     recado(`IA: ${r.inseridas.length} trecho(s) de fundamentação, um rascunho${g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : ""} e ` +
-      (capa === "ilustração" ? "a ilustração da capa." : capa === "padrão" ? "a capa padrão (a ilustração com IA não deu certo agora; tente pelo botão dela, sem senha)." : "nenhuma capa." + SEM_CAPA) +
+      (capa === "ilustração" ? "a capa com a ilustração." : capa === "padrão" ? "a capa padrão (a ilustração com IA não deu certo agora; tente pelo botão dela, sem senha)." : "nenhuma capa." + SEM_CAPA) +
       " Revise antes de mandar para a revisão.", g.avisos.length > 0 || capa !== "ilustração" ? "aviso" : false);
   },
   async "capa-auto"(el){
     const f = el.closest("form");
     if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de gerar a capa.", true); return; }
     if(f.dataset.temImagem && !confirm("Substituir a imagem atual pela capa automática?" + (f.dataset.aprovado ? "\n\nO conteúdo está aprovado: ao trocar a imagem ele volta para revisão." : ""))) return;
-    await capaAutomatica(Number(el.dataset.id), true); E.capaAntiga = null; await desenhar(); recado("Capa gerada no padrão da Artecon.");
+    const sem = !!el.dataset.semIlustracao;
+    await capaAutomatica(Number(el.dataset.id), true, sem); E.capaAntiga = null; await desenhar();
+    recado(sem ? "Capa padrão da Artecon, sem a ilustração." : "Capa atualizada com o título atual.");
   },
   async "capa-ia"(el){
     const f = el.closest("form");
@@ -1872,7 +1958,7 @@ const ACOES = {
     const assunto = E.assunto;
     await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao, assunto);
     if(!telaDoAssunto(assunto)) return;
-    await desenhar(); recado("Ilustração gerada pela IA. Confira se combina com o assunto antes de aprovar.");
+    E.capaAntiga = null; await desenhar(); recado("Capa feita com a ilustração da IA. Confira se a imagem combina com o assunto antes de aprovar.");
   },
   async "testar-ia"(){
     const d = $("#diag-ia"); d.innerHTML = `<p class="sub">Testando… pode levar alguns segundos.</p>`;
@@ -2047,12 +2133,13 @@ const ACOES = {
   async "ia-analise"(){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     if(!(await liberarIA())) return;
-    const assunto = E.assunto, r = await ia("gerar", {formato:$("#novo-formato")?.value || "informativo", analise:true, assunto_id:assunto});
+    const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo", busca = await buscarFonteOficial(assunto);
+    const r = await ia("gerar", {formato, analise:true, assunto_id:assunto});
     const capa = await capaComIA(r.conteudo_id, assunto);                // v0.12.0: com a ilustração da IA, como o "Preparar tudo"
     if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo";
     await desenhar();
-    recado("Texto para análise gerado a partir de fonte não oficial. Ele não vai ao site: para publicar, inclua o texto oficial no passo 1." + avisoCapa(capa), "aviso");
+    recado("Texto para análise gerado a partir de fonte não oficial. Ele não vai ao site: para publicar, inclua o texto oficial no passo 1." + busca + avisoCapa(capa), "aviso");
   },
   async "ia-gerar"(){
     if(!(await liberarIA())) return;
@@ -2172,7 +2259,7 @@ const ACOES = {
   async "remover-imagem"(el){
     if(sujo(el.closest("form"))){ recado("Há alterações não salvas. Salve o conteúdo antes de mexer na imagem.", true); return; }
     if(!confirm("Remover a imagem deste conteúdo?")) return;
-    await alterar("radar_conteudos", {id:"eq." + el.dataset.id}, {imagem_id:null}); await desenhar(); recado("Imagem removida."); },
+    await alterar("radar_conteudos", {id:"eq." + el.dataset.id}, {imagem_id:null, ilustracao_id:null}); await desenhar(); recado("Imagem removida."); },
   async "copiar-titulo"(el){ await copiar(el.closest("form").titulo.defaultValue); recado("Título copiado."); },
   async "copiar-texto"(el){
     const f = el.closest("form"), c = {autor:f.autor.defaultValue, fonte_credito:f.fonte_credito.defaultValue, fonte_url:f.dataset.fonteUrl};
@@ -2189,7 +2276,7 @@ const ACOES = {
     if(sujo(f)){ recado("Há alterações não salvas. Salve antes de aprovar.", true); return; }
     const marcas = marcasDoConteudo(el.dataset.id);
     if(marcas.length){ recado(msgMarcas(marcas, "aprovar"), true); f.querySelector(".marcas-verificar")?.scrollIntoView({behavior:"smooth", block:"center"}); return; }
-    if(Number(f.dataset.copiados) > 0){ recado("Este conteúdo tem trecho igual ao texto da fonte (veja o quadro vermelho). Reescreva com as suas palavras, ou coloque a citação entre aspas, e salve antes de aprovar.", true); return; }
+    if(Number(f.dataset.copiados) > 0 && !f.dataset.copiaAutorizada){ recado("Este conteúdo tem trecho igual ao texto da fonte (veja o quadro vermelho). Reescreva com as suas palavras (ou use “Revisar com IA”), coloque a citação entre aspas, ou clique em “Autorizar mesmo assim”, e salve antes de aprovar.", true); return; }
     // só aprova se o texto ainda for o que foi aberto nesta tela
     const r = await rest("PATCH", "radar_conteudos", {params:{id:"eq." + el.dataset.id, atualizado_em:"eq." + f.dataset.lido},
       corpo:{status:"aprovado"}, prefer:"return=representation"});
@@ -2231,7 +2318,7 @@ const ACOES = {
   },
   "nova-fonte"(){
     const d = $("#nova-fonte"); if(d.innerHTML){ d.innerHTML = ""; return; }
-    d.innerHTML = formFonte({oficial:true, ativo:true, frequencia_horas:12, abrangencia:"federal", tipo_coletor:"html_links",
+    d.innerHTML = formFonte({oficial:false, ativo:true, frequencia_horas:12, abrangencia:"federal", tipo_coletor:"html_links",
       config:{janela_dias:30, seletor_texto:"article, main, #content, body"}});
     $("#nova-fonte [name=nome]").focus();
   },
@@ -2366,16 +2453,29 @@ async function gravarImagem(conteudoId, img){
   await alterar("radar_conteudos", {id:"eq." + conteudoId, select:"id"}, {imagem_id:nova.id});
 }
 /* Capa no padrão da Artecon, desenhada no navegador: fundo marinho, logotipo, categoria e o título. Sem depender de IA. */
-async function desenharCapa(titulo, rotulo){
+/* v0.16.0: com "ilustracao" (data: da ilustração da IA), ela vai ao fundo, coberta à esquerda por um degradê marinho que deixa
+   o logotipo, a categoria e o título legíveis; sem ela, o fundo marinho com as curvas do papel timbrado. */
+async function desenharCapa(titulo, rotulo, ilustracao){
   const L = 1200, A = 630, cv = document.createElement("canvas"); cv.width = L; cv.height = A;
   const cx = cv.getContext("2d");
   try{ await Promise.race([document.fonts.load('700 60px "Playfair Display"'), new Promise(ok => setTimeout(ok, 1500))]); }catch(e){}
   const caixa = (x, y, w, a, r) => { cx.beginPath(); cx.roundRect ? cx.roundRect(x, y, w, a, r) : cx.rect(x, y, w, a); cx.fill(); };   // navegador antigo: canto reto
-  const fundo = cx.createLinearGradient(0, 0, L, A); fundo.addColorStop(0, "#011F48"); fundo.addColorStop(.6, "#0D3B73"); fundo.addColorStop(1, "#1B5E9B");
-  cx.fillStyle = fundo; cx.fillRect(0, 0, L, A);
-  // curvas do papel timbrado, no canto inferior direito
-  for(const [raio, cor] of [[430, "rgba(86,157,204,.30)"], [330, "rgba(86,157,204,.45)"], [230, "rgba(86,157,204,.75)"]]){
-    cx.beginPath(); cx.arc(L + 60, A + 90, raio, 0, Math.PI * 2); cx.fillStyle = cor; cx.fill(); }
+  const foto = ilustracao ? await new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = ilustracao; }) : null;
+  if(foto && foto.naturalWidth && foto.naturalHeight){
+    const f = Math.max(L / foto.naturalWidth, A / foto.naturalHeight);
+    cx.drawImage(foto, (L - foto.naturalWidth * f) / 2, (A - foto.naturalHeight * f) / 2, foto.naturalWidth * f, foto.naturalHeight * f);
+    const veu = cx.createLinearGradient(0, 0, L, 0);
+    veu.addColorStop(0, "rgba(1,31,72,.94)"); veu.addColorStop(.5, "rgba(1,31,72,.80)"); veu.addColorStop(.78, "rgba(1,31,72,.35)"); veu.addColorStop(1, "rgba(1,31,72,.10)");
+    cx.fillStyle = veu; cx.fillRect(0, 0, L, A);
+    const base = cx.createLinearGradient(0, A - 140, 0, A); base.addColorStop(0, "rgba(1,31,72,0)"); base.addColorStop(1, "rgba(1,31,72,.85)");
+    cx.fillStyle = base; cx.fillRect(0, A - 140, L, 140);
+  }else{
+    const fundo = cx.createLinearGradient(0, 0, L, A); fundo.addColorStop(0, "#011F48"); fundo.addColorStop(.6, "#0D3B73"); fundo.addColorStop(1, "#1B5E9B");
+    cx.fillStyle = fundo; cx.fillRect(0, 0, L, A);
+    // curvas do papel timbrado, no canto inferior direito
+    for(const [raio, cor] of [[430, "rgba(86,157,204,.30)"], [330, "rgba(86,157,204,.45)"], [230, "rgba(86,157,204,.75)"]]){
+      cx.beginPath(); cx.arc(L + 60, A + 90, raio, 0, Math.PI * 2); cx.fillStyle = cor; cx.fill(); }
+  }
   // faixa tricolor no alto
   cx.fillStyle = "#BC151B"; cx.fillRect(0, 0, L * .68, 12); cx.fillStyle = "#00AEEF"; cx.fillRect(L * .68, 0, L * .22, 12); cx.fillStyle = "#FFD700"; cx.fillRect(L * .9, 0, L * .1, 12);
   // logotipo sobre cartão branco
@@ -2390,7 +2490,7 @@ async function desenharCapa(titulo, rotulo){
     const w = cx.measureText(t).width + 32; cx.fillStyle = "#BC151B"; caixa(60, y - 28, w, 40, 6);
     cx.fillStyle = "#fff"; cx.fillText(t, 76, y); y += 34; }
   // título: maior corpo que caiba em até 5 linhas
-  const palavras = String(titulo || "").trim().split(/\s+/).filter(Boolean), largura = 960; let linhas = [], corpo = 62;
+  const palavras = String(titulo || "").trim().split(/\s+/).filter(Boolean), largura = foto ? 760 : 960; let linhas = [], corpo = 62;
   for(; corpo >= 34; corpo -= 4){
     cx.font = `700 ${corpo}px "Playfair Display", Georgia, serif`; linhas = []; let atual = "";
     for(const p of palavras){ const teste = atual ? atual + " " + p : p;
@@ -2401,32 +2501,54 @@ async function desenharCapa(titulo, rotulo){
   corpo = Math.max(corpo, 34);
   if(linhas.length > 5){ linhas = linhas.slice(0, 5); linhas[4] = linhas[4].replace(/[\s,.;:]+\S*$/, "") + "…"; }
   cx.fillStyle = "#fff"; y += 30 + corpo * .8;
+  if(foto){ cx.shadowColor = "rgba(0,0,0,.45)"; cx.shadowBlur = 8; }
   for(const l of linhas){ cx.fillText(l, 60, y, largura + 40); y += corpo * 1.18; }
+  cx.shadowColor = "transparent"; cx.shadowBlur = 0;
   // rodapé
   cx.font = '500 22px "DM Sans", Arial, sans-serif'; cx.fillStyle = "#DCEBF7"; cx.fillText("Artecon Artes Contábeis  ·  www.artecon.cnt.br", 60, A - 36);
   return {dados:cv.toDataURL("image/jpeg", 0.86), largura:L, altura:A};
 }
-/* Ilustração da capa pela IA (foto realista, sem texto nem marca), reduzida e gravada como a imagem do conteúdo. */
+/* Ilustração da capa pela IA (foto realista, sem texto nem marca). v0.16.0: fica guardada (ilustracao_id) e a capa do conteúdo
+   é montada com ela ao fundo, o logotipo, a categoria e o título. */
 async function ilustracaoIA(conteudoId, titulo, descricao = "", assunto = E.assunto){
   if(titulo === undefined) titulo = (await ler("radar_conteudos", {select:"titulo", id:"eq." + conteudoId}))[0]?.titulo || "";
   const r = await ia("ilustrar", {titulo, descricao, assunto_id:assunto});
   if(!/^data:image\/(png|jpeg|webp);base64,/.test(String(r.imagem || ""))) throw new ErroApi("A IA não devolveu uma imagem válida. Tente de novo.");
-  await gravarImagem(conteudoId, await reduzirImagemDe(r.imagem, 1200, 630));
+  const ilustracao = await reduzirImagemDe(r.imagem, 1200, 630);
+  const [c] = await ler("radar_conteudos", {select:"titulo,radar_assuntos(categoria)", id:"eq." + conteudoId});
+  const capa = await desenharCapa(c?.titulo ?? titulo, catMapa()[c?.radar_assuntos?.categoria] || "Artecon Informa", ilustracao.dados);
+  const [a, b] = await Promise.all([ilustracao, capa].map(img => rest("POST", "radar_imagens", {corpo:img, params:{select:"id"}, prefer:"return=representation"})));
+  await alterar("radar_conteudos", {id:"eq." + conteudoId, select:"id"}, {ilustracao_id:a[0].id, imagem_id:b[0].id});
+}
+/* v0.16.0: antes do texto para análise (assunto só com fonte não oficial), a IA procura a fonte oficial na internet — uma vez
+   por assunto: o que ela confirmar entra no texto sem dúvida. Se a busca falhar, o texto sai assim mesmo. Devolve o recado. */
+async function buscarFonteOficial(assunto){
+  const [a] = await ler("radar_assuntos", {select:"verificacao", id:"eq." + assunto});
+  if(a?.verificacao) return "";
+  try{ const v = await ia("verificar", {assunto_id:assunto});
+    return ` A busca em fontes oficiais ${({confirmada:"confirmou o fato", parcialmente_confirmada:"confirmou parte do fato", divergente:"encontrou divergência",
+      nao_encontrada:"não encontrou página oficial"})[v.verificacao?.situacao] || "terminou"} (veja no passo 1).`; }
+  catch(e){ return ` A busca em fontes oficiais não deu certo agora (${e.message}); o texto foi feito só com a fonte capturada.`; }
 }
 /* v0.12.0: capa do conteúdo novo: a ilustração da IA; se ela falhar, a capa padrão Artecon (e a próxima tentativa sai sem senha) */
 async function capaComIA(conteudoId, assunto){
   try{ await ilustracaoIA(conteudoId, undefined, "", assunto); return "ilustração"; }
   catch(e){ CREDITO_ILUSTRACAO.add(assunto); return (await capaAutomatica(conteudoId)) ? "padrão" : ""; }
 }
-const avisoCapa = capa => capa === "ilustração" ? " A capa é a ilustração da IA." : capa === "padrão"
+const avisoCapa = capa => capa === "ilustração" ? " A capa tem a ilustração da IA ao fundo." : capa === "padrão"
   ? " A ilustração com IA não deu certo agora: ficou a capa padrão (tente pelo botão “Gerar ilustração com IA”, sem senha)." : SEM_CAPA;
-/* Capa automática do conteúdo. Na criação é um extra: se falhar, o conteúdo fica sem imagem e nada mais é afetado. */
-const SEM_CAPA = " A capa automática não pôde ser gerada agora: use o botão “Gerar capa padrão Artecon” no conteúdo.";
-async function capaAutomatica(conteudoId, obrigatoria){
+/* Capa automática do conteúdo. Na criação é um extra: se falhar, o conteúdo fica sem imagem e nada mais é afetado.
+   v0.16.0: se o conteúdo tem a ilustração da IA guardada, a capa é refeita com ela (e o título atual); "semIlustracao" faz a
+   capa padrão sem foto e deixa de usar a ilustração. */
+const SEM_CAPA = " A capa automática não pôde ser gerada agora: use o botão “Atualizar a capa” no conteúdo.";
+async function capaAutomatica(conteudoId, obrigatoria, semIlustracao, refazer){
   try{
-    const [c] = await ler("radar_conteudos", {select:"titulo,imagem_id,assunto_id,radar_assuntos(categoria)", id:"eq." + conteudoId});
-    if(!c) return false; if(c.imagem_id && !obrigatoria) return true;
-    await gravarImagem(conteudoId, await desenharCapa(c.titulo, catMapa()[c.radar_assuntos?.categoria] || "Artecon Informa"));
+    const [c] = await ler("radar_conteudos", {select:"titulo,imagem_id,ilustracao_id,assunto_id,radar_assuntos(categoria)", id:"eq." + conteudoId});
+    if(!c) return false; if(c.imagem_id && !obrigatoria && !(refazer && c.ilustracao_id)) return true;
+    const fundo = c.ilustracao_id && !semIlustracao ? (await ler("radar_imagens", {select:"dados", id:"eq." + c.ilustracao_id}))[0]?.dados : null;
+    const capa = await desenharCapa(c.titulo, catMapa()[c.radar_assuntos?.categoria] || "Artecon Informa", fundo);
+    const [nova] = await rest("POST", "radar_imagens", {corpo:capa, params:{select:"id"}, prefer:"return=representation"});
+    await alterar("radar_conteudos", {id:"eq." + conteudoId, select:"id"}, {imagem_id:nova.id, ...(semIlustracao ? {ilustracao_id:null} : {})});
     return true;
   }catch(e){ if(obrigatoria) throw e; return false; }
 }
@@ -2436,7 +2558,7 @@ async function enviarImagem(campo){
   if(sujo(f)) throw new ErroApi("Há alterações não salvas. Salve o conteúdo antes de enviar a imagem.");
   const img = await reduzirImagem(arquivo);
   const [nova] = await rest("POST", "radar_imagens", {corpo:img, params:{select:"id"}, prefer:"return=representation"});
-  await alterar("radar_conteudos", {id:"eq." + campo.dataset.imagem}, {imagem_id:nova.id});
+  await alterar("radar_conteudos", {id:"eq." + campo.dataset.imagem}, {imagem_id:nova.id, ilustracao_id:null});   // v0.16.0: a ilustração da IA deixa de valer
   E.capaAntiga = null; await desenhar(); recado("Imagem enviada.");
 }
 

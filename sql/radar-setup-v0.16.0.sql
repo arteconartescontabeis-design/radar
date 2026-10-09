@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.15.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.16.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.15.0.sql
+-- Reversão: radar-reversao-v0.16.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.15.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.16.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -356,6 +356,13 @@ alter table public.radar_divulgacoes add column if not exists conteudo_lido_em t
 
 -- v0.10.0: títulos alternativos sugeridos pela IA (a pessoa escolhe com um clique na tela do assunto)
 alter table public.radar_conteudos add column if not exists titulos_sugeridos jsonb not null default '[]'::jsonb;
+-- v0.16.0: a ilustração da IA fica guardada à parte; a capa é montada com ela ao fundo (logotipo, categoria e título por cima)
+-- e pode ser refeita com o título novo sem gerar outra ilustração
+alter table public.radar_conteudos   add column if not exists ilustracao_id bigint references public.radar_imagens(id) on delete set null;
+-- v0.16.0: "Autorizar mesmo assim" o texto com trecho igual ao da fonte: quem, quando e por quê. Cai quando o texto muda.
+alter table public.radar_conteudos   add column if not exists copia_autorizada_em     timestamptz;
+alter table public.radar_conteudos   add column if not exists copia_autorizada_por    uuid references auth.users(id) on delete set null;
+alter table public.radar_conteudos   add column if not exists copia_autorizada_motivo text;
 
 -- v0.10.0: autorização de publicação no site da Artecon. O administrador autoriza na tela do assunto; o robô
 -- (workflow "Radar — publicar no site") cadastra a notícia no painel do site — que publica na hora — e registra o
@@ -573,6 +580,13 @@ begin
       'texto_igual', new.hash_conteudo is not distinct from old.hash_conteudo));
   elsif old.metadados ? 'origem_manual' and not (new.metadados ? 'origem_manual') then
     new.metadados := new.metadados || jsonb_build_object('origem_manual', old.metadados->'origem_manual');
+  end if;
+  -- v0.16.0: a decisão da equipe "não é o mesmo fato" também fica (o robô regrava os metadados quando o texto muda)
+  if old.metadados ? 'separada_em' and not (coalesce(new.metadados, '{}'::jsonb) ? 'separada_em') then
+    new.metadados := coalesce(new.metadados, '{}'::jsonb) || jsonb_build_object('separada_em', old.metadados->'separada_em');
+  end if;
+  if old.metadados ? 'separada_de' and not (coalesce(new.metadados, '{}'::jsonb) ? 'separada_de') then
+    new.metadados := coalesce(new.metadados, '{}'::jsonb) || jsonb_build_object('separada_de', old.metadados->'separada_de');
   end if;
   if new.hash_conteudo is distinct from old.hash_conteudo and old.hash_conteudo is not null then
     insert into public.radar_capturas_versoes (captura_id, versao, titulo, texto, hash_conteudo)
@@ -1167,15 +1181,15 @@ end $$;
 create or replace function public.radar_fn_imagem_sem_uso() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if old.imagem_id is not null and (tg_op = 'DELETE' or new.imagem_id is distinct from old.imagem_id) then
-    delete from public.radar_imagens i
-     where i.id = old.imagem_id
-       and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id);
-  end if;
+  -- v0.16.0: vale também para a ilustração guardada (ilustracao_id)
+  delete from public.radar_imagens i
+   where i.id in (old.imagem_id, old.ilustracao_id)
+     and (tg_op = 'DELETE' or (i.id is distinct from new.imagem_id and i.id is distinct from new.ilustracao_id))
+     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id or c.ilustracao_id = i.id);
   return null;
 end $$;
 drop trigger if exists radar_tg_imagem_sem_uso on public.radar_conteudos;
-create trigger radar_tg_imagem_sem_uso after update of imagem_id or delete on public.radar_conteudos
+create trigger radar_tg_imagem_sem_uso after update of imagem_id, ilustracao_id or delete on public.radar_conteudos
   for each row execute function public.radar_fn_imagem_sem_uso();
 
 -- v0.7.1: imagem que ficou sem uso por outro caminho (envio que falhou entre gravar a imagem e ligá-la ao conteúdo,
@@ -1187,7 +1201,7 @@ declare v_n int;
 begin
   delete from public.radar_imagens i
    where i.criado_em < now() - make_interval(hours => least(greatest(coalesce(p_horas, 24), 1), 8760))
-     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id);
+     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id or c.ilustracao_id = i.id);
   get diagnostics v_n = row_count;
   return v_n;
 end $$;
@@ -1232,6 +1246,17 @@ language sql stable security definer set search_path = public as $$
               then null else p_antigo end
 $$;
 
+-- v0.16.0: os pontos a conferir de um conteúdo só crescem: a lista nova começa pela antiga e acrescenta até 10 textos
+create or replace function public.radar_avisos_acrescimo(p_novo jsonb, p_antigo jsonb) returns boolean
+language sql immutable set search_path = public as $$
+  select jsonb_typeof(p_novo) = 'array' and jsonb_typeof(p_antigo) = 'array'
+     and jsonb_array_length(p_novo) between jsonb_array_length(p_antigo) and jsonb_array_length(p_antigo) + 10
+     and (select coalesce(jsonb_agg(e order by i), '[]'::jsonb) from jsonb_array_elements(p_novo) with ordinality t(e, i)
+           where i <= jsonb_array_length(p_antigo)) = p_antigo
+     and not exists (select 1 from jsonb_array_elements(p_novo) with ordinality t(e, i)
+                      where i > jsonb_array_length(p_antigo) and (jsonb_typeof(e) <> 'string' or length(e #>> '{}') > 2000))
+$$;
+
 -- Aprovação: só pessoa (admin/editor); texto alterado depois de aprovado volta para revisão
 create or replace function public.radar_fn_conteudo_aprovacao() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -1246,10 +1271,26 @@ begin
   if tg_op = 'UPDATE' then
     new.gerado_por := old.gerado_por;     -- a origem do texto não se reescreve
     new.modelo_ia  := old.modelo_ia;
-    new.avisos_ia  := old.avisos_ia;      -- nem os pontos que a verificação mandou conferir
-  elsif new.gerado_por = 'humano' then
-    new.modelo_ia := null;
-    new.avisos_ia := '[]'::jsonb;
+    -- nem os pontos que a verificação mandou conferir. v0.16.0: só se pode ACRESCENTAR (a revisão com IA anota o que tirou do texto)
+    if not coalesce(public.radar_avisos_acrescimo(new.avisos_ia, old.avisos_ia), false) then
+      new.avisos_ia := old.avisos_ia;
+    end if;
+    -- v0.16.0: a autorização do trecho igual ao da fonte só muda pela função radar_autorizar_copia...
+    if coalesce(current_setting('radar.autorizando_copia', true), '') <> '1' then
+      new.copia_autorizada_em     := old.copia_autorizada_em;
+      new.copia_autorizada_por    := public.radar_manter_usuario(old.copia_autorizada_por, new.copia_autorizada_por);
+      new.copia_autorizada_motivo := old.copia_autorizada_motivo;
+    end if;
+    -- ... e cai quando o texto muda (vale para o texto que foi visto)
+    if new.corpo is distinct from old.corpo then
+      new.copia_autorizada_em := null; new.copia_autorizada_por := null; new.copia_autorizada_motivo := null;
+    end if;
+  else
+    new.copia_autorizada_em := null; new.copia_autorizada_por := null; new.copia_autorizada_motivo := null;
+    if new.gerado_por = 'humano' then
+      new.modelo_ia := null;
+      new.avisos_ia := '[]'::jsonb;
+    end if;
   end if;
 
   if tg_op = 'UPDATE' and old.status = 'aprovado' and new.status = 'aprovado'
@@ -1382,13 +1423,38 @@ begin
     raise exception 'RADAR125: primeiro libere a publicação deste assunto ("Publicar mesmo assim", com o motivo)' using errcode = 'P0001';
   end if;
   insert into public.radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia,
-                                      titulos_sugeridos, imagem_id, autor, fonte_credito, fora_do_site)
+                                      titulos_sugeridos, imagem_id, ilustracao_id, autor, fonte_credito, fora_do_site)
   values (v_c.assunto_id, v_c.formato, v_c.titulo, public.radar_tirar_aviso_fonte(v_c.corpo), v_c.gerado_por, v_c.modelo_ia, 'rascunho',
           jsonb_build_array('Feito a partir do texto para análise (fonte NÃO oficial), com a publicação liberada pelo administrador. ' ||
                             'Confira cada número, data e norma e resolva os [VERIFICAR] antes de aprovar.') || (v_c.avisos_ia - 0),
-          v_c.titulos_sugeridos, v_c.imagem_id, v_c.autor, v_c.fonte_credito, false)
+          v_c.titulos_sugeridos, v_c.imagem_id, v_c.ilustracao_id, v_c.autor, v_c.fonte_credito, false)
   returning id into v_id;
   return v_id;
+end $$;
+
+-- v0.16.0: "Autorizar mesmo assim" o conteúdo com trecho igual ao texto da fonte (a comparação é feita na tela, que
+-- não deixa aprovar sem isto). Editor ou administrador, com o motivo; vale para o texto que estava na tela (p_lido) e
+-- cai sozinha quando o texto muda. Quem, quando e o motivo ficam no conteúdo e na auditoria.
+create or replace function public.radar_autorizar_copia(p_conteudo bigint, p_motivo text, p_lido timestamptz)
+returns timestamptz language plpgsql security definer set search_path = public as $$
+declare v_em timestamptz;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'permission denied for function radar_autorizar_copia' using errcode = '42501';
+  end if;
+  if length(btrim(coalesce(p_motivo, ''))) < 5 then
+    raise exception 'RADAR143: diga em poucas palavras por que o trecho igual ao da fonte pode ficar (ex.: transcrição do artigo da lei, com a fonte citada)' using errcode = 'P0001';
+  end if;
+  perform set_config('radar.autorizando_copia', '1', true);
+  update public.radar_conteudos
+     set copia_autorizada_em = now(), copia_autorizada_por = auth.uid(), copia_autorizada_motivo = left(btrim(p_motivo), 500)
+   where id = p_conteudo and atualizado_em = p_lido
+  returning copia_autorizada_em into v_em;
+  perform set_config('radar.autorizando_copia', '', true);
+  if v_em is null then
+    raise exception 'RADAR144: o conteúdo mudou depois que a tela foi aberta (ou não existe mais); confira o texto e autorize de novo' using errcode = 'P0001';
+  end if;
+  return v_em;
 end $$;
 
 -- a liberação só muda pela função acima (a equipe edita o assunto, mas não esses campos)
@@ -2080,8 +2146,10 @@ begin
         v_puladas := v_puladas + 1; continue;
       end if;
       -- origem da repetição: sobe até a captura que não é repetição de ninguém (no máximo 5 passos, sem voltar a si mesma)
+      -- v0.16.0: a captura que a equipe separou ("não é o mesmo fato") não volta a ser juntada pela IA
       v_raiz := null;
-      if jsonb_typeof(v_item->'igual_a') = 'number' then
+      if jsonb_typeof(v_item->'igual_a') = 'number'
+         and not exists (select 1 from public.radar_capturas c where c.id = v_id and c.metadados ? 'separada_em') then
         v_raiz := (v_item->>'igual_a')::numeric::bigint;
         for v_n in 1..5 loop
           select c.duplicata_de into v_prox from public.radar_capturas c where c.id = v_raiz;
@@ -2091,6 +2159,12 @@ begin
         end loop;
         if v_raiz = v_id or exists (select 1 from public.radar_capturas c where c.duplicata_de = v_id) then
           v_raiz := null;                      -- não aponta para si mesma nem vira repetição quem já é origem de outras
+        end if;
+        -- v0.16.0: a equipe disse que estas duas não são o mesmo fato (vale nos dois sentidos)
+        if v_raiz is not null and exists (select 1 from public.radar_capturas c
+             where (c.id = v_id and coalesce(c.metadados->'separada_de', '[]'::jsonb) @> to_jsonb(v_raiz))
+                or (c.id = v_raiz and coalesce(c.metadados->'separada_de', '[]'::jsonb) @> to_jsonb(v_id))) then
+          v_raiz := null;
         end if;
         -- v0.11.1: captura oficial igual a um boletim não oficial: o boletim é que vira a repetição
         if v_raiz is not null and exists (select 1 from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id where c.id = v_id and f.oficial)
@@ -2139,6 +2213,7 @@ end $$;
 -- e sem evidência registrada nessa captura (a fundamentação nunca é desfeita por aqui).
 create or replace function public.radar_separar_captura(p_assunto bigint, p_captura bigint)
 returns void language plpgsql security definer set search_path = public as $$
+declare v_outras jsonb;
 begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
     raise exception 'permission denied for function radar_separar_captura' using errcode = '42501';
@@ -2153,15 +2228,51 @@ begin
   if (select count(*) from public.radar_assunto_capturas ac where ac.assunto_id = p_assunto) < 2 then
     raise exception 'RADAR047: o assunto ficaria sem nenhuma captura' using errcode = 'P0001';
   end if;
+  -- v0.16.0: de quem ela foi separada (a origem e as demais capturas do assunto): a IA não junta de novo, em nenhum sentido
+  select coalesce(jsonb_agg(x.id), '[]'::jsonb) into v_outras
+    from (select c.duplicata_de as id from public.radar_capturas c where c.id = p_captura and c.duplicata_de is not null
+          union select ac.captura_id from public.radar_assunto_capturas ac where ac.assunto_id = p_assunto and ac.captura_id <> p_captura) x;
   delete from public.radar_assunto_capturas ac where ac.assunto_id = p_assunto and ac.captura_id = p_captura;
   update public.radar_capturas set duplicata_de = null,
-         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now())   -- v0.11.1: não volta a ser agrupada sozinha
+         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now(),   -- v0.11.1: não volta a ser agrupada sozinha
+                       'separada_de', coalesce(metadados->'separada_de', '[]'::jsonb) || v_outras)
    where id = p_captura;
+  update public.radar_capturas c
+     set metadados = coalesce(c.metadados, '{}'::jsonb) || jsonb_build_object('separada_de', coalesce(c.metadados->'separada_de', '[]'::jsonb) || to_jsonb(p_captura))
+   where c.id in (select (jsonb_array_elements_text(v_outras))::bigint);
   -- se era a origem do grupo, as demais deixam de apontar para ela
   update public.radar_capturas set duplicata_de = null where duplicata_de = p_captura;
   insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes)
   values ('radar_assunto_capturas', p_assunto || ':' || p_captura, 'DELETE', auth.uid(),
           jsonb_build_object('assunto_id', p_assunto, 'captura_id', p_captura, 'motivo', 'não é o mesmo fato'));
+end $$;
+
+-- v0.16.0: na aba Capturas, "Não é o mesmo fato": a captura que a IA marcou como repetição volta a aparecer sozinha na
+-- triagem (e não é juntada de novo pelo boletim oficial). Só editor/admin; só para a que ainda está na fila.
+create or replace function public.radar_separar_repeticao(p_captura bigint)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_origem bigint;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'permission denied for function radar_separar_repeticao' using errcode = '42501';
+  end if;
+  if exists (select 1 from public.radar_assunto_capturas ac where ac.captura_id = p_captura) then
+    raise exception 'RADAR141: esta captura já está num assunto; separe pelo botão "Não é o mesmo fato" na tela do assunto' using errcode = 'P0001';
+  end if;
+  select c.duplicata_de into v_origem from public.radar_capturas c where c.id = p_captura for update;
+  if v_origem is null then
+    raise exception 'RADAR142: esta captura não está marcada como repetição de outra' using errcode = 'P0001';
+  end if;
+  update public.radar_capturas set duplicata_de = null,
+         metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_em', now(),
+                       'separada_de', coalesce(metadados->'separada_de', '[]'::jsonb) || to_jsonb(v_origem))
+   where id = p_captura;
+  update public.radar_capturas            -- e na origem: a IA não junta as duas de novo, nem pelo outro lado
+     set metadados = coalesce(metadados, '{}'::jsonb) || jsonb_build_object('separada_de', coalesce(metadados->'separada_de', '[]'::jsonb) || to_jsonb(p_captura))
+   where id = v_origem;
+  insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes, depois)
+  values ('radar_capturas', p_captura::text, 'UPDATE', auth.uid(), jsonb_build_object('duplicata_de', v_origem),
+          jsonb_build_object('duplicata_de', null, 'motivo', 'não é o mesmo fato (separada na triagem)'));
 end $$;
 
 -- Fonte do conteúdo já preenchida (v0.7.0): ao criar um conteúdo sem "Fonte", entra o órgão das capturas
@@ -2774,6 +2885,8 @@ grant execute on function public.radar_gravar_avaliacao_ia(jsonb) to service_rol
 grant execute on function public.radar_limpar_imagens_sem_uso(int) to service_role;
 grant execute on function public.radar_arquivar_fila(int) to service_role;
 grant execute on function public.radar_separar_captura(bigint, bigint) to authenticated;
+grant execute on function public.radar_separar_repeticao(bigint) to authenticated;                 -- v0.16.0
+grant execute on function public.radar_autorizar_copia(bigint, text, timestamptz) to authenticated; -- v0.16.0
 grant execute on function public.radar_admin_usuarios() to authenticated;
 grant execute on function public.radar_registrar_uso_ia(text, text, int, int, bigint) to authenticated;
 grant execute on function public.radar_registrar_evidencia_ia(bigint, bigint, text, text) to authenticated;
@@ -2974,7 +3087,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.15.0).
+-- Esperado: 22 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.16.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

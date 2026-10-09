@@ -284,7 +284,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.15.0"
+    assert pagina.inner_text(".versao") == "v0.16.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -1451,7 +1451,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
     # a v0.14.0 mudou a função de IA (verificação em fontes oficiais): a v0.13.0 passa a ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.13.0', FUNCAO_MINIMA), versaoMenor('0.14.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    assert pagina.evaluate("[versaoMenor('0.15.0', FUNCAO_MINIMA), versaoMenor('0.16.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2187,6 +2187,8 @@ def test_administrador_cadastra_fonte_nova_pela_tela_e_o_robo_passa_a_ver(pagina
     for seguro in [r"([a-z]+/)+", r"(?:/[\w-]+)+", r"(a|b)+", r"(/[a-z0-9.-]+)+", r"/news/view/([\w.-]+/)+"]:                                        # separador no fim; alternativa sem repetição
         assert pagina.evaluate("p => repeticaoPerigosa(p)", seguro) is False, seguro
     form.locator("[name=padrao_url]").fill("/noticias/\\d+")
+    assert not form.locator("[name=oficial]").is_checked()                                   # v0.16.0: fonte nova começa como NÃO oficial
+    form.locator("[name=oficial]").check()
     form.locator("button", has_text="Cadastrar fonte").click()
     pagina.wait_for_selector("text=Fonte cadastrada.")
     linha = limpo.execute("""select slug, nome, orgao, abrangencia, tipo_coletor, url, config, frequencia_horas, ativo, validada, oficial
@@ -2275,7 +2277,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.15.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.16.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2420,7 +2422,7 @@ def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
     # gerar de novo depois de mudar o título: pede para salvar antes, confirma a troca e cria outra imagem
     form = pagina.locator("form[data-form=conteudo]")
     form.locator("[name=titulo]").fill("Novo título")
-    pagina.click("text=Gerar capa padrão Artecon")
+    pagina.click("text=Atualizar a capa (padrão Artecon)")
     pagina.wait_for_selector("text=Salve o conteúdo antes de gerar a capa.")
     form.locator("button", has_text="Salvar").first.click()
     pagina.wait_for_selector("text=Conteúdo salvo.")
@@ -2428,7 +2430,7 @@ def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
     pagina.wait_for_selector(".capa-antiga >> text=O título mudou")
     assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] == img[0][0]
     pagina.click("[data-acao=capa-auto]")
-    pagina.wait_for_selector("text=Capa gerada no padrão da Artecon.")
+    pagina.wait_for_selector("text=Capa atualizada com o título atual.")
     assert limpo.execute("select imagem_id from radar_conteudos").fetchone()[0] != img[0][0]
     assert pagina.locator(".capa-antiga").count() == 0
     # salvar sem mudar o título não traz o lembrete
@@ -2701,7 +2703,10 @@ def test_capturas_abrem_com_as_dez_em_alta_e_a_repeticao_entra_junto_no_assunto(
     primeiro = pagina.locator("article.cap", has_text="— caso 0").inner_text()                # a de nota 10 continua entre as em alta
     assert "Nota da IA 10/10" in primeiro and "caso 0" in primeiro and "IA: motivo <b>10</b>" in primeiro and "Mesmo fato em mais 1 captura" in primeiro
     assert pagina.locator("article.cap b >> text=10").count() == 0                       # o motivo da IA é texto, não HTML
-    assert "Simples Nacional: prazo alterado" not in pagina.inner_text("#tab-fila") and "caso 11" not in pagina.inner_text("#tab-fila")
+    # a repetição não tem cartão próprio: aparece só dentro do cartão da principal (v0.16.0: com o título e "Não é o mesmo fato")
+    titulos = pagina.locator("#tab-fila article.cap h3").all_inner_texts()
+    assert not any("Simples Nacional: prazo alterado" in t for t in titulos) and "caso 11" not in pagina.inner_text("#tab-fila")
+    assert "Simples Nacional: prazo alterado" in pagina.locator("article.cap", has_text="— caso 0").locator(".repetidas li").inner_text()
     assert "1 captura(s) ainda sem a nota da IA" in pagina.inner_text("#sem-nota") and pagina.locator("text=Ignorar as").count() == 0
     pagina.click("#filtro-fila >> text=Relevantes")
     pagina.wait_for_selector("text=Ignorar as 14 desta lista")                            # as 13 + a sem nota; a repetição não é listada à parte
@@ -3135,6 +3140,18 @@ def ia_de_mentira(pg, db, pedidos):
             r = {"conteudo_id": cid, "avisos": avisos, "titulos": []}
         elif acao == "ilustrar":
             r = {"imagem": _png_base64()}
+        elif acao == "verificar":                            # v0.16.0: a busca em fontes oficiais, como a função grava
+            v = {"situacao": "nao_encontrada", "resumo": "Nada oficial encontrado.", "fontes": [], "divergencias": [], "em": "2026-10-09T12:00:00Z"}
+            db.execute("update radar_assuntos set verificacao = %s, verificado_em = now() where id = %s", (json.dumps(v), corpo["assunto_id"]))
+            r = {"verificacao": v}
+        elif acao == "revisar":                              # v0.16.0: reescreve o texto sem a cópia e sem a marca (e o título, se tiver marca)
+            antes = db.execute("select titulo from radar_conteudos where id = %s", (corpo["conteudo_id"],)).fetchone()[0]
+            db.execute("""update radar_conteudos set corpo = 'Segundo a Receita Federal, a regra nova explica como calcular a CBS na transição.',
+                          titulo = regexp_replace(titulo, '\\s*\\[VERIFICAR[^]]*\\]', '', 'g'),
+                          avisos_ia = avisos_ia || '["Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): prazo."]'
+                          where id = %s""", (corpo["conteudo_id"],))
+            r = {"conteudo_id": corpo["conteudo_id"], "pendencias": ["prazo"], "marcas": 0, "copias": 1, "restam": {"marcas": 0, "copias": 0},
+                 "avisos_gravados": True, "titulo_mudou": "[VERIFICAR" in antes, "autorizacao_caiu": False}
         else:
             r = {"message": "Ação desconhecida."}
         rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
@@ -3219,9 +3236,12 @@ def test_preparar_tudo_cria_a_ilustracao_e_texto_para_analise_sem_fonte_oficial(
     ia_de_mentira(pagina, limpo, pedidos)
     abrir_assunto(pagina, "CBS na transição")
     pagina.click("#proximo-passo >> text=Preparar com IA")
-    pagina.wait_for_selector("text=a ilustração da capa.")
+    pagina.wait_for_selector("text=a capa com a ilustração.")
     assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "ilustrar"] and pagina.locator("#senha-ia").count() == 0
-    assert limpo.execute("select imagem_id is not null from radar_conteudos where assunto_id = %s", (a,)).fetchone()[0]
+    # v0.16.0: a capa é montada com a ilustração ao fundo; a ilustração fica guardada à parte
+    capa, ilus = limpo.execute("select imagem_id, ilustracao_id from radar_conteudos where assunto_id = %s", (a,)).fetchone()
+    assert capa and ilus and capa != ilus
+    assert limpo.execute("select largura, altura, dados like 'data:image/jpeg;base64,%%' from radar_imagens where id = %s", (capa,)).fetchone() == (1200, 630, True)
     # o link da fonte aparece no conteúdo e na prévia
     assert "https://www.gov.br/exemplo/in-2290" in pagina.inner_text(".link-fonte")
     pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
@@ -3234,9 +3254,11 @@ def test_preparar_tudo_cria_a_ilustracao_e_texto_para_analise_sem_fonte_oficial(
     assert pagina.locator("[data-acao=ia-gerar], [data-acao=ia-tudo]").count() == 0
     pagina.click("#proximo-passo >> text=Gerar texto para análise")
     pagina.wait_for_selector("text=Texto para análise gerado a partir de fonte não oficial")
+    assert pedidos[-3]["acao"] == "verificar"                                      # v0.16.0: antes, procura a fonte oficial na internet
     assert pedidos[-2]["acao"] == "gerar" and pedidos[-2]["analise"] is True
     assert pedidos[-1]["acao"] == "ilustrar"                                       # v0.12.0: com a ilustração da IA
-    pagina.wait_for_selector("text=A capa é a ilustração da IA.")
+    pagina.wait_for_selector("text=A busca em fontes oficiais não encontrou página oficial (veja no passo 1).")
+    pagina.wait_for_selector("text=A capa tem a ilustração da IA ao fundo.")
     assert "TEXTO PARA ANÁLISE" in pagina.inner_text(".avisos-ia")
     assert "https://www.itcnet.com.br/" in pagina.inner_text(".link-fonte") and "radar=" not in pagina.inner_text(".link-fonte")
 
@@ -3600,3 +3622,169 @@ def test_capturas_mostram_a_fundamentacao_da_repeticao_e_quantas_faltam(pagina, 
     cortado = cartao("prazo do parcelamento")                          # texto cortado: não afirma que não há norma
     assert "fundamentação legal não identificada" in cortado.locator(".selo.alerta").all_inner_texts()
     assert "o trecho capturado está cortado e não cita norma" in cortado.locator(".base-legal").inner_text()
+
+
+# ------------------------------------------------------------ v0.16.0 — texto sem cópia, capa com imagem, repetição separada
+COPIA = ("A norma dispõe sobre a apuração da Contribuição Social sobre Bens e Serviços (CBS) no período de transição. "
+         "Art. 2º O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9%.")
+
+
+def _conteudo(db, a, corpo, gerado_por="humano"):
+    return db.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por, modelo_ia)
+                         values (%s, 'informativo', 'CBS na transição', %s, 'em_revisao', %s, %s) returning id""",
+                      (a, corpo, gerado_por, "modelo" if gerado_por == "ia" else None)).fetchone()[0]
+
+
+def test_texto_igual_ao_da_fonte_pode_ser_autorizado_mesmo_assim_com_motivo(pagina, limpo):
+    a, _ = assunto_com_texto(limpo)
+    c = _conteudo(limpo, a, COPIA + " Texto próprio da equipe sobre o assunto.")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    caixa = pagina.locator("form[data-form=conteudo] .aviso.copia")
+    caixa.wait_for()
+    assert "Texto igual ao da fonte em 1 trecho(s)" in caixa.inner_text() and "“segundo a Receita Federal…”" in caixa.inner_text()
+    assert caixa.locator("[data-acao=ia-revisar]").count() == 1
+    pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
+    pagina.wait_for_selector("#recado .erro >> text=Autorizar mesmo assim")
+    caixa.locator("text=Autorizar mesmo assim").click()
+    pagina.fill("#motivo-copia", "ok")
+    pagina.click(".motivo-copia [data-acao=autorizar-copia]")
+    pagina.wait_for_selector("#recado .erro >> text=pelo menos 5 caracteres")
+    assert limpo.execute("select copia_autorizada_em from radar_conteudos where id = %s", (c,)).fetchone()[0] is None
+    pagina.fill("#motivo-copia", "transcrição do art. 2º da IN, com a fonte citada")
+    pagina.press("#motivo-copia", "Enter")
+    pagina.wait_for_selector("text=Trecho igual ao da fonte autorizado.")
+    caixa = pagina.locator("form[data-form=conteudo] .aviso.copia-autorizada")
+    assert "Autorizado mesmo assim" in caixa.inner_text() and "transcrição do art. 2º da IN, com a fonte citada" in caixa.inner_text()
+    assert caixa.locator("[data-acao=abrir-autorizar-copia]").count() == 0
+    assert limpo.execute("select copia_autorizada_por::text from radar_conteudos where id = %s", (c,)).fetchone()[0] == EDITOR
+    pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
+    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
+    # o texto mudou: a autorização cai e o quadro volta a ser vermelho
+    limpo.execute("update radar_conteudos set corpo = corpo || ' Mais um parágrafo.' where id = %s", (c,))
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.wait_for_selector("form[data-form=conteudo] .aviso.erro.copia")
+    assert pagina.locator(".aviso.copia-autorizada").count() == 0
+
+
+def test_revisar_com_ia_tira_a_copia_e_a_marca(pagina, limpo):
+    a, _ = assunto_com_texto(limpo)
+    c = _conteudo(limpo, a, COPIA + " O prazo de adesão [VERIFICAR: prazo] ainda será definido.", "ia")
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    marcas = pagina.locator("form[data-form=conteudo] .marcas-verificar")
+    marcas.wait_for()
+    assert marcas.locator("[data-acao=ia-revisar]").count() == 1 and "“Revisar com IA”" in marcas.inner_text()
+    lido = pagina.get_attribute("form[data-form=conteudo]", "data-lido")
+    pagina.locator("form[data-form=conteudo] .aviso.copia [data-acao=ia-revisar]").click()
+    pagina.wait_for_selector("text=IA: texto revisado; 1 ponto(s) a conferir na fonte oficial saíram do texto e estão nos pontos a conferir.")
+    assert pedidos[-1] == {"acao": "revisar", "conteudo_id": c, "lido": lido, "assunto_id": a}
+    assert pagina.locator(".aviso.copia, .marcas-verificar").count() == 0
+    assert "Ficou fora do texto por falta de confirmação" in pagina.inner_text(".avisos-ia")
+
+
+def test_capa_com_ilustracao_e_refeita_com_o_titulo_novo_sem_gerar_outra(pagina, limpo):
+    a, _ = assunto_com_texto(limpo)
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click("#proximo-passo >> text=Preparar com IA")
+    pagina.wait_for_selector("text=a capa com a ilustração.")
+    c, capa, ilus = limpo.execute("select id, imagem_id, ilustracao_id from radar_conteudos where assunto_id = %s", (a,)).fetchone()
+    form = pagina.locator("form[data-form=conteudo]")
+    assert form.locator("text=Atualizar a capa (com a ilustração)").count() == 1
+    form.locator("[name=titulo]").fill("CBS de 0,9% na transição: o que a empresa precisa fazer")
+    form.locator("[data-acao=salvar-conteudo]").click()
+    pagina.wait_for_selector(".capa-antiga >> text=a ilustração continua a mesma, sem custo")
+    n = len(pedidos)
+    pagina.on("dialog", lambda d: d.accept())
+    pagina.locator("form[data-form=conteudo] >> text=Atualizar a capa (com a ilustração)").click()
+    pagina.wait_for_selector("text=Capa atualizada com o título atual.")
+    capa2, ilus2 = limpo.execute("select imagem_id, ilustracao_id from radar_conteudos where id = %s", (c,)).fetchone()
+    assert capa2 != capa and ilus2 == ilus and len(pedidos) == n                       # nenhuma ilustração nova
+    assert limpo.execute("select count(*) from radar_imagens where id = %s", (capa,)).fetchone()[0] == 0   # a capa antiga saiu
+    assert pagina.locator(".capa-antiga").count() == 0
+    pagina.locator("form[data-form=conteudo] >> text=Capa padrão, sem a ilustração").click()
+    pagina.wait_for_selector("text=Capa padrão da Artecon, sem a ilustração.")
+    capa3, ilus3 = limpo.execute("select imagem_id, ilustracao_id from radar_conteudos where id = %s", (c,)).fetchone()
+    assert capa3 not in (capa2, None) and ilus3 is None
+    assert limpo.execute("select count(*) from radar_imagens where id = %s", (ilus,)).fetchone()[0] == 0
+    assert pagina.locator("form[data-form=conteudo] >> text=Atualizar a capa (padrão Artecon)").count() == 1
+
+
+def test_capturas_listam_as_repeticoes_e_separam_o_que_nao_e_o_mesmo_fato(pagina, limpo):
+    a = captura(limpo, "Subvenção: crédito presumido de ICMS na base do IRPJ e da CSLL", "https://www.gov.br/exemplo/sv-1", "rfb-noticias",
+                "O crédito presumido de ICMS não pode mais ser excluído da base do IRPJ e da CSLL.")
+    b = captura(limpo, "STF exclui créditos presumidos de ICMS da base do PIS e da Cofins", "https://www.gov.br/exemplo/sv-2", "rfb-noticias",
+                "O STF decidiu excluir os créditos presumidos de ICMS da base do PIS e da Cofins.")
+    limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (a, b))
+    entrar(pagina, "leitor@artecon.test")                            # quem só lê vê as repetições, mas não separa
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Capturas")
+    pagina.click("#filtro-fila >> text=Todas")
+    cartao = lambda t: pagina.locator("article.cap", has=pagina.locator("h3", has_text=t))
+    cartao("Subvenção").locator(".repetidas li").wait_for()
+    assert "STF exclui créditos presumidos" in cartao("Subvenção").locator(".repetidas li").inner_text()
+    assert pagina.locator("[data-acao=separar-repeticao]").count() == 0
+    pagina.click("header >> text=Sair")
+    pagina.wait_for_selector("input[type=password]")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Capturas")
+    pagina.click("#filtro-fila >> text=Todas")
+    cartao("Subvenção").locator(".repetidas li").wait_for()
+    assert cartao("STF exclui").locator("[data-acao=separar-repeticao]").count() == 1      # o cartão da própria repetição também tem
+    pagina.on("dialog", lambda d: d.accept())
+    cartao("Subvenção").locator(".repetidas [data-acao=separar-repeticao]").click()
+    pagina.wait_for_selector("text=Captura separada: agora ela aparece sozinha na lista.")
+    assert limpo.execute("select duplicata_de from radar_capturas where id = %s", (b,)).fetchone()[0] is None
+    assert cartao("Subvenção").locator(".repetidas").count() == 0
+
+
+def test_revisar_com_ia_que_muda_o_titulo_refaz_a_capa_e_nao_apaga_texto_nao_salvo(pagina, limpo):
+    a, _ = assunto_com_texto(limpo)
+    c = _conteudo(limpo, a, COPIA + " Texto próprio.", "ia")
+    limpo.execute("update radar_conteudos set titulo = 'CBS [VERIFICAR: alíquota] na transição' where id = %s", (c,))
+    ilus, capa = (limpo.execute("insert into radar_imagens (dados, largura, altura) values (%s, 300, 200) returning id", (_png_base64(),)).fetchone()[0]
+                  for _ in range(2))
+    limpo.execute("update radar_conteudos set imagem_id = %s, ilustracao_id = %s where id = %s", (capa, ilus, c))
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.wait_for_selector("form[data-form=conteudo] .marcas-verificar")
+    # há texto digitado e não salvo neste navegador: a revisão não começa (ele sumiria)
+    pagina.evaluate(f"""() => {{ localStorage.setItem(chaveRascunho({c}), JSON.stringify({{titulo:'CBS', corpo:'Texto digitado e não salvo.',
+        base:document.querySelector('form[data-form=conteudo]').dataset.lido, quando:new Date().toISOString()}})); return desenhar(); }}""")
+    pagina.wait_for_selector("form[data-form=conteudo] .rascunho")
+    pagina.locator("form[data-form=conteudo] .marcas-verificar [data-acao=ia-revisar]").click()
+    pagina.wait_for_selector("#recado .erro >> text=Há um texto não salvo deste conteúdo neste navegador")
+    assert len(pedidos) == 0
+    pagina.locator("form[data-form=conteudo] [data-acao=descartar-rascunho]").click()
+    pagina.locator("form[data-form=conteudo] .marcas-verificar [data-acao=ia-revisar]").click()
+    pagina.wait_for_selector("text=O título mudou: a capa foi refeita com o título novo.")
+    titulo, capa2, ilus2 = limpo.execute("select titulo, imagem_id, ilustracao_id from radar_conteudos where id = %s", (c,)).fetchone()
+    assert titulo == "CBS na transição" and capa2 != capa and ilus2 == ilus and [p["acao"] for p in pedidos] == ["revisar"]
+
+
+def test_comentario_de_duvida_aparece_com_revisar_com_ia_e_nao_trava_a_aprovacao(pagina, limpo):
+    a, _ = assunto_com_texto(limpo)
+    c = _conteudo(limpo, a, "A sessão será em 30 de setembro (a fonte não especifica o ano). Quando a fonte não informa o CPF, o rendimento fica sem vínculo.")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    caixa = pagina.locator("form[data-form=conteudo] .aviso.duvidas")
+    caixa.wait_for()
+    assert caixa.locator("li").all_inner_texts() == ["a fonte não especifica o ano"]          # a condicional ("quando a fonte…") não conta
+    assert caixa.locator("[data-acao=ia-revisar]").count() == 1
+    pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
+    pagina.wait_for_selector("text=Conteúdo aprovado.")                                        # não impede aprovar
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
