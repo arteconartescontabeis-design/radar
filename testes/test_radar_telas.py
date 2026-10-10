@@ -379,7 +379,7 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     pagina.click("text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     pagina.screenshot(path=str(FOTOS / "03-assunto.png"), full_page=True)
 
     # v0.5.0: não há página pública nem botão Publicar; publica-se no site da Artecon e registra-se o link aqui
@@ -476,7 +476,7 @@ def test_aprovacao_so_vale_para_o_texto_que_estava_na_tela(pagina, limpo):
     # a tela recarrega com o texto novo; agora a aprovação vale
     pagina.wait_for_selector("textarea[name=corpo] >> text=Texto trocado sem o revisor ver.")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
 
 
 def test_nao_aprova_com_alteracao_nao_salva(pagina, limpo):
@@ -549,7 +549,7 @@ def test_editar_texto_depois_de_publicado_no_site_avisa_e_o_registro_guarda_o_qu
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     registrar_no_site(pagina)
     pagina.locator("form[data-form=conteudo] [name=corpo]").fill("Texto reescrito depois de publicado.")
     pagina.locator("form[data-form=conteudo] button", has_text="Salvar").first.click()
@@ -585,7 +585,7 @@ def test_conteudo_malicioso_e_exibido_como_texto_no_painel(pagina, limpo):
     assert pagina.evaluate("window.__invadido") is None
     pagina.keyboard.press("Escape")                                           # fecha a prévia
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     registrar_no_site(pagina)
     limpo.execute("update radar_divulgacoes set observacao = %s", (ATAQUE,))
     pagina.click("nav.abas >> text=Publicações")
@@ -850,7 +850,7 @@ def test_links_e_negrito_no_texto(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     pagina.set_viewport_size({"width": 375, "height": 740})
     pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
     assert sem_rolagem_lateral(pagina), "prévia com endereço comprido"
@@ -1348,7 +1348,7 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     pagina.click("text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     pagina.screenshot(path=str(FOTOS / "20-assunto-manual.png"), full_page=True)
     assert pagina.locator("text=Publicar agora").count() == 0                   # não há mais página pública
     artigo_aprovado(limpo, "PGFN abre negociação de débitos de FGTS e contribuições sociais",
@@ -1934,7 +1934,7 @@ def test_registro_no_site_pede_para_salvar_antes_e_aceita_mais_de_um_registro(pa
     form.locator("input[type=file]").set_input_files(foto_de_teste(tmp_path / "capa.png", (900, 500)))
     pagina.wait_for_selector("text=Imagem enviada.")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     baixar = pagina.locator("form[data-form=conteudo] a", has_text="Baixar imagem")
     assert baixar.get_attribute("download").startswith("radar-imagem-") and baixar.get_attribute("href").startswith("data:image/jpeg;base64,")
     # com texto digitado e não salvo, o registro é recusado (registraria um texto que não é o aprovado)
@@ -2801,7 +2801,7 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
     salvar("## O que mudou\nA partir de 1º de janeiro de 2027, a nota fiscal passa a trazer a CBS em destaque, calculada a 0,9%. Vale revisar o sistema emissor antes da virada do ano para evitar rejeição de notas.")
     assert pagina.locator(".copia").count() == 0
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     assert pagina.evaluate("trechosCopiados('texto qualquer sem relação alguma com a fonte oficial', [])") == []
     # regras da comparação, direto na função
     fonte = ("Art. 1º Fica prorrogado até 31 de março de 2027 o prazo de que trata a Instrução Normativa RFB nº 2.300, de 5 de março de 2026, "
@@ -2893,7 +2893,7 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     # citado e com o campo Fonte: aprova
     salvar(citado)
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
 
 def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pagina, limpo, openai):
     a, _ = assunto_com_texto(limpo)
@@ -3718,7 +3718,7 @@ def test_texto_igual_ao_da_fonte_pode_ser_autorizado_mesmo_assim_com_motivo(pagi
     assert caixa.locator("[data-acao=abrir-autorizar-copia]").count() == 0
     assert limpo.execute("select copia_autorizada_por::text from radar_conteudos where id = %s", (c,)).fetchone()[0] == EDITOR
     pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
     # o texto mudou: a autorização cai e o quadro volta a ser vermelho
     limpo.execute("update radar_conteudos set corpo = corpo || ' Mais um parágrafo.' where id = %s", (c,))
@@ -3844,7 +3844,7 @@ def test_comentario_de_duvida_aparece_com_revisar_com_ia_e_nao_trava_a_aprovacao
     assert caixa.locator("li").all_inner_texts() == ["a fonte não especifica o ano"]          # a condicional ("quando a fonte…") não conta
     assert caixa.locator("[data-acao=ia-revisar]").count() == 1
     pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")                                        # não impede aprovar
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")                                        # não impede aprovar
     assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
 
 
