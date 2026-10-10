@@ -220,7 +220,7 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.18.0";
+const VERSAO = "0.19.0";
 const FUNCAO_MINIMA = "0.18.0";     // versão da função radar-ia que este painel exige (v0.18.0: "Revisar com IA" cita a fonte)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
