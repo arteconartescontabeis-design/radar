@@ -65,7 +65,7 @@ REGRA_FONTE = ("(8) FONTE SEMPRE CITADA: organize a informação do ponto de vis
                "que usa frase da fonte diga de onde ela veio, pelo nome como aparece em 'órgão:' ou 'publicação:' no material ('Segundo a Receita Federal "
                "do Brasil, …', 'Conforme o Portal Contábil SC, …', 'Conforme publicado no Diário Oficial da União, …'); num item de lista, a frase que "
                "apresenta a lista cita a fonte. Transcrição literal de dispositivo legal vai entre aspas. "
-               "EXCEÇÃO: do material marcado como BOLETIM PAGO use só a informação, sempre com palavras e frases próprias, nunca as frases dele; "
+               "EXCEÇÃO: do material marcado como BOLETIM PAGO use só a informação, sempre com palavras e frases próprias, nunca as frases dele (nem entre aspas); "
                "atribua a informação ao boletim ('segundo o boletim da ITC') ou, quando o texto oficial do material a confirmar, ao órgão que publicou "
                "o ato. Nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; ")
 REGRA_TITULOS = ("(10) em 'titulos', proponha 3 outros títulos para a mesma notícia, diferentes entre si e do título principal "
@@ -313,11 +313,22 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
         return []
     citadas = 0
 
+    def so_do_pago(dentro: str) -> bool:
+        """As aspas não liberam frase do boletim pago: a citação que tem frase só dele é comparada como texto comum."""
+        if not any(f["paga"] for f in lista):
+            return False
+        w = _limpa_copia(dentro).split(" ")
+        for i in range(0, len(w) - n_ + 1):
+            o = gramas.get(" ".join(w[i:i + n_]))
+            if o and all(lista[k]["paga"] for k in o):
+                return True
+        return False
+
     def citacao(m):
         nonlocal citadas
         dentro = m.group(1)
         n = len([x for x in re.split(r"\s+", dentro) if x])
-        if n < 3 or n > CITACAO_MAXIMA or citadas + n > CITACOES_TOTAL:
+        if n < 3 or n > CITACAO_MAXIMA or citadas + n > CITACOES_TOTAL or so_do_pago(dentro):
             return " " + dentro + " "
         citadas += n
         return " ¶ " + "\n" * dentro.count("\n")              # as quebras de linha ficam: a linha de cada palavra não muda
@@ -347,6 +358,7 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
             x[2] = 3
     igual, livre, citada = [False] * len(fichas), [False] * len(fichas), [False] * len(fichas)
     origem: list = [None] * len(fichas)
+    fontes_da: list[list[int]] = [[] for _ in fichas]        # as fontes livres de cada palavra (para dizer qual falta citar)
     for i in range(0, len(fichas) - n_ + 1):
         parte = fichas[i:i + n_]
         if not all(x[0] for x in parte):
@@ -361,6 +373,9 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
             if not livres:
                 continue
             livre[k] = True
+            for f in livres:
+                if f not in fontes_da[k]:
+                    fontes_da[k].append(f)
             u = unidade[linha_da[fichas[k][1]]]
             if u >= 0 and any(cita_na[u][f] for f in livres):
                 citada[k] = True
@@ -381,19 +396,19 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
             texto = " ".join(palavras[fichas[i][1]:fichas[j][1] + 1])
             de = [lista[k] for k in sorted({k for o in origem[i:j + 1] if o for k in o})]
             livres = [f for f in de if not f["paga"]]
-            paga, k = False, i                               # a parte que só o boletim pago tem, se for cópia por si só
-            while k <= j and not paga:
-                if livre[k]:
-                    k += 1
-                    continue
-                m = k
-                while m + 1 <= j and not livre[m + 1]:
-                    m += 1
-                paga = contam(fichas[k:m + 1]) >= COPIA_MINIMA
-                k = m + 1
-            cita = not paga and all(citada[k] for k in range(i, j + 1) if livre[k])
-            achados.append({"palavras": j - i + 1, "texto": texto, "fonte": (livres[0] if livres else de[0])["nome"] if de else "",
-                            "paga": paga, "citado": cita})
+            # é "pago" se as palavras que só o boletim pago tem, somadas, já são cópia por si só (12 que contam); é "citado" se as
+            # palavras livres sem a fonte citada no próprio parágrafo, somadas, não chegam a isso (número, data e subtítulo não atrapalham)
+            sem_citar = [k for k in range(i, j + 1) if livre[k] and not citada[k]]
+            paga = contam([fichas[k] for k in range(i, j + 1) if not livre[k]]) >= COPIA_MINIMA
+            cita = not paga and contam([fichas[k] for k in sem_citar]) < COPIA_MINIMA
+            faltam = sorted({f for k in sem_citar for f in fontes_da[k]})
+            if paga:
+                fonte = next((f["nome"] for f in de if f["paga"]), "")
+            elif not cita and faltam:
+                fonte = lista[faltam[0]]["nome"]
+            else:
+                fonte = (livres[0] if livres else de[0])["nome"] if de else ""
+            achados.append({"palavras": j - i + 1, "texto": texto, "fonte": fonte, "paga": paga, "citado": cita})
         i = j + 1
     return sorted(achados, key=lambda a: -a["palavras"])
 
@@ -494,7 +509,7 @@ REVISAO = ("Você revisa um texto contábil e tributário da Artecon Artes Cont�
            "da fonte indicado ao lado do trecho ('Segundo a Receita Federal do Brasil, …', 'Conforme o Portal Contábil SC, …'); num item de lista, "
            "a frase que apresenta a lista cita a fonte. Trecho marcado como BOLETIM PAGO é reescrito com palavras e estrutura próprias, mantendo "
            "o sentido; a informação fica atribuída ao boletim ou, se o texto oficial do material a confirmar, ao órgão que publicou o ato; "
-           "(c) o resto fica como está, inclusive as citações entre aspas: mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; "
+           "(c) o resto fica como está, inclusive as citações entre aspas (menos frase do BOLETIM PAGO, que nem entre aspas pode ficar): mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; "
            "(d) nada de HTML, links, colchetes ou comentários sobre a revisão no texto. " + REGRA_DADOS)
 ESQUEMA_REVISAO = {"type": "object", "additionalProperties": False, "required": ["titulo", "corpo", "pendencias"],
                    "properties": {"titulo": {"type": "string"}, "corpo": {"type": "string"}, "pendencias": {"type": "array", "items": {"type": "string"}}}}

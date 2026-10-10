@@ -17,8 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 import requests
 
-from conftest import API, EDITOR, RAIZ, como, jwt, psql
-from test_radar_banco import FONTES_NOVAS, cenario_publicavel
+from conftest import API, EDITOR, RAIZ, carregar_fontes_novas, como, jwt
+from test_radar_banco import cenario_publicavel
 
 PORTA_PONTE, PORTA_FUNCAO = 3994, 3993
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
@@ -257,9 +257,9 @@ def test_trecho_igual_com_a_fonte_citada_no_paragrafo_nao_pede_revisao(funcao, l
     assert len(IA["pedidos"]) == n + 3 and "(fonte: Receita Federal do Brasil)" in IA["pedidos"][-1]["messages"][0]["content"]
 
 
-def test_frase_do_boletim_pago_nao_fica_nem_citando_e_a_revisao_reescreve(funcao, limpo):
+def test_frase_do_boletim_pago_nao_fica_nem_citando_e_a_revisao_reescreve(funcao, limpo, request):
     """v0.18.0: do boletim pago (ITC), as frases nunca são reproduzidas: citar a ITC não basta; o material da revisão marca o boletim."""
-    assert psql(FONTES_NOVAS).returncode == 0
+    carregar_fontes_novas(limpo, request)
     a, c = _assunto_com_texto(limpo)
     boletim = ("Na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros "
                "de produtos antes da virada do ano.")

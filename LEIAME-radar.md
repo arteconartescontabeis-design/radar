@@ -26,7 +26,7 @@ A v0.18.0 muda a regra do **texto igual ao da fonte**:
     da União"). Se o campo Fonte estiver vazio, o quadro pede só que ele seja preenchido.
 - **A IA segue a mesma regra** no "Gerar com IA", nos rascunhos do robô e no "Revisar com IA".
 - **Boletim pago (ITC):** as frases do boletim de assinatura nunca são reproduzidas, nem citando a ITC (o contrato da
-  assinatura não permite republicar). A IA usa só a informação, com palavras próprias, atribuída ao órgão que publicou o ato.
+  assinatura não permite republicar). A IA usa só a informação, com palavras próprias, atribuída ao boletim ("segundo o boletim da ITC") ou, quando o texto oficial confirmar, ao órgão que publicou o ato.
 - **Campo Fonte:** no conteúdo novo, além do órgão oficial, entra também o portal de notícias de onde veio a informação
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.

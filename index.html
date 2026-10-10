@@ -228,7 +228,7 @@ const VERSOES = [
   ["0.18.0", "10/10/2026", [
     "Texto igual ao da fonte, com a fonte citada: o texto pode usar as frases da norma, do comunicado ou da notícia, desde que cada parágrafo em que elas estão diga de onde vieram (“Segundo a Receita Federal, …”, “Conforme o Portal Contábil SC, …”, “Conforme publicado no Diário Oficial da União, …”; num item de lista, a frase que apresenta a lista) e o campo Fonte esteja preenchido (ele sai no fim da notícia; se estiver vazio, o quadro pede só que ele seja preenchido). Esse trecho aparece num quadro azul e não impede aprovar. O trecho igual sem a fonte citada continua no quadro vermelho, e “Revisar com IA” acrescenta a fonte no parágrafo em vez de reescrever.",
     "A IA (Gerar com IA, rascunhos do robô e Revisar com IA) passa a seguir a mesma regra: pode manter a redação da fonte, sempre dizendo de onde veio.",
-    "Boletim pago (ITC): as frases do boletim nunca são reproduzidas, nem citando a ITC. A IA usa só a informação, com palavras próprias, atribuída ao órgão que publicou o ato; o trecho igual ao boletim continua no quadro vermelho.",
+    "Boletim pago (ITC): as frases do boletim nunca são reproduzidas, nem citando a ITC nem entre aspas. A IA usa só a informação, com palavras próprias, atribuída ao boletim (“segundo o boletim da ITC”) ou, quando o texto oficial confirmar, ao órgão que publicou o ato; o trecho igual ao boletim continua no quadro vermelho.",
     "Campo Fonte: no conteúdo novo, além do órgão oficial, entra também o portal de notícias de onde veio a informação (ex.: Portal Contábil SC); o boletim pago não entra, e o link da fonte nunca leva ao site dele quando há outra captura."]],
   ["0.17.0", "09/10/2026", [
     "Publicar em todos: no passo da publicação, “Publicar em todos de uma vez” autoriza o site, o Instagram e o Facebook com um clique só, depois de conferir a categoria, a imagem e as duas legendas. O robô publica no site em até 15 minutos e, logo que a notícia entra no site, publica no Instagram e no Facebook (o link da notícia entra no lugar de {LINK DO SITE}). Se o site não sair ou o texto mudar, as redes caem junto.",
@@ -1808,9 +1808,15 @@ function trechosCopiados(corpo, fontes){
     for(let i = 0; i + N <= w.length; i++){ const g = w.slice(i, i + N).join(" "), o = gramas.get(g); if(!o) gramas.set(g, [k]); else if(o[o.length - 1] !== k) o.push(k); } });
   if(!gramas.size) return [];
   let citadas = 0;
+  // as aspas não liberam frase do boletim pago: a citação que tem frase só dele é comparada como texto comum
+  const soDoPago = dentro => {
+    if(!lista.some(f => f.paga)) return false;
+    const w = limpa(dentro).split(" ");
+    for(let i = 0; i + N <= w.length; i++){ const o = gramas.get(w.slice(i, i + N).join(" ")); if(o && o.every(k => lista[k].paga)) return true; }
+    return false; };
   const citacao = (tudo, dentro) => {
     const n = dentro.split(/\s+/).filter(Boolean).length;
-    if(n < 3 || n > CITACAO_MAXIMA || citadas + n > CITACOES_TOTAL) return " " + dentro + " ";   // aspas vazias, ou citação longa demais: comparada como texto comum
+    if(n < 3 || n > CITACAO_MAXIMA || citadas + n > CITACOES_TOTAL || soDoPago(dentro)) return " " + dentro + " ";   // aspas vazias, citação longa demais ou frase do boletim pago: comparada como texto comum
     citadas += n; return " ¶ " + "\n".repeat((dentro.match(/\n/g) || []).length); };           // as quebras de linha ficam: a linha de cada palavra não muda
   const limpo = String(corpo || "").replace(invisiveis, "");
   const semCitacoes = limpo.replace(/^#{1,2}(\s)/gm, (m, e) => e === "\n" ? " ¶ \n" : " ¶ ")
@@ -1828,6 +1834,7 @@ function trechosCopiados(corpo, fontes){
   // cada palavra igual: se alguma fonte livre a tem (livre) e se essa fonte está citada no parágrafo da palavra (citada)
   const igual = new Array(fichas.length).fill(false), livre = new Array(fichas.length).fill(false),
         citada = new Array(fichas.length).fill(false), origem = new Array(fichas.length).fill(null);
+  const fontesDa = fichas.map(() => []);                       // as fontes livres de cada palavra (para dizer qual falta citar)
   for(let i = 0; i + N <= fichas.length; i++){
     const parte = fichas.slice(i, i + N);
     if(!parte.every(x => x[0])) continue;
@@ -1839,6 +1846,7 @@ function trechosCopiados(corpo, fontes){
       igual[k] = true;
       if(!livres.length) continue;
       livre[k] = true;
+      for(const f of livres) if(!fontesDa[k].includes(f)) fontesDa[k].push(f);
       const u = unidade[linhaDa[fichas[k][1]]];
       if(u >= 0 && livres.some(f => citaNa[u][f])) citada[k] = true;
     }
@@ -1853,15 +1861,15 @@ function trechosCopiados(corpo, fontes){
       const texto = palavras.slice(fichas[i][1], fichas[j][1] + 1).join(" ");
       const de = [...new Set(origem.slice(i, j + 1).filter(Boolean).flat())].sort((x, y) => x - y).map(k => lista[k]);
       const livres = de.filter(f => !f.paga);
-      // a parte que só o boletim pago tem, se for cópia por si só, torna o trecho todo "pago"
-      let paga = false;
-      for(let k = i; k <= j && !paga; k++){
-        if(livre[k]) continue; let m = k; while(m + 1 <= j && !livre[m + 1]) m++;
-        paga = contam(fichas.slice(k, m + 1)) >= COPIA_MINIMA; k = m;
-      }
-      let cita = !paga;
-      for(let k = i; k <= j && cita; k++) if(livre[k] && !citada[k]) cita = false;
-      achados.push({palavras:j - i + 1, texto, fonte:(livres[0] || de[0])?.nome || "", paga, citado:cita});
+      // é "pago" se as palavras que só o boletim pago tem, somadas, já são cópia por si só (12 que contam); é "citado" se as palavras
+      // livres sem a fonte citada no próprio parágrafo, somadas, não chegam a isso (número, data e subtítulo colados não atrapalham)
+      const pedaco = ok => { const ks = []; for(let k = i; k <= j; k++) if(ok(k)) ks.push(k); return ks; };
+      const semCitar = pedaco(k => livre[k] && !citada[k]);
+      const paga = contam(pedaco(k => !livre[k]).map(k => fichas[k])) >= COPIA_MINIMA;
+      const cita = !paga && contam(semCitar.map(k => fichas[k])) < COPIA_MINIMA;
+      const faltam = [...new Set(semCitar.flatMap(k => fontesDa[k]))].sort((x, y) => x - y);
+      const fonte = paga ? de.find(f => f.paga)?.nome || "" : !cita && faltam.length ? lista[faltam[0]].nome : (livres[0] || de[0])?.nome || "";
+      achados.push({palavras:j - i + 1, texto, fonte, paga, citado:cita});
     }
     i = j;
   }
@@ -1892,17 +1900,19 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
   // v0.18.0: o trecho igual ao da fonte pode ficar quando o parágrafo cita a fonte e o campo Fonte está preenchido (vai no fim
   // da notícia); o do boletim pago, nunca. Só o resto impede aprovar.
   const semCredito = !String(c.fonte_credito || "").trim();
-  const citadas = todas.filter(t => t.citado), copia = semCredito ? todas : todas.filter(t => !t.citado);
-  const soFaltaFonte = copia.length > 0 && copia.every(t => t.citado);       // está tudo citado: falta só o campo Fonte
+  const citadas = todas.filter(t => t.citado), pagas = todas.filter(t => t.paga), semFonte = todas.filter(t => !t.citado && !t.paga);
+  const vermelho = [...pagas, ...semFonte];                                     // o que nunca passa sem correção (ou autorização)
+  const copia = semCredito ? todas : vermelho;                                  // o que impede aprovar
+  const soFaltaFonte = !vermelho.length && copia.length > 0;                    // está tudo citado: falta só o campo Fonte
   const marcas = marcasVerificar(c.titulo || "", c.corpo || ""), duvidas = comentariosDuvida(c.titulo || "", c.corpo || "");
   // v0.16.0: "Revisar com IA" corrige só as marcas e os trechos iguais ao da fonte (v0.18.0: acrescenta a fonte no parágrafo);
   // "Autorizar mesmo assim" deixa o trecho como está (com motivo)
   const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
-  const autorizada = copia.length && !soFaltaFonte && c.copia_autorizada_em;
+  const autorizada = vermelho.length && c.copia_autorizada_em;
   const deOnde = t => t.paga ? ` <span class="sub">(boletim pago${t.fonte ? ": " + h(t.fonte) : ""} — reescreva com palavras próprias)</span>`
     : t.fonte ? ` <span class="sub">(${h(t.fonte)})</span>` : "";
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
-  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.ilustracao_id ? ` data-ilustracao="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${copia.length}"${soFaltaFonte ? ` data-falta-fonte="1"` : ""}${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
+  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.ilustracao_id ? ` data-ilustracao="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${autorizada && !semCredito ? 0 : copia.length}"${soFaltaFonte || (autorizada && semCredito) ? ` data-falta-fonte="1"` : ""}${pagas.length ? ` data-pagas="1"` : ""}${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
     ${ed ? avisoRascunho(c) : ""}
     ${marcas.length ? `<div class="aviso erro marcas-verificar"><b>${marcas.length} ponto(s) marcado(s) com [VERIFICAR] — resolva antes de liberar ou publicar.</b>
       <ul>${marcas.map(m => `<li><span class="copiado">${h(m)}</span></li>`).join("")}</ul>Troque cada marca pela informação conferida (ou tire o trecho) e salve${ed ? ", ou clique em “Revisar com IA”: a IA tira as marcas e o que não estiver confirmado vai para os pontos a conferir" : ""}. Enquanto houver marca, o Radar não aprova nem publica.
@@ -1910,17 +1920,18 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${duvidas.length ? `<div class="aviso alerta duvidas"><b>Comentário sobre dúvida da redação no texto (${duvidas.length}).</b> O leitor não deve ver isso: tire do texto${ed ? " ou clique em “Revisar com IA”" : ""}; o que faltar confirmar vai para os pontos a conferir.
       <ul>${duvidas.map(d => `<li><span class="copiado">${h(d)}</span></li>`).join("")}</ul>
       ${ed && !marcas.length ? `<div class="acoes">${revisarIA}</div>` : ""}</div>` : ""}
+    ${vermelho.length ? `<div class="aviso ${autorizada ? "alerta copia-autorizada" : "erro"} copia"><b>${[semFonte.length ? `Texto igual ao da fonte sem a fonte citada em ${semFonte.length} trecho(s).` : "",
+        pagas.length ? `Frase do boletim pago em ${pagas.length} trecho(s).` : ""].filter(Boolean).join(" ")}</b> ${autorizada
+        ? `<b>Autorizado mesmo assim</b> em ${dataHora(c.copia_autorizada_em)}${c.copia_autorizada_motivo ? ` — motivo: “${h(c.copia_autorizada_motivo)}”` : ""}. A autorização vale para este texto: se ele mudar, cai.`
+        : `O conteúdo não pode ser aprovado assim.${semFonte.length ? " O texto pode ficar igual ao da fonte, mas cada parágrafo precisa dizer de onde veio (“Segundo a Receita Federal, …”, “Conforme o Portal Contábil SC, …”; num item de lista, a frase que apresenta a lista)." : ""}${pagas.length ? " As frases do boletim pago (ITC) nunca podem ser reproduzidas, nem citando nem entre aspas: reescreva com palavras próprias." : ""}`}${semCredito ? " O campo <b>Fonte</b> (abaixo) também precisa estar preenchido: ele sai no fim da notícia." : ""}
+      <ul>${vermelho.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span>${deOnde(t)}</li>`).join("")}</ul>${vermelho.length > 4 ? `<span class="sub">e mais ${vermelho.length - 4}.</span>` : ""}
+      ${ed && !autorizada ? `<div class="acoes">${revisarIA}<button class="btn peq sec" type="button" data-acao="abrir-autorizar-copia" data-id="${c.id}">Autorizar mesmo assim</button>
+        <span class="sub">“Revisar com IA” ${semFonte.length ? "acrescenta a fonte no parágrafo" : ""}${semFonte.length && pagas.length ? " e " : ""}${pagas.length ? "reescreve a frase do boletim pago" : ""}.</span></div>` : ""}</div>` : ""}
     ${soFaltaFonte ? `<div class="aviso erro copia falta-fonte"><b>Texto igual ao da fonte em ${copia.length} trecho(s), com a fonte citada no parágrafo, mas o campo Fonte está vazio.</b> Preencha o campo <b>Fonte</b> (abaixo) e salve: ele sai no fim da notícia, dizendo de onde veio o texto.
       <ul>${copia.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul></div>`
-    : copia.length ? `<div class="aviso ${autorizada ? "alerta copia-autorizada" : "erro"} copia"><b>Texto igual ao da fonte sem a fonte citada em ${copia.length} trecho(s).</b> ${autorizada
-        ? `<b>Autorizado mesmo assim</b> em ${dataHora(c.copia_autorizada_em)}${c.copia_autorizada_motivo ? ` — motivo: “${h(c.copia_autorizada_motivo)}”` : ""}. A autorização vale para este texto: se ele mudar, cai.`
-        : `O conteúdo não pode ser aprovado assim. O texto pode ficar igual ao da fonte, mas cada parágrafo precisa dizer de onde veio (“Segundo a Receita Federal, …”, “Conforme o Portal Contábil SC, …”; num item de lista, a frase que apresenta a lista)${semCredito ? " e o campo <b>Fonte</b> (abaixo) precisa estar preenchido, porque ele sai no fim da notícia" : ""}. Do boletim pago (ITC), as frases nunca podem ser reproduzidas: reescreva com palavras próprias.`}
-      <ul>${copia.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span>${deOnde(t)}</li>`).join("")}</ul>${copia.length > 4 ? `<span class="sub">e mais ${copia.length - 4}.</span>` : ""}
-      ${ed && !autorizada ? `<div class="acoes">${revisarIA}<button class="btn peq sec" type="button" data-acao="abrir-autorizar-copia" data-id="${c.id}">Autorizar mesmo assim</button>
-        <span class="sub">“Revisar com IA” acrescenta a fonte no parágrafo (e reescreve o trecho do boletim pago).</span></div>` : ""}</div>`
-      : citadas.length ? `<div class="aviso info copia-citada"><b>Texto igual ao da fonte em ${citadas.length} trecho(s), com a fonte citada no parágrafo.</b> Pode ficar assim: a notícia sai com “Fonte: ${h(String(c.fonte_credito || "").trim())}” no fim.
+      : citadas.length && !semCredito ? `<div class="aviso info copia-citada"><b>Texto igual ao da fonte em ${citadas.length} trecho(s), com a fonte citada no parágrafo.</b> Pode ficar assim: a notícia sai com “Fonte: ${h(String(c.fonte_credito || "").trim())}” no fim.
         <ul>${citadas.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul>${citadas.length > 4 ? `<span class="sub">e mais ${citadas.length - 4}.</span>` : ""}</div>`
-      : fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é só com o texto das capturas deste assunto; não detecta paráfrase muito próxima nem cópia de outras páginas.">(só contra as capturas deste assunto)</span></p>` : ""}
+      : !todas.length && fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é só com o texto das capturas deste assunto; não detecta paráfrase muito próxima nem cópia de outras páginas.">(só contra as capturas deste assunto)</span></p>` : ""}
     <p>${selo(ROTULOS.formato[c.formato])} ${selo(ROTULOS.conteudo[c.status], tipo)} ${selo(c.gerado_por === "ia" ? (/\(robô\)$/.test(c.modelo_ia || "") ? "preparado pelo robô" : "gerado por IA") : "escrito pela equipe","neutro")}
       ${c.aprovado_em ? `<span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span>` : ""}</p>
     ${Array.isArray(c.avisos_ia) && c.avisos_ia.length ? `<div class="aviso alerta avisos-ia"><b>Pontos a conferir neste texto gerado pela IA</b> (verificação automática contra o texto oficial, feita na geração; não lê números por extenso nem avalia a interpretação):
@@ -2502,8 +2513,10 @@ const ACOES = {
     if(sujo(f)){ recado("Há alterações não salvas. Salve antes de aprovar.", true); return; }
     const marcas = marcasDoConteudo(el.dataset.id);
     if(marcas.length){ recado(msgMarcas(marcas, "aprovar"), true); f.querySelector(".marcas-verificar")?.scrollIntoView({behavior:"smooth", block:"center"}); return; }
+    if(Number(f.dataset.copiados) > 0 && !f.dataset.copiaAutorizada){ recado("Este conteúdo tem trecho igual ao texto da fonte " +
+      (f.dataset.pagas ? "com frase do boletim pago, que precisa ser reescrita com palavras próprias" : "sem a fonte citada: diga em cada parágrafo de onde veio (“Segundo a Receita Federal, …”)") +
+      " (veja o quadro vermelho). Use “Revisar com IA” ou clique em “Autorizar mesmo assim”, e salve antes de aprovar.", true); return; }
     if(f.dataset.faltaFonte){ recado("Preencha o campo Fonte (ele sai no fim da notícia, dizendo de onde veio o texto igual ao da fonte) e salve antes de aprovar.", true); return; }
-    if(Number(f.dataset.copiados) > 0 && !f.dataset.copiaAutorizada){ recado("Este conteúdo tem trecho igual ao texto da fonte sem a fonte citada (veja o quadro vermelho). Diga no mesmo parágrafo de onde veio (“Segundo a Receita Federal, …”) e preencha o campo Fonte, ou use “Revisar com IA”, ou clique em “Autorizar mesmo assim”, e salve antes de aprovar.", true); return; }
     // só aprova se o texto ainda for o que foi aberto nesta tela
     const r = await rest("PATCH", "radar_conteudos", {params:{id:"eq." + el.dataset.id, atualizado_em:"eq." + f.dataset.lido},
       corpo:{status:"aprovado"}, prefer:"return=representation"});

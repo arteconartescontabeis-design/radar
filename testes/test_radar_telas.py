@@ -21,8 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import requests
 
-from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SEM_PERFIL, como, jwt, psql
-FONTES_NOVAS = RAIZ / "sql" / "radar-fontes-novas-2026-10.sql"
+from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SEM_PERFIL, carregar_fontes_novas, como, jwt
 
 sync_api = pytest.importorskip("playwright.sync_api")
 
@@ -2840,13 +2839,13 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
 
 
 
-def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pago(pagina, limpo):
+def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pago(pagina, limpo, request):
     """v0.18.0: o trecho igual ao da fonte pode ficar quando o mesmo parágrafo cita a fonte e o campo Fonte está preenchido;
     o do boletim pago (ITC) nunca, nem citando."""
     a, _ = assunto_com_texto(limpo)
     pago = ("A empresa optante deverá revisar o cadastro de produtos no sistema emissor antes da virada do ano para evitar "
             "rejeição das notas fiscais eletrônicas emitidas no primeiro dia útil.")
-    assert psql(FONTES_NOVAS).returncode == 0                 # a fonte do boletim pago, como no banco de verdade
+    carregar_fontes_novas(limpo, request)                   # a fonte do boletim pago, como no banco de verdade
     itc = captura(limpo, titulo="ITCNET — CBS na nota", url="https://www.itcnet.com.br/?radar=teste", slug="itc-email", texto=pago)
     limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, itc))
     copiado = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9% (nove décimos por cento) a partir de 1º de janeiro de 2027"
@@ -2887,7 +2886,7 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("#recado .erro >> text=sem a fonte citada")
+    pagina.wait_for_selector("#recado .erro >> text=frase do boletim pago")
     assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"
     # citado e com o campo Fonte: aprova
     salvar(citado)

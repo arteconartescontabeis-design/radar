@@ -8,7 +8,7 @@ import re
 import psycopg
 import pytest
 
-from conftest import ADMIN, EDITOR, LEITOR, RAIZ, REVERSAO, SEM_PERFIL, SETUP, como, conectar, psql
+from conftest import ADMIN, EDITOR, LEITOR, RAIZ, REVERSAO, SEM_PERFIL, SETUP, carregar_fontes_novas, como, conectar, psql
 
 TEXTO_OFICIAL = ("Art. 1º Esta Instrução Normativa dispõe sobre a apuração da Contribuição Social sobre "
                  "Bens e Serviços (CBS) no período de transição. Art. 2º O contribuinte deverá destacar "
@@ -2052,9 +2052,9 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
 FONTES_NOVAS = RAIZ / "sql" / "radar-fontes-novas-2026-10.sql"
 
 
-def test_campo_fonte_inclui_o_portal_depois_do_orgao_oficial_e_nunca_o_boletim_pago(limpo):
+def test_campo_fonte_inclui_o_portal_depois_do_orgao_oficial_e_nunca_o_boletim_pago(limpo, request):
     """v0.18.0: o conteúdo novo nasce com a Fonte = órgãos oficiais e, depois, os portais de notícia; o boletim pago não entra."""
-    assert psql(FONTES_NOVAS).returncode == 0
+    carregar_fontes_novas(limpo, request)
     def assunto(*slugs):
         a = novo_assunto(limpo)
         for n, slug in enumerate(slugs):

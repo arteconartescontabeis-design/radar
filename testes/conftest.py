@@ -76,6 +76,24 @@ def como(papel: str, uid: str | None = None):
         c.close()
 
 
+
+FONTES_NOVAS_SLUGS = "('dou-destaques','econet-blog','portalcontabilsc-noticias','dou-inlabs','itc-email')"
+
+
+def carregar_fontes_novas(db, request):
+    """Cadastra as fontes de sql/radar-fontes-novas-2026-10.sql (entre elas o boletim pago, itc-email) e as tira no fim do teste,
+    como a fixture da ITC: o resultado dos outros testes não depende da ordem."""
+    assert psql(RAIZ / "sql" / "radar-fontes-novas-2026-10.sql").returncode == 0
+
+    def tirar():
+        caps = f"select c.id from radar_capturas c join radar_fontes f on f.id = c.fonte_id where f.slug in {FONTES_NOVAS_SLUGS}"
+        for tabela in ("radar_evidencias", "radar_assunto_capturas", "radar_capturas_versoes"):
+            db.execute(f"delete from {tabela} where captura_id in ({caps})")
+        db.execute(f"delete from radar_capturas where id in ({caps})")
+        db.execute(f"delete from radar_fontes where slug in {FONTES_NOVAS_SLUGS}")
+    request.addfinalizer(tirar)
+
+
 @pytest.fixture()
 def limpo(db):
     """Zera os dados operacionais entre testes (mantém fontes, categorias e perfis)."""

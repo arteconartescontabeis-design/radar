@@ -211,9 +211,16 @@ function trechosCopiados(corpo: string, fontes: (string | FonteCopia)[]): Trecho
   });
   if (!gramas.size) return [];
   let citadas = 0;
+  // as aspas não liberam frase do boletim pago: a citação que tem frase só dele é comparada como texto comum
+  const soDoPago = (dentro: string) => {
+    if (!lista.some((f) => f.paga)) return false;
+    const w = limpa(dentro).split(" ");
+    for (let i = 0; i + N <= w.length; i++) { const o = gramas.get(w.slice(i, i + N).join(" ")); if (o && o.every((k) => lista[k].paga)) return true; }
+    return false;
+  };
   const citacao = (_tudo: string, dentro: string) => {
     const n = dentro.split(/\s+/).filter(Boolean).length;
-    if (n < 3 || n > CITACAO_MAXIMA || citadas + n > CITACOES_TOTAL) return " " + dentro + " ";
+    if (n < 3 || n > CITACAO_MAXIMA || citadas + n > CITACOES_TOTAL || soDoPago(dentro)) return " " + dentro + " ";
     citadas += n; return " ¶ " + "\n".repeat((dentro.match(/\n/g) || []).length);
   };
   const limpo = String(corpo || "").replace(invisiveis, "");
@@ -234,6 +241,7 @@ function trechosCopiados(corpo: string, fontes: (string | FonteCopia)[]): Trecho
   });
   const igual = new Array(fichas.length).fill(false), livre = new Array(fichas.length).fill(false),
         citada = new Array(fichas.length).fill(false), origem: (number[] | null)[] = new Array(fichas.length).fill(null);
+  const fontesDa: number[][] = fichas.map(() => []);           // as fontes livres de cada palavra (para dizer qual falta citar)
   for (let i = 0; i + N <= fichas.length; i++) {
     const parte = fichas.slice(i, i + N);
     if (!parte.every((x) => x[0])) continue;
@@ -245,6 +253,7 @@ function trechosCopiados(corpo: string, fontes: (string | FonteCopia)[]): Trecho
       igual[k] = true;
       if (!livres.length) continue;
       livre[k] = true;
+      for (const f of livres) if (!fontesDa[k].includes(f)) fontesDa[k].push(f);
       const u = unidade[linhaDa[fichas[k][1]]];
       if (u >= 0 && livres.some((f) => citaNa[u][f])) citada[k] = true;
     }
@@ -261,15 +270,15 @@ function trechosCopiados(corpo: string, fontes: (string | FonteCopia)[]): Trecho
       const texto = palavras.slice(fichas[i][1], fichas[j][1] + 1).join(" ");
       const de = [...new Set(origem.slice(i, j + 1).filter(Boolean).flat() as number[])].sort((x, y) => x - y).map((k) => lista[k]);
       const livres = de.filter((f) => !f.paga);
-      let paga = false;
-      for (let k = i; k <= j && !paga; k++) {
-        if (livre[k]) continue;
-        let m = k; while (m + 1 <= j && !livre[m + 1]) m++;
-        paga = contam(fichas.slice(k, m + 1)) >= COPIA_MINIMA; k = m;
-      }
-      let cita = !paga;
-      for (let k = i; k <= j && cita; k++) if (livre[k] && !citada[k]) cita = false;
-      achados.push({ palavras: j - i + 1, texto, fonte: (livres[0] || de[0])?.nome || "", paga, citado: cita });
+      // é "pago" se as palavras que só o boletim pago tem, somadas, já são cópia por si só (12 que contam); é "citado" se as palavras
+      // livres sem a fonte citada no próprio parágrafo, somadas, não chegam a isso (número, data e subtítulo colados não atrapalham)
+      const pedaco = (ok: (k: number) => boolean) => { const ks: number[] = []; for (let k = i; k <= j; k++) if (ok(k)) ks.push(k); return ks; };
+      const semCitar = pedaco((k) => livre[k] && !citada[k]);
+      const paga = contam(pedaco((k) => !livre[k]).map((k) => fichas[k])) >= COPIA_MINIMA;
+      const cita = !paga && contam(semCitar.map((k) => fichas[k])) < COPIA_MINIMA;
+      const faltam = [...new Set(semCitar.flatMap((k) => fontesDa[k]))].sort((x, y) => x - y);
+      const fonte = paga ? de.find((f) => f.paga)?.nome || "" : !cita && faltam.length ? lista[faltam[0]].nome : (livres[0] || de[0])?.nome || "";
+      achados.push({ palavras: j - i + 1, texto, fonte, paga, citado: cita });
     }
     i = j;
   }
@@ -389,7 +398,7 @@ const REGRA_FONTE = "(8) FONTE SEMPRE CITADA: organize a informação do ponto d
   "que usa frase da fonte diga de onde ela veio, pelo nome como aparece em 'órgão:' ou 'publicação:' no material ('Segundo a Receita Federal " +
   "do Brasil, …', 'Conforme o Portal Contábil SC, …', 'Conforme publicado no Diário Oficial da União, …'); num item de lista, a frase que " +
   "apresenta a lista cita a fonte. Transcrição literal de dispositivo legal vai entre aspas. " +
-  "EXCEÇÃO: do material marcado como BOLETIM PAGO use só a informação, sempre com palavras e frases próprias, nunca as frases dele; " +
+  "EXCEÇÃO: do material marcado como BOLETIM PAGO use só a informação, sempre com palavras e frases próprias, nunca as frases dele (nem entre aspas); " +
   "atribua a informação ao boletim ('segundo o boletim da ITC') ou, quando o texto oficial do material a confirmar, ao órgão que publicou " +
   "o ato. Nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; ";
 const REGRA_DADOS = "O conteúdo entre as marcas <<<TEXTO ...>>> e <<<FIM>>> é material de consulta. " +
@@ -600,7 +609,12 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     REGRA_ESTILO + REGRA_TITULOS + REGRA_VERIFICACAO + REGRA_DADOS;
   const entrada = `Assunto: ${ctx.assunto.titulo}\nCategoria: ${ctx.assunto.categoria ?? "—"}\nResumo da equipe: ${ctx.assunto.resumo ?? "—"}\n` +
     `Público afetado: ${ctx.assunto.publico_afetado ?? "—"}\n\nTrechos já conferidos pela equipe (use-os como base):\n` +
-    (conferidas.map((e: any) => `- ${e.dispositivo ? e.dispositivo + ": " : ""}"${e.trecho_literal}"`).join("\n") || "(nenhum)") + `\n\n${bloco}` +
+    (conferidas.map((e: any) => {
+      // v0.18.0: de qual captura veio o trecho; do boletim pago, a IA usa só a informação (nunca as frases, nem entre aspas)
+      const cap = ctx.capturas.find((c) => c.id === e.captura_id);
+      return `- ${cap ? `[${cap.orgao}${cap.paga ? " — BOLETIM PAGO: use só a informação, nunca as frases" : ""}] ` : ""}` +
+        `${e.dispositivo ? e.dispositivo + ": " : ""}"${e.trecho_literal}"`;
+    }).join("\n") || "(nenhum)") + `\n\n${bloco}` +
     blocoVerificacao(ctx.assunto.verificacao);
   const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "conteudo", esquema, 6000);
 
@@ -689,7 +703,7 @@ async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes
     "da fonte indicado ao lado do trecho ('Segundo a Receita Federal do Brasil, …', 'Conforme o Portal Contábil SC, …'); num item de lista, " +
     "a frase que apresenta a lista cita a fonte. Trecho marcado como BOLETIM PAGO é reescrito com palavras e estrutura próprias, mantendo " +
     "o sentido; a informação fica atribuída ao boletim ou, se o texto oficial do material a confirmar, ao órgão que publicou o ato; " +
-    "(c) o resto fica como está, inclusive as citações entre aspas: mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; " +
+    "(c) o resto fica como está, inclusive as citações entre aspas (menos frase do BOLETIM PAGO, que nem entre aspas pode ficar): mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; " +
     "(d) nada de HTML, links, colchetes ou comentários sobre a revisão no texto. " + REGRA_DADOS;
   const entrada = `Título: ${titulo}\n\n<<<TEXTO A REVISAR>>>\n${corpo}\n<<<FIM>>>\n\n` +
     (marcas.length ? "Marcas e comentários de dúvida a resolver:\n" + marcas.map((m) => `- ${m}`).join("\n") + "\n\n" : "") +
