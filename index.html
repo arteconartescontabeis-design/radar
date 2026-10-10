@@ -221,10 +221,18 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
 const VERSAO = "0.19.0";
-const FUNCAO_MINIMA = "0.18.0";     // versão da função radar-ia que este painel exige (v0.18.0: "Revisar com IA" cita a fonte)
+const FUNCAO_MINIMA = "0.19.0";     // versão da função radar-ia que este painel exige (v0.19.0: gera o rascunho também sem texto oficial)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.19.0", "10/10/2026", [
+    "“Gerar com IA”, um botão só: no passo 1 (Fonte), no quadro do próximo passo e no passo 2. Sem texto oficial, ele procura a fonte oficial na internet (a busca rápida: se demorar, segue sem ela); com texto oficial, busca o trecho que comprova. Depois escreve o rascunho e faz a capa com a ilustração da IA. O aviso mostra a etapa (1 de 3, 2 de 3, 3 de 3).",
+    "Texto com ou sem fundamentação legal: sem texto oficial, a IA escreve um rascunho normal (não mais o “texto para análise”), com palavras próprias e o aviso de fonte não oficial; revise e aprove. Para o site continua valendo a fundamentação (ou o “Publicar mesmo assim” do administrador, com o motivo).",
+    "Mínimo de texto igual ao da fonte: a IA escreve com palavras próprias e só repete a frase da fonte quando é indispensável (dispositivo legal, definição legal), entre aspas e com a menção de quem é só naquele parágrafo; os outros parágrafos não citam a fonte (ela sai no fim da notícia). O boletim pago continua nunca copiado. O “Revisar com IA” reescreve o trecho igual com palavras próprias.",
+    "Ilustração: o “Gerar texto com IA” também faz a capa com a ilustração; se a ilustração falha, o recado diz o motivo; se a imagem foi criada e não foi gravada, aparece “Gravar a ilustração de novo” (sem nova cobrança). A capa ao lado do assunto é a do conteúdo que acabou de ser gerado.",
+    "Publicar em todos: o quadro já vem aberto no passo Publicar, o próximo passo tem o botão “Publicar em todos (site, Instagram e Facebook)” e a aba Publicações tem “Publicar em todos” nos aprovados que faltam.",
+    "Publicar nos canais que faltam: com a notícia já no site, o quadro “Publicar nos canais que faltam” publica no Instagram e no Facebook (cada um ou os dois) na hora, sem esperar o outro canal; na aba Publicações, o canal que falta tem o botão “Publicar”.",
+    "Robô do site na hora: o agendamento do GitHub chegava a atrasar horas. Agora, ao autorizar a publicação (ou pedir a exclusão), o Radar aciona o robô na hora e a notícia sai em 1 a 2 minutos; o botão “Acionar o robô agora” aparece no que estiver esperando. Precisa do segredo RADAR_GITHUB_TOKEN no Supabase (veja o LEIAME); sem ele, vale o agendamento."]],
   ["0.18.0", "10/10/2026", [
     "Texto igual ao da fonte, com a fonte citada: o texto pode usar as frases da norma, do comunicado ou da notícia, desde que cada parágrafo em que elas estão diga de onde vieram (“Segundo a Receita Federal, …”, “Conforme o Portal Contábil SC, …”, “Conforme publicado no Diário Oficial da União, …”; num item de lista, a frase que apresenta a lista) e o campo Fonte esteja preenchido (ele sai no fim da notícia; se estiver vazio, o quadro pede só que ele seja preenchido). Esse trecho aparece num quadro azul e não impede aprovar. O trecho igual sem a fonte citada continua no quadro vermelho, e “Revisar com IA” acrescenta a fonte no parágrafo em vez de reescrever.",
     "A IA (Gerar com IA, rascunhos do robô e Revisar com IA) passa a seguir a mesma regra: pode manter a redação da fonte, sempre dizendo de onde veio.",
@@ -611,16 +619,18 @@ const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
 /* Função de IA (Edge Function radar-ia). Pode levar mais de um minuto para redigir.
    v0.11.0: enquanto a IA trabalha, um aviso fixo diz o que ela está fazendo e há quanto tempo; e, no mesmo assunto,
    a partir da 2ª consulta o Radar pede a senha de quem está logado (evita consulta repetida sem querer, e gasto). */
-const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo o texto (até 1 minuto)",
-  classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a ilustração da capa (até 1 minuto)",
+const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo o texto (até 2 minutos)",
+  classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a ilustração da capa (até 2 minutos)",
   verificar:"procurando a fonte oficial na internet (até 2 minutos)"};
+/* v0.19.0: no “Gerar com IA” (várias chamadas seguidas), o aviso diz também em que etapa está */
+let IA_PASSO = "";
 function avisoIA(texto){
   let a = $("#ia-trabalhando");
   if(!texto){ clearInterval(a?._relogio); a?.remove(); return; }
   if(!a){ document.body.insertAdjacentHTML("beforeend", `<div id="ia-trabalhando" role="status" aria-live="polite"><span class="giro" aria-hidden="true"></span><span class="txt"></span><span class="seg sub"></span></div>`);
     a = $("#ia-trabalhando"); const ini = Date.now();
     a._relogio = setInterval(() => { const s = Math.round((Date.now() - ini) / 1000); a.querySelector(".seg").textContent = s >= 3 ? ` · ${s}s` : ""; }, 1000); }
-  a.querySelector(".txt").textContent = "A IA está " + texto + "…";
+  a.querySelector(".txt").textContent = (IA_PASSO ? IA_PASSO + " — " : "") + "A IA está " + texto + "…";
 }
 const chaveUsoIA = (assunto = E.assunto) => `radar_ia_${E.sessao?.user?.id || "x"}_${assunto || 0}`;
 function usosIA(assunto){ try{ return Number(sessionStorage.getItem(chaveUsoIA(assunto)) || 0); }catch(e){ return 0; } }
@@ -632,6 +642,8 @@ function telaDoAssunto(assunto, soSugestao){
                     : "A tela mudou enquanto a IA trabalhava. O que a IA gravou ficou no assunto de origem; abra-o para conferir.", "aviso");
   return false;
 }
+/* v0.19.0: depois de gerar o texto ou a ilustração, a tela vai até o conteúdo (e a capa ao lado passa a ser a dele) */
+function rolarAteConteudo(id){ $(`form[data-form=conteudo][data-id="${id}"]`)?.scrollIntoView({behavior:"smooth", block:"start"}); }
 /* Pede a senha numa janela (campo de senha de verdade, não o prompt do navegador) e confere com o login. */
 function pedirSenha(){
   return new Promise(resolver => {
@@ -668,10 +680,10 @@ async function liberarIA(ilustracao){
   if(E.assunto !== assunto){ recado("A tela mudou enquanto a senha era pedida: a consulta não foi feita."); return false; }
   return true;
 }
-async function ia(acao, extra = {}){
+async function ia(acao, extra = {}, tempo = 150000){
   const assunto = extra.assunto_id ?? E.assunto;                  // fixo no início: trocar de tela no meio não muda o destino
   avisoIA(IA_FAZENDO[acao] || "trabalhando");
-  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, ...extra, assunto_id:assunto}, tempo:150000});
+  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, ...extra, assunto_id:assunto}, tempo});
     contarUsoIA(assunto);                                         // só a consulta que deu certo conta para pedir a senha depois
     return r; }
   catch(e){
@@ -696,7 +708,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -912,7 +924,7 @@ const TELAS = {
   },
 
   async publicacoes(){
-    const SEL_CONT = "id,titulo,formato,status,assunto_id,aprovado_em,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url)," +
+    const SEL_CONT = "id,titulo,formato,status,assunto_id,aprovado_em,fora_do_site,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url)," +
       "radar_redes_envios(id,canal,situacao,url,publicado_em,excluido_em,erro),radar_site_exclusoes(id,situacao,pedido_em,excluido_em,erro,url)";
     const [regs, aprovados, redesNoAr] = await Promise.all([
       ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
@@ -929,19 +941,26 @@ const TELAS = {
     // v0.11.0: cada conteúdo e em que canal ele está (site, Instagram e Facebook); v0.17.0: com a exclusão
     const noSite = c => { const d = [...c.radar_divulgacoes].sort((x, y) => y.id - x.id)[0], x = exclusaoDe(c);
       if(x && ["pedido","excluindo"].includes(x.situacao)) return `<span class="canal espera">${x.situacao === "excluindo" ? "Excluindo do site" : "Exclusão pedida — aguardando o robô"}</span>` +
-        (adm && x.situacao === "pedido" ? `<br><button class="link" type="button" data-acao="cancelar-exclusao-site" data-id="${x.id}">Cancelar a exclusão</button>` : "");
+        (adm && x.situacao === "pedido" ? `<br><button class="link" type="button" data-acao="acionar-robo">Acionar o robô agora</button> · <button class="link" type="button" data-acao="cancelar-exclusao-site" data-id="${x.id}">Cancelar a exclusão</button>` : "");
       const errExc = x && x.situacao === "erro" ? `<div class="aviso erro">A exclusão não foi concluída: ${h(x.erro || "")}</div>` : "";
       if(d) return `<span class="canal ok">✓ ${data(d.publicado_em)}</span><br>${linkFonte(d.url, "ver no site ↗")}${btnExcluir(c, "site")}${errExc}`;
-      if(x && x.situacao === "excluido") return `<span class="canal breve">Excluída do site em ${data(x.excluido_em)}</span>`;
+      const publicarTodos = adm && c.status === "aprovado" && !c.fora_do_site ? `<br><button class="btn peq verde" type="button" data-acao="publicar-todos-de" data-assunto="${c.assunto_id}" data-id="${c.id}">Publicar em todos</button>` : "";
+      if(x && x.situacao === "excluido") return `<span class="canal breve">Excluída do site em ${data(x.excluido_em)}</span>` + publicarTodos;
       const e = [...(c.radar_site_envios || [])].sort((x, y) => y.id - x.id)[0];
       if(e && e.situacao === "publicado") return `<span class="canal ok">✓ pelo robô</span>${e.url ? `<br>${linkFonte(e.url, "ver no site ↗")}` : ""}`;
-      return e && ["autorizado","enviando"].includes(e.situacao) ? `<span class="canal espera">Autorizado — aguardando o robô</span>`
-        : e && e.situacao === "erro" ? `<span class="canal erro">Não concluída</span>` : `<span class="canal falta">Falta</span>`; };
+      // v0.19.0: o administrador aciona o robô dali mesmo; o aprovado que falta vai direto para o “Publicar em todos”
+      return e && ["autorizado","enviando"].includes(e.situacao) ? `<span class="canal espera">Autorizado — aguardando o robô</span>` +
+          (adm && e.situacao === "autorizado" ? `<br><button class="link" type="button" data-acao="acionar-robo">Acionar o robô agora</button>` : "")
+        : e && e.situacao === "erro" ? `<span class="canal erro">Não concluída</span>`
+        : `<span class="canal falta">Falta</span>` + publicarTodos; };
     // v0.13.0: Instagram e Facebook (a autorização mais recente que não foi cancelada)
+    // v0.19.0: com a notícia no site, o canal que falta (ou foi excluído) tem o botão “Publicar” (leva aos canais que faltam)
+    const publicarRedeBtn = c => adm && c.status === "aprovado" && c.radar_divulgacoes.length
+      ? `<br><button class="btn peq" type="button" data-acao="publicar-faltam-de" data-assunto="${c.assunto_id}" data-id="${c.id}">Publicar</button>` : "";
     const naRede = (c, k) => { const r = [...(c.radar_redes_envios || [])].filter(x => x.canal === k && x.situacao !== "cancelado").sort((x, y) => y.id - x.id)[0];
-      if(!r) return `<span class="canal falta">Falta</span>`;
+      if(!r) return `<span class="canal falta">Falta</span>` + publicarRedeBtn(c);
       if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}${btnExcluir(c, k, r.id)}`;
-      if(r.situacao === "excluido") return `<span class="canal breve">Excluída em ${data(r.excluido_em)}</span>`;
+      if(r.situacao === "excluido") return `<span class="canal breve">Excluída em ${data(r.excluido_em)}</span>` + publicarRedeBtn(c);
       if(r.situacao === "aguardando_site") return `<span class="canal espera">Vai junto com o site</span>`;
       return r.situacao === "dispensado" ? `<span class="canal breve">Não vai</span>` : r.situacao === "erro" ? `<span class="canal erro">Não concluída</span>`
         : `<span class="canal espera">${r.situacao === "enviando" ? "Publicando" : "Autorizado"}</span>`; };
@@ -958,7 +977,7 @@ const TELAS = {
             <label><input type="checkbox" id="exc-site" checked> site</label><label><input type="checkbox" id="exc-instagram" checked> Instagram</label>
             <label><input type="checkbox" id="exc-facebook" checked> Facebook</label>
             <button class="btn peq perigo" type="button" data-acao="excluir-selecionadas">Excluir as selecionadas</button></div>
-          <p class="sub">Marque os conteúdos na primeira coluna. No Instagram e no Facebook a exclusão é na hora; no site, o robô exclui em até 15 minutos.</p>` : ""}
+          <p class="sub">Marque os conteúdos na primeira coluna. No Instagram e no Facebook a exclusão é na hora; no site, o robô é acionado na hora e exclui em 1 a 2 minutos (se não der, na próxima rodada automática do GitHub).</p>` : ""}
         ${lista.length ? `<div class="rolagem"><table id="tab-canais"><tr>${adm ? `<th><input type="checkbox" id="marcar-todas" aria-label="Selecionar todos"></th>` : ""}<th>Conteúdo</th><th>Site</th><th>Instagram</th><th>Facebook</th></tr>${lista.map(c => `
           <tr data-conteudo="${c.id}">${adm ? `<td><input type="checkbox" class="sel-pub" value="${c.id}" aria-label="Selecionar ${h(c.titulo)}"></td>` : ""}
             <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">${c.status === "aprovado" ? "aprovado em " + dataHora(c.aprovado_em) : "publicado; o texto agora está: " + h((ROTULOS.conteudo[c.status] || c.status).toLowerCase())}</span></td>
@@ -969,7 +988,7 @@ const TELAS = {
       <div class="painel"><h2>Aprovados ainda não publicados no site</h2>
         ${pendentes.length ? `<div class="rolagem"><table id="tab-pendentes"><tr><th>Conteúdo</th><th>Aprovado em</th><th></th></tr>${pendentes.map(c => `
           <tr><td><b>${h(c.titulo)}</b><br><span class="sub">${h(ROTULOS.formato[c.formato] || "")}</span></td><td>${dataHora(c.aprovado_em)}</td>
-            <td><div class="acoes" style="margin:0"><button class="btn peq" data-acao="abrir-assunto" data-id="${c.assunto_id}">Abrir para copiar e registrar</button>
+            <td><div class="acoes" style="margin:0">${adm ? `<button class="btn peq verde" type="button" data-acao="publicar-todos-de" data-assunto="${c.assunto_id}" data-id="${c.id}">Publicar em todos</button>` : ""}<button class="btn peq${adm ? " sec" : ""}" data-acao="abrir-assunto" data-id="${c.assunto_id}">Abrir para publicar</button>
               ${podeEditar() ? `<button class="btn peq sec" data-acao="fora-do-site" data-id="${c.id}" data-valor="1">Não vai ao site</button>` : ""}</div></td></tr>`).join("")}</table></div>`
           : `<p class="sub">Nenhum conteúdo aprovado aguardando publicação.</p>`}
         <p class="sub">“Não vai ao site” tira da fila o conteúdo que é só do Informativo Mensal. Dá para desfazer na tela do assunto.</p></div>
@@ -1089,7 +1108,7 @@ const TELAS = {
       <p class="sub">O Radar acompanha as fontes oficiais, ajuda a escrever e a conferir, e guarda o registro do que foi divulgado. A publicação é feita nas páginas da Artecon.</p>
       <div class="painel"><h2>O caminho de uma publicação</h2><ol class="passos">
         <li><b>Capturas.</b> O robô lê as fontes cadastradas e, depois de cada coleta, a IA dá uma nota a cada novidade. A tela abre só com o que está <b>em alta</b>: as 10 de maior nota, sem repetição. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>. Cada cartão diz se a notícia tem <b>fundamentação legal</b>: “com fundamentação legal” mostra as normas que o texto capturado cita (lei, lei complementar, decreto, medida provisória, instrução normativa, resolução, portaria, solução de consulta, ato declaratório, ato conjunto do CGIBS, convênio ICMS, edital de transação e outros atos, além da Constituição, do CTN, do RIR, do RICMS e da CLT); “sem fundamentação legal” quer dizer que o texto não cita nenhuma, e “fundamentação legal não identificada”, que o texto capturado está cortado e não cita norma no trecho que veio — nos dois casos, confira na fonte antes de usar. É uma leitura automática do texto: diz o que está citado, não se a citação está certa nem se a norma está em vigor; decisões judiciais (Tema, RE, ADI) e projetos de lei não contam. Não muda a nota nem a relevância. O restante fica em “Relevantes”, “Baixa relevância” e “Todas”, e pode ser ignorado de uma vez.</li>
-        <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Preparar com IA</b> busca os trechos e redige o rascunho. Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
+        <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Gerar com IA</b> busca a fonte (ou o trecho que comprova), escreve o rascunho e faz a capa com a ilustração. Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem; a capa sai com ela ao fundo e o título por cima) ou envie uma imagem. O Radar compara o texto com a fonte: o texto pode ficar igual ao da fonte, desde que cada parágrafo em que ele está diga de onde veio (“Segundo a Receita Federal, …”) e o campo <b>Fonte</b> esteja preenchido; sem isso, o trecho fica no quadro vermelho (o botão <b>Revisar com IA</b> acrescenta a fonte no parágrafo) — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Salve, envie para revisão e <b>aprove</b>.</li>
         <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
@@ -1324,6 +1343,8 @@ async function telaAssunto(id){
   const cRede = noSite ? vaoAoSite.find(emDia) : null;
   const redeDe = canal => cRede && redes.find(r => r.conteudo_id === cRede.id && r.canal === canal && r.situacao !== "cancelado");
   const redeAgora = cRede ? ["instagram", "facebook"].find(canal => !["publicado","dispensado"].includes(redeDe(canal)?.situacao)) : null;
+  // v0.19.0: algum canal ainda livre depois do site (o quadro “Publicar nos canais que faltam” aparece no passo Publicar)
+  const faltaRede = !!cRede && ehAdmin() && pronto && redeLivre(redes.filter(r => r.conteudo_id === cRede.id)).length > 0;
   const passos = [
     {chave:"fonte", nome:"Fonte", titulo:"Conferir a fonte", etapa:"fonte", feito:pronto,
       nota:pronto ? (liberado ? "liberada sem fonte oficial" : "fundamentação confirmada") : !temTexto ? "sem texto oficial" : !temOficial ? "só fonte não oficial" : conferidasOficiais ? "falta confirmar" : "falta o trecho que comprova",
@@ -1351,23 +1372,25 @@ async function telaAssunto(id){
   // v0.14.0: a IA procura a fonte oficial na internet (se já procurou, o botão leva ao resultado)
   const verificarBtn = a.verificacao ? ir("#sec-verificacao", "Ver a verificação em fontes oficiais", "sec") : `<button class="btn" data-acao="ia-verificar">Verificar em fontes oficiais</button>`;
   const semFonte = ehAdmin() ? `<button class="btn perigo" type="button" data-acao="abrir-motivo">Publicar mesmo assim…</button>` : "";
+  // v0.19.0: “Gerar com IA” (busca a fonte, escreve o texto e faz a capa com a ilustração), com ou sem texto oficial
+  const gerarIA = (classe = "btn") => `<button class="${classe}" data-acao="ia-tudo" data-oficial="${temOficial ? 1 : ""}" data-conteudos="${cont.length}">Gerar com IA</button>`;
   const paraRevisar = rascunhos[0] || rejeitados[0];
   let prox;                                   // [título, explicação, botões, passo (0 a 4; -1 fora da trilha)]
   if(!ed) prox = null;
   else if(a.status === "ignorado" || a.status === "arquivado") prox = [a.status === "ignorado" ? "Assunto ignorado" : "Assunto arquivado", "Este item está fora do trabalho do dia. Para retomar, troque a etapa em “Mais detalhes” e salve.", ir("#mais-campos", "Abrir “Mais detalhes”", "sec"), -1];
-  else if(!cont.length && temOficial) prox = ["Escrever o conteúdo", "O texto oficial já está aqui. A IA pode buscar o trecho que comprova e escrever o rascunho de uma vez; ou escreva você mesmo.",
-    `<button class="btn" data-acao="ia-tudo">Preparar com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
-  else if(!cont.length) prox = ["Escrever o conteúdo", "Assunto sem texto de fonte oficial. Para o Informativo Mensal basta escrever e aprovar; para o site, inclua antes o texto oficial." +
-    (temTexto ? " A IA pode procurar a fonte oficial na internet e escrever um texto para análise a partir da fonte não oficial." : ""),
-    (temTexto ? verificarBtn.replace('class="btn"', 'class="btn sec"') + `<button class="btn" data-acao="ia-analise">Gerar texto para análise</button>` : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec"), 1];
+  else if(!cont.length && temOficial) prox = ["Escrever o conteúdo", "O texto oficial já está aqui. “Gerar com IA” busca o trecho que comprova, escreve o rascunho e faz a capa com a ilustração, de uma vez; ou escreva você mesmo.",
+    gerarIA() + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
+  else if(!cont.length) prox = ["Escrever o conteúdo", "Assunto sem texto de fonte oficial. Para o Informativo Mensal basta escrever e aprovar; para o site, inclua o texto oficial e fundamente (ou o administrador usa “Publicar mesmo assim”)." +
+    (temTexto ? " “Gerar com IA” procura a fonte oficial na internet, escreve o rascunho a partir da fonte capturada e faz a capa com a ilustração." : ""),
+    (temTexto ? gerarIA() + verificarBtn.replace('class="btn"', 'class="btn sec"') : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec"), 1];
   else if(!paraPublicar.length && !aprovados.length){                 // só o texto para análise (fonte não oficial)
     if(liberado) prox = ["Transformar o texto para análise", "O texto para análise não vai ao site. " + (ehAdmin() ? "Transforme-o em texto para publicar: a cópia entra como rascunho, com o aviso de fonte não oficial, e segue revisão e aprovação."
       : "O administrador transforma o texto para análise em texto para publicar."),
       ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${analises[0].id}">Transformar em texto para publicar</button>` : ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 1];
     else if(pronto) prox = ["Escrever o texto para publicar", "A fonte oficial está conferida. Gere o texto com IA ou escreva você mesmo; o texto para análise fica só como apoio.",
       `<button class="btn" data-acao="ia-gerar">Gerar texto com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
-    else prox = ["Conferir a fonte", "Só há texto para análise, feito a partir de fonte não oficial. A IA pode procurar a fonte oficial na internet; com ela, inclua o texto oficial e fundamente" + (ehAdmin() ? ", ou libere a publicação sem a fonte oficial (o motivo fica registrado)." : "."),
-      verificarBtn + ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
+    else prox = ["Conferir a fonte", "Só há texto para análise, feito a partir de fonte não oficial. “Gerar com IA” escreve um rascunho normal (para publicar depois da aprovação); a IA também pode procurar a fonte oficial na internet. Com ela, inclua o texto oficial e fundamente" + (ehAdmin() ? ", ou libere a publicação sem a fonte oficial (o motivo fica registrado)." : "."),
+      verificarBtn + gerarIA("btn sec") + ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
   }
   else if(!aprovados.length && !revisando.length && !rascunhos.length && rejeitados.length) prox = ["Conteúdo rejeitado", "O conteúdo foi rejeitado na revisão. Corrija o texto, salve e mande de novo para a revisão — ou escreva outro.",
     ir("#sec-conteudos", "Ir para o conteúdo"), 2];
@@ -1376,22 +1399,27 @@ async function telaAssunto(id){
   else if(!aprovados.length) prox = ["Aprovar o conteúdo", "O conteúdo está em revisão. Leia com atenção (use “Ver como fica no site”) e clique em “Aprovar” (ou “Rejeitar”).",
     `<button class="btn verde" type="button" data-acao="trilha-clicar" data-botao="aprovar" data-id="${revisando[0].id}">✓ Aprovar</button>` + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 3];
   else if(foraDoSite || (noSite && !redeAgora)) prox = null;
-  else if(noSite) prox = proxRede(redeAgora, redeDe(redeAgora), cRede, imgs[cRede.imagem_id], a.categoria, pubs.find(p => p.conteudo_id === cRede.id && !p.versao_anterior)?.url || "",
+  else if(noSite){ prox = proxRede(redeAgora, redeDe(redeAgora), cRede, imgs[cRede.imagem_id], a.categoria, pubs.find(p => p.conteudo_id === cRede.id && !p.versao_anterior)?.url || "",
                                   redes.find(r => r.conteudo_id === cRede.id && r.canal === redeAgora));
+    // v0.19.0: o outro canal não precisa esperar este: “Publicar nos canais que faltam” (passo Publicar) publica cada um ou os dois
+    if(faltaRede) prox[2] += ir(`#faltam-${cRede.id}`, "Publicar nos canais que faltam", "sec"); }
   else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação"), 0];
   else if(!pronto && !temOficial) prox = ["Para o site: incluir o texto oficial", "O conteúdo aprovado já pode entrar no Informativo Mensal. Para publicar no site, inclua o texto da fonte oficial e fundamente (a IA pode procurar a fonte oficial na internet).", verificarBtn + ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
   else if(!pronto && !conferidasOficiais) prox = ["Para o site: fundamentar", "Falta ao menos um trecho conferido em fonte oficial. Selecione o trecho no texto oficial, ou peça à IA.",
     ir("#sec-texto", "Selecionar trecho no texto") + ir("#sec-fundamentacao", "Ir para a fundamentação", "sec") + semFonte, 0];
   else if(!pronto) prox = ["Para o site: confirmar o assunto", "Há trecho conferido em fonte oficial. Se você conferiu a informação na fonte, marque o assunto como confirmado oficialmente.",
     `<button class="btn verde" data-acao="confirmar-oficial">✓ Marcar como confirmado oficialmente</button>` + semFonte, 0];
-  else if(aguardando.length === faltamRegistrar.length) prox = ["Aguardando o robô publicar", "A publicação foi autorizada. O robô cadastra a notícia no site em até 15 minutos e registra o link aqui sozinho." +
+  else if(aguardando.length === faltamRegistrar.length) prox = ["Aguardando o robô publicar", "A publicação foi autorizada. O robô é acionado na hora e cadastra a notícia no site em 1 a 2 minutos (se não der, na próxima rodada automática do GitHub), e registra o link aqui sozinho." +
     (redes.some(x => x.situacao === "aguardando_site") ? " O Instagram e o Facebook autorizados junto saem logo depois que a notícia entrar no site." : ""), ir("#sec-publicar", "Ver a publicação"), 4];
   else if(semRegistro) prox = ["Registrar o link da notícia publicada", "O robô publicou a notícia no site, mas o registro em “Publicações no site” não entrou" +
     (envioDe(semRegistro).erro ? ": " + h(envioDe(semRegistro).erro) : ".") + " Confira e registre o link à mão (não autorize de novo, para não duplicar).", ir("#sec-conteudos", "Ir para registrar"), 4];
   else if(falhou) prox = ["Publicação não concluída", h(envioDe(falhou).erro || "O robô não conseguiu publicar."), ir("#sec-publicar", "Ir para publicar"), 4];
   else if(jaRegistrado) prox = ["Atualizar o site e registrar de novo", "O conteúdo foi alterado depois do registro. Atualize a notícia no site da Artecon e registre de novo, para o Radar guardar o texto que está no ar.", ir("#sec-conteudos", "Ir para copiar e registrar"), 4];
-  else prox = ["Publicar no site", ehAdmin() ? "Confira a prévia, escolha a categoria e autorize: o robô cadastra a notícia no site em até 15 minutos e registra o link aqui."
-    : "O conteúdo está pronto para o site. Falta o administrador autorizar a publicação.", ir("#sec-publicar", "Ir para publicar"), 4];
+  else { const cTodos = ehAdmin() ? faltamRegistrar.find(c => !pubs.some(p => p.conteudo_id === c.id) && !["autorizado","enviando","publicado"].includes(envioDe(c)?.situacao)
+                                                  && redeLivre(redes.filter(r => r.conteudo_id === c.id)).length) : null;
+    prox = ["Publicar no site", ehAdmin() ? "Confira a prévia, escolha a categoria e autorize só o site ou em todos de uma vez (site, Instagram e Facebook): o robô cadastra a notícia no site em 1 a 2 minutos e registra o link aqui."
+      : "O conteúdo está pronto para o site. Falta o administrador autorizar a publicação.",
+      (cTodos ? ir(`#todos-${cTodos.id}`, "Publicar em todos (site, Instagram e Facebook)", "verde") + ir("#sec-publicar", "Ir para publicar", "sec") : ir("#sec-publicar", "Ir para publicar")), 4]; }
   const atual = prox ? prox[3] : ed ? -1 : passos.findIndex(x => !x.feito);
   const estado = (x, n) => n === atual && prox ? "agora" : x.feito ? "feito" : n === atual ? "agora" : x.breve ? "breve" : n < atual ? "pendente" : "espera";
   const ROTULO_ESTADO = {feito:"Feito", agora:"Agora", breve:"Em breve", pendente:"Falta", espera:"Aguardando"};
@@ -1400,11 +1428,13 @@ async function telaAssunto(id){
     : st === "agora" ? `<p>${h(x.nota)}.</p>`
     : st === "breve" ? `<p>Em breve. Vai seguir a mesma regra do site: só publica depois da autorização do administrador.</p>`
     : st === "pendente" ? `<p>${h(x.nota)}. ${x.chave === "fonte" ? "Necessário só para o site; o Informativo Mensal não exige." : ""}</p>`
+    : (x.chave === "instagram" || x.chave === "facebook") && cRede && !foraDoSite
+      ? `<p>A notícia já está no site: dá para publicar aqui sem esperar o outro canal.</p>${faltaRede ? `<div class="acoes">${ir(`#faltam-${cRede.id}`, "Publicar nos canais que faltam", "sec")}</div>` : ""}`
     : `<p>${x.chave === "site" ? "Precisa da fonte (passo 1) e do conteúdo aprovado (passo 4)."
         : x.chave === "instagram" || x.chave === "facebook" ? (foraDoSite ? "Este conteúdo não vai ao site; as redes ficam de fora." : "Depois que a notícia estiver no site (passo 5).") : `Vem depois do passo ${n}.`}</p>`;
   // uma etapa de cada vez (ou tudo numa página, para quem preferir); abre na etapa que falta fazer
   const tudo = modoTudo();
-  if(!["fonte","conteudo","publicar"].includes(E.etapa)) E.etapa = !cont.length && vinc.length ? "fonte" : aprovados.length && !noSite && !foraDoSite && pronto ? "publicar" : "conteudo";
+  if(!["fonte","conteudo","publicar"].includes(E.etapa)) E.etapa = !cont.length && vinc.length ? "fonte" : aprovados.length && (!noSite || redeAgora) && !foraDoSite && pronto ? "publicar" : "conteudo";
   const oculta = e => tudo || E.etapa === e ? "" : " hidden";
   // v0.18.0: cada fonte com os nomes pelos quais o texto pode citá-la e se é boletim pago (o detector de cópia usa os três)
   const fontesTxt = vinc.filter(v => v.radar_capturas.texto).sort((x, y) => y.radar_capturas.radar_fontes.oficial - x.radar_capturas.radar_fontes.oficial)
@@ -1419,7 +1449,10 @@ async function telaAssunto(id){
     ${ehAdmin() ? `<div class="acoes" style="margin:8px 0 0"><button class="btn peq sec" data-acao="desfazer-liberacao">Desfazer a liberação</button></div>` : ""}</div>` : "";
   // a captura que originou o assunto: a oficial com texto, se houver
   const origem = (vinc.find(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial) || vinc[0])?.radar_capturas;
-  const capa = cont.map(c => imgs[c.imagem_id]).find(i => i && /^data:image\/(jpeg|png|webp);base64,/.test(i));
+  // v0.19.0: a capa do conteúdo que acabou de ser gerado ou ilustrado; sem ele, a do conteúdo para publicar mais recente
+  const comCapa = c => /^data:image\/(jpeg|png|webp);base64,/.test(imgs[c.imagem_id] || "");
+  const cCapa = cont.find(c => c.id === E.capaFoco && comCapa(c)) || [...cont].sort((x, y) => ehAnalise(x) - ehAnalise(y) || String(y.atualizado_em).localeCompare(String(x.atualizado_em))).find(comCapa);
+  const capa = cCapa ? imgs[cCapa.imagem_id] : null;
   // v0.18.0: o link da fonte nunca é o do boletim pago quando há outra captura (o campo Fonte também não o cita)
   const paga = v => FONTES_PAGAS.includes(v.radar_capturas.radar_fontes.slug) ? 1 : 0;
   const porId = [...vinc].sort((x, y) => (paga(x) - paga(y)) || (y.radar_capturas.radar_fontes.oficial - x.radar_capturas.radar_fontes.oficial) || (x.radar_capturas.id - y.radar_capturas.id));
@@ -1451,7 +1484,7 @@ async function telaAssunto(id){
         ${vinc.length ? `<button class="btn peq sec" data-acao="etapa" data-etapa="fonte">Ver o texto oficial</button>` : ""}
       </div>
       <div class="painel" id="capa-lateral"><h3>Capa</h3>
-        ${capa ? `<img class="miniatura" style="max-width:100%" src="${h(capa)}" alt="Capa do conteúdo">` : `<p class="sub" style="margin:0">Sem capa ainda.</p>`}
+        ${capa ? `<img class="miniatura" style="max-width:100%" src="${h(capa)}" alt="Capa do conteúdo">${cont.length > 1 ? `<p class="sub" style="margin:4px 0 0">${h(cCapa.titulo)}</p>` : ""}` : `<p class="sub" style="margin:0">Sem capa ainda.</p>`}
         ${ed && cont.length ? `<p class="sub" style="margin:6px 0 0">Para trocar a capa (padrão Artecon, ilustração com IA ou arquivo), use os botões do conteúdo no passo 2.</p>` : ""}
       </div>
       <details class="painel" id="mais-detalhes"${E.maisDetalhes ? " open" : ""}><summary><b>Mais detalhes</b> <span class="sub">(categoria, relevância, público, etapa)</span></summary>
@@ -1478,10 +1511,10 @@ async function telaAssunto(id){
       ${origem ? `<div class="original"><span class="sub">Título original da captura</span><b>${h(origem.titulo)}</b>
         <span class="sub">Fonte: <b>${h(origem.radar_fontes.orgao)}</b>${origem.data_publicacao ? ` · publicado em ${data(origem.data_publicacao)}` : ""} · </span>${linkFonte(origem.url, "Abrir na fonte ↗")}</div>`
         : `<p class="sub">Assunto criado pela equipe, sem captura de origem.</p>`}
-      ${ed ? `<div class="acoes ia-barra"><button class="btn sec" data-acao="ia-verificar">Verificar em fontes oficiais</button>
+      ${ed ? `<div class="acoes ia-barra">${temTexto ? gerarIA() : ""}<button class="btn sec" data-acao="ia-verificar">Verificar em fontes oficiais</button>
         <button class="btn sec" data-acao="ia-fundamentar">Buscar trecho que comprova com IA</button>
         <button class="btn sec" type="button" data-acao="ia-classificar">Classificar com IA</button>
-        <span class="sub">A IA propõe; só entram os trechos que existem literalmente no texto oficial. A classificação vai para “Mais detalhes”.</span></div>` : ""}
+        <span class="sub">${temTexto ? `“Gerar com IA” ${temOficial ? "busca o trecho que comprova" : "procura a fonte oficial na internet"}, escreve o rascunho e faz a capa com a ilustração, de uma vez (o tamanho do texto é o escolhido no passo 2). ` : ""}A IA propõe; só entram os trechos que existem literalmente no texto oficial. A classificação vai para “Mais detalhes”.</span></div>` : ""}
     </div>
     ${painelVerificacao(a.verificacao, ed)}
     <div class="painel" id="sec-texto"><h2>Texto oficial capturado</h2>
@@ -1519,12 +1552,10 @@ async function telaAssunto(id){
     <div class="painel" id="sec-conteudos"><h2>2. Escrever · 3. Revisar e aprovar</h2>
       ${ed ? `<div class="acoes ia-barra"><label for="novo-formato" style="margin:0">Tamanho do texto</label>
         <select id="novo-formato">${opcoes(TAMANHO_TEXTO, "informativo")}</select>
-        ${temOficial ? `<button class="btn sec" data-acao="ia-gerar">Gerar texto com IA</button>
-        <button class="btn sec" data-acao="ia-tudo">Preparar tudo com IA</button>`
-          : temTexto ? `<button class="btn sec" data-acao="ia-analise">Gerar texto para análise</button>` : ""}
+        ${temTexto ? gerarIA("btn") + `<button class="btn sec" data-acao="ia-gerar">Gerar texto com IA</button>` : ""}
         <button class="btn sec" data-acao="novo-conteudo" data-id="${a.id}">Novo conteúdo (sem IA)</button></div>
-        <p class="sub" style="margin-top:0">${temOficial ? "A IA escreve um rascunho a partir do texto oficial, com outras opções de título. Revisar e aprovar continua sendo da equipe."
-          : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve um texto <b>para análise</b>, marcado como tal, que não vai ao site. Para publicar, inclua o texto oficial no passo 1."
+        <p class="sub" style="margin-top:0">${temOficial ? "“Gerar com IA” busca o trecho que comprova, escreve o rascunho e faz a capa com a ilustração; “Gerar texto com IA” só escreve (e faz a capa). Revisar e aprovar continua sendo da equipe."
+          : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve o rascunho a partir dela, com palavras próprias (FUNDAMENTAÇÃO NÃO CONFIRMADA). Revise e aprove; para o site, inclua o texto oficial e fundamente no passo 1, ou o administrador usa “Publicar mesmo assim”."
           : "Sem texto capturado: escreva sem IA, ou inclua o texto oficial no passo 1."}</p>` : ""}
       ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado, jaConvertido)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
     </div>
@@ -1570,6 +1601,8 @@ function fonteDoEndereco(url){
 const NOME_REDE = {instagram:"Instagram", facebook:"Facebook"};
 const situacaoRede = r => !r ? "falta" : {aguardando_site:"vai junto com o site", autorizado:"autorizado", enviando:"publicando", erro:"não concluída",
   publicado:"publicado", dispensado:"não vai", excluido:"excluída"}[r.situacao] || "falta";
+/* v0.19.0: os canais ainda livres de um conteúdo (sem autorização em aberto, publicação ou “Não vai”) */
+const redeLivre = redes => ["instagram", "facebook"].filter(k => !redes.some(r => r.canal === k && ["aguardando_site","autorizado","enviando","erro","publicado","dispensado"].includes(r.situacao)));
 /* O próximo passo da trilha num canal: monta a imagem quadrada e a legenda para o administrador conferir e autorizar. */
 function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
   const nome = NOME_REDE[canal], adm = ehAdmin(), passo = canal === "instagram" ? 5 : 6;
@@ -1635,18 +1668,48 @@ async function montarImagemRede(){
   }
 }
 /* Chama a função radar-redes para publicar a autorização (logo depois de autorizar, ou de novo depois de um erro). */
-async function publicarRede(envio, canal){
+/* v0.19.0: com redesenhar = false (várias redes em sequência), devolve {ok, msg} sem redesenhar nem dar o recado. */
+async function publicarRede(envio, canal, redesenhar = true){
   const nome = NOME_REDE[canal] || "canal";
   recado(`Publicando no ${nome}… pode levar até 1 minuto.`, "aviso");
-  let r;
+  let r, res;
   try{ r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"publicar", envio:Number(envio)}, tempo:150000}); }
-  catch(e){ await desenhar();
-    recado(e.status === 404 ? "A função radar-redes ainda não foi instalada no Supabase (veja o LEIAME, v0.13.0). A autorização ficou guardada: publique depois."
+  catch(e){
+    res = {ok:false, msg:e.status === 404 ? "A função radar-redes ainda não foi instalada no Supabase (veja o LEIAME, v0.13.0). A autorização ficou guardada: publique depois."
       : e.status === 0 ? `Não deu para confirmar a resposta da publicação. Confira no ${nome} se saiu antes de qualquer coisa (não autorize de novo sem conferir) e recarregue esta tela em alguns minutos.`
-      : e.message, true); return; }
-  await desenhar();
-  if(r?.situacao === "publicado") recado(r.mensagem ? `Publicado no ${nome}. ${r.mensagem}` : `Publicado no ${nome}.`, r.mensagem ? true : undefined);
-  else recado(r?.mensagem || `A publicação no ${nome} não foi concluída.`, true);
+      : e.message}; }
+  if(!res) res = r?.situacao === "publicado" ? {ok:!r.mensagem, msg:r.mensagem ? `Publicado no ${nome}. ${r.mensagem}` : `Publicado no ${nome}.`}
+    : {ok:false, msg:r?.mensagem || `A publicação no ${nome} não foi concluída.`};
+  if(!redesenhar) return res;
+  await desenhar(); recado(res.msg, res.ok ? undefined : true);
+}
+async function abrirParaPublicar(el, qual){
+  const id = Number(el.dataset.id);
+  E.assunto = Number(el.dataset.assunto); E.etapa = "publicar"; if(E.todosFechado === id) E.todosFechado = null;
+  window.scrollTo(0, 0); await desenhar();
+  const alvo = $(`#${qual}-${id}`) || $(`.publicar-item[data-conteudo="${id}"]`);
+  if(alvo){ alvo.scrollIntoView({block:"start"}); if(!$(`#${qual}-${id}`)) recado(qual === "todos" ? "O “Publicar em todos” não está disponível para este conteúdo agora: veja o que falta no passo Publicar (a fundamentação, ou uma autorização em aberto)."
+    : "Não há canal livre para publicar neste conteúdo: veja a situação de cada canal no passo Publicar.", "aviso"); }
+}
+/* v0.19.0: o robô do site roda no GitHub, e o agendamento de lá atrasa horas. Depois de autorizar a publicação (ou pedir a
+   exclusão), a tela pede à função radar-redes que acione o robô na hora (segredo RADAR_GITHUB_TOKEN no Supabase). Nunca lança
+   erro: devolve o texto para o recado (vazio quando não há nada esperando o robô). */
+async function acionarRoboSite(){
+  try{
+    const r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"acionar_robo"}, tempo:20000});
+    if(r?.acionado){ E.roboAcionadoEm = Date.now(); releituraDepoisDoRobo(); return " " + (r.mensagem || "Robô acionado: a publicação deve sair em 1 a 2 minutos."); }
+    return r?.motivo === "nada_pendente" ? "" : r?.mensagem ? " " + r.mensagem : "";
+  }catch(e){
+    if(e.status === 404 || /Ação desconhecida/.test(e.message || "")) return " Para o robô sair na hora, instale a função radar-redes v0.19.0 (veja o LEIAME); a autorização está guardada e sai na próxima rodada automática do GitHub.";
+    return " Não deu para acionar o robô agora; a autorização está guardada e sai na próxima rodada automática do GitHub.";
+  }
+}
+/* Uma releitura só, uns 2 minutos depois de acionar o robô, para o link aparecer sem recarregar (se a tela for a mesma e não
+   houver nada digitado sem salvar). */
+function releituraDepoisDoRobo(){
+  clearTimeout(E.releituraRobo);
+  const assunto = E.assunto, aba = E.aba;
+  E.releituraRobo = setTimeout(() => { if(E.assunto === assunto && E.aba === aba && !OCUPADO && !telaSuja()) desenhar().catch(() => {}); }, 110000);
 }
 /* v0.17.0: exclusão de uma publicação. Site: grava o pedido (o robô exclui). Instagram/Facebook: a função radar-redes apaga
    na hora; se a Meta não deixar, oferece registrar “Já apaguei” (o administrador apagou direto na rede). Nunca lança erro:
@@ -1656,7 +1719,7 @@ async function excluirPublicacao(conteudo, canal, envio, emGrupo = false){
   try{
     if(canal === "site"){
       await rpc("radar_pedir_exclusao_site", {p_conteudo:conteudo});
-      return {ok:true, msg:"Pedido registrado: o robô exclui a notícia do site em até 15 minutos."};
+      return {ok:true, msg:"Pedido registrado: o robô exclui a notícia do site em 1 a 2 minutos."};
     }
     const r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"excluir", envio}, tempo:60000});
     return {ok:r?.situacao === "excluido", msg:`Excluída do ${NOME_REDE[canal]}.`};
@@ -1675,21 +1738,23 @@ function blocoPublicar(c, envio, pubs, pronto, categoria, redes = [], capa = nul
   const sugerida = CATEGORIA_SITE[categoria] || "";
   const atual = pubs.find(p => !p.texto_mudou && !p.versao_anterior);
   let corpo;
-  if(atual) corpo = `<div class="aviso info envio-site"><b>Publicado no site e registrado</b> em ${data(atual.publicado_em)} — ${linkFonte(atual.url, atual.url)}</div>`;
+  if(atual) corpo = `<div class="aviso info envio-site"><b>Publicado no site e registrado</b> em ${data(atual.publicado_em)} — ${linkFonte(atual.url, atual.url)}</div>` +
+    (ehAdmin() && pronto ? blocoFaltam(c, categoria, capa, redes, atual.url) : "");
   // já foi ao site (texto mudou depois, ou o robô publicou e o registro não entrou): autorizar de novo duplicaria a notícia
   else if(pubs.length) corpo = `<div class="aviso alerta envio-site"><b>Esta notícia já está no site</b> (${linkFonte(pubs[pubs.length - 1].url, pubs[pubs.length - 1].url)}), com um texto anterior. Para não duplicar, atualize a notícia no painel do site e registre de novo no passo 2 (“Depois de publicar no site”).</div>`;
   else if(envio?.situacao === "publicado") corpo = `<div class="aviso alerta envio-site"><b>Publicado no site pelo robô</b> — ${envio.url ? linkFonte(envio.url, envio.url) : ""}${envio.erro ? `<br>${h(envio.erro)}` : ""}<br><span class="sub">Para não duplicar, não é possível autorizar de novo; se precisar, registre o link à mão no passo 2.</span></div>`;
-  else if(envio?.situacao === "autorizado") corpo = `<div class="aviso alerta envio-site"><b>Autorizado em ${dataHora(envio.autorizado_em)}</b> (categoria ${h(envio.categoria)}) — aguardando o robô, que publica em até 15 minutos.
-      ${ehAdmin() ? `<div class="acoes"><button class="btn peq sec" type="button" data-acao="cancelar-site" data-envio="${envio.id}">Cancelar autorização</button></div>` : ""}</div>`;
+  else if(envio?.situacao === "autorizado") corpo = `<div class="aviso alerta envio-site"><b>Autorizado em ${dataHora(envio.autorizado_em)}</b> (categoria ${h(envio.categoria)}) — aguardando o robô, que publica em 1 a 2 minutos depois de acionado.
+      ${ehAdmin() ? `<div class="acoes"><button class="btn peq" type="button" data-acao="acionar-robo">Acionar o robô agora</button>
+        <button class="btn peq sec" type="button" data-acao="cancelar-site" data-envio="${envio.id}">Cancelar autorização</button></div>` : ""}</div>`;
   else if(envio?.situacao === "enviando") corpo = `<div class="aviso alerta envio-site"><b>O robô está publicando</b> (desde ${dataHora(envio.enviado_em)}). Assim que a notícia aparecer no site, o link é registrado aqui.</div>`;
   else {
     const ultimo = envio && ["erro","cancelado"].includes(envio.situacao) && envio.erro ? `<div class="aviso ${envio.situacao === "erro" ? "erro" : "alerta"} envio-site">${envio.situacao === "erro" ? "<b>A última publicação não foi concluída.</b> " : ""}${h(envio.erro)}</div>` : "";
     corpo = ultimo + (!pronto ? "" : ehAdmin() ? `<div class="acoes autorizar-site"><label for="site-cat-${c.id}" style="margin:0">Categoria no site</label>
         <select id="site-cat-${c.id}">${opcoes(Object.fromEntries(CATEGORIAS_DO_SITE.map(x => [x, x])), sugerida, "— escolher —")}</select>
         <button class="btn verde" type="button" data-acao="autorizar-site" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar publicação no site</button></div>
-        <p class="sub">Ao autorizar, o robô cadastra a notícia no site em até 15 minutos (o site publica na hora) e registra o link aqui. Dá para cancelar enquanto o robô não começou.</p>
+        <p class="sub">Ao autorizar, o robô é acionado na hora: cadastra a notícia no site em 1 a 2 minutos (o site publica na hora) e registra o link aqui. Dá para cancelar enquanto o robô não começou.</p>
         ${blocoTodos(c, categoria, capa, redes)}`
-      : `<p class="sub">Só o administrador autoriza a publicação no site.</p>`);
+      : `<p class="sub">Só o administrador autoriza a publicação no site (ou em todos de uma vez).</p>`);
   }
   return `<div class="publicar-item" data-conteudo="${c.id}"><h3>${h(c.titulo)}</h3>
     <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>${corpo}
@@ -1704,8 +1769,8 @@ function blocoTodos(c, categoria, capa, redes){
   if(!canais.length) return "";
   (E.redeCapa ||= {})[c.id] = {capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};
   const legenda = k => (E.legendas || {})[c.id + ":todos-" + k] ?? legendaRede(c, k, "{LINK DO SITE}", categoria);
-  return `<details class="todos painel" id="todos-${c.id}"${E.todosAberto === c.id ? " open" : ""}><summary><b>Publicar em todos de uma vez</b> — site, ${canais.map(k => NOME_REDE[k]).join(" e ")}</summary>
-    <p class="sub">Confira a categoria acima, a imagem e as legendas. Ao autorizar, o robô publica no site em até 15 minutos e, logo que a notícia entrar no site,
+  return `<details class="todos painel" id="todos-${c.id}"${E.todosFechado === c.id ? "" : " open"}><summary><b>Publicar em todos de uma vez</b> — site, ${canais.map(k => NOME_REDE[k]).join(" e ")} (recomendado)</summary>
+    <p class="sub">Confira a categoria acima, a imagem e as legendas. Ao autorizar, o robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site,
       publica ${canais.length > 1 ? "no Instagram e no Facebook" : "no " + NOME_REDE[canais[0]]} (no Facebook, o link da notícia entra no lugar de {LINK DO SITE}).
       Se a publicação no site não sair, ou o texto mudar, ${canais.length > 1 ? "as redes caem" : "a rede cai"} junto.</p>
     <div class="rede-montagem"><img id="todos-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">
@@ -1713,6 +1778,22 @@ function blocoTodos(c, categoria, capa, redes){
         <textarea id="todos-legenda-${k}-${c.id}" maxlength="2000" data-chave="${c.id}:todos-${k}" aria-label="Legenda do ${NOME_REDE[k]}">${h(legenda(k))}</textarea>`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.000 caracteres em cada legenda.</span></div></div>
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-todos" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar em todos</button></div></details>`;
+}
+/* v0.19.0: a notícia já está no site: publicar no Instagram e no Facebook que faltam (cada um ou os dois), sem esperar o
+   outro canal. Sai na hora, pela função radar-redes, com o link real da notícia na legenda. */
+function blocoFaltam(c, categoria, capa, redes, urlSite){
+  const livre = k => !redes.some(r => r.canal === k && ["aguardando_site","autorizado","enviando","erro","publicado","dispensado"].includes(r.situacao));
+  const canais = ["instagram", "facebook"].filter(livre);
+  if(!canais.length) return "";
+  (E.redeCapa ||= {})[c.id] = {capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};
+  const legenda = k => (E.legendas || {})[c.id + ":faltam-" + k] ?? legendaRede(c, k, urlSite, categoria);
+  return `<div class="todos painel faltam" id="faltam-${c.id}"><h3>Publicar nos canais que faltam</h3>
+    <p class="sub">A notícia já está no site. Confira a imagem e ${canais.length > 1 ? "as legendas (desmarque o canal que não quiser)" : "a legenda"}: ao autorizar, a publicação sai na hora ${canais.length > 1 ? "no Instagram e no Facebook" : "no " + NOME_REDE[canais[0]]}.</p>
+    <div class="rede-montagem"><img id="faltam-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">
+      <div class="rede-legenda">${canais.map(k => `<label><input type="checkbox" class="faltam-canal" data-canal="${k}" checked> ${NOME_REDE[k]}</label>
+        <textarea id="faltam-legenda-${k}-${c.id}" maxlength="2200" data-chave="${c.id}:faltam-${k}" aria-label="Legenda do ${NOME_REDE[k]} (canais que faltam)">${h(legenda(k))}</textarea>`).join("")}
+        <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.200 caracteres em cada legenda.</span></div></div>
+    <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-faltam" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Publicar nos que faltam</button></div></div>`;
 }
 /* Prévia: monta a notícia como ela fica em artecon.cnt.br/news, com o que está digitado agora na tela. */
 function abrirPrevia(id){
@@ -1918,7 +1999,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
   const vermelho = [...pagas, ...semFonte];                                     // o que nunca passa sem correção (ou autorização)
   const soFaltaFonte = !vermelho.length && semCredito && todas.length > 0;      // está tudo citado: falta só o campo Fonte
   const marcas = marcasVerificar(c.titulo || "", c.corpo || ""), duvidas = comentariosDuvida(c.titulo || "", c.corpo || "");
-  // v0.16.0: "Revisar com IA" corrige só as marcas e os trechos iguais ao da fonte (v0.18.0: acrescenta a fonte no parágrafo);
+  // v0.16.0: "Revisar com IA" corrige só as marcas e os trechos iguais ao da fonte (v0.19.0: reescreve com palavras próprias);
   // "Autorizar mesmo assim" deixa o trecho como está (com motivo)
   const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
   const autorizada = vermelho.length && c.copia_autorizada_em;
@@ -1936,10 +2017,10 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${vermelho.length ? `<div class="aviso ${autorizada ? "alerta copia-autorizada" : "erro"} copia"><b>${[semFonte.length ? `Texto igual ao da fonte sem a fonte citada em ${semFonte.length} trecho(s).` : "",
         pagas.length ? `Frase do boletim pago em ${pagas.length} trecho(s).` : ""].filter(Boolean).join(" ")}</b> ${autorizada
         ? `<b>Autorizado mesmo assim</b> em ${dataHora(c.copia_autorizada_em)}${c.copia_autorizada_motivo ? ` — motivo: “${h(c.copia_autorizada_motivo)}”` : ""}. A autorização vale para este texto: se ele mudar, cai.`
-        : `O conteúdo não pode ser aprovado assim.${semFonte.length ? " O texto pode ficar igual ao da fonte, mas cada parágrafo precisa dizer de onde veio (“Segundo a Receita Federal, …”, “Conforme o Portal Contábil SC, …”; num item de lista, a frase que apresenta a lista)." : ""}${pagas.length ? " As frases do boletim pago (ITC) nunca podem ser reproduzidas, nem citando nem entre aspas: reescreva com palavras próprias." : ""}`}${semCredito ? " O campo <b>Fonte</b> (abaixo) também precisa estar preenchido: ele sai no fim da notícia." : ""}
+        : `O conteúdo não pode ser aprovado assim.${semFonte.length ? " Reescreva com palavras próprias; se a frase igual for indispensável (dispositivo legal, definição legal), deixe o mínimo, entre aspas, e o parágrafo dela precisa dizer de quem é (“Segundo a Receita Federal, …”, “Conforme o Portal Contábil SC, …”; num item de lista, a frase que apresenta a lista)." : ""}${pagas.length ? " As frases do boletim pago (ITC) nunca podem ser reproduzidas, nem citando nem entre aspas: reescreva com palavras próprias." : ""}`}${semCredito ? " O campo <b>Fonte</b> (abaixo) também precisa estar preenchido: ele sai no fim da notícia." : ""}
       <ul>${vermelho.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span>${deOnde(t)}</li>`).join("")}</ul>${vermelho.length > 4 ? `<span class="sub">e mais ${vermelho.length - 4}.</span>` : ""}
       ${ed && !autorizada ? `<div class="acoes">${revisarIA}<button class="btn peq sec" type="button" data-acao="abrir-autorizar-copia" data-id="${c.id}">Autorizar mesmo assim</button>
-        <span class="sub">“Revisar com IA” ${semFonte.length ? "acrescenta a fonte no parágrafo" : ""}${semFonte.length && pagas.length ? " e " : ""}${pagas.length ? "reescreve a frase do boletim pago" : ""}.</span></div>` : ""}</div>` : ""}
+        <span class="sub">“Revisar com IA” ${semFonte.length ? "reescreve o trecho igual com palavras próprias" : ""}${semFonte.length && pagas.length ? " e " : ""}${pagas.length ? "reescreve a frase do boletim pago" : ""}.</span></div>` : ""}</div>` : ""}
     ${soFaltaFonte ? `<div class="aviso erro copia falta-fonte"><b>Texto igual ao da fonte em ${todas.length} trecho(s), com a fonte citada no parágrafo, mas o campo Fonte está vazio.</b> Preencha o campo <b>Fonte</b> (abaixo) e salve: ele sai no fim da notícia, dizendo de onde veio o texto.
       <ul>${todas.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul></div>`
       : citadas.length && !semCredito ? `<div class="aviso info copia-citada"><b>Texto igual ao da fonte em ${citadas.length} trecho(s), com a fonte citada no parágrafo.</b> Pode ficar assim: a notícia sai com “Fonte: ${h(String(c.fonte_credito || "").trim())}” no fim.
@@ -1972,7 +2053,11 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
       <div class="acoes" style="margin-top:4px"><input type="text" id="img-desc-${c.id}" data-enter="capa-ia" maxlength="200" value="${h((E.imgDesc || {})[c.id] || "")}" style="flex:1;min-width:240px"
           aria-label="Como você quer a imagem (opcional)" placeholder="Como você quer a imagem (opcional). Ex.: contadora atendendo um casal de empresários">
         <button class="btn peq sec" type="button" data-acao="capa-ia" data-id="${c.id}">Gerar ilustração com IA</button></div>
-      <p class="sub" style="margin:4px 0 0">Em branco, a IA escolhe a cena pela notícia. A imagem é uma foto realista criada pela IA, pode ter pessoas (sempre fictícias) e não leva texto, marca nem assinatura; a capa sai com ela ao fundo e o logotipo, a categoria e o título por cima. Cada imagem gerada é cobrada.</p>` : ""}
+      <p class="sub" style="margin:4px 0 0">Em branco, a IA escolhe a cena pela notícia. A imagem é uma foto realista criada pela IA, pode ter pessoas (sempre fictícias) e não leva texto, marca nem assinatura; a capa sai com ela ao fundo e o logotipo, a categoria e o título por cima. Cada imagem gerada é cobrada.</p>
+      ${E.ilustracaoPendente?.conteudoId === c.id ? `<div class="aviso alerta ilustracao-pendente"><b>A ilustração foi criada, mas não foi gravada neste conteúdo.</b>
+        <div class="rede-montagem"><img class="miniatura" src="${h(E.ilustracaoPendente.imagem)}" alt="Ilustração criada pela IA, ainda não gravada">
+        <div class="acoes"><button class="btn peq" type="button" data-acao="gravar-ilustracao" data-id="${c.id}">Gravar a ilustração de novo</button>
+        <span class="sub">Sem nova consulta à IA e sem nova cobrança.</span></div></div></div>` : ""}` : ""}
     <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>
     ${c.status === "aprovado" ? `<div class="aviso info">Se você alterar o título, o texto, o autor, a fonte ou a imagem, o conteúdo volta para revisão e precisa ser aprovado de novo.</div>
       <div class="acoes para-site"><b class="sub">Para o site da Artecon:</b>
@@ -2018,6 +2103,9 @@ const ACOES = {
   },
   voltar(){ E.etapa = null; if(E.assunto) E.assunto = null; else E.informativo = null; return desenhar(); },
   "abrir-assunto"(el){ if(!el.dataset.id || el.dataset.id === "undefined") return; E.etapa = null; E.assunto = Number(el.dataset.id); window.scrollTo(0,0); return desenhar(); },
+  /* v0.19.0: da aba Publicações direto ao “Publicar em todos” (ou aos canais que faltam) do conteúdo, no passo Publicar */
+  async "publicar-todos-de"(el){ await abrirParaPublicar(el, "todos"); },
+  async "publicar-faltam-de"(el){ await abrirParaPublicar(el, "faltam"); },
   async "abrir-da-captura"(el){ E.etapa = null; E.assunto = await rpc("radar_abrir_assunto", {p_captura:Number(el.dataset.id)}); E.aba = "assuntos"; return desenhar(); },
   async "ignorar-captura"(el){ await rpc("radar_abrir_assunto", {p_captura:Number(el.dataset.id), p_ignorar:true}); await desenhar(); recado("Captura ignorada."); return; },
   /* v0.16.0: a IA da triagem juntou como "mesmo fato" o que não é: a captura volta a aparecer sozinha na lista */
@@ -2058,7 +2146,7 @@ const ACOES = {
     await desenhar();
     const resta = (r.restam?.marcas || 0) + (r.restam?.copias || 0);
     // no texto para análise o que a fonte não oficial informa fica no texto, atribuído a ela; no texto normal, sai do texto
-    const onde = r.analise ? "ficaram no texto atribuídos à fonte não oficial, ou saíram dele," : "saíram do texto e";
+    const onde = r.analise ? "ficaram no texto (vindos de fonte não oficial) ou saíram dele," : "saíram do texto e";
     recado(`IA: texto revisado${r.pendencias?.length ? `; ${r.pendencias.length} ponto(s) a conferir na fonte oficial ${r.avisos_gravados === false
       ? `${r.analise ? "foram apontados" : "saíram do texto"}, mas NÃO puderam ser anotados nos pontos a conferir — confira o texto` : `${onde} estão nos pontos a conferir`}` : ""}.` +
       (r.autorizacao_caiu ? " O texto mudou, então a autorização do trecho igual ao da fonte caiu." : "") + capa +
@@ -2102,33 +2190,40 @@ const ACOES = {
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     await alterar("radar_assuntos", {id:"eq." + E.assunto, select:"id"}, {situacao_confirmacao:"confirmado_oficialmente"});
     await desenhar(); recado("Assunto marcado como confirmado oficialmente."); },
-  async "ia-tudo"(){
+  /* v0.19.0: “Gerar com IA” — um clique faz tudo, em etapas que não travam umas às outras: sem texto oficial, procura a fonte
+     oficial na internet (a busca rápida; se demorar, segue sem ela); com texto oficial, busca o trecho que comprova; escreve o
+     rascunho (com ou sem fundamentação) e faz a capa com a ilustração. Conta como uma consulta só. */
+  async "ia-tudo"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
-    if(!(await liberarIA())) return;                                    // trecho + texto + títulos + ilustração contam como uma consulta
     const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo";
-    let r;
-    try{ r = await ia("fundamentar", {assunto_id:assunto}); }
-    catch(e){
-      if(!/não tem texto de fonte oficial/i.test(e.message)) throw e;
-      // assunto só com fonte não oficial (ITC, portais): o "tudo" vira o texto para análise, com a ilustração
-      const busca = await buscarFonteOficial(assunto);
-      const g = await ia("gerar", {formato, analise:true, assunto_id:assunto});
-      const capa = await capaComIA(g.conteudo_id, assunto);
-      if(!telaDoAssunto(assunto)) return;
-      E.etapa = "conteudo"; await desenhar();
-      recado("Este assunto não tem fonte oficial: a IA preparou um texto PARA ANÁLISE (não vai ao site)." + busca + avisoCapa(capa), "aviso");
+    const oficial = el?.dataset.oficial !== "", ja = Number(el?.dataset.conteudos || 0);
+    if(ja && !confirm(`Já há ${ja} conteúdo(s) neste assunto. Gerar outro rascunho com IA, com texto e capa novos?`)) return;
+    if(!(await liberarIA())) return;
+    const total = 3;
+    let busca = "", r = null, trechoFalhou = "", g, capa;
+    try{
+      IA_PASSO = `Gerar com IA · etapa 1 de ${total}`;
+      if(oficial){ try{ r = await ia("fundamentar", {assunto_id:assunto}); } catch(e){ trechoFalhou = e.message || "erro"; } }
+      else busca = await buscarFonteOficial(assunto, true);
+      IA_PASSO = `Gerar com IA · etapa 2 de ${total}`;
+      try{ g = await ia("gerar", {formato, assunto_id:assunto}); }
+      catch(e){ if(E.assunto === assunto) await desenhar(); throw new ErroApi(`${r ? `Trechos registrados: ${r.inseridas.length}. ` : ""}O rascunho não foi gerado: ${e.message}`); }
+      IA_PASSO = `Gerar com IA · etapa 3 de ${total}`;
+      capa = await capaComIA(g.conteudo_id, assunto);                 // a ilustração da IA; se ela falhar, a capa padrão Artecon
+    }finally{ IA_PASSO = ""; }
+    if(!telaDoAssunto(assunto)) return;
+    E.etapa = "conteudo"; E.capaFoco = g.conteudo_id;
+    await desenhar(); rolarAteConteudo(g.conteudo_id);
+    const pontos = g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : "";
+    if(!oficial){
+      recado(`Assunto sem fonte oficial: a IA escreveu o rascunho${pontos} a partir da fonte não oficial (fundamentação não confirmada; para o site, fundamente ou use “Publicar mesmo assim”).` +
+        busca + avisoCapa(capa) + " Revise antes de mandar para a revisão.", "aviso");
       return;
     }
-    let g; try{ g = await ia("gerar", {formato, assunto_id:assunto}); }
-    catch(e){ if(E.assunto === assunto) await desenhar(); throw new ErroApi(`Trechos registrados: ${r.inseridas.length}. O rascunho não foi gerado: ${e.message}`); }
-    // v0.11.0: a capa é a ilustração da IA; se ela falhar, fica a capa padrão Artecon
-    const capa = await capaComIA(g.conteudo_id, assunto);
-    if(!telaDoAssunto(assunto)) return;
-    E.etapa = "conteudo";
-    await desenhar();
-    recado(`IA: ${r.inseridas.length} trecho(s) de fundamentação, um rascunho${g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : ""} e ` +
-      (capa === "ilustração" ? "a capa com a ilustração." : capa === "padrão" ? "a capa padrão (a ilustração com IA não deu certo agora; tente pelo botão dela, sem senha)." : "nenhuma capa." + SEM_CAPA) +
-      " Revise antes de mandar para a revisão.", g.avisos.length > 0 || capa !== "ilustração" ? "aviso" : false);
+    recado(`IA: ${r ? `${r.inseridas.length} trecho(s) de fundamentação, ` : ""}um rascunho${pontos} e ` +
+      (capa === "ilustração" ? "a capa com a ilustração." : capa === "padrão" || capa === "pendente" ? "a capa padrão." + avisoCapa(capa) : "nenhuma capa." + SEM_CAPA) +
+      (trechoFalhou ? ` A busca do trecho que comprova não deu certo (${trechoFalhou.replace(/[.\s]+$/, "")}); o texto saiu sem fundamentação.` : "") +
+      " Revise antes de mandar para a revisão.", g.avisos.length > 0 || capa !== "ilustração" || trechoFalhou ? "aviso" : false);
   },
   async "capa-auto"(el){
     const f = el.closest("form");
@@ -2138,6 +2233,16 @@ const ACOES = {
     await capaAutomatica(Number(el.dataset.id), true, sem); E.capaAntiga = null; await desenhar();
     recado(sem ? "Capa padrão da Artecon, sem a ilustração." : "Capa atualizada com o título atual.");
   },
+  /* v0.19.0: a ilustração criada e não gravada (queda de conexão, conflito) é gravada de novo sem nova consulta à IA */
+  async "gravar-ilustracao"(el){
+    const p = E.ilustracaoPendente, id = Number(el.dataset.id);
+    if(!p || p.conteudoId !== id){ await desenhar(); recado("Não há ilustração esperando para ser gravada neste conteúdo.", true); return; }
+    const f = el.closest("form");
+    if(f && sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de gravar a ilustração.", true); return; }
+    await gravarIlustracao(id, p.imagem);
+    E.capaAntiga = null; await desenhar(); rolarAteConteudo(id);
+    recado("Ilustração gravada: a capa foi montada com ela ao fundo. Confira se combina com o assunto antes de aprovar.");
+  },
   async "capa-ia"(el){
     const f = el.closest("form");
     if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de gerar a ilustração.", true); return; }
@@ -2146,9 +2251,11 @@ const ACOES = {
     (E.imgDesc = E.imgDesc || {})[el.dataset.id] = descricao;
     if(!(await liberarIA(true))) return;
     const assunto = E.assunto;
-    await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao, assunto);
+    try{ await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao, assunto); }
+    catch(e){ if(E.ilustracaoPendente && E.assunto === assunto) await desenhar(); throw e; }      // o botão “Gravar de novo” aparece
     if(!telaDoAssunto(assunto)) return;
-    E.capaAntiga = null; await desenhar(); recado("Capa feita com a ilustração da IA. Confira se a imagem combina com o assunto antes de aprovar.");
+    E.capaAntiga = null; await desenhar(); rolarAteConteudo(Number(el.dataset.id));
+    recado("Ilustração gerada pela IA. A capa foi montada com ela ao fundo; confira se combina com o assunto antes de aprovar.");
   },
   async "testar-ia"(){
     const d = $("#diag-ia"); d.innerHTML = `<p class="sub">Testando… pode levar alguns segundos.</p>`;
@@ -2203,6 +2310,39 @@ const ACOES = {
     await publicarRede(envio, canal);
   },
   async "tentar-rede"(el){ await publicarRede(el.dataset.envio, el.dataset.canal); },
+  /* v0.19.0: “Publicar nos que faltam” — autoriza e publica cada canal marcado, um depois do outro; um recado só no fim */
+  async "autorizar-faltam"(el){
+    if(telaSuja()){ recado(avisoSujo(), true); return; }
+    const id = el.dataset.id, caixa = $(`#faltam-${id}`), img = $(`#faltam-imagem-${id}`);
+    if(!img || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem das redes ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
+    const legendas = {};
+    for(const x of caixa?.querySelectorAll(".faltam-canal:checked") || []){
+      const k = x.dataset.canal, l = ($(`#faltam-legenda-${k}-${id}`)?.value || "").trim();
+      if(l.length < 10){ recado(`Escreva a legenda do ${NOME_REDE[k]} (pelo menos 10 caracteres) ou desmarque o ${NOME_REDE[k]}.`, true); $(`#faltam-legenda-${k}-${id}`)?.focus(); return; }
+      legendas[k] = l;
+    }
+    const canais = Object.keys(legendas);
+    if(!canais.length){ recado("Marque o Instagram, o Facebook ou os dois.", true); return; }
+    const marcas = [...Object.values(legendas).flatMap(l => marcasVerificar(l)), ...marcasDoConteudo(id)];
+    if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
+    const nomes = canais.map(k => NOME_REDE[k]).join(" e ");
+    if(!confirm(`Publicar agora no ${nomes} da Artecon?\n\nA imagem e ${canais.length > 1 ? "as legendas vão" : "a legenda vai"} ao ar como estão na tela.`)) return;
+    const res = [];
+    for(const k of canais){
+      let envio;
+      try{ envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(id), p_canal:k, p_legenda:legendas[k], p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido}); }
+      catch(e){ res.push({ok:false, msg:`${NOME_REDE[k]}: ${e.message}`}); continue; }
+      if(E.legendas) delete E.legendas[id + ":faltam-" + k];
+      res.push(await publicarRede(envio, k, false));
+    }
+    await desenhar(); recado(res.map(r => r.msg).join(" "), res.some(r => !r.ok));
+  },
+  /* v0.19.0: aciona o robô do site na hora (publicação ou exclusão esperando) */
+  async "acionar-robo"(){
+    recado("Acionando o robô do site…", "aviso");
+    const robo = await acionarRoboSite();
+    await desenhar(); recado(robo.trim() || "Não há publicação nem exclusão no site esperando o robô.", /não deu|instale|falta|recusou|não tem acesso|não respondeu/i.test(robo) ? true : undefined);
+  },
   async "dispensar-rede"(el){
     if(!confirm(`Não publicar este conteúdo no ${NOME_REDE[el.dataset.canal]}? Dá para desfazer depois.`)) return;
     await rpc("radar_dispensar_rede", {p_conteudo:Number(el.dataset.id), p_canal:el.dataset.canal});
@@ -2334,11 +2474,11 @@ const ACOES = {
   async "ia-gerar"(){
     if(!(await liberarIA())) return;
     const assunto = E.assunto, r = await ia("gerar", {formato:$("#novo-formato").value, assunto_id:assunto});
-    const capa = await capaAutomatica(r.conteudo_id);
+    const capa = await capaComIA(r.conteudo_id, assunto);           // v0.19.0: com a ilustração da IA (antes, só a capa padrão)
     if(!telaDoAssunto(assunto)) return;
-    E.etapa = "conteudo";
-    await desenhar();
-    recado((r.avisos.length ? `Rascunho gerado pela IA com ${r.avisos.length} ponto(s) a conferir.` : "Rascunho gerado pela IA.") + (capa ? "" : SEM_CAPA), r.avisos.length > 0 ? "aviso" : false);
+    E.etapa = "conteudo"; E.capaFoco = r.conteudo_id;
+    await desenhar(); rolarAteConteudo(r.conteudo_id);
+    recado((r.avisos.length ? `Rascunho gerado pela IA com ${r.avisos.length} ponto(s) a conferir.` : "Rascunho gerado pela IA.") + avisoCapa(capa), r.avisos.length > 0 || capa !== "ilustração" ? "aviso" : false);
   },
 
   previa(el){ abrirPrevia(el.dataset.id); },
@@ -2365,9 +2505,10 @@ const ACOES = {
     if(!cat){ recado("Escolha a categoria do site antes de autorizar.", true); return; }
     const marcas = marcasDoConteudo(el.dataset.id);
     if(marcas.length){ recado(msgMarcas(marcas, "publicar no site"), true); return; }
-    if(!confirm(`Autorizar a publicação desta notícia no site da Artecon, na categoria “${cat}”?\n\nO robô cadastra a notícia em até 15 minutos e o site publica na hora. Dá para cancelar enquanto o robô não começou.`)) return;
+    if(!confirm(`Autorizar a publicação desta notícia no site da Artecon, na categoria “${cat}”?\n\nO robô é acionado na hora e cadastra a notícia em 1 a 2 minutos; o site publica na hora. Dá para cancelar enquanto o robô não começou.`)) return;
     await rpc("radar_autorizar_site", {p_conteudo:Number(el.dataset.id), p_categoria:cat, p_lido:el.dataset.lido});
-    await desenhar(); recado("Publicação autorizada. O robô publica em até 15 minutos e registra o link aqui.");
+    const robo = await acionarRoboSite();
+    await desenhar(); recado("Publicação autorizada." + (robo || " O robô publica e registra o link aqui."));
   },
   async "cancelar-site"(el){
     if(!confirm("Cancelar a autorização? A notícia não será publicada.")) return;
@@ -2390,20 +2531,22 @@ const ACOES = {
     const marcas = [...Object.values(legendas).flatMap(l => marcasVerificar(l)), ...marcasDoConteudo(id)];
     if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
     const redesTxt = Object.keys(legendas).map(k => NOME_REDE[k]).join(" e ");
-    if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em até 15 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.`)) return;
+    if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.`)) return;
     await rpc("radar_autorizar_todos", {p_conteudo:Number(id), p_categoria:cat, p_lido:el.dataset.lido, p_imagem:img.getAttribute("src"),
       p_legenda_instagram:legendas.instagram || null, p_legenda_facebook:legendas.facebook || null});
     if(E.legendas) for(const k of ["instagram", "facebook"]) delete E.legendas[id + ":todos-" + k];
-    E.todosAberto = null;
-    await desenhar(); recado(`Autorizado em todos. O robô publica no site em até 15 minutos; o ${redesTxt} sai logo depois que a notícia entrar no site.`);
+    E.todosFechado = null;
+    const robo = await acionarRoboSite();
+    await desenhar(); recado(`Autorizado em todos. O ${redesTxt} sai logo depois que a notícia entrar no site.` + robo);
   },
   /* v0.17.0: excluir a publicação de um canal (Publicações) */
   async "excluir-pub"(el){
     const canal = el.dataset.rede, titulo = el.closest("tr")?.querySelector(".titulo-link")?.textContent || "este conteúdo";
     const onde = canal === "site" ? "do site da Artecon" : "do " + NOME_REDE[canal];
-    if(!confirm(`Excluir “${titulo}” ${onde}?\n\n${canal === "site" ? "O robô entra no painel do site e exclui a notícia em até 15 minutos." : "A publicação é apagada agora, pela Meta."}`)) return;
+    if(!confirm(`Excluir “${titulo}” ${onde}?\n\n${canal === "site" ? "O robô é acionado na hora, entra no painel do site e exclui a notícia em 1 a 2 minutos." : "A publicação é apagada agora, pela Meta."}`)) return;
     const r = await excluirPublicacao(Number(el.dataset.id), canal, Number(el.dataset.envio || 0));
-    await desenhar(); recado(r.msg, !r.ok);
+    const robo = canal === "site" && r.ok ? await acionarRoboSite() : "";
+    await desenhar(); recado(r.msg + robo, !r.ok);
   },
   async "excluir-selecionadas"(){
     const ids = [...document.querySelectorAll("#tab-canais .sel-pub:checked")].map(x => Number(x.value));
@@ -2418,16 +2561,18 @@ const ACOES = {
     }
     if(!tarefas.length){ recado("Nos conteúdos marcados não há publicação nesses canais para excluir.", true); return; }
     const conta = k => tarefas.filter(x => x.canal === k).length;
-    if(!confirm(`Excluir ${tarefas.length} publicação(ões)?\n\nSite: ${conta("site")} (o robô exclui em até 15 minutos)\nInstagram: ${conta("instagram")}\nFacebook: ${conta("facebook")}\n\nNo Instagram e no Facebook a exclusão é na hora.`)) return;
+    if(!confirm(`Excluir ${tarefas.length} publicação(ões)?\n\nSite: ${conta("site")} (o robô exclui em 1 a 2 minutos)\nInstagram: ${conta("instagram")}\nFacebook: ${conta("facebook")}\n\nNo Instagram e no Facebook a exclusão é na hora.`)) return;
     const falhas = [];
     let ok = 0;
+    let site = false;
     for(const [i, x] of tarefas.entries()){
       recado(`Excluindo ${i + 1} de ${tarefas.length}…`, "aviso");
       const r = await excluirPublicacao(x.id, x.canal, x.envio, true);
-      if(r.ok) ok++; else falhas.push(r.msg);
+      if(r.ok){ ok++; site ||= x.canal === "site"; } else falhas.push(r.msg);
     }
+    const robo = site ? await acionarRoboSite() : "";                  // uma vez só, depois de todos os pedidos
     await desenhar();
-    recado(`${ok} de ${tarefas.length} exclusão(ões) feita(s) ou pedida(s).` + (falhas.length ? " Não deu: " + falhas.join(" · ") : ""), falhas.length > 0);
+    recado(`${ok} de ${tarefas.length} exclusão(ões) feita(s) ou pedida(s).` + (falhas.length ? " Não deu: " + falhas.join(" · ") : "") + robo, falhas.length > 0);
   },
   async "cancelar-exclusao-site"(el){
     if(!confirm("Cancelar o pedido de exclusão? A notícia continua no site.")) return;
@@ -2527,7 +2672,7 @@ const ACOES = {
     const marcas = marcasDoConteudo(el.dataset.id);
     if(marcas.length){ recado(msgMarcas(marcas, "aprovar"), true); f.querySelector(".marcas-verificar")?.scrollIntoView({behavior:"smooth", block:"center"}); return; }
     if(Number(f.dataset.copiados) > 0 && !f.dataset.copiaAutorizada){ recado("Este conteúdo tem trecho igual ao texto da fonte " +
-      (f.dataset.pagas ? "com frase do boletim pago, que precisa ser reescrita com palavras próprias" : "sem a fonte citada: diga em cada parágrafo de onde veio (“Segundo a Receita Federal, …”)") +
+      (f.dataset.pagas ? "com frase do boletim pago, que precisa ser reescrita com palavras próprias" : "sem a fonte citada: reescreva com palavras próprias ou, se a frase igual for indispensável, diga no parágrafo dela de quem é (“Segundo a Receita Federal, …”)") +
       " (veja o quadro vermelho). Use “Revisar com IA” ou clique em “Autorizar mesmo assim”, e salve antes de aprovar.", true); return; }
     if(f.dataset.faltaFonte){ recado("Preencha o campo Fonte (ele sai no fim da notícia, dizendo de onde veio o texto igual ao da fonte) e salve antes de aprovar.", true); return; }
     // só aprova se o texto ainda for o que foi aberto nesta tela
@@ -2759,7 +2904,10 @@ async function desenharCapa(titulo, rotulo, ilustracao){
   cx.shadowColor = "transparent"; cx.shadowBlur = 0;
   // rodapé
   cx.font = '500 22px "DM Sans", Arial, sans-serif'; cx.fillStyle = "#DCEBF7"; cx.fillText("Artecon Artes Contábeis  ·  www.artecon.cnt.br", 60, A - 36);
-  return {dados:cv.toDataURL("image/jpeg", 0.86), largura:L, altura:A};
+  // v0.19.0: a capa com foto pode passar do limite do banco: baixa a qualidade até caber
+  let dados = "";
+  for(const q of [0.86, 0.75, 0.6, 0.45]){ dados = cv.toDataURL("image/jpeg", q); if(dados.length <= LIMITE_IMAGEM) break; }
+  return {dados, largura:L, altura:A};
 }
 /* Ilustração da capa pela IA (foto realista, sem texto nem marca). v0.16.0: fica guardada (ilustracao_id) e a capa do conteúdo
    é montada com ela ao fundo, o logotipo, a categoria e o título. */
@@ -2767,29 +2915,57 @@ async function ilustracaoIA(conteudoId, titulo, descricao = "", assunto = E.assu
   if(titulo === undefined) titulo = (await ler("radar_conteudos", {select:"titulo", id:"eq." + conteudoId}))[0]?.titulo || "";
   const r = await ia("ilustrar", {titulo, descricao, assunto_id:assunto});
   if(!/^data:image\/(png|jpeg|webp);base64,/.test(String(r.imagem || ""))) throw new ErroApi("A IA não devolveu uma imagem válida. Tente de novo.");
-  const ilustracao = await reduzirImagemDe(r.imagem, 1200, 630);
-  const [c] = await ler("radar_conteudos", {select:"titulo,radar_assuntos(categoria)", id:"eq." + conteudoId});
-  const capa = await desenharCapa(c?.titulo ?? titulo, catMapa()[c?.radar_assuntos?.categoria] || "Artecon Informa", ilustracao.dados);
-  const [a, b] = await Promise.all([ilustracao, capa].map(img => rest("POST", "radar_imagens", {corpo:img, params:{select:"id"}, prefer:"return=representation"})));
-  await alterar("radar_conteudos", {id:"eq." + conteudoId, select:"id"}, {ilustracao_id:a[0].id, imagem_id:b[0].id});
+  // v0.19.0: a imagem já foi paga: fica guardada na tela até ser gravada (se a gravação falhar, “Gravar a ilustração de novo”)
+  E.ilustracaoPendente = {conteudoId, assunto, imagem:r.imagem};
+  await gravarIlustracao(conteudoId, r.imagem);
+}
+/* Grava a ilustração (reduzida) e a capa montada com ela no conteúdo. Uma tentativa a mais se a conexão cair; se não der,
+   a imagem continua guardada na tela e o recado explica como gravar de novo, sem nova consulta à IA. */
+async function gravarIlustracao(conteudoId, imagem){
+  avisoIA("gravando a ilustração no conteúdo");
+  try{
+    const [c] = await ler("radar_conteudos", {select:"titulo,radar_assuntos(categoria)", id:"eq." + conteudoId});
+    if(!c){ E.ilustracaoPendente = null; throw new ErroApi("O conteúdo foi apagado enquanto a IA criava a ilustração; nada foi gravado."); }
+    const ilustracao = await reduzirImagemDe(imagem, 1200, 630);
+    const capa = await desenharCapa(c.titulo, catMapa()[c.radar_assuntos?.categoria] || "Artecon Informa", ilustracao.dados);
+    const enviar = async img => { for(let vez = 0; ; vez++){
+      try{ return (await rest("POST", "radar_imagens", {corpo:img, params:{select:"id"}, prefer:"return=representation", tempo:60000}))[0].id; }
+      catch(e){ if(vez || e.status !== 0) throw e; } } };
+    const idIlustracao = await enviar(ilustracao), idCapa = await enviar(capa);
+    await alterar("radar_conteudos", {id:"eq." + conteudoId, select:"id"}, {ilustracao_id:idIlustracao, imagem_id:idCapa});
+    if(E.ilustracaoPendente?.conteudoId === conteudoId) E.ilustracaoPendente = null;
+    E.capaFoco = conteudoId;
+  }catch(e){
+    if(!E.ilustracaoPendente) throw e;
+    throw new ErroApi("A ilustração foi criada, mas não foi gravada no conteúdo: " + (e.message || "erro inesperado.") +
+      " Use “Gravar a ilustração de novo”, no conteúdo (sem nova consulta à IA).", e.status);
+  }
+  finally{ avisoIA(null); }
 }
 /* v0.16.0: antes do texto para análise (assunto só com fonte não oficial), a IA procura a fonte oficial na internet — uma vez
    por assunto: o que ela confirmar entra no texto sem dúvida. Se a busca falhar, o texto sai assim mesmo. Devolve o recado. */
-async function buscarFonteOficial(assunto){
+/* v0.19.0: no “Gerar com IA”, a busca é a rápida (até 1 minuto e meio na tela): se passar do tempo, o texto sai sem ela. */
+async function buscarFonteOficial(assunto, rapido = false){
   const [a] = await ler("radar_assuntos", {select:"verificacao", id:"eq." + assunto});
   if(a?.verificacao) return "";
-  try{ const v = await ia("verificar", {assunto_id:assunto});
+  try{ const v = await ia("verificar", {assunto_id:assunto, ...(rapido ? {rapido:true} : {})}, rapido ? 90000 : 150000);
     return ` A busca em fontes oficiais ${({confirmada:"confirmou o fato", parcialmente_confirmada:"confirmou parte do fato", divergente:"encontrou divergência",
       nao_encontrada:"não encontrou página oficial"})[v.verificacao?.situacao] || "terminou"} (veja no passo 1).`; }
-  catch(e){ return ` A busca em fontes oficiais não deu certo agora (${e.message}); o texto foi feito só com a fonte capturada.`; }
+  catch(e){ return e.status === 0 || e.status === 504
+    ? " A busca da fonte oficial passou do tempo e foi deixada de lado; o texto foi feito com a fonte capturada (tente de novo em “Verificar em fontes oficiais”, no passo 1)."
+    : ` A busca em fontes oficiais não deu certo agora (${e.message}); o texto foi feito só com a fonte capturada.`; }
 }
 /* v0.12.0: capa do conteúdo novo: a ilustração da IA; se ela falhar, a capa padrão Artecon (e a próxima tentativa sai sem senha) */
+/* v0.19.0: o motivo da falha da ilustração vai para o recado (antes ficava só “não deu certo agora”) */
+let MOTIVO_CAPA = "";
 async function capaComIA(conteudoId, assunto){
+  MOTIVO_CAPA = "";
   try{ await ilustracaoIA(conteudoId, undefined, "", assunto); return "ilustração"; }
-  catch(e){ CREDITO_ILUSTRACAO.add(assunto); return (await capaAutomatica(conteudoId)) ? "padrão" : ""; }
+  catch(e){ MOTIVO_CAPA = e.message || ""; if(E.ilustracaoPendente?.conteudoId === conteudoId){ await capaAutomatica(conteudoId); return "pendente"; }
+    CREDITO_ILUSTRACAO.add(assunto); return (await capaAutomatica(conteudoId)) ? "padrão" : ""; }
 }
-const avisoCapa = capa => capa === "ilustração" ? " A capa tem a ilustração da IA ao fundo." : capa === "padrão"
-  ? " A ilustração com IA não deu certo agora: ficou a capa padrão (tente pelo botão “Gerar ilustração com IA”, sem senha)." : SEM_CAPA;
+const avisoCapa = capa => capa === "ilustração" ? " A capa tem a ilustração da IA ao fundo." : capa === "pendente" ? " " + MOTIVO_CAPA
+  : capa === "padrão" ? ` A ilustração com IA não deu certo agora${MOTIVO_CAPA ? " (" + MOTIVO_CAPA.replace(/[.\s]+$/, "") + ")" : ""}: ficou a capa padrão (tente pelo botão “Gerar ilustração com IA”, sem senha).` : SEM_CAPA;
 /* Capa automática do conteúdo. Na criação é um extra: se falhar, o conteúdo fica sem imagem e nada mais é afetado.
    v0.16.0: se o conteúdo tem a ilustração da IA guardada, a capa é refeita com ela (e o título atual); "semIlustracao" faz a
    capa padrão sem foto e deixa de usar a ilustração. */
@@ -2968,7 +3144,7 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar"]);
+  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de"]);
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa
@@ -2991,7 +3167,7 @@ document.addEventListener("click", ev => {
 });
 document.addEventListener("click", ev => { if(ev.target.id === "previa-site") fecharPrevia(); });
 document.addEventListener("toggle", ev => { if(ev.target.id === "mais-detalhes") E.maisDetalhes = ev.target.open;   // continua aberto depois de salvar
-  if(ev.target.classList?.contains("todos")) E.todosAberto = ev.target.open ? Number(ev.target.id.slice(6)) : null; }, true);
+  if(ev.target.classList?.contains("todos")) E.todosFechado = ev.target.open ? null : Number(ev.target.id.slice(6)); }, true);   // v0.19.0: aberto por padrão
 // v0.17.0: Publicações — marcar todos os conteúdos para excluir em grupo
 document.addEventListener("change", ev => {
   if(ev.target.id === "marcar-todas") document.querySelectorAll("#tab-canais .sel-pub").forEach(x => { x.checked = ev.target.checked; });

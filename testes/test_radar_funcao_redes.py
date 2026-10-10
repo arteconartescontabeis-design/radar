@@ -4,6 +4,8 @@ e um armazenamento (Supabase Storage) de mentira. Sem o Deno instalado, o arquiv
 Confere: só o administrador chama; sem os segredos da Meta a autorização continua guardada; o Instagram publica em
 duas etapas (contêiner + media_publish) e o Facebook pela foto da Página; a imagem vai para o armazenamento público;
 o link do post fica registrado; o erro da Meta fica na autorização sem mostrar o token; e nunca publica duas vezes.
+v0.19.0: só o administrador aciona o robô do site no GitHub (uma API do GitHub de mentira), só com algo esperando o robô,
+uma vez a cada 30 s e sem mostrar o token.
 """
 from __future__ import annotations
 
@@ -31,12 +33,15 @@ TOKEN = "EAAtokenSecreto123"                  # token do usuário do sistema (o 
 TOKEN_PAGINA = "EAApaginaSecreta456"          # token da Página, que a Meta devolve para o token do usuário do sistema
 TOKEN_OUTRO = "EAAsemAcesso789"               # usuário do sistema sem a Página atribuída
 TOKEN_IG = "EAAinstagramSecreto321"           # v0.14.4: token gerado no aplicativo do Instagram (META_IG_TOKEN)
+TOKEN_GITHUB = "tokenGithubSecreto654"        # v0.19.0: RADAR_GITHUB_TOKEN, só na instância principal
+CAMINHO_GITHUB = "/github/repos/arteconartescontabeis-design/radar/actions/workflows/radar-site-publicar.yml/dispatches"
 JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
-ESTADO = {"chaves": [], "bucket_get_falha": False, "busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False}
+ESTADO = {"chaves": [], "bucket_get_falha": False, "busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False,
+          "github": [], "github_status": 204}
 
 
 class Ponte(BaseHTTPRequestHandler):
-    """/rest/v1 → PostgREST; /storage/v1 → armazenamento; /meta → Graph API."""
+    """/rest/v1 → PostgREST; /storage/v1 → armazenamento; /meta → Graph API; /github → API do GitHub (v0.19.0)."""
     def _responder(self, status, corpo):
         dados = corpo if isinstance(corpo, bytes) else json.dumps(corpo).encode()
         self.send_response(status)
@@ -154,6 +159,16 @@ class Ponte(BaseHTTPRequestHandler):
             return self._responder(200, {"Key": self.path})
         if self.path.startswith("/meta/"):
             return self._meta({k: v[0] for k, v in parse_qs(corpo.decode()).items()})
+        if self.path.startswith("/github/"):                               # v0.19.0: acionar o workflow (workflow_dispatch)
+            ESTADO["github"].append((self.command, self.path, self.headers.get("Authorization"), json.loads(corpo or b"null")))
+            if not ESTADO["github_status"]:                                 # GitHub fora do ar: fecha sem responder
+                self.close_connection = True
+                return
+            if ESTADO["github_status"] == 204:
+                self.send_response(204)
+                self.end_headers()
+                return
+            return self._responder(ESTADO["github_status"], {"message": "Bad credentials " + TOKEN_GITHUB})
         self._responder(404, {})
 
     def log_message(self, *a):
@@ -163,8 +178,9 @@ class Ponte(BaseHTTPRequestHandler):
 def _subir(porta, extra):
     ambiente = dict(os.environ, SUPABASE_URL=PONTE, SUPABASE_ANON_KEY=jwt("anon"), SUPABASE_SERVICE_ROLE_KEY=jwt("service_role"),
                     META_GRAPH_URL=PONTE + "/meta", RADAR_REDES_PASSO_MS="50", RADAR_REDES_ESPERA_MS="2000",
-                    RADAR_PORTA_LOCAL=str(porta), NO_COLOR="1")
-    ambiente.pop("SUPABASE_SECRET_KEYS", None)                  # só o que o teste pedir
+                    RADAR_GITHUB_API=PONTE + "/github", RADAR_PORTA_LOCAL=str(porta), NO_COLOR="1")
+    for nome in ("SUPABASE_SECRET_KEYS", "RADAR_GITHUB_TOKEN", "RADAR_GITHUB_REPO", "RADAR_GITHUB_RAMO"):
+        ambiente.pop(nome, None)                                # só o que o teste pedir
     ambiente.update(extra)
     proc = subprocess.Popen(["deno", "run", "--allow-net", "--allow-env", "--no-prompt",
                              str(RAIZ / "supabase" / "functions" / "radar-redes" / "index.ts")],
@@ -187,7 +203,7 @@ def funcao(api_postgrest):
     meta_ok = {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN, "META_IG_USER_ID": "ig-1"}
     processos = []                    # encerrados mesmo se a subida de um deles falhar (senão ficam presos nas portas dos outros testes)
     try:
-        for porta, extra in ((PORTA_FUNCAO, meta_ok), (PORTA_SEM_META, {}),
+        for porta, extra in ((PORTA_FUNCAO, {**meta_ok, "RADAR_GITHUB_TOKEN": TOKEN_GITHUB}), (PORTA_SEM_META, {}),
                              (PORTA_TOKEN_PAGINA, {**meta_ok, "META_PAGE_TOKEN": TOKEN_PAGINA}),
                              (PORTA_SEM_ACESSO, {**meta_ok, "META_PAGE_TOKEN": TOKEN_OUTRO}),
                              (PORTA_CHAVE_NOVA, {**meta_ok, "SUPABASE_SERVICE_ROLE_KEY": SECRETA}),        # como no projeto da Artecon
@@ -205,7 +221,8 @@ def funcao(api_postgrest):
 
 @pytest.fixture()
 def redes(funcao, limpo):
-    ESTADO.update(chaves=[], bucket_get_falha=False, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False)
+    ESTADO.update(chaves=[], bucket_get_falha=False, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False,
+                  github=[], github_status=204)
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
     registrar_site(c1)
@@ -453,3 +470,70 @@ def test_robo_com_a_chave_antiga_e_aceito_quando_a_funcao_tem_a_chave_nova(redes
     robo = {"Authorization": "Bearer " + jwt("service_role"), "apikey": jwt("service_role")}
     st, res = pedir({"acao": "publicar", "envio": r["facebook"]}, porta=PORTA_CHAVE_NOVA, cab=robo)
     assert (st, res["situacao"]) == (200, "publicado")
+
+
+
+# ------------------------------------------------------------------- v0.19.0: a tela aciona o robô do site na hora (workflow_dispatch)
+def autorizar_site(db):
+    """Deixa uma publicação no site esperando o robô (de outro conteúdo: o do cenário já está no site)."""
+    a2, c2 = cenario_publicavel(db, slug_fonte="rfb-noticias")
+    aprovar(c2)
+    lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c2,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        return c.execute("select radar_autorizar_site(%s, 'Tributário', %s)", (c2, lido)).fetchone()[0]
+
+
+def test_admin_aciona_o_robo_do_site_uma_vez_e_a_recusa_do_github_nao_mostra_o_token(redes):
+    """O único teste que chega ao GitHub na instância principal: a pausa de 30 s fica na memória da função, que serve o módulo
+    inteiro. Por isso as recusas do GitHub (que não contam como acionamento) vêm antes do acionamento que dá certo."""
+    db, c1 = redes
+    with como("authenticated", ADMIN) as c:
+        exclusao = c.execute("select radar_pedir_exclusao_site(%s)", (c1,)).fetchone()[0]   # o pedido de exclusão também espera o robô
+    ESTADO["github_status"] = 401                                                  # token vencido ou revogado
+    status, r = pedir({"acao": "acionar_robo"})
+    assert status == 200 and (r["acionado"], r["motivo"]) == (False, "token_recusado") and "RADAR_GITHUB_TOKEN" in r["mensagem"], r
+    assert r["mensagem"].endswith("a autorização continua guardada e sai na próxima rodada automática.") and TOKEN_GITHUB not in json.dumps(r)
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_cancelar_exclusao_site(%s)", (exclusao,)).fetchone()[0] is True
+    assert pedir({"acao": "acionar_robo"})[1]["motivo"] == "nada_pendente" and len(ESTADO["github"]) == 1
+    autorizar_site(db)
+    for st, motivo, trecho in ((403, "sem_acesso", "Actions"), (404, "sem_acesso", "arteconartescontabeis-design/radar"),
+                               (422, "workflow_recusou", "radar-site-publicar.yml"), (0, "github_fora", "não respondeu")):
+        ESTADO["github_status"] = st
+        status, r = pedir({"acao": "acionar_robo"})
+        assert (status, r["acionado"], r["motivo"]) == (200, False, motivo) and trecho in r["mensagem"], r
+        assert "continua guardada" in r["mensagem"] and TOKEN_GITHUB not in json.dumps(r)
+    assert len(ESTADO["github"]) == 5                                              # cada recusa foi uma chamada: nenhuma segura a próxima
+    ESTADO.update(github=[], github_status=204)
+    status, r = pedir({"acao": "acionar_robo"})
+    assert status == 200 and r["acionado"] is True and r["mensagem"] == "Robô acionado: a publicação deve sair em 1 a 2 minutos." and r["em"], r
+    assert ESTADO["github"] == [("POST", CAMINHO_GITHUB, "Bearer " + TOKEN_GITHUB, {"ref": "main"})]
+    # clicar de novo logo em seguida não aciona outra vez
+    status, r = pedir({"acao": "acionar_robo"})
+    assert (status, r["acionado"], r["mensagem"]) == (200, True, "O robô já foi acionado há instantes.") and len(ESTADO["github"]) == 1
+
+
+def test_sem_nada_esperando_o_robo_do_site_nao_chama_o_github(redes):
+    db, c1 = redes
+    autorizar(db, c1, "instagram")                    # autorização avulsa das redes: quem publica é a tela, não o robô do site
+    status, r = pedir({"acao": "acionar_robo"})
+    assert status == 200 and (r["acionado"], r["motivo"]) == (False, "nada_pendente") and ESTADO["github"] == [], r
+
+
+def test_sem_o_segredo_do_github_explica_e_a_autorizacao_continua_guardada(redes):
+    db, c1 = redes
+    envio = autorizar_site(db)
+    status, r = pedir({"acao": "acionar_robo"}, porta=PORTA_SEM_META)
+    assert status == 200 and (r["acionado"], r["motivo"]) == (False, "sem_token") and "RADAR_GITHUB_TOKEN" in r["mensagem"], r
+    assert ESTADO["github"] == [] and db.execute("select situacao from radar_site_envios where id = %s", (envio,)).fetchone()[0] == "autorizado"
+
+
+def test_so_o_administrador_aciona_o_robo_do_site(redes):
+    db, c1 = redes
+    autorizar_site(db)
+    st, r = pedir({"acao": "acionar_robo"}, uid=EDITOR)
+    assert st == 403 and r["message"] == "Só o administrador aciona o robô do site."
+    robo = {"Authorization": "Bearer " + jwt("service_role"), "apikey": jwt("service_role")}
+    assert pedir({"acao": "acionar_robo"}, cab=robo)[0] == 403                       # o robô só publica
+    assert pedir({"acao": "acionar_robo"}, cab={})[0] == 401
+    assert ESTADO["github"] == []

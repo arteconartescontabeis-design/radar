@@ -152,7 +152,8 @@ def test_titulos_so_sugere_e_nao_repete(funcao, limpo):
     assert status == 400
 
 
-def test_texto_para_analise_so_com_fonte_nao_oficial_e_marcado(funcao, limpo, request):
+def test_texto_para_analise_so_com_analise_pedida_e_marcado(funcao, limpo, request):
+    """v0.19.0: sem texto oficial e sem "analise", sai um rascunho normal; o texto PARA ANÁLISE (fora do site) só com "analise": true."""
     limpo.execute("update radar_fontes set oficial = false where slug = 'cgibs-noticias'")
     request.addfinalizer(lambda: limpo.execute("update radar_fontes set oficial = true where slug = 'cgibs-noticias'"))
     cap = limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
@@ -162,12 +163,19 @@ def test_texto_para_analise_so_com_fonte_nao_oficial_e_marcado(funcao, limpo, re
     limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, cap))
     IA["respostas"]["conteudo"] = {"titulo": "Novidade do Simples para análise", "titulos": [],
                                    "corpo": "Segundo o boletim, há novidade sobre o Simples. [VERIFICAR: norma e prazo] " * 3}
-    n = len(IA["pedidos"])
-    status, r = pedir("gerar", assunto_id=a, formato="flash")                     # sem "analise": recusa, como antes
-    assert status == 400 and "fonte oficial" in r["message"] and len(IA["pedidos"]) == n
     # v0.16.0: o texto veio com marca [VERIFICAR]: a segunda passada tira a marca e o ponto vai para os pontos a conferir
     IA["respostas"]["revisao"] = {"titulo": "Novidade do Simples para análise", "pendencias": ["[VERIFICAR: norma e prazo]"],
                                   "corpo": "Segundo o boletim, há novidade sobre o Simples, ainda sem a norma publicada. " * 3}
+    status, r = pedir("gerar", assunto_id=a, formato="flash")                     # sem "analise": rascunho normal
+    assert status == 200, r
+    pedido, revisao = IA["pedidos"][-2:]
+    assert "PARA ANÁLISE INTERNA" not in pedido["system"] and "sem atribuir cada parágrafo à fonte" in pedido["system"]
+    assert "<<<TEXTO DE FONTE NÃO OFICIAL" in pedido["messages"][0]["content"]
+    assert revisao["tools"][0]["name"] == "revisao" and "pode escrevê-la com palavras próprias" in revisao["system"]
+    avisos, fora = limpo.execute("select avisos_ia, fora_do_site from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
+    assert avisos[0].startswith("Escrito a partir de fonte NÃO oficial (Comitê Gestor do IBS)") and fora is False
+    assert "Pontos a conferir na fonte oficial antes de publicar (ficaram no texto, vindos de fonte não oficial): norma e prazo." in avisos
+    # com "analise": true, o modo antigo: texto PARA ANÁLISE, marcado e fora do site
     status, r = pedir("gerar", assunto_id=a, formato="flash", analise=True)
     assert status == 200, r
     pedido, revisao = IA["pedidos"][-2:]
@@ -175,11 +183,45 @@ def test_texto_para_analise_so_com_fonte_nao_oficial_e_marcado(funcao, limpo, re
     assert "'segundo o Portal Contábil SC'" in pedido["system"] and "marque com [VERIFICAR" not in pedido["system"]
     assert revisao["tools"][0]["name"] == "revisao" and "[VERIFICAR: norma e prazo]" in revisao["messages"][0]["content"]
     assert r["avisos"][0].startswith("TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (Comitê Gestor do IBS)")
-    corpo, avisos = limpo.execute("select corpo, avisos_ia from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
-    assert avisos[0].startswith("TEXTO PARA ANÁLISE") and "[VERIFICAR" not in corpo
-    # no texto para análise o dado fica no texto, atribuído à fonte não oficial: o aviso diz isso (e não "ficou fora do texto")
-    assert "Pontos a conferir na fonte oficial antes de publicar (no texto, atribuídos à fonte não oficial): norma e prazo." in avisos
+    corpo, avisos, fora = limpo.execute("select corpo, avisos_ia, fora_do_site from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
+    assert avisos[0].startswith("TEXTO PARA ANÁLISE") and "[VERIFICAR" not in corpo and fora is True
+    # sem texto oficial o dado fica no texto: o aviso diz isso (e não "ficou fora do texto")
+    assert "Pontos a conferir na fonte oficial antes de publicar (ficaram no texto, vindos de fonte não oficial): norma e prazo." in avisos
     assert not any("marcados com [VERIFICAR]" in x for x in avisos)
+
+
+def test_gerar_sem_texto_oficial_faz_rascunho_normal_que_pode_ser_aprovado(funcao, limpo, request):
+    """v0.19.0: sem texto oficial (só boletim ou portal), a IA escreve um rascunho normal a partir da fonte não oficial: na fila do
+    site, sem o marcador de texto para análise, com o aviso de fonte não oficial no topo, e o banco aceita a aprovação. O site
+    continua exigindo a fundamentação (ou o "Publicar mesmo assim")."""
+    a = _assunto_do_boletim(limpo, request)
+    IA["respostas"]["conteudo"] = {"titulo": "Prazo de opção pelo Simples vai até 15 de outubro", "titulos": [], "pendencias": ["prazo de 15 de outubro"],
+                                   "corpo": "Quem quer entrar no Simples ganhou mais alguns dias: a opção agora pode ser feita até 15 de outubro.\n\n"
+                                            "## Análise Artecon\nVale reunir os documentos da empresa com antecedência e resolver as pendências."}
+    n = len(IA["pedidos"])
+    status, r = pedir("gerar", assunto_id=a, formato="flash")
+    assert status == 200, r
+    assert len(IA["pedidos"]) == n + 1 and r["sem_oficial"] is True
+    pedido = IA["pedidos"][-1]
+    assert "<<<TEXTO DE FONTE NÃO OFICIAL" in pedido["messages"][0]["content"] and "PARA ANÁLISE INTERNA" not in pedido["system"]
+    assert "(8) PALAVRAS PRÓPRIAS: " in pedido["system"] and "sem atribuir cada parágrafo à fonte" in pedido["system"]
+    assert "entenda 'o material fornecido'" in pedido["system"] and "NÃO escreva no texto avisos sobre a origem" in pedido["system"]
+    aviso = ("Escrito a partir de fonte NÃO oficial (Comitê Gestor do IBS), sem texto oficial: confira cada número, data, prazo e norma "
+             "antes de aprovar. Para o site, inclua o texto oficial e fundamente (passo 1) ou use “Publicar mesmo assim”.")
+    assert r["avisos"][0] == aviso
+    avisos, fora = limpo.execute("select avisos_ia, fora_do_site from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
+    assert avisos[0] == aviso and fora is False and not any(x.startswith("TEXTO PARA ANÁLISE") for x in avisos)
+    assert any("FUNDAMENTAÇÃO NÃO CONFIRMADA" in x for x in avisos)               # o aviso de fundamentação continua
+    assert "Pontos a conferir na fonte oficial antes de publicar (ficaram no texto, vindos de fonte não oficial): prazo de 15 de outubro." in avisos
+    with como("authenticated", EDITOR) as x:                                     # RADAR023 é só do texto para análise
+        assert x.execute("update radar_conteudos set status = 'aprovado' where id = %s returning aprovado_por::text",
+                         (r["conteudo_id"],)).fetchone() == (EDITOR,)
+    assert limpo.execute("select radar_pendencia_assunto(%s)", (a,)).fetchone()[0].startswith("RADAR03")   # o site ainda não
+    # sem nenhum texto capturado, aí sim a IA recusa (sem chamar a IA)
+    b = limpo.execute("insert into radar_assuntos (titulo) values ('Sem texto') returning id").fetchone()[0]
+    n = len(IA["pedidos"])
+    status, r = pedir("gerar", assunto_id=b, formato="flash")
+    assert status == 400 and r["message"].startswith("Este assunto não tem nenhum texto capturado para a IA usar.") and len(IA["pedidos"]) == n
 
 
 # ------------------------------------------------ v0.16.0: o texto não leva marca nem cópia
@@ -206,7 +248,9 @@ def test_gerar_sem_marca_nem_copia_faz_uma_chamada_so_e_guarda_as_pendencias(fun
     assert len(IA["pedidos"]) == n + 1                                         # nada a revisar: uma chamada só
     sistema = IA["pedidos"][-1]["system"]
     assert "NUNCA escreva nele marcas" in sistema and "'pendencias'" in sistema and "'ADI 5.161' e 'ADI nº 5.161/DF'" in sistema
-    assert "FONTE SEMPRE CITADA" in sistema and "BOLETIM PAGO" in sistema and "[VERIFICAR: o que falta]" not in sistema
+    assert "(8) PALAVRAS PRÓPRIAS: " in sistema and "BOLETIM PAGO" in sistema and "[VERIFICAR: o que falta]" not in sistema
+    assert "não diga em cada parágrafo de onde veio a informação" in sistema and "só quando for indispensável" in sistema   # v0.19.0
+    assert "sem atribuir cada parágrafo à fonte" not in sistema and "PARA ANÁLISE INTERNA" not in sistema   # com texto oficial
     assert "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): data da sessão presencial." in r["avisos"]
 
 
@@ -222,7 +266,9 @@ def test_gerar_com_marca_ou_copia_pede_a_revisao_e_grava_o_texto_revisado(funcao
     assert status == 200, r
     assert len(IA["pedidos"]) == n + 2
     rev = IA["pedidos"][-1]
-    assert rev["tools"][0]["name"] == "revisao" and "Você revisa" in rev["system"] and "passa a dizer de onde veio" in rev["system"]
+    assert rev["tools"][0]["name"] == "revisao" and "Você revisa" in rev["system"]
+    # v0.19.0: o trecho igual é reescrito com palavras próprias; a fonte só entra no parágrafo da frase indispensável
+    assert "listado é reescrito com palavras próprias" in rev["system"] and "não acrescente a fonte aos outros parágrafos" in rev["system"]
     msg = rev["messages"][0]["content"]
     assert "Marcas e comentários de dúvida a resolver" in msg and "a fonte indica 30/9" in msg
     assert "Trechos iguais ao da fonte sem a fonte citada no parágrafo" in msg and "contribuinte deverá destacar a CBS no documento fiscal" in msg
@@ -236,8 +282,8 @@ def test_gerar_com_marca_ou_copia_pede_a_revisao_e_grava_o_texto_revisado(funcao
 
 
 def test_trecho_igual_com_a_fonte_citada_no_paragrafo_nao_pede_revisao(funcao, limpo):
-    """v0.18.0: o texto pode ficar igual ao da fonte quando o mesmo parágrafo diz de onde veio; sem isso, a segunda passada
-    acrescenta a fonte (e no trecho tirado do boletim pago, reescreve)."""
+    """v0.18.0: o trecho igual ao da fonte com o mesmo parágrafo dizendo de onde veio não pede revisão; sem isso, a segunda passada
+    o reescreve com palavras próprias (v0.19.0; a fonte no parágrafo só fica se a frase for indispensável)."""
     a, _ = _assunto_com_texto(limpo)
     citado = "Segundo a Receita Federal do Brasil, a " + COPIADO[2:]
     IA["respostas"]["conteudo"] = {"titulo": "CBS de 0,9% na transição", "titulos": [], "pendencias": [],
@@ -417,6 +463,38 @@ def test_verificar_procura_so_em_sites_oficiais_e_guarda_so_o_que_a_busca_trouxe
     assert status == 200 and r["verificacao"]["situacao"] == "nao_encontrada" and r["verificacao"]["fontes"] == []
 
 
+def test_verificar_rapido_so_busca_e_para_na_terceira_volta(funcao, limpo, request):
+    """v0.19.0: o "Gerar com IA" verifica antes de escrever com "rapido": até 3 buscas, sem ler páginas (web_fetch) e no máximo
+    3 voltas, a última já pedindo o registro (em produção a verificação completa passou de 110 s). Sem "rapido", tudo como antes."""
+    a = _assunto_do_boletim(limpo, request)
+    busca = lambda i: _resposta([{"type": "server_tool_use", "id": f"s{i}", "name": "web_search", "input": {"query": "prazo opção Simples"}},
+                                 {"type": "web_search_tool_result", "tool_use_id": f"s{i}", "content": []}], parar="pause_turn", buscas=1)
+    IA["fila"][:] = [busca(1), busca(2), busca(3)]
+    n = len(IA["pedidos"])
+    status, r = pedir("verificar", assunto_id=a, rapido=True)
+    assert status == 502 and "não concluiu a verificação" in r["message"]
+    pedidos = IA["pedidos"][n:]
+    assert len(pedidos) == 3                                                   # no máximo 3 voltas
+    for p in pedidos:
+        tipos = {f.get("type", "custom"): f for f in p["tools"]}
+        assert tipos["web_search_20260209"]["max_uses"] == 3 and not any("web_fetch" in t for t in tipos)
+    assert "web_fetch" not in pedidos[0]["system"] and "no máximo 3 buscas" in pedidos[0]["system"]
+    assert [p["tool_choice"] for p in pedidos] == [{"type": "auto"}] * 2 + [{"type": "tool", "name": "verificacao"}]
+    assert "Não há mais tempo para buscar" in pedidos[-1]["messages"][-1]["content"]
+    assert limpo.execute("select verificacao from radar_assuntos where id = %s", (a,)).fetchone()[0] is None   # nada gravado
+    # sem "rapido": 4 buscas, com a leitura de páginas, e a terceira volta ainda pode buscar
+    IA["fila"][:] = [busca(1), busca(2), busca(3), _resposta([{"type": "tool_use", "id": "t1", "name": "verificacao", "input": {
+        "situacao": "nao_encontrada", "resumo": "Nada oficial.", "fontes": [], "divergencias": []}}])]
+    n = len(IA["pedidos"])
+    status, r = pedir("verificar", assunto_id=a)
+    assert status == 200 and r["verificacao"]["situacao"] == "nao_encontrada", r
+    pedidos = IA["pedidos"][n:]
+    assert len(pedidos) == 4 and [p["tool_choice"] for p in pedidos] == [{"type": "auto"}] * 4
+    tipos = {f.get("type", "custom"): f for f in pedidos[0]["tools"]}
+    assert tipos["web_search_20260209"]["max_uses"] == 4 and tipos["web_fetch_20260209"]["max_uses"] == 2
+    assert "a leitura (web_fetch)" in pedidos[0]["system"]
+
+
 def test_gerar_usa_a_verificacao_e_tira_o_aviso_de_origem_do_texto(funcao, limpo, request):
     a = _assunto_do_boletim(limpo, request)
     limpo.execute("""update radar_assuntos set verificacao = '{"situacao": "confirmada", "resumo": "Receita confirma.", "em": "2026-10-07T10:00:00Z",
@@ -426,7 +504,7 @@ def test_gerar_usa_a_verificacao_e_tira_o_aviso_de_origem_do_texto(funcao, limpo
         "corpo": "*Este informativo é baseado em material de fonte não oficial e precisa ser conferido.*\n\nO prazo de opção foi prorrogado até 15 de outubro, "
                  "segundo a Receita Federal.\n\nA Receita alerta que boletos enviados por fontes não oficiais são golpe.\n\n"
                  "## Análise Artecon\nQuem pretende optar deve organizar os documentos antes do novo prazo."}
-    status, r = pedir("gerar", assunto_id=a, formato="informativo", analise=True)
+    status, r = pedir("gerar", assunto_id=a, formato="informativo")     # v0.19.0: o rascunho normal, sem texto oficial
     assert status == 200, r
     pedido = IA["pedidos"][-1]
     assert "<<<VERIFICAÇÃO EM FONTES OFICIAIS" in pedido["messages"][0]["content"] and "Receita Federal — Prazo (05/10/2026)" in pedido["messages"][0]["content"]

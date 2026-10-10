@@ -1,4 +1,4 @@
-# Radar Artecon — v0.18.0
+# Radar Artecon — v0.19.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,7 +12,38 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
-A v0.18.0 muda a regra do **texto igual ao da fonte**:
+A v0.19.0 junta a IA num botão só e acelera a publicação:
+
+- **"Gerar com IA"** (passo 1 Fonte, quadro do próximo passo e passo 2): sem texto oficial, procura a fonte oficial na internet
+  (a busca rápida, de até 1 minuto e meio: se demorar, segue sem ela); com texto oficial, busca o trecho que comprova. Depois
+  escreve o rascunho e faz a capa com a ilustração da IA. O aviso mostra a etapa (1 de 3, 2 de 3, 3 de 3) e uma etapa que
+  falha não impede as outras.
+- **Texto com ou sem fundamentação legal:** sem texto oficial, a IA escreve um **rascunho normal** (não mais o "texto para
+  análise"), com o aviso de fonte não oficial no topo dos pontos a conferir. Revisão e aprovação continuam da equipe; para o
+  site continua valendo a fundamentação, ou o "Publicar mesmo assim" do administrador (com o motivo).
+- **Mínimo de texto igual ao da fonte:** a IA escreve com palavras próprias e só repete a frase da fonte quando é indispensável
+  (dispositivo legal, definição legal), entre aspas, com a menção de quem é **só naquele parágrafo**; os outros parágrafos não
+  citam a fonte (ela sai no fim da notícia, no campo Fonte). O "Revisar com IA" reescreve o trecho igual com palavras próprias.
+  O boletim pago (ITC) continua nunca copiado.
+- **Ilustração:** o "Gerar texto com IA" também faz a capa com a ilustração; se a ilustração falha, o recado diz o motivo; se a
+  imagem foi criada e a gravação falhou, aparece **"Gravar a ilustração de novo"** (sem nova consulta nem cobrança). A capa ao
+  lado do assunto passa a ser a do conteúdo que acabou de ser gerado.
+- **Publicar em todos** fica à vista: o quadro já vem aberto no passo Publicar, o próximo passo tem o botão "Publicar em todos
+  (site, Instagram e Facebook)" e a aba **Publicações** tem "Publicar em todos" nos aprovados que faltam.
+- **Publicar nos canais que faltam:** com a notícia já no site, o quadro "Publicar nos canais que faltam" publica no Instagram e
+  no Facebook (cada um ou os dois) na hora, sem um canal esperar o outro. Na aba Publicações, o canal que falta (ou excluído)
+  tem o botão "Publicar".
+- **Robô do site na hora:** o agendamento do GitHub ("a cada 15 minutos") chegava a rodar só a cada 3 a 7 horas. Agora, ao
+  autorizar a publicação no site (ou "Publicar em todos", ou pedir a exclusão), o Radar pede à função `radar-redes` que acione
+  o robô na hora: a notícia sai em 1 a 2 minutos. O botão **"Acionar o robô agora"** aparece no que estiver esperando. Precisa do
+  segredo `RADAR_GITHUB_TOKEN` no Supabase (passo a passo em "Robô do site na hora", abaixo); sem ele, vale o agendamento, que
+  passou para os minutos 7, 22, 37 e 52 de cada hora.
+
+Mudam o `index.html`, as funções `radar-ia` (v0.19.0) e `radar-redes` (v0.19.0), o robô de rascunhos (`radar_rascunhos.py`:
+a regra nova de escrita) e o workflow `radar-site-publicar.yml` (horário). O banco não muda (o `radar-setup-v0.19.0.sql` só
+registra a versão).
+
+A v0.18.0 mudou a regra do **texto igual ao da fonte**:
 
 - **Pode ficar igual, desde que a fonte esteja citada.** O texto pode usar as frases da norma, do comunicado oficial ou da
   notícia quando isso der precisão, desde que **cada parágrafo** em que o trecho está diga de onde veio ("Segundo a Receita
@@ -783,7 +814,9 @@ Regras combinadas com o escritório: o robô **só cadastra notícias** no paine
 1. Conteúdo aprovado e assunto pronto para o site (confirmado oficialmente e com trecho conferido
    em fonte oficial) → passo 4 → confira em **Ver como fica no site**, escolha a **categoria do site**
    e clique em **Autorizar publicação no site** (só o administrador vê o botão).
-2. A cada 15 minutos o workflow `radar-site-publicar.yml` confere se há autorização. Havendo, o robô
+2. Na hora da autorização, o Radar aciona o workflow `radar-site-publicar.yml` pela função `radar-redes` (v0.19.0, segredo
+   `RADAR_GITHUB_TOKEN`); sem o segredo, vale o agendamento (minutos 7, 22, 37 e 52 de cada hora, que o GitHub pode atrasar).
+   O workflow confere se há autorização. Havendo, o robô
    (`robo/radar_site_publicar.py`) marca "enviando" (nunca reenvia), entra no painel do site, preenche
    título, palavras-chave, descrição, texto (com subtítulos, listas e negrito), categoria e capa, e clica
    em "Gravar notícia" — **o site publica na hora**.
@@ -798,6 +831,28 @@ Regras combinadas com o escritório: o robô **só cadastra notícias** no paine
   nunca resolve nem contorna a verificação: se o site passar a exigir, ele para e mostra o motivo no passo 4.
 - **Segredos do GitHub**: `ARTECON_SITE_USUARIO` e `ARTECON_SITE_SENHA` (além dos do banco). Nunca no código,
   no banco ou no chat. O registro do GitHub Actions não mostra texto, usuário, senha nem cookie.
+
+### Robô do site na hora (v0.19.0)
+
+O agendamento do GitHub atrasa muito (em outubro de 2026 rodou a cada 3 a 7 horas). Para a publicação e a exclusão no site
+saírem em 1 a 2 minutos, a função `radar-redes` aciona o robô logo depois da autorização. Ela precisa de um **token de acesso
+fino do GitHub**, só deste repositório, guardado **só** no Supabase:
+
+1. GitHub → foto do perfil → **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** →
+   **Generate new token**.
+2. **Token name:** "Radar — acionar o robô do site". **Expiration:** até 1 ano (anote a data para renovar).
+   **Resource owner:** `arteconartescontabeis-design`.
+3. **Repository access:** "Only select repositories" → `radar`.
+4. **Permissions → Repository permissions → Actions:** "Read and write" (o "Metadata: Read-only" vem junto). Nada mais.
+5. **Generate token** e copie o valor (aparece uma vez só).
+6. Supabase (projeto do Radar) → **Edge Functions → Secrets → Add new secret**: nome `RADAR_GITHUB_TOKEN`, valor = o token.
+   **Nunca** pelo chat, nos segredos do GitHub, no `index.html` ou no `radar-config.js`.
+7. Teste: autorize uma publicação; o recado diz "Robô acionado: a publicação deve sair em 1 a 2 minutos." Sem o segredo, o
+   recado explica que falta o `RADAR_GITHUB_TOKEN` e a publicação sai na próxima rodada automática.
+
+Segurança: a função aciona sempre o mesmo workflow (`radar-site-publicar.yml`, fixo no código), só a pedido do administrador,
+só quando há publicação ou exclusão esperando e no máximo uma vez a cada 30 segundos. O token nunca vai para a tela nem para
+os registros. Quando ele vencer, o recado avisa ("o GitHub recusou o token") e basta gerar outro e trocar o segredo.
 - **Sessão no site**: o login do robô pode encerrar a sessão de quem estiver usando o mesmo usuário no
   painel do site. O ideal é um usuário só do Radar, com acesso apenas ao cadastro de notícias.
 - O registro manual ("Registrar publicação no site") e o registro automático da v0.8.0 continuam valendo.
@@ -910,6 +965,11 @@ boletins da ITC entra uma vez só). O robô não visita essa fonte. Os boletins 
 repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
+
+**Da v0.18.0 para a v0.19.0:** (1) Edge Functions → `radar-ia` e `radar-redes` → cole o `index.ts` de cada uma desta versão e
+faça o Deploy ("Verify JWT" ligado nas duas; o painel pede a função `radar-ia` v0.19.0); (2) Supabase → Edge Functions → Secrets →
+`RADAR_GITHUB_TOKEN` (veja "Robô do site na hora"); (3) Ctrl+F5 no Radar. O banco não muda (o `radar-setup-v0.19.0.sql` só
+registra a versão). O robô de rascunhos e o workflow atualizam sozinhos pelo GitHub.
 
 **Da v0.17.0 para a v0.18.0:** (1) SQL Editor → execute `sql/radar-setup-v0.19.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.17.0); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel
