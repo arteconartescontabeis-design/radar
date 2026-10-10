@@ -51,6 +51,7 @@ from radar_util import ErroDownload, baixar, hoje_brasilia
 
 CADASTRO = "/admin/news/register"
 ESPERA_MAXIMA = timedelta(hours=2)       # "enviando" sem achar a notícia no site depois disso: erro, conferir à mão
+FONTES_PAGAS = ("itc-email",)            # v0.18.0: boletim pago (o mesmo de radar_rascunhos.FONTES_PAGAS): nunca é o link da fonte
 OBSERVACAO = "Publicado pelo robô com autorização do administrador (envio nº {})."
 CAMPOS = {"title", "keywords", "metadescription", "text", "category", "image"}
 
@@ -272,11 +273,13 @@ class Publicador:
         return acao, dados, arquivos
 
     def link_fonte(self, c: dict) -> str | None:
-        """Link da notícia ou norma de origem: a captura de fonte oficial do assunto (ou, sem ela, a primeira)."""
+        """Link da notícia ou norma de origem: a captura de fonte oficial do assunto (ou, sem ela, a primeira). v0.18.0: o boletim
+        pago fica por último (o campo Fonte não o cita; o link não pode levar a ele quando há outra captura)."""
         vinc = self.banco._pedir("GET", "radar_assunto_capturas", params={
-            "select": "radar_capturas(id,url,radar_fontes(oficial))", "assunto_id": f"eq.{c['assunto_id']}"}) or []
+            "select": "radar_capturas(id,url,radar_fontes(oficial,slug))", "assunto_id": f"eq.{c['assunto_id']}"}) or []
         caps = sorted((v["radar_capturas"] for v in vinc if v.get("radar_capturas")),
-                      key=lambda x: (not (x.get("radar_fontes") or {}).get("oficial"), x["id"]))
+                      key=lambda x: ((x.get("radar_fontes") or {}).get("slug") in FONTES_PAGAS,
+                                     not (x.get("radar_fontes") or {}).get("oficial"), x["id"]))
         if not caps:
             return None
         partes = urlsplit(caps[0]["url"])

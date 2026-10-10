@@ -69,6 +69,16 @@ def test_configuracao_volta_ao_padrao_quando_o_valor_e_estranho():
 # ---------------------------------------------------------------- v0.16.0: o mesmo detector de cópia em três lugares
 _CBS = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos por cento em todas as operações realizadas"
 _RFB = ["Receita Federal do Brasil", "Receita Federal"]
+_ITC_A = "Na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros de produtos."
+_B = "O contribuinte deverá destacar a CBS no documento fiscal em todas as operações realizadas a partir do mês de janeiro."
+_PORTAL_C = "Os escritórios de contabilidade relatam muita dúvida dos clientes sobre como ajustar os sistemas emissores de notas a tempo."
+_LZ = ("O programa Litígio Zero, que permite a negociação de débitos inscritos em dívida ativa com descontos sobre multas e juros para "
+       "empresas de todos os portes, foi prorrogado até o fim de dezembro.")
+_S = ["A empresa que aderir ao parcelamento especial poderá quitar o saldo devedor em até sessenta prestações mensais e sucessivas corrigidas.",
+      "O pedido de adesão será feito exclusivamente pelo portal eletrônico, mediante a apresentação dos documentos que comprovem a regularidade.",
+      "A falta de pagamento de três parcelas seguidas implicará a exclusão imediata do programa e a cobrança integral do valor remanescente."]
+_rfb = lambda t: {"texto": t, "nome": "Receita Federal do Brasil", "nomes": _RFB}
+_min = lambda t: t[0].lower() + t[1:]
 CASOS_COPIA = [
     ("A norma dispõe sobre a apuração da Contribuição Social sobre Bens e Serviços (CBS) no período de transição. "
      "Art. 2º O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9%.",
@@ -100,11 +110,23 @@ CASOS_COPIA = [
                                            {"texto": f"{_CBS} desde já.", "nome": "Receita Federal do Brasil", "nomes": _RFB}]),
     ("Segundo a “Receita Federal”, o contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos por cento "
      "em todas as operações realizadas.", ["texto simples sem nomes: " + _CBS]),
+    # da varredura da v0.18.0: frase só do boletim pago colada à frase oficial; frase só do portal colada à da Receita (citando só a Receita)
+    ("Segundo a Receita Federal do Brasil, " + _min(_ITC_A) + " " + _B,
+     [{"texto": _ITC_A + " " + _B, "nome": "ITC Consultoria", "nomes": ["ITC Consultoria"], "paga": True}, _rfb(_B)]),
+    ("Segundo a Receita Federal do Brasil, " + _min(_PORTAL_C) + " " + _B,
+     [{"texto": _PORTAL_C + " " + _B, "nome": "Portal Contábil SC", "nomes": ["Portal Contábil SC"]}, _rfb(_B)]),
+    # aspas coladas em pontuação não atrapalham; cada parágrafo precisa da sua citação; a repetição vale pelo próprio parágrafo
+    ("Segundo a Receita Federal do Brasil, " + _min(_LZ).replace("Litígio Zero,", "“Litígio Zero”,"), [_rfb(_LZ)]),
+    ("Segundo a Receita Federal, " + _min(_S[0]) + "\n\n" + _S[1] + "\n\n" + _S[2], [_rfb(" ".join(_S))]),
+    ("Segundo a Receita Federal, " + _min(_B) + "\n\nPor isso: " + _min(_B), [_rfb(_B)]),
+    # o parágrafo logo depois da lista não herda a citação da frase que apresenta a lista
+    ("Segundo a Receita Federal, as regras são:\n- prazo maior para todos;\n" + _B, [_rfb(_B)]),
 ]
 NOMES_FONTE = [("Receita Federal — Notícias", "Receita Federal do Brasil"), ("PGFN — Notícias", "Procuradoria-Geral da Fazenda Nacional (PGFN)"),
                ("SEF/SC — Últimas legislações", "Secretaria de Estado da Fazenda de Santa Catarina"), ("Portal Contábil SC", "Portal Contábil SC"),
                ("", ""), (None, "Comitê Gestor do IBS"), ("DOU – Destaques", "Imprensa Nacional"),
-               ("Receita Federal — Atos normativos (Normas)", "Receita Federal do Brasil (RFB)")]
+               ("Receita Federal — Atos normativos (Normas)", "Receita Federal do Brasil (RFB)"),
+               ("Simples Nacional — Notícias", "Comitê Gestor do Simples Nacional"), ("Diário Oficial da União — Destaques", "Imprensa Nacional")]
 
 
 def _extrair(fonte: str, inicio: str, fim: str) -> str:
@@ -128,7 +150,12 @@ def test_detector_de_copia_do_robo_e_igual_ao_da_tela_e_da_funcao(tmp_path):
         (False, False, "Receita Federal do Brasil"), (False, True, "ITC Consultoria"), (True, False, "Receita Federal do Brasil"), (False, False, "")]
     assert esperado["nomes"][:3] == [["receita federal do brasil", "receita federal"], ["pgfn", "procuradoria geral da fazenda nacional"],
                                      ["secretaria de estado da fazenda de santa catarina", "sef sc"]]
-    assert esperado["nomes"][-1] == ["rfb", "receita federal do brasil", "receita federal"]     # "(Normas)" não é sigla: não vira nome
+    assert esperado["nomes"][-3] == ["rfb", "receita federal do brasil", "receita federal"]     # "(Normas)" não é sigla: não vira nome
+    assert esperado["nomes"][-2:] == [["comite gestor do simples nacional"], ["imprensa nacional", "diario oficial da uniao"]]
+    novos = copias[13:]
+    assert [(len(x), [(t["citado"], t["paga"]) for t in x]) for x in novos] == [
+        (1, [(False, True)]), (1, [(False, False)]), (1, [(True, False)]), (1, [(False, False)]),
+        (2, [(True, False), (False, False)]), (1, [(False, False)])]
     for nome, codigo in (("tela.ts", tela), ("funcao.ts", funcao)):
         arq = tmp_path / nome
         arq.write_text("// @ts-nocheck\n" + codigo + f"\nconst casos = JSON.parse(Deno.readTextFileSync({json.dumps(str(tmp_path / 'casos.json'))}));\n"
@@ -166,3 +193,14 @@ def test_comentario_de_duvida_igual_no_robo_na_tela_e_na_funcao(tmp_path):
         saida = subprocess.run(["deno", "run", "--allow-read", "--no-prompt", str(arq)], capture_output=True, text=True, timeout=60)
         assert saida.returncode == 0, saida.stderr
         assert json.loads(saida.stdout) == esperado, nome
+
+
+def test_fontes_das_capturas_marca_o_boletim_pago_e_poe_a_oficial_antes():
+    """v0.18.0: o robô reconhece o boletim pago pelo slug e manda à IA os nomes pelos quais a fonte pode ser citada."""
+    grupo = [{"texto": "texto do boletim", "radar_fontes": {"slug": "itc-email", "nome": "ITC Consultoria — boletim por e-mail", "orgao": "ITC Consultoria"}},
+             {"texto": None, "radar_fontes": {"slug": "rfb-noticias", "nome": "Receita Federal — Notícias", "orgao": "Receita Federal do Brasil"}},
+             {"texto": "texto oficial", "radar_fontes": {"slug": "rfb-normas", "nome": "Receita Federal — Atos normativos (Normas)",
+                                                          "orgao": "Receita Federal do Brasil", "oficial": True}}]
+    fontes = rr.fontes_das_capturas(grupo)
+    assert [(f["nome"], f["paga"]) for f in fontes] == [("Receita Federal do Brasil", False), ("ITC Consultoria", True)]
+    assert fontes[0]["nomes"] == ["receita federal do brasil", "receita federal"]

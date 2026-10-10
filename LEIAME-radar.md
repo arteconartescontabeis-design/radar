@@ -15,22 +15,25 @@ site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) e
 A v0.18.0 muda a regra do **texto igual ao da fonte**:
 
 - **Pode ficar igual, desde que a fonte esteja citada.** O texto pode usar as frases da norma, do comunicado oficial ou da
-  notícia quando isso der precisão, desde que o **mesmo parágrafo** diga de onde veio ("Segundo a Receita Federal, …",
-  "Conforme o Portal Contábil SC, …"; num item de lista, a frase que apresenta a lista) e o campo **Fonte** esteja preenchido
+  notícia quando isso der precisão, desde que **cada parágrafo** em que o trecho está diga de onde veio ("Segundo a Receita
+  Federal, …", "Conforme o Portal Contábil SC, …"; num item de lista, a frase que apresenta a lista) e o campo **Fonte** esteja preenchido
   (ele sai no fim da notícia, com o link). Base: atos oficiais não têm proteção de direito autoral (Lei 9.610/98, art. 8º, IV) e
   notícia pode ser reproduzida com a menção de onde foi publicada (art. 46, I, "a").
   - Na tela, o trecho igual **com** a fonte citada aparece num quadro azul e não impede aprovar; **sem** a fonte citada,
     continua no quadro vermelho, e **Revisar com IA** acrescenta a fonte no parágrafo em vez de reescrever.
   - O Radar reconhece a fonte pelo nome do órgão ou do veículo (ex.: "Receita Federal do Brasil" ou "Receita Federal"),
-    pela sigla entre parênteses e pela sigla do nome da fonte ("PGFN", "SEF/SC").
+    pela sigla entre parênteses, pela sigla do nome da fonte ("PGFN", "SEF/SC") e pelo nome da publicação ("Diário Oficial
+    da União"). Se o campo Fonte estiver vazio, o quadro pede só que ele seja preenchido.
 - **A IA segue a mesma regra** no "Gerar com IA", nos rascunhos do robô e no "Revisar com IA".
 - **Boletim pago (ITC):** as frases do boletim de assinatura nunca são reproduzidas, nem citando a ITC (o contrato da
   assinatura não permite republicar). A IA usa só a informação, com palavras próprias, atribuída ao órgão que publicou o ato.
 - **Campo Fonte:** no conteúdo novo, além do órgão oficial, entra também o portal de notícias de onde veio a informação
-  (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra.
+  (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
+  leva ao site do boletim pago quando o assunto tem outra captura.
 
 Mudam o banco (`radar-setup-v0.18.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
-a função `radar-ia` (v0.18.0) e o robô de rascunhos (`radar_rascunhos.py`). A função `radar-redes` não muda.
+a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
+da fonte). A função `radar-redes` não muda.
 
 A v0.17.0 trouxe duas opções em **Publicações**:
 
@@ -541,24 +544,28 @@ de qual outra captura ela é **repetição**. O banco valida cada item (`radar_g
   mostra tudo, inclusive as repetições e as de baixa relevância.
 - O resumo da execução nunca mostra o token (`iagw_…` aparece como `iagw_***`).
 
-### Texto original, nunca cópia (v0.7.0)
+### Texto igual ao da fonte, com a fonte citada (v0.18.0; comparação com a fonte desde a v0.7.0)
 
-A IA recebe a regra de redigir com palavras próprias e só transcrever, entre aspas e com no máximo
-25 palavras, o trecho de dispositivo legal cuja redação exata seja indispensável. Além disso, o
-Radar compara cada conteúdo (escrito pela equipe ou pela IA) com o texto das capturas do assunto:
-sequência de 12 palavras ou mais igual à fonte aparece num quadro vermelho e o botão Aprovar
-recusa. A comparação ignora maiúsculas, acentos e pontuação. Não contam para as 12 palavras:
-números, datas, nomes próprios e siglas, o nome de uma norma ("Instrução Normativa RFB nº 2.300,
-de 5 de março de 2026") e as palavras de ligação entre eles ("de", "e", "na"). Citação entre aspas é aceita quando curta:
-até 40 palavras cada e 120 no total do texto — pôr o texto inteiro entre aspas não adianta. O
-título do conteúdo não entra na comparação.
+O Radar compara cada conteúdo (escrito pela equipe ou pela IA) com o texto das capturas do assunto: sequência de 12 palavras
+ou mais igual à fonte é um **trecho igual ao da fonte**. A comparação ignora maiúsculas, acentos e pontuação. Não contam para
+as 12 palavras: números, datas, nomes próprios e siglas, o nome de uma norma ("Instrução Normativa RFB nº 2.300, de 5 de março
+de 2026") e as palavras de ligação entre eles ("de", "e", "na"). Citação curta entre aspas não conta (até 40 palavras cada e
+120 no total do texto). O título do conteúdo não entra na comparação.
 
-Limites: a comparação é só com o texto capturado do próprio assunto (não com a internet nem com
-outros sites de notícia), não detecta paráfrase muito próxima — quem troca uma palavra a cada
-poucas escapa —, pode barrar por engano um trecho legítimo muito parecido com a fonte (basta
-reescrever ou citar entre aspas) e é feita na tela: quem grava direto no banco não passa por ela. É um apoio à
-revisão, não um detector de plágio. O campo **Fonte** é preenchido só na criação do conteúdo
-(com os órgãos das capturas oficiais do assunto); capturas incluídas depois não o alteram.
+- **Pode ficar**, num quadro azul que não impede aprovar, quando **cada parágrafo** em que o trecho está diz de onde veio,
+  pelo nome da fonte ("Segundo a Receita Federal, …", "Conforme o Portal Contábil SC, …", "Conforme publicado no Diário Oficial
+  da União, …"; num item de lista, vale a frase que apresenta a lista) **e** o campo **Fonte** está preenchido (ele sai no fim
+  da notícia, com o link). O Radar reconhece a fonte pelo nome do órgão (também sem "do Brasil"), pela sigla entre parênteses
+  e pelo começo do nome da fonte quando é uma sigla ("PGFN", "SEF/SC") ou o nome da publicação ("Diário Oficial da União").
+- **Não pode ficar** (quadro vermelho; o Aprovar recusa): o trecho sem a fonte citada no parágrafo, ou com o campo Fonte
+  vazio, e qualquer trecho com frases do **boletim pago** (ITC), mesmo citando a ITC. O botão **Revisar com IA** acrescenta
+  a fonte no parágrafo (e reescreve o trecho do boletim pago); **Autorizar mesmo assim** deixa como está, com o motivo registrado.
+
+A IA (Gerar com IA, rascunhos do robô e Revisar com IA) segue a mesma regra. Limites: a comparação é só com o texto
+capturado do próprio assunto (não com a internet nem com outros sites de notícia), não detecta paráfrase muito próxima e é
+feita na tela: quem grava direto no banco não passa por ela. É um apoio à revisão, não um detector de plágio. O campo
+**Fonte** é preenchido só na criação do conteúdo (com os órgãos das capturas oficiais do assunto e, depois deles, os portais
+de notícia; o boletim pago não entra); capturas incluídas depois não o alteram.
 
 ### Assunto em 4 passos (v0.10.0; por etapas desde a v0.7.0)
 

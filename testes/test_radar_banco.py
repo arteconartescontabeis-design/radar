@@ -2052,6 +2052,22 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
 FONTES_NOVAS = RAIZ / "sql" / "radar-fontes-novas-2026-10.sql"
 
 
+def test_campo_fonte_inclui_o_portal_depois_do_orgao_oficial_e_nunca_o_boletim_pago(limpo):
+    """v0.18.0: o conteúdo novo nasce com a Fonte = órgãos oficiais e, depois, os portais de notícia; o boletim pago não entra."""
+    assert psql(FONTES_NOVAS).returncode == 0
+    def assunto(*slugs):
+        a = novo_assunto(limpo)
+        for n, slug in enumerate(slugs):
+            cap = nova_captura(limpo, slug=slug, url=f"https://exemplo.gov.br/fonte-{a}-{n}")
+            limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, cap))
+        return limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo) values (%s, 'flash', 'T', 'Texto.')
+                                returning fonte_credito""", (a,)).fetchone()[0]
+    assert assunto("itc-email", "portalcontabilsc-noticias", "rfb-normas") == "Receita Federal do Brasil, Portal Contábil SC"
+    assert assunto("portalcontabilsc-noticias", "itc-email") == "Portal Contábil SC"
+    assert assunto("itc-email") is None
+    assert assunto("rfb-normas", "rfb-noticias") == "Receita Federal do Brasil"          # o mesmo órgão, uma vez só
+
+
 def test_fontes_novas_entram_desligadas_e_o_sql_pode_rodar_de_novo(limpo):
     assert psql(FONTES_NOVAS).returncode == 0
     linhas = dict((s, (a, o)) for s, a, o in limpo.execute(

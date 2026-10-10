@@ -21,7 +21,8 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import requests
 
-from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SEM_PERFIL, como, jwt
+from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SEM_PERFIL, como, jwt, psql
+FONTES_NOVAS = RAIZ / "sql" / "radar-fontes-novas-2026-10.sql"
 
 sync_api = pytest.importorskip("playwright.sync_api")
 
@@ -2785,7 +2786,7 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
     salvar("## O que mudou\nA partir de 2027 as empresas passam a informar a CBS na nota. " + copiado + ". É preciso ajustar o sistema emissor antes da virada do ano.")
     quadro = pagina.inner_text(".copia")
     assert "Texto igual ao da fonte sem a fonte citada em 1 trecho" in quadro and "destacar a CBS no documento fiscal" in quadro and "palavras seguidas" in quadro
-    assert "(Receita Federal do Brasil)" in quadro and "o mesmo parágrafo precisa dizer de onde veio" in quadro
+    assert "(Receita Federal do Brasil)" in quadro and "cada parágrafo precisa dizer de onde veio" in quadro
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
@@ -2845,11 +2846,7 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     a, _ = assunto_com_texto(limpo)
     pago = ("A empresa optante deverá revisar o cadastro de produtos no sistema emissor antes da virada do ano para evitar "
             "rejeição das notas fiscais eletrônicas emitidas no primeiro dia útil.")
-    # a fonte do boletim pago (a mesma de sql/radar-fontes-novas-2026-10.sql)
-    limpo.execute("""insert into radar_fontes (slug, nome, orgao, abrangencia, oficial, ativo, tipo_coletor, url, config, frequencia_horas)
-                     values ('itc-email', 'ITC Consultoria — boletim por e-mail', 'ITC Consultoria', 'geral', false, false, 'rss',
-                             'https://www.itcnet.com.br/', '{"origem": "email", "remetente": "itc@itcnet.com.br"}', 24)
-                     on conflict (slug) do nothing""")
+    assert psql(FONTES_NOVAS).returncode == 0                 # a fonte do boletim pago, como no banco de verdade
     itc = captura(limpo, titulo="ITCNET — CBS na nota", url="https://www.itcnet.com.br/?radar=teste", slug="itc-email", texto=pago)
     limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, itc))
     copiado = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9% (nove décimos por cento) a partir de 1º de janeiro de 2027"
@@ -2875,7 +2872,8 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     assert "com a fonte citada no parágrafo" in quadro and "Fonte: Receita Federal do Brasil" in quadro and "(Receita Federal do Brasil)" in quadro
     # sem o campo Fonte, a notícia sairia sem a fonte no fim: volta a impedir
     salvar(citado, fonte="")
-    assert pagina.locator(".copia").count() == 1 and "campo Fonte" in pagina.inner_text(".copia")
+    assert pagina.locator(".copia.falta-fonte").count() == 1 and "o campo Fonte está vazio" in pagina.inner_text(".copia")
+    assert pagina.locator(".copia [data-acao=ia-revisar]").count() == 0       # citado: a IA não tem o que revisar, falta só o campo
     # a fonte citada noutro parágrafo não vale
     salvar("## O que mudou\nSegundo a Receita Federal, há regra nova.\n\n" + copiado + ".", fonte="Receita Federal do Brasil")
     assert pagina.locator(".copia").count() == 1

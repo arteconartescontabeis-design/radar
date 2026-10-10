@@ -390,3 +390,18 @@ def test_sem_a_funcao_de_concluir_no_banco_nao_exclui_nada_do_site(cenario):
     banco._pedir = sem_funcao
     feito = exc.Excluidor(banco, "robo@artecon", "s3nha").executar()
     assert "falta aplicar no banco" in feito[0] and SITE["exclusoes"] == [] and len(SITE["noticias"]) == 1 and SITE["logins"] == 1
+
+
+def test_link_da_fonte_nunca_e_o_do_boletim_pago_quando_ha_outra_captura():
+    """v0.18.0: o campo Fonte não cita o boletim pago (ITC); o link da fonte também não leva a ele quando há outra captura."""
+    class Banco:
+        def __init__(self, caps): self.caps = caps
+        def _pedir(self, metodo, caminho, params=None, **_):
+            assert caminho == "radar_assunto_capturas" and "slug" in params["select"]
+            return [{"radar_capturas": c} for c in self.caps]
+    itc = {"id": 1, "url": "https://www.itcnet.com.br/?radar=abc", "radar_fontes": {"oficial": False, "slug": "itc-email"}}
+    portal = {"id": 2, "url": "https://portalcontabilsc.com.br/noticias/x", "radar_fontes": {"oficial": False, "slug": "portalcontabilsc-noticias"}}
+    rfb = {"id": 3, "url": "https://www.gov.br/receitafederal/x", "radar_fontes": {"oficial": True, "slug": "rfb-noticias"}}
+    link = lambda *caps: pub.Publicador(Banco(list(caps)), "u", "s").link_fonte({"assunto_id": 1})
+    assert link(itc, portal) == portal["url"] and link(itc, portal, rfb) == rfb["url"]
+    assert link(itc) == "https://www.itcnet.com.br/"                   # só o boletim: o endereço do site, sem o marcador interno

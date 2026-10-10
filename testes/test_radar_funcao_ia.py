@@ -17,8 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 import requests
 
-from conftest import API, EDITOR, RAIZ, como, jwt
-from test_radar_banco import cenario_publicavel
+from conftest import API, EDITOR, RAIZ, como, jwt, psql
+from test_radar_banco import FONTES_NOVAS, cenario_publicavel
 
 PORTA_PONTE, PORTA_FUNCAO = 3994, 3993
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
@@ -255,6 +255,28 @@ def test_trecho_igual_com_a_fonte_citada_no_paragrafo_nao_pede_revisao(funcao, l
     status, r = pedir("gerar", assunto_id=a, formato="flash")
     assert status == 200, r
     assert len(IA["pedidos"]) == n + 3 and "(fonte: Receita Federal do Brasil)" in IA["pedidos"][-1]["messages"][0]["content"]
+
+
+def test_frase_do_boletim_pago_nao_fica_nem_citando_e_a_revisao_reescreve(funcao, limpo):
+    """v0.18.0: do boletim pago (ITC), as frases nunca são reproduzidas: citar a ITC não basta; o material da revisão marca o boletim."""
+    assert psql(FONTES_NOVAS).returncode == 0
+    a, c = _assunto_com_texto(limpo)
+    boletim = ("Na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros "
+               "de produtos antes da virada do ano.")
+    itc = limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                           select id, 'https://www.itcnet.com.br/?radar=t1', 'CBS na nota', %s, md5('cbs na nota') from radar_fontes
+                           where slug = 'itc-email' returning id""", (boletim,)).fetchone()[0]
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, itc))
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s",
+                  ("Segundo a ITC Consultoria, " + boletim[0].lower() + boletim[1:] + "\n\n" + "Texto próprio sobre a CBS. " * 4, c))
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0].isoformat()
+    IA["respostas"]["revisao"] = {"titulo": "CBS: o que muda", "pendencias": [],
+                                  "corpo": "Segundo o boletim da ITC, vale revisar os cadastros antes do fim do ano.\n\n" + "Texto próprio sobre a CBS. " * 4}
+    status, r = pedir("revisar", assunto_id=a, conteudo_id=c, lido=lido)
+    assert status == 200, r
+    msg = IA["pedidos"][-1]["messages"][0]["content"]
+    assert "(BOLETIM PAGO: reescreva com palavras próprias)" in msg and "| BOLETIM PAGO: use só a informação, nunca as frases" in msg
+    assert r["copias"] == 1 and r["restam"] == {"marcas": 0, "copias": 0}
 
 
 def test_revisao_que_volta_cortada_deixa_o_texto_original_com_aviso(funcao, limpo):
