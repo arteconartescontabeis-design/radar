@@ -222,7 +222,7 @@ _INVISIVEIS = re.compile("[\u200b-\u200d\u2060\u00ad\ufeff]")
 
 def _limpa_copia(t) -> str:
     t = unicodedata.normalize("NFD", _INVISIVEIS.sub("", str(t or "")).lower())
-    return re.sub(r"[^a-z0-9$%]+", " ", re.sub("[̀-ͯ]", "", t)).strip()
+    return re.sub(r"[^a-z0-9$%]+", " ", re.sub("[\u0300-\u036f]", "", t)).strip()
 
 
 def _propria(p: str) -> bool:

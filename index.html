@@ -1766,7 +1766,7 @@ const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" 
 /* v0.18.0: o texto pode ficar igual ao da fonte, desde que o parágrafo diga de onde veio ("Segundo a Receita Federal, …").
    Exceção: boletim pago (assinatura), cujo texto nunca é reproduzido. */
 const FONTES_PAGAS = ["itc-email"];
-const limpaCopia = t => String(t || "").replace(/[\u200b-\u200d\u2060\u00ad\ufeff]/g, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
+const limpaCopia = t => String(t || "").replace(/[\u200b-\u200d\u2060\u00ad\ufeff]/g, "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
 /* Os nomes pelos quais o texto cita a fonte: o órgão (também sem "do Brasil"), a sigla entre parênteses e o começo do nome da
    fonte quando ele é uma sigla ("PGFN — Notícias") ou a publicação ("Diário Oficial da União — Destaques"); não o pedaço do nome
    do órgão ("Simples Nacional", de "Comitê Gestor do Simples Nacional"), que é assunto e não fonte. */
@@ -1799,7 +1799,7 @@ function unidadesDoTexto(linhas){
    ("fonte"), se a fonte está citada pelo nome em cada parágrafo (ou item de lista) em que o trecho está ("citado") e se ele tem
    parte que só existe no boletim pago ("paga": não pode ficar, nem citando). */
 function trechosCopiados(corpo, fontes){
-  const N = 6, invisiveis = /[​-‍⁠­﻿]/g, MARCA = "\u0001";
+  const N = 6, invisiveis = /[\u200b-\u200d\u2060\u00ad\ufeff]/g, MARCA = "\u0001";
   const limpa = limpaCopia;
   const lista = (fontes || []).map(f => typeof f === "string" ? {texto:f, nome:"", nomes:[], paga:false}
     : {texto:String(f?.texto || ""), nome:String(f?.nome || ""), nomes:(f?.nomes || []).map(limpaCopia).filter(n => n.length >= 3), paga:!!f?.paga});

@@ -171,7 +171,7 @@ const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" 
 const FONTES_PAGAS = ["itc-email"];
 type FonteCopia = { texto: string; nome?: string; nomes?: string[]; paga?: boolean };
 type Trecho = { palavras: number; texto: string; fonte: string; paga: boolean; citado: boolean };
-const limpaCopia = (t: unknown) => String(t || "").replace(/[\u200b-\u200d\u2060\u00ad\ufeff]/g, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
+const limpaCopia = (t: unknown) => String(t || "").replace(/[\u200b-\u200d\u2060\u00ad\ufeff]/g, "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
 /** Os nomes pelos quais o texto cita a fonte: o órgão (também sem "do Brasil"), a sigla entre parênteses e o começo do nome
  *  da fonte quando ele é uma sigla ("PGFN — Notícias") ou a publicação ("Diário Oficial da União — Destaques"); não o pedaço do
  *  nome do órgão ("Simples Nacional", de "Comitê Gestor do Simples Nacional"), que é assunto e não fonte. */
@@ -200,7 +200,7 @@ function unidadesDoTexto(linhas: string[]): { unidade: number[]; textos: string[
   return { unidade, textos: partes.map((p, u) => " " + limpaCopia(p.join("\n") + (abertura[u] >= 0 ? "\n" + partes[abertura[u]].join("\n") : "")) + " ") };
 }
 function trechosCopiados(corpo: string, fontes: (string | FonteCopia)[]): Trecho[] {
-  const N = 6, invisiveis = /[​-‍⁠­﻿]/g, MARCA = "\u0001";
+  const N = 6, invisiveis = /[\u200b-\u200d\u2060\u00ad\ufeff]/g, MARCA = "\u0001";
   const limpa = limpaCopia;
   const lista = (fontes || []).map((f) => typeof f === "string" ? { texto: f, nome: "", nomes: [] as string[], paga: false }
     : { texto: String(f?.texto || ""), nome: String(f?.nome || ""), nomes: (f?.nomes || []).map(limpaCopia).filter((n) => n.length >= 3), paga: !!f?.paga });
