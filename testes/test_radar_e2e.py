@@ -137,7 +137,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.17.0", True), ("ok", 1, 200, "0.17.0", True)]
+    assert ex == [("ok", 2, 200, "0.18.0", True), ("ok", 1, 200, "0.18.0", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -1205,7 +1205,7 @@ def test_robo_prepara_o_rascunho_da_noticia_de_topo_e_respeita_o_limite_do_dia(i
         pedido, revisao = IA["pedidos"][-2:]
         assert revisao["corpo"]["tools"][0]["name"] == "revisao" and "[VERIFICAR: quem pode optar]" in revisao["corpo"]["messages"][0]["content"]
         assert "NUNCA escreva nele marcas" in pedido["corpo"]["system"] and "'pendencias'" in pedido["corpo"]["system"]
-        assert pedido["corpo"]["model"] == "claude-sonnet-4-6" and "TEXTO ORIGINAL, NUNCA CÓPIA" in pedido["corpo"]["system"]
+        assert pedido["corpo"]["model"] == "claude-sonnet-4-6" and "FONTE SEMPRE CITADA" in pedido["corpo"]["system"]
         assert "prorrogado até 31 de janeiro de 2027" in pedido["corpo"]["messages"][0]["content"]       # foi o texto oficial
         assert pedido["cab"]["x-ia-usuario"] == "robô de rascunhos"
         assert "ESCRITA NATURAL" in pedido["corpo"]["system"] and "'titulos'" in pedido["corpo"]["system"]   # v0.10.0

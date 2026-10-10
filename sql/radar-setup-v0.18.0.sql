@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.17.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.18.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.17.0.sql
+-- Reversão: radar-reversao-v0.18.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.17.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.18.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -2496,16 +2496,19 @@ end $$;
 
 -- Fonte do conteúdo já preenchida (v0.7.0): ao criar um conteúdo sem "Fonte", entra o órgão das capturas
 -- de fonte oficial do assunto (ex.: "Receita Federal do Brasil"). A equipe pode trocar ou apagar depois.
+-- v0.18.0: o texto pode usar as frases da fonte citando-a, então entra também o portal de notícias de onde veio a informação
+-- (depois dos órgãos oficiais, ex.: "Receita Federal do Brasil, Portal Contábil SC"). O boletim pago (itc-email) não entra.
 create or replace function public.radar_fn_conteudo_fonte() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   if new.fonte_credito is null or btrim(new.fonte_credito) = '' then
-    select left(string_agg(o.orgao, ', ' order by o.orgao), 300) into new.fonte_credito
-      from (select distinct f.orgao
+    select left(string_agg(o.orgao, ', ' order by o.oficial desc, o.orgao), 300) into new.fonte_credito
+      from (select f.orgao, bool_or(f.oficial) as oficial
               from public.radar_assunto_capturas ac
               join public.radar_capturas c on c.id = ac.captura_id
               join public.radar_fontes f on f.id = c.fonte_id
-             where ac.assunto_id = new.assunto_id and f.oficial) o;
+             where ac.assunto_id = new.assunto_id and f.slug <> 'itc-email' and btrim(coalesce(f.orgao, '')) <> ''
+             group by f.orgao) o;
   end if;
   return new;
 end $$;
@@ -3322,7 +3325,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 23 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.17.0).
+-- Esperado: 23 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.18.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

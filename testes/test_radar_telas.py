@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import requests
 
-from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SEM_PERFIL, como, jwt
+from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SEM_PERFIL, carregar_fontes_novas, como, jwt
 
 sync_api = pytest.importorskip("playwright.sync_api")
 
@@ -284,7 +284,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.17.0"
+    assert pagina.inner_text(".versao") == "v0.18.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -379,7 +379,7 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     pagina.click("text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     pagina.screenshot(path=str(FOTOS / "03-assunto.png"), full_page=True)
 
     # v0.5.0: não há página pública nem botão Publicar; publica-se no site da Artecon e registra-se o link aqui
@@ -476,7 +476,7 @@ def test_aprovacao_so_vale_para_o_texto_que_estava_na_tela(pagina, limpo):
     # a tela recarrega com o texto novo; agora a aprovação vale
     pagina.wait_for_selector("textarea[name=corpo] >> text=Texto trocado sem o revisor ver.")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
 
 
 def test_nao_aprova_com_alteracao_nao_salva(pagina, limpo):
@@ -549,7 +549,7 @@ def test_editar_texto_depois_de_publicado_no_site_avisa_e_o_registro_guarda_o_qu
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     registrar_no_site(pagina)
     pagina.locator("form[data-form=conteudo] [name=corpo]").fill("Texto reescrito depois de publicado.")
     pagina.locator("form[data-form=conteudo] button", has_text="Salvar").first.click()
@@ -585,7 +585,7 @@ def test_conteudo_malicioso_e_exibido_como_texto_no_painel(pagina, limpo):
     assert pagina.evaluate("window.__invadido") is None
     pagina.keyboard.press("Escape")                                           # fecha a prévia
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     registrar_no_site(pagina)
     limpo.execute("update radar_divulgacoes set observacao = %s", (ATAQUE,))
     pagina.click("nav.abas >> text=Publicações")
@@ -850,7 +850,7 @@ def test_links_e_negrito_no_texto(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     pagina.set_viewport_size({"width": 375, "height": 740})
     pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
     assert sem_rolagem_lateral(pagina), "prévia com endereço comprido"
@@ -1348,7 +1348,7 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     pagina.click("text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     pagina.screenshot(path=str(FOTOS / "20-assunto-manual.png"), full_page=True)
     assert pagina.locator("text=Publicar agora").count() == 0                   # não há mais página pública
     artigo_aprovado(limpo, "PGFN abre negociação de débitos de FGTS e contribuições sociais",
@@ -1450,8 +1450,8 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
-    # a v0.14.0 mudou a função de IA (verificação em fontes oficiais): a v0.13.0 passa a ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.15.0', FUNCAO_MINIMA), versaoMenor('0.16.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    # a v0.18.0 mudou a função de IA (a revisão cita a fonte): a v0.17.0 passa a ser apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.17.0', FUNCAO_MINIMA), versaoMenor('0.18.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -1934,7 +1934,7 @@ def test_registro_no_site_pede_para_salvar_antes_e_aceita_mais_de_um_registro(pa
     form.locator("input[type=file]").set_input_files(foto_de_teste(tmp_path / "capa.png", (900, 500)))
     pagina.wait_for_selector("text=Imagem enviada.")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     baixar = pagina.locator("form[data-form=conteudo] a", has_text="Baixar imagem")
     assert baixar.get_attribute("download").startswith("radar-imagem-") and baixar.get_attribute("href").startswith("data:image/jpeg;base64,")
     # com texto digitado e não salvo, o registro é recusado (registraria um texto que não é o aprovado)
@@ -2277,7 +2277,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.17.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.18.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2784,7 +2784,8 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
         pagina.wait_for_function("a => { const f = document.querySelector('form[data-form=conteudo]'); return !!f && f.dataset.lido !== a; }", arg=antes)
     salvar("## O que mudou\nA partir de 2027 as empresas passam a informar a CBS na nota. " + copiado + ". É preciso ajustar o sistema emissor antes da virada do ano.")
     quadro = pagina.inner_text(".copia")
-    assert "Texto igual ao da fonte em 1 trecho" in quadro and "destacar a CBS no documento fiscal" in quadro and "palavras seguidas" in quadro
+    assert "Texto igual ao da fonte sem a fonte citada em 1 trecho" in quadro and "destacar a CBS no documento fiscal" in quadro and "palavras seguidas" in quadro
+    assert "(Receita Federal do Brasil)" in quadro and "cada parágrafo precisa dizer de onde veio" in quadro
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
@@ -2800,7 +2801,7 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
     salvar("## O que mudou\nA partir de 1º de janeiro de 2027, a nota fiscal passa a trazer a CBS em destaque, calculada a 0,9%. Vale revisar o sistema emissor antes da virada do ano para evitar rejeição de notas.")
     assert pagina.locator(".copia").count() == 0
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     assert pagina.evaluate("trechosCopiados('texto qualquer sem relação alguma com a fonte oficial', [])") == []
     # regras da comparação, direto na função
     fonte = ("Art. 1º Fica prorrogado até 31 de março de 2027 o prazo de que trata a Instrução Normativa RFB nº 2.300, de 5 de março de 2026, "
@@ -2836,6 +2837,63 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
     pagina.wait_for_selector("form[data-form=conteudo]")
     assert pagina.input_value("form[data-form=conteudo] [name=titulo]") == copiado[:200] and pagina.locator(".copia").count() == 0
 
+
+
+def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pago(pagina, limpo, request):
+    """v0.18.0: o trecho igual ao da fonte pode ficar quando o mesmo parágrafo cita a fonte e o campo Fonte está preenchido;
+    o do boletim pago (ITC) nunca, nem citando."""
+    a, _ = assunto_com_texto(limpo)
+    pago = ("A empresa optante deverá revisar o cadastro de produtos no sistema emissor antes da virada do ano para evitar "
+            "rejeição das notas fiscais eletrônicas emitidas no primeiro dia útil.")
+    carregar_fontes_novas(limpo, request)                   # a fonte do boletim pago, como no banco de verdade
+    itc = captura(limpo, titulo="ITCNET — CBS na nota", url="https://www.itcnet.com.br/?radar=teste", slug="itc-email", texto=pago)
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, itc))
+    copiado = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9% (nove décimos por cento) a partir de 1º de janeiro de 2027"
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.click("text=Novo conteúdo")
+    form = pagina.locator("form[data-form=conteudo]")
+    def salvar(texto, fonte=None):
+        antes = form.get_attribute("data-lido")
+        form.locator("[name=corpo]").fill(texto)
+        if fonte is not None:
+            form.locator("[name=fonte_credito]").fill(fonte)
+        form.locator("button", has_text="Salvar").first.click()
+        pagina.wait_for_function("a => { const f = document.querySelector('form[data-form=conteudo]'); return !!f && f.dataset.lido !== a; }", arg=antes)
+    # o campo Fonte já vem com o órgão oficial; o boletim pago não entra
+    assert form.locator("[name=fonte_credito]").input_value() == "Receita Federal do Brasil"
+    citado = "## O que mudou\nSegundo a Receita Federal, " + copiado[0].lower() + copiado[1:] + ". É preciso ajustar o sistema emissor antes da virada do ano."
+    salvar(citado)
+    assert pagina.locator(".copia").count() == 0
+    quadro = pagina.inner_text(".copia-citada")
+    assert "com a fonte citada no parágrafo" in quadro and "Fonte: Receita Federal do Brasil" in quadro and "(Receita Federal do Brasil)" in quadro
+    # sem o campo Fonte, a notícia sairia sem a fonte no fim: volta a impedir
+    salvar(citado, fonte="")
+    assert pagina.locator(".copia.falta-fonte").count() == 1 and "o campo Fonte está vazio" in pagina.inner_text(".copia")
+    assert pagina.locator(".copia [data-acao=ia-revisar]").count() == 0       # citado: a IA não tem o que revisar, falta só o campo
+    pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
+    pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=Preencha o campo Fonte")
+    # a fonte citada noutro parágrafo não vale
+    salvar("## O que mudou\nSegundo a Receita Federal, há regra nova.\n\n" + copiado + ".", fonte="Receita Federal do Brasil")
+    assert pagina.locator(".copia").count() == 1
+    # num item de lista, vale a frase que apresenta a lista
+    salvar("## O que mudou\nConforme a Receita Federal do Brasil, as regras são:\n\n- " + copiado + ";\n- vale para todos.")
+    assert pagina.locator(".copia").count() == 0 and pagina.locator(".copia-citada").count() == 1
+    # o boletim pago, nem citando
+    salvar("## O que mudou\nSegundo a ITC Consultoria, " + pago[0].lower() + pago[1:])
+    quadro = pagina.inner_text(".copia")
+    assert "boletim pago" in quadro and "reescreva com palavras próprias" in quadro
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=frase do boletim pago")
+    assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"
+    # citado e com o campo Fonte: aprova
+    salvar(citado)
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
 
 def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pagina, limpo, openai):
     a, _ = assunto_com_texto(limpo)
@@ -2892,7 +2950,7 @@ def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pag
     pagina.wait_for_function("document.querySelector('[id^=img-desc-]')?.value === 'mesa de escritório com calculadora e relatórios' && !document.body.classList.contains('ocupado')")
 
 
-def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_originalidade(pagina, limpo, openai):
+def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_a_fonte_citada(pagina, limpo, openai):
     assunto_com_texto(limpo)
     openai["respostas"]["conteudo"] = {"titulo": "CBS na nota fiscal", "corpo": "A alíquota será de 2,5% a partir de março de 2031, segundo o texto.\n\n## Análise Artecon\nRecomenda-se avaliar o cadastro."}
     entrar(pagina)
@@ -2903,7 +2961,7 @@ def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_originalidad
     pagina.wait_for_selector("#recado .aviso >> text=ponto(s) a conferir")
     assert pagina.locator("#recado .erro").count() == 0
     sistema = [x["corpo"]["system"] for x in openai["pedidos"] if "system" in x["corpo"]][-1]
-    assert "TEXTO ORIGINAL, NUNCA CÓPIA" in sistema and "no máximo 25 palavras" in sistema
+    assert "FONTE SEMPRE CITADA" in sistema and "BOLETIM PAGO" in sistema           # v0.18.0: pode ficar igual, citando a fonte
     assert limpo.execute("select fonte_credito from radar_conteudos").fetchone()[0] == "Receita Federal do Brasil"
 
 
@@ -3643,7 +3701,7 @@ def test_texto_igual_ao_da_fonte_pode_ser_autorizado_mesmo_assim_com_motivo(pagi
     abrir_assunto(pagina, "CBS na transição")
     caixa = pagina.locator("form[data-form=conteudo] .aviso.copia")
     caixa.wait_for()
-    assert "Texto igual ao da fonte em 1 trecho(s)" in caixa.inner_text() and "“segundo a Receita Federal…”" in caixa.inner_text()
+    assert "Texto igual ao da fonte sem a fonte citada em 1 trecho(s)" in caixa.inner_text() and "“Segundo a Receita Federal, …”" in caixa.inner_text()
     assert caixa.locator("[data-acao=ia-revisar]").count() == 1
     pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
     pagina.wait_for_selector("#recado .erro >> text=Autorizar mesmo assim")
@@ -3660,7 +3718,7 @@ def test_texto_igual_ao_da_fonte_pode_ser_autorizado_mesmo_assim_com_motivo(pagi
     assert caixa.locator("[data-acao=abrir-autorizar-copia]").count() == 0
     assert limpo.execute("select copia_autorizada_por::text from radar_conteudos where id = %s", (c,)).fetchone()[0] == EDITOR
     pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
     # o texto mudou: a autorização cai e o quadro volta a ser vermelho
     limpo.execute("update radar_conteudos set corpo = corpo || ' Mais um parágrafo.' where id = %s", (c,))
@@ -3786,7 +3844,7 @@ def test_comentario_de_duvida_aparece_com_revisar_com_ia_e_nao_trava_a_aprovacao
     assert caixa.locator("li").all_inner_texts() == ["a fonte não especifica o ano"]          # a condicional ("quando a fonte…") não conta
     assert caixa.locator("[data-acao=ia-revisar]").count() == 1
     pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")                                        # não impede aprovar
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")                                        # não impede aprovar
     assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
 
 
