@@ -78,6 +78,7 @@ _S = ["A empresa que aderir ao parcelamento especial poderá quitar o saldo deve
       "O pedido de adesão será feito exclusivamente pelo portal eletrônico, mediante a apresentação dos documentos que comprovem a regularidade.",
       "A falta de pagamento de três parcelas seguidas implicará a exclusão imediata do programa e a cobrança integral do valor remanescente."]
 _IN = "Instrução Normativa RFB nº 2.229, de 15 de outubro de 2024"
+_LEI = "o contribuinte deverá destacar a contribuição no documento fiscal em todas as operações realizadas com bens e serviços"
 _B27 = "O contribuinte deverá destacar a CBS no documento fiscal em todas as operações realizadas no território nacional"
 _rfb = lambda t: {"texto": t, "nome": "Receita Federal do Brasil", "nomes": _RFB}
 _min = lambda t: t[0].lower() + t[1:]
@@ -136,6 +137,15 @@ CASOS_COPIA = [
     # frase do portal colada à da Receita, citando só a Receita: o nome que falta citar é o do portal
     ("Segundo a Receita Federal do Brasil, " + _B + " " + _PORTAL_C,
      [_rfb(_B), {"texto": _B + " " + _PORTAL_C, "nome": "Portal Contábil SC", "nomes": ["Portal Contábil SC"]}]),
+    # terceira varredura: lei entre aspas no meio do comentário do boletim; citação curta do próprio boletim no meio da frase
+    ("Segundo o boletim da ITC, a mudança exige atenção redobrada porque o texto determina que “" + _LEI + "”, e os escritórios "
+     "precisam conversar com os clientes logo.",
+     [_rfb("Art. 5º " + _LEI), {"texto": "A mudança exige atenção redobrada porque o texto determina que \"" + _LEI + "\", e os escritórios "
+                                         "precisam conversar com os clientes logo.", "nome": "ITC Consultoria", "nomes": ["ITC"], "paga": True}]),
+    ("Segundo a ITC, na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais “que ainda não revisaram os” "
+     "cadastros de produtos e os escritórios precisam conversar com os clientes.",
+     [{"texto": "Na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros "
+                "de produtos e os escritórios precisam conversar com os clientes.", "nome": "ITC Consultoria", "nomes": ["ITC"], "paga": True}]),
 ]
 NOMES_FONTE = [("Receita Federal — Notícias", "Receita Federal do Brasil"), ("PGFN — Notícias", "Procuradoria-Geral da Fazenda Nacional (PGFN)"),
                ("SEF/SC — Últimas legislações", "Secretaria de Estado da Fazenda de Santa Catarina"), ("Portal Contábil SC", "Portal Contábil SC"),
@@ -171,9 +181,10 @@ def test_detector_de_copia_do_robo_e_igual_ao_da_tela_e_da_funcao(tmp_path):
     assert [(len(x), [(t["citado"], t["paga"]) for t in x]) for x in novos] == [
         (1, [(False, True)]), (1, [(False, False)]), (1, [(True, False)]), (1, [(False, False)]),
         (2, [(True, False), (False, False)]), (1, [(False, False)]),
-        (1, [(False, True)]), (1, [(False, True)]), (1, [(True, False)]), (1, [(True, False)]), (1, [(False, False)])]
+        (1, [(False, True)]), (1, [(False, True)]), (1, [(True, False)]), (1, [(True, False)]), (1, [(False, False)]),
+        (1, [(False, True)]), (1, [(False, True)])]
     assert [x[0]["fonte"] for x in copias[13:15]] == ["ITC Consultoria", "Portal Contábil SC"]          # o nome de quem falta citar
-    assert copias[-1][0]["fonte"] == "Portal Contábil SC"
+    assert copias[-3][0]["fonte"] == "Portal Contábil SC" and [x[0]["fonte"] for x in copias[-2:]] == ["ITC Consultoria"] * 2
     for nome, codigo in (("tela.ts", tela), ("funcao.ts", funcao)):
         arq = tmp_path / nome
         arq.write_text("// @ts-nocheck\n" + codigo + f"\nconst casos = JSON.parse(Deno.readTextFileSync({json.dumps(str(tmp_path / 'casos.json'))}));\n"

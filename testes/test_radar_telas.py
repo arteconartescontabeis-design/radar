@@ -2873,6 +2873,10 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     salvar(citado, fonte="")
     assert pagina.locator(".copia.falta-fonte").count() == 1 and "o campo Fonte está vazio" in pagina.inner_text(".copia")
     assert pagina.locator(".copia [data-acao=ia-revisar]").count() == 0       # citado: a IA não tem o que revisar, falta só o campo
+    pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
+    pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=Preencha o campo Fonte")
     # a fonte citada noutro parágrafo não vale
     salvar("## O que mudou\nSegundo a Receita Federal, há regra nova.\n\n" + copiado + ".", fonte="Receita Federal do Brasil")
     assert pagina.locator(".copia").count() == 1
@@ -2883,8 +2887,6 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     salvar("## O que mudou\nSegundo a ITC Consultoria, " + pago[0].lower() + pago[1:])
     quadro = pagina.inner_text(".copia")
     assert "boletim pago" in quadro and "reescreva com palavras próprias" in quadro
-    pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
-    pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("#recado .erro >> text=frase do boletim pago")
     assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"

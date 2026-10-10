@@ -171,7 +171,7 @@ const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" 
 const FONTES_PAGAS = ["itc-email"];
 type FonteCopia = { texto: string; nome?: string; nomes?: string[]; paga?: boolean };
 type Trecho = { palavras: number; texto: string; fonte: string; paga: boolean; citado: boolean };
-const limpaCopia = (t: unknown) => String(t || "").replace(/[​-‍⁠­﻿]/g, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
+const limpaCopia = (t: unknown) => String(t || "").replace(/[\u200b-\u200d\u2060\u00ad\ufeff]/g, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9$%]+/g, " ").trim();
 /** Os nomes pelos quais o texto cita a fonte: o órgão (também sem "do Brasil"), a sigla entre parênteses e o começo do nome
  *  da fonte quando ele é uma sigla ("PGFN — Notícias") ou a publicação ("Diário Oficial da União — Destaques"); não o pedaço do
  *  nome do órgão ("Simples Nacional", de "Comitê Gestor do Simples Nacional"), que é assunto e não fonte. */
@@ -200,7 +200,7 @@ function unidadesDoTexto(linhas: string[]): { unidade: number[]; textos: string[
   return { unidade, textos: partes.map((p, u) => " " + limpaCopia(p.join("\n") + (abertura[u] >= 0 ? "\n" + partes[abertura[u]].join("\n") : "")) + " ") };
 }
 function trechosCopiados(corpo: string, fontes: (string | FonteCopia)[]): Trecho[] {
-  const N = 6, invisiveis = /[​-‍⁠­﻿]/g;
+  const N = 6, invisiveis = /[\u200b-\u200d\u2060\u00ad\ufeff]/g;
   const limpa = limpaCopia;
   const lista = (fontes || []).map((f) => typeof f === "string" ? { texto: f, nome: "", nomes: [] as string[], paga: false }
     : { texto: String(f?.texto || ""), nome: String(f?.nome || ""), nomes: (f?.nomes || []).map(limpaCopia).filter((n) => n.length >= 3), paga: !!f?.paga });
@@ -210,78 +210,79 @@ function trechosCopiados(corpo: string, fontes: (string | FonteCopia)[]): Trecho
     for (let i = 0; i + N <= w.length; i++) { const g = w.slice(i, i + N).join(" "), o = gramas.get(g); if (!o) gramas.set(g, [k]); else if (o[o.length - 1] !== k) o.push(k); }
   });
   if (!gramas.size) return [];
-  let citadas = 0;
-  // as aspas não liberam frase do boletim pago: a citação que tem frase só dele é comparada como texto comum
-  const soDoPago = (dentro: string) => {
-    if (!lista.some((f) => f.paga)) return false;
-    const w = limpa(dentro).split(" ");
-    for (let i = 0; i + N <= w.length; i++) { const o = gramas.get(w.slice(i, i + N).join(" ")); if (o && o.every((k) => lista[k].paga)) return true; }
-    return false;
-  };
-  const citacao = (_tudo: string, dentro: string) => {
-    const n = dentro.split(/\s+/).filter(Boolean).length;
-    if (n < 3 || n > CITACAO_MAXIMA || citadas + n > CITACOES_TOTAL || soDoPago(dentro)) return " " + dentro + " ";
-    citadas += n; return " ¶ " + "\n".repeat((dentro.match(/\n/g) || []).length);
-  };
-  const limpo = String(corpo || "").replace(invisiveis, "");
-  const semCitacoes = limpo.replace(/^#{1,2}(\s)/gm, (_m: string, e: string) => e === "\n" ? " ¶ \n" : " ¶ ")
-    .replace(/“([^“”]{0,600})”/g, citacao).replace(/"([^"\n]{0,600})"/g, citacao);
-  const palavras: string[] = [], linhaDa: number[] = [];
-  semCitacoes.split("\n").forEach((l, k) => { for (const p of l.split(/\s+/)) if (p) { palavras.push(p); linhaDa.push(k); } });
-  const { unidade, textos } = unidadesDoTexto(limpo.split("\n"));
-  const citaNa = textos.map((t) => lista.map((f) => !f.paga && f.nomes.some((n) => t.includes(" " + n + " "))));
-  const fichas: [string | null, number, number][] = [];
-  palavras.forEach((p, i) => {
-    if (p === "¶") { fichas.push([null, i, 2]); return; }
-    const propria = /^[^\p{L}\p{N}]*\p{Lu}/u.test(p);
-    for (const t of limpa(p).split(" ")) if (t) fichas.push([t, i, /\d/.test(t) || COPIA_NEUTRAS.has(t) ? 2 : propria ? 1 : 0]);
-  });
-  fichas.forEach((x, i) => {
-    if (x[2] === 0 && COPIA_LIGACAO.has(x[0] as string) && [fichas[i - 1], fichas[i + 1]].some((v) => v && v[0] && (v[2] === 1 || v[2] === 2))) x[2] = 3;
-  });
-  const igual = new Array(fichas.length).fill(false), livre = new Array(fichas.length).fill(false),
-        citada = new Array(fichas.length).fill(false), origem: (number[] | null)[] = new Array(fichas.length).fill(null);
-  const fontesDa: number[][] = fichas.map(() => []);           // as fontes livres de cada palavra (para dizer qual falta citar)
-  for (let i = 0; i + N <= fichas.length; i++) {
-    const parte = fichas.slice(i, i + N);
-    if (!parte.every((x) => x[0])) continue;
-    const o = gramas.get(parte.map((x) => x[0]).join(" "));
-    if (!o) continue;
-    origem[i] = o;
-    const livres = o.filter((k) => !lista[k].paga);
-    for (let k = i; k < i + N; k++) {
-      igual[k] = true;
-      if (!livres.length) continue;
-      livre[k] = true;
-      for (const f of livres) if (!fontesDa[k].includes(f)) fontesDa[k].push(f);
-      const u = unidade[linhaDa[fichas[k][1]]];
-      if (u >= 0 && livres.some((f) => citaNa[u][f])) citada[k] = true;
-    }
-  }
   const contam = (pedaco: [string | null, number, number][]) => {
     const proprias = pedaco.filter((x) => x[2] === 1).length, gritado = proprias * 2 > pedaco.length;
     return pedaco.filter((x) => x[2] === 0 || (gritado && (x[2] === 1 || x[2] === 3))).length;
   };
-  const achados: Trecho[] = [];
-  for (let i = 0; i < fichas.length; i++) {
-    if (!igual[i]) continue;
-    let j = i; while (j + 1 < fichas.length && igual[j + 1]) j++;
-    if (contam(fichas.slice(i, j + 1)) >= COPIA_MINIMA) {
-      const texto = palavras.slice(fichas[i][1], fichas[j][1] + 1).join(" ");
-      const de = [...new Set(origem.slice(i, j + 1).filter(Boolean).flat() as number[])].sort((x, y) => x - y).map((k) => lista[k]);
-      const livres = de.filter((f) => !f.paga);
-      // é "pago" se as palavras que só o boletim pago tem, somadas, já são cópia por si só (12 que contam); é "citado" se as palavras
-      // livres sem a fonte citada no próprio parágrafo, somadas, não chegam a isso (número, data e subtítulo colados não atrapalham)
-      const pedaco = (ok: (k: number) => boolean) => { const ks: number[] = []; for (let k = i; k <= j; k++) if (ok(k)) ks.push(k); return ks; };
-      const semCitar = pedaco((k) => livre[k] && !citada[k]);
-      const paga = contam(pedaco((k) => !livre[k]).map((k) => fichas[k])) >= COPIA_MINIMA;
-      const cita = !paga && contam(semCitar.map((k) => fichas[k])) < COPIA_MINIMA;
-      const faltam = [...new Set(semCitar.flatMap((k) => fontesDa[k]))].sort((x, y) => x - y);
-      const fonte = paga ? de.find((f) => f.paga)?.nome || "" : !cita && faltam.length ? lista[faltam[0]].nome : (livres[0] || de[0])?.nome || "";
-      achados.push({ palavras: j - i + 1, texto, fonte, paga, citado: cita });
+  // uma passada pelo texto: com as citações curtas entre aspas aceitas (aspas = true) ou comparadas como texto comum
+  const passada = (aspas: boolean): Trecho[] => {
+    let citadas = 0;
+    const citacao = (_tudo: string, dentro: string) => {
+      const n = dentro.split(/\s+/).filter(Boolean).length;
+      if (n < 3 || n > CITACAO_MAXIMA || citadas + n > CITACOES_TOTAL || !aspas) return " " + dentro + " ";
+      citadas += n; return " ¶ " + "\n".repeat((dentro.match(/\n/g) || []).length);
+    };
+    const limpo = String(corpo || "").replace(invisiveis, "");
+    const semCitacoes = limpo.replace(/^#{1,2}(\s)/gm, (_m: string, e: string) => e === "\n" ? " ¶ \n" : " ¶ ")
+      .replace(/“([^“”]{0,600})”/g, citacao).replace(/"([^"\n]{0,600})"/g, citacao);
+    const palavras: string[] = [], linhaDa: number[] = [];
+    semCitacoes.split("\n").forEach((l, k) => { for (const p of l.split(/\s+/)) if (p) { palavras.push(p); linhaDa.push(k); } });
+    const { unidade, textos } = unidadesDoTexto(limpo.split("\n"));
+    const citaNa = textos.map((t) => lista.map((f) => !f.paga && f.nomes.some((n) => t.includes(" " + n + " "))));
+    const fichas: [string | null, number, number][] = [];
+    palavras.forEach((p, i) => {
+      if (p === "¶") { fichas.push([null, i, 2]); return; }
+      const propria = /^[^\p{L}\p{N}]*\p{Lu}/u.test(p);
+      for (const t of limpa(p).split(" ")) if (t) fichas.push([t, i, /\d/.test(t) || COPIA_NEUTRAS.has(t) ? 2 : propria ? 1 : 0]);
+    });
+    fichas.forEach((x, i) => {
+      if (x[2] === 0 && COPIA_LIGACAO.has(x[0] as string) && [fichas[i - 1], fichas[i + 1]].some((v) => v && v[0] && (v[2] === 1 || v[2] === 2))) x[2] = 3;
+    });
+    const igual = new Array(fichas.length).fill(false), livre = new Array(fichas.length).fill(false),
+          citada = new Array(fichas.length).fill(false), origem: (number[] | null)[] = new Array(fichas.length).fill(null);
+    const fontesDa: number[][] = fichas.map(() => []);           // as fontes livres de cada palavra (para dizer qual falta citar)
+    for (let i = 0; i + N <= fichas.length; i++) {
+      const parte = fichas.slice(i, i + N);
+      if (!parte.every((x) => x[0])) continue;
+      const o = gramas.get(parte.map((x) => x[0]).join(" "));
+      if (!o) continue;
+      origem[i] = o;
+      const livres = o.filter((k) => !lista[k].paga);
+      for (let k = i; k < i + N; k++) {
+        igual[k] = true;
+        if (!livres.length) continue;
+        livre[k] = true;
+        for (const f of livres) if (!fontesDa[k].includes(f)) fontesDa[k].push(f);
+        const u = unidade[linhaDa[fichas[k][1]]];
+        if (u >= 0 && livres.some((f) => citaNa[u][f])) citada[k] = true;
+      }
     }
-    i = j;
-  }
+    const achados: Trecho[] = [];
+    for (let i = 0; i < fichas.length; i++) {
+      if (!igual[i]) continue;
+      let j = i; while (j + 1 < fichas.length && igual[j + 1]) j++;
+      if (contam(fichas.slice(i, j + 1)) >= COPIA_MINIMA) {
+        const texto = palavras.slice(fichas[i][1], fichas[j][1] + 1).join(" ");
+        const de = [...new Set(origem.slice(i, j + 1).filter(Boolean).flat() as number[])].sort((x, y) => x - y).map((k) => lista[k]);
+        const livres = de.filter((f) => !f.paga);
+        // é "pago" se as palavras que só o boletim pago tem, somadas, já são cópia por si só (12 que contam); é "citado" se as palavras
+        // livres sem a fonte citada no próprio parágrafo, somadas, não chegam a isso (número, data e subtítulo colados não atrapalham)
+        const pedaco = (ok: (k: number) => boolean) => { const ks: number[] = []; for (let k = i; k <= j; k++) if (ok(k)) ks.push(k); return ks; };
+        const semCitar = pedaco((k) => livre[k] && !citada[k]);
+        const paga = contam(pedaco((k) => !livre[k]).map((k) => fichas[k])) >= COPIA_MINIMA;
+        const cita = !paga && contam(semCitar.map((k) => fichas[k])) < COPIA_MINIMA;
+        const faltam = [...new Set(semCitar.flatMap((k) => fontesDa[k]))].sort((x, y) => x - y);
+        const fonte = paga ? de.find((f) => f.paga)?.nome || "" : !cita && faltam.length ? lista[faltam[0]].nome : (livres[0] || de[0])?.nome || "";
+        achados.push({ palavras: j - i + 1, texto, fonte, paga, citado: cita });
+      }
+      i = j;
+    }
+    return achados;
+  };
+  // as aspas não liberam frase do boletim pago: havendo boletim, uma segunda passada compara as citações como texto comum e
+  // o trecho pago que ela achar entra no lugar dos trechos que estão dentro dele
+  const normal = passada(true), pagos = lista.some((f) => f.paga) ? passada(false).filter((t) => t.paga) : [];
+  const achados = [...normal.filter((t) => !pagos.some((p) => (" " + limpa(p.texto) + " ").includes(" " + limpa(t.texto) + " "))), ...pagos];
   return achados.sort((a, b) => b.palavras - a.palavras);
 }
 /** Marcas [VERIFICAR …] no texto (o mesmo critério da tela e do banco). */
