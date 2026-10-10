@@ -1450,8 +1450,8 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
-    # a v0.14.0 mudou a função de IA (verificação em fontes oficiais): a v0.13.0 passa a ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.15.0', FUNCAO_MINIMA), versaoMenor('0.16.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    # a v0.18.0 mudou a função de IA (a revisão cita a fonte): a v0.17.0 passa a ser apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.17.0', FUNCAO_MINIMA), versaoMenor('0.18.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2951,7 +2951,7 @@ def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pag
     pagina.wait_for_function("document.querySelector('[id^=img-desc-]')?.value === 'mesa de escritório com calculadora e relatórios' && !document.body.classList.contains('ocupado')")
 
 
-def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_originalidade(pagina, limpo, openai):
+def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_a_fonte_citada(pagina, limpo, openai):
     assunto_com_texto(limpo)
     openai["respostas"]["conteudo"] = {"titulo": "CBS na nota fiscal", "corpo": "A alíquota será de 2,5% a partir de março de 2031, segundo o texto.\n\n## Análise Artecon\nRecomenda-se avaliar o cadastro."}
     entrar(pagina)
@@ -2962,7 +2962,7 @@ def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_originalidad
     pagina.wait_for_selector("#recado .aviso >> text=ponto(s) a conferir")
     assert pagina.locator("#recado .erro").count() == 0
     sistema = [x["corpo"]["system"] for x in openai["pedidos"] if "system" in x["corpo"]][-1]
-    assert "TEXTO ORIGINAL, NUNCA CÓPIA" in sistema and "no máximo 25 palavras" in sistema
+    assert "FONTE SEMPRE CITADA" in sistema and "BOLETIM PAGO" in sistema           # v0.18.0: pode ficar igual, citando a fonte
     assert limpo.execute("select fonte_credito from radar_conteudos").fetchone()[0] == "Receita Federal do Brasil"
 
 
