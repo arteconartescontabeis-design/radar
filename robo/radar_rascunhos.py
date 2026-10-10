@@ -311,45 +311,49 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
                 o.append(k)
     if not gramas:
         return []
+    marca = "\u0001"
 
     def contam(pedaco):
         """Quantas palavras "contam" num pedaço (nome próprio não conta — a não ser que seja quase tudo em maiúsculas)."""
         proprias = sum(1 for x in pedaco if x[2] == 1)
         gritado = proprias * 2 > len(pedaco)
         return sum(1 for x in pedaco if x[2] == 0 or (gritado and x[2] in (1, 3)))
+    citadas = 0
 
-    def passada(aspas: bool) -> list[dict]:
-        """Uma passada pelo texto: com as citações curtas entre aspas aceitas (aspas=True) ou comparadas como texto comum."""
-        citadas = 0
+    def citacao(m):
+        """A citação curta entre aspas é aceita: as palavras dela ficam marcadas (a comparação comum pula; a do boletim pago, não)."""
+        nonlocal citadas
+        dentro = m.group(1)
+        n = len([x for x in re.split(r"\s+", dentro) if x])
+        if n < 3 or n > CITACAO_MAXIMA or citadas + n > CITACOES_TOTAL:
+            return " " + dentro + " "
+        citadas += n
+        return " " + re.sub(r"\S+", lambda w: marca + w.group(0), dentro) + " "
+    limpo = _INVISIVEIS.sub("", str(corpo or ""))
+    sem = re.sub(r"^#{1,2}(\s)", lambda m: " ¶ \n" if m.group(1) == "\n" else " ¶ ", limpo, flags=re.M)
+    sem = re.sub(r'"([^"\n]{0,600})"', citacao, re.sub(r"“([^“”]{0,600})”", citacao, sem))
+    palavras, linha_da, aspas = [], [], []
+    for k, linha in enumerate(sem.split("\n")):
+        for p in re.split(r"\s+", linha):
+            if p:
+                palavras.append(p.replace(marca, ""))
+                aspas.append(p.startswith(marca))
+                linha_da.append(k)
+    unidade, textos = unidades_do_texto(limpo.split("\n"))
+    cita_na = [[not f["paga"] and any(f" {n} " in t for n in f["nomes"]) for f in lista] for t in textos]
+    base: list[list] = []                    # [palavra normalizada | None (quebra), posição da palavra, tipo, entre aspas aceitas]
+    for i, p in enumerate(palavras):
+        if p == "¶":
+            base.append([None, i, 2, False])
+            continue
+        propria = _propria(p)
+        for t in _limpa_copia(p).split(" "):
+            if t:
+                base.append([t, i, 2 if re.search(r"\d", t) or t in COPIA_NEUTRAS else 1 if propria else 0, aspas[i]])
 
-        def citacao(m):
-            nonlocal citadas
-            dentro = m.group(1)
-            n = len([x for x in re.split(r"\s+", dentro) if x])
-            if n < 3 or n > CITACAO_MAXIMA or citadas + n > CITACOES_TOTAL or not aspas:
-                return " " + dentro + " "
-            citadas += n
-            return " ¶ " + "\n" * dentro.count("\n")          # as quebras de linha ficam: a linha de cada palavra não muda
-        limpo = _INVISIVEIS.sub("", str(corpo or ""))
-        sem = re.sub(r"^#{1,2}(\s)", lambda m: " ¶ \n" if m.group(1) == "\n" else " ¶ ", limpo, flags=re.M)
-        sem = re.sub(r'"([^"\n]{0,600})"', citacao, re.sub(r"“([^“”]{0,600})”", citacao, sem))
-        palavras, linha_da = [], []
-        for k, linha in enumerate(sem.split("\n")):
-            for p in re.split(r"\s+", linha):
-                if p:
-                    palavras.append(p)
-                    linha_da.append(k)
-        unidade, textos = unidades_do_texto(limpo.split("\n"))
-        cita_na = [[not f["paga"] and any(f" {n} " in t for n in f["nomes"]) for f in lista] for t in textos]
-        fichas: list[list] = []
-        for i, p in enumerate(palavras):
-            if p == "¶":
-                fichas.append([None, i, 2])
-                continue
-            propria = _propria(p)
-            for t in _limpa_copia(p).split(" "):
-                if t:
-                    fichas.append([t, i, 2 if re.search(r"\d", t) or t in COPIA_NEUTRAS else 1 if propria else 0])
+    def passada(com_aspas: bool) -> list[dict]:
+        """Os trechos de uma passada (com_aspas: a citação aceita quebra a sequência), cada um com a posição (i, j)."""
+        fichas = [[None, x[1], 2] if com_aspas and x[3] else [x[0], x[1], x[2]] for x in base]
         for i, x in enumerate(fichas):
             vizinhos = [fichas[i - 1] if i > 0 else None, fichas[i + 1] if i + 1 < len(fichas) else None]
             if x[2] == 0 and x[0] in COPIA_LIGACAO and any(v and v[0] and v[2] in (1, 2) for v in vizinhos):
@@ -377,7 +381,23 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
                 u = unidade[linha_da[fichas[k][1]]]
                 if u >= 0 and any(cita_na[u][f] for f in livres):
                     citada[k] = True
-        achados, i = [], 0
+
+        def trecho(a: int, b: int, paga: bool) -> dict:
+            de = [lista[k] for k in sorted({k for o in origem[a:b + 1] if o for k in o})]
+            livres = [f for f in de if not f["paga"]]
+            sem_citar = [k for k in range(a, b + 1) if livre[k] and not citada[k]]
+            # "citado": as palavras livres sem a fonte citada no próprio parágrafo, somadas, não chegam a ser cópia (12 que contam)
+            cita = not paga and contam([fichas[k] for k in sem_citar]) < COPIA_MINIMA
+            faltam = sorted({f for k in sem_citar for f in fontes_da[k]})
+            if paga:
+                fonte = next((f["nome"] for f in de + lista if f["paga"]), "")
+            elif not cita and faltam:
+                fonte = lista[faltam[0]]["nome"]
+            else:
+                fonte = (livres[0] if livres else de[0])["nome"] if de else ""
+            return {"i": a, "j": b, "palavras": b - a + 1, "texto": " ".join(palavras[fichas[a][1]:fichas[b][1] + 1]),
+                    "fonte": fonte, "paga": paga, "citado": cita}
+        saida, i = [], 0
         while i < len(fichas):
             if not igual[i]:
                 i += 1
@@ -386,30 +406,27 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
             while j + 1 < len(fichas) and igual[j + 1]:
                 j += 1
             if contam(fichas[i:j + 1]) >= COPIA_MINIMA:
-                texto = " ".join(palavras[fichas[i][1]:fichas[j][1] + 1])
-                de = [lista[k] for k in sorted({k for o in origem[i:j + 1] if o for k in o})]
-                livres = [f for f in de if not f["paga"]]
-                # é "pago" se as palavras que só o boletim pago tem, somadas, já são cópia por si só (12 que contam); é "citado"
-                # se as palavras livres sem a fonte citada no próprio parágrafo, somadas, não chegam a isso
-                sem_citar = [k for k in range(i, j + 1) if livre[k] and not citada[k]]
-                paga = contam([fichas[k] for k in range(i, j + 1) if not livre[k]]) >= COPIA_MINIMA
-                cita = not paga and contam([fichas[k] for k in sem_citar]) < COPIA_MINIMA
-                faltam = sorted({f for k in sem_citar for f in fontes_da[k]})
-                if paga:
-                    fonte = next((f["nome"] for f in de if f["paga"]), "")
-                elif not cita and faltam:
-                    fonte = lista[faltam[0]]["nome"]
+                # "pago": as palavras que só o boletim pago tem, somadas, já são cópia por si só. O trecho pago vai da primeira à
+                # última delas; o que sobra antes e depois (só de fonte livre) é avaliado à parte
+                nao_livres = [k for k in range(i, j + 1) if not livre[k]]
+                if contam([fichas[k] for k in nao_livres]) >= COPIA_MINIMA:
+                    p, q = nao_livres[0], nao_livres[-1]
+                    if p > i and contam(fichas[i:p]) >= COPIA_MINIMA:
+                        saida.append(trecho(i, p - 1, False))
+                    saida.append(trecho(p, q, True))
+                    if q < j and contam(fichas[q + 1:j + 1]) >= COPIA_MINIMA:
+                        saida.append(trecho(q + 1, j, False))
                 else:
-                    fonte = (livres[0] if livres else de[0])["nome"] if de else ""
-                achados.append({"palavras": j - i + 1, "texto": texto, "fonte": fonte, "paga": paga, "citado": cita})
+                    saida.append(trecho(i, j, False))
             i = j + 1
-        return achados
+        return saida
 
-    # as aspas não liberam frase do boletim pago: havendo boletim, uma segunda passada compara as citações como texto comum e
-    # o trecho pago que ela achar entra no lugar dos trechos que estão dentro dele
+    # as aspas não liberam frase do boletim pago: havendo boletim, uma segunda passada compara as citações como texto comum, e o
+    # trecho pago que ela achar entra no lugar dos trechos da passada comum que estão na mesma posição
     normal = passada(True)
     pagos = [t for t in passada(False) if t["paga"]] if any(f["paga"] for f in lista) else []
-    achados = [t for t in normal if not any(f" {_limpa_copia(t['texto'])} " in f" {_limpa_copia(p['texto'])} " for p in pagos)] + pagos
+    achados = [{c: t[c] for c in ("palavras", "texto", "fonte", "paga", "citado")}
+               for t in [t for t in normal if not any(p["i"] <= t["i"] and t["j"] <= p["j"] for p in pagos)] + pagos]
     return sorted(achados, key=lambda a: -a["palavras"])
 
 

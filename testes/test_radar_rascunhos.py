@@ -79,6 +79,7 @@ _S = ["A empresa que aderir ao parcelamento especial poderá quitar o saldo deve
       "A falta de pagamento de três parcelas seguidas implicará a exclusão imediata do programa e a cobrança integral do valor remanescente."]
 _IN = "Instrução Normativa RFB nº 2.229, de 15 de outubro de 2024"
 _LEI = "o contribuinte deverá destacar a contribuição no documento fiscal em todas as operações realizadas com bens e serviços"
+_R = "A regra vale a partir de janeiro e as empresas devem revisar os cadastros e treinar as equipes responsáveis pelo faturamento"
 _B27 = "O contribuinte deverá destacar a CBS no documento fiscal em todas as operações realizadas no território nacional"
 _rfb = lambda t: {"texto": t, "nome": "Receita Federal do Brasil", "nomes": _RFB}
 _min = lambda t: t[0].lower() + t[1:]
@@ -146,6 +147,17 @@ CASOS_COPIA = [
      "cadastros de produtos e os escritórios precisam conversar com os clientes.",
      [{"texto": "Na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros "
                 "de produtos e os escritórios precisam conversar com os clientes.", "nome": "ITC Consultoria", "nomes": ["ITC"], "paga": True}]),
+    # quarta varredura: o parágrafo da Receita depois da lei entre aspas não vira "boletim pago"; o trecho repetido noutro
+    # parágrafo continua apontado (a comparação é pela posição, não pelo texto)
+    ("Segundo o boletim da ITC, na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais e dos escritórios, "
+     "porque o texto determina que “" + _LEI + "”.\n\n" + _R + ", informou a Receita Federal.",
+     [_rfb("Art. 5º " + _LEI + ". " + _R + "."),
+      {"texto": "Na nossa avaliação, a mudança exige atenção redobrada dos departamentos fiscais e dos escritórios, porque o texto "
+                "determina que \"" + _LEI + "\".", "nome": "ITC Consultoria", "nomes": ["ITC"], "paga": True}]),
+    ("A partir de 2027, " + _LEI + ".\n\nSegundo o boletim da ITC, a mudança exige atenção redobrada porque o texto determina que “"
+     + _LEI + "”, e os escritórios precisam conversar com os clientes logo.",
+     [_rfb("Art. 5º " + _LEI), {"texto": "A mudança exige atenção redobrada porque o texto determina que \"" + _LEI + "\", e os escritórios "
+                                         "precisam conversar com os clientes logo.", "nome": "ITC Consultoria", "nomes": ["ITC"], "paga": True}]),
 ]
 NOMES_FONTE = [("Receita Federal — Notícias", "Receita Federal do Brasil"), ("PGFN — Notícias", "Procuradoria-Geral da Fazenda Nacional (PGFN)"),
                ("SEF/SC — Últimas legislações", "Secretaria de Estado da Fazenda de Santa Catarina"), ("Portal Contábil SC", "Portal Contábil SC"),
@@ -179,12 +191,15 @@ def test_detector_de_copia_do_robo_e_igual_ao_da_tela_e_da_funcao(tmp_path):
     assert esperado["nomes"][-2:] == [["comite gestor do simples nacional"], ["imprensa nacional", "diario oficial da uniao"]]
     novos = copias[13:]
     assert [(len(x), [(t["citado"], t["paga"]) for t in x]) for x in novos] == [
-        (1, [(False, True)]), (1, [(False, False)]), (1, [(True, False)]), (1, [(False, False)]),
+        (2, [(True, False), (False, True)]), (1, [(False, False)]), (1, [(True, False)]), (1, [(False, False)]),
         (2, [(True, False), (False, False)]), (1, [(False, False)]),
         (1, [(False, True)]), (1, [(False, True)]), (1, [(True, False)]), (1, [(True, False)]), (1, [(False, False)]),
-        (1, [(False, True)]), (1, [(False, True)])]
-    assert [x[0]["fonte"] for x in copias[13:15]] == ["ITC Consultoria", "Portal Contábil SC"]          # o nome de quem falta citar
-    assert copias[-3][0]["fonte"] == "Portal Contábil SC" and [x[0]["fonte"] for x in copias[-2:]] == ["ITC Consultoria"] * 2
+        (1, [(False, True)]), (1, [(False, True)]),
+        (2, [(True, False), (False, True)]), (2, [(False, True), (False, False)])]
+    assert [copias[13][1]["fonte"], copias[14][0]["fonte"]] == ["ITC Consultoria", "Portal Contábil SC"]   # o boletim; quem falta citar
+    assert copias[-5][0]["fonte"] == "Portal Contábil SC" and [x[0]["fonte"] for x in copias[-4:-2]] == ["ITC Consultoria"] * 2
+    # o parágrafo da Receita fica fora do trecho pago (citado); o repetido sem citação continua apontado
+    assert "faturamento" not in copias[-2][1]["texto"] and copias[-1][1]["texto"].startswith("o contribuinte deverá")
     for nome, codigo in (("tela.ts", tela), ("funcao.ts", funcao)):
         arq = tmp_path / nome
         arq.write_text("// @ts-nocheck\n" + codigo + f"\nconst casos = JSON.parse(Deno.readTextFileSync({json.dumps(str(tmp_path / 'casos.json'))}));\n"
