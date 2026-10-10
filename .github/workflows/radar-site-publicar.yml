@@ -5,9 +5,13 @@ name: Radar — publicar no site
 # e exclui do site as notícias que o administrador pediu para excluir (aba Publicações).
 # Sem nada pendente, termina em segundos, sem entrar no site.
 # Precisa dos segredos RADAR_SUPABASE_URL, RADAR_SUPABASE_SERVICE_KEY, ARTECON_SITE_USUARIO e ARTECON_SITE_SENHA.
+# v0.19.0: a tela aciona este robô na hora (workflow_dispatch), pela função radar-redes, logo depois de autorizar ou de pedir
+# uma exclusão. Para isso, o segredo RADAR_GITHUB_TOKEN fica no Supabase (Edge Functions → Secrets), nunca aqui no GitHub.
+# O agendamento abaixo é só a reserva: o GitHub atrasa (às vezes em horas) os agendamentos frequentes, e a hora cheia é a
+# mais disputada; por isso os minutos quebrados.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 permissions:

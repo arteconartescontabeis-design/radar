@@ -3,8 +3,8 @@
 Depois da coleta e da nota da IA, o robô prepara sozinho o RASCUNHO das notícias de topo, para a equipe
 só conferir: abre o assunto, pede à IA o texto no formato do informativo (as mesmas regras do botão
 "Gerar com IA": só o que está no texto oficial, nada de memória, nada de marca ou comentário sobre dúvida no
-texto — o que falta confirmar vai para os pontos a conferir (v0.16.0) —, e a fonte sempre citada quando o texto usa as
-frases dela (v0.18.0)) e grava o
+texto — o que falta confirmar vai para os pontos a conferir (v0.16.0) —, e palavras próprias: frase igual à da fonte só
+quando indispensável, entre aspas e com a fonte citada só no parágrafo dela (v0.19.0)) e grava o
 conteúdo como rascunho, com os pontos a conferir.
 
 O robô não envia para revisão, não aprova e não publica: isso continua com a equipe. Quando a API do
@@ -59,15 +59,15 @@ REGRA_PENDENCIAS = ("(3) o texto vai para o leitor: NUNCA escreva nele marcas, c
                     "confirmada, escreva a frase sem esse detalhe, sem supor (ex.: 'a sessão está marcada para 30 de setembro' em vez de inventar o ano), "
                     "ou deixe o ponto de fora, e registre-o em 'pendencias' (lista curta, só para a equipe, cada item dizendo o que falta conferir). "
                     "Diferença só de grafia entre as fontes (ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa, sem comentar; ")
-# v0.18.0: o texto pode usar as frases da fonte, desde que diga de onde vieram (a mesma regra da função radar-ia)
-REGRA_FONTE = ("(8) FONTE SEMPRE CITADA: organize a informação do ponto de vista da empresa cliente (o que muda, para quem, quando, o que fazer). "
-               "Você pode usar frases iguais às da fonte quando isso der precisão (texto de norma, comunicado oficial, notícia), desde que CADA parágrafo "
-               "que usa frase da fonte diga de onde ela veio, pelo nome como aparece em 'órgão:' ou 'publicação:' no material ('Segundo a Receita Federal "
-               "do Brasil, …', 'Conforme o Portal Contábil SC, …', 'Conforme publicado no Diário Oficial da União, …'); num item de lista, a frase que "
-               "apresenta a lista cita a fonte. Transcrição literal de dispositivo legal vai entre aspas. "
-               "EXCEÇÃO: do material marcado como BOLETIM PAGO use só a informação, sempre com palavras e frases próprias, nunca as frases dele (nem entre aspas); "
-               "atribua a informação ao boletim ('segundo o boletim da ITC') ou, quando o texto oficial do material a confirmar, ao órgão que publicou "
-               "o ato. Nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; ")
+# v0.19.0: palavras próprias; frase igual à da fonte só quando indispensável, o mínimo, entre aspas e com a fonte citada só no
+# parágrafo dela (a mesma regra da função radar-ia)
+REGRA_FONTE = ("(8) PALAVRAS PRÓPRIAS: organize a informação do ponto de vista da empresa cliente (o que muda, para quem, quando, o que fazer). "
+               "Escreva com palavras e frases próprias; não diga em cada parágrafo de onde veio a informação (a fonte sai no fim da notícia). "
+               "Use frase igual à da fonte só quando for indispensável para a precisão (transcrição de dispositivo legal, definição legal): o mínimo "
+               "necessário, entre aspas, e SÓ o parágrafo que tiver a frase igual diz de quem ela é, pelo nome como aparece em 'órgão:' ou 'publicação:' "
+               "no material ('Segundo a Receita Federal do Brasil, …'); num item de lista, quem diz é a frase que apresenta a lista. "
+               "EXCEÇÃO: do material marcado como BOLETIM PAGO use só a informação, nunca as frases dele (nem entre aspas). "
+               "Nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; ")
 REGRA_TITULOS = ("(10) em 'titulos', proponha 3 outros títulos para a mesma notícia, diferentes entre si e do título principal "
                  "(um mais direto, um que destaque o prazo ou o impacto para a empresa, um mais curto), cada um com até 110 caracteres, sem ponto final e sem sensacionalismo; ")
 FORMATOS = {
@@ -514,7 +514,8 @@ def bloco_oficial(capturas: list[dict]) -> tuple[str, str]:
     return bloco, texto
 
 
-# v0.16.0: a segunda passada da função radar-ia (revisarTexto), com as mesmas instruções
+# v0.16.0: a segunda passada da função radar-ia (revisarTexto), com as mesmas instruções. v0.19.0: o trecho igual ao da fonte
+# é reescrito com palavras próprias (só fica, entre aspas e com a fonte no parágrafo, quando indispensável)
 REVISAO = ("Você revisa um texto contábil e tributário da Artecon Artes Contábeis (Palhoça/SC), em português do Brasil, antes de ele ir à equipe. "
            "Faça SOMENTE estas correções e devolva o título e o texto inteiros: "
            "(a) cada marca [VERIFICAR …] e cada comentário sobre dúvida da redação listado ('a fonte não informa…', 'a fonte cita tanto X quanto Y') "
@@ -522,10 +523,11 @@ REVISAO = ("Você revisa um texto contábil e tributário da Artecon Artes Cont�
            "o que estiver só no TEXTO DE FONTE NÃO OFICIAL não está confirmado; "
            "se não houver confirmação, reescreva a frase sem o detalhe incerto (sem supor e sem comentar a dúvida) e registre o ponto em 'pendencias'. "
            "Diferença só de grafia entre fontes (ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa; "
-           "(b) cada TRECHO IGUAL AO DA FONTE listado pode ficar como está, mas CADA parágrafo em que ele está passa a dizer de onde veio, pelo nome "
-           "da fonte indicado ao lado do trecho ('Segundo a Receita Federal do Brasil, …', 'Conforme o Portal Contábil SC, …'); num item de lista, "
-           "a frase que apresenta a lista cita a fonte. Trecho marcado como BOLETIM PAGO é reescrito com palavras e estrutura próprias, mantendo "
-           "o sentido; a informação fica atribuída ao boletim ou, se o texto oficial do material a confirmar, ao órgão que publicou o ato; "
+           "(b) cada TRECHO IGUAL AO DA FONTE listado é reescrito com palavras próprias, mantendo o sentido e a precisão; só quando a frase igual "
+           "for indispensável (transcrição de dispositivo legal, definição legal) fica o mínimo necessário, entre aspas, e o parágrafo em que ela "
+           "está diz de quem é, pelo nome da fonte indicado ao lado do trecho ('Segundo a Receita Federal do Brasil, …'); num item de lista, quem "
+           "diz é a frase que apresenta a lista; não acrescente a fonte aos outros parágrafos. Trecho marcado como BOLETIM PAGO é sempre reescrito "
+           "com palavras e estrutura próprias, mantendo o sentido; "
            "(c) o resto fica como está, inclusive as citações entre aspas (menos frase do BOLETIM PAGO, que nem entre aspas pode ficar): mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; "
            "(d) nada de HTML, links, colchetes ou comentários sobre a revisão no texto. " + REGRA_DADOS)
 ESQUEMA_REVISAO = {"type": "object", "additionalProperties": False, "required": ["titulo", "corpo", "pendencias"],

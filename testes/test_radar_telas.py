@@ -284,7 +284,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.18.0"
+    assert pagina.inner_text(".versao") == "v0.19.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -1151,7 +1151,7 @@ def test_leitor_nao_ve_botoes_de_ia(pagina, limpo, openai):
     entrar(pagina, "leitor@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    for texto in ["Classificar com IA", "Buscar trecho que comprova com IA", "Gerar texto com IA"]:
+    for texto in ["Classificar com IA", "Buscar trecho que comprova com IA", "Gerar texto com IA", "Gerar com IA"]:
         assert pagina.locator(f"text={texto}").count() == 0
 
 
@@ -1450,8 +1450,8 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
-    # a v0.18.0 mudou a função de IA (a revisão cita a fonte): a v0.17.0 passa a ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.17.0', FUNCAO_MINIMA), versaoMenor('0.18.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    # a v0.19.0 mudou a função de IA (gera o rascunho também sem texto oficial): a v0.18.0 passa a ser apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.18.0', FUNCAO_MINIMA), versaoMenor('0.19.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -1903,7 +1903,7 @@ def test_publicacoes_lista_pendentes_e_registrados_e_respeita_os_perfis(pagina, 
     assert "Artigo aprovado esperando" in pagina.inner_text("#tab-pendentes") and "Artigo já publicado" not in pagina.inner_text("#tab-pendentes")
     assert "Artigo já publicado no site" in pagina.inner_text("#tab-site") and "30/09/2026" in pagina.inner_text("#tab-site") and "Destaque da home" in pagina.inner_text("#tab-site")
     assert pagina.locator("text=Corrigir link").count() == 0 and pagina.locator("text=Excluir só o registro").count() == 0
-    pagina.click("text=Abrir para copiar e registrar")
+    pagina.click("text=Abrir para publicar")
     pagina.wait_for_selector("#base-texto")
     assert pagina.locator("text=Registrar publicação no site").count() == 0     # leitor não registra
     pagina.click("text=Sair")
@@ -2277,7 +2277,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.18.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.19.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2363,7 +2363,7 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     assert pagina.locator(".trilha li").count() == 7 and pagina.locator(".trilha li.feito").count() == 0
     assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "texto"          # um passo de cada vez
     assert pagina.locator(".autorizacao li.espera[data-passo=instagram]").count() == 1                # Instagram e Facebook depois do site
-    assert "Escrever o conteúdo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo >> text=Preparar com IA").count() == 1
+    assert "Escrever o conteúdo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo [data-acao=ia-tudo]").count() == 1
     assert "Título original da captura" in pagina.inner_text("#sec-origem") and pagina.locator("#sec-origem >> text=Abrir na fonte").count() == 1
     assert not pagina.locator("#a-cat").is_visible() and not pagina.locator("#a-pub").is_visible()    # dados do assunto recolhidos ao lado
     pagina.click("#mais-detalhes summary")
@@ -2400,7 +2400,7 @@ def test_assunto_leitor_ve_os_passos_sem_botoes(pagina, limpo):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector(".trilha")
-    assert pagina.locator("#proximo-passo").count() == 0 and pagina.locator("text=Preparar com IA").count() == 0
+    assert pagina.locator("#proximo-passo").count() == 0 and pagina.locator("text=Gerar com IA").count() == 0
 
 
 def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
@@ -2449,8 +2449,8 @@ def test_ia_preparar_tudo_e_ilustracao(pagina, limpo, openai):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
-    pagina.click("text=Preparar com IA")
-    pagina.wait_for_selector("text=1 trecho(s) de fundamentação e um rascunho")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("text=1 trecho(s) de fundamentação, um rascunho")
     assert limpo.execute("select count(*) from radar_evidencias where trecho_conferido").fetchone()[0] == 1
     assert limpo.execute("select gerado_por, status, imagem_id is not null from radar_conteudos").fetchall() == [("ia", "rascunho", True)]
     antes = limpo.execute("select imagem_id from radar_conteudos").fetchone()[0]
@@ -2785,7 +2785,7 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
     salvar("## O que mudou\nA partir de 2027 as empresas passam a informar a CBS na nota. " + copiado + ". É preciso ajustar o sistema emissor antes da virada do ano.")
     quadro = pagina.inner_text(".copia")
     assert "Texto igual ao da fonte sem a fonte citada em 1 trecho" in quadro and "destacar a CBS no documento fiscal" in quadro and "palavras seguidas" in quadro
-    assert "(Receita Federal do Brasil)" in quadro and "cada parágrafo precisa dizer de onde veio" in quadro
+    assert "(Receita Federal do Brasil)" in quadro and "o parágrafo dela precisa dizer de quem é" in quadro
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
@@ -2961,7 +2961,7 @@ def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_a_fonte_cita
     pagina.wait_for_selector("#recado .aviso >> text=ponto(s) a conferir")
     assert pagina.locator("#recado .erro").count() == 0
     sistema = [x["corpo"]["system"] for x in openai["pedidos"] if "system" in x["corpo"]][-1]
-    assert "FONTE SEMPRE CITADA" in sistema and "BOLETIM PAGO" in sistema           # v0.18.0: pode ficar igual, citando a fonte
+    assert "PALAVRAS PRÓPRIAS" in sistema and "BOLETIM PAGO" in sistema             # v0.19.0: palavras próprias; frase igual só a indispensável
     assert limpo.execute("select fonte_credito from radar_conteudos").fetchone()[0] == "Receita Federal do Brasil"
 
 
@@ -3232,7 +3232,7 @@ def test_trocar_de_assunto_enquanto_a_ia_trabalha_nao_grava_nem_aplica_no_outro(
             rota.fallback()
     pagina.route("**/functions/v1/radar-ia", segurar)
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("text=Preparar tudo com IA")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
     pagina.wait_for_selector("#ia-trabalhando")
     abrir_assunto(pagina, "Outro assunto")                   # navegar continua livre
     presos[0].fallback()
@@ -3293,7 +3293,8 @@ def test_preparar_tudo_cria_a_ilustracao_e_texto_para_analise_sem_fonte_oficial(
     pagina.wait_for_selector("text=Painel do dia")
     ia_de_mentira(pagina, limpo, pedidos)
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("#proximo-passo >> text=Preparar com IA")
+    assert pagina.locator("#sec-origem [data-acao=ia-tudo]").count() == 1                 # v0.19.0: também no passo 1 (Fonte)
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
     pagina.wait_for_selector("text=a capa com a ilustração.")
     assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "ilustrar"] and pagina.locator("#senha-ia").count() == 0
     # v0.16.0: a capa é montada com a ilustração ao fundo; a ilustração fica guardada à parte
@@ -3305,19 +3306,20 @@ def test_preparar_tudo_cria_a_ilustracao_e_texto_para_analise_sem_fonte_oficial(
     pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
     assert pagina.locator("#previa-site a[href='https://www.gov.br/exemplo/in-2290']").count() == 1
     pagina.keyboard.press("Escape")
-    # assunto só com fonte não oficial: texto para análise
+    # v0.19.0: assunto só com fonte não oficial: “Gerar com IA” procura a fonte oficial (a busca rápida) e escreve um rascunho
+    # normal, com a ilustração (não mais o texto para análise)
     pagina.click("text=Voltar para a lista")
     pagina.locator("tr.clicavel", has_text="Só do boletim").click()
-    pagina.wait_for_selector("#proximo-passo >> text=Gerar texto para análise")
-    assert pagina.locator("[data-acao=ia-gerar], [data-acao=ia-tudo]").count() == 0
-    pagina.click("#proximo-passo >> text=Gerar texto para análise")
-    pagina.wait_for_selector("text=Texto para análise gerado a partir de fonte não oficial")
-    assert pedidos[-3]["acao"] == "verificar"                                      # v0.16.0: antes, procura a fonte oficial na internet
-    assert pedidos[-2]["acao"] == "gerar" and pedidos[-2]["analise"] is True
-    assert pedidos[-1]["acao"] == "ilustrar"                                       # v0.12.0: com a ilustração da IA
+    pagina.wait_for_selector("#proximo-passo [data-acao=ia-tudo]")
+    assert pagina.locator("[data-acao=ia-analise]").count() == 0
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("text=Assunto sem fonte oficial: a IA escreveu o rascunho")
+    assert pedidos[-3]["acao"] == "verificar" and pedidos[-3].get("rapido") is True
+    assert pedidos[-2]["acao"] == "gerar" and "analise" not in pedidos[-2]
+    assert pedidos[-1]["acao"] == "ilustrar"                                       # com a ilustração da IA
     pagina.wait_for_selector("text=A busca em fontes oficiais não encontrou página oficial (veja no passo 1).")
     pagina.wait_for_selector("text=A capa tem a ilustração da IA ao fundo.")
-    assert "TEXTO PARA ANÁLISE" in pagina.inner_text(".avisos-ia")
+    assert "TEXTO PARA ANÁLISE" not in pagina.inner_text("main")
     assert "https://www.itcnet.com.br/" in pagina.inner_text(".link-fonte") and "radar=" not in pagina.inner_text(".link-fonte")
 
 
@@ -3753,7 +3755,7 @@ def test_capa_com_ilustracao_e_refeita_com_o_titulo_novo_sem_gerar_outra(pagina,
     pagina.wait_for_selector("text=Painel do dia")
     ia_de_mentira(pagina, limpo, pedidos)
     abrir_assunto(pagina, "CBS na transição")
-    pagina.click("#proximo-passo >> text=Preparar com IA")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
     pagina.wait_for_selector("text=a capa com a ilustração.")
     c, capa, ilus = limpo.execute("select id, imagem_id, ilustracao_id from radar_conteudos where assunto_id = %s", (a,)).fetchone()
     form = pagina.locator("form[data-form=conteudo]")
@@ -3858,7 +3860,7 @@ def test_publicar_em_todos_de_uma_vez(pagina, limpo):
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click("#proximo-passo >> text=Ir para publicar")
     pagina.select_option(f"#site-cat-{c}", "Tributário")
-    pagina.click(f"#todos-{c} summary")
+    assert pagina.locator(f"#todos-{c}[open]").count() == 1                                # v0.19.0: o quadro já vem aberto
     pagina.wait_for_function(f"() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#todos-imagem-{c}')?.getAttribute('src') || '')")
     ig, fb = pagina.input_value(f"#todos-legenda-instagram-{c}"), pagina.input_value(f"#todos-legenda-facebook-{c}")
     assert "link na bio" in ig and "#Contabilidade" in ig and "Leia a matéria completa: {LINK DO SITE}" in fb
@@ -3891,7 +3893,6 @@ def test_publicar_em_todos_exige_categoria_e_legenda(pagina, limpo):
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click("#proximo-passo >> text=Ir para publicar")
     pagina.select_option(f"#site-cat-{c}", "")
-    pagina.click(f"#todos-{c} summary")
     pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
     pagina.wait_for_selector("text=Escolha a categoria do site antes de autorizar.")
     pagina.select_option(f"#site-cat-{c}", "Tributário")
@@ -3910,6 +3911,103 @@ def test_publicar_em_todos_exige_categoria_e_legenda(pagina, limpo):
     assert limpo.execute("select count(*) from radar_site_envios").fetchone()[0] == 0
     assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
 
+
+
+def test_publicar_em_todos_pela_aba_publicacoes_e_o_robo_e_acionado_na_hora(pagina, limpo):
+    """v0.19.0: a aba Publicações tem “Publicar em todos” no aprovado que falta, o próximo passo do assunto também; ao autorizar,
+    a tela pede à função radar-redes que acione o robô do site na hora (e o botão “Acionar o robô agora” repete)."""
+    a, c = pronto_para_o_site(limpo)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    pedidos = []
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        pedidos.append(corpo)
+        rota.fulfill(status=200, content_type="application/json",
+                     body=json.dumps({"acionado": True, "mensagem": "Robô acionado: a publicação deve sair em 1 a 2 minutos."}))
+    pagina.route("**/functions/v1/radar-redes", responder)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    assert pagina.locator("#proximo-passo >> text=Publicar em todos (site, Instagram e Facebook)").count() == 1
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    assert pagina.locator("#tab-pendentes >> text=Publicar em todos").count() == 1
+    pagina.locator("#tab-canais tr", has_text="Informativo de teste").locator("[data-canal=site] >> text=Publicar em todos").click()
+    pagina.wait_for_selector(f"#todos-{c}[open]")
+    assert pagina.locator("section[data-etapa=publicar]").is_visible()
+    pagina.select_option(f"#site-cat-{c}", "Tributário")
+    pagina.wait_for_function(f"() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#todos-imagem-{c}')?.getAttribute('src') || '')")
+    pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
+    pagina.wait_for_selector("text=Autorizado em todos.")
+    pagina.wait_for_selector("text=Robô acionado: a publicação deve sair em 1 a 2 minutos.")
+    assert pedidos == [{"acao": "acionar_robo"}]
+    pagina.click(".publicar-item >> text=Acionar o robô agora")
+    pagina.wait_for_function("() => [...document.querySelectorAll('#recado div')].some(d => d.textContent.startsWith('Robô acionado'))")
+    assert len(pedidos) == 2 and pedidos[-1] == {"acao": "acionar_robo"}
+    assert limpo.execute("select situacao from radar_site_envios").fetchone()[0] == "autorizado"
+
+
+def test_publicar_nos_canais_que_faltam_depois_do_site(pagina, limpo):
+    """v0.19.0: com a notícia no site, “Publicar nos canais que faltam” publica no Instagram e no Facebook de uma vez, na hora,
+    sem um canal esperar o outro; a aba Publicações leva até ele pelo botão “Publicar” do canal que falta."""
+    a, c = no_site(limpo)
+    pedidos = []
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        pedidos.append(corpo)
+        if corpo.get("acao") == "publicar":
+            limpo.execute("""update radar_redes_envios set situacao = 'publicado', publicado_em = now(), url = 'https://www.facebook.com/p/' || id,
+                             imagem = null where id = %s""", (corpo["envio"],))
+            return rota.fulfill(status=200, content_type="application/json", body=json.dumps({"situacao": "publicado"}))
+        rota.fulfill(status=200, content_type="application/json", body=json.dumps({}))
+    pagina.route("**/functions/v1/radar-redes", responder)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#tab-canais")
+    pagina.locator("#tab-canais tr", has_text="Informativo de teste").locator("[data-canal=facebook] >> text=Publicar").click()
+    pagina.wait_for_selector(f"#faltam-{c}")
+    pagina.wait_for_function(f"() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#faltam-imagem-{c}')?.getAttribute('src') || '')")
+    assert "Leia a matéria completa: https://artecon.cnt.br/news/view/cbs" in pagina.input_value(f"#faltam-legenda-facebook-{c}")   # o link real
+    assert "link na bio" in pagina.input_value(f"#faltam-legenda-instagram-{c}")
+    # a trilha também leva até lá, sem obrigar a concluir o Instagram antes do Facebook
+    assert pagina.locator(".autorizacao li.agora >> text=Publicar nos canais que faltam").count() == 1
+    pagina.click(f"#faltam-{c} >> text=Publicar nos que faltam")
+    pagina.wait_for_selector("text=Publicado no Instagram. Publicado no Facebook.")
+    assert [p["acao"] for p in pedidos] == ["publicar", "publicar"]
+    assert sorted(limpo.execute("select canal, situacao from radar_redes_envios").fetchall()) == [("facebook", "publicado"), ("instagram", "publicado")]
+    assert pagina.locator(f"#faltam-{c}").count() == 0
+
+
+def test_ilustracao_criada_e_nao_gravada_pode_ser_gravada_de_novo_sem_nova_consulta(pagina, limpo):
+    """v0.19.0: se a gravação da ilustração falha depois de a IA criá-la, o recado diz o motivo e o conteúdo mostra “Gravar a
+    ilustração de novo”, que grava a mesma imagem sem nova consulta à IA."""
+    a, cap = assunto_com_texto(limpo)
+    cid = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, status)
+                           values (%s, 'informativo', 'Texto da equipe', 'Corpo do texto da equipe com tamanho suficiente.', 'humano', 'rascunho')
+                           returning id""", (a,)).fetchone()[0]
+    pedidos, falhas = [], []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    def quebrar(rota):                                       # a 1ª gravação de imagem falha (servidor), as outras passam
+        if rota.request.method == "POST" and not falhas:
+            falhas.append(1)
+            return rota.fulfill(status=500, content_type="application/json", body='{"message":"falha de teste ao gravar"}')
+        rota.fallback()
+    pagina.route("**/rest/v1/radar_imagens*", quebrar)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click("nav.etapas >> text=Mostrar tudo numa página") if pagina.locator(f"form[data-form=conteudo][data-id='{cid}']").is_hidden() else None
+    pagina.click(f"form[data-form=conteudo][data-id='{cid}'] >> text=Gerar ilustração com IA")
+    pagina.wait_for_selector("text=A ilustração foi criada, mas não foi gravada no conteúdo")
+    assert limpo.execute("select ilustracao_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None
+    pagina.click(f"form[data-form=conteudo][data-id='{cid}'] >> text=Gravar a ilustração de novo")
+    pagina.wait_for_selector("text=Ilustração gravada")
+    ilus, capa = limpo.execute("select ilustracao_id, imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()
+    assert ilus and capa and ilus != capa
+    assert [p["acao"] for p in pedidos] == ["ilustrar"]                                 # uma consulta só à IA
+    assert pagina.locator(".ilustracao-pendente").count() == 0
 
 def _publicado_nas_redes(db, c, canais=("instagram", "facebook")):
     lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
@@ -3937,6 +4035,9 @@ def test_excluir_publicacoes_individual_e_em_grupo(pagina, limpo):
     def responder(rota):
         corpo = json.loads(rota.request.post_data or "{}")
         pedidos.append(corpo)
+        if corpo.get("acao") == "acionar_robo":                          # v0.19.0: o robô do site é acionado na hora
+            return rota.fulfill(status=200, content_type="application/json",
+                                body=json.dumps({"acionado": True, "mensagem": "Robô acionado: a publicação deve sair em 1 a 2 minutos."}))
         canal, cont = limpo.execute("select canal, conteudo_id from radar_redes_envios where id = %s", (corpo["envio"],)).fetchone()
         if cont == c2:                                                    # a Meta não deixa apagar este
             return rota.fulfill(status=502, content_type="application/json",
@@ -3956,7 +4057,8 @@ def test_excluir_publicacoes_individual_e_em_grupo(pagina, limpo):
     assert pedidos[-1]["acao"] == "excluir"
     # individual: o site fica pedido, e dá para cancelar enquanto o robô não começou
     linha("Informativo de teste").locator("[data-canal=site] >> text=Excluir").click()
-    pagina.wait_for_selector("text=Pedido registrado: o robô exclui a notícia do site em até 15 minutos.")
+    pagina.wait_for_selector("text=Pedido registrado: o robô exclui a notícia do site em 1 a 2 minutos. Robô acionado")
+    assert pedidos[-1]["acao"] == "acionar_robo"
     assert "Exclusão pedida — aguardando o robô" in linha("Informativo de teste").locator("[data-canal=site]").inner_text()
     linha("Informativo de teste").locator("text=Cancelar a exclusão").click()
     pagina.wait_for_selector("text=Pedido de exclusão cancelado.")
@@ -3967,6 +4069,7 @@ def test_excluir_publicacoes_individual_e_em_grupo(pagina, limpo):
     pagina.uncheck("#exc-instagram")
     pagina.click("text=Excluir as selecionadas")
     pagina.wait_for_selector("text=3 de 3 exclusão(ões) feita(s) ou pedida(s).")
+    assert [p["acao"] for p in pedidos].count("acionar_robo") == 2                     # uma vez na individual, uma vez no grupo
     assert limpo.execute("select count(*) from radar_site_exclusoes where situacao = 'pedido'").fetchone()[0] == 2
     assert limpo.execute("select situacao from radar_redes_envios where conteudo_id = %s and canal = 'facebook'", (c,)).fetchone()[0] == "excluido"
     assert limpo.execute("select situacao from radar_redes_envios where conteudo_id = %s and canal = 'instagram'", (c2,)).fetchone()[0] == "publicado"

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 
@@ -237,6 +238,23 @@ def test_comentario_de_duvida_igual_no_robo_na_tela_e_na_funcao(tmp_path):
         saida = subprocess.run(["deno", "run", "--allow-read", "--no-prompt", str(arq)], capture_output=True, text=True, timeout=60)
         assert saida.returncode == 0, saida.stderr
         assert json.loads(saida.stdout) == esperado, nome
+
+
+def _literais(codigo: str) -> str:
+    """Junta as strings entre aspas duplas de um trecho de TypeScript (as regras são somas de strings)."""
+    return "".join(json.loads('"' + s + '"') for s in re.findall(r'"((?:[^"\\\n]|\\.)*)"', codigo))
+
+
+def test_regra_da_fonte_e_revisao_do_robo_iguais_as_da_funcao():
+    """v0.19.0: palavras próprias. A regra (8) e o item (b) da segunda passada são os mesmos no robô e na função radar-ia."""
+    ts = (RAIZ / "supabase" / "functions" / "radar-ia" / "index.ts").read_text(encoding="utf-8")
+    regra = _literais(_extrair(ts, "const REGRA_FONTE = ", '";\n'))
+    assert regra == rr.REGRA_FONTE and regra.startswith("(8) PALAVRAS PRÓPRIAS: ")
+    assert "não diga em cada parágrafo de onde veio a informação" in regra and "nunca as frases dele (nem entre aspas)" in regra
+    revisao = _literais(_extrair(ts, 'const instrucoes = "Você revisa', "REGRA_DADOS;"))
+    item_b = lambda t: t[t.index("(b) "):t.index("(c) ")]
+    assert item_b(revisao) == item_b(rr.REVISAO) and "listado é reescrito com palavras próprias" in item_b(revisao)
+    assert "não acrescente a fonte aos outros parágrafos" in item_b(rr.REVISAO) and "BOLETIM PAGO" in item_b(rr.REVISAO)
 
 
 def test_fontes_das_capturas_marca_o_boletim_pago_e_poe_a_oficial_antes():

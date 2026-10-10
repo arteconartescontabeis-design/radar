@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.17.0)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.19.0)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha). Nada sai sem essa autorização: a função só envia
@@ -7,12 +7,16 @@
 //
 // Quem pode chamar: o administrador logado (o botão "Autorizar e publicar" da tela chama logo depois de autorizar) e,
 // v0.17.0, o robô do site com a chave interna — só para as autorizações do "Publicar em todos" (feitas pelo administrador
-// junto com o site), logo depois que a notícia entra no site.
+// junto com o site), logo depois que a notícia entra no site. v0.19.0: só o administrador aciona o robô do site (acionar_robo).
 //
 // Ações:
 //   publicar     { envio }  → envia a imagem ao armazenamento público, publica e registra o link do post
 //   excluir      { envio }  → v0.17.0: apaga a publicação na rede (pedido do administrador) e registra a exclusão
 //   diagnostico             → confere os segredos, a Página do Facebook, a conta do Instagram e o armazenamento
+//   acionar_robo            → v0.19.0: aciona na hora o robô do site no GitHub (workflow radar-site-publicar.yml), se houver
+//                             publicação, envio junto com o site ou exclusão esperando por ele. Responde sempre 200 com
+//                             { acionado, motivo?, em?, mensagem }: se não der para acionar, a autorização continua guardada
+//                             e sai na próxima rodada automática (o agendamento do GitHub, que é a reserva)
 //
 // Como publica:
 //   Instagram: POST /{ig-user-id}/media (image_url + caption) → espera o contêiner ficar pronto → POST /{ig-user-id}/media_publish
@@ -21,6 +25,9 @@
 // token do Instagram. Se a Meta não deixar apagar pelo aplicativo, a tela oferece "Já apaguei na rede" para registrar à mão.
 // A imagem (JPEG quadrado montado pela tela) vai para o bucket público "radar-redes" do Supabase Storage, porque a
 // Meta só aceita imagem por link público.
+// Como aciona o robô do site (v0.19.0): POST /repos/{RADAR_GITHUB_REPO}/actions/workflows/radar-site-publicar.yml/dispatches
+// com { ref: RADAR_GITHUB_RAMO }. O GitHub atrasa (ou descarta) em horas o agendamento "a cada 15 minutos", mas atende o
+// acionamento manual em segundos. O workflow é fixo aqui (nada vem do pedido) e há uma pausa de 30 s entre dois acionamentos.
 //
 // Segredos (Supabase → Edge Functions → Secrets):
 //   META_PAGE_ID       id da Página do Facebook da Artecon
@@ -31,10 +38,15 @@
 //   META_IG_TOKEN      v0.14.4, opcional: token do usuário do sistema gerado no aplicativo do Instagram (instagram_basic,
 //                      instagram_content_publish). Sem ele, o Instagram usa o mesmo token da Página.
 //   META_GRAPH_URL     opcional; padrão https://graph.facebook.com/v23.0
+//   RADAR_GITHUB_TOKEN v0.19.0, opcional: token fino do GitHub (Fine-grained token, só o repositório radar, Actions: leitura e
+//                      escrita) para acionar o robô do site na hora. Fica SÓ aqui: nunca nos segredos do GitHub, na tela ou no
+//                      chat. Sem ele, as autorizações saem na próxima rodada automática do GitHub
+//   RADAR_GITHUB_REPO  opcional; padrão arteconartescontabeis-design/radar
+//   RADAR_GITHUB_RAMO  opcional; padrão main
 // SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.17.0";
+const VERSAO = "0.19.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -119,12 +131,14 @@ async function ehRobo(req: Request): Promise<boolean> {
 }
 
 /** Quem chamou: o administrador logado (devolve a sessão dele) ou o robô (null). Qualquer outro é recusado. */
-async function quemChamou(req: Request): Promise<string | null> {
+async function quemChamou(req: Request, acao = ""): Promise<string | null> {
   if (await ehRobo(req)) return null;
   const token = req.headers.get("Authorization") ?? "";
   if (!/^Bearer\s+\S+/.test(token)) throw new Erro(401, "Sessão não informada.");
   const papel = await banco(token, "POST", "rpc/radar_papel", {});
-  if (papel !== "admin") throw new Erro(403, "Só o administrador publica no Instagram e no Facebook.");
+  if (papel !== "admin") {
+    throw new Erro(403, acao === "acionar_robo" ? "Só o administrador aciona o robô do site." : "Só o administrador publica no Instagram e no Facebook.");
+  }
   return token;
 }
 
@@ -326,6 +340,81 @@ async function excluir(envio: number, sessao: string) {
   return { situacao: "excluido", canal: e.canal };
 }
 
+// ------------------------------------------------------------------ robô do site (v0.19.0)
+// O token com Actions: escrita aciona qualquer workflow do repositório: por isso o workflow é fixo aqui e só o administrador chama.
+const GITHUB_API = env("RADAR_GITHUB_API", "https://api.github.com").replace(/\/+$/, "");    // só os testes trocam
+const REPO = env("RADAR_GITHUB_REPO", "arteconartescontabeis-design/radar").trim();
+const RAMO = env("RADAR_GITHUB_RAMO", "main").trim();
+const WORKFLOW = "radar-site-publicar.yml";                   // nunca vem do pedido
+const PAUSA_ROBO_MS = 30_000;
+// as mesmas consultas do passo "Há autorização pendente?" do workflow
+const PENDENCIAS = [
+  "radar_site_envios?select=id&situacao=in.(autorizado,enviando)&limit=1",
+  "radar_redes_envios?select=id&situacao=eq.autorizado&junto_com_site=eq.true&limit=1",
+  "radar_site_exclusoes?select=id&situacao=in.(pedido,excluindo)&limit=1",
+];
+// último acionamento, na memória desta instância da função: cliques seguidos não acionam o robô de novo
+let ultimoAcionamento = 0;
+type Acionamento = { acionado: boolean; motivo?: string; em?: string; mensagem: string };
+
+/** Há algo esperando o robô do site? Se a consulta falhar, conta como pendente, como no workflow (o robô confere de novo). */
+async function haPendencia(): Promise<boolean> {
+  try {
+    const servico = comoServico();
+    const linhas = await Promise.all(PENDENCIAS.map((c) => banco(servico, "GET", c, undefined, 10_000)));
+    return linhas.some((l) => !Array.isArray(l) || l.length > 0);
+  } catch { return true; }
+}
+
+/** Aciona o robô do site no GitHub. Nunca lança erro: a autorização já está guardada no banco e, se não der para acionar,
+ *  sai na próxima rodada automática. O token nunca aparece em mensagem nem em registro (só textos fixos). */
+async function acionarRobo(): Promise<Acionamento> {
+  const token = env("RADAR_GITHUB_TOKEN").trim();
+  if (!token) {
+    return { acionado: false, motivo: "sem_token", mensagem: "O robô do site não foi acionado na hora: falta o segredo RADAR_GITHUB_TOKEN " +
+      "no Supabase (Edge Functions → Secrets). A autorização está guardada e sai na próxima rodada automática do GitHub." };
+  }
+  if (!(await haPendencia())) {
+    return { acionado: false, motivo: "nada_pendente", mensagem: "Não há nada esperando o robô do site: ele não foi acionado." };
+  }
+  if (Date.now() - ultimoAcionamento < PAUSA_ROBO_MS) {
+    return { acionado: true, em: new Date(ultimoAcionamento).toISOString(), mensagem: "O robô já foi acionado há instantes." };
+  }
+  const antes = ultimoAcionamento;
+  ultimoAcionamento = Date.now();                             // reserva já: dois cliques ao mesmo tempo não acionam duas vezes
+  const falhou = (motivo: string, porque: string): Acionamento => {
+    ultimoAcionamento = antes;                                // não acionou: o próximo clique tenta de novo
+    console.log(`radar-redes: robô do site não acionado (${motivo})`);
+    return { acionado: false, motivo, mensagem: `O robô do site não foi acionado na hora: ${porque}; ` +
+      "a autorização continua guardada e sai na próxima rodada automática." };
+  };
+  let r: Response;
+  try {
+    r = await fetch(`${GITHUB_API}/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
+      method: "POST",
+      headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + token, "X-GitHub-Api-Version": "2022-11-28",
+                 "User-Agent": "radar-artecon", "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: RAMO }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch { return falhou("github_fora", "o GitHub não respondeu"); }
+  await r.body?.cancel().catch(() => {});                     // a resposta do GitHub não é usada (nem mostrada)
+  if (r.status === 204 || r.status === 200) {
+    console.log("radar-redes: robô do site acionado");
+    return { acionado: true, em: new Date(ultimoAcionamento).toISOString(), mensagem: "Robô acionado: a publicação deve sair em 1 a 2 minutos." };
+  }
+  if (r.status === 401) {
+    return falhou("token_recusado", "o GitHub recusou o token (vencido ou revogado): gere outro e troque o segredo RADAR_GITHUB_TOKEN no Supabase");
+  }
+  if (r.status === 403 || r.status === 404) {
+    return falhou("sem_acesso", `o token não tem acesso ao repositório ${REPO} com a permissão Actions: leitura e escrita ` +
+      "(ou o GitHub limitou os pedidos por um tempo)");
+  }
+  if (r.status === 422) return falhou("workflow_recusou", `o workflow ${WORKFLOW} não aceita acionamento manual no ramo ${RAMO}`);
+  if (r.status === 429) return falhou("limite_github", "o GitHub limitou os pedidos por um tempo");
+  return falhou("erro_github", `o GitHub respondeu com erro ${r.status}`);
+}
+
 async function diagnostico() {
   const itens: { item: string; ok: boolean; detalhe: string }[] = [];
   const c = configMeta("instagram");
@@ -368,12 +457,13 @@ async function tratar(req: Request): Promise<Response> {
   try {
     if (req.method !== "POST") throw new Erro(405, "Use POST.");
     if (!SUPABASE_URL) throw new Erro(503, "A função está sem SUPABASE_URL.");
-    const sessao = await quemChamou(req);                     // null = o robô do site (só "publicar" do que foi junto com o site)
     const pedido = await req.json().catch(() => ({}));
     const acao = String(pedido?.acao ?? "");
-    if (!["publicar", "excluir", "diagnostico"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    const sessao = await quemChamou(req, acao);               // null = o robô do site (só "publicar" do que foi junto com o site)
+    if (!["publicar", "excluir", "diagnostico", "acionar_robo"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
     if (sessao === null && acao !== "publicar") throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
     if (acao === "diagnostico") return responder(200, await diagnostico());
+    if (acao === "acionar_robo") return responder(200, await acionarRobo());     // v0.19.0: só o administrador chega aqui
     const envio = Number(pedido?.envio);
     if (!Number.isSafeInteger(envio) || envio <= 0) throw new Erro(400, "Informe a autorização (envio).");
     if (acao === "excluir") {
