@@ -3,7 +3,8 @@
 Depois da coleta e da nota da IA, o robô prepara sozinho o RASCUNHO das notícias de topo, para a equipe
 só conferir: abre o assunto, pede à IA o texto no formato do informativo (as mesmas regras do botão
 "Gerar com IA": só o que está no texto oficial, nada de memória, nada de marca ou comentário sobre dúvida no
-texto — o que falta confirmar vai para os pontos a conferir (v0.16.0) —, texto original e nunca cópia) e grava o
+texto — o que falta confirmar vai para os pontos a conferir (v0.16.0) —, e a fonte sempre citada quando o texto usa as
+frases dela (v0.18.0)) e grava o
 conteúdo como rascunho, com os pontos a conferir.
 
 O robô não envia para revisão, não aprova e não publica: isso continua com a equipe. Quando a API do
@@ -58,6 +59,14 @@ REGRA_PENDENCIAS = ("(3) o texto vai para o leitor: NUNCA escreva nele marcas, c
                     "confirmada, escreva a frase sem esse detalhe, sem supor (ex.: 'a sessão está marcada para 30 de setembro' em vez de inventar o ano), "
                     "ou deixe o ponto de fora, e registre-o em 'pendencias' (lista curta, só para a equipe, cada item dizendo o que falta conferir). "
                     "Diferença só de grafia entre as fontes (ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa, sem comentar; ")
+# v0.18.0: o texto pode usar as frases da fonte, desde que diga de onde vieram (a mesma regra da função radar-ia)
+REGRA_FONTE = ("(8) FONTE SEMPRE CITADA: organize a informação do ponto de vista da empresa cliente (o que muda, para quem, quando, o que fazer). "
+               "Você pode usar frases iguais às da fonte quando isso der precisão (texto de norma, comunicado oficial, notícia), desde que o MESMO parágrafo "
+               "diga de onde veio, pelo nome do órgão ou do veículo como aparece em 'órgão:' no material ('Segundo a Receita Federal do Brasil, …', "
+               "'Conforme o Portal Contábil SC, …', 'De acordo com a Portaria …, publicada pela Procuradoria-Geral da Fazenda Nacional, …'); "
+               "num item de lista, a frase que apresenta a lista cita a fonte. Transcrição literal de dispositivo legal vai entre aspas. "
+               "EXCEÇÃO: do material marcado como BOLETIM PAGO use só a informação, sempre com palavras e frases próprias, nunca as frases dele; "
+               "atribua a informação ao órgão que publicou o ato. Nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; ")
 REGRA_TITULOS = ("(10) em 'titulos', proponha 3 outros títulos para a mesma notícia, diferentes entre si e do título principal "
                  "(um mais direto, um que destaque o prazo ou o impacto para a empresa, um mais curto), cada um com até 110 caracteres, sem ponto final e sem sensacionalismo; ")
 FORMATOS = {
@@ -85,12 +94,7 @@ def instrucoes(formato: str) -> str:
             "(5) não prometa resultado, não dê orientação individual e não use superlativos; "
             "(6) formatação: só '## ' para subtítulo, '- ' para lista e **negrito**; sem HTML, sem tabelas, sem links; "
             "(7) título com até 110 caracteres, informativo, sem ponto final e sem sensacionalismo; "
-            "(8) TEXTO ORIGINAL, NUNCA CÓPIA: escreva com palavras e frases próprias. Não reproduza frases nem parágrafos do texto oficial, "
-            "nem com pequenas trocas de palavras; não repita a ordem dos parágrafos da fonte. Reorganize a informação do ponto de vista da empresa cliente "
-            "(o que muda, para quem, quando, o que fazer). Só é permitido transcrever, entre aspas e com no máximo 25 palavras, o trecho de um dispositivo "
-            "legal quando a redação exata for indispensável; nomes de normas, órgãos, programas, datas e valores podem ser iguais aos da fonte; "
-            "diga de onde veio a informação ('segundo a Receita Federal', 'conforme a Portaria …'): o texto atribui, não copia; "
-            + REGRA_ESTILO + REGRA_TITULOS + REGRA_DADOS)
+            + REGRA_FONTE + REGRA_ESTILO + REGRA_TITULOS + REGRA_DADOS)
 
 
 ESQUEMA = {"type": "object", "additionalProperties": False, "required": ["titulo", "titulos", "corpo", "pendencias"],
@@ -206,16 +210,19 @@ def fatos(texto: str, oficial: bool) -> dict[str, str]:
 # ------------------------------------------------------------------ cópia e comentário de dúvida (v0.16.0)
 # O mesmo detector da tela (index.html, trechosCopiados) e da função radar-ia: 12 palavras "que contam" seguidas iguais ao
 # texto da fonte. Números, datas, nomes próprios, siglas e nomes de norma não contam; citação curta entre aspas é aceita.
+# v0.18.0: o trecho igual pode ficar quando o parágrafo cita a fonte pelo nome ("citado"), menos o do boletim pago ("paga").
 COPIA_MINIMA, CITACAO_MAXIMA, CITACOES_TOTAL = 12, 40, 120
 COPIA_NEUTRAS = set(("janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro lei leis decreto decretos instrucao normativa portaria resolucao "
                      "medida provisoria complementar emenda constitucional ato declaratorio executivo convenio ajuste solucao consulta parecer n nº art arts artigo artigos inciso paragrafo").split(" "))
 COPIA_LIGACAO = set("de da do das dos e em na no nas nos a o".split(" "))
-_INVISIVEIS = re.compile("[\u200b-\u200d\u2060\u00ad\ufeff]")
+FONTES_PAGAS = ["itc-email"]
+_INVISIVEIS = re.compile("[​-‍⁠­﻿]")
+_INVISIVEIS_E_ASPAS = re.compile("[​-‍⁠­﻿“”\"]")
 
 
 def _limpa_copia(t) -> str:
     t = unicodedata.normalize("NFD", _INVISIVEIS.sub("", str(t or "")).lower())
-    return re.sub(r"[^a-z0-9$%]+", " ", re.sub("[\u0300-\u036f]", "", t)).strip()
+    return re.sub(r"[^a-z0-9$%]+", " ", re.sub("[̀-ͯ]", "", t)).strip()
 
 
 def _propria(p: str) -> bool:
@@ -226,13 +233,92 @@ def _propria(p: str) -> bool:
     return False
 
 
-def trechos_copiados(corpo: str, fontes: list[str]) -> list[dict]:
+def nomes_da_fonte(nome, orgao) -> list[str]:
+    """Os nomes pelos quais o texto cita a fonte: o órgão (também sem "do Brasil"), a sigla entre parênteses e o começo do
+    nome da fonte quando ele é uma sigla ("PGFN — Notícias", "SEF/SC — Últimas legislações")."""
+    saida: list[str] = []
+
+    def por(t):
+        x = _limpa_copia(t)
+        if len(x) >= 3 and x not in saida:
+            saida.append(x)
+
+    def siglas(t):
+        for m in re.finditer(r"\(([^()]{2,40})\)", str(t or "")):
+            if not re.search(r"[a-zà-ú]", m.group(1)):
+                por(m.group(1))
+    o = re.sub(r"\([^()]*\)", " ", str(orgao or ""))
+    siglas(orgao)
+    por(o)
+    por(re.sub(r"\s+do\s+Brasil\s*$", "", o, flags=re.I))
+    ini = re.split(r"\s+[—–-]\s+", re.sub(r"\([^()]*\)", " ", str(nome or "")))[0].strip()
+    siglas(nome)
+    if ini and not re.search(r"[a-zà-ú]", ini):
+        por(ini)
+    return saida
+
+
+def bloco_do_trecho(corpo: str, texto: str) -> str:
+    """O parágrafo em que o trecho está (sem os subtítulos); num item de lista, também a linha que apresenta a lista."""
+    busca = _INVISIVEIS_E_ASPAS.sub("", str(corpo or ""))
+    partes = [x for x in re.split(r"\s+", re.sub("[“”\"]", "", str(texto or ""))) if x]
+    if not partes:
+        return ""
+    m = re.search(r"\s+".join(re.escape(p) for p in partes), busca)
+    if not m:
+        return ""
+    linhas = busca.split("\n")
+    pos, a, b = 0, -1, -1
+    for k, linha in enumerate(linhas):
+        fim_linha = pos + len(linha)
+        if a < 0 and m.start() <= fim_linha:
+            a = k
+        if m.end() <= fim_linha:
+            b = k
+            break
+        pos = fim_linha + 1
+    if a < 0:
+        return ""
+    if b < 0:
+        b = len(linhas) - 1
+
+    def vazia(t): return not t.strip()
+    def titulo(t): return re.match(r"\s*#", t) is not None
+    def lista(t): return re.match(r"\s*(?:[-*•]|[0-9]+[.)])\s", t) is not None
+    while a > 0 and not vazia(linhas[a - 1]) and not titulo(linhas[a - 1]):
+        a -= 1
+    while b + 1 < len(linhas) and not vazia(linhas[b + 1]) and not titulo(linhas[b + 1]):
+        b += 1
+    bloco = linhas[a:b + 1]
+    if lista(linhas[a]):
+        for k in range(a - 1, -1, -1):
+            if vazia(linhas[k]) or lista(linhas[k]):
+                continue
+            if not titulo(linhas[k]):
+                bloco.insert(0, linhas[k])
+            break
+    return "\n".join(bloco)
+
+
+def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
+    """Trechos iguais ao texto das fontes. Cada fonte é o texto ou {"texto", "nome", "nomes", "paga"}. Cada trecho diz de qual
+    fonte veio ("fonte"), se o parágrafo cita essa fonte pelo nome ("citado") e se veio só de boletim pago ("paga")."""
     n_ = 6
-    gramas = set()
+    lista = []
     for f in fontes or []:
-        w = _limpa_copia(f).split(" ")
+        if isinstance(f, str):
+            lista.append({"texto": f, "nome": "", "nomes": [], "paga": False})
+        else:
+            f = f or {}
+            lista.append({"texto": str(f.get("texto") or ""), "nome": str(f.get("nome") or ""),
+                          "nomes": [n for n in (_limpa_copia(x) for x in f.get("nomes") or []) if len(n) >= 3], "paga": bool(f.get("paga"))})
+    gramas: dict[str, list[int]] = {}
+    for k, f in enumerate(lista):
+        w = _limpa_copia(f["texto"]).split(" ")
         for i in range(0, len(w) - n_ + 1):
-            gramas.add(" ".join(w[i:i + n_]))
+            o = gramas.setdefault(" ".join(w[i:i + n_]), [])
+            if not o or o[-1] != k:
+                o.append(k)
     if not gramas:
         return []
     citadas = 0
@@ -262,11 +348,16 @@ def trechos_copiados(corpo: str, fontes: list[str]) -> list[dict]:
         if x[2] == 0 and x[0] in COPIA_LIGACAO and any(v and v[0] and v[2] in (1, 2) for v in vizinhos):
             x[2] = 3
     igual = [False] * len(fichas)
+    origem: list = [None] * len(fichas)
     for i in range(0, len(fichas) - n_ + 1):
         parte = fichas[i:i + n_]
-        if all(x[0] for x in parte) and " ".join(x[0] for x in parte) in gramas:
+        if not all(x[0] for x in parte):
+            continue
+        o = gramas.get(" ".join(x[0] for x in parte))
+        if o:
             for k in range(i, i + n_):
                 igual[k] = True
+            origem[i] = o
     achados, i = [], 0
     while i < len(fichas):
         if not igual[i]:
@@ -280,7 +371,12 @@ def trechos_copiados(corpo: str, fontes: list[str]) -> list[dict]:
         gritado = proprias * 2 > len(trecho)
         contam = sum(1 for x in trecho if x[2] == 0 or (gritado and x[2] in (1, 3)))
         if contam >= COPIA_MINIMA:
-            achados.append({"palavras": j - i + 1, "texto": " ".join(palavras[fichas[i][1]:fichas[j][1] + 1])})
+            texto = " ".join(palavras[fichas[i][1]:fichas[j][1] + 1])
+            de = [lista[k] for k in sorted({k for o in origem[i:j + 1] if o for k in o})]
+            livres = [f for f in de if not f["paga"]]
+            bloco = " " + _limpa_copia(bloco_do_trecho(corpo, texto)) + " " if any(f["nomes"] for f in livres) else ""
+            achados.append({"palavras": j - i + 1, "texto": texto, "fonte": (livres[0] if livres else de[0])["nome"] if de else "",
+                            "paga": not livres, "citado": any(f" {n} " in bloco for f in livres for n in f["nomes"])})
         i = j + 1
     return sorted(achados, key=lambda a: -a["palavras"])
 
@@ -367,9 +463,10 @@ REVISAO = ("Você revisa um texto contábil e tributário da Artecon Artes Cont�
            "o que estiver só no TEXTO DE FONTE NÃO OFICIAL não está confirmado; "
            "se não houver confirmação, reescreva a frase sem o detalhe incerto (sem supor e sem comentar a dúvida) e registre o ponto em 'pendencias'. "
            "Diferença só de grafia entre fontes (ex.: 'ADI 5.161' e 'ADI nº 5.161/DF') não é dúvida: use a forma mais completa; "
-           "(b) cada TRECHO IGUAL AO DA FONTE listado é reescrito com palavras e estrutura próprias, mantendo o sentido, e diz de onde veio a informação "
-           "('segundo a Receita Federal', 'conforme a Portaria …', 'de acordo com o Portal Contábil SC'); se a redação exata for indispensável "
-           "(texto de lei), transcreva no máximo 40 palavras entre aspas, com a fonte; nomes de normas, órgãos, programas, datas e valores podem continuar iguais; "
+           "(b) cada TRECHO IGUAL AO DA FONTE listado pode ficar como está, mas o MESMO parágrafo passa a dizer de onde veio, pelo nome da fonte "
+           "indicado ao lado do trecho ('Segundo a Receita Federal do Brasil, …', 'Conforme o Portal Contábil SC, …'); num item de lista, a frase que "
+           "apresenta a lista cita a fonte. Trecho marcado como BOLETIM PAGO é reescrito com palavras e estrutura próprias, mantendo o sentido, "
+           "com a informação atribuída ao órgão que publicou o ato; "
            "(c) o resto fica como está, inclusive as citações entre aspas: mesma organização, subtítulos ('## '), listas ('- '), **negrito** e a seção 'Análise Artecon'; "
            "(d) nada de HTML, links, colchetes ou comentários sobre a revisão no texto. " + REGRA_DADOS)
 ESQUEMA_REVISAO = {"type": "object", "additionalProperties": False, "required": ["titulo", "corpo", "pendencias"],
@@ -400,12 +497,28 @@ def _resposta_ia(sessao: requests.Session, url: str, token: str, corpo_pedido: d
     return dados, resposta
 
 
-def revisar(sessao: requests.Session, url: str, token: str, modelo: str, titulo: str, corpo: str, bloco: str, fontes: list[str],
+def copias_sem_fonte(corpo: str, fontes: list) -> list[dict]:
+    """Trecho igual ao da fonte que ainda precisa de correção: sem a fonte citada no parágrafo, ou tirado do boletim pago (v0.18.0)."""
+    return [c for c in trechos_copiados(corpo, fontes) if not c["citado"]]
+
+
+def fontes_das_capturas(capturas: list[dict]) -> list[dict]:
+    """As fontes para o detector de cópia: o texto de cada captura, os nomes pelos quais o texto cita a fonte e o boletim pago."""
+    saida = []
+    for c in capturas:
+        f = c.get("radar_fontes") or {}
+        if c.get("texto"):
+            saida.append({"texto": c["texto"], "nome": f.get("orgao") or "", "nomes": nomes_da_fonte(f.get("nome"), f.get("orgao")),
+                          "paga": f.get("slug") in FONTES_PAGAS})
+    return saida
+
+
+def revisar(sessao: requests.Session, url: str, token: str, modelo: str, titulo: str, corpo: str, bloco: str, fontes: list,
             prazo: float | None = None) -> dict | None:
-    """Segunda passada, só quando o texto tem marca [VERIFICAR], comentário de dúvida ou trecho igual ao da fonte.
-    None = nada a corrigir. Erro (ErroIA/ErroConteudo) = fica o texto da primeira passada, com aviso."""
+    """Segunda passada, só quando o texto tem marca [VERIFICAR], comentário de dúvida ou trecho igual ao da fonte sem a fonte
+    citada. None = nada a corrigir. Erro (ErroIA/ErroConteudo) = fica o texto da primeira passada, com aviso."""
     marcas = [_espacos(m)[:160] for m in RE_MARCA.findall(titulo + "\n" + corpo)] + comentarios_duvida(titulo + "\n" + corpo)
-    copias = trechos_copiados(corpo, fontes)
+    copias = copias_sem_fonte(corpo, fontes)
     if not marcas and not copias:
         return None
     resta = None if prazo is None else prazo - time.monotonic()
@@ -413,7 +526,10 @@ def revisar(sessao: requests.Session, url: str, token: str, modelo: str, titulo:
         raise ErroConteudo("sem tempo para a segunda passada")
     entrada = (f"Título: {titulo}\n\n<<<TEXTO A REVISAR>>>\n{corpo}\n<<<FIM>>>\n\n"
                + ("Marcas e comentários de dúvida a resolver:\n" + "\n".join(f"- {m}" for m in marcas) + "\n\n" if marcas else "")
-               + ("Trechos iguais ao da fonte (reescreva e diga a fonte):\n" + "\n".join(f'- "{c["texto"]}"' for c in copias[:12]) + "\n\n" if copias else "")
+               + ("Trechos iguais ao da fonte sem a fonte citada no parágrafo:\n"
+                  + "\n".join(f'- "{c["texto"]}" (' + ("BOLETIM PAGO: reescreva com palavras próprias" if c["paga"]
+                                                       else "fonte: " + (c["fonte"] or "a fonte do material")) + ")" for c in copias[:12])
+                  + "\n\n" if copias else "")
                + f"Material de consulta (as fontes do assunto):\n{bloco}")
     _, resposta = _resposta_ia(sessao, url, token, {
         "model": modelo, "max_tokens": 6000, "system": REVISAO, "messages": [{"role": "user", "content": entrada}],
@@ -427,7 +543,7 @@ def revisar(sessao: requests.Session, url: str, token: str, modelo: str, titulo:
 
 
 def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: str, principal: dict, oficiais: list[dict],
-          fontes: list[str] | None = None, prazo: float | None = None) -> dict:
+          fontes: list | None = None, prazo: float | None = None) -> dict:
     """Pede o texto à IA e confere. Devolve {"titulo", "corpo", "avisos", "modelo"}. v0.16.0: se sobrar marca, comentário de
     dúvida ou trecho igual ao da fonte (`fontes`: os textos das capturas do grupo), uma segunda passada corrige antes de gravar."""
     bloco, oficial = bloco_oficial(oficiais)
@@ -446,7 +562,7 @@ def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: 
     if len(corpo) < 80:
         raise ErroConteudo("a IA devolveu um texto vazio ou curto demais")
     pendencias = limpar_pendencias(resposta.get("pendencias"))
-    fontes = fontes if fontes is not None else [c["texto"] for c in oficiais if c.get("texto")]
+    fontes = fontes if fontes is not None else fontes_das_capturas(oficiais)
     extra = []
     try:
         rev = revisar(sessao, url, token, modelo, titulo, corpo, bloco, fontes, prazo)
@@ -456,13 +572,14 @@ def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: 
     except (ErroIA, ErroConteudo) as e:                      # a primeira passada não se perde: fica com o aviso
         extra.append(f"A revisão automática (marcas e trechos iguais ao da fonte) não pôde ser feita agora ({e}): "
                      "use o botão “Revisar com IA” no conteúdo.")
-    copias = trechos_copiados(corpo, fontes)
+    copias = copias_sem_fonte(corpo, fontes)
     return {"titulo": titulo, "corpo": corpo[:60000], "modelo": str(dados.get("model") or modelo),
             "titulos": limpar_titulos(resposta.get("titulos"), titulo),
             "avisos": [AVISO_ROBO] + conferir_gerado(titulo + "\n" + corpo, oficial, False)
                       + (["Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): "
                           + "; ".join(pendencias) + "."] if pendencias else [])
-                      + ([f"O texto tem {len(copias)} trecho(s) igual(is) ao da fonte: use “Revisar com IA” no conteúdo antes de enviar para revisão."]
+                      + ([f"O texto tem {len(copias)} trecho(s) igual(is) ao da fonte sem a fonte citada: use “Revisar com IA” no conteúdo "
+                          "antes de enviar para revisão."]
                          if copias else []) + extra}
 
 
@@ -494,14 +611,14 @@ def executar(banco: Banco, token: str, url: str, modelo: str = MODELO_PADRAO, ag
             break                                            # o resto fica para a próxima coleta
         try:
             grupo = banco._pedir("GET", "radar_capturas", params={
-                "select": "id,titulo,url,texto,data_publicacao,resumo_fonte,duplicata_de,radar_fontes(orgao,oficial,categoria_padrao)",
+                "select": "id,titulo,url,texto,data_publicacao,resumo_fonte,duplicata_de,radar_fontes(slug,nome,orgao,oficial,categoria_padrao)",
                 "or": f"(id.eq.{cand['id']},duplicata_de.eq.{cand['id']})", "order": "id"}) or []
             principal = next((c for c in grupo if c["id"] == cand["id"]), None)
             if principal is None:
                 continue
             oficiais = [principal] + [c for c in grupo if c["id"] != cand["id"] and (c.get("radar_fontes") or {}).get("oficial")]
             texto = gerar(sessao, url, token, modelo, cfg["formato"], principal, oficiais,
-                          [c["texto"] for c in grupo if c.get("texto")],
+                          fontes_das_capturas(grupo),
                           inicio + (TEMPO_TOTAL if tempo_total is None else tempo_total))
             if not banco._pedir("GET", "radar_v_fila", params={"select": "id", "id": f"eq.{cand['id']}"}):
                 continue                                     # alguém abriu ou ignorou a captura enquanto a IA trabalhava

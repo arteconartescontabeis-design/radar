@@ -284,7 +284,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.17.0"
+    assert pagina.inner_text(".versao") == "v0.18.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -2277,7 +2277,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.17.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.18.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2784,7 +2784,8 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
         pagina.wait_for_function("a => { const f = document.querySelector('form[data-form=conteudo]'); return !!f && f.dataset.lido !== a; }", arg=antes)
     salvar("## O que mudou\nA partir de 2027 as empresas passam a informar a CBS na nota. " + copiado + ". É preciso ajustar o sistema emissor antes da virada do ano.")
     quadro = pagina.inner_text(".copia")
-    assert "Texto igual ao da fonte em 1 trecho" in quadro and "destacar a CBS no documento fiscal" in quadro and "palavras seguidas" in quadro
+    assert "Texto igual ao da fonte sem a fonte citada em 1 trecho" in quadro and "destacar a CBS no documento fiscal" in quadro and "palavras seguidas" in quadro
+    assert "(Receita Federal do Brasil)" in quadro and "o mesmo parágrafo precisa dizer de onde veio" in quadro
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
@@ -2836,6 +2837,64 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
     pagina.wait_for_selector("form[data-form=conteudo]")
     assert pagina.input_value("form[data-form=conteudo] [name=titulo]") == copiado[:200] and pagina.locator(".copia").count() == 0
 
+
+
+def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pago(pagina, limpo):
+    """v0.18.0: o trecho igual ao da fonte pode ficar quando o mesmo parágrafo cita a fonte e o campo Fonte está preenchido;
+    o do boletim pago (ITC) nunca, nem citando."""
+    a, _ = assunto_com_texto(limpo)
+    pago = ("A empresa optante deverá revisar o cadastro de produtos no sistema emissor antes da virada do ano para evitar "
+            "rejeição das notas fiscais eletrônicas emitidas no primeiro dia útil.")
+    # a fonte do boletim pago (a mesma de sql/radar-fontes-novas-2026-10.sql)
+    limpo.execute("""insert into radar_fontes (slug, nome, orgao, abrangencia, oficial, ativo, tipo_coletor, url, config, frequencia_horas)
+                     values ('itc-email', 'ITC Consultoria — boletim por e-mail', 'ITC Consultoria', 'geral', false, false, 'rss',
+                             'https://www.itcnet.com.br/', '{"origem": "email", "remetente": "itc@itcnet.com.br"}', 24)
+                     on conflict (slug) do nothing""")
+    itc = captura(limpo, titulo="ITCNET — CBS na nota", url="https://www.itcnet.com.br/?radar=teste", slug="itc-email", texto=pago)
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, itc))
+    copiado = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9% (nove décimos por cento) a partir de 1º de janeiro de 2027"
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.click("text=Novo conteúdo")
+    form = pagina.locator("form[data-form=conteudo]")
+    def salvar(texto, fonte=None):
+        antes = form.get_attribute("data-lido")
+        form.locator("[name=corpo]").fill(texto)
+        if fonte is not None:
+            form.locator("[name=fonte_credito]").fill(fonte)
+        form.locator("button", has_text="Salvar").first.click()
+        pagina.wait_for_function("a => { const f = document.querySelector('form[data-form=conteudo]'); return !!f && f.dataset.lido !== a; }", arg=antes)
+    # o campo Fonte já vem com o órgão oficial; o boletim pago não entra
+    assert form.locator("[name=fonte_credito]").input_value() == "Receita Federal do Brasil"
+    citado = "## O que mudou\nSegundo a Receita Federal, " + copiado[0].lower() + copiado[1:] + ". É preciso ajustar o sistema emissor antes da virada do ano."
+    salvar(citado)
+    assert pagina.locator(".copia").count() == 0
+    quadro = pagina.inner_text(".copia-citada")
+    assert "com a fonte citada no parágrafo" in quadro and "Fonte: Receita Federal do Brasil" in quadro and "(Receita Federal do Brasil)" in quadro
+    # sem o campo Fonte, a notícia sairia sem a fonte no fim: volta a impedir
+    salvar(citado, fonte="")
+    assert pagina.locator(".copia").count() == 1 and "campo Fonte" in pagina.inner_text(".copia")
+    # a fonte citada noutro parágrafo não vale
+    salvar("## O que mudou\nSegundo a Receita Federal, há regra nova.\n\n" + copiado + ".", fonte="Receita Federal do Brasil")
+    assert pagina.locator(".copia").count() == 1
+    # num item de lista, vale a frase que apresenta a lista
+    salvar("## O que mudou\nConforme a Receita Federal do Brasil, as regras são:\n\n- " + copiado + ";\n- vale para todos.")
+    assert pagina.locator(".copia").count() == 0 and pagina.locator(".copia-citada").count() == 1
+    # o boletim pago, nem citando
+    salvar("## O que mudou\nSegundo a ITC Consultoria, " + pago[0].lower() + pago[1:])
+    quadro = pagina.inner_text(".copia")
+    assert "boletim pago" in quadro and "reescreva com palavras próprias" in quadro
+    pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
+    pagina.wait_for_selector("form[data-form=conteudo] >> text=Aprovar")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=sem a fonte citada")
+    assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"
+    # citado e com o campo Fonte: aprova
+    salvar(citado)
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("text=Conteúdo aprovado.")
 
 def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pagina, limpo, openai):
     a, _ = assunto_com_texto(limpo)
@@ -3643,7 +3702,7 @@ def test_texto_igual_ao_da_fonte_pode_ser_autorizado_mesmo_assim_com_motivo(pagi
     abrir_assunto(pagina, "CBS na transição")
     caixa = pagina.locator("form[data-form=conteudo] .aviso.copia")
     caixa.wait_for()
-    assert "Texto igual ao da fonte em 1 trecho(s)" in caixa.inner_text() and "“segundo a Receita Federal…”" in caixa.inner_text()
+    assert "Texto igual ao da fonte sem a fonte citada em 1 trecho(s)" in caixa.inner_text() and "“Segundo a Receita Federal, …”" in caixa.inner_text()
     assert caixa.locator("[data-acao=ia-revisar]").count() == 1
     pagina.click("form[data-form=conteudo] [data-acao=aprovar]")
     pagina.wait_for_selector("#recado .erro >> text=Autorizar mesmo assim")

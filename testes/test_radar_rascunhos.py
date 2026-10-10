@@ -67,6 +67,8 @@ def test_configuracao_volta_ao_padrao_quando_o_valor_e_estranho():
 
 
 # ---------------------------------------------------------------- v0.16.0: o mesmo detector de cópia em três lugares
+_CBS = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos por cento em todas as operações realizadas"
+_RFB = ["Receita Federal do Brasil", "Receita Federal"]
 CASOS_COPIA = [
     ("A norma dispõe sobre a apuração da Contribuição Social sobre Bens e Serviços (CBS) no período de transição. "
      "Art. 2º O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9%.",
@@ -80,7 +82,29 @@ CASOS_COPIA = [
      ["As empresas optantes pelo regime precisam entregar a declaração mensal até o último dia útil do mês seguinte ao da apuração."]),
     ("Texto totalmente próprio, sem nada igual.", ["Outro texto qualquer da fonte oficial com várias palavras diferentes."]),
     ("", []),
+] + [
+    # v0.18.0: o trecho igual pode ficar quando o parágrafo cita a fonte pelo nome; o do boletim pago, nunca
+    ("Segundo a Receita Federal, o contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos por cento "
+     "em todas as operações realizadas.", [{"texto": f"{_CBS} no país.", "nome": "Receita Federal do Brasil", "nomes": _RFB}]),
+    ("A Receita Federal publicou a norma.\n\nO contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos "
+     "por cento em todas as operações realizadas.", [{"texto": f"{_CBS} no país.", "nome": "Receita Federal do Brasil", "nomes": _RFB}]),
+    ("Conforme o Portal Contábil SC, as regras são:\n\n- o contribuinte deverá destacar a CBS no documento fiscal à alíquota de "
+     "nove décimos por cento em todas as operações realizadas;\n- vale para todos.",
+     [{"texto": f"{_CBS} no país.", "nome": "Portal Contábil SC", "nomes": ["Portal Contábil SC"]}]),
+    ("## Segundo a Receita Federal\nO contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos por cento "
+     "em todas as operações realizadas.", [{"texto": f"{_CBS} no país.", "nome": "Receita Federal do Brasil", "nomes": _RFB}]),
+    ("Segundo a ITC, o contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos por cento em todas as "
+     "operações realizadas.", [{"texto": f"{_CBS} no país.", "nome": "ITC Consultoria", "nomes": ["ITC Consultoria", "ITC"], "paga": True}]),
+    ("Segundo a Receita Federal, o contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos por cento "
+     "em todas as operações realizadas.", [{"texto": f"{_CBS} no país.", "nome": "ITC Consultoria", "nomes": ["ITC"], "paga": True},
+                                           {"texto": f"{_CBS} desde já.", "nome": "Receita Federal do Brasil", "nomes": _RFB}]),
+    ("Segundo a “Receita Federal”, o contribuinte deverá destacar a CBS no documento fiscal à alíquota de nove décimos por cento "
+     "em todas as operações realizadas.", ["texto simples sem nomes: " + _CBS]),
 ]
+NOMES_FONTE = [("Receita Federal — Notícias", "Receita Federal do Brasil"), ("PGFN — Notícias", "Procuradoria-Geral da Fazenda Nacional (PGFN)"),
+               ("SEF/SC — Últimas legislações", "Secretaria de Estado da Fazenda de Santa Catarina"), ("Portal Contábil SC", "Portal Contábil SC"),
+               ("", ""), (None, "Comitê Gestor do IBS"), ("DOU – Destaques", "Imprensa Nacional"),
+               ("Receita Federal — Atos normativos (Normas)", "Receita Federal do Brasil (RFB)")]
 
 
 def _extrair(fonte: str, inicio: str, fim: str) -> str:
@@ -95,13 +119,21 @@ def test_detector_de_copia_do_robo_e_igual_ao_da_tela_e_da_funcao(tmp_path):
     fim = "return achados.sort((a, b) => b.palavras - a.palavras);\n}"
     tela = _extrair((raiz / "index.html").read_text(encoding="utf-8"), "const COPIA_MINIMA = 12", fim)
     funcao = _extrair((raiz / "supabase/functions/radar-ia/index.ts").read_text(encoding="utf-8"), "const COPIA_MINIMA = 12", fim)
-    (tmp_path / "casos.json").write_text(json.dumps(CASOS_COPIA, ensure_ascii=False), encoding="utf-8")
-    esperado = [rr.trechos_copiados(c, f) for c, f in CASOS_COPIA]
-    assert esperado[0] and esperado[1] == [] and esperado[2] and esperado[3] and esperado[4] == []      # os casos testam algo
+    (tmp_path / "casos.json").write_text(json.dumps({"copias": CASOS_COPIA, "nomes": NOMES_FONTE}, ensure_ascii=False), encoding="utf-8")
+    esperado = {"copias": [rr.trechos_copiados(c, f) for c, f in CASOS_COPIA], "nomes": [rr.nomes_da_fonte(n, o) for n, o in NOMES_FONTE]}
+    copias = esperado["copias"]
+    assert copias[0] and copias[1] == [] and copias[2] and copias[3] and copias[4] == []      # os casos testam algo
+    assert [(x[0]["citado"], x[0]["paga"], x[0]["fonte"]) for x in copias[6:13]] == [
+        (True, False, "Receita Federal do Brasil"), (False, False, "Receita Federal do Brasil"), (True, False, "Portal Contábil SC"),
+        (False, False, "Receita Federal do Brasil"), (False, True, "ITC Consultoria"), (True, False, "Receita Federal do Brasil"), (False, False, "")]
+    assert esperado["nomes"][:3] == [["receita federal do brasil", "receita federal"], ["pgfn", "procuradoria geral da fazenda nacional"],
+                                     ["secretaria de estado da fazenda de santa catarina", "sef sc"]]
+    assert esperado["nomes"][-1] == ["rfb", "receita federal do brasil", "receita federal"]     # "(Normas)" não é sigla: não vira nome
     for nome, codigo in (("tela.ts", tela), ("funcao.ts", funcao)):
         arq = tmp_path / nome
-        arq.write_text("// @ts-nocheck\n" + codigo + f"\nconsole.log(JSON.stringify(JSON.parse(Deno.readTextFileSync({json.dumps(str(tmp_path / 'casos.json'))}))"
-                       ".map(([c, f]) => trechosCopiados(c, f))));\n", encoding="utf-8")
+        arq.write_text("// @ts-nocheck\n" + codigo + f"\nconst casos = JSON.parse(Deno.readTextFileSync({json.dumps(str(tmp_path / 'casos.json'))}));\n"
+                       "console.log(JSON.stringify({copias: casos.copias.map(([c, f]) => trechosCopiados(c, f)), "
+                       "nomes: casos.nomes.map(([n, o]) => nomesDaFonte(n, o))}));\n", encoding="utf-8")
         saida = subprocess.run(["deno", "run", "--allow-read", "--no-prompt", str(arq)], capture_output=True, text=True, timeout=60)
         assert saida.returncode == 0, saida.stderr
         assert json.loads(saida.stdout) == esperado, nome

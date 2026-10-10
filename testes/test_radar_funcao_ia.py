@@ -206,7 +206,7 @@ def test_gerar_sem_marca_nem_copia_faz_uma_chamada_so_e_guarda_as_pendencias(fun
     assert len(IA["pedidos"]) == n + 1                                         # nada a revisar: uma chamada só
     sistema = IA["pedidos"][-1]["system"]
     assert "NUNCA escreva nele marcas" in sistema and "'pendencias'" in sistema and "'ADI 5.161' e 'ADI nº 5.161/DF'" in sistema
-    assert "diga de onde veio a informação" in sistema and "[VERIFICAR: o que falta]" not in sistema
+    assert "FONTE SEMPRE CITADA" in sistema and "BOLETIM PAGO" in sistema and "[VERIFICAR: o que falta]" not in sistema
     assert "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): data da sessão presencial." in r["avisos"]
 
 
@@ -222,16 +222,39 @@ def test_gerar_com_marca_ou_copia_pede_a_revisao_e_grava_o_texto_revisado(funcao
     assert status == 200, r
     assert len(IA["pedidos"]) == n + 2
     rev = IA["pedidos"][-1]
-    assert rev["tools"][0]["name"] == "revisao" and "Você revisa" in rev["system"] and "diz de onde veio a informação" in rev["system"]
+    assert rev["tools"][0]["name"] == "revisao" and "Você revisa" in rev["system"] and "passa a dizer de onde veio" in rev["system"]
     msg = rev["messages"][0]["content"]
     assert "Marcas e comentários de dúvida a resolver" in msg and "a fonte indica 30/9" in msg
-    assert "Trechos iguais ao da fonte" in msg and "contribuinte deverá destacar a CBS no documento fiscal" in msg
+    assert "Trechos iguais ao da fonte sem a fonte citada no parágrafo" in msg and "contribuinte deverá destacar a CBS no documento fiscal" in msg
+    assert "(fonte: Receita Federal do Brasil)" in msg                         # v0.18.0: a IA cita a fonte pelo nome do órgão
     assert "<<<TEXTO OFICIAL" in msg                                           # o material para confirmar o que puder
     corpo, avisos = limpo.execute("select corpo, avisos_ia from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
     assert corpo.startswith(REVISADO.strip()) and "[VERIFICAR" not in corpo
     assert "Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): ano da sessão presencial." in avisos
     assert not any("marcados com [VERIFICAR]" in x or "revisão automática" in x for x in avisos)
     assert limpo.execute("select acao, tokens_entrada, tokens_saida from radar_ia_uso order by id desc limit 1").fetchone() == ("gerar", 2000, 600)
+
+
+def test_trecho_igual_com_a_fonte_citada_no_paragrafo_nao_pede_revisao(funcao, limpo):
+    """v0.18.0: o texto pode ficar igual ao da fonte quando o mesmo parágrafo diz de onde veio; sem isso, a segunda passada
+    acrescenta a fonte (e no trecho tirado do boletim pago, reescreve)."""
+    a, _ = _assunto_com_texto(limpo)
+    citado = "Segundo a Receita Federal do Brasil, a " + COPIADO[2:]
+    IA["respostas"]["conteudo"] = {"titulo": "CBS de 0,9% na transição", "titulos": [], "pendencias": [],
+                                   "corpo": citado + "\n\n" + "Texto próprio sobre a CBS. " * 4}
+    n = len(IA["pedidos"])
+    status, r = pedir("gerar", assunto_id=a, formato="flash")
+    assert status == 200, r
+    assert len(IA["pedidos"]) == n + 1                                         # citada: nada a revisar
+    corpo, avisos = limpo.execute("select corpo, avisos_ia from radar_conteudos where id = %s", (r["conteudo_id"],)).fetchone()
+    assert corpo.startswith(citado.strip()) and not any("revisão automática" in x for x in avisos)
+    # a fonte citada noutro parágrafo não vale: o trecho igual pede a segunda passada
+    IA["respostas"]["conteudo"] = {"titulo": "CBS de 0,9% na transição", "titulos": [], "pendencias": [],
+                                   "corpo": "A Receita Federal do Brasil publicou a norma.\n\n" + COPIADO + "Texto próprio sobre a CBS. " * 4}
+    IA["respostas"]["revisao"] = {"titulo": "CBS de 0,9% na transição", "pendencias": [], "corpo": citado + "Texto próprio sobre a CBS. " * 4}
+    status, r = pedir("gerar", assunto_id=a, formato="flash")
+    assert status == 200, r
+    assert len(IA["pedidos"]) == n + 3 and "(fonte: Receita Federal do Brasil)" in IA["pedidos"][-1]["messages"][0]["content"]
 
 
 def test_revisao_que_volta_cortada_deixa_o_texto_original_com_aviso(funcao, limpo):
@@ -266,7 +289,7 @@ def test_revisar_reescreve_um_conteudo_ja_gravado(funcao, limpo):
     corpo, avisos, status_c = limpo.execute("select corpo, avisos_ia, status from radar_conteudos where id = %s", (c,)).fetchone()
     assert corpo.startswith(REVISADO.strip()) and status_c == "em_revisao"
     assert avisos[0] == "aviso antigo" and re.fullmatch(r"Revisado com IA em \d\d/\d\d/\d{4}: 1 marca\(s\) ou comentário\(s\) de dúvida e 1 "
-                                                         r"trecho\(s\) igual\(is\) ao da fonte corrigidos\.", avisos[1])
+                                                         r"trecho\(s\) igual\(is\) ao da fonte sem a fonte citada corrigidos\.", avisos[1])
     assert avisos[2:] == ["Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): prazo de adesão."]
     assert r["avisos_gravados"] is True and r["titulo_mudou"] is False and r["autorizacao_caiu"] is False
     assert limpo.execute("select acao from radar_ia_uso order by id desc limit 1").fetchone()[0] == "gerar"
