@@ -690,7 +690,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.19.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.20.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1149,7 +1149,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (23, 6, 8, 6, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.19.0", [], 23)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.20.0", [], 23)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -2004,7 +2004,7 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.19.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.20.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2034,7 +2034,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.19.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.20.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -3249,3 +3249,117 @@ def test_exclusao_da_publicacao_no_site_e_nas_redes(limpo):
     assert limpo.execute("select count(*) from radar_divulgacoes where conteudo_id = %s", (c1,)).fetchone()[0] == 1
     with como("authenticated", ADMIN) as c:
         assert c.execute("select radar_cancelar_exclusao_site(%s)", (x,)).fetchone()[0] is True
+
+
+# ------------------------------------------------------------------- v0.20.0: kit das redes feito pela IA (kit_ia)
+KIT = {"versao": 1, "gerado_em": "2026-10-11T14:00:00Z", "modelo": "claude-sonnet-4-6",
+       "arte": {"chamada": "CBS no documento fiscal a partir de 2027", "apoio": "Quem emite nota fiscal destaca a alíquota de 0,9%."},
+       "instagram": {"texto": "A CBS entra no documento fiscal em 2027.\n\nLeia a matéria completa no site (link na bio).",
+                     "hashtags": ["#cbs", "#reformatributaria", "#notafiscal"]},
+       "facebook": {"texto": "A CBS entra no documento fiscal em 2027.\n\nLeia a matéria completa: {LINK DO SITE}", "hashtags": ["#cbs"]},
+       "reel": {"gancho": "Sua nota fiscal muda em 2027.", "duracao": 36,
+                "cenas": [{"de": 0, "ate": 3, "fala": "Sua nota fiscal muda em 2027.", "texto_tela": "CBS na nota"},
+                          {"de": 3, "ate": 36, "fala": "A CBS passa a ser destacada à alíquota de 0,9%.", "texto_tela": "0,9% de CBS"}],
+                "chamada_final": "Leia a matéria completa no site.", "legenda": "A CBS na nota fiscal. Link na bio."},
+       "avisos": []}
+
+
+def _kit(db, c1):
+    return db.execute("select kit_ia from radar_conteudos where id = %s", (c1,)).fetchone()[0]
+
+
+def test_kit_ia_nao_muda_a_data_nem_derruba_autorizacoes(limpo):
+    """Gravar o kit (como a função radar-ia faz: PATCH só de kit_ia, com o atualizado_em lido) não é alteração do texto: a data,
+    a aprovação e as autorizações do site e das redes ficam como estavam (sem isso, RADAR114, a autorização cancelada sozinha e o
+    robô do site recusando "o conteúdo mudou depois de autorizado")."""
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    lido = _lido(limpo, c1)
+    with como("authenticated", ADMIN) as c:
+        r = c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, %s, %s)", (c1, lido, IMG, LEG_IG, LEG_FB)).fetchone()[0]
+    gravar = "update radar_conteudos set kit_ia = %s where id = %s and atualizado_em = %s"
+    with como("authenticated", EDITOR) as c:
+        assert c.execute(gravar, (json.dumps(KIT), c1, lido)).rowcount == 1
+    assert limpo.execute("select atualizado_em, status, aprovado_por::text from radar_conteudos where id = %s", (c1,)).fetchone() == \
+        (lido, "aprovado", EDITOR)
+    assert _kit(limpo, c1) == KIT
+    assert limpo.execute("select situacao, conteudo_lido_em from radar_site_envios where id = %s", (r["site"],)).fetchone() == ("autorizado", lido)
+    assert limpo.execute("select array_agg(situacao order by id) from radar_redes_envios where conteudo_id = %s", (c1,)).fetchone()[0] == \
+        ["aguardando_site", "aguardando_site"]
+    # quem gravou o kit fica na trilha
+    assert limpo.execute("""select usuario::text from radar_auditoria where tabela = 'radar_conteudos' and acao = 'UPDATE'
+                            and antes->'kit_ia' is distinct from depois->'kit_ia'""").fetchall() == [(EDITOR,)]
+    # o site sai; o kit é refeito; as redes saem com a versão do texto que foi autorizada
+    with como("service_role") as c:
+        c.execute("update radar_site_envios set situacao = 'enviando' where id = %s", (r["site"],))
+        c.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c1,))
+    with como("authenticated", ADMIN) as c:
+        assert c.execute(gravar, (json.dumps({**KIT, "gerado_em": "2026-10-11T15:00:00Z"}), c1, lido)).rowcount == 1
+    assert _lido(limpo, c1) == lido
+    assert limpo.execute("select array_agg(situacao order by id) from radar_redes_envios where conteudo_id = %s", (c1,)).fetchone()[0] == \
+        ["autorizado", "autorizado"]
+    with como("service_role") as c:
+        assert c.execute("select radar_rede_iniciar(%s)", (r["instagram"],)).fetchone()[0]["legenda"] == LEG_IG
+    # o título muda: aí sim a data muda, o texto volta à revisão e a autorização que faltava sair cai
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_conteudos set titulo = 'CBS: o que muda na nota' where id = %s", (c1,))
+    assert _lido(limpo, c1) > lido
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c1,)).fetchone()[0] == "em_revisao"
+    assert limpo.execute("select situacao from radar_redes_envios where id = %s", (r["facebook"],)).fetchone()[0] == "cancelado"
+
+
+def test_kit_ia_fica_desatualizado_quando_titulo_ou_texto_mudam(limpo):
+    c1 = novo_conteudo(limpo, novo_assunto(limpo))
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_conteudos set titulo = 'Sem kit ainda' where id = %s", (c1,))
+        assert _kit(limpo, c1) == {}                                                         # kit vazio não é marcado
+        c.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(KIT), c1))
+        assert "desatualizado" not in _kit(limpo, c1)
+        c.execute("update radar_conteudos set titulo = 'CBS: o que muda na nota' where id = %s", (c1,))
+        assert _kit(limpo, c1) == {**KIT, "desatualizado": True}                            # nada se perde: só ganha a marca
+        c.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(KIT), c1))   # kit gerado de novo
+        assert "desatualizado" not in _kit(limpo, c1)
+        c.execute("update radar_conteudos set corpo = corpo || ' Mais um parágrafo.' where id = %s", (c1,))
+        assert _kit(limpo, c1)["desatualizado"] is True
+        c.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(KIT), c1))
+        # texto e kit novos juntos (o kit veio com o texto): não marca
+        c.execute("update radar_conteudos set titulo = 'CBS na nota fiscal', kit_ia = %s where id = %s",
+                  (json.dumps({**KIT, "modelo": "outro"}), c1))
+        assert _kit(limpo, c1) == {**KIT, "modelo": "outro"}
+        # o resto do conteúdo não mexe no kit
+        c.execute("update radar_conteudos set autor = 'Equipe Artecon', fonte_credito = 'Receita Federal' where id = %s", (c1,))
+        assert "desatualizado" not in _kit(limpo, c1)
+    # aprovado: o título muda, o texto volta à revisão e o kit fica desatualizado
+    aprovar(c1)
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_conteudos set titulo = 'CBS na nota fiscal em 2027' where id = %s", (c1,))
+    assert limpo.execute("select status, kit_ia->'desatualizado' from radar_conteudos where id = %s", (c1,)).fetchone() == ("em_revisao", True)
+    # kit no limite de tamanho (só escrito à mão): a marca não impede a edição do texto
+    grande = {"x": "a" * 19985}
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(grande), c1))
+        assert c.execute("select length(kit_ia::text) from radar_conteudos where id = %s", (c1,)).fetchone()[0] <= 20000
+        assert c.execute("update radar_conteudos set titulo = 'CBS: a nota fiscal muda' where id = %s", (c1,)).rowcount == 1
+    assert _kit(limpo, c1) == {"desatualizado": True}
+
+
+def test_kit_ia_formato_tamanho_e_quem_grava(limpo):
+    c1 = novo_conteudo(limpo, novo_assunto(limpo))
+    assert _kit(limpo, c1) == {}                                                             # conteúdo novo nasce sem kit
+    gravar = "update radar_conteudos set kit_ia = %s where id = %s"
+    with como("authenticated", EDITOR) as c:
+        for ruim in ["[]", '"texto"', "1", "null", json.dumps({"instagram": {"texto": "a" * 20000}})]:   # só objeto, até 20.000
+            with pytest.raises(psycopg.errors.CheckViolation, match="radar_conteudos_kit_ia"):
+                c.execute(gravar, (ruim, c1))
+        with pytest.raises(psycopg.errors.NotNullViolation):
+            c.execute(gravar, (None, c1))
+    for uid in (LEITOR, SEM_PERFIL):                                                           # quem não edita não grava
+        with como("authenticated", uid) as c:
+            assert c.execute(gravar, (json.dumps(KIT), c1)).rowcount == 0
+    with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        c.execute(gravar, (json.dumps(KIT), c1))
+    assert _kit(limpo, c1) == {}
+    with como("authenticated", EDITOR) as c:                                                  # o editor grava (a função usa o token dele)
+        assert c.execute(gravar, (json.dumps(KIT), c1)).rowcount == 1
+    with como("authenticated", LEITOR) as c:                                                  # e a equipe lê
+        assert c.execute("select kit_ia from radar_conteudos where id = %s", (c1,)).fetchone()[0] == KIT
