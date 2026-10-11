@@ -189,6 +189,15 @@ function traduzir(codigo: number | null, sub: number | null, bruta: string, stat
   return { geral: false, mensagem: `a Meta recusou (${cod}): ${bruta}` };
 }
 
+/** O prazo da chamada acabou? (vem como DOMException "TimeoutError"; "AbortError" em versões antigas) */
+const ehPrazo = (e: unknown) => ["TimeoutError", "AbortError"].includes(String((e as { name?: unknown } | null)?.name ?? ""));
+/** Erro de prazo estourado: "não coube no tempo" se o orçamento acabou; senão, "não respondeu em N s". */
+function semResposta(prazo: number, ctx: Contexto): never {
+  ctx.codigos.add("sem_resposta");
+  if (ctx.resta() < 100) throw new ErroMeta(504, NAO_COUBE);
+  throw new ErroMeta(504, `a Meta não respondeu em ${Math.round(prazo / 1000)} s; tente de novo em alguns minutos`);
+}
+
 /** GET na Graph API com o META_IG_TOKEN. O token vai na consulta e nunca aparece em mensagem de erro nem no registro. */
 async function chamarMeta(caminho: string, fields: string, ctx: Contexto): Promise<any> {
   const resta = ctx.resta();
@@ -200,17 +209,14 @@ async function chamarMeta(caminho: string, fields: string, ctx: Contexto): Promi
     r = await fetch(`${GRAPH}/${encodeURIComponent(caminho)}?${p}`, { signal: AbortSignal.timeout(prazo) });
   } catch (e) {
     // a mensagem de erro do fetch pode trazer o endereço (com o token): nunca é usada, só o tipo do erro
-    const nome = String((e as { name?: unknown } | null)?.name ?? "");   // o prazo vem como DOMException "TimeoutError"
-    if (nome === "TimeoutError" || nome === "AbortError") {             // o prazo da chamada acabou
-      ctx.codigos.add("sem_resposta");
-      if (ctx.resta() < 100) throw new ErroMeta(504, NAO_COUBE);
-      throw new ErroMeta(504, `a Meta não respondeu em ${Math.round(prazo / 1000)} s; tente de novo em alguns minutos`);
-    }
+    if (ehPrazo(e)) semResposta(prazo, ctx);
     // falhou na hora: conexão recusada, DNS, TLS ou META_GRAPH_URL errado — esperar não adianta, é rede ou configuração
     ctx.codigos.add("rede");
     throw new ErroMeta(502, "não foi possível falar com a Meta (rede ou META_GRAPH_URL errado); tente de novo em alguns minutos");
   }
-  const d: any = await r.json().catch(() => null);
+  // o prazo também vale para a leitura do corpo: corpo atrasado é "não respondeu", não "ilegível"
+  let d: any = null;
+  try { d = await r.json(); } catch (e) { if (ehPrazo(e)) semResposta(prazo, ctx); }
   if (!d) {
     ctx.codigos.add("ilegivel");
     if (ctx.resta() < 100) throw new ErroMeta(504, NAO_COUBE);
@@ -289,8 +295,9 @@ async function lerPerfil(u: string, n: number, pedido: Pedido, ctx: Contexto): P
           continue;
         }
         if (pedeMenos(e) && limite > MENOR_LOTE) { lote = Math.max(MENOR_LOTE, Math.ceil(limite / 2)); continue; }
-        // campo essencial recusado: a consulta é a mesma para todos os perfis, então a recusa vale para todos (não insiste)
-        if (recusaDeCampo(e)) e.geral = true;
+        // campo essencial recusado na 1ª página: a consulta é a mesma para todos os perfis, então vale para todos (não insiste).
+        // Numa página seguinte a 1ª já funcionou com os mesmos campos: a recusa é só deste perfil e vira aviso dele
+        if (recusaDeCampo(e) && !cursor) e.geral = true;
         throw e;
       }
     }

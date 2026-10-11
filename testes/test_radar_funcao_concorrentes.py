@@ -150,7 +150,22 @@ class Ponte(BaseHTTPRequestHandler):
             return
         if u in ESTADO["corpo_bruto"]:                                     # um proxy no caminho devolve HTML
             return self._responder(502, b"<html><body>502 Bad Gateway</body></html>")
+        if u in ESTADO["corpo_lento"]:                                     # manda os cabeçalhos e atrasa o corpo
+            dados = json.dumps({"business_discovery": {"id": "bd-" + u, "media": {"data": []}}, "id": IG}).encode()
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(dados)))
+                self.end_headers()
+                self.wfile.flush()
+                time.sleep(ESTADO["corpo_lento"][u])
+                self.wfile.write(dados)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
         for campo in ("website", "view_count", "media_product_type", "like_count"):   # a Meta recusa um campo de cada vez
+            if campo in ESTADO["recusa_com_cursor"] and campo in cmp and cursor:   # só nas páginas seguintes
+                return self._erro(400, code=100, message=f"(#100) Tried accessing nonexisting field ({campo}) on node type (ShadowIGMedia)")
             if campo in ESTADO["recusa"] and campo in conta_campos + cmp:
                 no = "ShadowIGUser" if campo in conta_campos else "ShadowIGMedia"
                 nome = "an unsupported field" if ESTADO["recusa_anonima"] else f"nonexisting field ({campo})"
@@ -293,7 +308,7 @@ def funcao(api_postgrest, chave, tmp_path_factory):
 def meta(funcao):
     ESTADO.update(meta=[], chaves=[], recusa=set(), recusa_anonima=False, max_pagina=None, limite_dados=None, erro_geral=None,
                   erro_geral_depois=None, erro_bd=None, token_recusado=False, cursor=None, derrubar=set(), corpo_bruto=set(),
-                  atraso={"lento1": 1.5, "lento2": 1.5})
+                  atraso={"lento1": 1.5, "lento2": 1.5}, recusa_com_cursor=set(), corpo_lento={})
     yield funcao
 
 
@@ -581,6 +596,27 @@ def test_prazo_de_uma_chamada_estourado_nao_impede_os_outros_perfis(meta):
     assert um == {"usuario": "lento1", "ok": False, "erro": "a Meta não respondeu em 1 s; tente de novo em alguns minutos"}, r
     assert dois["ok"] is True and len(dois["posts"]) == 3 and len(campos_pedidos("escritorio_dois")) == 1
     assert "códigos da Meta: sem_resposta" in (meta / f"{PORTA_PRAZO}.log").read_text()
+
+
+def test_corpo_que_atrasa_alem_do_prazo_e_nao_respondeu_e_nao_ilegivel(meta):
+    """A Meta manda os cabeçalhos e atrasa o corpo além do prazo de 1 s: é prazo estourado, não resposta ilegível."""
+    ESTADO["corpo_lento"] = {"lento1": 2.5}
+    status, r = pedir({"perfis": ["lento1", "escritorio_dois"], "posts": 3}, porta=PORTA_PRAZO, timeout=30)
+    um, dois = r["perfis"]
+    assert um == {"usuario": "lento1", "ok": False, "erro": "a Meta não respondeu em 1 s; tente de novo em alguns minutos"}, r
+    assert dois["ok"] is True and len(dois["posts"]) == 3
+    registro = (meta / f"{PORTA_PRAZO}.log").read_text()
+    assert "sem_resposta" in registro and "ilegivel" not in registro.split("lento1")[-1]
+
+
+def test_campo_recusado_so_na_pagina_seguinte_fica_no_perfil_e_os_outros_sao_pedidos(meta):
+    """A 1ª página funcionou com os mesmos campos: a recusa na página seguinte é daquele perfil (aviso), não de todos."""
+    ESTADO.update(recusa_com_cursor={"like_count"}, max_pagina=5)
+    status, r = pedir({"perfis": ["escritorio.um", "escritorio_dois"], "posts": 10})
+    a, b = r["perfis"]
+    assert a["ok"] is True and len(a["posts"]) == 5 and "vieram 5 dos 10 posts pedidos" in a["aviso"], r
+    assert "nonexisting field (like_count)" in a["aviso"]
+    assert b["ok"] is True and len(b["posts"]) == 3 and "aviso" not in b and campos_pedidos("escritorio_dois"), r   # tem só 3 posts
 
 
 def test_falha_de_rede_nao_manda_esperar_o_prazo(meta):

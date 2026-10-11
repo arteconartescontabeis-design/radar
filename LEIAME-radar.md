@@ -957,8 +957,10 @@ função só tem contagens.
   a confere). Para desfazer: `sql/radar-concorrentes-reversao.sql` e apague a função no Supabase.
 - **Usar:** pelo SQL Editor, com `net.http_post` (o exemplo pronto está no fim do `sql/radar-concorrentes.sql`), mandando
   `{"perfis": ["escritorio1", "escritorio2"], "posts": 50}` — de 1 a 12 perfis por chamada e de 1 a 100 posts por perfil. A
-  resposta chega em `net._http_response`. Perfil com problema (não existe, não é comercial, limite da Meta) volta com o motivo
-  sem derrubar os outros; os que não couberem nos ~2 minutos voltam com "não coube no tempo; peça de novo só esses".
+  resposta chega em `net._http_response`. Perfil que não existe ou não é comercial volta com o motivo
+  sem derrubar os outros. Já o limite de chamadas da Meta, a falta de permissão, o token vencido e o META_IG_USER_ID errado
+  valem para todos: os perfis seguintes nem são pedidos e voltam com o mesmo aviso (corrija ou espere e peça de novo). Os que
+  não couberem nos ~2 minutos voltam com "não coube no tempo; peça de novo só esses".
   `{"acao": "diagnostico"}` confere os segredos e a permissão lendo a própria conta da Artecon.
 - **Ética:** a análise serve para entender **formatos e temas** que funcionam, nunca para copiar posts, textos ou imagens de
   outros escritórios (Código de Ética Profissional do Contador, NBC PG 01). O que se aprende vira conteúdo próprio da Artecon.
