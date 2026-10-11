@@ -337,6 +337,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0). |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase. |
+| `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
+| `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes e testes. |
 | `testes/` | Suíte de testes automatizados. |
@@ -933,6 +935,33 @@ A função `radar-redes` publica o que o administrador autorizou nos passos 6 e 
 
 Sem os segredos, o botão "Autorizar e publicar" grava a autorização e avisa que a Meta ainda não está configurada; depois é
 só usar "Publicar agora" no mesmo passo.
+
+### Concorrentes no Instagram (v0.19.1, opcional)
+
+A função `radar-concorrentes` **só lê**: para uma lista de perfis comerciais (ou de criador) do Instagram de outros
+escritórios de contabilidade, busca pela API oficial da Meta (Business Discovery) os dados públicos da conta (nome, bio, site,
+seguidores, seguindo, total de posts) e dos posts recentes (data, formato, curtidas, comentários, visualizações quando a Meta
+informa, legenda, link e o endereço da imagem). Não publica, não grava nada no banco e não guarda imagem; o registro (log) da
+função só tem contagens.
+
+- **O que não dá para ler:** alcance, salvamentos, compartilhamentos, visitas ao perfil e quem são os clientes dos
+  concorrentes — são dados privados de cada conta. Curtidas ocultas pelo dono voltam vazias (`null`). Perfis pessoais não
+  aparecem: a Meta só mostra contas comerciais ou de criador.
+- **Permissão:** o `META_IG_TOKEN` (aplicativo "Radar Artecon Publicações") precisa de `instagram_basic` e
+  **`instagram_manage_insights`**. Se faltar, gere o token de novo no Business (Usuários do sistema) marcando as duas e troque
+  o segredo no Supabase (nunca pelo chat). A função usa os segredos que já existem (`META_IG_USER_ID`, `META_IG_TOKEN` e o
+  opcional `META_GRAPH_URL`); o `META_PAGE_TOKEN` não é usado aqui.
+- **Instalar:** (1) Supabase → Edge Functions → nova função `radar-concorrentes` com o
+  `supabase/functions/radar-concorrentes/index.ts`, com **Verify JWT desligado** (a função confere sozinha: a chave do Vault ou
+  o administrador logado); (2) rode uma vez `sql/radar-concorrentes.sql` no SQL Editor (cria a chave no Vault e a função que
+  a confere). Para desfazer: `sql/radar-concorrentes-reversao.sql` e apague a função no Supabase.
+- **Usar:** pelo SQL Editor, com `net.http_post` (o exemplo pronto está no fim do `sql/radar-concorrentes.sql`), mandando
+  `{"perfis": ["escritorio1", "escritorio2"], "posts": 50}` — de 1 a 12 perfis por chamada e de 1 a 100 posts por perfil. A
+  resposta chega em `net._http_response`. Perfil com problema (não existe, não é comercial, limite da Meta) volta com o motivo
+  sem derrubar os outros; os que não couberem nos ~2 minutos voltam com "não coube no tempo; peça de novo só esses".
+  `{"acao": "diagnostico"}` confere os segredos e a permissão lendo a própria conta da Artecon.
+- **Ética:** a análise serve para entender **formatos e temas** que funcionam, nunca para copiar posts, textos ou imagens de
+  outros escritórios (Código de Ética Profissional do Contador, NBC PG 01). O que se aprende vira conteúdo próprio da Artecon.
 
 ### Boletim da ITC pelo Microsoft Graph (v0.12.0)
 
