@@ -165,8 +165,16 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 .acoes .btn{max-width:100%;white-space:normal}
 /* v0.13.0: montagem da publicação nas redes */
 .rede-montagem{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:14px;margin:10px 0 0;align-items:start}
-.rede-imagem{width:100%;aspect-ratio:1;max-width:100%;border-radius:8px;border:1px solid var(--linha);background:var(--azul-claro);object-fit:cover}
+.rede-imagem{width:100%;aspect-ratio:4/5;max-width:100%;border-radius:8px;border:1px solid var(--linha);background:var(--azul-claro);object-fit:cover}
 .rede-legenda{display:flex;flex-direction:column;gap:4px;min-width:0} .rede-legenda label{margin:0} .rede-legenda textarea{min-height:200px;width:100%}
+/* v0.20.0: arte vertical (4:5) com os campos dela (chamada, apoio e fundo) embaixo da imagem */
+.rede-arte{display:flex;flex-direction:column;gap:4px;min-width:0} .arte-campos label{margin:6px 0 0}
+.arte-campos input,.arte-campos select,.arte-campos textarea{display:block;width:100%;max-width:100%;margin-top:3px;min-height:0;font-size:.9rem;font-weight:400;color:var(--cinza)}
+/* v0.20.0: o kit das redes no conteúdo (legendas, arte e roteiro do reel), fechado por padrão; a tabela do roteiro cabe no celular */
+details.kit-redes{margin:10px 0 0;border:1px solid var(--linha);border-radius:8px;padding:8px 12px;background:#fff} details.kit-redes summary{cursor:pointer}
+.kit-legendas{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:8px 0}
+.kit-legenda{white-space:pre-wrap;overflow-wrap:anywhere;background:#F5F8FB;border:1px solid var(--linha);border-radius:6px;padding:8px 10px;font-size:.88rem;margin:4px 0}
+table.roteiro{table-layout:fixed;margin:6px 0} table.roteiro th{white-space:normal} table.roteiro th:first-child{width:76px} table.roteiro td{overflow-wrap:anywhere;font-size:.88rem}
 @media (max-width:640px){.rede-montagem{grid-template-columns:minmax(0,1fr)}}
 .excluir-grupo{align-items:center} .excluir-grupo label{display:inline-flex;gap:4px;align-items:center;margin:0}
 details.todos{margin:12px 0 0} details.todos summary{cursor:pointer} .rede-legenda label input{width:auto;margin:0 4px 0 0}
@@ -220,11 +228,17 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.19.0";
-const FUNCAO_MINIMA = "0.19.0";     // versão da função radar-ia que este painel exige (v0.19.0: gera o rascunho também sem texto oficial)
+const VERSAO = "0.20.0";
+const FUNCAO_MINIMA = "0.20.0";     // versão da função radar-ia que este painel exige (v0.20.0: a ação “kit”, das legendas, da arte e do roteiro do reel)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.20.0", "11/10/2026", [
+    "“Gerar com IA” agora prepara também as redes: a legenda do Instagram, a do Facebook, a chamada e a linha de apoio da arte e o roteiro de um reel (de 30 a 45 segundos, para alguém da equipe gravar). Fica tudo no quadro “Kit das redes”, no conteúdo, com os botões de copiar; “Gerar kit das redes com IA” refaz só o kit. Nada é publicado sem a autorização do administrador.",
+    "Arte vertical para o Instagram e o Facebook (1080×1350): chamada grande, linha de apoio, o caminho até o site e, no rodapé, a identificação legal da empresa. A chamada, o apoio e o fundo da arte podem ser trocados na hora de publicar.",
+    "Publicidade da profissão contábil: a tela aponta os termos que o CFC não aceita (promessa de resultado ou de economia, “grátis”, “brinde”, convite para trocar de contador) e não deixa a legenda nem a arte saírem com eles; “100%”, “o melhor” e “definitivo” pedem confirmação. Frase do boletim pago também não sai na legenda.",
+    "Ilustração da IA opcional: o “Gerar com IA” faz a capa padrão da Artecon, sem custo de imagem. A ilustração, agora no estilo editorial e nas cores da marca (não mais foto de banco de imagens), sai só pelo botão “Gerar ilustração com IA”.",
+    "Administrador: preencha o CNPJ e o CRC em Configurações → “Fecho, assinatura e identificação legal”. Enquanto estiverem vazios, a arte e as legendas saem só com o nome da empresa, e a tela avisa."]],
   ["0.19.0", "10/10/2026", [
     "“Gerar com IA”, um botão só: no passo 1 (Fonte), no quadro do próximo passo e no passo 2. Sem texto oficial, ele procura a fonte oficial na internet (a busca rápida: se demorar, segue sem ela); com texto oficial, busca o trecho que comprova. Depois escreve o rascunho e faz a capa com a ilustração da IA. O aviso mostra a etapa (1 de 3, 2 de 3, 3 de 3).",
     "Texto com ou sem fundamentação legal: sem texto oficial, a IA escreve um rascunho normal (não mais o “texto para análise”), com palavras próprias e o aviso de fonte não oficial; revise e aprove. Para o site continua valendo a fundamentação (ou o “Publicar mesmo assim” do administrador, com o motivo).",
@@ -621,7 +635,7 @@ const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
    a partir da 2ª consulta o Radar pede a senha de quem está logado (evita consulta repetida sem querer, e gasto). */
 const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo o texto (até 2 minutos)",
   classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a ilustração da capa (até 2 minutos)",
-  verificar:"procurando a fonte oficial na internet (até 2 minutos)"};
+  verificar:"procurando a fonte oficial na internet (até 2 minutos)", kit:"montando as legendas, a arte e o roteiro do reel (até 1 minuto)"};
 /* v0.19.0: no “Gerar com IA” (várias chamadas seguidas), o aviso diz também em que etapa está */
 let IA_PASSO = "";
 function avisoIA(texto){
@@ -670,12 +684,9 @@ function pedirSenha(){
   });
 }
 /* Antes de cada consulta à IA no assunto: a 1ª é livre; a partir da 2ª, senha. "Preparar tudo" conta como uma consulta só. */
-/* v0.12.0: quando a ilustração do "Preparar tudo" (ou do texto para análise) falha, a próxima "Gerar ilustração com IA"
-   neste assunto não pede senha: a falha não conta como consulta. */
-const CREDITO_ILUSTRACAO = new Set();
-async function liberarIA(ilustracao){
+/* v0.20.0: sem o crédito da ilustração da v0.12.0 — o “Gerar com IA” não pede mais ilustração (faz a capa padrão). */
+async function liberarIA(){
   const assunto = E.assunto;
-  if(ilustracao && CREDITO_ILUSTRACAO.has(assunto)){ CREDITO_ILUSTRACAO.delete(assunto); return true; }
   if(usosIA() >= 1 && !(await pedirSenha())){ recado("Consulta à IA cancelada."); return false; }
   if(E.assunto !== assunto){ recado("A tela mudou enquanto a senha era pedida: a consulta não foi feita."); return false; }
   return true;
@@ -687,7 +698,7 @@ async function ia(acao, extra = {}, tempo = 150000){
     contarUsoIA(assunto);                                         // só a consulta que deu certo conta para pedir a senha depois
     return r; }
   catch(e){
-    if(e.status === 404 && !/Assunto não encontrado/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
+    if(e.status === 404 && !/(Assunto|Conteúdo) não encontrado/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
     if(e.status === 0) throw new ErroApi("Não foi possível falar com a função de IA (sem resposta). Confira a internet; se persistir, o administrador pode testar em Configurações → Inteligência artificial.", 0);
     if(/Ação desconhecida/.test(e.message)) throw new ErroApi("A função de IA instalada no Supabase é de uma versão anterior e não tem este recurso. O administrador precisa colar de novo o arquivo index.ts desta versão na função radar-ia (Configurações → Inteligência artificial).", e.status);
     if(/invalid jwt|missing authorization/i.test(e.message)) throw new ErroApi("A função de IA recusou a sessão. Saia do Radar, entre de novo e repita.", e.status);
@@ -708,7 +719,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.fundosArte = {}; E.kitAberto = {}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -1086,9 +1097,11 @@ const TELAS = {
 
   async configuracoes(){
     const conf = Object.fromEntries((await ler("radar_config", {select:"*"})).map(c => [c.chave, c]));
-    const bloco = (chave, titulo, ajuda) => `<form class="painel" data-form="config" data-chave="${chave}"><h2>${titulo}</h2><p class="sub">${ajuda}</p>
+    const bloco = (chave, titulo, ajuda, extra = "") => `<form class="painel" data-form="config" data-chave="${chave}"><h2>${titulo}</h2><p class="sub">${ajuda}</p>${extra}
       <label for="cfg-${chave}">Conteúdo (JSON)</label><textarea class="json" id="cfg-${chave}" name="valor" spellcheck="false">${h(JSON.stringify(conf[chave]?.valor ?? null, null, 2))}</textarea>
       <div class="acoes"><button class="btn">Salvar</button>${conf[chave] ? `<span class="sub">alterado em ${dataHora(conf[chave].atualizado_em)}</span>` : ""}</div></form>`;
+    // v0.20.0: a identificação legal (CNPJ e CRC) fica na assinatura; vazia, a arte e as legendas das redes saem sem ela, com aviso
+    const faltaId = ["cnpj", "crc"].filter(k => { const v = conf.assinatura?.valor; return !(v && typeof v === "object" && typeof v[k] === "string" && v[k].trim()); }).map(k => k.toUpperCase());
     return `<h1>Configurações</h1>
       <div class="painel" id="painel-ia"><h2>Inteligência artificial</h2>
         <p class="sub">A IA do Radar é uma função instalada no Supabase (Edge Function <b>radar-ia</b>) que fala com a <b>IA Central</b> do Portal Artecon: texto pela Anthropic, imagens pela OpenAI. O custo, os limites e a recarga ficam em <a href="https://arteconartescontabeis-design.github.io/portal/" target="_blank" rel="noopener noreferrer">Portal → Consumo de IA</a>. O teste abaixo confere a instalação e diz o que falta.</p>
@@ -1099,7 +1112,8 @@ const TELAS = {
       ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”.`)}
       ${bloco("feriados_extras", "Feriados locais e pontos facultativos", `Os feriados nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente bancário) já são considerados. Acrescente aqui os demais: "AAAA-MM-DD" (uma data) ou "MM-DD" (todo ano). Exemplo: ["2026-12-24", "04-24"].`)}
       ${bloco("fale_conosco", "Fale Conosco", `Quadro da última página. Cada setor tem <b>nome</b> (faixa azul), <b>rotulo</b>, <b>telefones</b>, <b>emails</b> e <b>equipe</b> (listas). Telefone pode ser só o número ("48-3033-4978", telefone fixo) ou {"numero": "48-3242-0530", "whatsapp": true, "nome": "opcional"}. Um setor pode ter <b>responsaveis</b> (lista de {"nome", "telefone", "whatsapp"}) e <b>responsaveis_rotulo</b> (ex.: “Contadores Responsáveis”), mostrados numa linha logo abaixo do setor. <b>observacao</b> é uma linha livre no fim do quadro.`)}
-      ${bloco("assinatura", "Fecho e assinatura", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo.`)}`;
+      ${bloco("assinatura", "Fecho, assinatura e identificação legal", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo. <b>cnpj</b> (com ou sem pontuação; vale também o CNPJ alfanumérico) e <b>crc</b> (o registro no CRC, ex.: “CRC-SC 012345/O-6”; sem “CRC” na frente, a tela põe “CRC-SC”): a identificação legal que a arte e as legendas do Instagram e do Facebook levam no fim, com a <b>empresa</b> (“empresa · CNPJ … · CRC-SC …”). Quem acrescenta é a tela, nunca a IA; o que estiver vazio fica de fora, com aviso.`,
+        faltaId.length ? `<div class="aviso alerta identificacao-falta"><b>Identificação legal incompleta:</b> falta ${faltaId.map(k => "o " + k).join(" e ")}. Até ser preenchido, a arte e as legendas das redes saem só com o que existe (a tela avisa e não inventa). Acrescente “cnpj” e “crc” abaixo e salve.</div>` : "")}`;
   },
 
   async ajuda(){
@@ -1108,7 +1122,7 @@ const TELAS = {
       <p class="sub">O Radar acompanha as fontes oficiais, ajuda a escrever e a conferir, e guarda o registro do que foi divulgado. A publicação é feita nas páginas da Artecon.</p>
       <div class="painel"><h2>O caminho de uma publicação</h2><ol class="passos">
         <li><b>Capturas.</b> O robô lê as fontes cadastradas e, depois de cada coleta, a IA dá uma nota a cada novidade. A tela abre só com o que está <b>em alta</b>: as 10 de maior nota, sem repetição. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>. Cada cartão diz se a notícia tem <b>fundamentação legal</b>: “com fundamentação legal” mostra as normas que o texto capturado cita (lei, lei complementar, decreto, medida provisória, instrução normativa, resolução, portaria, solução de consulta, ato declaratório, ato conjunto do CGIBS, convênio ICMS, edital de transação e outros atos, além da Constituição, do CTN, do RIR, do RICMS e da CLT); “sem fundamentação legal” quer dizer que o texto não cita nenhuma, e “fundamentação legal não identificada”, que o texto capturado está cortado e não cita norma no trecho que veio — nos dois casos, confira na fonte antes de usar. É uma leitura automática do texto: diz o que está citado, não se a citação está certa nem se a norma está em vigor; decisões judiciais (Tema, RE, ADI) e projetos de lei não contam. Não muda a nota nem a relevância. O restante fica em “Relevantes”, “Baixa relevância” e “Todas”, e pode ser ignorado de uma vez.</li>
-        <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Gerar com IA</b> busca a fonte (ou o trecho que comprova), escreve o rascunho e faz a capa com a ilustração. Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
+        <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Gerar com IA</b> busca a fonte (ou o trecho que comprova), escreve o rascunho, faz a capa padrão e o <b>kit das redes</b> (as legendas do Instagram e do Facebook, a chamada da arte e o roteiro de um reel). Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem; a capa sai com ela ao fundo e o título por cima) ou envie uma imagem. O Radar compara o texto com a fonte: o texto pode ficar igual ao da fonte, desde que cada parágrafo em que ele está diga de onde veio (“Segundo a Receita Federal, …”) e o campo <b>Fonte</b> esteja preenchido; sem isso, o trecho fica no quadro vermelho (o botão <b>Revisar com IA</b> acrescenta a fonte no parágrafo) — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Salve, envie para revisão e <b>aprove</b>.</li>
         <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
@@ -1302,10 +1316,15 @@ const CATEGORIAS_DO_SITE = ["IRRF", "Economia", "Legislação Federal", "E-socia
 async function telaAssunto(id){
   const [a] = await ler("radar_assuntos", {select:"*", id:"eq." + id});
   if(!a) return `<button class="voltar" data-acao="voltar">← Voltar</button><div class="aviso erro">Assunto não encontrado.</div>`;
-  const [vinc, evid, cont] = await Promise.all([
+  const [vinc, evid, cont, assinatura] = await Promise.all([
     ler("radar_assunto_capturas", {select:"juntada_pela_ia_em,radar_capturas(id,titulo,url,data_publicacao,texto,versao,capturado_em,metadados,radar_fontes(slug,nome,orgao,oficial))", assunto_id:"eq." + id}),
     ler("radar_evidencias", {select:"*,radar_normas(tipo,numero,orgao)", assunto_id:"eq." + id, order:"id"}),
-    ler("radar_conteudos", {select:"*", assunto_id:"eq." + id, order:"id"})]);
+    ler("radar_conteudos", {select:"*", assunto_id:"eq." + id, order:"id"}),
+    ler("radar_config", {select:"valor", chave:"eq.assinatura"})]);
+  // v0.20.0: a identificação legal (Configurações → assinatura) e a abrangência entram na arte e nas legendas das redes
+  const ident = assinatura[0]?.valor;
+  E.identificacao = ident && typeof ident === "object" && !Array.isArray(ident) ? ident : null;
+  E.abrangencia = a.abrangencia;
   // v0.12.1: o texto para análise vai por último (os textos que podem ir ao site aparecem primeiro)
   const ehAnalise = c => Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   cont.sort((x, y) => ehAnalise(x) - ehAnalise(y) || x.id - y.id);
@@ -1372,16 +1391,16 @@ async function telaAssunto(id){
   // v0.14.0: a IA procura a fonte oficial na internet (se já procurou, o botão leva ao resultado)
   const verificarBtn = a.verificacao ? ir("#sec-verificacao", "Ver a verificação em fontes oficiais", "sec") : `<button class="btn" data-acao="ia-verificar">Verificar em fontes oficiais</button>`;
   const semFonte = ehAdmin() ? `<button class="btn perigo" type="button" data-acao="abrir-motivo">Publicar mesmo assim…</button>` : "";
-  // v0.19.0: “Gerar com IA” (busca a fonte, escreve o texto e faz a capa com a ilustração), com ou sem texto oficial
+  // v0.19.0: “Gerar com IA” (busca a fonte e escreve o texto), com ou sem texto oficial; v0.20.0: com a capa padrão e o kit das redes
   const gerarIA = (classe = "btn") => `<button class="${classe}" data-acao="ia-tudo" data-oficial="${temOficial ? 1 : ""}" data-conteudos="${cont.length}">Gerar com IA</button>`;
   const paraRevisar = rascunhos[0] || rejeitados[0];
   let prox;                                   // [título, explicação, botões, passo (0 a 4; -1 fora da trilha)]
   if(!ed) prox = null;
   else if(a.status === "ignorado" || a.status === "arquivado") prox = [a.status === "ignorado" ? "Assunto ignorado" : "Assunto arquivado", "Este item está fora do trabalho do dia. Para retomar, troque a etapa em “Mais detalhes” e salve.", ir("#mais-campos", "Abrir “Mais detalhes”", "sec"), -1];
-  else if(!cont.length && temOficial) prox = ["Escrever o conteúdo", "O texto oficial já está aqui. “Gerar com IA” busca o trecho que comprova, escreve o rascunho e faz a capa com a ilustração, de uma vez; ou escreva você mesmo.",
+  else if(!cont.length && temOficial) prox = ["Escrever o conteúdo", "O texto oficial já está aqui. “Gerar com IA” busca o trecho que comprova, escreve o rascunho, faz a capa e o kit das redes, de uma vez; ou escreva você mesmo.",
     gerarIA() + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
   else if(!cont.length) prox = ["Escrever o conteúdo", "Assunto sem texto de fonte oficial. Para o Informativo Mensal basta escrever e aprovar; para o site, inclua o texto oficial e fundamente (ou o administrador usa “Publicar mesmo assim”)." +
-    (temTexto ? " “Gerar com IA” procura a fonte oficial na internet, escreve o rascunho a partir da fonte capturada e faz a capa com a ilustração." : ""),
+    (temTexto ? " “Gerar com IA” procura a fonte oficial na internet, escreve o rascunho a partir da fonte capturada e faz a capa e o kit das redes." : ""),
     (temTexto ? gerarIA() + verificarBtn.replace('class="btn"', 'class="btn sec"') : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec"), 1];
   else if(!paraPublicar.length && !aprovados.length){                 // só o texto para análise (fonte não oficial)
     if(liberado) prox = ["Transformar o texto para análise", "O texto para análise não vai ao site. " + (ehAdmin() ? "Transforme-o em texto para publicar: a cópia entra como rascunho, com o aviso de fonte não oficial, e segue revisão e aprovação."
@@ -1440,6 +1459,7 @@ async function telaAssunto(id){
   const fontesTxt = vinc.filter(v => v.radar_capturas.texto).sort((x, y) => y.radar_capturas.radar_fontes.oficial - x.radar_capturas.radar_fontes.oficial)
     .map(({radar_capturas:k}) => ({texto:k.texto, nome:k.radar_fontes.orgao || "",
     nomes:nomesDaFonte(k.radar_fontes.nome, k.radar_fontes.orgao), paga:FONTES_PAGAS.includes(k.radar_fontes.slug)}));
+  E.fontesAssunto = fontesTxt;                // v0.20.0: a legenda das redes também é comparada com o boletim pago (só na memória)
   const avisoRegistro = `<div class="aviso alerta"><b>Ainda não pode ser publicado no site.</b> ${a.situacao_confirmacao !== "confirmado_oficialmente" ? "O assunto precisa estar marcado como “Confirmado oficialmente”. " : ""}${conferidasOficiais ? "" : conferidas ? "Os trechos conferidos são de fonte não oficial: é preciso ao menos um trecho conferido em fonte oficial. " : "É preciso ao menos um trecho conferido em fonte oficial (FUNDAMENTAÇÃO NÃO CONFIRMADA). "}<span class="sub">O Informativo Mensal exige só o conteúdo aprovado.</span>
     ${podeEditar() ? `<div class="acoes" style="margin:8px 0 0">${a.situacao_confirmacao !== "confirmado_oficialmente" ? `<button class="btn peq verde" data-acao="confirmar-oficial">Marcar como confirmado oficialmente</button>` : ""}
       ${conferidasOficiais ? "" : `<button class="btn peq sec" data-acao="etapa" data-etapa="fonte">Buscar o trecho que comprova (passo 1)</button>`}
@@ -1514,7 +1534,7 @@ async function telaAssunto(id){
       ${ed ? `<div class="acoes ia-barra">${temTexto ? gerarIA() : ""}<button class="btn sec" data-acao="ia-verificar">Verificar em fontes oficiais</button>
         <button class="btn sec" data-acao="ia-fundamentar">Buscar trecho que comprova com IA</button>
         <button class="btn sec" type="button" data-acao="ia-classificar">Classificar com IA</button>
-        <span class="sub">${temTexto ? `“Gerar com IA” ${temOficial ? "busca o trecho que comprova" : "procura a fonte oficial na internet"}, escreve o rascunho e faz a capa com a ilustração, de uma vez (o tamanho do texto é o escolhido no passo 2). ` : ""}A IA propõe; só entram os trechos que existem literalmente no texto oficial. A classificação vai para “Mais detalhes”.</span></div>` : ""}
+        <span class="sub">${temTexto ? `“Gerar com IA” ${temOficial ? "busca o trecho que comprova" : "procura a fonte oficial na internet"}, escreve o rascunho e faz a capa e o kit das redes, de uma vez (o tamanho do texto é o escolhido no passo 2). ` : ""}A IA propõe; só entram os trechos que existem literalmente no texto oficial. A classificação vai para “Mais detalhes”.</span></div>` : ""}
     </div>
     ${painelVerificacao(a.verificacao, ed)}
     <div class="painel" id="sec-texto"><h2>Texto oficial capturado</h2>
@@ -1554,7 +1574,7 @@ async function telaAssunto(id){
         <select id="novo-formato">${opcoes(TAMANHO_TEXTO, "informativo")}</select>
         ${temTexto ? gerarIA("btn") + `<button class="btn sec" data-acao="ia-gerar">Gerar texto com IA</button>` : ""}
         <button class="btn sec" data-acao="novo-conteudo" data-id="${a.id}">Novo conteúdo (sem IA)</button></div>
-        <p class="sub" style="margin-top:0">${temOficial ? "“Gerar com IA” busca o trecho que comprova, escreve o rascunho e faz a capa com a ilustração; “Gerar texto com IA” só escreve (e faz a capa). Revisar e aprovar continua sendo da equipe."
+        <p class="sub" style="margin-top:0">${temOficial ? "“Gerar com IA” busca o trecho que comprova, escreve o rascunho e faz a capa e o kit das redes; “Gerar texto com IA” só escreve (e faz a capa). Revisar e aprovar continua sendo da equipe."
           : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve o rascunho a partir dela, com palavras próprias (FUNDAMENTAÇÃO NÃO CONFIRMADA). Revise e aprove; para o site, inclua o texto oficial e fundamente no passo 1, ou o administrador usa “Publicar mesmo assim”."
           : "Sem texto capturado: escreva sem IA, ou inclua o texto oficial no passo 1."}</p>` : ""}
       ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado, jaConvertido)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
@@ -1603,7 +1623,7 @@ const situacaoRede = r => !r ? "falta" : {aguardando_site:"vai junto com o site"
   publicado:"publicado", dispensado:"não vai", excluido:"excluída"}[r.situacao] || "falta";
 /* v0.19.0: os canais ainda livres de um conteúdo (sem autorização em aberto, publicação ou “Não vai”) */
 const redeLivre = redes => ["instagram", "facebook"].filter(k => !redes.some(r => r.canal === k && ["aguardando_site","autorizado","enviando","erro","publicado","dispensado"].includes(r.situacao)));
-/* O próximo passo da trilha num canal: monta a imagem quadrada e a legenda para o administrador conferir e autorizar. */
+/* O próximo passo da trilha num canal: monta a imagem (v0.20.0: a arte vertical) e a legenda para o administrador conferir e autorizar. */
 function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
   const nome = NOME_REDE[canal], adm = ehAdmin(), passo = canal === "instagram" ? 5 : 6;
   const cancelar = r => adm ? `<button class="btn sec" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Cancelar autorização</button>` : "";
@@ -1614,58 +1634,217 @@ function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
   if(r?.situacao === "erro") return [`Publicação no ${nome} não concluída`, h(r.erro || "A Meta não confirmou a publicação."),
     adm ? `<button class="btn" type="button" data-acao="tentar-rede" data-envio="${r.id}" data-canal="${canal}">Tentar de novo</button>` + cancelar(r) : "", passo];
   if(!adm) return [`Publicar no ${nome}`, `Falta o administrador autorizar a publicação no ${nome}.`, "", passo];
-  (E.redeCapa ||= {})[c.id] = {capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};     // por conteúdo: um desenho atrasado não troca a imagem
-  const chave = c.id + ":" + canal, legenda = (E.legendas || {})[chave] ?? legendaRede(c, canal, urlSite, categoria);
+  (E.redeCapa ||= {})[c.id] = dadosArte(c, capa);     // por conteúdo: um desenho atrasado não troca a imagem
+  const chave = c.id + ":" + canal, legenda = (E.legendas || {})[chave] ?? legendaIA(c, canal, urlSite) ?? legendaRede(c, canal, urlSite, categoria);
   const caiu = ultima?.situacao === "cancelado" && ultima.erro ? `<div class="aviso alerta">${h(ultima.erro)}</div>` : "";
   return [`Publicar no ${nome}`, `Confira a imagem e a legenda. Ao autorizar, a publicação sai na hora no ${nome} da Artecon.`,
-    `${caiu}<div class="rede-montagem"><img id="rede-imagem" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem da publicação no ${nome} (montando…)">
+    `${caiu}<div class="rede-montagem"><div class="rede-arte"><img id="rede-imagem" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem da publicação no ${nome} (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda"><label for="rede-legenda">Legenda</label><textarea id="rede-legenda" maxlength="2200" data-chave="${chave}">${h(legenda)}</textarea>
       <span class="sub">${canal === "instagram" ? "No Instagram o link da legenda não é clicável: a legenda indica o link na bio." : "No Facebook o link da legenda é clicável."} Até 2.200 caracteres.</span></div></div>
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}</button>
       <button class="btn sec" type="button" data-acao="dispensar-rede" data-canal="${canal}" data-id="${c.id}">Não publicar no ${nome}</button></div>`, passo];
 }
-/* Legenda: título, o começo do texto (sem a formatação), o caminho até o site, a fonte e, no Instagram, as hashtags. */
-function legendaRede(c, canal, urlSite, categoria){
-  const linhas = String(c.corpo || "").split("\n").map(l => l.trim())
-    .filter(l => l && !/^(##|\|)/.test(l)).map(l => l.replace(/^[-*]\s+/, "").replace(/\*\*/g, ""));
+/* As linhas do texto sem a formatação (sem subtítulo, tabela, marcador de lista e negrito): a legenda e a arte partem delas. */
+const linhasDoTexto = corpo => String(corpo || "").split("\n").map(l => l.trim())
+  .filter(l => l && !/^(##|\|)/.test(l)).map(l => l.replace(/^[-*]\s+/, "").replace(/\*\*/g, ""));
+/* Legenda: título, o começo do texto (sem a formatação), o caminho até o site, a fonte, a identificação legal (v0.20.0) e, no
+   Instagram, as hashtags. v0.20.0: até "limite" caracteres (2.000 no “Publicar em todos”, porque o link ainda entra). */
+function legendaRede(c, canal, urlSite, categoria, limite = 2200){
+  const linhas = linhasDoTexto(c.corpo);
   let resumo = "";
   for(const l of linhas){ if(resumo.length >= 280) break; resumo += (resumo ? " " : "") + l; }
   if(resumo.length > 600){ const corte = resumo.slice(0, 600), fim = corte.lastIndexOf(". "); resumo = fim > 200 ? corte.slice(0, fim + 1) : corte.trimEnd() + "…"; }
   const tag = t => "#" + String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+(.)?/g, (_, l) => (l || "").toUpperCase());
   const cat = CATEGORIA_SITE[categoria];
-  return [c.titulo, resumo,
+  return comporLegenda([c.titulo, resumo,
     canal === "instagram" ? "Leia a matéria completa no site da Artecon (link na bio)." : urlSite ? "Leia a matéria completa: " + urlSite : "Leia a matéria completa no site da Artecon.",
-    c.fonte_credito ? "Fonte: " + c.fonte_credito : "",
-    canal === "instagram" ? ["#Contabilidade", "#ArteconContabeis", cat ? tag(cat) : ""].filter(Boolean).join(" ") : ""].filter(Boolean).join("\n\n").slice(0, 2200);
+    c.fonte_credito ? "Fonte: " + c.fonte_credito : ""].filter(Boolean).join("\n\n"),
+    canal === "instagram" ? ["#Contabilidade", "#ArteconContabeis", cat ? tag(cat) : ""].filter(Boolean).join(" ") : "", limite);
 }
-/* Imagem quadrada (1080×1080) para as redes: a capa do conteúdo (ou a capa padrão) no meio, a marca no alto e o site embaixo. */
-async function desenharQuadrado(capa, titulo, rotulo){
-  if(!/^data:image\/(jpeg|png|webp);base64,/.test(String(capa || ""))) capa = (await desenharCapa(titulo, rotulo)).dados;
-  const L = 1080, cv = document.createElement("canvas"); cv.width = L; cv.height = L;
-  const cx = cv.getContext("2d");
-  try{ await Promise.race([document.fonts.load('700 40px "DM Sans"'), new Promise(ok => setTimeout(ok, 1500))]); }catch(e){}
+/* v0.20.0: a legenda montada: o texto, a linha de identificação legal e as hashtags, nesta ordem, em até "limite" caracteres. O que
+   passa sai do fim do texto (no fim de uma frase, se der), nunca da identificação nem das hashtags. */
+function comporLegenda(texto, hashtags, limite = 2200){
+  const fim = [linhaIdentificacao(), hashtags].filter(Boolean).join("\n\n"), cabe = limite - (fim ? fim.length + 2 : 0);
+  let t = String(texto || "").trim();
+  if(t.length > cabe){ const corte = t.slice(0, Math.max(0, cabe - 1)), p = Math.max(corte.lastIndexOf(". "), corte.lastIndexOf("\n"));
+    t = p > cabe / 2 ? corte.slice(0, p + 1).trim() : corte.trimEnd() + "…"; }
+  return [t, fim].filter(Boolean).join("\n\n").slice(0, limite);
+}
+/* v0.20.0: o kit das redes que a IA montou (radar_conteudos.kit_ia: chamada e apoio da arte, legendas do Instagram e do Facebook e o
+   roteiro do reel). É sugestão: só vale o kit inteiro e em dia. Se o título ou o texto mudou depois, o banco marca “desatualizado”
+   (ou o kit é só {desatualizado}): as redes voltam à legenda montada pela tela até alguém gerar de novo. */
+const textoDe = v => typeof v === "string" ? v.trim() : "";
+function kitDe(c){
+  const k = c?.kit_ia;
+  if(!k || typeof k !== "object" || Array.isArray(k) || k.desatualizado) return null;
+  return textoDe(k.arte?.chamada) && textoDe(k.instagram?.texto) && textoDe(k.facebook?.texto) ? k : null;
+}
+/* v0.20.0: a legenda do kit, montada como a legendaRede: o texto da IA, a fonte, a identificação legal (da tela, nunca da IA) e as
+   hashtags, em até "limite" caracteres. No Facebook, o {LINK DO SITE} vira o link da notícia (no “Publicar em todos” ele fica: o banco
+   troca quando a notícia entra no site). Sem kit em dia, null: vale a legendaRede. */
+function legendaIA(c, canal, urlSite, limite = 2200){
+  const parte = kitDe(c)?.[canal], LINK = "{LINK DO SITE}";
+  let t = textoDe(parte?.texto); if(!t) return null;
+  if(canal === "facebook"){
+    if(!t.includes(LINK)) t += "\n\nLeia a matéria completa: " + LINK;
+    t = urlSite ? t.split(LINK).join(urlSite) : t.replace(/Leia a matéria completa:\s*\{LINK DO SITE\}/g, "Leia a matéria completa no site da Artecon.").split(LINK).join("");
+  } else t = t.split(LINK).join("").replace(/[ \t]+\n/g, "\n").trim();
+  const fonte = c.fonte_credito && !/(^|\n)Fonte:/i.test(t) ? "Fonte: " + c.fonte_credito : "";
+  const tags = (Array.isArray(parte.hashtags) ? parte.hashtags : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x)).join(" ");
+  return comporLegenda([t, fonte].filter(Boolean).join("\n\n"), tags, limite);
+}
+/* v0.20.0: identificação legal das publicações nas redes, das Configurações (assinatura): “empresa · CNPJ … · CRC-SC …”. Só entra o
+   que foi preenchido: a tela avisa o que falta e nunca inventa. Quem acrescenta é a tela (legenda e arte), nunca a IA. */
+const cnpjLimpo = v => String(v || "").toUpperCase().replace(/[\s./-]/g, "");
+const textoIdentificacao = k => { const v = (E.identificacao || {})[k]; return typeof v === "string" ? v.trim() : ""; };
+function linhaIdentificacao(){
+  const cnpj = textoIdentificacao("cnpj"), n = cnpjLimpo(cnpj), crc = textoIdentificacao("crc");
+  return [textoIdentificacao("empresa"),
+    cnpj ? "CNPJ " + (/^[0-9A-Z]{12}\d{2}$/.test(n) ? n.replace(/^(..)(...)(...)(....)(..)$/, "$1.$2.$3/$4-$5") : cnpj) : "",
+    crc ? (/^CRC/i.test(crc) ? crc : /^SC\b/i.test(crc) ? "CRC-" + crc : "CRC-SC " + crc) : ""].filter(Boolean).join(" · ");
+}
+const faltaIdentificacao = () => ["cnpj", "crc"].filter(k => !textoIdentificacao(k)).map(k => k.toUpperCase());
+/* v0.20.0: CNPJ numérico ou alfanumérico: 12 caracteres (números ou letras maiúsculas) e 2 dígitos verificadores. Cada caractere vale o
+   código ASCII menos 48 (0 a 9; A = 17 … Z = 42), pesos de 2 a 9 da direita para a esquerda, módulo 11 (resto 0 ou 1: dígito 0). */
+function cnpjValido(v){
+  const c = cnpjLimpo(v), pesos = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  if(!/^[0-9A-Z]{12}\d{2}$/.test(c) || /^(.)\1{13}$/.test(c)) return false;
+  const dv = n => { let s = 0; for(let i = 0; i < n; i++) s += (c.charCodeAt(i) - 48) * pesos[13 - n + i]; const r = s % 11; return r < 2 ? 0 : 11 - r; };
+  return dv(12) === Number(c[12]) && dv(13) === Number(c[13]);
+}
+/* v0.20.0: os dados da arte de um conteúdo. Chamada e apoio: os do kit das redes, se houver kit em dia. Sem ele (reserva): a chamada é
+   o título (até 80 caracteres); senão, o título sugerido mais curto que caiba; senão, as 10 primeiras palavras; o apoio é a primeira
+   frase do texto, se tiver até 140 caracteres (senão, vazio). Selo de SC só com a abrangência estadual. O fundo começa no padrão
+   Artecon; a ilustração e a imagem de capa são escolhidas no campo “Fundo da arte”. */
+function dadosArte(c, capa){
+  const titulo = String(c.titulo || "").trim(), palavras = titulo.split(/\s+/).filter(Boolean), kit = kitDe(c);
+  const sugerido = (Array.isArray(c.titulos_sugeridos) ? c.titulos_sugeridos : []).map(t => String(t || "").trim())
+    .filter(t => t && t.length <= 80).sort((x, y) => x.length - y.length)[0];
+  const primeira = linhasDoTexto(c.corpo)[0] || "", frase = (/^.{20,}?[.!?](?=\s|$)/.exec(primeira) || [primeira])[0].trim();
+  return {capa:/^data:image\/(jpeg|png|webp);base64,/.test(String(capa || "")) ? capa : null, ilustracaoId:c.ilustracao_id || null,
+    sc:E.abrangencia === "estadual_sc", fundo:"padrao", apoio:textoDe(kit?.arte?.apoio) || (frase.length <= 140 ? frase : ""),
+    chamada:textoDe(kit?.arte?.chamada) || (titulo.length <= 80 ? titulo : sugerido || (palavras.length > 10 ? palavras.slice(0, 10).join(" ").replace(/[\s,.;:–—-]+$/, "") + "…" : titulo))};
+}
+/* A arte de agora: os dados do conteúdo com o que foi digitado nos campos da arte (E.arte, em memória, como E.legendas). */
+function arteDe(id){
+  const d = (E.redeCapa || {})[id] || {}, a = (E.arte || {})[id] || {}, fundo = a.fundo || d.fundo || "padrao";
+  return {...d, ...a, fundo:fundo === "ilustracao" ? (d.ilustracaoId ? fundo : "padrao") : fundo === "capa" ? (d.capa ? fundo : "padrao") : "padrao"};
+}
+/* Campos da arte embaixo da imagem: por classe e data-conteudo, sem id (o passo da trilha e o quadro “faltam” aparecem juntos) e sem
+   name (não deixam o formulário “com alteração não salva”). Com o CNPJ ou o CRC vazio nas Configurações, o aviso. */
+function camposArte(id){
+  const d = arteDe(id), falta = faltaIdentificacao(), linha = linhaIdentificacao();
+  const fundos = [["padrao", "Padrão Artecon"], ...(d.ilustracaoId ? [["ilustracao", "Ilustração da IA"]] : []), ...(d.capa ? [["capa", "Imagem de capa"]] : [])];
+  return `<div class="arte-campos"><label>Chamada da arte<input type="text" class="arte-chamada" data-conteudo="${id}" maxlength="120" value="${h(d.chamada || "")}"></label>
+      <label>Linha de apoio<textarea class="arte-apoio" data-conteudo="${id}" maxlength="200" rows="3">${h(d.apoio || "")}</textarea></label>
+      <label>Fundo da arte<select class="arte-fundo" data-conteudo="${id}">${fundos.map(([k, n]) => `<option value="${k}"${k === d.fundo ? " selected" : ""}>${n}</option>`).join("")}</select></label></div>
+    ${falta.length ? `<div class="aviso alerta identificacao-falta"><b>Identificação legal incompleta:</b> falta ${falta.map(k => "o " + k).join(" e ")} em Configurações → Fecho, assinatura e identificação legal. A arte e a legenda saem só com ${linha ? `“${h(linha)}”` : "o que existe"}.</div>` : ""}`;
+}
+/* v0.20.0: arte vertical (1080×1350, 4:5) para o Instagram e o Facebook, desenhada no navegador: fundo marinho com as curvas do papel
+   timbrado (ou a ilustração, ou a imagem de capa, numa faixa), logotipo, selo “NORMA ESTADUAL · SC” (só com a abrangência estadual), a
+   chamada grande, a linha de apoio, o caminho até o site e a faixa legal com a identificação das Configurações. Sem os dados, a faixa
+   leva só o nome da empresa: nunca texto provisório. Devolve {dados, textos}: "textos" é tudo o que foi escrito na imagem. */
+async function desenharArte(d){
+  const L = 1080, A = 1350, M = 60, LARG = L - 2 * M, LEGAL = 1262, BASE = 1160, cv = document.createElement("canvas"); cv.width = L; cv.height = A;
+  const cx = cv.getContext("2d"), textos = [];
+  try{ await Promise.race([Promise.all([document.fonts.load('700 80px "DM Sans"'), document.fonts.load('500 40px "DM Sans"')]), new Promise(ok => setTimeout(ok, 1500))]); }catch(e){}
   const carregar = src => new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
-  const fundo = cx.createLinearGradient(0, 0, L, L); fundo.addColorStop(0, "#011F48"); fundo.addColorStop(1, "#1B5E9B");
-  cx.fillStyle = fundo; cx.fillRect(0, 0, L, L);
+  const caixa = (x, y, w, a, r) => { cx.beginPath(); cx.roundRect ? cx.roundRect(x, y, w, a, r) : cx.rect(x, y, w, a); cx.fill(); };   // navegador antigo: canto reto
+  const fonte = (peso, px) => `${peso} ${px}px "DM Sans", Arial, sans-serif`;
+  const escrever = (t, x, y) => { textos.push(t); cx.fillText(t, x, y, L - M - x); };
+  // quebra em linhas de até LARG; passando de "max" linhas, a última perde a palavra que sobra e termina em "…"
+  const quebrar = (t, max) => { const linhas = []; let atual = "";
+    for(const p of String(t || "").trim().split(/\s+/).filter(Boolean)){ const teste = atual ? atual + " " + p : p;
+      if(cx.measureText(teste).width > LARG && atual){ linhas.push(atual); atual = p; } else atual = teste; }
+    if(atual) linhas.push(atual);
+    if(linhas.length > max){ linhas.length = max; linhas[max - 1] = linhas[max - 1].replace(/[\s,.;:]+\S*$/, "") + "…"; }
+    return linhas; };
+  const foto = d.imagem ? await carregar(d.imagem) : null;
+  if(d.imagem && !(foto && foto.naturalWidth && foto.naturalHeight)) throw new ErroApi("Não foi possível ler a imagem escolhida para o fundo da arte: escolha outro fundo.");
+  // fundo marinho e as curvas do papel timbrado, no canto de baixo (acima da faixa legal)
+  const fundo = cx.createLinearGradient(0, 0, L, A); fundo.addColorStop(0, "#011F48"); fundo.addColorStop(.6, "#0D3B73"); fundo.addColorStop(1, "#1B5E9B");
+  cx.fillStyle = fundo; cx.fillRect(0, 0, L, A);
+  for(const [raio, cor] of [[380, "rgba(86,157,204,.30)"], [290, "rgba(86,157,204,.45)"], [200, "rgba(86,157,204,.75)"]]){
+    cx.beginPath(); cx.arc(L + 60, LEGAL + 30, raio, 0, Math.PI * 2); cx.fillStyle = cor; cx.fill(); }
+  // faixa tricolor no alto e o logotipo sobre cartão branco
   cx.fillStyle = "#BC151B"; cx.fillRect(0, 0, L * .68, 14); cx.fillStyle = "#00AEEF"; cx.fillRect(L * .68, 0, L * .22, 14); cx.fillStyle = "#FFD700"; cx.fillRect(L * .9, 0, L * .1, 14);
-  cx.textBaseline = "alphabetic"; cx.fillStyle = "#fff"; cx.font = '700 38px "DM Sans", Arial, sans-serif'; cx.fillText("ARTECON INFORMA", 60, 120);
-  const r = String(rotulo || "").toUpperCase(); cx.font = '500 28px "DM Sans", Arial, sans-serif'; cx.fillStyle = "#DCEBF7";
-  cx.fillText(r.length > 48 ? r.slice(0, 47).trimEnd() + "…" : r, 60, 168);
-  const img = await carregar(capa);
-  if(!img || !img.naturalWidth) throw new ErroApi("Não foi possível montar a imagem da publicação.");
-  const alt = Math.min(L * img.naturalHeight / img.naturalWidth, 700), y0 = 210 + (700 - alt) / 2;
-  cx.drawImage(img, 0, y0, L, alt);
-  cx.fillStyle = "#DCEBF7"; cx.font = '500 30px "DM Sans", Arial, sans-serif'; cx.fillText("Leia a matéria completa em", 60, 980);
-  cx.fillStyle = "#fff"; cx.font = '700 44px "DM Sans", Arial, sans-serif'; cx.fillText("www.artecon.cnt.br", 60, 1036);
-  return cv.toDataURL("image/jpeg", 0.88);
+  const logo = await carregar("radar-logo-artecon.png");
+  cx.fillStyle = "#fff"; caixa(M, 60, 300, 130, 16); cx.textBaseline = "middle";
+  if(logo && logo.naturalWidth){ const f = Math.min(250 / logo.naturalWidth, 100 / logo.naturalHeight);
+    cx.drawImage(logo, M + (300 - logo.naturalWidth * f) / 2, 60 + (130 - logo.naturalHeight * f) / 2, logo.naturalWidth * f, logo.naturalHeight * f); }
+  else{ cx.fillStyle = "#011F48"; cx.font = '700 48px Georgia, serif'; escrever("Artecon", M + 40, 125); }
+  // selo da norma estadual (só com a abrangência estadual_sc), à direita do logotipo
+  if(d.sc){ const t = "NORMA ESTADUAL · SC"; cx.font = fonte(700, 26); const w = cx.measureText(t).width + 44;
+    cx.fillStyle = "#FFD700"; caixa(L - M - w, 99, w, 52, 26); cx.fillStyle = "#011F48"; escrever(t, L - M - w + 22, 125); }
+  // fundo escolhido (ilustração ou imagem de capa): faixa de 1080×560 coberta pela imagem, com véu marinho que desce até o fundo
+  let topo = 250;
+  if(foto){ const Y = 230, H = 560, f = Math.max(L / foto.naturalWidth, H / foto.naturalHeight);
+    cx.save(); cx.beginPath(); cx.rect(0, Y, L, H); cx.clip();
+    cx.drawImage(foto, (L - foto.naturalWidth * f) / 2, Y + (H - foto.naturalHeight * f) / 2, foto.naturalWidth * f, foto.naturalHeight * f);
+    cx.fillStyle = "rgba(1,31,72,.25)"; cx.fillRect(0, Y, L, H);
+    const veu = cx.createLinearGradient(0, Y + H - 220, 0, Y + H); veu.addColorStop(0, "rgba(1,31,72,0)"); veu.addColorStop(1, "rgba(1,31,72,.92)");
+    cx.fillStyle = veu; cx.fillRect(0, Y + H - 220, L, 220); cx.restore();
+    topo = Y + H + 30; }
+  // chamada (de 112 a 64 px, até 4 linhas; 3 com foto) e linha de apoio (40 px, até 3 linhas; 2 com foto), no espaço até BASE
+  cx.font = fonte(500, 40); const apoio = d.apoio ? quebrar(d.apoio, foto ? 2 : 3) : [], altApoio = apoio.length ? 28 + apoio.length * 50 : 0;
+  const maxL = foto ? 3 : 4, cabe = BASE - topo - altApoio;
+  let corpo = 112, chamada = [];
+  for(; corpo > 64; corpo -= 4){ cx.font = fonte(700, corpo); chamada = quebrar(d.chamada, 99); if(chamada.length <= maxL && chamada.length * corpo * 1.1 <= cabe) break; }
+  cx.font = fonte(700, corpo); chamada = quebrar(d.chamada, Math.max(1, Math.min(maxL, Math.floor(cabe / (corpo * 1.1)))));
+  const altura = chamada.length * corpo * 1.1 + altApoio;
+  let y = foto ? topo : topo + Math.max(0, (BASE - topo - altura) / 2);
+  cx.textBaseline = "top"; cx.fillStyle = "#fff";
+  for(const l of chamada){ escrever(l, M, y); y += corpo * 1.1; }
+  if(apoio.length){ y += 28; cx.font = fonte(500, 40); cx.fillStyle = "#DCEBF7"; for(const l of apoio){ escrever(l, M, y); y += 50; } }
+  // o caminho até o site (neutro: a mesma imagem vai ao Instagram e ao Facebook)
+  cx.textBaseline = "middle"; cx.font = fonte(700, 32); cx.fillStyle = "#fff"; escrever("Matéria completa em www.artecon.cnt.br", M, 1205);
+  // faixa legal: a identificação das Configurações (24 px; 20 px ou 2 linhas se não couber); sem ela, só o nome da empresa
+  cx.fillStyle = "#fff"; cx.fillRect(0, LEGAL, L, A - LEGAL); cx.fillStyle = "#011F48";
+  const legal = linhaIdentificacao() || "Artecon Artes Contábeis";
+  let px = 24; cx.font = fonte(500, px);
+  if(cx.measureText(legal).width > LARG){ px = 20; cx.font = fonte(500, px); }
+  const linhasLegal = cx.measureText(legal).width > LARG ? quebrar(legal, 2) : [legal];
+  linhasLegal.forEach((l, i) => escrever(l, M, (LEGAL + A) / 2 + (i - (linhasLegal.length - 1) / 2) * (px + 8)));
+  // JPEG: a melhor qualidade que caiba com folga no limite do banco (3.000.000 de caracteres)
+  let dados = "";
+  for(const q of [0.9, 0.85, 0.8, 0.7]){ dados = cv.toDataURL("image/jpeg", q); if(dados.length < 2500000) break; }
+  return {dados, textos};
 }
+/* A arte de um conteúdo, com o fundo escolhido: a ilustração da IA é lida (uma vez) só quando escolhida. */
+async function montarArte(id){
+  const d = arteDe(id);
+  let imagem = d.fundo === "capa" ? d.capa : null;
+  if(d.fundo === "ilustracao"){
+    imagem = (E.fundosArte ||= {})[d.ilustracaoId] || (await ler("radar_imagens", {select:"dados", id:"eq." + d.ilustracaoId}))[0]?.dados;
+    if(!imagem) throw new ErroApi("A ilustração deste conteúdo não foi encontrada: escolha outro fundo.");
+    E.fundosArte[d.ilustracaoId] = imagem; }
+  return desenharArte({...d, imagem});
+}
+/* Monta as imagens das redes que estão pendentes, uma vez por conteúdo. v0.20.0: os campos da arte pedem um desenho novo; o desenho
+   mais novo de cada conteúdo é o que vale (um atrasado não troca a imagem). */
 async function montarImagemRede(){
-  for(const img of document.querySelectorAll("img.rede-imagem[data-pendente]")){
-    const d = (E.redeCapa || {})[img.dataset.conteudo]; if(!d) continue;
-    try{ const dados = await desenharQuadrado(d.capa, d.titulo, d.rotulo);
-      if(img.isConnected){ img.src = dados; img.removeAttribute("data-pendente"); img.alt = img.alt.replace(" (montando…)", ""); } }
-    catch(e){ if(img.isConnected) img.insertAdjacentHTML("afterend", `<div class="aviso erro">${h(e.message || "Não foi possível montar a imagem.")}</div>`); }
+  const ids = new Set([...document.querySelectorAll("img.rede-imagem[data-pendente]")].map(i => i.dataset.conteudo));
+  for(const id of ids){
+    if(!(E.redeCapa || {})[id]) continue;
+    const vez = (E.arteVez ||= {})[id] = (E.arteVez[id] || 0) + 1;
+    let arte, erro;
+    try{ arte = await montarArte(id); }catch(e){ erro = e; }
+    if(E.arteVez[id] !== vez) continue;
+    for(const img of document.querySelectorAll(`img.rede-imagem[data-pendente][data-conteudo="${id}"]`)){
+      img.parentNode.querySelector(".arte-erro")?.remove();
+      if(arte){ img.src = arte.dados; img.removeAttribute("data-pendente"); img.alt = img.alt.replace(" (montando…)", ""); }
+      else img.insertAdjacentHTML("afterend", `<div class="aviso erro arte-erro">${h(erro.message || "Não foi possível montar a imagem.")}</div>`);
+    }
   }
+}
+/* v0.20.0: um campo da arte mudou: o texto vale para as outras caixas do mesmo conteúdo e a imagem é redesenhada (depois de 400 ms
+   sem digitar). Enquanto a imagem está pendente, autorizar espera. */
+function arteMudou(campo){
+  const id = campo.dataset.conteudo, k = ["chamada", "apoio", "fundo"].find(x => campo.classList.contains("arte-" + x));
+  ((E.arte ||= {})[id] ||= {})[k] = campo.value;
+  document.querySelectorAll(`.arte-${k}[data-conteudo="${id}"]`).forEach(x => { if(x !== campo) x.value = campo.value; });
+  document.querySelectorAll(`img.rede-imagem[data-conteudo="${id}"]`).forEach(i => { i.dataset.pendente = "1"; });
+  clearTimeout(E.arteRelogio); E.arteRelogio = setTimeout(() => montarImagemRede(), 400);
 }
 /* Chama a função radar-redes para publicar a autorização (logo depois de autorizar, ou de novo depois de um erro). */
 /* v0.19.0: com redesenhar = false (várias redes em sequência), devolve {ok, msg} sem redesenhar nem dar o recado. */
@@ -1761,19 +1940,19 @@ function blocoPublicar(c, envio, pubs, pronto, categoria, redes = [], capa = nul
     <p class="sub canais" style="margin:8px 0 0"><b>Canais:</b> Site — ${atual ? "publicado" : envio && ["autorizado","enviando"].includes(envio.situacao) ? "aguardando o robô" : pubs.length || envio?.situacao === "publicado" ? "já está no site" : "falta"} ·
       ${["instagram", "facebook"].map(k => NOME_REDE[k] + " — " + situacaoRede(redes.find(r => r.canal === k && r.situacao !== "cancelado"))).join(" · ")}</p></div>`;
 }
-/* v0.17.0: "Publicar em todos de uma vez": a categoria do site (a de cima), a imagem quadrada e as legendas do Instagram e do
-   Facebook, conferidas antes; o robô publica no site e, logo que a notícia entra no site, as redes saem sozinhas. */
+/* v0.17.0: "Publicar em todos de uma vez": a categoria do site (a de cima), a imagem (v0.20.0: a arte vertical) e as legendas do
+   Instagram e do Facebook, conferidas antes; o robô publica no site e, logo que a notícia entra no site, as redes saem sozinhas. */
 function blocoTodos(c, categoria, capa, redes){
   const livre = k => !redes.some(r => r.canal === k && ["aguardando_site","autorizado","enviando","erro","publicado","dispensado"].includes(r.situacao));
   const canais = ["instagram", "facebook"].filter(livre);
   if(!canais.length) return "";
-  (E.redeCapa ||= {})[c.id] = {capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};
-  const legenda = k => (E.legendas || {})[c.id + ":todos-" + k] ?? legendaRede(c, k, "{LINK DO SITE}", categoria);
+  (E.redeCapa ||= {})[c.id] = dadosArte(c, capa);
+  const legenda = k => (E.legendas || {})[c.id + ":todos-" + k] ?? legendaIA(c, k, "{LINK DO SITE}", 2000) ?? legendaRede(c, k, "{LINK DO SITE}", categoria, 2000);
   return `<details class="todos painel" id="todos-${c.id}"${E.todosFechado === c.id ? "" : " open"}><summary><b>Publicar em todos de uma vez</b> — site, ${canais.map(k => NOME_REDE[k]).join(" e ")} (recomendado)</summary>
     <p class="sub">Confira a categoria acima, a imagem e as legendas. Ao autorizar, o robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site,
       publica ${canais.length > 1 ? "no Instagram e no Facebook" : "no " + NOME_REDE[canais[0]]} (no Facebook, o link da notícia entra no lugar de {LINK DO SITE}).
       Se a publicação no site não sair, ou o texto mudar, ${canais.length > 1 ? "as redes caem" : "a rede cai"} junto.</p>
-    <div class="rede-montagem"><img id="todos-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">
+    <div class="rede-montagem"><div class="rede-arte"><img id="todos-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda">${canais.map(k => `<label><input type="checkbox" class="todos-canal" data-canal="${k}" checked> ${NOME_REDE[k]}</label>
         <textarea id="todos-legenda-${k}-${c.id}" maxlength="2000" data-chave="${c.id}:todos-${k}" aria-label="Legenda do ${NOME_REDE[k]}">${h(legenda(k))}</textarea>`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.000 caracteres em cada legenda.</span></div></div>
@@ -1785,11 +1964,11 @@ function blocoFaltam(c, categoria, capa, redes, urlSite){
   const livre = k => !redes.some(r => r.canal === k && ["aguardando_site","autorizado","enviando","erro","publicado","dispensado"].includes(r.situacao));
   const canais = ["instagram", "facebook"].filter(livre);
   if(!canais.length) return "";
-  (E.redeCapa ||= {})[c.id] = {capa, titulo:c.titulo, rotulo:catMapa()[categoria] || "Artecon Informa"};
-  const legenda = k => (E.legendas || {})[c.id + ":faltam-" + k] ?? legendaRede(c, k, urlSite, categoria);
+  (E.redeCapa ||= {})[c.id] = dadosArte(c, capa);
+  const legenda = k => (E.legendas || {})[c.id + ":faltam-" + k] ?? legendaIA(c, k, urlSite) ?? legendaRede(c, k, urlSite, categoria);
   return `<div class="todos painel faltam" id="faltam-${c.id}"><h3>Publicar nos canais que faltam</h3>
     <p class="sub">A notícia já está no site. Confira a imagem e ${canais.length > 1 ? "as legendas (desmarque o canal que não quiser)" : "a legenda"}: ao autorizar, a publicação sai na hora ${canais.length > 1 ? "no Instagram e no Facebook" : "no " + NOME_REDE[canais[0]]}.</p>
-    <div class="rede-montagem"><img id="faltam-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">
+    <div class="rede-montagem"><div class="rede-arte"><img id="faltam-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda">${canais.map(k => `<label><input type="checkbox" class="faltam-canal" data-canal="${k}" checked> ${NOME_REDE[k]}</label>
         <textarea id="faltam-legenda-${k}-${c.id}" maxlength="2200" data-chave="${c.id}:faltam-${k}" aria-label="Legenda do ${NOME_REDE[k]} (canais que faltam)">${h(legenda(k))}</textarea>`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.200 caracteres em cada legenda.</span></div></div>
@@ -1841,6 +2020,46 @@ const msgMarcas = (lista, acao = "liberar") => `Resolva antes de ${acao}: ${list
   lista.map(m => `“${m}”`).join("; ") + ". Troque cada marca pela informação conferida (ou tire o trecho), salve e tente de novo.";
 const marcasDoConteudo = id => { const f = $(`form[data-form=conteudo][data-id="${id}"]`);
   return f ? marcasVerificar(f.querySelector("[name=titulo]")?.value || "", f.querySelector("[name=corpo]")?.value || "") : []; };
+/* v0.20.0: termos que a publicidade contábil evita (CFC; CDC). "trava": a legenda e a arte das redes não saem com eles; "aviso": a
+   tela mostra e pede confirmação (no texto do site é tudo só aviso). A mesma lista está na função radar-ia, que aponta os termos nos
+   avisos do kit: mantenha as duas iguais (testes/test_radar_publicidade.py confere o texto, da lista até o fim de termosPublicidade). */
+const TERMOS_PUBLICIDADE = [
+  ["trava", "garantimos|garantia de resultado|resultado garantido|economia garantida"], ["trava", "gr[áa]tis|de gra[çc]a"],
+  ["trava", "brindes?"], ["trava", "blindad[oa]s?|blindagem"], ["trava", "pague menos|pagar menos imposto"],
+  ["trava", "troque de contador|troca de contador|mude de contador"],
+  ["aviso", "100\\s?%|cem por cento"], ["aviso", "(?:o|a|os|as) melhor(?:es)?"], ["aviso", "definitiv[oa]s?|definitivamente"]];
+const termosPublicidade = (...textos) => { const t = textos.join("\n"), r = {trava:[], aviso:[]};
+  for(const [n, e] of TERMOS_PUBLICIDADE) for(const m of t.match(new RegExp("(?<![\\p{L}\\p{N}])(?:" + e + ")(?![\\p{L}\\p{N}])", "giu")) || [])
+    if(!r[n].includes(m.toLowerCase())) r[n].push(m.toLowerCase());
+  return r; };
+const msgTermos = lista => `Troque antes de publicar: ${lista.map(t => `“${t}”`).join(", ")}. A publicidade da profissão contábil não promete ` +
+  "resultado nem economia, não oferece vantagem (grátis, brinde) e não convida a trocar de contador: corrija a legenda ou o texto da arte e tente de novo.";
+/* v0.20.0: números da legenda e da arte que não estão no título nem no texto do conteúdo (“estatística sem fonte”). É só uma heurística,
+   para o aviso: não lê número por extenso; o link, as hashtags e a linha de identificação não contam. */
+function numerosForaDoTexto(id, ...textos){
+  const f = $(`form[data-form=conteudo][data-id="${id}"]`); if(!f) return [];
+  const numeros = t => String(t || "").replace(/(\d)\.(?=\d{3}(?!\d))/g, "$1").match(/\d+(?:,\d+)?/g) || [];   // 1.000 = 1000
+  const base = new Set(numeros((f.querySelector("[name=titulo]")?.value || "") + "\n" + (f.querySelector("[name=corpo]")?.value || "")));
+  const ident = linhaIdentificacao();
+  const fora = textos.flatMap(t => numeros((ident ? String(t || "").split(ident).join(" ") : String(t || "")).replace(/https?:\/\/\S+|#[\p{L}\p{N}_]+/gu, " ")));
+  return [...new Set(fora.filter(n => !base.has(n)))];
+}
+/* v0.20.0: frase do boletim pago (ITC) na legenda: nunca vai ao ar, nem citando. A comparação é com as capturas do assunto, na memória. */
+const copiaPagaNaLegenda = legenda => (E.fontesAssunto || []).some(f => f.paga) ? trechosCopiados(legenda, E.fontesAssunto).filter(t => t.paga) : [];
+/* v0.20.0: antes de autorizar nas redes. Termo de trava (na legenda, na chamada ou no apoio da arte) ou frase do boletim pago na legenda
+   impedem: devolve {erro}. Os termos de aviso, os números fora do texto e a identificação incompleta vão no texto da confirmação. */
+function conferirPublicidade(id, legendas){
+  const arte = arteDe(id), daArte = [arte.chamada || "", arte.apoio || ""], {trava, aviso} = termosPublicidade(...legendas, ...daArte);
+  if(trava.length) return {erro:msgTermos(trava)};
+  const pago = legendas.flatMap(copiaPagaNaLegenda)[0];
+  if(pago) return {erro:`Frase do boletim pago (ITC) na legenda: “${pago.texto.length > 120 ? pago.texto.slice(0, 120) + "…" : pago.texto}”. ` +
+    "As frases do boletim pago nunca podem ser reproduzidas, nem citando nem entre aspas: reescreva com palavras próprias e tente de novo."};
+  const numeros = numerosForaDoTexto(id, ...legendas, ...daArte), falta = faltaIdentificacao();
+  return {aviso:[aviso.length ? `Termos que a publicidade contábil evita: ${aviso.map(t => `“${t}”`).join(", ")}. Confira se é fato da notícia, e não propaganda.` : "",
+    numeros.length ? `Números que não estão no título nem no texto: ${numeros.join(", ")}. Confira se estão na fonte: estatística sem fonte não deve ir ao ar.` : "",
+    falta.length ? `Identificação legal incompleta: falta ${falta.map(k => "o " + k).join(" e ")} (Configurações). A arte e a legenda saem só com o que existe.` : ""]
+    .filter(Boolean).map(x => "\n\nAtenção: " + x).join("")};
+}
 const COPIA_NEUTRAS = new Set(("janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro lei leis decreto decretos instrucao normativa portaria resolucao " +
   "medida provisoria complementar emenda constitucional ato declaratorio executivo convenio ajuste solucao consulta parecer n nº art arts artigo artigos inciso paragrafo").split(" "));
 const COPIA_LIGACAO = new Set("de da do das dos e em na no nas nos a o".split(" "));       // não contam quando encostadas em número, data, norma ou nome próprio
@@ -1989,6 +2208,52 @@ function avisoRascunho(c){
 /* As opções de título que a IA sugeriu (clique troca o título; nada é gravado até "Salvar") e o pedido de outras. */
 const chipsTitulo = (id, lista) => (Array.isArray(lista) ? lista : []).map(t => `<button class="chip" type="button" data-acao="usar-titulo" data-id="${id}" data-titulo="${h(t)}">${h(t)}</button>`).join("") +
   `<button class="chip outro" type="button" data-acao="ia-titulos" data-id="${id}">↻ Sugerir ${Array.isArray(lista) && lista.length ? "outros" : "títulos com IA"}</button>`;
+/* v0.20.0: o quadro “Kit das redes” no conteúdo (fechado por padrão): a situação do kit, a chamada e o apoio da arte, as duas legendas
+   já montadas (com a fonte, a identificação legal e as hashtags), o roteiro do reel e os avisos do kit, com os botões de copiar; quem
+   edita gera (ou refaz) o kit. Tudo o que vem da IA é escapado. Sem a notícia no site, o Facebook mostra o {LINK DO SITE}. */
+const segundosTxt = v => Number.isFinite(Number(v)) && v !== null && v !== "" ? String(Math.round(Number(v) * 10) / 10).replace(".", ",") : "?";
+function roteiroDoKit(k){
+  const reel = k?.reel && typeof k.reel === "object" ? k.reel : {};
+  const cenas = (Array.isArray(reel.cenas) ? reel.cenas : []).filter(x => x && typeof x === "object" && textoDe(x.fala));
+  const tempo = x => `${segundosTxt(x.de)}–${segundosTxt(x.ate)} s`, legenda = textoDe(reel.legenda) ? comporLegenda(textoDe(reel.legenda), "", 2200) : "";
+  const texto = [`Roteiro do reel${reel.duracao ? ` (${segundosTxt(reel.duracao)} s)` : ""}`, textoDe(reel.gancho) ? "Gancho: " + textoDe(reel.gancho) : "",
+    ...cenas.map(x => `${tempo(x)} — Fala: ${textoDe(x.fala)}${textoDe(x.texto_tela) ? " | Na tela: " + textoDe(x.texto_tela) : ""}`),
+    textoDe(reel.chamada_final) ? "Chamada final: " + textoDe(reel.chamada_final) : "", legenda ? "Legenda do reel:\n" + legenda : ""].filter(Boolean).join("\n\n");
+  return {reel, cenas, tempo, legenda, texto};
+}
+function blocoKit(c, ed, urlSite){
+  const k = kitDe(c), bruto = c.kit_ia && typeof c.kit_ia === "object" && !Array.isArray(c.kit_ia) ? c.kit_ia : {}, tem = Object.keys(bruto).length > 0;
+  const situacao = k ? `gerado em ${dataHora(k.gerado_em)}` : bruto.desatualizado ? "desatualizado: gere de novo" : tem ? "incompleto: gere de novo" : "não gerado";
+  const gerar = ed ? `<button class="btn peq${k ? " sec" : ""}" type="button" data-acao="ia-kit" data-id="${c.id}">Gerar kit das redes com IA</button>` : "";
+  const reserva = "o Instagram e o Facebook usam a legenda montada pelo Radar (título, começo do texto e fonte) e a arte com o título";
+  let corpo;
+  if(!k) corpo = bruto.desatualizado
+    ? `<div class="aviso alerta kit-desatualizado"><b>Kit desatualizado: gere de novo.</b> O título ou o texto mudou depois que a IA montou o kit; até lá, ${reserva}.</div>`
+    : `<p class="sub kit-situacao">${tem ? "O kit guardado está incompleto" : "Ainda não há kit para este conteúdo"}: ${reserva}.</p>`;
+  else {
+    const url = urlSite || "{LINK DO SITE}", r = roteiroDoKit(k), avisos = (Array.isArray(k.avisos) ? k.avisos : []).map(textoDe).filter(Boolean);
+    const legenda = (canal, nome) => `<div><b>${nome}</b><div class="kit-legenda" data-canal="${canal}">${h(legendaIA(c, canal, url))}</div>
+        <button class="btn peq sec" type="button" data-acao="copiar-legenda" data-canal="${canal}">Copiar legenda do ${nome}</button></div>`;
+    corpo = `<p class="kit-arte"><b>Arte:</b> “${h(textoDe(k.arte.chamada))}”${textoDe(k.arte.apoio) ? ` — ${h(textoDe(k.arte.apoio))}` : ""}
+        <br><span class="sub">A arte vertical das redes sai com esta chamada e este apoio (dá para trocar na hora de publicar).</span></p>
+      <div class="kit-legendas">${legenda("instagram", "Instagram")}${legenda("facebook", "Facebook")}</div>
+      ${urlSite ? "" : `<p class="sub">No Facebook, o link da notícia entra no lugar de {LINK DO SITE} quando ela estiver no site.</p>`}
+      <h4 style="margin:10px 0 2px">Roteiro do reel${r.reel.duracao ? ` (${h(segundosTxt(r.reel.duracao))} s)` : ""}</h4>
+      ${textoDe(r.reel.gancho) ? `<p style="margin:2px 0"><b>Gancho:</b> ${h(textoDe(r.reel.gancho))}</p>` : ""}
+      ${r.cenas.length ? `<table class="roteiro"><thead><tr><th>Tempo</th><th>Fala</th><th>Texto na tela</th></tr></thead>
+        <tbody>${r.cenas.map(x => `<tr><td>${h(r.tempo(x))}</td><td>${h(textoDe(x.fala))}</td><td>${h(textoDe(x.texto_tela))}</td></tr>`).join("")}</tbody></table>`
+        : `<p class="sub">O roteiro veio sem cenas: gere o kit de novo ou escreva as cenas à mão.</p>`}
+      ${textoDe(r.reel.chamada_final) ? `<p style="margin:2px 0"><b>Chamada final:</b> ${h(textoDe(r.reel.chamada_final))}</p>` : ""}
+      ${r.legenda ? `<b>Legenda do reel</b><div class="kit-legenda kit-legenda-reel">${h(r.legenda)}</div>` : ""}
+      <div class="acoes"><button class="btn peq sec" type="button" data-acao="copiar-roteiro" data-texto="${h(r.texto)}">Copiar roteiro</button>
+        <span class="sub">O reel é gravado e postado à mão: o Radar publica só a imagem e a legenda.</span></div>
+      ${avisos.length ? `<div class="aviso alerta kit-avisos"><b>Pontos a conferir no kit (${avisos.length}):</b><ul>${avisos.map(x => `<li>${h(x)}</li>`).join("")}</ul></div>` : ""}`;
+  }
+  return `<details class="kit-redes" data-id="${c.id}"${(E.kitAberto || {})[c.id] ? " open" : ""}><summary><b>Kit das redes</b> <span class="sub">— legendas do Instagram e do Facebook, arte e roteiro do reel · ${h(situacao)}</span></summary>
+    ${corpo}
+    <p class="sub" style="margin:6px 0 0">É sugestão da IA: confira antes de usar. No Instagram e no Facebook vai ao ar o que o administrador autorizar no passo Publicar.</p>
+    ${gerar ? `<div class="acoes">${gerar}</div>` : ""}</details>`;
+}
 function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const todas = trechosCopiados(c.corpo, fontes);
@@ -1999,6 +2264,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
   const vermelho = [...pagas, ...semFonte];                                     // o que nunca passa sem correção (ou autorização)
   const soFaltaFonte = !vermelho.length && semCredito && todas.length > 0;      // está tudo citado: falta só o campo Fonte
   const marcas = marcasVerificar(c.titulo || "", c.corpo || ""), duvidas = comentariosDuvida(c.titulo || "", c.corpo || "");
+  const termos = termosPublicidade(c.titulo || "", c.corpo || "");             // v0.20.0: publicidade da profissão contábil (só aviso aqui)
   // v0.16.0: "Revisar com IA" corrige só as marcas e os trechos iguais ao da fonte (v0.19.0: reescreve com palavras próprias);
   // "Autorizar mesmo assim" deixa o trecho como está (com motivo)
   const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
@@ -2031,6 +2297,8 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${Array.isArray(c.avisos_ia) && c.avisos_ia.length ? `<div class="aviso alerta avisos-ia"><b>Pontos a conferir neste texto gerado pela IA</b> (verificação automática contra o texto oficial, feita na geração; não lê números por extenso nem avalia a interpretação):
       <ul>${c.avisos_ia.map(a => `<li>${h(a)}</li>`).join("")}</ul></div>`
       : c.gerado_por === "ia" ? `<div class="aviso info avisos-ia">Texto gerado pela IA. A verificação automática não achou, fora do texto oficial, número de norma, artigo, percentual, valor, data ou prazo. Ela não lê números por extenso nem avalia a interpretação: a revisão técnica continua necessária.</div>` : ""}
+    ${termos.trava.length || termos.aviso.length ? `<div class="aviso alerta termos-publicidade"><b>Termos que a publicidade da profissão contábil evita (CFC; CDC):</b> ${[...termos.trava, ...termos.aviso].map(x => `<span class="copiado">${h(x)}</span>`).join(", ")}.
+      No texto do site é só um aviso: confira se é fato da notícia (“isenção de 100%”, “decisão definitiva”) e não promessa ou propaganda.${termos.trava.length ? ` Na legenda e na arte do Instagram e do Facebook, ${termos.trava.map(x => `“${h(x)}”`).join(", ")} impede a publicação.` : ""}</div>` : ""}
     <label for="c-titulo-${c.id}">Título</label><input id="c-titulo-${c.id}" type="text" name="titulo" value="${h(c.titulo)}" style="width:100%"${ed ? "" : " disabled"}>
     ${ed ? `<div class="opcoes-titulo"><span class="sub">${(c.titulos_sugeridos || []).length ? "Outras opções da IA — clique para usar:" : "Quer outras opções de título?"}</span>
       <div class="chips" id="titulos-${c.id}">${chipsTitulo(c.id, c.titulos_sugeridos)}</div></div>` : ""}
@@ -2053,12 +2321,13 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
       <div class="acoes" style="margin-top:4px"><input type="text" id="img-desc-${c.id}" data-enter="capa-ia" maxlength="200" value="${h((E.imgDesc || {})[c.id] || "")}" style="flex:1;min-width:240px"
           aria-label="Como você quer a imagem (opcional)" placeholder="Como você quer a imagem (opcional). Ex.: contadora atendendo um casal de empresários">
         <button class="btn peq sec" type="button" data-acao="capa-ia" data-id="${c.id}">Gerar ilustração com IA</button></div>
-      <p class="sub" style="margin:4px 0 0">Em branco, a IA escolhe a cena pela notícia. A imagem é uma foto realista criada pela IA, pode ter pessoas (sempre fictícias) e não leva texto, marca nem assinatura; a capa sai com ela ao fundo e o logotipo, a categoria e o título por cima. Cada imagem gerada é cobrada.</p>
+      <p class="sub" style="margin:4px 0 0">Opcional e cobrada: uma ilustração criada pela IA (não é foto de banco de imagens), no estilo editorial e nas cores da marca, que pode ter pessoas (sempre fictícias) e não leva texto, marca nem assinatura. Em branco, a IA escolhe a cena pela notícia. A capa sai com ela ao fundo e o logotipo, a categoria e o título por cima; na arte das redes, ela é um dos fundos.</p>
       ${E.ilustracaoPendente?.conteudoId === c.id ? `<div class="aviso alerta ilustracao-pendente"><b>A ilustração foi criada, mas não foi gravada neste conteúdo.</b>
         <div class="rede-montagem"><img class="miniatura" src="${h(E.ilustracaoPendente.imagem)}" alt="Ilustração criada pela IA, ainda não gravada">
         <div class="acoes"><button class="btn peq" type="button" data-acao="gravar-ilustracao" data-id="${c.id}">Gravar a ilustração de novo</button>
         <span class="sub">Sem nova consulta à IA e sem nova cobrança.</span></div></div></div>` : ""}` : ""}
     <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>
+    ${analise ? "" : blocoKit(c, ed, pubs.find(p => !p.versao_anterior)?.url || "")}
     ${c.status === "aprovado" ? `<div class="aviso info">Se você alterar o título, o texto, o autor, a fonte ou a imagem, o conteúdo volta para revisão e precisa ser aprovado de novo.</div>
       <div class="acoes para-site"><b class="sub">Para o site da Artecon:</b>
         <span class="sub">1.</span><button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
@@ -2192,7 +2461,8 @@ const ACOES = {
     await desenhar(); recado("Assunto marcado como confirmado oficialmente."); },
   /* v0.19.0: “Gerar com IA” — um clique faz tudo, em etapas que não travam umas às outras: sem texto oficial, procura a fonte
      oficial na internet (a busca rápida; se demorar, segue sem ela); com texto oficial, busca o trecho que comprova; escreve o
-     rascunho (com ou sem fundamentação) e faz a capa com a ilustração. Conta como uma consulta só. */
+     rascunho (com ou sem fundamentação). v0.20.0: faz a capa padrão (sem ilustração: ela é opcional, pelo botão do conteúdo) e, na
+     etapa 3, o kit das redes (legendas, arte e roteiro do reel); se o kit falhar, o texto e a capa ficam. Conta como uma consulta só. */
   async "ia-tudo"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo";
@@ -2200,7 +2470,7 @@ const ACOES = {
     if(ja && !confirm(`Já há ${ja} conteúdo(s) neste assunto. Gerar outro rascunho com IA, com texto e capa novos?`)) return;
     if(!(await liberarIA())) return;
     const total = 3;
-    let busca = "", r = null, trechoFalhou = "", g, capa;
+    let busca = "", r = null, trechoFalhou = "", g, capa, kit = null, kitFalhou = "";
     try{
       IA_PASSO = `Gerar com IA · etapa 1 de ${total}`;
       if(oficial){ try{ r = await ia("fundamentar", {assunto_id:assunto}); } catch(e){ trechoFalhou = e.message || "erro"; } }
@@ -2208,22 +2478,27 @@ const ACOES = {
       IA_PASSO = `Gerar com IA · etapa 2 de ${total}`;
       try{ g = await ia("gerar", {formato, assunto_id:assunto}); }
       catch(e){ if(E.assunto === assunto) await desenhar(); throw new ErroApi(`${r ? `Trechos registrados: ${r.inseridas.length}. ` : ""}O rascunho não foi gerado: ${e.message}`); }
+      capa = await capaAutomatica(g.conteudo_id);                    // a capa padrão Artecon, sem IA (antes do kit: a capa muda a versão do conteúdo)
       IA_PASSO = `Gerar com IA · etapa 3 de ${total}`;
-      capa = await capaComIA(g.conteudo_id, assunto);                 // a ilustração da IA; se ela falhar, a capa padrão Artecon
+      try{ kit = await ia("kit", {conteudo_id:g.conteudo_id, assunto_id:assunto}); } catch(e){ kitFalhou = e.message || "erro"; }
     }finally{ IA_PASSO = ""; }
     if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo"; E.capaFoco = g.conteudo_id;
+    if(kit) (E.kitAberto ||= {})[g.conteudo_id] = true;
     await desenhar(); rolarAteConteudo(g.conteudo_id);
     const pontos = g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : "";
+    const feitos = [capa ? "a capa padrão" : "", kit ? "o kit das redes" : ""].filter(Boolean);
+    const depois = avisoCapa(capa) + (kitFalhou ? ` O kit das redes (legendas, arte e roteiro do reel) não saiu agora (${kitFalhou.replace(/[.\s]+$/, "")}): use “Gerar kit das redes com IA”, no conteúdo.`
+      : kit?.avisos?.length ? ` O kit das redes tem ${kit.avisos.length} ponto(s) a conferir (veja o quadro “Kit das redes”, no conteúdo).` : "");
+    const amarelo = g.avisos.length > 0 || !capa || !!kitFalhou || !!kit?.avisos?.length;
     if(!oficial){
       recado(`Assunto sem fonte oficial: a IA escreveu o rascunho${pontos} a partir da fonte não oficial (fundamentação não confirmada; para o site, fundamente ou use “Publicar mesmo assim”).` +
-        busca + avisoCapa(capa) + " Revise antes de mandar para a revisão.", "aviso");
+        busca + (feitos.length ? ` ${feitos.length > 1 ? "Já estão" : "Já está"} no conteúdo ${feitos.join(" e ")}.` : "") + depois + " Revise antes de mandar para a revisão.", "aviso");
       return;
     }
-    recado(`IA: ${r ? `${r.inseridas.length} trecho(s) de fundamentação, ` : ""}um rascunho${pontos} e ` +
-      (capa === "ilustração" ? "a capa com a ilustração." : capa === "padrão" || capa === "pendente" ? "a capa padrão." + avisoCapa(capa) : "nenhuma capa." + SEM_CAPA) +
+    recado(`IA: ${r ? `${r.inseridas.length} trecho(s) de fundamentação, ` : ""}um rascunho${pontos}${feitos.length ? ", " + feitos.join(" e ") : ""}.` + depois +
       (trechoFalhou ? ` A busca do trecho que comprova não deu certo (${trechoFalhou.replace(/[.\s]+$/, "")}); o texto saiu sem fundamentação.` : "") +
-      " Revise antes de mandar para a revisão.", g.avisos.length > 0 || capa !== "ilustração" || trechoFalhou ? "aviso" : false);
+      " Revise antes de mandar para a revisão.", amarelo || trechoFalhou ? "aviso" : false);
   },
   async "capa-auto"(el){
     const f = el.closest("form");
@@ -2249,7 +2524,7 @@ const ACOES = {
     if(f.dataset.temImagem && !confirm("Substituir a imagem atual por uma ilustração gerada pela IA?" + (f.dataset.aprovado ? "\n\nO conteúdo está aprovado: ao trocar a imagem ele volta para revisão." : ""))) return;
     const descricao = ($(`#img-desc-${el.dataset.id}`)?.value || "").trim();
     (E.imgDesc = E.imgDesc || {})[el.dataset.id] = descricao;
-    if(!(await liberarIA(true))) return;
+    if(!(await liberarIA())) return;
     const assunto = E.assunto;
     try{ await ilustracaoIA(Number(el.dataset.id), f.titulo.defaultValue, descricao, assunto); }
     catch(e){ if(E.ilustracaoPendente && E.assunto === assunto) await desenhar(); throw e; }      // o botão “Gravar de novo” aparece
@@ -2299,12 +2574,14 @@ const ACOES = {
   async "autorizar-rede"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const canal = el.dataset.canal, nome = NOME_REDE[canal], img = $("#rede-imagem"), legenda = ($("#rede-legenda")?.value || "").trim();
-    if(!img || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
+    if(!img || img.dataset.pendente || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
     if(img.dataset.conteudo !== el.dataset.id){ await desenhar(); recado("A tela mudou: confira a imagem de novo e autorize.", true); return; }
     if(legenda.length < 10){ recado("Escreva a legenda (pelo menos 10 caracteres).", true); $("#rede-legenda")?.focus(); return; }
     const marcas = [...marcasVerificar(legenda), ...marcasDoConteudo(el.dataset.id)];
     if(marcas.length){ recado(msgMarcas(marcas, `publicar no ${nome}`), true); $("#rede-legenda")?.focus(); return; }
-    if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem e a legenda vão ao ar como estão na tela.`)) return;
+    const pub = conferirPublicidade(el.dataset.id, [legenda]);                  // v0.20.0: termos da publicidade e boletim pago
+    if(pub.erro){ recado(pub.erro, true); $("#rede-legenda")?.focus(); return; }
+    if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem e a legenda vão ao ar como estão na tela.` + pub.aviso)) return;
     const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido});
     if(E.legendas) delete E.legendas[el.dataset.id + ":" + canal];
     await publicarRede(envio, canal);
@@ -2314,7 +2591,7 @@ const ACOES = {
   async "autorizar-faltam"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const id = el.dataset.id, caixa = $(`#faltam-${id}`), img = $(`#faltam-imagem-${id}`);
-    if(!img || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem das redes ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
+    if(!img || img.dataset.pendente || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem das redes ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
     const legendas = {};
     for(const x of caixa?.querySelectorAll(".faltam-canal:checked") || []){
       const k = x.dataset.canal, l = ($(`#faltam-legenda-${k}-${id}`)?.value || "").trim();
@@ -2325,8 +2602,10 @@ const ACOES = {
     if(!canais.length){ recado("Marque o Instagram, o Facebook ou os dois.", true); return; }
     const marcas = [...Object.values(legendas).flatMap(l => marcasVerificar(l)), ...marcasDoConteudo(id)];
     if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
+    const pub = conferirPublicidade(id, Object.values(legendas));               // v0.20.0: termos da publicidade e boletim pago
+    if(pub.erro){ recado(pub.erro, true); return; }
     const nomes = canais.map(k => NOME_REDE[k]).join(" e ");
-    if(!confirm(`Publicar agora no ${nomes} da Artecon?\n\nA imagem e ${canais.length > 1 ? "as legendas vão" : "a legenda vai"} ao ar como estão na tela.`)) return;
+    if(!confirm(`Publicar agora no ${nomes} da Artecon?\n\nA imagem e ${canais.length > 1 ? "as legendas vão" : "a legenda vai"} ao ar como estão na tela.` + pub.aviso)) return;
     const res = [];
     for(const k of canais){
       let envio;
@@ -2465,7 +2744,7 @@ const ACOES = {
     if(!(await liberarIA())) return;
     const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo", busca = await buscarFonteOficial(assunto);
     const r = await ia("gerar", {formato, analise:true, assunto_id:assunto});
-    const capa = await capaComIA(r.conteudo_id, assunto);                // v0.12.0: com a ilustração da IA, como o "Preparar tudo"
+    const capa = await capaAutomatica(r.conteudo_id);                    // v0.20.0: a capa padrão (a ilustração é opcional, pelo botão dela)
     if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo";
     await desenhar();
@@ -2474,12 +2753,36 @@ const ACOES = {
   async "ia-gerar"(){
     if(!(await liberarIA())) return;
     const assunto = E.assunto, r = await ia("gerar", {formato:$("#novo-formato").value, assunto_id:assunto});
-    const capa = await capaComIA(r.conteudo_id, assunto);           // v0.19.0: com a ilustração da IA (antes, só a capa padrão)
+    const capa = await capaAutomatica(r.conteudo_id);               // v0.20.0: a capa padrão (v0.19.0: com a ilustração da IA)
     if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo"; E.capaFoco = r.conteudo_id;
     await desenhar(); rolarAteConteudo(r.conteudo_id);
-    recado((r.avisos.length ? `Rascunho gerado pela IA com ${r.avisos.length} ponto(s) a conferir.` : "Rascunho gerado pela IA.") + avisoCapa(capa), r.avisos.length > 0 || capa !== "ilustração" ? "aviso" : false);
+    recado((r.avisos.length ? `Rascunho gerado pela IA com ${r.avisos.length} ponto(s) a conferir.` : "Rascunho gerado pela IA.") + avisoCapa(capa) +
+      " Para as legendas, a arte e o roteiro do reel, use “Gerar kit das redes com IA”, no conteúdo.", r.avisos.length > 0 || !capa ? "aviso" : false);
   },
+  /* v0.20.0: o kit das redes de um conteúdo já escrito (legendas do Instagram e do Facebook, chamada e apoio da arte e o roteiro do
+     reel), a partir do texto salvo. Gravar o kit não muda a versão do conteúdo nem derruba autorização; as legendas e a arte que
+     estavam na tela deste conteúdo dão lugar às do kit novo. */
+  async "ia-kit"(el){
+    const id = Number(el.dataset.id), f = $(`form[data-form=conteudo][data-id="${id}"]`); if(!f) return;
+    if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de gerar o kit das redes: ele parte do texto salvo.", true); return; }
+    if(!(await liberarIA())) return;
+    const assunto = E.assunto, r = await ia("kit", {conteudo_id:id, lido:f.dataset.lido, assunto_id:assunto});
+    if(!telaDoAssunto(assunto)) return;
+    for(const k of Object.keys(E.legendas || {})) if(k.startsWith(id + ":")) delete E.legendas[k];
+    if(E.arte) delete E.arte[id];
+    (E.kitAberto ||= {})[id] = true;
+    await desenhar();
+    $(`details.kit-redes[data-id="${id}"]`)?.scrollIntoView({behavior:"smooth", block:"start"});
+    const n = Array.isArray(r?.avisos) ? r.avisos.length : 0;
+    recado(`Kit das redes gerado pela IA${n ? `, com ${n} ponto(s) a conferir` : ""}: as legendas, a arte e o roteiro do reel estão no quadro “Kit das redes”. Confira antes de usar; nada vai ao ar sem a autorização do administrador.`, n ? "aviso" : false);
+  },
+  /* v0.20.0: copiar do quadro “Kit das redes” (a legenda já montada, com a identificação, ou o roteiro do reel) */
+  async "copiar-legenda"(el){
+    const t = el.closest(".kit-redes")?.querySelector(`.kit-legenda[data-canal="${el.dataset.canal}"]`)?.textContent || "";
+    if(!t){ recado("Não há legenda do kit para copiar.", true); return; }
+    await copiar(t); recado(`Legenda do ${NOME_REDE[el.dataset.canal] || "canal"} copiada.`); },
+  async "copiar-roteiro"(el){ await copiar(el.dataset.texto || ""); recado("Roteiro do reel copiado."); },
 
   previa(el){ abrirPrevia(el.dataset.id); },
   "fechar-previa"(){ fecharPrevia(); },
@@ -2520,7 +2823,7 @@ const ACOES = {
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const id = el.dataset.id, cat = $(`#site-cat-${id}`)?.value || "", caixa = $(`#todos-${id}`), img = $(`#todos-imagem-${id}`);
     if(!cat){ recado("Escolha a categoria do site antes de autorizar.", true); $(`#site-cat-${id}`)?.focus(); return; }
-    if(!img || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem das redes ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
+    if(!img || img.dataset.pendente || !/^data:image\/jpeg;base64,/.test(img.getAttribute("src") || "")){ recado("A imagem das redes ainda está sendo montada. Aguarde um instante e clique de novo.", true); return; }
     const legendas = {};
     for(const x of caixa?.querySelectorAll(".todos-canal:checked") || []){
       const k = x.dataset.canal, l = ($(`#todos-legenda-${k}-${id}`)?.value || "").trim();
@@ -2530,8 +2833,10 @@ const ACOES = {
     if(!Object.keys(legendas).length){ recado("Marque o Instagram, o Facebook ou os dois. Para publicar só no site, use “Autorizar publicação no site”.", true); return; }
     const marcas = [...Object.values(legendas).flatMap(l => marcasVerificar(l)), ...marcasDoConteudo(id)];
     if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
+    const pub = conferirPublicidade(id, Object.values(legendas));               // v0.20.0: termos da publicidade e boletim pago
+    if(pub.erro){ recado(pub.erro, true); return; }
     const redesTxt = Object.keys(legendas).map(k => NOME_REDE[k]).join(" e ");
-    if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.`)) return;
+    if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.` + pub.aviso)) return;
     await rpc("radar_autorizar_todos", {p_conteudo:Number(id), p_categoria:cat, p_lido:el.dataset.lido, p_imagem:img.getAttribute("src"),
       p_legenda_instagram:legendas.instagram || null, p_legenda_facebook:legendas.facebook || null});
     if(E.legendas) for(const k of ["instagram", "facebook"]) delete E.legendas[id + ":todos-" + k];
@@ -2909,7 +3214,7 @@ async function desenharCapa(titulo, rotulo, ilustracao){
   for(const q of [0.86, 0.75, 0.6, 0.45]){ dados = cv.toDataURL("image/jpeg", q); if(dados.length <= LIMITE_IMAGEM) break; }
   return {dados, largura:L, altura:A};
 }
-/* Ilustração da capa pela IA (foto realista, sem texto nem marca). v0.16.0: fica guardada (ilustracao_id) e a capa do conteúdo
+/* Ilustração da capa pela IA (v0.20.0: ilustração editorial nas cores da marca, opcional; sem texto nem marca). v0.16.0: fica guardada (ilustracao_id) e a capa do conteúdo
    é montada com ela ao fundo, o logotipo, a categoria e o título. */
 async function ilustracaoIA(conteudoId, titulo, descricao = "", assunto = E.assunto){
   if(titulo === undefined) titulo = (await ler("radar_conteudos", {select:"titulo", id:"eq." + conteudoId}))[0]?.titulo || "";
@@ -2955,17 +3260,9 @@ async function buscarFonteOficial(assunto, rapido = false){
     ? " A busca da fonte oficial passou do tempo e foi deixada de lado; o texto foi feito com a fonte capturada (tente de novo em “Verificar em fontes oficiais”, no passo 1)."
     : ` A busca em fontes oficiais não deu certo agora (${e.message}); o texto foi feito só com a fonte capturada.`; }
 }
-/* v0.12.0: capa do conteúdo novo: a ilustração da IA; se ela falhar, a capa padrão Artecon (e a próxima tentativa sai sem senha) */
-/* v0.19.0: o motivo da falha da ilustração vai para o recado (antes ficava só “não deu certo agora”) */
-let MOTIVO_CAPA = "";
-async function capaComIA(conteudoId, assunto){
-  MOTIVO_CAPA = "";
-  try{ await ilustracaoIA(conteudoId, undefined, "", assunto); return "ilustração"; }
-  catch(e){ MOTIVO_CAPA = e.message || ""; if(E.ilustracaoPendente?.conteudoId === conteudoId){ await capaAutomatica(conteudoId); return "pendente"; }
-    CREDITO_ILUSTRACAO.add(assunto); return (await capaAutomatica(conteudoId)) ? "padrão" : ""; }
-}
-const avisoCapa = capa => capa === "ilustração" ? " A capa tem a ilustração da IA ao fundo." : capa === "pendente" ? " " + MOTIVO_CAPA
-  : capa === "padrão" ? ` A ilustração com IA não deu certo agora${MOTIVO_CAPA ? " (" + MOTIVO_CAPA.replace(/[.\s]+$/, "") + ")" : ""}: ficou a capa padrão (tente pelo botão “Gerar ilustração com IA”, sem senha).` : SEM_CAPA;
+/* v0.20.0: o conteúdo gerado pela IA nasce com a capa padrão Artecon (sem custo de imagem); a ilustração é opcional, pelo botão
+   “Gerar ilustração com IA” do conteúdo (v0.12.0 a v0.19.0: a ilustração era o padrão). O recado só fala da capa se ela falhou. */
+const avisoCapa = capa => capa ? "" : SEM_CAPA;
 /* Capa automática do conteúdo. Na criação é um extra: se falhar, o conteúdo fica sem imagem e nada mais é afetado.
    v0.16.0: se o conteúdo tem a ilustração da IA guardada, a capa é refeita com ela (e o título atual); "semIlustracao" faz a
    capa padrão sem foto e deixa de usar a ilustração. */
@@ -3045,7 +3342,14 @@ function validarConfig(chave, v){
       if(!Number.isInteger(t.pontos) || t.pontos === 0 || Math.abs(t.pontos) > 100) return `“${t.termo}”: “pontos” deve ser um número inteiro diferente de zero (até 100).`;
     }
   }
-  if(chave === "assinatura" && !(obj && ["local","empresa","responsavel"].every(c => typeof v[c] === "string"))) return "Informe “local”, “empresa” e “responsavel”.";
+  if(chave === "assinatura"){
+    if(!(obj && ["local","empresa","responsavel"].every(c => typeof v[c] === "string"))) return "Informe “local”, “empresa” e “responsavel”.";
+    // v0.20.0: identificação legal das redes; os dois são opcionais (vazio, a tela avisa e não inventa)
+    if(v.cnpj !== undefined && !(typeof v.cnpj === "string" && (!v.cnpj.trim() || cnpjValido(v.cnpj))))
+      return "“cnpj” não confere (dígitos verificadores): informe o CNPJ da empresa, com ou sem pontuação (vale o alfanumérico), ou deixe vazio (\"\").";
+    if(v.crc !== undefined && !(typeof v.crc === "string" && (!v.crc.trim() || (/^[^\n<>]{4,40}$/.test(v.crc.trim()) && (v.crc.match(/\d/g) || []).length >= 4))))
+      return "“crc”: informe o registro no CRC (ex.: “CRC-SC 012345/O-6”), de 4 a 40 caracteres com ao menos 4 números, ou deixe vazio (\"\").";
+  }
   return "";
 }
 
@@ -3144,7 +3448,7 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de"]);
+  "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de"]);
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa
@@ -3167,7 +3471,8 @@ document.addEventListener("click", ev => {
 });
 document.addEventListener("click", ev => { if(ev.target.id === "previa-site") fecharPrevia(); });
 document.addEventListener("toggle", ev => { if(ev.target.id === "mais-detalhes") E.maisDetalhes = ev.target.open;   // continua aberto depois de salvar
-  if(ev.target.classList?.contains("todos")) E.todosFechado = ev.target.open ? null : Number(ev.target.id.slice(6)); }, true);   // v0.19.0: aberto por padrão
+  if(ev.target.classList?.contains("todos")) E.todosFechado = ev.target.open ? null : Number(ev.target.id.slice(6));   // v0.19.0: aberto por padrão
+  if(ev.target.classList?.contains("kit-redes")) (E.kitAberto ||= {})[ev.target.dataset.id] = ev.target.open; }, true);   // v0.20.0: continua como estava
 // v0.17.0: Publicações — marcar todos os conteúdos para excluir em grupo
 document.addEventListener("change", ev => {
   if(ev.target.id === "marcar-todas") document.querySelectorAll("#tab-canais .sel-pub").forEach(x => { x.checked = ev.target.checked; });
@@ -3185,6 +3490,7 @@ document.addEventListener("submit", ev => {
 });
 document.addEventListener("input", ev => {
   if(ev.target.matches?.("#rede-legenda, textarea[data-chave]")) (E.legendas ||= {})[ev.target.dataset.chave] = ev.target.value;   // a legenda editada sobrevive ao redesenho
+  if(ev.target.matches?.(".arte-chamada, .arte-apoio")) arteMudou(ev.target);                        // v0.20.0: a arte é redesenhada
   const fc = ev.target.closest?.('form[data-form="conteudo"]');
   if(fc && (ev.target.name === "titulo" || ev.target.name === "corpo") && !ev.target.disabled) guardarRascunho(fc);
   if(ev.target.dataset.filtro !== "fila") return;
@@ -3198,6 +3504,7 @@ document.addEventListener("change", ev => {
   if(ev.target.dataset.imagem){
     if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha a imagem de novo.", true); return; }
     executar(enviarImagem, false, ev.target); return; }
+  if(ev.target.matches?.(".arte-fundo")) arteMudou(ev.target);                                        // v0.20.0: fundo da arte
   if(ev.target.id === "filtro-assuntos"){ E.filtros.assuntos = ev.target.value; desenhar(); }
   if(ev.target.id === "ni-num") ev.target.dataset.manual = "1";
   if(ev.target.id === "ni-mes"){
