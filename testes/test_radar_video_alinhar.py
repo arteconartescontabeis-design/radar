@@ -265,6 +265,21 @@ def test_fala_igual_ao_roteiro_da_zero_divergencias_e_a_legenda_e_o_roteiro(nome
     assert None not in rots and rots == sorted(rots)
 
 
+@pytest.mark.parametrize("nome", ["simples", "lucro", "reforma"])
+def test_transcricao_ja_na_forma_de_exibicao_tambem_alinha(nome):
+    """A troca futura pelo serviço pago (AZURE_FALA_MODO=rapido) devolve as palavras na forma de exibição — algarismos, pontuação
+    e maiúsculas: o mesmo alinhamento serve."""
+    fala = fala_de(nome)
+    ws = [{"texto": w, "inicio": 0.5 + 0.4 * k, "fim": 0.8 + 0.4 * k} for k, w in enumerate(fala.split())]
+    al = alinhar.alinhar(fala, ws, [], CFG)
+    assert (al["divergencias"], al["fora_do_roteiro"], al["omitido"], al["cobertura"]) == ([], [], [], 1.0)
+    assert al["texto_final"] == fala and al["trocas"] == []
+    # cada unidade da legenda é um pedaço inteiro da fala, no tempo dos pedaços ditos
+    for u in al["legenda"]:
+        ks = [k for k, w in enumerate(fala.split()) if ws[k]["inicio"] >= u["ini"] and ws[k]["fim"] <= u["fim"]]
+        assert " ".join(fala.split()[ks[0]:ks[-1] + 1]) == u["texto"], u
+
+
 def test_numero_em_algarismo_na_legenda_no_tempo_das_palavras_ditas():
     al = alinhar.alinhar(fala_de("simples"), falas(ROTEIROS["simples"][2]), [], CFG)
     ws = falas(ROTEIROS["simples"][2])
@@ -396,6 +411,23 @@ def test_hesitacao_repeticao_e_falso_inicio():
     assert [(w["texto"], w["rot_de"]) for w in al["palavras"] if w["texto"] in ("hum", "ééé")] == [("hum", None), ("ééé", None)]
     al = alinhar.alinhar(fala, falas("as empresas de devem pagar até sexta"), [], CFG)
     assert [(r["tipo"], r["texto"]) for r in al["remover"]] == [("falso_inicio", "de devem")]
+
+
+def test_unidade_do_roteiro_nunca_se_quebra_na_legenda(tmp_path):
+    import legenda
+    fala = "O limite anual do faturamento do microempreendedor é de R$ 81.000,00 por ano, até 31 de dezembro de 2026."
+    lexica = ("o limite anual do faturamento do microempreendedor é de oitenta e um mil reais por ano até trinta e um de dezembro "
+              "de dois mil e vinte e seis")
+    al = alinhar.alinhar(fala, falas(lexica, passo=0.25, dur=0.2), [], CFG)
+    assert al["divergencias"] == [] and al["texto_final"] == fala
+    assert [u["texto"] for u in al["legenda"]][-6:] == ["de", "R$ 81.000,00", "por", "ano,", "até", "31 de dezembro de 2026."]
+    info = legenda.gravar(tmp_path / "l.ass", al["legenda"], GLOSSARIO)
+    linhas = [l for e in (tmp_path / "l.ass").read_text(encoding="utf-8").splitlines() if e.startswith("Dialogue:")
+              for l in e.split(",,0,0,0,,", 1)[1].split("\\N")]
+    assert any("R$\\h81.000,00" in l for l in linhas) and any("31\\hde\\hdezembro\\hde\\h2026." in l for l in linhas)
+    assert not any(l.endswith(("R$", "31")) or l.startswith(("81.000", "dezembro", "de 2026")) for l in linhas), linhas
+    assert [b["u"] for b in info["lista"]] == sorted(b["u"] for b in info["lista"]) and info["lista"][0]["u"] == 0
+    assert sum(b["palavras"] for b in info["lista"]) == len(fala.split())
 
 
 # ------------------------------------------------------------------ editor de legenda (administrador)
