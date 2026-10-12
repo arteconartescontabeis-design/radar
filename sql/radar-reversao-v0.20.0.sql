@@ -157,6 +157,8 @@ drop function if exists public.radar_base_legal_valida(text[], text);
 drop function if exists public.radar_base_legal_preparar(text);
 drop function if exists public.radar_base_legal_chave(text);
 drop function if exists public.radar_rx_termo(text);
+-- v0.19.1 (opcional): a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql), se foi instalada
+drop function if exists public.radar_concorrentes_conferir(text);
 
 commit;
 

@@ -18,29 +18,36 @@ A v0.20.0 completa o **"Gerar com IA" para as redes**, dentro das regras da publ
   **Facebook**, a **chamada e a linha de apoio da arte** e o **roteiro de um reel** (de 30 a 45 segundos, com a fala e o texto na
   tela de cada cena, para alguém da equipe gravar). Fica no quadro **"Kit das redes"**, no conteúdo, com "Copiar legenda" e
   "Copiar roteiro"; **"Gerar kit das redes com IA"** refaz só o kit. As caixas de legenda das redes (passo da trilha, "Publicar em
-  todos" e "Publicar nos canais que faltam") já vêm com o texto do kit. Se o título ou o texto mudar depois, o kit fica
-  **desatualizado** e as redes voltam à legenda montada pelo Radar até gerar de novo. O kit é sugestão: gravá-lo não muda o
-  conteúdo nem derruba autorização, e só vai ao ar o que o administrador autoriza. O reel é gravado e postado à mão.
+  todos" e "Publicar nos canais que faltam") já vêm com o texto do kit. Se o texto mudar depois, o kit fica **desatualizado** e
+  as redes voltam à legenda montada pelo Radar até gerar de novo; se só o título mudar (por exemplo, outro título sugerido pela
+  IA), o kit continua valendo e a tela pede para conferir a chamada da arte. O kit é sugestão: gravá-lo não muda o conteúdo nem
+  derruba autorização, e só vai ao ar o que o administrador autoriza. O reel é gravado e postado à mão. Antes de a notícia
+  estar no site, o "Copiar legenda do Facebook" leva o endereço do site da Artecon no lugar do `{LINK DO SITE}`.
 - **Arte vertical (1080×1350)** para o Instagram e o Facebook: chamada grande, linha de apoio, "Matéria completa em
   www.artecon.cnt.br" e a faixa legal com a identificação da empresa; o selo "NORMA ESTADUAL · SC" só nas normas estaduais. A
-  chamada, o apoio e o fundo (padrão, ilustração da IA ou imagem de capa) podem ser trocados na hora de publicar.
+  chamada, o apoio e o fundo (padrão, ilustração da IA ou imagem de capa) podem ser trocados na hora de publicar. Se a chamada
+  ou o apoio não couberem, a arte corta com "…" e a tela avisa embaixo da imagem e na confirmação.
 - **Identificação legal:** empresa, CNPJ e CRC ficam em Configurações → "Fecho, assinatura e identificação legal" (campos `cnpj`
-  e `crc`, conferidos ao salvar). Quem os acrescenta à arte e às legendas é o Radar, nunca a IA; enquanto faltarem, sai só o que
-  existe (o nome da empresa) e a tela avisa.
+  e `crc`, conferidos ao salvar; o CRC sai sempre como "CRC-SC 004064/O-5", com a letra O de originário depois da barra, mesmo
+  que tenha sido escrito "SC-004064/0-5"). Quem os acrescenta à arte e às legendas é o Radar, nunca a IA; enquanto faltarem, sai
+  só o que existe (o nome da empresa) e a tela avisa. A legenda editada na tela antes de preencher ganha a linha nova ao salvar
+  as Configurações, e a legenda sem a linha (apagada à mão) é lembrada na confirmação.
 - **Publicidade da profissão contábil:** a tela aponta os termos que a publicidade contábil evita (lista inicial, a confirmar com
-  o contador responsável: não há no pacote a norma do CFC com a lista). A oferta, a promessa e o convite ("garantimos", "economia
-  garantida", "pague menos", "grátis", "de graça", "ganhe um brinde", "blinde seu patrimônio", "troque de contador") **impedem** a
-  publicação da legenda e da arte; "100%", "o melhor", "definitivo", "brindes", "blindado", "pagar menos imposto" e "troca de
-  contador" pedem confirmação (podem ser fato ou assunto da notícia, como "isenção de 100%" ou "ICMS na distribuição de
-  brindes"). No texto do site é só aviso. Frase do boletim pago (ITC) também não sai, nem na legenda nem na chamada e no apoio da
-  arte, e os botões de copiar do quadro "Kit das redes" seguem as mesmas regras (o reel é postado à mão).
+  o contador responsável: não há no pacote a norma do CFC com a lista). A forma de oferta, de promessa e de convite
+  ("garantimos", "economia garantida", "consulta grátis", "abertura de empresa grátis", "primeiro mês de graça", "ganhe um
+  brinde", "blinde seu patrimônio", "pague menos com a Artecon", "troque de contador") **impede** a publicação da legenda e da
+  arte, e o recado diz onde está o termo (legenda do Instagram, do Facebook, chamada ou apoio da arte); "grátis", "de graça",
+  "pague menos", "blindar o patrimônio", "100%", "o melhor", "definitivo", "brindes", "blindado", "pagar menos imposto" e "troca
+  de contador" pedem confirmação (podem ser fato ou assunto da notícia, como "emissor de NFS-e grátis para o MEI", "quem ganha
+  até R$ 5 mil pague menos", "isenção de 100%" ou "ICMS na distribuição de brindes"). Outras promessas a tela não reconhece:
+  confira sempre o texto. No texto do site é só aviso. Frase do boletim pago (ITC) também não sai, nem na legenda nem na
+  chamada e no apoio da arte, e os botões de copiar do quadro "Kit das redes" seguem as mesmas regras (o reel é postado à mão).
 - **Ilustração opcional:** o "Gerar com IA" e o "Gerar texto com IA" fazem a **capa padrão** da Artecon, sem custo de imagem. A
   ilustração da IA passa a ser uma ilustração editorial nas cores da marca (não mais foto de banco de imagens) e sai só pelo
   botão "Gerar ilustração com IA".
 
-Mudam o banco (`radar-setup-v0.20.0.sql`: coluna `kit_ia` em `radar_conteudos`, que não muda a data do conteúdo e fica marcada
-como desatualizada quando o título ou o texto mudam; `cnpj` e `crc` no valor inicial da `assinatura`), o `index.html` e a função
-`radar-ia` (v0.20.0: ação nova `kit` e o pedido novo da ilustração). A função `radar-redes` e os robôs não mudam (continuam na
+Mudam o banco (passa a guardar o kit das redes de cada conteúdo, e a assinatura ganha os campos `cnpj` e `crc`, vazios), a tela
+e a função `radar-ia` (o kit das redes e o pedido novo da ilustração). A função `radar-redes` e os robôs não mudam (continuam na
 v0.19.0).
 
 A v0.19.0 juntou a IA num botão só e acelerou a publicação:
@@ -968,6 +975,10 @@ A função `radar-redes` publica o que o administrador autorizou nos passos 6 e 
 Sem os segredos, o botão "Autorizar e publicar" grava a autorização e avisa que a Meta ainda não está configurada; depois é
 só usar "Publicar agora" no mesmo passo.
 
+6. **Antes do primeiro post (v0.20.0):** em Configurações → "Fecho, assinatura e identificação legal", preencha `cnpj` e `crc`
+   (o registro da empresa no CRC-SC, como "CRC-SC 004064/O-5", com a letra O depois da barra) e salve: a arte e as legendas levam
+   essa identificação no fim. Confira também o link da bio do Instagram, que deve abrir artecon.cnt.br/news.
+
 ### Concorrentes no Instagram (v0.19.1, opcional)
 
 A função `radar-concorrentes` **só lê**: para uma lista de perfis comerciais (ou de criador) do Instagram de outros
@@ -1029,15 +1040,30 @@ repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
 
-**Da v0.19.0 para a v0.20.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` inteiro (a coluna `kit_ia`; a linha
-`instalacoes concluidas` mostra `v0.20.0`); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o
-painel pede a função `radar-ia` v0.20.0: Configurações → Inteligência artificial → Testar a IA deve mostrar v0.20.0); (3) Ctrl+F5
-no Radar; (4) Configurações → "Fecho, assinatura e identificação legal": acrescente ao JSON os campos `"cnpj"` (com ou sem
-pontuação) e `"crc"` (o registro no CRC-SC) e salve — na instalação que já existe esses campos não entram sozinhos, e até lá a
-arte e as legendas saem só com o nome da empresa; (5) antes do primeiro post, confira o link da bio do Instagram (a legenda do
-Instagram diz "link na bio"). A função `radar-redes`, os robôs e os segredos não mudam. Sem o SQL, o "Gerar kit das redes com IA"
-avisa que falta rodar o `radar-setup-v0.20.0.sql`; com a função antiga, avisa que ela é de uma versão anterior (o texto e a capa
-do "Gerar com IA" saem do mesmo jeito).
+**Da v0.19.0 para a v0.20.0:**
+
+0. A tela nova chega pelo repositório: com esta versão na branch principal do GitHub (repositório `radar`), o GitHub Pages
+   publica em 1 a 2 minutos. Abra o Radar, aperte Ctrl+F5 e confira no rodapé que aparece **Radar v0.20.0** antes de seguir (se
+   ainda aparecer v0.19.0, espere mais um pouco e recarregue).
+1. SQL Editor → execute `sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` mostra `v0.20.0`). Quem usa a
+   função `radar-concorrentes` (v0.19.1, opcional) não precisa rodar de novo o `sql/radar-concorrentes.sql`: o setup devolve o
+   acesso da função que confere a chave (para conferir, faça o teste de conexão do fim do `sql/radar-concorrentes.sql`, com
+   `{"acao": "diagnostico"}`).
+2. Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel pede a função `radar-ia` v0.20.0:
+   Configurações → Inteligência artificial → Testar a IA deve mostrar v0.20.0).
+3. Ctrl+F5 no Radar de novo.
+4. Configurações → "Fecho, assinatura e identificação legal": o SQL já acrescentou `"cnpj": ""` e `"crc": ""` ao texto; escreva
+   entre as aspas o CNPJ (com ou sem pontuação) e o registro da empresa no CRC-SC, com a **letra O** depois da barra (de
+   originário), não o número zero, e salve. No caso da Artecon, o texto completo fica assim:
+   `{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves", "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"}`.
+   Embaixo do campo aparece a linha como vai ao rodapé da arte e ao fim das legendas; confira. Até salvar, a arte e as legendas
+   saem só com o nome da empresa (a tela avisa).
+5. Antes do primeiro post, confira o link da bio do Instagram: ele deve abrir a página de notícias do site,
+   **artecon.cnt.br/news** (a legenda do Instagram termina com "Leia a matéria completa no site (link na bio)").
+
+A função `radar-redes`, os robôs e os segredos não mudam. Sem o SQL, o "Gerar kit das redes com IA" avisa que falta rodar o
+`radar-setup-v0.20.0.sql`; com a função antiga, avisa que ela é de uma versão anterior (o texto e a capa do "Gerar com IA" saem
+do mesmo jeito).
 
 **Da v0.18.0 para a v0.19.0:** (1) Edge Functions → `radar-ia` e `radar-redes` → cole o `index.ts` de cada uma desta versão e
 faça o Deploy ("Verify JWT" ligado nas duas; o painel pede a função `radar-ia` v0.19.0); (2) Supabase → Edge Functions → Secrets →

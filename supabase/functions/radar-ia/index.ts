@@ -19,7 +19,7 @@
 //   kit          → (v0.20.0) monta o kit das redes de um conteúdo já escrito: chamada e apoio da arte, legendas do Instagram e do
 //                  Facebook e roteiro de reel; grava em radar_conteudos.kit_ia (só sugestão: o que vai ao ar é o que o administrador autoriza)
 //
-// v0.20.0 — ação "kit": o kit sai do texto final, num pedido próprio (até 3.000 tokens), e conta no consumo como "gerar"; leva à IA
+// v0.20.0 — ação "kit": o kit sai do texto final, num pedido próprio (até 4.000 tokens), e conta no consumo como "gerar"; leva à IA
 //   só o título e o texto da Artecon, nunca o texto oficial nem o boletim pago (a comparação com eles é feita aqui, na memória).
 //   Regra (12) da publicidade contábil e a lista de termos que a tela trava ou avisa (a mesma lista da tela). A identificação legal
 //   (CNPJ, CRC) é acrescentada pela tela, a partir das Configurações, nunca pela IA. A ilustração passa a ser editorial (desenho
@@ -394,7 +394,7 @@ async function chamarGateway(reg: Registro, caminho: string, corpo: unknown, mod
 
 /** Pergunta à Anthropic exigindo a resposta no formato do esquema (uso forçado de ferramenta). */
 async function perguntar(reg: Registro, modelo: string, instrucoes: string, entrada: string, nome: string, esquema: unknown,
-                         maxTokens = 4000, tempo = 110_000): Promise<{ json: any }> {
+                         maxTokens = 4000, tempo = 110_000, corte = ""): Promise<{ json: any }> {
   const dados = await chamarGateway(reg, "", {
     model: modelo, max_tokens: maxTokens, system: instrucoes,
     messages: [{ role: "user", content: entrada }],
@@ -405,7 +405,8 @@ async function perguntar(reg: Registro, modelo: string, instrucoes: string, entr
   // v0.16.0: soma — o "gerar" pode fazer uma segunda chamada (a revisão) no mesmo pedido
   reg.uso = { entrada: (reg.uso?.entrada ?? 0) + (Number(u.input_tokens ?? 0) || 0) + (Number(u.cache_creation_input_tokens ?? 0) || 0) + (Number(u.cache_read_input_tokens ?? 0) || 0),
               saida: (reg.uso?.saida ?? 0) + (Number(u.output_tokens ?? 0) || 0), modelo: String(dados.model ?? modelo) };
-  if (dados.stop_reason === "max_tokens") throw new Erro(502, "A resposta da IA veio incompleta (limite de tamanho). Tente de novo; se repetir, o administrador aumenta o tamanho máximo da resposta do Radar em Portal → Consumo de IA.");
+  // "corte": a mensagem de quem pede um teto fixo no código (o kit), que o Portal não muda
+  if (dados.stop_reason === "max_tokens") throw new Erro(502, corte || "A resposta da IA veio incompleta (limite de tamanho). Tente de novo; se repetir, o administrador aumenta o tamanho máximo da resposta do Radar em Portal → Consumo de IA.");
   if (dados.stop_reason === "refusal") throw new Erro(502, "A IA se recusou a responder a este pedido.");
   const bloco = (Array.isArray(dados.content) ? dados.content : []).find((c: any) => c?.type === "tool_use" && c?.name === nome);
   const json = bloco?.input;
@@ -1044,16 +1045,20 @@ const REGRA_PUBLICIDADE = "(12) PUBLICIDADE DA PROFISSÃO CONTÁBIL: informe, n�
   "sem comparação com outros escritórios nem convite para trocar de contador, sem superlativos nem absolutos de propaganda " +
   "('o melhor', 'o mais completo', '100% seguro', 'solução definitiva') e sem urgência artificial ('corra', 'não perca', 'última chance'); ";
 
-// v0.20.0: termos que a publicidade contábil evita (lista inicial, a confirmar com o contador responsável). "trava" (só a oferta, a
-// promessa e o convite; a palavra que também nomeia assunto da notícia, como "brindes", é aviso): a tela não deixa a legenda nem a
-// arte sair com eles; "aviso": a tela mostra e pede confirmação; aqui, os dois viram aviso do kit. A mesma lista está na tela
-// (index.html): mantenha as duas iguais (testes/test_radar_publicidade.py confere o texto, da lista até o fim de termosPublicidade).
+// v0.20.0: termos que a publicidade contábil evita (lista inicial, a confirmar com o contador responsável). "trava" (só a forma de
+// oferta, de promessa e de convite: "consulta grátis", "ganhe um brinde", "blinde seu patrimônio", "pague menos com a Artecon"; a
+// palavra solta que também é fato ou assunto da notícia, como "grátis", "pague menos", "blindar o patrimônio" e "brindes", é aviso):
+// a tela não deixa a legenda nem a arte sair com eles; "aviso": a tela mostra e pede confirmação; aqui, os dois viram aviso do kit.
+// A mesma lista está na tela (index.html): mantenha as duas iguais (testes/test_radar_publicidade.py confere o texto, da lista até
+// o fim de termosPublicidade).
 const TERMOS_PUBLICIDADE = [
-  ["trava", "garantimos|garantia de resultado|resultado garantido|economia garantida"], ["trava", "gr[áa]tis|de gra[çc]a"],
-  ["trava", "ganhe (?:um |uma |o |seu |sua )?brindes?"], ["trava", "blind(?:e|ar|amos) (?:o |a |seu |sua )?(?:patrim[ôo]nio|empresa)"],
-  ["trava", "pague menos"], ["trava", "(?:troque|mude) (?:de|o seu|seu) contador"],
+  ["trava", "garantimos|garantia de resultado|resultado garantido|economia garantida"],
+  ["trava", "(?:consultas?|diagn[óo]sticos?|avalia[çc](?:ão|ões)|or[çc]amentos?|abertura(?: de empresas?)?|primeiro mês|mensalidades?) (?:gr[áa]tis|de gra[çc]a)"],
+  ["trava", "ganhe (?:um |uma |o |seu |sua )?brindes?"], ["trava", "blind(?:e|amos) (?:o |a |seu |sua )?(?:patrim[ôo]nio|empresa)"],
+  ["trava", "pague menos(?: \\p{L}+){0,2} (?:com a gente|conosco|com a Artecon|com a nossa ajuda)"], ["trava", "(?:troque|mude) (?:de|o seu|seu) contador"],
   ["aviso", "100\\s?%|cem por cento"], ["aviso", "(?:o|a|os|as) melhor(?:es)?"], ["aviso", "definitiv[oa]s?|definitivamente"],
-  ["aviso", "brindes?"], ["aviso", "blindad[oa]s?|blindagem"], ["aviso", "pagar menos imposto"], ["aviso", "troca de contador"]];
+  ["aviso", "gr[áa]tis|de gra[çc]a"], ["aviso", "brindes?"], ["aviso", "blindad[oa]s?|blindagem|blindar (?:o |a |seu |sua )?(?:patrim[ôo]nio|empresa)"],
+  ["aviso", "pague menos|pagar menos imposto"], ["aviso", "troca de contador"]];
 // @ts-ignore (a tela é JavaScript puro: o texto é o mesmo nos dois arquivos, sem os tipos)
 const termosPublicidade = (...textos) => { const t = textos.join("\n"), r = {trava:[], aviso:[]};
   for(const [n, e] of TERMOS_PUBLICIDADE) for(const m of t.match(new RegExp("(?<![\\p{L}\\p{N}])(?:" + e + ")(?![\\p{L}\\p{N}])", "giu")) || []){
@@ -1063,13 +1068,18 @@ const termosPublicidade = (...textos) => { const t = textos.join("\n"), r = {tra
   return r; };
 
 const LINK_SITE = "{LINK DO SITE}";                  // o banco troca pelo endereço da matéria quando o site sai (Publicar em todos)
-const RE_LINK_SITE = /\{\s*link\s+do\s+site\s*\}/gi;
+// o marcador como a IA às vezes escreve ("[LINK DO SITE]", "{LINK}", "{LINK DA MATÉRIA}", "(link da notícia)") vira o "{LINK DO SITE}"
+// de verdade (ou sai, no Instagram): só esse a tela e o banco trocam pelo endereço. "(link na bio)" não é marcador e fica
+const RE_LINK_SITE = /[[{(]\s*link(?:\s+(?:do\s+site|da\s+mat[ée]ria|da\s+not[íi]cia))?\s*[\]})]/gi;
 const FIM_INSTAGRAM = "Leia a matéria completa no site (link na bio).", FIM_FACEBOOK = "Leia a matéria completa: " + LINK_SITE;
 // dado de identificação (número de CNPJ, registro no CRC, telefone): a identificação é da tela, nunca da IA. A palavra "CNPJ" sem
 // número fica ("o CNPJ alfanumérico começa em julho" é notícia), e o CRC só conta com cara de número de registro ("CRC-SC
-// 012345/O-6", "CRC 1SC012345/O-6"): "anuidade do CRC 2027", "o CRC em 2026" e "CRC-SC de 2026" são notícia (o ano não é registro).
+// 012345/O-6", "CRC 1SC012345/O-6"): "anuidade do CRC 2027", "o CRC em 2026" e "CRC-SC de 2026" são notícia (o ano não é registro),
+// e a norma do conselho também ("Resolução CRC-SC nº 1.234/2025", "Deliberação CRC-SC nº 0123"): número seguido de "/ano" ou
+// depois de "Resolução", "Deliberação", "Portaria"… não é registro.
 const RE_IDENTIFICACAO = new RegExp(String.raw`(?<![\w.])[0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}\/[0-9A-Z]{4}-\d{2}(?!\d)|CNPJ\D{0,12}\d{14}` +
-  String.raw`|\bCRC(?:[\s\/-]*[A-Z]{2}\b)?[\s:nº°.-]*(?:\d?[A-Z]{2}[\s.\/-]*)?(?!(?:19|20)\d{2}(?!\d|\.\d|\/[OPST]\b))\d{1,3}\.?\d{3,}(?:\/[OPST](?:-\d)?\b)?` +
+  String.raw`|(?<!(?:resolu[çc][ãa]o|delibera[çc][ãa]o|portaria|instru[çc][ãa]o|ato|edital|of[íi]cio|circular|norma)\s+)` +
+  String.raw`\bCRC(?:[\s\/-]*[A-Z]{2}\b)?[\s:nº°.-]*(?:\d?[A-Z]{2}[\s.\/-]*)?(?!(?:19|20)\d{2}(?!\d|\.\d|\/[OPST]\b))\d{1,3}\.?\d{3,}(?:\/[OPST](?:-\d)?\b)?(?!\d|\/\d)` +
   String.raw`|\(\d{2}\)\s?9?\d{4}[-\s]?\d{4}|(?<!\d)\d{2}[\s-]9?\d{4}-\d{4}(?!\d)`, "i");
 // o dado sai com o rótulo colado a ele ("CNPJ", "Telefone:", "WhatsApp:"); "pelo telefone (48) …" fica "pelo telefone"
 const RE_DADO_IDENTIFICACAO = new RegExp(String.raw`(?:\bCNPJ\b\.?\s*(?:n[º°.]\s*)?:?\s*|\b(?:tel(?:efone)?|fone|celular|whats(?:app)?|contato)\b\.?\s*:\s*)?(?:` +
@@ -1170,11 +1180,13 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
                      hashtags: listaHashtags(json?.facebook?.hashtags, fbBruto.match(RE_HASHTAG) ?? [], 2) };
   if (!chamada || !igTexto.replace(/[^\n]*link na bio[^\n]*/gi, "").trim() || !textoKit(fb)) throw new Erro(502, "A IA devolveu o kit incompleto (sem a chamada da arte ou sem as legendas). Tente de novo.");
 
-  const validas = (Array.isArray(r.cenas) ? r.cenas : [])
+  const recebidas = Array.isArray(r.cenas) ? r.cenas : [];
+  const aproveitaveis = recebidas
     .map((c: any) => ({ de: segundos(c?.de), ate: segundos(c?.ate), fala: linhaKit(c?.fala, 300), texto_tela: linhaKit(c?.texto_tela, 42, false),
                         longo: normalizarEspacos(textoKit(c?.texto_tela)).length > 42 }))
     .filter((c: any) => c.de >= 0 && c.de < c.ate && c.ate <= 60 && c.fala)
-    .sort((x: any, y: any) => x.de - y.de || x.ate - y.ate).slice(0, 8);
+    .sort((x: any, y: any) => x.de - y.de || x.ate - y.ate);
+  const validas = aproveitaveis.slice(0, 8);
   const cenas = validas.map(({ longo: _, ...c }: any) => c);
   const duracao = cenas.length ? Math.max(...cenas.map((c: any) => c.ate)) : 0;
   const legendaReel = cortarFrase(textoKit(r.legenda), 800);
@@ -1182,6 +1194,12 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
                  legenda: /link na bio/i.test(legendaReel) ? legendaReel : [cortarFrase(legendaReel, 800 - 14), "Link na bio."].filter(Boolean).join("\n\n") };
   if (!cenas.length) avisos.push("O roteiro do reel veio sem cenas válidas (início e fim em segundos, até 60 s): gere o kit de novo ou escreva as cenas à mão.");
   else {
+    // o que saiu do roteiro não some calado: quem grava o reel precisa saber que o fim (o que fazer, o prazo) pode ter ficado de fora
+    if (aproveitaveis.length > 8) {
+      avisos.push(`O roteiro veio com ${aproveitaveis.length} cenas; ficaram as 8 primeiras (até ${String(duracao).replace(".", ",")} s): confira o fim do roteiro.`);
+    }
+    const fora = recebidas.length - aproveitaveis.length;
+    if (fora) avisos.push(`${fora} cena(s) do roteiro saíram por não ter fala ou início e fim válidos (em segundos, até 60 s): confira se o roteiro ficou completo.`);
     if (duracao < 30 || duracao > 45) avisos.push(`O reel tem ${String(duracao).replace(".", ",")} s: o ideal é de 30 a 45 s.`);
     if (cenas.length < 3) avisos.push(`O roteiro do reel tem só ${cenas.length} cena(s): o ideal é de 3 a 8.`);
     if (cenas.some((c: any, k: number) => c.de !== (k ? cenas[k - 1].ate : 0))) {
@@ -1273,7 +1291,9 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
     `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
     `Fonte: ${dado(c.fonte_credito)}\n<<<FIM>>>\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 3000);
+  // até 4.000 tokens (cabe nos 6.000 da IA Central): a notícia longa, com as legendas e as 8 cenas no limite, passa de 3.000
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 4000, undefined,
+    "O kit das redes saiu maior que o limite do pedido e veio incompleto: gere de novo (a IA costuma encurtar na segunda vez).");
   const { kit: novo, avisos: doKit } = limparKit(json);
 
   // conferência por código, contra o título e o texto (o texto oficial e o boletim ficam só aqui, na memória)
@@ -1298,7 +1318,9 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   if (marcas.length) avisos.push(`O kit tem ${marcas.length} marca(s) [VERIFICAR]: tire antes de publicar.`);
   if (duvidas.length) avisos.push(`O kit tem ${duvidas.length} comentário(s) sobre dúvida da redação (ex.: “${duvidas[0]}”): tire antes de publicar.`);
   avisos.push(...doKit);
-  const salvo = { versao: 1, gerado_em: new Date().toISOString(), modelo: ctx.reg.uso?.modelo ?? MODELO, ...novo,
+  // o título de quando o kit foi feito: só o título mudar não deixa o kit desatualizado (as legendas e o roteiro saem do texto), e a
+  // tela compara com o título de agora para pedir que a chamada da arte seja conferida
+  const salvo = { versao: 1, gerado_em: new Date().toISOString(), modelo: ctx.reg.uso?.modelo ?? MODELO, titulo: normalizarEspacos(String(c.titulo ?? "")), ...novo,
                   avisos: [...new Set(avisos)].map((a) => avisoCurto(a)).slice(0, 12) };
   // o banco aceita até 20.000 caracteres: num caso extremo (texto cheio de aspas e quebras), saem os últimos avisos
   while (JSON.stringify(salvo).length > 18000 && salvo.avisos.length) salvo.avisos.pop();

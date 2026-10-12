@@ -365,7 +365,7 @@ alter table public.radar_conteudos   add column if not exists copia_autorizada_p
 alter table public.radar_conteudos   add column if not exists copia_autorizada_motivo text;
 -- v0.20.0: kit das redes feito pela IA (chamada e apoio da arte, legendas do Instagram e do Facebook, roteiro de reel).
 -- É sugestão: o que vai ao ar é o que o administrador autoriza (radar_redes_envios). Gravar o kit não muda a data do
--- conteúdo nem derruba autorizações; mudar o título ou o texto marca o kit como desatualizado (radar_fn_conteudo_aprovacao).
+-- conteúdo nem derruba autorizações; mudar o texto marca o kit como desatualizado (radar_fn_conteudo_aprovacao).
 alter table public.radar_conteudos add column if not exists kit_ia jsonb not null default '{}'::jsonb;
 do $$
 begin
@@ -1355,8 +1355,10 @@ begin
     if new.corpo is distinct from old.corpo then
       new.copia_autorizada_em := null; new.copia_autorizada_por := null; new.copia_autorizada_motivo := null;
     end if;
-    -- v0.20.0: título ou texto mudou e o kit não veio junto: o kit fica marcado como desatualizado
-    if (new.titulo is distinct from old.titulo or new.corpo is distinct from old.corpo)
+    -- v0.20.0: o texto mudou e o kit não veio junto: o kit fica marcado como desatualizado (as legendas e o roteiro saem do texto).
+    -- Só o título mudar não marca (escolher outro título sugerido é o passo seguinte ao "Gerar com IA"): o kit guarda o título de
+    -- quando foi feito, e a tela pede para conferir a chamada da arte
+    if new.corpo is distinct from old.corpo
        and new.kit_ia is not distinct from old.kit_ia and new.kit_ia <> '{}'::jsonb then
       new.kit_ia := new.kit_ia || '{"desatualizado": true}'::jsonb;
       -- kit no limite de tamanho (só se escrito à mão): a marca não pode impedir a edição do texto
@@ -3168,6 +3170,14 @@ grant execute on function public.radar_rede_marcar_excluida(bigint, text) to aut
 grant execute on function public.radar_pedir_exclusao_site(bigint) to authenticated;
 grant execute on function public.radar_cancelar_exclusao_site(bigint) to authenticated;
 grant execute on function public.radar_site_exclusao_concluir(bigint, boolean, text) to service_role;
+-- v0.20.0: a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql, v0.19.1, opcional) também perde o acesso no
+-- laço acima: se ela existe, o papel interno volta a executá-la (sem isso, toda chamada com a chave do Vault recebe 401)
+do $$
+begin
+  if to_regprocedure('public.radar_concorrentes_conferir(text)') is not null then
+    execute 'grant execute on function public.radar_concorrentes_conferir(text) to service_role';
+  end if;
+end $$;
 
 -- perfis
 drop policy if exists radar_perfis_sel on public.radar_perfis;
@@ -3306,6 +3316,11 @@ insert into public.radar_config (chave, valor) values
   ('rascunhos', '{"ligado": true, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}'::jsonb),
   ('relevancia', '{"limite_alta": 8, "limite_media": 3, "termos": [{"termo": "reforma tributária", "pontos": 5}, {"termo": "IBS", "pontos": 5}, {"termo": "CBS", "pontos": 5}, {"termo": "imposto seletivo", "pontos": 5}, {"termo": "Simples Nacional", "pontos": 5}, {"termo": "MEI", "pontos": 5}, {"termo": "microempreendedor", "pontos": 5}, {"termo": "prorroga", "pontos": 5}, {"termo": "prorrogado", "pontos": 5}, {"termo": "prorrogados", "pontos": 5}, {"termo": "prorrogação", "pontos": 5}, {"termo": "prazo", "pontos": 5}, {"termo": "prazos", "pontos": 5}, {"termo": "lei complementar", "pontos": 5}, {"termo": "transação", "pontos": 5}, {"termo": "parcelamento", "pontos": 5}, {"termo": "regularização", "pontos": 5}, {"termo": "Refis", "pontos": 5}, {"termo": "instrução normativa", "pontos": 4}, {"termo": "vencimento", "pontos": 4}, {"termo": "obrigação acessória", "pontos": 4}, {"termo": "DCTF", "pontos": 4}, {"termo": "DCTFWeb", "pontos": 4}, {"termo": "EFD", "pontos": 4}, {"termo": "ECF", "pontos": 4}, {"termo": "ECD", "pontos": 4}, {"termo": "eSocial", "pontos": 4}, {"termo": "Reinf", "pontos": 4}, {"termo": "imposto de renda", "pontos": 4}, {"termo": "IRPF", "pontos": 4}, {"termo": "IRPJ", "pontos": 4}, {"termo": "CSLL", "pontos": 4}, {"termo": "PIS", "pontos": 4}, {"termo": "Cofins", "pontos": 4}, {"termo": "ICMS", "pontos": 4}, {"termo": "ISS", "pontos": 4}, {"termo": "substituição tributária", "pontos": 4}, {"termo": "DIFAL", "pontos": 4}, {"termo": "NFS-e", "pontos": 4}, {"termo": "NF-e", "pontos": 4}, {"termo": "nota fiscal", "pontos": 4}, {"termo": "FGTS", "pontos": 4}, {"termo": "INSS", "pontos": 4}, {"termo": "contribuição previdenciária", "pontos": 4}, {"termo": "folha de pagamento", "pontos": 4}, {"termo": "desoneração", "pontos": 4}, {"termo": "lucro presumido", "pontos": 4}, {"termo": "lucro real", "pontos": 4}, {"termo": "dividendos", "pontos": 4}, {"termo": "distribuição de lucros", "pontos": 4}, {"termo": "edital", "pontos": 4}, {"termo": "editais", "pontos": 4}, {"termo": "Regularize", "pontos": 4}, {"termo": "exclusão", "pontos": 4}, {"termo": "opção", "pontos": 4}, {"termo": "decreto", "pontos": 3}, {"termo": "medida provisória", "pontos": 3}, {"termo": "alíquota", "pontos": 3}, {"termo": "alíquotas", "pontos": 3}, {"termo": "tabela", "pontos": 3}, {"termo": "CNPJ", "pontos": 3}, {"termo": "contribuinte", "pontos": 3}, {"termo": "contribuintes", "pontos": 3}, {"termo": "empresas", "pontos": 3}, {"termo": "tributária", "pontos": 3}, {"termo": "tributário", "pontos": 3}, {"termo": "tributos", "pontos": 3}, {"termo": "benefício fiscal", "pontos": 3}, {"termo": "TTD", "pontos": 3}, {"termo": "Santa Catarina", "pontos": 3}, {"termo": "salário mínimo", "pontos": 3}, {"termo": "perguntas e respostas", "pontos": 3}, {"termo": "orientação", "pontos": 3}, {"termo": "guia", "pontos": 3}, {"termo": "CGIBS", "pontos": 3}, {"termo": "CGSN", "pontos": 3}, {"termo": "restituição", "pontos": 3}, {"termo": "compensação", "pontos": 3}, {"termo": "crédito", "pontos": 3}, {"termo": "declaração", "pontos": 3}, {"termo": "malha", "pontos": 3}, {"termo": "débitos", "pontos": 3}, {"termo": "dívida ativa", "pontos": 3}, {"termo": "solução de consulta", "pontos": 2}, {"termo": "portaria", "pontos": 2}, {"termo": "resolução", "pontos": 2}, {"termo": "ato DIAT", "pontos": 2}, {"termo": "ato declaratório executivo", "pontos": -3}, {"termo": "apreende", "pontos": -8}, {"termo": "apreensão", "pontos": -8}, {"termo": "apreendidos", "pontos": -8}, {"termo": "apreendidas", "pontos": -8}, {"termo": "contrabando", "pontos": -8}, {"termo": "descaminho", "pontos": -8}, {"termo": "leilão", "pontos": -8}, {"termo": "maconha", "pontos": -8}, {"termo": "cocaína", "pontos": -8}, {"termo": "drogas", "pontos": -8}, {"termo": "haxixe", "pontos": -8}, {"termo": "cigarros", "pontos": -8}, {"termo": "armas", "pontos": -8}, {"termo": "aduana", "pontos": -8}, {"termo": "alfândega", "pontos": -8}, {"termo": "alfandegado", "pontos": -8}, {"termo": "aeroporto", "pontos": -8}, {"termo": "fronteira", "pontos": -8}, {"termo": "concurso", "pontos": -8}, {"termo": "servidores", "pontos": -8}, {"termo": "nomeia", "pontos": -8}, {"termo": "designa", "pontos": -8}, {"termo": "delega", "pontos": -8}, {"termo": "credenciamento", "pontos": -8}, {"termo": "despachante", "pontos": -8}, {"termo": "Instagram", "pontos": -8}, {"termo": "homenagem", "pontos": -8}, {"termo": "prêmio", "pontos": -8}, {"termo": "seminário", "pontos": -8}]}'::jsonb)
 on conflict (chave) do nothing;
+
+-- v0.20.0: na instalação que já existe, a assinatura ganha os campos da identificação legal vazios ("cnpj" e "crc"), para o
+-- administrador só preencher entre as aspas (Configurações). O que já estiver preenchido fica como está.
+update public.radar_config set valor = '{"cnpj": "", "crc": ""}'::jsonb || valor
+ where chave = 'assinatura' and jsonb_typeof(valor) = 'object' and not (valor ? 'cnpj' and valor ? 'crc');
 
 -- v0.9.0: Destaques do DOU (fonte de sql/radar-fontes-novas-2026-10.sql) — só os atos fiscais e as leis, decretos e MPs.
 -- Só troca se o padrão ainda for o original: não desfaz um ajuste feito na tela; sem a fonte, não faz nada.

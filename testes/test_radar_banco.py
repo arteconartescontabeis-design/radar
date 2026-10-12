@@ -61,8 +61,17 @@ def test_setup_e_idempotente(db):
                        "(select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid "
                        " where c.relname like 'radar\\_%' and not t.tgisinternal)").fetchone()
     db.execute("update radar_fontes set frequencia_horas = 9, ativo = false where slug = 'pgfn-noticias'")
+    # v0.20.0: a assinatura de antes (sem a identificação legal) ganha "cnpj" e "crc" vazios, sem perder nada
+    assinatura = db.execute("select valor from radar_config where chave = 'assinatura'").fetchone()[0]
+    antiga = {k: v for k, v in assinatura.items() if k not in ("cnpj", "crc")}
+    db.execute("update radar_config set valor = %s where chave = 'assinatura'", (json.dumps({**antiga, "local": "Florianópolis, SC"}),))
     r = psql(SETUP)
     assert r.returncode == 0, r.stderr
+    assert db.execute("select valor from radar_config where chave = 'assinatura'").fetchone()[0] == {**antiga, "local": "Florianópolis, SC", "cnpj": "", "crc": ""}
+    db.execute("update radar_config set valor = %s where chave = 'assinatura'", (json.dumps({**antiga, "cnpj": "79.876.769/0001-28"}),))
+    assert psql(SETUP).returncode == 0                                       # com o CNPJ preenchido, só o CRC entra (vazio)
+    assert db.execute("select valor from radar_config where chave = 'assinatura'").fetchone()[0] == {**antiga, "cnpj": "79.876.769/0001-28", "crc": ""}
+    db.execute("update radar_config set valor = %s where chave = 'assinatura'", (json.dumps(assinatura),))
     depois = db.execute("select (select count(*) from radar_fontes), (select count(*) from radar_categorias), "
                         "(select count(*) from pg_policies where tablename like 'radar\\_%'), "
                         "(select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid "
@@ -344,7 +353,15 @@ def test_reversao_remove_tudo_e_o_setup_reinstala():
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_reversao").returncode == 0
         with conectar("radar_reversao") as c:
             c.execute("create table public.outra_tabela_do_projeto (id int)")
+            # v0.19.1 (opcional): a conferência da chave da radar-concorrentes, como o sql/radar-concorrentes.sql a deixa
+            c.execute("""create function public.radar_concorrentes_conferir(p_chave text) returns boolean language sql stable as $$ select false $$;
+                         revoke all on function public.radar_concorrentes_conferir(text) from public, anon, authenticated;
+                         grant execute on function public.radar_concorrentes_conferir(text) to service_role""")
         assert psql(SETUP, "radar_reversao").returncode == 0
+        with conectar("radar_reversao") as c:            # o setup revoga tudo de radar_* e devolve o acesso do papel interno a ela
+            assert c.execute("""select has_function_privilege('service_role', 'public.radar_concorrentes_conferir(text)', 'execute'),
+                                       has_function_privilege('authenticated', 'public.radar_concorrentes_conferir(text)', 'execute'),
+                                       has_function_privilege('anon', 'public.radar_concorrentes_conferir(text)', 'execute')""").fetchone() == (True, False, False)
         r = psql(REVERSAO, "radar_reversao")
         assert r.returncode == 0, r.stderr
         with conectar("radar_reversao") as c:
@@ -3309,38 +3326,46 @@ def test_kit_ia_nao_muda_a_data_nem_derruba_autorizacoes(limpo):
     assert limpo.execute("select situacao from radar_redes_envios where id = %s", (r["facebook"],)).fetchone()[0] == "cancelado"
 
 
-def test_kit_ia_fica_desatualizado_quando_titulo_ou_texto_mudam(limpo):
+def test_kit_ia_fica_desatualizado_quando_o_texto_muda(limpo):
+    """O texto mudou e o kit não veio junto: o kit fica marcado como desatualizado (as legendas e o roteiro saem do texto). Só o título
+    mudar não marca: escolher outro título sugerido é o passo seguinte ao “Gerar com IA” (o kit guarda o título e a tela avisa)."""
     c1 = novo_conteudo(limpo, novo_assunto(limpo))
     with como("authenticated", EDITOR) as c:
-        c.execute("update radar_conteudos set titulo = 'Sem kit ainda' where id = %s", (c1,))
+        c.execute("update radar_conteudos set corpo = corpo || ' Ainda sem kit.' where id = %s", (c1,))
         assert _kit(limpo, c1) == {}                                                         # kit vazio não é marcado
         c.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(KIT), c1))
         assert "desatualizado" not in _kit(limpo, c1)
         c.execute("update radar_conteudos set titulo = 'CBS: o que muda na nota' where id = %s", (c1,))
+        assert _kit(limpo, c1) == KIT                                                        # só o título: o kit continua valendo
+        c.execute("update radar_conteudos set corpo = corpo || ' Mais um parágrafo.' where id = %s", (c1,))
         assert _kit(limpo, c1) == {**KIT, "desatualizado": True}                            # nada se perde: só ganha a marca
         c.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(KIT), c1))   # kit gerado de novo
         assert "desatualizado" not in _kit(limpo, c1)
-        c.execute("update radar_conteudos set corpo = corpo || ' Mais um parágrafo.' where id = %s", (c1,))
+        c.execute("update radar_conteudos set titulo = 'CBS: a nota muda', corpo = corpo || ' E outro.' where id = %s", (c1,))
         assert _kit(limpo, c1)["desatualizado"] is True
         c.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(KIT), c1))
         # texto e kit novos juntos (o kit veio com o texto): não marca
-        c.execute("update radar_conteudos set titulo = 'CBS na nota fiscal', kit_ia = %s where id = %s",
+        c.execute("update radar_conteudos set corpo = corpo || ' O texto novo.', kit_ia = %s where id = %s",
                   (json.dumps({**KIT, "modelo": "outro"}), c1))
         assert _kit(limpo, c1) == {**KIT, "modelo": "outro"}
         # o resto do conteúdo não mexe no kit
         c.execute("update radar_conteudos set autor = 'Equipe Artecon', fonte_credito = 'Receita Federal' where id = %s", (c1,))
         assert "desatualizado" not in _kit(limpo, c1)
-    # aprovado: o título muda, o texto volta à revisão e o kit fica desatualizado
+    # aprovado: o título muda e o texto volta à revisão, com o kit valendo; o texto muda e o kit fica desatualizado
     aprovar(c1)
     with como("authenticated", EDITOR) as c:
         c.execute("update radar_conteudos set titulo = 'CBS na nota fiscal em 2027' where id = %s", (c1,))
+    assert limpo.execute("select status, kit_ia->'desatualizado' from radar_conteudos where id = %s", (c1,)).fetchone() == ("em_revisao", None)
+    aprovar(c1)
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_conteudos set corpo = corpo || ' Parágrafo novo.' where id = %s", (c1,))
     assert limpo.execute("select status, kit_ia->'desatualizado' from radar_conteudos where id = %s", (c1,)).fetchone() == ("em_revisao", True)
     # kit no limite de tamanho (só escrito à mão): a marca não impede a edição do texto
     grande = {"x": "a" * 19985}
     with como("authenticated", EDITOR) as c:
         c.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(grande), c1))
         assert c.execute("select length(kit_ia::text) from radar_conteudos where id = %s", (c1,)).fetchone()[0] <= 20000
-        assert c.execute("update radar_conteudos set titulo = 'CBS: a nota fiscal muda' where id = %s", (c1,)).rowcount == 1
+        assert c.execute("update radar_conteudos set corpo = corpo || ' Mais.' where id = %s", (c1,)).rowcount == 1
     assert _kit(limpo, c1) == {"desatualizado": True}
 
 

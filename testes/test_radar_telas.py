@@ -3401,12 +3401,13 @@ def test_gerar_com_ia_com_a_funcao_antiga_ou_o_banco_sem_o_sql_fica_com_o_texto_
     abrir_assunto(pagina, "CBS na transição")
     pagina.click("#proximo-passo [data-acao=ia-tudo]")
     aviso = pagina.wait_for_selector("#recado .aviso >> text=O kit das redes (legendas, arte e roteiro do reel) não saiu agora").inner_text()
-    assert "um rascunho, a capa padrão." in aviso and "versão anterior" in aviso and "use “Gerar kit das redes com IA”, no conteúdo." in aviso
+    assert "um rascunho, a capa padrão." in aviso and "versão anterior" in aviso and "use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo." in aviso
     assert pagina.locator("#recado .erro").count() == 0 and [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "kit"]
     c, capa, ilus, kit = limpo.execute("select id, imagem_id, ilustracao_id, kit_ia from radar_conteudos where assunto_id = %s", (a,)).fetchone()
     assert capa and ilus is None and kit == {}
     assert "não gerado" in pagina.inner_text(f"details.kit-redes[data-id='{c}'] summary")
     assert pagina.locator(f"form[data-form=conteudo][data-id='{c}'] [data-acao=ia-kit]").count() == 1
+    assert pagina.locator(f"details.kit-redes[data-id='{c}'][open] [data-acao=ia-kit]").is_visible()          # o recado aponta: o quadro está aberto
     # o banco sem o SQL da v0.20.0: a mensagem da função chega ao recado; o texto e a capa saem do mesmo jeito (2ª consulta: senha)
     ia_de_mentira(pagina, limpo, pedidos, kit_falha=(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.20.0.sql (Supabase → SQL Editor) e tente de novo."))
     pagina.evaluate("document.querySelector('#recado').innerHTML = ''")
@@ -4216,7 +4217,10 @@ def _pixels(pg, seletor, pontos):
 
 
 def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, limpo, request):
-    """v0.20.0: CNPJ e CRC ficam na assinatura (continuam 6 configurações), opcionais e conferidos; vazios, a tela avisa e não inventa."""
+    """v0.20.0: CNPJ e CRC ficam na assinatura (continuam 6 configurações), opcionais e conferidos; vazios, a tela avisa (com o trecho
+    pronto para acrescentar) e não inventa. O CNPJ sem aspas (número no JSON) tem mensagem própria, e não “não confere”; o CRC de Santa
+    Catarina escrito de outro jeito (“SC-004064/0-5”, com o zero no lugar da letra O) sai padronizado, e a linha como vai às redes
+    aparece embaixo, para conferir."""
     _assinatura(limpo, request)
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
@@ -4224,7 +4228,13 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
     pagina.wait_for_selector("h2 >> text=Fecho, assinatura e identificação legal")
     assert pagina.locator("form[data-form=config]").count() == 6
     form = pagina.locator("form[data-chave=assinatura]")
-    assert "falta o CNPJ e o CRC" in form.locator(".identificacao-falta").inner_text()
+    falta = form.locator(".identificacao-falta").inner_text()
+    assert "falta o CNPJ e o CRC" in falta and "Até serem preenchidos" in falta and ', "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"' in falta
+    # o CRC padronizado (como sai na arte e nas legendas) e o que já traz “CRC” num formato que não é o de SC, como está
+    crc = pagina.evaluate("""() => ["CRC-SC 004064/O-5", "SC-004064/0-5", "crc/sc 004064/o-5", "004064/O-5", "SC 004064", "CRC 004064/0-5",
+        "1SC004064/O-5", "Reg. CRC-SC 004064/O-5", "CRC-SC 004064/0-5 e CRC-SC 030315/0-0", "Reg. 004064", "0040645"].map(crcFormatado)""")
+    assert crc == ["CRC-SC 004064/O-5", "CRC-SC 004064/O-5", "CRC-SC 004064/O-5", "CRC-SC 004064/O-5", "CRC-SC 004064", "CRC-SC 004064/O-5",
+                   "CRC 1SC004064/O-5", "Reg. CRC-SC 004064/O-5", "CRC-SC 004064/O-5 e CRC-SC 030315/O-0", "", ""]
     campo = pagina.locator("#cfg-assinatura")
 
     def salvar(**campos):
@@ -4233,8 +4243,10 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
         form.locator("button").click()
         return pagina.wait_for_selector("#recado div").inner_text()
     for campos, aviso in [({"cnpj": "11.222.333/0001-82"}, "“cnpj” não confere"), ({"cnpj": "00.000.000/0000-00"}, "“cnpj” não confere"),
-                          ({"cnpj": "1122233300018"}, "“cnpj” não confere"), ({"cnpj": 11222333000181}, "“cnpj” não confere"),
+                          ({"cnpj": "1122233300018"}, "“cnpj” não confere"), ({"cnpj": 11222333000181}, "“cnpj”: escreva o CNPJ entre aspas"),
+                          ({"cnpj": 79876769000128}, "“cnpj”: escreva o CNPJ entre aspas"), ({"crc": 4064}, "“crc”: escreva o registro entre aspas"),
                           ({"crc": "123"}, "“crc”: informe o registro"), ({"crc": "CRC-SC ABC"}, "“crc”: informe o registro"),
+                          ({"crc": "Reg. 004064"}, "“crc”: informe o registro no CRC como “CRC-SC 004064/O-5” (depois da barra vem a letra O"),
                           ({"crc": "CRC " + "1" * 40}, "“crc”: informe o registro"), ({"local": None}, "Informe “local”")]:
         assert aviso in salvar(**campos), campos
     assert limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0] == 0      # nada foi gravado
@@ -4246,7 +4258,13 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
     assert pagina.locator("form[data-chave=assinatura] .identificacao-falta").count() == 0
     # o número sem pontuação também vale; vazio é aceito, com o aviso de volta
     assert "Configuração salva." in salvar(cnpj="11222333000181", crc="")
-    assert "falta o CRC" in pagina.inner_text("form[data-chave=assinatura] .identificacao-falta")
+    falta = pagina.inner_text("form[data-chave=assinatura] .identificacao-falta")
+    assert "falta o CRC" in falta and "Até ser preenchido," in falta
+    # os dados de verdade, com o CRC escrito como o dono informou (hífen e zero): grava como foi digitado e sai padronizado
+    assert "Configuração salva." in salvar(cnpj="79.876.769/0001-28", crc="SC-004064/0-5")
+    assert limpo.execute("select valor->>'crc' from radar_config where chave = 'assinatura'").fetchone()[0] == "SC-004064/0-5"
+    assert pagina.inner_text("form[data-chave=assinatura] .identificacao-linha") == \
+        "Como sai no rodapé da arte e no fim das legendas: Artecon Artes Contábeis ME · CNPJ 79.876.769/0001-28 · CRC-SC 004064/O-5"
 
 
 def test_arte_vertical_1080x1350_rodape_legal_sem_inventar_e_selo_sc(pagina, limpo, request):
@@ -4396,10 +4414,118 @@ def test_campos_da_arte_redesenham_a_imagem_sem_sujar_o_formulario(pagina, limpo
     assert imagem == src and Image.open(io.BytesIO(base64.b64decode(imagem.split(",", 1)[1]))).size == (1080, 1350)
 
 
+# a arte desenhada guardando cada texto escrito: a fonte, a largura medida e a largura máxima (o fillText espreme o que passa dela)
+DESENHAR_MEDINDO = """async ([d, ident]) => { const orig = CanvasRenderingContext2D.prototype.fillText, feitos = [], antes = E.identificacao;
+    CanvasRenderingContext2D.prototype.fillText = function(t, x, y, max){ feitos.push({t, fonte: this.font, largura: this.measureText(t).width, max});
+        return orig.call(this, t, x, y, max); };
+    if(ident) E.identificacao = ident;
+    try{ const r = await desenharArte(d); return {cortes: r.cortes, textos: r.textos, feitos}; }
+    finally{ CanvasRenderingContext2D.prototype.fillText = orig; E.identificacao = antes; } }"""
+
+
+def test_arte_avisa_o_que_nao_coube_nao_espreme_palavra_comprida_e_mostra_o_erro_do_fundo(pagina, limpo):
+    """v0.20.0 (segunda revisão): com o fundo de foto, a linha de apoio tem até 3 linhas, como no padrão; o texto que não cabe sai
+    cortado com “…”, e a tela avisa embaixo da imagem e na confirmação; a palavra que sozinha passa da largura leva a letra para baixo
+    em vez de sair espremida; a identificação comprida vai em 2 linhas de 24 px, quebradas nos “ · ” (o “CRC-SC” não se separa do
+    número); e o fundo que não pôde ser lido faz o botão de autorizar mostrar o erro, e não “aguarde”."""
+    a, c = _no_site_com_capa(limpo)
+    mensagens = []
+    pagina.on("dialog", lambda d: mensagens.append(d.message))
+    pagina.route("**/functions/v1/radar-redes", lambda rota: rota.fulfill(status=200, content_type="application/json", body=json.dumps({"situacao": "publicado"})))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function(IMAGEM_PRONTA)
+    foto = _png_base64((200, 30, 30))
+    # com foto, o apoio de 3 linhas sai inteiro (antes eram 2, e a frase saía pela metade, com “…”)
+    apoio = "Os microempreendedores com empregado registrado precisam entregar a declaração anual até o último dia do mês de maio."
+    r = pagina.evaluate(DESENHAR_MEDINDO, [{"chamada": "Declaração anual do MEI muda", "apoio": apoio, "imagem": foto}, None])
+    assert r["cortes"] == [] and "maio." in " ".join(r["textos"]) and not any(t.endswith("…") for t in r["textos"]), r["textos"]
+    # palavra comprida: a letra desce até ela caber; nada é espremido
+    r = pagina.evaluate(DESENHAR_MEDINDO, [{"chamada": "Microempreendedores individuais terão nova declaração", "apoio": ""}, None])
+    assert r["cortes"] == [] and "Microempreendedores" in r["textos"]
+    assert all(f["largura"] <= f["max"] + 0.5 for f in r["feitos"]), [f for f in r["feitos"] if f["largura"] > f["max"] + 0.5]
+    # a identificação comprida: 2 linhas de 24 px, quebradas nos “ · ”
+    ident = {"empresa": "Artecon Artes Contábeis Ltda. – Escritório de Contabilidade", "cnpj": "79876769000128", "crc": "CRC-SC 004064/O-5 e CRC-SC 030315/O-0"}
+    r = pagina.evaluate(DESENHAR_MEDINDO, [{"chamada": "CBS muda a nota", "apoio": ""}, ident])
+    legal = r["feitos"][-2:]
+    assert " · ".join(f["t"] for f in legal) == ("Artecon Artes Contábeis Ltda. – Escritório de Contabilidade · CNPJ 79.876.769/0001-28 · "
+                                                 "CRC-SC 004064/O-5 e CRC-SC 030315/O-0"), legal
+    assert all(" 24px " in f["fonte"] and f["largura"] <= f["max"] and not f["t"].endswith("CRC-SC") for f in legal), legal
+    # o texto que não coube: a arte corta com “…”, a tela avisa embaixo da imagem e a confirmação lembra
+    r = pagina.evaluate(DESENHAR_MEDINDO, [{"chamada": "Chamada muito comprida " * 12, "apoio": "Apoio muito comprido " * 12, "imagem": foto}, None])
+    assert r["cortes"] == ["apoio", "chamada"]
+    antes = pagina.get_attribute("#rede-imagem", "src")
+    pagina.evaluate("""c => { const campo = document.querySelector(`.autorizacao .arte-chamada[data-conteudo="${c}"]`);
+        campo.value = "Chamada que não cabe na arte ".repeat(8); arteMudou(campo); }""", c)
+    pagina.wait_for_function("a => { const i = document.querySelector('#rede-imagem'); return !i.dataset.pendente && i.getAttribute('src') !== a; }", arg=antes)
+    assert pagina.inner_text(".autorizacao .arte-corte") == "A chamada não coube na arte e foi cortada (a última linha termina em “…”): encurte o texto nos campos da arte."
+    autorizar = pagina.locator(".autorizacao li.agora .btn", has_text="Autorizar e publicar no Instagram")
+    # o fundo que não pôde ser lido: o erro fica embaixo da imagem e o botão de autorizar o repete (não manda aguardar)
+    pagina.route("**/rest/v1/radar_imagens*", lambda rota: rota.fulfill(status=200, content_type="application/json", body="[]"))
+    pagina.evaluate("E.fundosArte = {}")
+    pagina.locator(".autorizacao .arte-fundo").select_option("ilustracao")
+    pagina.wait_for_selector(".autorizacao .arte-erro >> text=escolha outro fundo")
+    pagina.evaluate("document.querySelector('#recado').innerHTML = ''")
+    autorizar.click()
+    assert pagina.wait_for_selector("#recado .erro").inner_text() == "A ilustração deste conteúdo não foi encontrada: escolha outro fundo."
+    pagina.unroute("**/rest/v1/radar_imagens*")
+    pagina.locator(".autorizacao .arte-fundo").select_option("padrao")             # a mesma arte de antes do erro (mesma imagem)
+    pagina.wait_for_function("() => { const i = document.querySelector('#rede-imagem'); return !i.dataset.pendente && !i.dataset.erro; }")
+    assert pagina.locator(".autorizacao .arte-erro").count() == 0 and pagina.locator(".autorizacao .arte-corte").count() == 1
+    autorizar.click()
+    pagina.wait_for_selector("text=Publicado no Instagram.")
+    confirmacao = next(m for m in mensagens if m.startswith("Publicar agora no Instagram"))
+    assert "Atenção: A chamada não coube na arte e foi cortada" in confirmacao
+
+
+def test_legenda_editada_antes_da_identificacao_ganha_a_linha_e_a_sem_linha_pede_confirmacao(pagina, limpo, request):
+    """v0.20.0 (segunda revisão): a legenda editada na tela antes de preencher o CNPJ e o CRC ganha a linha nova quando a assinatura é
+    salva nas Configurações, na mesma sessão; a legenda sem a linha de identificação (apagada à mão) vai para a confirmação. E a conta
+    dos números fora do texto não aponta o número de item de lista nem o “,00” de um valor que está no texto."""
+    _assinatura(limpo, request)
+    a, c = no_site(limpo)
+    mensagens = []
+    pagina.on("dialog", lambda d: mensagens.append(d.message))
+    pagina.route("**/functions/v1/radar-redes", lambda rota: rota.fulfill(status=200, content_type="application/json", body=json.dumps({"situacao": "publicado"})))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function(IMAGEM_PRONTA)
+    original = pagina.input_value("#rede-legenda")
+    assert "\n\nArtecon Artes Contábeis ME\n\n#Contabilidade" in original
+    pagina.fill("#rede-legenda", "Legenda escrita na tela.\n\n" + original)
+    # vai às Configurações, preenche o CNPJ e o CRC (os dados de verdade) e volta ao assunto
+    pagina.click("nav.abas >> text=Configurações")
+    pagina.wait_for_selector("h2 >> text=Fecho, assinatura e identificação legal")
+    pagina.fill("#cfg-assinatura", json.dumps({**ASSINATURA, "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"}, ensure_ascii=False))
+    pagina.locator("form[data-chave=assinatura] button").click()
+    pagina.wait_for_selector("#recado >> text=Configuração salva.")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function(IMAGEM_PRONTA)
+    linha = "Artecon Artes Contábeis ME · CNPJ 79.876.769/0001-28 · CRC-SC 004064/O-5"
+    assert pagina.input_value("#rede-legenda") == "Legenda escrita na tela.\n\n" + original.replace("Artecon Artes Contábeis ME", linha)
+    assert pagina.locator(".identificacao-falta").count() == 0
+    # números: “R$ 1.500,00” no texto é o mesmo que “R$ 1.500” na legenda; o número de item de lista não conta
+    fora = pagina.evaluate("""id => { const c = document.querySelector(`form[data-form=conteudo][data-id="${id}"] [name=corpo]`), antes = c.value;
+        c.value = "Multa de R$ 1.500,00 para quem atrasar. Prazo de 30 dias.";
+        const r = numerosForaDoTexto(id, "Multa de R$ 1.500 para quem atrasar.\\n1. Revise o prazo de 30 dias\\n2) Confira a guia\\n 3. Pague", "R$ 2.000,00 e R$ 1.500,50");
+        c.value = antes; return r; }""", c)
+    assert fora == ["2000", "1500,50"]
+    # a linha apagada à mão: a confirmação avisa (e o que vai ao ar é o que está na caixa)
+    pagina.fill("#rede-legenda", "Legenda escrita na tela, sem a identificação.")
+    pagina.locator(".autorizacao li.agora .btn", has_text="Autorizar e publicar no Instagram").click()
+    pagina.wait_for_selector("text=Publicado no Instagram.")
+    confirmacao = next(m for m in mensagens if m.startswith("Publicar agora no Instagram"))
+    assert f"Atenção: A legenda do Instagram está sem a identificação legal (“{linha}”): acrescente essa linha antes das hashtags." in confirmacao
+    assert "Identificação legal incompleta" not in confirmacao
+    assert limpo.execute("select legenda from radar_redes_envios where canal = 'instagram'").fetchone()[0] == "Legenda escrita na tela, sem a identificação."
+
+
 def test_termos_de_publicidade_travam_a_legenda_e_avisam_no_conteudo(pagina, limpo):
     """v0.20.0: no conteúdo, os termos que a publicidade contábil evita são só aviso (sem atrapalhar o “Aprovar”); nas redes, o termo
-    de trava na legenda ou na arte impede a publicação e o de aviso vai para a confirmação."""
-    corpo = "A isenção de 100% vale para o atendimento grátis ao contribuinte, segundo a Receita Federal.\n\n## Prazo\n- **Até 31/01**: opção"
+    de trava na legenda ou na arte impede a publicação (o recado diz onde ele está) e o de aviso vai para a confirmação."""
+    corpo = "A isenção de 100% vale para a consulta grátis ao contribuinte, segundo a Receita Federal.\n\n## Prazo\n- **Até 31/01**: opção"
     a, c = preparar_aprovado(limpo, corpo=corpo, titulo="Isenção de 100% no atendimento")
     mensagens = []
     pagina.on("dialog", lambda d: mensagens.append(d.message))
@@ -4407,7 +4533,7 @@ def test_termos_de_publicidade_travam_a_legenda_e_avisam_no_conteudo(pagina, lim
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Isenção de 100% no atendimento")
     quadro = pagina.inner_text("form[data-form=conteudo] .termos-publicidade")
-    assert "grátis" in quadro and "100%" in quadro and "impede a publicação" in quadro and "aprov" not in quadro.lower()
+    assert "consulta grátis" in quadro and "100%" in quadro and "impede a publicação" in quadro and "aprov" not in quadro.lower()
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("text=Conteúdo aprovado.")
     # no site: a legenda (montada do texto) leva o “grátis”
@@ -4423,28 +4549,31 @@ def test_termos_de_publicidade_travam_a_legenda_e_avisam_no_conteudo(pagina, lim
     pagina.wait_for_function(IMAGEM_PRONTA)
     autorizar = pagina.locator(".autorizacao li.agora .btn", has_text="Autorizar e publicar no Instagram")
     autorizar.click()
-    pagina.wait_for_selector("#recado .erro >> text=Troque antes de publicar: “grátis”")
+    erro = pagina.wait_for_selector("#recado .erro >> text=Troque antes de publicar:").inner_text()
+    assert erro.startswith("Troque antes de publicar: “consulta grátis” na legenda do Instagram; “consulta grátis” na linha de apoio da arte.")
+    assert "se for fato da notícia, diga de outro jeito" in erro
     pagina.click(f"#faltam-{c} >> text=Publicar nos que faltam")                                   # os dois canais de uma vez também
     pagina.wait_for_function("() => document.querySelectorAll('#recado .erro').length >= 2")
-    assert "Troque antes de publicar: “grátis”" in pagina.locator("#recado .erro").last.inner_text()
+    assert pagina.locator("#recado .erro").last.inner_text().startswith(
+        "Troque antes de publicar: “consulta grátis” na legenda do Instagram; “consulta grátis” na legenda do Facebook; “consulta grátis” na linha de apoio da arte.")
     assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
-    # sem o “grátis” na legenda, ainda trava: a linha de apoio da arte (a primeira frase do texto) também tem
+    # sem a “consulta grátis” na legenda, ainda trava: a linha de apoio da arte (a primeira frase do texto) também tem
     pagina.fill("#rede-legenda", pagina.input_value("#rede-legenda").replace("grátis", "sem custo"))
     apoio, chamada = pagina.locator(".autorizacao .arte-apoio"), pagina.locator(".autorizacao .arte-chamada")
-    assert "grátis" in apoio.input_value()
+    assert "consulta grátis" in apoio.input_value()
     def tentar(erro):
         pagina.evaluate("document.querySelector('#recado').innerHTML = ''")
         autorizar.click()
-        assert pagina.wait_for_selector("#recado .erro").inner_text().startswith(f"Troque antes de publicar: “{erro}”.")
+        assert pagina.wait_for_selector("#recado .erro").inner_text().startswith(f"Troque antes de publicar: {erro}.")
         assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
-    tentar("grátis")
+    tentar("“consulta grátis” na linha de apoio da arte")
     def redesenhar(campo, texto):
         antes = pagina.get_attribute("#rede-imagem", "src")
         campo.fill(texto)
         pagina.wait_for_function("a => { const i = document.querySelector('#rede-imagem'); return !i.dataset.pendente && i.getAttribute('src') !== a; }", arg=antes)
     redesenhar(apoio, "Vale para o atendimento ao contribuinte.")
     redesenhar(chamada, "Ganhe um brinde ao chegar cedo")            # e a chamada da arte com a oferta de brinde
-    tentar("ganhe um brinde")
+    tentar("“ganhe um brinde” na chamada da arte")
     # a marca [VERIFICAR] na chamada (ela sai dentro da imagem) também impede
     redesenhar(chamada, "Isenção [VERIFICAR: prazo] no atendimento")
     pagina.evaluate("document.querySelector('#recado').innerHTML = ''")
@@ -4452,12 +4581,12 @@ def test_termos_de_publicidade_travam_a_legenda_e_avisam_no_conteudo(pagina, lim
     erro = pagina.wait_for_selector("#recado .erro").inner_text()
     assert erro.startswith("Resolva antes de publicar: a chamada ou o apoio da arte tem 1 ponto(s) marcado(s) com [VERIFICAR] — “[VERIFICAR: prazo]”"), erro
     assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
-    # “brindes”, assunto da notícia, e o “100%” (fato da notícia) são só aviso: vão para a confirmação e a publicação sai
-    redesenhar(chamada, "Isenção no atendimento ao contribuinte e nos brindes")
+    # “brindes”, assunto da notícia, o “100%” (fato da notícia) e o “grátis” solto são só aviso: vão para a confirmação e a publicação sai
+    redesenhar(chamada, "Isenção no atendimento grátis ao contribuinte e nos brindes")
     autorizar.click()
     pagina.wait_for_selector("text=Publicado no Instagram.")
     confirmacao = next(m for m in mensagens if m.startswith("Publicar agora no Instagram"))
-    assert "Termos que a publicidade contábil evita: “100%”, “brindes”" in confirmacao
+    assert "Termos que a publicidade contábil evita: “100%”, “grátis”, “brindes”" in confirmacao
     legenda = limpo.execute("select legenda from radar_redes_envios where canal = 'instagram'").fetchone()[0]
     assert "grátis" not in legenda and "sem custo" in legenda
 
@@ -4502,10 +4631,10 @@ def test_frase_do_boletim_pago_na_legenda_nao_e_autorizada(pagina, limpo, reques
                                  arg=[c, antes])
     # o termo de trava na legenda e na chamada da arte do “Publicar em todos”; a frase paga no apoio da arte (sai dentro da imagem)
     pagina.fill(f"#todos-legenda-instagram-{c}", ig + "\n\nConsulta grátis para quem chegar cedo.")
-    tentar("Troque antes de publicar: “grátis”")
+    tentar("Troque antes de publicar: “consulta grátis” na legenda do Instagram.")
     pagina.fill(f"#todos-legenda-instagram-{c}", ig)
     redesenhar(".arte-chamada", "Ganhe um brinde ao chegar cedo")
-    tentar("Troque antes de publicar: “ganhe um brinde”")
+    tentar("Troque antes de publicar: “ganhe um brinde” na chamada da arte.")
     redesenhar(".arte-chamada", "CBS muda a nota fiscal")
     redesenhar(".arte-apoio", pago)
     tentar("Frase do boletim pago (ITC) na legenda ou na arte")
@@ -4615,11 +4744,26 @@ def test_kit_aparece_no_conteudo_com_roteiro_e_copia(navegador, limpo, request):
     pg.evaluate("desenhar()")
     quadro = pg.locator(f"details.kit-redes[data-id='{c}'][open]")
     quadro.locator("text=Copiar legenda do Instagram").click()
-    assert pg.wait_for_selector("#recado .erro").inner_text().startswith("Não copiado: o kit tem “grátis”")
+    assert pg.wait_for_selector("#recado .erro").inner_text().startswith("Não copiado: o kit tem “consulta grátis”")
     pg.evaluate("document.querySelector('#recado').innerHTML = ''")
     quadro.locator("text=Copiar roteiro").click()
     assert pg.wait_for_selector("#recado .erro").inner_text().startswith("Não copiado: o kit tem “ganhe um brinde”")
     assert pg.evaluate("navigator.clipboard.readText()") == roteiro                              # nada foi copiado
+    # a notícia ainda não está no site: o quadro mostra o {LINK DO SITE}, mas a legenda copiada (para postar à mão, sem quem troque o
+    # marcador) leva o endereço do site da Artecon no lugar dele
+    limpo.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(kit), c))
+    limpo.execute("delete from radar_divulgacoes where conteudo_id = %s", (c,))
+    pg.evaluate("desenhar()")
+    quadro = pg.locator(f"details.kit-redes[data-id='{c}'][open]")
+    assert "{LINK DO SITE}" in quadro.locator(".kit-legenda[data-canal=facebook]").text_content()
+    assert "Copiada antes disso (para postar à mão), a legenda leva o endereço do site da Artecon" in quadro.inner_text()
+    pg.evaluate("document.querySelector('#recado').innerHTML = ''")
+    quadro.locator("text=Copiar legenda do Facebook").click()
+    assert "no lugar do {LINK DO SITE} foi o endereço do site da Artecon" in pg.wait_for_selector("#recado div >> text=Legenda do Facebook copiada.").inner_text()
+    copiada = pg.evaluate("navigator.clipboard.readText()")
+    assert copiada == _legenda_kit(kit, "facebook", LINHA_LEGAL).replace("Leia a matéria completa: {LINK DO SITE}",
+                                                                           "Leia a matéria completa no site da Artecon (www.artecon.cnt.br).")
+    assert "{LINK DO SITE}" not in copiada
     pg.screenshot(path=str(FOTOS / "42-kit-das-redes.png"), full_page=True)
     assert erros == []
     contexto.close()
@@ -4671,15 +4815,16 @@ def test_legenda_do_kit_entra_nas_tres_caixas_com_link_fonte_e_identificacao(pag
 
 
 def test_kit_desatualizado_volta_para_a_legenda_padrao_e_avisa(pagina, limpo, request):
-    """v0.20.0: o título mudou depois do kit (o banco marca “desatualizado”): o quadro avisa “Kit desatualizado: gere de novo”, as
-    redes voltam à legenda e à arte montadas pelo Radar (com o título novo) até gerar de novo; quem só lê vê o kit, sem o botão."""
+    """v0.20.0: o texto mudou depois do kit (o banco marca “desatualizado”): o quadro avisa “Kit desatualizado: gere de novo”, as
+    redes voltam à legenda e à arte montadas pelo Radar (com o título novo) até gerar de novo; quem só lê vê o kit, sem o botão. Só
+    o título mudar (outro título sugerido, logo depois do “Gerar com IA”) deixa o kit valendo, com o aviso para conferir a chamada."""
     _assinatura(limpo, request)
     a, c = pronto_para_o_site(limpo)
     with como("authenticated", EDITOR) as x:
         x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
     limpo.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(KIT_TELA), c))
-    with como("authenticated", EDITOR) as x:                                # o título muda e o conteúdo é aprovado de novo
-        x.execute("update radar_conteudos set titulo = 'CBS: regra nova de transição' where id = %s", (c,))
+    with como("authenticated", EDITOR) as x:                                # o título e o texto mudam e o conteúdo é aprovado de novo
+        x.execute("update radar_conteudos set titulo = 'CBS: regra nova de transição', corpo = corpo || ' Parágrafo novo.' where id = %s", (c,))
         x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
     assert limpo.execute("select kit_ia->>'desatualizado', status from radar_conteudos where id = %s", (c,)).fetchone() == ("true", "aprovado")
     pedidos = []
@@ -4717,6 +4862,21 @@ def test_kit_desatualizado_volta_para_a_legenda_padrao_e_avisa(pagina, limpo, re
     assert pagina.input_value(f"#todos-legenda-instagram-{c}") == _legenda_kit(KIT_TELA, "instagram", "Artecon Artes Contábeis ME")
     assert pagina.locator(f"#todos-{c} .arte-chamada").input_value() == KIT_TELA["arte"]["chamada"]
     assert "gerado em" in pagina.inner_text("details.kit-redes summary") and pagina.locator(".kit-desatualizado").count() == 0
+    assert pagina.locator(".kit-titulo, .arte-titulo").count() == 0
+    # só o título muda depois do kit (que guarda o título de quando foi feito): o kit continua valendo nas redes, e a tela pede para
+    # conferir a chamada da arte (no quadro do kit e embaixo da imagem)
+    limpo.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps({**KIT_TELA, "titulo": "CBS: regra nova de transição"}), c))
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set titulo = 'CBS: a regra de transição muda a nota' where id = %s", (c,))
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    assert limpo.execute("select kit_ia->'desatualizado' from radar_conteudos where id = %s", (c,)).fetchone()[0] is None
+    pagina.evaluate("desenhar()")
+    pagina.wait_for_function(TODOS_PRONTA, arg=c)
+    assert "gerado em" in pagina.inner_text("details.kit-redes summary")
+    assert "O título mudou depois do kit (era “CBS: regra nova de transição”)" in pagina.inner_text("details.kit-redes .kit-titulo")
+    assert "O título mudou depois do kit das redes" in pagina.inner_text(f"#todos-{c} .arte-titulo")
+    assert pagina.input_value(f"#todos-legenda-instagram-{c}") == _legenda_kit(KIT_TELA, "instagram", "Artecon Artes Contábeis ME")
+    assert pagina.locator(f"#todos-{c} .arte-chamada").input_value() == KIT_TELA["arte"]["chamada"]
     # quem só lê vê o kit, sem o botão de gerar
     pagina.click("text=Sair")
     pagina.wait_for_selector("#email")
@@ -4738,7 +4898,8 @@ def test_gerar_texto_com_ia_e_texto_para_analise_ficam_com_a_capa_padrao(pagina,
     ia_de_mentira(pagina, limpo, pedidos)
     abrir_assunto(pagina, "CBS na transição")
     pagina.click("#sec-conteudos [data-acao=ia-gerar]")
-    pagina.wait_for_selector("text=Rascunho gerado pela IA. Para as legendas, a arte e o roteiro do reel, use “Gerar kit das redes com IA”, no conteúdo.")
+    pagina.wait_for_selector("text=Rascunho gerado pela IA. Para as legendas, a arte e o roteiro do reel, use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.")
+    assert pagina.locator("details.kit-redes[open] [data-acao=ia-kit]").is_visible()                    # o botão que o recado aponta está à vista
     assert [p["acao"] for p in pedidos] == ["gerar"]
     c1, capa, ilus, kit = limpo.execute("select id, imagem_id, ilustracao_id, kit_ia from radar_conteudos where assunto_id = %s", (a,)).fetchone()
     assert capa and ilus is None and kit == {}
