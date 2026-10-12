@@ -137,7 +137,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.19.0", True), ("ok", 1, 200, "0.19.0", True)]
+    assert ex == [("ok", 2, 200, "0.21.0", True), ("ok", 1, 200, "0.21.0", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -298,6 +298,12 @@ class GitHubFalso:
         self.criados.append((self.prox, radar_alertas.PREFIXO_PARADA + f["slug"], radar_alertas.corpo_parada(f)))
         return self.prox
 
+    def abrir_aviso(self, titulo_aviso, corpo):                  # v0.21.0: o aviso da Pauta (não há como editar: só abrir e fechar)
+        self.prox += 1
+        self.avisos[titulo_aviso[:250]] = self.prox
+        self.criados.append((self.prox, titulo_aviso[:250], corpo))
+        return self.prox
+
     def fechar(self, numero, motivo):
         self.avisos = {t: n for t, n in self.avisos.items() if n != numero}
         self.fechados.append((numero, motivo))
@@ -432,6 +438,119 @@ def test_avisos_sem_variaveis_ou_com_erro_nunca_derrubam_a_coleta(monkeypatch, c
     monkeypatch.setenv("SUPABASE_URL", "http://127.0.0.1:9"); monkeypatch.setenv("SUPABASE_SERVICE_KEY", "x")
     monkeypatch.setenv("GITHUB_TOKEN", "t"); monkeypatch.setenv("GITHUB_REPOSITORY", "a/b")
     assert radar_alertas.main() == 0 and "não foram atualizados" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------- v0.21.0: aviso da Pauta (publicação agendada que não saiu)
+from test_radar_banco import (IDENT, cenario_publicavel, iniciar, nova_pessoa, pauta, peca_aprovada,  # noqa: E402,F401
+                              vencer)                                                                # (pauta: a assinatura)
+from conftest import ADMIN, como                                                                     # noqa: E402
+
+
+def test_aviso_da_pauta_um_so_sem_nome_e_fecha_quando_resolve(cenario, pauta):
+    """Um aviso só para a Pauta inteira, com a mesma condição do cartão do Painel (pauta_falhas): abre quando uma publicação
+    agendada não saiu (hora passada há mais de 20 min, parada em "enviando" há mais de 15 min, ou com erro), nunca abre um
+    segundo nem edita o corpo, e fecha quando a lista esvazia. O corpo e o registro levam só a quantidade e a data, o canal e o
+    número da mais antiga (de Brasília): nunca o assunto, o nome de quem aparece, a legenda ou o texto do erro."""
+    import radar_alertas
+    db = pauta
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso({"Radar: fonte com falha — sumiu": 8})
+    pessoa = nova_pessoa(db, nome="Ana Teste", na_peca="Ana")
+    legenda = "Ana cuida da folha de pagamento da sua empresa.\n\n" + IDENT + "\n\n#Contabilidade #Palhoça"
+    pid, r = peca_aprovada(db, canais=("instagram", "facebook"), pessoas=[pessoa], assunto="Bastidor com Ana Teste",
+                           quem_aparece="Ana Teste", legenda_instagram=legenda, legenda_facebook=legenda)
+    ig, fb = r["envios"]["instagram"], r["envios"]["facebook"]
+    _, c1 = cenario_publicavel(db)                               # a notícia nas redes não conta (só a Pauta)
+    db.execute("""insert into radar_redes_envios (conteudo_id, canal, legenda, conteudo_lido_em, situacao, erro)
+                  values (%s, 'instagram', 'Legenda da notícia.', now(), 'erro', 'Meta recusou')""", (c1,))
+    hora = lambda e: db.execute("select to_char(agendado_para at time zone 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') "
+                                "from radar_redes_envios where id = %s", (e,)).fetchone()[0]
+    problemas = lambda: [e["id"] for e in banco.pauta_com_problema()]
+
+    def rodar():
+        feito = radar_alertas.executar(banco, gh, sem_rede)
+        assert all(n not in x for x in feito for n in ("Ana", "Teste", "folha", "Bastidor", "Meta"))
+        return feito
+
+    assert problemas() == [] and [x for x in rodar() if "Pauta" in x] == []                 # agendadas para depois
+    assert gh.fechados == [(8, "A fonte não existe mais no Radar.")]                          # o resto dos avisos segue igual
+    vencer(db, ig, 10)
+    assert problemas() == [] and rodar() == []                                               # passou há pouco: a agenda ainda pega
+    vencer(db, ig, 25)
+    assert problemas() == [ig]                                                               # passou há mais de 20 min: parada
+    assert set(banco.pauta_com_problema()[0]) == {"id", "canal", "situacao", "agendado_para", "enviado_em"}   # nunca a legenda
+    feito = rodar()
+    assert [(t, c) for _, t, c in gh.criados] == [(radar_alertas.PREFIXO_PAUTA, radar_alertas.corpo_pauta(banco.pauta_com_problema()))]
+    numero, _, corpo = gh.criados[0]
+    assert feito == [f"aviso #{numero} aberto: 1 publicação(ões) da Pauta não saíram"]
+    assert corpo.startswith(f"**1** publicação da Pauta não saiu ou está atrasada ({hora(ig)}, Instagram, nº {ig}).")   # Brasília
+    assert "Pauta** → **Não saíram**" in corpo and "fecha sozinho" in corpo
+    vencer(db, fb, 30)
+    assert problemas() == [fb, ig] and rodar() == []                                         # dois problemas: o mesmo aviso, sem editar
+    assert len(gh.criados) == 1 and gh.criados[0][2] == corpo and gh.avisos[radar_alertas.PREFIXO_PAUTA] == numero
+    assert f"**2** publicações da Pauta não saíram ou estão atrasadas (a mais antiga: {hora(fb)}, Facebook, nº {fb})." in \
+        radar_alertas.corpo_pauta(banco.pauta_com_problema())
+    iniciar(ig)
+    assert problemas() == [fb]                                                               # saindo agora não conta
+    db.execute("update radar_redes_envios set enviado_em = now() - interval '16 minutes' where id = %s", (ig,))
+    assert problemas() == [fb, ig]                                                           # parada em "enviando"
+    with como("service_role") as c:
+        c.execute("select radar_rede_concluir(%s, false, null, null, null, 'Meta recusou: Ana Teste não autorizou')", (ig,))
+    assert problemas() == [fb, ig] and rodar() == [] and len(gh.criados) == 1                # com erro: o mesmo aviso
+    for _, _, texto in gh.criados:
+        assert all(n not in texto for n in ("Ana", "Teste", "folha", "Bastidor", "Meta recusou", "Palhoça", "11.222.333"))
+    with como("authenticated", ADMIN) as c:                                                  # "Tentar de novo" (conferi na rede)
+        c.execute("select radar_pauta_publicar_agora(%s, true)", (pid,))
+    assert problemas() == []
+    feito = rodar()
+    assert gh.fechados[-1][0] == numero and "Nenhuma publicação da Pauta" in gh.fechados[-1][1]
+    assert feito == [f"aviso #{numero} fechado: " + gh.fechados[-1][1]] and radar_alertas.PREFIXO_PAUTA not in gh.avisos
+    assert rodar() == [] and len(gh.criados) == 1 and len(gh.fechados) == 2                 # não abre nem fecha de novo
+
+
+def test_aviso_da_pauta_com_banco_antigo_nao_abre_nem_fecha_e_o_resto_segue(cenario):
+    """O robô atualiza sozinho e pode rodar antes do SQL da v0.21.0: sem radar_redes_envios.peca_id, a leitura da Pauta devolve None
+    e o aviso da Pauta não abre nem fecha (não sabe), sem derrubar os outros avisos. Erro de verdade do banco continua sendo erro."""
+    import radar_alertas
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    t = radar_alertas.PREFIXO_PAUTA
+    prob = [{"id": 5, "canal": "facebook", "situacao": "erro", "agendado_para": "2026-10-31T12:30:00+00:00", "enviado_em": None}]
+    assert radar_alertas.decidir_pauta(None, {t: 3}) == (None, [])                           # não sabe: não mexe
+    assert radar_alertas.decidir_pauta(prob, {t + " (2)": 3})[0] is None                     # já há um aberto (mesmo com outro final)
+    assert radar_alertas.decidir_pauta(prob, {"Radar: fonte parada — x": 3})[0].startswith(
+        "**1** publicação da Pauta não saiu ou está atrasada (31/10/2026 09:30, Facebook, nº 5).")
+    fechar = radar_alertas.decidir_pauta([], {t: 3, t + " (2)": 4, "Radar: fonte parada — x": 5})[1]
+    assert [n for n, _ in fechar] == [3, 4] and all("Nenhuma publicação da Pauta" in m for _, m in fechar)   # fecha os dois, só eles
+    servico = {"Authorization": "Bearer " + jwt("service_role")}
+    ve_peca_id = lambda: requests.get(API + "/radar_redes_envios?select=peca_id&limit=1", headers=servico, timeout=5).status_code == 200
+    try:
+        cenario.execute("alter table radar_redes_envios rename column peca_id to peca_id_futura")
+        cenario.execute("notify pgrst, 'reload schema'")
+        for _ in range(50):
+            if not ve_peca_id():
+                break
+            time.sleep(0.1)
+        assert not ve_peca_id()
+        assert banco.pauta_com_problema() is None
+        gh = GitHubFalso({t: 7, "Radar: fonte com falha — sumiu": 8})
+        assert radar_alertas.executar(banco, gh, sem_rede) == ["aviso #8 fechado: A fonte não existe mais no Radar."]
+        assert gh.avisos == {t: 7} and gh.criados == []                                    # o da Pauta fica como está
+    finally:
+        if cenario.execute("""select count(*) from information_schema.columns
+                              where table_name = 'radar_redes_envios' and column_name = 'peca_id_futura'""").fetchone()[0]:
+            cenario.execute("alter table radar_redes_envios rename column peca_id_futura to peca_id")
+        cenario.execute("notify pgrst, 'reload schema'")
+        for _ in range(50):
+            if ve_peca_id():
+                break
+            time.sleep(0.1)
+    assert ve_peca_id() and banco.pauta_com_problema() == []
+
+    class Banco_(Banco):                                                                      # erro de verdade (sem ser coluna que falta)
+        def _pedir(self, metodo, caminho, **kw):
+            raise ErroBanco(f'{metodo} {caminho}: HTTP 500 — {{"code":"57014","message":"canceling statement due to statement timeout"}}')
+    with pytest.raises(ErroBanco):
+        Banco_(API, "x", prefixo="").pauta_com_problema()
 
 
 def test_tempo_maximo_invalido_volta_ao_padrao():

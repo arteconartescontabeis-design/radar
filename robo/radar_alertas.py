@@ -16,6 +16,11 @@ E confere, nas notícias do próprio site da Artecon, se a página ainda traz o 
 registrado (v0.8.0): se mais da metade das palavras sumiu, abre o aviso "texto do site diferente do
 aprovado"; ele fecha quando o texto volta, ou o registro é corrigido ou excluído.
 
+E a Pauta (v0.21.0): enquanto houver publicação agendada que não saiu (com erro, parada em "enviando" ou com
+a hora passada sem sair), fica aberto UM aviso só, "publicação agendada não saiu". O corpo nunca é editado
+(cada edição seria mais um e-mail) e leva só a quantidade e a data, o canal e o número da mais antiga: nunca o
+assunto, o nome de quem aparece, a legenda ou o erro (o repositório é público). Fecha quando a lista esvazia.
+
 Uso (no workflow, depois da coleta):
     python radar_alertas.py
 Variáveis: SUPABASE_URL, SUPABASE_SERVICE_KEY, GITHUB_TOKEN e GITHUB_REPOSITORY (o Actions preenche
@@ -25,19 +30,27 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
 import radar_site
 from radar_banco import Banco, ErroBanco
-from radar_util import ErroDownload, baixar
+from radar_util import BRASILIA, ErroDownload, baixar
 
 PREFIXO = "Radar: fonte com falha — "
 PREFIXO_LINK = "Radar: link publicado fora do ar — "
 PREFIXO_TEXTO = "Radar: texto do site diferente do aprovado — "
 PREFIXO_PARADA = "Radar: fonte parada — "
-PREFIXOS_PADRAO = (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO, PREFIXO_PARADA)   # os avisos que o executar() abre e fecha
+PREFIXO_PAUTA = "Radar: publicação agendada não saiu"        # v0.21.0: um aviso só para toda a Pauta (o título é só isso)
+PREFIXOS_PADRAO = (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO, PREFIXO_PARADA, PREFIXO_PAUTA)   # os avisos que o executar() abre e fecha
 FORA_DO_AR = (404, 410)
+CANAIS = {"instagram": "Instagram", "facebook": "Facebook"}
+try:
+    FUSO = ZoneInfo("America/Sao_Paulo")                     # a hora da peça é de Brasília, como no banco e na tela
+except ZoneInfoNotFoundError:                                # sistema sem a base de fusos: Brasília não tem horário de verão
+    FUSO = BRASILIA
 FALHAS_PARA_AVISAR = 3
 API = "https://api.github.com"
 
@@ -115,6 +128,45 @@ def decidir_paradas(saude: list[dict], abertos: dict[str, int]) -> tuple[list[di
                            if f.get("saude") != "falhando" else
                            "A fonte voltou a rodar, mas com falhas: o aviso de fonte com falha cuida dela daqui em diante."))
     return abrir, fechar
+
+
+def _hora(valor) -> datetime | None:
+    """Data e hora de um campo timestamptz do banco, em Brasília (None se vazio ou ilegível)."""
+    try:
+        return datetime.fromisoformat(str(valor).replace("Z", "+00:00")).astimezone(FUSO) if valor else None
+    except (TypeError, ValueError):
+        return None
+
+
+def corpo_pauta(problemas: list[dict]) -> str:
+    """Corpo do aviso da Pauta (v0.21.0): só a quantidade e a mais antiga (data e hora de Brasília, canal e número do envio). Nunca
+    o assunto, o nome de quem aparece, a legenda ou o texto do erro: o repositório é público, e o aviso não muda depois de aberto."""
+    datadas = [(h, e) for e in problemas if (h := _hora(e.get("agendado_para")))]
+    h, e = min(datadas, key=lambda x: (x[0], x[1]["id"])) if datadas else (None, problemas[0])
+    ref = (f"{h:%d/%m/%Y %H:%M}, " if h else "") + f"{CANAIS.get(e.get('canal'), str(e.get('canal') or '—'))}, nº {e['id']}"
+    if len(problemas) == 1:
+        abre = f"**1** publicação da Pauta não saiu ou está atrasada ({ref})."
+    else:
+        abre = f"**{len(problemas)}** publicações da Pauta não saíram ou estão atrasadas (a mais antiga: {ref})."
+    return (f"{abre}\n\n"
+            "O que fazer: abra o Radar → **Pauta** → **Não saíram**. Lá aparecem o motivo de cada uma e o que fazer "
+            "(Publicar agora, Tentar de novo ou Desfazer aprovação). Se nada sai pela agenda, confira Publicações → Testar conexão "
+            "e Configurações → Pauta (\"agenda_ligada\").\n\n"
+            "Este aviso não é atualizado depois de aberto (cada mudança mandaria outro e-mail): a lista do momento está sempre na "
+            "Pauta. Ele fecha sozinho quando nenhuma publicação da Pauta estiver parada ou com erro.")
+
+
+def decidir_pauta(problemas: list[dict] | None, abertos: dict[str, int]) -> tuple[str | None, list[tuple[int, str]]]:
+    """Um aviso só para toda a Pauta (v0.21.0): abre quando há publicação que não saiu e nenhum aviso aberto; fecha quando a lista
+    esvazia; nunca edita o corpo. Devolve (corpo do aviso a abrir, ou None; [(número, motivo) para fechar]). `problemas` None
+    (banco ainda sem o SQL da v0.21.0): não abre nem fecha."""
+    meus = sorted(n for t, n in abertos.items() if t.startswith(PREFIXO_PAUTA))
+    if problemas is None:
+        return None, []
+    if problemas:
+        return (None if meus else corpo_pauta(problemas)), []
+    return None, [(n, "Nenhuma publicação da Pauta está parada ou com erro agora (saiu, foi remarcada ou a aprovação foi desfeita).")
+                  for n in meus]
 
 
 def titulo_link(url: str) -> str:
@@ -268,6 +320,7 @@ class GitHub:
 def executar(banco: Banco, github: GitHub, status_de=status_http, pagina_de=html_ou_nada) -> list[str]:
     abertos = github.avisos_abertos()
     saude = banco.saude_fontes()
+    pauta = banco.pauta_com_problema()          # v0.21.0: lida antes de abrir qualquer aviso (erro no banco não deixa nada pela metade)
     abrir, fechar = decidir(saude, abertos)
     feito = []
     for f in abrir:
@@ -276,6 +329,10 @@ def executar(banco: Banco, github: GitHub, status_de=status_http, pagina_de=html
     for f in abrir_p:
         feito.append(f"aviso #{github.abrir_parada(f)} aberto: {f['slug']} parada")
     fechar += fechar_p
+    corpo_pa, fechar_pa = decidir_pauta(pauta, abertos)
+    if corpo_pa:                                # no registro, só a quantidade
+        feito.append(f"aviso #{github.abrir_aviso(PREFIXO_PAUTA, corpo_pa)} aberto: {len(pauta)} publicação(ões) da Pauta não saíram")
+    fechar += fechar_pa
     registros = banco.links_publicados()
     fora = conferir_links(registros, status_de)
     abrir_l, fechar_l = decidir_links(registros, fora, abertos)

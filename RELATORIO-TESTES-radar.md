@@ -1,9 +1,113 @@
-# Radar Artecon — Relatório de testes (v0.20.0)
+# Radar Artecon — Relatório de testes (v0.21.0)
 
-Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.20.0: **641 aprovados, 0 falhas, 61 pulados**. Os pulados são os testes de tela
-que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`). A função
-`radar-ia` roda de verdade no Deno nos testes da função (`test_radar_funcao_ia.py`). Entre a v0.7.1 e a v0.19.1 este relatório não
-foi atualizado: a seção da v0.20.0 vem logo abaixo e as seguintes são das versões até a v0.7.1.
+Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.21.0: **721 aprovados, 0 falhas, 61 pulados**. Os pulados são
+os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`). As funções
+`radar-ia` e `radar-redes` rodam de verdade no Deno nos testes delas (`test_radar_funcao_ia.py` e `test_radar_funcao_redes.py`).
+Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são
+das versões até a v0.7.1.
+
+## v0.21.0 — aba Pauta, peças das redes e publicação agendada
+
+São 80 testes novos (de 702 para 782 no total). O que foi comprovado, por área:
+
+- **Banco** (`test_radar_banco.py`, 27 novos; 254 no arquivo):
+  - a instalação tem 25 tabelas, 33 tabelas e visões e 7 configurações (com a `pauta`); as 10 funções novas da equipe estão na lista
+    fechada e cada uma confere o papel; nenhuma função nova usa `current_date` ("hoje" é sempre o dia de Brasília); o setup não
+    cria os esquemas `cron` nem `net`; a reversão tira a agenda (num `cron` de mentira) e as tabelas da Pauta; a configuração
+    inicial e o "Honorário contábil" com `"redes": false`, também na instalação que já existe;
+  - a importação cria e atualiza só a peça planejada, e para na linha errada sem repetir o conteúdo (RADAR173); o editor não forja
+    aprovação, links nem situação, nem por inclusão nem por alteração direta; as transições permitidas e as recusadas; a peça
+    aprovada não se edita, mas o plano e a sugestão da IA sim, sem mudar a versão publicável;
+  - desfazer a aprovação (editor e administrador) cancela os envios e é recusado com envio "enviando" ou publicado; aprovar é só do
+    administrador e confere a versão lida, as lâminas (quantidade, JPEG 1080×1350, do próprio usuário, de até 2 horas, com a
+    identificação legal), as conferências obrigatórias e a hora (janela, 120 dias, agenda velha);
+  - a lista de problemas: identificação legal, [VERIFICAR] e `{confirmar}`, fonte do boletim pago, números fora das informações
+    conferidas e frase igual à do boletim; termo de imagem (sem termo, assinado depois, vencido, revogado, canal, finalidade,
+    pessoa inativa); nome no texto sem estar marcado, sobrenome que o termo não autoriza e "contador" para quem não tem registro;
+  - o início da publicação só na hora e uma vez; janela, agenda velha e termo vencido viram erro sem nome; a `radar_rede_iniciar`
+    antiga recusa o envio da Pauta sem mudar nada (RADAR171); a agenda espera 10 minutos entre as tentativas, desiste na 3ª,
+    respeita a janela e confere antes de disparar; duas conexões nunca pegam o mesmo envio; pausada nas Configurações, não dispara;
+  - "Publicar agora" só remarca o erro com "Conferi … não saiu" e recusa a agenda velha; copiar e o registro manual conferem o modo,
+    o termo de hoje e os links; a conferência da chave da agenda sem o Vault nunca confere;
+  - a faxina das imagens não apaga foto nem lâmina da Pauta; a trilha de auditoria não guarda o plano, os nomes, o CRC nem a sugestão
+    da IA; só o administrador grava pessoas, o editor lê, leitor e robô não leem; pessoa em uso não se apaga (RADAR174); o envio da
+    Pauta tem regra própria e fica fora do robô do site; o painel conta as falhas da Pauta.
+- **Agenda do banco** (`test_radar_agenda.py`, 6 novos, com `cron`, `net` e `vault` de mentira): o `sql/radar-redes-agenda.sql`
+  cria a chave e agenda de 5 em 5 minutos sem a chave no comando gravado; o comando faz um pedido por envio vencido (a chave anon no
+  `Authorization` e a da agenda no `x-radar-agenda`) e nenhum quando nada venceu; sem o setup da v0.21.0 para com o recado; recusa a
+  chave `service_role` e a `sb_secret_`; a chave anon do SQL é a do `radar-config.js`; roda de novo sem duplicar, e a reversão tira
+  tudo.
+- **Função `radar-redes`** (`test_radar_funcao_redes.py`, no Deno; 11 novos, 33 no arquivo): a peça vai ao armazenamento privado e
+  a Meta recebe o link assinado de 10 minutos, no Instagram e no Facebook (`/photos`), uma vez só; a nova tentativa assina de novo
+  sem reenviar a imagem, e a falha ao assinar não publica; com a chave da agenda, só a peça vencida sai, e a notícia, a peça futura,
+  a chave errada (curta, longa, junto com a sessão do administrador), `excluir`, `diagnostico`, `acionar_robo` e ação inventada são
+  recusados; `agenda_teste` responde sem publicar (também sem a chave no Vault) e só à agenda; a chave interna nova vai só no
+  `apikey`; o diagnóstico confere o armazenamento privado (público é recusado); a função nova com o banco antigo publica a notícia;
+  os registros (log) não levam legenda, nome, link nem chave; `deno check` limpo. Os 2 testes antigos do diagnóstico passaram a
+  procurar o item pelo nome (o item novo entra depois de "Armazenamento das imagens").
+- **Função `radar-ia`** (`test_radar_funcao_ia.py`, no Deno; 8 novos, 36 no arquivo): a ação `peca` grava a sugestão conforme o
+  formato (sem mudar a versão da peça) e conta como `gerar`; à IA não vão nomes (nem de pessoa inativa, nem em "quem aparece", nem
+  nas informações conferidas, nem com parênteses), CRC ou link; o fato fora das informações conferidas vira [VERIFICAR] (a marca vai
+  até o fim do número: "Lei nº 8.212"); "contador" perto de quem não tem registro e os termos viram aviso; as recusas não chamam a
+  IA; a peça alterada durante a IA não é gravada (409); sem a tabela, a mensagem diz que falta o SQL; o erro inesperado vai ao log
+  só com o nome. A mensagem do banco antigo do kit passou a citar o `radar-setup-v0.21.0.sql`.
+- **Termos da Pauta** (`test_radar_publicidade.py`, no Node; 2 novos, 4 no arquivo): `TERMOS_PECA` é igual na tela
+  (`radar-pauta.js`) e na função, e os casos (o que trava; o sentido técnico que não trava, como "desconto do INSS"; "presente"; "nº
+  1") rodam nas duas.
+- **Telas** (`test_radar_telas.py`, no Chromium; 21 novos, 209 no arquivo: 148 aprovados e 61 pulados):
+  - importação do calendário: todos os erros de uma vez, com a linha; sem duplicar; vírgula, Windows-1252, CRLF e data curta; HTML
+    vindo do CSV não executa; o leitor vê a Pauta sem botões, sem pessoas e sem a prévia da arte; a semana navega, mostra "Prontas
+    para aprovar" e "Não saíram" e cabe no celular; sem o `radar-pauta.js` (ou com ele de outra versão) a aba pede Ctrl+F5, e com o
+    banco antigo pede o SQL;
+  - a peça grava com a trava de versão e, aprovada, não se edita; as fotos saem em 1080×1350, uma por vez, a HEIC com o recado, e o
+    texto digitado e não salvo continua na tela; a agenda de domingo atravessa o mês, tira o honorário e vira informações conferidas;
+  - a arte: faixa legal com a letra de pelo menos 28 px de altura medida, margem de 72 px, sem "Matéria completa" e sem o selo de SC
+    de um assunto aberto antes;
+  - "Salvar e marcar como pronta" mostra a lista do banco; aprovar é só do administrador, guarda as lâminas e mostra a hora e a
+    agenda desligada; termo de promoção e de comparação travam; "Publicar agora" só remarca e, com a agenda desligada, chama a
+    função; "Tentar de novo" pede "Conferi no Instagram e no Facebook: não saiu", e a peça parada em "publicando" cancela e a nova
+    aprovação pede a mesma caixa; carrossel e reel à mão: baixar e copiar só depois de aprovado, e o registro do link;
+  - Pessoas e termos: só o administrador grava, o CRC sai padronizado, cabe no celular; o Painel mostra a falha da Pauta (um cartão
+    só); Publicações ignora o envio sem conteúdo; Configurações com o bloco da Pauta e a validação dele; o "Gerar com IA" da peça
+    troca `{PESSOA1}` pelo nome e mostra o que falta.
+  - Testes antigos que mudaram: a versão (v0.21.0) e o `versaoMenor` com a 0.20.0 e a 0.21.0; 7 formulários nas Configurações;
+    "Pauta" na lista do celular; a mensagem do banco antigo cita o `radar-setup-v0.21.0.sql`; o `ia_de_mentira` ganhou o ramo
+    `peca`; o servidor dos testes serve também o `radar-pauta.js`.
+- **Robô** (`test_radar_e2e.py`; 2 novos, 72 no arquivo): o aviso da Pauta é um só e sem nomes (nem quando o erro cita um nome); não
+  abre com a peça agendada no futuro, nem com a hora passada há 10 minutos, nem com "enviando" recente; a notícia com erro não conta;
+  a leitura pede só 5 colunas; "Publicar agora" resolve e o aviso fecha; com o banco antigo, não abre nem fecha e os outros avisos
+  seguem; erro 500 do banco continua erro. A versão do robô passou a 0.21.0.
+- **Repositório** (`test_radar_repositorio.py`, novo; 3 testes): nenhum arquivo versionado tem o cabeçalho do calendário do plano
+  (só a amostra inventada, `testes/amostras/pauta-ficticia.csv`, com nomes de mentira); o `.gitignore` barra o CSV do plano; e o
+  workflow dos testes roda quando muda o `radar-pauta.js` (antes não rodava) ou o `radar-config.js`.
+- **Prova de que os testes pegam o erro:** em cada etapa, cada correção foi desfeita sozinha (com a cópia guardada e restaurada, e
+  o sha256 conferido no fim) e o teste ligado a ela falhou: banco e agenda, 21 de 21 (e um arquivo solto com o cabeçalho do
+  calendário derrubou o teste do repositório); `radar-redes`, 14 de 14; tela, base e peça, 25 de 25; arte e aprovação, 34 de 34 (na
+  1ª rodada passou o "Publicar agora visível ao editor": o teste do "Tentar de novo" foi reforçado com 2 canais e passou a pegar);
+  "Gerar com IA" da peça (função e tela), 37 de 37; robô, 15 de 15; workflow dos testes sem o `radar-pauta.js`, 1 de 1.
+- **Tempo:** a suíte inteira levou de 661 a 671 s (cerca de 11 minutos, em duas rodadas) neste ambiente. O limite do GitHub Actions
+  (`radar-testes.yml`) continua em 20 minutos: na v0.20.0, o trabalho inteiro no GitHub (instalação e testes) levou menos de 9
+  minutos, e pela soma das etapas a v0.21.0 acrescenta perto de 1 minuto de testes. O workflow passou a rodar também quando muda
+  o `radar-pauta.js`, o `radar-config.js` ou o `.gitignore`.
+
+O que não foi testado aqui: a Meta de verdade (a rota do link assinado veio do código do Storage do Supabase; que a Meta aceita o
+link com `?token=…` só se confirma no 1º post pela agenda, com o administrador acompanhando); o pg_cron, o pg_net e o Vault de
+verdade (o Postgres dos testes não os tem: os esquemas são de mentira, só com o que os arquivos usam), por isso o teste
+`agenda_teste` é feito na instalação; os testes de tela com a IA Central de verdade (61 pulados; a resposta `peca` já está na
+fixture, mas nenhum teste de tela com a função de verdade cobre a peça); a arte com a fonte DM Sans (o Google Fonts fica bloqueado
+nos testes e a arte usou Arial); o tempo da conferência da frase do boletim pago com 90 dias de capturas reais; e a aba Publicações
+da tela antiga com o banco novo no Supabase (no PostgREST 12.2.3 dos testes, o pedido com `in.(null)` não dá erro; o LEIAME pede
+para não voltar a tela depois da 1ª peça aprovada por outros motivos: a tela antiga não mostra a Pauta nem pausa a agenda).
+
+Achado, só para registro: o `sql/radar-itc-agenda.sql:12` usa `create extension if not exists pg_cron;`, sem o `with schema
+pg_catalog` que a página "Install pg_cron" do Supabase mostra (o `sql/radar-redes-agenda.sql` segue a página). Esse arquivo nunca
+rodou em produção e não foi mudado.
+
+Precisam da confirmação do dono: os 28 px da faixa legal como altura da letra, como está (se for o tamanho da fonte, muda só
+`FAIXA_LEGAL` em `radar-pauta.js`); a lista de termos que travam na Pauta (`TERMOS_PECA`), com o contador responsável (travam
+também palavras que servem para informar, como "garante", "ganhe", "definitivo", "100%" e "a maioria"); e a máscara de nomes que
+vai à IA, que não diferencia maiúsculas: uma palavra comum igual a um nome cadastrado também é trocada no texto que vai à IA (nada
+vaza; só a sugestão pode ficar estranha).
 
 ## v0.20.0 — kit das redes, arte vertical, identificação legal e publicidade contábil
 

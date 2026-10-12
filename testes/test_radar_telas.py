@@ -62,6 +62,14 @@ KIT_EXEMPLO = {
              "legenda": "A CBS vai aparecer no documento fiscal: revise o cadastro fiscal. Link na bio."}}
 KIT_TELA = {"versao": 1, "gerado_em": "2026-10-11T14:00:00Z", "modelo": "claude-sonnet-4-6", **KIT_EXEMPLO,
             "reel": {**KIT_EXEMPLO["reel"], "duracao": 38}, "avisos": ["O reel tem 38 s: confira se a fala cabe no tempo de cada cena."]}
+# v0.21.0: a peça da Pauta (ação "peca") como a IA devolve: o nome da pessoa nunca vai nem volta, só o marcador {PESSOA1}
+PECA_EXEMPLO = {
+    "arte": {"chamada": "Conheça {PESSOA1}, que cuida da folha da sua empresa", "apoio": "No Departamento Pessoal da Artecon, desde 1984."},
+    "instagram": {"texto": "Quem cuida da folha de pagamento da sua empresa?\n\n{PESSOA1} acompanha a admissão, as férias e o eSocial de perto.\n\n"
+                           "Quer conversar sobre a folha da sua empresa? Fale com a gente.", "hashtags": ["#FolhaDePagamento"]},
+    "facebook": {"texto": "{PESSOA1} cuida da folha de pagamento das empresas clientes da Artecon, da admissão ao eSocial.\n\nFale com a gente.",
+                 "hashtags": ["#FolhaDePagamento"]},
+    "pendencias": ["quantas empresas a equipe do Departamento Pessoal atende"]}
 
 
 class Servidor(BaseHTTPRequestHandler):
@@ -92,6 +100,8 @@ class Servidor(BaseHTTPRequestHandler):
         if u.path in ("/", "/index.html", "/informativo.html"):
             arquivo = RAIZ / ("index.html" if u.path == "/" else u.path.lstrip("/"))
             return self._responder(200, arquivo.read_bytes(), "text/html; charset=utf-8")
+        if u.path == "/radar-pauta.js":                         # v0.21.0: a aba Pauta, carregada antes do script principal
+            return self._responder(200, (RAIZ / "radar-pauta.js").read_bytes(), "application/javascript; charset=utf-8")
         if u.path == "/auth/v1/token":
             dados = json.loads(corpo or b"{}")
             tipo = parse_qs(u.query).get("grant_type", [""])[0]
@@ -234,7 +244,8 @@ def openai():
     if shutil.which("deno") is None or not CENTRAL.exists():
         pytest.skip("deno ou o pacote da IA Central não disponível")
     # v0.20.0: o kit das redes (3ª etapa do “Gerar com IA”) já tem resposta; o teste que precisar troca
-    OPENAI.update(respostas={"kit": json.loads(json.dumps(KIT_EXEMPLO))}, status=200, pedidos=[], fora_do_formato=False, instalada=True, emails=[], erro=None)
+    OPENAI.update(respostas={"kit": json.loads(json.dumps(KIT_EXEMPLO)), "peca": json.loads(json.dumps(PECA_EXEMPLO))}, status=200, pedidos=[],
+                  fora_do_formato=False, instalada=True, emails=[], erro=None)       # v0.21.0: e a peça da Pauta
     # IA Central zerada a cada teste: sem uso, sem avisos, saldos folgados e limites originais do Radar
     central("truncate core.ia_uso, core.ia_notificacoes, core.ia_saldo restart identity")
     central("insert into core.ia_saldo (tipo, valor_usd, provedor) values ('saldo_informado', 50, 'anthropic'), ('saldo_informado', 20, 'openai')")
@@ -303,7 +314,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.20.0"
+    assert pagina.inner_text(".versao") == "v0.21.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -693,7 +704,7 @@ def test_telas_cabem_no_celular_sem_rolagem_lateral(navegador, limpo):
     entrar(pg)
     pg.wait_for_selector("text=Painel do dia")
     assert sem_rolagem_lateral(pg), "painel"
-    for aba in ["Capturas", "Assuntos", "Informativos", "Publicações", "Fontes", "Como usar", "Versões"]:
+    for aba in ["Capturas", "Assuntos", "Informativos", "Publicações", "Pauta", "Fontes", "Como usar", "Versões"]:
         pg.click(f"nav.abas >> text={aba}")
         pg.wait_for_timeout(300)
         assert sem_rolagem_lateral(pg), aba
@@ -1484,8 +1495,8 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
-    # a v0.20.0 mudou a função de IA (a ação “kit”, das legendas e do roteiro do reel): a v0.19.0 passa a ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.19.0', FUNCAO_MINIMA), versaoMenor('0.20.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    # a v0.21.0 mudou a função de IA (a ação “peca”, o Gerar com IA da peça da Pauta): a v0.20.0 passa a ser apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.20.0', FUNCAO_MINIMA), versaoMenor('0.21.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -1661,7 +1672,7 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
         pagina.wait_for_selector("text=Painel do dia")
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
-        assert pagina.locator("form[data-form=config]").count() == 6                # v0.9.0: + rascunhos automáticos
+        assert pagina.locator("form[data-form=config]").count() == 7                # v0.9.0: + rascunhos automáticos; v0.21.0: + Pauta
         campo = pagina.locator("#cfg-feriados_extras")
         salvar = pagina.locator("form[data-chave=feriados_extras] button")
         for ruim, aviso in [("[", "não é um JSON válido"), ('{"a": 1}', "precisam ser uma lista"), ('["24/12/2026"]', "Data inválida")]:
@@ -2311,7 +2322,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.20.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.21.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3233,9 +3244,10 @@ def _png_base64(cor=(30, 90, 150)):
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None):
+def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_falha=None):
     """Responde no lugar da função radar-ia (a IA Central não roda aqui): grava o rascunho como a função faria. Com kit_falha
-    ((status, mensagem)), o kit falha como na função antiga ou no banco sem o SQL da v0.20.0."""
+    ((status, mensagem)), o kit falha como na função antiga ou no banco sem o SQL da v0.20.0. v0.21.0: "peca" é a sugestão da peça da
+    Pauta que a função grava (radar_pauta_pecas.ia, sem mudar a versão da peça); peca_falha, como kit_falha."""
     def responder(rota):
         corpo = json.loads(rota.request.post_data or "{}")
         pedidos.append(corpo)
@@ -3271,6 +3283,14 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None):
             k = kit or KIT_TELA
             db.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(k), corpo["conteudo_id"]))
             r = {"conteudo_id": corpo["conteudo_id"], "kit": k, "avisos": k["avisos"]}
+        elif acao == "peca" and peca_falha:
+            return rota.fulfill(status=peca_falha[0], content_type="application/json", body=json.dumps({"message": peca_falha[1]}))
+        elif acao == "peca":                                 # v0.21.0: a sugestão da peça, gravada como a função grava (não muda a versão da peça)
+            base = db.execute("select tipo, formato, pessoas from radar_pauta_pecas where id = %s", (corpo["peca_id"],)).fetchone()
+            s = {"versao": 1, "gerado_em": "2026-10-12T14:00:00Z", "modelo": "claude-sonnet-4-6", "cartoes": [], "avisos": [],
+                 "base": {"tipo": base[0], "formato": base[1], "pessoas": base[2]}, **(peca or PECA_EXEMPLO)}
+            db.execute("update radar_pauta_pecas set ia = %s where id = %s", (json.dumps(s), corpo["peca_id"]))
+            r = {"peca_id": corpo["peca_id"], "ia": s, "avisos": s["avisos"]}
         else:                                                # como a função: ação que ela não conhece é recusada (400)
             return rota.fulfill(status=400, content_type="application/json", body=json.dumps({"message": "Ação desconhecida."}))
         rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
@@ -3408,13 +3428,13 @@ def test_gerar_com_ia_com_a_funcao_antiga_ou_o_banco_sem_o_sql_fica_com_o_texto_
     assert "não gerado" in pagina.inner_text(f"details.kit-redes[data-id='{c}'] summary")
     assert pagina.locator(f"form[data-form=conteudo][data-id='{c}'] [data-acao=ia-kit]").count() == 1
     assert pagina.locator(f"details.kit-redes[data-id='{c}'][open] [data-acao=ia-kit]").is_visible()          # o recado aponta: o quadro está aberto
-    # o banco sem o SQL da v0.20.0: a mensagem da função chega ao recado; o texto e a capa saem do mesmo jeito (2ª consulta: senha)
-    ia_de_mentira(pagina, limpo, pedidos, kit_falha=(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.20.0.sql (Supabase → SQL Editor) e tente de novo."))
+    # o banco sem o SQL da v0.20.0 (o pacote traz o da v0.21.0): a mensagem da função chega ao recado; o texto e a capa saem do mesmo jeito (2ª consulta: senha)
+    ia_de_mentira(pagina, limpo, pedidos, kit_falha=(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.21.0.sql (Supabase → SQL Editor) e tente de novo."))
     pagina.evaluate("document.querySelector('#recado').innerHTML = ''")
     pagina.locator("[data-acao=ia-tudo]:visible").first.click()                  # “Já há 1 conteúdo…”: a confirmação é aceita
     confirmar_senha_ia(pagina)
     aviso = pagina.wait_for_selector("#recado .aviso >> text=O kit das redes (legendas, arte e roteiro do reel) não saiu agora").inner_text()
-    assert "rode o radar-setup-v0.20.0.sql" in aviso and "use “Gerar kit das redes com IA”" in aviso
+    assert "rode o radar-setup-v0.21.0.sql" in aviso and "use “Gerar kit das redes com IA”" in aviso
     assert [p["acao"] for p in pedidos][-3:] == ["fundamentar", "gerar", "kit"]
     assert limpo.execute("select count(*), count(imagem_id), count(*) filter (where kit_ia = '{}') from radar_conteudos where assunto_id = %s", (a,)).fetchone() == (2, 2, 2)
 
@@ -4217,7 +4237,7 @@ def _pixels(pg, seletor, pontos):
 
 
 def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, limpo, request):
-    """v0.20.0: CNPJ e CRC ficam na assinatura (continuam 6 configurações), opcionais e conferidos; vazios, a tela avisa (com o trecho
+    """v0.20.0: CNPJ e CRC ficam na assinatura (eram 6 configurações; 7 com a Pauta, v0.21.0), opcionais e conferidos; vazios, a tela avisa (com o trecho
     pronto para acrescentar) e não inventa. O CNPJ sem aspas (número no JSON) tem mensagem própria, e não “não confere”; o CRC de Santa
     Catarina escrito de outro jeito (“SC-004064/0-5”, com o zero no lugar da letra O) sai padronizado, e a linha como vai às redes
     aparece embaixo, para conferir."""
@@ -4226,7 +4246,7 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Configurações")
     pagina.wait_for_selector("h2 >> text=Fecho, assinatura e identificação legal")
-    assert pagina.locator("form[data-form=config]").count() == 6
+    assert pagina.locator("form[data-form=config]").count() == 7                   # v0.21.0: + Pauta e agenda automática
     form = pagina.locator("form[data-chave=assinatura]")
     falta = form.locator(".identificacao-falta").inner_text()
     assert "falta o CNPJ e o CRC" in falta and "Até serem preenchidos" in falta and ', "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"' in falta
@@ -4914,3 +4934,1213 @@ def test_gerar_texto_com_ia_e_texto_para_analise_ficam_com_a_capa_padrao(pagina,
     assert [p["acao"] for p in pedidos] == ["gerar", "verificar", "gerar"] and pedidos[-1].get("analise") is True
     assert limpo.execute("select imagem_id is not null, ilustracao_id is null from radar_conteudos where assunto_id = %s order by id", (a,)).fetchall() == [(True, True)] * 2
     assert pagina.locator("details.kit-redes").count() == 1                         # o texto para análise não tem o quadro do kit
+
+
+# ------------------------------------------------------------ v0.21.0 — aba Pauta (radar-pauta.js): semana, CSV, peça e pessoas
+# Nomes de mentira (o repositório é público). O calendário de teste vai sempre para uma pasta temporária: no repositório, o
+# cabeçalho do calendário no começo de uma linha é barrado (test_radar_repositorio.py).
+import csv  # noqa: E402
+import io  # noqa: E402
+from datetime import date, datetime, timedelta  # noqa: E402
+from zoneinfo import ZoneInfo  # noqa: E402
+
+from test_radar_banco import nova_pessoa, pauta, peca_aprovada  # noqa: E402,F401  (pauta: a fixture da assinatura com CNPJ e CRC)
+
+COLUNAS_PAUTA = ["data", "dia", "semana", "tipo", "formato", "assunto", "quem_aparece", "objetivo", "observacao"]
+AMOSTRA_PAUTA = RAIZ / "testes" / "amostras" / "pauta-ficticia.csv"
+
+
+def csv_pauta(tmp_path, linhas, nome="pauta.csv", sep=";", fim="\n", codificacao="utf-8-sig"):
+    """Calendário de teste numa pasta temporária, escrito como o Excel escreve (aspas só quando precisa, "" para aspas)."""
+    saida = io.StringIO()
+    csv.writer(saida, delimiter=sep, lineterminator=fim).writerows([COLUNAS_PAUTA] + linhas)
+    caminho = tmp_path / nome
+    caminho.write_bytes(saida.getvalue().encode(codificacao))
+    return str(caminho)
+
+
+def segunda(iso):
+    d = date.fromisoformat(iso)
+    return (d - timedelta(days=d.weekday())).isoformat()
+
+
+def semana_de_hoje():
+    return segunda(datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat())
+
+
+def titulo_semana(seg):
+    dom = date.fromisoformat(seg) + timedelta(days=6)
+    return f"Semana de {seg[8:10]}/{seg[5:7]} a {dom:%d/%m/%Y}"
+
+
+def abrir_pauta(pg, semana=None):
+    pg.click("nav.abas >> text=Pauta")
+    pg.wait_for_selector(".pauta-semana")
+    if semana:
+        pg.evaluate("s => { E.pauta.semana = s; return desenhar(); }", semana)
+        pg.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana(semana)}")
+
+
+def abrir_peca(pg, pid, data):
+    abrir_pauta(pg, segunda(data))
+    pg.click(f".pauta-dia[data-peca='{pid}'] [data-acao=abrir-peca]")
+    pg.wait_for_selector(f"form[data-form=peca][data-id='{pid}']")
+
+
+def limpar_recados(pg):
+    """Tira os recados da tela antes de uma ação cujo recado se repete (o anterior ainda estaria à vista)."""
+    pg.evaluate("() => document.querySelector('#recado').replaceChildren()")
+
+
+def salvar_peca(pg, recado="Peça salva."):
+    limpar_recados(pg)
+    pg.locator("form[data-form=peca] .peca-acoes button:not([type])").click()        # o “Salvar” (há também “Salvar e marcar como pronta”)
+    pg.wait_for_selector(f"#recado >> text={recado}")
+
+
+def peca_db(db, data, tipo="bastidor", formato="foto", **campos):
+    """Peça como a importação deixa (planejada); os campos extras entram com a marca das funções (a peça continua planejada)."""
+    pid = db.execute("insert into radar_pauta_pecas (data, tipo, formato) values (%s, %s, %s) returning id", (data, tipo, formato)).fetchone()[0]
+    if campos:
+        tipos = {"conferidas": "::jsonb", "cartoes": "::jsonb", "pessoas": "::bigint[]", "fotos": "::bigint[]"}
+        db.execute("select set_config('radar.pauta', '1', false)")
+        try:
+            db.execute("update radar_pauta_pecas set " + ", ".join(f"{k} = %s{tipos.get(k, '')}" for k in campos) + " where id = %s",
+                       (*[json.dumps(v) if k in ("conferidas", "cartoes") else v for k, v in campos.items()], pid))
+        finally:
+            db.execute("select set_config('radar.pauta', '', false)")
+    return pid
+
+
+def mudar_situacao(db, pid, situacao, **extra):
+    """Muda a situação como as funções do banco mudam (com a marca radar.pauta): aprovar, marcar como pronta."""
+    sets = ", ".join(["situacao = %s"] + [f"{k} = %s" for k in extra])
+    db.execute("select set_config('radar.pauta', '1', false)")
+    try:
+        db.execute(f"update radar_pauta_pecas set {sets} where id = %s", (situacao, *extra.values(), pid))
+    finally:
+        db.execute("select set_config('radar.pauta', '', false)")
+
+
+def test_pauta_importa_csv_mostra_todos_os_erros_e_grava_sem_duplicar(pagina, limpo, tmp_path):
+    """v0.21.0: o calendário entra pelo CSV. A tela confere o arquivo inteiro antes de gravar e mostra TODOS os erros de uma vez, com o
+    número da linha na planilha (o cabeçalho é a 1); com erro, nada vai ao banco. O arquivo certo (a amostra inventada: BOM, ";", aspas
+    com ";" dentro e "" para aspas) mostra a prévia (novas, alteradas, iguais e mantidas) e grava; de novo, não duplica; a linha mudada
+    altera só a peça ainda planejada, e a que já entrou em produção fica como está."""
+    ruim = csv_pauta(tmp_path, [
+        ["26/10/2026", "seg", "1", "Reel da semana", "Reel", "Roteiro de exemplo", "Ana Teste", "orientar", ""],
+        ["31/02/2026", "ter", "1", "Bastidor", "Foto", "Data que não existe", "", "", ""],
+        ["28/10/2026", "seg", "1", "Bastidor", "Foto", "Dia da semana trocado", "", "", ""],
+        ["29/10/2026", "qui", "1", "Reels", "Foto", "Tipo desconhecido", "", "", ""],
+        ["30/10/2026", "sex", "1", "Educativo", "Vídeo", "Formato desconhecido", "", "", ""],
+        ["26/10/2026", "seg", "1", "Bastidor", "Foto", "Data repetida", "", "", ""],
+        ["01/11/2026", "dom", "1", "Educativo", "Carrossel", "x" * 1001, "", "", ""],
+        ["02/11/2026", "seg", "1", "Educativo"]], nome="calendario-com-erros.csv")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina)
+    pagina.set_input_files("#pauta-csv", ruim)
+    pagina.wait_for_selector("#pauta-previa .aviso.erro >> text=O arquivo tem 7 erro(s). Nada foi gravado:")
+    erros = pagina.locator(".pauta-erros li").all_inner_texts()
+    assert [e.split(":")[0] for e in erros] == ["Linha 3", "Linha 4", "Linha 5", "Linha 6", "Linha 7", "Linha 8", "Linha 9"]
+    assert "data “31/02/2026” inválida" in erros[0] and "o dia “seg” não bate com 28/10/2026 (qua)" in erros[1]
+    assert "tipo “Reels” desconhecido" in erros[2] and "formato “Vídeo” desconhecido" in erros[3]
+    assert "a data 26/10/2026 já está na linha 2" in erros[4] and "assunto com mais de 1.000 caracteres" in erros[5] and "tem 4 coluna(s)" in erros[6]
+    assert pagina.locator("[data-acao=pauta-importar-gravar]").count() == 0
+    assert limpo.execute("select count(*) from radar_pauta_pecas").fetchone()[0] == 0
+    # o calendário certo: a prévia não grava nada
+    pagina.click("#pauta-previa [data-acao=pauta-importar-cancelar]")
+    pagina.wait_for_selector("#pauta-previa", state="detached")
+    pagina.set_input_files("#pauta-csv", str(AMOSTRA_PAUTA))
+    pagina.wait_for_selector("#pauta-previa-resumo")
+    assert "14 linha(s): 14 nova(s), 0 alterada(s), 0 igual(is) e 0 mantida(s)" in pagina.inner_text("#pauta-previa-resumo")
+    assert limpo.execute("select count(*) from radar_pauta_pecas").fetchone()[0] == 0
+    pagina.screenshot(path=str(FOTOS / "40-pauta-previa-do-csv.png"), full_page=True)
+    pagina.click("text=Gravar 14 peça(s) no Radar")
+    pagina.wait_for_selector("#recado >> text=Calendário gravado: 14 peça(s) nova(s), 0 alterada(s), 0 igual(is) e 0 mantida(s)")
+    # a semana mostrada é a da primeira peça que não ficou para trás (a do arquivo inteiro, se todas ficaram)
+    datas = sorted(l[0][6:] + "-" + l[0][3:5] + "-" + l[0][:2] for l in csv.reader(io.StringIO(AMOSTRA_PAUTA.read_text(encoding="utf-8-sig")), delimiter=";") if l[0] != "data")
+    esperada = segunda(next((d for d in datas if d >= semana_de_hoje()), datas[-1]))
+    pagina.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana(esperada)}")
+    pecas = {str(d): (t, f, a, q, o, obs, s, str(h)) for d, t, f, a, q, o, obs, s, h in limpo.execute(
+        "select data, tipo, formato, assunto, quem_aparece, objetivo, observacao, situacao, hora from radar_pauta_pecas").fetchall()}
+    assert len(pecas) == 14 and {p[6] for p in pecas.values()} == {"planejada"} and {p[7] for p in pecas.values()} == {"09:30:00"}
+    assert pecas["2026-10-28"][:6] == ("quem_cuida", "foto", "Apresentar quem cuida do departamento pessoal (exemplo)", "Bruno Exemplo", "aproximar",
+                                       "Foto no escritório; luz natural")                                          # ";" dentro das aspas
+    assert pecas["2026-10-29"][5] == 'Cartões com "o que fazer" no fim'                                            # "" vira aspas
+    assert pecas["2026-10-27"][3] == "" and pecas["2026-11-02"][1] == "nenhum" and pecas["2026-11-02"][4] == ""     # "—" sozinho é vazio
+    assert pecas["2026-11-08"][:2] == ("sem_post", "story")
+    abrir_pauta(pagina, "2026-10-26")
+    assert pagina.locator(".pauta-dia").count() == 7 and pagina.locator(".pauta-dia.vazio").count() == 0
+    dia = pagina.inner_text(".pauta-dia[data-dia='2026-10-28']")
+    assert "qua, 28/10 · 09:30" in dia and "Série Quem cuida" in dia and "Foto" in dia and "Planejada" in dia
+    assert "Dia de notícia: publique por Assuntos ou Publicações" in pagina.inner_text(".pauta-dia[data-dia='2026-10-27']")
+    # de novo, com uma linha mudada; a peça de 31/10 já entrou em produção (chamada da arte preenchida) e não muda
+    limpo.execute("update radar_pauta_pecas set chamada = 'Café da manhã da equipe' where data = '2026-10-31'")
+    assert limpo.execute("select situacao from radar_pauta_pecas where data = '2026-10-31'").fetchone()[0] == "em_producao"
+    texto = AMOSTRA_PAUTA.read_text(encoding="utf-8-sig").replace("Checklist de fim de mês para pequenas empresas (exemplo)", "Checklist de fim de mês (exemplo, revisado)")
+    mudado = tmp_path / "pauta-mudada.csv"
+    mudado.write_text(texto.replace("Café da manhã da equipe (exemplo)", "Outro assunto (exemplo)"), encoding="utf-8-sig")
+    pagina.set_input_files("#pauta-csv", str(mudado))
+    pagina.wait_for_selector("#pauta-previa-resumo")
+    assert "14 linha(s): 0 nova(s), 1 alterada(s), 12 igual(is) e 1 mantida(s)" in pagina.inner_text("#pauta-previa-resumo")
+    pagina.click("text=Gravar 1 peça(s) no Radar")
+    pagina.wait_for_selector("#recado >> text=Calendário gravado: 0 peça(s) nova(s), 1 alterada(s), 12 igual(is) e 1 mantida(s)")
+    assert limpo.execute("select count(*) from radar_pauta_pecas").fetchone()[0] == 14
+    assert limpo.execute("select assunto from radar_pauta_pecas where data = '2026-10-29'").fetchone()[0] == "Checklist de fim de mês (exemplo, revisado)"
+    assert limpo.execute("select assunto, situacao from radar_pauta_pecas where data = '2026-10-31'").fetchone() == ("Café da manhã da equipe (exemplo)", "em_producao")
+    # o mesmo arquivo outra vez: nada muda e não há o que gravar
+    pagina.set_input_files("#pauta-csv", str(mudado))
+    pagina.wait_for_selector("#pauta-previa-resumo")
+    assert "0 nova(s), 0 alterada(s), 13 igual(is) e 1 mantida(s)" in pagina.inner_text("#pauta-previa-resumo")
+    assert pagina.locator("[data-acao=pauta-importar-gravar]").count() == 0 and "Nada muda" in pagina.inner_text("#pauta-previa")
+
+
+def test_pauta_csv_virgula_windows_1252_crlf_data_curta_e_ataque_de_html(pagina, limpo, tmp_path):
+    """v0.21.0: o CSV salvo pelo Excel como “CSV (separado por vírgulas)”: separador ",", Windows-1252 (sem BOM), CRLF, data D/M/AAAA e o
+    dia com maiúscula. O texto do arquivo nunca vira HTML (nem na prévia, nem na semana)."""
+    ataque = '<img src=x onerror="window.__invadido=1">'
+    arquivo = csv_pauta(tmp_path, [
+        ["2/11/2026", "seg", "2", "Educativo", "Carrossel", f"Checklist {ataque} de novembro", "Equipe", "orientar", "Cartões, sem promessa"],
+        ["3/11/2026", "Ter", "2", "Captação", "Imagem 4:5", "Convite para conhecer o escritório", "—", "captar", '"Sem preço", sem promessa'],
+        ["", "", "", "", "", "", "", "", ""]], nome="calendario-excel.csv", sep=",", fim="\r\n", codificacao="cp1252")
+    assert b"\r\n" in Path(arquivo).read_bytes() and "ç".encode("cp1252") in Path(arquivo).read_bytes()
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina)
+    pagina.set_input_files("#pauta-csv", arquivo)
+    pagina.wait_for_selector("#pauta-previa-resumo")
+    assert "2 linha(s): 2 nova(s)" in pagina.inner_text("#pauta-previa-resumo")
+    previa = pagina.inner_text("#pauta-previa")
+    assert "Checklist <img src=x" in previa and "Captação" in previa and "Imagem 4:5" in previa
+    assert pagina.locator("main img[src=x]").count() == 0 and pagina.evaluate("window.__invadido") is None
+    pagina.click("text=Gravar 2 peça(s) no Radar")
+    pagina.wait_for_selector("#recado >> text=Calendário gravado: 2 peça(s) nova(s)")
+    assert limpo.execute("select data, tipo, formato, assunto, quem_aparece, observacao from radar_pauta_pecas order by data").fetchall() == [
+        (date(2026, 11, 2), "educativo", "carrossel", f"Checklist {ataque} de novembro", "Equipe", "Cartões, sem promessa"),
+        (date(2026, 11, 3), "captacao", "imagem", "Convite para conhecer o escritório", "", '"Sem preço", sem promessa')]
+    abrir_pauta(pagina, "2026-11-02")
+    assert "Checklist <img src=x" in pagina.inner_text(".pauta-dia[data-dia='2026-11-02']")
+    assert pagina.locator("main img[src=x]").count() == 0 and pagina.evaluate("window.__invadido") is None
+
+
+def test_pauta_leitor_ve_sem_botoes_e_sem_pessoas(pagina, limpo):
+    """v0.21.0: o leitor vê a Pauta e abre a peça só para ler: sem importar, sem Pessoas e termos, sem fotos a enviar, sem os nomes
+    das pessoas cadastradas e sem os selos dos termos (ele não lê radar_pessoas). O editor vê a pessoa com o selo do termo."""
+    ana = nova_pessoa(limpo, "Ana Teste", "Ana")
+    pid = peca_db(limpo, "2026-11-11", "quem_cuida", "foto", assunto="Quem cuida do departamento pessoal (exemplo)", pessoas=[ana],
+                  legenda_instagram="Legenda de teste da peça.", conferidas=[{"informacao": "A Artecon atende em Palhoça", "fonte": "Site da Artecon"}])
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina, "2026-11-09")
+    cartao = pagina.locator(f".pauta-dia[data-peca='{pid}']")
+    assert "Série Quem cuida" in cartao.inner_text() and cartao.locator(".pauta-pessoas").count() == 0 and "termo" not in cartao.inner_text()
+    assert pagina.locator("#pauta-csv").count() == 0 and pagina.locator("[data-acao=pauta-pessoas]").count() == 0
+    assert pagina.locator("#pauta-prontas, #pauta-falhas, #agenda-desligada").count() == 0          # o quadro do administrador
+    cartao.locator("[data-acao=abrir-peca]").click()
+    pagina.wait_for_selector("form[data-form=peca]")
+    assert pagina.evaluate("() => [...document.querySelectorAll('form[data-form=peca] input, form[data-form=peca] textarea, form[data-form=peca] select')].every(c => c.disabled)")
+    assert pagina.locator("form[data-form=peca] button").count() == 0 and pagina.locator("#peca-foto-arquivo").count() == 0
+    assert pagina.locator("#peca-artes, #peca-aprovar, [data-acao=peca-salvar-pronta]").count() == 0       # v0.21.0: sem a prévia da arte nem aprovar
+    assert pagina.locator("form[data-form=peca] h3", has_text="Quem aparece").count() == 0 and pagina.locator(".peca-pessoas").count() == 0
+    assert "Ana" not in pagina.inner_text("main")
+    assert pagina.locator("[name=legenda_instagram]").input_value() == "Legenda de teste da peça."
+    # a vista das pessoas, forçada, não abre para o leitor
+    pagina.evaluate("() => { E.pauta.peca = null; E.pauta.vista = 'pessoas'; return desenhar(); }")
+    pagina.wait_for_selector(".pauta-semana")
+    assert "Pessoas e termos" not in pagina.inner_text("main")
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina, "2026-11-09")
+    pessoas = pagina.inner_text(f".pauta-dia[data-peca='{pid}'] .pauta-pessoas")
+    assert "Ana" in pessoas and "termo ok" in pessoas
+
+
+def test_pauta_semana_navega_prontas_e_nao_sairam_e_cabe_no_celular(navegador, pauta):
+    """v0.21.0: a semana (de segunda a domingo) navega para trás, para a frente e volta à de hoje; o administrador vê no alto o que
+    não saiu (a mesma conta do Painel), as peças prontas para aprovar e o aviso de que a agenda automática não está instalada (os
+    testes não têm o pg_cron). Tudo cabe em 375 px: a semana, a peça e as pessoas."""
+    db = pauta
+    pronta = peca_db(db, "2026-11-11", "educativo", "imagem", assunto="Educativo da semana (exemplo)")
+    mudar_situacao(db, pronta, "pronta")
+    peca_db(db, "2026-11-18", "bastidor", "foto", assunto="Bastidor da outra semana (exemplo)")
+    _, r = peca_aprovada(db, dias=2)
+    db.execute("update radar_redes_envios set situacao = 'erro', erro = 'A Meta recusou a imagem (teste).' where id = %s", (r["envios"]["instagram"],))
+    contexto = navegador.new_context(viewport={"width": 375, "height": 740}, locale="pt-BR")
+    contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
+    pg = contexto.new_page()
+    erros = []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    pg.on("dialog", lambda d: d.accept())
+    try:
+        entrar(pg, "admin@artecon.test")
+        pg.wait_for_selector("text=Painel do dia")
+        abrir_pauta(pg)
+        assert pg.inner_text("#pauta-semana-titulo") == titulo_semana(semana_de_hoje())
+        assert "Agenda automática desligada" in pg.inner_text("#agenda-desligada") and "não está instalada" in pg.inner_text("#agenda-desligada")
+        assert pg.locator("#pauta-falhas tr").count() == 2 and "A Meta recusou a imagem (teste)." in pg.inner_text("#pauta-falhas")
+        assert pg.locator("#pauta-prontas li").count() == 1 and "qua, 11/11" in pg.inner_text("#pauta-prontas")
+        assert sem_rolagem_lateral(pg), "semana"
+        pg.screenshot(path=str(FOTOS / "41-celular-pauta-semana.png"), full_page=True)
+        pg.evaluate("s => { E.pauta.semana = s; return desenhar(); }", "2026-11-09")
+        pg.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana('2026-11-09')}")
+        assert "Pronta" in pg.inner_text(f".pauta-dia[data-peca='{pronta}']") and "Sem peça neste dia." in pg.inner_text(".pauta-dia[data-dia='2026-11-15']")
+        pg.click("text=Próxima semana →")
+        pg.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana('2026-11-16')}")
+        assert "Bastidor da outra semana" in pg.inner_text(".pauta-dia[data-dia='2026-11-18']")
+        pg.click("text=← Semana anterior")
+        pg.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana('2026-11-09')}")
+        pg.click("text=← Semana anterior")
+        pg.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana('2026-11-02')}")
+        pg.click("text=Esta semana")
+        pg.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana(semana_de_hoje())}")
+        pg.click("#pauta-prontas [data-acao=abrir-peca]")
+        pg.wait_for_selector(f"form[data-form=peca][data-id='{pronta}']")
+        assert sem_rolagem_lateral(pg), "peça"
+        pg.screenshot(path=str(FOTOS / "42-celular-pauta-peca.png"), full_page=True)
+        pg.click("text=← Voltar para a semana")
+        pg.wait_for_selector(".pauta-semana")
+        pg.click("[data-acao=pauta-pessoas]")
+        pg.wait_for_selector("h1 >> text=Pessoas e termos")
+        assert sem_rolagem_lateral(pg), "pessoas"
+        assert erros == [], erros
+    finally:
+        contexto.close()
+
+
+def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
+    """v0.21.0: a tela nova com o radar-pauta.js que não carregou (ou de outra versão, guardado no navegador) pede Ctrl+F5 na aba
+    Pauta; o resto do Radar funciona. Com o banco ainda na v0.20.0, a aba diz que falta rodar o SQL da v0.21.0."""
+    pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=404, body="não encontrado"))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Pauta")
+    pagina.wait_for_selector("#pauta-sem-arquivo >> text=O arquivo radar-pauta.js não carregou. Aperte Ctrl+F5")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.wait_for_selector("h1 >> text=Assuntos")
+    pagina.unroute("**/radar-pauta.js*")
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.21.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
+    pagina.reload()
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Pauta")
+    aviso = pagina.inner_text("#pauta-versao")
+    assert "radar-pauta.js, v0.20.9" in aviso and "Aperte Ctrl+F5" in aviso
+    # a tela nova com o banco da v0.20.0 (sem a tabela da Pauta): diz que falta o SQL, em vez do erro cru do PostgREST
+    pagina.unroute("**/radar-pauta.js*")
+    pagina.route("**/rest/v1/radar_pauta_pecas*", lambda rota: rota.fulfill(status=404, content_type="application/json",
+                 body='{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table \'public.radar_pauta_pecas\' in the schema cache"}'))
+    pagina.reload()
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Pauta")
+    assert "o administrador roda o sql/radar-setup-v0.21.0.sql" in pagina.inner_text("#pauta-sem-banco")
+
+
+def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
+    """v0.21.0: a peça grava só o que mudou, e só se ainda for a versão aberta na tela (outra tela salvou antes: nada é gravado e o texto
+    digitado continua à vista). Mexer no que vai ao ar leva a peça à produção. A peça aprovada trava o que vai ao ar e a hora na tela e
+    no banco (o plano continua livre); a cancelada só reabre."""
+    pid = peca_db(limpo, "2026-11-04", "educativo", "carrossel", assunto="Checklist de fim de mês (exemplo)")
+    corpos = []
+    pagina.on("request", lambda r: corpos.append(r.post_data_json) if r.method == "PATCH" and "/rest/v1/radar_pauta_pecas" in r.url else None)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-04")
+    form = pagina.locator("form[data-form=peca]")
+
+    def preencher():
+        form.locator("[name=chamada]").fill("Checklist do fim do mês")
+        form.locator("[name=legenda_instagram]").fill("Confira o checklist do fim do mês.")
+        pagina.click("[data-acao=peca-conf-linha]")
+        form.locator(".conf-linha textarea").last.fill("O prazo da DCTFWeb é o dia 15")
+        form.locator(".conf-linha input").last.fill("Receita Federal (gov.br)")
+        for titulo, texto in [("Separe as notas", "Junte as notas fiscais do mês."), ("Confira a folha", "Revise os pagamentos.")]:
+            pagina.click("[data-acao=peca-cartao-linha]")
+            form.locator(".cartao-linha input").last.fill(titulo)
+            form.locator(".cartao-linha textarea").last.fill(texto)
+    preencher()
+    assert pagina.inner_text("#conta-instagram") == "34/2.200"
+    limpo.execute("update radar_pauta_pecas set observacao = 'mudou em outra tela' where id = %s", (pid,))
+    form.locator(".peca-acoes button:not([type])").click()
+    pagina.wait_for_selector("#recado .erro >> text=Esta peça foi alterada em outra tela")
+    assert limpo.execute("select chamada, situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("", "planejada")
+    assert form.locator("[name=chamada]").input_value() == "Checklist do fim do mês"           # o que foi digitado continua à vista
+    pagina.evaluate("() => desenhar()")                                                       # recarrega a peça e refaz
+    pagina.wait_for_selector("form[data-form=peca] [name=chamada][value='']")
+    corpos.clear()
+    preencher()
+    salvar_peca(pagina)
+    assert [sorted(c) for c in corpos] == [["cartoes", "chamada", "conferidas", "legenda_instagram"]]   # só o que mudou
+    chamada, situacao, conf, cartoes, obs = limpo.execute("select chamada, situacao, conferidas, cartoes, observacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()
+    assert (chamada, situacao, obs) == ("Checklist do fim do mês", "em_producao", "mudou em outra tela")
+    assert conf == [{"informacao": "O prazo da DCTFWeb é o dia 15", "fonte": "Receita Federal (gov.br)"}]
+    assert cartoes == [{"titulo": "Separe as notas", "texto": "Junte as notas fiscais do mês."}, {"titulo": "Confira a folha", "texto": "Revise os pagamentos."}]
+    pagina.wait_for_selector("#peca-situacao >> text=Em produção")
+    salvar_peca(pagina, "Nada mudou na peça.")
+    # aprovada (à mão): o que vai ao ar e a hora ficam travados; o plano não
+    versao = limpo.execute("select versao_publicavel from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0]
+    mudar_situacao(limpo, pid, "aprovada", aprovado_modo="manual")
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#peca-aprovada")
+    for campo in ("hora", "tipo", "chamada", "legenda_instagram", "legenda_facebook", "conf-informacao", "cartao-titulo"):
+        assert form.locator(f"[name={campo}]").first.is_disabled(), campo
+    assert pagina.locator("[data-acao=peca-conf-linha], [data-acao=peca-cartao-linha], [data-acao=peca-cancelar]").count() == 0
+    pagina.click("summary >> text=Plano")
+    form.locator("[name=objetivo]").fill("orientar (revisado)")
+    salvar_peca(pagina)
+    assert limpo.execute("select objetivo, situacao, versao_publicavel from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("orientar (revisado)", "aprovada", versao)
+    # destravar o campo na tela não adianta: o banco recusa
+    pagina.evaluate("() => { const c = document.querySelector('form[data-form=peca] [name=chamada]'); c.disabled = false; c.value = 'Outra chamada'; }")
+    salvar_peca(pagina, "a peça está aprovada")
+    assert limpo.execute("select chamada from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "Checklist do fim do mês"
+    # cancelar e reabrir (outra peça); pronta volta para a produção
+    outra = peca_db(limpo, "2026-11-05", "bastidor", "foto")
+    pagina.click("text=← Voltar para a semana")
+    pagina.click(f".pauta-dia[data-peca='{outra}'] [data-acao=abrir-peca]")
+    pagina.wait_for_selector(f"form[data-form=peca][data-id='{outra}']")
+    form.locator("[name=chamada]").fill("Texto não salvo")
+    pagina.click("[data-acao=peca-cancelar]")
+    pagina.wait_for_selector("#recado .erro >> text=Há alterações não salvas na peça")
+    form.locator("[name=chamada]").fill("")
+    pagina.click("[data-acao=peca-cancelar]")
+    pagina.wait_for_selector("#recado >> text=Peça cancelada.")
+    assert form.locator("[name=chamada]").is_disabled() and pagina.locator("#peca-cancelada").count() == 1
+    pagina.click("[data-acao=peca-reabrir]")
+    pagina.wait_for_selector("#recado >> text=Peça reaberta")
+    assert limpo.execute("select situacao from radar_pauta_pecas where id = %s", (outra,)).fetchone()[0] == "planejada"
+    mudar_situacao(limpo, outra, "pronta")
+    pagina.evaluate("() => desenhar()")
+    pagina.click("[data-acao=peca-voltar-producao]")
+    pagina.wait_for_selector("#recado >> text=A peça voltou para a produção.")
+    assert limpo.execute("select situacao from radar_pauta_pecas where id = %s", (outra,)).fetchone()[0] == "em_producao"
+
+
+def test_peca_foto_1080x1350_uma_por_vez_heic_com_recado_e_texto_nao_salvo_fica(pagina, limpo, tmp_path):
+    """v0.21.0: as fotos da peça vão uma de cada vez (nunca duas ao mesmo tempo), cada uma em 1080×1350 (cortada no centro, JPEG até
+    600.000 caracteres); a HEIC do iPhone recebe o recado e fica de fora; a foto pequena recebe o aviso. A lista de fotos é gravada com
+    a trava da versão sem redesenhar a peça: o texto digitado e não salvo continua e salva depois. ↑, ↓ e Tirar mudam a ordem."""
+    pid = peca_db(limpo, "2026-11-04", "quem_cuida", "carrossel_fotos")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-04")
+    form = pagina.locator("form[data-form=peca]")
+    form.locator("[name=legenda_instagram]").fill("Texto digitado e ainda não salvo.")
+    pagina.evaluate("""() => { window.__juntas = 0; window.__max = 0; const original = window.fetch;
+        window.fetch = async (u, o) => { const foto = String(u).includes('/rest/v1/radar_imagens') && (o || {}).method === 'POST';
+          if (foto) { window.__juntas++; window.__max = Math.max(window.__max, window.__juntas); await new Promise(r => setTimeout(r, 150)); }
+          try { return await original(u, o); } finally { if (foto) window.__juntas--; } }; }""")
+    grande, pequena = foto_de_teste(tmp_path / "grande.png"), foto_de_teste(tmp_path / "pequena.png", (600, 800))
+    pagina.set_input_files("#peca-foto-arquivo", [
+        {"name": "grande.png", "mimeType": "image/png", "buffer": Path(grande).read_bytes()},
+        {"name": "IMG_0001.HEIC", "mimeType": "image/heic", "buffer": b"\x00\x00\x00\x18ftypheic" + b"\x00" * 64},
+        {"name": "pequena.png", "mimeType": "image/png", "buffer": Path(pequena).read_bytes()}])
+    pagina.wait_for_selector("#recado >> text=2 foto(s) enviada(s).")
+    recados = pagina.inner_text("#recado")
+    assert "Foto do iPhone em HEIC: no celular, Ajustes → Câmera → Formatos → Mais compatível" in recados
+    assert "Foto pequena (menos de 1080×1350): pode ficar sem nitidez — pequena.png" in recados
+    assert pagina.evaluate("window.__max") == 1                                                # uma de cada vez
+    imagens = limpo.execute("select id, largura, altura, length(dados), left(dados, 22) from radar_imagens order by id").fetchall()
+    assert [(l, a, t <= 600000, tipo) for _, l, a, t, tipo in imagens] == [(1080, 1350, True, "data:image/jpeg;base64")] * 2
+    fotos, situacao = limpo.execute("select fotos, situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()
+    assert fotos == [i[0] for i in imagens] and situacao == "em_producao"
+    assert form.locator("#peca-fotos-lista img").count() == 2 and pagina.inner_text("#peca-situacao") == "Em produção"
+    assert form.locator("[name=legenda_instagram]").input_value() == "Texto digitado e ainda não salvo."      # a peça não foi redesenhada
+    salvar_peca(pagina)                                                                      # a versão da tela acompanhou as fotos
+    assert limpo.execute("select legenda_instagram from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "Texto digitado e ainda não salvo."
+    primeira, segunda_foto = fotos
+    pagina.click(f"[data-acao=peca-foto-mover][data-foto='{primeira}'][data-passo='1']")
+    pagina.wait_for_function(f"document.querySelector('#peca-fotos-lista figure').dataset.foto === '{segunda_foto}'")
+    assert limpo.execute("select fotos from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == [segunda_foto, primeira]
+    pagina.click(f"[data-acao=peca-foto-tirar][data-foto='{segunda_foto}']")
+    pagina.wait_for_selector("#recado >> text=Foto tirada da peça.")
+    assert limpo.execute("select fotos from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == [primeira]
+    pagina.screenshot(path=str(FOTOS / "43-pauta-peca-fotos.png"), full_page=True)
+    # mais de 10 fotos na peça: nada é enviado
+    antes = limpo.execute("select count(*) from radar_imagens").fetchone()[0]
+    pagina.set_input_files("#peca-foto-arquivo", [{"name": f"f{i}.png", "mimeType": "image/png", "buffer": Path(pequena).read_bytes()} for i in range(10)])
+    pagina.wait_for_selector("#recado .erro >> text=A peça leva no máximo 10 fotos (já tem 1)")
+    assert limpo.execute("select count(*) from radar_imagens").fetchone()[0] == antes
+
+
+def test_peca_agenda_de_domingo_atravessa_o_mes_tira_honorario_e_vira_conferidas(pagina, limpo):
+    """v0.21.0: na “Agenda da semana” (domingo D), “Calcular a agenda da semana” traz os vencimentos de D+1 a D+5 pelas regras das
+    Configurações, um mês de cada vez (29/11/2026 cobre 30/11 a 04/12), sem as obrigações com "redes": false (o Honorário contábil, que
+    é interno). Cada vencimento vira uma informação conferida, com a "fonte" da obrigação (ou o aviso de conferir a regra), e só é gravado
+    ao salvar. Semana do Natal: 25/12 é feriado e o vencimento do dia 25 antecipa para 24/12."""
+    original = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    obrig = [dict(o, fonte="Portal do eSocial (exemplo)") if o["nome"] == "Salário dos Colaboradores (Empregados)" else o for o in original]
+    assert any(o["nome"] == "Honorário contábil" and o.get("redes") is False for o in obrig)
+    limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(obrig),))
+    try:
+        novembro = peca_db(limpo, "2026-11-29", "agenda", "imagem")
+        natal = peca_db(limpo, "2026-12-20", "agenda", "imagem")
+        entrar(pagina)
+        pagina.wait_for_selector("text=Painel do dia")
+        abrir_peca(pagina, novembro, "2026-11-29")
+        regra = "Regra de vencimento das Configurações (conferir)"
+        pagina.click("text=Calcular a agenda da semana")
+        pagina.wait_for_selector("#recado >> text=Agenda calculada: 8 vencimento(s) de seg, 30/11 a sex, 04/12")
+        lidas = lambda: [(i.input_value(), f.input_value()) for i, f in zip(pagina.locator(".conf-linha textarea").all(), pagina.locator(".conf-linha input").all())]
+        assert lidas() == [("30/11 (seg) · " + n, regra) for n in [
+            "CSLL - Contribuição Social sobre o Lucro Líquido", "IRPJ - Imposto de Renda Pessoa Jurídica", "Imposto de Renda Pessoa Física (Cód. 0190)",
+            "INSS - Parcelamento p/ Ingresso no Simples Nacional", "Parcelamentos Federais e Parcelamento Especial",
+            "PERT – Programa Esp. Regularização Tributária", "Parcelamento Especial - Simples Nacional"]] + [
+            ("04/12 (sex) · Salário dos Colaboradores (Empregados)", "Portal do eSocial (exemplo)")]
+        assert limpo.execute("select conferidas from radar_pauta_pecas where id = %s", (novembro,)).fetchone()[0] == []     # só na tela
+        pagina.locator(".conf-linha textarea").last.fill("04/12 (sex) · Salário dos Colaboradores (conferido)")             # editável
+        salvar_peca(pagina)
+        conf = limpo.execute("select conferidas from radar_pauta_pecas where id = %s", (novembro,)).fetchone()[0]
+        assert len(conf) == 8 and conf[-1] == {"informacao": "04/12 (sex) · Salário dos Colaboradores (conferido)", "fonte": "Portal do eSocial (exemplo)"}
+        # de novo, com as linhas na tela: pede para trocar
+        limpar_recados(pagina)
+        pagina.click("text=Calcular a agenda da semana")
+        pagina.wait_for_selector("#recado >> text=Agenda calculada")
+        assert pagina.locator(".conf-linha textarea").last.input_value() == "04/12 (sex) · Salário dos Colaboradores (Empregados)"
+        pagina.click("text=← Voltar para a semana")
+        pagina.wait_for_selector(".pauta-semana")
+        abrir_peca(pagina, natal, "2026-12-20")
+        limpar_recados(pagina)
+        pagina.click("text=Calcular a agenda da semana")
+        pagina.wait_for_selector("#recado >> text=Agenda calculada: 5 vencimento(s)")
+        assert [i for i, _ in lidas()] == ["21/12 (seg) · Simples Doméstico", "21/12 (seg) · Simples Nacional",
+                                           "24/12 (qui) · PIS", "24/12 (qui) · COFINS", "24/12 (qui) · IPI"]
+        assert "Honorário" not in pagina.inner_text("#peca-conferidas") and pagina.locator("#peca-conferidas").evaluate("b => [...b.querySelectorAll('textarea')].some(t => t.value.includes('Honorário'))") is False
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(original),))
+
+
+def test_pessoas_e_termos_so_admin_grava_crc_formatado_e_cabe_no_celular(pagina, limpo, navegador):
+    """v0.21.0: Pessoas e termos: o administrador cadastra e altera (o CRC sai padronizado, como o da empresa; “contador(a)” e
+    “técnico(a)” só com o registro; o prazo depois da assinatura; a assinatura nunca no futuro), vê a linha da pessoa como vai na arte
+    e não apaga quem está numa peça; o editor só consulta. A tela cabe em 375 px."""
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina)
+    pagina.click("[data-acao=pauta-pessoas]")
+    pagina.wait_for_selector("h1 >> text=Pessoas e termos")
+    nova = pagina.locator("form[data-form=novaPessoa]")
+    assert nova.is_visible()                                                                  # sem ninguém, o cadastro já vem aberto
+
+    def preencher(nome, na_peca, area="", categoria="", crc="", assinado="2026-10-01", ate="", canais=("instagram", "facebook"), usos=("equipe",)):
+        for campo, valor in [("nome", nome), ("nome_na_peca", na_peca), ("area", area), ("crc", crc), ("termo_assinado_em", assinado), ("termo_valido_ate", ate)]:
+            nova.locator(f"[name={campo}]").fill(valor)
+        nova.locator("[name=categoria]").select_option(categoria)
+        for c in nova.locator("input[name=canal], input[name=uso]").all():
+            c.set_checked(c.get_attribute("value") in canais + usos)
+    amanha = (datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)).isoformat()
+    for args, erro in [(("Ana Teste", "Ana", "Departamento Pessoal", "contadora"), "só com o registro no CRC"),
+                       (("Ana Teste", "Ana", "Departamento Pessoal", "contadora", "registro 12"), "Registro no CRC não reconhecido"),
+                       (("Ana Teste", "Ana", "", "", "", "2026-10-01", "2026-09-01"), "“Válido até” precisa da data de assinatura"),
+                       (("Ana Teste", "Ana", "", "", "", amanha), "não pode estar no futuro")]:
+        preencher(*args)
+        limpar_recados(pagina)
+        nova.locator("button", has_text="Cadastrar pessoa").click()
+        pagina.wait_for_selector(f"#recado .erro >> text={erro}")
+    assert limpo.execute("select count(*) from radar_pessoas").fetchone()[0] == 0
+    preencher("Ana Teste", "Ana", "Departamento Pessoal", "contadora", "sc-012345/0-5", usos=("equipe", "orientacao"))
+    nova.locator("button", has_text="Cadastrar pessoa").click()
+    pagina.wait_for_selector("#recado >> text=Pessoa cadastrada.")
+    assert limpo.execute("select nome, nome_na_peca, categoria, crc, termo_assinado_em, termo_canais, termo_usos, ativo from radar_pessoas").fetchall() == [
+        ("Ana Teste", "Ana", "contadora", "CRC-SC 012345/O-5", date(2026, 10, 1), ["instagram", "facebook"], ["equipe", "orientacao"], True)]
+    assert "Como sai na arte: Ana, contadora · CRC-SC 012345/O-5" in pagina.inner_text("form[data-form=pessoa]")
+    pagina.click("summary >> text=Cadastrar pessoa")
+    preencher("Bruno Exemplo", "Bruno", "Fiscal", canais=("instagram",))
+    limpar_recados(pagina)
+    nova.locator("button", has_text="Cadastrar pessoa").click()
+    pagina.wait_for_selector("#recado >> text=Pessoa cadastrada.")
+    ana, bruno = [i for (i,) in limpo.execute("select id from radar_pessoas order by id").fetchall()]
+    form_bruno = pagina.locator(f"form[data-form=pessoa][data-id='{bruno}']")
+    assert "Como sai na arte: Bruno · Departamento Fiscal" in form_bruno.inner_text()
+    form_bruno.locator("[name=ativo]").uncheck()
+    form_bruno.locator("button", has_text="Salvar").click()
+    pagina.wait_for_selector("#recado >> text=Pessoa salva.")
+    assert limpo.execute("select ativo, termo_canais from radar_pessoas where id = %s", (bruno,)).fetchone() == (False, ["instagram"])
+    # quem está numa peça não se apaga (o banco recusa); quem não está, sim
+    peca_db(limpo, "2026-11-11", "quem_cuida", "foto", pessoas=[ana])
+    pagina.click(f"form[data-form=pessoa][data-id='{ana}'] [data-acao=pessoa-excluir]")
+    pagina.wait_for_selector("#recado .erro >> text=esta pessoa está numa peça da Pauta")
+    limpar_recados(pagina)
+    pagina.click(f"form[data-form=pessoa][data-id='{bruno}'] [data-acao=pessoa-excluir]")
+    pagina.wait_for_selector("#recado >> text=Pessoa excluída.")
+    assert limpo.execute("select id from radar_pessoas").fetchall() == [(ana,)]
+    pagina.screenshot(path=str(FOTOS / "44-pauta-pessoas-e-termos.png"), full_page=True)
+    # o editor só consulta
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina)
+    pagina.click("[data-acao=pauta-pessoas]")
+    pagina.wait_for_selector(f"form[data-form=pessoa][data-id='{ana}']")
+    assert pagina.locator("form[data-form=novaPessoa], [data-acao=pessoa-excluir], form[data-form=pessoa] button").count() == 0
+    assert pagina.evaluate("() => [...document.querySelectorAll('form[data-form=pessoa] input, form[data-form=pessoa] select')].every(c => c.disabled)")
+    # no celular
+    contexto = navegador.new_context(viewport={"width": 375, "height": 740}, locale="pt-BR")
+    contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
+    pg = contexto.new_page()
+    try:
+        entrar(pg, "admin@artecon.test")
+        pg.wait_for_selector("text=Painel do dia")
+        abrir_pauta(pg)
+        pg.click("[data-acao=pauta-pessoas]")
+        pg.wait_for_selector("h1 >> text=Pessoas e termos")
+        pg.click("summary >> text=Cadastrar pessoa")
+        assert sem_rolagem_lateral(pg), "pessoas no celular"
+    finally:
+        contexto.close()
+
+
+def test_painel_mostra_falha_da_pauta_um_cartao_so(pagina, pauta):
+    """v0.21.0: o Painel ganha UM cartão com as publicações da Pauta que não saíram (a conta de radar_v_painel.pauta_falhas); sem
+    falha, o cartão não aparece. O cartão leva à Pauta, onde o administrador vê “Não saíram” e abre a peça com o erro."""
+    db = pauta
+    p1, r1 = peca_aprovada(db, dias=2)
+    _, r2 = peca_aprovada(db, dias=3, canais=("instagram", "facebook"))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    assert pagina.locator(".cartao", has_text="Publicações da Pauta que não saíram").count() == 0
+    for e in (r1["envios"]["instagram"], r2["envios"]["facebook"]):
+        db.execute("update radar_redes_envios set situacao = 'erro', erro = 'A Meta recusou a imagem (teste).' where id = %s", (e,))
+    pagina.evaluate("() => desenhar()")
+    cartao = pagina.locator(".cartao", has_text="Publicações da Pauta que não saíram")
+    cartao.wait_for()
+    assert cartao.count() == 1 and cartao.locator("b").inner_text() == "2" and "alerta" in cartao.get_attribute("class")
+    cartao.click()
+    pagina.wait_for_selector("#pauta-falhas")
+    assert pagina.locator("#pauta-falhas tr").count() == 3 and pagina.inner_text("#pauta-falhas").count("A Meta recusou a imagem (teste).") == 2
+    pagina.click(f"#pauta-falhas [data-acao=abrir-peca][data-id='{p1}']")
+    pagina.wait_for_selector(f"form[data-form=peca][data-id='{p1}']")
+    assert "Instagram: não saiu. A Meta recusou a imagem (teste)." in pagina.inner_text(".peca-erro") and pagina.inner_text("#peca-situacao") == "Não saiu"
+
+
+def test_publicacoes_ignora_envio_sem_conteudo(pagina, pauta):
+    """v0.21.0: o envio publicado da Pauta não tem conteúdo (conteudo_id nulo): a aba Publicações lê só os envios das notícias, e
+    nenhum pedido leva "null" na lista de conteúdos ("in.(null)"); a aba abre normalmente, com a notícia publicada."""
+    db = pauta
+    _, r = peca_aprovada(db, dias=2)
+    db.execute("""update radar_redes_envios set situacao = 'publicado', enviado_em = now(), publicado_em = now(), post_id = '17890000000000001',
+                  url = 'https://www.instagram.com/p/exemplo/' where id = %s""", (r["envios"]["instagram"],))
+    _, c = artigo_aprovado(db, "Notícia aprovada de teste", autor=None)
+    pedidos = []
+    pagina.on("request", lambda req: pedidos.append(req.url) if "/rest/v1/radar_conteudos" in req.url or "/rest/v1/radar_redes_envios" in req.url else None)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#resumo-canais")
+    assert pagina.locator("main .aviso.erro").count() == 0 and pagina.locator(f"#tab-canais tr[data-conteudo='{c}']").count() == 1
+    assert any("conteudo_id=not.is.null" in u for u in pedidos)
+    assert not [u for u in pedidos if "null" in u.replace("not.is.null", "")], pedidos
+
+
+def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
+    """v0.21.0: Configurações → Pauta e agenda automática (o 7º bloco): agenda_ligada (true ou false), hora_padrao ("HH:MM"),
+    janela_horas (1 a 48) e hashtags (até 3, com #) são conferidos antes de gravar; na agenda de obrigações, "redes" é true ou false e
+    "fonte" é um texto curto. Com a agenda desligada, a Pauta avisa o administrador."""
+    original = dict(limpo.execute("select chave, valor from radar_config where chave in ('pauta', 'obrigacoes')").fetchall())
+    try:
+        entrar(pagina, "admin@artecon.test")
+        pagina.wait_for_selector("text=Painel do dia")
+        pagina.click("nav.abas >> text=Configurações")
+        pagina.wait_for_selector("h2 >> text=Pauta e agenda automática")
+        assert json.loads(pagina.locator("#cfg-pauta").input_value()) == original["pauta"]
+        campo, salvar = pagina.locator("#cfg-pauta"), pagina.locator("form[data-chave=pauta] button")
+        for ruim, aviso in [("[]", "precisa ser um objeto"), ('{"agenda_ligada": "sim"}', "“agenda_ligada” é true ou false"),
+                            ('{"hora_padrao": "9h30"}', "“hora_padrao” é a hora de Brasília"), ('{"hora_padrao": "24:00"}', "“hora_padrao” é a hora de Brasília"),
+                            ('{"janela_horas": 0}', "“janela_horas” é um número inteiro de 1 a 48"), ('{"janela_horas": 2.5}', "“janela_horas” é um número inteiro"),
+                            ('{"hashtags": ["#a", "#b", "#c", "#d"]}', "“hashtags” é uma lista de até 3"), ('{"hashtags": ["Contabilidade"]}', "“hashtags” é uma lista"),
+                            ('{"hashtags": ["#Conta bilidade"]}', "“hashtags” é uma lista")]:
+            campo.fill(ruim)
+            limpar_recados(pagina)
+            salvar.click()
+            pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
+        assert limpo.execute("select valor from radar_config where chave = 'pauta'").fetchone()[0] == original["pauta"]
+        campo.fill('{"agenda_ligada": false, "hora_padrao": "10:15", "janela_horas": 4, "hashtags": ["#Contabilidade", "#Palhoça"]}')
+        salvar.click()
+        pagina.wait_for_selector("#recado >> text=Configuração salva.")
+        assert limpo.execute("select valor from radar_config where chave = 'pauta'").fetchone()[0] == {
+            "agenda_ligada": False, "hora_padrao": "10:15", "janela_horas": 4, "hashtags": ["#Contabilidade", "#Palhoça"]}
+        obrig = pagina.locator("#cfg-obrigacoes")
+        for valor, aviso in [([{"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga", "redes": "nao"}], "“redes” é true ou false"),
+                             ([{"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga", "fonte": "x" * 301}], "“fonte” é um texto de até 300 caracteres")]:
+            obrig.fill(json.dumps(valor))
+            limpar_recados(pagina)
+            pagina.locator("form[data-chave=obrigacoes] button").click()
+            pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
+        assert "Honorário contábil" in pagina.inner_text("form[data-chave=obrigacoes] .sub")
+        abrir_pauta(pagina)
+        assert "Configurações → Pauta → \"agenda_ligada\": false" in pagina.inner_text("#agenda-desligada")
+    finally:
+        for chave, valor in original.items():
+            limpo.execute("update radar_config set valor = %s where chave = %s", (json.dumps(valor), chave))
+
+
+# ------------------------------------------------------- v0.21.0 — a arte da peça, a conferência, a aprovação e a publicação
+from test_radar_banco import IDENT, LEG_PECA, marcar_pronta, nova_peca  # noqa: E402
+
+DIAS_PAUTA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
+# a prévia montada: todas as lâminas com a imagem (JPEG) e nenhuma pendente
+ARTES_PRONTAS = ("() => { const i = [...document.querySelectorAll('#peca-artes img.peca-arte')];"
+                 " return i.length > 0 && i.every(x => !x.dataset.pendente && /^data:image\\/jpeg;base64,/.test(x.getAttribute('src') || '')); }")
+# a prévia desenhada de novo, guardando cada texto escrito: a letra, a posição, a largura medida e a altura do “H” na letra usada
+MEDIR_PECA = """async () => { const orig = CanvasRenderingContext2D.prototype.fillText, feitos = [];
+    CanvasRenderingContext2D.prototype.fillText = function(t, x, y, max){
+        const base = this.textBaseline; this.textBaseline = "alphabetic";        // a altura do “H” acima da linha de base
+        feitos.push({t, x, fonte: this.font, largura: this.measureText(t).width, alturaH: this.measureText("H").actualBoundingBoxAscent});
+        this.textBaseline = base; return orig.call(this, t, x, y, max); };
+    try{ const r = await montarArtesPeca(); return {laminas: (r || []).map(l => ({textos: l.textos || [], cortes: l.cortes || [], erro: l.erro || null})), feitos}; }
+    finally{ CanvasRenderingContext2D.prototype.fillText = orig; } }"""
+
+
+def foto_jpeg(db, cor=(40, 110, 160), uid=EDITOR):
+    """Foto da peça já em 1080×1350 (JPEG), como a tela grava em radar_imagens."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (1080, 1350), cor)
+    d = ImageDraw.Draw(img)
+    d.ellipse((340, 260, 740, 660), fill=(240, 200, 170))
+    d.rectangle((240, 700, 840, 1350), fill=(20, 60, 100))
+    saida = io.BytesIO()
+    img.save(saida, "JPEG", quality=80)
+    dados = "data:image/jpeg;base64," + base64.b64encode(saida.getvalue()).decode()
+    with como("authenticated", uid) as c:
+        return c.execute("insert into radar_imagens (dados, largura, altura) values (%s, 1080, 1350) returning id", (dados,)).fetchone()[0]
+
+
+def data_peca(db, pid):
+    return db.execute("select data from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0].isoformat()
+
+
+def dia_pauta(iso):
+    """O dia como a confirmação da aprovação mostra: “sáb, 31/10/2026”."""
+    d = date.fromisoformat(iso)
+    return f"{DIAS_PAUTA[d.weekday()]}, {d:%d/%m/%Y}"
+
+
+def sair_e_entrar(pg, email):
+    pg.click("text=Sair")
+    pg.wait_for_selector("#email")
+    entrar(pg, email)
+    pg.wait_for_selector("text=Painel do dia")
+
+
+def aprovar_na_tela(pg, caixas=()):
+    """Abre o quadro “Aprovar a peça”, marca as conferências pedidas e confirma (o diálogo é aceito pela página)."""
+    pg.click("#peca-aprovar summary")
+    for c in caixas:
+        pg.check(f"#peca-aprovar .aprovar-conf[value={c}]")
+    limpar_recados(pg)
+    pg.click("#peca-aprovar [data-acao=peca-aprovar]")
+
+
+def legal_de(feitos):
+    """As linhas da faixa legal: as últimas escritas na lâmina que, juntas com “ · ”, dão a identificação."""
+    for k in (1, 2):
+        if " · ".join(f["t"] for f in feitos[-k:]) == IDENT:
+            return feitos[-k:]
+    raise AssertionError([f["t"] for f in feitos[-3:]])
+
+
+def test_peca_arte_faixa_28px_de_altura_72px_de_margem_sem_materia_completa_nem_selo_sc(pagina, pauta):
+    """v0.21.0: a arte da peça (desenharPeca, à parte da arte da notícia): 1080×1350; nada escrito fora da margem de 72 px (nem espremido);
+    a faixa legal branca com a identificação das Configurações em letra de pelo menos 28 px de altura medida (o “H”), em até 2 linhas; o
+    selo do tipo, a chamada, o apoio e a linha da pessoa (escrita pelo código, com a categoria e o CRC); sem “Matéria completa” e sem o
+    selo de SC, mesmo depois de abrir um assunto de SC. A prévia é redesenhada ao digitar, ao marcar a pessoa e ao acrescentar cartão; o
+    carrossel tem a capa e uma lâmina por cartão, numeradas; a agenda agrupa as datas; a identificação que não cabe é cortada, avisada e
+    trava a conferência."""
+    db = pauta
+    ana = nova_pessoa(db, "Ana Teste", "Ana", categoria="contadora", crc="CRC-SC 012345/O-5")
+    foto = foto_jpeg(db)
+    pid = peca_db(db, "2026-11-11", "quem_cuida", "foto", chamada="Quem cuida da sua folha de pagamento",
+                  apoio="Conheça a equipe do Departamento Pessoal.", pessoas=[ana], fotos=[foto])
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.evaluate("() => { E.abrangencia = 'estadual_sc'; }")             # como se um assunto de SC tivesse sido aberto antes
+    abrir_peca(pagina, pid, "2026-11-11")
+    pagina.wait_for_function(ARTES_PRONTAS)
+    assert pagina.evaluate("() => { const i = document.querySelector('#peca-artes img'); return [i.naturalWidth, i.naturalHeight]; }") == [1080, 1350]
+    r = pagina.evaluate(MEDIR_PECA)
+    [lam] = r["laminas"]
+    tudo = " ".join(lam["textos"])
+    assert lam["cortes"] == [] and lam["erro"] is None
+    assert "QUEM CUIDA" in lam["textos"] and "Quem cuida da sua folha de pagamento" in tudo and "Conheça a equipe do Departamento Pessoal." in tudo
+    assert "Ana, contadora · CRC-SC 012345/O-5" in lam["textos"]
+    assert "Matéria completa" not in tudo and "NORMA ESTADUAL" not in tudo and "SC" not in lam["textos"]
+    fora = [f for f in r["feitos"] if f["x"] < 72 - 0.01 or f["x"] + f["largura"] > 1080 - 72 + 0.5]
+    assert fora == [], fora                                                   # margem de 72 px dos dois lados, sem espremer
+    legal = legal_de(r["feitos"])
+    assert all(f["alturaH"] >= 28 for f in legal), legal                      # a letra da faixa: “H” com 28 px de altura ou mais
+    branco, faixa_alto, foto_meio = _pixels(pagina, "#peca-artes img", [(5, 1345), (540, 1300), (540, 400)])
+    assert min(branco) > 245 and min(faixa_alto) > 245 and min(foto_meio) < 245              # a faixa legal é branca; a foto, não
+    Path(FOTOS / "45-pauta-lamina-foto.jpg").write_bytes(base64.b64decode(pagina.get_attribute("#peca-artes img", "src").split(",", 1)[1]))
+    # a prévia acompanha o que é digitado (sem salvar) e a pessoa desmarcada
+    antes = pagina.get_attribute("#peca-artes img", "src")
+    pagina.fill("form[data-form=peca] [name=chamada]", "A folha de pagamento em dia")
+    pagina.wait_for_function("a => { const i = document.querySelector('#peca-artes img'); return !i.dataset.pendente && i.getAttribute('src') !== a; }", arg=antes)
+    pagina.uncheck(f"form[data-form=peca] input[name=pessoa][value='{ana}']")
+    pagina.wait_for_function(ARTES_PRONTAS)
+    lam = pagina.evaluate(MEDIR_PECA)["laminas"][0]
+    assert "A folha de pagamento em dia" in " ".join(lam["textos"]) and not any("Ana" in t for t in lam["textos"])
+    assert db.execute("select chamada, pessoas from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("Quem cuida da sua folha de pagamento", [ana])
+    pagina.screenshot(path=str(FOTOS / "46-pauta-peca-arte.png"), full_page=True)
+    # carrossel: a capa e uma lâmina por cartão, numeradas; o selo só na capa; sem a linha de pessoa (não há foto)
+    car = peca_db(db, "2026-11-12", "educativo", "carrossel", chamada="Checklist do fim do mês", apoio="Passos para fechar o mês.",
+                  cartoes=[{"titulo": "Separe as notas", "texto": "Junte as notas fiscais do mês."}, {"titulo": "Confira a folha", "texto": "Revise os pagamentos."}])
+    pagina.evaluate("() => { E.pauta.peca = null; return desenhar(); }")
+    pagina.click(f".pauta-dia[data-peca='{car}'] [data-acao=abrir-peca]")
+    pagina.wait_for_selector(f"form[data-form=peca][data-id='{car}']")
+    pagina.wait_for_function(ARTES_PRONTAS)
+    assert pagina.locator("#peca-artes img.peca-arte").count() == 3
+    laminas = pagina.evaluate(MEDIR_PECA)["laminas"]
+    assert ["1/3" in l["textos"] for l in laminas] == [True, False, False] and "3/3" in laminas[2]["textos"]
+    assert "ORIENTAÇÃO" in laminas[0]["textos"] and not any("ORIENTAÇÃO" in l["textos"] for l in laminas[1:])
+    assert "Separe as notas" in laminas[1]["textos"] and "Revise os pagamentos." in " ".join(laminas[2]["textos"])
+    pagina.click("[data-acao=peca-cartao-linha]")
+    pagina.locator("form[data-form=peca] .cartao-linha input").last.fill("Guarde os recibos")
+    pagina.wait_for_function("() => document.querySelectorAll('#peca-artes img.peca-arte').length === 4")
+    pagina.wait_for_function(ARTES_PRONTAS)
+    assert "Guarde os recibos" in pagina.evaluate(MEDIR_PECA)["laminas"][3]["textos"]
+    # a agenda da semana: as informações conferidas agrupadas pela data
+    ag = peca_db(db, "2026-11-29", "agenda", "imagem", conferidas=[{"informacao": "30/11 (seg) · ICMS", "fonte": "Regra"},
+                 {"informacao": "30/11 (seg) · ISS", "fonte": "Regra"}, {"informacao": "04/12 (sex) · FGTS", "fonte": "Regra"}])
+    pagina.evaluate("() => { E.pauta.peca = null; E.pauta.semana = '2026-11-23'; return desenhar(); }")
+    pagina.click(f".pauta-dia[data-peca='{ag}'] [data-acao=abrir-peca]")
+    pagina.wait_for_selector(f"form[data-form=peca][data-id='{ag}']")
+    pagina.wait_for_function(ARTES_PRONTAS)
+    textos = pagina.evaluate(MEDIR_PECA)["laminas"][0]["textos"]
+    assert textos.count("30/11 (seg)") == 1 and textos.count("04/12 (sex)") == 1 and ["• ICMS", "• ISS", "• FGTS"] == [t for t in textos if t.startswith("• ")]
+    assert "AGENDA DA SEMANA" in textos and "Agenda da semana" in textos
+    # a identificação que não cabe em 2 linhas: cortada, avisada embaixo da arte e listada na conferência (trava)
+    db.execute("update radar_config set valor = valor || %s where chave = 'assinatura'",
+               (json.dumps({"empresa": "Artecon Artes Contábeis Ltda. Escritório de Contabilidade, Auditoria e Assessoria Empresarial de Palhoça e Região"}),))
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#peca-artes-avisos .aviso.erro >> text=Lâmina 1: a identificação legal não coube")
+    assert pagina.evaluate(MEDIR_PECA)["laminas"][0]["cortes"] == ["identificacao"]
+    pagina.click("[data-acao=peca-conferir]")
+    pagina.wait_for_selector("#peca-conferencia .aviso.erro >> text=Lâmina 1: a identificação legal não coube")
+
+
+def test_peca_salvar_e_marcar_pronta_mostra_lista_do_banco(pagina, pauta):
+    """v0.21.0: “Salvar e marcar como pronta” salva, confere e mostra na peça a lista do banco (radar_pauta_conferir: a identificação legal
+    na legenda, o {confirmar}, os números fora das informações conferidas) e a da tela (o termo que a publicidade não usa), sem marcar
+    como pronta; resolvido, a peça fica pronta e o editor vê que falta o administrador aprovar. “Conferir o que falta” só lê (e pede a
+    peça salva)."""
+    db = pauta
+    pid = peca_db(db, "2026-11-12", "educativo", "imagem")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-12")
+    form = pagina.locator("form[data-form=peca]")
+    form.locator("[name=chamada]").fill("Prazo da DCTFWeb em 2026")
+    form.locator("[name=apoio]").fill("Promoção: confira o dia {confirmar dia}")
+    form.locator("[name=legenda_instagram]").fill("A DCTFWeb vence no dia 30. Fale com a gente.")
+    pagina.click("[data-acao=peca-conferir]")
+    pagina.wait_for_selector("#recado .erro >> text=salve antes de conferir")
+    assert db.execute("select chamada from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == ""
+    pagina.click("[data-acao=peca-salvar-pronta]")
+    pagina.wait_for_selector("#recado .erro >> text=Peça salva, mas ainda não fica pronta: há 4 ponto(s) a resolver")
+    lista = pagina.locator("#peca-conferencia .aviso.erro li").all_inner_texts()
+    assert any(x.startswith("Legenda do Instagram: falta a linha de identificação") for x in lista), lista
+    assert any(x.startswith("Há {confirmar …} no texto") for x in lista), lista
+    assert "Números que não estão nas informações conferidas: 2026, 30" in lista, lista
+    assert any(x.startswith("Troque antes de aprovar: “promoção” na linha de apoio da arte.") for x in lista), lista
+    assert db.execute("select chamada, situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("Prazo da DCTFWeb em 2026", "em_producao")
+    # resolvido: a informação conferida, a identificação legal na legenda e o apoio sem a promoção nem a marca
+    form.locator("[name=apoio]").fill("Confira o dia do vencimento.")
+    pagina.click("[data-acao=peca-conf-linha]")
+    form.locator(".conf-linha textarea").last.fill("A DCTFWeb de 2026 vence no dia 30")
+    form.locator(".conf-linha input").last.fill("Receita Federal (gov.br)")
+    pagina.click("[data-acao=peca-completar-legenda][data-canal=instagram]")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-salvar-pronta]")
+    pagina.wait_for_selector("#recado >> text=Peça pronta: falta o administrador aprovar")
+    situacao, legenda = db.execute("select situacao, legenda_instagram from radar_pauta_pecas where id = %s", (pid,)).fetchone()
+    assert situacao == "pronta" and IDENT in legenda and legenda.endswith("#Contabilidade #Palhoça")
+    assert pagina.locator("#peca-aprovar").count() == 0 and "falta o administrador aprovar" in pagina.inner_text("#peca-espera")
+    assert pagina.locator("[data-acao=peca-salvar-pronta]").count() == 0
+    pagina.click("[data-acao=peca-conferir]")
+    pagina.wait_for_selector("#peca-conferencia .aviso.info >> text=Nada a resolver")
+
+
+def test_peca_aprovar_so_admin_guarda_as_laminas_e_mostra_hora_e_agenda_desligada(pagina, pauta):
+    """v0.21.0: o administrador aprova a peça pronta no quadro “Aprovar a peça”: as conferências obrigatórias (pessoas na foto), a
+    confirmação com o dia e a hora de Brasília e o aviso da agenda automática desligada (os testes não têm o pg_cron). A lâmina que vai ao
+    ar é a da tela, guardada na aprovação (JPEG 1080×1350, enviada por ele) e copiada para um envio por canal, agendado para a hora da
+    peça. Aprovada, a peça mostra a arte aprovada e a hora; “Desfazer aprovação” cancela os envios e a peça volta a pronta."""
+    db = pauta
+    ana = nova_pessoa(db, "Ana Teste", "Ana", categoria="contadora", crc="CRC-SC 012345/O-5")
+    pid = nova_peca(db, dias=3, tipo="quem_cuida", formato="foto", pessoas=[ana], fotos=[foto_jpeg(db)], legenda_facebook=LEG_PECA)
+    marcar_pronta(db, pid)
+    data = data_peca(db, pid)
+    mensagens = []
+    pagina.on("dialog", lambda d: mensagens.append(d.message))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, data)
+    pagina.wait_for_function(ARTES_PRONTAS)
+    lamina = pagina.get_attribute("#peca-artes img", "src")
+    imagens = db.execute("select count(*) from radar_imagens").fetchone()[0]
+    aprovar_na_tela(pagina)
+    pagina.wait_for_selector("#recado .erro >> text=Marque antes: “Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)”")
+    painel = pagina.locator("#peca-aprovar")
+    assert painel.locator(".aprovar-canal:checked").count() == 2 and painel.locator("input[name=aprovar-modo][value=agendar]").is_checked()
+    assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "pronta" and mensagens == []
+    assert db.execute("select count(*) from radar_imagens").fetchone()[0] == imagens
+    painel.locator(".aprovar-conf[value=pessoas]").check()
+    limpar_recados(pagina)
+    painel.locator("[data-acao=peca-aprovar]").click()
+    pagina.wait_for_selector(f"#recado >> text=Peça aprovada: sai no Instagram e no Facebook em {data[8:10]}/{data[5:7]} 09:30 (Brasília).")
+    [confirmacao] = mensagens
+    assert confirmacao.startswith(f"Vai ao ar exatamente o que está na tela, no Instagram e no Facebook, em {dia_pauta(data)}, às 09:30 (horário de Brasília).")
+    assert "A agenda automática está DESLIGADA: a peça só sai se alguém clicar em Publicar agora." in confirmacao
+    situacao, modo, artes, conf, ident = db.execute("""select situacao, aprovado_modo, artes, aprovado_conferencias, arte_identificacao
+                                                       from radar_pauta_pecas where id = %s""", (pid,)).fetchone()
+    assert (situacao, modo, conf, ident, len(artes)) == ("aprovada", "agendar", ["pessoas"], IDENT, 1)
+    dados, larg, alt, quem = db.execute("select dados, largura, altura, criado_por from radar_imagens where id = %s", (artes[0],)).fetchone()
+    assert dados == lamina and (larg, alt) == (1080, 1350) and str(quem) == str(ADMIN)               # a lâmina da tela, guardada por quem aprovou
+    quando = datetime.fromisoformat(data + "T09:30:00-03:00")
+    envios = db.execute("select canal, situacao, legenda, imagem, agendado_para from radar_redes_envios where peca_id = %s order by canal", (pid,)).fetchall()
+    assert [(c, s, leg == LEG_PECA, img == lamina, ag == quando) for c, s, leg, img, ag in envios] == [
+        ("facebook", "autorizado", True, True, True), ("instagram", "autorizado", True, True, True)]
+    pagina.wait_for_selector("#peca-aprovada-quadro")
+    assert pagina.get_attribute("#peca-artes-aprovadas img", "src") == lamina and pagina.locator("#peca-artes").count() == 0
+    quadro = pagina.inner_text("#peca-aprovada-quadro")
+    assert f"Instagram: agendada para {data[8:10]}/{data[5:7]} 09:30 (Brasília)" in quadro and "Publicar agora" in quadro
+    assert pagina.inner_text("#peca-situacao") == f"Agendada {data[8:10]}/{data[5:7]} 09:30"
+    assert pagina.locator("form[data-form=peca] [name=chamada]").is_disabled() and pagina.locator("#peca-aprovar").count() == 0
+    pagina.screenshot(path=str(FOTOS / "47-pauta-peca-aprovada.png"), full_page=True)
+    # desfazer: o que não saiu é cancelado e a peça volta a pronta, sem as lâminas aprovadas
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-desaprovar]")
+    pagina.wait_for_selector("#recado >> text=Aprovação desfeita: a peça voltou a pronta.")
+    assert db.execute("select situacao, artes, aprovado_modo from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("pronta", [], None)
+    assert db.execute("select situacao, erro from radar_redes_envios where peca_id = %s", (pid,)).fetchall() == [("cancelado", "Aprovação desfeita na Pauta.")] * 2
+    pagina.wait_for_selector("#peca-aprovar")
+
+
+def test_peca_aprovar_trava_termo_de_promocao_e_comparacao(pagina, pauta):
+    """v0.21.0: na Pauta, os termos que a publicidade da profissão contábil não usa travam a aprovação, dizendo onde estão: os de
+    TERMOS_PECA (promoção, comparação, superlativo…) e as travas da lista compartilhada (“blinde seu patrimônio”). Nada é guardado, nada é
+    perguntado e a peça continua pronta. O banco não conhece essa lista: a peça ficou pronta por ele."""
+    db = pauta
+    pid = nova_peca(db, dias=4, tipo="captacao", formato="imagem", chamada="O melhor atendimento de Palhoça",
+                    legenda_instagram="Promoção de primavera: diferente dos outros escritórios, a Artecon explica cada guia.\n\n" + IDENT,
+                    legenda_facebook="Blinde seu patrimônio: conheça a Artecon.\n\n" + IDENT)
+    marcar_pronta(db, pid)
+    mensagens = []
+    pagina.on("dialog", lambda d: mensagens.append(d.message))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, data_peca(db, pid))
+    pagina.wait_for_function(ARTES_PRONTAS)
+    imagens = db.execute("select count(*) from radar_imagens").fetchone()[0]
+    aprovar_na_tela(pagina)
+    pagina.wait_for_selector("#recado .erro >> text=Há 1 ponto(s) a resolver antes de aprovar: a lista está na peça.")
+    [trava] = pagina.locator("#peca-conferencia .aviso.erro li").all_inner_texts()
+    assert trava.startswith("Troque antes de aprovar: “promoção”, “diferente dos outros” na legenda do Instagram; “blinde seu patrimônio” na legenda do "
+                            "Facebook; “o melhor” na chamada da arte. A publicidade da profissão contábil informa, não vende"), trava
+    assert mensagens == [] and db.execute("select count(*) from radar_imagens").fetchone()[0] == imagens
+    assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "pronta"
+    assert db.execute("select count(*) from radar_redes_envios where peca_id = %s", (pid,)).fetchone()[0] == 0
+
+
+def test_peca_publicar_agora_so_remarca_e_chama_a_funcao_com_a_agenda_desligada(pagina, pauta):
+    """v0.21.0: “Publicar agora” só remarca a hora dos envios para agora (o banco confere tudo de novo); com a agenda automática
+    desligada (os testes não têm o pg_cron), a tela chama a função radar-redes para cada canal, um depois do outro, com um recado só no
+    fim; com a agenda rodando, não chama: avisa que sai em até 5 minutos. O post publicado pode ser excluído da rede pela peça."""
+    db = pauta
+    pid, r = peca_aprovada(db, dias=3, canais=("instagram", "facebook"))
+    ig, fb = r["envios"]["instagram"], r["envios"]["facebook"]
+    pedidos = []
+
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        envio = corpo.get("envio")
+        pedidos.append((corpo, db.execute("select agendado_para <= now(), disparos from radar_redes_envios where id = %s", (envio,)).fetchone()))
+        if corpo.get("acao") == "publicar":
+            url = f"https://www.instagram.com/p/EXEMPLO{envio}/"
+            db.execute("""update radar_redes_envios set situacao = 'publicado', enviado_em = now(), publicado_em = now(), post_id = %s, url = %s,
+                          imagem = null where id = %s""", (f"1789{envio}", url, envio))
+            return rota.fulfill(status=200, content_type="application/json", body=json.dumps({"situacao": "publicado", "url": url}))
+        db.execute("update radar_redes_envios set situacao = 'excluido', excluido_em = now(), excluido_como = 'api' where id = %s", (envio,))
+        rota.fulfill(status=200, content_type="application/json", body=json.dumps({"situacao": "excluido"}))
+    pagina.route("**/functions/v1/radar-redes", responder)
+    mensagens = []
+    pagina.on("dialog", lambda d: mensagens.append(d.message))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, data_peca(db, pid))
+    pagina.click("[data-acao=peca-publicar-agora]")
+    pagina.wait_for_selector("#recado >> text=Publicado no Instagram. Publicado no Facebook.")
+    assert mensagens[-1].startswith("Publicar agora? A peça sai como foi aprovada")
+    assert pedidos == [({"acao": "publicar", "envio": ig}, (True, 0)), ({"acao": "publicar", "envio": fb}, (True, 0))]
+    quadro = pagina.inner_text("#peca-aprovada-quadro")
+    assert "Instagram: publicada em" in quadro and "Facebook: publicada em" in quadro and pagina.inner_text("#peca-situacao") == "Publicada"
+    assert pagina.locator("[data-acao=peca-publicar-agora]").count() == 0
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-excluir][data-canal=instagram]")
+    pagina.wait_for_selector("#recado >> text=Excluída do Instagram.")
+    assert pedidos[-1][0] == {"acao": "excluir", "envio": ig} and db.execute("select situacao from radar_redes_envios where id = %s", (ig,)).fetchone()[0] == "excluido"
+    # com a agenda automática rodando, a tela não chama a função: a agenda do banco publica na próxima rodada
+    pid2, r2 = peca_aprovada(db, dias=4)
+    pagina.route("**/rest/v1/rpc/radar_agenda_situacao*", lambda rota: rota.fulfill(status=200, content_type="application/json",
+                 body=json.dumps({"instalada": True, "ativa": True, "agenda_ligada": True})))
+    pagina.evaluate("p => { E.pauta.peca = p; return desenhar(); }", pid2)
+    pagina.wait_for_selector(f"form[data-form=peca][data-id='{pid2}']")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-publicar-agora]")
+    pagina.wait_for_selector("#recado >> text=Remarcada para agora: a agenda do banco publica em até 5 minutos.")
+    assert len(pedidos) == 3
+    assert db.execute("select situacao, agendado_para <= now() from radar_redes_envios where id = %s", (r2["envios"]["instagram"],)).fetchone() == ("autorizado", True)
+
+
+def test_peca_tentar_de_novo_pede_conferi_na_rede(pagina, pauta):
+    """v0.21.0: o envio que deu erro aparece em “Não saíram” e na peça; “Tentar de novo” só vai com a caixa “Conferi no Instagram e no
+    Facebook: não saiu” (sem ela, nada muda e a função não é chamada); com ela, remarca também o canal que esperava a hora. O editor vê o
+    erro e Desfazer aprovação, mas não publica."""
+    db = pauta
+    pid, r = peca_aprovada(db, dias=2, canais=("instagram", "facebook"))
+    ig, fb = r["envios"]["instagram"], r["envios"]["facebook"]
+    db.execute("update radar_redes_envios set situacao = 'erro', erro = 'A Meta recusou a imagem (teste).', enviado_em = now() - interval '1 hour' where id = %s", (ig,))
+    pedidos = []
+
+    def responder(rota):
+        corpo = json.loads(rota.request.post_data or "{}")
+        pedidos.append(corpo)
+        db.execute("update radar_redes_envios set situacao = 'publicado', publicado_em = now(), post_id = '17890001', imagem = null where id = %s", (corpo["envio"],))
+        rota.fulfill(status=200, content_type="application/json", body=json.dumps({"situacao": "publicado"}))
+    pagina.route("**/functions/v1/radar-redes", responder)
+    data = data_peca(db, pid)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, data)
+    assert "Instagram: não saiu. A Meta recusou a imagem (teste)." in pagina.inner_text(".peca-erro")
+    assert pagina.locator("[data-acao=peca-tentar-de-novo], [data-acao=peca-publicar-agora], #peca-conferi-rede").count() == 0
+    assert pagina.locator("[data-acao=peca-desaprovar]").count() == 1
+    sair_e_entrar(pagina, "admin@artecon.test")
+    abrir_pauta(pagina)
+    pagina.click(f"#pauta-falhas [data-acao=abrir-peca][data-id='{pid}']")
+    pagina.wait_for_selector(f"form[data-form=peca][data-id='{pid}']")
+    assert pagina.locator("[data-acao=peca-publicar-agora]").count() == 1 and pagina.locator("[data-acao=peca-tentar-de-novo]").count() == 1
+    pagina.click("[data-acao=peca-tentar-de-novo]")
+    pagina.wait_for_selector("#recado .erro >> text=Antes de tentar de novo, confira no Instagram e no Facebook que a publicação não saiu")
+    assert pedidos == [] and db.execute("select situacao from radar_redes_envios where id = %s", (ig,)).fetchone()[0] == "erro"
+    pagina.check("#peca-conferi-rede")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-tentar-de-novo]")
+    pagina.wait_for_selector("#recado >> text=Publicado no Instagram. Publicado no Facebook.")
+    assert pedidos == [{"acao": "publicar", "envio": ig}, {"acao": "publicar", "envio": fb}]
+    assert db.execute("select situacao, erro from radar_redes_envios where id = %s", (ig,)).fetchone() == ("publicado", None)
+
+
+def test_peca_parada_publicando_cancela_e_nova_aprovacao_pede_conferi_na_rede(pagina, pauta):
+    """v0.21.0: o envio parado em “publicando” há mais de 10 minutos pode ter saído: a peça avisa para conferir na rede e o administrador
+    cancela; desfeita a aprovação, a nova aprovação desse canal pede “Conferi no Instagram e no Facebook: não saiu” (o banco também)."""
+    db = pauta
+    pid, r = peca_aprovada(db, dias=2)
+    ig = r["envios"]["instagram"]
+    db.execute("update radar_redes_envios set situacao = 'enviando', enviado_em = now() - interval '20 minutes' where id = %s", (ig,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, data_peca(db, pid))
+    assert "parada há mais de 10 minutos; confira no Instagram se saiu antes de cancelar" in pagina.inner_text("#peca-aprovada-quadro")
+    pagina.click(f"#peca-aprovada-quadro [data-acao=cancelar-rede][data-envio='{ig}']")
+    pagina.wait_for_selector("#recado >> text=Feito.")
+    assert db.execute("select situacao, enviado_em is not null, post_id from radar_redes_envios where id = %s", (ig,)).fetchone() == ("cancelado", True, None)
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-desaprovar]")
+    pagina.wait_for_selector("#recado >> text=Aprovação desfeita: a peça voltou a pronta.")
+    pagina.wait_for_function(ARTES_PRONTAS)
+    assert pagina.locator("#peca-aprovar .aprovar-conf").evaluate_all("l => l.map(c => c.value)") == ["rede"]
+    aprovar_na_tela(pagina)
+    pagina.wait_for_selector("#recado .erro >> text=Marque antes: “Conferi no Instagram e no Facebook: não saiu”")
+    assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "pronta"
+    pagina.check("#peca-aprovar .aprovar-conf[value=rede]")
+    limpar_recados(pagina)
+    pagina.click("#peca-aprovar [data-acao=peca-aprovar]")
+    pagina.wait_for_selector("#recado >> text=Peça aprovada: sai no Instagram em")
+    assert db.execute("select aprovado_conferencias from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == ["rede"]
+    assert db.execute("select situacao from radar_redes_envios where peca_id = %s order by id", (pid,)).fetchall() == [("cancelado",), ("autorizado",)]
+
+
+def test_carrossel_e_reel_a_mao_baixar_e_copiar_so_depois_de_aprovado_e_registrar_link(navegador, pauta):
+    """v0.21.0: carrossel e reel saem à mão nesta versão: o administrador aprova no modo “à mão” (agendar fica desabilitado); o carrossel
+    guarda a capa e uma lâmina por cartão, o reel nenhuma. Só a peça aprovada à mão libera baixar as lâminas (pauta-AAAA-MM-DD-N.jpg) e
+    copiar a legenda e o roteiro (com a identificação legal no último quadro), depois de o banco conferir o termo de cada pessoa HOJE
+    (revogado, recusa). O link do post é registrado (o banco confere o endereço da rede); o que já saiu não se desfaz."""
+    db = pauta
+    ana = nova_pessoa(db, "Ana Teste", "Ana", categoria="contadora", crc="CRC-SC 012345/O-5")
+    cartoes = [{"titulo": "Separe as notas", "texto": "Junte as notas fiscais do mês."}, {"titulo": "Confira a folha", "texto": "Revise os pagamentos da equipe."}]
+    car = nova_peca(db, dias=2, tipo="educativo", formato="carrossel", cartoes=cartoes, pessoas=[ana], legenda_facebook=LEG_PECA)
+    marcar_pronta(db, car)
+    roteiro = "Abertura: a equipe se apresenta.\nFala: como organizar as notas do mês.\nFim: fale com a gente."
+    reel = nova_peca(db, dias=3, tipo="reel", formato="reel", chamada="", apoio="", roteiro=roteiro)
+    marcar_pronta(db, reel)
+    contexto = navegador.new_context(viewport={"width": 1280, "height": 900}, locale="pt-BR")
+    contexto.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
+    contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
+    pg = contexto.new_page()
+    erros, mensagens = [], []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    pg.on("dialog", lambda d: (mensagens.append(d.message), d.accept()))
+    try:
+        # antes da aprovação: sem copiar nem baixar (e o banco também recusa)
+        entrar(pg)
+        pg.wait_for_selector("text=Painel do dia")
+        abrir_peca(pg, car, data_peca(db, car))
+        assert pg.locator("[data-acao=peca-copiar-legenda], [data-acao=peca-baixar], #peca-aprovar").count() == 0
+        assert pg.evaluate("([p, l]) => rpc('radar_pauta_pode_copiar', {p_peca: p, p_lido: l})",
+                           [car, pg.get_attribute("form[data-form=peca]", "data-lido")]) == {"motivo": "Só a peça aprovada para publicar à mão pode ser copiada ou baixada."}
+        sair_e_entrar(pg, "admin@artecon.test")
+        abrir_peca(pg, car, data_peca(db, car))
+        pg.wait_for_function(ARTES_PRONTAS)
+        telas = pg.evaluate("() => [...document.querySelectorAll('#peca-artes img.peca-arte')].map(i => i.getAttribute('src'))")
+        assert len(telas) == 3
+        pg.click("#peca-aprovar summary")
+        assert pg.locator("#peca-aprovar input[name=aprovar-modo][value=agendar]").is_disabled() and pg.locator("#peca-aprovar input[value=manual]").is_checked()
+        pg.click("#peca-aprovar summary")
+        aprovar_na_tela(pg, ["pessoas"])
+        pg.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão")
+        assert mensagens[-1].startswith("Aprovar para publicar à mão no Instagram e no Facebook?")
+        situacao, modo, artes = db.execute("select situacao, aprovado_modo, artes from radar_pauta_pecas where id = %s", (car,)).fetchone()
+        assert (situacao, modo, len(artes)) == ("aprovada", "manual", 3)
+        assert [d for (d,) in db.execute("select dados from radar_imagens where id = any(%s) order by array_position(%s, id)", (artes, artes)).fetchall()] == telas
+        assert db.execute("select count(*) from radar_redes_envios where peca_id = %s", (car,)).fetchone()[0] == 0
+        # baixar as lâminas aprovadas e copiar a legenda
+        pg.click("[data-acao=peca-baixar]")
+        pg.wait_for_selector("#peca-baixar a")
+        data = data_peca(db, car)
+        assert pg.evaluate("() => [...document.querySelectorAll('#peca-baixar a')].map(a => [a.getAttribute('download'), a.getAttribute('href')])") == [
+            [f"pauta-{data}-{i}.jpg", telas[i - 1]] for i in (1, 2, 3)]
+        pg.click("[data-acao=peca-copiar-legenda][data-canal=instagram]")
+        pg.wait_for_selector("#recado >> text=Legenda do Instagram copiada")
+        assert pg.evaluate("navigator.clipboard.readText()") == LEG_PECA
+        # o termo revogado hoje: nada é copiado nem baixado
+        db.execute("update radar_pessoas set termo_revogado_em = radar_pauta_hoje() where id = %s", (ana,))
+        pg.evaluate("navigator.clipboard.writeText('nada')")
+        limpar_recados(pg)
+        pg.click("[data-acao=peca-copiar-legenda][data-canal=facebook]")
+        pg.wait_for_selector("#recado .erro >> text=O termo de uso de imagem de uma pessoa da peça não vale hoje no Instagram (termo revogado)")
+        assert pg.evaluate("navigator.clipboard.readText()") == "nada"
+        db.execute("update radar_pessoas set termo_revogado_em = null where id = %s", (ana,))
+        # o registro do link: só o endereço da rede; registrado, a peça é publicada (e o que já saiu não se desfaz)
+        pg.fill("#peca-link-instagram", "https://example.com/p/1")
+        limpar_recados(pg)
+        pg.click("form[data-form=pecaRegistrar] button")
+        pg.wait_for_selector("#recado .erro >> text=o link do Instagram começa com https://www.instagram.com/")
+        pg.fill("#peca-link-instagram", "https://www.instagram.com/p/ABC123/")
+        limpar_recados(pg)
+        pg.click("form[data-form=pecaRegistrar] button")
+        pg.wait_for_selector("#recado >> text=Publicação registrada.")
+        assert db.execute("select link_instagram, link_facebook, publicado_manual_em = radar_pauta_hoje() from radar_pauta_pecas where id = %s", (car,)).fetchone() == (
+            "https://www.instagram.com/p/ABC123/", None, True)
+        assert "Instagram" in pg.inner_text("#peca-registro") and pg.inner_text("#peca-situacao") == "Publicada"
+        assert pg.locator("#peca-link-instagram").count() == 0 and pg.locator("#peca-link-facebook").count() == 1     # falta o Facebook
+        limpar_recados(pg)
+        pg.click("[data-acao=peca-desaprovar]")
+        pg.wait_for_selector("#recado .erro >> text=a peça já saiu numa rede")
+        # o reel: sem lâmina, aprovado à mão; o roteiro sai com a identificação legal no último quadro
+        pg.evaluate("p => { E.pauta.peca = p; return desenhar(); }", reel)
+        pg.wait_for_selector(f"form[data-form=peca][data-id='{reel}']")
+        assert pg.locator("#peca-artes").count() == 0 and "Reel: sem lâmina" in pg.inner_text("form[data-form=peca]")
+        aprovar_na_tela(pg)
+        pg.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão")
+        assert db.execute("select situacao, aprovado_modo, artes from radar_pauta_pecas where id = %s", (reel,)).fetchone() == ("aprovada", "manual", [])
+        assert pg.locator("[data-acao=peca-baixar]").count() == 0
+        pg.click("[data-acao=peca-copiar-roteiro]")
+        pg.wait_for_selector("#recado >> text=Roteiro copiado")
+        assert pg.evaluate("navigator.clipboard.readText()") == roteiro + "\n\nÚltimo quadro: " + IDENT
+        pg.fill("#peca-link-instagram", "https://www.instagram.com/reel/XYZ789/")
+        limpar_recados(pg)
+        pg.click("form[data-form=pecaRegistrar] button")
+        pg.wait_for_selector("#recado >> text=Publicação registrada.")
+        assert db.execute("select link_instagram from radar_pauta_pecas where id = %s", (reel,)).fetchone()[0] == "https://www.instagram.com/reel/XYZ789/"
+        pg.screenshot(path=str(FOTOS / "48-pauta-reel-a-mao.png"), full_page=True)
+        assert erros == [], erros
+    finally:
+        contexto.close()
+
+
+def test_peca_gerar_com_ia_troca_pessoa_e_mostra_o_que_falta(pagina, pauta):
+    """v0.21.0 (etapa 9): “Gerar com IA” na peça pede a peça salva, chama a função radar-ia (ação “peca”, sem assunto, com a versão da
+    tela) e troca só o quadro da sugestão (o formulário não é redesenhado): o nome na peça no lugar de {PESSOA1}, o que falta conferir e
+    os avisos. “Usar a sugestão” leva a chamada, o apoio e as legendas (com a fonte das informações conferidas, a identificação legal e as
+    hashtags) aos campos e redesenha a arte, sem salvar; salvo, vai ao banco com o nome. Com outra pessoa marcada, a sugestão pede para
+    gerar de novo; a 2ª consulta na mesma peça pede a senha (outra peça, não); “Peça não encontrada” chega ao recado como está."""
+    db = pauta
+    ana = nova_pessoa(db, "Ana Teste", "Ana", categoria="contadora", crc="CRC-SC 012345/O-5")
+    bruno = nova_pessoa(db, "Bruno Exemplo", "Bruno")
+    conferidas = [{"informacao": "A Artecon atende empresas de Palhoça desde 1984", "fonte": "Site da Artecon"}]
+    pid = peca_db(db, "2026-11-18", "quem_cuida", "foto", pessoas=[ana], conferidas=conferidas)
+    outra = peca_db(db, "2026-11-19", "bastidor", "imagem", conferidas=conferidas)
+    pedidos = []
+    ia_de_mentira(pagina, db, pedidos, peca={**PECA_EXEMPLO, "avisos": [
+        "O termo de uso de imagem de {PESSOA1} não vale nesta peça (termo vencido): sem ele a peça não fica pronta; confira em Pauta → Pessoas e termos."]})
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-18")
+    assert pagina.inner_text("#peca-sem-sugestao") == "Ainda não há sugestão da IA para esta peça."
+    form = pagina.locator("form[data-form=peca]")
+    # a IA parte da peça salva
+    form.locator("[name=apoio]").fill("Apoio digitado e não salvo")
+    pagina.click("[data-acao=peca-ia]")
+    pagina.wait_for_selector("#recado .erro >> text=salve a peça antes de gerar com IA")
+    assert pedidos == []
+    form.locator("[name=apoio]").fill("")
+    pagina.evaluate("() => { document.querySelector('form[data-form=peca]').marca = 1; }")
+    pagina.click("[data-acao=peca-ia]")
+    pagina.wait_for_selector("#peca-sugestao-quadro")
+    assert pedidos == [{"acao": "peca", "peca_id": pid, "lido": pagina.get_attribute("form[data-form=peca]", "data-lido")}]     # sem assunto_id
+    assert pagina.evaluate("() => document.querySelector('form[data-form=peca]').marca") == 1                            # sem redesenhar a peça
+    pagina.wait_for_selector("#recado .aviso >> text=Sugestão da IA pronta, com 2 ponto(s) a conferir")
+    quadro = pagina.inner_text("#peca-sugestao-quadro")
+    assert "{PESSOA" not in quadro and "Conheça Ana, que cuida da folha da sua empresa" in quadro and "Ana acompanha a admissão" in quadro
+    assert "quantas empresas a equipe do Departamento Pessoal atende" in pagina.inner_text("#peca-sugestao-quadro .peca-pendencias")
+    assert "O termo de uso de imagem de Ana não vale nesta peça (termo vencido)" in pagina.inner_text("#peca-sugestao-quadro .peca-ia-avisos")
+    assert form.locator("[name=chamada]").input_value() == ""                                                          # nada foi aos campos
+    assert db.execute("select chamada, legenda_instagram, ia->'base'->'pessoas' from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("", "", [ana])
+    # Usar a sugestão: os campos, com o nome; a arte redesenhada; nada salvo ainda
+    vez = pagina.evaluate("() => E.pauta.arteVez || 0")
+    pagina.click("[data-acao=peca-usar-ia]")
+    pagina.wait_for_selector("#recado >> text=Sugestão da IA nos campos (ainda não salva)")
+    assert form.locator("[name=chamada]").input_value() == "Conheça Ana, que cuida da folha da sua empresa"
+    assert form.locator("[name=apoio]").input_value() == "No Departamento Pessoal da Artecon, desde 1984."
+    ig = form.locator("[name=legenda_instagram]").input_value()
+    assert ig == ("Quem cuida da folha de pagamento da sua empresa?\n\nAna acompanha a admissão, as férias e o eSocial de perto.\n\n"
+                  "Quer conversar sobre a folha da sua empresa? Fale com a gente.\n\nFonte: Site da Artecon\n\n" + IDENT + "\n\n#Contabilidade #Palhoça #FolhaDePagamento")
+    assert form.locator("[name=legenda_facebook]").input_value().startswith("Ana cuida da folha de pagamento das empresas clientes da Artecon")
+    assert pagina.inner_text("#conta-instagram") == f"{len(ig):,}".replace(",", ".") + "/2.200"
+    assert pagina.evaluate("() => E.pauta.arteVez") > vez
+    assert db.execute("select legenda_instagram from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == ""
+    salvar_peca(pagina)
+    assert db.execute("select chamada, legenda_instagram from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (
+        "Conheça Ana, que cuida da folha da sua empresa", ig)
+    # outra pessoa marcada: a sugestão foi feita com outras pessoas ({PESSOA1} poderia ser outra pessoa)
+    form.locator(f"input[name=pessoa][value='{bruno}']").check()
+    salvar_peca(pagina)
+    assert pagina.inner_text("#peca-sugestao-outra") == "A sugestão foi feita com outras pessoas: gere de novo."
+    assert pagina.locator("[data-acao=peca-usar-ia]").count() == 0
+    # a 2ª consulta nesta peça pede a senha (cancelada: nada é pedido)
+    pagina.click("[data-acao=peca-ia]")
+    pagina.wait_for_selector("#senha-ia")
+    pagina.click("#senha-ia [data-cancelar]")
+    pagina.wait_for_selector("#recado >> text=Consulta à IA cancelada.")
+    assert len(pedidos) == 1
+    # a resposta “Peça não encontrada” é da função (não é a função que falta)
+    ia_de_mentira(pagina, db, pedidos, peca_falha=(404, "Peça não encontrada."))
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-ia]")
+    confirmar_senha_ia(pagina)
+    pagina.wait_for_selector("#recado .erro >> text=Peça não encontrada.")
+    assert "não foi instalada" not in pagina.inner_text("#recado")
+    # de novo, com as duas pessoas: a sugestão vale e mostra os dois nomes
+    ia_de_mentira(pagina, db, pedidos, peca={**PECA_EXEMPLO, "arte": {"chamada": "{PESSOA1} e {PESSOA2} cuidam da sua folha", "apoio": ""}})
+    pagina.click("[data-acao=peca-ia]")
+    confirmar_senha_ia(pagina)
+    pagina.wait_for_selector("#peca-sugestao-quadro .peca-sugestao-arte >> text=Ana e Bruno cuidam da sua folha")
+    assert pagina.locator("#peca-sugestao-outra").count() == 0 and pagina.locator("[data-acao=peca-usar-ia]").count() == 1
+    # outra peça: a 1ª consulta nela é livre
+    abrir_peca(pagina, outra, "2026-11-19")
+    pagina.click("[data-acao=peca-ia]")
+    pagina.wait_for_selector("#peca-sugestao-quadro")
+    assert pagina.locator("#senha-ia").count() == 0 and pedidos[-1]["peca_id"] == outra and "assunto_id" not in pedidos[-1]

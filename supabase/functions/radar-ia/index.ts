@@ -1,7 +1,7 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.20.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.21.0)
 //
-// Dez ações, sempre pedidas por um usuário logado (editor ou administrador):
+// Onze ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
 //   fundamentar  → propõe trechos LITERAIS do texto oficial; só entram os que conferem
 //   gerar        → redige um conteúdo (rascunho), com 3 outras opções de título, e aponta o que precisa ser conferido;
@@ -18,6 +18,16 @@
 //                  sem a fonte citada; o que ficar sem confirmação vai para os pontos a conferir
 //   kit          → (v0.20.0) monta o kit das redes de um conteúdo já escrito: chamada e apoio da arte, legendas do Instagram e do
 //                  Facebook e roteiro de reel; grava em radar_conteudos.kit_ia (só sugestão: o que vai ao ar é o que o administrador autoriza)
+//   peca         → (v0.21.0) a sugestão de uma peça da Pauta (aba Pauta, "Gerar com IA"): chamada e apoio da arte, legendas do Instagram
+//                  e do Facebook e os cartões do carrossel, a partir do plano e das informações conferidas; grava em radar_pauta_pecas.ia
+//                  (só sugestão: o que vai ao ar é o que o administrador aprova)
+//
+// v0.21.0 — ação "peca": sem assunto (a peça é da Pauta); conta no consumo como "gerar". Nenhum nome vai à IA: as pessoas marcadas
+//   viram {PESSOA1}, {PESSOA2}… e qualquer outro nome de pessoa (cadastrada ou do "quem aparece" do plano) vira "uma pessoa da equipe",
+//   também nas informações conferidas; da pessoa vão só a área e a categoria (com ou sem registro no CRC), nunca o número do CRC. O fato
+//   que a IA escreve e que não está nas informações conferidas fica marcado com [VERIFICAR: …] (a peça não fica pronta com a marca). A
+//   lista de termos que a Pauta não publica (TERMOS_PECA) é a mesma da tela (radar-pauta.js). O erro inesperado vai para o log só com o
+//   nome do erro (a mensagem pode trazer dado do pedido).
 //
 // v0.20.0 — ação "kit": o kit sai do texto final, num pedido próprio (até 4.000 tokens), e conta no consumo como "gerar"; leva à IA
 //   só o título e o texto da Artecon, nunca o texto oficial nem o boletim pago (a comparação com eles é feita aqui, na memória).
@@ -54,7 +64,7 @@
 // Segredos (Supabase → Edge Functions → Secrets):
 //   IA_GATEWAY_TOKEN               obrigatório: token do aplicativo "radar" na IA Central
 //   IA_GATEWAY_URL                 padrão: https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway
-//   RADAR_IA_MODELO                padrão: claude-sonnet-4-6   (fundamentar, gerar e kit)
+//   RADAR_IA_MODELO                padrão: claude-sonnet-4-6   (fundamentar, gerar, kit e peca)
 //   RADAR_IA_MODELO_RAPIDO         padrão: claude-haiku-4-5    (classificar)
 //   RADAR_IA_MODELO_IMAGEM         padrão: gpt-image-2         (ilustrar)
 //   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês; trava própria do Radar,
@@ -62,7 +72,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.20.0";
+const VERSAO = "0.21.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -1232,7 +1242,7 @@ const semMarcasDeBloco = (t: string) => t.replace(/<{3,}/g, "«").replace(/>{3,}
 
 /** O banco ainda sem a coluna kit_ia (o SQL da v0.20.0 não rodou): explica o que fazer em vez de mostrar o erro do PostgREST. */
 const semColunaDoKit = (e: unknown) => e instanceof Erro && /kit_ia/.test(e.message) && /column|coluna/i.test(e.message)
-  ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.20.0.sql (Supabase → SQL Editor) e tente de novo.") : e;
+  ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.21.0.sql (Supabase → SQL Editor) e tente de novo.") : e;
 const ABRANGENCIA: Record<string, string> = { federal: "federal", estadual_sc: "estadual (Santa Catarina)", municipal: "municipal", geral: "geral" };
 
 /** Ação "kit" (botão "Gerar kit das redes com IA" e 3ª etapa do "Gerar com IA"): o kit das redes de um conteúdo já escrito. A IA
@@ -1330,6 +1340,346 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
     { kit_ia: salvo }, "return=representation").catch((e) => { throw semColunaDoKit(e); });
   if (!Array.isArray(linhas) || !linhas.length) throw new Erro(409, "O conteúdo foi alterado enquanto a IA montava o kit. Atualize a tela e tente de novo.");
   return { conteudo_id: conteudoId, kit: salvo, avisos: salvo.avisos };
+}
+
+// ------------------------------------------------------------------ peça da Pauta (v0.21.0)
+// A sugestão de uma peça das redes da Pauta (aba Pauta → peça → "Gerar com IA"): chamada e apoio da arte, legendas do Instagram e do
+// Facebook e os cartões do carrossel, a partir do plano da peça (tipo, formato, assunto, objetivo e observação: só o tema) e das
+// informações conferidas (os únicos fatos que valem). É sugestão: fica em radar_pauta_pecas.ia, que não muda a versão da peça nem entra
+// na trilha; o que vai ao ar é o que o administrador aprova. Nenhum nome de pessoa vai à IA (mascararNomes), nem foto, CNPJ, CRC, link,
+// captura ou boletim. A identificação legal e as hashtags fixas são acrescentadas pela tela.
+
+// v0.21.0: termos que a Pauta não publica (a peça fala da Artecon, não é notícia). A mesma lista, e a mesma função, está na tela
+// (radar-pauta.js), que trava a aprovação e a cópia com eles; aqui viram aviso da sugestão. Mantenha as duas iguais
+// (testes/test_radar_publicidade.py confere o texto, da lista até o fim de termosPeca).
+const TERMOS_PECA = [
+  ["mercantilização", "gr[áa]tis|gratuit[oa]s?|de gra[çc]a|sem custo|cortesias?|vale-brindes?|brindes?|ganhe|b[ôo]nus|(?:de|um|como) presentes?|" +
+    "descontos?(?! (?:do|de|no|na|em) (?:INSS|IRRF|IR|vale-transporte|sal[áa]rio|folha))(?! simplificado)|promo[çc](?:ão|ões)|ofertas?|" +
+    "imperd[íi]ve(?:l|is)|por tempo limitado|chance [úu]nica|sorteios?"],
+  ["preço", "R\\$\\s?\\d[\\d.,]*[^\\n]{0,30}?(?:honor[áa]rios?|mensalidades?|planos?|pacotes?)|(?:honor[áa]rios?|mensalidades?|planos?|pacotes?|a partir de)[^\\n]{0,30}?R\\$\\s?\\d[\\d.,]*"],
+  ["promessa", "garantimos|garante|garantia de(?! emprego)|pague menos|reduza (?:os |seus |os seus )?impostos?|economize|mais lucro|sem multas?|blindagem|" +
+    "blindad[oa]s?|prote[çc][ãa]o total"],
+  ["superlativo", "o melhor|os melhores|o maior|n[º°]\\s?1|n[úu]mero 1|l[íi]der(?:es)?|(?<!de )refer[êe]ncia|excel[êe]ncia|premium|nota m[áa]xima|100\\s?%|" +
+    "definitiv[oa]s?|a [úu]nica forma|o [úu]nico caminho"],
+  ["comparação", "melhor que|mais barat[oa]s?|menor pre[çc]o|diferente dos outros|outros escrit[óo]rios|seu contador atual|(?:troque|mude) de contador|" +
+    "insatisfeit[oa]s? com (?:o )?seu contador|contador de verdade|s[óo] envia guias|baratinh[oa]s?|segunda opini[ãa]o"],
+  ["medo", "alerta m[áa]ximo|vai parar|fal[êe]ncia|antes que seja tarde|bater [àa] sua porta|multas pesadas"],
+  ["outros", "consultoria jur[íi]dica|assessoria jur[íi]dica|parecer jur[íi]dico|comunicado oficial|Receita informa|segredos?|f[óo]rmulas?(?! de c[áa]lculo)|" +
+    "truques?|a maioria|milhares de empresas|centenas de clientes"]];
+// os termos achados (em minúsculas, sem repetir), na ordem da lista
+// @ts-ignore (a tela é JavaScript puro: o texto é o mesmo nos dois arquivos, sem os tipos)
+const termosPeca = (...textos) => { const t = textos.join("\n"), r = [];
+  for(const [, e] of TERMOS_PECA) for(const m of t.match(new RegExp("(?<![\\p{L}\\p{N}])(?:" + e + ")(?![\\p{L}\\p{N}])", "giu")) || []){
+    // @ts-ignore (idem: r é a lista dos termos achados)
+    const x = m.toLowerCase().replace(/\s+/g, " "); if(!r.includes(x)) r.push(x); }
+  return r; };
+
+const REGRA_PUBLICIDADE_PECA = "(13) A PEÇA FALA DA ARTECON (não é notícia): além da regra (12), sem preço, honorário ou valor de serviço; " +
+  "sem desconto, 'sem custo', grátis, brinde, sorteio, promoção ou oferta; sem 'segunda opinião'; sem apelo ao medo ('antes que seja tarde', " +
+  "'multas pesadas', 'falência'); sem comparação com outros escritórios ou contadores ('diferente dos outros', 'seu contador atual', " +
+  "'troque de contador'); sem superlativo nem absoluto ('o melhor', 'líder', 'referência', 'nº 1', '100%', 'definitivo'); sem chamar alguém " +
+  "de 'especialista' (não há título registrado); sem 'consultoria jurídica' nem 'parecer jurídico'; sem estatística vaga ('a maioria', " +
+  "'milhares de empresas', 'centenas de clientes'); ";
+// o que cada tipo e cada formato de peça é, como vai à IA (notícia, reel, story e dia sem post não têm Gerar com IA nesta versão)
+const TIPO_PECA: Record<string, string> = {
+  quem_cuida: "Série Quem cuida: apresenta uma pessoa da equipe e o que ela faz pelas empresas clientes",
+  agenda: "Agenda da semana: os vencimentos de segunda a sexta (a lista vai na arte, desenhada pelo sistema)",
+  bastidor: "Bastidor: o dia a dia da equipe da Artecon", educativo: "Educativo: uma orientação prática para o empresário",
+  captacao: "Captação: um convite moderado para conhecer a Artecon", data_equipe: "Data com a equipe: uma data da empresa ou da equipe",
+};
+const FORMATO_PECA: Record<string, string> = {
+  imagem: "Imagem 4:5 (uma arte com a chamada e o apoio)", foto: "Foto (a foto da peça, com a chamada e o apoio por cima)",
+  carrossel: "Carrossel (a capa, com a chamada e o apoio, e depois um cartão por lâmina)",
+  carrossel_fotos: "Carrossel de fotos (uma foto por lâmina, cada uma com o seu cartão)",
+};
+// a categoria da pessoa, em texto decidido aqui (o número do CRC não vai): sem registro, nunca "contador(a)", "técnico(a)" nem "especialista"
+const CATEGORIA_PECA: Record<string, string> = {
+  contador: "contador com registro no CRC", contadora: "contadora com registro no CRC",
+  tecnico: "técnico em contabilidade com registro no CRC (não é contador: nunca chame de contador)",
+  tecnica: "técnica em contabilidade com registro no CRC (não é contadora: nunca chame de contadora)",
+};
+const SEM_REGISTRO = "sem registro no CRC: nunca chame de contador(a), técnico(a) nem especialista";
+
+// as palavras com maiúscula do "quem aparece" do plano que não são nome de pessoa (as outras, com 3 letras ou mais, são mascaradas) e
+// as partículas dos nomes ("de", "da", "dos"…), que não são nome
+const PALAVRAS_COMUNS = new Set(("equipe todos todas arte foto fotos reel termo contador contadora contadores responsavel artecon quem pessoas " +
+  "pessoa socio socia socios socias cliente clientes departamento pessoal fiscal contabil financeiro tecnico tecnica nenhum nenhuma ninguem").split(" "));
+const PARTICULAS = new Set("de da do das dos e del della der van von di du".split(" "));
+const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+/** Os nomes que nunca vão à IA: de TODAS as pessoas cadastradas, ativas ou não (o nome completo, o nome na peça e cada palavra deles com
+ *  3 letras ou mais) e as palavras com maiúscula do "quem aparece" do plano (menos as comuns). A pessoa marcada na peça vira {PESSOA1},
+ *  {PESSOA2}… (na ordem de "pessoas"); qualquer outra, "uma pessoa da equipe". Palavra inteira, sem diferença de maiúsculas, com o nome
+ *  escapado na expressão; numa passada só, dos mais longos para os mais curtos (o marcador posto não é trocado de novo). */
+function mascararNomes(pessoas: any[], marcadas: number[], quemAparece: unknown): (t: unknown) => string {
+  const trocas = new Map<string, string>(), chave = (t: string) => normalizarEspacos(t).toLowerCase();
+  const por = (t: string, troca: string) => { const k = chave(t); if ([...k].length >= 2 && !trocas.has(k)) trocas.set(k, troca); };
+  const palavras = (t: string) => (t.match(/\p{L}[\p{L}'’-]*/gu) ?? []).filter((w) => [...w].length >= 3 && !PARTICULAS.has(semAcento(w)));
+  // as marcadas primeiro: o sobrenome igual ao de outra pessoa vira o marcador de quem está na peça
+  const ordem = [...pessoas].sort((a, b) => (marcadas.indexOf(Number(a?.id)) + 1 || 99) - (marcadas.indexOf(Number(b?.id)) + 1 || 99));
+  for (const x of ordem) {
+    const i = marcadas.indexOf(Number(x?.id)), troca = i >= 0 ? `{PESSOA${i + 1}}` : "uma pessoa da equipe";
+    const nome = String(x?.nome ?? ""), naPeca = String(x?.nome_na_peca ?? "");
+    for (const t of [nome, naPeca, ...palavras(nome), ...palavras(naPeca)]) por(t, troca);
+  }
+  for (const w of String(quemAparece ?? "").match(/\p{Lu}[\p{L}'’-]*/gu) ?? []) {
+    if ([...w].length >= 3 && !PALAVRAS_COMUNS.has(semAcento(w)) && !PARTICULAS.has(semAcento(w))) por(w, "uma pessoa da equipe");
+  }
+  const termos = [...trocas.keys()].sort((a, b) => b.length - a.length);
+  if (!termos.length) return (t) => String(t ?? "");
+  const re = new RegExp("(?<![\\p{L}\\p{N}])(?:" + termos.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+")).join("|") +
+    ")(?![\\p{L}\\p{N}])", "giu");
+  return (t) => String(t ?? "").replace(re, (m) => trocas.get(chave(m)) ?? "uma pessoa da equipe");
+}
+/** O que vai à IA não leva link (vira o nome do site) nem número de CNPJ, de registro no CRC ou de telefone (nem o parêntese que
+ *  ficou vazio sem ele). */
+const semLinkNemDado = (t: unknown) => String(t ?? "").replace(/https?:\/\/[^\s<>"]+/gi, (u) => {
+  try { return "página de " + new URL(u).hostname.replace(/^www\./, ""); } catch { return "página oficial"; } })
+  .replace(RE_DADO_IDENTIFICACAO, " ").replace(/\(\s*\)|\[\s*\]/g, " ");
+
+/** O fato que a IA escreveu (norma, artigo, parágrafo, percentual, valor em R$, data, mês e ano, prazo e ano: os de fatos()) e que não
+ *  está nas informações conferidas fica marcado no texto: a 1ª ocorrência (fora de outra marca) vira "[VERIFICAR: …]", que a tela e o
+ *  banco travam. O número vai inteiro para dentro da marca (fatos() lê "Lei nº 8.212, art. 2" como "Lei nº 8"). "soltos": o fato cujo
+ *  texto não foi achado como está escrito (ex.: "arts. 3 e 4" vira "art. 3" e "art. 4"), para o aviso. */
+function marcarFatosForaDasConferidas(texto: string, base: Map<string, string>): { texto: string; marcados: string[]; soltos: string[] } {
+  let t = texto;
+  const marcados: string[] = [], soltos: string[] = [], MARCA = /\[\s*verificar[^\]\n]{0,250}\]?/gi;
+  for (const [chave, escrito] of fatos(t.replace(MARCA, " "), false)) {
+    if (base.has(chave)) continue;
+    const re = new RegExp((/^[\p{L}\p{N}]/u.test(escrito) ? "(?<![\\p{L}\\p{N}])" : "") + escrito.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+") +
+      (/\p{N}$/u.test(escrito) ? "(?:[.,]\\p{N}+)*" : "") + (/[\p{L}\p{N}]$/u.test(escrito) ? "(?![\\p{L}\\p{N}])" : ""), "gu");
+    const marcas = [...t.matchAll(MARCA)].map((m) => [m.index ?? 0, (m.index ?? 0) + m[0].length]);
+    const achado = [...t.matchAll(re)].find((m) => !marcas.some(([a, b]) => (m.index ?? 0) >= a && (m.index ?? 0) < b));
+    if (!achado) { soltos.push(escrito); continue; }
+    const i = achado.index ?? 0;
+    t = t.slice(0, i) + `[VERIFICAR: ${achado[0]}]` + t.slice(i + achado[0].length);
+    marcados.push(normalizarEspacos(achado[0]));
+  }
+  return { texto: t, marcados, soltos };
+}
+/** Os números de um texto como o banco os compara (radar_pauta_numeros): sem o número de item de lista ("1. Revise"), "1.000" = "1000",
+ *  "1.500,00" = "1500" e sem zeros à esquerda. Sem link, hashtag, marcador de pessoa ({PESSOA1}) e o que já está numa marca [VERIFICAR]. */
+const numerosPeca = (t: string) => new Set((t.replace(/https?:\/\/\S+|#[\p{L}\p{N}_]+|\{PESSOA\d+\}|\[\s*verificar[^\]\n]{0,250}\]?/giu, " ")
+  .replace(/^[ \t]*\d{1,2}[.)][ \t]/gm, "").replace(/(\d)\.(?=\d{3}(?!\d))/g, "$1").replace(/(\d),00(?!\d)/g, "$1")
+  .match(/\d+(?:,\d+)?/g) ?? []).map((n) => n.replace(/^0+(?=\d)/, "")));
+// "contador(a)", "técnico(a)" e "especialista" a até uns 40 caracteres do marcador da pessoa, na mesma linha (como o banco confere com o nome)
+const RX_CONTADOR = "(?<![\\p{L}\\p{N}])contador(?:a|\\(a\\))?s?(?![\\p{L}\\p{N}])";
+const RX_TECNICO = "(?<![\\p{L}\\p{N}])t[ée]cnic(?:o\\(a\\)|[oa])s?(?![\\p{L}\\p{N}])";
+const RX_ESPECIALISTA = "(?<![\\p{L}\\p{N}])especialistas?(?![\\p{L}\\p{N}])";
+const pertoDe = (texto: string, k: number, palavra: string) =>
+  new RegExp(`\\{PESSOA${k}\\}[^\\n]{0,40}(?:${palavra})|(?:${palavra})[^\\n]{0,40}\\{PESSOA${k}\\}`, "iu").test(texto);
+
+/** Arruma o que a IA devolveu, como o kit: sem HTML, link, identificação nem hashtag no texto; textos cortados no fim da frase; chamada sem
+ *  ponto e até 70 caracteres; cartões do carrossel (de 3 a 9) ou um por foto. O marcador de pessoa sai sempre igual ({PESSOA1}) e só o das
+ *  pessoas da peça (o de quem não está nela sai, com aviso). O que precisa de atenção, sem impedir a sugestão, volta em "avisos". */
+function limparPeca(json: any, formato: string, agenda: boolean, nPessoas: number, nFotos: number) {
+  const avisos: string[] = [], fora = new Set<string>();
+  const escritos = [json?.arte?.chamada, json?.arte?.apoio, json?.instagram?.texto, json?.facebook?.texto,
+    ...(Array.isArray(json?.cartoes) ? json.cartoes : []).flatMap((c: any) => [c?.titulo, c?.texto])];
+  if (escritos.some((t) => RE_IDENTIFICACAO.test(semHtmlNemLink(t)))) {
+    avisos.push("Saiu da sugestão o número de CNPJ, de registro no CRC ou de telefone que a IA escreveu (a identificação legal entra pela " +
+      "tela, a partir das Configurações): confira se o texto ficou certo.");
+  }
+  // "[PESSOA]", "{pessoa 2}", "{NOME}", "{{PESSOA1}}" → "{PESSOA1}", "{PESSOA2}"
+  const pessoa = (t: unknown) => String(t ?? "").replace(/[[{(]{1,2}\s*(?:pessoa|nome)\s*(\d{0,2})\s*[\]})]{1,2}/gi, (m: string, n: string) => {
+    const k = Number(n || 1);
+    if (k >= 1 && k <= nPessoas) return `{PESSOA${k}}`;
+    fora.add(normalizarEspacos(m)); return "";
+  });
+  const limpo = (t: unknown) => textoKit(pessoa(t)).split("\n").map((l) => l.replace(/[ \t]{2,}/g, " ").replace(/ +([,.;:!?])/g, "$1").trim()).join("\n");
+  let arte: { chamada: string; apoio: string } | null = null;
+  if (!agenda) {
+    const chamadaIA = normalizarEspacos(limpo(json?.arte?.chamada)).replace(/[.\s]+$/, "");
+    arte = { chamada: cortarFrase(chamadaIA, 70, false).replace(/[.\s]+$/, ""), apoio: cortarFrase(normalizarEspacos(limpo(json?.arte?.apoio)), 140) };
+    if (chamadaIA.length > 70) avisos.push("A chamada da arte passou de 70 caracteres e foi encurtada: confira.");
+  }
+  const igBruto = limpo(json?.instagram?.texto), fbBruto = limpo(json?.facebook?.texto);
+  const instagram = { texto: cortarFrase(semHashtags(igBruto), 1300), hashtags: listaHashtags(json?.instagram?.hashtags, igBruto.match(RE_HASHTAG) ?? [], 1) };
+  const facebook = { texto: cortarFrase(semHashtags(fbBruto), 1100), hashtags: listaHashtags(json?.facebook?.hashtags, fbBruto.match(RE_HASHTAG) ?? [], 1) };
+  if ((arte && !arte.chamada) || !instagram.texto || !facebook.texto) {
+    throw new Erro(502, "A IA devolveu a peça incompleta (sem a chamada da arte ou sem as legendas). Tente de novo.");
+  }
+  const primeira = instagram.texto.split("\n")[0];
+  if (primeira.length > 125) avisos.push(`A primeira linha da legenda do Instagram tem ${primeira.length} caracteres: o Instagram mostra só cerca de 125 antes do “mais”; encurte para prender a atenção.`);
+  let cartoes: { titulo: string; texto: string }[] = [];
+  if (!agenda && (formato === "carrossel" || formato === "carrossel_fotos")) {
+    const fotos = formato === "carrossel_fotos";
+    const recebidos = (Array.isArray(json?.cartoes) ? json.cartoes : []).map((c: any) => {
+      const titulo = normalizarEspacos(semHashtags(limpo(c?.titulo))).replace(/[.\s]+$/, ""), texto = normalizarEspacos(semHashtags(limpo(c?.texto)));
+      return { titulo: cortarFrase(titulo, 40, false).replace(/[.\s]+$/, ""), texto: cortarFrase(texto, fotos ? 120 : 220), longo: titulo.length > 40 };
+    }).filter((c: any) => c.titulo || c.texto);
+    cartoes = recebidos.slice(0, 9).map((c: any) => ({ titulo: c.titulo, texto: c.texto }));
+    if (recebidos.slice(0, 9).some((c: any) => c.longo)) avisos.push("Título de cartão com mais de 40 caracteres, encurtado: confira se o sentido ficou.");
+    if (recebidos.length > 9) avisos.push(`A IA escreveu ${recebidos.length} cartões; ficaram os 9 primeiros (a peça leva até 9): confira o último.`);
+    if (fotos && nFotos && recebidos.length !== Math.min(nFotos, 9)) {
+      avisos.push(`A peça tem ${nFotos} foto(s) e a IA escreveu ${recebidos.length} cartão(ões): confira (um cartão por foto, na ordem das fotos).`);
+    }
+    if (!fotos && recebidos.length < 3) avisos.push(`A IA escreveu ${recebidos.length} cartão(ões): o carrossel pede de 3 a 9 (a peça não fica pronta com menos de 2).`);
+  }
+  if (fora.size) {
+    avisos.push(`Saiu do texto o marcador de pessoa que não está na peça (${[...fora].slice(0, 4).join(", ")}): confira a frase` +
+      (nPessoas ? "." : " (ninguém está marcado em Quem aparece)."));
+  }
+  return { peca: { arte, instagram, facebook, cartoes, pendencias: listaPendencias((Array.isArray(json?.pendencias) ? json.pendencias : []).map(pessoa)) }, avisos };
+}
+
+/** O banco ainda sem a Pauta (o SQL da v0.21.0 não rodou): explica o que fazer em vez de mostrar o erro do PostgREST. */
+const semTabelaDaPauta = (e: unknown) => e instanceof Erro && /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas/.test(e.message) &&
+  /does not exist|schema cache|could not find|não existe|column|coluna|relation/i.test(e.message)
+  ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.21.0.sql (Supabase → SQL Editor) e tente de novo.") : e;
+
+/** Ação "peca" (aba Pauta → peça → "Gerar com IA"): a sugestão de uma peça, a partir do plano e das informações conferidas. Lê como o
+ *  usuário (a RLS vale) e recusa, antes de chamar a IA, o que não tem como sair bem (peça aprovada ou cancelada, notícia, reel, dia sem
+ *  post, Quem cuida sem pessoa, agenda sem as datas, informação conferida sem fonte ou do boletim pago). O que a IA escreve é arrumado e
+ *  conferido por código (fato fora das conferidas marcado, número solto, termos, a categoria da pessoa, o termo de uso de imagem) e
+ *  gravado só se a peça não mudou desde a leitura. */
+async function peca(token: string, reg: Registro, pecaId: unknown, lido: unknown) {
+  if (typeof pecaId !== "number" || !Number.isSafeInteger(pecaId) || pecaId <= 0) throw new Erro(400, "Peça inválida.");
+  // a peça (o plano, as pessoas e as fotos só pelos ids); a coluna "ia" vem na leitura só para conferir, antes de gastar com a IA, se o
+  // banco já tem a Pauta inteira
+  const [p] = await banco(token, "GET", "radar_pauta_pecas?select=id,data,tipo,formato,situacao,assunto,objetivo,observacao,quem_aparece," +
+    `pessoas,fotos,conferidas,atualizado_em,ia&id=eq.${pecaId}`).catch((e) => { throw semTabelaDaPauta(e); });
+  if (!p) throw new Erro(404, "Peça não encontrada.");
+  if (typeof lido === "string" && lido && Date.parse(lido) !== Date.parse(p.atualizado_em)) {
+    throw new Erro(409, "A peça foi alterada depois que a tela foi aberta. Atualize a tela e tente de novo.");
+  }
+  if (p.situacao === "aprovada" || p.situacao === "cancelada") throw new Erro(400, "Desfaça a aprovação (ou reabra) para gerar de novo.");
+  if (p.tipo === "noticia") throw new Erro(400, "Use o Gerar com IA do assunto (kit das redes).");
+  if (p.tipo === "sem_post" || p.formato === "story" || p.formato === "nenhum") {
+    throw new Erro(400, "Sem publicação pela Pauta nesta versão (story ou dia sem post no feed): não há o que gerar.");
+  }
+  if (p.tipo === "reel" || p.formato === "reel") throw new Erro(400, "O roteiro do reel é colado à mão nesta versão.");
+  if (!Object.hasOwn(TIPO_PECA, p.tipo) || !Object.hasOwn(FORMATO_PECA, p.formato)) throw new Erro(400, "Este tipo de peça não tem Gerar com IA nesta versão.");
+  const marcadas: number[] = (Array.isArray(p.pessoas) ? p.pessoas : []).map(Number), nFotos = Array.isArray(p.fotos) ? p.fotos.length : 0;
+  if (p.tipo === "quem_cuida" && !marcadas.length) throw new Erro(400, "Quem cuida: marque a pessoa em Quem aparece (e salve) antes de gerar.");
+  const conferidas: { informacao: string; fonte: string }[] = (Array.isArray(p.conferidas) ? p.conferidas : [])
+    .map((c: any) => ({ informacao: typeof c?.informacao === "string" ? c.informacao.trim() : "", fonte: typeof c?.fonte === "string" ? c.fonte.trim() : "" }));
+  if (p.tipo === "agenda" && !conferidas.length) throw new Erro(400, "Calcule e confira a agenda da semana antes.");
+  if (conferidas.length > 20) throw new Erro(400, "A peça leva no máximo 20 informações conferidas: tire as que sobram e salve.");
+  conferidas.forEach((c, i) => {
+    if (!c.informacao || !c.fonte) throw new Erro(400, `Informação conferida nº ${i + 1}: escreva a informação e a fonte oficial em que ela foi conferida.`);
+    if (c.informacao.length > 300 || c.fonte.length > 300) {
+      throw new Erro(400, `Informação conferida nº ${i + 1} com mais de 300 caracteres: escreva só o fato e a fonte (até 300 cada), não o texto inteiro.`);
+    }
+    // a mesma regra do banco (radar_pauta_problemas): o boletim pago da ITC não é fonte
+    if (/(?<![\p{L}\p{N}])itc(?![\p{L}\p{N}])|itcnet|i\.t\.c\.|boletim pago/iu.test(c.fonte)) {
+      throw new Erro(400, `Informação conferida nº ${i + 1}: use a fonte oficial (o boletim pago da ITC não é fonte).`);
+    }
+  });
+  // TODAS as pessoas (os nomes, para mascarar; a categoria e o registro, para a regra da pessoa) e o termo de uso de imagem das marcadas,
+  // como o banco confere no dia da peça (radar_v_pauta_pessoas: o motivo vem sem o nome)
+  const [pessoas, termos] = await Promise.all([
+    banco(token, "GET", "radar_pessoas?select=id,nome,nome_na_peca,area,categoria,crc&order=id"),
+    marcadas.length ? banco(token, "GET", `radar_v_pauta_pessoas?select=pessoa_id,motivo_instagram,motivo_facebook&peca_id=eq.${pecaId}`) : [],
+  ]).catch((e) => { throw semTabelaDaPauta(e); });
+  const porId = new Map<number, any>((Array.isArray(pessoas) ? pessoas : []).map((x: any) => [Number(x.id), x]));
+  const registro = (x: any) => !!x?.crc && Object.hasOwn(CATEGORIA_PECA, x?.categoria);
+  // o que vai à IA: o plano e as conferidas sem nome de pessoa, sem link e sem dado de identificação, dentro dos blocos de dados
+  const mascarar = mascararNomes(Array.isArray(pessoas) ? pessoas : [], marcadas, p.quem_aparece);
+  const dado = (v: unknown, max = 600) => semMarcasDeBloco(normalizarEspacos(mascarar(semLinkNemDado(v)))).slice(0, max) || "—";
+  const agenda = p.tipo === "agenda", comFoto = p.formato === "foto" || p.formato === "carrossel_fotos";
+  const cartoes = !agenda && (p.formato === "carrossel" || p.formato === "carrossel_fotos");
+  const pessoasTexto = marcadas.map((id, i) => { const x = porId.get(id);
+    return `- {PESSOA${i + 1}}: ${x?.area ? "área: " + dado(x.area, 60) + "; " : ""}${registro(x) ? CATEGORIA_PECA[x.categoria] : SEM_REGISTRO}`; });
+  const entrada = `<<<TEXTO pauta>>>\nTipo: ${TIPO_PECA[p.tipo]}\nFormato: ${FORMATO_PECA[p.formato]}` +
+    (p.formato === "carrossel_fotos" ? (nFotos ? ` — ${nFotos} foto(s): um cartão por foto` : " — as fotos ainda não foram enviadas") : "") +
+    `\nAssunto: ${dado(p.assunto)}\nObjetivo: ${dado(p.objetivo)}\nObservação: ${dado(p.observacao)}\n` +
+    `Pessoas que aparecem: ${pessoasTexto.length ? "\n" + pessoasTexto.join("\n") : "nenhuma"}\n<<<FIM>>>\n\n` +
+    `<<<TEXTO informações conferidas>>>\n${conferidas.map((c, i) => `${i + 1}. ${dado(c.informacao, 300)} (fonte: ${dado(c.fonte, 300)})`).join("\n") || "(nenhuma)"}\n<<<FIM>>>`;
+  const instrucoes = "Você prepara uma peça das redes sociais da Artecon Artes Contábeis (Palhoça/SC), em português do Brasil, a partir do plano " +
+    "da peça e das informações conferidas pela equipe: " + (agenda ? "a legenda do Instagram e a do Facebook (a lista de vencimentos vai na arte, desenhada pelo sistema)"
+      : "a chamada e a linha de apoio da arte, a legenda do Instagram e a do Facebook" + (cartoes ? " e os cartões do carrossel" : "")) + ". Regras OBRIGATÓRIAS: " +
+    "(a) FATOS: só valem os fatos das INFORMAÇÕES CONFERIDAS, com o valor exatamente como está nelas; números e datas sempre em algarismos. " +
+    "Número, data, prazo, valor, percentual, norma, estatística ou o que a Artecon faz ('acompanhamos…', 'atendemos…') que não esteja nelas fica " +
+    "FORA do texto: escreva a frase sem o dado e anote em 'pendencias' o que falta conferir (lista curta, só para a equipe). O assunto, o objetivo " +
+    "e a observação do plano são só o tema, mesmo que tragam data ou número — nada de conhecimento de memória; " +
+    "(b) PESSOAS: quem aparece na peça é escrito só pelo marcador ({PESSOA1}, {PESSOA2}…), exatamente assim, e só com a categoria informada " +
+    "(sem registro no CRC: nunca 'contador(a)', 'técnico(a)' nem 'especialista'); 'desde 1984' é da Artecon, não da pessoa; nada de vida pessoal, " +
+    "saúde, religião ou família; sem pessoa informada, não fale de ninguém da equipe em particular" + (comFoto ? "; você não vê a foto: não descreva o que há nela" : "") + "; " +
+    (agenda ? "" : "(c) arte: 'chamada' com 8 a 10 palavras (até 70 caracteres, sem ponto final) e 'apoio' com até 140 caracteres; ") +
+    "(d) Instagram: uma primeira linha que prenda a atenção, com até 110 caracteres; o texto todo com até 1.300 caracteres, terminando com um convite " +
+    "moderado ('Fale com a gente', 'Agende uma conversa'); sem link e sem hashtag no texto; " +
+    "(e) Facebook: na mesma linha, com até 1.100 caracteres, sem link e sem hashtag no texto (não há matéria no site); " +
+    "(f) em 'hashtags': no máximo 1, do tema (as fixas da Artecon entram depois, pelo sistema); " +
+    (agenda ? "(g) a legenda apresenta a semana e convida a conferir os vencimentos na arte; se citar data ou obrigação, só as das informações conferidas; "
+      : p.formato === "carrossel" ? "(g) 'cartoes': de 3 a 9, cada um com 'titulo' de até 40 caracteres e 'texto' de até 220; a capa é a chamada e o apoio, e o último cartão diz o que fazer; "
+      : p.formato === "carrossel_fotos" ? `(g) 'cartoes': um por foto${nFotos ? ` (${Math.min(nFotos, 9)})` : ""}, na ordem das fotos, com 'titulo' opcional (até 40 caracteres) e 'texto' de até 120; ` : "") +
+    "(h) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
+    REGRA_PUBLICIDADE + REGRA_PUBLICIDADE_PECA + REGRA_ESTILO + REGRA_DADOS;
+  // o esquema conforme o formato (como o enum de "classificar"): a agenda não tem arte (a lista é desenhada pela tela)
+  const texto = { type: "string" }, legenda = { type: "object", additionalProperties: false, required: ["texto", "hashtags"],
+    properties: { texto, hashtags: { type: "array", items: texto } } };
+  const campos: Record<string, unknown> = {
+    ...(agenda ? {} : { arte: { type: "object", additionalProperties: false, required: ["chamada", "apoio"], properties: { chamada: texto, apoio: texto } } }),
+    instagram: legenda, facebook: legenda,
+    ...(cartoes ? { cartoes: { type: "array", items: { type: "object", additionalProperties: false, required: ["titulo", "texto"], properties: { titulo: texto, texto } } } } : {}),
+    pendencias: { type: "array", items: texto },
+  };
+  const esquema = { type: "object", additionalProperties: false, required: Object.keys(campos), properties: campos };
+  // até 4.000 tokens (cabe nos 6.000 da IA Central), uma chamada só
+  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "peca", esquema, 4000, undefined,
+    "A peça saiu maior que o limite do pedido e veio incompleta: gere de novo (a IA costuma encurtar na segunda vez).");
+  const { peca: novo, avisos: doLimpo } = limparPeca(json, p.formato, agenda, marcadas.length, nFotos);
+
+  // conferência por código, contra as informações conferidas: o fato que não está nelas fica marcado no texto
+  const baseTexto = conferidas.map((c) => c.informacao + "\n" + c.fonte).join("\n"), base = fatos(baseTexto, true);
+  const marcados: string[] = [], soltos: string[] = [];
+  const marcar = (t: string) => { const r = marcarFatosForaDasConferidas(t, base); marcados.push(...r.marcados); soltos.push(...r.soltos); return r.texto; };
+  if (novo.arte) novo.arte = { chamada: marcar(novo.arte.chamada), apoio: marcar(novo.arte.apoio) };
+  novo.instagram.texto = marcar(novo.instagram.texto); novo.facebook.texto = marcar(novo.facebook.texto);
+  novo.cartoes = novo.cartoes.map((c) => ({ titulo: marcar(c.titulo), texto: marcar(c.texto) }));
+  const partes = [novo.arte?.chamada ?? "", novo.arte?.apoio ?? "", novo.instagram.texto, novo.facebook.texto, ...novo.cartoes.flatMap((c) => [c.titulo, c.texto])]
+    .filter(Boolean);
+  const textoDaPeca = partes.join("\n\n"), hashtags = [...novo.instagram.hashtags, ...novo.facebook.hashtags].join(" ");
+  const avisos: string[] = [], publicidade = termosPublicidade(...partes, hashtags);
+  const trava = [...new Set([...publicidade.trava, ...termosPeca(...partes, hashtags)])];
+  if (trava.length) avisos.push(`Termo que a publicidade contábil não admite na Pauta: ${trava.join(", ")}. Troque antes de marcar como pronta (a tela não deixa aprovar com ele).`);
+  // (a lista vai sempre no fim do aviso: avisoCurto encurta tirando os últimos itens)
+  const marcas = marcasVerificar(textoDaPeca);
+  if (marcas.length) {
+    avisos.push(`A sugestão tem ${marcas.length} marca(s) [VERIFICAR]: troque cada uma pela informação conferida (acrescentando-a às informações ` +
+      "conferidas, com a fonte oficial) ou tire o trecho; a peça não fica pronta com a marca.");
+  }
+  if (marcados.length) avisos.push(`Fato que a IA escreveu e que não está nas informações conferidas (marcado com [VERIFICAR] no texto): ${[...new Set(marcados)].join("; ")}.`);
+  if (soltos.length) avisos.push(`Fato que não está nas informações conferidas (confira na fonte oficial ou tire do texto): ${[...new Set(soltos)].join("; ")}.`);
+  const naBase = numerosPeca(baseTexto), numeros = [...numerosPeca(textoDaPeca)].filter((n) => !naBase.has(n));
+  if (numeros.length) {
+    avisos.push("Número que não está nas informações conferidas (confira na fonte oficial e acrescente às conferidas, ou tire do texto; a peça " +
+      `não fica pronta com ele): ${numeros.join(", ")}.`);
+  }
+  // a pessoa: "contador(a)", "técnico(a)" e "especialista" perto do marcador, conforme o registro (o banco confere de novo, com o nome)
+  marcadas.forEach((id, i) => {
+    const x = porId.get(id), k = i + 1;
+    if (!registro(x) && pertoDe(textoDaPeca, k, RX_CONTADOR + "|" + RX_TECNICO)) {
+      avisos.push(`{PESSOA${k}} não tem registro no CRC: não chame de contador(a) nem de técnico(a) (a peça não fica pronta assim).`);
+    } else if (registro(x) && /^tecnic/.test(x.categoria) && pertoDe(textoDaPeca, k, RX_CONTADOR)) {
+      avisos.push(`{PESSOA${k}} é técnico(a) em contabilidade: não chame de contador(a) (a peça não fica pronta assim).`);
+    }
+    if (pertoDe(textoDaPeca, k, RX_ESPECIALISTA)) avisos.push(`“especialista” perto de {PESSOA${k}}: não há título de especialista registrado, tire a palavra.`);
+  });
+  // o termo de uso de imagem no dia da peça: a sugestão sai, mas a peça não fica pronta sem ele
+  for (const t of Array.isArray(termos) ? termos : []) {
+    const k = marcadas.indexOf(Number(t?.pessoa_id)) + 1, ig = t?.motivo_instagram, fb = t?.motivo_facebook;
+    if (!k || (!ig && !fb)) continue;
+    avisos.push(`O termo de uso de imagem de {PESSOA${k}} não vale nesta peça (${ig === fb ? ig : [ig ? "Instagram: " + ig : "", fb ? "Facebook: " + fb : ""].filter(Boolean).join("; ")}): ` +
+      "sem ele a peça não fica pronta; confira em Pauta → Pessoas e termos.");
+  }
+  const cuidado = publicidade.aviso.filter((x: string) => !trava.some((y) => y.includes(x)));
+  if (cuidado.length) avisos.push(`Termo que pede cuidado na publicidade contábil: ${cuidado.join(", ")}. Confira se é informação, e não propaganda.`);
+  const duvidas = comentariosDuvida(textoDaPeca);
+  if (duvidas.length) avisos.push(`A sugestão tem ${duvidas.length} comentário(s) sobre dúvida da redação (ex.: “${duvidas[0]}”): tire antes de usar.`);
+  avisos.push(...doLimpo);
+  // os textos ficam com {PESSOA1}, {PESSOA2}… (a tela troca pelo nome na peça); "base": com o que a sugestão foi feita
+  const salvo: any = { versao: 1, gerado_em: new Date().toISOString(), modelo: reg.uso?.modelo ?? MODELO, base: { tipo: p.tipo, formato: p.formato, pessoas: marcadas },
+    ...(novo.arte ? { arte: novo.arte } : {}), instagram: novo.instagram, facebook: novo.facebook, cartoes: novo.cartoes, pendencias: novo.pendencias,
+    avisos: [...new Set(avisos)].map((a) => avisoCurto(a)).slice(0, 12) };
+  // o banco aceita até 30.000 caracteres: num caso extremo, saem os últimos avisos e depois as últimas pendências
+  while (JSON.stringify(salvo).length > 28000 && (salvo.avisos.length || salvo.pendencias.length)) (salvo.avisos.length ? salvo.avisos : salvo.pendencias).pop();
+
+  // grava como o usuário, só se a peça ainda for a que foi lida (gravar a sugestão não muda a versão da peça nem entra na trilha)
+  const linhas = await banco(token, "PATCH", `radar_pauta_pecas?id=eq.${pecaId}&atualizado_em=eq.${encodeURIComponent(p.atualizado_em)}&select=id`,
+    { ia: salvo }, "return=representation").catch((e) => { throw semTabelaDaPauta(e); });
+  if (!Array.isArray(linhas) || !linhas.length) throw new Erro(409, "A peça foi alterada enquanto a IA escrevia. Atualize a tela e tente de novo.");
+  return { peca_id: pecaId, ia: salvo, avisos: salvo.avisos };
 }
 
 // ------------------------------------------------------------------ ilustração de capa
@@ -1434,10 +1784,10 @@ async function tratar(req: Request): Promise<Response> {
     const pedido = await req.json().catch(() => null);
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
-    if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar", "kit"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
-    const diag = acao === "diagnostico";
-    if (!diag && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
-    assuntoId = diag ? 0 : pedido.assunto_id;
+    if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar", "kit", "peca"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca";        // v0.21.0: a peça é da Pauta, não de um assunto
+    if (!semAssunto && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
+    assuntoId = semAssunto ? 0 : pedido.assunto_id;
 
     const papel = await banco(token, "POST", "rpc/radar_papel", {});
     if (!["admin", "editor"].includes(papel)) throw new Erro(403, "Seu perfil não permite usar a IA.");
@@ -1452,6 +1802,13 @@ async function tratar(req: Request): Promise<Response> {
     if (LIMITE_MENSAL > 0 && Number(mes?.tokens ?? 0) >= LIMITE_MENSAL) {
       throw new Erro(429, `O limite mensal de uso da IA (${LIMITE_MENSAL.toLocaleString("pt-BR")} tokens) foi atingido. ` +
         "O administrador pode aumentar o segredo RADAR_IA_LIMITE_MENSAL_TOKENS.");
+    }
+
+    // v0.21.0: a peça da Pauta (sem assunto: nada de carregar); o consumo é registrado no finally, como "gerar"
+    if (acao === "peca") {
+      reg = { uso: null, quem: await emailDoUsuario(token) };
+      const r = await peca(token, reg, pedido.peca_id, pedido.lido), usado = reg.uso as Uso | null;
+      return responder(200, { ...r, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
     }
 
     const ctx = await carregar(token, assuntoId);
@@ -1470,15 +1827,16 @@ async function tratar(req: Request): Promise<Response> {
     return responder(200, { ...resultado, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
   } catch (e) {
     if (e instanceof Erro) return responder(e.status, { message: e.message });
-    console.error(e);
+    // v0.21.0: só o nome do erro (a mensagem e a pilha podem trazer dado do pedido: nome de pessoa, texto, endereço)
+    console.error("radar-ia: erro inesperado", e instanceof Error ? e.name : "");
     return responder(500, { message: "Erro inesperado na função de IA." });
   } finally {
     // o que a OpenAI cobrou é registrado mesmo se algo falhou depois da resposta dela (v0.20.0: o kit conta como "gerar", uma das
-    // ações que o banco aceita, e entra no limite do mês)
+    // ações que o banco aceita, e entra no limite do mês; v0.21.0: a peça também, sem assunto)
     const usado = reg.uso;
     if (usado && token) {
       await banco(token, "POST", "rpc/radar_registrar_uso_ia", {
-        p_acao: acao === "titulos" || acao === "revisar" || acao === "kit" ? "gerar" : acao === "verificar" ? "fundamentar" : acao, p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
+        p_acao: acao === "titulos" || acao === "revisar" || acao === "kit" || acao === "peca" ? "gerar" : acao === "verificar" ? "fundamentar" : acao, p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
       }).catch((e) => console.error("uso da IA não registrado:", e?.message));
     }
   }

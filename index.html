@@ -52,7 +52,7 @@ main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
 main h1{border-left:5px solid var(--vermelho);padding-left:12px}
 #tab-fontes form{position:sticky;left:0;max-width:calc(100vw - 68px)}
 .linha-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
-input[type=text],input[type=email],input[type=password],input[type=number],input[type=datetime-local],select,textarea{
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=datetime-local],input[type=date],input[type=time],select,textarea{
   border:1px solid #C9D2DC;border-radius:7px;padding:7px 9px;background:#fff;max-width:100%}
 textarea{width:100%;min-height:90px;resize:vertical}
 label{display:block;font-size:.8rem;font-weight:700;color:var(--marinho);margin:8px 0 3px}
@@ -215,6 +215,37 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 .copiado{background:#FFE8A3;border-radius:3px;padding:0 2px}
 .diag{list-style:none;padding:0;margin:8px 0}
 .diag li{padding:6px 0;border-bottom:1px solid var(--linha)}
+/* v0.21.0: aba Pauta (radar-pauta.js): a semana em cartões (uma coluna no celular), a peça com as fotos, as informações conferidas e as
+   legendas, e as pessoas com o termo de uso de imagem */
+.pauta-barra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+.pauta-semana{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:16px}
+.pauta-dia{background:#fff;border:1px solid var(--linha);border-top:3px solid var(--azul);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.pauta-dia.vazio{background:transparent;border-style:dashed;border-top-width:1px} .pauta-dia.hoje{box-shadow:0 0 0 2px var(--marinho) inset}
+.pauta-dia h3{font-family:"DM Sans",system-ui,sans-serif;font-size:.95rem;margin:0} .pauta-dia p{margin:0} .pauta-dia .acoes{margin-top:auto}
+.pauta-dia .selos{display:flex;gap:4px;flex-wrap:wrap} .pauta-pessoas{display:flex;gap:4px 10px;flex-wrap:wrap;font-size:.85rem}
+.pauta-erros{margin:6px 0;padding-left:20px} .pauta-erros li{margin:2px 0} .pauta-lista{margin:0;padding-left:18px} .pauta-lista li{margin:4px 0}
+.peca h3{margin-top:16px} .peca-fotos{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0}
+.peca-foto{margin:0;display:flex;flex-direction:column;gap:4px;align-items:center} .peca-foto img{width:108px;height:135px;object-fit:cover;border-radius:6px;border:1px solid var(--linha)}
+.peca-foto .acoes{margin:0;gap:4px}
+.peca-pessoas{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px} .peca-pessoas label{display:flex;gap:6px;align-items:flex-start;margin:0;font-weight:400;font-size:.9rem;color:var(--cinza)}
+.conf-linhas,.cartao-linhas{display:flex;flex-direction:column;gap:6px}
+.conf-linha,.cartao-linha{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr) auto;gap:6px;align-items:start}
+.conf-linha textarea,.cartao-linha textarea{min-height:0} .conf-linha input,.cartao-linha input{width:100%}
+.peca-legendas{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px} .peca-legenda textarea{min-height:170px} .peca-legenda .acoes{margin-top:4px}
+.pessoas-lista{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;align-items:start} .pessoa.inativa{opacity:.75}
+.pessoa h2{font-size:1.05rem} .pessoa fieldset{border:0;padding:0;margin:10px 0 0;min-width:0} .pessoa legend{font-size:.8rem;font-weight:700;color:var(--marinho);padding:0}
+.checks label{display:inline-flex;gap:4px;align-items:center;margin:2px 12px 0 0;font-weight:400;font-size:.9rem;color:var(--cinza)}
+details.nova-pessoa{margin:0 0 16px} details.nova-pessoa summary{margin-bottom:8px} details.peca-plano{margin:14px 0 0}
+.pauta-ferramentas label{margin-top:10px}
+/* a arte da peça (as lâminas rolam na horizontal dentro da caixa, também no celular), a conferência, a aprovação e a peça aprovada */
+.peca-artes{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding-bottom:6px} .peca-artes figure{margin:0;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-items:center}
+.peca-artes img{width:216px;height:270px;border-radius:6px;border:1px solid var(--linha);background:#0D3B73;display:block} .peca-artes img[data-pendente]{opacity:.45}
+.peca-conferencia{margin-top:14px} .peca-conferencia h3{margin:0 0 6px}
+details.peca-aprovar summary{font-size:1rem} .peca-aprovar .checks label,.peca-tentar label{display:flex;gap:6px;align-items:flex-start;margin:4px 0 0}
+.peca-envios{margin:6px 0;padding-left:18px} .peca-envios li{margin:4px 0} .peca-registro{margin-top:12px} .peca-aprovada h2{font-size:1.1rem}
+/* o Gerar com IA da peça: a sugestão (os textos com o nome na peça no lugar de {PESSOA1}, o que falta conferir e os avisos) */
+.peca-sugestao{margin:8px 0 0} .peca-sugestao h4{margin:0 0 6px} .peca-sugestao-cartoes{margin:4px 0 8px;padding-left:22px} .peca-sugestao-cartoes li{margin:3px 0}
+@media (max-width:640px){ .conf-linha,.cartao-linha{grid-template-columns:minmax(0,1fr)} }
 @media (max-width:640px){ main{padding:12px 16px 60px} td,th{padding:6px 5px} .quem{margin-left:0} .topo{padding:8px 14px;gap:10px} .topo .logo{height:38px} .marca{font-size:1.1rem;padding-left:10px} }
 </style>
 </head>
@@ -223,16 +254,30 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
+<script src="radar-pauta.js?v=0.21.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.20.0";
-const FUNCAO_MINIMA = "0.20.0";     // versão da função radar-ia que este painel exige (v0.20.0: a ação “kit”, das legendas, da arte e do roteiro do reel)
+const VERSAO = "0.21.0";
+const FUNCAO_MINIMA = "0.21.0";     // versão da função radar-ia que este painel exige (v0.21.0: a ação “peca”, o Gerar com IA da peça da Pauta)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.21.0", "12/10/2026", [
+    "Aba Pauta: o calendário de publicações no Instagram e no Facebook, uma peça por dia, na visão da semana (de segunda a domingo). O calendário do plano de publicações entra por “Importar o calendário (CSV)”: a tela confere o arquivo inteiro, mostra todos os erros de uma vez (com a linha) e o que muda, e só grava depois. A peça que já entrou em produção não muda na importação. O CSV tem nomes da equipe: nunca vai para o GitHub.",
+    "Peça da Pauta: fotos no alto (cada uma em 1080×1350, enviadas uma de cada vez; a foto HEIC do iPhone recebe o recado de como trocar), quem aparece (só pessoas cadastradas, com o selo do termo de imagem), informações conferidas com a fonte, chamada, apoio, cartões, roteiro do reel (colado à mão) e as legendas do Instagram e do Facebook. No domingo, “Calcular a agenda da semana” traz os vencimentos de segunda a sexta seguintes (sem o honorário contábil).",
+    "Arte da peça, desenhada na própria tela (1080×1350): a foto em página cheia ou o fundo azul-marinho com o texto, uma lâmina por cartão no carrossel, a linha de quem aparece (“contador(a)” e o CRC só de quem tem registro) e, embaixo, a faixa branca com a identificação legal da empresa, em letra de pelo menos 28 px de altura e a 72 px das bordas. Se a identificação não couber, a peça não é aprovada.",
+    "“Salvar e marcar como pronta” confere a peça (no banco e na tela) e mostra numa lista tudo o que falta resolver: a identificação legal em cada legenda, número que não está nas informações conferidas, [VERIFICAR], fonte ou frase do boletim pago, pessoa sem termo válido, nome no texto de quem não está marcado, sobrenome que o termo não autoriza, “contador” para quem não tem registro e os termos que a publicidade contábil evita (preço, desconto, promoção, promessa, comparação, superlativo). O administrador vê no alto da Pauta a lista “Prontas para aprovar”.",
+    "Aprovar e agendar (só o administrador): escolhe os canais e como sai (agendar ou à mão), marca as conferências (“nas fotos e nos textos só aparecem as pessoas marcadas”; na agenda da semana, as datas) e confirma. Vai ao ar exatamente o que está na tela: as lâminas ficam guardadas na aprovação, e a peça aprovada não se edita (para mudar, “Desfazer aprovação”, que o editor também pode).",
+    "Publica sozinha no dia e na hora: a peça de imagem ou de foto aprovada para agendar sai pela agenda do banco, que roda de 5 em 5 minutos e chama a função radar-redes (a foto vai à Meta por um link privado que vale 10 minutos; não fica pública). Antes de sair, o banco confere tudo de novo: a versão aprovada, o termo de imagem válido no dia e o atraso (passadas 6 horas da hora marcada, não sai sozinha). “Publicar agora” remarca para já. Para pausar, sem SQL: Configurações → Pauta → “agenda_ligada”: false.",
+    "Modo à mão (carrossel, reel ou quando o administrador preferir): depois de aprovada, a peça libera “Baixar as lâminas”, “Copiar legenda” e “Copiar roteiro” (o banco confere de novo o termo de imagem no dia) e, depois de postar, o registro do link do post. O carrossel pela API e o roteiro do reel pela IA ficam para a v0.21.1.",
+    "Quando a publicação não sai (erro, parada em “publicando” ou agendada que passou da hora), ela aparece no Painel e no quadro “Não saíram” da Pauta, com o motivo; “Tentar de novo” pede antes “Conferi no Instagram e no Facebook: não saiu”, para nunca sair duas vezes. O robô abre também um aviso por e-mail (“Radar: publicação agendada não saiu”, um só, sem nomes), que fecha sozinho quando tudo sai.",
+    "Gerar com IA na peça (editor e administrador): a IA sugere a chamada e o apoio da arte, as legendas e os cartões do carrossel a partir do plano e das informações conferidas. Nenhum nome vai à IA (a pessoa marcada vai como {PESSOA1}, e a tela troca pelo nome na peça); o fato que não está nas informações conferidas vem marcado com [VERIFICAR]. “Usar a sugestão” leva os textos aos campos, sem salvar.",
+    "Pessoas e termos (administrador cadastra; editor consulta): quem pode aparecer nas peças e o termo de uso de imagem de cada pessoa (prazo, canais e finalidades). Fica só no banco; o leitor não vê. Registre só com o termo assinado em mãos.",
+    "Configurações → Pauta e agenda automática: agenda ligada ou desligada, a hora padrão das peças, a janela de atraso e as hashtags fixas. Na agenda de obrigações, “redes”: false tira a obrigação da agenda publicada nas redes (o honorário contábil já vem assim).",
+    "Administrador: para instalar, rode o sql/radar-setup-v0.21.0.sql, faça o Deploy das funções radar-redes e radar-ia desta versão e rode o sql/radar-redes-agenda.sql, num dia útil (passo a passo no LEIAME, “Da v0.20.0 para a v0.21.0”). Sem o sql/radar-redes-agenda.sql, a Pauta funciona, mas a peça agendada só sai pelo “Publicar agora”."]],
   ["0.20.0", "12/10/2026", [
     "“Gerar com IA” agora prepara também as redes: a legenda do Instagram, a do Facebook, a chamada e a linha de apoio da arte e o roteiro de um reel (de 30 a 45 segundos, para alguém da equipe gravar). Fica tudo no quadro “Kit das redes”, no conteúdo, com os botões de copiar; “Gerar kit das redes com IA” refaz só o kit. Nada é publicado sem a autorização do administrador.",
     "Arte vertical para o Instagram e o Facebook (1080×1350): chamada grande, linha de apoio, o caminho até o site e, no rodapé, a identificação legal da empresa. A chamada, o apoio e o fundo da arte podem ser trocados na hora de publicar; se o texto não couber, a tela avisa embaixo da imagem.",
@@ -437,7 +482,8 @@ const ROTULOS = {
 const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## Quem será afetado?", "",
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
 
-const E = { etapa:null, sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"}, mais:{} };
+const E = { etapa:null, sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"}, mais:{},
+           pauta:{semana:null, peca:null, vista:"semana", previa:null} };       // v0.21.0: a aba Pauta (radar-pauta.js)
 /* Listas longas: carregam uma leva por vez; "Mostrar mais" traz a seguinte (a contagem vale por tela e filtro) */
 const limiteDe = (chave, base) => base * Math.max(1, (E.mais || {})[chave] || 1);
 const botaoMais = (chave, n, limite, rotulo, total) => n >= limite
@@ -635,7 +681,8 @@ const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
    a partir da 2ª consulta o Radar pede a senha de quem está logado (evita consulta repetida sem querer, e gasto). */
 const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo o texto (até 2 minutos)",
   classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a ilustração da capa (até 2 minutos)",
-  verificar:"procurando a fonte oficial na internet (até 2 minutos)", kit:"montando as legendas, a arte e o roteiro do reel (até 1 minuto)"};
+  verificar:"procurando a fonte oficial na internet (até 2 minutos)", kit:"montando as legendas, a arte e o roteiro do reel (até 1 minuto)",
+  peca:"escrevendo a chamada, as legendas e os cartões da peça (até 1 minuto)"};
 /* v0.19.0: no “Gerar com IA” (várias chamadas seguidas), o aviso diz também em que etapa está */
 let IA_PASSO = "";
 function avisoIA(texto){
@@ -685,20 +732,21 @@ function pedirSenha(){
 }
 /* Antes de cada consulta à IA no assunto: a 1ª é livre; a partir da 2ª, senha. "Preparar tudo" conta como uma consulta só. */
 /* v0.20.0: sem o crédito da ilustração da v0.12.0 — o “Gerar com IA” não pede mais ilustração (faz a capa padrão). */
-async function liberarIA(){
-  const assunto = E.assunto;
-  if(usosIA() >= 1 && !(await pedirSenha())){ recado("Consulta à IA cancelada."); return false; }
-  if(E.assunto !== assunto){ recado("A tela mudou enquanto a senha era pedida: a consulta não foi feita."); return false; }
+/* v0.21.0: "chave" é o que conta as consultas (o assunto; na Pauta, "pauta-<id da peça>") e "naTela" diz se a tela ainda é a dela */
+async function liberarIA(chave = E.assunto, naTela = () => E.assunto === chave){
+  if(usosIA(chave) >= 1 && !(await pedirSenha())){ recado("Consulta à IA cancelada."); return false; }
+  if(!naTela()){ recado("A tela mudou enquanto a senha era pedida: a consulta não foi feita."); return false; }
   return true;
 }
 async function ia(acao, extra = {}, tempo = 150000){
-  const assunto = extra.assunto_id ?? E.assunto;                  // fixo no início: trocar de tela no meio não muda o destino
+  // v0.21.0: a peça da Pauta não é de assunto: vai sem assunto_id, e as consultas contam por peça ("pauta-<id>")
+  const peca = acao === "peca", assunto = peca ? null : extra.assunto_id ?? E.assunto;   // fixo no início: trocar de tela no meio não muda o destino
   avisoIA(IA_FAZENDO[acao] || "trabalhando");
-  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao, ...extra, assunto_id:assunto}, tempo});
-    contarUsoIA(assunto);                                         // só a consulta que deu certo conta para pedir a senha depois
+  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:peca ? {acao, ...extra} : {acao, ...extra, assunto_id:assunto}, tempo});
+    contarUsoIA(peca ? "pauta-" + extra.peca_id : assunto);       // só a consulta que deu certo conta para pedir a senha depois
     return r; }
   catch(e){
-    if(e.status === 404 && !/(Assunto|Conteúdo) não encontrado/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
+    if(e.status === 404 && !/(Assunto|Conteúdo|Peça) não encontrad[ao]/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
     if(e.status === 0) throw new ErroApi("Não foi possível falar com a função de IA (sem resposta). Confira a internet; se persistir, o administrador pode testar em Configurações → Inteligência artificial.", 0);
     if(/Ação desconhecida/.test(e.message)) throw new ErroApi("A função de IA instalada no Supabase é de uma versão anterior e não tem este recurso. O administrador precisa colar de novo o arquivo index.ts desta versão na função radar-ia (Configurações → Inteligência artificial).", e.status);
     if(/invalid jwt|missing authorization/i.test(e.message)) throw new ErroApi("A função de IA recusou a sessão. Saia do Radar, entre de novo e repita.", e.status);
@@ -719,7 +767,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.fundosArte = {}; E.kitAberto = {}; E.capaDesenhada = null; E.arteCorte = {}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.fundosArte = {}; E.kitAberto = {}; E.capaDesenhada = null; E.arteCorte = {}; E.pauta = {semana:null, peca:null, vista:"semana", previa:null}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -749,7 +797,7 @@ const catMapa = () => Object.fromEntries(E.categorias.map(c => [c.slug, c.nome])
 function papelDaChave(){ try{ return JSON.parse(atob(CHAVE.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).role || ""; }catch(e){ return ""; } }
 
 /* ------------------------------------------------------------- estrutura */
-const ABAS = [["painel","Painel"],["fila","Capturas"],["assuntos","Assuntos"],["informativos","Informativos"],["publicacoes","Publicações"],
+const ABAS = [["painel","Painel"],["fila","Capturas"],["assuntos","Assuntos"],["informativos","Informativos"],["publicacoes","Publicações"],["pauta","Pauta"],
               ["fontes","Fontes"],["usuarios","Usuários",true],["configuracoes","Configurações",true],["auditoria","Histórico",true],["ajuda","Como usar"],["versoes","Versões"]];
 const LOGO = `<img class="logo-entrada" src="radar-logo-artecon.png" alt="Artecon Artes Contábeis">`;
 function moldura(conteudo){
@@ -791,7 +839,8 @@ async function desenhar(){
     const html = E.assunto ? await telaAssunto(E.assunto) : await TELAS[E.aba]();
     if(g === GERACAO){ app.innerHTML = moldura(html);
       const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi);
-      montarImagemRede(); }
+      montarImagemRede();
+      if(!E.assunto && E.aba === "pauta" && typeof depoisDeDesenharPauta === "function") depoisDeDesenharPauta(); }     // v0.21.0: a peça aberta (radar-pauta.js)
   }catch(e){ if(g === GERACAO && E.sessao && E.perfil) app.innerHTML = moldura(`<div class="aviso erro">${h(e.message)}</div>`); }
 }
 function telaEntrada(erro){
@@ -823,6 +872,7 @@ const TELAS = {
         ${c(p.aguardando_aprovacao, "Aguardando aprovação", "assuntos")}
         ${c(p.aprovados_sem_site, "Aprovados a publicar no site", "publicacoes", true)}
         ${c(p.no_site, "Publicados no site", "publicacoes")}
+        ${p.pauta_falhas ? c(p.pauta_falhas, "Publicações da Pauta que não saíram", "pauta", true) : ""}
       </div>
       <div class="painel"><h2>Conteúdos aguardando aprovação</h2>
         ${revisao.length ? `<div class="rolagem"><table><tr><th>Título</th><th>Formato</th><th>Atualizado</th></tr>${revisao.map(r =>
@@ -940,7 +990,7 @@ const TELAS = {
     const [regs, aprovados, redesNoAr] = await Promise.all([
       ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
       ler("radar_conteudos", {select:SEL_CONT, status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"}),
-      ler("radar_redes_envios", {select:"conteudo_id", situacao:"eq.publicado", limit:"1000"})]);
+      ler("radar_redes_envios", {select:"conteudo_id", situacao:"eq.publicado", conteudo_id:"not.is.null", limit:"1000"})]);   // v0.21.0: o envio da Pauta não tem conteúdo
     // v0.17.0: também o que está publicado e deixou de estar aprovado (texto em revisão, por exemplo): dá para excluir
     const jaListados = new Set(aprovados.map(c => c.id));
     const outros = [...new Set([...regs.map(r => r.conteudo_id), ...redesNoAr.map(r => r.conteudo_id)])].filter(id => !jaListados.has(id)).slice(0, 200);
@@ -1018,6 +1068,9 @@ const TELAS = {
           : `<p class="sub">Nenhuma publicação registrada ainda.</p>`}
         ${botaoMais("site", regs.length, limiteDe("site", 300), "registros")}</div>`;
   },
+
+  // v0.21.0: a aba Pauta fica em radar-pauta.js (carregado antes deste script); sem ele, o recado
+  pauta: () => typeof telaPauta === "function" ? telaPauta() : '<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-arquivo">O arquivo radar-pauta.js não carregou. Aperte Ctrl+F5 (no celular, recarregue a página); se continuar, avise o administrador.</div>',
 
   async fontes(){
     const fontes = await ler("radar_fontes", {select:"*", order:"id"});
@@ -1110,8 +1163,9 @@ const TELAS = {
         <div class="acoes"><button class="btn" data-acao="testar-ia">Testar a IA</button></div><div id="diag-ia"></div></div>
       ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10) e <b>nota_promove</b> (nota da IA que tira a captura de “baixa” e a leva para “média”, mesmo sem palavras da lista; padrão 8; use 11 para desligar) e <b>nota_rebaixa</b> (captura “alta” com nota da IA até este valor desce para “média”; padrão 3; use -1 para desligar). Fila: <b>arquivar_dias</b> (a captura que está na fila há mais dias que isso e é baixa, ou tem nota da IA até <b>arquivar_nota</b>, sai sozinha da triagem e vai para Assuntos → Ignorado; padrão 10 dias e nota 2; use 0 dias para desligar). <b>dias_baixa</b>: notícia com mais dias que isso (pela data da notícia ou, sem ela, da captura) vira baixa relevância; padrão 5; 0 desliga. A que ficou baixa só pela idade continua em “Baixa relevância” e não sai sozinha da fila.`)}
       ${bloco("rascunhos", "Rascunhos automáticos", `O robô prepara sozinho o rascunho das notícias de topo (Assuntos → “Conteúdo gerado”), com as mesmas regras do “Gerar com IA”. Ele não envia para revisão, não aprova e não publica. Só entram capturas de <b>fonte oficial</b>, com o texto oficial capturado, relevância alta, ainda na fila e com nota da IA a partir de <b>nota_minima</b> (padrão 9). <b>por_dia</b>: no máximo quantos rascunhos por dia (padrão 2; 0 desliga); <b>dias</b>: só capturas destes últimos dias (padrão 3); <b>formato</b>: “flash”, “informativo” ou “artigo”; <b>ligado</b>: true ou false.`)}
+      ${bloco("pauta", "Pauta e agenda automática", `A Pauta (calendário de publicações no Instagram e no Facebook). <b>agenda_ligada</b>: true ou false; com false, a agenda automática para inteira, sem mexer no SQL (o que está agendado espera, e a peça só sai se alguém clicar em Publicar agora). <b>hora_padrao</b>: a hora de Brasília (“09:30”) que as peças novas recebem ao importar o calendário. <b>janela_horas</b>: de 1 a 48; passado esse tempo da hora marcada, a peça não sai atrasada sozinha (aparece em “Não saíram”). <b>hashtags</b>: as hashtags fixas das legendas, até 3, cada uma começando com # (ex.: ["#Contabilidade", "#Palhoça"]).`)}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
-      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”.`)}
+      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento (vai junto, nas informações conferidas da peça).`)}
       ${bloco("feriados_extras", "Feriados locais e pontos facultativos", `Os feriados nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente bancário) já são considerados. Acrescente aqui os demais: "AAAA-MM-DD" (uma data) ou "MM-DD" (todo ano). Exemplo: ["2026-12-24", "04-24"].`)}
       ${bloco("fale_conosco", "Fale Conosco", `Quadro da última página. Cada setor tem <b>nome</b> (faixa azul), <b>rotulo</b>, <b>telefones</b>, <b>emails</b> e <b>equipe</b> (listas). Telefone pode ser só o número ("48-3033-4978", telefone fixo) ou {"numero": "48-3242-0530", "whatsapp": true, "nome": "opcional"}. Um setor pode ter <b>responsaveis</b> (lista de {"nome", "telefone", "whatsapp"}) e <b>responsaveis_rotulo</b> (ex.: “Contadores Responsáveis”), mostrados numa linha logo abaixo do setor. <b>observacao</b> é uma linha livre no fim do quadro.`)}
       ${bloco("assinatura", "Fecho, assinatura e identificação legal", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo. <b>cnpj</b> (com ou sem pontuação; vale também o CNPJ alfanumérico) e <b>crc</b> (o registro da empresa no CRC, ex.: “CRC-SC 004064/O-5”: depois da barra vem a letra O, de originário, não o número zero; escrito de outro jeito, como “SC-004064/O-5”, a tela padroniza): a identificação legal que a arte e as legendas do Instagram e do Facebook levam no fim, com a <b>empresa</b> (“empresa · CNPJ … · CRC-SC …”). Cada valor vai entre aspas, e os campos são separados por vírgula. Quem acrescenta é a tela, nunca a IA; o que estiver vazio fica de fora, com aviso.`,
@@ -1159,9 +1213,10 @@ const TELAS = {
         <tr><td><b>Assuntos</b></td><td>Onde o trabalho acontece: classificação, fundamentação e conteúdos.</td></tr>
         <tr><td><b>Informativos</b></td><td>Edições do Informativo Mensal e o PDF.</td></tr>
         <tr><td><b>Publicações</b></td><td>Aprovados que faltam publicar no site e o registro do que já foi.</td></tr>
+        <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV) e as pessoas com o termo de uso de imagem" : ""}. O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
-        <tr><td><b>Configurações</b></td><td>Teste da IA, regras de relevância das capturas, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
+        <tr><td><b>Configurações</b></td><td>Teste da IA, regras de relevância das capturas, Pauta e agenda automática, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
         <tr><td><b>Histórico</b></td><td>Trilha de auditoria: quem fez o quê.</td></tr>` : ""}
         <tr><td><b>Versões</b></td><td>O que mudou em cada versão.</td></tr></table></div></div>
       ${adm ? `<div class="painel"><h2>Cadastrar uma fonte nova</h2><ol class="passos">
@@ -2469,13 +2524,13 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
 
 /* ------------------------------------------------------------------ ações */
 const ACOES = {
-  aba(el){ E.etapa = null; E.aba = el.dataset.aba; E.assunto = null; E.informativo = null; return desenhar(); },
+  aba(el){ E.etapa = null; E.aba = el.dataset.aba; E.assunto = null; E.informativo = null; E.pauta.peca = null; E.pauta.vista = "semana"; return desenhar(); },
   recarregar(){ return desenhar(); },
   sair(){
     if(telaSuja() && !confirm("Há texto digitado e não salvo nesta tela. Sair agora descarta esse texto. Sair mesmo assim?")) return;
     return sair();
   },
-  voltar(){ E.etapa = null; if(E.assunto) E.assunto = null; else E.informativo = null; return desenhar(); },
+  voltar(){ E.etapa = null; if(E.assunto) E.assunto = null; else E.informativo = null; E.pauta.peca = null; E.pauta.vista = "semana"; return desenhar(); },
   "abrir-assunto"(el){ if(!el.dataset.id || el.dataset.id === "undefined") return; E.etapa = null; E.assunto = Number(el.dataset.id); window.scrollTo(0,0); return desenhar(); },
   /* v0.19.0: da aba Publicações direto ao “Publicar em todos” (ou aos canais que faltam) do conteúdo, no passo Publicar */
   async "publicar-todos-de"(el){ await abrirParaPublicar(el, "todos"); },
@@ -3422,6 +3477,9 @@ function validarConfig(chave, v){
       if(!REGRAS.includes(o.regra)) return `“${o.nome}”: regra inválida.`;
       if(o.regra === "dia" && !(Number.isInteger(o.dia) && o.dia >= 1 && o.dia <= 31)) return `“${o.nome}”: informe o dia (1 a 31).`;
       if(o.regra === "dia" && !AJUSTES.includes(o.ajuste)) return `“${o.nome}”: ajuste deve ser antecipa, posterga ou nenhum.`;
+      // v0.21.0: opcionais da agenda da semana da Pauta
+      if(o.redes !== undefined && typeof o.redes !== "boolean") return `“${o.nome}”: “redes” é true ou false (false tira a obrigação da agenda publicada nas redes).`;
+      if(o.fonte !== undefined && !(typeof o.fonte === "string" && o.fonte.length <= 300)) return `“${o.nome}”: “fonte” é um texto de até 300 caracteres (a fonte oficial da regra).`;
     }
   }
   if(chave === "feriados_extras"){
@@ -3456,6 +3514,15 @@ function validarConfig(chave, v){
       if((t.termo.match(/[\p{L}\p{N}]/gu) || []).length < 2) return `“${t.termo}”: o termo precisa ter ao menos duas letras ou números.`;
       if(!Number.isInteger(t.pontos) || t.pontos === 0 || Math.abs(t.pontos) > 100) return `“${t.termo}”: “pontos” deve ser um número inteiro diferente de zero (até 100).`;
     }
+  }
+  // v0.21.0: a Pauta e a agenda automática (os quatro são opcionais: sem eles, o banco usa o padrão)
+  if(chave === "pauta"){
+    if(!obj) return "A Pauta precisa ser um objeto { … }.";
+    if(v.agenda_ligada !== undefined && typeof v.agenda_ligada !== "boolean") return "“agenda_ligada” é true ou false (false para a agenda automática inteira).";
+    if(v.hora_padrao !== undefined && !(typeof v.hora_padrao === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v.hora_padrao))) return "“hora_padrao” é a hora de Brasília entre aspas, como \"09:30\".";
+    if(v.janela_horas !== undefined && !(Number.isInteger(v.janela_horas) && v.janela_horas >= 1 && v.janela_horas <= 48)) return "“janela_horas” é um número inteiro de 1 a 48 (horas depois da hora marcada).";
+    if(v.hashtags !== undefined && !(Array.isArray(v.hashtags) && v.hashtags.length <= 3 && v.hashtags.every(x => typeof x === "string" && /^#[\p{L}\p{N}_]{1,60}$/u.test(x))))
+      return "“hashtags” é uma lista de até 3, cada uma começando com # e sem espaço, como [\"#Contabilidade\", \"#Palhoça\"].";
   }
   if(chave === "assinatura"){
     if(!(obj && ["local","empresa","responsavel"].every(c => typeof v[c] === "string"))) return "Informe “local”, “empresa” e “responsavel”.";
@@ -3570,6 +3637,8 @@ const FORMS = {
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de"]);
+// v0.21.0: as ações e os formulários da Pauta (radar-pauta.js); sem o arquivo, a aba mostra o recado e nada mais muda
+if(typeof PAUTA === "object"){ Object.assign(ACOES, PAUTA.acoes); Object.assign(FORMS, PAUTA.forms); PAUTA.navegacao.forEach(a => NAVEGACAO.add(a)); }
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa
@@ -3612,6 +3681,8 @@ document.addEventListener("submit", ev => {
 document.addEventListener("input", ev => {
   if(ev.target.matches?.("#rede-legenda, textarea[data-chave]")) (E.legendas ||= {})[ev.target.dataset.chave] = ev.target.value;   // a legenda editada sobrevive ao redesenho
   if(ev.target.matches?.(".arte-chamada, .arte-apoio")) arteMudou(ev.target);                        // v0.20.0: a arte é redesenhada
+  if(ev.target.matches?.(".peca-arte-campo") && typeof pecaArteMudou === "function") pecaArteMudou(ev.target);   // v0.21.0: a arte da peça
+  if(ev.target.matches?.("[data-conta]") && typeof contarPeca === "function") contarPeca(ev.target);              // v0.21.0: caracteres da legenda
   const fc = ev.target.closest?.('form[data-form="conteudo"]');
   if(fc && (ev.target.name === "titulo" || ev.target.name === "corpo") && !ev.target.disabled) guardarRascunho(fc);
   if(ev.target.dataset.filtro !== "fila") return;
@@ -3625,6 +3696,10 @@ document.addEventListener("change", ev => {
   if(ev.target.dataset.imagem){
     if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha a imagem de novo.", true); return; }
     executar(enviarImagem, false, ev.target); return; }
+  // v0.21.0: as fotos da peça e o calendário (CSV) da Pauta (radar-pauta.js), também uma ação por vez
+  if(ev.target.matches?.("[data-foto-peca], [data-csv-pauta]")){
+    if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha o arquivo de novo.", true); return; }
+    executar(ev.target.dataset.fotoPeca ? enviarFotosPeca : lerCsvPauta, false, ev.target); return; }
   if(ev.target.matches?.(".arte-fundo")) arteMudou(ev.target);                                        // v0.20.0: fundo da arte
   if(ev.target.id === "filtro-assuntos"){ E.filtros.assuntos = ev.target.value; desenhar(); }
   if(ev.target.id === "ni-num") ev.target.dataset.manual = "1";

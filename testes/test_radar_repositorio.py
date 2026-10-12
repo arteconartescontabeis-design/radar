@@ -6,6 +6,9 @@ a amostra inventada, testes/amostras/pauta-ficticia.csv, só com nomes de mentir
 arquivo (num teste de tela, por exemplo) também é barrado: use a amostra ou grave o arquivo numa pasta temporária. O cabeçalho
 citado no meio de uma linha (a tela confere o cabeçalho do CSV) não conta. E o .gitignore barra o CSV do plano onde quer que ele
 seja copiado. Sem o git (pacote baixado em .zip), os testes são pulados.
+
+E o workflow dos testes roda quando muda o que eles leem: a tela passou a ter dois scripts (radar-config.js e radar-pauta.js, que
+antes não estava na lista: mudar só ele não rodava os testes), e o SQL da agenda leva a chave anon de radar-config.js.
 """
 from __future__ import annotations
 
@@ -51,3 +54,12 @@ def test_gitignore_barra_o_calendario_da_pauta():
                  "testes/amostras/pauta-real.csv", "sql/pauta-novembro.csv", "calendario-2027.csv"):
         assert git("check-ignore", "-q", "--no-index", nome).returncode == 0, nome
     assert git("check-ignore", "-q", "--no-index", AMOSTRA).returncode == 1          # a amostra inventada vai para o repositório
+
+
+def test_workflow_dos_testes_roda_quando_mudam_os_arquivos_da_tela():
+    yml = (RAIZ / ".github" / "workflows" / "radar-testes.yml").read_text(encoding="utf-8")
+    caminhos = set(re.findall(r'"([^"]+)"', re.search(r"(?m)^\s*paths:\s*\[([^\]]*)\]", yml).group(1)))
+    scripts = {src for pagina in ("index.html", "informativo.html")
+               for src in re.findall(r'<script src="([^"?#]+)', (RAIZ / pagina).read_text(encoding="utf-8"))}
+    assert scripts == {"radar-config.js", "radar-pauta.js"}                   # os da própria tela (nenhum de fora)
+    assert scripts | {"index.html", "informativo.html", ".gitignore", "testes/**", "sql/**"} <= caminhos, sorted(caminhos)

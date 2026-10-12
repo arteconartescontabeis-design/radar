@@ -350,25 +350,46 @@ async function publicarFacebook(imagemUrl: string, legenda: string, inicio: numb
   return { post_id: post, url };
 }
 
-async function publicar(envio: number, inicio: number, peloRobo = false) {
+/** v0.21.0: a autorização, com peca_id (a peça da Pauta). Com o banco de antes da v0.21.0 (sem a coluna), lê de novo sem ela:
+ *  a notícia continua saindo se esta função for instalada antes do SQL. */
+async function lerEnvio(servico: Record<string, string>, envio: number) {
+  const ler = (campos: string) => banco(servico, "GET", `radar_redes_envios?select=${campos}&id=eq.${envio}`);
+  try { const [linha] = await ler("canal,situacao,junto_com_site,peca_id"); return linha ?? null; }
+  catch (x) { if (!(x instanceof Erro) || !/peca_id/.test(x.message)) throw x; }
+  const [linha] = await ler("canal,situacao,junto_com_site");
+  return linha ? { ...linha, peca_id: null } : null;
+}
+
+async function publicar(envio: number, inicio: number, quem: Quem) {
   const servico = comoServico();
   // confere a configuração ANTES de pegar a autorização: sem a Meta configurada, ela continua aguardando
-  const [linha] = await banco(servico, "GET", `radar_redes_envios?select=canal,situacao,junto_com_site&id=eq.${envio}`);
+  const linha = await lerEnvio(servico, envio);
   if (!linha) throw new Erro(404, "Autorização não encontrada.");
   // v0.17.0: o robô só manda o que o administrador autorizou junto com o site ("Publicar em todos")
-  if (peloRobo && !linha.junto_com_site) throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
+  if (quem === "robo" && !linha.junto_com_site) throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
+  // v0.21.0: a agenda do banco só manda a peça da Pauta (a notícia sai pela tela ou pelo robô do site, como antes)
+  if (quem === "agenda" && !linha.peca_id) throw new Erro(403, "A agenda só publica peças da Pauta.");
   const cfg = configMeta(linha.canal);
   if (cfg.faltam.length) {
     throw new Erro(503, `${linha.canal === "instagram" ? "O Instagram" : "O Facebook"} ainda não está configurado: faltam os segredos ` +
       cfg.faltam.join(", ") + " (Supabase → Edge Functions → Secrets). A autorização continua guardada; publique depois.");
   }
-  const e = await banco(servico, "POST", "rpc/radar_rede_iniciar", { p_envio: envio });
+  // v0.21.0: a peça é pega por radar_pauta_iniciar (na hora marcada, uma vez, conferindo tudo de novo; o problema vira "erro")
+  const e = await banco(servico, "POST", linha.peca_id ? "rpc/radar_pauta_iniciar" : "rpc/radar_rede_iniciar", { p_envio: envio });
   if (e?.cancelado) return { situacao: "cancelado", mensagem: "O conteúdo mudou depois de autorizado: a autorização caiu. Confira e autorize de novo." };
   if (e?.erro) return { situacao: "erro", mensagem: String(e.erro) };
-  let imagemUrl = e.imagem_url ?? "";
+  // imagemUrl é o que fica no banco; paraMeta, o que a Meta baixa (na peça, o link assinado de 10 min, que nunca é gravado)
+  let imagemUrl = e.imagem_url ?? "", paraMeta = "";
   try {
-    if (!imagemUrl) imagemUrl = await enviarImagem(e.imagem, `${e.conteudo_id}-${e.canal}-${e.id}.jpg`);
-    const r = e.canal === "instagram" ? await publicarInstagram(imagemUrl, e.legenda, inicio) : await publicarFacebook(imagemUrl, e.legenda, inicio);
+    if (linha.peca_id) {
+      // o envio (até 20 s) e a assinatura (até 15 s) contam dentro dos 55 s de aindaDaTempo: o pior caso é o de LIMITE_PUBLICAR_MS
+      if (!imagemUrl) imagemUrl = await guardarPrivada(e.imagem);
+      paraMeta = await assinar(imagemUrl);
+    } else {
+      if (!imagemUrl) imagemUrl = await enviarImagem(e.imagem, `${e.conteudo_id}-${e.canal}-${e.id}.jpg`);
+      paraMeta = imagemUrl;
+    }
+    const r = e.canal === "instagram" ? await publicarInstagram(paraMeta, e.legenda, inicio) : await publicarFacebook(paraMeta, e.legenda, inicio);
     // saiu: o registro tenta duas vezes; se não entrar, a autorização fica "enviando" (nunca "erro", que deixaria publicar de novo)
     const fim = { p_envio: envio, p_ok: true, p_post_id: r.post_id, p_url: r.url || null, p_imagem_url: imagemUrl, p_erro: null };
     try { await banco(servico, "POST", "rpc/radar_rede_concluir", fim, 15_000); }
@@ -519,20 +540,41 @@ async function diagnostico() {
   }
   try { await garantirBucket(); itens.push({ item: "Armazenamento das imagens", ok: true, detalhe: `bucket público "${BUCKET}"` }); }
   catch (e) { itens.push({ item: "Armazenamento das imagens", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
+  try {
+    await garantirBucket(BUCKET_PAUTA, false);
+    itens.push({ item: "Armazenamento privado da Pauta", ok: true, detalhe: `bucket privado "${BUCKET_PAUTA}" (a Meta recebe um link de 10 minutos)` });
+  } catch (e) { itens.push({ item: "Armazenamento privado da Pauta", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
   return { itens, tudo_certo: itens.every((i) => i.ok), versao: VERSAO };
 }
 
 async function tratar(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const inicio = Date.now();                                  // por pedido: dois pedidos ao mesmo tempo não dividem o relógio
+  let quem: Quem = "admin";
+  const sufixo = () => quem === "agenda" ? " (agenda)" : "";  // nos registros: só o número do envio e a situação
   try {
     if (req.method !== "POST") throw new Erro(405, "Use POST.");
     if (!SUPABASE_URL) throw new Erro(503, "A função está sem SUPABASE_URL.");
     const pedido = await req.json().catch(() => ({}));
     const acao = String(pedido?.acao ?? "");
-    const sessao = await quemChamou(req, acao);               // null = o robô do site (só "publicar" do que foi junto com o site)
-    if (!["publicar", "excluir", "diagnostico", "acionar_robo"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
-    if (sessao === null && acao !== "publicar") throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
+    // v0.21.0: a agenda do banco manda a chave do Vault em x-radar-agenda (e a chave anon pública no Authorization, que o
+    // "Verify JWT" exige); com o cabeçalho, só a chave vale: sem ela conferida, nada segue
+    const chaveAgenda = (req.headers.get("x-radar-agenda") ?? "").trim();
+    let sessao: string | null = null;
+    if (chaveAgenda) {
+      await conferirAgenda(chaveAgenda);
+      quem = "agenda";
+      if (!["publicar", "agenda_teste"].includes(acao)) throw new Erro(403, "A agenda só publica.");
+    } else {
+      sessao = await quemChamou(req, acao);                   // null = o robô do site (só "publicar" do que foi junto com o site)
+      quem = sessao === null ? "robo" : "admin";
+    }
+    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    if (quem === "robo" && acao !== "publicar") throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
+    if (acao === "agenda_teste") {                            // v0.21.0: o teste do sql/radar-redes-agenda.sql; não toca na Meta
+      if (quem !== "agenda") throw new Erro(403, "Só a agenda do banco usa o teste da agenda.");
+      return responder(200, { ok: true, versao: VERSAO });
+    }
     if (acao === "diagnostico") return responder(200, await diagnostico());
     if (acao === "acionar_robo") return responder(200, await acionarRobo());     // v0.19.0: só o administrador chega aqui
     const envio = Number(pedido?.envio);
@@ -542,12 +584,12 @@ async function tratar(req: Request): Promise<Response> {
       console.log(`radar-redes: envio ${envio} → excluído`);
       return responder(200, x);
     }
-    const r = await publicar(envio, inicio, sessao === null);
-    console.log(`radar-redes: envio ${envio} → ${r.situacao}`);
+    const r = await publicar(envio, inicio, quem);
+    console.log(`radar-redes: envio ${envio} → ${r.situacao}${sufixo()}`);
     return responder(200, r);
   } catch (e) {
     if (e instanceof Erro) return responder(e.status, { message: e.message });
-    console.error("radar-redes: erro inesperado", e instanceof Error ? e.name : "");
+    console.error(`radar-redes: erro inesperado${sufixo()}`, e instanceof Error ? e.name : "");
     return responder(500, { message: "Erro inesperado na publicação." });
   }
 }

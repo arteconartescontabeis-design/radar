@@ -72,3 +72,55 @@ def test_termos_de_publicidade_casos(tmp_path):
         assert r.returncode == 0, r.stderr
         for (textos, esperado), obtido in zip(CASOS, json.loads(r.stdout)):
             assert obtido == esperado, (arquivo.name, textos)
+
+
+# v0.21.0 — os termos que a Pauta não publica (TERMOS_PECA, em radar-pauta.js): na peça (que fala da Artecon, não é notícia) todos
+# travam. O sentido técnico da contabilidade fica de fora: “desconto do INSS”, “desconto simplificado”, “garantia de emprego”, “mês de
+# referência”, “fórmula de cálculo”. A mesma lista vai na função radar-ia (Gerar com IA da peça), onde os termos viram aviso da sugestão.
+PAUTA = RAIZ / "radar-pauta.js"
+INICIO_PECA = "const TERMOS_PECA = ["
+
+
+def _extrair_peca(fonte: str) -> str:
+    """Da declaração da lista (TERMOS_PECA) até o fim de termosPeca."""
+    i = fonte.index(INICIO_PECA)
+    return fonte[i:fonte.index(FIM, i) + len(FIM)]
+
+
+def test_termos_da_pauta_iguais_na_tela_e_na_funcao():
+    assert _extrair_peca(PAUTA.read_text(encoding="utf-8")) == _extrair_peca(FUNCAO.read_text(encoding="utf-8"))
+
+# (textos passados a termosPeca, termos achados: em minúsculas, sem repetir, na ordem da lista e, em cada grupo, na ordem do texto)
+CASOS_PECA = [
+    (["Promoção de abertura com 20% de desconto e brinde"], ["promoção", "desconto", "brinde"]),
+    (["O desconto do INSS e o desconto simplificado do IR; a garantia de emprego da gestante; o mês de referência; a fórmula de cálculo"], []),
+    (["Desconto de 10% para novos clientes; garantia de resultado; somos referência"], ["desconto", "garantia de", "referência"]),
+    (["Honorários a partir de R$ 199,90 por mês; R$ 300 de mensalidade"], ["honorários a partir de r$ 199,90", "r$ 300 de mensalidade"]),
+    (["nº 1 em Palhoça, número 1, 100% digital e o melhor atendimento", "no 1º trimestre, a multa de 1100%"], ["nº 1", "número 1", "100%", "o melhor"]),
+    (["Diferente dos outros escritórios, seu contador atual só envia guias. Mude de contador!"],
+     ["diferente dos outros", "seu contador atual", "só envia guias", "mude de contador"]),
+    (["Antes que seja tarde: alerta máximo, a falência e multas pesadas vão bater à sua porta"],
+     ["antes que seja tarde", "alerta máximo", "falência", "multas pesadas", "bater à sua porta"]),
+    (["Consultoria jurídica? Receita informa: o segredo, o truque e a maioria das empresas"],
+     ["consultoria jurídica", "receita informa", "segredo", "truque", "a maioria"]),
+    # vários textos de uma vez: a mercantilização antes da promessa
+    (["Garantimos economia: economize e pague menos", "Sorteio de brindes por tempo limitado"],
+     ["sorteio", "brindes", "por tempo limitado", "garantimos", "economize", "pague menos"]),
+    (["A equipe presente na abertura; ganhe um presente"], ["ganhe", "um presente"]),
+    # fronteira da palavra com acento: letra colada conta como letra
+    (["gratuitamente, descontado, promoçãozinha, referências e contraoferta"], []),
+    (["Atenção: é GRÁTIS! (Brinde)"], ["grátis", "brinde"]),
+]
+
+
+def test_termos_da_pauta_casos(tmp_path):
+    if shutil.which("node") is None:
+        pytest.skip("node não instalado")
+    for arquivo in (PAUTA, FUNCAO):
+        js = tmp_path / "termos-pauta.cjs"
+        js.write_text(_extrair_peca(arquivo.read_text(encoding="utf-8")) + "\nconst casos = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+                      "console.log(JSON.stringify(casos.map((textos) => termosPeca(...textos))));\n", encoding="utf-8")
+        r = subprocess.run(["node", str(js)], input=json.dumps([t for t, _ in CASOS_PECA]), capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stderr
+        for (textos, esperado), obtido in zip(CASOS_PECA, json.loads(r.stdout)):
+            assert obtido == esperado, (arquivo.name, textos)

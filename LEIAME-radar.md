@@ -1,4 +1,4 @@
-# Radar Artecon — v0.20.0
+# Radar Artecon — v0.21.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,7 +12,30 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
-A v0.20.0 completa o **"Gerar com IA" para as redes**, dentro das regras da publicidade contábil:
+A v0.21.0 traz a aba **Pauta**: o calendário de publicações no Instagram e no Facebook (uma peça por dia), com as peças
+preparadas no Radar e publicadas pela API da Meta **na hora marcada, depois da aprovação do administrador**:
+
+- **Calendário:** o plano de publicações entra por "Importar o calendário (CSV)" (a tela confere o arquivo inteiro e mostra todos os
+  erros de uma vez, com a linha da planilha) e aparece semana a semana, de segunda a domingo. A peça que já entrou em produção não
+  muda na importação. O CSV tem nomes da equipe e **nunca vai para o GitHub**.
+- **Peça:** fotos da equipe (1080×1350, enviadas uma de cada vez), quem aparece (só pessoas cadastradas em **Pessoas e termos**, com o
+  termo de uso de imagem), informações conferidas com a fonte oficial, chamada, apoio, cartões do carrossel, roteiro do reel e as
+  legendas. A arte é desenhada na tela, com a faixa legal (empresa, CNPJ e CRC) em letra de pelo menos 28 px de altura.
+- **"Gerar com IA" da peça:** a IA sugere a chamada, o apoio, as legendas e os cartões. Nenhum nome vai à IA (a pessoa vai como
+  `{PESSOA1}`), e o fato que não está nas informações conferidas volta marcado com [VERIFICAR].
+- **Pronta, aprovada, publicada:** "Salvar e marcar como pronta" mostra a lista do que falta; só o administrador aprova; a peça
+  aprovada não se edita. A imagem única (foto ou arte) sai **sozinha** pela agenda do banco (de 5 em 5 minutos), que confere tudo de
+  novo antes; o carrossel e o reel saem **à mão** (baixar as lâminas, copiar a legenda e registrar o link).
+- **Aviso quando não sai:** cartão no Painel, quadro "Não saíram" na Pauta e um aviso por e-mail ("Radar: publicação agendada não
+  saiu"), sem nomes.
+
+Mudam o banco (2 tabelas novas, `radar_pessoas` e `radar_pauta_pecas`; a tabela das publicações nas redes passa a aceitar a peça da
+Pauta; a configuração `pauta`), a tela (`index.html` e o arquivo novo `radar-pauta.js`), as funções `radar-redes` (v0.21.0: a peça
+da Pauta, no armazenamento privado, e a chamada da agenda) e `radar-ia` (v0.21.0: a ação `peca`) e o robô (v0.21.0: o aviso da
+Pauta). Entra o `sql/radar-redes-agenda.sql`, que liga a agenda no Supabase. Detalhes em "Pauta: o calendário das redes e a
+publicação agendada" e, para instalar, "Da v0.20.0 para a v0.21.0".
+
+A v0.20.0 completou o **"Gerar com IA" para as redes**, dentro das regras da publicidade contábil:
 
 - **Kit das redes:** o "Gerar com IA" ganha a etapa 3, que monta a partir do texto final a **legenda do Instagram**, a do
   **Facebook**, a **chamada e a linha de apoio da arte** e o **roteiro de um reel** (de 30 a 45 segundos, com a fala e o texto na
@@ -100,7 +123,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.20.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.21.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -125,7 +148,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.20.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.21.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -162,7 +185,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.20.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.21.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -191,7 +214,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.20.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.21.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -199,7 +222,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.20.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.21.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -215,7 +238,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.20.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.21.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -230,7 +253,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.20.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.21.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -258,7 +281,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.20.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.21.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -270,7 +293,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.20.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.21.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -283,7 +306,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.20.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.21.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -295,7 +318,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.20.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.21.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -307,7 +330,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.20.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.21.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -322,7 +345,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.20.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.21.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -365,21 +388,23 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | Pasta / arquivo | Para que serve |
 |---|---|
 | `index.html` | Dashboard de curadoria (uso interno, com login). Não há página pública. |
+| `radar-pauta.js` | A aba Pauta (v0.21.0), carregada pelo `index.html`. Vai sempre junto com ele: com os dois de versões diferentes, a aba pede Ctrl+F5. |
 | `informativo.html` | Informativo Mensal para imprimir / salvar em PDF (uso interno, usa o login do dashboard). |
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.20.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.20.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
+| `sql/radar-setup-v0.21.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.21.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também a agenda da Pauta do pg_cron). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0). |
-| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0). |
+| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0). |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase. |
+| `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes e testes. |
-| `testes/` | Suíte de testes automatizados. |
+| `testes/` | Suíte de testes automatizados. O `testes/amostras/pauta-ficticia.csv` é um calendário de mentira, só com nomes inventados. |
 | `RELATORIO-TESTES-radar.md` | O que foi testado, o que não foi e o que as revisões independentes encontraram. |
 
 ## Fontes iniciais (conferidas nos sites reais em 02/10/2026)
@@ -421,10 +446,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.20.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.21.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
-   Esperado: 23 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.20.0`).
+   Esperado: 25 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.21.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -533,6 +558,8 @@ O mesmo passo a passo está dentro do sistema, na aba **Como usar**.
    link e a data em "Registrar publicação no site". A aba **Publicações** mostra o que
    está aprovado esperando e o que já foi ao site. Conteúdo que é só do Informativo
    Mensal: clique em "Não vai ao site" para tirá-lo da fila.
+6. **Pauta** (v0.21.0): as publicações próprias das redes (equipe, orientação, agenda da semana, captação), uma por dia, com
+   aprovação do administrador e publicação na hora marcada. Veja "Pauta: o calendário das redes e a publicação agendada".
 
 ### Informativo Mensal e notícias do site (sem depender do robô)
 
@@ -562,7 +589,8 @@ da equipe e os demais telefones você preenche em Configurações (ficam no banc
 repositório). A assinatura digital continua sendo aplicada por você no PDF.
 
 Perfis: **leitor** só consulta; **editor** cria assuntos, escreve, aprova e registra o que
-foi ao site; **administrador** também configura fontes, usuários e vê o histórico.
+foi ao site; **administrador** também configura fontes, usuários e vê o histórico. Na Pauta, o editor prepara as peças e
+o administrador cadastra as pessoas e aprova o que vai ao ar.
 
 ### Relevância das capturas (v0.6.0)
 
@@ -716,6 +744,14 @@ para o campo e salve. Ele não vai no repositório porque traz nomes e celulares
   "Database error deleting user"): nomeie outro administrador antes.
 - **Falha não vira silêncio:** site fora do ar, página sem itens reconhecidos ou texto
   que não pôde ser lido ficam registrados como `falha`, `vazio_suspeito` ou `parcial`.
+- **Pauta (v0.21.0):** só o administrador aprova a peça, e o que vai ao ar é exatamente o que ele aprovou (a peça aprovada não
+  muda; os campos de aprovação e os links não podem ser gravados à mão, nem pelo editor). Só se marca na peça quem está
+  cadastrado, e a aprovação exige o termo de uso de imagem válido no dia, no canal e na finalidade (nas fotos, quem confere é o
+  administrador, com a caixa "Conferi" da aprovação); a legenda precisa da identificação legal (CNPJ e CRC das Configurações);
+  número fora das informações conferidas, [VERIFICAR], fonte ou frase do boletim pago, nome no texto de pessoa que não está
+  marcada e "contador" para quem não tem registro impedem a aprovação. Antes de cada publicação automática, o banco confere tudo de novo, e uma publicação nunca sai
+  duas vezes: a que deu erro ou ficou sem resposta clara da Meta só é tentada de novo com "Conferi no Instagram e no Facebook: não
+  saiu". A trilha de auditoria guarda o que foi ao ar, mas não os nomes, o CRC das pessoas, o plano nem a sugestão da IA.
 
 ## Decisões de projeto que vale conhecer
 
@@ -796,7 +832,9 @@ um aviso aberto por fonte; ele fecha sozinho, com um comentário, quando a fonte
 ou é desligada. A cada coleta o robô também confere os links registrados em **Publicações no site**:
 o que responder "página não encontrada" (404 ou 410) abre o aviso "Radar: link publicado fora do ar",
 que fecha quando o link volta a abrir ou o registro é corrigido ou excluído. Erro de rede ou do site
-(tempo esgotado, erro 500) não abre aviso, porque costuma ser passageiro.
+(tempo esgotado, erro 500) não abre aviso, porque costuma ser passageiro. Desde a v0.21.0, enquanto houver publicação da
+**Pauta** que não saiu (com erro, parada em "publicando" ou com a hora passada), fica aberto um aviso só, "Radar: publicação
+agendada não saiu" (veja "Pauta: o calendário das redes e a publicação agendada").
 
 Como ler o resultado da primeira coleta: **ok** com itens novos = funcionando;
 **vazio_suspeito** = o padrão dos links não casou com nada (ajuste o padrão); **falha** =
@@ -969,15 +1007,162 @@ A função `radar-redes` publica o que o administrador autorizou nos passos 6 e 
    - opcional `META_GRAPH_URL` (padrão `https://graph.facebook.com/v23.0`).
 4. **Instalar a função:** Supabase → Edge Functions → nova função `radar-redes` com o arquivo `supabase/functions/radar-redes/index.ts`
    (com "Verify JWT" ligado). A função cria sozinha o armazenamento público `radar-redes` das imagens (a Meta só aceita
-   imagem por link público).
-5. **Testar:** Publicações → "Testar conexão com o Instagram e o Facebook". Todos os itens devem ficar OK.
+   imagem por link público). Desde a v0.21.0 cria também o armazenamento **privado** `radar-pauta`, das peças da Pauta (fotos
+   da equipe): a Meta recebe um link assinado que vale 10 minutos, e o arquivo não fica aberto na internet. Ele precisa continuar
+   privado: se alguém o deixar público no painel do Supabase, a função recusa a peça (nada é publicado) e o teste do item 5 aponta.
+5. **Testar:** Publicações → "Testar conexão com o Instagram e o Facebook". Todos os itens devem ficar OK (desde a v0.21.0, também
+   "Armazenamento privado da Pauta").
 
 Sem os segredos, o botão "Autorizar e publicar" grava a autorização e avisa que a Meta ainda não está configurada; depois é
 só usar "Publicar agora" no mesmo passo.
 
 6. **Antes do primeiro post (v0.20.0):** em Configurações → "Fecho, assinatura e identificação legal", preencha `cnpj` e `crc`
    (o registro da empresa no CRC-SC, como "CRC-SC 004064/O-5", com a letra O depois da barra) e salve: a arte e as legendas levam
-   essa identificação no fim. Confira também o link da bio do Instagram, que deve abrir artecon.cnt.br/news.
+   essa identificação no fim. Confira também o link da bio do Instagram, que deve abrir artecon.cnt.br/news. Sem eles, a Pauta
+   (v0.21.0) não aprova nenhuma peça.
+7. **Agenda da Pauta (v0.21.0):** rode uma vez `sql/radar-redes-agenda.sql` no SQL Editor, **depois** do setup e do Deploy da
+   `radar-redes` v0.21.0. Ele liga o pg_cron (como manda a página "Install pg_cron" do Supabase), cria no Vault a chave
+   `radar_redes_agenda`, que só o banco conhece, e agenda de 5 em 5 minutos a chamada da função para cada peça aprovada cuja hora
+   chegou (sem nada vencido, nenhum pedido sai). A função continua com **"Verify JWT" ligado**: a agenda manda no `Authorization`
+   a chave anon, que é pública (a mesma do `radar-config.js`, escrita no arquivo; o próprio SQL recusa qualquer chave que não seja
+   a anon), e a chave do Vault no cabeçalho `x-radar-agenda`. Com ela, a função só publica peça da Pauta cuja hora chegou, e mais
+   nada. **Teste**, sem publicar nada: rode o `net.http_post` com `{"acao":"agenda_teste"}` que está no comentário do fim do
+   arquivo e, alguns segundos depois, a consulta a `net._http_response`: o esperado é 200 com `{"ok":true,"versao":"0.21.0"}`.
+   Se o projeto do Supabase ou a chave anon mudarem, troque no arquivo e rode de novo (os testes conferem que a chave do
+   arquivo é a do `radar-config.js`). Para desfazer: `sql/radar-redes-agenda-reversao.sql` (a chave fica no Vault).
+
+### Pauta: o calendário das redes e a publicação agendada (v0.21.0)
+
+A aba **Pauta** organiza as publicações próprias da Artecon no Instagram e no Facebook (Quem cuida, Bastidor, Educativo, Captação,
+Agenda da semana, Data com a equipe, reels), uma peça por dia. As notícias continuam pelo caminho de sempre: no dia de notícia, a
+Pauta só aponta para Assuntos e Publicações. Todos veem a Pauta; o leitor não tem botões e não vê as pessoas. A semana vai de
+segunda a domingo, e "hoje" é sempre o dia de Brasília.
+
+**1. Pessoas e termos** (Pauta → "Pessoas e termos"; o administrador cadastra e altera, o editor só consulta, o leitor e o robô não
+leem). Para cada pessoa que pode aparecer: nome completo (interno), **nome na peça** (como o termo autoriza: completo ou só o
+primeiro), área, categoria e registro no CRC (só contador e técnico; "contador(a)" e "técnico(a)" só com o registro), as datas do
+termo de uso de imagem (assinado, válido até, revogado), os canais e as finalidades que a pessoa marcou (Apresentar a equipe,
+Orientação, Datas da empresa, Captação de clientes). **Registre só com o termo assinado em mãos** e marque exatamente o que a
+pessoa marcou. Fica só no banco: o repositório do Radar é público. A linha que sai na arte é montada pelo Radar ("Ana, contadora ·
+CRC-SC 000000"; sem registro, "Ana · Departamento Pessoal"). Pessoa que está numa peça não é excluída: desmarque "Ativa". O termo é
+conferido no selo da semana, ao marcar como pronta e ao aprovar (no dia da peça) e de novo antes de publicar, copiar ou baixar
+(no dia de hoje): revogado ou vencido, a peça não sai.
+
+**2. Importar o calendário** (editor e administrador): "Importar o calendário (CSV)", com o arquivo do plano de publicações (as
+colunas `data;dia;semana;tipo;formato;assunto;quem_aparece;objetivo;observacao`, separadas por ponto e vírgula ou vírgula, do
+Excel ou não; data no formato 26/10/2026). A tela confere o arquivo inteiro antes de gravar e mostra **todos os erros de uma vez**,
+com a linha da planilha (data errada, dia da semana que não bate, tipo ou formato desconhecido, data repetida, texto comprido
+demais). Sem erro, a prévia diz o que é novo, o que muda, o que fica igual e o que é mantido; "Gravar" grava. Importar de novo não
+duplica: a peça que já saiu de "Planejada" não muda. As pessoas **não** são ligadas sozinhas: a coluna `quem_aparece` vira só um
+lembrete na peça. A hora de cada peça nova é a de Configurações → Pauta (`hora_padrao`). O CSV tem nomes da equipe: **nunca vai
+para o GitHub** (o `.gitignore` barra e um teste confere).
+
+**3. Preparar a peça** ("Abrir", na semana; editor e administrador):
+- **Fotos**, no alto: cada foto vira 1080×1350 (corte no centro), enviada uma de cada vez, até 10. A foto do iPhone em HEIC
+  recebe o recado de como trocar (Ajustes → Câmera → Formatos → Mais compatível, ou captura de tela); a foto pequena, o aviso de
+  que pode ficar sem nitidez. ↑, ↓ e "Tirar" mudam a ordem.
+- **Quem aparece:** as pessoas ativas, com o selo do termo (vale no dia da peça ou não).
+- **Informações conferidas:** cada fato que a peça usa (número, data, prazo, valor, norma), com a **fonte oficial**. O boletim
+  pago da ITC não serve de fonte. Na Agenda da semana (domingo), **"Calcular a agenda da semana"** traz os vencimentos de segunda a
+  sexta seguintes, das regras das Configurações (sem as obrigações com `"redes": false`, como o honorário contábil), já como
+  informações conferidas: confira cada data antes de aprovar.
+- **Gerar com IA** (opcional; abaixo) e os **textos:** chamada e apoio da arte, cartões (carrossel), roteiro (reel, colado à
+  mão), as legendas do Instagram e do Facebook (com contador de caracteres e o botão "Pôr a identificação legal e as hashtags").
+- **Plano** (assunto, objetivo, observação e quem aparece, do CSV): só referência, não vai ao ar.
+- **Salvar** grava só o que mudou. Se outra pessoa salvou a peça antes, a tela avisa "alterada em outra tela" e nada é gravado
+  por cima.
+
+A peça muda de situação assim: **Planejada** → **Em produção** (sozinha, quando algo que vai ao ar muda) → **Pronta** ("Salvar e
+marcar como pronta") → **Aprovada** (só o administrador). Pronta que muda volta para Em produção ("Voltar para produção" também).
+"Cancelar a peça" e "Reabrir" valem até a aprovação.
+
+**4. A arte** é desenhada na própria tela, em 1080×1350, com a margem de 72 px nas laterais: a foto em página cheia (Quem cuida,
+Bastidor, Captação, Data com a equipe), com o selo, a chamada, o apoio e a linha de cada pessoa; ou o fundo azul-marinho com o
+texto (imagem, cartões do carrossel, agenda da semana). No carrossel, a capa e uma lâmina por cartão; no carrossel de fotos, uma
+lâmina por foto. Embaixo vai a faixa branca com a **identificação legal** das Configurações (empresa, CNPJ e CRC), em letra de **pelo
+menos 28 px de altura** (a altura medida da letra maiúscula), em até 2 linhas: se não couber, a peça não é aprovada. A arte da
+notícia não mudou (faixa de 24 px). Os 28 px estão como altura da letra: se o combinado for o tamanho da fonte, muda só um número
+(`FAIXA_LEGAL`, em `radar-pauta.js`).
+
+**5. Conferir e marcar como pronta.** "Salvar e marcar como pronta" (ou só "Conferir o que falta") mostra numa lista **tudo** o
+que falta resolver: a peça sem o que o formato pede (foto, pessoa, 2 a 10 fotos no carrossel de fotos, 2 a 9 cartões, roteiro,
+informações conferidas na agenda), legenda sem a identificação legal (CNPJ e CRC das Configurações precisam estar preenchidos),
+[VERIFICAR] ou `{confirmar}`, informação conferida sem fonte ou com fonte do boletim pago, frase igual à do boletim pago, número que
+não está nas informações conferidas, termo de imagem que não vale, nome de pessoa cadastrada que aparece no texto sem estar
+marcada, sobrenome que o termo não autoriza, "contador(a)", "técnico(a)" ou "especialista" perto de quem não tem registro, e os
+termos que a publicidade contábil evita na Pauta (preço, desconto, grátis, brinde, promoção, promessa, comparação com outros
+escritórios ou contadores, superlativo, apelo ao medo; lista inicial, a confirmar com o contador responsável). Em amarelo, o que é
+só para conferir (texto cortado na arte; na Data com a equipe, dado sensível). O administrador vê no alto da Pauta a lista
+**"Prontas para aprovar"**.
+
+**6. Aprovar** (só o administrador; "Aprovar a peça", na peça pronta): os canais (os que têm legenda); **como sai** ("Agendar para
+sáb, 31/10/2026, às 09:30", só imagem única: Imagem 4:5 e Foto; ou "Vou publicar à mão"; carrossel e reel saem à mão nesta
+versão); e as conferências obrigatórias: "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)" (com
+pessoa ou foto), "Conferi as datas da agenda" (Agenda da semana) e, se um envio anterior caiu no meio, "Conferi no Instagram e no
+Facebook: não saiu". A tela confere tudo de novo, guarda as lâminas desenhadas e o banco aprova: **vai ao ar exatamente o que
+está na tela**. A hora marcada no passado vale se estiver dentro da janela (Configurações → Pauta → `janela_horas`, 6 horas): a
+peça sai na próxima rodada; mais que isso, mude a hora. A Agenda da semana não é aprovada depois da segunda-feira. Aprovada, a peça
+não se edita: para mudar, **"Desfazer aprovação"** (editor ou administrador; não dá enquanto está publicando, nem depois que saiu
+numa rede: exclua da rede antes).
+
+**7. Publicação sozinha** (modo agendar). A agenda do banco (`sql/radar-redes-agenda.sql`, item 7 de "Instagram e Facebook pela API
+da Meta") roda de 5 em 5 minutos e pede à função `radar-redes` cada peça cuja hora chegou. Antes de qualquer coisa ir à Meta, o
+banco confere de novo: a peça continua aprovada como estava, o termo de imagem vale **hoje**, não passou da janela, a Agenda da
+semana não ficou velha e não há [VERIFICAR]. A foto vai ao armazenamento privado e a Meta recebe um link que vale 10 minutos. Se a
+função não responder, a agenda tenta até 3 vezes, de 10 em 10 minutos; depois disso, ou com qualquer problema, a publicação vira
+"não saiu", com o motivo, e **nunca sai atrasada sozinha**. Na peça, cada canal mostra "agendada para…", "publicando", "publicada"
+(com o link do post) ou "não saiu". O administrador tem:
+- **"Publicar agora"**: só remarca a hora para agora e confere tudo de novo. Com a agenda rodando, sai em até 5 minutos; sem ela,
+  a tela chama a função na hora, um canal depois do outro;
+- **"Tentar de novo"** (publicação que não saiu): pede antes a caixa "Conferi no Instagram e no Facebook: não saiu", para nunca
+  publicar duas vezes;
+- **"Cancelar"**, na publicação parada em "publicando" há mais de 10 minutos (confira na rede se saiu antes), e **"Excluir do
+  Instagram/Facebook"**, na publicada.
+
+Para **pausar** a agenda sem SQL: Configurações → Pauta → `"agenda_ligada": false` (o que está agendado espera; sai só com
+"Publicar agora"). Desligada, não instalada ou pausada no pg_cron, o administrador vê o aviso no alto da Pauta e na confirmação da
+aprovação.
+
+**8. Publicar à mão** (carrossel, carrossel de fotos, reel, ou quando o administrador escolheu): na peça aprovada, "Baixar as
+lâminas" (`pauta-AAAA-MM-DD-1.jpg`…), "Copiar legenda do Instagram/Facebook" e "Copiar roteiro" (com a identificação legal no
+último quadro). O banco confere antes a versão aprovada e o termo de cada pessoa **hoje**. Depois de postar, "Registrar a
+publicação": o link do post (`https://www.instagram.com/…`, `https://www.facebook.com/…` ou `https://fb.watch/…`) e o dia
+(entre a aprovação e hoje). O carrossel pela API e o roteiro do reel pela IA ficam para a v0.21.1.
+
+**9. Quando não sai.** O que não saiu (com erro, parado em "publicando" há mais de 15 minutos ou agendado com a hora passada há
+mais de 20 minutos) aparece no **Painel** ("Publicações da Pauta que não saíram") e no quadro **"Não saíram"**, no alto da Pauta,
+com o motivo e "Abrir". O robô de avisos (depois de cada coleta, de 6 em 6 horas) abre **um aviso só** no GitHub, "Radar:
+publicação agendada não saiu", com a quantidade e a data, o canal e o número da mais antiga (nunca assunto, nome, legenda ou o
+texto do erro, porque o repositório é público). O aviso não é atualizado (cada mudança seria mais um e-mail) e fecha sozinho quando
+nada mais está parado. Nos 2 primeiros fins de semana pela agenda (a partir de 31/10), abra a Pauta por volta das 09h35: o aviso
+por e-mail pode levar horas.
+
+**10. Gerar com IA da peça** (editor e administrador; a peça precisa estar salva). A IA (a mesma `radar-ia`, ação `peca`) sugere a
+chamada e o apoio, as legendas e os cartões do carrossel a partir do tipo, do formato, do plano e das informações conferidas.
+**Nenhum nome vai à IA**: a pessoa marcada vai como `{PESSOA1}` (com a área e a categoria; o número do CRC nunca vai), e o nome de
+qualquer outra pessoa cadastrada, ou escrito com maiúscula em "quem aparece", vira "uma pessoa da equipe" (também nas informações
+conferidas). Não vão foto, link, CNPJ, telefone nem o boletim. O fato que não está nas informações conferidas volta marcado com
+[VERIFICAR], e a sugestão mostra o que falta conferir e os avisos (termos, "contador" para quem não tem registro, termo de imagem).
+**"Usar a sugestão"** põe os textos nos campos (com o nome na peça no lugar de `{PESSOA1}` e, nas legendas, a fonte, a identificação
+legal e as hashtags), **sem salvar**: o que se aprova é o texto salvo. Se as pessoas, o tipo ou o formato mudaram, gere de novo. A
+senha é pedida a partir da 2ª consulta da mesma peça, e o consumo entra no limite mensal como "gerar". Não gera para dia de
+notícia (use o kit das redes do assunto), reel (roteiro à mão nesta versão), Story ou "Sem post", nem para a Agenda da semana sem
+as informações conferidas.
+
+**11. Configurações → Pauta e agenda automática:** `agenda_ligada` (true ou false), `hora_padrao` (a hora de Brasília das peças
+novas, "09:30"), `janela_horas` (de 1 a 48; padrão 6) e `hashtags` (as fixas, até 3, como "#Contabilidade" e "#Palhoça"). Na
+agenda de obrigações, `"redes": false` tira a obrigação da Agenda da semana das redes e `"fonte"` é a fonte oficial da regra de
+vencimento, que vai junto na informação conferida.
+
+**Limites desta versão.** Uma peça por dia (o calendário não tem dia repetido). Story e "Sem post no feed" ficam fora da Pauta. O link
+assinado do armazenamento privado segue o código do Supabase; que a Meta aceita esse link (ele termina em `?token=…`) não foi
+conferido na documentação da Meta: confere-se na primeira peça pela agenda, com o administrador acompanhando às 09:30 (a reserva é o modo à mão). Cada foto e cada lâmina aprovada ocupa no
+banco até cerca de 450 KB: confira o tamanho em Supabase → Usage de vez em quando. A lista de termos que travam na Pauta inclui
+palavras que também servem para informar ("garante", "ganhe", "definitivo", "100%", "a maioria") e precisa da confirmação do
+contador responsável. O leitor vê o plano e as legendas. As recusas do banco na Pauta vêm com os códigos RADAR159 a RADAR176 (por
+exemplo, RADAR161 "alterada depois que a tela foi aberta", RADAR162 "aprovada não muda", RADAR165 "há pontos a resolver",
+RADAR166 "falta marcar uma conferência", RADAR167 "hora fora do permitido", RADAR170 "já saiu numa rede", RADAR174 "pessoa em
+uso", RADAR176 "pessoa ou foto que não está cadastrada, repetida ou foi apagada").
 
 ### Concorrentes no Instagram (v0.19.1, opcional)
 
@@ -1040,15 +1225,64 @@ repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
 
+**Da v0.20.0 para a v0.21.0** (instale num **dia útil**, com tempo para o teste da agenda; nesta ordem):
+
+0. Supabase → **Usage**: anote o tamanho atual do banco e o limite do plano. A Pauta guarda no banco as fotos e as lâminas
+   aprovadas (até cerca de 450 KB cada; pelo plano até 31/01, no máximo uns 125 MB, pela conta, não medido).
+1. A tela nova chega pelo repositório: o `index.html` **e o arquivo novo `radar-pauta.js`**, sempre juntos, na branch principal do
+   GitHub; o GitHub Pages publica em 1 a 2 minutos. Aperte **Ctrl+F5 em todos os aparelhos** que usam o Radar (computadores e
+   celulares) e confira no rodapé **Radar v0.21.0**. Com a tela nova e o banco antigo, a aba Pauta pede o SQL e o resto funciona
+   como antes.
+2. SQL Editor → execute `sql/radar-setup-v0.21.0.sql` inteiro (a linha `instalacoes concluidas` mostra `v0.21.0`; 25 tabelas). Ele
+   cria a configuração `pauta` (agenda ligada, 09:30, janela de 6 horas, #Contabilidade e #Palhoça) e acrescenta `"redes": false`
+   ao "Honorário contábil" da agenda de obrigações.
+3. Edge Functions → `radar-redes` → cole o `index.ts` desta versão e faça o Deploy, com **"Verify JWT" ligado**, como já está.
+   Publicações → "Testar conexão com o Instagram e o Facebook": tudo OK, inclusive o item novo "Armazenamento privado da Pauta" (a
+   função cria sozinha o `radar-pauta`, privado).
+4. Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel pede a função `radar-ia` v0.21.0:
+   Configurações → Inteligência artificial → Testar a IA deve mostrar v0.21.0). Com a função antiga, o "Gerar com IA" da peça
+   avisa que ela é de uma versão anterior; o resto da IA funciona igual.
+5. Ctrl+F5 no Radar de novo.
+6. SQL Editor → execute `sql/radar-redes-agenda.sql` (item 7 de "Instagram e Facebook pela API da Meta") e faça o **teste**
+   `agenda_teste` do comentário do fim do arquivo: o esperado é 200 com `{"ok":true,"versao":"0.21.0"}`. Outra resposta: confira se
+   a `radar-redes` é a v0.21.0 (passo 3) e se a chave anon escrita no arquivo é a do `radar-config.js`. Até este passo, a peça
+   aprovada para agendar só sai pelo "Publicar agora".
+7. Pauta → **Pessoas e termos** (administrador): cadastre quem vai aparecer, **só com o termo assinado em mãos**, marcando
+   exatamente o que a pessoa marcou.
+8. Pauta → **Importar o calendário (CSV)**: o arquivo do plano de publicações (guardado no seu computador; nunca no GitHub).
+   Confira a prévia e grave.
+9. Configurações → **Pauta e agenda automática**: confira a hora padrão, a janela e as hashtags. Confira também o CNPJ e o CRC em
+   "Fecho, assinatura e identificação legal": sem eles, nenhuma peça é aprovada.
+10. Primeiras peças acompanhadas: a 1ª pela agenda (28/10) com o administrador olhando às 09:30 (até umas 09:35 a peça deve
+    aparecer publicada, com o link do post; é a prova de que a Meta aceita o link do armazenamento privado), o 1º carrossel à mão
+    (29/10) e os 2 primeiros fins de semana (a partir de 31/10), abrindo a Pauta por volta das 09h35.
+
+O robô atualiza sozinho pelo GitHub (v0.21.0, com o aviso da Pauta); antes do SQL, só o aviso da Pauta não roda, e os outros seguem
+normais. Nenhum segredo novo: a chave da agenda é criada no Vault pelo próprio `sql/radar-redes-agenda.sql`.
+
+Cuidados nesta versão:
+- O CSV do plano tem nomes da equipe: **nunca** o envie ao GitHub, nem dentro de outra pasta. O `.gitignore` barra os nomes de
+  sempre (`*calendario*.csv`, `pauta*.csv`, `plano-publicacoes*/`) e um teste falha se um calendário aparecer no repositório; mesmo
+  assim, confira o que vai em cada envio.
+- **Depois da primeira peça aprovada, não volte a tela para a v0.20.0.** A tela antiga não tem a Pauta: não mostra o que está
+  agendado nem o que não saiu, não desfaz a aprovação e não tem nas Configurações o bloco que pausa a agenda, que continua
+  publicando. A aba Publicações dela também não foi feita para as publicações da Pauta (com o PostgREST dos testes, só faz um pedido
+  a mais, sem erro; no Supabase não foi conferido). Para parar a publicação automática, use `"agenda_ligada": false` (Configurações
+  → Pauta) ou o `sql/radar-redes-agenda-reversao.sql`. Se precisar mesmo voltar a tela, desfaça antes as aprovações agendadas na
+  Pauta e rode o `sql/radar-redes-agenda-reversao.sql`.
+- Ordem trocada não publica nada errado: a `radar-redes` antiga (v0.19.0) com o banco novo recusa a peça da Pauta sem publicar
+  ("atualize a função radar-redes para a v0.21.0") e continua publicando as notícias; a `radar-redes` nova com o banco antigo
+  publica as notícias normalmente.
+
 **Da v0.19.0 para a v0.20.0:**
 
 0. A tela nova chega pelo repositório: com esta versão na branch principal do GitHub (repositório `radar`), o GitHub Pages
    publica em 1 a 2 minutos. Abra o Radar, aperte Ctrl+F5 e confira no rodapé que aparece **Radar v0.20.0** antes de seguir (se
    ainda aparecer v0.19.0, espere mais um pouco e recarregue).
-1. SQL Editor → execute `sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` mostra `v0.20.0`). Quem usa a
-   função `radar-concorrentes` (v0.19.1, opcional) não precisa rodar de novo o `sql/radar-concorrentes.sql`: o setup devolve o
-   acesso da função que confere a chave (para conferir, faça o teste de conexão do fim do `sql/radar-concorrentes.sql`, com
-   `{"acao": "diagnostico"}`).
+1. SQL Editor → execute `sql/radar-setup-v0.21.0.sql` inteiro (o do pacote; a linha `instalacoes concluidas` mostra a versão do
+   script). Quem usa a função `radar-concorrentes` (v0.19.1, opcional) não precisa rodar de novo o `sql/radar-concorrentes.sql`: o
+   setup devolve o acesso da função que confere a chave (para conferir, faça o teste de conexão do fim do
+   `sql/radar-concorrentes.sql`, com `{"acao": "diagnostico"}`).
 2. Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel pede a função `radar-ia` v0.20.0:
    Configurações → Inteligência artificial → Testar a IA deve mostrar v0.20.0).
 3. Ctrl+F5 no Radar de novo.
@@ -1062,24 +1296,24 @@ repositório, que é público: a rotina diária grava direto no banco.
    **artecon.cnt.br/news** (a legenda do Instagram termina com "Leia a matéria completa no site (link na bio)").
 
 A função `radar-redes`, os robôs e os segredos não mudam. Sem o SQL, o "Gerar kit das redes com IA" avisa que falta rodar o
-`radar-setup-v0.20.0.sql`; com a função antiga, avisa que ela é de uma versão anterior (o texto e a capa do "Gerar com IA" saem
-do mesmo jeito).
+`radar-setup-v0.21.0.sql` (o do pacote); com a função antiga, avisa que ela é de uma versão anterior (o texto e a capa do "Gerar
+com IA" saem do mesmo jeito).
 
 **Da v0.18.0 para a v0.19.0:** (1) Edge Functions → `radar-ia` e `radar-redes` → cole o `index.ts` de cada uma desta versão e
 faça o Deploy ("Verify JWT" ligado nas duas; o painel pede a função `radar-ia` v0.19.0); (2) Supabase → Edge Functions → Secrets →
 `RADAR_GITHUB_TOKEN` (veja "Robô do site na hora"); (3) Ctrl+F5 no Radar. O banco não muda (o `radar-setup-v0.19.0.sql` só
 registra a versão). O robô de rascunhos e o workflow atualizam sozinhos pelo GitHub.
 
-**Da v0.17.0 para a v0.18.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou a atualização rápida do pacote
+**Da v0.17.0 para a v0.18.0:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.17.0); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel
 pede a função v0.18.0); (3) Ctrl+F5 no Radar. O robô de rascunhos atualiza sozinho pelo GitHub. Segredos não mudam.
 
-**Da v0.16.0 para a v0.17.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou a atualização rápida do pacote
+**Da v0.16.0 para a v0.17.0:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.16.0); (2) Edge Functions → `radar-redes` → cole o `index.ts` desta versão e faça o Deploy (com
 **Verify JWT ligado**, como já está); (3) Ctrl+F5 no Radar. O robô e o workflow atualizam sozinhos pelo GitHub. Segredos não mudam
 (o robô chama a função `radar-redes` com a mesma chave interna que já usa no banco, RADAR_SUPABASE_SERVICE_KEY).
 
-**Da v0.15.0 para a v0.16.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou a atualização rápida do pacote
+**Da v0.15.0 para a v0.16.0:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.15.0); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel
 pede a função v0.16.0 para o botão "Revisar com IA"); (3) Ctrl+F5 no Radar. O robô atualiza sozinho pelo GitHub. Segredos não mudam.
 
@@ -1087,11 +1321,11 @@ pede a função v0.16.0 para o botão "Revisar com IA"); (3) Ctrl+F5 no Radar. O
 rápida do pacote zip, que é só a partir da v0.14.3; no fim ela mostra `capturas com fundamentacao lida`, que deve ser "N de N");
 (2) Ctrl+F5 no Radar. Robô, funções e segredos não mudam. De versões anteriores, use o `radar-setup-v0.15.0.sql` inteiro.
 
-**Da v0.11.1 para a v0.12.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou a atualização rápida do pacote
+**Da v0.11.1 para a v0.12.0:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou a atualização rápida do pacote
 zip); (2) Edge Functions → crie a função `radar-itc` com o `index.ts` desta versão (com **Verify JWT desligado**: a função confere
 sozinha quem chama); (3) siga "Boletim da ITC pelo Microsoft Graph"; (4) Ctrl+F5 no Radar.
 
-**Da v0.11.0 para a v0.11.1:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou o arquivo de atualização rápida
+**Da v0.11.0 para a v0.11.1:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou o arquivo de atualização rápida
 que vem no pacote zip); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy; (3) Ctrl+F5 no Radar.
 Os workflows e os robôs chegam pelo repositório. Nada de segredo novo.
 
@@ -1100,29 +1334,29 @@ Os workflows e os robôs chegam pelo repositório. Nada de segredo novo.
 capturas da fila com mais de 5 dias passam a "Baixa relevância" (continuam lá; dá para ignorar em lote).
 
 **Da v0.9.0 para a v0.10.0**, nesta ordem: (1) Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script);
+`sql/radar-setup-v0.21.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script);
 (2) Edge Functions → `radar-ia` → cole o `supabase/functions/radar-ia/index.ts` desta versão e faça o Deploy
 (Configurações → Inteligência artificial → Testar deve mostrar a função v0.10.0); (3) a tela e os robôs chegam
 pelo repositório (Ctrl+F5 no Radar). Segredos: `ARTECON_SITE_USUARIO` e `ARTECON_SITE_SENHA` já cadastrados.
 
 **Da v0.8.0 para a v0.9.0:** Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script).
+`sql/radar-setup-v0.21.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script).
 A tela e o robô chegam pelo repositório. A função `radar-ia` não muda. Nada de segredo novo.
 
 **Da v0.7.1 para a v0.8.0:** Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar a versão) e,
+`sql/radar-setup-v0.21.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar a versão) e,
 se ainda não rodou, `sql/radar-fontes-novas-2026-10.sql`. A tela e o robô chegam pelo repositório.
 A função `radar-ia` não muda. Para o DOU completo (INLABS), veja "Diário Oficial pelo INLABS".
 
 **Da v0.7.0 para a v0.7.1:** Supabase radar-artecon → SQL Editor → cole e execute
-`sql/radar-setup-v0.20.0.sql` inteiro (o nome muda a cada versão) e guarde a evidência (a linha `instalacoes concluidas` mostra
+`sql/radar-setup-v0.21.0.sql` inteiro (o nome muda a cada versão) e guarde a evidência (a linha `instalacoes concluidas` mostra
 a versão do script). O resto já chega pelo repositório: a tela (GitHub Pages; Ctrl+F5 no Radar) e o
 robô (próxima coleta). A função `radar-ia` não muda. Antes do SQL, o robô novo funciona normalmente,
 só sem a limpeza de imagens; os termos com pontuação nas regras só passam a pontuar depois dele.
 
 **Da v0.6.1 para a v0.7.0**, nesta ordem:
 
-1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.20.0.sql`). Guarde a evidência.
+1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.21.0.sql`). Guarde a evidência.
 2. GitHub, repositório `radar` → envie `index.html` e a pasta `robo/` (arquivos novos e alterados:
    `radar_ia.py`, `radar_coletar.py`, `radar_util.py`).
 3. GitHub → abra `.github/workflows/radar-coletar.yml` → lápis (Edit) → substitua o conteúdo pelo
@@ -1141,17 +1375,17 @@ só sem a limpeza de imagens; os termos com pontuação nas regras só passam a 
 `index.html` ao repositório do Radar; (3) siga o Passo 7 (função `radar-ia`, segredo
 `IA_GATEWAY_TOKEN`). Não há SQL novo para o Radar.
 
-**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.20.0.sql` no SQL Editor; (2) envie
+**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.21.0.sql` no SQL Editor; (2) envie
 `index.html` e `informativo.html` ao repositório; (3) cole o `radar-fale-conosco-v0.6.0.json`
 em Configurações → Fale Conosco; (4) se usa a IA, cole de novo o `index.ts` na função
 `radar-ia` e faça o Deploy. O robô não mudou de comportamento (só o número da versão).
 
-Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.20.0.sql` no SQL
+Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.21.0.sql` no SQL
 Editor (ele atualiza sem apagar dados), envie os arquivos novos ao repositório e, se a função de IA
 já estiver instalada, cole de novo o `index.ts`.
 
-Substitua `index.html`, `informativo.html`, as imagens do timbrado e as pastas `robo/`, `sql/`, `testes/`,
-`supabase/` e `.github/`. Se a função de IA mudar, cole de novo o `index.ts` no Supabase. **Não** substitua o `radar-config.js`. Se a versão trouxer um novo
+Substitua `index.html`, `radar-pauta.js` (desde a v0.21.0, sempre junto com o `index.html`), `informativo.html`, as imagens do
+timbrado e as pastas `robo/`, `sql/`, `testes/`, `supabase/` e `.github/`. Se a função de IA mudar, cole de novo o `index.ts` no Supabase. **Não** substitua o `radar-config.js`. Se a versão trouxer um novo
 `radar-setup`, execute-o no SQL Editor. A versão em uso aparece no topo do dashboard e
 a aba **Versões** lista o que mudou.
 

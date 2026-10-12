@@ -6,12 +6,17 @@ duas etapas (contêiner + media_publish) e o Facebook pela foto da Página; a im
 o link do post fica registrado; o erro da Meta fica na autorização sem mostrar o token; e nunca publica duas vezes.
 v0.19.0: só o administrador aciona o robô do site no GitHub (uma API do GitHub de mentira), só com algo esperando o robô,
 uma vez a cada 30 s e sem mostrar o token.
+v0.21.0: a peça da Pauta vai para o armazenamento PRIVADO (nome aleatório) e a Meta recebe um link assinado de 10 min; no banco fica
+o endereço interno, e a nova tentativa assina de novo sem reenviar. A agenda do banco (chave do Vault de mentira no x-radar-agenda)
+só publica peça vencida, uma vez, e faz o teste da instalação (agenda_teste); a função nova publica a notícia com o banco antigo;
+os registros da função não levam legenda, nome, link nem chave.
 """
 from __future__ import annotations
 
 import base64
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -22,8 +27,10 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 import requests
 
-from conftest import ADMIN, API, EDITOR, RAIZ, SECRETA, como, gateway, jwt
+from conftest import ADMIN, API, EDITOR, RAIZ, SECRETA, VAULT_SIMULADO, como, gateway, jwt
 from test_radar_banco import aprovar, cenario_publicavel, registrar_site
+# v0.21.0: a Pauta (a fixture pauta põe o CNPJ e o CRC de mentira nas Configurações, como a Pauta exige)
+from test_radar_banco import IDENT, LEG_PECA, aprovar_peca, lamina, marcar_pronta, nova_peca, pauta, situacao_envio, vencer  # noqa: F401
 
 PORTA_PONTE, PORTA_FUNCAO, PORTA_SEM_META, PORTA_TOKEN_PAGINA, PORTA_SEM_ACESSO = 3994, 3993, 3995, 3996, 3997
 PORTA_CHAVE_NOVA, PORTA_LISTA_NOVA = 3988, 3987
@@ -37,7 +44,9 @@ TOKEN_GITHUB = "tokenGithubSecreto654"        # v0.19.0: RADAR_GITHUB_TOKEN, só
 CAMINHO_GITHUB = "/github/repos/arteconartescontabeis-design/radar/actions/workflows/radar-site-publicar.yml/dispatches"
 JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
 ESTADO = {"chaves": [], "bucket_get_falha": False, "busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False,
-          "github": [], "github_status": 204}
+          "github": [], "github_status": 204,
+          "publicos": set(), "upsert": [], "assinaturas": [], "assinar_falha": False}   # v0.21.0: buckets públicos, x-upsert, links assinados
+LOGS: dict = {}                               # v0.21.0: a saída de cada instância da função (o que o Supabase mostra em Logs), por porta
 
 
 class Ponte(BaseHTTPRequestHandler):
@@ -131,7 +140,8 @@ class Ponte(BaseHTTPRequestHandler):
             nome = self.path.rsplit("/", 1)[1]
             if ESTADO["bucket_get_falha"]:
                 return self._responder(400, {"statusCode": "404", "error": "Bucket not found", "message": "Bucket not found"})
-            return self._responder(200 if nome in ESTADO["buckets"] else 404, {"name": nome} if nome in ESTADO["buckets"] else {"error": "Bucket not found"})
+            return self._responder(200 if nome in ESTADO["buckets"] else 404,
+                                   {"name": nome, "public": nome in ESTADO["publicos"]} if nome in ESTADO["buckets"] else {"error": "Bucket not found"})
         if self.path.startswith("/meta/"):
             return self._meta({k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()})
         self._responder(404, {})
@@ -151,11 +161,19 @@ class Ponte(BaseHTTPRequestHandler):
             b = json.loads(corpo)
             if b["id"] in ESTADO["buckets"]:                                      # já existe: o Supabase responde 400 com "409"
                 return self._responder(400, {"statusCode": "409", "error": "Duplicate", "message": "The resource already exists"})
+            assert b["public"] is (b["id"] != "radar-pauta") and b["allowed_mime_types"] == ["image/jpeg"]   # v0.21.0: o da Pauta é privado
             ESTADO["buckets"].add(b["id"])
-            assert b["public"] is True
+            if b["public"]:
+                ESTADO["publicos"].add(b["id"])
             return self._responder(200, {"name": b["id"]})
+        if self.path.startswith("/storage/v1/object/sign/"):                  # v0.21.0: link assinado (POST /object/sign/:bucket/*)
+            ESTADO["assinaturas"].append((self.path, json.loads(corpo or b"null")))
+            if ESTADO["assinar_falha"]:
+                return self._responder(400, {"statusCode": "404", "error": "not_found", "message": "Object not found"})
+            return self._responder(200, {"signedURL": self.path.removeprefix("/storage/v1") + f"?token=assinado.{len(ESTADO['assinaturas'])}"})
         if self.path.startswith("/storage/v1/object/"):
             ESTADO["storage"].append((self.path, self.headers.get("Content-Type"), corpo))
+            ESTADO["upsert"].append(self.headers.get("x-upsert"))
             return self._responder(200, {"Key": self.path})
         if self.path.startswith("/meta/"):
             return self._meta({k: v[0] for k, v in parse_qs(corpo.decode()).items()})
@@ -175,16 +193,18 @@ class Ponte(BaseHTTPRequestHandler):
         pass
 
 
-def _subir(porta, extra):
+def _subir(porta, extra, pasta):
     ambiente = dict(os.environ, SUPABASE_URL=PONTE, SUPABASE_ANON_KEY=jwt("anon"), SUPABASE_SERVICE_ROLE_KEY=jwt("service_role"),
                     META_GRAPH_URL=PONTE + "/meta", RADAR_REDES_PASSO_MS="50", RADAR_REDES_ESPERA_MS="2000",
                     RADAR_GITHUB_API=PONTE + "/github", RADAR_PORTA_LOCAL=str(porta), NO_COLOR="1")
     for nome in ("SUPABASE_SECRET_KEYS", "RADAR_GITHUB_TOKEN", "RADAR_GITHUB_REPO", "RADAR_GITHUB_RAMO"):
         ambiente.pop(nome, None)                                # só o que o teste pedir
     ambiente.update(extra)
-    proc = subprocess.Popen(["deno", "run", "--allow-net", "--allow-env", "--no-prompt",
-                             str(RAIZ / "supabase" / "functions" / "radar-redes" / "index.ts")],
-                            env=ambiente, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    LOGS[porta] = pasta / f"radar-redes-{porta}.log"            # v0.21.0: a saída fica num arquivo (o teste dos registros lê)
+    with open(LOGS[porta], "wb") as saida:
+        proc = subprocess.Popen(["deno", "run", "--allow-net", "--allow-env", "--no-prompt",
+                                 str(RAIZ / "supabase" / "functions" / "radar-redes" / "index.ts")],
+                                env=ambiente, stdout=saida, stderr=subprocess.STDOUT)
     for _ in range(150):
         try:
             requests.options(f"http://127.0.0.1:{porta}/", timeout=1)
@@ -195,9 +215,10 @@ def _subir(porta, extra):
 
 
 @pytest.fixture(scope="module")
-def funcao(api_postgrest):
+def funcao(api_postgrest, tmp_path_factory):
     if shutil.which("deno") is None:
         pytest.skip("deno não instalado")
+    pasta = tmp_path_factory.mktemp("radar-redes")
     ponte = ThreadingHTTPServer(("127.0.0.1", PORTA_PONTE), Ponte)
     threading.Thread(target=ponte.serve_forever, daemon=True).start()
     meta_ok = {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN, "META_IG_USER_ID": "ig-1"}
@@ -210,7 +231,7 @@ def funcao(api_postgrest):
                              (PORTA_LISTA_NOVA, {**meta_ok, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA})}),  # a antiga ainda é JWT
                              (PORTA_IG_TOKEN, {**meta_ok, "META_IG_TOKEN": TOKEN_IG}),
                              (PORTA_IG_SEM_ID, {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN, "META_IG_TOKEN": TOKEN_IG})):
-            processos.append(_subir(porta, extra))
+            processos.append(_subir(porta, extra, pasta))
         yield
     finally:
         for p in processos:
@@ -222,7 +243,7 @@ def funcao(api_postgrest):
 @pytest.fixture()
 def redes(funcao, limpo):
     ESTADO.update(chaves=[], bucket_get_falha=False, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False,
-                  github=[], github_status=204)
+                  github=[], github_status=204, publicos=set(), upsert=[], assinaturas=[], assinar_falha=False)
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
     registrar_site(c1)
@@ -361,7 +382,9 @@ def _so_no_apikey():
 def test_chave_interna_nova_vai_so_no_apikey_e_o_armazenamento_funciona(redes, porta):
     db, c1 = redes
     status, r = pedir({"acao": "diagnostico"}, porta=porta)
-    assert status == 200 and r["itens"][-1] == {"item": "Armazenamento das imagens", "ok": True, "detalhe": 'bucket público "radar-redes"'}
+    itens = {i["item"]: i for i in r["itens"]}                     # v0.21.0: depois dele vem o armazenamento privado da Pauta
+    assert status == 200 and itens["Armazenamento das imagens"] == {"item": "Armazenamento das imagens", "ok": True, "detalhe": 'bucket público "radar-redes"'}
+    assert itens["Armazenamento privado da Pauta"]["ok"] is True                # o bucket privado também é criado com a chave nova
     envio = autorizar(db, c1, "facebook")
     status, r = pedir({"acao": "publicar", "envio": envio}, porta=porta)
     assert status == 200 and r["situacao"] == "publicado", r
@@ -376,7 +399,7 @@ def test_chave_antiga_continua_nos_dois_cabecalhos_e_bucket_que_ja_existe_nao_e_
     ESTADO["buckets"].add("radar-redes")
     ESTADO["bucket_get_falha"] = True                         # a consulta falhou, mas o bucket existe: o Supabase responde "409"
     status, r = pedir({"acao": "diagnostico"})
-    assert status == 200 and r["itens"][-1]["ok"] is True, r
+    assert status == 200 and next(i for i in r["itens"] if i["item"] == "Armazenamento das imagens")["ok"] is True, r
     assert all(ak == jwt("service_role")[:10] and auth == ak for _, caminho, ak, auth in ESTADO["chaves"] if caminho.startswith("/storage/"))
 
 
@@ -537,3 +560,275 @@ def test_so_o_administrador_aciona_o_robo_do_site(redes):
     assert pedir({"acao": "acionar_robo"}, cab=robo)[0] == 403                       # o robô só publica
     assert pedir({"acao": "acionar_robo"}, cab={})[0] == 401
     assert ESTADO["github"] == []
+
+
+# ------------------------------------------------------------------- v0.21.0: a peça da Pauta (bucket privado, link assinado) e a agenda do banco
+CHAVE_AGENDA = "a1" * 32                                    # a chave 'radar_redes_agenda' do Vault (de mentira)
+AGENDA = {"Authorization": "Bearer " + jwt("anon"), "x-radar-agenda": CHAVE_AGENDA}   # como o comando do pg_cron manda (sql/radar-redes-agenda.sql)
+ROBO = {"Authorization": "Bearer " + jwt("service_role"), "apikey": jwt("service_role")}
+RE_INTERNA = re.escape(PONTE) + r"/storage/v1/object/radar-pauta/p-[0-9a-f-]{36}\.jpg"
+
+
+@pytest.fixture()
+def peca(redes, pauta):
+    """O cenário da notícia (redes), a Pauta (pauta) e o Vault de mentira com a chave da agenda. No fim, o Vault sai (ou só a chave,
+    se ele já existia)."""
+    db, c1 = redes
+    tinha = db.execute("select count(*) from pg_namespace where nspname = 'vault'").fetchone()[0] == 1
+    if not tinha:
+        db.execute(VAULT_SIMULADO)
+    db.execute("insert into vault.secrets (name, secret) values ('radar_redes_agenda', %s)", (CHAVE_AGENDA,))
+    try:
+        yield db, c1
+    finally:
+        if tinha:
+            db.execute("delete from vault.secrets where name = 'radar_redes_agenda'")
+        else:
+            db.execute("drop schema vault cascade")
+
+
+def agendada(db, canais=("instagram",), vencida=True, dias=2, **campos):
+    """Peça pronta e aprovada pelo administrador para sair pela agenda, com a lâmina (JPEG) desenhada por ele. vencida: a hora marcada
+    passou há 1 minuto. Devolve {canal: envio}."""
+    campos.setdefault("legenda_facebook", LEG_PECA if "facebook" in canais else "")
+    pid = nova_peca(db, dias=dias, **campos)
+    marcar_pronta(db, pid)
+    envios = aprovar_peca(db, pid, canais=canais, artes=[lamina(dados=JPEG)])["envios"]
+    if vencida:
+        for envio in envios.values():
+            vencer(db, envio)
+    return envios
+
+
+def publicar_agora(db, envio, conferi=False):
+    """O "Publicar agora" / "Tentar de novo" do administrador: só remarca a hora (e devolve "erro" para "autorizado")."""
+    pid = db.execute("select peca_id from radar_redes_envios where id = %s", (envio,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        return c.execute("select radar_pauta_publicar_agora(%s, %s)", (pid, conferi)).fetchone()[0]
+
+
+def ler_log(porta=PORTA_FUNCAO, espera=None):
+    """A saída da instância da função (o módulo inteiro). Com `espera`, aguarda até 3 s essa linha aparecer no fim."""
+    for _ in range(30):
+        texto = LOGS[porta].read_text(errors="replace")
+        if espera is None or texto.rstrip().endswith(espera):
+            break
+        time.sleep(0.1)
+    return texto
+
+
+def test_peca_instagram_bucket_privado_link_assinado_e_publica_uma_vez(peca):
+    db, c1 = peca
+    ig = agendada(db)["instagram"]
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert status == 200 and r == {"situacao": "publicado", "url": "https://www.instagram.com/p/ABC123/", "post_id": "midia-1"}, r
+    caminho, tipo, dados = ESTADO["storage"][0]
+    assert re.fullmatch(RE_INTERNA, PONTE + caminho) and tipo == "image/jpeg" and dados.startswith(b"\xff\xd8")
+    assert ESTADO["upsert"] == [None]                                              # nome aleatório: nunca sobrescreve
+    assert ESTADO["buckets"] == {"radar-pauta"} and ESTADO["publicos"] == set()     # o bucket PRIVADO é criado na primeira vez
+    assinar = caminho.replace("/object/radar-pauta/", "/object/sign/radar-pauta/")
+    assert ESTADO["assinaturas"] == [(assinar, {"expiresIn": 600})]                 # link de 10 minutos
+    chamadas = [(m, p) for m, p, _ in ESTADO["meta"]]
+    assert chamadas == [("POST", "ig-1/media"), ("GET", "cont-1"), ("GET", "cont-1"), ("POST", "ig-1/media_publish"), ("GET", "midia-1")]
+    criar = ESTADO["meta"][0][2]
+    assert criar["image_url"] == PONTE + assinar + "?token=assinado.1" and criar["caption"] == LEG_PECA   # a Meta baixa pelo link assinado
+    linha = db.execute("select situacao, post_id, url, imagem, imagem_url from radar_redes_envios where id = %s", (ig,)).fetchone()
+    # no banco fica o endereço interno (não abre sem a chave), nunca o link assinado; a cópia da arte sai do banco
+    assert linha == ("publicado", "midia-1", "https://www.instagram.com/p/ABC123/", None, PONTE + caminho)
+    # de novo (a agenda chamou duas vezes, ou o administrador clicou): não publica duas vezes
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert status == 400 and "não está aguardando envio" in r["message"] and len(ESTADO["meta"]) == 5 and len(ESTADO["storage"]) == 1
+
+
+def test_peca_facebook_photos_com_link_assinado(peca):
+    """O administrador também manda a peça (o "Publicar agora" com a agenda desligada chama a função direto), mas só na hora."""
+    db, c1 = peca
+    envios = agendada(db, canais=("instagram", "facebook"), vencida=False)
+    status, r = pedir({"acao": "publicar", "envio": envios["facebook"]})
+    assert status == 400 and r["message"].startswith("ainda não é a hora: agendada para ")      # RADAR172: nada muda
+    assert situacao_envio(db, envios["facebook"]) == ("autorizado", None) and ESTADO["storage"] == [] and ESTADO["meta"] == []
+    assert sorted(publicar_agora(db, envios["facebook"])) == sorted(envios.values())
+    status, r = pedir({"acao": "publicar", "envio": envios["facebook"]})
+    assert status == 200 and r["url"] == "https://www.facebook.com/artecon/posts/9" and r["post_id"] == "pagina-1_post-9", r
+    metodo, caminho, params = ESTADO["meta"][0]
+    assert (metodo, caminho) == ("POST", "pagina-1/photos") and params["message"] == LEG_PECA
+    assert re.fullmatch(RE_INTERNA.replace("/object/", "/object/sign/") + r"\?token=assinado\.1", params["url"]), params["url"]
+    assert re.fullmatch(RE_INTERNA, db.execute("select imagem_url from radar_redes_envios where id = %s", (envios["facebook"],)).fetchone()[0])
+    # o robô do site nunca manda a peça (ela nunca vai junto com o site)
+    st, r = pedir({"acao": "publicar", "envio": envios["instagram"]}, cab=ROBO)
+    assert st == 403 and "junto com o site" in r["message"] and situacao_envio(db, envios["instagram"]) == ("autorizado", None)
+
+
+def test_peca_nova_tentativa_reassina_sem_reenviar(peca):
+    db, c1 = peca
+    ig = agendada(db)["instagram"]
+    ESTADO["erro_meta"] = "Application does not have permission"
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert status == 502 and "instagram_content_publish" in r["message"] and TOKEN_PAGINA not in json.dumps(r)
+    sit, erro, imagem, interna = db.execute("select situacao, erro, imagem, imagem_url from radar_redes_envios where id = %s", (ig,)).fetchone()
+    assert sit == "erro" and "permission" in erro and "token=" not in erro and imagem is None and re.fullmatch(RE_INTERNA, interna)
+    ESTADO["erro_meta"] = None
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)                # "erro" não volta pela agenda: só pelo administrador
+    assert status == 400 and "não está aguardando envio" in r["message"] and len(ESTADO["meta"]) == 1
+    assert publicar_agora(db, ig, conferi=True) == [ig]
+    ESTADO["assinar_falha"] = True                                                  # o link não saiu: nada vai à Meta
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert (status, r["message"]) == (502, "Não foi possível preparar o link da imagem para a Meta. Nada foi publicado.")
+    assert situacao_envio(db, ig)[0] == "erro" and len(ESTADO["meta"]) == 1
+    ESTADO["assinar_falha"] = False
+    assert publicar_agora(db, ig, conferi=True) == [ig]
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert (status, r["situacao"]) == (200, "publicado"), r
+    assert len(ESTADO["storage"]) == 1                                              # a imagem não sobe de novo
+    assert [a for a, _ in ESTADO["assinaturas"]] == [ESTADO["storage"][0][0].replace("/object/", "/object/sign/")] * 3   # cada tentativa assina
+    assert [prm["image_url"].rsplit("=", 1)[1] for m, p, prm in ESTADO["meta"] if p == "ig-1/media"] == ["assinado.1", "assinado.3"]
+    assert db.execute("select situacao, imagem_url from radar_redes_envios where id = %s", (ig,)).fetchone() == ("publicado", interna)
+
+
+def test_agenda_com_a_chave_publica_so_peca_vencida_e_recusa_o_resto(peca):
+    db, c1 = peca
+    noticia = autorizar(db, c1, "instagram")
+    envios = agendada(db, canais=("instagram", "facebook"))
+    futura = agendada(db, dias=3, vencida=False)["instagram"]
+    estado = "select situacao, enviado_em, erro, atualizado_em from radar_redes_envios where id = %s"
+    antes = {e: db.execute(estado, (e,)).fetchone() for e in (noticia, futura, *envios.values())}
+    # chave errada, curta ou longa demais: a mesma recusa, também com a sessão do administrador junto (com o cabeçalho, só a chave vale)
+    admin = {"Authorization": "Bearer " + jwt("authenticated", ADMIN)}
+    for chave in ("b2" * 32, CHAVE_AGENDA[:31], CHAVE_AGENDA * 4):
+        for cab in (AGENDA, admin):
+            for corpo in ({"acao": "publicar", "envio": envios["instagram"]}, {"acao": "agenda_teste"}):
+                assert pedir(corpo, cab={**cab, "x-radar-agenda": chave}) == (401, {"message": "Chave não confere."})
+    # com a chave certa: a notícia não (nem a do "Publicar em todos"), a peça só na hora, e só publicar
+    st, r = pedir({"acao": "publicar", "envio": noticia}, cab=AGENDA)
+    assert (st, r["message"]) == (403, "A agenda só publica peças da Pauta.")
+    st, r = pedir({"acao": "publicar", "envio": futura}, cab=AGENDA)
+    assert st == 400 and r["message"].startswith("ainda não é a hora: agendada para ") and "(Brasília)" in r["message"]
+    for corpo in ({"acao": "excluir", "envio": noticia}, {"acao": "diagnostico"}, {"acao": "acionar_robo"}, {"acao": "apagar_tudo"}):
+        assert pedir(corpo, cab=AGENDA) == (403, {"message": "A agenda só publica."})
+    assert ESTADO["meta"] == [] and ESTADO["storage"] == [] and ESTADO["assinaturas"] == [] and ESTADO["github"] == []
+    assert {e: db.execute(estado, (e,)).fetchone() for e in antes} == antes
+    # sem a Meta configurada, a peça continua agendada (a agenda chama de novo daqui a 10 minutos, até 3 vezes)
+    st, r = pedir({"acao": "publicar", "envio": envios["facebook"]}, cab=AGENDA, porta=PORTA_SEM_META)
+    assert st == 503 and "continua guardada" in r["message"] and situacao_envio(db, envios["facebook"]) == ("autorizado", None)
+    # a peça vencida sai, uma vez em cada canal
+    for envio in envios.values():
+        st, r = pedir({"acao": "publicar", "envio": envio}, cab=AGENDA)
+        assert (st, r["situacao"]) == (200, "publicado"), r
+    assert sorted(p for m, p, _ in ESTADO["meta"] if m == "POST") == ["ig-1/media", "ig-1/media_publish", "pagina-1/photos"]
+    assert situacao_envio(db, noticia) == ("autorizado", None) and situacao_envio(db, futura) == ("autorizado", None)
+
+
+def test_agenda_teste_responde_sem_publicar(peca):
+    db, c1 = peca
+    ig = agendada(db)["instagram"]                                                  # há peça vencida: o teste não a toca
+    for porta in (PORTA_FUNCAO, PORTA_SEM_META):                                    # nem precisa da Meta configurada
+        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.21.0"})
+    assert pedir({"acao": "agenda_teste"}) == (403, {"message": "Só a agenda do banco usa o teste da agenda."})
+    assert pedir({"acao": "agenda_teste"}, uid=EDITOR)[0] == 403
+    assert pedir({"acao": "agenda_teste"}, cab=ROBO)[0] == 403
+    assert pedir({"acao": "agenda_teste"}, cab={})[0] == 401
+    assert pedir({"acao": "agenda_teste"}, cab={"Authorization": "Bearer " + jwt("anon")})[0] in (401, 403)   # a chave anon sozinha não vale
+    assert ESTADO["meta"] == [] and ESTADO["storage"] == [] and ESTADO["buckets"] == set() and situacao_envio(db, ig) == ("autorizado", None)
+    db.execute("delete from vault.secrets where name = 'radar_redes_agenda'")       # sem a chave no Vault: nunca confere
+    assert pedir({"acao": "agenda_teste"}, cab=AGENDA) == (401, {"message": "Chave não confere."})
+
+
+@pytest.mark.parametrize("porta", [PORTA_CHAVE_NOVA, PORTA_LISTA_NOVA], ids=["service_role_key-nova", "secret_keys"])
+def test_peca_pela_agenda_com_a_chave_interna_nova_vai_so_no_apikey(peca, porta):
+    """Como no projeto da Artecon: a conferência da chave, o início da peça, o bucket privado e o link assinado com a chave nova."""
+    db, c1 = peca
+    ig = agendada(db)["instagram"]
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA, porta=porta)
+    assert (status, r["situacao"]) == (200, "publicado"), r
+    caminhos = {c[1] for c in _so_no_apikey()}
+    assert {"/rest/v1/rpc/radar_redes_conferir_agenda", "/rest/v1/rpc/radar_pauta_iniciar", "/rest/v1/rpc/radar_rede_concluir",
+            "/storage/v1/bucket"} <= caminhos
+    assert any(c.startswith("/storage/v1/object/radar-pauta/p-") for c in caminhos)
+    assert any(c.startswith("/storage/v1/object/sign/radar-pauta/p-") for c in caminhos)
+
+
+def test_diagnostico_confere_o_armazenamento_privado_da_pauta(peca):
+    db, c1 = peca
+    status, r = pedir({"acao": "diagnostico"})
+    item = next(i for i in r["itens"] if i["item"] == "Armazenamento privado da Pauta")
+    assert status == 200 and r["tudo_certo"] is True and item["ok"] is True and item["detalhe"].startswith('bucket privado "radar-pauta"')
+    assert ESTADO["buckets"] == {"radar-redes", "radar-pauta"} and ESTADO["publicos"] == {"radar-redes"}
+    # alguém deixou o "radar-pauta" público no painel: o diagnóstico mostra, e a peça não sai (nenhuma foto vai para lá)
+    ESTADO["publicos"].add("radar-pauta")
+    status, r = pedir({"acao": "diagnostico"})
+    item = next(i for i in r["itens"] if i["item"] == "Armazenamento privado da Pauta")
+    assert r["tudo_certo"] is False and item["ok"] is False and 'O armazenamento "radar-pauta" está público' in item["detalhe"]
+    ig = agendada(db)["instagram"]
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert status == 502 and "está público" in r["message"] and ESTADO["storage"] == [] and ESTADO["assinaturas"] == []
+    assert not [m for m in ESTADO["meta"] if m[1] in ("ig-1/media", "ig-1/media_publish")]
+    assert situacao_envio(db, ig)[0] == "erro"                                      # contado e avisado; "Tentar de novo" depois de arrumar
+
+
+def test_funcao_nova_com_banco_antigo_publica_noticia(redes):
+    """A radar-redes v0.21.0 instalada antes do SQL: o banco ainda não tem radar_redes_envios.peca_id (nem a recusa RADAR171 no início
+    da notícia, que é da v0.21.0). A notícia continua saindo: a leitura do envio tenta de novo sem a coluna."""
+    db, c1 = redes
+    envio = autorizar(db, c1, "instagram")
+    original = db.execute("select pg_get_functiondef('public.radar_rede_iniciar(bigint)'::regprocedure)").fetchone()[0]
+    trava = re.search(r"\n  -- v0\.21\.0: a peça da Pauta.*?\n  end if;", original, re.S)
+    assert trava and "RADAR171" in trava.group(0)
+    servico = {"Authorization": "Bearer " + jwt("service_role")}
+    ve_peca_id = lambda: requests.get(API + "/radar_redes_envios?select=peca_id&limit=1", headers=servico, timeout=5).status_code == 200
+    try:
+        db.execute("alter table radar_redes_envios rename column peca_id to peca_id_futura")
+        db.execute(original.replace(trava.group(0), ""))                            # radar_rede_iniciar como na v0.20.0
+        db.execute("notify pgrst, 'reload schema'")
+        for _ in range(50):
+            if not ve_peca_id():
+                break
+            time.sleep(0.1)
+        assert not ve_peca_id()
+        status, r = pedir({"acao": "publicar", "envio": envio})
+        assert status == 200 and r == {"situacao": "publicado", "url": "https://www.instagram.com/p/ABC123/", "post_id": "midia-1"}, r
+        leituras = [c for c in ESTADO["chaves"] if c[:2] == ("GET", "/rest/v1/radar_redes_envios")]
+        assert len(leituras) == 2                                                    # com peca_id (recusada) e de novo sem ela
+        assert ESTADO["storage"][0][0] == f"/storage/v1/object/radar-redes/{c1}-instagram-{envio}.jpg" and ESTADO["assinaturas"] == []
+        assert db.execute("select situacao, post_id from radar_redes_envios where id = %s", (envio,)).fetchone() == ("publicado", "midia-1")
+    finally:
+        if db.execute("""select count(*) from information_schema.columns
+                         where table_name = 'radar_redes_envios' and column_name = 'peca_id_futura'""").fetchone()[0]:
+            db.execute("alter table radar_redes_envios rename column peca_id_futura to peca_id")
+        db.execute(original)
+        db.execute("notify pgrst, 'reload schema'")
+        for _ in range(50):
+            if ve_peca_id():
+                break
+            time.sleep(0.1)
+    assert ve_peca_id() and "RADAR171" in db.execute("select prosrc from pg_proc where proname = 'radar_rede_iniciar'").fetchone()[0]
+
+
+def test_logs_sem_legenda_nome_link_nem_chave(peca):
+    """O que a função registra (Supabase → Edge Functions → Logs): só o número do envio, a situação e "(agenda)". Nunca a legenda, o nome
+    de quem aparece, o link (assinado ou interno), a chave da agenda ou a mensagem da Meta (que pode repetir a legenda)."""
+    db, c1 = peca
+    legenda = "Bruno Exemplo conta como cuida da folha de pagamento.\n\n" + IDENT + "\n\n#Contabilidade #Palhoça"
+    envios = agendada(db, canais=("instagram", "facebook"), legenda_instagram=legenda, legenda_facebook=legenda)
+    ja = len(ler_log())                                       # os números dos envios recomeçam a cada teste: confere só o que veio agora
+    assert pedir({"acao": "publicar", "envio": envios["instagram"]}, cab=AGENDA)[0] == 200
+    ESTADO["erro_meta"] = "Bruno Exemplo: Application does not have permission"
+    assert pedir({"acao": "publicar", "envio": envios["facebook"]}, cab=AGENDA)[0] == 502
+    ESTADO["erro_meta"] = None
+    assert pedir({"acao": "publicar", "envio": envios["facebook"]}, cab={**AGENDA, "x-radar-agenda": "c3" * 32})[0] == 401
+    linha = f"radar-redes: envio {envios['instagram']} → publicado (agenda)"
+    texto = ler_log(espera=linha)
+    assert texto[ja:].strip() == linha, texto[ja:]            # um registro só, do que saiu; o erro da Meta e a chave errada não registram
+    interna = db.execute("select imagem_url from radar_redes_envios where id = %s", (envios["instagram"],)).fetchone()[0]
+    for proibido in ("Bruno", "Exemplo", "folha de pagamento", "11.222.333", "CRC-SC", "radar-pauta", "token=", interna, CHAVE_AGENDA, "c3c3",
+                     "permission", TOKEN, TOKEN_PAGINA, TOKEN_IG, "eyJ"):
+        assert proibido not in texto, proibido
+
+
+def test_funcao_passa_na_conferencia_de_tipos_do_deno():
+    """A função é colada no editor do Supabase e pode ser publicada por um caminho que confere os tipos: o "deno check" passa limpo
+    (o "deno run" dos outros testes não confere tipos)."""
+    if shutil.which("deno") is None:
+        pytest.skip("deno não instalado")
+    r = subprocess.run(["deno", "check", str(RAIZ / "supabase" / "functions" / "radar-redes" / "index.ts")], capture_output=True, text=True,
+                       timeout=300, env=dict(os.environ, NO_COLOR="1"))
+    assert r.returncode == 0, r.stdout + r.stderr
