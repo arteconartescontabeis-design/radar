@@ -262,6 +262,7 @@ details.peca-aprovar summary{font-size:1rem} .peca-aprovar .checks label,.peca-t
    ==================================================================== */
 const VERSAO = "0.21.0";
 const FUNCAO_MINIMA = "0.21.0";     // versão da função radar-ia que este painel exige (v0.21.0: a ação “peca”, o Gerar com IA da peça da Pauta)
+const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
@@ -2796,7 +2797,11 @@ const ACOES = {
     let r; try{ r = await pedir("POST", "/functions/v1/radar-redes", {corpo:{acao:"diagnostico"}, tempo:60000}); }
     catch(e){ if(d) d.innerHTML = `<div class="aviso erro">${h(e.status === 404 ? "A função radar-redes ainda não foi instalada no Supabase (veja o LEIAME, v0.13.0)." : e.message)}</div>`; return; }
     const itens = Array.isArray(r.itens) ? r.itens : [];
-    if(d) d.innerHTML = `<ul class="diag">${itens.map(i => `<li>${selo(i.ok ? "OK" : "Falhou", i.ok ? "ok" : "erro")} <b>${h(i.item)}</b><br><span class="sub">${h(i.detalhe)}</span></li>`).join("")}</ul>`;
+    // v0.21.0: a versão da função (a agenda manda conferir aqui se a radar-redes é a desta versão); sem a versão, é anterior à v0.21.0
+    const velha = !r.versao || versaoMenor(r.versao, REDES_MINIMA), qual = r.versao ? `a v${h(r.versao)}` : "anterior à v0.21.0";
+    if(d) d.innerHTML = `<ul class="diag">${itens.map(i => `<li>${selo(i.ok ? "OK" : "Falhou", i.ok ? "ok" : "erro")} <b>${h(i.item)}</b><br><span class="sub">${h(i.detalhe)}</span></li>`).join("")}</ul>
+      <p class="sub" id="redes-versao">Função radar-redes ${r.versao ? "v" + h(r.versao) : "de versão anterior à v0.21.0 (não informa a versão)"}.</p>
+      ${velha ? `<div class="aviso alerta" id="redes-versao-velha"><b>A função radar-redes instalada é ${qual}</b> e este painel precisa da v${REDES_MINIMA} ou mais nova: sem ela, as peças da Pauta agendadas não saem (a agenda chama 3 vezes e desiste). Faça o Deploy da radar-redes desta versão (cole de novo o arquivo supabase/functions/radar-redes/index.ts; veja o LEIAME).</div>` : ""}`;
   },
   /* v0.12.2: "Enviar para revisão" e "Aprovar" da trilha usam os botões do próprio conteúdo (salvam o que estiver digitado) */
   "trilha-clicar"(el){

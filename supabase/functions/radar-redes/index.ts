@@ -68,6 +68,8 @@ const BUCKET_PAUTA = "radar-pauta", LINK_PAUTA_S = 600;
 type Quem = "admin" | "robo" | "agenda";
 // a Meta às vezes demora para baixar a imagem: o contêiner do Instagram é consultado por até ~40 s
 const ESPERA_IG_MS = Number(env("RADAR_REDES_ESPERA_MS", "40000")), PASSO_IG_MS = Number(env("RADAR_REDES_PASSO_MS", "3000"));
+// v0.21.0: cada pedido de conferir ou criar o bucket espera até 10 s (o armazenamento preso não deixa a publicação parada em "enviando")
+const TEMPO_BUCKET_MS = Number(env("RADAR_REDES_BUCKET_MS", "10000"));
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -247,8 +249,13 @@ async function chamarMeta(metodo: "GET" | "POST" | "DELETE", caminho: string, pa
 }
 
 // ------------------------------------------------------------------ armazenamento da imagem (público da notícia; v0.21.0: privado da Pauta)
+/** O bucket existe (e, o da Pauta, é privado)? Se não, cria. v0.21.0: cada pedido com tempo-limite; sem resposta, a recusa diz que nada
+ *  foi publicado (quem chamou grava "erro", e a publicação não fica parada em "enviando" até o Supabase encerrar a função). */
 async function garantirBucket(nome = BUCKET, publico = true) {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${nome}`, { headers: comoServico() });
+  const semResposta = () => new Erro(502, "Não foi possível guardar a imagem para a Meta (o armazenamento não respondeu). Nada foi publicado.");
+  let r: Response;
+  try { r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${nome}`, { headers: comoServico(), signal: AbortSignal.timeout(TEMPO_BUCKET_MS) }); }
+  catch { throw semResposta(); }
   const atual: any = r.ok && !publico ? await r.json().catch(() => ({})) : null;
   if (atual === null) await r.body?.cancel();
   // v0.21.0: as fotos da equipe nunca vão para um bucket público (alguém pode ter criado ou trocado o "radar-pauta" no painel)
@@ -256,10 +263,13 @@ async function garantirBucket(nome = BUCKET, publico = true) {
     throw new Erro(502, `O armazenamento "${nome}" está público: no Supabase → Storage, deixe-o privado (Edit bucket → "Public bucket" desligado).`);
   }
   if (r.ok) return;
-  const c = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
-    method: "POST", headers: { ...comoServico(), "Content-Type": "application/json" },
-    body: JSON.stringify({ id: nome, name: nome, public: publico, file_size_limit: 8 * 1024 * 1024, allowed_mime_types: ["image/jpeg"] }),
-  });
+  let c: Response;
+  try {
+    c = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+      method: "POST", headers: { ...comoServico(), "Content-Type": "application/json" }, signal: AbortSignal.timeout(TEMPO_BUCKET_MS),
+      body: JSON.stringify({ id: nome, name: nome, public: publico, file_size_limit: 8 * 1024 * 1024, allowed_mime_types: ["image/jpeg"] }),
+    });
+  } catch { throw semResposta(); }
   const d: any = await c.json().catch(() => ({}));
   // já existe (o Supabase responde 409, ou 400 com statusCode "409"): está pronto
   if (c.ok || c.status === 409 || String(d?.statusCode ?? "") === "409") return;
@@ -271,10 +281,14 @@ async function enviarImagem(dataUrl: string, nome: string): Promise<string> {
   if (!m) throw new Erro(400, "A imagem da publicação não é um JPEG válido.");
   const bytes = Uint8Array.from(atob(m[1]), (ch) => ch.charCodeAt(0));
   await garantirBucket();
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${nome}`, {
-    method: "POST", body: bytes,
-    headers: { ...comoServico(), "Content-Type": "image/jpeg", "x-upsert": "true" },
-  });
+  let r: Response;
+  try {
+    r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${nome}`, {
+      method: "POST", body: bytes, signal: AbortSignal.timeout(20_000),                 // v0.21.0: como o envio da peça
+      headers: { ...comoServico(), "Content-Type": "image/jpeg", "x-upsert": "true" },
+    });
+  } catch { throw new Erro(502, "Não foi possível guardar a imagem para a Meta (o armazenamento não respondeu). Nada foi publicado."); }
+  await r.body?.cancel();
   if (!r.ok) throw new Erro(502, `Não foi possível guardar a imagem para a Meta (${r.status}).`);
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${nome}`;
 }
@@ -382,7 +396,8 @@ async function publicar(envio: number, inicio: number, quem: Quem) {
   let imagemUrl = e.imagem_url ?? "", paraMeta = "";
   try {
     if (linha.peca_id) {
-      // o envio (até 20 s) e a assinatura (até 15 s) contam dentro dos 55 s de aindaDaTempo: o pior caso é o de LIMITE_PUBLICAR_MS
+      // o bucket (até 2 × 10 s), o envio (até 20 s) e a assinatura (até 15 s) contam dentro dos 55 s de aindaDaTempo (passado esse
+      // tempo, o pedido à Meta não sai e a recusa vira "erro"): o pior caso depois da publicação continua o de LIMITE_PUBLICAR_MS
       if (!imagemUrl) imagemUrl = await guardarPrivada(e.imagem);
       paraMeta = await assinar(imagemUrl);
     } else {

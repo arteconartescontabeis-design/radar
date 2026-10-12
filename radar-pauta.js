@@ -131,7 +131,8 @@ async function telaSemana(){
       <tr><td style="white-space:nowrap">${e.radar_pauta_pecas ? dataCurta(e.radar_pauta_pecas.data) : "—"}</td><td>${h(NOME_REDE[e.canal] || e.canal)}</td>
         <td>${e.situacao === "erro" ? h(e.erro || "A publicação não foi concluída.") : e.situacao === "enviando" ? `Parada em “publicando” desde ${horaBrasilia(e.enviado_em)}: confira na rede se saiu.`
           : `Agendada para ${horaBrasilia(e.agendado_para)} e ainda não saiu (a agenda do banco está parada?).`}</td>
-        <td><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${e.peca_id}">Abrir</button></td></tr>`).join("")}</table></div></div>` : ""}
+        <td><span class="acoes" style="margin:0"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${e.peca_id}">Abrir</button>
+          ${e.situacao !== "enviando" ? botaoNaoPublicar(e) : ""}</span></td></tr>`).join("")}</table></div></div>` : ""}
     ${prontas.length ? `<div class="painel" id="pauta-prontas"><h2>Prontas para aprovar</h2><ul class="pauta-lista">${prontas.map(p => `
       <li><b>${dataCurta(p.data)}</b> · ${h(TIPOS_PAUTA[p.tipo] || p.tipo)} · ${h(FORMATOS_PAUTA[p.formato] || p.formato)} <button class="btn peq" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button></li>`).join("")}</ul></div>` : ""}
     ${E.pauta.previa ? blocoPreviaPauta(E.pauta.previa) : ""}
@@ -175,6 +176,8 @@ function registrosCsv(texto){
    As linhas boas saem no formato de radar_pauta_importar. O texto não é interpretado como HTML em lugar nenhum (h() na tela). */
 function analisarCsv(texto){
   const {registros, aberto} = registrosCsv(texto), erros = [], linhas = [], datas = {};
+  // as colunas vazias que sobram no fim (o Excel salva ";;" quando alguma coluna depois da "observacao" foi formatada) não contam
+  for(const campos of registros) while(campos.length > CABECALHO_PAUTA.length && !campos[campos.length - 1].trim()) campos.pop();
   const util = registros.map((campos, i) => ({n:i + 1, campos})).filter(r => r.campos.some(c => c.trim()));   // linha toda vazia (";;;;") não conta
   if(!util.length) return {linhas, erros:["O arquivo está vazio."]};
   if(util[0].n !== 1 || util[0].campos.map(c => c.trim().toLowerCase()).join(";") !== CABECALHO_PAUTA.join(";"))
@@ -422,10 +425,12 @@ async function enviarFotosPeca(campo){
   const f = campo.closest("form[data-form=peca]"), arquivos = [...campo.files]; campo.value = "";
   if(!f || !arquivos.length) return;
   const heic = arquivos.filter(a => /^image\/hei[cf]/i.test(a.type) || /\.hei[cf]$/i.test(a.name)), outras = arquivos.filter(a => !heic.includes(a));
-  if(heic.length) recado(RECADO_HEIC + (outras.length ? ". As outras fotos foram enviadas." : "."), true);
-  if(!outras.length) return;
+  // a foto HEIC fica de fora: o recado vem no fim, junto com o que aconteceu com as outras (nada é dado como enviado antes de ir)
+  const foraHeic = heic.length ? `${heic.length === 1 ? "A foto HEIC ficou de fora" : `As ${heic.length} fotos HEIC ficaram de fora`} (${heic.map(a => a.name).join(", ")}). ${RECADO_HEIC}.` : "";
+  if(!outras.length){ recado(foraHeic, true); return; }
   const fotos = JSON.parse(f.dataset.fotos || "[]");
-  if(fotos.length + outras.length > 10) throw new ErroApi(`A peça leva no máximo 10 fotos (já tem ${fotos.length}): escolha menos fotos ou tire alguma.`);
+  if(fotos.length + outras.length > 10)
+    throw new ErroApi(`A peça leva no máximo 10 fotos (já tem ${fotos.length}): escolha menos fotos ou tire alguma. Nenhuma foto foi enviada.` + (foraHeic ? " " + foraHeic : ""));
   const andamento = $("#peca-fotos-andamento"), novas = [], pequenas = [], falhas = [];
   try{
     for(const [i, a] of outras.entries()){
@@ -445,15 +450,16 @@ async function enviarFotosPeca(campo){
   if(novas.length) recado(`${novas.length} foto(s) enviada(s).`);
   if(pequenas.length) recado(`Foto pequena (menos de 1080×1350): pode ficar sem nitidez — ${pequenas.join(", ")}.`, "aviso");
   if(falhas.length) recado("Não foram enviadas: " + falhas.join("; ") + ".", true);
+  if(foraHeic) recado(foraHeic, true);
 }
 /* A agenda da semana (tipo "Agenda da semana", no domingo D): os vencimentos de D+1 a D+5 (segunda a sexta seguintes), pelas regras das
    Configurações (calcularAgenda, um mês por vez: a semana pode atravessar o mês), sem as obrigações com "redes": false. Cada uma vira uma
-   informação conferida ("10/11 (ter) · ICMS"), com a "fonte" da obrigação ou o aviso de que é a regra das Configurações. */
+   informação conferida ("10/11 (ter) · ICMS"), com a "fonte" da obrigação; sem ela, a fonte fica em branco (a regra das Configurações
+   não é fonte oficial): a peça não fica pronta até alguém conferir e escrever a fonte (o texto provisório iria ao ar no "Fonte: …"). */
 function agendaDaSemana(dia){
   const de = somarDias(dia, 1), ate = somarDias(dia, 5);
   const obrig = (Array.isArray(CONF_PAUTA.obrigacoes) ? CONF_PAUTA.obrigacoes : []).filter(o => o && typeof o === "object" && o.redes !== false);
-  const fonteDe = nome => { const o = obrig.find(x => String(x.nome) === nome);
-    return textoDe(o?.fonte) || "Regra de vencimento das Configurações (conferir)"; };
+  const fonteDe = nome => textoDe(obrig.find(x => String(x.nome) === nome)?.fonte);
   return [...new Set([de.slice(0, 7), ate.slice(0, 7)])]
     .flatMap(m => calcularAgenda(Number(m.slice(0, 4)), Number(m.slice(5, 7)), obrig, CONF_PAUTA.feriados_extras))
     .filter(l => l.data >= de && l.data <= ate)
@@ -510,11 +516,15 @@ function blocoSugestaoPeca(s, atual){
 /* ----------------------------------------------------------- a arte da peça (desenharPeca) */
 /* As lâminas da peça, 1080×1350 (4:5), desenhadas no navegador numa função própria: a arte da notícia (desenharArte, index.html) não
    muda. Dois modelos. "foto": a foto em capa cheia, véu escuro embaixo, o selo do tipo, a chamada (até 3 linhas), o apoio, a linha de
-   cada pessoa marcada (escrita pelo código: linhaPessoa) e a página ("2/6"). "texto": fundo marinho, o selo, o título, o texto ou a
+   cada pessoa marcada (escrita pelo código: linhaPessoa; até 6 linhas: com mais, as pessoas sem registro da mesma área dividem a
+   linha, "Ana, Bruno e Carla · Departamento Pessoal", e o que ainda sobrar vai para os cortes) e a página ("2/6"). "texto": fundo
+   marinho, o selo, o título, o texto ou a
    lista (a agenda da semana, agrupada pela data) e a página. Margem lateral de 72 px (guia de produção). Sem “Matéria completa” e sem o
    selo de SC: a peça não é notícia. Faixa legal: fundo branco com a identificação das Configurações (linhaIdentificacao), em letra com
-   pelo menos 28 px de ALTURA medida (o “H”; começa em 40 px: a leitura mais rígida do guia), em até 2 linhas quebradas nos “ · ”; se
-   não couber, sai cortada e vai para os cortes — a aprovação trava. JPEG de 0,9 a 0,6 até caber em radar_imagens (LIMITE_IMAGEM).
+   pelo menos 28 px de ALTURA medida (o “H”; começa em 40 px: a leitura mais rígida do guia), em até 3 linhas quebradas nos “ · ” (a
+   2ª linha com os dados reais fica a 2 px da margem: um arredondamento de outro aparelho não pode travar toda aprovação); se uma parte
+   sozinha não couber na largura, ou passar de 3 linhas, sai cortada e vai para os cortes — a aprovação trava. JPEG de 0,9 a 0,6 até
+   caber em radar_imagens (LIMITE_IMAGEM).
    Devolve {dados, textos, cortes}, como desenharArte ("cortes": titulo, texto, lista, pessoas, identificacao). */
 const SELO_PECA = {quem_cuida:"QUEM CUIDA", bastidor:"BASTIDOR", captacao:"CAPTAÇÃO", data_equipe:"COM A EQUIPE", agenda:"AGENDA DA SEMANA",
   educativo:"ORIENTAÇÃO", reel:"REEL"};
@@ -550,7 +560,7 @@ async function desenharPeca(d){
   let linhasLegal = [];
   for(const p of legal.split(" · ")){ const junto = linhasLegal.length ? linhasLegal[linhasLegal.length - 1] + " · " + p : "";
     if(junto && cx.measureText(junto).width <= LARG) linhasLegal[linhasLegal.length - 1] = junto; else linhasLegal.push(p); }
-  if(linhasLegal.length > 2 || larga(linhasLegal)){ cortes.add("identificacao"); linhasLegal = quebrar(legal, 2); }
+  if(linhasLegal.length > 3 || larga(linhasLegal)){ cortes.add("identificacao"); linhasLegal = quebrar(legal, 3); }
   const passoLegal = Math.round(pxL * 1.3), TOPO = A - linhasLegal.length * passoLegal - 48;
   // o fundo: marinho; no modelo "foto", a foto em capa cheia até a faixa legal, com sombra no alto (o logotipo) e o véu embaixo (o texto)
   const foto = d.modelo === "foto" && d.imagem ? await carregar(d.imagem) : null;
@@ -579,7 +589,13 @@ async function desenharPeca(d){
   cx.textBaseline = "top";
   if(d.modelo === "foto"){
     // de baixo para cima: as pessoas (amarelo), o apoio, a chamada e o selo, logo acima da faixa legal
-    cx.font = fonte(600, 32); const pessoas = (d.pessoas || []).flatMap(p => quebrar(p, 2, "pessoas")).slice(0, 6);
+    // as pessoas: uma linha (até 2) por pessoa; passando de 6 linhas, as sem registro da mesma área juntas (até 3 linhas por grupo);
+    // ainda passando, a 7ª linha em diante fica de fora e vai para os cortes (a tela avisa)
+    cx.font = fonte(600, 32);
+    const linhasDe = (lista, max, nome) => (lista || []).flatMap(p => quebrar(p, max, nome));
+    const juntas = linhasDe(d.pessoas, 2).length > 6 && (d.pessoasJuntas || []).length;
+    let pessoas = juntas ? linhasDe(d.pessoasJuntas, 3, "pessoas") : linhasDe(d.pessoas, 2, "pessoas");
+    if(pessoas.length > 6){ pessoas = pessoas.slice(0, 6); cortes.add("pessoas"); }
     cx.font = fonte(500, 38); const apoio = d.texto ? quebrar(d.texto, 3, "texto") : [];
     const altPessoas = pessoas.length ? 24 + pessoas.length * 42 : 0, altApoio = apoio.length ? 20 + apoio.length * 48 : 0, altSelo = d.selo ? 76 : 0;
     const t = d.titulo ? ajustar(d.titulo, 76, 52, 3, TOPO - 56 - 220 - altPessoas - altApoio - altSelo) : {px:0, linhas:[]};
@@ -602,7 +618,7 @@ async function desenharPeca(d){
       fora: for(const g of grupos){
         y += 18;
         if(g.data){ if(y + 44 > fim){ cortes.add("lista"); break; } cx.font = fonte(700, 34); cx.fillStyle = "#FFD700"; escrever(g.data, M, y); y += 46; }
-        for(const item of g.itens){ cx.font = fonte(500, 32); const l = quebrar("• " + item, 2);
+        for(const item of g.itens){ cx.font = fonte(500, 32); const l = quebrar("• " + item, 2, "lista");
           if(y + l.length * 40 > fim){ cortes.add("lista"); break fora; }
           cx.fillStyle = "#fff"; for(const x of l){ escrever(x, M, y); y += 40; } y += 4; }
       }
@@ -631,7 +647,19 @@ function dadosPeca(f){
   return {tipo:f.elements.tipo?.value || f.dataset.tipo, formato:f.elements.formato?.value || f.dataset.formato, chamada:v("chamada"), apoio:v("apoio"),
     cartoes:linhas("#peca-cartoes", [["titulo", "[name=cartao-titulo]"], ["texto", "[name=cartao-texto]"]]),
     lista:linhas("#peca-conferidas", [["informacao", "[name=conf-informacao]"]]).map(c => c.informacao),
-    fotos:JSON.parse(f.dataset.fotos || "[]"), pessoas:pessoasDoForm(f).map(id => (E.pauta.pessoas || {})[id]).filter(Boolean).map(linhaPessoa)};
+    fotos:JSON.parse(f.dataset.fotos || "[]"), ...linhasDasPessoas(pessoasDoForm(f).map(id => (E.pauta.pessoas || {})[id]).filter(Boolean))};
+}
+/* As linhas das pessoas na arte: uma por pessoa ("pessoas") e, para quando não cabem, as sem registro da mesma área numa linha só
+   ("pessoasJuntas": "Ana, Bruno e Carla · Departamento Pessoal"; quem tem registro fica na própria linha, com a categoria e o CRC) */
+function linhasDasPessoas(lista){
+  const grupos = [];
+  for(const x of lista){
+    if(ROTULO_CATEGORIA[x.categoria]){ grupos.push({linha:linhaPessoa(x)}); continue; }
+    const area = areaPessoa(x), g = grupos.find(y => y.nomes && y.area === area);
+    if(g) g.nomes.push(String(x.nome_na_peca || "").trim()); else grupos.push({area, nomes:[String(x.nome_na_peca || "").trim()]});
+  }
+  const juntar = n => n.length > 1 ? n.slice(0, -1).join(", ") + " e " + n[n.length - 1] : n[0];
+  return {pessoas:lista.map(linhaPessoa), pessoasJuntas:grupos.map(g => g.linha || juntar(g.nomes) + (g.area ? " · " + g.area : ""))};
 }
 /* As lâminas, conforme o formato (a quantidade é a que a aprovação confere): Foto, 1 "foto"; Imagem 4:5, 1 "texto" (na Agenda da
    semana, com a lista); Carrossel, a capa e 1 "texto" por cartão; Carrossel de fotos, 1 "foto" por foto, com o cartão da mesma ordem;
@@ -645,7 +673,8 @@ function laminasPeca(d){
   else if(d.formato === "foto") l = [{modelo:"foto", foto:d.fotos[0] || null, titulo:d.chamada, texto:d.apoio}];
   else if(d.tipo === "agenda") l = [{modelo:"texto", titulo:d.chamada || "Agenda da semana", texto:d.apoio, lista:d.lista}];
   else l = [{modelo:"texto", titulo:d.chamada, texto:d.apoio}];
-  return l.map((x, i) => ({...x, selo:i ? "" : SELO_PECA[d.tipo] || "", pessoas:x.modelo === "foto" ? d.pessoas : [], pagina:l.length > 1 ? `${i + 1}/${l.length}` : ""}));
+  return l.map((x, i) => ({...x, selo:i ? "" : SELO_PECA[d.tipo] || "", pessoas:x.modelo === "foto" ? d.pessoas : [],
+    pessoasJuntas:x.modelo === "foto" ? d.pessoasJuntas : [], pagina:l.length > 1 ? `${i + 1}/${l.length}` : ""}));
 }
 const NOME_CORTE_PECA = {titulo:"o título", texto:"o texto", lista:"parte da agenda", pessoas:"a linha da pessoa", identificacao:"a identificação legal"};
 const msgCortePeca = (n, cortes) => `Lâmina ${n}: ${cortes.map(k => NOME_CORTE_PECA[k] || k).join(" e ")} não ${cortes.length > 1 ? "couberam" : "coube"} e ` +
@@ -786,10 +815,12 @@ const agendaParada = ag => ag?.agenda_ligada === false || ag?.instalada === fals
    mão) e as conferências obrigatórias. "Confirmar" confere tudo de novo, guarda as lâminas da tela e aprova (radar_pauta_aprovar). */
 function blocoAprovar(p){
   const canais = ["instagram", "facebook"].filter(k => (p["legenda_" + k] || "").trim()), soMao = !["imagem", "foto"].includes(p.formato);
-  const caiu = (p.radar_redes_envios || []).some(e => e.situacao === "cancelado" && e.enviado_em && !e.post_id);
+  // um envio caiu no meio (pode ter saído) ou a aprovação à mão foi desfeita (pode ter sido postada): o administrador confere na rede
+  const caiu = (p.radar_redes_envios || []).some(e => e.situacao === "cancelado" && e.enviado_em && !e.post_id), mao = !!p.manual_desfeita_em;
   const caixa = (k, t) => `<label><input type="checkbox" class="aprovar-conf" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`;
   const caixas = [p.pessoas.length || p.fotos.length ? caixa("pessoas", "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)") : "",
-    p.tipo === "agenda" ? caixa("datas", "Conferi as datas da agenda") : "", caiu ? caixa("rede", "Conferi no Instagram e no Facebook: não saiu") : ""].join("");
+    p.tipo === "agenda" ? caixa("datas", "Conferi as datas da agenda") : "",
+    caiu || mao ? caixa("rede", "Conferi no Instagram e no Facebook: não saiu" + (mao && !caiu ? " (nem foi postada à mão)" : "")) : ""].join("");
   return `<details class="painel peca-aprovar" id="peca-aprovar"><summary><b>Aprovar a peça</b></summary>
     <p class="sub">Vai ao ar o que está na tela: as lâminas desenhadas aqui (guardadas na aprovação) e as legendas salvas. Aprovada, a peça não muda; para mudar, Desfazer aprovação.</p>
     <fieldset class="checks"><legend>Canais</legend>${["instagram", "facebook"].map(k => `<label><input type="checkbox" class="aprovar-canal" value="${k}"${canais.includes(k) ? " checked" : " disabled"}>
@@ -802,10 +833,12 @@ function blocoAprovar(p){
     <div class="acoes"><button class="btn verde" type="button" data-acao="peca-aprovar" data-id="${p.id}">Confirmar a aprovação</button></div></details>`;
 }
 /* A peça aprovada: como sai, o andamento de cada canal e o que dá para fazer. Agendada: Publicar agora e Tentar de novo (o administrador;
-   a nova tentativa pede “Conferi … não saiu”), Cancelar o envio parado e Excluir da rede. À mão: baixar as lâminas, copiar a legenda e o
-   roteiro e registrar o link (editor e administrador). Desfazer aprovação: editor e administrador. */
+   a nova tentativa pede “Conferi … não saiu”), Não publicar neste canal (o que espera a hora ou deu erro: o outro canal pode já ter
+   saído), Cancelar o envio parado e Excluir da rede. À mão: baixar as lâminas, copiar a legenda e o roteiro e registrar o link, só nos
+   canais aprovados (editor e administrador). Desfazer aprovação: editor e administrador (à mão, com “Conferi … não foi postada”). */
 function blocoAprovada(p){
-  const adm = ehAdmin(), ed = podeEditar(), manual = p.aprovado_modo === "manual", canais = ["instagram", "facebook"].filter(k => (p["legenda_" + k] || "").trim());
+  const adm = ehAdmin(), ed = podeEditar(), manual = p.aprovado_modo === "manual";
+  const canais = ["instagram", "facebook"].filter(k => (Array.isArray(p.aprovado_canais) ? p.aprovado_canais : []).includes(k));
   const envios = (p.radar_redes_envios || []).filter(e => e.situacao !== "cancelado").sort(ordemCanal);
   const minutos = v => (Date.now() - new Date(v).getTime()) / 60000;
   const linha = e => { const nome = NOME_REDE[e.canal] || e.canal, s = e.situacao;
@@ -814,7 +847,8 @@ function blocoAprovada(p){
       : s === "enviando" ? `publicando desde ${horaBrasilia(e.enviado_em)}` + (minutos(e.enviado_em) > 10 ? `: parada há mais de 10 minutos; confira no ${nome} se saiu antes de cancelar` : "")
       : s === "publicado" ? `publicada em ${horaBrasilia(e.publicado_em)}` : s === "erro" ? "não saiu (o motivo está no alto da peça)" : s === "excluido" ? "excluída da rede" : s;
     const botao = !adm ? "" : s === "enviando" && minutos(e.enviado_em) > 10 ? `<button class="btn peq sec" type="button" data-acao="cancelar-rede" data-envio="${e.id}">Cancelar</button>`
-      : s === "publicado" ? `<button class="btn peq perigo" type="button" data-acao="peca-excluir" data-envio="${e.id}" data-canal="${h(e.canal)}">Excluir do ${h(nome)}</button>` : "";
+      : s === "publicado" ? `<button class="btn peq perigo" type="button" data-acao="peca-excluir" data-envio="${e.id}" data-canal="${h(e.canal)}">Excluir do ${h(nome)}</button>`
+      : s === "autorizado" || s === "erro" ? botaoNaoPublicar(e) : "";
     return `<li data-envio="${e.id}" data-situacao="${h(s)}"><b>${h(nome)}:</b> ${h(texto)}${s === "publicado" && e.url ? " — " + linkFonte(e.url, "ver o post") : ""} ${botao}</li>`; };
   const registrado = ["instagram", "facebook"].filter(k => p["link_" + k]);
   const falta = canais.filter(k => !p["link_" + k]);
@@ -829,20 +863,47 @@ function blocoAprovada(p){
       <button class="btn" type="button" data-acao="peca-tentar-de-novo">Tentar de novo</button></div>` : ""}
     ${manual && ed ? `<div class="acoes">${p.artes.length ? `<button class="btn sec" type="button" data-acao="peca-baixar">Baixar as lâminas</button>` : ""}
       ${canais.map(k => `<button class="btn sec" type="button" data-acao="peca-copiar-legenda" data-canal="${k}">Copiar legenda do ${NOME_REDE[k]}</button>`).join("")}
-      ${p.roteiro ? `<button class="btn sec" type="button" data-acao="peca-copiar-roteiro">Copiar roteiro</button>` : ""}</div><div id="peca-baixar"></div>` : ""}
+      ${p.roteiro ? `<button class="btn sec" type="button" data-acao="peca-copiar-roteiro">Copiar roteiro</button>` : ""}</div><div id="peca-copia"></div><div id="peca-baixar"></div>` : ""}
     ${manual && registrado.length ? `<p id="peca-registro">Publicada à mão em ${h(dataAgenda(p.publicado_manual_em))}: ${registrado.map(k => `${NOME_REDE[k]} (${linkFonte(p["link_" + k], "ver o post")})`).join(" · ")}.</p>` : ""}
     ${manual && ed && falta.length ? `<form class="peca-registro" data-form="pecaRegistrar" data-id="${p.id}"><h3>${registrado.length ? "Registrar o outro canal" : "Depois de postar: registrar a publicação"}</h3>
       <div class="grade">${falta.map(k => `<div><label for="peca-link-${k}">Link do post no ${NOME_REDE[k]}</label><input id="peca-link-${k}" type="url" name="link_${k}" maxlength="500" placeholder="https://www.${k}.com/…"></div>`).join("")}
         <div><label for="peca-data-manual">Postada em</label><input id="peca-data-manual" type="date" name="data" required value="${hojeBrasilia()}"${desde ? ` min="${desde}"` : ""} max="${hojeBrasilia()}"></div></div>
       <div class="acoes"><button class="btn">Registrar a publicação</button></div></form>` : ""}
-    ${ed ? `<div class="acoes"><button class="btn sec" type="button" data-acao="peca-desaprovar">Desfazer aprovação</button></div>` : ""}</div>`;
+    ${ed ? `<div class="acoes peca-desfazer">${manual ? `<label><input type="checkbox" id="peca-conferi-mao"> Conferi no Instagram e no Facebook: não foi postada à mão</label>` : ""}
+      <button class="btn sec" type="button" data-acao="peca-desaprovar">Desfazer aprovação</button></div>` : ""}</div>`;
 }
-/* Copiar e baixar (só na peça aprovada para publicar à mão): o banco confere a versão e o termo de cada pessoa HOJE (radar_pauta_pode_copiar) */
-async function podeCopiarPeca(){
+/* "Não publicar neste canal" (só o administrador): o envio que espera a hora ou que deu erro é cancelado; a peça continua aprovada e o
+   outro canal fica como está (radar_cancelar_rede) */
+const botaoNaoPublicar = e => `<button class="btn peq sec" type="button" data-acao="peca-nao-publicar-canal" data-envio="${e.id}" data-canal="${h(e.canal)}" data-situacao="${h(e.situacao)}">Não publicar neste canal</button>`;
+/* Copiar e baixar (só na peça aprovada para publicar à mão): o banco confere a versão, o canal (só os aprovados) e o termo de cada pessoa
+   HOJE (radar_pauta_pode_copiar). "canal": a legenda daquele canal; sem ele, as lâminas e o roteiro (valem para os canais aprovados). */
+async function podeCopiarPeca(canal){
   const f = $("form[data-form=peca]"); if(!f) throw new ErroApi("Abra a peça de novo.");
-  const r = await rpc("radar_pauta_pode_copiar", {p_peca:Number(f.dataset.id), p_lido:f.dataset.lido});
+  const r = await rpc("radar_pauta_pode_copiar", {p_peca:Number(f.dataset.id), p_lido:f.dataset.lido, p_canal:canal || null});
   if(!r?.ok) throw new ErroApi(r?.motivo || "Não dá para copiar agora: recarregue a peça e confira.");
   return {f, artes:Array.isArray(r.artes) ? r.artes : []};
+}
+/* Copiar à mão: a conferência do banco vai DENTRO da cópia (ClipboardItem com a promessa do texto). O Safari (todo navegador do iPhone) só
+   deixa escrever na área de transferência durante o toque; depois de esperar o banco, recusaria. Sem ClipboardItem, a cópia vem depois da
+   conferência. Recusada a cópia (só ela: o que o banco ou os termos recusam vira o erro de sempre), o texto aparece logo abaixo dos
+   botões, num campo só de leitura, para selecionar e copiar. Devolve true se copiou. */
+async function copiarDaPeca(conferir){
+  const conferido = conferir();
+  conferido.catch(() => {});                                        // o erro da conferência é tratado abaixo (await conferido)
+  let copiou = false;
+  if(typeof ClipboardItem === "function" && navigator.clipboard?.write){
+    try{ await navigator.clipboard.write([new ClipboardItem({"text/plain": conferido.then(t => new Blob([t], {type:"text/plain"}))})]); copiou = true; }
+    catch(e){}
+  }
+  const texto = await conferido;
+  if(!copiou){ try{ await navigator.clipboard.writeText(texto); copiou = true; }catch(e){} }
+  const box = $("#peca-copia"); if(box) box.innerHTML = "";
+  if(copiou) return true;
+  if(box){ box.innerHTML = `<label for="peca-copia-texto">O navegador não deixou copiar: selecione o texto abaixo e copie</label>
+      <textarea id="peca-copia-texto" readonly rows="8">${h(texto)}</textarea>`;
+    const t = $("#peca-copia-texto"); t.focus(); t.select(); }
+  recado("O navegador não deixou copiar: o texto aprovado está logo abaixo dos botões; selecione e copie (sem redigitar).", true);
+  return false;
 }
 /* Publicar agora e Tentar de novo: o banco remarca a hora para agora (e confere de novo). Com a agenda automática rodando, ela publica
    em até 5 minutos; sem ela, a tela chama a função radar-redes para cada canal, um depois do outro, com um recado só no fim. */
@@ -860,10 +921,11 @@ async function publicarPecaAgora(conferi){
 /* --------------------------------------------------------------- pessoas e termos */
 /* A linha da pessoa na arte, escrita pelo código (nunca pela IA): com a categoria, "Ana, contadora · CRC-SC 000000"; sem ela,
    "Ana · Departamento Pessoal" (só o nome, se não há área) */
+const areaPessoa = x => { const area = String(x.area || "").trim(); return !area ? "" : /^(departamento|setor)\b/i.test(area) ? area : "Departamento " + area; };
 function linhaPessoa(x){
-  const nome = String(x.nome_na_peca || "").trim(), area = String(x.area || "").trim();
+  const nome = String(x.nome_na_peca || "").trim(), area = areaPessoa(x);
   if(ROTULO_CATEGORIA[x.categoria]) return `${nome}, ${ROTULO_CATEGORIA[x.categoria]}${x.crc ? " · " + x.crc : ""}`;
-  return area ? `${nome} · ${/^(departamento|setor)\b/i.test(area) ? area : "Departamento " + area}` : nome;
+  return area ? `${nome} · ${area}` : nome;
 }
 async function telaPessoas(){
   const adm = ehAdmin(), lista = await ler("radar_pessoas", {select:"*", order:"ativo.desc,nome_na_peca,id"});
@@ -953,8 +1015,11 @@ const PAUTA = {
       if(!linhas.length){ recado(`Não há vencimento de ${dataCurta(de)} a ${dataCurta(ate)} pelas regras das Configurações (Agenda de obrigações).`, true); return; }
       if([...box.querySelectorAll("textarea, input")].some(c => c.value.trim()) && !confirm("Trocar as informações conferidas desta tela pela agenda calculada?")) return;
       box.innerHTML = linhas.slice(0, 20).map(c => linhaConferida(c, "")).join(""); pecaArteMudou();
+      const semFonte = linhas.slice(0, 20).filter(c => !c.fonte).length;
       recado(`Agenda calculada: ${linhas.length} vencimento(s) de ${dataCurta(de)} a ${dataCurta(ate)}${diaDaSemana(dia) ? " (a peça não é de domingo: confira a semana)" : ""}. ` +
-        (linhas.length > 20 ? `Só cabem 20: ficaram de fora ${linhas.length - 20}. ` : "") + "Confira as datas, ajuste o que precisar e salve.", linhas.length > 20 || diaDaSemana(dia) ? "aviso" : false);
+        (linhas.length > 20 ? `Só cabem 20: ficaram de fora ${linhas.length - 20}. ` : "") + "Confira as datas na fonte oficial, ajuste o que precisar" +
+        (semFonte ? `, escreva a fonte de ${semFonte === 1 ? "1 vencimento" : semFonte + " vencimentos"} (ficou em branco)` : "") + " e salve.",
+        linhas.length > 20 || diaDaSemana(dia) || semFonte ? "aviso" : false);
     },
     "peca-completar-legenda"(el){
       const t = $(`#peca-legenda-${el.dataset.canal}`); if(!t || t.disabled) return;
@@ -1033,9 +1098,20 @@ const PAUTA = {
     },
     async "peca-desaprovar"(){
       const f = $("form[data-form=peca]"); if(!f) return;
+      // à mão, a peça pode ter sido postada sem o link registrado: quem desfaz confere na rede antes (o banco também pede)
+      const mao = $("#peca-conferi-mao");
+      if(mao && !mao.checked) throw new ErroApi("A peça foi aprovada para publicar à mão: confira no Instagram e no Facebook que ela não foi postada e marque “Conferi no Instagram e no Facebook: não foi postada à mão”. Se foi postada, registre o link em vez de desfazer.");
       if(!confirm("Desfazer a aprovação? O que ainda não saiu é cancelado e a peça volta a pronta (as lâminas aprovadas deixam de valer).")) return;
-      await rpc("radar_pauta_desaprovar", {p_peca:Number(f.dataset.id)});
+      await rpc("radar_pauta_desaprovar", {p_peca:Number(f.dataset.id), p_conferi_rede:!!mao?.checked});
       await desenhar(); recado("Aprovação desfeita: a peça voltou a pronta.");
+    },
+    /* "Não publicar neste canal" (só o administrador): na peça ou no quadro "Não saíram" */
+    async "peca-nao-publicar-canal"(el){
+      const nome = NOME_REDE[el.dataset.canal] || "canal";
+      if(!confirm(`Não publicar esta peça no ${nome}? ${el.dataset.situacao === "erro" ? "A publicação que não saiu" : "A publicação agendada"} é cancelada e não sai mais ` +
+        `sozinha; o outro canal fica como está e a peça continua aprovada.`)) return;
+      await rpc("radar_cancelar_rede", {p_envio:Number(el.dataset.envio)});
+      await desenhar(); recado(`Combinado: a peça não vai ao ${nome}.`);
     },
     async "peca-publicar-agora"(){
       const a = E.pauta.aberta;
@@ -1060,7 +1136,7 @@ const PAUTA = {
       }
       await desenhar(); recado(`Excluída do ${nome}.`);
     },
-    /* À mão: as lâminas aprovadas, como "pauta-AAAA-MM-DD-N.jpg", depois da conferência do banco (o termo de hoje) */
+    /* À mão: as lâminas aprovadas, como "pauta-AAAA-MM-DD-N.jpg", depois da conferência do banco (o termo de hoje, nos canais aprovados) */
     async "peca-baixar"(){
       const {artes} = await podeCopiarPeca(), a = E.pauta.aberta, box = $("#peca-baixar"); if(!box) return;
       const dados = artes.map(id => (E.pauta.aprovadas || [])[(a.artes || []).indexOf(id)] || "");
@@ -1069,19 +1145,23 @@ const PAUTA = {
         `<a class="btn peq sec" style="text-decoration:none" download="pauta-${a.data}-${i + 1}.jpg" href="${h(d)}">Lâmina ${i + 1} de ${dados.length}</a>`).join("")}</div>`;
       recado("Lâminas liberadas: baixe e poste na ordem.");
     },
-    /* À mão: a legenda salva (aprovada), depois da conferência do banco e dos termos (como na cópia do kit das redes) */
+    /* À mão: a legenda salva (aprovada) do canal aprovado, depois da conferência do banco e dos termos (como na cópia do kit das redes) */
     async "peca-copiar-legenda"(el){
-      const {f} = await podeCopiarPeca(), k = el.dataset.canal, texto = (f.elements["legenda_" + k]?.value || "").trim();
-      const termos = [...new Set([...termosPublicidade(texto).trava, ...termosPeca(texto)])];
-      if(termos.length) throw new ErroApi(msgTermosPeca([[k, termos]], "copiar") + " (Desfaça a aprovação para corrigir.)");
-      await copiar(texto); recado(`Legenda do ${NOME_REDE[k]} copiada: cole no ${NOME_REDE[k]} e, depois de postar, registre o link.`);
+      const k = el.dataset.canal;
+      const copiou = await copiarDaPeca(async () => {
+        const {f} = await podeCopiarPeca(k), texto = (f.elements["legenda_" + k]?.value || "").trim();
+        const termos = [...new Set([...termosPublicidade(texto).trava, ...termosPeca(texto)])];
+        if(termos.length) throw new ErroApi(msgTermosPeca([[k, termos]], "copiar") + " (Desfaça a aprovação para corrigir.)");
+        return texto; });
+      if(copiou) recado(`Legenda do ${NOME_REDE[k]} copiada: cole no ${NOME_REDE[k]} e, depois de postar, registre o link.`);
     },
     async "peca-copiar-roteiro"(){
-      const {f} = await podeCopiarPeca(), a = E.pauta.aberta, roteiro = (f.elements.roteiro?.value || "").trim();
-      const termos = [...new Set([...termosPublicidade(roteiro).trava, ...termosPeca(roteiro)])];
-      if(termos.length) throw new ErroApi(msgTermosPeca([["roteiro", termos]], "copiar") + " (Desfaça a aprovação para corrigir.)");
-      await copiar(`${roteiro}\n\nÚltimo quadro: ${a.arte_identificacao || linhaIdentificacao()}`);
-      recado("Roteiro copiado, com a identificação legal no último quadro.");
+      const copiou = await copiarDaPeca(async () => {
+        const {f} = await podeCopiarPeca(), a = E.pauta.aberta, roteiro = (f.elements.roteiro?.value || "").trim();
+        const termos = [...new Set([...termosPublicidade(roteiro).trava, ...termosPeca(roteiro)])];
+        if(termos.length) throw new ErroApi(msgTermosPeca([["roteiro", termos]], "copiar") + " (Desfaça a aprovação para corrigir.)");
+        return `${roteiro}\n\nÚltimo quadro: ${a.arte_identificacao || linhaIdentificacao()}`; });
+      if(copiou) recado("Roteiro copiado, com a identificação legal no último quadro.");
     },
     /* Gerar com IA (a peça salva; a partir da 2ª consulta nesta peça, a senha): a IA grava a sugestão na peça, e a tela troca só o quadro da
        sugestão (o que foi digitado enquanto a IA trabalhava continua onde está) */

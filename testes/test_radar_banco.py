@@ -471,7 +471,7 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_pauta_importar', 'radar_pauta_conferir', 'radar_pauta_marcar_pronta',
                                                            'radar_pauta_aprovar', 'radar_pauta_desaprovar', 'radar_pauta_publicar_agora',
                                                            'radar_pauta_pode_copiar', 'radar_pauta_registrar_manual', 'radar_pauta_termo_ok',
-                                                           'radar_agenda_situacao')
+                                                           'radar_agenda_situacao', 'radar_pauta_copia_paga')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -2027,6 +2027,8 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
         for _ in range(2):
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
+        # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.21.0")
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.21.0||"]
         with conectar("radar_up7") as c:
             assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.21.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
@@ -3773,7 +3775,7 @@ def test_pauta_aprovar_so_admin_confere_versao_artes_conferencias_e_hora(pauta):
         marcar_pronta(db, p3)
         with pytest.raises(psycopg.errors.RaiseException, match=erro):
             aprovar_peca(db, p3)
-    p4 = nova_peca(db, dias=-2, tipo="agenda", conferidas=[{"informacao": "10/11 (ter) · ICMS", "fonte": "Regra de vencimento das Configurações (conferir)"}])
+    p4 = nova_peca(db, dias=-2, tipo="agenda", conferidas=[{"informacao": "10/11 (ter) · ICMS", "fonte": "Agenda Tributária da Receita Federal"}])
     marcar_pronta(db, p4)
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR168"):
         aprovar_peca(db, p4)
@@ -3842,6 +3844,25 @@ def test_pauta_problemas_identificacao_marcas_confirmar_fonte_numeros_e_copia_pa
     db.execute("update radar_pauta_pecas set legenda_instagram = %s, chamada = 'Quem cuida da sua folha', conferidas = %s where id = %s",
                (LEG_PECA, json.dumps([{"informacao": frase, "fonte": "Receita Federal"}]), pid))
     assert conferir(pid) == ["Há frase igual à do boletim pago (ITC): reescreva com palavras próprias"]   # nas conferidas também
+    # "(conferir)": a marca provisória de que falta conferir não vai ao ar, nem na fonte, nem no texto ("Fonte: …" no fim da legenda)
+    regra = "Regra de vencimento das Configurações (conferir)"
+    db.execute("update radar_pauta_pecas set legenda_instagram = %s, conferidas = %s where id = %s",
+               (LEG_PECA, json.dumps([{"informacao": "O DAS vence no dia 20", "fonte": regra}]), pid))
+    assert conferir(pid) == ["Informação conferida nº 1: troque “(conferir)” pela fonte oficial em que a informação foi conferida"]
+    db.execute("update radar_pauta_pecas set legenda_instagram = %s where id = %s", ("O DAS vence no dia 20.\n\nFonte: " + regra + "\n\n" + IDENT, pid))
+    assert conferir(pid) == ["Há “(conferir)” no texto: confira na fonte oficial e tire a marca",
+                             "Informação conferida nº 1: troque “(conferir)” pela fonte oficial em que a informação foi conferida"]
+    db.execute("update radar_pauta_pecas set legenda_instagram = %s, conferidas = %s where id = %s",
+               ("O DAS vence no dia 20.\n\nFonte: Agenda Tributária da Receita Federal\n\n" + IDENT,
+                json.dumps([{"informacao": "O DAS vence no dia 20", "fonte": "Agenda Tributária da Receita Federal"}]), pid))
+    assert conferir(pid) == []
+    # o carrossel de fotos: o cartão que passa do número de fotos não aparece em lâmina nenhuma
+    fotos = [nova_imagem(), nova_imagem()]
+    tres = [{"titulo": "", "texto": "Primeira foto."}, {"titulo": "", "texto": "Segunda foto."}, {"titulo": "", "texto": "Sem foto."}]
+    car = nova_peca(db, dias=9, tipo="bastidor", formato="carrossel_fotos", fotos=fotos, cartoes=tres)
+    assert conferir(car) == ["Carrossel de fotos: o cartão nº 3 não tem foto (a peça tem 2): tire o cartão ou envie mais uma foto"]
+    db.execute("update radar_pauta_pecas set cartoes = %s where id = %s", (json.dumps(tres[:2]), car))
+    assert conferir(car) == []
     # o que cada tipo e formato pede
     for i, (tipo, formato, extra, msg) in enumerate([
             ("noticia", "imagem", {}, "Dia de notícia: publique por Assuntos ou Publicações"),
@@ -3970,7 +3991,7 @@ def test_pauta_iniciar_na_hora_uma_vez_e_problemas_viram_erro_sem_nome(pauta):
     e4 = r4["envios"]["instagram"]
     vencer(db, e4)
     db.execute("update radar_pessoas set termo_revogado_em = radar_pauta_hoje() where id = %s", (ana,))
-    p5, r5 = peca_aprovada(db, dias=1, tipo="agenda", conferidas=[{"informacao": "10/11 (ter) · ICMS", "fonte": "Regra de vencimento das Configurações (conferir)"}])
+    p5, r5 = peca_aprovada(db, dias=1, tipo="agenda", conferidas=[{"informacao": "10/11 (ter) · ICMS", "fonte": "Agenda Tributária da Receita Federal"}])
     e5 = r5["envios"]["instagram"]
     vencer(db, e5)
     voltar_a_data(db, p5, 3)
@@ -4135,7 +4156,7 @@ def test_publicar_agora_remarca_erro_so_com_conferi_na_rede_e_recusa_agenda_velh
     with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR165"):
         c.execute(agora, (p3, False))
     # a agenda da semana velha não sai; a peça à mão não passa por aqui; sem nada esperando, recusa
-    p4, _ = peca_aprovada(db, dias=1, tipo="agenda", conferidas=[{"informacao": "10/11 (ter) · ICMS", "fonte": "Regra de vencimento das Configurações (conferir)"}])
+    p4, _ = peca_aprovada(db, dias=1, tipo="agenda", conferidas=[{"informacao": "10/11 (ter) · ICMS", "fonte": "Agenda Tributária da Receita Federal"}])
     voltar_a_data(db, p4, 3)
     p5 = nova_peca(db, dias=8)
     marcar_pronta(db, p5)
@@ -4156,16 +4177,16 @@ def test_pode_copiar_e_registrar_manual_conferem_modo_termo_de_hoje_e_links(paut
     db = pauta
     ana = nova_pessoa(db)
     cartoes = [{"titulo": "Primeiro", "texto": "Separe as notas do mês."}, {"titulo": "Depois", "texto": "Envie para a equipe."}]
-    pid = nova_peca(db, tipo="educativo", formato="carrossel", cartoes=cartoes, pessoas=[ana])
+    pid = nova_peca(db, tipo="educativo", formato="carrossel", cartoes=cartoes, pessoas=[ana], legenda_facebook=LEG_PECA)
     marcar_pronta(db, pid)
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR163"):                       # capa + uma lâmina por cartão
         aprovar_peca(db, pid, modo="manual", artes=[lamina(), lamina()])
     artes = [lamina(), lamina(), lamina()]
-    assert aprovar_peca(db, pid, modo="manual", artes=artes) == {"agendado_para": None, "envios": {}}   # à mão: nenhum envio
+    assert aprovar_peca(db, pid, modo="manual", artes=artes, canais=("facebook", "instagram")) == {"agendado_para": None, "envios": {}}   # à mão: nenhum envio
     assert db.execute("select count(*) from radar_redes_envios where peca_id = %s", (pid,)).fetchone()[0] == 0
     copiar = "select radar_pauta_pode_copiar(%s, %s)"
     with como("authenticated", EDITOR) as c:
-        assert c.execute(copiar, (pid, lido_peca(db, pid))).fetchone()[0] == {"ok": True, "artes": artes}
+        assert c.execute(copiar, (pid, lido_peca(db, pid))).fetchone()[0] == {"ok": True, "artes": artes, "canais": ["instagram", "facebook"]}
         assert c.execute(copiar, (pid, datetime.now(timezone.utc))).fetchone()[0] == {"motivo": "A peça mudou depois que a tela foi aberta: recarregue e confira."}
         assert c.execute(copiar, (999999, None)).fetchone()[0] == {"motivo": "Peça não encontrada."}
     with como("authenticated", LEITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR159"):
@@ -4199,6 +4220,114 @@ def test_pode_copiar_e_registrar_manual_conferem_modo_termo_de_hoje_e_links(paut
             c.execute("select radar_pauta_desaprovar(%s)", (pid,))
     assert db.execute("select publicado_manual_por::text from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == EDITOR
 
+
+
+def test_desfazer_aprovacao_a_mao_pede_conferi_na_rede_e_a_nova_aprovacao_tambem(pauta):
+    """A peça aprovada à mão pode ter sido postada sem o link registrado (o editor copiou a legenda, baixou a lâmina e postou). Desfazer
+    a aprovação pede a caixa "Conferi no Instagram e no Facebook: não foi postada à mão"; a próxima aprovação, em qualquer modo, pede
+    "Conferi … não saiu" (senão a agenda publicaria de novo o que já saiu à mão). A marca não se apaga pela tela e sai na aprovação."""
+    db = pauta
+    pid = nova_peca(db, dias=4)
+    marcar_pronta(db, pid)
+    aprovar_peca(db, pid, modo="manual")
+    with como("authenticated", EDITOR) as c:
+        assert c.execute("select radar_pauta_pode_copiar(%s, %s)", (pid, lido_peca(db, pid))).fetchone()[0]["ok"] is True
+        for args in [(pid,), (pid, False), (pid, None)]:
+            with pytest.raises(psycopg.errors.RaiseException, match="RADAR166") as erro:
+                c.execute("select radar_pauta_desaprovar(%s" + ", %s" * (len(args) - 1) + ")", args)
+            assert "Conferi no Instagram e no Facebook: não foi postada à mão" in str(erro.value)
+        assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "aprovada"
+        c.execute("select radar_pauta_desaprovar(%s, true)", (pid,))
+        c.execute("update radar_pauta_pecas set manual_desfeita_em = null where id = %s", (pid,))       # a tela não apaga a marca
+    assert db.execute("select situacao, aprovado_canais, manual_desfeita_em is not null from radar_pauta_pecas where id = %s",
+                      (pid,)).fetchone() == ("pronta", [], True)
+    for modo in ("agendar", "manual"):
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR166") as erro:
+            aprovar_peca(db, pid, modo=modo, conferencias=("pessoas",))
+        assert "não foi postada" in str(erro.value)
+    assert db.execute("select count(*) from radar_redes_envios where peca_id = %s", (pid,)).fetchone()[0] == 0     # nada foi agendado
+    r = aprovar_peca(db, pid, modo="agendar", conferencias=("rede",))
+    assert db.execute("select aprovado_conferencias, manual_desfeita_em from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (["rede"], None)
+    # aprovada para a agenda: desfaz sem a caixa (nada saiu à mão) e a próxima aprovação não pede mais a conferência
+    with como("authenticated", EDITOR) as c:
+        c.execute("select radar_pauta_desaprovar(%s)", (pid,))
+    assert situacao_envio(db, r["envios"]["instagram"])[0] == "cancelado"
+    assert aprovar_peca(db, pid, modo="agendar", conferencias=())["envios"]["instagram"]
+
+
+def test_peca_a_mao_so_sai_nos_canais_aprovados(pauta):
+    """Os canais que o administrador marca na aprovação ficam na peça (aprovado_canais): copiar a legenda, conferir o termo e registrar o
+    link valem só neles. A pessoa que tirou o Facebook do termo depois da aprovação não impede copiar a peça aprovada só para o Instagram.
+    Desfazer limpa os canais."""
+    db = pauta
+    ana = nova_pessoa(db)
+    pid = nova_peca(db, dias=3, pessoas=[ana], legenda_facebook=LEG_PECA)
+    marcar_pronta(db, pid)
+    aprovar_peca(db, pid, modo="manual", canais=("instagram",), conferencias=("pessoas",))
+    artes = db.execute("select artes from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0]
+    assert db.execute("select aprovado_canais from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == ["instagram"]
+    copiar = "select radar_pauta_pode_copiar(%s, %s, %s)"
+    reg = "select radar_pauta_registrar_manual(%s, %s, %s, %s)"
+    with como("authenticated", EDITOR) as c:
+        lido = lido_peca(db, pid)
+        assert c.execute(copiar, (pid, lido, "facebook")).fetchone()[0] == \
+            {"motivo": "O Facebook não foi aprovado para esta peça: ela sai só no canal marcado na aprovação."}
+        for ig, fb in [(None, "https://www.facebook.com/artecon/posts/1"), ("https://www.instagram.com/p/abc/", "https://www.facebook.com/artecon/posts/1")]:
+            with pytest.raises(psycopg.errors.RaiseException, match="RADAR175: o Facebook não foi aprovado para esta peça"):
+                c.execute(reg, (pid, ig, fb, hoje(db)))
+        assert db.execute("select link_instagram, link_facebook, publicado_manual_em from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (None, None, None)
+        c.execute("update radar_pauta_pecas set aprovado_canais = '{instagram,facebook}' where id = %s", (pid,))   # a tela não muda os canais
+        assert c.execute(copiar, (pid, lido_peca(db, pid), "facebook")).fetchone()[0]["motivo"].startswith("O Facebook não foi aprovado")
+    db.execute("update radar_pessoas set termo_canais = '{instagram}' where id = %s", (ana,))
+    with como("authenticated", EDITOR) as c:
+        lido = lido_peca(db, pid)
+        assert c.execute(copiar, (pid, lido, "instagram")).fetchone()[0] == {"ok": True, "artes": artes, "canais": ["instagram"]}
+        assert c.execute(copiar, (pid, lido, None)).fetchone()[0]["ok"] is True          # baixar as lâminas: o termo do canal aprovado
+        c.execute("select radar_pauta_desaprovar(%s, true)", (pid,))
+    assert db.execute("select aprovado_canais from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == []
+    with como("authenticated", EDITOR) as c:                                             # a peça nova nasce sem canal aprovado
+        nova = c.execute("insert into radar_pauta_pecas (data, tipo, formato, aprovado_canais) values (%s, 'bastidor', 'imagem', '{instagram}') "
+                         "returning aprovado_canais", (hoje(db) + timedelta(days=40),)).fetchone()[0]
+    assert nova == []
+
+
+def test_pauta_desiste_de_um_canal_com_o_outro_ja_publicado(pauta):
+    """O Instagram saiu e o Facebook deu erro (ou ainda espera a hora): desfazer a aprovação não dá (o Instagram saiu), e o administrador
+    desiste só do outro canal (radar_cancelar_rede, o botão "Não publicar neste canal" da peça). A peça continua aprovada, o Instagram
+    continua publicado e a falha sai do painel (o aviso do robô fecha). O recado de quando está publicando manda cancelar na Pauta."""
+    db = pauta
+
+    def falhas():
+        with como("authenticated", LEITOR) as c:
+            return c.execute("select pauta_falhas from radar_v_painel").fetchone()[0]
+    for situacao_fb in ("erro", "autorizado"):
+        pid, r = peca_aprovada(db, dias=2 if situacao_fb == "erro" else 3, canais=("instagram", "facebook"))
+        ig, fb = r["envios"]["instagram"], r["envios"]["facebook"]
+        vencer(db, ig)
+        iniciar(ig)
+        with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR169") as erro:
+            c.execute("select radar_pauta_desaprovar(%s)", (pid,))
+        assert "cancela na própria peça, na Pauta" in str(erro.value) and "Publicações" not in str(erro.value)
+        with como("service_role") as c:
+            c.execute("select radar_rede_concluir(%s, true, '1789', 'https://www.instagram.com/p/abc/', %s, null)", (ig, URL_INTERNA))
+        if situacao_fb == "erro":
+            vencer(db, fb)
+            iniciar(fb)
+            with como("service_role") as c:
+                c.execute("select radar_rede_concluir(%s, false, null, null, %s, 'A Meta recusou (190)')", (fb, URL_INTERNA))
+            assert falhas() == 1
+        else:
+            vencer(db, fb)                                                             # chegou a hora: a agenda pegaria na próxima rodada
+        with como("authenticated", ADMIN) as c:
+            with pytest.raises(psycopg.errors.RaiseException, match="RADAR170"):
+                c.execute("select radar_pauta_desaprovar(%s)", (pid,))
+            assert c.execute("select radar_cancelar_rede(%s)", (fb,)).fetchone()[0] is True
+        assert falhas() == 0
+        assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "aprovada"
+        assert [situacao_envio(db, e)[0] for e in (ig, fb)] == ["publicado", "cancelado"]
+        assert vencidas(db) == []                                                      # a agenda não publica mais o Facebook
+        with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):   # só o administrador desiste
+            c.execute("select radar_cancelar_rede(%s)", (ig,))
 
 def test_redes_conferir_agenda_sem_vault_nunca_confere(db):
     with como("service_role") as c:

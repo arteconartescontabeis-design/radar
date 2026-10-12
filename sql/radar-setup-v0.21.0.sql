@@ -518,6 +518,10 @@ create table if not exists public.radar_pauta_pecas (
   aprovado_em        timestamptz,
   aprovado_modo      text check (aprovado_modo in ('agendar','manual')),
   aprovado_conferencias text[] not null default '{}' check (aprovado_conferencias <@ array['pessoas','datas','rede']::text[]),
+  aprovado_canais    text[]   not null default '{}' check (aprovado_canais <@ array['instagram','facebook']::text[]),  -- os canais aprovados
+  -- a aprovação à mão foi desfeita (a peça pode ter sido postada à mão sem o link registrado): a próxima aprovação pede a caixa
+  -- "Conferi no Instagram e no Facebook: não saiu" (radar_pauta_aprovar), para nunca sair duas vezes
+  manual_desfeita_em timestamptz,
   artes              bigint[] not null default '{}' check (cardinality(artes) <= 10),   -- radar_imagens.id das lâminas APROVADAS
   arte_identificacao text check (length(arte_identificacao) <= 300),                    -- a linha legal desenhada nas lâminas
   link_instagram     text check (link_instagram is null or (link_instagram ~ '^https://[!-~]+$' and length(link_instagram) <= 500)),
@@ -2383,6 +2387,11 @@ begin
   if p.formato = 'carrossel_fotos' and cardinality(p.fotos) not between 2 and 10 then
     v := array_append(v, 'Carrossel de fotos: envie de 2 a 10 fotos');
   end if;
+  -- no carrossel de fotos, o cartão vai na lâmina da foto da mesma ordem: o que passa do número de fotos não aparece em lâmina nenhuma
+  if p.formato = 'carrossel_fotos' and cardinality(p.fotos) > 0 and jsonb_array_length(p.cartoes) > cardinality(p.fotos) then
+    v := array_append(v, format('Carrossel de fotos: o cartão nº %s não tem foto (a peça tem %s): tire o cartão ou envie mais uma foto',
+                                cardinality(p.fotos) + 1, cardinality(p.fotos)));
+  end if;
   if p.formato = 'carrossel' and jsonb_array_length(p.cartoes) not between 2 and 9 then
     v := array_append(v, 'Carrossel: escreva de 2 a 9 cartões');
   end if;
@@ -2422,6 +2431,10 @@ begin
   if v_tudo ~* '\{\s*confirmar[^}]*\}' then
     v := array_append(v, 'Há {confirmar …} no texto: troque pela informação conferida (ou tire o trecho)');
   end if;
+  -- "(conferir)": a marca de que falta conferir (a tela não põe mais na fonte da agenda; a peça antiga ou o texto colado podem ter)
+  if v_tudo ~* '\(\s*conferir\s*\)' then
+    v := array_append(v, 'Há “(conferir)” no texto: confira na fonte oficial e tire a marca');
+  end if;
   -- 5. informações conferidas: informação e fonte, e a fonte nunca é o boletim pago
   for v_item, v_i in select c, o from jsonb_array_elements(p.conferidas) with ordinality t(c, o) loop
     if jsonb_typeof(v_item) is distinct from 'object' or jsonb_typeof(v_item->'informacao') is distinct from 'string'
@@ -2430,6 +2443,8 @@ begin
       v := array_append(v, 'Informação conferida nº ' || v_i || ': escreva a informação e a fonte (até 300 caracteres cada)');
     elsif (v_item->>'fonte') ~* '\mITC\M|itcnet|i\.t\.c\.|boletim pago' then
       v := array_append(v, 'Informação conferida nº ' || v_i || ': use a fonte oficial (o boletim pago da ITC não é fonte)');
+    elsif concat_ws(E'\n', v_item->>'informacao', v_item->>'fonte') ~* '\(\s*conferir\s*\)' then
+      v := array_append(v, 'Informação conferida nº ' || v_i || ': troque “(conferir)” pela fonte oficial em que a informação foi conferida');
     end if;
   end loop;
   v_base := coalesce((select string_agg(concat_ws(E'\n', c->>'informacao', c->>'fonte'), E'\n')
@@ -2515,6 +2530,7 @@ begin
     -- toda peça nasce planejada, sem aprovação, sem lâminas e sem registro (vale também para a importação)
     new.situacao := 'planejada';
     new.aprovado_por := null; new.aprovado_em := null; new.aprovado_modo := null; new.aprovado_conferencias := '{}';
+    new.aprovado_canais := '{}'; new.manual_desfeita_em := null;
     new.artes := '{}'; new.arte_identificacao := null; new.link_instagram := null; new.link_facebook := null;
     new.publicado_manual_em := null; new.publicado_manual_por := null;
     new.versao_publicavel := now(); new.criado_por := auth.uid(); new.criado_em := now();
@@ -2531,6 +2547,7 @@ begin
       -- o que só as funções mudam fica como estava (quem aprovou ou registrou só vira nulo se o usuário foi excluído)
       new.aprovado_por := public.radar_manter_usuario(old.aprovado_por, new.aprovado_por);
       new.aprovado_em := old.aprovado_em; new.aprovado_modo := old.aprovado_modo; new.aprovado_conferencias := old.aprovado_conferencias;
+      new.aprovado_canais := old.aprovado_canais; new.manual_desfeita_em := old.manual_desfeita_em;
       new.artes := old.artes; new.arte_identificacao := old.arte_identificacao;
       new.link_instagram := old.link_instagram; new.link_facebook := old.link_facebook;
       new.publicado_manual_em := old.publicado_manual_em;
@@ -2713,7 +2730,8 @@ end $$;
 -- Aprovação (só o administrador). Confere de novo tudo (radar_pauta_problemas, com o dia da peça), as caixas de conferência, as
 -- lâminas desenhadas na tela dele e guardadas agora em radar_imagens (o que se aprova é o que ele viu) e a hora. Modo "agendar"
 -- (imagem única: Imagem 4:5 e Foto): um envio por canal, com a cópia da legenda e da lâmina, que a agenda do banco publica na
--- hora marcada. Modo "manual" (carrossel e reel nesta versão, ou quem preferir): não cria envio; libera baixar e copiar.
+-- hora marcada. Modo "manual" (carrossel e reel nesta versão, ou quem preferir): não cria envio; libera baixar e copiar, só nos
+-- canais aprovados (aprovado_canais). Depois de uma aprovação à mão desfeita, pede a caixa "rede" (a peça pode ter sido postada).
 create or replace function public.radar_pauta_aprovar(p_peca bigint, p_lido timestamptz, p_canais text[], p_modo text, p_artes bigint[],
                                                       p_arte_identificacao text, p_conferencias text[])
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -2768,6 +2786,11 @@ begin
     raise exception 'RADAR166: uma publicação desta peça foi cancelada no meio do envio: confira no Instagram e no Facebook que ela não saiu e marque “Conferi no Instagram e no Facebook: não saiu”'
       using errcode = 'P0001';
   end if;
+  -- a aprovação à mão foi desfeita: a peça pode ter sido postada sem o link registrado (o administrador confere antes de aprovar de novo)
+  if not 'rede' = any(v_conf) and p.manual_desfeita_em is not null then
+    raise exception 'RADAR166: esta peça já foi aprovada para publicar à mão: confira no Instagram e no Facebook que ela não foi postada e marque “Conferi no Instagram e no Facebook: não saiu”'
+      using errcode = 'P0001';
+  end if;
   -- as lâminas: uma por imagem ou foto, capa + uma por cartão no carrossel, uma por foto no carrossel de fotos, nenhuma no reel;
   -- JPEG 1080×1350 enviado agora (há até 2 horas) por quem aprova; a identificação desenhada nelas é a das Configurações
   v_qtd := case p.formato when 'imagem' then 1 when 'foto' then 1 when 'carrossel' then 1 + jsonb_array_length(p.cartoes)
@@ -2801,6 +2824,9 @@ begin
   update public.radar_pauta_pecas
      set situacao = 'aprovada', aprovado_por = auth.uid(), aprovado_em = now(), aprovado_modo = p_modo,
          aprovado_conferencias = array(select distinct c from unnest(v_conf) c where c in ('pessoas','datas','rede') order by c),
+         aprovado_canais = array_remove(array[case when 'instagram' = any(v_canais) then 'instagram' end,      -- na ordem da tela
+                                              case when 'facebook' = any(v_canais) then 'facebook' end], null),
+         manual_desfeita_em = null,
          artes = v_artes, arte_identificacao = left(btrim(p_arte_identificacao), 300)
    where id = p.id;
   perform set_config('radar.pauta', '', true);
@@ -2822,8 +2848,11 @@ begin
 end $$;
 
 -- "Desfazer aprovação" (editor ou administrador): o que ainda não saiu é cancelado e a peça volta a pronta, sem as lâminas
--- aprovadas. Não desfaz o que está saindo agora nem o que já saiu (exclua da rede antes). Devolve a nova versão da peça.
-create or replace function public.radar_pauta_desaprovar(p_peca bigint) returns timestamptz
+-- aprovadas. Não desfaz o que está saindo agora nem o que já saiu (exclua da rede antes). A peça aprovada à mão pode ter sido
+-- postada sem o link registrado: só desfaz com p_conferi_rede ("Conferi no Instagram e no Facebook: não foi postada à mão"), e a
+-- próxima aprovação pede a mesma caixa (manual_desfeita_em). Devolve a nova versão da peça.
+drop function if exists public.radar_pauta_desaprovar(bigint);
+create or replace function public.radar_pauta_desaprovar(p_peca bigint, p_conferi_rede boolean default false) returns timestamptz
 language plpgsql security definer set search_path = public as $$
 declare
   p    public.radar_pauta_pecas%rowtype;
@@ -2840,11 +2869,15 @@ begin
     raise exception 'RADAR164: a peça não está aprovada (situação atual: %)', p.situacao using errcode = 'P0001';
   end if;
   if exists (select 1 from public.radar_redes_envios e where e.peca_id = p.id and e.situacao = 'enviando') then
-    raise exception 'RADAR169: a peça está sendo publicada agora: espere terminar (parada há mais de 10 minutos, o administrador cancela em Publicações)'
+    raise exception 'RADAR169: a peça está sendo publicada agora: espere terminar (parada há mais de 10 minutos, o administrador cancela na própria peça, na Pauta)'
       using errcode = 'P0001';
   end if;
   if p.publicado_manual_em is not null or exists (select 1 from public.radar_redes_envios e where e.peca_id = p.id and e.situacao = 'publicado') then
     raise exception 'RADAR170: a peça já saiu numa rede: exclua a publicação da rede antes de desfazer a aprovação' using errcode = 'P0001';
+  end if;
+  if p.aprovado_modo = 'manual' and not coalesce(p_conferi_rede, false) then
+    raise exception 'RADAR166: a peça foi aprovada para publicar à mão: confira no Instagram e no Facebook que ela não foi postada e marque “Conferi no Instagram e no Facebook: não foi postada à mão”'
+      using errcode = 'P0001';
   end if;
   update public.radar_redes_envios
      set situacao = 'cancelado', cancelado_por = auth.uid(), cancelado_em = now(), imagem = null,
@@ -2853,7 +2886,8 @@ begin
   perform set_config('radar.pauta', '1', true);
   update public.radar_pauta_pecas
      set situacao = 'pronta', aprovado_por = null, aprovado_em = null, aprovado_modo = null, aprovado_conferencias = '{}',
-         artes = '{}', arte_identificacao = null
+         aprovado_canais = '{}', artes = '{}', arte_identificacao = null,
+         manual_desfeita_em = case when p.aprovado_modo = 'manual' then now() else manual_desfeita_em end
    where id = p.id
   returning atualizado_em into v_em;
   perform set_config('radar.pauta', '', true);
@@ -2919,9 +2953,11 @@ begin
   return v_ids;
 end $$;
 
--- Copiar a legenda e o roteiro e baixar as lâminas: só na peça aprovada para publicar à mão, na versão que está na tela, e com o
--- termo de cada pessoa valendo HOJE nos canais que têm legenda. Devolve {ok, artes} ou {motivo} (sem nome).
-create or replace function public.radar_pauta_pode_copiar(p_peca bigint, p_lido timestamptz) returns jsonb
+-- Copiar a legenda e o roteiro e baixar as lâminas: só na peça aprovada para publicar à mão, na versão que está na tela, só nos
+-- canais aprovados (p_canal: a legenda daquele canal; nulo: as lâminas e o roteiro, que valem para os canais aprovados) e com o termo
+-- de cada pessoa valendo HOJE nesses canais. Devolve {ok, artes, canais} ou {motivo} (sem nome).
+drop function if exists public.radar_pauta_pode_copiar(bigint, timestamptz);
+create or replace function public.radar_pauta_pode_copiar(p_peca bigint, p_lido timestamptz, p_canal text default null) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare
   p       public.radar_pauta_pecas%rowtype;
@@ -2943,7 +2979,11 @@ begin
   if p_lido is distinct from p.atualizado_em then
     return jsonb_build_object('motivo', 'A peça mudou depois que a tela foi aberta: recarregue e confira.');
   end if;
-  foreach v_canal in array public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook) loop
+  if p_canal is not null and not p_canal = any(p.aprovado_canais) then
+    return jsonb_build_object('motivo', format('O %s não foi aprovado para esta peça: ela sai só no canal marcado na aprovação.',
+                                               case p_canal when 'instagram' then 'Instagram' when 'facebook' then 'Facebook' else 'canal' end));
+  end if;
+  foreach v_canal in array case when p_canal is null then p.aprovado_canais else array[p_canal] end loop
     foreach v_id in array p.pessoas loop
       v_x := public.radar_pauta_termo_ok(v_id, p.tipo, v_canal, v_hoje);
       if v_x is not null then
@@ -2952,11 +2992,11 @@ begin
       end if;
     end loop;
   end loop;
-  return jsonb_build_object('ok', true, 'artes', to_jsonb(p.artes));
+  return jsonb_build_object('ok', true, 'artes', to_jsonb(p.artes), 'canais', to_jsonb(p.aprovado_canais));
 end $$;
 
--- Registro da peça postada à mão: o link (Instagram ou Facebook) e o dia, do dia da aprovação até hoje. Completa o link que
--- faltar, sem trocar o que já foi registrado.
+-- Registro da peça postada à mão: o link (Instagram ou Facebook, só de canal aprovado) e o dia, do dia da aprovação até hoje.
+-- Completa o link que faltar, sem trocar o que já foi registrado.
 create or replace function public.radar_pauta_registrar_manual(p_peca bigint, p_link_instagram text, p_link_facebook text, p_data date)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -2979,6 +3019,10 @@ begin
   end if;
   if v_ig is null and v_fb is null then
     raise exception 'RADAR175: cole o link da publicação no Instagram ou no Facebook' using errcode = 'P0001';
+  end if;
+  if (v_ig is not null and not 'instagram' = any(p.aprovado_canais)) or (v_fb is not null and not 'facebook' = any(p.aprovado_canais)) then
+    raise exception 'RADAR175: o % não foi aprovado para esta peça (ela sai só no canal marcado na aprovação)',
+      case when v_ig is not null and not 'instagram' = any(p.aprovado_canais) then 'Instagram' else 'Facebook' end using errcode = 'P0001';
   end if;
   if v_ig is not null and (v_ig !~ '^https://(www\.)?instagram\.com/[!-~]+$' or length(v_ig) > 500) then
     raise exception 'RADAR175: o link do Instagram começa com https://www.instagram.com/' using errcode = 'P0001';
@@ -4292,11 +4336,14 @@ grant execute on function public.radar_pauta_importar(jsonb) to authenticated;
 grant execute on function public.radar_pauta_conferir(bigint, text[]) to authenticated;
 grant execute on function public.radar_pauta_marcar_pronta(bigint, timestamptz) to authenticated;
 grant execute on function public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[]) to authenticated;
-grant execute on function public.radar_pauta_desaprovar(bigint) to authenticated;
+grant execute on function public.radar_pauta_desaprovar(bigint, boolean) to authenticated;
 grant execute on function public.radar_pauta_publicar_agora(bigint, boolean) to authenticated;
-grant execute on function public.radar_pauta_pode_copiar(bigint, timestamptz) to authenticated;
+grant execute on function public.radar_pauta_pode_copiar(bigint, timestamptz, text) to authenticated;
 grant execute on function public.radar_pauta_registrar_manual(bigint, text, text, date) to authenticated;
 grant execute on function public.radar_pauta_termo_ok(bigint, text, text, date) to authenticated;
+-- a função radar-ia (ação "peca", com o token de quem pede) confere, antes de chamar a IA, que nada do boletim pago vai junto: só
+-- sim ou não, e com a RLS de quem chama (roda como quem chama: lê só as capturas que a pessoa já lê)
+grant execute on function public.radar_pauta_copia_paga(text[]) to authenticated;
 grant execute on function public.radar_agenda_situacao() to authenticated;
 grant execute on function public.radar_pauta_iniciar(bigint) to service_role;
 grant execute on function public.radar_redes_conferir_agenda(text) to service_role;
@@ -4526,5 +4573,8 @@ select 'fontes', count(*)::text, null, null, null from public.radar_fontes
 union all
 select 'categorias', count(*)::text, null, null, null from public.radar_categorias
 union all
-select 'instalacoes concluidas', count(*)::text, max(versao), null, null from public.radar_instalacoes where depois is not null
+-- a versão da instalação concluída mais nova (a ordem é a do registro: como texto, "v0.9.0" viria depois de "v0.21.0")
+select 'instalacoes concluidas', count(*)::text,
+       (select i.versao from public.radar_instalacoes i where i.depois is not null order by i.id desc limit 1), null, null
+  from public.radar_instalacoes where depois is not null
 order by 1, 2;

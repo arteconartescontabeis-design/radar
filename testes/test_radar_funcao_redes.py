@@ -138,6 +138,10 @@ class Ponte(BaseHTTPRequestHandler):
             if not self._armazenamento_ok():
                 return
             nome = self.path.rsplit("/", 1)[1]
+            if ESTADO.get("bucket_preso"):                                # v0.21.0: o armazenamento não responde (a conexão fica presa)
+                time.sleep(ESTADO["bucket_preso"])
+                self.close_connection = True
+                return
             if ESTADO["bucket_get_falha"]:
                 return self._responder(400, {"statusCode": "404", "error": "Bucket not found", "message": "Bucket not found"})
             return self._responder(200 if nome in ESTADO["buckets"] else 404,
@@ -195,7 +199,7 @@ class Ponte(BaseHTTPRequestHandler):
 
 def _subir(porta, extra, pasta):
     ambiente = dict(os.environ, SUPABASE_URL=PONTE, SUPABASE_ANON_KEY=jwt("anon"), SUPABASE_SERVICE_ROLE_KEY=jwt("service_role"),
-                    META_GRAPH_URL=PONTE + "/meta", RADAR_REDES_PASSO_MS="50", RADAR_REDES_ESPERA_MS="2000",
+                    META_GRAPH_URL=PONTE + "/meta", RADAR_REDES_PASSO_MS="50", RADAR_REDES_ESPERA_MS="2000", RADAR_REDES_BUCKET_MS="1500",
                     RADAR_GITHUB_API=PONTE + "/github", RADAR_PORTA_LOCAL=str(porta), NO_COLOR="1")
     for nome in ("SUPABASE_SECRET_KEYS", "RADAR_GITHUB_TOKEN", "RADAR_GITHUB_REPO", "RADAR_GITHUB_RAMO"):
         ambiente.pop(nome, None)                                # só o que o teste pedir
@@ -242,7 +246,7 @@ def funcao(api_postgrest, tmp_path_factory):
 
 @pytest.fixture()
 def redes(funcao, limpo):
-    ESTADO.update(chaves=[], bucket_get_falha=False, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False,
+    ESTADO.update(chaves=[], bucket_get_falha=False, bucket_preso=0, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False,
                   github=[], github_status=204, publicos=set(), upsert=[], assinaturas=[], assinar_falha=False)
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
@@ -684,6 +688,27 @@ def test_peca_nova_tentativa_reassina_sem_reenviar(peca):
     assert [prm["image_url"].rsplit("=", 1)[1] for m, p, prm in ESTADO["meta"] if p == "ig-1/media"] == ["assinado.1", "assinado.3"]
     assert db.execute("select situacao, imagem_url from radar_redes_envios where id = %s", (ig,)).fetchone() == ("publicado", interna)
 
+
+
+def test_peca_armazenamento_preso_vira_erro_e_nao_fica_enviando(peca):
+    """O armazenamento não responde ao conferir o bucket (a conexão fica presa): a função desiste no tempo-limite, nada vai à Meta e a
+    publicação vira "erro" (a falha certa, que "Tentar de novo" resolve), e não fica parada em "enviando" até o Supabase encerrar a
+    função (o que viraria um caso "pode ter saído"). Vale também para a notícia."""
+    db, c1 = peca
+    ig = agendada(db)["instagram"]
+    ESTADO["bucket_preso"] = 8
+    antes = time.monotonic()
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert time.monotonic() - antes < 3.5                                            # RADAR_REDES_BUCKET_MS = 1,5 s nos testes
+    assert (status, r["message"]) == (502, "Não foi possível guardar a imagem para a Meta (o armazenamento não respondeu). Nada foi publicado.")
+    assert situacao_envio(db, ig)[0] == "erro" and ESTADO["meta"] == [] and ESTADO["storage"] == []
+    noticia = autorizar(db, c1, "facebook")
+    status, r = pedir({"acao": "publicar", "envio": noticia})
+    assert status == 502 and "o armazenamento não respondeu" in r["message"] and situacao_envio(db, noticia)[0] == "erro"
+    ESTADO["bucket_preso"] = 0
+    assert publicar_agora(db, ig, conferi=True) == [ig]
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert (status, r["situacao"]) == (200, "publicado"), r
 
 def test_agenda_com_a_chave_publica_so_peca_vencida_e_recusa_o_resto(peca):
     db, c1 = peca

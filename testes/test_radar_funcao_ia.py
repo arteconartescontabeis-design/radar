@@ -1048,8 +1048,8 @@ def test_peca_grava_sugestao_por_formato_e_conta_como_gerar(funcao, pauta):
     assert r["avisos"] == ["A peça tem 2 foto(s) e a IA escreveu 3 cartão(ões): confira (um cartão por foto, na ordem das fotos)."]
     # Agenda da semana: só as legendas (a lista vai na arte, desenhada pela tela a partir das informações conferidas)
     agenda = nova_peca(db, dias=5, tipo="agenda", formato="imagem", conferidas=[
-        {"informacao": "16/11 (seg) · FGTS", "fonte": "Regra de vencimento das Configurações (conferir)"},
-        {"informacao": "20/11 (sex) · DAS do Simples Nacional", "fonte": "Regra de vencimento das Configurações (conferir)"}])
+        {"informacao": "16/11 (seg) · FGTS", "fonte": "Agenda Tributária da Receita Federal"},
+        {"informacao": "20/11 (sex) · DAS do Simples Nacional", "fonte": "Agenda Tributária da Receita Federal"}])
     IA["respostas"]["peca"] = {"instagram": {"texto": "A semana tem FGTS em 16/11 e o DAS do Simples Nacional em 20/11.\n\nConfira os vencimentos na arte e fale com a gente.",
                                              "hashtags": []},
                                "facebook": {"texto": "Os vencimentos da semana estão na arte: FGTS em 16/11 e DAS em 20/11.\n\nFale com a gente.", "hashtags": []},
@@ -1059,7 +1059,7 @@ def test_peca_grava_sugestao_por_formato_e_conta_como_gerar(funcao, pauta):
     pedido = IA["pedidos"][-1]
     assert pedido["tools"][0]["input_schema"]["required"] == ["instagram", "facebook", "pendencias"] and "arte" not in r["ia"]
     assert "(c) arte" not in pedido["system"] and "convida a conferir os vencimentos na arte" in pedido["system"]
-    assert "1. 16/11 (seg) · FGTS (fonte: Regra de vencimento das Configurações (conferir))\n2. 20/11 (sex) · DAS do Simples Nacional" in pedido["messages"][0]["content"]
+    assert "1. 16/11 (seg) · FGTS (fonte: Agenda Tributária da Receita Federal)\n2. 20/11 (sex) · DAS do Simples Nacional" in pedido["messages"][0]["content"]
     assert r["avisos"] == [] and r["ia"]["instagram"]["texto"].startswith("A semana tem FGTS em 16/11")
 
 

@@ -150,8 +150,8 @@ def corpo_pauta(problemas: list[dict]) -> str:
         abre = f"**{len(problemas)}** publicações da Pauta não saíram ou estão atrasadas (a mais antiga: {ref})."
     return (f"{abre}\n\n"
             "O que fazer: abra o Radar → **Pauta** → **Não saíram**. Lá aparecem o motivo de cada uma e o que fazer "
-            "(Publicar agora, Tentar de novo ou Desfazer aprovação). Se nada sai pela agenda, confira Publicações → Testar conexão "
-            "e Configurações → Pauta (\"agenda_ligada\").\n\n"
+            "(Publicar agora, Tentar de novo, Não publicar neste canal ou Desfazer aprovação). Se nada sai pela agenda, confira "
+            "Publicações → Testar conexão e Configurações → Pauta (\"agenda_ligada\").\n\n"
             "Este aviso não é atualizado depois de aberto (cada mudança mandaria outro e-mail): a lista do momento está sempre na "
             "Pauta. Ele fecha sozinho quando nenhuma publicação da Pauta estiver parada ou com erro.")
 
