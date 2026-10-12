@@ -1,0 +1,15 @@
+﻿data;dia;semana;tipo;formato;assunto;quem_aparece;objetivo;observacao
+26/10/2026;seg;1;Reel da semana;Reel;Como separar as notas do mês em 3 passos (exemplo);Ana Teste;orientar;Roteiro de exemplo, só para teste
+27/10/2026;ter;1;Notícia do Radar;Imagem 4:5;Notícia escolhida na semana (exemplo);—;informar;
+28/10/2026;qua;1;Série Quem cuida;Foto;Apresentar quem cuida do departamento pessoal (exemplo);Bruno Exemplo;aproximar;"Foto no escritório; luz natural"
+29/10/2026;qui;1;Educativo;Carrossel;Checklist de fim de mês para pequenas empresas (exemplo);Equipe;orientar;"Cartões com ""o que fazer"" no fim"
+30/10/2026;sex;1;Notícia do Radar;Imagem 4:5;Notícia escolhida na semana (exemplo);—;informar;
+31/10/2026;sáb;1;Bastidor;Foto;Café da manhã da equipe (exemplo);Ana Teste e Bruno Exemplo;aproximar;
+01/11/2026;dom;1;Agenda da semana;Imagem 4:5;Prazos da semana seguinte (exemplo);—;lembrar;Conferir as datas nas Configurações
+02/11/2026;seg;2;Sem post no feed;—;Feriado (exemplo);—;—;Sem publicação
+03/11/2026;ter;2;Notícia do Radar;Imagem 4:5;Notícia escolhida na semana (exemplo);—;informar;
+04/11/2026;qua;2;Série Quem cuida;Carrossel de fotos;Um dia no setor fiscal (exemplo);"Carla Modelo; Bruno Exemplo";aproximar;
+05/11/2026;qui;2;Captação;Foto;Convite para conhecer o escritório (exemplo);Ana Teste;captar;"Sem preço; sem promessa"
+06/11/2026;sex;2;Data com a equipe;Foto;Aniversário da empresa (exemplo);Equipe;aproximar;
+07/11/2026;sáb;2;Bastidor;Carrossel de fotos;Organização dos arquivos (exemplo);Carla Modelo;aproximar;
+08/11/2026;dom;2;Sem post no feed;Story;Lembrete nos stories (exemplo);—;lembrar;

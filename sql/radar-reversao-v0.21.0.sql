@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.20.0.sql
--- DESFAZ a instalação do radar-setup-v0.20.0.sql.
+-- RADAR ARTECON — radar-reversao-v0.21.0.sql
+-- DESFAZ a instalação do radar-setup-v0.21.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, se existir).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
 -- =====================================================================
@@ -13,6 +13,8 @@ from pg_class c join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\_%'
 order by 1;
 
+drop view if exists public.radar_v_capas;
+drop view if exists public.radar_v_pauta_pessoas;
 drop view if exists public.radar_v_divulgacoes;
 drop view if exists public.radar_v_ia_mes;
 drop view if exists public.radar_v_painel;
@@ -22,10 +24,15 @@ drop view if exists public.radar_v_fila;
 drop view if exists public.radar_v_saude_fontes;
 
 -- v0.12.1: a agenda da leitura do boletim da ITC (pg_cron), se existir
+-- v0.21.0: e a que publica a Pauta (radar-redes-agenda e a limpeza dela), ANTES de apagar as funções que ela chama; o que sobrar
+-- do Radar no pg_cron é avisado. A chave 'radar_redes_agenda' fica no Vault (rodar a agenda de novo reaproveita a mesma).
 do $$
 begin
   if exists (select 1 from pg_namespace where nspname = 'cron') then
-    perform cron.unschedule(j.jobid) from cron.job j where j.jobname like 'radar-itc%';
+    perform cron.unschedule(j.jobid) from cron.job j where j.jobname like 'radar-itc%' or j.jobname like 'radar-redes-agenda%';
+    if exists (select 1 from cron.job where jobname like 'radar-%') then
+      raise notice 'Sobrou agendamento do Radar no pg_cron: confira cron.job';
+    end if;
   end if;
 exception when others then null;
 end $$;
@@ -33,6 +40,8 @@ end $$;
 drop table if exists
   public.radar_site_exclusoes,
   public.radar_redes_envios,
+  public.radar_pauta_pecas,
+  public.radar_pessoas,
   public.radar_itc_lidos,
   public.radar_site_envios,
   public.radar_informativo_itens,
@@ -157,6 +166,36 @@ drop function if exists public.radar_base_legal_valida(text[], text);
 drop function if exists public.radar_base_legal_preparar(text);
 drop function if exists public.radar_base_legal_chave(text);
 drop function if exists public.radar_rx_termo(text);
+-- v0.21.0: Pauta (peças das redes) e publicação agendada
+drop function if exists public.radar_pauta_hoje();
+drop function if exists public.radar_pauta_normalizar(text);
+drop function if exists public.radar_pauta_sem_acento(text);
+drop function if exists public.radar_pauta_rx_nome(text);
+drop function if exists public.radar_pauta_janela();
+drop function if exists public.radar_pauta_canais(text, text);
+drop function if exists public.radar_pauta_identificacao_falta(text);
+drop function if exists public.radar_pauta_numeros(text);
+drop function if exists public.radar_pauta_numeros_escritos(text);
+drop function if exists public.radar_pauta_numeros_fora(text, text);
+drop function if exists public.radar_pauta_copia_paga(text[]);
+drop function if exists public.radar_pauta_copia_paga_ia(text[]);
+drop function if exists public.radar_pauta_termo_ok(bigint, text, text, date);
+drop function if exists public.radar_pauta_problemas(bigint, text[], date);
+drop function if exists public.radar_fn_pauta_peca();
+drop function if exists public.radar_fn_pessoa_apagar();
+drop function if exists public.radar_pauta_importar(jsonb);
+drop function if exists public.radar_pauta_conferir(bigint, text[]);
+drop function if exists public.radar_pauta_marcar_pronta(bigint, timestamptz);
+drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[]);
+drop function if exists public.radar_pauta_desaprovar(bigint, boolean);
+drop function if exists public.radar_pauta_publicar_agora(bigint, boolean);
+drop function if exists public.radar_pauta_pode_copiar(bigint, timestamptz, text);
+drop function if exists public.radar_pauta_registrar_manual(bigint, text, text, date);
+drop function if exists public.radar_agenda_situacao();
+drop function if exists public.radar_pauta_pode_sair(bigint);
+drop function if exists public.radar_agenda_vencidas(int);
+drop function if exists public.radar_pauta_iniciar(bigint);
+drop function if exists public.radar_redes_conferir_agenda(text);
 -- v0.19.1 (opcional): a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql), se foi instalada
 drop function if exists public.radar_concorrentes_conferir(text);
 

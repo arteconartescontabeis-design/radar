@@ -19,7 +19,7 @@ import pytest
 import radar_site_admin
 import radar_site_publicar as pub
 from conftest import ADMIN, EDITOR, como, jwt, API
-from radar_banco import Banco
+from radar_banco import Banco, ErroBanco
 from radar_util import hoje_brasilia
 from test_radar_banco import aprovar, cenario_publicavel
 
@@ -181,6 +181,26 @@ def test_publica_so_o_autorizado_registra_o_link_e_nunca_reenvia(cenario):
     url, obs = cenario.execute("select url, observacao from radar_divulgacoes where conteudo_id = %s", (c,)).fetchone()
     assert url == BASE + "/news/view/noticia-1" and f"envio nº {envio}" in obs
     assert rodar() == [] and len(SITE["envios"]) == 1                     # nada mais a fazer: não reenvia
+
+
+def test_capa_vem_da_vista_e_com_o_banco_antigo_de_radar_imagens(monkeypatch):
+    """v0.21.0: a chave do robô não lê radar_imagens (as fotos da equipe e as lâminas da Pauta ficam lá): a capa vem de radar_v_capas.
+    Com o banco de antes da v0.21.0 (a vista não existe: 404), lê radar_imagens como antes; outro erro não é engolido."""
+    pedidos = []
+
+    def pedir(self, metodo, caminho, **k):
+        pedidos.append(caminho)
+        if caminho == "radar_v_capas" and erro:
+            raise ErroBanco(f"GET radar_v_capas: HTTP {erro} — {{}}")
+        return [{"dados": CAPA}]
+    monkeypatch.setattr(Banco, "_pedir", pedir)
+    banco = Banco("http://127.0.0.1:1", "chave")
+    for erro, caminhos in [(None, ["radar_v_capas"]), (404, ["radar_v_capas", "radar_imagens"])]:
+        pedidos.clear()
+        assert banco.capa(7) == CAPA and pedidos == caminhos
+    erro = 500
+    with pytest.raises(ErroBanco, match="HTTP 500"):
+        banco.capa(7)
 
 
 def test_conteudo_mudado_ou_cancelado_nao_vai_ao_site(cenario):

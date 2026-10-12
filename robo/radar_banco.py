@@ -1,7 +1,7 @@
 """Radar Artecon — acesso ao Supabase (PostgREST) com a chave service_role."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -145,7 +145,44 @@ class Banco:
         """Links registrados em "Publicações no site", para conferir se continuam no ar (e com o mesmo texto)."""
         return self._todos("radar_divulgacoes", [("select", "id,url,titulo,corpo"), ("order", "id")])
 
+    # ------------------------------------------------------------- Pauta (v0.21.0)
+    def pauta_com_problema(self) -> list[dict] | None:
+        """Publicações da Pauta que não saíram, para o aviso (v0.21.0). A mesma condição de pauta_falhas (radar_v_painel): com erro,
+        paradas em "enviando" há mais de 15 min, ou com a hora marcada passada há mais de 20 min sem sair (a agenda do banco roda de
+        5 em 5 min: parou ou está desligada). Lê só número, canal, situação e horas: nunca a legenda, a peça nem o texto do erro, que
+        podem ter nomes (o aviso vai para o GitHub). Banco ainda sem o SQL da v0.21.0: None (o aviso nem abre nem fecha)."""
+        try:
+            linhas = self._todos("radar_redes_envios", [
+                ("select", "id,canal,situacao,agendado_para,enviado_em"), ("peca_id", "not.is.null"),
+                ("situacao", "in.(erro,enviando,autorizado)"), ("order", "agendado_para,id")])
+        except ErroBanco as e:
+            if "HTTP 400" in str(e) and '"42703"' in str(e):    # coluna que não existe (peca_id, agendado_para): banco antigo
+                return None
+            raise
+        agora = datetime.now(timezone.utc)
+        def passou(valor, minutos: int) -> bool:
+            try:
+                return bool(valor) and datetime.fromisoformat(str(valor).replace("Z", "+00:00")) < agora - timedelta(minutes=minutos)
+            except (TypeError, ValueError):
+                return False
+        return [e for e in linhas if e.get("situacao") == "erro"
+                or (e.get("situacao") == "enviando" and passou(e.get("enviado_em"), 15))
+                or (e.get("situacao") == "autorizado" and passou(e.get("agendado_para"), 20))]
+
     # ------------------------------------------------- publicações no site (v0.8.0)
+    def capa(self, imagem_id) -> str | None:
+        """A capa do conteúdo (data URL) para o site, por radar_v_capas: desde a v0.21.0 a chave do robô não lê radar_imagens, onde
+        ficam também as fotos da equipe e as lâminas da Pauta. Banco ainda sem o SQL da v0.21.0 (sem a vista, HTTP 404): lê
+        radar_imagens, como antes."""
+        params = {"select": "dados", "id": f"eq.{imagem_id}"}
+        try:
+            linhas = self._pedir("GET", "radar_v_capas", params=params) or []
+        except ErroBanco as e:
+            if "HTTP 404" not in str(e):
+                raise
+            linhas = self._pedir("GET", "radar_imagens", params=params) or []
+        return linhas[0]["dados"] if linhas else None
+
     def config(self, chave: str):
         """Valor de uma chave de Configurações (radar_config), ou None."""
         linhas = self._pedir("GET", "radar_config", params={"select": "valor", "chave": f"eq.{chave}"}) or []

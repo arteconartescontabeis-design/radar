@@ -1,0 +1,26 @@
+name: Radar — repositório sem calendário
+
+# v0.21.0: o repositório é público e o calendário da Pauta (CSV e .md do plano) tem os nomes da equipe. Este conferir roda em TODO
+# push, sem filtro de caminho (o radar-testes só roda quando muda o código): um CSV ou um .md solto na raiz, ou enviado pelo site do
+# GitHub ("Add file → Upload files", que não passa pelo .gitignore), também é avisado. É só um aviso depois do envio: o arquivo já
+# ficou público (e no histórico) — o cuidado é nunca enviar.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pytest "psycopg[binary]"
+      - run: python -m pytest testes/test_radar_repositorio.py -q -p no:cacheprovider

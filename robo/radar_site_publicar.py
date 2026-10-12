@@ -266,8 +266,8 @@ class Publicador:
             dados["metadescription"] = resumo(c["corpo"])
         arquivos = None
         if tipos.get("image") == "file" and c.get("imagem_id"):
-            img = self.banco._pedir("GET", "radar_imagens", params={"select": "dados", "id": f"eq.{c['imagem_id']}"}) or []
-            arquivo = imagem_do_banco(img[0]["dados"]) if img else None
+            dados_capa = self.banco.capa(c["imagem_id"])                          # v0.21.0: pela vista radar_v_capas
+            arquivo = imagem_do_banco(dados_capa) if dados_capa else None
             if arquivo:
                 arquivos = {"image": arquivo}
         return acao, dados, arquivos

@@ -1,3 +1,19 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+# v0.21.0: o calendário da Pauta e os arquivos do plano de publicações têm nomes da equipe e nunca vão para o repositório
+# (público). Nenhum CSV novo entra (com acento, maiúscula ou outro nome): só a amostra inventada dos testes e as respostas
+# gravadas da IA Central. Os .md do plano também ficam de fora, em qualquer pasta. O envio pelo site do GitHub ("Upload
+# files") NÃO passa por aqui: o workflow radar-repositorio.yml avisa depois, mas o arquivo já terá ficado público.
+*.csv
+*.CSV
+!testes/amostras/pauta-ficticia.csv
+!testes/ia_central/producao-*.csv
+*[Cc][Aa][Ll][Ee][Nn][Dd]*[Rr][Ii][Oo]*
+*[Pp][Ll][Aa][Nn][Oo]-[Pp][Uu][Bb][Ll][Ii][Cc]*
+*[Pp][Ll][Aa][Nn][Oo]-[Rr][Ee][Ss][Uu][Mm][Oo]*
+*serie-pessoas*
+*roteiros-dos-reels*
+*captacao-mensal*
+*guia-de-producao*
+*regras-legais*
