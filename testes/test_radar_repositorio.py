@@ -81,7 +81,7 @@ def test_gitignore_barra_o_calendario_da_pauta():
                  "4b-captacao-mensal.md", "5-guia-de-producao.md", "6-regras-legais-e-termo.md"):
         assert git("check-ignore", "-q", "--no-index", nome).returncode == 0, nome
     for nome in (AMOSTRA, "testes/ia_central/producao-2026-10-03.csv",                                           # vão para o repositório
-                 "radar-pauta.js", "LEIAME-radar.md", "RELATORIO-TESTES-radar.md", "testes/test_radar_agenda.py"):
+                 "radar-pauta.js", "radar-video.js", "LEIAME-radar.md", "RELATORIO-TESTES-radar.md", "testes/test_radar_agenda.py"):
         assert git("check-ignore", "-q", "--no-index", nome).returncode == 1, nome
 
 
@@ -90,7 +90,7 @@ def test_workflow_dos_testes_roda_quando_mudam_os_arquivos_da_tela():
     caminhos = set(re.findall(r'"([^"]+)"', re.search(r"(?m)^\s*paths:\s*\[([^\]]*)\]", yml).group(1)))
     scripts = {src for pagina in ("index.html", "informativo.html")
                for src in re.findall(r'<script src="([^"?#]+)', (RAIZ / pagina).read_text(encoding="utf-8"))}
-    assert scripts == {"radar-config.js", "radar-pauta.js"}                   # os da própria tela (nenhum de fora)
+    assert scripts == {"radar-config.js", "radar-pauta.js", "radar-video.js"}  # os da própria tela (nenhum de fora; v0.22.0: o corretor de vídeo)
     assert scripts | {"index.html", "informativo.html", ".gitignore", "testes/**", "sql/**"} <= caminhos, sorted(caminhos)
 
 

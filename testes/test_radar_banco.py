@@ -45,7 +45,7 @@ def aprovar(conteudo, uid=EDITOR):
 def test_instalacao_cria_19_tabelas_com_rls(db):
     linhas = db.execute("""select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
                            where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'""").fetchall()
-    assert len(linhas) == 25       # v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
+    assert len(linhas) == 27       # v0.22.0: + radar_videos e radar_video_acessos; v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
     assert all(rls for _, rls in linhas), [n for n, rls in linhas if not rls]
 
 
@@ -82,7 +82,7 @@ def test_setup_e_idempotente(db):
     assert db.execute("select frequencia_horas, ativo from radar_fontes where slug = 'pgfn-noticias'").fetchone() == (9, False)
     db.execute("update radar_fontes set frequencia_horas = 6, ativo = true where slug = 'pgfn-noticias'")
     reg = db.execute("select antes, depois from radar_instalacoes order by id desc limit 1").fetchone()
-    assert len(reg[0]) == 25 and len(reg[1]) == 25   # 2ª execução: já havia 25 antes
+    assert len(reg[0]) == 27 and len(reg[1]) == 27   # 2ª execução: já havia 27 antes
 
 
 def test_fontes_do_sql_espelham_o_json_do_robo(db):
@@ -100,7 +100,7 @@ def test_anonimo_nao_le_nada_do_radar(limpo):
     no_ar(limpo)
     tabelas = [r[0] for r in limpo.execute("""select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                              where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'radar\\_%'""").fetchall()]
-    assert len(tabelas) == 34 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 25 tabelas e 9 visões (v0.21.0: + radar_v_pauta_pessoas e radar_v_capas)
+    assert len(tabelas) == 36 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 27 tabelas e 9 visões (v0.21.0: + radar_v_pauta_pessoas e radar_v_capas; v0.22.0: + radar_videos e radar_video_acessos)
     with como("anon") as c:
         for tabela in tabelas:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -471,7 +471,12 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_pauta_importar', 'radar_pauta_conferir', 'radar_pauta_marcar_pronta',
                                                            'radar_pauta_aprovar', 'radar_pauta_desaprovar', 'radar_pauta_publicar_agora',
                                                            'radar_pauta_pode_copiar', 'radar_pauta_registrar_manual', 'radar_pauta_termo_ok',
-                                                           'radar_agenda_situacao', 'radar_pauta_copia_paga_ia')
+                                                           'radar_agenda_situacao', 'radar_pauta_copia_paga_ia',
+                                                           -- v0.22.0: corretor de vídeo (cada função confere o papel)
+                                                           'radar_video_criar', 'radar_video_para_envio', 'radar_video_enviado',
+                                                           'radar_video_ajustar', 'radar_video_reconferir', 'radar_video_de_novo',
+                                                           'radar_video_descartar', 'radar_video_apaguei', 'radar_video_para_previa',
+                                                           'radar_video_para_baixar', 'radar_video_resumo', 'radar_pauta_pecas_da_pessoa')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -713,7 +718,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.21.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.22.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -927,12 +932,13 @@ def test_trocar_imagem_autor_ou_fonte_de_conteudo_aprovado_volta_para_revisao(li
 
 def test_configuracoes_iniciais_e_quem_pode_alterar(limpo):
     conf = dict(limpo.execute("select chave, valor from radar_config").fetchall())
-    assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia", "rascunhos", "pauta"}   # v0.9.0: rascunhos; v0.21.0: pauta
+    assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia", "rascunhos", "pauta",
+                         "corretor_video"}   # v0.9.0: rascunhos; v0.21.0: pauta; v0.22.0: corretor_video
     assert len(conf["obrigacoes"]) == 22 and conf["assinatura"]["responsavel"] == "Cleiver Gonçalves"
     assert (conf["assinatura"]["cnpj"], conf["assinatura"]["crc"]) == ("", "")   # v0.20.0: identificação legal vazia até o administrador preencher
     assert all(o["regra"] in ("quinto_dia_util", "dia", "ultimo_dia_util") for o in conf["obrigacoes"])
     with como("authenticated", LEITOR) as c:
-        assert c.execute("select count(*) from radar_config").fetchone()[0] == 7          # a equipe lê
+        assert c.execute("select count(*) from radar_config").fetchone()[0] == 8          # a equipe lê (v0.22.0: + corretor_video)
     with como("authenticated", EDITOR) as c:
         assert c.execute("update radar_config set valor = '[]' where chave = 'feriados_extras' returning chave").fetchone() is None
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -1171,9 +1177,9 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (25, 6, 8, 7, 1, 0)
+        assert _resumo("radar_sem_tx") == (27, 6, 8, 8, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.21.0", [], 25)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.22.0", [], 27)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1194,14 +1200,14 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (25, 6, 8, 7, 2, 0)
+        assert _resumo("radar_parcial") == (27, 6, 8, 8, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
             assert c.execute("""select (select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from information_schema.column_privileges where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from pg_policies where schemaname = 'public' and 'anon' = any(roles))""").fetchone()[0] == 0
-            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (25,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0)
+            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (27,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0), radar_videos e radar_video_acessos (v0.22.0)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_parcial with (force)")
@@ -1221,7 +1227,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (25, 6, 8, 7, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (27, 6, 8, 8, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -2027,10 +2033,10 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
         for _ in range(2):
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
-        # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.21.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.21.0||"]
+        # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.22.0")
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.22.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.21.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.22.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2060,7 +2066,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.21.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.22.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -3407,6 +3413,7 @@ LEG_PECA = "Conheça quem cuida da folha de pagamento da sua empresa.\n\n" + IDE
 LAMINA = "data:image/jpeg;base64," + "B" * 400
 URL_INTERNA = "https://projeto.supabase.co/storage/v1/object/radar-pauta/p-0b1c2d3e-0000-4000-8000-000000000001.jpg"
 APROVAR = "select radar_pauta_aprovar(%s, %s, %s::text[], %s, %s::bigint[], %s, %s::text[])"
+APROVAR_REEL = "select radar_pauta_aprovar(%s, %s, %s::text[], %s, %s::bigint[], %s, %s::text[], %s)"     # v0.22.0: + o sha256 do vídeo
 ACRESCENTE = "Acrescente cada um em Informações conferidas, com a fonte (ou tire do texto)"
 
 
@@ -3462,9 +3469,13 @@ def marcar_pronta(db, pid, uid=EDITOR):
         return c.execute("select radar_pauta_marcar_pronta(%s, %s)", (pid, lido_peca(db, pid))).fetchone()[0]
 
 
-def aprovar_peca(db, pid, modo="agendar", canais=("instagram",), conferencias=("pessoas", "datas"), artes=None, ident=IDENT, uid=ADMIN):
+def aprovar_peca(db, pid, modo="agendar", canais=("instagram",), conferencias=("pessoas", "datas"), artes=None, ident=IDENT, uid=ADMIN,
+                 video=None):
+    """v0.22.0: video = o sha256 do vídeo corrigido que a tela mostrou (o reel)."""
     artes = [lamina(uid)] if artes is None else artes
     with como("authenticated", uid) as c:
+        if video is not None:
+            return c.execute(APROVAR_REEL, (pid, lido_peca(db, pid), list(canais), modo, artes, ident, list(conferencias), video)).fetchone()[0]
         return c.execute(APROVAR, (pid, lido_peca(db, pid), list(canais), modo, artes, ident, list(conferencias))).fetchone()[0]
 
 
@@ -3474,6 +3485,30 @@ def peca_aprovada(db, dias=2, canais=("instagram",), **campos):
     pid = nova_peca(db, dias=dias, **campos)
     marcar_pronta(db, pid)
     return pid, aprovar_peca(db, pid, canais=canais)
+
+
+# v0.22.0: o reel só fica pronto com o vídeo corrigido pronto (radar_video_pendencia). Nomes e falas de mentira.
+SHA_VIDEO = "a" * 64
+FALA_REEL = "Fala: o prazo vence no dia 20. Confira com a gente antes do vencimento para não pagar multa."
+
+
+def pessoa_do_corretor(db, nome="Ana Teste", na_peca="Ana", **campos):
+    """Pessoa com o termo novo, que cita o corretor de vídeo (termo_corretor_em)."""
+    pid = nova_pessoa(db, nome, na_peca, **campos)
+    db.execute("update radar_pessoas set termo_corretor_em = '2020-01-01' where id = %s", (pid,))
+    return pid
+
+
+def video_pronto(db, peca, pessoa, sha=SHA_VIDEO, situacao="pronto", cartela=(IDENT,), relatorio=None, fala=None):
+    """O vídeo como o robô deixa depois de concluir, gravado direto (o fluxo inteiro está em test_radar_video_banco.py)."""
+    fala = fala or db.execute("select left(btrim(roteiro), 200) from radar_pauta_pecas where id = %s", (peca,)).fetchone()[0]
+    return db.execute("""insert into radar_videos (peca_id, versao, situacao, partes, fala_pessoa, fala_roteiro, roteiro_hash, cartela_linhas,
+                                                   declaracoes, sha256, bytes, duracao_final, relatorio, enviado_em)
+                         select p.id, coalesce((select max(versao) from radar_videos where peca_id = p.id), 0) + 1, %s,
+                                '[{"n": 1, "tipo": "video/mp4", "bytes": 1000}]', %s, %s, radar_hash_texto(p.roteiro), %s::text[],
+                                '{so_marcadas,sem_fundo,so_voz,fala_confere}', %s, 4000, 38.5, %s, now()
+                           from radar_pauta_pecas p where p.id = %s returning id""",
+                      (situacao, pessoa, fala, list(cartela), sha, json.dumps(relatorio or {"texto_final": ""}), peca)).fetchone()[0]
 
 
 def iniciar(envio):
@@ -4053,10 +4088,12 @@ def test_pauta_marcador_do_modelo_entre_chaves_trava_em_todo_texto_e_na_saida(pa
     motivo = "A legenda tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija."
     assert iniciar(e2) == {"erro": motivo}
     # à mão: a cópia da legenda e do roteiro confere de novo
-    p3 = nova_peca(db, dias=5, tipo="reel", formato="reel", roteiro="Fala: o prazo vence no dia 20.\n" + IDENT,
+    ana = pessoa_do_corretor(db)                                                 # v0.22.0: o reel sai com o vídeo corrigido
+    p3 = nova_peca(db, dias=5, tipo="reel", formato="reel", roteiro=FALA_REEL + "\n" + IDENT, pessoas=[ana],
                    conferidas=[{"informacao": "O prazo vence no dia 20", "fonte": "Receita Federal"}])
+    video_pronto(db, p3, ana)
     marcar_pronta(db, p3)
-    aprovar_peca(db, p3, modo="manual", artes=[])
+    aprovar_peca(db, p3, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)
     with como("authenticated", EDITOR) as c:
         assert c.execute("select radar_pauta_pode_copiar(%s, %s, null)", (p3, lido_peca(db, p3))).fetchone()[0]["ok"] is True
     mudar_por_fora(db, p3, "roteiro = roteiro || ' {nome}', legenda_instagram = legenda_instagram || ' {Nome}'")
@@ -4076,9 +4113,10 @@ def test_pauta_roteiro_sem_as_marcacoes_de_tempo_e_lista_da_agenda_conferida(pau
                "| 12–32s | \"Quem pediu tem até sexta, dia 30.\" | 0:15 a 0:32 |\n| 32 a 44 s | \"Fale com a gente.\" | cartela |\n" + IDENT)
     pid = nova_peca(db, dias=3, tipo="reel", formato="reel", roteiro=roteiro,
                     conferidas=[{"informacao": "Prazo da opção até 30/10", "fonte": "Portal do Simples Nacional"}])
-    assert conferir(pid) == []
+    sem_video = "Reel: envie a gravação (Corretor de vídeo)"                     # v0.22.0: o reel só fica pronto com o vídeo
+    assert conferir(pid) == [sem_video]
     db.execute("update radar_pauta_pecas set roteiro = roteiro || %s where id = %s", ("\n| 44 a 50 s | \"São 2 sócios e 15 dias.\" | |", pid))
-    assert conferir(pid) == ["Números que não estão nas informações conferidas: 15, 2. " + ACRESCENTE]
+    assert conferir(pid) == [sem_video, "Números que não estão nas informações conferidas: 15, 2. " + ACRESCENTE]
     # a lista da agenda: a pessoa cadastrada e não marcada, a marca e as chaves
     nova_pessoa(db, "Márcia Exemplo", "Márcia", revogado="2026-01-01")
     lista = [{"informacao": "10/11 (ter) · ICMS [VERIFICAR: data]", "fonte": "Agenda Tributária da Receita Federal"},
@@ -4692,7 +4730,7 @@ def test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date(db):
     novas = db.execute("""select p.proname, p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                           where n.nspname = 'public' and (p.proname like 'radar\\_pauta\\_%' or p.proname like 'radar\\_agenda\\_%'
                                 or p.proname in ('radar_redes_conferir_agenda', 'radar_fn_pauta_peca', 'radar_fn_pessoa_apagar'))""").fetchall()
-    assert len(novas) == 29
+    assert len(novas) == 30                                                  # v0.22.0: + radar_pauta_pecas_da_pessoa
     assert [n for n, src in novas if "current_date" in src.lower()] == []
 
 

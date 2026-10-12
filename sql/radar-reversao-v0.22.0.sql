@@ -1,8 +1,12 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.21.0.sql
--- DESFAZ a instalação do radar-setup-v0.21.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, se existir).
+-- RADAR ARTECON — radar-reversao-v0.22.0.sql
+-- DESFAZ a instalação do radar-setup-v0.22.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
+-- v0.22.0: os ARQUIVOS do corretor de vídeo (bucket privado radar-videos: clipes, transcrições, vídeos corrigidos e quadros) NÃO saem
+-- por SQL — apagar as linhas de storage.objects deixaria os arquivos órfãos no armazenamento. Apague pelo painel ANTES (Supabase →
+-- Storage → radar-videos → selecione tudo → Delete; depois, no menu do bucket, Delete bucket) ou pela API do armazenamento.
 -- =====================================================================
 begin;
 
@@ -26,10 +30,13 @@ drop view if exists public.radar_v_saude_fontes;
 -- v0.12.1: a agenda da leitura do boletim da ITC (pg_cron), se existir
 -- v0.21.0: e a que publica a Pauta (radar-redes-agenda e a limpeza dela), ANTES de apagar as funções que ela chama; o que sobrar
 -- do Radar no pg_cron é avisado. A chave 'radar_redes_agenda' fica no Vault (rodar a agenda de novo reaproveita a mesma).
+-- v0.22.0: e a do corretor de vídeo (radar-video-reserva e radar-video-limpeza). As chaves 'radar_video_robo' e 'radar_video_agenda'
+-- ficam no Vault (a do robô é a mesma do segredo RADAR_VIDEO_ROBO_CHAVE do repositório radar-video).
 do $$
 begin
   if exists (select 1 from pg_namespace where nspname = 'cron') then
-    perform cron.unschedule(j.jobid) from cron.job j where j.jobname like 'radar-itc%' or j.jobname like 'radar-redes-agenda%';
+    perform cron.unschedule(j.jobid) from cron.job j
+     where j.jobname like 'radar-itc%' or j.jobname like 'radar-redes-agenda%' or j.jobname like 'radar-video-%';
     if exists (select 1 from cron.job where jobname like 'radar-%') then
       raise notice 'Sobrou agendamento do Radar no pg_cron: confira cron.job';
     end if;
@@ -38,6 +45,8 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_video_acessos,
+  public.radar_videos,
   public.radar_site_exclusoes,
   public.radar_redes_envios,
   public.radar_pauta_pecas,
@@ -187,6 +196,7 @@ drop function if exists public.radar_pauta_importar(jsonb);
 drop function if exists public.radar_pauta_conferir(bigint, text[]);
 drop function if exists public.radar_pauta_marcar_pronta(bigint, timestamptz);
 drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[]);
+drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text);
 drop function if exists public.radar_pauta_desaprovar(bigint, boolean);
 drop function if exists public.radar_pauta_publicar_agora(bigint, boolean);
 drop function if exists public.radar_pauta_pode_copiar(bigint, timestamptz, text);
@@ -196,6 +206,44 @@ drop function if exists public.radar_pauta_pode_sair(bigint);
 drop function if exists public.radar_agenda_vencidas(int);
 drop function if exists public.radar_pauta_iniciar(bigint);
 drop function if exists public.radar_redes_conferir_agenda(text);
+-- v0.22.0: corretor de vídeo dos reels
+drop function if exists public.radar_video_cfg_num(text, numeric, numeric, numeric);
+drop function if exists public.radar_video_cfg_texto(text);
+drop function if exists public.radar_video_config();
+drop function if exists public.radar_video_segundos_mes();
+drop function if exists public.radar_video_limite_s();
+drop function if exists public.radar_video_fala_no_roteiro(text, text);
+drop function if exists public.radar_video_pessoa_falta(bigint, bigint);
+drop function if exists public.radar_video_cartela_falta(text[], bigint);
+drop function if exists public.radar_video_ajustes_falta(jsonb);
+drop function if exists public.radar_video_pendencia(bigint);
+drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[]);
+drop function if exists public.radar_video_para_envio(uuid);
+drop function if exists public.radar_video_enviado(uuid);
+drop function if exists public.radar_video_ajustar(uuid, jsonb, text[]);
+drop function if exists public.radar_video_reconferir(uuid, text);
+drop function if exists public.radar_video_de_novo(uuid);
+drop function if exists public.radar_video_descartar(uuid);
+drop function if exists public.radar_video_apaguei(uuid);
+drop function if exists public.radar_video_para_previa(uuid);
+drop function if exists public.radar_video_para_baixar(bigint, timestamptz);
+drop function if exists public.radar_pauta_pecas_da_pessoa(bigint);
+drop function if exists public.radar_video_resumo();
+drop function if exists public.radar_video_conferir_robo(text);
+drop function if exists public.radar_video_conferir_agenda(text);
+drop function if exists public.radar_video_ha_fila(int);
+drop function if exists public.radar_video_pegar();
+drop function if exists public.radar_video_em_curso(uuid, int);
+drop function if exists public.radar_video_registrar_audio(uuid, int, numeric, boolean);
+drop function if exists public.radar_video_parcial(uuid, int, jsonb);
+drop function if exists public.radar_video_concluir(uuid, int, text, jsonb, text, bigint, numeric);
+drop function if exists public.radar_video_falhar(uuid, int, text);
+drop function if exists public.radar_video_limpeza();
+drop function if exists public.radar_video_limpo(uuid, text[]);
+-- as que recebem ou devolvem a linha de radar_videos já saíram com a tabela (cascade); ficam aqui para a reversão rodar de novo
+drop function if exists public.radar_video_travar(uuid);
+drop function if exists public.radar_video_refazer(public.radar_videos);
+drop function if exists public.radar_video_do_robo(uuid, int, boolean);
 -- v0.19.1 (opcional): a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql), se foi instalada
 drop function if exists public.radar_concorrentes_conferir(text);
 

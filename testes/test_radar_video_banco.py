@@ -1,0 +1,759 @@
+"""Corretor de vídeo dos reels (v0.22.0), o banco: radar_videos, radar_video_acessos, as funções radar_video_* e a amarra da aprovação.
+
+Confere, com nomes, falas e chaves de mentira (o repositório é público):
+  * a tabela só se lê pela regra (administrador e editor) e só se grava pelas funções; o papel interno não lê nem grava;
+  * radar_video_criar confere, ANTES de qualquer arquivo sair: a peça (reel, não aprovada, não cancelada, não publicada), a fala para
+    conferência (no roteiro, palavra por palavra e na ordem), o boletim pago, as pessoas (termo novo do corretor, menor, termo de uso de
+    imagem de hoje), a cartela (identificação legal, linha de quem fala com o CRC, "contador" e "especialista"), os clipes, as quatro
+    declarações, o gancho e a cota do mês; o envio novo deixa o anterior substituído;
+  * o robô (pelo papel interno): pegar com trava, a recuperação do pedido parado (3 tentativas), a cota, a rodada que nunca se repete,
+    o áudio, o relatório parcial, o concluir que decide de novo (divergência sem "a transcrição errou" e boletim pago → regravar) e os
+    códigos transitórios do falhar;
+  * a pendência do reel em radar_pauta_problemas, a aprovação amarrada ao sha256 (caixas "video" e "viu"), desaprovar, o registro manual
+    sem vídeo, a prévia e o baixar (com o registro de quem viu ou baixou);
+  * os ajustes do administrador, reconferir, tentar de novo, descartar e "apaguei";
+  * a trilha sem a fala, a cartela, o relatório e os ajustes; a limpeza nos prazos; as peças publicadas da pessoa;
+  * sql/radar-video-agenda.sql (as duas chaves no Vault, a reserva só com fila, a limpeza diária) e as reversões.
+"""
+from __future__ import annotations
+
+import json
+import re
+from datetime import timedelta
+from decimal import Decimal
+from uuid import UUID
+
+import psycopg
+import pytest
+
+from conftest import (ADMIN, CRON_SIMULADO, EDITOR, LEITOR, NET_SIMULADO, RAIZ, REVERSAO, SETUP, VAULT_SIMULADO, carregar_fontes_novas,
+                      como, conectar, psql)
+from test_radar_agenda import apagar_banco, chave_anon_do_config, novo_banco, sem_extensoes
+from test_radar_banco import (IDENT, LEG_PECA, SHA_VIDEO, aprovar_peca, conferir, hoje, lido_peca, marcar_pronta, mudar_por_fora,  # noqa: F401
+                              nova_peca, nova_pessoa, pauta, pessoa_do_corretor, video_pronto)
+
+ROTEIRO = ("Duração: cerca de 30 segundos.\n| Tempo | Fala | Texto na tela |\n"
+           "| 0 a 3 s | \"O prazo do Simples vence no dia 20.\" | PRAZO DIA 20 |\n"
+           "| 3 a 20 s | \"Confira com a gente antes do vencimento para não pagar multa nem juros.\" | Fale com a Artecon |\n" + IDENT)
+FALA = "O prazo do Simples vence no dia 20. Confira com a gente antes do vencimento para não pagar multa nem juros."
+CONFERIDAS = [{"informacao": "O DAS do Simples vence no dia 20", "fonte": "Portal do Simples Nacional"}]
+PARTES = [{"n": 1, "tipo": "video/mp4", "bytes": 1000}, {"n": 2, "tipo": "video/quicktime", "bytes": 2000}]
+DECL = ["so_marcadas", "sem_fundo", "so_voz", "fala_confere"]
+CRIAR = "select radar_video_criar(%s, %s, %s, %s, %s::text[], %s, %s::text[])"
+SHA2 = "b" * 64
+RELATORIO = {"versao": 2, "texto_final": FALA, "divergencias": [], "avisos": []}
+DIVERGENCIA = {"k": 0, "falado": "dia 25", "roteiro": "dia 20", "tipo": "numero", "regravar": True, "transcricao_errou": False}
+
+
+def reel(db, dias=5, pessoa=None, **campos):
+    """Peça reel com o roteiro do plano (tabela), a chamada (o gancho) e a Ana Teste, com o termo novo, marcada."""
+    pessoa = pessoa or pessoa_do_corretor(db)
+    campos = {"roteiro": ROTEIRO, "pessoas": [pessoa], "conferidas": CONFERIDAS, "chamada": "O prazo do Simples vence no dia 20", **campos}
+    return nova_peca(db, dias=dias, tipo="reel", formato="reel", **campos), pessoa
+
+
+def criar(pid, pessoa, uid=EDITOR, partes=PARTES, fala=FALA, cartela=(IDENT,), gancho=False, decl=DECL):
+    with como("authenticated", uid) as c:
+        return c.execute(CRIAR, (pid, json.dumps(partes), pessoa, fala, list(cartela), gancho, list(decl))).fetchone()[0]
+
+
+def tela(sql, *args, uid=EDITOR):
+    with como("authenticated", uid) as c:
+        return c.execute(sql, args).fetchone()[0]
+
+
+def robo(sql, *args):
+    with como("service_role") as c:
+        return c.execute(sql, args).fetchone()[0]
+
+
+def pegar():
+    return robo("select radar_video_pegar()")
+
+
+def concluir(vid, t, situacao="pronto", relatorio=None, sha=SHA_VIDEO, bytes_=4000, duracao=38.4):
+    return robo("select radar_video_concluir(%s, %s, %s, %s, %s, %s::bigint, %s::numeric)", vid, t, situacao, json.dumps(relatorio or RELATORIO), sha, bytes_, duracao)
+
+
+def _py(x):
+    """numeric → float e uuid → texto, para comparar com o que a função devolve em JSON."""
+    return float(x) if isinstance(x, Decimal) else str(x) if isinstance(x, UUID) else x
+
+
+def video(db, vid, campos="situacao"):
+    linha = tuple(_py(x) for x in db.execute(f"select {campos} from radar_videos where id = %s", (vid,)).fetchone())
+    return linha[0] if len(linha) == 1 else linha
+
+
+def na_fila(db, pid, pessoa, uid=EDITOR, **kw):
+    """Gravação registrada e enviada (os clipes conferidos pela função radar-video): na fila do robô."""
+    vid = criar(pid, pessoa, uid=uid, **kw)["id"]
+    tela("select radar_video_enviado(%s)", vid, uid=uid)
+    return vid
+
+
+def ate_pronto(db, pid, pessoa, relatorio=None, sha=SHA_VIDEO):
+    """Na fila, pego pelo robô, transcrito e concluído: devolve (vídeo, rodada)."""
+    vid = na_fila(db, pid, pessoa)
+    p = pegar()
+    assert p["id"] == vid
+    robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, p["tentativa"], 31.5, True)
+    concluir(vid, p["tentativa"], relatorio=relatorio, sha=sha)
+    return vid, p["tentativa"]
+
+
+def config(db, **valores):
+    db.execute("update radar_config set valor = valor || %s where chave = 'corretor_video'", (json.dumps(valores),))
+
+
+@pytest.fixture()
+def corretor(pauta):
+    """A Pauta com o CNPJ e o CRC de mentira (fixture pauta) e as Configurações do corretor de volta ao padrão no fim."""
+    antes = pauta.execute("select valor from radar_config where chave = 'corretor_video'").fetchone()[0]
+    yield pauta
+    pauta.execute("update radar_config set valor = %s where chave = 'corretor_video'", (json.dumps(antes),))
+
+
+# ------------------------------------------------------------------ tabela e regras de acesso
+def test_video_so_admin_e_editor_leem_e_ninguem_grava_direto(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    r = criar(pid, ana)
+    assert r["versao"] == 1 and re.fullmatch(r"[0-9a-f-]{36}", r["id"])
+    for uid in (EDITOR, ADMIN):
+        with como("authenticated", uid) as c:
+            assert c.execute("select situacao, fala_roteiro from radar_videos").fetchall() == [("aguardando_envio", FALA)]
+    with como("authenticated", LEITOR) as c:
+        assert c.execute("select count(*) from radar_videos").fetchone()[0] == 0                 # o leitor não vê a fala
+    for papel, uid in (("authenticated", ADMIN), ("authenticated", EDITOR)):
+        for sql in ("update radar_videos set situacao = 'pronto'", "delete from radar_videos",
+                    "insert into radar_video_acessos (video_id, acao) select id, 'previa' from radar_videos",
+                    f"insert into radar_videos (peca_id, partes, fala_pessoa, roteiro_hash, declaracoes) values ({pid}, '[]', 1, 'x', '{{}}')"):
+            with como(papel, uid) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute(sql)
+    for sql in ("select * from radar_videos", "select * from radar_video_acessos", "update radar_videos set situacao = 'pronto'"):
+        for papel in ("service_role", "anon"):                                                    # a chave interna não lê nem grava
+            with como(papel) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute(sql)
+    # as funções do robô não são da tela, e as da tela não são do papel interno
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        c.execute("select radar_video_pegar()")
+    with como("service_role") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        c.execute(CRIAR, (pid, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL))
+    for aux in ("radar_video_pendencia(1)", "radar_video_cartela_falta('{}', 1)", "radar_video_travar(gen_random_uuid())",
+                "radar_video_config()", "radar_video_segundos_mes()"):
+        for papel, uid in (("authenticated", ADMIN), ("service_role", None)):
+            with como(papel, uid) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("select " + aux)
+
+
+def test_criar_confere_tudo_antes_de_qualquer_arquivo_sair(corretor, request):
+    db = corretor
+    pid, ana = reel(db)
+    with como("authenticated", LEITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR300"):
+        c.execute(CRIAR, (pid, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL))
+    erro = lambda codigo, **kw: pytest.raises(psycopg.errors.RaiseException, match=codigo)
+    # 1. a peça
+    imagem = nova_peca(db, dias=9, pessoas=[ana])
+    with erro("RADAR301: o corretor de vídeo é só para a peça em formato reel"):
+        criar(imagem, ana)
+    # 2. a fala: no roteiro, palavra por palavra e na ordem, com ao menos 10 palavras
+    for ruim in (FALA.replace("dia 20", "dia 25"), "O prazo do Simples vence no dia 20.", FALA.split(". ")[1] + " " + FALA.split(". ")[0]):
+        with erro("RADAR302"):
+            criar(pid, ana, fala=ruim)
+    # 4. as pessoas
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno", categoria="contador", crc="CRC-SC 054321/O-1")
+    with erro("RADAR304: quem fala tem de estar marcada"):
+        criar(pid, bruno)
+    db.execute("update radar_pessoas set termo_corretor_em = null where id = %s", (ana,))
+    with erro(r"RADAR304: uma pessoa da peça não pode aparecer no vídeo \(sem o termo novo, que cita o corretor de vídeo\)"):
+        criar(pid, ana)
+    db.execute("update radar_pessoas set termo_corretor_em = %s where id = %s", (hoje(db) + timedelta(days=1), ana))   # assinado amanhã
+    with erro("RADAR304"):
+        criar(pid, ana)
+    db.execute("update radar_pessoas set termo_corretor_em = '2020-01-01', menor = true where id = %s", (ana,))
+    with erro("RADAR304: .*menor de idade"):
+        criar(pid, ana)
+    db.execute("update radar_pessoas set menor = false, termo_revogado_em = %s where id = %s", (hoje(db), ana))
+    with erro("RADAR304: .*termo revogado no Instagram"):
+        criar(pid, ana)
+    db.execute("update radar_pessoas set termo_revogado_em = null where id = %s", (ana,))
+    # 5. a cartela: a identificação legal das Configurações; "contador(a)" e o CRC só na linha de quem fala, conforme o registro
+    for cartela, motivo in [([], "de 1 a 4 linhas"), (["Artecon Artes Contábeis ME · CRC-SC 012345/O-9"], "falta a linha de identificação"),
+                            ([IDENT, "Ana, contadora · CRC-SC 012345/O-9"], "só leva a identificação legal"),
+                            ([IDENT, "Fale com a especialista"], "especialista"), ([IDENT, "Linha solta"], "só leva a identificação legal"),
+                            ([IDENT] * 5, "de 1 a 4 linhas"), ([IDENT + "\n"], "de 1 a 4 linhas")]:
+        with erro("RADAR305: .*" + motivo):
+            criar(pid, ana, cartela=cartela)
+    db.execute("update radar_pauta_pecas set pessoas = %s::bigint[] where id = %s", ([ana, bruno], pid))
+    for cartela, motivo in [([IDENT], "falta a linha de quem fala"), ([IDENT, "Bruno, contador"], "registro dela no CRC"),
+                            ([IDENT, "Bruno, contador · CRC-SC 099999/O-1"], "registro dela no CRC")]:
+        with erro("RADAR305: .*" + motivo):
+            criar(pid, bruno, cartela=cartela)
+    db.execute("update radar_pessoas set categoria = 'tecnico' where id = %s", (bruno,))
+    with erro("RADAR305: quem fala é técnico"):
+        criar(pid, bruno, cartela=[IDENT, "Bruno, contador · CRC-SC 054321/O-1"])
+    db.execute("update radar_pessoas set categoria = 'contador' where id = %s", (bruno,))
+    # 6. os clipes, as declarações e o gancho
+    for partes in ([], [{"n": i, "tipo": "video/mp4", "bytes": 10} for i in range(1, 14)], [{"n": 1, "tipo": "video/x-matroska", "bytes": 10}],
+                   [{"n": 2, "tipo": "video/mp4", "bytes": 10}], [{"n": 1, "tipo": "video/mp4", "bytes": 0}],
+                   [{"n": 1, "tipo": "video/mp4", "bytes": 10, "nome": "IMG_0001.MOV"}], ["solto"],
+                   [{"n": 1, "tipo": "video/mp4", "bytes": 300 * 1024 * 1024}, {"n": 2, "tipo": "video/mp4", "bytes": 300 * 1024 * 1024}]):
+        with erro("RADAR306"):
+            criar(pid, ana, partes=partes)
+    with erro("RADAR307"):
+        criar(pid, ana, decl=DECL[:3])
+    with erro("RADAR307"):
+        criar(pid, ana, decl=DECL + ["outra"])
+    db.execute("update radar_pauta_pecas set chamada = '' where id = %s", (pid,))
+    with erro("RADAR308"):
+        criar(pid, ana, gancho=True)
+    db.execute("update radar_pauta_pecas set chamada = 'O prazo do Simples vence no dia 20' where id = %s", (pid,))
+    # a cota do mês (Configurações → Corretor de vídeo → limite_min_mes)
+    config(db, limite_min_mes=1)
+    outro, _ = reel(db, dias=8, pessoa=ana)
+    v0 = video_pronto(db, outro, ana)
+    db.execute("update radar_videos set segundos_audio = 60, transcrito_em = now() where id = %s", (v0,))
+    with erro("RADAR312"):
+        criar(pid, ana)
+    config(db, limite_min_mes=60)
+    # 3. o boletim pago (só sim ou não: o trecho não aparece)
+    carregar_fontes_novas(db, request)
+    frase = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega das declarações mensais"
+    db.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                  select id, 'https://boletim.exemplo/v', 'Boletim de mentira', %s, 'h-boletim-video' from radar_fontes where slug = 'itc-email'""",
+               (frase,))
+    com_boletim = ROTEIRO.replace("| Fale com a Artecon |", "| " + frase + " |")
+    db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (com_boletim, pid))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR303") as e:
+        criar(pid, ana)
+    assert "comitê" not in str(e.value)
+    db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (ROTEIRO, pid))
+    # deu certo: o envio novo deixa o anterior substituído (um vivo por peça)
+    v1 = criar(pid, bruno, cartela=[IDENT, "Bruno, contador · CRC-SC 054321/O-1"], gancho=True)
+    assert video(db, v1["id"], "situacao, gancho, cartela_linhas, partes, enviado_por::text") == (
+        "aguardando_envio", "O prazo do Simples vence no dia 20", [IDENT, "Bruno, contador · CRC-SC 054321/O-1"], PARTES, EDITOR)
+    v2 = criar(pid, ana, uid=ADMIN)
+    assert v2["versao"] == 2 and video(db, v1["id"], "situacao, encerrado_em is not null") == ("substituido", True)
+    # a peça aprovada, cancelada ou já publicada não recebe gravação
+    for sql, msg in (("situacao = 'cancelada'", "cancelada"), ("situacao = 'aprovada'", "aprovada"),
+                     ("situacao = 'em_producao', publicado_manual_em = current_date", "já saiu")):
+        mudar_por_fora(db, pid, sql)
+        with erro("RADAR301: .*" + msg):
+            criar(pid, ana)
+    mudar_por_fora(db, pid, "publicado_manual_em = null")
+
+
+def test_enviado_fila_pegar_com_trava_e_robo_ate_o_fim(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    vid = criar(pid, ana)["id"]
+    assert tela("select radar_video_para_envio(%s)", vid)["partes"] == PARTES
+    assert tela("select radar_video_para_envio(%s)", vid, uid=ADMIN)["peca"] == pid                 # o administrador também continua
+    assert pegar() is None                                                                           # esperando os arquivos: não vai ao robô
+    assert tela("select radar_video_enviado(%s)", vid) == {"id": vid, "situacao": "na_fila"}
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR309"):
+        tela("select radar_video_enviado(%s)", vid)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR309"):
+        tela("select radar_video_para_envio(%s)", vid)
+    p = pegar()
+    assert {k: p[k] for k in ("id", "tentativa", "modo", "partes", "fala_roteiro", "cartela_linhas", "gancho", "palavras_tentativa", "restante_s")} == {
+        "id": vid, "tentativa": 1, "modo": "completo", "partes": PARTES, "fala_roteiro": FALA, "cartela_linhas": [IDENT], "gancho": None,
+        "palavras_tentativa": None, "restante_s": 3600}
+    assert p["config"]["glossario"][:3] == ["eSocial", "DCTFWeb", "IBS"] and p["config"]["variantes"]["IBS"] == ["ips", "ibis"]
+    assert {k: p["config"][k] for k in ("pausa_max_s", "pausa_bloco_s", "lufs", "cartela_s", "cartela_extra", "duracao_max_s")} == {
+        "pausa_max_s": 1.0, "pausa_bloco_s": 0.8, "lufs": -14, "cartela_s": 3, "cartela_extra": "", "duracao_max_s": 45}
+    assert "Ana" not in json.dumps(p)                                                                # nenhum nome no pedido (sem a cartela de quem fala)
+    assert pegar() is None and video(db, vid, "situacao, tentativas, rodada") == ("processando", 1, 1)
+    # a rodada errada (o pedido mudou de mãos) nunca grava
+    for sql, args in (("select radar_video_em_curso(%s, %s)", (vid, 2)), ("select radar_video_parcial(%s, %s, '{}')", (vid, 2)),
+                      ("select radar_video_falhar(%s, %s, 'storage')", (vid, 9))):
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR316"):
+            robo(sql, *args)
+    assert robo("select radar_video_em_curso(%s, %s)", vid, 1) == {"id": vid, "tentativa": 1, "modo": "completo", "partes": 2,
+                                                                   "palavras_tentativa": None, "sha256": None}
+    # o áudio transcrito conta na cota do mês; o palavras.json desta rodada passa a valer
+    assert robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, 1, 31.5, True) == {"restante_s": 3568.5}
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR316: segundos"):
+        robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, 1, 301, True)
+    assert video(db, vid, "segundos_audio, palavras_tentativa, transcrito_em is not null") == (31.5, 1, True)
+    assert robo("select radar_video_parcial(%s, %s, %s)", vid, 1, json.dumps({"divergencias": [DIVERGENCIA]})) is True
+    assert video(db, vid, "relatorio") == {"divergencias": [DIVERGENCIA], "parcial": True}
+    # o banco decide de novo: a divergência que o administrador não marcou pede regravar, ainda que o robô diga "pronto"
+    rel = {**RELATORIO, "divergencias": [DIVERGENCIA]}
+    assert concluir(vid, 1, "pronto", rel) == {"situacao": "regravar"}
+    assert video(db, vid, "situacao, sha256, bytes, duracao_final, pego_em, antigos") == ("regravar", SHA_VIDEO, 4000, 38.4, None, False)
+    assert video(db, vid, "relatorio")["parcial"] is False
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR316"):                          # depois de concluído, não é mais dele
+        concluir(vid, 1)
+    # o administrador ouviu e marcou "a transcrição errou": monta de novo, sem transcrever (modo montagem, com a transcrição guardada)
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR300"):
+        c.execute("select radar_video_ajustar(%s, %s, null)", (vid, json.dumps({"transcricao_errou": [0]})))
+    assert tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"transcricao_errou": [0], "estilo": "compacta"}), uid=ADMIN) == {
+        "id": vid, "modo": "montagem"}
+    assert video(db, vid, "situacao, tentativas, rodada, fila_em is not null") == ("na_fila", 0, 1, True)
+    p = pegar()
+    assert (p["tentativa"], p["modo"], p["palavras_tentativa"], p["ajustes"]) == (2, "montagem", 1, {"transcricao_errou": [0], "estilo": "compacta"})
+    robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, 2, 0, False)                    # montagem: nada transcrito
+    assert video(db, vid, "segundos_audio, palavras_tentativa") == (31.5, 1)
+    assert concluir(vid, 2, "pronto", {**rel, "divergencias": [{**DIVERGENCIA, "transcricao_errou": True}]}, sha=SHA2) == {"situacao": "pronto"}
+    assert video(db, vid, "situacao, sha256, antigos") == ("pronto", SHA2, True)                     # o sha256 anterior fica para a limpeza
+    # o robô que mente ("transcricao_errou" sem o administrador marcar) não tira o regravar
+    db.execute("update radar_videos set ajustes = '{}', situacao = 'na_fila', fila_em = now() where id = %s", (vid,))
+    p = pegar()
+    assert concluir(vid, p["tentativa"], "pronto", {**rel, "divergencias": [{**DIVERGENCIA, "transcricao_errou": True}]}, sha=SHA2) == {"situacao": "regravar"}
+    for ruim in (dict(situacao="publicado"), dict(sha="X" * 64), dict(bytes_=400 * 1024 * 1024), dict(duracao=0)):
+        db.execute("update radar_videos set situacao = 'processando' where id = %s", (vid,))
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR316"):
+            concluir(vid, p["tentativa"], **ruim)
+
+
+def test_pegar_recupera_o_parado_respeita_3_tentativas_a_cota_e_a_trava(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    vids = [na_fila(db, reel(db, dias=5 + i, pessoa=ana)[0], ana) for i in range(4)]
+    db.execute("update radar_videos set fila_em = now() - make_interval(mins => (10 - n)::int) from (select id, row_number() over (order by criado_em) n "
+               "from radar_videos) o where o.id = radar_videos.id")
+    assert pegar()["id"] == vids[0]
+    # parado há mais de 20 minutos (o robô caiu): volta à fila, no fim dela — quem esperava antes sai primeiro
+    db.execute("update radar_videos set pego_em = now() - interval '21 minutes' where id = %s", (vids[0],))
+    assert pegar()["id"] == vids[1] and video(db, vids[0], "situacao, tentativas, pego_em") == ("na_fila", 1, None)
+    db.execute("update radar_videos set fila_em = now() - interval '1 hour' where id = %s", (vids[0],))
+    p = pegar()
+    assert (p["id"], p["tentativa"]) == (vids[0], 2) and video(db, vids[0], "tentativas, rodada") == (2, 2)
+    # na 3ª vez parado, vira erro "tempo_esgotado"
+    db.execute("update radar_videos set pego_em = now() - interval '21 minutes', tentativas = 3 where id = %s", (vids[0],))
+    assert pegar()["id"] == vids[2] and video(db, vids[0], "situacao, erro_codigo") == ("erro", "tempo_esgotado")
+    # falhar: o transitório volta à fila (até 3 tentativas); o resto vira erro, com o código fixo
+    assert robo("select radar_video_falhar(%s, %s, %s)", vids[1], 1, "storage") == {"situacao": "na_fila"}
+    assert video(db, vids[1], "situacao, erro_codigo, pego_em") == ("na_fila", "storage", None)
+    assert robo("select radar_video_falhar(%s, %s, %s)", vids[2], 1, "x'; drop table radar_videos; --") == {"situacao": "erro"}
+    assert video(db, vids[2], "erro_codigo") == "erro_interno"
+    db.execute("update radar_videos set tentativas = 3, situacao = 'processando', rodada = 5 where id = %s", (vids[1],))
+    assert robo("select radar_video_falhar(%s, %s, %s)", vids[1], 5, "azure_fora") == {"situacao": "erro"}
+    assert video(db, vids[1], "erro_codigo") == "azure_fora"
+    for codigo in ("transcricao_ocupada", "azure_cota", "sem_audio"):                          # a Azure ocupada por 10 min: erro (tentar de novo)
+        db.execute("update radar_videos set tentativas = 1, situacao = 'processando', rodada = 6 where id = %s", (vids[1],))
+        assert robo("select radar_video_falhar(%s, %s, %s)", vids[1], 6, codigo) == {"situacao": "erro"}, codigo
+    # a cota do mês: sem a transcrição guardada, vira erro "cota_radar"; com ela (montagem), segue
+    config(db, limite_min_mes=1)
+    db.execute("update radar_videos set segundos_audio = 60, transcrito_em = now() where id = %s", (vids[0],))
+    assert pegar() is None and video(db, vids[3], "situacao, erro_codigo") == ("erro", "cota_radar")
+    db.execute("update radar_videos set situacao = 'na_fila', modo = 'montagem', palavras_tentativa = 1, erro_codigo = null where id = %s", (vids[3],))
+    p = pegar()
+    assert (p["id"], p["restante_s"]) == (vids[3], 0)
+    # dois robôs ao mesmo tempo nunca pegam o mesmo pedido
+    for v in vids[:2]:
+        db.execute("update radar_videos set situacao = 'na_fila', tentativas = 0 where id = %s", (v,))
+    config(db, limite_min_mes=60)
+    with conectar(autocommit=False) as c1, conectar(autocommit=False) as c2:
+        for c in (c1, c2):
+            c.execute("set lock_timeout = '3s'")                                              # sem o skip locked, o 2º esperaria o 1º
+            c.execute("set role service_role")
+        a = c1.execute("select radar_video_pegar()").fetchone()[0]
+        b = c2.execute("select radar_video_pegar()").fetchone()[0]
+        assert {a["id"], b["id"]} == set(vids[:2])
+        c1.rollback()
+        c2.rollback()
+
+
+def test_pendencia_do_reel_e_aprovacao_amarrada_ao_sha256(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    assert conferir(pid) == ["Reel: envie a gravação (Corretor de vídeo)"]
+    vid = criar(pid, ana)["id"]
+    passos = [("aguardando_envio", "Reel: termine de enviar a gravação (Corretor de vídeo)"), ("na_fila", "Reel: o corretor ainda está trabalhando"),
+              ("processando", "Reel: o corretor ainda está trabalhando")]
+    for situacao, msg in passos:
+        db.execute("update radar_videos set situacao = %s where id = %s", (situacao, vid))
+        assert conferir(pid) == [msg], situacao
+    db.execute("update radar_videos set situacao = 'erro', erro_codigo = 'sem_audio' where id = %s", (vid,))
+    assert conferir(pid) == ["Reel: o corretor parou com erro (sem_audio)"]
+    db.execute("update radar_videos set situacao = 'regravar', sha256 = %s, bytes = 4000, duracao_final = 38 where id = %s", (SHA_VIDEO, vid))
+    assert conferir(pid) == ["Reel: o vídeo precisa ser regravado (veja o relatório)"]
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR165"):
+        marcar_pronta(db, pid)
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    assert conferir(pid) == []
+    for sql, msg in [("update radar_videos set duracao_final = 91 where id = %(v)s", "Reel: o vídeo passou de 90 s"),
+                     ("update radar_videos set arquivos_apagados = '{corrigido}' where id = %(v)s", "Reel: o vídeo corrigido foi apagado (prazo de guarda): envie a gravação de novo"),
+                     ("update radar_videos set cartela_linhas = '{\"Só uma linha\"}' where id = %(v)s", "Reel: a cartela não confere com as Configurações ou com Pessoas e termos: refaça a cartela"),
+                     ("update radar_pessoas set termo_corretor_em = null where id = %(a)s", "Reel: uma pessoa da peça não pode aparecer no vídeo (sem o termo novo, que cita o corretor de vídeo): confira em Pauta → Pessoas e termos"),
+                     ("update radar_videos set fala_pessoa = %(a)s + 1000 where id = %(v)s", "Reel: quem fala não está mais marcada na peça"),
+                     ("update radar_pauta_pecas set roteiro = roteiro || ' Novo trecho.' where id = %(p)s", "Reel: o roteiro mudou depois da gravação: use “Conferir com o roteiro novo” ou grave de novo")]:
+        antes = db.execute("select row_to_json(v) from radar_videos v where id = %s", (vid,)).fetchone()[0]
+        roteiro = db.execute("select roteiro from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0]
+        db.execute(sql, {"v": vid, "a": ana, "p": pid})
+        assert conferir(pid) == [msg], msg
+        db.execute("""update radar_videos set duracao_final = %s, arquivos_apagados = %s, cartela_linhas = %s, fala_pessoa = %s where id = %s""",
+                   (antes["duracao_final"], antes["arquivos_apagados"], antes["cartela_linhas"], antes["fala_pessoa"], vid))
+        db.execute("update radar_pessoas set termo_corretor_em = '2020-01-01' where id = %s", (ana,))
+        db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (roteiro, pid))
+    assert conferir(pid) == []
+    marcar_pronta(db, pid)
+    # a aprovação do reel: o vídeo pronto pelo hash, a caixa "video" e, se a pessoa pediu no termo, a caixa "viu"
+    for kw, codigo in [(dict(), "RADAR313"), (dict(video="c" * 64), "RADAR313"), (dict(video=SHA_VIDEO), "RADAR314: marque “Conferi o vídeo")]:
+        with pytest.raises(psycopg.errors.RaiseException, match=codigo):
+            aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas",), **kw)
+    db.execute("update radar_pessoas set quer_ver_peca = true where id = %s", (ana,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR314: uma pessoa da peça pediu"):
+        aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR164"):                       # o reel continua saindo à mão
+        aprovar_peca(db, pid, artes=[], conferencias=("pessoas", "video", "viu"), video=SHA_VIDEO)
+    aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video", "viu"), video=SHA_VIDEO)
+    assert db.execute("select situacao, video_id::text, video_sha256, aprovado_conferencias from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (
+        "aprovada", vid, SHA_VIDEO, ["pessoas", "video", "viu"])
+    # a amarra só muda pelas funções; nada muda o vídeo da peça aprovada
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_pauta_pecas set video_sha256 = %s, video_id = null, observacao = 'x' where id = %s", ("c" * 64, pid))
+        nova = c.execute("insert into radar_pauta_pecas (data, tipo, formato, video_id, video_sha256) values (%s, 'reel', 'reel', %s, %s) returning id",
+                         (hoje(db) + timedelta(days=40), vid, SHA_VIDEO)).fetchone()[0]
+    assert db.execute("select video_id::text, video_sha256 from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (vid, SHA_VIDEO)
+    assert db.execute("select video_id, video_sha256 from radar_pauta_pecas where id = %s", (nova,)).fetchone() == (None, None)
+    for sql, args, uid in [("select radar_video_ajustar(%s, '{}', null)", (vid,), ADMIN), ("select radar_video_descartar(%s)", (vid,), EDITOR),
+                           ("select radar_video_reconferir(%s, %s)", (vid, FALA), EDITOR)]:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR301: a peça está aprovada"):
+            tela(sql, *args, uid=uid)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR301: a peça está aprovada"):
+        criar(pid, ana)
+    # o registro manual do reel exige o vídeo aprovado (aprovação antiga, sem o vídeo)
+    mudar_por_fora(db, pid, "video_sha256 = null")
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR317"):
+        c.execute("select radar_pauta_registrar_manual(%s, 'https://www.instagram.com/reel/ABC/', null, %s)", (pid, hoje(db)))
+    mudar_por_fora(db, pid, f"video_sha256 = '{SHA_VIDEO}'")
+    # desfazer a aprovação solta o vídeo
+    with como("authenticated", EDITOR) as c:
+        c.execute("select radar_pauta_desaprovar(%s, true)", (pid,))
+    assert db.execute("select situacao, video_id, video_sha256 from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("pronta", None, None)
+
+
+def test_previa_e_baixar_registram_quem_e_baixar_so_o_aprovado(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    vid = criar(pid, ana)["id"]
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR309"):
+        tela("select radar_video_para_previa(%s)", vid)
+    with como("authenticated", LEITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR300"):
+        c.execute("select radar_video_para_previa(%s)", (vid,))
+    db.execute("update radar_videos set situacao = 'pronto', sha256 = %s, bytes = 4000, duracao_final = 38 where id = %s", (SHA_VIDEO, vid))
+    assert tela("select radar_video_para_previa(%s)", vid) == {
+        "video": f"corrigido/{vid}/{SHA_VIDEO}.mp4", "sha256": SHA_VIDEO, "quadros": [f"quadros/{vid}/{SHA_VIDEO}/q{k}.jpg" for k in range(1, 5)]}
+    assert tela("select radar_video_para_baixar(%s, %s)", pid, lido_peca(db, pid)) == {
+        "motivo": "Só a peça aprovada para publicar à mão pode ser copiada ou baixada."}
+    marcar_pronta(db, pid)
+    aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)
+    assert tela("select radar_video_para_baixar(%s, %s)", pid, lido_peca(db, pid)) == {
+        "ok": True, "caminho": f"corrigido/{vid}/{SHA_VIDEO}.mp4", "data": str(hoje(db) + timedelta(days=5))}
+    assert tela("select radar_video_para_baixar(%s, %s)", pid, "2020-01-01T00:00:00Z")["motivo"].startswith("A peça mudou")
+    db.execute("update radar_pessoas set menor = true where id = %s", (ana,))
+    assert "menor de idade" in tela("select radar_video_para_baixar(%s, %s)", pid, lido_peca(db, pid))["motivo"]
+    db.execute("update radar_pessoas set menor = false where id = %s", (ana,))
+    db.execute("update radar_videos set sha256 = %s where id = %s", ("d" * 64, vid))           # o vídeo mudou por fora: não é o aprovado
+    assert tela("select radar_video_para_baixar(%s, %s)", pid, lido_peca(db, pid)) == {
+        "motivo": "O vídeo aprovado não é mais o vídeo da peça: desfaça a aprovação e confira."}
+    db.execute("update radar_videos set sha256 = %s, arquivos_apagados = '{corrigido}' where id = %s", (SHA_VIDEO, vid))
+    assert "prazo de guarda" in tela("select radar_video_para_baixar(%s, %s)", pid, lido_peca(db, pid))["motivo"]
+    acessos = db.execute("select acao, usuario::text from radar_video_acessos where video_id = %s order by id", (vid,)).fetchall()
+    assert acessos == [("previa", EDITOR), ("baixar", EDITOR)]
+    with como("authenticated", EDITOR) as c:                                              # quem viu ou baixou: só o administrador lê
+        assert c.execute("select count(*) from radar_video_acessos").fetchone()[0] == 0
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select count(*) from radar_video_acessos").fetchone()[0] == 2
+
+
+def test_ajustes_reconferir_de_novo_descartar_e_apaguei(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    vid, _ = ate_pronto(db, pid, ana)
+    ajustar = lambda a, cartela=None: tela("select radar_video_ajustar(%s, %s, %s::text[])", vid, json.dumps(a), cartela, uid=ADMIN)
+    for ruim in [[], {"outro": 1}, {"manter": "1"}, {"manter": [1.5]}, {"manter": list(range(201))}, {"transcricao_errou": [-1]},
+                 {"legenda": []}, {"legenda": {"1:2:3": "texto"}}, {"legenda": {"3:2": "com {\\b1} comando"}}, {"legenda": {"3": ""}},
+                 {"legenda": {"3": "x" * 121}}, {"legenda": {str(i): "a" for i in range(201)}}, {"estilo": "grande"}, {"sem_gancho": "sim"}]:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR310"):
+            ajustar(ruim)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR305"):
+        ajustar({}, ["Só uma linha"])
+    bom = {"manter": [3], "transcricao_errou": [0], "legenda": {"12:4": "O prazo vence hoje", "7": "eSocial"}, "estilo": "compacta", "sem_gancho": True}
+    assert ajustar(bom, [IDENT]) == {"id": vid, "modo": "montagem"}
+    assert video(db, vid, "ajustes, situacao") == (bom, "na_fila")
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR309"):                     # na fila: não ajusta de novo
+        ajustar({})
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR309: só o vídeo com erro"):
+        tela("select radar_video_de_novo(%s)", vid)
+    db.execute("update radar_videos set situacao = 'erro', erro_codigo = 'transcricao_ocupada', tentativas = 3 where id = %s", (vid,))
+    assert tela("select radar_video_de_novo(%s)", vid) == {"id": vid, "modo": "montagem"}        # "Tentar de novo" (editor ou administrador)
+    assert video(db, vid, "situacao, tentativas, erro_codigo") == ("na_fila", 0, None)
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    # o roteiro mudou: a fala nova tem de estar no roteiro novo; os ajustes por número saem, o estilo e o gancho ficam
+    novo = ROTEIRO.replace("nem juros.", "nem juros, e fale com a gente.")
+    db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (novo, pid))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR302"):
+        tela("select radar_video_reconferir(%s, %s)", vid, FALA + " Fale com o fiscal.")
+    assert tela("select radar_video_reconferir(%s, %s)", vid, FALA[:-1] + ", e fale com a gente.") == {"id": vid, "modo": "montagem"}
+    assert video(db, vid, "ajustes, roteiro_hash = radar_hash_texto(%s)" % "'%s'" % novo.replace("'", "''")) == (
+        {"estilo": "compacta", "sem_gancho": True}, True)
+    # sem os clipes (prazo de guarda), nada volta ao corretor
+    db.execute("update radar_videos set situacao = 'pronto', arquivos_apagados = '{bruto,trabalho}' where id = %s", (vid,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR311"):
+        ajustar({})
+    # sem a transcrição guardada, o ajuste é completo (transcreve de novo)
+    db.execute("update radar_videos set arquivos_apagados = '{}', palavras_tentativa = null where id = %s", (vid,))
+    assert ajustar({}) == {"id": vid, "modo": "completo"}
+    assert tela("select radar_video_apaguei(%s)", vid) is not None
+    primeiro = video(db, vid, "apagado_aparelho_em")
+    tela("select radar_video_apaguei(%s)", vid, uid=ADMIN)
+    assert video(db, vid, "apagado_aparelho_em, apagado_aparelho_por::text") == (primeiro, EDITOR)   # fica o primeiro registro
+    assert tela("select radar_video_descartar(%s)", vid) is True
+    assert video(db, vid, "situacao, encerrado_em is not null") == ("descartado", True)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR309"):
+        tela("select radar_video_descartar(%s)", vid)
+
+
+def test_concluir_com_frase_do_boletim_pago_pede_regravar_sem_mostrar_o_trecho(corretor, request):
+    db = corretor
+    carregar_fontes_novas(db, request)
+    frase = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega das declarações mensais"
+    db.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                  select id, 'https://boletim.exemplo/c', 'Boletim de mentira', %s, 'h-boletim-concluir' from radar_fontes where slug = 'itc-email'""",
+               (frase,))
+    pid, ana = reel(db)
+    vid, t = ate_pronto(db, pid, ana, relatorio={**RELATORIO, "texto_final": FALA + " " + frase, "avisos": ["relatorio_resumido"]})
+    assert video(db, vid, "situacao") == "regravar"
+    assert video(db, vid, "relatorio")["avisos"] == ["relatorio_resumido", "boletim_pago"]
+    probs = conferir(pid)
+    assert "Reel: o vídeo precisa ser regravado (veja o relatório)" in probs
+    assert "Há frase igual à do boletim pago (ITC): reescreva com palavras próprias" in probs and "comitê" not in json.dumps(probs, ensure_ascii=False)
+
+
+def test_problemas_do_reel_conferem_a_fala_transcrita_e_a_cartela(corretor):
+    """A fala que vai ao ar (o texto final da legenda gravada) e as linhas da cartela passam pelas travas de nome, número e contador."""
+    db = corretor
+    nova_pessoa(db, "Carla Modelo", "Carla")                                                  # cadastrada e não marcada
+    pid, ana = reel(db)
+    ate_pronto(db, pid, ana, relatorio={**RELATORIO, "texto_final": FALA + " Fale com a Carla, são 37 anos de casa."})
+    assert conferir(pid) == ["Números que não estão nas informações conferidas: 37. Acrescente cada um em Informações conferidas, com a fonte (ou tire do texto)",
+                             "“Carla” aparece no texto e não está marcada em Quem aparece"]
+    # o texto extra da cartela (Configurações) também vai ao ar
+    config(db, cartela_extra="Desde 1984 · artecon.cnt.br")
+    assert any("1984" in p for p in conferir(pid))
+
+
+def test_trilha_do_video_sem_fala_cartela_relatorio_nem_ajustes(corretor):
+    db = corretor
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno", categoria="contador", crc="CRC-SC 054321/O-1")
+    pid, _ = reel(db, pessoa=bruno)
+    vid = criar(pid, bruno, cartela=[IDENT, "Bruno, contador · CRC-SC 054321/O-1"])["id"]
+    tela("select radar_video_enviado(%s)", vid)
+    p = pegar()
+    robo("select radar_video_parcial(%s, %s, %s)", vid, p["tentativa"], json.dumps({"texto_final": "Fala transcrita do Bruno"}))
+    concluir(vid, p["tentativa"], relatorio={**RELATORIO, "texto_final": "Fala transcrita do Bruno"})
+    tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"legenda": {"0": "Fala do Bruno"}}), uid=ADMIN)
+    trilha = db.execute("select acao, antes, depois from radar_auditoria where tabela = 'radar_videos' order by id").fetchall()
+    assert [a for a, *_ in trilha][:1] == ["INSERT"] and len(trilha) >= 4
+    texto = json.dumps([x for _, a, d in trilha for x in (a, d)], ensure_ascii=False)
+    for proibido in ("Bruno", "054321", "prazo do Simples", "Fala transcrita", "relatorio", "fala_roteiro", "cartela_linhas", "ajustes"):
+        assert proibido not in texto, proibido
+    assert [d["situacao"] for _, _, d in trilha] == ["aguardando_envio", "na_fila", "processando", "pronto", "na_fila"]
+    # pegar de novo um parado (só as marcas do robô) não entra na trilha
+    antes = len(trilha)
+    db.execute("update radar_videos set fila_em = now() - interval '1 hour' where id = %s", (vid,))
+    assert db.execute("select count(*) from radar_auditoria where tabela = 'radar_videos'").fetchone()[0] == antes
+
+
+def test_limpeza_nos_prazos_de_guarda(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno")
+    # 1. substituído: os arquivos agora; os textos depois de retencao_dias
+    p1, _ = reel(db, dias=5, pessoa=ana)
+    velho, _ = ate_pronto(db, p1, ana)
+    novo = criar(p1, ana)["id"]
+    # 2. publicado à mão: os clipes agora; o vídeo e os textos, retencao_publicado_dias depois
+    p2, _ = reel(db, dias=6, pessoa=ana)
+    pub, _ = ate_pronto(db, p2, ana)
+    mudar_por_fora(db, p2, "publicado_manual_em = current_date - 2")
+    # 3. pessoa da peça com o termo revogado: tudo, já
+    p3, _ = reel(db, dias=7, pessoa=bruno)
+    rev, _ = ate_pronto(db, p3, bruno)
+    db.execute("update radar_pessoas set termo_revogado_em = %s where id = %s", (hoje(db), bruno))
+    # 4. envio abandonado (esperando os arquivos há mais de 1 dia): vira descartado
+    p4, _ = reel(db, dias=8, pessoa=ana)
+    aband = criar(p4, ana)["id"]
+    db.execute("update radar_videos set criado_em = now() - interval '2 days' where id = %s", (aband,))
+    # 5. pronto com versões antigas do corrigido (ajuste): só as antigas
+    p5, _ = reel(db, dias=9, pessoa=ana)
+    atual, _ = ate_pronto(db, p5, ana)
+    db.execute("update radar_videos set antigos = true where id = %s", (atual,))
+    # 6. enviado há mais de retencao_dias e não publicado: os clipes e o corrigido
+    p6, _ = reel(db, dias=10, pessoa=ana)
+    antigo, _ = ate_pronto(db, p6, ana)
+    db.execute("update radar_videos set enviado_em = now() - interval '31 days' where id = %s", (antigo,))
+    r = robo("select radar_video_limpeza()")
+    itens = {i["id"]: (sorted(i["apagar"]), i["manter"]) for i in r["itens"]}
+    assert itens == {velho: (["bruto", "corrigido", "trabalho"], None), pub: (["bruto", "trabalho"], None),
+                     rev: (["bruto", "corrigido", "trabalho"], None), aband: (["bruto", "corrigido", "trabalho"], None),
+                     atual: (["antigos"], SHA_VIDEO), antigo: (["bruto", "corrigido", "trabalho"], None)}
+    assert novo not in itens and r["textos"] == 1                                                 # só os textos da peça revogada saem já
+    assert video(db, rev, "fala_roteiro, relatorio, ajustes, cartela_linhas, arquivos_apagados") == ("", {}, {}, [], ["textos"])
+    for vid, (grupos, _) in itens.items():
+        assert robo("select radar_video_limpo(%s, %s::text[])", vid, grupos) is True
+    assert video(db, aband, "situacao") == "descartado" and video(db, atual, "antigos, arquivos_apagados") == (False, [])
+    assert video(db, pub, "arquivos_apagados") == ["bruto", "trabalho"]
+    assert robo("select radar_video_limpeza()") == {"itens": [], "textos": 0}                       # nada de novo
+    # os prazos passam: os textos do substituído (retencao_dias) e o vídeo e os textos do publicado (retencao_publicado_dias)
+    db.execute("update radar_videos set encerrado_em = now() - interval '31 days' where id = %s", (velho,))
+    config(db, retencao_publicado_dias=1)
+    r = robo("select radar_video_limpeza()")
+    assert {i["id"]: i["apagar"] for i in r["itens"]} == {pub: ["corrigido"]} and r["textos"] == 2
+    assert video(db, velho, "fala_roteiro, arquivos_apagados") == ("", ["bruto", "corrigido", "textos", "trabalho"])
+
+
+def test_pecas_publicadas_da_pessoa_para_a_revogacao(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    outra, _ = reel(db, dias=6, pessoa=ana)
+    ate_pronto(db, pid, ana)
+    mudar_por_fora(db, pid, "publicado_manual_em = current_date, link_instagram = 'https://www.instagram.com/reel/ABC123/'")
+    assert tela("select json_agg(x) from radar_pauta_pecas_da_pessoa(%s) x", ana, uid=ADMIN) == [
+        {"peca": pid, "data": str(hoje(db) + timedelta(days=5)), "link_instagram": "https://www.instagram.com/reel/ABC123/", "link_facebook": None,
+         "video_guardado": True}]
+    assert outra and tela("select count(*) from radar_pauta_pecas_da_pessoa(%s)", nova_pessoa(db, "Bruno Exemplo", "Bruno"), uid=ADMIN) == 0
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR300"):
+        c.execute("select * from radar_pauta_pecas_da_pessoa(%s)", (ana,))
+
+
+def test_conferencia_das_chaves_do_robo_e_da_agenda_pelo_vault(db):
+    with como("service_role") as c:
+        assert c.execute("select radar_video_conferir_robo(%s)", ("a" * 64,)).fetchone()[0] is False      # sem Vault: nunca confere
+    tinha = db.execute("select count(*) from pg_namespace where nspname = 'vault'").fetchone()[0] == 1
+    if not tinha:
+        db.execute(VAULT_SIMULADO)
+    try:
+        db.execute("insert into vault.secrets (name, secret) values ('radar_video_robo', %s), ('radar_video_agenda', %s), ('radar_redes_agenda', %s)",
+                   ("r" * 64, "g" * 64, "f" * 64))
+        with como("service_role") as c:
+            robo_ = [c.execute("select radar_video_conferir_robo(%s)", (k,)).fetchone()[0] for k in ("r" * 64, "g" * 64, "f" * 64, "r" * 31, None)]
+            agenda = [c.execute("select radar_video_conferir_agenda(%s)", (k,)).fetchone()[0] for k in ("g" * 64, "r" * 64, "f" * 64)]
+        assert robo_ == [True, False, False, False, False] and agenda == [True, False, False]   # cada chave só vale para o seu lugar
+        for papel, uid in (("authenticated", ADMIN), ("anon", None)):
+            with como(papel, uid) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("select radar_video_conferir_robo('x')")
+    finally:
+        if tinha:
+            db.execute("delete from vault.secrets where name in ('radar_video_robo', 'radar_video_agenda', 'radar_redes_agenda')")
+        else:
+            db.execute("drop schema vault cascade")
+
+
+def test_funcoes_do_video_sem_current_date_com_caminho_e_configuracao_inicial(db):
+    funcoes = db.execute("""select p.proname, p.prosrc, p.proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                            where n.nspname = 'public' and (p.proname like 'radar\\_video\\_%' or p.proname = 'radar_pauta_pecas_da_pessoa')""").fetchall()
+    assert len(funcoes) == 36
+    assert [n for n, src, _ in funcoes if "current_date" in src.lower()] == []                    # "hoje" é o de Brasília
+    assert [n for n, _, cfg in funcoes if not cfg] == []
+    cfg = db.execute("select valor from radar_config where chave = 'corretor_video'").fetchone()[0]
+    assert cfg["limite_min_mes"] == 60 and cfg["retencao_dias"] == 30 and cfg["cartela_extra"] == "" and len(cfg["glossario"]) == 15
+
+
+# ------------------------------------------------------------------ sql/radar-video-agenda.sql e as reversões
+AGENDA_VIDEO = RAIZ / "sql" / "radar-video-agenda.sql"
+AGENDA_VIDEO_REVERSAO = RAIZ / "sql" / "radar-video-agenda-reversao.sql"
+URL_VIDEO = "https://jhxlsvzvqvufyhkjnmeq.supabase.co/functions/v1/radar-video"
+
+
+@pytest.fixture(scope="module")
+def banco_video_agenda():
+    novo_banco("radar_video_agenda", com_setup=True, simulados=True)
+    yield "radar_video_agenda"
+    apagar_banco("radar_video_agenda")
+
+
+def test_agenda_do_video_cria_as_chaves_a_reserva_so_com_fila_e_a_limpeza(banco_video_agenda, tmp_path):
+    banco = banco_video_agenda
+    r = psql(sem_extensoes(AGENDA_VIDEO.read_text(), tmp_path, "video.sql"), banco)
+    assert r.returncode == 0, r.stderr
+    with conectar(banco) as c:
+        chaves = dict(c.execute("select name, decrypted_secret from vault.decrypted_secrets").fetchall())
+        jobs = {n: (s, cmd) for n, s, cmd in c.execute("select jobname, schedule, command from cron.job").fetchall()}
+    assert set(chaves) == {"radar_video_robo", "radar_video_agenda"} and all(re.fullmatch(r"[0-9a-f]{64}", v) for v in chaves.values())
+    assert chaves["radar_video_robo"] != chaves["radar_video_agenda"]
+    assert {n: s for n, (s, _) in jobs.items()} == {"radar-video-reserva": "*/10 * * * *", "radar-video-limpeza": "37 6 * * *"}
+    for _, cmd in jobs.values():
+        assert not any(v in cmd for v in chaves.values())                                         # as chaves são lidas do Vault na hora
+        for trecho in (URL_VIDEO, "Bearer " + chave_anon_do_config(), "'x-radar-agenda'", "radar_video_agenda", "timeout_milliseconds := 150000"):
+            assert trecho in cmd, trecho
+    assert "public.radar_video_ha_fila(3)" in jobs["radar-video-reserva"][1] and "'acionar'" in jobs["radar-video-reserva"][1]
+    assert "'limpar'" in jobs["radar-video-limpeza"][1] and "cron.job_run_details" in jobs["radar-video-limpeza"][1]
+    with conectar(banco) as c:
+        c.execute("truncate net.pedidos")
+        c.execute(jobs["radar-video-reserva"][1])
+        assert c.execute("select count(*) from net.pedidos").fetchone()[0] == 0                   # sem fila: nenhum pedido
+        c.execute("select set_config('radar.pauta', '1', false)")
+        pid = c.execute("insert into radar_pauta_pecas (data, tipo, formato, roteiro) values (radar_pauta_hoje() + 3, 'reel', 'reel', 'x') returning id").fetchone()[0]
+        vid = c.execute("""insert into radar_videos (peca_id, situacao, partes, fala_pessoa, fala_roteiro, roteiro_hash, cartela_linhas, declaracoes, fila_em)
+                           values (%s, 'na_fila', '[{"n":1,"tipo":"video/mp4","bytes":1}]', 1, 'fala de mentira com vinte letras', 'h', '{x}',
+                                   '{so_marcadas,sem_fundo,so_voz,fala_confere}', now()) returning id""", (pid,)).fetchone()[0]
+        c.execute(jobs["radar-video-reserva"][1])
+        assert c.execute("select count(*) from net.pedidos").fetchone()[0] == 0                   # na fila há menos de 3 minutos: a tela já acionou
+        c.execute("update radar_videos set fila_em = now() - interval '4 minutes' where id = %s", (vid,))
+        c.execute(jobs["radar-video-reserva"][1])
+        c.execute(jobs["radar-video-limpeza"][1])
+        pedidos = [tuple(p) for p in c.execute("select url, body, headers from net.pedidos order by id").fetchall()]
+    cab = {"Content-Type": "application/json", "Authorization": "Bearer " + chave_anon_do_config(), "x-radar-agenda": chaves["radar_video_agenda"]}
+    assert pedidos == [(URL_VIDEO, {"acao": "acionar"}, cab), (URL_VIDEO, {"acao": "limpar"}, cab)]
+    # rodar de novo não duplica nem troca as chaves; a reversão tira só os dois agendamentos (as chaves ficam)
+    assert psql(sem_extensoes(AGENDA_VIDEO.read_text(), tmp_path, "video2.sql"), banco).returncode == 0
+    with conectar(banco) as c:
+        assert dict(c.execute("select name, decrypted_secret from vault.decrypted_secrets").fetchall()) == chaves
+        c.execute("select cron.schedule('radar-redes-agenda', '*/5 * * * *', 'select 1')")
+    for _ in range(2):
+        r = psql(AGENDA_VIDEO_REVERSAO, banco)
+        assert r.returncode == 0 and "Agenda do corretor de vídeo retirada." in r.stderr, r.stderr
+    with conectar(banco) as c:
+        assert [n for (n,) in c.execute("select jobname from cron.job").fetchall()] == ["radar-redes-agenda"]
+        assert c.execute("select count(*) from vault.secrets").fetchone()[0] == 2
+
+
+def test_agenda_do_video_recusa_chave_que_nao_e_a_anon_e_pede_o_setup(banco_video_agenda, tmp_path):
+    texto, anon = AGENDA_VIDEO.read_text(), chave_anon_do_config()
+    assert re.search(r"v_anon constant text := '([^']+)';", texto).group(1) == anon
+    assert re.findall(r"eyJ[\w-]+\.[\w-]+\.[\w-]+", texto) == [anon] and "service_role" not in texto and not re.search(r"sb_secret_\w", texto)
+    for i, ruim in enumerate(["sb_secret_testeRadar0123456789abcdef", "chave-qualquer"]):
+        r = psql(sem_extensoes(texto.replace(anon, ruim), tmp_path, f"ruim{i}.sql"), banco_video_agenda)
+        assert r.returncode != 0 and "não é a chave anon (pública). Nada foi agendado." in r.stderr and ruim not in r.stderr
+    novo_banco("radar_video_sem", com_setup=False, simulados=True)
+    try:
+        r = psql(sem_extensoes(texto, tmp_path, "sem.sql"), "radar_video_sem")
+        assert r.returncode != 0 and "Rode antes o radar-setup-v0.22.0.sql" in r.stderr
+        with conectar("radar_video_sem") as c:
+            assert c.execute("select (select count(*) from vault.secrets), (select count(*) from cron.job)").fetchone() == (0, 0)
+    finally:
+        apagar_banco("radar_video_sem")
+
+
+def test_reversao_do_setup_tira_os_videos_e_a_agenda_do_corretor():
+    sql = REVERSAO.read_text()
+    for objeto in ("radar_videos", "radar_video_acessos", "radar-video-%", "radar_video_pegar()", "Storage → radar-videos"):
+        assert objeto in sql, objeto
+    with conectar("postgres") as c:
+        c.execute("drop database if exists radar_rev22 with (force)")
+        c.execute("create database radar_rev22")
+    try:
+        assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_rev22").returncode == 0
+        assert psql(SETUP, "radar_rev22").returncode == 0
+        with conectar("radar_rev22") as c:
+            c.execute(CRON_SIMULADO)
+            c.execute(NET_SIMULADO)
+            for nome in ("radar-video-reserva", "radar-video-limpeza", "copia-do-projeto"):
+                c.execute("select cron.schedule(%s, '*/10 * * * *', 'select 1')", (nome,))
+        r = psql(REVERSAO, "radar_rev22")
+        assert r.returncode == 0, r.stderr
+        with conectar("radar_rev22") as c:
+            assert [n for (n,) in c.execute("select jobname from cron.job").fetchall()] == ["copia-do-projeto"]
+            assert c.execute("select to_regclass('public.radar_videos'), to_regclass('public.radar_video_acessos')").fetchone() == (None, None)
+            assert c.execute("""select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                                where n.nspname = 'public' and p.proname like 'radar\\_%'""").fetchone()[0] == 0
+        assert psql(REVERSAO, "radar_rev22").returncode == 0                                           # roda de novo
+    finally:
+        with conectar("postgres") as c:
+            c.execute("drop database if exists radar_rev22 with (force)")

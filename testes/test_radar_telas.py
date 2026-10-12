@@ -28,6 +28,10 @@ sync_api = pytest.importorskip("playwright.sync_api")
 PORTA = 3997
 BASE = f"http://127.0.0.1:{PORTA}"
 PORTA_IA, PORTA_GATEWAY, PORTA_CORE = 3996, 3995, 3994
+# v0.22.0: a função radar-video de verdade (Deno) e o armazenamento de mentira (com o envio retomável, TUS), atrás deste servidor: a
+# tela, a função e o armazenamento falam pelo mesmo endereço, como no Supabase (só quando o teste pede a fixture corretor_tela)
+PORTA_VIDEO, PORTA_PONTE_VIDEO = 3993, 3992
+CORRETOR = {"porta": None, "ponte": None}
 # IA Central de verdade (ia-gateway no Deno + banco "core" numa réplica do estado de produção); só a Anthropic,
 # a OpenAI e o hub de e-mail são imitados: cada teste define o que "respondem" e o que foi pedido fica guardado.
 OPENAI = {"respostas": {}, "status": 200, "pedidos": [], "fora_do_formato": False, "instalada": True, "emails": [], "erro": None}
@@ -82,7 +86,8 @@ class Servidor(BaseHTTPRequestHandler):
         for k, v in (extras or {}).items():
             self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(corpo)
+        if self.command != "HEAD":
+            self.wfile.write(corpo)
 
     def _sessao(self, uid, email):
         return json.dumps({"access_token": jwt("authenticated", uid, int(time.time()) + 3600), "token_type": "bearer",
@@ -102,6 +107,19 @@ class Servidor(BaseHTTPRequestHandler):
             return self._responder(200, arquivo.read_bytes(), "text/html; charset=utf-8")
         if u.path == "/radar-pauta.js":                         # v0.21.0: a aba Pauta, carregada antes do script principal
             return self._responder(200, (RAIZ / "radar-pauta.js").read_bytes(), "application/javascript; charset=utf-8")
+        if u.path == "/radar-video.js":                         # v0.22.0: o corretor de vídeo do reel, depois do radar-pauta.js
+            return self._responder(200, (RAIZ / "radar-video.js").read_bytes(), "application/javascript; charset=utf-8")
+        if u.path == "/functions/v1/radar-video":               # v0.22.0: a função de verdade, quando o teste a subiu
+            if not CORRETOR["porta"]:
+                return self._responder(404, b'{"code":"NOT_FOUND","message":"Requested function was not found"}')
+            cab = {k: v for k, v in self.headers.items() if k.lower() in ("authorization", "apikey", "content-type")}
+            r = requests.request(self.command, f"http://127.0.0.1:{CORRETOR['porta']}/", headers=cab, data=corpo, timeout=120)
+            return self._responder(r.status_code, r.content, r.headers.get("Content-Type", "application/json"))
+        if u.path.startswith("/storage/v1/") and CORRETOR["ponte"]:   # v0.22.0: o armazenamento de mentira (com o TUS)
+            cab = {k: v for k, v in self.headers.items() if k.lower() not in ("host", "content-length", "connection", "accept-encoding")}
+            r = requests.request(self.command, CORRETOR["ponte"] + self.path, headers=cab, data=corpo, timeout=120, allow_redirects=False)
+            extras = {k: v for k, v in r.headers.items() if k.lower() in ("location", "upload-offset", "upload-length", "tus-resumable", "cache-control")}
+            return self._responder(r.status_code, r.content, r.headers.get("Content-Type", "application/json"), extras)
         if u.path == "/auth/v1/token":
             dados = json.loads(corpo or b"{}")
             tipo = parse_qs(u.query).get("grant_type", [""])[0]
@@ -154,7 +172,7 @@ class Servidor(BaseHTTPRequestHandler):
             return self._responder(r.status_code, r.content, r.headers.get("Content-Type", "application/json"))
         return self._responder(404, b"{}")
 
-    do_GET = do_POST = do_PATCH = do_DELETE = do_OPTIONS = _tratar
+    do_GET = do_POST = do_PATCH = do_DELETE = do_OPTIONS = do_PUT = do_HEAD = _tratar
 
     def log_message(self, *a):
         pass
@@ -314,7 +332,7 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.21.0"
+    assert pagina.inner_text(".versao") == "v0.22.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
@@ -1672,7 +1690,7 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
         pagina.wait_for_selector("text=Painel do dia")
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
-        assert pagina.locator("form[data-form=config]").count() == 7                # v0.9.0: + rascunhos automáticos; v0.21.0: + Pauta
+        assert pagina.locator("form[data-form=config]").count() == 8                # v0.9.0: + rascunhos automáticos; v0.21.0: + Pauta; v0.22.0: + corretor de vídeo
         campo = pagina.locator("#cfg-feriados_extras")
         salvar = pagina.locator("form[data-chave=feriados_extras] button")
         for ruim, aviso in [("[", "não é um JSON válido"), ('{"a": 1}', "precisam ser uma lista"), ('["24/12/2026"]', "Data inválida")]:
@@ -2322,7 +2340,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.21.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.22.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -4258,7 +4276,7 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Configurações")
     pagina.wait_for_selector("h2 >> text=Fecho, assinatura e identificação legal")
-    assert pagina.locator("form[data-form=config]").count() == 7                   # v0.21.0: + Pauta e agenda automática
+    assert pagina.locator("form[data-form=config]").count() == 8                   # v0.21.0: + Pauta e agenda automática; v0.22.0: + corretor de vídeo
     form = pagina.locator("form[data-chave=assinatura]")
     falta = form.locator(".identificacao-falta").inner_text()
     assert "falta o CNPJ e o CRC" in falta and "Até serem preenchidos" in falta and ', "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"' in falta
@@ -5253,7 +5271,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.21.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.22.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -5267,7 +5285,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
-    assert "o administrador roda o sql/radar-setup-v0.21.0.sql" in pagina.inner_text("#pauta-sem-banco")
+    assert "o administrador roda o sql/radar-setup-v0.22.0.sql" in pagina.inner_text("#pauta-sem-banco")
 
 
 def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
@@ -6061,19 +6079,17 @@ def test_peca_parada_publicando_cancela_e_nova_aprovacao_pede_conferi_na_rede(pa
     assert db.execute("select situacao from radar_redes_envios where peca_id = %s order by id", (pid,)).fetchall() == [("cancelado",), ("autorizado",)]
 
 
-def test_carrossel_e_reel_a_mao_baixar_e_copiar_so_depois_de_aprovado_e_registrar_link(navegador, pauta):
-    """v0.21.0: carrossel e reel saem à mão nesta versão: o administrador aprova no modo “à mão” (agendar fica desabilitado); o carrossel
-    guarda a capa e uma lâmina por cartão, o reel nenhuma. Só a peça aprovada à mão libera baixar as lâminas (pauta-AAAA-MM-DD-N.jpg) e
-    copiar a legenda e o roteiro (com a identificação legal no último quadro), depois de o banco conferir o termo de cada pessoa HOJE
-    (revogado, recusa). O link do post é registrado (o banco confere o endereço da rede); o que já saiu não se desfaz."""
+def test_carrossel_a_mao_baixar_e_copiar_so_depois_de_aprovado_e_registrar_link(navegador, pauta):
+    """v0.21.0: o carrossel sai à mão nesta versão: o administrador aprova no modo “à mão” (agendar fica desabilitado); o carrossel
+    guarda a capa e uma lâmina por cartão. Só a peça aprovada à mão libera baixar as lâminas (pauta-AAAA-MM-DD-N.jpg) e copiar a legenda,
+    depois de o banco conferir o termo de cada pessoa HOJE (revogado, recusa). O link do post é registrado (o banco confere o endereço da
+    rede); o que já saiu não se desfaz. (v0.22.0: o reel à mão, agora com o vídeo do corretor, está em
+    test_video_previa_aprovacao_amarrada_ao_sha256_baixar_apaguei_e_registro.)"""
     db = pauta
     ana = nova_pessoa(db, "Ana Teste", "Ana", categoria="contadora", crc="CRC-SC 012345/O-5")
     cartoes = [{"titulo": "Separe as notas", "texto": "Junte as notas fiscais do mês."}, {"titulo": "Confira a folha", "texto": "Revise os pagamentos da equipe."}]
     car = nova_peca(db, dias=2, tipo="educativo", formato="carrossel", cartoes=cartoes, pessoas=[ana], legenda_facebook=LEG_PECA)
     marcar_pronta(db, car)
-    roteiro = "Abertura: a equipe se apresenta.\nFala: como organizar as notas do mês.\nFim: fale com a gente."
-    reel = nova_peca(db, dias=3, tipo="reel", formato="reel", chamada="", apoio="", roteiro=roteiro)
-    marcar_pronta(db, reel)
     contexto = navegador.new_context(viewport={"width": 1280, "height": 900}, locale="pt-BR")
     contexto.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
     contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
@@ -6141,23 +6157,6 @@ def test_carrossel_e_reel_a_mao_baixar_e_copiar_so_depois_de_aprovado_e_registra
         pg.check("#peca-conferi-mao")
         pg.click("[data-acao=peca-desaprovar]")
         pg.wait_for_selector("#recado .erro >> text=a peça já saiu numa rede")
-        # o reel: sem lâmina, aprovado à mão; o roteiro sai com a identificação legal no último quadro
-        pg.evaluate("p => { E.pauta.peca = p; return desenhar(); }", reel)
-        pg.wait_for_selector(f"form[data-form=peca][data-id='{reel}']")
-        assert pg.locator("#peca-artes").count() == 0 and "Reel: sem lâmina" in pg.inner_text("form[data-form=peca]")
-        aprovar_na_tela(pg, ["pessoas"])
-        pg.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão")
-        assert db.execute("select situacao, aprovado_modo, artes from radar_pauta_pecas where id = %s", (reel,)).fetchone() == ("aprovada", "manual", [])
-        assert pg.locator("[data-acao=peca-baixar]").count() == 0
-        pg.click("[data-acao=peca-copiar-roteiro]")
-        pg.wait_for_selector("#recado >> text=Roteiro copiado")
-        assert pg.evaluate("navigator.clipboard.readText()") == roteiro + "\n\nÚltimo quadro: " + IDENT
-        pg.fill("#peca-link-instagram", "https://www.instagram.com/reel/XYZ789/")
-        limpar_recados(pg)
-        pg.click("form[data-form=pecaRegistrar] button")
-        pg.wait_for_selector("#recado >> text=Publicação registrada.")
-        assert db.execute("select link_instagram from radar_pauta_pecas where id = %s", (reel,)).fetchone()[0] == "https://www.instagram.com/reel/XYZ789/"
-        pg.screenshot(path=str(FOTOS / "48-pauta-reel-a-mao.png"), full_page=True)
         assert erros == [], erros
     finally:
         contexto.close()
@@ -6434,3 +6433,800 @@ def test_peca_gerar_com_ia_troca_pessoa_e_mostra_o_que_falta(pagina, pauta):
     pagina.click("[data-acao=peca-ia]")
     pagina.wait_for_selector("#peca-sugestao-quadro")
     assert pagina.locator("#senha-ia").count() == 0 and pedidos[-1]["peca_id"] == outra and "assunto_id" not in pedidos[-1]
+
+
+# ------------------------------------------------------------------- v0.22.0: o corretor de vídeo do reel (radar-video.js)
+# A função radar-video roda de verdade (Deno), atrás do servidor da tela, com o armazenamento de mentira de test_radar_funcao_video.py
+# (o envio retomável TUS, os tokens de um caminho só, os links assinados); o robô é o próprio teste, pelas funções do banco (papel
+# interno), como a função faria. Nomes, falas e vídeos de mentira: os clipes são bytes quaisquer (o navegador não abre: só aviso) e a
+# prévia, quando o ffmpeg tem o VP9, um vídeo sintético (testsrc2) de 2 s.
+from decimal import Decimal  # noqa: E402
+
+import test_radar_video_banco as vb  # noqa: E402
+from test_radar_banco import SHA_VIDEO, pessoa_do_corretor  # noqa: E402
+from test_radar_video_banco import corretor  # noqa: E402,F401  (fixture: as Configurações do corretor voltam ao padrão)
+
+MIB = 1024 * 1024
+SHA_NOVO = "c" * 64
+DIVERGENCIA_DIA = {"k": 0, "em_s": 1.9, "clipe": 1, "falado": "dia 25", "roteiro": "dia 20", "tipo": "numero", "regravar": True, "transcricao_errou": False}
+# os blocos da legenda da fala vb.FALA (21 palavras): u é a 1ª unidade do bloco, como legenda.gravar devolve
+BLOCOS_FALA = [{"u": 0, "em_s": 0.12, "palavras": 5, "texto": "O prazo do Simples vence"}, {"u": 5, "em_s": 1.9, "palavras": 3, "texto": "no dia 20."},
+               {"u": 8, "em_s": 3.4, "palavras": 7, "texto": "Confira com a gente antes do vencimento"},
+               {"u": 15, "em_s": 6.0, "palavras": 6, "texto": "para não pagar multa nem juros."}]
+
+
+@pytest.fixture(scope="module")
+def corretor_tela(navegador, tmp_path_factory):
+    """A função radar-video de verdade (Deno) e o armazenamento de mentira (com o TUS), no mesmo endereço da tela, como no Supabase.
+    Sem o Deno, os testes do corretor na tela são pulados."""
+    if shutil.which("deno") is None:
+        pytest.skip("deno não instalado (a função radar-video roda no Deno)")
+    import test_radar_funcao_video as fv
+    ponte = ThreadingHTTPServer(("127.0.0.1", PORTA_PONTE_VIDEO), fv.Ponte)
+    threading.Thread(target=ponte.serve_forever, daemon=True).start()
+    log = tmp_path_factory.mktemp("radar-video-tela") / "radar-video.log"
+    ambiente = dict(os.environ, SUPABASE_URL=BASE, SUPABASE_ANON_KEY=jwt("anon"), SUPABASE_SERVICE_ROLE_KEY=jwt("service_role"),
+                    RADAR_GITHUB_API=f"http://127.0.0.1:{PORTA_PONTE_VIDEO}/github", RADAR_VIDEO_GITHUB_TOKEN=fv.TOKEN_GITHUB,
+                    RADAR_PORTA_LOCAL=str(PORTA_VIDEO), RADAR_VIDEO_ARMAZENAMENTO_MS="5000", NO_COLOR="1")
+    for nome in ("SUPABASE_SECRET_KEYS", "RADAR_VIDEO_GITHUB_REPO", "RADAR_VIDEO_GITHUB_RAMO"):
+        ambiente.pop(nome, None)
+    with open(log, "wb") as saida:
+        proc = subprocess.Popen(["deno", "run", "--allow-net", "--allow-env", "--no-prompt",
+                                 str(RAIZ / "supabase" / "functions" / "radar-video" / "index.ts")], env=ambiente, stdout=saida, stderr=subprocess.STDOUT)
+    esperar(f"http://127.0.0.1:{PORTA_VIDEO}/", proc, "a função radar-video")
+    CORRETOR.update(porta=PORTA_VIDEO, ponte=f"http://127.0.0.1:{PORTA_PONTE_VIDEO}")
+    try:
+        yield fv
+    finally:
+        CORRETOR.update(porta=None, ponte=None)
+        proc.terminate()
+        ponte.shutdown()
+        ponte.server_close()
+        # os registros da função: nunca o token de envio, o link assinado nem a fala
+        texto = log.read_text(encoding="utf-8", errors="replace")
+        assert "token=" not in texto and "envio." not in texto and "Simples vence" not in texto, texto[-2000:]
+
+
+@pytest.fixture()
+def vtela(corretor_tela, corretor):
+    """O armazenamento vazio e a Pauta com o CNPJ e o CRC de mentira; devolve (banco, o módulo do armazenamento)."""
+    corretor_tela.zerar()
+    return corretor, corretor_tela
+
+
+@pytest.fixture(scope="module")
+def mp4_sintetico(tmp_path_factory):
+    """Um vídeo vertical de 2 s (testsrc2, VP9 em MP4: o Chromium dos testes não tem o H.264), ou None sem o ffmpeg com o VP9. O stderr
+    do ffmpeg nunca é impresso."""
+    if shutil.which("ffmpeg") is None:
+        return None
+    saida = tmp_path_factory.mktemp("mp4") / "reel.mp4"
+    r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=108x192:r=30:d=2", "-c:v", "libvpx-vp9", "-b:v", "150k",
+                        "-pix_fmt", "yuv420p", "-an", "-f", "mp4", str(saida)], capture_output=True, timeout=120)
+    return saida.read_bytes() if r.returncode == 0 and saida.exists() else None
+
+
+def video_rapido(pg):
+    """A sondagem da situação de 300 ms (e não 20 s) e as novas tentativas do envio de 50 ms (e não segundos)."""
+    pg.evaluate("() => { VIDEO_INTERVALO = 300; VIDEO_ESPERAS = [50, 50, 50, 50]; }")
+
+
+def clipe(nome, tamanho, tipo="video/mp4", semente=1):
+    """Um "clipe" de mentira (bytes quaisquer, diferentes em cada um: confere a ordem no armazenamento)."""
+    base = bytes((i * semente + semente) % 251 for i in range(4093))
+    return {"name": nome, "mimeType": tipo, "buffer": (base * (tamanho // len(base) + 1))[:tamanho]}
+
+
+def quadro_jpeg(cor):
+    from PIL import Image
+    saida = io.BytesIO()
+    Image.new("RGB", (108, 192), cor).save(saida, "JPEG", quality=70)
+    return saida.getvalue()
+
+
+def relatorio_final(texto=vb.FALA, divergencias=(), avisos=(), duracao=38.5, **extra):
+    """O relatório final como relatorio.final devolve (versão 2), de uma fala de mentira."""
+    return {"versao": 2, "robo": "0.22.0", "modo": "completo", "parcial": False, "gerado_em": "2026-10-12T12:00:00Z",
+            "entrada": {"clipes": 2, "duracao_s": 61.2, "resolucao": "1080x1920", "fps": 30, "hdr": None, "girado": False},
+            "saida": {"duracao_s": duracao, "fala_s": round(duracao - 2.6, 2), "cartela_s": 3, "transicao_s": 0.4, "lufs": -14.0, "pico_dbtp": -4.1, "mb": 12.3},
+            "cortes": [{"k": 0, "clipe": 1, "de_s": 0.0, "ate_s": 1.4, "tipo": "inicio"}, {"k": 1, "clipe": 1, "de_s": 20.1, "ate_s": 21.0, "tipo": "fim"},
+                       {"k": 2, "clipe": 2, "tipo": "pausa", "automatico": True, "mantido": False, "em_s": 9.4, "dur_s": 1.2},
+                       {"k": 3, "clipe": 2, "tipo": "hesitacao", "automatico": True, "texto": "ééé", "mantido": False, "em_s": 14.2, "dur_s": 0.63}],
+            "sugestoes": [{"em_s": 22.4, "dur_s": 0.6, "clipe": 2, "tipo": "repeticao", "texto": "antes antes"}],
+            "trocas": [{"em_s": 3.4, "clipe": 1, "de": "confira", "para": "Confira", "motivo": "grafia"}],
+            "divergencias": list(divergencias), "fora_do_roteiro": [], "omitido": [],
+            "legenda": {"blocos": 4, "estilo": "normal", "gancho": False, "editados": 0, "recusados": [], "lista": BLOCOS_FALA},
+            "avisos": list(avisos), "texto_final": texto, "cobertura": 1.0,
+            "audio": {"ruido_antes_db": -40.1, "ruido_depois_db": -48.3, "linear": True}, "imagem": {},
+            "conferencia": {"moov_inicio": True, "sem_edit_list": True, "sem_gps": True, "codec": "h264 high", "fps": 30, "audio": "aac 48 kHz 2 canais",
+                            "lufs": -14.0, "pico_dbtp": -4.1, "duracao_s": duracao, "bytes": 12900000},
+            "quadros_ms": [5000, 13000, 21000, 30000], "transcricao": {"servico": "azure_f0", "segundos_audio": 61.2, "palavras": 21}, **extra}
+
+
+def robo_pega(vid):
+    """O robô pega o pedido (radar_video_pegar, como a função faria): devolve a rodada."""
+    p = vb.pegar()
+    assert p["id"] == vid
+    return p["tentativa"]
+
+
+def robo_conclui(fv, vid, relatorio, sha=SHA_VIDEO, mp4=None, duracao=38.5, audio=True):
+    """O robô transcreve (registrar_audio, na 1ª rodada), sobe o vídeo corrigido e os 4 quadros e conclui. Devolve a situação."""
+    t = robo_pega(vid)
+    if audio:
+        vb.robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, t, 31.5, True)
+    dados = mp4 or b"\x00\x00\x00\x18ftypmp42" + b"x" * 4000
+    fv.ARM["objetos"][f"corrigido/{vid}/{sha}.mp4"] = {"bytes": len(dados), "tipo": "video/mp4", "dados": dados}
+    for k, cor in enumerate([(200, 40, 40), (40, 200, 40), (40, 40, 200), (200, 200, 40)], 1):
+        j = quadro_jpeg(cor)
+        fv.ARM["objetos"][f"quadros/{vid}/{sha}/q{k}.jpg"] = {"bytes": len(j), "tipo": "image/jpeg", "dados": j}
+    return vb.concluir(vid, t, "pronto", relatorio, sha, len(dados), duracao)["situacao"]
+
+
+def reel_com_video(db, fv, pessoa=None, relatorio=None, mp4=None, duracao=38.5, gancho=False, **campos):
+    """A peça reel (roteiro do plano em tabela, Ana Teste marcada com o termo do corretor) com o vídeo corrigido concluído. Devolve
+    (peça, pessoa, vídeo, situação)."""
+    pid, ana = vb.reel(db, pessoa=pessoa, **campos)
+    vid = vb.na_fila(db, pid, ana, gancho=gancho)
+    sit = robo_conclui(fv, vid, relatorio or relatorio_final(duracao=duracao), mp4=mp4, duracao=duracao)
+    return pid, ana, vid, sit
+
+
+def abrir_video(pg, db, pid):
+    abrir_peca(pg, pid, data_peca(db, pid))
+    pg.wait_for_selector("#video-reel")
+
+
+def confirmacoes(pg):
+    """Troca o confirm() da página: aceita e guarda as perguntas (para conferir o texto)."""
+    pg.evaluate("() => { window.__perguntas = []; window.confirm = m => { window.__perguntas.push(m); return true; }; }")
+
+
+def test_video_nomes_globais_dos_tres_scripts_nao_colidem():
+    """v0.22.0: a tela tem três scripts clássicos (radar-pauta.js, radar-video.js e o do index.html), que dividem o escopo global: um
+    nome declarado de novo no script seguinte troca a função do anterior em silêncio (a prévia do vídeo chegou a chamar a prévia do
+    assunto) ou derruba o script inteiro (const repetido). Nenhum nome de função, const, let ou var no nível de cima se repete."""
+    def nomes(texto):
+        return set(re.findall(r"(?m)^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)", texto)) | set(re.findall(r"(?m)^(?:const|let|var)\s+([A-Za-z_$][\w$]*)", texto))
+    html = (RAIZ / "index.html").read_text(encoding="utf-8")
+    principal = html[html.index('<script>\n"use strict";'):]
+    scripts = {"radar-pauta.js": nomes((RAIZ / "radar-pauta.js").read_text(encoding="utf-8")),
+               "radar-video.js": nomes((RAIZ / "radar-video.js").read_text(encoding="utf-8")), "index.html": nomes(principal)}
+    assert len(scripts["radar-video.js"]) > 80 and len(scripts["index.html"]) > 150 and len(scripts["radar-pauta.js"]) > 80
+    for a, b in (("radar-pauta.js", "radar-video.js"), ("radar-pauta.js", "index.html"), ("radar-video.js", "index.html")):
+        assert scripts[a] & scripts[b] == set(), (a, b)
+
+
+def test_video_extrair_fala_igual_ao_robo(pagina):
+    """v0.22.0: a fala para conferência que a tela manda (extrairFala, radar-video.js) é a mesma que o robô tira do roteiro
+    (alinhar.extrair_fala): o formato do kit (o travessão antes de “Fala:”), a tabela do plano (a coluna “Fala”, sem as aspas, com o
+    separador e a linha vazia ignorados, o cabeçalho sem “Fala” não vale) e o texto inteiro; “Na tela”, “Tarja”, “Gancho” e “Chamada
+    final” nunca entram."""
+    sys.path.insert(0, str(RAIZ / "robo" / "video"))
+    import alinhar
+    pagina.goto(BASE + "/index.html")
+    pagina.wait_for_selector("#email")
+    roteiros = [
+        vb.ROTEIRO,
+        "Roteiro do reel (38 s)\n\nGancho: A CBS vai aparecer.\n\n0–3 s — Fala: A CBS vai aparecer no documento fiscal. | Na tela: CBS no documento\n\n"
+        "3–18 s — Fala: Quem está no regime   regular precisa revisar o cadastro. | Na tela: Revise\n\nChamada final: Fale com a Artecon.",
+        "| Tempo | Fala | Texto na tela |\n|---|---|---|\n| 0 a 3 s | “Ana Teste explica o prazo do Simples.” | PRAZO |\n"
+        "| 3 a 9 s | 'Bruno Exemplo confere a folha.' | FOLHA |\n\nTarja: Ana Teste, contadora",
+        "Tabela sem a coluna:\n| Tempo | Texto |\n| 0 a 3 s | Olá |\n| Fala | Outra |\n| x | y |",
+        "| Fala |\n| :---: |\n|  |\n| \"só esta frase\" |\nfim",
+        "Texto livre sem marcador,\r\ncom quebra CRLF e espaço sem quebra.\n\n  Outra linha.  ",
+        "",
+        "1–2 s — Fala:   Uma fala  com   espaços   ",
+        "| tempo | FALA | tela |\n| 1 | A fala | sobra | a |\n| 2 |\n",
+        "Linha sem travessão Fala: não é do kit\n| Tempo | Fala |\n| 1 | segunda tabela |",
+        "0–3 s - Fala: hífen não é travessão\n3–6 s – Fala: meia-risca é | Na tela: x",
+        "| Tempo | Fala |\n| 1 | “primeira” |\n\n| Tempo | Texto |\n| 2 | fora |\n| Tempo | Fala |\n| 3 | depois |",
+    ]
+    for r in roteiros:
+        js = pagina.evaluate("r => extrairFala(r)", r)
+        assert [js["fala"], js["formato"]] == list(alinhar.extrair_fala(r)), r
+    assert pagina.evaluate("r => extrairFala(r)", vb.ROTEIRO) == {"fala": vb.FALA, "formato": "tabela"}
+
+
+def test_video_envio_tus_em_pedacos_de_6_mib_com_queda_de_rede_e_na_fila(pagina, vtela):
+    """v0.22.0: o editor envia a gravação do reel pela peça: a fala para conferência (tirada da tabela do roteiro), a cartela (a
+    identificação legal das Configurações e a linha de quem fala, com o CRC de Pessoas e termos), os clipes na ordem escolhida (o
+    navegador não abre os bytes de mentira: só aviso), quem fala, as quatro declarações e o gancho. O banco confere ANTES (envio_iniciar);
+    cada clipe vai direto ao armazenamento pelo TUS: o token de envio daquele caminho no x-signature, a chave pública no apikey, sem
+    x-upsert, os metadados (bucket, caminho, tipo e cache de 60 s), pedaços de 6 MiB (o último menor). Um pedaço que chega e cuja
+    resposta se perde (rede ruim): a tela pergunta ao armazenamento até onde foi (HEAD) e segue sem mandar de novo. No fim, a função
+    confere tamanho e tipo de cada clipe e aciona o robô; o envio retomável não deixa nada no localStorage."""
+    db, fv = vtela
+    ana = pessoa_do_corretor(db, categoria="contadora", crc="CRC-SC 012345/O-5")
+    pid, _ = vb.reel(db, pessoa=ana)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
+    abrir_video(pagina, db, pid)
+    assert pagina.text_content("#video-reel .video-fala-texto") == vb.FALA                      # (fechado: só o formato texto abre)
+    assert pagina.locator("#video-formato-fala").count() == 0
+    assert pagina.evaluate("() => [...document.querySelectorAll('#video-cartela li')].map(l => l.textContent)") == [IDENT, "Ana, contadora · CRC-SC 012345/O-5"]
+    a, b = clipe("tomada-2.mov", 12 * MIB + 7, "video/quicktime", 3), clipe("tomada-1.mp4", 6 * MIB + 100_000, "video/mp4", 5)
+    pagina.set_input_files("#video-arquivos", [a, b])
+    pagina.wait_for_selector("#video-clipes li[data-i='1']")
+    assert "o navegador não abriu: o robô confere" in pagina.inner_text("#video-clipes")
+    pagina.click("#video-clipes li[data-i='1'] [data-passo='-1']")                        # a ordem do roteiro: a tomada 1 primeiro
+    assert pagina.inner_text("#video-clipes li[data-i='0']").startswith("1. tomada-1.mp4")
+    pagina.check("#video-gancho")
+    for c in pagina.locator("#video-envio .video-declaracao").all():
+        c.check()
+    fv.ARM["tus_cair"] = 1                                               # o 1º pedaço chega, e a resposta não
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-enviar]")
+    pagina.wait_for_selector("#recado >> text=Gravação enviada: na fila do corretor.", timeout=60000)
+    vid, sit, partes, fala, cartela, gancho, decl, quem = db.execute(
+        "select id::text, situacao, partes, fala_roteiro, cartela_linhas, gancho, declaracoes, fala_pessoa from radar_videos where peca_id = %s", (pid,)).fetchone()
+    assert (sit, fala, cartela, gancho, quem) == ("na_fila", vb.FALA, [IDENT, "Ana, contadora · CRC-SC 012345/O-5"], "O prazo do Simples vence no dia 20", ana)
+    assert partes == [{"n": 1, "tipo": "video/mp4", "bytes": len(b["buffer"])}, {"n": 2, "tipo": "video/quicktime", "bytes": len(a["buffer"])}]
+    assert sorted(decl) == sorted(vb.DECL)
+    # no armazenamento, cada clipe inteiro, no caminho dele, com o tipo e o cache de 60 s
+    objs = fv.ARM["objetos"]
+    assert objs[f"bruto/{vid}/1"]["dados"] == b["buffer"] and objs[f"bruto/{vid}/2"]["dados"] == a["buffer"]
+    assert [(objs[f"bruto/{vid}/{n}"]["tipo"], objs[f"bruto/{vid}/{n}"]["cache"]) for n in (1, 2)] == [("video/mp4", "60"), ("video/quicktime", "60")]
+    pedidos = fv.ARM["tus_pedidos"]
+    criar = [p for p in pedidos if p["metodo"] == "POST"]
+    tokens = {o: t for t, o in fv.ARM["tokens"].items()}
+    assert [p["assinatura"] for p in criar] == [tokens[f"bruto/{vid}/1"], tokens[f"bruto/{vid}/2"]]
+    assert all(p["apikey"] == jwt("anon") and p["autorizacao"] == "Bearer " + jwt("anon") and p["upsert"] is None and p["tus"] == "1.0.0" for p in pedidos)
+    meta = [dict((x.split(" ")[0], base64.b64decode(x.split(" ")[1]).decode()) for x in p["metadados"].split(",")) for p in criar]
+    assert meta == [{"bucketName": "radar-videos", "objectName": f"bruto/{vid}/1", "contentType": "video/mp4", "cacheControl": "60"},
+                    {"bucketName": "radar-videos", "objectName": f"bruto/{vid}/2", "contentType": "video/quicktime", "cacheControl": "60"}]
+    assert [int(p["tamanho"]) for p in criar] == [len(b["buffer"]), len(a["buffer"])]
+    patches = [(int(p["offset"]), p["bytes"]) for p in pedidos if p["metodo"] == "PATCH"]
+    # o 1º pedaço foi uma vez só (a resposta caiu: o HEAD mostrou que chegou); 6 MiB cada, o último de cada clipe menor
+    assert patches == [(0, 6 * MIB), (6 * MIB, 100_000), (0, 6 * MIB), (6 * MIB, 6 * MIB), (12 * MIB, 7)], patches
+    assert [p["metodo"] for p in pedidos[:3]] == ["POST", "PATCH", "HEAD"]
+    assert all(p["tipo"] == "application/offset+octet-stream" for p in pedidos if p["metodo"] == "PATCH")
+    assert fv.ARM["github"] and fv.ARM["github"][-1][1].endswith("/dispatches")                  # o robô foi acionado
+    assert pagina.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('radar_tus_'))") == []
+    assert "Na fila do corretor" in pagina.inner_text("#video-reel") and pagina.locator("#video-trabalhando").count() == 1
+
+
+def test_video_envio_que_parou_continua_depois_de_reabrir_com_os_mesmos_arquivos(pagina, vtela):
+    """v0.22.0: a internet cai no meio do 2º clipe: depois das novas tentativas, a tela diz em que clipe parou e mostra “Continuar o
+    envio”. Reaberta a página (os arquivos saem da memória), a peça pede os MESMOS arquivos, na mesma ordem (o tamanho confere: a ordem
+    trocada é recusada antes de qualquer pedido); a função dá token novo só ao clipe que falta, e a tela continua do pedaço em que
+    parou (o endereço do envio ficou no localStorage, só com o caminho; o HEAD diz onde), sem mandar de novo o 1º clipe."""
+    db, fv = vtela
+    pid, _ = vb.reel(db)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
+    abrir_video(pagina, db, pid)
+    um, dois = clipe("a.mp4", MIB, semente=7), clipe("b.mp4", 12 * MIB + 9, semente=11)
+    pagina.set_input_files("#video-arquivos", [um, dois])
+    pagina.wait_for_selector("#video-clipes li[data-i='1']")
+    for c in pagina.locator("#video-envio .video-declaracao").all():
+        c.check()
+    fv.ARM["tus_parar"] = 2                                              # chegam o 1º clipe e o 1º pedaço do 2º; depois, nada
+    pagina.evaluate("() => { VIDEO_ESPERAS = [700, 700, 700, 700]; }")      # o andamento fica na tela enquanto a tela tenta de novo
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-enviar]")
+    pagina.wait_for_selector("#video-prog-2[value='50']")
+    assert "Não feche nem bloqueie a tela até 100%." in pagina.inner_text("#video-envio")
+    assert pagina.get_attribute("#video-prog-1", "value") == "100" and pagina.inner_text("#video-pct-2") == "50%"
+    pagina.wait_for_selector("#recado .erro >> text=O envio parou no clipe nº 2 (49%)", timeout=60000)
+    vid = db.execute("select id::text from radar_videos where peca_id = %s and situacao = 'aguardando_envio'", (pid,)).fetchone()[0]
+    assert f"bruto/{vid}/1" in fv.ARM["objetos"] and f"bruto/{vid}/2" not in fv.ARM["objetos"]
+    assert "Os arquivos ainda estão nesta tela" in pagina.inner_text("#video-envio")
+    assert pagina.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('radar_tus_'))") == [f"radar_tus_bruto/{vid}/2"]
+    # a página reaberta: os arquivos de novo, primeiro na ordem errada
+    pagina.reload()
+    pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
+    abrir_video(pagina, db, pid)
+    assert "Escolha de novo os MESMOS arquivos" in pagina.inner_text("#video-envio")
+    pagina.set_input_files("#video-arquivos", [dois, um])
+    pagina.wait_for_selector("#video-clipes li[data-i='1']")
+    assert "não é o clipe nº 1 do envio" in pagina.inner_text("#video-clipes")
+    antes = len(fv.ARM["tus_pedidos"])
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-continuar]")
+    pagina.wait_for_selector("#recado .erro >> text=Escolha os MESMOS 2 arquivos do envio, na mesma ordem")
+    assert len(fv.ARM["tus_pedidos"]) == antes
+    pagina.click("#video-clipes li[data-i='1'] [data-passo='-1']")
+    fv.ARM["tus_parar"] = None
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-continuar]")
+    pagina.wait_for_selector("#recado >> text=Gravação enviada: na fila do corretor.", timeout=60000)
+    depois = fv.ARM["tus_pedidos"][antes:]
+    assert [p["metodo"] for p in depois] == ["HEAD", "PATCH", "PATCH"]                       # sem POST: continua o mesmo envio
+    assert [(int(p["offset"]), p["bytes"]) for p in depois if p["metodo"] == "PATCH"] == [(6 * MIB, 6 * MIB), (12 * MIB, 9)]
+    novo = depois[0]["assinatura"]
+    assert fv.ARM["tokens"][novo] == f"bruto/{vid}/2" and novo != fv.ARM["tus_pedidos"][0]["assinatura"]   # o token renovado, do 2º só
+    assert fv.ARM["objetos"][f"bruto/{vid}/2"]["dados"] == dois["buffer"] and fv.ARM["objetos"][f"bruto/{vid}/1"]["dados"] == um["buffer"]
+    assert db.execute("select situacao from radar_videos where id = %s", (vid,)).fetchone()[0] == "na_fila"
+    assert pagina.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('radar_tus_'))") == []
+
+
+def test_video_envio_recusado_antes_de_qualquer_arquivo_sair(pagina, vtela, mp4_sintetico, tmp_path):
+    """v0.22.0: nada sai do celular antes das conferências: sem clipe, mais de 12, arquivo que não é MP4 nem MOV, quem fala, as quatro
+    declarações, a peça com alteração não salva, o termo de publicidade na fala (trava, como na cópia) — a tela recusa sem chamar a
+    função; a pessoa sem o termo do corretor (a tela avisa antes, e o banco recusa sem dar token). O roteiro sem tabela nem “Fala:” avisa
+    o formato. Sem a função instalada, o recado diz o que falta."""
+    db, fv = vtela
+    sem_termo = vb.nova_pessoa(db, "Bruno Exemplo", "Bruno")
+    pid, ana = vb.reel(db)
+    db.execute("select set_config('radar.pauta', '1', false)")
+    db.execute("update radar_pauta_pecas set pessoas = %s::bigint[] where id = %s", ([ana, sem_termo], pid))
+    db.execute("select set_config('radar.pauta', '', false)")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    assert "Bruno: sem o termo novo, que cita o corretor de vídeo" in pagina.inner_text("#video-pessoas-falta")
+
+    def recusa(texto):
+        limpar_recados(pagina)
+        pagina.click("[data-acao=video-enviar]")
+        pagina.wait_for_selector(f"#recado .erro >> text={texto}")
+    recusa("Escolha os clipes do reel")
+    if mp4_sintetico:                                                    # o vídeo deitado (horizontal): só aviso
+        deitado = tmp_path / "deitado.mp4"
+        r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=192x108:r=30:d=2", "-c:v", "libvpx-vp9", "-b:v", "150k",
+                            "-pix_fmt", "yuv420p", "-an", "-f", "mp4", str(deitado)], capture_output=True, timeout=120)
+        assert r.returncode == 0
+        pagina.set_input_files("#video-arquivos", [str(deitado)])
+        pagina.wait_for_selector("#video-clipes li[data-i='0']")
+        assert "· 2 s" in pagina.inner_text("#video-clipes li[data-i='0']") and "parece deitado (horizontal)" in pagina.inner_text("#video-clipes")
+        pagina.click("#video-clipes li[data-i='0'] [data-acao=video-clipe-tirar]")
+    pagina.set_input_files("#video-arquivos", [clipe(f"c{i}.mp4", 10 + i) for i in range(13)])
+    pagina.wait_for_selector("#video-clipes li[data-i='12']")
+    recusa("São 13 clipes: envie no máximo 12")
+    pagina.click("#video-clipes li[data-i='12'] [data-acao=video-clipe-tirar]")
+    pagina.click("#video-clipes li[data-i='11'] [data-acao=video-clipe-tirar]")
+    pagina.set_input_files("#video-arquivos", [clipe("anotacoes.txt", 20, "text/plain")])
+    pagina.wait_for_selector("#video-clipes >> text=não é MP4 nem MOV")
+    recusa("Só vídeo MP4 ou MOV, como sai da câmera do celular: anotacoes.txt")
+    pagina.click("#video-clipes li[data-i='11'] [data-acao=video-clipe-tirar]")
+    recusa("Escolha quem fala no vídeo.")
+    pagina.select_option("#video-quem", str(ana))
+    recusa("Marque as quatro declarações")
+    for c in pagina.locator("#video-envio .video-declaracao").all():
+        c.check()
+    pagina.fill("#peca-roteiro", vb.ROTEIRO + "\n")
+    recusa("Há alterações não salvas na peça")
+    # o termo que a publicidade da profissão não usa, na fala do roteiro salvo
+    pagina.fill("#peca-roteiro", vb.ROTEIRO.replace("Confira com a gente", "Consulta grátis: confira com a gente"))
+    salvar_peca(pagina)
+    pagina.set_input_files("#video-arquivos", [clipe("c.mp4", 10)])
+    pagina.wait_for_selector("#video-clipes li[data-i='0']")
+    pagina.select_option("#video-quem", str(ana))
+    for c in pagina.locator("#video-envio .video-declaracao").all():
+        c.check()
+    recusa("Troque antes de gravar: “consulta grátis”, “grátis” no roteiro do reel")
+    assert fv.ARM["envios"] == [] and fv.ARM["tus_pedidos"] == [] and fv.ARM["github"] == []
+    # sem o termo de publicidade: o banco recusa a pessoa sem o termo do corretor, e nenhum token sai (os clipes escolhidos continuam
+    # na tela depois de salvar a peça)
+    pagina.fill("#peca-roteiro", vb.ROTEIRO)
+    salvar_peca(pagina)
+    assert pagina.locator("#video-clipes li").count() == 12
+    pagina.select_option("#video-quem", str(ana))
+    for c in pagina.locator("#video-envio .video-declaracao").all():
+        c.check()
+    recusa("uma pessoa da peça não pode aparecer no vídeo (sem o termo novo, que cita o corretor de vídeo)")
+    assert fv.ARM["envios"] == [] and fv.ARM["tus_pedidos"] == [] and fv.ARM["buckets"] == {}
+    assert db.execute("select count(*) from radar_videos").fetchone()[0] == 0
+    # a função não instalada
+    pagina.route("**/functions/v1/radar-video", lambda rota: rota.fulfill(status=404, content_type="application/json",
+                 body='{"code":"NOT_FOUND","message":"Requested function was not found"}'))
+    db.execute("update radar_pessoas set termo_corretor_em = '2020-01-01' where id = %s", (sem_termo,))
+    recusa("A função radar-video ainda não foi instalada no Supabase")
+    pagina.unroute("**/functions/v1/radar-video")
+    # o roteiro em texto livre: a tela avisa o formato
+    pagina.fill("#peca-roteiro", "Uma fala corrida sem tabela nem marcador, com mais de dez palavras para conferir o formato.")
+    salvar_peca(pagina)
+    assert "Formato não reconhecido" in pagina.inner_text("#video-formato-fala")
+
+
+def test_video_relatorio_parcial_e_final_escapados_e_ajustes_do_administrador(pagina, vtela):
+    """v0.22.0: enquanto o robô trabalha, a tela atualiza sozinha (a sondagem): primeiro o relatório parcial (o que precisa regravar já
+    aparece), depois o final, sem recarregar a peça. Tudo o que vem do relatório (a fala, o roteiro) é escapado. O editor vê o relatório
+    sem os ajustes; o administrador marca “A transcrição errou (vale o roteiro)”, “Manter este trecho”, edita a legenda palavra por
+    palavra (o número trocado, a palavra a menos e a palavra sem nada a ver são recusados na tela, como o robô recusa), legenda compacta
+    e sem o gancho: um radar_video_ajustar só (modo montagem: sem transcrever de novo) e o robô acionado."""
+    db, fv = vtela
+    pid, ana = vb.reel(db)
+    vid = vb.na_fila(db, pid, ana, gancho=True)
+    t = robo_pega(vid)
+    vb.robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, t, 31.5, True)
+    ataque = "<img src=x onerror=window.xss=1>dia 25"
+    vb.robo("select radar_video_parcial(%s, %s, %s)", vid, t, json.dumps({
+        "versao": 2, "divergencias": [{**DIVERGENCIA_DIA, "falado": ataque}], "fora_do_roteiro": [{"em_s": 5.0, "texto": "<b>fora</b>"}],
+        "omitido": [], "avisos": ["fala_diferente_do_roteiro"], "transcricao": {"servico": "azure_f0", "segundos_audio": 31.5, "palavras": 21}}))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
+    abrir_video(pagina, db, pid)
+    rel = pagina.inner_text("#video-relatorio")
+    assert "O corretor está trabalhando" in pagina.inner_text("#video-trabalhando") and "Relatório parcial" in rel
+    assert f"a fala diz “{ataque}” e o roteiro diz “dia 20” (número)" in rel and "“<b>fora</b>”" in rel and "Precisa regravar:" in rel
+    assert "menos de 60% do roteiro foi reconhecido" in rel
+    assert pagina.locator("#video-relatorio img, #video-relatorio b:text('fora')").count() == 0
+    assert pagina.evaluate("() => window.xss") is None
+    # o robô termina: a tela muda sozinha (sem recarregar a peça); com a aba oculta, a tela não pergunta ao banco
+    pagina.evaluate("() => { document.querySelector('form[data-form=peca]').marca = 1; Object.defineProperty(document, 'hidden', {value: true, configurable: true}); }")
+    pagina.wait_for_timeout(700)
+    vb.concluir(vid, t, "pronto", relatorio_final(divergencias=[DIVERGENCIA_DIA]), SHA_VIDEO, 4000, 38.5)
+    pagina.wait_for_timeout(1500)
+    assert "Relatório parcial" in pagina.inner_text("#video-relatorio")
+    pagina.evaluate("() => { Object.defineProperty(document, 'hidden', {value: false, configurable: true}); document.dispatchEvent(new Event('visibilitychange')); }")
+    pagina.wait_for_selector("#recado >> text=O vídeo corrigido ficou pronto, mas precisa regravar")
+    assert pagina.evaluate("() => document.querySelector('form[data-form=peca]').marca") == 1
+    rel = pagina.inner_text("#video-relatorio")
+    assert "Vídeo corrigido — gravação 1" in rel and "Precisa regravar:" in rel
+    assert "Duração: 38,5 s (fala 35,9 s + cartela 3 s). Dentro do limite de 45 s." in rel
+    assert "Cortes: começo e fim de 1 clipe(s); 1 pausa(s) longa(s) encurtada(s) (1,2 s); 1 trecho(s) de hesitação (0,63 s)." in rel
+    assert "aos 14,2 s: hesitação (0,63 s) — “ééé”" in rel and "aos 22,4 s, repetição “antes antes”" in rel
+    assert "Som: volume -14 LUFS (o padrão das redes é −14), pico -4,1 dBTP; ruído de fundo 8,2 dB mais baixo em relação à voz." in rel
+    assert "Formato aceito pelo Instagram e pelo Facebook; localização do celular removida." in rel
+    assert "Termos de publicidade na fala: nenhum." in rel
+    assert pagina.locator(".video-errou, .video-manter, #video-ajustes").count() == 0                 # o editor não ajusta
+    # o administrador (quem fala passou a ter registro no CRC: a cartela de antes não confere mais)
+    db.execute("update radar_pessoas set categoria = 'contadora', crc = 'CRC-SC 012345/O-5' where id = %s", (ana,))
+    sair_e_entrar(pagina, "admin@artecon.test")
+    video_rapido(pagina)
+    abrir_video(pagina, db, pid)
+    confirmacoes(pagina)
+    pagina.check(".video-errou[value='0']")
+    pagina.check(".video-manter[value='3']")
+    pagina.click("#video-ajustes .video-legenda summary")
+
+    def legenda(i, texto, erro=None):
+        pagina.fill(f"#video-leg-{i}", texto)
+        if erro:
+            limpar_recados(pagina)
+            pagina.click("[data-acao=video-ajustar]")
+            pagina.wait_for_selector(f"#recado .erro >> text={erro}")
+            pagina.fill(f"#video-leg-{i}", BLOCOS_FALA[i]["texto"])
+    legenda(1, "no dia 26.", "número, data, mês ou termo do glossário não muda pela legenda")
+    legenda(1, "no dia", "o bloco fica com o mesmo número de palavras")
+    legenda(2, "Confira com a gente antes do almoço", "cada palavra nova é a do roteiro ou parecida com a que estava")
+    legenda(3, "para não pagar {\\b1}multa nem juros.", "texto vazio, com mais de 120 caracteres ou com { } \\ < >")
+    legenda(0, "O prazo do simples vence")
+    pagina.check("#video-compacta")
+    pagina.check("#video-sem-gancho")
+    assert f"mudou: {IDENT} / Ana, contadora · CRC-SC 012345/O-5" in pagina.inner_text("#video-ajustes")
+    pagina.check("#video-refazer-cartela")
+    assert db.execute("select count(*) from radar_videos where ajustes <> '{}'").fetchone()[0] == 0
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-ajustar]")
+    pagina.wait_for_selector("#recado >> text=Ajustes gravados: o corretor monta o vídeo de novo.")
+    assert pagina.evaluate("() => window.__perguntas")[-1].startswith("Montar o vídeo de novo com estes ajustes? O áudio não muda")
+    ajustes, sit, modo, cartela = db.execute("select ajustes, situacao, modo, cartela_linhas from radar_videos where id = %s", (vid,)).fetchone()
+    assert ajustes == {"manter": [3], "transcricao_errou": [0], "legenda": {"0:5": "O prazo do simples vence"}, "estilo": "compacta", "sem_gancho": True}
+    assert (sit, modo, cartela) == ("na_fila", "montagem", [IDENT, "Ana, contadora · CRC-SC 012345/O-5"])
+    assert "Na fila do corretor (gravação 1, só a montagem: a transcrição é a mesma)" in pagina.inner_text("#video-trabalhando")
+
+
+def test_video_previa_aprovacao_amarrada_ao_sha256_baixar_apaguei_e_registro(navegador, vtela, mp4_sintetico):
+    """v0.22.0: o reel pronto com o vídeo corrigido: a prévia abre pela função (vídeo e 4 quadros, links de 600 s, do armazenamento deste
+    projeto; quem viu fica registrado). A aprovação pede a prévia aberta (o hash dela vai na aprovação), “Conferi o vídeo” e, com a
+    pessoa que pediu no termo para ver a peça, “A pessoa viu o vídeo final” (o banco também pede); o vídeo que mudou depois da prévia é
+    recusado pelo banco. Aprovada à mão: “Baixar o vídeo aprovado” (link de 300 s, reel-<data>.mp4, quem baixou fica registrado),
+    “Apaguei do celular e da nuvem pessoal”, copiar o roteiro e registrar o link do post."""
+    db, fv = vtela
+    ana = pessoa_do_corretor(db)
+    db.execute("update radar_pessoas set quer_ver_peca = true where id = %s", (ana,))
+    pid, _, vid, sit = reel_com_video(db, fv, pessoa=ana, mp4=mp4_sintetico)
+    assert sit == "pronto"
+    marcar_pronta(db, pid)
+    contexto = navegador.new_context(viewport={"width": 1280, "height": 900}, locale="pt-BR")
+    contexto.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
+    contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
+    pg = contexto.new_page()
+    erros = []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    pg.on("dialog", lambda d: d.accept())
+    try:
+        entrar(pg, "admin@artecon.test")
+        pg.wait_for_selector("text=Painel do dia")
+        abrir_video(pg, db, pid)
+        confirmacoes(pg)
+        assert "Peça pronta" not in pg.inner_text("#video-reel") and pg.locator("#video-player").count() == 0
+        pg.click("#peca-aprovar summary")
+        assert pg.locator("#peca-aprovar input[value=manual]").is_checked() and pg.locator("#peca-aprovar input[value=agendar]").is_disabled()
+        for c in ("pessoas", "video", "viu"):
+            pg.check(f"#peca-aprovar .aprovar-conf[value={c}]")
+        limpar_recados(pg)
+        pg.click("#peca-aprovar [data-acao=peca-aprovar]")
+        pg.wait_for_selector("#recado .erro >> text=Abra a prévia (“Ver o vídeo corrigido”) e assista antes de aprovar")
+        # a resposta da função com um endereço de fora (não do armazenamento deste projeto) não vai para a tela
+        def fora(rota):
+            if json.loads(rota.request.post_data or "{}").get("acao") != "previa":
+                return rota.continue_()
+            rota.fulfill(status=200, content_type="application/json", body=json.dumps(
+                {"video": "https://exemplo.invalid/x.mp4", "quadros": ["https://exemplo.invalid/q.jpg"] * 4, "sha256": SHA_VIDEO, "expira_s": 600}))
+        pg.route("**/functions/v1/radar-video", fora)
+        limpar_recados(pg)
+        pg.click("[data-acao=video-previa]")
+        pg.wait_for_selector("#recado .erro >> text=A função devolveu a prévia fora do formato.")
+        assert pg.locator("#video-player").count() == 0 and "exemplo.invalid" not in pg.content()
+        pg.unroute("**/functions/v1/radar-video")
+        # a prévia: os links de 600 s, só do armazenamento deste projeto
+        pg.click("[data-acao=video-previa]")
+        pg.wait_for_selector("#video-player")
+        src = pg.get_attribute("#video-player", "src")
+        assert src.startswith(f"{BASE}/storage/v1/object/sign/radar-videos/corrigido/{vid}/{SHA_VIDEO}.mp4?token=")
+        quadros = pg.evaluate("() => [...document.querySelectorAll('.video-quadros img')].map(i => i.getAttribute('src'))")
+        assert [q.split("?")[0] for q in quadros] == [f"{BASE}/storage/v1/object/sign/radar-videos/quadros/{vid}/{SHA_VIDEO}/q{k}.jpg" for k in (1, 2, 3, 4)]
+        assert [s for _, s in fv.ARM["assinaturas"]] == [600] * 5
+        pg.wait_for_function("() => [...document.querySelectorAll('.video-quadros img')].every(i => i.complete && i.naturalWidth === 108)")
+        assert "Quadro 2, aos 13 s" in pg.inner_text(".video-quadros")
+        if mp4_sintetico:
+            pg.wait_for_function("() => document.querySelector('#video-player').readyState >= 1", timeout=15000)
+            assert pg.evaluate("() => Math.round(document.querySelector('#video-player').duration)") == 2
+        assert db.execute("select acao from radar_video_acessos where video_id = %s", (vid,)).fetchall() == [("previa",)]
+        # sem a caixa da pessoa que quer ver a peça: o banco também recusa (a caixa tirada da tela à força)
+        pg.evaluate("() => document.querySelector('#peca-aprovar .aprovar-conf[value=viu]').closest('label').remove()")
+        limpar_recados(pg)
+        pg.click("#peca-aprovar [data-acao=peca-aprovar]")
+        pg.wait_for_selector("#recado .erro >> text=uma pessoa da peça pediu, no termo, para ver a peça antes")
+        # o vídeo mudou depois da prévia (outro hash): o banco recusa o hash que a tela viu
+        db.execute("update radar_videos set sha256 = %s where id = %s", (SHA_NOVO, vid))
+        pg.evaluate("() => desenhar()")
+        pg.wait_for_selector("#video-reel")
+        pg.click("#peca-aprovar summary")
+        for c in ("pessoas", "video", "viu"):
+            pg.check(f"#peca-aprovar .aprovar-conf[value={c}]")
+        pg.evaluate("() => { E.video.atual.sha256 = 'a'.repeat(64); }")                         # a tela ainda com o hash antigo
+        limpar_recados(pg)
+        pg.click("#peca-aprovar [data-acao=peca-aprovar]")
+        pg.wait_for_selector("#recado .erro >> text=o vídeo da aprovação não é o vídeo corrigido pronto desta peça")
+        db.execute("update radar_videos set sha256 = %s where id = %s", (SHA_VIDEO, vid))
+        pg.evaluate("() => desenhar()")
+        pg.wait_for_selector("#video-reel")
+        aprovar_na_tela(pg, ["pessoas", "video", "viu"])
+        pg.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão: baixe o vídeo")
+        assert "O vídeo aprovado é o que você viu na prévia" in pg.evaluate("() => window.__perguntas")[-1]
+        assert db.execute("select situacao, aprovado_modo, video_id::text, video_sha256, aprovado_conferencias from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (
+            "aprovada", "manual", vid, SHA_VIDEO, ["pessoas", "video", "viu"])
+        assert "Peça aprovada com o vídeo da gravação 1" in pg.inner_text("#video-reel") and pg.locator("#video-envio, [data-acao=video-ajustar]").count() == 0
+        # baixar: o link de 300 s com o nome do arquivo; o banco registra quem baixou
+        pg.click("[data-acao=video-baixar]")
+        pg.wait_for_selector("#video-baixar-link")
+        href, nome = pg.get_attribute("#video-baixar-link", "href"), pg.get_attribute("#video-baixar-link", "download")
+        data = data_peca(db, pid)
+        assert href.startswith(f"{BASE}/storage/v1/object/sign/radar-videos/corrigido/{vid}/{SHA_VIDEO}.mp4?token=") and href.endswith(f"&download=reel-{data}.mp4")
+        assert nome == f"reel-{data}.mp4" and fv.ARM["assinaturas"][-1] == (f"corrigido/{vid}/{SHA_VIDEO}.mp4", 300)
+        assert requests.get(href, timeout=10).content == fv.ARM["objetos"][f"corrigido/{vid}/{SHA_VIDEO}.mp4"]["dados"]
+        assert [a for (a,) in db.execute("select acao from radar_video_acessos where video_id = %s order by id", (vid,)).fetchall()][-1] == "baixar"
+        pg.click("#video-baixar [data-acao=video-apaguei]")
+        pg.wait_for_selector("#recado >> text=Registrado: os clipes foram apagados do celular")
+        assert db.execute("select apagado_aparelho_em is not null from radar_videos where id = %s", (vid,)).fetchone()[0] is True
+        # copiar o roteiro e registrar o link do post (o banco exige o vídeo aprovado)
+        pg.click("[data-acao=peca-copiar-roteiro]")
+        pg.wait_for_selector("#recado >> text=Roteiro copiado")
+        assert pg.evaluate("navigator.clipboard.readText()").startswith(vb.ROTEIRO.strip())
+        pg.fill("#peca-link-instagram", "https://www.instagram.com/reel/XYZ789/")
+        limpar_recados(pg)
+        pg.click("form[data-form=pecaRegistrar] button")
+        pg.wait_for_selector("#recado >> text=Publicação registrada.")
+        assert db.execute("select link_instagram from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "https://www.instagram.com/reel/XYZ789/"
+        pg.screenshot(path=str(FOTOS / "48-pauta-reel-a-mao.png"), full_page=True)
+        assert erros == [], erros
+    finally:
+        contexto.close()
+
+
+def test_video_termos_de_publicidade_na_fala_travam_e_a_duracao_pede_confirmacao(pagina, vtela):
+    """v0.22.0: a fala transcrita (o texto da legenda gravada) passa pelos termos que a publicidade da profissão não usa: o que trava
+    vira “Precisa regravar” no relatório e impede marcar como pronta (só a tela confere esses termos); o que é só aviso e a duração
+    acima do limite das Configurações (45 s) vão para a confirmação da aprovação."""
+    db, fv = vtela
+    fala = vb.FALA.replace("Confira com a gente", "Consulta grátis com a gente")
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_final(texto=fala))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    assert "Precisa regravar: a fala tem “consulta grátis”, “grátis”" in pagina.inner_text("#video-termos")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-salvar-pronta]")
+    pagina.wait_for_selector("#recado .erro >> text=A peça ainda não fica pronta")
+    assert "Precisa regravar: a fala do vídeo tem “consulta grátis”, “grátis”" in pagina.inner_text("#peca-conferencia")
+    assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] != "pronta"
+    # só aviso e 52 s: fica pronta; a aprovação pede confirmação dos dois
+    aviso = vb.FALA.replace("Confira com a gente", "Antes de uma troca de contador, confira com a gente")
+    db.execute("update radar_videos set relatorio = %s, duracao_final = 52 where id = %s", (json.dumps(relatorio_final(texto=aviso, duracao=52)), vid))
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#video-reel")
+    assert "Acima do limite de 45 s" in pagina.inner_text("#video-duracao") and "“troca de contador”" in pagina.inner_text("#video-termos")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-salvar-pronta]")
+    pagina.wait_for_selector("#recado >> text=Peça pronta")
+    sair_e_entrar(pagina, "admin@artecon.test")
+    abrir_video(pagina, db, pid)
+    confirmacoes(pagina)
+    pagina.click("[data-acao=video-previa]")
+    pagina.wait_for_selector("#video-player")
+    aprovar_na_tela(pagina, ["pessoas", "video"])
+    pagina.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão")
+    pergunta = pagina.evaluate("() => window.__perguntas")[-1]
+    assert "Termos que a publicidade contábil evita na fala do vídeo: “troca de contador”" in pergunta
+    assert "O vídeo tem 52 s, acima do limite de 45 s (Configurações → Corretor de vídeo)" in pergunta
+
+
+def test_video_erro_tentar_de_novo_conferir_com_o_roteiro_novo_e_descartar(pagina, vtela):
+    """v0.22.0: o robô parou (transcrição ocupada): a tela diz o motivo em português e “Tentar de novo” devolve o pedido à fila (o robô
+    acionado). Com o roteiro igual, o hash da tela confere com o do banco (nada de “o roteiro mudou”); mudado o roteiro, “Conferir com o
+    roteiro novo” manda a fala nova (o hash do banco passa a conferir). “Descartar” encerra a gravação e volta ao envio."""
+    db, fv = vtela
+    pid, ana = vb.reel(db)
+    vid = vb.na_fila(db, pid, ana)
+    vb.robo("select radar_video_falhar(%s, %s, %s)", vid, robo_pega(vid), "transcricao_ocupada")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    confirmacoes(pagina)
+    assert "O corretor parou: Transcrição ocupada; tente de novo" in pagina.inner_text("#video-erro")
+    assert pagina.locator("#video-roteiro-mudou").count() == 0                                    # o hash da tela é o do banco
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-de-novo]")
+    pagina.wait_for_selector("#recado >> text=Pedido de novo ao corretor.")
+    assert db.execute("select situacao, tentativas, erro_codigo from radar_videos where id = %s", (vid,)).fetchone() == ("na_fila", 0, None)
+    # o robô acionado (ou já acionado há instantes: a função tem pausa de 30 s entre dois acionamentos)
+    assert re.search(r"Robô acionado|O robô já foi acionado há instantes", pagina.inner_text("#recado"))
+    assert "Na fila do corretor" in pagina.inner_text("#video-trabalhando")
+    vb.robo("select radar_video_falhar(%s, %s, %s)", vid, robo_pega(vid), "azure_cota")
+    novo = vb.ROTEIRO.replace("nem juros.", "nem juros atrasados.")
+    db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (novo, pid))
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#video-roteiro-mudou")
+    assert "A cota grátis da Azure do mês acabou" in pagina.inner_text("#video-erro")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-reconferir]")
+    pagina.wait_for_selector("#recado >> text=O corretor confere com o roteiro novo.")
+    fala, igual, sit = db.execute("select fala_roteiro, roteiro_hash = radar_hash_texto(%s), situacao from radar_videos where id = %s", (novo, vid)).fetchone()
+    assert (fala, igual, sit) == (vb.FALA.replace("nem juros.", "nem juros atrasados."), True, "na_fila")
+    vb.robo("select radar_video_falhar(%s, %s, %s)", vid, robo_pega(vid), "formato")
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#video-erro >> text=um dos clipes não é MP4 ou MOV de câmera")
+    assert pagina.locator("#video-roteiro-mudou").count() == 0
+    limpar_recados(pagina)
+    pagina.click("#video-situacao [data-acao=video-descartar]")
+    pagina.wait_for_selector("#recado >> text=Gravação descartada.")
+    assert db.execute("select situacao from radar_videos where id = %s", (vid,)).fetchone()[0] == "descartado"
+    assert pagina.locator("#video-envio [data-acao=video-enviar]").count() == 1
+
+
+def test_video_no_celular_375_px_sem_rolagem_lateral(navegador, vtela):
+    """v0.22.0: no celular (375 px), o quadro do corretor cabe sem rolagem lateral: o relatório com os ajustes do administrador, a prévia
+    aberta, a legenda em edição e o envio de uma gravação nova com os clipes escolhidos."""
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_final(divergencias=[{**DIVERGENCIA_DIA, "falado": "o prazo vence no dia vinte e cinco de outubro de dois mil e vinte e seis"}],
+                                                                     avisos=["gancho_nao_cabe", "relatorio_resumido"]))
+    contexto = navegador.new_context(viewport={"width": 375, "height": 740}, locale="pt-BR")
+    contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
+    pg = contexto.new_page()
+    erros = []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    try:
+        entrar(pg, "admin@artecon.test")
+        pg.wait_for_selector("text=Painel do dia")
+        abrir_video(pg, db, pid)
+        assert sem_rolagem_lateral(pg), "relatório"
+        pg.click("[data-acao=video-previa]")
+        pg.wait_for_selector("#video-player")
+        pg.click("#video-ajustes .video-legenda summary")
+        assert sem_rolagem_lateral(pg), "prévia e ajustes"
+        pg.screenshot(path=str(FOTOS / "49-celular-reel-relatorio.png"), full_page=True)
+        pg.click("[data-acao=video-nova]")
+        pg.set_input_files("#video-arquivos", [clipe("um-nome-de-arquivo-bem-comprido-do-celular-IMG_20261012_093000.mov", 2000, "video/quicktime"),
+                                               clipe("b.mp4", 3000)])
+        pg.wait_for_selector("#video-clipes li[data-i='1']")
+        assert sem_rolagem_lateral(pg), "envio"
+        # os ajustes e o envio da gravação nova na mesma tela: nenhum id repetido (o campo de um não pode responder pelo do outro)
+        assert pg.evaluate("() => { const ids = [...document.querySelectorAll('[id]')].map(e => e.id); return ids.filter((x, i) => ids.indexOf(x) !== i); }") == []
+        pg.screenshot(path=str(FOTOS / "50-celular-reel-envio.png"), full_page=True)
+        assert erros == [], erros
+    finally:
+        contexto.close()
+
+
+def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
+    """v0.22.0: sem o radar-video.js (ou com ele de outra versão, guardado no navegador), a peça reel pede Ctrl+F5 e o resto da peça
+    funciona; o leitor não vê o quadro do corretor (nem a fala, nem o vídeo)."""
+    pid = peca_db(limpo, "2026-11-11", "reel", "reel", roteiro=vb.ROTEIRO)
+    pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=404, body="não encontrado"))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-11")
+    assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
+    pagina.unroute("**/radar-video.js*")
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.22.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
+    pagina.reload()
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-11")
+    assert "radar-video.js, v0.21.9" in pagina.inner_text("#video-versao")
+    pagina.unroute("**/radar-video.js*")
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-11")
+    assert pagina.locator("#video-reel, #video-sem-arquivo, #video-versao").count() == 0
+
+
+def test_configuracoes_corretor_de_video_valida_e_testa(pagina, vtela):
+    """v0.22.0: Configurações → Corretor de vídeo: as faixas do banco (radar_video_cfg_num), o glossário e as variantes (só de termo
+    do glossário), a linha extra da cartela (sem termo que a publicidade da profissão não usa); “Testar o corretor de vídeo” (o
+    diagnóstico da função) cria o armazenamento privado e mostra o robô, a fila e os minutos do mês, sem segredo."""
+    db, fv = vtela
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Configurações")
+    form = pagina.locator("form[data-form=config][data-chave=corretor_video]")
+    form.wait_for()
+    valor = json.loads(form.locator("textarea").input_value())
+    assert valor["duracao_max_s"] == 45 and "eSocial" in valor["glossario"]
+    for mudanca, erro in [({"pausa_max_s": 3}, "“pausa_max_s” é a pausa dentro da frase, em segundos: número de 0,6 a 2"),
+                          ({"lufs": -30}, "“lufs” é o volume final"), ({"limite_min_mes": 1.5}, "“limite_min_mes” é os minutos de transcrição por mês: número inteiro"),
+                          ({"retencao_dias": 3}, "“retencao_dias”"), ({"duracao_max_s": "45"}, "“duracao_max_s”"),
+                          ({"glossario": []}, "“glossario” é uma lista de 1 a 200 termos"),
+                          ({"variantes": {"XYZ": ["xis"]}}, "“variantes”: “XYZ” não está no “glossario”"),
+                          ({"cartela_extra": "Consulta grátis · (48) 0000-0000"}, "“cartela_extra” vai ao ar no fim de todo reel: tire “consulta grátis”"),
+                          ({"cartela_extra": "x" * 121}, "“cartela_extra” é uma linha de até 120 caracteres")]:
+        form.locator("textarea").fill(json.dumps({**valor, **mudanca}, ensure_ascii=False))
+        limpar_recados(pagina)
+        form.locator("button", has_text="Salvar").click()
+        pagina.wait_for_selector(f"#recado .erro >> text={erro}")
+    form.locator("textarea").fill(json.dumps({**valor, "cartela_extra": "Desde 1984 · artecon.cnt.br", "pausa_max_s": 1.2}, ensure_ascii=False))
+    limpar_recados(pagina)
+    form.locator("button", has_text="Salvar").click()
+    pagina.wait_for_selector("#recado >> text=Configuração salva.")
+    assert db.execute("select valor->>'cartela_extra', (valor->>'pausa_max_s')::numeric from radar_config where chave = 'corretor_video'").fetchone() == (
+        "Desde 1984 · artecon.cnt.br", Decimal("1.2"))
+    pagina.click("[data-acao=video-diagnostico]")
+    pagina.wait_for_selector("#diag-video .diag")
+    diag = pagina.inner_text("#diag-video")
+    assert "Armazenamento dos vídeos: bucket privado \"radar-videos\" (criado agora)" in diag and "Workflow do robô" in diag
+    assert "0 na fila" in diag and "0.0 de 60 minutos" in diag and fv.TOKEN_GITHUB not in diag
+    assert fv.ARM["buckets"]["radar-videos"]["public"] is False
+
+
+def test_pessoas_termo_do_corretor_quer_ver_menor_e_pecas_publicadas(pagina, vtela):
+    """v0.22.0: Pessoas e termos: o administrador grava o termo do corretor de vídeo (nunca no futuro), “pediu para ver a peça antes” e
+    menor de idade; na peça reel, a pessoa menor aparece no aviso antes do envio. Com o termo revogado (ou a pessoa inativa), a lista das
+    peças publicadas com ela, com os links a retirar e se ainda há vídeo guardado."""
+    db, fv = vtela
+    ana = vb.nova_pessoa(db, "Ana Teste", "Ana")
+    pid = vb.nova_peca(db, dias=3, tipo="quem_cuida", formato="foto", pessoas=[ana])
+    db.execute("select set_config('radar.pauta', '1', false)")
+    db.execute("update radar_pauta_pecas set publicado_manual_em = radar_pauta_hoje(), link_instagram = 'https://www.instagram.com/p/ABC123/' where id = %s", (pid,))
+    db.execute("select set_config('radar.pauta', '', false)")
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina)
+    pagina.click("[data-acao=pauta-pessoas]")
+    form = pagina.locator(f"form[data-form=pessoa][data-id='{ana}']")
+    form.wait_for()
+    assert form.locator(".pecas-da-pessoa").count() == 0                                           # ativa e com o termo valendo
+    amanha = (datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)).isoformat()
+    form.locator("[name=termo_corretor_em]").fill(amanha)
+    limpar_recados(pagina)
+    form.locator("button", has_text="Salvar").click()
+    pagina.wait_for_selector("#recado .erro >> text=o termo do corretor de vídeo foi assinado não pode estar no futuro")
+    form.locator("[name=termo_corretor_em]").fill("2026-10-01")
+    form.locator("[name=quer_ver_peca]").check()
+    form.locator("[name=menor]").check()
+    limpar_recados(pagina)
+    form.locator("button", has_text="Salvar").click()
+    pagina.wait_for_selector("#recado >> text=Pessoa salva.")
+    assert db.execute("select termo_corretor_em, quer_ver_peca, menor from radar_pessoas where id = %s", (ana,)).fetchone() == (date(2026, 10, 1), True, True)
+    reel_id, _ = vb.reel(db, pessoa=ana)
+    abrir_video(pagina, db, reel_id)
+    assert "Ana: menor de idade: o corretor não aceita nesta versão" in pagina.inner_text("#video-pessoas-falta")
+    # o termo revogado: as peças publicadas com ela, com o link a retirar
+    db.execute("update radar_pessoas set termo_revogado_em = radar_pauta_hoje() where id = %s", (ana,))
+    pagina.click("text=← Voltar para a semana")
+    pagina.wait_for_selector(".pauta-semana")
+    pagina.click("[data-acao=pauta-pessoas]")
+    lista = pagina.locator(f"form[data-form=pessoa][data-id='{ana}'] .pecas-da-pessoa")
+    lista.wait_for()
+    assert "Peças publicadas com esta pessoa: retire das redes no prazo do termo." in lista.inner_text() and "Instagram (ver o post)" in lista.inner_text()
+    assert lista.locator("a").get_attribute("href") == "https://www.instagram.com/p/ABC123/"
