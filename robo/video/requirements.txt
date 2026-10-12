@@ -1,0 +1,7 @@
+# Radar Artecon — corretor de vídeo (v0.22.0): o Python do robô, instalado no runner do repositório privado radar-video com
+#   pip install --require-hashes --no-deps -r robo/video/requirements.txt
+# Versão exata e hash de cada arquivo (a roda para o Python 3.12 do ubuntu-24.04; o .tar.gz é a reserva). Nada de dependência que puxe
+# outra: --no-deps. O ffmpeg não entra aqui: ele roda no contêiner (Dockerfile).
+pillow==12.3.0 \
+    --hash=sha256:78cb2c6865a35ab8ff8b75fd122f6033b92a62c82801110e48ddd6c936a45d91 \
+    --hash=sha256:3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce

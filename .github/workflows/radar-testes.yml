@@ -33,7 +33,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r robo/requirements.txt "psycopg[binary]" pytest playwright pillow
-      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      # v0.22.0: ffmpeg para os testes do corretor de vídeo (testes/test_radar_video_robo.py, só com vídeos sintéticos; o teste do
+      # contêiner monta robo/video/Dockerfile com o docker que já vem no runner)
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils ffmpeg
       - run: python -m playwright install --with-deps chromium
       - uses: denoland/setup-deno@v2
         with:
