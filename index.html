@@ -236,7 +236,7 @@ const VERSOES = [
   ["0.20.0", "12/10/2026", [
     "“Gerar com IA” agora prepara também as redes: a legenda do Instagram, a do Facebook, a chamada e a linha de apoio da arte e o roteiro de um reel (de 30 a 45 segundos, para alguém da equipe gravar). Fica tudo no quadro “Kit das redes”, no conteúdo, com os botões de copiar; “Gerar kit das redes com IA” refaz só o kit. Nada é publicado sem a autorização do administrador.",
     "Arte vertical para o Instagram e o Facebook (1080×1350): chamada grande, linha de apoio, o caminho até o site e, no rodapé, a identificação legal da empresa. A chamada, o apoio e o fundo da arte podem ser trocados na hora de publicar.",
-    "Publicidade da profissão contábil: a tela aponta os termos que o CFC não aceita (promessa de resultado ou de economia, “grátis”, “brinde”, convite para trocar de contador) e não deixa a legenda nem a arte saírem com eles; “100%”, “o melhor” e “definitivo” pedem confirmação. Frase do boletim pago também não sai na legenda.",
+    "Publicidade da profissão contábil: a tela aponta os termos que a publicidade contábil evita (lista inicial, a confirmar com o contador responsável). Promessa de resultado ou de economia, “grátis”, “ganhe um brinde” e convite para trocar de contador não deixam a legenda nem a arte saírem; “100%”, “o melhor”, “definitivo”, “brindes” e “blindado” (que podem ser o assunto da notícia) pedem confirmação. Frase do boletim pago também não sai, nem na legenda nem na arte, e os botões de copiar do kit seguem as mesmas regras.",
     "Ilustração da IA opcional: o “Gerar com IA” faz a capa padrão da Artecon, sem custo de imagem. A ilustração, agora no estilo editorial e nas cores da marca (não mais foto de banco de imagens), sai só pelo botão “Gerar ilustração com IA”.",
     "Administrador: preencha o CNPJ e o CRC em Configurações → “Fecho, assinatura e identificação legal”. Enquanto estiverem vazios, a arte e as legendas saem só com o nome da empresa, e a tela avisa."]],
   ["0.19.0", "10/10/2026", [
@@ -719,7 +719,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.fundosArte = {}; E.kitAberto = {}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.fundosArte = {}; E.kitAberto = {}; E.capaDesenhada = null; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
 async function entrar(email, senha){
@@ -1334,7 +1334,11 @@ async function telaAssunto(id){
     ler("radar_site_envios", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
     ler("radar_redes_envios", {select:"id,conteudo_id,canal,situacao,url,erro,autorizado_em,enviado_em,publicado_em", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"})]) : [[], [], []];
   const idsImg = [...new Set(cont.map(c => c.imagem_id).filter(Boolean))];
-  const imgs = Object.fromEntries((idsImg.length ? await ler("radar_imagens", {select:"id,dados", id:"in.(" + idsImg.join(",") + ")"}) : []).map(i => [i.id, i.dados]));
+  const listaImg = idsImg.length ? await ler("radar_imagens", {select:"id,dados,largura,altura", id:"in.(" + idsImg.join(",") + ")"}) : [];
+  const imgs = Object.fromEntries(listaImg.map(i => [i.id, i.dados]));
+  // v0.20.0: a capa desenhada pelo Radar (1200×630, com o logotipo, a categoria e o título) não serve de fundo da arte: ela repetiria
+  // o título e a marca; o fundo “Imagem de capa” é para a foto enviada pela equipe
+  E.capaDesenhada = new Set(listaImg.filter(i => i.largura === 1200 && i.altura === 630).map(i => i.id));
   const ed = podeEditar(), des = ed ? "" : " disabled";
   const conferidas = evid.filter(e => e.trecho_conferido).length;
   const oficiais = new Set(vinc.filter(v => v.radar_capturas.radar_fontes.oficial).map(v => v.radar_capturas.id));
@@ -1715,13 +1719,16 @@ function cnpjValido(v){
 /* v0.20.0: os dados da arte de um conteúdo. Chamada e apoio: os do kit das redes, se houver kit em dia. Sem ele (reserva): a chamada é
    o título (até 80 caracteres); senão, o título sugerido mais curto que caiba; senão, as 10 primeiras palavras; o apoio é a primeira
    frase do texto, se tiver até 140 caracteres (senão, vazio). Selo de SC só com a abrangência estadual. O fundo começa no padrão
-   Artecon; a ilustração e a imagem de capa são escolhidas no campo “Fundo da arte”. */
+   Artecon; a ilustração e a imagem de capa (só a enviada pela equipe: a capa desenhada pelo Radar não entra) são escolhidas no campo
+   “Fundo da arte”. */
 function dadosArte(c, capa){
   const titulo = String(c.titulo || "").trim(), palavras = titulo.split(/\s+/).filter(Boolean), kit = kitDe(c);
   const sugerido = (Array.isArray(c.titulos_sugeridos) ? c.titulos_sugeridos : []).map(t => String(t || "").trim())
     .filter(t => t && t.length <= 80).sort((x, y) => x.length - y.length)[0];
-  const primeira = linhasDoTexto(c.corpo)[0] || "", frase = (/^.{20,}?[.!?](?=\s|$)/.exec(primeira) || [primeira])[0].trim();
-  return {capa:/^data:image\/(jpeg|png|webp);base64,/.test(String(capa || "")) ? capa : null, ilustracaoId:c.ilustracao_id || null,
+  // a primeira frase: o ponto de abreviatura (“art. 26”, “inc. II”, “Ltda.”, “S.A.”) não fecha a frase; a frase seguinte começa com maiúscula
+  const primeira = linhasDoTexto(c.corpo)[0] || "", fim = /^.{20,}?(?<!(?<![\p{L}\p{N}])(?:[Aa]rts?|[Ii]ncs?|[Aa]l|[Nn]|[Nn]º|[Pp]|[Pp]ágs?|Sra?|Dra?|Ltda|S\.A))[.!?](?=\s+["“«(]?\p{Lu}|\s*$)/u;
+  const frase = (fim.exec(primeira) || [primeira])[0].trim();
+  return {capa:/^data:image\/(jpeg|png|webp);base64,/.test(String(capa || "")) && !(E.capaDesenhada || new Set()).has(c.imagem_id) ? capa : null, ilustracaoId:c.ilustracao_id || null,
     sc:E.abrangencia === "estadual_sc", fundo:"padrao", apoio:textoDe(kit?.arte?.apoio) || (frase.length <= 140 ? frase : ""),
     chamada:textoDe(kit?.arte?.chamada) || (titulo.length <= 80 ? titulo : sugerido || (palavras.length > 10 ? palavras.slice(0, 10).join(" ").replace(/[\s,.;:–—-]+$/, "") + "…" : titulo))};
 }
@@ -1838,10 +1845,12 @@ async function montarImagemRede(){
   }
 }
 /* v0.20.0: um campo da arte mudou: o texto vale para as outras caixas do mesmo conteúdo e a imagem é redesenhada (depois de 400 ms
-   sem digitar). Enquanto a imagem está pendente, autorizar espera. */
+   sem digitar). Enquanto a imagem está pendente, autorizar espera. O desenho que já estava em andamento (com a arte de antes) deixa
+   de valer: sem isso, ao terminar, ele punha a imagem antiga e tirava o “pendente”, e a arte antiga podia ser autorizada. */
 function arteMudou(campo){
   const id = campo.dataset.conteudo, k = ["chamada", "apoio", "fundo"].find(x => campo.classList.contains("arte-" + x));
   ((E.arte ||= {})[id] ||= {})[k] = campo.value;
+  (E.arteVez ||= {})[id] = (E.arteVez[id] || 0) + 1;
   document.querySelectorAll(`.arte-${k}[data-conteudo="${id}"]`).forEach(x => { if(x !== campo) x.value = campo.value; });
   document.querySelectorAll(`img.rede-imagem[data-conteudo="${id}"]`).forEach(i => { i.dataset.pendente = "1"; });
   clearTimeout(E.arteRelogio); E.arteRelogio = setTimeout(() => montarImagemRede(), 400);
@@ -2020,17 +2029,24 @@ const msgMarcas = (lista, acao = "liberar") => `Resolva antes de ${acao}: ${list
   lista.map(m => `“${m}”`).join("; ") + ". Troque cada marca pela informação conferida (ou tire o trecho), salve e tente de novo.";
 const marcasDoConteudo = id => { const f = $(`form[data-form=conteudo][data-id="${id}"]`);
   return f ? marcasVerificar(f.querySelector("[name=titulo]")?.value || "", f.querySelector("[name=corpo]")?.value || "") : []; };
-/* v0.20.0: termos que a publicidade contábil evita (CFC; CDC). "trava": a legenda e a arte das redes não saem com eles; "aviso": a
-   tela mostra e pede confirmação (no texto do site é tudo só aviso). A mesma lista está na função radar-ia, que aponta os termos nos
-   avisos do kit: mantenha as duas iguais (testes/test_radar_publicidade.py confere o texto, da lista até o fim de termosPublicidade). */
+/* v0.20.0: termos que a publicidade contábil evita (lista inicial, a confirmar com o contador responsável: não há norma do CFC com a
+   lista no repositório). "trava": a legenda e a arte das redes não saem com eles — só a oferta, a promessa e o convite (“grátis”,
+   “ganhe um brinde”, “troque de contador”), nunca a palavra que também nomeia assunto da notícia (“brindes”, “veículos blindados”,
+   “troca de contador”), que é aviso; "aviso": a tela mostra e pede confirmação (no texto do site é tudo só aviso). A mesma lista
+   está na função radar-ia, que aponta os termos nos avisos do kit: mantenha as duas iguais (testes/test_radar_publicidade.py confere
+   o texto, da lista até o fim de termosPublicidade). */
 const TERMOS_PUBLICIDADE = [
   ["trava", "garantimos|garantia de resultado|resultado garantido|economia garantida"], ["trava", "gr[áa]tis|de gra[çc]a"],
-  ["trava", "brindes?"], ["trava", "blindad[oa]s?|blindagem"], ["trava", "pague menos|pagar menos imposto"],
-  ["trava", "troque de contador|troca de contador|mude de contador"],
-  ["aviso", "100\\s?%|cem por cento"], ["aviso", "(?:o|a|os|as) melhor(?:es)?"], ["aviso", "definitiv[oa]s?|definitivamente"]];
+  ["trava", "ganhe (?:um |uma |o |seu |sua )?brindes?"], ["trava", "blind(?:e|ar|amos) (?:o |a |seu |sua )?(?:patrim[ôo]nio|empresa)"],
+  ["trava", "pague menos"], ["trava", "(?:troque|mude) (?:de|o seu|seu) contador"],
+  ["aviso", "100\\s?%|cem por cento"], ["aviso", "(?:o|a|os|as) melhor(?:es)?"], ["aviso", "definitiv[oa]s?|definitivamente"],
+  ["aviso", "brindes?"], ["aviso", "blindad[oa]s?|blindagem"], ["aviso", "pagar menos imposto"], ["aviso", "troca de contador"]];
+// @ts-ignore (a tela é JavaScript puro: o texto é o mesmo nos dois arquivos, sem os tipos)
 const termosPublicidade = (...textos) => { const t = textos.join("\n"), r = {trava:[], aviso:[]};
-  for(const [n, e] of TERMOS_PUBLICIDADE) for(const m of t.match(new RegExp("(?<![\\p{L}\\p{N}])(?:" + e + ")(?![\\p{L}\\p{N}])", "giu")) || [])
-    if(!r[n].includes(m.toLowerCase())) r[n].push(m.toLowerCase());
+  for(const [n, e] of TERMOS_PUBLICIDADE) for(const m of t.match(new RegExp("(?<![\\p{L}\\p{N}])(?:" + e + ")(?![\\p{L}\\p{N}])", "giu")) || []){
+    const x = m.toLowerCase();       // o aviso que já está dentro de uma trava não repete ("brinde" de "ganhe um brinde": as travas vêm antes)
+    // @ts-ignore (idem: r[n] é a lista "trava" ou "aviso")
+    if(!r[n].includes(x) && !(n === "aviso" && r.trava.some(y => y.includes(x)))) r[n].push(x); }
   return r; };
 const msgTermos = lista => `Troque antes de publicar: ${lista.map(t => `“${t}”`).join(", ")}. A publicidade da profissão contábil não promete ` +
   "resultado nem economia, não oferece vantagem (grátis, brinde) e não convida a trocar de contador: corrija a legenda ou o texto da arte e tente de novo.";
@@ -2046,13 +2062,27 @@ function numerosForaDoTexto(id, ...textos){
 }
 /* v0.20.0: frase do boletim pago (ITC) na legenda: nunca vai ao ar, nem citando. A comparação é com as capturas do assunto, na memória. */
 const copiaPagaNaLegenda = legenda => (E.fontesAssunto || []).some(f => f.paga) ? trechosCopiados(legenda, E.fontesAssunto).filter(t => t.paga) : [];
-/* v0.20.0: antes de autorizar nas redes. Termo de trava (na legenda, na chamada ou no apoio da arte) ou frase do boletim pago na legenda
-   impedem: devolve {erro}. Os termos de aviso, os números fora do texto e a identificação incompleta vão no texto da confirmação. */
+/* v0.20.0: os botões de copiar do “Kit das redes” (legendas e roteiro do reel, postados à mão): termo de trava ou frase do boletim pago
+   impedem a cópia, como impedem a autorização. Devolve o recado da recusa, ou "". */
+function travaDaCopia(texto){
+  const {trava} = termosPublicidade(texto), pago = copiaPagaNaLegenda(texto)[0];
+  if(trava.length) return `Não copiado: o kit tem ${trava.map(t => `“${t}”`).join(", ")}, e a publicidade da profissão contábil não promete resultado nem ` +
+    "economia, não oferece vantagem e não convida a trocar de contador. Gere o kit de novo (ou escreva a legenda no passo Publicar).";
+  if(pago) return `Não copiado: o kit tem frase do boletim pago (ITC): “${pago.texto.length > 120 ? pago.texto.slice(0, 120) + "…" : pago.texto}”. ` +
+    "As frases do boletim pago nunca podem ser reproduzidas: gere o kit de novo (ou escreva a legenda no passo Publicar).";
+  return "";
+}
+/* v0.20.0: antes de autorizar nas redes. Marca [VERIFICAR] na chamada ou no apoio da arte (eles saem dentro da imagem; a legenda e o
+   texto já foram conferidos), termo de trava (na legenda ou na arte) ou frase do boletim pago (na legenda ou na arte) impedem: devolve
+   {erro}. Os termos de aviso, os números fora do texto e a identificação incompleta vão no texto da confirmação. */
 function conferirPublicidade(id, legendas){
   const arte = arteDe(id), daArte = [arte.chamada || "", arte.apoio || ""], {trava, aviso} = termosPublicidade(...legendas, ...daArte);
+  const marcas = marcasVerificar(...daArte);
+  if(marcas.length) return {erro:`Resolva antes de publicar: a chamada ou o apoio da arte tem ${marcas.length} ponto(s) marcado(s) com [VERIFICAR] — ` +
+    marcas.map(m => `“${m}”`).join("; ") + ". Troque cada marca pela informação conferida (ou tire o trecho) nos campos da arte e tente de novo."};
   if(trava.length) return {erro:msgTermos(trava)};
-  const pago = legendas.flatMap(copiaPagaNaLegenda)[0];
-  if(pago) return {erro:`Frase do boletim pago (ITC) na legenda: “${pago.texto.length > 120 ? pago.texto.slice(0, 120) + "…" : pago.texto}”. ` +
+  const pago = [...legendas, daArte.join("\n")].flatMap(copiaPagaNaLegenda)[0];
+  if(pago) return {erro:`Frase do boletim pago (ITC) na legenda ou na arte: “${pago.texto.length > 120 ? pago.texto.slice(0, 120) + "…" : pago.texto}”. ` +
     "As frases do boletim pago nunca podem ser reproduzidas, nem citando nem entre aspas: reescreva com palavras próprias e tente de novo."};
   const numeros = numerosForaDoTexto(id, ...legendas, ...daArte), falta = faltaIdentificacao();
   return {aviso:[aviso.length ? `Termos que a publicidade contábil evita: ${aviso.map(t => `“${t}”`).join(", ")}. Confira se é fato da notícia, e não propaganda.` : "",
@@ -2297,7 +2327,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${Array.isArray(c.avisos_ia) && c.avisos_ia.length ? `<div class="aviso alerta avisos-ia"><b>Pontos a conferir neste texto gerado pela IA</b> (verificação automática contra o texto oficial, feita na geração; não lê números por extenso nem avalia a interpretação):
       <ul>${c.avisos_ia.map(a => `<li>${h(a)}</li>`).join("")}</ul></div>`
       : c.gerado_por === "ia" ? `<div class="aviso info avisos-ia">Texto gerado pela IA. A verificação automática não achou, fora do texto oficial, número de norma, artigo, percentual, valor, data ou prazo. Ela não lê números por extenso nem avalia a interpretação: a revisão técnica continua necessária.</div>` : ""}
-    ${termos.trava.length || termos.aviso.length ? `<div class="aviso alerta termos-publicidade"><b>Termos que a publicidade da profissão contábil evita (CFC; CDC):</b> ${[...termos.trava, ...termos.aviso].map(x => `<span class="copiado">${h(x)}</span>`).join(", ")}.
+    ${termos.trava.length || termos.aviso.length ? `<div class="aviso alerta termos-publicidade"><b>Termos que a publicidade da profissão contábil evita:</b> ${[...termos.trava, ...termos.aviso].map(x => `<span class="copiado">${h(x)}</span>`).join(", ")}.
       No texto do site é só um aviso: confira se é fato da notícia (“isenção de 100%”, “decisão definitiva”) e não promessa ou propaganda.${termos.trava.length ? ` Na legenda e na arte do Instagram e do Facebook, ${termos.trava.map(x => `“${h(x)}”`).join(", ")} impede a publicação.` : ""}</div>` : ""}
     <label for="c-titulo-${c.id}">Título</label><input id="c-titulo-${c.id}" type="text" name="titulo" value="${h(c.titulo)}" style="width:100%"${ed ? "" : " disabled"}>
     ${ed ? `<div class="opcoes-titulo"><span class="sub">${(c.titulos_sugeridos || []).length ? "Outras opções da IA — clique para usar:" : "Quer outras opções de título?"}</span>
@@ -2761,28 +2791,34 @@ const ACOES = {
       " Para as legendas, a arte e o roteiro do reel, use “Gerar kit das redes com IA”, no conteúdo.", r.avisos.length > 0 || !capa ? "aviso" : false);
   },
   /* v0.20.0: o kit das redes de um conteúdo já escrito (legendas do Instagram e do Facebook, chamada e apoio da arte e o roteiro do
-     reel), a partir do texto salvo. Gravar o kit não muda a versão do conteúdo nem derruba autorização; as legendas e a arte que
-     estavam na tela deste conteúdo dão lugar às do kit novo. */
+     reel), a partir do texto salvo. Gravar o kit não muda a versão do conteúdo nem derruba autorização; as legendas e a chamada e o
+     apoio da arte que estavam na tela deste conteúdo dão lugar às do kit novo (com confirmação, se alguém editou; o fundo fica). */
   async "ia-kit"(el){
     const id = Number(el.dataset.id), f = $(`form[data-form=conteudo][data-id="${id}"]`); if(!f) return;
     if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de gerar o kit das redes: ele parte do texto salvo.", true); return; }
+    const editadas = Object.keys(E.legendas || {}).some(k => k.startsWith(id + ":")) || ["chamada", "apoio"].some(k => ((E.arte || {})[id] || {})[k] !== undefined);
+    if(editadas && !confirm("As legendas e a arte editadas na tela deste conteúdo serão trocadas pelas do kit novo. Continuar?")) return;
     if(!(await liberarIA())) return;
     const assunto = E.assunto, r = await ia("kit", {conteudo_id:id, lido:f.dataset.lido, assunto_id:assunto});
     if(!telaDoAssunto(assunto)) return;
     for(const k of Object.keys(E.legendas || {})) if(k.startsWith(id + ":")) delete E.legendas[k];
-    if(E.arte) delete E.arte[id];
+    if(E.arte?.[id]){ const fundo = E.arte[id].fundo; delete E.arte[id]; if(fundo) E.arte[id] = {fundo}; }
     (E.kitAberto ||= {})[id] = true;
     await desenhar();
     $(`details.kit-redes[data-id="${id}"]`)?.scrollIntoView({behavior:"smooth", block:"start"});
     const n = Array.isArray(r?.avisos) ? r.avisos.length : 0;
     recado(`Kit das redes gerado pela IA${n ? `, com ${n} ponto(s) a conferir` : ""}: as legendas, a arte e o roteiro do reel estão no quadro “Kit das redes”. Confira antes de usar; nada vai ao ar sem a autorização do administrador.`, n ? "aviso" : false);
   },
-  /* v0.20.0: copiar do quadro “Kit das redes” (a legenda já montada, com a identificação, ou o roteiro do reel) */
+  /* v0.20.0: copiar do quadro “Kit das redes” (a legenda já montada, com a identificação, ou o roteiro do reel). O que é copiado vai
+     ao ar à mão (o reel, sempre): passa pela mesma trava da autorização (termo de trava e frase do boletim pago) */
   async "copiar-legenda"(el){
     const t = el.closest(".kit-redes")?.querySelector(`.kit-legenda[data-canal="${el.dataset.canal}"]`)?.textContent || "";
     if(!t){ recado("Não há legenda do kit para copiar.", true); return; }
+    const trava = travaDaCopia(t); if(trava){ recado(trava, true); return; }
     await copiar(t); recado(`Legenda do ${NOME_REDE[el.dataset.canal] || "canal"} copiada.`); },
-  async "copiar-roteiro"(el){ await copiar(el.dataset.texto || ""); recado("Roteiro do reel copiado."); },
+  async "copiar-roteiro"(el){
+    const t = el.dataset.texto || "", trava = travaDaCopia(t); if(trava){ recado(trava, true); return; }
+    await copiar(t); recado("Roteiro do reel copiado."); },
 
   previa(el){ abrirPrevia(el.dataset.id); },
   "fechar-previa"(){ fecharPrevia(); },

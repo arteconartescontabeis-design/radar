@@ -2475,6 +2475,13 @@ def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
     pagina.screenshot(path=str(FOTOS / "10-capa.png"), full_page=True)
 
 
+def confirmar_senha_ia(pg):
+    """A partir da 2ª consulta à IA no assunto, a tela pede a senha (liberarIA): confirma com a senha de teste."""
+    pg.wait_for_selector("#senha-ia")
+    pg.fill("#senha-ia-campo", SENHA)
+    pg.click("#senha-ia >> text=Confirmar e consultar")
+
+
 def test_ia_preparar_tudo_e_ilustracao(pagina, limpo, openai):
     a, cap = assunto_com_texto(limpo)
     openai["respostas"]["fundamentacao"] = {"trechos": [{"captura_id": cap, "trecho_literal": TRECHO, "dispositivo": "Art. 2º", "motivo": "regra"}]}
@@ -2495,9 +2502,7 @@ def test_ia_preparar_tudo_e_ilustracao(pagina, limpo, openai):
 
     def ilustrar():                                         # a ilustração é a 2ª consulta à IA neste assunto: pede a senha
         pagina.click("text=Gerar ilustração com IA")
-        pagina.wait_for_selector("#senha-ia")
-        pagina.fill("#senha-ia-campo", SENHA)
-        pagina.click("#senha-ia >> text=Confirmar e consultar")
+        confirmar_senha_ia(pagina)
     ilustrar()
     pagina.wait_for_selector("text=Ilustração gerada pela IA.")
     depois = limpo.execute("select imagem_id from radar_conteudos").fetchone()[0]
@@ -2961,6 +2966,7 @@ def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pag
     # sem descrição: a IA escolhe a cena pela notícia; o que a pessoa escreve não derruba as proibições
     pagina.locator("[id^=img-desc-]").fill("")
     pagina.click("text=Gerar ilustração com IA")
+    confirmar_senha_ia(pagina)                                                            # 2ª consulta à IA neste assunto: senha
     for _ in range(100):
         if len(pedidos()) == 2:
             break
@@ -2984,11 +2990,13 @@ def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pag
     # a tela mostra a recusa e mantém o que foi digitado; depois de gerar, a descrição continua no campo
     pagina.locator("[id^=img-desc-]").fill("fachada com a marca da empresa")
     pagina.click("text=Gerar ilustração com IA")
+    confirmar_senha_ia(pagina)
     pagina.wait_for_selector("#recado .erro >> text=não pode pedir marca")
     assert pagina.locator("[id^=img-desc-]").input_value() == "fachada com a marca da empresa"
     pagina.locator("[id^=img-desc-]").fill("mesa de escritório com calculadora e relatórios")
     antes = len(pedidos())
     pagina.click("text=Gerar ilustração com IA")
+    confirmar_senha_ia(pagina)
     for _ in range(150):
         if len(pedidos()) > antes and pagina.locator("[id^=img-desc-]").count() and pagina.locator("[id^=img-desc-]").input_value():
             break
@@ -3225,8 +3233,9 @@ def _png_base64(cor=(30, 90, 150)):
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def ia_de_mentira(pg, db, pedidos, kit=None):
-    """Responde no lugar da função radar-ia (a IA Central não roda aqui): grava o rascunho como a função faria."""
+def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None):
+    """Responde no lugar da função radar-ia (a IA Central não roda aqui): grava o rascunho como a função faria. Com kit_falha
+    ((status, mensagem)), o kit falha como na função antiga ou no banco sem o SQL da v0.20.0."""
     def responder(rota):
         corpo = json.loads(rota.request.post_data or "{}")
         pedidos.append(corpo)
@@ -3256,12 +3265,14 @@ def ia_de_mentira(pg, db, pedidos, kit=None):
                           where id = %s""", (corpo["conteudo_id"],))
             r = {"conteudo_id": corpo["conteudo_id"], "pendencias": ["prazo"], "marcas": 0, "copias": 1, "restam": {"marcas": 0, "copias": 0},
                  "avisos_gravados": True, "titulo_mudou": "[VERIFICAR" in antes, "autorizacao_caiu": False}
+        elif acao == "kit" and kit_falha:
+            return rota.fulfill(status=kit_falha[0], content_type="application/json", body=json.dumps({"message": kit_falha[1]}))
         elif acao == "kit":                                  # v0.20.0: o kit das redes, gravado como a função grava (não muda a versão do conteúdo)
             k = kit or KIT_TELA
             db.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(k), corpo["conteudo_id"]))
             r = {"conteudo_id": corpo["conteudo_id"], "kit": k, "avisos": k["avisos"]}
-        else:
-            r = {"message": "Ação desconhecida."}
+        else:                                                # como a função: ação que ela não conhece é recusada (400)
+            return rota.fulfill(status=400, content_type="application/json", body=json.dumps({"message": "Ação desconhecida."}))
         rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
     pg.route("**/functions/v1/radar-ia", responder)
 
@@ -3377,6 +3388,34 @@ def test_gerar_com_ia_faz_o_kit_e_a_capa_padrao_e_rascunho_sem_fonte_oficial(pag
     assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s and imagem_id is not null and ilustracao_id is null", (b,)).fetchone()[0] == 1
     assert "TEXTO PARA ANÁLISE" not in pagina.inner_text("main")
     assert "https://www.itcnet.com.br/" in pagina.inner_text(".link-fonte") and "radar=" not in pagina.inner_text(".link-fonte")
+
+
+def test_gerar_com_ia_com_a_funcao_antiga_ou_o_banco_sem_o_sql_fica_com_o_texto_e_a_capa(pagina, limpo):
+    """v0.20.0 (decisão 12 do desenho): a tela nova antes da radar-ia nova (o kit é “Ação desconhecida.”, 400) ou do SQL da v0.20.0
+    (503): o “Gerar com IA” termina com o rascunho e a capa padrão, sem kit, e o recado em amarelo diz o que houve e aponta o botão do kit."""
+    a, _ = assunto_com_texto(limpo)
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, kit_falha=(400, "Ação desconhecida."))
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    aviso = pagina.wait_for_selector("#recado .aviso >> text=O kit das redes (legendas, arte e roteiro do reel) não saiu agora").inner_text()
+    assert "um rascunho, a capa padrão." in aviso and "versão anterior" in aviso and "use “Gerar kit das redes com IA”, no conteúdo." in aviso
+    assert pagina.locator("#recado .erro").count() == 0 and [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "kit"]
+    c, capa, ilus, kit = limpo.execute("select id, imagem_id, ilustracao_id, kit_ia from radar_conteudos where assunto_id = %s", (a,)).fetchone()
+    assert capa and ilus is None and kit == {}
+    assert "não gerado" in pagina.inner_text(f"details.kit-redes[data-id='{c}'] summary")
+    assert pagina.locator(f"form[data-form=conteudo][data-id='{c}'] [data-acao=ia-kit]").count() == 1
+    # o banco sem o SQL da v0.20.0: a mensagem da função chega ao recado; o texto e a capa saem do mesmo jeito (2ª consulta: senha)
+    ia_de_mentira(pagina, limpo, pedidos, kit_falha=(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.20.0.sql (Supabase → SQL Editor) e tente de novo."))
+    pagina.evaluate("document.querySelector('#recado').innerHTML = ''")
+    pagina.locator("[data-acao=ia-tudo]:visible").first.click()                  # “Já há 1 conteúdo…”: a confirmação é aceita
+    confirmar_senha_ia(pagina)
+    aviso = pagina.wait_for_selector("#recado .aviso >> text=O kit das redes (legendas, arte e roteiro do reel) não saiu agora").inner_text()
+    assert "rode o radar-setup-v0.20.0.sql" in aviso and "use “Gerar kit das redes com IA”" in aviso
+    assert [p["acao"] for p in pedidos][-3:] == ["fundamentar", "gerar", "kit"]
+    assert limpo.execute("select count(*), count(imagem_id), count(*) filter (where kit_ia = '{}') from radar_conteudos where assunto_id = %s", (a,)).fetchone() == (2, 2, 2)
 
 
 def test_publicacoes_mostram_o_que_foi_e_o_que_falta_em_cada_canal(pagina, limpo):
@@ -4213,14 +4252,27 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
 def test_arte_vertical_1080x1350_rodape_legal_sem_inventar_e_selo_sc(pagina, limpo, request):
     """v0.20.0: a arte das redes é vertical (1080×1350): chamada, apoio, o caminho até o site e a faixa legal. A faixa leva só o que
     está nas Configurações (sem CNPJ e CRC, só o nome da empresa, nada provisório) e o selo de SC só aparece na norma estadual. A legenda
-    leva a mesma linha de identificação, antes das hashtags."""
+    leva a mesma linha de identificação, antes das hashtags. A capa desenhada pelo Radar (1200×630, já com o título e o logotipo) não
+    é oferecida como fundo da arte."""
     _assinatura(limpo, request)
-    a, c = no_site(limpo)
+    a, c = pronto_para_o_site(limpo)
+    capa = limpo.execute("insert into radar_imagens (dados, largura, altura) values (%s, 1200, 630) returning id", (_png_base64(),)).fetchone()[0]
+    limpo.execute("update radar_conteudos set imagem_id = %s where id = %s", (capa, c))
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c,))
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abrir_por_id(pagina, a)
     pagina.wait_for_function(IMAGEM_PRONTA)
     assert pagina.evaluate("() => { const i = document.querySelector('#rede-imagem'); return [i.naturalWidth, i.naturalHeight]; }") == [1080, 1350]
+    assert pagina.locator(f".arte-fundo[data-conteudo='{c}']").first.locator("option").all_inner_texts() == ["Padrão Artecon"]
+    # sem kit, o apoio é a primeira frase do texto: o ponto de abreviatura (“art. 26”) não corta a frase; sem frase que caiba, vazio
+    apoio = "id => dadosArte({id, titulo: 'T', corpo: CORPO}, null).apoio"
+    assert pagina.evaluate(apoio.replace("CORPO", "'A Lei Complementar 214/2025 prevê no art. 26 que as empresas ajustem o sistema. Depois, a outra frase.'"), c) == \
+        "A Lei Complementar 214/2025 prevê no art. 26 que as empresas ajustem o sistema."
+    assert pagina.evaluate(apoio.replace("CORPO", "'A Lei Complementar 214/2025 prevê no art. 26 que as empresas ajustem o sistema emissor, o cadastro de " +
+                                         "produtos e tudo o que for preciso para cumprir a regra nova da CBS'"), c) == ""
     textos = pagina.evaluate("id => montarArte(id).then(a => a.textos)", c)
     assert "Informativo de teste" in " ".join(textos) and "Texto do informativo com negrito e tamanho suficiente." in " ".join(textos)
     assert "Matéria completa em www.artecon.cnt.br" in textos and textos[-1] == "Artecon Artes Contábeis ME"
@@ -4299,6 +4351,21 @@ def test_campos_da_arte_redesenham_a_imagem_sem_sujar_o_formulario(pagina, limpo
     assert pagina.get_attribute(f"#faltam-imagem-{c}", "src") == pagina.get_attribute("#rede-imagem", "src")
     assert "CBS muda a apuração em 2027" in " ".join(pagina.evaluate("id => montarArte(id).then(a => a.textos)", c))
     assert pagina.evaluate("telaSuja()") is False
+    # a chamada muda com um desenho em andamento: ele (com a arte de antes) não vale mais — a imagem continua pendente até o
+    # desenho novo (sem isso, a arte antiga ficava na tela, sem o “pendente”, e podia ser autorizada)
+    original = pagina.get_attribute("#rede-imagem", "src")
+    ficou = pagina.evaluate("""async c => { const campo = document.querySelector(`.arte-chamada[data-conteudo="${c}"]`);
+        document.querySelectorAll(`img.rede-imagem[data-conteudo="${c}"]`).forEach(i => { i.dataset.pendente = "1"; });
+        const desenho = montarImagemRede();
+        campo.value = "Chamada trocada durante o desenho"; arteMudou(campo);
+        await desenho;
+        return [...document.querySelectorAll(`img.rede-imagem[data-conteudo="${c}"]`)].map(i => !!i.dataset.pendente); }""", c)
+    assert ficou == [True, True]
+    pagina.wait_for_function("a => { const i = document.querySelector('#rede-imagem'); return !i.dataset.pendente && i.getAttribute('src') !== a; }", arg=original)
+    assert "Chamada trocada durante o desenho" in " ".join(pagina.evaluate("id => montarArte(id).then(a => a.textos)", c))
+    trocada = pagina.get_attribute("#rede-imagem", "src")
+    chamadas.first.fill("CBS muda a apuração em 2027")
+    pagina.wait_for_function("a => { const i = document.querySelector('#rede-imagem'); return !i.dataset.pendente && i.getAttribute('src') !== a; }", arg=trocada)
     # o fundo escolhido no outro quadro vale para os dois: a imagem de capa entra na faixa de cima
     antes = pagina.get_attribute("#rede-imagem", "src")
     pagina.locator(f"#faltam-{c} .arte-fundo").select_option("capa")
@@ -4376,21 +4443,29 @@ def test_termos_de_publicidade_travam_a_legenda_e_avisam_no_conteudo(pagina, lim
         campo.fill(texto)
         pagina.wait_for_function("a => { const i = document.querySelector('#rede-imagem'); return !i.dataset.pendente && i.getAttribute('src') !== a; }", arg=antes)
     redesenhar(apoio, "Vale para o atendimento ao contribuinte.")
-    redesenhar(chamada, "Brinde para quem chegar cedo")              # e a chamada da arte com “brinde”
-    tentar("brinde")
-    # o “100%” (fato da notícia) é só aviso: vai para a confirmação e a publicação sai
-    redesenhar(chamada, "Isenção no atendimento ao contribuinte")
+    redesenhar(chamada, "Ganhe um brinde ao chegar cedo")            # e a chamada da arte com a oferta de brinde
+    tentar("ganhe um brinde")
+    # a marca [VERIFICAR] na chamada (ela sai dentro da imagem) também impede
+    redesenhar(chamada, "Isenção [VERIFICAR: prazo] no atendimento")
+    pagina.evaluate("document.querySelector('#recado').innerHTML = ''")
+    autorizar.click()
+    erro = pagina.wait_for_selector("#recado .erro").inner_text()
+    assert erro.startswith("Resolva antes de publicar: a chamada ou o apoio da arte tem 1 ponto(s) marcado(s) com [VERIFICAR] — “[VERIFICAR: prazo]”"), erro
+    assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
+    # “brindes”, assunto da notícia, e o “100%” (fato da notícia) são só aviso: vão para a confirmação e a publicação sai
+    redesenhar(chamada, "Isenção no atendimento ao contribuinte e nos brindes")
     autorizar.click()
     pagina.wait_for_selector("text=Publicado no Instagram.")
     confirmacao = next(m for m in mensagens if m.startswith("Publicar agora no Instagram"))
-    assert "Termos que a publicidade contábil evita: “100%”" in confirmacao
+    assert "Termos que a publicidade contábil evita: “100%”, “brindes”" in confirmacao
     legenda = limpo.execute("select legenda from radar_redes_envios where canal = 'instagram'").fetchone()[0]
     assert "grátis" not in legenda and "sem custo" in legenda
 
 
 def test_frase_do_boletim_pago_na_legenda_nao_e_autorizada(pagina, limpo, request):
-    """v0.20.0: a frase do boletim pago (ITC) não vai ao ar nem colada na legenda (comparada na tela, com as capturas do assunto);
-    no “Publicar em todos”, nem o site é autorizado."""
+    """v0.20.0: a frase do boletim pago (ITC) não vai ao ar nem colada na legenda nem na arte (comparada na tela, com as capturas do
+    assunto); no “Publicar em todos”, nem o site é autorizado. O termo de trava, na legenda ou na chamada da arte do “Publicar em
+    todos”, também impede."""
     a, c = pronto_para_o_site(limpo)
     with como("authenticated", EDITOR) as x:
         x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
@@ -4412,6 +4487,29 @@ def test_frase_do_boletim_pago_na_legenda_nao_e_autorizada(pagina, limpo, reques
     assert "reescreva com palavras próprias" in erro
     assert limpo.execute("select count(*) from radar_site_envios").fetchone()[0] == 0
     assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
+
+    def tentar(trecho):
+        pagina.evaluate("document.querySelector('#recado').innerHTML = ''")
+        pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
+        assert trecho in pagina.wait_for_selector("#recado .erro").inner_text()
+        assert limpo.execute("select count(*) from radar_site_envios").fetchone()[0] == 0
+        assert limpo.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
+
+    def redesenhar(campo, texto):
+        antes = pagina.get_attribute(f"#todos-imagem-{c}", "src")
+        pagina.fill(f"#todos-{c} {campo}", texto)
+        pagina.wait_for_function("([c, a]) => { const i = document.querySelector('#todos-imagem-' + c); return !!i && !i.dataset.pendente && i.getAttribute('src') !== a; }",
+                                 arg=[c, antes])
+    # o termo de trava na legenda e na chamada da arte do “Publicar em todos”; a frase paga no apoio da arte (sai dentro da imagem)
+    pagina.fill(f"#todos-legenda-instagram-{c}", ig + "\n\nConsulta grátis para quem chegar cedo.")
+    tentar("Troque antes de publicar: “grátis”")
+    pagina.fill(f"#todos-legenda-instagram-{c}", ig)
+    redesenhar(".arte-chamada", "Ganhe um brinde ao chegar cedo")
+    tentar("Troque antes de publicar: “ganhe um brinde”")
+    redesenhar(".arte-chamada", "CBS muda a nota fiscal")
+    redesenhar(".arte-apoio", pago)
+    tentar("Frase do boletim pago (ITC) na legenda ou na arte")
+    redesenhar(".arte-apoio", "Revise o cadastro de produtos antes de janeiro.")
     # com palavras próprias, sai (e a confirmação lembra a identificação incompleta)
     mensagens = []
     pagina.on("dialog", lambda d: mensagens.append(d.message))
@@ -4438,7 +4536,8 @@ def _legenda_kit(kit, canal, linha, link="{LINK DO SITE}"):
 def test_kit_aparece_no_conteudo_com_roteiro_e_copia(navegador, limpo, request):
     """v0.20.0: “Gerar kit das redes com IA” grava o kit sem mudar a versão do conteúdo; o quadro “Kit das redes” mostra a arte, as
     duas legendas já montadas (com a fonte, a identificação legal e as hashtags), o roteiro do reel e os avisos, tudo como texto, e
-    copia as legendas e o roteiro; o que estava digitado nas redes dá lugar ao kit novo."""
+    copia as legendas e o roteiro (não com termo de trava: o que é copiado vai ao ar à mão); o que estava digitado nas redes dá lugar
+    ao kit novo, depois da confirmação."""
     _assinatura(limpo, request, cnpj="11222333000181", crc="012345/O-6")
     a, c = no_site(limpo)
     kit = json.loads(json.dumps(KIT_TELA))
@@ -4450,8 +4549,9 @@ def test_kit_aparece_no_conteudo_com_roteiro_e_copia(navegador, limpo, request):
     contexto.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
     contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
     pg = contexto.new_page()
-    erros, pedidos = [], []
+    erros, pedidos, dialogos, respostas = [], [], [], [False]                # a 1ª confirmação é recusada; as outras, aceitas
     pg.on("pageerror", lambda e: erros.append(str(e)))
+    pg.on("dialog", lambda d: (dialogos.append(d.message), d.accept() if not respostas or respostas.pop(0) else d.dismiss()))
     entrar(pg, "admin@artecon.test")
     pg.wait_for_selector("text=Painel do dia")
     ia_de_mentira(pg, limpo, pedidos, kit)
@@ -4463,6 +4563,13 @@ def test_kit_aparece_no_conteudo_com_roteiro_e_copia(navegador, limpo, request):
     pg.fill("#rede-legenda", "Legenda digitada na tela antes do kit.")
     pg.locator(".autorizacao .arte-chamada").fill("Chamada digitada antes do kit")
     quadro.locator("summary").click()
+    quadro.locator("[data-acao=ia-kit]").click()                          # o que foi digitado seria trocado: pede confirmação
+    for _ in range(50):
+        if dialogos:
+            break
+        pg.wait_for_timeout(100)
+    assert dialogos == ["As legendas e a arte editadas na tela deste conteúdo serão trocadas pelas do kit novo. Continuar?"] and pedidos == []
+    assert pg.input_value("#rede-legenda") == "Legenda digitada na tela antes do kit."
     quadro.locator("[data-acao=ia-kit]").click()
     pg.wait_for_selector("text=Kit das redes gerado pela IA, com 2 ponto(s) a conferir")
     assert (pedidos[-1]["acao"], pedidos[-1]["conteudo_id"], pedidos[-1]["assunto_id"]) == ("kit", c, a) and pedidos[-1]["lido"]
@@ -4500,6 +4607,19 @@ def test_kit_aparece_no_conteudo_com_roteiro_e_copia(navegador, limpo, request):
     assert f"Chamada final: {kit['reel']['chamada_final']}" in roteiro
     assert roteiro.endswith(f"Legenda do reel:\n{kit['reel']['legenda']}\n\n{LINHA_LEGAL}")
     assert pg.locator(".para-site").inner_text().replace("\n", " ").count("1.") == 1            # o quadro do site continua igual
+    # kit com termo de trava (na legenda do Instagram e na do reel): os botões de copiar recusam, como a autorização
+    com_termo = json.loads(json.dumps(kit))
+    com_termo["instagram"]["texto"] = "Consulta grátis para quem emite nota fiscal.\n\nLeia a matéria completa no site (link na bio)."
+    com_termo["reel"]["legenda"] = "Ganhe um brinde na consulta sobre a CBS. Link na bio."
+    limpo.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(com_termo), c))
+    pg.evaluate("desenhar()")
+    quadro = pg.locator(f"details.kit-redes[data-id='{c}'][open]")
+    quadro.locator("text=Copiar legenda do Instagram").click()
+    assert pg.wait_for_selector("#recado .erro").inner_text().startswith("Não copiado: o kit tem “grátis”")
+    pg.evaluate("document.querySelector('#recado').innerHTML = ''")
+    quadro.locator("text=Copiar roteiro").click()
+    assert pg.wait_for_selector("#recado .erro").inner_text().startswith("Não copiado: o kit tem “ganhe um brinde”")
+    assert pg.evaluate("navigator.clipboard.readText()") == roteiro                              # nada foi copiado
     pg.screenshot(path=str(FOTOS / "42-kit-das-redes.png"), full_page=True)
     assert erros == []
     contexto.close()

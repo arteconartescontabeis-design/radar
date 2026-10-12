@@ -27,10 +27,13 @@ A v0.20.0 completa o **"Gerar com IA" para as redes**, dentro das regras da publ
 - **Identificação legal:** empresa, CNPJ e CRC ficam em Configurações → "Fecho, assinatura e identificação legal" (campos `cnpj`
   e `crc`, conferidos ao salvar). Quem os acrescenta à arte e às legendas é o Radar, nunca a IA; enquanto faltarem, sai só o que
   existe (o nome da empresa) e a tela avisa.
-- **Publicidade da profissão contábil:** a tela aponta os termos que o CFC não aceita. Promessa de resultado ou de economia
-  ("garantimos", "pague menos imposto"), "grátis", "brinde", "blindagem" e convite para trocar de contador **impedem** a
-  publicação da legenda e da arte; "100%", "o melhor" e "definitivo" pedem confirmação (podem ser fato da notícia, como "isenção
-  de 100%"). No texto do site é só aviso. Frase do boletim pago (ITC) na legenda também não sai.
+- **Publicidade da profissão contábil:** a tela aponta os termos que a publicidade contábil evita (lista inicial, a confirmar com
+  o contador responsável: não há no pacote a norma do CFC com a lista). A oferta, a promessa e o convite ("garantimos", "economia
+  garantida", "pague menos", "grátis", "de graça", "ganhe um brinde", "blinde seu patrimônio", "troque de contador") **impedem** a
+  publicação da legenda e da arte; "100%", "o melhor", "definitivo", "brindes", "blindado", "pagar menos imposto" e "troca de
+  contador" pedem confirmação (podem ser fato ou assunto da notícia, como "isenção de 100%" ou "ICMS na distribuição de
+  brindes"). No texto do site é só aviso. Frase do boletim pago (ITC) também não sai, nem na legenda nem na chamada e no apoio da
+  arte, e os botões de copiar do quadro "Kit das redes" seguem as mesmas regras (o reel é postado à mão).
 - **Ilustração opcional:** o "Gerar com IA" e o "Gerar texto com IA" fazem a **capa padrão** da Artecon, sem custo de imagem. A
   ilustração da IA passa a ser uma ilustração editorial nas cores da marca (não mais foto de banco de imagens) e sai só pelo
   botão "Gerar ilustração com IA".

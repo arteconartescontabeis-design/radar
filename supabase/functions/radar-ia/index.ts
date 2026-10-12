@@ -1044,17 +1044,22 @@ const REGRA_PUBLICIDADE = "(12) PUBLICIDADE DA PROFISSÃO CONTÁBIL: informe, n�
   "sem comparação com outros escritórios nem convite para trocar de contador, sem superlativos nem absolutos de propaganda " +
   "('o melhor', 'o mais completo', '100% seguro', 'solução definitiva') e sem urgência artificial ('corra', 'não perca', 'última chance'); ";
 
-// v0.20.0: termos que a publicidade contábil evita (CFC; CDC). "trava": a tela não deixa a legenda nem a arte sair com eles; "aviso":
-// a tela mostra e pede confirmação; aqui, os dois viram aviso do kit. A mesma lista está na tela (index.html): mantenha as duas iguais
-// (testes/test_radar_publicidade.py confere o texto, da lista até o fim de termosPublicidade).
+// v0.20.0: termos que a publicidade contábil evita (lista inicial, a confirmar com o contador responsável). "trava" (só a oferta, a
+// promessa e o convite; a palavra que também nomeia assunto da notícia, como "brindes", é aviso): a tela não deixa a legenda nem a
+// arte sair com eles; "aviso": a tela mostra e pede confirmação; aqui, os dois viram aviso do kit. A mesma lista está na tela
+// (index.html): mantenha as duas iguais (testes/test_radar_publicidade.py confere o texto, da lista até o fim de termosPublicidade).
 const TERMOS_PUBLICIDADE = [
   ["trava", "garantimos|garantia de resultado|resultado garantido|economia garantida"], ["trava", "gr[áa]tis|de gra[çc]a"],
-  ["trava", "brindes?"], ["trava", "blindad[oa]s?|blindagem"], ["trava", "pague menos|pagar menos imposto"],
-  ["trava", "troque de contador|troca de contador|mude de contador"],
-  ["aviso", "100\\s?%|cem por cento"], ["aviso", "(?:o|a|os|as) melhor(?:es)?"], ["aviso", "definitiv[oa]s?|definitivamente"]];
+  ["trava", "ganhe (?:um |uma |o |seu |sua )?brindes?"], ["trava", "blind(?:e|ar|amos) (?:o |a |seu |sua )?(?:patrim[ôo]nio|empresa)"],
+  ["trava", "pague menos"], ["trava", "(?:troque|mude) (?:de|o seu|seu) contador"],
+  ["aviso", "100\\s?%|cem por cento"], ["aviso", "(?:o|a|os|as) melhor(?:es)?"], ["aviso", "definitiv[oa]s?|definitivamente"],
+  ["aviso", "brindes?"], ["aviso", "blindad[oa]s?|blindagem"], ["aviso", "pagar menos imposto"], ["aviso", "troca de contador"]];
+// @ts-ignore (a tela é JavaScript puro: o texto é o mesmo nos dois arquivos, sem os tipos)
 const termosPublicidade = (...textos) => { const t = textos.join("\n"), r = {trava:[], aviso:[]};
-  for(const [n, e] of TERMOS_PUBLICIDADE) for(const m of t.match(new RegExp("(?<![\\p{L}\\p{N}])(?:" + e + ")(?![\\p{L}\\p{N}])", "giu")) || [])
-    if(!r[n].includes(m.toLowerCase())) r[n].push(m.toLowerCase());
+  for(const [n, e] of TERMOS_PUBLICIDADE) for(const m of t.match(new RegExp("(?<![\\p{L}\\p{N}])(?:" + e + ")(?![\\p{L}\\p{N}])", "giu")) || []){
+    const x = m.toLowerCase();       // o aviso que já está dentro de uma trava não repete ("brinde" de "ganhe um brinde": as travas vêm antes)
+    // @ts-ignore (idem: r[n] é a lista "trava" ou "aviso")
+    if(!r[n].includes(x) && !(n === "aviso" && r.trava.some(y => y.includes(x)))) r[n].push(x); }
   return r; };
 
 const LINK_SITE = "{LINK DO SITE}";                  // o banco troca pelo endereço da matéria quando o site sai (Publicar em todos)
@@ -1066,8 +1071,8 @@ const FIM_INSTAGRAM = "Leia a matéria completa no site (link na bio).", FIM_FAC
 const RE_IDENTIFICACAO = new RegExp(String.raw`(?<![\w.])[0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}\/[0-9A-Z]{4}-\d{2}(?!\d)|CNPJ\D{0,12}\d{14}` +
   String.raw`|\bCRC(?:[\s\/-]*[A-Z]{2}\b)?[\s:nº°.-]*(?:\d?[A-Z]{2}[\s.\/-]*)?(?!(?:19|20)\d{2}(?!\d|\.\d|\/[OPST]\b))\d{1,3}\.?\d{3,}(?:\/[OPST](?:-\d)?\b)?` +
   String.raw`|\(\d{2}\)\s?9?\d{4}[-\s]?\d{4}|(?<!\d)\d{2}[\s-]9?\d{4}-\d{4}(?!\d)`, "i");
-// o dado sai com o rótulo colado a ele ("CNPJ:", "Telefone", "WhatsApp")
-const RE_DADO_IDENTIFICACAO = new RegExp(String.raw`(?:\b(?:CNPJ|tel(?:efone)?|fone|celular|whats(?:app)?|contato)\b\.?\s*(?:n[º°.]\s*)?:?\s*)?(?:` +
+// o dado sai com o rótulo colado a ele ("CNPJ", "Telefone:", "WhatsApp:"); "pelo telefone (48) …" fica "pelo telefone"
+const RE_DADO_IDENTIFICACAO = new RegExp(String.raw`(?:\bCNPJ\b\.?\s*(?:n[º°.]\s*)?:?\s*|\b(?:tel(?:efone)?|fone|celular|whats(?:app)?|contato)\b\.?\s*:\s*)?(?:` +
   RE_IDENTIFICACAO.source + ")", "gi");
 const RE_HASHTAG = /(?<![\p{L}\p{N}_&#])#[\p{L}\p{N}_]+/gu;
 /** Sem HTML e sem link (http…): o que a IA escreveu, antes de qualquer outra limpeza. */
