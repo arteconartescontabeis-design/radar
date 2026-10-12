@@ -1,6 +1,6 @@
 # Radar Artecon — Relatório de testes (v0.20.0)
 
-Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.20.0: **@@TOTAL@@**. Os pulados são os testes de tela
+Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.20.0: **634 aprovados, 0 falhas, 61 pulados**. Os pulados são os testes de tela
 que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`). A função
 `radar-ia` roda de verdade no Deno nos testes da função (`test_radar_funcao_ia.py`). Entre a v0.7.1 e a v0.19.1 este relatório não
 foi atualizado: a seção da v0.20.0 vem logo abaixo e as seguintes são das versões até a v0.7.1.

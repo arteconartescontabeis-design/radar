@@ -1059,23 +1059,54 @@ const termosPublicidade = (...textos) => { const t = textos.join("\n"), r = {tra
 const LINK_SITE = "{LINK DO SITE}";                  // o banco troca pelo endereço da matéria quando o site sai (Publicar em todos)
 const RE_LINK_SITE = /\{\s*link\s+do\s+site\s*\}/gi;
 const FIM_INSTAGRAM = "Leia a matéria completa no site (link na bio).", FIM_FACEBOOK = "Leia a matéria completa: " + LINK_SITE;
-// linha com dado de identificação (número de CNPJ, registro no CRC, telefone): a identificação é da tela, nunca da IA. A palavra
-// "CNPJ" sem número fica ("o CNPJ alfanumérico começa em julho" é notícia).
+// dado de identificação (número de CNPJ, registro no CRC, telefone): a identificação é da tela, nunca da IA. A palavra "CNPJ" sem
+// número fica ("o CNPJ alfanumérico começa em julho" é notícia), e o CRC só conta com cara de número de registro ("CRC-SC
+// 012345/O-6", "CRC 1SC012345/O-6"): "anuidade do CRC 2027", "o CRC em 2026" e "CRC-SC de 2026" são notícia (o ano não é registro).
 const RE_IDENTIFICACAO = new RegExp(String.raw`(?<![\w.])[0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}\/[0-9A-Z]{4}-\d{2}(?!\d)|CNPJ\D{0,12}\d{14}` +
-  String.raw`|\bCRC\b[\s\/-]*(?:[A-Z]{2}\b)?[\s:nº°.-]*\d|\(\d{2}\)\s?9?\d{4}[-\s]?\d{4}|(?<!\d)\d{2}[\s-]9?\d{4}-\d{4}(?!\d)`, "i");
+  String.raw`|\bCRC(?:[\s\/-]*[A-Z]{2}\b)?[\s:nº°.-]*(?:\d?[A-Z]{2}[\s.\/-]*)?(?!(?:19|20)\d{2}(?!\d|\.\d|\/[OPST]\b))\d{1,3}\.?\d{3,}(?:\/[OPST](?:-\d)?\b)?` +
+  String.raw`|\(\d{2}\)\s?9?\d{4}[-\s]?\d{4}|(?<!\d)\d{2}[\s-]9?\d{4}-\d{4}(?!\d)`, "i");
+// o dado sai com o rótulo colado a ele ("CNPJ:", "Telefone", "WhatsApp")
+const RE_DADO_IDENTIFICACAO = new RegExp(String.raw`(?:\b(?:CNPJ|tel(?:efone)?|fone|celular|whats(?:app)?|contato)\b\.?\s*(?:n[º°.]\s*)?:?\s*)?(?:` +
+  RE_IDENTIFICACAO.source + ")", "gi");
 const RE_HASHTAG = /(?<![\p{L}\p{N}_&#])#[\p{L}\p{N}_]+/gu;
-/** Texto do kit: sem HTML, sem link, sem a linha com dado de identificação e sem "{LINK DO SITE}" (menos no Facebook). */
+/** Sem HTML e sem link (http…): o que a IA escreveu, antes de qualquer outra limpeza. */
+const semHtmlNemLink = (t: unknown) => String(t ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, "").replace(/https?:\/\/\S+/gi, "");
+/** Linha sem o dado de identificação: sai só o dado (com o rótulo); se o que sobra não é uma frase (menos de 5 palavras: a
+ *  "assinatura" que a IA inventou, "Fale conosco:"), a linha sai inteira (null). */
+function semIdentificacao(l: string): string | null {
+  if (!RE_IDENTIFICACAO.test(l)) return l;
+  const resto = l.replace(RE_DADO_IDENTIFICACAO, " ").replace(/\(\s*\)|\[\s*\]/g, " ").replace(/(?:\s*[·|•,;:–—-])+\s*$/, "")
+    .replace(/^\s*(?:[·|•,;:–—-]\s*)+/, "").replace(/\s*([·|•])(?:\s*[·|•])+/g, " $1").replace(/[ \t]+([,.;:!?])/g, "$1");
+  return (resto.match(/\p{L}+/gu) ?? []).length >= 5 ? resto : null;
+}
+/** Texto do kit: sem HTML, sem link, sem dado de identificação e sem "{LINK DO SITE}" (menos no Facebook). */
 const textoKit = (t: unknown, comLink = false) => {
-  const s = String(t ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, "").replace(/https?:\/\/\S+/gi, "");
-  return (comLink ? s.replace(RE_LINK_SITE, LINK_SITE) : s.replace(RE_LINK_SITE, "")).split("\n").filter((l) => !RE_IDENTIFICACAO.test(l))
-    .map((l) => l.replace(/[ \t\u00a0]+/g, " ").trim())
+  const s = semHtmlNemLink(t);
+  return (comLink ? s.replace(RE_LINK_SITE, LINK_SITE) : s.replace(RE_LINK_SITE, "")).split("\n").map(semIdentificacao)
+    .filter((l): l is string => l !== null).map((l) => l.replace(/[ \t\u00a0]+/g, " ").trim())
     .filter((l) => !/^leia a mat[ée]ria completa\s*:?$/i.test(l))     // o link que a IA pôs saiu e a frase ficou sem ele
     .join("\n").replace(/\n{3,}/g, "\n\n").trim();
 };
+// "." de abreviatura ("art. 25", "inc. II", "nº. 2.198", "Sr. João") e de item de lista ("1. Revise") não fecha a frase
+const ABREVIATURA = /(?<![\p{L}\p{N}])(?:arts?|incs?|al|n|nº|n°|p|pág|págs|sr|sra|dr|dra)\.$/iu;
+/** Posição do último fim de frase (".", "!" ou "?" seguido de espaço, ou quebra de linha) que cabe em "max" caracteres; -1 se não há. */
+function fimDeFrase(t: string, max: number): number {
+  let fim = -1;
+  for (const m of t.slice(0, max + 1).matchAll(/[.!?](?=[ \n])|\n/g)) {
+    const i = m.index ?? 0;
+    if (i > max - 1) break;
+    if (m[0] !== "\n") {
+      if (/[\p{Ll}\p{N}]/u.test(t.slice(i + 1).trimStart()[0] ?? "")) continue;       // "art. 25", "nº. 2.198": a frase continua
+      if (m[0] === "." && (ABREVIATURA.test(t.slice(Math.max(0, i - 6), i + 1)) || /^\s*\d{1,2}\.$/.test(t.slice(t.lastIndexOf("\n", i) + 1, i + 1)))) continue;
+    }
+    fim = i;
+  }
+  return fim;
+}
 /** Corta no fim de uma frase (ou, se não houver, no fim de uma palavra, com "…") para caber em "max" caracteres. */
 function cortarFrase(t: string, max: number, reticencias = true): string {
   if (t.length <= max) return t;
-  const fim = Math.max(t.lastIndexOf(". ", max - 1), t.lastIndexOf("! ", max - 1), t.lastIndexOf("? ", max - 1), t.lastIndexOf("\n", max - 1));
+  const fim = fimDeFrase(t, max);
   if (fim >= max / 2) return t.slice(0, fim + 1).trim();
   const espaco = t.lastIndexOf(" ", max - 1);
   return (espaco > 0 ? t.slice(0, espaco) : t.slice(0, max - 1)).replace(/[\s,;:–—-]+$/, "") + (reticencias ? "…" : "");
@@ -1099,7 +1130,14 @@ const segundos = (v: unknown) => v === null || v === "" || typeof v === "boolean
  *  "{LINK DO SITE}" uma vez; hashtags fora do texto (até 5 e até 2); textos cortados no fim da frase; cenas em ordem, com início
  *  antes do fim e até 60 s. O que precisa de atenção, sem impedir o kit, volta em "avisos". */
 function limparKit(json: any): { kit: any; avisos: string[] } {
-  const avisos: string[] = [];
+  const avisos: string[] = [], r = json?.reel ?? {};
+  // a identificação que a IA escreveu sai do texto (quem acrescenta a das Configurações é a tela): o aviso pede para conferir a frase
+  const escritos = [json?.arte?.chamada, json?.arte?.apoio, json?.instagram?.texto, json?.facebook?.texto, r.gancho, r.chamada_final, r.legenda,
+    ...(Array.isArray(r.cenas) ? r.cenas : []).flatMap((c: any) => [c?.fala, c?.texto_tela])];
+  if (escritos.some((t) => RE_IDENTIFICACAO.test(semHtmlNemLink(t)))) {
+    avisos.push("Saiu do kit o número de CNPJ, de registro no CRC ou de telefone que a IA escreveu (a identificação legal entra pela tela, " +
+      "a partir das Configurações): confira se o texto ficou certo.");
+  }
   const chamadaIA = normalizarEspacos(textoKit(json?.arte?.chamada)).replace(/[.\s]+$/, "");
   const chamada = cortarFrase(chamadaIA, 70, false).replace(/[.\s]+$/, "");
   if (chamadaIA.length > 70) avisos.push("A chamada da arte passou de 70 caracteres e foi encurtada: confira.");
@@ -1114,18 +1152,24 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
 
   const fbBruto = textoKit(json?.facebook?.texto, true);
   let fb = semHashtags(fbBruto);
-  const i = fb.indexOf(LINK_SITE);
-  if (i >= 0) fb = fb.slice(0, i + LINK_SITE.length) + fb.slice(i + LINK_SITE.length).split(LINK_SITE).join("");   // uma vez só
+  // "{LINK DO SITE}" uma vez só: fica o da linha "Leia a matéria completa: …" (sem ela, o primeiro); os outros saem, e a limpeza
+  // de novo tira a linha "Leia a matéria completa:" que tenha ficado sem o link
+  const partes = fb.split(LINK_SITE);
+  if (partes.length > 2) {
+    const fica = Math.max(0, partes.slice(0, -1).map((p) => /leia a mat[ée]ria completa[^\n]*$/i.test(p)).lastIndexOf(true));
+    fb = textoKit(partes.map((p, j) => j === fica ? p + LINK_SITE : p).join(""), true);
+  }
   fb = cortarFrase(fb, 1100).replace(/\{[^}\n]*$/, "").trim();
   const facebook = { texto: fb.includes(LINK_SITE) ? fb : [cortarFrase(textoKit(fb), 1100 - FIM_FACEBOOK.length - 2), FIM_FACEBOOK].filter(Boolean).join("\n\n"),
                      hashtags: listaHashtags(json?.facebook?.hashtags, fbBruto.match(RE_HASHTAG) ?? [], 2) };
   if (!chamada || !igTexto.replace(/[^\n]*link na bio[^\n]*/gi, "").trim() || !textoKit(fb)) throw new Erro(502, "A IA devolveu o kit incompleto (sem a chamada da arte ou sem as legendas). Tente de novo.");
 
-  const r = json?.reel ?? {};
-  const cenas = (Array.isArray(r.cenas) ? r.cenas : [])
-    .map((c: any) => ({ de: segundos(c?.de), ate: segundos(c?.ate), fala: linhaKit(c?.fala, 300), texto_tela: linhaKit(c?.texto_tela, 42, false) }))
+  const validas = (Array.isArray(r.cenas) ? r.cenas : [])
+    .map((c: any) => ({ de: segundos(c?.de), ate: segundos(c?.ate), fala: linhaKit(c?.fala, 300), texto_tela: linhaKit(c?.texto_tela, 42, false),
+                        longo: normalizarEspacos(textoKit(c?.texto_tela)).length > 42 }))
     .filter((c: any) => c.de >= 0 && c.de < c.ate && c.ate <= 60 && c.fala)
     .sort((x: any, y: any) => x.de - y.de || x.ate - y.ate).slice(0, 8);
+  const cenas = validas.map(({ longo: _, ...c }: any) => c);
   const duracao = cenas.length ? Math.max(...cenas.map((c: any) => c.ate)) : 0;
   const legendaReel = cortarFrase(textoKit(r.legenda), 800);
   const reel = { gancho: linhaKit(r.gancho, 160), duracao, cenas, chamada_final: linhaKit(r.chamada_final, 160),
@@ -1140,6 +1184,9 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
     const longas = cenas.filter((c: any) => c.fala.split(/\s+/).filter(Boolean).length > 3 * (c.ate - c.de))
       .map((c: any) => `de ${c.de} a ${c.ate} s (${c.fala.split(/\s+/).filter(Boolean).length} palavras em ${Math.round((c.ate - c.de) * 10) / 10} s)`.replace(/\./g, ","));
     if (longas.length) avisos.push(`Fala longa demais para o tempo da cena (o ideal é até 3 palavras por segundo): ${longas.join("; ")}.`);
+    // o texto na tela é cortado sem "…" (cabe na tela do celular): o corte vira aviso, para ninguém gravar uma frase pela metade
+    const encurtados = validas.filter((c: any) => c.longo).map((c: any) => `de ${c.de} a ${c.ate} s`.replace(/\./g, ","));
+    if (encurtados.length) avisos.push(`Texto na tela com mais de 42 caracteres, encurtado ${encurtados.length > 1 ? "nas cenas" : "na cena"} ${encurtados.join("; ")}: confira se o sentido ficou.`);
   }
   return { kit: { arte: { chamada, apoio }, instagram, facebook, reel }, avisos };
 }
