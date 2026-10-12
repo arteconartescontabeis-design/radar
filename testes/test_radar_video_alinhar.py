@@ -432,8 +432,8 @@ def test_unidade_do_roteiro_nunca_se_quebra_na_legenda(tmp_path):
 
 # ------------------------------------------------------------------ editor de legenda (administrador)
 def test_editor_de_legenda_troca_palavra_a_palavra_e_recusa_o_resto():
-    fala = "Quem ficou com pendência tem até sexta, dia 30, para regularizar o MEI em outubro."
-    ws = falas("quem ficou com pendência tem até sexta dia trinta para resolver o mei em outubro")
+    fala = "Quem ficou com pendência tem até sexta, dia 30, para regularizar o MEI em outubro de 2026."
+    ws = falas("quem ficou com pendência tem até sexta dia trinta para resolver o mei em outubro de dois mil e vinte e seis")
     base = alinhar.alinhar(fala, ws, [], CFG)
     u = {x["texto"]: x["u"] for x in base["legenda"]}
     casos = {
@@ -443,7 +443,7 @@ def test_editor_de_legenda_troca_palavra_a_palavra_e_recusa_o_resto():
         f"{u['sexta,']}:1": "sexta-feira,",                      # hífen une: a mesma palavra
         f"{u['30,']}:1": "31,",                                  # número: recusa
         f"{u['MEI']}:1": "CBS",                                  # termo: recusa
-        f"{u['outubro.']}:1": "novembro.",                       # mês: recusa
+        f"{u['outubro de 2026.']}:3": "outubro de 2027.",        # ano (parecido nas letras, mas é número): recusa
         f"{u['com']}:1": "com a",                                # palavra a mais: recusa
         f"{u['tem']}:1": "multa",                                # outra palavra: recusa
         f"{u['até']}:1": "{\\an8}até",                           # comando do ASS: recusa
@@ -451,11 +451,11 @@ def test_editor_de_legenda_troca_palavra_a_palavra_e_recusa_o_resto():
     }
     al = alinhar.alinhar(fala, ws, [], CFG, {"legenda": casos})
     assert sorted((r["bloco"], r["motivo"]) for r in al["legenda_ajustes"]["recusados"]) == sorted([
-        (f"{u['30,']}:1", "numero_ou_termo"), (f"{u['MEI']}:1", "numero_ou_termo"), (f"{u['outubro.']}:1", "numero_ou_termo"),
+        (f"{u['30,']}:1", "numero_ou_termo"), (f"{u['MEI']}:1", "numero_ou_termo"), (f"{u['outubro de 2026.']}:3", "numero_ou_termo"),
         (f"{u['com']}:1", "numero_de_palavras"), (f"{u['tem']}:1", "palavra_diferente"), (f"{u['até']}:1", "texto_invalido"),
         ("999", "bloco_inexistente")])
     assert al["legenda_ajustes"]["editados"] == 4 and "legenda_recusada" in al["avisos"]
-    assert al["texto_final"] == "quem fica com pendências tem até sexta-feira, dia 30, para regularizar o MEI em outubro."
+    assert al["texto_final"] == "quem fica com pendências tem até sexta-feira, dia 30, para regularizar o MEI em outubro de 2026."
     # só a chave "u" (sem n): as palavras novas têm de fechar unidades inteiras
     so_u = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {str(u["com"]): "com a", str(u["dia"]): "Dia 30,"}})
     assert so_u["legenda_ajustes"] == {"editados": 1, "recusados": [{"bloco": str(u["com"]), "motivo": "palavra_diferente"}]}
