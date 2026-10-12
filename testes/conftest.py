@@ -17,8 +17,8 @@ sys.path.insert(0, str(RAIZ / "robo"))
 PG = {"host": os.environ.get("RADAR_PGHOST", "/tmp"), "port": os.environ.get("RADAR_PGPORT", "5544"),
       "user": os.environ.get("RADAR_PGUSER", "postgres")}
 BANCO = "radar_teste"
-SETUP = RAIZ / "sql" / "radar-setup-v0.20.0.sql"
-REVERSAO = RAIZ / "sql" / "radar-reversao-v0.20.0.sql"
+SETUP = RAIZ / "sql" / "radar-setup-v0.21.0.sql"
+REVERSAO = RAIZ / "sql" / "radar-reversao-v0.21.0.sql"
 
 ADMIN = "00000000-0000-0000-0000-00000000000a"
 EDITOR = "00000000-0000-0000-0000-00000000000e"
@@ -79,6 +79,46 @@ def como(papel: str, uid: str | None = None):
 
 FONTES_NOVAS_SLUGS = "('dou-destaques','econet-blog','portalcontabilsc-noticias','dou-inlabs','itc-email')"
 
+# v0.21.0: o Postgres dos testes não tem pg_cron, pg_net nem Vault. Esquemas de mentira, com o que os arquivos da agenda usam:
+# cron.job, cron.job_run_details, cron.schedule (o mesmo nome troca o agendamento, como no pg_cron) e cron.unschedule; net.http_post
+# grava cada pedido em net.pedidos (o pg_net de verdade manda depois do commit); o Vault guarda o segredo em texto (só nos testes).
+CRON_SIMULADO = """
+create schema cron;
+create table cron.job (jobid bigserial primary key, schedule text not null, command text not null, nodename text not null default 'localhost',
+                       nodeport int not null default 5432, database text not null default current_database(),
+                       username text not null default current_user, active boolean not null default true, jobname text);
+create table cron.job_run_details (jobid bigint, runid bigserial primary key, job_pid int, database text, username text, command text,
+                                   status text, return_message text, start_time timestamptz, end_time timestamptz);
+create function cron.schedule(p_nome text, p_quando text, p_comando text) returns bigint language plpgsql as $$
+declare v bigint;
+begin
+  update cron.job j set schedule = p_quando, command = p_comando where j.jobname = p_nome returning j.jobid into v;
+  if v is null then
+    insert into cron.job (jobname, schedule, command) values (p_nome, p_quando, p_comando) returning jobid into v;
+  end if;
+  return v;
+end $$;
+create function cron.unschedule(p_job bigint) returns boolean language sql as $$
+  with d as (delete from cron.job where jobid = p_job returning 1) select exists (select 1 from d)
+$$;
+"""
+NET_SIMULADO = """
+create schema net;
+create table net.pedidos (id bigserial primary key, url text, body jsonb, headers jsonb, timeout_milliseconds int);
+create function net.http_post(url text, body jsonb default '{}'::jsonb, params jsonb default '{}'::jsonb,
+                              headers jsonb default '{"Content-Type": "application/json"}'::jsonb, timeout_milliseconds int default 5000)
+returns bigint language sql as $$
+  insert into net.pedidos (url, body, headers, timeout_milliseconds) values (url, body, headers, timeout_milliseconds) returning id
+$$;
+"""
+VAULT_SIMULADO = """
+create schema vault;
+create table vault.secrets (id uuid primary key default gen_random_uuid(), name text unique, description text, secret text not null);
+create function vault.create_secret(new_secret text, new_name text default null, new_description text default '') returns uuid
+language sql as $$ insert into vault.secrets (secret, name, description) values (new_secret, new_name, new_description) returning id $$;
+create view vault.decrypted_secrets as select id, name, description, secret, secret as decrypted_secret from vault.secrets;
+"""
+
 
 def carregar_fontes_novas(db, request):
     """Cadastra as fontes de sql/radar-fontes-novas-2026-10.sql (entre elas o boletim pago, itc-email) e as tira no fim do teste,
@@ -98,10 +138,11 @@ def carregar_fontes_novas(db, request):
 def limpo(db):
     """Zera os dados operacionais entre testes (mantém fontes, categorias e perfis)."""
     db.execute("alter table radar_auditoria disable trigger user")
+    # v0.21.0: a Pauta e as pessoas não são alcançadas pelo cascade de radar_conteudos
     db.execute("""truncate radar_conteudos, radar_evidencias,
                   radar_assunto_capturas, radar_assuntos, radar_normas, radar_capturas_versoes,
                   radar_capturas, radar_execucoes, radar_auditoria, radar_ia_uso, radar_informativo_itens,
-                  radar_informativos, radar_imagens, radar_divulgacoes restart identity cascade""")
+                  radar_informativos, radar_imagens, radar_divulgacoes, radar_pauta_pecas, radar_pessoas restart identity cascade""")
     db.execute("update radar_fontes set ultimo_sucesso_em = null, ultima_falha_em = null, "
                "falhas_consecutivas = 0, ultimo_erro = null")
     db.execute("delete from radar_fontes where slug like 'teste-%'")

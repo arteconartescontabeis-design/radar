@@ -1,30 +1,39 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.19.0)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.21.0)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
-// autorizou na tela do assunto (passos 6 e 7 da trilha). Nada sai sem essa autorização: a função só envia
-// autorizações registradas por radar_autorizar_rede, uma vez cada (radar_rede_iniciar marca "enviando").
+// autorizou na tela do assunto (passos 6 e 7 da trilha) e, v0.21.0, a peça da Pauta que ele aprovou para sair pela agenda.
+// Nada sai sem essa autorização: a função só envia autorizações registradas por radar_autorizar_rede (ou radar_pauta_aprovar),
+// uma vez cada (radar_rede_iniciar, ou radar_pauta_iniciar na peça, marca "enviando").
 //
 // Quem pode chamar: o administrador logado (o botão "Autorizar e publicar" da tela chama logo depois de autorizar) e,
 // v0.17.0, o robô do site com a chave interna — só para as autorizações do "Publicar em todos" (feitas pelo administrador
 // junto com o site), logo depois que a notícia entra no site. v0.19.0: só o administrador aciona o robô do site (acionar_robo).
+// v0.21.0: a agenda do banco (pg_cron, sql/radar-redes-agenda.sql, de 5 em 5 minutos), com a chave 'radar_redes_agenda' do Vault
+// no cabeçalho x-radar-agenda (quem confere é o banco: radar_redes_conferir_agenda) e a chave anon pública no Authorization (o
+// "Verify JWT" continua ligado). A agenda só publica peça da Pauta, e só a que já venceu (radar_pauta_iniciar confere a hora e
+// tudo o mais de novo), e faz o teste da instalação (agenda_teste). Nada da notícia passa pela agenda.
 //
 // Ações:
-//   publicar     { envio }  → envia a imagem ao armazenamento público, publica e registra o link do post
+//   publicar     { envio }  → envia a imagem ao armazenamento, publica e registra o link do post
 //   excluir      { envio }  → v0.17.0: apaga a publicação na rede (pedido do administrador) e registra a exclusão
-//   diagnostico             → confere os segredos, a Página do Facebook, a conta do Instagram e o armazenamento
+//   diagnostico             → confere os segredos, a Página do Facebook, a conta do Instagram e os armazenamentos
 //   acionar_robo            → v0.19.0: aciona na hora o robô do site no GitHub (workflow radar-site-publicar.yml), se houver
 //                             publicação, envio junto com o site ou exclusão esperando por ele. Responde sempre 200 com
 //                             { acionado, motivo?, em?, mensagem }: se não der para acionar, a autorização continua guardada
 //                             e sai na próxima rodada automática (o agendamento do GitHub, que é a reserva)
+//   agenda_teste            → v0.21.0: só a agenda do banco (o teste do sql/radar-redes-agenda.sql). Responde { ok, versao }
+//                             sem tocar na Meta nem no armazenamento
 //
 // Como publica:
 //   Instagram: POST /{ig-user-id}/media (image_url + caption) → espera o contêiner ficar pronto → POST /{ig-user-id}/media_publish
 //   Facebook:  POST /{page-id}/photos (url + message)
 // Como exclui (v0.17.0): DELETE /{id do post} — no Facebook com o token da Página (pages_manage_posts); no Instagram com o
 // token do Instagram. Se a Meta não deixar apagar pelo aplicativo, a tela oferece "Já apaguei na rede" para registrar à mão.
-// A imagem (JPEG quadrado montado pela tela) vai para o bucket público "radar-redes" do Supabase Storage, porque a
-// Meta só aceita imagem por link público.
+// A imagem da notícia (JPEG vertical 1080×1350 montado pela tela) vai para o bucket público "radar-redes" do Supabase Storage,
+// porque a Meta só aceita imagem por link. v0.21.0: a arte da peça da Pauta (que pode ter foto da equipe) vai para o bucket
+// PRIVADO "radar-pauta", com nome aleatório, e a Meta recebe só um link assinado que vale 10 minutos. No banco fica o endereço
+// interno (que não abre sem a chave interna): a nova tentativa assina de novo, sem reenviar a imagem.
 // Como aciona o robô do site (v0.19.0): POST /repos/{RADAR_GITHUB_REPO}/actions/workflows/radar-site-publicar.yml/dispatches
 // com { ref: RADAR_GITHUB_RAMO }. O GitHub atrasa (ou descarta) em horas o agendamento "a cada 15 minutos", mas atende o
 // acionamento manual em segundos. O workflow é fixo aqui (nada vem do pedido) e há uma pausa de 30 s entre dois acionamentos.
@@ -46,13 +55,17 @@
 // SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.19.0";
+const VERSAO = "0.21.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
 const ANON = env("SUPABASE_ANON_KEY");
 const GRAPH = env("META_GRAPH_URL", "https://graph.facebook.com/v23.0").replace(/\/+$/, "");
 const BUCKET = "radar-redes";
+// v0.21.0: a arte da peça da Pauta fica no bucket privado; a Meta baixa por um link assinado que vale 10 minutos
+const BUCKET_PAUTA = "radar-pauta", LINK_PAUTA_S = 600;
+/** Quem chamou: o administrador logado, o robô do site (chave interna) ou, v0.21.0, a agenda do banco (chave do Vault). */
+type Quem = "admin" | "robo" | "agenda";
 // a Meta às vezes demora para baixar a imagem: o contêiner do Instagram é consultado por até ~40 s
 const ESPERA_IG_MS = Number(env("RADAR_REDES_ESPERA_MS", "40000")), PASSO_IG_MS = Number(env("RADAR_REDES_PASSO_MS", "3000"));
 
@@ -142,6 +155,21 @@ async function quemChamou(req: Request, acao = ""): Promise<string | null> {
   return token;
 }
 
+/** v0.21.0: a chamada vem da agenda do banco com a chave 'radar_redes_agenda' do Vault (cabeçalho x-radar-agenda)? Quem confere
+ *  é o banco (radar_redes_conferir_agenda, só o papel interno executa). A recusa é sempre a mesma frase: não diz se a conferência
+ *  existe, falhou ou se a chave só está errada. A chave nunca vai para mensagem nem registro. */
+async function conferirAgenda(chave: string): Promise<void> {
+  let ok = false;
+  if (chave.length >= 32 && chave.length <= 200) {
+    try { ok = (await banco(comoServico(), "POST", "rpc/radar_redes_conferir_agenda", { p_chave: chave }, 10_000)) === true; }
+    catch (e) {
+      if (e instanceof Erro && e.status === 503) throw e;                       // função sem a chave interna: configuração
+      console.log(`radar-redes: conferência da chave da agenda falhou (${e instanceof Erro ? e.status : "sem resposta do banco"})`);
+    }
+  }
+  if (!ok) throw new Erro(401, "Chave não confere.");
+}
+
 // ------------------------------------------------------------------ Meta
 function configMeta(canal?: string) {
   const precisa = ["META_PAGE_ID", "META_PAGE_TOKEN", ...(canal === "facebook" ? [] : ["META_IG_USER_ID"])];
@@ -218,14 +246,19 @@ async function chamarMeta(metodo: "GET" | "POST" | "DELETE", caminho: string, pa
   return d;
 }
 
-// ------------------------------------------------------------------ armazenamento público da imagem
-async function garantirBucket() {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${BUCKET}`, { headers: comoServico() });
-  await r.body?.cancel();
+// ------------------------------------------------------------------ armazenamento da imagem (público da notícia; v0.21.0: privado da Pauta)
+async function garantirBucket(nome = BUCKET, publico = true) {
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${nome}`, { headers: comoServico() });
+  const atual: any = r.ok && !publico ? await r.json().catch(() => ({})) : null;
+  if (atual === null) await r.body?.cancel();
+  // v0.21.0: as fotos da equipe nunca vão para um bucket público (alguém pode ter criado ou trocado o "radar-pauta" no painel)
+  if (atual?.public === true) {
+    throw new Erro(502, `O armazenamento "${nome}" está público: no Supabase → Storage, deixe-o privado (Edit bucket → "Public bucket" desligado).`);
+  }
   if (r.ok) return;
   const c = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
     method: "POST", headers: { ...comoServico(), "Content-Type": "application/json" },
-    body: JSON.stringify({ id: BUCKET, name: BUCKET, public: true, file_size_limit: 8 * 1024 * 1024, allowed_mime_types: ["image/jpeg"] }),
+    body: JSON.stringify({ id: nome, name: nome, public: publico, file_size_limit: 8 * 1024 * 1024, allowed_mime_types: ["image/jpeg"] }),
   });
   const d: any = await c.json().catch(() => ({}));
   // já existe (o Supabase responde 409, ou 400 com statusCode "409"): está pronto
@@ -244,6 +277,44 @@ async function enviarImagem(dataUrl: string, nome: string): Promise<string> {
   });
   if (!r.ok) throw new Erro(502, `Não foi possível guardar a imagem para a Meta (${r.status}).`);
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${nome}`;
+}
+
+/** v0.21.0: guarda a arte aprovada da peça da Pauta no bucket PRIVADO, com nome aleatório e sem x-upsert (nunca sobrescreve), e
+ *  devolve o endereço interno, que não abre sem a chave interna. É ele que fica no banco; a Meta recebe só o link de assinar(). */
+async function guardarPrivada(dataUrl: string): Promise<string> {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl ?? "");
+  if (!m) throw new Erro(400, "A imagem da publicação não é um JPEG válido.");
+  const bytes = Uint8Array.from(atob(m[1]), (ch) => ch.charCodeAt(0));
+  await garantirBucket(BUCKET_PAUTA, false);
+  const nome = `p-${crypto.randomUUID()}.jpg`;
+  let r: Response;
+  try {
+    r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET_PAUTA}/${nome}`, {
+      method: "POST", body: bytes, headers: { ...comoServico(), "Content-Type": "image/jpeg" }, signal: AbortSignal.timeout(20_000),
+    });
+  } catch { throw new Erro(502, "Não foi possível guardar a imagem para a Meta (o armazenamento não respondeu). Nada foi publicado."); }
+  await r.body?.cancel();
+  if (!r.ok) throw new Erro(502, `Não foi possível guardar a imagem para a Meta (${r.status}).`);
+  return `${SUPABASE_URL}/storage/v1/object/${BUCKET_PAUTA}/${nome}`;
+}
+
+/** v0.21.0: link assinado (10 min) para a Meta baixar a arte do bucket privado: POST /object/sign/{bucket}/{nome} com {expiresIn},
+ *  que responde {signedURL: "/object/sign/…?token=…"}. Só assina o que a própria função guardou (o endereço interno "p-…"). */
+async function assinar(url: string): Promise<string> {
+  const base = `${SUPABASE_URL}/storage/v1/object/${BUCKET_PAUTA}/`;
+  const nome = url.startsWith(base + "p-") ? url.slice(base.length) : "";
+  const falhou = new Erro(502, "Não foi possível preparar o link da imagem para a Meta. Nada foi publicado.");
+  if (!/^p-[\w-]+\.jpg$/.test(nome)) throw falhou;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${BUCKET_PAUTA}/${nome}`, {
+      method: "POST", headers: { ...comoServico(), "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresIn: LINK_PAUTA_S }), signal: AbortSignal.timeout(15_000),
+    });
+    const d: any = await r.json().catch(() => ({}));
+    const assinado = String(d?.signedURL ?? "");
+    if (r.ok && assinado.startsWith(`/object/sign/${BUCKET_PAUTA}/`)) return `${SUPABASE_URL}/storage/v1${assinado}`;
+  } catch { /* o armazenamento não respondeu: a mesma recusa */ }
+  throw falhou;
 }
 
 // ------------------------------------------------------------------ publicar

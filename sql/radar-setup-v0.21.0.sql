@@ -1,12 +1,14 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.20.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.21.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal e Pauta das redes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.20.0.sql
+-- v0.21.0: aba Pauta (radar_pauta_pecas, radar_pessoas) e publicação agendada; a agenda do banco (pg_cron) fica à parte,
+-- em sql/radar-redes-agenda.sql, rodado DEPOIS deste.
+-- Reversão: radar-reversao-v0.21.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +34,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.20.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.21.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -462,6 +464,99 @@ begin
   end if;
 end $$;
 
+-- v0.21.0: quem pode aparecer nas peças da Pauta e o termo de uso de imagem de cada pessoa. Só no banco (o repositório é
+-- público): leem o administrador e o editor, grava só o administrador; o leitor e o robô não leem. A trilha guarda as datas do
+-- termo, os canais, os usos e quem mudou — nunca o nome, o nome na peça, a área nem o CRC (radar_fn_auditar).
+create table if not exists public.radar_pessoas (
+  id                bigint generated always as identity primary key,
+  nome              text    not null check (length(btrim(nome)) between 2 and 80),          -- nome completo (interno)
+  nome_na_peca      text    not null check (length(btrim(nome_na_peca)) between 2 and 60),  -- como o termo autoriza (completo ou só o primeiro)
+  area              text    not null default '' check (length(area) <= 60),
+  categoria         text    not null default '' check (categoria in ('','contador','contadora','tecnico','tecnica')),
+  crc               text    not null default '' check (crc = '' or (length(crc) <= 40 and crc ~ '^CRC' and crc ~ '[0-9]{4,6}')),
+  termo_assinado_em date,
+  termo_valido_ate  date,
+  termo_revogado_em date,
+  termo_canais      text[]  not null default '{}' check (termo_canais <@ array['instagram','facebook']::text[]),
+  termo_usos        text[]  not null default '{}' check (termo_usos <@ array['equipe','orientacao','datas','captacao']::text[]),
+  ativo             boolean not null default true,
+  criado_em         timestamptz not null default now(),
+  atualizado_em     timestamptz not null default now(),
+  constraint radar_pessoas_categoria_crc check (categoria = '' or crc <> ''),     -- "contador(a)" e "técnico(a)" só com registro
+  constraint radar_pessoas_termo_prazo check (termo_valido_ate is null or (termo_assinado_em is not null and termo_valido_ate >= termo_assinado_em))
+);
+
+-- v0.21.0: a Pauta (uma peça por dia do calendário de publicações). Assunto, objetivo, observação e "quem aparece" são do plano
+-- (referência: não vão ao ar nem à trilha). O que vai ao ar é o que o administrador aprova (radar_pauta_aprovar): a peça aprovada
+-- não se edita (radar_fn_pauta_peca). "Publicada" não é situação gravada: sai dos envios (radar_redes_envios) e do registro manual.
+create table if not exists public.radar_pauta_pecas (
+  id                 bigint generated always as identity primary key,
+  data               date     not null unique,
+  hora               time     not null default '09:30',                      -- hora de Brasília
+  tipo               text     not null check (tipo in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post')),
+  formato            text     not null check (formato in ('imagem','foto','carrossel','carrossel_fotos','reel','story','nenhum')),
+  assunto            text     not null default '' check (length(assunto) <= 1000),
+  quem_aparece       text     not null default '' check (length(quem_aparece) <= 300),
+  objetivo           text     not null default '' check (length(objetivo) <= 200),
+  observacao         text     not null default '' check (length(observacao) <= 1000),
+  situacao           text     not null default 'planejada' check (situacao in ('planejada','em_producao','pronta','aprovada','cancelada')),
+  pessoas            bigint[] not null default '{}' check (cardinality(pessoas) <= 12),   -- radar_pessoas.id
+  fotos              bigint[] not null default '{}' check (cardinality(fotos) <= 10),     -- radar_imagens.id, na ordem
+  -- [{informacao, fonte}] (quem confere cada item é radar_pauta_problemas)
+  conferidas         jsonb    not null default '[]' check (case when jsonb_typeof(conferidas) = 'array'
+                                                                then jsonb_array_length(conferidas) <= 20 and length(conferidas::text) <= 12000 else false end),
+  chamada            text     not null default '' check (length(chamada) <= 120),
+  apoio              text     not null default '' check (length(apoio) <= 200),
+  cartoes            jsonb    not null default '[]' check (case when jsonb_typeof(cartoes) = 'array'          -- [{titulo, texto}]
+                                                              then jsonb_array_length(cartoes) <= 9 and length(cartoes::text) <= 6000 else false end),
+  roteiro            text     not null default '' check (length(roteiro) <= 6000),                     -- reel (colado à mão)
+  legenda_instagram  text     not null default '' check (length(legenda_instagram) <= 2200),
+  legenda_facebook   text     not null default '' check (length(legenda_facebook) <= 2200),
+  ia                 jsonb    not null default '{}' check (jsonb_typeof(ia) = 'object' and length(ia::text) <= 30000),   -- só sugestão
+  versao_publicavel  timestamptz not null default now(),        -- muda só quando muda o que vai ao ar (gatilho)
+  aprovado_por       uuid references auth.users(id) on delete set null,
+  aprovado_em        timestamptz,
+  aprovado_modo      text check (aprovado_modo in ('agendar','manual')),
+  aprovado_conferencias text[] not null default '{}' check (aprovado_conferencias <@ array['pessoas','datas','rede']::text[]),
+  artes              bigint[] not null default '{}' check (cardinality(artes) <= 10),   -- radar_imagens.id das lâminas APROVADAS
+  arte_identificacao text check (length(arte_identificacao) <= 300),                    -- a linha legal desenhada nas lâminas
+  link_instagram     text check (link_instagram is null or (link_instagram ~ '^https://[!-~]+$' and length(link_instagram) <= 500)),
+  link_facebook      text check (link_facebook  is null or (link_facebook  ~ '^https://[!-~]+$' and length(link_facebook)  <= 500)),
+  publicado_manual_em  date,
+  publicado_manual_por uuid references auth.users(id) on delete set null,
+  criado_por         uuid references auth.users(id) on delete set null,
+  criado_em          timestamptz not null default now(),
+  atualizado_em      timestamptz not null default now()
+);
+
+-- v0.21.0: a peça da Pauta sai pelo mesmo radar_redes_envios da notícia (a máquina de estados, o "concluir", a exclusão e a trilha
+-- são os mesmos). Na linha da peça: peca_id no lugar de conteudo_id; agendado_para = a hora marcada (nula na notícia, que sai na
+-- hora); disparos e disparado_em = as chamadas da agenda do banco (radar_agenda_vencidas); conteudo_lido_em = a versao_publicavel
+-- aprovada; imagem = a cópia da arte aprovada (o "concluir" apaga depois que vai ao armazenamento); imagem_url = o endereço INTERNO
+-- do armazenamento privado (radar-pauta), que não abre sem a chave. "Agendada" = autorizado com agendado_para no futuro.
+alter table public.radar_redes_envios alter column conteudo_id drop not null;
+alter table public.radar_redes_envios add column if not exists peca_id       bigint references public.radar_pauta_pecas(id) on delete restrict;
+alter table public.radar_redes_envios add column if not exists agendado_para timestamptz;            -- nulo na notícia
+alter table public.radar_redes_envios add column if not exists disparos      int not null default 0 check (disparos between 0 and 100);
+alter table public.radar_redes_envios add column if not exists disparado_em  timestamptz;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'radar_redes_envios_origem_ck') then
+    alter table public.radar_redes_envios add constraint radar_redes_envios_origem_ck
+      check (num_nonnulls(conteudo_id, peca_id) = 1) not valid;                                -- ou da notícia, ou da peça
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'radar_redes_envios_peca_ck') then
+    alter table public.radar_redes_envios add constraint radar_redes_envios_peca_ck
+      check (peca_id is null or (agendado_para is not null and not junto_com_site)) not valid;  -- a peça tem hora e nunca espera o site
+  end if;
+end $$;
+create index if not exists radar_redes_envios_peca_idx on public.radar_redes_envios (peca_id) where peca_id is not null;
+-- uma em aberto (ou feita) por peça e canal; o índice da notícia (conteudo_id, canal) não alcança a peça (nulos são distintos)
+create unique index if not exists radar_redes_envios_peca_uk on public.radar_redes_envios (peca_id, canal)
+  where peca_id is not null and situacao in ('autorizado','enviando','erro','publicado','dispensado');
+create index if not exists radar_redes_envios_agenda_idx on public.radar_redes_envios (agendado_para)
+  where situacao = 'autorizado' and peca_id is not null;
+
 -- v0.17.0: exclusão da notícia no site, a pedido do administrador. O robô (workflow "Radar — publicar no site") entra no
 -- painel do site, acha a notícia pelo título na lista do painel, exclui do jeito do botão "Excluir" do painel e confere
 -- que ela saiu. Só então o registro em "Publicações no site" é retirado (a cópia fica aqui e na auditoria).
@@ -591,6 +686,11 @@ begin
     new.atualizado_em := old.atualizado_em;
     return new;
   end if;
+  -- v0.21.0: na peça da Pauta, gravar só a sugestão da IA (ia) também não muda a versão que a tela abriu
+  if tg_table_name = 'radar_pauta_pecas' and (to_jsonb(new) - 'ia') = (to_jsonb(old) - 'ia') then
+    new.atualizado_em := old.atualizado_em;
+    return new;
+  end if;
   new.atualizado_em := now();
   return new;
 end $$;
@@ -601,7 +701,14 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_reg jsonb;
   -- v0.13.0: a imagem da publicação nas redes (até 3 MB) não vai para a trilha; ficam quem, quando, canal, legenda e link
-  v_tira text[] := case when tg_table_name = 'radar_redes_envios' then array['imagem'] else array[]::text[] end;
+  -- v0.21.0: a trilha nunca se apaga: da peça da Pauta não guarda o plano (assunto, objetivo, observação, quem aparece) nem a
+  -- sugestão da IA, e da pessoa não guarda o nome, o nome na peça, a área nem o CRC. Ficam o que foi aprovado (datas, pessoas e
+  -- fotos pelo número, informações conferidas, textos e legendas) e o termo (datas, canais, usos), com quem e quando
+  v_tira text[] := case tg_table_name
+                     when 'radar_redes_envios' then array['imagem']
+                     when 'radar_pauta_pecas'  then array['ia','assunto','objetivo','observacao','quem_aparece']
+                     when 'radar_pessoas'      then array['nome','nome_na_peca','crc','area']
+                     else array[]::text[] end;
 begin
   if tg_op = 'DELETE' then v_reg := to_jsonb(old); else v_reg := to_jsonb(new); end if;
   -- atualização que só mexe nos campos de saúde/relógio (feita pelo próprio banco
@@ -609,6 +716,13 @@ begin
   if tg_op = 'UPDATE'
      and (to_jsonb(old) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em'])
        = (to_jsonb(new) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em']) then
+    return new;
+  end if;
+  -- v0.21.0: nem a que só mexe no que não vai à trilha (o plano, a sugestão da IA, o nome, a cópia da imagem) ou nas marcas da
+  -- agenda do banco (disparos, disparado_em, a cada 5 minutos)
+  if tg_op = 'UPDATE' and tg_table_name in ('radar_redes_envios','radar_pauta_pecas','radar_pessoas')
+     and (to_jsonb(old) - v_tira - array['atualizado_em','disparos','disparado_em'])
+       = (to_jsonb(new) - v_tira - array['atualizado_em','disparos','disparado_em']) then
     return new;
   end if;
   insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes, depois)
@@ -1252,10 +1366,12 @@ create or replace function public.radar_fn_imagem_sem_uso() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   -- v0.16.0: vale também para a ilustração guardada (ilustracao_id)
+  -- v0.21.0: a foto ou a lâmina aprovada de uma peça da Pauta nunca é apagada por aqui
   delete from public.radar_imagens i
    where i.id in (old.imagem_id, old.ilustracao_id)
      and (tg_op = 'DELETE' or (i.id is distinct from new.imagem_id and i.id is distinct from new.ilustracao_id))
-     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id or c.ilustracao_id = i.id);
+     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id or c.ilustracao_id = i.id)
+     and not exists (select 1 from public.radar_pauta_pecas p where i.id = any(p.fotos) or i.id = any(p.artes));
   return null;
 end $$;
 drop trigger if exists radar_tg_imagem_sem_uso on public.radar_conteudos;
@@ -1265,13 +1381,15 @@ create trigger radar_tg_imagem_sem_uso after update of imagem_id, ilustracao_id 
 -- v0.7.1: imagem que ficou sem uso por outro caminho (envio que falhou entre gravar a imagem e ligá-la ao conteúdo,
 -- capas trocadas antes da v0.6.0) é apagada pelo robô ao fim de cada coleta. Só as com mais de p_horas (padrão 24):
 -- uma imagem acabada de enviar, que a tela ainda vai ligar ao conteúdo, não é tocada. Devolve quantas apagou.
+-- v0.21.0: as fotos e as lâminas aprovadas das peças da Pauta também ficam (sem isso, sumiriam um dia depois de enviadas)
 create or replace function public.radar_limpar_imagens_sem_uso(p_horas int default 24) returns int
 language plpgsql security definer set search_path = public as $$
 declare v_n int;
 begin
   delete from public.radar_imagens i
    where i.criado_em < now() - make_interval(hours => least(greatest(coalesce(p_horas, 24), 1), 8760))
-     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id or c.ilustracao_id = i.id);
+     and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id or c.ilustracao_id = i.id)
+     and not exists (select 1 from public.radar_pauta_pecas p where i.id = any(p.fotos) or i.id = any(p.artes));
   get diagnostics v_n = row_count;
   return v_n;
 end $$;
@@ -1946,6 +2064,10 @@ declare
   v_c public.radar_conteudos%rowtype;
   v_pendencia text;
 begin
+  -- v0.21.0: a peça da Pauta sai por radar_pauta_iniciar; quem chama aqui é a radar-redes de antes da v0.21.0 (nada muda)
+  if exists (select 1 from public.radar_redes_envios where id = p_envio and peca_id is not null) then
+    raise exception 'RADAR171: esta publicação é da Pauta: atualize a função radar-redes para a v0.21.0 (nada foi publicado)' using errcode = 'P0001';
+  end if;
   select * into v_e from public.radar_redes_envios where id = p_envio for update;
   if v_e.id is null or v_e.situacao not in ('autorizado','erro') then
     raise exception 'RADAR138: esta autorização não está aguardando envio (já saiu, foi cancelada ou está saindo)' using errcode = 'P0001';
@@ -2081,6 +2203,948 @@ begin
     raise exception 'RADAR156: esta publicação não está publicada (já foi excluída ou não existe)' using errcode = 'P0001';
   end if;
   return true;
+end $$;
+
+-- ---------------------------------------------------------------- v0.21.0: Pauta (peças das redes) e publicação agendada
+-- "Hoje" da Pauta é sempre o dia de Brasília: nenhuma função da Pauta usa current_date (o dia do servidor, em UTC, vira às 21h).
+create or replace function public.radar_pauta_hoje() returns date
+language sql stable set search_path = public as $$
+  select (now() at time zone 'America/Sao_Paulo')::date
+$$;
+
+-- Texto para comparar palavras: minúsculas, sem acento e só letras e algarismos, separados por um espaço
+-- (os acentos maiúsculos também: o resultado não depende da configuração de idioma do servidor)
+create or replace function public.radar_pauta_normalizar(p text) returns text
+language sql immutable set search_path = public as $$
+  select btrim(regexp_replace(lower(translate(coalesce(p, ''),
+           'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ', 'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn')),
+           '[^a-z0-9]+', ' ', 'g'))
+$$;
+
+-- Configurações → Pauta → "janela_horas": passado esse tempo da hora marcada, a peça vira erro em vez de sair atrasada
+-- (de 1 a 48; fora disso, ou sem a chave, vale 6: nada do que está ali trava a agenda)
+create or replace function public.radar_pauta_janela() returns int
+language sql stable set search_path = public as $$
+  select coalesce((select case when jsonb_typeof(c.valor->'janela_horas') = 'number'
+                               then least(greatest((c.valor->>'janela_horas')::numeric, 1), 48)::int end
+                     from public.radar_config c where c.chave = 'pauta'), 6)
+$$;
+
+-- Os canais da peça que têm legenda escrita (os que vão ao ar, quando a tela não diz quais)
+create or replace function public.radar_pauta_canais(p_instagram text, p_facebook text) returns text[]
+language sql immutable set search_path = public as $$
+  select array_remove(array[case when btrim(coalesce(p_instagram, '')) <> '' then 'instagram' end,
+                            case when btrim(coalesce(p_facebook, '')) <> '' then 'facebook' end], null)
+$$;
+
+-- A identificação legal (Configurações → Assinatura: empresa, CNPJ e CRC) está no texto? Compara só as letras e os algarismos,
+-- em maiúsculas: a formatação da linha (linhaIdentificacao, na tela) não precisa ser refeita aqui. NULL = está.
+create or replace function public.radar_pauta_identificacao_falta(p_texto text) returns text
+language plpgsql stable set search_path = public as $$
+declare
+  v      jsonb := (select c.valor from public.radar_config c where c.chave = 'assinatura');
+  v_emp  text;
+  v_cnpj text;
+  v_crc  text;
+  v_txt  text;
+begin
+  v_emp  := upper(regexp_replace(translate(coalesce(v->>'empresa', ''), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
+                                           'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn'), '[^A-Za-z0-9]', '', 'g'));
+  v_cnpj := upper(regexp_replace(coalesce(v->>'cnpj', ''), '[[:space:]./-]', '', 'g'));
+  v_crc  := substring(coalesce(v->>'crc', '') from '[0-9]{4,6}');
+  if v_emp = '' or v_cnpj !~ '^[0-9A-Z]{12}[0-9]{2}$' or v_crc is null then
+    return 'Identificação legal incompleta: preencha o CNPJ e o CRC em Configurações → Assinatura';
+  end if;
+  v_txt := upper(regexp_replace(translate(coalesce(p_texto, ''), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
+                                          'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn'), '[^A-Za-z0-9]', '', 'g'));
+  if strpos(v_txt, v_emp) = 0 or strpos(v_txt, v_cnpj) = 0 or strpos(v_txt, v_crc) = 0 then
+    return 'falta a linha de identificação (empresa, CNPJ e CRC de Configurações → Assinatura)';
+  end if;
+  return null;
+end $$;
+
+-- Os números de um texto como a tela os compara (numerosForaDoTexto, index.html): sem o número de item de lista ("1. Revise"),
+-- "1.000" = "1000", "1.500,00" = "1500" e sem os zeros à esquerda ("05" = "5"). Não lê número por extenso.
+create or replace function public.radar_pauta_numeros(p text) returns text[]
+language sql immutable set search_path = public as $$
+  select coalesce(array_agg(distinct regexp_replace(m[1], '^0+(?=[0-9])', '')), '{}')
+    from regexp_matches(regexp_replace(regexp_replace(regexp_replace(coalesce(p, ''),
+                          '^[[:blank:]]*[0-9]{1,2}[.)][[:blank:]]', '', 'gn'),
+                          '([0-9])\.(?=[0-9]{3}(?![0-9]))', '\1', 'g'),
+                          '([0-9]),00(?![0-9])', '\1', 'g'),
+                        '([0-9]+(?:,[0-9]+)?)', 'g') as m
+$$;
+
+-- Números dos textos que vão ao ar e que não estão na base (as informações conferidas, mais a empresa, o CNPJ — como está e
+-- formatado — e o CRC das Configurações, que entram na linha de identificação). O link e as hashtags não contam.
+create or replace function public.radar_pauta_numeros_fora(p_textos text, p_base text) returns text[]
+language plpgsql stable set search_path = public as $$
+declare
+  v      jsonb := (select c.valor from public.radar_config c where c.chave = 'assinatura');
+  v_cnpj text  := upper(regexp_replace(coalesce(v->>'cnpj', ''), '[[:space:]./-]', '', 'g'));
+  v_base text[];
+begin
+  v_base := public.radar_pauta_numeros(concat_ws(E'\n', p_base, v->>'empresa', v->>'cnpj', v->>'crc',
+              case when v_cnpj ~ '^[0-9A-Z]{12}[0-9]{2}$' then regexp_replace(v_cnpj, '^(..)(...)(...)(....)(..)$', '\1.\2.\3/\4-\5') end));
+  return coalesce((select array_agg(n order by n)
+                     from unnest(public.radar_pauta_numeros(regexp_replace(coalesce(p_textos, ''), 'https?://[^[:space:]]+|#[[:alnum:]_]+', ' ', 'g'))) n
+                    where not n = any(v_base)), '{}');
+end $$;
+
+-- Frase do boletim pago (ITC, a mesma lista de FONTES_PAGAS da tela e da radar-ia) num texto da Pauta: cada campo à parte, em
+-- janelas de 12 palavras, procuradas no texto das capturas do boletim dos últimos 90 dias. Devolve só sim ou não: o trecho do
+-- boletim nunca sai daqui (nem para a tela, nem para o log).
+create or replace function public.radar_pauta_copia_paga(p_textos text[]) returns boolean
+language plpgsql stable set search_path = public as $$
+declare
+  v_base text;
+  v_t    text;
+  v_pal  text[];
+  i      int;
+begin
+  select ' ' || string_agg(public.radar_pauta_normalizar(concat_ws(' ', c.titulo, c.resumo_fonte, c.texto)), ' | ') || ' '
+    into v_base
+    from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+   where f.slug in ('itc-email') and c.capturado_em > now() - interval '90 days';
+  if v_base is null then return false; end if;
+  foreach v_t in array coalesce(p_textos, '{}') loop
+    v_pal := string_to_array(public.radar_pauta_normalizar(v_t), ' ');
+    continue when coalesce(array_length(v_pal, 1), 0) < 12;
+    for i in 1 .. array_length(v_pal, 1) - 11 loop
+      if strpos(v_base, ' ' || array_to_string(v_pal[i:i + 11], ' ') || ' ') > 0 then
+        return true;
+      end if;
+    end loop;
+  end loop;
+  return false;
+end $$;
+
+-- O termo de uso de imagem da pessoa vale para a peça (tipo), o canal e o dia? NULL = vale; senão o motivo, sem o nome.
+-- Roda como quem chama (security invoker): o leitor não lê radar_pessoas e recebe "pessoa não cadastrada". A finalidade do
+-- termo vem do tipo da peça: Quem cuida e Bastidor = apresentar a equipe; Reel, Educativo, Agenda e Notícia = orientação;
+-- Data com a equipe = datas da empresa; Captação = captação de clientes.
+create or replace function public.radar_pauta_termo_ok(p_pessoa bigint, p_tipo text, p_canal text, p_data date) returns text
+language plpgsql stable set search_path = public as $$
+declare
+  v     public.radar_pessoas%rowtype;
+  v_uso text := case when p_tipo in ('quem_cuida','bastidor') then 'equipe'
+                     when p_tipo in ('reel','educativo','agenda','noticia') then 'orientacao'
+                     when p_tipo = 'data_equipe' then 'datas'
+                     when p_tipo = 'captacao' then 'captacao' end;
+begin
+  select * into v from public.radar_pessoas where id = p_pessoa;
+  if v.id is null then return 'pessoa não cadastrada'; end if;
+  if not v.ativo then return 'pessoa inativa'; end if;
+  if v.termo_assinado_em is null then return 'sem termo assinado'; end if;
+  if p_data is null or v.termo_assinado_em > p_data then return 'termo assinado depois desta data'; end if;
+  if v.termo_revogado_em is not null and v.termo_revogado_em <= p_data then return 'termo revogado'; end if;
+  if v.termo_valido_ate is not null and v.termo_valido_ate < p_data then return 'termo vencido'; end if;
+  if p_canal is null or not p_canal = any(v.termo_canais) then return 'canal não autorizado no termo'; end if;
+  if v_uso is null or not v_uso = any(v.termo_usos) then return 'finalidade não autorizada no termo'; end if;
+  return null;
+end $$;
+
+-- Tudo o que impede a peça de ficar pronta ou de ser aprovada, numa lista: a tela mostra (radar_pauta_conferir) e as funções
+-- travam com ela. p_canais: os canais que vão ao ar; p_data: o dia da peça. A lista pode citar o nome da pessoa: volta só para
+-- a tela, nunca vai num raise nem é gravada.
+create or replace function public.radar_pauta_problemas(p_peca bigint, p_canais text[], p_data date) returns text[]
+language plpgsql stable set search_path = public as $$
+declare
+  p          public.radar_pauta_pecas%rowtype;
+  v          text[] := '{}';
+  v_canais   text[];
+  v_canal    text;
+  v_leg      text;
+  v_textos   text[] := '{}';     -- o que vai ao ar, cada campo à parte (legendas, chamada, apoio, roteiro e cada cartão)
+  v_tudo     text;
+  v_base     text;
+  v_x        text;
+  v_i        bigint;
+  v_item     jsonb;
+  v_pe       public.radar_pessoas%rowtype;
+  v_marcadas text[];             -- os nomes das pessoas marcadas (o xará que não está marcado não é acusado por eles)
+  v_forma    text;
+  v_n        text;
+  -- começo e fim de palavra, com acento, sem depender do idioma do servidor
+  b constant text := '(?<![A-Za-zÀ-ÿ0-9])';
+  e constant text := '(?![A-Za-zÀ-ÿ0-9])';
+  v_contador text := b || public.radar_rx_termo('contador') || '(?:[aA]|\([aA]\))?' || e;
+  v_tecnico  text := b || public.radar_rx_termo('tecnic') || '(?:[oO]\([aA]\)|[oaOA])' || e;
+  v_espec    text := b || public.radar_rx_termo('especialista') || '[sS]?' || e;
+begin
+  select * into p from public.radar_pauta_pecas where id = p_peca;
+  if p.id is null then return array['Peça não encontrada.']; end if;
+  select coalesce(array_agg(distinct c), '{}') into v_canais from unnest(coalesce(p_canais, '{}')) c;
+  -- 1. tipo e formato
+  if p.tipo = 'noticia' then v := array_append(v, 'Dia de notícia: publique por Assuntos ou Publicações'); end if;
+  if p.tipo = 'sem_post' or p.formato in ('story','nenhum') then v := array_append(v, 'Sem publicação pela Pauta nesta versão'); end if;
+  if p.tipo = 'quem_cuida' and cardinality(p.pessoas) = 0 then v := array_append(v, 'Quem cuida: marque a pessoa em Quem aparece'); end if;
+  if p.formato = 'foto' and cardinality(p.fotos) = 0 then v := array_append(v, 'Foto: envie a foto da peça'); end if;
+  if p.formato = 'carrossel_fotos' and cardinality(p.fotos) not between 2 and 10 then
+    v := array_append(v, 'Carrossel de fotos: envie de 2 a 10 fotos');
+  end if;
+  if p.formato = 'carrossel' and jsonb_array_length(p.cartoes) not between 2 and 9 then
+    v := array_append(v, 'Carrossel: escreva de 2 a 9 cartões');
+  end if;
+  if p.formato = 'reel' and btrim(p.roteiro) = '' then v := array_append(v, 'Reel: cole o roteiro'); end if;
+  if p.tipo = 'agenda' and jsonb_array_length(p.conferidas) = 0 then
+    v := array_append(v, 'Agenda da semana: calcule a agenda e confira as datas (Informações conferidas)');
+  end if;
+  for v_item, v_i in select c, o from jsonb_array_elements(p.cartoes) with ordinality t(c, o) loop
+    if jsonb_typeof(v_item) is distinct from 'object' or coalesce(jsonb_typeof(v_item->'titulo'), 'string') not in ('string','null')
+       or coalesce(jsonb_typeof(v_item->'texto'), 'string') not in ('string','null') then
+      v := array_append(v, 'Cartão nº ' || v_i || ': título e texto em formato inválido');
+    end if;
+  end loop;
+  -- 2. canais e legendas; 3. identificação legal em cada legenda
+  if cardinality(v_canais) = 0 then v := array_append(v, 'Escolha ao menos um canal (escreva a legenda do Instagram ou do Facebook)'); end if;
+  foreach v_canal in array v_canais loop
+    if v_canal not in ('instagram','facebook') then v := array_append(v, 'Canal desconhecido'); continue; end if;
+    v_leg := case v_canal when 'instagram' then p.legenda_instagram else p.legenda_facebook end;
+    if length(btrim(v_leg)) not between 10 and 2200 then
+      v := array_append(v, 'Legenda do ' || initcap(v_canal) || ': de 10 a 2.200 caracteres');
+    end if;
+    v_x := public.radar_pauta_identificacao_falta(v_leg);
+    if v_x like 'Identificação legal incompleta%' then
+      if not v_x = any(v) then v := array_append(v, v_x); end if;
+    elsif v_x is not null then
+      v := array_append(v, 'Legenda do ' || initcap(v_canal) || ': ' || v_x);
+    end if;
+    v_textos := array_append(v_textos, v_leg);
+  end loop;
+  v_textos := v_textos || array[p.chamada, p.apoio, p.roteiro]
+              || coalesce((select array_agg(concat_ws(E'\n', c->>'titulo', c->>'texto') order by o)
+                             from jsonb_array_elements(p.cartoes) with ordinality t(c, o) where jsonb_typeof(c) = 'object'), '{}');
+  v_tudo := array_to_string(v_textos, E'\n');
+  -- 4. marcas: [VERIFICAR …] e {confirmar …} (a IA marca o fato que não está nas informações conferidas)
+  v_x := public.radar_marcas_verificar(v_tudo);
+  if v_x is not null then v := array_append(v, regexp_replace(v_x, '^RADAR139: ', '')); end if;
+  if v_tudo ~* '\{\s*confirmar[^}]*\}' then
+    v := array_append(v, 'Há {confirmar …} no texto: troque pela informação conferida (ou tire o trecho)');
+  end if;
+  -- 5. informações conferidas: informação e fonte, e a fonte nunca é o boletim pago
+  for v_item, v_i in select c, o from jsonb_array_elements(p.conferidas) with ordinality t(c, o) loop
+    if jsonb_typeof(v_item) is distinct from 'object' or jsonb_typeof(v_item->'informacao') is distinct from 'string'
+       or jsonb_typeof(v_item->'fonte') is distinct from 'string'
+       or length(btrim(v_item->>'informacao')) not between 1 and 300 or length(btrim(v_item->>'fonte')) not between 1 and 300 then
+      v := array_append(v, 'Informação conferida nº ' || v_i || ': escreva a informação e a fonte (até 300 caracteres cada)');
+    elsif (v_item->>'fonte') ~* '\mITC\M|itcnet|i\.t\.c\.|boletim pago' then
+      v := array_append(v, 'Informação conferida nº ' || v_i || ': use a fonte oficial (o boletim pago da ITC não é fonte)');
+    end if;
+  end loop;
+  v_base := coalesce((select string_agg(concat_ws(E'\n', c->>'informacao', c->>'fonte'), E'\n')
+                        from jsonb_array_elements(p.conferidas) c where jsonb_typeof(c) = 'object'), '');
+  -- 6. boletim pago: só sim ou não (o trecho não aparece)
+  if public.radar_pauta_copia_paga(v_textos || coalesce((select array_agg(c->>'informacao') from jsonb_array_elements(p.conferidas) c
+                                                          where jsonb_typeof(c) = 'object'), '{}')) then
+    v := array_append(v, 'Há frase igual à do boletim pago (ITC): reescreva com palavras próprias');
+  end if;
+  -- 7. números que não estão nas informações conferidas
+  v_x := array_to_string(public.radar_pauta_numeros_fora(v_tudo, v_base), ', ');
+  if v_x <> '' then v := array_append(v, 'Números que não estão nas informações conferidas: ' || v_x); end if;
+  -- 8. o termo de cada pessoa marcada, em cada canal, no dia da peça
+  foreach v_i in array p.pessoas loop
+    select * into v_pe from public.radar_pessoas where id = v_i;
+    foreach v_canal in array v_canais loop
+      continue when v_canal not in ('instagram','facebook');
+      v_x := public.radar_pauta_termo_ok(v_i, p.tipo, v_canal, p_data);
+      if v_x is not null then
+        v_x := '“' || coalesce(v_pe.nome_na_peca, 'pessoa nº ' || v_i) || '” (' || initcap(v_canal) || '): ' || v_x;
+        if not v_x = any(v) then v := array_append(v, v_x); end if;
+      end if;
+    end loop;
+  end loop;
+  -- 9. nome no texto: de toda pessoa, ativa ou não (palavra inteira, com a maiúscula, o nome escapado na expressão)
+  select coalesce(array_agg(distinct x), '{}') into v_marcadas
+    from public.radar_pessoas pe
+         cross join lateral unnest(array[btrim(pe.nome_na_peca), btrim(pe.nome), split_part(btrim(pe.nome), ' ', 1)]) x
+   where pe.id = any(p.pessoas);
+  for v_pe in select * from public.radar_pessoas order by id loop
+    if v_pe.id = any(p.pessoas) then
+      -- marcada: a palavra do nome completo (com maiúscula e 3 letras ou mais) que o termo não autoriza é sobrenome a tirar
+      if exists (select 1 from regexp_split_to_table(btrim(v_pe.nome), '\s+') w
+                  where length(w) >= 3 and w ~ '^[A-ZÀ-Ý]'
+                    and not w = any(regexp_split_to_array(btrim(v_pe.nome_na_peca), '\s+'))
+                    and v_tudo ~ (b || regexp_replace(w, '([^[:alnum:][:space:]])', '\\\1', 'g') || e)) then
+        v := array_append(v, 'O termo autoriza só “' || btrim(v_pe.nome_na_peca) || '”: tire o sobrenome');
+      end if;
+    else
+      for v_forma in select x from unnest(array[btrim(v_pe.nome_na_peca), btrim(v_pe.nome),
+                                                case when length(split_part(btrim(v_pe.nome), ' ', 1)) >= 3 then split_part(btrim(v_pe.nome), ' ', 1) end]) x
+                      where x is not null and not x = any(v_marcadas) loop
+        if v_tudo ~ (b || regexp_replace(regexp_replace(v_forma, '([^[:alnum:][:space:]])', '\\\1', 'g'), '\s+', '\\s+', 'g') || e) then
+          v := array_append(v, '“' || v_forma || '” aparece no texto e não está marcada em Quem aparece');
+          exit;
+        end if;
+      end loop;
+    end if;
+    -- 10. "contador(a)", "técnico(a)" e "especialista" a até uns 40 caracteres do nome na peça, conforme o registro da pessoa
+    continue when strpos(v_tudo, btrim(v_pe.nome_na_peca)) = 0;
+    v_n := b || regexp_replace(regexp_replace(btrim(v_pe.nome_na_peca), '([^[:alnum:][:space:]])', '\\\1', 'g'), '\s+', '\\s+', 'g') || e;
+    if v_pe.categoria = ''
+       and v_tudo ~ ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_contador || '|' || v_tecnico || ')|(?:' || v_contador || '|' || v_tecnico || ')[^\n]{0,40}(?:' || v_n || ')') then
+      v := array_append(v, '“' || btrim(v_pe.nome_na_peca) || '” não tem registro no CRC (Pauta → Pessoas e termos): não chame de contador(a) nem de técnico(a)');
+    end if;
+    if v_pe.categoria in ('tecnico','tecnica')
+       and v_tudo ~ ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_contador || ')|(?:' || v_contador || ')[^\n]{0,40}(?:' || v_n || ')') then
+      v := array_append(v, '“' || btrim(v_pe.nome_na_peca) || '” é técnico(a) em contabilidade: não chame de contador(a)');
+    end if;
+    if v_tudo ~ ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_espec || ')|(?:' || v_espec || ')[^\n]{0,40}(?:' || v_n || ')') then
+      v := array_append(v, '“especialista” perto de “' || btrim(v_pe.nome_na_peca) || '”: não há título de especialista registrado, tire a palavra');
+    end if;
+  end loop;
+  return v;
+end $$;
+
+-- A peça da Pauta. Quem grava direto (a tela, com o papel de editor ou administrador) mexe nos textos, nas fotos, nas pessoas,
+-- nas informações conferidas, na hora, no plano e na sugestão da IA. A situação só muda nas transições abaixo; a aprovação, as
+-- lâminas aprovadas, os links e o registro manual só mudam pelas funções radar_pauta_* (marca radar.pauta, como em
+-- radar.autorizando_copia). Mudou o que vai ao ar: a versao_publicavel muda (é ela que a publicação agendada confere).
+--   planejada → em_producao (sozinha, ao mudar o que vai ao ar); planejada | em_producao | pronta → cancelada → (Reabrir) planejada;
+--   em_producao → pronta (radar_pauta_marcar_pronta); pronta → em_producao (ao mudar o que vai ao ar, ou "Voltar para produção");
+--   pronta → aprovada (radar_pauta_aprovar, só o administrador); aprovada → pronta (radar_pauta_desaprovar).
+-- Peça aprovada (ou cancelada) não muda o que vai ao ar nem a hora: desfaça a aprovação (ou reabra) antes.
+create or replace function public.radar_fn_pauta_peca() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_funcao boolean := coalesce(current_setting('radar.pauta', true), '') = '1';
+  v_mudou  boolean := false;      -- mudou o que vai ao ar
+  v_novas  bigint[];              -- as pessoas acrescentadas agora
+begin
+  if tg_op = 'INSERT' then
+    -- toda peça nasce planejada, sem aprovação, sem lâminas e sem registro (vale também para a importação)
+    new.situacao := 'planejada';
+    new.aprovado_por := null; new.aprovado_em := null; new.aprovado_modo := null; new.aprovado_conferencias := '{}';
+    new.artes := '{}'; new.arte_identificacao := null; new.link_instagram := null; new.link_facebook := null;
+    new.publicado_manual_em := null; new.publicado_manual_por := null;
+    new.versao_publicavel := now(); new.criado_por := auth.uid(); new.criado_em := now();
+    v_novas := new.pessoas;
+  else
+    new.criado_por := public.radar_manter_usuario(old.criado_por, new.criado_por);
+    new.criado_em  := old.criado_em;
+    v_mudou := new.data is distinct from old.data or new.tipo is distinct from old.tipo or new.formato is distinct from old.formato
+            or new.chamada is distinct from old.chamada or new.apoio is distinct from old.apoio or new.cartoes is distinct from old.cartoes
+            or new.roteiro is distinct from old.roteiro or new.legenda_instagram is distinct from old.legenda_instagram
+            or new.legenda_facebook is distinct from old.legenda_facebook or new.fotos is distinct from old.fotos
+            or new.pessoas is distinct from old.pessoas or new.conferidas is distinct from old.conferidas;
+    if not v_funcao then
+      -- o que só as funções mudam fica como estava (quem aprovou ou registrou só vira nulo se o usuário foi excluído)
+      new.aprovado_por := public.radar_manter_usuario(old.aprovado_por, new.aprovado_por);
+      new.aprovado_em := old.aprovado_em; new.aprovado_modo := old.aprovado_modo; new.aprovado_conferencias := old.aprovado_conferencias;
+      new.artes := old.artes; new.arte_identificacao := old.arte_identificacao;
+      new.link_instagram := old.link_instagram; new.link_facebook := old.link_facebook;
+      new.publicado_manual_em := old.publicado_manual_em;
+      new.publicado_manual_por := public.radar_manter_usuario(old.publicado_manual_por, new.publicado_manual_por);
+      new.versao_publicavel := old.versao_publicavel;
+      if old.situacao = 'aprovada' then
+        if v_mudou or new.hora is distinct from old.hora or new.situacao is distinct from old.situacao then
+          raise exception 'RADAR162: a peça está aprovada: para mudar, use Desfazer aprovação' using errcode = 'P0001';
+        end if;
+      elsif old.situacao = 'cancelada' then
+        if v_mudou or new.hora is distinct from old.hora then
+          raise exception 'RADAR162: a peça está cancelada: para mudar, use Reabrir' using errcode = 'P0001';
+        end if;
+        if new.situacao not in ('cancelada','planejada') then
+          raise exception 'RADAR159: a peça cancelada só volta a planejada (Reabrir)' using errcode = 'P0001';
+        end if;
+      elsif new.situacao is distinct from old.situacao
+            and not (new.situacao = 'cancelada' or (old.situacao = 'pronta' and new.situacao = 'em_producao')) then
+        raise exception 'RADAR159: esta mudança de situação só é feita pelos botões da Pauta (Salvar e marcar como pronta, Aprovar)'
+          using errcode = 'P0001';
+      elsif v_mudou and new.situacao in ('planejada','pronta') then
+        new.situacao := 'em_producao';            -- mexeu no que vai ao ar: vai (ou volta) para a produção
+      end if;
+    end if;
+    if v_mudou then
+      new.versao_publicavel := now();
+    end if;
+    v_novas := array(select x from unnest(new.pessoas) x where not x = any(old.pessoas));
+  end if;
+  -- pessoa e foto: nada repetido; a pessoa acrescentada está cadastrada e ativa (quem já estava fica, mesmo inativa); a foto existe
+  if (select count(*) <> count(distinct x) from unnest(new.pessoas) x) or (select count(*) <> count(distinct x) from unnest(new.fotos) x)
+     or (select count(*) <> count(distinct x) from unnest(new.artes) x) then
+    raise exception 'RADAR176: pessoa ou foto repetida na peça' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from unnest(v_novas) x where not exists (select 1 from public.radar_pessoas pe where pe.id = x and pe.ativo)) then
+    raise exception 'RADAR176: pessoa que não está cadastrada (ou não está ativa) em Pauta → Pessoas e termos' using errcode = 'P0001';
+  end if;
+  if (tg_op = 'INSERT' or new.fotos is distinct from old.fotos)
+     and exists (select 1 from unnest(new.fotos) x where not exists (select 1 from public.radar_imagens i where i.id = x)) then
+    raise exception 'RADAR176: foto que não está mais no banco: envie de novo' using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+
+-- Pessoa que está numa peça não se apaga (para tirá-la das próximas, desmarque "Ativa"). Da peça cancelada ela sai junto.
+create or replace function public.radar_fn_pessoa_apagar() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from public.radar_pauta_pecas p where old.id = any(p.pessoas) and p.situacao <> 'cancelada') then
+    raise exception 'RADAR174: esta pessoa está numa peça da Pauta: para tirá-la das próximas, desmarque “Ativa”' using errcode = 'P0001';
+  end if;
+  perform set_config('radar.pauta', '1', true);
+  update public.radar_pauta_pecas set pessoas = array_remove(pessoas, old.id) where old.id = any(pessoas);
+  perform set_config('radar.pauta', '', true);
+  return old;
+end $$;
+
+-- Importa o calendário (as linhas do CSV, já lidas pela tela). Confere tudo antes de gravar e para no primeiro erro, com a linha e
+-- o campo — nunca o conteúdo. Por data: a peça nova entra (planejada, na hora de Configurações → Pauta → "hora_padrao"); a que
+-- existe só é atualizada se ainda estiver planejada (a que já entrou em produção fica como está). Não liga pessoas: "quem
+-- aparece" é só lembrete. Devolve {novas, alteradas, iguais, mantidas}.
+create or replace function public.radar_pauta_importar(p_linhas jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_conf  jsonb := (select c.valor from public.radar_config c where c.chave = 'pauta');
+  v_hora  time;
+  x       jsonb;
+  i       bigint;
+  v_n     bigint;
+  v_campo text;
+  v_datas date[] := '{}';
+  p       public.radar_pauta_pecas%rowtype;
+  v_novas int := 0; v_alteradas int := 0; v_iguais int := 0; v_mantidas int := 0;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR159: só o editor ou o administrador mexe na Pauta' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_linhas) is distinct from 'array' or jsonb_array_length(p_linhas) not between 1 and 400 then
+    raise exception 'RADAR173: envie de 1 a 400 linhas do calendário' using errcode = 'P0001';
+  end if;
+  v_hora := case when coalesce(v_conf->>'hora_padrao', '') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then (v_conf->>'hora_padrao')::time
+                 else '09:30' end;
+  for x, i in select t.e, t.o from jsonb_array_elements(p_linhas) with ordinality t(e, o) loop
+    v_n := case when jsonb_typeof(x->'linha') = 'number' and (x->>'linha') ~ '^[0-9]{1,6}$' then (x->>'linha')::bigint else i end;
+    v_campo := case
+      when jsonb_typeof(x) is distinct from 'object' then 'linha'
+      when coalesce(x->>'data', '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' or not public.radar_data_valida(x->>'data') then 'data'
+      when (x->>'data')::date not between date '2020-01-01' and date '2100-12-31' then 'data'
+      when coalesce(x->>'tipo', '') not in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post') then 'tipo'
+      when coalesce(x->>'formato', '') not in ('imagem','foto','carrossel','carrossel_fotos','reel','story','nenhum') then 'formato'
+      when jsonb_typeof(x->'assunto') not in ('string','null') or length(coalesce(x->>'assunto', '')) > 1000 then 'assunto'
+      when jsonb_typeof(x->'quem_aparece') not in ('string','null') or length(coalesce(x->>'quem_aparece', '')) > 300 then 'quem_aparece'
+      when jsonb_typeof(x->'objetivo') not in ('string','null') or length(coalesce(x->>'objetivo', '')) > 200 then 'objetivo'
+      when jsonb_typeof(x->'observacao') not in ('string','null') or length(coalesce(x->>'observacao', '')) > 1000 then 'observacao'
+    end;
+    if v_campo is not null then
+      raise exception 'RADAR173: linha %: % inválido', v_n, v_campo using errcode = 'P0001';
+    end if;
+    if (x->>'data')::date = any(v_datas) then
+      raise exception 'RADAR173: linha %: data repetida no arquivo', v_n using errcode = 'P0001';
+    end if;
+    v_datas := v_datas || (x->>'data')::date;
+  end loop;
+  perform pg_advisory_xact_lock(hashtext('radar_pauta_importar'));           -- uma importação por vez
+  perform set_config('radar.pauta', '1', true);    -- a importação não leva a peça planejada para a produção
+  for x in select t.e from jsonb_array_elements(p_linhas) t(e) loop
+    select * into p from public.radar_pauta_pecas where data = (x->>'data')::date for update;
+    if p.id is null then
+      insert into public.radar_pauta_pecas (data, hora, tipo, formato, assunto, quem_aparece, objetivo, observacao)
+      values ((x->>'data')::date, v_hora, x->>'tipo', x->>'formato', btrim(coalesce(x->>'assunto', '')), btrim(coalesce(x->>'quem_aparece', '')),
+              btrim(coalesce(x->>'objetivo', '')), btrim(coalesce(x->>'observacao', '')));
+      v_novas := v_novas + 1;
+    elsif p.situacao <> 'planejada' then
+      v_mantidas := v_mantidas + 1;
+    elsif (p.tipo, p.formato, p.assunto, p.quem_aparece, p.objetivo, p.observacao)
+          is not distinct from (x->>'tipo', x->>'formato', btrim(coalesce(x->>'assunto', '')), btrim(coalesce(x->>'quem_aparece', '')),
+                                btrim(coalesce(x->>'objetivo', '')), btrim(coalesce(x->>'observacao', ''))) then
+      v_iguais := v_iguais + 1;
+    else
+      update public.radar_pauta_pecas
+         set tipo = x->>'tipo', formato = x->>'formato', assunto = btrim(coalesce(x->>'assunto', '')),
+             quem_aparece = btrim(coalesce(x->>'quem_aparece', '')), objetivo = btrim(coalesce(x->>'objetivo', '')),
+             observacao = btrim(coalesce(x->>'observacao', ''))
+       where id = p.id;
+      v_alteradas := v_alteradas + 1;
+    end if;
+  end loop;
+  perform set_config('radar.pauta', '', true);
+  return jsonb_build_object('novas', v_novas, 'alteradas', v_alteradas, 'iguais', v_iguais, 'mantidas', v_mantidas);
+end $$;
+
+-- O que falta resolver na peça (a tela mostra a lista). p_canais nulo: os canais que têm legenda.
+create or replace function public.radar_pauta_conferir(p_peca bigint, p_canais text[]) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare p public.radar_pauta_pecas%rowtype;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR159: só o editor ou o administrador mexe na Pauta' using errcode = '42501';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca;
+  if p.id is null then
+    raise exception 'RADAR160: peça não encontrada' using errcode = 'P0001';
+  end if;
+  return jsonb_build_object('problemas', to_jsonb(public.radar_pauta_problemas(p.id,
+           coalesce(p_canais, public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook)), p.data)));
+end $$;
+
+-- "Salvar e marcar como pronta": a peça em produção, sem nenhum problema, fica pronta para o administrador aprovar.
+-- Devolve a nova versão da peça (atualizado_em), para a tela.
+create or replace function public.radar_pauta_marcar_pronta(p_peca bigint, p_lido timestamptz) returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare
+  p      public.radar_pauta_pecas%rowtype;
+  v_prob text[];
+  v_em   timestamptz;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR159: só o editor ou o administrador mexe na Pauta' using errcode = '42501';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca for update;
+  if p.id is null then
+    raise exception 'RADAR160: peça não encontrada' using errcode = 'P0001';
+  end if;
+  if p_lido is distinct from p.atualizado_em then
+    raise exception 'RADAR161: a peça foi alterada depois que a tela foi aberta: recarregue, confira e tente de novo' using errcode = 'P0001';
+  end if;
+  if p.situacao not in ('planejada','em_producao') then
+    raise exception 'RADAR164: só a peça planejada ou em produção fica pronta (situação atual: %)', p.situacao using errcode = 'P0001';
+  end if;
+  v_prob := public.radar_pauta_problemas(p.id, public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook), p.data);
+  if cardinality(v_prob) > 0 then
+    raise exception 'RADAR165: há % ponto(s) a resolver: a lista aparece na tela', cardinality(v_prob) using errcode = 'P0001';
+  end if;
+  perform set_config('radar.pauta', '1', true);
+  update public.radar_pauta_pecas set situacao = 'pronta' where id = p.id returning atualizado_em into v_em;
+  perform set_config('radar.pauta', '', true);
+  return v_em;
+end $$;
+
+-- Aprovação (só o administrador). Confere de novo tudo (radar_pauta_problemas, com o dia da peça), as caixas de conferência, as
+-- lâminas desenhadas na tela dele e guardadas agora em radar_imagens (o que se aprova é o que ele viu) e a hora. Modo "agendar"
+-- (imagem única: Imagem 4:5 e Foto): um envio por canal, com a cópia da legenda e da lâmina, que a agenda do banco publica na
+-- hora marcada. Modo "manual" (carrossel e reel nesta versão, ou quem preferir): não cria envio; libera baixar e copiar.
+create or replace function public.radar_pauta_aprovar(p_peca bigint, p_lido timestamptz, p_canais text[], p_modo text, p_artes bigint[],
+                                                      p_arte_identificacao text, p_conferencias text[])
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  p        public.radar_pauta_pecas%rowtype;
+  v_canais text[];
+  v_conf   text[] := coalesce(p_conferencias, '{}');
+  v_artes  bigint[] := coalesce(p_artes, '{}');
+  v_prob   text[];
+  v_qtd    int;
+  v_janela int := public.radar_pauta_janela();
+  v_quando timestamptz;
+  v_img    text;
+  v_canal  text;
+  v_id     bigint;
+  v_ids    jsonb := '{}'::jsonb;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR159: só o administrador aprova a peça da Pauta' using errcode = '42501';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca for update;
+  if p.id is null then
+    raise exception 'RADAR160: peça não encontrada' using errcode = 'P0001';
+  end if;
+  if p_lido is distinct from p.atualizado_em then
+    raise exception 'RADAR161: a peça foi alterada depois que a tela foi aberta: recarregue, confira e aprove de novo' using errcode = 'P0001';
+  end if;
+  if p.situacao <> 'pronta' then
+    raise exception 'RADAR164: só a peça pronta é aprovada (situação atual: %)', p.situacao using errcode = 'P0001';
+  end if;
+  if p_modo is null or p_modo not in ('agendar','manual') then
+    raise exception 'RADAR164: escolha entre agendar e publicar à mão' using errcode = 'P0001';
+  end if;
+  if p_modo = 'agendar' and p.formato not in ('imagem','foto') then
+    raise exception 'RADAR164: carrossel e reel saem à mão nesta versão (escolha “Vou publicar à mão”)' using errcode = 'P0001';
+  end if;
+  select coalesce(array_agg(distinct c), '{}') into v_canais from unnest(coalesce(p_canais, '{}')) c;
+  v_prob := public.radar_pauta_problemas(p.id, v_canais, p.data);
+  if cardinality(v_prob) > 0 then
+    raise exception 'RADAR165: há % ponto(s) a resolver: a lista aparece na tela', cardinality(v_prob) using errcode = 'P0001';
+  end if;
+  -- as caixas que o administrador marca na tela (o que está na foto só ele sabe)
+  if (cardinality(p.pessoas) > 0 or cardinality(p.fotos) > 0) and not 'pessoas' = any(v_conf) then
+    raise exception 'RADAR166: marque “Conferi: nas fotos e nos textos só aparecem as pessoas marcadas”' using errcode = 'P0001';
+  end if;
+  if p.tipo = 'agenda' and not 'datas' = any(v_conf) then
+    raise exception 'RADAR166: marque “Conferi as datas da agenda”' using errcode = 'P0001';
+  end if;
+  if not 'rede' = any(v_conf)
+     and exists (select 1 from public.radar_redes_envios e where e.peca_id = p.id and e.canal = any(v_canais)
+                  and e.situacao = 'cancelado' and e.enviado_em is not null and e.post_id is null) then
+    raise exception 'RADAR166: uma publicação desta peça foi cancelada no meio do envio: confira no Instagram e no Facebook que ela não saiu e marque “Conferi no Instagram e no Facebook: não saiu”'
+      using errcode = 'P0001';
+  end if;
+  -- as lâminas: uma por imagem ou foto, capa + uma por cartão no carrossel, uma por foto no carrossel de fotos, nenhuma no reel;
+  -- JPEG 1080×1350 enviado agora (há até 2 horas) por quem aprova; a identificação desenhada nelas é a das Configurações
+  v_qtd := case p.formato when 'imagem' then 1 when 'foto' then 1 when 'carrossel' then 1 + jsonb_array_length(p.cartoes)
+                          when 'carrossel_fotos' then cardinality(p.fotos) else 0 end;
+  if cardinality(v_artes) <> v_qtd or (select count(distinct a) from unnest(v_artes) a) <> v_qtd
+     or exists (select 1 from unnest(v_artes) a
+                 where not exists (select 1 from public.radar_imagens i
+                                    where i.id = a and i.dados like 'data:image/jpeg;base64,%' and i.largura = 1080 and i.altura = 1350
+                                      and i.criado_por = auth.uid() and i.criado_em > now() - interval '2 hours'))
+     or public.radar_pauta_identificacao_falta(p_arte_identificacao) is not null then
+    raise exception 'RADAR163: as lâminas da aprovação não conferem (quantidade, JPEG 1080×1350 enviado agora por você, identificação legal das Configurações): desenhe e aprove de novo'
+      using errcode = 'P0001';
+  end if;
+  if p_modo = 'agendar' then
+    if p.tipo = 'agenda' and public.radar_pauta_hoje() > p.data + 1 then
+      raise exception 'RADAR168: a agenda da semana ficou velha (passou a segunda-feira)' using errcode = 'P0001';
+    end if;
+    v_quando := (p.data + p.hora) at time zone 'America/Sao_Paulo';
+    if v_quando < now() - make_interval(hours => v_janela) then
+      raise exception 'RADAR167: a hora marcada (% de Brasília) passou há mais de % horas: mude a hora', to_char(p.data + p.hora, 'DD/MM/YYYY HH24:MI'), v_janela
+        using errcode = 'P0001';
+    end if;
+    if v_quando < now() then
+      v_quando := now();                                    -- passou há pouco: sai na próxima rodada da agenda
+    end if;
+    if v_quando > now() + interval '120 days' then
+      raise exception 'RADAR167: a hora marcada fica a mais de 120 dias: aprove mais perto do dia' using errcode = 'P0001';
+    end if;
+  end if;
+  perform set_config('radar.pauta', '1', true);
+  update public.radar_pauta_pecas
+     set situacao = 'aprovada', aprovado_por = auth.uid(), aprovado_em = now(), aprovado_modo = p_modo,
+         aprovado_conferencias = array(select distinct c from unnest(v_conf) c where c in ('pessoas','datas','rede') order by c),
+         artes = v_artes, arte_identificacao = left(btrim(p_arte_identificacao), 300)
+   where id = p.id;
+  perform set_config('radar.pauta', '', true);
+  if p_modo = 'agendar' then
+    select i.dados into v_img from public.radar_imagens i where i.id = v_artes[1];
+    foreach v_canal in array v_canais loop
+      begin
+        insert into public.radar_redes_envios (peca_id, canal, legenda, imagem, conteudo_lido_em, situacao, autorizado_por, agendado_para)
+        values (p.id, v_canal, btrim(case v_canal when 'instagram' then p.legenda_instagram else p.legenda_facebook end), v_img,
+                p.versao_publicavel, 'autorizado', auth.uid(), v_quando)
+        returning id into v_id;
+      exception when unique_violation then
+        raise exception 'RADAR170: já há publicação aberta (ou feita) desta peça no %', initcap(v_canal) using errcode = 'P0001';
+      end;
+      v_ids := v_ids || jsonb_build_object(v_canal, v_id);
+    end loop;
+  end if;
+  return jsonb_build_object('agendado_para', v_quando, 'envios', v_ids);
+end $$;
+
+-- "Desfazer aprovação" (editor ou administrador): o que ainda não saiu é cancelado e a peça volta a pronta, sem as lâminas
+-- aprovadas. Não desfaz o que está saindo agora nem o que já saiu (exclua da rede antes). Devolve a nova versão da peça.
+create or replace function public.radar_pauta_desaprovar(p_peca bigint) returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare
+  p    public.radar_pauta_pecas%rowtype;
+  v_em timestamptz;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR159: só o editor ou o administrador mexe na Pauta' using errcode = '42501';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca for update;
+  if p.id is null then
+    raise exception 'RADAR160: peça não encontrada' using errcode = 'P0001';
+  end if;
+  if p.situacao <> 'aprovada' then
+    raise exception 'RADAR164: a peça não está aprovada (situação atual: %)', p.situacao using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.radar_redes_envios e where e.peca_id = p.id and e.situacao = 'enviando') then
+    raise exception 'RADAR169: a peça está sendo publicada agora: espere terminar (parada há mais de 10 minutos, o administrador cancela em Publicações)'
+      using errcode = 'P0001';
+  end if;
+  if p.publicado_manual_em is not null or exists (select 1 from public.radar_redes_envios e where e.peca_id = p.id and e.situacao = 'publicado') then
+    raise exception 'RADAR170: a peça já saiu numa rede: exclua a publicação da rede antes de desfazer a aprovação' using errcode = 'P0001';
+  end if;
+  update public.radar_redes_envios
+     set situacao = 'cancelado', cancelado_por = auth.uid(), cancelado_em = now(), imagem = null,
+         erro = 'Aprovação desfeita na Pauta.', atualizado_em = now()
+   where peca_id = p.id and situacao in ('autorizado','erro');
+  perform set_config('radar.pauta', '1', true);
+  update public.radar_pauta_pecas
+     set situacao = 'pronta', aprovado_por = null, aprovado_em = null, aprovado_modo = null, aprovado_conferencias = '{}',
+         artes = '{}', arte_identificacao = null
+   where id = p.id
+  returning atualizado_em into v_em;
+  perform set_config('radar.pauta', '', true);
+  return v_em;
+end $$;
+
+-- "Publicar agora" e "Tentar de novo" (só o administrador): só remarcam a hora dos envios que esperam (ou que deram erro) para
+-- agora; quem publica é a agenda do banco (ou a tela, com a agenda desligada), que confere tudo de novo. O que deu erro só volta
+-- com a caixa "Conferi no Instagram e no Facebook: não saiu". Devolve os envios remarcados.
+create or replace function public.radar_pauta_publicar_agora(p_peca bigint, p_conferi_rede boolean) returns bigint[]
+language plpgsql security definer set search_path = public as $$
+declare
+  p      public.radar_pauta_pecas%rowtype;
+  v_hoje date := public.radar_pauta_hoje();
+  r      record;
+  v_id   bigint;
+  v_x    text;
+  v_ids  bigint[];
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR159: só o administrador publica a peça da Pauta' using errcode = '42501';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca for update;
+  if p.id is null then
+    raise exception 'RADAR160: peça não encontrada' using errcode = 'P0001';
+  end if;
+  if p.situacao <> 'aprovada' or p.aprovado_modo is distinct from 'agendar' then
+    raise exception 'RADAR164: só a peça aprovada para sair pela agenda é publicada por aqui' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.radar_redes_envios e where e.peca_id = p.id and e.situacao = 'enviando') then
+    raise exception 'RADAR169: a peça está sendo publicada agora: espere terminar' using errcode = 'P0001';
+  end if;
+  if not coalesce(p_conferi_rede, false)
+     and exists (select 1 from public.radar_redes_envios e where e.peca_id = p.id and e.situacao = 'erro') then
+    raise exception 'RADAR166: confira no Instagram e no Facebook que a publicação não saiu e marque “Conferi no Instagram e no Facebook: não saiu”'
+      using errcode = 'P0001';
+  end if;
+  if p.tipo = 'agenda' and v_hoje > p.data + 1 then
+    raise exception 'RADAR168: a agenda da semana ficou velha (passou a segunda-feira)' using errcode = 'P0001';
+  end if;
+  for r in select e.canal, e.legenda from public.radar_redes_envios e where e.peca_id = p.id and e.situacao in ('autorizado','erro') loop
+    foreach v_id in array p.pessoas loop
+      v_x := public.radar_pauta_termo_ok(v_id, p.tipo, r.canal, v_hoje);
+      if v_x is not null then
+        raise exception 'RADAR165: o termo de uso de imagem de uma pessoa da peça não vale hoje no % (%): confira em Pauta → Pessoas e termos',
+          initcap(r.canal), v_x using errcode = 'P0001';
+      end if;
+    end loop;
+    if public.radar_marcas_verificar(r.legenda) is not null or r.legenda ~* '\{\s*confirmar[^}]*\}' then
+      raise exception 'RADAR165: a legenda do % tem ponto marcado com [VERIFICAR] ou {confirmar}: desfaça a aprovação e corrija', initcap(r.canal)
+        using errcode = 'P0001';
+    end if;
+  end loop;
+  with u as (
+    update public.radar_redes_envios
+       set situacao = 'autorizado', agendado_para = now(), disparos = 0, disparado_em = null, erro = null, atualizado_em = now()
+     where peca_id = p.id and situacao in ('autorizado','erro')
+    returning id
+  ) select coalesce(array_agg(u.id order by u.id), '{}') into v_ids from u;
+  if cardinality(v_ids) = 0 then
+    raise exception 'RADAR164: não há publicação desta peça esperando a hora (ou com erro)' using errcode = 'P0001';
+  end if;
+  return v_ids;
+end $$;
+
+-- Copiar a legenda e o roteiro e baixar as lâminas: só na peça aprovada para publicar à mão, na versão que está na tela, e com o
+-- termo de cada pessoa valendo HOJE nos canais que têm legenda. Devolve {ok, artes} ou {motivo} (sem nome).
+create or replace function public.radar_pauta_pode_copiar(p_peca bigint, p_lido timestamptz) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  p       public.radar_pauta_pecas%rowtype;
+  v_hoje  date := public.radar_pauta_hoje();
+  v_canal text;
+  v_id    bigint;
+  v_x     text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR159: só o editor ou o administrador mexe na Pauta' using errcode = '42501';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca;
+  if p.id is null then
+    return jsonb_build_object('motivo', 'Peça não encontrada.');
+  end if;
+  if p.situacao <> 'aprovada' or p.aprovado_modo is distinct from 'manual' then
+    return jsonb_build_object('motivo', 'Só a peça aprovada para publicar à mão pode ser copiada ou baixada.');
+  end if;
+  if p_lido is distinct from p.atualizado_em then
+    return jsonb_build_object('motivo', 'A peça mudou depois que a tela foi aberta: recarregue e confira.');
+  end if;
+  foreach v_canal in array public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook) loop
+    foreach v_id in array p.pessoas loop
+      v_x := public.radar_pauta_termo_ok(v_id, p.tipo, v_canal, v_hoje);
+      if v_x is not null then
+        return jsonb_build_object('motivo', format('O termo de uso de imagem de uma pessoa da peça não vale hoje no %s (%s): confira em Pauta → Pessoas e termos.',
+                                                   initcap(v_canal), v_x));
+      end if;
+    end loop;
+  end loop;
+  return jsonb_build_object('ok', true, 'artes', to_jsonb(p.artes));
+end $$;
+
+-- Registro da peça postada à mão: o link (Instagram ou Facebook) e o dia, do dia da aprovação até hoje. Completa o link que
+-- faltar, sem trocar o que já foi registrado.
+create or replace function public.radar_pauta_registrar_manual(p_peca bigint, p_link_instagram text, p_link_facebook text, p_data date)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  p       public.radar_pauta_pecas%rowtype;
+  v_ig    text := nullif(btrim(coalesce(p_link_instagram, '')), '');
+  v_fb    text := nullif(btrim(coalesce(p_link_facebook, '')), '');
+  v_canal text;
+  v_id    bigint;
+  v_x     text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR159: só o editor ou o administrador mexe na Pauta' using errcode = '42501';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca for update;
+  if p.id is null then
+    raise exception 'RADAR160: peça não encontrada' using errcode = 'P0001';
+  end if;
+  if p.situacao <> 'aprovada' or p.aprovado_modo is distinct from 'manual' then
+    raise exception 'RADAR175: só a peça aprovada para publicar à mão tem registro manual' using errcode = 'P0001';
+  end if;
+  if v_ig is null and v_fb is null then
+    raise exception 'RADAR175: cole o link da publicação no Instagram ou no Facebook' using errcode = 'P0001';
+  end if;
+  if v_ig is not null and (v_ig !~ '^https://(www\.)?instagram\.com/[!-~]+$' or length(v_ig) > 500) then
+    raise exception 'RADAR175: o link do Instagram começa com https://www.instagram.com/' using errcode = 'P0001';
+  end if;
+  if v_fb is not null and ((v_fb !~ '^https://((www|m|web)\.)?facebook\.com/[!-~]+$' and v_fb !~ '^https://fb\.watch/[!-~]+$') or length(v_fb) > 500) then
+    raise exception 'RADAR175: o link do Facebook começa com https://www.facebook.com/ (ou https://fb.watch/)' using errcode = 'P0001';
+  end if;
+  if p_data is null or p_data < (p.aprovado_em at time zone 'America/Sao_Paulo')::date or p_data > public.radar_pauta_hoje() then
+    raise exception 'RADAR175: a data da publicação vai do dia da aprovação até hoje' using errcode = 'P0001';
+  end if;
+  foreach v_canal in array array_remove(array[case when v_ig is not null then 'instagram' end, case when v_fb is not null then 'facebook' end], null) loop
+    foreach v_id in array p.pessoas loop
+      v_x := public.radar_pauta_termo_ok(v_id, p.tipo, v_canal, p_data);
+      if v_x is not null then
+        raise exception 'RADAR175: o termo de uso de imagem de uma pessoa da peça não valia nesse dia no % (%): confira em Pauta → Pessoas e termos',
+          initcap(v_canal), v_x using errcode = 'P0001';
+      end if;
+    end loop;
+  end loop;
+  perform set_config('radar.pauta', '1', true);
+  update public.radar_pauta_pecas
+     set link_instagram = coalesce(link_instagram, v_ig), link_facebook = coalesce(link_facebook, v_fb),
+         publicado_manual_em = coalesce(publicado_manual_em, p_data), publicado_manual_por = coalesce(publicado_manual_por, auth.uid())
+   where id = p.id
+  returning * into p;
+  perform set_config('radar.pauta', '', true);
+  return jsonb_build_object('link_instagram', p.link_instagram, 'link_facebook', p.link_facebook, 'publicado_manual_em', p.publicado_manual_em);
+end $$;
+
+-- A agenda do banco (sql/radar-redes-agenda.sql) está instalada e rodando? Só para o administrador (os outros recebem {}). Sem o
+-- pg_cron (ou com qualquer erro), {instalada: false}. "agenda_ligada": Configurações → Pauta.
+create or replace function public.radar_agenda_situacao() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_ligada boolean := coalesce((select c.valor->'agenda_ligada' from public.radar_config c where c.chave = 'pauta'), 'true'::jsonb)
+                      is distinct from 'false'::jsonb;
+  v_ativa  boolean;
+  v_ult    timestamptz;
+  v_status text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    return '{}'::jsonb;
+  end if;
+  begin
+    execute 'select j.active from cron.job j where j.jobname = ''radar-redes-agenda'' limit 1' into v_ativa;
+    if v_ativa is null then
+      return jsonb_build_object('instalada', false, 'agenda_ligada', v_ligada);
+    end if;
+    execute 'select coalesce(d.end_time, d.start_time), d.status from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+              where j.jobname = ''radar-redes-agenda'' order by d.start_time desc nulls last limit 1' into v_ult, v_status;
+  exception when others then
+    return jsonb_build_object('instalada', false, 'agenda_ligada', v_ligada);
+  end;
+  return jsonb_build_object('instalada', true, 'ativa', v_ativa, 'ultima_execucao', v_ult, 'ultimo_status', v_status, 'agenda_ligada', v_ligada);
+end $$;
+
+-- Conferência curta, logo antes de disparar e de novo no início do envio: devolve o primeiro motivo para a peça NÃO sair (ou
+-- NULL). Sem nome de pessoa: o texto vai para radar_redes_envios.erro.
+create or replace function public.radar_pauta_pode_sair(p_envio bigint) returns text
+language plpgsql stable security definer set search_path = public as $$
+declare
+  e        public.radar_redes_envios%rowtype;
+  p        public.radar_pauta_pecas%rowtype;
+  v_hoje   date := public.radar_pauta_hoje();
+  v_janela int := public.radar_pauta_janela();
+  v_id     bigint;
+  v_x      text;
+begin
+  select * into e from public.radar_redes_envios where id = p_envio;
+  select * into p from public.radar_pauta_pecas where id = e.peca_id;
+  if p.id is null then
+    return 'A publicação não é de uma peça da Pauta.';
+  end if;
+  if p.situacao <> 'aprovada' or p.aprovado_modo is distinct from 'agendar' then
+    return 'A peça não está aprovada para sair pela agenda.';
+  end if;
+  if p.versao_publicavel is distinct from e.conteudo_lido_em then
+    return 'A peça mudou depois de aprovada: confira e aprove de novo.';
+  end if;
+  if now() > e.agendado_para + make_interval(hours => v_janela) then
+    return format('Passaram mais de %s horas da hora marcada: a publicação não sai atrasada sozinha. Use Publicar agora ou desfaça a aprovação.', v_janela);
+  end if;
+  if p.tipo = 'agenda' and v_hoje > p.data + 1 then
+    return 'A agenda da semana ficou velha (passou a segunda-feira).';
+  end if;
+  foreach v_id in array p.pessoas loop
+    v_x := public.radar_pauta_termo_ok(v_id, p.tipo, e.canal, v_hoje);
+    if v_x is not null then
+      return format('O termo de uso de imagem de uma pessoa da peça não vale em %s (%s): confira em Pauta → Pessoas e termos.', to_char(v_hoje, 'DD/MM/YYYY'), v_x);
+    end if;
+  end loop;
+  if public.radar_marcas_verificar(e.legenda) is not null or e.legenda ~* '\{\s*confirmar[^}]*\}' then
+    return 'A legenda tem ponto marcado com [VERIFICAR] ou {confirmar}: desfaça a aprovação e corrija.';
+  end if;
+  if e.imagem is null and e.imagem_url is null then
+    return 'A imagem da publicação se perdeu: desfaça a aprovação e aprove de novo.';
+  end if;
+  return null;
+end $$;
+
+-- A agenda do banco (o pg_cron, de 5 em 5 minutos) chama aqui: devolve até p_limite envios da Pauta que venceram, já com a
+-- tentativa marcada, e o comando do cron faz um pedido à função radar-redes por envio (nenhuma linha = nenhum pedido). Cada
+-- envio é chamado no máximo 3 vezes, de 10 em 10 minutos; depois vira "erro" (final para a agenda: só o administrador o devolve,
+-- por radar_pauta_publicar_agora). O que não pode sair (radar_pauta_pode_sair) vira "erro" antes de qualquer coisa ir à Meta.
+-- "erro" e "enviando" nunca são pegos. Não trava a peça (a ordem das travas é peça e depois envio, em todas as funções).
+create or replace function public.radar_agenda_vencidas(p_limite int default 2) returns setof bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  r        record;
+  v_motivo text;
+begin
+  -- pausa sem SQL: Configurações → Pauta → "agenda_ligada": false
+  if (select c.valor->'agenda_ligada' from public.radar_config c where c.chave = 'pauta') = 'false'::jsonb then
+    return;
+  end if;
+  for r in select e.id, e.disparos from public.radar_redes_envios e
+            where e.situacao = 'autorizado' and e.peca_id is not null and e.agendado_para <= now()
+              and (e.disparado_em is null or e.disparado_em < now() - interval '10 minutes')
+            order by e.agendado_para, e.id
+            limit least(greatest(coalesce(p_limite, 2), 1), 10)
+            for update skip locked loop
+    v_motivo := case when r.disparos >= 3
+      then 'A publicação agendada não saiu: o Radar chamou a função radar-redes 3 vezes, de 10 em 10 minutos, e ela não publicou. '
+           'Confira em Publicações → Testar conexão se a radar-redes é a v0.21.0 e se o Instagram e o Facebook estão configurados; '
+           'depois use Tentar de novo.'
+      else public.radar_pauta_pode_sair(r.id) end;            -- confere ANTES de qualquer coisa ir à Meta
+    if v_motivo is not null then
+      update public.radar_redes_envios set situacao = 'erro', erro = left(v_motivo, 1000), atualizado_em = now() where id = r.id;
+      continue;
+    end if;
+    update public.radar_redes_envios set disparos = disparos + 1, disparado_em = now() where id = r.id;
+    return next r.id;
+  end loop;
+end $$;
+
+-- A função radar-redes (v0.21.0) pega o envio da peça para publicar: uma vez só (autorizado → enviando, com a peça e o envio
+-- travados, nessa ordem), na hora marcada, e conferindo tudo de novo. O problema vira "erro" (contado e avisado), nunca
+-- "cancelado" calado. Qualquer exceção aqui desfaz tudo: nada foi ao armazenamento nem à Meta (o envio da imagem vem depois).
+create or replace function public.radar_pauta_iniciar(p_envio bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_peca   bigint;
+  e        public.radar_redes_envios%rowtype;
+  v_motivo text;
+begin
+  select peca_id into v_peca from public.radar_redes_envios where id = p_envio;     -- sem trava: a ordem é peça, depois envio
+  if v_peca is null then
+    raise exception 'RADAR138: esta autorização não está aguardando envio (já saiu, foi cancelada ou está saindo)' using errcode = 'P0001';
+  end if;
+  perform 1 from public.radar_pauta_pecas where id = v_peca for update;
+  select * into e from public.radar_redes_envios where id = p_envio for update;
+  if e.situacao is distinct from 'autorizado' then          -- "erro" só volta por radar_pauta_publicar_agora (do administrador)
+    raise exception 'RADAR138: esta autorização não está aguardando envio (já saiu, foi cancelada ou está saindo)' using errcode = 'P0001';
+  end if;
+  if e.agendado_para > now() then
+    raise exception 'RADAR172: ainda não é a hora: agendada para % (Brasília)', to_char(e.agendado_para at time zone 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI')
+      using errcode = 'P0001';
+  end if;
+  v_motivo := public.radar_pauta_pode_sair(p_envio);
+  if v_motivo is not null then
+    update public.radar_redes_envios set situacao = 'erro', erro = left(v_motivo, 1000), atualizado_em = now() where id = p_envio;
+    return jsonb_build_object('erro', v_motivo);
+  end if;
+  update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, atualizado_em = now() where id = p_envio;
+  return jsonb_build_object('id', e.id, 'canal', e.canal, 'conteudo_id', null, 'peca_id', e.peca_id, 'legenda', e.legenda,
+                            'imagem', e.imagem, 'imagem_url', e.imagem_url);
 end $$;
 
 -- v0.17.0: pedido de exclusão da notícia no site. Usa o registro mais recente em "Publicações no site" (link e título).
@@ -2780,6 +3844,19 @@ exception when others then
   return false;
 end $$;
 
+-- v0.21.0: a agenda que publica a Pauta aprovada (pg_cron, sql/radar-redes-agenda.sql) chama a função radar-redes com a chave
+-- 'radar_redes_agenda' do Vault (cabeçalho x-radar-agenda); a função confere por aqui. Sem o Vault (ou sem a chave), nunca confere.
+create or replace function public.radar_redes_conferir_agenda(p_chave text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare v_certa text;
+begin
+  if length(coalesce(p_chave, '')) < 32 then return false; end if;
+  execute 'select decrypted_secret from vault.decrypted_secrets where name = ''radar_redes_agenda'' limit 1' into v_certa;
+  return v_certa is not null and length(v_certa) >= 32 and v_certa = p_chave;
+exception when others then
+  return false;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- 3. GATILHOS
 -- ---------------------------------------------------------------------
@@ -2879,6 +3956,21 @@ drop trigger if exists radar_tg_ia_uso on public.radar_ia_uso;
 create trigger radar_tg_ia_uso before insert on public.radar_ia_uso
   for each row execute function public.radar_fn_ia_uso();
 
+-- v0.21.0: Pauta. Gravar só a sugestão da IA não muda a versão da peça (radar_fn_atualizado_em); as transições e o que só as
+-- funções mudam ficam em radar_fn_pauta_peca; pessoa numa peça não se apaga. Nenhum gatilho novo em radar_redes_envios.
+drop trigger if exists radar_tg_pauta_atualizado on public.radar_pauta_pecas;
+create trigger radar_tg_pauta_atualizado before update on public.radar_pauta_pecas
+  for each row execute function public.radar_fn_atualizado_em();
+drop trigger if exists radar_tg_pauta_peca on public.radar_pauta_pecas;
+create trigger radar_tg_pauta_peca before insert or update on public.radar_pauta_pecas
+  for each row execute function public.radar_fn_pauta_peca();
+drop trigger if exists radar_tg_pessoa_atualizado on public.radar_pessoas;
+create trigger radar_tg_pessoa_atualizado before update on public.radar_pessoas
+  for each row execute function public.radar_fn_atualizado_em();
+drop trigger if exists radar_tg_pessoa_apagar on public.radar_pessoas;
+create trigger radar_tg_pessoa_apagar before delete on public.radar_pessoas
+  for each row execute function public.radar_fn_pessoa_apagar();
+
 drop trigger if exists radar_tg_ultimo_admin on public.radar_perfis;
 create trigger radar_tg_ultimo_admin after update or delete on public.radar_perfis
   for each row execute function public.radar_fn_ultimo_admin();
@@ -2901,7 +3993,7 @@ begin
   foreach t in array array['radar_perfis','radar_fontes','radar_normas','radar_assuntos',
                            'radar_evidencias','radar_conteudos',
                            'radar_informativos','radar_config','radar_divulgacoes','radar_site_envios','radar_redes_envios',
-                           'radar_site_exclusoes'] loop
+                           'radar_site_exclusoes','radar_pessoas','radar_pauta_pecas'] loop
     execute format('drop trigger if exists radar_tg_auditar on public.%I', t);
     execute format('create trigger radar_tg_auditar after insert or update or delete on public.%I
                     for each row execute function public.radar_fn_auditar()', t);
@@ -3034,7 +4126,13 @@ select (select count(*) from public.radar_v_saude_fontes where ativo) as fontes_
        (select count(*) from public.radar_conteudos c where c.status = 'aprovado' and not c.fora_do_site
           and not exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = c.id)) as aprovados_sem_site,
        -- v0.9.0: rascunhos que o robô preparou e ninguém mexeu ainda
-       (select count(*) from public.radar_conteudos c where c.status = 'rascunho' and c.modelo_ia like '%(robô)') as rascunhos_robo;
+       (select count(*) from public.radar_conteudos c where c.status = 'rascunho' and c.modelo_ia like '%(robô)') as rascunhos_robo,
+       -- v0.21.0: publicações da Pauta que não saíram: com erro, paradas em "enviando" há mais de 15 min, ou com a hora passada há
+       -- mais de 20 min sem sair (a agenda do banco roda de 5 em 5 minutos: parou ou está desligada)
+       (select count(*) from public.radar_redes_envios e where e.peca_id is not null
+          and (e.situacao = 'erro'
+               or (e.situacao = 'enviando'   and e.enviado_em    < now() - interval '15 minutes')
+               or (e.situacao = 'autorizado' and e.agendado_para < now() - interval '20 minutes'))) as pauta_falhas;
 
 -- registro das publicações no site, com o estado atual do conteúdo (sem o texto, que é grande)
 drop view if exists public.radar_v_divulgacoes;
@@ -3057,6 +4155,18 @@ from public.radar_divulgacoes d
 join public.radar_conteudos c on c.id = d.conteudo_id
 join public.radar_assuntos  a on a.id = c.assunto_id;
 
+-- v0.21.0: as pessoas de cada peça da Pauta, com o selo do termo de uso de imagem em cada canal (NULL = vale; senão o motivo),
+-- no dia da peça. Roda como quem lê: o leitor não lê radar_pessoas e não vê nenhuma linha.
+drop view if exists public.radar_v_pauta_pessoas;
+create view public.radar_v_pauta_pessoas
+with (security_invoker = true) as
+select p.id as peca_id, p.data, pe.id as pessoa_id, pe.nome_na_peca,
+       public.radar_pauta_termo_ok(pe.id, p.tipo, 'instagram', p.data) as motivo_instagram,
+       public.radar_pauta_termo_ok(pe.id, p.tipo, 'facebook',  p.data) as motivo_facebook
+from public.radar_pauta_pecas p
+cross join lateral unnest(p.pessoas) as u(pessoa_id)
+join public.radar_pessoas pe on pe.id = u.pessoa_id;
+
 -- ---------------------------------------------------------------------
 -- 5. RLS
 -- ---------------------------------------------------------------------
@@ -3068,7 +4178,7 @@ begin
       'radar_assunto_capturas','radar_evidencias','radar_conteudos',
       'radar_auditoria','radar_ia_uso','radar_imagens','radar_config',
       'radar_informativos','radar_informativo_itens','radar_divulgacoes','radar_site_envios','radar_itc_lidos',
-      'radar_redes_envios','radar_site_exclusoes'] loop
+      'radar_redes_envios','radar_site_exclusoes','radar_pessoas','radar_pauta_pecas'] loop
     execute format('alter table public.%I enable row level security', t);
     -- parte do zero: o Supabase concede tudo a esses papéis por padrão
     execute format('revoke all on public.%I from public, anon, authenticated, service_role', t);
@@ -3109,6 +4219,12 @@ revoke insert, update, delete on public.radar_redes_envios from authenticated; -
 -- v0.17.0: pedidos de exclusão no site: a equipe só lê; quem grava são as funções do administrador e o robô (só o andamento)
 revoke insert, update, delete on public.radar_site_exclusoes from authenticated;
 grant update on public.radar_site_exclusoes to service_role;
+-- v0.21.0: o robô e a função radar-redes não leem a Pauta nem as pessoas (radar_pauta_iniciar é security definer; a radar-ia lê
+-- com o token de quem pediu; o robô de avisos lê só radar_redes_envios)
+revoke select on public.radar_pessoas, public.radar_pauta_pecas from service_role;
+-- v0.21.0: as pessoas da peça com o selo do termo: só a equipe logada (o leitor não vê linha nenhuma, pela regra de radar_pessoas)
+revoke all on public.radar_v_pauta_pessoas from public, anon, authenticated, service_role;
+grant select on public.radar_v_pauta_pessoas to authenticated;
 
 -- sequências das colunas identity: ninguém precisa de acesso direto
 do $$
@@ -3170,6 +4286,20 @@ grant execute on function public.radar_rede_marcar_excluida(bigint, text) to aut
 grant execute on function public.radar_pedir_exclusao_site(bigint) to authenticated;
 grant execute on function public.radar_cancelar_exclusao_site(bigint) to authenticated;
 grant execute on function public.radar_site_exclusao_concluir(bigint, boolean, text) to service_role;
+-- v0.21.0: Pauta — a tela chama (cada função confere o papel); a função radar-redes inicia o envio da peça e confere a chave da
+-- agenda do banco. As auxiliares (radar_pauta_problemas, radar_pauta_pode_sair, radar_agenda_vencidas…) ficam só com o dono.
+grant execute on function public.radar_pauta_importar(jsonb) to authenticated;
+grant execute on function public.radar_pauta_conferir(bigint, text[]) to authenticated;
+grant execute on function public.radar_pauta_marcar_pronta(bigint, timestamptz) to authenticated;
+grant execute on function public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[]) to authenticated;
+grant execute on function public.radar_pauta_desaprovar(bigint) to authenticated;
+grant execute on function public.radar_pauta_publicar_agora(bigint, boolean) to authenticated;
+grant execute on function public.radar_pauta_pode_copiar(bigint, timestamptz) to authenticated;
+grant execute on function public.radar_pauta_registrar_manual(bigint, text, text, date) to authenticated;
+grant execute on function public.radar_pauta_termo_ok(bigint, text, text, date) to authenticated;
+grant execute on function public.radar_agenda_situacao() to authenticated;
+grant execute on function public.radar_pauta_iniciar(bigint) to service_role;
+grant execute on function public.radar_redes_conferir_agenda(text) to service_role;
 -- v0.20.0: a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql, v0.19.1, opcional) também perde o acesso no
 -- laço acima: se ela existe, o papel interno volta a executá-la (sem isso, toda chamada com a chave do Vault recebe 401)
 do $$
@@ -3221,7 +4351,8 @@ declare t text;
 begin
   foreach t in array array['radar_normas','radar_assuntos','radar_assunto_capturas',
                            'radar_evidencias','radar_conteudos',
-                           'radar_imagens','radar_informativos','radar_informativo_itens','radar_divulgacoes'] loop
+                           'radar_imagens','radar_informativos','radar_informativo_itens','radar_divulgacoes',
+                           'radar_pauta_pecas'] loop          -- v0.21.0: as transições da peça ficam no gatilho radar_fn_pauta_peca
     execute format('drop policy if exists %I on public.%I', t || '_sel', t);
     execute format('create policy %I on public.%I for select to authenticated
                     using ((select public.radar_papel()) is not null)', t || '_sel', t);
@@ -3252,6 +4383,14 @@ create policy radar_config_sel on public.radar_config for select to authenticate
   using ((select public.radar_papel()) is not null);
 drop policy if exists radar_config_adm on public.radar_config;
 create policy radar_config_adm on public.radar_config for all to authenticated
+  using ((select public.radar_papel()) = 'admin') with check ((select public.radar_papel()) = 'admin');
+
+-- v0.21.0: pessoas e termos de uso de imagem: o administrador e o editor leem; só o administrador grava
+drop policy if exists radar_pessoas_sel on public.radar_pessoas;
+create policy radar_pessoas_sel on public.radar_pessoas for select to authenticated
+  using ((select public.radar_papel()) in ('admin','editor'));
+drop policy if exists radar_pessoas_adm on public.radar_pessoas;
+create policy radar_pessoas_adm on public.radar_pessoas for all to authenticated
   using ((select public.radar_papel()) = 'admin') with check ((select public.radar_papel()) = 'admin');
 
 -- uso da IA: a equipe lê; a gravação é só pela função radar_registrar_uso_ia
@@ -3308,12 +4447,15 @@ on conflict (slug) do nothing;
 -- Configurações iniciais (só na PRIMEIRA vez em que cada chave não existe; depois valem as suas)
 -- v0.20.0: "assinatura" leva também "cnpj" e "crc" (identificação legal na arte e na legenda das redes; vazios, a tela
 -- avisa e não inventa). Na instalação que já existe, o administrador acrescenta os dois em Configurações.
+-- v0.21.0: "pauta" (agenda automática ligada, hora que entra na importação do calendário, janela em horas depois da hora marcada
+-- e hashtags fixas); em "obrigacoes", o item com "redes": false fica fora da agenda da semana publicada nas redes.
 insert into public.radar_config (chave, valor) values
-  ('obrigacoes', '[{"nome": "Salário dos Colaboradores (Empregados)", "regra": "quinto_dia_util"}, {"nome": "Salários - Trabalhador Doméstico", "regra": "dia", "dia": 7, "ajuste": "antecipa"}, {"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "ICMS Substituição Tributária", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "Carnê INSS Individual", "regra": "dia", "dia": 15, "ajuste": "posterga"}, {"nome": "FGTS - Fundo de Garantia Por Tempo de Serviço", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "GPS (Empresa)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento Serviço Prestado Cód. 1708)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento de Trabalhador Cód. 0561)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "Simples Doméstico", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "Simples Nacional", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "Honorário contábil", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "PIS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "COFINS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "IPI", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "CSLL - Contribuição Social sobre o Lucro Líquido", "regra": "ultimo_dia_util"}, {"nome": "IRPJ - Imposto de Renda Pessoa Jurídica", "regra": "ultimo_dia_util"}, {"nome": "Imposto de Renda Pessoa Física (Cód. 0190)", "regra": "ultimo_dia_util"}, {"nome": "INSS - Parcelamento p/ Ingresso no Simples Nacional", "regra": "ultimo_dia_util"}, {"nome": "Parcelamentos Federais e Parcelamento Especial", "regra": "ultimo_dia_util"}, {"nome": "PERT – Programa Esp. Regularização Tributária", "regra": "ultimo_dia_util"}, {"nome": "Parcelamento Especial - Simples Nacional", "regra": "ultimo_dia_util"}]'::jsonb),
+  ('obrigacoes', '[{"nome": "Salário dos Colaboradores (Empregados)", "regra": "quinto_dia_util"}, {"nome": "Salários - Trabalhador Doméstico", "regra": "dia", "dia": 7, "ajuste": "antecipa"}, {"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "ICMS Substituição Tributária", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "Carnê INSS Individual", "regra": "dia", "dia": 15, "ajuste": "posterga"}, {"nome": "FGTS - Fundo de Garantia Por Tempo de Serviço", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "GPS (Empresa)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento Serviço Prestado Cód. 1708)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento de Trabalhador Cód. 0561)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "Simples Doméstico", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "Simples Nacional", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "Honorário contábil", "regra": "dia", "dia": 20, "ajuste": "posterga", "redes": false}, {"nome": "PIS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "COFINS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "IPI", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "CSLL - Contribuição Social sobre o Lucro Líquido", "regra": "ultimo_dia_util"}, {"nome": "IRPJ - Imposto de Renda Pessoa Jurídica", "regra": "ultimo_dia_util"}, {"nome": "Imposto de Renda Pessoa Física (Cód. 0190)", "regra": "ultimo_dia_util"}, {"nome": "INSS - Parcelamento p/ Ingresso no Simples Nacional", "regra": "ultimo_dia_util"}, {"nome": "Parcelamentos Federais e Parcelamento Especial", "regra": "ultimo_dia_util"}, {"nome": "PERT – Programa Esp. Regularização Tributária", "regra": "ultimo_dia_util"}, {"nome": "Parcelamento Especial - Simples Nacional", "regra": "ultimo_dia_util"}]'::jsonb),
   ('feriados_extras', '[]'::jsonb),
   ('fale_conosco', '{"setores": [{"nome": "Geral", "rotulo": "Atendimento Geral", "telefones": [{"numero": "48-3242-0530", "whatsapp": true}], "emails": ["artecon@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Contábil", "rotulo": "Setor Contábil", "telefones": [], "emails": ["dc@artecon.cnt.br"], "equipe": [], "responsaveis_rotulo": "Contadores Responsáveis", "responsaveis": []}, {"nome": "Setor Fiscal", "rotulo": "Setor Fiscal", "telefones": [], "emails": ["df@artecon.cnt.br"], "equipe": []}, {"nome": "Departamento Pessoal", "rotulo": "Departamento Pessoal", "telefones": [], "emails": ["rh@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Institucional", "rotulo": "Setor Institucional", "telefones": [], "emails": ["societario@artecon.cnt.br"], "equipe": []}], "observacao": ""}'::jsonb),
   ('assinatura', '{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves", "cnpj": "", "crc": ""}'::jsonb),
   ('rascunhos', '{"ligado": true, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}'::jsonb),
+  ('pauta', '{"agenda_ligada": true, "hora_padrao": "09:30", "janela_horas": 6, "hashtags": ["#Contabilidade", "#Palhoça"]}'::jsonb),
   ('relevancia', '{"limite_alta": 8, "limite_media": 3, "termos": [{"termo": "reforma tributária", "pontos": 5}, {"termo": "IBS", "pontos": 5}, {"termo": "CBS", "pontos": 5}, {"termo": "imposto seletivo", "pontos": 5}, {"termo": "Simples Nacional", "pontos": 5}, {"termo": "MEI", "pontos": 5}, {"termo": "microempreendedor", "pontos": 5}, {"termo": "prorroga", "pontos": 5}, {"termo": "prorrogado", "pontos": 5}, {"termo": "prorrogados", "pontos": 5}, {"termo": "prorrogação", "pontos": 5}, {"termo": "prazo", "pontos": 5}, {"termo": "prazos", "pontos": 5}, {"termo": "lei complementar", "pontos": 5}, {"termo": "transação", "pontos": 5}, {"termo": "parcelamento", "pontos": 5}, {"termo": "regularização", "pontos": 5}, {"termo": "Refis", "pontos": 5}, {"termo": "instrução normativa", "pontos": 4}, {"termo": "vencimento", "pontos": 4}, {"termo": "obrigação acessória", "pontos": 4}, {"termo": "DCTF", "pontos": 4}, {"termo": "DCTFWeb", "pontos": 4}, {"termo": "EFD", "pontos": 4}, {"termo": "ECF", "pontos": 4}, {"termo": "ECD", "pontos": 4}, {"termo": "eSocial", "pontos": 4}, {"termo": "Reinf", "pontos": 4}, {"termo": "imposto de renda", "pontos": 4}, {"termo": "IRPF", "pontos": 4}, {"termo": "IRPJ", "pontos": 4}, {"termo": "CSLL", "pontos": 4}, {"termo": "PIS", "pontos": 4}, {"termo": "Cofins", "pontos": 4}, {"termo": "ICMS", "pontos": 4}, {"termo": "ISS", "pontos": 4}, {"termo": "substituição tributária", "pontos": 4}, {"termo": "DIFAL", "pontos": 4}, {"termo": "NFS-e", "pontos": 4}, {"termo": "NF-e", "pontos": 4}, {"termo": "nota fiscal", "pontos": 4}, {"termo": "FGTS", "pontos": 4}, {"termo": "INSS", "pontos": 4}, {"termo": "contribuição previdenciária", "pontos": 4}, {"termo": "folha de pagamento", "pontos": 4}, {"termo": "desoneração", "pontos": 4}, {"termo": "lucro presumido", "pontos": 4}, {"termo": "lucro real", "pontos": 4}, {"termo": "dividendos", "pontos": 4}, {"termo": "distribuição de lucros", "pontos": 4}, {"termo": "edital", "pontos": 4}, {"termo": "editais", "pontos": 4}, {"termo": "Regularize", "pontos": 4}, {"termo": "exclusão", "pontos": 4}, {"termo": "opção", "pontos": 4}, {"termo": "decreto", "pontos": 3}, {"termo": "medida provisória", "pontos": 3}, {"termo": "alíquota", "pontos": 3}, {"termo": "alíquotas", "pontos": 3}, {"termo": "tabela", "pontos": 3}, {"termo": "CNPJ", "pontos": 3}, {"termo": "contribuinte", "pontos": 3}, {"termo": "contribuintes", "pontos": 3}, {"termo": "empresas", "pontos": 3}, {"termo": "tributária", "pontos": 3}, {"termo": "tributário", "pontos": 3}, {"termo": "tributos", "pontos": 3}, {"termo": "benefício fiscal", "pontos": 3}, {"termo": "TTD", "pontos": 3}, {"termo": "Santa Catarina", "pontos": 3}, {"termo": "salário mínimo", "pontos": 3}, {"termo": "perguntas e respostas", "pontos": 3}, {"termo": "orientação", "pontos": 3}, {"termo": "guia", "pontos": 3}, {"termo": "CGIBS", "pontos": 3}, {"termo": "CGSN", "pontos": 3}, {"termo": "restituição", "pontos": 3}, {"termo": "compensação", "pontos": 3}, {"termo": "crédito", "pontos": 3}, {"termo": "declaração", "pontos": 3}, {"termo": "malha", "pontos": 3}, {"termo": "débitos", "pontos": 3}, {"termo": "dívida ativa", "pontos": 3}, {"termo": "solução de consulta", "pontos": 2}, {"termo": "portaria", "pontos": 2}, {"termo": "resolução", "pontos": 2}, {"termo": "ato DIAT", "pontos": 2}, {"termo": "ato declaratório executivo", "pontos": -3}, {"termo": "apreende", "pontos": -8}, {"termo": "apreensão", "pontos": -8}, {"termo": "apreendidos", "pontos": -8}, {"termo": "apreendidas", "pontos": -8}, {"termo": "contrabando", "pontos": -8}, {"termo": "descaminho", "pontos": -8}, {"termo": "leilão", "pontos": -8}, {"termo": "maconha", "pontos": -8}, {"termo": "cocaína", "pontos": -8}, {"termo": "drogas", "pontos": -8}, {"termo": "haxixe", "pontos": -8}, {"termo": "cigarros", "pontos": -8}, {"termo": "armas", "pontos": -8}, {"termo": "aduana", "pontos": -8}, {"termo": "alfândega", "pontos": -8}, {"termo": "alfandegado", "pontos": -8}, {"termo": "aeroporto", "pontos": -8}, {"termo": "fronteira", "pontos": -8}, {"termo": "concurso", "pontos": -8}, {"termo": "servidores", "pontos": -8}, {"termo": "nomeia", "pontos": -8}, {"termo": "designa", "pontos": -8}, {"termo": "delega", "pontos": -8}, {"termo": "credenciamento", "pontos": -8}, {"termo": "despachante", "pontos": -8}, {"termo": "Instagram", "pontos": -8}, {"termo": "homenagem", "pontos": -8}, {"termo": "prêmio", "pontos": -8}, {"termo": "seminário", "pontos": -8}]}'::jsonb)
 on conflict (chave) do nothing;
 
@@ -3321,6 +4463,16 @@ on conflict (chave) do nothing;
 -- administrador só preencher entre as aspas (Configurações). O que já estiver preenchido fica como está.
 update public.radar_config set valor = '{"cnpj": "", "crc": ""}'::jsonb || valor
  where chave = 'assinatura' and jsonb_typeof(valor) = 'object' and not (valor ? 'cnpj' and valor ? 'crc');
+
+-- v0.21.0: na instalação que já existe, o "Honorário contábil" (interno) sai da agenda da semana das redes ("redes": false), se o
+-- administrador ainda não decidiu nada sobre ele. O resto da lista fica como está.
+update public.radar_config
+   set valor = (select jsonb_agg(case when jsonb_typeof(o) = 'object' and o->>'nome' = 'Honorário contábil' and not (o ? 'redes')
+                                      then o || '{"redes": false}'::jsonb else o end order by i)
+                  from jsonb_array_elements(valor) with ordinality t(o, i))
+ where chave = 'obrigacoes' and jsonb_typeof(valor) = 'array'
+   and exists (select 1 from jsonb_array_elements(valor) o
+                where jsonb_typeof(o) = 'object' and o->>'nome' = 'Honorário contábil' and not (o ? 'redes'));
 
 -- v0.9.0: Destaques do DOU (fonte de sql/radar-fontes-novas-2026-10.sql) — só os atos fiscais e as leis, decretos e MPs.
 -- Só troca se o padrão ainda for o original: não desfaz um ajuste feito na tela; sem a fonte, não faz nada.
@@ -3363,7 +4515,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 23 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.20.0).
+-- Esperado: 25 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.21.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

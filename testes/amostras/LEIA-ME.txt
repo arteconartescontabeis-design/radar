@@ -6,3 +6,7 @@ títulos, endereços e datas REAIS lidos em 01/10/2026. Elas provam a lógica do
 leitores; a fidelidade ao HTML real de cada site é conferida pelo workflow
 "Radar — diagnóstico das fontes", que baixa as páginas verdadeiras.
 Quando o diagnóstico rodar, as páginas reais substituem estas amostras.
+
+pauta-ficticia.csv (v0.21.0): calendário da Pauta INVENTADO, no formato do plano de publicações (BOM, separador ";",
+aspas com ";" dentro e "" para aspas). Os nomes são de mentira. O calendário verdadeiro tem nomes da equipe e nunca vai
+para o repositório (público): o .gitignore barra e testes/test_radar_repositorio.py confere.
