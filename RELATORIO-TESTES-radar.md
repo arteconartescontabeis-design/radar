@@ -1,6 +1,6 @@
 # Radar Artecon — Relatório de testes (v0.21.0)
 
-Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.21.0: **732 aprovados, 0 falhas, 61 pulados**. Os pulados são
+Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.21.0: **745 aprovados, 0 falhas, 61 pulados**. Os pulados são
 os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`). As funções
 `radar-ia` e `radar-redes` rodam de verdade no Deno nos testes delas (`test_radar_funcao_ia.py` e `test_radar_funcao_redes.py`).
 Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são
@@ -85,10 +85,14 @@ São 80 testes novos (de 702 para 782 no total). O que foi comprovado, por área
   calendário derrubou o teste do repositório); `radar-redes`, 14 de 14; tela, base e peça, 25 de 25; arte e aprovação, 34 de 34 (na
   1ª rodada passou o "Publicar agora visível ao editor": o teste do "Tentar de novo" foi reforçado com 2 canais e passou a pegar);
   "Gerar com IA" da peça (função e tela), 37 de 37; robô, 15 de 15; workflow dos testes sem o `radar-pauta.js`, 1 de 1.
-- **Tempo:** a suíte inteira levou de 661 a 671 s (cerca de 11 minutos, em duas rodadas) neste ambiente. O limite do GitHub Actions
-  (`radar-testes.yml`) continua em 20 minutos: na v0.20.0, o trabalho inteiro no GitHub (instalação e testes) levou menos de 9
-  minutos, e pela soma das etapas a v0.21.0 acrescenta perto de 1 minuto de testes. O workflow passou a rodar também quando muda
-  o `radar-pauta.js`, o `radar-config.js` ou o `.gitignore`.
+- **Tempo** (corrigido na segunda revisão): neste ambiente, a suíte inteira da v0.20.0 levou 539 s (634 aprovados e 61 pulados);
+  a da v0.21.0, 818 a 850 s depois da primeira revisão e 817 s (13min37s) depois da segunda. São uns 5 minutos a mais, e não
+  perto de 1, como estava escrito antes (a conta pela soma das etapas subestimou os testes de tela). No GitHub, a v0.20.0 inteira
+  (instalação e testes) levou menos de 9 minutos; com uns 5 minutos a mais de testes, a folga até o antigo limite de 20 minutos
+  cairia para uns 5 minutos, e mais umas rodadas de tela na v0.21.1 cortariam o `radar-testes` (o resultado sairia como
+  "cancelado", e não como falha). Por isso o `timeout-minutes` do `radar-testes.yml` passou de 20 para 30; meça o tempo no Actions
+  depois do merge e, se passar de uns 20 minutos, separe os testes de tela num trabalho à parte. O workflow passou a rodar também
+  quando muda o `radar-pauta.js`, o `radar-config.js` ou o `.gitignore`.
 
 ### Correções da revisão (18 achados)
 
@@ -139,6 +143,51 @@ Precisam da confirmação do dono: os 28 px da faixa legal como altura da letra,
 também palavras que servem para informar, como "garante", "ganhe", "definitivo", "100%" e "a maioria"); e a máscara de nomes que
 vai à IA, que não diferencia maiúsculas nem acentos: uma palavra comum igual a um nome cadastrado também é trocada no texto que vai
 à IA (nada vaza; só a sugestão pode ficar estranha).
+
+### Correções da segunda revisão (18 achados)
+
+Os 18 achados foram conferidos no código: todos eram reais e foram corrigidos (os dois da máscara de nomes da `radar-ia` eram o mesmo
+defeito, visto duas vezes, e os dois do nome com acento e caixa alta também). Cada correção de código tem teste, e cada teste foi
+rodado com a correção desfeita (no próprio arquivo, com a cópia guardada e restaurada e o sha256 conferido no fim) e falhou: 38 de
+38 reversões. Os 3 achados só de documentação (o tempo deste relatório, a fonte das obrigações e o termo revogado no LEIAME) não
+têm teste.
+
+- **Banco** (`test_radar_banco.py`, 5 novos):
+  - a trava dos números aceita o registro no CRC da pessoa marcada, os telefones do Fale Conosco (dos setores e dos responsáveis) e
+    os `fatos_fixos` com fonte de Configurações → Pauta ("desde 1984"); o número fora volta como está escrito ("0530", não "530"),
+    com o que fazer ("Acrescente cada um em Informações conferidas, com a fonte"); o roteiro do reel não conta as marcações de tempo
+    ("0 a 3 s", "12–32s", "cerca de 44 segundos", "0:15", "110 palavras");
+  - qualquer marcador dos modelos entre chaves (`{formação}`, `{ano de entrada}`, `{PESSOA2}`…) trava na lista (legendas, chamada,
+    apoio, cartões e roteiro), no "Publicar agora", antes de sair pela agenda e na cópia à mão; `{}` vazio não conta;
+  - o nome cadastrado é achado sem acento, em caixa alta e em NFD (texto colado do Mac), na pessoa não marcada, no sobrenome que o
+    termo não autoriza e no "contador"/"técnico" (este em qualquer caixa); em minúsculas, não (palavra comum), e por isso a caixa
+    "Conferi: … só aparecem as pessoas marcadas" passou a ser pedida em toda aprovação;
+  - na Agenda da semana em Imagem 4:5, a lista desenhada na lâmina passa pelas travas de [VERIFICAR], `{confirmar}`, chaves e nome;
+  - a chave do robô não lê `radar_imagens` (a capa vem pela vista nova `radar_v_capas`), a auditoria, nem a legenda, a imagem e o erro
+    dos envios (lê o andamento, como o robô e a `radar-redes` pedem); o leitor não lê as fotos nem as lâminas da Pauta, nem a cópia da
+    lâmina no envio; o editor lê tudo.
+- **Robô** (`test_radar_site_publicar.py`, 1 novo): a capa do site vem de `radar_v_capas`; com o banco antigo (404), de
+  `radar_imagens`, como antes; outro erro não é engolido. O teste antigo da publicação no site confere que a capa continua indo.
+- **Agenda** (`test_radar_agenda.py`, 1 novo): o `agenda_teste` do fim do `sql/radar-redes-agenda.sql` roda como está, só sem os
+  `--`: a chave anon vem do próprio agendamento (sem marcador para trocar e sem repetir a chave no arquivo).
+- **Função `radar-ia`** (`test_radar_funcao_ia.py`, 1 novo): o nome que está só no "quem aparece" de outra peça (a pessoa ainda sem
+  cadastro, citada no assunto e na observação desta) também não vai à IA.
+- **Termos da Pauta** (`test_radar_publicidade.py`, casos novos): o desconto da folha (perto de INSS, IRRF, parcela, 13º, salário
+  ou vale-transporte, antes ou depois, na mesma linha) não trava, nas duas cópias da lista; "desconto no honorário" continua travando.
+- **Repositório** (`test_radar_repositorio.py`, 2 novos): o cabeçalho do calendário é achado com vírgula, tabulação, aspas e
+  maiúsculas, no `.md` do calendário e na tabela das pessoas dos `.md` do plano; o `.gitignore` barra qualquer CSV novo (com acento ou
+  maiúscula) e os 7 `.md` do plano em qualquer pasta; o workflow novo `radar-repositorio.yml` roda em todo push, sem filtro de caminho.
+- **Telas** (`test_radar_telas.py`, 3 novos): a peça agendada com todos os canais cancelados diz "Aprovada, sem canal (não vai sair)"
+  na semana e na peça; o termo da publicidade na lista da agenda trava, dizendo a linha; o leitor não vê foto nem lâmina, e a lâmina
+  da peça agendada some quando o termo de alguém deixa de valer no dia da peça; na peça à mão, as lâminas só aparecem em "Baixar as
+  lâminas"; Configurações → Pauta confere os `fatos_fixos`. Testes antigos ajustados: a mensagem dos números, a caixa das pessoas
+  (pedida em toda aprovação) e a contagem de tabelas e visões (34) e das funções da Pauta (29).
+
+São 13 testes novos (de 793 para 806 no total). A suíte inteira levou 817 s neste ambiente (745 aprovados e 61 pulados).
+
+O que não foi testado aqui: as permissões por coluna e a vista `radar_v_capas` no PostgREST do Supabase (no 12.2.3 dos testes
+funcionam; o robô novo lê a vista e, sem ela, a tabela antiga); o `agenda_teste` com o pg_cron e o pg_net de verdade (o teste usa os
+esquemas de mentira; a consulta lê a chave de `cron.job`, onde o arquivo a grava).
 
 ## v0.20.0 — kit das redes, arte vertical, identificação legal e publicidade contábil
 

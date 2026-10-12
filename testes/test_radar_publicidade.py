@@ -95,6 +95,11 @@ CASOS_PECA = [
     (["Promoção de abertura com 20% de desconto e brinde"], ["promoção", "desconto", "brinde"]),
     (["O desconto do INSS e o desconto simplificado do IR; a garantia de emprego da gestante; o mês de referência; a fórmula de cálculo"], []),
     (["Desconto de 10% para novos clientes; garantia de resultado; somos referência"], ["desconto", "garantia de", "referência"]),
+    # o desconto da folha (perto de INSS, IRRF, parcela, 13º, folha, salário, vale-transporte), antes ou depois, é informação
+    (["A 1ª parcela não tem esses descontos.", "Os descontos da 2ª parcela: INSS e IRRF", "O desconto de 6% do vale-transporte",
+      "Do salário de dezembro saem os descontos", "No 13º, sem descontos"], []),
+    (["Ganhe 10% de desconto no honorário; descontos para quem paga em dia", "A parcela do seu plano.\nCom desconto!"],
+     ["ganhe", "desconto", "descontos"]),
     (["Honorários a partir de R$ 199,90 por mês; R$ 300 de mensalidade"], ["honorários a partir de r$ 199,90", "r$ 300 de mensalidade"]),
     (["nº 1 em Palhoça, número 1, 100% digital e o melhor atendimento", "no 1º trimestre, a multa de 1100%"], ["nº 1", "número 1", "100%", "o melhor"]),
     (["Diferente dos outros escritórios, seu contador atual só envia guias. Mude de contador!"],

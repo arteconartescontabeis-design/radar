@@ -11,7 +11,7 @@ permissions:
 jobs:
   testar:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30                 # v0.21.0: a suíte passou de ~9 para ~14 min aqui (instalação à parte)
     services:
       postgres:
         image: postgres:16

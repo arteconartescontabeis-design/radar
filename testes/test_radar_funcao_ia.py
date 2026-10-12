@@ -1129,6 +1129,25 @@ def test_peca_nome_sem_acento_em_maiusculas_ou_em_nfd_tambem_e_mascarado(funcao,
     assert "1. {PESSOA1} coordena a folha (fonte: Relato do uma pessoa da equipe)" in msg
 
 
+def test_peca_nome_do_quem_aparece_de_outra_peca_tambem_e_mascarado(funcao, pauta):
+    """O calendário é importado antes de todos os termos chegarem: a pessoa ainda não cadastrada, citada no assunto ou na observação
+    de uma peça em que não está no "quem aparece", também não vai à IA (as palavras com maiúscula do "quem aparece" de TODAS as peças
+    entram na máscara). Nomes de mentira."""
+    db = pauta
+    nova_peca(db, dias=30, tipo="quem_cuida", formato="foto", quem_aparece="Eduarda Inventada (Societário)")
+    nova_peca(db, dias=31, tipo="reel", formato="reel", quem_aparece="Ninguém")
+    pid = nova_peca(db, tipo="captacao", formato="foto", quem_aparece="Equipe",
+                    assunto="Captação: a abertura de empresa com a Eduarda, do Societário",
+                    observacao="Pedir a frase à EDUARDA INVENTADA", objetivo="Mostrar o serviço")
+    IA["respostas"]["peca"] = PECA_FOTO
+    status, r = pedir("peca", peca_id=pid)
+    assert status == 200, r
+    msg = IA["pedidos"][-1]["messages"][0]["content"]
+    assert not re.search(r"eduarda|inventada", json.dumps(IA["pedidos"][-1], ensure_ascii=False), re.I)
+    assert "Assunto: Captação: a abertura de empresa com a uma pessoa da equipe, do Societário\n" in msg
+    assert "Observação: Pedir a frase à uma pessoa da equipe uma pessoa da equipe\n" in msg and "Objetivo: Mostrar o serviço\n" in msg
+
+
 def test_peca_frase_do_boletim_pago_no_plano_ou_nas_conferidas_nao_vai_a_ia(funcao, pauta, request):
     """O boletim pago (ITC) nunca vai à IA: a informação conferida (ou o plano) com 12 palavras seguidas iguais às de uma captura do
     boletim é recusada antes de chamar a IA, com a fonte que não é a ITC; nada é contado nem gravado, e o trecho não aparece na

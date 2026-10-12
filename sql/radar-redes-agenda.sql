@@ -61,14 +61,18 @@ end $$;
 select jobname, schedule, active from cron.job where jobname like 'radar-redes-agenda%';
 
 -- ---------------------------------------------------------------------
--- Teste (não publica nada), rodar à parte depois de instalar a radar-redes v0.21.0:
+-- Teste (não publica nada), rodar à parte depois de instalar a radar-redes v0.21.0. Copie as 5 linhas do select para uma consulta
+-- nova SEM os "--" do começo (no SQL Editor, selecione e aperte Ctrl+/) e execute; não há nada para trocar: a chave anon vem do
+-- próprio agendamento acima (cron.job) e a da agenda, do Vault.
 --
 --   select net.http_post(url := 'https://jhxlsvzvqvufyhkjnmeq.supabase.co/functions/v1/radar-redes',
 --     body := '{"acao":"agenda_teste"}'::jsonb,
---     headers := jsonb_build_object('Content-Type','application/json','Authorization','Bearer <a chave anon acima>',
+--     headers := jsonb_build_object('Content-Type', 'application/json',
+--       'Authorization', 'Bearer ' || substring((select command from cron.job where jobname = 'radar-redes-agenda') from 'Bearer ([^'']+)'),
 --       'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda')));
 --
--- Depois de alguns segundos (esperado: 200 {"ok":true,...}):
+-- Depois de alguns segundos (esperado: 200 {"ok":true,"versao":"0.21.0"}; 401 "Invalid JWT" = a chave anon do agendamento não é a
+-- deste projeto: troque em v_anon e rode este arquivo de novo):
 --
 --   select status_code, content from net._http_response order by id desc limit 1;
 --

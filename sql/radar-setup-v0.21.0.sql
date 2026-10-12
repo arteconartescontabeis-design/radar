@@ -2225,6 +2225,24 @@ language sql immutable set search_path = public as $$
            '[^a-z0-9]+', ' ', 'g'))
 $$;
 
+-- Texto para achar o nome de uma pessoa: em NFC (o texto colado do Mac vem em NFD, com o acento separado da letra) e sem acento,
+-- COM a maiúscula ("Lúcia" e "Lucia" ficam "Lucia"; "LÚCIA", "LUCIA")
+create or replace function public.radar_pauta_sem_acento(p text) returns text
+language sql immutable set search_path = public as $$
+  select translate(normalize(coalesce(p, ''), NFC), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
+                   'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn')
+$$;
+
+-- A expressão que acha um nome de pessoa no texto de radar_pauta_sem_acento: palavra inteira, o nome sem acento e escapado, com
+-- qualquer espaço entre as palavras, como está cadastrado ("Lucia Exemplo") ou todo em maiúsculas ("LUCIA EXEMPLO", a chamada em
+-- caixa alta). Com a maiúscula: "a rosa do jardim" não é a Rosa.
+create or replace function public.radar_pauta_rx_nome(p text) returns text
+language sql immutable set search_path = public as $$
+  select '(?<![A-Za-zÀ-ÿ0-9])(?:' || string_agg(regexp_replace(regexp_replace(x, '([^[:alnum:][:space:]])', '\\\1', 'g'), '\s+', '\\s+', 'g'), '|')
+         || ')(?![A-Za-zÀ-ÿ0-9])'
+    from (select distinct x from unnest(array[btrim(public.radar_pauta_sem_acento(p)), upper(btrim(public.radar_pauta_sem_acento(p)))]) x) t
+$$;
+
 -- Configurações → Pauta → "janela_horas": passado esse tempo da hora marcada, a peça vira erro em vez de sair atrasada
 -- (de 1 a 48; fora disso, ou sem a chave, vale 6: nada do que está ali trava a agenda)
 create or replace function public.radar_pauta_janela() returns int
@@ -2267,11 +2285,11 @@ begin
   return null;
 end $$;
 
--- Os números de um texto como a tela os compara (numerosForaDoTexto, index.html): sem o número de item de lista ("1. Revise"),
--- "1.000" = "1000", "1.500,00" = "1500" e sem os zeros à esquerda ("05" = "5"). Não lê número por extenso.
-create or replace function public.radar_pauta_numeros(p text) returns text[]
+-- Os números de um texto como estão escritos (com os zeros à esquerda: "0530"), sem o número de item de lista ("1. Revise"),
+-- com "1.000" = "1000" e "1.500,00" = "1500". Não lê número por extenso.
+create or replace function public.radar_pauta_numeros_escritos(p text) returns text[]
 language sql immutable set search_path = public as $$
-  select coalesce(array_agg(distinct regexp_replace(m[1], '^0+(?=[0-9])', '')), '{}')
+  select coalesce(array_agg(m[1]), '{}')
     from regexp_matches(regexp_replace(regexp_replace(regexp_replace(coalesce(p, ''),
                           '^[[:blank:]]*[0-9]{1,2}[.)][[:blank:]]', '', 'gn'),
                           '([0-9])\.(?=[0-9]{3}(?![0-9]))', '\1', 'g'),
@@ -2279,20 +2297,39 @@ language sql immutable set search_path = public as $$
                         '([0-9]+(?:,[0-9]+)?)', 'g') as m
 $$;
 
--- Números dos textos que vão ao ar e que não estão na base (as informações conferidas, mais a empresa, o CNPJ — como está e
--- formatado — e o CRC das Configurações, que entram na linha de identificação). O link e as hashtags não contam.
+-- Os números de um texto como a tela os compara (numerosForaDoTexto, index.html): os de radar_pauta_numeros_escritos, sem os
+-- zeros à esquerda ("05" = "5") e sem repetir.
+create or replace function public.radar_pauta_numeros(p text) returns text[]
+language sql immutable set search_path = public as $$
+  select coalesce(array_agg(distinct regexp_replace(n, '^0+(?=[0-9])', '')), '{}') from unnest(public.radar_pauta_numeros_escritos(p)) n
+$$;
+
+-- Números dos textos que vão ao ar e que não estão na base: as informações conferidas e o registro no CRC das pessoas marcadas
+-- (p_base), mais o que as Configurações já trazem conferido — a empresa, o CNPJ (como está e formatado) e o CRC da Assinatura, que
+-- entram na linha de identificação; os telefones do Fale Conosco; e os "fatos_fixos" da Pauta que têm fonte (ex.: "desde 1984").
+-- O link e as hashtags não contam. Cada número volta como está escrito no texto ("0530", não "530"), sem repetir.
 create or replace function public.radar_pauta_numeros_fora(p_textos text, p_base text) returns text[]
 language plpgsql stable set search_path = public as $$
 declare
   v      jsonb := (select c.valor from public.radar_config c where c.chave = 'assinatura');
+  v_fale jsonb := (select c.valor from public.radar_config c where c.chave = 'fale_conosco');
+  v_fixo jsonb := (select c.valor->'fatos_fixos' from public.radar_config c where c.chave = 'pauta');
   v_cnpj text  := upper(regexp_replace(coalesce(v->>'cnpj', ''), '[[:space:]./-]', '', 'g'));
   v_base text[];
 begin
   v_base := public.radar_pauta_numeros(concat_ws(E'\n', p_base, v->>'empresa', v->>'cnpj', v->>'crc',
-              case when v_cnpj ~ '^[0-9A-Z]{12}[0-9]{2}$' then regexp_replace(v_cnpj, '^(..)(...)(...)(....)(..)$', '\1.\2.\3/\4-\5') end));
-  return coalesce((select array_agg(n order by n)
-                     from unnest(public.radar_pauta_numeros(regexp_replace(coalesce(p_textos, ''), 'https?://[^[:space:]]+|#[[:alnum:]_]+', ' ', 'g'))) n
-                    where not n = any(v_base)), '{}');
+              case when v_cnpj ~ '^[0-9A-Z]{12}[0-9]{2}$' then regexp_replace(v_cnpj, '^(..)(...)(...)(....)(..)$', '\1.\2.\3/\4-\5') end,
+              -- os telefones do Fale Conosco: dos setores ("48-3242-0530" ou {"numero": …}) e dos responsáveis ({"telefone": …})
+              (select string_agg(case jsonb_typeof(t) when 'string' then t #>> '{}' when 'object' then concat_ws(' ', t->>'numero', t->>'telefone') end, E'\n')
+                 from (select jsonb_path_query(coalesce(v_fale, '{}'), 'lax $.setores[*].telefones[*]')
+                       union all select jsonb_path_query(coalesce(v_fale, '{}'), 'lax $.setores[*].responsaveis[*]')) x(t)),
+              -- Configurações → Pauta → "fatos_fixos": [{"informacao", "fonte"}], só os que têm a fonte escrita
+              (select string_agg(f->>'informacao', E'\n')
+                 from jsonb_array_elements(case when jsonb_typeof(v_fixo) = 'array' then v_fixo else '[]' end) f
+                where jsonb_typeof(f) = 'object' and jsonb_typeof(f->'informacao') = 'string' and btrim(coalesce(f->>'fonte', '')) <> '')));
+  return coalesce((select array_agg(distinct n order by n)
+                     from unnest(public.radar_pauta_numeros_escritos(regexp_replace(coalesce(p_textos, ''), 'https?://[^[:space:]]+|#[[:alnum:]_]+', ' ', 'g'))) n
+                    where not regexp_replace(n, '^0+(?=[0-9])', '') = any(v_base)), '{}');
 end $$;
 
 -- Frase do boletim pago (ITC, a mesma lista de FONTES_PAGAS da tela e da radar-ia) num texto da Pauta: cada campo à parte, em
@@ -2372,12 +2409,16 @@ declare
   v_leg      text;
   v_textos   text[] := '{}';     -- o que vai ao ar, cada campo à parte (legendas, chamada, apoio, roteiro e cada cartão)
   v_tudo     text;
+  v_lista    text[] := '{}';     -- na Agenda da semana em Imagem 4:5, a lista desenhada na lâmina (a informação de cada conferida)
+  v_ar       text;               -- tudo o que vai ao ar: v_tudo e a lista da lâmina
+  v_cmp      text;               -- v_ar para achar nome: em NFC e sem acento, com a maiúscula (radar_pauta_sem_acento)
+  v_num      text;               -- v_tudo para contar os números (o roteiro sem as marcações de tempo)
   v_base     text;
   v_x        text;
   v_i        bigint;
   v_item     jsonb;
   v_pe       public.radar_pessoas%rowtype;
-  v_marcadas text[];             -- os nomes das pessoas marcadas (o xará que não está marcado não é acusado por eles)
+  v_marcadas text[];             -- os nomes das pessoas marcadas, sem acento (o xará que não está marcado não é acusado por eles)
   v_forma    text;
   v_n        text;
   -- começo e fim de palavra, com acento, sem depender do idioma do servidor
@@ -2432,15 +2473,34 @@ begin
     end if;
     v_textos := array_append(v_textos, v_leg);
   end loop;
-  v_textos := v_textos || array[p.chamada, p.apoio, p.roteiro]
+  v_textos := v_textos || array[p.chamada, p.apoio]
               || coalesce((select array_agg(concat_ws(E'\n', c->>'titulo', c->>'texto') order by o)
                              from jsonb_array_elements(p.cartoes) with ordinality t(c, o) where jsonb_typeof(c) = 'object'), '{}');
+  -- os números, sem os do marcador entre chaves ({PESSOA2}: a trava do marcador já pega) e, no roteiro do reel, sem as marcações da
+  -- gravação ("0 a 3 s", "cerca de 44 segundos", "0:15", "110 palavras"): o tempo de cada cena não é fato que vai ao ar
+  v_num := regexp_replace(array_to_string(v_textos, E'\n') || E'\n'
+             || regexp_replace(p.roteiro, '[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?|(?<![0-9.,])[0-9]+(?:,[0-9]+)?(?:[[:blank:]]*(?:a|até|–|-)[[:blank:]]*[0-9]+(?:,[0-9]+)?)?'
+                                       '[[:blank:]]*(?:s|seg|segundos?|palavras)(?![A-Za-zÀ-ÿ0-9])', ' ', 'gi'),
+             '\{[^{}\n]{1,120}\}', ' ', 'g');
+  v_textos := array_append(v_textos, p.roteiro);
   v_tudo := array_to_string(v_textos, E'\n');
-  -- 4. marcas: [VERIFICAR …] e {confirmar …} (a IA marca o fato que não está nas informações conferidas)
-  v_x := public.radar_marcas_verificar(v_tudo);
+  -- a Agenda da semana em Imagem 4:5 desenha na lâmina a informação de cada conferida (laminasPeca, em radar-pauta.js): a lista vai
+  -- ao ar e passa pelas mesmas travas de marca, de chaves e de nome (os números dela são a própria base)
+  if p.tipo = 'agenda' and p.formato = 'imagem' then
+    v_lista := coalesce((select array_agg(c->>'informacao' order by o) from jsonb_array_elements(p.conferidas) with ordinality t(c, o)
+                          where jsonb_typeof(c) = 'object' and jsonb_typeof(c->'informacao') = 'string'), '{}');
+  end if;
+  v_ar := array_to_string(array_append(v_lista, v_tudo), E'\n');
+  v_cmp := public.radar_pauta_sem_acento(v_ar);
+  -- 4. marcas: [VERIFICAR …], {confirmar …} (a IA marca o fato que não está nas informações conferidas) e qualquer outro marcador
+  --    dos modelos do plano entre chaves ({formação}, {ano de entrada}, {PESSOA2}…), que iria ao ar escrito assim
+  v_x := public.radar_marcas_verificar(v_ar);
   if v_x is not null then v := array_append(v, regexp_replace(v_x, '^RADAR139: ', '')); end if;
-  if v_tudo ~* '\{\s*confirmar[^}]*\}' then
+  if v_ar ~* '\{\s*confirmar[^}]*\}' then
     v := array_append(v, 'Há {confirmar …} no texto: troque pela informação conferida (ou tire o trecho)');
+  end if;
+  if regexp_replace(v_ar, '\{\s*confirmar[^}]*\}', ' ', 'gi') ~ '\{[^{}\n]{1,120}\}' then
+    v := array_append(v, 'Há marcador do modelo entre chaves ({…}): troque pelo texto ou tire');
   end if;
   -- "(conferir)": a marca de que falta conferir (no texto colado, ou na fonte escrita à mão) não vai ao ar
   if v_tudo ~* '\(\s*conferir\s*\)' then
@@ -2458,16 +2518,20 @@ begin
       v := array_append(v, 'Informação conferida nº ' || v_i || ': troque “(conferir)” pela fonte oficial em que a informação foi conferida');
     end if;
   end loop;
-  v_base := coalesce((select string_agg(concat_ws(E'\n', c->>'informacao', c->>'fonte'), E'\n')
-                        from jsonb_array_elements(p.conferidas) c where jsonb_typeof(c) = 'object'), '');
+  -- a base dos números: as informações conferidas e o registro no CRC das pessoas marcadas ("Ana, contadora · CRC-SC 012345")
+  v_base := concat_ws(E'\n', (select string_agg(concat_ws(E'\n', c->>'informacao', c->>'fonte'), E'\n')
+                                from jsonb_array_elements(p.conferidas) c where jsonb_typeof(c) = 'object'),
+                      (select string_agg(pe.crc, E'\n') from public.radar_pessoas pe where pe.id = any(p.pessoas)));
   -- 6. boletim pago: só sim ou não (o trecho não aparece)
   if public.radar_pauta_copia_paga(v_textos || coalesce((select array_agg(c->>'informacao') from jsonb_array_elements(p.conferidas) c
                                                           where jsonb_typeof(c) = 'object'), '{}')) then
     v := array_append(v, 'Há frase igual à do boletim pago (ITC): reescreva com palavras próprias');
   end if;
-  -- 7. números que não estão nas informações conferidas
-  v_x := array_to_string(public.radar_pauta_numeros_fora(v_tudo, v_base), ', ');
-  if v_x <> '' then v := array_append(v, 'Números que não estão nas informações conferidas: ' || v_x); end if;
+  -- 7. números que não estão nas informações conferidas (como estão escritos no texto)
+  v_x := array_to_string(public.radar_pauta_numeros_fora(v_num, v_base), ', ');
+  if v_x <> '' then
+    v := array_append(v, 'Números que não estão nas informações conferidas: ' || v_x || '. Acrescente cada um em Informações conferidas, com a fonte (ou tire do texto)');
+  end if;
   -- 8. o termo de cada pessoa marcada, em cada canal, no dia da peça
   foreach v_i in array p.pessoas loop
     select * into v_pe from public.radar_pessoas where id = v_i;
@@ -2480,8 +2544,9 @@ begin
       end if;
     end loop;
   end loop;
-  -- 9. nome no texto: de toda pessoa, ativa ou não (palavra inteira, com a maiúscula, o nome escapado na expressão)
-  select coalesce(array_agg(distinct x), '{}') into v_marcadas
+  -- 9. nome no texto: de toda pessoa, ativa ou não (palavra inteira, com a maiúscula, sem diferença de acento nem de NFC/NFD, e
+  --    também em caixa alta: radar_pauta_rx_nome no texto sem acento)
+  select coalesce(array_agg(distinct public.radar_pauta_sem_acento(x)), '{}') into v_marcadas
     from public.radar_pessoas pe
          cross join lateral unnest(array[btrim(pe.nome_na_peca), btrim(pe.nome), split_part(btrim(pe.nome), ' ', 1)]) x
    where pe.id = any(p.pessoas);
@@ -2490,32 +2555,33 @@ begin
       -- marcada: a palavra do nome completo (com maiúscula e 3 letras ou mais) que o termo não autoriza é sobrenome a tirar
       if exists (select 1 from regexp_split_to_table(btrim(v_pe.nome), '\s+') w
                   where length(w) >= 3 and w ~ '^[A-ZÀ-Ý]'
-                    and not w = any(regexp_split_to_array(btrim(v_pe.nome_na_peca), '\s+'))
-                    and v_tudo ~ (b || regexp_replace(w, '([^[:alnum:][:space:]])', '\\\1', 'g') || e)) then
+                    and not public.radar_pauta_sem_acento(w) = any(regexp_split_to_array(public.radar_pauta_sem_acento(btrim(v_pe.nome_na_peca)), '\s+'))
+                    and v_cmp ~ public.radar_pauta_rx_nome(w)) then
         v := array_append(v, 'O termo autoriza só “' || btrim(v_pe.nome_na_peca) || '”: tire o sobrenome');
       end if;
     else
       for v_forma in select x from unnest(array[btrim(v_pe.nome_na_peca), btrim(v_pe.nome),
                                                 case when length(split_part(btrim(v_pe.nome), ' ', 1)) >= 3 then split_part(btrim(v_pe.nome), ' ', 1) end]) x
-                      where x is not null and not x = any(v_marcadas) loop
-        if v_tudo ~ (b || regexp_replace(regexp_replace(v_forma, '([^[:alnum:][:space:]])', '\\\1', 'g'), '\s+', '\\s+', 'g') || e) then
+                      where x is not null and not public.radar_pauta_sem_acento(x) = any(v_marcadas) loop
+        if v_cmp ~ public.radar_pauta_rx_nome(v_forma) then
           v := array_append(v, '“' || v_forma || '” aparece no texto e não está marcada em Quem aparece');
           exit;
         end if;
       end loop;
     end if;
-    -- 10. "contador(a)", "técnico(a)" e "especialista" a até uns 40 caracteres do nome na peça, conforme o registro da pessoa
-    continue when strpos(v_tudo, btrim(v_pe.nome_na_peca)) = 0;
-    v_n := b || regexp_replace(regexp_replace(btrim(v_pe.nome_na_peca), '([^[:alnum:][:space:]])', '\\\1', 'g'), '\s+', '\\s+', 'g') || e;
+    -- 10. "contador(a)", "técnico(a)" e "especialista" a até uns 40 caracteres do nome na peça, conforme o registro da pessoa (o
+    --     nome sem diferença de maiúscula: a palavra vizinha já evita confundir com uma palavra comum)
+    v_n := public.radar_pauta_rx_nome(v_pe.nome_na_peca);
+    continue when not v_cmp ~* v_n;
     if v_pe.categoria = ''
-       and v_tudo ~ ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_contador || '|' || v_tecnico || ')|(?:' || v_contador || '|' || v_tecnico || ')[^\n]{0,40}(?:' || v_n || ')') then
+       and v_cmp ~* ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_contador || '|' || v_tecnico || ')|(?:' || v_contador || '|' || v_tecnico || ')[^\n]{0,40}(?:' || v_n || ')') then
       v := array_append(v, '“' || btrim(v_pe.nome_na_peca) || '” não tem registro no CRC (Pauta → Pessoas e termos): não chame de contador(a) nem de técnico(a)');
     end if;
     if v_pe.categoria in ('tecnico','tecnica')
-       and v_tudo ~ ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_contador || ')|(?:' || v_contador || ')[^\n]{0,40}(?:' || v_n || ')') then
+       and v_cmp ~* ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_contador || ')|(?:' || v_contador || ')[^\n]{0,40}(?:' || v_n || ')') then
       v := array_append(v, '“' || btrim(v_pe.nome_na_peca) || '” é técnico(a) em contabilidade: não chame de contador(a)');
     end if;
-    if v_tudo ~ ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_espec || ')|(?:' || v_espec || ')[^\n]{0,40}(?:' || v_n || ')') then
+    if v_cmp ~* ('(?:' || v_n || ')[^\n]{0,40}(?:' || v_espec || ')|(?:' || v_espec || ')[^\n]{0,40}(?:' || v_n || ')') then
       v := array_append(v, '“especialista” perto de “' || btrim(v_pe.nome_na_peca) || '”: não há título de especialista registrado, tire a palavra');
     end if;
   end loop;
@@ -2784,8 +2850,9 @@ begin
   if cardinality(v_prob) > 0 then
     raise exception 'RADAR165: há % ponto(s) a resolver: a lista aparece na tela', cardinality(v_prob) using errcode = 'P0001';
   end if;
-  -- as caixas que o administrador marca na tela (o que está na foto só ele sabe)
-  if (cardinality(p.pessoas) > 0 or cardinality(p.fotos) > 0) and not 'pessoas' = any(v_conf) then
+  -- as caixas que o administrador marca na tela (o que está na foto só ele sabe). A das pessoas vale para toda peça: o nome de
+  -- alguém escrito de um jeito que a lista não reconhece (em minúsculas, com erro de digitação) só o olho de quem aprova pega
+  if not 'pessoas' = any(v_conf) then
     raise exception 'RADAR166: marque “Conferi: nas fotos e nos textos só aparecem as pessoas marcadas”' using errcode = 'P0001';
   end if;
   if p.tipo = 'agenda' and not 'datas' = any(v_conf) then
@@ -2947,9 +3014,9 @@ begin
           initcap(r.canal), v_x using errcode = 'P0001';
       end if;
     end loop;
-    if public.radar_marcas_verificar(r.legenda) is not null or r.legenda ~* '\{\s*confirmar[^}]*\}' then
-      raise exception 'RADAR165: a legenda do % tem ponto marcado com [VERIFICAR] ou {confirmar}: desfaça a aprovação e corrija', initcap(r.canal)
-        using errcode = 'P0001';
+    if public.radar_marcas_verificar(r.legenda) is not null or r.legenda ~* '\{\s*confirmar[^}]*\}' or r.legenda ~ '\{[^{}\n]{1,120}\}' then
+      raise exception 'RADAR165: a legenda do % tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija',
+        initcap(r.canal) using errcode = 'P0001';
     end if;
   end loop;
   with u as (
@@ -2993,6 +3060,11 @@ begin
   if p_canal is not null and not p_canal = any(p.aprovado_canais) then
     return jsonb_build_object('motivo', format('O %s não foi aprovado para esta peça: ela sai só no canal marcado na aprovação.',
                                                case p_canal when 'instagram' then 'Instagram' when 'facebook' then 'Facebook' else 'canal' end));
+  end if;
+  -- o texto copiado (a legenda do canal; sem canal, o roteiro) não leva marca nem marcador do modelo entre chaves
+  v_x := case when p_canal = 'instagram' then p.legenda_instagram when p_canal = 'facebook' then p.legenda_facebook else p.roteiro end;
+  if public.radar_marcas_verificar(v_x) is not null or v_x ~* '\{\s*confirmar[^}]*\}' or v_x ~ '\{[^{}\n]{1,120}\}' then
+    return jsonb_build_object('motivo', 'O texto aprovado tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija.');
   end if;
   foreach v_canal in array case when p_canal is null then p.aprovado_canais else array[p_canal] end loop
     foreach v_id in array p.pessoas loop
@@ -3125,8 +3197,8 @@ begin
       return format('O termo de uso de imagem de uma pessoa da peça não vale em %s (%s): confira em Pauta → Pessoas e termos.', to_char(v_hoje, 'DD/MM/YYYY'), v_x);
     end if;
   end loop;
-  if public.radar_marcas_verificar(e.legenda) is not null or e.legenda ~* '\{\s*confirmar[^}]*\}' then
-    return 'A legenda tem ponto marcado com [VERIFICAR] ou {confirmar}: desfaça a aprovação e corrija.';
+  if public.radar_marcas_verificar(e.legenda) is not null or e.legenda ~* '\{\s*confirmar[^}]*\}' or e.legenda ~ '\{[^{}\n]{1,120}\}' then
+    return 'A legenda tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija.';
   end if;
   if e.imagem is null and e.imagem_url is null then
     return 'A imagem da publicação se perdeu: desfaça a aprovação e aprove de novo.';
@@ -4222,6 +4294,13 @@ from public.radar_pauta_pecas p
 cross join lateral unnest(p.pessoas) as u(pessoa_id)
 join public.radar_pessoas pe on pe.id = u.pessoa_id;
 
+-- v0.21.0: a capa de cada conteúdo, para o robô que publica no site (robo/radar_site_publicar.py). A chave do robô não lê
+-- radar_imagens: lá ficam também as fotos da equipe e as lâminas da Pauta. Roda como o dono da vista: só o service_role a lê.
+drop view if exists public.radar_v_capas;
+create view public.radar_v_capas with (security_barrier = true) as
+select i.id, i.dados from public.radar_imagens i
+where exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id);
+
 -- ---------------------------------------------------------------------
 -- 5. RLS
 -- ---------------------------------------------------------------------
@@ -4277,6 +4356,23 @@ grant update on public.radar_site_exclusoes to service_role;
 -- v0.21.0: o robô e a função radar-redes não leem a Pauta nem as pessoas (radar_pauta_iniciar é security definer; a radar-ia lê
 -- com o token de quem pediu; o robô de avisos lê só radar_redes_envios)
 revoke select on public.radar_pessoas, public.radar_pauta_pecas from service_role;
+-- v0.21.0: nem onde ficam as fotos, as lâminas, as legendas e o nome na peça (a chave do robô é segredo do GitHub Actions de um
+-- repositório público): radar_imagens (a capa do conteúdo vem por radar_v_capas), a auditoria (que guarda as legendas) e, nos
+-- envios, a legenda, a imagem e o texto do erro (que pode citar um nome). O robô e a radar-redes leem do envio só o andamento;
+-- a legenda e a imagem chegam à radar-redes por radar_rede_iniciar e radar_pauta_iniciar (security definer).
+revoke select on public.radar_imagens, public.radar_auditoria, public.radar_redes_envios from service_role;
+grant select (id, conteudo_id, peca_id, canal, situacao, junto_com_site, conteudo_lido_em, autorizado_em, cancelado_em, enviado_em,
+              publicado_em, post_id, url, imagem_url, atualizado_em, excluido_em, excluido_como, agendado_para, disparos, disparado_em)
+  on public.radar_redes_envios to service_role;
+revoke all on public.radar_v_capas from public, anon, authenticated, service_role;
+grant select on public.radar_v_capas to service_role;
+-- v0.21.0: a cópia da lâmina no envio (imagem) também ninguém da equipe lê pela API (a tela não usa; o leitor, que não vê as fotos nem
+-- as lâminas da Pauta, também não a leria por aqui): a imagem chega à radar-redes só pelas funções de início, security definer
+revoke select on public.radar_redes_envios from authenticated;
+grant select (id, conteudo_id, peca_id, canal, legenda, conteudo_lido_em, situacao, autorizado_por, autorizado_em, cancelado_por, cancelado_em,
+              enviado_em, publicado_em, post_id, url, imagem_url, erro, atualizado_em, junto_com_site, excluido_em, excluido_por, excluido_como,
+              agendado_para, disparos, disparado_em)
+  on public.radar_redes_envios to authenticated;
 -- v0.21.0: as pessoas da peça com o selo do termo: só a equipe logada (o leitor não vê linha nenhuma, pela regra de radar_pessoas)
 revoke all on public.radar_v_pauta_pessoas from public, anon, authenticated, service_role;
 grant select on public.radar_v_pauta_pessoas to authenticated;
@@ -4432,6 +4528,13 @@ create policy radar_informativo_itens_del on public.radar_informativo_itens for 
 
 -- imagens: sem acesso público (a política antiga da vitrine é removida)
 drop policy if exists radar_imagens_vitrine on public.radar_imagens;
+-- v0.21.0: as fotos e as lâminas das peças da Pauta (a equipe, com o nome e o registro) só o editor e o administrador leem, como as
+-- pessoas; o leitor lê as outras imagens (as capas dos conteúdos)
+drop policy if exists radar_imagens_sel on public.radar_imagens;
+create policy radar_imagens_sel on public.radar_imagens for select to authenticated
+  using ((select public.radar_papel()) in ('admin','editor')
+         or ((select public.radar_papel()) is not null
+             and not exists (select 1 from public.radar_pauta_pecas p where radar_imagens.id = any(p.fotos) or radar_imagens.id = any(p.artes))));
 
 -- configurações: a equipe lê; o administrador altera
 drop policy if exists radar_config_sel on public.radar_config;

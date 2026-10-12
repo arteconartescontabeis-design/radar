@@ -170,6 +170,19 @@ class Banco:
                 or (e.get("situacao") == "autorizado" and passou(e.get("agendado_para"), 20))]
 
     # ------------------------------------------------- publicações no site (v0.8.0)
+    def capa(self, imagem_id) -> str | None:
+        """A capa do conteúdo (data URL) para o site, por radar_v_capas: desde a v0.21.0 a chave do robô não lê radar_imagens, onde
+        ficam também as fotos da equipe e as lâminas da Pauta. Banco ainda sem o SQL da v0.21.0 (sem a vista, HTTP 404): lê
+        radar_imagens, como antes."""
+        params = {"select": "dados", "id": f"eq.{imagem_id}"}
+        try:
+            linhas = self._pedir("GET", "radar_v_capas", params=params) or []
+        except ErroBanco as e:
+            if "HTTP 404" not in str(e):
+                raise
+            linhas = self._pedir("GET", "radar_imagens", params=params) or []
+        return linhas[0]["dados"] if linhas else None
+
     def config(self, chave: str):
         """Valor de uma chave de Configurações (radar_config), ou None."""
         linhas = self._pedir("GET", "radar_config", params={"select": "valor", "chave": f"eq.{chave}"}) or []

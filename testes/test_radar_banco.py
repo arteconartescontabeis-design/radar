@@ -100,7 +100,7 @@ def test_anonimo_nao_le_nada_do_radar(limpo):
     no_ar(limpo)
     tabelas = [r[0] for r in limpo.execute("""select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                              where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'radar\\_%'""").fetchall()]
-    assert len(tabelas) == 33 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 25 tabelas e 8 visões (v0.21.0: + radar_v_pauta_pessoas)
+    assert len(tabelas) == 34 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 25 tabelas e 9 visões (v0.21.0: + radar_v_pauta_pessoas e radar_v_capas)
     with como("anon") as c:
         for tabela in tabelas:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -3407,6 +3407,7 @@ LEG_PECA = "Conheça quem cuida da folha de pagamento da sua empresa.\n\n" + IDE
 LAMINA = "data:image/jpeg;base64," + "B" * 400
 URL_INTERNA = "https://projeto.supabase.co/storage/v1/object/radar-pauta/p-0b1c2d3e-0000-4000-8000-000000000001.jpg"
 APROVAR = "select radar_pauta_aprovar(%s, %s, %s::text[], %s, %s::bigint[], %s, %s::text[])"
+ACRESCENTE = "Acrescente cada um em Informações conferidas, com a fonte (ou tire do texto)"
 
 
 @pytest.fixture()
@@ -3798,7 +3799,7 @@ def test_pauta_aprovar_so_admin_confere_versao_artes_conferencias_e_hora(pauta):
     db.execute("update radar_redes_envios set situacao = 'cancelado', enviado_em = now() - interval '1 hour' where peca_id = %s", (p6,))
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR166"):
         aprovar_peca(db, p6)
-    assert aprovar_peca(db, p6, conferencias=("rede",))["envios"]["instagram"]
+    assert aprovar_peca(db, p6, conferencias=("rede", "pessoas"))["envios"]["instagram"]
 
 
 def test_pauta_problemas_identificacao_marcas_confirmar_fonte_numeros_e_copia_paga(pauta, request):
@@ -3824,7 +3825,7 @@ def test_pauta_problemas_identificacao_marcas_confirmar_fonte_numeros_e_copia_pa
     assert probs[1:] == ["Há {confirmar …} no texto: troque pela informação conferida (ou tire o trecho)",
                          "Informação conferida nº 1: use a fonte oficial (o boletim pago da ITC não é fonte)",
                          "Informação conferida nº 2: escreva a informação e a fonte (até 300 caracteres cada)",
-                         "Números que não estão nas informações conferidas: 37"]    # o 20 está nelas; o CNPJ e o CRC da linha legal não contam
+                         "Números que não estão nas informações conferidas: 37. " + ACRESCENTE]    # o 20 está nelas; o CNPJ e o CRC da linha legal não contam
     db.execute("update radar_pauta_pecas set chamada = 'Atendemos 1.037 empresas desde 05/1984' where id = %s", (pid,))
     db.execute("update radar_pauta_pecas set apoio = '', legenda_instagram = %s, conferidas = %s where id = %s",
                (LEG_PECA, json.dumps([{"informacao": "1037 empresas atendidas desde 1984", "fonte": "Cadastro da Artecon (mês 5)"}]), pid))
@@ -3956,6 +3957,141 @@ def test_pauta_nome_sem_marcar_sobrenome_nao_autorizado_e_contador_sem_registro(
     assert com("O Bruno Exemplo, contador, explica.", [ana, bruno]) == []
     assert com("O Bruno Exemplo é especialista em folha.") == \
         ["“especialista” perto de “Bruno Exemplo”: não há título de especialista registrado, tire a palavra"]
+
+
+
+def test_pauta_nome_sem_acento_em_caixa_alta_ou_nfd_tambem_trava(pauta):
+    """O nome cadastrado é achado no texto sem diferença de acento, de forma Unicode (o texto colado do Mac vem em NFD) e também em
+    caixa alta (a chamada da arte): na pessoa não marcada, no sobrenome que o termo não autoriza e no "contador" de quem não tem
+    registro. O nome em minúsculas (uma palavra comum) não trava: para isso, a aprovação pede sempre a caixa das pessoas."""
+    import unicodedata
+    db = pauta
+    nova_pessoa(db, "Lúcia Exemplo", "Lúcia", revogado="2026-01-01")                           # termo revogado, não marcada
+    bruno = nova_pessoa(db, "Bruno Silvano", "Bruno")                                           # sem registro; o termo autoriza só "Bruno"
+    pid = nova_peca(db, dias=3, tipo="educativo", formato="imagem")
+
+    def com(texto, pessoas=()):
+        db.execute("update radar_pauta_pecas set apoio = %s, pessoas = %s::bigint[] where id = %s", (texto, list(pessoas), pid))
+        return conferir(pid)
+    lucia = ["“Lúcia” aparece no texto e não está marcada em Quem aparece"]
+    for texto in ["Dica da Lúcia: confira o prazo.", "Dica da Lucia: confira o prazo.", "DICA DA LÚCIA: CONFIRA O PRAZO.",
+                  "DICA DA LUCIA", unicodedata.normalize("NFD", "Dica da Lúcia: confira o prazo.")]:
+        assert com(texto) == lucia, texto
+    assert com("Dica da lúcia: confira o prazo.") == []                                         # minúscula: palavra comum
+    assert com("A Luciana explica o prazo.") == []                                               # palavra inteira
+    sobrenome = ["O termo autoriza só “Bruno”: tire o sobrenome"]
+    for texto in ["Conheça o Bruno Silvano.", "CONHEÇA O BRUNO SILVANO", "Conheça o Bruno Sílvano."]:
+        assert com(texto, [bruno]) == sobrenome, texto
+    contador = ["“Bruno” não tem registro no CRC (Pauta → Pessoas e termos): não chame de contador(a) nem de técnico(a)"]
+    for texto in ["Conheça o Bruno, contador da Artecon.", "CONHEÇA O BRUNO, CONTADOR DA ARTECON", "conheça o bruno, contador da artecon",
+                  unicodedata.normalize("NFD", "TÉCNICO EM CONTABILIDADE, O BRÚNO EXPLICA")]:
+        assert com(texto, [bruno]) == contador, texto
+    # a aprovação pede a caixa "Conferi: … só aparecem as pessoas marcadas" em toda peça, mesmo sem pessoa marcada e sem foto
+    com("Dica da lúcia: confira o prazo.")
+    marcar_pronta(db, pid)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR166"):
+        aprovar_peca(db, pid, conferencias=())
+    assert aprovar_peca(db, pid, conferencias=("pessoas",))["envios"]["instagram"]
+
+
+def test_pauta_numeros_aceitam_o_crc_da_pessoa_o_telefone_e_os_fatos_fixos(pauta):
+    """O número que já está conferido fora da peça não precisa virar informação conferida: o registro no CRC da pessoa marcada (ao lado
+    de "contador"), os telefones do Fale Conosco e os "fatos_fixos" da Pauta (com a fonte). O resto aparece como está escrito, com o
+    que fazer."""
+    db = pauta
+    bruno = nova_pessoa(db, "Bruno Exemplo", "Bruno Exemplo", categoria="contador", crc="CRC-SC 054321/O-1")
+    leg = ("Conheça o Bruno Exemplo, contador · CRC-SC 054321/O-1.\nA Artecon atende empresas desde 1984.\n"
+           "Fale com a gente: (48) 3242-0530.\n\n" + IDENT + "\n\n#Contabilidade")
+    pid = nova_peca(db, dias=3, pessoas=[bruno], legenda_instagram=leg)
+    fale = db.execute("select valor from radar_config where chave = 'fale_conosco'").fetchone()[0]
+    db.execute("""update radar_config set valor = '{"setores": [{"rotulo": "Geral", "telefones": [{"numero": "48-3242-0530", "whatsapp": true}],
+                  "emails": [], "equipe": []}]}' where chave = 'fale_conosco'""")
+    try:
+        assert conferir(pid) == ["Números que não estão nas informações conferidas: 1984. " + ACRESCENTE]
+        fixos = [{"informacao": "A Artecon atende empresas desde 1984", "fonte": "Contrato social da Artecon"}]
+        db.execute("update radar_config set valor = valor || %s where chave = 'pauta'", (json.dumps({"fatos_fixos": fixos}),))
+        assert conferir(pid) == []
+        db.execute("""update radar_config set valor = valor || '{"fatos_fixos": [{"informacao": "desde 1984", "fonte": " "}, "1984"]}'
+                      where chave = 'pauta'""")                                                  # sem a fonte, não vale
+        assert conferir(pid) == ["Números que não estão nas informações conferidas: 1984. " + ACRESCENTE]
+        db.execute("update radar_config set valor = valor || %s where chave = 'pauta'", (json.dumps({"fatos_fixos": fixos}),))
+        # o telefone que não está no Fale Conosco aparece como está escrito (com o zero à esquerda); o do responsável vale
+        db.execute("""update radar_config set valor = '{"setores": [{"rotulo": "Geral", "telefones": ["48-3033-4978"], "emails": [], "equipe": []}]}'
+                      where chave = 'fale_conosco'""")
+        assert conferir(pid) == ["Números que não estão nas informações conferidas: 0530, 3242. " + ACRESCENTE]
+        db.execute("""update radar_config set valor = '{"setores": [{"rotulo": "Contábil", "telefones": [], "emails": [], "equipe": [],
+                      "responsaveis": [{"nome": "Responsável de mentira", "telefone": "(48) 3242-0530"}]}]}' where chave = 'fale_conosco'""")
+        assert conferir(pid) == []
+        # o CRC só vale da pessoa marcada
+        db.execute("update radar_pauta_pecas set pessoas = '{}' where id = %s", (pid,))
+        assert "Números que não estão nas informações conferidas: 054321. " + ACRESCENTE in conferir(pid)
+    finally:
+        db.execute("update radar_config set valor = %s where chave = 'fale_conosco'", (json.dumps(fale),))
+
+
+def test_pauta_marcador_do_modelo_entre_chaves_trava_em_todo_texto_e_na_saida(pauta):
+    """Os modelos do plano têm marcadores entre chaves ({formação}, {ano de entrada}, {frase da pessoa}); esquecido, iria ao ar escrito
+    assim. Trava na lista (legendas, chamada, apoio, cartões, roteiro), ao publicar agora, antes de sair pela agenda e ao copiar à mão."""
+    db = pauta
+    msg = "Há marcador do modelo entre chaves ({…}): troque pelo texto ou tire"
+    for i, (campo, valor) in enumerate([("legenda_instagram", "Formação: {formação}.\n\n" + IDENT), ("chamada", "Desde {ano de entrada} na Artecon"),
+                                        ("apoio", "Uma frase de {PESSOA2}."), ("cartoes", [{"titulo": "{tarefa 1 — ex.: abertura}", "texto": "x"}]),
+                                        ("roteiro", "| 0 a 3 s | {frase do Bruno} |")]):
+        assert conferir(nova_peca(db, dias=20 + i, **{campo: valor})) == [msg], campo
+    pid = nova_peca(db, dias=3)
+    db.execute("update radar_pauta_pecas set apoio = 'Prazo: {confirmar data}' where id = %s", (pid,))   # o {confirmar} tem a mensagem dele
+    assert conferir(pid) == ["Há {confirmar …} no texto: troque pela informação conferida (ou tire o trecho)"]
+    db.execute("update radar_pauta_pecas set apoio = 'Chaves vazias, {}, não são marcador' where id = %s", (pid,))
+    assert conferir(pid) == []
+    # depois de aprovada (a legenda congelada no envio, mudada por fora): não sai pela agenda, nem pelo Publicar agora
+    p2, r2 = peca_aprovada(db, dias=4)
+    e2 = r2["envios"]["instagram"]
+    db.execute("update radar_redes_envios set legenda = legenda || ' {formação}' where id = %s", (e2,))
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR165: .*marcador entre chaves"):
+        c.execute("select radar_pauta_publicar_agora(%s, false)", (p2,))
+    vencer(db, e2)
+    motivo = "A legenda tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija."
+    assert iniciar(e2) == {"erro": motivo}
+    # à mão: a cópia da legenda e do roteiro confere de novo
+    p3 = nova_peca(db, dias=5, tipo="reel", formato="reel", roteiro="Fala: o prazo vence no dia 20.\n" + IDENT,
+                   conferidas=[{"informacao": "O prazo vence no dia 20", "fonte": "Receita Federal"}])
+    marcar_pronta(db, p3)
+    aprovar_peca(db, p3, modo="manual", artes=[])
+    with como("authenticated", EDITOR) as c:
+        assert c.execute("select radar_pauta_pode_copiar(%s, %s, null)", (p3, lido_peca(db, p3))).fetchone()[0]["ok"] is True
+    mudar_por_fora(db, p3, "roteiro = roteiro || ' {nome}', legenda_instagram = legenda_instagram || ' {Nome}'")
+    copiar = "O texto aprovado tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija."
+    with como("authenticated", EDITOR) as c:
+        for canal in (None, "instagram"):
+            assert c.execute("select radar_pauta_pode_copiar(%s, %s, %s)", (p3, lido_peca(db, p3), canal)).fetchone()[0] == {"motivo": copiar}
+
+
+def test_pauta_roteiro_sem_as_marcacoes_de_tempo_e_lista_da_agenda_conferida(pauta):
+    """O roteiro do reel colado como o plano manda (a tabela com o tempo de cada cena e a duração) fica pronto: as marcações de tempo
+    não são fato. Na Agenda da semana em Imagem 4:5, a lista desenhada na lâmina (a informação de cada conferida) vai ao ar e passa
+    pelas travas de [VERIFICAR], {confirmar}, chaves e nome."""
+    db = pauta
+    roteiro = ("Duração: cerca de 44 segundos (cerca de 110 palavras).\nGancho (0 a 3 s)\n| Tempo | Fala | Texto na tela |\n"
+               "| 0 a 3 s | \"Sexta tem prazo.\" | PRAZO ATÉ SEXTA, 30/10 |\n| 3 a 12 s | \"Toda segunda, um assunto.\" | Tarja |\n"
+               "| 12–32s | \"Quem pediu tem até sexta, dia 30.\" | 0:15 a 0:32 |\n| 32 a 44 s | \"Fale com a gente.\" | cartela |\n" + IDENT)
+    pid = nova_peca(db, dias=3, tipo="reel", formato="reel", roteiro=roteiro,
+                    conferidas=[{"informacao": "Prazo da opção até 30/10", "fonte": "Portal do Simples Nacional"}])
+    assert conferir(pid) == []
+    db.execute("update radar_pauta_pecas set roteiro = roteiro || %s where id = %s", ("\n| 44 a 50 s | \"São 2 sócios e 15 dias.\" | |", pid))
+    assert conferir(pid) == ["Números que não estão nas informações conferidas: 15, 2. " + ACRESCENTE]
+    # a lista da agenda: a pessoa cadastrada e não marcada, a marca e as chaves
+    nova_pessoa(db, "Márcia Exemplo", "Márcia", revogado="2026-01-01")
+    lista = [{"informacao": "10/11 (ter) · ICMS [VERIFICAR: data]", "fonte": "Agenda Tributária da Receita Federal"},
+             {"informacao": "11/11 (qua) · Aniversário da Márcia {confirmar}", "fonte": "Agenda Tributária da Receita Federal"},
+             {"informacao": "12/11 (qui) · Entrega da {obrigação}", "fonte": "Agenda Tributária da Receita Federal"}]
+    ag = nova_peca(db, dias=4, tipo="agenda", formato="imagem", conferidas=lista)
+    probs = conferir(ag)
+    assert probs[0].startswith("resolva antes de liberar: 1 ponto(s) marcado(s) com [VERIFICAR]"), probs
+    assert probs[1:] == ["Há {confirmar …} no texto: troque pela informação conferida (ou tire o trecho)",
+                         "Há marcador do modelo entre chaves ({…}): troque pelo texto ou tire",
+                         "“Márcia” aparece no texto e não está marcada em Quem aparece"]
+    db.execute("update radar_pauta_pecas set formato = 'foto', fotos = array[%s::bigint] where id = %s", (nova_imagem(), ag))
+    assert conferir(ag) == []                                                                     # na foto, a lista não é desenhada
 
 
 def test_pauta_iniciar_na_hora_uma_vez_e_problemas_viram_erro_sem_nome(pauta):
@@ -4253,13 +4389,13 @@ def test_desfazer_aprovacao_a_mao_pede_conferi_na_rede_e_a_nova_aprovacao_tambem
             aprovar_peca(db, pid, modo=modo, conferencias=("pessoas",))
         assert "não foi postada" in str(erro.value)
     assert db.execute("select count(*) from radar_redes_envios where peca_id = %s", (pid,)).fetchone()[0] == 0     # nada foi agendado
-    r = aprovar_peca(db, pid, modo="agendar", conferencias=("rede",))
-    assert db.execute("select aprovado_conferencias, manual_desfeita_em from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (["rede"], None)
+    r = aprovar_peca(db, pid, modo="agendar", conferencias=("rede", "pessoas"))
+    assert db.execute("select aprovado_conferencias, manual_desfeita_em from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (["pessoas", "rede"], None)
     # aprovada para a agenda: desfaz sem a caixa (nada saiu à mão) e a próxima aprovação não pede mais a conferência
     with como("authenticated", EDITOR) as c:
         c.execute("select radar_pauta_desaprovar(%s)", (pid,))
     assert situacao_envio(db, r["envios"]["instagram"])[0] == "cancelado"
-    assert aprovar_peca(db, pid, modo="agendar", conferencias=())["envios"]["instagram"]
+    assert aprovar_peca(db, pid, modo="agendar", conferencias=("pessoas",))["envios"]["instagram"]
 
 
 def test_peca_a_mao_so_sai_nos_canais_aprovados(pauta):
@@ -4442,6 +4578,42 @@ def test_pessoas_so_admin_grava_editor_le_leitor_e_robo_nao_leem(pauta):
         assert c.execute("delete from radar_pessoas where id = %s", (ana,)).rowcount == 1
 
 
+
+def test_chave_do_robo_e_leitor_nao_leem_as_fotos_as_laminas_nem_as_legendas_da_pauta(pauta):
+    """A chave do robô (segredo do GitHub Actions de um repositório público) não lê onde ficam as fotos e os nomes: radar_imagens (a
+    capa do conteúdo vem por radar_v_capas), a auditoria e, nos envios, a legenda, a imagem e o erro (lê só o andamento, como o robô e
+    a radar-redes pedem). O leitor não lê as fotos nem as lâminas da Pauta (só as outras imagens); o editor lê todas."""
+    db = pauta
+    foto, capa, solta = nova_imagem(), nova_imagem(), nova_imagem()
+    pid, r = peca_aprovada(db, dias=3, formato="foto", fotos=[foto])
+    arte = db.execute("select artes[1] from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0]
+    c1 = novo_conteudo(db, novo_assunto(db))
+    db.execute("update radar_conteudos set imagem_id = %s where id = %s", (capa, c1))
+    with como("service_role") as c:
+        for sql in ["select id from radar_imagens", "select legenda from radar_redes_envios", "select imagem from radar_redes_envios",
+                    "select erro from radar_redes_envios", "select * from radar_redes_envios", "select count(*) from radar_auditoria",
+                    "select count(*) from radar_pauta_pecas", "select count(*) from radar_pessoas"]:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute(sql)
+        # o que o robô (radar_banco.py, radar_site_publicar.py, radar-site-publicar.yml) e a radar-redes leem continua legível
+        assert c.execute("""select id, canal, situacao, agendado_para is not null, enviado_em from radar_redes_envios
+                            where peca_id is not null and situacao in ('erro','enviando','autorizado') order by agendado_para, id""").fetchall() == \
+            [(r["envios"]["instagram"], "instagram", "autorizado", True, None)]
+        assert c.execute("""select canal, situacao, junto_com_site, peca_id, post_id, url from radar_redes_envios where id = %s""",
+                         (r["envios"]["instagram"],)).fetchone() == ("instagram", "autorizado", False, pid, None, None)
+        assert c.execute("select id, dados from radar_v_capas").fetchall() == [(capa, PIXEL)]
+    for papel in ("anon", "authenticated"):
+        with como(papel, EDITOR if papel == "authenticated" else None) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute("select * from radar_v_capas")
+    with como("authenticated", LEITOR) as c:
+        assert sorted(x for (x,) in c.execute("select id from radar_imagens").fetchall()) == sorted([capa, solta])
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):                              # nem a cópia da lâmina no envio
+            c.execute("select imagem from radar_redes_envios")
+        assert c.execute("select canal, situacao from radar_redes_envios where peca_id = %s", (pid,)).fetchall() == [("instagram", "autorizado")]
+    with como("authenticated", EDITOR) as c:
+        assert {foto, arte, capa, solta} <= {x for (x,) in c.execute("select id from radar_imagens").fetchall()}
+
+
 def test_pessoa_em_uso_nao_se_apaga(pauta):
     db = pauta
     ana, bruno = nova_pessoa(db), nova_pessoa(db, "Bruno Exemplo", "Bruno")
@@ -4520,7 +4692,7 @@ def test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date(db):
     novas = db.execute("""select p.proname, p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                           where n.nspname = 'public' and (p.proname like 'radar\\_pauta\\_%' or p.proname like 'radar\\_agenda\\_%'
                                 or p.proname in ('radar_redes_conferir_agenda', 'radar_fn_pauta_peca', 'radar_fn_pessoa_apagar'))""").fetchall()
-    assert len(novas) == 26
+    assert len(novas) == 29
     assert [n for n, src in novas if "current_date" in src.lower()] == []
 
 

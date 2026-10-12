@@ -21,8 +21,9 @@ preparadas no Radar e publicadas pela API da Meta **na hora marcada, depois da a
 - **Peça:** fotos da equipe (1080×1350, enviadas uma de cada vez), quem aparece (só pessoas cadastradas em **Pessoas e termos**, com o
   termo de uso de imagem), informações conferidas com a fonte oficial, chamada, apoio, cartões do carrossel, roteiro do reel e as
   legendas. A arte é desenhada na tela, com a faixa legal (empresa, CNPJ e CRC) em letra de pelo menos 28 px de altura.
-- **"Gerar com IA" da peça:** a IA sugere a chamada, o apoio, as legendas e os cartões. Nenhum nome vai à IA (a pessoa vai como
-  `{PESSOA1}`), e o fato que não está nas informações conferidas volta marcado com [VERIFICAR].
+- **"Gerar com IA" da peça:** a IA sugere a chamada, o apoio, as legendas e os cartões. Os nomes da equipe não vão à IA (a pessoa
+  vai como `{PESSOA1}`; quem está cadastrado ou no "quem aparece" de qualquer peça do calendário vira "uma pessoa da equipe"), e o
+  fato que não está nas informações conferidas volta marcado com [VERIFICAR].
 - **Pronta, aprovada, publicada:** "Salvar e marcar como pronta" mostra a lista do que falta; só o administrador aprova; a peça
   aprovada não se edita. A imagem única (foto ou arte) sai **sozinha** pela agenda do banco (de 5 em 5 minutos), que confere tudo de
   novo antes; o carrossel e o reel saem **à mão** (baixar as lâminas, copiar a legenda e registrar o link).
@@ -1026,10 +1027,11 @@ só usar "Publicar agora" no mesmo passo.
    chegou (sem nada vencido, nenhum pedido sai). A função continua com **"Verify JWT" ligado**: a agenda manda no `Authorization`
    a chave anon, que é pública (a mesma do `radar-config.js`, escrita no arquivo; o próprio SQL recusa qualquer chave que não seja
    a anon), e a chave do Vault no cabeçalho `x-radar-agenda`. Com ela, a função só publica peça da Pauta cuja hora chegou, e mais
-   nada. **Teste**, sem publicar nada: rode o `net.http_post` com `{"acao":"agenda_teste"}` que está no comentário do fim do
-   arquivo e, alguns segundos depois, a consulta a `net._http_response`: o esperado é 200 com `{"ok":true,"versao":"0.21.0"}`.
-   Se o projeto do Supabase ou a chave anon mudarem, troque no arquivo e rode de novo (os testes conferem que a chave do
-   arquivo é a do `radar-config.js`). Para desfazer: `sql/radar-redes-agenda-reversao.sql` (a chave fica no Vault).
+   nada. **Teste**, sem publicar nada: copie as 5 linhas do `select net.http_post(…)` com `{"acao":"agenda_teste"}` que está no
+   comentário do fim do arquivo para uma consulta nova, **sem os `--` do começo** (selecione e aperte Ctrl+/), e execute — não há
+   nada para trocar: a chave anon vem do próprio agendamento e a da agenda, do Vault. Alguns segundos depois, rode a consulta a
+   `net._http_response` (também sem os `--`): o esperado é 200 com `{"ok":true,"versao":"0.21.0"}`. Se o projeto do Supabase ou a
+   chave anon mudarem, troque no arquivo e rode de novo (os testes conferem que a chave do arquivo é a do `radar-config.js`). Para desfazer: `sql/radar-redes-agenda-reversao.sql` (a chave fica no Vault).
 
 ### Pauta: o calendário das redes e a publicação agendada (v0.21.0)
 
@@ -1046,7 +1048,21 @@ Orientação, Datas da empresa, Captação de clientes). **Registre só com o te
 pessoa marcou. Fica só no banco: o repositório do Radar é público. A linha que sai na arte é montada pelo Radar ("Ana, contadora ·
 CRC-SC 000000"; sem registro, "Ana · Departamento Pessoal"). Pessoa que está numa peça não é excluída: desmarque "Ativa". O termo é
 conferido no selo da semana, ao marcar como pronta e ao aprovar (no dia da peça) e de novo antes de publicar, copiar ou baixar
-(no dia de hoje): revogado ou vencido, a peça não sai.
+(no dia de hoje): revogado ou vencido, a peça não sai. A lâmina aprovada só aparece na peça agendada com o termo valendo no dia
+dela; na peça à mão, só em "Baixar as lâminas", depois dessa conferência; o leitor não vê foto nem lâmina.
+
+**Quando o termo é revogado (ou a pessoa sai da equipe).** Marcar a data em "revogado" impede as próximas publicações, mas **não
+apaga nada**: o Radar não apaga sozinho foto, lâmina nem post (nem a faxina das imagens, nem a reversão; o prazo de guarda fica para
+a v0.22.0). No mesmo dia, o administrador:
+1. nas peças **publicadas** com a pessoa, se o combinado for tirar do ar: "Excluir do Instagram/Facebook" (na peça agendada) ou
+   apague o post direto na rede (na peça à mão);
+2. nas peças **ainda não publicadas**: "Desfazer aprovação" (se aprovada), "Tirar" cada foto dela, desmarque a pessoa e salve; a
+   foto e a lâmina que ninguém mais usa são apagadas pela faxina do robô no dia seguinte;
+3. o que sobra (as lâminas das peças publicadas e a cópia da lâmina nos envios), liste no SQL Editor, trocando o 7 pelo número da
+   pessoa (a consulta `select id, nome_na_peca from radar_pessoas` mostra o número):
+   `select p.data, p.situacao, p.artes, e.canal, e.situacao, e.imagem_url from radar_pauta_pecas p left join radar_redes_envios e
+   on e.peca_id = p.id where 7 = any(p.pessoas) order by p.data;` — e apague em Supabase → Storage → `radar-pauta` os arquivos da
+   coluna `imagem_url` (o post já publicado continua na rede até o passo 1).
 
 **2. Importar o calendário** (editor e administrador): "Importar o calendário (CSV)", com o arquivo do plano de publicações (as
 colunas `data;dia;semana;tipo;formato;assunto;quem_aparece;objetivo;observacao`, separadas por ponto e vírgula ou vírgula, do
@@ -1054,8 +1070,10 @@ Excel ou não; data no formato 26/10/2026). A tela confere o arquivo inteiro ant
 com a linha da planilha (data errada, dia da semana que não bate, tipo ou formato desconhecido, data repetida, texto comprido
 demais). Sem erro, a prévia diz o que é novo, o que muda, o que fica igual e o que é mantido; "Gravar" grava. Importar de novo não
 duplica: a peça que já saiu de "Planejada" não muda. As pessoas **não** são ligadas sozinhas: a coluna `quem_aparece` vira só um
-lembrete na peça. A hora de cada peça nova é a de Configurações → Pauta (`hora_padrao`). O CSV tem nomes da equipe: **nunca vai
-para o GitHub** (o `.gitignore` barra e um teste confere).
+lembrete na peça. A hora de cada peça nova é a de Configurações → Pauta (`hora_padrao`). O CSV e os `.md` do plano de publicações
+têm nomes da equipe: **nunca vão para o GitHub** (o `.gitignore` barra qualquer CSV novo e os `.md` do plano, e o workflow
+`radar-repositorio.yml` confere em todo envio; mas o envio pelo site do GitHub não passa pelo `.gitignore`, e o aviso chega depois
+que o arquivo já ficou público).
 
 **3. Preparar a peça** ("Abrir", na semana; editor e administrador):
 - **Fotos**, no alto: cada foto vira 1080×1350 (corte no centro), enviada uma de cada vez, até 10. A foto do iPhone em HEIC
@@ -1071,6 +1089,11 @@ para o GitHub** (o `.gitignore` barra e um teste confere).
   também trava.
 - **Gerar com IA** (opcional; abaixo) e os **textos:** chamada e apoio da arte, cartões (carrossel), roteiro (reel, colado à
   mão), as legendas do Instagram e do Facebook (com contador de caracteres e o botão "Pôr a identificação legal e as hashtags").
+  No roteiro, cole a fala e o texto na tela (a tabela "Tempo | Fala | Texto na tela" do plano serve): as marcações de tempo ("0 a
+  3 s", "cerca de 44 segundos", "0:15", "110 palavras") não contam como número; as notas de produção (o dia da gravação, a cena)
+  ficam de fora, porque o número delas pediria informação conferida.
+- Os **marcadores dos modelos do plano** entre chaves (`{formação}`, `{ano de entrada}`, `{frase da pessoa}`…) precisam virar texto:
+  esquecido em qualquer texto que vai ao ar, a peça não fica pronta.
 - **Plano** (assunto, objetivo, observação e quem aparece, do CSV): só referência, não vai ao ar.
 - **Salvar** grava só o que mudou. Se outra pessoa salvou a peça antes, a tela avisa "alterada em outra tela" e nada é gravado
   por cima.
@@ -1092,18 +1115,24 @@ notícia não mudou (faixa de 24 px). Os 28 px estão como altura da letra: se o
 **5. Conferir e marcar como pronta.** "Salvar e marcar como pronta" (ou só "Conferir o que falta") mostra numa lista **tudo** o
 que falta resolver: a peça sem o que o formato pede (foto, pessoa, 2 a 10 fotos no carrossel de fotos, um cartão a mais que as
 fotos, 2 a 9 cartões, roteiro, informações conferidas na agenda), legenda sem a identificação legal (CNPJ e CRC das Configurações precisam estar preenchidos),
-[VERIFICAR] ou `{confirmar}`, informação conferida sem fonte ou com fonte do boletim pago, frase igual à do boletim pago, número que
-não está nas informações conferidas, termo de imagem que não vale, nome de pessoa cadastrada que aparece no texto sem estar
-marcada, sobrenome que o termo não autoriza, "contador(a)", "técnico(a)" ou "especialista" perto de quem não tem registro, e os
+[VERIFICAR], `{confirmar}` ou outro marcador entre chaves, informação conferida sem fonte ou com fonte do boletim pago, frase igual
+à do boletim pago, número que não está nas informações conferidas (mostrado como está escrito, com o que fazer: acrescentar em
+Informações conferidas, com a fonte; o registro no CRC da pessoa marcada, os telefones do Fale Conosco e os `fatos_fixos` das
+Configurações valem sem isso), termo de imagem que não vale, nome de pessoa cadastrada que aparece no texto sem estar marcada (com
+ou sem acento, em caixa alta, colado do Mac; em minúsculas, como palavra comum, não), sobrenome que o termo não autoriza,
+"contador(a)", "técnico(a)" ou "especialista" perto de quem não tem registro (em qualquer caixa), e os
 termos que a publicidade contábil evita na Pauta (preço, desconto, grátis, brinde, promoção, promessa, comparação com outros
-escritórios ou contadores, superlativo, apelo ao medo; lista inicial, a confirmar com o contador responsável). Em amarelo, o que é
+escritórios ou contadores, superlativo, apelo ao medo; lista inicial, a confirmar com o contador responsável; o desconto da folha,
+perto de INSS, IRRF, parcela, 13º, salário ou vale-transporte, não trava). Na Agenda da semana em Imagem 4:5, a lista desenhada na
+lâmina passa pelas mesmas travas (marcas, chaves, nomes e termos). Em amarelo, o que é
 só para conferir (texto cortado na arte; na Data com a equipe, dado sensível). O administrador vê no alto da Pauta a lista
 **"Prontas para aprovar"**.
 
 **6. Aprovar** (só o administrador; "Aprovar a peça", na peça pronta): os canais (os que têm legenda); **como sai** ("Agendar para
 sáb, 31/10/2026, às 09:30", só imagem única: Imagem 4:5 e Foto; ou "Vou publicar à mão"; carrossel e reel saem à mão nesta
-versão); e as conferências obrigatórias: "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)" (com
-pessoa ou foto), "Conferi as datas da agenda" (Agenda da semana) e, se um envio anterior caiu no meio ou se uma aprovação à mão foi
+versão); e as conferências obrigatórias: "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)" (em toda
+peça: o nome escrito de um jeito que a lista não reconhece só quem aprova vê), "Conferi as datas da agenda" (Agenda da semana) e,
+se um envio anterior caiu no meio ou se uma aprovação à mão foi
 desfeita, "Conferi no Instagram e no Facebook: não saiu". Os canais marcados ficam guardados na aprovação: à mão, só eles são
 copiados e registrados. A tela confere tudo de novo, guarda as lâminas desenhadas e o banco aprova: **vai ao ar exatamente o que
 está na tela**. A hora marcada no passado vale se estiver dentro da janela (Configurações → Pauta → `janela_horas`, 6 horas): a
@@ -1124,7 +1153,8 @@ função não responder, a agenda tenta até 3 vezes, de 10 em 10 minutos; depoi
 - **"Tentar de novo"** (publicação que não saiu): pede antes a caixa "Conferi no Instagram e no Facebook: não saiu", para nunca
   publicar duas vezes;
 - **"Não publicar neste canal"** (na peça e no quadro "Não saíram"), na publicação que não saiu ou que ainda espera a hora:
-  cancela só aquele canal, mesmo com o outro já publicado; a peça continua aprovada e o aviso do robô fecha;
+  cancela só aquele canal, mesmo com o outro já publicado; a peça continua aprovada e o aviso do robô fecha. Com todos os canais
+  cancelados, a semana e a peça mostram "Aprovada, sem canal (não vai sair)": para publicar, Desfazer aprovação e aprove de novo;
 - **"Cancelar"**, na publicação parada em "publicando" há mais de 10 minutos (confira na rede se saiu antes), e **"Excluir do
   Instagram/Facebook"**, na publicada.
 
@@ -1150,9 +1180,11 @@ por e-mail pode levar horas.
 
 **10. Gerar com IA da peça** (editor e administrador; a peça precisa estar salva). A IA (a mesma `radar-ia`, ação `peca`) sugere a
 chamada e o apoio, as legendas e os cartões do carrossel a partir do tipo, do formato, do plano e das informações conferidas.
-**Nenhum nome vai à IA**: a pessoa marcada vai como `{PESSOA1}` (com a área e a categoria; o número do CRC nunca vai), e o nome de
-qualquer outra pessoa cadastrada, ou escrito com maiúscula em "quem aparece", vira "uma pessoa da equipe" (também nas informações
-conferidas). Não vão foto, link, CNPJ, telefone nem o boletim. O fato que não está nas informações conferidas volta marcado com
+**Os nomes da equipe não vão à IA**: a pessoa marcada vai como `{PESSOA1}` (com a área e a categoria; o número do CRC nunca vai), e
+o nome de qualquer outra pessoa cadastrada, ou escrito com maiúscula no "quem aparece" de **qualquer** peça do calendário (quem
+ainda não tem termo e é citado no assunto de outra peça), vira "uma pessoa da equipe" (também nas informações conferidas). O que
+sobra: o nome que não está cadastrado nem em nenhum "quem aparece" não é reconhecido; não o escreva no assunto, no objetivo, na
+observação nem nas informações conferidas. Não vão foto, link, CNPJ, telefone nem o boletim. O fato que não está nas informações conferidas volta marcado com
 [VERIFICAR], e a sugestão mostra o que falta conferir e os avisos (termos, "contador" para quem não tem registro, termo de imagem).
 **"Usar a sugestão"** põe os textos nos campos (com o nome na peça no lugar de `{PESSOA1}` e, nas legendas, a fonte, a identificação
 legal e as hashtags), **sem salvar**: o que se aprova é o texto salvo. Se as pessoas, o tipo ou o formato mudaram, gere de novo. A
@@ -1161,7 +1193,9 @@ notícia (use o kit das redes do assunto), reel (roteiro à mão nesta versão),
 as informações conferidas.
 
 **11. Configurações → Pauta e agenda automática:** `agenda_ligada` (true ou false), `hora_padrao` (a hora de Brasília das peças
-novas, "09:30"), `janela_horas` (de 1 a 48; padrão 6) e `hashtags` (as fixas, até 3, como "#Contabilidade" e "#Palhoça"). Na
+novas, "09:30"), `janela_horas` (de 1 a 48; padrão 6), `hashtags` (as fixas, até 3, como "#Contabilidade" e "#Palhoça") e
+`fatos_fixos` (opcional: os fatos da Artecon que valem em toda peça, cada um com a fonte, como `[{"informacao": "A Artecon atende
+empresas desde 1984", "fonte": "Contrato social"}]`; os números deles não pedem informação conferida). Na
 agenda de obrigações, `"redes": false` tira a obrigação da Agenda da semana das redes e `"fonte"` é a fonte oficial da regra de
 vencimento, que vai junto na informação conferida.
 
@@ -1170,7 +1204,9 @@ assinado do armazenamento privado segue o código do Supabase; que a Meta aceita
 conferido na documentação da Meta: confere-se na primeira peça pela agenda, com o administrador acompanhando às 09:30 (a reserva é o modo à mão). Cada foto e cada lâmina aprovada ocupa no
 banco até cerca de 450 KB: confira o tamanho em Supabase → Usage de vez em quando. A lista de termos que travam na Pauta inclui
 palavras que também servem para informar ("garante", "ganhe", "definitivo", "100%", "a maioria") e precisa da confirmação do
-contador responsável. O leitor vê o plano e as legendas. As recusas do banco na Pauta vêm com os códigos RADAR159 a RADAR176 (por
+contador responsável. O leitor vê o plano e as legendas, mas não as fotos nem as lâminas. A chave do robô (segredo do GitHub
+Actions) não lê as pessoas, as peças, as fotos, as lâminas, as legendas dos envios nem a auditoria. Nada é apagado sozinho (foto,
+lâmina, arquivo no armazenamento privado nem post): veja "Quando o termo é revogado", no item 1. As recusas do banco na Pauta vêm com os códigos RADAR159 a RADAR176 (por
 exemplo, RADAR161 "alterada depois que a tela foi aberta", RADAR162 "aprovada não muda", RADAR165 "há pontos a resolver",
 RADAR166 "falta marcar uma conferência", RADAR167 "hora fora do permitido", RADAR170 "já saiu numa rede", RADAR174 "pessoa em
 uso", RADAR176 "pessoa ou foto que não está cadastrada, repetida ou foi apagada").
@@ -1256,15 +1292,22 @@ repositório, que é público: a rotina diária grava direto no banco.
    avisa que ela é de uma versão anterior; o resto da IA funciona igual.
 5. Ctrl+F5 no Radar de novo.
 6. SQL Editor → execute `sql/radar-redes-agenda.sql` (item 7 de "Instagram e Facebook pela API da Meta") e faça o **teste**
-   `agenda_teste` do comentário do fim do arquivo: o esperado é 200 com `{"ok":true,"versao":"0.21.0"}`. Outra resposta: confira se
-   a `radar-redes` é a v0.21.0 (passo 3) e se a chave anon escrita no arquivo é a do `radar-config.js`. Até este passo, a peça
+   `agenda_teste` do comentário do fim do arquivo: copie as linhas **sem os `--`** do começo (não há nada para trocar) e execute; o
+   esperado é 200 com `{"ok":true,"versao":"0.21.0"}`. Outra resposta: 404 ou "acao desconhecida", a `radar-redes` não é a v0.21.0
+   (passo 3); 401 "Invalid JWT", a chave anon escrita no arquivo não é a deste projeto (a do `radar-config.js`): troque e rode o
+   arquivo de novo; nenhuma linha em `net._http_response`, as linhas foram executadas ainda com os `--`. Até este passo, a peça
    aprovada para agendar só sai pelo "Publicar agora".
 7. Pauta → **Pessoas e termos** (administrador): cadastre quem vai aparecer, **só com o termo assinado em mãos**, marcando
    exatamente o que a pessoa marcou.
 8. Pauta → **Importar o calendário (CSV)**: o arquivo do plano de publicações (guardado no seu computador; nunca no GitHub).
    Confira a prévia e grave.
-9. Configurações → **Pauta e agenda automática**: confira a hora padrão, a janela e as hashtags. Confira também o CNPJ e o CRC em
-   "Fecho, assinatura e identificação legal": sem eles, nenhuma peça é aprovada.
+9. Configurações → **Pauta e agenda automática**: confira a hora padrão, a janela e as hashtags e, se quiser, acrescente os
+   `fatos_fixos` (como "desde 1984", com a fonte). Confira também o CNPJ e o CRC em "Fecho, assinatura e identificação legal": sem
+   eles, nenhuma peça é aprovada.
+   Configurações → **Agenda de obrigações** (uma vez só, antes do 1º domingo, 01/11): em cada obrigação que vai às redes, acrescente
+   `"fonte": "<a página oficial do vencimento>"` (por exemplo, a Agenda Tributária da Receita Federal). Nenhuma obrigação vem com a
+   fonte: sem ela, "Calcular a agenda da semana" deixa a fonte em branco e a Agenda da semana só fica pronta depois que alguém
+   escreve a fonte de cada linha, todo domingo.
 10. Primeiras peças acompanhadas: a 1ª pela agenda (28/10) com o administrador olhando às 09:30 (até umas 09:35 a peça deve
     aparecer publicada, com o link do post; é a prova de que a Meta aceita o link do armazenamento privado), o 1º carrossel à mão
     (29/10) e os 2 primeiros fins de semana (a partir de 31/10), abrindo a Pauta por volta das 09h35.
@@ -1273,9 +1316,12 @@ O robô atualiza sozinho pelo GitHub (v0.21.0, com o aviso da Pauta); antes do S
 normais. Nenhum segredo novo: a chave da agenda é criada no Vault pelo próprio `sql/radar-redes-agenda.sql`.
 
 Cuidados nesta versão:
-- O CSV do plano tem nomes da equipe: **nunca** o envie ao GitHub, nem dentro de outra pasta. O `.gitignore` barra os nomes de
-  sempre (`*calendario*.csv`, `pauta*.csv`, `plano-publicacoes*/`) e um teste falha se um calendário aparecer no repositório; mesmo
-  assim, confira o que vai em cada envio.
+- O CSV e os `.md` do plano (`1-PLANO-resumo.md`, `2-calendario-…md`, `3-roteiros-dos-reels.md`, `4-serie-pessoas.md`,
+  `4b-captacao-mensal.md`, `5-guia-de-producao.md`, `6-regras-legais-e-termo.md`) têm nomes da equipe: **nunca** os envie ao
+  GitHub, nem dentro de outra pasta, nem arrastando pelo site ("Add file → Upload files" **não passa pelo `.gitignore`**). O
+  `.gitignore` barra qualquer CSV novo e os nomes desses `.md` (com ou sem acento e maiúscula), e o workflow `radar-repositorio.yml`
+  roda em todo envio e falha se um calendário ou a tabela das pessoas aparecer no repositório — mas esse aviso chega **depois**: o
+  arquivo já ficou público (e no histórico). Confira o que vai em cada envio.
 - **Depois da primeira peça aprovada, não volte a tela para a v0.20.0.** A tela antiga não tem a Pauta: não mostra o que está
   agendado nem o que não saiu, não desfaz a aprovação e não tem nas Configurações o bloco que pausa a agenda, que continua
   publicando. A aba Publicações dela também não foi feita para as publicações da Pauta (com o PostgREST dos testes, só faz um pedido
@@ -1284,7 +1330,9 @@ Cuidados nesta versão:
   Pauta e rode o `sql/radar-redes-agenda-reversao.sql`.
 - Ordem trocada não publica nada errado: a `radar-redes` antiga (v0.19.0) com o banco novo recusa a peça da Pauta sem publicar
   ("atualize a função radar-redes para a v0.21.0") e continua publicando as notícias; a `radar-redes` nova com o banco antigo
-  publica as notícias normalmente.
+  publica as notícias normalmente. O robô precisa chegar antes do SQL (passo 1 antes do 2): a chave dele deixa de ler
+  `radar_imagens`, e o robô novo lê a capa do site pela vista `radar_v_capas` (com o banco antigo, como antes); o robô antigo com o
+  banco novo não consegue ler a capa e a publicação da notícia no site para com erro até o GitHub ter a v0.21.0.
 
 **Da v0.19.0 para a v0.20.0:**
 

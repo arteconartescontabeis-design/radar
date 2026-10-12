@@ -5594,17 +5594,22 @@ def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
                             ('{"hora_padrao": "9h30"}', "“hora_padrao” é a hora de Brasília"), ('{"hora_padrao": "24:00"}', "“hora_padrao” é a hora de Brasília"),
                             ('{"janela_horas": 0}', "“janela_horas” é um número inteiro de 1 a 48"), ('{"janela_horas": 2.5}', "“janela_horas” é um número inteiro"),
                             ('{"hashtags": ["#a", "#b", "#c", "#d"]}', "“hashtags” é uma lista de até 3"), ('{"hashtags": ["Contabilidade"]}', "“hashtags” é uma lista"),
-                            ('{"hashtags": ["#Conta bilidade"]}', "“hashtags” é uma lista")]:
+                            ('{"hashtags": ["#Conta bilidade"]}', "“hashtags” é uma lista"),
+                            ('{"fatos_fixos": "desde 1984"}', "“fatos_fixos” é uma lista de até 20"),
+                            ('{"fatos_fixos": [{"informacao": "A Artecon atende empresas desde 1984"}]}', "“fatos_fixos” é uma lista de até 20"),
+                            ('{"fatos_fixos": [{"informacao": "desde 1984", "fonte": "Contrato social (conferir)"}]}', "“fatos_fixos” é uma lista de até 20")]:
             campo.fill(ruim)
             limpar_recados(pagina)
             salvar.click()
             pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
         assert limpo.execute("select valor from radar_config where chave = 'pauta'").fetchone()[0] == original["pauta"]
-        campo.fill('{"agenda_ligada": false, "hora_padrao": "10:15", "janela_horas": 4, "hashtags": ["#Contabilidade", "#Palhoça"]}')
+        fixos = [{"informacao": "A Artecon atende empresas desde 1984", "fonte": "Contrato social da Artecon"}]
+        campo.fill(json.dumps({"agenda_ligada": False, "hora_padrao": "10:15", "janela_horas": 4, "hashtags": ["#Contabilidade", "#Palhoça"],
+                               "fatos_fixos": fixos}, ensure_ascii=False))
         salvar.click()
         pagina.wait_for_selector("#recado >> text=Configuração salva.")
         assert limpo.execute("select valor from radar_config where chave = 'pauta'").fetchone()[0] == {
-            "agenda_ligada": False, "hora_padrao": "10:15", "janela_horas": 4, "hashtags": ["#Contabilidade", "#Palhoça"]}
+            "agenda_ligada": False, "hora_padrao": "10:15", "janela_horas": 4, "hashtags": ["#Contabilidade", "#Palhoça"], "fatos_fixos": fixos}
         obrig = pagina.locator("#cfg-obrigacoes")
         for valor, aviso in [([{"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga", "redes": "nao"}], "“redes” é true ou false"),
                              ([{"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga", "fonte": "x" * 301}], "“fonte” é um texto de até 300 caracteres")]:
@@ -5621,7 +5626,7 @@ def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
 
 
 # ------------------------------------------------------- v0.21.0 — a arte da peça, a conferência, a aprovação e a publicação
-from test_radar_banco import IDENT, LEG_PECA, marcar_pronta, nova_peca  # noqa: E402
+from test_radar_banco import ACRESCENTE, IDENT, LEG_PECA, marcar_pronta, nova_peca  # noqa: E402
 
 DIAS_PAUTA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 # a prévia montada: todas as lâminas com a imagem (JPEG) e nenhuma pendente
@@ -5835,7 +5840,7 @@ def test_peca_salvar_e_marcar_pronta_mostra_lista_do_banco(pagina, pauta):
     lista = pagina.locator("#peca-conferencia .aviso.erro li").all_inner_texts()
     assert any(x.startswith("Legenda do Instagram: falta a linha de identificação") for x in lista), lista
     assert any(x.startswith("Há {confirmar …} no texto") for x in lista), lista
-    assert "Números que não estão nas informações conferidas: 2026, 30" in lista, lista
+    assert "Números que não estão nas informações conferidas: 2026, 30. " + ACRESCENTE in lista, lista
     assert any(x.startswith("Troque antes de aprovar: “promoção” na linha de apoio da arte.") for x in lista), lista
     assert db.execute("select chamada, situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("Prazo da DCTFWeb em 2026", "em_producao")
     # resolvido: a informação conferida, a identificação legal na legenda e o apoio sem a promoção nem a marca
@@ -5927,7 +5932,7 @@ def test_peca_aprovar_trava_termo_de_promocao_e_comparacao(pagina, pauta):
     abrir_peca(pagina, pid, data_peca(db, pid))
     pagina.wait_for_function(ARTES_PRONTAS)
     imagens = db.execute("select count(*) from radar_imagens").fetchone()[0]
-    aprovar_na_tela(pagina)
+    aprovar_na_tela(pagina, ["pessoas"])
     pagina.wait_for_selector("#recado .erro >> text=Há 1 ponto(s) a resolver antes de aprovar: a lista está na peça.")
     [trava] = pagina.locator("#peca-conferencia .aviso.erro li").all_inner_texts()
     assert trava.startswith("Troque antes de aprovar: “promoção”, “diferente dos outros” na legenda do Instagram; “blinde seu patrimônio” na legenda do "
@@ -6044,15 +6049,15 @@ def test_peca_parada_publicando_cancela_e_nova_aprovacao_pede_conferi_na_rede(pa
     pagina.click("[data-acao=peca-desaprovar]")
     pagina.wait_for_selector("#recado >> text=Aprovação desfeita: a peça voltou a pronta.")
     pagina.wait_for_function(ARTES_PRONTAS)
-    assert pagina.locator("#peca-aprovar .aprovar-conf").evaluate_all("l => l.map(c => c.value)") == ["rede"]
-    aprovar_na_tela(pagina)
+    assert pagina.locator("#peca-aprovar .aprovar-conf").evaluate_all("l => l.map(c => c.value)") == ["pessoas", "rede"]
+    aprovar_na_tela(pagina, ["pessoas"])
     pagina.wait_for_selector("#recado .erro >> text=Marque antes: “Conferi no Instagram e no Facebook: não saiu”")
     assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "pronta"
     pagina.check("#peca-aprovar .aprovar-conf[value=rede]")
     limpar_recados(pagina)
     pagina.click("#peca-aprovar [data-acao=peca-aprovar]")
     pagina.wait_for_selector("#recado >> text=Peça aprovada: sai no Instagram em")
-    assert db.execute("select aprovado_conferencias from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == ["rede"]
+    assert db.execute("select aprovado_conferencias from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == ["pessoas", "rede"]
     assert db.execute("select situacao from radar_redes_envios where peca_id = %s order by id", (pid,)).fetchall() == [("cancelado",), ("autorizado",)]
 
 
@@ -6099,12 +6104,15 @@ def test_carrossel_e_reel_a_mao_baixar_e_copiar_so_depois_de_aprovado_e_registra
         assert (situacao, modo, len(artes)) == ("aprovada", "manual", 3)
         assert [d for (d,) in db.execute("select dados from radar_imagens where id = any(%s) order by array_position(%s, id)", (artes, artes)).fetchall()] == telas
         assert db.execute("select count(*) from radar_redes_envios where peca_id = %s", (car,)).fetchone()[0] == 0
-        # baixar as lâminas aprovadas e copiar a legenda
+        # baixar as lâminas aprovadas e copiar a legenda: na página, as lâminas só aparecem depois da conferência do banco (o termo de hoje)
+        assert pg.locator("img.peca-arte-aprovada").count() == 0 and "aparecem em “Baixar as lâminas”" in pg.inner_text("#peca-artes-a-mao")
+        assert pg.evaluate("() => [...document.images].some(i => (i.getAttribute('src') || '').startsWith('data:image/jpeg'))") is False
         pg.click("[data-acao=peca-baixar]")
         pg.wait_for_selector("#peca-baixar a")
         data = data_peca(db, car)
         assert pg.evaluate("() => [...document.querySelectorAll('#peca-baixar a')].map(a => [a.getAttribute('download'), a.getAttribute('href')])") == [
             [f"pauta-{data}-{i}.jpg", telas[i - 1]] for i in (1, 2, 3)]
+        assert pg.evaluate("() => [...document.querySelectorAll('#peca-baixar img.peca-arte-aprovada')].map(i => i.getAttribute('src'))") == telas
         pg.click("[data-acao=peca-copiar-legenda][data-canal=instagram]")
         pg.wait_for_selector("#recado >> text=Legenda do Instagram copiada")
         assert pg.evaluate("navigator.clipboard.readText()") == LEG_PECA
@@ -6137,7 +6145,7 @@ def test_carrossel_e_reel_a_mao_baixar_e_copiar_so_depois_de_aprovado_e_registra
         pg.evaluate("p => { E.pauta.peca = p; return desenhar(); }", reel)
         pg.wait_for_selector(f"form[data-form=peca][data-id='{reel}']")
         assert pg.locator("#peca-artes").count() == 0 and "Reel: sem lâmina" in pg.inner_text("form[data-form=peca]")
-        aprovar_na_tela(pg)
+        aprovar_na_tela(pg, ["pessoas"])
         pg.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão")
         assert db.execute("select situacao, aprovado_modo, artes from radar_pauta_pecas where id = %s", (reel,)).fetchone() == ("aprovada", "manual", [])
         assert pg.locator("[data-acao=peca-baixar]").count() == 0
@@ -6179,6 +6187,7 @@ def test_peca_a_mao_so_nos_canais_aprovados_copia_no_toque_e_desfazer_pede_confe
         pg.click("#peca-aprovar summary")
         pg.uncheck("#peca-aprovar .aprovar-canal[value=facebook]")
         pg.check("#peca-aprovar input[name=aprovar-modo][value=manual]")
+        pg.check("#peca-aprovar .aprovar-conf[value=pessoas]")
         limpar_recados(pg)
         pg.click("#peca-aprovar [data-acao=peca-aprovar]")
         pg.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão")
@@ -6216,14 +6225,15 @@ def test_peca_a_mao_so_nos_canais_aprovados_copia_no_toque_e_desfazer_pede_confe
         assert db.execute("select situacao, aprovado_canais, manual_desfeita_em is not null from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("pronta", [], True)
         pg.wait_for_function(ARTES_PRONTAS)
         assert pg.locator("#peca-aprovar .aprovar-conf").evaluate_all("l => l.map(c => c.value + ': ' + c.dataset.texto)") == \
-            ["rede: Conferi no Instagram e no Facebook: não saiu (nem foi postada à mão)"]
-        aprovar_na_tela(pg)
+            ["pessoas: Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)",
+             "rede: Conferi no Instagram e no Facebook: não saiu (nem foi postada à mão)"]
+        aprovar_na_tela(pg, ["pessoas"])
         pg.wait_for_selector("#recado .erro >> text=Marque antes: “Conferi no Instagram e no Facebook: não saiu (nem foi postada à mão)”")
         pg.check("#peca-aprovar .aprovar-conf[value=rede]")
         limpar_recados(pg)
         pg.click("#peca-aprovar [data-acao=peca-aprovar]")
         pg.wait_for_selector("#recado >> text=Peça aprovada: sai no Instagram e no Facebook em")
-        assert db.execute("select aprovado_conferencias, manual_desfeita_em from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (["rede"], None)
+        assert db.execute("select aprovado_conferencias, manual_desfeita_em from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (["pessoas", "rede"], None)
         assert erros == [], erros
     finally:
         contexto.close()
@@ -6270,6 +6280,76 @@ def test_peca_nao_publicar_neste_canal_com_o_outro_ja_publicado(pagina, pauta):
     pagina.click(f"#peca-aprovada-quadro [data-acao=peca-nao-publicar-canal][data-envio='{fb2}']")
     pagina.wait_for_selector("#recado >> text=Combinado: a peça não vai ao Facebook.")
     assert db.execute("select situacao from radar_redes_envios where id = %s", (fb2,)).fetchone()[0] == "cancelado"
+
+
+def test_peca_aprovada_sem_nenhum_canal_diz_que_nao_vai_sair(pagina, pauta):
+    """v0.21.0: a peça aprovada para a agenda em que o administrador cancelou todos os canais (“Não publicar neste canal”) não vai sair:
+    a semana e a peça dizem isso (não “Aprovada”, nem “Aprovada: sai pela agenda”), com o caminho para publicar."""
+    db = pauta
+    pid, r = peca_aprovada(db, dias=3, canais=("instagram", "facebook"))
+    data = data_peca(db, pid)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, data)
+    for k in ("instagram", "facebook"):
+        limpar_recados(pagina)
+        pagina.click(f"#peca-aprovada-quadro [data-acao=peca-nao-publicar-canal][data-envio='{r['envios'][k]}']")
+        pagina.wait_for_selector(f"#recado >> text=Combinado: a peça não vai ao {'Instagram' if k == 'instagram' else 'Facebook'}.")
+    assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "aprovada"
+    assert pagina.inner_text("#peca-situacao") == "Aprovada, sem canal (não vai sair)"
+    assert pagina.inner_text("#peca-aprovada-quadro h2") == "Aprovada, sem canal: não vai sair"
+    assert "Para publicar, use Desfazer aprovação e aprove de novo." in pagina.inner_text("#peca-sem-canal")
+    pagina.click("text=← Voltar para a semana")
+    pagina.wait_for_selector(".pauta-semana")
+    assert "Aprovada, sem canal (não vai sair)" in pagina.inner_text(f".pauta-dia[data-peca='{pid}'] .selos")
+
+
+def test_peca_lista_da_agenda_na_arte_passa_pelos_termos(pagina, pauta):
+    """v0.21.0: na Agenda da semana em Imagem 4:5, a lista desenhada na lâmina (a informação de cada conferida) vai ao ar: o termo que a
+    publicidade contábil não usa, escrito nela, trava como na legenda, dizendo a linha."""
+    db = pauta
+    conferidas = [{"informacao": "10/11 (ter) · ICMS", "fonte": "Agenda Tributária da Receita Federal"},
+                  {"informacao": "12/11 (qui) · Consultoria grátis, promoção imperdível", "fonte": "Agenda Tributária da Receita Federal"}]
+    pid = peca_db(db, "2026-11-08", "agenda", "imagem", chamada="Agenda da semana", legenda_instagram=LEG_PECA, conferidas=conferidas)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-08")
+    pagina.click("[data-acao=peca-conferir]")
+    pagina.wait_for_selector("#peca-conferencia h3")
+    lista = pagina.locator("#peca-conferencia .aviso.erro li").all_inner_texts()
+    assert any(x.startswith("Troque antes de aprovar: “grátis”, “promoção”, “imperdível” na linha 2 da agenda (na arte).") for x in lista), lista
+
+
+def test_peca_aprovada_laminas_e_fotos_so_para_quem_edita_e_com_o_termo_valendo(pagina, pauta):
+    """v0.21.0: a arte aprovada (a lâmina com a foto e a linha “Nome, contadora · CRC…”) e as fotos são a equipe: o leitor não as vê (nem
+    pela tela nem pelo banco), como não vê as pessoas. Para quem edita, a lâmina da peça agendada some quando o termo de uso de imagem de
+    alguém deixa de valer no dia da peça."""
+    db = pauta
+    ana = nova_pessoa(db, "Ana Teste", "Ana", categoria="contadora", crc="CRC-SC 012345/O-5")
+    foto = foto_jpeg(db)
+    pid, r = peca_aprovada(db, dias=3, tipo="quem_cuida", formato="foto", pessoas=[ana], fotos=[foto])
+    data = data_peca(db, pid)
+    arte, lamina = db.execute("select i.id, i.dados from radar_imagens i join radar_pauta_pecas p on i.id = p.artes[1] where p.id = %s", (pid,)).fetchone()
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, data)
+    pagina.wait_for_selector("#peca-situacao")
+    assert pagina.evaluate("() => [...document.images].filter(i => (i.getAttribute('src') || '').startsWith('data:')).length") == 0
+    assert pagina.locator("#peca-artes-aprovadas, #peca-fotos-lista, #peca-fotos-na-arte").count() == 0
+    assert pagina.evaluate("ids => ler('radar_imagens', {select: 'id', id: 'in.(' + ids.join(',') + ')'})", [foto, arte]) == []      # nem pelo banco
+    # e a tela não as mostraria a quem não edita, mesmo que o banco as entregasse
+    assert pagina.evaluate("""() => { E.pauta.aprovadas = ['data:image/jpeg;base64,AAAA']; E.pauta.termoFalha = false;
+        return blocoArtePeca({formato: 'foto', situacao: 'aprovada', aprovado_modo: 'agendar'}, false); }""") == ""
+    sair_e_entrar(pagina, "editora@artecon.test")
+    abrir_peca(pagina, pid, data)
+    pagina.wait_for_selector("#peca-artes-aprovadas img")
+    assert pagina.get_attribute("#peca-artes-aprovadas img", "src") == lamina
+    assert pagina.inner_text("#peca-fotos-na-arte") == "1 foto(s), na arte aprovada." and pagina.locator("#peca-fotos-lista").count() == 0
+    db.execute("update radar_pessoas set termo_revogado_em = %s where id = %s", (data, ana))
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#peca-artes-escondidas")
+    assert "o termo de uso de imagem de uma pessoa da peça não vale no dia da peça" in pagina.inner_text("#peca-artes-escondidas")
+    assert pagina.locator("img.peca-arte-aprovada").count() == 0
 
 def test_peca_gerar_com_ia_troca_pessoa_e_mostra_o_que_falta(pagina, pauta):
     """v0.21.0 (etapa 9): “Gerar com IA” na peça pede a peça salva, chama a função radar-ia (ação “peca”, sem assunto, com a versão da

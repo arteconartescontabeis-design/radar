@@ -22,12 +22,12 @@
 //                  e do Facebook e os cartões do carrossel, a partir do plano e das informações conferidas; grava em radar_pauta_pecas.ia
 //                  (só sugestão: o que vai ao ar é o que o administrador aprova)
 //
-// v0.21.0 — ação "peca": sem assunto (a peça é da Pauta); conta no consumo como "gerar". Nenhum nome vai à IA: as pessoas marcadas
-//   viram {PESSOA1}, {PESSOA2}… e qualquer outro nome de pessoa (cadastrada ou do "quem aparece" do plano) vira "uma pessoa da equipe",
-//   também nas informações conferidas; da pessoa vão só a área e a categoria (com ou sem registro no CRC), nunca o número do CRC. O fato
-//   que a IA escreve e que não está nas informações conferidas fica marcado com [VERIFICAR: …] (a peça não fica pronta com a marca). A
-//   lista de termos que a Pauta não publica (TERMOS_PECA) é a mesma da tela (radar-pauta.js). O erro inesperado vai para o log só com o
-//   nome do erro (a mensagem pode trazer dado do pedido).
+// v0.21.0 — ação "peca": sem assunto (a peça é da Pauta); conta no consumo como "gerar". Os nomes da equipe não vão à IA: as marcadas
+//   viram {PESSOA1}, {PESSOA2}… e qualquer outro nome de pessoa (cadastrada ou do "quem aparece" de qualquer peça do calendário) vira
+//   "uma pessoa da equipe", também nas informações conferidas; da pessoa vão só a área e a categoria (com ou sem registro no CRC),
+//   nunca o número do CRC. O fato que a IA escreve e que não está nas informações conferidas fica marcado com [VERIFICAR: …] (a peça
+//   não fica pronta com a marca). A lista de termos que a Pauta não publica (TERMOS_PECA) é a mesma da tela (radar-pauta.js). O erro
+//   inesperado vai para o log só com o nome do erro (a mensagem pode trazer dado do pedido).
 //
 // v0.20.0 — ação "kit": o kit sai do texto final, num pedido próprio (até 4.000 tokens), e conta no consumo como "gerar"; leva à IA
 //   só o título e o texto da Artecon, nunca o texto oficial nem o boletim pago (a comparação com eles é feita aqui, na memória).
@@ -1346,15 +1346,20 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
 // A sugestão de uma peça das redes da Pauta (aba Pauta → peça → "Gerar com IA"): chamada e apoio da arte, legendas do Instagram e do
 // Facebook e os cartões do carrossel, a partir do plano da peça (tipo, formato, assunto, objetivo e observação: só o tema) e das
 // informações conferidas (os únicos fatos que valem). É sugestão: fica em radar_pauta_pecas.ia, que não muda a versão da peça nem entra
-// na trilha; o que vai ao ar é o que o administrador aprova. Nenhum nome de pessoa vai à IA (mascararNomes), nem foto, CNPJ, CRC, link,
-// captura ou boletim. A identificação legal e as hashtags fixas são acrescentadas pela tela.
+// na trilha; o que vai ao ar é o que o administrador aprova. Os nomes da equipe (cadastrados ou no "quem aparece" de qualquer peça) não
+// vão à IA (mascararNomes), nem foto, CNPJ, CRC, link, captura ou boletim. A identificação legal e as hashtags fixas são acrescentadas
+// pela tela.
 
 // v0.21.0: termos que a Pauta não publica (a peça fala da Artecon, não é notícia). A mesma lista, e a mesma função, está na tela
 // (radar-pauta.js), que trava a aprovação e a cópia com eles; aqui viram aviso da sugestão. Mantenha as duas iguais
 // (testes/test_radar_publicidade.py confere o texto, da lista até o fim de termosPeca).
 const TERMOS_PECA = [
   ["mercantilização", "gr[áa]tis|gratuit[oa]s?|de gra[çc]a|sem custo|cortesias?|vale-brindes?|brindes?|ganhe|b[ôo]nus|(?:de|um|como) presentes?|" +
-    "descontos?(?! (?:do|de|no|na|em) (?:INSS|IRRF|IR|vale-transporte|sal[áa]rio|folha))(?! simplificado)|promo[çc](?:ão|ões)|ofertas?|" +
+    "descontos?(?! (?:do|de|no|na|em) (?:INSS|IRRF|IR|vale-transporte|sal[áa]rio|folha))(?! simplificado)" +
+    // o desconto da folha, a até uns 40 caracteres de INSS, IRRF, parcela, 13º, folha, salário ou vale-transporte, é informação
+    "(?![^\\n]{0,40}?(?<![\\p{L}\\p{N}])(?:INSS|IRRF|parcelas?|13[º°]|d[ée]cimo terceiro|folha|sal[áa]rios?|vale-transporte|contracheques?|holerites?)(?![\\p{L}\\p{N}]))" +
+    "(?<!(?<![\\p{L}\\p{N}])(?:INSS|IRRF|parcelas?|13[º°]|d[ée]cimo terceiro|folha|sal[áa]rios?|vale-transporte|contracheques?|holerites?)(?![\\p{L}\\p{N}])[^\\n]{0,40}?descontos?)|" +
+    "promo[çc](?:ão|ões)|ofertas?|" +
     "imperd[íi]ve(?:l|is)|por tempo limitado|chance [úu]nica|sorteios?"],
   ["preço", "R\\$\\s?\\d[\\d.,]*[^\\n]{0,30}?(?:honor[áa]rios?|mensalidades?|planos?|pacotes?)|(?:honor[áa]rios?|mensalidades?|planos?|pacotes?|a partir de)[^\\n]{0,30}?R\\$\\s?\\d[\\d.,]*"],
   ["promessa", "garantimos|garante|garantia de(?! emprego)|pague menos|reduza (?:os |seus |os seus )?impostos?|economize|mais lucro|sem multas?|blindagem|" +
@@ -1403,7 +1408,8 @@ const SEM_REGISTRO = "sem registro no CRC: nunca chame de contador(a), técnico(
 // as palavras com maiúscula do "quem aparece" do plano que não são nome de pessoa (as outras, com 3 letras ou mais, são mascaradas) e
 // as partículas dos nomes ("de", "da", "dos"…), que não são nome
 const PALAVRAS_COMUNS = new Set(("equipe todos todas arte foto fotos reel termo contador contadora contadores responsavel artecon quem pessoas " +
-  "pessoa socio socia socios socias cliente clientes departamento pessoal fiscal contabil financeiro tecnico tecnica nenhum nenhuma ninguem").split(" "));
+  "pessoa socio socia socios socias cliente clientes departamento pessoal fiscal contabil financeiro tecnico tecnica nenhum nenhuma ninguem " +
+  "societario institucional setor").split(" "));
 const PARTICULAS = new Set("de da do das dos e del della der van von di du".split(" "));
 const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 // v0.21.0: cada letra sem acento casa também com as acentuadas (o texto chega em NFC: "Marcia", "MÁRCIA" e "Márcia" são o mesmo nome)
@@ -1411,10 +1417,11 @@ const VARIANTES: Record<string, string> = { a: "aàáâãäå", e: "eèéêë", 
 const semDiferencaDeAcento = (t: string) => [...semAcento(t)].map((ch) => VARIANTES[ch] ? `[${VARIANTES[ch]}]` : ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
   .join("").replace(/ /g, "\\s+");
 /** Os nomes que nunca vão à IA: de TODAS as pessoas cadastradas, ativas ou não (o nome completo, o nome na peça e cada palavra deles com
- *  3 letras ou mais) e as palavras com maiúscula do "quem aparece" do plano (menos as comuns). A pessoa marcada na peça vira {PESSOA1},
- *  {PESSOA2}… (na ordem de "pessoas"); qualquer outra, "uma pessoa da equipe". Palavra inteira, sem diferença de maiúsculas nem de acento
- *  (o texto vai para a forma NFC antes: o "á" de um CSV feito no Mac vem em duas partes), com o nome escapado na expressão; numa passada
- *  só, dos mais longos para os mais curtos (o marcador posto não é trocado de novo). */
+ *  3 letras ou mais) e as palavras com maiúscula do "quem aparece" do plano de TODAS as peças (menos as comuns): a pessoa da equipe que
+ *  ainda não foi cadastrada (o termo chega aos poucos) e é citada no assunto de uma peça em que não aparece também fica de fora. A
+ *  pessoa marcada na peça vira {PESSOA1}, {PESSOA2}… (na ordem de "pessoas"); qualquer outra, "uma pessoa da equipe". Palavra inteira,
+ *  sem diferença de maiúsculas nem de acento (o texto vai para a forma NFC antes: o "á" de um CSV feito no Mac vem em duas partes), com o
+ *  nome escapado na expressão; numa passada só, dos mais longos para os mais curtos (o marcador posto não é trocado de novo). */
 function mascararNomes(pessoas: any[], marcadas: number[], quemAparece: unknown): (t: unknown) => string {
   const trocas = new Map<string, string>(), chave = (t: string) => semAcento(normalizarEspacos(t));
   const por = (t: string, troca: string) => { const k = chave(t); if ([...k].length >= 2 && !trocas.has(k)) trocas.set(k, troca); };
@@ -1576,16 +1583,19 @@ async function peca(token: string, reg: Registro, pecaId: unknown, lido: unknown
   if (pago === true) {
     throw new Erro(400, "Há frase igual à do boletim pago (ITC) no plano ou nas informações conferidas: reescreva com palavras próprias e salve antes de gerar (nada foi à IA).");
   }
-  // TODAS as pessoas (os nomes, para mascarar; a categoria e o registro, para a regra da pessoa) e o termo de uso de imagem das marcadas,
-  // como o banco confere no dia da peça (radar_v_pauta_pessoas: o motivo vem sem o nome)
-  const [pessoas, termos] = await Promise.all([
+  // TODAS as pessoas (os nomes, para mascarar; a categoria e o registro, para a regra da pessoa), o "quem aparece" de TODAS as peças (o
+  // nome de quem ainda não foi cadastrado, citado no assunto desta) e o termo de uso de imagem das marcadas, como o banco confere no dia
+  // da peça (radar_v_pauta_pessoas: o motivo vem sem o nome)
+  const [pessoas, quem, termos] = await Promise.all([
     banco(token, "GET", "radar_pessoas?select=id,nome,nome_na_peca,area,categoria,crc&order=id"),
+    banco(token, "GET", "radar_pauta_pecas?select=quem_aparece&quem_aparece=neq.&order=data&limit=1000"),
     marcadas.length ? banco(token, "GET", `radar_v_pauta_pessoas?select=pessoa_id,motivo_instagram,motivo_facebook&peca_id=eq.${pecaId}`) : [],
   ]).catch((e) => { throw semTabelaDaPauta(e); });
   const porId = new Map<number, any>((Array.isArray(pessoas) ? pessoas : []).map((x: any) => [Number(x.id), x]));
   const registro = (x: any) => !!x?.crc && Object.hasOwn(CATEGORIA_PECA, x?.categoria);
   // o que vai à IA: o plano e as conferidas sem nome de pessoa, sem link e sem dado de identificação, dentro dos blocos de dados
-  const mascarar = mascararNomes(Array.isArray(pessoas) ? pessoas : [], marcadas, p.quem_aparece);
+  const mascarar = mascararNomes(Array.isArray(pessoas) ? pessoas : [], marcadas,
+    [p.quem_aparece, ...(Array.isArray(quem) ? quem : []).map((x: any) => x?.quem_aparece)].map((t) => String(t ?? "")).join("\n"));
   const dado = (v: unknown, max = 600) => semMarcasDeBloco(normalizarEspacos(mascarar(semLinkNemDado(v)))).slice(0, max) || "—";
   const agenda = p.tipo === "agenda", comFoto = p.formato === "foto" || p.formato === "carrossel_fotos";
   const cartoes = !agenda && (p.formato === "carrossel" || p.formato === "carrossel_fotos");

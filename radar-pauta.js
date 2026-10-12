@@ -66,10 +66,12 @@ function depoisDeDesenharPauta(){
   if(typeof montarArtesPeca === "function") montarArtesPeca();
 }
 
-/* "Publicada" não é situação gravada: sai dos envios (radar_redes_envios) e do registro manual; o resto é a situação da peça */
+/* "Publicada" não é situação gravada: sai dos envios (radar_redes_envios) e do registro manual; o resto é a situação da peça. A aprovada
+   para a agenda com todos os canais em "Não publicar neste canal" não vai sair: o selo diz isso (não é "Aprovada") */
 function seloPeca(p){
   const envios = (p.radar_redes_envios || []).filter(e => e.situacao !== "cancelado"), tem = s => envios.some(e => e.situacao === s);
   if(p.situacao === "cancelada") return selo("Cancelada", "neutro");
+  if(p.situacao === "aprovada" && p.aprovado_modo === "agendar" && !envios.length) return selo("Aprovada, sem canal (não vai sair)", "alerta");
   if(p.publicado_manual_em || (envios.length && envios.every(e => e.situacao === "publicado"))) return selo("Publicada", "ok");
   if(tem("erro")) return selo("Não saiu", "erro");
   if(tem("enviando")) return selo("Publicando", "alerta");
@@ -275,15 +277,17 @@ async function telaPeca(id){
   const [p] = await ler("radar_pauta_pecas", {select:"*,radar_redes_envios(id,canal,situacao,agendado_para,enviado_em,erro,url,publicado_em,post_id)", id:"eq." + id});
   if(!p) return `<button class="voltar" data-acao="voltar">← Voltar para a semana</button><div class="aviso erro">Peça não encontrada.</div>`;
   const ed = podeEditar(), travada = ["aprovada", "cancelada"].includes(p.situacao);
-  // as fotos e as lâminas aprovadas (as imagens que vão ao ar); as pessoas com a categoria e o CRC (a linha da pessoa na arte)
+  // as fotos (para preparar a peça: na aprovada, elas estão na arte) e as lâminas aprovadas (as imagens que vão ao ar), só para quem
+  // edita: são a equipe, como as pessoas, que o leitor não vê; as pessoas com a categoria e o CRC (a linha da pessoa na arte)
   const [fotos, pessoas, termos, artes] = await Promise.all([
-    p.fotos.length ? ler("radar_imagens", {select:"id,dados", id:"in.(" + p.fotos.join(",") + ")"}) : [],
+    ed && p.fotos.length && p.situacao !== "aprovada" ? ler("radar_imagens", {select:"id,dados", id:"in.(" + p.fotos.join(",") + ")"}) : [],
     ed ? ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo", order:"nome_na_peca,id"}) : [],
     ed && p.pessoas.length ? ler("radar_v_pauta_pessoas", {select:"pessoa_id,motivo_instagram,motivo_facebook", peca_id:"eq." + p.id}) : [],
-    p.artes.length ? ler("radar_imagens", {select:"id,dados", id:"in.(" + p.artes.join(",") + ")"}) : []]);
+    ed && p.artes.length ? ler("radar_imagens", {select:"id,dados", id:"in.(" + p.artes.join(",") + ")"}) : []]);
   E.pauta.fotos = Object.fromEntries(fotos.map(x => [x.id, x.dados]));
   E.pauta.pessoas = Object.fromEntries(pessoas.map(x => [x.id, x]));
   E.pauta.aprovadas = p.artes.map(a => artes.find(x => x.id === a)?.dados || "");
+  E.pauta.termoFalha = termos.some(t => t.motivo_instagram || t.motivo_facebook);   // o termo de alguém não vale no dia da peça
   E.pauta.aberta = {id:p.id, data:p.data, hora:String(p.hora).slice(0, 5), tipo:p.tipo, formato:p.formato, roteiro:p.roteiro, artes:p.artes,
     arte_identificacao:p.arte_identificacao, aprovado_em:p.aprovado_em};
   E.pauta.ia = p.ia && typeof p.ia === "object" && !Array.isArray(p.ia) ? p.ia : null;       // a sugestão da IA (Gerar com IA), só para quem edita
@@ -314,7 +318,8 @@ async function telaPeca(id){
         <div><label for="peca-hora">Hora (de Brasília)</label><input id="peca-hora" type="time" name="hora" required value="${h(String(p.hora).slice(0, 5))}"${desAr}></div>
         <div><label for="peca-tipo">Tipo</label><select id="peca-tipo" name="tipo" class="peca-arte-campo"${desAr}>${opcoes(TIPOS_PAUTA, p.tipo)}</select></div>
         <div><label for="peca-formato">Formato</label><select id="peca-formato" name="formato" class="peca-arte-campo"${desAr}>${opcoes(FORMATOS_PAUTA, p.formato)}</select></div></div>` : ""}
-      ${comFotos && vaiAoAr ? `<h3>Fotos</h3><div class="peca-fotos" id="peca-fotos-lista">${listaFotosPeca(p.fotos, ed && !travada)}</div>
+      ${comFotos && vaiAoAr && ed && p.situacao === "aprovada" ? `<h3>Fotos</h3><p class="sub" id="peca-fotos-na-arte">${p.fotos.length} foto(s), na arte aprovada.</p>` : ""}
+      ${comFotos && vaiAoAr && ed && p.situacao !== "aprovada" ? `<h3>Fotos</h3><div class="peca-fotos" id="peca-fotos-lista">${listaFotosPeca(p.fotos, ed && !travada)}</div>
         ${desAr ? "" : `<label for="peca-foto-arquivo">Enviar fotos</label><div class="acoes" style="margin-top:0"><input id="peca-foto-arquivo" type="file" accept="image/jpeg,image/png,image/webp" multiple data-foto-peca="${p.id}">
           <span class="sub" id="peca-fotos-andamento" role="status" aria-live="polite"></span></div>
           <p class="sub">JPG, PNG ou WebP, até 10 por peça. Cada foto vai em 1080×1350 (4:5), cortada no centro, uma de cada vez; a localização (GPS) da foto não vai junto. Foto do iPhone: “Mais compatível” (JPG), não HEIC.</p>`}` : ""}
@@ -478,7 +483,7 @@ function blocoIaPeca(p, travada){
   const o = p.tipo === "agenda" ? "as legendas da agenda (a lista de vencimentos vai na arte)"
     : "a chamada e o apoio da arte" + (["carrossel", "carrossel_fotos"].includes(p.formato) ? ", as legendas e os cartões" : " e as legendas");
   return `<div class="peca-ia" id="peca-ia"><h3>Gerar com IA</h3>
-    <p class="sub">A IA sugere ${o}, a partir do plano e das informações conferidas da peça salva. Nenhum nome vai à IA: a pessoa marcada vai como {PESSOA1}, e aqui aparece o nome na peça. O fato que não estiver nas informações conferidas vem marcado com [VERIFICAR].</p>
+    <p class="sub">A IA sugere ${o}, a partir do plano e das informações conferidas da peça salva. Os nomes da equipe não vão à IA: a pessoa marcada vai como {PESSOA1}, e aqui aparece o nome na peça; não escreva no plano o nome de quem não está cadastrado nem no “quem aparece” do calendário. O fato que não estiver nas informações conferidas vem marcado com [VERIFICAR].</p>
     <div class="acoes"><button class="btn sec" type="button" data-acao="peca-ia">Gerar com IA</button></div>
     <div id="peca-sugestao">${blocoSugestaoPeca(E.pauta.ia, {pessoas:p.pessoas, tipo:p.tipo, formato:p.formato})}</div></div>`;
 }
@@ -678,13 +683,20 @@ function laminasPeca(d){
 const NOME_CORTE_PECA = {titulo:"o título", texto:"o texto", lista:"parte da agenda", pessoas:"a linha da pessoa", identificacao:"a identificação legal"};
 const msgCortePeca = (n, cortes) => `Lâmina ${n}: ${cortes.map(k => NOME_CORTE_PECA[k] || k).join(" e ")} não ${cortes.length > 1 ? "couberam" : "coube"} e ` +
   `${cortes.length > 1 ? "saíram cortados" : "saiu cortado"} (termina em “…”)${cortes.includes("identificacao") ? ": encurte a identificação em Configurações → Assinatura" : ": encurte o texto"}.`;
-/* A arte na tela da peça: na aprovada, as lâminas aprovadas (as imagens que vão ao ar, para todos); para quem prepara, a prévia ao vivo
-   (montarArtesPeca, depois de desenhar a tela e 400 ms depois da última tecla). O leitor vê só as aprovadas. */
+/* A arte na tela da peça: na aprovada para a agenda, as lâminas aprovadas (as imagens que vão ao ar), para quem edita e só se o termo de
+   uso de imagem de cada pessoa vale no dia da peça; na aprovada à mão, elas aparecem em "Baixar as lâminas", depois que o banco confere
+   o termo de hoje (na página, seriam uma cópia pronta para postar sem essa conferência); para quem prepara, a prévia ao vivo
+   (montarArtesPeca, depois de desenhar a tela e 400 ms depois da última tecla). O leitor não vê foto nem lâmina, como não vê as pessoas. */
 function blocoArtePeca(p, ed){
   if(p.formato === "reel") return `<h3>Arte</h3><p class="sub">Reel: sem lâmina. O vídeo é gravado com o roteiro e postado à mão; o último quadro leva a identificação legal.</p>`;
   const lista = E.pauta.aprovadas || [];
-  if(p.situacao === "aprovada") return lista.length ? `<h3>Arte aprovada</h3><div class="peca-artes" id="peca-artes-aprovadas">${lista.map((d, i) =>
-      `<figure><img class="peca-arte-aprovada" src="${h(d)}" alt="Lâmina aprovada ${i + 1} de ${lista.length}"><figcaption class="sub">${lista.length > 1 ? `Lâmina ${i + 1} de ${lista.length}` : "A arte aprovada"}</figcaption></figure>`).join("")}</div>` : "";
+  if(p.situacao === "aprovada" && (!ed || !lista.length)) return "";
+  if(p.situacao === "aprovada" && p.aprovado_modo === "manual")
+    return `<h3>Arte aprovada</h3><p class="sub" id="peca-artes-a-mao">${lista.length > 1 ? `As ${lista.length} lâminas aprovadas aparecem` : "A lâmina aprovada aparece"} em “Baixar as lâminas”, depois que o banco confere o termo de uso de imagem de cada pessoa no dia de hoje.</p>`;
+  if(p.situacao === "aprovada" && E.pauta.termoFalha)
+    return `<h3>Arte aprovada</h3><div class="aviso alerta" id="peca-artes-escondidas">As lâminas não aparecem: o termo de uso de imagem de uma pessoa da peça não vale no dia da peça (Pauta → Pessoas e termos).</div>`;
+  if(p.situacao === "aprovada") return `<h3>Arte aprovada</h3><div class="peca-artes" id="peca-artes-aprovadas">${lista.map((d, i) =>
+      `<figure><img class="peca-arte-aprovada" src="${h(d)}" alt="Lâmina aprovada ${i + 1} de ${lista.length}"><figcaption class="sub">${lista.length > 1 ? `Lâmina ${i + 1} de ${lista.length}` : "A arte aprovada"}</figcaption></figure>`).join("")}</div>`;
   if(!ed || p.situacao === "cancelada") return "";
   return `<h3>Arte</h3><p class="sub">A prévia das lâminas em 1080×1350, redesenhada a cada mudança (salva ou não). O que se aprova é exatamente o que aparece aqui.</p>
     <div class="peca-artes" id="peca-artes"></div><div id="peca-artes-avisos"></div>`;
@@ -740,11 +752,16 @@ async function artesDaTela(){
 /* Na Pauta (a peça fala da Artecon, não é notícia), todos estes termos TRAVAM a aprovação e a cópia, além das travas da lista
    compartilhada (TERMOS_PUBLICIDADE): mercantilização, preço, promessa, superlativo, comparação, medo e outros (a lista do plano de
    publicações, regras legais, seção 10; a confirmar com o contador responsável). A palavra que também é termo técnico da contabilidade
-   fica de fora só no sentido técnico: “desconto do INSS”, “desconto simplificado”, “garantia de emprego”, “mês de referência”, “fórmula
-   de cálculo”. A mesma lista vai na função radar-ia (Gerar com IA da peça): mantenha as duas iguais. */
+   fica de fora só no sentido técnico: “desconto do INSS”, “desconto simplificado”, o desconto perto de INSS, IRRF, parcela, 13º, folha,
+   salário ou vale-transporte (“a 1ª parcela não tem esses descontos”), “garantia de emprego”, “mês de referência”, “fórmula de
+   cálculo”. A mesma lista vai na função radar-ia (Gerar com IA da peça): mantenha as duas iguais. */
 const TERMOS_PECA = [
   ["mercantilização", "gr[áa]tis|gratuit[oa]s?|de gra[çc]a|sem custo|cortesias?|vale-brindes?|brindes?|ganhe|b[ôo]nus|(?:de|um|como) presentes?|" +
-    "descontos?(?! (?:do|de|no|na|em) (?:INSS|IRRF|IR|vale-transporte|sal[áa]rio|folha))(?! simplificado)|promo[çc](?:ão|ões)|ofertas?|" +
+    "descontos?(?! (?:do|de|no|na|em) (?:INSS|IRRF|IR|vale-transporte|sal[áa]rio|folha))(?! simplificado)" +
+    // o desconto da folha, a até uns 40 caracteres de INSS, IRRF, parcela, 13º, folha, salário ou vale-transporte, é informação
+    "(?![^\\n]{0,40}?(?<![\\p{L}\\p{N}])(?:INSS|IRRF|parcelas?|13[º°]|d[ée]cimo terceiro|folha|sal[áa]rios?|vale-transporte|contracheques?|holerites?)(?![\\p{L}\\p{N}]))" +
+    "(?<!(?<![\\p{L}\\p{N}])(?:INSS|IRRF|parcelas?|13[º°]|d[ée]cimo terceiro|folha|sal[áa]rios?|vale-transporte|contracheques?|holerites?)(?![\\p{L}\\p{N}])[^\\n]{0,40}?descontos?)|" +
+    "promo[çc](?:ão|ões)|ofertas?|" +
     "imperd[íi]ve(?:l|is)|por tempo limitado|chance [úu]nica|sorteios?"],
   ["preço", "R\\$\\s?\\d[\\d.,]*[^\\n]{0,30}?(?:honor[áa]rios?|mensalidades?|planos?|pacotes?)|(?:honor[áa]rios?|mensalidades?|planos?|pacotes?|a partir de)[^\\n]{0,30}?R\\$\\s?\\d[\\d.,]*"],
   ["promessa", "garantimos|garante|garantia de(?! emprego)|pague menos|reduza (?:os |seus |os seus )?impostos?|economize|mais lucro|sem multas?|blindagem|" +
@@ -770,12 +787,15 @@ const LUGAR_PECA = {instagram:"na legenda do Instagram", facebook:"na legenda do
 const msgTermosPeca = (onde, acao = "aprovar") => `Troque antes de ${acao}: ${onde.map(([lugar, termos]) => `${termos.map(t => `“${t}”`).join(", ")} ${LUGAR_PECA[lugar] || lugar}`).join("; ")}. ` +
   "A publicidade da profissão contábil informa, não vende: sem preço, desconto, brinde ou promoção, sem promessa de resultado ou de economia, " +
   "sem superlativo, sem comparação com outros escritórios ou contadores e sem apelo ao medo. Reescreva e salve.";
-/* Os textos da peça que vão ao ar, com o lugar de cada um (os canais: os que vão, ou os que têm legenda) */
+/* Os textos da peça que vão ao ar, com o lugar de cada um (os canais: os que vão, ou os que têm legenda). Na Agenda da semana em
+   Imagem 4:5, a lista desenhada na lâmina (a informação de cada conferida, como em laminasPeca) também vai ao ar */
 function textosDaPeca(f, canais){
   const v = n => f.elements[n]?.value || "";
+  const naAgenda = (f.elements.tipo?.value || f.dataset.tipo) === "agenda" && (f.elements.formato?.value || f.dataset.formato) === "imagem";
   return [...(canais || ["instagram", "facebook"].filter(k => v("legenda_" + k).trim())).map(k => [k, v("legenda_" + k)]), ["chamada", v("chamada")], ["apoio", v("apoio")],
     ...[...f.querySelectorAll("#peca-cartoes .cartao-linha")].map((l, i) => [`no cartão nº ${i + 1}`,
       (l.querySelector("[name=cartao-titulo]")?.value || "") + "\n" + (l.querySelector("[name=cartao-texto]")?.value || "")]),
+    ...(naAgenda ? [...f.querySelectorAll("#peca-conferidas [name=conf-informacao]")].map((c, i) => [`na linha ${i + 1} da agenda (na arte)`, c.value]) : []),
     ["roteiro", v("roteiro")]].filter(([, t]) => t.trim());
 }
 /* A conferência antes de marcar como pronta e de aprovar (a peça salva): a lista do banco (radar_pauta_conferir: travam) e o que só a
@@ -817,7 +837,8 @@ function blocoAprovar(p){
   // um envio caiu no meio (pode ter saído) ou a aprovação à mão foi desfeita (pode ter sido postada): o administrador confere na rede
   const caiu = (p.radar_redes_envios || []).some(e => e.situacao === "cancelado" && e.enviado_em && !e.post_id), mao = !!p.manual_desfeita_em;
   const caixa = (k, t) => `<label><input type="checkbox" class="aprovar-conf" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`;
-  const caixas = [p.pessoas.length || p.fotos.length ? caixa("pessoas", "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)") : "",
+  // a das pessoas em toda peça (o banco pede): o nome escrito de um jeito que a conferência não reconhece só quem aprova vê
+  const caixas = [caixa("pessoas", "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)"),
     p.tipo === "agenda" ? caixa("datas", "Conferi as datas da agenda") : "",
     caiu || mao ? caixa("rede", "Conferi no Instagram e no Facebook: não saiu" + (mao && !caiu ? " (nem foi postada à mão)" : "")) : ""].join("");
   return `<details class="painel peca-aprovar" id="peca-aprovar"><summary><b>Aprovar a peça</b></summary>
@@ -852,9 +873,11 @@ function blocoAprovada(p){
   const registrado = ["instagram", "facebook"].filter(k => p["link_" + k]);
   const falta = canais.filter(k => !p["link_" + k]);
   const desde = p.aprovado_em ? new Date(p.aprovado_em).toLocaleDateString("en-CA", {timeZone:"America/Sao_Paulo"}) : "";
-  return `<div class="painel peca-aprovada" id="peca-aprovada-quadro"><h2>${manual ? "Aprovada para publicar à mão" : "Aprovada: sai pela agenda"}</h2>
+  const semCanal = !manual && !envios.length;                      // todos os canais em "Não publicar neste canal": nada vai sair
+  return `<div class="painel peca-aprovada" id="peca-aprovada-quadro"><h2>${manual ? "Aprovada para publicar à mão" : semCanal ? "Aprovada, sem canal: não vai sair" : "Aprovada: sai pela agenda"}</h2>
     <p class="sub">Aprovada em ${h(horaBrasilia(p.aprovado_em))} (Brasília).${manual ? ` ${p.artes.length ? "Baixe as lâminas, copie a legenda" : "Copie a legenda e o roteiro"}, poste ` +
       `no ${canais.map(k => NOME_REDE[k]).join(" e no ")} e registre o link aqui.` : ""}</p>
+    ${semCanal ? `<div class="aviso alerta" id="peca-sem-canal">Nenhum canal vai sair: a publicação de cada canal foi cancelada (Não publicar neste canal). Para publicar, use Desfazer aprovação e aprove de novo.</div>` : ""}
     ${envios.length ? `<ul class="peca-envios">${envios.map(linha).join("")}</ul>` : ""}
     ${adm && !manual && envios.some(e => e.situacao === "autorizado") ? `<div class="acoes"><button class="btn" type="button" data-acao="peca-publicar-agora">Publicar agora</button>
       <span class="sub">Só remarca a hora para agora: confere tudo de novo antes de sair.</span></div>` : ""}
@@ -1141,7 +1164,9 @@ const PAUTA = {
       const dados = artes.map(id => (E.pauta.aprovadas || [])[(a.artes || []).indexOf(id)] || "");
       if(!dados.length || dados.some(d => !/^data:image\/jpeg;base64,/.test(d))) throw new ErroApi("As lâminas aprovadas não foram lidas: recarregue a peça.");
       box.innerHTML = `<p class="sub">Clique em cada lâmina para baixar (na ordem do post):</p><div class="acoes">${dados.map((d, i) =>
-        `<a class="btn peq sec" style="text-decoration:none" download="pauta-${a.data}-${i + 1}.jpg" href="${h(d)}">Lâmina ${i + 1} de ${dados.length}</a>`).join("")}</div>`;
+        `<a class="btn peq sec" style="text-decoration:none" download="pauta-${a.data}-${i + 1}.jpg" href="${h(d)}">Lâmina ${i + 1} de ${dados.length}</a>`).join("")}</div>
+        <div class="peca-artes" id="peca-artes-aprovadas">${dados.map((d, i) => `<figure><img class="peca-arte-aprovada" src="${h(d)}" alt="Lâmina aprovada ${i + 1} de ${dados.length}">
+          <figcaption class="sub">Lâmina ${i + 1} de ${dados.length}</figcaption></figure>`).join("")}</div>`;
       recado("Lâminas liberadas: baixe e poste na ordem.");
     },
     /* À mão: a legenda salva (aprovada) do canal aprovado, depois da conferência do banco e dos termos (como na cópia do kit das redes) */

@@ -174,6 +174,22 @@ def test_chave_anon_do_sql_e_a_do_radar_config():
     assert "service_role" not in texto and not re.search(r"sb_secret_\w", texto)
 
 
+
+def test_teste_do_fim_do_arquivo_roda_sem_trocar_nada(banco_agenda, agenda):
+    """O teste "agenda_teste" do comentário do fim do arquivo (passo 6 da instalação) roda como está, só sem os "--": a chave anon vem
+    do próprio agendamento (cron.job), sem marcador para trocar e sem repetir a chave no arquivo, e a da agenda vem do Vault."""
+    texto = AGENDA.read_text()
+    trecho = texto[texto.index("-- Teste (não publica nada)"):]
+    linhas = re.findall(r"(?m)^--   (.*)$", trecho[:trecho.index("-- Depois de alguns segundos")])
+    assert len(linhas) == 5 and linhas[0].startswith("select net.http_post(") and not re.search(r"<[^>]*>", "\n".join(linhas))
+    with conectar(banco_agenda) as c:
+        c.execute("truncate net.pedidos")
+        c.execute("\n".join(linhas))
+        pedidos = [tuple(r) for r in c.execute("select url, body, headers from net.pedidos order by id").fetchall()]
+    assert pedidos == [(URL, {"acao": "agenda_teste"}, {"Content-Type": "application/json", "Authorization": "Bearer " + chave_anon_do_config(),
+                                                       "x-radar-agenda": agenda})]
+
+
 def test_agenda_roda_de_novo_sem_duplicar_e_reversao_tira_tudo(banco_agenda, agenda, tmp_path):
     r = psql(sem_extensoes(AGENDA.read_text(), tmp_path), banco_agenda)
     assert r.returncode == 0, r.stderr

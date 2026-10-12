@@ -13,6 +13,7 @@ from pg_class c join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\_%'
 order by 1;
 
+drop view if exists public.radar_v_capas;
 drop view if exists public.radar_v_pauta_pessoas;
 drop view if exists public.radar_v_divulgacoes;
 drop view if exists public.radar_v_ia_mes;
@@ -168,10 +169,13 @@ drop function if exists public.radar_rx_termo(text);
 -- v0.21.0: Pauta (peças das redes) e publicação agendada
 drop function if exists public.radar_pauta_hoje();
 drop function if exists public.radar_pauta_normalizar(text);
+drop function if exists public.radar_pauta_sem_acento(text);
+drop function if exists public.radar_pauta_rx_nome(text);
 drop function if exists public.radar_pauta_janela();
 drop function if exists public.radar_pauta_canais(text, text);
 drop function if exists public.radar_pauta_identificacao_falta(text);
 drop function if exists public.radar_pauta_numeros(text);
+drop function if exists public.radar_pauta_numeros_escritos(text);
 drop function if exists public.radar_pauta_numeros_fora(text, text);
 drop function if exists public.radar_pauta_copia_paga(text[]);
 drop function if exists public.radar_pauta_copia_paga_ia(text[]);
