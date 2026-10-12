@@ -1,4 +1,4 @@
-# Radar Artecon — v0.19.0
+# Radar Artecon — v0.20.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,7 +12,45 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
-A v0.19.0 junta a IA num botão só e acelera a publicação:
+A v0.20.0 completa o **"Gerar com IA" para as redes**, dentro das regras da publicidade contábil:
+
+- **Kit das redes:** o "Gerar com IA" ganha a etapa 3, que monta a partir do texto final a **legenda do Instagram**, a do
+  **Facebook**, a **chamada e a linha de apoio da arte** e o **roteiro de um reel** (de 30 a 45 segundos, com a fala e o texto na
+  tela de cada cena, para alguém da equipe gravar). Fica no quadro **"Kit das redes"**, no conteúdo, com "Copiar legenda" e
+  "Copiar roteiro"; **"Gerar kit das redes com IA"** refaz só o kit. As caixas de legenda das redes (passo da trilha, "Publicar em
+  todos" e "Publicar nos canais que faltam") já vêm com o texto do kit. Se o texto mudar depois, o kit fica **desatualizado** e
+  as redes voltam à legenda montada pelo Radar até gerar de novo; se só o título mudar (por exemplo, outro título sugerido pela
+  IA), o kit continua valendo e a tela pede para conferir a chamada da arte. O kit é sugestão: gravá-lo não muda o conteúdo nem
+  derruba autorização, e só vai ao ar o que o administrador autoriza. O reel é gravado e postado à mão. Antes de a notícia
+  estar no site, o "Copiar legenda do Facebook" leva o endereço do site da Artecon no lugar do `{LINK DO SITE}`.
+- **Arte vertical (1080×1350)** para o Instagram e o Facebook: chamada grande, linha de apoio, "Matéria completa em
+  www.artecon.cnt.br" e a faixa legal com a identificação da empresa; o selo "NORMA ESTADUAL · SC" só nas normas estaduais. A
+  chamada, o apoio e o fundo (padrão, ilustração da IA ou imagem de capa) podem ser trocados na hora de publicar. Se a chamada
+  ou o apoio não couberem, a arte corta com "…" e a tela avisa embaixo da imagem e na confirmação.
+- **Identificação legal:** empresa, CNPJ e CRC ficam em Configurações → "Fecho, assinatura e identificação legal" (campos `cnpj`
+  e `crc`, conferidos ao salvar; o CRC sai sempre como "CRC-SC 004064/O-5", com a letra O de originário depois da barra, mesmo
+  que tenha sido escrito "SC-004064/0-5"). Quem os acrescenta à arte e às legendas é o Radar, nunca a IA; enquanto faltarem, sai
+  só o que existe (o nome da empresa) e a tela avisa. A legenda editada na tela antes de preencher ganha a linha nova ao salvar
+  as Configurações, e a legenda sem a linha (apagada à mão) é lembrada na confirmação.
+- **Publicidade da profissão contábil:** a tela aponta os termos que a publicidade contábil evita (lista inicial, a confirmar com
+  o contador responsável: não há no pacote a norma do CFC com a lista). A forma de oferta, de promessa e de convite
+  ("garantimos", "economia garantida", "consulta grátis", "abertura de empresa grátis", "primeiro mês de graça", "ganhe um
+  brinde", "blinde seu patrimônio", "pague menos com a Artecon", "troque de contador") **impede** a publicação da legenda e da
+  arte, e o recado diz onde está o termo (legenda do Instagram, do Facebook, chamada ou apoio da arte); "grátis", "de graça",
+  "pague menos", "blindar o patrimônio", "100%", "o melhor", "definitivo", "brindes", "blindado", "pagar menos imposto" e "troca
+  de contador" pedem confirmação (podem ser fato ou assunto da notícia, como "emissor de NFS-e grátis para o MEI", "quem ganha
+  até R$ 5 mil pague menos", "isenção de 100%" ou "ICMS na distribuição de brindes"). Outras promessas a tela não reconhece:
+  confira sempre o texto. No texto do site é só aviso. Frase do boletim pago (ITC) também não sai, nem na legenda nem na
+  chamada e no apoio da arte, e os botões de copiar do quadro "Kit das redes" seguem as mesmas regras (o reel é postado à mão).
+- **Ilustração opcional:** o "Gerar com IA" e o "Gerar texto com IA" fazem a **capa padrão** da Artecon, sem custo de imagem. A
+  ilustração da IA passa a ser uma ilustração editorial nas cores da marca (não mais foto de banco de imagens) e sai só pelo
+  botão "Gerar ilustração com IA".
+
+Mudam o banco (passa a guardar o kit das redes de cada conteúdo, e a assinatura ganha os campos `cnpj` e `crc`, vazios), a tela
+e a função `radar-ia` (o kit das redes e o pedido novo da ilustração). A função `radar-redes` e os robôs não mudam (continuam na
+v0.19.0).
+
+A v0.19.0 juntou a IA num botão só e acelerou a publicação:
 
 - **"Gerar com IA"** (passo 1 Fonte, quadro do próximo passo e passo 2): sem texto oficial, procura a fonte oficial na internet
   (a busca rápida, de até 1 minuto e meio: se demorar, segue sem ela); com texto oficial, busca o trecho que comprova. Depois
@@ -62,7 +100,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.19.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.20.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -87,7 +125,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.19.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.20.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -124,7 +162,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.19.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.20.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -153,7 +191,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.19.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.20.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -161,7 +199,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.19.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.20.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -177,7 +215,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.19.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.20.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -192,7 +230,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.19.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.20.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -220,7 +258,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.19.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.20.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -232,7 +270,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.19.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.20.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -245,7 +283,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.19.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.20.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -257,7 +295,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.19.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.20.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -269,7 +307,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.19.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.20.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -284,7 +322,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.19.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.20.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -331,8 +369,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.19.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.19.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
+| `sql/radar-setup-v0.20.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.20.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0). |
@@ -383,10 +421,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.19.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.20.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
-   Esperado: 22 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.19.0`).
+   Esperado: 23 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.20.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -627,7 +665,8 @@ sem fonte oficial mostra o motivo e, para o administrador, "Desfazer"); os segui
 
 Todo conteúdo novo (escrito pela equipe ou gerado pela IA) recebe uma capa de 1200 × 630
 no padrão da Artecon — logotipo, faixa, categoria e o título —, desenhada no próprio
-navegador, sem depender de IA. Desde a v0.7.0 a ilustração por IA é uma fotografia realista, pode
+navegador, sem depender de IA. A ilustração por IA é opcional (desde a v0.20.0 o "Gerar com IA" faz a capa padrão) e,
+desde a v0.20.0, é uma ilustração editorial nas cores da marca (da v0.7.0 à v0.19.0 era uma fotografia realista); pode
 ter pessoas (sempre fictícias) e tem um campo opcional para dizer como você quer a imagem; o pedido
 proíbe texto, marca, assinatura, pessoa real e estilo de autor, e a descrição (até 200 caracteres)
 é recusada, antes de gerar e de cobrar, se pedir marca, logotipo, brasão, assinatura de autor,
@@ -936,6 +975,10 @@ A função `radar-redes` publica o que o administrador autorizou nos passos 6 e 
 Sem os segredos, o botão "Autorizar e publicar" grava a autorização e avisa que a Meta ainda não está configurada; depois é
 só usar "Publicar agora" no mesmo passo.
 
+6. **Antes do primeiro post (v0.20.0):** em Configurações → "Fecho, assinatura e identificação legal", preencha `cnpj` e `crc`
+   (o registro da empresa no CRC-SC, como "CRC-SC 004064/O-5", com a letra O depois da barra) e salve: a arte e as legendas levam
+   essa identificação no fim. Confira também o link da bio do Instagram, que deve abrir artecon.cnt.br/news.
+
 ### Concorrentes no Instagram (v0.19.1, opcional)
 
 A função `radar-concorrentes` **só lê**: para uma lista de perfis comerciais (ou de criador) do Instagram de outros
@@ -997,21 +1040,46 @@ repositório, que é público: a rotina diária grava direto no banco.
 
 ## Atualizações futuras
 
+**Da v0.19.0 para a v0.20.0:**
+
+0. A tela nova chega pelo repositório: com esta versão na branch principal do GitHub (repositório `radar`), o GitHub Pages
+   publica em 1 a 2 minutos. Abra o Radar, aperte Ctrl+F5 e confira no rodapé que aparece **Radar v0.20.0** antes de seguir (se
+   ainda aparecer v0.19.0, espere mais um pouco e recarregue).
+1. SQL Editor → execute `sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` mostra `v0.20.0`). Quem usa a
+   função `radar-concorrentes` (v0.19.1, opcional) não precisa rodar de novo o `sql/radar-concorrentes.sql`: o setup devolve o
+   acesso da função que confere a chave (para conferir, faça o teste de conexão do fim do `sql/radar-concorrentes.sql`, com
+   `{"acao": "diagnostico"}`).
+2. Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel pede a função `radar-ia` v0.20.0:
+   Configurações → Inteligência artificial → Testar a IA deve mostrar v0.20.0).
+3. Ctrl+F5 no Radar de novo.
+4. Configurações → "Fecho, assinatura e identificação legal": o SQL já acrescentou `"cnpj": ""` e `"crc": ""` ao texto; escreva
+   entre as aspas o CNPJ (com ou sem pontuação) e o registro da empresa no CRC-SC, com a **letra O** depois da barra (de
+   originário), não o número zero, e salve. No caso da Artecon, o texto completo fica assim:
+   `{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves", "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"}`.
+   Embaixo do campo aparece a linha como vai ao rodapé da arte e ao fim das legendas; confira. Até salvar, a arte e as legendas
+   saem só com o nome da empresa (a tela avisa).
+5. Antes do primeiro post, confira o link da bio do Instagram: ele deve abrir a página de notícias do site,
+   **artecon.cnt.br/news** (a legenda do Instagram termina com "Leia a matéria completa no site (link na bio)").
+
+A função `radar-redes`, os robôs e os segredos não mudam. Sem o SQL, o "Gerar kit das redes com IA" avisa que falta rodar o
+`radar-setup-v0.20.0.sql`; com a função antiga, avisa que ela é de uma versão anterior (o texto e a capa do "Gerar com IA" saem
+do mesmo jeito).
+
 **Da v0.18.0 para a v0.19.0:** (1) Edge Functions → `radar-ia` e `radar-redes` → cole o `index.ts` de cada uma desta versão e
 faça o Deploy ("Verify JWT" ligado nas duas; o painel pede a função `radar-ia` v0.19.0); (2) Supabase → Edge Functions → Secrets →
 `RADAR_GITHUB_TOKEN` (veja "Robô do site na hora"); (3) Ctrl+F5 no Radar. O banco não muda (o `radar-setup-v0.19.0.sql` só
 registra a versão). O robô de rascunhos e o workflow atualizam sozinhos pelo GitHub.
 
-**Da v0.17.0 para a v0.18.0:** (1) SQL Editor → execute `sql/radar-setup-v0.19.0.sql` (ou a atualização rápida do pacote
+**Da v0.17.0 para a v0.18.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.17.0); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel
 pede a função v0.18.0); (3) Ctrl+F5 no Radar. O robô de rascunhos atualiza sozinho pelo GitHub. Segredos não mudam.
 
-**Da v0.16.0 para a v0.17.0:** (1) SQL Editor → execute `sql/radar-setup-v0.19.0.sql` (ou a atualização rápida do pacote
+**Da v0.16.0 para a v0.17.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.16.0); (2) Edge Functions → `radar-redes` → cole o `index.ts` desta versão e faça o Deploy (com
 **Verify JWT ligado**, como já está); (3) Ctrl+F5 no Radar. O robô e o workflow atualizam sozinhos pelo GitHub. Segredos não mudam
 (o robô chama a função `radar-redes` com a mesma chave interna que já usa no banco, RADAR_SUPABASE_SERVICE_KEY).
 
-**Da v0.15.0 para a v0.16.0:** (1) SQL Editor → execute `sql/radar-setup-v0.19.0.sql` (ou a atualização rápida do pacote
+**Da v0.15.0 para a v0.16.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.15.0); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel
 pede a função v0.16.0 para o botão "Revisar com IA"); (3) Ctrl+F5 no Radar. O robô atualiza sozinho pelo GitHub. Segredos não mudam.
 
@@ -1019,11 +1087,11 @@ pede a função v0.16.0 para o botão "Revisar com IA"); (3) Ctrl+F5 no Radar. O
 rápida do pacote zip, que é só a partir da v0.14.3; no fim ela mostra `capturas com fundamentacao lida`, que deve ser "N de N");
 (2) Ctrl+F5 no Radar. Robô, funções e segredos não mudam. De versões anteriores, use o `radar-setup-v0.15.0.sql` inteiro.
 
-**Da v0.11.1 para a v0.12.0:** (1) SQL Editor → execute `sql/radar-setup-v0.19.0.sql` (ou a atualização rápida do pacote
+**Da v0.11.1 para a v0.12.0:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou a atualização rápida do pacote
 zip); (2) Edge Functions → crie a função `radar-itc` com o `index.ts` desta versão (com **Verify JWT desligado**: a função confere
 sozinha quem chama); (3) siga "Boletim da ITC pelo Microsoft Graph"; (4) Ctrl+F5 no Radar.
 
-**Da v0.11.0 para a v0.11.1:** (1) SQL Editor → execute `sql/radar-setup-v0.19.0.sql` (ou o arquivo de atualização rápida
+**Da v0.11.0 para a v0.11.1:** (1) SQL Editor → execute `sql/radar-setup-v0.20.0.sql` (ou o arquivo de atualização rápida
 que vem no pacote zip); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy; (3) Ctrl+F5 no Radar.
 Os workflows e os robôs chegam pelo repositório. Nada de segredo novo.
 
@@ -1032,29 +1100,29 @@ Os workflows e os robôs chegam pelo repositório. Nada de segredo novo.
 capturas da fila com mais de 5 dias passam a "Baixa relevância" (continuam lá; dá para ignorar em lote).
 
 **Da v0.9.0 para a v0.10.0**, nesta ordem: (1) Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.19.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script);
+`sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script);
 (2) Edge Functions → `radar-ia` → cole o `supabase/functions/radar-ia/index.ts` desta versão e faça o Deploy
 (Configurações → Inteligência artificial → Testar deve mostrar a função v0.10.0); (3) a tela e os robôs chegam
 pelo repositório (Ctrl+F5 no Radar). Segredos: `ARTECON_SITE_USUARIO` e `ARTECON_SITE_SENHA` já cadastrados.
 
 **Da v0.8.0 para a v0.9.0:** Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.19.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script).
+`sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script).
 A tela e o robô chegam pelo repositório. A função `radar-ia` não muda. Nada de segredo novo.
 
 **Da v0.7.1 para a v0.8.0:** Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.19.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar a versão) e,
+`sql/radar-setup-v0.20.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar a versão) e,
 se ainda não rodou, `sql/radar-fontes-novas-2026-10.sql`. A tela e o robô chegam pelo repositório.
 A função `radar-ia` não muda. Para o DOU completo (INLABS), veja "Diário Oficial pelo INLABS".
 
 **Da v0.7.0 para a v0.7.1:** Supabase radar-artecon → SQL Editor → cole e execute
-`sql/radar-setup-v0.19.0.sql` inteiro (o nome muda a cada versão) e guarde a evidência (a linha `instalacoes concluidas` mostra
+`sql/radar-setup-v0.20.0.sql` inteiro (o nome muda a cada versão) e guarde a evidência (a linha `instalacoes concluidas` mostra
 a versão do script). O resto já chega pelo repositório: a tela (GitHub Pages; Ctrl+F5 no Radar) e o
 robô (próxima coleta). A função `radar-ia` não muda. Antes do SQL, o robô novo funciona normalmente,
 só sem a limpeza de imagens; os termos com pontuação nas regras só passam a pontuar depois dele.
 
 **Da v0.6.1 para a v0.7.0**, nesta ordem:
 
-1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.19.0.sql`). Guarde a evidência.
+1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.20.0.sql`). Guarde a evidência.
 2. GitHub, repositório `radar` → envie `index.html` e a pasta `robo/` (arquivos novos e alterados:
    `radar_ia.py`, `radar_coletar.py`, `radar_util.py`).
 3. GitHub → abra `.github/workflows/radar-coletar.yml` → lápis (Edit) → substitua o conteúdo pelo
@@ -1073,12 +1141,12 @@ só sem a limpeza de imagens; os termos com pontuação nas regras só passam a 
 `index.html` ao repositório do Radar; (3) siga o Passo 7 (função `radar-ia`, segredo
 `IA_GATEWAY_TOKEN`). Não há SQL novo para o Radar.
 
-**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.19.0.sql` no SQL Editor; (2) envie
+**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.20.0.sql` no SQL Editor; (2) envie
 `index.html` e `informativo.html` ao repositório; (3) cole o `radar-fale-conosco-v0.6.0.json`
 em Configurações → Fale Conosco; (4) se usa a IA, cole de novo o `index.ts` na função
 `radar-ia` e faça o Deploy. O robô não mudou de comportamento (só o número da versão).
 
-Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.19.0.sql` no SQL
+Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.20.0.sql` no SQL
 Editor (ele atualiza sem apagar dados), envie os arquivos novos ao repositório e, se a função de IA
 já estiver instalada, cole de novo o `index.ts`.
 

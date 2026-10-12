@@ -1,12 +1,12 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.19.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
+-- radar-setup-v0.20.0.sql  ·  banco, coletores, telas, IA e Informativo Mensal
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
 -- dados. Cada execução fica registrada em radar_instalacoes com o estado
 -- ANTES e DEPOIS. A última instrução devolve a evidência da instalação.
--- Reversão: radar-reversao-v0.19.0.sql
+-- Reversão: radar-reversao-v0.20.0.sql
 -- =====================================================================
 
 begin;
@@ -32,7 +32,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.19.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.20.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -363,6 +363,17 @@ alter table public.radar_conteudos   add column if not exists ilustracao_id bigi
 alter table public.radar_conteudos   add column if not exists copia_autorizada_em     timestamptz;
 alter table public.radar_conteudos   add column if not exists copia_autorizada_por    uuid references auth.users(id) on delete set null;
 alter table public.radar_conteudos   add column if not exists copia_autorizada_motivo text;
+-- v0.20.0: kit das redes feito pela IA (chamada e apoio da arte, legendas do Instagram e do Facebook, roteiro de reel).
+-- É sugestão: o que vai ao ar é o que o administrador autoriza (radar_redes_envios). Gravar o kit não muda a data do
+-- conteúdo nem derruba autorizações; mudar o texto marca o kit como desatualizado (radar_fn_conteudo_aprovacao).
+alter table public.radar_conteudos add column if not exists kit_ia jsonb not null default '{}'::jsonb;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'radar_conteudos_kit_ia') then
+    alter table public.radar_conteudos add constraint radar_conteudos_kit_ia
+      check (jsonb_typeof(kit_ia) = 'object' and length(kit_ia::text) <= 20000) not valid;
+  end if;
+end $$;
 
 -- v0.10.0: autorização de publicação no site da Artecon. O administrador autoriza na tela do assunto; o robô
 -- (workflow "Radar — publicar no site") cadastra a notícia no painel do site — que publica na hora — e registra o
@@ -390,8 +401,9 @@ create unique index if not exists radar_site_envios_aberto_uk on public.radar_si
   where situacao in ('autorizado','enviando');
 
 -- v0.13.0: publicação no Instagram e no Facebook (API da Meta), sempre depois da autorização do administrador.
--- A tela monta a imagem quadrada (1080×1080, JPEG) e a legenda; o administrador confere e autoriza; a função radar-redes
--- (Supabase) envia a imagem ao armazenamento público, publica e registra o link. "dispensado" = não vai a este canal.
+-- A tela monta a imagem (JPEG; vertical, 1080×1350, desde a v0.20.0) e a legenda; o administrador confere e autoriza;
+-- a função radar-redes (Supabase) envia a imagem ao armazenamento público, publica e registra o link.
+-- "dispensado" = não vai a este canal.
 -- Nunca publica duas vezes: só uma autorização em andamento ou concluída por conteúdo e canal.
 create table if not exists public.radar_redes_envios (
   id               bigint generated always as identity primary key,
@@ -573,7 +585,9 @@ create or replace function public.radar_fn_atualizado_em() returns trigger
 language plpgsql set search_path = public as $$
 begin
   -- marcar ou desmarcar "não vai ao site" não é alteração do texto: a data do conteúdo não muda
-  if tg_table_name = 'radar_conteudos' and (to_jsonb(new) - 'fora_do_site') = (to_jsonb(old) - 'fora_do_site') then
+  -- v0.20.0: gravar o kit das redes (kit_ia) também não: a data é a versão do texto que foi visto e autorizado
+  if tg_table_name = 'radar_conteudos'
+     and (to_jsonb(new) - array['fora_do_site','kit_ia']) = (to_jsonb(old) - array['fora_do_site','kit_ia']) then
     new.atualizado_em := old.atualizado_em;
     return new;
   end if;
@@ -1340,6 +1354,15 @@ begin
     -- ... e cai quando o texto muda (vale para o texto que foi visto)
     if new.corpo is distinct from old.corpo then
       new.copia_autorizada_em := null; new.copia_autorizada_por := null; new.copia_autorizada_motivo := null;
+    end if;
+    -- v0.20.0: o texto mudou e o kit não veio junto: o kit fica marcado como desatualizado (as legendas e o roteiro saem do texto).
+    -- Só o título mudar não marca (escolher outro título sugerido é o passo seguinte ao "Gerar com IA"): o kit guarda o título de
+    -- quando foi feito, e a tela pede para conferir a chamada da arte
+    if new.corpo is distinct from old.corpo
+       and new.kit_ia is not distinct from old.kit_ia and new.kit_ia <> '{}'::jsonb then
+      new.kit_ia := new.kit_ia || '{"desatualizado": true}'::jsonb;
+      -- kit no limite de tamanho (só se escrito à mão): a marca não pode impedir a edição do texto
+      if length(new.kit_ia::text) > 20000 then new.kit_ia := '{"desatualizado": true}'::jsonb; end if;
     end if;
   else
     new.copia_autorizada_em := null; new.copia_autorizada_por := null; new.copia_autorizada_motivo := null;
@@ -3147,6 +3170,14 @@ grant execute on function public.radar_rede_marcar_excluida(bigint, text) to aut
 grant execute on function public.radar_pedir_exclusao_site(bigint) to authenticated;
 grant execute on function public.radar_cancelar_exclusao_site(bigint) to authenticated;
 grant execute on function public.radar_site_exclusao_concluir(bigint, boolean, text) to service_role;
+-- v0.20.0: a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql, v0.19.1, opcional) também perde o acesso no
+-- laço acima: se ela existe, o papel interno volta a executá-la (sem isso, toda chamada com a chave do Vault recebe 401)
+do $$
+begin
+  if to_regprocedure('public.radar_concorrentes_conferir(text)') is not null then
+    execute 'grant execute on function public.radar_concorrentes_conferir(text) to service_role';
+  end if;
+end $$;
 
 -- perfis
 drop policy if exists radar_perfis_sel on public.radar_perfis;
@@ -3275,14 +3306,21 @@ on conflict (slug) do nothing;
 
 
 -- Configurações iniciais (só na PRIMEIRA vez em que cada chave não existe; depois valem as suas)
+-- v0.20.0: "assinatura" leva também "cnpj" e "crc" (identificação legal na arte e na legenda das redes; vazios, a tela
+-- avisa e não inventa). Na instalação que já existe, o administrador acrescenta os dois em Configurações.
 insert into public.radar_config (chave, valor) values
   ('obrigacoes', '[{"nome": "Salário dos Colaboradores (Empregados)", "regra": "quinto_dia_util"}, {"nome": "Salários - Trabalhador Doméstico", "regra": "dia", "dia": 7, "ajuste": "antecipa"}, {"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "ICMS Substituição Tributária", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "Carnê INSS Individual", "regra": "dia", "dia": 15, "ajuste": "posterga"}, {"nome": "FGTS - Fundo de Garantia Por Tempo de Serviço", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "GPS (Empresa)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento Serviço Prestado Cód. 1708)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento de Trabalhador Cód. 0561)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "Simples Doméstico", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "Simples Nacional", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "Honorário contábil", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "PIS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "COFINS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "IPI", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "CSLL - Contribuição Social sobre o Lucro Líquido", "regra": "ultimo_dia_util"}, {"nome": "IRPJ - Imposto de Renda Pessoa Jurídica", "regra": "ultimo_dia_util"}, {"nome": "Imposto de Renda Pessoa Física (Cód. 0190)", "regra": "ultimo_dia_util"}, {"nome": "INSS - Parcelamento p/ Ingresso no Simples Nacional", "regra": "ultimo_dia_util"}, {"nome": "Parcelamentos Federais e Parcelamento Especial", "regra": "ultimo_dia_util"}, {"nome": "PERT – Programa Esp. Regularização Tributária", "regra": "ultimo_dia_util"}, {"nome": "Parcelamento Especial - Simples Nacional", "regra": "ultimo_dia_util"}]'::jsonb),
   ('feriados_extras', '[]'::jsonb),
   ('fale_conosco', '{"setores": [{"nome": "Geral", "rotulo": "Atendimento Geral", "telefones": [{"numero": "48-3242-0530", "whatsapp": true}], "emails": ["artecon@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Contábil", "rotulo": "Setor Contábil", "telefones": [], "emails": ["dc@artecon.cnt.br"], "equipe": [], "responsaveis_rotulo": "Contadores Responsáveis", "responsaveis": []}, {"nome": "Setor Fiscal", "rotulo": "Setor Fiscal", "telefones": [], "emails": ["df@artecon.cnt.br"], "equipe": []}, {"nome": "Departamento Pessoal", "rotulo": "Departamento Pessoal", "telefones": [], "emails": ["rh@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Institucional", "rotulo": "Setor Institucional", "telefones": [], "emails": ["societario@artecon.cnt.br"], "equipe": []}], "observacao": ""}'::jsonb),
-  ('assinatura', '{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves"}'::jsonb),
+  ('assinatura', '{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves", "cnpj": "", "crc": ""}'::jsonb),
   ('rascunhos', '{"ligado": true, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}'::jsonb),
   ('relevancia', '{"limite_alta": 8, "limite_media": 3, "termos": [{"termo": "reforma tributária", "pontos": 5}, {"termo": "IBS", "pontos": 5}, {"termo": "CBS", "pontos": 5}, {"termo": "imposto seletivo", "pontos": 5}, {"termo": "Simples Nacional", "pontos": 5}, {"termo": "MEI", "pontos": 5}, {"termo": "microempreendedor", "pontos": 5}, {"termo": "prorroga", "pontos": 5}, {"termo": "prorrogado", "pontos": 5}, {"termo": "prorrogados", "pontos": 5}, {"termo": "prorrogação", "pontos": 5}, {"termo": "prazo", "pontos": 5}, {"termo": "prazos", "pontos": 5}, {"termo": "lei complementar", "pontos": 5}, {"termo": "transação", "pontos": 5}, {"termo": "parcelamento", "pontos": 5}, {"termo": "regularização", "pontos": 5}, {"termo": "Refis", "pontos": 5}, {"termo": "instrução normativa", "pontos": 4}, {"termo": "vencimento", "pontos": 4}, {"termo": "obrigação acessória", "pontos": 4}, {"termo": "DCTF", "pontos": 4}, {"termo": "DCTFWeb", "pontos": 4}, {"termo": "EFD", "pontos": 4}, {"termo": "ECF", "pontos": 4}, {"termo": "ECD", "pontos": 4}, {"termo": "eSocial", "pontos": 4}, {"termo": "Reinf", "pontos": 4}, {"termo": "imposto de renda", "pontos": 4}, {"termo": "IRPF", "pontos": 4}, {"termo": "IRPJ", "pontos": 4}, {"termo": "CSLL", "pontos": 4}, {"termo": "PIS", "pontos": 4}, {"termo": "Cofins", "pontos": 4}, {"termo": "ICMS", "pontos": 4}, {"termo": "ISS", "pontos": 4}, {"termo": "substituição tributária", "pontos": 4}, {"termo": "DIFAL", "pontos": 4}, {"termo": "NFS-e", "pontos": 4}, {"termo": "NF-e", "pontos": 4}, {"termo": "nota fiscal", "pontos": 4}, {"termo": "FGTS", "pontos": 4}, {"termo": "INSS", "pontos": 4}, {"termo": "contribuição previdenciária", "pontos": 4}, {"termo": "folha de pagamento", "pontos": 4}, {"termo": "desoneração", "pontos": 4}, {"termo": "lucro presumido", "pontos": 4}, {"termo": "lucro real", "pontos": 4}, {"termo": "dividendos", "pontos": 4}, {"termo": "distribuição de lucros", "pontos": 4}, {"termo": "edital", "pontos": 4}, {"termo": "editais", "pontos": 4}, {"termo": "Regularize", "pontos": 4}, {"termo": "exclusão", "pontos": 4}, {"termo": "opção", "pontos": 4}, {"termo": "decreto", "pontos": 3}, {"termo": "medida provisória", "pontos": 3}, {"termo": "alíquota", "pontos": 3}, {"termo": "alíquotas", "pontos": 3}, {"termo": "tabela", "pontos": 3}, {"termo": "CNPJ", "pontos": 3}, {"termo": "contribuinte", "pontos": 3}, {"termo": "contribuintes", "pontos": 3}, {"termo": "empresas", "pontos": 3}, {"termo": "tributária", "pontos": 3}, {"termo": "tributário", "pontos": 3}, {"termo": "tributos", "pontos": 3}, {"termo": "benefício fiscal", "pontos": 3}, {"termo": "TTD", "pontos": 3}, {"termo": "Santa Catarina", "pontos": 3}, {"termo": "salário mínimo", "pontos": 3}, {"termo": "perguntas e respostas", "pontos": 3}, {"termo": "orientação", "pontos": 3}, {"termo": "guia", "pontos": 3}, {"termo": "CGIBS", "pontos": 3}, {"termo": "CGSN", "pontos": 3}, {"termo": "restituição", "pontos": 3}, {"termo": "compensação", "pontos": 3}, {"termo": "crédito", "pontos": 3}, {"termo": "declaração", "pontos": 3}, {"termo": "malha", "pontos": 3}, {"termo": "débitos", "pontos": 3}, {"termo": "dívida ativa", "pontos": 3}, {"termo": "solução de consulta", "pontos": 2}, {"termo": "portaria", "pontos": 2}, {"termo": "resolução", "pontos": 2}, {"termo": "ato DIAT", "pontos": 2}, {"termo": "ato declaratório executivo", "pontos": -3}, {"termo": "apreende", "pontos": -8}, {"termo": "apreensão", "pontos": -8}, {"termo": "apreendidos", "pontos": -8}, {"termo": "apreendidas", "pontos": -8}, {"termo": "contrabando", "pontos": -8}, {"termo": "descaminho", "pontos": -8}, {"termo": "leilão", "pontos": -8}, {"termo": "maconha", "pontos": -8}, {"termo": "cocaína", "pontos": -8}, {"termo": "drogas", "pontos": -8}, {"termo": "haxixe", "pontos": -8}, {"termo": "cigarros", "pontos": -8}, {"termo": "armas", "pontos": -8}, {"termo": "aduana", "pontos": -8}, {"termo": "alfândega", "pontos": -8}, {"termo": "alfandegado", "pontos": -8}, {"termo": "aeroporto", "pontos": -8}, {"termo": "fronteira", "pontos": -8}, {"termo": "concurso", "pontos": -8}, {"termo": "servidores", "pontos": -8}, {"termo": "nomeia", "pontos": -8}, {"termo": "designa", "pontos": -8}, {"termo": "delega", "pontos": -8}, {"termo": "credenciamento", "pontos": -8}, {"termo": "despachante", "pontos": -8}, {"termo": "Instagram", "pontos": -8}, {"termo": "homenagem", "pontos": -8}, {"termo": "prêmio", "pontos": -8}, {"termo": "seminário", "pontos": -8}]}'::jsonb)
 on conflict (chave) do nothing;
+
+-- v0.20.0: na instalação que já existe, a assinatura ganha os campos da identificação legal vazios ("cnpj" e "crc"), para o
+-- administrador só preencher entre as aspas (Configurações). O que já estiver preenchido fica como está.
+update public.radar_config set valor = '{"cnpj": "", "crc": ""}'::jsonb || valor
+ where chave = 'assinatura' and jsonb_typeof(valor) = 'object' and not (valor ? 'cnpj' and valor ? 'crc');
 
 -- v0.9.0: Destaques do DOU (fonte de sql/radar-fontes-novas-2026-10.sql) — só os atos fiscais e as leis, decretos e MPs.
 -- Só troca se o padrão ainda for o original: não desfaz um ajuste feito na tela; sem a fonte, não faz nada.
@@ -3325,7 +3363,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 23 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.19.0).
+-- Esperado: 23 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.20.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

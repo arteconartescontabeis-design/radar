@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.19.0.sql
--- DESFAZ a instalação do radar-setup-v0.19.0.sql.
+-- RADAR ARTECON — radar-reversao-v0.20.0.sql
+-- DESFAZ a instalação do radar-setup-v0.20.0.sql.
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
 -- =====================================================================
@@ -157,6 +157,8 @@ drop function if exists public.radar_base_legal_valida(text[], text);
 drop function if exists public.radar_base_legal_preparar(text);
 drop function if exists public.radar_base_legal_chave(text);
 drop function if exists public.radar_rx_termo(text);
+-- v0.19.1 (opcional): a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql), se foi instalada
+drop function if exists public.radar_concorrentes_conferir(text);
 
 commit;
 

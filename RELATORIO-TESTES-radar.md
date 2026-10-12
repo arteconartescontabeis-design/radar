@@ -1,9 +1,97 @@
-# Radar Artecon — Relatório de testes (v0.7.1)
+# Radar Artecon — Relatório de testes (v0.20.0)
 
-Data: 04/10/2026. Resultado neste ambiente: **348 aprovados, 0 falhas, 61 pulados**. Os pulados são os
-testes de tela que sobem a IA Central de verdade (pacote `ia-central-v1.1.0`, fora deste repositório);
-eles foram executados na v0.7.0 (395 de 395) e não dependem do que mudou aqui. A função `radar-ia`
-e a IA Central não mudaram.
+Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.20.0: **641 aprovados, 0 falhas, 61 pulados**. Os pulados são os testes de tela
+que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`). A função
+`radar-ia` roda de verdade no Deno nos testes da função (`test_radar_funcao_ia.py`). Entre a v0.7.1 e a v0.19.1 este relatório não
+foi atualizado: a seção da v0.20.0 vem logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.20.0 — kit das redes, arte vertical, identificação legal e publicidade contábil
+
+O que foi comprovado:
+
+- **Banco** (`test_radar_banco.py`): gravar o `kit_ia` não muda o `atualizado_em` e não derruba a aprovação nem as autorizações
+  do site e das redes (o `radar_rede_iniciar` continua valendo); mudar o texto marca o kit como desatualizado (o kit vazio não;
+  um kit novo tira a marca; texto e kit gravados juntos não marcam; só o título, autor e fonte não marcam); o kit precisa ser um
+  objeto de até 20.000 caracteres (o que passaria do limite com a marca vira `{"desatualizado": true}`); leitor e anônimo não
+  gravam. O valor inicial da `assinatura` traz `cnpj` e `crc` vazios. Instalação, atualização das versões anteriores e reversão
+  continuam passando.
+- **Função `radar-ia`** (`test_radar_funcao_ia.py`, no Deno): a ação `kit` grava legendas, arte e roteiro e conta no consumo como
+  `gerar`; à IA vão só o título e o texto da Artecon (nem o texto oficial nem o boletim pago; nenhum token), com a regra (12) e
+  até 4.000 tokens; links, linhas com CNPJ, CRC ou telefone e hashtags saem do texto, o `{LINK DO SITE}` fica uma vez no Facebook e
+  o "link na bio" no Instagram; termos da publicidade, número fora do texto e frase do boletim pago viram aviso (do boletim, sem
+  repetir a frase); conteúdo alterado (409), inexistente (404) e texto para análise (400) são recusados; reel fora de 30 a 45 s vira
+  aviso; banco sem a coluna explica que falta o SQL. O pedido da ilustração (à IA Central de mentira, `?acao=imagem`) passa a ser
+  "ilustração editorial" com a paleta da marca, horizontal (1536×1024), com as proibições de sempre, sem "fotografia realista" nem
+  "banco de imagens" e sem o texto oficial. Depois da revisão: "CRC" seguido de ano ("anuidade do CRC 2027", "o CRC em 2026") não
+  sai do texto, só o número de registro, o CNPJ e o telefone, e só eles (a frase fica; a linha que sobra sem frase sai), com aviso;
+  o corte no fim da frase não para em "art." nem em "nº."; o `{LINK DO SITE}` que fica é o da linha "Leia a matéria completa"; o
+  texto na tela encurtado vira aviso; o aviso comprido perde os últimos itens inteiros ("e outros"), nunca um valor pela metade;
+  título, texto e classificação do assunto vão à IA dentro do bloco de dados, com as marcas `<<<`/`>>>` trocadas; e o `deno check`
+  da função passa limpo (o `deno run` dos outros testes não confere tipos).
+- **Termos da publicidade** (`test_radar_publicidade.py`, no Node): a lista é a mesma na tela e na função; trava e aviso; acento
+  na fronteira da palavra; "garantia do crédito" e "melhoria" não casam. Trava só a forma de oferta, de promessa e de convite
+  ("consulta grátis", "primeiro mês de graça", "ganhe um brinde", "blinde seu patrimônio", "pague menos impostos com a Artecon",
+  "troque de contador"); "grátis", "de graça", "pague menos", "blindar o patrimônio", "brindes", "blindados", "troca de contador"
+  e "pagar menos imposto", que podem ser fato ou assunto da notícia ("emissor de NFS-e grátis para o MEI", "quem ganha até R$ 5
+  mil pague menos Imposto de Renda", "holding não serve para blindar o patrimônio"), são aviso (e o "brinde" de "ganhe um brinde"
+  não se repete no aviso).
+- **Telas** (`test_radar_telas.py`, no Chromium):
+  - identificação legal nas Configurações: CNPJ numérico e alfanumérico conferido pelos dígitos verificadores, CRC conferido;
+    vazios, a tela avisa e continua com 6 configurações;
+  - arte vertical de 1080×1350 com a faixa legal só com o que está nas Configurações (sem CNPJ e CRC, só o nome da empresa; nada
+    provisório) e o selo de SC só na norma estadual; os campos da arte (chamada, apoio e fundo) redesenham a imagem nos dois
+    quadros sem deixar a tela "com alteração não salva", e a imagem ainda pendente não é autorizada;
+  - termo de trava na legenda ou na arte impede a publicação (passo da trilha, canais que faltam e "Publicar em todos", na legenda e
+    na chamada da arte); marca [VERIFICAR] na chamada da arte também impede; "100%" e "brindes" vão para a confirmação; frase do
+    boletim pago colada na legenda ou no apoio da arte não sai;
+  - os botões de copiar do quadro "Kit das redes" recusam o kit com termo de trava (o que é copiado vai ao ar à mão); "Gerar kit das
+    redes com IA" pede confirmação antes de trocar as legendas e a arte editadas (recusar não consulta a IA);
+  - a chamada muda com um desenho da arte em andamento: a imagem continua pendente até o desenho novo (a arte antiga não pode ser
+    autorizada); a capa desenhada pelo Radar (1200×630) não é oferecida como fundo da arte; o apoio de reserva não corta a frase
+    em "art. 26";
+  - "Gerar com IA" com a função antiga (o kit é "Ação desconhecida.") ou com o banco sem o SQL da v0.20.0 (503): o rascunho e a capa
+    padrão saem, sem kit, e o recado em amarelo diz o que houve e aponta "Gerar kit das redes com IA";
+  - "Gerar com IA": fundamentar (ou verificar), gerar e kit, com a capa padrão e nenhuma ilustração pedida; "Gerar texto com IA" e
+    o texto para análise também ficam com a capa padrão; a ilustração sai pelo botão do conteúdo;
+  - o quadro "Kit das redes": arte, as duas legendas já montadas (com a fonte, a identificação legal e as hashtags), o roteiro em
+    tabela e os avisos, tudo como texto (HTML vindo da IA não executa); copiar as legendas e o roteiro (área de transferência do
+    navegador); "Gerar kit das redes com IA" grava sem mudar a versão do conteúdo e troca o que estava digitado nas redes pelo kit;
+  - a legenda do kit nas três caixas: `{LINK DO SITE}` só no "Publicar em todos", o link real no passo da trilha e nos canais que
+    faltam; texto longo demais sai do fim do texto, nunca a identificação nem as hashtags (2.000 e 2.200 caracteres); e é a
+    legenda da caixa que vai ao ar;
+  - kit desatualizado (o texto mudou, ou o kit ficou só com `{"desatualizado": true}`): o quadro avisa e as redes voltam à legenda e
+    à arte montadas pelo Radar; gerar de novo pede o texto salvo; quem só lê vê o kit, sem o botão; só o título mudar deixa o kit
+    valendo, com o aviso para conferir a chamada da arte (no quadro do kit e embaixo da imagem);
+  - no celular (375 px), a arte com os campos e o quadro do kit aberto, com a tabela do roteiro, não criam rolagem lateral.
+- **Prova de que os testes pegam o erro:** em cópias temporárias, com erros de propósito, falharam os testes novos do banco (2
+  de 3: o kit fora da exceção da data e sem a marca), da função (5 de 7), da tela da arte e dos termos (5 de 5) e da tela do kit (5
+  de 5; o HTML do roteiro sem escapar e o kit que não limpa o que estava digitado, cada um sozinho, também derrubam o teste). Os
+  arquivos foram restaurados e conferidos. Na rodada de correção da revisão, cada correção foi desfeita sozinha numa cópia e o
+  teste dela falhou: 7 na função (ano do CRC, corte em "art.", link do Facebook, aviso do texto na tela, aviso cortado no meio,
+  marcas do bloco de dados, tipos), 7 na tela (desenho em andamento, capa desenhada como fundo, cópia sem trava, troca sem
+  confirmação, [VERIFICAR] e frase paga na arte, apoio cortado em "art.") e 1 no "Gerar com IA" sem kit.
+
+- **Segunda revisão** (22 pontos; o que foi corrigido tem teste): a legenda editada antes de preencher o CNPJ e o CRC ganha a linha
+  nova ao salvar as Configurações, e a legenda sem a linha vai para a confirmação; só o texto deixa o kit desatualizado (o título
+  mudar deixa o kit valendo, guardado com o título de quando foi feito, e a tela pede para conferir a chamada); CNPJ sem aspas tem
+  mensagem própria; o CRC de SC escrito de outro jeito ("SC-004064/0-5") sai "CRC-SC 004064/O-5", e o formato que não é
+  reconhecido é recusado; a cópia da legenda do Facebook antes do site não leva o `{LINK DO SITE}`; com foto, o apoio tem 3 linhas
+  (faixa da foto de 460 px; 36 px quando 40 não cabe), o que não cabe vira aviso embaixo da imagem e na confirmação, e os campos
+  aceitam o que cabe (90 e 140); a palavra comprida da chamada baixa a letra em vez de sair espremida; a faixa legal fica em 24 px
+  e quebra nos " · "; o fundo que falhou faz o autorizar mostrar o erro; os números fora do texto não contam item de lista nem o
+  ",00"; o quadro do kit abre quando o recado aponta o botão; a trava dos termos ficou só com a forma de oferta, promessa e convite,
+  e o recado diz onde está o termo; o setup devolve à `radar_concorrentes_conferir` (v0.19.1) o acesso do papel interno e a reversão
+  a apaga; o setup acrescenta `cnpj` e `crc` vazios à assinatura que já existe; na função, mais de 8 cenas e cenas descartadas viram
+  aviso, o marcador do link escrito de outro jeito ("[LINK DO SITE]", "{LINK}") vira o de verdade, o número de norma do CRC
+  ("Resolução CRC-SC nº 1.234/2025") não sai do kit, e o pedido do kit vai a 4.000 tokens, com mensagem própria quando é cortado.
+  Cada correção foi desfeita sozinha numa cópia do repositório e o teste dela falhou (29 de 29).
+
+O que não foi testado aqui: os testes de tela que dependem da IA Central de verdade (entre eles, o kit pela função de verdade
+dentro do "Gerar com IA" e a ilustração pedida pela tela; o teste da ilustração foi corrigido para confirmar a senha a partir da
+2ª consulta, como a tela pede desde antes da v0.20.0, mas não rodou aqui — o texto do pedido é conferido no teste da função); a publicação real na Meta (a função `radar-redes` não mudou);
+a arte com a fonte DM Sans (o Google Fonts fica bloqueado nos testes e a arte usou Arial: confira o primeiro post e o recorte da
+grade do Instagram). A lista de termos e os níveis (trava ou aviso) e o formato da linha "empresa · CNPJ … · CRC-SC …" precisam
+da confirmação do dono ou do contador responsável.
 
 ## v0.7.1 — manutenção e conforto
 

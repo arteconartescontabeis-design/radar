@@ -1,7 +1,7 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.19.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.20.0)
 //
-// Nove ações, sempre pedidas por um usuário logado (editor ou administrador):
+// Dez ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
 //   fundamentar  → propõe trechos LITERAIS do texto oficial; só entram os que conferem
 //   gerar        → redige um conteúdo (rascunho), com 3 outras opções de título, e aponta o que precisa ser conferido;
@@ -16,6 +16,14 @@
 //   pagina       → (v0.14.0) traz o texto de uma página oficial (só de órgão público) para a equipe incluir como texto oficial
 //   revisar      → (v0.16.0) corrige num conteúdo só os pontos marcados com [VERIFICAR] e os trechos iguais ao da fonte
 //                  sem a fonte citada; o que ficar sem confirmação vai para os pontos a conferir
+//   kit          → (v0.20.0) monta o kit das redes de um conteúdo já escrito: chamada e apoio da arte, legendas do Instagram e do
+//                  Facebook e roteiro de reel; grava em radar_conteudos.kit_ia (só sugestão: o que vai ao ar é o que o administrador autoriza)
+//
+// v0.20.0 — ação "kit": o kit sai do texto final, num pedido próprio (até 4.000 tokens), e conta no consumo como "gerar"; leva à IA
+//   só o título e o texto da Artecon, nunca o texto oficial nem o boletim pago (a comparação com eles é feita aqui, na memória).
+//   Regra (12) da publicidade contábil e a lista de termos que a tela trava ou avisa (a mesma lista da tela). A identificação legal
+//   (CNPJ, CRC) é acrescentada pela tela, a partir das Configurações, nunca pela IA. A ilustração passa a ser editorial (desenho
+//   plano com as cores da marca), não mais foto de banco de imagens.
 //
 // v0.19.0 — sem texto oficial, a IA escreve um rascunho normal a partir da fonte não oficial, com o aviso no topo (o site continua
 //   exigindo a fundamentação ou o "Publicar mesmo assim"); o texto PARA ANÁLISE só sai com "analise": true. Palavras próprias:
@@ -46,7 +54,7 @@
 // Segredos (Supabase → Edge Functions → Secrets):
 //   IA_GATEWAY_TOKEN               obrigatório: token do aplicativo "radar" na IA Central
 //   IA_GATEWAY_URL                 padrão: https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway
-//   RADAR_IA_MODELO                padrão: claude-sonnet-4-6   (fundamentar e gerar)
+//   RADAR_IA_MODELO                padrão: claude-sonnet-4-6   (fundamentar, gerar e kit)
 //   RADAR_IA_MODELO_RAPIDO         padrão: claude-haiku-4-5    (classificar)
 //   RADAR_IA_MODELO_IMAGEM         padrão: gpt-image-2         (ilustrar)
 //   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês; trava própria do Radar,
@@ -54,7 +62,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.19.0";
+const VERSAO = "0.20.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -386,7 +394,7 @@ async function chamarGateway(reg: Registro, caminho: string, corpo: unknown, mod
 
 /** Pergunta à Anthropic exigindo a resposta no formato do esquema (uso forçado de ferramenta). */
 async function perguntar(reg: Registro, modelo: string, instrucoes: string, entrada: string, nome: string, esquema: unknown,
-                         maxTokens = 4000, tempo = 110_000): Promise<{ json: any }> {
+                         maxTokens = 4000, tempo = 110_000, corte = ""): Promise<{ json: any }> {
   const dados = await chamarGateway(reg, "", {
     model: modelo, max_tokens: maxTokens, system: instrucoes,
     messages: [{ role: "user", content: entrada }],
@@ -397,7 +405,8 @@ async function perguntar(reg: Registro, modelo: string, instrucoes: string, entr
   // v0.16.0: soma — o "gerar" pode fazer uma segunda chamada (a revisão) no mesmo pedido
   reg.uso = { entrada: (reg.uso?.entrada ?? 0) + (Number(u.input_tokens ?? 0) || 0) + (Number(u.cache_creation_input_tokens ?? 0) || 0) + (Number(u.cache_read_input_tokens ?? 0) || 0),
               saida: (reg.uso?.saida ?? 0) + (Number(u.output_tokens ?? 0) || 0), modelo: String(dados.model ?? modelo) };
-  if (dados.stop_reason === "max_tokens") throw new Erro(502, "A resposta da IA veio incompleta (limite de tamanho). Tente de novo; se repetir, o administrador aumenta o tamanho máximo da resposta do Radar em Portal → Consumo de IA.");
+  // "corte": a mensagem de quem pede um teto fixo no código (o kit), que o Portal não muda
+  if (dados.stop_reason === "max_tokens") throw new Erro(502, corte || "A resposta da IA veio incompleta (limite de tamanho). Tente de novo; se repetir, o administrador aumenta o tamanho máximo da resposta do Radar em Portal → Consumo de IA.");
   if (dados.stop_reason === "refusal") throw new Erro(502, "A IA se recusou a responder a este pedido.");
   const bloco = (Array.isArray(dados.content) ? dados.content : []).find((c: any) => c?.type === "tool_use" && c?.name === nome);
   const json = bloco?.input;
@@ -1025,6 +1034,304 @@ async function titulos(token: string, ctx: Awaited<ReturnType<typeof carregar>>,
   return { titulos: lista };
 }
 
+// ------------------------------------------------------------------ kit das redes (v0.20.0)
+// Chamada e apoio da arte, legendas do Instagram e do Facebook e roteiro de reel, feitos a partir do texto FINAL do conteúdo (o
+// título e o texto da Artecon; nunca o texto oficial nem o boletim pago). É sugestão: fica em radar_conteudos.kit_ia, que não muda a
+// versão do conteúdo (atualizado_em) nem derruba autorização; o que vai ao ar é o que o administrador autoriza. A identificação legal
+// (empresa, CNPJ, CRC) é acrescentada pela tela, a partir das Configurações, nunca pela IA.
+const REGRA_PUBLICIDADE = "(12) PUBLICIDADE DA PROFISSÃO CONTÁBIL: informe, não venda. Sem promessa de resultado ou de economia " +
+  "('garantimos', 'resultado garantido', 'pague menos imposto'), sem oferta de vantagem ('grátis', 'de graça', 'ganhe um brinde'), " +
+  "sem promessa de 'blindar' o patrimônio, " +
+  "sem comparação com outros escritórios nem convite para trocar de contador, sem superlativos nem absolutos de propaganda " +
+  "('o melhor', 'o mais completo', '100% seguro', 'solução definitiva') e sem urgência artificial ('corra', 'não perca', 'última chance'); ";
+
+// v0.20.0: termos que a publicidade contábil evita (lista inicial, a confirmar com o contador responsável). "trava" (só a forma de
+// oferta, de promessa e de convite: "consulta grátis", "ganhe um brinde", "blinde seu patrimônio", "pague menos com a Artecon"; a
+// palavra solta que também é fato ou assunto da notícia, como "grátis", "pague menos", "blindar o patrimônio" e "brindes", é aviso):
+// a tela não deixa a legenda nem a arte sair com eles; "aviso": a tela mostra e pede confirmação; aqui, os dois viram aviso do kit.
+// A mesma lista está na tela (index.html): mantenha as duas iguais (testes/test_radar_publicidade.py confere o texto, da lista até
+// o fim de termosPublicidade).
+const TERMOS_PUBLICIDADE = [
+  ["trava", "garantimos|garantia de resultado|resultado garantido|economia garantida"],
+  ["trava", "(?:consultas?|diagn[óo]sticos?|avalia[çc](?:ão|ões)|or[çc]amentos?|abertura(?: de empresas?)?|primeiro mês|mensalidades?) (?:gr[áa]tis|de gra[çc]a)"],
+  ["trava", "ganhe (?:um |uma |o |seu |sua )?brindes?"], ["trava", "blind(?:e|amos) (?:o |a |seu |sua )?(?:patrim[ôo]nio|empresa)"],
+  ["trava", "pague menos(?: \\p{L}+){0,2} (?:com a gente|conosco|com a Artecon|com a nossa ajuda)"], ["trava", "(?:troque|mude) (?:de|o seu|seu) contador"],
+  ["aviso", "100\\s?%|cem por cento"], ["aviso", "(?:o|a|os|as) melhor(?:es)?"], ["aviso", "definitiv[oa]s?|definitivamente"],
+  ["aviso", "gr[áa]tis|de gra[çc]a"], ["aviso", "brindes?"], ["aviso", "blindad[oa]s?|blindagem|blindar (?:o |a |seu |sua )?(?:patrim[ôo]nio|empresa)"],
+  ["aviso", "pague menos|pagar menos imposto"], ["aviso", "troca de contador"]];
+// @ts-ignore (a tela é JavaScript puro: o texto é o mesmo nos dois arquivos, sem os tipos)
+const termosPublicidade = (...textos) => { const t = textos.join("\n"), r = {trava:[], aviso:[]};
+  for(const [n, e] of TERMOS_PUBLICIDADE) for(const m of t.match(new RegExp("(?<![\\p{L}\\p{N}])(?:" + e + ")(?![\\p{L}\\p{N}])", "giu")) || []){
+    const x = m.toLowerCase();       // o aviso que já está dentro de uma trava não repete ("brinde" de "ganhe um brinde": as travas vêm antes)
+    // @ts-ignore (idem: r[n] é a lista "trava" ou "aviso")
+    if(!r[n].includes(x) && !(n === "aviso" && r.trava.some(y => y.includes(x)))) r[n].push(x); }
+  return r; };
+
+const LINK_SITE = "{LINK DO SITE}";                  // o banco troca pelo endereço da matéria quando o site sai (Publicar em todos)
+// o marcador como a IA às vezes escreve ("[LINK DO SITE]", "{LINK}", "{LINK DA MATÉRIA}", "(link da notícia)") vira o "{LINK DO SITE}"
+// de verdade (ou sai, no Instagram): só esse a tela e o banco trocam pelo endereço. "(link na bio)" não é marcador e fica
+const RE_LINK_SITE = /[[{(]\s*link(?:\s+(?:do\s+site|da\s+mat[ée]ria|da\s+not[íi]cia))?\s*[\]})]/gi;
+const FIM_INSTAGRAM = "Leia a matéria completa no site (link na bio).", FIM_FACEBOOK = "Leia a matéria completa: " + LINK_SITE;
+// dado de identificação (número de CNPJ, registro no CRC, telefone): a identificação é da tela, nunca da IA. A palavra "CNPJ" sem
+// número fica ("o CNPJ alfanumérico começa em julho" é notícia), e o CRC só conta com cara de número de registro ("CRC-SC
+// 012345/O-6", "CRC 1SC012345/O-6"): "anuidade do CRC 2027", "o CRC em 2026" e "CRC-SC de 2026" são notícia (o ano não é registro),
+// e a norma do conselho também ("Resolução CRC-SC nº 1.234/2025", "Deliberação CRC-SC nº 0123"): número seguido de "/ano" ou
+// depois de "Resolução", "Deliberação", "Portaria"… não é registro.
+const RE_IDENTIFICACAO = new RegExp(String.raw`(?<![\w.])[0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}\/[0-9A-Z]{4}-\d{2}(?!\d)|CNPJ\D{0,12}\d{14}` +
+  String.raw`|(?<!(?:resolu[çc][ãa]o|delibera[çc][ãa]o|portaria|instru[çc][ãa]o|ato|edital|of[íi]cio|circular|norma)\s+)` +
+  String.raw`\bCRC(?:[\s\/-]*[A-Z]{2}\b)?[\s:nº°.-]*(?:\d?[A-Z]{2}[\s.\/-]*)?(?!(?:19|20)\d{2}(?!\d|\.\d|\/[OPST]\b))\d{1,3}\.?\d{3,}(?:\/[OPST](?:-\d)?\b)?(?!\d|\/\d)` +
+  String.raw`|\(\d{2}\)\s?9?\d{4}[-\s]?\d{4}|(?<!\d)\d{2}[\s-]9?\d{4}-\d{4}(?!\d)`, "i");
+// o dado sai com o rótulo colado a ele ("CNPJ", "Telefone:", "WhatsApp:"); "pelo telefone (48) …" fica "pelo telefone"
+const RE_DADO_IDENTIFICACAO = new RegExp(String.raw`(?:\bCNPJ\b\.?\s*(?:n[º°.]\s*)?:?\s*|\b(?:tel(?:efone)?|fone|celular|whats(?:app)?|contato)\b\.?\s*:\s*)?(?:` +
+  RE_IDENTIFICACAO.source + ")", "gi");
+const RE_HASHTAG = /(?<![\p{L}\p{N}_&#])#[\p{L}\p{N}_]+/gu;
+/** Sem HTML e sem link (http…): o que a IA escreveu, antes de qualquer outra limpeza. */
+const semHtmlNemLink = (t: unknown) => String(t ?? "").replace(/<\/?[a-zA-Z][^<>]*>/g, "").replace(/https?:\/\/\S+/gi, "");
+/** Linha sem o dado de identificação: sai só o dado (com o rótulo); se o que sobra não é uma frase (menos de 5 palavras: a
+ *  "assinatura" que a IA inventou, "Fale conosco:"), a linha sai inteira (null). */
+function semIdentificacao(l: string): string | null {
+  if (!RE_IDENTIFICACAO.test(l)) return l;
+  const resto = l.replace(RE_DADO_IDENTIFICACAO, " ").replace(/\(\s*\)|\[\s*\]/g, " ").replace(/(?:\s*[·|•,;:–—-])+\s*$/, "")
+    .replace(/^\s*(?:[·|•,;:–—-]\s*)+/, "").replace(/\s*([·|•])(?:\s*[·|•])+/g, " $1").replace(/[ \t]+([,.;:!?])/g, "$1");
+  return (resto.match(/\p{L}+/gu) ?? []).length >= 5 ? resto : null;
+}
+/** Texto do kit: sem HTML, sem link, sem dado de identificação e sem "{LINK DO SITE}" (menos no Facebook). */
+const textoKit = (t: unknown, comLink = false) => {
+  const s = semHtmlNemLink(t);
+  return (comLink ? s.replace(RE_LINK_SITE, LINK_SITE) : s.replace(RE_LINK_SITE, "")).split("\n").map(semIdentificacao)
+    .filter((l): l is string => l !== null).map((l) => l.replace(/[ \t\u00a0]+/g, " ").trim())
+    .filter((l) => !/^leia a mat[ée]ria completa\s*:?$/i.test(l))     // o link que a IA pôs saiu e a frase ficou sem ele
+    .join("\n").replace(/\n{3,}/g, "\n\n").trim();
+};
+// "." de abreviatura ("art. 25", "inc. II", "nº. 2.198", "Sr. João") e de item de lista ("1. Revise") não fecha a frase
+const ABREVIATURA = /(?<![\p{L}\p{N}])(?:arts?|incs?|al|n|nº|n°|p|pág|págs|sr|sra|dr|dra)\.$/iu;
+/** Posição do último fim de frase (".", "!" ou "?" seguido de espaço, ou quebra de linha) que cabe em "max" caracteres; -1 se não há. */
+function fimDeFrase(t: string, max: number): number {
+  let fim = -1;
+  for (const m of t.slice(0, max + 1).matchAll(/[.!?](?=[ \n])|\n/g)) {
+    const i = m.index ?? 0;
+    if (i > max - 1) break;
+    if (m[0] !== "\n") {
+      if (/[\p{Ll}\p{N}]/u.test(t.slice(i + 1).trimStart()[0] ?? "")) continue;       // "art. 25", "nº. 2.198": a frase continua
+      if (m[0] === "." && (ABREVIATURA.test(t.slice(Math.max(0, i - 6), i + 1)) || /^\s*\d{1,2}\.$/.test(t.slice(t.lastIndexOf("\n", i) + 1, i + 1)))) continue;
+    }
+    fim = i;
+  }
+  return fim;
+}
+/** Corta no fim de uma frase (ou, se não houver, no fim de uma palavra, com "…") para caber em "max" caracteres. */
+function cortarFrase(t: string, max: number, reticencias = true): string {
+  if (t.length <= max) return t;
+  const fim = fimDeFrase(t, max);
+  if (fim >= max / 2) return t.slice(0, fim + 1).trim();
+  const espaco = t.lastIndexOf(" ", max - 1);
+  return (espaco > 0 ? t.slice(0, espaco) : t.slice(0, max - 1)).replace(/[\s,;:–—-]+$/, "") + (reticencias ? "…" : "");
+}
+const linhaKit = (t: unknown, max: number, reticencias = true) => cortarFrase(normalizarEspacos(textoKit(t)), max, reticencias);
+// mesma regra do tag() da tela (index.html, legendaRede): sem acento, cada palavra com a inicial maiúscula, sem espaço nem símbolo
+const tag = (t: string) => "#" + String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+(.)?/g, (_, l) => (l || "").toUpperCase());
+/** As hashtags da lista e as que a IA pôs no texto, normalizadas, sem repetir (maiúscula ou minúscula) e até "max". */
+function listaHashtags(lista: unknown, doTexto: string[], max: number): string[] {
+  const saida: string[] = [];
+  for (const h of [...(Array.isArray(lista) ? lista : []), ...doTexto]) {
+    const t = tag("#" + String(h ?? "").trim().replace(/^#+/, ""));
+    if (/^#(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{2,40}$/.test(t) && !saida.some((x) => x.toLowerCase() === t.toLowerCase())) saida.push(t);
+  }
+  return saida.slice(0, max);
+}
+const semHashtags = (t: string) => t.replace(RE_HASHTAG, "").split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+const segundos = (v: unknown) => v === null || v === "" || typeof v === "boolean" ? NaN : Math.round(Number(v) * 10) / 10;
+
+/** Arruma o que a IA devolveu: tira HTML, links e identificação; no Instagram, sem "{LINK DO SITE}" e com "link na bio"; no Facebook,
+ *  "{LINK DO SITE}" uma vez; hashtags fora do texto (até 5 e até 2); textos cortados no fim da frase; cenas em ordem, com início
+ *  antes do fim e até 60 s. O que precisa de atenção, sem impedir o kit, volta em "avisos". */
+function limparKit(json: any): { kit: any; avisos: string[] } {
+  const avisos: string[] = [], r = json?.reel ?? {};
+  // a identificação que a IA escreveu sai do texto (quem acrescenta a das Configurações é a tela): o aviso pede para conferir a frase
+  const escritos = [json?.arte?.chamada, json?.arte?.apoio, json?.instagram?.texto, json?.facebook?.texto, r.gancho, r.chamada_final, r.legenda,
+    ...(Array.isArray(r.cenas) ? r.cenas : []).flatMap((c: any) => [c?.fala, c?.texto_tela])];
+  if (escritos.some((t) => RE_IDENTIFICACAO.test(semHtmlNemLink(t)))) {
+    avisos.push("Saiu do kit o número de CNPJ, de registro no CRC ou de telefone que a IA escreveu (a identificação legal entra pela tela, " +
+      "a partir das Configurações): confira se o texto ficou certo.");
+  }
+  const chamadaIA = normalizarEspacos(textoKit(json?.arte?.chamada)).replace(/[.\s]+$/, "");
+  const chamada = cortarFrase(chamadaIA, 70, false).replace(/[.\s]+$/, "");
+  if (chamadaIA.length > 70) avisos.push("A chamada da arte passou de 70 caracteres e foi encurtada: confira.");
+  const apoio = linhaKit(json?.arte?.apoio, 140);
+
+  const igBruto = textoKit(json?.instagram?.texto);
+  const igTexto = cortarFrase(semHashtags(igBruto), 1300);
+  const instagram = { texto: /link na bio/i.test(igTexto) ? igTexto : [cortarFrase(igTexto, 1300 - FIM_INSTAGRAM.length - 2), FIM_INSTAGRAM].filter(Boolean).join("\n\n"),
+                      hashtags: listaHashtags(json?.instagram?.hashtags, igBruto.match(RE_HASHTAG) ?? [], 5) };
+  const primeira = instagram.texto.split("\n")[0];
+  if (primeira.length > 125) avisos.push(`A primeira linha da legenda do Instagram tem ${primeira.length} caracteres: o Instagram mostra só cerca de 125 antes do “mais”; encurte para prender a atenção.`);
+
+  const fbBruto = textoKit(json?.facebook?.texto, true);
+  let fb = semHashtags(fbBruto);
+  // "{LINK DO SITE}" uma vez só: fica o da linha "Leia a matéria completa: …" (sem ela, o primeiro); os outros saem, e a limpeza
+  // de novo tira a linha "Leia a matéria completa:" que tenha ficado sem o link
+  const partes = fb.split(LINK_SITE);
+  if (partes.length > 2) {
+    const fica = Math.max(0, partes.slice(0, -1).map((p) => /leia a mat[ée]ria completa[^\n]*$/i.test(p)).lastIndexOf(true));
+    fb = textoKit(partes.map((p, j) => j === fica ? p + LINK_SITE : p).join(""), true);
+  }
+  fb = cortarFrase(fb, 1100).replace(/\{[^}\n]*$/, "").trim();
+  const facebook = { texto: fb.includes(LINK_SITE) ? fb : [cortarFrase(textoKit(fb), 1100 - FIM_FACEBOOK.length - 2), FIM_FACEBOOK].filter(Boolean).join("\n\n"),
+                     hashtags: listaHashtags(json?.facebook?.hashtags, fbBruto.match(RE_HASHTAG) ?? [], 2) };
+  if (!chamada || !igTexto.replace(/[^\n]*link na bio[^\n]*/gi, "").trim() || !textoKit(fb)) throw new Erro(502, "A IA devolveu o kit incompleto (sem a chamada da arte ou sem as legendas). Tente de novo.");
+
+  const recebidas = Array.isArray(r.cenas) ? r.cenas : [];
+  const aproveitaveis = recebidas
+    .map((c: any) => ({ de: segundos(c?.de), ate: segundos(c?.ate), fala: linhaKit(c?.fala, 300), texto_tela: linhaKit(c?.texto_tela, 42, false),
+                        longo: normalizarEspacos(textoKit(c?.texto_tela)).length > 42 }))
+    .filter((c: any) => c.de >= 0 && c.de < c.ate && c.ate <= 60 && c.fala)
+    .sort((x: any, y: any) => x.de - y.de || x.ate - y.ate);
+  const validas = aproveitaveis.slice(0, 8);
+  const cenas = validas.map(({ longo: _, ...c }: any) => c);
+  const duracao = cenas.length ? Math.max(...cenas.map((c: any) => c.ate)) : 0;
+  const legendaReel = cortarFrase(textoKit(r.legenda), 800);
+  const reel = { gancho: linhaKit(r.gancho, 160), duracao, cenas, chamada_final: linhaKit(r.chamada_final, 160),
+                 legenda: /link na bio/i.test(legendaReel) ? legendaReel : [cortarFrase(legendaReel, 800 - 14), "Link na bio."].filter(Boolean).join("\n\n") };
+  if (!cenas.length) avisos.push("O roteiro do reel veio sem cenas válidas (início e fim em segundos, até 60 s): gere o kit de novo ou escreva as cenas à mão.");
+  else {
+    // o que saiu do roteiro não some calado: quem grava o reel precisa saber que o fim (o que fazer, o prazo) pode ter ficado de fora
+    if (aproveitaveis.length > 8) {
+      avisos.push(`O roteiro veio com ${aproveitaveis.length} cenas; ficaram as 8 primeiras (até ${String(duracao).replace(".", ",")} s): confira o fim do roteiro.`);
+    }
+    const fora = recebidas.length - aproveitaveis.length;
+    if (fora) avisos.push(`${fora} cena(s) do roteiro saíram por não ter fala ou início e fim válidos (em segundos, até 60 s): confira se o roteiro ficou completo.`);
+    if (duracao < 30 || duracao > 45) avisos.push(`O reel tem ${String(duracao).replace(".", ",")} s: o ideal é de 30 a 45 s.`);
+    if (cenas.length < 3) avisos.push(`O roteiro do reel tem só ${cenas.length} cena(s): o ideal é de 3 a 8.`);
+    if (cenas.some((c: any, k: number) => c.de !== (k ? cenas[k - 1].ate : 0))) {
+      avisos.push("As cenas do reel não são contínuas (cada uma começa onde a anterior termina, a partir de 0 s): confira os tempos.");
+    }
+    const longas = cenas.filter((c: any) => c.fala.split(/\s+/).filter(Boolean).length > 3 * (c.ate - c.de))
+      .map((c: any) => `de ${c.de} a ${c.ate} s (${c.fala.split(/\s+/).filter(Boolean).length} palavras em ${Math.round((c.ate - c.de) * 10) / 10} s)`.replace(/\./g, ","));
+    if (longas.length) avisos.push(`Fala longa demais para o tempo da cena (o ideal é até 3 palavras por segundo): ${longas.join("; ")}.`);
+    // o texto na tela é cortado sem "…" (cabe na tela do celular): o corte vira aviso, para ninguém gravar uma frase pela metade
+    const encurtados = validas.filter((c: any) => c.longo).map((c: any) => `de ${c.de} a ${c.ate} s`.replace(/\./g, ","));
+    if (encurtados.length) avisos.push(`Texto na tela com mais de 42 caracteres, encurtado ${encurtados.length > 1 ? "nas cenas" : "na cena"} ${encurtados.join("; ")}: confira se o sentido ficou.`);
+  }
+  return { kit: { arte: { chamada, apoio }, instagram, facebook, reel }, avisos };
+}
+
+/** Aviso do kit de até "max" caracteres. Numa lista ("…: a; b; c."), saem os últimos itens inteiros (fica "e outros"); no resto, o
+ *  corte é no fim da frase ou da palavra, com "…": nunca no meio de um valor ("R$ 1.5"), que viraria um ponto a conferir falso. */
+function avisoCurto(a: string, max = 300): string {
+  if (a.length <= max) return a;
+  const m = /^([^:]+: )(.+?)\.?$/s.exec(a);
+  if (m && m[2].includes("; ")) {
+    const itens = m[2].split("; ");
+    while (itens.length > 1 && (m[1] + itens.join("; ") + "; e outros.").length > max) itens.pop();
+    if ((m[1] + itens.join("; ") + "; e outros.").length <= max) return m[1] + itens.join("; ") + "; e outros.";
+  }
+  return cortarFrase(a, max);
+}
+/** Marcas do bloco de dados (<<< e >>>) trocadas por aspas: o texto não fecha o bloco nem abre outro (REGRA_DADOS). */
+const semMarcasDeBloco = (t: string) => t.replace(/<{3,}/g, "«").replace(/>{3,}/g, "»");
+
+/** O banco ainda sem a coluna kit_ia (o SQL da v0.20.0 não rodou): explica o que fazer em vez de mostrar o erro do PostgREST. */
+const semColunaDoKit = (e: unknown) => e instanceof Erro && /kit_ia/.test(e.message) && /column|coluna/i.test(e.message)
+  ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.20.0.sql (Supabase → SQL Editor) e tente de novo.") : e;
+const ABRANGENCIA: Record<string, string> = { federal: "federal", estadual_sc: "estadual (Santa Catarina)", municipal: "municipal", geral: "geral" };
+
+/** Ação "kit" (botão "Gerar kit das redes com IA" e 3ª etapa do "Gerar com IA"): o kit das redes de um conteúdo já escrito. A IA
+ *  recebe só o título e o texto (sem o texto oficial e sem o boletim pago); o que ela escreve é arrumado e conferido por código
+ *  (termos da publicidade, números fora do texto, marcas, frase igual à da fonte) e gravado como o usuário, só se o conteúdo não
+ *  mudou desde a leitura. */
+async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, conteudoId: unknown, lido: unknown) {
+  if (typeof conteudoId !== "number" || !Number.isSafeInteger(conteudoId) || conteudoId <= 0) throw new Erro(400, "Conteúdo inválido.");
+  // o kit_ia vem na leitura só para conferir, antes de gastar com a IA, se o banco já tem a coluna
+  const [c] = await banco(token, "GET",
+    `radar_conteudos?select=id,titulo,corpo,fonte_credito,avisos_ia,atualizado_em,kit_ia&id=eq.${conteudoId}&assunto_id=eq.${ctx.assunto.id}`)
+    .catch((e) => { throw semColunaDoKit(e); });
+  if (!c) throw new Erro(404, "Conteúdo não encontrado neste assunto.");
+  if (typeof lido === "string" && lido && Date.parse(lido) !== Date.parse(c.atualizado_em)) {
+    throw new Erro(409, "O conteúdo foi alterado depois que a tela foi aberta. Atualize a tela e tente de novo.");
+  }
+  if (String((Array.isArray(c.avisos_ia) ? c.avisos_ia : [])[0] ?? "").startsWith("TEXTO PARA ANÁLISE")) {
+    throw new Erro(400, "Texto para análise não vai ao site nem às redes: ele não tem kit das redes.");
+  }
+  const titulo = semMarcasDeBloco(normalizarEspacos(String(c.titulo ?? ""))), corpo = semMarcasDeBloco(String(c.corpo ?? "").trim());
+  if (!corpo) throw new Erro(400, "Este conteúdo ainda não tem texto: escreva o texto antes de gerar o kit das redes.");
+  const texto = { type: "string" }, legenda = { type: "object", additionalProperties: false, required: ["texto", "hashtags"],
+    properties: { texto, hashtags: { type: "array", items: texto } } };
+  const esquema = {
+    type: "object", additionalProperties: false, required: ["arte", "instagram", "facebook", "reel"],
+    properties: {
+      arte: { type: "object", additionalProperties: false, required: ["chamada", "apoio"], properties: { chamada: texto, apoio: texto } },
+      instagram: legenda, facebook: legenda,
+      reel: { type: "object", additionalProperties: false, required: ["gancho", "cenas", "chamada_final", "legenda"],
+        properties: { gancho: texto, chamada_final: texto, legenda: texto,
+          cenas: { type: "array", items: { type: "object", additionalProperties: false, required: ["de", "ate", "fala", "texto_tela"],
+            properties: { de: { type: "number" }, ate: { type: "number" }, fala: texto, texto_tela: texto } } } } },
+    },
+  };
+  const instrucoes = "Você prepara o material das redes sociais da Artecon Artes Contábeis (Palhoça/SC), em português do Brasil, a partir de " +
+    "uma notícia já escrita e revisada pela equipe: a chamada e a linha de apoio da arte, a legenda do Instagram, a do Facebook e o roteiro " +
+    "de um reel. Regras OBRIGATÓRIAS: " +
+    "(a) use SOMENTE a informação do texto da notícia: nenhum número, data, prazo, norma, valor ou estatística que não esteja nele — nada de conhecimento de memória; " +
+    "(b) arte: 'chamada' com 8 a 10 palavras (até 70 caracteres, sem ponto final) que diga o essencial, e 'apoio' com até 140 caracteres, " +
+    "dizendo quem é afetado ou o que fazer; " +
+    "(c) Instagram, nesta ordem: uma primeira linha que prenda a atenção, com até 110 caracteres; quem é afetado; o que fazer, em 2 a 4 itens curtos; " +
+    "um convite moderado para conversar com a Artecon; e, por último, 'Leia a matéria completa no site (link na bio).' Até 1.300 caracteres, " +
+    "sem link e sem hashtag no texto; " +
+    "(d) Facebook, na mesma ordem, terminando com 'Leia a matéria completa: {LINK DO SITE}' (escrito assim, uma vez: o endereço entra depois). " +
+    "Até 1.100 caracteres, sem hashtag no texto; " +
+    "(e) em 'hashtags': de 3 a 5 no Instagram, específicas do assunto (nada genérico), e até 2 no Facebook; " +
+    "(f) reel de 30 a 45 segundos, para uma pessoa da equipe falar olhando para a câmera: o 'gancho' é a frase que prende nos 3 primeiros " +
+    "segundos (a fala da primeira cena); de 3 a 8 'cenas' contínuas, com 'de' e 'ate' em segundos (a primeira começa em 0 e cada uma começa " +
+    "onde a anterior termina), a 'fala' (até 3 palavras por segundo) e o 'texto_tela' (até 42 caracteres); a 'chamada_final'; e a 'legenda' " +
+    "do reel, com até 800 caracteres, terminando com 'Link na bio.'; " +
+    "(g) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
+    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_DADOS;
+  // só o que a Artecon escreveu (e o que a equipe já classificou no assunto): nada do texto oficial nem do boletim pago. Tudo o que
+  // vem do banco (a classificação também: o público afetado pode ter saído da notícia) fica dentro de um bloco de dados, sem as marcas
+  const dado = (v: unknown) => semMarcasDeBloco(normalizarEspacos(String(v ?? ""))) || "—";
+  const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
+    `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
+    `Fonte: ${dado(c.fonte_credito)}\n<<<FIM>>>\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
+  // até 4.000 tokens (cabe nos 6.000 da IA Central): a notícia longa, com as legendas e as 8 cenas no limite, passa de 3.000
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 4000, undefined,
+    "O kit das redes saiu maior que o limite do pedido e veio incompleto: gere de novo (a IA costuma encurtar na segunda vez).");
+  const { kit: novo, avisos: doKit } = limparKit(json);
+
+  // conferência por código, contra o título e o texto (o texto oficial e o boletim ficam só aqui, na memória)
+  const partes: string[] = [novo.arte.chamada, novo.arte.apoio, novo.instagram.texto, novo.facebook.texto.split(LINK_SITE).join(" "),
+    novo.reel.gancho, ...novo.reel.cenas.flatMap((x: any) => [x.fala, x.texto_tela]), novo.reel.chamada_final, novo.reel.legenda].filter(Boolean);
+  const textoDoKit = partes.join("\n\n");
+  const termos = termosPublicidade(...partes, [...novo.instagram.hashtags, ...novo.facebook.hashtags].join(" "));
+  const avisos: string[] = [];
+  if (termos.trava.length) avisos.push(`Termo que a publicidade contábil não admite: ${termos.trava.join(", ")}. Troque antes de publicar (a tela não deixa sair com ele).`);
+  const copias = copiasSemFonte(textoDoKit, fontesDoAssunto(ctx));
+  const paga = copias.find((t) => t.paga);
+  // do boletim pago, o aviso não repete a frase (o conteúdo pago não sai daqui, nem no aviso)
+  if (paga) avisos.push(`Frase igual à do boletim pago${paga.fonte ? ` (${paga.fonte})` : ""} no kit: reescreva com palavras próprias antes de publicar.`);
+  for (const t of copias.filter((x) => !x.paga).slice(0, 2)) {
+    avisos.push(`Trecho igual ao da fonte${t.fonte ? ` (${t.fonte})` : ""} no kit, sem a fonte citada: “${cortarFrase(t.texto, 120)}”. Reescreva com palavras próprias.`);
+  }
+  if (termos.aviso.length) avisos.push(`Termo que pede cuidado na publicidade contábil: ${termos.aviso.join(", ")}. Confira se é informação da notícia, e não propaganda.`);
+  // "estatística sem fonte": norma, dispositivo, percentual, valor, data ou prazo que o texto da notícia não traz
+  avisos.push(...conferirGerado(textoDoKit, titulo + "\n" + corpo, true).filter((a) => /^(Norma|Dispositivo|Percentual)/.test(a))
+    .map((a) => a.replace("no texto oficial capturado", "no texto da notícia")));
+  const marcas = marcasVerificar(textoDoKit), duvidas = comentariosDuvida(textoDoKit);
+  if (marcas.length) avisos.push(`O kit tem ${marcas.length} marca(s) [VERIFICAR]: tire antes de publicar.`);
+  if (duvidas.length) avisos.push(`O kit tem ${duvidas.length} comentário(s) sobre dúvida da redação (ex.: “${duvidas[0]}”): tire antes de publicar.`);
+  avisos.push(...doKit);
+  // o título de quando o kit foi feito: só o título mudar não deixa o kit desatualizado (as legendas e o roteiro saem do texto), e a
+  // tela compara com o título de agora para pedir que a chamada da arte seja conferida
+  const salvo = { versao: 1, gerado_em: new Date().toISOString(), modelo: ctx.reg.uso?.modelo ?? MODELO, titulo: normalizarEspacos(String(c.titulo ?? "")), ...novo,
+                  avisos: [...new Set(avisos)].map((a) => avisoCurto(a)).slice(0, 12) };
+  // o banco aceita até 20.000 caracteres: num caso extremo (texto cheio de aspas e quebras), saem os últimos avisos
+  while (JSON.stringify(salvo).length > 18000 && salvo.avisos.length) salvo.avisos.pop();
+
+  // grava como o usuário, só se o conteúdo ainda for o que foi lido (gravar o kit não muda a data nem derruba autorização)
+  const linhas = await banco(token, "PATCH", `radar_conteudos?id=eq.${conteudoId}&atualizado_em=eq.${encodeURIComponent(c.atualizado_em)}&select=id`,
+    { kit_ia: salvo }, "return=representation").catch((e) => { throw semColunaDoKit(e); });
+  if (!Array.isArray(linhas) || !linhas.length) throw new Erro(409, "O conteúdo foi alterado enquanto a IA montava o kit. Atualize a tela e tente de novo.");
+  return { conteudo_id: conteudoId, kit: salvo, avisos: salvo.avisos };
+}
+
 // ------------------------------------------------------------------ ilustração de capa
 // Filtro por palavras da descrição pedida (o pedido à OpenAI leva as proibições de qualquer forma).
 // "antes"/"depois": a palavra não pode estar colada a outra letra — \b não entende acento ("diálogo" não é "logo").
@@ -1055,14 +1362,16 @@ async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: strin
     throw new Erro(400, "A descrição da imagem não pode pedir marca, logotipo, assinatura, pessoa conhecida nem o estilo de um autor. " +
       "Descreva só a cena (ex.: contadora atendendo um casal de empresários).");
   }
-  const pedido = "Fotografia realista, com aparência de foto profissional de banco de imagens, para a capa de uma notícia de um " +
-    "escritório de contabilidade brasileiro. " +
+  // v0.20.0: ilustração editorial com as cores da marca, não mais foto de banco de imagens; continua horizontal (serve à capa do
+  // site e é recortada no fundo da arte das redes), com o essencial no centro
+  const pedido = "Ilustração editorial digital, plana, poucos elementos, paleta da marca (#011F48, #1B5E9B, #00AEEF, toques de #BC151B e " +
+    "#FFD700), fundo limpo, para a capa de uma notícia de um escritório de contabilidade brasileiro. " +
     (desejo ? `Cena pedida: ${desejo}. Assunto da notícia: ${tema}. `
             : `Assunto da notícia: ${tema}.${resumo ? " Contexto: " + resumo : ""} Escolha a cena que melhor represente o assunto ` +
               "(por exemplo: empresário ou contadora analisando documentos, reunião de trabalho, comércio, indústria, escritório, " +
               "calculadora e relatórios, notebook com gráficos). ") +
-    "Luz natural, cores sóbrias, enquadramento horizontal, sem aparência de desenho ou de ilustração digital. " +
-    "Pessoas são permitidas, desde que sejam pessoas genéricas e fictícias, adultas, em ambiente profissional: " +
+    "Enquadramento horizontal, com o essencial no centro (a imagem também é recortada). " +
+    "Pessoas são permitidas, desde que sejam figuras estilizadas, genéricas e fictícias, adultas, em ambiente profissional: " +
     "NUNCA uma pessoa real, pública ou identificável, nem parecida com alguém conhecido. " +
     "PROIBIDO na imagem: qualquer texto, letra, número ou legenda; logotipo, marca, brasão, bandeira ou símbolo oficial; " +
     "marca-d'água, assinatura, crédito ou carimbo de autoria; personagem, obra, fotografia ou estilo de artista ou de fotógrafo existente. " +
@@ -1125,7 +1434,7 @@ async function tratar(req: Request): Promise<Response> {
     const pedido = await req.json().catch(() => null);
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
-    if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar", "kit"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
     const diag = acao === "diagnostico";
     if (!diag && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
     assuntoId = diag ? 0 : pedido.assunto_id;
@@ -1153,6 +1462,7 @@ async function tratar(req: Request): Promise<Response> {
       : acao === "fundamentar" ? await fundamentar(token, ctx)
       : acao === "titulos" ? await titulos(token, ctx, pedido.conteudo_id, pedido.evitar)
       : acao === "revisar" ? await revisar(token, ctx, pedido.conteudo_id, pedido.lido)
+      : acao === "kit" ? await kit(token, ctx, pedido.conteudo_id, pedido.lido)
       : acao === "ilustrar" ? await ilustrar(ctx, typeof pedido.titulo === "string" ? pedido.titulo : "",
                                              typeof pedido.descricao === "string" ? pedido.descricao : "")
       : await gerar(token, ctx, String(pedido.formato ?? "informativo"), pedido.analise === true);
@@ -1163,11 +1473,12 @@ async function tratar(req: Request): Promise<Response> {
     console.error(e);
     return responder(500, { message: "Erro inesperado na função de IA." });
   } finally {
-    // o que a OpenAI cobrou é registrado mesmo se algo falhou depois da resposta dela
+    // o que a OpenAI cobrou é registrado mesmo se algo falhou depois da resposta dela (v0.20.0: o kit conta como "gerar", uma das
+    // ações que o banco aceita, e entra no limite do mês)
     const usado = reg.uso;
     if (usado && token) {
       await banco(token, "POST", "rpc/radar_registrar_uso_ia", {
-        p_acao: acao === "titulos" || acao === "revisar" ? "gerar" : acao === "verificar" ? "fundamentar" : acao, p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
+        p_acao: acao === "titulos" || acao === "revisar" || acao === "kit" ? "gerar" : acao === "verificar" ? "fundamentar" : acao, p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
       }).catch((e) => console.error("uso da IA não registrado:", e?.message));
     }
   }
