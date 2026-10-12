@@ -1039,7 +1039,8 @@ async function titulos(token: string, ctx: Awaited<ReturnType<typeof carregar>>,
 // versão do conteúdo (atualizado_em) nem derruba autorização; o que vai ao ar é o que o administrador autoriza. A identificação legal
 // (empresa, CNPJ, CRC) é acrescentada pela tela, a partir das Configurações, nunca pela IA.
 const REGRA_PUBLICIDADE = "(12) PUBLICIDADE DA PROFISSÃO CONTÁBIL: informe, não venda. Sem promessa de resultado ou de economia " +
-  "('garantimos', 'resultado garantido', 'pague menos imposto'), sem oferta de vantagem ('grátis', 'brinde'), sem 'blindagem', " +
+  "('garantimos', 'resultado garantido', 'pague menos imposto'), sem oferta de vantagem ('grátis', 'de graça', 'ganhe um brinde'), " +
+  "sem promessa de 'blindar' o patrimônio, " +
   "sem comparação com outros escritórios nem convite para trocar de contador, sem superlativos nem absolutos de propaganda " +
   "('o melhor', 'o mais completo', '100% seguro', 'solução definitiva') e sem urgência artificial ('corra', 'não perca', 'última chance'); ";
 
@@ -1191,6 +1192,21 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
   return { kit: { arte: { chamada, apoio }, instagram, facebook, reel }, avisos };
 }
 
+/** Aviso do kit de até "max" caracteres. Numa lista ("…: a; b; c."), saem os últimos itens inteiros (fica "e outros"); no resto, o
+ *  corte é no fim da frase ou da palavra, com "…": nunca no meio de um valor ("R$ 1.5"), que viraria um ponto a conferir falso. */
+function avisoCurto(a: string, max = 300): string {
+  if (a.length <= max) return a;
+  const m = /^([^:]+: )(.+?)\.?$/s.exec(a);
+  if (m && m[2].includes("; ")) {
+    const itens = m[2].split("; ");
+    while (itens.length > 1 && (m[1] + itens.join("; ") + "; e outros.").length > max) itens.pop();
+    if ((m[1] + itens.join("; ") + "; e outros.").length <= max) return m[1] + itens.join("; ") + "; e outros.";
+  }
+  return cortarFrase(a, max);
+}
+/** Marcas do bloco de dados (<<< e >>>) trocadas por aspas: o texto não fecha o bloco nem abre outro (REGRA_DADOS). */
+const semMarcasDeBloco = (t: string) => t.replace(/<{3,}/g, "«").replace(/>{3,}/g, "»");
+
 /** O banco ainda sem a coluna kit_ia (o SQL da v0.20.0 não rodou): explica o que fazer em vez de mostrar o erro do PostgREST. */
 const semColunaDoKit = (e: unknown) => e instanceof Erro && /kit_ia/.test(e.message) && /column|coluna/i.test(e.message)
   ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.20.0.sql (Supabase → SQL Editor) e tente de novo.") : e;
@@ -1213,7 +1229,7 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   if (String((Array.isArray(c.avisos_ia) ? c.avisos_ia : [])[0] ?? "").startsWith("TEXTO PARA ANÁLISE")) {
     throw new Erro(400, "Texto para análise não vai ao site nem às redes: ele não tem kit das redes.");
   }
-  const titulo = normalizarEspacos(String(c.titulo ?? "")), corpo = String(c.corpo ?? "").trim();
+  const titulo = semMarcasDeBloco(normalizarEspacos(String(c.titulo ?? ""))), corpo = semMarcasDeBloco(String(c.corpo ?? "").trim());
   if (!corpo) throw new Erro(400, "Este conteúdo ainda não tem texto: escreva o texto antes de gerar o kit das redes.");
   const texto = { type: "string" }, legenda = { type: "object", additionalProperties: false, required: ["texto", "hashtags"],
     properties: { texto, hashtags: { type: "array", items: texto } } };
@@ -1246,10 +1262,12 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
     "do reel, com até 800 caracteres, terminando com 'Link na bio.'; " +
     "(g) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
     REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_DADOS;
-  // só o que a Artecon escreveu (e o que a equipe já classificou no assunto): nada do texto oficial nem do boletim pago
-  const entrada = `Categoria: ${ctx.assunto.categoria ?? "—"}\nAbrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\n` +
-    `Público afetado: ${normalizarEspacos(String(ctx.assunto.publico_afetado ?? "")) || "—"}\n` +
-    `Fonte: ${normalizarEspacos(String(c.fonte_credito ?? "")) || "—"}\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
+  // só o que a Artecon escreveu (e o que a equipe já classificou no assunto): nada do texto oficial nem do boletim pago. Tudo o que
+  // vem do banco (a classificação também: o público afetado pode ter saído da notícia) fica dentro de um bloco de dados, sem as marcas
+  const dado = (v: unknown) => semMarcasDeBloco(normalizarEspacos(String(v ?? ""))) || "—";
+  const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
+    `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
+    `Fonte: ${dado(c.fonte_credito)}\n<<<FIM>>>\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
   const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 3000);
   const { kit: novo, avisos: doKit } = limparKit(json);
 
@@ -1276,7 +1294,7 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   if (duvidas.length) avisos.push(`O kit tem ${duvidas.length} comentário(s) sobre dúvida da redação (ex.: “${duvidas[0]}”): tire antes de publicar.`);
   avisos.push(...doKit);
   const salvo = { versao: 1, gerado_em: new Date().toISOString(), modelo: ctx.reg.uso?.modelo ?? MODELO, ...novo,
-                  avisos: [...new Set(avisos)].map((a) => a.slice(0, 300)).slice(0, 12) };
+                  avisos: [...new Set(avisos)].map((a) => avisoCurto(a)).slice(0, 12) };
   // o banco aceita até 20.000 caracteres: num caso extremo (texto cheio de aspas e quebras), saem os últimos avisos
   while (JSON.stringify(salvo).length > 18000 && salvo.avisos.length) salvo.avisos.pop();
 
