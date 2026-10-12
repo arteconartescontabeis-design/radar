@@ -1406,12 +1406,17 @@ const PALAVRAS_COMUNS = new Set(("equipe todos todas arte foto fotos reel termo 
   "pessoa socio socia socios socias cliente clientes departamento pessoal fiscal contabil financeiro tecnico tecnica nenhum nenhuma ninguem").split(" "));
 const PARTICULAS = new Set("de da do das dos e del della der van von di du".split(" "));
 const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+// v0.21.0: cada letra sem acento casa também com as acentuadas (o texto chega em NFC: "Marcia", "MÁRCIA" e "Márcia" são o mesmo nome)
+const VARIANTES: Record<string, string> = { a: "aàáâãäå", e: "eèéêë", i: "iìíîï", o: "oòóôõö", u: "uùúûü", c: "cç", n: "nñ", y: "yýÿ" };
+const semDiferencaDeAcento = (t: string) => [...semAcento(t)].map((ch) => VARIANTES[ch] ? `[${VARIANTES[ch]}]` : ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  .join("").replace(/ /g, "\\s+");
 /** Os nomes que nunca vão à IA: de TODAS as pessoas cadastradas, ativas ou não (o nome completo, o nome na peça e cada palavra deles com
  *  3 letras ou mais) e as palavras com maiúscula do "quem aparece" do plano (menos as comuns). A pessoa marcada na peça vira {PESSOA1},
- *  {PESSOA2}… (na ordem de "pessoas"); qualquer outra, "uma pessoa da equipe". Palavra inteira, sem diferença de maiúsculas, com o nome
- *  escapado na expressão; numa passada só, dos mais longos para os mais curtos (o marcador posto não é trocado de novo). */
+ *  {PESSOA2}… (na ordem de "pessoas"); qualquer outra, "uma pessoa da equipe". Palavra inteira, sem diferença de maiúsculas nem de acento
+ *  (o texto vai para a forma NFC antes: o "á" de um CSV feito no Mac vem em duas partes), com o nome escapado na expressão; numa passada
+ *  só, dos mais longos para os mais curtos (o marcador posto não é trocado de novo). */
 function mascararNomes(pessoas: any[], marcadas: number[], quemAparece: unknown): (t: unknown) => string {
-  const trocas = new Map<string, string>(), chave = (t: string) => normalizarEspacos(t).toLowerCase();
+  const trocas = new Map<string, string>(), chave = (t: string) => semAcento(normalizarEspacos(t));
   const por = (t: string, troca: string) => { const k = chave(t); if ([...k].length >= 2 && !trocas.has(k)) trocas.set(k, troca); };
   const palavras = (t: string) => (t.match(/\p{L}[\p{L}'’-]*/gu) ?? []).filter((w) => [...w].length >= 3 && !PARTICULAS.has(semAcento(w)));
   // as marcadas primeiro: o sobrenome igual ao de outra pessoa vira o marcador de quem está na peça
@@ -1425,10 +1430,9 @@ function mascararNomes(pessoas: any[], marcadas: number[], quemAparece: unknown)
     if ([...w].length >= 3 && !PALAVRAS_COMUNS.has(semAcento(w)) && !PARTICULAS.has(semAcento(w))) por(w, "uma pessoa da equipe");
   }
   const termos = [...trocas.keys()].sort((a, b) => b.length - a.length);
-  if (!termos.length) return (t) => String(t ?? "");
-  const re = new RegExp("(?<![\\p{L}\\p{N}])(?:" + termos.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+")).join("|") +
-    ")(?![\\p{L}\\p{N}])", "giu");
-  return (t) => String(t ?? "").replace(re, (m) => trocas.get(chave(m)) ?? "uma pessoa da equipe");
+  if (!termos.length) return (t) => String(t ?? "").normalize("NFC");
+  const re = new RegExp("(?<![\\p{L}\\p{N}])(?:" + termos.map(semDiferencaDeAcento).join("|") + ")(?![\\p{L}\\p{N}])", "giu");
+  return (t) => String(t ?? "").normalize("NFC").replace(re, (m) => trocas.get(chave(m)) ?? "uma pessoa da equipe");
 }
 /** O que vai à IA não leva link (vira o nome do site) nem número de CNPJ, de registro no CRC ou de telefone (nem o parêntese que
  *  ficou vazio sem ele). */
@@ -1565,6 +1569,13 @@ async function peca(token: string, reg: Registro, pecaId: unknown, lido: unknown
       throw new Erro(400, `Informação conferida nº ${i + 1}: use a fonte oficial (o boletim pago da ITC não é fonte).`);
     }
   });
+  // o boletim pago nunca vai à IA: o plano e as informações conferidas com frase igual à de uma captura do boletim são recusados antes
+  // (o banco compara como na conferência da peça e devolve só sim ou não: o trecho não sai de lá)
+  const pago = await banco(token, "POST", "rpc/radar_pauta_copia_paga_ia",
+    { p_textos: [p.assunto, p.objetivo, p.observacao, ...conferidas.flatMap((c) => [c.informacao, c.fonte])].map((t) => String(t ?? "")) });
+  if (pago === true) {
+    throw new Erro(400, "Há frase igual à do boletim pago (ITC) no plano ou nas informações conferidas: reescreva com palavras próprias e salve antes de gerar (nada foi à IA).");
+  }
   // TODAS as pessoas (os nomes, para mascarar; a categoria e o registro, para a regra da pessoa) e o termo de uso de imagem das marcadas,
   // como o banco confere no dia da peça (radar_v_pauta_pessoas: o motivo vem sem o nome)
   const [pessoas, termos] = await Promise.all([

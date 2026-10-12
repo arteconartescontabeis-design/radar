@@ -1,6 +1,6 @@
 # Radar Artecon — Relatório de testes (v0.21.0)
 
-Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.21.0: **721 aprovados, 0 falhas, 61 pulados**. Os pulados são
+Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.21.0: **732 aprovados, 0 falhas, 61 pulados**. Os pulados são
 os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`). As funções
 `radar-ia` e `radar-redes` rodam de verdade no Deno nos testes delas (`test_radar_funcao_ia.py` e `test_radar_funcao_redes.py`).
 Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são
@@ -90,6 +90,37 @@ São 80 testes novos (de 702 para 782 no total). O que foi comprovado, por área
   minutos, e pela soma das etapas a v0.21.0 acrescenta perto de 1 minuto de testes. O workflow passou a rodar também quando muda
   o `radar-pauta.js`, o `radar-config.js` ou o `.gitignore`.
 
+### Correções da revisão (18 achados)
+
+Os 18 achados da revisão foram conferidos no código: todos eram reais e foram corrigidos (os 2 dos canais da aprovação à mão e os 2
+do canal que não saiu eram o mesmo defeito, visto do banco e da tela; o do Safari, pelo comportamento documentado do WebKit, sem
+iPhone aqui). Cada correção tem teste, e cada teste foi rodado com a correção desfeita (no banco e na tela, no próprio arquivo, com a
+cópia guardada e restaurada; nas funções e no "Testar conexão", numa cópia do repositório) e falhou: 32 de 32 reversões.
+
+- **Banco** (`test_radar_banco.py`): desfazer a aprovação à mão pede "Conferi no Instagram e no Facebook: não foi postada à mão" e a
+  nova aprovação pede "Conferi … não saiu" (`manual_desfeita_em`); os canais aprovados ficam na peça (`aprovado_canais`): copiar,
+  conferir o termo e registrar o link valem só neles; com o Instagram publicado e o Facebook em erro (ou esperando a hora), o
+  administrador desiste só do Facebook, a peça continua aprovada e a falha sai do painel; o RADAR169 manda cancelar na Pauta;
+  "(conferir)" na fonte ou no texto trava; o cartão a mais que as fotos no carrossel de fotos trava; a evidência da instalação mostra
+  a versão da instalação mais nova (antes, `max(versao)` dava "v0.7.0"); a conferência do boletim pago para a IA
+  (`radar_pauta_copia_paga_ia`) só para quem edita a Pauta.
+- **Tela** (`test_radar_telas.py`): à mão, só os botões e o campo de link dos canais aprovados; a cópia começa no toque (antes da
+  resposta do banco) e, recusada pelo navegador, o texto aprovado aparece num campo só de leitura; "Desfazer aprovação" à mão pede a
+  caixa; "Não publicar neste canal" na peça e no quadro "Não saíram"; a agenda calculada deixa a fonte em branco; a foto HEIC é
+  avisada no fim, com o resultado; o CSV do Excel com colunas vazias no fim é aceito; a arte junta as pessoas da mesma área e avisa o
+  que não coube (pessoas e vencimento longo da agenda) e a faixa legal vai até 3 linhas; o "Testar conexão" mostra a versão da
+  `radar-redes` e avisa a anterior à v0.21.0.
+- **Funções:** a máscara de nomes da `radar-ia` não diferencia acento nem a forma NFC/NFD; o plano e as informações conferidas com
+  frase do boletim pago são recusados antes da IA; a `radar-redes` desiste do armazenamento preso em 10 s (nos testes, 1,5 s) e grava
+  "erro" em vez de ficar "enviando".
+- **Robô** (`test_radar_e2e.py`): o aviso da Pauta fecha quando o administrador desiste do canal que não saiu, e a falha seguinte
+  abre outro.
+
+São 11 testes novos (de 782 para 793 no total). Testes antigos ajustados: a fonte provisória "(conferir)" dos testes virou "Agenda
+Tributária da Receita Federal"; a cópia à mão aprova os dois canais, e o termo revogado é conferido no canal copiado; a evidência da
+instalação, a agenda calculada, a foto HEIC, o "Testar conexão" e a contagem das funções da Pauta (26). A suíte inteira levou de
+818 a 850 s neste ambiente (732 aprovados e 61 pulados nas duas rodadas).
+
 O que não foi testado aqui: a Meta de verdade (a rota do link assinado veio do código do Storage do Supabase; que a Meta aceita o
 link com `?token=…` só se confirma no 1º post pela agenda, com o administrador acompanhando); o pg_cron, o pg_net e o Vault de
 verdade (o Postgres dos testes não os tem: os esquemas são de mentira, só com o que os arquivos usam), por isso o teste
@@ -106,8 +137,8 @@ rodou em produção e não foi mudado.
 Precisam da confirmação do dono: os 28 px da faixa legal como altura da letra, como está (se for o tamanho da fonte, muda só
 `FAIXA_LEGAL` em `radar-pauta.js`); a lista de termos que travam na Pauta (`TERMOS_PECA`), com o contador responsável (travam
 também palavras que servem para informar, como "garante", "ganhe", "definitivo", "100%" e "a maioria"); e a máscara de nomes que
-vai à IA, que não diferencia maiúsculas: uma palavra comum igual a um nome cadastrado também é trocada no texto que vai à IA (nada
-vaza; só a sugestão pode ficar estranha).
+vai à IA, que não diferencia maiúsculas nem acentos: uma palavra comum igual a um nome cadastrado também é trocada no texto que vai
+à IA (nada vaza; só a sugestão pode ficar estranha).
 
 ## v0.20.0 — kit das redes, arte vertical, identificação legal e publicidade contábil
 

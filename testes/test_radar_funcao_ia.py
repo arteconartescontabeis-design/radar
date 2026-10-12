@@ -1103,6 +1103,60 @@ def test_peca_o_que_vai_para_a_ia_sem_nomes_nem_crc(funcao, pauta):
     assert not re.search(r"(?<!\w)(Ana|Bruno)(?!\w)", json.dumps(r["ia"], ensure_ascii=False))
 
 
+
+def test_peca_nome_sem_acento_em_maiusculas_ou_em_nfd_tambem_e_mascarado(funcao, pauta):
+    """O nome escrito de outro jeito também não vai à IA: sem o acento do cadastro (“Marcia”), com acento que o cadastro não tem (“João”
+    para “Joao”), em maiúsculas e no texto em NFD (o “á” em duas partes, como no CSV feito no Mac). Nomes de mentira."""
+    import unicodedata
+    db = pauta
+    marcia = nova_pessoa(db, "Márcia Fictícia Souza", "Márcia")
+    nova_pessoa(db, "Joao Inventado", "Joao")
+    pid = nova_peca(db, tipo="bastidor", formato="foto", pessoas=[marcia], quem_aparece="Márcia",
+                    assunto="Marcia explica o eSocial e MARCIA responde as dúvidas",
+                    objetivo="Fala do João e do JOÃO INVENTADO",
+                    observacao=unicodedata.normalize("NFD", "A Márcia explica com a Fictícia (pedir a foto ao João)"),
+                    conferidas=[{"informacao": "SOUZA coordena a folha", "fonte": unicodedata.normalize("NFD", "Relato do João Inventado")}])
+    IA["respostas"]["peca"] = PECA_FOTO
+    status, r = pedir("peca", peca_id=pid)
+    assert status == 200, r
+    msg = IA["pedidos"][-1]["messages"][0]["content"]
+    plano = unicodedata.normalize("NFD", json.dumps(IA["pedidos"][-1], ensure_ascii=False)).encode("ascii", "ignore").decode().lower()
+    for nome in ("marcia", "ficticia", "souza", "joao", "inventado"):
+        assert not re.search(rf"(?<![a-z]){nome}(?![a-z])", plano), nome
+    assert "Assunto: {PESSOA1} explica o eSocial e {PESSOA1} responde as dúvidas\n" in msg
+    assert "Objetivo: Fala do uma pessoa da equipe e do uma pessoa da equipe\n" in msg
+    assert "Observação: A {PESSOA1} explica com a {PESSOA1} (pedir a foto ao uma pessoa da equipe)\n" in msg
+    assert "1. {PESSOA1} coordena a folha (fonte: Relato do uma pessoa da equipe)" in msg
+
+
+def test_peca_frase_do_boletim_pago_no_plano_ou_nas_conferidas_nao_vai_a_ia(funcao, pauta, request):
+    """O boletim pago (ITC) nunca vai à IA: a informação conferida (ou o plano) com 12 palavras seguidas iguais às de uma captura do
+    boletim é recusada antes de chamar a IA, com a fonte que não é a ITC; nada é contado nem gravado, e o trecho não aparece na
+    resposta. Com 11 palavras iguais, a peça segue."""
+    db = pauta
+    carregar_fontes_novas(db, request)
+    frase = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega das declarações mensais"
+    db.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                  select id, 'https://boletim.exemplo/ia-peca', 'Boletim de mentira', %s, 'h-boletim-ia-peca' from radar_fontes where slug = 'itc-email'""",
+               ("Texto de mentira do boletim: " + frase + ". Fim.",))
+    palavras = frase.split()
+    IA["respostas"]["peca"] = PECA_SEM_PESSOA
+    n, usos = len(IA["pedidos"]), _usos(db)
+    msg = ("Há frase igual à do boletim pago (ITC) no plano ou nas informações conferidas: reescreva com palavras próprias e salve antes de "
+           "gerar (nada foi à IA).")
+    nas_conferidas = nova_peca(db, dias=3, tipo="educativo", formato="imagem",
+                               conferidas=[*CONFERIDAS, {"informacao": " ".join(palavras[:12]).capitalize(), "fonte": "Receita Federal"}])
+    no_plano = nova_peca(db, dias=4, tipo="educativo", formato="imagem", conferidas=CONFERIDAS, observacao="Resumo: " + " ".join(palavras[2:14]).upper())
+    for pid in (nas_conferidas, no_plano):
+        status, r = pedir("peca", peca_id=pid)
+        assert (status, r) == (400, {"message": msg}) and "comitê" not in json.dumps(r, ensure_ascii=False)
+    assert len(IA["pedidos"]) == n and _usos(db) == usos
+    assert db.execute("select count(*) from radar_pauta_pecas where ia <> '{}'").fetchone()[0] == 0
+    onze = nova_peca(db, dias=5, tipo="educativo", formato="imagem",
+                     conferidas=[*CONFERIDAS, {"informacao": " ".join(palavras[:11]), "fonte": "Receita Federal"}])
+    status, r = pedir("peca", peca_id=onze)
+    assert status == 200 and len(IA["pedidos"]) == n + 1, r
+
 def test_peca_fato_fora_das_conferidas_vira_verificar(funcao, pauta):
     """O fato que a IA escreve e que não está nas informações conferidas (norma, artigo, percentual, valor em R$, ano) fica marcado no
     texto como [VERIFICAR: …], na 1ª vez em cada texto, e o banco não deixa a peça ficar pronta com a marca; o que está nas conferidas

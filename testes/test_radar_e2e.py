@@ -444,6 +444,7 @@ def test_avisos_sem_variaveis_ou_com_erro_nunca_derrubam_a_coleta(monkeypatch, c
 from test_radar_banco import (IDENT, cenario_publicavel, iniciar, nova_pessoa, pauta, peca_aprovada,  # noqa: E402,F401
                               vencer)                                                                # (pauta: a assinatura)
 from conftest import ADMIN, como                                                                     # noqa: E402
+import psycopg                                                                                       # noqa: E402
 
 
 def test_aviso_da_pauta_um_so_sem_nome_e_fecha_quando_resolve(cenario, pauta):
@@ -507,6 +508,38 @@ def test_aviso_da_pauta_um_so_sem_nome_e_fecha_quando_resolve(cenario, pauta):
     assert feito == [f"aviso #{numero} fechado: " + gh.fechados[-1][1]] and radar_alertas.PREFIXO_PAUTA not in gh.avisos
     assert rodar() == [] and len(gh.criados) == 1 and len(gh.fechados) == 2                 # não abre nem fecha de novo
 
+
+
+def test_aviso_da_pauta_fecha_quando_o_administrador_desiste_do_canal_que_nao_saiu(cenario, pauta):
+    """O Instagram saiu e o Facebook deu erro: a peça não se desfaz (o Instagram saiu) e o aviso ficaria aberto para sempre, calando a
+    próxima falha. "Não publicar neste canal" (radar_cancelar_rede) tira o Facebook da lista, o aviso fecha, e a falha seguinte de
+    outra peça abre um aviso novo."""
+    import radar_alertas
+    db = pauta
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso({})
+    pid, r = peca_aprovada(db, canais=("instagram", "facebook"))
+    ig, fb = r["envios"]["instagram"], r["envios"]["facebook"]
+    for envio, ok in ((ig, True), (fb, False)):
+        vencer(db, envio)
+        iniciar(envio)
+        with como("service_role") as c:
+            c.execute("select radar_rede_concluir(%s, %s, %s, %s, null, %s)",
+                      (envio, ok, "1789" if ok else None, "https://www.instagram.com/p/abc/" if ok else None, None if ok else "A Meta recusou (190)"))
+    assert [e["id"] for e in banco.pauta_com_problema()] == [fb]
+    radar_alertas.executar(banco, gh, sem_rede)
+    assert len(gh.criados) == 1
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR170"):              # o Instagram saiu: não se desfaz
+            c.execute("select radar_pauta_desaprovar(%s)", (pid,))
+        c.execute("select radar_cancelar_rede(%s)", (fb,))                                  # "Não publicar neste canal"
+    assert banco.pauta_com_problema() == []
+    radar_alertas.executar(banco, gh, sem_rede)
+    assert len(gh.fechados) == 1 and "ficou sem aquele canal" in gh.fechados[0][1] and radar_alertas.PREFIXO_PAUTA not in gh.avisos
+    _, r2 = peca_aprovada(db, dias=3)                                                        # a falha seguinte avisa de novo
+    vencer(db, r2["envios"]["instagram"], 25)
+    radar_alertas.executar(banco, gh, sem_rede)
+    assert len(gh.criados) == 2
 
 def test_aviso_da_pauta_com_banco_antigo_nao_abre_nem_fecha_e_o_resto_segue(cenario):
     """O robô atualiza sozinho e pode rodar antes do SQL da v0.21.0: sem radar_redes_envios.peca_id, a leitura da Pauta devolve None

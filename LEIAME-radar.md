@@ -1059,13 +1059,16 @@ para o GitHub** (o `.gitignore` barra e um teste confere).
 
 **3. Preparar a peça** ("Abrir", na semana; editor e administrador):
 - **Fotos**, no alto: cada foto vira 1080×1350 (corte no centro), enviada uma de cada vez, até 10. A foto do iPhone em HEIC
-  recebe o recado de como trocar (Ajustes → Câmera → Formatos → Mais compatível, ou captura de tela); a foto pequena, o aviso de
-  que pode ficar sem nitidez. ↑, ↓ e "Tirar" mudam a ordem.
+  fica de fora, com o recado de como trocar (Ajustes → Câmera → Formatos → Mais compatível, ou captura de tela), dado no fim, junto
+  com o que aconteceu com as outras; a foto pequena recebe o aviso de que pode ficar sem nitidez. ↑, ↓ e "Tirar" mudam a ordem.
 - **Quem aparece:** as pessoas ativas, com o selo do termo (vale no dia da peça ou não).
 - **Informações conferidas:** cada fato que a peça usa (número, data, prazo, valor, norma), com a **fonte oficial**. O boletim
   pago da ITC não serve de fonte. Na Agenda da semana (domingo), **"Calcular a agenda da semana"** traz os vencimentos de segunda a
   sexta seguintes, das regras das Configurações (sem as obrigações com `"redes": false`, como o honorário contábil), já como
-  informações conferidas: confira cada data antes de aprovar.
+  informações conferidas: confira cada data antes de aprovar. A fonte vem da obrigação (a chave `"fonte"` na agenda de
+  obrigações); sem ela, fica **em branco**, e a peça só fica pronta depois que alguém escreve a fonte oficial em que conferiu (a
+  regra das Configurações não é fonte, e o texto da fonte vai ao ar no "Fonte: …" da legenda). "(conferir)" no texto ou na fonte
+  também trava.
 - **Gerar com IA** (opcional; abaixo) e os **textos:** chamada e apoio da arte, cartões (carrossel), roteiro (reel, colado à
   mão), as legendas do Instagram e do Facebook (com contador de caracteres e o botão "Pôr a identificação legal e as hashtags").
 - **Plano** (assunto, objetivo, observação e quem aparece, do CSV): só referência, não vai ao ar.
@@ -1080,13 +1083,15 @@ marcar como pronta") → **Aprovada** (só o administrador). Pronta que muda vol
 Bastidor, Captação, Data com a equipe), com o selo, a chamada, o apoio e a linha de cada pessoa; ou o fundo azul-marinho com o
 texto (imagem, cartões do carrossel, agenda da semana). No carrossel, a capa e uma lâmina por cartão; no carrossel de fotos, uma
 lâmina por foto. Embaixo vai a faixa branca com a **identificação legal** das Configurações (empresa, CNPJ e CRC), em letra de **pelo
-menos 28 px de altura** (a altura medida da letra maiúscula), em até 2 linhas: se não couber, a peça não é aprovada. A arte da
+menos 28 px de altura** (a altura medida da letra maiúscula), em até 3 linhas quebradas nos " · ": se não couber, a peça não é
+aprovada. Até 6 linhas de pessoas: com mais, as pessoas sem registro da mesma área dividem a linha ("Ana, Bruno e Carla ·
+Departamento Pessoal"); se ainda não couber, e também no vencimento longo da agenda, a tela avisa o que ficou de fora. A arte da
 notícia não mudou (faixa de 24 px). Os 28 px estão como altura da letra: se o combinado for o tamanho da fonte, muda só um número
 (`FAIXA_LEGAL`, em `radar-pauta.js`).
 
 **5. Conferir e marcar como pronta.** "Salvar e marcar como pronta" (ou só "Conferir o que falta") mostra numa lista **tudo** o
-que falta resolver: a peça sem o que o formato pede (foto, pessoa, 2 a 10 fotos no carrossel de fotos, 2 a 9 cartões, roteiro,
-informações conferidas na agenda), legenda sem a identificação legal (CNPJ e CRC das Configurações precisam estar preenchidos),
+que falta resolver: a peça sem o que o formato pede (foto, pessoa, 2 a 10 fotos no carrossel de fotos, um cartão a mais que as
+fotos, 2 a 9 cartões, roteiro, informações conferidas na agenda), legenda sem a identificação legal (CNPJ e CRC das Configurações precisam estar preenchidos),
 [VERIFICAR] ou `{confirmar}`, informação conferida sem fonte ou com fonte do boletim pago, frase igual à do boletim pago, número que
 não está nas informações conferidas, termo de imagem que não vale, nome de pessoa cadastrada que aparece no texto sem estar
 marcada, sobrenome que o termo não autoriza, "contador(a)", "técnico(a)" ou "especialista" perto de quem não tem registro, e os
@@ -1098,12 +1103,14 @@ só para conferir (texto cortado na arte; na Data com a equipe, dado sensível).
 **6. Aprovar** (só o administrador; "Aprovar a peça", na peça pronta): os canais (os que têm legenda); **como sai** ("Agendar para
 sáb, 31/10/2026, às 09:30", só imagem única: Imagem 4:5 e Foto; ou "Vou publicar à mão"; carrossel e reel saem à mão nesta
 versão); e as conferências obrigatórias: "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)" (com
-pessoa ou foto), "Conferi as datas da agenda" (Agenda da semana) e, se um envio anterior caiu no meio, "Conferi no Instagram e no
-Facebook: não saiu". A tela confere tudo de novo, guarda as lâminas desenhadas e o banco aprova: **vai ao ar exatamente o que
+pessoa ou foto), "Conferi as datas da agenda" (Agenda da semana) e, se um envio anterior caiu no meio ou se uma aprovação à mão foi
+desfeita, "Conferi no Instagram e no Facebook: não saiu". Os canais marcados ficam guardados na aprovação: à mão, só eles são
+copiados e registrados. A tela confere tudo de novo, guarda as lâminas desenhadas e o banco aprova: **vai ao ar exatamente o que
 está na tela**. A hora marcada no passado vale se estiver dentro da janela (Configurações → Pauta → `janela_horas`, 6 horas): a
 peça sai na próxima rodada; mais que isso, mude a hora. A Agenda da semana não é aprovada depois da segunda-feira. Aprovada, a peça
 não se edita: para mudar, **"Desfazer aprovação"** (editor ou administrador; não dá enquanto está publicando, nem depois que saiu
-numa rede: exclua da rede antes).
+numa rede: exclua da rede antes; na aprovada à mão, marque antes "Conferi no Instagram e no Facebook: não foi postada à mão" — se
+foi postada, registre o link em vez de desfazer).
 
 **7. Publicação sozinha** (modo agendar). A agenda do banco (`sql/radar-redes-agenda.sql`, item 7 de "Instagram e Facebook pela API
 da Meta") roda de 5 em 5 minutos e pede à função `radar-redes` cada peça cuja hora chegou. Antes de qualquer coisa ir à Meta, o
@@ -1116,6 +1123,8 @@ função não responder, a agenda tenta até 3 vezes, de 10 em 10 minutos; depoi
   a tela chama a função na hora, um canal depois do outro;
 - **"Tentar de novo"** (publicação que não saiu): pede antes a caixa "Conferi no Instagram e no Facebook: não saiu", para nunca
   publicar duas vezes;
+- **"Não publicar neste canal"** (na peça e no quadro "Não saíram"), na publicação que não saiu ou que ainda espera a hora:
+  cancela só aquele canal, mesmo com o outro já publicado; a peça continua aprovada e o aviso do robô fecha;
 - **"Cancelar"**, na publicação parada em "publicando" há mais de 10 minutos (confira na rede se saiu antes), e **"Excluir do
   Instagram/Facebook"**, na publicada.
 
@@ -1124,16 +1133,18 @@ Para **pausar** a agenda sem SQL: Configurações → Pauta → `"agenda_ligada"
 aprovação.
 
 **8. Publicar à mão** (carrossel, carrossel de fotos, reel, ou quando o administrador escolheu): na peça aprovada, "Baixar as
-lâminas" (`pauta-AAAA-MM-DD-1.jpg`…), "Copiar legenda do Instagram/Facebook" e "Copiar roteiro" (com a identificação legal no
-último quadro). O banco confere antes a versão aprovada e o termo de cada pessoa **hoje**. Depois de postar, "Registrar a
+lâminas" (`pauta-AAAA-MM-DD-1.jpg`…), "Copiar legenda do Instagram/Facebook" (só dos canais aprovados) e "Copiar roteiro" (com a
+identificação legal no último quadro). O banco confere antes a versão aprovada, o canal e o termo de cada pessoa **hoje**. Se o
+navegador não deixar copiar (no iPhone pode acontecer), o texto aprovado aparece logo abaixo para selecionar e copiar: não
+redigite. Depois de postar, "Registrar a
 publicação": o link do post (`https://www.instagram.com/…`, `https://www.facebook.com/…` ou `https://fb.watch/…`) e o dia
 (entre a aprovação e hoje). O carrossel pela API e o roteiro do reel pela IA ficam para a v0.21.1.
 
 **9. Quando não sai.** O que não saiu (com erro, parado em "publicando" há mais de 15 minutos ou agendado com a hora passada há
 mais de 20 minutos) aparece no **Painel** ("Publicações da Pauta que não saíram") e no quadro **"Não saíram"**, no alto da Pauta,
-com o motivo e "Abrir". O robô de avisos (depois de cada coleta, de 6 em 6 horas) abre **um aviso só** no GitHub, "Radar:
-publicação agendada não saiu", com a quantidade e a data, o canal e o número da mais antiga (nunca assunto, nome, legenda ou o
-texto do erro, porque o repositório é público). O aviso não é atualizado (cada mudança seria mais um e-mail) e fecha sozinho quando
+com o motivo, "Abrir" e (no que não saiu ou espera a hora) "Não publicar neste canal". O robô de avisos (depois de cada coleta,
+de 6 em 6 horas) abre **um aviso só** no GitHub, "Radar: publicação agendada não saiu", com a quantidade e a data, o canal e o
+número da mais antiga (nunca assunto, nome, legenda ou o texto do erro, porque o repositório é público). O aviso não é atualizado (cada mudança seria mais um e-mail) e fecha sozinho quando
 nada mais está parado. Nos 2 primeiros fins de semana pela agenda (a partir de 31/10), abra a Pauta por volta das 09h35: o aviso
 por e-mail pode levar horas.
 
@@ -1238,7 +1249,8 @@ repositório, que é público: a rotina diária grava direto no banco.
    ao "Honorário contábil" da agenda de obrigações.
 3. Edge Functions → `radar-redes` → cole o `index.ts` desta versão e faça o Deploy, com **"Verify JWT" ligado**, como já está.
    Publicações → "Testar conexão com o Instagram e o Facebook": tudo OK, inclusive o item novo "Armazenamento privado da Pauta" (a
-   função cria sozinha o `radar-pauta`, privado).
+   função cria sozinha o `radar-pauta`, privado), e embaixo "Função radar-redes v0.21.0" (com a anterior, aparece o aviso para
+   fazer o Deploy).
 4. Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel pede a função `radar-ia` v0.21.0:
    Configurações → Inteligência artificial → Testar a IA deve mostrar v0.21.0). Com a função antiga, o "Gerar com IA" da peça
    avisa que ela é de uma versão anterior; o resto da IA funciona igual.

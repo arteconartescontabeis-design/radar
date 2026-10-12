@@ -518,9 +518,8 @@ function blocoSugestaoPeca(s, atual){
    muda. Dois modelos. "foto": a foto em capa cheia, véu escuro embaixo, o selo do tipo, a chamada (até 3 linhas), o apoio, a linha de
    cada pessoa marcada (escrita pelo código: linhaPessoa; até 6 linhas: com mais, as pessoas sem registro da mesma área dividem a
    linha, "Ana, Bruno e Carla · Departamento Pessoal", e o que ainda sobrar vai para os cortes) e a página ("2/6"). "texto": fundo
-   marinho, o selo, o título, o texto ou a
-   lista (a agenda da semana, agrupada pela data) e a página. Margem lateral de 72 px (guia de produção). Sem “Matéria completa” e sem o
-   selo de SC: a peça não é notícia. Faixa legal: fundo branco com a identificação das Configurações (linhaIdentificacao), em letra com
+   marinho, o selo, o título, o texto ou a lista (a agenda da semana, agrupada pela data) e a página. Margem lateral de 72 px (guia de
+   produção). Sem “Matéria completa” e sem o selo de SC: a peça não é notícia. Faixa legal: fundo branco com a identificação das Configurações (linhaIdentificacao), em letra com
    pelo menos 28 px de ALTURA medida (o “H”; começa em 40 px: a leitura mais rígida do guia), em até 3 linhas quebradas nos “ · ” (a
    2ª linha com os dados reais fica a 2 px da margem: um arredondamento de outro aparelho não pode travar toda aprovação); se uma parte
    sozinha não couber na largura, ou passar de 3 linhas, sai cortada e vai para os cortes — a aprovação trava. JPEG de 0,9 a 0,6 até
@@ -1108,8 +1107,8 @@ const PAUTA = {
     /* "Não publicar neste canal" (só o administrador): na peça ou no quadro "Não saíram" */
     async "peca-nao-publicar-canal"(el){
       const nome = NOME_REDE[el.dataset.canal] || "canal";
-      if(!confirm(`Não publicar esta peça no ${nome}? ${el.dataset.situacao === "erro" ? "A publicação que não saiu" : "A publicação agendada"} é cancelada e não sai mais ` +
-        `sozinha; o outro canal fica como está e a peça continua aprovada.`)) return;
+      if(!confirm(`Não publicar esta peça no ${nome}? ${el.dataset.situacao === "erro" ? "A publicação que não saiu é cancelada (sem Tentar de novo neste canal)"
+        : "A publicação agendada é cancelada e não sai"}; o outro canal fica como está e a peça continua aprovada.`)) return;
       await rpc("radar_cancelar_rede", {p_envio:Number(el.dataset.envio)});
       await desenhar(); recado(`Combinado: a peça não vai ao ${nome}.`);
     },

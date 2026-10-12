@@ -165,8 +165,8 @@ def decidir_pauta(problemas: list[dict] | None, abertos: dict[str, int]) -> tupl
         return None, []
     if problemas:
         return (None if meus else corpo_pauta(problemas)), []
-    return None, [(n, "Nenhuma publicação da Pauta está parada ou com erro agora (saiu, foi remarcada ou a aprovação foi desfeita).")
-                  for n in meus]
+    return None, [(n, "Nenhuma publicação da Pauta está parada ou com erro agora (saiu, foi remarcada, ficou sem aquele canal "
+                      "ou a aprovação foi desfeita).") for n in meus]
 
 
 def titulo_link(url: str) -> str:

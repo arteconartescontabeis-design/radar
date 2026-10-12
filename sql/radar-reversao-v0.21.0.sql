@@ -174,6 +174,7 @@ drop function if exists public.radar_pauta_identificacao_falta(text);
 drop function if exists public.radar_pauta_numeros(text);
 drop function if exists public.radar_pauta_numeros_fora(text, text);
 drop function if exists public.radar_pauta_copia_paga(text[]);
+drop function if exists public.radar_pauta_copia_paga_ia(text[]);
 drop function if exists public.radar_pauta_termo_ok(bigint, text, text, date);
 drop function if exists public.radar_pauta_problemas(bigint, text[], date);
 drop function if exists public.radar_fn_pauta_peca();

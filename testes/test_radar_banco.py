@@ -471,7 +471,7 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_pauta_importar', 'radar_pauta_conferir', 'radar_pauta_marcar_pronta',
                                                            'radar_pauta_aprovar', 'radar_pauta_desaprovar', 'radar_pauta_publicar_agora',
                                                            'radar_pauta_pode_copiar', 'radar_pauta_registrar_manual', 'radar_pauta_termo_ok',
-                                                           'radar_agenda_situacao', 'radar_pauta_copia_paga')
+                                                           'radar_agenda_situacao', 'radar_pauta_copia_paga_ia')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -3844,6 +3844,13 @@ def test_pauta_problemas_identificacao_marcas_confirmar_fonte_numeros_e_copia_pa
     db.execute("update radar_pauta_pecas set legenda_instagram = %s, chamada = 'Quem cuida da sua folha', conferidas = %s where id = %s",
                (LEG_PECA, json.dumps([{"informacao": frase, "fonte": "Receita Federal"}]), pid))
     assert conferir(pid) == ["Há frase igual à do boletim pago (ITC): reescreva com palavras próprias"]   # nas conferidas também
+    # a conferência que a radar-ia faz antes de chamar a IA (o plano e as conferidas): só sim ou não, só para quem edita a Pauta
+    with como("authenticated", EDITOR) as c:
+        assert c.execute("select radar_pauta_copia_paga_ia(%s)", (["Resumo: " + " ".join(palavras[:12])],)).fetchone()[0] is True
+        assert c.execute("select radar_pauta_copia_paga_ia(%s)", (["Resumo: " + " ".join(palavras[:11])],)).fetchone()[0] is False
+    for uid in (LEITOR, SEM_PERFIL):
+        with como("authenticated", uid) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR159"):
+            c.execute("select radar_pauta_copia_paga_ia(%s)", (["Resumo: " + " ".join(palavras[:12])],))
     # "(conferir)": a marca provisória de que falta conferir não vai ao ar, nem na fonte, nem no texto ("Fonte: …" no fim da legenda)
     regra = "Regra de vencimento das Configurações (conferir)"
     db.execute("update radar_pauta_pecas set legenda_instagram = %s, conferidas = %s where id = %s",
@@ -4513,7 +4520,7 @@ def test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date(db):
     novas = db.execute("""select p.proname, p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                           where n.nspname = 'public' and (p.proname like 'radar\\_pauta\\_%' or p.proname like 'radar\\_agenda\\_%'
                                 or p.proname in ('radar_redes_conferir_agenda', 'radar_fn_pauta_peca', 'radar_fn_pessoa_apagar'))""").fetchall()
-    assert len(novas) == 25
+    assert len(novas) == 26
     assert [n for n, src in novas if "current_date" in src.lower()] == []
 
 

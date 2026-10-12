@@ -2323,6 +2323,17 @@ begin
   return false;
 end $$;
 
+-- A função radar-ia (ação "peca", com o token de quem pede) confere, antes de chamar a IA, que nada do boletim pago vai junto (o plano
+-- e as informações conferidas da peça): só o editor e o administrador; devolve só sim ou não (o trecho do boletim não sai daqui).
+create or replace function public.radar_pauta_copia_paga_ia(p_textos text[]) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR159: só o editor ou o administrador mexe na Pauta' using errcode = '42501';
+  end if;
+  return public.radar_pauta_copia_paga(p_textos);
+end $$;
+
 -- O termo de uso de imagem da pessoa vale para a peça (tipo), o canal e o dia? NULL = vale; senão o motivo, sem o nome.
 -- Roda como quem chama (security invoker): o leitor não lê radar_pessoas e recebe "pessoa não cadastrada". A finalidade do
 -- termo vem do tipo da peça: Quem cuida e Bastidor = apresentar a equipe; Reel, Educativo, Agenda e Notícia = orientação;
@@ -2431,7 +2442,7 @@ begin
   if v_tudo ~* '\{\s*confirmar[^}]*\}' then
     v := array_append(v, 'Há {confirmar …} no texto: troque pela informação conferida (ou tire o trecho)');
   end if;
-  -- "(conferir)": a marca de que falta conferir (a tela não põe mais na fonte da agenda; a peça antiga ou o texto colado podem ter)
+  -- "(conferir)": a marca de que falta conferir (no texto colado, ou na fonte escrita à mão) não vai ao ar
   if v_tudo ~* '\(\s*conferir\s*\)' then
     v := array_append(v, 'Há “(conferir)” no texto: confira na fonte oficial e tire a marca');
   end if;
@@ -4341,9 +4352,7 @@ grant execute on function public.radar_pauta_publicar_agora(bigint, boolean) to 
 grant execute on function public.radar_pauta_pode_copiar(bigint, timestamptz, text) to authenticated;
 grant execute on function public.radar_pauta_registrar_manual(bigint, text, text, date) to authenticated;
 grant execute on function public.radar_pauta_termo_ok(bigint, text, text, date) to authenticated;
--- a função radar-ia (ação "peca", com o token de quem pede) confere, antes de chamar a IA, que nada do boletim pago vai junto: só
--- sim ou não, e com a RLS de quem chama (roda como quem chama: lê só as capturas que a pessoa já lê)
-grant execute on function public.radar_pauta_copia_paga(text[]) to authenticated;
+grant execute on function public.radar_pauta_copia_paga_ia(text[]) to authenticated;
 grant execute on function public.radar_agenda_situacao() to authenticated;
 grant execute on function public.radar_pauta_iniciar(bigint) to service_role;
 grant execute on function public.radar_redes_conferir_agenda(text) to service_role;
