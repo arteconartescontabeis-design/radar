@@ -33,6 +33,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r robo/requirements.txt "psycopg[binary]" pytest playwright pillow
+      # v0.22.0: o Python do robô de vídeo, com versão e hash (o Speech SDK da Azure): test_radar_video_transcrever.py roda o SDK de
+      # verdade contra um servidor local do protocolo de fala (ws://127.0.0.1; nenhuma chamada à Azure)
+      - run: pip install --require-hashes --no-deps -r robo/video/requirements.txt
       # v0.22.0: ffmpeg para os testes do corretor de vídeo (testes/test_radar_video_robo.py e test_radar_video_alinhar.py, só com
       # vídeos sintéticos; o teste do contêiner monta robo/video/Dockerfile com o docker que já vem no runner)
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils ffmpeg

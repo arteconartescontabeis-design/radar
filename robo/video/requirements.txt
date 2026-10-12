@@ -5,3 +5,16 @@
 pillow==12.3.0 \
     --hash=sha256:78cb2c6865a35ab8ff8b75fd122f6033b92a62c82801110e48ddd6c936a45d91 \
     --hash=sha256:3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce
+# A transcrição pelo F0 (transcrever.py): o Speech SDK da Azure. Só há rodas (manylinux1_x86_64, a do runner, e manylinux2014_aarch64);
+# a biblioteca nativa precisa de libssl3, que o ubuntu-24.04 já tem (o SDK só lista o Ubuntu até a 24.04: runs-on fixo). Ele importa
+# só azure.core.credentials e azure.core.exceptions, que precisam do typing-extensions; o requests que o azure-core declara não é
+# usado nesse caminho e fica de fora (conferido: o import do SDK carrega só azure e typing_extensions).
+azure-cognitiveservices-speech==1.52.0 \
+    --hash=sha256:baf3ae9bdd1e75336a22f859d854a3c0f9dd7078b9144f2d432441e77be9f91c \
+    --hash=sha256:ad4563b39f916da636de7780a00769d355c4d990f9fb2411d5200106489cd5e4
+azure-core==1.41.0 \
+    --hash=sha256:522b4011e8180b1a3dcd2024396a4e7fe9ac37fb8597db47163d230b5efe892d \
+    --hash=sha256:f46ff5dfcd230f25cf1c19e8a34b8dc08a337b2503e268bb600a16c00db8ad5a
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
+    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5

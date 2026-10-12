@@ -494,7 +494,7 @@ def test_codigo_do_robo_isolado_e_sem_ia(monkeypatch):
     rede, só leitura, sem privilégio e nenhum -e; ninguém imprime o stderr; nada de síntese de voz, interpolação ou IA."""
     fontes = {p.name: p.read_text(encoding="utf-8") for p in ROBO.glob("*.py")}
     assert {"isolado.py", "sondar.py", "audio.py", "cortes.py", "legenda.py", "cartela.py", "montar.py", "conferir.py", "segredo.py",
-            "alinhar.py", "numeros.py", "relatorio.py"} <= set(fontes)
+            "alinhar.py", "numeros.py", "relatorio.py", "transcrever.py"} <= set(fontes)
     for nome, codigo in fontes.items():
         if nome != "isolado.py":
             assert not re.search(r"\bsubprocess\b|os\.system|os\.popen|\bPopen\b|os\.exec|pty\.", codigo), nome

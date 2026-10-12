@@ -23,8 +23,18 @@ encadeada (todo erro vira ErroVideo com código fixo, levantado FORA do except: 
 (a mensagem de erro, o detalhe do cancelamento, que traz o endereço) só é classificada, nunca impressa. O registro de áudio e o
 arquivo de log do SDK nunca são ligados. O REST vai direto (sem o proxy do ambiente) e não segue redirecionamento: a chave nunca vai
 para outro endereço.
+Passo próprio do workflow (main): `python -I robo/video/transcrever.py <pasta do trabalho>`, só com AZURE_FALA_* no ambiente — a
+chave da Azure e a do robô (RADAR_VIDEO_ROBO_CHAVE) não precisam estar no mesmo processo. Lê fala16k.wav e pedido_fala.json
+({pedido, glossario, fala_roteiro, restante_s}, gravado pelo passo anterior) e grava palavras.json (para_json) ou, na falha,
+transcricao_erro.txt com o código fixo (que o passo seguinte manda para radar_video_falhar).
 """
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+if __name__ == "__main__":                              # python -I não põe a pasta do script no sys.path
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import importlib
 import json
@@ -38,7 +48,6 @@ import time
 import urllib.error
 import urllib.request
 import wave
-from pathlib import Path
 
 import segredo
 from segredo import ErroVideo
@@ -65,6 +74,11 @@ _ENDPOINT = re.compile(r"^https://[a-z0-9][a-z0-9-]{0,62}\.(cognitiveservices\.a
 _PONTAS = ".,;:!?…\"'“”‘’«»()[]"
 _FIM_FRASE = re.compile(r"[.!?…:][\"'”’»)\]]*$")
 _MARCACAO = re.compile(r"[{}\\<>|]")
+_PALAVRA = re.compile(r"^[^\W\d_]+(?:[-'’][^\W\d_]+)*$")       # só letras ("PGDAS-D", "d'Ávila"): nada de "R$", "30/10", "{\\b1}"
+# palavras comuns que abrem frase com maiúscula: nunca entram na lista como começo de um nome
+_ABRE_FRASE = set("com para por sem uma uns umas nos nas dos das pelo pela pelos pelas este esta estes estas esse essa isso isto "
+                  "aqui hoje agora quem você vocês nós ele ela eles elas seu sua seus suas meu minha nosso nossa até desde quando "
+                  "como mas então também olá bom boa bons boas sou somos fala falo veja olha confira atenção".split())
 _dormir, _relogio = time.sleep, time.monotonic          # os testes trocam por um relógio falso
 
 
@@ -96,8 +110,9 @@ def duracao(wav: str | Path) -> float:
 
 def lista_de_frases(glossario=(), fala_roteiro: str = "") -> list[str]:
     """A lista de frases (phrase list) que ajuda o reconhecimento: os termos do glossário e, da fala do roteiro, as sequências de
-    palavras com maiúscula fora do começo da frase (nomes e siglas: "Ana Teste", "IBS", "eSocial"); a 1ª palavra da frase só entra se
-    tiver maiúscula no meio ("DCTFWeb"). Sem algarismos (o F0 devolve a forma léxica, por extenso). Até 300, sem repetir."""
+    palavras com maiúscula fora do começo da frase (nomes e siglas: "Ana Teste", "IBS", "eSocial"). A 1ª palavra da frase entra se
+    tiver maiúscula no meio ("DCTFWeb") ou se abrir um nome ("Bruno Exemplo explica…"; "Bom dia", "Com a…" não). Sem algarismos (o F0
+    devolve a forma léxica, por extenso). Até 300, sem repetir."""
     out: list[str] = []
     vistos: set[str] = set()
 
@@ -111,15 +126,19 @@ def lista_de_frases(glossario=(), fala_roteiro: str = "") -> list[str]:
         if isinstance(t, str):
             por(t)
     corrida: list[str] = []
-    comeco = True
+    comeco, pendente = True, None
     for tok in [*str(fala_roteiro or "").split()[:6000], "."]:
         p = tok.strip(_PONTAS)
-        nome = bool(p) and not any(c.isdigit() for c in p) and (any(c.isupper() for c in p[1:]) or (p[0].isupper() and not comeco))
+        titulo = p[:1].isupper() and p[1:].islower() and p.isalpha()
+        nome = bool(_PALAVRA.match(p)) and (any(c.isupper() for c in p[1:]) or (p[0].isupper() and not comeco))
+        if nome and pendente and titulo and not corrida:
+            corrida.append(pendente)                     # "Bruno Exemplo explica…": o nome que abre a frase
         if nome:
             corrida.append(p)
         if corrida and (not nome or tok.rstrip(_PONTAS) != tok):   # a sequência acaba na palavra comum ou na pontuação
             por(" ".join(corrida))
             corrida = []
+        pendente = p if comeco and titulo and len(p) >= 3 and p.casefold() not in _ABRE_FRASE and tok.rstrip(_PONTAS) == tok else None
         comeco = bool(_FIM_FRASE.search(tok))
     return out
 
@@ -385,7 +404,8 @@ def _com_novas_tentativas(tentar, servico: str):
             espera = ESPERA_INICIAL * 3 ** (falhas - 1)
         else:
             break
-        segredo.log("transcrever", servico=servico, motivo=motivo, tentativa=recusas + falhas, espera=round(espera, 1))
+        segredo.log("transcrever", rapido=servico == SERVICO["rapido"], motivo=motivo, tentativa=recusas + falhas,
+                    espera=round(espera, 1))
         _dormir(espera)
     raise ErroVideo(_CODIGO.get(motivo, "azure_erro"), "transcrever")
 
@@ -442,3 +462,44 @@ def de_json(dados: bytes) -> dict:
     servico = t.get("servico") if t.get("servico") in SERVICO.values() else None
     return {"palavras": palavras, "frases": frases,
             "transcricao": {"servico": servico, "segundos_audio": seg, "palavras": len(palavras)}}
+
+
+# ------------------------------------------------------------------ o passo do workflow
+def main(args: list[str]) -> int:
+    """<pasta>/fala16k.wav e <pasta>/pedido_fala.json → <pasta>/palavras.json (0) ou <pasta>/transcricao_erro.txt (1). No log, só
+    o código, o número de palavras e os segundos de áudio."""
+    segredo.instalar_excepthook()
+    pasta = Path(args[0]) if len(args) == 1 else None
+    if pasta is None or not pasta.is_dir():
+        segredo.log("transcrever", erro="pasta_invalida")
+        return 2
+    erro_txt = pasta / "transcricao_erro.txt"
+    erro_txt.unlink(missing_ok=True)
+    pedido, codigo = None, None
+    try:
+        pedido = json.loads((pasta / "pedido_fala.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pedido = None
+    restante = pedido.get("restante_s") if isinstance(pedido, dict) else None
+    if not isinstance(pedido, dict) or not isinstance(pedido.get("glossario"), list) or not isinstance(pedido.get("fala_roteiro"), str) \
+            or not (restante is None or isinstance(restante, (int, float)) and not isinstance(restante, bool)):
+        codigo = "pedido_invalido"                      # sem ele, a lista de frases e a cota do Radar ficariam de fora calados
+    else:
+        segredo.etapa("transcrever", pedido.get("pedido") if isinstance(pedido.get("pedido"), str) else None)
+        try:
+            r = transcrever(pasta / "fala16k.wav", pedido["glossario"], pedido["fala_roteiro"],
+                            None if restante is None else float(restante))
+            (pasta / "palavras.json").write_bytes(para_json(r))
+        except ErroVideo as e:
+            codigo = e.codigo
+    if codigo:
+        erro_txt.write_text(codigo, encoding="utf-8")
+        segredo.log("transcrever", erro=codigo)
+        return 1
+    segredo.log("transcrever", palavras=r["transcricao"]["palavras"], segundos=float(r["transcricao"]["segundos_audio"]),
+                rapido=r["transcricao"]["servico"] == SERVICO["rapido"])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
