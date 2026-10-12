@@ -3647,7 +3647,7 @@ def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo
     for versao, velha in (("0.19.0", True), ("0.21.0", False), ("0.22.0", False)):
         pagina.unroute("**/functions/v1/radar-redes")
         corpo = json.dumps({"tudo_certo": True, "versao": versao, "itens": [{"item": "Página do Facebook", "ok": True, "detalhe": "Artecon"}]})
-        pagina.route("**/functions/v1/radar-redes", lambda rota, c=corpo: rota.fulfill(status=200, content_type="application/json", body=c))
+        pagina.route("**/functions/v1/radar-redes", (lambda c: lambda rota: rota.fulfill(status=200, content_type="application/json", body=c))(corpo))
         pagina.click("text=Testar conexão com o Instagram e o Facebook")
         pagina.wait_for_selector(f"#redes-versao >> text=Função radar-redes v{versao}.")
         assert pagina.locator("#redes-versao-velha").count() == (1 if velha else 0), versao
