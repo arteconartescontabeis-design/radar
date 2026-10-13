@@ -98,7 +98,9 @@ const esperarVideo = ms => new Promise(ok => setTimeout(ok, ms));
 const linkVideoOk = u => typeof u === "string" && /^https?:\/\/[!-~]+$/.test(u) && !/["'<>`\\]/.test(u) && u.startsWith(URL_BASE + "/storage/v1/object/sign/radar-videos/");
 const confVideo = () => objVideo(CONF_PAUTA.corretor_video);
 const limiteDuracaoVideo = () => { const n = numVideo(confVideo().duracao_max_s); return n !== null && n >= 15 && n <= 90 ? n : 45; };
-const erroDoVideo = c => ERROS_VIDEO[c] || (/^[a-z_]{3,40}$/.test(String(c || "")) ? ERRO_INTERNO_VIDEO + ` (${c})` : ERRO_INTERNO_VIDEO);
+// o texto de um código do robô ou do relatório: só o que é do mapa (nunca "constructor" ou "__proto__", que o objeto herda)
+const deMapaVideo = (m, k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null;
+const erroDoVideo = c => deMapaVideo(ERROS_VIDEO, c) || (/^[a-z_]{3,40}$/.test(String(c || "")) ? ERRO_INTERNO_VIDEO + ` (${c})` : ERRO_INTERNO_VIDEO);
 // o banco ainda é o da v0.21.0 (sem a tabela do vídeo): a tela diz o que falta em vez do erro cru do PostgREST
 const semTabelaDoVideo = e => e.status === 404 || /radar_videos|termo_corretor_em|quer_ver_peca/.test(e.message || "");
 
@@ -188,7 +190,7 @@ async function blocoVideo(p){
   return `<details class="painel video-reel" id="video-reel" data-peca="${p.id}" open><summary><h2>Corretor de vídeo</h2> <span id="video-selo">${seloVideo(v)}</span></summary>
     <div id="video-corpo">${corpoVideo()}</div></details>`;
 }
-const seloVideo = v => v ? selo(`${SITUACOES_VIDEO[v.situacao] || v.situacao} (gravação ${v.versao})`, TIPO_SELO_VIDEO[v.situacao] ?? "neutro") : selo("Sem gravação", "neutro");
+const seloVideo = v => v ? selo(`${deMapaVideo(SITUACOES_VIDEO, v.situacao) || v.situacao} (gravação ${v.versao})`, deMapaVideo(TIPO_SELO_VIDEO, v.situacao) ?? "neutro") : selo("Sem gravação", "neutro");
 /* O miolo do quadro (refeito pela sondagem sem redesenhar a peça) */
 function corpoVideo(){
   const ev = estadoVideo(), p = ev.pecaDados, v = ev.atual, adm = ehAdmin();
@@ -322,11 +324,13 @@ async function pedidoTus(url, metodo, cab, corpo, tempo){
 async function enviarTus(arquivo, envio, bucket, tipo, aoProgresso){
   const chave = "radar_tus_" + envio.caminho, base = enderecoArmazenamento(), n = envio.n;
   const cab = extra => ({apikey:CHAVE, ...(ehJwtVideo(CHAVE) ? {Authorization:"Bearer " + CHAVE} : {}), "x-signature":envio.token, "Tus-Resumable":"1.0.0", ...extra});
+  // o endereço do envio (o Location do armazenamento, ou o guardado): só deste projeto, para o token nunca ir a outro lugar
+  const doArmazenamento = u => typeof u === "string" && [base, URL_BASE].some(b => u.startsWith(b + "/storage/v1/upload/resumable/"));
   const ondeEsta = async u => { try{ const r = await pedidoTus(u, "HEAD", cab({}), undefined, 30000), o = Number(r.headers.get("Upload-Offset"));
     return r.ok && r.headers.get("Upload-Offset") !== null && Number.isSafeInteger(o) && o >= 0 && o <= arquivo.size ? o : null; }catch(e){ return null; } };
   let url = null, offset = 0;
   const salvo = lerLocalVideo(chave);
-  if(salvo && salvo.bytes === arquivo.size && typeof salvo.url === "string" && salvo.url.startsWith(base + "/storage/v1/upload/resumable")){
+  if(salvo && salvo.bytes === arquivo.size && doArmazenamento(salvo.url)){
     const o = await ondeEsta(salvo.url);
     if(o !== null){ url = salvo.url; offset = o; }
   }
@@ -350,6 +354,7 @@ async function enviarTus(arquivo, envio, bucket, tipo, aoProgresso){
     if(r.status === 401 || r.status === 403) throw new ErroApi(`O armazenamento recusou o envio do clipe nº ${n} (o link de envio vale 2 horas): clique em Continuar o envio.`, r.status);
     if(r.status !== 201 || !loc) throw new ErroApi(`O armazenamento não aceitou o clipe nº ${n} (erro ${r.status}): clique em Continuar o envio; se repetir, avise o administrador.`, r.status);
     url = new URL(loc, base + "/").href;
+    if(!doArmazenamento(url)) throw new ErroApi(`O armazenamento devolveu um endereço de envio fora deste projeto para o clipe nº ${n}: nada foi enviado. Avise o administrador.`);
     guardarLocalVideo(chave, {url, bytes:arquivo.size});
   }
   aoProgresso(offset / arquivo.size);
@@ -400,9 +405,12 @@ async function subirClipes(pid, id, envios, lista, bucket){
   ev.progresso = {peca:pid, id, partes:Object.fromEntries(envios.map(e => [e.n, 0]))};
   const box = $("#video-envio"); if(box) box.outerHTML = blocoProgresso(ev.progresso);
   window.addEventListener("beforeunload", naoSairVideo);
+  // no celular, a tela acesa enquanto sobe (a tela bloqueada para o envio): o pedido do navegador (Screen Wake Lock); sem ele, só o aviso
+  let acesa = null;
+  try{ acesa = await navigator.wakeLock?.request("screen") || null; }catch(e){ acesa = null; }
   try{
     for(const e of envios){ const c = lista[e.n - 1]; await enviarTus(c.arquivo, e, bucket, c.tipo, f => mostrarProgresso(e.n, f)); }
-  }finally{ window.removeEventListener("beforeunload", naoSairVideo); ev.progresso = null; }
+  }finally{ window.removeEventListener("beforeunload", naoSairVideo); ev.progresso = null; if(acesa) acesa.release().catch(() => {}); }
 }
 
 /* ------------------------------------------------------------- a situação */
@@ -442,12 +450,12 @@ function blocoRelatorio(v, podeAjustar){
   const ouvir = x => !parcial && numVideo(x) !== null ? ` <button class="btn peq sec" type="button" data-acao="video-ouvir" data-em="${numVideo(x)}">▶ ouvir</button>` : "";
   const itens = [], saida = objVideo(r.saida), conf = objVideo(r.conferencia), entrada = objVideo(r.entrada);
   const avisos = [...new Set((Array.isArray(r.avisos) ? r.avisos : []).map(String))];
-  if(avisos.length) itens.push(`<div class="aviso alerta video-avisos"><ul class="pauta-erros">${avisos.map(a => `<li>${h(AVISOS_VIDEO[a] || "Aviso do corretor: " + a)}</li>`).join("")}</ul></div>`);
+  if(avisos.length) itens.push(`<div class="aviso alerta video-avisos"><ul class="pauta-erros">${avisos.map(a => `<li>${h(deMapaVideo(AVISOS_VIDEO, a) || "Aviso do corretor: " + a)}</li>`).join("")}</ul></div>`);
   // o que precisa regravar: número, data ou termo diferente do roteiro
   const divs = listaVideo(r.divergencias), abertas = divs.filter(d => d.regravar !== false && !d.transcricao_errou && !errou.has(Number(d.k)));
   if(divs.length) itens.push(`<div class="${abertas.length ? "aviso erro" : "aviso info"} video-divergencias"><b>${abertas.length ? "Precisa regravar:" : "Divergências (marcadas: a transcrição errou):"}</b>
     <ul class="pauta-erros">${divs.map(d => { const k = Number(d.k), marcado = !!d.transcricao_errou || errou.has(k);
-      return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${TIPOS_DIVERGENCIA[d.tipo] ? ` (${TIPOS_DIVERGENCIA[d.tipo]})` : ""}.${ouvir(d.em_s)}
+      return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${deMapaVideo(TIPOS_DIVERGENCIA, d.tipo) ? ` (${h(deMapaVideo(TIPOS_DIVERGENCIA, d.tipo))})` : ""}.${ouvir(d.em_s)}
         ${podeAjustar ? `<label class="video-check"><input type="checkbox" class="video-errou" value="${h(k)}"${marcado ? " checked" : ""}> A transcrição errou (vale o roteiro)</label>`
           : marcado ? ` <span class="selo ok">a transcrição errou: vale o roteiro</span>` : ""}</li>`; }).join("")}</ul>
     ${podeAjustar && abertas.length ? `<p class="sub">Administrador: ouça na prévia; se a pessoa disse o que está no roteiro, marque “A transcrição errou (vale o roteiro)” e aplique os ajustes (a legenda passa a usar o roteiro naquele trecho; o áudio não muda). Se a fala está errada, grave de novo.</p>` : ""}</div>`);
@@ -464,10 +472,10 @@ function blocoRelatorio(v, podeAjustar){
   const semFala = cortes.filter(c => c.tipo === "clipe_sem_fala").length;
   if(cortes.length) itens.push(`<li id="video-cortes">Cortes: começo e fim de ${borda} clipe(s)${pausas.length ? `; ${pausas.length} pausa(s) longa(s) encurtada(s) (${soma(pausas)} s)` : ""}${hes.length ? `; ${hes.length} trecho(s) de hesitação (${soma(hes)} s)` : ""}${semFala ? `; ${semFala} clipe(s) sem fala ficaram de fora` : ""}.
     ${meio.length ? `<details class="video-cortes-meio"${meio.length <= 8 ? " open" : ""}><summary>Cortes no meio da fala (${meio.length})</summary><ul>${meio.map(c => { const k = Number(c.k), mantido = !!c.mantido || manter.has(k);
-      return `<li class="video-corte" data-k="${h(k)}">${h(em(c.em_s))}: ${h(TIPOS_CORTE[c.tipo] || c.tipo)} (${segVideo(c.dur_s, 2)} s)${textoDe(c.texto) ? ` — “${h(c.texto)}”` : ""}${ouvir(c.em_s)}
+      return `<li class="video-corte" data-k="${h(k)}">${h(em(c.em_s))}: ${h(deMapaVideo(TIPOS_CORTE, c.tipo) || c.tipo)} (${segVideo(c.dur_s, 2)} s)${textoDe(c.texto) ? ` — “${h(c.texto)}”` : ""}${ouvir(c.em_s)}
         ${podeAjustar ? `<label class="video-check"><input type="checkbox" class="video-manter" value="${h(k)}"${mantido ? " checked" : ""}> Manter este trecho</label>` : mantido ? ` <span class="selo neutro">mantido</span>` : ""}</li>`; }).join("")}</ul></details>` : ""}</li>`);
   const sug = listaVideo(r.sugestoes);
-  if(sug.length) itens.push(`<li id="video-sugestoes">Para ouvir (não foi cortado): ${sug.map(s => `${h(em(s.em_s))}, ${h(TIPOS_CORTE[s.tipo] || s.tipo)}${textoDe(s.texto) ? ` “${h(s.texto)}”` : ""}${ouvir(s.em_s)}`).join("; ")}. Se atrapalhar, grave o trecho de novo.</li>`);
+  if(sug.length) itens.push(`<li id="video-sugestoes">Para ouvir (não foi cortado): ${sug.map(s => `${h(em(s.em_s))}, ${h(deMapaVideo(TIPOS_CORTE, s.tipo) || s.tipo)}${textoDe(s.texto) ? ` “${h(s.texto)}”` : ""}${ouvir(s.em_s)}`).join("; ")}. Se atrapalhar, grave o trecho de novo.</li>`);
   // a legenda
   const trocas = listaVideo(r.trocas);
   if(trocas.length) itens.push(`<li id="video-trocas">Legenda na grafia do roteiro: ${trocas.map(t => `“${h(t.de)}” → “${h(t.para)}”${em(t.em_s) ? ` (${h(em(t.em_s))})` : ""}`).join("; ")}.</li>`);
@@ -481,7 +489,7 @@ function blocoRelatorio(v, podeAjustar){
       : `<li id="video-termos">Termos de publicidade na fala: ${aviso.length ? `${aviso.map(t => `“${h(t)}”`).join(", ")} (confira se é informação, e não propaganda; a aprovação pede confirmação)` : "nenhum"}.</li>`);
     const leg = objVideo(r.legenda), rec = listaVideo(leg.recusados);
     itens.push(`<li id="video-legenda-resumo">Legenda: ${numVideo(leg.blocos) ?? 0} bloco(s), ${leg.estilo === "compacta" ? "compacta (1 linha)" : "normal (até 2 linhas)"}${leg.gancho ? ", com o texto do gancho de 0 a 3 s" : ""}${numVideo(leg.editados) ? `; ${numVideo(leg.editados)} bloco(s) editado(s)` : ""}.
-      ${rec.length ? `<span class="video-recusados">Edição recusada: ${rec.map(x => `bloco ${h(x.bloco)}, ${h(MOTIVOS_LEGENDA[x.motivo] || x.motivo)}`).join("; ")}.</span>` : ""}</li>`);
+      ${rec.length ? `<span class="video-recusados">Edição recusada: ${rec.map(x => `bloco ${h(x.bloco)}, ${h(deMapaVideo(MOTIVOS_LEGENDA, x.motivo) || x.motivo)}`).join("; ")}.</span>` : ""}</li>`);
     const lufs = numVideo(saida.lufs ?? conf.lufs), pico = numVideo(saida.pico_dbtp ?? conf.pico_dbtp), audio = objVideo(r.audio);
     const ra = numVideo(audio.ruido_antes_db), rd = numVideo(audio.ruido_depois_db);
     // ruído "reduzido" só com a medida: o ruído de fundo em relação à voz caiu (o relatório traz os dois números)
@@ -551,28 +559,38 @@ function blocoAjustes(v){
     <div class="acoes"><button class="btn" type="button" data-acao="video-ajustar" data-id="${h(v.id)}">Aplicar os ajustes e montar de novo</button></div></div>`;
 }
 /* As recusas do editor de legenda, como o robô (alinhar._edicao): o texto, o número de palavras, o sentido (números, meses e termos do
-   glossário) e cada palavra (igual à do roteiro ou parecida, ≥ 0,6, com a que estava). null = passa; senão o código do motivo. */
+   glossário) e cada palavra (igual à do roteiro ou parecida, ≥ 0,6, com a que estava). null = passa; senão o código do motivo. O que o
+   robô recusa pelo sentido, a tela recusa antes (testes/test_radar_telas.py compara os dois, caso a caso); a tela é mais rígida só no
+   número escrito de outro jeito ("20" e "vinte", "dois" e "duas": o mesmo valor para o robô). */
 const MESES_VIDEO = new Set(["janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]);
 const EXTENSO_VIDEO = new Set(("zero dois duas tres quatro cinco seis sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezessete dezoito " +
   "dezenove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento duzentos duzentas trezentos trezentas quatrocentos quatrocentas " +
   "quinhentos quinhentas seiscentos seiscentas setecentos setecentas oitocentos oitocentas novecentos novecentas mil milhao milhoes bilhao bilhoes " +
-  "primeiro primeira terceiro terceira quarto quarta quinto quinta sexto sexta setimo setima oitavo oitava nono nona decimo decima reais real centavos").split(" "));
+  "primeiro primeira segundo segunda terceiro terceira quarto quarta quinto quinta sexto sexta setimo setima oitavo oitava nono nona decimo decima " +
+  "reais real centavos").split(" "));
+const COMUNS_VIDEO = new Set(["das", "dar", "mas"]);   // termo de uma palavra que também é palavra do dia a dia: só em maiúsculas (numeros.COMUNS)
+// os termos do glossário pela chave do robô: as letras juntas ("Simples Nacional" → simplesnacional, "PGDAS-D" → pgdasd)
 function termosDoGlossario(){
   const g = Array.isArray(confVideo().glossario) ? confVideo().glossario : [];
-  return g.filter(t => typeof t === "string").map(t => t.trim().split(/\s+/).map(letrasFala)).filter(t => t.length && t.every(Boolean));
+  return new Set(g.filter(t => typeof t === "string").map(letrasFala).filter(k => k.length >= 2));
 }
-function sentidoDaPalavra(w, um){
-  if(/\d/.test(w)) return "n" + w.replace(/[^0-9%º°ª$\/]/g, "");
+const termoDaPalavra = (w, termos) => { const l = letrasFala(w); return termos.has(l) && (!COMUNS_VIDEO.has(l) || /\p{Lu}/u.test(w)) ? l : ""; };
+function sentidoDaPalavra(w, termos){
+  if(/[\d$]/.test(w)) return "n" + w.replace(/[^0-9A-Za-z%º°ª$\/]/g, "");              // "20", "30/10", "13º", "R$", "US$"
   const l = letrasFala(w);
   if(MESES_VIDEO.has(l)) return "m" + l;
   if(EXTENSO_VIDEO.has(l)) return "e" + l;
-  if(um.has(l)) return "t" + l;
-  return "";
+  const t = termoDaPalavra(w, termos);
+  return t ? "t" + t : "";
 }
+// os termos do texto, como numeros.fichas: até 6 palavras seguidas cujas letras, juntas, são as de um termo ("e social", "Simples Nacional")
 function sentidoDoTexto(ws, termos){
   const ls = ws.map(letrasFala), r = [];
-  for(const t of termos.filter(t => t.length > 1))                           // os termos de várias palavras ("Simples Nacional")
-    for(let i = 0; i + t.length <= ls.length; i++) if(t.every((x, j) => ls[i + j] === x)) r.push(t.join(" "));
+  for(let i = 0; i < ls.length; i++)
+    for(let tam = Math.min(6, ls.length - i); tam >= 1; tam--){
+      const k = ls.slice(i, i + tam).join("");
+      if(ls[i] && termos.has(k) && (tam > 1 || termoDaPalavra(ws[i], termos))){ r.push(k); i += tam - 1; break; }
+    }
   return r.join("|");
 }
 /* SequenceMatcher.ratio do difflib (sem lixo: palavras curtas), para a semelhança das letras */
@@ -593,11 +611,11 @@ function recusaLegenda(velho, novo, n, roteiro){
   if(!novo || novo.length > 120 || /[{}\\<>\u0000-\u001f\u007f]/.test(novo)) return "texto_invalido";
   const vs = velho.split(" ").filter(Boolean), ns = novo.split(" ").filter(Boolean);
   if(ns.length !== n || vs.length !== ns.length) return "numero_de_palavras";
-  const termos = termosDoGlossario(), um = new Set(termos.filter(t => t.length === 1).map(t => t[0]));
+  const termos = termosDoGlossario();
   if(sentidoDoTexto(vs, termos) !== sentidoDoTexto(ns, termos)) return "numero_ou_termo";
   const doRoteiro = new Set(String(roteiro || "").split(/\s+/).map(letrasFala).filter(Boolean));
   for(let i = 0; i < vs.length; i++){
-    if(sentidoDaPalavra(vs[i], um) !== sentidoDaPalavra(ns[i], um)) return "numero_ou_termo";
+    if(sentidoDaPalavra(vs[i], termos) !== sentidoDaPalavra(ns[i], termos)) return "numero_ou_termo";
     const lv = letrasFala(vs[i]), ln = letrasFala(ns[i]);
     if(ln !== lv && !doRoteiro.has(ln) && razaoVideo(lv, ln) < 0.6) return "palavra_diferente";
   }

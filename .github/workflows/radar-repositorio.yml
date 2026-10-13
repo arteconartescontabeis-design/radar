@@ -1,9 +1,12 @@
-name: Radar — repositório sem calendário
+name: Radar — repositório sem calendário nem vídeo
 
 # v0.21.0: o repositório é público e o calendário da Pauta (CSV e .md do plano) tem os nomes da equipe. Este conferir roda em TODO
 # push, sem filtro de caminho (o radar-testes só roda quando muda o código): um CSV ou um .md solto na raiz, ou enviado pelo site do
 # GitHub ("Add file → Upload files", que não passa pelo .gitignore), também é avisado. É só um aviso depois do envio: o arquivo já
 # ficou público (e no histórico) — o cuidado é nunca enviar.
+# v0.22.0: também vídeo, áudio ou foto de gravação real (pela extensão ou pelo começo do arquivo, com qualquer nome), os arquivos de
+# trabalho do robô do corretor de vídeo e transcrição (a resposta da Azure, as palavras com tempo, legenda com tempo): no repositório
+# público entram só os vídeos SINTÉTICOS dos testes, gerados na hora. E a versão igual em todos os arquivos do pacote.
 on:
   push:
   workflow_dispatch:

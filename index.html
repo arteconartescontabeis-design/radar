@@ -284,15 +284,17 @@ const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este 
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
-  ["0.22.0", "12/10/2026", [
-    "Corretor de vídeo do reel (Pauta → peça reel): a equipe grava no celular, em 1 a 12 clipes na ordem do roteiro, e envia pela própria peça. Os clipes vão direto para um armazenamento privado do Radar, num envio que continua de onde parou se a internet cair (no celular, não feche nem bloqueie a tela até 100%; reaberta a peça, basta escolher os mesmos arquivos). Antes de qualquer arquivo sair, o banco confere a fala para conferência (tirada do roteiro: a coluna “Fala” da tabela do plano ou as linhas “Fala:” do kit), o boletim pago, o termo de cada pessoa (com o termo novo, que cita o corretor), a idade e a cartela.",
-    "O robô do corretor (no GitHub, num repositório privado) transcreve a fala (Azure gratuita), compara com o roteiro só por código, sem IA, corta o começo, o fim, as pausas longas e as hesitações, acerta o volume, grava a legenda na grafia do roteiro (e o texto do gancho de 0 a 3 s, se escolhido) e a cartela final com a identificação legal, e confere o arquivo no formato do Instagram e do Facebook, sem a localização do celular.",
-    "Relatório na peça, em português simples: o que precisa regravar (número, data ou termo diferente do roteiro; termo que a publicidade contábil não usa na fala), a duração, os cortes, a legenda, o som e os 4 quadros. O relatório parcial chega antes do vídeo pronto, e a tela atualiza sozinha enquanto o corretor trabalha. A prévia abre por um link de 10 minutos, e quem viu fica registrado.",
-    "Ajustes do administrador depois de ouvir: “Manter este trecho” (em cada corte no meio da fala), “A transcrição errou (vale o roteiro)” (em cada divergência), a legenda editada palavra por palavra (com as mesmas recusas do robô: nada de mudar número, data ou termo), legenda compacta, sem o texto do gancho e refazer a cartela. O vídeo é montado de novo sem transcrever de novo; o áudio não muda. “Tentar de novo” depois de um erro (como “transcrição ocupada”), “Conferir com o roteiro novo” e “Descartar”.",
-    "Aprovação do reel amarrada ao vídeo que o administrador viu na prévia (o hash do arquivo vai junto): pede “Conferi o vídeo” e, se a pessoa pediu no termo para ver a peça antes, “A pessoa viu o vídeo final”. Aprovado, “Baixar o vídeo aprovado” (link de 5 minutos), postar à mão, “Apaguei do celular e da nuvem pessoal” e registrar o link. A publicação automática do reel fica para a v0.22.1.",
-    "Pessoas e termos: a data do termo do corretor de vídeo, “pediu para ver a peça antes” e menor de idade. Com o termo revogado ou a pessoa inativa, a lista das peças publicadas com ela, com os links a retirar das redes.",
-    "Configurações → Corretor de vídeo: o glossário e as variantes que a transcrição erra, a duração máxima do reel, as pausas, o volume, a cartela (com uma linha extra), os minutos de transcrição do mês e os prazos de guarda; “Testar o corretor de vídeo” confere o armazenamento privado, o robô e a cota do mês.",
-    "Administrador: para instalar, rode o sql/radar-setup-v0.22.0.sql e o sql/radar-video-agenda.sql, crie a função radar-video e configure o repositório privado radar-video (passo a passo no LEIAME, “Da v0.21.0 para a v0.22.0”). Publique também o radar-video.js novo junto com o index.html e o radar-pauta.js."]],
+  ["0.22.0", "13/10/2026", [
+    "Corretor de vídeo do reel — como enviar: na Pauta, abra a peça reel e confira a “Fala para conferência” (o que o corretor compara com a gravação, tirado do roteiro: a coluna “Fala” da tabela do plano ou as linhas “Fala:” do kit). Grave no celular em 1080p, 30 quadros por segundo, Vídeo HDR desligado, na vertical, um bloco de cada vez; apague as tomadas ruins e escolha as boas, de 1 a 12 clipes, na ordem do roteiro, sem editar antes. Escolha quem fala, marque as 4 declarações e clique em “Enviar a gravação”. No celular, não feche nem bloqueie a tela até 100%; se a internet cair, reabra a peça e escolha os mesmos arquivos: o envio continua de onde parou. Antes de qualquer arquivo sair, o Radar confere a fala no roteiro, o boletim pago, o termo de cada pessoa (o termo novo, que cita o corretor), a idade e a cartela. Depois de enviar, apague o vídeo do celular e da nuvem pessoal e marque “Apaguei”.",
+    "O que o corretor faz sozinho, em poucos minutos: transcreve a fala pela Azure gratuita do escritório (a mesma cota de 5 horas por mês da Agenda, que atende um pedido por vez: ocupada, ele espera até uns 10 minutos e, se não der, avisa “Transcrição ocupada; tente de novo”), compara com o roteiro só por código, sem IA, corta o começo, o fim, as pausas longas e as hesitações (“ééé”, “hum”), reduz o ruído e acerta o volume, grava a legenda na grafia do roteiro (eSocial, DCTFWeb, 30/10, R$ 50 mil), o texto do gancho de 0 a 3 s (se escolhido) e a cartela final com a identificação legal e o CRC de quem fala, e entrega o vídeo no formato do Instagram e do Facebook, sem a localização do celular. Ele trabalha no GitHub, num repositório privado: o vídeo, a fala e os nomes nunca vão ao repositório público nem aos registros.",
+    "O que o corretor NÃO corrige: não troca, não acrescenta e não inventa palavra, e nunca corta “um”, “uma”, “e” ou “é”. Número, data ou termo diferente do roteiro vira “Precisa regravar” (o relatório mostra o que foi dito e o que o roteiro diz), assim como termo que a publicidade contábil não usa e frase do boletim pago na fala. Não cria nem imita rosto ou voz, não põe música, não tira nada do fundo e não conserta imagem tremida, escura ou fora de foco: isso se resolve gravando de novo.",
+    "Relatório e prévia na peça, em português simples: o que precisa regravar, a duração (com o limite de 45 s), os cortes, a legenda, o som e 4 quadros para conferir o fundo, as pessoas e a posição da legenda. A parte de regravar chega antes do vídeo pronto, e a tela atualiza sozinha enquanto o corretor trabalha. A prévia abre por um link de 10 minutos, e quem viu fica registrado. Depois de ouvir, o administrador pode: “Manter este trecho” (num corte no meio da fala), “A transcrição errou (vale o roteiro)” (quando a pessoa falou certo e a Azure ouviu errado), editar a legenda palavra por palavra (nada de mudar número, data ou termo), legenda compacta, sem o texto do gancho e refazer a cartela; o vídeo é montado de novo sem transcrever de novo, e o áudio não muda. Também: “Tentar de novo” depois de um erro, “Conferir com o roteiro novo” e “Descartar”.",
+    "Aprovar, baixar e postar: o administrador aprova o reel depois de abrir a prévia, e a aprovação fica amarrada a esse vídeo (o mesmo arquivo, conferido pelo banco); ela pede “Conferi o vídeo” e, se a pessoa pediu no termo para ver a peça antes, “A pessoa viu o vídeo final”. Aprovado, “Baixar o vídeo aprovado” (o link vale 5 minutos), poste à mão no Instagram e no Facebook com a legenda copiada da peça (a capa se escolhe no aplicativo), marque “Apaguei do celular e da nuvem pessoal” e registre o link. A publicação automática do reel fica para a v0.22.1, depois dos primeiros reels reais.",
+    "Pessoas e termos: a data do termo do corretor de vídeo, “pediu para ver a peça antes” e menor de idade (o corretor recusa vídeo com menor nesta versão). Com o termo revogado ou a pessoa inativa, a lista das peças publicadas com ela, com os links a retirar das redes; os vídeos e os textos guardados saem sozinhos na limpeza do dia seguinte (os prazos de guarda são das Configurações, 30 dias por padrão).",
+    "Configurações → Corretor de vídeo: o glossário e as variantes que a transcrição erra, a duração máxima do reel, as pausas, o volume, a cartela (com uma linha extra, como “Desde 1984 · (48) 3242-0530”), o limite de minutos de transcrição do Radar no mês (60 por padrão, dentro das 5 horas da Azure) e os prazos de guarda; “Testar o corretor de vídeo” confere o armazenamento privado, o robô, a fila e os minutos do mês.",
+    "Configurações → Agenda de obrigações: “Preencher fontes oficiais” põe a fonte oficial de cada vencimento (norma, artigo e o link oficial, conferidos em 12/10/2026) nas obrigações da agenda das redes que estão sem fonte, e salva. Regra, dia, ajuste, nome e fonte já escrita não mudam; a obrigação que não está na tabela aparece para conferir à mão. A fonte vai às informações conferidas da agenda da semana da Pauta.",
+    "Configurações → Fecho, assinatura e identificação legal: a ajuda e os exemplos trazem o CRC certo da Artecon, “CRC-SC 007129/O-0” (escrito “SC-007129/0-0”, a tela padroniza). O que está salvo não muda sozinho: confira que o CRC da sua assinatura é esse, porque ele vai ao fim de toda legenda, à faixa da arte e à cartela do reel.",
+    "Administrador: para instalar, rode o sql/radar-setup-v0.22.0.sql e o sql/radar-video-agenda.sql, crie a função radar-video (com “Verify JWT” ligado), copie a chave do robô do Vault para o repositório privado radar-video e guarde no Supabase o token do GitHub só desse repositório (passo a passo no LEIAME, “Da v0.21.0 para a v0.22.0”). Publique também o radar-video.js novo junto com o index.html e o radar-pauta.js. Antes do primeiro reel, a equipe assina o termo novo, que cita o corretor."]],
   ["0.21.0", "12/10/2026", [
     "Aba Pauta: o calendário de publicações no Instagram e no Facebook, uma peça por dia, na visão da semana (de segunda a domingo). O calendário do plano de publicações entra por “Importar o calendário (CSV)”: a tela confere o arquivo inteiro, mostra todos os erros de uma vez (com a linha) e o que muda, e só grava depois. A peça que já entrou em produção não muda na importação. O CSV tem nomes da equipe: nunca vai para o GitHub.",
     "Peça da Pauta: fotos no alto (cada uma em 1080×1350, enviadas uma de cada vez; a foto HEIC do iPhone recebe o recado de como trocar), quem aparece (só pessoas cadastradas, com o selo do termo de imagem), informações conferidas com a fonte, chamada, apoio, cartões, roteiro do reel (colado à mão) e as legendas do Instagram e do Facebook. No domingo, “Calcular a agenda da semana” traz os vencimentos de segunda a sexta seguintes (sem o honorário contábil).",
@@ -311,7 +313,7 @@ const VERSOES = [
     "Arte vertical para o Instagram e o Facebook (1080×1350): chamada grande, linha de apoio, o caminho até o site e, no rodapé, a identificação legal da empresa. A chamada, o apoio e o fundo da arte podem ser trocados na hora de publicar; se o texto não couber, a tela avisa embaixo da imagem.",
     "Publicidade da profissão contábil: a tela aponta os termos que a publicidade contábil evita (lista inicial, a confirmar com o contador responsável). Algumas formas de oferta, promessa e convite (“garantimos”, “economia garantida”, “consulta grátis”, “ganhe um brinde”, “blinde seu patrimônio”, “pague menos com a Artecon”, “troque de contador”) impedem a publicação da legenda e da arte, e o recado diz onde está o termo; “grátis”, “pague menos”, “100%”, “o melhor”, “definitivo”, “brindes” e “blindado” (que podem ser fato ou assunto da notícia) pedem confirmação. Outras promessas a tela não reconhece: confira sempre o texto. Frase do boletim pago também não sai, nem na legenda nem na arte, e os botões de copiar do kit seguem as mesmas regras.",
     "Ilustração da IA opcional: o “Gerar com IA” faz a capa padrão da Artecon, sem custo de imagem. A ilustração, agora no estilo editorial e nas cores da marca (não mais foto de banco de imagens), sai só pelo botão “Gerar ilustração com IA”.",
-    "Administrador: preencha o CNPJ e o CRC em Configurações → “Fecho, assinatura e identificação legal” (o CRC como “CRC-SC 004064/O-5”, com a letra O depois da barra). Enquanto estiverem vazios, a arte e as legendas saem só com o nome da empresa, e a tela avisa."]],
+    "Administrador: preencha o CNPJ e o CRC em Configurações → “Fecho, assinatura e identificação legal” (o CRC como “CRC-SC 007129/O-0”, com a letra O depois da barra). Enquanto estiverem vazios, a arte e as legendas saem só com o nome da empresa, e a tela avisa."]],
   ["0.19.0", "10/10/2026", [
     "“Gerar com IA”, um botão só: no passo 1 (Fonte), no quadro do próximo passo e no passo 2. Sem texto oficial, ele procura a fonte oficial na internet (a busca rápida: se demorar, segue sem ela); com texto oficial, busca o trecho que comprova. Depois escreve o rascunho e faz a capa com a ilustração da IA. O aviso mostra a etapa (1 de 3, 2 de 3, 3 de 3).",
     "Texto com ou sem fundamentação legal: sem texto oficial, a IA escreve um rascunho normal (não mais o “texto para análise”), com palavras próprias e o aviso de fonte não oficial; revise e aprove. Para o site continua valendo a fundamentação (ou o “Publicar mesmo assim” do administrador, com o motivo).",
@@ -620,6 +622,47 @@ function renderTexto(t){
 const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const DIAS_SEMANA = ["Domingo","Segunda-Feira","Terça-Feira","Quarta-Feira","Quinta-Feira","Sexta-Feira","Sábado"];
 const REGRAS = ["quinto_dia_util","dia","ultimo_dia_util"], AJUSTES = ["antecipa","posterga","nenhum"];
+/* v0.22.0: a fonte oficial da regra de vencimento de cada obrigação da agenda padrão, no formato curto “norma, artigo — endereço oficial”
+   (até 300 caracteres). Os links foram abertos e conferidos em 12/10/2026. Vai às informações conferidas da agenda da semana da Pauta
+   (agendaDaSemana). O Honorário contábil não vai às redes e fica de fora. Quem usa é o “Preencher fontes oficiais” das Configurações. */
+const FONTES_OFICIAIS = {
+  "Salário dos Colaboradores (Empregados)": "CLT, art. 459, § 1º — https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm#art459",
+  "Salários - Trabalhador Doméstico": "LC 150/2015, art. 35 — https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp150.htm#art35",
+  "ICMS": "RICMS/SC, art. 60; Lei SC 3.938/1966, art. 225 — https://legislacao.sef.sc.gov.br/html/regulamentos/icms/ricms_01_00.htm#R01_art60",
+  "ICMS Substituição Tributária": "RICMS/SC, Anexo 3, art. 21, I — https://legislacao.sef.sc.gov.br/html/regulamentos/icms/ricms_01_03.htm#A3_art021",
+  "Carnê INSS Individual": "Lei 8.212/1991, art. 30, II, e § 2º, I — https://www.planalto.gov.br/ccivil_03/leis/l8212cons.htm#art30",
+  "FGTS - Fundo de Garantia Por Tempo de Serviço": "Lei 8.036/1990, art. 15; FGTS Digital, Perguntas Frequentes 03.14 — https://www.gov.br/trabalho-e-emprego/pt-br/servicos/empregador/fgtsdigital/perguntas-frequentes",
+  "GPS (Empresa)": "Lei 8.212/1991, art. 30, I, b, e § 2º, II — https://www.planalto.gov.br/ccivil_03/leis/l8212cons.htm#art30",
+  "IRRF (Rendimento Serviço Prestado Cód. 1708)": "Lei 11.196/2005, art. 70, I, e — https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2005/lei/l11196.htm#art70",
+  "IRRF (Rendimento de Trabalhador Cód. 0561)": "Lei 11.196/2005, art. 70, I, e — https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2005/lei/l11196.htm#art70",
+  "Simples Doméstico": "Lei 8.212/1991, art. 30, V, e § 2º, II; Manual do Empregador Doméstico (eSocial) — https://www.gov.br/esocial/pt-br/empregador-domestico/manual-do-empregador-domestico",
+  "Simples Nacional": "Resolução CGSN 140/2018, art. 40; Perguntas e Respostas do Simples Nacional, item 6.8 — https://www8.receita.fazenda.gov.br/SimplesNacional/Arquivos/manual/PerguntaoSN.pdf",
+  "PIS": "MP 2.158-35/2001, art. 18, II e parágrafo único — https://www.planalto.gov.br/ccivil_03/mpv/2158-35.htm#art18",
+  "COFINS": "MP 2.158-35/2001, art. 18, II e parágrafo único — https://www.planalto.gov.br/ccivil_03/mpv/2158-35.htm#art18",
+  "IPI": "Lei 8.383/1991, art. 52, I, c, e § 4º — https://www.planalto.gov.br/ccivil_03/leis/l8383.htm#art52",
+  "CSLL - Contribuição Social sobre o Lucro Líquido": "Lei 9.430/1996, arts. 5º, 6º e 28 — https://www.planalto.gov.br/ccivil_03/leis/l9430.htm#art28",
+  "IRPJ - Imposto de Renda Pessoa Jurídica": "Lei 9.430/1996, arts. 5º e 6º — https://www.planalto.gov.br/ccivil_03/leis/l9430.htm#art5",
+  "Imposto de Renda Pessoa Física (Cód. 0190)": "Lei 8.383/1991, art. 6º, II — https://www.planalto.gov.br/ccivil_03/leis/l8383.htm#art6",
+  "INSS - Parcelamento p/ Ingresso no Simples Nacional": "LC 123/2006, art. 79, § 4º; Receita Federal, Parcelamento previdenciário — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-ordinario-e-simplificado/parcelamento-previdenciario",
+  "Parcelamentos Federais e Parcelamento Especial": "Lei 10.522/2002; IN RFB 2.063/2022 — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-ordinario-e-simplificado/parcelamento-nao-previdenciario-acesso-via-portal-e-cac",
+  "PERT – Programa Esp. Regularização Tributária": "IN RFB 1.752/2017; Receita Federal, Pert: Orientações — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-especiais/programa-especial-de-regularizacao-tributaria/pert-orientacoes.docx",
+  "Parcelamento Especial - Simples Nacional": "LC 155/2016, art. 9º; Receita Federal, Agenda Tributária — https://www.gov.br/receitafederal/pt-br/assuntos/agenda-tributaria"
+};
+/* o nome da obrigação comparado sem acento, sem diferença de maiúscula e com toda pontuação ou traço igualados (“PERT – …” = “PERT - …”) */
+const chaveObrigacao = n => String(n ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+/* A agenda (já conferida por validarConfig) com a fonte da tabela nas obrigações das redes (“redes” diferente de false) que estão sem
+   fonte (ausente ou em branco), achada pelo nome. Nunca troca regra, dia, ajuste, nome nem uma fonte já escrita. Devolve a lista nova,
+   os nomes preenchidos e os que ficaram sem fonte por não estarem na tabela (conferir à mão). */
+function preencherFontes(lista){
+  const tabela = new Map(Object.entries(FONTES_OFICIAIS).map(([n, f]) => [chaveObrigacao(n), f])), preenchidas = [], semTabela = [];
+  const nova = lista.map(o => {
+    if(!o || typeof o !== "object" || o.redes === false || (typeof o.fonte === "string" && o.fonte.trim())) return o;
+    const fonte = tabela.get(chaveObrigacao(o.nome));
+    if(!fonte){ semTabela.push(String(o.nome).trim()); return o; }
+    preenchidas.push(String(o.nome).trim()); return {...o, fonte};
+  });
+  return {lista:nova, preenchidas, semTabela};
+}
 const isoDia = d => d.toISOString().slice(0, 10);
 function pascoa(ano){
   const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
@@ -1196,11 +1239,13 @@ const TELAS = {
         typeof diagnosticoVideo === "function" ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="video-diagnostico">Testar o corretor de vídeo</button>
           <span class="sub">Confere o armazenamento privado, o token do GitHub, o robô, a fila e os minutos do mês (sem mostrar segredo).</span></div><div id="diag-video"></div>` : "")}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
-      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento (vai junto, nas informações conferidas da peça).`)}
+      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento, no formato curto “norma, artigo — endereço oficial”, até 300 caracteres (vai às informações conferidas da agenda da semana da Pauta; sem ela, a peça da agenda espera alguém escrever a fonte).`,
+        ehAdmin() ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="preencher-fontes">Preencher fontes oficiais</button>
+          <span class="sub">Põe a fonte conferida pelo Radar (links abertos em 12/10/2026) nas obrigações das redes que estão sem fonte, pelo nome, e salva. Não muda regra, dia, ajuste, nome nem fonte já escrita; a obrigação que não está na tabela fica para conferir à mão.</span></div>` : "")}
       ${bloco("feriados_extras", "Feriados locais e pontos facultativos", `Os feriados nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente bancário) já são considerados. Acrescente aqui os demais: "AAAA-MM-DD" (uma data) ou "MM-DD" (todo ano). Exemplo: ["2026-12-24", "04-24"].`)}
       ${bloco("fale_conosco", "Fale Conosco", `Quadro da última página. Cada setor tem <b>nome</b> (faixa azul), <b>rotulo</b>, <b>telefones</b>, <b>emails</b> e <b>equipe</b> (listas). Telefone pode ser só o número ("48-3033-4978", telefone fixo) ou {"numero": "48-3242-0530", "whatsapp": true, "nome": "opcional"}. Um setor pode ter <b>responsaveis</b> (lista de {"nome", "telefone", "whatsapp"}) e <b>responsaveis_rotulo</b> (ex.: “Contadores Responsáveis”), mostrados numa linha logo abaixo do setor. <b>observacao</b> é uma linha livre no fim do quadro.`)}
-      ${bloco("assinatura", "Fecho, assinatura e identificação legal", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo. <b>cnpj</b> (com ou sem pontuação; vale também o CNPJ alfanumérico) e <b>crc</b> (o registro da empresa no CRC, ex.: “CRC-SC 004064/O-5”: depois da barra vem a letra O, de originário, não o número zero; escrito de outro jeito, como “SC-004064/O-5”, a tela padroniza): a identificação legal que a arte e as legendas do Instagram e do Facebook levam no fim, com a <b>empresa</b> (“empresa · CNPJ … · CRC-SC …”). Cada valor vai entre aspas, e os campos são separados por vírgula. Quem acrescenta é a tela, nunca a IA; o que estiver vazio fica de fora, com aviso.`,
-        (faltaId.length ? `<div class="aviso alerta identificacao-falta"><b>Identificação legal incompleta:</b> falta ${faltaId.map(k => "o " + k).join(" e ")}. Até ${faltaId.length > 1 ? "serem preenchidos" : "ser preenchido"}, a arte e as legendas das redes saem só com o que existe (a tela avisa e não inventa). Escreva entre as aspas de “cnpj” e “crc” abaixo e salve. Se esses campos não estiverem no texto, acrescente antes do último “}” (com a vírgula do começo): <code>, "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"</code></div>` : "") +
+      ${bloco("assinatura", "Fecho, assinatura e identificação legal", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo. <b>cnpj</b> (com ou sem pontuação; vale também o CNPJ alfanumérico) e <b>crc</b> (o registro da empresa no CRC, ex.: “CRC-SC 007129/O-0”: depois da barra vem a letra O, de originário, não o número zero; escrito de outro jeito, como “SC-007129/0-0”, a tela padroniza): a identificação legal que a arte e as legendas do Instagram e do Facebook levam no fim, com a <b>empresa</b> (“empresa · CNPJ … · CRC-SC …”). Cada valor vai entre aspas, e os campos são separados por vírgula. Quem acrescenta é a tela, nunca a IA; o que estiver vazio fica de fora, com aviso.`,
+        (faltaId.length ? `<div class="aviso alerta identificacao-falta"><b>Identificação legal incompleta:</b> falta ${faltaId.map(k => "o " + k).join(" e ")}. Até ${faltaId.length > 1 ? "serem preenchidos" : "ser preenchido"}, a arte e as legendas das redes saem só com o que existe (a tela avisa e não inventa). Escreva entre as aspas de “cnpj” e “crc” abaixo e salve. Se esses campos não estiverem no texto, acrescente antes do último “}” (com a vírgula do começo): <code>, "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 007129/O-0"</code></div>` : "") +
         (linhaId ? `<p class="sub identificacao-linha">Como sai no rodapé da arte e no fim das legendas: <b>${h(linhaId)}</b></p>` : ""))}`;
   },
 
@@ -1223,6 +1268,13 @@ const TELAS = {
         <li><b>PDF.</b> Clique em <b>Abrir para imprimir / salvar em PDF</b>. Na janela de impressão do Chrome ou Edge: papel A4, margens “Nenhuma” e “Gráficos de segundo plano” marcado.</li>
         <li><b>Fechamento.</b> Com tudo conferido, clique em <b>Fechar edição</b>. Depois disso só o administrador reabre.</li>
       </ol><p class="sub">Artigo que é só do informativo: na aba Publicações, clique em “Não vai ao site” para tirá-lo da fila.</p></div>
+      ${podeEditar() ? `<div class="painel" id="ajuda-reel"><h2>Reel com o corretor de vídeo</h2><ol class="passos">
+        <li><b>Gravar.</b> Celular na vertical, 1080p, 30 quadros por segundo, Vídeo HDR desligado. Lugar silencioso, sem música, rádio ou TV; sem tela, documento ou cliente ao fundo; só as pessoas marcadas na peça. Grave um bloco do roteiro de cada vez, com 1 segundo de silêncio antes e depois, falando como está escrito (números, datas e termos); errou, grave o bloco de novo e apague a tomada ruim. Não edite no celular.</li>
+        <li><b>Enviar.</b> Na Pauta, abra a peça reel: confira a <b>Fala para conferência</b>, escolha os clipes na ordem (até 12), quem fala e as 4 declarações e clique em <b>Enviar a gravação</b>. No celular, não feche nem bloqueie a tela até 100%. Depois, apague do celular e da nuvem pessoal e marque <b>Apaguei</b>.</li>
+        <li><b>O corretor.</b> Em poucos minutos, o robô transcreve (Azure gratuita), compara com o roteiro, corta o começo, o fim, as pausas longas e as hesitações, acerta o som e grava a legenda e a cartela final. Ele nunca troca nem inventa palavra: número, data ou termo diferente do roteiro vira <b>Precisa regravar</b>.</li>
+        <li><b>Relatório e prévia.</b> A peça mostra o que regravar, os cortes, a legenda, o som e 4 quadros. O administrador ouve a prévia e pode manter um corte, marcar “A transcrição errou (vale o roteiro)” ou editar a legenda, sem mudar o áudio.</li>
+        <li><b>Aprovar e postar.</b> O administrador aprova o reel com o vídeo da prévia. Depois, <b>Baixar o vídeo aprovado</b>, postar no Instagram e no Facebook com a legenda copiada, apagar do celular e registrar o link.</li>
+      </ol></div>` : ""}
       <div class="painel"><h2>Como o Radar escolhe o que está em alta</h2><ul>
         <li><b>Nota da IA:</b> depois de cada coleta, a IA lê o título e o resumo de cada captura e dá uma nota de 0 a 10 pelo interesse para os clientes do escritório (obrigação, prazo, alíquota ou regra que muda para muitas empresas vale mais). “Em alta” mostra as de maior nota.</li>
         <li><b>Repetição:</b> quando duas capturas tratam do mesmo fato, só uma aparece em “Em alta” e “Relevantes”; as outras entram junto no assunto. A repetição que chega depois entra sozinha no assunto em andamento — se a IA errou, use <b>Não é o mesmo fato</b> no assunto. Se o assunto já foi ignorado ou publicado, a repetição aparece na triagem com o aviso de qual assunto parece ser.</li>
@@ -1792,9 +1844,9 @@ function legendaIA(c, canal, urlSite, limite = 2200){
    que foi preenchido: a tela avisa o que falta e nunca inventa. Quem acrescenta é a tela (legenda e arte), nunca a IA. */
 const cnpjLimpo = v => String(v || "").toUpperCase().replace(/[\s./-]/g, "");
 const textoIdentificacao = (k, ident = E.identificacao) => { const v = (ident || {})[k]; return typeof v === "string" ? v.trim() : ""; };
-/* v0.20.0: o registro no CRC como sai nas redes, “CRC-SC 004064/O-5”. O formato de Santa Catarina, escrito de qualquer jeito
-   (“SC-004064/0-5”, “crc/sc 004064/o-5”, “004064/O-5”), é padronizado: depois da barra vem a letra da categoria (O, de originário; S,
-   T ou P), e o número zero no lugar do O vira a letra. O formato antigo (“1SC004064/O-5”) ganha só o “CRC ” na frente; o que já traz
+/* v0.20.0: o registro no CRC como sai nas redes, “CRC-SC 007129/O-0”. O formato de Santa Catarina, escrito de qualquer jeito
+   (“SC-007129/0-0”, “crc/sc 007129/o-0”, “007129/O-0”), é padronizado: depois da barra vem a letra da categoria (O, de originário; S,
+   T ou P), e o número zero no lugar do O vira a letra. O formato antigo (“1SC007129/O-0”) ganha só o “CRC ” na frente; o que já traz
    “CRC” noutro formato (dois registros, por exemplo) sai como está, só com o zero da categoria trocado pela letra O. "" quando não
    reconhece: a validação recusa (e o que já estava gravado sai como foi escrito). */
 function crcFormatado(v){
@@ -2742,6 +2794,20 @@ const ACOES = {
         : `<div class="aviso erro"><b>Há item a corrigir</b> (veja acima). O segredo do Radar fica em Supabase → Edge Functions → Secrets; limites, crédito e modelos liberados ficam em Portal → Consumo de IA. Depois de alterar, teste de novo.</div>`}`;
   },
 
+  /* v0.22.0: Configurações → Agenda de obrigações → “Preencher fontes oficiais” (administrador). Lê a agenda que está na caixa (com o que
+     foi digitado e não salvo), põe a fonte da tabela (preencherFontes) e, confirmado, grava pelo mesmo caminho do Salvar do bloco */
+  async "preencher-fontes"(el){
+    const f = el.closest("form[data-chave=obrigacoes]");
+    let valor; try{ valor = JSON.parse(f.valor.value); }catch(e){ recado("O conteúdo não é um JSON válido: " + e.message, true); return; }
+    const problema = validarConfig("obrigacoes", valor); if(problema){ recado(problema, true); return; }
+    const {lista, preenchidas, semTabela} = preencherFontes(valor), n = preenchidas.length;
+    const conferir = semTabela.length ? `Sem fonte na tabela (confira à mão e escreva a fonte): ${semTabela.map(x => `“${x}”`).join(", ")}.` : "";
+    if(!n){ recado("Nenhuma fonte a preencher: " + (conferir || "as obrigações da agenda das redes já têm fonte."), semTabela.length ? "aviso" : false); return; }
+    if(!confirm(`Preencher a fonte oficial de ${n} ${n > 1 ? "obrigações" : "obrigação"} e salvar a agenda?\n\nSó entra a fonte de quem está sem ela; regra, dia, ajuste, nome e as fontes já escritas não mudam. A agenda é salva como está na caixa.`
+      + (semTabela.length ? `\n\nFicam sem fonte (não estão na tabela; confira à mão):\n${semTabela.map(x => "• " + x).join("\n")}` : ""))) return;
+    if(await gravarConfig("obrigacoes", lista)) recado(`Fonte oficial preenchida em ${n} ${n > 1 ? "obrigações" : "obrigação"}. Configuração salva.` + (conferir ? " " + conferir : ""), semTabela.length ? "aviso" : false);
+  },
+
   /* v0.12.0: boletim da ITC lido no e-mail pela função radar-itc (Microsoft Graph). O resultado traz só contagens. */
   /* v0.12.0: "Publicar mesmo assim" — o administrador assume a publicação sem a fundamentação oficial, com o motivo registrado */
   /* v0.12.2: o motivo é digitado na própria tela, num quadro que abre abaixo do botão */
@@ -3594,13 +3660,22 @@ function validarConfig(chave, v){
     if(v.cnpj !== undefined && v.cnpj.trim() && !cnpjValido(v.cnpj))
       return "“cnpj” não confere (dígitos verificadores): informe o CNPJ da empresa, com ou sem pontuação (vale o alfanumérico), ou deixe vazio (\"\").";
     if(v.crc !== undefined && typeof v.crc !== "string")
-      return "“crc”: escreva o registro entre aspas, ex.: \"crc\": \"CRC-SC 004064/O-5\", ou deixe vazio (\"\").";
+      return "“crc”: escreva o registro entre aspas, ex.: \"crc\": \"CRC-SC 007129/O-0\", ou deixe vazio (\"\").";
     if(v.crc !== undefined && v.crc.trim() && !(/^[^\n<>]{4,40}$/.test(v.crc.trim()) && (v.crc.match(/\d/g) || []).length >= 4 && crcFormatado(v.crc)))
-      return "“crc”: informe o registro no CRC como “CRC-SC 004064/O-5” (depois da barra vem a letra O, de originário, não o número zero), ou deixe vazio (\"\").";
+      return "“crc”: informe o registro no CRC como “CRC-SC 007129/O-0” (depois da barra vem a letra O, de originário, não o número zero), ou deixe vazio (\"\").";
   }
   return "";
 }
 
+/* O Salvar de um bloco das Configurações: confere (validarConfig) e grava em radar_config. false, com o recado, quando não confere.
+   v0.22.0: também é o caminho do “Preencher fontes oficiais” da agenda de obrigações. */
+async function gravarConfig(chave, valor){
+  const problema = validarConfig(chave, valor); if(problema){ recado(problema, true); return false; }
+  const r = await rest("POST", "radar_config", {params:{on_conflict:"chave"}, corpo:{chave, valor}, prefer:"resolution=merge-duplicates,return=representation"});
+  if(!Array.isArray(r) || !r.length) throw new ErroApi("Nada foi alterado: o seu perfil não permite esta ação.");
+  if(chave === "assinatura") trocarIdentificacao(valor);        // v0.20.0: as legendas editadas na tela ganham a linha nova
+  await desenhar(); return true;
+}
 const FORMS = {
   async novoInformativo(f){
     const m = /^(\d{4})-(\d{2})$/.exec(f.mes.value); if(!m){ recado("Escolha o mês da agenda.", true); return; }
@@ -3613,11 +3688,7 @@ const FORMS = {
   async informativo(f){ await salvarInformativo(f); await desenhar(); recado("Edição salva."); },
   async config(f){
     let valor; try{ valor = JSON.parse(f.valor.value); }catch(e){ recado("O conteúdo não é um JSON válido: " + e.message, true); return; }
-    const problema = validarConfig(f.dataset.chave, valor); if(problema){ recado(problema, true); return; }
-    const r = await rest("POST", "radar_config", {params:{on_conflict:"chave"}, corpo:{chave:f.dataset.chave, valor}, prefer:"resolution=merge-duplicates,return=representation"});
-    if(!Array.isArray(r) || !r.length) throw new ErroApi("Nada foi alterado: o seu perfil não permite esta ação.");
-    if(f.dataset.chave === "assinatura") trocarIdentificacao(valor);        // v0.20.0: as legendas editadas na tela ganham a linha nova
-    await desenhar(); recado(f.dataset.chave === "relevancia" ? "Regras salvas. As capturas da fila foram reavaliadas." : "Configuração salva.");
+    if(await gravarConfig(f.dataset.chave, valor)) recado(f.dataset.chave === "relevancia" ? "Regras salvas. As capturas da fila foram reavaliadas." : "Configuração salva.");
   },
   async novoAssunto(f){
     if(f.titulo.value.trim().length < 5){ recado("Informe o título do assunto (ao menos 5 caracteres).", true); return; }

@@ -10,8 +10,13 @@ permissions:
 
 jobs:
   testar:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30                 # v0.21.0: a suíte passou de ~9 para ~14 min aqui (instalação à parte)
+    # v0.22.0: fixo no 24.04, o Ubuntu do robô do vídeo: os testes do corretor foram medidos com o ffmpeg 6.1.1 dele (o mesmo do
+    # robo/video/Dockerfile), e o Speech SDK da Azure só lista até a 24.04 (o ubuntu-latest passa a 26.04 em novembro de 2026)
+    runs-on: ubuntu-24.04
+    # v0.21.0: a suíte passou de ~9 para ~14 min aqui (instalação à parte); v0.22.0: 864 s aqui, com os testes do corretor de vídeo
+    # (a montagem com o ffmpeg, a função radar-video no Deno e o contêiner); no GitHub, montar a imagem do robo/video/Dockerfile com o
+    # apt soma 1 a 2 min
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16
@@ -37,8 +42,8 @@ jobs:
       # v0.22.0: o Python do robô de vídeo, com versão e hash (o Speech SDK da Azure): test_radar_video_transcrever.py roda o SDK de
       # verdade contra um servidor local do protocolo de fala (ws://127.0.0.1; nenhuma chamada à Azure)
       - run: pip install --require-hashes --no-deps -r robo/video/requirements.txt
-      # v0.22.0: ffmpeg para os testes do corretor de vídeo (testes/test_radar_video_robo.py e test_radar_video_alinhar.py, só com
-      # vídeos sintéticos; o teste do contêiner monta robo/video/Dockerfile com o docker que já vem no runner)
+      # v0.22.0: ffmpeg para os testes do corretor de vídeo (testes/test_radar_video_*.py, só com vídeos SINTÉTICOS, gerados na hora
+      # numa pasta temporária; os testes do contêiner montam robo/video/Dockerfile com o docker que já vem no runner)
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils ffmpeg
       - run: python -m playwright install --with-deps chromium
       - uses: denoland/setup-deno@v2

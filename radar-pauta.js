@@ -352,7 +352,7 @@ async function telaPeca(id){
         ${comCartoes ? `<label>Cartões ${p.formato === "carrossel_fotos" ? "(um por foto, na mesma ordem)" : "(de 2 a 9, depois da capa)"}</label>
           <div class="cartao-linhas" id="peca-cartoes"${desAr ? ` data-travado="1"` : ""}>${cartoesDe(p).map(c => linhaCartao(c, desAr)).join("")}</div>
           ${desAr ? "" : `<div class="acoes"><button class="btn peq sec" type="button" data-acao="peca-cartao-linha">Acrescentar cartão</button></div>`}` : ""}
-        ${comRoteiro ? `<label for="peca-roteiro">Roteiro do reel (colado do plano; o último quadro leva a identificação legal)</label>
+        ${comRoteiro ? `<label for="peca-roteiro">Roteiro do reel (colado do plano: a coluna “Fala” é o que o corretor de vídeo compara com a gravação; a cartela final com a identificação legal o corretor grava)</label>
           <textarea id="peca-roteiro" name="roteiro" maxlength="6000" rows="8"${desAr}>${h(p.roteiro)}</textarea>` : ""}
         <p class="sub">Legenda vazia: o canal não entra. Cada legenda leva no fim a identificação legal: ${faltaIdentificacao().length
           ? `<b>falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura</b> (o administrador preenche; sem isso a peça não fica pronta).` : h(linhaIdentificacao()) + "."}</p>
@@ -892,7 +892,7 @@ function blocoAprovada(p){
   const desde = p.aprovado_em ? new Date(p.aprovado_em).toLocaleDateString("en-CA", {timeZone:"America/Sao_Paulo"}) : "";
   const semCanal = !manual && !envios.length;                      // todos os canais em "Não publicar neste canal": nada vai sair
   return `<div class="painel peca-aprovada" id="peca-aprovada-quadro"><h2>${manual ? "Aprovada para publicar à mão" : semCanal ? "Aprovada, sem canal: não vai sair" : "Aprovada: sai pela agenda"}</h2>
-    <p class="sub">Aprovada em ${h(horaBrasilia(p.aprovado_em))} (Brasília).${manual ? ` ${p.artes.length ? "Baixe as lâminas, copie a legenda" : "Copie a legenda e o roteiro"}, poste ` +
+    <p class="sub">Aprovada em ${h(horaBrasilia(p.aprovado_em))} (Brasília).${manual ? ` ${p.formato === "reel" ? "Baixe o vídeo aprovado, copie a legenda" : p.artes.length ? "Baixe as lâminas, copie a legenda" : "Copie a legenda e o roteiro"}, poste ` +
       `no ${canais.map(k => NOME_REDE[k]).join(" e no ")} e registre o link aqui.` : ""}</p>
     ${semCanal ? `<div class="aviso alerta" id="peca-sem-canal">Nenhum canal vai sair: a publicação de cada canal foi cancelada (Não publicar neste canal). Para publicar, use Desfazer aprovação e aprove de novo.</div>` : ""}
     ${envios.length ? `<ul class="peca-envios">${envios.map(linha).join("")}</ul>` : ""}

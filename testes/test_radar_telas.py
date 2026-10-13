@@ -87,7 +87,10 @@ class Servidor(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(corpo)
+            try:
+                self.wfile.write(corpo)
+            except (BrokenPipeError, ConnectionResetError):          # a página foi recarregada no meio (a sondagem do vídeo): nada a fazer
+                pass
 
     def _sessao(self, uid, email):
         return json.dumps({"access_token": jwt("authenticated", uid, int(time.time()) + 3600), "token_type": "bearer",
@@ -337,6 +340,16 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
+    # v0.22.0: a entrada do topo é a da versão em uso e conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não
+    # corrige, aprovar, baixar e postar; a Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
+    topo, data, itens = pagina.evaluate("VERSOES[0]")
+    assert topo == pagina.evaluate("VERSAO") == "0.22.0" and re.fullmatch(r"\d{2}/10/2026", data)
+    texto = " ".join(itens)
+    for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
+                   "Precisa regravar", "Baixar o vídeo aprovado", "poste à mão", "Preencher fontes oficiais", "CRC-SC 007129/O-0",
+                   "sql/radar-video-agenda.sql", "Da v0.21.0 para a v0.22.0"]:
+        assert trecho in texto, trecho
+    assert set(re.findall(r"CRC-SC (\d{6})", pagina.inner_text("main"))) == {"007129"}   # o CRC de exemplo antigo (errado) saiu de todas as versões
 
 
 def test_leitor_consulta_mas_nao_tem_botoes_de_acao(pagina, limpo):
@@ -348,6 +361,9 @@ def test_leitor_consulta_mas_nao_tem_botoes_de_acao(pagina, limpo):
     pagina.click("nav.abas >> text=Capturas")
     pagina.wait_for_selector("text=IN RFB nº 2.290")
     assert pagina.locator("text=Abrir assunto").count() == 0 and pagina.locator("text=Ignorar").count() == 0
+    pagina.click("nav.abas >> text=Como usar")                          # v0.22.0: o leitor não envia reel: sem o passo a passo do corretor
+    pagina.wait_for_selector("h1 >> text=Como usar o Radar")
+    assert pagina.locator("#ajuda-reel").count() == 0
 
 
 def test_sessao_vencida_e_renovada_sem_o_usuario_perceber(pagina, limpo):
@@ -1701,7 +1717,7 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
         for ruim, aviso in [('[{"nome": "X", "regra": "todo dia"}]', "regra inválida"), ('[{"nome": "X", "regra": "dia", "dia": 40, "ajuste": "antecipa"}]', "informe o dia"),
                             ('[{"regra": "dia"}]', "falta o nome"), ('[{"nome": "X", "regra": "dia", "dia": 5}]', "ajuste deve ser")]:
             obr.fill(ruim)
-            pagina.locator("form[data-chave=obrigacoes] button").click()
+            pagina.locator("form[data-chave=obrigacoes] button:not([type=button])").click()     # o Salvar (o outro é o “Preencher fontes oficiais”)
             pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
         pagina.locator("#cfg-assinatura").fill('{"local": "Palhoça, SC"}')
         pagina.locator("form[data-chave=assinatura] button").click()
@@ -2346,7 +2362,9 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
     ajuda = pagina.inner_text("main")
     for trecho in ["O caminho de uma publicação", "Incluir texto oficial", "Registrar publicação no site", "Informativo Mensal", "O que o sistema exige",
-                   "assunto confirmado oficialmente e ao menos um trecho conferido em fonte oficial", "Formatação do texto"]:
+                   "assunto confirmado oficialmente e ao menos um trecho conferido em fonte oficial", "Formatação do texto",
+                   # v0.22.0: o passo a passo do reel com o corretor de vídeo, para quem edita (gravar, enviar, o corretor, aprovar e postar)
+                   "Reel com o corretor de vídeo", "Vídeo HDR desligado", "Enviar a gravação", "Precisa regravar", "Baixar o vídeo aprovado"]:
         assert trecho in ajuda, trecho
     assert "Cadastrar uma fonte nova" not in ajuda and "Histórico" not in ajuda              # só para o administrador
     pagina.screenshot(path=str(FOTOS / "28-como-usar.png"), full_page=True)
@@ -4269,7 +4287,7 @@ def _pixels(pg, seletor, pontos):
 def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, limpo, request):
     """v0.20.0: CNPJ e CRC ficam na assinatura (eram 6 configurações; 7 com a Pauta, v0.21.0), opcionais e conferidos; vazios, a tela avisa (com o trecho
     pronto para acrescentar) e não inventa. O CNPJ sem aspas (número no JSON) tem mensagem própria, e não “não confere”; o CRC de Santa
-    Catarina escrito de outro jeito (“SC-004064/0-5”, com o zero no lugar da letra O) sai padronizado, e a linha como vai às redes
+    Catarina escrito de outro jeito (“SC-007129/0-0”, com o zero no lugar da letra O) sai padronizado, e a linha como vai às redes
     aparece embaixo, para conferir."""
     _assinatura(limpo, request)
     entrar(pagina, "admin@artecon.test")
@@ -4279,12 +4297,12 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
     assert pagina.locator("form[data-form=config]").count() == 8                   # v0.21.0: + Pauta e agenda automática; v0.22.0: + corretor de vídeo
     form = pagina.locator("form[data-chave=assinatura]")
     falta = form.locator(".identificacao-falta").inner_text()
-    assert "falta o CNPJ e o CRC" in falta and "Até serem preenchidos" in falta and ', "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"' in falta
+    assert "falta o CNPJ e o CRC" in falta and "Até serem preenchidos" in falta and ', "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 007129/O-0"' in falta
     # o CRC padronizado (como sai na arte e nas legendas) e o que já traz “CRC” num formato que não é o de SC, como está
-    crc = pagina.evaluate("""() => ["CRC-SC 004064/O-5", "SC-004064/0-5", "crc/sc 004064/o-5", "004064/O-5", "SC 004064", "CRC 004064/0-5",
-        "1SC004064/O-5", "Reg. CRC-SC 004064/O-5", "CRC-SC 004064/0-5 e CRC-SC 030315/0-0", "Reg. 004064", "0040645"].map(crcFormatado)""")
-    assert crc == ["CRC-SC 004064/O-5", "CRC-SC 004064/O-5", "CRC-SC 004064/O-5", "CRC-SC 004064/O-5", "CRC-SC 004064", "CRC-SC 004064/O-5",
-                   "CRC 1SC004064/O-5", "Reg. CRC-SC 004064/O-5", "CRC-SC 004064/O-5 e CRC-SC 030315/O-0", "", ""]
+    crc = pagina.evaluate("""() => ["CRC-SC 007129/O-0", "SC-007129/0-0", "crc/sc 007129/o-0", "007129/O-0", "SC 007129", "CRC 007129/0-0",
+        "1SC007129/O-0", "Reg. CRC-SC 007129/O-0", "CRC-SC 007129/0-0 e CRC-SC 012345/0-0", "Reg. 007129", "0071290"].map(crcFormatado)""")
+    assert crc == ["CRC-SC 007129/O-0", "CRC-SC 007129/O-0", "CRC-SC 007129/O-0", "CRC-SC 007129/O-0", "CRC-SC 007129", "CRC-SC 007129/O-0",
+                   "CRC 1SC007129/O-0", "Reg. CRC-SC 007129/O-0", "CRC-SC 007129/O-0 e CRC-SC 012345/O-0", "", ""]
     campo = pagina.locator("#cfg-assinatura")
 
     def salvar(**campos):
@@ -4294,9 +4312,9 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
         return pagina.wait_for_selector("#recado div").inner_text()
     for campos, aviso in [({"cnpj": "11.222.333/0001-82"}, "“cnpj” não confere"), ({"cnpj": "00.000.000/0000-00"}, "“cnpj” não confere"),
                           ({"cnpj": "1122233300018"}, "“cnpj” não confere"), ({"cnpj": 11222333000181}, "“cnpj”: escreva o CNPJ entre aspas"),
-                          ({"cnpj": 79876769000128}, "“cnpj”: escreva o CNPJ entre aspas"), ({"crc": 4064}, "“crc”: escreva o registro entre aspas"),
+                          ({"cnpj": 79876769000128}, "“cnpj”: escreva o CNPJ entre aspas"), ({"crc": 7129}, "“crc”: escreva o registro entre aspas"),
                           ({"crc": "123"}, "“crc”: informe o registro"), ({"crc": "CRC-SC ABC"}, "“crc”: informe o registro"),
-                          ({"crc": "Reg. 004064"}, "“crc”: informe o registro no CRC como “CRC-SC 004064/O-5” (depois da barra vem a letra O"),
+                          ({"crc": "Reg. 007129"}, "“crc”: informe o registro no CRC como “CRC-SC 007129/O-0” (depois da barra vem a letra O"),
                           ({"crc": "CRC " + "1" * 40}, "“crc”: informe o registro"), ({"local": None}, "Informe “local”")]:
         assert aviso in salvar(**campos), campos
     assert limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0] == 0      # nada foi gravado
@@ -4311,10 +4329,10 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
     falta = pagina.inner_text("form[data-chave=assinatura] .identificacao-falta")
     assert "falta o CRC" in falta and "Até ser preenchido," in falta
     # os dados de verdade, com o CRC escrito como o dono informou (hífen e zero): grava como foi digitado e sai padronizado
-    assert "Configuração salva." in salvar(cnpj="79.876.769/0001-28", crc="SC-004064/0-5")
-    assert limpo.execute("select valor->>'crc' from radar_config where chave = 'assinatura'").fetchone()[0] == "SC-004064/0-5"
+    assert "Configuração salva." in salvar(cnpj="79.876.769/0001-28", crc="SC-007129/0-0")
+    assert limpo.execute("select valor->>'crc' from radar_config where chave = 'assinatura'").fetchone()[0] == "SC-007129/0-0"
     assert pagina.inner_text("form[data-chave=assinatura] .identificacao-linha") == \
-        "Como sai no rodapé da arte e no fim das legendas: Artecon Artes Contábeis ME · CNPJ 79.876.769/0001-28 · CRC-SC 004064/O-5"
+        "Como sai no rodapé da arte e no fim das legendas: Artecon Artes Contábeis ME · CNPJ 79.876.769/0001-28 · CRC-SC 007129/O-0"
 
 
 def test_arte_vertical_1080x1350_rodape_legal_sem_inventar_e_selo_sc(pagina, limpo, request):
@@ -4496,11 +4514,11 @@ def test_arte_avisa_o_que_nao_coube_nao_espreme_palavra_comprida_e_mostra_o_erro
     assert r["cortes"] == [] and "Microempreendedores" in r["textos"]
     assert all(f["largura"] <= f["max"] + 0.5 for f in r["feitos"]), [f for f in r["feitos"] if f["largura"] > f["max"] + 0.5]
     # a identificação comprida: 2 linhas de 24 px, quebradas nos “ · ”
-    ident = {"empresa": "Artecon Artes Contábeis Ltda. – Escritório de Contabilidade", "cnpj": "79876769000128", "crc": "CRC-SC 004064/O-5 e CRC-SC 030315/O-0"}
+    ident = {"empresa": "Artecon Artes Contábeis Ltda. – Escritório de Contabilidade", "cnpj": "79876769000128", "crc": "CRC-SC 007129/O-0 e CRC-SC 012345/O-0"}
     r = pagina.evaluate(DESENHAR_MEDINDO, [{"chamada": "CBS muda a nota", "apoio": ""}, ident])
     legal = r["feitos"][-2:]
     assert " · ".join(f["t"] for f in legal) == ("Artecon Artes Contábeis Ltda. – Escritório de Contabilidade · CNPJ 79.876.769/0001-28 · "
-                                                 "CRC-SC 004064/O-5 e CRC-SC 030315/O-0"), legal
+                                                 "CRC-SC 007129/O-0 e CRC-SC 012345/O-0"), legal
     assert all(" 24px " in f["fonte"] and f["largura"] <= f["max"] and not f["t"].endswith("CRC-SC") for f in legal), legal
     # o texto que não coube: a arte corta com “…”, a tela avisa embaixo da imagem e a confirmação lembra
     r = pagina.evaluate(DESENHAR_MEDINDO, [{"chamada": "Chamada muito comprida " * 12, "apoio": "Apoio muito comprido " * 12, "imagem": foto}, None])
@@ -4548,12 +4566,12 @@ def test_legenda_editada_antes_da_identificacao_ganha_a_linha_e_a_sem_linha_pede
     # vai às Configurações, preenche o CNPJ e o CRC (os dados de verdade) e volta ao assunto
     pagina.click("nav.abas >> text=Configurações")
     pagina.wait_for_selector("h2 >> text=Fecho, assinatura e identificação legal")
-    pagina.fill("#cfg-assinatura", json.dumps({**ASSINATURA, "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"}, ensure_ascii=False))
+    pagina.fill("#cfg-assinatura", json.dumps({**ASSINATURA, "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 007129/O-0"}, ensure_ascii=False))
     pagina.locator("form[data-chave=assinatura] button").click()
     pagina.wait_for_selector("#recado >> text=Configuração salva.")
     abrir_por_id(pagina, a)
     pagina.wait_for_function(IMAGEM_PRONTA)
-    linha = "Artecon Artes Contábeis ME · CNPJ 79.876.769/0001-28 · CRC-SC 004064/O-5"
+    linha = "Artecon Artes Contábeis ME · CNPJ 79.876.769/0001-28 · CRC-SC 007129/O-0"
     assert pagina.input_value("#rede-legenda") == "Legenda escrita na tela.\n\n" + original.replace("Artecon Artes Contábeis ME", linha)
     assert pagina.locator(".identificacao-falta").count() == 0
     # números: “R$ 1.500,00” no texto é o mesmo que “R$ 1.500” na legenda; o número de item de lista não conta
@@ -5633,7 +5651,7 @@ def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
                              ([{"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga", "fonte": "x" * 301}], "“fonte” é um texto de até 300 caracteres")]:
             obrig.fill(json.dumps(valor))
             limpar_recados(pagina)
-            pagina.locator("form[data-chave=obrigacoes] button").click()
+            pagina.locator("form[data-chave=obrigacoes] button:not([type=button])").click()     # o Salvar (o outro é o “Preencher fontes oficiais”)
             pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
         assert "Honorário contábil" in pagina.inner_text("form[data-chave=obrigacoes] .sub")
         abrir_pauta(pagina)
@@ -5641,6 +5659,109 @@ def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
     finally:
         for chave, valor in original.items():
             limpo.execute("update radar_config set valor = %s where chave = %s", (json.dumps(valor), chave))
+
+
+
+# a agenda de teste do “Preencher fontes oficiais”: nomes públicos de obrigação, mais uma fictícia
+AGENDA_FONTES = [
+    {"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga", "fonte": "Fonte escrita pela equipe"},           # já tem fonte: fica
+    {"nome": "IPI", "regra": "dia", "dia": 25, "ajuste": "antecipa", "redes": False},                                 # na tabela, mas fora das redes
+    {"nome": "Honorário contábil", "regra": "dia", "dia": 20, "ajuste": "posterga", "redes": False},
+    {"nome": "Obrigação Fictícia de Teste", "regra": "dia", "dia": 15, "ajuste": "nenhum"},                           # fora da tabela
+    {"nome": "PERT - Programa Esp. Regularização Tributária", "regra": "ultimo_dia_util"},                            # “-” no lugar do “–”
+    {"nome": "SALARIOS – trabalhador domestico", "regra": "dia", "dia": 7, "ajuste": "antecipa"},                     # sem acento, outro traço
+    {"nome": "Carnê INSS Individual", "regra": "dia", "dia": 15, "ajuste": "posterga", "fonte": "  "},               # fonte em branco
+    {"nome": "GPS (Empresa)", "regra": "dia", "dia": 20, "ajuste": "antecipa", "redes": True}]
+
+
+def test_configuracoes_preencher_fontes_oficiais_so_onde_falta_e_grava_como_o_salvar(pagina, limpo):
+    """v0.22.0: Configurações → Agenda de obrigações → “Preencher fontes oficiais” (só o administrador). Lê a agenda que está na caixa
+    (com o que foi digitado e não salvo) e põe a fonte conferida (FONTES_OFICIAIS) só nas obrigações das redes sem fonte (ausente ou em
+    branco), achadas pelo nome sem acento, sem maiúscula e com qualquer traço ou pontuação igualados. Nunca troca regra, dia, ajuste,
+    nome nem a fonte já escrita; a obrigação com "redes": false fica como está, mesmo estando na tabela. A confirmação diz quantas e
+    quais ficaram sem fonte (“confira à mão”); cancelada, nada muda; confirmada, grava pelo Salvar do bloco (validarConfig e o POST
+    em radar_config, com a trilha). Sem nada a preencher, só o recado. A fonte vai às informações conferidas da agenda da semana."""
+    original = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(AGENDA_FONTES),))
+    try:
+        entrar(pagina, "admin@artecon.test")
+        pagina.wait_for_selector("text=Painel do dia")
+        # a tabela cobre a agenda padrão inteira (menos o Honorário, que não vai às redes), e o resultado passa no Salvar
+        r = pagina.evaluate("o => { const x = preencherFontes(o); return {...x, valida: validarConfig('obrigacoes', x.lista),"
+                            " maior: Math.max(...Object.values(FONTES_OFICIAIS).map(f => f.length))}; }", original)
+        assert len(r["preenchidas"]) == 21 and r["semTabela"] == [] and r["valida"] == "" and r["maior"] <= 300, r
+        assert [{k: v for k, v in o.items() if k != "fonte"} for o in r["lista"]] == original
+        assert [o["nome"] for o in r["lista"] if "fonte" not in o] == ["Honorário contábil"]
+        assert all(re.search(r" — https://[a-z0-9.]+\.gov\.br/", o["fonte"]) for o in r["lista"] if "fonte" in o)
+        pagina.click("nav.abas >> text=Configurações")
+        pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
+        form = pagina.locator("form[data-chave=obrigacoes]")
+        assert "informações conferidas da agenda da semana da Pauta" in form.locator("p.sub").first.inner_text()
+        pagina.set_viewport_size({"width": 375, "height": 740})                         # o botão e a explicação cabem no celular
+        assert sem_rolagem_lateral(pagina) and form.locator("[data-acao=preencher-fontes]").is_visible()
+        form.screenshot(path=str(FOTOS / "51-celular-agenda-de-obrigacoes.png"))
+        pagina.set_viewport_size({"width": 1280, "height": 900})
+        caixa = pagina.locator("#cfg-obrigacoes")
+        assert json.loads(caixa.input_value()) == AGENDA_FONTES
+        # o que está na caixa vale, mesmo sem salvar: a obrigação acrescentada à mão também recebe a fonte
+        na_caixa = AGENDA_FONTES + [{"nome": "Simples Nacional", "regra": "dia", "dia": 20, "ajuste": "posterga"}]
+        caixa.fill(json.dumps(na_caixa, ensure_ascii=False))
+        pagina.evaluate("() => { window.__confirmar = []; window.confirm = m => { window.__confirmar.push(m); return window.__resposta; }; }")
+        antes = limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0]   # a agenda de teste
+        trilha = lambda: limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0] - antes
+        # cancelado: nada é gravado, e a caixa fica como estava
+        pagina.evaluate("() => { window.__resposta = false; }")
+        form.locator("[data-acao=preencher-fontes]").click()
+        pagina.wait_for_function("() => window.__confirmar.length === 1")
+        pagina.wait_for_timeout(300)
+        (msg,) = pagina.evaluate("() => window.__confirmar")
+        assert msg.startswith("Preencher a fonte oficial de 5 obrigações e salvar a agenda?"), msg
+        assert "regra, dia, ajuste, nome e as fontes já escritas não mudam" in msg
+        assert msg.endswith("Ficam sem fonte (não estão na tabela; confira à mão):\n• Obrigação Fictícia de Teste"), msg
+        assert not any(n in msg for n in ("Honorário", "IPI", "ICMS", "PERT", "Carnê"))
+        assert trilha() == 0 and limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0] == AGENDA_FONTES
+        assert json.loads(caixa.input_value()) == na_caixa
+        # confirmado: grava pelo caminho do Salvar e dá o recado com a que ficou para conferir à mão
+        pagina.evaluate("() => { window.__resposta = true; }")
+        form.locator("[data-acao=preencher-fontes]").click()
+        pagina.wait_for_selector("#recado .aviso >> text=Fonte oficial preenchida em 5 obrigações. Configuração salva.")
+        assert "Sem fonte na tabela (confira à mão e escreva a fonte): “Obrigação Fictícia de Teste”." in pagina.inner_text("#recado")
+        fontes = pagina.evaluate("() => FONTES_OFICIAIS")
+        pert = fontes["PERT – Programa Esp. Regularização Tributária"]
+        assert pert.startswith("IN RFB 1.752/2017")
+        esperado = [dict(o) for o in na_caixa]
+        for o, nome in zip(esperado[4:], ["PERT – Programa Esp. Regularização Tributária", "Salários - Trabalhador Doméstico", "Carnê INSS Individual",
+                                          "GPS (Empresa)", "Simples Nacional"]):
+            o["fonte"] = fontes[nome]
+        assert limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0] == esperado
+        assert trilha() == 1
+        pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
+        assert json.loads(caixa.input_value()) == esperado                               # a tela foi redesenhada com o que foi gravado
+        # de novo: nada a preencher, só o recado (sem confirmação e sem gravar)
+        limpar_recados(pagina)
+        form.locator("[data-acao=preencher-fontes]").click()
+        pagina.wait_for_selector("#recado .aviso >> text=Nenhuma fonte a preencher: Sem fonte na tabela (confira à mão e escreva a fonte): “Obrigação Fictícia de Teste”.")
+        assert pagina.evaluate("() => window.__confirmar.length") == 2 and trilha() == 1
+        # a caixa com erro: o mesmo recado do Salvar, e nada é gravado
+        for ruim, aviso in [("[", "O conteúdo não é um JSON válido"), ('[{"nome": "X", "regra": "todo dia"}]', "“X”: regra inválida.")]:
+            caixa.fill(ruim)
+            limpar_recados(pagina)
+            form.locator("[data-acao=preencher-fontes]").click()
+            pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
+        assert pagina.evaluate("() => window.__confirmar.length") == 2 and trilha() == 1
+        # a fonte gravada vai às informações conferidas da agenda da semana (30/11 é o último dia útil de novembro)
+        abrir_pauta(pagina)
+        semana = pagina.evaluate("() => agendaDaSemana('2026-11-29')")
+        assert {"informacao": "30/11 (seg) · PERT - Programa Esp. Regularização Tributária", "fonte": pert} in semana, semana
+        # só o administrador vê o botão
+        pagina.click("text=Sair")
+        pagina.wait_for_selector("#email")
+        entrar(pagina)
+        pagina.wait_for_selector("text=Painel do dia")
+        html = pagina.evaluate("() => TELAS.configuracoes()")
+        assert "Agenda de obrigações" in html and "preencher-fontes" not in html
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(original),))
 
 
 # ------------------------------------------------------- v0.21.0 — a arte da peça, a conferência, a aprovação e a publicação
@@ -6628,6 +6749,44 @@ def test_video_extrair_fala_igual_ao_robo(pagina):
     assert pagina.evaluate("r => extrairFala(r)", vb.ROTEIRO) == {"fala": vb.FALA, "formato": "tabela"}
 
 
+GLOSSARIO_PADRAO = ["eSocial", "DCTFWeb", "IBS", "CBS", "Simples Nacional", "MEI", "CNPJ", "DAS", "DARF", "FGTS", "Cofins", "PIS", "PGDAS-D",
+                    "Artecon", "Palhoça"]
+
+
+def test_video_editor_de_legenda_recusa_o_sentido_como_o_robo(pagina):
+    """v0.22.0: o editor de legenda da tela (recusaLegenda, radar-video.js) recusa a troca de número, data, mês e termo do glossário
+    como o robô (alinhar._edicao, pelas fichas de numeros.py): termo pelas letras juntas (“e social”, “e-Social”, “Simples Nacional”),
+    “DAS” só em maiúsculas (“das” é palavra), o valor em reais. Nada que o robô recusa pelo sentido passa na tela; a tela é mais
+    rígida só no número escrito de outro jeito (“20” e “vinte”: o mesmo valor para o robô)."""
+    sys.path.insert(0, str(RAIZ / "robo" / "video"))
+    import numeros
+    gl = numeros.glossario(GLOSSARIO_PADRAO, {})
+
+    def robo(velho, novo):
+        v, n = velho.split(), novo.split()
+        return numeros.sentido(velho, gl) != numeros.sentido(novo, gl) or any(numeros.sentido(a, gl) != numeros.sentido(b, gl) for a, b in zip(v, n))
+    pagina.goto(BASE + "/index.html")
+    pagina.wait_for_selector("#email")
+    pagina.evaluate("g => { CONF_PAUTA.corretor_video = {glossario: g}; }", GLOSSARIO_PADRAO)
+
+    def tela(velho, novo):
+        return pagina.evaluate("([v, n]) => recusaLegenda(v, n, n.split(' ').length, '')", [velho, novo]) == "numero_ou_termo"
+    iguais = [("no dia 20.", "no dia 26.", True), ("O prazo do Simples vence", "O prazo do simples vence", False),
+              ("vence em março", "vence em maio", True), ("o IBS e", "o CBS e", True), ("a guia DAS vence", "a guia das vence", True),
+              ("veja das regras", "veja nas regras", False), ("dez por cento", "doze por cento", True), ("em 2026 vence", "em 2027 vence", True),
+              ("o eSocial e", "o e-Social e", False), ("e social agora", "eSocial já agora", True), ("quinze dias", "vinte dias", True),
+              ("R$ 50 mil", "R$ 60 mil", True), ("R$ 50", "US$ 50", True), ("Simples Nacional exige", "Simples nacional exige", False),
+              ("o Simples Nacional", "o Simples federal", True), ("no 13º salário", "no 14º salário", True),
+              ("a primeira parcela", "a segunda parcela", True), ("um salário mínimo", "um salário mensal", False),
+              ("confira com a gente", "confira com a equipe", False), ("a DCTFWeb vence", "a DCTF vence", True), ("o MEI paga", "o mei paga", False),
+              ("Cofins e PIS", "Cofins e Pis", False), ("30/10 vence", "31/10 vence", True), ("o PGDAS-D sai", "o PGDAS sai", True),
+              ("segundo a lei", "conforme a lei", True)]
+    for velho, novo, recusa in iguais:
+        assert (tela(velho, novo), robo(velho, novo)) == (recusa, recusa), (velho, novo)
+    for velho, novo in [("20 dias", "vinte dias"), ("dois boletos", "duas boletos")]:
+        assert (tela(velho, novo), robo(velho, novo)) == (True, False), (velho, novo)
+
+
 def test_video_envio_tus_em_pedacos_de_6_mib_com_queda_de_rede_e_na_fila(pagina, vtela):
     """v0.22.0: o editor envia a gravação do reel pela peça: a fala para conferência (tirada da tabela do roteiro), a cartela (a
     identificação legal das Configurações e a linha de quem fala, com o CRC de Pessoas e termos), os clipes na ordem escolhida (o
@@ -6656,9 +6815,13 @@ def test_video_envio_tus_em_pedacos_de_6_mib_com_queda_de_rede_e_na_fila(pagina,
     for c in pagina.locator("#video-envio .video-declaracao").all():
         c.check()
     fv.ARM["tus_cair"] = 1                                               # o 1º pedaço chega, e a resposta não
+    # a tela acesa enquanto sobe (o pedido do navegador, imitado: o Chromium dos testes não tem tela) e solta no fim
+    pagina.evaluate("""() => { window.__tela = []; Object.defineProperty(navigator, 'wakeLock', {configurable: true, value: {request: async t => {
+      window.__tela.push('pede:' + t); return {release: async () => { window.__tela.push('solta'); }}; }}}); }""")
     limpar_recados(pagina)
     pagina.click("[data-acao=video-enviar]")
     pagina.wait_for_selector("#recado >> text=Gravação enviada: na fila do corretor.", timeout=60000)
+    assert pagina.evaluate("() => window.__tela") == ["pede:screen", "solta"]
     vid, sit, partes, fala, cartela, gancho, decl, quem = db.execute(
         "select id::text, situacao, partes, fala_roteiro, cartela_linhas, gancho, declaracoes, fala_pessoa from radar_videos where peca_id = %s", (pid,)).fetchone()
     assert (sit, fala, cartela, gancho, quem) == ("na_fila", vb.FALA, [IDENT, "Ana, contadora · CRC-SC 012345/O-5"], "O prazo do Simples vence no dia 20", ana)
@@ -6903,6 +7066,86 @@ def test_video_relatorio_parcial_e_final_escapados_e_ajustes_do_administrador(pa
     assert "Na fila do corretor (gravação 1, só a montagem: a transcrição é a mesma)" in pagina.inner_text("#video-trabalhando")
 
 
+def test_video_relatorio_hostil_tudo_escapado_e_codigos_fora_do_mapa(pagina, vtela):
+    """v0.22.0: o relatório vem do robô (um arquivo de fora, que a tela não controla): todo texto dele vai escapado, no texto e nos
+    atributos (o campo da legenda do editor guarda o texto como veio, sem sair do value). O código que não está no mapa da tela
+    (“constructor”, “__proto__”, que todo objeto herda) aparece como código, nunca como o que o objeto herdou."""
+    db, fv = vtela
+    tag, attr = '"><img src=x onerror="window.xss=1">', '" autofocus onfocus="window.xss=2" x="'
+    rel = relatorio_final(
+        divergencias=[{**DIVERGENCIA_DIA, "falado": tag, "roteiro": attr, "tipo": "constructor"}],
+        avisos=[tag, "constructor"],
+        cortes=[{"k": 2, "clipe": 1, "tipo": "__proto__", "automatico": True, "texto": tag, "mantido": False, "em_s": 9.4, "dur_s": 1.2},
+                {"k": 3, "clipe": 1, "tipo": tag, "automatico": True, "texto": attr, "mantido": False, "em_s": 12.0, "dur_s": tag}],
+        sugestoes=[{"em_s": 22.4, "tipo": "toString", "texto": tag}], trocas=[{"em_s": tag, "de": tag, "para": attr, "motivo": "grafia"}],
+        fora_do_roteiro=[{"em_s": 5.0, "texto": attr}], omitido=[{"texto": tag}],
+        legenda={"blocos": tag, "estilo": tag, "gancho": False, "editados": 0, "recusados": [{"bloco": tag, "motivo": "constructor"}],
+                 "lista": [{"u": 0, "em_s": 0.12, "palavras": 5, "texto": attr}, {"u": tag, "em_s": tag, "palavras": 3, "texto": tag}]},
+        entrada={"clipes": tag, "duracao_s": tag, "resolucao": tag, "fps": 30, "hdr": tag, "girado": False},
+        conferencia={"moov_inicio": True, "sem_edit_list": True, "sem_gps": True, "codec": tag, "fps": tag},
+        transcricao={"servico": tag, "segundos_audio": 31.5, "palavras": tag})
+    pid, _, vid, sit = reel_com_video(db, fv, relatorio=rel)
+    assert sit == "regravar"
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    pagina.click("#video-ajustes .video-legenda summary")
+    pagina.focus("#video-leg-0")
+    texto = pagina.inner_text("#video-reel")
+    assert tag in texto and attr in texto and texto.count(tag) >= 8
+    assert pagina.locator("#video-reel img, #video-reel [onerror], #video-reel [onfocus], #video-reel [autofocus]").count() == 0
+    assert pagina.input_value("#video-leg-0") == attr and pagina.locator("#video-leg-1").is_disabled()
+    assert "Aviso do corretor: constructor" in texto and "a fala diz" in texto and "native code" not in texto and "[object Object]" not in texto
+    assert "aos 9,4 s: __proto__ (1,2 s)" in texto and "toString “" in texto
+    assert pagina.evaluate("() => window.xss") is None
+    # o erro com um código que o banco aceita (só letras e _) e que não está no mapa: o código, nunca a função que o objeto herdou
+    db.execute("update radar_videos set situacao = 'erro', erro_codigo = 'constructor' where id = %s", (vid,))
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#video-erro")
+    assert pagina.inner_text("#video-erro") == "O corretor parou: erro interno do corretor: tente de novo; se repetir, avise o administrador (constructor)."
+    assert pagina.evaluate("() => window.xss") is None
+
+
+def test_video_envio_nunca_manda_o_token_a_outro_endereco(pagina, vtela):
+    """v0.22.0: o token de envio só vai ao armazenamento deste projeto: o endereço de envio que volta de fora (o Location do TUS) é
+    recusado antes de qualquer pedaço sair, e o endereço guardado no localStorage que não é deste projeto é ignorado (o envio recomeça
+    aqui, sem perguntar nada ao outro endereço)."""
+    db, fv = vtela
+    pid, _ = vb.reel(db)
+    fora = []
+    pagina.on("request", lambda r: fora.append(r.url) if "exemplo.invalid" in r.url else None)
+    pagina.route("https://exemplo.invalid/**", lambda rota: rota.fulfill(status=204, headers={"Upload-Offset": "0"}))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
+    abrir_video(pagina, db, pid)
+    c = clipe("a.mp4", MIB + 3, semente=13)
+    pagina.set_input_files("#video-arquivos", [c])
+    pagina.wait_for_selector("#video-clipes li[data-i='0']")
+    for x in pagina.locator("#video-envio .video-declaracao").all():
+        x.check()
+
+    def location_de_fora(rota):
+        if rota.request.method != "POST":
+            return rota.continue_()
+        rota.fulfill(status=201, headers={"Location": "https://exemplo.invalid/storage/v1/upload/resumable/sign/abc", "Tus-Resumable": "1.0.0"}, body="")
+    pagina.route("**/storage/v1/upload/resumable/sign", location_de_fora)
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-enviar]")
+    pagina.wait_for_selector("#recado .erro >> text=endereço de envio fora deste projeto")
+    pagina.unroute("**/storage/v1/upload/resumable/sign")
+    vid = db.execute("select id::text from radar_videos where peca_id = %s and situacao = 'aguardando_envio'", (pid,)).fetchone()[0]
+    assert pagina.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('radar_tus_'))") == []
+    # o endereço de outro lugar guardado no navegador (de uma versão mexida): ignorado; o envio recomeça aqui
+    pagina.evaluate("([k, n]) => localStorage.setItem(k, JSON.stringify({url: 'https://exemplo.invalid/storage/v1/upload/resumable/sign/abc', bytes: n}))",
+                    [f"radar_tus_bruto/{vid}/1", len(c["buffer"])])
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-continuar]")
+    pagina.wait_for_selector("#recado >> text=Gravação enviada: na fila do corretor.", timeout=60000)
+    assert fora == [] and fv.ARM["objetos"][f"bruto/{vid}/1"]["dados"] == c["buffer"]
+    assert [p["metodo"] for p in fv.ARM["tus_pedidos"]] == ["POST", "PATCH"]
+
+
 def test_video_previa_aprovacao_amarrada_ao_sha256_baixar_apaguei_e_registro(navegador, vtela, mp4_sintetico):
     """v0.22.0: o reel pronto com o vídeo corrigido: a prévia abre pela função (vídeo e 4 quadros, links de 600 s, do armazenamento deste
     projeto; quem viu fica registrado). A aprovação pede a prévia aberta (o hash dela vai na aprovação), “Conferi o vídeo” e, com a
@@ -6986,6 +7229,7 @@ def test_video_previa_aprovacao_amarrada_ao_sha256_baixar_apaguei_e_registro(nav
         assert db.execute("select situacao, aprovado_modo, video_id::text, video_sha256, aprovado_conferencias from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (
             "aprovada", "manual", vid, SHA_VIDEO, ["pessoas", "video", "viu"])
         assert "Peça aprovada com o vídeo da gravação 1" in pg.inner_text("#video-reel") and pg.locator("#video-envio, [data-acao=video-ajustar]").count() == 0
+        assert "Baixe o vídeo aprovado, copie a legenda, poste no " in pg.inner_text("#peca-aprovada-quadro")
         # baixar: o link de 300 s com o nome do arquivo; o banco registra quem baixou
         pg.click("[data-acao=video-baixar]")
         pg.wait_for_selector("#video-baixar-link")
@@ -7115,7 +7359,7 @@ def test_video_no_celular_375_px_sem_rolagem_lateral(navegador, vtela):
         assert sem_rolagem_lateral(pg), "prévia e ajustes"
         pg.screenshot(path=str(FOTOS / "49-celular-reel-relatorio.png"), full_page=True)
         pg.click("[data-acao=video-nova]")
-        pg.set_input_files("#video-arquivos", [clipe("um-nome-de-arquivo-bem-comprido-do-celular-IMG_20261012_093000.mov", 2000, "video/quicktime"),
+        pg.set_input_files("#video-arquivos", [clipe("VID_20261012_093000_um_nome_de_arquivo_bem_comprido_do_celular_sem_espaco_nem_hifen.mov", 2000, "video/quicktime"),
                                                clipe("b.mp4", 3000)])
         pg.wait_for_selector("#video-clipes li[data-i='1']")
         assert sem_rolagem_lateral(pg), "envio"
