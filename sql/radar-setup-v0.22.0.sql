@@ -407,7 +407,9 @@ create unique index if not exists radar_site_envios_aberto_uk on public.radar_si
 
 -- v0.13.0: publicação no Instagram e no Facebook (API da Meta), sempre depois da autorização do administrador.
 -- A tela monta a imagem (JPEG; vertical, 1080×1350, desde a v0.20.0) e a legenda; o administrador confere e autoriza;
--- a função radar-redes (Supabase) envia a imagem ao armazenamento público, publica e registra o link.
+-- a função radar-redes (Supabase) envia a imagem ao armazenamento, publica e registra o link. v0.22.0 (rodada 2 da varredura
+-- geral): o armazenamento é o privado da Pauta (radar-pauta, nome aleatório, a Meta recebe um link de 10 minutos); antes era o
+-- público radar-redes, com nome previsível, para sempre. imagem_url guarda o endereço interno (ou o público, nos envios antigos).
 -- "dispensado" = não vai a este canal.
 -- Nunca publica duas vezes: só uma autorização em andamento ou concluída por conteúdo e canal.
 create table if not exists public.radar_redes_envios (
@@ -2443,11 +2445,12 @@ $$;
 -- v0.22.0 (varredura geral): o registro no CRC das Configurações como a tela o escreve (crcFormatado, index.html: "CRC-SC 007129/O-0";
 -- o zero da categoria vira a letra O; o formato antigo "1SC007129/O-0" ganha o "CRC " na frente) e, dele, a expressão que o acha num
 -- texto em maiúsculas sem acento: cada parte (CRC, SC, 007129, O, 0) na ordem, com qualquer separador entre elas e sem letra ou
--- algarismo colado nas pontas
+-- algarismo colado nas pontas. Rodada 2: sem acento (radar_pauta_sem_acento), como o texto que ela confere ("CRC-SC 007129/O-0
+-- (Originário)" virava "ORIGIN" + "RIO" e nunca casava com o "ORIGINARIO" do texto: nenhuma peça era aprovada)
 create or replace function public.radar_crc_padrao(p_crc text) returns text
 language plpgsql immutable set search_path = public as $$
 declare
-  t text := regexp_replace(btrim(coalesce(p_crc, '')), '\s+', ' ', 'g');
+  t text := regexp_replace(btrim(public.radar_pauta_sem_acento(p_crc)), '\s+', ' ', 'g');
   m text[];
   f text;
 begin
@@ -2485,8 +2488,7 @@ begin
   -- categoria, e não só os algarismos em qualquer ponto do texto ("CRC-PR 007129/O-5", "007129/0-0" com zero no lugar da letra O
   -- ou um telefone com os mesmos algarismos passavam). Entre as partes, qualquer separador ("CRC/SC 007129 / O-0" vale).
   if strpos(v_txt, v_emp) = 0 or strpos(v_txt, v_cnpj) = 0
-     or upper(translate(coalesce(p_texto, ''), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ', 'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn'))
-        !~ public.radar_crc_padrao(v->>'crc') then
+     or upper(public.radar_pauta_sem_acento(p_texto)) !~ public.radar_crc_padrao(v->>'crc') then
     return 'falta a linha de identificação (empresa, CNPJ e CRC de Configurações → Assinatura)';
   end if;
   return null;
@@ -2539,26 +2541,54 @@ begin
                     where not regexp_replace(n, '^0+(?=[0-9])', '') = any(v_base)), '{}');
 end $$;
 
+-- Rodada 2 da varredura geral: a matéria do boletim que é o próprio ato oficial ("Legislação Federal - Últimas Publicações": a
+-- radar-itc e a rotina gravam título = o nome do ato com o Diário Oficial e a data, "Lei nº 15526/2026 (DOU DE 30/09/2026)", e
+-- texto = a ementa) não é texto da ITC: é a ementa oficial, de domínio público (Lei 9.610/1998, art. 8º, IV), e a mesma do DOU.
+-- Fica fora da base paga: a peça educativa ou o roteiro que copia a ementa do DOU para as "Informações conferidas" não trava como
+-- "frase do boletim pago". Só o título que começa pelo nome da norma e termina no Diário Oficial com a data, entre parênteses.
+create or replace function public.radar_copia_paga_ato_oficial(p_titulo text) returns boolean
+language sql immutable set search_path = public as $$
+  select coalesce(p_titulo, '') ~* ('^\s*(?:lei|leis|decreto|decretos|decreto-lei|medida|instru[çc][ãa]o|portaria|resolu[çc][ãa]o|ato|atos'
+           || '|solu[çc][ãa]o|parecer|despacho|emenda|delibera[çc][ãa]o|conv[êe]nio|ajuste|protocolo|circular|comunicado|nota|edital'
+           || '|retifica[çc][ãa]o)(?![[:alpha:]-]).*\(\s*D\.?\s*O\.?\s*(?:U|E(?:\s*[-/]?\s*SC)?)(?![[:alpha:]])[^()]*'
+           || '[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}\s*\)\s*\.?\s*$')
+$$;
+
+-- A base da trava do boletim pago: o texto normalizado de todas as capturas do boletim que estão no banco (nenhuma é apagada e a
+-- tela do assunto mostra qualquer uma, de qualquer idade), menos as matérias que são o próprio ato oficial. NULL = não há boletim.
+create or replace function public.radar_copia_paga_base() returns text
+language sql stable set search_path = public as $$
+  select ' ' || string_agg(public.radar_pauta_normalizar(concat_ws(' ', c.titulo, c.resumo_fonte, c.texto)), ' | ') || ' '
+    from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+   where f.slug in ('itc-email') and not public.radar_copia_paga_ato_oficial(c.titulo)
+$$;
+
+-- As capturas de fonte livre (não pagas) do assunto da notícia: a janela que também está numa delas não conta
+create or replace function public.radar_copia_paga_livres(p_assunto bigint) returns text[]
+language sql stable set search_path = public as $$
+  select array_agg(concat_ws(' ', c.titulo, c.resumo_fonte, c.texto))
+    from public.radar_assunto_capturas ac
+    join public.radar_capturas c on c.id = ac.captura_id
+    join public.radar_fontes f on f.id = c.fonte_id
+   where ac.assunto_id = p_assunto and f.slug not in ('itc-email')
+$$;
+
 -- Frase do boletim pago (ITC, a mesma lista de FONTES_PAGAS da tela e da radar-ia) num texto: cada campo à parte, em janelas de 12
--- palavras, procuradas no texto das capturas do boletim. Devolve só sim ou não: o trecho do boletim nunca sai daqui (nem para a
--- tela, nem para o log). v0.22.0 (varredura geral): todas as capturas do boletim que estão no banco (nenhuma é apagada e a tela do
--- assunto mostra qualquer uma, de qualquer idade); antes eram só as dos últimos 90 dias, e uma frase de boletim mais antigo
--- passava sem aviso. p_livres: textos de fonte livre (as capturas não pagas do assunto da notícia); a janela que também está
--- num deles não conta (o dispositivo legal que o boletim copiou do DOU e o texto transcreve da fonte oficial).
+-- palavras, procuradas na base do boletim (radar_copia_paga_base). Devolve só sim ou não: o trecho do boletim nunca sai daqui (nem
+-- para a tela, nem para o log). v0.22.0 (varredura geral): todas as capturas do boletim; antes eram só as dos últimos 90 dias, e
+-- uma frase de boletim mais antigo passava sem aviso. p_livres: textos de fonte livre (as capturas não pagas do assunto da
+-- notícia); a janela que também está num deles não conta (o dispositivo legal que o boletim copiou do DOU e o texto transcreve da
+-- fonte oficial).
 create or replace function public.radar_copia_paga(p_textos text[], p_livres text[]) returns boolean
 language plpgsql stable set search_path = public as $$
 declare
-  v_base  text;
+  v_base  text := public.radar_copia_paga_base();
   v_livre text;
   v_t     text;
   v_pal   text[];
   v_jan   text;
   i       int;
 begin
-  select ' ' || string_agg(public.radar_pauta_normalizar(concat_ws(' ', c.titulo, c.resumo_fonte, c.texto)), ' | ') || ' '
-    into v_base
-    from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
-   where f.slug in ('itc-email');
   if v_base is null then return false; end if;
   v_livre := coalesce(' ' || (select string_agg(public.radar_pauta_normalizar(l), ' | ') from unnest(p_livres) l) || ' ', '');
   foreach v_t in array coalesce(p_textos, '{}') loop
@@ -2574,7 +2604,7 @@ begin
   return false;
 end $$;
 
--- A Pauta não tem fonte livre ao lado: qualquer janela do boletim conta
+-- A Pauta não tem fonte livre ao lado: qualquer janela do boletim conta (menos a ementa do ato oficial, fora da base)
 create or replace function public.radar_pauta_copia_paga(p_textos text[]) returns boolean
 language sql stable set search_path = public as $$
   select public.radar_copia_paga(p_textos, '{}')
@@ -2584,13 +2614,71 @@ $$;
 -- trava era só dela (e oferecia "Autorizar mesmo assim"). Descontado o que também está nas capturas livres do assunto.
 create or replace function public.radar_copia_paga_assunto(p_assunto bigint, p_textos text[]) returns boolean
 language sql stable set search_path = public as $$
-  select public.radar_copia_paga(p_textos,
-           (select array_agg(concat_ws(' ', c.titulo, c.resumo_fonte, c.texto))
-              from public.radar_assunto_capturas ac
-              join public.radar_capturas c on c.id = ac.captura_id
-              join public.radar_fontes f on f.id = c.fonte_id
-             where ac.assunto_id = p_assunto and f.slug not in ('itc-email')))
+  select public.radar_copia_paga(p_textos, public.radar_copia_paga_livres(p_assunto))
 $$;
+
+-- Rodada 2 da varredura geral: ONDE, no texto da própria notícia, está o que a trava acima (radar_copia_paga_assunto, RADAR146)
+-- recusaria. A tela compara só com as capturas ligadas ao assunto; o banco, com todas as do boletim (de outro assunto ou ainda na
+-- fila): sem isto, ela mostrava "✓ nenhum trecho copiado" e o banco recusava sem dizer qual frase. Para cada texto de p_textos
+-- (o título e o texto de cada conteúdo, na ordem), a lista das faixas [início, fim) em caracteres do PRÓPRIO texto (contados como o
+-- banco conta, um por letra; a tela conta igual), juntando as janelas de 12 palavras encostadas. Mesma regra do banco: as palavras
+-- de radar_pauta_normalizar (com números e nomes de norma), a mesma base e o mesmo desconto das capturas livres do assunto. Nada do
+-- boletim sai daqui (só posições no texto de quem pede); só o editor e o administrador, como a radar-ia (Revisar com IA).
+create or replace function public.radar_copia_paga_trechos(p_assunto bigint, p_textos text[]) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_base  text;
+  v_livre text;
+  v_saida jsonb := '[]';
+  v_lista jsonb;
+  v_t     text;
+  v_pal   text[];
+  v_ini   int[];
+  v_fim   int[];
+  v_jan   text;
+  a       int;
+  b       int;
+  i       int;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR147: só o editor ou o administrador confere o texto contra o boletim pago' using errcode = '42501';
+  end if;
+  if coalesce(array_length(p_textos, 1), 0) > 60 or exists (select 1 from unnest(p_textos) t where length(t) > 100000) then
+    raise exception 'RADAR147: textos demais para conferir de uma vez' using errcode = 'P0001';
+  end if;
+  v_base := public.radar_copia_paga_base();
+  v_livre := coalesce(' ' || (select string_agg(public.radar_pauta_normalizar(l), ' | ')
+                                from unnest(public.radar_copia_paga_livres(p_assunto)) l) || ' ', '');
+  foreach v_t in array coalesce(p_textos, '{}') loop
+    v_lista := '[]';
+    if v_base is not null then
+      -- as palavras como radar_pauta_normalizar as vê (sem acento, letras e algarismos seguidos), com a posição no texto: o translate
+      -- troca letra por letra, então a posição no texto traduzido é a mesma do original
+      select array_agg(lower(m.w) order by m.n), array_agg(m.fim - length(m.w) order by m.n), array_agg(m.fim order by m.n)
+        into v_pal, v_ini, v_fim
+        from (select x.n, x.m[2] as w, sum(length(x.m[1]) + length(x.m[2])) over (order by x.n)::int as fim
+                from regexp_matches(translate(coalesce(v_t, ''), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
+                                              'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn'),
+                                    '([^A-Za-z0-9]*)([A-Za-z0-9]+)', 'g') with ordinality x(m, n)) m;
+      a := null;
+      if coalesce(array_length(v_pal, 1), 0) >= 12 then
+        for i in 1 .. array_length(v_pal, 1) - 11 loop
+          v_jan := ' ' || array_to_string(v_pal[i:i + 11], ' ') || ' ';
+          continue when strpos(v_base, v_jan) = 0 or strpos(v_livre, v_jan) > 0;
+          if a is not null and v_ini[i] <= b then
+            b := greatest(b, v_fim[i + 11]);
+          else
+            if a is not null then v_lista := v_lista || jsonb_build_array(jsonb_build_array(a, b)); end if;
+            a := v_ini[i]; b := v_fim[i + 11];
+          end if;
+        end loop;
+      end if;
+      if a is not null then v_lista := v_lista || jsonb_build_array(jsonb_build_array(a, b)); end if;
+    end if;
+    v_saida := v_saida || jsonb_build_array(v_lista);
+  end loop;
+  return v_saida;
+end $$;
 
 -- A função radar-ia (ação "peca", com o token de quem pede) confere, antes de chamar a IA, que nada do boletim pago vai junto (o plano
 -- e as informações conferidas da peça): só o editor e o administrador; devolve só sim ou não (o trecho do boletim não sai daqui).
@@ -5724,7 +5812,13 @@ select (select count(*) from public.radar_v_saude_fontes where ativo) as fontes_
        (select count(*) from public.radar_redes_envios e where e.peca_id is not null
           and (e.situacao = 'erro'
                or (e.situacao = 'enviando'   and e.enviado_em    < now() - interval '15 minutes')
-               or (e.situacao = 'autorizado' and e.agendado_para < now() - interval '20 minutes'))) as pauta_falhas;
+               or (e.situacao = 'autorizado' and e.agendado_para < now() - interval '20 minutes'))) as pauta_falhas,
+       -- v0.22.0 (rodada 2 da varredura geral): a última rodada do robô de coleta (GitHub, de 6 em 6 horas) e se ela passou de 12 horas
+       -- com fonte ativa que o robô coleta (a do e-mail não passa por ele). No repositório público, o GitHub desliga sozinho os robôs
+       -- agendados depois de 60 dias sem atividade: a coleta, o robô do site, os avisos e o resumo param juntos, sem e-mail
+       (select max(x.iniciado_em) from public.radar_execucoes x) as ultima_coleta,
+       (exists (select 1 from public.radar_fontes f where f.ativo and coalesce(f.config->>'origem', '') <> 'email')
+        and coalesce((select max(x.iniciado_em) from public.radar_execucoes x), '-infinity') < now() - interval '12 hours') as coleta_atrasada;
 
 -- registro das publicações no site, com o estado atual do conteúdo (sem o texto, que é grande)
 drop view if exists public.radar_v_divulgacoes;
@@ -5921,6 +6015,8 @@ grant execute on function public.radar_pauta_pode_copiar(bigint, timestamptz, te
 grant execute on function public.radar_pauta_registrar_manual(bigint, text, text, date) to authenticated;
 grant execute on function public.radar_pauta_termo_ok(bigint, text, text, date) to authenticated;
 grant execute on function public.radar_pauta_copia_paga_ia(text[]) to authenticated;
+-- rodada 2 da varredura geral: onde, no texto da notícia, está a frase do boletim que o banco recusaria (a tela e o Revisar com IA)
+grant execute on function public.radar_copia_paga_trechos(bigint, text[]) to authenticated;
 grant execute on function public.radar_agenda_situacao() to authenticated;
 grant execute on function public.radar_pauta_iniciar(bigint) to service_role;
 grant execute on function public.radar_redes_conferir_agenda(text) to service_role;

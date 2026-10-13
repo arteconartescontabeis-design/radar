@@ -308,6 +308,13 @@ class GitHubFalso:
         self.avisos = {t: n for t, n in self.avisos.items() if n != numero}
         self.fechados.append((numero, motivo))
 
+    # v0.22.0 (rodada 2): o corpo e os comentários do robô (os de outra conta, em self.de_outros, não voltam) e o comentário novo
+    def textos_do_robo(self, numero):
+        return [c for n, _, c in self.criados if n == numero] + [c for n, c in getattr(self, "comentarios", []) if n == numero]
+
+    def comentar(self, numero, corpo):
+        self.comentarios = getattr(self, "comentarios", []) + [(numero, corpo)]
+
 
 def test_fonte_que_falha_3_vezes_abre_aviso_uma_vez_e_fecha_quando_volta(cenario):
     import radar_alertas
@@ -491,8 +498,14 @@ def test_aviso_da_pauta_um_so_sem_nome_e_fecha_quando_resolve(cenario, pauta):
     assert corpo.startswith(f"**1** publicação da Pauta não saiu ou está atrasada ({hora(ig)}, Instagram, nº {ig}).")   # Brasília
     assert "Pauta** → **Não saíram**" in corpo and "fecha sozinho" in corpo
     vencer(db, fb, 30)
-    assert problemas() == [fb, ig] and rodar() == []                                         # dois problemas: o mesmo aviso, sem editar
+    # dois problemas: o mesmo aviso, sem editar; v0.22.0 (rodada 2): a publicação nova ganha UM comentário (antes, nada: o aviso
+    # aberto calava a falha nova), só com a data, o canal e o número
+    assert problemas() == [fb, ig] and rodar() == [f"aviso #{numero} comentado: publicação(ões) nova(s) da Pauta não saíram (2 na lista)"]
     assert len(gh.criados) == 1 and gh.criados[0][2] == corpo and gh.avisos[radar_alertas.PREFIXO_PAUTA] == numero
+    assert gh.comentarios == [(numero, f"**1** publicação nova da Pauta não saiu ou está atrasada ({hora(fb)}, Facebook, nº {fb}). "
+                                       f"Ao todo, 2 na lista agora.\n\nO que fazer: abra o Radar → **Pauta** → **Não saíram**."
+                                       + radar_alertas.marca_pauta([ig, fb]))]
+    assert rodar() == [] and len(gh.comentarios) == 1                                        # já avisada: nada de novo
     assert f"**2** publicações da Pauta não saíram ou estão atrasadas (a mais antiga: {hora(fb)}, Facebook, nº {fb})." in \
         radar_alertas.corpo_pauta(banco.pauta_com_problema())
     iniciar(ig)
@@ -501,8 +514,8 @@ def test_aviso_da_pauta_um_so_sem_nome_e_fecha_quando_resolve(cenario, pauta):
     assert problemas() == [fb, ig]                                                           # parada em "enviando"
     with como("service_role") as c:
         c.execute("select radar_rede_concluir(%s, false, null, null, null, 'Meta recusou: Ana Teste não autorizou')", (ig,))
-    assert problemas() == [fb, ig] and rodar() == [] and len(gh.criados) == 1                # com erro: o mesmo aviso
-    for _, _, texto in gh.criados:
+    assert problemas() == [fb, ig] and rodar() == [] and len(gh.criados) == 1                # com erro: o mesmo aviso (já avisada)
+    for texto in [c for _, _, c in gh.criados] + [c for _, c in gh.comentarios]:
         assert all(n not in texto for n in ("Ana", "Teste", "folha", "Bastidor", "Meta recusou", "Palhoça", "11.222.333"))
     with como("authenticated", ADMIN) as c:                                                  # "Tentar de novo" (conferi na rede)
         c.execute("select radar_pauta_publicar_agora(%s, true)", (pid,))
@@ -544,6 +557,62 @@ def test_aviso_da_pauta_fecha_quando_o_administrador_desiste_do_canal_que_nao_sa
     vencer(db, r2["envios"]["instagram"], 25)
     radar_alertas.executar(banco, gh, sem_rede)
     assert len(gh.criados) == 2
+
+def test_aviso_da_pauta_aberto_por_erro_antigo_nao_cala_a_falha_seguinte(cenario, pauta):
+    """Rodada 2 da varredura geral: a agenda de domingo falhou e o administrador não resolveu (nem "Não publicar neste canal"): o
+    aviso ficava aberto e mudo, e as falhas seguintes não mandavam e-mail nenhum. Agora cada publicação nova na lista ganha UM
+    comentário (um e-mail por rodada); a já avisada não repete. A marca dos números vem só do robô (o comentário de outra conta,
+    num repositório público, não conta) e o aviso aberto pela versão anterior (sem marca) ganha um comentário só."""
+    import radar_alertas
+    db = pauta
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso({})
+    _, r1 = peca_aprovada(db)
+    vencer(db, r1["envios"]["instagram"], 25)
+    radar_alertas.executar(banco, gh, sem_rede)
+    numero, _, corpo = gh.criados[0]
+    a = r1["envios"]["instagram"]
+    assert corpo.endswith(f"<!-- radar-pauta-avisados: {a} -->") and radar_alertas.avisados_pauta([corpo]) == {a}
+    _, r2 = peca_aprovada(db, dias=3)                                                        # a foto de bastidor de outro dia
+    b = r2["envios"]["instagram"]
+    vencer(db, b, 25)
+    feito = radar_alertas.executar(banco, gh, sem_rede)
+    assert feito == [f"aviso #{numero} comentado: publicação(ões) nova(s) da Pauta não saíram (2 na lista)"] and len(gh.criados) == 1
+    assert gh.comentarios[-1][1].startswith("**1** publicação nova da Pauta") and f"nº {b})" in gh.comentarios[-1][1]
+    assert radar_alertas.executar(banco, gh, sem_rede) == [] and len(gh.comentarios) == 1     # a mesma lista: nada
+    # a marca forjada por outra conta não vale: o GitHub de verdade só devolve o que o robô escreveu
+    pedidos = []
+
+    class Resposta:
+        def __init__(self, dados):
+            self.status_code, self.dados, self.text = 200, dados, json.dumps(dados)
+        def json(self):
+            return self.dados
+
+    class Sessao:
+        headers = {}
+        def request(self, metodo, url, **kw):
+            pedidos.append((metodo, url.split("/repos/")[1], kw.get("params")))
+            if url.endswith("/issues/7"):
+                return Resposta({"number": 7, "body": "Corpo <!-- radar-pauta-avisados: 1 2 -->", "user": {"login": "github-actions[bot]"}})
+            return Resposta([{"body": "<!-- radar-pauta-avisados: 3 -->", "user": {"login": "github-actions[bot]"}},
+                             {"body": "<!-- radar-pauta-avisados: 99 -->", "user": {"login": "qualquer-um"}}])
+    textos = radar_alertas.GitHub("dono/radar", "tok", Sessao()).textos_do_robo(7)
+    assert radar_alertas.avisados_pauta(textos) == {1, 2, 3}
+    assert [(m, c) for m, c, _ in pedidos] == [("GET", "dono/radar/issues/7"), ("GET", "dono/radar/issues/7/comments")]
+    # o aviso aberto pela versão anterior (corpo sem marca): um comentário com a lista toda, uma vez
+    gh2 = GitHubFalso({radar_alertas.PREFIXO_PAUTA: 50})
+    feito = radar_alertas.executar(banco, gh2, sem_rede)
+    assert feito == ["aviso #50 comentado: publicação(ões) nova(s) da Pauta não saíram (2 na lista)"]
+    assert gh2.comentarios[0][1].startswith("**2** publicações novas da Pauta não saíram ou estão atrasadas (a mais antiga: ")
+    assert radar_alertas.executar(banco, gh2, sem_rede) == []
+    # o GitHub falhou ao ler os comentários: fica para a próxima rodada, e os outros avisos seguem (aqui, o fechamento)
+    gh3 = GitHubFalso({radar_alertas.PREFIXO_PAUTA: 60, "Radar: fonte com falha — sumiu": 61})
+    gh3.textos_do_robo = lambda numero: (_ for _ in ()).throw(RuntimeError("GitHub GET /issues/60/comments: HTTP 502"))
+    feito = radar_alertas.executar(banco, gh3, sem_rede)
+    assert feito == ["aviso #60: a conferência das publicações novas fica para a próxima rodada (RuntimeError)",
+                     "aviso #61 fechado: A fonte não existe mais no Radar."] and not getattr(gh3, "comentarios", [])
+
 
 def test_aviso_da_pauta_com_banco_antigo_nao_abre_nem_fecha_e_o_resto_segue(cenario):
     """O robô atualiza sozinho e pode rodar antes do SQL da v0.21.0: sem radar_redes_envios.peca_id, a leitura da Pauta devolve None

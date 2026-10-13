@@ -20,7 +20,9 @@
 -- Pode rodar de novo: as chaves existentes são mantidas e a agenda é refeita.
 --
 -- A radar-video fica com "Verify JWT" LIGADO: a agenda manda no Authorization a chave anon, que é pública (a mesma de radar-config.js;
--- o teste do repositório confere que são iguais e este arquivo recusa qualquer chave que não seja a anon).
+-- o teste do repositório confere que são iguais e este arquivo recusa qualquer chave que não seja a anon). v0.22.0 (rodada 2): ou a
+-- chave pública nova (sb_publishable_…, a de radar-config.js depois da troca), que vai só no apikey; com ela, a radar-video fica com o
+-- "Verify JWT" DESLIGADO (LEIAME, "Chaves novas do Supabase").
 -- Para desfazer: sql/radar-video-agenda-reversao.sql. Troque o endereço abaixo se o projeto do Supabase for outro.
 -- =====================================================================
 create extension if not exists pg_cron with schema pg_catalog;      -- como na página "Install pg_cron" do Supabase
@@ -49,20 +51,26 @@ declare
   -- a MESMA chave pública de radar-config.js (SUPABASE_ANON_KEY); o teste confere que são iguais
   v_anon constant text := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoeGxzdnp2cXZ1Znloa2pubWVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5NjA0NzgsImV4cCI6MjEwNjUzNjQ3OH0.CbzVS3-ig73XOMyvbDaeII8Q4V2m1MjR6wIP62cl2eI';
   v_p text := split_part(v_anon, '.', 2);
+  -- v0.22.0 (rodada 2 da varredura geral): a chave pública nova (sb_publishable_…; o Supabase desliga a anon antiga até o fim de
+  -- 2026) vai só no apikey: no Authorization o Supabase a recusa (não é JWT), e a função fica com o "Verify JWT" desligado (LEIAME,
+  -- "Chaves novas do Supabase"). A anon antiga (JWT) continua no Authorization
+  v_nova constant boolean := v_anon ~ '^sb_publishable_[A-Za-z0-9_-]{16,200}$';
+  v_cab_nome  constant text := case when v_nova then 'apikey' else 'Authorization' end;
+  v_cab_valor constant text := case when v_nova then v_anon else 'Bearer ' || v_anon end;
   v_pedido text;
 begin
-  -- nunca a chave secreta: só um JWT com "role": "anon"
+  -- nunca a chave secreta: só um JWT com "role": "anon" ou a pública nova
   v_p := rpad(translate(v_p, '-_', '+/'), ((length(v_p) + 3) / 4) * 4, '=');
-  if v_anon like 'sb_secret_%' or v_anon !~ '^eyJ'
-     or coalesce(convert_from(decode(v_p, 'base64'), 'UTF8')::jsonb ->> 'role', '') <> 'anon' then
+  if not v_nova and (v_anon like 'sb_secret_%' or v_anon !~ '^eyJ'
+     or coalesce(convert_from(decode(v_p, 'base64'), 'UTF8')::jsonb ->> 'role', '') <> 'anon') then
     raise exception 'A chave escrita neste arquivo não é a chave anon (pública). Nada foi agendado.';
   end if;
   -- o pedido à radar-video, com a chave da agenda lida do Vault na hora (%s = a ação)
   v_pedido := format($c$select net.http_post(url := %L,
       body := jsonb_build_object('acao', %%L),
-      headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', %L,
+      headers := jsonb_build_object('Content-Type', 'application/json', %L, %L,
                    'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_video_agenda')),
-      timeout_milliseconds := 150000)$c$, v_url, 'Bearer ' || v_anon);
+      timeout_milliseconds := 150000)$c$, v_url, v_cab_nome, v_cab_valor);
   perform cron.unschedule(j.jobid) from cron.job j where j.jobname like 'radar-video-%';
   -- a reserva: só com pedido esperando, com o limite de 3 acionamentos por pedido (radar_video_reserva confere e conta no banco;
   -- nenhuma linha = nenhum pedido)
@@ -83,12 +91,13 @@ select jobname, schedule, active from cron.job where jobname like 'radar-video-%
 --
 --   select net.http_post(url := 'https://jhxlsvzvqvufyhkjnmeq.supabase.co/functions/v1/radar-video',
 --     body := '{"acao":"agenda_teste"}'::jsonb,
---     headers := jsonb_build_object('Content-Type', 'application/json',
---       'Authorization', 'Bearer ' || substring((select command from cron.job where jobname = 'radar-video-reserva') from 'Bearer ([^'']+)'),
---       'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_video_agenda')));
+--     headers := (select jsonb_build_object('Content-Type', 'application/json', 'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_video_agenda'))
+--       || case when j.c ~ 'Bearer ' then jsonb_build_object('Authorization', substring(j.c from '(Bearer [^'']+)')) else jsonb_build_object('apikey', substring(j.c from '(sb_publishable_[A-Za-z0-9_-]+)')) end
+--       from (select command as c from cron.job where jobname = 'radar-video-reserva') j));
 --
 -- Depois de alguns segundos (esperado: 200 {"ok":true,"versao":"0.22.0"}; 401 "Invalid JWT" = a chave anon do agendamento não é a
--- deste projeto: troque em v_anon e rode este arquivo de novo):
+-- deste projeto: troque em v_anon e rode este arquivo de novo; com a chave nova, sb_publishable_…, 401 = a função ainda está com o
+-- "Verify JWT" ligado):
 --
 --   select status_code, content from net._http_response order by id desc limit 1;
 --

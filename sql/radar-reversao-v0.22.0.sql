@@ -10,7 +10,9 @@
 -- O mesmo para o bucket privado radar-pauta (a radar-redes guarda nele as lâminas aprovadas da Pauta, com foto e nome da equipe, em
 -- nomes sem dono, p-<uuid>.jpg): depois deste SQL, só as tabelas apagadas diriam de quem é cada arquivo, e a revogação de um termo
 -- não teria mais como ser atendida. Se precisar dessa relação depois, guarde antes o resultado da consulta do passo 3 da revogação
--- (LEIAME, "Pessoas e termos") fora do repositório público. O bucket público radar-redes só tem as imagens das notícias já publicadas.
+-- (LEIAME, "Pessoas e termos") fora do repositório público. Desde a v0.22.0, as imagens das notícias publicadas também vão para o
+-- radar-pauta (os mesmos nomes p-<uuid>.jpg; o radar_redes_envios.imagem_url diz de que envio é cada um). O bucket público radar-redes só tem
+-- as imagens das notícias publicadas antes da v0.22.0 (apague pelo painel as que ainda estiverem lá).
 -- Também fora do banco (este arquivo não alcança; LEIAME, "Da v0.21.0 para a v0.22.0", "Para desfazer a versão"):
 --   * no repositório PRIVADO radar-video: Actions → "Radar — corretor de vídeo" → Disable workflow (ou apague
 --     .github/workflows/radar-video.yml). A agenda própria dele (47 13,19 * * 1-5) roda duas vezes por dia útil e, sem o banco, cada
@@ -165,6 +167,10 @@ drop function if exists public.radar_url_host(text);
 drop function if exists public.radar_site_host();
 drop function if exists public.radar_copia_paga(text[], text[]);
 drop function if exists public.radar_copia_paga_assunto(bigint, text[]);
+drop function if exists public.radar_copia_paga_trechos(bigint, text[]);
+drop function if exists public.radar_copia_paga_livres(bigint);
+drop function if exists public.radar_copia_paga_base();
+drop function if exists public.radar_copia_paga_ato_oficial(text);
 drop function if exists public.radar_crc_padrao(text);
 drop function if exists public.radar_dispensar_rede(bigint, text);
 drop function if exists public.radar_cancelar_rede(bigint);

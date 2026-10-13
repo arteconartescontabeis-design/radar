@@ -136,19 +136,35 @@ function renderTexto(t){
   fechaPar(); fechaLista(); fechaTab(); return html;
 }
 
+/* v0.22.0 (rodada 2 da varredura geral): a sessão fica na sessionStorage da aba, não mais no localStorage da origem (que os outros
+   aplicativos da conta no GitHub Pages leem). Aberta pelo Radar numa aba nova (rel="opener"), a página usa a sessão da aba do Radar
+   (sessaoAtual; só ela renova, por renovarSessao) e tira da própria aba a cópia que o navegador fez: o refresh_token em duas abas
+   faria o Supabase derrubar a sessão na primeira renovação. Na mesma aba (o Radar navegou até aqui), renova e guarda como antes. */
+const RADAR = (() => { try{ return window.opener && !window.opener.closed && typeof window.opener.sessaoAtual === "function" ? window.opener : null; }catch(e){ return null; } })();
 let SESSAO = null;
-try{ SESSAO = JSON.parse(localStorage.getItem("radar_sessao") || "null"); }catch(e){}
+if(RADAR){ try{ SESSAO = RADAR.sessaoAtual(); }catch(e){} try{ sessionStorage.removeItem("radar_sessao"); }catch(e){} }
+else {
+  try{ const antiga = localStorage.getItem("radar_sessao");          // a da versão anterior passa para esta aba e sai do localStorage
+    if(antiga !== null){ localStorage.removeItem("radar_sessao"); if(!sessionStorage.getItem("radar_sessao")) sessionStorage.setItem("radar_sessao", antiga); } }catch(e){}
+  try{ SESSAO = JSON.parse(sessionStorage.getItem("radar_sessao") || "null"); }catch(e){}
+}
 class Erro extends Error{ constructor(m, status){ super(m); this.status = status; } }
 async function renovar(){
+  if(RADAR){                                                          // quem renova é a aba do Radar
+    try{ if(!RADAR.closed && await RADAR.renovarSessao()){ SESSAO = RADAR.sessaoAtual(); return !!SESSAO?.access_token; } }catch(e){}
+    return false;
+  }
   if(!SESSAO?.refresh_token) return false;
-  // o painel (outra aba) pode já ter renovado: usa a sessão que ele guardou
-  try{ const g = JSON.parse(localStorage.getItem("radar_sessao") || "null");
+  // o Radar, nesta mesma aba, pode já ter renovado: usa a sessão que ele guardou
+  try{ const g = JSON.parse(sessionStorage.getItem("radar_sessao") || "null");
     if(g?.access_token && g.user?.id === SESSAO.user?.id && g.access_token !== SESSAO.access_token){ SESSAO = g; return true; } }catch(e){}
   try{
-    const r = await fetch(URL_BASE + "/auth/v1/token?grant_type=refresh_token", {method:"POST", headers:{apikey:CHAVE, "Content-Type":"application/json", Authorization:"Bearer " + CHAVE},
+    // v0.22.0 (rodada 2): a chave pública nova (sb_publishable_…) só vai no apikey; a anon antiga (JWT), também no Authorization
+    const r = await fetch(URL_BASE + "/auth/v1/token?grant_type=refresh_token", {method:"POST",
+      headers:{apikey:CHAVE, "Content-Type":"application/json", ...(/^[\w-]+\.[\w-]+\.[\w-]+$/.test(CHAVE) ? {Authorization:"Bearer " + CHAVE} : {})},
       body:JSON.stringify({refresh_token:SESSAO.refresh_token})});
     if(!r.ok) return false;
-    SESSAO = await r.json(); try{ localStorage.setItem("radar_sessao", JSON.stringify(SESSAO)); }catch(e){} return true;
+    SESSAO = await r.json(); try{ sessionStorage.setItem("radar_sessao", JSON.stringify(SESSAO)); }catch(e){} return true;
   }catch(e){ return false; }
 }
 async function ler(tabela, params, repetiu){

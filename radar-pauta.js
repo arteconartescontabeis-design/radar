@@ -263,6 +263,18 @@ const linhaConferida = (c, des) => `<div class="conf-linha">
     <textarea name="conf-informacao" rows="2" maxlength="300" aria-label="Informação conferida" placeholder="Informação (ex.: 10/11 (ter) · ICMS)" class="peca-arte-campo"${des}>${h(c.informacao || "")}</textarea>
     <input type="text" name="conf-fonte" maxlength="300" aria-label="Fonte da informação" placeholder="Fonte oficial" value="${h(c.fonte || "")}"${des}>
     ${des ? "" : `<button class="btn peq perigo" type="button" data-acao="peca-conf-remover" aria-label="Remover esta informação">Remover</button>`}</div>`;
+/* Rodada 2 da varredura geral: a legenda do “Usar a sugestão”: o texto da IA, a linha “Fonte: …” das informações conferidas, a
+   identificação legal e as hashtags, em até "limite" caracteres. A linha da fonte nunca é cortada (antes ela ia junto do texto para o
+   comporLegenda, que corta o fim: com as 9 fontes da agenda de fim de mês, a citação saía quebrada, “…; LC 155/2016, art.”): quem
+   encurta é o texto da IA, no fim de uma frase. Se com as fontes inteiras o texto não cabe, elas vão só com a norma, sem o endereço.
+   Devolve {legenda, encurtado (o texto da IA não foi inteiro), semEndereco}. */
+function legendaDaSugestao(texto, fontes, tags, limite = 2200){
+  const t = String(texto || "").trim(), linha = l => l.length ? "Fonte: " + l.join("; ") : "";
+  const inteira = linha(fontes), curta = linha([...new Set(fontes.map(x => String(x).replace(/\s*[—–-]?\s*https?:\/\/\S+/g, "").trim()).filter(Boolean))]);
+  let legenda = comporLegenda(t, tags, limite, inteira), semEndereco = false;
+  if(!legenda.startsWith(t) && curta !== inteira){ legenda = comporLegenda(t, tags, limite, curta); semEndereco = true; }
+  return {legenda, encurtado:!legenda.startsWith(t), semEndereco};
+}
 const linhaCartao = (c, des) => `<div class="cartao-linha">
     <input type="text" name="cartao-titulo" maxlength="60" aria-label="Título do cartão" placeholder="Título do cartão" value="${h(c.titulo || "")}" class="peca-arte-campo"${des}>
     <textarea name="cartao-texto" rows="2" maxlength="300" aria-label="Texto do cartão" placeholder="Texto do cartão" class="peca-arte-campo"${des}>${h(c.texto || "")}</textarea>
@@ -1266,16 +1278,19 @@ const PAUTA = {
       if(cheio && !confirm("Trocar a chamada, o apoio, os cartões e as legendas desta tela pelos da sugestão da IA? Nada é salvo até você clicar em Salvar.")) return;
       for(const [n, v, max] of campos) f.elements[n].value = nome(textoDe(v)).slice(0, max);
       if(comCartoes) box.innerHTML = cartoes.slice(0, 9).map(c => linhaCartao({titulo:nome(textoDe(c.titulo)), texto:nome(textoDe(c.texto))}, "")).join("");
-      const fontes = [...new Set([...f.querySelectorAll("#peca-conferidas [name=conf-fonte]")].map(c => c.value.trim()).filter(Boolean))];
+      const fontes = [...new Set([...f.querySelectorAll("#peca-conferidas [name=conf-fonte]")].map(c => c.value.trim()).filter(Boolean))], avisos = [];
       for(const k of legendas){
         const tags = [...hashtagsPauta(), ...(Array.isArray(s[k].hashtags) ? s[k].hashtags : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x))]
           .filter((x, i, todas) => todas.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i);
-        const c = f.elements["legenda_" + k];
-        c.value = comporLegenda(nome(textoDe(s[k].texto)) + (fontes.length ? "\n\nFonte: " + fontes.join("; ") : ""), tags.join(" "), 2200);
+        const c = f.elements["legenda_" + k], r = legendaDaSugestao(nome(textoDe(s[k].texto)), fontes, tags.join(" "));
+        c.value = r.legenda;
         contarPeca(c);
+        if(r.semEndereco || r.encurtado) avisos.push(`no ${NOME_REDE[k]}, ${[r.semEndereco ? "as fontes foram só com a norma, sem o endereço" : "",
+          r.encurtado ? "o texto da IA foi encurtado no fim de uma frase" : ""].filter(Boolean).join(" e ")}`);
       }
       pecaArteMudou();
-      recado("Sugestão da IA nos campos (ainda não salva): confira, ajuste e salve.");
+      recado("Sugestão da IA nos campos (ainda não salva): confira, ajuste e salve." + (avisos.length ? " Para a legenda caber em 2.200 caracteres com a " +
+        `fonte inteira, a identificação legal e as hashtags, ${avisos.join("; ")}.` : ""), avisos.length ? "aviso" : false);
     },
     "peca-voltar-producao"(el){ return situacaoDaPeca(el, "em_producao", "", "A peça voltou para a produção."); },
     "peca-cancelar"(el){ return situacaoDaPeca(el, "cancelada", "Cancelar esta peça? Ela fica no calendário como cancelada (dá para reabrir).", "Peça cancelada."); },

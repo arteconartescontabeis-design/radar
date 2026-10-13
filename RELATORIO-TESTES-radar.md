@@ -1,12 +1,86 @@
 # Radar Artecon — Relatório de testes (v0.22.0)
 
-Data: 13/10/2026. Resultado neste ambiente, com a suíte inteira da v0.22.0 (depois das duas varreduras): **960 aprovados, 0 falhas, 61
-pulados**, em 915 s (15min15s). Os pulados são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há
-a pasta `../ia-central`). As funções `radar-ia`, `radar-redes` e `radar-video` rodam de verdade no Deno nos testes delas; o Speech SDK
+Data: 13/10/2026. Resultado neste ambiente, com a suíte inteira da v0.22.0 (depois das duas varreduras e das rodadas 1 e 2 da
+varredura geral): **994 aprovados, 0 falhas, 62 pulados**, em 869 s (14min29s). Dos pulados, 61 são os testes de tela que sobem a IA Central de
+verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`) e 1 é o dos commits do push, que só roda no
+`radar-repositorio.yml` (precisa do commit de antes do push). As funções `radar-ia`, `radar-redes` e `radar-video` rodam de verdade no Deno nos testes delas; o Speech SDK
 da Azure roda de verdade contra um servidor local do protocolo de fala; e o ffmpeg do corretor de vídeo roda de verdade, também no
 contêiner (`robo/video/Dockerfile`, montado com o `docker`). Nenhum teste chama a Azure, o GitHub ou o Supabase de verdade, e todo
 vídeo e toda voz dos testes são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as
 seções da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.22.0 — varredura geral, rodada 2 (correções)
+
+São 18 testes novos (de 1.038 para 1.056 no total) e 19 testes antigos ajustados. Cada correção foi conferida desfazendo-a numa cópia
+temporária do arquivo (o teste novo falha) e restaurando:
+
+- **Boletim pago, na tela como no banco** (`test_radar_banco.py`, `test_radar_funcao_ia.py`, `test_radar_telas.py`): o banco diz onde
+  está, no próprio texto, a frase de uma matéria do boletim que não está no assunto (`radar_copia_paga_trechos`: só as posições, por
+  letra, com emoji; a janela que também está na captura livre do assunto não entra; só o editor e o administrador, RADAR147); o
+  quadro vermelho a mostra, sem o selo verde e sem "Autorizar mesmo assim", e o Aprovar recusa; o "Revisar com IA" recebe a frase
+  (e o boletim nunca vai à IA); a legenda com a frase é recusada na tela, com o trecho, antes do banco (RADAR146).
+- **Ementa do ato oficial** (`test_radar_banco.py`): a matéria do boletim que é o próprio ato ("… (DOU DE …)", "(DOE-SC de …)") não
+  conta na notícia nem na Pauta; a mesma frase numa matéria comum do boletim conta; o reconhecimento do título não pega "Leilão…",
+  "(Doença…)", notícia sobre a lei nem título sem o Diário Oficial.
+- **CRC com acento** (`test_radar_banco.py`): "CRC-SC 012345/O-9 (Originário)" casa com a linha no texto, com e sem acento e com o
+  acento separado da letra (NFD).
+- **"Usar a sugestão" da Pauta** (`test_radar_telas.py`): com 10 fontes da tabela das obrigações, a linha "Fonte: …" sai inteira (só
+  a norma, sem o endereço, quando não cabe com ele) e o texto da IA é encurtado no fim de uma frase ("art. 79," não é fim de frase); o
+  recado avisa; o Facebook, que coube, leva as fontes com os endereços.
+- **Aviso da Pauta** (`test_radar_e2e.py`): com o aviso aberto por um erro antigo, a falha de outra peça ganha um comentário (um
+  e-mail), a mesma lista não comenta de novo, a marca forjada por outra conta não conta, o aviso da versão anterior (sem marca) ganha
+  um comentário só, e a falha do GitHub ao ler os comentários não para os outros avisos.
+- **Robôs agendados e Painel** (`test_radar_funcao_redes.py`, `test_radar_agenda.py`, `test_radar_banco.py`, `test_radar_telas.py`):
+  "manter_robos" religa o desligado por inatividade, renova o ativo e deixa o desligado à mão (só a agenda e o administrador); o
+  acionamento do robô do site desligado o religa e aciona, ou diz onde religar sem prometer a rodada automática; a agenda pede o
+  "manter_robos" uma vez por dia; o Painel avisa a coleta parada há mais de 12 horas (não com a fonte do e-mail só).
+- **Imagem da notícia** (`test_radar_funcao_redes.py`): vai ao bucket privado, com nome aleatório e link assinado de 10 minutos;
+  nenhum bucket público é criado; o envio antigo com o link público sai por ele e, excluído, a imagem sai do bucket público.
+- **Exclusão no site** (`test_radar_site_publicar.py`, com o painel de mentira encurtando o título): só exclui a notícia cortada se o
+  título inteiro, no formulário de edição, for o pedido; a outra da mesma série fica; sem o formulário, não exclui.
+- **Sessão só na aba** (`test_radar_telas.py`): nada no localStorage; outra aba da mesma origem não acha sessão; a da versão
+  anterior passa para a aba e sai do localStorage; o informativo aberto numa aba nova usa a sessão da aba do Radar, não guarda
+  cópia, e a renovação é feita pela aba do Radar.
+- **Chaves novas do Supabase** (`test_radar_telas.py`, `test_radar_agenda.py`, `test_radar_funcao_redes.py`,
+  `test_radar_site_publicar.py`, `test_radar_video_corrigir.py`): com a `sb_publishable_…`, a tela entra mandando a chave só no
+  apikey; as duas agendas aceitam e mandam só no apikey (o teste do fim de cada arquivo também); a função usa a publishable no apikey
+  quando o Supabase a fornece; os robôs mandam a `sb_secret_…` só no apikey; o robô do vídeo aceita a publishable (e recusa a anon de
+  outro projeto). A `radar-redes` e a `radar-concorrentes` passam a 0.22.0 (3 testes ajustados).
+
+## v0.22.0 — varredura geral, rodada 1 (correções)
+
+São 17 testes novos (de 1.021 para 1.038 no total) e 9 testes antigos ajustados. Cada correção foi conferida desfazendo-a numa cópia
+temporária do arquivo (o teste novo falha) e restaurando:
+
+- **Notícia, "Publicar em todos"** (`test_radar_banco.py`, `test_radar_telas.py`, `test_radar_funcao_redes.py`): com o site na vez do
+  robô, o registro à mão é recusado (RADAR145) e o "Registrar publicação no site" some da tela; o registro com link de outro endereço
+  (mesmo vindo do robô) derruba as redes que esperavam o site, com o motivo, e a legenda nunca recebe esse link; depois que o envio do
+  site saiu, a pessoa registra com o link do site e as redes saem. Os 2 testes da função `radar-redes` passaram a registrar como o robô.
+- **Boletim pago na notícia** (`test_radar_banco.py`, `test_radar_telas.py`): "Autorizar mesmo assim" some com trecho pago; o banco
+  recusa (RADAR146, sem mostrar o trecho) a autorização da cópia, a aprovação, o site, a rede, o "Publicar em todos" e a saída de uma
+  autorização antiga; a janela que também está numa captura livre do assunto não conta. A frase de um boletim com mais de 90 dias
+  também trava (notícia e Pauta).
+- **Notícia, nunca duas vezes** (`test_radar_banco.py`, `test_radar_telas.py`): a publicação cancelada no meio do envio pede a caixa
+  "Conferi no …: não saiu" na rede e no "Publicar em todos" (RADAR166); o outro canal não pede; depois que uma publicação do canal sai
+  de fato, não pede mais.
+- **Pauta** (`test_radar_banco.py`, `test_radar_video_banco.py`, `test_radar_telas.py`): o CRC da identificação é conferido inteiro
+  (UF, número e categoria; "CRC-PR", "/0-9", "/O-5", "/O-91" e o telefone com os mesmos algarismos não passam); a pessoa de um vídeo
+  ainda guardado não se apaga (RADAR174) e a apagada antes da trava conta como revogada na limpeza; o leitor lê só as imagens ligadas a
+  um conteúdo; a caixa "A pessoa viu o vídeo final" aparece para quem foi desmarcada depois do envio; o selo com motivo longo cabe em
+  375 px.
+- **IA** (`test_radar_funcao_ia.py`, `test_radar_rascunhos.py`): no gerar e nos títulos (e no robô de rascunhos) o "<<<FIM>>>" do texto
+  de fora vira aspas; o nome com apóstrofo curvo, sem apóstrofo, com hífen trocado por espaço ou com hífen suave e espaço de largura
+  zero vai mascarado. A versão da função passa a 0.22.0 (3 testes ajustados).
+- **Boletim da ITC pela função** (`test_radar_funcao_itc.py`): a falha no login da Microsoft fica na aba Fontes (sem o segredo) e a IA
+  não é chamada; o assunto e o corpo do e-mail ficam dentro do bloco, sem as marcas; o relógio é de cada pedido.
+- **Corretor de vídeo** (`test_radar_funcao_video.py`): o 500, o 503 e o 504 do banco viram 502 (o robô repete); a recusa de regra
+  continua 400.
+- **Robôs e repositório** (`test_radar_site_admin.py`, `test_radar_repositorio.py`, `test_radar_e2e.py`, `test_radar_coletores.py`): o
+  relatório do "teste do site" não traz célula da lista, nome de quem cadastrou nem código de link de editar/excluir (nem a chave de
+  biblioteca no caminho); o `.gitignore` barra os clipes brutos `ent/<n>`; o primeiro push de um ramo confere os commits que só ele tem;
+  toda ação dos workflows fixada pelo commit e o `robo/requirements.txt` com versão exata e hash; os avisos contam só as issues do robô;
+  a fonte de atos da Receita diz o motivo quando o sistema Normas devolve a aplicação nova. Os títulos de notícia usados nos testes
+  de triagem foram reescritos para o teste (nenhum título do boletim pago no repositório).
 
 ## v0.22.0 — corretor de vídeo dos reels, "Preencher fontes oficiais" e o CRC certo
 

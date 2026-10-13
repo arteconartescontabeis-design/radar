@@ -363,6 +363,30 @@ def test_frase_do_boletim_pago_nao_fica_nem_citando_e_a_revisao_reescreve(funcao
     assert r["copias"] == 1 and r["restam"] == {"marcas": 0, "copias": 0}
 
 
+def test_revisar_recebe_a_frase_do_boletim_de_outro_assunto_que_o_banco_recusa(funcao, limpo, request):
+    """Rodada 2 da varredura geral: a matéria do boletim está noutro assunto (ou na fila), não neste. A comparação com as capturas
+    do assunto não a vê, mas o banco recusa a aprovação (RADAR146): o Revisar com IA pergunta ao banco onde está a frase
+    (radar_copia_paga_trechos, só as posições) e a manda reescrever. O boletim em si nunca vai à IA."""
+    carregar_fontes_novas(limpo, request)
+    a, c = _assunto_com_texto(limpo)
+    boletim = ("Na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros "
+               "de produtos antes da virada do ano.")
+    limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                     select id, 'https://www.itcnet.com.br/?radar=fila', 'Matéria do boletim na fila', %s, md5('materia na fila')
+                       from radar_fontes where slug = 'itc-email'""", ("Abertura do boletim. " + boletim + " Mais texto do boletim que fica só no banco.",))
+    copiada = "Na nossa avaliação, a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros de produtos"
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s", ("📌 " + copiada + ".\n\n" + "Texto próprio sobre a CBS. " * 4, c))
+    lido = limpo.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0].isoformat()
+    IA["respostas"]["revisao"] = {"titulo": "CBS: o que muda", "pendencias": [],
+                                  "corpo": "Os setores fiscais precisam revisar o cadastro de produtos antes do fim do ano.\n\n" + "Texto próprio sobre a CBS. " * 4}
+    status, r = pedir("revisar", assunto_id=a, conteudo_id=c, lido=lido)
+    assert status == 200, r
+    msg = IA["pedidos"][-1]["messages"][0]["content"]
+    assert f'- "{copiada}" (BOLETIM PAGO: reescreva com palavras próprias)' in msg
+    assert "Matéria do boletim na fila" not in msg and "fica só no banco" not in msg and "Abertura do boletim" not in msg
+    assert r["copias"] == 1 and r["restam"] == {"marcas": 0, "copias": 0}
+
+
 def test_revisao_que_volta_cortada_deixa_o_texto_original_com_aviso(funcao, limpo):
     a, _ = _assunto_com_texto(limpo)
     original = "A sessão será em 30 de setembro [VERIFICAR: ano]. " + "Texto próprio sobre a CBS. " * 6

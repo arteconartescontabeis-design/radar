@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.21.0)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.22.0)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha) e, v0.21.0, a peça da Pauta que ele aprovou para sair pela agenda.
@@ -15,7 +15,7 @@
 // tudo o mais de novo), e faz o teste da instalação (agenda_teste). Nada da notícia passa pela agenda.
 //
 // Ações:
-//   publicar     { envio }  → envia a imagem ao armazenamento, publica e registra o link do post
+//   publicar     { envio }  → guarda a imagem no armazenamento privado, publica (a Meta baixa por um link de 10 min) e registra o post
 //   excluir      { envio }  → v0.17.0: apaga a publicação na rede (pedido do administrador) e registra a exclusão
 //   diagnostico             → confere os segredos, a Página do Facebook, a conta do Instagram e os armazenamentos
 //   acionar_robo            → v0.19.0: aciona na hora o robô do site no GitHub (workflow radar-site-publicar.yml), se houver
@@ -24,16 +24,23 @@
 //                             e sai na próxima rodada automática (o agendamento do GitHub, que é a reserva)
 //   agenda_teste            → v0.21.0: só a agenda do banco (o teste do sql/radar-redes-agenda.sql). Responde { ok, versao }
 //                             sem tocar na Meta nem no armazenamento
+//   manter_robos            → v0.22.0 (rodada 2 da varredura geral): a agenda do banco (uma vez por dia) ou o administrador. No
+//                             repositório PÚBLICO, o GitHub desliga sozinho os workflows agendados (coleta, robô do site, resumo)
+//                             depois de 60 dias sem atividade, e eles só voltam com "Enable workflow". A função religa o desligado
+//                             por inatividade e renova o ativo (PUT .../enable); o desligado à mão fica como está. Responde
+//                             { ok, robos: [{ workflow, estado, religado }] }
 //
 // Como publica:
 //   Instagram: POST /{ig-user-id}/media (image_url + caption) → espera o contêiner ficar pronto → POST /{ig-user-id}/media_publish
 //   Facebook:  POST /{page-id}/photos (url + message)
 // Como exclui (v0.17.0): DELETE /{id do post} — no Facebook com o token da Página (pages_manage_posts); no Instagram com o
 // token do Instagram. Se a Meta não deixar apagar pelo aplicativo, a tela oferece "Já apaguei na rede" para registrar à mão.
-// A imagem da notícia (JPEG vertical 1080×1350 montado pela tela) vai para o bucket público "radar-redes" do Supabase Storage,
-// porque a Meta só aceita imagem por link. v0.21.0: a arte da peça da Pauta (que pode ter foto da equipe) vai para o bucket
-// PRIVADO "radar-pauta", com nome aleatório, e a Meta recebe só um link assinado que vale 10 minutos. No banco fica o endereço
-// interno (que não abre sem a chave interna): a nova tentativa assina de novo, sem reenviar a imagem.
+// A Meta só aceita imagem por link. v0.21.0: a arte da peça da Pauta (que pode ter foto da equipe) vai para o bucket PRIVADO
+// "radar-pauta", com nome aleatório, e a Meta recebe só um link assinado que vale 10 minutos. No banco fica o endereço interno
+// (que não abre sem a chave interna): a nova tentativa assina de novo, sem reenviar a imagem. v0.22.0 (rodada 2 da varredura
+// geral): a imagem da notícia (JPEG vertical 1080×1350 montado pela tela) também; antes ela ia para o bucket PÚBLICO "radar-redes"
+// com nome previsível (<conteúdo>-<canal>-<envio>.jpg) e ficava lá para sempre, mesmo depois de excluída da rede ou cancelada. O
+// envio antigo, com o link público já gravado, sai como antes; e, ao excluir da rede pela função, a imagem dele sai do bucket público.
 // Como aciona o robô do site (v0.19.0): POST /repos/{RADAR_GITHUB_REPO}/actions/workflows/radar-site-publicar.yml/dispatches
 // com { ref: RADAR_GITHUB_RAMO }. O GitHub atrasa (ou descarta) em horas o agendamento "a cada 15 minutos", mas atende o
 // acionamento manual em segundos. O workflow é fixo aqui (nada vem do pedido) e há uma pausa de 30 s entre dois acionamentos.
@@ -52,14 +59,26 @@
 //                      chat. Sem ele, as autorizações saem na próxima rodada automática do GitHub
 //   RADAR_GITHUB_REPO  opcional; padrão arteconartescontabeis-design/radar
 //   RADAR_GITHUB_RAMO  opcional; padrão main
-// SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
+// SUPABASE_URL, a chave pública (SUPABASE_PUBLISHABLE_KEYS ou SUPABASE_ANON_KEY) e a chave interna (SUPABASE_SECRET_KEYS ou
+// SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.21.0";
+const VERSAO = "0.22.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
-const ANON = env("SUPABASE_ANON_KEY");
+// v0.22.0 (rodada 2 da varredura geral): a chave pública do projeto, para o apikey dos pedidos feitos com o token de quem chamou. A
+// nova (sb_publishable_…, em SUPABASE_PUBLISHABLE_KEYS) vem antes: a anon antiga (SUPABASE_ANON_KEY, JWT) o Supabase desliga até o
+// fim de 2026, e desligada ela seria recusada no apikey. Sem a lista nova, fica a anon.
+function chavePublica(): string {
+  try {
+    const k = JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS") || "{}");
+    const v = k?.default ?? Object.values(k ?? {}).find((x) => typeof x === "string" && x);
+    if (typeof v === "string" && v.trim()) return v.trim();
+  } catch { /* sem a lista nova: fica a anon */ }
+  return env("SUPABASE_ANON_KEY").trim();
+}
+const ANON = chavePublica();
 const GRAPH = env("META_GRAPH_URL", "https://graph.facebook.com/v23.0").replace(/\/+$/, "");
 const BUCKET = "radar-redes";
 // v0.21.0: a arte da peça da Pauta fica no bucket privado; a Meta baixa por um link assinado que vale 10 minutos
@@ -248,10 +267,10 @@ async function chamarMeta(metodo: "GET" | "POST" | "DELETE", caminho: string, pa
   return d;
 }
 
-// ------------------------------------------------------------------ armazenamento da imagem (público da notícia; v0.21.0: privado da Pauta)
+// ------------------------------------------------------------------ armazenamento da imagem (v0.21.0: privado da Pauta; v0.22.0: também da notícia)
 /** O bucket existe (e, o da Pauta, é privado)? Se não, cria. v0.21.0: cada pedido com tempo-limite; sem resposta, a recusa diz que nada
  *  foi publicado (quem chamou grava "erro", e a publicação não fica parada em "enviando" até o Supabase encerrar a função). */
-async function garantirBucket(nome = BUCKET, publico = true) {
+async function garantirBucket(nome: string, publico: boolean) {
   const semResposta = () => new Erro(502, "Não foi possível guardar a imagem para a Meta (o armazenamento não respondeu). Nada foi publicado.");
   let r: Response;
   try { r = await fetch(`${SUPABASE_URL}/storage/v1/bucket/${nome}`, { headers: comoServico(), signal: AbortSignal.timeout(TEMPO_BUCKET_MS) }); }
@@ -276,24 +295,27 @@ async function garantirBucket(nome = BUCKET, publico = true) {
   throw new Erro(502, `Não foi possível criar o armazenamento das imagens (${c.status}${d?.message ? ": " + String(d.message).slice(0, 120) : ""}).`);
 }
 
-async function enviarImagem(dataUrl: string, nome: string): Promise<string> {
-  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
-  if (!m) throw new Erro(400, "A imagem da publicação não é um JPEG válido.");
-  const bytes = Uint8Array.from(atob(m[1]), (ch) => ch.charCodeAt(0));
-  await garantirBucket();
-  let r: Response;
+/** v0.22.0 (rodada 2): o endereço da imagem de uma notícia publicada antes desta versão, no bucket PÚBLICO "radar-redes" (só esse
+ *  formato: "<conteúdo>-<canal>-<envio>.jpg"); "" se não é. A nova tentativa desse envio ainda manda esse link à Meta; ao excluir,
+ *  a imagem sai do bucket. */
+const PUBLICA_ANTIGA = () => `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/`;
+const nomePublicoAntigo = (url: string) => {
+  const nome = String(url ?? "").startsWith(PUBLICA_ANTIGA()) ? String(url).slice(PUBLICA_ANTIGA().length) : "";
+  return /^\d+-(instagram|facebook)-\d+\.jpg$/.test(nome) ? nome : "";
+};
+/** Apaga a imagem antiga do bucket público (a Meta já tem a cópia dela). Se o armazenamento não responder, fica para o painel
+ *  (LEIAME): a exclusão na rede já foi feita e registrada. */
+async function apagarPublicaAntiga(url: string) {
+  const nome = nomePublicoAntigo(url);
+  if (!nome) return;
   try {
-    r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${nome}`, {
-      method: "POST", body: bytes, signal: AbortSignal.timeout(20_000),                 // v0.21.0: como o envio da peça
-      headers: { ...comoServico(), "Content-Type": "image/jpeg", "x-upsert": "true" },
-    });
-  } catch { throw new Erro(502, "Não foi possível guardar a imagem para a Meta (o armazenamento não respondeu). Nada foi publicado."); }
-  await r.body?.cancel();
-  if (!r.ok) throw new Erro(502, `Não foi possível guardar a imagem para a Meta (${r.status}).`);
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${nome}`;
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${nome}`, { method: "DELETE", headers: comoServico(), signal: AbortSignal.timeout(15_000) });
+    await r.body?.cancel();
+  } catch { /* fica no bucket: apague pelo painel */ }
 }
 
-/** v0.21.0: guarda a arte aprovada da peça da Pauta no bucket PRIVADO, com nome aleatório e sem x-upsert (nunca sobrescreve), e
+/** v0.21.0: guarda a arte aprovada da peça da Pauta (v0.22.0: e a da notícia) no bucket PRIVADO, com nome aleatório e sem x-upsert
+ *  (nunca sobrescreve), e
  *  devolve o endereço interno, que não abre sem a chave interna. É ele que fica no banco; a Meta recebe só o link de assinar(). */
 async function guardarPrivada(dataUrl: string): Promise<string> {
   const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl ?? "");
@@ -395,14 +417,14 @@ async function publicar(envio: number, inicio: number, quem: Quem) {
   // imagemUrl é o que fica no banco; paraMeta, o que a Meta baixa (na peça, o link assinado de 10 min, que nunca é gravado)
   let imagemUrl = e.imagem_url ?? "", paraMeta = "";
   try {
-    if (linha.peca_id) {
-      // o bucket (até 2 × 10 s), o envio (até 20 s) e a assinatura (até 15 s) contam dentro dos 55 s de aindaDaTempo (passado esse
-      // tempo, o pedido à Meta não sai e a recusa vira "erro"): o pior caso depois da publicação continua o de LIMITE_PUBLICAR_MS
+    // o bucket (até 2 × 10 s), o envio (até 20 s) e a assinatura (até 15 s) contam dentro dos 55 s de aindaDaTempo (passado esse
+    // tempo, o pedido à Meta não sai e a recusa vira "erro"): o pior caso depois da publicação continua o de LIMITE_PUBLICAR_MS.
+    // v0.22.0 (rodada 2): a notícia também vai para o bucket privado (nome aleatório, link de 10 min); só a nova tentativa de um
+    // envio de antes desta versão, com o link público já gravado, manda esse link
+    if (!linha.peca_id && nomePublicoAntigo(imagemUrl)) paraMeta = imagemUrl;
+    else {
       if (!imagemUrl) imagemUrl = await guardarPrivada(e.imagem);
       paraMeta = await assinar(imagemUrl);
-    } else {
-      if (!imagemUrl) imagemUrl = await enviarImagem(e.imagem, `${e.conteudo_id}-${e.canal}-${e.id}.jpg`);
-      paraMeta = imagemUrl;
     }
     const r = e.canal === "instagram" ? await publicarInstagram(paraMeta, e.legenda, inicio) : await publicarFacebook(paraMeta, e.legenda, inicio);
     // saiu: o registro tenta duas vezes; se não entrar, a autorização fica "enviando" (nunca "erro", que deixaria publicar de novo)
@@ -424,7 +446,7 @@ async function publicar(envio: number, inicio: number, quem: Quem) {
 // ------------------------------------------------------------------ excluir (v0.17.0)
 /** Apaga a publicação na rede, a pedido do administrador, e registra (como ele: a função do banco confere o perfil). */
 async function excluir(envio: number, sessao: string) {
-  const [e] = await banco(comoServico(), "GET", `radar_redes_envios?select=id,canal,situacao,post_id,url&id=eq.${envio}`);
+  const [e] = await banco(comoServico(), "GET", `radar_redes_envios?select=id,canal,situacao,post_id,url,imagem_url&id=eq.${envio}`);
   if (!e) throw new Erro(404, "Publicação não encontrada.");
   if (e.situacao !== "publicado") throw new Erro(400, "Esta publicação não está publicada (já foi excluída ou não saiu).");
   const nome = e.canal === "instagram" ? "Instagram" : "Facebook";
@@ -444,6 +466,7 @@ async function excluir(envio: number, sessao: string) {
       ` Confira no ${nome}: se o post ainda estiver lá, apague direto no ${nome}; depois clique em “Já apaguei” para registrar.`);
   }
   await banco(sessao, "POST", "rpc/radar_rede_marcar_excluida", { p_envio: envio, p_como: "api" });
+  await apagarPublicaAntiga(e.imagem_url);                 // v0.22.0 (rodada 2): a imagem de antes desta versão, no bucket público
   return { situacao: "excluido", canal: e.canal };
 }
 
@@ -489,22 +512,13 @@ async function acionarRobo(): Promise<Acionamento> {
   }
   const antes = ultimoAcionamento;
   ultimoAcionamento = Date.now();                             // reserva já: dois cliques ao mesmo tempo não acionam duas vezes
-  const falhou = (motivo: string, porque: string): Acionamento => {
+  const falhou = (motivo: string, porque: string, fim = "a autorização continua guardada e sai na próxima rodada automática"): Acionamento => {
     ultimoAcionamento = antes;                                // não acionou: o próximo clique tenta de novo
     console.log(`radar-redes: robô do site não acionado (${motivo})`);
-    return { acionado: false, motivo, mensagem: `O robô do site não foi acionado na hora: ${porque}; ` +
-      "a autorização continua guardada e sai na próxima rodada automática." };
+    return { acionado: false, motivo, mensagem: `O robô do site não foi acionado na hora: ${porque}; ${fim}.` };
   };
   let r: Response;
-  try {
-    r = await fetch(`${GITHUB_API}/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
-      method: "POST",
-      headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + token, "X-GitHub-Api-Version": "2022-11-28",
-                 "User-Agent": "radar-artecon", "Content-Type": "application/json" },
-      body: JSON.stringify({ ref: RAMO }),
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch { return falhou("github_fora", "o GitHub não respondeu"); }
+  try { r = await dispararRobo(token); } catch { return falhou("github_fora", "o GitHub não respondeu"); }
   await r.body?.cancel().catch(() => {});                     // a resposta do GitHub não é usada (nem mostrada)
   if (r.status === 204 || r.status === 200) {
     console.log("radar-redes: robô do site acionado");
@@ -517,9 +531,79 @@ async function acionarRobo(): Promise<Acionamento> {
     return falhou("sem_acesso", `o token não tem acesso ao repositório ${REPO} com a permissão Actions: leitura e escrita ` +
       "(ou o GitHub limitou os pedidos por um tempo)");
   }
-  if (r.status === 422) return falhou("workflow_recusou", `o workflow ${WORKFLOW} não aceita acionamento manual no ramo ${RAMO}`);
+  if (r.status === 422) {
+    // v0.22.0 (rodada 2 da varredura geral): o 422 é também o do workflow DESLIGADO. Desligado pelo GitHub por inatividade (60 dias
+    // sem atividade no repositório público): religa e aciona de novo, uma vez. Desligado (pelo GitHub ou à mão) e não religado: diz
+    // onde religar, sem prometer a rodada automática — desligado, ele não roda sozinho
+    const estado = await estadoWorkflow(token, WORKFLOW);
+    if (estado === "disabled_inactivity" && await religar(token, WORKFLOW)) {
+      let r2: Response | null = null;
+      try { r2 = await dispararRobo(token); await r2.body?.cancel().catch(() => {}); } catch { /* cai no recado abaixo */ }
+      if (r2 && (r2.status === 204 || r2.status === 200)) {
+        console.log("radar-redes: robô do site religado e acionado");
+        return { acionado: true, em: new Date(ultimoAcionamento).toISOString(), mensagem: "O GitHub tinha desligado o robô do site por falta de " +
+          "atividade no repositório (60 dias): o Radar religou e acionou. A publicação deve sair em 1 a 2 minutos." };
+      }
+      return falhou("workflow_religado", "o GitHub tinha desligado o robô do site por falta de atividade no repositório (60 dias); o Radar religou, " +
+        "mas o acionamento não entrou agora");
+    }
+    if (estado.startsWith("disabled")) {
+      return falhou("workflow_desligado", `o workflow ${WORKFLOW} está desligado no GitHub` +
+        (estado === "disabled_inactivity" ? " (por falta de atividade no repositório: 60 dias) e o Radar não conseguiu religar" : " (desligado à mão)") +
+        ": no GitHub, Actions → “Radar — publicar no site” → Enable workflow",
+        "a autorização continua guardada, mas só sai depois que ele for religado (desligado, ele não roda sozinho)");
+    }
+    return falhou("workflow_recusou", `o workflow ${WORKFLOW} não aceita acionamento manual no ramo ${RAMO}`);
+  }
   if (r.status === 429) return falhou("limite_github", "o GitHub limitou os pedidos por um tempo");
   return falhou("erro_github", `o GitHub respondeu com erro ${r.status}`);
+}
+
+// ------------------------------------------------------------------ robôs agendados (v0.22.0, rodada 2 da varredura geral)
+// No repositório PÚBLICO, o GitHub desliga sozinho os workflows agendados depois de 60 dias sem atividade ("disabled_inactivity")
+// e eles só voltam com "Enable workflow", mesmo que entre commit novo depois. Parados, a coleta da manhã, o robô do site (e as redes
+// "junto com o site"), os avisos (que rodam dentro da coleta) e o resumo de segunda param sem aviso nenhum. A lista é fixa aqui
+// (nunca vem do pedido) e o token é o mesmo do acionamento (RADAR_GITHUB_TOKEN, Actions: leitura e escrita, só o repositório radar).
+const ROBOS_AGENDADOS = ["radar-coletar.yml", "radar-site-publicar.yml", "radar-resumo.yml"];
+
+function pedirGithub(token: string, metodo: string, caminho: string, corpo?: unknown): Promise<Response> {
+  return fetch(`${GITHUB_API}/repos/${REPO}/actions/workflows/${caminho}`, {
+    method: metodo, signal: AbortSignal.timeout(10_000), body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + token, "X-GitHub-Api-Version": "2022-11-28",
+               "User-Agent": "radar-artecon", ...(corpo === undefined ? {} : { "Content-Type": "application/json" }) },
+  });
+}
+const dispararRobo = (token: string) => pedirGithub(token, "POST", `${WORKFLOW}/dispatches`, { ref: RAMO });
+
+/** O estado do workflow no GitHub ("active", "disabled_inactivity", "disabled_manually"…); "" se não deu para ler */
+async function estadoWorkflow(token: string, arquivo: string): Promise<string> {
+  try {
+    const r = await pedirGithub(token, "GET", arquivo);
+    const d: any = await r.json().catch(() => ({}));
+    return r.ok && typeof d?.state === "string" ? d.state : "";
+  } catch { return ""; }
+}
+
+/** PUT .../enable: religa o desligado e, no ativo, não muda nada (só renova). true = o GitHub aceitou. */
+async function religar(token: string, arquivo: string): Promise<boolean> {
+  try { const r = await pedirGithub(token, "PUT", `${arquivo}/enable`); await r.body?.cancel().catch(() => {}); return r.status === 204 || r.ok; }
+  catch { return false; }
+}
+
+/** Ação "manter_robos": cada robô agendado ativo é renovado e o desligado por inatividade, religado. O desligado à mão
+ *  ("disabled_manually": o LEIAME manda desligar ao desfazer a versão) e o que não deu para ler ficam como estão. Nunca lança erro. */
+async function manterRobos() {
+  const token = env("RADAR_GITHUB_TOKEN").trim();
+  if (!token) return { ok: false, robos: [], mensagem: "Falta o segredo RADAR_GITHUB_TOKEN no Supabase (Edge Functions → Secrets): os robôs agendados não são religados." };
+  const robos: { workflow: string; estado: string; religado: boolean }[] = [];
+  for (const workflow of ROBOS_AGENDADOS) {
+    const antes = await estadoWorkflow(token, workflow);
+    if (antes !== "active" && antes !== "disabled_inactivity") { robos.push({ workflow, estado: antes || "não lido", religado: false }); continue; }
+    const ok = await religar(token, workflow);
+    robos.push({ workflow, estado: ok ? "active" : antes, religado: ok && antes === "disabled_inactivity" });
+  }
+  console.log("radar-redes: robôs agendados — " + robos.map((r) => `${r.workflow} ${r.estado}${r.religado ? " (religado)" : ""}`).join("; "));
+  return { ok: robos.every((r) => r.estado === "active"), robos };
 }
 
 async function diagnostico() {
@@ -553,12 +637,12 @@ async function diagnostico() {
         : "Nenhuma conta do Instagram profissional ligada à Página (ou o token não tem instagram_basic). Ligue a conta à Página no Business." });
     } catch (e) { itens.push({ item: "Conta do Instagram", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
   }
-  try { await garantirBucket(); itens.push({ item: "Armazenamento das imagens", ok: true, detalhe: `bucket público "${BUCKET}"` }); }
-  catch (e) { itens.push({ item: "Armazenamento das imagens", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
+  // v0.22.0 (rodada 2): um armazenamento só, privado, para a notícia e a Pauta (o bucket público "radar-redes" não é mais criado)
   try {
     await garantirBucket(BUCKET_PAUTA, false);
-    itens.push({ item: "Armazenamento privado da Pauta", ok: true, detalhe: `bucket privado "${BUCKET_PAUTA}" (a Meta recebe um link de 10 minutos)` });
-  } catch (e) { itens.push({ item: "Armazenamento privado da Pauta", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
+    itens.push({ item: "Armazenamento das imagens", ok: true,
+                 detalhe: `bucket privado "${BUCKET_PAUTA}" (a notícia e a Pauta; a Meta recebe um link de 10 minutos)` });
+  } catch (e) { itens.push({ item: "Armazenamento das imagens", ok: false, detalhe: e instanceof Error ? e.message : "erro" }); }
   return { itens, tudo_certo: itens.every((i) => i.ok), versao: VERSAO };
 }
 
@@ -579,12 +663,12 @@ async function tratar(req: Request): Promise<Response> {
     if (chaveAgenda) {
       await conferirAgenda(chaveAgenda);
       quem = "agenda";
-      if (!["publicar", "agenda_teste"].includes(acao)) throw new Erro(403, "A agenda só publica.");
+      if (!["publicar", "agenda_teste", "manter_robos"].includes(acao)) throw new Erro(403, "A agenda só publica.");   // v0.22.0: e mantém os robôs
     } else {
       sessao = await quemChamou(req, acao);                   // null = o robô do site (só "publicar" do que foi junto com o site)
       quem = sessao === null ? "robo" : "admin";
     }
-    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste", "manter_robos"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
     if (quem === "robo" && acao !== "publicar") throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
     if (acao === "agenda_teste") {                            // v0.21.0: o teste do sql/radar-redes-agenda.sql; não toca na Meta
       if (quem !== "agenda") throw new Erro(403, "Só a agenda do banco usa o teste da agenda.");
@@ -592,6 +676,7 @@ async function tratar(req: Request): Promise<Response> {
     }
     if (acao === "diagnostico") return responder(200, await diagnostico());
     if (acao === "acionar_robo") return responder(200, await acionarRobo());     // v0.19.0: só o administrador chega aqui
+    if (acao === "manter_robos") return responder(200, await manterRobos());     // v0.22.0 (rodada 2): a agenda ou o administrador
     const envio = Number(pedido?.envio);
     if (!Number.isSafeInteger(envio) || envio <= 0) throw new Erro(400, "Informe a autorização (envio).");
     if (acao === "excluir") {

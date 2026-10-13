@@ -16,7 +16,7 @@ nem mensagem: as matérias só aparecem na tela do Radar, com a nota de relevân
 Tarefa diária do Radar Artecon: copiar para o banco as matérias do boletim da ITC Consultoria.
 
 1. No Outlook (conector Microsoft 365), procure os e-mails do remetente itc@itcnet.com.br
-   recebidos nas últimas 26 horas. São três tipos: "ITCNET Mail", "LEGISLAÇÃO & TRIBUNAIS -
+   recebidos nas últimas 72 horas. São três tipos: "ITCNET Mail", "LEGISLAÇÃO & TRIBUNAIS -
    Destaques do Dia" e "Edição Extra". Não marque como lido, não mova, não responda.
 2. Em cada e-mail, leia o corpo e separe cada matéria: título (a manchete), área (o cabeçalho
    da seção, ex.: "Área Federal", "Área Trabalhista e Previdenciária", "Área Estadual"), texto
@@ -41,6 +41,12 @@ Tarefa diária do Radar Artecon: copiar para o banco as matérias do boletim da 
    não abra PR nem issue.
 5. Termine com uma linha: quantos e-mails lidos, quantas matérias enviadas e o retorno da função.
 ```
+
+v0.22.0 (rodada 2 da varredura geral): a janela passou de 26 para **72 horas**. A rotina roda quando a conversa fica livre (em
+outubro, de 4 a 6 horas depois das 02h55), e com 26 horas o boletim que chegava entre duas rodadas desencontradas (uma cedo, a
+seguinte atrasada) ficava de fora, sem aviso. A função ignora as repetidas (pela manchete): ler de novo não duplica nada. O certo
+continua sendo a função `radar-itc` com a agenda (`sql/radar-itc-agenda.sql`, controle por e-mail em `radar_itc_lidos`) e, no mesmo
+dia, desligar esta rotina; enquanto ela existir, numa sessão nova, sem o repositório, só com os conectores Microsoft 365 e Supabase.
 
 ## Como criar (uma vez)
 

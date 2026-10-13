@@ -373,8 +373,8 @@ def test_sessao_vencida_e_renovada_sem_o_usuario_perceber(pagina, limpo):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     vencido = jwt("authenticated", EDITOR, int(time.time()) - 60)
-    pagina.evaluate("""t => { const s = JSON.parse(localStorage.getItem('radar_sessao')); s.access_token = t;
-                              localStorage.setItem('radar_sessao', JSON.stringify(s)); }""", vencido)
+    pagina.evaluate("""t => { const s = JSON.parse(sessionStorage.getItem('radar_sessao')); s.access_token = t;
+                              sessionStorage.setItem('radar_sessao', JSON.stringify(s)); }""", vencido)
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Capturas")
@@ -386,7 +386,65 @@ def test_sair_volta_para_a_tela_de_entrada(pagina):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("text=Sair")
     pagina.wait_for_selector("#email")
+    assert pagina.evaluate("[localStorage.getItem('radar_sessao'), sessionStorage.getItem('radar_sessao')]") == [None, None]
+
+
+def test_chave_publica_nova_vai_so_no_apikey(pagina, limpo):
+    """Rodada 2 da varredura geral: o Supabase desliga a chave anon antiga (JWT) até o fim de 2026. Com a nova (sb_publishable_…) em
+    radar-config.js, a tela entra e trabalha: sem sessão (a entrada), a chave vai só no apikey (no Authorization o Supabase recusa:
+    não é JWT); com sessão, o Authorization leva o token da sessão, como antes."""
+    nova = "sb_publishable_" + "Ab9_-x" * 6
+    pagina.route("**/radar-config.js", lambda rota: rota.fulfill(
+        status=200, content_type="application/javascript", body=f'window.RADAR_CONFIG = {{SUPABASE_URL: "{BASE}", SUPABASE_ANON_KEY: "{nova}"}};'))
+    pedidos = []
+    pagina.on("request", lambda r: pedidos.append((r.url, r.headers)) if "/auth/v1/" in r.url or "/rest/v1/" in r.url else None)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    entrada = [h for u, h in pedidos if "/auth/v1/token" in u]
+    assert entrada and all(h.get("apikey") == nova and "authorization" not in h for h in entrada), entrada
+    rest = [h for u, h in pedidos if "/rest/v1/" in u]
+    assert rest and all(h.get("apikey") == nova and h.get("authorization", "").startswith("Bearer eyJ") for h in rest)
+
+
+def test_sessao_fica_so_na_aba_e_nunca_no_localstorage_da_origem(pagina, limpo):
+    """Rodada 2 da varredura geral: o Radar é servido em arteconartescontabeis-design.github.io, a mesma origem dos outros aplicativos
+    da conta no GitHub Pages, que liam o localStorage.radar_sessao (com o refresh_token: agir como o administrador). A sessão fica só
+    na sessionStorage da aba: outra aba da mesma origem não a vê; a guardada por uma versão anterior passa para a aba e sai do
+    localStorage. O informativo aberto pelo Radar numa aba nova usa a sessão da aba do Radar (só ela renova) e não fica com cópia."""
+    iid = limpo.execute("insert into radar_informativos (numero, ano, mes) values (11, 2026, '2026-11-01') returning id").fetchone()[0]
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
     assert pagina.evaluate("localStorage.getItem('radar_sessao')") is None
+    sessao = pagina.evaluate("JSON.parse(sessionStorage.getItem('radar_sessao'))")
+    assert sessao["refresh_token"] and sessao["access_token"]
+    outra = pagina.context.new_page()                      # outro aplicativo da mesma origem, noutra aba: não acha sessão nenhuma
+    try:
+        outra.goto(BASE + "/index.html")
+        outra.wait_for_selector("#email")
+        assert outra.evaluate("[localStorage.getItem('radar_sessao'), sessionStorage.getItem('radar_sessao')]") == [None, None]
+        # a sessão guardada pela versão anterior (localStorage): passa para a aba que abrir e sai do localStorage
+        outra.evaluate("s => localStorage.setItem('radar_sessao', s)", json.dumps(sessao))
+        outra.reload()
+        outra.wait_for_selector("text=Painel do dia")
+        assert outra.evaluate("localStorage.getItem('radar_sessao')") is None and outra.evaluate("sessionStorage.getItem('radar_sessao')")
+    finally:
+        outra.close()
+    # o informativo numa aba nova: com a sessão da aba do Radar, sem guardar cópia (nem o refresh_token)
+    pagina.click("nav.abas >> text=Informativos")
+    with pagina.expect_popup() as popup:
+        pagina.click("text=Imprimir / PDF ↗")
+    inf = popup.value
+    inf.wait_for_selector("body[data-pronto]")
+    assert "Informativo N.º 0011/2026" in inf.inner_text("body") and "Entre no Radar" not in inf.inner_text("body")
+    assert inf.evaluate("[sessionStorage.getItem('radar_sessao'), localStorage.getItem('radar_sessao')]") == [None, None]
+    # vencida, quem renova é a aba do Radar (a página pede a ela e usa a nova)
+    vencido = jwt("authenticated", ADMIN, int(time.time()) - 60)
+    pagina.evaluate("t => { E.sessao = {...E.sessao, access_token: t}; }", vencido)
+    inf.reload()
+    inf.wait_for_selector("body[data-pronto]")
+    assert pagina.evaluate("E.sessao.access_token") != vencido and pagina.evaluate("JSON.parse(sessionStorage.getItem('radar_sessao')).access_token") != vencido
+    assert inf.evaluate("sessionStorage.getItem('radar_sessao')") is None
+    inf.close()
 
 
 # ---------------------------------------------------------------- ciclo completo
@@ -565,7 +623,7 @@ def test_texto_nao_salvo_sobrevive_a_queda_da_sessao_e_pode_ser_recuperado(pagin
     form.locator("[name=titulo]").fill("Título reescrito antes da queda")
     form.locator("[name=corpo]").fill("Parágrafo longo digitado com calma e ainda não salvo.")
     # a sessão cai de vez (navegador fechado, sessão expirada): volta para a tela de entrada
-    pagina.evaluate("localStorage.removeItem('radar_sessao')")
+    pagina.evaluate("sessionStorage.removeItem('radar_sessao')")
     pagina.reload()
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
@@ -829,6 +887,30 @@ def test_perfil_desativado_durante_o_uso_nao_recebe_falso_salvo(pagina, limpo):
         assert limpo.execute("select corpo from radar_conteudos").fetchone()[0] == "Texto do informativo."
     finally:
         limpo.execute("update radar_perfis set ativo = true where user_id = %s", (EDITOR,))
+
+
+def test_painel_avisa_que_o_robo_de_coleta_parou(pagina, limpo):
+    """Rodada 2 da varredura geral: o GitHub desliga sozinho os robôs agendados do repositório público depois de 60 dias sem
+    atividade, e só os números do Painel mudavam. Sem rodada do robô de coleta há mais de 12 horas, o Painel avisa e diz onde
+    religar (ao administrador; os outros, avisam o administrador)."""
+    fonte = limpo.execute("select id, ativo from radar_fontes where slug = 'rfb-normas'").fetchone()
+    limpo.execute("update radar_fontes set ativo = true where id = %s", (fonte[0],))
+    try:
+        limpo.execute("insert into radar_execucoes (fonte_id, iniciado_em, status) values (%s, now() - interval '30 hours', 'ok')", (fonte[0],))
+        entrar(pagina, "admin@artecon.test")
+        aviso = pagina.wait_for_selector("#coleta-parada").inner_text()
+        assert "não roda há mais de 12 horas" in aviso and "a última rodada foi em" in aviso and "Enable workflow" in aviso
+        assert "radar-redes-agenda.sql" in aviso and sem_rolagem_lateral(pagina)
+        pagina.click("text=Sair")
+        entrar(pagina, "leitor@artecon.test")
+        assert "avise o administrador" in pagina.wait_for_selector("#coleta-parada").inner_text()
+        limpo.execute("insert into radar_execucoes (fonte_id, iniciado_em, status) values (%s, now() - interval '2 hours', 'ok')", (fonte[0],))
+        pagina.click("nav.abas >> text=Assuntos")
+        pagina.click("nav.abas >> text=Painel")
+        pagina.wait_for_selector("text=Painel do dia")
+        assert pagina.locator("#coleta-parada").count() == 0
+    finally:
+        limpo.execute("update radar_fontes set ativo = %s where id = %s", (fonte[1], fonte[0]))
 
 
 def test_proximo_usuario_nao_herda_a_tela_do_anterior(pagina, limpo):
@@ -1697,8 +1779,8 @@ def test_pagina_do_informativo_exige_sessao_e_trata_enderecos_ruins(pagina, limp
         pagina.wait_for_selector(".mensagem >> text=Informativo n")
     # sessão vencida é renovada sozinha; edição sem artigo e sem agenda ainda abre
     vencido = jwt("authenticated", LEITOR, int(time.time()) - 60)
-    pagina.evaluate("""t => { const s = JSON.parse(localStorage.getItem('radar_sessao')); s.access_token = t;
-                              localStorage.setItem('radar_sessao', JSON.stringify(s)); }""", vencido)
+    pagina.evaluate("""t => { const s = JSON.parse(sessionStorage.getItem('radar_sessao')); s.access_token = t;
+                              sessionStorage.setItem('radar_sessao', JSON.stringify(s)); }""", vencido)
     pagina.goto(f"{BASE}/informativo.html?id={iid}")
     pagina.wait_for_selector("body[data-pronto]")
     assert pagina.locator(".assuntos li").all_inner_texts() == ["Fale conosco."] and pagina.locator("table.agenda").count() == 0
@@ -2998,6 +3080,45 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     salvar(citado)
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
+
+def test_frase_do_boletim_de_outro_assunto_aparece_no_quadro_e_impede_a_aprovacao(pagina, limpo, request):
+    """Rodada 2 da varredura geral: a matéria do boletim pago está na fila (não neste assunto). A tela comparava só com as capturas
+    do assunto e mostrava "✓ nenhum trecho copiado", e o banco recusava (RADAR146) sem dizer qual frase. Agora o banco diz onde ela
+    está (radar_copia_paga_trechos, só as posições) e o quadro vermelho a mostra, sem o selo verde e sem "Autorizar mesmo assim"."""
+    a, _ = assunto_com_texto(limpo)
+    carregar_fontes_novas(limpo, request)
+    pago = ("A empresa optante deverá revisar o cadastro de produtos no sistema emissor antes da virada do ano para evitar "
+            "rejeição das notas fiscais eletrônicas emitidas no primeiro dia útil")
+    captura(limpo, titulo="ITCNET — matéria na fila", url="https://www.itcnet.com.br/?radar=fila", slug="itc-email",
+            texto="Abertura do boletim que fica só no banco. " + pago + ". Fim do boletim.")
+    corpo = ("## O que muda\n📌 Resumo para o cliente: " + pago.upper().replace(" SISTEMA ", " sistema\n") + ".\n\n"
+             + "Texto próprio da Artecon sobre a CBS, escrito pela equipe com as informações da Receita Federal e do Comitê Gestor. " * 2)
+    c = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status) values (%s, 'informativo', 'CBS na nota',
+                         %s, 'em_revisao') returning id""", (a, corpo)).fetchone()[0]
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    quadro = pagina.wait_for_selector(".copia").inner_text()
+    assert "Frase do boletim pago em 1 trecho" in quadro and "conferido pelo banco com todas as matérias do boletim" in quadro
+    assert pago.upper().replace(" SISTEMA ", " sistema ") in quadro and "Abertura do boletim" not in quadro    # só a frase do próprio texto
+    assert pagina.locator(".sem-copia").count() == 0 and pagina.locator(".copia [data-acao=ia-revisar]").count() == 1
+    assert pagina.locator(".copia [data-acao=abrir-autorizar-copia]").count() == 0
+    assert pagina.get_attribute(f"form[data-form=conteudo][data-id='{c}']", "data-pagas") == "1"
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=frase do boletim pago")
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "em_revisao"
+    # reescrito: o quadro some e volta o selo
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s",
+                  ("## O que muda\nRevise o cadastro dos produtos no emissor antes de janeiro, para a nota não ser rejeitada.\n\n"
+                   + "Texto próprio da Artecon sobre a CBS, escrito pela equipe com as informações da Receita Federal e do Comitê Gestor. " * 2, c))
+    pagina.reload()
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Assuntos")
+    pagina.click("text=CBS na transição")
+    pagina.wait_for_selector(".sem-copia")
+    assert pagina.locator(".copia").count() == 0 and "todo o boletim pago" in pagina.inner_text(".sem-copia")
+
 
 def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pagina, limpo, openai):
     a, _ = assunto_com_texto(limpo)
@@ -4742,6 +4863,13 @@ def test_frase_do_boletim_pago_na_legenda_nao_e_autorizada(pagina, limpo, reques
     redesenhar(".arte-apoio", pago)
     tentar("Frase do boletim pago (ITC) na legenda ou na arte")
     redesenhar(".arte-apoio", "Revise o cadastro de produtos antes de janeiro.")
+    # rodada 2: a frase de uma matéria do boletim que está na fila (não neste assunto): o banco recusaria (RADAR146) sem dizer
+    # qual; a tela pergunta onde ela está e mostra o trecho da própria legenda
+    fila = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega das declarações mensais"
+    captura(limpo, titulo="ITCNET — na fila", url="https://www.itcnet.com.br/?radar=fila", slug="itc-email", texto="Boletim: " + fila + ".")
+    pagina.fill(f"#todos-legenda-instagram-{c}", ig + "\n\nResumo: " + fila.upper() + ".")
+    tentar("o banco conferiu com todas as matérias do boletim guardadas")
+    assert fila.upper()[:60] in pagina.inner_text("#recado .erro")
     # com palavras próprias, sai (e a confirmação lembra a identificação incompleta)
     mensagens = []
     pagina.on("dialog", lambda d: mensagens.append(d.message))
@@ -6612,6 +6740,45 @@ def test_peca_gerar_com_ia_troca_pessoa_e_mostra_o_que_falta(pagina, pauta):
     pagina.click("[data-acao=peca-ia]")
     pagina.wait_for_selector("#peca-sugestao-quadro")
     assert pagina.locator("#senha-ia").count() == 0 and pedidos[-1]["peca_id"] == outra and "assunto_id" not in pedidos[-1]
+
+
+def test_usar_a_sugestao_nunca_corta_a_lista_de_fontes(pagina, pauta):
+    """Rodada 2 da varredura geral: na agenda de fim de mês (9 fontes da tabela das obrigações, mais de 1.300 caracteres), o “Usar a
+    sugestão” punha “Fonte: …” depois do texto da IA e o corte dos 2.200 caracteres caía na lista, no meio de uma citação (“…; LC
+    155/2016, art.”), sem aviso. Agora a linha da fonte fica inteira (só a norma, sem o endereço, quando não cabe com ele) e quem
+    encurta é o texto da IA, no fim de uma frase (o “art. 9º” não é fim de frase); o recado avisa."""
+    db = pauta
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    tabela = pagina.evaluate("() => FONTES_OFICIAIS")
+    fontes = [tabela[n] for n in ["Salário dos Colaboradores (Empregados)", "Salários - Trabalhador Doméstico", "ICMS", "Carnê INSS Individual",
+                                   "FGTS - Fundo de Garantia Por Tempo de Serviço", "PIS", "IPI", "INSS - Parcelamento p/ Ingresso no Simples Nacional",
+                                   "PERT – Programa Esp. Regularização Tributária", "Parcelamento Especial - Simples Nacional"]]
+    assert len("Fonte: " + "; ".join(dict.fromkeys(fontes))) > 1300
+    conferidas = [{"informacao": f"Vencimento nº {i + 1} da semana", "fonte": f} for i, f in enumerate(fontes)]
+    pid = peca_db(db, "2026-11-18", "agenda", "imagem", conferidas=conferidas)
+    frase = "O parcelamento segue a LC 123/2006, art. 79, e o prazo vence no último dia útil. "
+    texto_ig = "Agenda da semana.\n\n" + frase * 24 + "Fale com a Artecon."         # longo: nem com as fontes curtas o texto cabe inteiro
+    pedidos = []
+    ia_de_mentira(pagina, db, pedidos, peca={**PECA_EXEMPLO, "instagram": {"texto": texto_ig, "hashtags": ["#Agenda"]},
+                                             "facebook": {"texto": "Agenda curta da semana.", "hashtags": []}})
+    abrir_peca(pagina, pid, "2026-11-18")
+    pagina.click("[data-acao=peca-ia]")
+    pagina.wait_for_selector("#peca-sugestao-quadro")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=peca-usar-ia]")
+    aviso = pagina.wait_for_selector("#recado .aviso >> text=Sugestão da IA nos campos (ainda não salva)").inner_text()
+    assert "no Instagram, as fontes foram só com a norma, sem o endereço e o texto da IA foi encurtado no fim de uma frase" in aviso
+    assert "Facebook" not in aviso                                                    # o Facebook coube inteiro, com os endereços
+    form = pagina.locator("form[data-form=peca]")
+    ig, fb = form.locator("[name=legenda_instagram]").input_value(), form.locator("[name=legenda_facebook]").input_value()
+    normas = list(dict.fromkeys(re.sub(r"\s*[—–-]?\s*https?://\S+", "", f).strip() for f in fontes))
+    assert len(ig) <= 2200 and ig.endswith("\n\nFonte: " + "; ".join(normas) + "\n\n" + IDENT + "\n\n#Contabilidade #Palhoça #Agenda")
+    texto = ig.split("\n\nFonte: ")[0]
+    assert texto.endswith("último dia útil.") and texto_ig.startswith(texto) and len(texto) < len(texto_ig)   # cortado no fim de uma frase
+    assert fb == "Agenda curta da semana.\n\nFonte: " + "; ".join(dict.fromkeys(fontes)) + "\n\n" + IDENT + "\n\n#Contabilidade #Palhoça"
+    # o corte do texto não para no ponto do "art." (antes: "…segue a LC 123/2006, art.")
+    assert pagina.evaluate("() => fimDeFrase('Vale a LC 123/2006, art. 79 e o inc. II do art. 30. Depois')") == len("Vale a LC 123/2006, art. 79 e o inc. II do art. 30")
 
 
 # ------------------------------------------------------------------- v0.22.0: o corretor de vídeo do reel (radar-video.js)

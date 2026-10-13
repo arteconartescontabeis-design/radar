@@ -54,8 +54,8 @@ Mudam o banco (`radar-setup-v0.22.0.sql`: 2 tabelas novas, `radar_videos` e `rad
 amarra do vídeo na peça; as funções `radar_video_*`; a configuração `corretor_video`) e a tela (`index.html`, `radar-pauta.js` e o
 arquivo novo `radar-video.js`). Entram a função `radar-video`, o `sql/radar-video-agenda.sql` (as chaves no Vault, a reserva da fila e
 a limpeza diária) e o robô do vídeo (`robo/video/`, com o modelo do workflow do repositório privado em
-`robo/video/workflow/radar-video.yml`). A função `radar-redes` não muda (continua na v0.21.0); a `radar-ia` e a `radar-itc` mudam só
-pelas correções da varredura geral (abaixo) e vão para a v0.22.0. Detalhes em "Corretor de vídeo do reel" e, para instalar, "Da v0.21.0
+`robo/video/workflow/radar-video.yml`). A `radar-ia`, a `radar-itc`, a `radar-redes` e a `radar-concorrentes` mudam só pelas
+correções da varredura geral (abaixo) e vão para a v0.22.0. Detalhes em "Corretor de vídeo do reel" e, para instalar, "Da v0.21.0
 para a v0.22.0".
 
 **Varredura geral (13/10/2026), nesta mesma versão:**
@@ -79,6 +79,38 @@ para a v0.22.0".
   e hash; o conferir do repositório olha também os commits do primeiro push de um ramo; os avisos (issues) contam só os abertos pelo
   robô; a fonte "Receita Federal — Atos normativos" diz o motivo de não ler nada (o sistema Normas virou aplicação montada no
   navegador); os clipes brutos do corretor (`ent/<n>`) ficam fora do Git.
+
+**Varredura geral, rodada 2 (13/10/2026), nesta mesma versão:**
+- **Boletim pago, na tela como no banco:** o banco compara o texto com **todas** as capturas do boletim (de outro assunto ou ainda na
+  fila); a tela comparava só com as do assunto e mostrava "✓ nenhum trecho copiado" enquanto o banco recusava (RADAR146) sem dizer
+  qual frase. Agora o banco diz **onde** está a frase no próprio texto (`radar_copia_paga_trechos`, só as posições: nada do boletim
+  sai), e o quadro vermelho a mostra como "boletim pago: conferido pelo banco com todas as matérias do boletim"; o "Revisar com IA" a recebe e
+  reescreve; e a legenda e a arte do Instagram e do Facebook também são conferidas assim antes de autorizar.
+- **Ementa do ato oficial não é frase do boletim:** a matéria do boletim que é o próprio ato ("Legislação Federal": título
+  "Lei nº … (DOU DE …)", texto = a ementa oficial, de domínio público) fica fora da comparação do boletim. A ementa copiada do DOU
+  para as "Informações conferidas", o roteiro ou a legenda da Pauta (e a fala do reel) não trava mais como "frase do boletim pago".
+- **CRC com acento:** o CRC das Configurações com letra acentuada ("… (Originário)") não trava mais toda peça como "falta a linha
+  de identificação".
+- **Pauta, "Usar a sugestão":** a linha "Fonte: …" das informações conferidas nunca é cortada (com as 9 fontes da agenda de fim de
+  mês, a citação saía quebrada, "…; LC 155/2016, art."): quem encurta é o texto da IA, no fim de uma frase ("art. 9º" não é fim de
+  frase); se não couber com os endereços, as fontes vão só com a norma; o recado avisa.
+- **Aviso da Pauta que não sai:** com o aviso já aberto (um erro antigo sem resolver), cada publicação nova que não sai ganha **um
+  comentário** no aviso (um e-mail); antes, o aviso aberto calava as falhas seguintes.
+- **Robôs agendados do GitHub:** no repositório público, o GitHub desliga sozinho a coleta, o robô do site e o resumo depois de 60
+  dias sem atividade. A agenda do banco pede uma vez por dia à `radar-redes` que religue os desligados por inatividade
+  (`sql/radar-redes-agenda.sql`, com o `RADAR_GITHUB_TOKEN`); o acionamento do robô do site religa o dele e, se não der, diz onde
+  religar, sem prometer "a próxima rodada automática"; e o **Painel** avisa quando a coleta não roda há mais de 12 horas.
+- **Imagem da notícia nas redes:** vai, como a da Pauta, para o armazenamento **privado** (nome aleatório; a Meta recebe um link de
+  10 minutos). Antes ia para o bucket público `radar-redes`, com nome fácil de adivinhar, e ficava lá mesmo depois de excluída da
+  rede; ao excluir pela função, a imagem antiga sai do bucket público.
+- **Exclusão no site:** a notícia achada só pelo começo do título (o painel encurta o título longo) é excluída só se o título
+  inteiro, lido no formulário de edição do painel, for o pedido; senão, não exclui (era possível sair outra notícia da mesma série).
+- **Sessão só na aba:** a sessão do Radar fica na aba (sessionStorage), não mais no localStorage da origem
+  `arteconartescontabeis-design.github.io`, que é a mesma dos outros aplicativos da conta no GitHub Pages (qualquer script deles lia
+  a sessão). Cada aba entra à parte; fechada a aba, a sessão some. O informativo aberto numa aba nova usa a sessão da aba do Radar.
+- **Chaves novas do Supabase:** a tela, as agendas do banco, as funções e os robôs aceitam a chave pública nova (`sb_publishable_…`) e
+  a interna nova (`sb_secret_…`), cada uma só no `apikey` (o Supabase desliga a anon e a service_role antigas até o fim de 2026).
+  O passo a passo da troca está em "Chaves novas do Supabase (até o fim de 2026)".
 
 A v0.21.0 trouxe a aba **Pauta**: o calendário de publicações no Instagram e no Facebook (uma peça por dia), com as peças
 preparadas no Radar e publicadas pela API da Meta **na hora marcada, depois da aprovação do administrador**:
@@ -211,7 +243,9 @@ A v0.17.0 trouxe duas opções em **Publicações**:
     aplicativo, a tela explica e oferece **Já apaguei**, para registrar a exclusão feita direto na rede.
   - **Site:** fica o pedido, e o robô do site (o mesmo do "publicar no site", a cada 15 minutos) entra no painel, acha a notícia
     pelo título na lista do painel e a exclui como o botão "Excluir" do painel faz. Na dúvida, não exclui: título não encontrado
-    ou mais de uma notícia com o mesmo título vira erro para conferir à mão. Depois de excluída, o registro em "Publicações no
+    ou mais de uma notícia com o mesmo título vira erro para conferir à mão. v0.22.0: a notícia que a lista mostra com o título
+    cortado ("…") só é excluída se o título inteiro, lido no formulário de edição do painel (o robô só abre, não grava), for o
+    pedido; se for outra notícia da mesma série, ela fica, e o pedido para (ou é dado por concluído, se a página pedida já saiu do ar). Depois de excluída, o registro em "Publicações no
     site" sai (a cópia fica no histórico de exclusões e na auditoria) e o conteúdo pode ser publicado de novo, se for o caso.
   - "Excluir só o registro" (em Publicados no site) continua apagando só o registro no Radar, sem mexer no site.
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
@@ -735,7 +769,11 @@ de 2026") e as palavras de ligação entre eles ("de", "e", "na"). Citação cur
   só o trecho igual ao de fonte livre. A frase do boletim pago **não se autoriza** (v0.22.0): com ela, o botão não aparece, e o
   banco também recusa (RADAR146) a autorização, a aprovação e a publicação no site, no Instagram e no Facebook (texto e legenda),
   comparando com todas as capturas do boletim guardadas, em janelas de 12 palavras, menos o que também está numa captura livre
-  do assunto (o artigo de lei que o boletim copiou do DOU).
+  do assunto (o artigo de lei que o boletim copiou do DOU). Rodada 2: a frase de uma matéria do boletim que **não está no
+  assunto** (de outro assunto ou ainda na fila) também aparece no quadro vermelho, marcada "conferido pelo banco com todas as matérias
+  do boletim": o banco diz só onde ela está no próprio texto (nada do boletim sai do banco), e o Revisar com IA a reescreve. A matéria
+  do boletim que é o **próprio ato oficial** (título "Lei nº … (DOU DE …)", texto = a ementa, de domínio público) não conta como
+  frase do boletim, na notícia e na Pauta.
 
 A IA (Gerar com IA, rascunhos do robô e Revisar com IA) segue a mesma regra. Limites: a comparação é só com o texto
 capturado do próprio assunto (não com a internet nem com outros sites de notícia), não detecta paráfrase muito próxima e é
@@ -1009,6 +1047,13 @@ fino do GitHub**, só deste repositório, guardado **só** no Supabase:
 Segurança: a função aciona sempre o mesmo workflow (`radar-site-publicar.yml`, fixo no código), só a pedido do administrador,
 só quando há publicação ou exclusão esperando e no máximo uma vez a cada 30 segundos. O token nunca vai para a tela nem para
 os registros. Quando ele vencer, o recado avisa ("o GitHub recusou o token") e basta gerar outro e trocar o segredo.
+
+**Robôs desligados pelo GitHub (v0.22.0).** Neste repositório público, o GitHub desliga sozinho os workflows agendados (a coleta, o
+robô do site e o resumo) depois de **60 dias sem atividade** no repositório (o recesso de fim de ano é o caso provável), e eles só
+voltam com "Enable workflow" — mesmo que entre commit novo depois. Com o mesmo token, a agenda do banco (`sql/radar-redes-agenda.sql`)
+pede uma vez por dia à `radar-redes` que religue os desligados por inatividade (o desligado à mão fica). Se o robô do site estiver
+desligado na hora de acionar, a função o religa e aciona; se não conseguir, o recado diz onde religar (GitHub → Actions → "Radar —
+publicar no site" → Enable workflow), sem prometer a rodada automática. O **Painel** avisa quando a coleta não roda há mais de 12 horas.
 - **Sessão no site**: o login do robô pode encerrar a sessão de quem estiver usando o mesmo usuário no
   painel do site. O ideal é um usuário só do Radar, com acesso apenas ao cadastro de notícias.
 - O registro manual ("Registrar publicação no site") e o registro automático da v0.8.0 continuam valendo.
@@ -1083,12 +1128,14 @@ A função `radar-redes` publica o que o administrador autorizou nos passos 6 e 
      Instagram usa o mesmo token da Página;
    - opcional `META_GRAPH_URL` (padrão `https://graph.facebook.com/v23.0`).
 4. **Instalar a função:** Supabase → Edge Functions → nova função `radar-redes` com o arquivo `supabase/functions/radar-redes/index.ts`
-   (com "Verify JWT" ligado). A função cria sozinha o armazenamento público `radar-redes` das imagens (a Meta só aceita
-   imagem por link público). Desde a v0.21.0 cria também o armazenamento **privado** `radar-pauta`, das peças da Pauta (fotos
-   da equipe): a Meta recebe um link assinado que vale 10 minutos, e o arquivo não fica aberto na internet. Ele precisa continuar
-   privado: se alguém o deixar público no painel do Supabase, a função recusa a peça (nada é publicado) e o teste do item 5 aponta.
-5. **Testar:** Publicações → "Testar conexão com o Instagram e o Facebook". Todos os itens devem ficar OK (desde a v0.21.0, também
-   "Armazenamento privado da Pauta").
+   (com "Verify JWT" ligado). A Meta só aceita imagem por link: a função cria sozinha o armazenamento **privado** `radar-pauta`
+   (v0.21.0, para as peças da Pauta, com foto da equipe; desde a v0.22.0, também para a imagem da notícia), e a Meta recebe um link
+   assinado que vale 10 minutos: o arquivo não fica aberto na internet. Ele precisa continuar privado: se alguém o deixar público no
+   painel do Supabase, a função recusa a publicação (nada sai) e o teste do item 5 aponta. Até a v0.21.0, a imagem da notícia ia
+   para o bucket **público** `radar-redes`, com nome fácil de adivinhar, e ficava lá: apague pelo painel (Storage → `radar-redes`) as
+   que ainda estiverem lá (a função apaga a de cada publicação que ela mesma excluir da rede).
+5. **Testar:** Publicações → "Testar conexão com o Instagram e o Facebook". Todos os itens devem ficar OK (desde a v0.22.0, o item
+   "Armazenamento das imagens" mostra o bucket privado `radar-pauta`).
 
 Sem os segredos, o botão "Autorizar e publicar" grava a autorização e avisa que a Meta ainda não está configurada; depois é
 só usar "Publicar agora" no mesmo passo.
@@ -1106,7 +1153,10 @@ só usar "Publicar agora" no mesmo passo.
    nada. **Teste**, sem publicar nada: copie as 5 linhas do `select net.http_post(…)` com `{"acao":"agenda_teste"}` que está no
    comentário do fim do arquivo para uma consulta nova, **sem os `--` do começo** (selecione e aperte Ctrl+/), e execute — não há
    nada para trocar: a chave anon vem do próprio agendamento e a da agenda, do Vault. Alguns segundos depois, rode a consulta a
-   `net._http_response` (também sem os `--`): o esperado é 200 com `{"ok":true,"versao":"0.21.0"}`. Se o projeto do Supabase ou a
+   `net._http_response` (também sem os `--`): o esperado é 200 com `{"ok":true,"versao":"0.22.0"}` (com a radar-redes v0.21.0,
+   "0.21.0"). v0.22.0: o mesmo arquivo agenda também, uma vez por dia (05h13), o pedido "manter_robos": a `radar-redes` religa os
+   robôs agendados do GitHub (coleta, robô do site e resumo) que o GitHub desligou por 60 dias sem atividade no repositório público
+   (precisa do segredo `RADAR_GITHUB_TOKEN`, o mesmo do "Robô do site na hora"; o workflow desligado à mão fica desligado). Se o projeto do Supabase ou a
    chave anon mudarem, troque no arquivo e rode de novo (os testes conferem que a chave do arquivo é a do `radar-config.js`). Para desfazer: `sql/radar-redes-agenda-reversao.sql` (a chave fica no Vault).
 
 ### Pauta: o calendário das redes e a publicação agendada (v0.21.0)
@@ -1255,7 +1305,9 @@ publicação": o link do post (`https://www.instagram.com/…`, `https://www.fac
 mais de 20 minutos) aparece no **Painel** ("Publicações da Pauta que não saíram") e no quadro **"Não saíram"**, no alto da Pauta,
 com o motivo, "Abrir" e (no que não saiu ou espera a hora) "Não publicar neste canal". O robô de avisos (depois de cada coleta,
 de 6 em 6 horas) abre **um aviso só** no GitHub, "Radar: publicação agendada não saiu", com a quantidade e a data, o canal e o
-número da mais antiga (nunca assunto, nome, legenda ou o texto do erro, porque o repositório é público). O aviso não é atualizado (cada mudança seria mais um e-mail) e fecha sozinho quando
+número da mais antiga (nunca assunto, nome, legenda ou o texto do erro, porque o repositório é público). O corpo do aviso não é
+editado; v0.22.0: cada publicação **nova** que não sai, com o aviso já aberto, ganha **um comentário** nele (um e-mail, com o mesmo
+tanto de informação) — antes, um erro antigo deixado sem resolver calava as falhas seguintes. O aviso fecha sozinho quando
 nada mais está parado. Nos 2 primeiros fins de semana pela agenda (a partir de 31/10), abra a Pauta por volta das 09h35: o aviso
 por e-mail pode levar horas.
 
@@ -1552,6 +1604,31 @@ O mesmo SQL cadastra **ITC Consultoria — boletim por e-mail** (`itc-email`) e 
 boletins da ITC entra uma vez só). O robô não visita essa fonte. Os boletins **não** vão para o
 repositório, que é público: a rotina diária grava direto no banco.
 
+### Chaves novas do Supabase (até o fim de 2026)
+
+O Supabase desliga as chaves antigas (a **anon**, pública, e a **service_role**, interna, as duas em formato JWT) até o fim de 2026.
+Desligadas, a tela não entra, as agendas do banco recebem 401 e os robôs param. Desde a v0.22.0 (rodada 2 da varredura geral), o
+Radar aceita as novas: a **publishable** (`sb_publishable_…`, pública) e a **secret** (`sb_secret_…`, interna). Cada uma vai **só no
+cabeçalho `apikey`**: no `Authorization` o Supabase as recusa (não são JWT). Por isso, as funções chamadas sem sessão (pela agenda do
+banco ou pelos robôs) ficam com o **"Verify JWT" desligado** e conferem quem chama no próprio código (a chave da agenda no Vault, a
+chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de dezembro**, nesta ordem (nada de chave pelo chat):
+
+1. Supabase → **Settings → API Keys**: confira a publishable `default` e crie uma secret só para os robôs do GitHub ("radar-robos").
+2. Edge Functions: as funções desta versão (`radar-ia`, `radar-redes`, `radar-video`, `radar-itc` e, se instalada,
+   `radar-concorrentes`) já usam a publishable no `apikey` quando o Supabase a fornece (`SUPABASE_PUBLISHABLE_KEYS`). Na
+   **`radar-redes`** e na **`radar-video`**, desligue o **"Verify JWT"** (as duas conferem no código: a sessão do administrador pelo
+   banco, a chave da agenda no Vault, a chave do robô); a `radar-itc` e a `radar-concorrentes` já estão assim.
+3. `radar-config.js`: troque o valor de `SUPABASE_ANON_KEY` pela publishable (o nome do campo fica), publique no GitHub e
+   Ctrl+F5 em todos os aparelhos. A tela manda a chave só no `apikey` quando não há sessão.
+4. SQL Editor: troque a chave escrita em `sql/radar-redes-agenda.sql` e em `sql/radar-video-agenda.sql` (o `v_anon`) pela
+   publishable e rode os dois de novo (as chaves do Vault ficam); faça o teste do fim de cada arquivo (200).
+5. GitHub, repositório `radar` → Secrets → **`SUPABASE_SERVICE_KEY`** = a secret do passo 1 (os robôs a mandam só no `apikey`).
+   Rode "Radar — coleta" à mão e confira que fica verde.
+6. Repositório privado `radar-video`: troque o `RADAR_VIDEO_COMMIT` pelo SHA do commit com o `radar-config.js` novo (o robô lê a
+   chave pública de lá) e rode o workflow à mão (verde, sem vídeo na fila).
+7. Só então: Supabase → Settings → API Keys → **Legacy API keys → Disable**. Se algo parar, reative as antigas (o mesmo botão) e
+   confira o passo que faltou.
+
 ## Atualizações futuras
 
 **Da v0.21.0 para a v0.22.0** (instale num **dia útil**, com tempo para o teste do corretor com um vídeo de teste; nesta ordem; nada
@@ -1636,9 +1713,17 @@ a 8) e sem o termo novo de cada pessoa assinado e gravado em Pessoas e termos.**
 12. **Correções da varredura geral:** Edge Functions → `radar-ia` → cole o `index.ts` desta versão → Deploy (Configurações →
     Inteligência artificial → "Testar a IA" mostra **v0.22.0**); Edge Functions → `radar-itc` → cole o `index.ts` desta versão →
     Deploy, com "Verify JWT" como já está (o "Testar conexão" da ITC mostra **versão 0.22.0**).
+13. **Rodada 2 da varredura geral:** Edge Functions → `radar-redes` → cole o `index.ts` desta versão → Deploy, com "Verify JWT"
+    ligado, como já está; Publicações → "Testar conexão" mostra **"Função radar-redes v0.22.0"** e "Armazenamento das imagens: bucket
+    privado radar-pauta". Se a `radar-concorrentes` (opcional) estiver instalada, o mesmo com o `index.ts` dela (o teste mostra
+    0.22.0). SQL Editor → execute de novo `sql/radar-redes-agenda.sql` (mantém a chave do Vault e acrescenta o pedido diário
+    "manter_robos") e faça o teste do fim do arquivo: 200 com `{"ok":true,"versao":"0.22.0"}`. No Storage → `radar-redes` (público),
+    apague as imagens das notícias que ainda estiverem lá (a Meta já tem a cópia; as publicações excluídas, principalmente). No
+    repositório privado `radar-video`, troque o `RADAR_VIDEO_COMMIT` pelo SHA do commit com esta rodada (o robô aceita a chave pública
+    nova). A sessão passa a ficar só na aba: depois do Ctrl+F5, cada aba pede a entrada uma vez.
 
-Nenhum segredo da Azure vai ao Supabase: a transcrição é do robô, no repositório privado. A função `radar-redes` e a agenda da Pauta
-não mudam.
+Nenhum segredo da Azure vai ao Supabase: a transcrição é do robô, no repositório privado. A agenda da Pauta muda só pelo pedido
+diário "manter_robos" (passo 13).
 
 Cuidados nesta versão:
 - **No repositório público (este), só vídeos sintéticos.** Nunca envie ao GitHub um vídeo, áudio, foto, transcrição, relatório ou

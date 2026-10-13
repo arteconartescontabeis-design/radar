@@ -472,6 +472,8 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_pauta_aprovar', 'radar_pauta_desaprovar', 'radar_pauta_publicar_agora',
                                                            'radar_pauta_pode_copiar', 'radar_pauta_registrar_manual', 'radar_pauta_termo_ok',
                                                            'radar_agenda_situacao', 'radar_pauta_copia_paga_ia',
+                                                           -- rodada 2: onde está a frase do boletim (só editor e administrador)
+                                                           'radar_copia_paga_trechos',
                                                            -- v0.22.0: corretor de vídeo (cada função confere o papel)
                                                            'radar_video_criar', 'radar_video_para_envio', 'radar_video_enviado',
                                                            'radar_video_ajustar', 'radar_video_reconferir', 'radar_video_de_novo',
@@ -3311,6 +3313,67 @@ def test_noticia_com_frase_do_boletim_pago_nao_se_autoriza_nem_se_aprova_nem_sai
     assert limpo.execute("select situacao from radar_redes_envios where id = %s", (ig,)).fetchone()[0] == "erro"
 
 
+def test_onde_esta_a_frase_do_boletim_que_o_banco_recusa_e_a_ementa_do_ato_oficial_nao_conta(limpo, request):
+    """Rodada 2 da varredura geral. (1) A trava do banco (RADAR146) compara com TODAS as capturas do boletim; a tela, só com as do
+    assunto: radar_copia_paga_trechos diz ONDE, no texto da própria notícia, está o que o banco recusaria (só as posições, nada do
+    boletim), com a mesma regra e o mesmo desconto das capturas livres do assunto; só o editor e o administrador. (2) A matéria do
+    boletim que é o próprio ato ("Lei nº … (DOU DE …)", texto = a ementa oficial) fica fora da base paga."""
+    a, c1 = cenario_publicavel(limpo)
+    carregar_fontes_novas(limpo, request)
+    paga = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega das declarações mensais"
+    ementa = ("Altera a Instrução Normativa RFB nº 2.005, de 29 de janeiro de 2021, que dispõe sobre a Declaração de Débitos e "
+              "Créditos Tributários Federais Previdenciários e de Outras Entidades e Fundos")
+    boletim = lambda titulo, texto, h: limpo.execute(
+        """insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+           select id, 'https://boletim.exemplo/' || %s, %s, %s, %s from radar_fontes where slug = 'itc-email'""", (h, titulo, texto, h))
+    trechos = lambda textos, uid=EDITOR, assunto=a: _como_trechos(uid, assunto, textos)
+    assert trechos(["Texto qualquer com " + paga]) == [[]]                                # sem boletim no banco: nada
+    # a matéria do boletim fica na fila (não está no assunto); ela também copiou a IN da fonte oficial do assunto
+    boletim("Boletim de mentira", "Boletim: " + TEXTO_OFICIAL + " E mais: " + paga + ".", "h-trechos-1")
+    corpo = ("📌 Segundo a Receita Federal, " + TEXTO_OFICIAL[:300] + "\n\nTexto próprio da Artecon.\n\nResumo: "
+             + paga.upper().replace(" GESTOR ", " gestor,\n") + ".")
+    titulo = "CBS: " + paga                                                                  # o título também é conferido
+    limpo.execute("update radar_conteudos set titulo = %s, corpo = %s where id = %s", (titulo, corpo, c1))
+    r = trechos([titulo, corpo])
+    assert r == [[[5, 5 + len(paga)]], [[corpo.index("O COMITÊ"), len(corpo) - 1]]], r     # a IN (livre no assunto) não entra
+    assert corpo[r[1][0][0]:r[1][0][1]] == paga.upper().replace(" GESTOR ", " gestor,\n")  # posição em letras, com o emoji
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR146"):                    # e o banco recusa o mesmo texto
+        aprovar(c1)
+    # duas faixas separadas; 11 palavras não bastam
+    onze, doze = " ".join(paga.split()[:11]), " ".join(paga.split()[:12])
+    r = trechos([onze + ". Outra coisa. " + doze + ". Fim e mais " + doze])
+    assert len(r[0]) == 2 and r[0][0][0] == len(onze) + len(". Outra coisa. ")
+    # só quem edita; nada sai do boletim
+    for uid in (LEITOR, SEM_PERFIL):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR147"):
+            trechos([corpo], uid)
+    with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        c.execute("select radar_copia_paga_trechos(%s, %s)", (a, [corpo]))
+    # (2) a ementa oficial que o boletim lista ("Legislação Federal") não é frase do boletim: nem na notícia, nem na Pauta
+    boletim("Instrução Normativa RFB nº 2.300/2026 (DOU DE 07/10/2026)", ementa, "h-trechos-ato")
+    limpo.execute("update radar_conteudos set titulo = 'DCTFWeb muda', corpo = %s where id = %s",
+                  ("Segundo o Diário Oficial da União, a norma nova " + ementa.lower() + ".\n\nTexto próprio da Artecon.", c1))
+    assert trechos(["DCTFWeb muda", ementa]) == [[], []]
+    assert aprovar(c1) is not None
+    assert limpo.execute("select radar_pauta_copia_paga(%s)", ([ementa],)).fetchone()[0] is False
+    # a mesma frase numa matéria comum do boletim (texto da ITC) conta
+    boletim("Receita muda a DCTFWeb", "Na avaliação da consultoria: " + ementa, "h-trechos-noticia")
+    assert limpo.execute("select radar_pauta_copia_paga(%s)", ([ementa],)).fetchone()[0] is True
+    assert trechos([ementa]) == [[[0, len(ementa)]]]
+    for titulo_ato, e_ato in [("Lei nº 15526/2026 (DOU DE 30/09/2026)", True), ("Ato COTEPE/PMPF nº 27/2026 (DOU DE 29/09/2026)", True),
+                              ("Portaria SEF nº 250/2026 (DOE-SC de 01/10/2026)", True), ("DECRETO Nº 12.955, DE 1º DE OUTUBRO DE 2026 (DOU de 02/10/2026).", True),
+                              ("Resolução CGSN nº 183/2026 (DOU - Edição Extra de 30/09/2026)", True),
+                              ("Receita prorroga o prazo da DCTFWeb (DOU de 01/10/2026)", False), ("Lei nº 15.270/2025: o que muda no IR", False),
+                              ("Leilão da Receita (DOU de 01/10/2026)", False), ("Nota ITC (Doença ocupacional de 01/10/2026)", False),
+                              ("Lei nº 15.270/2025 (Lei do IR)", False), (None, False)]:
+        assert limpo.execute("select radar_copia_paga_ato_oficial(%s)", (titulo_ato,)).fetchone()[0] is e_ato, titulo_ato
+
+
+def _como_trechos(uid, assunto, textos):
+    with como("authenticated", uid) as c:
+        return c.execute("select radar_copia_paga_trechos(%s, %s)", (assunto, textos)).fetchone()[0]
+
+
 def test_publicar_em_todos_cai_junto_se_o_site_nao_sair(limpo):
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
@@ -3975,6 +4038,13 @@ def test_pauta_problemas_identificacao_marcas_confirmar_fonte_numeros_e_copia_pa
     for crc, padrao in [("CRC-SC 012345/O-9", "CRC-SC 012345/O-9"), ("SC-012345/0-9", "CRC-SC 012345/O-9"), ("012345/o-9", "CRC-SC 012345/O-9"),
                         ("1SC012345/0-9", "CRC 1SC012345/O-9"), ("CRC-SC 012345", "CRC-SC 012345")]:
         assert db.execute("select %s ~ radar_crc_padrao(%s)", (padrao, crc)).fetchone()[0], crc
+    # rodada 2: o CRC das Configurações com letra acentuada (a tela aceita e escreve a linha como está) casa com a linha no texto,
+    # com e sem o acento e com o acento separado da letra (NFD, colado do Mac); antes, "ORIGINÁRIO" virava "ORIGIN" + "RIO"
+    db.execute("""update radar_config set valor = valor || '{"crc": "CRC-SC 012345/O-9 (Originário)"}' where chave = 'assinatura'""")
+    for texto, ok in [(ident_sem_crc + "CRC-SC 012345/O-9 (Originário)", True), (ident_sem_crc + "CRC-SC 012345/O-9 (ORIGINARIO)", True),
+                      (ident_sem_crc + "CRC-SC 012345/O-9 (Originário)", True), (ident_sem_crc + "CRC-SC 012345/O-9", False)]:
+        assert db.execute("select radar_pauta_identificacao_falta(%s)", (texto,)).fetchone()[0] == (None if ok else falta), texto
+    db.execute("update radar_config set valor = valor || %s where chave = 'assinatura'", (json.dumps(ASSINATURA_PAUTA),))
     # marca da IA, {confirmar}, fonte do boletim, informação sem texto e número que não está nas informações conferidas
     db.execute("""update radar_pauta_pecas set legenda_instagram = %s, apoio = 'O prazo vence [VERIFICAR: dia 20]', chamada = 'Atendemos 37 empresas',
                   conferidas = %s where id = %s""",
@@ -4830,6 +4900,39 @@ def test_envio_da_pauta_regra_e_fora_do_robo_do_site(pauta):
     with como("authenticated", ADMIN) as c:                                                    # cancelado, abre de novo
         c.execute("select radar_cancelar_rede(%s)", (ig,))
     db.execute(inserir, (None, pid, "instagram", amanha, False))
+
+
+def test_painel_avisa_quando_o_robo_de_coleta_para(limpo, request):
+    """Rodada 2 da varredura geral: no repositório público, o GitHub desliga sozinho os robôs agendados depois de 60 dias sem
+    atividade, e só os números do Painel mudavam. O painel diz a última rodada do robô de coleta e se ela passou de 12 horas (com
+    fonte ativa que o robô coleta: a do e-mail não passa por ele)."""
+    db = limpo
+    carregar_fontes_novas(db, request)                                                     # com a fonte do e-mail (itc-email)
+    painel = lambda: _painel_coleta()
+    fonte = db.execute("select id from radar_fontes where slug = 'rfb-normas'").fetchone()[0]
+    assert db.execute("select count(*) from radar_fontes where config->>'origem' = 'email'").fetchone()[0] == 1
+    ativas = [i for (i,) in db.execute("select id from radar_fontes where ativo").fetchall()]
+    try:
+        db.execute("update radar_fontes set ativo = (id = %s)", (fonte,))
+        assert painel() == (None, True)                                                    # nunca rodou
+        db.execute("insert into radar_execucoes (fonte_id, iniciado_em) values (%s, now() - interval '13 hours')", (fonte,))
+        ultima, atrasada = painel()
+        assert ultima is not None and atrasada is True
+        db.execute("insert into radar_execucoes (fonte_id, iniciado_em) values (%s, now() - interval '5 hours')", (fonte,))
+        assert painel()[1] is False                                                        # rodou há 5 h: em dia
+        db.execute("update radar_execucoes set iniciado_em = iniciado_em - interval '1 day'")
+        assert painel()[1] is True
+        db.execute("update radar_fontes set ativo = false")                                # sem fonte ativa: nada a avisar
+        assert painel()[1] is False
+        db.execute("""update radar_fontes set ativo = true where config->>'origem' = 'email'""")   # só a do e-mail (não passa pelo robô)
+        assert painel()[1] is False
+    finally:
+        db.execute("update radar_fontes set ativo = (id = any(%s))", (ativas,))
+
+
+def _painel_coleta():
+    with como("authenticated", LEITOR) as c:
+        return c.execute("select ultima_coleta, coleta_atrasada from radar_v_painel").fetchone()
 
 
 def test_painel_conta_falhas_da_pauta(pauta):

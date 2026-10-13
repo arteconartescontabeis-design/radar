@@ -66,7 +66,8 @@
 //                             própria do workflow (2 vezes por dia útil) pega a fila sem ele — para parar, desligue o workflow
 //   RADAR_VIDEO_GITHUB_REPO   opcional; padrão arteconartescontabeis-design/radar-video
 //   RADAR_VIDEO_GITHUB_RAMO   opcional; padrão main
-// SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
+// SUPABASE_URL, a chave pública (SUPABASE_PUBLISHABLE_KEYS ou SUPABASE_ANON_KEY) e a chave interna (SUPABASE_SECRET_KEYS ou
+// SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // A transcrição é do robô (ajustes do dono): os segredos da Azure ficam no repositório privado, não aqui.
 // =====================================================================
 
@@ -74,7 +75,18 @@ const VERSAO = "0.22.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
-const ANON = env("SUPABASE_ANON_KEY");
+// v0.22.0 (rodada 2 da varredura geral): a chave pública do projeto, para o apikey dos pedidos feitos com o token de quem chamou. A
+// nova (sb_publishable_…, em SUPABASE_PUBLISHABLE_KEYS) vem antes: a anon antiga (SUPABASE_ANON_KEY, JWT) o Supabase desliga até o
+// fim de 2026, e desligada ela seria recusada no apikey. Sem a lista nova, fica a anon.
+function chavePublica(): string {
+  try {
+    const k = JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS") || "{}");
+    const v = k?.default ?? Object.values(k ?? {}).find((x) => typeof x === "string" && x);
+    if (typeof v === "string" && v.trim()) return v.trim();
+  } catch { /* sem a lista nova: fica a anon */ }
+  return env("SUPABASE_ANON_KEY").trim();
+}
+const ANON = chavePublica();
 const BUCKET = "radar-videos";
 // prazos dos links, fixos aqui (quem chama não escolhe); cada objeto sobe com cacheControl de 60 s (a tela e o robô mandam), então a
 // validade efetiva vai até o prazo + 60 s

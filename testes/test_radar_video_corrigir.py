@@ -523,6 +523,27 @@ def test_conversa_so_fala_com_a_radar_video_do_projeto():
         conversa.anon_do_config(Path("/nao/existe/radar-config.js"))
 
 
+def test_conversa_aceita_a_chave_publica_nova_so_no_apikey(tmp_path):
+    """Rodada 2 da varredura geral: o Supabase desliga a chave anon antiga (JWT) até o fim de 2026. A nova (sb_publishable_…) vale no
+    radar-config.js e vai só no apikey (no Authorization o Supabase recusa: não é JWT); o projeto é o de SUPABASE_URL. A anon antiga
+    continua indo nos dois cabeçalhos. A chave interna (sb_secret_… ou o JWT service_role) nunca vale."""
+    nova = "sb_publishable_" + "AbC9_-" * 6
+    certo = f"https://{REF}.supabase.co/functions/v1/radar-video"
+    assert conversa.cabecalhos_publicos(nova) == {"apikey": nova}
+    assert conversa.cabecalhos_publicos(ANON) == {"apikey": ANON, "Authorization": "Bearer " + ANON}
+    conversa.Conversa(certo, CHAVE, nova, REF)
+    for ruim in ("sb_secret_" + "x" * 30, "sb_publishable_curta", "sb_publishable_" + "x" * 20 + "\n", "qualquer-coisa"):
+        with pytest.raises(ErroVideo):
+            conversa.Conversa(certo, CHAVE, ruim, REF)
+    config = tmp_path / "radar-config.js"
+    config.write_text(f'window.RADAR_CONFIG = {{SUPABASE_URL: "https://{REF}.supabase.co", SUPABASE_ANON_KEY: "{nova}"}};')
+    assert conversa.anon_do_config(config) == (nova, REF)
+    outro = conversa.base64.urlsafe_b64encode(json.dumps({"role": "anon", "ref": "abcdefghijabcdefghij"}).encode()).decode().rstrip("=")
+    config.write_text(f'window.RADAR_CONFIG = {{SUPABASE_URL: "https://{REF}.supabase.co", SUPABASE_ANON_KEY: "x.{outro}.y"}};')
+    with pytest.raises(ErroVideo):                                                    # a anon antiga de outro projeto, não
+        conversa.anon_do_config(config)
+
+
 class _Outro(BaseHTTPRequestHandler):
     """Um servidor que não deveria receber nada (o destino de um redirecionamento ou de um link adulterado)."""
     recebidos: list = []

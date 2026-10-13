@@ -76,7 +76,18 @@ const VERSAO = "0.22.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
-const SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY");
+// v0.22.0 (rodada 2 da varredura geral): a chave pública do projeto, para o apikey dos pedidos feitos com o token de quem chamou. A
+// nova (sb_publishable_…, em SUPABASE_PUBLISHABLE_KEYS) vem antes: a anon antiga (SUPABASE_ANON_KEY, JWT) o Supabase desliga até o
+// fim de 2026, e desligada ela seria recusada no apikey. Sem a lista nova, fica a anon.
+function chavePublica(): string {
+  try {
+    const k = JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS") || "{}");
+    const v = k?.default ?? Object.values(k ?? {}).find((x) => typeof x === "string" && x);
+    if (typeof v === "string" && v.trim()) return v.trim();
+  } catch { /* sem a lista nova: fica a anon */ }
+  return env("SUPABASE_ANON_KEY").trim();
+}
+const SUPABASE_ANON_KEY = chavePublica();
 const GATEWAY_URL = env("IA_GATEWAY_URL", "https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway").replace(/\/+$/, "");
 const MODELO = env("RADAR_IA_MODELO", "claude-sonnet-4-6");
 const MODELO_RAPIDO = env("RADAR_IA_MODELO_RAPIDO", "claude-haiku-4-5");
@@ -739,10 +750,34 @@ const PRAZO_PEDIDO = 140_000;          // a tela espera até 150 s pela resposta
 /** Trecho igual ao da fonte que ainda precisa de correção: sem a fonte citada no parágrafo, ou tirado do boletim pago (v0.18.0). */
 const copiasSemFonte = (corpo: string, fontes: FonteCopia[]) => trechosCopiados(corpo, fontes).filter((c) => !c.citado);
 
+/** Rodada 2 da varredura geral: a frase do boletim pago que o BANCO recusaria (RADAR146 compara com todas as capturas do boletim,
+ *  de outro assunto ou ainda na fila) e que a comparação com as capturas do assunto não vê. radar_copia_paga_trechos (com o token
+ *  de quem pede: só o editor e o administrador) devolve só as faixas [início, fim) no texto do próprio conteúdo, contadas por letra
+ *  como o banco conta (Array.from: o emoji é uma letra só); nada do boletim vem junto. Se o banco não responder, fica a trava dele. */
+async function pagosDoBanco(token: string, assuntoId: number, titulo: string, corpo: string): Promise<Trecho[]> {
+  let r: unknown;
+  try { r = await banco(token, "POST", "rpc/radar_copia_paga_trechos", { p_assunto: assuntoId, p_textos: [titulo, corpo] }); }
+  catch { return []; }
+  const lista = Array.isArray(r) ? r : [];
+  return [titulo, corpo].flatMap((texto, k) => {
+    const letras = Array.from(texto);
+    return (Array.isArray(lista[k]) ? lista[k] : [])
+      .filter((f: unknown) => Array.isArray(f) && Number.isInteger(f[0]) && Number.isInteger(f[1]) && 0 <= f[0] && f[0] < f[1] && f[1] <= letras.length)
+      .map(([i, j]: number[]) => {
+        const t = normalizarEspacos(letras.slice(i, j).join("")).trim();
+        return { palavras: t.split(" ").length, texto: t, fonte: "", paga: true, citado: false };
+      });
+  });
+}
+/** Os trechos do banco que a comparação da função ainda não achou (o mesmo trecho, de um lado ou de outro, não entra duas vezes) */
+const somarPagos = (copias: Trecho[], pagos: Trecho[]) => [...copias, ...pagos.filter((p) =>
+  !copias.some((c) => { const x = ` ${limpaCopia(c.texto)} `, y = ` ${limpaCopia(p.texto)} `; return c.paga && (x.includes(y) || y.includes(x)); }))];
+
 /** Segunda passada da IA, só quando o texto tem marca [VERIFICAR] ou trecho igual ao da fonte sem a fonte citada: corrige isso
  *  e mais nada. Devolve null quando não há o que corrigir. Se a IA devolver texto curto demais (cortado), fica o texto original. */
-async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes: FonteCopia[], material: string, inicio: number, analise = false) {
-  const marcas = [...marcasVerificar(titulo, corpo), ...comentariosDuvida(titulo, corpo)], copias = copiasSemFonte(corpo, fontes);
+async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes: FonteCopia[], material: string, inicio: number, analise = false,
+                            pagosBanco: Trecho[] = []) {
+  const marcas = [...marcasVerificar(titulo, corpo), ...comentariosDuvida(titulo, corpo)], copias = somarPagos(copiasSemFonte(corpo, fontes), pagosBanco);
   if (!marcas.length && !copias.length) return null;
   const resta = PRAZO_PEDIDO - (Date.now() - inicio);
   if (resta < 25_000) throw new Erro(504, "sem tempo para a segunda passada");
@@ -795,7 +830,9 @@ async function revisar(token: string, ctx: Awaited<ReturnType<typeof carregar>>,
   const analise = String(avisos[0] ?? "").startsWith("TEXTO PARA ANÁLISE") || !m.oficial.trim();
   // o trecho igual ao da fonte que a equipe autorizou fica: a revisão cuida só das marcas
   const fontes = c.copia_autorizada_em ? [] : fontesDoAssunto(ctx);
-  const r = await revisarTexto(ctx.reg, String(c.titulo ?? ""), String(c.corpo ?? ""), fontes, m.material, Date.now(), analise);
+  // rodada 2: e a frase do boletim que só o banco vê (a autorização não vale para ela: entra sempre)
+  const pagosBanco = await pagosDoBanco(token, ctx.assunto.id, String(c.titulo ?? ""), String(c.corpo ?? ""));
+  const r = await revisarTexto(ctx.reg, String(c.titulo ?? ""), String(c.corpo ?? ""), fontes, m.material, Date.now(), analise, pagosBanco);
   if (!r) throw new Erro(400, "Este texto não tem marca [VERIFICAR], comentário de dúvida nem trecho igual ao da fonte sem a fonte citada: não há o que revisar.");
   // o que a revisão afirma é conferido por código, como no "gerar"; os pontos novos se somam aos que já estavam
   const quando = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -813,7 +850,7 @@ async function revisar(token: string, ctx: Awaited<ReturnType<typeof carregar>>,
            titulo_mudou: normalizarEspacos(r.titulo) !== normalizarEspacos(String(c.titulo ?? "")),
            autorizacao_caiu: !!c.copia_autorizada_em && r.corpo !== c.corpo,
            restam: { marcas: marcasVerificar(r.titulo, r.corpo).length + comentariosDuvida(r.titulo, r.corpo).length,
-                     copias: copiasSemFonte(r.corpo, fontes).length } };
+                     copias: somarPagos(copiasSemFonte(r.corpo, fontes), await pagosDoBanco(token, ctx.assunto.id, r.titulo, r.corpo)).length } };
 }
 
 // ------------------------------------------------------------------ verificação em fontes oficiais (v0.14.0)

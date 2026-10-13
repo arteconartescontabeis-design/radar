@@ -25,14 +25,26 @@
 //                                                           Se uma regra do Outlook move o boletim, informe o id da pasta.
 //   IA_GATEWAY_TOKEN, IA_GATEWAY_URL                        os mesmos da função radar-ia (IA Central)
 //   RADAR_ITC_MODELO                                        padrão: claude-haiku-4-5
-// SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
+// SUPABASE_URL, a chave pública (SUPABASE_PUBLISHABLE_KEYS ou SUPABASE_ANON_KEY) e a chave interna (SUPABASE_SECRET_KEYS ou
+// SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
 const VERSAO = "0.22.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
-const ANON = env("SUPABASE_ANON_KEY");
+// v0.22.0 (rodada 2 da varredura geral): a chave pública do projeto, para o apikey dos pedidos feitos com o token de quem chamou. A
+// nova (sb_publishable_…, em SUPABASE_PUBLISHABLE_KEYS) vem antes: a anon antiga (SUPABASE_ANON_KEY, JWT) o Supabase desliga até o
+// fim de 2026, e desligada ela seria recusada no apikey. Sem a lista nova, fica a anon.
+function chavePublica(): string {
+  try {
+    const k = JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS") || "{}");
+    const v = k?.default ?? Object.values(k ?? {}).find((x) => typeof x === "string" && x);
+    if (typeof v === "string" && v.trim()) return v.trim();
+  } catch { /* sem a lista nova: fica a anon */ }
+  return env("SUPABASE_ANON_KEY").trim();
+}
+const ANON = chavePublica();
 const GATEWAY_URL = env("IA_GATEWAY_URL", "https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway").replace(/\/+$/, "");
 const MODELO = env("RADAR_ITC_MODELO", "claude-haiku-4-5");   // separar matérias é tarefa simples: o modelo rápido basta
 const LOGIN_URL = env("GRAPH_LOGIN_URL", "https://login.microsoftonline.com").replace(/\/+$/, "");

@@ -34,6 +34,8 @@ from test_radar_banco import IDENT, LEG_PECA, aprovar_peca, lamina, marcar_pront
 
 PORTA_PONTE, PORTA_FUNCAO, PORTA_SEM_META, PORTA_TOKEN_PAGINA, PORTA_SEM_ACESSO = 3994, 3993, 3995, 3996, 3997
 PORTA_CHAVE_NOVA, PORTA_LISTA_NOVA = 3988, 3987
+PUBLICA_NOVA = "sb_publishable_" + "Ab9_-x" * 6            # v0.22.0 (rodada 2): a chave pública nova do Supabase (de mentira)
+PORTA_GITHUB = 3989                                         # v0.22.0 (rodada 2): os robôs agendados (a pausa de 30 s fica noutra instância)
 PORTA_IG_TOKEN, PORTA_IG_SEM_ID = 3986, 3985               # v0.14.4: META_IG_TOKEN; e sem o META_IG_USER_ID          # v0.14.2: SUPABASE_SERVICE_ROLE_KEY = sb_secret_…; SUPABASE_SECRET_KEYS
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
 TOKEN = "EAAtokenSecreto123"                  # token do usuário do sistema (o que fica no META_PAGE_TOKEN)
@@ -44,8 +46,8 @@ TOKEN_GITHUB = "tokenGithubSecreto654"        # v0.19.0: RADAR_GITHUB_TOKEN, só
 CAMINHO_GITHUB = "/github/repos/arteconartescontabeis-design/radar/actions/workflows/radar-site-publicar.yml/dispatches"
 JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
 ESTADO = {"chaves": [], "bucket_get_falha": False, "busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False,
-          "github": [], "github_status": 204,
-          "publicos": set(), "upsert": [], "assinaturas": [], "assinar_falha": False}   # v0.21.0: buckets públicos, x-upsert, links assinados
+          "github": [], "github_status": 204, "workflows": {}, "github_wf": [],
+          "publicos": set(), "upsert": [], "assinaturas": [], "assinar_falha": False, "apagados": []}   # v0.21.0: buckets públicos, x-upsert, links assinados
 LOGS: dict = {}                               # v0.21.0: a saída de cada instância da função (o que o Supabase mostra em Logs), por porta
 
 
@@ -148,9 +150,30 @@ class Ponte(BaseHTTPRequestHandler):
                                    {"name": nome, "public": nome in ESTADO["publicos"]} if nome in ESTADO["buckets"] else {"error": "Bucket not found"})
         if self.path.startswith("/meta/"):
             return self._meta({k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()})
+        if self.path.startswith("/github/repos/arteconartescontabeis-design/radar/actions/workflows/"):   # v0.22.0: o estado do workflow
+            arquivo = self.path.rsplit("/", 1)[1]
+            ESTADO["github_wf"].append(("GET", arquivo, self.headers.get("Authorization")))
+            if arquivo in ESTADO["workflows"]:
+                estado = ESTADO["workflows"][arquivo]
+                return self._responder(200, {"path": f".github/workflows/{arquivo}", "state": "disabled_inactivity" if estado == "nao_religa" else estado})
+        self._responder(404, {})
+
+    def do_PUT(self):
+        if self.path.startswith("/github/") and self.path.endswith("/enable"):     # v0.22.0 (rodada 2): religar um workflow
+            arquivo = self.path.rsplit("/", 2)[1]
+            ESTADO["github_wf"].append(("PUT", arquivo, self.headers.get("Authorization")))
+            if ESTADO["workflows"].get(arquivo) == "nao_religa":
+                return self._responder(403, {"message": "Resource not accessible by personal access token"})
+            ESTADO["workflows"][arquivo] = "active"
+            self.send_response(204)
+            self.end_headers()
+            return
         self._responder(404, {})
 
     def do_DELETE(self):
+        if self.path.startswith("/storage/v1/object/"):                    # v0.22.0 (rodada 2): a imagem antiga sai do bucket público
+            ESTADO.setdefault("apagados", []).append((self.path, self.headers.get("apikey")))
+            return self._responder(200, {"message": "Successfully deleted"})
         if self.path.startswith("/meta/"):
             return self._meta({k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()})
         self._responder(404, {})
@@ -183,6 +206,8 @@ class Ponte(BaseHTTPRequestHandler):
             return self._meta({k: v[0] for k, v in parse_qs(corpo.decode()).items()})
         if self.path.startswith("/github/"):                               # v0.19.0: acionar o workflow (workflow_dispatch)
             ESTADO["github"].append((self.command, self.path, self.headers.get("Authorization"), json.loads(corpo or b"null")))
+            if ESTADO["workflows"].get(self.path.split("/")[-2], "active") != "active":    # v0.22.0: desligado não aceita acionamento
+                return self._responder(422, {"message": "Cannot trigger a 'workflow_dispatch' on a disabled workflow"})
             if not ESTADO["github_status"]:                                 # GitHub fora do ar: fecha sem responder
                 self.close_connection = True
                 return
@@ -232,8 +257,10 @@ def funcao(api_postgrest, tmp_path_factory):
                              (PORTA_TOKEN_PAGINA, {**meta_ok, "META_PAGE_TOKEN": TOKEN_PAGINA}),
                              (PORTA_SEM_ACESSO, {**meta_ok, "META_PAGE_TOKEN": TOKEN_OUTRO}),
                              (PORTA_CHAVE_NOVA, {**meta_ok, "SUPABASE_SERVICE_ROLE_KEY": SECRETA}),        # como no projeto da Artecon
-                             (PORTA_LISTA_NOVA, {**meta_ok, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA})}),  # a antiga ainda é JWT
+                             (PORTA_LISTA_NOVA, {**meta_ok, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA}),   # a antiga ainda é JWT
+                                                 "SUPABASE_PUBLISHABLE_KEYS": json.dumps({"default": PUBLICA_NOVA})}),         # v0.22.0 (rodada 2)
                              (PORTA_IG_TOKEN, {**meta_ok, "META_IG_TOKEN": TOKEN_IG}),
+                             (PORTA_GITHUB, {**meta_ok, "RADAR_GITHUB_TOKEN": TOKEN_GITHUB}),
                              (PORTA_IG_SEM_ID, {"META_PAGE_ID": "pagina-1", "META_PAGE_TOKEN": TOKEN, "META_IG_TOKEN": TOKEN_IG})):
             processos.append(_subir(porta, extra, pasta))
         yield
@@ -247,7 +274,7 @@ def funcao(api_postgrest, tmp_path_factory):
 @pytest.fixture()
 def redes(funcao, limpo):
     ESTADO.update(chaves=[], bucket_get_falha=False, bucket_preso=0, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False,
-                  github=[], github_status=204, publicos=set(), upsert=[], assinaturas=[], assinar_falha=False)
+                  github=[], github_status=204, publicos=set(), upsert=[], assinaturas=[], assinar_falha=False, apagados=[], workflows={}, github_wf=[])
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
     registrar_site(c1)
@@ -267,21 +294,26 @@ def pedir(corpo, uid=ADMIN, porta=PORTA_FUNCAO, cab=None):
     return r.status_code, r.json()
 
 
-def test_instagram_publica_em_duas_etapas_com_a_imagem_no_armazenamento_publico(redes):
+def test_instagram_publica_em_duas_etapas_com_a_imagem_no_armazenamento_privado(redes):
+    """v0.22.0 (rodada 2 da varredura geral): a imagem da notícia vai, como a da Pauta, para o bucket PRIVADO com nome aleatório, e
+    a Meta recebe só um link assinado de 10 minutos. Antes: o bucket público "radar-redes", com o nome <conteúdo>-<canal>-<envio>.jpg
+    (fácil de adivinhar), para sempre — mesmo depois de excluída da rede."""
     db, c1 = redes
     envio = autorizar(db, c1, "instagram")
     status, r = pedir({"acao": "publicar", "envio": envio})
     assert status == 200 and r == {"situacao": "publicado", "url": "https://www.instagram.com/p/ABC123/", "post_id": "midia-1"}, r
     caminho, tipo, dados = ESTADO["storage"][0]
-    assert caminho == f"/storage/v1/object/radar-redes/{c1}-instagram-{envio}.jpg" and tipo == "image/jpeg" and dados.startswith(b"\xff\xd8")
-    assert "radar-redes" in ESTADO["buckets"]                                   # o bucket público é criado na primeira vez
+    assert re.fullmatch(r"/storage/v1/object/radar-pauta/p-[0-9a-f-]{36}\.jpg", caminho) and tipo == "image/jpeg" and dados.startswith(b"\xff\xd8")
+    assert ESTADO["buckets"] == {"radar-pauta"} and ESTADO["publicos"] == set()  # nenhum bucket público é criado
+    assert ESTADO["upsert"] == [None]                                            # nunca sobrescreve
     chamadas = [(m, p) for m, p, _ in ESTADO["meta"]]
     assert chamadas == [("POST", "ig-1/media"), ("GET", "cont-1"), ("GET", "cont-1"), ("POST", "ig-1/media_publish"), ("GET", "midia-1")]
     criar = ESTADO["meta"][0][2]
-    assert criar["image_url"] == f"{PONTE}/storage/v1/object/public/radar-redes/{c1}-instagram-{envio}.jpg"
+    assert criar["image_url"] == f"{PONTE}/storage/v1" + caminho.replace("/storage/v1/object/", "/object/sign/") + "?token=assinado.1"
+    assert ESTADO["assinaturas"] == [(caminho.replace("/object/", "/object/sign/"), {"expiresIn": 600})]
     assert criar["caption"].startswith("Prazo do Simples") and ESTADO["meta"][3][2]["creation_id"] == "cont-1"
     linha = db.execute("select situacao, post_id, url, imagem, imagem_url from radar_redes_envios where id = %s", (envio,)).fetchone()
-    assert linha[:4] == ("publicado", "midia-1", "https://www.instagram.com/p/ABC123/", None) and linha[4].endswith(".jpg")
+    assert linha[:4] == ("publicado", "midia-1", "https://www.instagram.com/p/ABC123/", None) and linha[4] == PONTE + caminho   # o interno
     # de novo: não publica duas vezes
     status, r = pedir({"acao": "publicar", "envio": envio})
     assert status == 400 and "não está aguardando envio" in r["message"] and len(ESTADO["meta"]) == 5
@@ -293,7 +325,8 @@ def test_facebook_publica_a_foto_na_pagina_com_a_legenda(redes):
     status, r = pedir({"acao": "publicar", "envio": envio})
     assert status == 200 and r["url"] == "https://www.facebook.com/artecon/posts/9" and r["post_id"] == "pagina-1_post-9"
     metodo, caminho, params = ESTADO["meta"][0]
-    assert (metodo, caminho) == ("POST", "pagina-1/photos") and params["message"].startswith("Prazo") and params["url"].endswith(".jpg")
+    assert (metodo, caminho) == ("POST", "pagina-1/photos") and params["message"].startswith("Prazo")
+    assert params["url"].startswith(f"{PONTE}/storage/v1/object/sign/radar-pauta/p-") and "?token=" in params["url"]   # v0.22.0: o link assinado
 
 
 def test_erro_da_meta_fica_na_autorizacao_sem_o_token_e_a_nova_tentativa_reaproveita_a_imagem(redes):
@@ -387,20 +420,33 @@ def test_chave_interna_nova_vai_so_no_apikey_e_o_armazenamento_funciona(redes, p
     db, c1 = redes
     status, r = pedir({"acao": "diagnostico"}, porta=porta)
     itens = {i["item"]: i for i in r["itens"]}                     # v0.21.0: depois dele vem o armazenamento privado da Pauta
-    assert status == 200 and itens["Armazenamento das imagens"] == {"item": "Armazenamento das imagens", "ok": True, "detalhe": 'bucket público "radar-redes"'}
-    assert itens["Armazenamento privado da Pauta"]["ok"] is True                # o bucket privado também é criado com a chave nova
+    assert status == 200 and itens["Armazenamento das imagens"] == {"item": "Armazenamento das imagens", "ok": True,
+                                                                    "detalhe": 'bucket privado "radar-pauta" (a notícia e a Pauta; a Meta recebe um link de 10 minutos)'}
+    assert "Armazenamento privado da Pauta" not in itens and ESTADO["publicos"] == set()   # v0.22.0 (rodada 2): um só, privado
     envio = autorizar(db, c1, "facebook")
     status, r = pedir({"acao": "publicar", "envio": envio}, porta=porta)
     assert status == 200 and r["situacao"] == "publicado", r
     caminhos = {c[1] for c in _so_no_apikey()}
     assert "/rest/v1/rpc/radar_rede_iniciar" in caminhos and "/rest/v1/rpc/radar_rede_concluir" in caminhos
-    assert any(c.startswith("/storage/v1/object/radar-redes/") for c in caminhos)
+    assert any(c.startswith("/storage/v1/object/radar-pauta/p-") for c in caminhos)
     assert db.execute("select situacao from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == "publicado"
+
+
+def test_com_a_chave_publica_nova_o_apikey_dos_pedidos_com_o_token_de_quem_chama_e_ela(redes):
+    """Rodada 2 da varredura geral: o Supabase desliga a chave anon antiga até o fim de 2026; desligada, ela seria recusada no apikey.
+    Com SUPABASE_PUBLISHABLE_KEYS (a nova, sb_publishable_…), o apikey dos pedidos feitos com o token do administrador é ela; sem a
+    lista nova, continua a anon."""
+    db, c1 = redes
+    for porta, prefixo in ((PORTA_LISTA_NOVA, PUBLICA_NOVA[:10]), (PORTA_FUNCAO, jwt("anon")[:10])):
+        ESTADO["chaves"] = []
+        assert pedir({"acao": "diagnostico"}, porta=porta)[0] == 200
+        papel = [c for c in ESTADO["chaves"] if c[1] == "/rest/v1/rpc/radar_papel"]
+        assert papel and all(apikey == prefixo and auth == jwt("authenticated", ADMIN)[:10] for _, _, apikey, auth in papel), papel
 
 
 def test_chave_antiga_continua_nos_dois_cabecalhos_e_bucket_que_ja_existe_nao_e_erro(redes):
     db, c1 = redes
-    ESTADO["buckets"].add("radar-redes")
+    ESTADO["buckets"].add("radar-pauta")
     ESTADO["bucket_get_falha"] = True                         # a consulta falhou, mas o bucket existe: o Supabase responde "409"
     status, r = pedir({"acao": "diagnostico"})
     assert status == 200 and next(i for i in r["itens"] if i["item"] == "Armazenamento das imagens")["ok"] is True, r
@@ -446,6 +492,25 @@ def test_excluir_apaga_na_meta_e_registra(redes):
     assert st == 400 and "não está publicada" in r["message"]
 
 
+def test_envio_de_antes_da_versao_com_o_link_publico_sai_e_a_imagem_some_ao_excluir(redes):
+    """v0.22.0 (rodada 2 da varredura geral): o envio que deu erro antes desta versão guardou o link do bucket público: a nova
+    tentativa ainda manda esse link (não sobe de novo); e, ao excluir da rede pela função, a imagem sai do bucket público (a Meta
+    já tem a cópia). Endereço que não é desse formato nunca é apagado."""
+    db, c1 = redes
+    envio = autorizar(db, c1, "instagram")
+    publica = f"{PONTE}/storage/v1/object/public/radar-redes/{c1}-instagram-{envio}.jpg"
+    db.execute("update radar_redes_envios set situacao = 'erro', erro = 'Meta fora do ar', imagem = null, imagem_url = %s where id = %s",
+               (publica, envio))
+    assert pedir({"acao": "publicar", "envio": envio})[0] == 200
+    assert ESTADO["storage"] == [] and ESTADO["assinaturas"] == [] and ESTADO["meta"][0][2]["image_url"] == publica
+    assert pedir({"acao": "excluir", "envio": envio}) == (200, {"situacao": "excluido", "canal": "instagram"})
+    assert [c for c, _ in ESTADO["apagados"]] == [f"/storage/v1/object/radar-redes/{c1}-instagram-{envio}.jpg"]
+    # a de agora (privada) não é apagada ao excluir: não está à vista de ninguém (e a revogação de um termo a acha pelo envio)
+    fb = autorizar(db, c1, "facebook")
+    assert pedir({"acao": "publicar", "envio": fb})[0] == 200
+    assert pedir({"acao": "excluir", "envio": fb})[0] == 200 and len(ESTADO["apagados"]) == 1
+
+
 def test_excluir_que_a_meta_recusa_fica_publicado_e_explica(redes):
     db, c1 = redes
     ig = autorizar(db, c1, "instagram")
@@ -454,6 +519,14 @@ def test_excluir_que_a_meta_recusa_fica_publicado_e_explica(redes):
     st, r = pedir({"acao": "excluir", "envio": ig})
     assert st == 502 and "Já apaguei" in r["message"] and TOKEN not in r["message"] and TOKEN_PAGINA not in r["message"]
     assert db.execute("select situacao from radar_redes_envios where id = %s", (ig,)).fetchone()[0] == "publicado"
+
+
+def robo_registra_site(conteudo, envio_site, url):
+    """O robô do site (radar_site_publicar.py, sem usuário): marca o envio "enviando" e registra a publicação. Varredura geral
+    (v0.22.0): com o site na vez do robô, o registro à mão é recusado (RADAR145) e só o do robô, com o link do site, libera as redes."""
+    with como("service_role") as c:
+        c.execute("update radar_site_envios set situacao = 'enviando' where id = %s", (envio_site,))
+        c.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, %s, current_date)", (conteudo, url))
 
 
 def test_robo_so_publica_o_que_foi_autorizado_junto_com_o_site(redes):
@@ -470,7 +543,7 @@ def test_robo_so_publica_o_que_foi_autorizado_junto_com_o_site(redes):
     with como("authenticated", ADMIN) as c:
         r = c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, null, %s)",
                       (c2, lido, JPEG, "Leia a matéria completa: {LINK DO SITE}")).fetchone()[0]
-    registrar_site(c2, url="https://artecon.cnt.br/news/view/todos")
+    robo_registra_site(c2, r["site"], "https://artecon.cnt.br/news/view/todos")
     st, res = pedir({"acao": "publicar", "envio": r["facebook"]}, cab=robo)
     assert (st, res["situacao"]) == (200, "publicado")
     publicado = [m for m in ESTADO["meta"] if m[1] == "pagina-1/photos"][-1][2]
@@ -490,7 +563,7 @@ def test_robo_com_a_chave_antiga_e_aceito_quando_a_funcao_tem_a_chave_nova(redes
     lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c2,)).fetchone()[0]
     with como("authenticated", ADMIN) as c:
         r = c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, null, %s)", (c2, lido, JPEG, "Leia: {LINK DO SITE}")).fetchone()[0]
-    registrar_site(c2, url="https://artecon.cnt.br/news/view/chave")
+    robo_registra_site(c2, r["site"], "https://artecon.cnt.br/news/view/chave")
     falsa = jwt("service_role", segredo="outro-segredo-qualquer-com-32-caracteres")
     st, res = pedir({"acao": "publicar", "envio": r["facebook"]}, porta=PORTA_CHAVE_NOVA, cab={"Authorization": "Bearer " + falsa, "apikey": falsa})
     assert st in (401, 403) and db.execute("select situacao from radar_redes_envios where id = %s", (r["facebook"],)).fetchone()[0] == "autorizado"
@@ -538,6 +611,51 @@ def test_admin_aciona_o_robo_do_site_uma_vez_e_a_recusa_do_github_nao_mostra_o_t
     # clicar de novo logo em seguida não aciona outra vez
     status, r = pedir({"acao": "acionar_robo"})
     assert (status, r["acionado"], r["mensagem"]) == (200, True, "O robô já foi acionado há instantes.") and len(ESTADO["github"]) == 1
+
+
+def test_robo_do_site_desligado_pelo_github_e_religado_e_o_desligado_a_mao_nao_promete_rodada(redes):
+    """Rodada 2 da varredura geral: no repositório público, o GitHub desliga o workflow agendado depois de 60 dias sem atividade, e
+    o acionamento recebe 422. Antes a função dizia "não aceita acionamento manual" e prometia "a próxima rodada automática", que
+    também não vinha. Agora: desligado por inatividade, ela religa e aciona; desligado à mão, diz onde religar, sem prometer rodada."""
+    db, c1 = redes
+    autorizar_site(db)
+    wf = "radar-site-publicar.yml"
+    ESTADO["workflows"][wf] = "disabled_manually"
+    status, r = pedir({"acao": "acionar_robo"}, porta=PORTA_GITHUB)
+    assert (status, r["acionado"], r["motivo"]) == (200, False, "workflow_desligado"), r
+    assert "desligado à mão" in r["mensagem"] and "Enable workflow" in r["mensagem"] and "próxima rodada automática" not in r["mensagem"]
+    assert "só sai depois que ele for religado" in r["mensagem"] and not [g for g in ESTADO["github_wf"] if g[0] == "PUT"]
+    ESTADO["workflows"][wf] = "nao_religa"                                          # por inatividade, e o token não consegue religar
+    status, r = pedir({"acao": "acionar_robo"}, porta=PORTA_GITHUB)
+    assert r["motivo"] == "workflow_desligado" and "60 dias" in r["mensagem"] and "próxima rodada automática" not in r["mensagem"], r
+    ESTADO["workflows"][wf] = "disabled_inactivity"
+    status, r = pedir({"acao": "acionar_robo"}, porta=PORTA_GITHUB)
+    assert (status, r["acionado"]) == (200, True) and "o Radar religou e acionou" in r["mensagem"], r
+    assert ESTADO["workflows"][wf] == "active" and [g[:2] for g in ESTADO["github"]][-2:] == [("POST", CAMINHO_GITHUB)] * 2
+    assert TOKEN_GITHUB not in json.dumps(r)
+
+
+def test_agenda_religa_os_robos_agendados_desligados_por_inatividade_e_nao_os_desligados_a_mao(peca):
+    """Rodada 2 da varredura geral: uma vez por dia, a agenda do banco pede "manter_robos" (sql/radar-redes-agenda.sql). Cada robô
+    agendado do repositório público (coleta, robô do site, resumo) ativo é renovado e o desligado por inatividade, religado; o
+    desligado à mão fica (o LEIAME manda desligar ao desfazer a versão). Só a agenda e o administrador; o robô do site, não."""
+    db, c1 = peca
+    ESTADO["workflows"].update({"radar-coletar.yml": "disabled_inactivity", "radar-site-publicar.yml": "active",
+                                "radar-resumo.yml": "disabled_manually"})
+    status, r = pedir({"acao": "manter_robos"}, cab=AGENDA, porta=PORTA_GITHUB)
+    assert status == 200 and r == {"ok": False, "robos": [{"workflow": "radar-coletar.yml", "estado": "active", "religado": True},
+                                                          {"workflow": "radar-site-publicar.yml", "estado": "active", "religado": False},
+                                                          {"workflow": "radar-resumo.yml", "estado": "disabled_manually", "religado": False}]}, r
+    assert [(m, a) for m, a, _ in ESTADO["github_wf"] if m == "PUT"] == [("PUT", "radar-coletar.yml"), ("PUT", "radar-site-publicar.yml")]
+    assert ESTADO["workflows"]["radar-resumo.yml"] == "disabled_manually" and ESTADO["github"] == []     # nada é acionado
+    assert all(auth == "Bearer " + TOKEN_GITHUB for *_, auth in ESTADO["github_wf"])
+    registro = LOGS[PORTA_GITHUB].read_text()
+    assert "radar-coletar.yml active (religado)" in registro and TOKEN_GITHUB not in registro
+    assert pedir({"acao": "manter_robos"}, porta=PORTA_GITHUB)[0] == 200                     # o administrador também
+    assert pedir({"acao": "manter_robos"}, uid=EDITOR, porta=PORTA_GITHUB)[0] == 403
+    assert pedir({"acao": "manter_robos"}, cab=ROBO, porta=PORTA_GITHUB)[0] == 403            # o robô do site só publica
+    st, r = pedir({"acao": "manter_robos"}, cab=AGENDA, porta=PORTA_SEM_META)                 # sem o token: diz o que falta
+    assert st == 200 and r["ok"] is False and "RADAR_GITHUB_TOKEN" in r["mensagem"]
 
 
 def test_sem_nada_esperando_o_robo_do_site_nao_chama_o_github(redes):
@@ -747,7 +865,7 @@ def test_agenda_teste_responde_sem_publicar(peca):
     db, c1 = peca
     ig = agendada(db)["instagram"]                                                  # há peça vencida: o teste não a toca
     for porta in (PORTA_FUNCAO, PORTA_SEM_META):                                    # nem precisa da Meta configurada
-        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.21.0"})
+        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.22.0"})
     assert pedir({"acao": "agenda_teste"}) == (403, {"message": "Só a agenda do banco usa o teste da agenda."})
     assert pedir({"acao": "agenda_teste"}, uid=EDITOR)[0] == 403
     assert pedir({"acao": "agenda_teste"}, cab=ROBO)[0] == 403
@@ -775,13 +893,13 @@ def test_peca_pela_agenda_com_a_chave_interna_nova_vai_so_no_apikey(peca, porta)
 def test_diagnostico_confere_o_armazenamento_privado_da_pauta(peca):
     db, c1 = peca
     status, r = pedir({"acao": "diagnostico"})
-    item = next(i for i in r["itens"] if i["item"] == "Armazenamento privado da Pauta")
+    item = next(i for i in r["itens"] if i["item"] == "Armazenamento das imagens")
     assert status == 200 and r["tudo_certo"] is True and item["ok"] is True and item["detalhe"].startswith('bucket privado "radar-pauta"')
-    assert ESTADO["buckets"] == {"radar-redes", "radar-pauta"} and ESTADO["publicos"] == {"radar-redes"}
+    assert ESTADO["buckets"] == {"radar-pauta"} and ESTADO["publicos"] == set()     # v0.22.0 (rodada 2): o público não é mais criado
     # alguém deixou o "radar-pauta" público no painel: o diagnóstico mostra, e a peça não sai (nenhuma foto vai para lá)
     ESTADO["publicos"].add("radar-pauta")
     status, r = pedir({"acao": "diagnostico"})
-    item = next(i for i in r["itens"] if i["item"] == "Armazenamento privado da Pauta")
+    item = next(i for i in r["itens"] if i["item"] == "Armazenamento das imagens")
     assert r["tudo_certo"] is False and item["ok"] is False and 'O armazenamento "radar-pauta" está público' in item["detalhe"]
     ig = agendada(db)["instagram"]
     status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
@@ -813,7 +931,8 @@ def test_funcao_nova_com_banco_antigo_publica_noticia(redes):
         assert status == 200 and r == {"situacao": "publicado", "url": "https://www.instagram.com/p/ABC123/", "post_id": "midia-1"}, r
         leituras = [c for c in ESTADO["chaves"] if c[:2] == ("GET", "/rest/v1/radar_redes_envios")]
         assert len(leituras) == 2                                                    # com peca_id (recusada) e de novo sem ela
-        assert ESTADO["storage"][0][0] == f"/storage/v1/object/radar-redes/{c1}-instagram-{envio}.jpg" and ESTADO["assinaturas"] == []
+        # v0.22.0 (rodada 2): a notícia também vai ao bucket privado, com o link assinado (que não depende do banco)
+        assert ESTADO["storage"][0][0].startswith("/storage/v1/object/radar-pauta/p-") and len(ESTADO["assinaturas"]) == 1
         assert db.execute("select situacao, post_id from radar_redes_envios where id = %s", (envio,)).fetchone() == ("publicado", "midia-1")
     finally:
         if db.execute("""select count(*) from information_schema.columns

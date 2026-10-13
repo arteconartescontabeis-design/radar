@@ -5,6 +5,7 @@ de /admin/news/register (title, keywords, metadescription, text, category, image
 """
 from __future__ import annotations
 
+import html
 import json
 import re
 import threading
@@ -27,7 +28,7 @@ PORTA = 3997
 BASE = f"http://127.0.0.1:{PORTA}"
 MESES = "Janeiro Fevereiro Março Abril Maio Junho Julho Agosto Setembro Outubro Novembro Dezembro".split()
 SITE = {"noticias": [], "envios": [], "logins": 0, "exigir_captcha": False, "publicar": True, "categorias": None, "fora": False,
-        "exclusoes": [], "excluir": True}
+        "exclusoes": [], "excluir": True, "encurtar": None, "editar": True}
 FORM = """<form method="post" action="/admin/news/register" enctype="multipart/form-data">
   <input type="hidden" name="_token" value="tok123">
   <label for="t">Título</label><input id="t" name="title" type="text" required>
@@ -65,10 +66,17 @@ class Site(BaseHTTPRequestHandler):
         if self.path == "/admin/news/list":                         # v0.17.0: a lista do painel (como o site real: JSON do DataTables)
             if not self._logado():
                 return self._html(302, "", [("Location", "/admin/signin")])
-            linhas = [[n["title"], "<img src='x.jpg'>", "Tributário", "09/10/2026 10:00", "Robo",
+            # rodada 2: o painel pode encurtar o título longo ("…comprido...") e tem o link do formulário de edição de cada notícia
+            curto = lambda t: t[:SITE["encurtar"]] + "..." if SITE["encurtar"] and len(t) > SITE["encurtar"] else t
+            linhas = [[curto(n["title"]), "<img src='x.jpg'>", "Tributário", "09/10/2026 10:00", "Robo",
                        f"<a href='{BASE}/admin/news/register/ed-{n['slug']}'><i></i></a> <a href='{BASE}/admin/news/delete/tk-{n['slug']}' "
                        "class='text-danger' data-confirm='Tem certeza que deseja excluir esta notícia?'><i></i></a>"] for n in SITE["noticias"]]
             return self._html(200, json.dumps({"data": linhas}))
+        m = re.fullmatch(r"/admin/news/register/ed-(.+)", self.path)
+        if m and self._logado() and SITE["editar"]:                 # o formulário de edição, com o título inteiro
+            n = next((n for n in SITE["noticias"] if n["slug"] == m.group(1)), None)
+            if n:
+                return self._html(200, f"<form method='post'><input name='title' type='text' value=\"{html.escape(n['title'])}\"></form>")
         m = re.fullmatch(r"/admin/news/delete/tk-(.+)", self.path)
         if m and self._logado():
             SITE["exclusoes"].append(m.group(1))
@@ -130,7 +138,8 @@ def site():
 
 @pytest.fixture()
 def cenario(api_postgrest, site, limpo):
-    SITE.update(noticias=[], envios=[], logins=0, exigir_captcha=False, publicar=True, categorias=None, fora=False, exclusoes=[], excluir=True)
+    SITE.update(noticias=[], envios=[], logins=0, exigir_captcha=False, publicar=True, categorias=None, fora=False, exclusoes=[], excluir=True,
+                encurtar=None, editar=True)
     limpo.execute("insert into radar_config (chave, valor) values ('site', %s::jsonb) "
                   "on conflict (chave) do update set valor = excluded.valor", (f'{{"lista": "{BASE}/news"}}',))
     yield limpo
@@ -357,6 +366,48 @@ def test_exclusao_na_duvida_nao_exclui_nada(cenario):
     assert excluir() == [f"exclusão {x}: excluída do site"]
 
 
+def test_exclusao_pelo_comeco_do_titulo_so_com_o_titulo_inteiro_conferido(cenario):
+    """Rodada 2 da varredura geral: o painel mostra o título longo cortado ("…vai..."). A notícia achada só pelo começo do título
+    podia ser OUTRA da mesma série (a pedida foi apagada à mão ou teve o título mudado lá) e era excluída sem conferir. Agora o robô
+    lê o título inteiro no formulário de edição do painel (só abre): exclui só a pedida; a outra fica."""
+    c, envio = autorizado(cenario)
+    rodar()
+    SITE["encurtar"] = 40
+    pedida = SITE["noticias"][0]
+    serie = {"slug": "serie-2028", "title": "Prazo de opção pelo Simples Nacional vai até 29 de janeiro de 2028", "text": "x"}
+    assert pedida["title"][:40] == serie["title"][:40] and pedida["title"] != serie["title"]
+
+    def de_novo(x):
+        with como("authenticated", ADMIN) as a:
+            a.execute("select radar_cancelar_exclusao_site(%s)", (x,))
+        return pedir_exclusao(c)
+    # a pedida teve o título mudado à mão (a página continua no ar) e só a da série seguinte aparece com o mesmo começo: não exclui
+    SITE["noticias"] = [dict(pedida, title="Título trocado à mão no painel"), serie]
+    x = pedir_exclusao(c)
+    assert excluir() == [f"exclusão {x}: não concluída"] and SITE["exclusoes"] == []
+    assert "não achei a notícia com este título" in cenario.execute("select erro from radar_site_exclusoes where id = %s", (x,)).fetchone()[0]
+    # sem o formulário de edição (o painel mudou), na dúvida não exclui
+    SITE["noticias"], SITE["editar"] = [pedida], False
+    x = de_novo(x)
+    assert excluir() == [f"exclusão {x}: não concluída"] and SITE["noticias"] == [pedida] and SITE["exclusoes"] == []
+    erro = cenario.execute("select erro from radar_site_exclusoes where id = %s", (x,)).fetchone()[0]
+    assert "não consegui ler o título inteiro" in erro and "ed-" not in erro and "tk-" not in erro
+    # a pedida está no painel (cortada): o título inteiro confere e só ela sai
+    SITE["noticias"], SITE["editar"] = [pedida, {"slug": "outra", "title": "Outra notícia que fica", "text": "x"}], True
+    x = de_novo(x)
+    assert excluir() == [f"exclusão {x}: excluída do site"] and SITE["exclusoes"] == [pedida["slug"]]
+    # publicada de novo e apagada à mão no painel; só a da série seguinte aparece (cortada, com o mesmo começo): a página pedida já
+    # não abre, então conclui sem excluir nada (antes, a da série saía no lugar dela)
+    with como("authenticated", ADMIN) as a:
+        a.execute("select radar_autorizar_site(%s, 'Simples Nacional', %s)",
+                  (c, cenario.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]))
+    rodar()
+    SITE["noticias"] = [serie]
+    x = pedir_exclusao(c)
+    assert excluir() == [f"exclusão {x}: excluída do site"]
+    assert SITE["noticias"] == [serie] and SITE["exclusoes"] == [pedida["slug"]]
+
+
 def test_exclusao_com_o_site_fora_do_ar_tenta_de_novo_e_desiste_depois_de_2_horas(cenario):
     c, envio = autorizado(cenario)
     rodar()
@@ -395,6 +446,33 @@ def test_redes_que_iam_junto_com_o_site_sao_mandadas_para_a_funcao(cenario):
                         for k in ("instagram", "facebook")]
     fb = cenario.execute("select legenda from radar_redes_envios where id = %s", (r["facebook"],)).fetchone()[0]
     assert fb == "Leia: " + BASE + "/news/view/noticia-1"
+
+
+def test_robos_mandam_a_chave_interna_nova_so_no_apikey():
+    """Rodada 2 da varredura geral: o Supabase desliga a chave service_role antiga (JWT) até o fim de 2026. Com a nova (sb_secret_…) no
+    segredo SUPABASE_SERVICE_KEY, os robôs a mandam só no apikey (no Authorization o Supabase recusa: "Invalid Compact JWS"), no banco
+    e no pedido à radar-redes; a antiga continua nos dois cabeçalhos."""
+    import radar_banco
+    from conftest import SECRETA
+    servico = jwt("service_role")
+    assert radar_banco.cabecalhos_da_chave(SECRETA) == {"apikey": SECRETA}
+    assert radar_banco.cabecalhos_da_chave(servico) == {"apikey": servico, "Authorization": "Bearer " + servico}
+    b = Banco("https://projeto.supabase.co", SECRETA)
+    assert b.sessao.headers["apikey"] == SECRETA and "Authorization" not in b.sessao.headers
+    assert Banco("https://projeto.supabase.co", servico).sessao.headers["Authorization"] == "Bearer " + servico
+    chamadas = []
+
+    class Resp:
+        status_code, text = 200, "{}"
+        def json(self):
+            return {"situacao": "publicado"}
+
+    class BancoFalso:
+        def _pedir(self, *a, **k):
+            return [{"id": 7, "canal": "instagram"}]
+    pub.publicar_redes(BancoFalso(), "https://projeto.supabase.co", SECRETA, post=lambda url, json=None, headers=None, timeout=None:
+                       chamadas.append(headers) or Resp())
+    assert chamadas == [{"apikey": SECRETA, "Content-Type": "application/json"}]
 
 
 def test_sem_a_funcao_de_concluir_no_banco_nao_exclui_nada_do_site(cenario):

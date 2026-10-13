@@ -298,6 +298,7 @@ const VERSOES = [
     "Configurações → Agenda de obrigações: “Preencher fontes oficiais” põe a fonte oficial de cada vencimento (norma, artigo e o link oficial, conferidos em 12/10/2026) nas obrigações da agenda das redes que estão sem fonte, e salva. Regra, dia, ajuste, nome e fonte já escrita não mudam; a obrigação que não está na tabela aparece para conferir à mão. A fonte vai às informações conferidas da agenda da semana da Pauta.",
     "Configurações → Fecho, assinatura e identificação legal: a ajuda e os exemplos trazem o CRC certo da Artecon, “CRC-SC 007129/O-0” (escrito “SC-007129/0-0”, a tela padroniza). O que está salvo não muda sozinho: confira que o CRC da sua assinatura é esse, porque ele vai ao fim de toda legenda, à faixa da arte e à cartela do reel.",
     "Revisão geral (13/10): no “Publicar em todos”, só o link do site registrado pelo robô libera o Instagram e o Facebook (o registro à mão espera o robô); a frase do boletim pago não se autoriza mais e o banco a recusa na aprovação e na publicação; autorizar de novo uma publicação cancelada no meio do envio pede “Conferi no Instagram/Facebook: não saiu”; na Pauta, o CRC da identificação é conferido inteiro, a pessoa de um vídeo guardado não se apaga (marque a revogação), a caixa “A pessoa viu o vídeo final” vale também para quem foi desmarcada depois do envio e o selo longo quebra a linha no celular; a IA recebe o texto de fora sem as marcas de bloco e mascara o nome escrito com apóstrofo curvo ou hífen; a falha de login da leitura da ITC aparece em Fontes.",
+    "Revisão geral, 2ª rodada (13/10): a frase do boletim pago que está numa matéria de outro assunto (ou ainda na fila) aparece no quadro vermelho do conteúdo (antes o banco recusava sem dizer qual) e o “Revisar com IA” a reescreve; a ementa oficial do ato que o boletim lista não conta como frase do boletim; o CRC com acento não trava mais a Pauta; no “Usar a sugestão” da peça, a lista de fontes nunca é cortada (quem encurta é o texto da IA, e o recado avisa); cada publicação nova da Pauta que não sai manda um e-mail, mesmo com o aviso aberto; o Painel avisa quando o robô de coleta não roda há mais de 12 horas, e a agenda do banco religa os robôs que o GitHub desliga por falta de atividade; a imagem da notícia nas redes vai para o armazenamento privado; a exclusão no site confere o título inteiro; a sessão fica só na aba (cada aba entra à parte); e o Radar aceita as chaves novas do Supabase (veja o LEIAME, “Chaves novas do Supabase”).",
     "Administrador: para instalar, rode o sql/radar-setup-v0.22.0.sql e o sql/radar-video-agenda.sql, crie a função radar-video (com “Verify JWT” ligado), copie a chave do robô do Vault para o repositório privado radar-video e guarde no Supabase o token do GitHub só desse repositório (passo a passo no LEIAME, “Da v0.21.0 para a v0.22.0”). Publique também o radar-video.js novo junto com o index.html e o radar-pauta.js. Antes do primeiro reel, a equipe assina o termo novo, que cita o corretor."]],
   ["0.21.0", "12/10/2026", [
     "Aba Pauta: o calendário de publicações no Instagram e no Facebook, uma peça por dia, na visão da semana (de segunda a domingo). O calendário do plano de publicações entra por “Importar o calendário (CSV)”: a tela confere o arquivo inteiro, mostra todos os erros de uma vez (com a linha) e o que muda, e só grava depois. A peça que já entrou em produção não muda na importação. O CSV tem nomes da equipe: nunca vai para o GitHub.",
@@ -733,7 +734,10 @@ async function pedir(metodo, caminho, {params, corpo, prefer, semSessao, tempo} 
   const url = new URL(URL_BASE + caminho);
   for(const [k,v] of Object.entries(params || {})) url.searchParams.set(k, v);
   const cab = {"apikey": CHAVE, "Content-Type": "application/json"};
-  cab.Authorization = "Bearer " + (!semSessao && E.sessao ? E.sessao.access_token : CHAVE);
+  // v0.22.0 (rodada 2 da varredura geral): sem sessão, a chave pública só vai no Authorization se for a anon antiga (JWT). A nova
+  // (sb_publishable_…, que substitui a anon até o fim de 2026) só vale no apikey: no Authorization o Supabase recusa (não é JWT)
+  const portador = !semSessao && E.sessao ? E.sessao.access_token : CHAVE;
+  if(/^[\w-]+\.[\w-]+\.[\w-]+$/.test(portador)) cab.Authorization = "Bearer " + portador;
   if(prefer) cab.Prefer = prefer;
   let r; const limite = new AbortController(), relogio = setTimeout(() => limite.abort(), tempo || 25000);
   try { r = await fetch(url, {method: metodo, headers: cab, body: corpo === undefined ? undefined : JSON.stringify(corpo), signal: limite.signal}); }
@@ -842,17 +846,30 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.fundosArte = {}; E.kitAberto = {}; E.capaDesenhada = null; E.arteCorte = {}; E.pauta = {semana:null, peca:null, vista:"semana", previa:null}; clearTimeout(E.video?.relogio); E.video = {arquivos:{}}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.pagoBanco = {}; E.fundosArte = {}; E.kitAberto = {}; E.capaDesenhada = null; E.arteCorte = {}; E.pauta = {semana:null, peca:null, vista:"semana", previa:null}; clearTimeout(E.video?.relogio); E.video = {arquivos:{}}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
-function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
+/* v0.22.0 (rodada 2 da varredura geral): a sessão (access_token e refresh_token) fica na sessionStorage desta aba, não mais no
+   localStorage. O Radar é servido em arteconartescontabeis-design.github.io, a MESMA origem dos outros aplicativos da conta no GitHub
+   Pages: qualquer script deles lia o localStorage e, com o refresh_token, agia como o administrador (autorizar e publicar nas redes).
+   A sessionStorage é só desta aba: cada aba entra à parte e, fechada a aba, a sessão some. A da versão anterior (no localStorage)
+   passa para a primeira aba que abrir e sai de lá. A página do informativo, aberta pelo Radar numa aba nova, usa a sessão desta aba
+   (sessaoAtual e renovarSessao): só esta renova (o refresh_token em duas abas faria o Supabase derrubar a sessão). */
+function lerSessaoGuardada(){
+  try{ const antiga = localStorage.getItem("radar_sessao");
+    if(antiga !== null){ localStorage.removeItem("radar_sessao"); if(!sessionStorage.getItem("radar_sessao")) sessionStorage.setItem("radar_sessao", antiga); } }catch(e){}
+  try{ return JSON.parse(sessionStorage.getItem("radar_sessao") || "null"); }catch(e){ return null; }
+}
+function guardarSessao(s){ E.sessao = s; try{ s ? sessionStorage.setItem("radar_sessao", JSON.stringify(s)) : sessionStorage.removeItem("radar_sessao"); }catch(e){}
+  try{ localStorage.removeItem("radar_sessao"); }catch(e){} }
+function sessaoAtual(){ return E.sessao; }
 async function entrar(email, senha){
   const s = await pedir("POST", "/auth/v1/token", {params:{grant_type:"password"}, corpo:{email, password:senha}, semSessao:true});
   guardarSessao(s);
 }
 async function renovarSessao(){
   if(!E.sessao?.refresh_token) return false;
-  // outra aba (ou a página do informativo) pode já ter renovado: usa a sessão que ela guardou
-  try{ const g = JSON.parse(localStorage.getItem("radar_sessao") || "null");
+  // a página do informativo, nesta mesma aba, pode já ter renovado: usa a sessão que ela guardou
+  try{ const g = JSON.parse(sessionStorage.getItem("radar_sessao") || "null");
     if(sessaoValida(g) && g.user.id === E.sessao.user.id && g.access_token !== E.sessao.access_token){ E.sessao = g; return true; } }catch(e){}
   try{
     const s = await pedir("POST", "/auth/v1/token", {params:{grant_type:"refresh_token"}, corpo:{refresh_token:E.sessao.refresh_token}, semSessao:true});
@@ -936,7 +953,13 @@ const TELAS = {
     const doRobo = p.rascunhos_robo ? await ler("radar_conteudos", {select:"id,titulo,assunto_id,criado_em,avisos_ia", status:"eq.rascunho", modelo_ia:"like.*(robô)", order:"criado_em.desc", limit:"10"}) : [];
     const [mesIa] = await ler("radar_v_ia_mes", {select:"*"});
     const c = (n, rotulo, aba, alerta) => `<button class="cartao ${alerta && n ? "alerta" : ""}" data-acao="aba" data-aba="${aba}"><b>${n}</b><span>${rotulo}</span></button>`;
-    return `<h1>Painel do dia</h1>
+    // v0.22.0 (rodada 2 da varredura geral): o robô de coleta parado há mais de 12 horas (roda de 6 em 6 no GitHub). O GitHub desliga
+    // sozinho os robôs agendados do repositório público depois de 60 dias sem atividade, e eles só voltam com "Enable workflow"
+    const parada = p.coleta_atrasada ? `<div class="aviso alerta" id="coleta-parada"><b>O robô de coleta não roda há mais de 12 horas</b>${p.ultima_coleta
+      ? ` (a última rodada foi em ${dataHora(p.ultima_coleta)})` : ""}. Ele roda de 6 em 6 horas no GitHub; parado, param também o robô do site, os avisos por e-mail e o resumo de segunda. O GitHub desliga sozinho os robôs agendados do repositório público depois de 60 dias sem atividade: ${ehAdmin()
+      ? "no GitHub, Actions → “Radar — coleta das fontes oficiais” → Enable workflow (e também “Radar — publicar no site” e “Radar — resumo semanal”). A agenda do banco religa uma vez por dia os desligados por inatividade (sql/radar-redes-agenda.sql, com o segredo RADAR_GITHUB_TOKEN na função radar-redes)."
+      : "avise o administrador."}</div>` : "";
+    return `<h1>Painel do dia</h1>${parada}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
         ${c(p.capturas_24h, "Capturas nas últimas 24h", "fila")}
@@ -1218,7 +1241,7 @@ const TELAS = {
           <td>${h(mesExtenso(i.mes))}</td><td>${i.radar_informativo_itens.length}</td>
           <td>${selo(i.status === "fechado" ? "Fechado" : "Em montagem", i.status === "fechado" ? "ok" : "alerta")}</td>
           <td><div class="acoes" style="margin:0"><button class="btn peq sec" data-acao="abrir-informativo" data-id="${i.id}">Abrir</button>
-            <a class="btn peq sec" style="text-decoration:none" href="informativo.html?id=${i.id}" target="_blank" rel="noopener">Imprimir / PDF ↗</a></div></td></tr>`).join("")}</table></div>`
+            <a class="btn peq sec" style="text-decoration:none" href="informativo.html?id=${i.id}" target="_blank" rel="opener">Imprimir / PDF ↗</a></div></td></tr>`).join("")}</table></div>`
         : `<div class="painel"><p class="sub">Nenhuma edição criada ainda.</p></div>`}
       ${botaoMais("informativos", itens.length, lim, "edições")}`;
   },
@@ -1383,7 +1406,7 @@ async function telaInformativo(id){
   const mudados = fechado && i.fechado_em ? itens.filter(x => new Date(x.radar_conteudos.atualizado_em) > new Date(i.fechado_em)) : [];
   return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
     <h1>Informativo Mensal N.º ${h(numInformativo(i))}</h1>
-    <p>${selo(fechado ? "Fechado" : "Em montagem", fechado ? "ok" : "alerta")} <a href="informativo.html?id=${i.id}" target="_blank" rel="noopener">Abrir para imprimir / salvar em PDF ↗</a></p>
+    <p>${selo(fechado ? "Fechado" : "Em montagem", fechado ? "ok" : "alerta")} <a href="informativo.html?id=${i.id}" target="_blank" rel="opener">Abrir para imprimir / salvar em PDF ↗</a></p>
     ${pendentes.length ? `<div class="aviso erro"><b>Há ${pendentes.length} conteúdo(s) que deixaram de estar aprovados.</b> Aprove de novo ou remova antes de fechar e enviar.</div>` : ""}
     ${mudados.length ? `<div class="aviso erro"><b>${mudados.length} artigo(s) foram alterados depois que a edição foi fechada</b> (${h(mudados.map(x => x.radar_conteudos.titulo).join("; "))}). O PDF gerado agora sai com o texto novo, diferente do que foi conferido no fechamento.</div>` : ""}
     <form class="painel" data-form="informativo" data-id="${i.id}" data-lido="${h(i.atualizado_em)}"><h2>Dados da edição</h2>
@@ -1475,9 +1498,14 @@ async function telaAssunto(id){
   cont.sort((x, y) => ehAnalise(x) - ehAnalise(y) || x.id - y.id);
   const jaConvertido = cont.some(c => Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("Feito a partir do texto para análise"));
   const idsCont = cont.map(c => c.id).join(",");
-  const [pubs, envios, redes] = cont.length ? await Promise.all([ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id"}),
+  // rodada 2 da varredura geral: a trava do boletim pago do banco (RADAR146) compara com TODAS as capturas do boletim (de outro
+  // assunto ou ainda na fila), não só com as deste assunto: o banco diz onde, no título e no texto de cada conteúdo, está a frase que
+  // ele recusaria (só as posições; nada do boletim vem). Só para quem edita; sem resposta (banco antigo), fica a comparação da tela.
+  const [pubs, envios, redes, pagoBanco] = cont.length ? await Promise.all([ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id"}),
     ler("radar_site_envios", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
-    ler("radar_redes_envios", {select:"id,conteudo_id,canal,situacao,url,erro,autorizado_em,enviado_em,publicado_em", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"})]) : [[], [], []];
+    ler("radar_redes_envios", {select:"id,conteudo_id,canal,situacao,url,erro,autorizado_em,enviado_em,publicado_em", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
+    podeEditar() ? rpc("radar_copia_paga_trechos", {p_assunto:a.id, p_textos:cont.flatMap(c => [c.titulo || "", c.corpo || ""])}).catch(() => null) : null]) : [[], [], [], null];
+  E.pagoBanco = Object.fromEntries(Array.isArray(pagoBanco) ? cont.map((c, k) => [c.id, [...trechosDoBanco(c.titulo, pagoBanco[2 * k]), ...trechosDoBanco(c.corpo, pagoBanco[2 * k + 1])]]) : []);
   const idsImg = [...new Set(cont.map(c => c.imagem_id).filter(Boolean))];
   const listaImg = idsImg.length ? await ler("radar_imagens", {select:"id,dados,largura,altura", id:"in.(" + idsImg.join(",") + ")"}) : [];
   const imgs = Object.fromEntries(listaImg.map(i => [i.id, i.dados]));
@@ -1821,12 +1849,21 @@ function legendaRede(c, canal, urlSite, categoria, limite = 2200){
 }
 /* v0.20.0: a legenda montada: o texto, a linha de identificação legal e as hashtags, nesta ordem, em até "limite" caracteres. O que
    passa sai do fim do texto (no fim de uma frase, se der), nunca da identificação nem das hashtags. */
-function comporLegenda(texto, hashtags, limite = 2200){
-  const fim = [linhaIdentificacao(), hashtags].filter(Boolean).join("\n\n"), cabe = limite - (fim ? fim.length + 2 : 0);
+function comporLegenda(texto, hashtags, limite = 2200, fonte = ""){
+  const fim = [fonte, linhaIdentificacao(), hashtags].filter(Boolean).join("\n\n"), cabe = limite - (fim ? fim.length + 2 : 0);
   let t = String(texto || "").trim();
-  if(t.length > cabe){ const corte = t.slice(0, Math.max(0, cabe - 1)), p = Math.max(corte.lastIndexOf(". "), corte.lastIndexOf("\n"));
+  if(t.length > cabe){ const corte = t.slice(0, Math.max(0, cabe - 1)), p = fimDeFrase(corte);
     t = p > cabe / 2 ? corte.slice(0, p + 1).trim() : corte.trimEnd() + "…"; }
   return [t, fim].filter(Boolean).join("\n\n").slice(0, limite);
+}
+/* Rodada 2 da varredura geral: "fonte" (a linha “Fonte: …” do “Usar a sugestão” da Pauta) vai no fim, com a identificação e as
+   hashtags, e nunca é cortada. O último fim de frase (". " ou a quebra de linha) de um texto, sem contar o ponto de abreviação de
+   citação ("art. 9º", "arts. 5º", "nº.", "inc. II", "Cód. 1708", "§ 2º, al. b"): ali a frase continua. -1 se não há. */
+function fimDeFrase(t){
+  let p = -1;
+  for(const m of String(t).matchAll(/\. |\n/g))
+    if(m[0] === "\n" || !/(?:^|[^\p{L}\p{N}])(?:arts?|incs?|c[óo]d|n[º°]?|p[áa]gs?|par|al|cf|obs|sr|sra|dra?|av)$/iu.test(t.slice(Math.max(0, m.index - 8), m.index))) p = m.index;
+  return p;
 }
 /* v0.20.0: o kit das redes que a IA montou (radar_conteudos.kit_ia: chamada e apoio da arte, legendas do Instagram e do Facebook e o
    roteiro do reel). É sugestão: só vale o kit inteiro e em dia. Se o texto mudou depois, o banco marca “desatualizado” (ou o kit é só
@@ -2352,6 +2389,24 @@ function unidadesDoTexto(linhas){
   });
   return {unidade, textos:partes.map((p, u) => " " + limpaCopia(p.join("\n") + (abertura[u] >= 0 ? "\n" + partes[abertura[u]].join("\n") : "")) + " ")};
 }
+/* Rodada 2 da varredura geral: as faixas [início, fim) que o banco devolve (radar_copia_paga_trechos, contadas por letra como
+   Array.from conta: o emoji é uma letra só) viram trechos do boletim pago, no formato de trechosCopiados. A frase é do próprio texto. */
+function trechosDoBanco(texto, faixas){
+  const letras = Array.from(String(texto || ""));
+  return (Array.isArray(faixas) ? faixas : []).filter(f => Array.isArray(f) && Number.isInteger(f[0]) && Number.isInteger(f[1]) && f[0] >= 0 && f[0] < f[1] && f[1] <= letras.length)
+    .map(([i, j]) => { const t = letras.slice(i, j).join("").replace(/\s+/g, " ").trim();
+      return {palavras:t.split(" ").length, texto:t, fonte:"conferido pelo banco com todas as matérias do boletim", paga:true, citado:false, banco:true}; });
+}
+/* Rodada 2: a legenda e a arte do Instagram e do Facebook também, contra todas as capturas do boletim (a trava do banco, RADAR146,
+   não mostra a frase): o recado mostra o trecho da própria legenda. "" se não há (ou se o banco não respondeu: fica a trava dele). */
+async function pagoDoBanco(id, legendas){
+  const arte = arteDe(id), textos = [...Object.values(legendas), (arte.chamada || "") + "\n" + (arte.apoio || "")];
+  let r; try{ r = await rpc("radar_copia_paga_trechos", {p_assunto:E.assunto, p_textos:textos}); }catch(e){ return ""; }
+  const pago = textos.flatMap((t, k) => trechosDoBanco(t, Array.isArray(r) ? r[k] : null))[0];
+  return pago ? `Frase do boletim pago (ITC) na legenda ou na arte: “${pago.texto.length > 120 ? pago.texto.slice(0, 120) + "…" : pago.texto}” ` +
+    "(o banco conferiu com todas as matérias do boletim guardadas, também as de outro assunto). As frases do boletim pago nunca podem ser reproduzidas, nem citando nem entre aspas: " +
+    "reescreva com palavras próprias e tente de novo." : "";
+}
 /* Trechos iguais ao texto das fontes. Cada fonte é o texto ou {texto, nome, nomes, paga}. Cada trecho diz de qual fonte veio
    ("fonte"), se a fonte está citada pelo nome em cada parágrafo (ou item de lista) em que o trecho está ("citado") e se ele tem
    parte que só existe no boletim pago ("paga": não pode ficar, nem citando). */
@@ -2514,7 +2569,10 @@ function blocoKit(c, ed, urlSite){
 }
 function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false, siteNaFila = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
-  const todas = trechosCopiados(c.corpo, fontes);
+  // rodada 2: mais a frase do boletim que só o banco vê (matéria de outro assunto ou na fila: telaAssunto, E.pagoBanco), no título
+  // ou no texto; a mesma frase, achada também pela tela, não aparece duas vezes
+  const daTela = trechosCopiados(c.corpo, fontes), mesma = (x, y) => (" " + limpaCopia(x) + " ").includes(" " + limpaCopia(y) + " ");
+  const todas = [...daTela, ...((E.pagoBanco || {})[c.id] || []).filter(b => !daTela.some(t => t.paga && (mesma(t.texto, b.texto) || mesma(b.texto, t.texto))))];
   // v0.18.0: o trecho igual ao da fonte pode ficar quando o parágrafo cita a fonte e o campo Fonte está preenchido (vai no fim
   // da notícia); o do boletim pago, nunca. Só o resto impede aprovar.
   const semCredito = !String(c.fonte_credito || "").trim();
@@ -2532,7 +2590,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
   const deOnde = t => t.paga ? ` <span class="sub">(boletim pago${t.fonte ? ": " + h(t.fonte) : ""} — reescreva com palavras próprias)</span>`
     : t.fonte ? ` <span class="sub">(${h(t.fonte)})</span>` : "";
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
-  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.ilustracao_id ? ` data-ilustracao="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${autorizada ? 0 : vermelho.length}"${semCredito && todas.length ? ` data-falta-fonte="1"` : ""}${pagas.length ? ` data-pagas="1"` : ""}${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
+  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.ilustracao_id ? ` data-ilustracao="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${autorizada ? 0 : vermelho.length}"${semCredito && daTela.length ? ` data-falta-fonte="1"` : ""}${pagas.length ? ` data-pagas="1"` : ""}${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
     ${ed ? avisoRascunho(c) : ""}
     ${marcas.length ? `<div class="aviso erro marcas-verificar"><b>${marcas.length} ponto(s) marcado(s) com [VERIFICAR] — resolva antes de liberar ou publicar.</b>
       <ul>${marcas.map(m => `<li><span class="copiado">${h(m)}</span></li>`).join("")}</ul>Troque cada marca pela informação conferida (ou tire o trecho) e salve${ed ? ", ou clique em “Revisar com IA”: a IA tira as marcas e o que não estiver confirmado vai para os pontos a conferir" : ""}. Enquanto houver marca, o Radar não aprova nem publica.
@@ -2551,7 +2609,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
       <ul>${todas.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul></div>`
       : citadas.length && !semCredito ? `<div class="aviso info copia-citada"><b>Texto igual ao da fonte em ${citadas.length} trecho(s), com a fonte citada no parágrafo.</b> Pode ficar assim: a notícia sai com “Fonte: ${h(String(c.fonte_credito || "").trim())}” no fim.
         <ul>${citadas.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul>${citadas.length > 4 ? `<span class="sub">e mais ${citadas.length - 4}.</span>` : ""}</div>`
-      : !todas.length && fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é só com o texto das capturas deste assunto; não detecta paráfrase muito próxima nem cópia de outras páginas.">(só contra as capturas deste assunto)</span></p>` : ""}
+      : !todas.length && fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é com o texto das capturas deste assunto${(E.pagoBanco || {})[c.id] ? " (o boletim pago, com todas as capturas dele)" : ""}; não detecta paráfrase muito próxima nem cópia de outras páginas.">(${(E.pagoBanco || {})[c.id] ? "contra as capturas deste assunto e todo o boletim pago" : "só contra as capturas deste assunto"})</span></p>` : ""}
     <p>${selo(ROTULOS.formato[c.formato])} ${selo(ROTULOS.conteudo[c.status], tipo)} ${selo(c.gerado_por === "ia" ? (/\(robô\)$/.test(c.modelo_ia || "") ? "preparado pelo robô" : "gerado por IA") : "escrito pela equipe","neutro")}
       ${c.aprovado_em ? `<span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span>` : ""}</p>
     ${Array.isArray(c.avisos_ia) && c.avisos_ia.length ? `<div class="aviso alerta avisos-ia"><b>Pontos a conferir neste texto gerado pela IA</b> (verificação automática contra o texto oficial, feita na geração; não lê números por extenso nem avalia a interpretação):
@@ -2856,6 +2914,8 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, `publicar no ${nome}`), true); $("#rede-legenda")?.focus(); return; }
     const pub = conferirPublicidade(el.dataset.id, {[canal]:legenda});          // v0.20.0: termos da publicidade e boletim pago
     if(pub.erro){ recado(pub.erro, true); $("#rede-legenda")?.focus(); return; }
+    const pagoB = await pagoDoBanco(el.dataset.id, {[canal]:legenda});        // rodada 2: o boletim de outro assunto (o banco recusaria)
+    if(pagoB){ recado(pagoB, true); $("#rede-legenda")?.focus(); return; }
     const conferi = $("#rede-conferi");                                          // v0.22.0: cancelada no meio do envio
     if(conferi && !conferi.checked){ recado(`Confira no ${nome} que a publicação cancelada no meio do envio não saiu e marque a caixa “Conferi no ${nome}: …”.`, true); conferi.focus(); return; }
     if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem e a legenda vão ao ar como estão na tela.` + pub.aviso)) return;
@@ -2884,6 +2944,8 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
     const pub = conferirPublicidade(id, legendas);                              // v0.20.0: termos da publicidade e boletim pago
     if(pub.erro){ recado(pub.erro, true); return; }
+    const pagoB = await pagoDoBanco(id, legendas);                              // rodada 2: o boletim de outro assunto (o banco recusaria)
+    if(pagoB){ recado(pagoB, true); return; }
     const nomes = canais.map(k => NOME_REDE[k]).join(" e ");
     if(!confirm(`Publicar agora no ${nomes} da Artecon?\n\nA imagem e ${canais.length > 1 ? "as legendas vão" : "a legenda vai"} ao ar como estão na tela.` + pub.aviso)) return;
     const res = [];
@@ -3132,6 +3194,8 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
     const pub = conferirPublicidade(id, legendas);                              // v0.20.0: termos da publicidade e boletim pago
     if(pub.erro){ recado(pub.erro, true); return; }
+    const pagoB = await pagoDoBanco(id, legendas);                              // rodada 2: o boletim de outro assunto (o banco recusaria)
+    if(pagoB){ recado(pagoB, true); return; }
     const redesTxt = Object.keys(legendas).map(k => NOME_REDE[k]).join(" e ");
     if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.` + pub.aviso)) return;
     await rpc("radar_autorizar_todos", {p_conteudo:Number(id), p_categoria:cat, p_lido:el.dataset.lido, p_imagem:img.getAttribute("src"),
@@ -3878,7 +3942,7 @@ document.addEventListener("change", ev => {
   }
 });
 
-try{ E.sessao = JSON.parse(localStorage.getItem("radar_sessao") || "null"); }catch(e){ E.sessao = null; }
+E.sessao = lerSessaoGuardada();
 if(!sessaoValida(E.sessao)) E.sessao = null;
 desenhar();
 </script>

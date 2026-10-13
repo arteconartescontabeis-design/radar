@@ -11,6 +11,9 @@ assina, um caminho do pedido de cada vez (600 s para ler; o token de envio vale 
   * urllib sem o proxy do ambiente e sem seguir redirecionamento;
   * a chave é lida do ambiente na hora, conferida (^[A-Za-z0-9]{32,200}$: nada que quebre um cabeçalho) e nunca vai para log, erro
     ou exceção encadeada (todo ErroVideo é levantado FORA do except);
+  * v0.22.0 (rodada 2 da varredura geral): a chave pública pode ser a nova (sb_publishable_…, o Supabase desliga a anon antiga até o
+    fim de 2026): ela só vai no apikey (no Authorization o Supabase recusa: não é JWT; a função fica com o "Verify JWT" desligado,
+    LEIAME) e o projeto é o de SUPABASE_URL em radar-config.js;
   * a resposta da função e do armazenamento nunca é impressa: só vira um código fixo — 401 robo_chave; o pedido que não está mais com
     o robô (RADAR316: substituído, descartado, ajustado ou vencido) pedido_perdido; o corrigido que já existe (409 nos links)
     ja_existe; 5xx, 409 e 404 do armazenamento storage; sem conexão ou tempo esgotado rede; o resto robo_recusado;
@@ -48,6 +51,7 @@ CACHE = "max-age=60"                   # cacheControl de 60 s: a validade efetiv
 TIPOS_CLIPE = ("video/mp4", "video/quicktime")
 # (sempre fullmatch: o "$" do re aceitaria uma quebra de linha no fim, que no cabeçalho viraria outro cabeçalho)
 _CHAVE = re.compile(r"[A-Za-z0-9]{32,200}")
+_PUBLICA_NOVA = re.compile(r"sb_publishable_[A-Za-z0-9_-]{16,200}")      # v0.22.0 (rodada 2): a chave pública nova do Supabase
 _FUNCAO = re.compile(r"https://([a-z0-9]{20})\.supabase\.co/functions/v1/radar-video")
 _LOCAL = re.compile(r"http://127\.0\.0\.1:\d{2,5}(?:/[A-Za-z0-9_./-]*)?")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -73,16 +77,28 @@ def _jwt(token: str) -> dict:
         return {}
 
 
+def chave_publica_ok(chave) -> bool:
+    """A chave pública do projeto: a anon antiga (JWT com role anon) ou, v0.22.0 (rodada 2), a nova (sb_publishable_…)"""
+    return isinstance(chave, str) and (_jwt(chave).get("role") == "anon" or bool(_PUBLICA_NOVA.fullmatch(chave)))
+
+
+def cabecalhos_publicos(chave: str) -> dict[str, str]:
+    """A anon antiga (JWT) vai no apikey e no Authorization (o "Verify JWT" da função exige); a nova (sb_publishable_…), só no apikey"""
+    return {"apikey": chave} if _PUBLICA_NOVA.fullmatch(chave) else {"apikey": chave, "Authorization": "Bearer " + chave}
+
+
 def anon_do_config(caminho: Path = CONFIG_JS) -> tuple[str, str]:
-    """A chave anon (pública) e o ref do projeto, de radar-config.js (a mesma que a tela usa). Precisa ser um JWT com role anon."""
+    """A chave pública e o ref do projeto, de radar-config.js (a mesma que a tela usa). A anon antiga precisa ser um JWT com role anon do
+    MESMO projeto de SUPABASE_URL; a nova (sb_publishable_…, v0.22.0) não diz o projeto: vale o de SUPABASE_URL."""
     try:
         texto = caminho.read_text(encoding="utf-8")
     except OSError:
         texto = ""
     chave = re.search(r'SUPABASE_ANON_KEY:\s*"([A-Za-z0-9_.-]+)"', texto)
     url = re.search(r'SUPABASE_URL:\s*"https://([a-z0-9]{20})\.supabase\.co"', texto)
-    dados = _jwt(chave.group(1)) if chave else {}
-    if not chave or not url or dados.get("role") != "anon" or dados.get("ref") != url.group(1):
+    if not chave or not url or not chave_publica_ok(chave.group(1)):
+        raise ErroVideo("robo_config", "conversa")
+    if not _PUBLICA_NOVA.fullmatch(chave.group(1)) and _jwt(chave.group(1)).get("ref") != url.group(1):
         raise ErroVideo("robo_config", "conversa")
     return chave.group(1), url.group(1)
 
@@ -103,7 +119,7 @@ class Conversa:
             raise ErroVideo("robo_config", "conversa")
         if not _CHAVE.fullmatch(chave or ""):
             raise ErroVideo("robo_sem_chave", "conversa")
-        if not isinstance(anon, str) or _jwt(anon).get("role") != "anon":
+        if not chave_publica_ok(anon):
             raise ErroVideo("robo_config", "conversa")
         self._url, self._chave, self._anon = url, chave, anon
 
@@ -118,7 +134,7 @@ class Conversa:
     # ------------------------------------------------------------------ a função
     def _uma(self, corpo: bytes) -> tuple[int, bytes]:
         pedido = urllib.request.Request(self._url, data=corpo, method="POST", headers={
-            "Content-Type": "application/json", "Authorization": "Bearer " + self._anon, "x-radar-video-robo": self._chave})
+            "Content-Type": "application/json", **cabecalhos_publicos(self._anon), "x-radar-video-robo": self._chave})
         status, dados = 0, b""
         try:
             with _abridor().open(pedido, timeout=TEMPO_FUNCAO) as r:
@@ -251,7 +267,7 @@ class Conversa:
                 with arquivo.open("rb") as f:
                     pedido = urllib.request.Request(url, data=f, method="PUT", headers={
                         "Content-Type": tipo, "Content-Length": str(tamanho), "cache-control": CACHE, "x-upsert": "false",
-                        "apikey": self._anon, "Authorization": "Bearer " + self._anon})
+                        **cabecalhos_publicos(self._anon)})
                     with _abridor().open(pedido, timeout=TEMPO_ARQUIVO) as r:
                         status = r.status
                         r.read(ERRO_MAX)

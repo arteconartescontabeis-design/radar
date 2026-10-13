@@ -411,7 +411,7 @@ def test_doze_perfis_cabem_e_o_nome_e_normalizado(meta):
 def test_posts_vem_em_paginas_ate_completar_o_pedido(meta):
     ESTADO["max_pagina"] = 30                                                  # a Meta pode mandar menos do que o limite pedido
     status, r = pedir({"perfis": ["escritorio.um", "escritorio_dois"], "posts": 100})
-    assert status == 200 and r["versao"] == "0.19.1", r
+    assert status == 200 and r["versao"] == "0.22.0", r
     um, dois = r["perfis"]
     assert um["ok"] is True and "aviso" not in um and [p["id"] for p in um["posts"]] == [f"escritorio.um-{i}" for i in range(100)]
     assert um["conta"] == {"username": "escritorio.um", "name": "Escritório Um", "biografia": "Contabilidade — Escritório Um",
@@ -674,7 +674,7 @@ def test_token_nunca_aparece_na_resposta_nem_no_registro(meta):
 # ------------------------------------------------------------------- diagnóstico
 def test_diagnostico_le_a_propria_conta_pela_business_discovery(meta, chave):
     status, r = pedir({"acao": "diagnostico"})
-    assert status == 200 and r["tudo_certo"] is True and r["versao"] == "0.19.1", r
+    assert status == 200 and r["tudo_certo"] is True and r["versao"] == "0.22.0", r
     detalhes = {i["item"]: i["detalhe"] for i in r["itens"]}
     assert detalhes["Conta do Instagram da Artecon"] == "@arteconcontabeis"
     assert detalhes["Chave para chamar pelo banco"].startswith("instalada")

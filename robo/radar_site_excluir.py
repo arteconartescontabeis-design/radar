@@ -4,7 +4,8 @@ Na aba Publicações, o administrador clica em "Excluir do site". Isso grava um 
 (situação "pedido"). Na rodada seguinte do workflow "Radar — publicar no site" (a cada 15 minutos), este robô:
   1. marca o pedido como "excluindo";
   2. entra no painel do site e lê a lista de notícias do painel (o mesmo endereço que a tela do painel usa);
-  3. acha a notícia pelo título que está no site — só segue se houver exatamente uma com esse título;
+  3. acha a notícia pelo título que está no site — só segue se houver exatamente uma com esse título (achada só pelo começo do
+     título, que o painel encurta com "...", só segue se o título inteiro, lido no formulário de edição do painel, for o pedido);
   4. abre o link "Excluir" dessa notícia, como o painel faz depois do "Tem certeza que deseja excluir esta notícia?";
   5. lê a lista de novo e confere que a notícia saiu; só então conclui (o registro em "Publicações no site" é retirado).
 
@@ -31,6 +32,7 @@ from radar_util import ErroDownload, baixar
 
 LISTA = "/admin/news/list"
 EXCLUIR = re.compile(r"^/admin/news/delete/[A-Za-z0-9._~-]+$")
+EDITAR = re.compile(r"^/admin/news/(?:register|edit)/[A-Za-z0-9._~-]+$")    # o formulário de edição (só é aberto, nunca gravado)
 ESPERA_MAXIMA = timedelta(hours=2)        # "excluindo" parado por mais tempo (o site não responde): vira erro para conferir
 
 
@@ -73,7 +75,7 @@ class Excluidor:
             self.logado = True
 
     def lista(self) -> list[dict]:
-        """As notícias do painel: título e o link de exclusão de cada uma."""
+        """As notícias do painel: título e os links de exclusão e de edição de cada uma."""
         r = self.sessao.get(admin.BASE + LISTA, timeout=60, headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"})
         if r.status_code >= 400 or not admin.mesmo_site(r.url):
             raise admin.Parada(f"a lista de notícias do painel não abriu (HTTP {r.status_code})")
@@ -89,13 +91,15 @@ class Excluidor:
             celulas = linha if isinstance(linha, list) else list(linha.values()) if isinstance(linha, dict) else []
             if not celulas:
                 continue
-            excluir = None
+            excluir = editar = None
             for c in celulas:
                 for a in BeautifulSoup(str(c), "lxml").find_all("a", href=True):
                     alvo = urljoin(admin.BASE + LISTA, a["href"])
                     if admin.mesmo_site(alvo) and EXCLUIR.match(urlsplit(alvo).path or ""):
                         excluir = alvo
-            saida.append({"titulo": titulo_normal(celulas[0]), "excluir": excluir})
+                    elif admin.mesmo_site(alvo) and EDITAR.match(urlsplit(alvo).path or ""):
+                        editar = alvo
+            saida.append({"titulo": titulo_normal(celulas[0]), "excluir": excluir, "editar": editar})
         return saida
 
     @staticmethod
@@ -104,9 +108,22 @@ class Excluidor:
         iguais = [n for n in lista if n["titulo"].rstrip(" .") == alvo]
         if iguais:
             return iguais
-        # o painel pode encurtar o título longo ("Título muito comprido..."): vale o começo, com pelo menos 30 caracteres
+        # o painel pode encurtar o título longo ("Título muito comprido..."): vale o começo, com pelo menos 30 caracteres; marcada
+        # "pelo_comeco" (pode ser outra notícia da mesma série: um() confere o título inteiro antes de excluir)
         curtos = [(n, n["titulo"][:-3].rstrip()) for n in lista if n["titulo"].endswith("...")]
-        return [n for n, inicio in curtos if len(inicio) >= 30 and alvo.startswith(inicio)]
+        return [dict(n, pelo_comeco=True) for n, inicio in curtos if len(inicio) >= 30 and alvo.startswith(inicio)]
+
+    def titulo_inteiro(self, noticia: dict) -> str | None:
+        """Rodada 2 da varredura geral: o título inteiro de uma notícia do painel, lido no formulário de edição dela (só abre a página,
+        nunca grava). None se não há o link ou o campo do título (o painel mudou, ou pediu login de novo)."""
+        if not noticia.get("editar"):
+            return None
+        r = self.sessao.get(noticia["editar"], timeout=60)
+        if r.status_code >= 400 or not admin.mesmo_site(r.url):
+            return None
+        campo = BeautifulSoup(r.text, "lxml").find(["input", "textarea"], attrs={"name": "title"})
+        valor = (campo.get("value") if campo.name == "input" else campo.get_text()) if campo else None
+        return titulo_normal(valor) if valor and valor.strip() else None
 
     def saiu_do_site(self, url: str) -> bool:
         """A página pública da notícia não existe mais (404/410)."""
@@ -172,6 +189,16 @@ class Excluidor:
             pedido = dict(pedido, situacao="excluindo", iniciado_em=self.agora().isoformat())
         self.entrar()
         achadas = self.achar(self.lista(), pedido["titulo"])
+        if len(achadas) == 1 and achadas[0].get("pelo_comeco"):
+            # rodada 2 da varredura geral: achada só pelo começo do título, pode ser OUTRA notícia da mesma série (a pedida foi
+            # apagada à mão ou teve o título mudado): só segue se o título inteiro, no formulário de edição, for o pedido
+            inteiro = self.titulo_inteiro(achadas[0])
+            if inteiro is None and not self.saiu_do_site(pedido["url"]):
+                raise admin.Parada("só achei no painel do site uma notícia com o mesmo começo de título (o título longo aparece cortado) "
+                                   "e não consegui ler o título inteiro para confirmar que é a pedida. Exclua à mão no painel do site e "
+                                   "depois tire o registro em Publicações")
+            if inteiro is None or inteiro.rstrip(" .") != titulo_normal(pedido["titulo"]).rstrip(" ."):
+                achadas = []                                # é outra notícia (ou a pedida já saiu do ar): não é esta que sai
         if not achadas:
             if self.saiu_do_site(pedido["url"]):            # já não está no painel nem no ar (excluída antes, à mão ou numa rodada interrompida)
                 self.concluir(pedido, True)

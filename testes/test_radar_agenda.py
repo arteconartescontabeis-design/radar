@@ -98,13 +98,27 @@ def test_agenda_cria_a_chave_e_agenda_de_5_em_5_min_sem_a_chave_no_comando(banco
     assert re.fullmatch(r"[0-9a-f]{64}", agenda)                                          # 64 caracteres aleatórios, só no Vault
     with conectar(banco_agenda) as c:
         jobs = c.execute("select jobname, schedule, command, active from cron.job order by jobname").fetchall()
-    assert [(n, s, a) for n, s, _, a in jobs] == [("radar-redes-agenda", "*/5 * * * *", True), ("radar-redes-agenda-limpeza", "41 6 * * *", True)]
-    comando, limpeza = jobs[0][2], jobs[1][2]
-    assert agenda not in comando and agenda not in limpeza                                 # a chave é lida do Vault a cada rodada
+    assert [(n, s, a) for n, s, _, a in jobs] == [("radar-redes-agenda", "*/5 * * * *", True), ("radar-redes-agenda-limpeza", "41 6 * * *", True),
+                                                  ("radar-redes-agenda-robos", "13 8 * * *", True)]
+    comando, limpeza, robos = jobs[0][2], jobs[1][2], jobs[2][2]
+    assert agenda not in comando and agenda not in limpeza and agenda not in robos         # a chave é lida do Vault a cada rodada
     for trecho in (URL, "Bearer " + chave_anon_do_config(), "'x-radar-agenda'", "vault.decrypted_secrets", "radar_redes_agenda",
                    "public.radar_agenda_vencidas(2)", "timeout_milliseconds := 150000", "'acao', 'publicar'"):
         assert trecho in comando, trecho
     assert "cron.job_run_details" in limpeza and "interval '7 days'" in limpeza and "like 'radar-%'" in limpeza
+
+
+def test_agenda_pede_uma_vez_por_dia_que_a_funcao_religue_os_robos_do_github(banco_agenda, agenda):
+    """Rodada 2 da varredura geral: no repositório público, o GitHub desliga sozinho os workflows agendados depois de 60 dias sem
+    atividade (a coleta, o robô do site e o resumo param sem aviso). O pg_cron, que o GitHub não desliga, pede uma vez por dia à
+    radar-redes ("manter_robos", com a chave da agenda) que os religue."""
+    with conectar(banco_agenda) as c:
+        comando = c.execute("select command from cron.job where jobname = 'radar-redes-agenda-robos'").fetchone()[0]
+        c.execute("truncate net.pedidos")
+        c.execute(comando)
+        pedidos = [tuple(r) for r in c.execute("select url, body, headers, timeout_milliseconds from net.pedidos order by id").fetchall()]
+    assert pedidos == [(URL, {"acao": "manter_robos"}, {"Content-Type": "application/json", "Authorization": "Bearer " + chave_anon_do_config(),
+                                                        "x-radar-agenda": agenda}, 60000)]
 
 
 def test_agenda_comando_faz_um_pedido_por_envio_vencido_com_anon_e_chave_e_nenhum_quando_nao_ha(banco_agenda, agenda):
@@ -165,6 +179,38 @@ def test_agenda_recusa_jwt_service_role_e_sb_secret(banco_agenda, tmp_path):
         assert c.execute("select jobname, command from cron.job order by jobid").fetchall() == antes
 
 
+def test_agendas_aceitam_a_chave_publica_nova_so_no_apikey(tmp_path):
+    """Rodada 2 da varredura geral: o Supabase desliga a chave anon antiga (JWT) até o fim de 2026, e os dois arquivos das agendas só
+    aceitavam um JWT com role anon. A chave pública nova (sb_publishable_…) agora vale e vai só no apikey (no Authorization o Supabase
+    a recusa); o teste do fim de cada arquivo também. A chave interna continua recusada (test_agenda_recusa_jwt_service_role_e_sb_secret)."""
+    nova = "sb_publishable_" + "Ab9_-x" * 6
+    video = RAIZ / "sql" / "radar-video-agenda.sql"
+    novo_banco("radar_agenda_nova", com_setup=True, simulados=True)
+    try:
+        for arquivo in (AGENDA, video):
+            texto = arquivo.read_text()
+            assert texto.count(chave_anon_do_config()) == 1
+            r = psql(sem_extensoes(texto.replace(chave_anon_do_config(), nova), tmp_path, "nova-" + arquivo.name), "radar_agenda_nova")
+            assert r.returncode == 0, r.stderr
+        with conectar("radar_agenda_nova") as c:
+            segredos = dict(c.execute("select name, decrypted_secret from vault.decrypted_secrets").fetchall())
+            comandos = dict(c.execute("select jobname, command from cron.job").fetchall())
+            assert {"radar-redes-agenda", "radar-redes-agenda-robos", "radar-video-reserva", "radar-video-limpeza"} <= set(comandos)
+            for nome, comando in comandos.items():
+                if "net.http_post" in comando:
+                    assert "Authorization" not in comando and "Bearer" not in comando and f"'apikey', '{nova}'" in comando, nome
+            c.execute("truncate net.pedidos")
+            c.execute(comandos["radar-redes-agenda-robos"])
+            for arquivo, segredo in ((AGENDA, "radar_redes_agenda"), (video, "radar_video_agenda")):     # o teste do fim do arquivo
+                trecho = arquivo.read_text()[arquivo.read_text().index("-- Teste (n"):]
+                c.execute("\n".join(re.findall(r"(?m)^--   (.*)$", trecho[:trecho.index("-- Depois de alguns segundos")])))
+            cabecalhos = [r[0] for r in c.execute("select headers from net.pedidos order by id").fetchall()]
+        assert cabecalhos == [{"Content-Type": "application/json", "apikey": nova, "x-radar-agenda": segredos["radar_redes_agenda"]}] * 2 + \
+                            [{"Content-Type": "application/json", "apikey": nova, "x-radar-agenda": segredos["radar_video_agenda"]}]
+    finally:
+        apagar_banco("radar_agenda_nova")
+
+
 def test_chave_anon_do_sql_e_a_do_radar_config():
     texto, anon = AGENDA.read_text(), chave_anon_do_config()
     escrita = re.search(r"v_anon constant text := '([^']+)';", texto).group(1)
@@ -194,7 +240,8 @@ def test_agenda_roda_de_novo_sem_duplicar_e_reversao_tira_tudo(banco_agenda, age
     r = psql(sem_extensoes(AGENDA.read_text(), tmp_path), banco_agenda)
     assert r.returncode == 0, r.stderr
     with conectar(banco_agenda) as c:
-        assert [n for (n,) in c.execute("select jobname from cron.job order by jobname").fetchall()] == ["radar-redes-agenda", "radar-redes-agenda-limpeza"]
+        assert [n for (n,) in c.execute("select jobname from cron.job order by jobname").fetchall()] == ["radar-redes-agenda", "radar-redes-agenda-limpeza",
+                                                                                                 "radar-redes-agenda-robos"]
         assert c.execute("select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda'").fetchone()[0] == agenda
         for nome in ("radar-itc", "copia-do-projeto"):                                        # as outras agendas ficam
             c.execute("select cron.schedule(%s, '55 5 * * *', 'select 1')", (nome,))

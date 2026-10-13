@@ -20,6 +20,9 @@ E a Pauta (v0.21.0): enquanto houver publicação agendada que não saiu (com er
 a hora passada sem sair), fica aberto UM aviso só, "publicação agendada não saiu". O corpo nunca é editado
 (cada edição seria mais um e-mail) e leva só a quantidade e a data, o canal e o número da mais antiga: nunca o
 assunto, o nome de quem aparece, a legenda ou o erro (o repositório é público). Fecha quando a lista esvazia.
+v0.22.0 (rodada 2 da varredura geral): a publicação que entra na lista com o aviso já aberto ganha UM comentário
+(um e-mail), com o mesmo tanto de informação; antes, um erro antigo deixado sem resolver calava todas as falhas
+seguintes. Os números já avisados ficam numa marca escondida no corpo e nos comentários do robô.
 
 Uso (no workflow, depois da coleta):
     python radar_alertas.py
@@ -29,6 +32,7 @@ as duas últimas). Sem elas, não faz nada. Nunca deixa a coleta vermelha: erros
 from __future__ import annotations
 
 import os
+import re
 import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -54,6 +58,8 @@ try:
 except ZoneInfoNotFoundError:                                # sistema sem a base de fusos: Brasília não tem horário de verão
     FUSO = BRASILIA
 FALHAS_PARA_AVISAR = 3
+# v0.22.0 (rodada 2): os números dos envios da Pauta já avisados, numa marca que não aparece no aviso nem no e-mail (comentário HTML)
+MARCA_PAUTA = re.compile(r"<!-- radar-pauta-avisados: ([0-9 ]*) -->")
 API = "https://api.github.com"
 
 
@@ -140,12 +146,28 @@ def _hora(valor) -> datetime | None:
         return None
 
 
+def _mais_antiga(problemas: list[dict]) -> str:
+    """A data e hora de Brasília, o canal e o número do envio mais antigo da lista (nada mais: o repositório é público)"""
+    datadas = [(h, e) for e in problemas if (h := _hora(e.get("agendado_para")))]
+    h, e = min(datadas, key=lambda x: (x[0], x[1]["id"])) if datadas else (None, min(problemas, key=lambda x: x["id"]))
+    return (f"{h:%d/%m/%Y %H:%M}, " if h else "") + f"{CANAIS.get(e.get('canal'), str(e.get('canal') or '—'))}, nº {e['id']}"
+
+
+def marca_pauta(ids) -> str:
+    """A marca escondida com os números dos envios já avisados (rodada 2), no fim do corpo ou do comentário"""
+    return "\n\n<!-- radar-pauta-avisados: " + " ".join(str(i) for i in sorted(set(ids))) + " -->"
+
+
+def avisados_pauta(textos: list[str]) -> set[int]:
+    """Os números já avisados, das marcas do corpo e dos comentários do robô (o aviso aberto antes desta versão não tem marca:
+    a primeira rodada comenta a lista toda, uma vez)"""
+    return {int(n) for t in textos for m in MARCA_PAUTA.finditer(t or "") for n in m.group(1).split()}
+
+
 def corpo_pauta(problemas: list[dict]) -> str:
     """Corpo do aviso da Pauta (v0.21.0): só a quantidade e a mais antiga (data e hora de Brasília, canal e número do envio). Nunca
-    o assunto, o nome de quem aparece, a legenda ou o texto do erro: o repositório é público, e o aviso não muda depois de aberto."""
-    datadas = [(h, e) for e in problemas if (h := _hora(e.get("agendado_para")))]
-    h, e = min(datadas, key=lambda x: (x[0], x[1]["id"])) if datadas else (None, problemas[0])
-    ref = (f"{h:%d/%m/%Y %H:%M}, " if h else "") + f"{CANAIS.get(e.get('canal'), str(e.get('canal') or '—'))}, nº {e['id']}"
+    o assunto, o nome de quem aparece, a legenda ou o texto do erro: o repositório é público, e o corpo não muda depois de aberto."""
+    ref = _mais_antiga(problemas)
     if len(problemas) == 1:
         abre = f"**1** publicação da Pauta não saiu ou está atrasada ({ref})."
     else:
@@ -154,8 +176,23 @@ def corpo_pauta(problemas: list[dict]) -> str:
             "O que fazer: abra o Radar → **Pauta** → **Não saíram**. Lá aparecem o motivo de cada uma e o que fazer "
             "(Publicar agora, Tentar de novo, Não publicar neste canal ou Desfazer aprovação). Se nada sai pela agenda, confira "
             "Publicações → Testar conexão e Configurações → Pauta (\"agenda_ligada\").\n\n"
-            "Este aviso não é atualizado depois de aberto (cada mudança mandaria outro e-mail): a lista do momento está sempre na "
-            "Pauta. Ele fecha sozinho quando nenhuma publicação da Pauta estiver parada ou com erro.")
+            "Este aviso não é editado depois de aberto (cada mudança mandaria outro e-mail): cada publicação nova que não sair ganha "
+            "um comentário aqui, e a lista do momento está sempre na Pauta. Ele fecha sozinho quando nenhuma publicação da Pauta "
+            "estiver parada ou com erro." + marca_pauta(e["id"] for e in problemas))
+
+
+def comentario_pauta(problemas: list[dict], avisados: set[int]) -> str | None:
+    """v0.22.0 (rodada 2 da varredura geral): com o aviso da Pauta aberto, a publicação que entrou na lista e ainda não foi avisada
+    ganha UM comentário (um e-mail por rodada, com o mesmo tanto de informação do corpo); None se não há novidade. A marca do
+    comentário leva os já avisados e os de agora."""
+    novas = [e for e in problemas or [] if e["id"] not in avisados]
+    if not novas:
+        return None
+    ref = _mais_antiga(novas)
+    abre = (f"**1** publicação nova da Pauta não saiu ou está atrasada ({ref})." if len(novas) == 1 else
+            f"**{len(novas)}** publicações novas da Pauta não saíram ou estão atrasadas (a mais antiga: {ref}).")
+    return (f"{abre} Ao todo, {len(problemas)} na lista agora.\n\n"
+            "O que fazer: abra o Radar → **Pauta** → **Não saíram**." + marca_pauta(avisados | {e["id"] for e in problemas}))
 
 
 def decidir_pauta(problemas: list[dict] | None, abertos: dict[str, int]) -> tuple[str | None, list[tuple[int, str]]]:
@@ -317,6 +354,22 @@ class GitHub:
     def abrir_texto(self, reg: dict) -> int:
         return self._pedir("POST", "/issues", json={"title": titulo_texto(reg["url"]), "body": corpo_texto(reg)})["number"]
 
+    def textos_do_robo(self, numero: int) -> list[str]:
+        """O corpo e os comentários de um aviso, só os escritos pelo robô (v0.22.0, rodada 2: guardam a marca dos envios da Pauta já
+        avisados). O comentário de outra conta não vale: o repositório é público e qualquer um comenta."""
+        aviso = self._pedir("GET", f"/issues/{numero}") or {}
+        textos = [aviso.get("body") or ""] if (aviso.get("user") or {}).get("login") == AUTOR_DOS_AVISOS else []
+        pagina = 1
+        while True:
+            lote = self._pedir("GET", f"/issues/{numero}/comments", params={"per_page": 100, "page": pagina}) or []
+            textos += [c.get("body") or "" for c in lote if (c.get("user") or {}).get("login") == AUTOR_DOS_AVISOS]
+            if len(lote) < 100:
+                return textos
+            pagina += 1
+
+    def comentar(self, numero: int, corpo: str) -> None:
+        self._pedir("POST", f"/issues/{numero}/comments", json={"body": corpo})
+
     def fechar(self, numero: int, motivo: str) -> None:
         self._pedir("POST", f"/issues/{numero}/comments", json={"body": motivo})
         self._pedir("PATCH", f"/issues/{numero}", json={"state": "closed", "state_reason": "completed"})
@@ -337,6 +390,15 @@ def executar(banco: Banco, github: GitHub, status_de=status_http, pagina_de=html
     corpo_pa, fechar_pa = decidir_pauta(pauta, abertos)
     if corpo_pa:                                # no registro, só a quantidade
         feito.append(f"aviso #{github.abrir_aviso(PREFIXO_PAUTA, corpo_pa)} aberto: {len(pauta)} publicação(ões) da Pauta não saíram")
+    elif pauta:                                 # v0.22.0 (rodada 2): o aviso já aberto ganha um comentário por publicação nova
+        numero = min(n for t, n in abertos.items() if t.startswith(PREFIXO_PAUTA))
+        try:                                    # o GitHub falhou aqui: fica para a próxima rodada, sem parar os outros avisos
+            comentario = comentario_pauta(pauta, avisados_pauta(github.textos_do_robo(numero)))
+            if comentario:
+                github.comentar(numero, comentario)
+                feito.append(f"aviso #{numero} comentado: publicação(ões) nova(s) da Pauta não saíram ({len(pauta)} na lista)")
+        except (RuntimeError, requests.RequestException) as e:
+            feito.append(f"aviso #{numero}: a conferência das publicações novas fica para a próxima rodada ({type(e).__name__})")
     fechar += fechar_pa
     registros = banco.links_publicados()
     fora = conferir_links(registros, status_de)
