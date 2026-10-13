@@ -129,6 +129,10 @@ async function banco(quem: string | Record<string, string>, metodo: string, cami
   if (!r.ok) {
     const m = String(dados?.message ?? "");
     const radar = /RADAR\d+:\s*(.*)/s.exec(m);
+    // v0.22.0 (varredura geral): a falha do próprio banco (500 por tempo esgotado, 503 sem conexão ou reiniciando, 504 do pool) é
+    // passageira: vai como 502, que o robô repete e devolve à fila (antes virava 400, "robo_recusado", e o pedido ia a "erro" de vez).
+    // As recusas das regras (RADARnnn) são sempre 4xx (P0001/23514 → 400, 42501 → 403)
+    if (r.status >= 500 && !radar) throw new Erro(502, "O banco não respondeu. Tente de novo em alguns minutos.");
     throw new Erro(r.status === 401 ? 401 : r.status === 403 ? 403 : 400, radar ? radar[1].slice(0, 400) : `Erro ${r.status} no banco.`);
   }
   return dados;

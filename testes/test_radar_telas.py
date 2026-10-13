@@ -2988,8 +2988,11 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     salvar("## O que mudou\nSegundo a ITC Consultoria, " + pago[0].lower() + pago[1:])
     quadro = pagina.inner_text(".copia")
     assert "boletim pago" in quadro and "reescreva com palavras próprias" in quadro
+    # varredura geral (v0.22.0): a frase do boletim pago não se autoriza: sem o botão (o banco também recusa, RADAR146)
+    assert pagina.locator(".copia [data-acao=abrir-autorizar-copia]").count() == 0 and "não se autoriza" in quadro
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("#recado .erro >> text=frase do boletim pago")
+    assert "Autorizar mesmo assim" not in pagina.inner_text("#recado")
     assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"
     # citado e com o campo Fonte: aprova
     salvar(citado)
@@ -3713,6 +3716,31 @@ def test_redes_sem_a_funcao_instalada_a_autorizacao_fica_guardada(pagina, limpo)
     assert limpo.execute("select situacao from radar_redes_envios").fetchone()[0] == "cancelado"
 
 
+def test_redes_cancelada_no_meio_do_envio_pede_conferi_antes_de_autorizar_de_novo(pagina, limpo):
+    """Varredura geral (v0.22.0): a publicação parada em "publicando" e cancelada pode ter saído (a Meta publicou e o registro não
+    entrou). Autorizar de novo o mesmo canal pede a caixa "Conferi no Instagram: … não saiu" (o banco recusa sem ela, RADAR166)."""
+    a, c = no_site(limpo)
+    limpo.execute("""insert into radar_redes_envios (conteudo_id, canal, legenda, situacao, conteudo_lido_em, enviado_em, erro)
+                     select id, 'instagram', 'Legenda que saiu ou não.', 'cancelado', atualizado_em, now() - interval '20 minutes',
+                            'Cancelada no meio do envio: a publicação pode ter saído no Instagram sem o registro no Radar. Antes de autorizar de novo, confira lá que ela não saiu.'
+                       from radar_conteudos where id = %s""", (c,))
+    pagina.route("**/functions/v1/radar-redes", lambda rota: rota.fulfill(status=404, content_type="application/json", body='{"message":"not found"}'))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function("() => /^data:image/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
+    passo = pagina.locator(".autorizacao li.agora")
+    assert "Cancelada no meio do envio" in passo.inner_text() and passo.locator("#rede-conferi").count() == 1
+    assert pagina.locator(f"#faltam-conferi-instagram-{c}").count() == 1 and pagina.locator(f"#faltam-conferi-facebook-{c}").count() == 0
+    passo.locator(".btn", has_text="Autorizar e publicar no Instagram").click()
+    pagina.wait_for_selector("#recado .erro >> text=Confira no Instagram que a publicação cancelada no meio do envio não saiu")
+    assert limpo.execute("select count(*) from radar_redes_envios where situacao <> 'cancelado'").fetchone()[0] == 0
+    pagina.check("#rede-conferi")
+    passo.locator(".btn", has_text="Autorizar e publicar no Instagram").click()
+    pagina.wait_for_selector("text=A função radar-redes ainda não foi instalada")
+    assert limpo.execute("select situacao from radar_redes_envios order by id desc limit 1").fetchone()[0] == "autorizado"
+
+
 def test_redes_editor_ve_o_passo_sem_os_botoes(pagina, limpo):
     a, c = no_site(limpo)
     entrar(pagina)
@@ -3960,7 +3988,7 @@ def test_capa_com_ilustracao_e_refeita_com_o_titulo_novo_sem_gerar_outra(pagina,
 def test_capturas_listam_as_repeticoes_e_separam_o_que_nao_e_o_mesmo_fato(pagina, limpo):
     a = captura(limpo, "Subvenção: crédito presumido de ICMS na base do IRPJ e da CSLL", "https://www.gov.br/exemplo/sv-1", "rfb-noticias",
                 "O crédito presumido de ICMS não pode mais ser excluído da base do IRPJ e da CSLL.")
-    b = captura(limpo, "STF exclui créditos presumidos de ICMS da base do PIS e da Cofins", "https://www.gov.br/exemplo/sv-2", "rfb-noticias",
+    b = captura(limpo, "Créditos presumidos de ICMS ficam fora da base do PIS e da Cofins, decide o STF", "https://www.gov.br/exemplo/sv-2", "rfb-noticias",
                 "O STF decidiu excluir os créditos presumidos de ICMS da base do PIS e da Cofins.")
     limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (a, b))
     entrar(pagina, "leitor@artecon.test")                            # quem só lê vê as repetições, mas não separa
@@ -3969,7 +3997,7 @@ def test_capturas_listam_as_repeticoes_e_separam_o_que_nao_e_o_mesmo_fato(pagina
     pagina.click("#filtro-fila >> text=Todas")
     cartao = lambda t: pagina.locator("article.cap", has=pagina.locator("h3", has_text=t))
     cartao("Subvenção").locator(".repetidas li").wait_for()
-    assert "STF exclui créditos presumidos" in cartao("Subvenção").locator(".repetidas li").inner_text()
+    assert "ficam fora da base do PIS" in cartao("Subvenção").locator(".repetidas li").inner_text()
     assert pagina.locator("[data-acao=separar-repeticao]").count() == 0
     pagina.click("header >> text=Sair")
     pagina.wait_for_selector("input[type=password]")
@@ -3978,7 +4006,7 @@ def test_capturas_listam_as_repeticoes_e_separam_o_que_nao_e_o_mesmo_fato(pagina
     pagina.click("nav.abas >> text=Capturas")
     pagina.click("#filtro-fila >> text=Todas")
     cartao("Subvenção").locator(".repetidas li").wait_for()
-    assert cartao("STF exclui").locator("[data-acao=separar-repeticao]").count() == 1      # o cartão da própria repetição também tem
+    assert cartao("ficam fora da base do PIS").locator("[data-acao=separar-repeticao]").count() == 1      # o cartão da própria repetição também tem
     pagina.on("dialog", lambda d: d.accept())
     cartao("Subvenção").locator(".repetidas [data-acao=separar-repeticao]").click()
     pagina.wait_for_selector("text=Captura separada: agora ela aparece sozinha na lista.")
@@ -4053,6 +4081,8 @@ def test_publicar_em_todos_de_uma_vez(pagina, limpo):
     assert "saem logo depois que a notícia entrar no site" in pagina.inner_text("#proximo-passo")
     assert "vai junto com o site" in pagina.inner_text(".trilha li[data-passo=instagram]")
     assert pagina.locator(f"#todos-{c}").count() == 0                                      # já autorizado: o quadro some
+    # varredura geral (v0.22.0): com o site na vez do robô, nada de "Registrar publicação no site" à mão (o banco recusa: RADAR145)
+    assert pagina.locator(f"#site-url-{c}").count() == 0 and pagina.locator("form[data-form=conteudo] .registrar-site-robo").count() == 1
     # o robô publicou no site: as redes ficam prontas, com o link no lugar de {LINK DO SITE}
     limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/todos', current_date)", (c,))
     assert limpo.execute("select legenda from radar_redes_envios where canal = 'facebook'").fetchone()[0].startswith("Informativo de teste")
@@ -5281,6 +5311,29 @@ def test_pauta_semana_navega_prontas_e_nao_sairam_e_cabe_no_celular(navegador, p
         assert erros == [], erros
     finally:
         contexto.close()
+
+
+def test_selo_com_motivo_longo_cabe_no_celular(pagina, pauta):
+    """Varredura geral (v0.22.0): o selo do termo com o motivo do banco ("Instagram: finalidade não autorizada no termo; Facebook: canal
+    não autorizado no termo") e o selo "mudou: <a cartela>" dos ajustes do reel não quebravam a linha (.selo é nowrap): a 375 px a
+    página chegava a 786 e a 949 px. Agora quebram, e nada passa da largura da tela."""
+    pagina.set_viewport_size({"width": 375, "height": 740})
+    peca_db(pauta, "2026-11-11", "educativo", "imagem", assunto="Educativo (exemplo)")
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina, "2026-11-09")
+    assert sem_rolagem_lateral(pagina)
+    pagina.evaluate("""() => {
+      const dia = document.querySelector(".pauta-dia");
+      const termo = seloTermo({motivo_instagram: "finalidade não autorizada no termo", motivo_facebook: "canal não autorizado no termo"});
+      dia.insertAdjacentHTML("beforeend", `<p class="pauta-pessoas"><span>Ana ${termo}</span> <span>Bruno ${termo}</span></p>`);
+      dia.insertAdjacentHTML("beforeend", `<div class="peca-pessoas"><label><input type="checkbox"><span><b>Ana</b> · Fiscal ${termo}</span></label></div>`);
+      dia.insertAdjacentHTML("beforeend", `<label class="video-check"><input type="checkbox"> Refazer a cartela com as Configurações e Pessoas e termos de hoje <span class="selo alerta">mudou: Artecon Artes Contábeis ME · CNPJ 79.876.769/0001-28 · CRC-SC 007129/O-0 / Ana, contadora · CRC-SC 012345/O-9</span></label>`);
+    }""")
+    assert pagina.locator(".pauta-dia .selo.erro").count() == 3
+    assert sem_rolagem_lateral(pagina), pagina.evaluate("document.scrollingElement.scrollWidth")
+    # o texto do rótulo não vira uma letra por linha
+    assert pagina.evaluate("() => document.querySelector('.pauta-dia label.video-check').getBoundingClientRect().height") < 200
 
 
 def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
@@ -7292,6 +7345,26 @@ def test_video_envio_nunca_manda_o_token_a_outro_endereco(pagina, vtela):
     pagina.wait_for_selector("#recado >> text=Gravação enviada: na fila do corretor.", timeout=60000)
     assert fora == [] and fv.ARM["objetos"][f"bruto/{vid}/1"]["dados"] == c["buffer"]
     assert [p["metodo"] for p in fv.ARM["tus_pedidos"]] == ["POST", "PATCH"]
+
+
+def test_video_pessoa_desmarcada_que_pediu_para_ver_a_peca_continua_com_a_caixa(pagina, vtela):
+    """Varredura geral (v0.22.0): a pessoa que pediu no termo para ver a peça antes, desmarcada em "Quem aparece" depois do envio,
+    continua no vídeo gravado, e o banco pede a caixa "A pessoa viu o vídeo final" (radar_pauta_aprovar). A tela só olhava para as
+    marcadas hoje: a caixa não aparecia e a aprovação ficava sem saída (RADAR314)."""
+    from test_radar_banco import mudar_por_fora
+    db, fv = vtela
+    ana = pessoa_do_corretor(db)
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno")
+    db.execute("update radar_pessoas set quer_ver_peca = true where id = %s", (bruno,))
+    pid, _, vid, sit = reel_com_video(db, fv, pessoa=ana, pessoas=[ana, bruno])
+    assert sit == "pronto" and db.execute("select pessoas from radar_videos where id = %s", (vid,)).fetchone()[0] == sorted([ana, bruno])
+    mudar_por_fora(db, pid, f"pessoas = '{{{ana}}}'")                                       # desmarcado na peça: continua no vídeo
+    marcar_pronta(db, pid)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    pagina.click("#peca-aprovar summary")
+    assert pagina.locator("#peca-aprovar .aprovar-conf").evaluate_all("l => l.map(c => c.value)") == ["pessoas", "video", "viu"]
 
 
 def test_video_previa_aprovacao_amarrada_ao_sha256_baixar_apaguei_e_registro(navegador, vtela, mp4_sintetico):

@@ -57,7 +57,9 @@ def zerar():
                # o limite global de arquivo do projeto (no Free, 50 MB): o bucket com limite maior é recusado (EntityTooLarge)
                limite_global=50 * 1024 * 1024, falha_bucket=False,
                # v0.22.0, a tela (test_radar_telas.py): o envio retomável (TUS) e as falhas de rede que ele tem de aguentar
-               tus={}, tus_pedidos=[], tus_pedacos=0, tus_falhar=0, tus_cair=0, tus_parar=None)
+               tus={}, tus_pedidos=[], tus_pedacos=0, tus_falhar=0, tus_cair=0, tus_parar=None,
+               # varredura geral (v0.22.0): o PostgREST com falha passageira num caminho ({trecho do caminho: status 5xx})
+               rest_5xx={})
 
 
 class Ponte(BaseHTTPRequestHandler):
@@ -87,6 +89,10 @@ class Ponte(BaseHTTPRequestHandler):
         auth = gateway(self.headers)
         if auth is None:
             return self._responder(401, {"message": "Invalid Compact JWS"})
+        for trecho, status in ARM.get("rest_5xx", {}).items():
+            if trecho in self.path:
+                self._corpo()
+                return self._responder(status, {"code": "PGRST003", "message": "Timed out acquiring connection from connection pool."})
         corpo = self._corpo() or None
         cab = {k: v for k, v in self.headers.items() if k.lower() in ("content-type", "prefer")} | ({"Authorization": auth} if auth else {})
         r = requests.request(self.command, API + self.path.removeprefix("/rest/v1"), headers=cab, data=corpo, timeout=30)
@@ -459,6 +465,31 @@ def test_robo_pega_le_os_clipes_grava_a_transcricao_e_conclui_conferido(vid):
     assert p["video"].startswith(f"{PONTE}/storage/v1/object/sign/radar-videos/corrigido/{v}/")
     assert db.execute("select acao, usuario::text from radar_video_acessos").fetchall() == [("previa", EDITOR)]
     assert pedir({"acao": "previa", "id": v}, uid=LEITOR)[0] == 403
+
+
+def test_falha_passageira_do_banco_vai_como_502_e_o_robo_repete(vid):
+    """Varredura geral (v0.22.0): o 500, o 503 e o 504 do PostgREST (tempo esgotado, banco reiniciando, pool sem conexão) viravam 400:
+    o robô tratava como "robo_recusado", não repetia, e o pedido ia a "erro" de vez (e os segundos do áudio não entravam na cota). Agora
+    vão como 502, que o robô (conversa.py) repete e trata como passageiro; a recusa de uma regra (RADARnnn) continua 400."""
+    import importlib, sys
+    db = vid
+    pid, ana, v = na_fila_com_clipes(db)
+    assert pedir({"acao": "pegar"}, cab=ROBO)[0] == 200
+    for st in (500, 503, 504):
+        ARM["rest_5xx"] = {"rpc/radar_video_registrar_audio": st}
+        assert pedir({"acao": "audio", "id": v, "tentativa": 1, "segundos": 31.5}, cab=ROBO) == \
+            (502, {"message": "O banco não respondeu. Tente de novo em alguns minutos."}), st
+    ARM["rest_5xx"] = {}
+    assert pedir({"acao": "audio", "id": v, "tentativa": 1, "segundos": 31.5}, cab=ROBO)[0] == 200
+    assert video(db, v, "segundos_audio") == 31.5
+    assert pedir({"acao": "audio", "id": v, "tentativa": 9, "segundos": 1}, cab=ROBO)[0] == 400       # regra: continua recusa
+    sys.path.insert(0, str(RAIZ / "robo" / "video"))
+    try:
+        conversa = importlib.import_module("conversa")
+    finally:
+        sys.path.remove(str(RAIZ / "robo" / "video"))
+    assert conversa._codigo(502, b'{"message": "O banco n\\u00e3o respondeu."}') == "storage"     # o robô repete
+    assert conversa._codigo(400, b'{"message": "Erro 503 no banco."}') == "robo_recusado"           # (o que acontecia antes)
 
 
 def test_pegar_sem_os_links_devolve_o_pedido_a_fila_e_falhar_tambem(vid):

@@ -21,14 +21,17 @@ jobs:
     steps:
       # o histórico inteiro: o arquivo enviado num commit e apagado no seguinte, no mesmo push, some da árvore mas fica no histórico
       # público; o teste confere cada commit de github.event.before até o último
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1   # v6.3.0
         with:
           python-version: "3.12"
       - run: pip install pytest "psycopg[binary]"
+      # v0.22.0 (varredura geral): no primeiro push de um ramo novo, o "before" vem só com zeros: o teste confere então os commits do
+      # ramo que nenhum outro ramo do GitHub tem (por isso o nome do ramo)
       - run: python -m pytest testes/test_radar_repositorio.py -q -p no:cacheprovider
         env:
           RADAR_PUSH_ANTES: ${{ github.event.before }}
+          RADAR_PUSH_RAMO: ${{ github.ref_name }}

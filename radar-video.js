@@ -80,7 +80,8 @@ const MOTIVOS_LEGENDA = {bloco_inexistente:"o bloco não existe mais (o vídeo m
 const TIPOS_CORTE = {pausa:"pausa longa encurtada", hesitacao:"hesitação", voz_entre_palavras:"voz entre palavras (hesitação ou repetição)",
   repeticao:"repetição", falso_inicio:"falso início", remover:"trecho"};
 const TIPOS_DIVERGENCIA = {numero:"número", data:"data", termo:"termo"};
-const CAMPOS_VIDEO = "id,peca_id,versao,situacao,modo,partes,fala_pessoa,fala_roteiro,roteiro_hash,cartela_linhas,gancho,ajustes,tentativas," +
+// varredura geral (v0.22.0): + "pessoas" (quem estava marcada no envio): a caixa "A pessoa viu o vídeo final" da aprovação olha para elas
+const CAMPOS_VIDEO = "id,peca_id,versao,situacao,modo,partes,fala_pessoa,pessoas,fala_roteiro,roteiro_hash,cartela_linhas,gancho,ajustes,tentativas," +
   "sha256,bytes,duracao_final,relatorio,erro_codigo,enviado_por,enviado_em,atualizado_em,apagado_aparelho_em,arquivos_apagados";
 const VIVAS_VIDEO = "in.(aguardando_envio,na_fila,processando,pronto,regravar,erro)";
 

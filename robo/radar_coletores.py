@@ -287,6 +287,16 @@ def listar_html_links(conteudo: str, fonte: dict, hoje: date | None = None) -> L
 RE_ID_ATO = re.compile(r"(?:consulta/externa/|idAto=)(\d+)")
 
 
+class SistemaNormasMudou(ValueError):
+    """v0.22.0 (varredura geral): desde 04/10/2026 o endereço antigo do sistema Normas (sijut2consulta) devolve a casca da aplicação
+    nova (normasinternet2, montada no navegador por JavaScript), sem a tabela de atos. O leitor desta fonte não serve mais: em vez do
+    "nenhum item reconhecido" genérico, a fonte mostra o motivo e o que fazer (a consulta da aplicação nova recusa o pedido direto)."""
+    def __init__(self):
+        super().__init__("o sistema Normas da Receita passou a ser uma aplicação montada no navegador (normasinternet2), sem a tabela "
+                         "de atos: este leitor não serve mais. Enquanto não houver leitor novo, desmarque \"Fonte ativa\" desta fonte "
+                         "e cubra os atos da Receita pelo DOU (dou-inlabs ou Destaques do DOU)")
+
+
 def listar_normas_rfb(conteudo: str, fonte: dict, hoje: date | None = None) -> Listagem:
     """Tabela do sistema Normas (tipo, nº, órgão, publicação, ementa)."""
     config = fonte.get("config") or {}
@@ -319,6 +329,8 @@ def listar_normas_rfb(conteudo: str, fonte: dict, hoje: date | None = None) -> L
             metadados={"tipo": tipo, "numero": numero, "orgao": orgao, "id_ato": id_ato},
             texto_da_listagem=(f"{titulo}. Ementa: {ementa}" if ementa else None),
         ))
+    if not reconhecidos and sopa.find("app-root") is not None:
+        raise SistemaNormasMudou()
     resultado = _finalizar(itens, config, hoje)
     resultado.brutos = reconhecidos   # linhas reconhecidas, mesmo as filtradas por órgão
     return resultado

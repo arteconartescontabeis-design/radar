@@ -71,6 +71,8 @@ td{border-bottom:1px solid var(--linha);padding:8px;vertical-align:top}
 .rolagem{overflow-x:auto}
 td.email{min-width:170px}
 .selo{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:700;white-space:nowrap;background:var(--azul-claro);color:var(--marinho)}
+/* varredura geral (v0.22.0): o selo com texto longo (o motivo do termo, a cartela que mudou) quebra a linha: no celular estourava o cartão */
+.pauta-pessoas .selo,.peca-pessoas .selo,label.video-check .selo{white-space:normal;overflow-wrap:anywhere;min-width:0}
 .selo.ok{background:var(--ok-fundo);color:var(--ok)}
 .selo.alerta{background:var(--alerta-fundo);color:var(--alerta)}
 .selo.erro{background:var(--erro-fundo);color:var(--erro)}
@@ -295,6 +297,7 @@ const VERSOES = [
     "Agenda de obrigações: o Simples Doméstico (DAE) passa a antecipar quando o dia 20 não é dia útil, como mandam a Lei 8.212/1991 (art. 30, § 2º, II) e o eSocial (ex.: 20/11/2026 é feriado, vence em 19/11). Vale para instalação nova; na que já existe, o administrador troca o “ajuste” em Configurações (na Artecon, já trocado).",
     "Configurações → Agenda de obrigações: “Preencher fontes oficiais” põe a fonte oficial de cada vencimento (norma, artigo e o link oficial, conferidos em 12/10/2026) nas obrigações da agenda das redes que estão sem fonte, e salva. Regra, dia, ajuste, nome e fonte já escrita não mudam; a obrigação que não está na tabela aparece para conferir à mão. A fonte vai às informações conferidas da agenda da semana da Pauta.",
     "Configurações → Fecho, assinatura e identificação legal: a ajuda e os exemplos trazem o CRC certo da Artecon, “CRC-SC 007129/O-0” (escrito “SC-007129/0-0”, a tela padroniza). O que está salvo não muda sozinho: confira que o CRC da sua assinatura é esse, porque ele vai ao fim de toda legenda, à faixa da arte e à cartela do reel.",
+    "Revisão geral (13/10): no “Publicar em todos”, só o link do site registrado pelo robô libera o Instagram e o Facebook (o registro à mão espera o robô); a frase do boletim pago não se autoriza mais e o banco a recusa na aprovação e na publicação; autorizar de novo uma publicação cancelada no meio do envio pede “Conferi no Instagram/Facebook: não saiu”; na Pauta, o CRC da identificação é conferido inteiro, a pessoa de um vídeo guardado não se apaga (marque a revogação), a caixa “A pessoa viu o vídeo final” vale também para quem foi desmarcada depois do envio e o selo longo quebra a linha no celular; a IA recebe o texto de fora sem as marcas de bloco e mascara o nome escrito com apóstrofo curvo ou hífen; a falha de login da leitura da ITC aparece em Fontes.",
     "Administrador: para instalar, rode o sql/radar-setup-v0.22.0.sql e o sql/radar-video-agenda.sql, crie a função radar-video (com “Verify JWT” ligado), copie a chave do robô do Vault para o repositório privado radar-video e guarde no Supabase o token do GitHub só desse repositório (passo a passo no LEIAME, “Da v0.21.0 para a v0.22.0”). Publique também o radar-video.js novo junto com o index.html e o radar-pauta.js. Antes do primeiro reel, a equipe assina o termo novo, que cita o corretor."]],
   ["0.21.0", "12/10/2026", [
     "Aba Pauta: o calendário de publicações no Instagram e no Facebook, uma peça por dia, na visão da semana (de segunda a domingo). O calendário do plano de publicações entra por “Importar o calendário (CSV)”: a tela confere o arquivo inteiro, mostra todos os erros de uma vez (com a linha) e o que muda, e só grava depois. A peça que já entrou em produção não muda na importação. O CSV tem nomes da equipe: nunca vai para o GitHub.",
@@ -1565,7 +1568,8 @@ async function telaAssunto(id){
     `<button class="btn verde" type="button" data-acao="trilha-clicar" data-botao="aprovar" data-id="${revisando[0].id}">✓ Aprovar</button>` + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 3];
   else if(foraDoSite || (noSite && !redeAgora)) prox = null;
   else if(noSite){ prox = proxRede(redeAgora, redeDe(redeAgora), cRede, imgs[cRede.imagem_id], a.categoria, pubs.find(p => p.conteudo_id === cRede.id && !p.versao_anterior)?.url || "",
-                                  redes.find(r => r.conteudo_id === cRede.id && r.canal === redeAgora));
+                                  redes.find(r => r.conteudo_id === cRede.id && r.canal === redeAgora),
+                                  canceladaNoEnvio(redes.filter(r => r.conteudo_id === cRede.id), redeAgora));
     // v0.19.0: o outro canal não precisa esperar este: “Publicar nos canais que faltam” (passo Publicar) publica cada um ou os dois
     if(faltaRede) prox[2] += ir(`#faltam-${cRede.id}`, "Publicar nos canais que faltam", "sec"); }
   else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação"), 0];
@@ -1723,7 +1727,8 @@ async function telaAssunto(id){
         <p class="sub" style="margin-top:0">${temOficial ? "“Gerar com IA” busca o trecho que comprova, escreve o rascunho e faz a capa e o kit das redes; “Gerar texto com IA” só escreve (e faz a capa). Revisar e aprovar continua sendo da equipe."
           : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve o rascunho a partir dela, com palavras próprias (FUNDAMENTAÇÃO NÃO CONFIRMADA). Revise e aprove; para o site, inclua o texto oficial e fundamente no passo 1, ou o administrador usa “Publicar mesmo assim”."
           : "Sem texto capturado: escreva sem IA, ou inclua o texto oficial no passo 1."}</p>` : ""}
-      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado, jaConvertido)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado, jaConvertido,
+        envios.some(e => e.conteudo_id === c.id && ["autorizado","enviando"].includes(e.situacao)))).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
     </div>
     </section>
 
@@ -1767,10 +1772,16 @@ function fonteDoEndereco(url){
 const NOME_REDE = {instagram:"Instagram", facebook:"Facebook"};
 const situacaoRede = r => !r ? "falta" : {aguardando_site:"vai junto com o site", autorizado:"autorizado", enviando:"publicando", erro:"não concluída",
   publicado:"publicado", dispensado:"não vai", excluido:"excluída"}[r.situacao] || "falta";
+/* varredura geral (v0.22.0): a publicação cancelada no meio do envio (parada em “publicando”: a Meta pode ter publicado sem o
+   registro entrar) pode estar no ar. Autorizar de novo o mesmo canal pede a caixa “Conferi no …: não saiu” (o banco recusa sem
+   ela, RADAR166), até que uma publicação desse canal saia de fato. redes: as do conteúdo. */
+const canceladaNoEnvio = (redes, k) => redes.some(r => r.canal === k && r.situacao === "cancelado" && r.enviado_em
+  && !redes.some(d => d.canal === k && d.id > r.id && ["publicado","excluido"].includes(d.situacao)));
+const caixaConferiRede = (id, k) => `<label class="conferi-rede"><input type="checkbox" id="${id}" data-canal="${k}"> Conferi no ${NOME_REDE[k]}: a publicação cancelada no meio do envio não saiu</label>`;
 /* v0.19.0: os canais ainda livres de um conteúdo (sem autorização em aberto, publicação ou “Não vai”) */
 const redeLivre = redes => ["instagram", "facebook"].filter(k => !redes.some(r => r.canal === k && ["aguardando_site","autorizado","enviando","erro","publicado","dispensado"].includes(r.situacao)));
 /* O próximo passo da trilha num canal: monta a imagem (v0.20.0: a arte vertical) e a legenda para o administrador conferir e autorizar. */
-function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
+function proxRede(canal, r, c, capa, categoria, urlSite, ultima, conferir = false){
   const nome = NOME_REDE[canal], adm = ehAdmin(), passo = canal === "instagram" ? 5 : 6;
   const cancelar = r => adm ? `<button class="btn sec" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Cancelar autorização</button>` : "";
   if(r?.situacao === "autorizado") return [`Publicar no ${nome}`, `A publicação foi autorizada em ${dataHora(r.autorizado_em)} e ainda não saiu (a Meta pode não estar configurada).`,
@@ -1787,6 +1798,7 @@ function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
     `${caiu}<div class="rede-montagem"><div class="rede-arte"><img id="rede-imagem" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem da publicação no ${nome} (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda"><label for="rede-legenda">Legenda</label><textarea id="rede-legenda" maxlength="2200" data-chave="${chave}">${h(legenda)}</textarea>
       <span class="sub">${canal === "instagram" ? "No Instagram o link da legenda não é clicável: a legenda indica o link na bio." : "No Facebook o link da legenda é clicável."} Até 2.200 caracteres.</span></div></div>
+    ${conferir ? caixaConferiRede("rede-conferi", canal) : ""}
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}</button>
       <button class="btn sec" type="button" data-acao="dispensar-rede" data-canal="${canal}" data-id="${c.id}">Não publicar no ${nome}</button></div>`, passo];
 }
@@ -2157,7 +2169,8 @@ function blocoTodos(c, categoria, capa, redes){
       Se a publicação no site não sair, ou o texto mudar, ${canais.length > 1 ? "as redes caem" : "a rede cai"} junto.</p>
     <div class="rede-montagem"><div class="rede-arte"><img id="todos-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda">${canais.map(k => `<label><input type="checkbox" class="todos-canal" data-canal="${k}" checked> ${NOME_REDE[k]}</label>
-        <textarea id="todos-legenda-${k}-${c.id}" maxlength="2000" data-chave="${c.id}:todos-${k}" aria-label="Legenda do ${NOME_REDE[k]}">${h(legenda(k))}</textarea>`).join("")}
+        <textarea id="todos-legenda-${k}-${c.id}" maxlength="2000" data-chave="${c.id}:todos-${k}" aria-label="Legenda do ${NOME_REDE[k]}">${h(legenda(k))}</textarea>
+        ${canceladaNoEnvio(redes, k) ? caixaConferiRede(`todos-conferi-${k}-${c.id}`, k) : ""}`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.000 caracteres em cada legenda.</span></div></div>
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-todos" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar em todos</button></div></details>`;
 }
@@ -2173,7 +2186,8 @@ function blocoFaltam(c, categoria, capa, redes, urlSite){
     <p class="sub">A notícia já está no site. Confira a imagem e ${canais.length > 1 ? "as legendas (desmarque o canal que não quiser)" : "a legenda"}: ao autorizar, a publicação sai na hora ${canais.length > 1 ? "no Instagram e no Facebook" : "no " + NOME_REDE[canais[0]]}.</p>
     <div class="rede-montagem"><div class="rede-arte"><img id="faltam-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda">${canais.map(k => `<label><input type="checkbox" class="faltam-canal" data-canal="${k}" checked> ${NOME_REDE[k]}</label>
-        <textarea id="faltam-legenda-${k}-${c.id}" maxlength="2200" data-chave="${c.id}:faltam-${k}" aria-label="Legenda do ${NOME_REDE[k]} (canais que faltam)">${h(legenda(k))}</textarea>`).join("")}
+        <textarea id="faltam-legenda-${k}-${c.id}" maxlength="2200" data-chave="${c.id}:faltam-${k}" aria-label="Legenda do ${NOME_REDE[k]} (canais que faltam)">${h(legenda(k))}</textarea>
+        ${canceladaNoEnvio(redes, k) ? caixaConferiRede(`faltam-conferi-${k}-${c.id}`, k) : ""}`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.200 caracteres em cada legenda.</span></div></div>
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-faltam" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Publicar nos que faltam</button></div></div>`;
 }
@@ -2498,7 +2512,7 @@ function blocoKit(c, ed, urlSite){
     <p class="sub" style="margin:6px 0 0">É sugestão da IA: confira antes de usar. No Instagram e no Facebook vai ao ar o que o administrador autorizar no passo Publicar.</p>
     ${gerar ? `<div class="acoes">${gerar}</div>` : ""}</details>`;
 }
-function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false){
+function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false, siteNaFila = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   const todas = trechosCopiados(c.corpo, fontes);
   // v0.18.0: o trecho igual ao da fonte pode ficar quando o parágrafo cita a fonte e o campo Fonte está preenchido (vai no fim
@@ -2512,7 +2526,9 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
   // v0.16.0: "Revisar com IA" corrige só as marcas e os trechos iguais ao da fonte (v0.19.0: reescreve com palavras próprias);
   // "Autorizar mesmo assim" deixa o trecho como está (com motivo)
   const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
-  const autorizada = vermelho.length && c.copia_autorizada_em;
+  // varredura geral (v0.22.0): a autorização vale só para o trecho igual ao de fonte livre; a frase do boletim pago nunca se
+  // autoriza (o banco também recusa: RADAR146) e continua travando a aprovação mesmo com uma autorização antiga
+  const autorizada = !pagas.length && semFonte.length && c.copia_autorizada_em;
   const deOnde = t => t.paga ? ` <span class="sub">(boletim pago${t.fonte ? ": " + h(t.fonte) : ""} — reescreva com palavras próprias)</span>`
     : t.fonte ? ` <span class="sub">(${h(t.fonte)})</span>` : "";
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
@@ -2529,8 +2545,8 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
         ? `<b>Autorizado mesmo assim</b> em ${dataHora(c.copia_autorizada_em)}${c.copia_autorizada_motivo ? ` — motivo: “${h(c.copia_autorizada_motivo)}”` : ""}. A autorização vale para este texto: se ele mudar, cai.`
         : `O conteúdo não pode ser aprovado assim.${semFonte.length ? " Reescreva com palavras próprias; se a frase igual for indispensável (dispositivo legal, definição legal), deixe o mínimo, entre aspas, e o parágrafo dela precisa dizer de quem é (“Segundo a Receita Federal, …”, “Conforme o Portal Contábil SC, …”; num item de lista, a frase que apresenta a lista)." : ""}${pagas.length ? " As frases do boletim pago (ITC) nunca podem ser reproduzidas, nem citando nem entre aspas: reescreva com palavras próprias." : ""}`}${semCredito ? " O campo <b>Fonte</b> (abaixo) também precisa estar preenchido: ele sai no fim da notícia." : ""}
       <ul>${vermelho.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span>${deOnde(t)}</li>`).join("")}</ul>${vermelho.length > 4 ? `<span class="sub">e mais ${vermelho.length - 4}.</span>` : ""}
-      ${ed && !autorizada ? `<div class="acoes">${revisarIA}<button class="btn peq sec" type="button" data-acao="abrir-autorizar-copia" data-id="${c.id}">Autorizar mesmo assim</button>
-        <span class="sub">“Revisar com IA” ${semFonte.length ? "reescreve o trecho igual com palavras próprias" : ""}${semFonte.length && pagas.length ? " e " : ""}${pagas.length ? "reescreve a frase do boletim pago" : ""}.</span></div>` : ""}</div>` : ""}
+      ${ed && !autorizada ? `<div class="acoes">${revisarIA}${pagas.length ? "" : `<button class="btn peq sec" type="button" data-acao="abrir-autorizar-copia" data-id="${c.id}">Autorizar mesmo assim</button>`}
+        <span class="sub">“Revisar com IA” ${semFonte.length ? "reescreve o trecho igual com palavras próprias" : ""}${semFonte.length && pagas.length ? " e " : ""}${pagas.length ? "reescreve a frase do boletim pago (que não se autoriza)" : ""}.</span></div>` : ""}</div>` : ""}
     ${soFaltaFonte ? `<div class="aviso erro copia falta-fonte"><b>Texto igual ao da fonte em ${todas.length} trecho(s), com a fonte citada no parágrafo, mas o campo Fonte está vazio.</b> Preencha o campo <b>Fonte</b> (abaixo) e salve: ele sai no fim da notícia, dizendo de onde veio o texto.
       <ul>${todas.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul></div>`
       : citadas.length && !semCredito ? `<div class="aviso info copia-citada"><b>Texto igual ao da fonte em ${citadas.length} trecho(s), com a fonte citada no parágrafo.</b> Pode ficar assim: a notícia sai com “Fonte: ${h(String(c.fonte_credito || "").trim())}” no fim.
@@ -2598,7 +2614,8 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${c.fora_do_site ? `<div class="aviso info fora-do-site">Marcado como <b>não vai ao site</b> (fica fora da fila de publicações).
         ${ed ? ` <button class="btn peq sec" type="button" data-acao="fora-do-site" data-id="${c.id}" data-valor="">Voltar para a fila</button>` : ""}</div>` : ""}
     ${ed && c.status === "aprovado" && !pronto ? `<div class="aviso alerta sem-fonte">Para registrar a publicação no site, o assunto precisa estar <b>confirmado oficialmente</b> e ter ao menos um <b>trecho conferido em fonte oficial</b>. No Informativo Mensal este conteúdo já pode entrar.</div>` : ""}
-    ${ed && c.status === "aprovado" && pronto ? `<div class="acoes registrar-site"><b class="sub">Depois de publicar no site:</b>
+    ${ed && c.status === "aprovado" && pronto && siteNaFila ? `<p class="sub registrar-site-robo">A publicação no site está autorizada: o robô registra o link sozinho quando a notícia entrar no site.</p>` : ""}
+    ${ed && c.status === "aprovado" && pronto && !siteNaFila ? `<div class="acoes registrar-site"><b class="sub">Depois de publicar no site:</b>
         <input type="text" id="site-url-${c.id}" data-enter="registrar-site" placeholder="Link da notícia (https://artecon.cnt.br/…)" aria-label="Link da notícia no site" style="flex:1;min-width:240px" maxlength="500">
         <input type="date" id="site-data-${c.id}" data-enter="registrar-site" aria-label="Data da publicação no site" value="${hojeLocal()}" max="${hojeLocal()}">
         <input type="text" id="site-obs-${c.id}" data-enter="registrar-site" placeholder="Observação (opcional)" aria-label="Observação" maxlength="500" style="min-width:160px">
@@ -2839,8 +2856,11 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, `publicar no ${nome}`), true); $("#rede-legenda")?.focus(); return; }
     const pub = conferirPublicidade(el.dataset.id, {[canal]:legenda});          // v0.20.0: termos da publicidade e boletim pago
     if(pub.erro){ recado(pub.erro, true); $("#rede-legenda")?.focus(); return; }
+    const conferi = $("#rede-conferi");                                          // v0.22.0: cancelada no meio do envio
+    if(conferi && !conferi.checked){ recado(`Confira no ${nome} que a publicação cancelada no meio do envio não saiu e marque a caixa “Conferi no ${nome}: …”.`, true); conferi.focus(); return; }
     if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem e a legenda vão ao ar como estão na tela.` + pub.aviso)) return;
-    const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido});
+    const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido,
+      p_conferi_rede:!!conferi?.checked});
     if(E.legendas) delete E.legendas[el.dataset.id + ":" + canal];
     await publicarRede(envio, canal);
   },
@@ -2854,6 +2874,8 @@ const ACOES = {
     for(const x of caixa?.querySelectorAll(".faltam-canal:checked") || []){
       const k = x.dataset.canal, l = ($(`#faltam-legenda-${k}-${id}`)?.value || "").trim();
       if(l.length < 10){ recado(`Escreva a legenda do ${NOME_REDE[k]} (pelo menos 10 caracteres) ou desmarque o ${NOME_REDE[k]}.`, true); $(`#faltam-legenda-${k}-${id}`)?.focus(); return; }
+      const conferi = $(`#faltam-conferi-${k}-${id}`);                        // v0.22.0: cancelada no meio do envio
+      if(conferi && !conferi.checked){ recado(`Confira no ${NOME_REDE[k]} que a publicação cancelada no meio do envio não saiu e marque a caixa (ou desmarque o ${NOME_REDE[k]}).`, true); conferi.focus(); return; }
       legendas[k] = l;
     }
     const canais = Object.keys(legendas);
@@ -2867,7 +2889,8 @@ const ACOES = {
     const res = [];
     for(const k of canais){
       let envio;
-      try{ envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(id), p_canal:k, p_legenda:legendas[k], p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido}); }
+      try{ envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(id), p_canal:k, p_legenda:legendas[k], p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido,
+                                                    p_conferi_rede:!!$(`#faltam-conferi-${k}-${id}`)?.checked}); }
       catch(e){ res.push({ok:false, msg:`${NOME_REDE[k]}: ${e.message}`}); continue; }
       if(E.legendas) delete E.legendas[id + ":faltam-" + k];
       res.push(await publicarRede(envio, k, false));
@@ -3100,6 +3123,8 @@ const ACOES = {
     for(const x of caixa?.querySelectorAll(".todos-canal:checked") || []){
       const k = x.dataset.canal, l = ($(`#todos-legenda-${k}-${id}`)?.value || "").trim();
       if(l.length < 10){ recado(`Escreva a legenda do ${NOME_REDE[k]} (pelo menos 10 caracteres) ou desmarque o ${NOME_REDE[k]}.`, true); $(`#todos-legenda-${k}-${id}`)?.focus(); return; }
+      const conferi = $(`#todos-conferi-${k}-${id}`);                         // v0.22.0: cancelada no meio do envio
+      if(conferi && !conferi.checked){ recado(`Confira no ${NOME_REDE[k]} que a publicação cancelada no meio do envio não saiu e marque a caixa (ou desmarque o ${NOME_REDE[k]}).`, true); conferi.focus(); return; }
       legendas[k] = l;
     }
     if(!Object.keys(legendas).length){ recado("Marque o Instagram, o Facebook ou os dois. Para publicar só no site, use “Autorizar publicação no site”.", true); return; }
@@ -3110,7 +3135,8 @@ const ACOES = {
     const redesTxt = Object.keys(legendas).map(k => NOME_REDE[k]).join(" e ");
     if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.` + pub.aviso)) return;
     await rpc("radar_autorizar_todos", {p_conteudo:Number(id), p_categoria:cat, p_lido:el.dataset.lido, p_imagem:img.getAttribute("src"),
-      p_legenda_instagram:legendas.instagram || null, p_legenda_facebook:legendas.facebook || null});
+      p_legenda_instagram:legendas.instagram || null, p_legenda_facebook:legendas.facebook || null,
+      p_conferi_rede:Object.keys(legendas).some(k => $(`#todos-conferi-${k}-${id}`)?.checked)});
     if(E.legendas) for(const k of ["instagram", "facebook"]) delete E.legendas[id + ":todos-" + k];
     E.todosFechado = null;
     const robo = await acionarRoboSite();
@@ -3250,7 +3276,7 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, "aprovar"), true); f.querySelector(".marcas-verificar")?.scrollIntoView({behavior:"smooth", block:"center"}); return; }
     if(Number(f.dataset.copiados) > 0 && !f.dataset.copiaAutorizada){ recado("Este conteúdo tem trecho igual ao texto da fonte " +
       (f.dataset.pagas ? "com frase do boletim pago, que precisa ser reescrita com palavras próprias" : "sem a fonte citada: reescreva com palavras próprias ou, se a frase igual for indispensável, diga no parágrafo dela de quem é (“Segundo a Receita Federal, …”)") +
-      " (veja o quadro vermelho). Use “Revisar com IA” ou clique em “Autorizar mesmo assim”, e salve antes de aprovar.", true); return; }
+      " (veja o quadro vermelho). Use “Revisar com IA”" + (f.dataset.pagas ? " (a frase do boletim pago não se autoriza)" : " ou clique em “Autorizar mesmo assim”") + ", e salve antes de aprovar.", true); return; }
     if(f.dataset.faltaFonte){ recado("Preencha o campo Fonte (ele sai no fim da notícia, dizendo de onde veio o texto igual ao da fonte) e salve antes de aprovar.", true); return; }
     // só aprova se o texto ainda for o que foi aberto nesta tela
     const r = await rest("PATCH", "radar_conteudos", {params:{id:"eq." + el.dataset.id, atualizado_em:"eq." + f.dataset.lido},

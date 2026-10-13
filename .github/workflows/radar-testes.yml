@@ -31,14 +31,15 @@ jobs:
       RADAR_PGUSER: postgres
       PGPASSWORD: postgres
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1   # v6.3.0
         with:
           python-version: "3.12"
       # pyyaml: o teste do modelo do workflow do corretor de vídeo (robo/video/workflow/radar-video.yml) lê o YAML
-      - run: pip install -r robo/requirements.txt "psycopg[binary]" pytest playwright pillow pyyaml
+      - run: pip install --require-hashes --no-deps -r robo/requirements.txt
+      - run: pip install "psycopg[binary]" pytest playwright pillow pyyaml
       # v0.22.0: o Python do robô de vídeo, com versão e hash (o Speech SDK da Azure): test_radar_video_transcrever.py roda o SDK de
       # verdade contra um servidor local do protocolo de fala (ws://127.0.0.1; nenhuma chamada à Azure)
       - run: pip install --require-hashes --no-deps -r robo/video/requirements.txt
@@ -46,7 +47,7 @@ jobs:
       # numa pasta temporária; os testes do contêiner montam robo/video/Dockerfile com o docker que já vem no runner)
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils ffmpeg
       - run: python -m playwright install --with-deps chromium
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed   # v2.0.5
         with:
           deno-version: v2.x
       - name: Instalar PostgREST

@@ -77,3 +77,6 @@ erro.json
 .resultado.json
 .erro.json
 luz[0-9]*.txt
+# v0.22.0 (varredura geral): os clipes brutos que o "pegar" baixa (<pasta>/ent/1, ent/2…, sem extensão: o vídeo original, com rosto,
+# voz e GPS) — o único arquivo de trabalho sem extensão barrada
+**/ent/[0-9]*

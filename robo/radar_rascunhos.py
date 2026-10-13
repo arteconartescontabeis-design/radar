@@ -498,18 +498,24 @@ def publicacao_da_fonte(nome, orgao) -> str:
             and f" {_limpa_copia(pub)} " not in f" {_limpa_copia(orgao)} " else "")
 
 
+def sem_marcas_de_bloco(t) -> str:
+    """Marcas do bloco de dados (<<< e >>>) trocadas por aspas, como semMarcasDeBloco da função radar-ia (v0.22.0, varredura geral):
+    um "<<<FIM>>>" na página capturada fecharia o bloco antes da hora e o que viesse depois deixaria de ser material (REGRA_DADOS)."""
+    return re.sub(r">{3,}", "»", re.sub(r"<{3,}", "«", str(t or "")))
+
+
 def bloco_oficial(capturas: list[dict]) -> tuple[str, str]:
     restante, bloco, texto = MAX_TEXTO_TOTAL, "", ""
     for c in capturas:
         if not c.get("texto") or restante <= 0:
             continue
-        parte = c["texto"][:min(MAX_TEXTO_POR_CAPTURA, restante)]
+        parte = sem_marcas_de_bloco(c["texto"][:min(MAX_TEXTO_POR_CAPTURA, restante)])
         restante -= len(parte)
         quando = "/".join(reversed(c["data_publicacao"].split("-"))) if c.get("data_publicacao") else "sem data"
         fonte = c.get("radar_fontes") or {}
-        orgao = fonte.get("orgao") or ""
-        bloco += (f"<<<TEXTO OFICIAL id={c['id']} | órgão: {orgao}{publicacao_da_fonte(fonte.get('nome'), orgao)} | título: {c['titulo']} | "
-                  f"publicado em: {quando}>>>\n{parte}\n<<<FIM>>>\n\n")
+        orgao = sem_marcas_de_bloco(fonte.get("orgao"))
+        bloco += (f"<<<TEXTO OFICIAL id={c['id']} | órgão: {orgao}{sem_marcas_de_bloco(publicacao_da_fonte(fonte.get('nome'), orgao))} | "
+                  f"título: {sem_marcas_de_bloco(c['titulo'])} | publicado em: {quando}>>>\n{parte}\n<<<FIM>>>\n\n")
         texto += f"{c['titulo']}. Publicado em {quando}.\n{parte}\n"
     return bloco, texto
 
@@ -586,11 +592,12 @@ def revisar(sessao: requests.Session, url: str, token: str, modelo: str, titulo:
     resta = None if prazo is None else prazo - time.monotonic()
     if resta is not None and resta < 30:
         raise ErroConteudo("sem tempo para a segunda passada")
-    entrada = (f"Título: {titulo}\n\n<<<TEXTO A REVISAR>>>\n{corpo}\n<<<FIM>>>\n\n"
-               + ("Marcas e comentários de dúvida a resolver:\n" + "\n".join(f"- {m}" for m in marcas) + "\n\n" if marcas else "")
+    sm = sem_marcas_de_bloco
+    entrada = (f"Título: {sm(titulo)}\n\n<<<TEXTO A REVISAR>>>\n{sm(corpo)}\n<<<FIM>>>\n\n"
+               + ("Marcas e comentários de dúvida a resolver:\n" + "\n".join(f"- {sm(m)}" for m in marcas) + "\n\n" if marcas else "")
                + ("Trechos iguais ao da fonte sem a fonte citada no parágrafo:\n"
-                  + "\n".join(f'- "{c["texto"]}" (' + ("BOLETIM PAGO: reescreva com palavras próprias" if c["paga"]
-                                                       else "fonte: " + (c["fonte"] or "a fonte do material")) + ")" for c in copias[:12])
+                  + "\n".join(f'- "{sm(c["texto"])}" (' + ("BOLETIM PAGO: reescreva com palavras próprias" if c["paga"]
+                                                           else "fonte: " + sm(c["fonte"] or "a fonte do material")) + ")" for c in copias[:12])
                   + "\n\n" if copias else "")
                + f"Material de consulta (as fontes do assunto):\n{bloco}")
     _, resposta = _resposta_ia(sessao, url, token, {
@@ -612,8 +619,8 @@ def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: 
     if not bloco:
         raise ErroConteudo("a captura não tem texto oficial")
     fonte = principal.get("radar_fontes") or {}
-    entrada = (f"Assunto: {principal['titulo']}\nCategoria: {fonte.get('categoria_padrao') or '—'}\n"
-               f"Resumo da equipe: {principal.get('resumo_fonte') or '—'}\nPúblico afetado: —\n\n"
+    entrada = (f"Assunto: {sem_marcas_de_bloco(principal['titulo'])}\nCategoria: {fonte.get('categoria_padrao') or '—'}\n"
+               f"Resumo da equipe: {sem_marcas_de_bloco(principal.get('resumo_fonte')) or '—'}\nPúblico afetado: —\n\n"
                f"Trechos já conferidos pela equipe (use-os como base):\n(nenhum)\n\n{bloco}")
     dados, resposta = _resposta_ia(sessao, url, token, {
         "model": modelo, "max_tokens": 6000, "system": instrucoes(formato), "messages": [{"role": "user", "content": entrada}],

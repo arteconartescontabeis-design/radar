@@ -54,8 +54,31 @@ Mudam o banco (`radar-setup-v0.22.0.sql`: 2 tabelas novas, `radar_videos` e `rad
 amarra do vídeo na peça; as funções `radar_video_*`; a configuração `corretor_video`) e a tela (`index.html`, `radar-pauta.js` e o
 arquivo novo `radar-video.js`). Entram a função `radar-video`, o `sql/radar-video-agenda.sql` (as chaves no Vault, a reserva da fila e
 a limpeza diária) e o robô do vídeo (`robo/video/`, com o modelo do workflow do repositório privado em
-`robo/video/workflow/radar-video.yml`). As funções `radar-ia` e `radar-redes` e o robô de coleta não mudam (continuam na v0.21.0).
-Detalhes em "Corretor de vídeo do reel" e, para instalar, "Da v0.21.0 para a v0.22.0".
+`robo/video/workflow/radar-video.yml`). A função `radar-redes` não muda (continua na v0.21.0); a `radar-ia` e a `radar-itc` mudam só
+pelas correções da varredura geral (abaixo) e vão para a v0.22.0. Detalhes em "Corretor de vídeo do reel" e, para instalar, "Da v0.21.0
+para a v0.22.0".
+
+**Varredura geral (13/10/2026), nesta mesma versão:**
+- **Notícia, "Publicar em todos":** só o registro da publicação feito pelo robô do site (ou por uma pessoa depois que o envio do site
+  saiu), com link do próprio site, libera o Instagram e o Facebook; enquanto o robô está na vez, "Registrar publicação no site" some
+  da tela e o banco recusa o registro à mão (RADAR145). Link de outro endereço derruba as redes que esperavam, com o motivo.
+- **Boletim pago na notícia:** a frase do boletim pago (ITC) não se autoriza mais ("Autorizar mesmo assim" some quando há trecho
+  pago), e o banco recusa a autorização da cópia, a aprovação e a publicação no site, no Instagram e no Facebook com ela (RADAR146).
+  A comparação (na notícia e na Pauta) usa todas as capturas do boletim guardadas, não só as dos últimos 90 dias.
+- **Notícia, nunca duas vezes:** a publicação cancelada no meio do envio ("publicando" parada) pode ter saído; autorizar de novo o
+  mesmo canal pede a caixa "Conferi no Instagram/Facebook: … não saiu" (RADAR166), como na Pauta.
+- **Pauta:** a linha de identificação confere o registro no CRC inteiro (UF, número e categoria, "CRC-SC 007129/O-0"), não só os
+  algarismos; a pessoa que está num vídeo do corretor ainda guardado não se apaga (marque a revogação: RADAR174); a caixa "A pessoa
+  viu o vídeo final" aparece também para quem foi desmarcada depois do envio (ela continua no vídeo); o leitor lê só as imagens ligadas
+  a um conteúdo (nunca a foto tirada da peça ou a lâmina de uma aprovação recusada); o selo com motivo longo quebra a linha no celular.
+- **IA:** o texto de fora (página capturada, boletim, assunto, conteúdo) não fecha mais o bloco de dados em nenhuma ação (antes, só
+  no kit e na peça); o nome da equipe escrito com apóstrofo curvo, hífen ou caractere invisível também vai mascarado.
+- **Boletim da ITC pela função:** a falha no login da Microsoft ou na caixa fica na aba Fontes (antes, pela agenda, ninguém via).
+- **Robôs e GitHub:** o "Radar — teste do site" não mostra mais o texto das notícias, quem cadastrou nem o código dos links de
+  editar/excluir do painel; os workflows usam as ações fixadas pelo commit e os pacotes do `robo/requirements.txt` com versão exata
+  e hash; o conferir do repositório olha também os commits do primeiro push de um ramo; os avisos (issues) contam só os abertos pelo
+  robô; a fonte "Receita Federal — Atos normativos" diz o motivo de não ler nada (o sistema Normas virou aplicação montada no
+  navegador); os clipes brutos do corretor (`ent/<n>`) ficam fora do Git.
 
 A v0.21.0 trouxe a aba **Pauta**: o calendário de publicações no Instagram e no Facebook (uma peça por dia), com as peças
 preparadas no Radar e publicadas pela API da Meta **na hora marcada, depois da aprovação do administrador**:
@@ -216,14 +239,14 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   informação. No conteúdo, o quadro "Texto igual ao da fonte" traz **Revisar com IA** (reescreve só esses trechos, citando a
   fonte, e também resolve as marcas; o que ela afirmar é conferido de novo contra o texto oficial) e **Autorizar mesmo assim**
   (editor ou administrador, com o motivo; vale para o texto atual e cai se o texto mudar; a revisão não mexe no trecho
-  autorizado). Se a revisão mudar o título, a capa com a ilustração é refeita sozinha. Os pontos a conferir agora só crescem:
+  autorizado; nunca para frase do boletim pago). Se a revisão mudar o título, a capa com a ilustração é refeita sozinha. Os pontos a conferir agora só crescem:
   a revisão acrescenta o que tirou do texto, ninguém apaga o que a IA apontou.
 - **Capa com imagem.** A capa feita pela IA é a ilustração ao fundo com o logotipo da Artecon, a categoria e o título por cima
   (antes ficava só a foto). A ilustração fica guardada: depois de trocar o título, **Atualizar a capa** refaz a capa sem gerar
   outra imagem; **Capa padrão, sem a ilustração** volta ao fundo marinho.
-- **Triagem.** A IA não junta mais como "mesmo fato" notícias que citam tributos diferentes (caso do ITC de 09/10: "STF exclui
-  créditos presumidos de ICMS da base do PIS e da Cofins" tinha ido para trás de "crédito presumido de ICMS na base do IRPJ e
-  da CSLL"), nem pelo caminho até a origem nem com o que já está no grupo dela. O cartão da captura mostra os títulos das
+- **Triagem.** A IA não junta mais como "mesmo fato" notícias que citam tributos diferentes (por exemplo, uma sobre o crédito
+  presumido de ICMS na base do PIS/Cofins posta atrás de outra sobre a base do IRPJ/CSLL), nem pelo caminho até a origem nem com o
+  que já está no grupo dela. O cartão da captura mostra os títulos das
   repetições, cada uma com **Não é o mesmo fato**, que a devolve à lista; a decisão fica, mesmo que a fonte mude o texto e a IA
   avalie de novo.
 - **Fontes.** Fonte RSS cadastrada com o endereço da página do site (e não do feed) passa a funcionar: o robô segue o feed que
@@ -708,11 +731,15 @@ de 2026") e as palavras de ligação entre eles ("de", "e", "na"). Citação cur
   e pelo começo do nome da fonte quando é uma sigla ("PGFN", "SEF/SC") ou o nome da publicação ("Diário Oficial da União").
 - **Não pode ficar** (quadro vermelho; o Aprovar recusa): o trecho sem a fonte citada no parágrafo, ou com o campo Fonte
   vazio, e qualquer trecho com frases do **boletim pago** (ITC), mesmo citando a ITC. O botão **Revisar com IA** acrescenta
-  a fonte no parágrafo (e reescreve o trecho do boletim pago); **Autorizar mesmo assim** deixa como está, com o motivo registrado.
+  a fonte no parágrafo (e reescreve o trecho do boletim pago); **Autorizar mesmo assim** deixa como está, com o motivo registrado,
+  só o trecho igual ao de fonte livre. A frase do boletim pago **não se autoriza** (v0.22.0): com ela, o botão não aparece, e o
+  banco também recusa (RADAR146) a autorização, a aprovação e a publicação no site, no Instagram e no Facebook (texto e legenda),
+  comparando com todas as capturas do boletim guardadas, em janelas de 12 palavras, menos o que também está numa captura livre
+  do assunto (o artigo de lei que o boletim copiou do DOU).
 
 A IA (Gerar com IA, rascunhos do robô e Revisar com IA) segue a mesma regra. Limites: a comparação é só com o texto
 capturado do próprio assunto (não com a internet nem com outros sites de notícia), não detecta paráfrase muito próxima e é
-feita na tela: quem grava direto no banco não passa por ela. É um apoio à revisão, não um detector de plágio. O campo
+feita na tela: quem grava direto no banco não passa por ela (só pela trava do boletim pago, que está no banco). É um apoio à revisão, não um detector de plágio. O campo
 **Fonte** é preenchido só na criação do conteúdo (com os órgãos das capturas oficiais do assunto e, depois deles, os portais
 de notícia; o boletim pago não entra); capturas incluídas depois não o alteram.
 
@@ -1262,7 +1289,10 @@ conferido na documentação da Meta: confere-se na primeira peça pela agenda, c
 banco até cerca de 450 KB: confira o tamanho em Supabase → Usage de vez em quando. A lista de termos que travam na Pauta inclui
 palavras que também servem para informar ("garante", "ganhe", "definitivo", "100%", "a maioria") e precisa da confirmação do
 contador responsável. O leitor vê o plano e as legendas, mas não as fotos nem as lâminas. A chave do robô (segredo do GitHub
-Actions) não lê as pessoas, as peças, as fotos, as lâminas, as legendas dos envios nem a auditoria. Nada é apagado sozinho (foto,
+Actions) não lê as **tabelas** das pessoas, das peças, das fotos, das lâminas, das legendas dos envios nem a auditoria; **os arquivos
+do armazenamento ela lê**: é a chave `service_role`, que no Supabase alcança todos os buckets privados (`radar-pauta`, com as lâminas
+aprovadas, e `radar-videos`, com os clipes e as transcrições) — por isso os pacotes dos robôs públicos vão com versão exata e hash
+(`robo/requirements.txt`, v0.22.0) e a chave nunca sai dos segredos do GitHub. Nada é apagado sozinho (foto,
 lâmina, arquivo no armazenamento privado nem post): veja "Quando o termo é revogado", no item 1. As recusas do banco na Pauta vêm com os códigos RADAR159 a RADAR176 (por
 exemplo, RADAR161 "alterada depois que a tela foi aberta", RADAR162 "aprovada não muda", RADAR165 "há pontos a resolver",
 RADAR166 "falta marcar uma conferência", RADAR167 "hora fora do permitido", RADAR170 "já saiu numa rede", RADAR174 "pessoa em
@@ -1509,8 +1539,10 @@ no Microsoft Entra, feito uma vez por quem administra o Microsoft 365 do escrit�
    `GRAPH_CLIENT_ID` (ID do aplicativo), `GRAPH_CLIENT_SECRET` (o Valor do passo 4) e `ITC_CAIXA` (o e-mail da caixa onde o
    boletim chega). **Nunca mande esses valores pelo chat.** O `IA_GATEWAY_TOKEN` já existe (é o mesmo da função radar-ia).
 7. Radar → **Fontes** → boletim da ITC → **Testar conexão com o e-mail**: todos os itens devem ficar OK.
-8. Rode uma vez `sql/radar-itc-agenda.sql` no SQL Editor (liga a leitura diária às 02h55; se ficar boletim para depois, ela se completa às 03h10 e às 03h25). Daí em diante, a rotina antiga
-   (que dependia da conversa do Claude) pode ser desligada.
+8. Rode uma vez `sql/radar-itc-agenda.sql` no SQL Editor (liga a leitura diária às 02h55; se ficar boletim para depois, ela se completa às 03h10 e às 03h25). **No mesmo
+   momento, desligue a rotina antiga** "Radar — boletim ITC (e-mail)" (a que acorda a conversa do Claude): com as duas, o boletim é
+   lido duas vezes e a IA é paga duas vezes. Enquanto a função não estiver instalada, a rotina antiga é o caminho em produção
+   (varredura geral de 13/10/2026: a agenda da ITC ainda não estava no pg_cron).
 
 Opcional: `RADAR_ITC_MODELO` (padrão `claude-haiku-4-5`) e `ITC_REMETENTE` (padrão `itc@itcnet.com.br`). Cada leitura com
 boletim novo usa a IA (cerca de 10 a 20 mil tokens por boletim); sem boletim novo, não usa.
@@ -1601,8 +1633,12 @@ a 8) e sem o termo novo de cada pessoa assinado e gravado em Pessoas e termos.**
     calibração. No fim, **"Descartar esta gravação"** e **"Cancelar a peça"**; apague do celular. O vídeo, o áudio e o relatório de
     teste **não vão para o GitHub**.
 
-Nenhum segredo da Azure vai ao Supabase: a transcrição é do robô, no repositório privado. A função `radar-ia`, a `radar-redes`, o
-robô de coleta e a agenda da Pauta não mudam.
+12. **Correções da varredura geral:** Edge Functions → `radar-ia` → cole o `index.ts` desta versão → Deploy (Configurações →
+    Inteligência artificial → "Testar a IA" mostra **v0.22.0**); Edge Functions → `radar-itc` → cole o `index.ts` desta versão →
+    Deploy, com "Verify JWT" como já está (o "Testar conexão" da ITC mostra **versão 0.22.0**).
+
+Nenhum segredo da Azure vai ao Supabase: a transcrição é do robô, no repositório privado. A função `radar-redes` e a agenda da Pauta
+não mudam.
 
 Cuidados nesta versão:
 - **No repositório público (este), só vídeos sintéticos.** Nunca envie ao GitHub um vídeo, áudio, foto, transcrição, relatório ou
@@ -1616,7 +1652,10 @@ Cuidados nesta versão:
   workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
   reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
 - **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
-  `sql/radar-reversao-v0.22.0.sql`, que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket). Fora do
+  `sql/radar-reversao-v0.22.0.sql`, que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
+  as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
+  guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do
   banco, ficariam rodando ou valendo: no repositório privado `radar-video`, desative o workflow (Disable workflow, como acima, ou apague
   `.github/workflows/radar-video.yml`: a agenda dele roda duas vezes por dia útil e, sem o banco, falharia a cada vez) e apague os
   segredos `RADAR_VIDEO_ROBO_CHAVE`, `AZURE_FALA_CHAVE` e `AZURE_FALA_REGIAO` (e os opcionais `AZURE_FALA_MODO` e

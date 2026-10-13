@@ -643,6 +643,35 @@ def test_desmarcar_quem_aparece_nao_tira_a_pessoa_do_video(corretor):
     assert video(db, v2, "pessoas") == sorted([ana, bruno, carla])
 
 
+def test_pessoa_do_video_nao_se_apaga_e_a_apagada_conta_como_revogada(corretor):
+    """Varredura geral (v0.22.0): desmarcada na peça, a pessoa continua no vídeo enviado. Apagar o cadastro dela não dá enquanto o
+    vídeo guarda arquivos ou textos (RADAR174: o caminho é a revogação); e a apagada antes desta trava conta como revogada na
+    limpeza (antes, o "exists" sobre radar_pessoas dava falso e os clipes dela esperavam o prazo de guarda)."""
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno")
+    pid, _ = reel(db, pessoa=ana, pessoas=[ana, bruno])
+    vid, _ = ate_pronto(db, pid, ana)
+    mudar_por_fora(db, pid, f"pessoas = '{{{ana}}}'")                                       # desmarcado na peça
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR174: esta pessoa está num vídeo do corretor"):
+        c.execute("delete from radar_pessoas where id = %s", (bruno,))
+    assert robo("select radar_video_limpeza()")["itens"] == []                              # dentro do prazo e ninguém revogou
+    # apagada sem passar pela trava (como numa instalação de antes dela): a limpeza seguinte leva os arquivos e os textos
+    db.execute("set session_replication_role = replica")
+    try:
+        db.execute("delete from radar_pessoas where id = %s", (bruno,))
+    finally:
+        db.execute("set session_replication_role = origin")
+    r = robo("select radar_video_limpeza()")
+    assert {i["id"]: sorted(i["apagar"]) for i in r["itens"]} == {vid: ["bruto", "corrigido", "trabalho"]} and r["textos"] == 1
+    # com tudo apagado, o cadastro de quem estava só nesse vídeo pode sair
+    robo("select radar_video_limpo(%s, %s)", vid, ["bruto", "trabalho", "corrigido"])
+    carla = pessoa_do_corretor(db, "Carla Modelo", "Carla")
+    db.execute("update radar_videos set pessoas = pessoas || %s::bigint where id = %s", (carla, vid))
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("delete from radar_pessoas where id = %s", (carla,)).rowcount == 1
+
+
 @pytest.mark.parametrize("mudanca, motivo", [
     ("termo_corretor_em = null", "sem o termo novo, que cita o corretor de vídeo"),             # retirou a autorização do corretor
     ("termo_corretor_em = %(h)s::date + 3", "sem o termo novo, que cita o corretor de vídeo"),

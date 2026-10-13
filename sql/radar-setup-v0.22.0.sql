@@ -1621,6 +1621,10 @@ begin
     if v_marcas is not null then
       raise exception '%', v_marcas using errcode = 'P0001';
     end if;
+    -- v0.22.0 (varredura geral): nem frase do boletim pago (a tela já não deixa; aqui vale para qualquer caminho)
+    if public.radar_copia_paga_assunto(new.assunto_id, array[new.titulo, new.corpo]) then
+      raise exception 'RADAR146: frase do boletim pago (ITC) no texto: reescreva com palavras próprias antes de aprovar (o boletim pago nunca é reproduzido, nem citando a fonte nem entre aspas)' using errcode = 'P0001';
+    end if;
     if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
       raise exception 'RADAR020: a aprovação exige um usuário com perfil de editor ou administrador (o robô e a IA não aprovam)'
         using errcode = 'P0001';
@@ -1754,6 +1758,11 @@ begin
   end if;
   if length(btrim(coalesce(p_motivo, ''))) < 5 then
     raise exception 'RADAR143: diga em poucas palavras por que o trecho igual ao da fonte pode ficar (ex.: transcrição do artigo da lei, com a fonte citada)' using errcode = 'P0001';
+  end if;
+  -- v0.22.0 (varredura geral): a frase do boletim pago não se autoriza (só o trecho igual ao de fonte livre, com motivo)
+  if exists (select 1 from public.radar_conteudos c where c.id = p_conteudo
+              and public.radar_copia_paga_assunto(c.assunto_id, array[c.titulo, c.corpo])) then
+    raise exception 'RADAR146: frase do boletim pago (ITC) no texto não se autoriza: reescreva com palavras próprias (o boletim pago nunca é reproduzido, nem citando a fonte nem entre aspas)' using errcode = 'P0001';
   end if;
   perform set_config('radar.autorizando_copia', '1', true);
   update public.radar_conteudos
@@ -1931,6 +1940,18 @@ begin
   return new;
 end $$;
 
+-- v0.22.0 (varredura geral): o domínio de um link (minúsculas, sem "www.") e o do site da Artecon, o mesmo que o robô do site
+-- usa (Configurações → "site" → "lista"; sem ela, artecon.cnt.br)
+create or replace function public.radar_url_host(p_url text) returns text
+language sql immutable set search_path = public as $$
+  select nullif(regexp_replace(lower(substring(coalesce(p_url, '') from '^[A-Za-z][A-Za-z0-9+.-]*://(?:[^/?#@]*@)?([^/?#:]+)')), '^www\.', ''), '')
+$$;
+create or replace function public.radar_site_host() returns text
+language sql stable set search_path = public as $$
+  select coalesce((select public.radar_url_host(c.valor->>'lista') from public.radar_config c
+                    where c.chave = 'site' and jsonb_typeof(c.valor) = 'object' and c.valor->>'lista' ~ '^https?://[!-~]+$'), 'artecon.cnt.br')
+$$;
+
 -- Registro de publicação no site. Mesmas exigências da antiga publicação: conteúdo aprovado, assunto
 -- confirmado oficialmente e ao menos um trecho conferido em fonte oficial. Guarda a cópia do texto e
 -- da fundamentação; o que saiu não se reescreve.
@@ -1954,6 +1975,13 @@ begin
         using errcode = 'P0001';
     end if;
     new.conteudo_lido_em := v_c.atualizado_em;
+    -- v0.22.0 (varredura geral): com a publicação no site autorizada e o robô na vez, quem registra é o robô (com o link que
+    -- ele achou no site): o registro à mão nessa hora liberaria o Instagram e o Facebook com um link que ninguém conferiu
+    if auth.uid() is not null and exists (select 1 from public.radar_site_envios e
+                                           where e.conteudo_id = new.conteudo_id and e.situacao in ('autorizado','enviando')) then
+      raise exception 'RADAR145: a publicação no site está autorizada e o robô registra o link sozinho ao concluir; espere ou cancele a autorização antes de registrar à mão'
+        using errcode = 'P0001';
+    end if;
     v_pendencia := public.radar_pendencia_assunto(v_c.assunto_id);
     if v_pendencia is not null then
       raise exception '%', v_pendencia using errcode = 'P0001';
@@ -2017,6 +2045,9 @@ begin
   if v_pendencia is not null then
     raise exception '%', v_pendencia using errcode = 'P0001';
   end if;
+  if public.radar_copia_paga_assunto(v_c.assunto_id, array[v_c.titulo, v_c.corpo]) then      -- v0.22.0 (varredura geral)
+    raise exception 'RADAR146: frase do boletim pago (ITC) no texto: reescreva com palavras próprias (o boletim pago nunca é reproduzido, nem citando a fonte nem entre aspas)' using errcode = 'P0001';
+  end if;
   v_pendencia := public.radar_pendencia_assunto(v_c.assunto_id);
   if v_pendencia is not null then
     raise exception '%', v_pendencia using errcode = 'P0001';
@@ -2071,9 +2102,25 @@ begin
   return null;
 end $$;
 
+-- v0.22.0 (varredura geral): a publicação da notícia cancelada no meio do envio ("publicando" parada: a Meta pode ter publicado e o
+-- registro não ter entrado) pode estar no ar. Autorizar de novo o mesmo canal pede a caixa "Conferi no Instagram/Facebook: não saiu"
+-- (p_conferi_rede), como na Pauta (RADAR166): nunca publicar duas vezes. O mesmo critério da Pauta (enviado e sem post_id), até
+-- que uma publicação desse canal saia de fato.
+create or replace function public.radar_rede_cancelada_no_envio(p_conteudo bigint, p_canal text) returns boolean
+language sql stable set search_path = public as $$
+  select exists (select 1 from public.radar_redes_envios e
+                  where e.conteudo_id = p_conteudo and e.canal = p_canal and e.peca_id is null
+                    and e.situacao = 'cancelado' and e.enviado_em is not null and e.post_id is null
+                    and not exists (select 1 from public.radar_redes_envios d where d.conteudo_id = p_conteudo and d.canal = p_canal
+                                     and d.id > e.id and d.post_id is not null))
+$$;
+
 -- v0.13.0: Instagram e Facebook. Valem as exigências do site (conteúdo aprovado, assunto com fundamentação — ou liberado
 -- pelo administrador) e mais uma: a notícia já precisa estar no site (a legenda leva o leitor até ela).
-create or replace function public.radar_autorizar_rede(p_conteudo bigint, p_canal text, p_legenda text, p_imagem text, p_lido timestamptz)
+-- v0.22.0 (varredura geral): + p_conferi_rede (radar_rede_cancelada_no_envio)
+drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz);
+create or replace function public.radar_autorizar_rede(p_conteudo bigint, p_canal text, p_legenda text, p_imagem text, p_lido timestamptz,
+                                                       p_conferi_rede boolean default false)
 returns bigint language plpgsql security definer set search_path = public as $$
 declare
   v_c public.radar_conteudos%rowtype;
@@ -2111,12 +2158,19 @@ begin
   if v_pendencia is not null then
     raise exception '%', v_pendencia using errcode = 'P0001';
   end if;
+  if public.radar_copia_paga_assunto(v_c.assunto_id, array[p_legenda, v_c.titulo, v_c.corpo]) then      -- v0.22.0 (varredura geral)
+    raise exception 'RADAR146: frase do boletim pago (ITC) na legenda ou no texto: reescreva com palavras próprias (o boletim pago nunca é reproduzido, nem citando a fonte nem entre aspas)' using errcode = 'P0001';
+  end if;
   if p_imagem is null or p_imagem not like 'data:image/jpeg;base64,%' or length(p_imagem) > 3000000 then
     raise exception 'RADAR135: falta a imagem (JPEG) da publicação' using errcode = 'P0001';
   end if;
   if exists (select 1 from public.radar_redes_envios e where e.conteudo_id = p_conteudo and e.canal = p_canal
               and e.situacao in ('autorizado','enviando','erro','publicado','dispensado')) then
     raise exception 'RADAR136: este conteúdo já tem publicação autorizada, feita ou dispensada neste canal' using errcode = 'P0001';
+  end if;
+  if not coalesce(p_conferi_rede, false) and public.radar_rede_cancelada_no_envio(p_conteudo, p_canal) then
+    raise exception 'RADAR166: a publicação deste conteúdo no % foi cancelada no meio do envio: confira no % que ela não saiu e marque “Conferi no %: não saiu”',
+      initcap(p_canal), initcap(p_canal), initcap(p_canal) using errcode = 'P0001';
   end if;
   insert into public.radar_redes_envios (conteudo_id, canal, legenda, imagem, conteudo_lido_em, autorizado_por)
   values (p_conteudo, p_canal, btrim(p_legenda), p_imagem, v_c.atualizado_em, auth.uid())
@@ -2159,8 +2213,12 @@ begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
     raise exception 'RADAR130: só o administrador mexe na autorização das redes' using errcode = '42501';
   end if;
+  -- v0.22.0 (varredura geral): a cancelada no meio do envio diz o porquê da caixa "Conferi…: não saiu" na próxima autorização
   update public.radar_redes_envios
-     set situacao = 'cancelado', cancelado_por = auth.uid(), cancelado_em = now(), atualizado_em = now(), imagem = null
+     set situacao = 'cancelado', cancelado_por = auth.uid(), cancelado_em = now(), atualizado_em = now(), imagem = null,
+         erro = case when situacao = 'enviando'
+                     then 'Cancelada no meio do envio: a publicação pode ter saído no ' || initcap(canal) || ' sem o registro no Radar. '
+                          || 'Antes de autorizar de novo, confira lá que ela não saiu.' else erro end
    where id = p_envio
      and (situacao in ('aguardando_site','autorizado','erro','dispensado') or (situacao = 'enviando' and enviado_em < now() - interval '10 minutes'));
   if not found then
@@ -2194,7 +2252,10 @@ begin
   end if;
   v_pendencia := coalesce(public.radar_pendencia_assunto(v_c.assunto_id),
                            -- v0.14.3: autorização antiga (de antes da trava) com [VERIFICAR] na legenda ou no texto também não sai
-                           public.radar_marcas_verificar(coalesce(v_e.legenda, '') || E'\n' || coalesce(v_c.titulo, '') || E'\n' || coalesce(v_c.corpo, '')));
+                           public.radar_marcas_verificar(coalesce(v_e.legenda, '') || E'\n' || coalesce(v_c.titulo, '') || E'\n' || coalesce(v_c.corpo, '')),
+                           -- v0.22.0 (varredura geral): nem frase do boletim pago (autorização de antes da trava, ou boletim chegado depois)
+                           case when public.radar_copia_paga_assunto(v_c.assunto_id, array[v_e.legenda, v_c.titulo, v_c.corpo])
+                                then 'RADAR146: frase do boletim pago (ITC) na legenda ou no texto: reescreva com palavras próprias e autorize de novo' end);
   if v_pendencia is not null then
     update public.radar_redes_envios set situacao = 'erro', erro = left(v_pendencia, 1000), atualizado_em = now() where id = p_envio;
     return jsonb_build_object('erro', v_pendencia);
@@ -2232,8 +2293,10 @@ end $$;
 -- v0.17.0: "Publicar em todos": o administrador autoriza de uma vez o site, o Instagram e o Facebook. Valem todas as exigências
 -- de cada canal (as do site pela própria radar_autorizar_site). As redes ficam "aguardando_site": saem sozinhas logo depois que
 -- a notícia entra no site; se o site não sair (cancelado ou erro) ou o texto mudar, elas caem junto.
+-- v0.22.0 (varredura geral): + p_conferi_rede (radar_rede_cancelada_no_envio)
+drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text);
 create or replace function public.radar_autorizar_todos(p_conteudo bigint, p_categoria text, p_lido timestamptz, p_imagem text,
-                                                        p_legenda_instagram text, p_legenda_facebook text)
+                                                        p_legenda_instagram text, p_legenda_facebook text, p_conferi_rede boolean default false)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_c public.radar_conteudos%rowtype;
@@ -2262,6 +2325,10 @@ begin
                 and e.situacao in ('aguardando_site','autorizado','enviando','erro','publicado','dispensado')) then
       raise exception 'RADAR136: este conteúdo já tem publicação autorizada, feita ou dispensada neste canal' using errcode = 'P0001';
     end if;
+    if not coalesce(p_conferi_rede, false) and public.radar_rede_cancelada_no_envio(p_conteudo, v_canal) then
+      raise exception 'RADAR166: a publicação deste conteúdo no % foi cancelada no meio do envio: confira no % que ela não saiu e marque “Conferi no %: não saiu”',
+        initcap(v_canal), initcap(v_canal), initcap(v_canal) using errcode = 'P0001';
+    end if;
   end loop;
   if p_imagem is null or p_imagem not like 'data:image/jpeg;base64,%' or length(p_imagem) > 3000000 then
     raise exception 'RADAR135: falta a imagem (JPEG) da publicação' using errcode = 'P0001';
@@ -2272,6 +2339,9 @@ begin
   v_pendencia := public.radar_marcas_verificar(coalesce(p_legenda_instagram, '') || E'\n' || coalesce(p_legenda_facebook, ''));
   if v_pendencia is not null then
     raise exception '%', v_pendencia using errcode = 'P0001';
+  end if;
+  if public.radar_copia_paga_assunto(v_c.assunto_id, array[p_legenda_instagram, p_legenda_facebook]) then      -- v0.22.0 (varredura geral)
+    raise exception 'RADAR146: frase do boletim pago (ITC) na legenda: reescreva com palavras próprias (o boletim pago nunca é reproduzido, nem citando a fonte nem entre aspas)' using errcode = 'P0001';
   end if;
   foreach v_canal in array array['instagram','facebook'] loop
     v_legenda := btrim(coalesce(case v_canal when 'instagram' then p_legenda_instagram else p_legenda_facebook end, ''));
@@ -2370,6 +2440,29 @@ $$;
 
 -- A identificação legal (Configurações → Assinatura: empresa, CNPJ e CRC) está no texto? Compara só as letras e os algarismos,
 -- em maiúsculas: a formatação da linha (linhaIdentificacao, na tela) não precisa ser refeita aqui. NULL = está.
+-- v0.22.0 (varredura geral): o registro no CRC das Configurações como a tela o escreve (crcFormatado, index.html: "CRC-SC 007129/O-0";
+-- o zero da categoria vira a letra O; o formato antigo "1SC007129/O-0" ganha o "CRC " na frente) e, dele, a expressão que o acha num
+-- texto em maiúsculas sem acento: cada parte (CRC, SC, 007129, O, 0) na ordem, com qualquer separador entre elas e sem letra ou
+-- algarismo colado nas pontas
+create or replace function public.radar_crc_padrao(p_crc text) returns text
+language plpgsql immutable set search_path = public as $$
+declare
+  t text := regexp_replace(btrim(coalesce(p_crc, '')), '\s+', ' ', 'g');
+  m text[];
+  f text;
+begin
+  m := regexp_match(t, '^(?:CRC\s*[-/]?\s*)?(?:SC\s*[-/]?\s*)?([0-9]{4,6})(?:\s*/\s*([0OSTPostp])\s*-?\s*([0-9]))?$', 'i');
+  if m is not null then
+    f := 'CRC-SC ' || m[1] || case when m[2] is not null then '/' || case when m[2] = '0' then 'O' else upper(m[2]) end || '-' || m[3] else '' end;
+  elsif t ~* '^[0-9]?SC\s*[0-9]{4,6}\s*/\s*[0OSTP]\s*-?\s*[0-9]$' then
+    f := 'CRC ' || regexp_replace(upper(t), '/(\s*)0', '/\1O');
+  else
+    f := regexp_replace(t, '/0(?=\s*-\s*[0-9](?![0-9]))', '/O', 'g');
+  end if;
+  return '(^|[^A-Z0-9])' || array_to_string(array(select x from regexp_split_to_table(upper(f), '[^A-Z0-9]+') x where x <> ''), '[^A-Z0-9]*')
+         || '($|[^A-Z0-9])';
+end $$;
+
 create or replace function public.radar_pauta_identificacao_falta(p_texto text) returns text
 language plpgsql stable set search_path = public as $$
 declare
@@ -2388,7 +2481,12 @@ begin
   end if;
   v_txt := upper(regexp_replace(translate(coalesce(p_texto, ''), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
                                           'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn'), '[^A-Za-z0-9]', '', 'g'));
-  if strpos(v_txt, v_emp) = 0 or strpos(v_txt, v_cnpj) = 0 or strpos(v_txt, v_crc) = 0 then
+  -- v0.22.0 (varredura geral): o registro no CRC inteiro, como a tela o escreve (crcFormatado: "CRC-SC 007129/O-0"), com a UF e a
+  -- categoria, e não só os algarismos em qualquer ponto do texto ("CRC-PR 007129/O-5", "007129/0-0" com zero no lugar da letra O
+  -- ou um telefone com os mesmos algarismos passavam). Entre as partes, qualquer separador ("CRC/SC 007129 / O-0" vale).
+  if strpos(v_txt, v_emp) = 0 or strpos(v_txt, v_cnpj) = 0
+     or upper(translate(coalesce(p_texto, ''), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ', 'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn'))
+        !~ public.radar_crc_padrao(v->>'crc') then
     return 'falta a linha de identificação (empresa, CNPJ e CRC de Configurações → Assinatura)';
   end if;
   return null;
@@ -2441,33 +2539,58 @@ begin
                     where not regexp_replace(n, '^0+(?=[0-9])', '') = any(v_base)), '{}');
 end $$;
 
--- Frase do boletim pago (ITC, a mesma lista de FONTES_PAGAS da tela e da radar-ia) num texto da Pauta: cada campo à parte, em
--- janelas de 12 palavras, procuradas no texto das capturas do boletim dos últimos 90 dias. Devolve só sim ou não: o trecho do
--- boletim nunca sai daqui (nem para a tela, nem para o log).
-create or replace function public.radar_pauta_copia_paga(p_textos text[]) returns boolean
+-- Frase do boletim pago (ITC, a mesma lista de FONTES_PAGAS da tela e da radar-ia) num texto: cada campo à parte, em janelas de 12
+-- palavras, procuradas no texto das capturas do boletim. Devolve só sim ou não: o trecho do boletim nunca sai daqui (nem para a
+-- tela, nem para o log). v0.22.0 (varredura geral): todas as capturas do boletim que estão no banco (nenhuma é apagada e a tela do
+-- assunto mostra qualquer uma, de qualquer idade); antes eram só as dos últimos 90 dias, e uma frase de boletim mais antigo
+-- passava sem aviso. p_livres: textos de fonte livre (as capturas não pagas do assunto da notícia); a janela que também está
+-- num deles não conta (o dispositivo legal que o boletim copiou do DOU e o texto transcreve da fonte oficial).
+create or replace function public.radar_copia_paga(p_textos text[], p_livres text[]) returns boolean
 language plpgsql stable set search_path = public as $$
 declare
-  v_base text;
-  v_t    text;
-  v_pal  text[];
-  i      int;
+  v_base  text;
+  v_livre text;
+  v_t     text;
+  v_pal   text[];
+  v_jan   text;
+  i       int;
 begin
   select ' ' || string_agg(public.radar_pauta_normalizar(concat_ws(' ', c.titulo, c.resumo_fonte, c.texto)), ' | ') || ' '
     into v_base
     from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
-   where f.slug in ('itc-email') and c.capturado_em > now() - interval '90 days';
+   where f.slug in ('itc-email');
   if v_base is null then return false; end if;
+  v_livre := coalesce(' ' || (select string_agg(public.radar_pauta_normalizar(l), ' | ') from unnest(p_livres) l) || ' ', '');
   foreach v_t in array coalesce(p_textos, '{}') loop
     v_pal := string_to_array(public.radar_pauta_normalizar(v_t), ' ');
     continue when coalesce(array_length(v_pal, 1), 0) < 12;
     for i in 1 .. array_length(v_pal, 1) - 11 loop
-      if strpos(v_base, ' ' || array_to_string(v_pal[i:i + 11], ' ') || ' ') > 0 then
+      v_jan := ' ' || array_to_string(v_pal[i:i + 11], ' ') || ' ';
+      if strpos(v_base, v_jan) > 0 and strpos(v_livre, v_jan) = 0 then
         return true;
       end if;
     end loop;
   end loop;
   return false;
 end $$;
+
+-- A Pauta não tem fonte livre ao lado: qualquer janela do boletim conta
+create or replace function public.radar_pauta_copia_paga(p_textos text[]) returns boolean
+language sql stable set search_path = public as $$
+  select public.radar_copia_paga(p_textos, '{}')
+$$;
+
+-- v0.22.0 (varredura geral): a notícia (site, Instagram e Facebook) também, no banco. A tela já marcava a frase do boletim, mas a
+-- trava era só dela (e oferecia "Autorizar mesmo assim"). Descontado o que também está nas capturas livres do assunto.
+create or replace function public.radar_copia_paga_assunto(p_assunto bigint, p_textos text[]) returns boolean
+language sql stable set search_path = public as $$
+  select public.radar_copia_paga(p_textos,
+           (select array_agg(concat_ws(' ', c.titulo, c.resumo_fonte, c.texto))
+              from public.radar_assunto_capturas ac
+              join public.radar_capturas c on c.id = ac.captura_id
+              join public.radar_fontes f on f.id = c.fonte_id
+             where ac.assunto_id = p_assunto and f.slug not in ('itc-email')))
+$$;
 
 -- A função radar-ia (ação "peca", com o token de quem pede) confere, antes de chamar a IA, que nada do boletim pago vai junto (o plano
 -- e as informações conferidas da peça): só o editor e o administrador; devolve só sim ou não (o trecho do boletim não sai daqui).
@@ -2808,6 +2931,14 @@ language plpgsql security definer set search_path = public as $$
 begin
   if exists (select 1 from public.radar_pauta_pecas p where old.id = any(p.pessoas) and p.situacao <> 'cancelada') then
     raise exception 'RADAR174: esta pessoa está numa peça da Pauta: para tirá-la das próximas, desmarque “Ativa”' using errcode = 'P0001';
+  end if;
+  -- v0.22.0 (varredura geral): nem num vídeo do corretor que ainda guarda arquivos ou textos (desmarcada na peça, ela continua no
+  -- vídeo enviado). Apagada, a limpeza não saberia que é dela, e os links a retirar das redes sumiriam da tela: o caminho é marcar a
+  -- revogação do termo (ou desmarcar “Ativa”), que apaga o vídeo dela na limpeza seguinte
+  if exists (select 1 from public.radar_videos v
+              where (old.id = any(v.pessoas) or v.fala_pessoa = old.id)
+                and not v.arquivos_apagados @> array['bruto','trabalho','corrigido','textos']) then
+    raise exception 'RADAR174: esta pessoa está num vídeo do corretor que ainda tem arquivos guardados: marque a revogação do termo (ou desmarque “Ativa”) e a limpeza apaga o vídeo dela' using errcode = 'P0001';
   end if;
   perform set_config('radar.pauta', '1', true);
   update public.radar_pauta_pecas set pessoas = array_remove(pessoas, old.id) where old.id = any(pessoas);
@@ -3564,6 +3695,7 @@ create or replace function public.radar_fn_divulgacao_efeitos() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   v_assunto bigint;
+  v_motivo  text;
 begin
   select c.assunto_id into v_assunto from public.radar_conteudos c
    where c.id = case when tg_op = 'DELETE' then old.conteudo_id else new.conteudo_id end;
@@ -3571,11 +3703,28 @@ begin
   if tg_op = 'INSERT' then    -- assunto ignorado ou arquivado continua como está
     update public.radar_assuntos set status = 'publicado' where id = v_assunto and status not in ('publicado','ignorado','arquivado');
     -- v0.17.0: "Publicar em todos": o Instagram e o Facebook autorizados junto com o site ficam prontos para sair, com o
-    -- link da notícia no lugar de {LINK DO SITE} (o robô do site manda publicar logo em seguida)
-    update public.radar_redes_envios
-       set situacao = 'autorizado', atualizado_em = now(),
-           legenda = left(replace(legenda, '{LINK DO SITE}', new.url), 2200)
-     where conteudo_id = new.conteudo_id and situacao = 'aguardando_site';
+    -- link da notícia no lugar de {LINK DO SITE} (o robô do site manda publicar logo em seguida).
+    -- v0.22.0 (varredura geral): só o registro que é mesmo a notícia no site libera as redes. O link tem de ser do site
+    -- (radar_site_host) e o registro, do robô (sem usuário: o do site ou a coleta) ou de uma pessoa depois que o envio do site
+    -- saiu ("publicado"). Fora disso (o link da fonte colado por engano, outro endereço), as redes que esperavam o site caem,
+    -- com o motivo: o que vai ao ar é só o que o administrador viu, e nunca com um link que ele não viu.
+    v_motivo := case
+      when public.radar_url_host(new.url) is distinct from public.radar_site_host()
+        then 'o link registrado não é do site da Artecon (' || public.radar_site_host() || ')'
+      when auth.uid() is not null and not exists (select 1 from public.radar_site_envios e
+                                                   where e.conteudo_id = new.conteudo_id and e.situacao = 'publicado')
+        then 'a publicação foi registrada à mão antes de o robô do site concluir o envio' end;
+    if v_motivo is null then
+      update public.radar_redes_envios
+         set situacao = 'autorizado', atualizado_em = now(),
+             legenda = left(replace(legenda, '{LINK DO SITE}', new.url), 2200)
+       where conteudo_id = new.conteudo_id and situacao = 'aguardando_site';
+    else
+      update public.radar_redes_envios
+         set situacao = 'cancelado', cancelado_em = now(), atualizado_em = now(), imagem = null,
+             erro = 'Não publicado: ' || v_motivo || '. A deste canal, que ia junto com o site, foi cancelada. Confira o link e autorize de novo.'
+       where conteudo_id = new.conteudo_id and situacao = 'aguardando_site';
+    end if;
   else   -- registro excluído: se nada mais do assunto foi publicado, ele volta a aparecer como "em andamento"
     update public.radar_assuntos a set status = 'aprovado'
      where a.id = v_assunto and a.status = 'publicado'
@@ -5239,7 +5388,10 @@ begin
            exists (select 1 from public.radar_pessoas pe
                     where pe.id = any(p.pessoas || v.pessoas || v.fala_pessoa)
                       and (not pe.ativo or (pe.termo_revogado_em is not null and pe.termo_revogado_em <= v_hoje) or pe.menor
-                           or pe.termo_corretor_em is null or pe.termo_corretor_em > v_hoje)) as revogado
+                           or pe.termo_corretor_em is null or pe.termo_corretor_em > v_hoje))
+           -- v0.22.0 (varredura geral): a pessoa que nem existe mais (apagada antes da trava de radar_fn_pessoa_apagar) também
+           or exists (select 1 from unnest(p.pessoas || v.pessoas || v.fala_pessoa) x
+                       where not exists (select 1 from public.radar_pessoas pe where pe.id = x)) as revogado
       from public.radar_videos v join public.radar_pauta_pecas p on p.id = v.peca_id
      where not v.arquivos_apagados @> array['bruto','trabalho','corrigido','textos'] or v.antigos
      order by v.criado_em
@@ -5690,8 +5842,10 @@ grant select (id, conteudo_id, peca_id, canal, legenda, conteudo_lido_em, situac
 revoke all on public.radar_v_pauta_pessoas from public, anon, authenticated, service_role;
 grant select on public.radar_v_pauta_pessoas to authenticated;
 -- v0.22.0: o vídeo do reel e quem viu ou baixou. A equipe (administrador e editor, pela regra) só lê; grava só pelas funções. O papel
--- interno (a chave do robô do repositório público e as funções) não lê nem grava: a radar-video chega ao vídeo só pelas funções
--- radar_video_* (security definer), como a Pauta da v0.21.0.
+-- interno (a chave do robô do repositório público e as funções) não lê nem grava ESTAS TABELAS: a radar-video chega ao vídeo só pelas
+-- funções radar_video_* (security definer), como a Pauta da v0.21.0. (Os ARQUIVOS do armazenamento não estão aqui: a chave service_role
+-- lê todos os buckets privados, radar-videos e radar-pauta inclusive — varredura geral: por isso os pacotes dos robôs públicos vão
+-- com versão exata e hash, robo/requirements.txt.)
 revoke insert, update, delete on public.radar_videos, public.radar_video_acessos from authenticated;
 revoke select, insert, update, delete on public.radar_videos, public.radar_video_acessos from service_role;
 
@@ -5744,13 +5898,13 @@ grant execute on function public.radar_itc_marcar_lido(text, text, timestamptz, 
 grant execute on function public.radar_itc_conferir_agenda(text) to service_role;
 grant execute on function public.radar_itc_registrar_falha(text) to service_role;
 -- v0.13.0: Instagram e Facebook — o administrador autoriza (as funções conferem); a função radar-redes envia
-grant execute on function public.radar_autorizar_rede(bigint, text, text, text, timestamptz) to authenticated;
+grant execute on function public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean) to authenticated;   -- v0.22.0: + a caixa
 grant execute on function public.radar_dispensar_rede(bigint, text) to authenticated;
 grant execute on function public.radar_cancelar_rede(bigint) to authenticated;
 grant execute on function public.radar_rede_iniciar(bigint) to service_role;
 grant execute on function public.radar_rede_concluir(bigint, boolean, text, text, text, text) to service_role;
 -- v0.17.0: "Publicar em todos" e exclusão (as funções conferem que é o administrador); o robô conclui a exclusão no site
-grant execute on function public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text) to authenticated;
+grant execute on function public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text, boolean) to authenticated;   -- v0.22.0: + a caixa
 grant execute on function public.radar_rede_marcar_excluida(bigint, text) to authenticated;
 grant execute on function public.radar_pedir_exclusao_site(bigint) to authenticated;
 grant execute on function public.radar_cancelar_exclusao_site(bigint) to authenticated;
@@ -5875,11 +6029,15 @@ create policy radar_informativo_itens_del on public.radar_informativo_itens for 
 -- imagens: sem acesso público (a política antiga da vitrine é removida)
 drop policy if exists radar_imagens_vitrine on public.radar_imagens;
 -- v0.21.0: as fotos e as lâminas das peças da Pauta (a equipe, com o nome e o registro) só o editor e o administrador leem, como as
--- pessoas; o leitor lê as outras imagens (as capas dos conteúdos)
+-- pessoas; o leitor lê as outras imagens (as capas dos conteúdos).
+-- v0.22.0 (varredura geral): a regra se inverte para o leitor: ele lê só a imagem ligada a um conteúdo (a capa ou a ilustração, o que
+-- a tela e o informativo mostram). Antes ele lia toda imagem que não estivesse numa peça NAQUELE momento — a foto tirada da peça, as
+-- lâminas de uma aprovação recusada ou desfeita ficavam legíveis até a faxina do robô (24 horas depois, na coleta seguinte)
 drop policy if exists radar_imagens_sel on public.radar_imagens;
 create policy radar_imagens_sel on public.radar_imagens for select to authenticated
   using ((select public.radar_papel()) in ('admin','editor')
          or ((select public.radar_papel()) is not null
+             and exists (select 1 from public.radar_conteudos c where c.imagem_id = radar_imagens.id or c.ilustracao_id = radar_imagens.id)
              and not exists (select 1 from public.radar_pauta_pecas p where radar_imagens.id = any(p.fotos) or radar_imagens.id = any(p.artes))));
 
 -- configurações: a equipe lê; o administrador altera

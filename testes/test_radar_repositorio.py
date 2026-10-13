@@ -99,12 +99,23 @@ def problemas_do_arquivo(n: str, b: bytes) -> list[str]:
     return achados
 
 
-def arquivos_dos_commits(antes: str, depois: str = "HEAD", raiz=RAIZ) -> list[tuple[str, str, bytes]]:
-    """Os arquivos acrescentados ou mudados em cada commit de antes..depois (o que um push levou ao histórico, ainda que apagado no
-    commit seguinte): [(commit, caminho, conteúdo)]."""
+def faixa_do_push(antes: str, ramo: str = "", depois: str = "HEAD", raiz=RAIZ) -> list[str]:
+    """Os argumentos do rev-list com os commits que o push levou: antes..depois. v0.22.0 (varredura geral): no primeiro push de um ramo
+    (o GitHub manda o "antes" só com zeros — o caminho de toda sessão nova), os commits do ramo que nenhum outro ramo do GitHub tem (o
+    checkout traz todos, com fetch-depth 0; o do próprio ramo fica de fora) ou, sem o nome do ramo, os que não estão no main."""
+    if not set(antes) <= {"0"}:
+        return [f"{antes}..{depois}"]
+    if ramo:
+        return [depois, "--not", f"--exclude=origin/{ramo}", "--remotes=origin"]      # o --exclude do --remotes não leva "refs/remotes/"
+    return [depois, "--not", "refs/remotes/origin/main"]
+
+
+def arquivos_dos_commits(antes: str, depois: str = "HEAD", raiz=RAIZ, faixa: list[str] | None = None) -> list[tuple[str, str, bytes]]:
+    """Os arquivos acrescentados ou mudados em cada commit de antes..depois, ou da faixa dada (o que um push levou ao histórico, ainda
+    que apagado no commit seguinte): [(commit, caminho, conteúdo)]."""
     rodar = lambda *a: subprocess.run(["git", "-C", str(raiz), *a], capture_output=True, check=True).stdout
     saida = []
-    for c in rodar("rev-list", "--reverse", f"{antes}..{depois}").decode().split():
+    for c in rodar("rev-list", "--reverse", *(faixa or [f"{antes}..{depois}"])).decode().split():
         for n in rodar("diff-tree", "--root", "--no-commit-id", "-r", "-z", "--diff-filter=AM", "--name-only", c).decode("utf-8", "replace").split("\0"):
             if n:
                 saida.append((c, n, rodar("cat-file", "blob", f"{c}:{n}")[:20_000_000]))
@@ -204,13 +215,15 @@ def test_nenhum_video_audio_foto_nem_transcricao_no_repositorio():
 
 
 def test_commits_do_push_sem_video_audio_foto_nem_transcricao():
-    """O que o push levou ao histórico público (radar-repositorio.yml passa o commit de antes do push em RADAR_PUSH_ANTES, com o
-    histórico inteiro): o arquivo enviado num commit e apagado no seguinte some da árvore, mas fica no histórico. Sem o commit de antes
-    (o teste local, o "Run workflow", o primeiro push de um ramo), só a árvore conta (o teste acima)."""
-    antes = os.environ.get("RADAR_PUSH_ANTES", "").strip()
-    if not re.fullmatch(r"[0-9a-f]{40}", antes) or set(antes) == {"0"} or git("cat-file", "-e", antes + "^{commit}").returncode != 0:
+    """O que o push levou ao histórico público (radar-repositorio.yml passa o commit de antes do push em RADAR_PUSH_ANTES e o ramo em
+    RADAR_PUSH_RAMO, com o histórico inteiro): o arquivo enviado num commit e apagado no seguinte some da árvore, mas fica no histórico.
+    v0.22.0 (varredura geral): no primeiro push de um ramo (o "antes" só com zeros), os commits do ramo que nenhum outro ramo tem (antes,
+    só a árvore contava, e esse é o caminho de toda sessão nova). Sem o "antes" (o teste local, o "Run workflow"), só a árvore conta."""
+    antes, ramo = os.environ.get("RADAR_PUSH_ANTES", "").strip(), os.environ.get("RADAR_PUSH_RAMO", "").strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", antes) or (set(antes) != {"0"} and git("cat-file", "-e", antes + "^{commit}").returncode != 0):
         pytest.skip("sem o commit de antes do push (só no radar-repositorio.yml)")
-    achados = [f"{n} no commit {c[:7]} ({', '.join(p)})" for c, n, b in arquivos_dos_commits(antes) if (p := problemas_do_arquivo(n, b))]
+    faixa = faixa_do_push(antes, ramo)
+    achados = [f"{n} no commit {c[:7]} ({', '.join(p)})" for c, n, b in arquivos_dos_commits(antes, faixa=faixa) if (p := problemas_do_arquivo(n, b))]
     assert achados == [], "vídeo, áudio, foto, arquivo de trabalho do robô ou transcrição no histórico do push: " + "; ".join(achados)
 
 
@@ -241,11 +254,44 @@ def test_arquivo_enviado_e_apagado_no_mesmo_push_e_achado(tmp_path):
                        "codigo.py": []}
 
 
+def test_primeiro_push_de_um_ramo_confere_os_commits_que_so_ele_tem(tmp_path):
+    """Varredura geral (v0.22.0): no primeiro push de um ramo novo o GitHub manda o "antes" só com zeros. O vídeo enviado num commit e
+    apagado no seguinte desse push é achado (os commits que nenhum outro ramo do GitHub tem); os do main e de outro ramo, não."""
+    if shutil.which("git") is None:
+        pytest.skip("git não instalado")
+    rodar = lambda *a: subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=Teste", "-c", "user.email=teste@exemplo.invalid", *a],
+                                      capture_output=True, check=True).stdout.decode().strip()
+    rodar("init", "-q")
+    (tmp_path / "LEIA.md").write_text("# teste\n")
+    rodar("add", ".")
+    rodar("commit", "-q", "-m", "base")
+    rodar("update-ref", "refs/remotes/origin/main", "HEAD")                    # o main do GitHub
+    (tmp_path / "outro.MOV").write_bytes((20).to_bytes(4, "big") + b"ftypqt  " + b"\0" * 8)
+    rodar("add", ".")
+    rodar("commit", "-q", "-m", "outro ramo, já conferido no push dele")
+    rodar("update-ref", "refs/remotes/origin/claude/outro", "HEAD")
+    rodar("rm", "-q", "outro.MOV")
+    rodar("commit", "-q", "-m", "tira")
+    (tmp_path / "IMG_0001.txt").write_bytes((20).to_bytes(4, "big") + b"ftypqt  " + b"\0" * 8)
+    rodar("add", ".")
+    rodar("commit", "-q", "-m", "envio")
+    rodar("rm", "-q", "IMG_0001.txt")
+    rodar("commit", "-q", "-m", "apaga")
+    rodar("update-ref", "refs/remotes/origin/claude/novo", "HEAD")            # o próprio ramo, como o checkout o traz
+    zeros = "0" * 40
+    achados = lambda faixa: {n for _, n, b in arquivos_dos_commits(zeros, raiz=tmp_path, faixa=faixa) if problemas_do_arquivo(n, b)}
+    assert achados(faixa_do_push(zeros, "claude/novo", raiz=tmp_path)) == {"IMG_0001.txt"}
+    assert achados(faixa_do_push(zeros, "", raiz=tmp_path)) == {"IMG_0001.txt", "outro.MOV"}      # sem o ramo: tudo o que não está no main
+    antes = rodar("rev-parse", "HEAD~1")
+    assert faixa_do_push(antes, "claude/novo") == [f"{antes}..HEAD"]
+
+
 def test_workflow_do_repositorio_confere_os_commits_do_push():
     yml = (RAIZ / ".github" / "workflows" / "radar-repositorio.yml").read_text(encoding="utf-8")
     codigo = "\n".join(l for l in yml.splitlines() if not l.lstrip().startswith("#"))
     assert re.search(r"(?m)^\s+fetch-depth:\s*0\s*$", codigo), codigo
     assert re.search(r"(?m)^\s+RADAR_PUSH_ANTES:\s*\$\{\{\s*github\.event\.before\s*\}\}\s*$", codigo), codigo
+    assert re.search(r"(?m)^\s+RADAR_PUSH_RAMO:\s*\$\{\{\s*github\.ref_name\s*\}\}\s*$", codigo), codigo    # v0.22.0
 
 
 def test_video_audio_foto_e_transcricao_sao_achados_com_qualquer_nome():
@@ -292,7 +338,9 @@ def test_gitignore_barra_video_audio_foto_e_trabalho_do_robo():
                  "RAW_0001.DNG", "voz.wma", "voz.aiff", "voz.caf", "legenda.ssa", "video.wmv", "video.flv", "docs/radar-logo-artecon.png",
                  # os arquivos de trabalho do robô (pegar, alinhar, montar dentro do clone): o pedido, o estado, o resultado, o erro e os temporários
                  "trabalho/pedido.json", "trabalho/estado.json", "trabalho/resultado.json", "trabalho/erro.json", "trabalho/.estado.json",
-                 "trabalho/fala/palavras_envio.json", "trabalho/sai/cartela.png", "trabalho/sai/luz1.txt"):
+                 "trabalho/fala/palavras_envio.json", "trabalho/sai/cartela.png", "trabalho/sai/luz1.txt",
+                 # varredura geral (v0.22.0): os clipes brutos do "pegar" (<pasta>/ent/<n>, sem extensão), na raiz do clone ou em subpasta
+                 "trabalho/ent/1", "trabalho/ent/12", "corretor/ent/1", "ent/3", "robo/video/tmp/ent/2"):
         assert git("check-ignore", "-q", "--no-index", nome).returncode == 0, nome
     for nome in ("robo/video/transcrever.py", "robo/video/fontes/DMSans-Bold.ttf", "robo/video/requirements.txt", "radar-logo-artecon.png",
                  "radar-timbrado-topo.png", "radar-timbrado-rodape.png", "testes/radar_video_sintetico.py",
@@ -370,3 +418,26 @@ def test_leiame_da_v0220_ordem_da_instalacao_termo_teste_parar_e_desfazer():
     assert "Disable workflow" in rev and "RADAR_VIDEO_GITHUB_TOKEN" in rev and "token fino" in rev and "AZURE_FALA_CHAVE" in rev
     wf = (RAIZ / "robo" / "video" / "workflow" / "radar-video.yml").read_text(encoding="utf-8")
     assert "se o token do GitHub no Supabase vencer, esta agenda de reserva" not in wf and "tirar o token não para" in wf
+
+
+def test_workflows_publicos_com_acoes_fixas_e_robo_com_hash():
+    """Varredura geral (v0.22.0): os jobs do repositório público que recebem a chave interna do banco e a senha do painel do site
+    (coleta, resumo, publicar, teste do site, diagnóstico) usavam ações por etiqueta móvel (@v5, @v6) e instalavam o robo/requirements.txt
+    sem versão exata nem hash. Agora, como no workflow do corretor de vídeo: cada ação fixada pelo commit (40 caracteres, a versão no
+    comentário) e o requirements com versão exata e hash de cada pacote (também das dependências), instalado com --require-hashes."""
+    for yml in sorted((RAIZ / ".github" / "workflows").glob("*.yml")):
+        codigo = "\n".join(l for l in yml.read_text(encoding="utf-8").splitlines() if not l.lstrip().startswith("#"))
+        for acao in re.findall(r"(?m)^\s*-?\s*uses:\s*(\S+)", codigo):
+            assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", acao), f"{yml.name}: {acao}"
+        for pip in re.findall(r"(?m)pip install[^\n]*", codigo):
+            if "robo/requirements.txt" in pip:
+                assert "--require-hashes" in pip and "--no-deps" in pip and pip.rstrip().endswith("-r robo/requirements.txt"), f"{yml.name}: {pip}"
+    req = (RAIZ / "robo" / "requirements.txt").read_text(encoding="utf-8")
+    pacotes = re.findall(r"(?m)^([A-Za-z0-9_.-]+)==([^\s\\]+)\s*\\$", req)
+    assert {p.lower() for p, _ in pacotes} == {"requests", "charset-normalizer", "idna", "urllib3", "certifi", "beautifulsoup4", "soupsieve",
+                                               "typing-extensions", "lxml"}
+    blocos = re.split(r"(?m)^(?=[A-Za-z])", "\n".join(l for l in req.splitlines() if not l.startswith("#")))
+    assert all(re.search(r"--hash=sha256:[0-9a-f]{64}", b) for b in blocos if b.strip()), "pacote sem hash"
+    # e o LEIAME não promete mais que a chave do robô "não lê as fotos, as lâminas": ela é service_role e lê os buckets privados
+    leiame = " ".join((RAIZ / "LEIAME-radar.md").read_text(encoding="utf-8").split())
+    assert "**os arquivos do armazenamento ela lê**" in leiame and "não lê as pessoas, as peças, as fotos, as lâminas" not in leiame

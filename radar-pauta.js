@@ -852,7 +852,11 @@ function blocoAprovar(p){
   const caixa = (k, t) => `<label><input type="checkbox" class="aprovar-conf" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`;
   // a das pessoas em toda peça (o banco pede): o nome escrito de um jeito que a conferência não reconhece só quem aprova vê
   // v0.22.0: no reel, o vídeo (o que só quem assiste vê) e, se uma pessoa marcada pediu no termo para ver a peça antes, a caixa dela
-  const quer = p.formato === "reel" && p.pessoas.some(id => (E.pauta.pessoas || {})[id]?.quer_ver_peca);
+  // varredura geral (v0.22.0): também quem estava marcada quando o vídeo foi enviado e foi desmarcada depois (continua no vídeo: o
+  // banco pede a caixa dela, radar_pauta_aprovar); antes a caixa não aparecia e o banco recusava (RADAR314) sem saída na tela
+  const doVideo = p.formato === "reel" && typeof estadoVideo === "function" && estadoVideo().peca === p.id
+    && Array.isArray(estadoVideo().atual?.pessoas) ? estadoVideo().atual.pessoas : [];
+  const quer = p.formato === "reel" && [...p.pessoas, ...doVideo].some(id => (E.pauta.pessoas || {})[id]?.quer_ver_peca);
   const caixas = [caixa("pessoas", "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)"),
     p.formato === "reel" ? caixa("video", "Conferi o vídeo: só aparecem as pessoas marcadas; sem tela, documento ou cliente ao fundo; só a voz") : "",
     quer ? caixa("viu", "A pessoa viu o vídeo final (ela pediu no termo para ver a peça antes)") : "",
@@ -1277,7 +1281,7 @@ const PAUTA = {
     "peca-cancelar"(el){ return situacaoDaPeca(el, "cancelada", "Cancelar esta peça? Ela fica no calendário como cancelada (dá para reabrir).", "Peça cancelada."); },
     "peca-reabrir"(el){ return situacaoDaPeca(el, "planejada", "", "Peça reaberta: voltou a planejada."); },
     async "pessoa-excluir"(el){
-      if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça (para tirá-la das próximas, desmarque “Ativa”).")) return;
+      if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, marque a revogação do termo).")) return;
       await apagar("radar_pessoas", {id:"eq." + el.dataset.id, select:"id"}); await desenhar(); recado("Pessoa excluída.");
     }
   },

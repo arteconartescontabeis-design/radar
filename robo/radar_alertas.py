@@ -45,6 +45,8 @@ PREFIXO_TEXTO = "Radar: texto do site diferente do aprovado — "
 PREFIXO_PARADA = "Radar: fonte parada — "
 PREFIXO_PAUTA = "Radar: publicação agendada não saiu"        # v0.21.0: um aviso só para toda a Pauta (o título é só isso)
 PREFIXOS_PADRAO = (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO, PREFIXO_PARADA, PREFIXO_PAUTA)   # os avisos que o executar() abre e fecha
+# v0.22.0 (varredura geral): o login com que a API mostra o autor das issues abertas pelo GITHUB_TOKEN dos workflows (o robô)
+AUTOR_DOS_AVISOS = "github-actions[bot]"
 FORA_DO_AR = (404, 410)
 CANAIS = {"instagram": "Instagram", "facebook": "Facebook"}
 try:
@@ -286,12 +288,15 @@ class GitHub:
         return r.json() if r.text else None
 
     def avisos_abertos(self, *prefixos: str) -> dict[str, int]:
+        """Os avisos abertos PELO ROBÔ (título → número). v0.22.0 (varredura geral): o repositório é público e qualquer conta do GitHub
+        abre issue: a de outra pessoa com o mesmo título não conta (nem esconde o aviso de uma falha de verdade, nem é fechada pelo robô)."""
         prefixos = prefixos or PREFIXOS_PADRAO
         abertos, pagina = {}, 1
         while True:
             lote = self._pedir("GET", "/issues", params={"state": "open", "per_page": 100, "page": pagina})
             for i in lote:
-                if "pull_request" not in i and str(i.get("title", "")).startswith(prefixos):
+                if "pull_request" not in i and str(i.get("title", "")).startswith(prefixos) \
+                        and (i.get("user") or {}).get("login") == AUTOR_DOS_AVISOS:
                     abertos[i["title"]] = i["number"]
             if len(lote) < 100:
                 return abertos

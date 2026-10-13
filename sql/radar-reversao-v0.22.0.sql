@@ -7,6 +7,10 @@
 -- v0.22.0: os ARQUIVOS do corretor de vídeo (bucket privado radar-videos: clipes, transcrições, vídeos corrigidos e quadros) NÃO saem
 -- por SQL — apagar as linhas de storage.objects deixaria os arquivos órfãos no armazenamento. Apague pelo painel ANTES (Supabase →
 -- Storage → radar-videos → selecione tudo → Delete; depois, no menu do bucket, Delete bucket) ou pela API do armazenamento.
+-- O mesmo para o bucket privado radar-pauta (a radar-redes guarda nele as lâminas aprovadas da Pauta, com foto e nome da equipe, em
+-- nomes sem dono, p-<uuid>.jpg): depois deste SQL, só as tabelas apagadas diriam de quem é cada arquivo, e a revogação de um termo
+-- não teria mais como ser atendida. Se precisar dessa relação depois, guarde antes o resultado da consulta do passo 3 da revogação
+-- (LEIAME, "Pessoas e termos") fora do repositório público. O bucket público radar-redes só tem as imagens das notícias já publicadas.
 -- Também fora do banco (este arquivo não alcança; LEIAME, "Da v0.21.0 para a v0.22.0", "Para desfazer a versão"):
 --   * no repositório PRIVADO radar-video: Actions → "Radar — corretor de vídeo" → Disable workflow (ou apague
 --     .github/workflows/radar-video.yml). A agenda própria dele (47 13,19 * * 1-5) roda duas vezes por dia útil e, sem o banco, cada
@@ -112,6 +116,7 @@ drop function if exists public.radar_separar_captura(bigint, bigint);
 drop function if exists public.radar_separar_repeticao(bigint);
 drop function if exists public.radar_autorizar_copia(bigint, text, timestamptz);
 drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text);
+drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text, boolean);
 drop function if exists public.radar_fn_site_envio_redes();
 drop function if exists public.radar_rede_marcar_excluida(bigint, text);
 drop function if exists public.radar_pedir_exclusao_site(bigint);
@@ -154,6 +159,13 @@ drop function if exists public.radar_fn_conteudo_envio();
 drop function if exists public.radar_tirar_aviso_fonte(text);
 drop function if exists public.radar_marcas_verificar(text);
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz);
+drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean);
+drop function if exists public.radar_rede_cancelada_no_envio(bigint, text);
+drop function if exists public.radar_url_host(text);
+drop function if exists public.radar_site_host();
+drop function if exists public.radar_copia_paga(text[], text[]);
+drop function if exists public.radar_copia_paga_assunto(bigint, text[]);
+drop function if exists public.radar_crc_padrao(text);
 drop function if exists public.radar_dispensar_rede(bigint, text);
 drop function if exists public.radar_cancelar_rede(bigint);
 drop function if exists public.radar_rede_iniciar(bigint);

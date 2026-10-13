@@ -413,10 +413,14 @@ def test_avisos_conversam_com_a_api_do_github_no_formato_certo():
         def request(self, metodo, url, **kw):
             pedidos.append((metodo, url.split("/repos/")[1], kw.get("params"), kw.get("json")))
             if metodo == "GET":
-                return Resposta(200, [{"number": 3, "title": "Radar: fonte com falha — pgfn"},
-                                      {"number": 4, "title": "Radar: fonte com falha — x", "pull_request": {}},
-                                      {"number": 5, "title": "Outro assunto"},
-                                      {"number": 6, "title": "Radar: fonte parada — itc-email"}])
+                robo = {"login": "github-actions[bot]"}
+                return Resposta(200, [{"number": 3, "title": "Radar: fonte com falha — pgfn", "user": robo},
+                                      {"number": 4, "title": "Radar: fonte com falha — x", "pull_request": {}, "user": robo},
+                                      {"number": 5, "title": "Outro assunto", "user": robo},
+                                      {"number": 6, "title": "Radar: fonte parada — itc-email", "user": robo},
+                                      # varredura geral (v0.22.0): a issue de outra conta com o título de um aviso não conta
+                                      {"number": 7, "title": "Radar: publicação agendada não saiu", "user": {"login": "qualquer-um"}},
+                                      {"number": 8, "title": "Radar: fonte com falha — rfb-normas"}])
             return Resposta(201, {"number": 9})
 
     gh = radar_alertas.GitHub("dono/radar", "tok", Sessao())
@@ -963,15 +967,16 @@ def test_muitos_itens_apontando_para_a_mesma_origem_sao_tratados_como_erro_da_ia
 
 
 def test_repeticao_entre_titulos_de_tributos_diferentes_e_descartada():
-    # v0.16.0: caso real do ITC de 09/10 — a IA juntou a decisão do STF sobre PIS/Cofins à notícia sobre IRPJ/CSLL
-    vistos = [{"id": 317, "titulo": "SUBVENÇÃO GOVERNAMENTAL - CRÉDITO PRESUMIDO DE ICMS NÃO PODE MAIS SER EXCLUÍDO DA BASE DE CÁLCULO DO IRPJ E DA CSLL"},
+    # v0.16.0: caso real de 09/10 — a IA juntou a decisão do STF sobre PIS/Cofins à notícia sobre IRPJ/CSLL (varredura geral: os
+    # títulos aqui são escritos para o teste, não os do boletim pago, que nunca vai ao repositório)
+    vistos = [{"id": 317, "titulo": "CRÉDITO PRESUMIDO DE ICMS VOLTA A ENTRAR NA BASE DO IRPJ E DA CSLL"},
               {"id": 275, "titulo": "STF recomeça julgamento sobre tributação de créditos presumidos de ICMS"},
-              {"id": 345, "titulo": "Sem faixa de transição, retenção de IR sobre dividendos é inconstitucional"},
+              {"id": 345, "titulo": "Retenção de IR sobre dividendos sem transição é julgada inconstitucional"},
               {"id": 36, "titulo": "CGSN define prazos de opção pelo Simples Nacional e pelo regime regular do IBS e da CBS para 2027"}]
-    novos = [{"id": 379, "titulo": "STF EXCLUI CRÉDITOS PRESUMIDOS DE ICMS DA BASE DE CÁLCULO DO PIS E DA COFINS"},
-             {"id": 400, "titulo": "STF exclui créditos presumidos de ICMS da base de cálculo do PIS e da Cofins"},
-             {"id": 223, "titulo": "PIS/COFINS: STF RECOMEÇA JULGAMENTO SOBRE TRIBUTAÇÃO DE CRÉDITOS PRESUMIDOS DE ICMS"},
-             {"id": 366, "titulo": "SEM FAIXA DE TRANSIÇÃO, RETENÇÃO DE IRRF SOBRE DIVIDENDOS É INCONSTITUCIONAL"},
+    novos = [{"id": 379, "titulo": "CRÉDITOS PRESUMIDOS DE ICMS FICAM FORA DA BASE DO PIS E DA COFINS, DECIDE O STF"},
+             {"id": 400, "titulo": "Créditos presumidos de ICMS ficam fora da base do PIS e da Cofins, decide o STF"},
+             {"id": 223, "titulo": "PIS/COFINS: STF RETOMA A ANÁLISE DOS CRÉDITOS PRESUMIDOS DE ICMS"},
+             {"id": 366, "titulo": "RETENÇÃO DE IRRF SOBRE DIVIDENDOS SEM TRANSIÇÃO É JULGADA INCONSTITUCIONAL"},
              {"id": 12, "titulo": "Simples Nacional 2027: entenda os novos prazos e faça sua escolha"},
              {"id": 13, "titulo": "IRPF: novo prazo"}, {"id": 14, "titulo": "Empresas vão ir à Receita: prazo do IRPJ muda"}]
     itens = [{"id": 379, "nota": 8, "igual_a": 317},          # ICMS + PIS/Cofins ≠ ICMS + IRPJ/CSLL: descartada
@@ -986,7 +991,7 @@ def test_repeticao_entre_titulos_de_tributos_diferentes_e_descartada():
     assert radar_ia.tributos("Imposto de Renda da Pessoa Física: declaração") == {"IRPF"}
     # varredura: o verbo IR em título todo em maiúsculas (ITC) não é imposto de renda; a CPRB é contribuição previdenciária
     assert not radar_ia.mesmos_tributos("EMPRESAS VÃO IR À RECEITA: PRAZO DO IRPJ MUDA", "IRPF: novo prazo")
-    assert radar_ia.tributos("SEM FAIXA DE TRANSIÇÃO, RETENÇÃO DE IR SOBRE DIVIDENDOS É INCONSTITUCIONAL") == {"IR"}
+    assert radar_ia.tributos("RETENÇÃO DE IR SOBRE DIVIDENDOS SEM TRANSIÇÃO É JULGADA INCONSTITUCIONAL") == {"IR"}
     assert radar_ia.mesmos_tributos("Receita orienta sobre a CPRB em 2025", "Contribuição previdenciária sobre a receita bruta: Receita orienta")
     assert not radar_ia.mesmos_tributos("CPRB: novas regras", "PIS/Cofins: novas regras")
     for t in ("TABELA DO IR PARA 2026", "ISENÇÃO DO IR ATÉ R$ 5 MIL: CÂMARA APROVA", "RETENÇÃO DE IR AOS SÓCIOS", "NOVAS REGRAS PARA IR SOBRE JUROS"):
@@ -999,11 +1004,11 @@ def test_repeticao_entre_titulos_de_tributos_diferentes_e_descartada():
              {"id": 3, "titulo": "Crédito presumido de ICMS fora da base do PIS/Cofins, decide STF"},
              {"id": 9, "titulo": "IRPJ/CSLL: STF RECOMEÇA JULGAMENTO SOBRE CRÉDITOS PRESUMIDOS DE ICMS"},
              {"id": 10, "titulo": "STF RECOMEÇA JULGAMENTO DOS CRÉDITOS PRESUMIDOS DE ICMS"}]
-    grupos = {275: ["PIS/COFINS: STF RECOMEÇA JULGAMENTO SOBRE TRIBUTAÇÃO DE CRÉDITOS PRESUMIDOS DE ICMS"]}
+    grupos = {275: ["PIS/COFINS: STF RETOMA A ANÁLISE DOS CRÉDITOS PRESUMIDOS DE ICMS"]}
     itens = [{"id": 2, "nota": 8, "igual_a": 1}, {"id": 3, "nota": 8, "igual_a": 2},
              {"id": 9, "nota": 7, "igual_a": 275}, {"id": 10, "nota": 7, "igual_a": 275}]
     assert [b["igual_a"] for b in radar_ia.conferir(itens, novos, vistos, grupos)] == [1, None, None, 275]
-    assert grupos == {275: ["PIS/COFINS: STF RECOMEÇA JULGAMENTO SOBRE TRIBUTAÇÃO DE CRÉDITOS PRESUMIDOS DE ICMS",
+    assert grupos == {275: ["PIS/COFINS: STF RETOMA A ANÁLISE DOS CRÉDITOS PRESUMIDOS DE ICMS",
                             "STF RECOMEÇA JULGAMENTO DOS CRÉDITOS PRESUMIDOS DE ICMS"],
                       1: ["STF conclui julgamento sobre crédito presumido de ICMS"]}
 

@@ -10,8 +10,9 @@ Regras combinadas com o escritório (05/10/2026):
     liberado pelo site); se o site exigir, o robô para.
 
 Este arquivo, por enquanto, só RECONHECE o painel (modo padrão): entra, acha o formulário de cadastro
-de notícias e lista os campos dele, sem enviar nada. O relatório não traz senha, cookie nem conteúdo,
-porque o registro do GitHub Actions é público.
+de notícias e lista os campos dele, sem enviar nada. O relatório não traz senha, cookie, conteúdo nem o código dos
+links do painel (v0.22.0: nem o texto das células da lista, onde está quem cadastrou), porque o registro do GitHub
+Actions é público.
 
 Uso (workflow manual "Radar — teste do site"):  python radar_site_admin.py
 """
@@ -146,9 +147,22 @@ def _curto(t: str, n: int = 80) -> str:
     return re.sub(r"[A-Za-z0-9+/=_-]{30,}", "…", t)[:n]
 
 
+# v0.22.0: o registro do Actions é público. O endereço de excluir/editar do painel é um GET com o código da notícia (sem
+# CSRF): o código nunca vai para o relatório, só o molde ("/admin/news/delete/…"); segmento ou valor longo também vira "…".
+COM_CODIGO = re.compile(r"/(delete|destroy|excluir|remove|apagar|register|edit|editar|alterar|update|show|ver)/[^\s/?#'\"<>|]+", re.I)
+
+
+def _molde(t: str) -> str:
+    t = COM_CODIGO.sub(lambda m: f"/{m.group(1)}/…", str(t or ""))
+    return re.sub(r"[A-Za-z0-9+=_~-]{24,}", "…", t)
+
+
 def _caminho(base: str, href: str) -> str:
+    """Caminho do próprio site em molde; de outro endereço (biblioteca, editor com chave no caminho) só o domínio."""
     u = urlsplit(urljoin(base, href or ""))
-    return (u.path or "/") + (("?" + u.query) if u.query else "") if mesmo_site(u.geturl()) or not u.netloc else u.geturl()[:80]
+    if mesmo_site(u.geturl()) or not u.netloc:
+        return _molde((u.path or "/") + (("?" + u.query) if u.query else ""))
+    return (u.hostname or "?") + "/…"
 
 
 def _acoes(no, base: str) -> list[str]:
@@ -180,13 +194,15 @@ def relatorio_lista(url: str, html: str) -> str:
         cab = [_curto(th.get_text(" "), 30) for th in t.find_all("th")]
         linhas.append(f"Tabela {n}: colunas {cab}")
         for k, tr in enumerate([tr for tr in t.find_all("tr") if tr.find("td")][:4], 1):
-            linhas.append(f"  linha {k}: " + " | ".join(_curto(td.get_text(" "), 50) for td in tr.find_all("td")))
+            # v0.22.0: só a forma da linha (quantas células) e as ações em molde: o texto das células (título, quem
+            # cadastrou) nunca vai ao registro público
+            linhas.append(f"  linha {k}: {len(tr.find_all('td'))} célula(s)")
             linhas += [f"     {x}" for x in _acoes(tr, url)]
         linhas.append(f"  ({len([tr for tr in t.find_all('tr') if tr.find('td')])} linhas nesta página)")
     if not sopa.find_all("table"):                       # lista sem tabela (cartões): mostra os blocos com ação
         blocos = [b for b in sopa.find_all(["li", "div", "article"]) if b.find("a", href=APAGA) or b.find("form")][:4]
         for k, b in enumerate(blocos, 1):
-            linhas.append(f"  bloco {k}: {_curto(b.get_text(' '), 100)}")
+            linhas.append(f"  bloco {k}: {len(' '.join(b.get_text(' ').split()))} caractere(s) de texto")
             linhas += [f"     {x}" for x in _acoes(b, url)]
     soltos = [f for f in sopa.find_all("form") if not f.find_parent("table")]
     if soltos:
@@ -243,7 +259,9 @@ def scripts_do_painel(sessao: requests.Session, url: str, html: str) -> str:
 
 
 def dados_da_lista(sessao: requests.Session, url: str, html: str) -> str:
-    """A lista em si (data-url da tabela, lida por GET como o painel faz): quantas notícias e as 2 primeiras, com as ações."""
+    """A lista em si (data-url da tabela, lida por GET como o painel faz): quantas notícias e a FORMA das 2 primeiras
+    (quantas células e quais trazem marcação), com as ações em molde. v0.22.0: nunca o texto das células (título, nome de
+    quem cadastrou) nem o código dos links: o registro do Actions é público."""
     tabela = BeautifulSoup(html or "", "lxml").find("table", attrs={"data-url": True})
     if tabela is None:
         return "Dados da lista: a tabela não indica de onde vêm as linhas"
@@ -262,7 +280,8 @@ def dados_da_lista(sessao: requests.Session, url: str, html: str) -> str:
     linhas.append(f"  {len(itens)} notícia(s) na resposta; recordsTotal={dados.get('recordsTotal') if isinstance(dados, dict) else '?'}")
     for k, item in enumerate(itens[:2], 1):
         celulas = item if isinstance(item, list) else list(item.values()) if isinstance(item, dict) else [item]
-        linhas.append(f"  notícia {k}: " + " | ".join(_curto(BeautifulSoup(str(c), "lxml").get_text(" "), 60) for c in celulas))
+        linhas.append(f"  notícia {k}: {len(celulas)} célula(s); com marcação: "
+                      f"{[n for n, c in enumerate(celulas, 1) if '<' in str(c)] or 'nenhuma'}")
         for c in celulas:
             if "<" in str(c):
                 linhas += [f"     {x}" for x in _acoes(BeautifulSoup(str(c), "lxml"), alvo)]
@@ -313,7 +332,7 @@ def main() -> int:
         texto = f"PAROU: {e}"
     except requests.RequestException as e:
         texto = f"PAROU: sem conexão com o site ({type(e).__name__})"
-    texto = texto.replace(senha, "***").replace(usuario, "***")      # nunca no registro público
+    texto = _molde(texto.replace(senha, "***").replace(usuario, "***"))      # nunca no registro público (nem código de link)
     print(texto)
     destino = os.environ.get("GITHUB_STEP_SUMMARY")
     if destino:

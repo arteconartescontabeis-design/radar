@@ -28,7 +28,7 @@
 // SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.14.2";
+const VERSAO = "0.22.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -45,8 +45,9 @@ const MAX_TEXTO = 60000;          // caracteres do corpo enviados à IA
 // o Supabase encerra a chamada perto de 150 s (contados do início do pedido): um e-mail novo só começa se der tempo, e a
 // espera pela IA nunca passa do que sobra; o resto fica para a próxima leitura
 const LIMITE_MS = 140_000, COMECAR_ATE_MS = 50_000, TEMPO_IA_MS = 85_000;
-let INICIO = Date.now();
-const restanteMs = () => LIMITE_MS - (Date.now() - INICIO);
+// v0.22.0 (varredura geral): o relógio é de cada pedido (como na radar-redes e na radar-concorrentes): dois pedidos na mesma instância
+// (duas abas, ou um clique durante a leitura da agenda) não dividem mais o mesmo início, que o segundo zerava
+const restanteMs = (inicio: number) => LIMITE_MS - (Date.now() - inicio);
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -190,7 +191,11 @@ const REGRAS = "Você separa as matérias de um boletim da ITC Consultoria receb
 type Materia = { titulo: string; area: string; texto: string };
 type Uso = { entrada: number; saida: number };
 
-async function separarMaterias(email: Email, uso: Uso): Promise<Materia[]> {
+/** Marcas do bloco de dados (<<< e >>>) trocadas por aspas (v0.22.0, varredura geral): o corpo ou o assunto do e-mail não fecham o
+ *  bloco <<<BOLETIM>>> antes da hora (o que viesse depois de um "<<<FIM>>>" deixaria de ser material, para a IA) */
+const semMarcasDeBloco = (t: string) => String(t ?? "").replace(/<{3,}/g, "«").replace(/>{3,}/g, "»");
+
+async function separarMaterias(email: Email, uso: Uso, inicio: number): Promise<Materia[]> {
   const token = env("IA_GATEWAY_TOKEN");
   if (!token) throw new Erro(503, "O token do Radar na IA Central não está configurado (segredo IA_GATEWAY_TOKEN).");
   const esquema = {
@@ -205,11 +210,12 @@ async function separarMaterias(email: Email, uso: Uso): Promise<Materia[]> {
       headers: { "x-api-key": token, "content-type": "application/json", "anthropic-version": "2023-06-01", "x-ia-usuario": "radar-itc" },
       body: JSON.stringify({
         model: MODELO, max_tokens: 8000, system: REGRAS,
-        messages: [{ role: "user", content: `Assunto do e-mail: ${email.assunto}\n\n<<<BOLETIM>>>\n${email.texto.slice(0, MAX_TEXTO)}\n<<<FIM>>>` }],
+        messages: [{ role: "user", content: `<<<BOLETIM>>>\nAssunto do e-mail: ${semMarcasDeBloco(email.assunto)}\n\n` +
+                                             `${semMarcasDeBloco(email.texto.slice(0, MAX_TEXTO))}\n<<<FIM>>>` }],
         tools: [{ name: "materias", description: "Registra as matérias do boletim.", input_schema: esquema }],
         tool_choice: { type: "tool", name: "materias" },
       }),
-      signal: AbortSignal.timeout(Math.max(10_000, Math.min(TEMPO_IA_MS, restanteMs() - 15_000))),
+      signal: AbortSignal.timeout(Math.max(10_000, Math.min(TEMPO_IA_MS, restanteMs(inicio) - 15_000))),
     });
   } catch { throw new Erro(504, "A IA não respondeu a tempo ao separar as matérias. Tente de novo."); }
   const d: any = await r.json().catch(() => ({}));
@@ -233,12 +239,22 @@ const diaBrasilia = (iso: string) => {
 };
 
 // ------------------------------------------------------------------ ações
-async function ler(horas: number) {
-  const tokenG = await tokenGraph();
-  const emails = await lerEmails(tokenG, horas);
+async function ler(horas: number, inicio: number) {
   const servico = comoServico();
-  const ids = emails.map((e) => e.id);
-  const lidos = new Set<string>(ids.length ? (await banco(servico, "POST", "rpc/radar_itc_ja_lidos", { p_ids: ids }) ?? []) : []);
+  // v0.22.0 (varredura geral): a falha antes do laço (o segredo do aplicativo vencido no Entra, o consentimento retirado, a caixa que
+  // não existe, o banco fora) também fica à vista na aba Fontes: pela agenda (pg_net) ninguém vê a resposta. Só a mensagem fixa do
+  // erro, que não traz nada do boletim nem do segredo
+  let emails: Email[], lidos: Set<string>;
+  try {
+    const tokenG = await tokenGraph();
+    emails = await lerEmails(tokenG, horas);
+    const ids = emails.map((e) => e.id);
+    lidos = new Set<string>(ids.length ? (await banco(servico, "POST", "rpc/radar_itc_ja_lidos", { p_ids: ids }) ?? []) : []);
+  } catch (x) {
+    const motivo = x instanceof Erro ? x.message : "erro inesperado na leitura da caixa";
+    await banco(servico, "POST", "rpc/radar_itc_registrar_falha", { p_motivo: motivo.slice(0, 300) }).catch(() => {});
+    throw x;
+  }
   const novos = emails.filter((e) => !lidos.has(e.id));
   const resumo = { emails: emails.length, ja_lidos: emails.length - novos.length, materias: 0, novas: 0, ja_existiam: 0, falhas: [] as string[],
                    para_depois: 0, tokens: 0, versao: VERSAO };
@@ -246,10 +262,10 @@ async function ler(horas: number) {
   const marcar = (e: Email, materias: number, novas: number) => banco(servico, "POST", "rpc/radar_itc_marcar_lido", {
     p_id: e.id, p_assunto: e.assunto, p_recebido: e.recebido || null, p_materias: materias, p_novas: novas });
   for (const e of novos) {
-    if (Date.now() - INICIO > COMECAR_ATE_MS) { resumo.para_depois++; continue; }      // a próxima leitura pega
+    if (Date.now() - inicio > COMECAR_ATE_MS) { resumo.para_depois++; continue; }      // a próxima leitura pega
     try {
       const data = diaBrasilia(e.recebido);
-      const materias = await separarMaterias(e, uso);
+      const materias = await separarMaterias(e, uso, inicio);
       const r = materias.length ? await banco(servico, "POST", "rpc/radar_receber_email", {
         p_fonte: FONTE, p_itens: materias.map((m) => ({ ...m, data, assunto_email: e.assunto })) }) : null;
       // sem matéria conta como tentativa: o banco relê o e-mail até 3 vezes antes de desistir (a IA pode ter errado)
@@ -299,7 +315,7 @@ async function diagnostico() {
 
 async function tratar(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  INICIO = Date.now();
+  const inicio = Date.now();
   try {
     if (req.method !== "POST") throw new Erro(405, "Use POST.");
     if (!SUPABASE_URL) throw new Erro(503, "A função está sem SUPABASE_URL.");
@@ -312,7 +328,7 @@ async function tratar(req: Request): Promise<Response> {
     }
     if (acao !== "ler") throw new Erro(400, "Ação desconhecida.");
     const horas = Number.isInteger(pedido?.horas) && pedido.horas >= 1 && pedido.horas <= 168 ? pedido.horas : 50;
-    const r = await ler(horas);
+    const r = await ler(horas, inicio);
     console.log(`radar-itc (${quem}): ${r.emails} e-mail(s), ${r.ja_lidos} já lido(s), ${r.materias} matéria(s), ${r.novas} nova(s), ${r.falhas.length} falha(s)`);
     return responder(200, r);
   } catch (e) {
