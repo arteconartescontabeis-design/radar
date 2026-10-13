@@ -434,6 +434,23 @@ def test_entregar_falha_do_armazenamento_volta_a_fila(completo, tmp_path):
 
 
 @FFMPEG
+def test_entregar_video_acima_do_limite_do_armazenamento_para_com_o_codigo_proprio(completo, tmp_path):
+    """O vídeo corrigido maior que o limite de arquivo do projeto (no Free do Supabase, 50 MB): o armazenamento responde 413. Tentar de
+    novo não adianta: o robô para com "limite_armazenamento" na primeira (um aviso só, que cita o limite do plano), em vez de "storage",
+    que voltaria à fila três vezes, montaria o mesmo arquivo e pararia com "o armazenamento não respondeu"."""
+    f = _funcao()
+    try:
+        f.falhas["put:corrigido/"] = [(413, "The object exceeded the maximum allowed size")] * 3
+        (rc, _), _ = _entregar_de_novo(completo, tmp_path, f)
+        assert rc == 0 and f.acoes() == ["links", "falhar"] and f.final[VID] == {"situacao": "erro", "codigo": "limite_armazenamento"}
+        assert len([c for c, _ in f.puts if c.startswith("corrigido/")]) == 1
+    finally:
+        f.fechar()
+    assert conversa._grande_demais(400, b'{"statusCode": "413", "error": "Payload too large"}')
+    assert not conversa._grande_demais(400, b'{"statusCode": "409", "error": "Duplicate"}') and not conversa._grande_demais(500, b"")
+
+
+@FFMPEG
 def test_entregar_de_novo_com_o_mesmo_video_ja_no_armazenamento(completo, tmp_path):
     """Uma rodada anterior subiu o vídeo (o mesmo sha256) e parou antes de concluir: os links recusam o corrigido (nunca se
     sobrescreve), sobem só os quadros (o que já estava lá fica) e o concluir confere o que está no armazenamento."""

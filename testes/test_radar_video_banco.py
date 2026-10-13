@@ -42,7 +42,8 @@ DECL = ["so_marcadas", "sem_fundo", "so_voz", "fala_confere"]
 CRIAR = "select radar_video_criar(%s, %s, %s, %s, %s::text[], %s, %s::text[])"
 SHA2 = "b" * 64
 RELATORIO = {"versao": 2, "texto_final": FALA, "divergencias": [], "avisos": []}
-DIVERGENCIA = {"k": 0, "falado": "dia 25", "roteiro": "dia 20", "tipo": "numero", "regravar": True, "transcricao_errou": False}
+DIVERGENCIA = {"k": 0, "id": "0123456789abcdef", "falado": "dia 25", "roteiro": "dia 20", "tipo": "numero", "regravar": True,
+               "transcricao_errou": False}
 
 
 def reel(db, dias=5, pessoa=None, **campos):
@@ -216,6 +217,17 @@ def test_criar_confere_tudo_antes_de_qualquer_arquivo_sair(corretor, request):
     db.execute("update radar_videos set segundos_audio = 60, transcrito_em = now() where id = %s", (v0,))
     with erro("RADAR312"):
         criar(pid, ana)
+    # o que sobra do mês não cabe a gravação (a duração que o navegador leu dos clipes): recusa antes de qualquer arquivo sair, com o
+    # que sobra; sem a duração (o navegador não abriu o clipe), vale só o mês acabado — o robô confere
+    db.execute("update radar_videos set segundos_audio = 30 where id = %s", (v0,))
+    with como("authenticated", EDITOR) as c:
+        assert c.execute("select radar_video_cota()").fetchone()[0] == {"segundos_mes": 30, "limite_s": 60}
+    with como("authenticated", LEITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR300"):
+        c.execute("select radar_video_cota()")
+    criar_com = lambda d: tela(CRIAR.replace(")", ", %s::numeric)"), outro, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL, d)
+    with erro("RADAR312: a gravação tem cerca de 31 s, e o corretor só pode transcrever mais 30 s neste mês"):
+        criar_com(31.2)
+    assert video(db, criar_com(29.5)["id"], "situacao") == "aguardando_envio"
     config(db, limite_min_mes=60)
     # 3. o boletim pago (só sim ou não: o trecho não aparece)
     carregar_fontes_novas(db, request)
@@ -287,16 +299,22 @@ def test_enviado_fila_pegar_com_trava_e_robo_ate_o_fim(corretor):
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR316"):                          # depois de concluído, não é mais dele
         concluir(vid, 1)
     # o administrador ouviu e marcou "a transcrição errou": monta de novo, sem transcrever (modo montagem, com a transcrição guardada)
+    errou = {"transcricao_errou": [DIVERGENCIA["id"]], "estilo": "compacta"}
     with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR300"):
-        c.execute("select radar_video_ajustar(%s, %s, null)", (vid, json.dumps({"transcricao_errou": [0]})))
-    assert tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"transcricao_errou": [0], "estilo": "compacta"}), uid=ADMIN) == {
-        "id": vid, "modo": "montagem"}
+        c.execute("select radar_video_ajustar(%s, %s, null)", (vid, json.dumps(errou)))
+    assert tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps(errou), uid=ADMIN) == {"id": vid, "modo": "montagem"}
     assert video(db, vid, "situacao, tentativas, rodada, fila_em is not null") == ("na_fila", 0, 1, True)
     p = pegar()
-    assert (p["tentativa"], p["modo"], p["palavras_tentativa"], p["ajustes"]) == (2, "montagem", 1, {"transcricao_errou": [0], "estilo": "compacta"})
+    assert (p["tentativa"], p["modo"], p["palavras_tentativa"], p["ajustes"]) == (2, "montagem", 1, errou)
     robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, 2, 0, False)                    # montagem: nada transcrito
     assert video(db, vid, "segundos_audio, palavras_tentativa") == (31.5, 1)
-    assert concluir(vid, 2, "pronto", {**rel, "divergencias": [{**DIVERGENCIA, "transcricao_errou": True}]}, sha=SHA2) == {"situacao": "pronto"}
+    # a marca vale pelo id da divergência, e não pela posição: na montagem o alinhamento mudou (uma variante nova tirou a divergência
+    # marcada) e a que ficou na posição 0 é outra — continua pedindo regravar, ainda que o robô diga "pronto"
+    outra = {**DIVERGENCIA, "id": "fedcba9876543210", "falado": "de R$ 600", "roteiro": "de R$ 500,00", "transcricao_errou": True}
+    assert concluir(vid, 2, "pronto", {**rel, "divergencias": [outra]}, sha=SHA2) == {"situacao": "regravar"}
+    db.execute("update radar_videos set situacao = 'na_fila', fila_em = now() where id = %s", (vid,))
+    p = pegar()
+    assert concluir(vid, p["tentativa"], "pronto", {**rel, "divergencias": [{**DIVERGENCIA, "transcricao_errou": True}]}, sha=SHA2) == {"situacao": "pronto"}
     assert video(db, vid, "situacao, sha256, antigos") == ("pronto", SHA2, True)                     # o sha256 anterior fica para a limpeza
     # o robô que mente ("transcricao_errou" sem o administrador marcar) não tira o regravar
     db.execute("update radar_videos set ajustes = '{}', situacao = 'na_fila', fila_em = now() where id = %s", (vid,))
@@ -466,7 +484,10 @@ def test_ajustes_reconferir_de_novo_descartar_e_apaguei(corretor):
     pid, ana = reel(db)
     vid, _ = ate_pronto(db, pid, ana)
     ajustar = lambda a, cartela=None: tela("select radar_video_ajustar(%s, %s, %s::text[])", vid, json.dumps(a), cartela, uid=ADMIN)
-    for ruim in [[], {"outro": 1}, {"manter": "1"}, {"manter": [1.5]}, {"manter": list(range(201))}, {"transcricao_errou": [-1]},
+    for ruim in [[], {"outro": 1}, {"manter": "1"}, {"manter": [1.5]}, {"manter": ["1:30"] * 201}, {"transcricao_errou": [-1]},
+                 # as marcas apontam o trecho pelo que ele é (a chave do corte e o id da divergência), nunca pela posição na lista
+                 {"manter": [3]}, {"manter": ["3"]}, {"manter": ["1:30; drop"]}, {"transcricao_errou": [0]}, {"transcricao_errou": ["0123"]},
+                 {"transcricao_errou": ["0123456789ABCDEF"]},
                  {"legenda": "3:2"}, {"legenda": {"1:2:3": "texto"}}, {"legenda": {"3:2": "com {\\b1} comando"}}, {"legenda": {"3": ""}},
                  {"legenda": {"3": "x" * 121}}, {"legenda": {str(i): "a" for i in range(201)}}, {"estilo": "grande"}, {"sem_gancho": "sim"},
                  # a lista [[chave, texto], …], na ordem em que o robô aplica
@@ -476,7 +497,8 @@ def test_ajustes_reconferir_de_novo_descartar_e_apaguei(corretor):
             ajustar(ruim)
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR305"):
         ajustar({}, ["Só uma linha"])
-    bom = {"manter": [3], "transcricao_errou": [0], "legenda": [["12:4", "O prazo vence hoje"], ["7", "eSocial"], ["12:4", "O prazo vence já"]],
+    bom = {"manter": ["2:285", "1:30b"], "transcricao_errou": ["0123456789abcdef"],
+           "legenda": [["12:4", "O prazo vence hoje"], ["7", "eSocial"], ["12:4", "O prazo vence já"]],
            "estilo": "compacta", "sem_gancho": True}
     assert ajustar(bom, [IDENT]) == {"id": vid, "modo": "montagem"}
     assert video(db, vid, "ajustes, situacao") == (bom, "na_fila")
@@ -486,8 +508,24 @@ def test_ajustes_reconferir_de_novo_descartar_e_apaguei(corretor):
         tela("select radar_video_de_novo(%s)", vid)
     db.execute("update radar_videos set situacao = 'erro', erro_codigo = 'transcricao_ocupada', tentativas = 3 where id = %s", (vid,))
     assert tela("select radar_video_de_novo(%s)", vid) == {"id": vid, "modo": "montagem"}        # "Tentar de novo" (editor ou administrador)
-    assert video(db, vid, "situacao, tentativas, erro_codigo") == ("na_fila", 0, None)
+    assert video(db, vid, "situacao, tentativas, erro_codigo, cartela_linhas") == ("na_fila", 0, None, [IDENT])
+    # a cartela que não coube: "Tentar de novo" com as linhas de hoje (conferidas como no envio); sem elas, a de antes pararia de novo
+    db.execute("update radar_videos set situacao = 'erro', erro_codigo = 'cartela_nao_cabe' where id = %s", (vid,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR305"):
+        tela("select radar_video_de_novo(%s, %s::text[])", vid, ["Só uma linha"])
+    nova = IDENT.replace(" · ", " — ")                                                        # a linha de hoje (outra que a do envio)
+    assert tela("select radar_video_de_novo(%s, %s::text[])", vid, [nova]) == {"id": vid, "modo": "montagem"}
+    assert video(db, vid, "situacao, cartela_linhas") == ("na_fila", [nova])
+    db.execute("update radar_videos set cartela_linhas = %s where id = %s", ([IDENT], vid))
     db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    # o roteiro mudou só no que não é falado (o "Texto na tela"): a mesma fala, o mesmo vídeo — só o roteiro novo fica registrado, sem
+    # voltar à fila, e as marcas do administrador continuam valendo
+    so_tela = ROTEIRO.replace("| PRAZO DIA 20 |", "| PRAZO: DIA 20 |")
+    db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (so_tela, pid))
+    assert conferir(pid) == ["Reel: o roteiro mudou depois da gravação: use “Conferir com o roteiro novo” ou grave de novo"]
+    rodada = video(db, vid, "rodada")
+    assert tela("select radar_video_reconferir(%s, %s)", vid, FALA) == {"id": vid, "modo": None}
+    assert video(db, vid, "situacao, ajustes, rodada") == ("pronto", bom, rodada) and conferir(pid) == []
     # o roteiro mudou: a fala nova tem de estar no roteiro novo; os ajustes por número saem, o estilo e o gancho ficam
     novo = ROTEIRO.replace("nem juros.", "nem juros, e fale com a gente.")
     db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (novo, pid))
@@ -568,6 +606,104 @@ def test_termo_conferido_em_todo_o_caminho_do_processamento(corretor):
     assert video(db, novo, "segundos_audio") == 12.5
 
 
+def test_desmarcar_quem_aparece_nao_tira_a_pessoa_do_video(corretor):
+    """Ana Teste fala e Bruno Exemplo aparece, os dois com o termo. Bruno revoga o termo e o administrador, seguindo o LEIAME de antes,
+    desmarca Bruno na peça: o vídeo continua sendo o dele — a pendência continua recusando, a prévia fecha, o robô não pega o pedido
+    num "Tentar de novo", e a limpeza do dia seguinte leva os clipes, a transcrição, o vídeo corrigido e os textos (não espera o prazo
+    de guarda)."""
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno")
+    pid, _ = reel(db, pessoa=ana, pessoas=[ana, bruno])
+    vid, _ = ate_pronto(db, pid, ana)
+    assert video(db, vid, "pessoas") == sorted([ana, bruno]) and conferir(pid) == []
+    assert tela("select radar_video_para_previa(%s)", vid)["sha256"] == SHA_VIDEO
+    db.execute("update radar_pessoas set termo_revogado_em = %s where id = %s", (hoje(db), bruno))
+    recusa = ("Reel: uma pessoa da peça não pode aparecer no vídeo (termo revogado no Instagram): confira em Pauta → Pessoas e termos")
+    assert recusa in conferir(pid)
+    mudar_por_fora(db, pid, f"pessoas = '{{{ana}}}'")                                       # desmarcado na peça
+    assert recusa in conferir(pid)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR304: uma pessoa da peça não pode aparecer no vídeo"):
+        tela("select radar_video_para_previa(%s)", vid)
+    db.execute("update radar_videos set situacao = 'erro', erro_codigo = 'storage' where id = %s", (vid,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR304"):
+        tela("select radar_video_de_novo(%s)", vid)
+    db.execute("update radar_videos set situacao = 'na_fila', erro_codigo = null, fila_em = now() where id = %s", (vid,))
+    assert pegar() is None and video(db, vid, "situacao, erro_codigo") == ("erro", "termo")
+    r = robo("select radar_video_limpeza()")
+    assert {i["id"]: sorted(i["apagar"]) for i in r["itens"]} == {vid: ["bruto", "corrigido", "trabalho"]} and r["textos"] == 1
+    assert video(db, vid, "fala_roteiro, relatorio, arquivos_apagados") == ("", {}, ["textos"])
+    # as pessoas do vídeo: as marcadas no envio (Bruno, desmarcado enquanto os clipes subiam) e as marcadas quando os clipes chegaram
+    db.execute("update radar_pessoas set termo_revogado_em = null where id = %s", (bruno,))
+    carla = pessoa_do_corretor(db, "Carla Modelo", "Carla")
+    outra, _ = reel(db, dias=6, pessoa=ana, pessoas=[ana, bruno])
+    v2 = criar(outra, ana)["id"]
+    mudar_por_fora(db, outra, f"pessoas = '{{{ana},{carla}}}'")
+    tela("select radar_video_enviado(%s)", v2)
+    assert video(db, v2, "pessoas") == sorted([ana, bruno, carla])
+
+
+@pytest.mark.parametrize("mudanca, motivo", [
+    ("termo_corretor_em = null", "sem o termo novo, que cita o corretor de vídeo"),             # retirou a autorização do corretor
+    ("termo_corretor_em = %(h)s::date + 3", "sem o termo novo, que cita o corretor de vídeo"),
+    ("menor = true", "menor de idade: o corretor de vídeo não aceita nesta versão"),
+    ("termo_revogado_em = %(h)s", "termo revogado no Instagram")])
+def test_previa_e_limpeza_param_quando_a_pessoa_nao_pode_mais_estar_no_video(corretor, mudanca, motivo):
+    """O termo do corretor retirado (ou com data no futuro), a pessoa marcada menor de idade e o termo revogado: o processamento já
+    parava (radar_video_pessoa_falta); agora a prévia também fecha na hora (o editor não recebe mais o link de 600 s do vídeo da pessoa)
+    e a limpeza seguinte leva os arquivos e os textos, em vez de esperar o prazo de guarda (30 a 120 dias)."""
+    db = corretor
+    pid, ana = reel(db)
+    vid, _ = ate_pronto(db, pid, ana)
+    db.execute(f"update radar_pessoas set {mudanca} where id = %(a)s", {"a": ana, "h": hoje(db)})
+    with pytest.raises(psycopg.errors.RaiseException, match=re.escape(f"RADAR304: uma pessoa da peça não pode aparecer no vídeo ({motivo}")):
+        tela("select radar_video_para_previa(%s)", vid)
+    assert db.execute("select count(*) from radar_video_acessos where video_id = %s", (vid,)).fetchone()[0] == 0
+    r = robo("select radar_video_limpeza()")
+    assert {i["id"]: sorted(i["apagar"]) for i in r["itens"]} == {vid: ["bruto", "corrigido", "trabalho"]} and r["textos"] == 1
+    # o termo de imagem só vencido (pode ser renovado) para o processamento, mas não apaga nada
+    pid2, _ = reel(db, dias=6, pessoa=pessoa_do_corretor(db, "Bruno Exemplo", "Bruno"))
+    v2, _ = ate_pronto(db, pid2, db.execute("select pessoas[1] from radar_pauta_pecas where id = %s", (pid2,)).fetchone()[0])
+    db.execute("update radar_pessoas set termo_valido_ate = %s::date - 1 where id = (select pessoas[1] from radar_pauta_pecas where id = %s)",
+               (hoje(db), pid2))
+    assert v2 not in {i["id"] for i in robo("select radar_video_limpeza()")["itens"]}
+
+
+def test_gancho_e_texto_extra_da_cartela_conferidos_como_estao_no_video(corretor):
+    """O texto do gancho gravado de 0 a 3 s é a cópia da chamada no envio, e o texto extra da cartela é o das Configurações na hora da
+    montagem (o robô grava no relatório). A trava confere o que está NO VÍDEO — e não a chamada ou as Configurações de hoje —, e a
+    pendência pede o vídeo em dia quando um dos dois muda depois."""
+    db = corretor
+    pid, ana = reel(db, chamada="O prazo do Simples vence no dia 20, com multa de R$ 300")
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno")
+    vid = na_fila(db, pid, ana, gancho=True)
+    t = pegar()["tentativa"]
+    robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, t, 31.5, True)
+    concluir(vid, t, relatorio={**RELATORIO, "cartela_extra": ""})
+    assert video(db, vid, "gancho") == "O prazo do Simples vence no dia 20, com multa de R$ 300"
+    numero = lambda: [x for x in conferir(pid) if x.startswith("Números que não estão nas informações conferidas")]
+    assert numero() and ": 300." in numero()[0]
+    # a chamada reescrita na peça: o vídeo continua com o gancho de antes — a pendência pede o vídeo em dia, e o número do gancho gravado
+    # continua travando
+    db.execute("update radar_pauta_pecas set chamada = 'O prazo do Simples vence no dia 20' where id = %s", (pid,))
+    assert ("Reel: o texto do gancho mudou depois da gravação (o vídeo tem o de antes): o administrador marca “Sem o texto do gancho” nos "
+            "ajustes, ou envie a gravação de novo") in conferir(pid)
+    assert numero() and ": 300." in numero()[0]
+    db.execute("""update radar_videos set ajustes = '{"sem_gancho": true}' where id = %s""", (vid,))          # montado sem o gancho
+    assert conferir(pid) == []
+    # o texto extra da cartela: o gravado (no relatório) passa pelas travas; mudado nas Configurações depois, a cartela é refeita
+    db.execute("""update radar_videos set relatorio = relatorio || '{"cartela_extra": "Atendimento com o Bruno"}' where id = %s""", (vid,))
+    assert conferir(pid) == ["Reel: o texto extra da cartela mudou nas Configurações depois da montagem: o administrador marca “Refazer a "
+                             "cartela” nos ajustes (o vídeo é montado de novo)",
+                             "“Bruno” aparece no texto e não está marcada em Quem aparece"]
+    config(db, cartela_extra="Atendimento com o Bruno")
+    assert conferir(pid) == ["“Bruno” aparece no texto e não está marcada em Quem aparece"]
+    config(db, cartela_extra="Fale com a gente")                    # as Configurações de hoje não escondem o que está gravado
+    assert "“Bruno” aparece no texto e não está marcada em Quem aparece" in conferir(pid)
+    db.execute("""update radar_videos set relatorio = relatorio || '{"cartela_extra": "Fale com a gente"}' where id = %s""", (vid,))
+    assert conferir(pid) == [] and bruno
+
+
 def test_envio_novo_so_substitui_o_video_vivo_quando_os_clipes_chegam(corretor):
     """O envio novo não leva o vídeo bom junto: o vivo continua até os clipes do novo chegarem (radar_video_enviado). O envio
     abandonado, ou que falhou no armazenamento, deixa o vídeo anterior como estava."""
@@ -628,7 +764,10 @@ def test_reserva_da_agenda_para_no_3o_acionamento_sem_o_robo_pegar(corretor):
     vid = na_fila(db, pid, ana)
     assert reserva() is False and video(db, vid, "reservas") == 0                          # na fila há menos de 3 minutos: a tela acionou
     db.execute("update radar_videos set fila_em = now() - interval '4 minutes' where id = %s", (vid,))
+    trilha = lambda: db.execute("select count(*) from radar_auditoria where tabela = 'radar_videos'").fetchone()[0]
+    antes = trilha()
     assert [reserva() for _ in range(3)] == [True, True, True] and video(db, vid, "reservas") == 3
+    assert trilha() == antes                                                                 # a conta da reserva não vai à trilha
     assert reserva() is False and video(db, vid, "situacao, erro_codigo") == ("erro", "robo_nao_pegou")
     assert conferir(pid) == ["Reel: o corretor parou com erro (robo_nao_pegou)"]                # o aviso, na peça
     assert reserva() is False                                                                 # e a reserva parou
@@ -853,7 +992,7 @@ def test_conferencia_das_chaves_do_robo_e_da_agenda_pelo_vault(db):
 def test_funcoes_do_video_sem_current_date_com_caminho_e_configuracao_inicial(db):
     funcoes = db.execute("""select p.proname, p.prosrc, p.proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                             where n.nspname = 'public' and (p.proname like 'radar\\_video\\_%' or p.proname = 'radar_pauta_pecas_da_pessoa')""").fetchall()
-    assert len(funcoes) == 39
+    assert len(funcoes) == 40                                                                   # v0.22.0: + radar_video_cota
     assert [n for n, src, _ in funcoes if "current_date" in src.lower()] == []                    # "hoje" é o de Brasília
     assert [n for n, _, cfg in funcoes if not cfg] == []
     cfg = db.execute("select valor from radar_config where chave = 'corretor_video'").fetchone()[0]

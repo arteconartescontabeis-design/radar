@@ -7,6 +7,16 @@
 -- v0.22.0: os ARQUIVOS do corretor de vídeo (bucket privado radar-videos: clipes, transcrições, vídeos corrigidos e quadros) NÃO saem
 -- por SQL — apagar as linhas de storage.objects deixaria os arquivos órfãos no armazenamento. Apague pelo painel ANTES (Supabase →
 -- Storage → radar-videos → selecione tudo → Delete; depois, no menu do bucket, Delete bucket) ou pela API do armazenamento.
+-- Também fora do banco (este arquivo não alcança; LEIAME, "Da v0.21.0 para a v0.22.0", "Para desfazer a versão"):
+--   * no repositório PRIVADO radar-video: Actions → "Radar — corretor de vídeo" → Disable workflow (ou apague
+--     .github/workflows/radar-video.yml). A agenda própria dele (47 13,19 * * 1-5) roda duas vezes por dia útil e, sem o banco, cada
+--     execução falharia e mandaria um e-mail, para sempre. Apague os segredos RADAR_VIDEO_ROBO_CHAVE, AZURE_FALA_CHAVE e
+--     AZURE_FALA_REGIAO (e os opcionais AZURE_FALA_MODO e AZURE_FALA_ENDPOINT);
+--   * no Supabase: Edge Functions → apague a função radar-video (ou, pelo menos, o segredo RADAR_VIDEO_GITHUB_TOKEN);
+--   * no GitHub: revogue o token fino "Radar — acionar o corretor de vídeo" (Settings → Developer settings → Personal access tokens →
+--     Fine-grained tokens → Delete): ele tem escrita em Actions no radar-video;
+--   * as chaves 'radar_video_robo' e 'radar_video_agenda' ficam no Vault de propósito (para zerar, o delete do comentário do
+--     sql/radar-video-agenda-reversao.sql). As chaves do Azure nunca são regeneradas: a do artecon-voz é a mesma da Agenda.
 -- =====================================================================
 begin;
 
@@ -214,15 +224,19 @@ drop function if exists public.radar_video_segundos_mes();
 drop function if exists public.radar_video_limite_s();
 drop function if exists public.radar_video_fala_no_roteiro(text, text);
 drop function if exists public.radar_video_pessoa_falta(bigint, bigint);
+drop function if exists public.radar_video_pessoas_falta(bigint, bigint, bigint[]);
 drop function if exists public.radar_video_pessoas_falta(bigint, bigint);
 drop function if exists public.radar_video_cartela_falta(text[], bigint);
 drop function if exists public.radar_video_ajustes_falta(jsonb);
 drop function if exists public.radar_video_pendencia(bigint);
+drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric);
 drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[]);
+drop function if exists public.radar_video_cota();
 drop function if exists public.radar_video_para_envio(uuid);
 drop function if exists public.radar_video_enviado(uuid);
 drop function if exists public.radar_video_ajustar(uuid, jsonb, text[]);
 drop function if exists public.radar_video_reconferir(uuid, text);
+drop function if exists public.radar_video_de_novo(uuid, text[]);
 drop function if exists public.radar_video_de_novo(uuid);
 drop function if exists public.radar_video_descartar(uuid);
 drop function if exists public.radar_video_apaguei(uuid);

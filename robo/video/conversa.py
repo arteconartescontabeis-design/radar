@@ -268,10 +268,27 @@ class Conversa:
                 return True
             if _ja_existe(status, dados):
                 return False
+            if _grande_demais(status, dados):
+                # o limite de arquivo do projeto (no Free do Supabase, 50 MB): tentar de novo não adianta, e "storage" voltaria à fila
+                # três vezes para parar com "o armazenamento não respondeu"
+                raise ErroVideo("limite_armazenamento", "subir")
             if status not in (0, 408, 429, 500, 502, 503, 504) or k + 1 >= TENTATIVAS:
                 break
             _dormir(ESPERAS[min(k, len(ESPERAS) - 1)])
         raise ErroVideo("rede" if status == 0 else "storage", "subir")
+
+
+def _grande_demais(status: int, dados: bytes) -> bool:
+    """O armazenamento recusou pelo tamanho do arquivo: 413, ou 400 com {"statusCode": "413"} (ou "EntityTooLarge") no corpo."""
+    if status == 413:
+        return True
+    if status != 400:
+        return False
+    try:
+        d = json.loads(dados[:ERRO_MAX])
+    except ValueError:
+        return False
+    return isinstance(d, dict) and (str(d.get("statusCode")) == "413" or d.get("error") in ("Payload too large", "EntityTooLarge"))
 
 
 def _ja_existe(status: int, dados: bytes) -> bool:

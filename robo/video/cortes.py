@@ -23,8 +23,12 @@ SEGUIDAS do roteiro. Nenhuma palavra transcrita (fora os sons de hesitação) ca
        com 0,40 s. O corte é só a parte do silêncio que cai entre as duas palavras: nunca entra numa palavra;
   3. `remover` (do alinhamento): as sugestões de repetição e falso início, com o tipo e o texto ouvido; um pedido automático que
      cairia sobre uma palavra vira sugestão (nunca corta);
-  4. `manter` (ajustes.manter): os números (k) dos cortes no meio da fala que o administrador mandou manter.
-Os cortes são numerados (k) na ordem do tempo ANTES de aplicar o `manter`: o número de um corte não muda quando outro é mantido.
+  4. `manter` (ajustes.manter): as chaves dos cortes no meio da fala que o administrador mandou manter.
+Os cortes são numerados (k) na ordem do tempo, para o relatório; o do meio da fala leva também a `chave` "<clipe>:<quadro>", o quadro
+(1/30 s, na linha de fala48k.wav) em que começa o que ele corta — o silêncio da pausa, o vão entre as duas palavras (hesitação, voz
+entre palavras) ou o trecho pedido —, que não depende do resto da lista. É por ela que o `manter` aponta: o alinhamento é refeito a
+cada rodada ("A transcrição errou" muda a pontuação que fecha a frase, e com ela o limite da pausa; as Configurações podem ter mudado),
+um corte pode entrar ou sair e o número k dos outros muda; a chave de um corte nunca vira a de outro. A que não confere não mantém nada.
 
 O fim da fala fica intacto: a transição para a cartela começa 0,05 s depois da última palavra; se o clipe acaba antes de 0,45 s depois
 dela, o plano pede `pad_q` quadros a mais (o último quadro parado e silêncio), em vez de cortar a palavra com o esmaecer.
@@ -50,6 +54,7 @@ FOLGA_PALAVRA = 0.05                   # s: um corte no meio da fala nunca chega
                                        # palavras da transcrição tem erro; calibrar no teste real 1)
 COLADO = 0.06                          # s: silêncio que começa (acaba) até isso depois (antes) da palavra é o colado nela
 FECHA_FRASE = re.compile(r"[.!?…;:][\"'”»)]*$")
+CHAVE = re.compile(r"\d{1,2}:\d{1,6}b{0,3}")       # a chave de um corte no meio da fala (ajustes.manter)
 PROTEGIDAS = frozenset({"um", "uma", "e", "é"})
 _HESITACAO = re.compile(r"ã+h+|hã+|hu+m+|hm+|a+h+n+")
 
@@ -91,7 +96,8 @@ def _sobra(g0: float, g1: float, sil: list[tuple[float, float]], fica: float) ->
 
 def _entre(w1: dict, w2: dict, silencios: list[tuple[float, float]], todas: list[dict], limite: float,
            sobra: float) -> list[tuple]:
-    """O que sai entre duas palavras seguidas da transcrição: [(ini, fim, tipo, automático, texto)]."""
+    """O que sai entre duas palavras seguidas da transcrição: [(ini, fim, tipo, automático, texto, base)] — base: onde começa o que é
+    cortado (o vão entre as palavras ou o silêncio), para a chave do corte."""
     g0, g1 = w1["fim"], w2["ini"]
     if g1 <= g0:
         return []
@@ -111,9 +117,9 @@ def _entre(w1: dict, w2: dict, silencios: list[tuple[float, float]], todas: list
             auto = g1 - g0 <= VOZ_ENTRE[1] and _seguidas(w1, w2)
         if auto:
             a, b = _sobra(g0, g1, sil, sobra)
-            return [(a, b, tipo, True, texto)] if b - a >= 1 / FPS else []
-        sugestao = [(g0, g1, tipo, False, texto)]
-    return sugestao + [(s + sobra / 2, e - sobra / 2, "pausa", True, None) for s, e in sil if e - s > limite]
+            return [(a, b, tipo, True, texto, g0)] if b - a >= 1 / FPS else []
+        sugestao = [(g0, g1, tipo, False, texto, g0)]
+    return sugestao + [(s + sobra / 2, e - sobra / 2, "pausa", True, None, s) for s, e in sil if e - s > limite]
 
 
 def _q_ini(t: float) -> int:
@@ -172,14 +178,14 @@ def remapear(plano: dict, t: float) -> tuple[float, bool]:
 def planejar(partes: list[dict], silencios: list[tuple[float, float]], cfg: dict, palavras: list[dict] | None = None,
              remover: list[dict] = (), manter=()) -> dict:
     """partes: as de sondar (com inicio_q de audio.extrair); palavras: [{texto, ini, fim, fim_frase?, rot_de?, rot_ate?}] na linha de
-    fala48k.wav, em ordem (alinhar.alinhar → "palavras"); remover: [{ini, fim, tipo, automatico, texto?}]; manter: números k.
-    Devolve {trechos, cortes, sugestoes, fala_q, pad_q, ultima_s}."""
+    fala48k.wav, em ordem (alinhar.alinhar → "palavras"); remover: [{ini, fim, tipo, automatico, texto?}]; manter: as chaves
+    ("<clipe>:<quadro>") dos cortes a manter. Devolve {trechos, cortes, sugestoes, fala_q, pad_q, ultima_s}."""
     pausa_max, pausa_bloco = float(cfg.get("pausa_max_s", 1.0)), float(cfg.get("pausa_bloco_s", 0.8))
-    manter = {int(k) for k in manter}
-    cortes, sugestoes, fica, ultima = [], [], [], None
+    manter = {k for k in manter if isinstance(k, str) and CHAVE.fullmatch(k)}
+    cortes, sugestoes, fica, ultima, chaves = [], [], [], None, set()
     for p in partes:
         p0, p1 = p["inicio_q"] / FPS, (p["inicio_q"] + p["quadros"]) / FPS
-        meio: list[tuple[float, float, str, bool, str | None]] = []
+        meio: list[tuple[float, float, str, bool, str | None, float]] = []
         ws: list[dict] = []
         if palavras is not None:
             todas = [w for w in palavras if p0 <= (w["ini"] + w["fim"]) / 2 < p1]
@@ -196,7 +202,7 @@ def planejar(partes: list[dict], silencios: list[tuple[float, float]], cfg: dict
             borda = (voz[0][0], voz[-1][1]) if voz else None
             for (_, v1), (v2, _) in zip(voz, voz[1:]):
                 if v2 - v1 > pausa_bloco:
-                    meio.append((v1 + FICA_BLOCO / 2, v2 - FICA_BLOCO / 2, "pausa", True, None))
+                    meio.append((v1 + FICA_BLOCO / 2, v2 - FICA_BLOCO / 2, "pausa", True, None, v1))
         if borda is None:
             cortes.append({"clipe": p["n"], "de_s": 0.0, "ate_s": round(p1 - p0, 2), "tipo": "clipe_sem_fala"})
             continue
@@ -207,15 +213,19 @@ def planejar(partes: list[dict], silencios: list[tuple[float, float]], cfg: dict
                 texto = str(r["texto"])[:80] if r.get("texto") else None
                 # nunca um corte automático sobre uma palavra (fora os sons de hesitação): vira sugestão
                 meio.append((r0, r1, str(r.get("tipo") or "remover"), bool(r.get("automatico")) and not _sobre_palavra(r0, r1, ws),
-                             texto))
+                             texto, r0))
         if a - p0 >= 1 / FPS:
             cortes.append({"clipe": p["n"], "de_s": 0.0, "ate_s": round(a - p0, 2), "tipo": "inicio"})
-        for m0, m1, tipo, auto, texto in sorted(meio, key=lambda x: (x[0], x[1])):
+        for m0, m1, tipo, auto, texto, base in sorted(meio, key=lambda x: (x[0], x[1])):
             extra = {"texto": texto} if texto else {}
             if not auto:
                 sugestoes.append({"ini": m0, "fim": m1, "clipe": p["n"], "tipo": tipo, **extra})
             elif m1 - m0 >= 1 / FPS:
-                cortes.append({"clipe": p["n"], "ini": m0, "fim": m1, "tipo": tipo, "automatico": True, **extra})
+                chave = f"{p['n']}:{_q_ini(base)}"
+                while chave in chaves:                  # dois cortes no mesmo quadro (só um pedido de fora poderia): o 2º leva "b"
+                    chave += "b"
+                chaves.add(chave)
+                cortes.append({"clipe": p["n"], "ini": m0, "fim": m1, "tipo": tipo, "automatico": True, "chave": chave, **extra})
         if p1 - b >= 1 / FPS:
             cortes.append({"clipe": p["n"], "de_s": round(b - p0, 2), "ate_s": round(p1 - p0, 2), "tipo": "fim"})
         fica.append((p, a, b))
@@ -225,7 +235,7 @@ def planejar(partes: list[dict], silencios: list[tuple[float, float]], cfg: dict
     for k, c in enumerate(cortes):
         c["k"] = k
         if "ini" in c:
-            c["mantido"] = k in manter
+            c["mantido"] = c["chave"] in manter
     trechos = []
     for p, a, b in fica:                                # juntados dentro do clipe: um trecho nunca passa de um clipe para o outro
         q0, q1 = p["inicio_q"], p["inicio_q"] + p["quadros"]

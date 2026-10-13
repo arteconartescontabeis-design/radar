@@ -338,16 +338,79 @@ def test_dia_15_contra_dia_25_pede_regravar_e_a_transcricao_errou_volta_o_roteir
     (d,) = al["divergencias"]
     assert {k: d[k] for k in ("k", "falado", "roteiro", "tipo", "regravar", "transcricao_errou")} == \
         {"k": 0, "falado": "dia 15", "roteiro": "dia 25", "tipo": "numero", "regravar": True, "transcricao_errou": False}
-    assert d["t"] == ws[4]["inicio"] and d["confianca"] == 0.9
+    assert d["t"] == ws[4]["inicio"] and d["confianca"] == 0.9 and re.fullmatch(r"[0-9a-f]{16}", d["id"])
     # a legenda mostra o que foi dito (nunca o 25 do roteiro), com o número em algarismo
     assert al["texto_final"] == "O prazo vence dia 15 Fale com a gente." and "25" not in al["texto_final"]
     assert relatorio.situacao({"divergencias": al["divergencias"]}) == "regravar"
+    # a marca é o id da divergência, e não a posição na lista: o número 0 não marca nada
+    assert alinhar.alinhar(fala, ws, [], CFG, {"transcricao_errou": [0]})["divergencias"][0]["transcricao_errou"] is False
     # o administrador ouviu "25": "A transcrição errou (vale o roteiro)" — a legenda passa a ser a do roteiro naquele trecho
-    ok = alinhar.alinhar(fala, ws, [], CFG, {"transcricao_errou": [0]})
-    assert ok["divergencias"][0]["transcricao_errou"] is True and ok["texto_final"] == fala
+    ok = alinhar.alinhar(fala, ws, [], CFG, {"transcricao_errou": [d["id"]]})
+    assert ok["divergencias"][0]["transcricao_errou"] is True and ok["texto_final"] == fala and ok["divergencias"][0]["id"] == d["id"]
     assert relatorio.situacao({"divergencias": ok["divergencias"]}) == "pronto"
     (u,) = [u for u in ok["legenda"] if u["texto"] == "25."]
     assert (u["ini"], u["fim"]) == (ws[4]["inicio"], ws[4]["fim"])
+
+
+def test_a_transcricao_errou_marca_a_divergencia_pelo_conteudo_e_nunca_cai_em_outra():
+    """O robô alinha de novo a cada rodada, com as Configurações do momento. O administrador cadastra a variante "ce be esse" para a CBS
+    (como o LEIAME sugere) e marca "A transcrição errou" só no termo: na rodada da montagem o termo deixa de ser divergência e a lista
+    vira só o valor — que a pessoa disse errado ("seiscentos reais" contra R$ 500,00). A marca do termo não cai no valor: ele continua
+    pedindo regravar, e a legenda nunca diz um valor que o áudio não diz."""
+    fala = "Bom dia. A CBS começa a valer em 2027 e a multa mínima é de R$ 500,00 para quem atrasar a entrega."
+    ws = falas("bom dia a ce be esse começa a valer em dois mil e vinte e sete e a multa mínima é de seiscentos reais para quem atrasar a "
+               "entrega")
+    r1 = alinhar.alinhar(fala, ws, [], CFG)
+    termo, valor = r1["divergencias"]
+    assert [(d["k"], d["tipo"], d["falado"], d["roteiro"]) for d in (termo, valor)] == [
+        (0, "termo", "A ce be esse", "A CBS"), (1, "numero", "de R$ 600", "de R$ 500,00")]
+    cfg2 = {**CFG, "variantes": {**VARIANTES, "CBS": VARIANTES["CBS"] + ["ce be esse"]}}
+    r2 = alinhar.alinhar(fala, ws, [], cfg2, {"transcricao_errou": [termo["id"]]})
+    (d,) = r2["divergencias"]
+    assert (d["k"], d["id"], d["transcricao_errou"]) == (0, valor["id"], False)                 # o mesmo valor, o mesmo id, aberto
+    assert relatorio.situacao({"divergencias": r2["divergencias"]}) == "regravar"
+    assert "R$ 600" in r2["texto_final"] and "500,00" not in r2["texto_final"]
+    # marcado o valor (o administrador ouviu "quinhentos"), vale o roteiro: o id da rodada anterior continua apontando para ele
+    r3 = alinhar.alinhar(fala, ws, [], cfg2, {"transcricao_errou": [termo["id"], valor["id"]]})
+    assert r3["divergencias"][0]["transcricao_errou"] is True and "R$ 500,00" in r3["texto_final"]
+    # o mesmo instante com outro texto (o roteiro mudou ali) é outra divergência: a marca antiga não vale
+    r4 = alinhar.alinhar(fala.replace("500,00", "400,00"), ws, [], cfg2, {"transcricao_errou": [valor["id"]]})
+    assert r4["divergencias"][0]["id"] != valor["id"] and r4["divergencias"][0]["transcricao_errou"] is False
+
+
+def test_manter_este_trecho_aponta_o_corte_pela_chave_e_nao_pelo_numero():
+    """"A transcrição errou" na data põe a pontuação do roteiro ("30/10.") naquele trecho, e a pausa de 0,9 s depois dela passa a ser
+    entre frases (limite de 0,8 s): entra um corte novo, ANTES do que o administrador mandou manter no mesmo ajuste (a pausa de 1,2 s
+    depois de "juros"), e o número dos cortes seguintes anda uma casa. A chave do corte ("<clipe>:<quadro>" de onde começa o silêncio)
+    não muda: o trecho escolhido fica, e o corte novo não é mantido por engano."""
+    fala = "Atenção. O prazo vence em 30/10. Depois disso, há multa e juros todo mês."
+    pal, sil, t = [], [(0.0, 0.5)], 0.5
+    for w in "atenção o prazo vence em trinta e um de outubro depois disso há multa e juros todo mês".split():
+        pal.append({"texto": w, "inicio": round(t, 2), "fim": round(t + 0.3, 2), "confianca": 0.9})
+        t += 0.3
+        vao = {"outubro": 0.9, "juros": 1.2}.get(w, 0.1)
+        if vao > 0.5:
+            sil.append((round(t, 2), round(t + vao, 2)))
+        t += vao
+    sil.append((round(t, 2), round(t + 1.0, 2)))
+    partes = [{"n": 1, "inicio_q": 0, "quadros": int((t + 1.0) * 30)}]
+    cfg = {"glossario": [], "variantes": {}, "pausa_max_s": 1.0, "pausa_bloco_s": 0.8}
+
+    def rodada(aj):
+        a = alinhar.alinhar(fala, pal, [], cfg, aj)
+        return a, cortes.planejar(partes, sil, cfg, a["palavras"], a["remover"], aj.get("manter") or [])
+    a1, p1 = rodada({})
+    (div,) = a1["divergencias"]
+    assert [(c["k"], c["tipo"]) for c in p1["cortes"]] == [(0, "inicio"), (1, "pausa"), (2, "fim")]
+    juros = p1["cortes"][1]
+    assert juros["dur_s"] == pytest.approx(0.9) and re.fullmatch(r"1:\d+", juros["chave"])
+    a2, p2 = rodada({"transcricao_errou": [div["id"]], "manter": [juros["chave"]]})
+    meio = [c for c in p2["cortes"] if "chave" in c]
+    assert [(c["k"], c["dur_s"], c["mantido"]) for c in meio] == [(1, pytest.approx(0.5), False), (2, pytest.approx(0.9), True)]
+    assert meio[1]["chave"] == juros["chave"] and meio[0]["chave"] != juros["chave"]
+    # o número de antes (1) não mantém nada: só a chave
+    assert all(not c["mantido"] for c in rodada({"transcricao_errou": [div["id"]], "manter": [1]})[1]["cortes"] if "chave" in c)
+    assert p2["fala_q"] - p1["fala_q"] == pytest.approx(27 - 15, abs=1)                       # +0,9 s mantido, −0,5 s do corte novo
 
 
 @pytest.mark.parametrize("velho, novo, tipo, falado, roteiro", [
@@ -549,8 +612,9 @@ def test_voz_entre_palavras_seguidas_do_roteiro_sai_e_fora_disso_vira_sugestao()
     assert not cortes.remapear(plano, 2.95)[1] and all(ficou(plano, w["inicio"], w["fim"]) for w in ws)
     depois_de_vence = cortes.remapear(plano, 3.55)[0] - cortes.remapear(plano, 2.45)[0]
     assert depois_de_vence == pytest.approx(0.30, abs=1 / 30 + 1e-6)
-    # "Manter este trecho": o mesmo número k, e a voz fica
-    mantido = cortes.planejar(parte(dur), sil, CFG, al["palavras"], al["remover"], manter=[c["k"]])
+    # "Manter este trecho", pela chave do corte (o vão depois de "vence", em quadros): a voz fica
+    assert c["chave"] == "1:73"                                                              # o quadro de 2,45 s (para baixo)
+    mantido = cortes.planejar(parte(dur), sil, CFG, al["palavras"], al["remover"], manter=[c["chave"]])
     assert cortes.remapear(mantido, 2.95)[1] and mantido["fala_q"] - plano["fala_q"] == pytest.approx(24, abs=1)
     # o roteiro tem uma palavra ali ("hoje") que a transcrição não tem: pode ser ela — só sugestão, a voz fica
     al2 = alinhar.alinhar("O prazo do eSocial vence hoje em 30/10.", ws, [], CFG)
@@ -659,8 +723,9 @@ def test_relatorio_parcial_e_final_no_tempo_do_video_corrigido(capfd):
     leg = {"blocos": 2, "estilo": "normal", "gancho": False, "avisos": [], "lista": [{"u": 0, "em_s": 0.12, "palavras": 5, "texto": "x"}]}
     fim = relatorio.final(al, plano, infos, {"saida": {"duracao_s": 48.0, "fala_s": 45.4}, "audio": {"linear": True},
                                              "quadros_ms": [1, 2, 3, 4]}, {"lufs": -14.1, "pico_dbtp": -2.0, "sem_gps": True}, leg,
-                          {"servico": "azure_f0", "segundos_audio": dur, "palavras": len(ws)}, cfg=CFG)
+                          {"servico": "azure_f0", "segundos_audio": dur, "palavras": len(ws)}, cfg={**CFG, "cartela_extra": "Fale com a gente"})
     assert fim["saida"]["lufs"] == -14.1 and fim["saida"]["pico_dbtp"] == -2.0 and "duracao_acima_do_limite" in fim["avisos"]
+    assert fim["cartela_extra"] == "Fale com a gente"                       # o texto extra que foi gravado (o banco confere este)
     assert fim["texto_final"] == "O prazo vence dia 15 Fale com a Ana Teste." and fim["legenda"]["lista"] == leg["lista"]
     assert [c["tipo"] for c in fim["cortes"]] == ["inicio", "pausa", "fim"] and fim["entrada"]["clipes"] == 1
     assert relatorio.situacao(fim) == "regravar"

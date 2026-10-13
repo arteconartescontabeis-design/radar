@@ -45,6 +45,11 @@ Também nesta versão: **"Preencher fontes oficiais"** (Configurações → Agen
 vencimento nas obrigações da agenda das redes que estão sem fonte, e o **CRC certo da Artecon**, "CRC-SC 007129/O-0", na ajuda e nos
 exemplos das Configurações e deste LEIAME (o que está salvo nas Configurações não muda sozinho: confira).
 
+Na agenda padrão, o **Simples Doméstico (DAE)** passa a **antecipar** quando o dia 20 não é dia útil, como mandam a Lei 8.212/1991
+(art. 30, V, e § 2º, II) e o Manual do Empregador Doméstico do eSocial (exemplo: 20/11/2026 é feriado nacional, então vence em 19/11).
+Vale para a instalação nova; na que já existe, o administrador troca o `"ajuste"` para `"antecipa"` em Configurações → Agenda de
+obrigações (na Artecon, já trocado em 13/10/2026).
+
 Mudam o banco (`radar-setup-v0.22.0.sql`: 2 tabelas novas, `radar_videos` e `radar_video_acessos`; 3 campos em `radar_pessoas`; a
 amarra do vídeo na peça; as funções `radar_video_*`; a configuração `corretor_video`) e a tela (`index.html`, `radar-pauta.js` e o
 arquivo novo `radar-video.js`). Entram a função `radar-video`, o `sql/radar-video-agenda.sql` (as chaves no Vault, a reserva da fila e
@@ -443,7 +448,7 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda. É a única que toca no armazenamento privado `radar-videos`. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase. |
 | `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
-| `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
+| `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
@@ -1102,7 +1107,10 @@ reel", item 10), e a tela de Pessoas e termos lista as peças publicadas com a p
 1. nas peças **publicadas** com a pessoa, se o combinado for tirar do ar: "Excluir do Instagram/Facebook" (na peça agendada) ou
    apague o post direto na rede (na peça à mão);
 2. nas peças **ainda não publicadas**: "Desfazer aprovação" (se aprovada), "Tirar" cada foto dela, desmarque a pessoa e salve; a
-   foto e a lâmina que ninguém mais usa são apagadas pela faxina do robô no dia seguinte;
+   foto e a lâmina que ninguém mais usa são apagadas pela faxina do robô no dia seguinte. **No reel, desmarcar não tira a pessoa do
+   vídeo**: o Radar guarda quem estava marcado quando a gravação foi enviada, continua recusando o vídeo (a prévia fecha, a peça não
+   fica pronta) e a limpeza do dia seguinte apaga os clipes, a transcrição, o vídeo corrigido e os textos dele; para o reel sair,
+   **descarte a gravação** e grave de novo sem a pessoa;
 3. o que sobra (as lâminas das peças publicadas e a cópia da lâmina nos envios), liste no SQL Editor, trocando o 7 pelo número da
    pessoa (a consulta `select id, nome_na_peca from radar_pessoas` mostra o número):
    `select p.data, p.situacao, p.artes, e.canal, e.situacao, e.imagem_url from radar_pauta_pecas p left join radar_redes_envios e
@@ -1278,7 +1286,10 @@ roteiro, corta, limpa o som, grava a legenda e a cartela e confere o arquivo; o 
 - Fale o roteiro **como está escrito**, com os números, as datas e os termos (é o que o corretor compara). Trocar uma palavra comum
   não trava; número, data ou termo diferente pede regravar.
 - **Não edite** no celular (sem filtro, música, legenda ou corte) e envie os arquivos originais da câmera (MP4 ou MOV).
-- Depois de enviar, **apague do celular e da nuvem pessoal** (inclusive da lixeira, "Apagados recentemente") e marque "Apaguei".
+- **Guarde os clipes no celular até o relatório dizer "Vídeo corrigido pronto"** (em alguns minutos): o envio novo substitui todos
+  os clipes, e quem apagou cedo regrava tudo por causa de um bloco só; com "Precisa regravar", regrave só o bloco errado e mande os
+  outros como estão. Então, **no mesmo dia do envio** (o termo pede), **apague do celular e da nuvem pessoal** (inclusive da lixeira,
+  "Apagados recentemente") e marque "Apaguei" (o botão fica em destaque quando o vídeo fica pronto).
 
 **2. Enviar** (Pauta → peça reel → quadro "Corretor de vídeo"). A **"Fala para conferência"** mostra o que o corretor compara: a
 coluna "Fala" da tabela do plano (`Tempo | Fala | Texto na tela`, sem as aspas), as linhas "… — Fala: …" do kit ou, sem nenhum dos
@@ -1287,14 +1298,25 @@ dois, o roteiro inteiro (com o aviso para conferir). "Na tela", "Tarja", "Gancho
 "só a voz", "a fala para conferência é o que foi gravado") e, se a peça tiver o **texto do gancho** preenchido, se ele aparece de 0 a
 3 s; a tela mostra as linhas da cartela. "Enviar a gravação": o banco confere tudo **antes** de qualquer arquivo sair (a fala no
 roteiro, palavra por palavra e na ordem; o boletim pago; o termo de cada pessoa marcada, com o termo novo do corretor; menor de
-idade; a cartela; os clipes; a cota do mês) e só então os clipes sobem, um de cada vez, direto do navegador ao armazenamento privado
+idade; a cartela; os clipes; a cota do mês — com a duração que o navegador leu dos clipes, a gravação tem de caber no que sobra do
+mês, que o quadro mostra antes —; e, na tela, os termos que a publicidade contábil não usa na fala e no texto do gancho) e só então
+os clipes sobem, um de cada vez, direto do navegador ao armazenamento privado
 `radar-videos`, em pedaços de 6 MB. No celular, **não feche nem bloqueie a tela até 100%** (a tela pede para ficar acesa); se a
-internet cair, reabra a peça e escolha os mesmos arquivos: o envio continua de onde parou. Enviar de novo substitui a gravação
-anterior.
+internet cair, reabra a peça e escolha os mesmos arquivos: o envio continua de onde parou (só quem começou o envio, ou o
+administrador, continua; os outros podem descartá-lo). Enviar de novo substitui a gravação anterior **só quando os clipes da nova
+chegam**: o envio que para no meio ou é abandonado não leva junto o vídeo que já estava pronto (enquanto ele espera os arquivos, a peça
+pede "termine de enviar a gravação" — ou descarte o envio — antes de aprovar).
 
-**3. O que o robô faz** (repositório privado `radar-video`, acionado na hora pela função `radar-video`; a reserva da agenda, de 10 em
-10 minutos, aciona se o GitHub não atender, e o próprio workflow olha a fila 2 vezes por dia útil, se o token do GitHub vencer). Um
-pedido de cada vez, na ordem da fila:
+**3. O que o robô faz** (repositório privado `radar-video`, acionado na hora pela função `radar-video`; o robô trata um pedido por
+execução e, ao terminar, a função o aciona de novo se ainda há pedido na fila — o envio que chegou enquanto ele trabalhava não espera;
+a reserva da agenda, de 10 em 10 minutos, aciona se o GitHub não atender — até 3 vezes por pedido: sem o robô pegar, o pedido para
+com o erro "robo_nao_pegou", um aviso só na peça, e o administrador confere a `RADAR_VIDEO_ROBO_CHAVE`, a `RADAR_VIDEO_URL` e o
+`RADAR_VIDEO_COMMIT` do repositório privado e o `RADAR_VIDEO_GITHUB_TOKEN` do Supabase, e usa "Tentar de novo"; com o token do GitHub
+vencido, é esse aviso que aparece, uns 30 a 40 minutos depois do envio. O próprio workflow também roda às 10h47 e às 16h47 dos dias
+úteis e pega o que ainda estiver na fila — por exemplo, se a agenda do banco parar). Antes de baixar os clipes, o pedido confere de
+novo as pessoas do vídeo (as marcadas na peça e as que estavam marcadas no envio: o termo de hoje, a idade, quem fala marcada): a
+pessoa que revogou o termo depois do envio não passa mais pelo robô nem pela Azure (erro "termo"). Um pedido de cada vez, na ordem
+da fila:
 - confere cada clipe como **entrada não confiável** (MP4 ou MOV de câmera, com imagem e som, de pé, até o tamanho declarado; soma
   até 120 s) e recusa com o motivo;
 - transcreve pela **Azure gratuita** (o recurso F0 `artecon-voz`, o mesmo da Agenda, pelo Speech SDK, em pt-BR, com a lista de
@@ -1331,7 +1353,9 @@ confirmação; acima de 90 s, não aprova), os cortes, as sugestões, as trocas 
 para conferir o fundo, as pessoas e a posição da legenda. A prévia abre por um link de **10 minutos** (vencido, a tela pede outro),
 e quem viu fica registrado. Quando o robô para, a peça diz o motivo em português (por exemplo: um clipe sem som, deitado ou que não
 é de câmera; "Transcrição ocupada; tente de novo"; a cota grátis da Azure do mês acabou; o limite de minutos do Radar no mês; a
-cartela não coube) e, depois de corrigir, **"Tentar de novo"**. Falha do armazenamento, da rede ou do GitHub volta à fila sozinha,
+cartela não coube — "Tentar de novo" refaz a cartela com a Assinatura e Pessoas e termos de hoje —; o vídeo corrigido passou do
+limite de tamanho de arquivo do armazenamento) e, depois de corrigir, **"Tentar de novo"**. A prévia só abre com as pessoas do vídeo
+podendo aparecer nele hoje (o termo revogado, o do corretor retirado ou a pessoa marcada menor fecham a prévia na hora). Falha do armazenamento, da rede ou do GitHub volta à fila sozinha,
 até 3 vezes.
 
 **6. Ajustes do administrador** (depois de ouvir a prévia): "Manter este trecho" (num corte no meio da fala); **"A transcrição
@@ -1339,8 +1363,16 @@ errou (vale o roteiro)"**, quando a pessoa falou certo e a Azure ouviu errado (a
 pessoa falou errado, regrave); **editar a legenda** palavra por palavra, com o mesmo número de palavras, cada uma a do roteiro ou
 parecida com a ouvida, sem mudar número, data, mês ou termo (o robô recusa o resto e lista); legenda compacta (1 linha, quando a
 legenda cobre a boca); sem o texto do gancho; e refazer a cartela com as Configurações e Pessoas e termos de hoje. Tudo vai num
-pedido só, e o vídeo é montado de novo **sem transcrever de novo** (não gasta a cota) e **sem mudar o áudio**. "Conferir com o
-roteiro novo" (quando o roteiro mudou depois da gravação e a fala continua valendo) e "Descartar" valem para editor e administrador.
+pedido só, e o vídeo é montado de novo **sem transcrever de novo** (não gasta a cota) e **sem mudar o áudio**. As marcas apontam o
+trecho pelo que ele é — a divergência pelo instante e pelo texto dela, o corte pelo lugar na gravação —, e não pela posição na
+lista: a montagem alinha de novo com as Configurações de hoje (uma variante ou um termo novo no glossário tiram uma divergência da
+lista; "A transcrição errou" pode criar um corte), e a marca que não confere com o relatório novo fica sem efeito (a divergência volta
+a pedir regravar): confira o relatório depois de cada ajuste. "Conferir com o roteiro novo" (quando o roteiro mudou depois da
+gravação e a fala continua valendo) e "Descartar" valem para editor e administrador; se a fala para conferência é a mesma (mudou
+só o "Texto na tela", os tempos ou a tarja), o Radar só registra o roteiro novo: o vídeo e os ajustes continuam valendo, sem passar
+pelo robô. O texto do gancho gravado é a cópia da chamada no envio, e o texto extra da cartela é o das Configurações na montagem: o
+que está no vídeo passa pelas travas, e se a chamada ou o `cartela_extra` mudarem depois, a peça pede "Sem o texto do gancho" ou
+"Refazer a cartela" (ou um envio novo).
 
 **7. Aprovar, baixar e postar.** O reel só fica pronto com o vídeo corrigido pronto e conferido (o roteiro de quando foi gravado,
 quem fala ainda marcada, a cartela de hoje, até 90 s). Na aprovação (só o administrador, modo "à mão"), a tela manda o hash do vídeo
@@ -1360,8 +1392,9 @@ vídeo"** confere o armazenamento privado (e o devolve a privado se alguém o ab
 minutos do mês, sem mostrar segredo.
 
 **9. A cota da Azure.** O F0 dá **5 horas de transcrição por mês para o recurso inteiro**, divididas com o WhatsApp da Agenda (que se
-limita a 270 minutos). Cada envio conta a duração de toda a gravação enviada (antes dos cortes); o ajuste não conta. O Radar para
-sozinho em `limite_min_mes`: o padrão, **30 minutos**, é o que sobra dos 300 depois dos 270 da Agenda, e assim nenhum dos dois chega
+limita a 270 minutos). Cada envio conta a duração de toda a gravação enviada (antes dos cortes); o ajuste não conta. O quadro do envio
+mostra quanto sobra no mês, e o envio cuja gravação não cabe no que sobra é recusado antes de qualquer arquivo sair (quando o
+navegador lê a duração dos clipes; senão, o robô confere). O Radar para sozinho em `limite_min_mes`: o padrão, **30 minutos**, é o que sobra dos 300 depois dos 270 da Agenda, e assim nenhum dos dois chega
 à recusa da Azure. **Não aumente o `limite_min_mes` no F0** (acima de 30, o Radar pode gastar os minutos que a Agenda reservou, e o
 WhatsApp dela passa a receber a recusa de cota da Azure antes do limite próprio), a não ser que a Agenda passe a reservar menos.
 Passando da cota, a Azure recusa (não cobra). Para trocar pelo serviço pago (*fast transcription*, num recurso S0) sem mudar código:
@@ -1372,10 +1405,10 @@ cadastre no repositório privado os segredos `AZURE_FALA_MODO` = `rapido` e `AZU
 
 | Dado | Onde | Quem vê | Até quando (a limpeza diária, 03h37) |
 |---|---|---|---|
-| Clipes originais (rosto, voz, GPS e aparelho no arquivo) | `radar-videos/bruto/<id>/` | ninguém pela tela; o robô, por link de 10 minutos | ao publicar (registro do link), substituir, descartar, revogar o termo ou inativar a pessoa, ou `retencao_dias` (30) depois do envio |
+| Clipes originais (rosto, voz, GPS e aparelho no arquivo) | `radar-videos/bruto/<id>/` | ninguém pela tela; o robô, por link de 10 minutos | ao publicar (registro do link), substituir, descartar, revogar o termo, inativar a pessoa, retirar o termo do corretor ou marcar a pessoa menor de idade (uma pessoa do vídeo: marcada na peça ou no envio, ainda que desmarcada depois), ou `retencao_dias` (30) depois do envio |
 | Transcrição com os tempos | `radar-videos/trabalho/<id>/` | o robô | junto com os originais |
-| Vídeo corrigido e 4 quadros | `radar-videos/corrigido/…`, `quadros/…` | administrador e editor, por link de 10 minutos (registrado) | as versões antigas, na limpeza seguinte; o atual, `retencao_dias` depois do envio ou `retencao_publicado_dias` (30) depois de publicado, ou na revogação |
-| Fala, relatório, ajustes e cartela | tabela `radar_videos` (fora da trilha de auditoria) | administrador e editor | `retencao_publicado_dias` depois de publicar, 30 dias depois de substituir ou descartar, ou na revogação; ficam o hash, a data e o link da publicação |
+| Vídeo corrigido e 4 quadros | `radar-videos/corrigido/…`, `quadros/…` | administrador e editor, por link de 10 minutos (registrado) | as versões antigas, na limpeza seguinte; o atual, `retencao_dias` depois do envio (o aprovado que espera o dia de postar, `retencao_dias` depois do dia da peça) ou `retencao_publicado_dias` (30) depois de publicado, ou na revogação |
+| Fala, relatório, ajustes e cartela | tabela `radar_videos` (fora da trilha de auditoria) | administrador e editor | `retencao_publicado_dias` depois de publicar, 30 dias depois de substituir ou descartar, junto com o vídeo corrigido que sai pelo prazo sem a peça ter saído (peça cancelada, reel adiado), ou na revogação; ficam o hash, a data e o link da publicação |
 | Áudio de 16 kHz | só no disco do robô, durante a execução; a Azure, no Brasil, sem gravação do áudio no serviço | — | apagado com a máquina do GitHub, no fim da execução |
 | Quem enviou, viu e baixou | `radar_videos`, `radar_video_acessos` | administrador (acessos) | com a peça |
 | Registros do GitHub | repositório privado `radar-video` | quem tem acesso a ele | 7 dias (Settings → Actions → General) |
@@ -1418,8 +1451,10 @@ IA" no checklist do plano (para o Radar, não: não há IA no corretor).
 **Limites desta versão.** Os limiares de corte, o ruído e a Azure ainda serão calibrados com gravações reais (o 1º reel acompanhado):
 como o F0 escreve as siglas, os números e as hesitações, e se a tentativa interrompida conta na cota. HDR e 4:5 foram testados só com
 vídeo sintético (grave com o HDR desligado). O envio retomável com o token assinado no celular, o tempo do robô no repositório
-privado e o plano do Supabase (no Free, cada arquivo vai até 50 MB: os clipes por bloco ficam abaixo disso) se confirmam na
-instalação. Enquanto o robô transcreve (cerca da duração da gravação), o WhatsApp da Agenda pode receber "ocupado" da Azure. O editor
+privado e o plano do Supabase se confirmam na instalação: no Free, **cada arquivo vai até 50 MB, os clipes e também o vídeo
+corrigido** (o robô grava com qualidade alta, até 12 Mbps: um reel de 45 s fica entre 25 e 70 MB, e com pouca luz passa dos 50 MB);
+passando, o robô para com o aviso do limite de tamanho do armazenamento. O Pro (limite global de 500 MB) resolve antes do 1º reel;
+no Free, grave blocos de até uns 20 s e reels curtos. Enquanto o robô transcreve (cerca da duração da gravação), o WhatsApp da Agenda pode receber "ocupado" da Azure. O editor
 de legenda da tela é um pouco mais rígido que o robô no número escrito de outro jeito ("20" e "vinte"). O telefone falado algarismo por
 algarismo não casa com o roteiro: deixe o telefone só na cartela (`cartela_extra`). A publicação automática do reel e a capa escolhida
 num dos quadros ficam para a v0.22.1. As recusas do banco do corretor vêm com os códigos RADAR300 a RADAR317 (por exemplo, RADAR302 "a
@@ -1490,10 +1525,18 @@ repositório, que é público: a rotina diária grava direto no banco.
 **Da v0.21.0 para a v0.22.0** (instale num **dia útil**, com tempo para o teste do corretor com um vídeo de teste; nesta ordem; nada
 de chave ou token passa pelo chat):
 
+**Atenção: do passo 1 (o SQL) em diante, nenhum reel do calendário fica pronto nem é aprovado sem o corretor funcionando (passos 1
+a 8) e sem o termo novo de cada pessoa assinado e gravado em Pessoas e termos.** Por isso o termo vem antes de tudo (passo 0).
+
 0. Antes:
-   - Supabase → **Settings → Billing**: confira o plano. No Free, cada arquivo do armazenamento vai até **50 MB** (os clipes por
-     bloco, de 10 a 20 s em 1080p, ficam abaixo disso; um clipe longo ou em 4K não passa). No Pro, **Storage → Settings**: limite
-     global de arquivo em 500 MB.
+   - **O termo novo** ("Termo de imagem e voz", em "Corretor de vídeo do reel", item 11): o advogado confere o texto, e cada pessoa
+     que vai gravar assina **antes da instalação**. Anote no papel, para cada pessoa, a data da assinatura, "pediu para ver a peça
+     antes" e "menor de idade": os campos só existem depois do SQL, e o administrador grava logo depois do passo 1 (passo 9). Sem o
+     termo novo, o envio de qualquer reel é recusado (RADAR304).
+   - Supabase → **Settings → Billing**: confira o plano. No Free, cada arquivo do armazenamento vai até **50 MB** — os clipes (por
+     bloco, de 10 a 20 s em 1080p, ficam abaixo disso; um clipe longo ou em 4K não passa) **e o vídeo corrigido** (um reel de 45 s fica
+     entre 25 e 70 MB; acima de 50 MB, o robô para com o aviso do limite). Recomendado: o **Pro antes do 1º reel**, com **Storage →
+     Settings**: limite global de arquivo em 500 MB. No Free, reels curtos.
    - **Azure** (portal.azure.com): a avaliação grátis da assinatura vence por volta de **08/11/2026**. Antes disso, passe a
      assinatura para "pagamento conforme o uso"; o recurso `artecon-voz` continua no F0, grátis, e sem isso ele para (a transcrição
      do WhatsApp da Agenda e a do corretor).
@@ -1501,12 +1544,13 @@ de chave ou token passa pelo chat):
      do `artecon-voz`) e `AZURE_FALA_REGIAO` (`brazilsouth`).
    - Reel já aprovado à mão na v0.21.0 (vídeo do Edits): continua como antes, também depois do SQL — baixe e poste o vídeo de
      sempre e registre o link. O registro do reel sem o vídeo corrigido (RADAR317) vale só para a aprovação feita com a v0.22.0.
-1. A tela nova chega pelo repositório: o `index.html`, o `radar-pauta.js` **e o arquivo novo `radar-video.js`**, sempre juntos, na
-   branch principal do GitHub. Aperte **Ctrl+F5 em todos os aparelhos** e confira no rodapé **Radar v0.22.0**. Com a tela nova e o
-   banco antigo, o quadro do corretor na peça reel avisa que falta o SQL; o resto funciona como antes.
-2. SQL Editor → execute `sql/radar-setup-v0.22.0.sql` inteiro (a linha `instalacoes concluidas` mostra `v0.22.0`; 27 tabelas). Ele
+1. SQL Editor → execute `sql/radar-setup-v0.22.0.sql` inteiro (a linha `instalacoes concluidas` mostra `v0.22.0`; 27 tabelas). Ele
    cria as tabelas do corretor, os 3 campos de Pessoas e termos e a configuração `corretor_video` com os padrões. Daqui em diante, a
-   peça reel só fica pronta com o vídeo corrigido pronto.
+   peça reel só fica pronta com o vídeo corrigido pronto. O SQL vem **antes** da tela: a tela antiga (v0.21.0) com o banco novo
+   continua abrindo e aprovando o que não é reel (o reel mostra "Reel: envie a gravação" até a tela nova); já a tela nova com o banco
+   antigo não abre nenhuma peça da Pauta nem salva Pessoas e termos (ela lê os campos novos).
+2. A tela nova chega pelo repositório: o `index.html`, o `radar-pauta.js` **e o arquivo novo `radar-video.js`**, sempre juntos, na
+   branch principal do GitHub. Aperte **Ctrl+F5 em todos os aparelhos** e confira no rodapé **Radar v0.22.0**.
 3. Edge Functions → **Deploy a new function** → nome exatamente **`radar-video`** → cole `supabase/functions/radar-video/index.ts`
    → **"Verify JWT" ligado** → Deploy. Ela cria sozinha o armazenamento **privado** `radar-videos` no primeiro uso (passo 8), sem limite
    de tamanho próprio: vale o limite global do projeto (Storage → Settings), que o passo 0 confere.
@@ -1543,15 +1587,19 @@ de chave ou token passa pelo chat):
    o `cartela_extra` (por exemplo, "Desde 1984 · (48) 3242-0530 · artecon.cnt.br"), o `limite_min_mes` e os prazos de guarda. Em
    "Fecho, assinatura e identificação legal", confira que o CRC é **"CRC-SC 007129/O-0"** (ele vai à cartela de todo reel). Na
    **Agenda de obrigações**, se faltar fonte em alguma obrigação, **"Preencher fontes oficiais"**.
-9. **Termo e pessoas:** o advogado confere o texto novo do termo ("Termo de imagem e voz", em "Corretor de vídeo do reel"); cada
-   pessoa que vai gravar assina, e o administrador grava em Pauta → **Pessoas e termos** a data do **termo do corretor de vídeo**,
-   "pediu para ver a peça antes" e "menor de idade", exatamente como no papel.
+9. **Termo e pessoas** (logo depois do passo 1, com o papel do passo 0): o administrador grava em Pauta → **Pessoas e termos** a
+   data do **termo do corretor de vídeo**, "pediu para ver a peça antes" e "menor de idade" de cada pessoa, exatamente como no papel.
 10. **Equipe:** passe a orientação de gravação ("Corretor de vídeo do reel", item 1): vertical, 1080p, 30 quadros por segundo, Vídeo
-    HDR desligado, por bloco, sem música, sem tela ou documento ao fundo, sem editar, e apagar do celular depois de enviar.
+    HDR desligado, por bloco, sem música, sem tela ou documento ao fundo, sem editar, e guardar os clipes até o relatório dizer
+    "Vídeo corrigido pronto" — então apagar do celular e da nuvem pessoal, no mesmo dia do envio.
 11. **Primeiro reel acompanhado:** antes do primeiro reel do calendário, o administrador grava um vídeo de teste com um roteiro
-    inventado (sem dado de cliente), envia, confere o relatório, a prévia, os cortes, a legenda e a cartela, e anota só os números
-    (tempo do robô, cortes, volume) para a calibração. O vídeo, o áudio e o relatório de teste **não vão para o GitHub**: descarte
-    na peça e apague do celular.
+    inventado (sem dado de cliente), com uma pessoa que já assinou o termo novo. **Nunca numa peça real** (o roteiro inventado
+    substituiria o do calendário): importe, por "Importar o calendário (CSV)", uma peça de teste numa data sem peça — depois do fim
+    do calendário, por exemplo `01/02/2027;seg;1;Reel da semana;Reel;Teste do corretor (apagar);—;teste;Peça de teste` com a linha de
+    cabeçalho de sempre (o CSV fica no computador: nunca no GitHub) —, cole nela o roteiro inventado, marque a pessoa e envie.
+    Confira o relatório, a prévia, os cortes, a legenda e a cartela, e anote só os números (tempo do robô, cortes, volume) para a
+    calibração. No fim, **"Descartar esta gravação"** e **"Cancelar a peça"**; apague do celular. O vídeo, o áudio e o relatório de
+    teste **não vão para o GitHub**.
 
 Nenhum segredo da Azure vai ao Supabase: a transcrição é do robô, no repositório privado. A função `radar-ia`, a `radar-redes`, o
 robô de coleta e a agenda da Pauta não mudam.
@@ -1562,9 +1610,21 @@ Cuidados nesta versão:
   `radar-repositorio.yml` confere em todo envio e avisa, mas depois que o arquivo já ficou público (e no histórico).
 - A tela antiga (v0.21.0) com o banco novo continua aprovando o que não é reel; o reel precisa da tela nova (o hash do vídeo vai na
   aprovação). Não volte a tela depois do primeiro reel enviado.
-- Para parar o corretor sem SQL, tire o `RADAR_VIDEO_GITHUB_TOKEN` (o vídeo fica na fila) ou desative o workflow no repositório
-  privado (Actions → o workflow → Disable workflow). A agenda sai com o `sql/radar-video-agenda-reversao.sql`. A reversão do banco
-  (`sql/radar-reversao-v0.22.0.sql`) não apaga os arquivos: Storage → `radar-videos` → apague tudo e depois o bucket.
+- **Para parar o corretor sem SQL** (a cota da Azure no fim, um problema no robô): no repositório privado `radar-video`, **Actions →
+  "Radar — corretor de vídeo" → ⋯ → Disable workflow**. Isso para tudo, inclusive a agenda própria do workflow (10h47 e 16h47 dos
+  dias úteis). Tirar só o `RADAR_VIDEO_GITHUB_TOKEN` **não** para: a agenda do workflow pega e processa o pedido sem ele. Com o
+  workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
+  reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
+- **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
+  `sql/radar-reversao-v0.22.0.sql`, que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket). Fora do
+  banco, ficariam rodando ou valendo: no repositório privado `radar-video`, desative o workflow (Disable workflow, como acima, ou apague
+  `.github/workflows/radar-video.yml`: a agenda dele roda duas vezes por dia útil e, sem o banco, falharia a cada vez) e apague os
+  segredos `RADAR_VIDEO_ROBO_CHAVE`, `AZURE_FALA_CHAVE` e `AZURE_FALA_REGIAO` (e os opcionais `AZURE_FALA_MODO` e
+  `AZURE_FALA_ENDPOINT`); no Supabase, apague a função `radar-video` (Edge Functions) ou, pelo menos, o segredo
+  `RADAR_VIDEO_GITHUB_TOKEN`; no GitHub, **revogue o token fino** "Radar — acionar o corretor de vídeo" (foto do perfil → Settings →
+  Developer settings → Personal access tokens → Fine-grained tokens → Delete). As chaves `radar_video_robo` e `radar_video_agenda`
+  ficam no Vault de propósito (para reinstalar); para zerar, o `delete` do comentário do `sql/radar-video-agenda-reversao.sql`. Nunca
+  regenere as chaves do Azure: a do `artecon-voz` é a mesma da Agenda.
 - Enquanto o robô transcreve, o WhatsApp da Agenda pode receber "ocupado" da Azure (o F0 atende um pedido por vez): prefira
   enviar o reel fora do horário de pico do atendimento.
 

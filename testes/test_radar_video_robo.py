@@ -9,6 +9,7 @@ o Docker Hub recusando por limite; RADAR_VIDEO_TESTE_BASE aponta um espelho da m
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -225,8 +226,9 @@ def test_cortes_de_comeco_fim_e_pausas(pastas, acervo):
     # pausas abaixo dos limites das Configurações ficam inteiras
     inteiro = cortes.planejar(infos, sil, {"pausa_max_s": 1.2, "pausa_bloco_s": 1.0}, palavras)
     assert len(inteiro["trechos"]) == 1 and [c["tipo"] for c in inteiro["cortes"]] == ["inicio", "fim"]
-    # "Manter este trecho" (ajustes.manter) com o número do corte: os outros não mudam de número
-    mantido = cortes.planejar(infos, sil, CFG, palavras, manter=[1])
+    # "Manter este trecho" (ajustes.manter) pela chave do corte (o clipe e o quadro em que começa o silêncio cortado), e não pelo número
+    assert [c.get("chave") for c in plano["cortes"]] == [None, f"1:{math.floor(2.25 * 30)}", f"1:{math.floor(4.40 * 30)}", None]
+    mantido = cortes.planejar(infos, sil, CFG, palavras, manter=[plano["cortes"][1]["chave"], 2, "2"])
     assert [(c["k"], c.get("mantido")) for c in mantido["cortes"]] == [(0, None), (1, True), (2, False), (3, None)]
     assert len(mantido["trechos"]) == 2 and mantido["fala_q"] - plano["fala_q"] == pytest.approx(24, abs=1)
     # o que o alinhamento manda tirar (etapa 2): automático corta; não automático vira sugestão
@@ -531,6 +533,9 @@ def test_dockerfile_e_requirements_fixados():
     codigo = "\n".join(l for l in doc.splitlines() if not l.lstrip().startswith("#"))
     assert re.search(r"^ARG BASE=ubuntu:24\.04@sha256:[0-9a-f]{64}$", codigo, re.M) and re.search(r"^FROM \$\{BASE\}$", codigo, re.M)
     assert re.search(r'^ARG FFMPEG_VERSAO=\d+:6\.1\.1-3ubuntu5$', codigo, re.M) and '"ffmpeg=${FFMPEG_VERSAO}"' in codigo
+    # e as bibliotecas que fazem o trabalho (o pacote ffmpeg as pede só com ">="): todas as do mesmo pacote-fonte, na mesma versão
+    for lib in ("libavcodec60", "libavdevice60", "libavfilter9", "libavformat60", "libavutil58", "libpostproc57", "libswresample4", "libswscale7"):
+        assert f'"{lib}=${{FFMPEG_VERSAO}}"' in codigo, lib
     assert "--no-install-recommends" in codigo and re.search(r"^USER 1001:1001$", codigo, re.M)
     assert not re.search(r"CHAVE|TOKEN|SECRET|KEY|EXPOSE|ADD |COPY |curl|wget", codigo)
     req = [l for l in (ROBO / "requirements.txt").read_text(encoding="utf-8").splitlines() if l.strip() and not l.lstrip().startswith("#")]
@@ -548,8 +553,25 @@ def imagem_docker():
     r = subprocess.run(["docker", "build", "-q", "-t", isolado.IMAGEM, "-f", str(ROBO / "Dockerfile"),
                         *(["--build-arg", f"BASE={base}"] if base else []), str(ROBO)], capture_output=True, timeout=900)
     if r.returncode != 0:
+        falhou_no_ci(r.returncode)
         pytest.skip("não foi possível montar a imagem do ffmpeg (sem rede, ou o Docker Hub recusou por limite)")
     return isolado.IMAGEM
+
+
+def falhou_no_ci(codigo: int) -> None:
+    """No GitHub Actions (com o docker), a imagem que não monta FALHA o teste: pulado, o CI ficaria verde sem a prova do contêiner.
+    Só o código de saída (a saída do docker build pode citar caminhos)."""
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        pytest.fail(f"a imagem do ffmpeg não montou no CI (docker build saiu com {codigo}): a prova do contêiner sem rede não pode sumir",
+                    pytrace=False)
+
+
+def test_imagem_que_nao_monta_falha_no_ci_e_so_pula_fora_dele(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    with pytest.raises(pytest.fail.Exception, match="docker build saiu com 1"):
+        falhou_no_ci(1)
+    monkeypatch.delenv("GITHUB_ACTIONS")
+    falhou_no_ci(1)                                                                            # fora do CI: só pula (sem rede, limite)
 
 
 @HEVC

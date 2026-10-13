@@ -40,7 +40,7 @@ const ERROS_VIDEO = {
   longo_demais:"os clipes somam mais de 120 s: envie só as tomadas boas",
   arquivo_grande:"um clipe chegou maior que o declarado: envie a gravação de novo",
   sem_fala:"nenhuma fala foi encontrada nos clipes: confira o som e grave de novo",
-  cartela_nao_cabe:"a cartela final não coube: encurte a identificação (Configurações → Assinatura) ou o texto extra (Configurações → Corretor de vídeo)",
+  cartela_nao_cabe:"a cartela final não coube: encurte a identificação (Configurações → Assinatura), o nome na peça de quem fala (Pauta → Pessoas e termos) ou o texto extra (Configurações → Corretor de vídeo) e use Tentar de novo (a cartela é refeita com o que estiver lá)",
   conferencia_falhou:"o vídeo montado não passou na conferência final: tente de novo; se repetir, avise o administrador",
   transcricao_ocupada:"Transcrição ocupada; tente de novo (a Azure gratuita atende um pedido por vez e é dividida com a Agenda)",
   azure_cota:"A cota grátis da Azure do mês acabou (5 h, divididas com a Agenda) ou a assinatura parou",
@@ -59,6 +59,7 @@ const ERROS_VIDEO = {
   github:"o robô parou antes de terminar (ele tenta de novo sozinho; depois de 3 vezes, use Tentar de novo)",
   tempo_esgotado:"o robô passou do tempo: tente de novo",
   storage:"o armazenamento não respondeu: tente de novo", rede:"falha de rede no robô: tente de novo",
+  limite_armazenamento:"o vídeo corrigido passou do limite de tamanho de arquivo do armazenamento (no plano Free do Supabase, 50 MB por arquivo): grave um reel mais curto e envie de novo; no plano Pro, o administrador sobe o limite em Supabase → Storage → Settings e usa Tentar de novo",
   ffmpeg_falhou:"a montagem do vídeo falhou: tente de novo; se repetir, avise o administrador",
   ffmpeg_tempo:"a montagem do vídeo passou do tempo: tente de novo", medida_falhou:"a medida do som falhou: tente de novo"};
 const ERRO_INTERNO_VIDEO = "erro interno do corretor: tente de novo; se repetir, avise o administrador";
@@ -185,6 +186,8 @@ async function blocoVideo(p){
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
+  // quanto o corretor ainda transcreve neste mês (o banco confere de novo no envio, com a duração dos clipes); sem a resposta, nada
+  ev.cota = ["planejada", "em_producao", "pronta"].includes(p.situacao) ? await rpc("radar_video_cota", {}).catch(() => null) : null;
   await guardarVideos(vivos);
   return `<details class="painel video-reel" id="video-reel" data-peca="${p.id}" open><summary><h2>Corretor de vídeo</h2> <span id="video-selo">${seloVideo(ev.atual || ev.envio)}</span></summary>
     <div id="video-corpo">${corpoVideo()}</div></details>`;
@@ -236,6 +239,14 @@ function corpoVideo(){
   return partes.join("");
 }
 const AVISO_SUBSTITUI = "A gravação atual continua valendo até os clipes da nova chegarem ao armazenamento; só então a nova a substitui.";
+// quando apagar os clipes do celular: depois do relatório (o envio novo substitui TODOS os clipes: quem apagou cedo regrava tudo por um
+// bloco só), e no mesmo dia do envio, como o termo pede
+const QUANDO_APAGAR = {
+  na_fila:"Guarde os clipes no celular até o relatório (em alguns minutos): se precisar regravar um bloco, os outros vão de novo sem regravar. Depois, apague do celular e da nuvem pessoal, no mesmo dia do envio (o termo pede).",
+  pronto:"Vídeo corrigido pronto: apague hoje os clipes do celular e da nuvem pessoal (inclusive da lixeira) e marque aqui; o termo pede no mesmo dia do envio.",
+  regravar:"Para enviar de novo, regrave só o bloco errado e mande os outros clipes como estão. Apague todos do celular e da nuvem pessoal no mesmo dia do envio (o termo pede).",
+  erro:"Guarde os clipes até o corretor terminar (Tentar de novo) ou até enviar de novo; apague do celular e da nuvem pessoal no mesmo dia do envio (o termo pede)."};
+QUANDO_APAGAR.processando = QUANDO_APAGAR.na_fila;
 /* A fala para conferência (o que o robô compara) e o recado de como gravar */
 function blocoFala(p){
   const {fala, formato} = extrairFala(p.roteiro), n = fala ? fala.split(" ").length : 0;
@@ -271,7 +282,7 @@ function formEnvio(p, v, envio){
   return `<div class="video-envio" id="video-envio"><h3>${v ? "Enviar nova gravação" : "Enviar a gravação"}</h3>
     ${!pessoas.length ? `<div class="aviso alerta">Marque em Quem aparece (e salve) a pessoa que fala no vídeo.</div>` : ""}
     ${falta.length ? `<div class="aviso alerta" id="video-pessoas-falta"><b>Antes de gravar, em Pauta → Pessoas e termos:</b><ul class="pauta-erros">${falta.map(([x, m]) => `<li>${h(x.nome_na_peca)}: ${h(m)}</li>`).join("")}</ul></div>` : ""}
-    ${campoClipes(p)}<div id="video-clipes">${listaClipes(p.id)}</div>
+    ${campoClipes(p)}<div id="video-clipes">${listaClipes(p.id)}</div>${linhaCotaVideo()}
     <div class="grade"><div><label for="video-quem">Quem fala</label><select id="video-quem">${pessoas.length > 1 ? `<option value="">Escolha</option>` : ""}${pessoas.map(x =>
       `<option value="${x.id}"${String(x.id) === String(quem) ? " selected" : ""}>${h(x.nome_na_peca)}</option>`).join("")}</select></div></div>
     <label>Cartela final (a identificação legal${pessoas.some(x => ROTULO_CATEGORIA[x.categoria]) ? " e a linha de quem fala, se tem registro no CRC" : ""})</label><div id="video-cartela">${htmlCartela(quem)}</div>
@@ -285,14 +296,21 @@ function formEnvio(p, v, envio){
 const AVISO_NOVO_ENVIO = "Os clipes vão direto para o armazenamento privado do Radar. " + AVISO_NAO_FECHE + " Se a internet cair, o envio continua de onde parou.";
 const campoClipes = p => `<label for="video-arquivos">Clipes, na ordem do roteiro (1 a 12, MP4 ou MOV, até 500 MB no total)</label>
   <input id="video-arquivos" type="file" multiple accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" data-video-arquivos="${p.id}">`;
+/* Os segundos de transcrição que sobram no mês (radar_video_cota) ou null; a linha que o formulário do envio mostra */
+const restaVideo = () => { const c = objVideo(estadoVideo().cota), u = numVideo(c.segundos_mes), l = numVideo(c.limite_s); return u !== null && l !== null ? Math.max(0, l - u) : null; };
+const linhaCotaVideo = () => { const c = objVideo(estadoVideo().cota), r = restaVideo(); return r === null ? "" :
+  `<p class="sub" id="video-cota">Transcrição do corretor neste mês: ${segVideo(numVideo(c.segundos_mes) / 60)} de ${segVideo(numVideo(c.limite_s) / 60)} minutos usados (restam ${segVideo(r / 60)} min, cerca de ${segVideo(r, 0)} s).</p>`; };
+/* A soma das durações que o navegador leu (null se algum clipe não abriu: o robô confere) */
+const duracaoClipes = l => l.length && l.every(c => c.duracao) ? l.reduce((s, c) => s + c.duracao, 0) : null;
 /* A lista dos clipes escolhidos (reordenável); "partes": as do envio que não terminou (o tamanho de cada uma confere) */
 function listaClipes(pid, partes){
   const l = clipesDe(pid);
   if(!l.length) return `<p class="sub">Nenhum clipe escolhido.</p>`;
-  const total = l.reduce((s, c) => s + c.bytes, 0), dur = l.every(c => c.duracao) ? l.reduce((s, c) => s + c.duracao, 0) : null;
+  const total = l.reduce((s, c) => s + c.bytes, 0), dur = duracaoClipes(l), resta = restaVideo();
   const avisos = [l.length > VIDEO_MAX_CLIPES ? `São ${l.length} clipes: envie no máximo ${VIDEO_MAX_CLIPES}.` : "",
     total > VIDEO_MAX_BYTES ? `Os clipes somam ${mbVideo(total)}: o máximo é 500 MB.` : "",
-    dur && dur > VIDEO_MAX_SEGUNDOS ? `Os clipes somam cerca de ${segVideo(dur, 0)} s: o corretor recusa acima de ${VIDEO_MAX_SEGUNDOS} s (envie só as tomadas boas).` : ""].filter(Boolean);
+    dur && dur > VIDEO_MAX_SEGUNDOS ? `Os clipes somam cerca de ${segVideo(dur, 0)} s: o corretor recusa acima de ${VIDEO_MAX_SEGUNDOS} s (envie só as tomadas boas).` : "",
+    dur && resta !== null && dur > resta ? `Os clipes somam cerca de ${segVideo(dur, 0)} s, e o corretor só pode transcrever mais ${segVideo(resta, 0)} s neste mês: o envio é recusado (grave mais curto ou espere o mês que vem).` : ""].filter(Boolean);
   return `<ol class="video-clipes">${l.map((c, i) => { const parte = partes?.[i], difere = parte && (parte.bytes !== c.bytes || parte.tipo !== c.tipo);
     return `<li data-i="${i}"><span class="video-clipe-nome"><b>${i + 1}.</b> ${h(c.nome)} · ${mbVideo(c.bytes)}${c.duracao ? ` · ${segVideo(c.duracao)} s` : ""}</span>
       ${!c.tipo ? selo("não é MP4 nem MOV", "erro") : ""}${c.aviso ? " " + selo(c.aviso, "alerta") : ""}${difere ? " " + selo(`não é o clipe nº ${i + 1} do envio`, "erro") : ""}
@@ -384,7 +402,7 @@ async function enviarTus(arquivo, envio, bucket, tipo, aoProgresso){
     const texto = r.status === 201 ? "" : await r.text().catch(() => "");
     if(r.status === 409 || (r.status === 400 && /already exists|duplicate|409/i.test(texto))){ apagarLocalVideo(chave); aoProgresso(1); return; }
     const loc = r.headers.get("Location");
-    if(r.status === 413) throw new ErroApi(`O clipe nº ${n} passou do limite de tamanho do armazenamento: grave em 1080p, 30 quadros por segundo.`, 413);
+    if(r.status === 413) throw new ErroApi(`O clipe nº ${n} passou do limite de tamanho de arquivo do armazenamento (no plano Free do Supabase, 50 MB por arquivo): grave blocos mais curtos (de 10 a 20 s, em 1080p e 30 quadros por segundo) e envie de novo.`, 413);
     if(r.status === 401 || r.status === 403) throw new ErroApi(`O armazenamento recusou o envio do clipe nº ${n} (o link de envio vale 2 horas): clique em Continuar o envio.`, r.status);
     if(r.status !== 201 || !loc) throw new ErroApi(`O armazenamento não aceitou o clipe nº ${n} (erro ${r.status}): clique em Continuar o envio; se repetir, avise o administrador.`, r.status);
     url = new URL(loc, base + "/").href;
@@ -475,10 +493,12 @@ function situacaoVideo(v, p, livre, adm){
   if(podeAjustar) partes.push(blocoAjustes(v));
   if(livre && ["pronto", "regravar", "erro"].includes(v.situacao))
     partes.push(`<div class="acoes video-descartar"><button class="btn peq perigo" type="button" data-acao="video-descartar" data-id="${h(v.id)}">Descartar esta gravação</button></div>`);
+  // os clipes no celular: guardados até o relatório (para regravar só o bloco errado: o envio novo substitui todos) e apagados no
+  // mesmo dia do envio, como o termo pede; o "Apaguei" ganha destaque quando o vídeo fica pronto
   if(v.enviado_em && ["na_fila", "processando", "pronto", "regravar", "erro"].includes(v.situacao))
     partes.push(v.apagado_aparelho_em ? `<p class="sub" id="video-apaguei-feito">Registrado: os clipes foram apagados do celular e da nuvem pessoal em ${h(dataHora(v.apagado_aparelho_em))}.</p>`
-      : `<div class="acoes video-apaguei"><button class="btn peq sec" type="button" data-acao="video-apaguei" data-id="${h(v.id)}">Apaguei do celular e da nuvem pessoal</button>
-        <span class="sub">O termo pede apagar os clipes do aparelho no mesmo dia do envio.</span></div>`);
+      : `<div class="acoes video-apaguei"><button class="btn ${v.situacao === "pronto" ? "" : "peq sec"}" type="button" data-acao="video-apaguei" data-id="${h(v.id)}">Apaguei do celular e da nuvem pessoal</button>
+        <span class="sub" id="video-apaguei-quando">${h(QUANDO_APAGAR[v.situacao] || QUANDO_APAGAR.na_fila)}</span></div>`);
   return `<div class="video-situacao" id="video-situacao">${partes.join("")}</div>`;
 }
 
@@ -486,18 +506,18 @@ function situacaoVideo(v, p, livre, adm){
 /* Em português simples, com os tempos do vídeo corrigido (em_s). O parcial (logo depois do alinhamento) já diz se precisa regravar. */
 function blocoRelatorio(v, podeAjustar){
   const r = objVideo(v.relatorio), parcial = relatorioParcial(v), aj = objVideo(v.ajustes);
-  const manter = new Set(listaNumeros(aj.manter)), errou = new Set(listaNumeros(aj.transcricao_errou));
+  const manter = new Set(listaMarcas(aj.manter, CHAVE_CORTE)), errou = new Set(listaMarcas(aj.transcricao_errou, ID_DIVERGENCIA));
   const em = x => numVideo(x) !== null ? `aos ${segVideo(x)} s` : "";
   const ouvir = x => !parcial && numVideo(x) !== null ? ` <button class="btn peq sec" type="button" data-acao="video-ouvir" data-em="${numVideo(x)}">▶ ouvir</button>` : "";
   const itens = [], saida = objVideo(r.saida), conf = objVideo(r.conferencia), entrada = objVideo(r.entrada);
   const avisos = [...new Set((Array.isArray(r.avisos) ? r.avisos : []).map(String))];
   if(avisos.length) itens.push(`<div class="aviso alerta video-avisos"><ul class="pauta-erros">${avisos.map(a => `<li>${h(deMapaVideo(AVISOS_VIDEO, a) || "Aviso do corretor: " + a)}</li>`).join("")}</ul></div>`);
   // o que precisa regravar: número, data ou termo diferente do roteiro
-  const divs = listaVideo(r.divergencias), abertas = divs.filter(d => d.regravar !== false && !d.transcricao_errou && !errou.has(Number(d.k)));
+  const divs = listaVideo(r.divergencias), abertas = divs.filter(d => d.regravar !== false && !d.transcricao_errou && !errou.has(d.id));
   if(divs.length) itens.push(`<div class="${abertas.length ? "aviso erro" : "aviso info"} video-divergencias"><b>${abertas.length ? "Precisa regravar:" : "Divergências (marcadas: a transcrição errou):"}</b>
-    <ul class="pauta-erros">${divs.map(d => { const k = Number(d.k), marcado = !!d.transcricao_errou || errou.has(k);
+    <ul class="pauta-erros">${divs.map(d => { const k = Number(d.k), marca = ID_DIVERGENCIA.test(String(d.id ?? "")) ? d.id : "", marcado = !!d.transcricao_errou || errou.has(marca);
       return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${deMapaVideo(TIPOS_DIVERGENCIA, d.tipo) ? ` (${h(deMapaVideo(TIPOS_DIVERGENCIA, d.tipo))})` : ""}.${ouvir(d.em_s)}
-        ${podeAjustar ? `<label class="video-check"><input type="checkbox" class="video-errou" value="${h(k)}"${marcado ? " checked" : ""}> A transcrição errou (vale o roteiro)</label>`
+        ${podeAjustar && marca ? `<label class="video-check"><input type="checkbox" class="video-errou" value="${h(marca)}"${marcado ? " checked" : ""}> A transcrição errou (vale o roteiro)</label>`
           : marcado ? ` <span class="selo ok">a transcrição errou: vale o roteiro</span>` : ""}</li>`; }).join("")}</ul>
     ${podeAjustar && abertas.length ? `<p class="sub">Administrador: ouça na prévia; se a pessoa disse o que está no roteiro, marque “A transcrição errou (vale o roteiro)” e aplique os ajustes (a legenda passa a usar o roteiro naquele trecho; o áudio não muda). Se a fala está errada, grave de novo.</p>` : ""}</div>`);
   if(parcial) itens.unshift(`<p class="sub video-parcial">${["na_fila", "processando"].includes(v.situacao) ? "Relatório parcial: a fala já foi comparada com o roteiro; o vídeo ainda está sendo montado."
@@ -512,9 +532,9 @@ function blocoRelatorio(v, podeAjustar){
   const soma = l => segVideo(l.reduce((s, c) => s + (numVideo(c.dur_s) || 0), 0), 2);
   const semFala = cortes.filter(c => c.tipo === "clipe_sem_fala").length;
   if(cortes.length) itens.push(`<li id="video-cortes">Cortes: começo e fim de ${borda} clipe(s)${pausas.length ? `; ${pausas.length} pausa(s) longa(s) encurtada(s) (${soma(pausas)} s)` : ""}${hes.length ? `; ${hes.length} trecho(s) de hesitação (${soma(hes)} s)` : ""}${semFala ? `; ${semFala} clipe(s) sem fala ficaram de fora` : ""}.
-    ${meio.length ? `<details class="video-cortes-meio"${meio.length <= 8 ? " open" : ""}><summary>Cortes no meio da fala (${meio.length})</summary><ul>${meio.map(c => { const k = Number(c.k), mantido = !!c.mantido || manter.has(k);
+    ${meio.length ? `<details class="video-cortes-meio"${meio.length <= 8 ? " open" : ""}><summary>Cortes no meio da fala (${meio.length})</summary><ul>${meio.map(c => { const k = Number(c.k), chave = CHAVE_CORTE.test(String(c.chave ?? "")) ? c.chave : "", mantido = !!c.mantido || manter.has(chave);
       return `<li class="video-corte" data-k="${h(k)}">${h(em(c.em_s))}: ${h(deMapaVideo(TIPOS_CORTE, c.tipo) || c.tipo)} (${segVideo(c.dur_s, 2)} s)${textoDe(c.texto) ? ` — “${h(c.texto)}”` : ""}${ouvir(c.em_s)}
-        ${podeAjustar ? `<label class="video-check"><input type="checkbox" class="video-manter" value="${h(k)}"${mantido ? " checked" : ""}> Manter este trecho</label>` : mantido ? ` <span class="selo neutro">mantido</span>` : ""}</li>`; }).join("")}</ul></details>` : ""}</li>`);
+        ${podeAjustar && chave ? `<label class="video-check"><input type="checkbox" class="video-manter" value="${h(chave)}"${mantido ? " checked" : ""}> Manter este trecho</label>` : mantido ? ` <span class="selo neutro">mantido</span>` : ""}</li>`; }).join("")}</ul></details>` : ""}</li>`);
   const sug = listaVideo(r.sugestoes);
   if(sug.length) itens.push(`<li id="video-sugestoes">Para ouvir (não foi cortado): ${sug.map(s => `${h(em(s.em_s))}, ${h(deMapaVideo(TIPOS_CORTE, s.tipo) || s.tipo)}${textoDe(s.texto) ? ` “${h(s.texto)}”` : ""}${ouvir(s.em_s)}`).join("; ")}. Se atrapalhar, grave o trecho de novo.</li>`);
   // a legenda
@@ -544,7 +564,11 @@ function blocoRelatorio(v, podeAjustar){
   const lista = itens.filter(x => x.startsWith("<li")), fora_lista = itens.filter(x => !x.startsWith("<li"));
   return `<div class="video-relatorio" id="video-relatorio"><h3>${parcial ? "Relatório parcial" : "Vídeo corrigido"} — gravação ${h(v.versao)}</h3>${fora_lista.join("")}<ul>${lista.join("")}</ul></div>`;
 }
-const listaNumeros = v => (Array.isArray(v) ? v : []).map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 9999);
+/* As marcas dos ajustes apontam o trecho pelo que ele é, e não pela posição na lista (o robô alinha de novo a cada rodada, e a
+   numeração muda): a divergência pelo id (o instante e o texto dela) e o corte pela chave "<clipe>:<quadro>" (onde começa o que ele
+   corta). A que não confere com nenhum item do relatório novo fica sem efeito. */
+const ID_DIVERGENCIA = /^[0-9a-f]{16}$/, CHAVE_CORTE = /^\d{1,2}:\d{1,6}b{0,3}$/;
+const listaMarcas = (v, forma) => (Array.isArray(v) ? v : []).filter(x => typeof x === "string" && forma.test(x));
 // o relatório é parcial (robo: parcial true; o concluir grava false); sem a marca, o do vídeo pronto ou para regravar é o final
 const relatorioParcial = v => { const r = objVideo(v.relatorio); return r.parcial === true || (r.parcial !== false && !["pronto", "regravar"].includes(v.situacao)); };
 
@@ -669,8 +693,8 @@ function recusaLegenda(velho, novo, n, perto){
    antiga desfaria a nova em silêncio). */
 function ajustesDaTela(v){
   const antes = objVideo(v.ajustes), aj = {}, blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista);
-  const manter = [...document.querySelectorAll("#video-reel .video-manter:checked")].map(c => Number(c.value));
-  const errou = [...document.querySelectorAll("#video-reel .video-errou:checked")].map(c => Number(c.value));
+  const manter = [...document.querySelectorAll("#video-reel .video-manter:checked")].map(c => c.value).filter(x => CHAVE_CORTE.test(x));
+  const errou = [...document.querySelectorAll("#video-reel .video-errou:checked")].map(c => c.value).filter(x => ID_DIVERGENCIA.test(x));
   if(manter.length) aj.manter = manter;
   if(errou.length) aj.transcricao_errou = errou;
   let legenda = edicoesLegenda(antes.legenda);
@@ -693,7 +717,7 @@ const edicoesLegenda = x => Array.isArray(x) ? x.filter(e => Array.isArray(e) &&
   : Object.entries(objVideo(x)).filter(([, t]) => typeof t === "string");
 const ajustesIguais = (a, b) => {
   // manter e transcricao_errou em qualquer ordem; a legenda, na ordem (é a ordem em que o robô aplica)
-  const ord = x => JSON.stringify(Object.keys(x).sort().map(k => [k, k === "legenda" ? edicoesLegenda(x[k]) : Array.isArray(x[k]) ? [...x[k]].sort((p, q) => p - q) : x[k]]));
+  const ord = x => JSON.stringify(Object.keys(x).sort().map(k => [k, k === "legenda" ? edicoesLegenda(x[k]) : Array.isArray(x[k]) ? x[k].map(String).sort() : x[k]]));
   const sem = x => { const y = {...objVideo(x)}; if(y.estilo === "normal") delete y.estilo; if(y.sem_gancho === false) delete y.sem_gancho; return y; };
   return ord(sem(a)) === ord(sem(b)); };
 
@@ -736,16 +760,21 @@ function videoParaAprovar(){
     throw new ErroApi("Abra a prévia (“Ver o vídeo corrigido”) e assista antes de aprovar: a aprovação fica amarrada ao vídeo que você viu.");
   return v.sha256;
 }
-/* Os termos de publicidade na fala transcrita (texto_final: a legenda do vídeo) e a duração: o que trava vira "Precisa regravar"; o
-   aviso, confirmação na aprovação (conferirPecaTela, radar-pauta.js) */
+/* Os termos de publicidade no que está gravado no vídeo — a fala transcrita (texto_final: a legenda do vídeo), o texto do gancho (a
+   cópia da chamada no envio, que pode ser diferente da chamada de hoje) e o texto extra da cartela que o robô gravou — e a duração: o
+   que trava vira "Precisa regravar"; o aviso, confirmação na aprovação (conferirPecaTela, radar-pauta.js) */
 function conferenciaDoVideo(){
   const ev = estadoVideo(), v = ev.atual, travas = [], avisos = [];
   if(!v || !E.pauta.aberta || E.pauta.aberta.formato !== "reel" || v.peca_id !== E.pauta.aberta.id) return {travas, avisos};
   const r = objVideo(v.relatorio), fala = textoDe(r.texto_final);
+  const gancho = objVideo(v.ajustes).sem_gancho === true ? "" : textoDe(v.gancho), extra = textoDe(r.cartela_extra);
   const trava = [...new Set([...termosPublicidade(fala).trava, ...termosPeca(fala)])];
   if(trava.length) travas.push(`Precisa regravar: a fala do vídeo tem ${trava.map(t => `“${t}”`).join(", ")}. A publicidade da profissão contábil informa, não vende: grave de novo sem ${trava.length > 1 ? "esses termos" : "esse termo"}.`);
-  const aviso = termosPublicidade(fala).aviso.filter(x => !trava.some(y => y.includes(x)));
-  if(aviso.length) avisos.push(`Termos que a publicidade contábil evita na fala do vídeo: ${aviso.map(t => `“${t}”`).join(", ")}. Confira se é informação, e não propaganda.`);
+  const noGancho = [...new Set([...termosPublicidade(gancho).trava, ...termosPeca(gancho)])], naCartela = [...new Set([...termosPublicidade(extra).trava, ...termosPeca(extra)])];
+  if(noGancho.length) travas.push(`O texto do gancho gravado no vídeo tem ${noGancho.map(t => `“${t}”`).join(", ")}: o administrador marca “Sem o texto do gancho” nos ajustes, ou envie a gravação de novo com a chamada reescrita.`);
+  if(naCartela.length) travas.push(`O texto extra da cartela gravado no vídeo tem ${naCartela.map(t => `“${t}”`).join(", ")}: troque em Configurações → Corretor de vídeo e refaça a cartela nos ajustes.`);
+  const aviso = termosPublicidade(fala, gancho, extra).aviso.filter(x => ![...trava, ...noGancho, ...naCartela].some(y => y.includes(x)));
+  if(aviso.length) avisos.push(`Termos que a publicidade contábil evita no que está gravado no vídeo (fala, gancho, cartela): ${aviso.map(t => `“${t}”`).join(", ")}. Confira se é informação, e não propaganda.`);
   const dur = numVideo(v.duracao_final) ?? numVideo(objVideo(r.saida).duracao_s), max = limiteDuracaoVideo();
   if(dur !== null && dur > max && dur <= 90) avisos.push(`O vídeo tem ${segVideo(dur)} s, acima do limite de ${max} s (Configurações → Corretor de vídeo): confirme que é isso mesmo.`);
   return {travas, avisos};
@@ -767,7 +796,11 @@ async function diagnosticoVideo(){
 /* O fim do envio (a função confere os clipes no armazenamento e põe na fila). Se falhar com os clipes já no armazenamento (falta um,
    tempo esgotado, rede), o quadro sai do "Enviando… 100%" e volta ao "Continuar o envio", com os arquivos ainda na tela. */
 async function concluirEnvio(pid, id){
-  return await funcaoVideo("envio_concluido", {id});
+  try{ return await funcaoVideo("envio_concluido", {id}); }
+  catch(e){
+    await depoisDoVideo(pid).catch(() => {});
+    throw new ErroApi(`${String(e.message || "").replace(/[\s.]*$/, "")}. Depois, clique em “Continuar o envio” (os arquivos continuam escolhidos nesta tela).`, e.status);
+  }
 }
 
 /* ------------------------------------------------- ações (o index.html junta) */
@@ -797,20 +830,22 @@ const VIDEO = {
       if(!quem) throw new ErroApi("Escolha quem fala no vídeo.");
       const decl = [...document.querySelectorAll("#video-envio .video-declaracao")], falta = decl.filter(c => !c.checked);
       if(decl.length !== 4 || falta.length) throw new ErroApi("Marque as quatro declarações: " + falta.map(c => `“${c.dataset.texto}”`).join(", ") + ".");
-      const {fala} = extrairFala(p.roteiro);
+      const {fala} = extrairFala(p.roteiro), gancho = !!$("#video-gancho")?.checked;
       if(fala.length < 20 || fala.split(" ").length < 10) throw new ErroApi("A fala para conferência ficou curta (menos de 10 palavras): confira o roteiro da peça.");
-      const termos = [...new Set([...termosPublicidade(fala).trava, ...termosPeca(fala)])];
-      if(termos.length) throw new ErroApi(msgTermosPeca([["roteiro", termos]], "gravar"));
+      // o texto do gancho também vai gravado no vídeo (de 0 a 3 s): passa pelos mesmos termos antes de qualquer arquivo sair
+      const achados = [["roteiro", fala], ["no texto do gancho", gancho ? p.chamada : ""]]
+        .map(([lugar, t]) => [lugar, [...new Set([...termosPublicidade(t).trava, ...termosPeca(t)])]]).filter(([, l]) => l.length);
+      if(achados.length) throw new ErroApi(msgTermosPeca(achados, "gravar"));
       if(faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura (o administrador preenche).`);
       const r = await funcaoVideo("envio_iniciar", {peca:p.id, partes:lista.map((c, i) => ({n:i + 1, tipo:c.tipo, bytes:c.bytes})), fala_pessoa:quem,
-        fala_roteiro:fala, cartela:linhasCartela(quem), gancho:!!$("#video-gancho")?.checked, declaracoes:decl.map(c => c.value)}, 90000);
+        fala_roteiro:fala, cartela:linhasCartela(quem), gancho, declaracoes:decl.map(c => c.value), duracao:duracaoClipes(lista)}, 90000);
       if(!UUID_VIDEO.test(String(r?.id)) || !Array.isArray(r?.envios) || r.envios.length !== lista.length) throw new ErroApi("A função devolveu o envio fora do formato. Nada foi enviado.");
       try{ await subirClipes(p.id, r.id, r.envios, lista, String(r.bucket || "radar-videos")); }
       catch(e){ await depoisDoVideo(p.id); throw e; }
       const fim = await concluirEnvio(p.id, r.id);
       delete estadoVideo().arquivos[p.id]; estadoVideo().nova = false;
       await depoisDoVideo(p.id);
-      recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)} Depois, apague os clipes do celular e da nuvem pessoal.`);
+      recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)} Guarde os clipes no celular até o relatório dizer “Vídeo corrigido pronto” (se precisar regravar um bloco, os outros vão de novo) e então apague do celular e da nuvem pessoal, no mesmo dia.`);
     },
     /* Continuar o envio que não terminou: tokens novos só para os clipes que faltam (a função lista o armazenamento) */
     async "video-continuar"(el){
@@ -826,17 +861,23 @@ const VIDEO = {
       recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)}`);
     },
     async "video-previa"(el){ await abrirPreviaVideo(videoDaTela(el).id, false); },
+    /* A cartela que não coube só sai do erro refeita (as linhas ficam guardadas desde o envio): manda as de hoje */
     async "video-de-novo"(el){
-      const v = videoDaTela(el);
-      await rpc("radar_video_de_novo", {p_id:v.id});
+      const v = videoDaTela(el), refazer = v.erro_codigo === "cartela_nao_cabe";
+      if(refazer && faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.`);
+      await rpc("radar_video_de_novo", {p_id:v.id, p_cartela:refazer ? linhasCartela(v.fala_pessoa) : null});
       const robo = await acionarCorretor(); await depoisDoVideo(v.peca_id); recado(`Pedido de novo ao corretor. ${robo}`);
     },
+    /* Com a mesma fala para conferência (mudou só o "Texto na tela", os tempos ou a tarja), o vídeo é o mesmo: o banco só registra o
+       roteiro novo, e as marcas do administrador continuam valendo. Com a fala mudada, o corretor alinha e monta de novo. */
     async "video-reconferir"(el){
       const {f, p} = pecaDoVideo(), v = videoDaTela(el);
       if(pecaMudou(f)) throw new ErroApi(AVISO_PECA_SUJA);
-      const {fala} = extrairFala(p.roteiro);
-      if(!confirm("Conferir a gravação com o roteiro novo? O corretor compara de novo a fala gravada com a fala para conferência do roteiro salvo (sem transcrever de novo); “Manter este trecho”, “A transcrição errou” e a legenda editada deixam de valer.")) return;
-      await rpc("radar_video_reconferir", {p_id:v.id, p_fala_roteiro:fala});
+      const {fala} = extrairFala(p.roteiro), igual = fala === v.fala_roteiro;
+      if(!confirm(igual ? "A fala para conferência do roteiro novo é a mesma da gravação (mudou só o que não é falado): o vídeo continua o mesmo, com os ajustes de antes. Registrar o roteiro novo?"
+        : "Conferir a gravação com o roteiro novo? O corretor compara de novo a fala gravada com a fala para conferência do roteiro salvo (sem transcrever de novo); “Manter este trecho”, “A transcrição errou” e a legenda editada deixam de valer.")) return;
+      const r = await rpc("radar_video_reconferir", {p_id:v.id, p_fala_roteiro:fala});
+      if(!r?.modo){ await depoisDoVideo(p.id); recado("Roteiro novo registrado: a fala para conferência é a mesma, e o vídeo corrigido continua valendo."); return; }
       const robo = await acionarCorretor(); await depoisDoVideo(p.id); recado(`O corretor confere com o roteiro novo. ${robo}`);
     },
     async "video-descartar"(el){

@@ -5,11 +5,16 @@
 # commit fixo (a variável RADAR_VIDEO_COMMIT, conferida depois do checkout): mudar o robô é publicar aqui, rodar os testes e trocar o
 # SHA lá. O privado existe porque o log de um repositório público é aberto a qualquer pessoa logada no GitHub.
 #
-# Quem aciona: a função radar-video (workflow_dispatch, ao fim de cada envio e pela reserva do pg_cron, de 10 em 10 minutos, só com
-# fila; sql/radar-video-agenda.sql) e, se o token do GitHub no Supabase vencer, esta agenda de reserva, 2 vezes por dia útil (cada
-# execução sem pedido gasta ~1 minuto dos 2.000 grátis do plano). Nenhuma entrada: o robô pega o pedido na radar-video, e nada do
-# pedido aparece no GitHub. Um pedido por execução; a fila (concurrency com queue: max) roda uma execução de cada vez, sem cancelar as
-# que esperam.
+# Quem aciona: a função radar-video (workflow_dispatch, ao fim de cada envio, quando o robô termina um pedido e ainda há fila, e pela
+# reserva do pg_cron, de 10 em 10 minutos, só com fila e no máximo 3 vezes por pedido: no 3º acionamento sem o robô pegar — a chave do
+# robô ou as variáveis abaixo erradas, o token do GitHub no Supabase vencido, este workflow desligado —, o pedido vira erro
+# "robo_nao_pegou" na peça e a reserva para, em vez de uma execução vermelha a cada 10 minutos; sql/radar-video-agenda.sql) e esta
+# agenda própria, 2 vezes por dia útil, que pega o que ainda estiver na fila (por exemplo, com a agenda do banco parada; com o token
+# vencido, o pedido já virou "robo_nao_pegou" uns 30 a 40 minutos depois do envio, e volta com "Tentar de novo"). Cada execução sem
+# pedido gasta ~1 minuto dos 2.000 grátis do plano. Esta agenda não depende do token: para PARAR o corretor, desligue o workflow
+# (Actions → este workflow → Disable workflow); tirar o token não para. Na reversão da versão, desligue ou apague este workflow (sem o
+# banco, cada execução da agenda falharia). Nenhuma entrada: o robô pega o pedido na radar-video, e nada do pedido aparece no GitHub.
+# Um pedido por execução; a fila (concurrency com queue: max) roda uma execução de cada vez, sem cancelar as que esperam.
 #
 # Segredos e variáveis (Settings → Secrets and variables → Actions do repositório privado; o plano não precisa de "environment"):
 #   RADAR_VIDEO_ROBO_CHAVE  segredo: a cópia de 'radar_video_robo' do Vault do Supabase (copiada do painel direto para cá, nunca pelo

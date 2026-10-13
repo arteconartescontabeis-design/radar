@@ -475,8 +475,10 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.22.0: corretor de vídeo (cada função confere o papel)
                                                            'radar_video_criar', 'radar_video_para_envio', 'radar_video_enviado',
                                                            'radar_video_ajustar', 'radar_video_reconferir', 'radar_video_de_novo',
-                                                           'radar_video_descartar', 'radar_video_apaguei', 'radar_video_para_previa',
-                                                           'radar_video_para_baixar', 'radar_video_resumo', 'radar_pauta_pecas_da_pessoa')
+                                                           'radar_video_descartar', 'radar_video_apaguei', 'radar_video_apaguei_baixado',
+                                                           'radar_video_para_previa', 'radar_video_para_baixar', 'radar_video_resumo',
+                                                           'radar_video_cota',
+                                                           'radar_pauta_pecas_da_pessoa')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace

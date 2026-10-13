@@ -19,7 +19,7 @@
 //   Nenhuma chave interna do Supabase (service_role, sb_secret_…) é aceita como quem chama: 403.
 //
 // Ações:
-//   tela   envio_iniciar   {peca, partes:[{n,tipo,bytes}], fala_pessoa, fala_roteiro, cartela:[…], gancho, declaracoes:[…]} → o
+//   tela   envio_iniciar   {peca, partes:[{n,tipo,bytes}], fala_pessoa, fala_roteiro, cartela:[…], gancho, declaracoes:[…], duracao?} → o
 //                          bucket privado e o banco, que confere tudo (radar_video_criar) ANTES de qualquer arquivo sair (o vídeo vivo da
 //                          peça só sai quando os clipes chegam: radar_video_enviado); devolve {id, versao, envios:[{n, caminho,
 //                          token}]}: um token de envio (2 h, um caminho só, sem upsert) por clipe, bruto/<id>/<n>, para o envio
@@ -48,6 +48,8 @@
 //          concluir       {id, tentativa, situacao, relatorio, sha256, bytes, duracao} → confere o vídeo (tamanho e tipo) e os 4
 //                          quadros no armazenamento e conclui (radar_video_concluir: o banco decide de novo se precisa regravar)
 //          falhar         {id, tentativa, codigo} → radar_video_falhar (o código fixo; os transitórios voltam à fila)
+//                          Depois de concluir ou falhar, se ainda há pedido na fila, aciona o robô de novo (proximoDaFila): ele trata
+//                          um pedido por execução, e o envio que chegou enquanto ele trabalhava não espera a reserva da agenda
 //   agenda acionar        → a reserva (de 10 em 10 minutos, só com fila: o próprio cron confere antes)
 //          limpar         → a limpeza diária: radar_video_limpeza diz o que sai; os arquivos saem pela API do armazenamento
 //                          (apagar por SQL deixaria órfãos) e radar_video_limpo registra
@@ -58,8 +60,10 @@
 //
 // Segredos (Supabase → Edge Functions → Secrets):
 //   RADAR_VIDEO_GITHUB_TOKEN  token fino do GitHub (Fine-grained token, só o repositório radar-video, Actions: leitura e escrita).
-//                             Fica SÓ aqui: nunca no GitHub, na tela ou no chat. Sem ele, nada aciona o robô (nem a reserva da
-//                             agenda, que passa por aqui): o vídeo fica na fila e o diagnóstico avisa
+//                             Fica SÓ aqui: nunca no GitHub, na tela ou no chat. Sem ele, a função não aciona o robô (nem a reserva
+//                             da agenda, que passa por aqui, mas conta cada rodada): o pedido vira o aviso "robo_nao_pegou" na peça
+//                             uns 30 a 40 minutos depois do envio, e o diagnóstico avisa. Tirar o token NÃO para o corretor: a agenda
+//                             própria do workflow (2 vezes por dia útil) pega a fila sem ele — para parar, desligue o workflow
 //   RADAR_VIDEO_GITHUB_REPO   opcional; padrão arteconartescontabeis-design/radar-video
 //   RADAR_VIDEO_GITHUB_RAMO   opcional; padrão main
 // SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
@@ -295,15 +299,16 @@ async function haFila(): Promise<boolean> {
   catch { return true; }
 }
 
-/** Aciona o robô no repositório privado. Nunca lança erro: o pedido já está na fila e sai na reserva da agenda. */
-async function acionarRobo(): Promise<Acionamento> {
+/** Aciona o robô no repositório privado. Nunca lança erro: o pedido já está na fila e sai na reserva da agenda. semPausa: o robô
+ *  acabou de terminar um pedido (proximoDaFila), e a pausa de 30 s — que evita dois acionamentos para o mesmo envio — não vale. */
+async function acionarRobo(semPausa = false): Promise<Acionamento> {
   const token = env("RADAR_VIDEO_GITHUB_TOKEN").trim();
   if (!token) {
     return { acionado: false, motivo: "sem_token", mensagem: "O robô do corretor não foi acionado: falta o segredo RADAR_VIDEO_GITHUB_TOKEN no " +
       "Supabase (Edge Functions → Secrets). O vídeo continua na fila." };
   }
   if (!(await haFila())) return { acionado: false, motivo: "nada_na_fila", mensagem: "Não há vídeo na fila: o robô não foi acionado." };
-  if (Date.now() - ultimoAcionamento < PAUSA_ROBO_MS) {
+  if (!semPausa && Date.now() - ultimoAcionamento < PAUSA_ROBO_MS) {
     return { acionado: true, em: new Date(ultimoAcionamento).toISOString(), mensagem: "O robô já foi acionado há instantes." };
   }
   const antes = ultimoAcionamento;
@@ -335,14 +340,26 @@ async function acionarRobo(): Promise<Acionamento> {
   return falhou("erro_github", `o GitHub respondeu com erro ${r.status}`);
 }
 
+/** O robô trata UM pedido por execução e não olha a fila de novo antes de sair. Ao concluir ou falhar, se ainda há pedido na fila — o
+ *  envio que chegou enquanto ele trabalhava (a tela recebeu "o robô já foi acionado há instantes") ou o mesmo pedido de volta à fila
+ *  (falha transitória) —, aciona de novo, sem esperar a reserva da agenda (que só age 3 minutos depois e nunca com o robô trabalhando).
+ *  A execução a mais, se a fila esvaziar antes, gasta cerca de 1 minuto e sai sem pedido. Nunca lança: a resposta ao robô não depende
+ *  disto. */
+async function proximoDaFila(): Promise<void> {
+  try { await acionarRobo(true); } catch { /* a reserva da agenda aciona */ }
+}
+
 // ------------------------------------------------------------------ tela
 async function envioIniciar(sessao: string, p: any) {
   const partes = Array.isArray(p?.partes) ? p.partes : [];
   // o armazenamento antes do registro: se ele falha, nada fica registrado (nem gasta uma das 50 gravações da peça)
   await garantirBucket();
+  // a duração que o navegador leu dos clipes (quando leu): o banco confere se cabe no que sobra da cota do mês antes de qualquer envio
+  const duracao = Number(p?.duracao);
   const r = await banco(sessao, "POST", "rpc/radar_video_criar", {
     p_peca: p?.peca ?? null, p_partes: partes, p_fala_pessoa: p?.fala_pessoa ?? null, p_fala_roteiro: p?.fala_roteiro ?? null,
     p_cartela: Array.isArray(p?.cartela) ? p.cartela : null, p_gancho: p?.gancho === true, p_declaracoes: Array.isArray(p?.declaracoes) ? p.declaracoes : null,
+    p_duracao: p?.duracao !== null && p?.duracao !== undefined && Number.isFinite(duracao) && duracao > 0 && duracao <= 3600 ? duracao : null,
   });
   const id = uuid(r?.id);                                    // o banco conferiu os clipes: de 1 a 12, na ordem
   const envios = [];
@@ -610,9 +627,10 @@ async function tratar(req: Request): Promise<Response> {
       case "links": r = await links(servico, id, t, pedido?.ler, pedido?.gravar); break;
       case "audio": r = await audio(servico, id, t, pedido?.segundos); break;
       case "parcial": r = await banco(servico, "POST", "rpc/radar_video_parcial", { p_id: id, p_tentativa: t, p_relatorio: pedido?.relatorio ?? null }); break;
-      case "concluir": r = await concluir(servico, id, t, pedido); break;
+      case "concluir": r = await concluir(servico, id, t, pedido); await proximoDaFila(); break;
       case "falhar":
         r = await banco(servico, "POST", "rpc/radar_video_falhar", { p_id: id, p_tentativa: t, p_codigo: String(pedido?.codigo ?? "").slice(0, 40) });
+        await proximoDaFila();
         break;
       case "limpar": r = await limpar(servico, inicio); break;
       case "agenda_teste": r = { ok: true, versao: VERSAO }; break;

@@ -19,11 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # o histórico inteiro: o arquivo enviado num commit e apagado no seguinte, no mesmo push, some da árvore mas fica no histórico
+      # público; o teste confere cada commit de github.event.before até o último
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install pytest "psycopg[binary]"
       - run: python -m pytest testes/test_radar_repositorio.py -q -p no:cacheprovider
+        env:
+          RADAR_PUSH_ANTES: ${{ github.event.before }}

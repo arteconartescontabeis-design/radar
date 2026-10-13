@@ -582,6 +582,38 @@ def test_acionar_so_com_fila_com_pausa_e_sem_mostrar_o_token(vid):
     assert r["motivo"] == "sem_token" and "RADAR_VIDEO_GITHUB_TOKEN" in r["mensagem"]
 
 
+def test_robo_que_termina_aciona_de_novo_se_ainda_ha_fila(vid):
+    """O robô trata um pedido por execução. O 2º envio, que chegou enquanto ele trabalhava (a tela recebeu "o robô já foi acionado há
+    instantes"), não espera a reserva da agenda: ao concluir ou falhar, a função aciona o robô de novo se ainda há pedido na fila — sem
+    a pausa de 30 s, que é para dois cliques no mesmo envio. Sem fila, nada."""
+    db = vid
+    pid, ana, v1 = na_fila_com_clipes(db)
+    assert pedir({"acao": "pegar"}, cab=ROBO)[1]["pedido"]["id"] == v1
+    pedir({"acao": "acionar"})                                                         # o 2º envio: "já acionado há instantes"
+    v2 = na_fila(db, reel(db, dias=6, pessoa=ana)[0], ana)
+    for p in PARTES:
+        guardar(f"bruto/{v2}/{p['n']}", p["bytes"], p["tipo"])
+    despachos = lambda: [g for g in ARM["github"] if g[0] == "POST" and g[1].endswith("/dispatches")]
+    antes = len(despachos())
+    assert pedir({"acao": "falhar", "id": v1, "tentativa": 1, "codigo": "formato"}, cab=ROBO) == (200, {"situacao": "erro"})
+    assert len(despachos()) == antes + 1
+    # o 2º pedido termina (concluído): a fila ficou vazia, nada é acionado
+    assert pedir({"acao": "pegar"}, cab=ROBO)[1]["pedido"]["id"] == v2
+    guardar(f"corrigido/{v2}/{SHA_VIDEO}.mp4", 4000)
+    for k in range(1, 5):
+        guardar(f"quadros/{v2}/{SHA_VIDEO}/q{k}.jpg", 300, "image/jpeg")
+    fim = {"acao": "concluir", "id": v2, "tentativa": 1, "situacao": "pronto", "relatorio": RELATORIO, "sha256": SHA_VIDEO, "bytes": 4000, "duracao": 38.4}
+    assert pedir(fim, cab=ROBO) == (200, {"situacao": "pronto"}) and len(despachos()) == antes + 1
+    # o concluir com outro pedido esperando aciona também
+    v3 = na_fila(db, reel(db, dias=7, pessoa=ana)[0], ana)
+    db.execute("update radar_videos set situacao = 'processando', rodada = 2, pego_em = now() where id = %s", (v2,))
+    guardar(f"corrigido/{v2}/{SHA2}.mp4", 4000)
+    for k in range(1, 5):
+        guardar(f"quadros/{v2}/{SHA2}/q{k}.jpg", 300, "image/jpeg")
+    assert pedir({**fim, "tentativa": 2, "sha256": SHA2}, cab=ROBO) == (200, {"situacao": "pronto"}) and len(despachos()) == antes + 2
+    assert video(db, v3, "situacao") == "na_fila"
+
+
 def test_registros_e_erros_sem_link_token_chave_nome_nem_fala(vid):
     db = vid
     pid, ana, v = na_fila_com_clipes(db)

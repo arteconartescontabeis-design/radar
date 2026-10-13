@@ -4,6 +4,7 @@
     fora do roteiro, o que do roteiro não foi dito e os avisos: a equipe sabe se precisa regravar sem esperar o vídeo;
   * final(): tudo, depois da montagem e da conferência — entrada, saída (com o volume e o pico medidos na conferência), cortes e
     sugestões, trocas de grafia, divergências, legenda (com a lista dos blocos para o editor do administrador), avisos, texto final,
+    o texto extra da cartela que foi gravado,
     áudio, conferência, quadros e a transcrição (o serviço e os segundos de áudio: a cota do F0 é de 5 h por mês, dividida com a
     Agenda — sem nomes);
   * os tempos (em_s) são os do VÍDEO CORRIGIDO (cortes.remapear), como a tela mostra, e `clipe` é o número da parte enviada;
@@ -97,6 +98,9 @@ def final(al: dict, plano: dict, infos: list[dict], montagem: dict, conferencia:
            "legenda": {"blocos": leg.get("blocos", 0), "estilo": leg.get("estilo", "normal"), "gancho": bool(leg.get("gancho")),
                        **(al.get("legenda_ajustes") or {"editados": 0, "recusados": []}), "lista": leg.get("lista") or []},
            "avisos": sorted(avisos), "texto_final": al.get("texto_final") or "", "cobertura": al.get("cobertura"),
+           # o texto extra da cartela que foi gravado (Configurações → Corretor de vídeo, lido nesta montagem): o banco confere este, e
+           # não o das Configurações de hoje, e pede a cartela refeita se ele mudar depois (radar_video_pendencia)
+           "cartela_extra": str(cfg.get("cartela_extra") or "")[:120],
            "audio": montagem.get("audio") or {}, "imagem": montagem.get("imagem") or {}, "conferencia": conferencia,
            "quadros_ms": montagem.get("quadros_ms") or [], "transcricao": _transcricao(transcricao)}
     return caber(rel)

@@ -14,8 +14,10 @@ números por extenso —, e a frase traz a forma de exibição (Display), com po
      "30/10"); a falada fora do roteiro sai na forma de exibição da frase (Display) ou, sem ela, com os números em algarismos, e
      entra em fora_do_roteiro; a do roteiro que não foi dita não entra (omitido). A legenda nunca tem palavra que não foi dita;
   4. divergência (regravar): qualquer diferença de número, data, mês, ano, valor, por cento, ordinal ou termo num trecho fora —
-     troca, falta ou sobra. "A transcrição errou (vale o roteiro)" (ajustes.transcricao_errou, pelo número k da divergência) põe o
-     roteiro na legenda daquele trecho; o áudio não muda;
+     troca, falta ou sobra. "A transcrição errou (vale o roteiro)" (ajustes.transcricao_errou) põe o roteiro na legenda daquele trecho;
+     o áudio não muda. A marca é o `id` da divergência (o instante e o texto dela, falado e do roteiro), e não o número k na lista: o
+     alinhamento é refeito a cada rodada com as Configurações do momento (uma variante ou um termo novo no glossário tira uma
+     divergência da lista e muda a numeração das outras), e a marca de uma nunca cai em outra — a que não confere fica aberta;
   5. para os cortes (cortes.planejar): as palavras com `fim_frase` (da pontuação do roteiro) e `rot_de`/`rot_ate` (as fichas do
      roteiro a que cada uma se alinhou: o corte de "voz entre palavras" só é automático entre palavras SEGUIDAS do roteiro) e, em
      `remover`, as sugestões de repetição e de falso início (nunca automáticas). Os sons de hesitação ("hum", "ééé") ficam fora do
@@ -30,6 +32,7 @@ Nada daqui vai para log: a fala, o roteiro e os nomes só saem no relatório (ra
 from __future__ import annotations
 
 import difflib
+import hashlib
 import math
 import re
 
@@ -46,6 +49,7 @@ TEXTO_MAX = 6000                       # radar_videos.fala_roteiro
 LISTA_MAX = 100
 EDICOES_MAX = 200
 COBERTURA_MIN = 0.6                    # abaixo disso: aviso fala_diferente_do_roteiro
+_MARCA = re.compile(r"[0-9a-f]{16}")    # o id de uma divergência (ajustes.transcricao_errou)
 _MARCACAO = re.compile(r"[{}\\<>]")
 _ASPAS = "\"'“”‘’«»"
 
@@ -110,9 +114,15 @@ def _transcricao(palavras) -> list[dict]:
     return out
 
 
-def _inteiros(x) -> set[int]:
-    return {int(k) for k in (x if isinstance(x, (list, tuple)) else [])[:EDICOES_MAX]
-            if isinstance(k, int) and not isinstance(k, bool) and 0 <= k < 10000}
+def _marcas(x) -> set[str]:
+    """Os ids de divergência marcados "a transcrição errou" (o número k de antes não vale: ele muda com o alinhamento)."""
+    return {k for k in (x if isinstance(x, (list, tuple)) else [])[:EDICOES_MAX] if isinstance(k, str) and _MARCA.fullmatch(k)}
+
+
+def _id_divergencia(t: float, tipo: str, falado: str, roteiro: str) -> str:
+    """O id da divergência: o instante na linha de fala48k.wav (a mesma transcrição em toda rodada) e o texto dela, como o relatório
+    mostra. Outra divergência — ou a mesma com outro texto, depois de uma variante nova — tem outro id."""
+    return hashlib.sha256(f"{t:.3f}|{tipo}|{falado}|{roteiro}".encode("utf-8")).hexdigest()[:16]
 
 
 # ------------------------------------------------------------------ alinhamento das fichas
@@ -221,12 +231,12 @@ def _exibicao(frases, F: list[dict], gl: dict) -> list[tuple[set[int], str]]:
     return out
 
 
-def _unidades(grupos, R, F, rtok, ftok, exib, errou) -> list[dict]:
+def _unidades(grupos, R, F, rtok, ftok, exib) -> list[dict]:
     """As unidades da legenda, na ordem da fala: [{texto, f (fichas faladas), perto (letras das palavras do roteiro ali)}]."""
     uns = []
     for g in grupos:
         alinhado = g["tipo"] != "fora"
-        if alinhado or g.get("k") in errou:
+        if alinhado or g.get("errou"):
             if g["r"]:                                  # sobra na transcrição com "vale o roteiro": não entra
                 uns.append({"fonte": "roteiro", "r": list(g["r"]), "f": list(g["f"])})
         else:
@@ -378,7 +388,7 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
         cs = [ws[fal[t]]["confianca"] for t in range(f["t0"], f["t1"] + 1) if ws[fal[t]]["confianca"] is not None]
         f["confianca"] = min(cs) if cs else None
     grupos = _grupos(R, F, gl)
-    errou = _inteiros(ajustes.get("transcricao_errou"))
+    errou = _marcas(ajustes.get("transcricao_errou"))
 
     divergencias, fora, omitido, remover, trocas = [], [], [], [], []
     ultimo_fim = 0.0
@@ -402,10 +412,12 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
             antes = grupos[gi - 1] if gi and grupos[gi - 1]["tipo"] != "fora" else None
             ctx = (_grafia(rtok, [R[i] for i in antes["r"]]) + " ") if antes else ""
             cs = [f["confianca"] for f in fs if f["confianca"] is not None]
-            divergencias.append({"k": g["k"], "t": t, "falado": (ctx + " ".join(_canon(f) for f in fs)).strip()[:120],
-                                 "roteiro": (ctx + _grafia(rtok, rs)).strip()[:120], "tipo": _tipo_divergencia(rs + fs),
-                                 "regravar": True, "transcricao_errou": g["k"] in errou,
-                                 **({"confianca": round(min(cs), 2)} if cs else {})})
+            falado, roteiro = (ctx + " ".join(_canon(f) for f in fs)).strip()[:120], (ctx + _grafia(rtok, rs)).strip()[:120]
+            tipo = _tipo_divergencia(rs + fs)
+            marca = _id_divergencia(t, tipo, falado, roteiro)
+            g["errou"] = marca in errou
+            divergencias.append({"k": g["k"], "id": marca, "t": t, "falado": falado, "roteiro": roteiro, "tipo": tipo,
+                                 "regravar": True, "transcricao_errou": g["errou"], **({"confianca": round(min(cs), 2)} if cs else {})})
         else:
             if fs:
                 fora.append({"t": t, "texto": " ".join(_canon(f) for f in fs)[:120]})
@@ -414,7 +426,7 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
         if fs:
             ultimo_fim = fs[-1]["fim"]
 
-    unidades = _unidades(grupos, R, F, rtok, ftok, _exibicao(frases, F, gl), errou)
+    unidades = _unidades(grupos, R, F, rtok, ftok, _exibicao(frases, F, gl))
     edicoes = ajustes.get("legenda")
     edicoes = ([tuple(x) for x in edicoes if isinstance(x, (list, tuple)) and len(x) == 2] if isinstance(edicoes, list)
                else list(edicoes.items()) if isinstance(edicoes, dict) else [])
