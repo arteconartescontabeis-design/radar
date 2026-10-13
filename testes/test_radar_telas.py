@@ -902,6 +902,7 @@ def test_painel_avisa_que_o_robo_de_coleta_parou(pagina, limpo):
         assert "não roda há mais de 12 horas" in aviso and "a última rodada foi em" in aviso and "Enable workflow" in aviso
         assert "radar-redes-agenda.sql" in aviso and sem_rolagem_lateral(pagina)
         pagina.click("text=Sair")
+        pagina.wait_for_selector("#email")                   # a saída termina antes de recarregar (senão a sessão da aba volta)
         entrar(pagina, "leitor@artecon.test")
         assert "avise o administrador" in pagina.wait_for_selector("#coleta-parada").inner_text()
         limpo.execute("insert into radar_execucoes (fonte_id, iniciado_em, status) values (%s, now() - interval '2 hours', 'ok')", (fonte[0],))
