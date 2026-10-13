@@ -596,10 +596,12 @@ def test_conversa_nao_segue_redirecionamento_nem_proxy_nem_link_de_fora(monkeypa
             c.falhar(VID, 1, "sem_audio")
         assert e.value.codigo == "storage" and e.value.__cause__ is None and e.value.__context__ is None and CHAVE not in str(e.value)
         assert f.acoes()[-3:] == ["falhar"] * 3                                     # tentou 3 vezes
+        # o audio que falhou no caminho repete (o banco soma uma vez por rodada): o áudio já foi para a Azure e conta na cota do mês
         f.falhas["audio"] = [(502, "fora")]
-        with pytest.raises(ErroVideo):
-            c.audio(VID, 1, 9.0)
-        assert f.acoes()[-1:] == ["audio"] and f.acoes().count("audio") == 1        # o audio nunca se repete sozinho
+        antes = f.segundos.get(VID, 0)
+        assert c.audio(VID, 1, 9.0)["restante_s"] == 3600 - antes - 9.0
+        assert f.acoes()[-2:] == ["audio", "audio"] and f.segundos[VID] == antes + 9.0
+        assert c.audio(VID, 1, 9.0) and f.segundos[VID] == antes + 9.0                  # a mesma rodada não conta de novo
     finally:
         f.fechar()
 

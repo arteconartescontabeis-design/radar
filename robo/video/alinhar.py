@@ -20,9 +20,11 @@ números por extenso —, e a frase traz a forma de exibição (Display), com po
      roteiro a que cada uma se alinhou: o corte de "voz entre palavras" só é automático entre palavras SEGUIDAS do roteiro) e, em
      `remover`, as sugestões de repetição e de falso início (nunca automáticas). Os sons de hesitação ("hum", "ééé") ficam fora do
      alinhamento: quem os corta é cortes.py, pela regra dele;
-  6. editor de legenda do administrador (ajustes.legenda: {"<u>:<n>": "texto novo"}, u = a 1ª unidade do bloco e n as palavras
-     dele, da lista do relatório): troca palavra a palavra, com o mesmo número de palavras, cada uma igual à do roteiro naquele
-     trecho ou parecida (≥ 0,6) com a que estava; nunca muda número, mês ou termo. O recusado vai para legenda.recusados.
+  6. editor de legenda do administrador (ajustes.legenda: [["<u>:<n>", "texto novo"], …], u = a 1ª unidade do bloco e n as palavras
+     dele, da lista do relatório, aplicadas NA ORDEM da lista — a edição nova, no fim, vale sobre a antiga que cai no mesmo trecho; o
+     objeto {"<u>:<n>": "texto"} de antes também vale, mas o jsonb não guarda a ordem das chaves dele): troca palavra a palavra, com o
+     mesmo número de palavras, cada uma igual à do roteiro naquele trecho (`perto`, que vai em cada unidade da legenda para a tela
+     conferir igual) ou parecida (≥ 0,6) com a que estava; nunca muda número, mês ou termo. O recusado vai para legenda.recusados.
 Nada daqui vai para log: a fala, o roteiro e os nomes só saem no relatório (radar_videos.relatorio, que só admin e editor leem).
 """
 from __future__ import annotations
@@ -413,9 +415,11 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
             ultimo_fim = fs[-1]["fim"]
 
     unidades = _unidades(grupos, R, F, rtok, ftok, _exibicao(frases, F, gl), errou)
-    edicoes = ajustes.get("legenda") if isinstance(ajustes.get("legenda"), dict) else {}
+    edicoes = ajustes.get("legenda")
+    edicoes = ([tuple(x) for x in edicoes if isinstance(x, (list, tuple)) and len(x) == 2] if isinstance(edicoes, list)
+               else list(edicoes.items()) if isinstance(edicoes, dict) else [])
     recusados = []
-    for chave, novo in list(edicoes.items())[:EDICOES_MAX]:
+    for chave, novo in edicoes[:EDICOES_MAX]:
         motivo = _edicao(unidades, chave, novo, gl)
         if motivo:
             recusados.append({"bloco": str(chave)[:12], "motivo": motivo})
@@ -446,7 +450,8 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
     if max(len(fora), len(omitido), len(trocas), len(remover)) > LISTA_MAX:
         avisos.append("lista_resumida")
     return {"palavras": saida, "remover": remover[:LISTA_MAX],
-            "legenda": [{"u": k, "texto": u["texto"], "ini": u["ini"], "fim": u["fim"]} for k, u in enumerate(unidades)],
+            "legenda": [{"u": k, "texto": u["texto"], "ini": u["ini"], "fim": u["fim"], "perto": sorted(u["perto"])}
+                        for k, u in enumerate(unidades)],
             "texto_final": " ".join(u["texto"] for u in unidades), "trocas": trocas[:LISTA_MAX], "divergencias": divergencias,
             "fora_do_roteiro": fora[:LISTA_MAX], "omitido": omitido[:LISTA_MAX],
             "legenda_ajustes": {"editados": min(len(edicoes), EDICOES_MAX) - len(recusados), "recusados": recusados},

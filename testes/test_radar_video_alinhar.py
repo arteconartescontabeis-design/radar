@@ -300,6 +300,36 @@ def test_30_de_outubro_contra_30_10_e_50_mil_reais_contra_r_50_000():
     assert al["divergencias"] == [] and al["texto_final"] == "O prazo vence em 30 de outubro, até 50 mil reais."
 
 
+def test_decimal_com_mil_milhao_ou_bilhao_vale_o_numero_inteiro():
+    """"R$ 4,8 milhões" é 4.800.000, e não R$ 4,80: o mil, o milhão e o bilhão depois das casas decimais multiplicam o número (antes
+    eles entravam nas casas e sumiam, e "4,8 mil", "4,8 milhões" e "4,8 bilhões" davam a mesma ficha)."""
+    gl = numeros.glossario(GLOSSARIO)
+    chave = lambda t: [x["chave"] for x in numeros.analisar(t.split(), gl) if x["tipo"] in numeros.SENTIDO]
+    for texto, esperado in [("R$ 4,8 milhões", "#valor:4800000"), ("quatro milhões e oitocentos mil reais", "#valor:4800000"),
+                            ("quatro vírgula oito milhões de reais", "#valor:4800000"), ("quatro vírgula oito mil reais", "#valor:4800"),
+                            ("R$ 4,8 mil", "#valor:4800"), ("R$ 2,5 bilhões", "#valor:2500000000"), ("R$ 1,5 milhão", "#valor:1500000"),
+                            ("um milhão e meio de reais", "#valor:1500000"), ("2,5 milhões", "#num:2500000"),
+                            ("dois vírgula cinco milhões", "#num:2500000"),
+                            # o que não tem multiplicador não muda
+                            ("1,5%", "#pct:1.5"), ("R$ 75,90", "#valor:75.9"), ("zero vírgula zero cinco", "#num:0.05"),
+                            ("zero vírgula vinte e cinco", "#num:0.25")]:
+        assert chave(texto) == [esperado], texto
+    roteiro = "O teto do Simples Nacional é de R$ 4,8 milhões por ano."
+    # dito certo, de outro jeito: sem divergência, e a legenda na grafia do roteiro
+    for dito in ("o teto do simples nacional é de quatro milhões e oitocentos mil reais por ano",
+                 "o teto do simples nacional é de quatro vírgula oito milhões de reais por ano"):
+        al = alinhar.alinhar(roteiro, falas(dito), [], CFG)
+        assert al["divergencias"] == [] and al["texto_final"] == roteiro, dito
+    # dito mil vezes menor: divergência (regravar), e a legenda mostra o que foi dito
+    al = alinhar.alinhar(roteiro, falas("o teto do simples nacional é de quatro vírgula oito mil reais por ano"), [], CFG)
+    (d,) = al["divergencias"]
+    assert (d["tipo"], d["regravar"]) == ("numero", True) and "4.800" in d["falado"] and "4,8 milhões" in d["roteiro"], d
+    assert "4,8 milhões" not in al["texto_final"]
+    # fora do roteiro, o valor sai em algarismos, inteiro
+    al = alinhar.alinhar("O prazo vence hoje.", falas("o prazo de quatro vírgula oito milhões de reais vence hoje"), [], CFG)
+    assert "R$ 4.800.000" in al["texto_final"] and "R$ 4,80" not in al["texto_final"]
+
+
 # ------------------------------------------------------------------ divergências (regravar)
 def test_dia_15_contra_dia_25_pede_regravar_e_a_transcricao_errou_volta_o_roteiro():
     fala = "O prazo vence dia 25. Fale com a gente."
@@ -428,6 +458,9 @@ def test_unidade_do_roteiro_nunca_se_quebra_na_legenda(tmp_path):
     assert not any(l.endswith(("R$", "31")) or l.startswith(("81.000", "dezembro", "de 2026")) for l in linhas), linhas
     assert [b["u"] for b in info["lista"]] == sorted(b["u"] for b in info["lista"]) and info["lista"][0]["u"] == 0
     assert sum(b["palavras"] for b in info["lista"]) == len(fala.split())
+    # cada bloco leva as palavras do roteiro perto dele (as letras), para a tela recusar o que o robô recusaria
+    for b in info["lista"]:
+        assert b["perto"] == sorted({numeros.letras(w) for w in b["texto"].split()} - {""}), b
 
 
 # ------------------------------------------------------------------ editor de legenda (administrador)
@@ -460,6 +493,21 @@ def test_editor_de_legenda_troca_palavra_a_palavra_e_recusa_o_resto():
     so_u = alinhar.alinhar(fala, ws, [], CFG, {"legenda": {str(u["com"]): "com a", str(u["dia"]): "Dia 30,"}})
     assert so_u["legenda_ajustes"] == {"editados": 1, "recusados": [{"bloco": str(u["com"]), "motivo": "palavra_diferente"}]}
     assert "Dia 30," in so_u["texto_final"]
+
+
+def test_edicoes_da_legenda_valem_na_ordem_da_lista_e_a_nova_vence():
+    """A edição antiga ("1:1", de uma montagem anterior) cai dentro do bloco que o administrador editou agora ("0:4"). No objeto, o jsonb
+    devolve as chaves em outra ordem (as curtas primeiro, depois por byte: "0:4" antes de "1:1") e a antiga desfazia a nova sem
+    aparecer em recusados; na lista, o robô aplica na ordem da tela e a nova, no fim, vale."""
+    fala = "Quem atrasar paga multa."
+    ws = falas("quem atrasar paga multa")
+    antiga, nova = ["1:1", "atrasa"], ["0:4", "Quem atrasará paga multa."]
+    al = alinhar.alinhar(fala, ws, [], CFG, {"legenda": [antiga, nova]})
+    assert al["texto_final"] == "Quem atrasará paga multa." and al["legenda_ajustes"] == {"editados": 2, "recusados": []}
+    # a mesma coisa num objeto na ordem que o jsonb devolve: a antiga, aplicada depois, desfaz a nova (o defeito da forma antiga)
+    assert alinhar.alinhar(fala, ws, [], CFG, {"legenda": dict([nova, antiga])})["texto_final"] == "Quem atrasa paga multa."
+    # cada unidade da legenda leva as palavras do roteiro perto dela (a tela confere a palavra nova como o robô)
+    assert [u["perto"] for u in al["legenda"]] == [["quem"], ["atrasar"], ["paga"], ["multa"]]
 
 
 # ------------------------------------------------------------------ cortes: o que nunca sai e o que sai sozinho
@@ -546,6 +594,39 @@ def test_som_de_hesitacao_que_veio_como_palavra_sai_e_ee_fica():
     al2 = alinhar.alinhar(fala, ws2, [], CFG)
     p2 = cortes.planejar(parte(4.0), sil2, CFG, al2["palavras"], al2["remover"])
     assert [s["tipo"] for s in p2["sugestoes"]] == ["hesitacao"] and cortes.remapear(p2, 1.9)[1]
+
+
+def test_palavra_dita_colada_no_hum_e_perdida_pela_transcricao_nao_sai_com_ele():
+    """"você hum não precisa", com o "não" dito colado no "hum" e perdido pela transcrição (omissão de palavra curta): o corte do "hum"
+    levaria o "não" junto, e o vídeo diria "você precisa declarar". Só sai sozinho entre palavras seguidas do roteiro e com toda a voz
+    DENTRO do som de hesitação; fora disso, sugestão, e a voz fica."""
+    fala = "Neste caso você não precisa declarar o imposto."
+    lista = [("neste", 0.5, 0.8), ("caso", 0.9, 1.2), ("você", 1.3, 1.55), ("hum", 1.65, 1.95), ("precisa", 2.35, 2.8), ("declarar", 2.9, 3.4),
+             ("o", 3.5, 3.55), ("imposto", 3.65, 4.1)]
+    ws, dur, nao = com_tempos(lista), 5.0, (1.95, 2.2)
+    sil = silencios([(w["inicio"], w["fim"]) for w in ws] + [nao], dur)
+    al = alinhar.alinhar(fala, ws, [], CFG)
+    assert [x["texto"] for x in al["omitido"]] == ["não"] and al["divergencias"] == []
+    plano = cortes.planejar(parte(dur), sil, CFG, al["palavras"], al["remover"])
+    assert [c["tipo"] for c in plano["cortes"]] == ["inicio", "fim"]
+    assert [(s["tipo"], s["texto"]) for s in plano["sugestoes"]] == [("hesitacao", "hum")] and ficou(plano, *nao)
+    # a transcrição deu ao "hum" o tempo do "não" também (a voz cabe nele), mas "você" e "precisa" não são seguidas: sugestão
+    largo = com_tempos([(w, a, 2.2 if w == "hum" else b) for w, a, b in lista])
+    al2 = alinhar.alinhar(fala, largo, [], CFG)
+    p2 = cortes.planejar(parte(dur), sil, CFG, al2["palavras"], al2["remover"])
+    assert [s["tipo"] for s in p2["sugestoes"]] == ["hesitacao"] and ficou(p2, *nao)
+    # palavras seguidas do roteiro ("você não precisa", tudo transcrito), mas a voz passa do "hum" (o "você" repetido que a
+    # transcrição não escreveu): sugestão
+    fala3 = "Você não precisa declarar."
+    ws3 = com_tempos([("você", 0.5, 0.8), ("hum", 0.95, 1.2), ("não", 1.75, 1.95), ("precisa", 2.05, 2.5), ("declarar", 2.6, 3.1)])
+    sil3 = silencios([(w["inicio"], w["fim"]) for w in ws3] + [(1.2, 1.5)], 4.0)
+    al3 = alinhar.alinhar(fala3, ws3, [], CFG)
+    p3 = cortes.planejar(parte(4.0), sil3, CFG, al3["palavras"], al3["remover"])
+    assert [s["tipo"] for s in p3["sugestoes"]] == ["hesitacao"] and ficou(p3, 1.2, 1.5)
+    # e o "hum" sozinho entre "você" e "não" (a voz dentro dele) continua saindo
+    sil4 = silencios([(w["inicio"], w["fim"]) for w in ws3], 4.0)
+    p4 = cortes.planejar(parte(4.0), sil4, CFG, al3["palavras"], al3["remover"])
+    assert [(c["tipo"], c["automatico"]) for c in p4["cortes"] if c["tipo"] == "hesitacao"] == [("hesitacao", True)] and p4["sugestoes"] == []
 
 
 def test_repeticao_vira_sugestao_com_o_texto():

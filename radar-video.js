@@ -51,6 +51,8 @@ const ERROS_VIDEO = {
   azure_config:"a configuração da transcrição no repositório privado radar-video está errada (AZURE_FALA_MODO, AZURE_FALA_REGIAO ou AZURE_FALA_ENDPOINT)",
   azure_sem_sdk:"o robô ficou sem o Speech SDK da Azure: o administrador confere o workflow do repositório privado",
   cota_radar:"Limite de minutos do Radar no mês (Configurações → Corretor de vídeo → limite_min_mes)",
+  termo:"uma pessoa da peça não pode mais aparecer no vídeo (termo revogado ou vencido, pessoa inativa ou menor de idade, ou quem fala desmarcada da peça): confira em Pauta → Pessoas e termos e depois use Tentar de novo",
+  robo_nao_pegou:"o robô não pegou o pedido depois de 3 acionamentos da reserva: o administrador confere no repositório privado radar-video o segredo RADAR_VIDEO_ROBO_CHAVE e as variáveis RADAR_VIDEO_URL e RADAR_VIDEO_COMMIT (e, no Supabase, o segredo RADAR_VIDEO_GITHUB_TOKEN); depois, Tentar de novo",
   robo_chave:"o robô foi recusado pela função radar-video: o administrador confere o segredo RADAR_VIDEO_ROBO_CHAVE do repositório privado (cópia do Vault radar_video_robo)",
   robo_sem_chave:"falta o segredo RADAR_VIDEO_ROBO_CHAVE no repositório privado radar-video",
   robo_config:"a configuração do repositório privado radar-video está errada (RADAR_VIDEO_URL ou RADAR_VIDEO_COMMIT)",
@@ -172,42 +174,68 @@ function htmlCartela(pessoa){
 }
 
 /* ---------------------------------------------------------- o bloco na peça */
-/* Chamado por telaPeca (radar-pauta.js) na peça reel, para quem edita: lê o envio vivo da peça e devolve o quadro "Corretor de vídeo"
-   (fora do formulário da peça: os campos daqui não contam como mudança da peça). */
+/* Chamado por telaPeca (radar-pauta.js) na peça reel, para quem edita: lê o vídeo vivo e o envio a caminho da peça e devolve o quadro
+   "Corretor de vídeo" (fora do formulário da peça: os campos daqui não contam como mudança da peça). */
 async function blocoVideo(p){
   const ev = estadoVideo();
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
-  let v = null;
-  try{ [v] = await ler("radar_videos", {select:CAMPOS_VIDEO, peca_id:"eq." + p.id, situacao:VIVAS_VIDEO, order:"versao.desc", limit:"1"}); }
+  let vivos;
+  try{ vivos = await videosDaPeca(p.id); }
   catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.22.0: o administrador roda o <b>sql/radar-setup-v0.22.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
-  ev.atual = v || null;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
+  await guardarVideos(vivos);
+  return `<details class="painel video-reel" id="video-reel" data-peca="${p.id}" open><summary><h2>Corretor de vídeo</h2> <span id="video-selo">${seloVideo(ev.atual || ev.envio)}</span></summary>
+    <div id="video-corpo">${corpoVideo()}</div></details>`;
+}
+/* O vídeo vivo da peça (na fila, com o robô, pronto, para regravar ou com erro) e, ao lado dele, o envio que espera os arquivos: o vivo
+   só sai quando os clipes do novo chegam (radar_video_enviado). */
+async function videosDaPeca(pid){
+  const vivos = await ler("radar_videos", {select:CAMPOS_VIDEO, peca_id:"eq." + pid, situacao:VIVAS_VIDEO, order:"versao.desc", limit:"2"});
+  return {atual:vivos.find(x => x.situacao !== "aguardando_envio") || null, envio:vivos.find(x => x.situacao === "aguardando_envio") || null};
+}
+async function guardarVideos({atual, envio}){
+  const ev = estadoVideo(), p = ev.pecaDados, v = atual;
+  ev.atual = v; ev.envio = envio;
   const hash = v ? await hashTextoVideo(p.roteiro || "") : null;
   ev.roteiroMudou = !!v && (hash ? hash !== v.roteiro_hash : extrairFala(p.roteiro).fala !== v.fala_roteiro);
   if(ev.previa && (!v || ev.previa.id !== v.id || ev.previa.sha256 !== v.sha256)) ev.previa = null;
-  return `<details class="painel video-reel" id="video-reel" data-peca="${p.id}" open><summary><h2>Corretor de vídeo</h2> <span id="video-selo">${seloVideo(v)}</span></summary>
-    <div id="video-corpo">${corpoVideo()}</div></details>`;
+}
+/* Depois de uma ação do corretor: com a peça sem alteração, a tela inteira (a lista do que falta na peça muda junto); com texto não
+   salvo na peça, só o quadro do corretor (relido do banco), sem apagar o que foi digitado; se a pessoa saiu da peça (o envio leva
+   minutos no celular), nada. */
+async function depoisDoVideo(pid){
+  if(E.aba !== "pauta" || E.pauta.peca !== pid) return;
+  if(!pecaMudou($("form[data-form=peca]"))) return desenhar();
+  const ev = estadoVideo();
+  if(ev.pecaDados?.id !== pid || !$("#video-reel")) return;
+  await guardarVideos(await videosDaPeca(pid));
+  if(estadoVideo().peca !== pid) return;
+  const c = $("#video-corpo"), s = $("#video-selo");
+  if(c) c.innerHTML = corpoVideo();
+  if(s) s.innerHTML = seloVideo(ev.atual || ev.envio);
+  depoisDeDesenharVideo();
 }
 const seloVideo = v => v ? selo(`${deMapaVideo(SITUACOES_VIDEO, v.situacao) || v.situacao} (gravação ${v.versao})`, deMapaVideo(TIPO_SELO_VIDEO, v.situacao) ?? "neutro") : selo("Sem gravação", "neutro");
 /* O miolo do quadro (refeito pela sondagem sem redesenhar a peça) */
 function corpoVideo(){
-  const ev = estadoVideo(), p = ev.pecaDados, v = ev.atual, adm = ehAdmin();
+  const ev = estadoVideo(), p = ev.pecaDados, v = ev.atual, envio = ev.envio, adm = ehAdmin();
   if(!p) return "";
   const livre = ["planejada", "em_producao", "pronta"].includes(p.situacao);
   const partes = [];
   if(p.situacao === "aprovada") partes.push(`<div class="aviso info">Peça aprovada${v?.sha256 ? ` com o vídeo da gravação ${v.versao}` : ""}: o vídeo não muda. Para mudar, Desfazer aprovação.</div>`);
   if(p.situacao === "cancelada") partes.push(`<div class="aviso alerta">Peça cancelada: para gravar, Reabrir.</div>`);
   if(v) partes.push(situacaoVideo(v, p, livre, adm));
-  const formulario = livre && (!v || ev.nova || v.situacao === "aguardando_envio");
+  const formulario = livre && (!v || ev.nova || !!envio);
   if(formulario || !v) partes.push(blocoFala(p));
-  if(formulario) partes.push(formEnvio(p, v));
-  else if(livre && v && v.situacao !== "aguardando_envio")
+  if(formulario) partes.push(formEnvio(p, v, envio));
+  else if(livre && v)
     partes.push(`<div class="acoes"><button class="btn sec" type="button" data-acao="video-nova">Enviar nova gravação</button>
-      <span class="sub">A gravação nova substitui a atual.</span></div>`);
+      <span class="sub">${h(AVISO_SUBSTITUI)}</span></div>`);
   return partes.join("");
 }
+const AVISO_SUBSTITUI = "A gravação atual continua valendo até os clipes da nova chegarem ao armazenamento; só então a nova a substitui.";
 /* A fala para conferência (o que o robô compara) e o recado de como gravar */
 function blocoFala(p){
   const {fala, formato} = extrairFala(p.roteiro), n = fala ? fala.split(" ").length : 0;
@@ -222,16 +250,22 @@ function blocoFala(p){
 const clipesDe = pid => (estadoVideo().arquivos[pid] ||= []);
 // o tipo que o banco aceita: MP4 ou MOV (o iPhone manda "video/quicktime"; sem tipo, pela extensão)
 const tipoClipe = a => /^video\/(mp4|quicktime)$/.test(a.type) ? a.type : /\.(mp4|m4v)$/i.test(a.name) ? "video/mp4" : /\.mov$/i.test(a.name) ? "video/quicktime" : "";
-function formEnvio(p, v){
-  const continuar = v?.situacao === "aguardando_envio", lista = clipesDe(p.id), pessoas = p.pessoas.map(id => (E.pauta.pessoas || {})[id]).filter(Boolean);
+/* v: o vídeo vivo da peça (a gravação nova o substitui quando os clipes chegam); envio: o que espera os arquivos ("Continuar o envio") */
+function formEnvio(p, v, envio){
+  const lista = clipesDe(p.id), pessoas = p.pessoas.map(id => (E.pauta.pessoas || {})[id]).filter(Boolean);
   const pr = estadoVideo().progresso;
   if(pr && pr.peca === p.id) return blocoProgresso(pr);
-  if(continuar) return `<div class="video-envio" id="video-envio"><h3>Continuar o envio</h3>
-      <div class="aviso alerta">O envio da gravação ${v.versao} não terminou (${listaVideo(v.partes).length} clipe(s)). ${lista.length === listaVideo(v.partes).length ? "Os arquivos ainda estão nesta tela:" : "Escolha de novo os MESMOS arquivos, na mesma ordem:"} o envio continua de onde parou.</div>
-      ${campoClipes(p)}<div id="video-clipes">${listaClipes(p.id, listaVideo(v.partes))}</div>
+  const vivo = v ? `<p class="sub">${h(AVISO_SUBSTITUI)}</p>` : "";
+  // só quem começou o envio (ou o administrador) continua (radar_video_para_envio): para os outros, o aviso e o descartar
+  if(envio && envio.enviado_por !== E.sessao?.user?.id && !ehAdmin()) return `<div class="video-envio" id="video-envio"><h3>Envio não terminado</h3>
+      <div class="aviso alerta" id="video-envio-outro">O envio da gravação ${h(envio.versao)} foi começado por outra pessoa e não terminou: só ela (ou o administrador) continua. Você pode descartar este envio e enviar de novo.</div>${vivo}
+      <div class="acoes"><button class="btn perigo" type="button" data-acao="video-descartar" data-id="${h(envio.id)}">Descartar este envio</button></div></div>`;
+  if(envio) return `<div class="video-envio" id="video-envio"><h3>Continuar o envio</h3>
+      <div class="aviso alerta">O envio da gravação ${h(envio.versao)} não terminou (${listaVideo(envio.partes).length} clipe(s)). ${lista.length === listaVideo(envio.partes).length ? "Os arquivos ainda estão nesta tela:" : "Escolha de novo os MESMOS arquivos, na mesma ordem:"} o envio continua de onde parou.</div>${vivo}
+      ${campoClipes(p)}<div id="video-clipes">${listaClipes(p.id, listaVideo(envio.partes))}</div>
       <p class="sub">${h(AVISO_NAO_FECHE)}</p>
-      <div class="acoes"><button class="btn verde" type="button" data-acao="video-continuar" data-id="${h(v.id)}">Continuar o envio</button>
-        <button class="btn perigo" type="button" data-acao="video-descartar" data-id="${h(v.id)}">Descartar este envio</button></div></div>`;
+      <div class="acoes"><button class="btn verde" type="button" data-acao="video-continuar" data-id="${h(envio.id)}">Continuar o envio</button>
+        <button class="btn perigo" type="button" data-acao="video-descartar" data-id="${h(envio.id)}">Descartar este envio</button></div></div>`;
   const quem = estadoVideo().quem?.[p.id] ?? (pessoas.length === 1 ? pessoas[0].id : "");
   const falta = pessoas.map(x => [x, x.menor ? "menor de idade: o corretor não aceita nesta versão" : !x.termo_corretor_em ? "sem o termo novo, que cita o corretor de vídeo" : !x.ativo ? "inativa" : ""]).filter(([, m]) => m);
   return `<div class="video-envio" id="video-envio"><h3>${v ? "Enviar nova gravação" : "Enviar a gravação"}</h3>
@@ -244,7 +278,7 @@ function formEnvio(p, v){
     ${textoDe(p.chamada) ? `<label class="video-check"><input type="checkbox" id="video-gancho"> Texto do gancho de 0 a 3 s: “${h(p.chamada)}”</label>` : `<p class="sub">Sem texto do gancho (o campo “Texto do gancho” da peça está vazio).</p>`}
     <fieldset class="checks video-declaracoes"><legend>Declarações (as quatro são obrigatórias)</legend>${DECLARACOES_VIDEO.map(([k, t]) =>
       `<label><input type="checkbox" class="video-declaracao" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`).join("")}</fieldset>
-    <p class="sub"><b>${h(AVISO_NOVO_ENVIO)}</b></p>
+    <p class="sub"><b>${h(AVISO_NOVO_ENVIO)}</b></p>${vivo}
     <div class="acoes"><button class="btn verde" type="button" data-acao="video-enviar">${v ? "Enviar a gravação nova" : "Enviar a gravação"}</button>
       ${v ? `<button class="btn sec" type="button" data-acao="video-nova-cancelar">Cancelar</button>` : ""}</div></div>`;
 }
@@ -268,7 +302,7 @@ function listaClipes(pid, partes){
     <p class="sub">${l.length} clipe(s), ${mbVideo(total)} no total${dur ? `, cerca de ${segVideo(dur, 0)} s` : ""}.</p>
     ${avisos.map(a => `<div class="aviso alerta">${h(a)}</div>`).join("")}`;
 }
-const redesenharClipes = pid => { const box = $("#video-clipes"); if(box) box.innerHTML = listaClipes(pid, estadoVideo().atual?.situacao === "aguardando_envio" ? listaVideo(estadoVideo().atual.partes) : null); };
+const redesenharClipes = pid => { const box = $("#video-clipes"); if(box) box.innerHTML = listaClipes(pid, estadoVideo().envio ? listaVideo(estadoVideo().envio.partes) : null); };
 /* A duração e a orientação lidas pelo <video> do navegador: SÓ aviso (o HEVC do iPhone não abre em todo navegador; o robô confere). */
 const lerMetadadosVideo = arquivo => new Promise(ok => {
   const u = URL.createObjectURL(arquivo), el = document.createElement("video");
@@ -405,12 +439,19 @@ async function subirClipes(pid, id, envios, lista, bucket){
   ev.progresso = {peca:pid, id, partes:Object.fromEntries(envios.map(e => [e.n, 0]))};
   const box = $("#video-envio"); if(box) box.outerHTML = blocoProgresso(ev.progresso);
   window.addEventListener("beforeunload", naoSairVideo);
-  // no celular, a tela acesa enquanto sobe (a tela bloqueada para o envio): o pedido do navegador (Screen Wake Lock); sem ele, só o aviso
+  // no celular, a tela acesa enquanto sobe (a tela bloqueada para o envio): o pedido do navegador (Screen Wake Lock); sem ele, só o aviso.
+  // O navegador solta o pedido sozinho quando a página fica oculta (a troca rápida de aplicativo): ao voltar, pede de novo
   let acesa = null;
-  try{ acesa = await navigator.wakeLock?.request("screen") || null; }catch(e){ acesa = null; }
+  const acender = async () => { try{ acesa = await navigator.wakeLock?.request("screen") || null; }catch(e){ acesa = null; } };
+  const voltou = () => { if(!document.hidden && ev.progresso) acender(); };
+  await acender();
+  document.addEventListener("visibilitychange", voltou);
   try{
     for(const e of envios){ const c = lista[e.n - 1]; await enviarTus(c.arquivo, e, bucket, c.tipo, f => mostrarProgresso(e.n, f)); }
-  }finally{ window.removeEventListener("beforeunload", naoSairVideo); ev.progresso = null; if(acesa) acesa.release().catch(() => {}); }
+  }finally{
+    window.removeEventListener("beforeunload", naoSairVideo); document.removeEventListener("visibilitychange", voltou);
+    ev.progresso = null; if(acesa) acesa.release().catch(() => {});
+  }
 }
 
 /* ------------------------------------------------------------- a situação */
@@ -552,16 +593,17 @@ function blocoAjustes(v){
       <p class="sub">Troque palavra por palavra, com o mesmo número de palavras: cada palavra nova é a do roteiro ou parecida com a que estava; número, data, mês e termo do glossário não mudam aqui. O robô confere de novo e lista o que recusar.</p>
       ${blocos.map((b, i) => { const u = numVideo(b.u), n = numVideo(b.palavras), ok = Number.isInteger(u) && Number.isInteger(n);
         return `<div class="video-bloco"><label for="video-leg-${i}">${numVideo(b.em_s) !== null ? `Aos ${segVideo(b.em_s)} s` : `Bloco ${i + 1}`} · ${ok ? `${n} palavra${n === 1 ? "" : "s"}` : "não editável"}</label>
-          <input id="video-leg-${i}" type="text" class="video-legenda-texto" maxlength="120" value="${h(b.texto)}" data-original="${h(b.texto)}"${ok ? ` data-u="${u}" data-n="${n}"` : " disabled"}></div>`; }).join("")}</details>` : ""}
+          <input id="video-leg-${i}" type="text" class="video-legenda-texto" maxlength="120" value="${h(b.texto)}" data-original="${h(b.texto)}" data-bloco="${i}"${ok ? ` data-u="${u}" data-n="${n}"` : " disabled"}></div>`; }).join("")}</details>` : ""}
     <label class="video-check"><input type="checkbox" id="video-compacta"${aj.estilo === "compacta" ? " checked" : ""}> Legenda compacta (1 linha, letra menor: quando a legenda cobre a boca)</label>
     ${v.gancho ? `<label class="video-check"><input type="checkbox" id="video-sem-gancho"${aj.sem_gancho === true ? " checked" : ""}> Sem o texto do gancho (0 a 3 s)</label>` : ""}
     <label class="video-check"><input type="checkbox" id="video-refazer-cartela"> Refazer a cartela com as Configurações e Pessoas e termos de hoje${mudouCartela ? ` <span class="selo alerta">mudou: ${h(cartelaNova.join(" / "))}</span>` : ""}</label>
     <div class="acoes"><button class="btn" type="button" data-acao="video-ajustar" data-id="${h(v.id)}">Aplicar os ajustes e montar de novo</button></div></div>`;
 }
 /* As recusas do editor de legenda, como o robô (alinhar._edicao): o texto, o número de palavras, o sentido (números, meses e termos do
-   glossário) e cada palavra (igual à do roteiro ou parecida, ≥ 0,6, com a que estava). null = passa; senão o código do motivo. O que o
-   robô recusa pelo sentido, a tela recusa antes (testes/test_radar_telas.py compara os dois, caso a caso); a tela é mais rígida só no
-   número escrito de outro jeito ("20" e "vinte", "dois" e "duas": o mesmo valor para o robô). */
+   glossário) e cada palavra (igual a uma do roteiro PERTO do bloco — `perto`, as letras que o robô manda em cada bloco da lista — ou
+   parecida, ≥ 0,6, com a que estava). null = passa; senão o código do motivo. O que o robô recusa, a tela recusa antes
+   (testes/test_radar_telas.py compara os dois, caso a caso); a tela é mais rígida só no número escrito de outro jeito ("20" e "vinte",
+   "dois" e "duas": o mesmo valor para o robô). Sem o `perto` (o relatório de antes dele), vale a fala inteira do roteiro. */
 const MESES_VIDEO = new Set(["janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]);
 const EXTENSO_VIDEO = new Set(("zero dois duas tres quatro cinco seis sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezessete dezoito " +
   "dezenove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento duzentos duzentas trezentos trezentas quatrocentos quatrocentas " +
@@ -607,13 +649,13 @@ function razaoVideo(a, b){
     if(k){ m += k; if(alo < i && blo < j) fila.push([alo, i, blo, j]); if(i + k < ahi && j + k < bhi) fila.push([i + k, ahi, j + k, bhi]); } }
   return 2 * m / (a.length + b.length);
 }
-function recusaLegenda(velho, novo, n, roteiro){
+function recusaLegenda(velho, novo, n, perto){
   if(!novo || novo.length > 120 || /[{}\\<>\u0000-\u001f\u007f]/.test(novo)) return "texto_invalido";
   const vs = velho.split(" ").filter(Boolean), ns = novo.split(" ").filter(Boolean);
   if(ns.length !== n || vs.length !== ns.length) return "numero_de_palavras";
   const termos = termosDoGlossario();
   if(sentidoDoTexto(vs, termos) !== sentidoDoTexto(ns, termos)) return "numero_ou_termo";
-  const doRoteiro = new Set(String(roteiro || "").split(/\s+/).map(letrasFala).filter(Boolean));
+  const doRoteiro = new Set((Array.isArray(perto) ? perto : String(perto || "").split(/\s+/)).map(letrasFala).filter(Boolean));
   for(let i = 0; i < vs.length; i++){
     if(sentidoDaPalavra(vs[i], termos) !== sentidoDaPalavra(ns[i], termos)) return "numero_ou_termo";
     const lv = letrasFala(vs[i]), ln = letrasFala(ns[i]);
@@ -622,28 +664,36 @@ function recusaLegenda(velho, novo, n, roteiro){
   return null;
 }
 /* Os ajustes da tela: os de antes (as edições da legenda ficam: o robô já aplicou, e a chave "u:n" aponta as palavras do alinhamento,
-   que não muda com os cortes) e o que está marcado agora */
+   que não muda com os cortes) e o que está marcado agora. As edições vão numa LISTA [["u:n", "texto"], …], na ordem em que o robô
+   aplica: a nova, no fim, vale sobre a antiga que cai no mesmo trecho (num objeto, o jsonb devolveria as chaves em outra ordem e a
+   antiga desfaria a nova em silêncio). */
 function ajustesDaTela(v){
-  const antes = objVideo(v.ajustes), aj = {};
+  const antes = objVideo(v.ajustes), aj = {}, blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista);
   const manter = [...document.querySelectorAll("#video-reel .video-manter:checked")].map(c => Number(c.value));
   const errou = [...document.querySelectorAll("#video-reel .video-errou:checked")].map(c => Number(c.value));
   if(manter.length) aj.manter = manter;
   if(errou.length) aj.transcricao_errou = errou;
-  const legenda = Object.fromEntries(Object.entries(objVideo(antes.legenda)).filter(([, t]) => typeof t === "string"));
+  let legenda = edicoesLegenda(antes.legenda);
   for(const c of document.querySelectorAll("#video-reel .video-legenda-texto:not(:disabled)")){
     const novo = c.value.replace(/\s+/g, " ").trim(), u = c.dataset.u, n = Number(c.dataset.n);
     if(novo === c.dataset.original) continue;
-    const motivo = recusaLegenda(c.dataset.original, novo, n, v.fala_roteiro);
+    const perto = blocos[Number(c.dataset.bloco)]?.perto;
+    const motivo = recusaLegenda(c.dataset.original, novo, n, Array.isArray(perto) ? perto : v.fala_roteiro);
     if(motivo) throw new ErroApi(`Legenda (${c.labels?.[0]?.textContent?.split(" · ")[0] || "bloco"}): ${MOTIVOS_LEGENDA[motivo]}.`);
-    for(const k of Object.keys(legenda)) if(k === u || k.startsWith(u + ":")) delete legenda[k];
-    legenda[`${u}:${n}`] = novo;
+    legenda = legenda.filter(([k]) => k !== u && !k.startsWith(u + ":"));
+    legenda.push([`${u}:${n}`, novo]);
   }
-  if(Object.keys(legenda).length) aj.legenda = legenda;
+  if(legenda.length) aj.legenda = legenda;
   if($("#video-compacta")?.checked) aj.estilo = "compacta";
   if($("#video-sem-gancho")?.checked) aj.sem_gancho = true;
   return aj;
 }
-const ajustesIguais = (a, b) => { const ord = x => JSON.stringify(Object.keys(x).sort().map(k => [k, Array.isArray(x[k]) ? [...x[k]].sort((p, q) => p - q) : x[k]]));
+/* As edições da legenda guardadas: a lista [["u:n", "texto"], …] (na ordem) ou o objeto de antes */
+const edicoesLegenda = x => Array.isArray(x) ? x.filter(e => Array.isArray(e) && e.length === 2 && typeof e[0] === "string" && typeof e[1] === "string").map(([k, t]) => [k, t])
+  : Object.entries(objVideo(x)).filter(([, t]) => typeof t === "string");
+const ajustesIguais = (a, b) => {
+  // manter e transcricao_errou em qualquer ordem; a legenda, na ordem (é a ordem em que o robô aplica)
+  const ord = x => JSON.stringify(Object.keys(x).sort().map(k => [k, k === "legenda" ? edicoesLegenda(x[k]) : Array.isArray(x[k]) ? [...x[k]].sort((p, q) => p - q) : x[k]]));
   const sem = x => { const y = {...objVideo(x)}; if(y.estilo === "normal") delete y.estilo; if(y.sem_gancho === false) delete y.sem_gancho; return y; };
   return ord(sem(a)) === ord(sem(b)); };
 
@@ -714,10 +764,17 @@ async function diagnosticoVideo(){
   }catch(e){ box.innerHTML = `<div class="aviso erro">${h(e.message)}</div>`; }
 }
 
+/* O fim do envio (a função confere os clipes no armazenamento e põe na fila). Se falhar com os clipes já no armazenamento (falta um,
+   tempo esgotado, rede), o quadro sai do "Enviando… 100%" e volta ao "Continuar o envio", com os arquivos ainda na tela. */
+async function concluirEnvio(pid, id){
+  return await funcaoVideo("envio_concluido", {id});
+}
+
 /* ------------------------------------------------- ações (o index.html junta) */
 const pecaDoVideo = () => { const f = $("form[data-form=peca]"), p = estadoVideo().pecaDados;
   if(!f || !p || Number(f.dataset.id) !== p.id) throw new ErroApi("Abra a peça de novo."); return {f, p}; };
-const videoDaTela = el => { const v = estadoVideo().atual; if(!v || v.id !== el.dataset.id) throw new ErroApi("A gravação mudou: recarregue a peça."); return v; };
+const videoDaTela = el => { const ev = estadoVideo(), v = [ev.atual, ev.envio].find(x => x && x.id === el.dataset.id);
+  if(!v) throw new ErroApi("A gravação mudou: recarregue a peça."); return v; };
 const VIDEO = {
   // não gravam nada: só a tela (o que grava é feito uma ação por vez)
   navegacao:["video-nova", "video-nova-cancelar", "video-clipe-mover", "video-clipe-tirar", "video-ouvir"],
@@ -749,10 +806,10 @@ const VIDEO = {
         fala_roteiro:fala, cartela:linhasCartela(quem), gancho:!!$("#video-gancho")?.checked, declaracoes:decl.map(c => c.value)}, 90000);
       if(!UUID_VIDEO.test(String(r?.id)) || !Array.isArray(r?.envios) || r.envios.length !== lista.length) throw new ErroApi("A função devolveu o envio fora do formato. Nada foi enviado.");
       try{ await subirClipes(p.id, r.id, r.envios, lista, String(r.bucket || "radar-videos")); }
-      catch(e){ await desenhar(); throw e; }
-      const fim = await funcaoVideo("envio_concluido", {id:r.id});
+      catch(e){ await depoisDoVideo(p.id); throw e; }
+      const fim = await concluirEnvio(p.id, r.id);
       delete estadoVideo().arquivos[p.id]; estadoVideo().nova = false;
-      await desenhar();
+      await depoisDoVideo(p.id);
       recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)} Depois, apague os clipes do celular e da nuvem pessoal.`);
     },
     /* Continuar o envio que não terminou: tokens novos só para os clipes que faltam (a função lista o armazenamento) */
@@ -762,17 +819,17 @@ const VIDEO = {
         throw new ErroApi(`Escolha os MESMOS ${partes.length} arquivos do envio, na mesma ordem (o tamanho de cada um confere), ou descarte este envio e envie de novo.`);
       const r = await funcaoVideo("envio_renovar", {id:v.id});
       try{ await subirClipes(p.id, v.id, Array.isArray(r?.envios) ? r.envios : [], lista, String(r?.bucket || "radar-videos")); }
-      catch(e){ await desenhar(); throw e; }
-      const fim = await funcaoVideo("envio_concluido", {id:v.id});
-      delete estadoVideo().arquivos[p.id];
-      await desenhar();
+      catch(e){ await depoisDoVideo(p.id); throw e; }
+      const fim = await concluirEnvio(p.id, v.id);
+      delete estadoVideo().arquivos[p.id]; estadoVideo().nova = false;
+      await depoisDoVideo(p.id);
       recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)}`);
     },
     async "video-previa"(el){ await abrirPreviaVideo(videoDaTela(el).id, false); },
     async "video-de-novo"(el){
       const v = videoDaTela(el);
       await rpc("radar_video_de_novo", {p_id:v.id});
-      const robo = await acionarCorretor(); await desenhar(); recado(`Pedido de novo ao corretor. ${robo}`);
+      const robo = await acionarCorretor(); await depoisDoVideo(v.peca_id); recado(`Pedido de novo ao corretor. ${robo}`);
     },
     async "video-reconferir"(el){
       const {f, p} = pecaDoVideo(), v = videoDaTela(el);
@@ -780,20 +837,29 @@ const VIDEO = {
       const {fala} = extrairFala(p.roteiro);
       if(!confirm("Conferir a gravação com o roteiro novo? O corretor compara de novo a fala gravada com a fala para conferência do roteiro salvo (sem transcrever de novo); “Manter este trecho”, “A transcrição errou” e a legenda editada deixam de valer.")) return;
       await rpc("radar_video_reconferir", {p_id:v.id, p_fala_roteiro:fala});
-      const robo = await acionarCorretor(); await desenhar(); recado(`O corretor confere com o roteiro novo. ${robo}`);
+      const robo = await acionarCorretor(); await depoisDoVideo(p.id); recado(`O corretor confere com o roteiro novo. ${robo}`);
     },
     async "video-descartar"(el){
       const v = videoDaTela(el);
-      if(!confirm(`Descartar a gravação ${v.versao}? Os arquivos saem do armazenamento na limpeza seguinte; para o reel, envie outra gravação.`)) return;
+      const envio = v.situacao === "aguardando_envio", vivo = envio ? estadoVideo().atual : null;
+      if(!confirm(envio ? `Descartar o envio da gravação ${v.versao}? O que já subiu sai do armazenamento na limpeza seguinte.${vivo ? ` A gravação ${vivo.versao} continua valendo.` : ""}`
+        : `Descartar a gravação ${v.versao}? Os arquivos saem do armazenamento na limpeza seguinte; para o reel, envie outra gravação.`)) return;
       await rpc("radar_video_descartar", {p_id:v.id});
-      const pid = estadoVideo().peca; delete estadoVideo().arquivos[pid];
+      delete estadoVideo().arquivos[v.peca_id];
       for(const p of listaVideo(v.partes)) apagarLocalVideo(`radar_tus_bruto/${v.id}/${p.n}`);
-      await desenhar(); recado("Gravação descartada.");
+      await depoisDoVideo(v.peca_id); recado(envio ? "Envio descartado." : "Gravação descartada.");
     },
     async "video-apaguei"(el){
       const v = videoDaTela(el);
       await rpc("radar_video_apaguei", {p_id:v.id});
-      await desenhar(); recado("Registrado: os clipes foram apagados do celular e da nuvem pessoal.");
+      await depoisDoVideo(v.peca_id); recado("Registrado: os clipes foram apagados do celular e da nuvem pessoal.");
+    },
+    /* Depois de baixar e postar o vídeo aprovado: registra que quem baixou apagou o vídeo final do aparelho (à parte dos clipes) */
+    async "video-apaguei-baixado"(el){
+      const v = videoDaTela(el);
+      const em = await rpc("radar_video_apaguei_baixado", {p_id:v.id});
+      const box = $("#video-apaguei-baixado"); if(box) box.outerHTML = `<p class="sub" id="video-apaguei-baixado-feito">Registrado: você apagou o vídeo aprovado do celular e da nuvem pessoal${typeof em === "string" ? ` em ${h(dataHora(em))}` : ""}.</p>`;
+      recado("Registrado: você apagou o vídeo aprovado que baixou do celular e da nuvem pessoal.");
     },
     async "video-ajustar"(el){
       const {p} = pecaDoVideo(), v = videoDaTela(el);
@@ -804,7 +870,7 @@ const VIDEO = {
       if(!confirm("Montar o vídeo de novo com estes ajustes? O áudio não muda (sem transcrever de novo); leva alguns minutos.")) return;
       await rpc("radar_video_ajustar", {p_id:v.id, p_ajustes:aj, p_cartela:cartela});
       if(p.id !== estadoVideo().peca) return;
-      const robo = await acionarCorretor(); estadoVideo().previa = null; await desenhar();
+      const robo = await acionarCorretor(); estadoVideo().previa = null; await depoisDoVideo(p.id);
       recado(`Ajustes gravados: o corretor monta o vídeo de novo. ${robo}`);
     },
     /* À mão: o vídeo aprovado, com o banco conferindo o termo de hoje e o hash aprovado (radar_video_para_baixar, pela função) */
@@ -815,7 +881,7 @@ const VIDEO = {
       const nome = `reel-${a.data}.mp4`, v = estadoVideo().atual;
       box.innerHTML = `<p><a class="btn peq" id="video-baixar-link" href="${h(r.url)}" download="${h(nome)}" rel="noopener noreferrer">Baixar ${h(nome)}</a>
         <span class="sub">O link vale 5 minutos (vencido, clique em “Baixar o vídeo aprovado” de novo). Poste no Instagram e no Facebook e registre o link abaixo.</span></p>
-        ${v ? `<div class="acoes"><button class="btn peq sec" type="button" data-acao="video-apaguei" data-id="${h(v.id)}">Apaguei do celular e da nuvem pessoal (depois de postar)</button></div>` : ""}`;
+        ${v ? `<div class="acoes" id="video-apaguei-baixado"><button class="btn peq sec" type="button" data-acao="video-apaguei-baixado" data-id="${h(v.id)}">Apaguei do celular e da nuvem pessoal (depois de postar)</button></div>` : ""}`;
       recado("Vídeo aprovado liberado: baixe, poste e depois apague do aparelho.");
     },
     "video-diagnostico"(){ return diagnosticoVideo(); }

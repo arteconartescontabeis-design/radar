@@ -13,7 +13,8 @@ trechos alinhados). Formato (desenho 4.1, item 7):
   * o último bloco termina na última palavra (a transição para a cartela começa 0,05 s depois dela);
   * uma unidade do alinhamento com espaço ("30 de outubro", "R$ 50.000,00", "Simples Nacional") nunca se quebra; cada bloco leva o
     número `u` da sua 1ª unidade e quantas palavras tem — é por ele que o editor de legenda do administrador (ajustes.legenda,
-    alinhar.py) diz qual trecho mudou.
+    alinhar.py) diz qual trecho mudou — e as palavras do roteiro perto dele (`perto`, as letras: a tela recusa a palavra nova que o
+    robô recusaria, sem rodar a montagem à toa).
 Além do limite de caracteres, cada linha é medida em pixels com a mesma fonte (o libass dimensiona a fonte pela altura
 usWinAscent + usWinDescent: 1012 + 310 para 1000 unidades na DM Sans) e precisa caber entre as margens (x 100 a 980); uma palavra
 que sozinha passa disso leva o bloco para uma fonte menor ({\\fs}), nunca para fora da área livre.
@@ -74,7 +75,8 @@ def _unidades(palavras: list[dict], glossario: list[str]) -> list[dict]:
             pedaco = palavras[k:k + len(t)]
             if len(pedaco) == len(t) and tuple(_norm(p["texto"]) for p in pedaco) == t:
                 out.append({"texto": "\\h".join(p["texto"] for p in pedaco), "ini": pedaco[0]["ini"], "fim": pedaco[-1]["fim"],
-                            **({"u": pedaco[0]["u"]} if "u" in pedaco[0] else {})})
+                            **({"u": pedaco[0]["u"]} if "u" in pedaco[0] else {}),
+                            "perto": sorted({w for p in pedaco for w in p.get("perto") or ()})})
                 k += len(t)
                 break
         else:
@@ -148,7 +150,8 @@ def blocos(palavras: list[dict], glossario: list[str] = (), estilo: str = "norma
         if prox is not None:
             fim = min(max(fim, g[0]["ini"] + 0.7), prox)
         out.append({"ini": g[0]["ini"], "fim": fim, "linhas": linhas, "fonte": fonte, "u": g[0].get("u"),
-                    "palavras": sum(len(x["texto"].replace("\\h", " ").split()) for x in g)})
+                    "palavras": sum(len(x["texto"].replace("\\h", " ").split()) for x in g),
+                    "perto": sorted({w for x in g for w in x.get("perto") or ()})})
     return out
 
 
@@ -159,7 +162,7 @@ def gancho_linhas(texto: str) -> list[str] | None:
 
 def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estilo: str = "normal", gancho: str | None = None) -> dict:
     """Grava o .ass. palavras: [{texto, ini, fim, u?}] no tempo do vídeo corrigido (cortes.no_video). Devolve o resumo para o
-    relatório, com a lista dos blocos ({u, em_s, palavras, texto}) para o editor de legenda."""
+    relatório, com a lista dos blocos ({u, em_s, palavras, texto, perto}) para o editor de legenda."""
     if estilo not in ESTILOS:
         estilo = "normal"
     bs = blocos(palavras, glossario, estilo)
@@ -183,4 +186,4 @@ def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estil
     destino.write_text(cab + "".join(e + "\n" for e in eventos), encoding="utf-8")
     return {"blocos": len(bs), "estilo": estilo, "gancho": bool(g), "avisos": avisos,
             "lista": [{"u": b["u"], "em_s": round(b["ini"], 2), "palavras": b["palavras"],
-                       "texto": " ".join(b["linhas"]).replace("\\h", " ")} for b in bs]}
+                       "texto": " ".join(b["linhas"]).replace("\\h", " "), "perto": b["perto"]} for b in bs]}

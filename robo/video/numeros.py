@@ -136,10 +136,11 @@ def _um_comeca(ws: list[str], k: int) -> bool:
             or (prox == "de" and k + 2 < len(ws) and ws[k + 2] in _V_MES))
 
 
-def _inteiro(ws: list[str], i: int, um_livre: bool = False) -> tuple[int, int] | None:
+def _inteiro(ws: list[str], i: int, um_livre: bool = False, sem_mult: bool = False) -> tuple[int, int] | None:
     """Um inteiro por extenso a partir de ws[i]: (valor, posição depois dele). Dentro de um grupo (até 999) as partes vêm em ordem
     decrescente ligadas por "e" ("cento e vinte e sete"); depois de mil/milhão o grupo seguinte vem com ou sem "e". "vinte e um e
-    trinta" são dois números; "quinze vinte" também."""
+    trinta" são dois números; "quinze vinte" também. sem_mult: só centena, dezena e unidade (as casas decimais: o mil ou o milhão
+    que vem depois delas multiplica o número inteiro, e não entra nas casas)."""
     total, grupo, classe, mult, j, lido = 0, 0, 9, 10 ** 12, i, False
     while j < len(ws):
         e = ws[j] == "e" and lido
@@ -149,7 +150,7 @@ def _inteiro(ws: list[str], i: int, um_livre: bool = False) -> tuple[int, int] |
         w = ws[k]
         if w in _V_MULT:
             m = _V_MULT[w]
-            if e or m >= mult or (not lido and w != "mil"):
+            if sem_mult or e or m >= mult or (not lido and w != "mil"):
                 break
             total += (grupo or 1) * m
             grupo, classe, mult, lido, j = 0, 9, m, True, k + 1
@@ -176,7 +177,8 @@ def _inteiro(ws: list[str], i: int, um_livre: bool = False) -> tuple[int, int] |
 
 
 def _numero(ws: list[str], i: int, um_livre: bool = False) -> tuple[Decimal, int] | None:
-    """Inteiro com decimais ("zero vírgula um", "dois vírgula cinco") e "e meio" depois de mil/milhão."""
+    """Inteiro com decimais ("zero vírgula um", "dois vírgula cinco"), o decimal com mil, milhão ou bilhão depois ("quatro vírgula
+    oito milhões" = 4.800.000, como "R$ 4,8 milhões"; "quatro vírgula oito mil" = 4.800) e "e meio" depois de mil/milhão."""
     r = _inteiro(ws, i, um_livre)
     if r is None:
         return None
@@ -187,12 +189,15 @@ def _numero(ws: list[str], i: int, um_livre: bool = False) -> tuple[Decimal, int
             if ws[k] == "zero":
                 casas, k = casas + "0", k + 1
                 continue
-            d = _inteiro(ws, k, um_livre=True)
+            d = _inteiro(ws, k, um_livre=True, sem_mult=True)
             if d is None or ws[k] == "e":
                 break
             casas, k = casas + str(d[0]), d[1]
         if casas:
             v, j = Decimal(f"{r[0]}.{casas}"), k
+            # o multiplicador depois das casas vale para o número inteiro (só se a parte inteira não tem multiplicador: até 999)
+            if j < len(ws) and ws[j] in _V_MULT and r[0] < 1000:
+                v, j = v * _V_MULT[ws[j]], j + 1
     elif j + 1 < len(ws) and ws[j] == "e" and ws[j + 1] in ("meio", "meia") and ws[j - 1] in _V_MULT:
         v, j = v + Decimal(_V_MULT[ws[j - 1]]) / 2, j + 2
     return v, j

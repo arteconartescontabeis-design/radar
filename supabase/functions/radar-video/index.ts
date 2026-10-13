@@ -19,8 +19,9 @@
 //   Nenhuma chave interna do Supabase (service_role, sb_secret_…) é aceita como quem chama: 403.
 //
 // Ações:
-//   tela   envio_iniciar   {peca, partes:[{n,tipo,bytes}], fala_pessoa, fala_roteiro, cartela:[…], gancho, declaracoes:[…]} → o banco
-//                          confere tudo (radar_video_criar) ANTES de qualquer arquivo sair; devolve {id, versao, envios:[{n, caminho,
+//   tela   envio_iniciar   {peca, partes:[{n,tipo,bytes}], fala_pessoa, fala_roteiro, cartela:[…], gancho, declaracoes:[…]} → o
+//                          bucket privado e o banco, que confere tudo (radar_video_criar) ANTES de qualquer arquivo sair (o vídeo vivo da
+//                          peça só sai quando os clipes chegam: radar_video_enviado); devolve {id, versao, envios:[{n, caminho,
 //                          token}]}: um token de envio (2 h, um caminho só, sem upsert) por clipe, bruto/<id>/<n>, para o envio
 //                          retomável (TUS) direto do navegador ao armazenamento, com o token no cabeçalho x-signature
 //          envio_renovar  {id} → tokens novos só para os clipes que ainda não chegaram (a tela retoma o envio ao reabrir)
@@ -74,7 +75,6 @@ const BUCKET = "radar-videos";
 // prazos dos links, fixos aqui (quem chama não escolhe); cada objeto sobe com cacheControl de 60 s (a tela e o robô mandam), então a
 // validade efetiva vai até o prazo + 60 s
 const LINK_PREVIA_S = 600, LINK_BAIXAR_S = 300, LINK_ROBO_S = 600, CACHE_S = 60;
-const LIMITE_BUCKET = 500 * 1024 * 1024;                          // o maior clipe aceito (radar_video_criar)
 const TIPOS = ["video/mp4", "video/quicktime", "application/json", "image/jpeg"];
 const TEMPO_ARMAZENAMENTO_MS = Number(env("RADAR_VIDEO_ARMAZENAMENTO_MS", "15000"));
 const LIMITE_LIMPEZA_MS = 110_000;                                // a limpeza para antes do corte de ~150 s do Supabase
@@ -199,13 +199,15 @@ async function armazenamento(metodo: string, caminho: string, corpo?: unknown): 
   return { ok: r.ok, status: r.status, dados };
 }
 
-/** O bucket existe e é PRIVADO? Se não existe, cria privado; se alguém o deixou público no painel, volta a privado. Devolve o que fez. */
+/** O bucket existe e é PRIVADO? Se não existe, cria privado e SEM limite de tamanho próprio: vale o limite global do projeto (Storage →
+ *  Settings; no Free, 50 MB por arquivo). O armazenamento recusa o limite do bucket maior que o global (EntityTooLarge), e com ele o
+ *  bucket nunca nasceria no Free. Se alguém o deixou público no painel, volta a privado (só o "public": o resto fica como está). Devolve
+ *  o que fez. */
 async function garantirBucket(): Promise<"ok" | "criado" | "corrigido"> {
-  const config = { public: false, file_size_limit: LIMITE_BUCKET, allowed_mime_types: TIPOS };
   const g = await armazenamento("GET", `bucket/${BUCKET}`);
   if (g.ok) {
     if (g.dados?.public === false) return "ok";
-    const u = await armazenamento("PUT", `bucket/${BUCKET}`, config);
+    const u = await armazenamento("PUT", `bucket/${BUCKET}`, { public: false });
     if (!u.ok) {
       throw new Erro(502, `O armazenamento "${BUCKET}" está público e não foi possível deixá-lo privado (${u.status}): no Supabase → Storage, ` +
         "edite o bucket e desligue “Public bucket”.");
@@ -213,11 +215,11 @@ async function garantirBucket(): Promise<"ok" | "criado" | "corrigido"> {
     console.log("radar-video: o bucket estava público e voltou a privado");
     return "corrigido";
   }
-  const c = await armazenamento("POST", "bucket", { id: BUCKET, name: BUCKET, ...config });
+  const c = await armazenamento("POST", "bucket", { id: BUCKET, name: BUCKET, public: false, allowed_mime_types: TIPOS });
   if (c.ok) return "criado";
   if (c.status === 409 || String(c.dados?.statusCode ?? "") === "409") return garantirBucket();     // criado agora por outro pedido
-  throw new Erro(502, `Não foi possível criar o armazenamento dos vídeos (${c.status}). Confira em Supabase → Storage → Settings se o ` +
-    "limite de tamanho de arquivo do plano passa de 500 MB.");
+  throw new Erro(502, `Não foi possível criar o armazenamento dos vídeos (${c.status}). Nada foi enviado: tente de novo em alguns ` +
+    "minutos; se repetir, o administrador confere em Supabase → Storage.");
 }
 
 /** Token de envio (2 h, um caminho só, sem upsert: o mesmo caminho dá "já existe") — o navegador manda por TUS com x-signature; o robô,
@@ -336,12 +338,13 @@ async function acionarRobo(): Promise<Acionamento> {
 // ------------------------------------------------------------------ tela
 async function envioIniciar(sessao: string, p: any) {
   const partes = Array.isArray(p?.partes) ? p.partes : [];
+  // o armazenamento antes do registro: se ele falha, nada fica registrado (nem gasta uma das 50 gravações da peça)
+  await garantirBucket();
   const r = await banco(sessao, "POST", "rpc/radar_video_criar", {
     p_peca: p?.peca ?? null, p_partes: partes, p_fala_pessoa: p?.fala_pessoa ?? null, p_fala_roteiro: p?.fala_roteiro ?? null,
     p_cartela: Array.isArray(p?.cartela) ? p.cartela : null, p_gancho: p?.gancho === true, p_declaracoes: Array.isArray(p?.declaracoes) ? p.declaracoes : null,
   });
   const id = uuid(r?.id);                                    // o banco conferiu os clipes: de 1 a 12, na ordem
-  await garantirBucket();
   const envios = [];
   for (let n = 1; n <= partes.length; n++) {
     const { caminho, token } = await tokenDeEnvio(`bruto/${id}/${n}`);
@@ -433,7 +436,7 @@ async function diagnostico(sessao: string) {
     itens.push({ item: "Fila do corretor", ok: !(Number(f?.na_fila) > 0 && espera > 1800), detalhe: `${Number(f?.na_fila ?? 0)} na fila` +
       (Number(f?.na_fila) > 0 ? ` (o mais antigo há ${Math.round(espera / 60)} min)` : "") + `, ${Number(f?.processando ?? 0)} com o robô` });
     itens.push({ item: "Transcrição no mês", ok: usados < limite, detalhe: `${(usados / 60).toFixed(1)} de ${Math.round(limite / 60)} minutos ` +
-      "(Configurações → Corretor de vídeo → limite_min_mes; o F0 da Azure, 5 h por mês, é dividido com a Agenda)" });
+      "(Configurações → Corretor de vídeo → limite_min_mes; o F0 da Azure, 300 minutos por mês, é dividido com a Agenda, que se reserva 270)" });
   } catch (e) { itens.push({ item: "Fila do corretor", ok: false, detalhe: falha(e) }); }
   return { itens, tudo_certo: itens.every((i) => i.ok), versao: VERSAO };
 }

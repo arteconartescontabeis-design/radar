@@ -9,7 +9,9 @@ SEGUIDAS do roteiro. Nenhuma palavra transcrita (fora os sons de hesitação) ca
   1. começo e fim de cada clipe: fica de 0,12 s antes da 1ª palavra a 0,45 s depois da última (sem as palavras — reserva, sem
      transcrição — da 1ª à última voz que o silencedetect acha). Clipe sem fala sai inteiro;
   2. entre duas palavras seguidas da transcrição (os sons de hesitação não contam como palavra):
-     * com som de hesitação ("hum", "ãh", "ééé"; e_hesitacao) e toda a voz do intervalo explicada por ele: sai (automático);
+     * com som de hesitação ("hum", "ãh", "ééé"; e_hesitacao), as duas palavras alinhadas a fichas SEGUIDAS do roteiro e a voz do
+       intervalo dentro do som de hesitação (com 0,1 s de folga; fora dele, menos de 0,15 s): sai (automático); senão — a voz que
+       só encosta no "hum" pode ser a palavra do roteiro dita colada nele, que a transcrição perdeu — vira sugestão;
      * sem palavra, com voz (o que o silencedetect não marca como silêncio) num intervalo de 0,35 a 2,0 s — o "ééé" ou a repetição
        que a transcrição não escreveu: sai só se as duas palavras estão alinhadas a fichas SEGUIDAS do roteiro (`rot_de`/`rot_ate`,
        do alinhar.py: então nenhuma palavra do roteiro pode estar ali); senão — e acima de 2,0 s — vira sugestão;
@@ -99,8 +101,12 @@ def _entre(w1: dict, w2: dict, silencios: list[tuple[float, float]], todas: list
     sugestao = []
     if hes or (g1 - g0 >= VOZ_ENTRE[0] and sum(b - a for a, b in voz) >= VOZ_TRECHO):
         tipo, texto = ("hesitacao", " ".join(w["texto"] for w in hes)[:40]) if hes else ("voz_entre_palavras", None)
-        if hes:                                         # só se toda a voz do intervalo é do som de hesitação
-            auto = all(any(a < h["fim"] + 0.1 and b > h["ini"] - 0.1 for h in hes) for a, b in voz)
+        if hes:                                         # só entre palavras seguidas do roteiro (nenhuma palavra dele pode estar ali)
+            # e com a voz do intervalo dentro dos sons de hesitação (0,1 s de folga; fora deles, menos de VOZ_TRECHO: o vão curto demais
+            # para o silencedetect): a voz que só encosta no "hum" pode ser a palavra dita colada nele que a transcrição perdeu
+            # ("você hum não precisa", sem o "não")
+            fora = sum(b - a for v in voz for a, b in _menos(v, [(h["ini"] - 0.1, h["fim"] + 0.1) for h in hes]))
+            auto = _seguidas(w1, w2) and fora < VOZ_TRECHO
         else:                                           # acima de 2,0 s pode ser fala que a transcrição perdeu: só sugestão
             auto = g1 - g0 <= VOZ_ENTRE[1] and _seguidas(w1, w2)
         if auto:

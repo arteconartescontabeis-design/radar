@@ -7,9 +7,9 @@ público num commit fixo e trata UM pedido por execução, numa pasta de trabalh
   preparar  [sem segredo]         sondar e recusar (entrada não confiável), o áudio de trabalho e as pausas (sondar.py, audio.py); no
                                   modo completo, fala/fala16k.wav e fala/pedido_fala.json para o passo seguinte;
   (transcrever.py) [só a Azure]   fala/palavras.json ou fala/transcricao_erro.txt (o F0 pelo Speech SDK; a chave do robô não está ali);
-  alinhar   [chave do robô]       guarda a transcrição (trabalho/<id>/<t>/palavras.json) e registra os segundos na cota do mês (audio,
-                                  uma vez por rodada), alinha com o roteiro (alinhar.py), planeja os cortes (cortes.py) e manda o
-                                  relatório parcial: a equipe sabe se precisa regravar sem esperar o vídeo;
+  alinhar   [chave do robô]       guarda a transcrição (trabalho/<id>/<t>/palavras.json) e registra os segundos na cota do mês (audio;
+                                  o banco soma uma vez por rodada), alinha com o roteiro (alinhar.py), planeja os cortes (cortes.py)
+                                  e manda o relatório parcial: a equipe sabe se precisa regravar sem esperar o vídeo;
   montar    [sem segredo]         legenda, gancho, cartela, montagem, conferência e o relatório final (legenda.py, cartela.py,
                                   montar.py, conferir.py, relatorio.py);
   entregar  [chave do robô]       sobe o vídeo em corrigido/<id>/<sha256>.mp4 (nunca se sobrescreve) e os 4 quadros, e conclui; se
@@ -244,7 +244,8 @@ def alinhar(trab: Trabalho) -> int:
                 parar = e if e.codigo in ("pedido_perdido", "robo_chave") else None
             if parar:
                 raise parar
-            # uma vez por rodada (soma os segundos na cota do mês): o áudio já foi para a Azure, conta mesmo sem guardar
+            # soma os segundos na cota do mês (o banco, uma vez por rodada: a conversa repete a chamada que falhou no caminho); o áudio
+            # já foi para a Azure, conta mesmo sem guardar
             try:
                 registrada = conversa.audio(vid, t, r["transcricao"]["segundos_audio"] or 0).get("palavras_guardadas") is True
             except ErroVideo as e:

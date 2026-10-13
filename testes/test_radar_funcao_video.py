@@ -54,6 +54,8 @@ def zerar():
     ARM.clear()
     ARM.update(buckets={}, objetos={}, tokens={}, envios=[], assinaturas=[], apagados=[], atualizados=[], falha_assinar=False,
                github=[], github_status=204, links={},
+               # o limite global de arquivo do projeto (no Free, 50 MB): o bucket com limite maior é recusado (EntityTooLarge)
+               limite_global=50 * 1024 * 1024, falha_bucket=False,
                # v0.22.0, a tela (test_radar_telas.py): o envio retomável (TUS) e as falhas de rede que ele tem de aguentar
                tus={}, tus_pedidos=[], tus_pedacos=0, tus_falhar=0, tus_cair=0, tus_parar=None)
 
@@ -119,12 +121,20 @@ class Ponte(BaseHTTPRequestHandler):
         if self.command == "GET" and caminho.startswith("bucket/"):
             b = ARM["buckets"].get(caminho.removeprefix("bucket/"))
             return self._responder(200, b) if b else self._responder(400, {"statusCode": "404", "error": "Bucket not found", "message": "Bucket not found"})
+        # o Storage confere o limite do bucket contra o limite global do projeto (parseMaxSizeLimit: EntityTooLarge)
+        grande = {"statusCode": "413", "error": "Payload too large", "message": "The object exceeded the maximum allowed size"}
         if self.command == "POST" and caminho == "bucket":
+            if ARM["falha_bucket"]:
+                return self._responder(500, {"statusCode": "500", "error": "internal", "message": "fora do ar"})
             if dados["id"] in ARM["buckets"]:
                 return self._responder(400, {"statusCode": "409", "error": "Duplicate", "message": "The resource already exists"})
+            if (dados.get("file_size_limit") or 0) > ARM["limite_global"]:
+                return self._responder(413, grande)
             ARM["buckets"][dados["id"]] = dados
             return self._responder(200, {"name": dados["id"]})
         if self.command == "PUT" and caminho.startswith("bucket/"):
+            if (dados.get("file_size_limit") or 0) > ARM["limite_global"]:
+                return self._responder(413, grande)
             ARM["atualizados"].append(dados)
             ARM["buckets"][caminho.removeprefix("bucket/")].update(dados)
             return self._responder(200, {"message": "Successfully updated"})
@@ -363,15 +373,22 @@ def test_quem_chama_cada_um_nas_suas_acoes_e_nunca_a_chave_interna(vid):
 def test_envio_confere_no_banco_antes_e_da_um_token_por_clipe_num_bucket_privado(vid):
     db = vid
     pid, ana = reel(db)
+    # o armazenamento fora do ar: nada fica registrado (nem gasta uma das 50 gravações da peça)
+    ARM["falha_bucket"] = True
+    status, r = pedir(envio(db, pid, ana))
+    assert status == 502 and r["message"].startswith("Não foi possível criar o armazenamento dos vídeos (500). Nada foi enviado")
+    assert db.execute("select count(*) from radar_videos where peca_id = %s", (pid,)).fetchone()[0] == 0
+    ARM["falha_bucket"] = False
     status, r = pedir(envio(db, pid, ana, fala_roteiro=FALA.replace("dia 20", "dia 25")))
     assert status == 400 and r["message"].startswith("a fala para conferência tem de estar no roteiro")
-    assert ARM["buckets"] == {} and ARM["envios"] == []                                    # nada saiu antes da conferência do banco
+    assert ARM["envios"] == []                                                             # nenhum token antes da conferência do banco
     status, r = pedir(envio(db, pid, ana))
     assert status == 200 and r["versao"] == 1 and r["bucket"] == "radar-videos" and r["cache_s"] == 60
     v = r["id"]
     assert [(e["n"], e["caminho"]) for e in r["envios"]] == [(1, f"bruto/{v}/1"), (2, f"bruto/{v}/2")]
     assert ARM["envios"] == [(f"bruto/{v}/1", None), (f"bruto/{v}/2", None)]                # sem x-upsert: o caminho nunca se sobrescreve
-    assert ARM["buckets"]["radar-videos"] == {"id": "radar-videos", "name": "radar-videos", "public": False, "file_size_limit": 524288000,
+    # privado e sem limite próprio de tamanho (vale o global do projeto: no Free, 50 MB, e o bucket com 500 MB não nasceria)
+    assert ARM["buckets"]["radar-videos"] == {"id": "radar-videos", "name": "radar-videos", "public": False,
                                               "allowed_mime_types": ["video/mp4", "video/quicktime", "application/json", "image/jpeg"]}
     assert video(db, v) == "aguardando_envio"
     # nada chegou: o fim do envio recusa; chegou só o 1º: a renovação dá token só ao 2º
@@ -409,7 +426,7 @@ def test_robo_pega_le_os_clipes_grava_a_transcricao_e_conclui_conferido(vid):
     # a transcrição (o passo do workflow) sobe o palavras.json pelo token e registra os segundos
     assert subir(r["envio_palavras"]["url"], b'{"palavras": []}', "application/json") == 200
     status, a = pedir({"acao": "audio", "id": v, "tentativa": 1, "segundos": 31.5}, cab=ROBO)
-    assert status == 200 and a == {"palavras_guardadas": True, "restante_s": 3568.5}
+    assert status == 200 and a == {"palavras_guardadas": True, "restante_s": 1768.5}
     assert video(db, v, "palavras_tentativa, segundos_audio") == (1, 31.5)
     # links: só os caminhos do pedido que está com o robô, nesta rodada
     outro = str(uuidlib.uuid4())
@@ -481,7 +498,7 @@ def test_montagem_le_a_transcricao_guardada_e_nao_ganha_token_de_transcricao(vid
     status, ln = pedir({"acao": "links", "id": v, "tentativa": 2, "ler": [f"trabalho/{v}/1/palavras.json"]}, cab=ROBO)
     assert status == 200 and list(ln["ler"]) == [f"trabalho/{v}/1/palavras.json"]
     # sem o palavras.json desta rodada, o áudio só conta os segundos (a transcrição guardada continua a 1)
-    assert pedir({"acao": "audio", "id": v, "tentativa": 2, "segundos": 0}, cab=ROBO) == (200, {"palavras_guardadas": False, "restante_s": 3580})
+    assert pedir({"acao": "audio", "id": v, "tentativa": 2, "segundos": 0}, cab=ROBO) == (200, {"palavras_guardadas": False, "restante_s": 1780})
     assert video(db, v, "palavras_tentativa") == 1
 
 
@@ -537,8 +554,7 @@ def test_diagnostico_devolve_o_bucket_publico_a_privado_e_mostra_a_fila_sem_os_s
     itens = {i["item"]: i for i in r["itens"]}
     assert itens["Armazenamento dos vídeos"] == {"item": "Armazenamento dos vídeos", "ok": True,
                                                  "detalhe": 'bucket privado "radar-videos" (estava público: voltou a privado)'}
-    assert ARM["atualizados"] == [{"public": False, "file_size_limit": 524288000,
-                                   "allowed_mime_types": ["video/mp4", "video/quicktime", "application/json", "image/jpeg"]}]
+    assert ARM["atualizados"] == [{"public": False}]                                           # só o "public" (o limite fica o do projeto)
     assert ARM["buckets"]["radar-videos"]["public"] is False
     assert itens["Workflow do robô"]["ok"] is True and "radar-video.yml" in itens["Workflow do robô"]["detalhe"]
     assert itens["Fila do corretor"]["detalhe"] == "0 na fila, 0 com o robô" and r["tudo_certo"] is True

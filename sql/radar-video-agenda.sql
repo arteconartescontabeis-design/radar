@@ -11,7 +11,10 @@
 --   * 'radar_video_agenda': a desta agenda (cabeçalho x-radar-agenda), lida do Vault a cada rodada (não fica gravada em cron.job).
 -- E agenda:
 --   * radar-video-reserva, de 10 em 10 minutos: aciona o robô SÓ se há pedido na fila há 3 minutos ou mais (a tela já aciona na hora;
---     esta é a reserva, se o GitHub não atendeu) ou parado há mais de 20 minutos (radar_video_ha_fila). Sem fila, nenhum pedido sai;
+--     esta é a reserva, se o GitHub não atendeu) ou parado há mais de 20 minutos, e nunca enquanto o robô trabalha num pedido
+--     (radar_video_reserva, no setup). Sem fila, nenhum pedido sai. No 3º acionamento da reserva sem o robô pegar o pedido (a chave do
+--     robô ou as variáveis do repositório privado erradas, o token do GitHub vencido), o pedido vira erro "robo_nao_pegou" — um aviso
+--     só, na peça — e a reserva para: nada de uma execução vermelha (e um e-mail do GitHub) a cada 10 minutos;
 --   * radar-video-limpeza, todo dia às 03h37 de Brasília (06h37 UTC): apaga os arquivos e os textos nos prazos de guarda
 --     (radar_video_limpeza, no setup) e guarda 7 dias do histórico do pg_cron.
 -- Pode rodar de novo: as chaves existentes são mantidas e a agenda é refeita.
@@ -27,7 +30,7 @@ create extension if not exists pg_net;                               -- já inst
 
 do $$
 begin
-  if to_regprocedure('public.radar_video_ha_fila(integer)') is null then
+  if to_regprocedure('public.radar_video_reserva()') is null then
     raise exception 'Rode antes o radar-setup-v0.22.0.sql (Supabase → SQL Editor).';
   end if;
   if not exists (select 1 from vault.secrets where name = 'radar_video_robo') then
@@ -61,8 +64,9 @@ begin
                    'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_video_agenda')),
       timeout_milliseconds := 150000)$c$, v_url, 'Bearer ' || v_anon);
   perform cron.unschedule(j.jobid) from cron.job j where j.jobname like 'radar-video-%';
-  -- a reserva: só com pedido esperando (radar_video_ha_fila confere no banco; nenhuma linha = nenhum pedido)
-  perform cron.schedule('radar-video-reserva', '*/10 * * * *', format(v_pedido, 'acionar') || ' where public.radar_video_ha_fila(3)');
+  -- a reserva: só com pedido esperando, com o limite de 3 acionamentos por pedido (radar_video_reserva confere e conta no banco;
+  -- nenhuma linha = nenhum pedido)
+  perform cron.schedule('radar-video-reserva', '*/10 * * * *', format(v_pedido, 'acionar') || ' where public.radar_video_reserva()');
   -- a limpeza diária; no mesmo comando (um só, como os outros), o histórico do pg_cron, que não é limpo sozinho: guarda 7 dias, como a
   -- agenda da Pauta
   perform cron.schedule('radar-video-limpeza', '37 6 * * *', $c$with historico as (delete from cron.job_run_details

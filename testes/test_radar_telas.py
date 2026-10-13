@@ -6562,6 +6562,7 @@ def test_peca_gerar_com_ia_troca_pessoa_e_mostra_o_que_falta(pagina, pauta):
 # interno), como a função faria. Nomes, falas e vídeos de mentira: os clipes são bytes quaisquer (o navegador não abre: só aviso) e a
 # prévia, quando o ffmpeg tem o VP9, um vídeo sintético (testsrc2) de 2 s.
 from decimal import Decimal  # noqa: E402
+import unicodedata  # noqa: E402
 
 import test_radar_video_banco as vb  # noqa: E402
 from test_radar_banco import SHA_VIDEO, pessoa_do_corretor  # noqa: E402
@@ -6570,10 +6571,13 @@ from test_radar_video_banco import corretor  # noqa: E402,F401  (fixture: as Con
 MIB = 1024 * 1024
 SHA_NOVO = "c" * 64
 DIVERGENCIA_DIA = {"k": 0, "em_s": 1.9, "clipe": 1, "falado": "dia 25", "roteiro": "dia 20", "tipo": "numero", "regravar": True, "transcricao_errou": False}
-# os blocos da legenda da fala vb.FALA (21 palavras): u é a 1ª unidade do bloco, como legenda.gravar devolve
+# os blocos da legenda da fala vb.FALA (21 palavras): u é a 1ª unidade do bloco, como legenda.gravar devolve, com as palavras do roteiro
+# perto do bloco (as letras: o editor de legenda da tela confere a palavra nova contra elas, como o robô)
 BLOCOS_FALA = [{"u": 0, "em_s": 0.12, "palavras": 5, "texto": "O prazo do Simples vence"}, {"u": 5, "em_s": 1.9, "palavras": 3, "texto": "no dia 20."},
                {"u": 8, "em_s": 3.4, "palavras": 7, "texto": "Confira com a gente antes do vencimento"},
                {"u": 15, "em_s": 6.0, "palavras": 6, "texto": "para não pagar multa nem juros."}]
+for _b in BLOCOS_FALA:
+    _b["perto"] = sorted({re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", w.lower()).encode("ascii", "ignore").decode()) for w in _b["texto"].split()})
 
 
 @pytest.fixture(scope="module")
@@ -6972,7 +6976,7 @@ def test_video_envio_recusado_antes_de_qualquer_arquivo_sair(pagina, vtela, mp4_
     for c in pagina.locator("#video-envio .video-declaracao").all():
         c.check()
     recusa("uma pessoa da peça não pode aparecer no vídeo (sem o termo novo, que cita o corretor de vídeo)")
-    assert fv.ARM["envios"] == [] and fv.ARM["tus_pedidos"] == [] and fv.ARM["buckets"] == {}
+    assert fv.ARM["envios"] == [] and fv.ARM["tus_pedidos"] == []                 # (o bucket privado, vazio, nasce antes do registro)
     assert db.execute("select count(*) from radar_videos").fetchone()[0] == 0
     # a função não instalada
     pagina.route("**/functions/v1/radar-video", lambda rota: rota.fulfill(status=404, content_type="application/json",
@@ -7050,6 +7054,8 @@ def test_video_relatorio_parcial_e_final_escapados_e_ajustes_do_administrador(pa
     legenda(1, "no dia", "o bloco fica com o mesmo número de palavras")
     legenda(2, "Confira com a gente antes do almoço", "cada palavra nova é a do roteiro ou parecida com a que estava")
     legenda(3, "para não pagar {\\b1}multa nem juros.", "texto vazio, com mais de 120 caracteres ou com { } \\ < >")
+    # "multa" está na fala, mas não perto deste bloco: o robô recusaria (as palavras do roteiro perto do bloco, e não a fala inteira)
+    legenda(0, "O multa do Simples vence", "cada palavra nova é a do roteiro ou parecida com a que estava")
     legenda(0, "O prazo do simples vence")
     pagina.check("#video-compacta")
     pagina.check("#video-sem-gancho")
@@ -7061,9 +7067,117 @@ def test_video_relatorio_parcial_e_final_escapados_e_ajustes_do_administrador(pa
     pagina.wait_for_selector("#recado >> text=Ajustes gravados: o corretor monta o vídeo de novo.")
     assert pagina.evaluate("() => window.__perguntas")[-1].startswith("Montar o vídeo de novo com estes ajustes? O áudio não muda")
     ajustes, sit, modo, cartela = db.execute("select ajustes, situacao, modo, cartela_linhas from radar_videos where id = %s", (vid,)).fetchone()
-    assert ajustes == {"manter": [3], "transcricao_errou": [0], "legenda": {"0:5": "O prazo do simples vence"}, "estilo": "compacta", "sem_gancho": True}
+    assert ajustes == {"manter": [3], "transcricao_errou": [0], "legenda": [["0:5", "O prazo do simples vence"]], "estilo": "compacta", "sem_gancho": True}
     assert (sit, modo, cartela) == ("na_fila", "montagem", [IDENT, "Ana, contadora · CRC-SC 012345/O-5"])
     assert "Na fila do corretor (gravação 1, só a montagem: a transcrição é a mesma)" in pagina.inner_text("#video-trabalhando")
+    # a montagem seguinte: a edição nova vai no FIM da lista, depois das de antes (o robô aplica na ordem; num objeto, o jsonb devolveria
+    # as chaves em outra ordem e a antiga podia desfazer a nova)
+    t2 = robo_pega(vid)
+    vb.concluir(vid, t2, "pronto", relatorio_final(divergencias=[{**DIVERGENCIA_DIA, "transcricao_errou": True}]), SHA_NOVO, 4000, 38.5)
+    abrir_video(pagina, db, pid)
+    confirmacoes(pagina)
+    pagina.click("#video-ajustes .video-legenda summary")
+    pagina.fill("#video-leg-2", "Confira com a gente antes do vencimento!")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-ajustar]")
+    pagina.wait_for_selector("#recado >> text=Ajustes gravados: o corretor monta o vídeo de novo.")
+    assert db.execute("select ajustes->'legenda' from radar_videos where id = %s", (vid,)).fetchone()[0] == [
+        ["0:5", "O prazo do simples vence"], ["8:7", "Confira com a gente antes do vencimento!"]]
+
+
+def test_video_gravacao_nova_nao_derruba_a_pronta_e_o_quadro_nao_apaga_o_digitado(pagina, vtela):
+    """A gravação nova não leva a pronta junto: o envio que para no meio deixa a gravação anterior valendo, e a tela mostra as duas
+    (“Continuar o envio” e o vídeo pronto). O texto digitado e não salvo na peça durante o envio não some quando o envio acaba (só o
+    quadro do corretor é refeito). A tela pede de novo para ficar acesa quando a página volta a aparecer (o navegador solta o pedido
+    na troca de aplicativo). O fim do envio que falha volta ao “Continuar o envio”, em vez de ficar parado em “Enviando… 100%”."""
+    db, fv = vtela
+    pid, ana, vid, sit = reel_com_video(db, fv)
+    assert sit == "pronto"
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
+    abrir_video(pagina, db, pid)
+    confirmacoes(pagina)
+    pagina.click("[data-acao=video-nova]")
+    assert "A gravação atual continua valendo até os clipes da nova chegarem" in pagina.inner_text("#video-envio")
+    pagina.set_input_files("#video-arquivos", [clipe("a.mp4", MIB, semente=3), clipe("b.mp4", 7 * MIB, semente=5)])
+    pagina.wait_for_selector("#video-clipes li[data-i='1']")
+    pagina.select_option("#video-quem", str(ana))
+    for c in pagina.locator("#video-envio .video-declaracao").all():
+        c.check()
+    fv.ARM["tus_parar"] = 2                                              # chega o 1º clipe e o 1º pedaço do 2º; depois, nada
+    pagina.evaluate("() => { VIDEO_ESPERAS = [500, 500, 500, 500]; }")
+    pagina.evaluate("""() => { window.__tela = []; window.__oculta = false;
+      Object.defineProperty(document, 'hidden', {configurable: true, get: () => window.__oculta});
+      Object.defineProperty(navigator, 'wakeLock', {configurable: true, value: {request: async t => {
+        window.__tela.push('pede:' + t); return {release: async () => { window.__tela.push('solta'); }}; }}}); }""")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-enviar]")
+    pagina.wait_for_selector("#video-prog-2[value='86']")
+    # enquanto sobe: a troca rápida de aplicativo (a página some e volta) e o texto digitado na peça, sem salvar
+    pagina.evaluate("() => { window.__oculta = true; document.dispatchEvent(new Event('visibilitychange')); "
+                    "window.__oculta = false; document.dispatchEvent(new Event('visibilitychange')); }")
+    pagina.fill("#peca-legenda-facebook", "Legenda do Facebook ainda não salva.")
+    pagina.wait_for_selector("#recado .erro >> text=O envio parou no clipe nº 2", timeout=60000)
+    assert pagina.evaluate("() => window.__tela") == ["pede:screen", "pede:screen", "solta"]
+    pagina.evaluate("() => { document.dispatchEvent(new Event('visibilitychange')); }")
+    assert pagina.evaluate("() => window.__tela").count("pede:screen") == 2                          # fora do envio, não pede mais
+    assert pagina.input_value("#peca-legenda-facebook") == "Legenda do Facebook ainda não salva."
+    novo = db.execute("select id::text from radar_videos where peca_id = %s and situacao = 'aguardando_envio'", (pid,)).fetchone()[0]
+    assert db.execute("select situacao from radar_videos where id = %s", (vid,)).fetchone()[0] == "pronto"   # a pronta continua valendo
+    corpo = pagina.inner_text("#video-reel")
+    assert "Continuar o envio" in corpo and "Vídeo corrigido — gravação 1" in corpo and "Ver o vídeo corrigido" in corpo
+    # o fim do envio falha (os clipes já no armazenamento, a função recusa): o quadro volta ao "Continuar o envio"
+    fv.ARM["tus_parar"] = None
+
+    def concluido_falha(rota):
+        if json.loads(rota.request.post_data or "{}").get("acao") == "envio_concluido":
+            return rota.fulfill(status=409, content_type="application/json", body='{"message":"Ainda faltam clipes no armazenamento (nº 2): retome o envio."}')
+        return rota.continue_()
+    pagina.route("**/functions/v1/radar-video", concluido_falha)
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-continuar]")
+    pagina.wait_for_selector("#recado .erro >> text=Depois, clique em “Continuar o envio”", timeout=60000)
+    pagina.wait_for_selector(f"#video-envio [data-acao=video-continuar][data-id='{novo}']")
+    assert "Enviando a gravação" not in pagina.inner_text("#video-reel")
+    assert pagina.input_value("#peca-legenda-facebook") == "Legenda do Facebook ainda não salva."
+    pagina.unroute("**/functions/v1/radar-video")
+    # agora vai: só aqui a gravação anterior vira "substituido"
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-continuar]")
+    pagina.wait_for_selector("#recado >> text=Gravação enviada: na fila do corretor.", timeout=60000)
+    assert [db.execute("select situacao from radar_videos where id = %s", (x,)).fetchone()[0] for x in (vid, novo)] == ["substituido", "na_fila"]
+    assert pagina.input_value("#peca-legenda-facebook") == "Legenda do Facebook ainda não salva."
+    assert "Na fila do corretor" in pagina.inner_text("#video-reel")
+
+
+def test_video_envio_de_outra_pessoa_e_apaguei_sem_apagar_o_digitado(pagina, vtela):
+    """“Continuar o envio” só para quem começou o envio (ou o administrador), como o banco: os outros veem o aviso e o “Descartar
+    este envio”. "Apaguei do celular" e "Descartar" refazem só o quadro do corretor quando há texto não salvo na peça."""
+    db, fv = vtela
+    pid, ana, vid, _ = reel_com_video(db, fv)
+    outro = vb.criar(pid, ana, uid=ADMIN)["id"]                                 # o administrador começou um envio e parou
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    confirmacoes(pagina)
+    caixa = pagina.inner_text("#video-envio")
+    assert "foi começado por outra pessoa e não terminou: só ela (ou o administrador) continua" in caixa
+    assert pagina.locator("[data-acao=video-continuar], #video-arquivos").count() == 0
+    assert pagina.locator(f"#video-envio [data-acao=video-descartar][data-id='{outro}']").count() == 1
+    pagina.fill("#peca-legenda-facebook", "Texto digitado e não salvo.")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-apaguei]")
+    pagina.wait_for_selector("#video-apaguei-feito")
+    assert pagina.input_value("#peca-legenda-facebook") == "Texto digitado e não salvo."
+    limpar_recados(pagina)
+    pagina.click(f"#video-envio [data-acao=video-descartar][data-id='{outro}']")
+    pagina.wait_for_selector("#recado >> text=Envio descartado.")
+    assert "A gravação 1 continua valendo" in pagina.evaluate("() => window.__perguntas")[-1]
+    assert pagina.input_value("#peca-legenda-facebook") == "Texto digitado e não salvo."
+    assert db.execute("select situacao from radar_videos where id = %s", (outro,)).fetchone()[0] == "descartado"
+    assert db.execute("select situacao from radar_videos where id = %s", (vid,)).fetchone()[0] == "pronto"
+    assert pagina.locator("#video-envio").count() == 0 and "Enviar nova gravação" in pagina.inner_text("#video-reel")
 
 
 def test_video_relatorio_hostil_tudo_escapado_e_codigos_fora_do_mapa(pagina, vtela):
@@ -7239,9 +7353,12 @@ def test_video_previa_aprovacao_amarrada_ao_sha256_baixar_apaguei_e_registro(nav
         assert nome == f"reel-{data}.mp4" and fv.ARM["assinaturas"][-1] == (f"corrigido/{vid}/{SHA_VIDEO}.mp4", 300)
         assert requests.get(href, timeout=10).content == fv.ARM["objetos"][f"corrigido/{vid}/{SHA_VIDEO}.mp4"]["dados"]
         assert [a for (a,) in db.execute("select acao from radar_video_acessos where video_id = %s order by id", (vid,)).fetchall()][-1] == "baixar"
-        pg.click("#video-baixar [data-acao=video-apaguei]")
-        pg.wait_for_selector("#recado >> text=Registrado: os clipes foram apagados do celular")
-        assert db.execute("select apagado_aparelho_em is not null from radar_videos where id = %s", (vid,)).fetchone()[0] is True
+        # "Apaguei (depois de postar)": registra que quem baixou apagou o vídeo final, à parte dos clipes do envio
+        pg.click("#video-baixar [data-acao=video-apaguei-baixado]")
+        pg.wait_for_selector("#recado >> text=Registrado: você apagou o vídeo aprovado que baixou do celular e da nuvem pessoal.")
+        assert "Registrado: você apagou o vídeo aprovado do celular e da nuvem pessoal em" in pg.inner_text("#video-apaguei-baixado-feito")
+        assert db.execute("select acao, usuario::text from radar_video_acessos where video_id = %s order by id desc limit 1", (vid,)).fetchone() == (
+            "apagou", ADMIN)
         # copiar o roteiro e registrar o link do post (o banco exige o vídeo aprovado)
         pg.click("[data-acao=peca-copiar-roteiro]")
         pg.wait_for_selector("#recado >> text=Roteiro copiado")
@@ -7429,7 +7546,7 @@ def test_configuracoes_corretor_de_video_valida_e_testa(pagina, vtela):
     pagina.wait_for_selector("#diag-video .diag")
     diag = pagina.inner_text("#diag-video")
     assert "Armazenamento dos vídeos: bucket privado \"radar-videos\" (criado agora)" in diag and "Workflow do robô" in diag
-    assert "0 na fila" in diag and "0.0 de 60 minutos" in diag and fv.TOKEN_GITHUB not in diag
+    assert "0 na fila" in diag and "0.0 de 30 minutos" in diag and fv.TOKEN_GITHUB not in diag
     assert fv.ARM["buckets"]["radar-videos"]["public"] is False
 
 

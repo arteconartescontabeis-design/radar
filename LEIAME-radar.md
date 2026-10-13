@@ -1348,22 +1348,25 @@ que ele abriu na prévia e o banco confere com o vídeo pronto: a peça fica **a
 aparecem as pessoas marcadas; sem tela, documento ou cliente ao fundo; só a voz" e, se alguma pessoa marcada pediu no termo para ver a
 peça antes, "A pessoa viu o vídeo final". Aprovado: **"Baixar o vídeo aprovado"** (`reel-AAAA-MM-DD.mp4`, link de 5 minutos; o
 banco confere de novo o termo de hoje e o hash), poste no Instagram e no Facebook com a legenda copiada da peça (a capa se escolhe
-no aplicativo), marque **"Apaguei do celular e da nuvem pessoal"** e registre o link. O registro do reel sem o vídeo aprovado é
-recusado (RADAR317). "Desfazer aprovação" solta a amarra, e o vídeo pode mudar de novo.
+no aplicativo), marque **"Apaguei do celular e da nuvem pessoal (depois de postar)"** (fica registrado quem apagou o vídeo final) e
+registre o link. O registro do reel aprovado com esta versão sem o vídeo aprovado é recusado (RADAR317). "Desfazer aprovação" solta a amarra, e o vídeo pode mudar de novo.
 
 **8. Configurações → Corretor de vídeo** (só o administrador): `glossario` (os termos que a legenda escreve sempre do mesmo jeito, de
 1 a 200), `variantes` (como a transcrição erra cada termo, até 20 por termo: "é social" → eSocial), `duracao_max_s` (15 a 90; 45),
 `pausa_max_s` (0,6 a 2; 1,0), `pausa_bloco_s` (0,4 a 2; 0,8), `lufs` (-24 a -9; -14), `cartela_s` (2 a 5; 3), `cartela_extra` (até
 120 caracteres, como "Desde 1984 · (48) 3242-0530 · artecon.cnt.br"; os termos que a publicidade contábil não usa são recusados),
-`limite_min_mes` (1 a 300; 60), `retencao_dias` (7 a 120; 30) e `retencao_publicado_dias` (0 a 365; 30). **"Testar o corretor de
+`limite_min_mes` (1 a 300; 30), `retencao_dias` (7 a 120; 30) e `retencao_publicado_dias` (0 a 365; 30). **"Testar o corretor de
 vídeo"** confere o armazenamento privado (e o devolve a privado se alguém o abriu), o token do GitHub, o workflow do robô, a fila e os
 minutos do mês, sem mostrar segredo.
 
 **9. A cota da Azure.** O F0 dá **5 horas de transcrição por mês para o recurso inteiro**, divididas com o WhatsApp da Agenda (que se
 limita a 270 minutos). Cada envio conta a duração de toda a gravação enviada (antes dos cortes); o ajuste não conta. O Radar para
-sozinho em `limite_min_mes` (60 minutos por padrão), antes de a Azure recusar. Passando da cota, a Azure recusa (não cobra). Para
-trocar pelo serviço pago (*fast transcription*, num recurso S0) sem mudar código: cadastre no repositório privado os segredos
-`AZURE_FALA_MODO` = `rapido` e `AZURE_FALA_ENDPOINT` (o endereço do recurso) e troque a `AZURE_FALA_CHAVE`.
+sozinho em `limite_min_mes`: o padrão, **30 minutos**, é o que sobra dos 300 depois dos 270 da Agenda, e assim nenhum dos dois chega
+à recusa da Azure. **Não aumente o `limite_min_mes` no F0** (acima de 30, o Radar pode gastar os minutos que a Agenda reservou, e o
+WhatsApp dela passa a receber a recusa de cota da Azure antes do limite próprio), a não ser que a Agenda passe a reservar menos.
+Passando da cota, a Azure recusa (não cobra). Para trocar pelo serviço pago (*fast transcription*, num recurso S0) sem mudar código:
+cadastre no repositório privado os segredos `AZURE_FALA_MODO` = `rapido` e `AZURE_FALA_ENDPOINT` (o endereço do recurso), troque a
+`AZURE_FALA_CHAVE` e, aí sim, aumente o `limite_min_mes` (até 300).
 
 **10. Guarda, acesso e privacidade.**
 
@@ -1496,9 +1499,8 @@ de chave ou token passa pelo chat):
      do WhatsApp da Agenda e a do corretor).
    - O repositório **privado** `arteconartescontabeis-design/radar-video` já existe, com os segredos `AZURE_FALA_CHAVE` (a CHAVE 2
      do `artecon-voz`) e `AZURE_FALA_REGIAO` (`brazilsouth`).
-   - Reel já aprovado à mão na v0.21.0 e ainda sem o link registrado: registre o link **antes** do passo 2. Depois do SQL, o registro
-     do reel pede o vídeo corrigido (RADAR317): o caminho passa a ser "Desfazer aprovação", enviar a gravação ao corretor e aprovar
-     de novo.
+   - Reel já aprovado à mão na v0.21.0 (vídeo do Edits): continua como antes, também depois do SQL — baixe e poste o vídeo de
+     sempre e registre o link. O registro do reel sem o vídeo corrigido (RADAR317) vale só para a aprovação feita com a v0.22.0.
 1. A tela nova chega pelo repositório: o `index.html`, o `radar-pauta.js` **e o arquivo novo `radar-video.js`**, sempre juntos, na
    branch principal do GitHub. Aperte **Ctrl+F5 em todos os aparelhos** e confira no rodapé **Radar v0.22.0**. Com a tela nova e o
    banco antigo, o quadro do corretor na peça reel avisa que falta o SQL; o resto funciona como antes.
@@ -1506,7 +1508,8 @@ de chave ou token passa pelo chat):
    cria as tabelas do corretor, os 3 campos de Pessoas e termos e a configuração `corretor_video` com os padrões. Daqui em diante, a
    peça reel só fica pronta com o vídeo corrigido pronto.
 3. Edge Functions → **Deploy a new function** → nome exatamente **`radar-video`** → cole `supabase/functions/radar-video/index.ts`
-   → **"Verify JWT" ligado** → Deploy. Ela cria sozinha o armazenamento **privado** `radar-videos` no primeiro uso (passo 8).
+   → **"Verify JWT" ligado** → Deploy. Ela cria sozinha o armazenamento **privado** `radar-videos` no primeiro uso (passo 8), sem limite
+   de tamanho próprio: vale o limite global do projeto (Storage → Settings), que o passo 0 confere.
 4. SQL Editor → execute `sql/radar-video-agenda.sql` (as chaves `radar_video_robo` e `radar_video_agenda` no Vault, a reserva de 10
    em 10 minutos e a limpeza diária) e faça o **teste** `agenda_teste` do comentário do fim do arquivo: copie as linhas **sem os
    `--`** do começo (não há nada para trocar) e execute; o esperado é 200 com `{"ok":true,"versao":"0.22.0"}`. 401 "Invalid JWT": a

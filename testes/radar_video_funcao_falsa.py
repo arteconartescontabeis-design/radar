@@ -45,6 +45,7 @@ class FuncaoFalsa:
         self.rodadas: dict[str, int] = {}
         self.guardada: dict[str, int] = {}
         self.segundos: dict[str, float] = {}
+        self.audio_rodadas: set[tuple[str, int]] = set()
         self.final: dict[str, dict] = {}
         self.pedidos: dict[str, dict] = {}
         self.cabecalhos_ruins = 0
@@ -173,7 +174,9 @@ class FuncaoFalsa:
         if acao == "audio":
             o = self.objetos.get(f"trabalho/{vid}/{t}/palavras.json")
             guardou = bool(o and o["dados"] and o["tipo"].startswith("application/json"))
-            self.segundos[vid] = self.segundos.get(vid, 0) + float(c["segundos"])
+            if (vid, t) not in self.audio_rodadas:          # como radar_video_registrar_audio: uma vez por rodada
+                self.audio_rodadas.add((vid, t))
+                self.segundos[vid] = self.segundos.get(vid, 0) + float(c["segundos"])
             if guardou:
                 self.guardada[vid] = t
             return 200, {"palavras_guardadas": guardou, "restante_s": 3600 - self.segundos[vid]}

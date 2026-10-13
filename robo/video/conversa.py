@@ -14,8 +14,9 @@ assina, um caminho do pedido de cada vez (600 s para ler; o token de envio vale 
   * a resposta da função e do armazenamento nunca é impressa: só vira um código fixo — 401 robo_chave; o pedido que não está mais com
     o robô (RADAR316: substituído, descartado, ajustado ou vencido) pedido_perdido; o corrigido que já existe (409 nos links)
     ja_existe; 5xx, 409 e 404 do armazenamento storage; sem conexão ou tempo esgotado rede; o resto robo_recusado;
-  * pegar e audio nunca se repetem sozinhos (o pegar repetido tomaria outro pedido; o audio soma os segundos da cota de novo); links,
-    parcial, concluir e falhar tentam de novo na falha de rede ou do servidor (o concluir repetido que já valeu volta pedido_perdido);
+  * o pegar nunca se repete sozinho (o pegar repetido tomaria outro pedido); links, audio (o banco soma os segundos uma vez por rodada:
+    radar_video_registrar_audio), parcial, concluir e falhar tentam de novo na falha de rede ou do servidor (o concluir repetido que já
+    valeu volta pedido_perdido);
   * baixar: em blocos, até o tamanho declarado (arquivo_grande); subir: PUT com o tipo, cache-control de 60 s e x-upsert false, como o
     uploadToSignedUrl do supabase-js ("já existe" volta False: quem chama decide; o concluir confere tamanho e tipo no armazenamento).
 """
@@ -187,7 +188,9 @@ class Conversa:
         return out
 
     def audio(self, vid: str, t: int, segundos: float) -> dict:
-        return self.chamar("audio", repetir=False, id=vid, tentativa=t, segundos=round(float(segundos), 1))
+        """Os segundos transcritos na cota do mês. Repete na falha (o banco soma uma vez por rodada): o áudio já foi para a Azure, e a
+        chamada perdida deixaria a cota do F0, dividida com a Agenda, abaixo do real."""
+        return self.chamar("audio", id=vid, tentativa=t, segundos=round(float(segundos), 1))
 
     def parcial(self, vid: str, t: int, relatorio: dict) -> dict:
         return self.chamar("parcial", id=vid, tentativa=t, relatorio=relatorio)
