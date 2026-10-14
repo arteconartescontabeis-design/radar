@@ -335,24 +335,42 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.23.0"
+    assert pagina.inner_text(".versao") == "v0.24.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.23.0: a entrada do topo é a da versão em uso e conta ao dono a leitura do boletim da ITC na caixa inteira (a subpasta sim,
-    # o Lixo Eletrônico e os Itens Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas
-    # que rodam de novo
+    # v0.24.0: a entrada do topo é a da versão em uso e conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto
+    # Informativo que só o administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual
+    # citado sem aspas), as orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o
+    # administrador instala (o SQL antes, a função radar-ia e a tela, tudo junto)
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.23.0" and re.fullmatch(r"\d{2}/10/2026", data)
+    assert topo == pagina.evaluate("VERSAO") == "0.24.0" and re.fullmatch(r"\d{2}/10/2026", data)
+    texto = " ".join(itens)
+    for trecho in ["Diretrizes editoriais do escritório na IA", "“Fundamentação legal”", "link inventado sai do texto sozinho",
+                   "“Informativo — aguardando autorização”", "só o administrador autoriza a publicação", "“Conteúdo informativo”",
+                   "Conferência das Diretrizes antes de aprovar", "os 10 critérios", "o Aprovar fica travado", "“Revisei e assumo”",
+                   "citar a fonte não autoriza copiar", "“Imagem ilustrativa gerada por IA”",
+                   "Orientações para a IA (Configurações → Inteligência artificial)", "até 2.000 caracteres", "até 500 caracteres",
+                   "Só o administrador altera", "passam por cima delas", "a tela avisa", "a ilustração sai do mesmo jeito",
+                   "sql/radar-setup-v0.24.0.sql", "Deploy da função radar-ia", "Diretrizes editoriais e como ensinar a IA", "Da v0.23.0 para a v0.24.0",
+                   # e o que a revisão da etapa acertou: o ✗ que fica, o alcance da autorização, o selo do tamanho e a citação longa
+                   "Conferir de novo o mesmo texto não tira o ✗", "A autorização é a do assunto inteiro", "“Médio (notícia)”",
+                   "entre aspas e com a fonte citada no parágrafo, pode ficar", "quantos caracteres já foram usados"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
+    # v0.23.0: a entrada seguinte conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
+    # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
                    "“Application Mail.Read”", "de 30 minutos a 2 horas", "sql/radar-itc-agenda.sql", "dependent privileges exist",
                    "o banco continua na v0.22.0", "Da v0.22.0 para a v0.23.0"]:
         assert trecho in texto, trecho
-    # v0.22.0: a entrada seguinte conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e
-    # postar; a Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
+    # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -1627,8 +1645,9 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert nota(-1) == "" and nota(3) == "" and "nota_rebaixa" in nota(11) and "nota_rebaixa" in nota(2.5)   # v0.9.0
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
-    # a v0.21.0 mudou a função de IA (a ação “peca”, o Gerar com IA da peça da Pauta): a v0.20.0 passa a ser apontada como antiga
-    assert pagina.evaluate("[versaoMenor('0.20.0', FUNCAO_MINIMA), versaoMenor('0.21.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    # a v0.24.0 mudou a função de IA (a Conferência das Diretrizes no “Revisar com IA” e o texto Informativo): a v0.23.0 passa a ser
+    # apontada como antiga
+    assert pagina.evaluate("[versaoMenor('0.23.0', FUNCAO_MINIMA), versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2454,7 +2473,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.23.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.24.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3033,9 +3052,10 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
 
 
 
-def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pago(pagina, limpo, request):
-    """v0.18.0: o trecho igual ao da fonte pode ficar quando o mesmo parágrafo cita a fonte e o campo Fonte está preenchido;
-    o do boletim pago (ITC) nunca, nem citando."""
+def test_texto_igual_com_a_fonte_citada_so_e_aprovado_entre_aspas_e_o_do_boletim_pago_nunca(pagina, limpo, request):
+    """v0.18.0: o trecho igual ao da fonte podia ficar quando o mesmo parágrafo cita a fonte e o campo Fonte está preenchido;
+    o do boletim pago (ITC) nunca, nem citando. v0.24.0 (Diretriz 3: citar a fonte não autoriza copiar): citado fora de aspas, a
+    Conferência das Diretrizes marca os critérios 4 e 5 com ✗ e o Aprovar trava; entre aspas (a citação curta, com a fonte), aprova."""
     a, _ = assunto_com_texto(limpo)
     pago = ("A empresa optante deverá revisar o cadastro de produtos no sistema emissor antes da virada do ano para evitar "
             "rejeição das notas fiscais eletrônicas emitidas no primeiro dia útil.")
@@ -3062,7 +3082,8 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     salvar(citado)
     assert pagina.locator(".copia").count() == 0
     quadro = pagina.inner_text(".copia-citada")
-    assert "com a fonte citada no parágrafo" in quadro and "Fonte: Receita Federal do Brasil" in quadro and "(Receita Federal do Brasil)" in quadro
+    assert "com a fonte citada no parágrafo, mas sem aspas" in quadro and "Citar a fonte não autoriza copiar" in quadro and "(Receita Federal do Brasil)" in quadro
+    assert [pagina.get_attribute(f".conferencia li[data-item='{n}']", "class") for n in (4, 5)] == ["nao_atende", "nao_atende"]
     # sem o campo Fonte, a notícia sairia sem a fonte no fim: volta a impedir
     salvar(citado, fonte="")
     assert pagina.locator(".copia.falta-fonte").count() == 1 and "o campo Fonte está vazio" in pagina.inner_text(".copia")
@@ -3087,8 +3108,14 @@ def test_texto_igual_com_a_fonte_citada_pode_ser_aprovado_menos_o_do_boletim_pag
     pagina.wait_for_selector("#recado .erro >> text=frase do boletim pago")
     assert "Autorizar mesmo assim" not in pagina.inner_text("#recado")
     assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"
-    # citado e com o campo Fonte: aprova
+    # citado e com o campo Fonte, mas fora de aspas: a Conferência das Diretrizes trava (v0.24.0)
     salvar(citado)
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=Conferência das Diretrizes")
+    assert limpo.execute("select status from radar_conteudos").fetchone()[0] == "em_revisao"
+    # entre aspas, curto e com a fonte: nenhum quadro e aprova
+    salvar("## O que mudou\nSegundo a Receita Federal, “" + copiado[0].lower() + copiado[1:] + "”. É preciso ajustar o sistema emissor antes da virada do ano.")
+    assert pagina.locator(".copia, .copia-citada").count() == 0
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
 
@@ -3420,10 +3447,14 @@ def _png_base64(cor=(30, 90, 150)):
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_falha=None):
+def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_falha=None, ilustrar_avisos=None, conferencia=None,
+                  revisar_texto=True):
     """Responde no lugar da função radar-ia (a IA Central não roda aqui): grava o rascunho como a função faria. Com kit_falha
     ((status, mensagem)), o kit falha como na função antiga ou no banco sem o SQL da v0.20.0. v0.21.0: "peca" é a sugestão da peça da
-    Pauta que a função grava (radar_pauta_pecas.ia, sem mudar a versão da peça); peca_falha, como kit_falha."""
+    Pauta que a função grava (radar_pauta_pecas.ia, sem mudar a versão da peça); peca_falha, como kit_falha. v0.24.0: ilustrar_avisos,
+    os avisos da ilustração (a orientação da imagem que ficou de fora); conferencia, a lista dos 10 critérios que o "revisar" devolve,
+    gravada pelo banco como a função grava (radar_registrar_conferencia, com o login da editora); com revisar_texto=False, nada a
+    corrigir: o "revisar" só confere."""
     def responder(rota):
         corpo = json.loads(rota.request.post_data or "{}")
         pedidos.append(corpo)
@@ -3435,16 +3466,24 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_fal
         elif acao == "gerar":
             analise = corpo.get("analise") is True
             avisos = ["TEXTO PARA ANÁLISE, escrito a partir de fonte NÃO oficial (ITC Consultoria)."] if analise else []
+            oficial = db.execute("""select exists (select 1 from radar_assunto_capturas ac join radar_capturas c on c.id = ac.captura_id
+                                    join radar_fontes f on f.id = c.fonte_id where ac.assunto_id = %s and f.oficial)""", (corpo["assunto_id"],)).fetchone()[0]
+            if not analise and not oficial:                  # v0.24.0: sem texto oficial, o texto é Informativo (como a função marca)
+                avisos = ["INFORMATIVO (sem fundamentação legal específica), escrito a partir de fonte NÃO oficial (ITC Consultoria): "
+                          "só vai ao site e às redes depois que o administrador autoriza a publicação."]
             cid = db.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia)
                                 values (%s, 'informativo', 'Texto da IA', 'Corpo do texto gerado pela IA com tamanho suficiente.', 'ia', 'modelo', 'rascunho', %s)
                                 returning id""", (corpo["assunto_id"], json.dumps(avisos))).fetchone()[0]
-            r = {"conteudo_id": cid, "avisos": avisos, "titulos": []}
+            r = {"conteudo_id": cid, "avisos": avisos, "titulos": [], "informativo": bool(avisos) and not analise}
         elif acao == "ilustrar":
-            r = {"imagem": _png_base64()}
+            r = {"imagem": _png_base64(), **({"avisos": ilustrar_avisos} if ilustrar_avisos is not None else {})}
         elif acao == "verificar":                            # v0.16.0: a busca em fontes oficiais, como a função grava
             v = {"situacao": "nao_encontrada", "resumo": "Nada oficial encontrado.", "fontes": [], "divergencias": [], "em": "2026-10-09T12:00:00Z"}
             db.execute("update radar_assuntos set verificacao = %s, verificado_em = now() where id = %s", (json.dumps(v), corpo["assunto_id"]))
             r = {"verificacao": v}
+        elif acao == "revisar" and not revisar_texto:        # v0.24.0: nada a corrigir: só a conferência
+            r = {"conteudo_id": corpo["conteudo_id"], "pendencias": [], "marcas": 0, "copias": 0, "restam": {"marcas": 0, "copias": 0},
+                 "avisos_gravados": True, "titulo_mudou": False, "autorizacao_caiu": False, "corrigiu": False}
         elif acao == "revisar":                              # v0.16.0: reescreve o texto sem a cópia e sem a marca (e o título, se tiver marca)
             antes = db.execute("select titulo from radar_conteudos where id = %s", (corpo["conteudo_id"],)).fetchone()[0]
             db.execute("""update radar_conteudos set corpo = 'Segundo a Receita Federal, a regra nova explica como calcular a CBS na transição.',
@@ -3452,7 +3491,7 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_fal
                           avisos_ia = avisos_ia || '["Ficou fora do texto por falta de confirmação (confira na fonte oficial antes de publicar): prazo."]'
                           where id = %s""", (corpo["conteudo_id"],))
             r = {"conteudo_id": corpo["conteudo_id"], "pendencias": ["prazo"], "marcas": 0, "copias": 1, "restam": {"marcas": 0, "copias": 0},
-                 "avisos_gravados": True, "titulo_mudou": "[VERIFICAR" in antes, "autorizacao_caiu": False}
+                 "avisos_gravados": True, "titulo_mudou": "[VERIFICAR" in antes, "autorizacao_caiu": False, "corrigiu": True}
         elif acao == "kit" and kit_falha:
             return rota.fulfill(status=kit_falha[0], content_type="application/json", body=json.dumps({"message": kit_falha[1]}))
         elif acao == "kit":                                  # v0.20.0: o kit das redes, gravado como a função grava (não muda a versão do conteúdo)
@@ -3469,6 +3508,11 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_fal
             r = {"peca_id": corpo["peca_id"], "ia": s, "avisos": s["avisos"]}
         else:                                                # como a função: ação que ela não conhece é recusada (400)
             return rota.fulfill(status=400, content_type="application/json", body=json.dumps({"message": "Ação desconhecida."}))
+        if acao == "revisar" and conferencia is not None:     # v0.24.0: a lista dos 10 critérios, gravada pelo banco como a função grava
+            with como("authenticated", EDITOR) as x:
+                lido = x.execute("select atualizado_em from radar_conteudos where id = %s", (corpo["conteudo_id"],)).fetchone()[0]
+                r["conferencia"] = x.execute("select radar_registrar_conferencia(%s, %s, %s, 'claude-sonnet-4-6')",
+                                             (corpo["conteudo_id"], lido, json.dumps(conferencia))).fetchone()[0]
         rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
     pg.route("**/functions/v1/radar-ia", responder)
 
@@ -3574,7 +3618,9 @@ def test_gerar_com_ia_faz_o_kit_e_a_capa_padrao_e_rascunho_sem_fonte_oficial(pag
     pagina.wait_for_selector("#proximo-passo [data-acao=ia-tudo]")
     assert pagina.locator("[data-acao=ia-analise]").count() == 0
     pagina.click("#proximo-passo [data-acao=ia-tudo]")
-    pagina.wait_for_selector("text=Assunto sem fonte oficial: a IA escreveu o rascunho")
+    # v0.24.0: sem texto oficial, o texto é Informativo: fica em análise até o administrador autorizar a publicação
+    pagina.wait_for_selector("text=Assunto sem fonte oficial: a IA escreveu um texto Informativo")
+    assert "só vai ao site e às redes depois que o administrador autorizar a publicação" in pagina.inner_text("#recado")
     assert pedidos[-3]["acao"] == "verificar" and pedidos[-3].get("rapido") is True
     assert pedidos[-2]["acao"] == "gerar" and "analise" not in pedidos[-2]
     assert pedidos[-1]["acao"] == "kit"                                            # o kit das redes; nenhuma ilustração
@@ -3582,7 +3628,7 @@ def test_gerar_com_ia_faz_o_kit_e_a_capa_padrao_e_rascunho_sem_fonte_oficial(pag
     pagina.wait_for_selector("text=Já estão no conteúdo a capa padrão e o kit das redes.")
     assert not any(p["acao"] == "ilustrar" for p in pedidos)
     assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s and imagem_id is not null and ilustracao_id is null", (b,)).fetchone()[0] == 1
-    assert "TEXTO PARA ANÁLISE" not in pagina.inner_text("main")
+    assert "TEXTO PARA ANÁLISE" not in pagina.inner_text("main") and "Informativo — aguardando autorização" in pagina.inner_text("main")
     assert "https://www.itcnet.com.br/" in pagina.inner_text(".link-fonte") and "radar=" not in pagina.inner_text(".link-fonte")
 
 
@@ -5486,7 +5532,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.23.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.24.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -5500,7 +5546,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
-    assert "o administrador roda o sql/radar-setup-v0.22.0.sql" in pagina.inner_text("#pauta-sem-banco")
+    assert "o administrador roda o sql/radar-setup-v0.24.0.sql" in pagina.inner_text("#pauta-sem-banco")
 
 
 def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
@@ -7901,7 +7947,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.23.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.24.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -7994,3 +8040,384 @@ def test_pessoas_termo_do_corretor_quer_ver_menor_e_pecas_publicadas(pagina, vte
     lista.wait_for()
     assert "Peças publicadas com esta pessoa: retire das redes no prazo do termo." in lista.inner_text() and "Instagram (ver o post)" in lista.inner_text()
     assert lista.locator("a").get_attribute("href") == "https://www.instagram.com/p/ABC123/"
+
+
+# ------------------------------------------------ v0.24.0: orientações para a IA (Configurações → Inteligência artificial)
+AJUDA_ORIENTACOES = ("A IA segue estas orientações em todo pedido. As regras legais (fonte oficial, sem copiar, sem pessoas reais nem marcas "
+                     "na imagem, identificação legal) continuam valendo e passam por cima delas.")
+
+
+@pytest.fixture()
+def sem_orientacoes(limpo, request):
+    """A instalação sem orientações salvas (como antes da v0.24.0); no fim, a chave sai de novo."""
+    apagar = lambda: limpo.execute("delete from radar_config where chave = 'ia_orientacoes'")
+    apagar()
+    request.addfinalizer(apagar)
+    return limpo
+
+
+def abrir_configuracoes(pg, email="admin@artecon.test"):
+    entrar(pg, email)
+    pg.wait_for_selector("text=Painel do dia")
+    pg.click("nav.abas >> text=Configurações")
+    pg.wait_for_selector("#ia-orientacoes")
+
+
+def test_orientacoes_para_a_ia_o_administrador_salva_e_rele(pagina, sem_orientacoes):
+    """v0.24.0: no painel da IA (Configurações), os dois campos de texto livre com o exemplo no placeholder, a ajuda e o contador de
+    caracteres; o Salvar grava em radar_config.ia_orientacoes ({"texto", "imagem"}, sem os espaços das pontas), com o recado de sempre
+    e a trilha, e a tela relê o que foi salvo (também depois de recarregar). Os blocos em JSON continuam os mesmos 8."""
+    db = sem_orientacoes
+    abrir_configuracoes(pagina)
+    painel = pagina.locator("#painel-ia")
+    assert painel.locator("h3").inner_text() == "Orientações para a IA" and AJUDA_ORIENTACOES in painel.inner_text()
+    assert pagina.locator("form[data-form=config]").count() == 8 and pagina.locator("#painel-ia form[data-form=iaOrientacoes]").count() == 1
+    texto, imagem = pagina.locator("#ia-ori-texto"), pagina.locator("#ia-ori-imagem")
+    assert texto.input_value() == "" and imagem.input_value() == ""
+    assert texto.get_attribute("placeholder").startswith("Ex.: Tom próximo e direto") and "Post de que gostamos" in texto.get_attribute("placeholder")
+    assert imagem.get_attribute("placeholder").startswith("Ex.: Ilustração limpa")
+    assert "Orientações para os textos" in pagina.inner_text("label[for=ia-ori-texto]") and "Orientações para as imagens" in pagina.inner_text("label[for=ia-ori-imagem]")
+    assert pagina.inner_text("#ia-ori-texto-conta") == "0 de 2.000 caracteres" and pagina.inner_text("#ia-ori-imagem-conta") == "0 de 500 caracteres"
+    escrito = "Tom próximo e direto, frases curtas. 😀\nPost de que gostamos: “O prazo mudou. Veja o que fazer.”"
+    texto.fill("  " + escrito + "\n\n")
+    assert pagina.inner_text("#ia-ori-texto-conta") == f"{len(escrito) + 4} de 2.000 caracteres"        # o emoji conta um
+    imagem.fill("Ilustração limpa, cenas de pequenos comércios.")
+    assert pagina.inner_text("#ia-ori-imagem-conta") == "46 de 500 caracteres"
+    pagina.locator("#ia-orientacoes button").click()
+    pagina.wait_for_selector("#recado >> text=Configuração salva.")
+    assert db.execute("select valor from radar_config where chave = 'ia_orientacoes'").fetchone()[0] == {
+        "texto": escrito, "imagem": "Ilustração limpa, cenas de pequenos comércios."}
+    assert db.execute("select count(*) from radar_auditoria where tabela = 'radar_config' and registro_id = 'ia_orientacoes'").fetchone()[0] == 1
+    pagina.wait_for_selector("#ia-orientacoes >> text=alterado em")
+    assert pagina.locator("#ia-ori-texto").input_value() == escrito and pagina.inner_text("#ia-ori-texto-conta") == f"{len(escrito)} de 2.000 caracteres"
+    pagina.reload()
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Configurações")
+    pagina.wait_for_selector("#ia-orientacoes")
+    assert pagina.locator("#ia-ori-texto").input_value() == escrito and pagina.locator("#ia-ori-imagem").input_value() == "Ilustração limpa, cenas de pequenos comércios."
+    # apagar tudo também é salvar (vazio = sem orientação: a IA trabalha como antes)
+    pagina.locator("#ia-ori-texto").fill("")
+    pagina.locator("#ia-ori-imagem").fill("")
+    limpar_recados(pagina)
+    pagina.locator("#ia-orientacoes button").click()
+    pagina.wait_for_selector("#recado >> text=Configuração salva.")
+    assert db.execute("select valor from radar_config where chave = 'ia_orientacoes'").fetchone()[0] == {"texto": "", "imagem": ""}
+
+
+def test_orientacoes_para_a_ia_limite_de_caracteres_e_boletim_pago(pagina, sem_orientacoes, request):
+    """v0.24.0: até 2.000 caracteres no texto e 500 na imagem, contados por letra (o emoji é um). Passou, o contador fica vermelho e diz
+    para encurtar, e o Salvar recusa com o recado (nada é gravado). Frase igual à do boletim pago (ITC) também não entra: as orientações
+    vão à IA em todo pedido, e o kit e a peça nunca levam o boletim."""
+    db = sem_orientacoes
+    abrir_configuracoes(pagina)
+    texto, imagem, salvar = pagina.locator("#ia-ori-texto"), pagina.locator("#ia-ori-imagem"), pagina.locator("#ia-orientacoes button")
+    texto.fill("a" * 2001)
+    conta = pagina.locator("#ia-ori-texto-conta")
+    assert conta.inner_text() == "2.001 de 2.000 caracteres — passou do limite: encurte antes de salvar" and "passou" in conta.get_attribute("class")
+    salvar.click()
+    pagina.wait_for_selector("#recado .erro >> text=As orientações para os textos têm 2.001 caracteres; o limite é 2.000. Encurte e salve de novo.")
+    texto.fill("😀" * 2000)                                                         # 2.000 letras (4.000 no JavaScript)
+    assert conta.inner_text() == "2.000 de 2.000 caracteres" and "passou" not in conta.get_attribute("class")
+    imagem.fill("b" * 501)
+    assert pagina.inner_text("#ia-ori-imagem-conta") == "501 de 500 caracteres — passou do limite: encurte antes de salvar"
+    limpar_recados(pagina)
+    salvar.click()
+    pagina.wait_for_selector("#recado .erro >> text=As orientações para as imagens têm 501 caracteres; o limite é 500. Encurte e salve de novo.")
+    assert db.execute("select count(*) from radar_config where chave = 'ia_orientacoes'").fetchone()[0] == 0     # nada foi gravado
+    # o boletim pago: a frase de uma matéria guardada (de qualquer assunto) não entra
+    carregar_fontes_novas(db, request)
+    boletim = ("Na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros "
+               "de produtos antes da virada do ano.")
+    db.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo) select id, 'https://www.itcnet.com.br/?radar=ori',
+                  'Matéria do boletim', %s, md5('materia orientacoes') from radar_fontes where slug = 'itc-email'""", (boletim,))
+    imagem.fill("")
+    texto.fill("Escreva assim: " + boletim)
+    limpar_recados(pagina)
+    salvar.click()
+    pagina.wait_for_selector("#recado .erro >> text=As orientações têm frase igual à do boletim pago (ITC)")
+    assert db.execute("select count(*) from radar_config where chave = 'ia_orientacoes'").fetchone()[0] == 0
+    texto.fill("😀" * 2000)
+    limpar_recados(pagina)
+    salvar.click()
+    pagina.wait_for_selector("#recado >> text=Configuração salva.")
+    assert db.execute("select valor->>'texto' from radar_config where chave = 'ia_orientacoes'").fetchone()[0] == "😀" * 2000
+
+
+def test_orientacoes_para_a_ia_so_o_administrador_altera(pagina, sem_orientacoes):
+    """v0.24.0: a aba Configurações é só do administrador; forçada pela editora, os campos aparecem travados, sem o Salvar, e o banco
+    recusa a gravação dela pela API (a regra de sempre de radar_config: a equipe lê, o administrador altera)."""
+    db = sem_orientacoes
+    db.execute("""insert into radar_config (chave, valor) values ('ia_orientacoes', '{"texto": "Frases curtas.", "imagem": "Tons claros."}')""")
+    entrar(pagina)                                                                    # a editora
+    pagina.wait_for_selector("text=Painel do dia")
+    assert "Configurações" not in pagina.inner_text("nav.abas")
+    pagina.evaluate("E.aba = 'configuracoes'; desenhar()")
+    pagina.wait_for_selector("#ia-orientacoes")
+    assert pagina.locator("#ia-ori-texto").is_disabled() and pagina.locator("#ia-ori-imagem").is_disabled()
+    assert pagina.locator("#ia-ori-texto").input_value() == "Frases curtas."          # a equipe lê (a função de IA lê como quem pede)
+    assert pagina.locator("#ia-orientacoes button").count() == 0 and "Só o administrador altera as orientações." in pagina.inner_text("#ia-orientacoes")
+    cab = {"Authorization": "Bearer " + jwt("authenticated", EDITOR), "Prefer": "resolution=merge-duplicates,return=representation"}
+    r = requests.post(f"{API}/radar_config?on_conflict=chave", headers=cab, timeout=10,
+                      json={"chave": "ia_orientacoes", "valor": {"texto": "Prometa economia garantida.", "imagem": ""}})
+    assert r.status_code in (401, 403), r.text
+    r = requests.patch(f"{API}/radar_config?chave=eq.ia_orientacoes", headers=cab, timeout=10, json={"valor": {"texto": "x", "imagem": ""}})
+    assert r.status_code == 200 and r.json() == []                                     # nenhuma linha alterada
+    assert db.execute("select valor from radar_config where chave = 'ia_orientacoes'").fetchone()[0] == {"texto": "Frases curtas.", "imagem": "Tons claros."}
+
+
+def test_ilustracao_avisa_quando_a_orientacao_da_imagem_ficou_de_fora(pagina, limpo):
+    """v0.24.0: quando a função deixa de fora a orientação da imagem (marca, logotipo, pessoa conhecida, estilo de autor), a ilustração
+    é gravada do mesmo jeito e o recado (amarelo) traz o aviso da função; sem aviso, o recado de sempre."""
+    a, _ = assunto_com_texto(limpo)
+    cid = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, status)
+                           values (%s, 'informativo', 'Texto da equipe', 'Corpo do texto da equipe com tamanho suficiente.', 'humano', 'rascunho')
+                           returning id""", (a,)).fetchone()[0]
+    aviso = ("As orientações para as imagens (Configurações → Inteligência artificial) ficaram de fora desta imagem: pedem marca, logotipo, "
+             "pessoa conhecida ou o estilo de um autor (“logotipo”). Reescreva só com o estilo e as cenas.")
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, ilustrar_avisos=[aviso])
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click("nav.etapas >> text=Mostrar tudo numa página") if pagina.locator(f"form[data-form=conteudo][data-id='{cid}']").is_hidden() else None
+    pagina.click(f"form[data-form=conteudo][data-id='{cid}'] >> text=Gerar ilustração com IA")
+    recado = pagina.locator("#recado div.aviso", has_text="Ilustração gerada pela IA.")
+    recado.wait_for()
+    assert recado.inner_text() == ("Ilustração gerada pela IA. A capa foi montada com ela ao fundo; confira se combina com o assunto antes de "
+                                   "aprovar. " + aviso)
+    assert limpo.execute("select ilustracao_id is not null from radar_conteudos where id = %s", (cid,)).fetchone()[0] is True
+    assert [p["acao"] for p in pedidos] == ["ilustrar"]
+
+
+# ------------------------------------------------ v0.24.0: Conferência das Diretrizes e texto Informativo
+CONFERENCIA_OK = [{"item": n, "situacao": "atende", "motivo": f"Critério {n} atendido."} for n in range(1, 11)]
+COPIADO_FONTE = ("O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9% (nove décimos por cento) a partir de 1º de "
+                 "janeiro de 2027")
+
+
+def conteudo_em_revisao(db, a, corpo="Texto próprio da Artecon sobre a CBS na transição, escrito pela equipe para os clientes.",
+                        titulo="CBS: o que muda", avisos=None):
+    return db.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por, avisos_ia)
+                         values (%s, 'informativo', %s, %s, 'em_revisao', %s, %s) returning id""",
+                      (a, titulo, corpo, "ia" if avisos else "humano", json.dumps(avisos or []))).fetchone()[0]
+
+
+def conferir_pelo_banco(conteudo, itens=CONFERENCIA_OK):
+    """A lista da IA gravada como a função radar-ia grava (com o login da editora)."""
+    with como("authenticated", EDITOR) as x:
+        lido = x.execute("select atualizado_em from radar_conteudos where id = %s", (conteudo,)).fetchone()[0]
+        return x.execute("select radar_registrar_conferencia(%s, %s, %s, 'claude-sonnet-4-6')", (conteudo, lido, json.dumps(itens))).fetchone()[0]
+
+
+def trocar_para(pg, email):
+    pg.click("header >> text=Sair")
+    pg.wait_for_selector("input[type=password]")
+    pg.fill("#email", email); pg.fill("#senha", SENHA); pg.click("text=Entrar")
+    pg.wait_for_selector("text=Painel do dia")
+
+
+def test_conferencia_das_diretrizes_trava_o_aprovar_ate_os_10_criterios(pagina, limpo, conferencia_de_verdade):
+    """v0.24.0 (Diretriz 7): no conteúdo em revisão, o quadro “Conferência das Diretrizes” com os 10 critérios. Sem a lista da IA, todos
+    “?” (não conferido) e o Aprovar fica travado (recado; o banco também recusa). “Revisar com IA” confere (a lista vem da função e o
+    banco a grava): com um ✗, o quadro mostra o motivo e continua travado; a editora não tem “Revisei e assumo”. Com os 10 atendidos (ou
+    “não se aplica”: sem capa, o banco marca a imagem assim), aprova. Conferir de novo o mesmo texto não tira o ✗ (só um texto novo ou o
+    “Revisei e assumo” do administrador)."""
+    a, _ = assunto_com_texto(limpo)
+    c = conteudo_em_revisao(limpo, a)
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    um_x = [dict(x, situacao="nao_atende", motivo="O título promete mais que o texto.") if x["item"] == 7 else x for x in CONFERENCIA_OK]
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=um_x, revisar_texto=False)
+    abrir_assunto(pagina, "CBS na transição")
+    quadro = pagina.locator(f"#conf-{c}")
+    assert quadro.locator("h4").inner_text() == "Conferência das Diretrizes" and quadro.get_attribute("data-situacao") == "falta"
+    criterios = pagina.evaluate("CRITERIOS_TELA")
+    assert len(criterios) == 10 and [quadro.locator("li b").nth(i).inner_text() for i in range(10)] == [f"{i + 1}. {t}" for i, t in enumerate(criterios)]
+    assert quadro.locator("li.pendente").count() == 10 and quadro.locator("li .marca").first.inner_text() == "?"
+    assert "A aprovação fica travada" in quadro.inner_text() and quadro.locator("[data-acao=abrir-assumir]").count() == 0      # editora
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=Conferência das Diretrizes: há critério com ✗ ou ainda não conferido")
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "em_revisao"
+    with como("authenticated", EDITOR) as x, pytest.raises(Exception, match="RADAR181"):         # o banco também recusa (sem a tela)
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    # "Revisar com IA" confere: um critério não atende
+    quadro.locator("[data-acao=ia-revisar]").click()
+    pagina.wait_for_selector("#recado >> text=Conferência das Diretrizes: 1 critério(s) não atende(m) (7)")
+    assert pedidos[-1]["acao"] == "revisar" and pedidos[-1]["conteudo_id"] == c
+    quadro = pagina.locator(f"#conf-{c}")
+    assert quadro.locator("li.nao_atende").count() == 1 and "O título promete mais que o texto." in quadro.locator("li[data-item='7']").inner_text()
+    assert quadro.locator("li[data-item='7'] .marca").inner_text() == "✗" and quadro.locator("li[data-item='1'] .marca").inner_text() == "✓"
+    assert quadro.locator("li[data-item='6']").get_attribute("class") == "nao_se_aplica"          # sem capa: o banco confere a imagem
+    assert "Conferido com IA em" in quadro.inner_text()
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=Conferência das Diretrizes")
+    # conferir de novo o MESMO texto não tira o ✗ (a editora não passa por cima da IA, nem pela API): continua travado
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK, revisar_texto=False)
+    limpar_recados(pagina)
+    pagina.locator(f"#conf-{c} [data-acao=ia-revisar]").click()
+    confirmar_senha_ia(pagina)                                                   # a 2ª consulta à IA no assunto pede a senha
+    pagina.wait_for_selector("#recado >> text=Conferência das Diretrizes: 1 critério(s) não atende(m) (7)")
+    assert "O título promete mais que o texto." in pagina.inner_text(f"#conf-{c} li[data-item='7']")
+    # a editora corrige o título (o texto novo é outra versão) e confere de novo: os 10 atendidos, aprova
+    pagina.fill(f"form[data-form=conteudo][data-id='{c}'] [name=titulo]", "CBS: o que muda na transição")
+    pagina.click(f"form[data-form=conteudo][data-id='{c}'] [data-acao=salvar-conteudo]")
+    pagina.wait_for_selector("#recado >> text=Conteúdo salvo.")
+    assert "A conferência anterior era de outra versão" in pagina.inner_text(f"#conf-{c}")
+    limpar_recados(pagina)
+    pagina.locator(f"#conf-{c} [data-acao=ia-revisar]").click()
+    confirmar_senha_ia(pagina)
+    pagina.wait_for_selector("#recado >> text=Conferência das Diretrizes: os 10 critérios atendem (ou não se aplicam).")
+    assert "a aprovação está liberada" in pagina.inner_text(f"#conf-{c}")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
+    assert limpo.execute("select status, aprovado_por::text from radar_conteudos where id = %s", (c,)).fetchone() == ("aprovado", EDITOR)
+
+
+def test_conferencia_marca_por_codigo_o_trecho_copiado_sem_aspas(pagina, limpo, conferencia_de_verdade):
+    """v0.24.0: o que dá para conferir por código, a tela confere agora, por cima da lista da IA: o trecho igual ao da fonte fora de aspas,
+    mesmo com a fonte citada no parágrafo (Diretriz 3: citar a fonte não autoriza copiar; até a v0.23.0 ele podia ficar), marca os
+    critérios 4 e 5 com ✗ e trava a aprovação; o quadro do trecho tem “Revisar com IA” e “Autorizar mesmo assim” (com o motivo), e a
+    autorização libera os dois critérios. O [VERIFICAR] marca os critérios 2 e 8."""
+    a, _ = assunto_com_texto(limpo)
+    citado = "## O que mudou\nSegundo a Receita Federal, " + COPIADO_FONTE[0].lower() + COPIADO_FONTE[1:] + ". É preciso ajustar o sistema emissor antes da virada do ano."
+    c = conteudo_em_revisao(limpo, a, citado)
+    conferir_pelo_banco(c)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    caixa = pagina.locator(".copia-citada")
+    assert "com a fonte citada no parágrafo, mas sem aspas" in caixa.inner_text() and "Citar a fonte não autoriza copiar (Diretriz 3)" in caixa.inner_text()
+    assert caixa.locator("[data-acao=ia-revisar]").count() == 1 and caixa.locator("[data-acao=abrir-autorizar-copia]").count() == 1
+    quadro = pagina.locator(f"#conf-{c}")
+    assert [quadro.locator(f"li[data-item='{n}']").get_attribute("class") for n in (4, 5)] == ["nao_atende", "nao_atende"]
+    assert "fora de aspas" in quadro.locator("li[data-item='4']").inner_text() and quadro.locator("li.nao_atende").count() == 2
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado .erro >> text=Conferência das Diretrizes")
+    # a equipe autoriza o trecho (transcrição indispensável, com a fonte): os critérios 4 e 5 voltam ao que a IA conferiu
+    caixa.locator("[data-acao=abrir-autorizar-copia]").click()
+    pagina.fill("#motivo-copia", "Transcrição do art. 2º da IN, com a fonte citada")
+    pagina.locator(".motivo-copia >> text=Autorizar mesmo assim").click()
+    pagina.wait_for_selector("#recado >> text=Trecho igual ao da fonte autorizado")
+    assert "Autorizado mesmo assim" in pagina.inner_text(".copia-citada")
+    assert pagina.locator(f"#conf-{c} li.nao_atende").count() == 0
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
+    # o [VERIFICAR]: critérios 2 e 8
+    d = conteudo_em_revisao(limpo, a, "O prazo vai até [VERIFICAR: data] de outubro, segundo a equipe.", titulo="Prazo da CBS")
+    conferir_pelo_banco(d)
+    pagina.reload()
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.wait_for_selector(f"#conf-{d}")
+    assert [pagina.locator(f"#conf-{d} li[data-item='{n}']").get_attribute("class") for n in (2, 8)] == ["nao_atende", "nao_atende"]
+    # a transcrição literal longa (mais de 40 palavras), entre aspas e com a fonte citada no parágrafo, é a que a Diretriz 3 aceita:
+    # quadro informativo, sem “sem aspas” e sem ✗ nos critérios 4 e 5
+    e = conteudo_em_revisao(limpo, a, "Segundo a Receita Federal, a norma diz: “" + TEXTO + "”\n\nTexto próprio da Artecon sobre a CBS.", titulo="Texto da IN")
+    limpo.execute("update radar_conteudos set fonte_credito = 'Receita Federal do Brasil' where id = %s", (e,))
+    conferir_pelo_banco(e)
+    pagina.reload()
+    abrir_assunto(pagina, "CBS na transição")
+    form = pagina.locator(f"form[data-form=conteudo][data-id='{e}']")
+    form.locator(".copia-aspas").wait_for()
+    assert "Transcrição literal entre aspas em 1 trecho(s), com a fonte citada no parágrafo." in form.locator(".copia-aspas").inner_text()
+    assert form.locator(".copia-citada, .copia").count() == 0 and form.get_attribute("data-copiados") == "0"
+    assert [pagina.locator(f"#conf-{e} li[data-item='{n}']").get_attribute("class") for n in (4, 5)] == ["atende", "atende"]
+
+
+def test_revisei_e_assumo_so_para_o_administrador_e_grava_o_motivo(pagina, limpo, conferencia_de_verdade):
+    """v0.24.0: com critério com ✗ ou não conferido, só o administrador libera a aprovação, com “Revisei e assumo” e o motivo (pelo menos 10
+    caracteres), que fica na conferência e no Histórico; o quadro mostra quem assumiu e por quê, e a editora aprova. Mudou o texto, cai."""
+    a, _ = assunto_com_texto(limpo)
+    c = conteudo_em_revisao(limpo, a)
+    conferir_pelo_banco(c, [dict(x, situacao="nao_atende", motivo="Prazo sem confirmação.") if x["item"] == 8 else x for x in CONFERENCIA_OK])
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    quadro = pagina.locator(f"#conf-{c}")
+    quadro.locator("[data-acao=abrir-assumir]").click()
+    pagina.fill("#motivo-assumir", "curto")
+    pagina.locator(".motivo-assumir [data-acao=assumir-conferencia]").click()
+    pagina.wait_for_selector("#recado .erro >> text=Escreva o motivo (pelo menos 10 caracteres)")
+    pagina.fill("#motivo-assumir", "Conferi o prazo no site da Receita e assumo.")
+    pagina.locator(".motivo-assumir [data-acao=assumir-conferencia]").click()
+    pagina.wait_for_selector("#recado >> text=Revisado e assumido")
+    assumida = limpo.execute("select conferencia->'assumida' from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    assert assumida["por"] == ADMIN and assumida["motivo"] == "Conferi o prazo no site da Receita e assumo."
+    assert limpo.execute("""select count(*) from radar_auditoria where tabela = 'radar_conteudos' and usuario = %s
+                            and depois->'conferencia'->'assumida'->>'motivo' = 'Conferi o prazo no site da Receita e assumo.'""", (ADMIN,)).fetchone()[0] == 1
+    quadro = pagina.locator(f"#conf-{c}")
+    assert "Revisado e assumido pelo administrador" in quadro.inner_text() and "Conferi o prazo no site da Receita e assumo." in quadro.inner_text()
+    assert quadro.locator("[data-acao=abrir-assumir]").count() == 0 and quadro.get_attribute("data-situacao") == "ok"
+    # o motivo fica legível no Histórico (e a lista da IA também, com os critérios que não atendem)
+    pagina.click("nav.abas >> text=Histórico")
+    pagina.wait_for_selector("text=Trilha de auditoria")
+    historico = pagina.inner_text("main")
+    assert "Conferência das Diretrizes: “Revisei e assumo” — motivo: “Conferi o prazo no site da Receita e assumo.”" in historico
+    assert "Conferência das Diretrizes: 1 critério(s) não atende(m) (8)" in historico and "[object Object]" not in historico
+    trocar_para(pagina, "editora@artecon.test")
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click("form[data-form=conteudo] >> text=Aprovar")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
+    # outro texto, com ✗: a editora não tem o botão, e pela API o banco recusa
+    d = conteudo_em_revisao(limpo, a, titulo="Outro texto")
+    pagina.reload()
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.wait_for_selector(f"#conf-{d}")
+    assert pagina.locator(f"#conf-{d} [data-acao=abrir-assumir]").count() == 0
+    with como("authenticated", EDITOR) as x, pytest.raises(Exception, match="RADAR186"):
+        x.execute("select radar_assumir_conferencia(%s, 'A editora tenta assumir.', (select atualizado_em from radar_conteudos where id = %s))", (d, d))
+    # com [VERIFICAR] no texto, nem o administrador tem o “Revisei e assumo”: a trava dele vale sempre, e o quadro diz isso
+    v = conteudo_em_revisao(limpo, a, "O prazo vai até [VERIFICAR: data] de outubro, segundo a equipe.", titulo="Prazo da CBS")
+    trocar_para(pagina, "admin@artecon.test")
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.wait_for_selector(f"#conf-{v}")
+    assert pagina.locator(f"#conf-{v} [data-acao=abrir-assumir]").count() == 0 and pagina.locator(f"#conf-{d} [data-acao=abrir-assumir]").count() == 1
+    assert "nem o “Revisei e assumo” do administrador passa por cima deles" in pagina.inner_text(f"#conf-{v}")
+
+
+def test_informativo_so_publica_depois_da_autorizacao_do_administrador(pagina, limpo):
+    """v0.24.0 (Diretriz 2 e decisão do dono): o texto Informativo fica em análise com o selo “Informativo — aguardando autorização”: sem
+    o botão Aprovar (o banco também recusa, RADAR180) e com o passo “Autorizar o Informativo” na trilha. Só o administrador autoriza, com
+    o motivo (o mesmo “Publicar mesmo assim”, gravado no assunto e no Histórico); autorizado, o selo vira “Conteúdo informativo”, a
+    aprovação segue como a dos outros e a prévia do site tem a linha “Conteúdo informativo” no fim."""
+    a, _ = assunto_com_texto(limpo)
+    marca = ("INFORMATIVO (sem fundamentação legal específica), escrito a partir de fonte NÃO oficial (Portal Contábil SC): só vai ao site e às "
+             "redes depois que o administrador autoriza a publicação (“Autorizar a publicação do Informativo”, com o motivo). Confira cada "
+             "número, data e fonte antes de aprovar.")
+    c = conteudo_em_revisao(limpo, a, "Segundo o Portal Contábil SC, as empresas estão revisando os cadastros para a CBS.", avisos=[marca])
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    form = pagina.locator(f"form[data-form=conteudo][data-id='{c}']")
+    assert "Informativo — aguardando autorização" in form.locator(".selo").all_inner_texts()
+    # o tamanho do texto tem o nome do seletor: “Informativo” fica só para o texto sem base legal
+    assert "Médio (notícia)" in form.locator(".selo").all_inner_texts() and "Informativo" not in form.locator(".selo").all_inner_texts()
+    assert form.get_attribute("data-informativo") == "aguardando" and "só o administrador autoriza a publicação" in form.locator(".informativo-aviso").inner_text()
+    assert form.locator("[data-acao=aprovar]").count() == 0 and form.locator("[data-status=rejeitado]").count() == 1
+    assert form.locator("[data-acao=abrir-motivo]").count() == 0                                   # a editora não autoriza
+    assert "Autorizar o Informativo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo [data-acao=abrir-motivo]").count() == 0
+    with como("authenticated", EDITOR) as x, pytest.raises(Exception, match="RADAR180"):
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    # o administrador autoriza, com o motivo, pelo botão do Próximo passo (o aviso no cartão tem o mesmo botão)
+    trocar_para(pagina, "admin@artecon.test")
+    abrir_assunto(pagina, "CBS na transição")
+    assert pagina.locator(f"form[data-form=conteudo][data-id='{c}'] .informativo-aviso [data-acao=abrir-motivo]").count() == 1
+    assert pagina.locator("#proximo-passo [data-acao=abrir-motivo][data-informativo]").count() == 1
+    pagina.locator("#proximo-passo [data-acao=abrir-motivo][data-informativo]").click()
+    rotulo = pagina.inner_text("label[for=motivo-liberar]")
+    assert "Autorizar a publicação do Informativo" in rotulo and "A autorização vale para o assunto inteiro" in rotulo
+    pagina.fill("#motivo-liberar", "Conferi os números no portal e autorizo.")
+    pagina.locator(".motivo-liberar [data-acao=liberar-publicacao]").click()
+    pagina.wait_for_selector("#recado >> text=Publicação do Informativo autorizada")
+    assert limpo.execute("select liberado_sem_base_por::text, liberado_sem_base_motivo from radar_assuntos where id = %s",
+                         (a,)).fetchone() == (ADMIN, "Conferi os números no portal e autorizo.")
+    form = pagina.locator(f"form[data-form=conteudo][data-id='{c}']")
+    assert "Conteúdo informativo" in form.locator(".selo").all_inner_texts() and form.get_attribute("data-informativo") == "autorizado"
+    assert "Conferi os números no portal e autorizo." in form.locator(".informativo-aviso").inner_text()
+    form.locator("[data-acao=previa]").click()
+    previa = pagina.inner_text("#previa-site .previa")
+    assert previa.rstrip().endswith("Conteúdo informativo")
+    pagina.click("#previa-site >> text=Fechar")
+    form.locator("[data-acao=aprovar]").click()
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"

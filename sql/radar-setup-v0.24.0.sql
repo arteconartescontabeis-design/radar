@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.22.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes e corretor de vídeo dos reels
+-- radar-setup-v0.24.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes e corretor de vídeo dos reels
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -11,7 +11,11 @@
 -- v0.22.0: corretor de vídeo dos reels (radar_videos, radar_video_acessos, funções radar_video_*; o vídeo aprovado fica amarrado à
 -- peça pelo sha256). Os arquivos ficam no bucket PRIVADO radar-videos, que só a função radar-video toca; a agenda dela (reserva da
 -- fila e limpeza diária, pg_cron) e as chaves do Vault ficam em sql/radar-video-agenda.sql, rodado DEPOIS deste.
--- Reversão: radar-reversao-v0.22.0.sql
+-- v0.24.0: Diretrizes editoriais do escritório. A "Conferência das Diretrizes" (os 10 critérios antes de aprovar: a lista da IA e o
+-- "Revisei e assumo" do administrador) fica em radar_conteudos.conferencia, presa à versão do texto, e a aprovação confere; o texto
+-- INFORMATIVO (sem fundamentação legal específica) só é aprovado depois que o administrador autoriza a publicação do assunto (o mesmo
+-- "Publicar mesmo assim", com o motivo). Nenhuma tabela nova; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.24.0.sql
 -- =====================================================================
 
 begin;
@@ -37,7 +41,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.22.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.24.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -377,6 +381,17 @@ begin
   if not exists (select 1 from pg_constraint where conname = 'radar_conteudos_kit_ia') then
     alter table public.radar_conteudos add constraint radar_conteudos_kit_ia
       check (jsonb_typeof(kit_ia) = 'object' and length(kit_ia::text) <= 20000) not valid;
+  end if;
+end $$;
+-- v0.24.0: Conferência das Diretrizes (os 10 critérios do escritório antes de aprovar): a lista da IA ("Revisar com IA") e o "Revisei e
+-- assumo" do administrador, presos à versão do texto (radar_conferencia_versao). Só mudam pelas funções radar_registrar_conferencia e
+-- radar_assumir_conferencia; gravar a conferência não muda a data do conteúdo (radar_fn_atualizado_em). '{}' = ainda não conferido.
+alter table public.radar_conteudos add column if not exists conferencia jsonb not null default '{}'::jsonb;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'radar_conteudos_conferencia') then
+    alter table public.radar_conteudos add constraint radar_conteudos_conferencia
+      check (jsonb_typeof(conferencia) = 'object' and length(conferencia::text) <= 20000) not valid;
   end if;
 end $$;
 
@@ -792,8 +807,9 @@ language plpgsql set search_path = public as $$
 begin
   -- marcar ou desmarcar "não vai ao site" não é alteração do texto: a data do conteúdo não muda
   -- v0.20.0: gravar o kit das redes (kit_ia) também não: a data é a versão do texto que foi visto e autorizado
+  -- v0.24.0: nem a Conferência das Diretrizes (ela é presa à versão do texto, não à data)
   if tg_table_name = 'radar_conteudos'
-     and (to_jsonb(new) - array['fora_do_site','kit_ia']) = (to_jsonb(old) - array['fora_do_site','kit_ia']) then
+     and (to_jsonb(new) - array['fora_do_site','kit_ia','conferencia']) = (to_jsonb(old) - array['fora_do_site','kit_ia','conferencia']) then
     new.atualizado_em := old.atualizado_em;
     return new;
   end if;
@@ -1588,6 +1604,11 @@ begin
     if new.corpo is distinct from old.corpo then
       new.copia_autorizada_em := null; new.copia_autorizada_por := null; new.copia_autorizada_motivo := null;
     end if;
+    -- v0.24.0: a Conferência das Diretrizes só muda pelas funções radar_registrar_conferencia e radar_assumir_conferencia (o texto
+    -- mudou, ela continua guardada, mas não vale: é presa à versão do texto)
+    if coalesce(current_setting('radar.conferindo', true), '') <> '1' then
+      new.conferencia := old.conferencia;
+    end if;
     -- v0.20.0: o texto mudou e o kit não veio junto: o kit fica marcado como desatualizado (as legendas e o roteiro saem do texto).
     -- Só o título mudar não marca (escolher outro título sugerido é o passo seguinte ao "Gerar com IA"): o kit guarda o título de
     -- quando foi feito, e a tela pede para conferir a chamada da arte
@@ -1599,6 +1620,7 @@ begin
     end if;
   else
     new.copia_autorizada_em := null; new.copia_autorizada_por := null; new.copia_autorizada_motivo := null;
+    new.conferencia := '{}'::jsonb;                    -- v0.24.0: o conteúdo novo nasce sem a Conferência das Diretrizes
     if new.gerado_por = 'humano' then
       new.modelo_ia := null;
       new.avisos_ia := '[]'::jsonb;
@@ -1630,6 +1652,18 @@ begin
     if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
       raise exception 'RADAR020: a aprovação exige um usuário com perfil de editor ou administrador (o robô e a IA não aprovam)'
         using errcode = 'P0001';
+    end if;
+    -- v0.24.0: o texto INFORMATIVO (sem fundamentação legal específica) só é aprovado depois que o administrador autoriza a
+    -- publicação do assunto ("Autorizar a publicação do Informativo", o mesmo "Publicar mesmo assim", com o motivo)
+    if coalesce(new.avisos_ia->>0, '') like 'INFORMATIVO%'
+       and not exists (select 1 from public.radar_assuntos a where a.id = new.assunto_id and a.liberado_sem_base_em is not null) then
+      raise exception 'RADAR180: texto Informativo (sem fundamentação legal específica) só é aprovado depois que o administrador autoriza a publicação (“Autorizar a publicação do Informativo”, com o motivo)'
+        using errcode = 'P0001';
+    end if;
+    -- v0.24.0: e só com a Conferência das Diretrizes deste texto, sem critério que não atende (ou com o "Revisei e assumo")
+    v_marcas := public.radar_conferencia_pendente(new);
+    if v_marcas is not null then
+      raise exception '%', v_marcas using errcode = 'P0001';
     end if;
     new.aprovado_por := auth.uid();
     new.aprovado_em  := now();
@@ -1692,6 +1726,12 @@ begin
     raise exception 'RADAR122: assunto não encontrado' using errcode = 'P0001';
   end if;
   perform set_config('radar.liberando', '', true);
+  -- v0.24.0: desfeita a liberação, o texto Informativo aprovado do assunto volta para a revisão (a autorização dele era essa; sem
+  -- ela, nada dele vai ao site nem às redes, e as autorizações de publicação que esperavam caem com a mudança)
+  if p_motivo is null then
+    update public.radar_conteudos set status = 'em_revisao'
+     where assunto_id = p_assunto and status = 'aprovado' and coalesce(avisos_ia->>0, '') like 'INFORMATIVO%';
+  end if;
 end $$;
 
 -- v0.14.3: marcas [VERIFICAR …] que a IA deixa onde falta conferir uma informação. Enquanto houver alguma no título, no texto
@@ -1778,7 +1818,172 @@ begin
   return v_em;
 end $$;
 
--- a liberação só muda pela função acima (a equipe edita o assunto, mas não esses campos)
+-- ---------------------------------------------------------------- v0.24.0: Conferência das Diretrizes
+-- Os 10 critérios do escritório antes de aprovar (Diretriz 7). A IA confere ("Revisar com IA", função radar-ia) e grava a lista por
+-- radar_registrar_conferencia; o que dá para conferir por código o banco confere sozinho e vale por cima da lista; o administrador
+-- pode assumir ("Revisei e assumo", com o motivo). Tudo preso à versão do texto: mudou o título, o texto, a fonte ou a capa, a
+-- conferência anterior deixa de valer. A aprovação (radar_fn_conteudo_aprovacao) só passa com a conferência desta versão sem critério
+-- que não atende, ou com o "Revisei e assumo" desta versão; as travas de antes ([VERIFICAR], boletim pago) continuam valendo sempre.
+
+-- A versão do texto que a conferência vale: o título, o texto, a fonte e a capa (se tem imagem e qual ilustração da IA; a capa refeita
+-- com o título novo, com a mesma ilustração, não muda a versão). É também coluna calculada na leitura da tela
+-- (select=*,radar_conferencia_versao).
+create or replace function public.radar_conferencia_versao(c public.radar_conteudos) returns text
+language sql immutable set search_path = public as $$
+  select md5(concat_ws(E'\x1f', coalesce(c.titulo, ''), coalesce(c.corpo, ''), coalesce(c.fonte_credito, ''),
+                       case when c.imagem_id is null then '-' else 'imagem' end, coalesce(c.ilustracao_id::text, '-')))
+$$;
+
+-- O texto cita norma com número (lei, decreto, IN, portaria, resolução, convênio, MP, EC, ato declaratório, solução de consulta,
+-- parecer normativo) ou artigo: afirmação com base legal, que pede a seção "Fundamentação legal". A mesma regra está na função
+-- radar-ia (citaNorma; testes/test_radar_banco.py confere as duas com os mesmos exemplos).
+create or replace function public.radar_cita_norma(p text) returns boolean
+language sql immutable set search_path = public as $$
+  select coalesce(p, '') ~* ('(^|[^[:alnum:]])(lei(\s+complementar)?|decreto(-lei)?|instru[çc][ãa]o\s+normativa|portaria|resolu[çc][ãa]o'
+                             || '|conv[êe]nio|medida\s+provis[óo]ria|emenda\s+constitucional|ato\s+declarat[óo]rio|solu[çc][ãa]o\s+de\s+consulta'
+                             || '|parecer\s+normativo|lc|in|mp|ec)(\s+[[:alpha:]][[:alpha:]/.-]*){0,3}\s*(n[º°o.]+\s*)?[0-9]')
+      or coalesce(p, '') ~* '(^|[^[:alnum:]])art(igo|s?\.)\s*[0-9]'
+$$;
+
+-- O texto termina com a seção "## Fundamentação legal" e ela tem ao menos um link oficial (gov.br, jus.br, leg.br, mp.br, def.br:
+-- os mesmos domínios da verificação em fontes oficiais). A mesma regra está na função radar-ia (temFundamentacao).
+create or replace function public.radar_tem_fundamentacao(p text) returns boolean
+language sql immutable set search_path = public as $$
+  select coalesce((regexp_match(coalesce(p, ''), '(?:^|\n)[ \t]*##[ \t]*fundamenta[çc][ãa]o legal[^\n]*(.*)$', 'i'))[1]
+                  ~* 'https?://([a-z0-9-]+\.)*(gov|jus|leg|mp|def)\.br($|[^a-z0-9-])', false)
+$$;
+
+-- O que o banco confere sozinho, por código (vale por cima da lista da IA): {"6": {"situacao", "motivo"}, …}. A imagem (6) sai
+-- sempre daqui (a IA não vê a capa); os outros, só quando não atendem.
+create or replace function public.radar_conferencia_codigo(c public.radar_conteudos) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v jsonb;
+  v_falha text := 'nao_atende';
+begin
+  -- 6: capa padrão da Artecon ou imagem enviada pela equipe atende; a ilustração da IA, só com o aviso escrito no texto
+  v := jsonb_build_object('6', case
+    when c.imagem_id is null then jsonb_build_object('situacao', 'nao_se_aplica', 'motivo', 'Sem imagem de capa.')
+    when c.ilustracao_id is null then jsonb_build_object('situacao', 'atende', 'motivo', 'Capa padrão da Artecon ou imagem enviada pela equipe.')
+    when coalesce(c.corpo, '') ~* 'imagem ilustrativa gerada (por|com) (a )?(ia|intelig[êe]ncia artificial)'
+      then jsonb_build_object('situacao', 'atende', 'motivo', 'Ilustração de IA com o aviso “Imagem ilustrativa gerada por IA”.')
+    else jsonb_build_object('situacao', v_falha, 'motivo', 'Capa com ilustração de IA sem o aviso “Imagem ilustrativa gerada por IA”: '
+                            || 'escreva o aviso no fim do texto ou use a capa padrão (ou uma foto da equipe).') end);
+  if public.radar_marcas_verificar(coalesce(c.titulo, '') || E'\n' || coalesce(c.corpo, '')) is not null then
+    v := v || jsonb_build_object(
+      '2', jsonb_build_object('situacao', v_falha, 'motivo', 'Há ponto marcado com [VERIFICAR]: a informação ainda não foi confirmada.'),
+      '8', jsonb_build_object('situacao', v_falha, 'motivo', 'Há ponto marcado com [VERIFICAR]: confira e atualize antes de aprovar.'));
+  -- (o Informativo não tem a seção: a norma que ele menciona é informação atribuída à fonte; o critério 2 dele fica com a IA)
+  elsif coalesce(c.avisos_ia->>0, '') not like 'INFORMATIVO%'
+        and public.radar_cita_norma(c.corpo) and not public.radar_tem_fundamentacao(c.corpo) then
+    v := v || jsonb_build_object('2', jsonb_build_object('situacao', v_falha, 'motivo',
+      'O texto cita norma, mas não termina com a seção “Fundamentação legal” com o link oficial.'));
+  end if;
+  if coalesce(c.avisos_ia->>0, '') like 'INFORMATIVO%' and btrim(coalesce(c.fonte_credito, '')) = '' then
+    v := v || jsonb_build_object('3', jsonb_build_object('situacao', v_falha, 'motivo',
+      'Informativo sem a fonte citada: preencha o campo Fonte (ele sai no fim da notícia, com o link).'));
+  end if;
+  if public.radar_copia_paga_assunto(c.assunto_id, array[c.titulo, c.corpo]) then
+    v := v || jsonb_build_object('4', jsonb_build_object('situacao', v_falha, 'motivo',
+      'Frase igual à do boletim pago (ITC): reescreva com palavras próprias.'));
+  end if;
+  return v;
+end $$;
+
+-- A conferência vale para a aprovação? NULL = vale; senão, o motivo (RADAR181/182), como a aprovação mostra.
+create or replace function public.radar_conferencia_pendente(c public.radar_conteudos) returns text
+language sql stable set search_path = public as $$
+  select case
+    when c.conferencia->'assumida'->>'versao' = public.radar_conferencia_versao(c) then null
+    when c.conferencia->>'versao' is distinct from public.radar_conferencia_versao(c)
+         or jsonb_typeof(c.conferencia->'itens') is distinct from 'array' or jsonb_array_length(c.conferencia->'itens') <> 10 then
+      'RADAR181: falta a Conferência das Diretrizes deste texto: clique em “Revisar com IA” (se a IA não puder, o administrador usa '
+      || '“Revisei e assumo”, com o motivo) e aprove de novo'
+    when exists (select 1 from jsonb_array_elements(c.conferencia->'itens') e where e->>'situacao' is distinct from 'atende'
+                                                                               and e->>'situacao' is distinct from 'nao_se_aplica') then
+      'RADAR182: a Conferência das Diretrizes tem critério que não atende (' ||
+      (select string_agg(e->>'item', ', ' order by (e->>'item')::int) from jsonb_array_elements(c.conferencia->'itens') e
+        where e->>'situacao' is distinct from 'atende' and e->>'situacao' is distinct from 'nao_se_aplica') ||
+      '): corrija o texto e clique em “Revisar com IA” de novo, ou o administrador usa “Revisei e assumo”, com o motivo'
+  end
+$$;
+
+-- Grava a lista da IA para o texto que ela conferiu (p_lido: a data do conteúdo que foi à IA). Editor ou administrador (a função
+-- radar-ia grava como quem pediu). O que o banco confere sozinho vale por cima; o "Revisei e assumo" que houver continua guardado.
+create or replace function public.radar_registrar_conferencia(p_conteudo bigint, p_lido timestamptz, p_itens jsonb, p_modelo text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_c public.radar_conteudos%rowtype;
+  v_codigo jsonb;
+  v_itens jsonb;
+  v_conf jsonb;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR183: só o editor ou o administrador confere o conteúdo' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_itens) is distinct from 'array' or jsonb_array_length(p_itens) <> 10
+     or (select count(distinct e->>'item') from jsonb_array_elements(p_itens) e
+          where jsonb_typeof(e) = 'object' and e->>'item' ~ '^([1-9]|10)$'
+            and e->>'situacao' in ('atende','nao_atende','nao_se_aplica')
+            and jsonb_typeof(e->'motivo') = 'string' and length(btrim(e->>'motivo')) between 1 and 300) <> 10 then
+    raise exception 'RADAR185: a conferência precisa ter os 10 critérios, cada um uma vez, com a situação e o motivo (até 300 caracteres)'
+      using errcode = 'P0001';
+  end if;
+  select * into v_c from public.radar_conteudos c where c.id = p_conteudo for update;
+  if v_c.id is null or v_c.atualizado_em is distinct from p_lido then
+    raise exception 'RADAR184: o conteúdo mudou depois que a conferência começou (ou não existe mais): confira de novo' using errcode = 'P0001';
+  end if;
+  v_codigo := public.radar_conferencia_codigo(v_c);
+  select jsonb_agg(jsonb_build_object('item', (e->>'item')::int) ||
+                   coalesce(v_codigo->(e->>'item'), jsonb_build_object('situacao', e->>'situacao', 'motivo', btrim(e->>'motivo')))
+                   order by (e->>'item')::int)
+    into v_itens from jsonb_array_elements(p_itens) e;
+  -- quem não é o administrador não tira o ✗ que a lista desta mesma versão do texto já tinha (conferir de novo o mesmo texto não apaga
+  -- o critério que não atende): ele cai com um texto novo ou com o "Revisei e assumo" do administrador
+  if coalesce(public.radar_papel(), '') <> 'admin' and v_c.conferencia->>'versao' = public.radar_conferencia_versao(v_c)
+     and jsonb_typeof(v_c.conferencia->'itens') = 'array' then
+    select jsonb_agg(case when e->>'situacao' = 'nao_atende' then e
+                          else coalesce((select x from jsonb_array_elements(v_c.conferencia->'itens') x
+                                          where x->>'item' = e->>'item' and x->>'situacao' = 'nao_atende' limit 1), e) end
+                     order by (e->>'item')::int)
+      into v_itens from jsonb_array_elements(v_itens) e;
+  end if;
+  v_conf := jsonb_build_object('versao', public.radar_conferencia_versao(v_c), 'itens', v_itens, 'em', now(), 'por', auth.uid(),
+                               'modelo', left(nullif(btrim(coalesce(p_modelo, '')), ''), 80))
+            || case when v_c.conferencia ? 'assumida' then jsonb_build_object('assumida', v_c.conferencia->'assumida') else '{}'::jsonb end;
+  perform set_config('radar.conferindo', '1', true);
+  update public.radar_conteudos set conferencia = v_conf where id = p_conteudo;
+  perform set_config('radar.conferindo', '', true);
+  return v_conf;
+end $$;
+
+-- "Revisei e assumo": o administrador libera a aprovação desta versão do texto, com o motivo (fica na conferência e no Histórico).
+-- Não passa por cima das travas de antes ([VERIFICAR], boletim pago) nem da autorização do Informativo.
+create or replace function public.radar_assumir_conferencia(p_conteudo bigint, p_motivo text, p_lido timestamptz)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_c public.radar_conteudos%rowtype;
+  v_conf jsonb;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR186: só o administrador assume a conferência (“Revisei e assumo”)' using errcode = '42501';
+  end if;
+  if length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
+    raise exception 'RADAR187: escreva o motivo (de 10 a 500 caracteres): ele fica no histórico' using errcode = 'P0001';
+  end if;
+  select * into v_c from public.radar_conteudos c where c.id = p_conteudo for update;
+  if v_c.id is null or v_c.atualizado_em is distinct from p_lido then
+    raise exception 'RADAR184: o conteúdo mudou depois que a tela foi aberta (ou não existe mais): confira e tente de novo' using errcode = 'P0001';
+  end if;
+  v_conf := v_c.conferencia || jsonb_build_object('assumida', jsonb_build_object('versao', public.radar_conferencia_versao(v_c),
+                                                  'por', auth.uid(), 'em', now(), 'motivo', btrim(p_motivo)));
+  perform set_config('radar.conferindo', '1', true);
+  update public.radar_conteudos set conferencia = v_conf where id = p_conteudo;
+  perform set_config('radar.conferindo', '', true);
+  return v_conf;
+end $$;
+
+-- a liberação só muda pela função radar_liberar_sem_fundamentacao (a equipe edita o assunto, mas não esses campos)
 create or replace function public.radar_fn_assunto_liberacao() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
@@ -3476,9 +3681,11 @@ begin
     raise exception 'RADAR175: só a peça aprovada para publicar à mão tem registro manual' using errcode = 'P0001';
   end if;
   -- v0.22.0: o reel sai com o vídeo aprovado. O reel aprovado à mão ANTES desta versão (sem o corretor: o vídeo do Edits) continua
-  -- registrando o link como na v0.21.0 — desfazer a aprovação pediria "não foi postada", o que seria falso
+  -- registrando o link como na v0.21.0 — desfazer a aprovação pediria "não foi postada", o que seria falso. v0.24.0: vale a primeira
+  -- instalação da v0.22.0 ou mais nova (quem foi da v0.21.0 direto para uma versão depois da v0.22.0 não tem a linha da v0.22.0)
   if p.formato = 'reel' and p.video_sha256 is null
-     and p.aprovado_em >= coalesce((select min(i.executado_em) from public.radar_instalacoes i where i.versao = 'v0.22.0'), '-infinity') then
+     and p.aprovado_em >= coalesce((select min(i.executado_em) from public.radar_instalacoes i
+                                    where i.versao ~ '^v0\.(2[2-9]|[3-9][0-9])\.' or i.versao ~ '^v[1-9]'), '-infinity') then
     raise exception 'RADAR317: o reel foi aprovado sem o vídeo corrigido: desfaça a aprovação, confira o vídeo e aprove de novo'
       using errcode = 'P0001';
   end if;
@@ -5974,6 +6181,11 @@ grant execute on function public.radar_arquivar_fila(int) to service_role;
 grant execute on function public.radar_separar_captura(bigint, bigint) to authenticated;
 grant execute on function public.radar_separar_repeticao(bigint) to authenticated;                 -- v0.16.0
 grant execute on function public.radar_autorizar_copia(bigint, text, timestamptz) to authenticated; -- v0.16.0
+-- v0.24.0: a Conferência das Diretrizes (as funções conferem quem pode: editor ou administrador grava a lista; só o administrador assume);
+-- a versão do texto é coluna calculada na leitura da tela
+grant execute on function public.radar_registrar_conferencia(bigint, timestamptz, jsonb, text) to authenticated;
+grant execute on function public.radar_assumir_conferencia(bigint, text, timestamptz) to authenticated;
+grant execute on function public.radar_conferencia_versao(public.radar_conteudos) to authenticated;
 grant execute on function public.radar_admin_usuarios() to authenticated;
 grant execute on function public.radar_registrar_uso_ia(text, text, int, int, bigint) to authenticated;
 grant execute on function public.radar_registrar_evidencia_ia(bigint, bigint, text, text) to authenticated;
@@ -6288,7 +6500,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 27 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.22.0).
+-- Esperado: 27 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.24.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

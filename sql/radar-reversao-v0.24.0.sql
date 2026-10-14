@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.22.0.sql
--- DESFAZ a instalação do radar-setup-v0.22.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.24.0.sql
+-- DESFAZ a instalação do radar-setup-v0.24.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -279,6 +279,14 @@ drop function if exists public.radar_video_limpo(uuid, text[]);
 drop function if exists public.radar_video_travar(uuid);
 drop function if exists public.radar_video_refazer(public.radar_videos);
 drop function if exists public.radar_video_do_robo(uuid, int, boolean);
+-- v0.24.0: Conferência das Diretrizes (as que recebem a linha de radar_conteudos já saíram com a tabela; ficam aqui para rodar de novo)
+drop function if exists public.radar_registrar_conferencia(bigint, timestamptz, jsonb, text);
+drop function if exists public.radar_assumir_conferencia(bigint, text, timestamptz);
+drop function if exists public.radar_cita_norma(text);
+drop function if exists public.radar_tem_fundamentacao(text);
+drop function if exists public.radar_conferencia_versao(public.radar_conteudos);
+drop function if exists public.radar_conferencia_codigo(public.radar_conteudos);
+drop function if exists public.radar_conferencia_pendente(public.radar_conteudos);
 -- v0.19.1 (opcional): a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql), se foi instalada
 drop function if exists public.radar_concorrentes_conferir(text);
 

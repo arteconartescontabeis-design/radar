@@ -211,7 +211,44 @@ def test_detector_de_copia_do_robo_e_igual_ao_da_tela_e_da_funcao(tmp_path):
         assert json.loads(saida.stdout) == esperado, nome
 
 
-DUVIDAS_SIM = ["(a fonte não especifica o ano)", "(a fonte não informou o ano)", "(o boletim não informa o ano)", "(ano não informado pela fonte)",
+# v0.24.0 (Diretriz 3): a transcrição literal longa (mais de 40 palavras) entre aspas continua comparada como texto comum, mas o trecho
+# sai marcado "aspas"; fora de aspas (ou com cópia de 12 palavras que contam fora da citação), não
+_ART = ("o contribuinte que realizar operações com bens e serviços deverá emitir o documento fiscal eletrônico com o destaque da "
+        "contribuição, informar o código de classificação de cada item vendido, guardar os arquivos pelo prazo previsto na legislação "
+        "e apresentar a escrituração mensal no ambiente nacional, sob pena de multa por documento emitido sem as informações exigidas")
+CASOS_ASPAS = [
+    ("Segundo a Receita Federal, o artigo 5º diz: “" + _ART + "”.", [_rfb("Art. 5º " + _ART + ".")]),
+    ("Segundo a Receita Federal, o artigo 5º diz que " + _ART + ".", [_rfb("Art. 5º " + _ART + ".")]),
+    ("O artigo 5º diz: “" + _ART + "”.", [_rfb("Art. 5º " + _ART + ".")]),
+    ("Segundo a Receita Federal, “" + _ART + "”. " + _R + ".", [_rfb(_ART + ". " + _R + ".")]),
+    ("Segundo a ITC, “" + _ART + "”.", [{"texto": _ART, "nome": "ITC Consultoria", "nomes": ["ITC"], "paga": True}]),
+]
+
+
+def test_citacao_longa_entre_aspas_igual_no_robo_na_tela_e_na_funcao(tmp_path):
+    assert len(_ART.split()) > rr.CITACAO_MAXIMA
+    esperado = [rr.trechos_copiados(c, f) for c, f in CASOS_ASPAS]
+    assert [[(t["citado"], t["aspas"], t["paga"]) for t in x] for x in esperado] == [
+        [(True, True, False)],             # entre aspas e com a fonte citada: a transcrição que a Diretriz 3 aceita
+        [(True, False, False)],            # a fonte citada, mas fora de aspas: citar a fonte não autoriza copiar
+        [(False, True, False)],            # entre aspas, mas sem a fonte citada no parágrafo
+        [(True, False, False)],            # a citação seguida de 12 palavras ou mais copiadas fora das aspas
+        [(False, False, True)]]            # o boletim pago, nem entre aspas
+    if shutil.which("deno") is None:
+        pytest.skip("deno não instalado")
+    fim = "return achados.sort((a, b) => b.palavras - a.palavras);\n}"
+    (tmp_path / "aspas.json").write_text(json.dumps(CASOS_ASPAS, ensure_ascii=False), encoding="utf-8")
+    for nome, arquivo in (("tela.ts", "index.html"), ("funcao.ts", "supabase/functions/radar-ia/index.ts")):
+        codigo = _extrair((RAIZ / arquivo).read_text(encoding="utf-8"), "const COPIA_MINIMA = 12", fim)
+        arq = tmp_path / nome
+        arq.write_text("// @ts-nocheck\n" + codigo + f"\nconsole.log(JSON.stringify(JSON.parse(Deno.readTextFileSync({json.dumps(str(tmp_path / 'aspas.json'))}))"
+                       ".map(([c, f]) => trechosCopiados(c, f))));\n", encoding="utf-8")
+        saida = subprocess.run(["deno", "run", "--allow-read", "--no-prompt", str(arq)], capture_output=True, text=True, timeout=60)
+        assert saida.returncode == 0, saida.stderr
+        assert json.loads(saida.stdout) == esperado, nome
+
+
+DUVIDAS_SIM =["(a fonte não especifica o ano)", "(a fonte não informou o ano)", "(o boletim não informa o ano)", "(ano não informado pela fonte)",
                "A fonte cita tanto ADI 5.161 quanto ADI nº 5.161/DF.", "a fonte indica 30/9 mas não especifica o ano", "o texto oficial não especifica o ano"]
 DUVIDAS_NAO = ["Para o material de uso e consumo, a LC 87/96 não traz direito ao crédito antes de 2033.",
                "Quando a fonte não informa o CPF do beneficiário na EFD-Reinf, o rendimento fica sem vínculo.",

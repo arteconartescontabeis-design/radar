@@ -212,6 +212,7 @@ def fatos(texto: str, oficial: bool) -> dict[str, str]:
 # O mesmo detector da tela (index.html, trechosCopiados) e da função radar-ia: 12 palavras "que contam" seguidas iguais ao
 # texto da fonte. Números, datas, nomes próprios, siglas e nomes de norma não contam; citação curta entre aspas é aceita.
 # v0.18.0: o trecho igual pode ficar quando o parágrafo cita a fonte pelo nome ("citado"), menos o do boletim pago ("paga").
+# v0.24.0: o trecho que está numa citação longa entre aspas ("aspas"): a transcrição literal que a Diretriz 3 aceita com a fonte citada.
 COPIA_MINIMA, CITACAO_MAXIMA, CITACOES_TOTAL = 12, 40, 120
 COPIA_NEUTRAS = set(("janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro lei leis decreto decretos instrucao normativa portaria resolucao "
                      "medida provisoria complementar emenda constitucional ato declaratorio executivo convenio ajuste solucao consulta parecer n nº art arts artigo artigos inciso paragrafo").split(" "))
@@ -292,7 +293,8 @@ def unidades_do_texto(linhas: list[str]) -> tuple[list[int], list[str]]:
 def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
     """Trechos iguais ao texto das fontes. Cada fonte é o texto ou {"texto", "nome", "nomes", "paga"}. Cada trecho diz de qual
     fonte veio ("fonte"), se a fonte está citada pelo nome em cada parágrafo (ou item de lista) em que o trecho está ("citado")
-    e se ele tem parte que só existe no boletim pago ("paga": não pode ficar, nem citando)."""
+    e se ele tem parte que só existe no boletim pago ("paga": não pode ficar, nem citando). v0.24.0: e se está numa citação longa
+    entre aspas ("aspas")."""
     n_ = 6
     lista = []
     for f in fontes or []:
@@ -311,7 +313,7 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
                 o.append(k)
     if not gramas:
         return []
-    marca = "\u0001"
+    marca, longa_marca = "\u0001", "\u0002"
 
     def contam(pedaco):
         """Quantas palavras "contam" num pedaço (nome próprio não conta — a não ser que seja quase tudo em maiúsculas)."""
@@ -321,23 +323,27 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
     citadas = 0
 
     def citacao(m):
-        """A citação curta entre aspas é aceita: as palavras dela ficam marcadas (a comparação comum pula; a do boletim pago, não)."""
+        """A citação curta entre aspas é aceita: as palavras dela ficam marcadas (a comparação comum pula; a do boletim pago, não).
+        v0.24.0: a longa demais continua comparada como texto comum, mas com as palavras marcadas como entre aspas."""
         nonlocal citadas
         dentro = m.group(1)
         n = len([x for x in re.split(r"\s+", dentro) if x])
-        if n < 3 or n > CITACAO_MAXIMA or citadas + n > CITACOES_TOTAL:
+        if n < 3:
             return " " + dentro + " "
+        if n > CITACAO_MAXIMA or citadas + n > CITACOES_TOTAL:
+            return " " + re.sub(r"\S+", lambda w: longa_marca + w.group(0), dentro) + " "
         citadas += n
         return " " + re.sub(r"\S+", lambda w: marca + w.group(0), dentro) + " "
     limpo = _INVISIVEIS.sub("", str(corpo or ""))
     sem = re.sub(r"^#{1,2}(\s)", lambda m: " ¶ \n" if m.group(1) == "\n" else " ¶ ", limpo, flags=re.M)
     sem = re.sub(r'"([^"\n]{0,600})"', citacao, re.sub(r"“([^“”]{0,600})”", citacao, sem))
-    palavras, linha_da, aspas = [], [], []
+    palavras, linha_da, aspas, longa = [], [], [], []
     for k, linha in enumerate(sem.split("\n")):
         for p in re.split(r"\s+", linha):
             if p:
-                palavras.append(p.replace(marca, ""))
+                palavras.append(p.replace(marca, "").replace(longa_marca, ""))
                 aspas.append(p.startswith(marca))
+                longa.append(longa_marca in p)
                 linha_da.append(k)
     unidade, textos = unidades_do_texto(limpo.split("\n"))
     cita_na = [[not f["paga"] and any(f" {n} " in t for n in f["nomes"]) for f in lista] for t in textos]
@@ -395,8 +401,10 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
                 fonte = lista[faltam[0]]["nome"]
             else:
                 fonte = (livres[0] if livres else de[0])["nome"] if de else ""
+            # v0.24.0 "aspas": as palavras fora da citação longa entre aspas, somadas, não chegam a ser cópia (12 que contam)
+            fora_das_aspas = [fichas[k] for k in range(a, b + 1) if not longa[fichas[k][1]]]
             return {"i": a, "j": b, "palavras": b - a + 1, "texto": " ".join(palavras[fichas[a][1]:fichas[b][1] + 1]),
-                    "fonte": fonte, "paga": paga, "citado": cita}
+                    "fonte": fonte, "paga": paga, "citado": cita, "aspas": not paga and contam(fora_das_aspas) < COPIA_MINIMA}
         saida, i = [], 0
         while i < len(fichas):
             if not igual[i]:
@@ -425,7 +433,7 @@ def trechos_copiados(corpo: str, fontes: list) -> list[dict]:
     # trecho pago que ela achar entra no lugar dos trechos da passada comum que estão na mesma posição
     normal = passada(True)
     pagos = [t for t in passada(False) if t["paga"]] if any(f["paga"] for f in lista) else []
-    achados = [{c: t[c] for c in ("palavras", "texto", "fonte", "paga", "citado")}
+    achados = [{c: t[c] for c in ("palavras", "texto", "fonte", "paga", "citado", "aspas")}
                for t in [t for t in normal if not any(p["i"] <= t["i"] and t["j"] <= p["j"] for p in pagos)] + pagos]
     return sorted(achados, key=lambda a: -a["palavras"])
 

@@ -1,4 +1,4 @@
-# Radar Artecon — v0.23.0
+# Radar Artecon — v0.24.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,8 +12,81 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
-A v0.23.0 deixa a **leitura do boletim da ITC** pronta para a troca do acesso à caixa e as **agendas do banco** prontas para rodar de
-novo:
+A v0.24.0 põe as **Diretrizes editoriais do escritório** dentro do Radar: a IA escreve seguindo-as, o texto sem base legal vira
+**Informativo** (que só o administrador autoriza), a aprovação passa pela **Conferência das Diretrizes** (os 10 critérios) e o escritório
+ensina a IA pelas **"Orientações para a IA"**, sem programador:
+
+- **Diretrizes na IA:** em todo texto que a IA escreve para publicar (o "Gerar com IA" e a segunda passada dele, os outros títulos, o
+  "Revisar com IA", o kit das redes e o "Gerar com IA" da peça da Pauta), depois das regras de sempre: obrigação, direito, prazo ou
+  benefício só com a norma que o sustenta; o que não tem base legal, só como informação; texto próprio (transcrição literal só de
+  artigo de lei ou de declaração importante, entre aspas e com a fonte; citar a fonte não autoriza copiar); projeto de lei não é lei
+  aprovada e previsão não é fato; linguagem clara, sem exagero. As regras de antes continuam valendo (só fatos do texto oficial, nada
+  de memória, boletim pago nunca copiado, publicidade contábil, palavras barradas). Veja "Diretrizes editoriais e como ensinar a IA".
+- **Fundamentação legal com link:** o texto com base legal termina com a seção **"Fundamentação legal"**: a norma, o número (e o artigo,
+  quando precisa) e o **link do documento oficial**. A IA só usa link que está no assunto (a página oficial capturada, a das evidências
+  conferidas, o endereço oficial da norma e as páginas oficiais da "Verificar em fontes oficiais"); o link que ela inventar **sai do
+  texto sozinho**, com aviso. Sem link, a norma fica sem ele e vai para os pontos a conferir, num aviso à parte ("Norma que ficou no
+  texto, a conferir…"). A vigência (em vigor, alterada, revogada) só é afirmada se o texto oficial ou a verificação mostrar; sem isso,
+  vai para o mesmo aviso. A data e o artigo da norma só entram quando estão no texto oficial (nada de memória). O robô do site e a
+  prévia transformam o endereço do texto em link.
+- **Texto Informativo:** sem texto oficial (ou quando a IA diz que o assunto não tem base legal específica), o "Gerar com IA" escreve um
+  texto **Informativo**: os fatos e o que eles mudam na prática, com palavras próprias, sem nada apresentado como obrigação,
+  separando fato de estimativa e dizendo de onde veio a informação (do boletim pago, só a informação, com palavras próprias e
+  atribuída a ele). Ele fica em análise, com o selo **"Informativo — aguardando autorização"**, sem o botão Aprovar: **só o
+  administrador autoriza a publicação** ("Autorizar a publicação do Informativo", com o motivo, que fica no assunto e no Histórico; é
+  o mesmo "Publicar mesmo assim" de antes). Autorizado, segue a aprovação, o site e as redes como os outros, com o selo "Conteúdo
+  informativo"; no site, a notícia sai com a linha **"Conteúdo informativo"** no fim. O banco não aprova o Informativo antes da
+  autorização, nem pela API. A autorização é a do **assunto inteiro** (o mesmo "Publicar mesmo assim"): ela também dispensa a
+  fundamentação oficial dos outros textos do assunto, e o Informativo gerado depois num assunto já liberado já nasce autorizado
+  (mostrando o motivo de antes). "Desfazer a liberação" devolve o Informativo aprovado para a revisão. No pedido à IA, o modo se chama
+  "SEM BASE LEGAL", para não se confundir com o tamanho "Médio (notícia)" (antes chamado "Informativo" na tela): o selo do tamanho
+  passa a ser "Curto (aviso rápido)", "Médio (notícia)" ou "Longo (artigo)", e a palavra "Informativo" fica só para o texto sem base
+  legal. O "texto para análise" antigo continua como estava.
+- **Conferência das Diretrizes antes de aprovar:** no conteúdo, um quadro com os **10 critérios** do escritório, cada um com ✓
+  (atende), ✗ (não atende), — (não se aplica) ou ? (não conferido) e o motivo numa linha. O que dá para conferir por código o Radar
+  confere sozinho: [VERIFICAR] (critérios 2 e 8), texto igual ao da fonte fora de aspas (4 e 5), frase do boletim pago (4), texto que
+  cita norma sem a "Fundamentação legal" com link oficial (2), Informativo sem a fonte (3) e a capa (6: padrão da Artecon ou foto da
+  equipe atende; ilustração da IA só com o aviso "Imagem ilustrativa gerada por IA" escrito no fim do texto; sem capa, não se aplica).
+  O resto, a IA confere: o **"Revisar com IA"** agora sempre confere o texto (fontes, título × conteúdo, atualidade, clareza, risco
+  de induzir a erro) e devolve a lista, que o banco grava presa à versão do texto; se houver marca, cópia ou a "Fundamentação legal"
+  faltando, ele corrige antes, como antes. Com ✗ ou ?, **o Aprovar fica travado**; o administrador pode liberar com **"Revisei e
+  assumo"**, com o motivo (aparece no Histórico, com o texto do motivo). Conferir de novo o mesmo texto não tira um ✗ (só o texto
+  corrigido, que é outra versão, ou o "Revisei e assumo"). Mudou o título, o texto, a fonte ou a capa, a conferência deixa de valer. O
+  banco confere de novo na aprovação. As travas de antes continuam: [VERIFICAR] e boletim pago não passam nem com o "Revisei e assumo"
+  (com eles no texto, o botão nem aparece). No Informativo, que não tem a seção "Fundamentação legal", a norma só mencionada não leva ✗
+  no critério 2 por código: a IA confere se nada foi apresentado como obrigação.
+- **Texto igual ao da fonte citada:** até a v0.23.0, o trecho igual ao da fonte podia ficar quando o parágrafo dizia de onde veio
+  (quadro azul). Agora, fora de aspas, ele marca os critérios 4 e 5 com ✗: reescreva com palavras próprias (o "Revisar com IA" faz
+  isso) ou ponha entre aspas só a frase indispensável; ou use "Autorizar mesmo assim", com o motivo, como no trecho sem a fonte. A
+  transcrição literal (de artigo de lei ou de declaração importante) **entre aspas e com a fonte citada no parágrafo** pode ficar,
+  mesmo longa (quadro azul). No kit das redes, o trecho igual fora de aspas também aparece nos pontos a conferir. O detector é o mesmo
+  (na tela, na função e no robô), só que agora diz também se o trecho estava entre aspas.
+- **Orientações para a IA:** Configurações → Inteligência artificial → "Orientações para a IA". Dois campos de texto livre, com o
+  contador de caracteres e um exemplo dentro de cada um: **"Orientações para os textos"** (até 2.000 caracteres: tom, estilo, tamanho,
+  o que evitar e exemplos de posts de que o escritório gostou) e **"Orientações para as imagens"** (até 500: estilo, cenas preferidas,
+  o que evitar). Só o administrador altera; o Salvar é o de sempre ("Configuração salva.") e a mudança fica no Histórico. Valem nos
+  mesmos pedidos das Diretrizes e em toda ilustração; vão no fim das instruções da IA, num bloco à parte, **depois** das regras e das
+  Diretrizes, como preferência de estilo (as regras passam por cima). Os exemplos de posts servem só de modelo de estilo: a IA não usa
+  os fatos, os números nem as datas deles. Na peça da Pauta, os nomes da equipe, os links e os números de CNPJ, CRC e telefone escritos
+  nas orientações também não vão à IA. Na imagem, as preferências entram antes das proibições (sem texto, sem pessoa real, sem marca);
+  se pedirem marca, logotipo, pessoa conhecida ou o estilo de um autor, ficam de fora daquela imagem e a tela avisa, com a palavra que
+  travou (a ilustração sai do mesmo jeito). Em branco, a IA trabalha como antes. Frase igual à do boletim pago (ITC) não entra nas
+  orientações: a tela recusa ao salvar.
+
+Mudam o banco (`radar-setup-v0.24.0.sql`: coluna `conferencia` em `radar_conteudos`, as funções da Conferência das Diretrizes e a trava
+do Informativo na aprovação; nenhuma tabela nova), a função `radar-ia` (v0.24.0), a tela (`index.html`; no `radar-pauta.js` e no
+`radar-video.js`, o número da versão e o aviso do SQL) e o robô do site (`robo/radar_site_publicar.py`: o link no texto e a linha
+"Conteúdo informativo"). As orientações ficam em `radar_config`, na chave `ia_orientacoes` (a equipe lê, só o administrador altera).
+A `radar-itc` continua na v0.23.0; a `radar-redes`, a `radar-video`, a `radar-concorrentes` e o robô do vídeo, na v0.22.0; as agendas
+(`sql/radar-*-agenda.sql`) não mudam. Os rascunhos automáticos do robô (`robo/radar_rascunhos.py`) ainda não usam as Diretrizes nem as
+orientações (no robô, só o detector de cópia muda, para continuar igual ao da tela e da função): passam pela Conferência das Diretrizes
+como qualquer texto (o "Revisar com IA" acrescenta a seção que faltar). A Pauta
+(peças das redes) continua com a aprovação dela, sem a Conferência. Correção junto: o reel aprovado à mão antes da v0.22.0 (sem o
+corretor) continua registrando o link também em quem vai da v0.21.0 direto para a v0.24.0 (a regra conta a primeira instalação da
+v0.22.0 ou de uma versão mais nova). Para instalar, "Da v0.23.0 para a v0.24.0".
+
+A v0.23.0 deixou a **leitura do boletim da ITC** pronta para a troca do acesso à caixa e as **agendas do banco** prontas para rodar
+de novo:
 
 - **A caixa inteira:** a função `radar-itc` lê o boletim em qualquer pasta da caixa, **menos o Lixo Eletrônico e os Itens
   Excluídos**. O boletim pode ser movido da Caixa de Entrada para a subpasta "ITC Consultoria" (ou outra) a qualquer hora, até antes
@@ -260,7 +333,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.22.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.24.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -287,7 +360,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.22.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.24.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -324,7 +397,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.22.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.24.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -353,7 +426,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.22.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.24.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -361,7 +434,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.22.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.24.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -377,7 +450,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.22.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.24.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -392,7 +465,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.22.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.24.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -420,7 +493,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.22.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.24.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -432,7 +505,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.22.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.24.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -445,7 +518,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.22.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.24.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -457,7 +530,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.22.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.24.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -469,7 +542,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.22.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.24.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -484,7 +557,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.22.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.24.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -661,6 +734,8 @@ Pré-requisito: IA Central v1.1.0 instalada (pacote `ia-central-v1.1.0`) e Porta
 4. No Radar: **Configurações → Inteligência artificial → Testar a IA**. O teste confere a
    função, o token e os dois modelos de texto, e diz o que corrigir.
 5. Abra um assunto que tenha texto oficial e clique em "Preparar com IA".
+6. (Opcional, v0.24.0) Em **Configurações → Inteligência artificial → Orientações para a IA**, escreva como o escritório quer o
+   texto e as imagens e salve (veja "Diretrizes editoriais e como ensinar a IA").
 
 Segredos opcionais (no projeto do Radar):
 
@@ -786,22 +861,28 @@ de qual outra captura ela é **repetição**. O banco valida cada item (`radar_g
   mostra tudo, inclusive as repetições e as de baixa relevância.
 - O resumo da execução nunca mostra o token (`iagw_…` aparece como `iagw_***`).
 
-### Texto igual ao da fonte, com a fonte citada (v0.18.0; comparação com a fonte desde a v0.7.0)
+### Texto igual ao da fonte, com a fonte citada (v0.18.0 e v0.24.0; comparação com a fonte desde a v0.7.0)
 
 O Radar compara cada conteúdo (escrito pela equipe ou pela IA) com o texto das capturas do assunto: sequência de 12 palavras
 ou mais igual à fonte é um **trecho igual ao da fonte**. A comparação ignora maiúsculas, acentos e pontuação. Não contam para
 as 12 palavras: números, datas, nomes próprios e siglas, o nome de uma norma ("Instrução Normativa RFB nº 2.300, de 5 de março
 de 2026") e as palavras de ligação entre eles ("de", "e", "na"). Citação curta entre aspas não conta (até 40 palavras cada e
-120 no total do texto). O título do conteúdo não entra na comparação.
+120 no total do texto). A mais longa entre aspas é comparada (v0.24.0): com a fonte citada no parágrafo, é a transcrição literal que a
+Diretriz 3 aceita e fica num quadro azul ("Transcrição literal entre aspas…"; deixe só o indispensável); sem a fonte citada, é como o
+trecho sem a fonte. O título do conteúdo não entra na comparação.
 
-- **Pode ficar**, num quadro azul que não impede aprovar, quando **cada parágrafo** em que o trecho está diz de onde veio,
-  pelo nome da fonte ("Segundo a Receita Federal, …", "Conforme o Portal Contábil SC, …", "Conforme publicado no Diário Oficial
-  da União, …"; num item de lista, vale a frase que apresenta a lista) **e** o campo **Fonte** está preenchido (ele sai no fim
-  da notícia, com o link). O Radar reconhece a fonte pelo nome do órgão (também sem "do Brasil"), pela sigla entre parênteses
-  e pelo começo do nome da fonte quando é uma sigla ("PGFN", "SEF/SC") ou o nome da publicação ("Diário Oficial da União").
+- **Com a fonte citada, mas fora de aspas** (quando **cada parágrafo** em que o trecho está diz de onde veio, pelo nome da fonte:
+  "Segundo a Receita Federal, …", "Conforme o Portal Contábil SC, …", "Conforme publicado no Diário Oficial da União, …"; num item
+  de lista, vale a frase que apresenta a lista; **e** o campo **Fonte** está preenchido): da v0.18.0 à v0.23.0 podia ficar, num
+  quadro azul. Desde a v0.24.0 (Diretriz 3: citar a fonte não autoriza copiar), o quadro é amarelo e a Conferência das Diretrizes
+  marca os critérios 4 e 5 com ✗, o que trava o Aprovar: reescreva com palavras próprias (o **Revisar com IA** faz isso), deixe
+  entre aspas só a frase indispensável (a citação curta entre aspas não conta) ou use **Autorizar mesmo assim**, com o motivo. O
+  Radar reconhece a fonte pelo nome do órgão (também sem "do Brasil"), pela sigla entre parênteses e pelo começo do nome da fonte
+  quando é uma sigla ("PGFN", "SEF/SC") ou o nome da publicação ("Diário Oficial da União").
 - **Não pode ficar** (quadro vermelho; o Aprovar recusa): o trecho sem a fonte citada no parágrafo, ou com o campo Fonte
-  vazio, e qualquer trecho com frases do **boletim pago** (ITC), mesmo citando a ITC. O botão **Revisar com IA** acrescenta
-  a fonte no parágrafo (e reescreve o trecho do boletim pago); **Autorizar mesmo assim** deixa como está, com o motivo registrado,
+  vazio, e qualquer trecho com frases do **boletim pago** (ITC), mesmo citando a ITC. O botão **Revisar com IA** reescreve o
+  trecho com palavras próprias (só a frase indispensável fica, entre aspas, com a fonte no parágrafo) e o do boletim pago;
+  **Autorizar mesmo assim** deixa como está, com o motivo registrado,
   só o trecho igual ao de fonte livre. A frase do boletim pago **não se autoriza** (v0.22.0): com ela, o botão não aparece, e o
   banco também recusa (RADAR146) a autorização, a aprovação e a publicação no site, no Instagram e no Facebook (texto e legenda),
   comparando com todas as capturas do boletim guardadas, em janelas de 12 palavras, menos o que também está numa captura livre
@@ -864,6 +945,105 @@ tem `nome`, `rotulo`, `telefones`, `emails`, `equipe` e, opcionalmente, `respons
 `radar-fale-conosco-v0.6.0.json`, entregue à parte, já vem preenchido: copie o conteúdo
 para o campo e salve. Ele não vai no repositório porque traz nomes e celulares da equipe.
 
+### Diretrizes editoriais e como ensinar a IA (v0.24.0)
+
+As **Diretrizes editoriais** do escritório valem para todo conteúdo publicado no site e nas redes. A IA do Radar as recebe em todo
+texto que escreve para publicar, depois das regras de sempre (nenhuma diretriz autoriza o que as regras proíbem), e a equipe as confere
+antes de aprovar, no quadro "Conferência das Diretrizes". Em resumo:
+
+1. **Fundamentação legal.** Toda informação apresentada como obrigação, direito, proibição, benefício fiscal ou exigência legal traz a
+   norma que a sustenta (o número e, quando precisa, o artigo, o inciso ou o parágrafo), de preferência da fonte oficial (Receita
+   Federal, Diário Oficial da União, Planalto, CONFAZ, SEFAZ, Comitê Gestor do IBS), com o link do documento oficial e a vigência
+   conferida (alterações e revogações). Uma citação basta quando uma basta. Nunca inventar número de lei, artigo, link ou
+   interpretação atribuída a órgão. No Radar: a seção "Fundamentação legal" no fim do texto, só com links dos dados do assunto.
+2. **Conteúdo informativo.** O que não tem fundamentação legal específica é só informação: fatos e consequências práticas, em
+   linguagem clara, sem caráter de obrigação legal e sem fundamentação jurídica artificial, separando o fato confirmado da estimativa,
+   da projeção, da tendência ou da opinião e dizendo qual é a fonte. Decisão do escritório: a IA escreve esse texto como
+   **Informativo**, ele fica em análise e só é publicado se o administrador autorizar.
+3. **Originalidade.** Texto próprio: não copiar frases, parágrafos nem a estrutura de terceiros, nem disfarçar cópia trocando poucas
+   palavras. Transcrição literal só quando indispensável (dispositivo legal, declaração relevante), sempre entre aspas e com a fonte.
+   Citar a fonte não é o mesmo que poder copiar.
+4. **Imagens.** Fotografia real com autorização ou licença, a capa institucional, ou ilustração de IA com o aviso "Imagem ilustrativa
+   gerada por IA". Nesta versão, o Radar confere só o critério 6 da lista abaixo; as fotos reais (banco de imagens) e o aviso
+   automático na imagem chegam na próxima etapa.
+5. **Verificação.** Confirmar que a informação existe e de onde veio, dando preferência à fonte oficial e ao documento original;
+   conferir datas, vigência e atualizações; não tratar proposta de lei como norma aprovada nem previsão como fato; em assunto
+   controverso, buscar fontes independentes; sem confirmação suficiente, dizer a limitação ou mandar para a revisão humana.
+6. **Estilo.** Profissional, claro e tecnicamente preciso; títulos objetivos e fiéis ao conteúdo; parágrafos organizados; compreensível
+   para quem não é da área; destaque para o impacto prático nas empresas, nos empresários e nos contribuintes; sem sensacionalismo nem
+   exagero; fundamentação proporcional ao texto.
+7. **Critérios para aprovar.** Só se aprova o que atende integralmente aos critérios que se aplicam (a lista abaixo); senão, o texto é
+   corrigido ou passa pela validação humana do administrador ("Revisei e assumo").
+
+**Os 10 critérios da Conferência das Diretrizes** (no conteúdo, antes de aprovar; cada um com ✓ atende, ✗ não atende, — não se aplica
+ou ? ainda não conferido, e o motivo numa linha):
+
+| Nº | Critério | Quem confere |
+|---|---|---|
+| 1 | As informações estão confirmadas em fontes confiáveis? | a IA, no "Revisar com IA" |
+| 2 | As afirmações legais têm fundamentação correta e vigente? | a IA; o Radar marca ✗ com [VERIFICAR] ou com norma citada sem a "Fundamentação legal" com link oficial (no Informativo, que não tem a seção, só com [VERIFICAR]) |
+| 3 | O que não tem fundamento normativo está só como informativo? | a IA; o Radar marca ✗ no Informativo sem a fonte (campo Fonte) |
+| 4 | O texto é original, sem reproduzir terceiros indevidamente? | a IA; o Radar marca ✗ com trecho igual ao da fonte fora de aspas ou frase do boletim pago (a transcrição entre aspas com a fonte citada não) |
+| 5 | As citações literais estão identificadas (entre aspas e com a fonte)? | a IA; o Radar marca ✗ com trecho igual ao da fonte fora de aspas |
+| 6 | A imagem é foto real autorizada, a capa institucional ou ilustração de IA com o aviso? | o Radar: capa padrão ou foto da equipe ✓; ilustração da IA sem o aviso "Imagem ilustrativa gerada por IA" escrito no texto ✗; sem capa, não se aplica |
+| 7 | O título corresponde exatamente à informação? | a IA |
+| 8 | O conteúdo está atualizado? | a IA; o Radar marca ✗ com [VERIFICAR] |
+| 9 | A redação é profissional e compreensível? | a IA |
+| 10 | Nada no texto pode induzir o leitor a erro? | a IA |
+
+Com algum ✗ ou ?, o **Aprovar fica travado** (na tela e no banco). Para destravar: corrija o texto e clique em **"Revisar com IA"** de
+novo (ele também corrige [VERIFICAR], trecho copiado e a "Fundamentação legal" que falta), ou, se você é o administrador e revisou o
+texto, **"Revisei e assumo"**, com o motivo (fica no Histórico). Conferir de novo o mesmo texto, sem mudar nada, não tira um ✗. A
+conferência vale para aquela versão: mudou o título, o texto, a fonte ou a capa, confira de novo. [VERIFICAR] e frase do boletim pago
+continuam travando mesmo com o "Revisei e assumo" (com eles, o botão não aparece: resolva no texto).
+
+**O texto Informativo, passo a passo:**
+
+1. Assunto sem texto oficial (só boletim, portal ou editora): o "Gerar com IA" escreve o texto Informativo. Com texto oficial, a IA
+   também pode dizer que o assunto não tem base legal específica (um alerta, um dado econômico); aí o texto também é Informativo.
+2. O conteúdo aparece com o selo **"Informativo — aguardando autorização"**, sem o botão Aprovar. A equipe revisa e envia para revisão
+   como sempre; a trilha mostra o passo "Autorizar o Informativo".
+3. O administrador confere e clica em **"Autorizar a publicação do Informativo…"** (no conteúdo ou na trilha), escreve o motivo e
+   confirma: quem, quando e o motivo ficam no assunto e no Histórico. A autorização vale para o assunto inteiro (é o "Publicar mesmo
+   assim"): os outros textos dele também podem ir ao site sem a fundamentação oficial. "Desfazer a liberação" devolve o Informativo
+   aprovado para a revisão.
+4. O selo vira **"Conteúdo informativo"** e o conteúdo segue o caminho de sempre: Conferência das Diretrizes, aprovar, site e redes.
+   No site, a notícia sai com a linha "Conteúdo informativo" no fim (a prévia mostra).
+
+**Como ensinar a IA.** Em **Configurações → Inteligência artificial → "Orientações para a IA"** (só o administrador). Escreva como explicaria o trabalho a
+um redator novo: frases curtas, uma ideia por linha. A IA lê as orientações em todo pedido; depois de salvar, elas valem a partir do
+próximo "Gerar com IA" (o que já foi gerado não muda sozinho: gere de novo). Em branco, a IA trabalha como antes.
+
+**Orientações para os textos** (até 2.000 caracteres): tom, estilo, tamanho, o que evitar e exemplos de posts de que o escritório
+gostou. Um exemplo bom:
+
+> Tom próximo e direto, como quem conversa com o dono de uma pequena empresa. Frases curtas, sem juridiquês; explique a sigla na
+> primeira vez. Comece pelo que muda para o cliente e termine dizendo o que ele precisa fazer e até quando. Nada de exclamação, emoji
+> ou "fique atento". Na legenda do Instagram, no máximo 4 parágrafos curtos.
+> Post de que gostamos: "O prazo mudou. Veja o que a sua empresa precisa conferir até o fim do mês."
+
+**Orientações para as imagens** (até 500 caracteres): estilo, cenas preferidas e o que evitar. Um exemplo bom:
+
+> Ilustração limpa, com bastante espaço vazio e poucas pessoas. Prefira cenas de escritório, de pequenos comércios e de atendimento
+> ao cliente. Evite cofres, pilhas de dinheiro, martelo de juiz e setas de gráfico subindo.
+
+**O que não adianta pedir** (as regras e as Diretrizes passam por cima das orientações, e o Radar confere por código):
+
+- **Texto dentro da imagem** (título, número, nome da empresa): a ilustração nunca tem letra nem número. O título entra por cima, na
+  capa e na arte, desenhado pela tela.
+- **Pessoa real ou conhecida** (alguém da equipe, um político, um artista), **marca ou logotipo** (da Artecon ou de outra empresa) e
+  **"no estilo de"** um artista ou estúdio: o pedido da imagem proíbe isso sempre. Se as orientações para as imagens pedirem, elas
+  ficam de fora daquela imagem inteira e a tela avisa, com a palavra que travou; reescreva só com o estilo e as cenas.
+- **Copiar notícia** (de portal, de concorrente ou do boletim pago): o texto é sempre escrito com palavras próprias, a partir da fonte
+  oficial. Os exemplos de posts mostram só o estilo: a IA não usa os fatos, os números nem as datas deles. Frase do boletim pago não
+  entra nem nas orientações (a tela recusa ao salvar).
+- **Fato, número ou data** que não esteja na fonte, **promessa** ("garantimos", "pague menos imposto"), **oferta** ("consulta
+  grátis") ou **comparação** com outros escritórios: a publicidade contábil não admite, e a tela trava ou avisa como sempre.
+- **CNPJ, CRC e telefone** no texto: a identificação legal é acrescentada pela tela, a partir de "Fecho, assinatura e identificação
+  legal", nunca pela IA.
+
+Se o resultado ainda não sair como quer, mude uma coisa de cada vez e gere de novo: fica mais fácil saber o que funcionou.
+
 ## Regras que o banco garante
 
 - **Fundamentação:** uma evidência só fica "conferida" se o trecho existir, literalmente,
@@ -884,6 +1064,18 @@ para o campo e salve. Ele não vai no repositório porque traz nomes e celulares
   é rascunho e traz, calculada por código, a lista do que não aparece no texto oficial:
   número de norma, artigo, parágrafo, percentual, valor, data e prazo. O consumo fica
   registrado por usuário e tem teto mensal.
+- **Conferência das Diretrizes (v0.24.0):** nenhum conteúdo é aprovado, nem pela API, sem a lista dos 10 critérios da versão do texto
+  que está no conteúdo, sem critério que não atende (ou com o "Revisei e assumo", que só o administrador faz, com o motivo). A lista
+  só muda pelas funções do banco (a da IA, gravada como quem pediu, e a do administrador), e o banco confere sozinho, por cima dela, o
+  que dá por código: a capa, [VERIFICAR], a seção "Fundamentação legal" com link oficial, a fonte do Informativo e o boletim pago.
+  Gravar a lista não muda a data do conteúdo; mudar o título, o texto, a fonte ou a capa a deixa sem valer. Quem não é o
+  administrador não tira o ✗ que a lista do mesmo texto já tinha, nem gravando outra lista pela API: o ✗ cai com o texto corrigido ou
+  com o "Revisei e assumo". No Informativo, a norma só mencionada não leva ✗ no critério 2 por código (ele não tem a seção). Limite: a
+  lista da IA é gravada com o login de quem pediu (a função não a assina), então um editor que gravasse pela API, antes da IA, uma
+  lista inventada conseguiria aprovar o que o banco não confere por código, e ficaria com o nome dele na lista e no Histórico.
+- **Informativo (v0.24.0):** o texto Informativo só é aprovado depois que o administrador autoriza a publicação do assunto (com o
+  motivo); o aviso que o marca como Informativo não sai do texto (os pontos a conferir só crescem); desfeita a autorização, o
+  Informativo aprovado volta para a revisão (e as autorizações de publicação dele que esperavam caem, porque o conteúdo mudou).
 - **Informativo Mensal:** só entra conteúdo aprovado; edição fechada não muda (nem os
   artigos entram, saem ou trocam de edição) e só o administrador reabre; não fecha se algum artigo deixou de estar aprovado.
 - **Imagens:** só JPG, PNG ou WebP, gravadas já reduzidas. Só a equipe lê. Trocar imagem, autor ou fonte de conteúdo aprovado devolve
@@ -1699,6 +1891,35 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 
 ## Atualizações futuras
 
+**Da v0.23.0 para a v0.24.0** (muda o banco: SQL novo, que pode rodar de novo; nada de chave ou segredo pelo chat). Faça tudo de uma
+vez, num momento em que ninguém esteja aprovando conteúdo: do SQL até a tela nova, a aprovação passa a pedir a Conferência das
+Diretrizes, que só a função e a tela novas fazem.
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.24.0.sql` inteiro. Confira no fim: 27 tabelas e "instalacoes concluidas"
+   com a **v0.24.0**. Ele cria a Conferência das Diretrizes (coluna `conferencia` em `radar_conteudos` e as funções) e a trava do
+   Informativo; não apaga nada e pode rodar de novo. As agendas (`sql/radar-*-agenda.sql`) não mudam.
+2. Edge Functions → `radar-ia` → cole o `index.ts` desta versão → Deploy, com "Verify JWT" como já está. Nenhum segredo muda.
+3. A tela e o robô do site chegam pelo repositório: `index.html`, `radar-pauta.js` e `radar-video.js` juntos, e o
+   `robo/radar_site_publicar.py` (o workflow "Radar — publicar no site" já usa o novo). Ctrl+F5 em todos os aparelhos. A aba Versões
+   mostra a v0.24.0.
+4. Configurações → Inteligência artificial → **Testar a IA**: a função aparece como **v0.24.0** (o painel avisa se ela for mais velha).
+5. Teste num assunto de teste, sem publicar: (a) um conteúdo em revisão mostra o quadro "Conferência das Diretrizes" com "?"; o
+   "Revisar com IA" preenche os 10 critérios; com ✗, o Aprovar recusa; como administrador, "Revisei e assumo" (com o motivo) libera;
+   (b) num assunto sem texto oficial, o "Gerar com IA" faz um texto com o selo "Informativo — aguardando autorização"; o administrador
+   clica em "Autorizar a publicação do Informativo…", escreve o motivo, e a prévia ("Ver como fica no site") termina com "Conteúdo
+   informativo".
+6. (Opcional) Em Configurações → Inteligência artificial, escreva as **Orientações para a IA** (veja "Diretrizes editoriais e como
+   ensinar a IA") e clique em Salvar; gere um texto e uma ilustração num assunto de teste e confira; ajuste quantas vezes quiser.
+
+Depois da instalação: o que já estava aprovado continua aprovado (e publica como antes); o conteúdo em rascunho ou em revisão precisa
+da Conferência ("Revisar com IA") ou do "Revisei e assumo" para ser aprovado. O texto gerado antes, sem texto oficial, não vira
+Informativo (só os gerados daqui em diante).
+
+Para desfazer: rode o `sql/radar-setup-v0.22.0.sql` da v0.23.0 (no histórico do GitHub): a aprovação volta a ser como antes (sem a
+Conferência e sem a trava do Informativo; a coluna nova fica, sem efeito). Cole de novo o `index.ts` da `radar-ia` da v0.22.0 e volte a
+tela e o robô do site da v0.23.0. As orientações ficam guardadas nas Configurações, sem efeito; para só parar de usá-las, deixe os dois
+campos em branco e salve.
+
 **Da v0.22.0 para a v0.23.0** (o banco não muda; nada de chave ou segredo pelo chat):
 
 1. A tela chega pelo repositório: `index.html`, `radar-pauta.js` e `radar-video.js` juntos (só o número da versão muda); Ctrl+F5 em
@@ -1829,7 +2050,7 @@ Cuidados nesta versão:
   workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
   reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
 - **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
-  `sql/radar-reversao-v0.22.0.sql`, que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.24.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
   também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
   as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
   guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do

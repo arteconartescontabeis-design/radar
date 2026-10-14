@@ -503,3 +503,34 @@ def test_link_da_fonte_nunca_e_o_do_boletim_pago_quando_ha_outra_captura():
     link = lambda *caps: pub.Publicador(Banco(list(caps)), "u", "s").link_fonte({"assunto_id": 1})
     assert link(itc, portal) == portal["url"] and link(itc, portal, rfb) == rfb["url"]
     assert link(itc) == "https://www.itcnet.com.br/"                   # só o boletim: o endereço do site, sem o marcador interno
+
+
+def test_informativo_sai_com_a_linha_no_fim_e_o_endereco_vira_link(cenario):
+    """v0.24.0: o texto Informativo (o primeiro aviso começa com "INFORMATIVO"), autorizado pelo administrador e aprovado, sai no site
+    com a linha "Conteúdo informativo" no fim, depois dos créditos; o endereço do texto (o link oficial da seção "Fundamentação legal")
+    vira link, como na prévia da tela, com a pontuação de fora; o texto que não é Informativo não leva a linha."""
+    a, _ = cenario_publicavel(cenario)
+    marca = "INFORMATIVO (sem fundamentação legal específica): só vai ao site e às redes depois que o administrador autoriza a publicação."
+    corpo = CORPO + "\n\n## Fundamentação legal\n- Instrução Normativa RFB nº 2.290 — https://exemplo.gov.br/in-2290."
+    img = cenario.execute("insert into radar_imagens (dados) values (%s) returning id", (CAPA,)).fetchone()[0]
+    c = cenario.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por, avisos_ia, fonte_credito, imagem_id)
+                           values (%s, 'informativo', 'Informativo de teste sobre o Simples', %s, 'em_revisao', 'ia', %s, 'Receita Federal', %s)
+                           returning id""", (a, corpo, json.dumps([marca]), img)).fetchone()[0]
+    with como("authenticated", ADMIN) as x:
+        x.execute("select radar_liberar_sem_fundamentacao(%s, 'Informativo autorizado no teste')", (a,))
+    aprovar(c)
+    lido = cenario.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    with como("authenticated", ADMIN) as x:
+        envio = x.execute("select radar_autorizar_site(%s, 'Simples Nacional', %s)", (c, lido)).fetchone()[0]
+    assert rodar() == [f"envio {envio}: publicado"]
+    texto = SITE["envios"][-1]["text"]
+    assert texto.endswith('<p style="text-align:right"><em>Fonte: <a href="https://exemplo.gov.br/in-2290" target="_blank" rel="noopener">'
+                          'Receita Federal</a></em></p>\n<p style="text-align:right"><em>Conteúdo informativo</em></p>')
+    assert ('<li style="text-align:justify">Instrução Normativa RFB nº 2.290 — <a href="https://exemplo.gov.br/in-2290" target="_blank" '
+            'rel="noopener">https://exemplo.gov.br/in-2290</a>.</li>') in texto
+    assert "Conteúdo informativo" not in pub.para_html("Texto.", fonte="Receita Federal")
+    assert pub.eh_informativo({"avisos_ia": [marca]}) and not pub.eh_informativo({"avisos_ia": ["Outro aviso"]}) and not pub.eh_informativo({})
+    h = pub.para_html("Veja **https://www.gov.br/a?b=1&c=2** e (https://www.gov.br/x_(y)). Nada de javascript:alert(1) nem <b>x</b>.")
+    assert ('<strong><a href="https://www.gov.br/a?b=1&amp;c=2" target="_blank" rel="noopener">https://www.gov.br/a?b=1&amp;c=2</a></strong>'
+            in h and '(<a href="https://www.gov.br/x_(y)" target="_blank" rel="noopener">https://www.gov.br/x_(y)</a>).' in h)
+    assert "javascript:alert(1)" in h and h.count("<a ") == 2 and "&lt;b&gt;x&lt;/b&gt;" in h

@@ -480,7 +480,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_video_descartar', 'radar_video_apaguei', 'radar_video_apaguei_baixado',
                                                            'radar_video_para_previa', 'radar_video_para_baixar', 'radar_video_resumo',
                                                            'radar_video_cota',
-                                                           'radar_pauta_pecas_da_pessoa')
+                                                           'radar_pauta_pecas_da_pessoa',
+                                                           -- v0.24.0: a Conferência das Diretrizes (cada função confere o papel)
+                                                           'radar_registrar_conferencia', 'radar_assumir_conferencia', 'radar_conferencia_versao')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -722,7 +724,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.22.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.24.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1183,7 +1185,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (27, 6, 8, 8, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.22.0", [], 27)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.24.0", [], 27)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -2037,10 +2039,10 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
         for _ in range(2):
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
-        # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.22.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.22.0||"]
+        # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.24.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.22.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.24.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2070,7 +2072,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.22.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.24.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -5017,3 +5019,236 @@ def test_reversao_tira_a_agenda_e_as_tabelas_da_pauta():
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_rev21 with (force)")
+
+
+# ------------------------------------------------ v0.24.0: Conferência das Diretrizes e texto Informativo
+LISTA_OK = [{"item": n, "situacao": "atende", "motivo": f"Critério {n} atendido."} for n in range(1, 11)]
+
+
+def lido_de(db, conteudo):
+    return db.execute("select atualizado_em from radar_conteudos where id = %s", (conteudo,)).fetchone()[0]
+
+
+def registrar_conferencia(conteudo, itens=LISTA_OK, uid=EDITOR, lido=None):
+    """Grava a lista da IA como a função radar-ia grava (com o login de quem pediu)."""
+    with como("authenticated", uid) as c:
+        if lido is None:
+            lido = c.execute("select atualizado_em from radar_conteudos where id = %s", (conteudo,)).fetchone()[0]
+        return c.execute("select radar_registrar_conferencia(%s, %s, %s, 'claude-sonnet-4-6')", (conteudo, lido, json.dumps(itens))).fetchone()[0]
+
+
+def com_item(n, situacao, motivo="Motivo de teste."):
+    return [x if x["item"] != n else {"item": n, "situacao": situacao, "motivo": motivo} for x in LISTA_OK]
+
+
+def test_aprovacao_pede_a_conferencia_das_diretrizes_da_versao_do_texto(limpo, conferencia_de_verdade):
+    """v0.24.0 (Diretriz 7): sem a Conferência das Diretrizes do texto que está no conteúdo, nem o editor nem o administrador aprovam
+    (RADAR181); com critério que não atende, também não (RADAR182, com os números); com os 10 atendidos (ou "não se aplica"), aprova.
+    Mudou o título, o texto, a fonte ou a capa, a conferência deixa de valer. Gravar a conferência não muda a data do conteúdo, e ela
+    só muda pelas funções: nem o UPDATE direto nem o INSERT a forjam."""
+    a, c1 = cenario_publicavel(limpo)
+    for uid in (EDITOR, ADMIN):
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR181: falta a Conferência das Diretrizes deste texto"):
+            aprovar(c1, uid)
+    antes = lido_de(limpo, c1)
+    conf = registrar_conferencia(c1, com_item(7, "nao_atende", "O título promete mais que o texto."))
+    assert lido_de(limpo, c1) == antes                                           # a data do conteúdo não muda
+    assert [(x["item"], x["situacao"]) for x in conf["itens"] if x["situacao"] != "atende"] == [(6, "nao_se_aplica"), (7, "nao_atende")]
+    gravada = limpo.execute("select conferencia from radar_conteudos where id = %s", (c1,)).fetchone()[0]
+    assert gravada["versao"] == limpo.execute("select radar_conferencia_versao(c) from radar_conteudos c where id = %s", (c1,)).fetchone()[0]
+    assert gravada["por"] == EDITOR and gravada["modelo"] == "claude-sonnet-4-6" and len(gravada["itens"]) == 10
+    with pytest.raises(psycopg.errors.RaiseException, match=r"RADAR182: a Conferência das Diretrizes tem critério que não atende \(7\)"):
+        aprovar(c1)
+    # a editora não tira o ✗ gravando outra lista para o mesmo texto (nem pela API): ele fica, com o motivo de antes
+    conf = registrar_conferencia(c1, com_item(5, "nao_se_aplica", "Sem citação literal."))
+    assert conf["itens"][6] == {"item": 7, "situacao": "nao_atende", "motivo": "O título promete mais que o texto."} and conf["itens"][4]["situacao"] == "nao_se_aplica"
+    with pytest.raises(psycopg.errors.RaiseException, match=r"RADAR182: .*\(7\)"):
+        aprovar(c1)
+    # a lista do administrador (o "Revisar com IA" pedido por ele) vale inteira
+    registrar_conferencia(c1, com_item(5, "nao_se_aplica", "Sem citação literal."), uid=ADMIN)
+    assert aprovar(c1) == (EDITOR,)
+    # o texto mudou: volta para revisão e a conferência anterior não vale mais
+    limpo.execute("update radar_conteudos set corpo = 'Texto alterado depois da conferência.' where id = %s", (c1,))
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c1,)).fetchone()[0] == "em_revisao"
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
+        aprovar(c1)
+    # o título, a capa e a fonte também fazem parte da versão
+    registrar_conferencia(c1)
+    limpo.execute("update radar_conteudos set titulo = 'Título trocado depois da conferência' where id = %s", (c1,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
+        aprovar(c1)
+    registrar_conferencia(c1)
+    limpo.execute("update radar_conteudos set fonte_credito = 'Outra fonte' where id = %s", (c1,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
+        aprovar(c1)
+    registrar_conferencia(c1)
+    limpo.execute("update radar_conteudos set imagem_id = %s where id = %s", (nova_imagem(), c1))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
+        aprovar(c1)
+    # ninguém forja a conferência por fora: o UPDATE direto e o INSERT não a gravam
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_conteudos set conferencia = %s where id = %s",
+                  (json.dumps({"versao": "x", "itens": LISTA_OK}), c1))
+        n = c.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, conferencia)
+                         values (%s, 'flash', 'Novo', 'Texto novo.', 'em_revisao', %s) returning id""",
+                      (a, json.dumps({"versao": "x", "itens": LISTA_OK}))).fetchone()[0]
+    assert limpo.execute("select conferencia->>'versao' from radar_conteudos where id = %s", (c1,)).fetchone()[0] != "x"
+    assert limpo.execute("select conferencia from radar_conteudos where id = %s", (n,)).fetchone()[0] == {}
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
+        aprovar(n)
+
+
+def test_lista_da_conferencia_e_validada_e_so_editor_ou_administrador_grava(limpo, conferencia_de_verdade):
+    """v0.24.0: a lista tem os 10 critérios, cada um uma vez, com a situação ("atende", "nao_atende", "nao_se_aplica") e o motivo (até
+    300 caracteres) (RADAR185); vale para o texto que foi à IA (RADAR184); o leitor não grava (RADAR183)."""
+    _, c1 = cenario_publicavel(limpo)
+    ruins = [LISTA_OK[:9], LISTA_OK[:9] + [LISTA_OK[0]], com_item(3, "talvez"), com_item(4, "atende", ""), com_item(4, "atende", "x" * 301),
+             [dict(x, item=11) if x["item"] == 10 else x for x in LISTA_OK], {"itens": LISTA_OK}]
+    for itens in ruins:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR185"):
+            registrar_conferencia(c1, itens)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR184"):
+        registrar_conferencia(c1, lido="2020-01-01T00:00:00+00:00")
+    with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR183"):
+        registrar_conferencia(c1, uid=LEITOR)
+    with como("authenticated", SEM_PERFIL) as c:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR183"):
+            c.execute("select radar_registrar_conferencia(%s, now(), %s)", (c1, json.dumps(LISTA_OK)))
+    assert limpo.execute("select conferencia from radar_conteudos where id = %s", (c1,)).fetchone()[0] == {}
+
+
+def test_banco_confere_sozinho_o_que_da_por_codigo(limpo, conferencia_de_verdade, request):
+    """v0.24.0: o que dá para conferir por código vale por cima da lista da IA: [VERIFICAR] (2 e 8), norma citada sem a seção
+    "Fundamentação legal" com link oficial (2), Informativo sem a fonte (3), frase do boletim pago (4) e a capa (6: padrão ou foto da
+    equipe atende; ilustração da IA só com o aviso escrito; sem imagem, não se aplica)."""
+    a, c1 = cenario_publicavel(limpo)
+    situacao = lambda conf: {x["item"]: x["situacao"] for x in conf["itens"]}
+    conf = registrar_conferencia(c1)
+    assert situacao(conf) == {**{n: "atende" for n in range(1, 11)}, 6: "nao_se_aplica"} and conf["itens"][5]["motivo"] == "Sem imagem de capa."
+    limpo.execute("update radar_conteudos set corpo = 'O prazo vai até [VERIFICAR: data] de outubro.' where id = %s", (c1,))
+    conf = registrar_conferencia(c1)
+    assert situacao(conf)[2] == situacao(conf)[8] == "nao_atende" and "[VERIFICAR]" in conf["itens"][1]["motivo"]
+    sem_secao = "Conforme a IN RFB nº 2.290, art. 2º, a CBS vai destacada na nota fiscal."
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s", (sem_secao, c1))
+    conf = registrar_conferencia(c1)
+    assert situacao(conf)[2] == "nao_atende" and "Fundamentação legal" in conf["itens"][1]["motivo"] and situacao(conf)[8] == "atende"
+    for corpo, esperado in [(sem_secao + "\n\n## Fundamentação legal\n- IN RFB nº 2.290 (link a conferir)", "nao_atende"),
+                            (sem_secao + "\n\n## Fundamentação legal\n- IN RFB nº 2.290 — https://normas.receita.fazenda.gov.br/in-2290", "atende"),
+                            ("Texto sem norma nenhuma.", "atende")]:
+        limpo.execute("update radar_conteudos set corpo = %s where id = %s", (corpo, c1))
+        assert situacao(registrar_conferencia(c1))[2] == esperado, corpo
+    # a capa: a da equipe atende; a ilustração da IA, só com o aviso no texto
+    limpo.execute("update radar_conteudos set imagem_id = %s where id = %s", (nova_imagem(), c1))
+    assert situacao(registrar_conferencia(c1))[6] == "atende"
+    limpo.execute("update radar_conteudos set ilustracao_id = imagem_id where id = %s", (c1,))
+    conf = registrar_conferencia(c1)
+    assert situacao(conf)[6] == "nao_atende" and "Imagem ilustrativa gerada por IA" in conf["itens"][5]["motivo"]
+    limpo.execute("update radar_conteudos set corpo = corpo || E'\n\nImagem ilustrativa gerada por IA.' where id = %s", (c1,))
+    assert situacao(registrar_conferencia(c1))[6] == "atende"
+    # o Informativo sem a fonte citada (o campo Fonte, que sai no fim da notícia com o link)
+    i = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por, avisos_ia)
+                         values (%s, 'flash', 'Informativo', 'Texto informativo de teste.', 'em_revisao', 'ia', %s) returning id""",
+                      (a, json.dumps(["INFORMATIVO (sem fundamentação legal específica): só vai ao site depois da autorização."]))).fetchone()[0]
+    limpo.execute("update radar_conteudos set fonte_credito = null where id = %s", (i,))          # a equipe apagou a fonte que veio preenchida
+    conf = registrar_conferencia(i)
+    assert situacao(conf)[3] == "nao_atende" and "preencha o campo Fonte" in conf["itens"][2]["motivo"]
+    limpo.execute("update radar_conteudos set fonte_credito = 'Portal Contábil SC' where id = %s", (i,))
+    assert situacao(registrar_conferencia(i))[3] == "atende"
+    # o Informativo não tem a seção "Fundamentação legal": a norma que ele só menciona (atribuída à fonte) não leva ✗ no 2 por código
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s",
+                  ("Segundo o Portal Teste, a Lei Complementar nº 214/2025 trouxe mudanças para as empresas do comércio.", i))
+    assert limpo.execute("select radar_cita_norma(corpo) from radar_conteudos where id = %s", (i,)).fetchone()[0] is True
+    assert situacao(registrar_conferencia(i))[2] == "atende"
+    assert situacao(registrar_conferencia(i, com_item(2, "nao_atende", "Apresenta obrigação legal.")))[2] == "nao_atende"   # a IA ainda reprova
+    # a frase do boletim pago (4), mesmo que a lista diga que atende
+    carregar_fontes_novas(limpo, request)
+    boletim = ("Na nossa avaliação a mudança exige atenção redobrada dos departamentos fiscais que ainda não revisaram os cadastros "
+               "de produtos antes da virada do ano.")
+    limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo) select id, 'https://www.itcnet.com.br/?radar=conf',
+                     'Matéria do boletim', %s, md5('conf') from radar_fontes where slug = 'itc-email'""", (boletim,))
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s", ("Resumo: " + boletim, i))
+    assert situacao(registrar_conferencia(i))[4] == "nao_atende"
+
+
+def test_revisei_e_assumo_so_o_administrador_com_motivo_e_fica_no_historico(limpo, conferencia_de_verdade):
+    """v0.24.0: com critério que não atende (ou sem a lista da IA), só o administrador libera a aprovação ("Revisei e assumo"), com o
+    motivo (10 a 500 caracteres), para a versão do texto que estava na tela; fica na conferência e na trilha de auditoria. Não passa por
+    cima das travas de antes: [VERIFICAR] continua impedindo."""
+    _, c1 = cenario_publicavel(limpo)
+    registrar_conferencia(c1, com_item(8, "nao_atende", "O prazo citado já venceu."))
+    lido = lido_de(limpo, c1)
+    with como("authenticated", EDITOR) as c:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR186: só o administrador"):
+            c.execute("select radar_assumir_conferencia(%s, 'Conferi o prazo no site da Receita.', %s)", (c1, lido))
+    with como("authenticated", ADMIN) as c:
+        for curto in (None, "", "ok", "  curto   "):
+            with pytest.raises(psycopg.errors.RaiseException, match="RADAR187"):
+                c.execute("select radar_assumir_conferencia(%s, %s, %s)", (c1, curto, lido))
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR184"):
+            c.execute("select radar_assumir_conferencia(%s, 'Conferi o prazo no site da Receita.', '2020-01-01')", (c1,))
+        conf = c.execute("select radar_assumir_conferencia(%s, '  Conferi o prazo no site da Receita.  ', %s)", (c1, lido)).fetchone()[0]
+    assert conf["assumida"]["por"] == ADMIN and conf["assumida"]["motivo"] == "Conferi o prazo no site da Receita."
+    assert lido_de(limpo, c1) == lido
+    trilha = limpo.execute("""select usuario::text, depois->'conferencia'->'assumida'->>'motivo' from radar_auditoria
+                              where tabela = 'radar_conteudos' and acao = 'UPDATE' order by id desc limit 1""").fetchone()
+    assert trilha == (ADMIN, "Conferi o prazo no site da Receita.")
+    assert aprovar(c1) == (EDITOR,)                                              # liberado: a editora aprova
+    # o texto mudou: o "Revisei e assumo" era daquela versão
+    limpo.execute("update radar_conteudos set corpo = 'Texto novo [VERIFICAR: prazo].' where id = %s", (c1,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR139"):       # a trava do [VERIFICAR] vem antes e continua
+        aprovar(c1)
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_assumir_conferencia(%s, 'Assumo a conferência deste texto.', %s)", (c1, lido_de(limpo, c1)))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR139"):
+        aprovar(c1)
+    limpo.execute("update radar_conteudos set corpo = 'Texto novo, sem marca.' where id = %s", (c1,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
+        aprovar(c1)
+
+
+def test_informativo_so_e_aprovado_depois_da_autorizacao_do_administrador(limpo):
+    """v0.24.0 (decisão do dono): o texto INFORMATIVO (o primeiro aviso começa com "INFORMATIVO") não é aprovado, nem pela API, enquanto
+    o administrador não autoriza a publicação do assunto (RADAR180); a autorização é o "Publicar mesmo assim" (só ele, com o motivo,
+    gravado no assunto e na trilha). O aviso não sai do texto: os pontos a conferir só crescem."""
+    a = novo_assunto(limpo, situacao="em_verificacao")
+    marca = "INFORMATIVO (sem fundamentação legal específica), escrito a partir de fonte NÃO oficial (Portal): só vai ao site depois da autorização."
+    i = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por, avisos_ia)
+                         values (%s, 'flash', 'Informativo', 'Texto informativo de teste.', 'em_revisao', 'ia', %s) returning id""",
+                      (a, json.dumps([marca]))).fetchone()[0]
+    for uid in (EDITOR, ADMIN):
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR180: texto Informativo"):
+            aprovar(i, uid)
+    with como("authenticated", EDITOR) as c:                                     # tirar o aviso por fora não adianta
+        c.execute("update radar_conteudos set avisos_ia = '[]' where id = %s", (i,))
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR120"):
+            c.execute("select radar_liberar_sem_fundamentacao(%s, 'Liberado pela editora sem o administrador')", (a,))
+    assert limpo.execute("select avisos_ia->>0 from radar_conteudos where id = %s", (i,)).fetchone()[0] == marca
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR180"):
+        aprovar(i)
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_liberar_sem_fundamentacao(%s, 'Informativo conferido e autorizado')", (a,))
+    assert limpo.execute("select liberado_sem_base_por::text, liberado_sem_base_motivo from radar_assuntos where id = %s",
+                         (a,)).fetchone() == (ADMIN, "Informativo conferido e autorizado")
+    assert limpo.execute("""select count(*) from radar_auditoria where tabela = 'radar_assuntos' and usuario = %s
+                            and depois->>'liberado_sem_base_motivo' = 'Informativo conferido e autorizado'""", (ADMIN,)).fetchone()[0] == 1
+    assert aprovar(i) == (EDITOR,)
+    # desfeita a liberação, o Informativo aprovado volta para a revisão (e o texto normal aprovado do assunto, não)
+    n = novo_conteudo(limpo, a)
+    assert aprovar(n) == (EDITOR,)
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_liberar_sem_fundamentacao(%s, null)", (a,))
+    assert limpo.execute("select id, status from radar_conteudos where id in (%s, %s) order by id", (i, n)).fetchall() == [(i, "em_revisao"), (n, "aprovado")]
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR180"):
+        aprovar(i)
+
+
+def test_setup_de_novo_mantem_a_conferencia_e_a_trava(limpo, conferencia_de_verdade):
+    """v0.24.0: o setup roda de novo sem perder a conferência gravada nem a trava da aprovação."""
+    _, c1 = fundamentado(limpo)
+    registrar_conferencia(c1)
+    _, c2 = fundamentado(limpo)
+    r = psql(SETUP)
+    assert r.returncode == 0, r.stderr
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
+        aprovar(c2)
+    assert aprovar(c1) == (EDITOR,)
