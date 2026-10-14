@@ -9,7 +9,7 @@
 -- religue os robôs agendados do GitHub (coleta, robô do site, resumo) que o GitHub desliga sozinho no repositório PÚBLICO depois de
 -- 60 dias sem atividade (o GitHub não desliga o pg_cron). Precisa do segredo RADAR_GITHUB_TOKEN na radar-redes (o mesmo do
 -- acionamento do robô do site); o desligado à mão fica desligado.
--- Pode rodar de novo: a chave existente é mantida e a agenda é refeita.
+-- Pode rodar de novo: a chave existente é mantida e a agenda é refeita (v0.23.0: também no Supabase, com as extensões já ligadas).
 --
 -- A radar-redes continua com "Verify JWT" LIGADO: a agenda manda no Authorization a chave anon, que é pública (a mesma de
 -- radar-config.js; o teste do repositório confere que são iguais e este arquivo recusa qualquer chave que não seja a anon).
@@ -18,10 +18,20 @@
 -- Pausa sem SQL: Configurações → Pauta → "agenda_ligada": false. Para desfazer: sql/radar-redes-agenda-reversao.sql.
 -- Troque o endereço abaixo se o projeto do Supabase for outro.
 -- =====================================================================
-create extension if not exists pg_cron with schema pg_catalog;      -- como na página "Install pg_cron" do Supabase
-grant usage on schema cron to postgres;
-grant all privileges on all tables in schema cron to postgres;
-create extension if not exists pg_net;                               -- já instalada no projeto (0.20.4): não muda nada
+-- v0.23.0: o pg_cron (com os grants da página "Install pg_cron" do Supabase) e o pg_net só entram quando a extensão ainda não
+-- existe. Com ela instalada, o "create extension" e os grants de novo disparavam o gatilho da Supabase (grant_pg_cron_access) e a
+-- 2ª rodada parava em "ERROR: dependent privileges exist", antes de refazer a agenda.
+do $$
+begin
+  if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+    execute 'create extension pg_cron with schema pg_catalog';       -- como na página "Install pg_cron" do Supabase
+    execute 'grant usage on schema cron to postgres';
+    execute 'grant all privileges on all tables in schema cron to postgres';
+  end if;
+  if not exists (select 1 from pg_extension where extname = 'pg_net') then
+    execute 'create extension pg_net';                                -- já instalada no projeto (0.20.4): não muda nada
+  end if;
+end $$;
 
 do $$
 begin

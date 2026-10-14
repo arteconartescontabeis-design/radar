@@ -1,12 +1,15 @@
 """Agenda do banco que publica a Pauta aprovada (v0.21.0): sql/radar-redes-agenda.sql e sql/radar-redes-agenda-reversao.sql.
 
 O Postgres dos testes não tem pg_cron, pg_net nem Vault: o módulo cria um banco à parte (radar_agenda), com o setup e os três esquemas
-de mentira de conftest.py, e roda o arquivo da agenda como está, menos as linhas "create extension" (como o teste da radar-concorrentes
-faz com o pg_net). O comando gravado em cron.job é executado como o pg_cron executaria, e cada net.http_post vira uma linha em
+de mentira de conftest.py, e roda o arquivo da agenda como está, com as duas extensões contando como já instaladas (v0.23.0; antes, sem
+as linhas "create extension", como o teste da radar-concorrentes faz com o pg_net). O comando gravado em cron.job é executado como o pg_cron executaria, e cada net.http_post vira uma linha em
 net.pedidos. Confere: a chave da agenda nasce no Vault e nunca fica no comando; o comando faz um pedido por envio vencido (a chave anon,
 pública, no Authorization e a da agenda no x-radar-agenda) e nenhum quando nada venceu; sem o setup da v0.21.0 o arquivo para com o
 recado; a chave service_role, a sb_secret e o que não é JWT são recusados sem agendar nada; a chave anon escrita no arquivo é a de
 radar-config.js; e rodar de novo não duplica, e a reversão tira os dois agendamentos (a chave fica no Vault).
+
+v0.23.0 (a pendência da v0.22.1): as três agendas (ITC, Pauta e corretor de vídeo) rodam de novo no Supabase sem o "dependent privileges
+exist": com as extensões instaladas, o arquivo não roda "create extension" nem grant (o que disparava o gatilho da Supabase).
 """
 from __future__ import annotations
 
@@ -19,7 +22,10 @@ import pytest
 from conftest import CRON_SIMULADO, NET_SIMULADO, RAIZ, SETUP, VAULT_SIMULADO, conectar, jwt, psql
 
 BANCO_AGENDA = "radar_agenda"
+EXTENSOES = ("pg_cron", "pg_net")
 AGENDA = RAIZ / "sql" / "radar-redes-agenda.sql"
+AGENDA_ITC = RAIZ / "sql" / "radar-itc-agenda.sql"                                    # v0.23.0
+AGENDA_VIDEO = RAIZ / "sql" / "radar-video-agenda.sql"
 AGENDA_REVERSAO = RAIZ / "sql" / "radar-redes-agenda-reversao.sql"
 URL = "https://jhxlsvzvqvufyhkjnmeq.supabase.co/functions/v1/radar-redes"
 IMG = "data:image/jpeg;base64," + "A" * 200
@@ -35,11 +41,15 @@ def carga_do_jwt(chave: str) -> dict:
 
 
 def sem_extensoes(texto: str, pasta, nome="radar-redes-agenda-teste.sql"):
-    """O arquivo da agenda como está, menos as duas linhas "create extension" (o banco de teste não tem pg_cron nem pg_net)."""
-    linhas = texto.splitlines()
-    assert sum(l.startswith("create extension if not exists") for l in linhas) == 2
+    """O arquivo da agenda como está, com o pg_cron e o pg_net contando como já instalados (o banco de teste não tem as extensões; o
+    cron e o net são os de mentira). v0.23.0: o bloco do começo confere o pg_extension e pula o "create extension" e os grants, como
+    na 2ª rodada no Supabase; aqui ele confere uma extensão que todo banco tem (plpgsql). Fora do bloco, nenhum "create extension"."""
+    assert not re.search(r"(?mi)^\s*(create extension|grant )", texto)
+    for extensao in EXTENSOES:
+        assert texto.count(f"from pg_extension where extname = '{extensao}'") == 1, extensao
+        texto = texto.replace(f"where extname = '{extensao}'", "where extname = 'plpgsql'")
     arquivo = pasta / nome
-    arquivo.write_text("\n".join("-- (sem a extensão no banco de teste) " + l if l.startswith("create extension") else l for l in linhas))
+    arquivo.write_text(texto)
     return arquivo
 
 
@@ -251,3 +261,73 @@ def test_agenda_roda_de_novo_sem_duplicar_e_reversao_tira_tudo(banco_agenda, age
     with conectar(banco_agenda) as c:
         assert sorted(n for (n,) in c.execute("select jobname from cron.job").fetchall()) == ["copia-do-projeto", "radar-itc"]
         assert c.execute("select count(*) from vault.secrets where name = 'radar_redes_agenda'").fetchone()[0] == 1   # a chave fica
+
+
+# v0.23.0: o gatilho da Supabase que parava a 2ª rodada (grant_pg_cron_access, no "create extension" e nos grants do pg_cron), de
+# mentira: falha em qualquer "create extension" e em qualquer grant
+GATILHO_DA_SUPABASE = """
+create function public.gatilho_da_supabase_simulado() returns event_trigger language plpgsql as $$
+begin
+  raise exception 'dependent privileges exist';
+end $$;
+create event trigger gatilho_da_supabase_simulado on ddl_command_end when tag in ('CREATE EXTENSION', 'GRANT')
+  execute function public.gatilho_da_supabase_simulado();
+"""
+
+
+def test_as_tres_agendas_rodam_de_novo_sem_tocar_nas_extensoes(tmp_path):
+    """v0.23.0 (a pendência da v0.22.1): rodar de novo no Supabase o radar-itc-agenda.sql, o radar-redes-agenda.sql ou o
+    radar-video-agenda.sql parava em "ERROR: dependent privileges exist": com o pg_cron instalado, o "create extension" e os grants do
+    cabeçalho disparavam o gatilho da Supabase. Com as extensões instaladas, nenhum dos dois roda: com um gatilho de mentira que falha
+    em qualquer um, cada agenda roda duas vezes seguidas sem erro, sem duplicar agendamento e sem trocar a chave do Vault. Sem a
+    extensão, o bloco ainda a cria (no banco de teste ela não existe: o erro mostra a tentativa, e nada mais roda)."""
+    banco = "radar_agenda_de_novo"
+    novo_banco(banco, com_setup=True, simulados=True)
+    try:
+        with conectar(banco) as c:
+            c.execute(GATILHO_DA_SUPABASE)
+        for arquivo in (AGENDA_ITC, AGENDA, AGENDA_VIDEO):
+            for vez in (1, 2):
+                r = psql(sem_extensoes(arquivo.read_text(), tmp_path, f"{vez}-{arquivo.name}"), banco)
+                assert r.returncode == 0, (arquivo.name, vez, r.stderr)
+                with conectar(banco) as c:
+                    estado = (c.execute("select jobname, schedule, command from cron.job order by jobname").fetchall(),
+                              c.execute("select name, decrypted_secret from vault.decrypted_secrets order by name").fetchall())
+                if vez == 2:
+                    assert estado == antes, arquivo.name                                   # a 2ª rodada refaz igual
+                antes = estado
+        jobs, segredos = dict((n, (s, cmd)) for n, s, cmd in antes[0]), dict(antes[1])
+        assert sorted(jobs) == ["radar-itc", "radar-itc-completa", "radar-redes-agenda", "radar-redes-agenda-limpeza",
+                                "radar-redes-agenda-robos", "radar-video-limpeza", "radar-video-reserva"]
+        assert sorted(segredos) == ["radar_itc_agenda", "radar_redes_agenda", "radar_video_agenda", "radar_video_robo"]
+        # a agenda da ITC (sem teste antes): 02h55 de Brasília, o complemento só com boletim para depois, a chave lida do Vault na hora
+        assert jobs["radar-itc"][0] == "55 5 * * *" and jobs["radar-itc-completa"][0] == "10,25 6 * * *"
+        assert all(segredos["radar_itc_agenda"] not in cmd for _, cmd in jobs.values())
+        with conectar(banco) as c:
+            c.execute("truncate net.pedidos")
+            c.execute(jobs["radar-itc"][1])
+            c.execute(jobs["radar-itc-completa"][1])                                   # nada ficou para depois: não chama
+            pedidos = [tuple(p) for p in c.execute("select url, body, headers from net.pedidos order by id").fetchall()]
+        assert pedidos == [("https://jhxlsvzvqvufyhkjnmeq.supabase.co/functions/v1/radar-itc", {"acao": "ler"},
+                            {"Content-Type": "application/json", "x-radar-agenda": segredos["radar_itc_agenda"]})]
+        # com boletim para depois, o complemento chama. O gatilho de mentira barra qualquer GRANT (o da Supabase, só os do pg_cron):
+        # sai antes do SQL das fontes (que cadastra a itc-email)
+        with conectar(banco) as c:
+            c.execute("alter event trigger gatilho_da_supabase_simulado disable")
+        assert psql(RAIZ / "sql" / "radar-fontes-novas-2026-10.sql", banco).returncode == 0
+        with conectar(banco) as c:
+            c.execute("update radar_fontes set ultimo_erro = 'Leitura do boletim: 2 boletim(ns) ficaram para a próxima leitura' "
+                      "where slug = 'itc-email'")
+            c.execute("truncate net.pedidos")
+            c.execute(jobs["radar-itc-completa"][1])
+            assert [u for (u,) in c.execute("select url from net.pedidos").fetchall()] == [pedidos[0][0]]
+        # sem a extensão instalada, o bloco tenta criá-la (e para ali, com o ON_ERROR_STOP do SQL Editor)
+        for arquivo in (AGENDA_ITC, AGENDA, AGENDA_VIDEO):
+            r = psql(arquivo, banco)
+            assert r.returncode != 0 and 'extension "pg_cron" is not available' in r.stderr, (arquivo.name, r.stderr)
+        r = psql(RAIZ / "sql" / "radar-concorrentes.sql", banco)
+        assert r.returncode != 0 and 'extension "pg_net" is not available' in r.stderr, r.stderr
+        with conectar(banco) as c:
+            assert c.execute("select jobname, schedule, command from cron.job order by jobname").fetchall() == antes[0]
+    finally:
+        apagar_banco(banco)

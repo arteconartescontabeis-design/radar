@@ -1,13 +1,54 @@
-# Radar Artecon — Relatório de testes (v0.22.0)
+# Radar Artecon — Relatório de testes (v0.23.0)
 
-Data: 13/10/2026. Resultado neste ambiente, com a suíte inteira da v0.22.0 (depois das duas varreduras e das rodadas 1 e 2 da
-varredura geral): **994 aprovados, 0 falhas, 62 pulados**, em 869 s (14min29s). Dos pulados, 61 são os testes de tela que sobem a IA Central de
-verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`) e 1 é o dos commits do push, que só roda no
-`radar-repositorio.yml` (precisa do commit de antes do push). As funções `radar-ia`, `radar-redes` e `radar-video` rodam de verdade no Deno nos testes delas; o Speech SDK
-da Azure roda de verdade contra um servidor local do protocolo de fala; e o ffmpeg do corretor de vídeo roda de verdade, também no
-contêiner (`robo/video/Dockerfile`, montado com o `docker`). Nenhum teste chama a Azure, o GitHub ou o Supabase de verdade, e todo
-vídeo e toda voz dos testes são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as
-seções da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+Data: 14/10/2026. Resultado neste ambiente, com a suíte inteira da v0.23.0: **996 aprovados, 0 falhas, 67 pulados**, em 1.018 s
+(16min58s). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui
+não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI
+instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits do push, que só roda no
+`radar-repositorio.yml` (precisa do commit de antes do push). Na v0.22.0 (13/10/2026), a mesma suíte deu 994 aprovados, 0 falhas e 62
+pulados, em 869 s (14min29s), com o contêiner montado pelo `docker`. As funções `radar-ia`, `radar-itc`, `radar-redes`,
+`radar-concorrentes` e `radar-video` rodam de verdade no Deno nos testes delas, e o ffmpeg do corretor de vídeo roda de verdade.
+Nenhum teste chama a Microsoft, a Azure, o GitHub ou o Supabase de verdade; todo boletim da ITC dos testes é inventado, e todo vídeo
+e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.23.0,
+da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.23.0 — boletim da ITC na caixa inteira, agendas que rodam de novo e INLABS
+
+São 7 testes novos (de 1.056 para 1.063 no total) e 10 testes antigos ajustados, mais as duas funções de apoio que aplicam no banco de
+teste os SQL das agendas e da `radar-concorrentes`. Cada mudança foi conferida desfazendo-a numa cópia temporária do arquivo (o teste
+falha) e restaurando:
+
+- **Caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos** (`test_radar_funcao_itc.py`; o Graph de mentira passou a ter as
+  quatro pastas — a Caixa de Entrada, a subpasta "ITC Consultoria", o Lixo Eletrônico e os Itens Excluídos —, a caixa inteira e a pasta
+  só, e respeita o `$top`): o boletim da subpasta é lido; o forjado no Lixo, o dos Itens Excluídos e o que vem sem a pasta não vão à
+  IA; 12 forjados mais recentes no Lixo não deixam de fora o boletim da subpasta (a busca pede o dobro da cota). Sem o id do Lixo ou
+  dos Itens Excluídos (erro do Graph, ou resposta sem o id), a função para com o motivo e nunca lista a caixa sem o filtro. Desfeitos o
+  filtro das pastas, a folga do `$top` ou a parada sem o id, os testes falham.
+- **"Já lido" pelo internetMessageId**: o boletim movido de pasta (outro id do Graph, o mesmo internetMessageId) não volta à IA; a
+  cópia do mesmo e-mail em duas pastas entra uma vez só; sem o internetMessageId, vale o id do Graph. Com a chave de volta no id do
+  Graph (5 testes falham) ou sem tirar a cópia repetida, os testes falham.
+- **`ITC_PASTA`** (outra instância da função, com o segredo preenchido): lê só aquela pasta, sem procurar o Lixo e os Itens Excluídos,
+  e o diagnóstico diz que é só a pasta.
+- **403**: a dica nova ("confira a atribuição 'Application Mail.Read' no Exchange (só esta caixa) — ela leva de 30 minutos a 2 horas
+  para valer depois de criada"), com o código da Microsoft e sem o recado dela, na resposta, na aba Fontes e no diagnóstico.
+- **Diagnóstico**: conta os boletins dos últimos 7 dias na caixa inteira (14 em duas pastas; os do Lixo e dos Itens Excluídos fora),
+  sem pedir o corpo nem o assunto, e mostra a versão 0.23.0. Os 4 testes antigos da função passaram a ter a pasta e o
+  internetMessageId nos e-mails de mentira, e o "já lido" gravado é o internetMessageId.
+- **Agendas que rodam de novo** (`test_radar_agenda.py`): num banco com um gatilho de mentira no lugar do da Supabase (falha em
+  qualquer `create extension` e em qualquer grant), as três agendas (ITC, Pauta e corretor de vídeo) rodam duas vezes seguidas sem
+  erro, com os mesmos agendamentos e as mesmas chaves do Vault; a agenda da ITC (sem teste até aqui) agenda às 05h55 UTC e, só com
+  boletim para depois, às 06h10 e 06h25, e chama a função com a chave do Vault lida na hora; sem a extensão, cada arquivo (e o
+  `sql/radar-concorrentes.sql`) tenta criá-la e para ali. Com os grants do pg_cron fora do bloco que confere a extensão, o teste
+  falha. Os testes das agendas (Pauta e corretor) e da `radar-concorrentes` passam a rodar os arquivos como estão, com as extensões
+  contando como instaladas (antes, sem as linhas `create extension`).
+- **INLABS** (`test_radar_coletores.py`, 1 teste ajustado): o e-mail e a senha com espaço, tabulação e quebra de linha nas pontas
+  chegam limpos ao login; só espaço conta como sem cadastro. Sem o `.strip()`, o teste falha.
+- **Versão** (`test_radar_repositorio.py`, 1 ajustado; `test_radar_telas.py`, 4 ajustados): a tela, os dois scripts, a `radar-itc`,
+  o LEIAME e este relatório na 0.23.0; o banco (setup e reversão) continua na 0.22.0, como a `radar-video` e o robô do vídeo (da
+  mesma versão entre si), e nenhuma função fica à frente da tela; os avisos de banco antigo da tela apontam o setup que existe. A aba
+  Versões traz a 0.23.0 no topo e a 0.22.0 logo abaixo.
+
+Comandos (neste ambiente): os módulos da ITC, das agendas, da `radar-concorrentes`, do repositório, os testes de agenda do
+`test_radar_video_banco.py`, os do INLABS e os 5 de tela afetados, um a um, e depois a suíte inteira (`python -m pytest testes -q`).
 
 ## v0.22.0 — varredura geral, rodada 2 (correções)
 

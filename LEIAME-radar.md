@@ -1,4 +1,4 @@
-# Radar Artecon — v0.22.0
+# Radar Artecon — v0.23.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,7 +12,43 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
-A v0.22.0 traz o **corretor de vídeo dos reels**: a equipe grava o reel no celular, envia pela peça da Pauta e recebe o vídeo pronto
+A v0.23.0 deixa a **leitura do boletim da ITC** pronta para a troca do acesso à caixa e as **agendas do banco** prontas para rodar de
+novo:
+
+- **A caixa inteira:** a função `radar-itc` lê o boletim em qualquer pasta da caixa, **menos o Lixo Eletrônico e os Itens
+  Excluídos**. O boletim pode ser movido da Caixa de Entrada para a subpasta "ITC Consultoria" (ou outra) a qualquer hora, até antes
+  da leitura das 02h55; o e-mail com o remetente da ITC que caiu no Lixo Eletrônico (pode ser forjado) nunca entra. Se não conseguir
+  saber quais são essas duas pastas, a função para com o motivo, em vez de ler sem o filtro. O segredo `ITC_PASTA`, se preenchido,
+  mantém a leitura só daquela pasta (como antes); vazio é o padrão novo.
+- **Sem ler duas vezes:** mover o e-mail de pasta muda o id dele no Microsoft Graph. O controle de "já lido" passa a usar o
+  identificador da mensagem (`internetMessageId`), que é o mesmo em qualquer pasta: o boletim movido depois de lido não volta à IA, e
+  a cópia do mesmo e-mail em duas pastas entra uma vez só. A coluna de `radar_itc_lidos` já aceitava esse identificador: o banco não
+  muda (e a tabela está vazia em produção: nada a migrar).
+- **O Lixo não esconde o boletim:** a lista do Microsoft Graph vem em pedaços, e o Lixo Eletrônico e os Itens Excluídos só saem
+  depois. A função segue os pedaços (até 5) até achar os boletins: muitos e-mails com o remetente da ITC no Lixo (forjados, por
+  exemplo) não deixam mais o boletim de fora. Se forem tantos que a lista não acaba, a aba Fontes mostra a falha ("muitos e-mails com
+  o remetente da ITC no Lixo Eletrônico ou nos Itens Excluídos… confira a caixa") e a leitura não conta como boa; o "Testar conexão"
+  também acusa.
+- **Acesso só à caixa do boletim:** o passo a passo troca o Mail.Read do Entra (que abre todas as caixas do escritório) pela
+  atribuição **"Application Mail.Read" do Exchange Online, só na caixa do boletim** (RBAC for Applications; a
+  `New-ApplicationAccessPolicy` é legado). Quando falta a permissão, o "Testar conexão com o e-mail" e a aba Fontes dizem o que
+  conferir e que a atribuição leva **de 30 minutos a 2 horas** para valer; o teste conta os boletins dos últimos 7 dias na caixa
+  inteira. Veja "Boletim da ITC pelo Microsoft Graph".
+- **Agendas que rodam de novo** (a pendência anotada para a v0.22.1): o `sql/radar-itc-agenda.sql`, o `sql/radar-redes-agenda.sql`, o
+  `sql/radar-video-agenda.sql` e o `sql/radar-concorrentes.sql` só criam o pg_cron e o pg_net (e só fazem os grants do pg_cron)
+  quando a extensão ainda não existe. Antes, rodar de novo no Supabase parava em **"ERROR: dependent privileges exist"**: com a
+  extensão instalada, o `create extension` e os grants do cabeçalho disparavam o gatilho `grant_pg_cron_access` da Supabase. Agora
+  cada um pode rodar de novo sempre que o LEIAME pedir (a troca da chave pública, por exemplo): as chaves do Vault ficam e a agenda é
+  refeita, igual.
+- **INLABS:** o robô tira os espaços e as quebras de linha das pontas do `INLABS_EMAIL` e do `INLABS_SENHA` (um espaço colado no
+  segredo do GitHub fez o login falhar em produção).
+
+Mudam a função `radar-itc` (v0.23.0), o cabeçalho das extensões nos quatro SQL acima, o robô (`robo/radar_inlabs.py`) e o número da
+versão na tela (`index.html`, `radar-pauta.js` e `radar-video.js`). **O banco continua na v0.22.0** (`radar-setup-v0.22.0.sql`, sem
+SQL novo de instalação); a `radar-ia`, a `radar-redes`, a `radar-video`, a `radar-concorrentes` e o robô do vídeo continuam na v0.22.0.
+Para instalar, "Da v0.22.0 para a v0.23.0".
+
+A v0.22.0 trouxe o **corretor de vídeo dos reels**: a equipe grava o reel no celular, envia pela peça da Pauta e recebe o vídeo pronto
 para postar, conferido contra o roteiro:
 
 - **Enviar:** na peça reel, a **"Fala para conferência"** mostra o que o corretor compara (tirada do roteiro: a coluna "Fala" da
@@ -500,10 +536,10 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-setup-v0.22.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
 | `sql/radar-reversao-v0.22.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
-| `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0). |
+| `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0). |
 | `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda. É a única que toca no armazenamento privado `radar-videos`. |
-| `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase. |
+| `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase (desde a v0.23.0, pode rodar de novo, como as outras agendas). |
 | `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
@@ -1572,32 +1608,63 @@ função só tem contagens.
 - **Ética:** a análise serve para entender **formatos e temas** que funcionam, nunca para copiar posts, textos ou imagens de
   outros escritórios (Código de Ética Profissional do Contador, NBC PG 01). O que se aprende vira conteúdo próprio da Artecon.
 
-### Boletim da ITC pelo Microsoft Graph (v0.12.0)
+### Boletim da ITC pelo Microsoft Graph (v0.12.0; v0.23.0: a caixa inteira e o acesso só a ela)
 
-A função `radar-itc` lê o boletim na caixa do Microsoft 365 onde ele chega. Ela precisa de um **registro de aplicativo**
-no Microsoft Entra, feito uma vez por quem administra o Microsoft 365 do escritório:
+A função `radar-itc` lê o boletim na caixa do Microsoft 365 onde ele chega (o segredo `ITC_CAIXA`). Desde a v0.23.0, ela lê a
+**caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos**: o boletim pode ser movido da Caixa de Entrada para uma subpasta
+(por exemplo, "ITC Consultoria"), à mão ou por uma regra do Outlook, a qualquer hora — até antes da leitura das 02h55. O e-mail com o
+remetente da ITC que caiu no Lixo Eletrônico (pode ser forjado) nunca entra, nem o que está nos Itens Excluídos. O boletim já lido e
+movido depois não é lido de novo: o Radar o reconhece pelo identificador da mensagem (`internetMessageId`), que não muda de uma pasta
+para outra. A função só lê: não marca como lido, não move e não responde.
+
+O acesso é dado **só à caixa do boletim**, pelo método atual da Microsoft para aplicativos no Exchange Online ("Role Based Access
+Control for Applications"; a `New-ApplicationAccessPolicy` das versões anteriores deste LEIAME é legado e não deve ser usada). Feito
+uma vez por quem administra o Microsoft 365 do escritório:
 
 1. Entre em https://entra.microsoft.com → **Identidade → Aplicativos → Registros de aplicativo → Novo registro**.
    Nome: `Radar Artecon — boletim ITC`; tipos de conta: **somente este diretório**; sem URI de redirecionamento → **Registrar**.
-2. Na página do aplicativo, anote o **ID do aplicativo (cliente)** e o **ID do diretório (locatário)**.
-3. **Permissões de API → Adicionar uma permissão → Microsoft Graph → Permissões de aplicativo → Mail.Read** → Adicionar.
-   Depois clique em **Conceder consentimento do administrador**.
+2. Na página do aplicativo, anote o **ID do aplicativo (cliente)** e o **ID do diretório (locatário)**. Depois, em **Identidade →
+   Aplicativos → Aplicativos empresariais** → o mesmo aplicativo, anote o **ID do objeto** (o do aplicativo empresarial, que é
+   diferente do ID do objeto do registro).
+3. **Não** dê permissão de e-mail no Entra (Permissões de API: nada de Mail.Read de aplicativo). Se houver Mail.Read de aplicativo de
+   antes, remova a permissão e retire o consentimento do administrador: **as permissões somam**, e o Mail.Read do Entra abre todas as
+   caixas do escritório, por cima do escopo do passo 5 (o escopo deixa de valer).
 4. **Certificados e segredos → Novo segredo do cliente** (validade de até 24 meses) → copie o **Valor** (aparece uma vez só).
    Anote a data de validade: quando vencer, gere outro e troque no Supabase.
-5. **Recomendado (segurança):** a permissão Mail.Read de aplicativo dá acesso a todas as caixas. Limite o aplicativo só à
-   caixa do boletim no Exchange Online (PowerShell): `New-ApplicationAccessPolicy -AppId <ID do aplicativo>
-   -PolicyScopeGroupId <e-mail da caixa> -AccessRight RestrictAccess -Description "Radar: só a caixa do boletim"`.
+5. No **Exchange Online PowerShell** (`Connect-ExchangeOnline`, com uma conta de administrador do Exchange), com os valores do passo
+   2 e o e-mail da caixa do boletim no lugar dos `<…>`:
+
+   ```powershell
+   New-ServicePrincipal -AppId <ID do aplicativo> -ObjectId <ID do objeto do aplicativo empresarial>
+   New-ManagementScope -Name "Radar - caixa do boletim ITC" -RecipientRestrictionFilter "PrimarySmtpAddress -eq '<e-mail da caixa>'"
+   New-ManagementRoleAssignment -App <ID do aplicativo> -Role "Application Mail.Read" -CustomResourceScope "Radar - caixa do boletim ITC"
+   Test-ServicePrincipalAuthorization -Identity <ID do aplicativo> -Resource <e-mail da caixa>
+   ```
+
+   O último comando mostra a função `Application Mail.Read` com **InScope = True**; com outra caixa do escritório no `-Resource`, o
+   certo é **False**. A liberação leva **de 30 minutos a 2 horas** para valer: até lá, o teste do passo 7 mostra "O aplicativo ainda
+   não tem permissão de ler esta caixa".
 6. Supabase (projeto radar-artecon) → **Edge Functions → Secrets** → crie: `GRAPH_TENANT_ID` (ID do diretório),
    `GRAPH_CLIENT_ID` (ID do aplicativo), `GRAPH_CLIENT_SECRET` (o Valor do passo 4) e `ITC_CAIXA` (o e-mail da caixa onde o
-   boletim chega). **Nunca mande esses valores pelo chat.** O `IA_GATEWAY_TOKEN` já existe (é o mesmo da função radar-ia).
-7. Radar → **Fontes** → boletim da ITC → **Testar conexão com o e-mail**: todos os itens devem ficar OK.
-8. Rode uma vez `sql/radar-itc-agenda.sql` no SQL Editor (liga a leitura diária às 02h55; se ficar boletim para depois, ela se completa às 03h10 e às 03h25). **No mesmo
-   momento, desligue a rotina antiga** "Radar — boletim ITC (e-mail)" (a que acorda a conversa do Claude): com as duas, o boletim é
-   lido duas vezes e a IA é paga duas vezes. Enquanto a função não estiver instalada, a rotina antiga é o caminho em produção
-   (varredura geral de 13/10/2026: a agenda da ITC ainda não estava no pg_cron).
+   boletim chega, o mesmo do passo 5). **Nunca mande esses valores pelo chat.** O `IA_GATEWAY_TOKEN` já existe (é o mesmo da função
+   radar-ia).
+7. Radar → **Fontes** → boletim da ITC → **Testar conexão com o e-mail**: todos os itens devem ficar OK, e "Leitura da caixa" conta os
+   boletins dos últimos 7 dias na caixa inteira (fora o Lixo Eletrônico e os Itens Excluídos), sem ler o conteúdo.
+8. Rode `sql/radar-itc-agenda.sql` no SQL Editor (liga a leitura diária às 02h55; se ficar boletim para depois, ela se completa às
+   03h10 e às 03h25; desde a v0.23.0, pode rodar de novo). **No mesmo momento, apague a rotina antiga** "Radar — boletim ITC
+   (e-mail)" (a que acorda a conversa do Claude): com as duas, o boletim é lido duas vezes e a IA é paga duas vezes. Enquanto a
+   função não estiver ligada, a rotina antiga é o caminho em produção (varredura geral de 13/10/2026: a agenda da ITC ainda não estava
+   no pg_cron).
 
-Opcional: `RADAR_ITC_MODELO` (padrão `claude-haiku-4-5`) e `ITC_REMETENTE` (padrão `itc@itcnet.com.br`). Cada leitura com
-boletim novo usa a IA (cerca de 10 a 20 mil tokens por boletim); sem boletim novo, não usa.
+Opcional: `RADAR_ITC_MODELO` (padrão `claude-haiku-4-5`), `ITC_REMETENTE` (padrão `itc@itcnet.com.br`) e `ITC_PASTA`: vazio (o
+padrão) = a caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos; preenchido com o id de uma pasta (ou `inbox`), a função lê
+só ela, como antes da v0.23.0 (o boletim movido para outra pasta deixa de ser lido). Deixe vazio. Cada leitura com boletim novo usa a
+IA (cerca de 10 a 20 mil tokens por boletim); sem boletim novo, não usa. A lista de e-mails do Microsoft Graph vem em pedaços (até 5):
+se os e-mails com o remetente da ITC no Lixo Eletrônico ou nos Itens Excluídos forem tantos que a lista não acaba, a aba Fontes mostra
+"muitos e-mails com o remetente da ITC no Lixo Eletrônico ou nos Itens Excluídos… confira a caixa" e a leitura não conta como boa:
+esvazie o Lixo (ou bloqueie o remetente falso) e leia de novo.
+
+O e-mail do Portal Contábil (que às vezes fica na mesma pasta) não é lido pela função: as notícias dele entram pelo RSS do site.
 
 O mesmo SQL cadastra **ITC Consultoria — boletim por e-mail** (`itc-email`) e a função
 `radar_receber_email`, que grava as matérias do boletim lido no e-mail (a mesma manchete nos dois
@@ -1621,7 +1688,8 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 3. `radar-config.js`: troque o valor de `SUPABASE_ANON_KEY` pela publishable (o nome do campo fica), publique no GitHub e
    Ctrl+F5 em todos os aparelhos. A tela manda a chave só no `apikey` quando não há sessão.
 4. SQL Editor: troque a chave escrita em `sql/radar-redes-agenda.sql` e em `sql/radar-video-agenda.sql` (o `v_anon`) pela
-   publishable e rode os dois de novo (as chaves do Vault ficam); faça o teste do fim de cada arquivo (200).
+   publishable e rode os dois de novo (as chaves do Vault ficam; desde a v0.23.0, sem o "dependent privileges exist"); faça o teste do
+   fim de cada arquivo (200).
 5. GitHub, repositório `radar` → Secrets → **`SUPABASE_SERVICE_KEY`** = a secret do passo 1 (os robôs a mandam só no `apikey`).
    Rode "Radar — coleta" à mão e confira que fica verde.
 6. Repositório privado `radar-video`: troque o `RADAR_VIDEO_COMMIT` pelo SHA do commit com o `radar-config.js` novo (o robô lê a
@@ -1630,6 +1698,29 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.22.0 para a v0.23.0** (o banco não muda; nada de chave ou segredo pelo chat):
+
+1. A tela chega pelo repositório: `index.html`, `radar-pauta.js` e `radar-video.js` juntos (só o número da versão muda); Ctrl+F5 em
+   todos os aparelhos. A aba Versões mostra a v0.23.0.
+2. Edge Functions → `radar-itc` → cole o `index.ts` desta versão → Deploy, com "Verify JWT" como já está. Se existir o segredo
+   `ITC_PASTA`, apague-o (vazio = a caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos), a não ser que queira mesmo ler só
+   uma pasta.
+3. Acesso só à caixa do boletim: em "Boletim da ITC pelo Microsoft Graph", os passos 2 (o ID do objeto do aplicativo empresarial),
+   3 (nada de Mail.Read no Entra) e 5 (os 4 comandos do Exchange, com `InScope = True`), e confira o `ITC_CAIXA`. Espere de 30
+   minutos a 2 horas.
+4. Fontes → boletim da ITC → **Testar conexão com o e-mail**: "Função radar-itc instalada" mostra **versão 0.23.0** e "Leitura da
+   caixa" fica OK, com a contagem dos últimos 7 dias na caixa inteira. "O aplicativo ainda não tem permissão de ler esta caixa" =
+   a atribuição ainda não vale (espere e teste de novo) ou falta um passo.
+5. Só com o teste OK: SQL Editor → `sql/radar-itc-agenda.sql` (passo 8 de "Boletim da ITC pelo Microsoft Graph") e, **no mesmo dia,
+   apague a rotina antiga** "Radar — boletim ITC (e-mail)" (`robo/rotina-itc-email.md`).
+6. O robô (`robo/radar_inlabs.py`) chega pelo repositório: os segredos `INLABS_EMAIL` e `INLABS_SENHA` ficam como estão.
+
+As agendas da Pauta e do corretor (`sql/radar-redes-agenda.sql` e `sql/radar-video-agenda.sql`) não precisam rodar de novo nesta
+versão; quando precisarem (na troca da chave pública, em "Chaves novas do Supabase"), rodam sem o "dependent privileges exist".
+Para desfazer: cole de novo o `index.ts` da `radar-itc` da v0.22.0 (no histórico do GitHub). Ela lê só a Caixa de Entrada (o boletim
+movido para a subpasta deixa de ser lido) e não reconhece o "já lido" desta versão: os boletins das últimas 50 horas vão uma vez de
+novo à IA (as matérias não duplicam).
 
 **Da v0.21.0 para a v0.22.0** (instale num **dia útil**, com tempo para o teste do corretor com um vídeo de teste; nesta ordem; nada
 de chave ou token passa pelo chat):
@@ -1712,7 +1803,8 @@ a 8) e sem o termo novo de cada pessoa assinado e gravado em Pessoas e termos.**
 
 12. **Correções da varredura geral:** Edge Functions → `radar-ia` → cole o `index.ts` desta versão → Deploy (Configurações →
     Inteligência artificial → "Testar a IA" mostra **v0.22.0**); Edge Functions → `radar-itc` → cole o `index.ts` desta versão →
-    Deploy, com "Verify JWT" como já está (o "Testar conexão" da ITC mostra **versão 0.22.0**).
+    Deploy, com "Verify JWT" como já está (o "Testar conexão" da ITC mostra **versão 0.23.0**, a do `index.ts` atual; veja também
+    "Da v0.22.0 para a v0.23.0").
 13. **Rodada 2 da varredura geral:** Edge Functions → `radar-redes` → cole o `index.ts` desta versão → Deploy, com "Verify JWT"
     ligado, como já está; Publicações → "Testar conexão" mostra **"Função radar-redes v0.22.0"** e "Armazenamento das imagens: bucket
     privado radar-pauta". Se a `radar-concorrentes` (opcional) estiver instalada, o mesmo com o `index.ts` dela (o teste mostra
