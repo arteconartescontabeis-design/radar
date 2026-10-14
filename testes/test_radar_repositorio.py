@@ -22,7 +22,8 @@ SRT ou VTT) fora do código do robô (robo/video/) e dos geradores sintéticos d
 (logotipo e timbrado). O .gitignore barra as extensões de vídeo, áudio e foto e os arquivos de trabalho. No radar-repositorio.yml, com
 o histórico inteiro, o conferir olha também cada commit do push: o arquivo enviado num commit e apagado no seguinte fica no histórico. E a
 versão do pacote é uma só em todos os arquivos que a levam (a tela, os dois scripts, a função nova, o robô do vídeo, o SQL, o LEIAME e
-o relatório), e as funções do pacote atendem à versão mínima que a tela pede.
+o relatório), e as funções do pacote atendem à versão mínima que a tela pede. v0.23.0: o que não mudou na versão (o banco, a função
+radar-video e o robô do vídeo) fica na versão em que mudou por último, nunca à frente da tela.
 """
 from __future__ import annotations
 
@@ -365,9 +366,10 @@ def test_workflow_dos_testes_roda_os_testes_do_video():
 
 
 def test_versao_igual_em_todos_os_arquivos_da_versao():
-    """Uma versão só: a tela (VERSAO e a 1ª entrada de VERSOES), os dois scripts e o ?v= deles, a função nova (radar-video), o robô do
-    vídeo, o SQL (um setup e uma reversão, os dos testes), o LEIAME e o relatório. As funções que não mudaram (radar-ia e radar-redes)
-    atendem à versão mínima que a tela pede (FUNCAO_MINIMA e REDES_MINIMA)."""
+    """Uma versão só: a tela (VERSAO e a 1ª entrada de VERSOES), os dois scripts e o ?v= deles, a função nova (v0.23.0: a radar-itc), o
+    LEIAME e o relatório. v0.23.0: o que não mudou fica na versão em que mudou por último, nunca à frente da tela — o SQL (um setup e
+    uma reversão, os dos testes, da mesma versão), a função radar-video e o robô do vídeo (os dois da mesma versão) e as outras funções.
+    As que a tela exige (radar-ia e radar-redes) atendem à versão mínima que ela pede (FUNCAO_MINIMA e REDES_MINIMA)."""
     ler = lambda c: (RAIZ / c).read_text(encoding="utf-8")
     achar = lambda padrao, texto: re.search(padrao, texto).group(1)
     html = ler("index.html")
@@ -377,13 +379,22 @@ def test_versao_igual_em_todos_os_arquivos_da_versao():
     assert set(re.findall(r'<script src="radar-(?:pauta|video)\.js\?v=([^"]+)"', html)) == {v}
     assert achar(r'(?m)^const PAUTA_VERSAO = "([^"]+)"', ler("radar-pauta.js")) == v
     assert achar(r'(?m)^const VIDEO_VERSAO = "([^"]+)"', ler("radar-video.js")) == v
-    assert achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-video/index.ts")) == v
-    assert achar(r'(?m)^ROBO = "([^"]+)"', ler("robo/video/relatorio.py")) == v
-    assert sorted(p.name for p in (RAIZ / "sql").glob("radar-setup-v*.sql")) == [f"radar-setup-v{v}.sql"] == [SETUP.name]
-    assert sorted(p.name for p in (RAIZ / "sql").glob("radar-reversao-v*.sql")) == [f"radar-reversao-v{v}.sql"] == [REVERSAO.name]
-    assert f"('v{v}', v_antes)" in SETUP.read_text(encoding="utf-8")
+    assert achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-itc/index.ts")) == v
     assert ler("LEIAME-radar.md").startswith(f"# Radar Artecon — v{v}\n")
     assert ler("RELATORIO-TESTES-radar.md").startswith(f"# Radar Artecon — Relatório de testes (v{v})\n")
+    # o banco: um setup e uma reversão, da mesma versão (a da última mudança no banco), e o setup registra essa versão
+    banco = achar(r"^radar-setup-v(\d+\.\d+\.\d+)\.sql$", SETUP.name)
+    assert sorted(p.name for p in (RAIZ / "sql").glob("radar-setup-v*.sql")) == [f"radar-setup-v{banco}.sql"] == [SETUP.name]
+    assert sorted(p.name for p in (RAIZ / "sql").glob("radar-reversao-v*.sql")) == [f"radar-reversao-v{banco}.sql"] == [REVERSAO.name]
+    assert f"('v{banco}', v_antes)" in SETUP.read_text(encoding="utf-8") and num(banco) <= num(v)
+    # a tela avisa "precisa do banco da vX: rode o sql/radar-setup-vX.sql" com o banco desta versão
+    for script in ("radar-pauta.js", "radar-video.js"):
+        assert set(re.findall(r"sql/radar-setup-v(\d+\.\d+\.\d+)\.sql", ler(script))) == {banco}, script
+    # o corretor de vídeo: a função e o robô (no repositório privado) da mesma versão
+    video = achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-video/index.ts"))
+    assert achar(r'(?m)^ROBO = "([^"]+)"', ler("robo/video/relatorio.py")) == video
+    for funcao in sorted(p.parent.name for p in (RAIZ / "supabase" / "functions").glob("*/index.ts")):
+        assert num(achar(r'(?m)^const VERSAO = "([^"]+)"', ler(f"supabase/functions/{funcao}/index.ts"))) <= num(v), funcao
     for constante, funcao in (("FUNCAO_MINIMA", "radar-ia"), ("REDES_MINIMA", "radar-redes")):
         minima = achar(rf'(?m)^const {constante} = "([^"]+)"', html)
         assert num(achar(r'(?m)^const VERSAO = "([^"]+)"', ler(f"supabase/functions/{funcao}/index.ts"))) >= num(minima), funcao

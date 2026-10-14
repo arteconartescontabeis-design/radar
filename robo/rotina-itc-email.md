@@ -3,6 +3,11 @@
 > **v0.12.0:** substituída pela função `radar-itc` (Microsoft Graph, dentro do Supabase), que roda 1 vez por dia (02h55) sem
 > depender de uma conversa aberta. Veja "Boletim da ITC pelo Microsoft Graph" no LEIAME. Este texto fica como registro e
 > como plano B enquanto o registro de aplicativo no Microsoft 365 não estiver pronto.
+>
+> **v0.23.0:** a função passa a ler a caixa inteira, também as subpastas (o boletim movido para "ITC Consultoria" entra), menos o
+> Lixo Eletrônico e os Itens Excluídos, com o acesso liberado só a essa caixa no Exchange. Esta rotina é **apagada no dia em que a
+> função for ligada** (`sql/radar-itc-agenda.sql`, depois do "Testar conexão com o e-mail" OK): com as duas, o boletim é lido duas
+> vezes e a IA é paga duas vezes. Veja "Da v0.22.0 para a v0.23.0" no LEIAME.
 
 Roda todo dia às 02h55 (horário de Brasília), numa sessão nova do Claude Code com os conectores
 **Microsoft 365** (ler o e-mail) e **Supabase** (gravar no banco). Nada é gravado no repositório,

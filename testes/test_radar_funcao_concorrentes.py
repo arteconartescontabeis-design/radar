@@ -204,11 +204,12 @@ class Ponte(BaseHTTPRequestHandler):
 
 
 def aplicar_sql(pasta):
-    """O sql/radar-concorrentes.sql como está, menos a linha do pg_net (o banco de teste não tem a extensão)."""
+    """O sql/radar-concorrentes.sql como está, com o pg_net contando como já instalado (o banco de teste não tem a extensão). v0.23.0:
+    o bloco do começo confere o pg_extension e só cria o pg_net que falta; aqui ele confere uma extensão que todo banco tem."""
     texto = SQL.read_text()
-    assert texto.count("create extension if not exists pg_net;") == 1
+    assert texto.count("from pg_extension where extname = 'pg_net'") == 1 and not re.search(r"(?mi)^\s*create extension", texto)
     arquivo = pasta / "radar-concorrentes-sem-pg_net.sql"
-    arquivo.write_text(texto.replace("create extension if not exists pg_net;", "-- (sem pg_net no banco de teste)"))
+    arquivo.write_text(texto.replace("where extname = 'pg_net'", "where extname = 'plpgsql'"))
     r = psql(arquivo)
     assert r.returncode == 0, r.stderr
 

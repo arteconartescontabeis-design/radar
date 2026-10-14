@@ -335,15 +335,25 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.22.0"
+    assert pagina.inner_text(".versao") == "v0.23.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.22.0: a entrada do topo é a da versão em uso e conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não
-    # corrige, aprovar, baixar e postar; a Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
+    # v0.23.0: a entrada do topo é a da versão em uso e conta ao dono a leitura do boletim da ITC na caixa inteira (a subpasta sim,
+    # o Lixo Eletrônico e os Itens Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas
+    # que rodam de novo
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.22.0" and re.fullmatch(r"\d{2}/10/2026", data)
+    assert topo == pagina.evaluate("VERSAO") == "0.23.0" and re.fullmatch(r"\d{2}/10/2026", data)
+    texto = " ".join(itens)
+    for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
+                   "“Application Mail.Read”", "de 30 minutos a 2 horas", "sql/radar-itc-agenda.sql", "dependent privileges exist",
+                   "o banco continua na v0.22.0", "Da v0.22.0 para a v0.23.0"]:
+        assert trecho in texto, trecho
+    # v0.22.0: a entrada seguinte conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e
+    # postar; a Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
                    "Precisa regravar", "Baixar o vídeo aprovado", "poste à mão", "Preencher fontes oficiais", "CRC-SC 007129/O-0",
@@ -2444,7 +2454,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.22.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.23.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -5476,7 +5486,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.22.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.23.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -7891,7 +7901,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.22.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.23.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")

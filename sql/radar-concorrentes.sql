@@ -12,7 +12,14 @@
 -- =====================================================================
 begin;
 
-create extension if not exists pg_net;
+-- v0.23.0: o pg_net só é criado quando ainda não existe (como nas agendas: com ele instalado, o "create extension" de novo pode
+-- disparar o gatilho da Supabase)
+do $$
+begin
+  if not exists (select 1 from pg_extension where extname = 'pg_net') then
+    execute 'create extension pg_net';
+  end if;
+end $$;
 
 -- chave aleatória de 64 caracteres (hexadecimal), como a da agenda da ITC; só o Vault a guarda
 do $$

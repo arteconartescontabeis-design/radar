@@ -96,7 +96,9 @@ def para_item(ato: dict) -> Item:
 
 
 def entrar(sessao: requests.Session, email: str | None = None, senha: str | None = None) -> None:
-    email, senha = email or os.environ.get("INLABS_EMAIL"), senha or os.environ.get("INLABS_SENHA")
+    # v0.23.0: sem os espaços e as quebras de linha das pontas (um colado no segredo do GitHub fez o login falhar em produção)
+    email = (email or os.environ.get("INLABS_EMAIL") or "").strip()
+    senha = (senha or os.environ.get("INLABS_SENHA") or "").strip()
     if not (email and senha):
         raise ErroDownload("INLABS: cadastre o acesso (inlabs.in.gov.br) e grave INLABS_EMAIL e INLABS_SENHA "
                            "nos segredos do GitHub")

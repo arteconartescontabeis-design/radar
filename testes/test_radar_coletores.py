@@ -591,6 +591,12 @@ def test_inlabs_baixa_os_dias_da_janela_e_pede_o_cadastro_quando_falta():
         listagem, http = radar_inlabs.listar_paginas(s, fonte, date(2026, 10, 3))
         assert s.pedidos == ["2026-10-03-DO1.zip", "2026-10-02-DO1.zip"] and http == 200
         assert listagem.brutos == 1 and [i.titulo for i in listagem.itens] == ["IN RFB Nº 2.300"]
+        # v0.23.0: o espaço e a quebra de linha colados no segredo do GitHub saem (o login falhava em produção); só espaço = sem cadastro
+        os.environ.update(INLABS_EMAIL=" a@b.c\n", INLABS_SENHA="\ts \r\n")
+        assert radar_inlabs.listar_paginas(Sessao(), fonte, date(2026, 10, 3))[1] == 200
+        os.environ.update(INLABS_EMAIL="a@b.c", INLABS_SENHA=" \n")
+        with pytest.raises(ErroDownload, match="INLABS_EMAIL e INLABS_SENHA"):
+            radar_inlabs.listar_paginas(Sessao(), fonte, date(2026, 10, 3))
     finally:
         os.environ.pop("INLABS_EMAIL", None); os.environ.pop("INLABS_SENHA", None)
 

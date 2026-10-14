@@ -4,13 +4,22 @@
 -- Liga as extensões pg_cron e pg_net, cria no Vault a chave que só a agenda conhece e agenda a função
 -- radar-itc 1 vez por dia, às 02h55 de Brasília (05h55 UTC). Se nessa leitura ficar boletim para depois (o Supabase
 -- limita cada chamada a ~150 s), ela se completa às 03h10 e às 03h25 — só nesse caso. Pode rodar de novo:
--- a chave existente é mantida e a agenda é refeita.
+-- a chave existente é mantida e a agenda é refeita (v0.23.0: também no Supabase, com as extensões já ligadas).
 --
 -- Antes: instale a função radar-itc e cadastre os segredos do Microsoft Graph (veja o LEIAME).
 -- Troque o endereço abaixo se o projeto do Supabase for outro.
 -- =====================================================================
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
+-- v0.23.0: cada extensão só é criada quando ainda não existe. Com ela instalada, o "create extension" de novo disparava o gatilho
+-- da Supabase (grant_pg_cron_access) e a 2ª rodada parava em "ERROR: dependent privileges exist", antes de refazer a agenda.
+do $$
+begin
+  if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+    execute 'create extension pg_cron';
+  end if;
+  if not exists (select 1 from pg_extension where extname = 'pg_net') then
+    execute 'create extension pg_net';
+  end if;
+end $$;
 
 do $$
 begin
