@@ -17,3 +17,66 @@ __pycache__/
 *captacao-mensal*
 *guia-de-producao*
 *regras-legais*
+# v0.22.0: o corretor de vídeo. No repositório público entram só vídeos SINTÉTICOS, gerados pelo ffmpeg na hora dos testes (numa pasta
+# temporária): nenhum vídeo, áudio ou foto de gravação real (o celular grava nome, rosto, voz e o GPS no arquivo; a captura de tela da
+# prévia é PNG), nenhum arquivo de trabalho do robô e nenhuma legenda com tempo. As únicas imagens do pacote são o logotipo e os dois
+# timbrados. O conferir do repositório (radar-repositorio.yml) também acha o vídeo com outro nome.
+*.[Mm][Pp]4
+*.[Mm][Oo][Vv]
+*.[Mm]4[VvAa]
+*.3[Gg][Pp2]
+*.[Mm][Kk][Vv]
+*.[Ww][Ee][Bb][Mm]
+*.[Aa][Vv][Ii]
+*.[Ww][Aa][Vv]
+*.[Mm][Pp]3
+*.[Aa][Aa][Cc]
+*.[Ff][Ll][Aa][Cc]
+*.[Oo][Gg][Gg]
+*.[Oo][Pp][Uu][Ss]
+*.[Aa][Mm][Rr]
+*.[Hh][Ee][Ii][CcFf]
+*.[Jj][Pp][Gg]
+*.[Jj][Pp][Ee][Gg]
+*.[Aa][Ss][Ss]
+*.[Ss][Rr][Tt]
+*.[Vv][Tt][Tt]
+*.[Ss][Ss][Aa]
+*.[Ww][Mm][VvAa]
+*.[Ff][Ll][Vv]
+*.[Mm]2[Tt][Ss]
+*.[Hh][Ee][Vv][Cc]
+*.[Hh]264
+*.[Oo][Gg][Aa]
+*.[Aa][Ii][Ff]
+*.[Aa][Ii][Ff][Ff]
+*.[Cc][Aa][Ff]
+*.[Pp][Nn][Gg]
+*.[Ww][Ee][Bb][Pp]
+*.[Gg][Ii][Ff]
+*.[Tt][Ii][Ff]
+*.[Tt][Ii][Ff][Ff]
+*.[Bb][Mm][Pp]
+*.[Dd][Nn][Gg]
+!/radar-logo-artecon.png
+!/radar-timbrado-topo.png
+!/radar-timbrado-rodape.png
+# os arquivos de trabalho do robô (robo/video/corrigir.py: o pedido com a fala e a cartela, o estado com o alinhamento e as palavras
+# com os tempos, o resultado com o relatório, o erro, os temporários de cada um, a transcrição e a luz de cada clipe), para quem rodar
+# o robô dentro do clone para depurar
+palavras.json
+palavras_envio.json
+pedido_fala.json
+transcricao_erro.txt
+pedido.json
+estado.json
+resultado.json
+erro.json
+.pedido.json
+.estado.json
+.resultado.json
+.erro.json
+luz[0-9]*.txt
+# v0.22.0 (varredura geral): os clipes brutos que o "pegar" baixa (<pasta>/ent/1, ent/2…, sem extensão: o vídeo original, com rosto,
+# voz e GPS) — o único arquivo de trabalho sem extensão barrada
+**/ent/[0-9]*

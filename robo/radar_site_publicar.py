@@ -46,7 +46,7 @@ from bs4 import BeautifulSoup
 import radar_site
 import radar_site_admin as admin
 import radar_site_excluir
-from radar_banco import Banco, ErroBanco
+from radar_banco import Banco, ErroBanco, cabecalhos_da_chave
 from radar_util import ErroDownload, baixar, hoje_brasilia
 
 CADASTRO = "/admin/news/register"
@@ -409,7 +409,7 @@ def publicar_redes(banco: Banco, url: str, chave: str, post=requests.post) -> li
         nome = NOME_REDE.get(e["canal"], e["canal"])
         try:
             r = post(url.rstrip("/") + "/functions/v1/radar-redes", json={"acao": "publicar", "envio": e["id"]}, timeout=170,
-                     headers={"apikey": chave, "Authorization": f"Bearer {chave}", "Content-Type": "application/json"})
+                     headers=cabecalhos_da_chave(chave) | {"Content-Type": "application/json"})      # v0.22.0: sb_secret_ só no apikey
             dados = r.json() if r.text else {}
         except (requests.RequestException, ValueError) as x:
             feito.append(f"{nome} (envio {e['id']}): sem resposta da função radar-redes ({type(x).__name__}); confira na tela")

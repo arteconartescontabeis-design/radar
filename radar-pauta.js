@@ -11,8 +11,11 @@
    selo, recado, desenhar, E, calcularAgenda, reduzirImagemDe, crcFormatado, linhaIdentificacao, comporLegenda…) só quando são
    chamadas. Quem trava de verdade é o banco (radar_fn_pauta_peca e as funções radar_pauta_*): a tela ajuda e mostra (os termos da
    publicidade, que só a tela confere, travam na aprovação e na cópia).
+   v0.22.0: na peça reel, o quadro do corretor de vídeo (radar-video.js: blocoVideo), a aprovação amarrada ao vídeo que o administrador
+   viu (videoParaAprovar, p_video_sha256, as caixas "video" e "viu"), "Baixar o vídeo aprovado" e, em Pessoas e termos, o termo do
+   corretor, "quer ver a peça" e menor de idade, com as peças publicadas de quem revogou o termo ou ficou inativa.
    ==================================================================== */
-const PAUTA_VERSAO = "0.21.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.22.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -39,14 +42,15 @@ const cortarPauta = (t, n) => { const s = String(t || "").replace(/\s+/g, " ").t
 // assinatura (identificação legal), pauta (agenda, hora padrão, janela e hashtags), obrigacoes e feriados_extras (agenda de domingo)
 let CONF_PAUTA = {};
 async function lerConfPauta(){
-  CONF_PAUTA = Object.fromEntries((await ler("radar_config", {select:"chave,valor", chave:"in.(assinatura,pauta,obrigacoes,feriados_extras)"})).map(c => [c.chave, c.valor]));
+  CONF_PAUTA = Object.fromEntries((await ler("radar_config", {select:"chave,valor", chave:"in.(assinatura,pauta,obrigacoes,feriados_extras,corretor_video)"})).map(c => [c.chave, c.valor]));
   const ident = CONF_PAUTA.assinatura;
   E.identificacao = ident && typeof ident === "object" && !Array.isArray(ident) ? ident : null;
 }
 const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PAUTA.pauta.hashtags : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x)).slice(0, 3);
 // o banco ainda é o da v0.20.0 (a tabela da Pauta não existe): a tela diz o que falta em vez do erro cru do PostgREST
+// (v0.22.0: as colunas novas de radar_pessoas também dizem que o banco é de antes)
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta precisa do banco da v0.21.0: o administrador roda o <b>sql/radar-setup-v0.21.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.22.0: o administrador roda o <b>sql/radar-setup-v0.22.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){
@@ -64,6 +68,7 @@ async function telaPauta(){
 function depoisDeDesenharPauta(){
   const f = $("form[data-form=peca]"); if(f) f.dataset.original = estadoPeca(f);
   if(typeof montarArtesPeca === "function") montarArtesPeca();
+  if(typeof depoisDeDesenharVideo === "function") depoisDeDesenharVideo();      // v0.22.0: a situação do vídeo do reel (radar-video.js)
 }
 
 /* "Publicada" não é situação gravada: sai dos envios (radar_redes_envios) e do registro manual; o resto é a situação da peça. A aprovada
@@ -258,6 +263,18 @@ const linhaConferida = (c, des) => `<div class="conf-linha">
     <textarea name="conf-informacao" rows="2" maxlength="300" aria-label="Informação conferida" placeholder="Informação (ex.: 10/11 (ter) · ICMS)" class="peca-arte-campo"${des}>${h(c.informacao || "")}</textarea>
     <input type="text" name="conf-fonte" maxlength="300" aria-label="Fonte da informação" placeholder="Fonte oficial" value="${h(c.fonte || "")}"${des}>
     ${des ? "" : `<button class="btn peq perigo" type="button" data-acao="peca-conf-remover" aria-label="Remover esta informação">Remover</button>`}</div>`;
+/* Rodada 2 da varredura geral: a legenda do “Usar a sugestão”: o texto da IA, a linha “Fonte: …” das informações conferidas, a
+   identificação legal e as hashtags, em até "limite" caracteres. A linha da fonte nunca é cortada (antes ela ia junto do texto para o
+   comporLegenda, que corta o fim: com as 9 fontes da agenda de fim de mês, a citação saía quebrada, “…; LC 155/2016, art.”): quem
+   encurta é o texto da IA, no fim de uma frase. Se com as fontes inteiras o texto não cabe, elas vão só com a norma, sem o endereço.
+   Devolve {legenda, encurtado (o texto da IA não foi inteiro), semEndereco}. */
+function legendaDaSugestao(texto, fontes, tags, limite = 2200){
+  const t = String(texto || "").trim(), linha = l => l.length ? "Fonte: " + l.join("; ") : "";
+  const inteira = linha(fontes), curta = linha([...new Set(fontes.map(x => String(x).replace(/\s*[—–-]?\s*https?:\/\/\S+/g, "").trim()).filter(Boolean))]);
+  let legenda = comporLegenda(t, tags, limite, inteira), semEndereco = false;
+  if(!legenda.startsWith(t) && curta !== inteira){ legenda = comporLegenda(t, tags, limite, curta); semEndereco = true; }
+  return {legenda, encurtado:!legenda.startsWith(t), semEndereco};
+}
 const linhaCartao = (c, des) => `<div class="cartao-linha">
     <input type="text" name="cartao-titulo" maxlength="60" aria-label="Título do cartão" placeholder="Título do cartão" value="${h(c.titulo || "")}" class="peca-arte-campo"${des}>
     <textarea name="cartao-texto" rows="2" maxlength="300" aria-label="Texto do cartão" placeholder="Texto do cartão" class="peca-arte-campo"${des}>${h(c.texto || "")}</textarea>
@@ -281,7 +298,7 @@ async function telaPeca(id){
   // edita: são a equipe, como as pessoas, que o leitor não vê; as pessoas com a categoria e o CRC (a linha da pessoa na arte)
   const [fotos, pessoas, termos, artes] = await Promise.all([
     ed && p.fotos.length && p.situacao !== "aprovada" ? ler("radar_imagens", {select:"id,dados", id:"in.(" + p.fotos.join(",") + ")"}) : [],
-    ed ? ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo", order:"nome_na_peca,id"}) : [],
+    ed ? ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo,termo_corretor_em,quer_ver_peca,menor", order:"nome_na_peca,id"}) : [],
     ed && p.pessoas.length ? ler("radar_v_pauta_pessoas", {select:"pessoa_id,motivo_instagram,motivo_facebook", peca_id:"eq." + p.id}) : [],
     ed && p.artes.length ? ler("radar_imagens", {select:"id,dados", id:"in.(" + p.artes.join(",") + ")"}) : []]);
   E.pauta.fotos = Object.fromEntries(fotos.map(x => [x.id, x.dados]));
@@ -291,6 +308,9 @@ async function telaPeca(id){
   E.pauta.aberta = {id:p.id, data:p.data, hora:String(p.hora).slice(0, 5), tipo:p.tipo, formato:p.formato, roteiro:p.roteiro, artes:p.artes,
     arte_identificacao:p.arte_identificacao, aprovado_em:p.aprovado_em};
   E.pauta.ia = p.ia && typeof p.ia === "object" && !Array.isArray(p.ia) ? p.ia : null;       // a sugestão da IA (Gerar com IA), só para quem edita
+  // v0.22.0: o reel passa pelo corretor de vídeo (radar-video.js), para quem edita; sem o arquivo, o recado
+  const video = !ed || p.formato !== "reel" ? "" : typeof blocoVideo === "function" ? await blocoVideo(p)
+    : `<div class="aviso erro" id="video-sem-arquivo">O arquivo radar-video.js (o corretor de vídeo) não carregou. Aperte Ctrl+F5 (no celular, recarregue a página); se continuar, avise o administrador.</div>`;
   // o que vai ao ar e a hora: travados na peça aprovada (ou cancelada) e para o leitor; o plano fica livre para quem edita
   const desAr = ed && !travada ? "" : " disabled", desPlano = ed ? "" : " disabled";
   const semPauta = p.tipo === "sem_post" || ["story", "nenhum"].includes(p.formato), vaiAoAr = !semPauta && p.tipo !== "noticia";
@@ -338,11 +358,13 @@ async function telaPeca(id){
         <h3>Textos</h3>
         ${p.formato !== "reel" ? `<div class="grade">
           <div><label for="peca-chamada">Chamada da arte</label><input id="peca-chamada" type="text" name="chamada" maxlength="120" value="${h(p.chamada)}" class="peca-arte-campo"${desAr}></div>
-          <div><label for="peca-apoio">Linha de apoio</label><input id="peca-apoio" type="text" name="apoio" maxlength="200" value="${h(p.apoio)}" class="peca-arte-campo"${desAr}></div></div>` : ""}
+          <div><label for="peca-apoio">Linha de apoio</label><input id="peca-apoio" type="text" name="apoio" maxlength="200" value="${h(p.apoio)}" class="peca-arte-campo"${desAr}></div></div>`
+          // v0.22.0: no reel, a chamada é o texto do gancho que o corretor escreve de 0 a 3 s (opcional, escolhido no envio)
+          : `<label for="peca-chamada">Texto do gancho do reel (aparece de 0 a 3 s, se escolhido no envio; opcional)</label><input id="peca-chamada" type="text" name="chamada" maxlength="120" value="${h(p.chamada)}"${desAr}>`}
         ${comCartoes ? `<label>Cartões ${p.formato === "carrossel_fotos" ? "(um por foto, na mesma ordem)" : "(de 2 a 9, depois da capa)"}</label>
           <div class="cartao-linhas" id="peca-cartoes"${desAr ? ` data-travado="1"` : ""}>${cartoesDe(p).map(c => linhaCartao(c, desAr)).join("")}</div>
           ${desAr ? "" : `<div class="acoes"><button class="btn peq sec" type="button" data-acao="peca-cartao-linha">Acrescentar cartão</button></div>`}` : ""}
-        ${comRoteiro ? `<label for="peca-roteiro">Roteiro do reel (colado do plano; o último quadro leva a identificação legal)</label>
+        ${comRoteiro ? `<label for="peca-roteiro">Roteiro do reel (colado do plano: a coluna “Fala” é o que o corretor de vídeo compara com a gravação; a cartela final com a identificação legal o corretor grava)</label>
           <textarea id="peca-roteiro" name="roteiro" maxlength="6000" rows="8"${desAr}>${h(p.roteiro)}</textarea>` : ""}
         <p class="sub">Legenda vazia: o canal não entra. Cada legenda leva no fim a identificação legal: ${faltaIdentificacao().length
           ? `<b>falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura</b> (o administrador preenche; sem isso a peça não fica pronta).` : h(linhaIdentificacao()) + "."}</p>
@@ -362,6 +384,7 @@ async function telaPeca(id){
         ${["planejada", "em_producao", "pronta"].includes(p.situacao) ? `<button class="btn perigo" type="button" data-acao="peca-cancelar">Cancelar a peça</button>` : ""}
         ${p.situacao === "cancelada" ? `<button class="btn sec" type="button" data-acao="peca-reabrir">Reabrir</button>` : ""}</div>` : ""}
     </form>
+    ${video}
     ${vaiAoAr && p.situacao === "pronta" ? ehAdmin() ? blocoAprovar(p) : ed ? `<div class="aviso info" id="peca-espera">Pronta: falta o administrador aprovar.</div>` : "" : ""}
     ${p.situacao === "aprovada" ? blocoAprovada(p) : ""}`;
 }
@@ -688,7 +711,7 @@ const msgCortePeca = (n, cortes) => `Lâmina ${n}: ${cortes.map(k => NOME_CORTE_
    o termo de hoje (na página, seriam uma cópia pronta para postar sem essa conferência); para quem prepara, a prévia ao vivo
    (montarArtesPeca, depois de desenhar a tela e 400 ms depois da última tecla). O leitor não vê foto nem lâmina, como não vê as pessoas. */
 function blocoArtePeca(p, ed){
-  if(p.formato === "reel") return `<h3>Arte</h3><p class="sub">Reel: sem lâmina. O vídeo é gravado com o roteiro e postado à mão; o último quadro leva a identificação legal.</p>`;
+  if(p.formato === "reel") return `<h3>Arte</h3><p class="sub">Reel: sem lâmina. O vídeo gravado com o roteiro passa pelo corretor de vídeo (abaixo), que grava a legenda e a cartela final com a identificação legal; aprovado, é baixado e postado à mão.</p>`;
   const lista = E.pauta.aprovadas || [];
   if(p.situacao === "aprovada" && (!ed || !lista.length)) return "";
   if(p.situacao === "aprovada" && p.aprovado_modo === "manual")
@@ -810,6 +833,8 @@ async function conferirPecaTela(f, canais, artes){
     const outros = (a.cortes || []).filter(k => k !== "identificacao"); if(outros.length) avisos.push(msgCortePeca(i + 1, outros)); });
   const travados = achados.flatMap(([, l]) => l), aviso = termosPublicidade(...onde.map(([, t]) => t)).aviso.filter(x => !travados.some(y => y.includes(x)));
   if(aviso.length) avisos.push(`Termos que a publicidade contábil evita: ${aviso.map(t => `“${t}”`).join(", ")}. Confira se é informação, e não propaganda.`);
+  // v0.22.0: no reel, a fala transcrita (o texto da legenda gravada no vídeo) passa pelos mesmos termos, e a duração acima do limite
+  if(typeof conferenciaDoVideo === "function"){ const v = conferenciaDoVideo(); travas.push(...v.travas); avisos.push(...v.avisos); }
   if((f.elements.tipo?.value || f.dataset.tipo) === "data_equipe")
     avisos.push("Data com a equipe: confira se não há dado sensível (saúde, religião, origem); com dado sensível, só com termo específico (v0.22.0).");
   return {travas, avisos};
@@ -838,7 +863,15 @@ function blocoAprovar(p){
   const caiu = (p.radar_redes_envios || []).some(e => e.situacao === "cancelado" && e.enviado_em && !e.post_id), mao = !!p.manual_desfeita_em;
   const caixa = (k, t) => `<label><input type="checkbox" class="aprovar-conf" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`;
   // a das pessoas em toda peça (o banco pede): o nome escrito de um jeito que a conferência não reconhece só quem aprova vê
+  // v0.22.0: no reel, o vídeo (o que só quem assiste vê) e, se uma pessoa marcada pediu no termo para ver a peça antes, a caixa dela
+  // varredura geral (v0.22.0): também quem estava marcada quando o vídeo foi enviado e foi desmarcada depois (continua no vídeo: o
+  // banco pede a caixa dela, radar_pauta_aprovar); antes a caixa não aparecia e o banco recusava (RADAR314) sem saída na tela
+  const doVideo = p.formato === "reel" && typeof estadoVideo === "function" && estadoVideo().peca === p.id
+    && Array.isArray(estadoVideo().atual?.pessoas) ? estadoVideo().atual.pessoas : [];
+  const quer = p.formato === "reel" && [...p.pessoas, ...doVideo].some(id => (E.pauta.pessoas || {})[id]?.quer_ver_peca);
   const caixas = [caixa("pessoas", "Conferi: nas fotos e nos textos só aparecem as pessoas marcadas (ou ninguém)"),
+    p.formato === "reel" ? caixa("video", "Conferi o vídeo: só aparecem as pessoas marcadas; sem tela, documento ou cliente ao fundo; só a voz") : "",
+    quer ? caixa("viu", "A pessoa viu o vídeo final (ela pediu no termo para ver a peça antes)") : "",
     p.tipo === "agenda" ? caixa("datas", "Conferi as datas da agenda") : "",
     caiu || mao ? caixa("rede", "Conferi no Instagram e no Facebook: não saiu" + (mao && !caiu ? " (nem foi postada à mão)" : "")) : ""].join("");
   return `<details class="painel peca-aprovar" id="peca-aprovar"><summary><b>Aprovar a peça</b></summary>
@@ -847,7 +880,7 @@ function blocoAprovar(p){
       ${NOME_REDE[k]}${canais.includes(k) ? "" : " (sem legenda)"}</label>`).join("")}</fieldset>
     <fieldset class="checks"><legend>Como sai</legend>
       <label><input type="radio" name="aprovar-modo" value="agendar"${soMao ? " disabled" : " checked"}> Agendar para ${h(quandoPeca(p.data, p.hora))} (Brasília): a agenda do banco publica</label>
-      <label><input type="radio" name="aprovar-modo" value="manual"${soMao ? " checked" : ""}> Vou publicar à mão (baixar as lâminas e copiar a legenda)</label>
+      <label><input type="radio" name="aprovar-modo" value="manual"${soMao ? " checked" : ""}> Vou publicar à mão (baixar ${p.formato === "reel" ? "o vídeo" : "as lâminas"} e copiar a legenda)</label>
       ${soMao ? `<span class="sub">Carrossel e reel saem à mão nesta versão.</span>` : ""}</fieldset>
     ${caixas ? `<fieldset class="checks"><legend>Conferências</legend>${caixas}</fieldset>` : ""}
     <div class="acoes"><button class="btn verde" type="button" data-acao="peca-aprovar" data-id="${p.id}">Confirmar a aprovação</button></div></details>`;
@@ -875,7 +908,7 @@ function blocoAprovada(p){
   const desde = p.aprovado_em ? new Date(p.aprovado_em).toLocaleDateString("en-CA", {timeZone:"America/Sao_Paulo"}) : "";
   const semCanal = !manual && !envios.length;                      // todos os canais em "Não publicar neste canal": nada vai sair
   return `<div class="painel peca-aprovada" id="peca-aprovada-quadro"><h2>${manual ? "Aprovada para publicar à mão" : semCanal ? "Aprovada, sem canal: não vai sair" : "Aprovada: sai pela agenda"}</h2>
-    <p class="sub">Aprovada em ${h(horaBrasilia(p.aprovado_em))} (Brasília).${manual ? ` ${p.artes.length ? "Baixe as lâminas, copie a legenda" : "Copie a legenda e o roteiro"}, poste ` +
+    <p class="sub">Aprovada em ${h(horaBrasilia(p.aprovado_em))} (Brasília).${manual ? ` ${p.formato === "reel" ? "Baixe o vídeo aprovado, copie a legenda" : p.artes.length ? "Baixe as lâminas, copie a legenda" : "Copie a legenda e o roteiro"}, poste ` +
       `no ${canais.map(k => NOME_REDE[k]).join(" e no ")} e registre o link aqui.` : ""}</p>
     ${semCanal ? `<div class="aviso alerta" id="peca-sem-canal">Nenhum canal vai sair: a publicação de cada canal foi cancelada (Não publicar neste canal). Para publicar, use Desfazer aprovação e aprove de novo.</div>` : ""}
     ${envios.length ? `<ul class="peca-envios">${envios.map(linha).join("")}</ul>` : ""}
@@ -884,8 +917,9 @@ function blocoAprovada(p){
     ${adm && envios.some(e => e.situacao === "erro") ? `<div class="acoes peca-tentar"><label><input type="checkbox" id="peca-conferi-rede"> Conferi no Instagram e no Facebook: não saiu</label>
       <button class="btn" type="button" data-acao="peca-tentar-de-novo">Tentar de novo</button></div>` : ""}
     ${manual && ed ? `<div class="acoes">${p.artes.length ? `<button class="btn sec" type="button" data-acao="peca-baixar">Baixar as lâminas</button>` : ""}
+      ${p.formato === "reel" && p.video_sha256 && typeof botaoBaixarVideo === "function" ? botaoBaixarVideo(p) : ""}
       ${canais.map(k => `<button class="btn sec" type="button" data-acao="peca-copiar-legenda" data-canal="${k}">Copiar legenda do ${NOME_REDE[k]}</button>`).join("")}
-      ${p.roteiro ? `<button class="btn sec" type="button" data-acao="peca-copiar-roteiro">Copiar roteiro</button>` : ""}</div><div id="peca-copia"></div><div id="peca-baixar"></div>` : ""}
+      ${p.roteiro ? `<button class="btn sec" type="button" data-acao="peca-copiar-roteiro">Copiar roteiro</button>` : ""}</div><div id="peca-copia"></div><div id="peca-baixar"></div><div id="video-baixar"></div>` : ""}
     ${manual && registrado.length ? `<p id="peca-registro">Publicada à mão em ${h(dataAgenda(p.publicado_manual_em))}: ${registrado.map(k => `${NOME_REDE[k]} (${linkFonte(p["link_" + k], "ver o post")})`).join(" · ")}.</p>` : ""}
     ${manual && ed && falta.length ? `<form class="peca-registro" data-form="pecaRegistrar" data-id="${p.id}"><h3>${registrado.length ? "Registrar o outro canal" : "Depois de postar: registrar a publicação"}</h3>
       <div class="grade">${falta.map(k => `<div><label for="peca-link-${k}">Link do post no ${NOME_REDE[k]}</label><input id="peca-link-${k}" type="url" name="link_${k}" maxlength="500" placeholder="https://www.${k}.com/…"></div>`).join("")}
@@ -951,6 +985,9 @@ function linhaPessoa(x){
 }
 async function telaPessoas(){
   const adm = ehAdmin(), lista = await ler("radar_pessoas", {select:"*", order:"ativo.desc,nome_na_peca,id"});
+  // v0.22.0: quem revogou o termo ou ficou inativa: as peças publicadas com ela (os links a retirar das redes no prazo do termo)
+  const pecas = await Promise.all(lista.map(x => adm && (x.termo_revogado_em || !x.ativo) ? rpc("radar_pauta_pecas_da_pessoa", {p_pessoa:x.id}) : null));
+  lista.forEach((x, i) => { x.pecasPublicadas = pecas[i]; });
   return `<button class="voltar" data-acao="voltar">← Voltar para a semana</button>
     <h1>Pessoas e termos</h1>
     <p class="sub">Quem pode aparecer nas peças da Pauta e o termo de uso de imagem de cada pessoa. Fica só no banco (o repositório do Radar é público); o leitor não vê. ${adm ? "" : "Só o administrador cadastra e altera."}</p>
@@ -972,24 +1009,40 @@ function formPessoa(x, ed){
       ${campo("termo_assinado_em", "Termo assinado em", 'type="date"')}
       ${campo("termo_valido_ate", "Válido até (vazio: sem prazo)", 'type="date"')}
       ${campo("termo_revogado_em", "Revogado em", 'type="date"')}
+      ${campo("termo_corretor_em", "Termo do corretor de vídeo assinado em", 'type="date"')}
     </div>
     <fieldset class="checks"><legend>Canais autorizados no termo</legend>${["instagram", "facebook"].map(k =>
       `<label><input type="checkbox" name="canal" value="${k}"${marca(x.termo_canais, k)}${des}> ${NOME_REDE[k]}</label>`).join("")}</fieldset>
     <fieldset class="checks"><legend>Finalidades autorizadas no termo</legend>${Object.entries(USOS_TERMO).map(([k, v]) =>
       `<label><input type="checkbox" name="uso" value="${k}"${marca(x.termo_usos, k)}${des}> ${v}</label>`).join("")}</fieldset>
     <fieldset class="checks"><legend>Situação</legend><label><input type="checkbox" name="ativo"${x.ativo !== false ? " checked" : ""}${des}> Ativa (desmarque para tirar a pessoa das próximas peças)</label></fieldset>
+    <fieldset class="checks"><legend>Corretor de vídeo (reel)</legend>
+      <label><input type="checkbox" name="quer_ver_peca"${x.quer_ver_peca ? " checked" : ""}${des}> Pediu no termo para ver a peça antes (a aprovação do reel pede “A pessoa viu o vídeo final”)</label>
+      <label><input type="checkbox" name="menor"${x.menor ? " checked" : ""}${des}> Menor de 18 anos (o corretor de vídeo não aceita nesta versão)</label></fieldset>
     ${x.id ? `<p class="sub linha-pessoa">Como sai na arte: <b>${h(linhaPessoa(x))}</b></p>` : ""}
+    ${blocoPecasDaPessoa(x.pecasPublicadas)}
     ${ed ? `<div class="acoes"><button class="btn">${x.id ? "Salvar" : "Cadastrar pessoa"}</button>${x.id ? `<button class="btn peq perigo" type="button" data-acao="pessoa-excluir" data-id="${x.id}">Excluir</button>` : ""}</div>` : ""}
   </form>`;
 }
+/* v0.22.0: as peças publicadas com a pessoa que revogou o termo ou ficou inativa (radar_pauta_pecas_da_pessoa, só o administrador): os
+   links a retirar das redes no prazo do termo e se ainda há vídeo dela guardado (a limpeza seguinte apaga) */
+function blocoPecasDaPessoa(l){
+  if(!Array.isArray(l)) return "";
+  if(!l.length) return `<p class="sub pecas-da-pessoa">Nenhuma peça publicada com esta pessoa.</p>`;
+  return `<div class="aviso alerta pecas-da-pessoa"><b>Peças publicadas com esta pessoa:</b> retire das redes no prazo do termo.<ul class="pauta-erros">${l.map(x => {
+    const links = [["instagram", x.link_instagram], ["facebook", x.link_facebook]].filter(([, u]) => u).map(([k, u]) => `${NOME_REDE[k]} (${linkFonte(u, "ver o post")})`);
+    const d = String(x.data || "");
+    return `<li>${/^\d{4}-\d{2}-\d{2}$/.test(d) ? h(dataCurta(d) + "/" + d.slice(0, 4)) : "—"}: ${links.join(" · ") || "publicada, sem link registrado"}${x.video_guardado ? " · vídeo ainda guardado (sai na próxima limpeza)" : ""}</li>`; }).join("")}</ul></div>`;
+}
 /* O que vai ao banco: o CRC padronizado por crcFormatado (como o da empresa); "contador(a)" e "técnico(a)" só com o registro (o banco
-   também recusa); o prazo depois da assinatura; a assinatura nunca no futuro (de Brasília) */
+   também recusa); o prazo depois da assinatura; a assinatura nunca no futuro (de Brasília). v0.22.0: o termo do corretor de vídeo
+   (também nunca no futuro), "quer ver a peça" e menor de idade */
 function dadosPessoa(f){
   const t = n => f.elements[n].value.trim(), d = n => f.elements[n].value || null;
   const corpo = {nome:t("nome"), nome_na_peca:t("nome_na_peca"), area:t("area"), categoria:f.elements.categoria.value, crc:"",
     termo_assinado_em:d("termo_assinado_em"), termo_valido_ate:d("termo_valido_ate"), termo_revogado_em:d("termo_revogado_em"),
     termo_canais:[...f.querySelectorAll("input[name=canal]:checked")].map(c => c.value), termo_usos:[...f.querySelectorAll("input[name=uso]:checked")].map(c => c.value),
-    ativo:f.elements.ativo.checked};
+    ativo:f.elements.ativo.checked, termo_corretor_em:d("termo_corretor_em"), quer_ver_peca:f.elements.quer_ver_peca.checked, menor:f.elements.menor.checked};
   if(corpo.nome.length < 2) throw new ErroApi("Informe o nome completo (interno).");
   if(corpo.nome_na_peca.length < 2) throw new ErroApi("Informe o nome na peça, como o termo autoriza (o nome completo ou só o primeiro).");
   if(t("crc")){ corpo.crc = crcFormatado(t("crc"));
@@ -997,6 +1050,7 @@ function dadosPessoa(f){
       throw new ErroApi("Registro no CRC não reconhecido: escreva como “CRC-SC 012345/O-5” (depois da barra vem a letra O, não o número zero)."); }
   if(corpo.categoria && !corpo.crc) throw new ErroApi("Contador(a) e técnico(a) só com o registro no CRC: preencha o registro ou escolha “Sem registro no CRC”.");
   if(corpo.termo_assinado_em && corpo.termo_assinado_em > hojeBrasilia()) throw new ErroApi("A data em que o termo foi assinado não pode estar no futuro.");
+  if(corpo.termo_corretor_em && corpo.termo_corretor_em > hojeBrasilia()) throw new ErroApi("A data em que o termo do corretor de vídeo foi assinado não pode estar no futuro.");
   if(corpo.termo_valido_ate && (!corpo.termo_assinado_em || corpo.termo_valido_ate < corpo.termo_assinado_em))
     throw new ErroApi("“Válido até” precisa da data de assinatura e não pode ser antes dela.");
   return corpo;
@@ -1096,6 +1150,9 @@ const PAUTA = {
       if(!modo) throw new ErroApi("Escolha como a peça sai: agendar ou publicar à mão.");
       const falta = caixas.filter(c => !c.checked);
       if(falta.length) throw new ErroApi("Marque antes: " + falta.map(c => `“${c.dataset.texto}”`).join(" e ") + ".");
+      // v0.22.0: o reel sai com o vídeo que o administrador abriu na prévia (o hash dele vai na aprovação; o banco confere com o pronto)
+      if(E.pauta.aberta?.formato === "reel" && typeof videoParaAprovar !== "function") throw new ErroApi("O arquivo radar-video.js (o corretor de vídeo) não carregou: aperte Ctrl+F5.");
+      const sha = E.pauta.aberta?.formato === "reel" ? videoParaAprovar() : null;
       const artes = await artesDaTela(), r = await conferirPecaTela(f, canais, artes);
       if(r.travas.length){ mostrarConferencia(r, "O que falta para aprovar"); recado(`Há ${r.travas.length} ponto(s) a resolver antes de aprovar: a lista está na peça.`, true); return; }
       const a = E.pauta.aberta, nomes = canais.map(k => NOME_REDE[k]).join(" e no "), ag = await rpc("radar_agenda_situacao").catch(() => ({}));
@@ -1103,7 +1160,8 @@ const PAUTA = {
         ? `Vai ao ar exatamente o que está na tela, no ${nomes}, em ${quandoPeca(a.data, a.hora)} (horário de Brasília).` +
           (passouDaHora(a.data, a.hora) ? "\n\nA hora marcada já passou: a peça sai na próxima rodada da agenda (em até 5 minutos)." : "") +
           (agendaParada(ag) ? "\n\nA agenda automática está DESLIGADA: a peça só sai se alguém clicar em Publicar agora." : "")
-        : `Aprovar para publicar à mão no ${nomes}? Depois de aprovada, a peça libera baixar as lâminas e copiar a legenda; quem postar registra o link aqui.`;
+        : `Aprovar para publicar à mão no ${nomes}? Depois de aprovada, a peça libera baixar ${sha ? "o vídeo" : "as lâminas"} e copiar a legenda; quem postar registra o link aqui.` +
+          (sha ? "\n\nO vídeo aprovado é o que você viu na prévia (o arquivo fica amarrado à peça)." : "");
       if(!confirm(pergunta + (r.avisos.length ? "\n\nConfira também:\n- " + r.avisos.join("\n- ") : ""))) return;
       const ids = [];
       for(const [i, x] of artes.entries()){
@@ -1112,11 +1170,11 @@ const PAUTA = {
         ids.push(nova.id);
       }
       const res = await rpc("radar_pauta_aprovar", {p_peca:Number(f.dataset.id), p_lido:f.dataset.lido, p_canais:canais, p_modo:modo, p_artes:ids,
-        p_arte_identificacao:linhaIdentificacao(), p_conferencias:caixas.map(c => c.value)});
+        p_arte_identificacao:linhaIdentificacao(), p_conferencias:caixas.map(c => c.value), ...(sha ? {p_video_sha256:sha} : {})});
       await desenhar();
       recado(modo === "agendar" ? `Peça aprovada: sai no ${nomes} em ${horaBrasilia(res?.agendado_para)} (Brasília).` +
           (agendaParada(ag) ? " A agenda automática está desligada: no dia, use Publicar agora." : "")
-        : "Peça aprovada para publicar à mão: baixe as lâminas, copie a legenda e, depois de postar, registre o link.");
+        : `Peça aprovada para publicar à mão: baixe ${sha ? "o vídeo" : "as lâminas"}, copie a legenda e, depois de postar, registre o link.`);
     },
     async "peca-desaprovar"(){
       const f = $("form[data-form=peca]"); if(!f) return;
@@ -1220,22 +1278,25 @@ const PAUTA = {
       if(cheio && !confirm("Trocar a chamada, o apoio, os cartões e as legendas desta tela pelos da sugestão da IA? Nada é salvo até você clicar em Salvar.")) return;
       for(const [n, v, max] of campos) f.elements[n].value = nome(textoDe(v)).slice(0, max);
       if(comCartoes) box.innerHTML = cartoes.slice(0, 9).map(c => linhaCartao({titulo:nome(textoDe(c.titulo)), texto:nome(textoDe(c.texto))}, "")).join("");
-      const fontes = [...new Set([...f.querySelectorAll("#peca-conferidas [name=conf-fonte]")].map(c => c.value.trim()).filter(Boolean))];
+      const fontes = [...new Set([...f.querySelectorAll("#peca-conferidas [name=conf-fonte]")].map(c => c.value.trim()).filter(Boolean))], avisos = [];
       for(const k of legendas){
         const tags = [...hashtagsPauta(), ...(Array.isArray(s[k].hashtags) ? s[k].hashtags : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x))]
           .filter((x, i, todas) => todas.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i);
-        const c = f.elements["legenda_" + k];
-        c.value = comporLegenda(nome(textoDe(s[k].texto)) + (fontes.length ? "\n\nFonte: " + fontes.join("; ") : ""), tags.join(" "), 2200);
+        const c = f.elements["legenda_" + k], r = legendaDaSugestao(nome(textoDe(s[k].texto)), fontes, tags.join(" "));
+        c.value = r.legenda;
         contarPeca(c);
+        if(r.semEndereco || r.encurtado) avisos.push(`no ${NOME_REDE[k]}, ${[r.semEndereco ? "as fontes foram só com a norma, sem o endereço" : "",
+          r.encurtado ? "o texto da IA foi encurtado no fim de uma frase" : ""].filter(Boolean).join(" e ")}`);
       }
       pecaArteMudou();
-      recado("Sugestão da IA nos campos (ainda não salva): confira, ajuste e salve.");
+      recado("Sugestão da IA nos campos (ainda não salva): confira, ajuste e salve." + (avisos.length ? " Para a legenda caber em 2.200 caracteres com a " +
+        `fonte inteira, a identificação legal e as hashtags, ${avisos.join("; ")}.` : ""), avisos.length ? "aviso" : false);
     },
     "peca-voltar-producao"(el){ return situacaoDaPeca(el, "em_producao", "", "A peça voltou para a produção."); },
     "peca-cancelar"(el){ return situacaoDaPeca(el, "cancelada", "Cancelar esta peça? Ela fica no calendário como cancelada (dá para reabrir).", "Peça cancelada."); },
     "peca-reabrir"(el){ return situacaoDaPeca(el, "planejada", "", "Peça reaberta: voltou a planejada."); },
     async "pessoa-excluir"(el){
-      if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça (para tirá-la das próximas, desmarque “Ativa”).")) return;
+      if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, marque a revogação do termo).")) return;
       await apagar("radar_pessoas", {id:"eq." + el.dataset.id, select:"id"}); await desenhar(); recado("Pessoa excluída.");
     }
   },

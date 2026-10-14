@@ -1,4 +1,4 @@
-# Radar Artecon — v0.21.0
+# Radar Artecon — v0.22.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,7 +12,107 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
-A v0.21.0 traz a aba **Pauta**: o calendário de publicações no Instagram e no Facebook (uma peça por dia), com as peças
+A v0.22.0 traz o **corretor de vídeo dos reels**: a equipe grava o reel no celular, envia pela peça da Pauta e recebe o vídeo pronto
+para postar, conferido contra o roteiro:
+
+- **Enviar:** na peça reel, a **"Fala para conferência"** mostra o que o corretor compara (tirada do roteiro: a coluna "Fala" da
+  tabela do plano ou as linhas "Fala:" do kit). A equipe grava por bloco (1080p, 30 quadros por segundo, Vídeo HDR desligado, na
+  vertical), escolhe de 1 a 12 clipes na ordem, quem fala e as 4 declarações e clica em "Enviar a gravação". Os clipes vão direto do
+  navegador para um armazenamento **privado** do Radar, num envio que continua de onde parou se a internet cair. Antes de qualquer
+  arquivo sair, o banco confere a fala no roteiro, o boletim pago, o termo de cada pessoa (o **termo novo**, que cita o corretor), a
+  idade e a cartela.
+- **O robô** roda no GitHub Actions de um **repositório privado** (`radar-video`), com o código deste repositório num commit fixo:
+  transcreve a fala pela **Azure gratuita** do escritório (o recurso F0 da Agenda, pelo Speech SDK: 5 horas por mês divididas com a
+  Agenda, um pedido por vez), compara com o roteiro **só por código, sem IA**, corta o começo, o fim, as pausas longas e as
+  hesitações, limpa o som e acerta o volume, grava a legenda na grafia do roteiro, o texto do gancho (opcional) e a cartela final com
+  a identificação legal, e confere o MP4 no formato do Instagram e do Facebook, sem a localização do celular. O ffmpeg roda num
+  contêiner sem rede e sem segredo, e o robô não tem chave do Supabase: fala só com a função `radar-video`, com um token estreito.
+- **O que não corrige:** nenhuma palavra é trocada, acrescentada ou inventada, e "um", "uma", "e" e "é" nunca saem. Número, data ou
+  termo diferente do roteiro, termo que a publicidade contábil não usa e frase do boletim pago na fala viram **"Precisa regravar"**.
+  Nada de IA que crie ou imite rosto ou voz, de música ou de conserto de imagem.
+- **Relatório, prévia e ajustes:** o relatório parcial (o que precisa regravar) chega antes do vídeo; o final traz a duração, os
+  cortes, a legenda, o som e 4 quadros. A prévia abre por um link de 10 minutos. O administrador pode manter um corte, marcar "A
+  transcrição errou (vale o roteiro)", editar a legenda palavra por palavra (sem mudar número, data ou termo), pedir a legenda
+  compacta, tirar o gancho ou refazer a cartela: o vídeo é montado de novo sem transcrever de novo, e o áudio não muda.
+- **Aprovar, baixar e postar:** a aprovação do reel (só o administrador) fica amarrada ao vídeo que ele viu na prévia (o sha256 do
+  arquivo). Aprovado, "Baixar o vídeo aprovado" (link de 5 minutos), postar à mão, "Apaguei do celular e da nuvem pessoal" e
+  registrar o link. A publicação automática do reel fica para a **v0.22.1**, depois dos primeiros reels reais.
+- **Guarda:** o original sai ao publicar, substituir, descartar ou revogar o termo, ou em 30 dias; o vídeo final, 30 dias depois de
+  publicado (os prazos ficam nas Configurações). Nada do vídeo, da fala ou dos nomes vai ao repositório público nem aos registros:
+  **neste repositório entram só vídeos sintéticos**, gerados pelo ffmpeg na hora dos testes.
+
+Também nesta versão: **"Preencher fontes oficiais"** (Configurações → Agenda de obrigações), que põe a fonte oficial conferida de cada
+vencimento nas obrigações da agenda das redes que estão sem fonte, e o **CRC certo da Artecon**, "CRC-SC 007129/O-0", na ajuda e nos
+exemplos das Configurações e deste LEIAME (o que está salvo nas Configurações não muda sozinho: confira).
+
+Na agenda padrão, o **Simples Doméstico (DAE)** passa a **antecipar** quando o dia 20 não é dia útil, como mandam a Lei 8.212/1991
+(art. 30, V, e § 2º, II) e o Manual do Empregador Doméstico do eSocial (exemplo: 20/11/2026 é feriado nacional, então vence em 19/11).
+Vale para a instalação nova; na que já existe, o administrador troca o `"ajuste"` para `"antecipa"` em Configurações → Agenda de
+obrigações (na Artecon, já trocado em 13/10/2026).
+
+Mudam o banco (`radar-setup-v0.22.0.sql`: 2 tabelas novas, `radar_videos` e `radar_video_acessos`; 3 campos em `radar_pessoas`; a
+amarra do vídeo na peça; as funções `radar_video_*`; a configuração `corretor_video`) e a tela (`index.html`, `radar-pauta.js` e o
+arquivo novo `radar-video.js`). Entram a função `radar-video`, o `sql/radar-video-agenda.sql` (as chaves no Vault, a reserva da fila e
+a limpeza diária) e o robô do vídeo (`robo/video/`, com o modelo do workflow do repositório privado em
+`robo/video/workflow/radar-video.yml`). A `radar-ia`, a `radar-itc`, a `radar-redes` e a `radar-concorrentes` mudam só pelas
+correções da varredura geral (abaixo) e vão para a v0.22.0. Detalhes em "Corretor de vídeo do reel" e, para instalar, "Da v0.21.0
+para a v0.22.0".
+
+**Varredura geral (13/10/2026), nesta mesma versão:**
+- **Notícia, "Publicar em todos":** só o registro da publicação feito pelo robô do site (ou por uma pessoa depois que o envio do site
+  saiu), com link do próprio site, libera o Instagram e o Facebook; enquanto o robô está na vez, "Registrar publicação no site" some
+  da tela e o banco recusa o registro à mão (RADAR145). Link de outro endereço derruba as redes que esperavam, com o motivo.
+- **Boletim pago na notícia:** a frase do boletim pago (ITC) não se autoriza mais ("Autorizar mesmo assim" some quando há trecho
+  pago), e o banco recusa a autorização da cópia, a aprovação e a publicação no site, no Instagram e no Facebook com ela (RADAR146).
+  A comparação (na notícia e na Pauta) usa todas as capturas do boletim guardadas, não só as dos últimos 90 dias.
+- **Notícia, nunca duas vezes:** a publicação cancelada no meio do envio ("publicando" parada) pode ter saído; autorizar de novo o
+  mesmo canal pede a caixa "Conferi no Instagram/Facebook: … não saiu" (RADAR166), como na Pauta.
+- **Pauta:** a linha de identificação confere o registro no CRC inteiro (UF, número e categoria, "CRC-SC 007129/O-0"), não só os
+  algarismos; a pessoa que está num vídeo do corretor ainda guardado não se apaga (marque a revogação: RADAR174); a caixa "A pessoa
+  viu o vídeo final" aparece também para quem foi desmarcada depois do envio (ela continua no vídeo); o leitor lê só as imagens ligadas
+  a um conteúdo (nunca a foto tirada da peça ou a lâmina de uma aprovação recusada); o selo com motivo longo quebra a linha no celular.
+- **IA:** o texto de fora (página capturada, boletim, assunto, conteúdo) não fecha mais o bloco de dados em nenhuma ação (antes, só
+  no kit e na peça); o nome da equipe escrito com apóstrofo curvo, hífen ou caractere invisível também vai mascarado.
+- **Boletim da ITC pela função:** a falha no login da Microsoft ou na caixa fica na aba Fontes (antes, pela agenda, ninguém via).
+- **Robôs e GitHub:** o "Radar — teste do site" não mostra mais o texto das notícias, quem cadastrou nem o código dos links de
+  editar/excluir do painel; os workflows usam as ações fixadas pelo commit e os pacotes do `robo/requirements.txt` com versão exata
+  e hash; o conferir do repositório olha também os commits do primeiro push de um ramo; os avisos (issues) contam só os abertos pelo
+  robô; a fonte "Receita Federal — Atos normativos" diz o motivo de não ler nada (o sistema Normas virou aplicação montada no
+  navegador); os clipes brutos do corretor (`ent/<n>`) ficam fora do Git.
+
+**Varredura geral, rodada 2 (13/10/2026), nesta mesma versão:**
+- **Boletim pago, na tela como no banco:** o banco compara o texto com **todas** as capturas do boletim (de outro assunto ou ainda na
+  fila); a tela comparava só com as do assunto e mostrava "✓ nenhum trecho copiado" enquanto o banco recusava (RADAR146) sem dizer
+  qual frase. Agora o banco diz **onde** está a frase no próprio texto (`radar_copia_paga_trechos`, só as posições: nada do boletim
+  sai), e o quadro vermelho a mostra como "boletim pago: conferido pelo banco com todas as matérias do boletim"; o "Revisar com IA" a recebe e
+  reescreve; e a legenda e a arte do Instagram e do Facebook também são conferidas assim antes de autorizar.
+- **Ementa do ato oficial não é frase do boletim:** a matéria do boletim que é o próprio ato ("Legislação Federal": título
+  "Lei nº … (DOU DE …)", texto = a ementa oficial, de domínio público) fica fora da comparação do boletim. A ementa copiada do DOU
+  para as "Informações conferidas", o roteiro ou a legenda da Pauta (e a fala do reel) não trava mais como "frase do boletim pago".
+- **CRC com acento:** o CRC das Configurações com letra acentuada ("… (Originário)") não trava mais toda peça como "falta a linha
+  de identificação".
+- **Pauta, "Usar a sugestão":** a linha "Fonte: …" das informações conferidas nunca é cortada (com as 9 fontes da agenda de fim de
+  mês, a citação saía quebrada, "…; LC 155/2016, art."): quem encurta é o texto da IA, no fim de uma frase ("art. 9º" não é fim de
+  frase); se não couber com os endereços, as fontes vão só com a norma; o recado avisa.
+- **Aviso da Pauta que não sai:** com o aviso já aberto (um erro antigo sem resolver), cada publicação nova que não sai ganha **um
+  comentário** no aviso (um e-mail); antes, o aviso aberto calava as falhas seguintes.
+- **Robôs agendados do GitHub:** no repositório público, o GitHub desliga sozinho a coleta, o robô do site e o resumo depois de 60
+  dias sem atividade. A agenda do banco pede uma vez por dia à `radar-redes` que religue os desligados por inatividade
+  (`sql/radar-redes-agenda.sql`, com o `RADAR_GITHUB_TOKEN`); o acionamento do robô do site religa o dele e, se não der, diz onde
+  religar, sem prometer "a próxima rodada automática"; e o **Painel** avisa quando a coleta não roda há mais de 12 horas.
+- **Imagem da notícia nas redes:** vai, como a da Pauta, para o armazenamento **privado** (nome aleatório; a Meta recebe um link de
+  10 minutos). Antes ia para o bucket público `radar-redes`, com nome fácil de adivinhar, e ficava lá mesmo depois de excluída da
+  rede; ao excluir pela função, a imagem antiga sai do bucket público.
+- **Exclusão no site:** a notícia achada só pelo começo do título (o painel encurta o título longo) é excluída só se o título
+  inteiro, lido no formulário de edição do painel, for o pedido; senão, não exclui (era possível sair outra notícia da mesma série).
+- **Sessão só na aba:** a sessão do Radar fica na aba (sessionStorage), não mais no localStorage da origem
+  `arteconartescontabeis-design.github.io`, que é a mesma dos outros aplicativos da conta no GitHub Pages (qualquer script deles lia
+  a sessão). Cada aba entra à parte; fechada a aba, a sessão some. O informativo aberto numa aba nova usa a sessão da aba do Radar.
+- **Chaves novas do Supabase:** a tela, as agendas do banco, as funções e os robôs aceitam a chave pública nova (`sb_publishable_…`) e
+  a interna nova (`sb_secret_…`), cada uma só no `apikey` (o Supabase desliga a anon e a service_role antigas até o fim de 2026).
+  O passo a passo da troca está em "Chaves novas do Supabase (até o fim de 2026)".
+
+A v0.21.0 trouxe a aba **Pauta**: o calendário de publicações no Instagram e no Facebook (uma peça por dia), com as peças
 preparadas no Radar e publicadas pela API da Meta **na hora marcada, depois da aprovação do administrador**:
 
 - **Calendário:** o plano de publicações entra por "Importar o calendário (CSV)" (a tela confere o arquivo inteiro e mostra todos os
@@ -52,8 +152,8 @@ A v0.20.0 completou o **"Gerar com IA" para as redes**, dentro das regras da pub
   chamada, o apoio e o fundo (padrão, ilustração da IA ou imagem de capa) podem ser trocados na hora de publicar. Se a chamada
   ou o apoio não couberem, a arte corta com "…" e a tela avisa embaixo da imagem e na confirmação.
 - **Identificação legal:** empresa, CNPJ e CRC ficam em Configurações → "Fecho, assinatura e identificação legal" (campos `cnpj`
-  e `crc`, conferidos ao salvar; o CRC sai sempre como "CRC-SC 004064/O-5", com a letra O de originário depois da barra, mesmo
-  que tenha sido escrito "SC-004064/0-5"). Quem os acrescenta à arte e às legendas é o Radar, nunca a IA; enquanto faltarem, sai
+  e `crc`, conferidos ao salvar; o CRC sai sempre como "CRC-SC 007129/O-0", com a letra O de originário depois da barra, mesmo
+  que tenha sido escrito "SC-007129/0-0"). Quem os acrescenta à arte e às legendas é o Radar, nunca a IA; enquanto faltarem, sai
   só o que existe (o nome da empresa) e a tela avisa. A legenda editada na tela antes de preencher ganha a linha nova ao salvar
   as Configurações, e a legenda sem a linha (apagada à mão) é lembrada na confirmação.
 - **Publicidade da profissão contábil:** a tela aponta os termos que a publicidade contábil evita (lista inicial, a confirmar com
@@ -124,7 +224,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.21.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.22.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -143,13 +243,15 @@ A v0.17.0 trouxe duas opções em **Publicações**:
     aplicativo, a tela explica e oferece **Já apaguei**, para registrar a exclusão feita direto na rede.
   - **Site:** fica o pedido, e o robô do site (o mesmo do "publicar no site", a cada 15 minutos) entra no painel, acha a notícia
     pelo título na lista do painel e a exclui como o botão "Excluir" do painel faz. Na dúvida, não exclui: título não encontrado
-    ou mais de uma notícia com o mesmo título vira erro para conferir à mão. Depois de excluída, o registro em "Publicações no
+    ou mais de uma notícia com o mesmo título vira erro para conferir à mão. v0.22.0: a notícia que a lista mostra com o título
+    cortado ("…") só é excluída se o título inteiro, lido no formulário de edição do painel (o robô só abre, não grava), for o
+    pedido; se for outra notícia da mesma série, ela fica, e o pedido para (ou é dado por concluído, se a página pedida já saiu do ar). Depois de excluída, o registro em "Publicações no
     site" sai (a cópia fica no histórico de exclusões e na auditoria) e o conteúdo pode ser publicado de novo, se for o caso.
   - "Excluir só o registro" (em Publicados no site) continua apagando só o registro no Radar, sem mexer no site.
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.21.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.22.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -171,14 +273,14 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   informação. No conteúdo, o quadro "Texto igual ao da fonte" traz **Revisar com IA** (reescreve só esses trechos, citando a
   fonte, e também resolve as marcas; o que ela afirmar é conferido de novo contra o texto oficial) e **Autorizar mesmo assim**
   (editor ou administrador, com o motivo; vale para o texto atual e cai se o texto mudar; a revisão não mexe no trecho
-  autorizado). Se a revisão mudar o título, a capa com a ilustração é refeita sozinha. Os pontos a conferir agora só crescem:
+  autorizado; nunca para frase do boletim pago). Se a revisão mudar o título, a capa com a ilustração é refeita sozinha. Os pontos a conferir agora só crescem:
   a revisão acrescenta o que tirou do texto, ninguém apaga o que a IA apontou.
 - **Capa com imagem.** A capa feita pela IA é a ilustração ao fundo com o logotipo da Artecon, a categoria e o título por cima
   (antes ficava só a foto). A ilustração fica guardada: depois de trocar o título, **Atualizar a capa** refaz a capa sem gerar
   outra imagem; **Capa padrão, sem a ilustração** volta ao fundo marinho.
-- **Triagem.** A IA não junta mais como "mesmo fato" notícias que citam tributos diferentes (caso do ITC de 09/10: "STF exclui
-  créditos presumidos de ICMS da base do PIS e da Cofins" tinha ido para trás de "crédito presumido de ICMS na base do IRPJ e
-  da CSLL"), nem pelo caminho até a origem nem com o que já está no grupo dela. O cartão da captura mostra os títulos das
+- **Triagem.** A IA não junta mais como "mesmo fato" notícias que citam tributos diferentes (por exemplo, uma sobre o crédito
+  presumido de ICMS na base do PIS/Cofins posta atrás de outra sobre a base do IRPJ/CSLL), nem pelo caminho até a origem nem com o
+  que já está no grupo dela. O cartão da captura mostra os títulos das
   repetições, cada uma com **Não é o mesmo fato**, que a devolve à lista; a decisão fica, mesmo que a fonte mude o texto e a IA
   avalie de novo.
 - **Fontes.** Fonte RSS cadastrada com o endereço da página do site (e não do feed) passa a funcionar: o robô segue o feed que
@@ -186,7 +288,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.21.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.22.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -215,7 +317,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.21.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.22.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -223,7 +325,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.21.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.22.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -239,7 +341,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.21.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.22.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -254,7 +356,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.21.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.22.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -282,7 +384,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.21.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.22.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -294,7 +396,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.21.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.22.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -307,7 +409,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.21.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.22.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -319,7 +421,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.21.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.22.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -331,7 +433,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.21.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.22.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -346,7 +448,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.21.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.22.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -390,22 +492,26 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 |---|---|
 | `index.html` | Dashboard de curadoria (uso interno, com login). Não há página pública. |
 | `radar-pauta.js` | A aba Pauta (v0.21.0), carregada pelo `index.html`. Vai sempre junto com ele: com os dois de versões diferentes, a aba pede Ctrl+F5. |
+| `radar-video.js` | O corretor de vídeo do reel (v0.22.0), carregado pelo `index.html` depois do `radar-pauta.js`. Vai sempre junto com os dois. |
 | `informativo.html` | Informativo Mensal para imprimir / salvar em PDF (uso interno, usa o login do dashboard). |
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.21.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.21.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também a agenda da Pauta do pg_cron). |
+| `sql/radar-setup-v0.22.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.22.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0). |
+| `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda. É a única que toca no armazenamento privado `radar-videos`. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase. |
 | `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
+| `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
+| `robo/video/` | O robô do corretor de vídeo (v0.22.0): o código, o `Dockerfile` do ffmpeg isolado, as fontes DM Sans da legenda e da cartela (licença OFL) e o **modelo** do workflow do repositório privado (`workflow/radar-video.yml`). Roda no repositório privado `radar-video`, nunca neste. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes e testes. |
-| `testes/` | Suíte de testes automatizados. O `testes/amostras/pauta-ficticia.csv` é um calendário de mentira, só com nomes inventados. |
+| `testes/` | Suíte de testes automatizados. O `testes/amostras/pauta-ficticia.csv` é um calendário de mentira, só com nomes inventados; os vídeos e as falas dos testes do corretor são sintéticos, gerados na hora (nenhuma gravação real). |
 | `RELATORIO-TESTES-radar.md` | O que foi testado, o que não foi e o que as revisões independentes encontraram. |
 
 ## Fontes iniciais (conferidas nos sites reais em 02/10/2026)
@@ -447,10 +553,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.21.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.22.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
-   Esperado: 25 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.21.0`).
+   Esperado: 27 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.22.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -659,11 +765,19 @@ de 2026") e as palavras de ligação entre eles ("de", "e", "na"). Citação cur
   e pelo começo do nome da fonte quando é uma sigla ("PGFN", "SEF/SC") ou o nome da publicação ("Diário Oficial da União").
 - **Não pode ficar** (quadro vermelho; o Aprovar recusa): o trecho sem a fonte citada no parágrafo, ou com o campo Fonte
   vazio, e qualquer trecho com frases do **boletim pago** (ITC), mesmo citando a ITC. O botão **Revisar com IA** acrescenta
-  a fonte no parágrafo (e reescreve o trecho do boletim pago); **Autorizar mesmo assim** deixa como está, com o motivo registrado.
+  a fonte no parágrafo (e reescreve o trecho do boletim pago); **Autorizar mesmo assim** deixa como está, com o motivo registrado,
+  só o trecho igual ao de fonte livre. A frase do boletim pago **não se autoriza** (v0.22.0): com ela, o botão não aparece, e o
+  banco também recusa (RADAR146) a autorização, a aprovação e a publicação no site, no Instagram e no Facebook (texto e legenda),
+  comparando com todas as capturas do boletim guardadas, em janelas de 12 palavras, menos o que também está numa captura livre
+  do assunto (o artigo de lei que o boletim copiou do DOU). Rodada 2: a frase de uma matéria do boletim que **não está no
+  assunto** (de outro assunto ou ainda na fila) também aparece no quadro vermelho, marcada "conferido pelo banco com todas as matérias
+  do boletim": o banco diz só onde ela está no próprio texto (nada do boletim sai do banco), e o Revisar com IA a reescreve. A matéria
+  do boletim que é o **próprio ato oficial** (título "Lei nº … (DOU DE …)", texto = a ementa, de domínio público) não conta como
+  frase do boletim, na notícia e na Pauta.
 
 A IA (Gerar com IA, rascunhos do robô e Revisar com IA) segue a mesma regra. Limites: a comparação é só com o texto
 capturado do próprio assunto (não com a internet nem com outros sites de notícia), não detecta paráfrase muito próxima e é
-feita na tela: quem grava direto no banco não passa por ela. É um apoio à revisão, não um detector de plágio. O campo
+feita na tela: quem grava direto no banco não passa por ela (só pela trava do boletim pago, que está no banco). É um apoio à revisão, não um detector de plágio. O campo
 **Fonte** é preenchido só na criação do conteúdo (com os órgãos das capturas oficiais do assunto e, depois deles, os portais
 de notícia; o boletim pago não entra); capturas incluídas depois não o alteram.
 
@@ -933,6 +1047,13 @@ fino do GitHub**, só deste repositório, guardado **só** no Supabase:
 Segurança: a função aciona sempre o mesmo workflow (`radar-site-publicar.yml`, fixo no código), só a pedido do administrador,
 só quando há publicação ou exclusão esperando e no máximo uma vez a cada 30 segundos. O token nunca vai para a tela nem para
 os registros. Quando ele vencer, o recado avisa ("o GitHub recusou o token") e basta gerar outro e trocar o segredo.
+
+**Robôs desligados pelo GitHub (v0.22.0).** Neste repositório público, o GitHub desliga sozinho os workflows agendados (a coleta, o
+robô do site e o resumo) depois de **60 dias sem atividade** no repositório (o recesso de fim de ano é o caso provável), e eles só
+voltam com "Enable workflow" — mesmo que entre commit novo depois. Com o mesmo token, a agenda do banco (`sql/radar-redes-agenda.sql`)
+pede uma vez por dia à `radar-redes` que religue os desligados por inatividade (o desligado à mão fica). Se o robô do site estiver
+desligado na hora de acionar, a função o religa e aciona; se não conseguir, o recado diz onde religar (GitHub → Actions → "Radar —
+publicar no site" → Enable workflow), sem prometer a rodada automática. O **Painel** avisa quando a coleta não roda há mais de 12 horas.
 - **Sessão no site**: o login do robô pode encerrar a sessão de quem estiver usando o mesmo usuário no
   painel do site. O ideal é um usuário só do Radar, com acesso apenas ao cadastro de notícias.
 - O registro manual ("Registrar publicação no site") e o registro automático da v0.8.0 continuam valendo.
@@ -1007,18 +1128,20 @@ A função `radar-redes` publica o que o administrador autorizou nos passos 6 e 
      Instagram usa o mesmo token da Página;
    - opcional `META_GRAPH_URL` (padrão `https://graph.facebook.com/v23.0`).
 4. **Instalar a função:** Supabase → Edge Functions → nova função `radar-redes` com o arquivo `supabase/functions/radar-redes/index.ts`
-   (com "Verify JWT" ligado). A função cria sozinha o armazenamento público `radar-redes` das imagens (a Meta só aceita
-   imagem por link público). Desde a v0.21.0 cria também o armazenamento **privado** `radar-pauta`, das peças da Pauta (fotos
-   da equipe): a Meta recebe um link assinado que vale 10 minutos, e o arquivo não fica aberto na internet. Ele precisa continuar
-   privado: se alguém o deixar público no painel do Supabase, a função recusa a peça (nada é publicado) e o teste do item 5 aponta.
-5. **Testar:** Publicações → "Testar conexão com o Instagram e o Facebook". Todos os itens devem ficar OK (desde a v0.21.0, também
-   "Armazenamento privado da Pauta").
+   (com "Verify JWT" ligado). A Meta só aceita imagem por link: a função cria sozinha o armazenamento **privado** `radar-pauta`
+   (v0.21.0, para as peças da Pauta, com foto da equipe; desde a v0.22.0, também para a imagem da notícia), e a Meta recebe um link
+   assinado que vale 10 minutos: o arquivo não fica aberto na internet. Ele precisa continuar privado: se alguém o deixar público no
+   painel do Supabase, a função recusa a publicação (nada sai) e o teste do item 5 aponta. Até a v0.21.0, a imagem da notícia ia
+   para o bucket **público** `radar-redes`, com nome fácil de adivinhar, e ficava lá: apague pelo painel (Storage → `radar-redes`) as
+   que ainda estiverem lá (a função apaga a de cada publicação que ela mesma excluir da rede).
+5. **Testar:** Publicações → "Testar conexão com o Instagram e o Facebook". Todos os itens devem ficar OK (desde a v0.22.0, o item
+   "Armazenamento das imagens" mostra o bucket privado `radar-pauta`).
 
 Sem os segredos, o botão "Autorizar e publicar" grava a autorização e avisa que a Meta ainda não está configurada; depois é
 só usar "Publicar agora" no mesmo passo.
 
 6. **Antes do primeiro post (v0.20.0):** em Configurações → "Fecho, assinatura e identificação legal", preencha `cnpj` e `crc`
-   (o registro da empresa no CRC-SC, como "CRC-SC 004064/O-5", com a letra O depois da barra) e salve: a arte e as legendas levam
+   (o registro da empresa no CRC-SC, como "CRC-SC 007129/O-0", com a letra O depois da barra) e salve: a arte e as legendas levam
    essa identificação no fim. Confira também o link da bio do Instagram, que deve abrir artecon.cnt.br/news. Sem eles, a Pauta
    (v0.21.0) não aprova nenhuma peça.
 7. **Agenda da Pauta (v0.21.0):** rode uma vez `sql/radar-redes-agenda.sql` no SQL Editor, **depois** do setup e do Deploy da
@@ -1030,7 +1153,10 @@ só usar "Publicar agora" no mesmo passo.
    nada. **Teste**, sem publicar nada: copie as 5 linhas do `select net.http_post(…)` com `{"acao":"agenda_teste"}` que está no
    comentário do fim do arquivo para uma consulta nova, **sem os `--` do começo** (selecione e aperte Ctrl+/), e execute — não há
    nada para trocar: a chave anon vem do próprio agendamento e a da agenda, do Vault. Alguns segundos depois, rode a consulta a
-   `net._http_response` (também sem os `--`): o esperado é 200 com `{"ok":true,"versao":"0.21.0"}`. Se o projeto do Supabase ou a
+   `net._http_response` (também sem os `--`): o esperado é 200 com `{"ok":true,"versao":"0.22.0"}` (com a radar-redes v0.21.0,
+   "0.21.0"). v0.22.0: o mesmo arquivo agenda também, uma vez por dia (05h13), o pedido "manter_robos": a `radar-redes` religa os
+   robôs agendados do GitHub (coleta, robô do site e resumo) que o GitHub desligou por 60 dias sem atividade no repositório público
+   (precisa do segredo `RADAR_GITHUB_TOKEN`, o mesmo do "Robô do site na hora"; o workflow desligado à mão fica desligado). Se o projeto do Supabase ou a
    chave anon mudarem, troque no arquivo e rode de novo (os testes conferem que a chave do arquivo é a do `radar-config.js`). Para desfazer: `sql/radar-redes-agenda-reversao.sql` (a chave fica no Vault).
 
 ### Pauta: o calendário das redes e a publicação agendada (v0.21.0)
@@ -1052,12 +1178,16 @@ conferido no selo da semana, ao marcar como pronta e ao aprovar (no dia da peça
 dela; na peça à mão, só em "Baixar as lâminas", depois dessa conferência; o leitor não vê foto nem lâmina.
 
 **Quando o termo é revogado (ou a pessoa sai da equipe).** Marcar a data em "revogado" impede as próximas publicações, mas **não
-apaga nada**: o Radar não apaga sozinho foto, lâmina nem post (nem a faxina das imagens, nem a reversão; o prazo de guarda fica para
-a v0.22.0). No mesmo dia, o administrador:
+apaga nada**: o Radar não apaga sozinho foto, lâmina nem post (nem a faxina das imagens, nem a reversão). Só os vídeos dos reels
+(v0.22.0) têm prazo de guarda: os do corretor e os textos deles saem sozinhos na limpeza do dia seguinte ("Corretor de vídeo do
+reel", item 10), e a tela de Pessoas e termos lista as peças publicadas com a pessoa, com os links. No mesmo dia, o administrador:
 1. nas peças **publicadas** com a pessoa, se o combinado for tirar do ar: "Excluir do Instagram/Facebook" (na peça agendada) ou
    apague o post direto na rede (na peça à mão);
 2. nas peças **ainda não publicadas**: "Desfazer aprovação" (se aprovada), "Tirar" cada foto dela, desmarque a pessoa e salve; a
-   foto e a lâmina que ninguém mais usa são apagadas pela faxina do robô no dia seguinte;
+   foto e a lâmina que ninguém mais usa são apagadas pela faxina do robô no dia seguinte. **No reel, desmarcar não tira a pessoa do
+   vídeo**: o Radar guarda quem estava marcado quando a gravação foi enviada, continua recusando o vídeo (a prévia fecha, a peça não
+   fica pronta) e a limpeza do dia seguinte apaga os clipes, a transcrição, o vídeo corrigido e os textos dele; para o reel sair,
+   **descarte a gravação** e grave de novo sem a pessoa;
 3. o que sobra (as lâminas das peças publicadas e a cópia da lâmina nos envios), liste no SQL Editor, trocando o 7 pelo número da
    pessoa (a consulta `select id, nome_na_peca from radar_pessoas` mostra o número):
    `select p.data, p.situacao, p.artes, e.canal, e.situacao, e.imagem_url from radar_pauta_pecas p left join radar_redes_envios e
@@ -1089,9 +1219,10 @@ que o arquivo já ficou público).
   também trava.
 - **Gerar com IA** (opcional; abaixo) e os **textos:** chamada e apoio da arte, cartões (carrossel), roteiro (reel, colado à
   mão), as legendas do Instagram e do Facebook (com contador de caracteres e o botão "Pôr a identificação legal e as hashtags").
-  No roteiro, cole a fala e o texto na tela (a tabela "Tempo | Fala | Texto na tela" do plano serve): as marcações de tempo ("0 a
-  3 s", "cerca de 44 segundos", "0:15", "110 palavras") não contam como número; as notas de produção (o dia da gravação, a cena)
-  ficam de fora, porque o número delas pediria informação conferida.
+  No roteiro, cole a fala e o texto na tela (a tabela "Tempo | Fala | Texto na tela" do plano serve; desde a v0.22.0, a coluna
+  "Fala" é o que o corretor de vídeo compara com a gravação): as marcações de tempo ("0 a 3 s", "cerca de 44 segundos", "0:15",
+  "110 palavras") não contam como número; as notas de produção (o dia da gravação, a cena) ficam de fora, porque o número delas
+  pediria informação conferida.
 - Os **marcadores dos modelos do plano** entre chaves (`{formação}`, `{ano de entrada}`, `{frase da pessoa}`…) precisam virar texto:
   esquecido em qualquer texto que vai ao ar, a peça não fica pronta.
 - **Plano** (assunto, objetivo, observação e quem aparece, do CSV): só referência, não vai ao ar.
@@ -1163,8 +1294,8 @@ Para **pausar** a agenda sem SQL: Configurações → Pauta → `"agenda_ligada"
 aprovação.
 
 **8. Publicar à mão** (carrossel, carrossel de fotos, reel, ou quando o administrador escolheu): na peça aprovada, "Baixar as
-lâminas" (`pauta-AAAA-MM-DD-1.jpg`…), "Copiar legenda do Instagram/Facebook" (só dos canais aprovados) e "Copiar roteiro" (com a
-identificação legal no último quadro). O banco confere antes a versão aprovada, o canal e o termo de cada pessoa **hoje**. Se o
+lâminas" (`pauta-AAAA-MM-DD-1.jpg`…; no reel, desde a v0.22.0, "Baixar o vídeo aprovado", do corretor de vídeo), "Copiar legenda do
+Instagram/Facebook" (só dos canais aprovados) e "Copiar roteiro" (com a identificação legal no último quadro). O banco confere antes a versão aprovada, o canal e o termo de cada pessoa **hoje**. Se o
 navegador não deixar copiar (no iPhone pode acontecer), o texto aprovado aparece logo abaixo para selecionar e copiar: não
 redigite. Depois de postar, "Registrar a
 publicação": o link do post (`https://www.instagram.com/…`, `https://www.facebook.com/…` ou `https://fb.watch/…`) e o dia
@@ -1174,7 +1305,9 @@ publicação": o link do post (`https://www.instagram.com/…`, `https://www.fac
 mais de 20 minutos) aparece no **Painel** ("Publicações da Pauta que não saíram") e no quadro **"Não saíram"**, no alto da Pauta,
 com o motivo, "Abrir" e (no que não saiu ou espera a hora) "Não publicar neste canal". O robô de avisos (depois de cada coleta,
 de 6 em 6 horas) abre **um aviso só** no GitHub, "Radar: publicação agendada não saiu", com a quantidade e a data, o canal e o
-número da mais antiga (nunca assunto, nome, legenda ou o texto do erro, porque o repositório é público). O aviso não é atualizado (cada mudança seria mais um e-mail) e fecha sozinho quando
+número da mais antiga (nunca assunto, nome, legenda ou o texto do erro, porque o repositório é público). O corpo do aviso não é
+editado; v0.22.0: cada publicação **nova** que não sai, com o aviso já aberto, ganha **um comentário** nele (um e-mail, com o mesmo
+tanto de informação) — antes, um erro antigo deixado sem resolver calava as falhas seguintes. O aviso fecha sozinho quando
 nada mais está parado. Nos 2 primeiros fins de semana pela agenda (a partir de 31/10), abra a Pauta por volta das 09h35: o aviso
 por e-mail pode levar horas.
 
@@ -1197,7 +1330,10 @@ novas, "09:30"), `janela_horas` (de 1 a 48; padrão 6), `hashtags` (as fixas, at
 `fatos_fixos` (opcional: os fatos da Artecon que valem em toda peça, cada um com a fonte, como `[{"informacao": "A Artecon atende
 empresas desde 1984", "fonte": "Contrato social"}]`; os números deles não pedem informação conferida). Na
 agenda de obrigações, `"redes": false` tira a obrigação da Agenda da semana das redes e `"fonte"` é a fonte oficial da regra de
-vencimento, que vai junto na informação conferida.
+vencimento, que vai junto na informação conferida. Desde a v0.22.0, **"Preencher fontes oficiais"** (no mesmo bloco, só o
+administrador) põe a fonte conferida pelo Radar (norma, artigo e link oficial, abertos em 12/10/2026) nas obrigações das redes que
+estão sem fonte, pelo nome, e salva; não muda regra, dia, ajuste, nome nem fonte já escrita, e a obrigação que não está na tabela
+aparece para conferir à mão.
 
 **Limites desta versão.** Uma peça por dia (o calendário não tem dia repetido). Story e "Sem post no feed" ficam fora da Pauta. O link
 assinado do armazenamento privado segue o código do Supabase; que a Meta aceita esse link (ele termina em `?token=…`) não foi
@@ -1205,11 +1341,207 @@ conferido na documentação da Meta: confere-se na primeira peça pela agenda, c
 banco até cerca de 450 KB: confira o tamanho em Supabase → Usage de vez em quando. A lista de termos que travam na Pauta inclui
 palavras que também servem para informar ("garante", "ganhe", "definitivo", "100%", "a maioria") e precisa da confirmação do
 contador responsável. O leitor vê o plano e as legendas, mas não as fotos nem as lâminas. A chave do robô (segredo do GitHub
-Actions) não lê as pessoas, as peças, as fotos, as lâminas, as legendas dos envios nem a auditoria. Nada é apagado sozinho (foto,
+Actions) não lê as **tabelas** das pessoas, das peças, das fotos, das lâminas, das legendas dos envios nem a auditoria; **os arquivos
+do armazenamento ela lê**: é a chave `service_role`, que no Supabase alcança todos os buckets privados (`radar-pauta`, com as lâminas
+aprovadas, e `radar-videos`, com os clipes e as transcrições) — por isso os pacotes dos robôs públicos vão com versão exata e hash
+(`robo/requirements.txt`, v0.22.0) e a chave nunca sai dos segredos do GitHub. Nada é apagado sozinho (foto,
 lâmina, arquivo no armazenamento privado nem post): veja "Quando o termo é revogado", no item 1. As recusas do banco na Pauta vêm com os códigos RADAR159 a RADAR176 (por
 exemplo, RADAR161 "alterada depois que a tela foi aberta", RADAR162 "aprovada não muda", RADAR165 "há pontos a resolver",
 RADAR166 "falta marcar uma conferência", RADAR167 "hora fora do permitido", RADAR170 "já saiu numa rede", RADAR174 "pessoa em
 uso", RADAR176 "pessoa ou foto que não está cadastrada, repetida ou foi apagada").
+
+### Corretor de vídeo do reel (v0.22.0)
+
+O reel da Pauta passa pelo **corretor de vídeo**: a equipe grava no celular e envia pela peça; um robô transcreve, compara com o
+roteiro, corta, limpa o som, grava a legenda e a cartela e confere o arquivo; o administrador ouve, ajusta e aprova; o vídeo aprovado
+é baixado e postado à mão. Quem edita (editor e administrador) vê o quadro **"Corretor de vídeo"** na peça reel; o leitor não vê.
+
+**1. Gravar (orientação para a equipe).**
+- Celular **na vertical**, em **1080p a 30 quadros por segundo**, com o **Vídeo HDR desligado** (no iPhone: Ajustes → Câmera →
+  Gravar Vídeo). Enquadre do peito para cima, com o rosto no terço de cima da tela: a legenda entra na altura do peito.
+- Lugar silencioso: **sem música, rádio ou TV** (nem ao longe), sem ventilador ou ar-condicionado barulhento perto; o microfone do
+  celular livre e a até 1 metro da boca.
+- Fundo: **sem tela de computador, documento, cliente ou quadro de avisos**; no vídeo, só as pessoas marcadas na peça.
+- Grave **por bloco** do roteiro (uma ou duas frases por clipe): 1 segundo de silêncio antes de falar e 1 depois de terminar. Errou,
+  pare e grave o bloco de novo; **apague as tomadas ruins** antes de enviar. O corretor recebe de 1 a 12 clipes, já na ordem, e
+  soma até 120 s de gravação.
+- Fale o roteiro **como está escrito**, com os números, as datas e os termos (é o que o corretor compara). Trocar uma palavra comum
+  não trava; número, data ou termo diferente pede regravar.
+- **Não edite** no celular (sem filtro, música, legenda ou corte) e envie os arquivos originais da câmera (MP4 ou MOV).
+- **Guarde os clipes no celular até o relatório dizer "Vídeo corrigido pronto"** (em alguns minutos): o envio novo substitui todos
+  os clipes, e quem apagou cedo regrava tudo por causa de um bloco só; com "Precisa regravar", regrave só o bloco errado e mande os
+  outros como estão. Então, **no mesmo dia do envio** (o termo pede), **apague do celular e da nuvem pessoal** (inclusive da lixeira,
+  "Apagados recentemente") e marque "Apaguei" (o botão fica em destaque quando o vídeo fica pronto).
+
+**2. Enviar** (Pauta → peça reel → quadro "Corretor de vídeo"). A **"Fala para conferência"** mostra o que o corretor compara: a
+coluna "Fala" da tabela do plano (`Tempo | Fala | Texto na tela`, sem as aspas), as linhas "… — Fala: …" do kit ou, sem nenhum dos
+dois, o roteiro inteiro (com o aviso para conferir). "Na tela", "Tarja", "Gancho" e "Chamada final" nunca entram. Escolha os clipes
+(↑ e ↓ mudam a ordem), quem fala, as 4 declarações ("só aparecem as pessoas marcadas", "sem tela, documento ou cliente ao fundo",
+"só a voz", "a fala para conferência é o que foi gravado") e, se a peça tiver o **texto do gancho** preenchido, se ele aparece de 0 a
+3 s; a tela mostra as linhas da cartela. "Enviar a gravação": o banco confere tudo **antes** de qualquer arquivo sair (a fala no
+roteiro, palavra por palavra e na ordem; o boletim pago; o termo de cada pessoa marcada, com o termo novo do corretor; menor de
+idade; a cartela; os clipes; a cota do mês — com a duração que o navegador leu dos clipes, a gravação tem de caber no que sobra do
+mês, que o quadro mostra antes —; e, na tela, os termos que a publicidade contábil não usa na fala e no texto do gancho) e só então
+os clipes sobem, um de cada vez, direto do navegador ao armazenamento privado
+`radar-videos`, em pedaços de 6 MB. No celular, **não feche nem bloqueie a tela até 100%** (a tela pede para ficar acesa); se a
+internet cair, reabra a peça e escolha os mesmos arquivos: o envio continua de onde parou (só quem começou o envio, ou o
+administrador, continua; os outros podem descartá-lo). Enviar de novo substitui a gravação anterior **só quando os clipes da nova
+chegam**: o envio que para no meio ou é abandonado não leva junto o vídeo que já estava pronto (enquanto ele espera os arquivos, a peça
+pede "termine de enviar a gravação" — ou descarte o envio — antes de aprovar).
+
+**3. O que o robô faz** (repositório privado `radar-video`, acionado na hora pela função `radar-video`; o robô trata um pedido por
+execução e, ao terminar, a função o aciona de novo se ainda há pedido na fila — o envio que chegou enquanto ele trabalhava não espera;
+a reserva da agenda, de 10 em 10 minutos, aciona se o GitHub não atender — até 3 vezes por pedido: sem o robô pegar, o pedido para
+com o erro "robo_nao_pegou", um aviso só na peça, e o administrador confere a `RADAR_VIDEO_ROBO_CHAVE`, a `RADAR_VIDEO_URL` e o
+`RADAR_VIDEO_COMMIT` do repositório privado e o `RADAR_VIDEO_GITHUB_TOKEN` do Supabase, e usa "Tentar de novo"; com o token do GitHub
+vencido, é esse aviso que aparece, uns 30 a 40 minutos depois do envio. O próprio workflow também roda às 10h47 e às 16h47 dos dias
+úteis e pega o que ainda estiver na fila — por exemplo, se a agenda do banco parar). Antes de baixar os clipes, o pedido confere de
+novo as pessoas do vídeo (as marcadas na peça e as que estavam marcadas no envio: o termo de hoje, a idade, quem fala marcada): a
+pessoa que revogou o termo depois do envio não passa mais pelo robô nem pela Azure (erro "termo"). Um pedido de cada vez, na ordem
+da fila:
+- confere cada clipe como **entrada não confiável** (MP4 ou MOV de câmera, com imagem e som, de pé, até o tamanho declarado; soma
+  até 120 s) e recusa com o motivo;
+- transcreve pela **Azure gratuita** (o recurso F0 `artecon-voz`, o mesmo da Agenda, pelo Speech SDK, em pt-BR, com a lista de
+  termos do glossário e os nomes do roteiro). O F0 atende **um pedido por vez** e é dividido com o WhatsApp da Agenda: ocupado, o
+  robô espera e tenta de novo por até uns 10 minutos e, se não der, para com "Transcrição ocupada; tente de novo";
+- compara a fala com o roteiro **só por código, sem IA** (números, datas, valores e termos pelo sentido: "trinta de outubro" é
+  "30/10", "cinquenta mil reais" é "R$ 50.000,00", "é social" é "eSocial") e manda o **relatório parcial**;
+- **cortes:** o começo (fica 0,12 s antes da 1ª palavra) e o fim (0,45 s depois da última) de cada clipe; a pausa acima de 1,0 s
+  dentro da frase fica com 0,30 s, e acima de 0,8 s entre frases, com 0,40 s (`pausa_max_s` e `pausa_bloco_s`); as hesitações
+  ("ãh", "hum", "ééé") e a voz sem palavra entre duas palavras seguidas do roteiro. Repetição e falso início viram **sugestão** (não
+  saem sozinhos). Cada corte no meio da fala é listado no relatório;
+- **som:** filtro de grave, redução de ruído, compressor e volume de -14 LUFS (`lufs`), sem cortar a última palavra;
+- **imagem:** 1080×1920 (9:16, sem distorcer), 30 quadros por segundo, cor leve; o HDR é convertido;
+- **legenda** gravada no vídeo, em DM Sans branca sobre a caixa azul-marinho, dentro da área livre do Instagram, em blocos de até 2
+  linhas, **na grafia e na pontuação do roteiro** nos trechos alinhados (fora deles, como a Azure escreveu); o **texto do gancho**
+  de 0 a 3 s, acima da legenda;
+- **cartela final** (3 s, `cartela_s`): o logotipo, a identificação legal das Configurações, a linha de quem fala (com o CRC, de
+  Pessoas e termos) e o `cartela_extra`, em letra de pelo menos 28 px de altura; se não couber, para com o erro (nunca corta com
+  "…");
+- **confere a saída:** MP4 H.264 1080×1920 a 30/1 e AAC 48 kHz estéreo, o índice no começo do arquivo, sem lista de edição, **sem a
+  localização nem a marca do celular**, volume dentro de 1 LU do alvo, de 3 a 90 s e até 300 MB; tira 4 quadros e entrega.
+O tempo no repositório privado (2 processadores) ainda não foi medido: pela conta, 3 a 6 minutos, mais a espera pela vaga da Azure.
+
+**4. O que o corretor NÃO corrige.** Nenhuma palavra é trocada, acrescentada ou inventada, e **"um", "uma", "e" e "é" nunca saem**
+(nem palavra alinhada ao roteiro). **Precisa regravar:** número, data, mês, ano, valor, ordinal ou termo do glossário diferente do
+roteiro (trocado, faltando ou a mais), termo que a publicidade contábil não usa na fala e frase do boletim pago. Não cria nem imita
+rosto ou voz, não põe música, não tira nada do fundo e não conserta imagem tremida, escura ou fora de foco, nem a luz ou o
+enquadramento diferentes de um clipe para o outro: isso se resolve gravando de novo.
+
+**5. Relatório e prévia.** A peça mostra a situação ("Na fila do corretor", "O corretor está trabalhando", "Vídeo corrigido pronto",
+"Precisa regravar", "O corretor parou") e se atualiza sozinha enquanto o robô trabalha. O relatório, com os tempos do vídeo corrigido:
+o que precisa regravar (o que foi dito e o que o roteiro diz), a duração (acima do limite de 45 s, `duracao_max_s`, a aprovação pede
+confirmação; acima de 90 s, não aprova), os cortes, as sugestões, as trocas de grafia, a legenda, o som, a imagem e **4 quadros**
+para conferir o fundo, as pessoas e a posição da legenda. A prévia abre por um link de **10 minutos** (vencido, a tela pede outro),
+e quem viu fica registrado. Quando o robô para, a peça diz o motivo em português (por exemplo: um clipe sem som, deitado ou que não
+é de câmera; "Transcrição ocupada; tente de novo"; a cota grátis da Azure do mês acabou; o limite de minutos do Radar no mês; a
+cartela não coube — "Tentar de novo" refaz a cartela com a Assinatura e Pessoas e termos de hoje —; o vídeo corrigido passou do
+limite de tamanho de arquivo do armazenamento) e, depois de corrigir, **"Tentar de novo"**. A prévia só abre com as pessoas do vídeo
+podendo aparecer nele hoje (o termo revogado, o do corretor retirado ou a pessoa marcada menor fecham a prévia na hora). Falha do armazenamento, da rede ou do GitHub volta à fila sozinha,
+até 3 vezes.
+
+**6. Ajustes do administrador** (depois de ouvir a prévia): "Manter este trecho" (num corte no meio da fala); **"A transcrição
+errou (vale o roteiro)"**, quando a pessoa falou certo e a Azure ouviu errado (a legenda daquele trecho passa a usar o roteiro; se a
+pessoa falou errado, regrave); **editar a legenda** palavra por palavra, com o mesmo número de palavras, cada uma a do roteiro ou
+parecida com a ouvida, sem mudar número, data, mês ou termo (o robô recusa o resto e lista); legenda compacta (1 linha, quando a
+legenda cobre a boca); sem o texto do gancho; e refazer a cartela com as Configurações e Pessoas e termos de hoje. Tudo vai num
+pedido só, e o vídeo é montado de novo **sem transcrever de novo** (não gasta a cota) e **sem mudar o áudio**. As marcas apontam o
+trecho pelo que ele é — a divergência pelo instante e pelo texto dela, o corte pelo lugar na gravação —, e não pela posição na
+lista: a montagem alinha de novo com as Configurações de hoje (uma variante ou um termo novo no glossário tiram uma divergência da
+lista; "A transcrição errou" pode criar um corte), e a marca que não confere com o relatório novo fica sem efeito (a divergência volta
+a pedir regravar): confira o relatório depois de cada ajuste. "Conferir com o roteiro novo" (quando o roteiro mudou depois da
+gravação e a fala continua valendo) e "Descartar" valem para editor e administrador; se a fala para conferência é a mesma (mudou
+só o "Texto na tela", os tempos ou a tarja), o Radar só registra o roteiro novo: o vídeo e os ajustes continuam valendo, sem passar
+pelo robô. O texto do gancho gravado é a cópia da chamada no envio, e o texto extra da cartela é o das Configurações na montagem: o
+que está no vídeo passa pelas travas, e se a chamada ou o `cartela_extra` mudarem depois, a peça pede "Sem o texto do gancho" ou
+"Refazer a cartela" (ou um envio novo).
+
+**7. Aprovar, baixar e postar.** O reel só fica pronto com o vídeo corrigido pronto e conferido (o roteiro de quando foi gravado,
+quem fala ainda marcada, a cartela de hoje, até 90 s). Na aprovação (só o administrador, modo "à mão"), a tela manda o hash do vídeo
+que ele abriu na prévia e o banco confere com o vídeo pronto: a peça fica **amarrada a esse arquivo**. Ela pede "Conferi o vídeo: só
+aparecem as pessoas marcadas; sem tela, documento ou cliente ao fundo; só a voz" e, se alguma pessoa marcada pediu no termo para ver a
+peça antes, "A pessoa viu o vídeo final". Aprovado: **"Baixar o vídeo aprovado"** (`reel-AAAA-MM-DD.mp4`, link de 5 minutos; o
+banco confere de novo o termo de hoje e o hash), poste no Instagram e no Facebook com a legenda copiada da peça (a capa se escolhe
+no aplicativo), marque **"Apaguei do celular e da nuvem pessoal (depois de postar)"** (fica registrado quem apagou o vídeo final) e
+registre o link. O registro do reel aprovado com esta versão sem o vídeo aprovado é recusado (RADAR317). "Desfazer aprovação" solta a amarra, e o vídeo pode mudar de novo.
+
+**8. Configurações → Corretor de vídeo** (só o administrador): `glossario` (os termos que a legenda escreve sempre do mesmo jeito, de
+1 a 200), `variantes` (como a transcrição erra cada termo, até 20 por termo: "é social" → eSocial), `duracao_max_s` (15 a 90; 45),
+`pausa_max_s` (0,6 a 2; 1,0), `pausa_bloco_s` (0,4 a 2; 0,8), `lufs` (-24 a -9; -14), `cartela_s` (2 a 5; 3), `cartela_extra` (até
+120 caracteres, como "Desde 1984 · (48) 3242-0530 · artecon.cnt.br"; os termos que a publicidade contábil não usa são recusados),
+`limite_min_mes` (1 a 300; 30), `retencao_dias` (7 a 120; 30) e `retencao_publicado_dias` (0 a 365; 30). **"Testar o corretor de
+vídeo"** confere o armazenamento privado (e o devolve a privado se alguém o abriu), o token do GitHub, o workflow do robô, a fila e os
+minutos do mês, sem mostrar segredo.
+
+**9. A cota da Azure.** O F0 dá **5 horas de transcrição por mês para o recurso inteiro**, divididas com o WhatsApp da Agenda (que se
+limita a 270 minutos). Cada envio conta a duração de toda a gravação enviada (antes dos cortes); o ajuste não conta. O quadro do envio
+mostra quanto sobra no mês, e o envio cuja gravação não cabe no que sobra é recusado antes de qualquer arquivo sair (quando o
+navegador lê a duração dos clipes; senão, o robô confere). O Radar para sozinho em `limite_min_mes`: o padrão, **30 minutos**, é o que sobra dos 300 depois dos 270 da Agenda, e assim nenhum dos dois chega
+à recusa da Azure. **Não aumente o `limite_min_mes` no F0** (acima de 30, o Radar pode gastar os minutos que a Agenda reservou, e o
+WhatsApp dela passa a receber a recusa de cota da Azure antes do limite próprio), a não ser que a Agenda passe a reservar menos.
+Passando da cota, a Azure recusa (não cobra). Para trocar pelo serviço pago (*fast transcription*, num recurso S0) sem mudar código:
+cadastre no repositório privado os segredos `AZURE_FALA_MODO` = `rapido` e `AZURE_FALA_ENDPOINT` (o endereço do recurso), troque a
+`AZURE_FALA_CHAVE` e, aí sim, aumente o `limite_min_mes` (até 300).
+
+**10. Guarda, acesso e privacidade.**
+
+| Dado | Onde | Quem vê | Até quando (a limpeza diária, 03h37) |
+|---|---|---|---|
+| Clipes originais (rosto, voz, GPS e aparelho no arquivo) | `radar-videos/bruto/<id>/` | ninguém pela tela; o robô, por link de 10 minutos | ao publicar (registro do link), substituir, descartar, revogar o termo, inativar a pessoa, retirar o termo do corretor ou marcar a pessoa menor de idade (uma pessoa do vídeo: marcada na peça ou no envio, ainda que desmarcada depois), ou `retencao_dias` (30) depois do envio |
+| Transcrição com os tempos | `radar-videos/trabalho/<id>/` | o robô | junto com os originais |
+| Vídeo corrigido e 4 quadros | `radar-videos/corrigido/…`, `quadros/…` | administrador e editor, por link de 10 minutos (registrado) | as versões antigas, na limpeza seguinte; o atual, `retencao_dias` depois do envio (o aprovado que espera o dia de postar, `retencao_dias` depois do dia da peça) ou `retencao_publicado_dias` (30) depois de publicado, ou na revogação |
+| Fala, relatório, ajustes e cartela | tabela `radar_videos` (fora da trilha de auditoria) | administrador e editor | `retencao_publicado_dias` depois de publicar, 30 dias depois de substituir ou descartar, junto com o vídeo corrigido que sai pelo prazo sem a peça ter saído (peça cancelada, reel adiado), ou na revogação; ficam o hash, a data e o link da publicação |
+| Áudio de 16 kHz | só no disco do robô, durante a execução; a Azure, no Brasil, sem gravação do áudio no serviço | — | apagado com a máquina do GitHub, no fim da execução |
+| Quem enviou, viu e baixou | `radar_videos`, `radar_video_acessos` | administrador (acessos) | com a peça |
+| Registros do GitHub | repositório privado `radar-video` | quem tem acesso a ele | 7 dias (Settings → Actions → General) |
+
+O robô não tem chave do Supabase: usa só o token estreito do Vault (`radar_video_robo`), que serve só para pegar o pedido, pedir os
+links dos arquivos desse pedido e entregar o resultado; cada link vale 10 minutos e para um caminho só. O ffmpeg roda num contêiner
+**sem rede, sem segredo e só de leitura**, e o robô só escreve no registro a fase, o número do pedido, números e códigos (nunca a fala,
+um nome, um link ou a mensagem do ffmpeg). A chave da Azure só existe no passo da transcrição, e a do robô só nos passos que falam
+com a função. **No repositório público entram só vídeos sintéticos**, gerados pelo ffmpeg na hora dos testes, com nomes inventados
+("Ana Teste", "Bruno Exemplo"): nunca um vídeo, áudio, foto, transcrição ou relatório de gravação real, nem para "testar com um caso
+de verdade". O `.gitignore` barra as extensões de vídeo, áudio e foto e os arquivos de trabalho do robô, e o `radar-repositorio.yml`
+confere em todo envio (também o vídeo com outro nome); mas esse aviso chega depois que o arquivo já ficou público.
+
+**11. Termo de imagem e voz (texto para o advogado).** O termo de hoje diz que os vídeos são editados no aplicativo Edits e que a
+Artecon não usa outros aplicativos ou empresas sem informar. **Antes do primeiro reel pelo corretor**, ele precisa citar o corretor,
+quem trata os dados, o país e os prazos; cada pessoa assina de novo, e o administrador grava a data em Pessoas e termos ("Termo do
+corretor de vídeo"; sem ela, o envio é recusado). Proposta para o item 12 ("Meus dados") do modelo do plano, no lugar da frase do
+Edits (o advogado ajusta e confirma; os prazos são os padrões das Configurações):
+
+> As fotos e os vídeos são publicados nas redes da Meta (Instagram e Facebook), que também guardam os dados em servidores fora do
+> Brasil, conforme as regras delas, e podem ser editados no aplicativo Edits (Meta) ou no editor do Instagram. Os vídeos dos reels
+> também passam pelo corretor de vídeo do Radar, o sistema interno da Artecon, que corta o começo, o fim, as pausas e as hesitações,
+> ajusta o som e a cor e grava a legenda, com as palavras que eu disse, e a identificação legal da Artecon no fim, sem mudar o
+> sentido do que eu disse e sem inteligência artificial que crie, troque ou imite meu rosto ou minha voz. Para isso: os arquivos
+> ficam no armazenamento privado do Radar (Supabase), que só a equipe autorizada da Artecon acessa; a minha voz é transformada em
+> texto pela Microsoft Azure, num recurso contratado pela Artecon na região Brasil, com a gravação do áudio no serviço desligada; e
+> a edição é feita por um programa da Artecon no GitHub (empresa da Microsoft), num repositório privado, em computadores da
+> Microsoft que podem ficar fora do Brasil (transferência internacional de dados, Lei 13.709/2018, art. 33). O vídeo original é
+> apagado depois da publicação ou em até 30 dias, e o vídeo editado, em até 30 dias depois de publicado; a Artecon guarda só o
+> registro da publicação (data, link e a identificação do arquivo). A Artecon não usa outros aplicativos ou empresas para tratar
+> minha imagem e minha voz sem me informar.
+
+Para o advogado conferir: a região do projeto do Supabase (Settings → General; fora do Brasil, também é transferência
+internacional); a máquina do GitHub não tem região informada; a transferência internacional pede o art. 33 da LGPD e a Resolução
+CD/ANPD nº 19/2024 (citada no parecer de privacidade); autorização genérica é nula (art. 8º, § 4º, e art. 9º, V); o corretor não usa
+identificação de voz nem separa quem fala (nada de dado biométrico); depois de publicado, a Meta trata os dados como controladora
+própria; menor de 18 anos não passa pelo corretor nesta versão; e se corte, redução de ruído e legenda contam como "alteração com
+IA" no checklist do plano (para o Radar, não: não há IA no corretor).
+
+**Limites desta versão.** Os limiares de corte, o ruído e a Azure ainda serão calibrados com gravações reais (o 1º reel acompanhado):
+como o F0 escreve as siglas, os números e as hesitações, e se a tentativa interrompida conta na cota. HDR e 4:5 foram testados só com
+vídeo sintético (grave com o HDR desligado). O envio retomável com o token assinado no celular, o tempo do robô no repositório
+privado e o plano do Supabase se confirmam na instalação: no Free, **cada arquivo vai até 50 MB, os clipes e também o vídeo
+corrigido** (o robô grava com qualidade alta, até 12 Mbps: um reel de 45 s fica entre 25 e 70 MB, e com pouca luz passa dos 50 MB);
+passando, o robô para com o aviso do limite de tamanho do armazenamento. O Pro (limite global de 500 MB) resolve antes do 1º reel;
+no Free, grave blocos de até uns 20 s e reels curtos. Enquanto o robô transcreve (cerca da duração da gravação), o WhatsApp da Agenda pode receber "ocupado" da Azure. O editor
+de legenda da tela é um pouco mais rígido que o robô no número escrito de outro jeito ("20" e "vinte"). O telefone falado algarismo por
+algarismo não casa com o roteiro: deixe o telefone só na cartela (`cartela_extra`). A publicação automática do reel e a capa escolhida
+num dos quadros ficam para a v0.22.1. As recusas do banco do corretor vêm com os códigos RADAR300 a RADAR317 (por exemplo, RADAR302 "a
+fala para conferência não está no roteiro", RADAR304 "pessoa ou termo", RADAR305 "cartela", RADAR312 "cota do mês", RADAR313 "o vídeo
+da aprovação não confere", RADAR317 "registro do reel sem o vídeo aprovado").
 
 ### Concorrentes no Instagram (v0.19.1, opcional)
 
@@ -1259,8 +1591,10 @@ no Microsoft Entra, feito uma vez por quem administra o Microsoft 365 do escrit�
    `GRAPH_CLIENT_ID` (ID do aplicativo), `GRAPH_CLIENT_SECRET` (o Valor do passo 4) e `ITC_CAIXA` (o e-mail da caixa onde o
    boletim chega). **Nunca mande esses valores pelo chat.** O `IA_GATEWAY_TOKEN` já existe (é o mesmo da função radar-ia).
 7. Radar → **Fontes** → boletim da ITC → **Testar conexão com o e-mail**: todos os itens devem ficar OK.
-8. Rode uma vez `sql/radar-itc-agenda.sql` no SQL Editor (liga a leitura diária às 02h55; se ficar boletim para depois, ela se completa às 03h10 e às 03h25). Daí em diante, a rotina antiga
-   (que dependia da conversa do Claude) pode ser desligada.
+8. Rode uma vez `sql/radar-itc-agenda.sql` no SQL Editor (liga a leitura diária às 02h55; se ficar boletim para depois, ela se completa às 03h10 e às 03h25). **No mesmo
+   momento, desligue a rotina antiga** "Radar — boletim ITC (e-mail)" (a que acorda a conversa do Claude): com as duas, o boletim é
+   lido duas vezes e a IA é paga duas vezes. Enquanto a função não estiver instalada, a rotina antiga é o caminho em produção
+   (varredura geral de 13/10/2026: a agenda da ITC ainda não estava no pg_cron).
 
 Opcional: `RADAR_ITC_MODELO` (padrão `claude-haiku-4-5`) e `ITC_REMETENTE` (padrão `itc@itcnet.com.br`). Cada leitura com
 boletim novo usa a IA (cerca de 10 a 20 mil tokens por boletim); sem boletim novo, não usa.
@@ -1270,7 +1604,153 @@ O mesmo SQL cadastra **ITC Consultoria — boletim por e-mail** (`itc-email`) e 
 boletins da ITC entra uma vez só). O robô não visita essa fonte. Os boletins **não** vão para o
 repositório, que é público: a rotina diária grava direto no banco.
 
+### Chaves novas do Supabase (até o fim de 2026)
+
+O Supabase desliga as chaves antigas (a **anon**, pública, e a **service_role**, interna, as duas em formato JWT) até o fim de 2026.
+Desligadas, a tela não entra, as agendas do banco recebem 401 e os robôs param. Desde a v0.22.0 (rodada 2 da varredura geral), o
+Radar aceita as novas: a **publishable** (`sb_publishable_…`, pública) e a **secret** (`sb_secret_…`, interna). Cada uma vai **só no
+cabeçalho `apikey`**: no `Authorization` o Supabase as recusa (não são JWT). Por isso, as funções chamadas sem sessão (pela agenda do
+banco ou pelos robôs) ficam com o **"Verify JWT" desligado** e conferem quem chama no próprio código (a chave da agenda no Vault, a
+chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de dezembro**, nesta ordem (nada de chave pelo chat):
+
+1. Supabase → **Settings → API Keys**: confira a publishable `default` e crie uma secret só para os robôs do GitHub ("radar-robos").
+2. Edge Functions: as funções desta versão (`radar-ia`, `radar-redes`, `radar-video`, `radar-itc` e, se instalada,
+   `radar-concorrentes`) já usam a publishable no `apikey` quando o Supabase a fornece (`SUPABASE_PUBLISHABLE_KEYS`). Na
+   **`radar-redes`** e na **`radar-video`**, desligue o **"Verify JWT"** (as duas conferem no código: a sessão do administrador pelo
+   banco, a chave da agenda no Vault, a chave do robô); a `radar-itc` e a `radar-concorrentes` já estão assim.
+3. `radar-config.js`: troque o valor de `SUPABASE_ANON_KEY` pela publishable (o nome do campo fica), publique no GitHub e
+   Ctrl+F5 em todos os aparelhos. A tela manda a chave só no `apikey` quando não há sessão.
+4. SQL Editor: troque a chave escrita em `sql/radar-redes-agenda.sql` e em `sql/radar-video-agenda.sql` (o `v_anon`) pela
+   publishable e rode os dois de novo (as chaves do Vault ficam); faça o teste do fim de cada arquivo (200).
+5. GitHub, repositório `radar` → Secrets → **`SUPABASE_SERVICE_KEY`** = a secret do passo 1 (os robôs a mandam só no `apikey`).
+   Rode "Radar — coleta" à mão e confira que fica verde.
+6. Repositório privado `radar-video`: troque o `RADAR_VIDEO_COMMIT` pelo SHA do commit com o `radar-config.js` novo (o robô lê a
+   chave pública de lá) e rode o workflow à mão (verde, sem vídeo na fila).
+7. Só então: Supabase → Settings → API Keys → **Legacy API keys → Disable**. Se algo parar, reative as antigas (o mesmo botão) e
+   confira o passo que faltou.
+
 ## Atualizações futuras
+
+**Da v0.21.0 para a v0.22.0** (instale num **dia útil**, com tempo para o teste do corretor com um vídeo de teste; nesta ordem; nada
+de chave ou token passa pelo chat):
+
+**Atenção: do passo 1 (o SQL) em diante, nenhum reel do calendário fica pronto nem é aprovado sem o corretor funcionando (passos 1
+a 8) e sem o termo novo de cada pessoa assinado e gravado em Pessoas e termos.** Por isso o termo vem antes de tudo (passo 0).
+
+0. Antes:
+   - **O termo novo** ("Termo de imagem e voz", em "Corretor de vídeo do reel", item 11): o advogado confere o texto, e cada pessoa
+     que vai gravar assina **antes da instalação**. Anote no papel, para cada pessoa, a data da assinatura, "pediu para ver a peça
+     antes" e "menor de idade": os campos só existem depois do SQL, e o administrador grava logo depois do passo 1 (passo 9). Sem o
+     termo novo, o envio de qualquer reel é recusado (RADAR304).
+   - Supabase → **Settings → Billing**: confira o plano. No Free, cada arquivo do armazenamento vai até **50 MB** — os clipes (por
+     bloco, de 10 a 20 s em 1080p, ficam abaixo disso; um clipe longo ou em 4K não passa) **e o vídeo corrigido** (um reel de 45 s fica
+     entre 25 e 70 MB; acima de 50 MB, o robô para com o aviso do limite). Recomendado: o **Pro antes do 1º reel**, com **Storage →
+     Settings**: limite global de arquivo em 500 MB. No Free, reels curtos.
+   - **Azure** (portal.azure.com): a avaliação grátis da assinatura vence por volta de **08/11/2026**. Antes disso, passe a
+     assinatura para "pagamento conforme o uso"; o recurso `artecon-voz` continua no F0, grátis, e sem isso ele para (a transcrição
+     do WhatsApp da Agenda e a do corretor).
+   - O repositório **privado** `arteconartescontabeis-design/radar-video` já existe, com os segredos `AZURE_FALA_CHAVE` (a CHAVE 2
+     do `artecon-voz`) e `AZURE_FALA_REGIAO` (`brazilsouth`).
+   - Reel já aprovado à mão na v0.21.0 (vídeo do Edits): continua como antes, também depois do SQL — baixe e poste o vídeo de
+     sempre e registre o link. O registro do reel sem o vídeo corrigido (RADAR317) vale só para a aprovação feita com a v0.22.0.
+1. SQL Editor → execute `sql/radar-setup-v0.22.0.sql` inteiro (a linha `instalacoes concluidas` mostra `v0.22.0`; 27 tabelas). Ele
+   cria as tabelas do corretor, os 3 campos de Pessoas e termos e a configuração `corretor_video` com os padrões. Daqui em diante, a
+   peça reel só fica pronta com o vídeo corrigido pronto. O SQL vem **antes** da tela: a tela antiga (v0.21.0) com o banco novo
+   continua abrindo e aprovando o que não é reel (o reel mostra "Reel: envie a gravação" até a tela nova); já a tela nova com o banco
+   antigo não abre nenhuma peça da Pauta nem salva Pessoas e termos (ela lê os campos novos).
+2. A tela nova chega pelo repositório: o `index.html`, o `radar-pauta.js` **e o arquivo novo `radar-video.js`**, sempre juntos, na
+   branch principal do GitHub. Aperte **Ctrl+F5 em todos os aparelhos** e confira no rodapé **Radar v0.22.0**.
+3. Edge Functions → **Deploy a new function** → nome exatamente **`radar-video`** → cole `supabase/functions/radar-video/index.ts`
+   → **"Verify JWT" ligado** → Deploy. Ela cria sozinha o armazenamento **privado** `radar-videos` no primeiro uso (passo 8), sem limite
+   de tamanho próprio: vale o limite global do projeto (Storage → Settings), que o passo 0 confere.
+4. SQL Editor → execute `sql/radar-video-agenda.sql` (as chaves `radar_video_robo` e `radar_video_agenda` no Vault, a reserva de 10
+   em 10 minutos e a limpeza diária) e faça o **teste** `agenda_teste` do comentário do fim do arquivo: copie as linhas **sem os
+   `--`** do começo (não há nada para trocar) e execute; o esperado é 200 com `{"ok":true,"versao":"0.22.0"}`. 401 "Invalid JWT": a
+   chave anon escrita no arquivo não é a deste projeto (a do `radar-config.js`): troque e rode o arquivo de novo; 404: a função não
+   se chama `radar-video` (passo 3).
+5. **A chave do robô, do Vault para o GitHub privado:** Supabase → **Vault** → `radar_video_robo` → revelar → copiar → GitHub,
+   repositório `radar-video` → **Settings → Secrets and variables → Actions → New repository secret**: nome
+   **`RADAR_VIDEO_ROBO_CHAVE`**, valor colado direto. Nunca pelo chat, num arquivo ou no repositório público. Com ela o robô fala só
+   com a função `radar-video`: nenhuma chave do Supabase vai para o GitHub.
+6. **O token do GitHub, só para o `radar-video`, no Supabase:** GitHub → foto do perfil → **Settings → Developer settings →
+   Personal access tokens → Fine-grained tokens → Generate new token**. Token name: "Radar — acionar o corretor de vídeo";
+   Expiration: até 1 ano (anote a data para renovar); Resource owner: `arteconartescontabeis-design`; Repository access: "Only
+   select repositories" → **`radar-video`** (só ele); Permissions → Repository permissions → **Actions: "Read and write"** (o
+   "Metadata: Read-only" vem junto), nada mais. Generate token, copie e grave em Supabase → **Edge Functions → Secrets → Add new
+   secret**: nome **`RADAR_VIDEO_GITHUB_TOKEN`**. Fica **só** no Supabase. É outro token, diferente do `RADAR_GITHUB_TOKEN` (o do
+   robô do site, só do repositório `radar`).
+7. **O repositório privado `radar-video`:**
+   - crie `.github/workflows/radar-video.yml` com o conteúdo de `robo/video/workflow/radar-video.yml` deste pacote, tal qual, na
+     branch `main`;
+   - **Settings → Secrets and variables → Actions → aba Variables**: **`RADAR_VIDEO_URL`** =
+     `https://jhxlsvzvqvufyhkjnmeq.supabase.co/functions/v1/radar-video` e **`RADAR_VIDEO_COMMIT`** = o SHA (40 caracteres) do
+     commit deste repositório público com a v0.22.0, depois que o "Radar — testes" passou nele (GitHub → `radar` → Commits → copiar
+     o SHA completo). Mudar o robô é publicar aqui, esperar os testes e trocar esse SHA lá;
+   - **Settings → Actions → General**: retenção dos registros e artefatos em **7 dias**; se aparecer "Allow forking", desligue;
+   - os segredos opcionais `AZURE_FALA_MODO` e `AZURE_FALA_ENDPOINT` ficam sem cadastrar (vazio = Azure gratuita).
+   Teste: Actions → "Radar — corretor de vídeo" → **Run workflow**. Sem vídeo na fila, termina verde em cerca de 1 minuto. Vermelho
+   em "Pegar o pedido": a `RADAR_VIDEO_ROBO_CHAVE` ou a `RADAR_VIDEO_URL` não confere (o registro mostra só o código, como
+   `robo_chave`); em "Conferir o commit": o `RADAR_VIDEO_COMMIT` não é um SHA completo deste repositório.
+8. Ctrl+F5 no Radar. Configurações → **Corretor de vídeo** → **"Testar o corretor de vídeo"**: tudo OK ("Armazenamento dos vídeos:
+   bucket privado", "Token do GitHub", "Workflow do robô: ativo", a fila e os minutos do mês). No mesmo bloco, confira o glossário,
+   o `cartela_extra` (por exemplo, "Desde 1984 · (48) 3242-0530 · artecon.cnt.br"), o `limite_min_mes` e os prazos de guarda. Em
+   "Fecho, assinatura e identificação legal", confira que o CRC é **"CRC-SC 007129/O-0"** (ele vai à cartela de todo reel). Na
+   **Agenda de obrigações**, se faltar fonte em alguma obrigação, **"Preencher fontes oficiais"**.
+9. **Termo e pessoas** (logo depois do passo 1, com o papel do passo 0): o administrador grava em Pauta → **Pessoas e termos** a
+   data do **termo do corretor de vídeo**, "pediu para ver a peça antes" e "menor de idade" de cada pessoa, exatamente como no papel.
+10. **Equipe:** passe a orientação de gravação ("Corretor de vídeo do reel", item 1): vertical, 1080p, 30 quadros por segundo, Vídeo
+    HDR desligado, por bloco, sem música, sem tela ou documento ao fundo, sem editar, e guardar os clipes até o relatório dizer
+    "Vídeo corrigido pronto" — então apagar do celular e da nuvem pessoal, no mesmo dia do envio.
+11. **Primeiro reel acompanhado:** antes do primeiro reel do calendário, o administrador grava um vídeo de teste com um roteiro
+    inventado (sem dado de cliente), com uma pessoa que já assinou o termo novo. **Nunca numa peça real** (o roteiro inventado
+    substituiria o do calendário): importe, por "Importar o calendário (CSV)", uma peça de teste numa data sem peça — depois do fim
+    do calendário, por exemplo `01/02/2027;seg;1;Reel da semana;Reel;Teste do corretor (apagar);—;teste;Peça de teste` com a linha de
+    cabeçalho de sempre (o CSV fica no computador: nunca no GitHub) —, cole nela o roteiro inventado, marque a pessoa e envie.
+    Confira o relatório, a prévia, os cortes, a legenda e a cartela, e anote só os números (tempo do robô, cortes, volume) para a
+    calibração. No fim, **"Descartar esta gravação"** e **"Cancelar a peça"**; apague do celular. O vídeo, o áudio e o relatório de
+    teste **não vão para o GitHub**.
+
+12. **Correções da varredura geral:** Edge Functions → `radar-ia` → cole o `index.ts` desta versão → Deploy (Configurações →
+    Inteligência artificial → "Testar a IA" mostra **v0.22.0**); Edge Functions → `radar-itc` → cole o `index.ts` desta versão →
+    Deploy, com "Verify JWT" como já está (o "Testar conexão" da ITC mostra **versão 0.22.0**).
+13. **Rodada 2 da varredura geral:** Edge Functions → `radar-redes` → cole o `index.ts` desta versão → Deploy, com "Verify JWT"
+    ligado, como já está; Publicações → "Testar conexão" mostra **"Função radar-redes v0.22.0"** e "Armazenamento das imagens: bucket
+    privado radar-pauta". Se a `radar-concorrentes` (opcional) estiver instalada, o mesmo com o `index.ts` dela (o teste mostra
+    0.22.0). SQL Editor → execute de novo `sql/radar-redes-agenda.sql` (mantém a chave do Vault e acrescenta o pedido diário
+    "manter_robos") e faça o teste do fim do arquivo: 200 com `{"ok":true,"versao":"0.22.0"}`. No Storage → `radar-redes` (público),
+    apague as imagens das notícias que ainda estiverem lá (a Meta já tem a cópia; as publicações excluídas, principalmente). No
+    repositório privado `radar-video`, troque o `RADAR_VIDEO_COMMIT` pelo SHA do commit com esta rodada (o robô aceita a chave pública
+    nova). A sessão passa a ficar só na aba: depois do Ctrl+F5, cada aba pede a entrada uma vez.
+
+Nenhum segredo da Azure vai ao Supabase: a transcrição é do robô, no repositório privado. A agenda da Pauta muda só pelo pedido
+diário "manter_robos" (passo 13).
+
+Cuidados nesta versão:
+- **No repositório público (este), só vídeos sintéticos.** Nunca envie ao GitHub um vídeo, áudio, foto, transcrição, relatório ou
+  legenda de gravação real, nem para testar, nem arrastando pelo site ("Upload files" não passa pelo `.gitignore`). O
+  `radar-repositorio.yml` confere em todo envio e avisa, mas depois que o arquivo já ficou público (e no histórico).
+- A tela antiga (v0.21.0) com o banco novo continua aprovando o que não é reel; o reel precisa da tela nova (o hash do vídeo vai na
+  aprovação). Não volte a tela depois do primeiro reel enviado.
+- **Para parar o corretor sem SQL** (a cota da Azure no fim, um problema no robô): no repositório privado `radar-video`, **Actions →
+  "Radar — corretor de vídeo" → ⋯ → Disable workflow**. Isso para tudo, inclusive a agenda própria do workflow (10h47 e 16h47 dos
+  dias úteis). Tirar só o `RADAR_VIDEO_GITHUB_TOKEN` **não** para: a agenda do workflow pega e processa o pedido sem ele. Com o
+  workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
+  reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
+- **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
+  `sql/radar-reversao-v0.22.0.sql`, que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
+  as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
+  guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do
+  banco, ficariam rodando ou valendo: no repositório privado `radar-video`, desative o workflow (Disable workflow, como acima, ou apague
+  `.github/workflows/radar-video.yml`: a agenda dele roda duas vezes por dia útil e, sem o banco, falharia a cada vez) e apague os
+  segredos `RADAR_VIDEO_ROBO_CHAVE`, `AZURE_FALA_CHAVE` e `AZURE_FALA_REGIAO` (e os opcionais `AZURE_FALA_MODO` e
+  `AZURE_FALA_ENDPOINT`); no Supabase, apague a função `radar-video` (Edge Functions) ou, pelo menos, o segredo
+  `RADAR_VIDEO_GITHUB_TOKEN`; no GitHub, **revogue o token fino** "Radar — acionar o corretor de vídeo" (foto do perfil → Settings →
+  Developer settings → Personal access tokens → Fine-grained tokens → Delete). As chaves `radar_video_robo` e `radar_video_agenda`
+  ficam no Vault de propósito (para reinstalar); para zerar, o `delete` do comentário do `sql/radar-video-agenda-reversao.sql`. Nunca
+  regenere as chaves do Azure: a do `artecon-voz` é a mesma da Agenda.
+- Enquanto o robô transcreve, o WhatsApp da Agenda pode receber "ocupado" da Azure (o F0 atende um pedido por vez): prefira
+  enviar o reel fora do horário de pico do atendimento.
 
 **Da v0.20.0 para a v0.21.0** (instale num **dia útil**, com tempo para o teste da agenda; nesta ordem):
 
@@ -1280,8 +1760,8 @@ repositório, que é público: a rotina diária grava direto no banco.
    GitHub; o GitHub Pages publica em 1 a 2 minutos. Aperte **Ctrl+F5 em todos os aparelhos** que usam o Radar (computadores e
    celulares) e confira no rodapé **Radar v0.21.0**. Com a tela nova e o banco antigo, a aba Pauta pede o SQL e o resto funciona
    como antes.
-2. SQL Editor → execute `sql/radar-setup-v0.21.0.sql` inteiro (a linha `instalacoes concluidas` mostra `v0.21.0`; 25 tabelas). Ele
-   cria a configuração `pauta` (agenda ligada, 09:30, janela de 6 horas, #Contabilidade e #Palhoça) e acrescenta `"redes": false`
+2. SQL Editor → execute `sql/radar-setup-v0.22.0.sql` inteiro (o do pacote; a linha `instalacoes concluidas` mostra a versão do
+   script). Ele cria a configuração `pauta` (agenda ligada, 09:30, janela de 6 horas, #Contabilidade e #Palhoça) e acrescenta `"redes": false`
    ao "Honorário contábil" da agenda de obrigações.
 3. Edge Functions → `radar-redes` → cole o `index.ts` desta versão e faça o Deploy, com **"Verify JWT" ligado**, como já está.
    Publicações → "Testar conexão com o Instagram e o Facebook": tudo OK, inclusive o item novo "Armazenamento privado da Pauta" (a
@@ -1307,7 +1787,8 @@ repositório, que é público: a rotina diária grava direto no banco.
    Configurações → **Agenda de obrigações** (uma vez só, antes do 1º domingo, 01/11): em cada obrigação que vai às redes, acrescente
    `"fonte": "<a página oficial do vencimento>"` (por exemplo, a Agenda Tributária da Receita Federal). Nenhuma obrigação vem com a
    fonte: sem ela, "Calcular a agenda da semana" deixa a fonte em branco e a Agenda da semana só fica pronta depois que alguém
-   escreve a fonte de cada linha, todo domingo.
+   escreve a fonte de cada linha, todo domingo. Desde a v0.22.0, o botão **"Preencher fontes oficiais"** (no mesmo bloco) põe a
+   fonte conferida nas obrigações da agenda padrão que estão sem ela.
 10. Primeiras peças acompanhadas: a 1ª pela agenda (28/10) com o administrador olhando às 09:30 (até umas 09:35 a peça deve
     aparecer publicada, com o link do post; é a prova de que a Meta aceita o link do armazenamento privado), o 1º carrossel à mão
     (29/10) e os 2 primeiros fins de semana (a partir de 31/10), abrindo a Pauta por volta das 09h35.
@@ -1339,7 +1820,7 @@ Cuidados nesta versão:
 0. A tela nova chega pelo repositório: com esta versão na branch principal do GitHub (repositório `radar`), o GitHub Pages
    publica em 1 a 2 minutos. Abra o Radar, aperte Ctrl+F5 e confira no rodapé que aparece **Radar v0.20.0** antes de seguir (se
    ainda aparecer v0.19.0, espere mais um pouco e recarregue).
-1. SQL Editor → execute `sql/radar-setup-v0.21.0.sql` inteiro (o do pacote; a linha `instalacoes concluidas` mostra a versão do
+1. SQL Editor → execute `sql/radar-setup-v0.22.0.sql` inteiro (o do pacote; a linha `instalacoes concluidas` mostra a versão do
    script). Quem usa a função `radar-concorrentes` (v0.19.1, opcional) não precisa rodar de novo o `sql/radar-concorrentes.sql`: o
    setup devolve o acesso da função que confere a chave (para conferir, faça o teste de conexão do fim do
    `sql/radar-concorrentes.sql`, com `{"acao": "diagnostico"}`).
@@ -1349,31 +1830,31 @@ Cuidados nesta versão:
 4. Configurações → "Fecho, assinatura e identificação legal": o SQL já acrescentou `"cnpj": ""` e `"crc": ""` ao texto; escreva
    entre as aspas o CNPJ (com ou sem pontuação) e o registro da empresa no CRC-SC, com a **letra O** depois da barra (de
    originário), não o número zero, e salve. No caso da Artecon, o texto completo fica assim:
-   `{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves", "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"}`.
+   `{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves", "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 007129/O-0"}`.
    Embaixo do campo aparece a linha como vai ao rodapé da arte e ao fim das legendas; confira. Até salvar, a arte e as legendas
    saem só com o nome da empresa (a tela avisa).
 5. Antes do primeiro post, confira o link da bio do Instagram: ele deve abrir a página de notícias do site,
    **artecon.cnt.br/news** (a legenda do Instagram termina com "Leia a matéria completa no site (link na bio)").
 
 A função `radar-redes`, os robôs e os segredos não mudam. Sem o SQL, o "Gerar kit das redes com IA" avisa que falta rodar o
-`radar-setup-v0.21.0.sql` (o do pacote); com a função antiga, avisa que ela é de uma versão anterior (o texto e a capa do "Gerar
-com IA" saem do mesmo jeito).
+SQL (a mensagem da função `radar-ia` v0.21.0 cita o `radar-setup-v0.21.0.sql`: rode o do pacote, `radar-setup-v0.22.0.sql`); com a
+função antiga, avisa que ela é de uma versão anterior (o texto e a capa do "Gerar com IA" saem do mesmo jeito).
 
 **Da v0.18.0 para a v0.19.0:** (1) Edge Functions → `radar-ia` e `radar-redes` → cole o `index.ts` de cada uma desta versão e
 faça o Deploy ("Verify JWT" ligado nas duas; o painel pede a função `radar-ia` v0.19.0); (2) Supabase → Edge Functions → Secrets →
 `RADAR_GITHUB_TOKEN` (veja "Robô do site na hora"); (3) Ctrl+F5 no Radar. O banco não muda (o `radar-setup-v0.19.0.sql` só
 registra a versão). O robô de rascunhos e o workflow atualizam sozinhos pelo GitHub.
 
-**Da v0.17.0 para a v0.18.0:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou a atualização rápida do pacote
+**Da v0.17.0 para a v0.18.0:** (1) SQL Editor → execute `sql/radar-setup-v0.22.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.17.0); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel
 pede a função v0.18.0); (3) Ctrl+F5 no Radar. O robô de rascunhos atualiza sozinho pelo GitHub. Segredos não mudam.
 
-**Da v0.16.0 para a v0.17.0:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou a atualização rápida do pacote
+**Da v0.16.0 para a v0.17.0:** (1) SQL Editor → execute `sql/radar-setup-v0.22.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.16.0); (2) Edge Functions → `radar-redes` → cole o `index.ts` desta versão e faça o Deploy (com
 **Verify JWT ligado**, como já está); (3) Ctrl+F5 no Radar. O robô e o workflow atualizam sozinhos pelo GitHub. Segredos não mudam
 (o robô chama a função `radar-redes` com a mesma chave interna que já usa no banco, RADAR_SUPABASE_SERVICE_KEY).
 
-**Da v0.15.0 para a v0.16.0:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou a atualização rápida do pacote
+**Da v0.15.0 para a v0.16.0:** (1) SQL Editor → execute `sql/radar-setup-v0.22.0.sql` (ou a atualização rápida do pacote
 zip, que é só a partir da v0.15.0); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy (o painel
 pede a função v0.16.0 para o botão "Revisar com IA"); (3) Ctrl+F5 no Radar. O robô atualiza sozinho pelo GitHub. Segredos não mudam.
 
@@ -1381,11 +1862,11 @@ pede a função v0.16.0 para o botão "Revisar com IA"); (3) Ctrl+F5 no Radar. O
 rápida do pacote zip, que é só a partir da v0.14.3; no fim ela mostra `capturas com fundamentacao lida`, que deve ser "N de N");
 (2) Ctrl+F5 no Radar. Robô, funções e segredos não mudam. De versões anteriores, use o `radar-setup-v0.15.0.sql` inteiro.
 
-**Da v0.11.1 para a v0.12.0:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou a atualização rápida do pacote
+**Da v0.11.1 para a v0.12.0:** (1) SQL Editor → execute `sql/radar-setup-v0.22.0.sql` (ou a atualização rápida do pacote
 zip); (2) Edge Functions → crie a função `radar-itc` com o `index.ts` desta versão (com **Verify JWT desligado**: a função confere
 sozinha quem chama); (3) siga "Boletim da ITC pelo Microsoft Graph"; (4) Ctrl+F5 no Radar.
 
-**Da v0.11.0 para a v0.11.1:** (1) SQL Editor → execute `sql/radar-setup-v0.21.0.sql` (ou o arquivo de atualização rápida
+**Da v0.11.0 para a v0.11.1:** (1) SQL Editor → execute `sql/radar-setup-v0.22.0.sql` (ou o arquivo de atualização rápida
 que vem no pacote zip); (2) Edge Functions → `radar-ia` → cole o `index.ts` desta versão e faça o Deploy; (3) Ctrl+F5 no Radar.
 Os workflows e os robôs chegam pelo repositório. Nada de segredo novo.
 
@@ -1394,29 +1875,29 @@ Os workflows e os robôs chegam pelo repositório. Nada de segredo novo.
 capturas da fila com mais de 5 dias passam a "Baixa relevância" (continuam lá; dá para ignorar em lote).
 
 **Da v0.9.0 para a v0.10.0**, nesta ordem: (1) Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.21.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script);
+`sql/radar-setup-v0.22.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script);
 (2) Edge Functions → `radar-ia` → cole o `supabase/functions/radar-ia/index.ts` desta versão e faça o Deploy
 (Configurações → Inteligência artificial → Testar deve mostrar a função v0.10.0); (3) a tela e os robôs chegam
 pelo repositório (Ctrl+F5 no Radar). Segredos: `ARTECON_SITE_USUARIO` e `ARTECON_SITE_SENHA` já cadastrados.
 
 **Da v0.8.0 para a v0.9.0:** Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.21.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script).
+`sql/radar-setup-v0.22.0.sql` inteiro (a linha `instalacoes concluidas` mostra a versão do script).
 A tela e o robô chegam pelo repositório. A função `radar-ia` não muda. Nada de segredo novo.
 
 **Da v0.7.1 para a v0.8.0:** Supabase radar-artecon → SQL Editor → execute
-`sql/radar-setup-v0.21.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar a versão) e,
+`sql/radar-setup-v0.22.0.sql` inteiro (a linha `instalacoes concluidas` deve mostrar a versão) e,
 se ainda não rodou, `sql/radar-fontes-novas-2026-10.sql`. A tela e o robô chegam pelo repositório.
 A função `radar-ia` não muda. Para o DOU completo (INLABS), veja "Diário Oficial pelo INLABS".
 
 **Da v0.7.0 para a v0.7.1:** Supabase radar-artecon → SQL Editor → cole e execute
-`sql/radar-setup-v0.21.0.sql` inteiro (o nome muda a cada versão) e guarde a evidência (a linha `instalacoes concluidas` mostra
+`sql/radar-setup-v0.22.0.sql` inteiro (o nome muda a cada versão) e guarde a evidência (a linha `instalacoes concluidas` mostra
 a versão do script). O resto já chega pelo repositório: a tela (GitHub Pages; Ctrl+F5 no Radar) e o
 robô (próxima coleta). A função `radar-ia` não muda. Antes do SQL, o robô novo funciona normalmente,
 só sem a limpeza de imagens; os termos com pontuação nas regras só passam a pontuar depois dele.
 
 **Da v0.6.1 para a v0.7.0**, nesta ordem:
 
-1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.21.0.sql`). Guarde a evidência.
+1. Supabase radar-artecon → SQL Editor → execute o SQL da versão (hoje, `sql/radar-setup-v0.22.0.sql`). Guarde a evidência.
 2. GitHub, repositório `radar` → envie `index.html` e a pasta `robo/` (arquivos novos e alterados:
    `radar_ia.py`, `radar_coletar.py`, `radar_util.py`).
 3. GitHub → abra `.github/workflows/radar-coletar.yml` → lápis (Edit) → substitua o conteúdo pelo
@@ -1435,16 +1916,17 @@ só sem a limpeza de imagens; os termos com pontuação nas regras só passam a 
 `index.html` ao repositório do Radar; (3) siga o Passo 7 (função `radar-ia`, segredo
 `IA_GATEWAY_TOKEN`). Não há SQL novo para o Radar.
 
-**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.21.0.sql` no SQL Editor; (2) envie
+**Da v0.5.0 para a v0.6.0:** (1) execute `radar-setup-v0.22.0.sql` no SQL Editor; (2) envie
 `index.html` e `informativo.html` ao repositório; (3) cole o `radar-fale-conosco-v0.6.0.json`
 em Configurações → Fale Conosco; (4) se usa a IA, cole de novo o `index.ts` na função
 `radar-ia` e faça o Deploy. O robô não mudou de comportamento (só o número da versão).
 
-Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.21.0.sql` no SQL
+Se você já instalou uma versão anterior: execute `sql/radar-setup-v0.22.0.sql` no SQL
 Editor (ele atualiza sem apagar dados), envie os arquivos novos ao repositório e, se a função de IA
 já estiver instalada, cole de novo o `index.ts`.
 
-Substitua `index.html`, `radar-pauta.js` (desde a v0.21.0, sempre junto com o `index.html`), `informativo.html`, as imagens do
+Substitua `index.html`, `radar-pauta.js` (desde a v0.21.0, sempre junto com o `index.html`), `radar-video.js` (desde a v0.22.0,
+também junto), `informativo.html`, as imagens do
 timbrado e as pastas `robo/`, `sql/`, `testes/`, `supabase/` e `.github/`. Se a função de IA mudar, cole de novo o `index.ts` no Supabase. **Não** substitua o `radar-config.js`. Se a versão trouxer um novo
 `radar-setup`, execute-o no SQL Editor. A versão em uso aparece no topo do dashboard e
 a aba **Versões** lista o que mudou.
@@ -1462,3 +1944,10 @@ Pedidos do escritório para quando chegar a hora (não implementados):
 No GitHub: Actions → "Radar — testes". Localmente: PostgreSQL 16, `postgrest` no PATH,
 `deno` no PATH, `pip install playwright && playwright install chromium` e
 `python -m pytest testes -q`.
+
+Os testes do corretor de vídeo (v0.22.0, `testes/test_radar_video_*.py`) precisam também do `ffmpeg` (o 6.1 do Ubuntu 24.04, o mesmo
+do robô) e do Python do robô, com hash: `pip install --require-hashes --no-deps -r robo/video/requirements.txt` (sem o Speech SDK,
+os 3 testes com o SDK de verdade são pulados, com o motivo). Os 2 testes do contêiner montam a imagem `robo/video/Dockerfile` com o
+`docker` (sem ele, ou com o Docker Hub recusando, são pulados). Nenhum teste chama a Azure, o GitHub ou o Supabase de verdade: a Azure
+e a função são simuladas em `127.0.0.1`, e os vídeos e as vozes são **sintéticos**, gerados na hora numa pasta temporária. Os testes
+não podem rodar em paralelo (as portas são fixas).

@@ -30,14 +30,26 @@
 //                     instagram_manage_insights (esta é a que a Business Discovery exige). Sem ele, a função responde 503:
 //                     o META_PAGE_TOKEN não é usado aqui (só entra na limpeza das mensagens de erro)
 //   META_GRAPH_URL    opcional; padrão https://graph.facebook.com/v23.0
-// SUPABASE_URL, SUPABASE_ANON_KEY e a chave interna (SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
+// SUPABASE_URL, a chave pública (SUPABASE_PUBLISHABLE_KEYS ou SUPABASE_ANON_KEY) e a chave interna (SUPABASE_SECRET_KEYS ou
+// SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.19.1";
+const VERSAO = "0.22.0";                 // v0.22.0 (rodada 2): a chave pública nova (SUPABASE_PUBLISHABLE_KEYS)
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
-const ANON = env("SUPABASE_ANON_KEY");
+// v0.22.0 (rodada 2 da varredura geral): a chave pública do projeto, para o apikey dos pedidos feitos com o token de quem chamou. A
+// nova (sb_publishable_…, em SUPABASE_PUBLISHABLE_KEYS) vem antes: a anon antiga (SUPABASE_ANON_KEY, JWT) o Supabase desliga até o
+// fim de 2026, e desligada ela seria recusada no apikey. Sem a lista nova, fica a anon.
+function chavePublica(): string {
+  try {
+    const k = JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS") || "{}");
+    const v = k?.default ?? Object.values(k ?? {}).find((x) => typeof x === "string" && x);
+    if (typeof v === "string" && v.trim()) return v.trim();
+  } catch { /* sem a lista nova: fica a anon */ }
+  return env("SUPABASE_ANON_KEY").trim();
+}
+const ANON = chavePublica();
 const GRAPH = env("META_GRAPH_URL", "https://graph.facebook.com/v23.0").replace(/\/+$/, "");
 const MAX_PERFIS = 12, MAX_POSTS = 100, POSTS_PADRAO = 50;
 // posts por chamada à Meta; se ela pedir menos dados ("reduce the amount of data"), o lote cai pela metade até 10

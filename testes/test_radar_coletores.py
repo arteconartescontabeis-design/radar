@@ -145,6 +145,17 @@ def test_normas_rfb_sem_tabela_devolve_zero_reconhecidos():
     assert listar_normas_rfb(amostra("layout-mudou.html"), FONTES["rfb-normas"], HOJE).brutos == 0
 
 
+def test_normas_rfb_na_aplicacao_nova_diz_o_motivo():
+    """Varredura geral (v0.22.0): o endereço antigo devolve a casca da aplicação nova (Angular, montada no navegador), sem tabela: a
+    fonte diz o motivo e o que fazer, em vez de "nenhum item reconhecido" (12 coletas seguidas em produção, desde 04/10/2026)."""
+    casca = ('<!doctype html><html lang="pt-br"><head><title>Normas</title><base href="/"></head><body><app-root></app-root>'
+             '<script src="runtime.82edaeaa183a48dc.js" type="module"></script><script src="main.60aa44047ffb2919.js" type="module"></script></body></html>')
+    with pytest.raises(coletores.SistemaNormasMudou, match="aplicação montada no navegador.*desmarque \"Fonte ativa\""):
+        listar_normas_rfb(casca, FONTES["rfb-normas"], HOJE)
+    with pytest.raises(ValueError):                                                    # pelo listar() também (a coleta registra a falha)
+        listar(casca, dict(FONTES["rfb-normas"], url="https://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action"), HOJE)
+
+
 def test_tipo_de_coletor_desconhecido_e_erro():
     with pytest.raises(ValueError):
         listar("x", {"tipo_coletor": "inexistente", "url": "u"})
@@ -610,7 +621,7 @@ PAGINA_WP = ('<!DOCTYPE html>\n<html lang="pt-BR"><head><meta charset="UTF-8">\n
              '<link rel="alternate" type="application/rss+xml" title="Comentários" href="https://portalcontabilsc.com.br/comments/feed/">\n'
              '</head><body><p>&nbsp;Portal</p></body></html>')
 FEED_COM_ENTIDADES = ('<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Portal</title>'
-                      '<item><title>STF exclui cr&eacute;ditos presumidos&nbsp;de ICMS &amp; PIS</title>'
+                      '<item><title>Cr&eacute;ditos presumidos&nbsp;de ICMS &amp; PIS: decis&atilde;o do STF</title>'
                       '<link>https://portalcontabilsc.com.br/stf-exclui/</link><pubDate>Thu, 09 Oct 2026 10:00:00 +0000</pubDate>'
                       '<description>Texto&nbsp;do resumo</description></item></channel></rss>')
 
@@ -624,7 +635,7 @@ def test_fonte_rss_cadastrada_com_a_pagina_segue_o_feed_que_ela_anuncia():
     listagem, http = coletores.listar_paginas(baixar, fonte, date(2026, 10, 9))
     assert pedidos == ["https://portalcontabilsc.com.br/", "https://portalcontabilsc.com.br/feed/"] and http == 200
     assert [(i.titulo, i.url, i.resumo) for i in listagem.itens] == [
-        ("STF exclui créditos presumidos de ICMS & PIS", "https://portalcontabilsc.com.br/stf-exclui", "Texto do resumo")]
+        ("Créditos presumidos de ICMS & PIS: decisão do STF", "https://portalcontabilsc.com.br/stf-exclui", "Texto do resumo")]
 
 
 def test_pagina_sem_feed_cadastrada_como_rss_da_erro_que_explica():

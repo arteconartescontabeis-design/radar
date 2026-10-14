@@ -1,10 +1,240 @@
-# Radar Artecon — Relatório de testes (v0.21.0)
+# Radar Artecon — Relatório de testes (v0.22.0)
 
-Data: 12/10/2026. Resultado neste ambiente, com a suíte inteira da v0.21.0: **745 aprovados, 0 falhas, 61 pulados**. Os pulados são
-os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`). As funções
-`radar-ia` e `radar-redes` rodam de verdade no Deno nos testes delas (`test_radar_funcao_ia.py` e `test_radar_funcao_redes.py`).
-Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são
-das versões até a v0.7.1.
+Data: 13/10/2026. Resultado neste ambiente, com a suíte inteira da v0.22.0 (depois das duas varreduras e das rodadas 1 e 2 da
+varredura geral): **994 aprovados, 0 falhas, 62 pulados**, em 869 s (14min29s). Dos pulados, 61 são os testes de tela que sobem a IA Central de
+verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`) e 1 é o dos commits do push, que só roda no
+`radar-repositorio.yml` (precisa do commit de antes do push). As funções `radar-ia`, `radar-redes` e `radar-video` rodam de verdade no Deno nos testes delas; o Speech SDK
+da Azure roda de verdade contra um servidor local do protocolo de fala; e o ffmpeg do corretor de vídeo roda de verdade, também no
+contêiner (`robo/video/Dockerfile`, montado com o `docker`). Nenhum teste chama a Azure, o GitHub ou o Supabase de verdade, e todo
+vídeo e toda voz dos testes são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as
+seções da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.22.0 — varredura geral, rodada 2 (correções)
+
+São 18 testes novos (de 1.038 para 1.056 no total) e 19 testes antigos ajustados. Cada correção foi conferida desfazendo-a numa cópia
+temporária do arquivo (o teste novo falha) e restaurando:
+
+- **Boletim pago, na tela como no banco** (`test_radar_banco.py`, `test_radar_funcao_ia.py`, `test_radar_telas.py`): o banco diz onde
+  está, no próprio texto, a frase de uma matéria do boletim que não está no assunto (`radar_copia_paga_trechos`: só as posições, por
+  letra, com emoji; a janela que também está na captura livre do assunto não entra; só o editor e o administrador, RADAR147); o
+  quadro vermelho a mostra, sem o selo verde e sem "Autorizar mesmo assim", e o Aprovar recusa; o "Revisar com IA" recebe a frase
+  (e o boletim nunca vai à IA); a legenda com a frase é recusada na tela, com o trecho, antes do banco (RADAR146).
+- **Ementa do ato oficial** (`test_radar_banco.py`): a matéria do boletim que é o próprio ato ("… (DOU DE …)", "(DOE-SC de …)") não
+  conta na notícia nem na Pauta; a mesma frase numa matéria comum do boletim conta; o reconhecimento do título não pega "Leilão…",
+  "(Doença…)", notícia sobre a lei nem título sem o Diário Oficial.
+- **CRC com acento** (`test_radar_banco.py`): "CRC-SC 012345/O-9 (Originário)" casa com a linha no texto, com e sem acento e com o
+  acento separado da letra (NFD).
+- **"Usar a sugestão" da Pauta** (`test_radar_telas.py`): com 10 fontes da tabela das obrigações, a linha "Fonte: …" sai inteira (só
+  a norma, sem o endereço, quando não cabe com ele) e o texto da IA é encurtado no fim de uma frase ("art. 79," não é fim de frase); o
+  recado avisa; o Facebook, que coube, leva as fontes com os endereços.
+- **Aviso da Pauta** (`test_radar_e2e.py`): com o aviso aberto por um erro antigo, a falha de outra peça ganha um comentário (um
+  e-mail), a mesma lista não comenta de novo, a marca forjada por outra conta não conta, o aviso da versão anterior (sem marca) ganha
+  um comentário só, e a falha do GitHub ao ler os comentários não para os outros avisos.
+- **Robôs agendados e Painel** (`test_radar_funcao_redes.py`, `test_radar_agenda.py`, `test_radar_banco.py`, `test_radar_telas.py`):
+  "manter_robos" religa o desligado por inatividade, renova o ativo e deixa o desligado à mão (só a agenda e o administrador); o
+  acionamento do robô do site desligado o religa e aciona, ou diz onde religar sem prometer a rodada automática; a agenda pede o
+  "manter_robos" uma vez por dia; o Painel avisa a coleta parada há mais de 12 horas (não com a fonte do e-mail só).
+- **Imagem da notícia** (`test_radar_funcao_redes.py`): vai ao bucket privado, com nome aleatório e link assinado de 10 minutos;
+  nenhum bucket público é criado; o envio antigo com o link público sai por ele e, excluído, a imagem sai do bucket público.
+- **Exclusão no site** (`test_radar_site_publicar.py`, com o painel de mentira encurtando o título): só exclui a notícia cortada se o
+  título inteiro, no formulário de edição, for o pedido; a outra da mesma série fica; sem o formulário, não exclui.
+- **Sessão só na aba** (`test_radar_telas.py`): nada no localStorage; outra aba da mesma origem não acha sessão; a da versão
+  anterior passa para a aba e sai do localStorage; o informativo aberto numa aba nova usa a sessão da aba do Radar, não guarda
+  cópia, e a renovação é feita pela aba do Radar.
+- **Chaves novas do Supabase** (`test_radar_telas.py`, `test_radar_agenda.py`, `test_radar_funcao_redes.py`,
+  `test_radar_site_publicar.py`, `test_radar_video_corrigir.py`): com a `sb_publishable_…`, a tela entra mandando a chave só no
+  apikey; as duas agendas aceitam e mandam só no apikey (o teste do fim de cada arquivo também); a função usa a publishable no apikey
+  quando o Supabase a fornece; os robôs mandam a `sb_secret_…` só no apikey; o robô do vídeo aceita a publishable (e recusa a anon de
+  outro projeto). A `radar-redes` e a `radar-concorrentes` passam a 0.22.0 (3 testes ajustados).
+
+## v0.22.0 — varredura geral, rodada 1 (correções)
+
+São 17 testes novos (de 1.021 para 1.038 no total) e 9 testes antigos ajustados. Cada correção foi conferida desfazendo-a numa cópia
+temporária do arquivo (o teste novo falha) e restaurando:
+
+- **Notícia, "Publicar em todos"** (`test_radar_banco.py`, `test_radar_telas.py`, `test_radar_funcao_redes.py`): com o site na vez do
+  robô, o registro à mão é recusado (RADAR145) e o "Registrar publicação no site" some da tela; o registro com link de outro endereço
+  (mesmo vindo do robô) derruba as redes que esperavam o site, com o motivo, e a legenda nunca recebe esse link; depois que o envio do
+  site saiu, a pessoa registra com o link do site e as redes saem. Os 2 testes da função `radar-redes` passaram a registrar como o robô.
+- **Boletim pago na notícia** (`test_radar_banco.py`, `test_radar_telas.py`): "Autorizar mesmo assim" some com trecho pago; o banco
+  recusa (RADAR146, sem mostrar o trecho) a autorização da cópia, a aprovação, o site, a rede, o "Publicar em todos" e a saída de uma
+  autorização antiga; a janela que também está numa captura livre do assunto não conta. A frase de um boletim com mais de 90 dias
+  também trava (notícia e Pauta).
+- **Notícia, nunca duas vezes** (`test_radar_banco.py`, `test_radar_telas.py`): a publicação cancelada no meio do envio pede a caixa
+  "Conferi no …: não saiu" na rede e no "Publicar em todos" (RADAR166); o outro canal não pede; depois que uma publicação do canal sai
+  de fato, não pede mais.
+- **Pauta** (`test_radar_banco.py`, `test_radar_video_banco.py`, `test_radar_telas.py`): o CRC da identificação é conferido inteiro
+  (UF, número e categoria; "CRC-PR", "/0-9", "/O-5", "/O-91" e o telefone com os mesmos algarismos não passam); a pessoa de um vídeo
+  ainda guardado não se apaga (RADAR174) e a apagada antes da trava conta como revogada na limpeza; o leitor lê só as imagens ligadas a
+  um conteúdo; a caixa "A pessoa viu o vídeo final" aparece para quem foi desmarcada depois do envio; o selo com motivo longo cabe em
+  375 px.
+- **IA** (`test_radar_funcao_ia.py`, `test_radar_rascunhos.py`): no gerar e nos títulos (e no robô de rascunhos) o "<<<FIM>>>" do texto
+  de fora vira aspas; o nome com apóstrofo curvo, sem apóstrofo, com hífen trocado por espaço ou com hífen suave e espaço de largura
+  zero vai mascarado. A versão da função passa a 0.22.0 (3 testes ajustados).
+- **Boletim da ITC pela função** (`test_radar_funcao_itc.py`): a falha no login da Microsoft fica na aba Fontes (sem o segredo) e a IA
+  não é chamada; o assunto e o corpo do e-mail ficam dentro do bloco, sem as marcas; o relógio é de cada pedido.
+- **Corretor de vídeo** (`test_radar_funcao_video.py`): o 500, o 503 e o 504 do banco viram 502 (o robô repete); a recusa de regra
+  continua 400.
+- **Robôs e repositório** (`test_radar_site_admin.py`, `test_radar_repositorio.py`, `test_radar_e2e.py`, `test_radar_coletores.py`): o
+  relatório do "teste do site" não traz célula da lista, nome de quem cadastrou nem código de link de editar/excluir (nem a chave de
+  biblioteca no caminho); o `.gitignore` barra os clipes brutos `ent/<n>`; o primeiro push de um ramo confere os commits que só ele tem;
+  toda ação dos workflows fixada pelo commit e o `robo/requirements.txt` com versão exata e hash; os avisos contam só as issues do robô;
+  a fonte de atos da Receita diz o motivo quando o sistema Normas devolve a aplicação nova. Os títulos de notícia usados nos testes
+  de triagem foram reescritos para o teste (nenhum título do boletim pago no repositório).
+
+## v0.22.0 — corretor de vídeo dos reels, "Preencher fontes oficiais" e o CRC certo
+
+São 215 testes novos (de 806 para 1.021 no total, com as duas varreduras). O que foi comprovado, por área:
+
+- **Receita de edição** (`test_radar_video_robo.py`, novo, 21 testes; fixtures geradas pelo ffmpeg: vertical, horizontal, 60 fps
+  girado, HEVC HLG com o áudio atrasado 0,478 s, PQ 4:5, silêncio e pausas, sem áudio, longo, m3u8 renomeado, Matroska):
+  - entrada não confiável: a playlist `.m3u8` renomeada é recusada **sem chamar o ffprobe** (o `ftyp` é conferido antes), e também o
+    `ftyp` falso, o Matroska e o arquivo maior que o declarado; recusas `sem_audio`, `deitado` e `longo_demais`; a sondagem lê o giro,
+    os 60 fps e o HLG/PQ sem dado do aparelho;
+  - o áudio de trabalho fica no zero do vídeo, preserva o atraso de 0,478 s e tem o tamanho exato; os cortes de começo, fim e pausas
+    seguem os limites das Configurações; um trecho nunca passa de um clipe para o outro; o clipe sem fala sai inteiro;
+  - a montagem vertical sai H.264 High 1080×1920 a 30/1, AAC 48 kHz em 2 canais, com o índice no começo, **sem lista de edição, sem
+    GPS e sem a marca do aparelho** (também nos JPG), a -14 LUFS no modo linear, com a duração exata, a voz a ±6 ms do plano, o branco
+    da imagem e a voz juntos (até 1 quadro) em cada palavra e o fim da fala intacto; 4 clipes (girado a 60 fps, HLG com atraso, PQ
+    4:5) sincronizados palavra a palavra; o ajuste só muda a legenda (o md5 do áudio é igual);
+  - a conferência recusa o MP4 padrão do ffmpeg (faststart, fps, resolução, áudio, GPS, metadados, volume); a legenda e o gancho ficam
+    na área livre, medidos em pixels pelo libass, com a DM Sans; a cartela recusa o que não cabe (`cartela_nao_cabe`), nunca "…";
+  - o log e os erros não levam dado pessoal; o ffmpeg não recebe o ambiente do robô (nem as chaves); o teste estático confere o
+    isolamento (`--network none`, só leitura, nenhum `-e`), o `-protocol_whitelist file`, nenhuma IA, o Dockerfile (a imagem pelo
+    digest; o ffmpeg **e as bibliotecas libav\*** na mesma versão exata — o pacote ffmpeg só as pede com ">=", e as outras
+    bibliotecas seguem as correções da 24.04) e o `requirements.txt` com hash; o contêiner roda sem rede, sem ambiente e só leitura
+    (no GitHub Actions, a imagem que não monta falha o teste, em vez de pular).
+- **Alinhamento** (`test_radar_video_alinhar.py`, novo, 82 casos em 32 funções; 6 roteiros fictícios, com "Ana Teste" e "Bruno
+  Exemplo", e transcrições escritas à mão): a fala igual ao roteiro dá 0 divergências e a legenda igual ao roteiro (também com a
+  transcrição já na forma de exibição, a do serviço pago); "dia 15" contra "dia 25" (com "a transcrição errou"), ano, ordinal, termo
+  faltando e mês a mais são divergência; "30 de outubro" é "30/10", "50 mil reais" é "R$ 50.000,00", "IPS" vira "IBS" só onde o roteiro
+  tem IBS, "é social" e "dctf web" viram os termos; hesitação, repetição e falso início; "um", "uma", "e" e "é" nunca saem ("é dia 30",
+  "um milhão", "um salário mínimo", "e o MEI", "é social" ditos devagar); a voz entre palavras seguidas do roteiro sai e a entre
+  palavras não seguidas vira sugestão; o editor de legenda recusa número, data, termo e palavra a mais; e um teste de ponta a ponta com
+  o ffmpeg: o "ééé" e o "hum" saem do vídeo, e a legenda gravada tem "eSocial" e "30/10.".
+- **Transcrição** (`test_radar_video_transcrever.py`, novo, 19 testes, 3 com o SDK de verdade, pulados sem ele): o pedido ao F0
+  (pt-BR, saída detalhada, tempo por palavra, palavrão sem máscara, lista de frases) e a leitura dos tempos; 429 espera e tenta de novo,
+  e passados 10 minutos dá `transcricao_ocupada`; a recusa por cota espera e termina em `azure_cota`; 401 e pedido inválido não tentam
+  de novo; a rede tenta 3 vezes (também o SDK que trava); a configuração, o WAV e a cota do Radar são conferidos antes de qualquer
+  chamada; o modo pago (REST) com multipart, Retry-After, sem seguir redirecionamento, sem o proxy do ambiente e só endereço da Azure;
+  a chave nunca aparece em mensagem, traceback, saída ou log; o passo do workflow roda com `python -I`.
+- **Banco** (`test_radar_video_banco.py`, novo, 29 testes em 26 funções; `test_radar_banco.py`, 262, eram 254): 27 tabelas e 36 com as visões, 8
+  configurações; criar recusa a fala fora do roteiro, o boletim, a pessoa sem o termo novo, menor ou com o termo revogado, a cartela
+  sem CNPJ ou com "contador" sem registro e a cota acabada; pegar com `skip locked`, a cota e o limite de 3 tentativas; concluir decide
+  de novo (não confia no robô) e força regravar com o boletim na fala; aprovar exige o sha256 do vídeo pronto e as caixas `video` e
+  `viu`; desaprovar solta a amarra e o gatilho a protege; o registro manual do reel sem o vídeo dá RADAR317; a trilha não guarda a fala;
+  o `service_role` não lê os vídeos; a limpeza respeita a revogação; a agenda do vídeo (chaves no Vault, reserva só com fila, limpeza)
+  e as reversões. Os 2 testes de reel da v0.21.0 passaram a exigir o vídeo pronto.
+- **Função `radar-video`** (`test_radar_funcao_video.py`, novo, 11 testes, no Deno, com o armazenamento e o GitHub de mentira):
+  chave interna como chamador dá 403 e a chave errada dá sempre "Chave não confere."; a prévia tem 600 s, venha o que vier no pedido,
+  e o baixar, 300 s; o robô lê só os caminhos do pedido; o corrigido nunca é sobrescrito; concluir confere o vídeo e os 4 quadros;
+  o envio confere tamanho e tipo; o bucket público volta a privado; o token de envio vai sem `x-upsert`; a limpeza mantém a versão
+  atual; nada de link nem mensagem do armazenamento no log ou na resposta.
+- **Robô de ponta a ponta** (`test_radar_video_corrigir.py`, novo, 21 testes, com a função e o armazenamento simulados e, num deles,
+  a função de verdade no Deno com o banco real): 2 clipes (MP4 e MOV) com um "ééé" saem prontos, com o texto final igual à fala, o
+  palavras.json guardado, a cota contada uma vez, o parcial antes da montagem, o sha256 e os quadros conferidos e a sincronia palavra a
+  palavra; o ajuste refaz sem Azure e sem contar de novo, com o mesmo áudio; recusas e falhas (sem pedido, chave recusada, sem áudio
+  com o link vencido renovado, arquivo grande, erro da Azure sem contar segundos, transcrição vazia pela reserva dos silêncios,
+  pedido perdido, armazenamento em 3 tentativas, corrigido já existente, job cancelado, vídeo mexido depois da conferência); a
+  conversa não segue redirecionamento, ignora o proxy e recusa link adulterado; os passos com a chave só carregam a biblioteca padrão;
+  o modelo do workflow; e o robô inteiro com o ffmpeg no contêiner.
+- **Telas** (`test_radar_telas.py`, no Chromium; 239 no arquivo, eram 209: 178 aprovados e 61 pulados): o envio TUS em pedaços de 6 MiB com o
+  `x-signature`, a retomada, a renovação e a tela acesa durante o envio; o endereço do envio só do armazenamento do projeto (o token
+  nunca vai a outro endereço); a fala para conferência nos 3 formatos (igual à do robô, roteiro por roteiro); a cartela só com as
+  Configurações e Pessoas e termos; o relatório parcial e o final; "Manter este trecho", "A transcrição errou" e o editor de legenda
+  (25 casos comparados com o robô) montam os ajustes; termo barrado na fala trava a aprovação; a aprovação manda o sha256 da prévia e
+  as caixas; baixar só depois de aprovado; o relatório hostil (HTML e códigos como `constructor`) sai escapado; Pessoas e termos
+  com os 3 campos e a lista das peças da pessoa; Configurações → Corretor de vídeo; 375 px sem rolagem lateral; o "Preencher fontes
+  oficiais" (só onde falta, com confirmação, gravando como o Salvar; só para o administrador); o CRC padronizado com o 007129/O-0; a
+  entrada da v0.22.0 nas Versões (o corretor, a Azure gratuita, o botão e o CRC) e o passo a passo do reel em "Como usar" (só para
+  quem edita).
+- **Repositório** (`test_radar_repositorio.py`, 14 testes, eram 5): nenhum vídeo, áudio ou foto (pela extensão ou pelo começo do
+  arquivo, com qualquer nome; só as imagens do pacote), nenhum arquivo de trabalho do robô e nenhuma transcrição (a resposta da Azure,
+  as palavras com tempo, a legenda ASS, SRT ou VTT) fora do código do robô e dos geradores sintéticos; os detectores pegam o vídeo
+  renomeado e não pegam o código nem o texto em UTF-16; o `.gitignore` barra vídeo, áudio, foto e os arquivos de trabalho; o
+  `radar-testes.yml` roda os testes do vídeo (ffmpeg, o Python do robô com hash, Ubuntu 24.04, tempo-limite de 45 minutos); e a
+  versão é a mesma em todos os arquivos do pacote (tela, scripts, função nova, robô do vídeo, SQL, LEIAME e este relatório).
+- **Testes antigos que mudaram:** as contagens do banco (27 tabelas, 8 configurações, a lista das funções da tela); os 2 testes de
+  reel da v0.21.0 (o reel exige o vídeo corrigido pronto: RADAR165 sem ele); o teste do reel à mão nas telas; 8 formulários nas
+  Configurações; o botão Salvar da agenda de obrigações achado por `button:not([type=button])` (o bloco ganhou o 2º botão); o servidor
+  dos testes de tela ignora a conexão cortada por um reload (antes imprimia um traceback); o CRC dos testes passou a 007129/O-0; o
+  armazenamento de mentira da `radar-redes` guarda os bytes e responde ao link assinado.
+- **Prova de que os testes pegam o erro:** em cada etapa, cada proteção foi desfeita numa cópia do repositório, o teste ligado a ela
+  rodou e falhou, e a cópia foi comparada com o repositório no fim: receita, 13 de 13 (sincronia, metadados, lista de edição, trechos
+  entre clipes, `ftyp`, rede do contêiner, legenda em pixels, cartela com "…", ambiente do ffmpeg, limitador); alinhamento, 17 de 17;
+  transcrição, 20 de 20; banco e função, 36 de 36; robô de ponta a ponta e workflow, 30 de 30; telas do corretor, 45 de 45 (na 1ª
+  rodada, uma mutação do CSS de 375 px passou por ser equivalente e foi trocada); "Preencher fontes oficiais" e o CRC, 16 de 16 (e o
+  controle: com o número antigo, terminado em 5, a troca do dígito pela letra O passava, e com o 007129/O-0 é pega); versão,
+  documentos e repositório (etapa 9), 29 de 29 (vídeo, áudio, foto e transcrição com outro nome ou fora do `.gitignore`; as linhas novas do `.gitignore`; o
+  `radar-testes.yml` sem o Ubuntu 24.04, o tempo, o ffmpeg, o Python do robô ou com parte dos testes; a versão diferente em cada
+  arquivo, o SQL antigo esquecido e a `FUNCAO_MINIMA` acima da função do pacote; a entrada das Versões sem o botão, sem o CRC certo,
+  sem o que o corretor não corrige ou com outra versão; o passo a passo do reel em "Como usar" para o leitor ou sumido).
+- **1ª varredura: 21 achados corrigidos** (cada um com o teste dele; a correção desfeita numa cópia do arquivo fez o teste falhar, e o
+  arquivo voltou): o termo conferido em todo o caminho do processamento (o robô não pega o pedido de quem revogou, ficou inativa, foi
+  marcada menor ou com o termo vencido depois do envio — erro "termo", antes de baixar os clipes e de mandar o áudio à Azure —, e o
+  ajuste, "Conferir com o roteiro novo", "Tentar de novo" e o fim do envio recusam), e nada de link novo nem de relatório depois que a
+  limpeza apagou os clipes ou os textos; o bucket criado sem limite próprio (vale o do projeto; no Free o limite maior seria recusado);
+  o envio novo só substitui o vídeo vivo quando os clipes chegam (o abandonado não leva o pronto junto), com o armazenamento conferido
+  antes do registro; a limpeza conta o prazo do vídeo aprovado que espera o dia de postar a partir do dia da peça e leva os textos com
+  o corrigido vencido; a reserva da agenda para no 3º acionamento sem o robô pegar ("robo_nao_pegou", um aviso só); o limite padrão de
+  30 minutos no mês; o áudio somado uma vez por rodada (o robô repete a chamada que falhou no caminho); o RADAR317 só para a
+  aprovação feita com a v0.22.0; a chave do robô e a da agenda comparadas pelo resumo (sha256); as edições da legenda numa lista, na
+  ordem em que o robô aplica, com as palavras do roteiro perto de cada bloco (a tela recusa como o robô); na tela, o vivo e o envio a
+  caminho lado a lado, só quem começou o envio (ou o administrador) continua, a tela acesa de novo ao voltar ao Radar, o fim do envio
+  que falha volta ao "Continuar o envio", o quadro do corretor refeito sem apagar o texto não salvo e o "Apaguei" do vídeo baixado à
+  parte do dos clipes.
+- **2ª varredura: 23 achados, todos procedentes** (três se repetem, no todo ou em parte: o "60 por padrão" das Versões, como parar
+  o corretor e as imagens no `.gitignore`), corrigidos no código, nos documentos ou nos dois, cada um com o teste dele:
+  - as marcas dos ajustes apontam o trecho pelo que ele é, e não pela posição na lista: "A transcrição errou" pelo id da divergência
+    (o instante e o texto, falado e do roteiro) e "Manter este trecho" pela chave do corte ("<clipe>:<quadro>" de onde começa o que
+    ele corta). Com uma variante nova no glossário, a marca do termo não cai mais no valor dito errado (a legenda nunca diz um valor que
+    o áudio não diz), e "A transcrição errou" na data não leva o "manter" para o corte novo da pausa entre frases; o banco confere pelo
+    id (`test_a_transcricao_errou_marca_a_divergencia_pelo_conteudo…`, `test_manter_este_trecho_aponta_o_corte_pela_chave…`, os do banco
+    e da tela);
+  - o banco guarda as pessoas do vídeo (`radar_videos.pessoas`: as marcadas no envio e quando os clipes chegaram): desmarcar na peça
+    não tira a pessoa das travas (pendência, prévia, robô, aprovação no dia da peça, baixar) nem da limpeza da revogação; a prévia
+    confere as pessoas como o baixar; a limpeza leva os arquivos e os textos também quando o termo do corretor é retirado ou a pessoa é
+    marcada menor (`test_desmarcar_quem_aparece_nao_tira_a_pessoa_do_video`, `test_previa_e_limpeza_param_quando_a_pessoa…`, 4 casos);
+  - o texto do gancho gravado (a cópia da chamada no envio) e o texto extra da cartela que o robô gravou (agora no relatório) passam
+    pelas travas como estão no vídeo, e a pendência pede o vídeo em dia quando a chamada ou o `cartela_extra` mudam depois; a tela
+    confere os termos de publicidade no gancho no envio e na aprovação (`test_gancho_e_texto_extra_da_cartela_conferidos…`,
+    `test_video_texto_do_gancho_gravado_passa_pelos_termos…`);
+  - "Tentar de novo" na cartela que não coube refaz as linhas com a Assinatura e Pessoas e termos de hoje (antes, parava de novo
+    sempre); "Conferir com o roteiro novo" com a mesma fala só registra o roteiro novo (sem a fila e sem perder as marcas); o envio
+    cuja gravação não cabe no que sobra da cota do mês é recusado antes de qualquer arquivo sair, e o quadro mostra o que sobra
+    (`radar_video_cota`); a função aciona o robô de novo ao concluir ou falhar, se ainda há fila (sem a pausa de 30 s); o vídeo
+    corrigido acima do limite de arquivo do armazenamento (413) para com "limite_armazenamento", sem voltar à fila 3 vezes; a tela
+    orienta a guardar os clipes até o relatório e apagar no mesmo dia, com o "Apaguei" em destaque no vídeo pronto;
+  - o `.gitignore` e o conferir do repositório barram PNG, WEBP, GIF, TIFF, BMP, DNG e as outras extensões de imagem e áudio (fora as 3
+    imagens do pacote) e todos os arquivos de trabalho do robô (o pedido, o estado, o resultado, o erro, os temporários e a luz); o
+    detector de transcrição acha o estado (palavras com "ini"), o relatório e o pedido; o `radar-repositorio.yml` baixa o histórico
+    inteiro e confere cada commit do push (o arquivo enviado e apagado no mesmo push);
+  - o Dockerfile fixa também as bibliotecas libav* (o pacote ffmpeg as pede só com ">="), e no GitHub Actions a imagem que não monta
+    falha o teste, em vez de pular;
+  - o teste do reel aprovado à mão voltou a conferir o roteiro copiado com "Último quadro: <identificação legal>", "Reel: sem lâmina",
+    nenhum "Baixar as lâminas" e nenhuma arte aprovada; a aba Versões diz "30 por padrão" no limite de minutos do mês (e o teste
+    confere);
+  - LEIAME: o termo novo assinado antes da instalação (do SQL em diante, nenhum reel fica pronto sem ele), o SQL antes da tela (a tela
+    nova com o banco antigo não abre peça nenhuma da Pauta), o teste numa peça de teste importada por CSV (nunca numa real), o limite
+    de 50 MB do Free também no vídeo corrigido, como parar o corretor de verdade (desligar o workflow; tirar o token não para, e a
+    reserva vira "robo_nao_pegou"), o que fica fora do banco na reversão (o workflow com a agenda própria, os segredos do repositório
+    privado, a função `radar-video` com o token e o token fino no GitHub), as marcas pelo trecho, desmarcar no reel não tira a pessoa
+    do vídeo e quando apagar os clipes; o cabeçalho da reversão e o modelo do workflow dizem o mesmo (`test_leiame_da_v0220_ordem…`);
+  - prova de que os testes pegam o erro: 49 mutações, cada correção desfeita numa cópia do arquivo (que voltou no fim), com o
+    teste dela rodando e falhando: 49 de 49 (as do banco, do robô, da função, da tela, do repositório e, nos documentos,
+    o LEIAME, a reversão e o modelo do workflow de antes).
+- **O que não foi testado aqui** (os testes reais, na instalação, na ordem): a Azure F0 de verdade (como saem as siglas, os números
+  e as hesitações na forma léxica; o tempo de um áudio de 60 s; a cota esgotada; a lista de frases; se a tentativa interrompida conta
+  na cota) e a calibração dos limiares de corte, do ruído e do limitador com gravação real; o robô no repositório privado (o
+  `python3 -m venv` do Ubuntu 24.04, o tempo do `docker build` e do job em 2 processadores, o `GITHUB_OUTPUT` e o `job.status`); o
+  armazenamento de verdade (o envio retomável com o token assinado no PC e no celular, o `cache-control` de 60 s, o 409 do caminho
+  que já existe, o CORS do `Location`, a tela acesa no iPhone e no Android); HDR e 4:5 só com vídeo sintético; e um reel real, com o
+  termo novo assinado, até o download aprovado.
+- **Tempo:** a suíte inteira levou 915 s (15min15s), com os 3 testes do Speech SDK de verdade e os 2 do contêiner neste ambiente (a da v0.21.0, 817 s): os 7 arquivos do corretor levaram 151 s
+  nas rodadas por etapa, com a imagem do contêiner já montada (no GitHub, montar a imagem com o apt soma 1 a 2 minutos). O `radar-testes.yml` passou a rodar no
+  `ubuntu-24.04` (o Ubuntu do robô: o ffmpeg 6.1.1 com que os testes do vídeo foram medidos e o Speech SDK, que só lista até a 24.04;
+  o `ubuntu-latest` vira 26.04 em novembro de 2026) e o `timeout-minutes` passou de 30 para 45. Meça o tempo no Actions depois do
+  merge: se passar de uns 30 minutos, separe os testes de tela ou os do vídeo num trabalho à parte.
 
 ## v0.21.0 — aba Pauta, peças das redes e publicação agendada
 
@@ -258,7 +488,7 @@ O que foi comprovado:
 - **Segunda revisão** (22 pontos; o que foi corrigido tem teste): a legenda editada antes de preencher o CNPJ e o CRC ganha a linha
   nova ao salvar as Configurações, e a legenda sem a linha vai para a confirmação; só o texto deixa o kit desatualizado (o título
   mudar deixa o kit valendo, guardado com o título de quando foi feito, e a tela pede para conferir a chamada); CNPJ sem aspas tem
-  mensagem própria; o CRC de SC escrito de outro jeito ("SC-004064/0-5") sai "CRC-SC 004064/O-5", e o formato que não é
+  mensagem própria; o CRC de SC escrito de outro jeito ("SC-007129/0-0") sai "CRC-SC 007129/O-0", e o formato que não é
   reconhecido é recusado; a cópia da legenda do Facebook antes do site não leva o `{LINK DO SITE}`; com foto, o apoio tem 3 linhas
   (faixa da foto de 460 px; 36 px quando 40 não cabe), o que não cabe vira aviso embaixo da imagem e na confirmação, e os campos
   aceitam o que cabe (90 e 140); a palavra comprida da chamada baixa a letra em vez de sair espremida; a faixa legal fica em 24 px

@@ -12,6 +12,13 @@ class ErroBanco(Exception):
     pass
 
 
+def cabecalhos_da_chave(chave: str) -> dict[str, str]:
+    """v0.22.0 (rodada 2 da varredura geral): a chave interna antiga (JWT service_role) vai no apikey e no Authorization; a nova
+    (sb_secret_…, no segredo SUPABASE_SERVICE_KEY depois da troca: o Supabase desliga a antiga até o fim de 2026), só no apikey (no
+    Authorization o Supabase recusa: "Invalid Compact JWS"). Para chamar uma função com ela, a função fica com o "Verify JWT" desligado."""
+    return {"apikey": chave} if chave.startswith("sb_secret_") else {"apikey": chave, "Authorization": f"Bearer {chave}"}
+
+
 class Banco:
     def __init__(self, url: str, chave: str, limite: int = 30, prefixo: str = "/rest/v1"):
         if not url or not chave:
@@ -20,11 +27,7 @@ class Banco:
         self.base = url if (prefixo and url.endswith(prefixo)) else url + prefixo
         self.limite = limite
         self.sessao = requests.Session()
-        self.sessao.headers.update({
-            "apikey": chave,
-            "Authorization": f"Bearer {chave}",
-            "Content-Type": "application/json",
-        })
+        self.sessao.headers.update(cabecalhos_da_chave(chave) | {"Content-Type": "application/json"})
 
     def _pedir(self, metodo: str, caminho: str, *, params=None, corpo=None, prefer=None):
         cab = {"Prefer": prefer} if prefer else {}

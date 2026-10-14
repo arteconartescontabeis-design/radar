@@ -71,6 +71,8 @@ td{border-bottom:1px solid var(--linha);padding:8px;vertical-align:top}
 .rolagem{overflow-x:auto}
 td.email{min-width:170px}
 .selo{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:700;white-space:nowrap;background:var(--azul-claro);color:var(--marinho)}
+/* varredura geral (v0.22.0): o selo com texto longo (o motivo do termo, a cartela que mudou) quebra a linha: no celular estourava o cartão */
+.pauta-pessoas .selo,.peca-pessoas .selo,label.video-check .selo{white-space:normal;overflow-wrap:anywhere;min-width:0}
 .selo.ok{background:var(--ok-fundo);color:var(--ok)}
 .selo.alerta{background:var(--alerta-fundo);color:var(--alerta)}
 .selo.erro{background:var(--erro-fundo);color:var(--erro)}
@@ -246,6 +248,23 @@ details.peca-aprovar summary{font-size:1rem} .peca-aprovar .checks label,.peca-t
 /* o Gerar com IA da peça: a sugestão (os textos com o nome na peça no lugar de {PESSOA1}, o que falta conferir e os avisos) */
 .peca-sugestao{margin:8px 0 0} .peca-sugestao h4{margin:0 0 6px} .peca-sugestao-cartoes{margin:4px 0 8px;padding-left:22px} .peca-sugestao-cartoes li{margin:3px 0}
 @media (max-width:640px){ .conf-linha,.cartao-linha{grid-template-columns:minmax(0,1fr)} }
+/* v0.22.0: o corretor de vídeo do reel (radar-video.js): o envio, a situação, o relatório, a prévia e os ajustes (nada passa da largura
+   da tela: a lista dos clipes e os botões quebram linha no celular) */
+details.video-reel>summary{display:flex;gap:8px;align-items:center;flex-wrap:wrap} details.video-reel>summary h2{display:inline;margin:0}
+.video-reel h3{margin:14px 0 6px} .video-reel .btn{white-space:normal} .video-reel ul{padding-left:20px} .video-reel li{margin:4px 0}
+.video-fala-texto{background:#FCFDFE;border:1px solid var(--linha);border-radius:8px;padding:8px 10px;margin:6px 0}
+.video-clipes{list-style:none;padding:0;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.video-clipes li,.video-progresso li{display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center;border:1px solid var(--linha);border-radius:8px;padding:6px 8px;margin:0;min-width:0}
+.video-clipes .acoes{margin:0 0 0 auto} .video-clipe-nome{min-width:0;overflow-wrap:anywhere}
+.video-progresso{list-style:none;padding:0;display:flex;flex-direction:column;gap:6px} .video-progresso progress{flex:1 1 140px;min-width:0;height:14px}
+.video-cartela{background:#011F48;color:#fff;border-radius:8px;padding:8px 12px 8px 28px;margin:4px 0} .video-cartela .sub{color:#DCEBF7}
+label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;font-size:.9rem;color:var(--cinza);margin:4px 0}
+.video-declaracoes label{display:flex;gap:6px;align-items:flex-start;margin:4px 0}
+.video-reel video{display:block;width:100%;max-width:360px;max-height:70vh;background:#000;border-radius:8px;margin:6px 0}
+.video-quadros{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;max-width:640px}
+.video-quadros figure{margin:0} .video-quadros img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:6px;border:1px solid var(--linha);display:block}
+.video-relatorio{border-top:1px solid var(--linha);margin-top:10px} .video-trava{color:var(--erro)}
+.video-bloco input{width:100%} .video-ajustes{background:#FCFDFE}
 @media (max-width:640px){ main{padding:12px 16px 60px} td,th{padding:6px 5px} .quem{margin-left:0} .topo{padding:8px 14px;gap:10px} .topo .logo{height:38px} .marca{font-size:1.1rem;padding-left:10px} }
 </style>
 </head>
@@ -254,18 +273,33 @@ details.peca-aprovar summary{font-size:1rem} .peca-aprovar .checks label,.peca-t
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.21.0"></script>
+<script src="radar-pauta.js?v=0.22.0"></script>
+<script src="radar-video.js?v=0.22.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.21.0";
+const VERSAO = "0.22.0";
 const FUNCAO_MINIMA = "0.21.0";     // versão da função radar-ia que este painel exige (v0.21.0: a ação “peca”, o Gerar com IA da peça da Pauta)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.22.0", "13/10/2026", [
+    "Corretor de vídeo do reel — como enviar: na Pauta, abra a peça reel e confira a “Fala para conferência” (o que o corretor compara com a gravação, tirado do roteiro: a coluna “Fala” da tabela do plano ou as linhas “Fala:” do kit). Grave no celular em 1080p, 30 quadros por segundo, Vídeo HDR desligado, na vertical, um bloco de cada vez; apague as tomadas ruins e escolha as boas, de 1 a 12 clipes, na ordem do roteiro, sem editar antes. Escolha quem fala, marque as 4 declarações e clique em “Enviar a gravação”. No celular, não feche nem bloqueie a tela até 100%; se a internet cair, reabra a peça e escolha os mesmos arquivos: o envio continua de onde parou. Antes de qualquer arquivo sair, o Radar confere a fala no roteiro, o boletim pago, o termo de cada pessoa (o termo novo, que cita o corretor), a idade e a cartela. Guarde os clipes no celular até o relatório dizer “Vídeo corrigido pronto” (o envio novo substitui todos os clipes: se precisar regravar um bloco, os outros vão de novo) e então, no mesmo dia, apague do celular e da nuvem pessoal e marque “Apaguei”.",
+    "O que o corretor faz sozinho, em poucos minutos: transcreve a fala pela Azure gratuita do escritório (a mesma cota de 5 horas por mês da Agenda, que atende um pedido por vez: ocupada, ele espera até uns 10 minutos e, se não der, avisa “Transcrição ocupada; tente de novo”), compara com o roteiro só por código, sem IA, corta o começo, o fim, as pausas longas e as hesitações (“ééé”, “hum”), reduz o ruído e acerta o volume, grava a legenda na grafia do roteiro (eSocial, DCTFWeb, 30/10, R$ 50 mil), o texto do gancho de 0 a 3 s (se escolhido) e a cartela final com a identificação legal e o CRC de quem fala, e entrega o vídeo no formato do Instagram e do Facebook, sem a localização do celular. Ele trabalha no GitHub, num repositório privado: o vídeo, a fala e os nomes nunca vão ao repositório público nem aos registros.",
+    "O que o corretor NÃO corrige: não troca, não acrescenta e não inventa palavra, e nunca corta “um”, “uma”, “e” ou “é”. Número, data ou termo diferente do roteiro vira “Precisa regravar” (o relatório mostra o que foi dito e o que o roteiro diz), assim como termo que a publicidade contábil não usa e frase do boletim pago na fala. Não cria nem imita rosto ou voz, não põe música, não tira nada do fundo e não conserta imagem tremida, escura ou fora de foco: isso se resolve gravando de novo.",
+    "Relatório e prévia na peça, em português simples: o que precisa regravar, a duração (com o limite de 45 s), os cortes, a legenda, o som e 4 quadros para conferir o fundo, as pessoas e a posição da legenda. A parte de regravar chega antes do vídeo pronto, e a tela atualiza sozinha enquanto o corretor trabalha. A prévia abre por um link de 10 minutos, e quem viu fica registrado. Depois de ouvir, o administrador pode: “Manter este trecho” (num corte no meio da fala), “A transcrição errou (vale o roteiro)” (quando a pessoa falou certo e a Azure ouviu errado), editar a legenda palavra por palavra (nada de mudar número, data ou termo), legenda compacta, sem o texto do gancho e refazer a cartela; o vídeo é montado de novo sem transcrever de novo, e o áudio não muda. Também: “Tentar de novo” depois de um erro, “Conferir com o roteiro novo” e “Descartar”.",
+    "Aprovar, baixar e postar: o administrador aprova o reel depois de abrir a prévia, e a aprovação fica amarrada a esse vídeo (o mesmo arquivo, conferido pelo banco); ela pede “Conferi o vídeo” e, se a pessoa pediu no termo para ver a peça antes, “A pessoa viu o vídeo final”. Aprovado, “Baixar o vídeo aprovado” (o link vale 5 minutos), poste à mão no Instagram e no Facebook com a legenda copiada da peça (a capa se escolhe no aplicativo), marque “Apaguei do celular e da nuvem pessoal” e registre o link. A publicação automática do reel fica para a v0.22.1, depois dos primeiros reels reais.",
+    "Pessoas e termos: a data do termo do corretor de vídeo, “pediu para ver a peça antes” e menor de idade (o corretor recusa vídeo com menor nesta versão). Com o termo revogado ou a pessoa inativa, a lista das peças publicadas com ela, com os links a retirar das redes; os vídeos e os textos guardados saem sozinhos na limpeza do dia seguinte (os prazos de guarda são das Configurações, 30 dias por padrão).",
+    "Configurações → Corretor de vídeo: o glossário e as variantes que a transcrição erra, a duração máxima do reel, as pausas, o volume, a cartela (com uma linha extra, como “Desde 1984 · (48) 3242-0530”), o limite de minutos de transcrição do Radar no mês (30 por padrão: o que sobra das 5 horas da Azure depois dos 270 minutos da Agenda; não aumente no F0) e os prazos de guarda; “Testar o corretor de vídeo” confere o armazenamento privado, o robô, a fila e os minutos do mês.",
+    "Agenda de obrigações: o Simples Doméstico (DAE) passa a antecipar quando o dia 20 não é dia útil, como mandam a Lei 8.212/1991 (art. 30, § 2º, II) e o eSocial (ex.: 20/11/2026 é feriado, vence em 19/11). Vale para instalação nova; na que já existe, o administrador troca o “ajuste” em Configurações (na Artecon, já trocado).",
+    "Configurações → Agenda de obrigações: “Preencher fontes oficiais” põe a fonte oficial de cada vencimento (norma, artigo e o link oficial, conferidos em 12/10/2026) nas obrigações da agenda das redes que estão sem fonte, e salva. Regra, dia, ajuste, nome e fonte já escrita não mudam; a obrigação que não está na tabela aparece para conferir à mão. A fonte vai às informações conferidas da agenda da semana da Pauta.",
+    "Configurações → Fecho, assinatura e identificação legal: a ajuda e os exemplos trazem o CRC certo da Artecon, “CRC-SC 007129/O-0” (escrito “SC-007129/0-0”, a tela padroniza). O que está salvo não muda sozinho: confira que o CRC da sua assinatura é esse, porque ele vai ao fim de toda legenda, à faixa da arte e à cartela do reel.",
+    "Revisão geral (13/10): no “Publicar em todos”, só o link do site registrado pelo robô libera o Instagram e o Facebook (o registro à mão espera o robô); a frase do boletim pago não se autoriza mais e o banco a recusa na aprovação e na publicação; autorizar de novo uma publicação cancelada no meio do envio pede “Conferi no Instagram/Facebook: não saiu”; na Pauta, o CRC da identificação é conferido inteiro, a pessoa de um vídeo guardado não se apaga (marque a revogação), a caixa “A pessoa viu o vídeo final” vale também para quem foi desmarcada depois do envio e o selo longo quebra a linha no celular; a IA recebe o texto de fora sem as marcas de bloco e mascara o nome escrito com apóstrofo curvo ou hífen; a falha de login da leitura da ITC aparece em Fontes.",
+    "Revisão geral, 2ª rodada (13/10): a frase do boletim pago que está numa matéria de outro assunto (ou ainda na fila) aparece no quadro vermelho do conteúdo (antes o banco recusava sem dizer qual) e o “Revisar com IA” a reescreve; a ementa oficial do ato que o boletim lista não conta como frase do boletim; o CRC com acento não trava mais a Pauta; no “Usar a sugestão” da peça, a lista de fontes nunca é cortada (quem encurta é o texto da IA, e o recado avisa); cada publicação nova da Pauta que não sai manda um e-mail, mesmo com o aviso aberto; o Painel avisa quando o robô de coleta não roda há mais de 12 horas, e a agenda do banco religa os robôs que o GitHub desliga por falta de atividade; a imagem da notícia nas redes vai para o armazenamento privado; a exclusão no site confere o título inteiro; a sessão fica só na aba (cada aba entra à parte); e o Radar aceita as chaves novas do Supabase (veja o LEIAME, “Chaves novas do Supabase”).",
+    "Administrador: para instalar, rode o sql/radar-setup-v0.22.0.sql e o sql/radar-video-agenda.sql, crie a função radar-video (com “Verify JWT” ligado), copie a chave do robô do Vault para o repositório privado radar-video e guarde no Supabase o token do GitHub só desse repositório (passo a passo no LEIAME, “Da v0.21.0 para a v0.22.0”). Publique também o radar-video.js novo junto com o index.html e o radar-pauta.js. Antes do primeiro reel, a equipe assina o termo novo, que cita o corretor."]],
   ["0.21.0", "12/10/2026", [
     "Aba Pauta: o calendário de publicações no Instagram e no Facebook, uma peça por dia, na visão da semana (de segunda a domingo). O calendário do plano de publicações entra por “Importar o calendário (CSV)”: a tela confere o arquivo inteiro, mostra todos os erros de uma vez (com a linha) e o que muda, e só grava depois. A peça que já entrou em produção não muda na importação. O CSV tem nomes da equipe: nunca vai para o GitHub.",
     "Peça da Pauta: fotos no alto (cada uma em 1080×1350, enviadas uma de cada vez; a foto HEIC do iPhone recebe o recado de como trocar), quem aparece (só pessoas cadastradas, com o selo do termo de imagem), informações conferidas com a fonte, chamada, apoio, cartões, roteiro do reel (colado à mão) e as legendas do Instagram e do Facebook. No domingo, “Calcular a agenda da semana” traz os vencimentos de segunda a sexta seguintes (sem o honorário contábil).",
@@ -284,7 +318,7 @@ const VERSOES = [
     "Arte vertical para o Instagram e o Facebook (1080×1350): chamada grande, linha de apoio, o caminho até o site e, no rodapé, a identificação legal da empresa. A chamada, o apoio e o fundo da arte podem ser trocados na hora de publicar; se o texto não couber, a tela avisa embaixo da imagem.",
     "Publicidade da profissão contábil: a tela aponta os termos que a publicidade contábil evita (lista inicial, a confirmar com o contador responsável). Algumas formas de oferta, promessa e convite (“garantimos”, “economia garantida”, “consulta grátis”, “ganhe um brinde”, “blinde seu patrimônio”, “pague menos com a Artecon”, “troque de contador”) impedem a publicação da legenda e da arte, e o recado diz onde está o termo; “grátis”, “pague menos”, “100%”, “o melhor”, “definitivo”, “brindes” e “blindado” (que podem ser fato ou assunto da notícia) pedem confirmação. Outras promessas a tela não reconhece: confira sempre o texto. Frase do boletim pago também não sai, nem na legenda nem na arte, e os botões de copiar do kit seguem as mesmas regras.",
     "Ilustração da IA opcional: o “Gerar com IA” faz a capa padrão da Artecon, sem custo de imagem. A ilustração, agora no estilo editorial e nas cores da marca (não mais foto de banco de imagens), sai só pelo botão “Gerar ilustração com IA”.",
-    "Administrador: preencha o CNPJ e o CRC em Configurações → “Fecho, assinatura e identificação legal” (o CRC como “CRC-SC 004064/O-5”, com a letra O depois da barra). Enquanto estiverem vazios, a arte e as legendas saem só com o nome da empresa, e a tela avisa."]],
+    "Administrador: preencha o CNPJ e o CRC em Configurações → “Fecho, assinatura e identificação legal” (o CRC como “CRC-SC 007129/O-0”, com a letra O depois da barra). Enquanto estiverem vazios, a arte e as legendas saem só com o nome da empresa, e a tela avisa."]],
   ["0.19.0", "10/10/2026", [
     "“Gerar com IA”, um botão só: no passo 1 (Fonte), no quadro do próximo passo e no passo 2. Sem texto oficial, ele procura a fonte oficial na internet (a busca rápida: se demorar, segue sem ela); com texto oficial, busca o trecho que comprova. Depois escreve o rascunho e faz a capa com a ilustração da IA. O aviso mostra a etapa (1 de 3, 2 de 3, 3 de 3).",
     "Texto com ou sem fundamentação legal: sem texto oficial, a IA escreve um rascunho normal (não mais o “texto para análise”), com palavras próprias e o aviso de fonte não oficial; revise e aprove. Para o site continua valendo a fundamentação (ou o “Publicar mesmo assim” do administrador, com o motivo).",
@@ -484,7 +518,7 @@ const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## 
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
 
 const E = { etapa:null, sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"}, mais:{},
-           pauta:{semana:null, peca:null, vista:"semana", previa:null} };       // v0.21.0: a aba Pauta (radar-pauta.js)
+           pauta:{semana:null, peca:null, vista:"semana", previa:null}, video:{arquivos:{}} };       // v0.21.0: a aba Pauta (radar-pauta.js); v0.22.0: o vídeo do reel (radar-video.js)
 /* Listas longas: carregam uma leva por vez; "Mostrar mais" traz a seguinte (a contagem vale por tela e filtro) */
 const limiteDe = (chave, base) => base * Math.max(1, (E.mais || {})[chave] || 1);
 const botaoMais = (chave, n, limite, rotulo, total) => n >= limite
@@ -593,6 +627,47 @@ function renderTexto(t){
 const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const DIAS_SEMANA = ["Domingo","Segunda-Feira","Terça-Feira","Quarta-Feira","Quinta-Feira","Sexta-Feira","Sábado"];
 const REGRAS = ["quinto_dia_util","dia","ultimo_dia_util"], AJUSTES = ["antecipa","posterga","nenhum"];
+/* v0.22.0: a fonte oficial da regra de vencimento de cada obrigação da agenda padrão, no formato curto “norma, artigo — endereço oficial”
+   (até 300 caracteres). Os links foram abertos e conferidos em 12/10/2026. Vai às informações conferidas da agenda da semana da Pauta
+   (agendaDaSemana). O Honorário contábil não vai às redes e fica de fora. Quem usa é o “Preencher fontes oficiais” das Configurações. */
+const FONTES_OFICIAIS = {
+  "Salário dos Colaboradores (Empregados)": "CLT, art. 459, § 1º — https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm#art459",
+  "Salários - Trabalhador Doméstico": "LC 150/2015, art. 35 — https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp150.htm#art35",
+  "ICMS": "RICMS/SC, art. 60; Lei SC 3.938/1966, art. 225 — https://legislacao.sef.sc.gov.br/html/regulamentos/icms/ricms_01_00.htm#R01_art60",
+  "ICMS Substituição Tributária": "RICMS/SC, Anexo 3, art. 21, I — https://legislacao.sef.sc.gov.br/html/regulamentos/icms/ricms_01_03.htm#A3_art021",
+  "Carnê INSS Individual": "Lei 8.212/1991, art. 30, II, e § 2º, I — https://www.planalto.gov.br/ccivil_03/leis/l8212cons.htm#art30",
+  "FGTS - Fundo de Garantia Por Tempo de Serviço": "Lei 8.036/1990, art. 15; FGTS Digital, Perguntas Frequentes 03.14 — https://www.gov.br/trabalho-e-emprego/pt-br/servicos/empregador/fgtsdigital/perguntas-frequentes",
+  "GPS (Empresa)": "Lei 8.212/1991, art. 30, I, b, e § 2º, II — https://www.planalto.gov.br/ccivil_03/leis/l8212cons.htm#art30",
+  "IRRF (Rendimento Serviço Prestado Cód. 1708)": "Lei 11.196/2005, art. 70, I, e — https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2005/lei/l11196.htm#art70",
+  "IRRF (Rendimento de Trabalhador Cód. 0561)": "Lei 11.196/2005, art. 70, I, e — https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2005/lei/l11196.htm#art70",
+  "Simples Doméstico": "Lei 8.212/1991, art. 30, V, e § 2º, II; Manual do Empregador Doméstico (eSocial) — https://www.gov.br/esocial/pt-br/empregador-domestico/manual-do-empregador-domestico",
+  "Simples Nacional": "Resolução CGSN 140/2018, art. 40; Perguntas e Respostas do Simples Nacional, item 6.8 — https://www8.receita.fazenda.gov.br/SimplesNacional/Arquivos/manual/PerguntaoSN.pdf",
+  "PIS": "MP 2.158-35/2001, art. 18, II e parágrafo único — https://www.planalto.gov.br/ccivil_03/mpv/2158-35.htm#art18",
+  "COFINS": "MP 2.158-35/2001, art. 18, II e parágrafo único — https://www.planalto.gov.br/ccivil_03/mpv/2158-35.htm#art18",
+  "IPI": "Lei 8.383/1991, art. 52, I, c, e § 4º — https://www.planalto.gov.br/ccivil_03/leis/l8383.htm#art52",
+  "CSLL - Contribuição Social sobre o Lucro Líquido": "Lei 9.430/1996, arts. 5º, 6º e 28 — https://www.planalto.gov.br/ccivil_03/leis/l9430.htm#art28",
+  "IRPJ - Imposto de Renda Pessoa Jurídica": "Lei 9.430/1996, arts. 5º e 6º — https://www.planalto.gov.br/ccivil_03/leis/l9430.htm#art5",
+  "Imposto de Renda Pessoa Física (Cód. 0190)": "Lei 8.383/1991, art. 6º, II — https://www.planalto.gov.br/ccivil_03/leis/l8383.htm#art6",
+  "INSS - Parcelamento p/ Ingresso no Simples Nacional": "LC 123/2006, art. 79, § 4º; Receita Federal, Parcelamento previdenciário — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-ordinario-e-simplificado/parcelamento-previdenciario",
+  "Parcelamentos Federais e Parcelamento Especial": "Lei 10.522/2002; IN RFB 2.063/2022 — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-ordinario-e-simplificado/parcelamento-nao-previdenciario-acesso-via-portal-e-cac",
+  "PERT – Programa Esp. Regularização Tributária": "IN RFB 1.752/2017; Receita Federal, Pert: Orientações — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-especiais/programa-especial-de-regularizacao-tributaria/pert-orientacoes.docx",
+  "Parcelamento Especial - Simples Nacional": "LC 155/2016, art. 9º; Receita Federal, Agenda Tributária — https://www.gov.br/receitafederal/pt-br/assuntos/agenda-tributaria"
+};
+/* o nome da obrigação comparado sem acento, sem diferença de maiúscula e com toda pontuação ou traço igualados (“PERT – …” = “PERT - …”) */
+const chaveObrigacao = n => String(n ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+/* A agenda (já conferida por validarConfig) com a fonte da tabela nas obrigações das redes (“redes” diferente de false) que estão sem
+   fonte (ausente ou em branco), achada pelo nome. Nunca troca regra, dia, ajuste, nome nem uma fonte já escrita. Devolve a lista nova,
+   os nomes preenchidos e os que ficaram sem fonte por não estarem na tabela (conferir à mão). */
+function preencherFontes(lista){
+  const tabela = new Map(Object.entries(FONTES_OFICIAIS).map(([n, f]) => [chaveObrigacao(n), f])), preenchidas = [], semTabela = [];
+  const nova = lista.map(o => {
+    if(!o || typeof o !== "object" || o.redes === false || (typeof o.fonte === "string" && o.fonte.trim())) return o;
+    const fonte = tabela.get(chaveObrigacao(o.nome));
+    if(!fonte){ semTabela.push(String(o.nome).trim()); return o; }
+    preenchidas.push(String(o.nome).trim()); return {...o, fonte};
+  });
+  return {lista:nova, preenchidas, semTabela};
+}
 const isoDia = d => d.toISOString().slice(0, 10);
 function pascoa(ano){
   const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
@@ -659,7 +734,10 @@ async function pedir(metodo, caminho, {params, corpo, prefer, semSessao, tempo} 
   const url = new URL(URL_BASE + caminho);
   for(const [k,v] of Object.entries(params || {})) url.searchParams.set(k, v);
   const cab = {"apikey": CHAVE, "Content-Type": "application/json"};
-  cab.Authorization = "Bearer " + (!semSessao && E.sessao ? E.sessao.access_token : CHAVE);
+  // v0.22.0 (rodada 2 da varredura geral): sem sessão, a chave pública só vai no Authorization se for a anon antiga (JWT). A nova
+  // (sb_publishable_…, que substitui a anon até o fim de 2026) só vale no apikey: no Authorization o Supabase recusa (não é JWT)
+  const portador = !semSessao && E.sessao ? E.sessao.access_token : CHAVE;
+  if(/^[\w-]+\.[\w-]+\.[\w-]+$/.test(portador)) cab.Authorization = "Bearer " + portador;
   if(prefer) cab.Prefer = prefer;
   let r; const limite = new AbortController(), relogio = setTimeout(() => limite.abort(), tempo || 25000);
   try { r = await fetch(url, {method: metodo, headers: cab, body: corpo === undefined ? undefined : JSON.stringify(corpo), signal: limite.signal}); }
@@ -768,17 +846,30 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.fundosArte = {}; E.kitAberto = {}; E.capaDesenhada = null; E.arteCorte = {}; E.pauta = {semana:null, peca:null, vista:"semana", previa:null}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.redeCapa = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.arte = {}; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.pagoBanco = {}; E.fundosArte = {}; E.kitAberto = {}; E.capaDesenhada = null; E.arteCorte = {}; E.pauta = {semana:null, peca:null, vista:"semana", previa:null}; clearTimeout(E.video?.relogio); E.video = {arquivos:{}}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
-function guardarSessao(s){ E.sessao = s; try{ s ? localStorage.setItem("radar_sessao", JSON.stringify(s)) : localStorage.removeItem("radar_sessao"); }catch(e){} }
+/* v0.22.0 (rodada 2 da varredura geral): a sessão (access_token e refresh_token) fica na sessionStorage desta aba, não mais no
+   localStorage. O Radar é servido em arteconartescontabeis-design.github.io, a MESMA origem dos outros aplicativos da conta no GitHub
+   Pages: qualquer script deles lia o localStorage e, com o refresh_token, agia como o administrador (autorizar e publicar nas redes).
+   A sessionStorage é só desta aba: cada aba entra à parte e, fechada a aba, a sessão some. A da versão anterior (no localStorage)
+   passa para a primeira aba que abrir e sai de lá. A página do informativo, aberta pelo Radar numa aba nova, usa a sessão desta aba
+   (sessaoAtual e renovarSessao): só esta renova (o refresh_token em duas abas faria o Supabase derrubar a sessão). */
+function lerSessaoGuardada(){
+  try{ const antiga = localStorage.getItem("radar_sessao");
+    if(antiga !== null){ localStorage.removeItem("radar_sessao"); if(!sessionStorage.getItem("radar_sessao")) sessionStorage.setItem("radar_sessao", antiga); } }catch(e){}
+  try{ return JSON.parse(sessionStorage.getItem("radar_sessao") || "null"); }catch(e){ return null; }
+}
+function guardarSessao(s){ E.sessao = s; try{ s ? sessionStorage.setItem("radar_sessao", JSON.stringify(s)) : sessionStorage.removeItem("radar_sessao"); }catch(e){}
+  try{ localStorage.removeItem("radar_sessao"); }catch(e){} }
+function sessaoAtual(){ return E.sessao; }
 async function entrar(email, senha){
   const s = await pedir("POST", "/auth/v1/token", {params:{grant_type:"password"}, corpo:{email, password:senha}, semSessao:true});
   guardarSessao(s);
 }
 async function renovarSessao(){
   if(!E.sessao?.refresh_token) return false;
-  // outra aba (ou a página do informativo) pode já ter renovado: usa a sessão que ela guardou
-  try{ const g = JSON.parse(localStorage.getItem("radar_sessao") || "null");
+  // a página do informativo, nesta mesma aba, pode já ter renovado: usa a sessão que ela guardou
+  try{ const g = JSON.parse(sessionStorage.getItem("radar_sessao") || "null");
     if(sessaoValida(g) && g.user.id === E.sessao.user.id && g.access_token !== E.sessao.access_token){ E.sessao = g; return true; } }catch(e){}
   try{
     const s = await pedir("POST", "/auth/v1/token", {params:{grant_type:"refresh_token"}, corpo:{refresh_token:E.sessao.refresh_token}, semSessao:true});
@@ -862,7 +953,13 @@ const TELAS = {
     const doRobo = p.rascunhos_robo ? await ler("radar_conteudos", {select:"id,titulo,assunto_id,criado_em,avisos_ia", status:"eq.rascunho", modelo_ia:"like.*(robô)", order:"criado_em.desc", limit:"10"}) : [];
     const [mesIa] = await ler("radar_v_ia_mes", {select:"*"});
     const c = (n, rotulo, aba, alerta) => `<button class="cartao ${alerta && n ? "alerta" : ""}" data-acao="aba" data-aba="${aba}"><b>${n}</b><span>${rotulo}</span></button>`;
-    return `<h1>Painel do dia</h1>
+    // v0.22.0 (rodada 2 da varredura geral): o robô de coleta parado há mais de 12 horas (roda de 6 em 6 no GitHub). O GitHub desliga
+    // sozinho os robôs agendados do repositório público depois de 60 dias sem atividade, e eles só voltam com "Enable workflow"
+    const parada = p.coleta_atrasada ? `<div class="aviso alerta" id="coleta-parada"><b>O robô de coleta não roda há mais de 12 horas</b>${p.ultima_coleta
+      ? ` (a última rodada foi em ${dataHora(p.ultima_coleta)})` : ""}. Ele roda de 6 em 6 horas no GitHub; parado, param também o robô do site, os avisos por e-mail e o resumo de segunda. O GitHub desliga sozinho os robôs agendados do repositório público depois de 60 dias sem atividade: ${ehAdmin()
+      ? "no GitHub, Actions → “Radar — coleta das fontes oficiais” → Enable workflow (e também “Radar — publicar no site” e “Radar — resumo semanal”). A agenda do banco religa uma vez por dia os desligados por inatividade (sql/radar-redes-agenda.sql, com o segredo RADAR_GITHUB_TOKEN na função radar-redes)."
+      : "avise o administrador."}</div>` : "";
+    return `<h1>Painel do dia</h1>${parada}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
         ${c(p.capturas_24h, "Capturas nas últimas 24h", "fila")}
@@ -1144,7 +1241,7 @@ const TELAS = {
           <td>${h(mesExtenso(i.mes))}</td><td>${i.radar_informativo_itens.length}</td>
           <td>${selo(i.status === "fechado" ? "Fechado" : "Em montagem", i.status === "fechado" ? "ok" : "alerta")}</td>
           <td><div class="acoes" style="margin:0"><button class="btn peq sec" data-acao="abrir-informativo" data-id="${i.id}">Abrir</button>
-            <a class="btn peq sec" style="text-decoration:none" href="informativo.html?id=${i.id}" target="_blank" rel="noopener">Imprimir / PDF ↗</a></div></td></tr>`).join("")}</table></div>`
+            <a class="btn peq sec" style="text-decoration:none" href="informativo.html?id=${i.id}" target="_blank" rel="opener">Imprimir / PDF ↗</a></div></td></tr>`).join("")}</table></div>`
         : `<div class="painel"><p class="sub">Nenhuma edição criada ainda.</p></div>`}
       ${botaoMais("informativos", itens.length, lim, "edições")}`;
   },
@@ -1165,12 +1262,17 @@ const TELAS = {
       ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10) e <b>nota_promove</b> (nota da IA que tira a captura de “baixa” e a leva para “média”, mesmo sem palavras da lista; padrão 8; use 11 para desligar) e <b>nota_rebaixa</b> (captura “alta” com nota da IA até este valor desce para “média”; padrão 3; use -1 para desligar). Fila: <b>arquivar_dias</b> (a captura que está na fila há mais dias que isso e é baixa, ou tem nota da IA até <b>arquivar_nota</b>, sai sozinha da triagem e vai para Assuntos → Ignorado; padrão 10 dias e nota 2; use 0 dias para desligar). <b>dias_baixa</b>: notícia com mais dias que isso (pela data da notícia ou, sem ela, da captura) vira baixa relevância; padrão 5; 0 desliga. A que ficou baixa só pela idade continua em “Baixa relevância” e não sai sozinha da fila.`)}
       ${bloco("rascunhos", "Rascunhos automáticos", `O robô prepara sozinho o rascunho das notícias de topo (Assuntos → “Conteúdo gerado”), com as mesmas regras do “Gerar com IA”. Ele não envia para revisão, não aprova e não publica. Só entram capturas de <b>fonte oficial</b>, com o texto oficial capturado, relevância alta, ainda na fila e com nota da IA a partir de <b>nota_minima</b> (padrão 9). <b>por_dia</b>: no máximo quantos rascunhos por dia (padrão 2; 0 desliga); <b>dias</b>: só capturas destes últimos dias (padrão 3); <b>formato</b>: “flash”, “informativo” ou “artigo”; <b>ligado</b>: true ou false.`)}
       ${bloco("pauta", "Pauta e agenda automática", `A Pauta (calendário de publicações no Instagram e no Facebook). <b>agenda_ligada</b>: true ou false; com false, a agenda automática para inteira, sem mexer no SQL (o que está agendado espera, e a peça só sai se alguém clicar em Publicar agora). <b>hora_padrao</b>: a hora de Brasília (“09:30”) que as peças novas recebem ao importar o calendário. <b>janela_horas</b>: de 1 a 48; passado esse tempo da hora marcada, a peça não sai atrasada sozinha (aparece em “Não saíram”). <b>hashtags</b>: as hashtags fixas das legendas, até 3, cada uma começando com # (ex.: ["#Contabilidade", "#Palhoça"]). <b>fatos_fixos</b>: os fatos da Artecon que valem em toda peça, cada um com a fonte, para os números deles não pedirem informação conferida (ex.: [{"informacao": "A Artecon atende empresas desde 1984", "fonte": "Contrato social"}]); até 20.`)}
+      ${bloco("corretor_video", "Corretor de vídeo", `O corretor de vídeo dos reels (Pauta → peça reel). <b>glossario</b>: os termos que a legenda escreve sempre do mesmo jeito (de 1 a 200, cada um de 2 a 40 caracteres, como ["eSocial", "Simples Nacional"]). <b>variantes</b>: como a transcrição costuma errar cada termo do glossário (até 20 por termo, como {"IBS": ["ips", "ibis"]}; só vale onde o roteiro tem o termo). <b>duracao_max_s</b>: o limite do reel com a cartela, de 15 a 90 s (acima dele, a aprovação pede confirmação; acima de 90 s, o Facebook não aceita). <b>pausa_max_s</b> (de 0,6 a 2) e <b>pausa_bloco_s</b> (de 0,4 a 2): a partir de quantos segundos a pausa dentro da frase e entre frases é encurtada. <b>lufs</b>: o volume final, de −24 a −9 (o padrão das redes é −14). <b>cartela_s</b>: a duração da cartela final, de 2 a 5 s. <b>cartela_extra</b>: uma linha a mais na cartela, até 120 caracteres (ex.: “Desde 1984 · (48) 3242-0530 · artecon.cnt.br”; vazio, nada). <b>limite_min_mes</b>: minutos de transcrição por mês, de 1 a 300; padrão 30 (a Azure gratuita dá 300 minutos por mês ao recurso inteiro e a Agenda se reserva 270: acima de 30, só com o serviço pago ou com a Agenda reservando menos). <b>retencao_dias</b> (de 7 a 120) e <b>retencao_publicado_dias</b> (de 0 a 365): por quantos dias os clipes, o vídeo e os textos ficam guardados (depois do envio; depois de publicado). Fora desses limites, o corretor usa o padrão.`,
+        typeof diagnosticoVideo === "function" ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="video-diagnostico">Testar o corretor de vídeo</button>
+          <span class="sub">Confere o armazenamento privado, o token do GitHub, o robô, a fila e os minutos do mês (sem mostrar segredo).</span></div><div id="diag-video"></div>` : "")}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
-      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento (vai junto, nas informações conferidas da peça).`)}
+      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento, no formato curto “norma, artigo — endereço oficial”, até 300 caracteres (vai às informações conferidas da agenda da semana da Pauta; sem ela, a peça da agenda espera alguém escrever a fonte).`,
+        ehAdmin() ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="preencher-fontes">Preencher fontes oficiais</button>
+          <span class="sub">Põe a fonte conferida pelo Radar (links abertos em 12/10/2026) nas obrigações das redes que estão sem fonte, pelo nome, e salva. Não muda regra, dia, ajuste, nome nem fonte já escrita; a obrigação que não está na tabela fica para conferir à mão.</span></div>` : "")}
       ${bloco("feriados_extras", "Feriados locais e pontos facultativos", `Os feriados nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente bancário) já são considerados. Acrescente aqui os demais: "AAAA-MM-DD" (uma data) ou "MM-DD" (todo ano). Exemplo: ["2026-12-24", "04-24"].`)}
       ${bloco("fale_conosco", "Fale Conosco", `Quadro da última página. Cada setor tem <b>nome</b> (faixa azul), <b>rotulo</b>, <b>telefones</b>, <b>emails</b> e <b>equipe</b> (listas). Telefone pode ser só o número ("48-3033-4978", telefone fixo) ou {"numero": "48-3242-0530", "whatsapp": true, "nome": "opcional"}. Um setor pode ter <b>responsaveis</b> (lista de {"nome", "telefone", "whatsapp"}) e <b>responsaveis_rotulo</b> (ex.: “Contadores Responsáveis”), mostrados numa linha logo abaixo do setor. <b>observacao</b> é uma linha livre no fim do quadro.`)}
-      ${bloco("assinatura", "Fecho, assinatura e identificação legal", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo. <b>cnpj</b> (com ou sem pontuação; vale também o CNPJ alfanumérico) e <b>crc</b> (o registro da empresa no CRC, ex.: “CRC-SC 004064/O-5”: depois da barra vem a letra O, de originário, não o número zero; escrito de outro jeito, como “SC-004064/O-5”, a tela padroniza): a identificação legal que a arte e as legendas do Instagram e do Facebook levam no fim, com a <b>empresa</b> (“empresa · CNPJ … · CRC-SC …”). Cada valor vai entre aspas, e os campos são separados por vírgula. Quem acrescenta é a tela, nunca a IA; o que estiver vazio fica de fora, com aviso.`,
-        (faltaId.length ? `<div class="aviso alerta identificacao-falta"><b>Identificação legal incompleta:</b> falta ${faltaId.map(k => "o " + k).join(" e ")}. Até ${faltaId.length > 1 ? "serem preenchidos" : "ser preenchido"}, a arte e as legendas das redes saem só com o que existe (a tela avisa e não inventa). Escreva entre as aspas de “cnpj” e “crc” abaixo e salve. Se esses campos não estiverem no texto, acrescente antes do último “}” (com a vírgula do começo): <code>, "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 004064/O-5"</code></div>` : "") +
+      ${bloco("assinatura", "Fecho, assinatura e identificação legal", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo. <b>cnpj</b> (com ou sem pontuação; vale também o CNPJ alfanumérico) e <b>crc</b> (o registro da empresa no CRC, ex.: “CRC-SC 007129/O-0”: depois da barra vem a letra O, de originário, não o número zero; escrito de outro jeito, como “SC-007129/0-0”, a tela padroniza): a identificação legal que a arte e as legendas do Instagram e do Facebook levam no fim, com a <b>empresa</b> (“empresa · CNPJ … · CRC-SC …”). Cada valor vai entre aspas, e os campos são separados por vírgula. Quem acrescenta é a tela, nunca a IA; o que estiver vazio fica de fora, com aviso.`,
+        (faltaId.length ? `<div class="aviso alerta identificacao-falta"><b>Identificação legal incompleta:</b> falta ${faltaId.map(k => "o " + k).join(" e ")}. Até ${faltaId.length > 1 ? "serem preenchidos" : "ser preenchido"}, a arte e as legendas das redes saem só com o que existe (a tela avisa e não inventa). Escreva entre as aspas de “cnpj” e “crc” abaixo e salve. Se esses campos não estiverem no texto, acrescente antes do último “}” (com a vírgula do começo): <code>, "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 007129/O-0"</code></div>` : "") +
         (linhaId ? `<p class="sub identificacao-linha">Como sai no rodapé da arte e no fim das legendas: <b>${h(linhaId)}</b></p>` : ""))}`;
   },
 
@@ -1193,6 +1295,13 @@ const TELAS = {
         <li><b>PDF.</b> Clique em <b>Abrir para imprimir / salvar em PDF</b>. Na janela de impressão do Chrome ou Edge: papel A4, margens “Nenhuma” e “Gráficos de segundo plano” marcado.</li>
         <li><b>Fechamento.</b> Com tudo conferido, clique em <b>Fechar edição</b>. Depois disso só o administrador reabre.</li>
       </ol><p class="sub">Artigo que é só do informativo: na aba Publicações, clique em “Não vai ao site” para tirá-lo da fila.</p></div>
+      ${podeEditar() ? `<div class="painel" id="ajuda-reel"><h2>Reel com o corretor de vídeo</h2><ol class="passos">
+        <li><b>Gravar.</b> Celular na vertical, 1080p, 30 quadros por segundo, Vídeo HDR desligado. Lugar silencioso, sem música, rádio ou TV; sem tela, documento ou cliente ao fundo; só as pessoas marcadas na peça. Grave um bloco do roteiro de cada vez, com 1 segundo de silêncio antes e depois, falando como está escrito (números, datas e termos); errou, grave o bloco de novo e apague a tomada ruim. Não edite no celular.</li>
+        <li><b>Enviar.</b> Na Pauta, abra a peça reel: confira a <b>Fala para conferência</b>, escolha os clipes na ordem (até 12), quem fala e as 4 declarações e clique em <b>Enviar a gravação</b>. No celular, não feche nem bloqueie a tela até 100%. Guarde os clipes no celular até o relatório dizer <b>Vídeo corrigido pronto</b> (se precisar regravar um bloco, os outros vão de novo, sem regravar) e então, no mesmo dia, apague do celular e da nuvem pessoal e marque <b>Apaguei</b>.</li>
+        <li><b>O corretor.</b> Em poucos minutos, o robô transcreve (Azure gratuita), compara com o roteiro, corta o começo, o fim, as pausas longas e as hesitações, acerta o som e grava a legenda e a cartela final. Ele nunca troca nem inventa palavra: número, data ou termo diferente do roteiro vira <b>Precisa regravar</b>.</li>
+        <li><b>Relatório e prévia.</b> A peça mostra o que regravar, os cortes, a legenda, o som e 4 quadros. O administrador ouve a prévia e pode manter um corte, marcar “A transcrição errou (vale o roteiro)” ou editar a legenda, sem mudar o áudio.</li>
+        <li><b>Aprovar e postar.</b> O administrador aprova o reel com o vídeo da prévia. Depois, <b>Baixar o vídeo aprovado</b>, postar no Instagram e no Facebook com a legenda copiada, apagar do celular e registrar o link.</li>
+      </ol></div>` : ""}
       <div class="painel"><h2>Como o Radar escolhe o que está em alta</h2><ul>
         <li><b>Nota da IA:</b> depois de cada coleta, a IA lê o título e o resumo de cada captura e dá uma nota de 0 a 10 pelo interesse para os clientes do escritório (obrigação, prazo, alíquota ou regra que muda para muitas empresas vale mais). “Em alta” mostra as de maior nota.</li>
         <li><b>Repetição:</b> quando duas capturas tratam do mesmo fato, só uma aparece em “Em alta” e “Relevantes”; as outras entram junto no assunto. A repetição que chega depois entra sozinha no assunto em andamento — se a IA errou, use <b>Não é o mesmo fato</b> no assunto. Se o assunto já foi ignorado ou publicado, a repetição aparece na triagem com o aviso de qual assunto parece ser.</li>
@@ -1214,10 +1323,10 @@ const TELAS = {
         <tr><td><b>Assuntos</b></td><td>Onde o trabalho acontece: classificação, fundamentação e conteúdos.</td></tr>
         <tr><td><b>Informativos</b></td><td>Edições do Informativo Mensal e o PDF.</td></tr>
         <tr><td><b>Publicações</b></td><td>Aprovados que faltam publicar no site e o registro do que já foi.</td></tr>
-        <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV) e as pessoas com o termo de uso de imagem" : ""}. O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
+        <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), as pessoas com o termo de uso de imagem e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
-        <tr><td><b>Configurações</b></td><td>Teste da IA, regras de relevância das capturas, Pauta e agenda automática, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
+        <tr><td><b>Configurações</b></td><td>Teste da IA, regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
         <tr><td><b>Histórico</b></td><td>Trilha de auditoria: quem fez o quê.</td></tr>` : ""}
         <tr><td><b>Versões</b></td><td>O que mudou em cada versão.</td></tr></table></div></div>
       ${adm ? `<div class="painel"><h2>Cadastrar uma fonte nova</h2><ol class="passos">
@@ -1297,7 +1406,7 @@ async function telaInformativo(id){
   const mudados = fechado && i.fechado_em ? itens.filter(x => new Date(x.radar_conteudos.atualizado_em) > new Date(i.fechado_em)) : [];
   return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
     <h1>Informativo Mensal N.º ${h(numInformativo(i))}</h1>
-    <p>${selo(fechado ? "Fechado" : "Em montagem", fechado ? "ok" : "alerta")} <a href="informativo.html?id=${i.id}" target="_blank" rel="noopener">Abrir para imprimir / salvar em PDF ↗</a></p>
+    <p>${selo(fechado ? "Fechado" : "Em montagem", fechado ? "ok" : "alerta")} <a href="informativo.html?id=${i.id}" target="_blank" rel="opener">Abrir para imprimir / salvar em PDF ↗</a></p>
     ${pendentes.length ? `<div class="aviso erro"><b>Há ${pendentes.length} conteúdo(s) que deixaram de estar aprovados.</b> Aprove de novo ou remova antes de fechar e enviar.</div>` : ""}
     ${mudados.length ? `<div class="aviso erro"><b>${mudados.length} artigo(s) foram alterados depois que a edição foi fechada</b> (${h(mudados.map(x => x.radar_conteudos.titulo).join("; "))}). O PDF gerado agora sai com o texto novo, diferente do que foi conferido no fechamento.</div>` : ""}
     <form class="painel" data-form="informativo" data-id="${i.id}" data-lido="${h(i.atualizado_em)}"><h2>Dados da edição</h2>
@@ -1389,9 +1498,14 @@ async function telaAssunto(id){
   cont.sort((x, y) => ehAnalise(x) - ehAnalise(y) || x.id - y.id);
   const jaConvertido = cont.some(c => Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("Feito a partir do texto para análise"));
   const idsCont = cont.map(c => c.id).join(",");
-  const [pubs, envios, redes] = cont.length ? await Promise.all([ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id"}),
+  // rodada 2 da varredura geral: a trava do boletim pago do banco (RADAR146) compara com TODAS as capturas do boletim (de outro
+  // assunto ou ainda na fila), não só com as deste assunto: o banco diz onde, no título e no texto de cada conteúdo, está a frase que
+  // ele recusaria (só as posições; nada do boletim vem). Só para quem edita; sem resposta (banco antigo), fica a comparação da tela.
+  const [pubs, envios, redes, pagoBanco] = cont.length ? await Promise.all([ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id"}),
     ler("radar_site_envios", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
-    ler("radar_redes_envios", {select:"id,conteudo_id,canal,situacao,url,erro,autorizado_em,enviado_em,publicado_em", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"})]) : [[], [], []];
+    ler("radar_redes_envios", {select:"id,conteudo_id,canal,situacao,url,erro,autorizado_em,enviado_em,publicado_em", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
+    podeEditar() ? rpc("radar_copia_paga_trechos", {p_assunto:a.id, p_textos:cont.flatMap(c => [c.titulo || "", c.corpo || ""])}).catch(() => null) : null]) : [[], [], [], null];
+  E.pagoBanco = Object.fromEntries(Array.isArray(pagoBanco) ? cont.map((c, k) => [c.id, [...trechosDoBanco(c.titulo, pagoBanco[2 * k]), ...trechosDoBanco(c.corpo, pagoBanco[2 * k + 1])]]) : []);
   const idsImg = [...new Set(cont.map(c => c.imagem_id).filter(Boolean))];
   const listaImg = idsImg.length ? await ler("radar_imagens", {select:"id,dados,largura,altura", id:"in.(" + idsImg.join(",") + ")"}) : [];
   const imgs = Object.fromEntries(listaImg.map(i => [i.id, i.dados]));
@@ -1482,7 +1596,8 @@ async function telaAssunto(id){
     `<button class="btn verde" type="button" data-acao="trilha-clicar" data-botao="aprovar" data-id="${revisando[0].id}">✓ Aprovar</button>` + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 3];
   else if(foraDoSite || (noSite && !redeAgora)) prox = null;
   else if(noSite){ prox = proxRede(redeAgora, redeDe(redeAgora), cRede, imgs[cRede.imagem_id], a.categoria, pubs.find(p => p.conteudo_id === cRede.id && !p.versao_anterior)?.url || "",
-                                  redes.find(r => r.conteudo_id === cRede.id && r.canal === redeAgora));
+                                  redes.find(r => r.conteudo_id === cRede.id && r.canal === redeAgora),
+                                  canceladaNoEnvio(redes.filter(r => r.conteudo_id === cRede.id), redeAgora));
     // v0.19.0: o outro canal não precisa esperar este: “Publicar nos canais que faltam” (passo Publicar) publica cada um ou os dois
     if(faltaRede) prox[2] += ir(`#faltam-${cRede.id}`, "Publicar nos canais que faltam", "sec"); }
   else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação"), 0];
@@ -1640,7 +1755,8 @@ async function telaAssunto(id){
         <p class="sub" style="margin-top:0">${temOficial ? "“Gerar com IA” busca o trecho que comprova, escreve o rascunho e faz a capa e o kit das redes; “Gerar texto com IA” só escreve (e faz a capa). Revisar e aprovar continua sendo da equipe."
           : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve o rascunho a partir dela, com palavras próprias (FUNDAMENTAÇÃO NÃO CONFIRMADA). Revise e aprove; para o site, inclua o texto oficial e fundamente no passo 1, ou o administrador usa “Publicar mesmo assim”."
           : "Sem texto capturado: escreva sem IA, ou inclua o texto oficial no passo 1."}</p>` : ""}
-      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado, jaConvertido)).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
+      ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado, jaConvertido,
+        envios.some(e => e.conteudo_id === c.id && ["autorizado","enviando"].includes(e.situacao)))).join("") || `<p class="sub">Nenhum conteúdo escrito ainda.</p>`}
     </div>
     </section>
 
@@ -1684,10 +1800,16 @@ function fonteDoEndereco(url){
 const NOME_REDE = {instagram:"Instagram", facebook:"Facebook"};
 const situacaoRede = r => !r ? "falta" : {aguardando_site:"vai junto com o site", autorizado:"autorizado", enviando:"publicando", erro:"não concluída",
   publicado:"publicado", dispensado:"não vai", excluido:"excluída"}[r.situacao] || "falta";
+/* varredura geral (v0.22.0): a publicação cancelada no meio do envio (parada em “publicando”: a Meta pode ter publicado sem o
+   registro entrar) pode estar no ar. Autorizar de novo o mesmo canal pede a caixa “Conferi no …: não saiu” (o banco recusa sem
+   ela, RADAR166), até que uma publicação desse canal saia de fato. redes: as do conteúdo. */
+const canceladaNoEnvio = (redes, k) => redes.some(r => r.canal === k && r.situacao === "cancelado" && r.enviado_em
+  && !redes.some(d => d.canal === k && d.id > r.id && ["publicado","excluido"].includes(d.situacao)));
+const caixaConferiRede = (id, k) => `<label class="conferi-rede"><input type="checkbox" id="${id}" data-canal="${k}"> Conferi no ${NOME_REDE[k]}: a publicação cancelada no meio do envio não saiu</label>`;
 /* v0.19.0: os canais ainda livres de um conteúdo (sem autorização em aberto, publicação ou “Não vai”) */
 const redeLivre = redes => ["instagram", "facebook"].filter(k => !redes.some(r => r.canal === k && ["aguardando_site","autorizado","enviando","erro","publicado","dispensado"].includes(r.situacao)));
 /* O próximo passo da trilha num canal: monta a imagem (v0.20.0: a arte vertical) e a legenda para o administrador conferir e autorizar. */
-function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
+function proxRede(canal, r, c, capa, categoria, urlSite, ultima, conferir = false){
   const nome = NOME_REDE[canal], adm = ehAdmin(), passo = canal === "instagram" ? 5 : 6;
   const cancelar = r => adm ? `<button class="btn sec" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Cancelar autorização</button>` : "";
   if(r?.situacao === "autorizado") return [`Publicar no ${nome}`, `A publicação foi autorizada em ${dataHora(r.autorizado_em)} e ainda não saiu (a Meta pode não estar configurada).`,
@@ -1704,6 +1826,7 @@ function proxRede(canal, r, c, capa, categoria, urlSite, ultima){
     `${caiu}<div class="rede-montagem"><div class="rede-arte"><img id="rede-imagem" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem da publicação no ${nome} (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda"><label for="rede-legenda">Legenda</label><textarea id="rede-legenda" maxlength="2200" data-chave="${chave}">${h(legenda)}</textarea>
       <span class="sub">${canal === "instagram" ? "No Instagram o link da legenda não é clicável: a legenda indica o link na bio." : "No Facebook o link da legenda é clicável."} Até 2.200 caracteres.</span></div></div>
+    ${conferir ? caixaConferiRede("rede-conferi", canal) : ""}
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}</button>
       <button class="btn sec" type="button" data-acao="dispensar-rede" data-canal="${canal}" data-id="${c.id}">Não publicar no ${nome}</button></div>`, passo];
 }
@@ -1726,12 +1849,21 @@ function legendaRede(c, canal, urlSite, categoria, limite = 2200){
 }
 /* v0.20.0: a legenda montada: o texto, a linha de identificação legal e as hashtags, nesta ordem, em até "limite" caracteres. O que
    passa sai do fim do texto (no fim de uma frase, se der), nunca da identificação nem das hashtags. */
-function comporLegenda(texto, hashtags, limite = 2200){
-  const fim = [linhaIdentificacao(), hashtags].filter(Boolean).join("\n\n"), cabe = limite - (fim ? fim.length + 2 : 0);
+function comporLegenda(texto, hashtags, limite = 2200, fonte = ""){
+  const fim = [fonte, linhaIdentificacao(), hashtags].filter(Boolean).join("\n\n"), cabe = limite - (fim ? fim.length + 2 : 0);
   let t = String(texto || "").trim();
-  if(t.length > cabe){ const corte = t.slice(0, Math.max(0, cabe - 1)), p = Math.max(corte.lastIndexOf(". "), corte.lastIndexOf("\n"));
+  if(t.length > cabe){ const corte = t.slice(0, Math.max(0, cabe - 1)), p = fimDeFrase(corte);
     t = p > cabe / 2 ? corte.slice(0, p + 1).trim() : corte.trimEnd() + "…"; }
   return [t, fim].filter(Boolean).join("\n\n").slice(0, limite);
+}
+/* Rodada 2 da varredura geral: "fonte" (a linha “Fonte: …” do “Usar a sugestão” da Pauta) vai no fim, com a identificação e as
+   hashtags, e nunca é cortada. O último fim de frase (". " ou a quebra de linha) de um texto, sem contar o ponto de abreviação de
+   citação ("art. 9º", "arts. 5º", "nº.", "inc. II", "Cód. 1708", "§ 2º, al. b"): ali a frase continua. -1 se não há. */
+function fimDeFrase(t){
+  let p = -1;
+  for(const m of String(t).matchAll(/\. |\n/g))
+    if(m[0] === "\n" || !/(?:^|[^\p{L}\p{N}])(?:arts?|incs?|c[óo]d|n[º°]?|p[áa]gs?|par|al|cf|obs|sr|sra|dra?|av)$/iu.test(t.slice(Math.max(0, m.index - 8), m.index))) p = m.index;
+  return p;
 }
 /* v0.20.0: o kit das redes que a IA montou (radar_conteudos.kit_ia: chamada e apoio da arte, legendas do Instagram e do Facebook e o
    roteiro do reel). É sugestão: só vale o kit inteiro e em dia. Se o texto mudou depois, o banco marca “desatualizado” (ou o kit é só
@@ -1762,9 +1894,9 @@ function legendaIA(c, canal, urlSite, limite = 2200){
    que foi preenchido: a tela avisa o que falta e nunca inventa. Quem acrescenta é a tela (legenda e arte), nunca a IA. */
 const cnpjLimpo = v => String(v || "").toUpperCase().replace(/[\s./-]/g, "");
 const textoIdentificacao = (k, ident = E.identificacao) => { const v = (ident || {})[k]; return typeof v === "string" ? v.trim() : ""; };
-/* v0.20.0: o registro no CRC como sai nas redes, “CRC-SC 004064/O-5”. O formato de Santa Catarina, escrito de qualquer jeito
-   (“SC-004064/0-5”, “crc/sc 004064/o-5”, “004064/O-5”), é padronizado: depois da barra vem a letra da categoria (O, de originário; S,
-   T ou P), e o número zero no lugar do O vira a letra. O formato antigo (“1SC004064/O-5”) ganha só o “CRC ” na frente; o que já traz
+/* v0.20.0: o registro no CRC como sai nas redes, “CRC-SC 007129/O-0”. O formato de Santa Catarina, escrito de qualquer jeito
+   (“SC-007129/0-0”, “crc/sc 007129/o-0”, “007129/O-0”), é padronizado: depois da barra vem a letra da categoria (O, de originário; S,
+   T ou P), e o número zero no lugar do O vira a letra. O formato antigo (“1SC007129/O-0”) ganha só o “CRC ” na frente; o que já traz
    “CRC” noutro formato (dois registros, por exemplo) sai como está, só com o zero da categoria trocado pela letra O. "" quando não
    reconhece: a validação recusa (e o que já estava gravado sai como foi escrito). */
 function crcFormatado(v){
@@ -2074,7 +2206,8 @@ function blocoTodos(c, categoria, capa, redes){
       Se a publicação no site não sair, ou o texto mudar, ${canais.length > 1 ? "as redes caem" : "a rede cai"} junto.</p>
     <div class="rede-montagem"><div class="rede-arte"><img id="todos-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda">${canais.map(k => `<label><input type="checkbox" class="todos-canal" data-canal="${k}" checked> ${NOME_REDE[k]}</label>
-        <textarea id="todos-legenda-${k}-${c.id}" maxlength="2000" data-chave="${c.id}:todos-${k}" aria-label="Legenda do ${NOME_REDE[k]}">${h(legenda(k))}</textarea>`).join("")}
+        <textarea id="todos-legenda-${k}-${c.id}" maxlength="2000" data-chave="${c.id}:todos-${k}" aria-label="Legenda do ${NOME_REDE[k]}">${h(legenda(k))}</textarea>
+        ${canceladaNoEnvio(redes, k) ? caixaConferiRede(`todos-conferi-${k}-${c.id}`, k) : ""}`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.000 caracteres em cada legenda.</span></div></div>
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-todos" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar em todos</button></div></details>`;
 }
@@ -2090,7 +2223,8 @@ function blocoFaltam(c, categoria, capa, redes, urlSite){
     <p class="sub">A notícia já está no site. Confira a imagem e ${canais.length > 1 ? "as legendas (desmarque o canal que não quiser)" : "a legenda"}: ao autorizar, a publicação sai na hora ${canais.length > 1 ? "no Instagram e no Facebook" : "no " + NOME_REDE[canais[0]]}.</p>
     <div class="rede-montagem"><div class="rede-arte"><img id="faltam-imagem-${c.id}" class="rede-imagem" data-pendente="1" data-conteudo="${c.id}" alt="Imagem das redes (montando…)">${camposArte(c.id)}</div>
       <div class="rede-legenda">${canais.map(k => `<label><input type="checkbox" class="faltam-canal" data-canal="${k}" checked> ${NOME_REDE[k]}</label>
-        <textarea id="faltam-legenda-${k}-${c.id}" maxlength="2200" data-chave="${c.id}:faltam-${k}" aria-label="Legenda do ${NOME_REDE[k]} (canais que faltam)">${h(legenda(k))}</textarea>`).join("")}
+        <textarea id="faltam-legenda-${k}-${c.id}" maxlength="2200" data-chave="${c.id}:faltam-${k}" aria-label="Legenda do ${NOME_REDE[k]} (canais que faltam)">${h(legenda(k))}</textarea>
+        ${canceladaNoEnvio(redes, k) ? caixaConferiRede(`faltam-conferi-${k}-${c.id}`, k) : ""}`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.200 caracteres em cada legenda.</span></div></div>
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-faltam" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Publicar nos que faltam</button></div></div>`;
 }
@@ -2255,6 +2389,24 @@ function unidadesDoTexto(linhas){
   });
   return {unidade, textos:partes.map((p, u) => " " + limpaCopia(p.join("\n") + (abertura[u] >= 0 ? "\n" + partes[abertura[u]].join("\n") : "")) + " ")};
 }
+/* Rodada 2 da varredura geral: as faixas [início, fim) que o banco devolve (radar_copia_paga_trechos, contadas por letra como
+   Array.from conta: o emoji é uma letra só) viram trechos do boletim pago, no formato de trechosCopiados. A frase é do próprio texto. */
+function trechosDoBanco(texto, faixas){
+  const letras = Array.from(String(texto || ""));
+  return (Array.isArray(faixas) ? faixas : []).filter(f => Array.isArray(f) && Number.isInteger(f[0]) && Number.isInteger(f[1]) && f[0] >= 0 && f[0] < f[1] && f[1] <= letras.length)
+    .map(([i, j]) => { const t = letras.slice(i, j).join("").replace(/\s+/g, " ").trim();
+      return {palavras:t.split(" ").length, texto:t, fonte:"conferido pelo banco com todas as matérias do boletim", paga:true, citado:false, banco:true}; });
+}
+/* Rodada 2: a legenda e a arte do Instagram e do Facebook também, contra todas as capturas do boletim (a trava do banco, RADAR146,
+   não mostra a frase): o recado mostra o trecho da própria legenda. "" se não há (ou se o banco não respondeu: fica a trava dele). */
+async function pagoDoBanco(id, legendas){
+  const arte = arteDe(id), textos = [...Object.values(legendas), (arte.chamada || "") + "\n" + (arte.apoio || "")];
+  let r; try{ r = await rpc("radar_copia_paga_trechos", {p_assunto:E.assunto, p_textos:textos}); }catch(e){ return ""; }
+  const pago = textos.flatMap((t, k) => trechosDoBanco(t, Array.isArray(r) ? r[k] : null))[0];
+  return pago ? `Frase do boletim pago (ITC) na legenda ou na arte: “${pago.texto.length > 120 ? pago.texto.slice(0, 120) + "…" : pago.texto}” ` +
+    "(o banco conferiu com todas as matérias do boletim guardadas, também as de outro assunto). As frases do boletim pago nunca podem ser reproduzidas, nem citando nem entre aspas: " +
+    "reescreva com palavras próprias e tente de novo." : "";
+}
 /* Trechos iguais ao texto das fontes. Cada fonte é o texto ou {texto, nome, nomes, paga}. Cada trecho diz de qual fonte veio
    ("fonte"), se a fonte está citada pelo nome em cada parágrafo (ou item de lista) em que o trecho está ("citado") e se ele tem
    parte que só existe no boletim pago ("paga": não pode ficar, nem citando). */
@@ -2415,9 +2567,12 @@ function blocoKit(c, ed, urlSite){
     <p class="sub" style="margin:6px 0 0">É sugestão da IA: confira antes de usar. No Instagram e no Facebook vai ao ar o que o administrador autorizar no passo Publicar.</p>
     ${gerar ? `<div class="acoes">${gerar}</div>` : ""}</details>`;
 }
-function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false){
+function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false, siteNaFila = false){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
-  const todas = trechosCopiados(c.corpo, fontes);
+  // rodada 2: mais a frase do boletim que só o banco vê (matéria de outro assunto ou na fila: telaAssunto, E.pagoBanco), no título
+  // ou no texto; a mesma frase, achada também pela tela, não aparece duas vezes
+  const daTela = trechosCopiados(c.corpo, fontes), mesma = (x, y) => (" " + limpaCopia(x) + " ").includes(" " + limpaCopia(y) + " ");
+  const todas = [...daTela, ...((E.pagoBanco || {})[c.id] || []).filter(b => !daTela.some(t => t.paga && (mesma(t.texto, b.texto) || mesma(b.texto, t.texto))))];
   // v0.18.0: o trecho igual ao da fonte pode ficar quando o parágrafo cita a fonte e o campo Fonte está preenchido (vai no fim
   // da notícia); o do boletim pago, nunca. Só o resto impede aprovar.
   const semCredito = !String(c.fonte_credito || "").trim();
@@ -2429,11 +2584,13 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
   // v0.16.0: "Revisar com IA" corrige só as marcas e os trechos iguais ao da fonte (v0.19.0: reescreve com palavras próprias);
   // "Autorizar mesmo assim" deixa o trecho como está (com motivo)
   const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
-  const autorizada = vermelho.length && c.copia_autorizada_em;
+  // varredura geral (v0.22.0): a autorização vale só para o trecho igual ao de fonte livre; a frase do boletim pago nunca se
+  // autoriza (o banco também recusa: RADAR146) e continua travando a aprovação mesmo com uma autorização antiga
+  const autorizada = !pagas.length && semFonte.length && c.copia_autorizada_em;
   const deOnde = t => t.paga ? ` <span class="sub">(boletim pago${t.fonte ? ": " + h(t.fonte) : ""} — reescreva com palavras próprias)</span>`
     : t.fonte ? ` <span class="sub">(${h(t.fonte)})</span>` : "";
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
-  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.ilustracao_id ? ` data-ilustracao="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${autorizada ? 0 : vermelho.length}"${semCredito && todas.length ? ` data-falta-fonte="1"` : ""}${pagas.length ? ` data-pagas="1"` : ""}${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
+  return `<form class="painel" style="background:#FCFDFE" data-form="conteudo" data-id="${c.id}" data-lido="${h(c.atualizado_em)}"${imagem ? ` data-tem-imagem="1"` : ""}${c.ilustracao_id ? ` data-ilustracao="1"` : ""}${c.status === "aprovado" ? ` data-aprovado="1"` : ""} data-copiados="${autorizada ? 0 : vermelho.length}"${semCredito && daTela.length ? ` data-falta-fonte="1"` : ""}${pagas.length ? ` data-pagas="1"` : ""}${autorizada ? ` data-copia-autorizada="1"` : ""} data-categoria-site="${h(CATEGORIA_SITE[categoria] || "")}" data-fonte-url="${h(urlFonte)}">
     ${ed ? avisoRascunho(c) : ""}
     ${marcas.length ? `<div class="aviso erro marcas-verificar"><b>${marcas.length} ponto(s) marcado(s) com [VERIFICAR] — resolva antes de liberar ou publicar.</b>
       <ul>${marcas.map(m => `<li><span class="copiado">${h(m)}</span></li>`).join("")}</ul>Troque cada marca pela informação conferida (ou tire o trecho) e salve${ed ? ", ou clique em “Revisar com IA”: a IA tira as marcas e o que não estiver confirmado vai para os pontos a conferir" : ""}. Enquanto houver marca, o Radar não aprova nem publica.
@@ -2446,13 +2603,13 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
         ? `<b>Autorizado mesmo assim</b> em ${dataHora(c.copia_autorizada_em)}${c.copia_autorizada_motivo ? ` — motivo: “${h(c.copia_autorizada_motivo)}”` : ""}. A autorização vale para este texto: se ele mudar, cai.`
         : `O conteúdo não pode ser aprovado assim.${semFonte.length ? " Reescreva com palavras próprias; se a frase igual for indispensável (dispositivo legal, definição legal), deixe o mínimo, entre aspas, e o parágrafo dela precisa dizer de quem é (“Segundo a Receita Federal, …”, “Conforme o Portal Contábil SC, …”; num item de lista, a frase que apresenta a lista)." : ""}${pagas.length ? " As frases do boletim pago (ITC) nunca podem ser reproduzidas, nem citando nem entre aspas: reescreva com palavras próprias." : ""}`}${semCredito ? " O campo <b>Fonte</b> (abaixo) também precisa estar preenchido: ele sai no fim da notícia." : ""}
       <ul>${vermelho.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 260 ? t.texto.slice(0, 260) + "…" : t.texto)}</span> <span class="sub">(${t.palavras} palavras seguidas)</span>${deOnde(t)}</li>`).join("")}</ul>${vermelho.length > 4 ? `<span class="sub">e mais ${vermelho.length - 4}.</span>` : ""}
-      ${ed && !autorizada ? `<div class="acoes">${revisarIA}<button class="btn peq sec" type="button" data-acao="abrir-autorizar-copia" data-id="${c.id}">Autorizar mesmo assim</button>
-        <span class="sub">“Revisar com IA” ${semFonte.length ? "reescreve o trecho igual com palavras próprias" : ""}${semFonte.length && pagas.length ? " e " : ""}${pagas.length ? "reescreve a frase do boletim pago" : ""}.</span></div>` : ""}</div>` : ""}
+      ${ed && !autorizada ? `<div class="acoes">${revisarIA}${pagas.length ? "" : `<button class="btn peq sec" type="button" data-acao="abrir-autorizar-copia" data-id="${c.id}">Autorizar mesmo assim</button>`}
+        <span class="sub">“Revisar com IA” ${semFonte.length ? "reescreve o trecho igual com palavras próprias" : ""}${semFonte.length && pagas.length ? " e " : ""}${pagas.length ? "reescreve a frase do boletim pago (que não se autoriza)" : ""}.</span></div>` : ""}</div>` : ""}
     ${soFaltaFonte ? `<div class="aviso erro copia falta-fonte"><b>Texto igual ao da fonte em ${todas.length} trecho(s), com a fonte citada no parágrafo, mas o campo Fonte está vazio.</b> Preencha o campo <b>Fonte</b> (abaixo) e salve: ele sai no fim da notícia, dizendo de onde veio o texto.
       <ul>${todas.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul></div>`
       : citadas.length && !semCredito ? `<div class="aviso info copia-citada"><b>Texto igual ao da fonte em ${citadas.length} trecho(s), com a fonte citada no parágrafo.</b> Pode ficar assim: a notícia sai com “Fonte: ${h(String(c.fonte_credito || "").trim())}” no fim.
         <ul>${citadas.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul>${citadas.length > 4 ? `<span class="sub">e mais ${citadas.length - 4}.</span>` : ""}</div>`
-      : !todas.length && fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é só com o texto das capturas deste assunto; não detecta paráfrase muito próxima nem cópia de outras páginas.">(só contra as capturas deste assunto)</span></p>` : ""}
+      : !todas.length && fontes && fontes.length && c.corpo.trim().length > 200 ? `<p class="sub sem-copia" style="margin:0 0 8px">✓ Comparado com o texto da fonte: nenhum trecho de ${COPIA_MINIMA} palavras ou mais copiado. <span title="A comparação é com o texto das capturas deste assunto${(E.pagoBanco || {})[c.id] ? " (o boletim pago, com todas as capturas dele)" : ""}; não detecta paráfrase muito próxima nem cópia de outras páginas.">(${(E.pagoBanco || {})[c.id] ? "contra as capturas deste assunto e todo o boletim pago" : "só contra as capturas deste assunto"})</span></p>` : ""}
     <p>${selo(ROTULOS.formato[c.formato])} ${selo(ROTULOS.conteudo[c.status], tipo)} ${selo(c.gerado_por === "ia" ? (/\(robô\)$/.test(c.modelo_ia || "") ? "preparado pelo robô" : "gerado por IA") : "escrito pela equipe","neutro")}
       ${c.aprovado_em ? `<span class="sub">aprovado em ${dataHora(c.aprovado_em)}</span>` : ""}</p>
     ${Array.isArray(c.avisos_ia) && c.avisos_ia.length ? `<div class="aviso alerta avisos-ia"><b>Pontos a conferir neste texto gerado pela IA</b> (verificação automática contra o texto oficial, feita na geração; não lê números por extenso nem avalia a interpretação):
@@ -2515,7 +2672,8 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     ${c.fora_do_site ? `<div class="aviso info fora-do-site">Marcado como <b>não vai ao site</b> (fica fora da fila de publicações).
         ${ed ? ` <button class="btn peq sec" type="button" data-acao="fora-do-site" data-id="${c.id}" data-valor="">Voltar para a fila</button>` : ""}</div>` : ""}
     ${ed && c.status === "aprovado" && !pronto ? `<div class="aviso alerta sem-fonte">Para registrar a publicação no site, o assunto precisa estar <b>confirmado oficialmente</b> e ter ao menos um <b>trecho conferido em fonte oficial</b>. No Informativo Mensal este conteúdo já pode entrar.</div>` : ""}
-    ${ed && c.status === "aprovado" && pronto ? `<div class="acoes registrar-site"><b class="sub">Depois de publicar no site:</b>
+    ${ed && c.status === "aprovado" && pronto && siteNaFila ? `<p class="sub registrar-site-robo">A publicação no site está autorizada: o robô registra o link sozinho quando a notícia entrar no site.</p>` : ""}
+    ${ed && c.status === "aprovado" && pronto && !siteNaFila ? `<div class="acoes registrar-site"><b class="sub">Depois de publicar no site:</b>
         <input type="text" id="site-url-${c.id}" data-enter="registrar-site" placeholder="Link da notícia (https://artecon.cnt.br/…)" aria-label="Link da notícia no site" style="flex:1;min-width:240px" maxlength="500">
         <input type="date" id="site-data-${c.id}" data-enter="registrar-site" aria-label="Data da publicação no site" value="${hojeLocal()}" max="${hojeLocal()}">
         <input type="text" id="site-obs-${c.id}" data-enter="registrar-site" placeholder="Observação (opcional)" aria-label="Observação" maxlength="500" style="min-width:160px">
@@ -2712,6 +2870,20 @@ const ACOES = {
         : `<div class="aviso erro"><b>Há item a corrigir</b> (veja acima). O segredo do Radar fica em Supabase → Edge Functions → Secrets; limites, crédito e modelos liberados ficam em Portal → Consumo de IA. Depois de alterar, teste de novo.</div>`}`;
   },
 
+  /* v0.22.0: Configurações → Agenda de obrigações → “Preencher fontes oficiais” (administrador). Lê a agenda que está na caixa (com o que
+     foi digitado e não salvo), põe a fonte da tabela (preencherFontes) e, confirmado, grava pelo mesmo caminho do Salvar do bloco */
+  async "preencher-fontes"(el){
+    const f = el.closest("form[data-chave=obrigacoes]");
+    let valor; try{ valor = JSON.parse(f.valor.value); }catch(e){ recado("O conteúdo não é um JSON válido: " + e.message, true); return; }
+    const problema = validarConfig("obrigacoes", valor); if(problema){ recado(problema, true); return; }
+    const {lista, preenchidas, semTabela} = preencherFontes(valor), n = preenchidas.length;
+    const conferir = semTabela.length ? `Sem fonte na tabela (confira à mão e escreva a fonte): ${semTabela.map(x => `“${x}”`).join(", ")}.` : "";
+    if(!n){ recado("Nenhuma fonte a preencher: " + (conferir || "as obrigações da agenda das redes já têm fonte."), semTabela.length ? "aviso" : false); return; }
+    if(!confirm(`Preencher a fonte oficial de ${n} ${n > 1 ? "obrigações" : "obrigação"} e salvar a agenda?\n\nSó entra a fonte de quem está sem ela; regra, dia, ajuste, nome e as fontes já escritas não mudam. A agenda é salva como está na caixa.`
+      + (semTabela.length ? `\n\nFicam sem fonte (não estão na tabela; confira à mão):\n${semTabela.map(x => "• " + x).join("\n")}` : ""))) return;
+    if(await gravarConfig("obrigacoes", lista)) recado(`Fonte oficial preenchida em ${n} ${n > 1 ? "obrigações" : "obrigação"}. Configuração salva.` + (conferir ? " " + conferir : ""), semTabela.length ? "aviso" : false);
+  },
+
   /* v0.12.0: boletim da ITC lido no e-mail pela função radar-itc (Microsoft Graph). O resultado traz só contagens. */
   /* v0.12.0: "Publicar mesmo assim" — o administrador assume a publicação sem a fundamentação oficial, com o motivo registrado */
   /* v0.12.2: o motivo é digitado na própria tela, num quadro que abre abaixo do botão */
@@ -2742,8 +2914,13 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, `publicar no ${nome}`), true); $("#rede-legenda")?.focus(); return; }
     const pub = conferirPublicidade(el.dataset.id, {[canal]:legenda});          // v0.20.0: termos da publicidade e boletim pago
     if(pub.erro){ recado(pub.erro, true); $("#rede-legenda")?.focus(); return; }
+    const pagoB = await pagoDoBanco(el.dataset.id, {[canal]:legenda});        // rodada 2: o boletim de outro assunto (o banco recusaria)
+    if(pagoB){ recado(pagoB, true); $("#rede-legenda")?.focus(); return; }
+    const conferi = $("#rede-conferi");                                          // v0.22.0: cancelada no meio do envio
+    if(conferi && !conferi.checked){ recado(`Confira no ${nome} que a publicação cancelada no meio do envio não saiu e marque a caixa “Conferi no ${nome}: …”.`, true); conferi.focus(); return; }
     if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem e a legenda vão ao ar como estão na tela.` + pub.aviso)) return;
-    const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido});
+    const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido,
+      p_conferi_rede:!!conferi?.checked});
     if(E.legendas) delete E.legendas[el.dataset.id + ":" + canal];
     await publicarRede(envio, canal);
   },
@@ -2757,6 +2934,8 @@ const ACOES = {
     for(const x of caixa?.querySelectorAll(".faltam-canal:checked") || []){
       const k = x.dataset.canal, l = ($(`#faltam-legenda-${k}-${id}`)?.value || "").trim();
       if(l.length < 10){ recado(`Escreva a legenda do ${NOME_REDE[k]} (pelo menos 10 caracteres) ou desmarque o ${NOME_REDE[k]}.`, true); $(`#faltam-legenda-${k}-${id}`)?.focus(); return; }
+      const conferi = $(`#faltam-conferi-${k}-${id}`);                        // v0.22.0: cancelada no meio do envio
+      if(conferi && !conferi.checked){ recado(`Confira no ${NOME_REDE[k]} que a publicação cancelada no meio do envio não saiu e marque a caixa (ou desmarque o ${NOME_REDE[k]}).`, true); conferi.focus(); return; }
       legendas[k] = l;
     }
     const canais = Object.keys(legendas);
@@ -2765,12 +2944,15 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
     const pub = conferirPublicidade(id, legendas);                              // v0.20.0: termos da publicidade e boletim pago
     if(pub.erro){ recado(pub.erro, true); return; }
+    const pagoB = await pagoDoBanco(id, legendas);                              // rodada 2: o boletim de outro assunto (o banco recusaria)
+    if(pagoB){ recado(pagoB, true); return; }
     const nomes = canais.map(k => NOME_REDE[k]).join(" e ");
     if(!confirm(`Publicar agora no ${nomes} da Artecon?\n\nA imagem e ${canais.length > 1 ? "as legendas vão" : "a legenda vai"} ao ar como estão na tela.` + pub.aviso)) return;
     const res = [];
     for(const k of canais){
       let envio;
-      try{ envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(id), p_canal:k, p_legenda:legendas[k], p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido}); }
+      try{ envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(id), p_canal:k, p_legenda:legendas[k], p_imagem:img.getAttribute("src"), p_lido:el.dataset.lido,
+                                                    p_conferi_rede:!!$(`#faltam-conferi-${k}-${id}`)?.checked}); }
       catch(e){ res.push({ok:false, msg:`${NOME_REDE[k]}: ${e.message}`}); continue; }
       if(E.legendas) delete E.legendas[id + ":faltam-" + k];
       res.push(await publicarRede(envio, k, false));
@@ -3003,6 +3185,8 @@ const ACOES = {
     for(const x of caixa?.querySelectorAll(".todos-canal:checked") || []){
       const k = x.dataset.canal, l = ($(`#todos-legenda-${k}-${id}`)?.value || "").trim();
       if(l.length < 10){ recado(`Escreva a legenda do ${NOME_REDE[k]} (pelo menos 10 caracteres) ou desmarque o ${NOME_REDE[k]}.`, true); $(`#todos-legenda-${k}-${id}`)?.focus(); return; }
+      const conferi = $(`#todos-conferi-${k}-${id}`);                         // v0.22.0: cancelada no meio do envio
+      if(conferi && !conferi.checked){ recado(`Confira no ${NOME_REDE[k]} que a publicação cancelada no meio do envio não saiu e marque a caixa (ou desmarque o ${NOME_REDE[k]}).`, true); conferi.focus(); return; }
       legendas[k] = l;
     }
     if(!Object.keys(legendas).length){ recado("Marque o Instagram, o Facebook ou os dois. Para publicar só no site, use “Autorizar publicação no site”.", true); return; }
@@ -3010,10 +3194,13 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, "publicar"), true); return; }
     const pub = conferirPublicidade(id, legendas);                              // v0.20.0: termos da publicidade e boletim pago
     if(pub.erro){ recado(pub.erro, true); return; }
+    const pagoB = await pagoDoBanco(id, legendas);                              // rodada 2: o boletim de outro assunto (o banco recusaria)
+    if(pagoB){ recado(pagoB, true); return; }
     const redesTxt = Object.keys(legendas).map(k => NOME_REDE[k]).join(" e ");
     if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.` + pub.aviso)) return;
     await rpc("radar_autorizar_todos", {p_conteudo:Number(id), p_categoria:cat, p_lido:el.dataset.lido, p_imagem:img.getAttribute("src"),
-      p_legenda_instagram:legendas.instagram || null, p_legenda_facebook:legendas.facebook || null});
+      p_legenda_instagram:legendas.instagram || null, p_legenda_facebook:legendas.facebook || null,
+      p_conferi_rede:Object.keys(legendas).some(k => $(`#todos-conferi-${k}-${id}`)?.checked)});
     if(E.legendas) for(const k of ["instagram", "facebook"]) delete E.legendas[id + ":todos-" + k];
     E.todosFechado = null;
     const robo = await acionarRoboSite();
@@ -3153,7 +3340,7 @@ const ACOES = {
     if(marcas.length){ recado(msgMarcas(marcas, "aprovar"), true); f.querySelector(".marcas-verificar")?.scrollIntoView({behavior:"smooth", block:"center"}); return; }
     if(Number(f.dataset.copiados) > 0 && !f.dataset.copiaAutorizada){ recado("Este conteúdo tem trecho igual ao texto da fonte " +
       (f.dataset.pagas ? "com frase do boletim pago, que precisa ser reescrita com palavras próprias" : "sem a fonte citada: reescreva com palavras próprias ou, se a frase igual for indispensável, diga no parágrafo dela de quem é (“Segundo a Receita Federal, …”)") +
-      " (veja o quadro vermelho). Use “Revisar com IA” ou clique em “Autorizar mesmo assim”, e salve antes de aprovar.", true); return; }
+      " (veja o quadro vermelho). Use “Revisar com IA”" + (f.dataset.pagas ? " (a frase do boletim pago não se autoriza)" : " ou clique em “Autorizar mesmo assim”") + ", e salve antes de aprovar.", true); return; }
     if(f.dataset.faltaFonte){ recado("Preencha o campo Fonte (ele sai no fim da notícia, dizendo de onde veio o texto igual ao da fonte) e salve antes de aprovar.", true); return; }
     // só aprova se o texto ainda for o que foi aberto nesta tela
     const r = await rest("PATCH", "radar_conteudos", {params:{id:"eq." + el.dataset.id, atualizado_em:"eq." + f.dataset.lido},
@@ -3533,6 +3720,28 @@ function validarConfig(chave, v){
         ["informacao", "fonte"].every(k => typeof x[k] === "string" && x[k].trim().length >= 1 && x[k].trim().length <= 300) && !/\(\s*conferir\s*\)/i.test(x.informacao + x.fonte))))
       return "“fatos_fixos” é uma lista de até 20, cada um com “informacao” e “fonte” (até 300 caracteres cada, sem “(conferir)”), como [{\"informacao\": \"A Artecon atende empresas desde 1984\", \"fonte\": \"Contrato social\"}].";
   }
+  // v0.22.0: o corretor de vídeo (todos opcionais; o número fora dos limites o banco troca pelo padrão: a tela recusa antes)
+  if(chave === "corretor_video"){
+    if(!obj) return "O corretor de vídeo precisa ser um objeto { … }.";
+    const objeto = x => x && typeof x === "object" && !Array.isArray(x), texto = (x, min, max) => typeof x === "string" && x.trim().length >= min && x.trim().length <= max;
+    if(v.glossario !== undefined && !(Array.isArray(v.glossario) && v.glossario.length >= 1 && v.glossario.length <= 200 && v.glossario.every(t => texto(t, 2, 40))))
+      return "“glossario” é uma lista de 1 a 200 termos, cada um de 2 a 40 caracteres, como [\"eSocial\", \"DCTFWeb\", \"Simples Nacional\"].";
+    if(v.variantes !== undefined && !(objeto(v.variantes) && Object.entries(v.variantes).every(([k, l]) => texto(k, 2, 40) && Array.isArray(l) && l.length <= 20 && l.every(x => texto(x, 1, 40)))))
+      return "“variantes” é um objeto com cada termo e a lista de até 20 formas como a transcrição o escreve (de 1 a 40 caracteres), como {\"IBS\": [\"ips\", \"ibis\"]}.";
+    const sem = Array.isArray(v.glossario) && objeto(v.variantes) ? Object.keys(v.variantes).filter(k => !v.glossario.some(t => t.trim() === k.trim())) : [];
+    if(sem.length) return `“variantes”: ${sem.map(k => `“${k}”`).join(", ")} não ${sem.length > 1 ? "estão" : "está"} no “glossario” (a variante só vale para um termo do glossário).`;
+    for(const [k, min, max, inteiro, o] of [["duracao_max_s", 15, 90, false, "o limite do reel com a cartela, em segundos"], ["pausa_max_s", 0.6, 2, false, "a pausa dentro da frase, em segundos"],
+        ["pausa_bloco_s", 0.4, 2, false, "a pausa entre frases, em segundos"], ["lufs", -24, -9, false, "o volume final (o padrão das redes é -14)"],
+        ["cartela_s", 2, 5, false, "a duração da cartela final, em segundos"], ["limite_min_mes", 1, 300, true, "os minutos de transcrição por mês"],
+        ["retencao_dias", 7, 120, true, "os dias de guarda depois do envio"], ["retencao_publicado_dias", 0, 365, true, "os dias de guarda depois de publicado"]])
+      if(v[k] !== undefined && !(typeof v[k] === "number" && Number.isFinite(v[k]) && v[k] >= min && v[k] <= max && (!inteiro || Number.isInteger(v[k]))))
+        return `“${k}” é ${o}: ${inteiro ? "número inteiro" : "número"} de ${String(min).replace(".", ",")} a ${String(max).replace(".", ",")} (sem aspas).`;
+    if(v.cartela_extra !== undefined && !(typeof v.cartela_extra === "string" && v.cartela_extra.trim().length <= 120 && !/[\u0000-\u001f\u007f{}\\]/.test(v.cartela_extra)))
+      return "“cartela_extra” é uma linha de até 120 caracteres, como \"Desde 1984 · (48) 3242-0530 · artecon.cnt.br\", ou vazio (\"\").";
+    // a linha extra vai ao ar no fim de todo reel: os termos que a publicidade da profissão não usa ficam de fora
+    const termos = typeof v.cartela_extra === "string" ? [...new Set([...termosPublicidade(v.cartela_extra).trava, ...(typeof termosPeca === "function" ? termosPeca(v.cartela_extra) : [])])] : [];
+    if(termos.length) return `“cartela_extra” vai ao ar no fim de todo reel: tire ${termos.map(t => `“${t}”`).join(", ")} (a publicidade da profissão contábil informa, não vende).`;
+  }
   if(chave === "assinatura"){
     if(!(obj && ["local","empresa","responsavel"].every(c => typeof v[c] === "string"))) return "Informe “local”, “empresa” e “responsavel”.";
     // v0.20.0: identificação legal das redes; os dois são opcionais (vazio, a tela avisa e não inventa). Sem aspas, o JSON lê o CNPJ
@@ -3542,13 +3751,22 @@ function validarConfig(chave, v){
     if(v.cnpj !== undefined && v.cnpj.trim() && !cnpjValido(v.cnpj))
       return "“cnpj” não confere (dígitos verificadores): informe o CNPJ da empresa, com ou sem pontuação (vale o alfanumérico), ou deixe vazio (\"\").";
     if(v.crc !== undefined && typeof v.crc !== "string")
-      return "“crc”: escreva o registro entre aspas, ex.: \"crc\": \"CRC-SC 004064/O-5\", ou deixe vazio (\"\").";
+      return "“crc”: escreva o registro entre aspas, ex.: \"crc\": \"CRC-SC 007129/O-0\", ou deixe vazio (\"\").";
     if(v.crc !== undefined && v.crc.trim() && !(/^[^\n<>]{4,40}$/.test(v.crc.trim()) && (v.crc.match(/\d/g) || []).length >= 4 && crcFormatado(v.crc)))
-      return "“crc”: informe o registro no CRC como “CRC-SC 004064/O-5” (depois da barra vem a letra O, de originário, não o número zero), ou deixe vazio (\"\").";
+      return "“crc”: informe o registro no CRC como “CRC-SC 007129/O-0” (depois da barra vem a letra O, de originário, não o número zero), ou deixe vazio (\"\").";
   }
   return "";
 }
 
+/* O Salvar de um bloco das Configurações: confere (validarConfig) e grava em radar_config. false, com o recado, quando não confere.
+   v0.22.0: também é o caminho do “Preencher fontes oficiais” da agenda de obrigações. */
+async function gravarConfig(chave, valor){
+  const problema = validarConfig(chave, valor); if(problema){ recado(problema, true); return false; }
+  const r = await rest("POST", "radar_config", {params:{on_conflict:"chave"}, corpo:{chave, valor}, prefer:"resolution=merge-duplicates,return=representation"});
+  if(!Array.isArray(r) || !r.length) throw new ErroApi("Nada foi alterado: o seu perfil não permite esta ação.");
+  if(chave === "assinatura") trocarIdentificacao(valor);        // v0.20.0: as legendas editadas na tela ganham a linha nova
+  await desenhar(); return true;
+}
 const FORMS = {
   async novoInformativo(f){
     const m = /^(\d{4})-(\d{2})$/.exec(f.mes.value); if(!m){ recado("Escolha o mês da agenda.", true); return; }
@@ -3561,11 +3779,7 @@ const FORMS = {
   async informativo(f){ await salvarInformativo(f); await desenhar(); recado("Edição salva."); },
   async config(f){
     let valor; try{ valor = JSON.parse(f.valor.value); }catch(e){ recado("O conteúdo não é um JSON válido: " + e.message, true); return; }
-    const problema = validarConfig(f.dataset.chave, valor); if(problema){ recado(problema, true); return; }
-    const r = await rest("POST", "radar_config", {params:{on_conflict:"chave"}, corpo:{chave:f.dataset.chave, valor}, prefer:"resolution=merge-duplicates,return=representation"});
-    if(!Array.isArray(r) || !r.length) throw new ErroApi("Nada foi alterado: o seu perfil não permite esta ação.");
-    if(f.dataset.chave === "assinatura") trocarIdentificacao(valor);        // v0.20.0: as legendas editadas na tela ganham a linha nova
-    await desenhar(); recado(f.dataset.chave === "relevancia" ? "Regras salvas. As capturas da fila foram reavaliadas." : "Configuração salva.");
+    if(await gravarConfig(f.dataset.chave, valor)) recado(f.dataset.chave === "relevancia" ? "Regras salvas. As capturas da fila foram reavaliadas." : "Configuração salva.");
   },
   async novoAssunto(f){
     if(f.titulo.value.trim().length < 5){ recado("Informe o título do assunto (ao menos 5 caracteres).", true); return; }
@@ -3648,6 +3862,8 @@ const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-
   "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de"]);
 // v0.21.0: as ações e os formulários da Pauta (radar-pauta.js); sem o arquivo, a aba mostra o recado e nada mais muda
 if(typeof PAUTA === "object"){ Object.assign(ACOES, PAUTA.acoes); Object.assign(FORMS, PAUTA.forms); PAUTA.navegacao.forEach(a => NAVEGACAO.add(a)); }
+// v0.22.0: as do corretor de vídeo do reel (radar-video.js); sem o arquivo, a peça reel mostra o recado
+if(typeof VIDEO === "object"){ Object.assign(ACOES, VIDEO.acoes); Object.assign(FORMS, VIDEO.forms); VIDEO.navegacao.forEach(a => NAVEGACAO.add(a)); }
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa
@@ -3709,6 +3925,12 @@ document.addEventListener("change", ev => {
   if(ev.target.matches?.("[data-foto-peca], [data-csv-pauta]")){
     if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha o arquivo de novo.", true); return; }
     executar(ev.target.dataset.fotoPeca ? enviarFotosPeca : lerCsvPauta, false, ev.target); return; }
+  // v0.22.0: os clipes do reel (radar-video.js: só lê na tela; nada sai antes de "Enviar a gravação") e a cartela de quem fala
+  if(ev.target.matches?.("[data-video-arquivos]")){
+    if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha os arquivos de novo.", true); return; }
+    executar(escolherClipes, false, ev.target); return; }
+  if(ev.target.id === "video-quem" && typeof linhasCartela === "function"){ const c = $("#video-cartela");
+    (E.video.quem ||= {})[E.video.peca] = ev.target.value; if(c) c.innerHTML = htmlCartela(Number(ev.target.value)); }
   if(ev.target.matches?.(".arte-fundo")) arteMudou(ev.target);                                        // v0.20.0: fundo da arte
   if(ev.target.id === "filtro-assuntos"){ E.filtros.assuntos = ev.target.value; desenhar(); }
   if(ev.target.id === "ni-num") ev.target.dataset.manual = "1";
@@ -3720,7 +3942,7 @@ document.addEventListener("change", ev => {
   }
 });
 
-try{ E.sessao = JSON.parse(localStorage.getItem("radar_sessao") || "null"); }catch(e){ E.sessao = null; }
+E.sessao = lerSessaoGuardada();
 if(!sessaoValida(E.sessao)) E.sessao = null;
 desenhar();
 </script>

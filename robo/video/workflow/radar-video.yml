@@ -1,0 +1,124 @@
+# Radar Artecon — corretor de vídeo (v0.22.0): o MODELO do workflow do repositório PRIVADO arteconartescontabeis-design/radar-video.
+#
+# Este arquivo NÃO roda aqui (não está em .github/workflows deste repositório público): na instalação, é copiado tal qual para
+# .github/workflows/radar-video.yml do repositório privado, que só guarda este workflow. O código do robô vem DESTE repositório, num
+# commit fixo (a variável RADAR_VIDEO_COMMIT, conferida depois do checkout): mudar o robô é publicar aqui, rodar os testes e trocar o
+# SHA lá. O privado existe porque o log de um repositório público é aberto a qualquer pessoa logada no GitHub.
+#
+# Quem aciona: a função radar-video (workflow_dispatch, ao fim de cada envio, quando o robô termina um pedido e ainda há fila, e pela
+# reserva do pg_cron, de 10 em 10 minutos, só com fila e no máximo 3 vezes por pedido: no 3º acionamento sem o robô pegar — a chave do
+# robô ou as variáveis abaixo erradas, o token do GitHub no Supabase vencido, este workflow desligado —, o pedido vira erro
+# "robo_nao_pegou" na peça e a reserva para, em vez de uma execução vermelha a cada 10 minutos; sql/radar-video-agenda.sql) e esta
+# agenda própria, 2 vezes por dia útil, que pega o que ainda estiver na fila (por exemplo, com a agenda do banco parada; com o token
+# vencido, o pedido já virou "robo_nao_pegou" uns 30 a 40 minutos depois do envio, e volta com "Tentar de novo"). Cada execução sem
+# pedido gasta ~1 minuto dos 2.000 grátis do plano. Esta agenda não depende do token: para PARAR o corretor, desligue o workflow
+# (Actions → este workflow → Disable workflow); tirar o token não para. Na reversão da versão, desligue ou apague este workflow (sem o
+# banco, cada execução da agenda falharia). Nenhuma entrada: o robô pega o pedido na radar-video, e nada do pedido aparece no GitHub.
+# Um pedido por execução; a fila (concurrency com queue: max) roda uma execução de cada vez, sem cancelar as que esperam.
+#
+# Segredos e variáveis (Settings → Secrets and variables → Actions do repositório privado; o plano não precisa de "environment"):
+#   RADAR_VIDEO_ROBO_CHAVE  segredo: a cópia de 'radar_video_robo' do Vault do Supabase (copiada do painel direto para cá, nunca pelo
+#                           chat). Só existe nos passos que falam com a radar-video (pegar, alinhar, entregar)
+#   AZURE_FALA_CHAVE        segredo: a CHAVE 2 do recurso F0 artecon-voz; AZURE_FALA_REGIAO (ex.: brazilsouth). Só no passo Transcrever
+#   AZURE_FALA_MODO         segredo opcional: vazio = F0 pelo Speech SDK; "rapido" = fast transcription (recurso pago), com
+#   AZURE_FALA_ENDPOINT     o endereço do recurso (segredo opcional). A troca pelo pago é só cadastrar os dois
+#   RADAR_VIDEO_URL         variável: https://<projeto>.supabase.co/functions/v1/radar-video (o mesmo projeto de radar-config.js)
+#   RADAR_VIDEO_COMMIT      variável: o SHA (40 caracteres) do commit liberado deste repositório público
+#
+# Regras do log (o GitHub avisa que esconder segredo no log "não é garantido"): o robô só escreve a fase, o uuid do pedido, números e
+# códigos (robo/video/segredo.py); o stderr do ffmpeg nunca é impresso; sem upload-artifact, sem set -x, sem cache; segredo só no
+# env do passo que precisa dele, nunca escrito dentro de um run. Settings → Actions → General: retenção dos logs em 7 dias.
+#
+# Isolamento: a chave do robô só nos passos pegar, alinhar e entregar, que rodam com o python3 do sistema e só a biblioteca padrão; a
+# da Azure só no Transcrever; os outros passos não têm segredo. Todo ffmpeg roda no contêiner radar-ffmpeg:local (robo/video/Dockerfile)
+# com --network none, nenhum -e/--env e o sistema de arquivos só de leitura (robo/video/isolado.py). As ações são fixadas pelo SHA e o
+# Python do robô é instalado com --require-hashes.
+name: Radar — corretor de vídeo
+
+on:
+  workflow_dispatch:                   # sem entradas
+  schedule:
+    - cron: "47 13,19 * * 1-5"         # reserva: 10h47 e 16h47 de Brasília, de segunda a sexta
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-video
+  queue: max                           # um de cada vez, e nenhum pendente é cancelado (não combina com cancel-in-progress)
+
+jobs:
+  corrigir:
+    runs-on: ubuntu-24.04              # fixo: o Speech SDK só lista o Ubuntu até a 24.04 (ubuntu-latest vira 26.04)
+    # pegar + imagem do ffmpeg (1 a 2 min) + transcrição (até ~10 min esperando a vaga do F0, dividido com a Agenda) + montagem
+    timeout-minutes: 35
+    env:
+      RADAR_VIDEO_ISOLADO: docker      # o ffmpeg sempre no contêiner (outro valor é erro: nunca roda solto)
+    steps:
+      - name: Baixar o código do robô (repositório público, commit fixo)
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803   # v6.1.0
+        with:
+          repository: arteconartescontabeis-design/radar
+          ref: ${{ vars.RADAR_VIDEO_COMMIT }}
+          persist-credentials: false
+
+      - name: Conferir o commit
+        env:
+          COMMIT: ${{ vars.RADAR_VIDEO_COMMIT }}
+        run: |
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+
+      - name: Pegar o pedido e baixar os clipes
+        id: pegar
+        env:
+          RADAR_VIDEO_URL: ${{ vars.RADAR_VIDEO_URL }}
+          RADAR_VIDEO_ROBO_CHAVE: ${{ secrets.RADAR_VIDEO_ROBO_CHAVE }}
+        run: python3 -I robo/video/corrigir.py pegar "$RUNNER_TEMP/corretor"
+
+      - name: Preparar o Python (sem segredo)
+        if: steps.pegar.outputs.seguir == 'sim'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/v"
+          "$RUNNER_TEMP/v/bin/pip" install --disable-pip-version-check --require-hashes --no-deps -q -r robo/video/requirements.txt
+
+      - name: Montar o ffmpeg isolado (sem segredo)
+        if: steps.pegar.outputs.seguir == 'sim'
+        run: docker build -q -t radar-ffmpeg:local -f robo/video/Dockerfile robo/video
+
+      - name: Sondar e extrair o áudio (sem segredo)
+        id: preparar
+        if: steps.pegar.outputs.seguir == 'sim'
+        run: |
+          "$RUNNER_TEMP/v/bin/python" -I robo/video/corrigir.py preparar "$RUNNER_TEMP/corretor"
+
+      - name: Transcrever (Azure)
+        if: steps.preparar.outputs.transcrever == 'sim'
+        continue-on-error: true        # o erro (transcricao_ocupada, azure_cota…) fica em transcricao_erro.txt e vai pelo entregar
+        env:
+          AZURE_FALA_CHAVE: ${{ secrets.AZURE_FALA_CHAVE }}
+          AZURE_FALA_REGIAO: ${{ secrets.AZURE_FALA_REGIAO }}
+          AZURE_FALA_MODO: ${{ secrets.AZURE_FALA_MODO }}
+          AZURE_FALA_ENDPOINT: ${{ secrets.AZURE_FALA_ENDPOINT }}
+        run: |
+          "$RUNNER_TEMP/v/bin/python" -I robo/video/transcrever.py "$RUNNER_TEMP/corretor/fala"
+
+      - name: Alinhar com o roteiro e mandar o relatório parcial
+        if: steps.pegar.outputs.seguir == 'sim'
+        env:
+          RADAR_VIDEO_URL: ${{ vars.RADAR_VIDEO_URL }}
+          RADAR_VIDEO_ROBO_CHAVE: ${{ secrets.RADAR_VIDEO_ROBO_CHAVE }}
+        run: python3 -I robo/video/corrigir.py alinhar "$RUNNER_TEMP/corretor"
+
+      - name: Montar e conferir o vídeo (sem segredo)
+        if: steps.pegar.outputs.seguir == 'sim'
+        run: |
+          "$RUNNER_TEMP/v/bin/python" -I robo/video/corrigir.py montar "$RUNNER_TEMP/corretor"
+
+      - name: Entregar (ou registrar o erro)
+        if: always() && steps.pegar.outputs.pedido == 'sim'
+        env:
+          RADAR_VIDEO_URL: ${{ vars.RADAR_VIDEO_URL }}
+          RADAR_VIDEO_ROBO_CHAVE: ${{ secrets.RADAR_VIDEO_ROBO_CHAVE }}
+          RADAR_VIDEO_JOB: ${{ job.status }}
+        run: python3 -I robo/video/corrigir.py entregar "$RUNNER_TEMP/corretor"

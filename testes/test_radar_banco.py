@@ -45,7 +45,7 @@ def aprovar(conteudo, uid=EDITOR):
 def test_instalacao_cria_19_tabelas_com_rls(db):
     linhas = db.execute("""select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
                            where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'""").fetchall()
-    assert len(linhas) == 25       # v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
+    assert len(linhas) == 27       # v0.22.0: + radar_videos e radar_video_acessos; v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
     assert all(rls for _, rls in linhas), [n for n, rls in linhas if not rls]
 
 
@@ -82,7 +82,7 @@ def test_setup_e_idempotente(db):
     assert db.execute("select frequencia_horas, ativo from radar_fontes where slug = 'pgfn-noticias'").fetchone() == (9, False)
     db.execute("update radar_fontes set frequencia_horas = 6, ativo = true where slug = 'pgfn-noticias'")
     reg = db.execute("select antes, depois from radar_instalacoes order by id desc limit 1").fetchone()
-    assert len(reg[0]) == 25 and len(reg[1]) == 25   # 2ª execução: já havia 25 antes
+    assert len(reg[0]) == 27 and len(reg[1]) == 27   # 2ª execução: já havia 27 antes
 
 
 def test_fontes_do_sql_espelham_o_json_do_robo(db):
@@ -100,7 +100,7 @@ def test_anonimo_nao_le_nada_do_radar(limpo):
     no_ar(limpo)
     tabelas = [r[0] for r in limpo.execute("""select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                              where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'radar\\_%'""").fetchall()]
-    assert len(tabelas) == 34 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 25 tabelas e 9 visões (v0.21.0: + radar_v_pauta_pessoas e radar_v_capas)
+    assert len(tabelas) == 36 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 27 tabelas e 9 visões (v0.21.0: + radar_v_pauta_pessoas e radar_v_capas; v0.22.0: + radar_videos e radar_video_acessos)
     with como("anon") as c:
         for tabela in tabelas:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -471,7 +471,16 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_pauta_importar', 'radar_pauta_conferir', 'radar_pauta_marcar_pronta',
                                                            'radar_pauta_aprovar', 'radar_pauta_desaprovar', 'radar_pauta_publicar_agora',
                                                            'radar_pauta_pode_copiar', 'radar_pauta_registrar_manual', 'radar_pauta_termo_ok',
-                                                           'radar_agenda_situacao', 'radar_pauta_copia_paga_ia')
+                                                           'radar_agenda_situacao', 'radar_pauta_copia_paga_ia',
+                                                           -- rodada 2: onde está a frase do boletim (só editor e administrador)
+                                                           'radar_copia_paga_trechos',
+                                                           -- v0.22.0: corretor de vídeo (cada função confere o papel)
+                                                           'radar_video_criar', 'radar_video_para_envio', 'radar_video_enviado',
+                                                           'radar_video_ajustar', 'radar_video_reconferir', 'radar_video_de_novo',
+                                                           'radar_video_descartar', 'radar_video_apaguei', 'radar_video_apaguei_baixado',
+                                                           'radar_video_para_previa', 'radar_video_para_baixar', 'radar_video_resumo',
+                                                           'radar_video_cota',
+                                                           'radar_pauta_pecas_da_pessoa')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -713,7 +722,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.21.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.22.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -927,12 +936,13 @@ def test_trocar_imagem_autor_ou_fonte_de_conteudo_aprovado_volta_para_revisao(li
 
 def test_configuracoes_iniciais_e_quem_pode_alterar(limpo):
     conf = dict(limpo.execute("select chave, valor from radar_config").fetchall())
-    assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia", "rascunhos", "pauta"}   # v0.9.0: rascunhos; v0.21.0: pauta
+    assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia", "rascunhos", "pauta",
+                         "corretor_video"}   # v0.9.0: rascunhos; v0.21.0: pauta; v0.22.0: corretor_video
     assert len(conf["obrigacoes"]) == 22 and conf["assinatura"]["responsavel"] == "Cleiver Gonçalves"
     assert (conf["assinatura"]["cnpj"], conf["assinatura"]["crc"]) == ("", "")   # v0.20.0: identificação legal vazia até o administrador preencher
     assert all(o["regra"] in ("quinto_dia_util", "dia", "ultimo_dia_util") for o in conf["obrigacoes"])
     with como("authenticated", LEITOR) as c:
-        assert c.execute("select count(*) from radar_config").fetchone()[0] == 7          # a equipe lê
+        assert c.execute("select count(*) from radar_config").fetchone()[0] == 8          # a equipe lê (v0.22.0: + corretor_video)
     with como("authenticated", EDITOR) as c:
         assert c.execute("update radar_config set valor = '[]' where chave = 'feriados_extras' returning chave").fetchone() is None
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -1171,9 +1181,9 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (25, 6, 8, 7, 1, 0)
+        assert _resumo("radar_sem_tx") == (27, 6, 8, 8, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.21.0", [], 25)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.22.0", [], 27)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1194,14 +1204,14 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (25, 6, 8, 7, 2, 0)
+        assert _resumo("radar_parcial") == (27, 6, 8, 8, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
             assert c.execute("""select (select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from information_schema.column_privileges where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from pg_policies where schemaname = 'public' and 'anon' = any(roles))""").fetchone()[0] == 0
-            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (25,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0)
+            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (27,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0), radar_videos e radar_video_acessos (v0.22.0)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_parcial with (force)")
@@ -1221,7 +1231,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (25, 6, 8, 7, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (27, 6, 8, 8, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -2027,10 +2037,10 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
         for _ in range(2):
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
-        # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.21.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.21.0||"]
+        # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.22.0")
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.22.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.21.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.22.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2060,7 +2070,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.21.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.22.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -2606,13 +2616,39 @@ def test_redes_cancelar_e_dispensado_desfeito(limpo):
     with como("authenticated", ADMIN) as c:                                                 # parada há mais de 10 min: cancela
         assert c.execute("select radar_cancelar_rede(%s)", (envio,)).fetchone()[0] is True
     assert limpo.execute("select situacao, imagem from radar_redes_envios where id = %s", (envio,)).fetchone() == ("cancelado", None)
+    # varredura geral (v0.22.0): cancelada no meio do envio, pode ter saído (a Meta publicou e o registro não entrou). Autorizar de
+    # novo o mesmo canal pede a caixa "Conferi no Instagram: não saiu" (RADAR166), na rede e no "Publicar em todos"
+    assert "Cancelada no meio do envio" in limpo.execute("select erro from radar_redes_envios where id = %s", (envio,)).fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR166: a publicação deste conteúdo no Instagram foi cancelada"):
+            c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1)))
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR166"):
+            c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s, false)", (c1, LEGENDA, IMG, _lido(limpo, c1)))
+    limpo.execute("delete from radar_divulgacoes where conteudo_id = %s", (c1,))
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR166"):
+            c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, %s, null)", (c1, _lido(limpo, c1), IMG, LEGENDA))
+        r = c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, %s, null, true)", (c1, _lido(limpo, c1), IMG, LEGENDA)).fetchone()[0]
+        c.execute("select radar_cancelar_site(%s)", (r["site"],))                           # (as redes caem junto)
+    registrar_site(c1)
+    with como("authenticated", ADMIN) as c:
+        de_novo = c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s, true)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
+        assert de_novo and c.execute("select radar_cancelar_rede(%s)", (de_novo,)).fetchone()[0] is True
+        assert c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]   # o outro canal, não
+        c.execute("select radar_cancelar_rede(r.id) from radar_redes_envios r where r.conteudo_id = %s and r.canal = 'facebook' and r.situacao = 'autorizado'", (c1,))
+    # depois que uma publicação do canal sai de fato, a cancelada de antes não pede mais a caixa
+    limpo.execute("""insert into radar_redes_envios (conteudo_id, canal, legenda, situacao, conteudo_lido_em, enviado_em, publicado_em, post_id,
+                                                     excluido_em, excluido_como)
+                     values (%s, 'instagram', 'Publicada e excluída depois.', 'excluido', now(), now(), now(), '99', now(), 'api')""", (c1,))
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
     # a imagem (até 3 MB) não vai para a trilha de auditoria; quem autorizou e a legenda vão
     trilha = limpo.execute("select antes, depois from radar_auditoria where tabela = 'radar_redes_envios'").fetchall()
     assert trilha and all("imagem" not in (x or {}) for par in trilha for x in par)
     assert any((d or {}).get("legenda") == LEGENDA for _, d in trilha)
     # link da imagem inválido (longo demais) não apaga a imagem guardada
     with como("authenticated", ADMIN) as c:
-        outro = c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
+        outro = c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s, true)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
     with como("service_role") as c:
         c.execute("select radar_rede_iniciar(%s)", (outro,))
         c.execute("select radar_rede_concluir(%s, false, null, null, %s, 'falhou')", (outro, "https://x.co/" + "a" * 600))
@@ -3076,7 +3112,7 @@ def test_separar_repeticao_na_fila(limpo):
                                 select id, %s, %s, 'texto', md5(%s) from radar_fontes where slug = 'rfb-noticias' returning id""",
                              (url, titulo, url)).fetchone()[0]
     origem = cap("https://x.gov.br/o", "Subvenção: crédito presumido de ICMS na base do IRPJ e da CSLL")
-    rep = cap("https://x.gov.br/r", "STF exclui créditos presumidos de ICMS da base do PIS e da Cofins")
+    rep = cap("https://x.gov.br/r", "Créditos presumidos de ICMS ficam fora da base do PIS e da Cofins, decide o STF")
     outra = cap("https://x.gov.br/s", "Outra")
     limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (origem, rep))
     assert limpo.execute("select repetidas from radar_v_fila where id = %s", (origem,)).fetchone()[0] == 1
@@ -3107,7 +3143,7 @@ def test_separada_na_triagem_nao_volta_a_ser_juntada(limpo):
                                 select id, %s, %s, 'texto', md5(%s) from radar_fontes where slug = %s returning id""",
                              (url, titulo, url, slug)).fetchone()[0]
     origem = cap("https://x.gov.br/o", "Crédito presumido de ICMS na base do IRPJ e da CSLL")
-    b = cap("https://x.gov.br/b", "STF exclui créditos presumidos de ICMS da base do PIS e da Cofins")
+    b = cap("https://x.gov.br/b", "Créditos presumidos de ICMS ficam fora da base do PIS e da Cofins, decide o STF")
     limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (origem, b))
     with como("authenticated", EDITOR) as c:
         c.execute("select radar_separar_repeticao(%s)", (b,))
@@ -3128,7 +3164,7 @@ def test_separada_tambem_nao_e_juntada_pelo_outro_lado(limpo):
                                 select id, %s, %s, 'texto', md5(%s) from radar_fontes where slug = 'rfb-noticias' returning id""",
                              (url, titulo, url)).fetchone()[0]
     o = cap("https://x.gov.br/o2", "Crédito presumido de ICMS na base do IRPJ e da CSLL")
-    b = cap("https://x.gov.br/b2", "STF exclui créditos presumidos de ICMS da base do PIS e da Cofins")
+    b = cap("https://x.gov.br/b2", "Créditos presumidos de ICMS ficam fora da base do PIS e da Cofins, decide o STF")
     with como("service_role") as c:
         c.execute("select radar_gravar_avaliacao_ia(%s)", (json.dumps([{"id": b, "nota": 8, "igual_a": o}]),))
     with como("authenticated", EDITOR) as c:
@@ -3188,6 +3224,154 @@ def test_publicar_em_todos_espera_o_site_e_sai_com_o_link(limpo):
     assert ig == ("autorizado", LEG_IG)
     with como("service_role") as c:
         assert c.execute("select radar_rede_iniciar(%s)", (r["facebook"],)).fetchone()[0]["legenda"].endswith("/news/view/prazo")
+
+
+def test_publicar_em_todos_so_libera_as_redes_com_o_link_do_site_registrado_pelo_robo(limpo):
+    """Varredura geral (v0.22.0): o registro da publicação troca o {LINK DO SITE} e libera as redes do "Publicar em todos". Um
+    registro à mão antes do robô (o link da fonte colado por engano) ou com link de outro endereço não libera nada: as redes que
+    esperavam o site caem, com o motivo, e a legenda nunca leva um link que o administrador não viu."""
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    todos = "select radar_autorizar_todos(%s, 'Tributário', %s, %s, %s, %s)"
+    redes = lambda: limpo.execute("select situacao, legenda, erro from radar_redes_envios where conteudo_id = %s and canal = 'facebook' "
+                                  "order by id desc limit 1", (c1,)).fetchone()
+    with como("authenticated", ADMIN) as c:
+        r = c.execute(todos, (c1, _lido(limpo, c1), IMG, LEG_IG, LEG_FB)).fetchone()[0]
+    # o editor registra à mão enquanto o robô ainda não publicou: recusado (o robô registra o link sozinho)
+    for uid in (EDITOR, ADMIN):
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR145"):
+            registrar_site(c1, uid=uid, url="https://golpe.example/pix")
+    assert redes()[0] == "aguardando_site"
+    # o registro com link de outro endereço (mesmo vindo do robô) não libera: as redes caem com o motivo
+    with como("service_role") as c:
+        c.execute("update radar_site_envios set situacao = 'enviando' where id = %s", (r["site"],))
+        c.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://golpe.example/pix', current_date)", (c1,))
+    situacao, legenda, erro = redes()
+    assert situacao == "cancelado" and "golpe" not in legenda and "{LINK DO SITE}" in legenda and "não é do site da Artecon" in erro
+    assert limpo.execute("select count(*) from radar_redes_envios where conteudo_id = %s and situacao in ('autorizado','aguardando_site')",
+                         (c1,)).fetchone()[0] == 0
+    # o site saiu, mas o registro do robô não entrou: a pessoa registra depois do "publicado" com o link do site — aí libera
+    limpo.execute("delete from radar_divulgacoes where conteudo_id = %s", (c1,))
+    limpo.execute("update radar_site_envios set situacao = 'cancelado' where id = %s", (r["site"],))
+    with como("authenticated", ADMIN) as c:
+        r = c.execute(todos, (c1, _lido(limpo, c1), IMG, LEG_IG, LEG_FB)).fetchone()[0]
+    with como("service_role") as c:
+        c.execute("update radar_site_envios set situacao = 'publicado', url = 'https://artecon.cnt.br/news/view/prazo' where id = %s", (r["site"],))
+    registrar_site(c1, url="https://www.Artecon.cnt.br/news/view/prazo")
+    assert redes()[:2] == ("autorizado", "Prazo do Simples prorrogado. Leia a matéria completa: https://www.Artecon.cnt.br/news/view/prazo")
+    # o domínio: sem usuário, porta e "www."; um domínio que só começa igual não é o do site
+    assert limpo.execute("select radar_url_host('https://user@WWW.artecon.cnt.br:443/x'), radar_url_host('https://artecon.cnt.br.golpe.example/'), "
+                         "radar_site_host()").fetchone() == ("artecon.cnt.br", "artecon.cnt.br.golpe.example", "artecon.cnt.br")
+
+
+def test_noticia_com_frase_do_boletim_pago_nao_se_autoriza_nem_se_aprova_nem_sai(limpo, request):
+    """Varredura geral (v0.22.0): a trava do boletim pago da notícia estava só na tela (que ainda oferecia "Autorizar mesmo
+    assim"). No banco: autorizar a cópia, aprovar e publicar no site, no Instagram e no Facebook recusam (RADAR146), sem mostrar o
+    trecho. A janela que também está numa captura livre do assunto (o artigo da lei que o boletim copiou) não conta."""
+    a, c1 = cenario_publicavel(limpo)
+    carregar_fontes_novas(limpo, request)
+    paga = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega das declarações mensais"
+    boletim = lambda texto, h: limpo.execute(
+        """insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo, capturado_em)
+           select id, 'https://boletim.exemplo/' || %s, 'Boletim de mentira', %s, %s, now() - interval '200 days'
+             from radar_fontes where slug = 'itc-email'""", (h, texto, h))
+    boletim("Boletim: " + TEXTO_OFICIAL + " E mais: " + paga + ".", "h-noticia-1")       # o boletim também copiou a IN
+    limpo.execute("update radar_conteudos set corpo = %s where id = %s",
+                  ("Segundo a Receita Federal, " + TEXTO_OFICIAL[:300] + "\n\nTexto próprio da Artecon.", c1))
+    assert aprovar(c1) is not None                                                         # o trecho da IN também está na fonte oficial
+    limpo.execute("update radar_conteudos set status = 'em_revisao' where id = %s", (c1,))
+    limpo.execute("update radar_conteudos set corpo = corpo || %s where id = %s", ("\n\nResumo: " + paga.upper() + ".", c1))
+    lido = _lido(limpo, c1)
+    with como("authenticated", EDITOR) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR146") as e:
+            c.execute("select radar_autorizar_copia(%s, 'transcrição do boletim, com a fonte citada', %s)", (c1, lido))
+        assert "comitê" not in str(e.value)                                                # só sim ou não: o trecho não sai
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR146"):
+        aprovar(c1)
+    # aprovado antes de o boletim chegar (ou por um caminho antigo): o site, as redes e o envio que já estava autorizado não saem
+    limpo.execute("update radar_conteudos set corpo = replace(corpo, %s, 'Resumo próprio.') where id = %s", ("Resumo: " + paga.upper() + ".", c1))
+    aprovar(c1)
+    registrar_site(c1)
+    leg = "Prazo novo para as declarações. " + paga + ". Leia no site."
+    with como("authenticated", ADMIN) as c:
+        ig = c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR146"):
+            c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s)", (c1, leg, IMG, _lido(limpo, c1)))
+    limpo.execute("delete from radar_divulgacoes where conteudo_id = %s", (c1,))
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR146"):
+        c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, null, %s)", (c1, _lido(limpo, c1), IMG, leg))
+    # sem a captura livre no assunto (o administrador liberou sem fundamentação), o trecho da IN que está no boletim conta
+    limpo.execute("delete from radar_evidencias where assunto_id = %s", (a,))
+    limpo.execute("delete from radar_assunto_capturas where assunto_id = %s", (a,))
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_liberar_sem_fundamentacao(%s, 'teste da trava do boletim')", (a,))
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR146"):
+            c.execute("select radar_autorizar_site(%s, 'Tributário', %s)", (c1, _lido(limpo, c1)))
+    with como("service_role") as c:
+        r = c.execute("select radar_rede_iniciar(%s)", (ig,)).fetchone()[0]
+    assert r["erro"].startswith("RADAR146") and "comitê" not in r["erro"]
+    assert limpo.execute("select situacao from radar_redes_envios where id = %s", (ig,)).fetchone()[0] == "erro"
+
+
+def test_onde_esta_a_frase_do_boletim_que_o_banco_recusa_e_a_ementa_do_ato_oficial_nao_conta(limpo, request):
+    """Rodada 2 da varredura geral. (1) A trava do banco (RADAR146) compara com TODAS as capturas do boletim; a tela, só com as do
+    assunto: radar_copia_paga_trechos diz ONDE, no texto da própria notícia, está o que o banco recusaria (só as posições, nada do
+    boletim), com a mesma regra e o mesmo desconto das capturas livres do assunto; só o editor e o administrador. (2) A matéria do
+    boletim que é o próprio ato ("Lei nº … (DOU DE …)", texto = a ementa oficial) fica fora da base paga."""
+    a, c1 = cenario_publicavel(limpo)
+    carregar_fontes_novas(limpo, request)
+    paga = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega das declarações mensais"
+    ementa = ("Altera a Instrução Normativa RFB nº 2.005, de 29 de janeiro de 2021, que dispõe sobre a Declaração de Débitos e "
+              "Créditos Tributários Federais Previdenciários e de Outras Entidades e Fundos")
+    boletim = lambda titulo, texto, h: limpo.execute(
+        """insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+           select id, 'https://boletim.exemplo/' || %s, %s, %s, %s from radar_fontes where slug = 'itc-email'""", (h, titulo, texto, h))
+    trechos = lambda textos, uid=EDITOR, assunto=a: _como_trechos(uid, assunto, textos)
+    assert trechos(["Texto qualquer com " + paga]) == [[]]                                # sem boletim no banco: nada
+    # a matéria do boletim fica na fila (não está no assunto); ela também copiou a IN da fonte oficial do assunto
+    boletim("Boletim de mentira", "Boletim: " + TEXTO_OFICIAL + " E mais: " + paga + ".", "h-trechos-1")
+    corpo = ("📌 Segundo a Receita Federal, " + TEXTO_OFICIAL[:300] + "\n\nTexto próprio da Artecon.\n\nResumo: "
+             + paga.upper().replace(" GESTOR ", " gestor,\n") + ".")
+    titulo = "CBS: " + paga                                                                  # o título também é conferido
+    limpo.execute("update radar_conteudos set titulo = %s, corpo = %s where id = %s", (titulo, corpo, c1))
+    r = trechos([titulo, corpo])
+    assert r == [[[5, 5 + len(paga)]], [[corpo.index("O COMITÊ"), len(corpo) - 1]]], r     # a IN (livre no assunto) não entra
+    assert corpo[r[1][0][0]:r[1][0][1]] == paga.upper().replace(" GESTOR ", " gestor,\n")  # posição em letras, com o emoji
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR146"):                    # e o banco recusa o mesmo texto
+        aprovar(c1)
+    # duas faixas separadas; 11 palavras não bastam
+    onze, doze = " ".join(paga.split()[:11]), " ".join(paga.split()[:12])
+    r = trechos([onze + ". Outra coisa. " + doze + ". Fim e mais " + doze])
+    assert len(r[0]) == 2 and r[0][0][0] == len(onze) + len(". Outra coisa. ")
+    # só quem edita; nada sai do boletim
+    for uid in (LEITOR, SEM_PERFIL):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR147"):
+            trechos([corpo], uid)
+    with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        c.execute("select radar_copia_paga_trechos(%s, %s)", (a, [corpo]))
+    # (2) a ementa oficial que o boletim lista ("Legislação Federal") não é frase do boletim: nem na notícia, nem na Pauta
+    boletim("Instrução Normativa RFB nº 2.300/2026 (DOU DE 07/10/2026)", ementa, "h-trechos-ato")
+    limpo.execute("update radar_conteudos set titulo = 'DCTFWeb muda', corpo = %s where id = %s",
+                  ("Segundo o Diário Oficial da União, a norma nova " + ementa.lower() + ".\n\nTexto próprio da Artecon.", c1))
+    assert trechos(["DCTFWeb muda", ementa]) == [[], []]
+    assert aprovar(c1) is not None
+    assert limpo.execute("select radar_pauta_copia_paga(%s)", ([ementa],)).fetchone()[0] is False
+    # a mesma frase numa matéria comum do boletim (texto da ITC) conta
+    boletim("Receita muda a DCTFWeb", "Na avaliação da consultoria: " + ementa, "h-trechos-noticia")
+    assert limpo.execute("select radar_pauta_copia_paga(%s)", ([ementa],)).fetchone()[0] is True
+    assert trechos([ementa]) == [[[0, len(ementa)]]]
+    for titulo_ato, e_ato in [("Lei nº 15526/2026 (DOU DE 30/09/2026)", True), ("Ato COTEPE/PMPF nº 27/2026 (DOU DE 29/09/2026)", True),
+                              ("Portaria SEF nº 250/2026 (DOE-SC de 01/10/2026)", True), ("DECRETO Nº 12.955, DE 1º DE OUTUBRO DE 2026 (DOU de 02/10/2026).", True),
+                              ("Resolução CGSN nº 183/2026 (DOU - Edição Extra de 30/09/2026)", True),
+                              ("Receita prorroga o prazo da DCTFWeb (DOU de 01/10/2026)", False), ("Lei nº 15.270/2025: o que muda no IR", False),
+                              ("Leilão da Receita (DOU de 01/10/2026)", False), ("Nota ITC (Doença ocupacional de 01/10/2026)", False),
+                              ("Lei nº 15.270/2025 (Lei do IR)", False), (None, False)]:
+        assert limpo.execute("select radar_copia_paga_ato_oficial(%s)", (titulo_ato,)).fetchone()[0] is e_ato, titulo_ato
+
+
+def _como_trechos(uid, assunto, textos):
+    with como("authenticated", uid) as c:
+        return c.execute("select radar_copia_paga_trechos(%s, %s)", (assunto, textos)).fetchone()[0]
 
 
 def test_publicar_em_todos_cai_junto_se_o_site_nao_sair(limpo):
@@ -3407,6 +3591,7 @@ LEG_PECA = "Conheça quem cuida da folha de pagamento da sua empresa.\n\n" + IDE
 LAMINA = "data:image/jpeg;base64," + "B" * 400
 URL_INTERNA = "https://projeto.supabase.co/storage/v1/object/radar-pauta/p-0b1c2d3e-0000-4000-8000-000000000001.jpg"
 APROVAR = "select radar_pauta_aprovar(%s, %s, %s::text[], %s, %s::bigint[], %s, %s::text[])"
+APROVAR_REEL = "select radar_pauta_aprovar(%s, %s, %s::text[], %s, %s::bigint[], %s, %s::text[], %s)"     # v0.22.0: + o sha256 do vídeo
 ACRESCENTE = "Acrescente cada um em Informações conferidas, com a fonte (ou tire do texto)"
 
 
@@ -3462,9 +3647,13 @@ def marcar_pronta(db, pid, uid=EDITOR):
         return c.execute("select radar_pauta_marcar_pronta(%s, %s)", (pid, lido_peca(db, pid))).fetchone()[0]
 
 
-def aprovar_peca(db, pid, modo="agendar", canais=("instagram",), conferencias=("pessoas", "datas"), artes=None, ident=IDENT, uid=ADMIN):
+def aprovar_peca(db, pid, modo="agendar", canais=("instagram",), conferencias=("pessoas", "datas"), artes=None, ident=IDENT, uid=ADMIN,
+                 video=None):
+    """v0.22.0: video = o sha256 do vídeo corrigido que a tela mostrou (o reel)."""
     artes = [lamina(uid)] if artes is None else artes
     with como("authenticated", uid) as c:
+        if video is not None:
+            return c.execute(APROVAR_REEL, (pid, lido_peca(db, pid), list(canais), modo, artes, ident, list(conferencias), video)).fetchone()[0]
         return c.execute(APROVAR, (pid, lido_peca(db, pid), list(canais), modo, artes, ident, list(conferencias))).fetchone()[0]
 
 
@@ -3474,6 +3663,30 @@ def peca_aprovada(db, dias=2, canais=("instagram",), **campos):
     pid = nova_peca(db, dias=dias, **campos)
     marcar_pronta(db, pid)
     return pid, aprovar_peca(db, pid, canais=canais)
+
+
+# v0.22.0: o reel só fica pronto com o vídeo corrigido pronto (radar_video_pendencia). Nomes e falas de mentira.
+SHA_VIDEO = "a" * 64
+FALA_REEL = "Fala: o prazo vence no dia 20. Confira com a gente antes do vencimento para não pagar multa."
+
+
+def pessoa_do_corretor(db, nome="Ana Teste", na_peca="Ana", **campos):
+    """Pessoa com o termo novo, que cita o corretor de vídeo (termo_corretor_em)."""
+    pid = nova_pessoa(db, nome, na_peca, **campos)
+    db.execute("update radar_pessoas set termo_corretor_em = '2020-01-01' where id = %s", (pid,))
+    return pid
+
+
+def video_pronto(db, peca, pessoa, sha=SHA_VIDEO, situacao="pronto", cartela=(IDENT,), relatorio=None, fala=None):
+    """O vídeo como o robô deixa depois de concluir, gravado direto (o fluxo inteiro está em test_radar_video_banco.py)."""
+    fala = fala or db.execute("select left(btrim(roteiro), 200) from radar_pauta_pecas where id = %s", (peca,)).fetchone()[0]
+    return db.execute("""insert into radar_videos (peca_id, versao, situacao, partes, fala_pessoa, fala_roteiro, roteiro_hash, cartela_linhas,
+                                                   declaracoes, sha256, bytes, duracao_final, relatorio, enviado_em)
+                         select p.id, coalesce((select max(versao) from radar_videos where peca_id = p.id), 0) + 1, %s,
+                                '[{"n": 1, "tipo": "video/mp4", "bytes": 1000}]', %s, %s, radar_hash_texto(p.roteiro), %s::text[],
+                                '{so_marcadas,sem_fundo,so_voz,fala_confere}', %s, 4000, 38.5, %s, now()
+                           from radar_pauta_pecas p where p.id = %s returning id""",
+                      (situacao, pessoa, fala, list(cartela), sha, json.dumps(relatorio or {"texto_final": ""}), peca)).fetchone()[0]
 
 
 def iniciar(envio):
@@ -3814,6 +4027,24 @@ def test_pauta_problemas_identificacao_marcas_confirmar_fonte_numeros_e_copia_pa
     db.execute("""update radar_config set valor = valor || '{"crc": ""}' where chave = 'assinatura'""")
     assert conferir(pid, ["instagram", "facebook"])[-1:] == ["Identificação legal incompleta: preencha o CNPJ e o CRC em Configurações → Assinatura"]
     db.execute("update radar_config set valor = valor || %s where chave = 'assinatura'", (json.dumps(ASSINATURA_PAUTA),))
+    # varredura geral (v0.22.0): o registro no CRC inteiro (UF, número e categoria), não só os algarismos em qualquer ponto
+    falta = "falta a linha de identificação (empresa, CNPJ e CRC de Configurações → Assinatura)"
+    ident_sem_crc = "Artecon Artes Contábeis ME · CNPJ 11.222.333/0001-81 · "
+    for texto, ok in [(IDENT, True), (ident_sem_crc + "CRC/SC 012345 / o-9", True), (ident_sem_crc + "crc sc-012345/O-9.", True),
+                      (ident_sem_crc + "CRC-PR 012345/O-9", False), (ident_sem_crc + "CRC-SC 012345/0-9", False),
+                      (ident_sem_crc + "CRC-SC 012345/O-5", False), (ident_sem_crc + "CRC-SC 012345/O-91", False),
+                      (ident_sem_crc + "Fone 0123459", False), (ident_sem_crc + "CRC-SC 9012345/O-9", False)]:
+        assert db.execute("select radar_pauta_identificacao_falta(%s)", (texto,)).fetchone()[0] == (None if ok else falta), texto
+    for crc, padrao in [("CRC-SC 012345/O-9", "CRC-SC 012345/O-9"), ("SC-012345/0-9", "CRC-SC 012345/O-9"), ("012345/o-9", "CRC-SC 012345/O-9"),
+                        ("1SC012345/0-9", "CRC 1SC012345/O-9"), ("CRC-SC 012345", "CRC-SC 012345")]:
+        assert db.execute("select %s ~ radar_crc_padrao(%s)", (padrao, crc)).fetchone()[0], crc
+    # rodada 2: o CRC das Configurações com letra acentuada (a tela aceita e escreve a linha como está) casa com a linha no texto,
+    # com e sem o acento e com o acento separado da letra (NFD, colado do Mac); antes, "ORIGINÁRIO" virava "ORIGIN" + "RIO"
+    db.execute("""update radar_config set valor = valor || '{"crc": "CRC-SC 012345/O-9 (Originário)"}' where chave = 'assinatura'""")
+    for texto, ok in [(ident_sem_crc + "CRC-SC 012345/O-9 (Originário)", True), (ident_sem_crc + "CRC-SC 012345/O-9 (ORIGINARIO)", True),
+                      (ident_sem_crc + "CRC-SC 012345/O-9 (Originário)", True), (ident_sem_crc + "CRC-SC 012345/O-9", False)]:
+        assert db.execute("select radar_pauta_identificacao_falta(%s)", (texto,)).fetchone()[0] == (None if ok else falta), texto
+    db.execute("update radar_config set valor = valor || %s where chave = 'assinatura'", (json.dumps(ASSINATURA_PAUTA),))
     # marca da IA, {confirmar}, fonte do boletim, informação sem texto e número que não está nas informações conferidas
     db.execute("""update radar_pauta_pecas set legenda_instagram = %s, apoio = 'O prazo vence [VERIFICAR: dia 20]', chamada = 'Atendemos 37 empresas',
                   conferidas = %s where id = %s""",
@@ -3842,6 +4073,9 @@ def test_pauta_problemas_identificacao_marcas_confirmar_fonte_numeros_e_copia_pa
     db.execute("update radar_pauta_pecas set legenda_instagram = %s where id = %s", ("Resumo: " + " ".join(palavras[:12]).upper() + "\n\n" + IDENT, pid))
     probs = conferir(pid)
     assert probs == ["Há frase igual à do boletim pago (ITC): reescreva com palavras próprias"] and "comitê" not in json.dumps(probs, ensure_ascii=False)
+    # varredura geral (v0.22.0): o boletim de mais de 90 dias também conta (antes, a frase de um boletim antigo passava sem aviso)
+    db.execute("update radar_capturas set capturado_em = now() - interval '200 days' where hash_titulo = 'h-boletim-pauta'")
+    assert conferir(pid) == ["Há frase igual à do boletim pago (ITC): reescreva com palavras próprias"]
     db.execute("update radar_pauta_pecas set legenda_instagram = %s, chamada = 'Quem cuida da sua folha', conferidas = %s where id = %s",
                (LEG_PECA, json.dumps([{"informacao": frase, "fonte": "Receita Federal"}]), pid))
     assert conferir(pid) == ["Há frase igual à do boletim pago (ITC): reescreva com palavras próprias"]   # nas conferidas também
@@ -4053,10 +4287,12 @@ def test_pauta_marcador_do_modelo_entre_chaves_trava_em_todo_texto_e_na_saida(pa
     motivo = "A legenda tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija."
     assert iniciar(e2) == {"erro": motivo}
     # à mão: a cópia da legenda e do roteiro confere de novo
-    p3 = nova_peca(db, dias=5, tipo="reel", formato="reel", roteiro="Fala: o prazo vence no dia 20.\n" + IDENT,
+    ana = pessoa_do_corretor(db)                                                 # v0.22.0: o reel sai com o vídeo corrigido
+    p3 = nova_peca(db, dias=5, tipo="reel", formato="reel", roteiro=FALA_REEL + "\n" + IDENT, pessoas=[ana],
                    conferidas=[{"informacao": "O prazo vence no dia 20", "fonte": "Receita Federal"}])
+    video_pronto(db, p3, ana)
     marcar_pronta(db, p3)
-    aprovar_peca(db, p3, modo="manual", artes=[])
+    aprovar_peca(db, p3, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)
     with como("authenticated", EDITOR) as c:
         assert c.execute("select radar_pauta_pode_copiar(%s, %s, null)", (p3, lido_peca(db, p3))).fetchone()[0]["ok"] is True
     mudar_por_fora(db, p3, "roteiro = roteiro || ' {nome}', legenda_instagram = legenda_instagram || ' {Nome}'")
@@ -4076,9 +4312,10 @@ def test_pauta_roteiro_sem_as_marcacoes_de_tempo_e_lista_da_agenda_conferida(pau
                "| 12–32s | \"Quem pediu tem até sexta, dia 30.\" | 0:15 a 0:32 |\n| 32 a 44 s | \"Fale com a gente.\" | cartela |\n" + IDENT)
     pid = nova_peca(db, dias=3, tipo="reel", formato="reel", roteiro=roteiro,
                     conferidas=[{"informacao": "Prazo da opção até 30/10", "fonte": "Portal do Simples Nacional"}])
-    assert conferir(pid) == []
+    sem_video = "Reel: envie a gravação (Corretor de vídeo)"                     # v0.22.0: o reel só fica pronto com o vídeo
+    assert conferir(pid) == [sem_video]
     db.execute("update radar_pauta_pecas set roteiro = roteiro || %s where id = %s", ("\n| 44 a 50 s | \"São 2 sócios e 15 dias.\" | |", pid))
-    assert conferir(pid) == ["Números que não estão nas informações conferidas: 15, 2. " + ACRESCENTE]
+    assert conferir(pid) == [sem_video, "Números que não estão nas informações conferidas: 15, 2. " + ACRESCENTE]
     # a lista da agenda: a pessoa cadastrada e não marcada, a marca e as chaves
     nova_pessoa(db, "Márcia Exemplo", "Márcia", revogado="2026-01-01")
     lista = [{"informacao": "10/11 (ter) · ICMS [VERIFICAR: data]", "fonte": "Agenda Tributária da Receita Federal"},
@@ -4582,7 +4819,8 @@ def test_pessoas_so_admin_grava_editor_le_leitor_e_robo_nao_leem(pauta):
 def test_chave_do_robo_e_leitor_nao_leem_as_fotos_as_laminas_nem_as_legendas_da_pauta(pauta):
     """A chave do robô (segredo do GitHub Actions de um repositório público) não lê onde ficam as fotos e os nomes: radar_imagens (a
     capa do conteúdo vem por radar_v_capas), a auditoria e, nos envios, a legenda, a imagem e o erro (lê só o andamento, como o robô e
-    a radar-redes pedem). O leitor não lê as fotos nem as lâminas da Pauta (só as outras imagens); o editor lê todas."""
+    a radar-redes pedem). O leitor não lê as fotos nem as lâminas da Pauta (v0.22.0: só as imagens ligadas a um conteúdo); o editor lê
+    todas."""
     db = pauta
     foto, capa, solta = nova_imagem(), nova_imagem(), nova_imagem()
     pid, r = peca_aprovada(db, dias=3, formato="foto", fotos=[foto])
@@ -4606,12 +4844,19 @@ def test_chave_do_robo_e_leitor_nao_leem_as_fotos_as_laminas_nem_as_legendas_da_
         with como(papel, EDITOR if papel == "authenticated" else None) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
             c.execute("select * from radar_v_capas")
     with como("authenticated", LEITOR) as c:
-        assert sorted(x for (x,) in c.execute("select id from radar_imagens").fetchall()) == sorted([capa, solta])
+        # varredura geral (v0.22.0): o leitor lê só a imagem ligada a um conteúdo; a solta (a foto tirada da peça, a lâmina de uma
+        # aprovação recusada ou desfeita, antes da faxina de 24 horas) não
+        assert sorted(x for (x,) in c.execute("select id from radar_imagens").fetchall()) == [capa]
         with pytest.raises(psycopg.errors.InsufficientPrivilege):                              # nem a cópia da lâmina no envio
             c.execute("select imagem from radar_redes_envios")
         assert c.execute("select canal, situacao from radar_redes_envios where peca_id = %s", (pid,)).fetchall() == [("instagram", "autorizado")]
     with como("authenticated", EDITOR) as c:
         assert {foto, arte, capa, solta} <= {x for (x,) in c.execute("select id from radar_imagens").fetchall()}
+    # a foto tirada da peça e a lâmina da aprovação desfeita deixam de estar numa peça: o leitor continua sem vê-las
+    mudar_por_fora(db, pid, "fotos = '{}', artes = '{}'")
+    db.execute("update radar_conteudos set ilustracao_id = %s where id = %s", (solta, c1))
+    with como("authenticated", LEITOR) as c:
+        assert sorted(x for (x,) in c.execute("select id from radar_imagens").fetchall()) == sorted([capa, solta])
 
 
 def test_pessoa_em_uso_nao_se_apaga(pauta):
@@ -4657,6 +4902,39 @@ def test_envio_da_pauta_regra_e_fora_do_robo_do_site(pauta):
     db.execute(inserir, (None, pid, "instagram", amanha, False))
 
 
+def test_painel_avisa_quando_o_robo_de_coleta_para(limpo, request):
+    """Rodada 2 da varredura geral: no repositório público, o GitHub desliga sozinho os robôs agendados depois de 60 dias sem
+    atividade, e só os números do Painel mudavam. O painel diz a última rodada do robô de coleta e se ela passou de 12 horas (com
+    fonte ativa que o robô coleta: a do e-mail não passa por ele)."""
+    db = limpo
+    carregar_fontes_novas(db, request)                                                     # com a fonte do e-mail (itc-email)
+    painel = lambda: _painel_coleta()
+    fonte = db.execute("select id from radar_fontes where slug = 'rfb-normas'").fetchone()[0]
+    assert db.execute("select count(*) from radar_fontes where config->>'origem' = 'email'").fetchone()[0] == 1
+    ativas = [i for (i,) in db.execute("select id from radar_fontes where ativo").fetchall()]
+    try:
+        db.execute("update radar_fontes set ativo = (id = %s)", (fonte,))
+        assert painel() == (None, True)                                                    # nunca rodou
+        db.execute("insert into radar_execucoes (fonte_id, iniciado_em) values (%s, now() - interval '13 hours')", (fonte,))
+        ultima, atrasada = painel()
+        assert ultima is not None and atrasada is True
+        db.execute("insert into radar_execucoes (fonte_id, iniciado_em) values (%s, now() - interval '5 hours')", (fonte,))
+        assert painel()[1] is False                                                        # rodou há 5 h: em dia
+        db.execute("update radar_execucoes set iniciado_em = iniciado_em - interval '1 day'")
+        assert painel()[1] is True
+        db.execute("update radar_fontes set ativo = false")                                # sem fonte ativa: nada a avisar
+        assert painel()[1] is False
+        db.execute("""update radar_fontes set ativo = true where config->>'origem' = 'email'""")   # só a do e-mail (não passa pelo robô)
+        assert painel()[1] is False
+    finally:
+        db.execute("update radar_fontes set ativo = (id = any(%s))", (ativas,))
+
+
+def _painel_coleta():
+    with como("authenticated", LEITOR) as c:
+        return c.execute("select ultima_coleta, coleta_atrasada from radar_v_painel").fetchone()
+
+
 def test_painel_conta_falhas_da_pauta(pauta):
     db = pauta
 
@@ -4692,7 +4970,7 @@ def test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date(db):
     novas = db.execute("""select p.proname, p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                           where n.nspname = 'public' and (p.proname like 'radar\\_pauta\\_%' or p.proname like 'radar\\_agenda\\_%'
                                 or p.proname in ('radar_redes_conferir_agenda', 'radar_fn_pauta_peca', 'radar_fn_pessoa_apagar'))""").fetchall()
-    assert len(novas) == 29
+    assert len(novas) == 30                                                  # v0.22.0: + radar_pauta_pecas_da_pessoa
     assert [n for n, src in novas if "current_date" in src.lower()] == []
 
 
@@ -4713,6 +4991,11 @@ def test_reversao_tira_a_agenda_e_as_tabelas_da_pauta():
     sql = REVERSAO.read_text()
     for objeto in ("radar_pauta_pecas", "radar_pessoas", "radar_v_pauta_pessoas", "radar-redes-agenda%", "radar_agenda_vencidas(int)"):
         assert objeto in sql, objeto
+    # varredura geral (v0.22.0): o cabeçalho (e o LEIAME) mandam esvaziar antes também o bucket privado radar-pauta (as lâminas com
+    # foto e nome da equipe ficariam sem dono depois que as tabelas saem)
+    cabecalho = sql.split("\nbegin;")[0]
+    desfazer = (RAIZ / "LEIAME-radar.md").read_text(encoding="utf-8").split("**Para desfazer a versão**")[1][:1500]
+    assert "radar-videos" in cabecalho and "radar-pauta" in cabecalho and "`radar-pauta`" in desfazer
     with conectar("postgres") as c:
         c.execute("drop database if exists radar_rev21 with (force)")
         c.execute("create database radar_rev21")

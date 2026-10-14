@@ -89,20 +89,46 @@ def test_reconhece_a_lista_sem_abrir_excluir_nem_mostrar_token():
     assert not any(sa.APAGA.search(g) for g in s.gets)                                # nunca abre "excluir" nem "sair"
     assert "formulário POST → /admin/news/12 ocultos=['_token', '_method=DELETE']" in texto
     assert "tokenSecreto" not in texto and "abcdefghij" not in texto                  # valores ocultos e códigos longos não aparecem
-    assert "/admin/news?page=2" in texto and "/js/admin.js" in texto and "Prazo do IRPF" in texto
+    assert "/admin/news?page=2" in texto and "/js/admin.js" in texto and "linha 1: 2 célula(s)" in texto
+    assert "Prazo do IRPF" not in texto and "/admin/news/edit/…" in texto and "/edit/12" not in texto  # v0.22.0: nem célula nem código
     s.paginas[sa.BASE + "/js/admin.js"] = "$('#tab').DataTable({ajax: '/admin/news/list'}); $(document).on('click', '.del', function(){ swal('Excluir?') })"
     scripts = sa.scripts_do_painel(s, url, html)
     assert "/admin/news/list" in scripts and "swal" in scripts and len(s.posts) == 1 and not any(sa.APAGA.search(g) for g in s.gets)
     # os dados da lista (GET no data-url da tabela, como o painel faz): a notícia e as ações dela, sem abrir nenhuma
     tabela = '<table class="table datatable" data-url="https://artecon.cnt.br/admin/news/list"></table>'
-    s.paginas[sa.BASE + "/admin/news/list"] = ('{"data": [["Prazo do IRPF", "<img src=x>", "Federal", "01/10/2026", "Robo", '
-        '"<a href=\\"https://artecon.cnt.br/admin/news/edit/7\\">Editar</a> <a href=\\"https://artecon.cnt.br/admin/news/delete/7\\" '
+    codigo = "eyJpdiI6" + "Q" * 160 + "In0"                                          # o código do painel: 172 caracteres
+    s.paginas[sa.BASE + "/admin/news/list"] = ('{"data": [["Prazo do IRPF", "<img src=x>", "Federal", "01/10/2026", "Mariana", '
+        f'"<a href=\\"https://artecon.cnt.br/admin/news/register/{codigo}\\">Editar</a> <a href=\\"https://artecon.cnt.br/admin/news/delete/7\\" '
         'data-confirm=\\"Excluir?\\">Excluir</a>"]], "recordsTotal": 1}')
     s.get = lambda u, **k: (s.gets.append(u), type("R", (), {"url": u, "text": s.paginas.get(u, ""), "status_code": 200,
                             "headers": {"content-type": "application/json"}, "json": lambda self: __import__("json").loads(s.paginas[u])})())[1]
     dados = sa.dados_da_lista(s, sa.BASE + "/admin/news", tabela)
-    assert "1 notícia(s)" in dados and "Prazo do IRPF" in dados and "/admin/news/delete/7 data-confirm=Excluir?" in dados
+    assert "1 notícia(s)" in dados and "notícia 1: 6 célula(s); com marcação: [2, 6]" in dados
+    assert "/admin/news/delete/… data-confirm=Excluir?" in dados and "/admin/news/register/…" in dados
+    # v0.22.0: o registro do Actions é público: nem título, nem quem cadastrou (coluna "Usuário"), nem o código dos links
+    # de excluir/editar (a exclusão do painel é um GET sem CSRF)
+    for proibido in ("Prazo do IRPF", "Mariana", "Federal", codigo[:20], "QQQQ", "/delete/7", "/register/eyJ"):
+        assert proibido not in dados, proibido
     assert not any(sa.APAGA.search(g) for g in s.gets)
+
+
+def test_relatorio_publico_sem_codigo_de_link_nem_chave_de_biblioteca(monkeypatch, capsys):
+    """A máscara final do main() pega o que escapar: código de excluir/editar e chave no caminho de script de fora."""
+    longo = "a1B2" * 43
+    assert sa._caminho(sa.BASE, f"/admin/news/delete/{longo}") == "/admin/news/delete/…"
+    assert sa._caminho(sa.BASE, f"/admin/news/register/{longo}?x=1") == "/admin/news/register/…?x=1"
+    assert sa._caminho(sa.BASE, "/admin/news/register") == "/admin/news/register"          # o formulário de cadastro fica
+    assert sa._caminho(sa.BASE, f"https://cdn.tiny.cloud/1/{longo}/tinymce/6/tinymce.min.js") == "cdn.tiny.cloud/…"
+    assert sa._molde(f"x /admin/news/delete/{longo} e token {longo} fim") == "x /admin/news/delete/… e token … fim"
+    monkeypatch.setenv("ARTECON_SITE_USUARIO", "robo@artecon")
+    monkeypatch.setenv("ARTECON_SITE_SENHA", "senha-secreta")
+
+    def falso(*a, **k):
+        raise sa.Parada(f"teste em /admin/news/delete/{longo} com senha-secreta")
+    monkeypatch.setattr(sa, "entrar", falso)
+    assert sa.main() == 1
+    saida = capsys.readouterr().out
+    assert "/admin/news/delete/…" in saida and longo not in saida and "senha-secreta" not in saida
 
 
 def test_lista_nao_encontrada_para_com_aviso():

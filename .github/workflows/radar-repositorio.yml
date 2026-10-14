@@ -1,9 +1,12 @@
-name: Radar — repositório sem calendário
+name: Radar — repositório sem calendário nem vídeo
 
 # v0.21.0: o repositório é público e o calendário da Pauta (CSV e .md do plano) tem os nomes da equipe. Este conferir roda em TODO
 # push, sem filtro de caminho (o radar-testes só roda quando muda o código): um CSV ou um .md solto na raiz, ou enviado pelo site do
 # GitHub ("Add file → Upload files", que não passa pelo .gitignore), também é avisado. É só um aviso depois do envio: o arquivo já
 # ficou público (e no histórico) — o cuidado é nunca enviar.
+# v0.22.0: também vídeo, áudio ou foto de gravação real (pela extensão ou pelo começo do arquivo, com qualquer nome), os arquivos de
+# trabalho do robô do corretor de vídeo e transcrição (a resposta da Azure, as palavras com tempo, legenda com tempo): no repositório
+# público entram só os vídeos SINTÉTICOS dos testes, gerados na hora. E a versão igual em todos os arquivos do pacote.
 on:
   push:
   workflow_dispatch:
@@ -16,11 +19,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      # o histórico inteiro: o arquivo enviado num commit e apagado no seguinte, no mesmo push, some da árvore mas fica no histórico
+      # público; o teste confere cada commit de github.event.before até o último
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1   # v6.3.0
         with:
           python-version: "3.12"
       - run: pip install pytest "psycopg[binary]"
+      # v0.22.0 (varredura geral): no primeiro push de um ramo novo, o "before" vem só com zeros: o teste confere então os commits do
+      # ramo que nenhum outro ramo do GitHub tem (por isso o nome do ramo)
       - run: python -m pytest testes/test_radar_repositorio.py -q -p no:cacheprovider
+        env:
+          RADAR_PUSH_ANTES: ${{ github.event.before }}
+          RADAR_PUSH_RAMO: ${{ github.ref_name }}
