@@ -1,7 +1,7 @@
 # Radar Artecon — Relatório de testes (v0.24.0)
 
-Data: 15/10/2026. Resultado neste ambiente, com a suíte inteira da v0.24.0 (até a etapa 5, com os acertos da revisão): **1.038
-aprovados, 0 falhas, 67 pulados**, em 908 s (15min08s). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`,
+Data: 15/10/2026. Resultado neste ambiente, com a suíte inteira da v0.24.0 (até a etapa 5, com os acertos da revisão e a norma
+seguida de vírgula): **1.039 aprovados, 0 falhas, 67 pulados**, em 1.130 s (18min50s). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`,
 fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está
 instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits
 do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na etapa 1 da v0.24.0 (14/10/2026), a mesma suíte
