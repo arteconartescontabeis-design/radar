@@ -57,8 +57,10 @@ CAMPOS = {"title", "keywords", "metadescription", "text", "category", "image"}
 
 
 # ------------------------------------------------------------------ texto do Radar → HTML do site
-# v0.24.0: o endereço escrito no texto (o link oficial da seção "Fundamentação legal") vira link, como na prévia da tela
-# (renderTexto): a pontuação colada no fim não faz parte do endereço, a não ser o ")" que fecha um "(" do próprio endereço
+# v0.24.0: o endereço escrito no texto (o link oficial da linha "Fonte oficial" do fim — etapa 5 —, ou da seção "Fundamentação legal"
+# dos textos de antes) vira link, como na prévia da tela (renderTexto): a pontuação colada no fim não faz parte do endereço, a não ser
+# o ")" que fecha um "(" do próprio endereço. O robô não acrescenta chamada comercial nenhuma: só o texto aprovado, os créditos e a
+# linha "Conteúdo informativo"
 _ENDERECO = re.compile(r"(https?://[^\s<>\"']+)", re.I)
 LINHA_INFORMATIVO = "Conteúdo informativo"         # v0.24.0: a linha do texto Informativo no fim da notícia (a mesma da tela)
 

@@ -15,6 +15,9 @@
 -- "Revisei e assumo" do administrador) fica em radar_conteudos.conferencia, presa à versão do texto, e a aprovação confere; o texto
 -- INFORMATIVO (sem fundamentação legal específica) só é aprovado depois que o administrador autoriza a publicação do assunto (o mesmo
 -- "Publicar mesmo assim", com o motivo). Nenhuma tabela nova; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- v0.24.0 (etapa 5): a base legal do texto termina com a linha "Fonte oficial: <norma> — <link>" (a seção "Fundamentação legal" dos
+-- textos de antes continua valendo) e a revisão editorial automática da IA fica guardada na mesma coluna (conferencia->'editorial',
+-- só informativa: não trava a aprovação), presa à versão do texto do conteúdo (radar_texto_versao).
 -- Reversão: radar-reversao-v0.24.0.sql
 -- =====================================================================
 
@@ -386,6 +389,7 @@ end $$;
 -- v0.24.0: Conferência das Diretrizes (os 10 critérios do escritório antes de aprovar): a lista da IA ("Revisar com IA") e o "Revisei e
 -- assumo" do administrador, presos à versão do texto (radar_conferencia_versao). Só mudam pelas funções radar_registrar_conferencia e
 -- radar_assumir_conferencia; gravar a conferência não muda a data do conteúdo (radar_fn_atualizado_em). '{}' = ainda não conferido.
+-- v0.24.0 (etapa 5): a chave 'editorial' é a revisão editorial automática (só pela função radar_registrar_revisao_editorial).
 alter table public.radar_conteudos add column if not exists conferencia jsonb not null default '{}'::jsonb;
 do $$
 begin
@@ -1835,8 +1839,9 @@ language sql immutable set search_path = public as $$
 $$;
 
 -- O texto cita norma com número (lei, decreto, IN, portaria, resolução, convênio, MP, EC, ato declaratório, solução de consulta,
--- parecer normativo) ou artigo: afirmação com base legal, que pede a seção "Fundamentação legal". A mesma regra está na função
--- radar-ia (citaNorma; testes/test_radar_banco.py confere as duas com os mesmos exemplos).
+-- parecer normativo) ou artigo: afirmação com base legal, que pede a linha "Fonte oficial" (v0.24.0, etapa 5; antes, a seção
+-- "Fundamentação legal"). A mesma regra está na função radar-ia (citaNorma; testes/test_radar_funcao_ia.py confere as duas com os
+-- mesmos exemplos).
 create or replace function public.radar_cita_norma(p text) returns boolean
 language sql immutable set search_path = public as $$
   select coalesce(p, '') ~* ('(^|[^[:alnum:]])(lei(\s+complementar)?|decreto(-lei)?|instru[çc][ãa]o\s+normativa|portaria|resolu[çc][ãa]o'
@@ -1845,11 +1850,13 @@ language sql immutable set search_path = public as $$
       or coalesce(p, '') ~* '(^|[^[:alnum:]])art(igo|s?\.)\s*[0-9]'
 $$;
 
--- O texto termina com a seção "## Fundamentação legal" e ela tem ao menos um link oficial (gov.br, jus.br, leg.br, mp.br, def.br:
--- os mesmos domínios da verificação em fontes oficiais). A mesma regra está na função radar-ia (temFundamentacao).
+-- O texto tem, numa linha só dela, "Fonte oficial:" (v0.24.0, etapa 5: "Fonte oficial: <norma> — <link>", no fim; também em negrito ou
+-- como item de lista) ou a seção "## Fundamentação legal" dos textos de antes, e dali até o fim há ao menos um link oficial (gov.br,
+-- jus.br, leg.br, mp.br, def.br: os mesmos domínios da verificação em fontes oficiais). A mesma regra está na função radar-ia
+-- (temFundamentacao).
 create or replace function public.radar_tem_fundamentacao(p text) returns boolean
 language sql immutable set search_path = public as $$
-  select coalesce((regexp_match(coalesce(p, ''), '(?:^|\n)[ \t]*##[ \t]*fundamenta[çc][ãa]o legal[^\n]*(.*)$', 'i'))[1]
+  select coalesce((regexp_match(coalesce(p, ''), '(?:^|\n)[ \t]*(?:[-•][ \t]+)?(?:##[ \t]*fundamenta[çc][ãa]o legal|\**fontes?[ \t]+oficia(?:l|is)\**[ \t]*:)(.*)$', 'i'))[1]
                   ~* 'https?://([a-z0-9-]+\.)*(gov|jus|leg|mp|def)\.br($|[^a-z0-9-])', false)
 $$;
 
@@ -1873,11 +1880,11 @@ begin
     v := v || jsonb_build_object(
       '2', jsonb_build_object('situacao', v_falha, 'motivo', 'Há ponto marcado com [VERIFICAR]: a informação ainda não foi confirmada.'),
       '8', jsonb_build_object('situacao', v_falha, 'motivo', 'Há ponto marcado com [VERIFICAR]: confira e atualize antes de aprovar.'));
-  -- (o Informativo não tem a seção: a norma que ele menciona é informação atribuída à fonte; o critério 2 dele fica com a IA)
+  -- (o Informativo não tem a linha: a norma que ele menciona é informação atribuída à fonte; o critério 2 dele fica com a IA)
   elsif coalesce(c.avisos_ia->>0, '') not like 'INFORMATIVO%'
         and public.radar_cita_norma(c.corpo) and not public.radar_tem_fundamentacao(c.corpo) then
     v := v || jsonb_build_object('2', jsonb_build_object('situacao', v_falha, 'motivo',
-      'O texto cita norma, mas não termina com a seção “Fundamentação legal” com o link oficial.'));
+      'O texto cita norma, mas não termina com a linha “Fonte oficial” com o link oficial (a norma e o link do documento oficial).'));
   end if;
   if coalesce(c.avisos_ia->>0, '') like 'INFORMATIVO%' and btrim(coalesce(c.fonte_credito, '')) = '' then
     v := v || jsonb_build_object('3', jsonb_build_object('situacao', v_falha, 'motivo',
@@ -1950,7 +1957,9 @@ begin
   end if;
   v_conf := jsonb_build_object('versao', public.radar_conferencia_versao(v_c), 'itens', v_itens, 'em', now(), 'por', auth.uid(),
                                'modelo', left(nullif(btrim(coalesce(p_modelo, '')), ''), 80))
-            || case when v_c.conferencia ? 'assumida' then jsonb_build_object('assumida', v_c.conferencia->'assumida') else '{}'::jsonb end;
+            || case when v_c.conferencia ? 'assumida' then jsonb_build_object('assumida', v_c.conferencia->'assumida') else '{}'::jsonb end
+            -- v0.24.0 (etapa 5): a revisão editorial guardada continua (ela tem a versão dela)
+            || case when v_c.conferencia ? 'editorial' then jsonb_build_object('editorial', v_c.conferencia->'editorial') else '{}'::jsonb end;
   perform set_config('radar.conferindo', '1', true);
   update public.radar_conteudos set conferencia = v_conf where id = p_conteudo;
   perform set_config('radar.conferindo', '', true);
@@ -1981,6 +1990,75 @@ begin
   update public.radar_conteudos set conferencia = v_conf where id = p_conteudo;
   perform set_config('radar.conferindo', '', true);
   return v_conf;
+end $$;
+
+-- ---------------------------------------------------------------- v0.24.0 (etapa 5): revisão editorial automática
+-- Depois de escrever o texto principal, a função radar-ia confere o rascunho pelas 10 perguntas da revisão editorial (item 7 da
+-- Diretriz de Humanização) e reescreve os trechos com problema; o resultado fica no conteúdo (conferencia->'editorial') para a tela
+-- mostrar o quadro "Revisão editorial". É só informativo: a aprovação continua pedindo a Conferência das Diretrizes (os 10 critérios).
+
+-- A versão do TEXTO a que a revisão editorial se refere: só o corpo (o título escolhido entre as sugestões e a capa não contam). Também
+-- é coluna calculada na leitura da tela (select=*,radar_texto_versao): diferente da guardada, a tela avisa que o texto mudou depois.
+create or replace function public.radar_texto_versao(c public.radar_conteudos) returns text
+language sql immutable set search_path = public as $$
+  select md5(coalesce(c.corpo, ''))
+$$;
+
+-- Grava a revisão editorial do texto que está no conteúdo (p_lido: a data do conteúdo gravado pela função). Editor ou administrador (a
+-- função radar-ia grava como quem pediu). p_revisao: {"feita": true, "perguntas": [{"n", "situacao" (ok | ajustado), "motivo"}] (as 10,
+-- cada uma uma vez), "reescritos": [{"antes", "depois"}] (até 12), "modelo"} ou {"feita": false, "motivo"} (não coube no tempo, a IA
+-- falhou ou a reescrita foi recusada). Só essas chaves ficam; o banco põe a versão do texto, quando e quem.
+create or replace function public.radar_registrar_revisao_editorial(p_conteudo bigint, p_lido timestamptz, p_revisao jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_c public.radar_conteudos%rowtype;
+  v jsonb;
+  v_feita boolean := jsonb_typeof(p_revisao) = 'object' and p_revisao->'feita' = 'true'::jsonb;
+  v_ruim boolean;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR188: só o editor ou o administrador registra a revisão editorial' using errcode = '42501';
+  end if;
+  -- em passos (o tipo de cada parte antes de contar ou percorrer: lista que não é lista vira o erro da validação, não outro)
+  if jsonb_typeof(p_revisao) is distinct from 'object' or length(p_revisao::text) > 12000
+     or jsonb_typeof(p_revisao->'feita') is distinct from 'boolean' then
+    v_ruim := true;
+  elsif not v_feita then
+    v_ruim := jsonb_typeof(p_revisao->'motivo') is distinct from 'string' or length(btrim(p_revisao->>'motivo')) not between 1 and 300;
+  elsif jsonb_typeof(p_revisao->'perguntas') is distinct from 'array'
+        or jsonb_typeof(coalesce(p_revisao->'reescritos', '[]'::jsonb)) is distinct from 'array' then
+    v_ruim := true;
+  else
+    v_ruim := jsonb_array_length(p_revisao->'perguntas') <> 10
+      or (select count(distinct e->>'n') from jsonb_array_elements(p_revisao->'perguntas') e
+           where jsonb_typeof(e) = 'object' and e->>'n' ~ '^([1-9]|10)$' and e->>'situacao' in ('ok','ajustado')
+             and jsonb_typeof(e->'motivo') = 'string' and length(btrim(e->>'motivo')) between 1 and 300) <> 10
+      or jsonb_array_length(coalesce(p_revisao->'reescritos', '[]'::jsonb)) > 12
+      or exists (select 1 from jsonb_array_elements(coalesce(p_revisao->'reescritos', '[]'::jsonb)) r
+                  where jsonb_typeof(r) is distinct from 'object' or jsonb_typeof(r->'antes') is distinct from 'string'
+                     or jsonb_typeof(r->'depois') is distinct from 'string' or length(r->>'antes') not between 1 and 400
+                     or length(r->>'depois') > 400);
+  end if;
+  if v_ruim then
+    raise exception 'RADAR189: a revisão editorial precisa ter as 10 perguntas, cada uma uma vez, com “ok” ou “ajustado” e o motivo (até 300 caracteres), e até 12 trechos reescritos; ou, não feita, o motivo'
+      using errcode = 'P0001';
+  end if;
+  select * into v_c from public.radar_conteudos c where c.id = p_conteudo for update;
+  if v_c.id is null or v_c.atualizado_em is distinct from p_lido then
+    raise exception 'RADAR190: o conteúdo mudou depois que a revisão editorial começou (ou não existe mais): faça a revisão de novo' using errcode = 'P0001';
+  end if;
+  v := jsonb_build_object('feita', v_feita, 'versao', public.radar_texto_versao(v_c), 'em', now(), 'por', auth.uid(),
+                          'modelo', left(nullif(btrim(coalesce(p_revisao->>'modelo', '')), ''), 80))
+       || case when v_feita then jsonb_build_object(
+            'perguntas', (select jsonb_agg(jsonb_build_object('n', (e->>'n')::int, 'situacao', e->>'situacao', 'motivo', btrim(e->>'motivo'))
+                                           order by (e->>'n')::int) from jsonb_array_elements(p_revisao->'perguntas') e),
+            'reescritos', coalesce((select jsonb_agg(jsonb_build_object('antes', r->>'antes', 'depois', r->>'depois') order by k)
+                                      from jsonb_array_elements(coalesce(p_revisao->'reescritos', '[]'::jsonb)) with ordinality x(r, k)), '[]'::jsonb))
+          else jsonb_build_object('motivo', btrim(p_revisao->>'motivo')) end;
+  perform set_config('radar.conferindo', '1', true);
+  update public.radar_conteudos set conferencia = conferencia || jsonb_build_object('editorial', v) where id = p_conteudo;
+  perform set_config('radar.conferindo', '', true);
+  return v;
 end $$;
 
 -- a liberação só muda pela função radar_liberar_sem_fundamentacao (a equipe edita o assunto, mas não esses campos)
@@ -6186,6 +6264,9 @@ grant execute on function public.radar_autorizar_copia(bigint, text, timestamptz
 grant execute on function public.radar_registrar_conferencia(bigint, timestamptz, jsonb, text) to authenticated;
 grant execute on function public.radar_assumir_conferencia(bigint, text, timestamptz) to authenticated;
 grant execute on function public.radar_conferencia_versao(public.radar_conteudos) to authenticated;
+-- v0.24.0 (etapa 5): a revisão editorial (a função confere o papel); a versão do texto é coluna calculada na leitura da tela
+grant execute on function public.radar_registrar_revisao_editorial(bigint, timestamptz, jsonb) to authenticated;
+grant execute on function public.radar_texto_versao(public.radar_conteudos) to authenticated;
 grant execute on function public.radar_admin_usuarios() to authenticated;
 grant execute on function public.radar_registrar_uso_ia(text, text, int, int, bigint) to authenticated;
 grant execute on function public.radar_registrar_evidencia_ia(bigint, bigint, text, text) to authenticated;

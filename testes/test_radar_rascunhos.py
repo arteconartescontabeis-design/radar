@@ -294,6 +294,21 @@ def test_regra_da_fonte_e_revisao_do_robo_iguais_as_da_funcao():
     assert "não acrescente a fonte aos outros parágrafos" in item_b(rr.REVISAO) and "BOLETIM PAGO" in item_b(rr.REVISAO)
 
 
+def test_escrita_humana_do_robo_igual_a_da_funcao_sem_chamada_comercial():
+    """v0.24.0 (etapa 5): os rascunhos do robô seguem a mesma Diretriz de Humanização do "Gerar com IA" (a regra (9) é a mesma da função
+    radar-ia), a Análise Artecon é opcional e o formato não pede mais "quando vale procurar a Artecon" nem "o risco de não agir"."""
+    ts = (RAIZ / "supabase" / "functions" / "radar-ia" / "index.ts").read_text(encoding="utf-8")
+    regra = _literais(_extrair(ts, "const REGRA_ESTILO = ", '";\n'))
+    assert regra == rr.REGRA_ESTILO and regra.startswith("(9) ESCRITA HUMANA: escreva como um jornalista especializado")
+    for formato in ("flash", "informativo", "artigo"):
+        texto = rr.instrucoes(formato)
+        assert rr.REGRA_ESTILO in texto and "ESCRITA NATURAL" not in texto, formato
+        assert "vale procurar a Artecon" not in texto and "o risco de não agir" not in texto, formato
+        assert "(4) a seção 'Análise Artecon' é OPCIONAL" in texto and "nunca invente interpretação jurídica nem consequência econômica" in texto, formato
+    assert "Se acrescentar conhecimento técnico (regra (4)), feche com a seção '## Análise Artecon'" in rr.FORMATOS["informativo"]
+    assert "a Análise Artecon quando acrescentar" in rr.FORMATOS["artigo"]
+
+
 def test_fontes_das_capturas_marca_o_boletim_pago_e_poe_a_oficial_antes():
     """v0.18.0: o robô reconhece o boletim pago pelo slug e manda à IA os nomes pelos quais a fonte pode ser citada."""
     grupo = [{"texto": "texto do boletim", "radar_fontes": {"slug": "itc-email", "nome": "ITC Consultoria — boletim por e-mail", "orgao": "ITC Consultoria"}},

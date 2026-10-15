@@ -287,6 +287,9 @@ drop function if exists public.radar_tem_fundamentacao(text);
 drop function if exists public.radar_conferencia_versao(public.radar_conteudos);
 drop function if exists public.radar_conferencia_codigo(public.radar_conteudos);
 drop function if exists public.radar_conferencia_pendente(public.radar_conteudos);
+-- v0.24.0 (etapa 5): a revisão editorial
+drop function if exists public.radar_registrar_revisao_editorial(bigint, timestamptz, jsonb);
+drop function if exists public.radar_texto_versao(public.radar_conteudos);
 -- v0.19.1 (opcional): a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql), se foi instalada
 drop function if exists public.radar_concorrentes_conferir(text);
 

@@ -76,6 +76,13 @@ PECA_EXEMPLO = {
     "pendencias": ["quantas empresas a equipe do Departamento Pessoal atende"]}
 
 
+def editorial_eco(pedido):
+    """v0.24.0 (etapa 5): a revisão editorial imitada que não muda nada (as 10 perguntas "ok"; o título e o texto que recebeu)."""
+    msg = pedido["messages"][0]["content"]
+    return {"titulo": msg.split("\n", 1)[0].removeprefix("Título: "), "corpo": msg.split("<<<TEXTO A REVISAR>>>\n", 1)[1].split("\n<<<FIM>>>", 1)[0],
+            "perguntas": [{"pergunta": n, "situacao": "ok", "motivo": "Sem problema."} for n in range(1, 11)], "reescritos": [], "pendencias": []}
+
+
 class Servidor(BaseHTTPRequestHandler):
     """Arquivos do app + imitação do Supabase (auth simulado; /rest/v1 repassado ao PostgREST)."""
 
@@ -164,8 +171,9 @@ class Servidor(BaseHTTPRequestHandler):
                 png = base64.b64encode((RAIZ / "radar-logo-artecon.png").read_bytes()).decode()
                 return self._responder(200, json.dumps({"data": [{"b64_json": png}] * pedido.get("n", 1), "usage": {"input_tokens": 60, "output_tokens": 4000}}).encode())
             nome = pedido["tool_choice"]["name"]
+            resposta = OPENAI["respostas"][nome]
             bloco = ({"type": "text", "text": "isto não é o formato pedido"} if OPENAI["fora_do_formato"]
-                     else {"type": "tool_use", "id": "toolu_1", "name": nome, "input": OPENAI["respostas"][nome]})
+                     else {"type": "tool_use", "id": "toolu_1", "name": nome, "input": resposta(pedido) if callable(resposta) else resposta})
             return self._responder(200, json.dumps({"id": "msg_1", "type": "message", "role": "assistant", "model": pedido["model"],
                 "content": [bloco], "stop_reason": "end_turn" if OPENAI["fora_do_formato"] else "tool_use",
                 "usage": {"input_tokens": 1200, "output_tokens": 300}}, ensure_ascii=False).encode())
@@ -265,7 +273,8 @@ def openai():
     if shutil.which("deno") is None or not CENTRAL.exists():
         pytest.skip("deno ou o pacote da IA Central não disponível")
     # v0.20.0: o kit das redes (3ª etapa do “Gerar com IA”) já tem resposta; o teste que precisar troca
-    OPENAI.update(respostas={"kit": json.loads(json.dumps(KIT_EXEMPLO)), "peca": json.loads(json.dumps(PECA_EXEMPLO))}, status=200, pedidos=[],
+    OPENAI.update(respostas={"kit": json.loads(json.dumps(KIT_EXEMPLO)), "peca": json.loads(json.dumps(PECA_EXEMPLO)),
+                             "editorial": editorial_eco}, status=200, pedidos=[],       # v0.24.0 (etapa 5): a revisão editorial devolve o texto
                   fora_do_formato=False, instalada=True, emails=[], erro=None)       # v0.21.0: e a peça da Pauta
     # IA Central zerada a cada teste: sem uso, sem avisos, saldos folgados e limites originais do Radar
     central("truncate core.ia_uso, core.ia_notificacoes, core.ia_saldo restart identity")
@@ -347,7 +356,15 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     topo, data, itens = pagina.evaluate("VERSOES[0]")
     assert topo == pagina.evaluate("VERSAO") == "0.24.0" and re.fullmatch(r"\d{2}/10/2026", data)
     texto = " ".join(itens)
-    for trecho in ["Diretrizes editoriais do escritório na IA", "“Fundamentação legal”", "link inventado sai do texto sozinho",
+    for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
+                   # etapa 5: a humanização, a Análise Artecon opcional, sem chamada comercial e a revisão editorial automática
+                   "Textos mais humanos", "jornalista especializado em economia, contabilidade e tributos", "Começa pelo fato mais importante",
+                   "A “Análise Artecon” só aparece quando acrescenta conhecimento técnico de verdade",
+                   "Nada de convite automático para contratar ou procurar a Artecon", "os roteiros de reel já gravados na Pauta não mudam",
+                   "Revisão editorial automática", "✓ (sem problema) ou ✎ (ajustado)", "“O que foi reescrito” (antes → depois)",
+                   "Não é detector de IA", "nunca acrescenta fato, número, norma ou link que não esteja no assunto", "“Revisão editorial não feita”",
+                   "“Fazer a revisão editorial”", "quem trava o Aprovar continua sendo a Conferência das Diretrizes",
+                   "Custa uma consulta a mais à IA por texto gerado",
                    "“Informativo — aguardando autorização”", "só o administrador autoriza a publicação", "“Conteúdo informativo”",
                    "Conferência das Diretrizes antes de aprovar", "os 10 critérios", "o Aprovar fica travado", "“Revisei e assumo”",
                    "citar a fonte não autoriza copiar", "“Imagem ilustrativa gerada por IA”",
@@ -1161,9 +1178,12 @@ def test_ia_fundamentar_so_aceita_trechos_literais_do_texto_oficial(pagina, limp
 CORPO_COM_PROBLEMAS = ("## O que mudou?\nA Instrução Normativa determina o destaque da CBS à alíquota de 0,9% a partir de 1º de janeiro de 2027.\n\n"
                        "Conforme a Lei nº 9.999/2030 e o art. 7º, a multa é de 75% e o prazo termina em 15/03/2027, com custo de R$ 1.500,00.\n\n"
                        "## Análise Artecon\nRecomenda-se avaliar o cadastro fiscal. [VERIFICAR: data de início da obrigação acessória] <b>negrito em HTML</b>")
+# v0.24.0 (etapa 5): termina com a linha "Fonte oficial" com o link da captura oficial (o texto cita o art. 2º): sem ela, o gerar faria
+# também a segunda passada, para acrescentá-la
 CORPO_LIMPO = ("## O que mudou?\nA Instrução Normativa dispõe sobre a apuração da CBS no período de transição. O contribuinte deverá destacar a CBS "
                "no documento fiscal à alíquota de 0,9% a partir de 1º de janeiro de 2027, conforme o art. 2º.\n\n"
-               "## Análise Artecon\nRecomenda-se avaliar a parametrização dos sistemas de emissão.")
+               "## Análise Artecon\nRecomenda-se avaliar a parametrização dos sistemas de emissão.\n\n"
+               "Fonte oficial: IN RFB nº 2.290 — https://www.gov.br/exemplo/in-2290")
 
 
 def test_ia_gerar_cria_rascunho_e_aponta_o_que_nao_esta_no_texto_oficial(pagina, limpo, openai):
@@ -1221,7 +1241,9 @@ def test_ia_o_que_vai_para_a_anthropic_e_o_que_fica_na_ia_central(limpo, openai,
     for acao in ["classificar", "fundamentar", "gerar"]:
         assert pedir_ia({"acao": acao, "assunto_id": a, "formato": "artigo"}).status_code == 200
     modelos = [p["corpo"]["model"] for p in openai["pedidos"]]
-    assert modelos == ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-sonnet-4-6"]
+    # v0.24.0 (etapa 5): classificar, fundamentar, a redação e a revisão editorial (o texto tem a linha "Fonte oficial": sem a segunda passada)
+    assert [p["corpo"]["tools"][0]["name"] for p in openai["pedidos"]] == ["classificacao", "fundamentacao", "conteudo", "editorial"]
+    assert modelos == ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-sonnet-4-6", "claude-sonnet-4-6"]
     for p in openai["pedidos"]:
         corpo, bruto = p["corpo"], json.dumps(p["corpo"], ensure_ascii=False)
         assert p["caminho"] == "/anthropic/v1/messages"
@@ -1235,10 +1257,10 @@ def test_ia_o_que_vai_para_a_anthropic_e_o_que_fica_na_ia_central(limpo, openai,
         assert "IGNORE AS INSTRUÇÕES ANTERIORES" in texto and "IGNORE AS INSTRUÇÕES" not in corpo["system"]
         assert "eyJ" not in bruto and "artecon.test" not in bruto and "iagw_" not in bruto
     assert "ARTIGO TÉCNICO" in openai["pedidos"][2]["corpo"]["system"]
-    # a IA Central registrou as três chamadas, com quem pediu e o custo calculado pelos tokens
+    # a IA Central registrou as quatro chamadas, com quem pediu e o custo calculado pelos tokens
     usos = central("select app, usuario, modelo, entrada, saida, custo_usd, status, provedor from core.ia_uso order by id")
-    assert [u[:2] for u in usos] == [("radar", "editora@artecon.test")] * 3 and all(u[6] == "ok" and u[7] == "anthropic" for u in usos)
-    assert [float(u[5]) for u in usos] == [0.0027, 0.0081, 0.0081]          # haiku: 1200×1 + 300×5; sonnet: 1200×3 + 300×15 (por milhão)
+    assert [u[:2] for u in usos] == [("radar", "editora@artecon.test")] * 4 and all(u[6] == "ok" and u[7] == "anthropic" for u in usos)
+    assert [float(u[5]) for u in usos] == [0.0027, 0.0081, 0.0081, 0.0081]  # haiku: 1200×1 + 300×5; sonnet: 1200×3 + 300×15 (por milhão)
 
 
 def test_ia_limites_e_bloqueios_da_ia_central_chegam_claros_ao_radar(limpo, openai, navegador):
@@ -3228,7 +3250,7 @@ def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_a_fonte_cita
     pagina.click("text=Gerar texto com IA")
     pagina.wait_for_selector("#recado .aviso >> text=ponto(s) a conferir")
     assert pagina.locator("#recado .erro").count() == 0
-    sistema = [x["corpo"]["system"] for x in openai["pedidos"] if "system" in x["corpo"]][-1]
+    sistema = [x["corpo"]["system"] for x in openai["pedidos"] if x["corpo"].get("tool_choice", {}).get("name") == "conteudo"][-1]
     assert "PALAVRAS PRÓPRIAS" in sistema and "BOLETIM PAGO" in sistema             # v0.19.0: palavras próprias; frase igual só a indispensável
     assert limpo.execute("select fonte_credito from radar_conteudos").fetchone()[0] == "Receita Federal do Brasil"
 
@@ -3448,13 +3470,14 @@ def _png_base64(cor=(30, 90, 150)):
 
 
 def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_falha=None, ilustrar_avisos=None, conferencia=None,
-                  revisar_texto=True):
+                  revisar_texto=True, editorial=None):
     """Responde no lugar da função radar-ia (a IA Central não roda aqui): grava o rascunho como a função faria. Com kit_falha
     ((status, mensagem)), o kit falha como na função antiga ou no banco sem o SQL da v0.20.0. v0.21.0: "peca" é a sugestão da peça da
     Pauta que a função grava (radar_pauta_pecas.ia, sem mudar a versão da peça); peca_falha, como kit_falha. v0.24.0: ilustrar_avisos,
     os avisos da ilustração (a orientação da imagem que ficou de fora); conferencia, a lista dos 10 critérios que o "revisar" devolve,
     gravada pelo banco como a função grava (radar_registrar_conferencia, com o login da editora); com revisar_texto=False, nada a
-    corrigir: o "revisar" só confere."""
+    corrigir: o "revisar" só confere. v0.24.0 (etapa 5): "editorial" é a revisão editorial que a ação "editorial" grava (o texto ganha
+    uma frase e o resultado vai ao banco como a função grava, com o login da editora)."""
     def responder(rota):
         corpo = json.loads(rota.request.post_data or "{}")
         pedidos.append(corpo)
@@ -3492,6 +3515,13 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_fal
                           where id = %s""", (corpo["conteudo_id"],))
             r = {"conteudo_id": corpo["conteudo_id"], "pendencias": ["prazo"], "marcas": 0, "copias": 1, "restam": {"marcas": 0, "copias": 0},
                  "avisos_gravados": True, "titulo_mudou": "[VERIFICAR" in antes, "autorizacao_caiu": False, "corrigiu": True}
+        elif acao == "editorial":                            # v0.24.0 (etapa 5): a revisão editorial, gravada como a função grava
+            db.execute("update radar_conteudos set corpo = corpo || ' Trecho reescrito pela revisão editorial.' where id = %s", (corpo["conteudo_id"],))
+            with como("authenticated", EDITOR) as x:
+                lido = x.execute("select atualizado_em from radar_conteudos where id = %s", (corpo["conteudo_id"],)).fetchone()[0]
+                e = x.execute("select radar_registrar_revisao_editorial(%s, %s, %s)",
+                              (corpo["conteudo_id"], lido, json.dumps(editorial or REVISAO_EDITORIAL))).fetchone()[0]
+            r = {"conteudo_id": corpo["conteudo_id"], "editorial": e, "mudou": True, "titulo_mudou": False, "pendencias": []}
         elif acao == "kit" and kit_falha:
             return rota.fulfill(status=kit_falha[0], content_type="application/json", body=json.dumps({"message": kit_falha[1]}))
         elif acao == "kit":                                  # v0.20.0: o kit das redes, gravado como a função grava (não muda a versão do conteúdo)
@@ -8421,3 +8451,141 @@ def test_informativo_so_publica_depois_da_autorizacao_do_administrador(pagina, l
     form.locator("[data-acao=aprovar]").click()
     pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
+
+
+# ------------------------------------------------ v0.24.0 (etapa 5): Revisão editorial e a linha "Fonte oficial"
+PERGUNTAS_REVISAO = [{"n": n, "situacao": "ajustado" if n in (1, 9) else "ok",
+                      "motivo": {1: "Abertura com fórmula de texto automático reescrita.", 9: "Convite para contratar a Artecon tirado do fim."}.get(n, "Sem problema.")}
+                     for n in range(1, 11)]
+REVISAO_EDITORIAL = {"feita": True, "perguntas": PERGUNTAS_REVISAO, "modelo": "claude-sonnet-4-6",
+                     "reescritos": [{"antes": "Nesse cenário, a CBS passa a valer.", "depois": "A CBS passa a ser destacada na nota a partir de 2027."},
+                                    {"antes": "Fale com a Artecon e não perca o prazo!", "depois": ""}]}
+
+
+def conteudo_da_ia(db, a, corpo="A CBS passa a ser destacada no documento fiscal a partir de 2027, à alíquota de 0,9%, para as empresas do regime regular.",
+                   titulo="CBS no documento fiscal"):
+    return db.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por, modelo_ia)
+                         values (%s, 'informativo', %s, %s, 'em_revisao', 'ia', 'claude-sonnet-4-6') returning id""", (a, titulo, corpo)).fetchone()[0]
+
+
+def editorial_pelo_banco(conteudo, revisao=REVISAO_EDITORIAL):
+    """A revisão editorial gravada como a função radar-ia grava (com o login da editora)."""
+    with como("authenticated", EDITOR) as x:
+        lido = x.execute("select atualizado_em from radar_conteudos where id = %s", (conteudo,)).fetchone()[0]
+        return x.execute("select radar_registrar_revisao_editorial(%s, %s, %s)", (conteudo, lido, json.dumps(revisao))).fetchone()[0]
+
+
+def test_revisao_editorial_mostra_as_10_perguntas_e_o_que_foi_reescrito(pagina, limpo):
+    """v0.24.0 (etapa 5): no conteúdo em revisão, logo abaixo da Conferência das Diretrizes, o quadro “Revisão editorial” com as 10
+    perguntas (✓ sem problema, ✎ ajustado, com o motivo) e “O que foi reescrito” (antes → depois; o trecho que saiu aparece como “saiu do
+    texto”). Ele só informa: não muda a trava do Aprovar. Trocar só o título (escolher outra sugestão) não muda nada; mudar o texto à mão
+    faz o quadro avisar que a revisão era da versão anterior, com o botão para fazer de novo. O texto escrito pela equipe, sem revisão
+    editorial, não tem o quadro; o Histórico mostra a revisão numa linha legível."""
+    a, _ = assunto_com_texto(limpo)
+    c = conteudo_da_ia(limpo, a)
+    editorial_pelo_banco(c)
+    h = conteudo_em_revisao(limpo, a, titulo="Texto da equipe")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    quadro = pagina.locator(f"#edit-{c}")
+    assert quadro.locator("h4").inner_text() == "Revisão editorial" and quadro.get_attribute("data-situacao") == "feita"
+    assert pagina.locator(f"#conf-{c} + #edit-{c}").count() == 1                      # logo abaixo da Conferência das Diretrizes
+    perguntas = pagina.evaluate("PERGUNTAS_TELA")
+    assert len(perguntas) == 10 and [quadro.locator("ol li b").nth(i).inner_text() for i in range(10)] == [f"{i + 1}. {t}" for i, t in enumerate(perguntas)]
+    assert [quadro.locator(f"li[data-pergunta='{n}'] .marca").inner_text() for n in (1, 2, 9)] == ["✎", "✓", "✎"]
+    assert quadro.locator("li.ajustado").count() == 2 and quadro.locator("li.ok").count() == 8
+    assert "Convite para contratar a Artecon tirado do fim." in quadro.locator("li[data-pergunta='9']").inner_text()
+    assert "Este quadro só informa: quem trava a aprovação é a Conferência das Diretrizes." in quadro.inner_text()
+    reescritos = quadro.locator("ul.reescritos li").all_inner_texts()
+    assert reescritos == ["Nesse cenário, a CBS passa a valer. → A CBS passa a ser destacada na nota a partir de 2027.",
+                          "Fale com a Artecon e não perca o prazo! → (saiu do texto)"]
+    assert quadro.locator("[data-acao=ia-editorial]").count() == 0 and "Feita com IA em" in quadro.inner_text()
+    assert pagina.locator(f"#edit-{h}").count() == 0                                   # o texto da equipe não tem o quadro
+    form = pagina.locator(f"form[data-form=conteudo][data-id='{c}']")
+    assert form.get_attribute("data-conferencia") == pagina.locator(f"form[data-form=conteudo][data-id='{h}']").get_attribute("data-conferencia")
+    sem_rolagem_lateral(pagina)
+    # só o título: a revisão continua valendo
+    form.locator("[name=titulo]").fill("CBS passa a constar no documento fiscal")
+    form.locator("[data-acao=salvar-conteudo]").click()
+    pagina.wait_for_selector("#recado >> text=Conteúdo salvo.")
+    assert pagina.locator(f"#edit-{c}").get_attribute("data-situacao") == "feita" and pagina.locator(f"#edit-{c} .editorial-antiga").count() == 0
+    # o texto mudou à mão: o quadro avisa que a revisão era da versão anterior e oferece fazer de novo
+    form = pagina.locator(f"form[data-form=conteudo][data-id='{c}']")
+    form.locator("[name=corpo]").fill(form.locator("[name=corpo]").input_value() + " Frase escrita à mão pela equipe.")
+    form.locator("[data-acao=salvar-conteudo]").click()
+    pagina.wait_for_selector(f"#edit-{c} .editorial-antiga")
+    quadro = pagina.locator(f"#edit-{c}")
+    assert quadro.get_attribute("data-situacao") == "versao_anterior"
+    assert "O texto mudou depois da revisão editorial (editado à mão ou pelo “Revisar com IA”): o que está abaixo se refere à versão anterior do texto." in quadro.inner_text()
+    assert quadro.locator("[data-acao=ia-editorial]").inner_text() == "Fazer a revisão editorial de novo"
+    # o Histórico (administrador): a revisão numa linha legível
+    trocar_para(pagina, "admin@artecon.test")
+    pagina.click("nav.abas >> text=Histórico")
+    pagina.wait_for_selector("text=Trilha de auditoria")
+    historico = pagina.inner_text("main")
+    detalhes = pagina.locator("main td.sub").all_inner_texts()
+    assert "Revisão editorial: 2 pergunta(s) com ajuste, 2 trecho(s) reescrito(s)" in detalhes and "[object Object]" not in historico
+
+
+def test_revisao_editorial_nao_feita_tem_o_botao_e_nao_trava_o_aprovar(pagina, limpo, conferencia_de_verdade):
+    """v0.24.0 (etapa 5): quando a revisão editorial não foi feita (não coube no tempo, a IA falhou ou a reescrita foi recusada), o quadro diz
+    “Revisão editorial não feita”, com o motivo, e o botão “Fazer a revisão editorial”; o texto da IA sem revisão nenhuma (o do robô, ou de
+    antes desta versão) também. O botão chama a ação “editorial” com o conteúdo e a versão que a tela leu, e o quadro passa a mostrar as 10
+    perguntas. A revisão não feita não trava o Aprovar: com a Conferência das Diretrizes completa, o conteúdo é aprovado."""
+    a, _ = assunto_com_texto(limpo)
+    c = conteudo_da_ia(limpo, a)
+    editorial_pelo_banco(c, {"feita": False, "motivo": "Não coube no tempo do pedido (a redação demorou). O texto ficou como estava."})
+    d = conteudo_da_ia(limpo, a, titulo="Rascunho do robô")
+    conferir_pelo_banco(c)
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    quadro = pagina.locator(f"#edit-{c}")
+    assert quadro.get_attribute("data-situacao") == "nao_feita" and quadro.locator("ol").count() == 0
+    assert quadro.locator(".editorial-nao-feita").inner_text() == ("Revisão editorial não feita. Não coube no tempo do pedido (a redação demorou). "
+                                                                   "O texto ficou como estava.")
+    assert "foi escrito antes dela, pelo robô, ou ela não coube no tempo" in pagina.inner_text(f"#edit-{d}")
+    assert quadro.locator("[data-acao=ia-editorial]").inner_text() == "Fazer a revisão editorial"
+    # não trava: a Conferência das Diretrizes completa libera o Aprovar
+    form = pagina.locator(f"form[data-form=conteudo][data-id='{c}']")
+    assert form.get_attribute("data-conferencia") == "ok" and pagina.locator(f"#conf-{c}").get_attribute("data-situacao") == "ok"
+    # o botão faz a revisão (a ação "editorial") e o quadro mostra as perguntas
+    lido = form.get_attribute("data-lido")
+    quadro.locator("[data-acao=ia-editorial]").click()
+    pagina.wait_for_selector("#recado >> text=Revisão editorial feita: 2 trecho(s) reescrito(s) (veja o quadro “Revisão editorial”).")
+    assert pedidos[-1] == {"acao": "editorial", "conteudo_id": c, "lido": lido, "assunto_id": a}
+    assert "clique em “Revisar com IA” para a Conferência das Diretrizes" in pagina.inner_text("#recado")
+    quadro = pagina.locator(f"#edit-{c}")
+    assert quadro.get_attribute("data-situacao") == "feita" and quadro.locator("li.ajustado").count() == 2
+    # o texto mudou (é outra versão): a Conferência vale de novo depois de conferir; com ela, aprova — a revisão editorial não pesa
+    conferir_pelo_banco(c)
+    pagina.reload()
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.locator(f"form[data-form=conteudo][data-id='{c}'] [data-acao=aprovar]").click()
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
+
+
+def test_conferencia_item_2_aceita_a_linha_fonte_oficial_com_link(pagina, limpo, conferencia_de_verdade):
+    """v0.24.0 (etapa 5): o texto que cita norma termina com a linha curta “Fonte oficial: <norma> — <link>” (no lugar da seção
+    “Fundamentação legal”): com o link oficial, o critério 2 da Conferência das Diretrizes fica ✓; sem a linha (ou sem link oficial), ✗,
+    com o motivo que fala da linha “Fonte oficial”. Na prévia do site, o endereço da linha vira link."""
+    a, _ = assunto_com_texto(limpo)
+    base = "Conforme o art. 2º da Instrução Normativa RFB nº 2.290, a CBS passa a ser destacada no documento fiscal a partir de 2027."
+    com = conteudo_em_revisao(limpo, a, base + "\n\nFonte oficial: Instrução Normativa RFB nº 2.290 — https://www.gov.br/exemplo/in-2290", titulo="Com a linha")
+    sem = conteudo_em_revisao(limpo, a, base + "\n\nFonte oficial: Instrução Normativa RFB nº 2.290 (link a conferir)", titulo="Sem link")
+    for c in (com, sem):
+        conferir_pelo_banco(c)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    assert pagina.locator(f"#conf-{com} li[data-item='2']").get_attribute("class") == "atende"
+    assert pagina.locator(f"#conf-{sem} li[data-item='2']").get_attribute("class") == "nao_atende"
+    assert ("O texto cita norma, mas não termina com a linha “Fonte oficial” com o link oficial"
+            in pagina.inner_text(f"#conf-{sem} li[data-item='2']"))
+    pagina.locator(f"form[data-form=conteudo][data-id='{com}'] [data-acao=previa]").click()
+    assert pagina.locator("#previa-site p", has_text="Fonte oficial:").locator("a[href='https://www.gov.br/exemplo/in-2290']").count() == 1
+    assert "Fonte oficial: Instrução Normativa RFB nº 2.290 — https://www.gov.br/exemplo/in-2290" in pagina.inner_text("#previa-site .previa")

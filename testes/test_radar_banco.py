@@ -482,7 +482,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_video_cota',
                                                            'radar_pauta_pecas_da_pessoa',
                                                            -- v0.24.0: a Conferência das Diretrizes (cada função confere o papel)
-                                                           'radar_registrar_conferencia', 'radar_assumir_conferencia', 'radar_conferencia_versao')
+                                                           'radar_registrar_conferencia', 'radar_assumir_conferencia', 'radar_conferencia_versao',
+                                                           -- v0.24.0 (etapa 5): a revisão editorial (a função confere o papel)
+                                                           'radar_registrar_revisao_editorial', 'radar_texto_versao')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -5118,9 +5120,10 @@ def test_lista_da_conferencia_e_validada_e_so_editor_ou_administrador_grava(limp
 
 
 def test_banco_confere_sozinho_o_que_da_por_codigo(limpo, conferencia_de_verdade, request):
-    """v0.24.0: o que dá para conferir por código vale por cima da lista da IA: [VERIFICAR] (2 e 8), norma citada sem a seção
-    "Fundamentação legal" com link oficial (2), Informativo sem a fonte (3), frase do boletim pago (4) e a capa (6: padrão ou foto da
-    equipe atende; ilustração da IA só com o aviso escrito; sem imagem, não se aplica)."""
+    """v0.24.0: o que dá para conferir por código vale por cima da lista da IA: [VERIFICAR] (2 e 8), norma citada sem a linha "Fonte
+    oficial" com link oficial (2; etapa 5: a seção "Fundamentação legal" dos textos de antes também vale), Informativo sem a fonte (3),
+    frase do boletim pago (4) e a capa (6: padrão ou foto da equipe atende; ilustração da IA só com o aviso escrito; sem imagem, não se
+    aplica)."""
     a, c1 = cenario_publicavel(limpo)
     situacao = lambda conf: {x["item"]: x["situacao"] for x in conf["itens"]}
     conf = registrar_conferencia(c1)
@@ -5131,8 +5134,15 @@ def test_banco_confere_sozinho_o_que_da_por_codigo(limpo, conferencia_de_verdade
     sem_secao = "Conforme a IN RFB nº 2.290, art. 2º, a CBS vai destacada na nota fiscal."
     limpo.execute("update radar_conteudos set corpo = %s where id = %s", (sem_secao, c1))
     conf = registrar_conferencia(c1)
-    assert situacao(conf)[2] == "nao_atende" and "Fundamentação legal" in conf["itens"][1]["motivo"] and situacao(conf)[8] == "atende"
-    for corpo, esperado in [(sem_secao + "\n\n## Fundamentação legal\n- IN RFB nº 2.290 (link a conferir)", "nao_atende"),
+    assert situacao(conf)[2] == "nao_atende" and "“Fonte oficial”" in conf["itens"][1]["motivo"] and situacao(conf)[8] == "atende"
+    # etapa 5: a linha curta "Fonte oficial: <norma> — <link>" (também em negrito ou como item); a seção de antes continua valendo
+    for corpo, esperado in [(sem_secao + "\n\nFonte oficial: IN RFB nº 2.290, art. 2º — https://normas.receita.fazenda.gov.br/in-2290", "atende"),
+                            (sem_secao + "\n\n**Fonte oficial:** IN RFB nº 2.290 — https://www.gov.br/receita/in-2290.", "atende"),
+                            (sem_secao + "\n\n- Fonte oficial: IN RFB nº 2.290 — https://normas.receita.fazenda.gov.br/in-2290", "atende"),
+                            (sem_secao + "\n\nFonte oficial: IN RFB nº 2.290 (link a conferir)", "nao_atende"),
+                            (sem_secao + "\n\nFonte oficial: IN RFB nº 2.290 — https://www.portal-contabil.test/in-2290", "nao_atende"),
+                            (sem_secao + " A fonte oficial: https://www.gov.br/receita/in-2290 fica no meio da frase.", "nao_atende"),
+                            (sem_secao + "\n\n## Fundamentação legal\n- IN RFB nº 2.290 (link a conferir)", "nao_atende"),
                             (sem_secao + "\n\n## Fundamentação legal\n- IN RFB nº 2.290 — https://normas.receita.fazenda.gov.br/in-2290", "atende"),
                             ("Texto sem norma nenhuma.", "atende")]:
         limpo.execute("update radar_conteudos set corpo = %s where id = %s", (corpo, c1))
@@ -5243,12 +5253,98 @@ def test_informativo_so_e_aprovado_depois_da_autorizacao_do_administrador(limpo)
 
 
 def test_setup_de_novo_mantem_a_conferencia_e_a_trava(limpo, conferencia_de_verdade):
-    """v0.24.0: o setup roda de novo sem perder a conferência gravada nem a trava da aprovação."""
+    """v0.24.0: o setup roda de novo sem perder a conferência gravada (etapa 5: nem a revisão editorial) nem a trava da aprovação."""
     _, c1 = fundamentado(limpo)
     registrar_conferencia(c1)
+    registrar_editorial(c1)
     _, c2 = fundamentado(limpo)
     r = psql(SETUP)
     assert r.returncode == 0, r.stderr
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
         aprovar(c2)
+    assert limpo.execute("select conferencia->'editorial'->>'feita' from radar_conteudos where id = %s", (c1,)).fetchone()[0] == "true"
     assert aprovar(c1) == (EDITOR,)
+
+
+# ------------------------------------------------ v0.24.0 (etapa 5): revisão editorial automática
+PERGUNTAS_OK = [{"n": n, "situacao": "ok", "motivo": f"Pergunta {n} sem problema."} for n in range(1, 11)]
+
+
+def registrar_editorial(conteudo, revisao=None, uid=EDITOR, lido=None):
+    """Grava a revisão editorial como a função radar-ia grava (com o login de quem pediu)."""
+    revisao = revisao if revisao is not None else {"feita": True, "perguntas": PERGUNTAS_OK, "reescritos": [], "modelo": "claude-sonnet-4-6"}
+    with como("authenticated", uid) as c:
+        if lido is None:
+            lido = c.execute("select atualizado_em from radar_conteudos where id = %s", (conteudo,)).fetchone()[0]
+        return c.execute("select radar_registrar_revisao_editorial(%s, %s, %s)", (conteudo, lido, json.dumps(revisao))).fetchone()[0]
+
+
+def test_revisao_editorial_gravada_validada_e_so_informativa(limpo, conferencia_de_verdade):
+    """v0.24.0 (etapa 5): a revisão editorial da IA (as 10 perguntas, cada uma "ok" ou "ajustado" com o motivo, e os trechos reescritos;
+    ou "não feita", com o motivo) fica no conteúdo (conferencia->'editorial') só pela função, com a versão do corpo do texto, quando e quem;
+    as chaves de fora não ficam; gravar não muda a data do conteúdo. É validada (RADAR189), só o editor e o administrador gravam (RADAR188)
+    e só para o texto que foi à IA (RADAR190); o UPDATE direto e o INSERT não a forjam. Não trava nem libera a aprovação (quem trava é a
+    Conferência das Diretrizes), e gravar a Conferência ou o "Revisei e assumo" depois não a apaga. Mudou o corpo, a versão muda (a tela
+    avisa que a revisão era da versão anterior); só o título, não."""
+    _, c1 = fundamentado(limpo)
+    lido = lido_de(limpo, c1)
+    ajustada = [dict(x, situacao="ajustado", motivo="Abertura genérica reescrita.") if x["n"] == 1 else x for x in PERGUNTAS_OK]
+    e = registrar_editorial(c1, {"feita": True, "perguntas": list(reversed(ajustada)), "modelo": "claude-sonnet-4-6", "extra": "fora",
+                                 "reescritos": [{"antes": "Nesse cenário, a CBS muda.", "depois": "A CBS muda em 2027."},
+                                                {"antes": "Frase que sobrava.", "depois": ""}]})
+    versao = limpo.execute("select radar_texto_versao(c), md5(c.corpo) from radar_conteudos c where id = %s", (c1,)).fetchone()
+    assert e["feita"] is True and e["versao"] == versao[0] == versao[1] and e["por"] == EDITOR and e["modelo"] == "claude-sonnet-4-6"
+    assert [x["n"] for x in e["perguntas"]] == list(range(1, 11)) and e["perguntas"][0] == {"n": 1, "situacao": "ajustado", "motivo": "Abertura genérica reescrita."}
+    assert e["reescritos"] == [{"antes": "Nesse cenário, a CBS muda.", "depois": "A CBS muda em 2027."}, {"antes": "Frase que sobrava.", "depois": ""}]
+    assert "extra" not in e and set(e) == {"feita", "versao", "em", "por", "modelo", "perguntas", "reescritos"}
+    conf = limpo.execute("select conferencia from radar_conteudos where id = %s", (c1,)).fetchone()[0]
+    assert conf == {"editorial": e} and lido_de(limpo, c1) == lido                     # não muda a data do conteúdo
+    # só informativa: sem a Conferência, a aprovação continua travada; com ela, aprova mesmo com a revisão "não feita"
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR181"):
+        aprovar(c1)
+    nao = registrar_editorial(c1, {"feita": False, "motivo": "  Não coube no tempo do pedido. O texto ficou como estava.  "})
+    assert nao["feita"] is False and nao["motivo"] == "Não coube no tempo do pedido. O texto ficou como estava." and "perguntas" not in nao
+    registrar_conferencia(c1)
+    assert limpo.execute("select conferencia->'editorial' from radar_conteudos where id = %s", (c1,)).fetchone()[0] == nao   # a Conferência não a apaga
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_assumir_conferencia(%s, 'Conferi e assumo este texto.', %s)", (c1, lido_de(limpo, c1)))
+    assert limpo.execute("select conferencia->'editorial' from radar_conteudos where id = %s", (c1,)).fetchone()[0] == nao
+    assert aprovar(c1) == (EDITOR,)
+    # validação: as 10 perguntas, cada uma uma vez, "ok" ou "ajustado", o motivo até 300; até 12 trechos; "não feita" com o motivo
+    _, c2 = fundamentado(limpo)
+    ruins = [{"feita": True, "perguntas": PERGUNTAS_OK[:9]}, {"feita": True, "perguntas": PERGUNTAS_OK[:9] + [PERGUNTAS_OK[0]]},
+             {"feita": True, "perguntas": [dict(x, situacao="talvez") if x["n"] == 3 else x for x in PERGUNTAS_OK]},
+             {"feita": True, "perguntas": [dict(x, motivo=" ") if x["n"] == 4 else x for x in PERGUNTAS_OK]},
+             {"feita": True, "perguntas": [dict(x, motivo="x" * 301) if x["n"] == 4 else x for x in PERGUNTAS_OK]},
+             {"feita": True, "perguntas": [dict(x, n=11) if x["n"] == 10 else x for x in PERGUNTAS_OK]},
+             {"feita": True, "perguntas": PERGUNTAS_OK, "reescritos": [{"antes": "a", "depois": "b"}] * 13},
+             {"feita": True, "perguntas": PERGUNTAS_OK, "reescritos": [{"antes": "", "depois": "b"}]},
+             {"feita": True, "perguntas": PERGUNTAS_OK, "reescritos": [{"antes": "a", "depois": "b" * 401}]},
+             {"feita": True, "perguntas": PERGUNTAS_OK, "reescritos": {"antes": "a"}},
+             {"feita": False}, {"feita": False, "motivo": ""}, {"feita": "sim", "perguntas": PERGUNTAS_OK}, [PERGUNTAS_OK],
+             {"feita": True, "perguntas": PERGUNTAS_OK, "reescritos": [{"antes": "x" * 400, "depois": "y" * 400}] * 12, "modelo": "m" * 4000}]
+    for ruim in ruins:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR189"):
+            registrar_editorial(c2, ruim)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR190"):
+        registrar_editorial(c2, lido="2020-01-01T00:00:00+00:00")
+    for uid in (LEITOR, SEM_PERFIL):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR188"):
+            registrar_editorial(c2, uid=uid, lido=lido_de(limpo, c2))
+    with como("authenticated", EDITOR) as c:                                         # ninguém forja por fora
+        c.execute("update radar_conteudos set conferencia = conferencia || %s where id = %s", (json.dumps({"editorial": {"feita": True}}), c2))
+        a = c.execute("select assunto_id from radar_conteudos where id = %s", (c2,)).fetchone()[0]
+        n = c.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, conferencia)
+                         values (%s, 'flash', 'Novo', 'Texto novo.', 'em_revisao', %s) returning id""",
+                      (a, json.dumps({"editorial": {"feita": True, "perguntas": PERGUNTAS_OK}}))).fetchone()[0]
+    assert limpo.execute("select conferencia from radar_conteudos where id in (%s, %s) order by id", (c2, n)).fetchall() == [({},), ({},)]
+    # a versão é a do corpo: o título novo (escolhido entre as sugestões) não a muda; o texto editado à mão, sim
+    registrar_editorial(c2)
+    guardada = limpo.execute("select conferencia->'editorial'->>'versao' from radar_conteudos where id = %s", (c2,)).fetchone()[0]
+    limpo.execute("update radar_conteudos set titulo = 'Outro título sugerido' where id = %s", (c2,))
+    assert limpo.execute("select radar_texto_versao(c) from radar_conteudos c where id = %s", (c2,)).fetchone()[0] == guardada
+    limpo.execute("update radar_conteudos set corpo = corpo || ' Frase escrita à mão.' where id = %s", (c2,))
+    assert limpo.execute("select radar_texto_versao(c) from radar_conteudos c where id = %s", (c2,)).fetchone()[0] != guardada
+    assert limpo.execute("select conferencia->'editorial'->>'versao' from radar_conteudos where id = %s", (c2,)).fetchone()[0] == guardada
+    assert limpo.execute("""select count(*) from radar_auditoria where tabela = 'radar_conteudos' and registro_id = %s and acao = 'UPDATE'
+                            and usuario = %s and depois->'conferencia'->'editorial'->>'feita' = 'true'""", (str(c2), EDITOR)).fetchone()[0] == 1

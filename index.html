@@ -88,6 +88,15 @@ td.email{min-width:170px}
 .conferencia li.atende .marca{color:var(--ok);background:var(--ok-fundo)} .conferencia li.nao_atende .marca{color:var(--erro);background:var(--erro-fundo)}
 .conferencia li.nao_se_aplica .marca{color:var(--cinza);background:#EEF0F2} .conferencia li.pendente .marca{color:var(--alerta);background:var(--alerta-fundo)}
 .conferencia li .sub{display:block}
+/* v0.24.0 (etapa 5): Revisão editorial (as 10 perguntas; só informativa) */
+.editorial{border:1px solid #D6E4D0;border-radius:8px;padding:10px 12px;margin:10px 0;background:#fff}
+.editorial h4{margin:0 0 4px} .editorial h5{margin:8px 0 2px;font-size:.9rem} .editorial ol{margin:6px 0;padding-left:0;list-style:none}
+.editorial li{display:flex;gap:8px;align-items:flex-start;margin:4px 0;font-size:.9rem} .editorial li .sub{display:block}
+.editorial li .marca{flex:0 0 1.6em;text-align:center;font-weight:700;border-radius:4px}
+.editorial li.ok .marca{color:var(--ok);background:var(--ok-fundo)} .editorial li.ajustado .marca{color:#1B5E9B;background:#E3EEF8}
+.editorial li.pendente .marca{color:var(--alerta);background:var(--alerta-fundo)}
+.editorial ul.reescritos{margin:4px 0;padding-left:18px;font-size:.9rem} .editorial ul.reescritos li{display:list-item}
+.editorial .antes{text-decoration:line-through;color:var(--cinza)} .editorial .antes,.editorial .depois{overflow-wrap:anywhere}
 .aviso .sub{color:inherit}
 main{overflow-wrap:anywhere}
 .titulo-link{background:none;border:0;padding:0;font-weight:700;color:var(--marinho);cursor:pointer;text-align:left}
@@ -298,9 +307,11 @@ const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = 
 const VERSOES = [
   ["0.24.0", "14/10/2026", [
     "Diretrizes editoriais do escritório na IA: em todo texto que a IA escreve para publicar (Gerar com IA, outros títulos, Revisar com IA, kit das redes e Gerar com IA da peça da Pauta), ela segue as regras do escritório: obrigação, direito, prazo ou benefício só com a norma que o sustenta; o que não tem base legal, só como informação; texto próprio (cópia literal só de artigo de lei ou de declaração importante, entre aspas e com a fonte); projeto de lei não é lei aprovada e previsão não é fato; linguagem clara para o empresário, sem exagero.",
-    "Fundamentação legal com link: o texto com base legal termina com a seção “Fundamentação legal”, com a norma, o número (e o artigo, quando precisa) e o link do documento oficial. A IA só usa link que está no assunto (a página oficial capturada, a verificação na internet, as evidências); link inventado sai do texto sozinho, com aviso. Sem link, a norma fica sem ele e vai para os pontos a conferir, num aviso à parte (“Norma que ficou no texto, a conferir…”); a vigência da norma, sem confirmação, também. A IA só põe a data e o artigo da norma quando estão no texto oficial (nada de memória).",
+    "Textos mais humanos: a IA escreve como um jornalista especializado em economia, contabilidade e tributos. Começa pelo fato mais importante, com frases naturais e de tamanhos variados, sem as fórmulas de texto automático (“Nesse cenário”, “Vale ressaltar que”, “abre uma janela de oportunidades”…), sem repetir a mesma informação e sem adjetivo exagerado. A organização segue o assunto: notícia simples em poucos parágrafos; mudança de lei com subtítulos, datas e impactos. A “Análise Artecon” só aparece quando acrescenta conhecimento técnico de verdade (o impacto prático, os setores afetados, o que é obrigação e o que é boa prática). Nada de convite automático para contratar ou procurar a Artecon no fim dos textos e das legendas, nem de urgência artificial: quando o assunto pede orientação profissional, uma menção discreta, no ponto certo. Vale para o que a IA escrever daqui para frente (os roteiros de reel já gravados na Pauta não mudam).",
+    "Fonte oficial: o texto com base legal cita a norma uma vez, com naturalidade, no próprio texto (com o artigo, quando importa), separando o que a lei determina da interpretação técnica, e termina com uma linha curta “Fonte oficial: norma — link do documento oficial”, no lugar da seção “Fundamentação legal” (os textos de antes, com a seção, continuam valendo). A IA só usa link que está no assunto (a página oficial capturada, a verificação na internet, as evidências); link inventado sai do texto sozinho, com aviso. Sem link, a linha cita a norma e ela vai para os pontos a conferir, num aviso à parte (“Norma que ficou no texto, a conferir…”); a vigência da norma, sem confirmação, também. A IA só põe a data e o artigo da norma quando estão no texto oficial (nada de memória).",
+    "Revisão editorial automática: depois de escrever o texto, a IA relê o rascunho com as 10 perguntas do escritório (está natural ou mecânico? há frase que não acrescenta? repetição? os parágrafos fluem? o título diz o fato principal? a base legal está certa e natural? a informação foi conferida? a análise acrescenta? há propaganda desnecessária? um jornalista da área publicaria?) e reescreve só os trechos com problema, antes de o texto ir para a aprovação. No conteúdo, o quadro “Revisão editorial” mostra cada pergunta com ✓ (sem problema) ou ✎ (ajustado) e o motivo, e “O que foi reescrito” (antes → depois). Não é detector de IA: olha clareza, originalidade, repetição, precisão e utilidade. A revisão nunca acrescenta fato, número, norma ou link que não esteja no assunto, nem tira [VERIFICAR], citação entre aspas, a linha “Fonte oficial” ou o link que já estava no texto: se tentar, o Radar recusa a reescrita e fica o texto de antes. Se ela não couber no tempo ou falhar, o texto segue normalmente e o quadro mostra “Revisão editorial não feita”, com o botão “Fazer a revisão editorial”. O quadro só informa: quem trava o Aprovar continua sendo a Conferência das Diretrizes. Se o texto for mudado depois, o quadro avisa que a revisão era da versão anterior. Custa uma consulta a mais à IA por texto gerado. Nos títulos, nas legendas do kit das redes e nas peças da Pauta, a IA faz essa conferência na mesma consulta.",
     "Texto Informativo: sem fonte oficial (ou sem base legal específica), a IA escreve um texto “Informativo”: os fatos e o que eles mudam na prática, sem nada apresentado como obrigação, separando fato de estimativa e dizendo de onde veio a informação. Ele fica em análise, com o selo “Informativo — aguardando autorização”, e só o administrador autoriza a publicação (“Autorizar a publicação do Informativo”, com o motivo, que fica no histórico do assunto). Autorizado, segue a aprovação, o site e as redes como os outros; no site, sai com a linha “Conteúdo informativo” no fim. A autorização é a do assunto inteiro (o mesmo “Publicar mesmo assim”): desfeita, o Informativo aprovado volta para a revisão. O selo do tamanho do texto passa a dizer “Curto (aviso rápido)”, “Médio (notícia)” ou “Longo (artigo)”: a palavra “Informativo” fica só para o texto sem base legal.",
-    "Conferência das Diretrizes antes de aprovar: no conteúdo, um quadro com os 10 critérios do escritório (fontes confiáveis, fundamentação, informativo, texto original, citações, imagem, título, atualizado, redação e nada que induza a erro), cada um com ✓, ✗, — (não se aplica) ou ? (não conferido) e o motivo. O Radar confere sozinho o que dá ([VERIFICAR], texto igual ao da fonte, falta da “Fundamentação legal”, fonte do Informativo e capa); o “Revisar com IA” confere o resto e corrige o que estiver marcado. Com ✗ ou ?, o Aprovar fica travado; o administrador pode liberar com “Revisei e assumo”, com o motivo, que aparece no Histórico. Conferir de novo o mesmo texto não tira o ✗ (só um texto corrigido ou o “Revisei e assumo”); [VERIFICAR] e frase do boletim pago se resolvem no texto (nem o “Revisei e assumo” passa por cima). O banco confere de novo.",
+    "Conferência das Diretrizes antes de aprovar: no conteúdo, um quadro com os 10 critérios do escritório (fontes confiáveis, fundamentação, informativo, texto original, citações, imagem, título, atualizado, redação e nada que induza a erro), cada um com ✓, ✗, — (não se aplica) ou ? (não conferido) e o motivo. O Radar confere sozinho o que dá ([VERIFICAR], texto igual ao da fonte, falta da linha “Fonte oficial”, fonte do Informativo e capa); o “Revisar com IA” confere o resto e corrige o que estiver marcado. Com ✗ ou ?, o Aprovar fica travado; o administrador pode liberar com “Revisei e assumo”, com o motivo, que aparece no Histórico. Conferir de novo o mesmo texto não tira o ✗ (só um texto corrigido ou o “Revisei e assumo”); [VERIFICAR] e frase do boletim pago se resolvem no texto (nem o “Revisei e assumo” passa por cima). O banco confere de novo.",
     "Texto igual ao da fonte com a fonte citada no parágrafo não passa mais sozinho (citar a fonte não autoriza copiar): reescreva com palavras próprias (o “Revisar com IA” faz isso; no kit das redes, o trecho aparece nos pontos a conferir) ou ponha entre aspas só a frase indispensável. A transcrição literal de artigo de lei ou de declaração importante, entre aspas e com a fonte citada no parágrafo, pode ficar (mesmo longa). A ilustração da IA na capa pede o aviso “Imagem ilustrativa gerada por IA” escrito no fim do texto (ou troque pela capa padrão).",
     "Orientações para a IA (Configurações → Inteligência artificial): dois campos de texto livre para ensinar a IA do Radar como o escritório quer o texto e as imagens, sem precisar de programador. “Orientações para os textos” (até 2.000 caracteres): tom, estilo, tamanho, o que evitar e exemplos de posts de que o escritório gostou. “Orientações para as imagens” (até 500 caracteres): estilo, cenas preferidas e o que evitar. O contador mostra quantos caracteres já foram usados, do limite. Só o administrador altera. As regras legais e as Diretrizes continuam valendo e passam por cima delas; os exemplos de posts servem só de modelo de estilo.",
     "Se as orientações para as imagens pedirem marca, logotipo, pessoa conhecida ou o estilo de um autor, a IA as deixa de fora daquela imagem e a tela avisa, com a palavra que travou (a ilustração sai do mesmo jeito). Texto dentro da imagem também não adianta pedir: a imagem nunca tem letra nem número.",
@@ -785,10 +796,10 @@ const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
 /* Função de IA (Edge Function radar-ia). Pode levar mais de um minuto para redigir.
    v0.11.0: enquanto a IA trabalha, um aviso fixo diz o que ela está fazendo e há quanto tempo; e, no mesmo assunto,
    a partir da 2ª consulta o Radar pede a senha de quem está logado (evita consulta repetida sem querer, e gasto). */
-const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo o texto (até 2 minutos)",
+const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo e revisando o texto (até 2 minutos e meio)",
   classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a ilustração da capa (até 2 minutos)",
   verificar:"procurando a fonte oficial na internet (até 2 minutos)", kit:"montando as legendas, a arte e o roteiro do reel (até 1 minuto)",
-  peca:"escrevendo a chamada, as legendas e os cartões da peça (até 1 minuto)"};
+  peca:"escrevendo a chamada, as legendas e os cartões da peça (até 1 minuto)", editorial:"fazendo a revisão editorial do texto (até 2 minutos)"};
 /* v0.19.0: no “Gerar com IA” (várias chamadas seguidas), o aviso diz também em que etapa está */
 let IA_PASSO = "";
 function avisoIA(texto){
@@ -1316,7 +1327,7 @@ const TELAS = {
         <li><b>Capturas.</b> O robô lê as fontes cadastradas e, depois de cada coleta, a IA dá uma nota a cada novidade. A tela abre só com o que está <b>em alta</b>: as 10 de maior nota, sem repetição. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>. Cada cartão diz se a notícia tem <b>fundamentação legal</b>: “com fundamentação legal” mostra as normas que o texto capturado cita (lei, lei complementar, decreto, medida provisória, instrução normativa, resolução, portaria, solução de consulta, ato declaratório, ato conjunto do CGIBS, convênio ICMS, edital de transação e outros atos, além da Constituição, do CTN, do RIR, do RICMS e da CLT); “sem fundamentação legal” quer dizer que o texto não cita nenhuma, e “fundamentação legal não identificada”, que o texto capturado está cortado e não cita norma no trecho que veio — nos dois casos, confira na fonte antes de usar. É uma leitura automática do texto: diz o que está citado, não se a citação está certa nem se a norma está em vigor; decisões judiciais (Tema, RE, ADI) e projetos de lei não contam. Não muda a nota nem a relevância. O restante fica em “Relevantes”, “Baixa relevância” e “Todas”, e pode ser ignorado de uma vez.</li>
         <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Gerar com IA</b> busca a fonte (ou o trecho que comprova), escreve o rascunho, faz a capa padrão e o <b>kit das redes</b> (as legendas do Instagram e do Facebook, a chamada da arte e o roteiro de um reel). Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
-        <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem; a capa sai com ela ao fundo e o título por cima) ou envie uma imagem. O Radar compara o texto com a fonte: o trecho igual ao da fonte fica num quadro (citar a fonte não autoriza copiar: transcrição literal só entre aspas e com a fonte); o botão <b>Revisar com IA</b> reescreve com palavras próprias — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Antes de aprovar, o quadro <b>Conferência das Diretrizes</b> mostra os 10 critérios do escritório: <b>Revisar com IA</b> confere o texto, e com ✗ ou critério não conferido o <b>Aprovar</b> fica travado (o administrador pode liberar com <b>Revisei e assumo</b>, com o motivo). Sem fonte oficial, a IA escreve um texto <b>Informativo</b>, que só vai ao site depois que o administrador autoriza. Salve, envie para revisão e <b>aprove</b>.</li>
+        <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida; se preferir, gere uma ilustração com IA (dá para dizer como quer a imagem; a capa sai com ela ao fundo e o título por cima) ou envie uma imagem. O Radar compara o texto com a fonte: o trecho igual ao da fonte fica num quadro (citar a fonte não autoriza copiar: transcrição literal só entre aspas e com a fonte); o botão <b>Revisar com IA</b> reescreve com palavras próprias — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Antes de aprovar, o quadro <b>Conferência das Diretrizes</b> mostra os 10 critérios do escritório: <b>Revisar com IA</b> confere o texto, e com ✗ ou critério não conferido o <b>Aprovar</b> fica travado (o administrador pode liberar com <b>Revisei e assumo</b>, com o motivo). Logo abaixo, o quadro <b>Revisão editorial</b> mostra como a IA releu o texto que escreveu (10 perguntas, com ✓ ou ✎, e o que foi reescrito); ele só informa. Sem fonte oficial, a IA escreve um texto <b>Informativo</b>, que só vai ao site depois que o administrador autoriza. Salve, envie para revisão e <b>aprove</b>.</li>
         <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
         <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
       </ol></div>
@@ -1513,12 +1524,13 @@ async function reordenarItens(ids){
 const TAMANHO_TEXTO = {flash:"Curto (aviso rápido)", informativo:"Médio (notícia)", artigo:"Longo (artigo)"};
 const CATEGORIAS_DO_SITE = ["IRRF", "Economia", "Legislação Federal", "E-social", "Área Trabalhista e Previdenciária", "Simples Nacional",
   "Tributário", "Legislação Estadual (SC)", "Legislação Municipal"];
-/* v0.24.0: os conteúdos do assunto com a versão do texto que a Conferência das Diretrizes vale (coluna calculada pelo banco). Banco
-   ainda sem o SQL da v0.24.0: lê como antes e o quadro avisa (E.semConferencia; a aprovação segue como antes, que o banco não confere). */
+/* v0.24.0: os conteúdos do assunto com a versão do texto que a Conferência das Diretrizes vale (coluna calculada pelo banco) e, na etapa
+   5, a do corpo, que a Revisão editorial vale (radar_texto_versao). Banco ainda sem o SQL da v0.24.0: lê como antes e o quadro avisa
+   (E.semConferencia; a aprovação segue como antes, que o banco não confere). */
 async function lerConteudosComVersao(id){
-  try{ const r = await ler("radar_conteudos", {select:"*,radar_conferencia_versao", assunto_id:"eq." + id, order:"id"}); E.semConferencia = false; return r; }
+  try{ const r = await ler("radar_conteudos", {select:"*,radar_conferencia_versao,radar_texto_versao", assunto_id:"eq." + id, order:"id"}); E.semConferencia = false; return r; }
   catch(e){
-    if(!/radar_conferencia_versao|conferencia/.test(e.message || "")) throw e;
+    if(!/radar_conferencia_versao|radar_texto_versao|conferencia/.test(e.message || "")) throw e;
     E.semConferencia = true;
     return ler("radar_conteudos", {select:"*", assunto_id:"eq." + id, order:"id"});
   }
@@ -2623,7 +2635,7 @@ function blocoKit(c, ed, urlSite){
 /* v0.24.0: Conferência das Diretrizes (Diretriz 7): os 10 critérios do escritório antes de aprovar, em texto curto (a função radar-ia
    manda à IA os mesmos 10, por extenso, na mesma ordem). A lista da IA vem do “Revisar com IA” e fica no conteúdo
    (radar_conteudos.conferencia), presa à versão do texto (radar_conferencia_versao, lida junto com o conteúdo: mudou o título, o texto, a
-   fonte ou a capa, ela não vale mais); o banco já confere sozinho a capa (6), [VERIFICAR], a seção “Fundamentação legal” (2), a fonte do
+   fonte ou a capa, ela não vale mais); o banco já confere sozinho a capa (6), [VERIFICAR], a linha “Fonte oficial” (2), a fonte do
    Informativo (3) e o boletim pago (4). A tela confere agora, por cima, o que pode mudar depois da lista: [VERIFICAR], o trecho igual ao
    da fonte fora de aspas (4 e 5) e a frase do boletim pago. Aprovar fica travado com ✗ ou critério não conferido, a não ser com o
    “Revisei e assumo” do administrador (com o motivo, só para esta versão do texto); o banco confere de novo (RADAR181/182). */
@@ -2671,16 +2683,58 @@ function quadroConferencia(c, conf, ed){
     ${ed ? `<div class="acoes"><button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>
       ${ehAdmin() && !conf.liberado && !conf.travaAntes ? `<button class="btn peq perigo" type="button" data-acao="abrir-assumir" data-id="${c.id}">Revisei e assumo…</button>` : ""}</div>` : ""}</div>`;
 }
+/* v0.24.0 (etapa 5): Revisão editorial (item 7 da Diretriz de Humanização). Depois de escrever, a IA relê o rascunho com as 10 perguntas
+   do escritório e reescreve os trechos com problema (função radar-ia); o resultado fica no conteúdo (conferencia.editorial), preso à versão
+   do corpo do texto (radar_texto_versao, lida junto com o conteúdo). O quadro só informa: não trava o Aprovar (quem trava são os 10
+   critérios). Mudou o texto depois, ele avisa que a revisão era da versão anterior; não feita, mostra o motivo; nos dois, o botão. */
+const PERGUNTAS_TELA = ["O texto soa natural, não mecânico", "Nenhuma frase que não acrescenta", "Sem repetições desnecessárias",
+  "Parágrafos com fluidez e variedade", "O título reflete o fato principal", "Base legal correta e citada com naturalidade",
+  "Informações conferidas em fontes confiáveis", "A análise acrescenta conhecimento real", "Sem publicidade desnecessária",
+  "Pronto para publicar, no olhar de um jornalista da área"];
+function quadroEditorial(c, ed){
+  const conf = c.conferencia && typeof c.conferencia === "object" && !Array.isArray(c.conferencia) ? c.conferencia : {};
+  const e = conf.editorial && typeof conf.editorial === "object" && !Array.isArray(conf.editorial) ? conf.editorial : null;
+  if(E.semConferencia || (!e && c.gerado_por !== "ia")) return "";       // o texto da equipe só tem o quadro se pedir a revisão
+  const botao = rotulo => ed ? `<div class="acoes"><button class="btn peq sec" type="button" data-acao="ia-editorial" data-id="${c.id}">${rotulo}</button></div>` : "";
+  const cab = `<h4>Revisão editorial</h4><p class="sub" style="margin:0">Depois de escrever, a IA relê o texto com as 10 perguntas do escritório e reescreve o que tiver problema, antes da aprovação. Este quadro só informa: quem trava a aprovação é a Conferência das Diretrizes.</p>`;
+  if(!e || e.feita !== true) return `<div class="editorial" id="edit-${c.id}" data-situacao="nao_feita">${cab}
+    <div class="aviso alerta editorial-nao-feita"><b>Revisão editorial não feita.</b> ${h(e && typeof e.motivo === "string" && e.motivo.trim() ? e.motivo
+      : "Este texto não passou pela revisão editorial automática (foi escrito antes dela, pelo robô, ou ela não coube no tempo).")}</div>
+    ${botao("Fazer a revisão editorial")}</div>`;
+  const perguntas = Array.isArray(e.perguntas) ? e.perguntas : [];
+  const itens = PERGUNTAS_TELA.map((nome, i) => { const x = perguntas.find(y => Number(y?.n) === i + 1);
+    return {n:i + 1, nome, situacao:["ok", "ajustado"].includes(x?.situacao) ? x.situacao : "pendente", motivo:String(x?.motivo || "")}; });
+  const reescritos = (Array.isArray(e.reescritos) ? e.reescritos : []).filter(r => r && typeof r.antes === "string" && r.antes.trim());
+  const antiga = !!c.radar_texto_versao && e.versao !== c.radar_texto_versao, ajustes = itens.filter(x => x.situacao === "ajustado").length;
+  return `<div class="editorial" id="edit-${c.id}" data-situacao="${antiga ? "versao_anterior" : "feita"}">${cab}
+    ${antiga ? `<div class="aviso alerta editorial-antiga"><b>O texto mudou depois da revisão editorial</b> (editado à mão ou pelo “Revisar com IA”): o que está abaixo se refere à versão anterior do texto.</div>` : ""}
+    <ol>${itens.map(x => `<li class="${x.situacao}" data-pergunta="${x.n}"><span class="marca" title="${x.situacao === "ajustado" ? "ajustado" : x.situacao === "ok" ? "sem problema" : "sem resposta"}">${x.situacao === "ajustado" ? "✎" : x.situacao === "ok" ? "✓" : "?"}</span><span><b>${x.n}. ${h(x.nome)}</b><span class="sub">${h(x.motivo)}</span></span></li>`).join("")}</ol>
+    <h5>O que foi reescrito</h5>
+    ${reescritos.length ? `<ul class="reescritos">${reescritos.map(r => `<li><span class="antes">${h(r.antes)}</span> → <span class="depois">${typeof r.depois === "string" && r.depois.trim() ? h(r.depois) : "<i>(saiu do texto)</i>"}</span></li>`).join("")}</ul>`
+      : `<p class="sub" style="margin:0">Nada${ajustes ? " listado pela IA." : ": o texto já estava bom nas 10 perguntas."}</p>`}
+    <p class="sub" style="margin:4px 0 0">✓ sem problema · ✎ ajustado (o trecho foi reescrito).${e.em ? ` Feita com IA em ${dataHora(e.em)}.` : ""}</p>
+    ${antiga ? botao("Fazer a revisão editorial de novo") : ""}</div>`;
+}
 /* v0.24.0: a linha do Histórico da Conferência das Diretrizes (antes → depois, do radar_auditoria): o “Revisei e assumo” com quem
    fez fica na coluna Quem; aqui, o motivo inteiro. Sem ele, quantos critérios não atendem na lista nova. */
 function resumoConferencia(antes, depois){
   const x = antes && typeof antes === "object" ? antes : {}, y = depois && typeof depois === "object" ? depois : {};
+  // v0.24.0 (etapa 5): a revisão editorial guardada na mesma coluna; quando só ela mudou, a linha fala só dela
+  const ed = JSON.stringify(y.editorial ?? null) !== JSON.stringify(x.editorial ?? null) ? resumoEditorial(y.editorial) : "", mais = ed ? " · " + ed : "";
   if(y.assumida && JSON.stringify(y.assumida) !== JSON.stringify(x.assumida))
-    return `Conferência das Diretrizes: “Revisei e assumo” — motivo: “${String(y.assumida.motivo || "")}”`;
+    return `Conferência das Diretrizes: “Revisei e assumo” — motivo: “${String(y.assumida.motivo || "")}”` + mais;
+  if(ed && JSON.stringify(y.itens ?? null) === JSON.stringify(x.itens ?? null)) return ed;
   const itens = Array.isArray(y.itens) ? y.itens : [];
-  if(!itens.length) return "Conferência das Diretrizes: apagada";
+  if(!itens.length) return "Conferência das Diretrizes: apagada" + mais;
   const nao = itens.filter(i => i?.situacao === "nao_atende").map(i => i.item);
-  return "Conferência das Diretrizes: " + (nao.length ? `${nao.length} critério(s) não atende(m) (${nao.join(", ")})` : "os 10 critérios atendem (ou não se aplicam)");
+  return "Conferência das Diretrizes: " + (nao.length ? `${nao.length} critério(s) não atende(m) (${nao.join(", ")})` : "os 10 critérios atendem (ou não se aplicam)") + mais;
+}
+/* v0.24.0 (etapa 5): a revisão editorial na linha do Histórico */
+function resumoEditorial(e){
+  if(!e || typeof e !== "object") return "Revisão editorial: apagada";
+  if(e.feita !== true) return `Revisão editorial não feita — ${String(e.motivo || "")}`;
+  const ajustes = (Array.isArray(e.perguntas) ? e.perguntas : []).filter(p => p?.situacao === "ajustado").length;
+  return `Revisão editorial: ${ajustes} pergunta(s) com ajuste, ${(Array.isArray(e.reescritos) ? e.reescritos : []).length} trecho(s) reescrito(s)`;
 }
 /* v0.24.0: o texto Informativo (sem fundamentação legal específica): o primeiro aviso começa com “INFORMATIVO” (como o texto para análise,
    que começa com “TEXTO PARA ANÁLISE”). Só é aprovado depois que o administrador autoriza a publicação do assunto (o banco confere: RADAR180) */
@@ -2789,7 +2843,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
         <span class="sub">2.</span><button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
         ${imagem ? `<span class="sub">3.</span><a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>
       ${CATEGORIA_SITE[categoria] || (!pubs.length && !c.fora_do_site) ? `<p class="sub dica-site">${CATEGORIA_SITE[categoria] ? `Categoria no site: <b>${h(CATEGORIA_SITE[categoria])}</b>. ` : ""}${pubs.length || c.fora_do_site ? "" : "Depois de publicar, o robô encontra a notícia no site e registra o link sozinho na próxima coleta (a cada 6 horas); se preferir, registre agora."}</p>` : ""}` : ""}
-    ${analise || c.status === "aprovado" ? "" : quadroConferencia(c, conf, ed)}
+    ${analise || c.status === "aprovado" ? "" : quadroConferencia(c, conf, ed) + quadroEditorial(c, ed)}
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
       <button class="btn sec" type="button" data-acao="estrutura" data-id="${c.id}">Inserir estrutura padrão</button>
@@ -2884,6 +2938,28 @@ const ACOES = {
       (resta ? ` Ainda sobrou ${resta} ponto(s) a resolver (veja os quadros no conteúdo).` : r.corrigiu === false ? "" : " Confira o texto antes de enviar para revisão.") + conferencia,
       resta || r.avisos_gravados === false || r.autorizacao_caiu || naoAtende.length ? "aviso" : false);
   },
+  /* v0.24.0 (etapa 5): “Fazer a revisão editorial” — a mesma revisão do “Gerar com IA”, num conteúdo gravado (quando ela não foi feita,
+     no rascunho do robô ou depois que o texto mudou): a IA reescreve os trechos com problema e o quadro mostra as 10 perguntas */
+  async "ia-editorial"(el){
+    const f = el.closest("form"), id = Number(el.dataset.id);
+    if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de pedir a revisão editorial.", true); return; }
+    if(f.querySelector(".rascunho")){ recado("Há um texto não salvo deste conteúdo neste navegador (quadro “Texto não salvo”): recupere e salve, ou descarte, antes de pedir a revisão editorial.", true); return; }
+    apagarRascunho(id);                                   // sem o quadro, o que houver guardado é igual ao texto salvo
+    if(f.dataset.aprovado && !confirm("O conteúdo está aprovado: se a revisão mudar o texto, ele volta para revisão. Continuar?")) return;
+    if(!(await liberarIA())) return;
+    const assunto = E.assunto, r = await ia("editorial", {conteudo_id:id, lido:f.dataset.lido});
+    // o título mudou: a capa (que leva o título) é refeita com a mesma ilustração, sem custo; sem ilustração guardada, fica o lembrete
+    let capa = "";
+    if(r.titulo_mudou && f.dataset.temImagem){
+      if(f.dataset.ilustracao && await capaAutomatica(id, false, false, true)){ if(E.capaAntiga === id) E.capaAntiga = null; capa = " O título mudou: a capa foi refeita com o título novo."; }
+      else{ E.capaAntiga = id; capa = " O título mudou: atualize a capa."; }
+    }
+    if(!telaDoAssunto(assunto)) return;
+    await desenhar(); $(`#edit-${id}`)?.scrollIntoView({behavior:"smooth", block:"start"});
+    const n = Array.isArray(r.editorial?.reescritos) ? r.editorial.reescritos.length : 0;
+    recado(`Revisão editorial feita: ${n ? `${n} trecho(s) reescrito(s)` : "nada a reescrever"} (veja o quadro “Revisão editorial”).` + capa +
+      (r.mudou ? " O texto mudou: confira antes de enviar para revisão e clique em “Revisar com IA” para a Conferência das Diretrizes." : ""), r.mudou ? "aviso" : false);
+  },
   /* v0.16.0: "Autorizar mesmo assim" o texto com trecho igual ao da fonte — o motivo é digitado num quadro abaixo do botão */
   "abrir-autorizar-copia"(el){
     $(".motivo-copia")?.remove();
@@ -2952,14 +3028,14 @@ const ACOES = {
     const feitos = [capa ? "a capa padrão" : "", kit ? "o kit das redes" : ""].filter(Boolean);
     const depois = avisoCapa(capa) + (kitFalhou ? ` O kit das redes (legendas, arte e roteiro do reel) não saiu agora (${kitFalhou.replace(/[.\s]+$/, "")}): use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.`
       : kit?.avisos?.length ? ` O kit das redes tem ${kit.avisos.length} ponto(s) a conferir (veja o quadro “Kit das redes”, no conteúdo).` : "");
-    const amarelo = g.avisos.length > 0 || !capa || !!kitFalhou || !!kit?.avisos?.length;
+    const amarelo = g.avisos.length > 0 || !capa || !!kitFalhou || !!kit?.avisos?.length || editorialFalhou(g.editorial);
     if(!oficial){
       // v0.24.0: sem texto oficial, o texto é Informativo: fica em análise até o administrador autorizar a publicação
       recado(`Assunto sem fonte oficial: a IA escreveu um texto Informativo${pontos} (sem fundamentação legal específica), a partir da fonte não oficial. Ele fica em análise: só vai ao site e às redes depois que o administrador autorizar a publicação, com o motivo.` +
-        busca + (feitos.length ? ` ${feitos.length > 1 ? "Já estão" : "Já está"} no conteúdo ${feitos.join(" e ")}.` : "") + depois + " Revise antes de mandar para a revisão.", "aviso");
+        busca + (feitos.length ? ` ${feitos.length > 1 ? "Já estão" : "Já está"} no conteúdo ${feitos.join(" e ")}.` : "") + recadoEditorial(g.editorial) + depois + " Revise antes de mandar para a revisão.", "aviso");
       return;
     }
-    recado(`IA: ${r ? `${r.inseridas.length} trecho(s) de fundamentação, ` : ""}um rascunho${pontos}${feitos.length ? ", " + feitos.join(" e ") : ""}.` + depois +
+    recado(`IA: ${r ? `${r.inseridas.length} trecho(s) de fundamentação, ` : ""}um rascunho${pontos}${feitos.length ? ", " + feitos.join(" e ") : ""}.` + recadoEditorial(g.editorial) + depois +
       (trechoFalhou ? ` A busca do trecho que comprova não deu certo (${trechoFalhou.replace(/[.\s]+$/, "")}); o texto saiu sem fundamentação.` : "") +
       (g.informativo ? " O texto é Informativo (sem fundamentação legal específica): só vai ao site e às redes depois que o administrador autorizar a publicação." : "") +
       " Revise antes de mandar para a revisão.", amarelo || trechoFalhou || g.informativo ? "aviso" : false);
@@ -3276,8 +3352,8 @@ const ACOES = {
     if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo"; E.capaFoco = r.conteudo_id; (E.kitAberto ||= {})[r.conteudo_id] = true;     // o recado aponta o botão do kit
     await desenhar(); rolarAteConteudo(r.conteudo_id);
-    recado((r.avisos.length ? `Rascunho gerado pela IA com ${r.avisos.length} ponto(s) a conferir.` : "Rascunho gerado pela IA.") + avisoCapa(capa) +
-      " Para as legendas, a arte e o roteiro do reel, use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.", r.avisos.length > 0 || !capa ? "aviso" : false);
+    recado((r.avisos.length ? `Rascunho gerado pela IA com ${r.avisos.length} ponto(s) a conferir.` : "Rascunho gerado pela IA.") + recadoEditorial(r.editorial) + avisoCapa(capa) +
+      " Para as legendas, a arte e o roteiro do reel, use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.", r.avisos.length > 0 || !capa || editorialFalhou(r.editorial) ? "aviso" : false);
   },
   /* v0.20.0: o kit das redes de um conteúdo já escrito (legendas do Instagram e do Facebook, chamada e apoio da arte e o roteiro do
      reel), a partir do texto salvo. Gravar o kit não muda a versão do conteúdo nem derruba autorização; as legendas e a chamada e o
@@ -3808,6 +3884,12 @@ async function buscarFonteOficial(assunto, rapido = false){
 /* v0.20.0: o conteúdo gerado pela IA nasce com a capa padrão Artecon (sem custo de imagem); a ilustração é opcional, pelo botão
    “Gerar ilustração com IA” do conteúdo (v0.12.0 a v0.19.0: a ilustração era o padrão). O recado só fala da capa se ela falhou. */
 const avisoCapa = capa => capa ? "" : SEM_CAPA;
+/* v0.24.0 (etapa 5): o que o recado do “Gerar com IA” diz da revisão editorial (a função antiga não a devolve: nada) */
+const recadoEditorial = e => !e ? "" : e.feita === true
+  ? ` Revisão editorial feita: ${Array.isArray(e.reescritos) && e.reescritos.length ? `${e.reescritos.length} trecho(s) reescrito(s)` : "nada a reescrever"} (quadro “Revisão editorial”).` +
+    (e.registrada === false ? " Ela não ficou registrada no conteúdo: o administrador confere se o banco está na v0.24.0." : "")
+  : " A revisão editorial não foi feita agora (o motivo está no quadro “Revisão editorial”): use “Fazer a revisão editorial”, no quadro dela.";
+const editorialFalhou = e => !!e && (e.feita !== true || e.registrada === false);
 /* Capa automática do conteúdo. Na criação é um extra: se falhar, o conteúdo fica sem imagem e nada mais é afetado.
    v0.16.0: se o conteúdo tem a ilustração da IA guardada, a capa é refeita com ela (e o título atual); "semIlustracao" faz a
    capa padrão sem foto e deixa de usar a ilustração. */

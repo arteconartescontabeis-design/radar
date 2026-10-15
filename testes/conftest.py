@@ -68,7 +68,9 @@ begin
   if (select a.conferencia_automatica from teste.ajustes a limit 1) then
     new.conferencia := jsonb_build_object('versao', public.radar_conferencia_versao(new), 'em', now(), 'teste', true,
       'itens', (select jsonb_agg(jsonb_build_object('item', n, 'situacao', 'atende', 'motivo', 'Conferido (teste).') order by n)
-                  from generate_series(1, 10) n));
+                  from generate_series(1, 10) n))
+      -- v0.24.0 (etapa 5): a revisão editorial gravada pelo Radar (na mesma coluna) fica
+      || case when new.conferencia ? 'editorial' then jsonb_build_object('editorial', new.conferencia->'editorial') else '{}'::jsonb end;
   end if;
   return new;
 end $$;

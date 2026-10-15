@@ -13,8 +13,22 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
 A v0.24.0 põe as **Diretrizes editoriais do escritório** dentro do Radar: a IA escreve seguindo-as, o texto sem base legal vira
-**Informativo** (que só o administrador autoriza), a aprovação passa pela **Conferência das Diretrizes** (os 10 critérios) e o escritório
-ensina a IA pelas **"Orientações para a IA"**, sem programador:
+**Informativo** (que só o administrador autoriza), a aprovação passa pela **Conferência das Diretrizes** (os 10 critérios), o escritório
+ensina a IA pelas **"Orientações para a IA"**, sem programador, e (etapa 5) os textos ficam **mais humanos**, com uma **revisão editorial
+automática** antes da aprovação:
+
+- **Textos mais humanos (etapa 5):** a IA escreve como um jornalista especializado em economia, contabilidade e tributos, para
+  empresários: começa pelo fato mais importante, varia as frases, não usa as fórmulas de texto automático ("Nesse cenário", "Vale
+  ressaltar que", "abre uma janela de oportunidades"…), não repete a informação e não exagera. A organização segue o assunto (notícia
+  simples em poucos parágrafos; mudança de lei com subtítulos, datas e impactos). A **"Análise Artecon" é opcional**: só entra quando
+  acrescenta conhecimento técnico de verdade. **Sem chamada comercial automática** ("fale com a Artecon", urgência) nos textos e nas
+  legendas. Vale para o "Gerar com IA" (e as passadas dele), os títulos, o "Revisar com IA", o kit das redes, as peças da Pauta e os
+  rascunhos do robô. Veja "Diretrizes editoriais e como ensinar a IA", "Humanização dos textos".
+- **Fonte oficial (etapa 5):** a norma é citada uma vez, com naturalidade, no próprio texto, e o texto termina com uma linha curta
+  **"Fonte oficial: norma — link"**, no lugar da seção pesada "Fundamentação legal" (os textos de antes, com a seção, continuam valendo).
+- **Revisão editorial automática (etapa 5):** depois de escrever, a IA relê o rascunho com as **10 perguntas** do escritório e reescreve
+  os trechos com problema; o conteúdo mostra o quadro **"Revisão editorial"** (cada pergunta com ✓ ou ✎ e o que foi reescrito). Não é
+  detector de IA, nunca acrescenta dado e não trava o Aprovar. Custa uma consulta a mais à IA por texto gerado.
 
 - **Diretrizes na IA:** em todo texto que a IA escreve para publicar (o "Gerar com IA" e a segunda passada dele, os outros títulos, o
   "Revisar com IA", o kit das redes e o "Gerar com IA" da peça da Pauta), depois das regras de sempre: obrigação, direito, prazo ou
@@ -22,8 +36,8 @@ ensina a IA pelas **"Orientações para a IA"**, sem programador:
   artigo de lei ou de declaração importante, entre aspas e com a fonte; citar a fonte não autoriza copiar); projeto de lei não é lei
   aprovada e previsão não é fato; linguagem clara, sem exagero. As regras de antes continuam valendo (só fatos do texto oficial, nada
   de memória, boletim pago nunca copiado, publicidade contábil, palavras barradas). Veja "Diretrizes editoriais e como ensinar a IA".
-- **Fundamentação legal com link:** o texto com base legal termina com a seção **"Fundamentação legal"**: a norma, o número (e o artigo,
-  quando precisa) e o **link do documento oficial**. A IA só usa link que está no assunto (a página oficial capturada, a das evidências
+- **Fonte oficial com link:** o texto com base legal termina com a linha **"Fonte oficial"** (até a etapa 4, a seção "Fundamentação
+  legal"): a norma, o número (e o artigo, quando precisa) e o **link do documento oficial**. A IA só usa link que está no assunto (a página oficial capturada, a das evidências
   conferidas, o endereço oficial da norma e as páginas oficiais da "Verificar em fontes oficiais"); o link que ela inventar **sai do
   texto sozinho**, com aviso. Sem link, a norma fica sem ele e vai para os pontos a conferir, num aviso à parte ("Norma que ficou no
   texto, a conferir…"). A vigência (em vigor, alterada, revogada) só é afirmada se o texto oficial ou a verificação mostrar; sem isso,
@@ -45,15 +59,15 @@ ensina a IA pelas **"Orientações para a IA"**, sem programador:
 - **Conferência das Diretrizes antes de aprovar:** no conteúdo, um quadro com os **10 critérios** do escritório, cada um com ✓
   (atende), ✗ (não atende), — (não se aplica) ou ? (não conferido) e o motivo numa linha. O que dá para conferir por código o Radar
   confere sozinho: [VERIFICAR] (critérios 2 e 8), texto igual ao da fonte fora de aspas (4 e 5), frase do boletim pago (4), texto que
-  cita norma sem a "Fundamentação legal" com link oficial (2), Informativo sem a fonte (3) e a capa (6: padrão da Artecon ou foto da
+  cita norma sem a linha "Fonte oficial" com link oficial (2), Informativo sem a fonte (3) e a capa (6: padrão da Artecon ou foto da
   equipe atende; ilustração da IA só com o aviso "Imagem ilustrativa gerada por IA" escrito no fim do texto; sem capa, não se aplica).
   O resto, a IA confere: o **"Revisar com IA"** agora sempre confere o texto (fontes, título × conteúdo, atualidade, clareza, risco
-  de induzir a erro) e devolve a lista, que o banco grava presa à versão do texto; se houver marca, cópia ou a "Fundamentação legal"
+  de induzir a erro) e devolve a lista, que o banco grava presa à versão do texto; se houver marca, cópia ou a linha "Fonte oficial"
   faltando, ele corrige antes, como antes. Com ✗ ou ?, **o Aprovar fica travado**; o administrador pode liberar com **"Revisei e
   assumo"**, com o motivo (aparece no Histórico, com o texto do motivo). Conferir de novo o mesmo texto não tira um ✗ (só o texto
   corrigido, que é outra versão, ou o "Revisei e assumo"). Mudou o título, o texto, a fonte ou a capa, a conferência deixa de valer. O
   banco confere de novo na aprovação. As travas de antes continuam: [VERIFICAR] e boletim pago não passam nem com o "Revisei e assumo"
-  (com eles no texto, o botão nem aparece). No Informativo, que não tem a seção "Fundamentação legal", a norma só mencionada não leva ✗
+  (com eles no texto, o botão nem aparece). No Informativo, que não tem a linha "Fonte oficial", a norma só mencionada não leva ✗
   no critério 2 por código: a IA confere se nada foi apresentado como obrigação.
 - **Texto igual ao da fonte citada:** até a v0.23.0, o trecho igual ao da fonte podia ficar quando o parágrafo dizia de onde veio
   (quadro azul). Agora, fora de aspas, ele marca os critérios 4 e 5 com ✗: reescreva com palavras próprias (o "Revisar com IA" faz
@@ -74,13 +88,15 @@ ensina a IA pelas **"Orientações para a IA"**, sem programador:
   orientações: a tela recusa ao salvar.
 
 Mudam o banco (`radar-setup-v0.24.0.sql`: coluna `conferencia` em `radar_conteudos`, as funções da Conferência das Diretrizes e a trava
-do Informativo na aprovação; nenhuma tabela nova), a função `radar-ia` (v0.24.0), a tela (`index.html`; no `radar-pauta.js` e no
-`radar-video.js`, o número da versão e o aviso do SQL) e o robô do site (`robo/radar_site_publicar.py`: o link no texto e a linha
-"Conteúdo informativo"). As orientações ficam em `radar_config`, na chave `ia_orientacoes` (a equipe lê, só o administrador altera).
-A `radar-itc` continua na v0.23.0; a `radar-redes`, a `radar-video`, a `radar-concorrentes` e o robô do vídeo, na v0.22.0; as agendas
-(`sql/radar-*-agenda.sql`) não mudam. Os rascunhos automáticos do robô (`robo/radar_rascunhos.py`) ainda não usam as Diretrizes nem as
-orientações (no robô, só o detector de cópia muda, para continuar igual ao da tela e da função): passam pela Conferência das Diretrizes
-como qualquer texto (o "Revisar com IA" acrescenta a seção que faltar). A Pauta
+do Informativo na aprovação; na etapa 5, a revisão editorial guardada na mesma coluna, com as funções `radar_registrar_revisao_editorial`
+e `radar_texto_versao`, e a linha "Fonte oficial" aceita na conferência; nenhuma tabela nem coluna nova), a função `radar-ia` (v0.24.0),
+a tela (`index.html`; no `radar-pauta.js` e no `radar-video.js`, o número da versão e o aviso do SQL) e o robô do site
+(`robo/radar_site_publicar.py`: o link no texto e a linha "Conteúdo informativo"). As orientações ficam em `radar_config`, na chave
+`ia_orientacoes` (a equipe lê, só o administrador altera). A `radar-itc` continua na v0.23.0; a `radar-redes`, a `radar-video`, a
+`radar-concorrentes` e o robô do vídeo, na v0.22.0; as agendas (`sql/radar-*-agenda.sql`) não mudam. Os rascunhos automáticos do robô
+(`robo/radar_rascunhos.py`) seguem a escrita humana e a Análise Artecon opcional (etapa 5), mas ainda não usam as Diretrizes, as
+orientações nem a revisão editorial (o quadro do conteúdo oferece "Fazer a revisão editorial"): passam pela Conferência das Diretrizes
+como qualquer texto (o "Revisar com IA" acrescenta a linha "Fonte oficial" que faltar). A Pauta
 (peças das redes) continua com a aprovação dela, sem a Conferência. Correção junto: o reel aprovado à mão antes da v0.22.0 (sem o
 corretor) continua registrando o link também em quem vai da v0.21.0 direto para a v0.24.0 (a regra conta a primeira instalação da
 v0.22.0 ou de uma versão mais nova). Para instalar, "Da v0.23.0 para a v0.24.0".
@@ -955,7 +971,8 @@ antes de aprovar, no quadro "Conferência das Diretrizes". Em resumo:
    norma que a sustenta (o número e, quando precisa, o artigo, o inciso ou o parágrafo), de preferência da fonte oficial (Receita
    Federal, Diário Oficial da União, Planalto, CONFAZ, SEFAZ, Comitê Gestor do IBS), com o link do documento oficial e a vigência
    conferida (alterações e revogações). Uma citação basta quando uma basta. Nunca inventar número de lei, artigo, link ou
-   interpretação atribuída a órgão. No Radar: a seção "Fundamentação legal" no fim do texto, só com links dos dados do assunto.
+   interpretação atribuída a órgão. No Radar: a norma citada uma vez no texto e a linha "Fonte oficial" no fim (etapa 5; antes, a
+   seção "Fundamentação legal"), só com links dos dados do assunto.
 2. **Conteúdo informativo.** O que não tem fundamentação legal específica é só informação: fatos e consequências práticas, em
    linguagem clara, sem caráter de obrigação legal e sem fundamentação jurídica artificial, separando o fato confirmado da estimativa,
    da projeção, da tendência ou da opinião e dizendo qual é a fonte. Decisão do escritório: a IA escreve esse texto como
@@ -981,7 +998,7 @@ ou ? ainda não conferido, e o motivo numa linha):
 | Nº | Critério | Quem confere |
 |---|---|---|
 | 1 | As informações estão confirmadas em fontes confiáveis? | a IA, no "Revisar com IA" |
-| 2 | As afirmações legais têm fundamentação correta e vigente? | a IA; o Radar marca ✗ com [VERIFICAR] ou com norma citada sem a "Fundamentação legal" com link oficial (no Informativo, que não tem a seção, só com [VERIFICAR]) |
+| 2 | As afirmações legais têm fundamentação correta e vigente? | a IA; o Radar marca ✗ com [VERIFICAR] ou com norma citada sem a linha "Fonte oficial" com link oficial (ou a seção "Fundamentação legal" dos textos de antes; no Informativo, que não tem a linha, só com [VERIFICAR]) |
 | 3 | O que não tem fundamento normativo está só como informativo? | a IA; o Radar marca ✗ no Informativo sem a fonte (campo Fonte) |
 | 4 | O texto é original, sem reproduzir terceiros indevidamente? | a IA; o Radar marca ✗ com trecho igual ao da fonte fora de aspas ou frase do boletim pago (a transcrição entre aspas com a fonte citada não) |
 | 5 | As citações literais estão identificadas (entre aspas e com a fonte)? | a IA; o Radar marca ✗ com trecho igual ao da fonte fora de aspas |
@@ -992,10 +1009,93 @@ ou ? ainda não conferido, e o motivo numa linha):
 | 10 | Nada no texto pode induzir o leitor a erro? | a IA |
 
 Com algum ✗ ou ?, o **Aprovar fica travado** (na tela e no banco). Para destravar: corrija o texto e clique em **"Revisar com IA"** de
-novo (ele também corrige [VERIFICAR], trecho copiado e a "Fundamentação legal" que falta), ou, se você é o administrador e revisou o
+novo (ele também corrige [VERIFICAR], trecho copiado e a linha "Fonte oficial" que falta), ou, se você é o administrador e revisou o
 texto, **"Revisei e assumo"**, com o motivo (fica no Histórico). Conferir de novo o mesmo texto, sem mudar nada, não tira um ✗. A
 conferência vale para aquela versão: mudou o título, o texto, a fonte ou a capa, confira de novo. [VERIFICAR] e frase do boletim pago
 continuam travando mesmo com o "Revisei e assumo" (com eles, o botão não aparece: resolva no texto).
+
+**Humanização dos textos (etapa 5 da v0.24.0).** A Diretriz de Humanização do escritório vale para todo texto e legenda que a IA
+escrever daqui para frente (o "Gerar com IA" e as passadas dele, os outros títulos, o "Revisar com IA", o kit das redes, as peças da
+Pauta e os rascunhos do robô); o que já foi escrito não muda sozinho (os 9 roteiros de reel já gravados na Pauta ficam como estão). Em
+resumo:
+
+1. **Linguagem natural e profissional.** A IA escreve como um jornalista especializado em economia, contabilidade e legislação
+   tributária, para empresários e profissionais da contabilidade: frases de tamanhos diferentes, palavras simples e precisas, sem
+   "sofisticar", sem repetir a mesma informação com outras palavras e sem frase genérica que serviria para qualquer notícia.
+2. **Sem as fórmulas de texto automático.** "Nesse cenário", "Diante desse contexto", "É importante destacar que", "Vale ressaltar
+   que", "representa um avanço significativo", "abre uma janela de oportunidades", "Mais do que nunca", "Em um cenário de constantes
+   transformações", "O momento de agir é agora" e "traz desafios e oportunidades" só aparecem se acrescentarem sentido. O texto começa
+   pelo fato mais importante, sem introdução que só anuncia o assunto.
+3. **A estrutura segue o assunto:** notícia simples em poucos parágrafos; mudança de lei com subtítulos, datas e impactos; análise
+   técnica com exemplos e orientações práticas; Informativo mais direto e resumido; sem "conclusão" quando o último parágrafo já fecha.
+4. **Base legal com naturalidade.** A norma é citada **uma vez**, no ponto em que sustenta a afirmação (com o artigo, quando importa),
+   separando o que a lei determina da interpretação técnica. No fim, no lugar da seção "Fundamentação legal", uma linha curta:
+   **"Fonte oficial: Instrução Normativa RFB nº 2.290, art. 2º — https://…"** (só com link que está no assunto; sem link, a linha cita a
+   norma e ela vai para os pontos a conferir). Sem base legal específica, o texto é Informativo, sem justificativa jurídica artificial.
+   A Conferência das Diretrizes aceita a linha nova e também a seção dos textos de antes.
+5. **"Análise Artecon" só quando acrescenta:** impactos práticos, setores afetados, o que é obrigação legal e o que é boa prática,
+   incertezas. Se a notícia não pedir, a seção não aparece. A IA nunca inventa interpretação jurídica nem consequência econômica.
+6. **Sem publicidade automática.** Nada de convite para contratar ou procurar a Artecon no fim de todo texto, nem de urgência
+   artificial; quando o assunto pede orientação profissional (a decisão depende do caso de cada empresa), uma menção discreta, no ponto
+   certo. A identificação legal (empresa, CNPJ, CRC), o selo e os avisos de IA e o selo do Informativo continuam: são exigência legal e
+   transparência, não propaganda.
+7. **Revisão editorial antes da aprovação** (abaixo).
+8. **Regra principal:** naturalidade, originalidade, precisão técnica e utilidade para o leitor, preservando as regras de fonte
+   oficial, direitos autorais (boletim pago nunca copiado) e aprovação.
+
+O exemplo do dono, que vai à IA **só como modelo de tom** (os fatos, os números e os setores dele nunca entram no texto):
+
+> Antes (genérico): "A publicação das alíquotas abre a janela para revisar sistemas de precificação, adequar a escrituração fiscal e
+> atualizar orçamentos que estavam rodando com estimativas internas."
+> Depois (natural e técnico): "Com a definição das alíquotas da CBS sobre combustíveis, as empresas já podem conferir se os valores estão
+> contemplados em seus sistemas fiscais e nas projeções de custos para 2027. Para distribuidoras, transportadoras e postos revendedores,
+> essa verificação ajuda a identificar eventuais necessidades de ajustes antes do início dos efeitos tributários."
+
+**Revisão editorial automática.** Depois que a IA escreve o texto (e da segunda passada, quando havia [VERIFICAR] ou trecho copiado a
+corrigir), o "Gerar com IA" faz uma consulta a mais: a IA relê o rascunho com as **10 perguntas** do escritório — o texto está natural ou
+mecânico? há frase que não acrescenta? repetição? os parágrafos fluem? o título reflete o fato principal? a base legal está certa e
+integrada com naturalidade? a informação foi conferida nas fontes? a análise acrescenta conhecimento? há publicidade desnecessária? um
+jornalista especializado publicaria assim? — e **reescreve só os trechos com problema**, antes de o texto ir para a aprovação. No
+conteúdo, logo abaixo da Conferência das Diretrizes, o quadro **"Revisão editorial"** mostra cada pergunta com **✓** (sem problema) ou
+**✎** (ajustado) e o motivo, e **"O que foi reescrito"** (antes → depois).
+
+- **O que ela NÃO é:** não é detector de IA (não serve para "disfarçar" texto de máquina: olha clareza, originalidade, repetição,
+  precisão técnica e utilidade para o leitor); não aprova nada (o quadro só informa: quem trava o Aprovar continua sendo a Conferência
+  das Diretrizes); não substitui a leitura da equipe.
+- **O que ela nunca faz:** acrescentar fato, número, norma ou link que não esteja no texto ou nos dados do assunto (com texto oficial,
+  o que só o portal ou o boletim traz não conta como dado do assunto); tirar [VERIFICAR], citação entre aspas ou a linha "Fonte
+  oficial" (com ou sem link); trocar ou tirar o link que já estava no texto; trazer frase igual à da fonte (mesmo trocando uma que já
+  estava por outra). Pode encurtar (tirar a Análise Artecon que não acrescenta, frase e repetição que sobram), mas o texto que perde mais
+  de 40% só vale se ela disser o que tirou, e nunca abaixo de um terço. O Radar confere isso por código: a reescrita que tentar é
+  **recusada** e fica o texto de antes (o link novo fora do assunto sai do texto, com aviso, como sempre; o que a redação inventou sai
+  antes da revisão).
+- **Se falhar ou não couber no tempo:** o texto do rascunho segue normalmente e o quadro mostra **"Revisão editorial não feita"**, com o
+  motivo e o botão **"Fazer a revisão editorial"** (uma consulta à IA, só da revisão). O mesmo botão aparece nos rascunhos do robô e nos
+  textos da IA de antes desta versão. Se ela mudar o texto, confira e clique em "Revisar com IA" (a Conferência das Diretrizes é do texto
+  novo) e gere o kit das redes de novo.
+- **Texto mudado depois:** se o texto for editado à mão (ou pelo "Revisar com IA"), o quadro avisa que a revisão se refere à versão
+  anterior, com o botão para fazer de novo. Trocar só o título por uma das sugestões não conta.
+- **Tempo:** o pedido inteiro do "Gerar" tem até 140 segundos (a tela espera 150). A revisão editorial só começa se sobrarem pelo
+  menos 30 segundos, e espera a IA por até 110.
+- **Custo:** **uma chamada a mais à IA por texto gerado**: o material do assunto vai de novo na entrada (até uns 30 mil tokens no texto
+  mais longo) e o texto revisado volta na saída (até uns 3 mil). Na prática, perto do dobro dos tokens do "Gerar" de antes. Conta no
+  limite mensal do Radar (`RADAR_IA_LIMITE_MENSAL_TOKENS`) e aparece na IA Central como "gerar". Nos títulos, no kit das redes e nas
+  peças da Pauta, a IA faz essa conferência sozinha, **na mesma consulta** (sem custo a mais).
+
+**Chamadas comerciais automáticas: o que havia e o que mudou (etapa 5).**
+
+- O formato "Médio (notícia)" mandava a "Análise Artecon" terminar com "o risco de não agir e quando vale procurar a Artecon" (no "Gerar
+  com IA" e nos rascunhos do robô): saiu, e a seção ficou opcional.
+- O kit das redes pedia, em toda legenda do Instagram e do Facebook, "um convite moderado para conversar com a Artecon": saiu. O fim do
+  reel ("chamada final") convida a ler a matéria completa, sem convite comercial.
+- As peças da Pauta terminavam sempre com "Fale com a gente" / "Agende uma conversa": agora só a **Captação** (a peça que o plano faz para
+  isso) termina com o convite moderado; as outras (Quem cuida, Bastidor, Educativo, Agenda, Data com a equipe) não.
+- A regra de escrita da IA proíbe chamada para contratar, "fale conosco" no fim e urgência artificial; orientação profissional, só
+  discreta e quando o assunto pedir.
+- Ficam como estão (não são chamada automática): "Leia a matéria completa no site" nas legendas (leva à notícia), a identificação legal
+  das redes, a cartela do reel e a página "Fale Conosco" do Informativo Mensal (os contatos do escritório, uma vez por edição, no modelo
+  enviado aos clientes). O robô do site e a tela não acrescentam chamada nenhuma ao texto. Termos de propaganda ("garantimos", "consulta
+  grátis", "não perca") continuam travados ou avisados como antes.
 
 **O texto Informativo, passo a passo:**
 
@@ -1067,12 +1167,18 @@ Se o resultado ainda não sair como quer, mude uma coisa de cada vez e gere de n
 - **Conferência das Diretrizes (v0.24.0):** nenhum conteúdo é aprovado, nem pela API, sem a lista dos 10 critérios da versão do texto
   que está no conteúdo, sem critério que não atende (ou com o "Revisei e assumo", que só o administrador faz, com o motivo). A lista
   só muda pelas funções do banco (a da IA, gravada como quem pediu, e a do administrador), e o banco confere sozinho, por cima dela, o
-  que dá por código: a capa, [VERIFICAR], a seção "Fundamentação legal" com link oficial, a fonte do Informativo e o boletim pago.
+  que dá por código: a capa, [VERIFICAR], a linha "Fonte oficial" com link oficial (ou a seção "Fundamentação legal" dos textos de
+  antes), a fonte do Informativo e o boletim pago.
   Gravar a lista não muda a data do conteúdo; mudar o título, o texto, a fonte ou a capa a deixa sem valer. Quem não é o
   administrador não tira o ✗ que a lista do mesmo texto já tinha, nem gravando outra lista pela API: o ✗ cai com o texto corrigido ou
-  com o "Revisei e assumo". No Informativo, a norma só mencionada não leva ✗ no critério 2 por código (ele não tem a seção). Limite: a
+  com o "Revisei e assumo". No Informativo, a norma só mencionada não leva ✗ no critério 2 por código (ele não tem a linha). Limite: a
   lista da IA é gravada com o login de quem pediu (a função não a assina), então um editor que gravasse pela API, antes da IA, uma
   lista inventada conseguiria aprovar o que o banco não confere por código, e ficaria com o nome dele na lista e no Histórico.
+- **Revisão editorial (v0.24.0, etapa 5):** o resultado da revisão editorial da IA fica no conteúdo só pela função do banco
+  (`radar_registrar_revisao_editorial`: editor ou administrador, as 10 perguntas com "ok" ou "ajustado" e o motivo, até 12 trechos
+  reescritos, ou "não feita" com o motivo; só para o texto que foi à IA), com a versão do corpo do texto; o UPDATE direto e o INSERT não
+  a forjam, e gravar a Conferência das Diretrizes ou o "Revisei e assumo" depois não a apaga. Ela só informa: não trava nem libera a
+  aprovação.
 - **Informativo (v0.24.0):** o texto Informativo só é aprovado depois que o administrador autoriza a publicação do assunto (com o
   motivo); o aviso que o marca como Informativo não sai do texto (os pontos a conferir só crescem); desfeita a autorização, o
   Informativo aprovado volta para a revisão (e as autorizações de publicação dele que esperavam caem, porque o conteúdo mudou).
@@ -1896,8 +2002,9 @@ vez, num momento em que ninguém esteja aprovando conteúdo: do SQL até a tela 
 Diretrizes, que só a função e a tela novas fazem.
 
 1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.24.0.sql` inteiro. Confira no fim: 27 tabelas e "instalacoes concluidas"
-   com a **v0.24.0**. Ele cria a Conferência das Diretrizes (coluna `conferencia` em `radar_conteudos` e as funções) e a trava do
-   Informativo; não apaga nada e pode rodar de novo. As agendas (`sql/radar-*-agenda.sql`) não mudam.
+   com a **v0.24.0**. Ele cria a Conferência das Diretrizes (coluna `conferencia` em `radar_conteudos` e as funções), a trava do
+   Informativo e a revisão editorial (guardada na mesma coluna; aceita também a linha "Fonte oficial"); não apaga nada e pode rodar de
+   novo. As agendas (`sql/radar-*-agenda.sql`) não mudam.
 2. Edge Functions → `radar-ia` → cole o `index.ts` desta versão → Deploy, com "Verify JWT" como já está. Nenhum segredo muda.
 3. A tela e o robô do site chegam pelo repositório: `index.html`, `radar-pauta.js` e `radar-video.js` juntos, e o
    `robo/radar_site_publicar.py` (o workflow "Radar — publicar no site" já usa o novo). Ctrl+F5 em todos os aparelhos. A aba Versões
@@ -1907,16 +2014,21 @@ Diretrizes, que só a função e a tela novas fazem.
    "Revisar com IA" preenche os 10 critérios; com ✗, o Aprovar recusa; como administrador, "Revisei e assumo" (com o motivo) libera;
    (b) num assunto sem texto oficial, o "Gerar com IA" faz um texto com o selo "Informativo — aguardando autorização"; o administrador
    clica em "Autorizar a publicação do Informativo…", escreve o motivo, e a prévia ("Ver como fica no site") termina com "Conteúdo
-   informativo".
+   informativo"; (c) num assunto com texto oficial, o "Gerar com IA" faz o texto com a linha "Fonte oficial" no fim (sem a seção
+   "Fundamentação legal") e, abaixo da Conferência das Diretrizes, o quadro "Revisão editorial" com as 10 perguntas (✓ ou ✎) e o que foi
+   reescrito; edite uma frase à mão, salve, e o quadro avisa que a revisão era da versão anterior.
 6. (Opcional) Em Configurações → Inteligência artificial, escreva as **Orientações para a IA** (veja "Diretrizes editoriais e como
    ensinar a IA") e clique em Salvar; gere um texto e uma ilustração num assunto de teste e confira; ajuste quantas vezes quiser.
 
 Depois da instalação: o que já estava aprovado continua aprovado (e publica como antes); o conteúdo em rascunho ou em revisão precisa
 da Conferência ("Revisar com IA") ou do "Revisei e assumo" para ser aprovado. O texto gerado antes, sem texto oficial, não vira
-Informativo (só os gerados daqui em diante).
+Informativo (só os gerados daqui em diante). A humanização, a linha "Fonte oficial" e a revisão editorial valem para o que a IA escrever
+depois da instalação: os textos de antes, os roteiros de reel já gravados e o que está na Pauta não são reescritos (nos textos da IA
+ainda em revisão, o quadro "Revisão editorial" mostra "não feita", com o botão, se quiser usar).
 
 Para desfazer: rode o `sql/radar-setup-v0.22.0.sql` da v0.23.0 (no histórico do GitHub): a aprovação volta a ser como antes (sem a
-Conferência e sem a trava do Informativo; a coluna nova fica, sem efeito). Cole de novo o `index.ts` da `radar-ia` da v0.22.0 e volte a
+Conferência e sem a trava do Informativo; a coluna nova fica, sem efeito, com a revisão editorial guardada nela, e as duas funções da
+revisão editorial ficam sem uso). Cole de novo o `index.ts` da `radar-ia` da v0.22.0 e volte a
 tela e o robô do site da v0.23.0. As orientações ficam guardadas nas Configurações, sem efeito; para só parar de usá-las, deixe os dois
 campos em branco e salve.
 
