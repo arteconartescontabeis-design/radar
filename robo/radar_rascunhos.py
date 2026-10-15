@@ -164,7 +164,7 @@ TIPO_NORMA = ("[Ll]ei [Cc]omplementar|LEI COMPLEMENTAR|[Ll]ei|LEI|LC|[Dd]ecreto(
               "[Pp]ortaria(?: [Cc]onjunta)?|PORTARIA|[Rr]esolu[çc][ãa]o|RESOLUÇÃO|[Cc]onv[êe]nio|CONVÊNIO|[Aa]juste|[Pp]rotocolo|[Pp]arecer(?: [Nn]ormativo)?|"
               "[Nn]ota [Tt][ée]cnica|[Mm]edida [Pp]rovis[óo]ria|MP|[Ee]menda [Cc]onstitucional|EC|"
               "(?:[Aa]to|ATO)(?: [Dd]eclarat[óo]rio)?(?: [Ee]xecutivo| [Ii]nterpretativo| DIAT| [Cc]otepe)?|ADE|ADI|[Ss]olu[çc][ãa]o de [Cc]onsulta")
-RE_NORMA = re.compile(rf"(?<![{PAL}])(?:{TIPO_NORMA})(?![{PAL}])(?:\s+(?:[A-ZÀ-Ú][{PAL}/.-]*|d[aeo]s?))*?\s*(?:[nN][ºo°]\.?\s*)?(\d+(?:\.\d+)*)(?![\d,%])")
+RE_NORMA = re.compile(rf"(?<![{PAL}])(?:{TIPO_NORMA})(?![{PAL}])(?:\s+(?:[A-ZÀ-Ú][{PAL}/.-]*|d[aeo]s?))*?\s*(?:[nN][ºo°]\.?\s*)?(\d+(?:\.\d+)*)(?![\d%]|,\d)")
 MULT = {"mil": 1e3, "milhão": 1e6, "milhao": 1e6, "milhões": 1e6, "milhoes": 1e6, "bilhão": 1e9, "bilhao": 1e9, "bilhões": 1e9, "bilhoes": 1e9}
 
 

@@ -14,11 +14,11 @@ da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
 
 ## v0.24.0, etapa 5 — humanização dos textos, linha "Fonte oficial" e revisão editorial automática
 
-São 13 testes novos (de 1.092 para 1.105 no total, como a etapa 1 e esta etapa coletam neste ambiente; 2 deles dos acertos da revisão,
-abaixo) e 23 testes antigos ajustados (3 com nome novo, porque a regra mudou), mais a IA de mentira dos testes da função e da tela, que
+São 14 testes novos (de 1.092 para 1.106 no total, como a etapa 1 e esta etapa coletam neste ambiente; 2 deles dos acertos da revisão
+e 1 da norma seguida de vírgula, abaixo) e 23 testes antigos ajustados (3 com nome novo, porque a regra mudou), mais a IA de mentira dos testes da função e da tela, que
 agora também faz a revisão editorial (por padrão, devolve o texto que recebeu, com as 10 perguntas "ok"), e a conferência automática dos
 testes, que guarda a revisão editorial. Cada parte foi conferida desfazendo-a numa cópia temporária do arquivo (o teste novo falha) e
-restaurando: **45 mutações** (27 na função `radar-ia`, 6 no banco, 9 na tela, 2 no robô de rascunhos e 1 no robô do site), todas
+restaurando: **47 mutações** (28 na função `radar-ia`, 6 no banco, 9 na tela, 3 no robô de rascunhos e 1 no robô do site), todas
 derrubaram o teste delas:
 
 - **Humanização em toda ação que escreve** (`test_radar_funcao_ia.py`, 1 novo): a regra (9) nova (a persona do jornalista
@@ -77,6 +77,10 @@ derrubaram o teste delas:
   revisão editorial) e o pedido da redação pelo nome; o consumo do gerar com segunda passada passa de 2 para 3 chamadas; o texto de fora
   não fecha o bloco de dados também na revisão editorial; as orientações do escritório vão também no fim dela. Os 2 testes de tela que
   usam a IA Central de verdade e contavam as chamadas foram ajustados do mesmo jeito (são pulados aqui).
+- **Norma seguida de vírgula** (`test_radar_rascunhos.py`, 1 novo e 1 amostra nova no teste que compara o robô com a função): "nº
+  2.290," era lido como "nº 2" (a vírgula barrava o número inteiro), e o texto ganhava o aviso falso "Norma citada que não aparece no
+  texto oficial capturado" quando o texto oficial não tinha a mesma vírgula; com a linha "Fonte oficial" isso apareceria mais. A vírgula
+  agora só barra quando vem decimal ("2,5%"), igual na função e no robô de rascunhos. Mutações: a regra antiga no robô e na função.
 - **Acertos da revisão da etapa 5** (`test_radar_funcao_ia.py`, 2 novos e 1 ampliado; `test_radar_telas.py`, 1 corrigido): a reescrita
   da revisão editorial passa a ser recusada também quando **troca o link** da linha "Fonte oficial" por um fora dos dados do assunto
   (antes, a troca passava e o link certo saía depois, com o inventado), quando tira a linha "Fonte oficial" **sem link** e quando traz

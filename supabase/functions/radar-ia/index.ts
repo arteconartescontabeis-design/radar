@@ -188,7 +188,8 @@ const TIPO_NORMA = "[Ll]ei [Cc]omplementar|LEI COMPLEMENTAR|[Ll]ei|LEI|LC|[Dd]ec
   "[Nn]ota [Tt][ée]cnica|[Mm]edida [Pp]rovis[óo]ria|MP|[Ee]menda [Cc]onstitucional|EC|" +
   "(?:[Aa]to|ATO)(?: [Dd]eclarat[óo]rio)?(?: [Ee]xecutivo| [Ii]nterpretativo| DIAT| [Cc]otepe)?|ADE|ADI|[Ss]olu[çc][ãa]o de [Cc]onsulta";
 // entre o tipo e o número só cabem sigla/órgão em maiúscula, "de/da/do" e "nº" (assim "a lei prevê multa de 75%" não vira norma)
-const RE_NORMA = new RegExp(String.raw`(?<![\wÀ-ú])(?:${TIPO_NORMA})(?![\wÀ-ú])(?:\s+(?:[A-ZÀ-Ú][\wÀ-ú/.-]*|d[aeo]s?))*?\s*(?:[nN][ºo°]\.?\s*)?(\d+(?:\.\d+)*)(?![\d,%])`, "g");
+// v0.24.0: a vírgula só barra quando vem decimal ("2,5%"); "Lei nº 15.270, de 26 de novembro" é a norma 15270, não a 15
+const RE_NORMA = new RegExp(String.raw`(?<![\wÀ-ú])(?:${TIPO_NORMA})(?![\wÀ-ú])(?:\s+(?:[A-ZÀ-Ú][\wÀ-ú/.-]*|d[aeo]s?))*?\s*(?:[nN][ºo°]\.?\s*)?(\d+(?:\.\d+)*)(?![\d%]|,\d)`, "g");
 const valor = (t: string) => /^\d+\.\d{1,2}$/.test(t) ? Number(t) : Number(t.replace(/\./g, "").replace(",", "."));
 const MULT: Record<string, number> = { mil: 1e3, "milhão": 1e6, milhao: 1e6, "milhões": 1e6, milhoes: 1e6, "bilhão": 1e9, bilhao: 1e9, "bilhões": 1e9, bilhoes: 1e9 };
 

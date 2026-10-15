@@ -21,6 +21,9 @@ AMOSTRAS = [
      "O prazo de opção foi prorrogado até 31 de janeiro de 2027. Limite de R$ 81.000,00 por ano."),
     ("Texto sem nenhum número.", "Texto oficial sem números."),
     ("Vence no dia 1º, conforme o nº15 meses e o dia 2ª; art. 3º-A e §1º.", "O prazo vence no dia 1º de cada mês (art. 3º-A)."),   # º/ª e fronteira de palavra
+    # v0.24.0: norma seguida de vírgula (a linha "Fonte oficial" termina assim) x número decimal
+    ("A Lei nº 15.270, de 26 de novembro de 2025, vale em 2026.\n\nFonte oficial: Instrução Normativa RFB nº 2.290, art. 2º — https://x.gov.br",
+     "LEI Nº 15.270 DE 26 DE NOVEMBRO DE 2025. INSTRUÇÃO NORMATIVA RFB Nº 2.290 DE 2026. Art. 2º A Lei 2,5% não é norma."),
 ]
 
 
@@ -54,6 +57,14 @@ def test_verificacao_aponta_o_que_nao_esta_no_texto_oficial():
     assert any("4,5%" in a and "12 (doze) meses" in a for a in avisos)
     assert not any("31 de janeiro de 2027" in a or "81.000" in a for a in avisos)       # estes estão no texto oficial
     assert any("[VERIFICAR]" in a for a in rr.conferir_gerado(*AMOSTRAS[0], True))
+
+
+def test_norma_seguida_de_virgula_e_a_norma_inteira():
+    # v0.24.0: "nº 2.290," era lido como "nº 2" e dava o aviso falso "Norma citada que não aparece no texto oficial"
+    g, o = AMOSTRAS[-1]
+    assert {"n:15270", "n:2290"} <= set(rr.fatos(g, False)) and not {"n:15", "n:2"} & set(rr.fatos(g, False))
+    assert not any(a.startswith("Norma citada") for a in rr.conferir_gerado(g, o, True))
+    assert "n:2" not in rr.fatos("A Lei 2,5% de multa.", False)                     # decimal continua fora
 
 
 def test_configuracao_volta_ao_padrao_quando_o_valor_e_estranho():
