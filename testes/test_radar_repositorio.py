@@ -366,10 +366,11 @@ def test_workflow_dos_testes_roda_os_testes_do_video():
 
 
 def test_versao_igual_em_todos_os_arquivos_da_versao():
-    """Uma versão só: a tela (VERSAO e a 1ª entrada de VERSOES), os dois scripts e o ?v= deles, a função nova (v0.23.0: a radar-itc), o
-    LEIAME e o relatório. v0.23.0: o que não mudou fica na versão em que mudou por último, nunca à frente da tela — o SQL (um setup e
-    uma reversão, os dos testes, da mesma versão), a função radar-video e o robô do vídeo (os dois da mesma versão) e as outras funções.
-    As que a tela exige (radar-ia e radar-redes) atendem à versão mínima que ela pede (FUNCAO_MINIMA e REDES_MINIMA)."""
+    """Uma versão só: a tela (VERSAO e a 1ª entrada de VERSOES), os dois scripts e o ?v= deles, a função nova (v0.23.0: a radar-itc;
+    v0.24.0: a radar-ia), o LEIAME e o relatório. v0.23.0: o que não mudou fica na versão em que mudou por último, nunca à frente da
+    tela — o SQL (um setup e uma reversão, os dos testes, da mesma versão), a função radar-video e o robô do vídeo (os dois da mesma
+    versão) e as outras funções. As que a tela exige (radar-ia e radar-redes) atendem à versão mínima que ela pede (FUNCAO_MINIMA e
+    REDES_MINIMA)."""
     ler = lambda c: (RAIZ / c).read_text(encoding="utf-8")
     achar = lambda padrao, texto: re.search(padrao, texto).group(1)
     html = ler("index.html")
@@ -379,7 +380,7 @@ def test_versao_igual_em_todos_os_arquivos_da_versao():
     assert set(re.findall(r'<script src="radar-(?:pauta|video)\.js\?v=([^"]+)"', html)) == {v}
     assert achar(r'(?m)^const PAUTA_VERSAO = "([^"]+)"', ler("radar-pauta.js")) == v
     assert achar(r'(?m)^const VIDEO_VERSAO = "([^"]+)"', ler("radar-video.js")) == v
-    assert achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-itc/index.ts")) == v
+    assert achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-ia/index.ts")) == v
     assert ler("LEIAME-radar.md").startswith(f"# Radar Artecon — v{v}\n")
     assert ler("RELATORIO-TESTES-radar.md").startswith(f"# Radar Artecon — Relatório de testes (v{v})\n")
     # o banco: um setup e uma reversão, da mesma versão (a da última mudança no banco), e o setup registra essa versão

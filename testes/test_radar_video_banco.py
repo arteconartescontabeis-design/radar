@@ -851,13 +851,16 @@ def test_problemas_do_reel_conferem_a_fala_transcrita_e_a_cartela(corretor):
 
 def test_reel_aprovado_antes_da_v0_22_0_registra_o_link_sem_o_video(corretor):
     """O reel aprovado à mão na v0.21.0 (sem o corretor) e postado depois da atualização registra o link como antes: a recusa do registro
-    sem o vídeo corrigido (RADAR317) vale só para a aprovação feita com a v0.22.0."""
+    sem o vídeo corrigido (RADAR317) vale só para a aprovação feita com a v0.22.0 (ou mais nova: v0.24.0, mesmo sem ter passado pela
+    v0.22.0)."""
     db = corretor
     pid, ana = reel(db)
     ate_pronto(db, pid, ana)
     marcar_pronta(db, pid)
     aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)
-    instalada = db.execute("select min(executado_em) from radar_instalacoes where versao = 'v0.22.0'").fetchone()[0]
+    # v0.24.0: a primeira instalação da v0.22.0 ou mais nova (aqui, a da versão atual: quem pulou a v0.22.0 não tem a linha dela)
+    instalada = db.execute(r"select min(executado_em) from radar_instalacoes where versao ~ '^v0\.(2[2-9]|[3-9][0-9])\.'").fetchone()[0]
+    assert instalada is not None
     mudar_por_fora(db, pid, "video_sha256 = null, video_id = null")
     registrar = "select radar_pauta_registrar_manual(%s, 'https://www.instagram.com/reel/ABC123/', null, %s)"
     with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR317"):

@@ -1435,7 +1435,7 @@ def test_robo_prepara_o_rascunho_da_noticia_de_topo_e_respeita_o_limite_do_dia(i
         assert "não acrescente a fonte aos outros parágrafos" in revisao["corpo"]["system"]          # a revisão reescreve o trecho igual
         assert "prorrogado até 31 de janeiro de 2027" in pedido["corpo"]["messages"][0]["content"]       # foi o texto oficial
         assert pedido["cab"]["x-ia-usuario"] == "robô de rascunhos"
-        assert "ESCRITA NATURAL" in pedido["corpo"]["system"] and "'titulos'" in pedido["corpo"]["system"]   # v0.10.0
+        assert "(9) ESCRITA HUMANA" in pedido["corpo"]["system"] and "'titulos'" in pedido["corpo"]["system"]   # v0.10.0
         assert ia.execute("select titulos_sugeridos from radar_conteudos").fetchone()[0] == [
             "Simples Nacional: opção para 2027 ganha mais prazo", "Empresas têm até 31/01/2027 para optar pelo Simples"]
         cont = ia.execute("""select c.titulo, c.corpo, c.status, c.gerado_por, c.modelo_ia, c.avisos_ia, a.status

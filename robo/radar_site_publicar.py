@@ -57,9 +57,33 @@ CAMPOS = {"title", "keywords", "metadescription", "text", "category", "image"}
 
 
 # ------------------------------------------------------------------ texto do Radar → HTML do site
+# v0.24.0: o endereço escrito no texto (o link oficial da linha "Fonte oficial" do fim — etapa 5 —, ou da seção "Fundamentação legal"
+# dos textos de antes) vira link, como na prévia da tela (renderTexto): a pontuação colada no fim não faz parte do endereço, a não ser
+# o ")" que fecha um "(" do próprio endereço. O robô não acrescenta chamada comercial nenhuma: só o texto aprovado, os créditos e a
+# linha "Conteúdo informativo"
+_ENDERECO = re.compile(r"(https?://[^\s<>\"']+)", re.I)
+LINHA_INFORMATIVO = "Conteúdo informativo"         # v0.24.0: a linha do texto Informativo no fim da notícia (a mesma da tela)
+
+
+def _ligar(t: str) -> str:
+    partes = _ENDERECO.split(t)
+    saida = []
+    for i, p in enumerate(partes):
+        if i % 2 == 0:
+            saida.append(html_lib.escape(p, quote=False))
+            continue
+        fim = re.search(r"[.,;:!?*)]*$", p).group(0)
+        while ")" in fim and p[:len(p) - len(fim)].count("(") > p[:len(p) - len(fim)].count(")"):
+            fim = fim[fim.index(")") + 1:]
+        u = p[:len(p) - len(fim)]
+        saida.append(f'<a href="{html_lib.escape(u, quote=True)}" target="_blank" rel="noopener">{html_lib.escape(u, quote=False)}</a>'
+                     + html_lib.escape(fim, quote=False))
+    return "".join(saida)
+
+
 def _inline(t: str) -> str:
-    t = html_lib.escape(t, quote=False)
-    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", t)
+    # negrito primeiro (sobre o texto bruto); dentro e fora dele, os endereços viram link
+    return "".join(f"<strong>{_ligar(p)}</strong>" if i % 2 else _ligar(p) for i, p in enumerate(re.split(r"\*\*(.+?)\*\*", t)))
 
 
 def _celulas(linha: str) -> list[str]:
@@ -73,8 +97,10 @@ def _celulas(linha: str) -> list[str]:
 JUSTIFICADO = "text-align:justify"
 
 
-def para_html(corpo: str, autor: str | None = None, fonte: str | None = None, fonte_url: str | None = None) -> str:
-    """A mesma formatação da tela ("## " subtítulo, "- " lista, **negrito**, linhas com "|" tabela) e os créditos no fim."""
+def para_html(corpo: str, autor: str | None = None, fonte: str | None = None, fonte_url: str | None = None,
+              informativo: bool = False) -> str:
+    """A mesma formatação da tela ("## " subtítulo, "- " lista, **negrito**, linhas com "|" tabela) e os créditos no fim.
+    v0.24.0: o endereço no texto vira link, e o texto Informativo leva a linha "Conteúdo informativo" no fim."""
     saida, paragrafo, lista, tabela = [], [], [], []
 
     def fechar():
@@ -118,7 +144,15 @@ def para_html(corpo: str, autor: str | None = None, fonte: str | None = None, fo
         nome = html_lib.escape(fonte or url)
         saida.append(f'<p style="text-align:right"><em>Fonte: '
                      + (f'<a href="{html_lib.escape(url, quote=True)}" target="_blank" rel="noopener">{nome}</a>' if url else nome) + '</em></p>')
+    if informativo:
+        saida.append(f'<p style="text-align:right"><em>{LINHA_INFORMATIVO}</em></p>')
     return "\n".join(saida)
+
+
+def eh_informativo(c: dict) -> bool:
+    """v0.24.0: o texto Informativo (sem fundamentação legal específica): o primeiro aviso da IA começa com "INFORMATIVO"."""
+    avisos = c.get("avisos_ia")
+    return isinstance(avisos, list) and bool(avisos) and str(avisos[0] or "").startswith("INFORMATIVO")
 
 
 def texto_simples(corpo: str) -> str:
@@ -231,7 +265,7 @@ class Publicador:
 
     def conteudo(self, conteudo_id: int) -> dict | None:
         linhas = self.banco._pedir("GET", "radar_conteudos", params={
-            "select": "id,assunto_id,titulo,corpo,status,atualizado_em,aprovado_em,fora_do_site,imagem_id,autor,fonte_credito,radar_divulgacoes!left(id,url)",
+            "select": "id,assunto_id,titulo,corpo,status,atualizado_em,aprovado_em,fora_do_site,imagem_id,autor,fonte_credito,avisos_ia,radar_divulgacoes!left(id,url)",
             "id": f"eq.{conteudo_id}"}) or []
         return linhas[0] if linhas else None
 
@@ -258,7 +292,7 @@ class Publicador:
         valor = categorias.get(envio["categoria"])
         if not valor:
             raise admin.Parada(f"a categoria \"{envio['categoria']}\" não existe mais no site; escolha outra e autorize de novo")
-        dados.update({"title": c["titulo"], "text": para_html(c["corpo"], c.get("autor"), c.get("fonte_credito"), self.link_fonte(c)),
+        dados.update({"title": c["titulo"], "text": para_html(c["corpo"], c.get("autor"), c.get("fonte_credito"), self.link_fonte(c), eh_informativo(c)),
                       "category": valor})
         if "keywords" in tipos:
             dados["keywords"] = ", ".join(x for x in (envio["categoria"], c.get("fonte_credito") or "", "Artecon") if x)[:250]

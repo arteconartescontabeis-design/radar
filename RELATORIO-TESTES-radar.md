@@ -1,15 +1,175 @@
-# Radar Artecon — Relatório de testes (v0.23.0)
+# Radar Artecon — Relatório de testes (v0.24.0)
 
-Data: 14/10/2026. Resultado neste ambiente, com a suíte inteira da v0.23.0: **996 aprovados, 0 falhas, 67 pulados**, em 1.018 s
-(16min58s). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui
-não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI
-instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits do push, que só roda no
-`radar-repositorio.yml` (precisa do commit de antes do push). Na v0.22.0 (13/10/2026), a mesma suíte deu 994 aprovados, 0 falhas e 62
-pulados, em 869 s (14min29s), com o contêiner montado pelo `docker`. As funções `radar-ia`, `radar-itc`, `radar-redes`,
-`radar-concorrentes` e `radar-video` rodam de verdade no Deno nos testes delas, e o ffmpeg do corretor de vídeo roda de verdade.
-Nenhum teste chama a Microsoft, a Azure, o GitHub ou o Supabase de verdade; todo boletim da ITC dos testes é inventado, e todo vídeo
-e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.23.0,
-da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+Data: 15/10/2026. Resultado neste ambiente, com a suíte inteira da v0.24.0 (até a etapa 5, com os acertos da revisão e a norma
+seguida de vírgula): **1.039 aprovados, 0 falhas, 67 pulados**, em 1.130 s (18min50s). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`,
+fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está
+instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits
+do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na etapa 1 da v0.24.0 (14/10/2026), a mesma suíte
+deu 1.025 aprovados, 0 falhas e 67 pulados, em 921 s; na v0.23.0, 996 aprovados, 0 falhas e 67 pulados. As funções `radar-ia`,
+`radar-itc`, `radar-redes`, `radar-concorrentes` e `radar-video` rodam de verdade no Deno nos testes delas, e o ffmpeg do corretor de
+vídeo roda de verdade. Nenhum teste chama a Microsoft, a Azure, o GitHub, o Supabase ou a IA Central de verdade; todo boletim da ITC dos
+testes é inventado, toda pessoa é fictícia ("Ana Teste", domínios `.test`), e todo vídeo e toda voz são **sintéticos**, gerados na hora.
+Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da v0.21.0 e
+da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.24.0, etapa 5 — humanização dos textos, linha "Fonte oficial" e revisão editorial automática
+
+São 14 testes novos (de 1.092 para 1.106 no total, como a etapa 1 e esta etapa coletam neste ambiente; 2 deles dos acertos da revisão
+e 1 da norma seguida de vírgula, abaixo) e 23 testes antigos ajustados (3 com nome novo, porque a regra mudou), mais a IA de mentira dos testes da função e da tela, que
+agora também faz a revisão editorial (por padrão, devolve o texto que recebeu, com as 10 perguntas "ok"), e a conferência automática dos
+testes, que guarda a revisão editorial. Cada parte foi conferida desfazendo-a numa cópia temporária do arquivo (o teste novo falha) e
+restaurando: **47 mutações** (28 na função `radar-ia`, 6 no banco, 9 na tela, 3 no robô de rascunhos e 1 no robô do site), todas
+derrubaram o teste delas:
+
+- **Humanização em toda ação que escreve** (`test_radar_funcao_ia.py`, 1 novo): a regra (9) nova (a persona do jornalista
+  especializado, as 10 expressões a evitar, a estrutura que o conteúdo pede, nada de chamada comercial automática nem urgência
+  artificial e o exemplo dos combustíveis só como modelo de tom) vai inteira no gerar, na segunda passada, na revisão editorial, nos
+  títulos, no revisar, no kit e na peça, e não no classificar nem no fundamentar; a regra antiga do "contador explicando ao cliente"
+  sumiu. Nos textos curtos (títulos, kit e peça), a autoconferência vai na mesma chamada. O gerar pede a Análise Artecon só quando
+  acrescenta (nunca inventando interpretação jurídica nem consequência econômica) e a linha "Fonte oficial"; o formato não pede mais
+  "quando vale procurar a Artecon" nem "o risco de não agir"; o kit não pede mais o convite para conversar com a Artecon; na Pauta, o
+  convite moderado no fim fica só na Captação. Mutações: a regra sem a proibição da chamada comercial, o kit com o convite de volta, a
+  peça com convite em todos os tipos, o formato com o "procurar a Artecon" de volta e o kit sem a autoconferência.
+- **Revisão editorial no gerar** (`test_radar_funcao_ia.py`, 3 novos): depois da redação (e da segunda passada, se houver o que
+  corrigir), a chamada "editorial" (esquema fixo: título e texto inteiros, as 10 perguntas com "ok" ou "ajustado" e o motivo, os
+  trechos reescritos e as pendências), com as 10 perguntas do dono, "Não é detector de IA", os limites e o mesmo material (texto oficial,
+  verificação e links); o texto que fica é o revisado e o resultado, limpo (sem HTML nem link, até 8 trechos), vai ao banco e à resposta;
+  o consumo soma as duas chamadas como "gerar". A reescrita é **recusada** (fica o rascunho, a revisão fica "não feita" com o motivo)
+  quando acrescenta valor ("R$ 5 mil"), lei ("Lei nº 9.999"), número solto ("37"), norma pelo nome ("CLT") ou trecho igual ao da fonte,
+  ou tira a linha "Fonte oficial", a marca [VERIFICAR] ou a citação entre aspas; a data do texto oficial escrita de outro jeito passa, e o
+  link fora dos dados do assunto sai do texto, com aviso. Se a IA Central recusa, a resposta vem sem uma pergunta ou cortada, o gerar
+  grava o rascunho do mesmo jeito (200) e a revisão fica "não feita". Mutações: sem a revisão no gerar, a reescrita nunca recusada, sem
+  cada uma das 8 conferências da reescrita, a pergunta faltando aceita, a falha que derruba o gerar e a resposta cortada aceita.
+- **Ação "editorial"** (`test_radar_funcao_ia.py`, 1 novo): o botão "Fazer a revisão editorial" faz a revisão num conteúdo gravado:
+  grava o texto revisado (só se o conteúdo for o que a tela leu; 409 se mudou, sem chamar a IA), com o aviso "Revisão editorial com IA
+  em …", e o resultado; sem nada a mudar, só o resultado (a data do conteúdo não muda); a reescrita recusada volta como erro e nada
+  muda; o texto para análise é recusado sem chamar a IA. Mutações: sem conferir a versão lida e aceitando o texto para análise.
+- **Linha "Fonte oficial"** (`test_radar_funcao_ia.py`, ajustados; `test_radar_banco.py`, 1 ajustado): o gerar pede a norma uma vez no
+  corpo e a linha curta "Fonte oficial: <norma> — <link>" (e não mais a seção), e a segunda passada a acrescenta quando falta; o banco e
+  a função dizem igual, em 45 exemplos (os 35 de antes e 10 novos: a linha em negrito, como item, no plural, em maiúsculas; sem link
+  oficial, no meio da frase ou sem os dois-pontos não vale), que o texto tem a linha (ou a seção de antes); a Conferência das Diretrizes
+  marca ✓ no critério 2 com a linha e o link oficial, e ✗ sem link, com link que não é oficial ou com a linha no meio da frase.
+  Mutações: o gerar de volta com a seção, a função e o banco sem aceitar a linha.
+- **Banco** (`test_radar_banco.py`, 1 novo e 3 ajustados: as 2 funções novas na lista das expostas, os casos da linha "Fonte oficial" e o
+  setup rodado de novo, que mantém a revisão editorial): a revisão editorial fica no conteúdo (`conferencia->'editorial'`) só pela função,
+  com a versão do corpo do texto (`radar_texto_versao`), quando e quem; as chaves de fora não ficam; gravar não muda a data do
+  conteúdo; é validada (RADAR189: as 10 perguntas, "ok" ou "ajustado", o motivo, até 12 trechos de até 400 caracteres; "não feita" com
+  o motivo), só o editor e o administrador gravam (RADAR188) e só para o texto lido (RADAR190); o UPDATE direto e o INSERT não a forjam;
+  ela não trava nem libera a aprovação; gravar a Conferência ou o "Revisei e assumo" depois não a apaga; trocar só o título não muda a
+  versão, mudar o texto sim; fica na trilha. Mutações: a Conferência apagando a revisão, sem validar as perguntas, sem conferir a versão
+  lida, a versão com o título e as chaves de fora guardadas.
+- **Tela** (`test_radar_telas.py`, 3 novos e 1 ajustado, a entrada da aba Versões): o quadro "Revisão editorial" logo abaixo da
+  Conferência das Diretrizes, com as 10 perguntas (✓ e ✎, com o motivo) e "O que foi reescrito" (antes → depois, "saiu do texto"), sem
+  mudar a trava do Aprovar; trocar só o título não muda nada; o texto editado à mão faz o quadro avisar que a revisão era da versão
+  anterior, com o botão "Fazer a revisão editorial de novo"; o texto da equipe não tem o quadro; o Histórico mostra "Revisão editorial: 2
+  pergunta(s) com ajuste, 2 trecho(s) reescrito(s)". A revisão "não feita" mostra o motivo e o botão "Fazer a revisão editorial" (também
+  no texto da IA sem revisão nenhuma), que chama a ação "editorial" com a versão lida; ela não trava o Aprovar. O critério 2 da
+  Conferência aceita a linha "Fonte oficial" com link oficial, e a prévia do site a mostra como link. Mutações: sem o quadro, sem o aviso
+  de versão anterior, ✓ no lugar do ✎, sem o "antes → depois", sem a versão do corpo na leitura, sem a linha no Histórico, sem o botão,
+  a revisão não feita travando o Aprovar e o botão sem a versão lida. Um teste antigo (a frase do boletim de outro assunto) achou o
+  "Aprovar" no texto do quadro novo: o quadro passou a dizer "quem trava a aprovação" (o botão continua sendo o único "Aprovar").
+- **Robôs** (`test_radar_rascunhos.py`, 1 novo; `test_radar_site_publicar.py`, 1 novo; `test_radar_e2e.py`, 1 ajustado): os rascunhos do
+  robô usam a mesma regra (9) da função (conferido letra por letra), com a Análise Artecon opcional e sem "quando vale procurar a
+  Artecon"; o robô do site publica a linha "Fonte oficial" como parágrafo, com o link, e não acrescenta chamada comercial nenhuma.
+  Mutações: o robô com o "procurar a Artecon" de volta, com a regra antiga e o robô do site com uma chamada no fim.
+- **Ajustados por causa da chamada a mais** (`test_radar_funcao_ia.py`, 16 no total com os da linha "Fonte oficial"): os testes do gerar
+  que contavam as chamadas à IA ou olhavam "o último pedido" passam a conferir a ordem das ferramentas (redação, segunda passada,
+  revisão editorial) e o pedido da redação pelo nome; o consumo do gerar com segunda passada passa de 2 para 3 chamadas; o texto de fora
+  não fecha o bloco de dados também na revisão editorial; as orientações do escritório vão também no fim dela. Os 2 testes de tela que
+  usam a IA Central de verdade e contavam as chamadas foram ajustados do mesmo jeito (são pulados aqui).
+- **Norma seguida de vírgula** (`test_radar_rascunhos.py`, 1 novo e 1 amostra nova no teste que compara o robô com a função): "nº
+  2.290," era lido como "nº 2" (a vírgula barrava o número inteiro), e o texto ganhava o aviso falso "Norma citada que não aparece no
+  texto oficial capturado" quando o texto oficial não tinha a mesma vírgula; com a linha "Fonte oficial" isso apareceria mais. A vírgula
+  agora só barra quando vem decimal ("2,5%"), igual na função e no robô de rascunhos. Mutações: a regra antiga no robô e na função.
+- **Acertos da revisão da etapa 5** (`test_radar_funcao_ia.py`, 2 novos e 1 ampliado; `test_radar_telas.py`, 1 corrigido): a reescrita
+  da revisão editorial passa a ser recusada também quando **troca o link** da linha "Fonte oficial" por um fora dos dados do assunto
+  (antes, a troca passava e o link certo saía depois, com o inventado), quando tira a linha "Fonte oficial" **sem link** e quando traz
+  um trecho igual ao da fonte **no lugar de outro** que já estava (a conta era pelo número de trechos); o link que a redação inventou sai
+  antes da revisão (ela nem o vê). Na ação "editorial", o material é o do gerar: com texto oficial, só ele (o dado que só o portal traz,
+  "R$ 5 mil", é recusado, e o portal nem vai no pedido). A revisão pode encurtar o texto (tirar a Análise Artecon que não acrescenta)
+  quando diz o que tirou; sem dizer, o texto que perde mais de 40% é recusado com o motivo certo ("encurtou o texto sem dizer o que
+  tirou", não mais "texto incompleto"), e abaixo de um terço sempre. O teste de tela da IA Central (pulado aqui) contava 4 chamadas e
+  3 custos ao mesmo tempo e não previa a segunda passada do texto sem a linha "Fonte oficial": o texto de exemplo ganhou a linha
+  (conferido no ambiente dos testes da função: só a redação e a revisão editorial, sem nenhum aviso) e o teste confere as 4 ferramentas
+  e os 4 custos. Mutações: sem conferir o link, a linha só com link, o material com a fonte não oficial, a cópia pela contagem, o limite
+  fixo de 60% e sem tirar o link inventado antes da revisão.
+
+Comandos (neste ambiente): os 7 arquivos afetados (`test_radar_funcao_ia.py`, `test_radar_banco.py`, `test_radar_telas.py`,
+`test_radar_site_publicar.py`, `test_radar_rascunhos.py`, `test_radar_e2e.py` e `test_radar_repositorio.py`), as 45 mutações (um
+script que troca o trecho, roda o teste dele, confere que falhou e restaura o arquivo) e, no fim, a suíte inteira
+(`python -m pytest testes -q`).
+
+## v0.24.0 — Diretrizes editoriais, Conferência das Diretrizes, texto Informativo e Orientações para a IA
+
+São 28 testes novos (de 1.064 para 1.092 no total, como a v0.23.0 e esta versão coletam neste ambiente) e 25 testes antigos
+ajustados (3 deles com nome novo, porque a regra mudou), mais a conferência automática dos testes (abaixo). Cada parte foi conferida
+desfazendo-a numa cópia temporária do arquivo (o teste novo falha) e restaurando — 24 mutações das Diretrizes, da Conferência e do
+Informativo, 17 das Orientações para a IA e 18 dos acertos da revisão desta etapa, todas derrubaram ao menos um teste (mais 1 da
+correção do reel, abaixo):
+
+- **Conferência das Diretrizes no banco** (`test_radar_banco.py`, 6 novos e 5 ajustados, estes só pelo nome do setup e da reversão e
+  pelas 3 funções novas na lista das expostas): sem a lista dos 10 critérios do texto que está no conteúdo, nem o editor nem o
+  administrador aprovam (RADAR181); com critério que não atende, também não (RADAR182, com os números); quem não é o administrador não
+  tira o ✗ gravando outra lista para o mesmo texto (a lista do administrador vale inteira); mudou o título, o texto, a fonte ou a
+  capa, a lista deixa de valer; gravar a lista não muda a data do conteúdo, e o UPDATE direto e o INSERT não a forjam. A lista é
+  validada (10 itens, 1 a 10, sem repetir, situação e motivo; RADAR185), só o editor e o administrador gravam (RADAR183) e só se o
+  texto ainda for o que foi à IA (RADAR184). O banco confere sozinho, por cima da lista da IA, o [VERIFICAR] (2 e 8), a norma citada
+  sem a seção "Fundamentação legal" com link oficial (2; no Informativo, que não tem a seção, não), o Informativo sem a fonte (3), a
+  frase do boletim pago (4) e a capa (6). "Revisei e assumo": só o administrador (RADAR186), com motivo de 10 a 500 caracteres
+  (RADAR187), na conferência e na trilha; mudou o texto, cai; o [VERIFICAR] e o boletim pago continuam travando. O texto Informativo
+  não é aprovado, nem pela API, sem a autorização do administrador (RADAR180), e tirar o aviso por fora não adianta; desfeita a
+  autorização, o Informativo aprovado volta para a revisão (o texto comum aprovado, não). Rodar o setup de novo mantém a lista e a
+  trava.
+- **Diretrizes na função de IA** (`test_radar_funcao_ia.py`, 7 novos e 11 ajustados: o esquema do gerar com "sem_base_legal", a
+  revisão que agora também confere, o aviso da revisão e as regras na ordem nova): as Diretrizes 1, 2, 3, 5 e 6 vão inteiras nas
+  instruções do gerar (e da segunda passada), dos títulos, do revisar, do kit e da peça, depois das regras de cada ação e antes da
+  regra dos blocos de dados; classificar e fundamentar ficam sem elas; o verificar pede a vigência. O gerar recebe os links oficiais
+  do assunto (só os conferidos) e pede a seção "Fundamentação legal", com a data e o artigo só quando estão no texto oficial; o
+  endereço que a IA inventou sai do texto, com aviso; a norma sem link ou sem a vigência confirmada vai num aviso à parte (ela fica no
+  texto). No pedido, o formato "informativo" se chama "NOTÍCIA MÉDIA" e o modo da Diretriz 2 "SEM BASE LEGAL" (campo
+  "sem_base_legal", com a descrição), para a IA não confundir os dois. O revisar confere os 10 critérios (ferramenta com esquema
+  fixo; lista incompleta é recusada) e o banco grava; sem nada a corrigir, só confere; a seção que falta é acrescentada só com os
+  links do assunto; no Informativo, sem links, e a conferência é avisada de que a norma só mencionada não reprova o critério 2. Sem
+  texto oficial, o gerar faz o texto Informativo (o aviso "INFORMATIVO…" em primeiro), que só é aprovado depois da autorização. O
+  trecho igual citado fora de aspas pede a segunda passada (também no kit, que o aponta nos avisos); a citação curta entre aspas, com
+  a fonte, não; a transcrição longa (mais de 40 palavras) entre aspas e com a fonte citada só é conferida, não reescrita. A regra
+  "cita norma" e "tem a seção Fundamentação legal" dá o mesmo resultado no banco e na função, em 35 exemplos (um por tipo de norma, e
+  os que não são norma).
+- **Detector de cópia** (`test_radar_rascunhos.py`, 1 novo): a tela, a função e o robô dizem igual, em 5 casos, se o trecho estava
+  numa citação longa entre aspas (com e sem a fonte citada, fora de aspas, com cópia depois das aspas e do boletim pago).
+- **Tela** (`test_radar_telas.py`, 4 novos e 7 ajustados): o quadro "Conferência das Diretrizes" com os 10 critérios (✓, ✗, —, ?),
+  o Aprovar travado com ✗ ou ?, o "Revisar com IA" que confere e o recado com os critérios que não atendem; conferir de novo o mesmo
+  texto não tira o ✗, o texto corrigido sim; o trecho igual citado fora de aspas marca 4 e 5 com ✗ (e "Autorizar mesmo assim"
+  libera), e a transcrição longa entre aspas com a fonte fica num quadro azul, sem ✗; o [VERIFICAR] marca 2 e 8; "Revisei e assumo"
+  só para o administrador e só sem [VERIFICAR] no texto, com o motivo no quadro, na trilha e legível na aba Histórico; o Informativo
+  com o selo "Informativo — aguardando autorização" (e o tamanho como "Médio (notícia)", sem a palavra "Informativo"), sem o Aprovar,
+  com o passo "Autorizar o Informativo" na trilha e o botão dele só para o administrador, que autoriza por ele (o quadro do motivo diz
+  que a autorização vale para o assunto inteiro); autorizado, o selo "Conteúdo informativo" e a prévia do site com a linha "Conteúdo
+  informativo" no fim. Ajustados: o teste do texto citado (agora só aprova entre aspas), o do "Gerar com IA" sem fonte oficial (agora
+  Informativo), o da função antiga (FUNCAO_MINIMA 0.24.0), o da aba Versões, o da aba Como usar e os avisos de banco antigo da Pauta e
+  do corretor de vídeo (que apontam o setup da v0.24.0).
+- **Robô do site** (`test_radar_site_publicar.py`, 1 novo): o Informativo sai com a linha "Conteúdo informativo" no fim, depois dos
+  créditos; o endereço do texto vira link, com a pontuação de fora, como na prévia; o texto comum não leva a linha.
+- **Orientações para a IA** (`test_radar_funcao_ia.py`, 5 novos; `test_radar_telas.py`, 4 novos): o bloco vai depois das regras no
+  gerar, no kit e na peça (e nos títulos e nas revisões), nunca onde não se escreve para publicar; na peça, sem nome da equipe, link
+  nem dado de identificação; a orientação da imagem com marca ou pessoa conhecida fica de fora, com aviso; as preferências da imagem
+  vêm antes das proibições. Na tela, só o administrador altera, com o limite de caracteres e a conferência do boletim pago.
+- **Versão** (`test_radar_repositorio.py`, 1 ajustado; e os de versão da tela e do banco): a tela, os scripts, a `radar-ia`, o banco
+  (setup e reversão), o LEIAME e este relatório na 0.24.0.
+- **Reel aprovado antes da v0.22.0** (`test_radar_video_banco.py`, 1 ajustado): com o banco instalado direto na v0.24.0 (sem a linha
+  da v0.22.0 em `radar_instalacoes`), o registro do link sem o vídeo corrigido continua recusado (RADAR317) só para a aprovação
+  feita depois da primeira instalação da v0.22.0 ou mais nova. Com a regra de volta em "só a v0.22.0", o teste falha.
+
+**Conferência automática dos testes.** Os testes antigos aprovam conteúdo sem passar pela IA. Para eles continuarem conferindo o
+que conferiam, o banco de teste ganha (só nos testes, em `testes/conftest.py`) um gatilho que grava a lista dos 10 critérios
+"atende" da versão do texto em todo INSERT e UPDATE de conteúdo. Nesses testes, só as travas que a aprovação confere à parte (o
+[VERIFICAR] e a frase do boletim pago) continuam valendo; a "Fundamentação legal" e a capa, que o banco confere ao gravar a lista
+(`radar_registrar_conferencia`), não. Os testes novos da conferência desligam esse gatilho (fixture `conferencia_de_verdade`) e
+passam pelo caminho de verdade, onde as quatro valem.
+
+Comandos (neste ambiente): os 5 arquivos afetados (`test_radar_banco.py`, `test_radar_funcao_ia.py`, `test_radar_telas.py`,
+`test_radar_site_publicar.py` e `test_radar_rascunhos.py`), mais `test_radar_repositorio.py` e `test_radar_publicidade.py`, um a um,
+as mutações e, no fim, a suíte inteira (`python -m pytest testes -q`).
 
 ## v0.23.0 — boletim da ITC na caixa inteira, agendas que rodam de novo e INLABS
 

@@ -17,8 +17,8 @@ sys.path.insert(0, str(RAIZ / "robo"))
 PG = {"host": os.environ.get("RADAR_PGHOST", "/tmp"), "port": os.environ.get("RADAR_PGPORT", "5544"),
       "user": os.environ.get("RADAR_PGUSER", "postgres")}
 BANCO = "radar_teste"
-SETUP = RAIZ / "sql" / "radar-setup-v0.22.0.sql"
-REVERSAO = RAIZ / "sql" / "radar-reversao-v0.22.0.sql"
+SETUP = RAIZ / "sql" / "radar-setup-v0.24.0.sql"
+REVERSAO = RAIZ / "sql" / "radar-reversao-v0.24.0.sql"
 
 ADMIN = "00000000-0000-0000-0000-00000000000a"
 EDITOR = "00000000-0000-0000-0000-00000000000e"
@@ -46,12 +46,48 @@ def banco_pronto():
     r = psql(SETUP)
     assert r.returncode == 0, r.stderr
     with conectar() as c:
+        c.execute(CONFERENCIA_AUTOMATICA)
         for uid, nome, papel in [(ADMIN, "Admin", "admin"), (EDITOR, "Editora", "editor"), (LEITOR, "Leitor", "leitor")]:
             c.execute("insert into auth.users (id, email) values (%s, %s) on conflict do nothing", (uid, nome))
             c.execute("insert into radar_perfis (user_id, nome, papel) values (%s, %s, %s) on conflict do nothing",
                       (uid, nome, papel))
         c.execute("insert into auth.users (id, email) values (%s, 'x') on conflict do nothing", (SEM_PERFIL,))
     yield BANCO
+
+
+# v0.24.0: a aprovação de um conteúdo pede a Conferência das Diretrizes da versão do texto (a lista da IA ou o "Revisei e assumo"). Nos
+# testes que não são dela, um gatilho SÓ DOS TESTES (esquema "teste", fora do setup) grava a conferência completa a cada gravação do
+# conteúdo, depois dos gatilhos do Radar: o que eles testam (aprovar, publicar, o Informativo Mensal…) segue como antes. Os testes da
+# conferência desligam isso (fixture conferencia_de_verdade) e conferem o caminho de verdade: a função radar-ia, as funções do banco e a tela.
+CONFERENCIA_AUTOMATICA = """
+create schema if not exists teste;
+create table if not exists teste.ajustes (conferencia_automatica boolean not null default true);
+insert into teste.ajustes select true where not exists (select 1 from teste.ajustes);
+create or replace function teste.conferencia_automatica() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select a.conferencia_automatica from teste.ajustes a limit 1) then
+    new.conferencia := jsonb_build_object('versao', public.radar_conferencia_versao(new), 'em', now(), 'teste', true,
+      'itens', (select jsonb_agg(jsonb_build_object('item', n, 'situacao', 'atende', 'motivo', 'Conferido (teste).') order by n)
+                  from generate_series(1, 10) n))
+      -- v0.24.0 (etapa 5): a revisão editorial gravada pelo Radar (na mesma coluna) fica
+      || case when new.conferencia ? 'editorial' then jsonb_build_object('editorial', new.conferencia->'editorial') else '{}'::jsonb end;
+  end if;
+  return new;
+end $$;
+drop trigger if exists radar_tg_zz_teste_conferencia on public.radar_conteudos;
+create trigger radar_tg_zz_teste_conferencia before insert or update on public.radar_conteudos
+  for each row execute function teste.conferencia_automatica();
+"""
+
+
+@pytest.fixture()
+def conferencia_de_verdade(banco_pronto):
+    """Desliga a conferência automática dos testes (CONFERENCIA_AUTOMATICA) durante o teste: vale a de verdade."""
+    with conectar() as c:
+        c.execute("update teste.ajustes set conferencia_automatica = false")
+    yield
+    with conectar() as c:
+        c.execute("update teste.ajustes set conferencia_automatica = true")
 
 
 @pytest.fixture()

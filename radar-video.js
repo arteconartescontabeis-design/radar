@@ -15,7 +15,7 @@
    arquivos) é escapado (h()); nenhum link, token ou nome vai para o console nem para o localStorage (lá fica só o endereço do envio
    retomável, bruto/<id>/<n>, sem nome).
    ==================================================================== */
-const VIDEO_VERSAO = "0.23.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.24.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 120;
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -183,7 +183,7 @@ async function blocoVideo(p){
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
   let vivos;
   try{ vivos = await videosDaPeca(p.id); }
-  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.22.0: o administrador roda o <b>sql/radar-setup-v0.22.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
+  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.24.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.24.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};

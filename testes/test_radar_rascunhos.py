@@ -21,6 +21,9 @@ AMOSTRAS = [
      "O prazo de opção foi prorrogado até 31 de janeiro de 2027. Limite de R$ 81.000,00 por ano."),
     ("Texto sem nenhum número.", "Texto oficial sem números."),
     ("Vence no dia 1º, conforme o nº15 meses e o dia 2ª; art. 3º-A e §1º.", "O prazo vence no dia 1º de cada mês (art. 3º-A)."),   # º/ª e fronteira de palavra
+    # v0.24.0: norma seguida de vírgula (a linha "Fonte oficial" termina assim) x número decimal
+    ("A Lei nº 15.270, de 26 de novembro de 2025, vale em 2026.\n\nFonte oficial: Instrução Normativa RFB nº 2.290, art. 2º — https://x.gov.br",
+     "LEI Nº 15.270 DE 26 DE NOVEMBRO DE 2025. INSTRUÇÃO NORMATIVA RFB Nº 2.290 DE 2026. Art. 2º A Lei 2,5% não é norma."),
 ]
 
 
@@ -54,6 +57,14 @@ def test_verificacao_aponta_o_que_nao_esta_no_texto_oficial():
     assert any("4,5%" in a and "12 (doze) meses" in a for a in avisos)
     assert not any("31 de janeiro de 2027" in a or "81.000" in a for a in avisos)       # estes estão no texto oficial
     assert any("[VERIFICAR]" in a for a in rr.conferir_gerado(*AMOSTRAS[0], True))
+
+
+def test_norma_seguida_de_virgula_e_a_norma_inteira():
+    # v0.24.0: "nº 2.290," era lido como "nº 2" e dava o aviso falso "Norma citada que não aparece no texto oficial"
+    g, o = AMOSTRAS[-1]
+    assert {"n:15270", "n:2290"} <= set(rr.fatos(g, False)) and not {"n:15", "n:2"} & set(rr.fatos(g, False))
+    assert not any(a.startswith("Norma citada") for a in rr.conferir_gerado(g, o, True))
+    assert "n:2" not in rr.fatos("A Lei 2,5% de multa.", False)                     # decimal continua fora
 
 
 def test_configuracao_volta_ao_padrao_quando_o_valor_e_estranho():
@@ -211,7 +222,44 @@ def test_detector_de_copia_do_robo_e_igual_ao_da_tela_e_da_funcao(tmp_path):
         assert json.loads(saida.stdout) == esperado, nome
 
 
-DUVIDAS_SIM = ["(a fonte não especifica o ano)", "(a fonte não informou o ano)", "(o boletim não informa o ano)", "(ano não informado pela fonte)",
+# v0.24.0 (Diretriz 3): a transcrição literal longa (mais de 40 palavras) entre aspas continua comparada como texto comum, mas o trecho
+# sai marcado "aspas"; fora de aspas (ou com cópia de 12 palavras que contam fora da citação), não
+_ART = ("o contribuinte que realizar operações com bens e serviços deverá emitir o documento fiscal eletrônico com o destaque da "
+        "contribuição, informar o código de classificação de cada item vendido, guardar os arquivos pelo prazo previsto na legislação "
+        "e apresentar a escrituração mensal no ambiente nacional, sob pena de multa por documento emitido sem as informações exigidas")
+CASOS_ASPAS = [
+    ("Segundo a Receita Federal, o artigo 5º diz: “" + _ART + "”.", [_rfb("Art. 5º " + _ART + ".")]),
+    ("Segundo a Receita Federal, o artigo 5º diz que " + _ART + ".", [_rfb("Art. 5º " + _ART + ".")]),
+    ("O artigo 5º diz: “" + _ART + "”.", [_rfb("Art. 5º " + _ART + ".")]),
+    ("Segundo a Receita Federal, “" + _ART + "”. " + _R + ".", [_rfb(_ART + ". " + _R + ".")]),
+    ("Segundo a ITC, “" + _ART + "”.", [{"texto": _ART, "nome": "ITC Consultoria", "nomes": ["ITC"], "paga": True}]),
+]
+
+
+def test_citacao_longa_entre_aspas_igual_no_robo_na_tela_e_na_funcao(tmp_path):
+    assert len(_ART.split()) > rr.CITACAO_MAXIMA
+    esperado = [rr.trechos_copiados(c, f) for c, f in CASOS_ASPAS]
+    assert [[(t["citado"], t["aspas"], t["paga"]) for t in x] for x in esperado] == [
+        [(True, True, False)],             # entre aspas e com a fonte citada: a transcrição que a Diretriz 3 aceita
+        [(True, False, False)],            # a fonte citada, mas fora de aspas: citar a fonte não autoriza copiar
+        [(False, True, False)],            # entre aspas, mas sem a fonte citada no parágrafo
+        [(True, False, False)],            # a citação seguida de 12 palavras ou mais copiadas fora das aspas
+        [(False, False, True)]]            # o boletim pago, nem entre aspas
+    if shutil.which("deno") is None:
+        pytest.skip("deno não instalado")
+    fim = "return achados.sort((a, b) => b.palavras - a.palavras);\n}"
+    (tmp_path / "aspas.json").write_text(json.dumps(CASOS_ASPAS, ensure_ascii=False), encoding="utf-8")
+    for nome, arquivo in (("tela.ts", "index.html"), ("funcao.ts", "supabase/functions/radar-ia/index.ts")):
+        codigo = _extrair((RAIZ / arquivo).read_text(encoding="utf-8"), "const COPIA_MINIMA = 12", fim)
+        arq = tmp_path / nome
+        arq.write_text("// @ts-nocheck\n" + codigo + f"\nconsole.log(JSON.stringify(JSON.parse(Deno.readTextFileSync({json.dumps(str(tmp_path / 'aspas.json'))}))"
+                       ".map(([c, f]) => trechosCopiados(c, f))));\n", encoding="utf-8")
+        saida = subprocess.run(["deno", "run", "--allow-read", "--no-prompt", str(arq)], capture_output=True, text=True, timeout=60)
+        assert saida.returncode == 0, saida.stderr
+        assert json.loads(saida.stdout) == esperado, nome
+
+
+DUVIDAS_SIM =["(a fonte não especifica o ano)", "(a fonte não informou o ano)", "(o boletim não informa o ano)", "(ano não informado pela fonte)",
                "A fonte cita tanto ADI 5.161 quanto ADI nº 5.161/DF.", "a fonte indica 30/9 mas não especifica o ano", "o texto oficial não especifica o ano"]
 DUVIDAS_NAO = ["Para o material de uso e consumo, a LC 87/96 não traz direito ao crédito antes de 2033.",
                "Quando a fonte não informa o CPF do beneficiário na EFD-Reinf, o rendimento fica sem vínculo.",
@@ -255,6 +303,21 @@ def test_regra_da_fonte_e_revisao_do_robo_iguais_as_da_funcao():
     item_b = lambda t: t[t.index("(b) "):t.index("(c) ")]
     assert item_b(revisao) == item_b(rr.REVISAO) and "listado é reescrito com palavras próprias" in item_b(revisao)
     assert "não acrescente a fonte aos outros parágrafos" in item_b(rr.REVISAO) and "BOLETIM PAGO" in item_b(rr.REVISAO)
+
+
+def test_escrita_humana_do_robo_igual_a_da_funcao_sem_chamada_comercial():
+    """v0.24.0 (etapa 5): os rascunhos do robô seguem a mesma Diretriz de Humanização do "Gerar com IA" (a regra (9) é a mesma da função
+    radar-ia), a Análise Artecon é opcional e o formato não pede mais "quando vale procurar a Artecon" nem "o risco de não agir"."""
+    ts = (RAIZ / "supabase" / "functions" / "radar-ia" / "index.ts").read_text(encoding="utf-8")
+    regra = _literais(_extrair(ts, "const REGRA_ESTILO = ", '";\n'))
+    assert regra == rr.REGRA_ESTILO and regra.startswith("(9) ESCRITA HUMANA: escreva como um jornalista especializado")
+    for formato in ("flash", "informativo", "artigo"):
+        texto = rr.instrucoes(formato)
+        assert rr.REGRA_ESTILO in texto and "ESCRITA NATURAL" not in texto, formato
+        assert "vale procurar a Artecon" not in texto and "o risco de não agir" not in texto, formato
+        assert "(4) a seção 'Análise Artecon' é OPCIONAL" in texto and "nunca invente interpretação jurídica nem consequência econômica" in texto, formato
+    assert "Se acrescentar conhecimento técnico (regra (4)), feche com a seção '## Análise Artecon'" in rr.FORMATOS["informativo"]
+    assert "a Análise Artecon quando acrescentar" in rr.FORMATOS["artigo"]
 
 
 def test_fontes_das_capturas_marca_o_boletim_pago_e_poe_a_oficial_antes():
