@@ -484,7 +484,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.24.0: a Conferência das Diretrizes (cada função confere o papel)
                                                            'radar_registrar_conferencia', 'radar_assumir_conferencia', 'radar_conferencia_versao',
                                                            -- v0.24.0 (etapa 5): a revisão editorial (a função confere o papel)
-                                                           'radar_registrar_revisao_editorial', 'radar_texto_versao')
+                                                           'radar_registrar_revisao_editorial', 'radar_texto_versao',
+                                                           -- v0.28.0: "+ Nova peça" (a função confere que é o administrador)
+                                                           'radar_pauta_criar')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -726,7 +728,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.25.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.28.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1187,7 +1189,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (27, 6, 8, 8, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.25.0", [], 27)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.28.0", [], 27)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -2042,9 +2044,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.25.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.28.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.25.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.28.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2074,7 +2076,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.25.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.28.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -4974,7 +4976,8 @@ def test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date(db):
     novas = db.execute("""select p.proname, p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                           where n.nspname = 'public' and (p.proname like 'radar\\_pauta\\_%' or p.proname like 'radar\\_agenda\\_%'
                                 or p.proname in ('radar_redes_conferir_agenda', 'radar_fn_pauta_peca', 'radar_fn_pessoa_apagar'))""").fetchall()
-    assert len(novas) == 30                                                  # v0.22.0: + radar_pauta_pecas_da_pessoa
+    # v0.22.0: + radar_pauta_pecas_da_pessoa; v0.28.0: + radar_pauta_criar, radar_pauta_linha_invalida e radar_pauta_hora_padrao
+    assert len(novas) == 33
     assert [n for n, src in novas if "current_date" in src.lower()] == []
 
 
@@ -5378,3 +5381,189 @@ def test_revisao_editorial_gravada_validada_e_so_informativa(limpo, conferencia_
     assert limpo.execute("select conferencia->'editorial'->>'versao' from radar_conteudos where id = %s", (c2,)).fetchone()[0] == guardada
     assert limpo.execute("""select count(*) from radar_auditoria where tabela = 'radar_conteudos' and registro_id = %s and acao = 'UPDATE'
                             and usuario = %s and depois->'conferencia'->'editorial'->>'feita' = 'true'""", (str(c2), EDITOR)).fetchone()[0] == 1
+
+
+# ------------------------------------------------------------------- v0.28.0: "+ Nova peça" e "Sócio(a) da Artecon"
+def criar_peca(peca, uid=ADMIN):
+    """A "+ Nova peça" da Pauta (radar_pauta_criar), como a tela chama."""
+    with como("authenticated", uid) as c:
+        return c.execute("select radar_pauta_criar(%s)", (json.dumps(peca),)).fetchone()[0]
+
+
+def test_pauta_criar_so_admin_dia_livre_de_hoje_em_diante_e_mesma_conferencia_da_importacao(pauta):
+    """v0.28.0: "+ Nova peça". Só o administrador cria; o dia é de hoje em diante (de Brasília) e sem peça nenhuma (uma peça por dia: a
+    cancelada também ocupa o dia); os campos passam pela mesma conferência da importação do calendário, com o assunto obrigatório, e o
+    erro diz o campo, nunca o conteúdo. A peça nasce planejada, na hora padrão, sem pessoas, sem aprovação e sem envio (o que vier a mais
+    no pedido não conta), e vai à trilha como a importada (sem o plano)."""
+    db = pauta
+    d = hoje(db)
+    dia = lambda n: (d + timedelta(days=n)).isoformat()
+    db.execute("""update radar_config set valor = valor || '{"hora_padrao": "08:15"}' where chave = 'pauta'""")
+    pid = criar_peca({"data": dia(1), "tipo": "bastidor", "formato": "foto", "assunto": "  Bastidor da equipe \n", "objetivo": " aproximar ",
+                      "quem_aparece": "Ana Teste", "observacao": "lembrete do plano",
+                      # o que a tela não manda e o banco não aceita daqui: a situação, a hora, as pessoas, a aprovação
+                      "situacao": "aprovada", "hora": "03:00", "pessoas": [1], "aprovado_modo": "agendar"})
+    assert db.execute("""select data, situacao, hora::text, criado_por::text, pessoas, assunto, objetivo, quem_aparece, observacao,
+                                aprovado_por, aprovado_modo, aprovado_canais from radar_pauta_pecas where id = %s""", (pid,)).fetchone() == \
+        (d + timedelta(days=1), "planejada", "08:15:00", ADMIN, [], "Bastidor da equipe", "aproximar", "Ana Teste", "lembrete do plano",
+         None, None, [])
+    assert db.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0                # não publica nem agenda nada
+    trilha = db.execute("select acao, usuario::text, depois from radar_auditoria where tabela = 'radar_pauta_pecas'").fetchall()
+    assert [(a, u) for a, u, _ in trilha] == [("INSERT", ADMIN)]
+    assert not {"assunto", "objetivo", "observacao", "quem_aparece"} & set(trilha[0][2])
+    assert "Ana" not in json.dumps(trilha[0][2], ensure_ascii=False) and "lembrete" not in json.dumps(trilha[0][2], ensure_ascii=False)
+    # hoje (de Brasília) pode; ontem, não
+    reel = criar_peca({"data": dia(0), "tipo": "reel", "formato": "reel", "assunto": "Reel de hoje"})
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR192: esse dia já passou"):
+        criar_peca({"data": dia(-1), "tipo": "bastidor", "formato": "foto", "assunto": "Ontem"})
+    # uma peça por dia, também com a peça cancelada (Reabrir é o caminho)
+    cancelada = criar_peca({"data": dia(2), "tipo": "educativo", "formato": "carrossel", "assunto": "Educativo"})
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_pauta_pecas set situacao = 'cancelada' where id = %s", (cancelada,))
+    for n in (1, 2):
+        with pytest.raises(psycopg.errors.RaiseException, match=re.escape(f"RADAR193: já existe uma peça em {(d + timedelta(days=n)).strftime('%d/%m/%Y')}")):
+            criar_peca({"data": dia(n), "tipo": "bastidor", "formato": "foto", "assunto": "Outra no mesmo dia"})
+    # só o administrador: o editor (que importa o calendário) e o leitor, não; o visitante e a chave do robô nem chamam
+    base = {"data": dia(6), "tipo": "bastidor", "formato": "foto", "assunto": "Bastidor"}
+    for uid in (EDITOR, LEITOR, SEM_PERFIL):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR191: só o administrador cria peça nova"):
+            criar_peca(base, uid)
+    for papel in ("anon", "service_role"):
+        with como(papel) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute("select radar_pauta_criar(%s)", (json.dumps(base),))
+    # a mesma conferência da importação (radar_pauta_linha_invalida), mais o assunto obrigatório: nada é gravado
+    antes = db.execute("select count(*), max(atualizado_em) from radar_pauta_pecas").fetchone()
+    for ruim, msg in [(dict(base, tipo="Segredo <b>da equipe</b>"), "confira o campo “tipo”"), (dict(base, formato="tiktok"), "“formato”"),
+                      (dict(base, data="2026-02-30"), "“dia”"), (dict(base, data="17/10/2026"), "“dia”"), (dict(base, data="1999-12-31"), "“dia”"),
+                      (dict(base, data="2101-01-01"), "“dia”"), (dict(base, assunto="Segredo " * 200), "“assunto”"),
+                      (dict(base, quem_aparece=["Segredo"]), "“quem aparece”"), (dict(base, objetivo="Segredo " * 30), "“objetivo”"),
+                      (dict(base, observacao="Segredo " * 200), "“observação”"), (dict(base, assunto="   "), "escreva o assunto"),
+                      (dict(base, assunto=" \n\t "), "escreva o assunto"), ({k: v for k, v in base.items() if k != "assunto"}, "escreva o assunto"),
+                      (["Segredo solto"], "envie o dia, o tipo, o formato e o assunto")]:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR192") as erro:
+            criar_peca(ruim)
+        assert msg in str(erro.value) and "Segredo" not in str(erro.value), str(erro.value)
+    assert db.execute("select count(*), max(atualizado_em) from radar_pauta_pecas").fetchone() == antes
+    # o reel novo abre como qualquer reel: falta o roteiro e a gravação (o quadro do corretor de vídeo)
+    falta = conferir(reel, uid=ADMIN)
+    assert "Reel: cole o roteiro" in falta and "Reel: envie a gravação (Corretor de vídeo)" in falta
+
+
+def test_importar_depois_de_peca_criada_a_mao(pauta):
+    """v0.28.0: a importação do calendário trata a peça criada à mão como qualquer outra do mesmo dia: ainda planejada, recebe o tipo, o
+    formato e o plano do arquivo (a hora fica); já em produção, fica como está. Nunca duplica o dia nem apaga peça."""
+    db = pauta
+    d = hoje(db)
+    dia = lambda n: (d + timedelta(days=n)).isoformat()
+    p1 = criar_peca({"data": dia(10), "tipo": "bastidor", "formato": "foto", "assunto": "Peça feita à mão"})
+    p2 = criar_peca({"data": dia(11), "tipo": "reel", "formato": "reel", "assunto": "Reel feito à mão"})
+    with como("authenticated", ADMIN) as c:
+        c.execute("update radar_pauta_pecas set hora = '11:00' where id = %s", (p1,))            # a hora não leva para a produção
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_pauta_pecas set roteiro = 'Fala: o prazo vence no dia 20.' where id = %s", (p2,))
+    assert db.execute("select array_agg(situacao order by id) from radar_pauta_pecas").fetchone()[0] == ["planejada", "em_producao"]
+    linhas = [_linha(2, dia(10), "quem_cuida", "foto"), _linha(3, dia(11), "educativo", "carrossel"), _linha(4, dia(12), "captacao", "imagem")]
+    assert importar(linhas) == {"novas": 1, "alteradas": 1, "iguais": 0, "mantidas": 1}
+    assert db.execute("""select tipo, formato, assunto, quem_aparece, objetivo, hora::text, situacao, criado_por::text
+                         from radar_pauta_pecas where id = %s""", (p1,)).fetchone() == \
+        ("quem_cuida", "foto", "Bastidor da equipe", "Ana Teste", "aproximar", "11:00:00", "planejada", ADMIN)
+    assert db.execute("select tipo, formato, assunto, situacao from radar_pauta_pecas where id = %s", (p2,)).fetchone() == \
+        ("reel", "reel", "Reel feito à mão", "em_producao")
+    assert db.execute("select count(*), count(distinct data) from radar_pauta_pecas").fetchone() == (3, 3)
+
+
+def test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor(pauta):
+    """v0.28.0: o(a) sócio(a) da Artecon (radar_pessoas.socio), maior de idade e ativo(a), não precisa do termo de uso de imagem (nenhuma
+    data, canal ou finalidade, nem a revogação) em nenhum tipo de peça: a peça fica pronta, é aprovada e sai. Continuam valendo "Ativa" e
+    a idade (menor: o termo volta a ser pedido). Tirar a marca faz o termo voltar. Só o administrador marca; a marca vai à trilha sem o
+    nome; o leitor e a chave do robô continuam sem ler as pessoas."""
+    db = pauta
+    with como("authenticated", ADMIN) as c:
+        bruno = c.execute("insert into radar_pessoas (nome, nome_na_peca) values ('Bruno Exemplo', 'Bruno') returning id").fetchone()[0]
+        assert c.execute("update radar_pessoas set socio = true where id = %s", (bruno,)).rowcount == 1
+    trilha = db.execute("select acao, usuario::text, antes, depois from radar_auditoria where tabela = 'radar_pessoas' order by id").fetchall()
+    assert [(a, u) for a, u, _, _ in trilha] == [("INSERT", ADMIN), ("UPDATE", ADMIN)]
+    assert (trilha[1][2]["socio"], trilha[1][3]["socio"]) == (False, True)
+    assert not re.search("Bruno|Exemplo", json.dumps([x for *_, a, b in trilha for x in (a, b)], ensure_ascii=False))
+    with como("authenticated", EDITOR) as c:                                                   # o editor lê, mas não marca nem desmarca
+        assert c.execute("select socio from radar_pessoas where id = %s", (bruno,)).fetchone()[0] is True
+        assert c.execute("update radar_pessoas set socio = false where id = %s", (bruno,)).rowcount == 0
+    d = hoje(db) + timedelta(days=3)
+    tipos = ["noticia", "reel", "quem_cuida", "agenda", "bastidor", "educativo", "captacao", "data_equipe", "sem_post"]
+    def termo(tipo="bastidor", canal="instagram", uid=EDITOR):
+        with como("authenticated", uid) as c:
+            return c.execute("select radar_pauta_termo_ok(%s, %s, %s, %s)", (bruno, tipo, canal, d)).fetchone()[0]
+    assert {(t, canal): termo(t, canal) for t in tipos for canal in ("instagram", "facebook")} == \
+        {(t, canal): None for t in tipos for canal in ("instagram", "facebook")}             # sem termo nenhum: dispensado
+    pid = nova_peca(db, dias=3, pessoas=[bruno])
+    vista = lambda: db.execute("""select termos_dispensados, motivo_instagram, motivo_facebook from radar_v_pauta_pessoas
+                                  where peca_id = %s and pessoa_id = %s""", (pid, bruno)).fetchone()
+    assert vista() == (True, None, None)
+    assert conferir(pid) == []                                                                  # nenhum item de termo
+    marcar_pronta(db, pid)
+    r = aprovar_peca(db, pid)
+    ig = r["envios"]["instagram"]
+    vencer(db, ig)
+    assert iniciar(ig)["peca_id"] == pid                                                       # e sai pela agenda
+    outra = nova_peca(db, dias=4, pessoas=[bruno])
+    # inativo(a): a marca não passa por cima de "Ativa"
+    db.execute("update radar_pessoas set ativo = false where id = %s", (bruno,))
+    assert termo() == "pessoa inativa" and vista() == (True, "pessoa inativa", "pessoa inativa")
+    db.execute("update radar_pessoas set ativo = true where id = %s", (bruno,))
+    # menor de idade: a dispensa não vale
+    db.execute("update radar_pessoas set menor = true where id = %s", (bruno,))
+    assert termo() == "sem termo assinado" and vista() == (False, "sem termo assinado", "sem termo assinado")
+    db.execute("update radar_pessoas set menor = false where id = %s", (bruno,))
+    # a revogação também não conta para sócio(a): quem tira da Pauta é "Ativa"
+    db.execute("update radar_pessoas set termo_revogado_em = %s where id = %s", (hoje(db) - timedelta(days=1), bruno))
+    assert termo() is None and termo("captacao", "facebook") is None
+    # sem a marca, o termo volta a ser pedido
+    db.execute("update radar_pessoas set socio = false where id = %s", (bruno,))
+    assert "“Bruno” (Instagram): sem termo assinado" in conferir(outra)
+    assert vista() == (False, "sem termo assinado", "sem termo assinado")
+    # o leitor continua sem ler as pessoas; a chave do robô e o visitante nem a tabela
+    db.execute("update radar_pessoas set socio = true where id = %s", (bruno,))
+    assert termo(uid=LEITOR) == "pessoa não cadastrada"
+    with como("authenticated", LEITOR) as c:
+        assert c.execute("select count(*) from radar_pessoas").fetchone()[0] == 0
+        assert c.execute("select count(*) from radar_v_pauta_pessoas").fetchone()[0] == 0
+    for papel in ("service_role", "anon"):
+        with como(papel) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute("select socio from radar_pessoas")
+
+
+def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
+    """v0.28.0: o setup é aplicado em produção rodando o arquivo inteiro de novo. Sobre o banco da v0.27.0 (o setup v0.25.0: sem a
+    coluna socio, sem a termos_dispensados na vista e sem as três funções novas), ele roda sem erro, duas vezes, e não perde nada: as
+    pessoas (com socio = false), as peças e o vídeo pronto ficam como estavam, e a "+ Nova peça" passa a funcionar."""
+    db = pauta
+    ana = pessoa_do_corretor(db, "Ana Teste", "Ana")
+    pid = nova_peca(db, dias=5, tipo="reel", formato="reel", roteiro=FALA_REEL, pessoas=[ana])
+    vid = video_pronto(db, pid, ana)
+    contar = lambda: db.execute("""select (select count(*) from radar_pessoas), (select count(*) from radar_pauta_pecas),
+                                          (select count(*) from radar_videos), (select count(*) from radar_auditoria)""").fetchone()
+    estado = lambda: db.execute("""select v.situacao, v.sha256, v.arquivos_apagados, p.situacao, p.versao_publicavel, pe.termo_corretor_em
+                                   from radar_videos v join radar_pauta_pecas p on p.id = v.peca_id join radar_pessoas pe on pe.id = %s
+                                   where v.id = %s""", (ana, vid)).fetchone()
+    try:
+        # o banco como a v0.27.0 deixou (a vista de antes, sem a coluna nova)
+        db.execute("drop view radar_v_pauta_pessoas")
+        db.execute("alter table radar_pessoas drop column socio")
+        db.execute("""create view radar_v_pauta_pessoas with (security_invoker = true) as
+                      select p.id as peca_id, p.data, pe.id as pessoa_id, pe.nome_na_peca,
+                             radar_pauta_termo_ok(pe.id, p.tipo, 'instagram', p.data) as motivo_instagram,
+                             radar_pauta_termo_ok(pe.id, p.tipo, 'facebook',  p.data) as motivo_facebook
+                      from radar_pauta_pecas p cross join lateral unnest(p.pessoas) as u(pessoa_id) join radar_pessoas pe on pe.id = u.pessoa_id""")
+        for f in ("radar_pauta_criar(jsonb)", "radar_pauta_linha_invalida(jsonb)", "radar_pauta_hora_padrao()"):
+            db.execute(f"drop function {f}")
+        antes, como_estava = contar(), estado()
+        for _ in range(2):
+            r = psql(SETUP)
+            assert r.returncode == 0, r.stderr
+            assert contar() == antes and estado() == como_estava
+        assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
+        assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.28.0",), ("v0.28.0",)]
+        assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
+    finally:
+        assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro

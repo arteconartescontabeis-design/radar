@@ -253,6 +253,8 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 .pauta-semana{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:16px}
 .pauta-dia{background:#fff;border:1px solid var(--linha);border-top:3px solid var(--azul);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .pauta-dia.vazio{background:transparent;border-style:dashed;border-top-width:1px} .pauta-dia.hoje{box-shadow:0 0 0 2px var(--marinho) inset}
+/* v0.28.0: "+ Nova peça": o formulário curto no próprio dia (cabe em 375 px) */
+.pauta-dia.nova{border-style:solid} .pauta-nova label{margin-top:6px} .pauta-nova select,.pauta-nova input,.pauta-nova textarea{width:100%;box-sizing:border-box}
 .pauta-dia h3{font-family:"DM Sans",system-ui,sans-serif;font-size:.95rem;margin:0} .pauta-dia p{margin:0} .pauta-dia .acoes{margin-top:auto}
 .pauta-dia .selos{display:flex;gap:4px;flex-wrap:wrap} .pauta-pessoas{display:flex;gap:4px 10px;flex-wrap:wrap;font-size:.85rem}
 .pauta-erros{margin:6px 0;padding-left:20px} .pauta-erros li{margin:2px 0} .pauta-lista{margin:0;padding-left:18px} .pauta-lista li{margin:4px 0}
@@ -310,19 +312,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.27.0"></script>
-<script src="radar-video.js?v=0.27.0"></script>
+<script src="radar-pauta.js?v=0.28.0"></script>
+<script src="radar-video.js?v=0.28.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.27.0";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco)
+const VERSAO = "0.28.0";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.28.0", "16/10/2026", [
+    "Peça nova num dia vazio: na Pauta, nos dias da semana que ainda não têm peça (de hoje em diante), o administrador vê o botão “+ Nova peça”. Ele pede o tipo, o formato e o assunto (objetivo, quem aparece e observação são opcionais) e cria a peça desse dia, que abre como qualquer outra: roteiro, “Quem aparece”, fotos e, no reel, o corretor de vídeo. Continua valendo uma peça por dia: o dia que já tem peça (mesmo cancelada) não ganha outra, e dia que já passou não recebe peça nova.",
+    "A peça nova nasce planejada e não publica nem agenda nada sozinha: segue o caminho de sempre (preparar, marcar como pronta e a aprovação do administrador). Se depois o calendário (CSV) for importado com uma linha para o mesmo dia, a peça ainda planejada recebe o que está no arquivo (a prévia mostra “alterada” antes de gravar); a que já entrou em produção fica como está.",
+    "Sócio(a) da Artecon: em Pauta → Pessoas e termos, o administrador marca “Sócio(a) da Artecon”. Para quem tem a marca, o Radar não pede o termo de uso de imagem (datas, canais e finalidades) nem o termo do corretor de vídeo, e a pessoa aparece com o selo “Sócio(a) — termos dispensados”. Continuam valendo: a pessoa estar ativa, ser maior de idade, estar marcada em “Quem aparece” e as quatro declarações do envio do vídeo. Tirar a marca faz a pessoa voltar a precisar dos dois termos. Marcar e desmarcar fica no Histórico, sem o nome.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.28.0.sql ANTES de publicar a tela (acrescenta a marca de sócio(a) e a peça nova; nenhuma tabela nova, nada é apagado; pode rodar de novo). Depois publique o index.html com o radar-pauta.js e o radar-video.js (Ctrl+F5). As funções radar-ia, radar-redes e radar-video não mudam. Passo a passo no LEIAME, “Da v0.27.0 para a v0.28.0”."]],
   ["0.27.0", "16/10/2026", [
     "Cronograma de publicações na Pauta: no alto da semana, o quadro “Cronograma de publicações” mostra, para a semana que está na tela e para o mês dela, o mínimo de publicações ao lado do que já foi feito: posts no feed, reels, captação de clientes (quando o período tem) e notícias do Radar de relevância alta. Fica em vermelho o que já devia ter saído e não saiu, com quantas faltaram.",
     "De onde vem o mínimo: das peças do plano da Pauta (sem as canceladas, que o quadro conta à parte) e das notícias de relevância alta que a busca do Radar achou no período (cada fato uma vez, sem as repetições). A notícia ignorada na triagem enquanto ainda era alta não entra; a que só desceu para baixa por ficar velha na fila continua contando. Feito: a peça já publicada no Instagram ou no Facebook (pela agenda ou registrada à mão), a notícia do Radar publicada nas redes no dia de notícia e a notícia achada que já está no site. “Como o quadro conta”, embaixo do quadro, explica cada linha.",
@@ -603,7 +610,7 @@ const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## 
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
 
 const E = { etapa:null, sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"}, mais:{},
-           pauta:{semana:null, peca:null, vista:"semana", previa:null}, video:{arquivos:{}} };       // v0.21.0: a aba Pauta (radar-pauta.js); v0.22.0: o vídeo do reel (radar-video.js)
+           pauta:{semana:null, peca:null, vista:"semana", previa:null, nova:null}, video:{arquivos:{}} };       // v0.21.0: a aba Pauta (radar-pauta.js); v0.22.0: o vídeo do reel (radar-video.js)
 /* Listas longas: carregam uma leva por vez; "Mostrar mais" traz a seguinte (a contagem vale por tela e filtro) */
 const limiteDe = (chave, base) => base * Math.max(1, (E.mais || {})[chave] || 1);
 const botaoMais = (chave, n, limite, rotulo, total) => n >= limite
@@ -933,7 +940,7 @@ const alterar = (tabela, params, corpo) => gravar("PATCH", tabela, params, corpo
 const apagar = (tabela, params) => gravar("DELETE", tabela, params);
 
 /* ---------------------------------------------------------------- sessão */
-function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.pagoBanco = {}; E.kitAberto = {}; E.capaDesenhada = null; E.conteudosIA = null; E.pauta = {semana:null, peca:null, vista:"semana", previa:null}; clearTimeout(E.video?.relogio); E.video = {arquivos:{}}; }
+function limparEstado(){ E.etapa = null; E.perfil = null; E.assunto = null; E.informativo = null; E.aba = "painel"; E.capaAntiga = null; E.mais = {}; E.contagem = {}; E.categorias = []; E.filtros = {assuntos:"abertos"}; E.legendas = {}; E.ilustracaoPendente = null; E.capaFoco = null; E.identificacao = null; E.abrangencia = null; E.fontesAssunto = []; E.pagoBanco = {}; E.kitAberto = {}; E.capaDesenhada = null; E.conteudosIA = null; E.pauta = {semana:null, peca:null, vista:"semana", previa:null, nova:null}; clearTimeout(E.video?.relogio); E.video = {arquivos:{}}; }
 function sessaoValida(s){ return !!(s && typeof s === "object" && typeof s.access_token === "string" && s.user && s.user.id); }
 /* v0.22.0 (rodada 2 da varredura geral): a sessão (access_token e refresh_token) fica na sessionStorage desta aba, não mais no
    localStorage. O Radar é servido em arteconartescontabeis-design.github.io, a MESMA origem dos outros aplicativos da conta no GitHub
@@ -1413,7 +1420,7 @@ const TELAS = {
         <tr><td><b>Assuntos</b></td><td>Onde o trabalho acontece: classificação, fundamentação e conteúdos.</td></tr>
         <tr><td><b>Informativos</b></td><td>Edições do Informativo Mensal e o PDF.</td></tr>
         <tr><td><b>Publicações</b></td><td>Aprovados que faltam publicar no site e o registro do que já foi.</td></tr>
-        <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), as pessoas com o termo de uso de imagem e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
+        <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), a peça nova num dia vazio (“+ Nova peça”, só o administrador), as pessoas com o termo de uso de imagem (sócio(a) da Artecon: termos dispensados) e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
         <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
@@ -2698,7 +2705,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.25.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.28.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -2920,7 +2927,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
 
 /* ------------------------------------------------------------------ ações */
 const ACOES = {
-  aba(el){ E.etapa = null; E.aba = el.dataset.aba; E.assunto = null; E.informativo = null; E.pauta.peca = null; E.pauta.vista = "semana"; return desenhar(); },
+  aba(el){ E.etapa = null; E.aba = el.dataset.aba; E.assunto = null; E.informativo = null; E.pauta.peca = null; E.pauta.vista = "semana"; E.pauta.nova = null; return desenhar(); },
   recarregar(){ return desenhar(); },
   sair(){
     if(telaSuja() && !confirm("Há texto digitado e não salvo nesta tela. Sair agora descarta esse texto. Sair mesmo assim?")) return;

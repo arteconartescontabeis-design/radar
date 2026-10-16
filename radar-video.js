@@ -14,8 +14,10 @@
    função radar-video: a tela ajuda, mostra e confere antes de mandar. Tudo o que vem do relatório (a fala, o roteiro, os nomes dos
    arquivos) é escapado (h()); nenhum link, token ou nome vai para o console nem para o localStorage (lá fica só o endereço do envio
    retomável, bruto/<id>/<n>, sem nome).
+   v0.28.0: o(a) sócio(a) da Artecon (Pauta → Pessoas e termos) não precisa do termo do corretor: o aviso "sem o termo novo" não aparece
+   para ele(a); as quatro declarações do envio continuam obrigatórias para todos.
    ==================================================================== */
-const VIDEO_VERSAO = "0.27.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.28.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 120;
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -51,7 +53,7 @@ const ERROS_VIDEO = {
   azure_config:"a configuração da transcrição no repositório privado radar-video está errada (AZURE_FALA_MODO, AZURE_FALA_REGIAO ou AZURE_FALA_ENDPOINT)",
   azure_sem_sdk:"o robô ficou sem o Speech SDK da Azure: o administrador confere o workflow do repositório privado",
   cota_radar:"Limite de minutos do Radar no mês (Configurações → Corretor de vídeo → limite_min_mes)",
-  termo:"uma pessoa da peça não pode mais aparecer no vídeo (termo revogado ou vencido, pessoa inativa ou menor de idade, ou quem fala desmarcada da peça): confira em Pauta → Pessoas e termos e depois use Tentar de novo",
+  termo:"uma pessoa da peça não pode mais aparecer no vídeo (termo revogado ou vencido, pessoa inativa ou menor de idade, ou quem fala desmarcada da peça, ou a marca de sócio(a) tirada sem os termos): confira em Pauta → Pessoas e termos e depois use Tentar de novo",
   robo_nao_pegou:"o robô não pegou o pedido depois de 3 acionamentos da reserva: o administrador confere no repositório privado radar-video o segredo RADAR_VIDEO_ROBO_CHAVE e as variáveis RADAR_VIDEO_URL e RADAR_VIDEO_COMMIT (e, no Supabase, o segredo RADAR_VIDEO_GITHUB_TOKEN); depois, Tentar de novo",
   robo_chave:"o robô foi recusado pela função radar-video: o administrador confere o segredo RADAR_VIDEO_ROBO_CHAVE do repositório privado (cópia do Vault radar_video_robo)",
   robo_sem_chave:"falta o segredo RADAR_VIDEO_ROBO_CHAVE no repositório privado radar-video",
@@ -183,7 +185,7 @@ async function blocoVideo(p){
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
   let vivos;
   try{ vivos = await videosDaPeca(p.id); }
-  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.25.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.25.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
+  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.28.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.28.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
@@ -279,7 +281,8 @@ function formEnvio(p, v, envio){
       <div class="acoes"><button class="btn verde" type="button" data-acao="video-continuar" data-id="${h(envio.id)}">Continuar o envio</button>
         <button class="btn perigo" type="button" data-acao="video-descartar" data-id="${h(envio.id)}">Descartar este envio</button></div></div>`;
   const quem = estadoVideo().quem?.[p.id] ?? (pessoas.length === 1 ? pessoas[0].id : "");
-  const falta = pessoas.map(x => [x, x.menor ? "menor de idade: o corretor não aceita nesta versão" : !x.termo_corretor_em ? "sem o termo novo, que cita o corretor de vídeo" : !x.ativo ? "inativa" : ""]).filter(([, m]) => m);
+  // v0.28.0: sócio(a) da Artecon (maior de idade) não precisa do termo novo (o banco também dispensa: radar_video_pessoa_falta)
+  const falta = pessoas.map(x => [x, x.menor ? "menor de idade: o corretor não aceita nesta versão" : !x.socio && !x.termo_corretor_em ? "sem o termo novo, que cita o corretor de vídeo" : !x.ativo ? "inativa" : ""]).filter(([, m]) => m);
   return `<div class="video-envio" id="video-envio"><h3>${v ? "Enviar nova gravação" : "Enviar a gravação"}</h3>
     ${!pessoas.length ? `<div class="aviso alerta">Marque em Quem aparece (e salve) a pessoa que fala no vídeo.</div>` : ""}
     ${falta.length ? `<div class="aviso alerta" id="video-pessoas-falta"><b>Antes de gravar, em Pauta → Pessoas e termos:</b><ul class="pauta-erros">${falta.map(([x, m]) => `<li>${h(x.nome_na_peca)}: ${h(m)}</li>`).join("")}</ul></div>` : ""}

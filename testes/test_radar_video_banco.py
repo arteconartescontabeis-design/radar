@@ -1021,6 +1021,42 @@ def test_conferencia_das_chaves_do_robo_e_da_agenda_pelo_vault(db):
             db.execute("drop schema vault cascade")
 
 
+def test_socio_grava_sem_os_termos_e_continua_com_ativa_menor_e_declaracoes(corretor):
+    """v0.28.0: o(a) sócio(a) da Artecon (radar_pessoas.socio), maior de idade e ativo(a), grava o reel sem o termo de uso de imagem e sem
+    o termo do corretor: o envio, o robô, a pendência e a prévia passam, e a limpeza não apaga o vídeo dele(a) antes do prazo (nem com
+    "Revogado em" preenchido: para sócio(a), quem tira é "Ativa"). As quatro declarações continuam obrigatórias; menor de idade e pessoa
+    inativa continuam recusados; tirar a marca faz o vídeo parar (RADAR304) e a limpeza seguinte apagar os arquivos e os textos."""
+    db = corretor
+    bruno = nova_pessoa(db, "Bruno Exemplo", "Bruno", assinado=None, canais=(), usos=())
+    db.execute("update radar_pessoas set socio = true where id = %s", (bruno,))
+    assert db.execute("select termo_assinado_em, termo_corretor_em from radar_pessoas where id = %s", (bruno,)).fetchone() == (None, None)
+    pid, _ = reel(db, pessoa=bruno)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR307: marque as quatro declarações"):
+        criar(pid, bruno, decl=DECL[:3])
+    assert db.execute("select count(*) from radar_videos where peca_id = %s", (pid,)).fetchone()[0] == 0
+    vid, _ = ate_pronto(db, pid, bruno)
+    assert db.execute("select radar_video_pendencia(%s)", (pid,)).fetchone()[0] is None and conferir(pid) == []
+    assert tela("select radar_video_para_previa(%s)", vid)["sha256"] == SHA_VIDEO
+    limpeza = lambda: {i["id"]: sorted(i["apagar"]) for i in robo("select radar_video_limpeza()")["itens"]}
+    assert vid not in limpeza()
+    db.execute("update radar_pessoas set termo_revogado_em = %s where id = %s", (hoje(db), bruno))
+    assert vid not in limpeza() and tela("select radar_video_para_previa(%s)", vid)["sha256"] == SHA_VIDEO
+    for mudanca, motivo in [("menor = true", "menor de idade: o corretor de vídeo não aceita nesta versão"),
+                            ("ativo = false", "pessoa inativa no Instagram")]:
+        db.execute(f"update radar_pessoas set {mudanca} where id = %s", (bruno,))
+        with pytest.raises(psycopg.errors.RaiseException, match=re.escape(f"RADAR304: uma pessoa da peça não pode aparecer no vídeo ({motivo})")):
+            tela("select radar_video_para_previa(%s)", vid)
+        db.execute("update radar_pessoas set menor = false, ativo = true where id = %s", (bruno,))
+    # sem a marca: os termos voltam a ser pedidos, a prévia fecha e a limpeza seguinte leva os arquivos e os textos
+    db.execute("update radar_pessoas set socio = false where id = %s", (bruno,))
+    with pytest.raises(psycopg.errors.RaiseException,
+                       match=re.escape("RADAR304: uma pessoa da peça não pode aparecer no vídeo (sem o termo novo, que cita o corretor de vídeo")):
+        tela("select radar_video_para_previa(%s)", vid)
+    r = robo("select radar_video_limpeza()")
+    assert {i["id"]: sorted(i["apagar"]) for i in r["itens"]} == {vid: ["bruto", "corrigido", "trabalho"]} and r["textos"] == 1
+    assert video(db, vid, "fala_roteiro, arquivos_apagados") == ("", ["textos"])
+
+
 def test_funcoes_do_video_sem_current_date_com_caminho_e_configuracao_inicial(db):
     funcoes = db.execute("""select p.proname, p.prosrc, p.proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                             where n.nspname = 'public' and (p.proname like 'radar\\_video\\_%' or p.proname = 'radar_pauta_pecas_da_pessoa')""").fetchall()
