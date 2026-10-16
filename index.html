@@ -55,7 +55,8 @@ main h1{border-left:5px solid var(--vermelho);padding-left:12px}
 input[type=text],input[type=email],input[type=password],input[type=number],input[type=datetime-local],input[type=date],input[type=time],select,textarea{
   border:1px solid #C9D2DC;border-radius:7px;padding:7px 9px;background:#fff;max-width:100%}
 textarea{width:100%;min-height:90px;resize:vertical}
-label{display:block;font-size:.8rem;font-weight:700;color:var(--marinho);margin:8px 0 3px}
+/* v0.25.1: .rotulo, o título com a cara do rótulo, mas sem campo (a “Imagem da publicação”: o rótulo do campo de arquivo é o “enviar uma foto própria”) */
+label,.rotulo{display:block;font-size:.8rem;font-weight:700;color:var(--marinho);margin:8px 0 3px}
 .grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
 .grade input,.grade select{width:100%}
 .btn{background:var(--marinho);color:#fff;border:0;border-radius:7px;padding:7px 13px;cursor:pointer}
@@ -193,7 +194,7 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 /* v0.20.0: arte vertical (4:5) com os campos dela (chamada, apoio e fundo) embaixo da imagem */
 .rede-arte{display:flex;flex-direction:column;gap:4px;min-width:0} .arte-campos label{margin:6px 0 0}
 .arte-campos input,.arte-campos select,.arte-campos textarea{display:block;width:100%;max-width:100%;margin-top:3px;min-height:0;font-size:.9rem;font-weight:400;color:var(--cinza)}
-/* v0.20.0: o kit das redes no conteúdo (legendas, arte e roteiro do reel), fechado por padrão; a tabela do roteiro cabe no celular */
+/* v0.20.0: o kit das redes no conteúdo (legendas e roteiro do reel; v0.25.1: sem a arte), fechado por padrão; a tabela do roteiro cabe no celular */
 details.kit-redes{margin:10px 0 0;border:1px solid var(--linha);border-radius:8px;padding:8px 12px;background:#fff} details.kit-redes summary{cursor:pointer}
 .kit-legendas{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:8px 0}
 .kit-legenda{white-space:pre-wrap;overflow-wrap:anywhere;background:#F5F8FB;border:1px solid var(--linha);border-radius:6px;padding:8px 10px;font-size:.88rem;margin:4px 0}
@@ -294,19 +295,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.25.0"></script>
-<script src="radar-video.js?v=0.25.0"></script>
+<script src="radar-pauta.js?v=0.25.1"></script>
+<script src="radar-video.js?v=0.25.1"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.25.0";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres)
+const VERSAO = "0.25.1";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.25.1", "16/10/2026", [
+    "Legenda das redes montada pelo Radar (a que vai quando não há kit da IA): os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula, e não mais emendados no fim da frase de antes (“…na transição. revisar o cadastro; confirmar com o fornecedor…”). Vale para o Instagram e o Facebook. O resto continua igual: o tamanho máximo, a fonte, a linha “Imagem ilustrativa gerada por IA.” e a identificação legal no fim, que nunca são cortadas. As legendas já gravadas ou publicadas não mudam.",
+    "Kit das redes: a IA não escreve mais a chamada e o apoio da arte, que só serviam à arte vertical das notícias (ela saiu na v0.25.0). O kit fica com as legendas do Instagram e do Facebook e o roteiro do reel. Os kits já gravados continuam valendo como estão. As peças da Pauta continuam com a arte delas, sem mudança.",
+    "Acessibilidade: no conteúdo, o campo de arquivo da imagem tem um rótulo só, “enviar uma foto própria”; “Imagem da publicação” continua como título do bloco, com a mesma aparência.",
+    "Administrador: instalar a radar-ia 0.25.1; o banco não muda (continua o sql/radar-setup-v0.25.0.sql, sem SQL novo). Primeiro publique o index.html com o radar-pauta.js e o radar-video.js (Ctrl+F5; a tela nova funciona também com a função v0.25.0) e depois faça o Deploy da função radar-ia desta versão (Configurações → Inteligência artificial → Testar a IA mostra a função v0.25.1). A função radar-redes não muda. Passo a passo no LEIAME, “Da v0.25.0 para a v0.25.1”."]],
   ["0.25.0", "16/10/2026", [
     "Uma imagem só para todas as publicações: a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo). Ela aparece no conteúdo como “Imagem da publicação” e é a que o administrador vê na hora de autorizar cada rede. A arte vertical das notícias nas redes (com chamada, apoio e rodapé por cima) saiu, e com ela os campos “Chamada da arte”, “Linha de apoio” e “Fundo da arte”; a arte vertical continua só nas peças da Pauta (posts de pessoas, carrossel, captação), que não mudam.",
     "Gerar imagem com IA: a IA cria uma imagem com aparência de foto (estilo de foto de jornal: luz natural, ambiente de trabalho brasileiro, pessoas sempre fictícias e adultas), que segue a cena que você descreve e as orientações do escritório para as imagens. Ela vai inteira, no formato horizontal 3:2, sem título, logotipo nem degradê por cima — antes, a capa cobria boa parte da ilustração e as redes cortavam ainda mais.",
@@ -1334,7 +1340,7 @@ const TELAS = {
       <p class="sub">O Radar acompanha as fontes oficiais, ajuda a escrever e a conferir, e guarda o registro do que foi divulgado. A publicação é feita nas páginas da Artecon.</p>
       <div class="painel"><h2>O caminho de uma publicação</h2><ol class="passos">
         <li><b>Capturas.</b> O robô lê as fontes cadastradas e, depois de cada coleta, a IA dá uma nota a cada novidade. A tela abre só com o que está <b>em alta</b>: as 10 de maior nota, sem repetição. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>. Cada cartão diz se a notícia tem <b>fundamentação legal</b>: “com fundamentação legal” mostra as normas que o texto capturado cita (lei, lei complementar, decreto, medida provisória, instrução normativa, resolução, portaria, solução de consulta, ato declaratório, ato conjunto do CGIBS, convênio ICMS, edital de transação e outros atos, além da Constituição, do CTN, do RIR, do RICMS e da CLT); “sem fundamentação legal” quer dizer que o texto não cita nenhuma, e “fundamentação legal não identificada”, que o texto capturado está cortado e não cita norma no trecho que veio — nos dois casos, confira na fonte antes de usar. É uma leitura automática do texto: diz o que está citado, não se a citação está certa nem se a norma está em vigor; decisões judiciais (Tema, RE, ADI) e projetos de lei não contam. Não muda a nota nem a relevância. O restante fica em “Relevantes”, “Baixa relevância” e “Todas”, e pode ser ignorado de uma vez.</li>
-        <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Gerar com IA</b> busca a fonte (ou o trecho que comprova), escreve o rascunho, faz a capa padrão e o <b>kit das redes</b> (as legendas do Instagram e do Facebook, a chamada da arte e o roteiro de um reel). Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
+        <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Gerar com IA</b> busca a fonte (ou o trecho que comprova), escreve o rascunho, faz a capa padrão e o <b>kit das redes</b> (as legendas do Instagram e do Facebook e o roteiro de um reel). Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida. <b>A mesma imagem vai para o site, o Instagram e o Facebook</b>: se preferir, use <b>Gerar imagem com IA</b> (uma imagem com aparência de foto, com pessoas fictícias; dá para dizer como quer a imagem, em até 500 caracteres; ela vai inteira, com o aviso “Imagem ilustrativa gerada por IA” pequeno no canto) ou envie uma foto própria (foto de alguém da equipe só com o termo de uso de imagem assinado). O Radar compara o texto com a fonte: o trecho igual ao da fonte fica num quadro (citar a fonte não autoriza copiar: transcrição literal só entre aspas e com a fonte); o botão <b>Revisar com IA</b> reescreve com palavras próprias — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Antes de aprovar, o quadro <b>Conferência das Diretrizes</b> mostra os 10 critérios do escritório: <b>Revisar com IA</b> confere o texto, e com ✗ ou critério não conferido o <b>Aprovar</b> fica travado (o administrador pode liberar com <b>Revisei e assumo</b>, com o motivo). Logo abaixo, o quadro <b>Revisão editorial</b> mostra como a IA releu o texto que escreveu (10 perguntas, com ✓ ou ✎, e o que foi reescrito); ele só informa. Sem fonte oficial, a IA escreve um texto <b>Informativo</b>, que só vai ao site depois que o administrador autoriza. Salve, envie para revisão e <b>aprove</b>.</li>
         <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
@@ -1906,16 +1912,29 @@ function proxRede(canal, r, c, capa, categoria, urlSite, ultima, conferir = fals
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}</button>
       <button class="btn sec" type="button" data-acao="dispensar-rede" data-canal="${canal}" data-id="${c.id}">Não publicar no ${nome}</button></div>`, passo];
 }
-/* As linhas do texto sem a formatação (sem subtítulo, tabela, marcador de lista e negrito): a legenda e a arte partem delas. */
+/* As linhas do texto sem a formatação (sem subtítulo, tabela, marcador de lista e negrito): a legenda parte delas. v0.25.1: cada linha
+   diz se era item de lista (“- ”, “* ”, “• ”, “1. ” ou “1) ”), para o item sair na legenda numa linha própria, e não emendado na frase
+   de antes. */
+const RE_ITEM_LISTA = /^(?:[-*•]|\d{1,3}[.)])\s+/;
 const linhasDoTexto = corpo => String(corpo || "").split("\n").map(l => l.trim())
-  .filter(l => l && !/^(##|\|)/.test(l)).map(l => l.replace(/^[-*]\s+/, "").replace(/\*\*/g, ""));
+  .filter(l => l && !/^(##|\|)/.test(l)).map(l => ({item: RE_ITEM_LISTA.test(l), texto: l.replace(RE_ITEM_LISTA, "").replace(/\*\*/g, "").trim()}))
+  .filter(l => l.texto);
+/* v0.25.1: a primeira letra do item em maiúscula (“revisar o cadastro” → “Revisar o cadastro”); a palavra que já tem maiúscula no meio
+   (“eSocial”, “e-CAC”) fica como está, e o item que começa com número também (“3 dias”) */
+const inicialMaiuscula = t => /^[^\p{L}\p{N}]*\p{Ll}\S*\p{Lu}/u.test(t) ? t : t.replace(/^([^\p{L}\p{N}]*)(\p{Ll})/u, (_, a, l) => a + l.toUpperCase());
 /* Legenda: título, o começo do texto (sem a formatação), o caminho até o site, a fonte, a identificação legal (v0.20.0) e, no
-   Instagram, as hashtags. v0.20.0: até "limite" caracteres (2.000 no “Publicar em todos”, porque o link ainda entra). */
+   Instagram, as hashtags. v0.20.0: até "limite" caracteres (2.000 no “Publicar em todos”, porque o link ainda entra). v0.25.1: os
+   parágrafos continuam juntos numa linha, mas cada item de lista sai na linha dele, como “• Item” (antes, “…na transição. revisar o
+   cadastro; confirmar com o fornecedor…”); o resumo cortado em 600 caracteres para no fim de uma frase ou de um item. */
 function legendaRede(c, canal, urlSite, categoria, limite = 2200){
-  const linhas = linhasDoTexto(c.corpo);
-  let resumo = "";
-  for(const l of linhas){ if(resumo.length >= 280) break; resumo += (resumo ? " " : "") + l; }
-  if(resumo.length > 600){ const corte = resumo.slice(0, 600), fim = corte.lastIndexOf(". "); resumo = fim > 200 ? corte.slice(0, fim + 1) : corte.trimEnd() + "…"; }
+  let resumo = "", item = false;
+  for(const l of linhasDoTexto(c.corpo)){
+    if(resumo.length >= 280) break;
+    resumo += (resumo ? (l.item || item ? "\n" : " ") : "") + (l.item ? "• " + inicialMaiuscula(l.texto) : l.texto);
+    item = l.item;
+  }
+  if(resumo.length > 600){ const corte = resumo.slice(0, 600), fim = Math.max(corte.lastIndexOf(". "), corte.lastIndexOf("\n"));
+    resumo = fim > 200 ? corte.slice(0, fim + 1).trimEnd() : corte.trimEnd() + "…"; }
   const tag = t => "#" + String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+(.)?/g, (_, l) => (l || "").toUpperCase());
   const cat = CATEGORIA_SITE[categoria];
   return comporLegenda([c.titulo, resumo,
@@ -1942,16 +1961,18 @@ function fimDeFrase(t){
     if(m[0] === "\n" || !/(?:^|[^\p{L}\p{N}])(?:arts?|incs?|c[óo]d|n[º°]?|p[áa]gs?|par|al|cf|obs|sr|sra|dra?|av)$/iu.test(t.slice(Math.max(0, m.index - 8), m.index))) p = m.index;
   return p;
 }
-/* v0.20.0: o kit das redes que a IA montou (radar_conteudos.kit_ia: chamada e apoio da arte, legendas do Instagram e do Facebook e o
-   roteiro do reel). É sugestão: só vale o kit inteiro e em dia. Se o texto mudou depois, o banco marca “desatualizado” (ou o kit é só
-   {desatualizado}): as redes voltam à legenda montada pela tela até alguém gerar de novo. Só o título mudar não tira o kit (as
-   legendas e o roteiro saem do texto): o kit guarda o título de quando foi feito, e a tela pede para conferir a chamada da arte. */
+/* v0.20.0: o kit das redes que a IA montou (radar_conteudos.kit_ia: legendas do Instagram e do Facebook e o roteiro do reel). É
+   sugestão: só vale o kit inteiro e em dia. Se o texto mudou depois, o banco marca “desatualizado” (ou o kit é só {desatualizado}): as
+   redes voltam à legenda montada pela tela até alguém gerar de novo. Só o título mudar não tira o kit (as legendas e o roteiro saem do
+   texto): o kit guarda o título de quando foi feito, e a tela pede para conferir a primeira linha das legendas. v0.25.1: o kit não
+   precisa mais da chamada da arte (a função 0.25.1 não pede mais a chamada e o apoio, que só serviam à arte vertical das notícias,
+   que saiu na v0.25.0); o kit antigo, gravado com a “arte”, continua valendo e a arte é ignorada. */
 const textoDe = v => typeof v === "string" ? v.trim() : "";
 const tituloMudouDoKit = (c, k) => !!k && !!textoDe(k.titulo) && textoDe(k.titulo) !== String(c?.titulo || "").replace(/\s+/g, " ").trim();
 function kitDe(c){
   const k = c?.kit_ia;
   if(!k || typeof k !== "object" || Array.isArray(k) || k.desatualizado) return null;
-  return textoDe(k.arte?.chamada) && textoDe(k.instagram?.texto) && textoDe(k.facebook?.texto) ? k : null;
+  return textoDe(k.instagram?.texto) && textoDe(k.facebook?.texto) ? k : null;
 }
 /* v0.20.0: a legenda do kit, montada como a legendaRede: o texto da IA, a fonte, a identificação legal (da tela, nunca da IA) e as
    hashtags, em até "limite" caracteres. No Facebook, o {LINK DO SITE} vira o link da notícia (no “Publicar em todos” ele fica: o banco
@@ -2720,7 +2741,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
       <div><label for="c-fonte-${c.id}">Fonte (já vem com o órgão da captura; pode alterar)</label><input id="c-fonte-${c.id}" type="text" name="fonte_credito" maxlength="300" value="${h(c.fonte_credito || "")}" placeholder="Ex.: Receita Federal"${ed ? "" : " disabled"}></div>
     </div>
     ${urlFonte ? `<p class="sub link-fonte" style="margin:2px 0 0">No fim do texto, a fonte sai com o link: ${linkFonte(urlFonte, urlFonte.length > 70 ? urlFonte.slice(0, 70) + "…" : urlFonte)}</p>` : ""}
-    <label for="c-img-${c.id}">Imagem da publicação</label>
+    <div class="rotulo">Imagem da publicação</div>
     <p class="sub imagem-regra" style="margin:0 0 4px"><b>A mesma imagem vai para o site, o Instagram e o Facebook.</b></p>
     ${imagem && /^data:image\/(jpeg|png|webp);base64,/.test(imagem) ? `<img class="miniatura" src="${h(imagem)}" alt="${imagemDaIA(c) ? `Imagem gerada pela IA, com o aviso “${AVISO_IA}” no canto` : "Imagem da publicação"}">
       <p class="sub imagem-tipo" style="margin:2px 0 0">${tipoDaImagem(c)}</p>` : `<p class="sub" style="margin:0">Sem imagem: use a capa padrão Artecon (botão abaixo).</p>`}
@@ -2900,7 +2921,8 @@ const ACOES = {
   /* v0.19.0: “Gerar com IA” — um clique faz tudo, em etapas que não travam umas às outras: sem texto oficial, procura a fonte
      oficial na internet (a busca rápida; se demorar, segue sem ela); com texto oficial, busca o trecho que comprova; escreve o
      rascunho (com ou sem fundamentação). v0.20.0: faz a capa padrão (sem ilustração: ela é opcional, pelo botão do conteúdo) e, na
-     etapa 3, o kit das redes (legendas, arte e roteiro do reel); se o kit falhar, o texto e a capa ficam. Conta como uma consulta só. */
+     etapa 3, o kit das redes (legendas e roteiro do reel; v0.25.1: sem a arte); se o kit falhar, o texto e a capa ficam. Conta como uma
+     consulta só. */
   async "ia-tudo"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo";
@@ -3280,7 +3302,8 @@ const ACOES = {
       " Para as legendas e o roteiro do reel, use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.", r.avisos.length > 0 || !capa || editorialFalhou(r.editorial) ? "aviso" : false);
   },
   /* v0.20.0: o kit das redes de um conteúdo já escrito (legendas do Instagram e do Facebook e o roteiro do reel; v0.25.0: a chamada e o
-     apoio da arte que ele traz não são mais usados, porque a notícia vai às redes com a imagem da publicação), a partir do texto salvo.
+     apoio da arte que ele trazia não são mais usados, porque a notícia vai às redes com a imagem da publicação; v0.25.1: a função não
+     os pede mais), a partir do texto salvo.
      Gravar o kit não muda a versão do conteúdo nem derruba autorização; as legendas que estavam na tela deste conteúdo dão lugar às do
      kit novo (com confirmação, se alguém editou). */
   async "ia-kit"(el){

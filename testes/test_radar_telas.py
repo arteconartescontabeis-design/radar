@@ -48,9 +48,9 @@ TEXTO = ("Art. 1º Esta Instrução Normativa dispõe sobre a apuração da Cont
          "no período de transição. Art. 2º O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9% "
          "(nove décimos por cento) a partir de 1º de janeiro de 2027. Art. 3º Esta Instrução Normativa entra em vigor na data de sua publicação.")
 TRECHO = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9%"
-# v0.20.0: o kit das redes como a IA devolve (a resposta imitada da Anthropic) e como a função grava (radar_conteudos.kit_ia)
+# v0.20.0: o kit das redes como a IA devolve (a resposta imitada da Anthropic) e como a função grava (radar_conteudos.kit_ia). v0.25.1:
+# sem a "arte" (a chamada e o apoio), que só servia à arte vertical das notícias; o KIT_ANTIGO é o gravado antes, com ela
 KIT_EXEMPLO = {
-    "arte": {"chamada": "CBS passa a ser destacada no documento fiscal", "apoio": "Empresas do regime regular: revise o cadastro fiscal."},
     "instagram": {"texto": "A CBS passa a aparecer no documento fiscal.\n\nQuem é afetado: as empresas do regime regular.\n\nO que fazer:\n"
                            "- revisar o cadastro fiscal;\n- conferir o sistema emissor.\n\nDúvidas? Converse com a Artecon.\n\n"
                            "Leia a matéria completa no site (link na bio).", "hashtags": ["#CBS", "#ReformaTributaria", "#DocumentoFiscal"]},
@@ -66,6 +66,7 @@ KIT_EXEMPLO = {
              "legenda": "A CBS vai aparecer no documento fiscal: revise o cadastro fiscal. Link na bio."}}
 KIT_TELA = {"versao": 1, "gerado_em": "2026-10-11T14:00:00Z", "modelo": "claude-sonnet-4-6", **KIT_EXEMPLO,
             "reel": {**KIT_EXEMPLO["reel"], "duracao": 38}, "avisos": ["O reel tem 38 s: confira se a fala cabe no tempo de cada cena."]}
+KIT_ANTIGO = {**KIT_TELA, "arte": {"chamada": "Chamada antiga da arte vertical do kit", "apoio": "Linha de apoio antiga da arte vertical do kit."}}
 # v0.21.0: a peça da Pauta (ação "peca") como a IA devolve: o nome da pessoa nunca vai nem volta, só o marcador {PESSOA1}
 PECA_EXEMPLO = {
     "arte": {"chamada": "Conheça {PESSOA1}, que cuida da folha da sua empresa", "apoio": "No Departamento Pessoal da Artecon, desde 1984."},
@@ -344,17 +345,32 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.25.0"
+    assert pagina.inner_text(".versao") == "v0.25.1"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.25.0: a entrada do topo é a da versão em uso e conta ao dono a imagem única (a mesma no site, no Instagram e no Facebook, sem a
+    # v0.25.1: a entrada do topo é a da versão em uso e conta ao dono, em português simples, os três ajustes (os itens de lista da legenda
+    # montada pelo Radar em linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o
+    # administrador instala (a radar-ia 0.25.1; o banco não muda)
+    topo, data, itens = pagina.evaluate("VERSOES[0]")
+    assert topo == pagina.evaluate("VERSAO") == "0.25.1" and data == "16/10/2026"
+    texto = " ".join(itens)
+    for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
+                   "Vale para o Instagram e o Facebook", "a linha “Imagem ilustrativa gerada por IA.” e a identificação legal no fim, que nunca são cortadas",
+                   "As legendas já gravadas ou publicadas não mudam", "a IA não escreve mais a chamada e o apoio da arte",
+                   "Os kits já gravados continuam valendo como estão", "As peças da Pauta continuam com a arte delas",
+                   "o campo de arquivo da imagem tem um rótulo só, “enviar uma foto própria”", "Administrador: instalar a radar-ia 0.25.1; o banco não muda",
+                   "continua o sql/radar-setup-v0.25.0.sql", "a tela nova funciona também com a função v0.25.0", "mostra a função v0.25.1",
+                   "A função radar-redes não muda", "Da v0.25.0 para a v0.25.1"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.25.0: a entrada seguinte conta ao dono a imagem única (a mesma no site, no Instagram e no Facebook, sem a
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.25.0" and data == "16/10/2026"
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
                    "continua só nas peças da Pauta", "aparência de foto", "pessoas sempre fictícias e adultas", "inteira, no formato horizontal 3:2",
@@ -369,7 +385,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -394,7 +410,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -403,7 +419,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -1705,8 +1721,9 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     fila = lambda d, n: pagina.evaluate("([d, n]) => validarConfig('relevancia', {limite_alta: 8, limite_media: 3, termos: [], arquivar_dias: d, arquivar_nota: n})", [d, n])
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
     # a v0.25.0 mudou a função de IA (a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres): a v0.24.0
-    # passa a ser apontada como antiga
+    # passa a ser apontada como antiga. v0.25.1: a mínima não sobe (a tela aceita o kit com e sem a arte: a função v0.25.0 serve)
     assert pagina.evaluate("[versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.25.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.25.1"]
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2532,7 +2549,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.25.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.25.1" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2720,7 +2737,8 @@ def test_ia_preparar_tudo_e_ilustracao(pagina, limpo, openai):
     # v0.20.0: o “Gerar com IA” não pede ilustração (capa padrão) e grava o kit das redes (a 3ª etapa, pela função de verdade)
     assert not [x for x in openai["pedidos"] if x["caminho"].endswith("images/generations")]
     assert [x["corpo"]["tool_choice"]["name"] for x in openai["pedidos"]][-1] == "kit"
-    assert limpo.execute("select kit_ia->'arte'->>'chamada', ilustracao_id from radar_conteudos").fetchone() == (KIT_EXEMPLO["arte"]["chamada"], None)
+    # v0.25.1: o kit gravado sem a arte (a função não pede mais a chamada e o apoio)
+    assert limpo.execute("select kit_ia ? 'arte', kit_ia->'instagram'->>'texto' <> '', ilustracao_id from radar_conteudos").fetchone() == (False, True, None)
     antes = limpo.execute("select imagem_id from radar_conteudos").fetchone()[0]
 
     def ilustrar():                                         # a imagem é a 2ª consulta à IA neste assunto: pede a senha
@@ -3673,7 +3691,7 @@ def test_gerar_com_ia_faz_o_kit_e_a_capa_padrao_e_rascunho_sem_fonte_oficial(pag
     assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "kit"] and pagina.locator("#senha-ia").count() == 0
     # v0.20.0: a capa padrão Artecon, sem ilustração (ela é opcional, pelo botão do conteúdo); o kit gravado e o quadro dele aberto
     capa, ilus, kit = limpo.execute("select imagem_id, ilustracao_id, kit_ia from radar_conteudos where assunto_id = %s", (a,)).fetchone()
-    assert capa and ilus is None and kit["arte"]["chamada"] == KIT_TELA["arte"]["chamada"]
+    assert capa and ilus is None and kit == KIT_TELA and "arte" not in kit                    # v0.25.1: sem a arte
     assert pedidos[-1]["conteudo_id"] == limpo.execute("select id from radar_conteudos where assunto_id = %s", (a,)).fetchone()[0]
     assert limpo.execute("select largura, altura, dados like 'data:image/jpeg;base64,%%' from radar_imagens where id = %s", (capa,)).fetchone() == (1200, 630, True)
     assert pagina.locator("details.kit-redes[open] table.roteiro tbody tr").count() == len(KIT_TELA["reel"]["cenas"])
@@ -3886,8 +3904,8 @@ def abrir_por_id(pg, a):
     pg.wait_for_selector("#base-texto")
 
 
-def no_site(db, ia=False):
-    a, c = pronto_para_o_site(db)
+def no_site(db, ia=False, corpo=None):
+    a, c = pronto_para_o_site(db, **({"corpo": corpo} if corpo else {}))      # v0.25.1: o texto pode ser outro (a lista da legenda)
     com_imagem(db, c, (1500, 1000) if ia else (1200, 630), ia=ia)           # v0.25.0: a imagem da publicação, a mesma do site e das redes
     with como("authenticated", EDITOR) as x:
         x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
@@ -4312,6 +4330,43 @@ def test_imagem_da_ia_vira_a_imagem_da_publicacao_inteira_com_o_aviso_no_canto(p
     assert tam == [900, 600] and abs(alto[0] - 30) < 15 and abs(canto[2] - 150) < 15, (alto, canto)      # só o azul do meio, e sem aviso
     assert "Foto ou imagem enviada pela equipe (vai sem aviso)." in form.inner_text() and form.get_attribute("data-imagem-ia") is None
     pagina.screenshot(path=str(FOTOS / "41-imagem-da-publicacao.png"), full_page=True)
+
+
+def test_campo_de_arquivo_da_imagem_tem_um_rotulo_so_com_a_mesma_aparencia(pagina, limpo):
+    """v0.25.1 (acessibilidade): o campo de arquivo da imagem do conteúdo tinha dois rótulos ligados a ele (“Imagem da publicação” e
+    “enviar uma foto própria”). Fica um só, “enviar uma foto própria”; “Imagem da publicação” vira título comum, com a mesma aparência de
+    um rótulo (letra, tamanho, cor e margens). Quem só lê não tem o campo, e nenhum rótulo aponta para ele."""
+    a, c = pronto_para_o_site(limpo)
+    com_imagem(limpo, c)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    form = pagina.locator(f"form[data-form=conteudo][data-id='{c}']")
+    assert form.locator(f"#c-img-{c}[type=file]").count() == 1
+    assert pagina.evaluate(f"[...document.querySelectorAll('label[for=\"c-img-{c}\"]')].map(l => l.textContent.trim())") == ["enviar uma foto própria"]
+    assert pagina.evaluate(f"[...document.getElementById('c-img-{c}').labels].map(l => l.textContent.trim())") == ["enviar uma foto própria"]
+    assert pagina.get_by_label("enviar uma foto própria").get_attribute("id") == f"c-img-{c}"
+    assert pagina.get_by_label("Imagem da publicação", exact=True).count() == 0
+    titulo = form.locator(".rotulo", has_text="Imagem da publicação")
+    assert titulo.count() == 1 and titulo.evaluate("e => e.tagName") == "DIV"
+    # a mesma aparência de um rótulo no mesmo lugar (o que era antes)
+    estilo = pagina.evaluate("""s => { const t = document.querySelector(s), l = document.createElement('label');
+        l.textContent = t.textContent; t.after(l);
+        const e = x => { const r = getComputedStyle(x), b = x.getBoundingClientRect();
+          return [r.display, r.fontFamily, r.fontSize, r.fontWeight, r.color, r.marginTop, r.marginBottom, r.lineHeight, b.width, b.height]; };
+        const v = [e(t), e(l)]; l.remove(); return v; }""", f"form[data-form=conteudo][data-id='{c}'] .rotulo")
+    assert estilo[0] == estilo[1], estilo
+    # no formulário, nenhum rótulo aponta para campo que não existe
+    assert form.evaluate("f => [...f.querySelectorAll('label[for]')].filter(l => !document.getElementById(l.htmlFor)).map(l => l.htmlFor)") == []
+    # quem só lê: sem o campo e sem rótulo apontando para ele; o título continua
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    form = pagina.locator(f"form[data-form=conteudo][data-id='{c}']")
+    assert form.locator("input[type=file]").count() == 0 and pagina.locator(f"label[for='c-img-{c}']").count() == 0
+    assert form.locator(".rotulo", has_text="Imagem da publicação").count() == 1
 
 
 def test_conteudo_antigo_com_a_capa_montada_nao_muda_sozinho_e_volta_a_imagem_inteira(pagina, limpo):
@@ -4929,6 +4984,67 @@ def test_redes_com_a_capa_antiga_montada_com_a_ilustracao_levam_a_linha_do_aviso
     assert "Imagem ilustrativa gerada por IA" not in pagina.input_value("#rede-legenda") + pagina.inner_text(".autorizacao li.agora")
 
 
+# v0.25.1: o texto com lista, como a legenda montada pelo Radar o resume (os itens em linhas próprias, “• Item”, com a inicial maiúscula;
+# “eSocial” e “30 dias” ficam como estão; o negrito sai; o subtítulo não entra; o parágrafo depois da lista volta a ser linha própria)
+CORPO_LISTA = ("A CBS passa a sair no documento fiscal, com 0,9% na fase de transição.\n\n## O que fazer\n"
+               "- revisar o cadastro fiscal dos produtos;\n- **confirmar** com o fornecedor do sistema;\n- eSocial: conferir os eventos da folha;\n"
+               "- 30 dias antes, testar a emissão.\n\nQuem usa sistema próprio precisa de mais tempo.")
+RESUMO_LISTA = ("A CBS passa a sair no documento fiscal, com 0,9% na fase de transição.\n• Revisar o cadastro fiscal dos produtos;\n"
+                "• Confirmar com o fornecedor do sistema;\n• eSocial: conferir os eventos da folha;\n• 30 dias antes, testar a emissão.\n"
+                "Quem usa sistema próprio precisa de mais tempo.")
+
+
+def test_legenda_montada_pelo_radar_poe_os_itens_de_lista_em_linhas_proprias(pagina, limpo, request):
+    """v0.25.1: sem o kit da IA, a legenda das redes montada pelo Radar resume o texto. Os itens de lista (“- item”, “* item”, “• item”,
+    “1. item” e “1) item”) saíam emendados no fim da frase de antes (“…na fase de transição. revisar o cadastro…; confirmar…”); agora
+    cada um sai na sua linha, como “• Item”, com a primeira letra maiúscula e sem o negrito, no Instagram e no Facebook. O resto da
+    montagem fica igual (título, o caminho até o site, a fonte, a linha do aviso de IA e a identificação legal no fim, as hashtags), e o
+    corte no limite de caracteres continua tirando só do fim do texto, numa linha inteira, nunca o aviso de IA nem a identificação."""
+    _assinatura(limpo, request, cnpj="11222333000181", crc="012345/O-6")
+    a, c = no_site(limpo, ia=True, corpo=CORPO_LISTA)
+    erros = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function(IMAGEM_PRONTA)
+    linha, tags = LINHA_LEGAL, "#Contabilidade #ArteconContabeis #LegislacaoFederal"
+    fim = "Fonte: Receita Federal\n\nImagem ilustrativa gerada por IA.\n\n" + linha
+    assert pagina.input_value("#rede-legenda") == ("Informativo de teste\n\n" + RESUMO_LISTA + "\n\nLeia a matéria completa no site da Artecon (link na bio).\n\n"
+                                                   + fim + "\n\n" + tags)
+    assert pagina.input_value(f"#faltam-legenda-facebook-{c}") == ("Informativo de teste\n\n" + RESUMO_LISTA +
+                                                                   "\n\nLeia a matéria completa: https://artecon.cnt.br/news/view/cbs\n\n" + fim)
+    for legenda in (pagina.input_value("#rede-legenda"), pagina.input_value(f"#faltam-legenda-facebook-{c}")):
+        assert "transição. revisar" not in legenda and "produtos; confirmar" not in legenda and "**" not in legenda and "##" not in legenda
+    # o mesmo no “Publicar em todos” (2.000 caracteres, com o {LINK DO SITE})
+    todos = pagina.evaluate("c => legendaRede(c, 'facebook', '{LINK DO SITE}', 'federal', 2000)",
+                            {"titulo": "Informativo de teste", "corpo": CORPO_LISTA, "fonte_credito": "Receita Federal", "imagem_id": 7, "ilustracao_id": 7})
+    assert todos.startswith("Informativo de teste\n\n" + RESUMO_LISTA + "\n\nLeia a matéria completa: {LINK DO SITE}") and todos.endswith(fim)
+    # o limite: o texto perde o fim, numa linha inteira (nenhum item pela metade); o aviso de IA e a identificação ficam inteiros
+    conteudo = {"titulo": "Informativo de teste", "corpo": CORPO_LISTA, "fonte_credito": "Receita Federal", "imagem_id": 7, "ilustracao_id": 7}
+    linhas = RESUMO_LISTA.split("\n")
+    for canal, limite, ficam in (("instagram", 360, 3), ("instagram", 450, 5), ("facebook", 300, 3), ("facebook", 400, 5)):
+        t = pagina.evaluate("([c, canal, n]) => legendaRede(c, canal, '', 'federal', n)", [conteudo, canal, limite])
+        final = "Imagem ilustrativa gerada por IA.\n\n" + linha + ("\n\n" + tags if canal == "instagram" else "")
+        assert len(t) <= limite and t == "Informativo de teste\n\n" + "\n".join(linhas[:ficam]) + "\n\n" + final, (canal, limite, t)
+    # os outros marcadores de lista (“* ”, “• ”, “1. ”, “1) ”): também linha própria, com “• ”; “e-CAC” e “3 dias” ficam como estão
+    outro = {**conteudo, "corpo": "Passos:\n1. enviar a declaração;\n2) pagar a guia;\n* e-CAC: conferir a caixa postal;\n• “lucro presumido”: rever.\n"
+                                  "3 dias depois, conferir o recibo.\n\nFim do texto."}
+    t = pagina.evaluate("c => legendaRede(c, 'facebook', '', 'federal')", outro)
+    assert t.startswith("Informativo de teste\n\nPassos:\n• Enviar a declaração;\n• Pagar a guia;\n• e-CAC: conferir a caixa postal;\n"
+                        "• “Lucro presumido”: rever.\n3 dias depois, conferir o recibo. Fim do texto.\n\nLeia a matéria completa no site da Artecon."), t
+    # o resumo que passa de 600 caracteres (um item comprido, sem ponto) para no fim da linha de antes: o item não sai pela metade
+    abertura = " ".join(["Frase de abertura da notícia."] * 9)
+    longo = {**conteudo, "corpo": abertura + "\n- " + "item comprido sem ponto final " * 30}
+    assert pagina.evaluate("c => legendaRede(c, 'facebook', '', 'federal')", longo).startswith(
+        "Informativo de teste\n\n" + abertura + "\n\nLeia a matéria completa no site da Artecon.\n\nFonte: Receita Federal")
+    # sem lista, o resumo é o de antes: os parágrafos numa linha só, até passar de 280 caracteres
+    sem = {**conteudo, "corpo": "Primeiro parágrafo da notícia.\n\nSegundo parágrafo, com **negrito**.\n\n## Subtítulo\nTerceiro parágrafo."}
+    assert pagina.evaluate("c => legendaRede(c, 'facebook', '', 'federal')", sem).startswith(
+        "Informativo de teste\n\nPrimeiro parágrafo da notícia. Segundo parágrafo, com negrito. Terceiro parágrafo.\n\nLeia a matéria completa")
+    assert erros == []
+
+
 def test_foto_antiga_fora_da_proporcao_do_instagram_trava_so_o_instagram(pagina, limpo):
     """v0.25.0 (revisão): a foto enviada antes da v0.25.0 ficou na proporção original (900×1200, do celular em pé). O Instagram só aceita
     de 4:5 a 1,91:1: o quadro das redes avisa, e o Instagram não é autorizado — nem no passo da trilha, nem nos canais que faltam, nem no
@@ -5225,7 +5341,7 @@ def test_kit_aparece_no_conteudo_com_roteiro_e_copia(navegador, limpo, request):
     quadro.locator("[data-acao=ia-kit]").click()
     pg.wait_for_selector("text=Kit das redes gerado pela IA, com 2 ponto(s) a conferir")
     assert (pedidos[-1]["acao"], pedidos[-1]["conteudo_id"], pedidos[-1]["assunto_id"]) == ("kit", c, a) and pedidos[-1]["lido"]
-    assert limpo.execute("select atualizado_em, kit_ia->'arte'->>'chamada' from radar_conteudos where id = %s", (c,)).fetchone() == (lido, kit["arte"]["chamada"])
+    assert limpo.execute("select atualizado_em, kit_ia from radar_conteudos where id = %s", (c,)).fetchone() == (lido, kit)
     # as redes partem do kit: a legenda (com a fonte, a identificação e as hashtags), com a imagem da publicação (sem arte)
     ig, fb = _legenda_kit(kit, "instagram", LINHA_LEGAL), _legenda_kit(kit, "facebook", LINHA_LEGAL, "https://artecon.cnt.br/news/view/cbs")
     pg.wait_for_function(IMAGEM_PRONTA)
@@ -5233,7 +5349,7 @@ def test_kit_aparece_no_conteudo_com_roteiro_e_copia(navegador, limpo, request):
     # o quadro (aberto depois de gerar): legendas, roteiro e avisos; a chamada e o apoio da arte não aparecem mais
     quadro = pg.locator(f"details.kit-redes[data-id='{c}'][open]")
     assert "gerado em" in quadro.locator("summary").inner_text() and "legendas do Instagram e do Facebook e roteiro do reel" in quadro.locator("summary").inner_text()
-    assert quadro.locator(".kit-arte").count() == 0 and kit["arte"]["chamada"] not in quadro.inner_text()
+    assert quadro.locator(".kit-arte").count() == 0 and "Chamada da arte" not in quadro.inner_text()
     assert quadro.locator(".kit-legenda[data-canal=instagram]").text_content() == ig
     assert quadro.locator(".kit-legenda[data-canal=facebook]").text_content() == fb and "{LINK DO SITE}" not in fb
     linhas = quadro.locator("table.roteiro tbody tr")
@@ -5406,6 +5522,37 @@ def test_kit_desatualizado_volta_para_a_legenda_padrao_e_avisa(pagina, limpo, re
     pagina.locator("details.kit-redes summary").click()
     assert pagina.locator("details.kit-redes .kit-legenda[data-canal=instagram]").count() == 1
     assert pagina.locator("[data-acao=ia-kit]").count() == 0
+
+
+def test_kit_sem_a_arte_vale_e_o_kit_antigo_com_a_arte_continua_valendo(pagina, limpo, request):
+    """v0.25.1: o kit da função nova vem sem a “arte” (a chamada e o apoio, que só serviam à arte vertical das notícias) e vale: as
+    legendas dele entram no passo da trilha, nos canais que faltam e no quadro “Kit das redes” (até a v0.25.0 a tela exigia a chamada da
+    arte, e o kit novo cairia em “incompleto”, com a legenda montada pelo Radar). O kit gravado antes, com a arte, continua valendo como
+    está: a tela ignora a arte, que não aparece em lugar nenhum."""
+    _assinatura(limpo, request, cnpj="11222333000181", crc="012345/O-6")
+    a, c = no_site(limpo)
+    erros = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    assert "arte" not in KIT_TELA and KIT_ANTIGO["arte"]["chamada"]
+    for kit in (KIT_TELA, KIT_ANTIGO):
+        limpo.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(kit), c))
+        pagina.evaluate("E.legendas = {}")
+        abrir_por_id(pagina, a)
+        pagina.wait_for_function(IMAGEM_PRONTA)
+        ig = _legenda_kit(kit, "instagram", LINHA_LEGAL)
+        fb = _legenda_kit(kit, "facebook", LINHA_LEGAL, "https://artecon.cnt.br/news/view/cbs")
+        assert pagina.input_value("#rede-legenda") == ig, "arte" in kit
+        assert pagina.input_value(f"#faltam-legenda-instagram-{c}") == ig and pagina.input_value(f"#faltam-legenda-facebook-{c}") == fb
+        quadro = pagina.locator(f"details.kit-redes[data-id='{c}']")
+        assert "gerado em" in quadro.locator("summary").inner_text() and quadro.locator(".kit-situacao").count() == 0
+        assert quadro.locator(".kit-legenda[data-canal=instagram]").text_content() == ig
+        assert quadro.locator(".kit-legenda[data-canal=facebook]").text_content() == fb
+        assert quadro.locator("table.roteiro tbody tr").count() == len(kit["reel"]["cenas"])
+        html = pagina.evaluate("document.querySelector('main').innerHTML")                    # também o que está fechado
+        assert "arte vertical do kit" not in html and "Chamada da arte" not in html and pagina.locator(".kit-arte, .arte-chamada, .arte-apoio").count() == 0
+    assert erros == []
 
 
 def test_gerar_texto_com_ia_e_texto_para_analise_ficam_com_a_capa_padrao(pagina, limpo):
@@ -5764,7 +5911,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.25.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.25.1"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -8179,7 +8326,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.25.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.25.1"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")

@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.25.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.25.1)
 //
 // Doze ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
@@ -17,13 +17,19 @@
 //   revisar      → (v0.16.0) corrige num conteúdo só os pontos marcados com [VERIFICAR] e os trechos iguais ao da fonte
 //                  sem a fonte citada; o que ficar sem confirmação vai para os pontos a conferir; (v0.24.0) e confere os 10 critérios
 //                  do escritório (Conferência das Diretrizes), gravados no conteúdo pelo banco
-//   kit          → (v0.20.0) monta o kit das redes de um conteúdo já escrito: chamada e apoio da arte, legendas do Instagram e do
-//                  Facebook e roteiro de reel; grava em radar_conteudos.kit_ia (só sugestão: o que vai ao ar é o que o administrador autoriza)
+//   kit          → (v0.20.0) monta o kit das redes de um conteúdo já escrito: legendas do Instagram e do Facebook e roteiro de reel
+//                  (v0.25.1: sem a chamada e o apoio da arte); grava em radar_conteudos.kit_ia (só sugestão: o que vai ao ar é o que o
+//                  administrador autoriza)
 //   peca         → (v0.21.0) a sugestão de uma peça da Pauta (aba Pauta, "Gerar com IA"): chamada e apoio da arte, legendas do Instagram
 //                  e do Facebook e os cartões do carrossel, a partir do plano e das informações conferidas; grava em radar_pauta_pecas.ia
 //                  (só sugestão: o que vai ao ar é o que o administrador aprova)
 //   editorial    → (v0.24.0, etapa 5) refaz a revisão editorial de um conteúdo já gravado (botão "Fazer a revisão editorial", quando a do
 //                  "gerar" não foi feita ou o texto mudou depois): reescreve os trechos com problema e grava o resultado no conteúdo
+//
+// v0.25.1 — o kit das redes não pede mais à IA a chamada e o apoio da arte: a arte vertical das notícias saiu na v0.25.0 (a notícia vai
+//   às redes com a imagem da publicação, a mesma do site), e eles só serviam a ela. O esquema da resposta e o kit gravado ficam só com as
+//   legendas e o roteiro do reel; a tela continua aceitando o kit antigo, com a arte (ela a ignora). A peça da Pauta ("peca") tem a
+//   própria arte e não muda.
 //
 // v0.25.0 (etapa 6) — a imagem da IA passa a ser a IMAGEM DA PUBLICAÇÃO, a mesma no site, no Instagram e no Facebook (a tela a usa
 //   inteira, em 3:2, sem título por cima, com o aviso "Imagem ilustrativa gerada por IA" pequeno no canto). O pedido da "ilustrar" vira
@@ -109,7 +115,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.25.0";
+const VERSAO = "0.25.1";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -1659,7 +1665,7 @@ async function titulos(token: string, ctx: Awaited<ReturnType<typeof carregar>>,
 }
 
 // ------------------------------------------------------------------ kit das redes (v0.20.0)
-// Chamada e apoio da arte, legendas do Instagram e do Facebook e roteiro de reel, feitos a partir do texto FINAL do conteúdo (o
+// Legendas do Instagram e do Facebook e roteiro de reel (v0.25.1: sem a chamada e o apoio da arte), feitos a partir do texto FINAL do conteúdo (o
 // título e o texto da Artecon; nunca o texto oficial nem o boletim pago). É sugestão: fica em radar_conteudos.kit_ia, que não muda a
 // versão do conteúdo (atualizado_em) nem derruba autorização; o que vai ao ar é o que o administrador autoriza. A identificação legal
 // (empresa, CNPJ, CRC) é acrescentada pela tela, a partir das Configurações, nunca pela IA.
@@ -1772,17 +1778,13 @@ const segundos = (v: unknown) => v === null || v === "" || typeof v === "boolean
 function limparKit(json: any): { kit: any; avisos: string[] } {
   const avisos: string[] = [], r = json?.reel ?? {};
   // a identificação que a IA escreveu sai do texto (quem acrescenta a das Configurações é a tela): o aviso pede para conferir a frase
-  const escritos = [json?.arte?.chamada, json?.arte?.apoio, json?.instagram?.texto, json?.facebook?.texto, r.gancho, r.chamada_final, r.legenda,
+  // v0.25.1: sem a chamada e o apoio da arte (a "arte" que viesse na resposta é ignorada: não entra no kit nem na conferência)
+  const escritos = [json?.instagram?.texto, json?.facebook?.texto, r.gancho, r.chamada_final, r.legenda,
     ...(Array.isArray(r.cenas) ? r.cenas : []).flatMap((c: any) => [c?.fala, c?.texto_tela])];
   if (escritos.some((t) => RE_IDENTIFICACAO.test(semHtmlNemLink(t)))) {
     avisos.push("Saiu do kit o número de CNPJ, de registro no CRC ou de telefone que a IA escreveu (a identificação legal entra pela tela, " +
       "a partir das Configurações): confira se o texto ficou certo.");
   }
-  const chamadaIA = normalizarEspacos(textoKit(json?.arte?.chamada)).replace(/[.\s]+$/, "");
-  const chamada = cortarFrase(chamadaIA, 70, false).replace(/[.\s]+$/, "");
-  if (chamadaIA.length > 70) avisos.push("A chamada da arte passou de 70 caracteres e foi encurtada: confira.");
-  const apoio = linhaKit(json?.arte?.apoio, 140);
-
   const igBruto = textoKit(json?.instagram?.texto);
   const igTexto = cortarFrase(semHashtags(igBruto), 1300);
   const instagram = { texto: /link na bio/i.test(igTexto) ? igTexto : [cortarFrase(igTexto, 1300 - FIM_INSTAGRAM.length - 2), FIM_INSTAGRAM].filter(Boolean).join("\n\n"),
@@ -1802,7 +1804,7 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
   fb = cortarFrase(fb, 1100).replace(/\{[^}\n]*$/, "").trim();
   const facebook = { texto: fb.includes(LINK_SITE) ? fb : [cortarFrase(textoKit(fb), 1100 - FIM_FACEBOOK.length - 2), FIM_FACEBOOK].filter(Boolean).join("\n\n"),
                      hashtags: listaHashtags(json?.facebook?.hashtags, fbBruto.match(RE_HASHTAG) ?? [], 2) };
-  if (!chamada || !igTexto.replace(/[^\n]*link na bio[^\n]*/gi, "").trim() || !textoKit(fb)) throw new Erro(502, "A IA devolveu o kit incompleto (sem a chamada da arte ou sem as legendas). Tente de novo.");
+  if (!igTexto.replace(/[^\n]*link na bio[^\n]*/gi, "").trim() || !textoKit(fb)) throw new Erro(502, "A IA devolveu o kit incompleto (sem as legendas). Tente de novo.");
 
   const recebidas = Array.isArray(r.cenas) ? r.cenas : [];
   const aproveitaveis = recebidas
@@ -1836,7 +1838,7 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
     const encurtados = validas.filter((c: any) => c.longo).map((c: any) => `de ${c.de} a ${c.ate} s`.replace(/\./g, ","));
     if (encurtados.length) avisos.push(`Texto na tela com mais de 42 caracteres, encurtado ${encurtados.length > 1 ? "nas cenas" : "na cena"} ${encurtados.join("; ")}: confira se o sentido ficou.`);
   }
-  return { kit: { arte: { chamada, apoio }, instagram, facebook, reel }, avisos };
+  return { kit: { instagram, facebook, reel }, avisos };
 }
 
 /** Aviso do kit de até "max" caracteres. Numa lista ("…: a; b; c."), saem os últimos itens inteiros (fica "e outros"); no resto, o
@@ -1879,9 +1881,9 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   const texto = { type: "string" }, legenda = { type: "object", additionalProperties: false, required: ["texto", "hashtags"],
     properties: { texto, hashtags: { type: "array", items: texto } } };
   const esquema = {
-    type: "object", additionalProperties: false, required: ["arte", "instagram", "facebook", "reel"],
+    // v0.25.1: sem a "arte" (chamada e apoio), que só servia à arte vertical das notícias (saiu na v0.25.0)
+    type: "object", additionalProperties: false, required: ["instagram", "facebook", "reel"],
     properties: {
-      arte: { type: "object", additionalProperties: false, required: ["chamada", "apoio"], properties: { chamada: texto, apoio: texto } },
       instagram: legenda, facebook: legenda,
       reel: { type: "object", additionalProperties: false, required: ["gancho", "cenas", "chamada_final", "legenda"],
         properties: { gancho: texto, chamada_final: texto, legenda: texto,
@@ -1890,24 +1892,22 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
     },
   };
   const instrucoes = "Você prepara o material das redes sociais da Artecon Artes Contábeis (Palhoça/SC), em português do Brasil, a partir de " +
-    "uma notícia já escrita e revisada pela equipe: a chamada e a linha de apoio da arte, a legenda do Instagram, a do Facebook e o roteiro " +
-    "de um reel. Regras OBRIGATÓRIAS: " +
+    "uma notícia já escrita e revisada pela equipe: a legenda do Instagram, a do Facebook e o roteiro de um reel. Regras OBRIGATÓRIAS: " +
     "(a) use SOMENTE a informação do texto da notícia: nenhum número, data, prazo, norma, valor ou estatística que não esteja nele — nada de conhecimento de memória; " +
-    "(b) arte: 'chamada' com 8 a 10 palavras (até 70 caracteres, sem ponto final) que diga o essencial, e 'apoio' com até 140 caracteres, " +
-    "dizendo quem é afetado ou o que fazer; " +
-    // v0.24.0 (etapa 5, item 6): sem o "convite moderado para conversar com a Artecon" que toda legenda levava (chamada automática)
-    "(c) Instagram, nesta ordem: uma primeira linha que prenda a atenção, com até 110 caracteres; quem é afetado; o que fazer, em 2 a 4 itens curtos; " +
+    // v0.24.0 (etapa 5, item 6): sem o "convite moderado para conversar com a Artecon" que toda legenda levava (chamada automática).
+    // v0.25.1: sem a regra da arte (a chamada e o apoio), que saiu do kit: as letras seguintes sobem uma
+    "(b) Instagram, nesta ordem: uma primeira linha que prenda a atenção, com até 110 caracteres; quem é afetado; o que fazer, em 2 a 4 itens curtos; " +
     "e, por último, 'Leia a matéria completa no site (link na bio).' Até 1.300 caracteres, " +
     "sem link e sem hashtag no texto; " +
-    "(d) Facebook, na mesma ordem, terminando com 'Leia a matéria completa: {LINK DO SITE}' (escrito assim, uma vez: o endereço entra depois). " +
+    "(c) Facebook, na mesma ordem, terminando com 'Leia a matéria completa: {LINK DO SITE}' (escrito assim, uma vez: o endereço entra depois). " +
     "Até 1.100 caracteres, sem hashtag no texto; " +
-    "(e) em 'hashtags': de 3 a 5 no Instagram, específicas do assunto (nada genérico), e até 2 no Facebook; " +
-    "(f) reel de 30 a 45 segundos, para uma pessoa da equipe falar olhando para a câmera: o 'gancho' é a frase que prende nos 3 primeiros " +
+    "(d) em 'hashtags': de 3 a 5 no Instagram, específicas do assunto (nada genérico), e até 2 no Facebook; " +
+    "(e) reel de 30 a 45 segundos, para uma pessoa da equipe falar olhando para a câmera: o 'gancho' é a frase que prende nos 3 primeiros " +
     "segundos (a fala da primeira cena); de 3 a 8 'cenas' contínuas, com 'de' e 'ate' em segundos (a primeira começa em 0 e cada uma começa " +
     "onde a anterior termina), a 'fala' (até 3 palavras por segundo) e o 'texto_tela' (até 42 caracteres); a 'chamada_final' (o convite " +
     "para ler a matéria completa, com o link na bio; sem convite comercial); e a 'legenda' " +
     "do reel, com até 800 caracteres, terminando com 'Link na bio.'; " +
-    "(g) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
+    "(f) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
     REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_AUTOCONFERENCIA + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(ctx.reg);
   // só o que a Artecon escreveu (e o que a equipe já classificou no assunto): nada do texto oficial nem do boletim pago. Tudo o que
   // vem do banco (a classificação também: o público afetado pode ter saído da notícia) fica dentro de um bloco de dados, sem as marcas
@@ -1921,7 +1921,7 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   const { kit: novo, avisos: doKit } = limparKit(json);
 
   // conferência por código, contra o título e o texto (o texto oficial e o boletim ficam só aqui, na memória)
-  const partes: string[] = [novo.arte.chamada, novo.arte.apoio, novo.instagram.texto, novo.facebook.texto.split(LINK_SITE).join(" "),
+  const partes: string[] = [novo.instagram.texto, novo.facebook.texto.split(LINK_SITE).join(" "),
     novo.reel.gancho, ...novo.reel.cenas.flatMap((x: any) => [x.fala, x.texto_tela]), novo.reel.chamada_final, novo.reel.legenda].filter(Boolean);
   const textoDoKit = partes.join("\n\n");
   const termos = termosPublicidade(...partes, [...novo.instagram.hashtags, ...novo.facebook.hashtags].join(" "));
@@ -1944,7 +1944,7 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   if (duvidas.length) avisos.push(`O kit tem ${duvidas.length} comentário(s) sobre dúvida da redação (ex.: “${duvidas[0]}”): tire antes de publicar.`);
   avisos.push(...doKit);
   // o título de quando o kit foi feito: só o título mudar não deixa o kit desatualizado (as legendas e o roteiro saem do texto), e a
-  // tela compara com o título de agora para pedir que a chamada da arte seja conferida
+  // tela compara com o título de agora para pedir que a primeira linha das legendas seja conferida
   const salvo = { versao: 1, gerado_em: new Date().toISOString(), modelo: ctx.reg.uso?.modelo ?? MODELO, titulo: normalizarEspacos(String(c.titulo ?? "")), ...novo,
                   avisos: [...new Set(avisos)].map((a) => avisoCurto(a)).slice(0, 12) };
   // o banco aceita até 20.000 caracteres: num caso extremo (texto cheio de aspas e quebras), saem os últimos avisos
