@@ -1,19 +1,89 @@
-# Radar Artecon — Relatório de testes (v0.26.0)
+# Radar Artecon — Relatório de testes (v0.27.0)
 
-Data: 16/10/2026. **A suíte inteira da v0.26.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram o arquivo inteiro dos testes
-de tela (`testes/test_radar_telas.py`) e o `testes/test_radar_repositorio.py` (resultados na seção da v0.26.0, logo abaixo). Na v0.25.1
+Data: 16/10/2026. **A suíte inteira da v0.27.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram só os testes afetados:
+`testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado**; os testes da Pauta, do cronograma, da versão, do visual, do
+celular, do `radar-video.js` e dos 3 passos (`test_radar_telas.py -k "pauta or cronograma or versao or visual_da_artecon or celular or
+radar_video_js or passos or preparar"`), **29 aprovados, 0 falhas, 1 pulado**; e o arquivo inteiro dos testes de tela
+(`testes/test_radar_telas.py`), **219 aprovados, 0 falhas, 61 pulados** (detalhes na seção da v0.27.0, logo abaixo). Na v0.25.1
 (16/10/2026), a suíte inteira deu **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s (19min30s); a v0.26.0 tem 13 testes novos (de
-1.118 para 1.131 no total). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste
-repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está instalado neste
-ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits do push, que só
-roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0 (depois da revisão, 16/10/2026), a mesma suíte deu 1.048
-aprovados, 0 falhas e 67 pulados, em 1.000 s; na v0.24.0 (até a etapa 5, 15/10/2026), 1.039 aprovados; na etapa 1 da v0.24.0, 1.025;
-na v0.23.0, 996. As funções `radar-ia`, `radar-itc`, `radar-redes`, `radar-concorrentes` e `radar-video` rodam de verdade no Deno nos
-testes delas, e o ffmpeg do corretor de vídeo roda de verdade. Nenhum teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI
-ou a IA Central de verdade; todo boletim da ITC dos testes é inventado, toda pessoa é fictícia ("Ana Teste", domínios `.test`), nenhuma
-imagem de teste tem pessoa (são cores lisas e formas desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora.
-Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1),
-da v0.23.0, da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+1.118 para 1.131 no total) e a v0.27.0, 2 (1.133 no total). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade
+(pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade
+(o SDK não está instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1
+é o dos commits do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0 (depois da revisão,
+16/10/2026), a mesma suíte deu 1.048 aprovados, 0 falhas e 67 pulados, em 1.000 s; na v0.24.0 (até a etapa 5, 15/10/2026), 1.039
+aprovados; na etapa 1 da v0.24.0, 1.025; na v0.23.0, 996. As funções `radar-ia`, `radar-itc`, `radar-redes`, `radar-concorrentes` e
+`radar-video` rodam de verdade no Deno nos testes delas, e o ffmpeg do corretor de vídeo roda de verdade. Nenhum teste chama a
+Microsoft, a Azure, o GitHub, o Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado, toda pessoa é
+fictícia ("Ana Teste", domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas desenhadas na hora), e todo vídeo
+e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.27.0, da
+v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as
+seguintes são das versões até a v0.7.1.
+
+## v0.27.0 — cronograma de publicações na Pauta
+
+Data: 16/10/2026. Só a tela muda (`index.html`, `radar-pauta.js` e, no `radar-video.js`, só o número da versão). O banco continua no
+`sql/radar-setup-v0.25.0.sql`, a `radar-ia` continua na 0.25.1 (a tela pede a 0.25.0 ou mais nova: a `FUNCAO_MINIMA` não sobe) e as
+outras funções e os robôs não mudam; por isso o `test_radar_banco.py` e os testes das funções não rodaram aqui. **A suíte inteira roda
+no GitHub (CI) antes de juntar**, como em toda versão. A v0.27.0 foi escrita sobre a v0.25.1 e depois levada para cima da v0.26.0
+(rebase); nesta rodada, todos os testes abaixo rodaram pela fila compartilhada, com o PostgreSQL e o PostgREST de teste de verdade.
+
+São 2 testes novos em `test_radar_telas.py` (de 1.131 para 1.133 no total) e 6 ajustados:
+
+- **Contas do quadro** (`test_cronograma_conta_minimo_e_feito_sem_depender_de_hoje`, novo): as funções puras com datas fixas e o
+  "hoje" de fora. O mês do quadro (o de hoje na semana de hoje; nas outras, o da quinta-feira), o fim de fevereiro de 2028, o dia de
+  Brasília; a peça feita (à mão ou com um envio publicado; a excluída da rede, a dispensada e a cancelada não), cada peça numa linha
+  só, a cancelada fora do mínimo (com a nota), o dia de notícia feito pelas notícias nas redes (a mesma nas duas redes uma vez, no
+  máximo uma por dia de notícia, e o primeiro dia não depende da semana aberta: setembro visto das semanas de 31/08 e de 07/09 dá o
+  mesmo), e a busca: cada fato uma vez em cada período (o fato achado de novo em outro mês conta nos dois), a alta que desceu pela
+  idade conta, a que chegou velha, o texto colado à mão e a alta ignorada na triagem não. O vermelho respeita o "hoje" (a semana em
+  andamento só tem em atraso o que já passou; a que não começou, nada); o HTML tem as 5 linhas vermelhas, "faltou 1", "faltaram 2",
+  "faltaram 4", as notas, o aviso do limite de 1.000 e o aviso de falha, e nenhum texto dos botões da barra.
+- **Quadro com o banco, visto pelo leitor** (`test_cronograma_na_pauta_com_banco_e_leitor`, novo): peças, envios, notícias no site e
+  nas redes e capturas fictícias ("Ana Teste" só no `quem_aparece`, que não aparece na tela; títulos "(teste do cronograma)"). Confere
+  a semana de 31/08 e setembro, "← Semana anterior" (a semana de 24/08 e agosto), que o quadro vem antes da barra, que só há leituras
+  (GET), que o `select` das capturas é só o da conta (nunca título, texto ou url: o boletim da ITC é pago), que nenhum pedido lê
+  pessoas, quem aparece, fotos ou lâminas, que cabe em 375 px e que a leitura que falha mostra o aviso sem derrubar a semana.
+- **Semana no celular** (`test_pauta_semana_navega_prontas_e_nao_sairam_e_cabe_no_celular`, ajustado): o quadro aparece na semana de
+  hoje, "em andamento", com o mês de hoje (em Brasília).
+- **Versão** (5 ajustados): a aba Versões (`test_versao_visivel_e_aba_de_versoes`: a entrada do topo é a 0.27.0, com o cronograma, de
+  onde vem o mínimo, "a notícia ignorada na triagem enquanto ainda era alta não entra", que o quadro só informa e o "Administrador:"
+  no fim; as entradas da 0.26.0 à 0.22.0 continuam conferidas, uma posição abaixo), a `FUNCAO_MINIMA` que não sobe ("0.25.0") com a
+  tela na 0.27.0, o rodapé com "v0.27.0" e os arquivos antigos imitados do `radar-pauta.js` e do `radar-video.js` (que pedem Ctrl+F5),
+  agora a partir da 0.27.0.
+
+**Correções da revisão** (3 achados de gravidade baixa; o 4º era a subida da versão, feita depois do rebase sobre a v0.26.0):
+
+1. O "primeiro dia" de uma notícia nas redes dependia da semana aberta (a leitura começava no início da faixa): a mesma notícia no
+   Instagram em 31/08 e no Facebook em 02/09 fazia o dia de notícia de setembro visto da semana de 07/09, e não visto da de 31/08; na
+   virada (27/09 e 29/09) contava nas duas semanas. Agora uma segunda leitura (só os ids das notícias da faixa, publicadas antes dela)
+   diz quais já tinham saído antes. O teste das contas tem o caso, e o teste com o banco ganhou o Facebook de 01/09 da notícia que saiu
+   no Instagram em 30/08 (sem a correção, setembro daria posts 4/3 em vez de 4/2).
+2. O fato achado de novo em outro mês conta nos dois meses: é a regra combinada (cada período conta o que a busca achou nele); o
+   "Como o quadro conta" passou a dizer isso, e o teste das contas trava a regra.
+3. A notícia que desceu para baixa pela idade e depois foi ignorada continua no mínimo (o robô também ignora essa sozinho, e a tela
+   não sabe quem ignorou): o "Como o quadro conta" agora diz "a que a equipe ignorou na triagem enquanto ainda era alta" e que as que
+   desceram pela idade contam "mesmo se forem ignoradas depois".
+
+**Resultados reais desta rodada** (16/10/2026, depois do rebase sobre a v0.26.0 e da subida da versão; pela fila compartilhada):
+
+- `testes/test_radar_repositorio.py`: **16 aprovados, 0 falhas, 1 pulado** (o dos commits do push, que só roda no
+  `radar-repositorio.yml`), em 2 s.
+- `testes/test_radar_telas.py -k "pauta or cronograma or versao or visual_da_artecon or celular or radar_video_js or passos or
+  preparar"` (30 dos 280 testes do arquivo, os 2 do cronograma inclusive): **29 aprovados, 0 falhas, 1 pulado** (o de tela que sobe a
+  IA Central de verdade), em 77 s.
+- `testes/test_radar_telas.py` inteiro: **219 aprovados, 0 falhas, 61 pulados** (os 61 são os testes de tela que sobem a IA Central
+  de verdade: "deno ou o pacote da IA Central não disponível"), em 536 s. São os 217 aprovados da v0.26.0 mais os 2 testes novos do
+  cronograma, que rodaram aqui pela primeira vez com o PostgreSQL e o PostgREST de teste de verdade (os prints 70 a 74 saíram).
+- Antes, na cópia sobre a v0.25.1 (com a fila travada): o corpo do teste das contas no Chromium com a tela servida por interceptação e
+  a Pauta inteira com o Supabase imitado deram exatamente os números que os dois testes novos esperam, sem erro de JavaScript.
+
+**Mutações** (só na memória: o arquivo não muda), todas derrubaram as contas: a peça excluída da rede contando como feita, o mês
+pela segunda-feira, sem o teto do dia de notícia, o dia pelo horário UTC, o vermelho sem o "hoje", o texto colado contando, a alta
+ignorada contando, a que chegou velha contando, a baixa ignorada saindo do mínimo, a cancelada no mínimo, cada fato pela captura (sem
+o assunto), o atraso de notícias sem o "hoje" e, da correção 1, sem a lista das que já tinham saído antes, essa lista sobrescrita
+pelo envio da faixa e as capturas sem o filtro do período. Ficam para quando o banco estiver disponível: tirar a leitura das notícias
+que desceram pela idade, tirar o filtro das repetições, filtrar todo texto manual no servidor e tirar a segunda leitura das redes
+(o teste com o banco pega pelo Facebook de 01/09).
 
 ## v0.26.0 — o assunto em 3 passos (Preparar · Conferir e aprovar · Publicar)
 

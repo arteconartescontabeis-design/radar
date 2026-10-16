@@ -14,8 +14,10 @@
    v0.22.0: na peça reel, o quadro do corretor de vídeo (radar-video.js: blocoVideo), a aprovação amarrada ao vídeo que o administrador
    viu (videoParaAprovar, p_video_sha256, as caixas "video" e "viu"), "Baixar o vídeo aprovado" e, em Pessoas e termos, o termo do
    corretor, "quer ver a peça" e menor de idade, com as peças publicadas de quem revogou o termo ou ficou inativa.
+   v0.27.0: no alto da semana, o cronograma de publicações (blocoCronograma): o mínimo (o plano da Pauta e as notícias de alta que a
+   busca achou) ao lado do feito, na semana e no mês dela; só lê e conta números.
    ==================================================================== */
-const PAUTA_VERSAO = "0.26.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.27.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -39,10 +41,11 @@ const horaBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "—"
 const cortarPauta = (t, n) => { const s = String(t || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s; };
 
 /* -------------------------------------------- Configurações lidas ao entrar na aba */
-// assinatura (identificação legal), pauta (agenda, hora padrão, janela e hashtags), obrigacoes e feriados_extras (agenda de domingo)
+// assinatura (identificação legal), pauta (agenda, hora padrão, janela e hashtags), obrigacoes e feriados_extras (agenda de domingo);
+// v0.27.0: relevancia (o dias_baixa, para o cronograma)
 let CONF_PAUTA = {};
 async function lerConfPauta(){
-  CONF_PAUTA = Object.fromEntries((await ler("radar_config", {select:"chave,valor", chave:"in.(assinatura,pauta,obrigacoes,feriados_extras,corretor_video)"})).map(c => [c.chave, c.valor]));
+  CONF_PAUTA = Object.fromEntries((await ler("radar_config", {select:"chave,valor", chave:"in.(assinatura,pauta,obrigacoes,feriados_extras,corretor_video,relevancia)"})).map(c => [c.chave, c.valor]));
   const ident = CONF_PAUTA.assinatura;
   E.identificacao = ident && typeof ident === "object" && !Array.isArray(ident) ? ident : null;
 }
@@ -96,13 +99,126 @@ function seloTermo(s){
   return `<span class="selo erro" title="${h(motivos)}">sem termo válido (${h(motivos)})</span>`;
 }
 
+/* ------------------------------------------- o cronograma de publicações (v0.27.0) */
+// v0.27.0: no alto da semana, o mínimo e o feito da semana mostrada e do mês dela. Só lê e conta: nunca pessoas, quem aparece, fotos,
+// títulos nem trechos das notícias (o boletim da ITC é pago); não grava, não publica e não cria nada. As contas são funções puras (sem
+// leitura nem relógio: "hoje" vem de fora), testadas com datas fixas
+const LIMITE_CRONOGRAMA = 1000;                                   // o Supabase devolve no máximo 1.000 linhas por leitura
+const diaBrasilia = v => new Date(v).toLocaleDateString("en-CA", {timeZone:"America/Sao_Paulo"});
+const fimDoMes = m => somarDias(somarDias(m + "-01", 31).slice(0, 7) + "-01", -1);               // m = "AAAA-MM"
+// o mês do quadro: na semana de hoje, o de hoje; nas outras, o da quinta-feira (o da maior parte da semana: 26/10 a 01/11 é outubro)
+const mesDoCronograma = (seg, hoje) => (hoje >= seg && hoje <= somarDias(seg, 6) ? hoje : somarDias(seg, 3)).slice(0, 7);
+const periodosCronograma = (seg, hoje) => { const m = mesDoCronograma(seg, hoje);
+  return {semana:{ini:seg, fim:somarDias(seg, 6)}, mes:{ini:m + "-01", fim:fimDoMes(m)}}; };
+function contarCronograma(ini, fim, hoje, {pecas, noticias, antes = [], capturas, dias}){
+  const no = d => d >= ini && d <= fim, passou = d => d < hoje;
+  const doPeriodo = pecas.filter(p => no(p.data)), validas = doPeriodo.filter(p => p.situacao !== "cancelada");
+  // vai ao feed: a conta de telaPeca (semPauta). Cada peça numa linha só: o dia de notícia em Posts, o reel em Reels, a captação na dela
+  const feed = validas.filter(p => p.tipo !== "sem_post" && !["story", "nenhum"].includes(p.formato));
+  const grupo = p => p.tipo === "noticia" ? "posts" : p.formato === "reel" ? "reels" : p.tipo === "captacao" ? "captacao" : "posts";
+  // feita = já saiu numa rede (a regra do banco, RADAR170): registrada à mão ou com um envio publicado; a excluída da rede não conta
+  const saiu = p => !!p.publicado_manual_em || (p.radar_redes_envios || []).some(e => e.situacao === "publicado");
+  // a notícia do Radar nas redes: cada uma uma vez, no primeiro dia (de Brasília) em que saiu no Instagram ou no Facebook; a que já tinha
+  // saído antes da faixa lida (antes: os ids) não conta de novo, e o mesmo mês dá o mesmo número em qualquer semana aberta
+  const primeiro = Object.fromEntries(antes.map(id => [id, ""]));
+  for(const e of noticias){ const d = diaBrasilia(e.publicado_em); if(!(primeiro[e.conteudo_id] <= d)) primeiro[e.conteudo_id] = d; }
+  const nasRedes = Object.values(primeiro).filter(no).length;
+  // o dia de notícia sai por Assuntos e Publicações: feito quando uma notícia saiu nas redes no período (no máximo uma por dia de notícia)
+  const linha = (id, rotulo) => { const ps = feed.filter(p => grupo(p) === id), comuns = ps.filter(p => p.tipo !== "noticia");
+    const vencidos = ps.filter(p => p.tipo === "noticia" && passou(p.data)).length;
+    return {id, rotulo, minimo:ps.length, feito:comuns.filter(saiu).length + Math.min(ps.length - comuns.length, nasRedes),
+            atraso:comuns.filter(p => passou(p.data) && !saiu(p)).length + Math.max(0, vencidos - nasRedes)}; };
+  // a busca: cada fato uma vez em cada período (o assunto; sem assunto, a captura), pela captura achada no período. Não entram o texto
+  // oficial colado à mão (a captura criada pela inclusão: incluída no mesmo instante em que foi capturada), a que já chegou velha e a alta
+  // ignorada na triagem (decisão da equipe); a alta que desceu pela idade na fila conta, mesmo ignorada depois (o robô também ignora essa
+  // sozinho, e a tela não sabe quem ignorou). Feito = já está no site, em qualquer dia
+  const fatos = new Map();
+  for(const c of capturas){ const d = diaBrasilia(c.capturado_em), velha = c.relevancia !== "alta";
+    if(!no(d) || (c.incluido_em && Math.abs(Date.parse(c.incluido_em) - Date.parse(c.capturado_em)) < 60000)) continue;
+    if(velha && c.data_publicacao && c.data_publicacao < somarDias(d, -dias)) continue;
+    const ac = c.radar_assunto_capturas || [], as = ac.map(x => x.radar_assuntos).filter(Boolean);
+    const chave = ac.length ? "a" + Math.min(...ac.map(x => x.assunto_id)) : "c" + c.id, f = fatos.get(chave);
+    const site = as.some(a => (a.radar_conteudos || []).some(k => (k.radar_divulgacoes || []).length > 0));
+    const ignorada = !velha && as.length > 0 && as.every(a => ["ignorado", "arquivado"].includes(a.status));
+    fatos.set(chave, f ? {dia:f.dia < d ? f.dia : d, site:f.site || site, ignorada:f.ignorada && ignorada} : {dia:d, site, ignorada}); }
+  const contam = [...fatos.values()].filter(f => f.site || !f.ignorada), cap = linha("captacao", "Captação de clientes");
+  return {fase:fim < hoje ? "passou" : ini > hoje ? "futuro" : "andamento", canceladas:doPeriodo.length - validas.length,
+    ignoradas:fatos.size - contam.length, semPlano:!doPeriodo.length,
+    linhas:[linha("posts", "Posts no feed"), linha("reels", "Reels"), ...(cap.minimo ? [cap] : []),
+      {id:"noticias", rotulo:"Notícias do Radar (alta)", minimo:contam.length, feito:contam.filter(f => f.site).length,
+       atraso:contam.filter(f => !f.site && passou(f.dia)).length}]};
+}
+// uma leitura por tabela para a semana e o mês juntos (a faixa que cobre os dois), só com as colunas da conta
+async function lerCronograma(seg, hoje){
+  const {semana, mes} = periodosCronograma(seg, hoje), limite = String(LIMITE_CRONOGRAMA);
+  const ini = semana.ini < mes.ini ? semana.ini : mes.ini, fim = semana.fim > mes.fim ? semana.fim : mes.fim;
+  const desde = ini + "T00:00:00-03:00", ate = somarDias(fim, 1) + "T00:00:00-03:00";    // o dia de Brasília (-03:00 fixo, como em passouDaHora)
+  // só a principal de cada fato (sem as repetições); a "baixa" só a que era alta e desceu pela idade (radar_relevancia_idade)
+  const capturas = filtro => ler("radar_capturas", {select:"id,relevancia,data_publicacao,capturado_em,incluido_em:metadados->>incluido_em," +
+      "radar_assunto_capturas(assunto_id,radar_assuntos(status,radar_conteudos(id,radar_divulgacoes(id))))", duplicata_de:"is.null",
+    and:`(capturado_em.gte.${desde},capturado_em.lt.${ate})`, order:"id", limit:limite, ...filtro});
+  const [pecas, noticias, altas, velhas] = await Promise.all([
+    ler("radar_pauta_pecas", {select:"id,data,tipo,formato,situacao,publicado_manual_em,radar_redes_envios(situacao)", and:`(data.gte.${ini},data.lte.${fim})`}),
+    ler("radar_redes_envios", {select:"conteudo_id,publicado_em", conteudo_id:"not.is.null", situacao:"eq.publicado",
+      and:`(publicado_em.gte.${desde},publicado_em.lt.${ate})`, order:"id", limit:limite}),
+    capturas({relevancia:"eq.alta"}), capturas({relevancia:"eq.baixa", relevancia_motivos:'cs.[{"antes":"alta"}]'})]);
+  // das notícias que saíram nas redes na faixa, as que já tinham saído antes dela (o primeiro dia não depende da semana aberta)
+  const ids = [...new Set(noticias.map(e => e.conteudo_id))];
+  const antes = ids.length ? (await ler("radar_redes_envios", {select:"conteudo_id", conteudo_id:`in.(${ids.join(",")})`, situacao:"eq.publicado",
+    publicado_em:`lt.${desde}`, limit:limite})).map(e => e.conteudo_id) : [];
+  // a que chegou velha: dias_baixa de Configurações (o padrão do banco é 5; com 0 a idade está desligada e vale o padrão)
+  const d = CONF_PAUTA.relevancia?.dias_baixa, dias = Number.isInteger(d) && d > 0 ? d : 5;
+  const dados = {pecas, noticias, antes, capturas:[...altas, ...velhas], dias};
+  return {semana:contarCronograma(semana.ini, semana.fim, hoje, dados), mes:contarCronograma(mes.ini, mes.fim, hoje, dados),
+          cortado:[noticias, antes, altas, velhas].some(l => l.length >= LIMITE_CRONOGRAMA)};
+}
+const FASES_CRONOGRAMA = {passou:"já passou", andamento:"em andamento", futuro:"ainda não começou"};
+// o selo da linha: o que faltou (o período passou) ou está em atraso (em vermelho); o que ainda falta, sem atraso; o mínimo cumprido
+function seloCronograma(l, fase){
+  const falta = l.minimo - l.feito;
+  if(l.atraso) return selo(fase === "passou" ? (l.atraso === 1 ? "faltou 1" : `faltaram ${l.atraso}`) : `${l.atraso} em atraso`, "erro");
+  if(falta > 0) return selo(falta === 1 ? "falta 1" : `faltam ${falta}`, "neutro");
+  return l.minimo ? selo("mínimo cumprido", "ok") : "";
+}
+// o quadro (c = lerCronograma; nulo, a leitura falhou e a semana aparece mesmo assim). Os textos não repetem os dos botões da barra
+// ("Esta semana", "← Semana anterior"…), que os testes procuram pelo texto
+function blocoCronograma(seg, hoje, c){
+  const topo = `<h2>Cronograma de publicações</h2>
+    <p class="sub">O mínimo de publicações e o que já foi feito, na semana mostrada e no mês dela. Em vermelho, o que já devia ter saído e não saiu. O quadro só informa: não publica nem cria nada.</p>`;
+  if(!c) return `<div class="painel" id="pauta-cronograma">${topo}<div class="aviso alerta" id="pauta-cronograma-erro">Não deu para montar o cronograma agora (o mínimo e o feito). A semana abaixo está certa; recarregue a página para tentar de novo.</div></div>`;
+  const {semana, mes} = periodosCronograma(seg, hoje), ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`, nome = mesExtenso(mes.ini);
+  const periodo = (id, titulo, k) => `<section class="crono-periodo" id="cron-${id}" data-fase="${k.fase}">
+      <h3>${h(titulo)} ${selo(FASES_CRONOGRAMA[k.fase], "neutro")}</h3>
+      <div class="rolagem"><table><tr><th>Publicação</th><th>Mínimo</th><th>Feito</th></tr>${k.linhas.map(l => `
+        <tr data-linha="${l.id}" data-minimo="${l.minimo}" data-feito="${l.feito}" data-atraso="${l.atraso}"${l.atraso ? ` class="abaixo"` : ""}>
+          <th scope="row">${h(l.rotulo)}${l.id === "noticias" ? ` <span class="sub">(achadas pela busca)</span>` : ""} ${seloCronograma(l, k.fase)}</th>
+          <td>${l.minimo}</td><td>${l.feito}</td></tr>`).join("")}</table></div>
+      ${k.semPlano ? `<p class="aviso alerta">Nenhuma peça no plano destes dias.</p>` : ""}
+      ${k.canceladas ? `<p class="sub">${k.canceladas === 1 ? "1 peça cancelada não entra no mínimo." : `${k.canceladas} peças canceladas não entram no mínimo.`}</p>` : ""}
+      ${k.ignoradas ? `<p class="sub">${k.ignoradas === 1 ? "1 notícia de alta foi ignorada na triagem e não entra no mínimo."
+        : `${k.ignoradas} notícias de alta foram ignoradas na triagem e não entram no mínimo.`}</p>` : ""}
+    </section>`;
+  return `<div class="painel" id="pauta-cronograma">${topo}
+    <div class="crono-periodos">${periodo("semana", `Semana de ${ddmm(semana.ini)} a ${ddmm(semana.fim)}`, c.semana)}${periodo("mes", nome[0].toUpperCase() + nome.slice(1), c.mes)}</div>
+    ${c.cortado ? `<p class="aviso alerta">Uma das leituras chegou ao limite de 1.000 registros: algum número pode estar abaixo do real.</p>` : ""}
+    <details class="crono-como"><summary>Como o quadro conta</summary><ul class="pauta-lista">
+      <li><b>Mínimo:</b> as peças do plano da Pauta no período (sem as canceladas) e as notícias de relevância alta que a busca do Radar achou no período.</li>
+      <li><b>Posts no feed:</b> as peças de imagem, foto ou carrossel, com os dias de notícia. Reels e captação de clientes têm linha própria; story e dia sem post não entram.</li>
+      <li><b>Feito, na peça:</b> a peça já publicada no Instagram ou no Facebook (pela agenda ou registrada à mão), contada no dia dela na Pauta. A excluída da rede não conta.</li>
+      <li><b>Feito, no dia de notícia:</b> uma notícia do Radar publicada no Instagram ou no Facebook no período, contada no primeiro dia em que foi publicada (a mesma notícia nas duas redes conta uma vez; no máximo uma por dia de notícia).</li>
+      <li><b>Notícias do Radar (alta):</b> cada fato conta uma vez em cada período (sem as repetições), pelo dia em que o Radar achou; o fato achado de novo em outro mês (por exemplo, o texto oficial que chegou dias depois) conta nos dois. Contam também as que desceram para baixa só por ficarem velhas na fila, mesmo se forem ignoradas depois. Não entram o texto oficial colado à mão, a notícia que já chegou velha e a que a equipe ignorou na triagem enquanto ainda era alta. Feito: as que já estão no site, publicadas em qualquer dia.</li>
+      <li><b>Vermelho:</b> o que já devia ter saído até ontem e não saiu. No período que já passou, é tudo o que ficou abaixo do mínimo; no que ainda não começou, nada fica vermelho.</li>
+      <li>O mês é o de hoje na semana de hoje; nas outras semanas, o da maior parte da semana. Na semana e no mês em andamento, o número de notícias pode mudar durante o dia (a nota da IA chega depois da busca).</li></ul></details>
+  </div>`;
+}
+
 /* --------------------------------------------------------------------- a semana */
 async function telaSemana(){
   const ed = podeEditar(), adm = ehAdmin(), hoje = hojeBrasilia();
   const seg = E.pauta.semana || segundaDe(hoje), dom = somarDias(seg, 6), faixa = `(data.gte.${seg},data.lte.${dom})`;
   const minutosAtras = m => new Date(Date.now() - m * 60000).toISOString();
   // uma leitura leve (sem as imagens); os selos dos termos só para quem lê as pessoas (o leitor não vê nenhuma)
-  const [pecas, termos, prontas, falhas, agenda] = await Promise.all([
+  const [pecas, termos, prontas, falhas, agenda, crono] = await Promise.all([
     ler("radar_pauta_pecas", {select:"id,data,hora,tipo,formato,assunto,situacao,pessoas,aprovado_modo,link_instagram,link_facebook,publicado_manual_em," +
       "radar_redes_envios(id,canal,situacao,agendado_para,enviado_em,erro,url,publicado_em)", and:faixa, order:"data"}),
     ed ? ler("radar_v_pauta_pessoas", {select:"peca_id,pessoa_id,nome_na_peca,motivo_instagram,motivo_facebook", and:faixa}) : [],
@@ -111,7 +227,7 @@ async function telaSemana(){
     adm ? ler("radar_redes_envios", {select:"id,peca_id,canal,situacao,agendado_para,enviado_em,erro,radar_pauta_pecas(data,tipo)", peca_id:"not.is.null",
       or:`(situacao.eq.erro,and(situacao.eq.enviando,enviado_em.lt.${minutosAtras(15)}),and(situacao.eq.autorizado,agendado_para.lt.${minutosAtras(20)}))`,
       order:"agendado_para,id", limit:"50"}) : [],
-    adm ? rpc("radar_agenda_situacao").catch(() => ({})) : {}]);
+    adm ? rpc("radar_agenda_situacao").catch(() => ({})) : {}, lerCronograma(seg, hoje).catch(() => null)]);    // v0.27.0: o cronograma
   const porDia = Object.fromEntries(pecas.map(p => [p.data, p]));
   const pessoasDe = p => termos.filter(t => t.peca_id === p.id);
   const cartao = d => { const p = porDia[d];
@@ -133,7 +249,7 @@ async function telaSemana(){
       ? `<div class="aviso alerta" id="agenda-desligada"><b>Agenda automática pausada</b> no pg_cron (cron.job → radar-redes-agenda): as peças agendadas só saem se alguém clicar em Publicar agora.</div>` : "";
   return `<h1>Pauta</h1>
     <p class="sub">O calendário de publicações no Instagram e no Facebook: uma peça por dia. Quem prepara monta a peça e marca como pronta; o administrador aprova, e a agenda do banco publica na hora marcada (ou a peça sai à mão).</p>
-    ${avisoAgenda}
+    ${blocoCronograma(seg, hoje, crono)}${avisoAgenda}
     ${falhas.length ? `<div class="painel" id="pauta-falhas"><h2>Não saíram</h2><div class="rolagem"><table><tr><th>Dia</th><th>Canal</th><th>O que houve</th><th></th></tr>${falhas.map(e => `
       <tr><td style="white-space:nowrap">${e.radar_pauta_pecas ? dataCurta(e.radar_pauta_pecas.data) : "—"}</td><td>${h(NOME_REDE[e.canal] || e.canal)}</td>
         <td>${e.situacao === "erro" ? h(e.erro || "A publicação não foi concluída.") : e.situacao === "enviando" ? `Parada em “publicando” desde ${horaBrasilia(e.enviado_em)}: confira na rede se saiu.`

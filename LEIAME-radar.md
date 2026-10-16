@@ -1,4 +1,4 @@
-# Radar Artecon — v0.26.0
+# Radar Artecon — v0.27.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,13 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.27.0 põe na **Pauta** o **cronograma de publicações**: no alto da semana, um quadro com a semana mostrada e o mês dela, o
+**mínimo** de cada tipo de publicação ao lado do que já foi **feito**, e em **vermelho** o que já devia ter saído e não saiu. O mínimo
+vem do plano da Pauta (posts no feed, reels, captação de clientes) e da busca do Radar (as notícias de relevância alta achadas no
+período; a notícia ignorada na triagem enquanto ainda era alta não entra). O quadro só lê e conta: não publica nem cria nada, e mostra
+só números. Os três perfis (administrador, editor e leitor) veem o mesmo quadro. O banco e as funções não mudam: a instalação é só a
+tela (veja "Da v0.26.0 para a v0.27.0").
 
 A v0.26.0 organiza a tela do assunto em **3 passos, sempre para a frente**: **1. Preparar**, **2. Conferir e aprovar** e
 **3. Publicar**. Em cada passo aparece um botão principal; os outros ficam numa linha "Mais opções", sempre à vista. Só a tela muda:
@@ -1632,8 +1639,9 @@ só usar "Publicar agora" no mesmo passo.
 
 A aba **Pauta** organiza as publicações próprias da Artecon no Instagram e no Facebook (Quem cuida, Bastidor, Educativo, Captação,
 Agenda da semana, Data com a equipe, reels), uma peça por dia. As notícias continuam pelo caminho de sempre: no dia de notícia, a
-Pauta só aponta para Assuntos e Publicações. Todos veem a Pauta; o leitor não tem botões e não vê as pessoas. A semana vai de
-segunda a domingo, e "hoje" é sempre o dia de Brasília.
+Pauta só aponta para Assuntos e Publicações. Todos veem a Pauta; o leitor não tem botões e não vê as pessoas. Desde a v0.27.0, os
+três perfis (o leitor inclusive) veem no alto da semana o mesmo quadro "Cronograma de publicações", só com números (veja
+"Cronograma de publicações da Pauta (v0.27.0)"). A semana vai de segunda a domingo, e "hoje" é sempre o dia de Brasília.
 
 **1. Pessoas e termos** (Pauta → "Pessoas e termos"; o administrador cadastra e altera, o editor só consulta, o leitor e o robô não
 leem). Para cada pessoa que pode aparecer: nome completo (interno), **nome na peça** (como o termo autoriza: completo ou só o
@@ -1818,6 +1826,34 @@ lâmina, arquivo no armazenamento privado nem post): veja "Quando o termo é rev
 exemplo, RADAR161 "alterada depois que a tela foi aberta", RADAR162 "aprovada não muda", RADAR165 "há pontos a resolver",
 RADAR166 "falta marcar uma conferência", RADAR167 "hora fora do permitido", RADAR170 "já saiu numa rede", RADAR174 "pessoa em
 uso", RADAR176 "pessoa ou foto que não está cadastrada, repetida ou foi apagada").
+
+### Cronograma de publicações da Pauta (v0.27.0)
+
+No alto da semana da **Pauta**, o quadro **"Cronograma de publicações"** mostra lado a lado (no celular, um embaixo do outro) a
+semana que está na tela e o mês dela. Cada linha tem o **mínimo** e o que já foi **feito**:
+
+| Linha | Mínimo | Feito |
+|---|---|---|
+| Posts no feed | as peças de imagem, foto ou carrossel do plano da Pauta no período, com os dias de notícia (sem as canceladas) | a peça publicada no Instagram ou no Facebook (pela agenda ou registrada à mão), no dia dela na Pauta; no dia de notícia, uma notícia do Radar publicada nas redes (a mesma nas duas redes conta uma vez) |
+| Reels | os reels do plano no período | o reel publicado numa das redes |
+| Captação de clientes | a peça de captação do plano (só aparece quando o período tem uma) | a peça publicada numa das redes |
+| Notícias do Radar (alta) | as notícias de relevância alta que a busca do Radar achou no período, cada fato uma vez | as que já estão no site, publicadas em qualquer dia |
+
+- **Vermelho:** fica vermelho o que já devia ter saído até ontem e não saiu. No período que já passou, a linha diz "faltou 1" ou
+  "faltaram N" e fica vermelha em tudo o que ficou abaixo do mínimo; na semana e no mês em andamento, só conta o que já passou do dia
+  ("1 em atraso"; a semana não começa toda vermelha na segunda-feira); o período que ainda não começou nunca fica vermelho.
+- **O mês:** na semana de hoje, o mês é o de hoje; nas outras semanas, o da maior parte da semana. "← Semana anterior" e "Próxima
+  semana →" trocam a semana e o mês do quadro juntos.
+- **O que não entra nas notícias:** as repetições do mesmo fato, o texto oficial colado à mão, a notícia que já chegou velha, a que a IA
+  rebaixou e a notícia **ignorada na triagem enquanto ainda era alta** (o quadro avisa quantas foram). A que só desceu para baixa por
+  ficar velha na fila continua contando, mesmo se for ignorada depois (o robô também ignora essa sozinho).
+- **Privacidade:** o quadro mostra só números. Não lê pessoas, quem aparece, fotos, lâminas nem títulos; do boletim da ITC, que é pago,
+  só entra na conta (nunca o título, o texto ou o link). O leitor vê o mesmo quadro que o administrador e o editor.
+- **Limites:** os números da semana em curso mudam durante o dia (a nota da IA chega depois da busca); a notícia excluída do site sai
+  do feito; o mesmo fato achado em duas capturas principais que não foram juntadas conta duas vezes; o fato achado de novo em outra
+  semana ou outro mês conta em cada um; cada leitura vai até 1.000 registros (passando disso, o quadro avisa que algum número pode
+  estar abaixo do real); stories e o Informativo Mensal ficam de fora; não há meta fixa por mês (o mínimo é o plano e o que a busca
+  achou). Se a leitura falhar, aparece um aviso amarelo e a semana continua na tela.
 
 ### Corretor de vídeo do reel (v0.22.0)
 
@@ -2131,6 +2167,17 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.26.0 para a v0.27.0** (o banco não muda: não há SQL para rodar; as funções `radar-ia` e `radar-redes` não mudam; nada de
+chave ou segredo pelo chat). Supõe a v0.26.0 instalada (se não estiver, faça antes o "Da v0.25.1 para a v0.26.0").
+
+1. A tela chega pelo repositório: publique juntos o `index.html`, o `radar-pauta.js` e o `radar-video.js` (no `radar-video.js`, só o
+   número da versão) e aperte Ctrl+F5 em todos os aparelhos (no celular, recarregue a página). A aba Versões mostra a v0.27.0.
+2. Na Pauta, confira o quadro "Cronograma de publicações" no alto da semana: "← Semana anterior" troca a semana e o mês do quadro, e
+   "Como o quadro conta" explica cada linha. O quadro não grava nada.
+
+O banco continua no `sql/radar-setup-v0.25.0.sql`. Para desfazer: volte o `index.html`, o `radar-pauta.js` e o `radar-video.js` da
+v0.26.0 e aperte Ctrl+F5; como o quadro só lê, não há nada para apagar no banco.
 
 **Da v0.25.1 para a v0.26.0** (o banco não muda: não há SQL; as funções `radar-ia` e `radar-redes` não mudam; nada de chave ou
 segredo pelo chat).

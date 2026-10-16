@@ -269,6 +269,13 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 .checks label{display:inline-flex;gap:4px;align-items:center;margin:2px 12px 0 0;font-weight:400;font-size:.9rem;color:var(--cinza)}
 details.nova-pessoa{margin:0 0 16px} details.nova-pessoa summary{margin-bottom:8px} details.peca-plano{margin:14px 0 0}
 .pauta-ferramentas label{margin-top:10px}
+/* v0.27.0: o cronograma de publicações no alto da semana (a semana e o mês lado a lado; um embaixo do outro no celular). A linha com o
+   que já devia ter saído e não saiu fica em vermelho; o selo quebra a linha, para caber em 375 px */
+.crono-periodos{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.crono-periodo{border:1px solid var(--linha);border-radius:10px;padding:10px 12px;min-width:0} .crono-periodo h3{font-family:"DM Sans",system-ui,sans-serif;font-size:.95rem;margin:0 0 6px}
+.crono-periodo th[scope=row]{text-transform:none;letter-spacing:0;font-size:.9rem;font-weight:400;color:var(--cinza);white-space:normal;border-bottom:1px solid var(--linha)}
+.crono-periodo td,.crono-periodo th:nth-child(n+2){text-align:right;white-space:nowrap;width:4.5em} .crono-periodo .selo{white-space:normal} .crono-periodo p{margin:6px 0 0}
+.crono-periodo tr.abaixo>*{background:var(--erro-fundo);color:var(--erro);font-weight:700} details.crono-como{margin-top:10px}
 /* a arte da peça (as lâminas rolam na horizontal dentro da caixa, também no celular), a conferência, a aprovação e a peça aprovada */
 .peca-artes{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding-bottom:6px} .peca-artes figure{margin:0;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-items:center}
 .peca-artes img{width:216px;height:270px;border-radius:6px;border:1px solid var(--linha);background:#0D3B73;display:block} .peca-artes img[data-pendente]{opacity:.45}
@@ -303,19 +310,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.26.0"></script>
-<script src="radar-video.js?v=0.26.0"></script>
+<script src="radar-pauta.js?v=0.27.0"></script>
+<script src="radar-video.js?v=0.27.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.26.0";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit)
+const VERSAO = "0.27.0";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.27.0", "16/10/2026", [
+    "Cronograma de publicações na Pauta: no alto da semana, o quadro “Cronograma de publicações” mostra, para a semana que está na tela e para o mês dela, o mínimo de publicações ao lado do que já foi feito: posts no feed, reels, captação de clientes (quando o período tem) e notícias do Radar de relevância alta. Fica em vermelho o que já devia ter saído e não saiu, com quantas faltaram.",
+    "De onde vem o mínimo: das peças do plano da Pauta (sem as canceladas, que o quadro conta à parte) e das notícias de relevância alta que a busca do Radar achou no período (cada fato uma vez, sem as repetições). A notícia ignorada na triagem enquanto ainda era alta não entra; a que só desceu para baixa por ficar velha na fila continua contando. Feito: a peça já publicada no Instagram ou no Facebook (pela agenda ou registrada à mão), a notícia do Radar publicada nas redes no dia de notícia e a notícia achada que já está no site. “Como o quadro conta”, embaixo do quadro, explica cada linha.",
+    "O quadro acompanha a semana: na semana de hoje, o mês é o de hoje; nas outras, o da maior parte da semana. Na semana e no mês em andamento, só fica vermelho o que já passou do dia; o período que ainda não começou nunca fica vermelho. O quadro só informa: não publica, não agenda e não cria nada, mostra só números (nunca nomes da equipe nem títulos de notícias) e todos que veem a Pauta, o leitor inclusive, veem o mesmo quadro.",
+    "Administrador: só publicar a tela (index.html com o radar-pauta.js e o radar-video.js; Ctrl+F5). O banco não muda (continua o sql/radar-setup-v0.25.0.sql, sem SQL novo) e as funções radar-ia e radar-redes não mudam. Passo a passo no LEIAME, “Da v0.26.0 para a v0.27.0”."]],
   ["0.26.0", "16/10/2026", [
     "O assunto agora tem 3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar. Só o passo de agora tem botões: o principal em destaque e, em “Mais opções”, os outros.",
     "Passo 1: “Preparar com IA” (antes “Gerar com IA”), com o tamanho do texto ao lado do botão, faz tudo de uma vez — busca o trecho que comprova (só se ainda não houver) ou procura a fonte oficial na internet, escreve o texto, faz a capa padrão, confere os 10 critérios das Diretrizes e monta as legendas das redes — e manda o texto para o passo 2. Conta como uma consulta só. A imagem com IA continua opcional, no botão do texto.",
@@ -1401,7 +1413,7 @@ const TELAS = {
         <tr><td><b>Assuntos</b></td><td>Onde o trabalho acontece: classificação, fundamentação e conteúdos.</td></tr>
         <tr><td><b>Informativos</b></td><td>Edições do Informativo Mensal e o PDF.</td></tr>
         <tr><td><b>Publicações</b></td><td>Aprovados que faltam publicar no site e o registro do que já foi.</td></tr>
-        <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), as pessoas com o termo de uso de imagem e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
+        <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), as pessoas com o termo de uso de imagem e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
         <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
