@@ -15,7 +15,7 @@
    viu (videoParaAprovar, p_video_sha256, as caixas "video" e "viu"), "Baixar o vídeo aprovado" e, em Pessoas e termos, o termo do
    corretor, "quer ver a peça" e menor de idade, com as peças publicadas de quem revogou o termo ou ficou inativa.
    ==================================================================== */
-const PAUTA_VERSAO = "0.24.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.25.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -50,7 +50,7 @@ const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PA
 // o banco ainda é o da v0.20.0 (a tabela da Pauta não existe): a tela diz o que falta em vez do erro cru do PostgREST
 // (v0.22.0: as colunas novas de radar_pessoas também dizem que o banco é de antes)
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.24.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.24.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.25.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.25.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){

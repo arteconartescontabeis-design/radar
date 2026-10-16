@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.24.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes e corretor de vídeo dos reels
+-- radar-setup-v0.25.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes e corretor de vídeo dos reels
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -18,7 +18,12 @@
 -- v0.24.0 (etapa 5): a base legal do texto termina com a linha "Fonte oficial: <norma> — <link>" (a seção "Fundamentação legal" dos
 -- textos de antes continua valendo) e a revisão editorial automática da IA fica guardada na mesma coluna (conferencia->'editorial',
 -- só informativa: não trava a aprovação), presa à versão do texto do conteúdo (radar_texto_versao).
--- Reversão: radar-reversao-v0.24.0.sql
+-- v0.25.0 (etapa 6): uma imagem só para a publicação (a mesma no site, no Instagram e no Facebook). A imagem gerada pela IA vai inteira, em
+-- 3:2, com o aviso "Imagem ilustrativa gerada por IA" desenhado pela tela no canto, e fica guardada como a ilustração do conteúdo
+-- (imagem_id = ilustracao_id); trocada pela capa padrão ou por uma foto da equipe, ela continua guardada (ilustracao_id), para voltar sem
+-- nova cobrança. O critério 6 da Conferência das Diretrizes (radar_conferencia_codigo) passa a reconhecer as duas situações. Nenhuma
+-- tabela ou coluna nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.25.0.sql
 -- =====================================================================
 
 begin;
@@ -44,7 +49,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.24.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.25.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -1862,20 +1867,30 @@ $$;
 
 -- O que o banco confere sozinho, por código (vale por cima da lista da IA): {"6": {"situacao", "motivo"}, …}. A imagem (6) sai
 -- sempre daqui (a IA não vê a capa); os outros, só quando não atendem.
+-- v0.25.0 (etapa 6): a imagem da IA guardada nesta versão é a imagem da publicação inteira, em 3:2 (largura × 2 = altura × 3), com o
+-- aviso desenhado pela tela no canto (a da v0.16.0 à v0.24.0 é a ilustração crua, sempre 1200×630, que ia ao fundo da capa com o título
+-- e não leva aviso). Ela em uso (imagem_id = ilustracao_id) atende; guardada fora da publicação (a capa padrão ou a foto da equipe no
+-- lugar), também. A capa antiga montada com a ilustração continua pedindo o aviso escrito no texto, como antes.
 create or replace function public.radar_conferencia_codigo(c public.radar_conteudos) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare
   v jsonb;
   v_falha text := 'nao_atende';
+  v_ia_com_aviso boolean := exists (select 1 from public.radar_imagens i where i.id = c.ilustracao_id and i.largura * 2 = i.altura * 3);
 begin
-  -- 6: capa padrão da Artecon ou imagem enviada pela equipe atende; a ilustração da IA, só com o aviso escrito no texto
+  -- 6: capa padrão da Artecon ou imagem enviada pela equipe atende; a imagem da IA, com o aviso no canto (v0.25.0) ou escrito no texto
   v := jsonb_build_object('6', case
     when c.imagem_id is null then jsonb_build_object('situacao', 'nao_se_aplica', 'motivo', 'Sem imagem de capa.')
+    when c.imagem_id = c.ilustracao_id and v_ia_com_aviso then jsonb_build_object('situacao', 'atende', 'motivo',
+      'Imagem gerada por IA, inteira, com o aviso “Imagem ilustrativa gerada por IA” no canto (colocado pelo Radar).')
     when c.ilustracao_id is null then jsonb_build_object('situacao', 'atende', 'motivo', 'Capa padrão da Artecon ou imagem enviada pela equipe.')
+    when c.imagem_id is distinct from c.ilustracao_id and v_ia_com_aviso then jsonb_build_object('situacao', 'atende', 'motivo',
+      'Capa padrão da Artecon ou imagem enviada pela equipe (a imagem da IA está guardada, fora da publicação).')
     when coalesce(c.corpo, '') ~* 'imagem ilustrativa gerada (por|com) (a )?(ia|intelig[êe]ncia artificial)'
       then jsonb_build_object('situacao', 'atende', 'motivo', 'Ilustração de IA com o aviso “Imagem ilustrativa gerada por IA”.')
     else jsonb_build_object('situacao', v_falha, 'motivo', 'Capa com ilustração de IA sem o aviso “Imagem ilustrativa gerada por IA”: '
-                            || 'escreva o aviso no fim do texto ou use a capa padrão (ou uma foto da equipe).') end);
+                            || 'use “Usar a imagem da IA de novo” (ela sai inteira, com o aviso no canto), a capa padrão ou uma foto da equipe, '
+                            || 'ou escreva o aviso no fim do texto.') end);
   if public.radar_marcas_verificar(coalesce(c.titulo, '') || E'\n' || coalesce(c.corpo, '')) is not null then
     v := v || jsonb_build_object(
       '2', jsonb_build_object('situacao', v_falha, 'motivo', 'Há ponto marcado com [VERIFICAR]: a informação ainda não foi confirmada.'),

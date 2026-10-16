@@ -726,7 +726,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.24.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.25.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1187,7 +1187,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (27, 6, 8, 8, 1, 0)
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.24.0", [], 27)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.25.0", [], 27)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -2042,9 +2042,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.24.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.25.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.24.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.25.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2074,7 +2074,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.24.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.25.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -5178,6 +5178,36 @@ def test_banco_confere_sozinho_o_que_da_por_codigo(limpo, conferencia_de_verdade
                      'Matéria do boletim', %s, md5('conf') from radar_fontes where slug = 'itc-email'""", (boletim,))
     limpo.execute("update radar_conteudos set corpo = %s where id = %s", ("Resumo: " + boletim, i))
     assert situacao(registrar_conferencia(i))[4] == "nao_atende"
+
+
+def test_criterio_6_reconhece_a_imagem_da_ia_com_o_aviso_e_a_guardada_fora_da_publicacao(limpo, conferencia_de_verdade):
+    """v0.25.0 (etapa 6): a imagem da IA desta versão é a imagem da publicação inteira, em 3:2, com o aviso desenhado pela tela, e fica
+    guardada como a ilustração (imagem_id = ilustracao_id): o critério 6 atende sem o aviso escrito no texto. Trocada pela capa padrão ou
+    pela foto da equipe, ela continua guardada (ilustracao_id) e o critério continua atendendo. A capa montada antes da v0.25.0 com a
+    ilustração crua (1200×630) ao fundo continua pedindo o aviso no texto (✗ sem ele), também se a crua for posta como imagem."""
+    _, c1 = cenario_publicavel(limpo)
+    def imagem(largura, altura):
+        with como("authenticated", EDITOR) as c:
+            return c.execute("insert into radar_imagens (dados, largura, altura) values (%s, %s, %s) returning id", (PIXEL, largura, altura)).fetchone()[0]
+    def criterio(imagem_id, ilustracao_id):
+        limpo.execute("update radar_conteudos set imagem_id = %s, ilustracao_id = %s where id = %s", (imagem_id, ilustracao_id, c1))
+        item = registrar_conferencia(c1)["itens"][5]
+        return item["situacao"], item["motivo"]
+    # (a imagem que fica sem uso sai do banco sozinha: cada passo usa imagens novas)
+    ia = imagem(1500, 1000)
+    assert criterio(ia, ia) == ("atende", "Imagem gerada por IA, inteira, com o aviso “Imagem ilustrativa gerada por IA” no canto (colocado pelo Radar).")
+    versao = limpo.execute("select radar_conferencia_versao(c) from radar_conteudos c where id = %s", (c1,)).fetchone()[0]
+    for tamanho in ((1200, 630), (900, 600)):                             # a capa padrão ou a foto no lugar: a da IA continua guardada
+        assert criterio(imagem(*tamanho), ia) == ("atende", "Capa padrão da Artecon ou imagem enviada pela equipe (a imagem da IA está guardada, fora da publicação).")
+        assert limpo.execute("select radar_conferencia_versao(c) from radar_conteudos c where id = %s", (c1,)).fetchone()[0] == versao
+    assert criterio(imagem(1200, 630), None)[0] == "atende"
+    crua, montada = imagem(1200, 630), imagem(1200, 630)
+    situacao, motivo = criterio(montada, crua)                            # a capa antiga, montada com a ilustração crua
+    assert situacao == "nao_atende" and "“Usar a imagem da IA de novo”" in motivo and "escreva o aviso no fim do texto" in motivo
+    limpo.execute("update radar_conteudos set corpo = corpo || E'\n\nImagem ilustrativa gerada por IA.' where id = %s", (c1,))
+    assert criterio(montada, crua)[0] == "atende"                         # o aviso escrito no texto, como antes
+    limpo.execute("update radar_conteudos set corpo = replace(corpo, E'\n\nImagem ilustrativa gerada por IA.', '') where id = %s", (c1,))
+    assert criterio(crua, crua)[0] == "nao_atende"                        # a crua (sem aviso) como imagem: não dá para garantir o aviso
 
 
 def test_revisei_e_assumo_so_o_administrador_com_motivo_e_fica_no_historico(limpo, conferencia_de_verdade):

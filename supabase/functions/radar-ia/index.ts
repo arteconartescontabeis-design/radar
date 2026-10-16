@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.24.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.25.0)
 //
 // Doze ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
@@ -8,7 +8,7 @@
 //                  sem texto oficial, o rascunho sai da fonte não oficial, com aviso (v0.19.0); com "analise": true e sem
 //                  texto oficial, redige o texto PARA ANÁLISE, que não vai ao site (v0.11.0, mantido por compatibilidade)
 //   titulos      → sugere outros títulos para um conteúdo (não grava nada)
-//   ilustrar     → cria uma ilustração de capa (sem texto, sem marcas, sem pessoas reais); não grava nada
+//   ilustrar     → cria a imagem da publicação (v0.25.0: com aparência de foto; sem texto, sem marcas, sem pessoas reais); não grava nada
 //   diagnostico  → testa a instalação (token, modelos) e devolve o que está errado, em português
 //   verificar    → (v0.14.0) procura o assunto na internet, só em sites de órgão público (gov.br, jus.br, leg.br...), e grava no
 //                  assunto o resultado: confirmado, parcialmente, não encontrado ou divergente, com as páginas oficiais encontradas;
@@ -24,6 +24,15 @@
 //                  (só sugestão: o que vai ao ar é o que o administrador aprova)
 //   editorial    → (v0.24.0, etapa 5) refaz a revisão editorial de um conteúdo já gravado (botão "Fazer a revisão editorial", quando a do
 //                  "gerar" não foi feita ou o texto mudou depois): reescreve os trechos com problema e grava o resultado no conteúdo
+//
+// v0.25.0 (etapa 6) — a imagem da IA passa a ser a IMAGEM DA PUBLICAÇÃO, a mesma no site, no Instagram e no Facebook (a tela a usa
+//   inteira, em 3:2, sem título por cima, com o aviso "Imagem ilustrativa gerada por IA" pequeno no canto). O pedido da "ilustrar" vira
+//   fotografia realista de estilo editorial (luz natural, profundidade de campo, cores naturais, ambiente brasileiro de trabalho), no
+//   lugar da ilustração plana com a paleta da marca e das "figuras estilizadas" da v0.20.0, que vinham antes da cena e passavam por cima
+//   do que a pessoa pedia: agora a cena pedida e as preferências do escritório mandam no conteúdo da cena, a composição deixa o essencial
+//   no centro e o canto inferior direito livre (o aviso fica ali), e as proibições vêm por último e valem sempre (também a de cena que
+//   induza a erro). Qualidade alta (quality "high"; custa mais por imagem que a "medium"); se a IA Central recusar, a função não troca a
+//   qualidade sozinha: devolve a mensagem. A descrição pedida vai até 500 caracteres (antes 200).
 //
 // v0.24.0 (etapa 5) — Diretriz de Humanização do dono em toda ação que escreve para publicar (gerar, a segunda passada, titulos, revisar,
 //   kit, peca e a revisão editorial): a regra (9) é a persona do jornalista especializado, sem as fórmulas típicas de texto automático,
@@ -94,13 +103,13 @@
 //   IA_GATEWAY_URL                 padrão: https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway
 //   RADAR_IA_MODELO                padrão: claude-sonnet-4-6   (fundamentar, gerar, kit e peca)
 //   RADAR_IA_MODELO_RAPIDO         padrão: claude-haiku-4-5    (classificar)
-//   RADAR_IA_MODELO_IMAGEM         padrão: gpt-image-2         (ilustrar)
+//   RADAR_IA_MODELO_IMAGEM         padrão: gpt-image-2         (ilustrar; v0.25.0: qualidade alta, quality "high", 1536×1024)
 //   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês; trava própria do Radar,
 //                                  além dos limites em dólar da IA Central)
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.24.0";
+const VERSAO = "0.25.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -1029,7 +1038,7 @@ function lerConferencia(v: unknown): ItemConferencia[] {
 }
 /** O banco ainda sem a Conferência das Diretrizes (o SQL da v0.24.0 não rodou): explica o que fazer. */
 const semFuncaoDaConferencia = (e: unknown, revisado: boolean) => e instanceof Erro && /radar_registrar_conferencia/.test(e.message)
-  ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.24.0.sql (Supabase → SQL Editor) e tente de novo" +
+  ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.25.0.sql (Supabase → SQL Editor) e tente de novo" +
       (revisado ? " (o texto já foi revisado e gravado; falta só a Conferência das Diretrizes)." : ".")) : e;
 
 // ------------------------------------------------------------------ revisão editorial (v0.24.0, etapa 5: item 7 da Diretriz de Humanização)
@@ -1165,7 +1174,7 @@ const registrarEditorial = (token: string, conteudo: number, lido: string, revis
   banco(token, "POST", "rpc/radar_registrar_revisao_editorial", { p_conteudo: conteudo, p_lido: lido, p_revisao: revisao });
 /** O banco ainda sem a revisão editorial (o SQL da v0.24.0 da etapa 5 não rodou): explica o que fazer. */
 const semFuncaoEditorial = (e: unknown, revisado: boolean) => e instanceof Erro && /radar_registrar_revisao_editorial/.test(e.message)
-  ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.24.0.sql (Supabase → SQL Editor) e tente de novo" +
+  ? new Erro(503, "O banco ainda está na versão anterior: rode o radar-setup-v0.25.0.sql (Supabase → SQL Editor) e tente de novo" +
       (revisado ? " (o texto já foi revisado e gravado; falta só registrar a revisão editorial)." : ".")) : e;
 
 /** Segunda passada da IA, só quando o texto tem marca [VERIFICAR] ou trecho igual ao da fonte sem a fonte citada: corrige isso
@@ -2330,7 +2339,7 @@ async function peca(token: string, reg: Registro, pecaId: unknown, lido: unknown
   return { peca_id: pecaId, ia: salvo, avisos: salvo.avisos };
 }
 
-// ------------------------------------------------------------------ ilustração de capa
+// ------------------------------------------------------------------ imagem da publicação (ilustrar)
 // Filtro por palavras da descrição pedida (o pedido à OpenAI leva as proibições de qualquer forma).
 // "antes"/"depois": a palavra não pode estar colada a outra letra — \b não entende acento ("diálogo" não é "logo").
 const ANTES = "(?<![\\p{L}\\p{N}])", DEPOIS = "(?![\\p{L}\\p{N}])";
@@ -2347,14 +2356,15 @@ const OBRA_DE_AUTOR = new RegExp(ANTES + "(" +
   "[Ee]stilo\\s+((de|do|da|dos|das)\\s+)?\\p{Lu}|[Ii]nspirad[oa]s?\\s+(em|no|na|nos|nas)\\s+\\p{Lu}" +
   "|([Oo]bra|[Qq]uadro|[Pp]intura|[Dd]esenho)s?\\s+(de|do|da)\\s+\\p{Lu})", "u");
 
-/** Ilustração para a capa do conteúdo. O pedido leva só o tema (título e resumo do assunto), nunca o texto oficial.
- *  Nada é gravado aqui: a imagem volta para a tela, que reduz e grava como qualquer imagem enviada pela equipe. */
+/** Imagem da publicação do conteúdo (v0.25.0: a mesma no site, no Instagram e no Facebook). O pedido leva só o tema (título e resumo do
+ *  assunto), nunca o texto oficial. Nada é gravado aqui: a imagem volta para a tela, que a reduz, desenha o aviso no canto e grava. */
+const MAX_DESCRICAO_IMAGEM = 500;           // v0.25.0: antes 200 (a mesma conta na tela)
 async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: string, descricao: string) {
   const tema = normalizarEspacos(titulo || ctx.assunto.titulo).slice(0, 200);
   const resumo = normalizarEspacos(String(ctx.assunto.resumo ?? "")).slice(0, 300);
   // o que a pessoa pediu para a imagem (opcional): entra como descrição da cena; as proibições abaixo valem sempre
   const desejo = normalizarEspacos(descricao);
-  if (desejo.length > 200) throw new Erro(400, "A descrição da imagem pode ter até 200 caracteres.");
+  if (desejo.length > MAX_DESCRICAO_IMAGEM) throw new Erro(400, `A descrição da imagem pode ter até ${MAX_DESCRICAO_IMAGEM} caracteres.`);
   // pedido de marca, assinatura ou do estilo de um autor é recusado antes de gerar (e de cobrar): a imagem não pode ter autoria
   if (DESCRICAO_PROIBIDA.test(desejo) || OBRA_DE_AUTOR.test(desejo)) {
     throw new Erro(400, "A descrição da imagem não pode pedir marca, logotipo, assinatura, pessoa conhecida nem o estilo de um autor. " +
@@ -2370,25 +2380,39 @@ async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: strin
       `logotipo, pessoa conhecida ou o estilo de um autor (“${normalizarEspacos(autoria[0])}”). Reescreva só com o estilo e as cenas.`);
     preferencias = "";
   }
-  // v0.20.0: ilustração editorial com as cores da marca, não mais foto de banco de imagens; continua horizontal (serve à capa do
-  // site e é recortada no fundo da arte das redes), com o essencial no centro. v0.24.0: as preferências do escritório entram antes do
-  // enquadramento e das proibições, que ficam por último e valem sempre
-  const pedido = "Ilustração editorial digital, plana, poucos elementos, paleta da marca (#011F48, #1B5E9B, #00AEEF, toques de #BC151B e " +
-    "#FFD700), fundo limpo, para a capa de uma notícia de um escritório de contabilidade brasileiro. " +
-    (desejo ? `Cena pedida: ${desejo}. Assunto da notícia: ${tema}. `
-            : `Assunto da notícia: ${tema}.${resumo ? " Contexto: " + resumo : ""} Escolha a cena que melhor represente o assunto ` +
-              "(por exemplo: empresário ou contadora analisando documentos, reunião de trabalho, comércio, indústria, escritório, " +
-              "calculadora e relatórios, notebook com gráficos). ") +
-    (preferencias ? `Preferências de estilo do escritório: ${preferencias.replace(/[\s.;,:]+$/, "")}. ` : "") +
-    "Enquadramento horizontal, com o essencial no centro (a imagem também é recortada). " +
-    "Pessoas são permitidas, desde que sejam figuras estilizadas, genéricas e fictícias, adultas, em ambiente profissional: " +
+  // v0.25.0: fotografia realista de estilo editorial (a v0.20.0 pedia ilustração plana com a paleta da marca e "figuras estilizadas", e
+  // essa regra fixa vinha antes da cena e passava por cima dela). A cena pedida e as preferências do escritório mandam no conteúdo da
+  // cena; a composição serve ao uso inteiro em 3:2 (a tela não corta nem escreve por cima, e o aviso de IA fica no canto inferior
+  // direito); as proibições ficam por último e valem sempre
+  const pedido = "Fotografia realista, de estilo editorial e jornalístico, com a qualidade de uma boa foto de banco de imagens: luz natural, " +
+    "profundidade de campo, cores naturais (de preferência em tons sóbrios), para a notícia de um escritório de contabilidade brasileiro. " +
+    (desejo ? `Cena pedida (siga-a fielmente): ${desejo}. Assunto da notícia: ${tema}. `
+            : `Assunto da notícia: ${tema}.${resumo ? " Contexto: " + resumo : ""} Escolha uma cena real e coerente com o assunto, num ambiente ` +
+              "brasileiro de trabalho (por exemplo: escritório, comércio, indústria, reunião, documentos sobre a mesa, computador). ") +
+    (preferencias ? `Preferências do escritório para as imagens (valem para a cena): ${preferencias.replace(/[\s.;,:]+$/, "")}. ` : "") +
+    "Composição horizontal (3:2), para ser usada inteira e sem texto por cima: o assunto principal bem enquadrado no centro, nada " +
+    "essencial encostado nas bordas e o canto inferior direito sem detalhe importante. " +
+    "Pessoas podem aparecer, desde que fictícias, adultas, em ambiente profissional e sem foco em rostos reconhecíveis: " +
     "NUNCA uma pessoa real, pública ou identificável, nem parecida com alguém conhecido. " +
     "PROIBIDO na imagem: qualquer texto, letra, número ou legenda; logotipo, marca, brasão, bandeira ou símbolo oficial; " +
-    "marca-d'água, assinatura, crédito ou carimbo de autoria; personagem, obra, fotografia ou estilo de artista ou de fotógrafo existente. " +
+    "marca-d'água, assinatura, crédito ou carimbo de autoria; personagem, obra, fotografia ou estilo de artista ou de fotógrafo existente; " +
+    "cena que induza a erro (documento oficial simulado, fachada de órgão público com nome, cédulas de dinheiro em destaque). " +
     "A imagem precisa ser inteiramente original.";
-  // a imagem é gerada pela OpenAI, pela IA Central (?acao=imagem): o custo fica registrado lá, por imagem
-  const dados = await chamarGateway(ctx.reg, "?acao=imagem",
-    { model: MODELO_IMAGEM, prompt: pedido, size: "1536x1024", quality: "medium", n: 1 }, MODELO_IMAGEM);
+  // a imagem é gerada pela OpenAI, pela IA Central (?acao=imagem): o custo fica registrado lá, por imagem. v0.25.0: qualidade alta, que
+  // demora mais (até 135 s de espera, dentro dos 150 s que o Supabase dá à função); a recusa dela vira mensagem (a função nunca troca a
+  // qualidade sozinha)
+  let dados: any;
+  try {
+    dados = await chamarGateway(ctx.reg, "?acao=imagem",
+      { model: MODELO_IMAGEM, prompt: pedido, size: "1536x1024", quality: "high", n: 1 }, MODELO_IMAGEM, 135_000);
+  } catch (e) {
+    if (e instanceof Erro && /quality|qualidade/i.test(e.message)) {
+      throw new Erro(e.status === 429 ? 429 : 502, "A IA Central não aceitou a imagem em qualidade alta (quality “high”), e o Radar não troca a " +
+        "qualidade sozinho: nada foi gerado. O administrador confere se a qualidade alta está liberada para o modelo de imagem do Radar em " +
+        "Portal → Consumo de IA. Detalhe: " + e.message.slice(0, 200));
+    }
+    throw e;
+  }
   const u = dados.usage ?? {};
   ctx.reg.uso = { entrada: Number(u.input_tokens ?? 0) || 0, saida: Number(u.output_tokens ?? 0) || 0, modelo: MODELO_IMAGEM };
   const b64 = String(dados?.data?.[0]?.b64_json ?? "");
