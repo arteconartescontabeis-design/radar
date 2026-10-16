@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.25.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes e corretor de vídeo dos reels
+-- radar-setup-v0.28.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes e corretor de vídeo dos reels
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -23,7 +23,13 @@
 -- (imagem_id = ilustracao_id); trocada pela capa padrão ou por uma foto da equipe, ela continua guardada (ilustracao_id), para voltar sem
 -- nova cobrança. O critério 6 da Conferência das Diretrizes (radar_conferencia_codigo) passa a reconhecer as duas situações. Nenhuma
 -- tabela ou coluna nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
--- Reversão: radar-reversao-v0.25.0.sql
+-- v0.28.0: "+ Nova peça" e "Sócio(a) da Artecon" na Pauta. radar_pauta_criar: o administrador cria a peça de um dia que ainda não tem
+-- nenhuma (de hoje em diante, de Brasília; uma peça por dia), com a mesma conferência da importação do calendário (radar_pauta_linha_invalida);
+-- ela nasce planejada e não publica nem agenda nada. radar_pessoas.socio: o(a) sócio(a) da Artecon, maior de idade, não precisa do
+-- termo de uso de imagem nem do termo do corretor de vídeo (radar_pauta_termo_ok, radar_video_pessoa_falta e radar_video_limpeza);
+-- continuam valendo: ativa, maior de idade, marcada em "Quem aparece" e as quatro declarações do envio do vídeo. Uma coluna nova (com
+-- valor padrão), nenhuma tabela nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.28.0.sql
 -- =====================================================================
 
 begin;
@@ -49,7 +55,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.25.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.28.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -521,6 +527,11 @@ create table if not exists public.radar_pessoas (
 alter table public.radar_pessoas add column if not exists termo_corretor_em date;
 alter table public.radar_pessoas add column if not exists quer_ver_peca boolean not null default false;
 alter table public.radar_pessoas add column if not exists menor boolean not null default false;
+-- v0.28.0: sócio(a) da Artecon. Quem tem a marca (e é maior de idade) não precisa do termo de uso de imagem (datas, canais e
+-- finalidades) nem do termo do corretor de vídeo (radar_pauta_termo_ok, radar_video_pessoa_falta e radar_video_limpeza). Continuam
+-- valendo: ativa, maior de idade, marcada em "Quem aparece" e as quatro declarações do envio do vídeo. Só o administrador marca
+-- (radar_pessoas_adm); a mudança vai para a trilha como as datas do termo (radar_fn_auditar: não é nome).
+alter table public.radar_pessoas add column if not exists socio boolean not null default false;
 
 -- v0.21.0: a Pauta (uma peça por dia do calendário de publicações). Assunto, objetivo, observação e "quem aparece" são do plano
 -- (referência: não vão ao ar nem à trilha). O que vai ao ar é o que o administrador aprova (radar_pauta_aprovar): a peça aprovada
@@ -2993,6 +3004,7 @@ end $$;
 -- Roda como quem chama (security invoker): o leitor não lê radar_pessoas e recebe "pessoa não cadastrada". A finalidade do
 -- termo vem do tipo da peça: Quem cuida e Bastidor = apresentar a equipe; Reel, Educativo, Agenda e Notícia = orientação;
 -- Data com a equipe = datas da empresa; Captação = captação de clientes.
+-- v0.28.0: o(a) sócio(a) da Artecon (radar_pessoas.socio), ativo(a) e maior de idade, não precisa do termo: NULL em todo tipo, canal e dia.
 create or replace function public.radar_pauta_termo_ok(p_pessoa bigint, p_tipo text, p_canal text, p_data date) returns text
 language plpgsql stable set search_path = public as $$
 declare
@@ -3005,6 +3017,9 @@ begin
   select * into v from public.radar_pessoas where id = p_pessoa;
   if v.id is null then return 'pessoa não cadastrada'; end if;
   if not v.ativo then return 'pessoa inativa'; end if;
+  -- v0.28.0: sócio(a) da Artecon, maior de idade: o termo de uso de imagem não é exigido (nenhuma data, canal ou finalidade do termo é
+  -- conferida, nem a revogação: para tirar da Pauta, desmarque "Ativa"). Menor de idade continua precisando do termo
+  if v.socio and not v.menor then return null; end if;
   if v.termo_assinado_em is null then return 'sem termo assinado'; end if;
   if p_data is null or v.termo_assinado_em > p_data then return 'termo assinado depois desta data'; end if;
   if v.termo_revogado_em is not null and v.termo_revogado_em <= p_data then return 'termo revogado'; end if;
@@ -3171,7 +3186,7 @@ begin
     v := array_append(v, 'Números que não estão nas informações conferidas: ' || v_x || '. Acrescente cada um em Informações conferidas, com a fonte (ou tire do texto)');
   end if;
   -- 8. o termo de cada pessoa marcada, em cada canal, no dia da peça (v0.22.0: no reel, também a que estava marcada quando o vídeo foi
-  --    gravado e foi desmarcada depois: ela continua no vídeo)
+  --    gravado e foi desmarcada depois: ela continua no vídeo; v0.28.0: o(a) sócio(a) da Artecon passa por radar_pauta_termo_ok)
   foreach v_i in array p.pessoas || array(select x from unnest(coalesce(v_vid.pessoas, '{}')) x where not x = any(p.pessoas)) loop
     select * into v_pe from public.radar_pessoas where id = v_i;
     foreach v_canal in array v_canais loop
@@ -3191,12 +3206,15 @@ begin
    where pe.id = any(p.pessoas);
   for v_pe in select * from public.radar_pessoas order by id loop
     if v_pe.id = any(p.pessoas) then
-      -- marcada: a palavra do nome completo (com maiúscula e 3 letras ou mais) que o termo não autoriza é sobrenome a tirar
+      -- marcada: a palavra do nome completo (com maiúscula e 3 letras ou mais) que o termo não autoriza é sobrenome a tirar. v0.28.0:
+      -- sócio(a) da Artecon (maior de idade) não tem termo: o recado fala do "Nome na peça" do cadastro (a regra é a mesma)
       if exists (select 1 from regexp_split_to_table(btrim(v_pe.nome), '\s+') w
                   where length(w) >= 3 and w ~ '^[A-ZÀ-Ý]'
                     and not public.radar_pauta_sem_acento(w) = any(regexp_split_to_array(public.radar_pauta_sem_acento(btrim(v_pe.nome_na_peca)), '\s+'))
                     and v_cmp ~ public.radar_pauta_rx_nome(w)) then
-        v := array_append(v, 'O termo autoriza só “' || btrim(v_pe.nome_na_peca) || '”: tire o sobrenome');
+        v := array_append(v, case when v_pe.socio and not v_pe.menor
+          then 'O “Nome na peça” do(a) sócio(a) é só “' || btrim(v_pe.nome_na_peca) || '”: tire o sobrenome (ou mude o Nome na peça em Pessoas e termos)'
+          else 'O termo autoriza só “' || btrim(v_pe.nome_na_peca) || '”: tire o sobrenome' end);
       end if;
     else
       for v_forma in select x from unnest(array[btrim(v_pe.nome_na_peca), btrim(v_pe.nome),
@@ -3332,6 +3350,34 @@ begin
   return old;
 end $$;
 
+-- v0.28.0: a conferência de uma linha do calendário, a mesma na importação (radar_pauta_importar) e na "+ Nova peça" (radar_pauta_criar):
+-- NULL = vale; senão o campo inválido (nunca o conteúdo). Em plpgsql (e não em sql) de propósito: assim a data só é convertida depois de
+-- conferida ("2026-02-30" volta 'data', sem erro).
+create or replace function public.radar_pauta_linha_invalida(x jsonb) returns text
+language plpgsql stable set search_path = public as $$
+begin
+  return case
+    when jsonb_typeof(x) is distinct from 'object' then 'linha'
+    when coalesce(x->>'data', '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' or not public.radar_data_valida(x->>'data') then 'data'
+    when (x->>'data')::date not between date '2020-01-01' and date '2100-12-31' then 'data'
+    when coalesce(x->>'tipo', '') not in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post') then 'tipo'
+    when coalesce(x->>'formato', '') not in ('imagem','foto','carrossel','carrossel_fotos','reel','story','nenhum') then 'formato'
+    when jsonb_typeof(x->'assunto') not in ('string','null') or length(coalesce(x->>'assunto', '')) > 1000 then 'assunto'
+    when jsonb_typeof(x->'quem_aparece') not in ('string','null') or length(coalesce(x->>'quem_aparece', '')) > 300 then 'quem_aparece'
+    when jsonb_typeof(x->'objetivo') not in ('string','null') or length(coalesce(x->>'objetivo', '')) > 200 then 'objetivo'
+    when jsonb_typeof(x->'observacao') not in ('string','null') or length(coalesce(x->>'observacao', '')) > 1000 then 'observacao'
+  end;
+end $$;
+
+-- v0.28.0: a hora das peças que entram pela importação e pela "+ Nova peça": Configurações → Pauta → "hora_padrao" (HH:MM); senão 09:30
+create or replace function public.radar_pauta_hora_padrao() returns time
+language plpgsql stable set search_path = public as $$
+declare v_conf jsonb := (select c.valor from public.radar_config c where c.chave = 'pauta');
+begin
+  return case when coalesce(v_conf->>'hora_padrao', '') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then (v_conf->>'hora_padrao')::time
+              else '09:30' end;
+end $$;
+
 -- Importa o calendário (as linhas do CSV, já lidas pela tela). Confere tudo antes de gravar e para no primeiro erro, com a linha e
 -- o campo — nunca o conteúdo. Por data: a peça nova entra (planejada, na hora de Configurações → Pauta → "hora_padrao"); a que
 -- existe só é atualizada se ainda estiver planejada (a que já entrou em produção fica como está). Não liga pessoas: "quem
@@ -3339,7 +3385,6 @@ end $$;
 create or replace function public.radar_pauta_importar(p_linhas jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  v_conf  jsonb := (select c.valor from public.radar_config c where c.chave = 'pauta');
   v_hora  time;
   x       jsonb;
   i       bigint;
@@ -3355,21 +3400,10 @@ begin
   if jsonb_typeof(p_linhas) is distinct from 'array' or jsonb_array_length(p_linhas) not between 1 and 400 then
     raise exception 'RADAR173: envie de 1 a 400 linhas do calendário' using errcode = 'P0001';
   end if;
-  v_hora := case when coalesce(v_conf->>'hora_padrao', '') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then (v_conf->>'hora_padrao')::time
-                 else '09:30' end;
+  v_hora := public.radar_pauta_hora_padrao();                       -- v0.28.0: a mesma hora da "+ Nova peça"
   for x, i in select t.e, t.o from jsonb_array_elements(p_linhas) with ordinality t(e, o) loop
     v_n := case when jsonb_typeof(x->'linha') = 'number' and (x->>'linha') ~ '^[0-9]{1,6}$' then (x->>'linha')::bigint else i end;
-    v_campo := case
-      when jsonb_typeof(x) is distinct from 'object' then 'linha'
-      when coalesce(x->>'data', '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' or not public.radar_data_valida(x->>'data') then 'data'
-      when (x->>'data')::date not between date '2020-01-01' and date '2100-12-31' then 'data'
-      when coalesce(x->>'tipo', '') not in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post') then 'tipo'
-      when coalesce(x->>'formato', '') not in ('imagem','foto','carrossel','carrossel_fotos','reel','story','nenhum') then 'formato'
-      when jsonb_typeof(x->'assunto') not in ('string','null') or length(coalesce(x->>'assunto', '')) > 1000 then 'assunto'
-      when jsonb_typeof(x->'quem_aparece') not in ('string','null') or length(coalesce(x->>'quem_aparece', '')) > 300 then 'quem_aparece'
-      when jsonb_typeof(x->'objetivo') not in ('string','null') or length(coalesce(x->>'objetivo', '')) > 200 then 'objetivo'
-      when jsonb_typeof(x->'observacao') not in ('string','null') or length(coalesce(x->>'observacao', '')) > 1000 then 'observacao'
-    end;
+    v_campo := public.radar_pauta_linha_invalida(x);            -- v0.28.0: a mesma conferência da "+ Nova peça"
     if v_campo is not null then
       raise exception 'RADAR173: linha %: % inválido', v_n, v_campo using errcode = 'P0001';
     end if;
@@ -3404,6 +3438,59 @@ begin
   end loop;
   perform set_config('radar.pauta', '', true);
   return jsonb_build_object('novas', v_novas, 'alteradas', v_alteradas, 'iguais', v_iguais, 'mantidas', v_mantidas);
+end $$;
+
+-- v0.28.0: "+ Nova peça" (Pauta, só o administrador): a peça de um dia que ainda não tem nenhuma (uma peça por dia: a data é única,
+-- também a da peça cancelada), de hoje em diante (de Brasília), com a conferência da importação (radar_pauta_linha_invalida) e o assunto
+-- obrigatório. Nasce planejada, na hora padrão (radar_pauta_hora_padrao), sem pessoas, sem aprovação e sem envio (radar_fn_pauta_peca):
+-- não publica nem agenda nada; segue o caminho de sempre (preparar, marcar como pronta e a aprovação do administrador). Vai à trilha como
+-- a importada (o INSERT, sem o plano: radar_fn_auditar). O erro diz o campo, nunca o conteúdo. Devolve o número da peça.
+-- Uma importação do calendário depois, com uma linha para o mesmo dia, trata a peça como a de qualquer outra origem: ainda planejada,
+-- recebe o tipo, o formato e o plano do arquivo (a hora fica); já em produção (ou pronta, aprovada, cancelada), fica como está.
+create or replace function public.radar_pauta_criar(p_peca jsonb) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  v_campo text;
+  v_data  date;
+  v_id    bigint;
+  -- os textos sem os espaços e as quebras de linha das pontas
+  v_assunto  text := btrim(coalesce(p_peca->>'assunto', ''), E' \t\r\n');
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR191: só o administrador cria peça nova na Pauta' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_peca) is distinct from 'object' then
+    raise exception 'RADAR192: envie o dia, o tipo, o formato e o assunto da peça nova' using errcode = 'P0001';
+  end if;
+  v_campo := public.radar_pauta_linha_invalida(p_peca);
+  if v_campo is not null then
+    raise exception 'RADAR192: confira o campo “%” da peça nova',
+      case v_campo when 'data' then 'dia' when 'quem_aparece' then 'quem aparece' when 'observacao' then 'observação' else v_campo end
+      using errcode = 'P0001';
+  end if;
+  if v_assunto = '' then
+    raise exception 'RADAR192: escreva o assunto da peça nova' using errcode = 'P0001';
+  end if;
+  v_data := (p_peca->>'data')::date;
+  if v_data < public.radar_pauta_hoje() then
+    raise exception 'RADAR192: esse dia já passou: a peça nova é de hoje em diante (horário de Brasília)' using errcode = 'P0001';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('radar_pauta_importar'));          -- não cruza com uma importação em andamento
+  if exists (select 1 from public.radar_pauta_pecas where data = v_data) then
+    raise exception 'RADAR193: já existe uma peça em %: é uma peça por dia (abra a peça desse dia; se ela estiver cancelada, use Reabrir)',
+      to_char(v_data, 'DD/MM/YYYY') using errcode = 'P0001';
+  end if;
+  begin
+    insert into public.radar_pauta_pecas (data, hora, tipo, formato, assunto, quem_aparece, objetivo, observacao)
+    values (v_data, public.radar_pauta_hora_padrao(), p_peca->>'tipo', p_peca->>'formato', v_assunto,
+            btrim(coalesce(p_peca->>'quem_aparece', ''), E' \t\r\n'), btrim(coalesce(p_peca->>'objetivo', ''), E' \t\r\n'),
+            btrim(coalesce(p_peca->>'observacao', ''), E' \t\r\n'))
+    returning id into v_id;
+  exception when unique_violation then                                      -- a peça gravada por outra tela no mesmo instante
+    raise exception 'RADAR193: já existe uma peça em %: é uma peça por dia (recarregue a página)', to_char(v_data, 'DD/MM/YYYY')
+      using errcode = 'P0001';
+  end;
+  return v_id;
 end $$;
 
 -- O que falta resolver na peça (a tela mostra a lista). p_canais nulo: os canais que têm legenda.
@@ -4769,6 +4856,7 @@ end $$;
 -- A pessoa pode estar num vídeo do corretor hoje? NULL = pode; senão o motivo, sem o nome. Além do termo de uso de imagem da Pauta
 -- (radar_pauta_termo_ok, valendo HOJE nos canais da peça — os que têm legenda; sem legenda ainda, em pelo menos um dos dois —), o termo
 -- novo, que cita o corretor e os operadores (termo_corretor_em), e a idade (menor de 18: o corretor recusa nesta versão).
+-- v0.28.0: o(a) sócio(a) da Artecon (maior de idade) não precisa dos dois termos; a pessoa inativa continua recusada (radar_pauta_termo_ok).
 create or replace function public.radar_video_pessoa_falta(p_pessoa bigint, p_peca bigint) returns text
 language plpgsql stable set search_path = public as $$
 declare
@@ -4783,7 +4871,11 @@ begin
   select * into p from public.radar_pauta_pecas where id = p_peca;
   if pe.id is null then return 'pessoa não cadastrada'; end if;
   if pe.menor then return 'menor de idade: o corretor de vídeo não aceita nesta versão'; end if;
-  if pe.termo_corretor_em is null or pe.termo_corretor_em > v_hoje then return 'sem o termo novo, que cita o corretor de vídeo'; end if;
+  -- v0.28.0: sócio(a) da Artecon (o menor já voltou acima) não precisa do termo novo; o de uso de imagem, radar_pauta_termo_ok dispensa,
+  -- e a pessoa inativa continua recusada por ela
+  if not pe.socio and (pe.termo_corretor_em is null or pe.termo_corretor_em > v_hoje) then
+    return 'sem o termo novo, que cita o corretor de vídeo';
+  end if;
   v_canais := public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook);
   if cardinality(v_canais) > 0 then
     foreach v_canal in array v_canais loop
@@ -4802,7 +4894,8 @@ end $$;
 -- radar_videos.pessoas: desmarcar na peça não tira a pessoa do vídeo). Não só no envio e na aprovação: todo o caminho do processamento
 -- confere de novo (radar_video_pegar, antes de o robô baixar os clipes e mandar o áudio à Azure; o envio que chega, o ajuste,
 -- "Conferir com o roteiro novo", "Tentar de novo", a prévia e o baixar): a pessoa que revogou o termo, ficou inativa, foi marcada
--- menor ou ficou com o termo vencido depois do envio não passa mais pelo corretor.
+-- menor ou ficou com o termo vencido depois do envio não passa mais pelo corretor (v0.28.0: nem a pessoa que perdeu a marca de sócio(a)
+-- sem ter os termos).
 drop function if exists public.radar_video_pessoas_falta(bigint, bigint);
 create or replace function public.radar_video_pessoas_falta(p_peca bigint, p_fala_pessoa bigint, p_pessoas bigint[]) returns text
 language plpgsql stable set search_path = public as $$
@@ -5548,8 +5641,8 @@ end $$;
 
 -- O robô pega o próximo pedido. Antes, o que ficou parado em "processando" há mais de 20 minutos volta à fila (até 3 tentativas; com a
 -- transcrição já guardada, só para a montagem) ou vira erro "tempo_esgotado". Do mais antigo da fila (o outro robô pula o que está
--- travado): a peça com uma pessoa que não pode mais aparecer (termo revogado ou vencido, inativa, menor, quem fala desmarcada:
--- radar_video_pessoas_falta) vira erro "termo" ANTES de qualquer clipe sair para o robô ou áudio para a Azure; sem a transcrição
+-- travado): a peça com uma pessoa que não pode mais aparecer (termo revogado ou vencido, inativa, menor, quem fala desmarcada, a marca
+-- de sócio(a) tirada sem os termos — v0.28.0: radar_video_pessoas_falta) vira erro "termo" ANTES de qualquer clipe sair para o robô ou áudio para a Azure; sem a transcrição
 -- guardada e com a cota do mês esgotada, vira erro "cota_radar"; e pega o próximo. Marca "processando", a tentativa (até 3 por pedido)
 -- e a rodada (o <t> de trabalho/<id>/<t>/, que nunca se repete no mesmo vídeo). Devolve o pedido — a fala para conferência, a cartela,
 -- o gancho, os ajustes, os clipes, a transcrição guardada, o que sobra da cota em segundos e as Configurações — ou NULL. Nenhum nome
@@ -5739,6 +5832,8 @@ end $$;
 -- de 7 a 120) e retencao_publicado_dias (padrão 30, de 0 a 365) de Configurações → Corretor de vídeo.
 --   bruto e trabalho (os clipes e a transcrição): ao publicar, ao substituir ou descartar, na revogação ou inativação de uma pessoa do
 --     vídeo (marcada na peça ou no envio), no termo do corretor retirado, na pessoa marcada menor de idade, no envio abandonado (esperando os arquivos há mais de 1 dia, que vira "descartado") ou retencao_dias depois do envio;
+--     (v0.28.0: de sócio(a) da Artecon, maior de idade, a revogação e o termo do corretor não contam; "Ativa" desmarcada e a marca de
+--     sócio(a) tirada sem os termos, sim)
 --   corrigido (o vídeo e os quadros): ao substituir ou descartar, na revogação ou inativação, retencao_publicado_dias depois de sair ou,
 --     sem sair, retencao_dias depois do envio — o vídeo amarrado à peça aprovada que ainda não saiu (espera o dia de postar), contado
 --     do dia da peça, se for depois do envio; as versões antigas do mesmo vídeo (ajustes), na limpeza seguinte ("antigos");
@@ -5775,8 +5870,11 @@ begin
            -- que tiram a autorização (o termo de imagem só vencido fica de fora: ele pode ser renovado)
            exists (select 1 from public.radar_pessoas pe
                     where pe.id = any(p.pessoas || v.pessoas || v.fala_pessoa)
-                      and (not pe.ativo or (pe.termo_revogado_em is not null and pe.termo_revogado_em <= v_hoje) or pe.menor
-                           or pe.termo_corretor_em is null or pe.termo_corretor_em > v_hoje))
+                      and (not pe.ativo or pe.menor
+                           -- v0.28.0: de sócio(a) da Artecon (maior de idade) os termos não são exigidos: a revogação e o termo do
+                           -- corretor não contam (quem tira o vídeo dele(a) é "Ativa" desmarcada, ou a marca de sócio(a) tirada sem os termos)
+                           or (not pe.socio and ((pe.termo_revogado_em is not null and pe.termo_revogado_em <= v_hoje)
+                                                 or pe.termo_corretor_em is null or pe.termo_corretor_em > v_hoje))))
            -- v0.22.0 (varredura geral): a pessoa que nem existe mais (apagada antes da trava de radar_fn_pessoa_apagar) também
            or exists (select 1 from unnest(p.pessoas || v.pessoas || v.fala_pessoa) x
                        where not exists (select 1 from public.radar_pessoas pe where pe.id = x)) as revogado
@@ -6142,13 +6240,15 @@ join public.radar_conteudos c on c.id = d.conteudo_id
 join public.radar_assuntos  a on a.id = c.assunto_id;
 
 -- v0.21.0: as pessoas de cada peça da Pauta, com o selo do termo de uso de imagem em cada canal (NULL = vale; senão o motivo),
--- no dia da peça. Roda como quem lê: o leitor não lê radar_pessoas e não vê nenhuma linha.
+-- no dia da peça (v0.28.0: e se os termos estão dispensados, de sócio(a) da Artecon). Roda como quem lê: o leitor não lê radar_pessoas e não vê nenhuma linha.
 drop view if exists public.radar_v_pauta_pessoas;
 create view public.radar_v_pauta_pessoas
 with (security_invoker = true) as
 select p.id as peca_id, p.data, pe.id as pessoa_id, pe.nome_na_peca,
        public.radar_pauta_termo_ok(pe.id, p.tipo, 'instagram', p.data) as motivo_instagram,
-       public.radar_pauta_termo_ok(pe.id, p.tipo, 'facebook',  p.data) as motivo_facebook
+       public.radar_pauta_termo_ok(pe.id, p.tipo, 'facebook',  p.data) as motivo_facebook,
+       -- v0.28.0: sócio(a) da Artecon, maior de idade: os termos não são exigidos (a tela mostra o selo "Sócio(a) — termos dispensados")
+       pe.socio and not pe.menor as termos_dispensados
 from public.radar_pauta_pecas p
 cross join lateral unnest(p.pessoas) as u(pessoa_id)
 join public.radar_pessoas pe on pe.id = u.pessoa_id;
@@ -6314,6 +6414,7 @@ grant execute on function public.radar_site_exclusao_concluir(bigint, boolean, t
 -- v0.21.0: Pauta — a tela chama (cada função confere o papel); a função radar-redes inicia o envio da peça e confere a chave da
 -- agenda do banco. As auxiliares (radar_pauta_problemas, radar_pauta_pode_sair, radar_agenda_vencidas…) ficam só com o dono.
 grant execute on function public.radar_pauta_importar(jsonb) to authenticated;
+grant execute on function public.radar_pauta_criar(jsonb) to authenticated;          -- v0.28.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_conferir(bigint, text[]) to authenticated;
 grant execute on function public.radar_pauta_marcar_pronta(bigint, timestamptz) to authenticated;
 grant execute on function public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text) to authenticated;   -- v0.22.0: + o vídeo

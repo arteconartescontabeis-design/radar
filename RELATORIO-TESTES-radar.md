@@ -1,23 +1,197 @@
-# Radar Artecon — Relatório de testes (v0.27.0)
+# Radar Artecon — Relatório de testes (v0.28.0)
 
-Data: 16/10/2026. **A suíte inteira da v0.27.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram só os testes afetados:
-`testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado**; os testes da Pauta, do cronograma, da versão, do visual, do
-celular, do `radar-video.js` e dos 3 passos (`test_radar_telas.py -k "pauta or cronograma or versao or visual_da_artecon or celular or
-radar_video_js or passos or preparar"`), **29 aprovados, 0 falhas, 1 pulado**; e o arquivo inteiro dos testes de tela
-(`testes/test_radar_telas.py`), **219 aprovados, 0 falhas, 61 pulados** (detalhes na seção da v0.27.0, logo abaixo). Na v0.25.1
+Data: 16/10/2026. **A suíte inteira da v0.28.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram os testes afetados: o
+banco e o corretor de vídeo no banco (`testes/test_radar_banco.py` e `testes/test_radar_video_banco.py`, porque o banco muda), **309
+aprovados, 0 falhas**; `testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado**; e o arquivo inteiro dos testes de
+tela (`testes/test_radar_telas.py`), **222 aprovados, 0 falhas, 61 pulados** (detalhes na seção da v0.28.0, logo abaixo). Os mesmos
+números se repetiram depois das correções da revisão (seção "v0.28.0 — correções da revisão": banco 309, repositório 16 e 1 pulado,
+tela 222 e 61 pulados, em 527 s). Na v0.25.1
 (16/10/2026), a suíte inteira deu **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s (19min30s); a v0.26.0 tem 13 testes novos (de
-1.118 para 1.131 no total) e a v0.27.0, 2 (1.133 no total). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade
-(pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade
-(o SDK não está instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1
-é o dos commits do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0 (depois da revisão,
-16/10/2026), a mesma suíte deu 1.048 aprovados, 0 falhas e 67 pulados, em 1.000 s; na v0.24.0 (até a etapa 5, 15/10/2026), 1.039
-aprovados; na etapa 1 da v0.24.0, 1.025; na v0.23.0, 996. As funções `radar-ia`, `radar-itc`, `radar-redes`, `radar-concorrentes` e
-`radar-video` rodam de verdade no Deno nos testes delas, e o ffmpeg do corretor de vídeo roda de verdade. Nenhum teste chama a
-Microsoft, a Azure, o GitHub, o Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado, toda pessoa é
-fictícia ("Ana Teste", domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas desenhadas na hora), e todo vídeo
-e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.27.0, da
-v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as
-seguintes são das versões até a v0.7.1.
+1.118 para 1.131 no total), a v0.27.0, 2 (1.133) e a v0.28.0, 8 (1.141 no total). Dos pulados, 61 são os testes de tela que sobem a IA
+Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o
+Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem
+o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0
+(depois da revisão, 16/10/2026), a mesma suíte deu 1.048 aprovados, 0 falhas e 67 pulados, em 1.000 s; na v0.24.0 (até a etapa 5,
+15/10/2026), 1.039 aprovados; na etapa 1 da v0.24.0, 1.025; na v0.23.0, 996. As funções `radar-ia`, `radar-itc`, `radar-redes`,
+`radar-concorrentes` e `radar-video` rodam de verdade no Deno nos testes delas, e o ffmpeg do corretor de vídeo roda de verdade. Nenhum
+teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado,
+toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas
+desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
+atualizado: as seções da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
+v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.28.0 — "+ Nova peça" e "Sócio(a) da Artecon"
+
+Data: 16/10/2026. Mudam o banco (`sql/radar-setup-v0.28.0.sql` e `sql/radar-reversao-v0.28.0.sql`, renomeados do v0.25.0: a coluna
+`socio` em `radar_pessoas`, a coluna `termos_dispensados` na vista `radar_v_pauta_pessoas`, as funções novas `radar_pauta_criar`,
+`radar_pauta_linha_invalida` e `radar_pauta_hora_padrao`, e a regra dos termos em `radar_pauta_termo_ok`, `radar_video_pessoa_falta`
+e `radar_video_limpeza`) e a tela (`index.html`, `radar-pauta.js` e `radar-video.js`). A função `radar-video` e o robô do vídeo não
+conferem termo nenhum (não leem `radar_pessoas`) e ficam na 0.22.0; a `radar-ia` e a `radar-redes` não mudam; por isso os testes das
+funções não rodaram aqui. **A suíte inteira roda no GitHub (CI) antes de juntar**; nesta rodada, todos os testes abaixo rodaram pela fila
+compartilhada, com o PostgreSQL e o PostgREST de teste de verdade.
+
+Resultados desta rodada:
+
+- `testes/test_radar_banco.py` e `testes/test_radar_video_banco.py` (o banco muda): **309 aprovados, 0 falhas** (278 + 31), em 205 s;
+- `testes/test_radar_repositorio.py`: **16 aprovados, 0 falhas, 1 pulado** (o dos commits do push, que só roda no `radar-repositorio.yml`);
+- o arquivo inteiro dos testes de tela (`testes/test_radar_telas.py`): **222 aprovados, 0 falhas, 61 pulados** (os da IA Central de
+  verdade), em 535 s (8min55s).
+
+O `testes/test_radar_funcao_video.py` não rodou: a função `radar-video` não mudou.
+
+São 8 testes novos (de 1.133 para 1.141 no total) e 12 ajustados (6 do banco e 6 de tela).
+
+**Novos, no banco** (`test_radar_banco.py`, nomes "Ana Teste" e "Bruno Exemplo", datas relativas ao "hoje" de Brasília):
+
+- `test_pauta_criar_so_admin_dia_livre_de_hoje_em_diante_e_mesma_conferencia_da_importacao`: o administrador cria a peça de amanhã com
+  a hora padrão das Configurações (08:15): planejada, `criado_por` dele, sem pessoas, sem aprovação, nenhum envio, o assunto sem os
+  espaços das pontas; o que vem a mais no pedido (situação "aprovada", hora, pessoas, modo de aprovação) não conta; a trilha tem o
+  INSERT sem o plano. Hoje pode; ontem dá RADAR192 "esse dia já passou". O dia com peça, também cancelada, dá RADAR193 com a data
+  DD/MM/AAAA e "abra a peça desse dia". A **corrida** de verdade (o INSERT direto do editor, ainda não confirmado, numa conexão; a "+ Nova
+  peça" em outra, esperando a trava da chave única) devolve RADAR193 "(recarregue a página)" e não o erro cru. O editor, o leitor e
+  quem não tem perfil recebem RADAR191 (42501); o visitante e a chave do robô nem chamam. A mesma conferência da importação: tipo,
+  formato, dia ("2026-02-30", "17/10/2026", 1999, 2101), assunto com mais de 1.000 caracteres, quem aparece em lista, objetivo e
+  observação compridos, assunto vazio ou só com espaços e quebras de linha, pedido que não é objeto: RADAR192 com o campo, sem
+  "Segredo" na mensagem e sem nada gravado. O reel novo confere "Reel: cole o roteiro" e "Reel: envie a gravação (Corretor de vídeo)".
+- `test_importar_depois_de_peca_criada_a_mao`: duas peças criadas à mão (uma com a hora trocada para 11:00, outra levada à produção
+  pelo editor) e um CSV com os dois dias e mais um: `{novas: 1, alteradas: 1, iguais: 0, mantidas: 1}`; a planejada recebe o tipo, o
+  formato e o plano do arquivo e fica com 11:00; a em produção não muda; uma peça por dia.
+- `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor`: o administrador marca o(a) sócio(a) (a trilha tem o UPDATE `socio` false →
+  true, sem "Bruno" nem "Exemplo"); o editor lê e não marca (0 linhas). Sem termo nenhum, `radar_pauta_termo_ok` é nulo nos 9 tipos e
+  nos 2 canais, a vista mostra `termos_dispensados` com os motivos nulos, a conferência da peça fica vazia, a peça fica pronta, é aprovada
+  e sai pela agenda (`radar_pauta_iniciar`). Inativo(a): "pessoa inativa"; menor: "sem termo assinado" e `termos_dispensados` falso;
+  "Revogado em" preenchido continua nulo (para sócio(a), quem tira é "Ativa"); sem a marca, a peça volta a pedir "“Bruno” (Instagram):
+  sem termo assinado". O leitor recebe "pessoa não cadastrada" e 0 linhas (pessoas e vista); a chave do robô e o visitante não leem.
+- `test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados`: o banco como a v0.27.0 deixou (sem a coluna `socio`, a vista de antes,
+  sem as três funções novas), com uma pessoa, um reel e o vídeo pronto: o setup v0.28.0 roda **duas vezes** sem erro, as contagens
+  (pessoas, peças, vídeos e a trilha), o vídeo e a versão da peça não mudam, `socio` fica falso, a vista nova responde, a instalação
+  registra a v0.28.0 e a "+ Nova peça" funciona.
+
+**Novo, no corretor de vídeo** (`test_radar_video_banco.py`): `test_socio_grava_sem_os_termos_e_continua_com_ativa_menor_e_declaracoes`
+— o(a) sócio(a) sem termo nenhum: com três declarações, RADAR307 e nada gravado; com as quatro, o envio, o robô (pegar e concluir), a
+pendência (nula), a conferência da peça e a prévia passam; a limpeza não lista o vídeo, nem com "Revogado em" preenchido. Menor:
+RADAR304 "(menor de idade…"; inativo(a): RADAR304 "(pessoa inativa no Instagram"; sem a marca: RADAR304 "(sem o termo novo, que cita o
+corretor de vídeo" e a limpeza seguinte apaga `bruto`, `corrigido` e `trabalho` e os textos.
+
+**Novos, na tela** (`test_radar_telas.py`):
+
+- `test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante`: na semana seguinte com uma peça na terça, 6 botões; na semana de
+  hoje, só os dias de hoje em diante (de Brasília); na anterior, nenhum. O formulário recusa sem tipo e formato e com o assunto só de
+  espaços (recado, nada gravado); "Cancelar" fecha. Reel/Reel cria a peça e abre: "Planejada", o roteiro e o quadro do corretor com
+  "Cole o roteiro na peça e salve antes de gravar"; no banco, planejada, do administrador, sem pessoas, nenhum envio. A peça gravada por
+  outra tela com o formulário aberto dá o recado "já existe uma peça em DD/MM/AAAA"; o dia trocado para ontem, "esse dia já passou".
+  Cabe em 375 px. A editora não vê o botão nem o formulário (nem forçado).
+- `test_pessoas_socio_dispensa_termos_so_admin_e_selo`: o aviso de Pessoas e termos fala do(a) sócio(a); o administrador cadastra
+  "Bruno Exemplo" sem termo e com a marca (no banco, `socio` verdadeiro e as datas vazias) e vê o selo "Sócio(a) — termos dispensados"
+  no cadastro, no dia da semana e em "Quem aparece"; "Conferir o que falta" não pede termo. Tirar a marca pergunta antes (sem confirmar,
+  nada é gravado); confirmando, salva, o selo some e a peça mostra "sem termo válido (sem termo assinado)"; o Histórico mostra "socio:
+  true → false" sem o nome. Menor e sócio(a): "Sócio(a), menor de idade: termos exigidos". A editora vê a caixa marcada e desabilitada.
+- `test_video_socio_sem_termo_do_corretor_sem_aviso_e_desmarcado_com_aviso`: no reel, o(a) sócio(a) sem o termo do corretor não aparece
+  no aviso "Antes de gravar" e as quatro declarações continuam ali; sem a marca, o aviso volta ("Bruno: sem o termo novo, que cita o
+  corretor de vídeo").
+
+**Ajustados:** no banco, as versões registradas (v0.28.0) em `test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados`,
+`test_setup_instala_mesmo_sem_a_transacao_do_editor`, `test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vezes`
+e `test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_duas_vezes`; `test_funcoes_nao_ficam_expostas_ao_publico` (a
+`radar_pauta_criar` é a única nova com EXECUTE para a equipe; as duas auxiliares ficam só com o dono) e
+`test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date` (33 funções da Pauta, nenhuma com `current_date`). Na tela,
+`test_versao_visivel_e_aba_de_versoes` (a entrada 0.28.0 no topo, com os trechos da peça nova, do(a) sócio(a) e do "Administrador:"; as
+outras uma posição abaixo), `test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_antiga` (a `FUNCAO_MINIMA`
+continua "0.25.0" com a tela na 0.28.0), `test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar` (o rodapé com v0.28.0),
+`test_pauta_sem_radar_pauta_js_pede_ctrl_f5` (o aviso pede o `sql/radar-setup-v0.28.0.sql`, também com o banco da v0.27.0: a vista sem a
+coluna `termos_dispensados` responde 42703), `test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve` (a partir da 0.28.0) e
+`test_pauta_leitor_ve_sem_botoes_e_sem_pessoas` (nem o leitor nem a editora veem "+ Nova peça"). O `conftest.py` aponta para o setup e a
+reversão v0.28.0.
+
+**Mutações** (cada uma aplicada sozinha, com o teste indicado rodando pela fila, e o arquivo restaurado depois; `git diff --stat`
+conferido no fim):
+
+1. `radar_pauta_termo_ok` sem o `and not v.menor` (o(a) sócio(a) menor de idade passaria sem termo) → derruba `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor`.
+2. `radar_pauta_termo_ok` com a regra do(a) sócio(a) acima de "Ativa" (o(a) inativo(a) passaria) → derruba `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor`.
+3. `radar_video_pessoa_falta` sem o `not pe.socio and` (o vídeo do(a) sócio(a) pediria o termo do corretor) → derruba `test_socio_grava_sem_os_termos_e_continua_com_ativa_menor_e_declaracoes`.
+4. `radar_video_limpeza` sem o `not pe.socio and (…)` (o vídeo do(a) sócio(a) seria apagado na limpeza) → derruba `test_socio_grava_sem_os_termos_e_continua_com_ativa_menor_e_declaracoes`.
+5. `radar_video_limpeza` sem o `pe.menor` → derruba `test_previa_e_limpeza_param_quando_a_pessoa_nao_pode_mais_estar_no_video[menor]`.
+6. `radar_pauta_criar` aceitando o editor → derruba `test_pauta_criar_so_admin_dia_livre_de_hoje_em_diante_e_mesma_conferencia_da_importacao`.
+7. `radar_pauta_criar` sem a recusa do dia que já passou → derruba o mesmo teste do banco e `test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante`.
+8. `radar_pauta_criar` sem o `exists` do dia ocupado (o recado viria só da chave única, "recarregue a página") → derruba o teste do banco (a mensagem do dia ocupado).
+9. `radar_pauta_criar` sem o `exists` e sem a exceção da chave única → derruba o teste do banco (`UniqueViolation` cru).
+10. `radar_pauta_criar` sem a exceção da chave única (só a corrida) → derruba o teste do banco (a corrida com o INSERT do editor).
+11. `radar_pauta_criar` sem o assunto obrigatório → derruba o teste do banco.
+12. `radar_pauta_linha_invalida` sem o ramo de `quem_aparece` → derruba o teste do banco e `test_pauta_importar_cria_atualiza_so_planejadas_e_recusa_linha_errada_sem_conteudo`.
+13. a vista com `termos_dispensados = socio` (sem o `not menor`) → derruba `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor`.
+14. a reversão sem o `drop` de `radar_pauta_criar` → derruba `test_reversao_remove_tudo_e_o_setup_reinstala`.
+15. o `grant` de `radar_pauta_criar` também ao `anon` → derruba `test_funcoes_nao_ficam_expostas_ao_publico`.
+16. o setup com `add column socio` sem o `if not exists` → derruba `test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados` (a 2ª execução).
+17. `socio` fora da trilha (em `v_tira` de `radar_pessoas`) → derruba `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor`.
+18. a tela com o botão para quem edita (`ed` no lugar de `adm`) → derruba `test_pauta_leitor_ve_sem_botoes_e_sem_pessoas` e `test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante`.
+19. a tela sem o `d >= hoje` (botão nos dias que passaram) → derruba `test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante`.
+20. `seloTermo` sem o selo "Sócio(a) — termos dispensados" → derruba `test_pessoas_socio_dispensa_termos_so_admin_e_selo`.
+21. `dadosPessoa` sem o `socio` → derruba `test_pessoas_socio_dispensa_termos_so_admin_e_selo`.
+22. sem o `confirm` ao tirar a marca → derruba `test_pessoas_socio_dispensa_termos_so_admin_e_selo`.
+23. `radar-video.js` sem o `!x.socio &&` (o aviso do termo do corretor para o(a) sócio(a)) → derruba `test_video_socio_sem_termo_do_corretor_sem_aviso_e_desmarcado_com_aviso`.
+24. `AVISO_SEM_TABELA` ainda com o v0.25.0 → derruba `test_versao_igual_em_todos_os_arquivos_da_versao` e `test_pauta_sem_radar_pauta_js_pede_ctrl_f5`.
+
+As 24 mutações derrubaram o teste indicado; nenhuma sobreviveu. Depois de cada uma o arquivo voltou ao original (`git diff --stat` igual ao de antes).
+
+**Conferência manual do banco** (banco próprio, `radar_v028_manual`, apagado no fim): o `sql/radar-setup-v0.25.0.sql` do commit 722b1c4 (o banco da v0.27.0) com uma pessoa e uma peça; o `sql/radar-setup-v0.28.0.sql` **duas vezes seguidas**, sem erro ("instalacoes concluidas" 2 e 3, v0.28.0), com as contagens de pessoas, peças e trilha iguais e `socio` falso; a "+ Nova peça" do administrador e o(a) sócio(a) sem termo com o termo ok; depois o v0.25.0 de novo (o "desfazer" do LEIAME), sem erro: o termo volta a ser exigido ("sem termo assinado"), a `radar_pauta_criar` perde a permissão da equipe, as duas peças ficam, a vista volta sem `termos_dispensados` e a coluna `socio` fica sem uso; e o v0.28.0 de novo, sem erro.
+
+### v0.28.0 — correções da revisão
+
+Data: 16/10/2026. Quatro achados dos revisores, conferidos no código e corrigidos (nenhum foi descartado). Muda o banco só no texto de
+um recado (`radar_pauta_problemas`, item 9, no mesmo `sql/radar-setup-v0.28.0.sql`) e a tela (`radar-pauta.js` e `index.html`); a
+função `radar-video` e o robô do vídeo continuam sem mudança (0.22.0).
+
+1. **Prévia da importação velha depois da "+ Nova peça"** (gravidade média; confirmado: o efeito de cada linha é calculado só ao ler o
+   arquivo, e nem a "+ Nova peça" nem a gravação dela mexiam na prévia; com a prévia aberta dizendo "nova" para o dia, criar a peça à
+   mão e depois "Gravar" trocava o tipo, o formato e o assunto digitados pelos do arquivo). Agora abrir a "+ Nova peça" fecha a prévia,
+   sem gravar nada, com o recado "A prévia da importação do calendário foi fechada…: depois de criar a peça, escolha o arquivo de novo";
+   escolhido de novo, o dia da peça nova aparece como "alterada" antes de gravar.
+2. **Marcar "Sócio(a) da Artecon" sem pergunta** (baixa; confirmado). Agora marcar pergunta antes ("Marcar como sócio(a) da Artecon? O
+   Radar deixa de pedir o termo de uso de imagem e o termo do corretor de vídeo…"), também no cadastro novo; com data em "Revogado em",
+   a pergunta avisa que, para sócio(a), a revogação não vale e que o caminho é "Ativa"; preencher "Revogado em" em quem já é sócio(a)
+   dá o mesmo aviso ("Salvar assim mesmo?"). Sem confirmar, nada é gravado. O banco não muda (só o administrador marca, como antes).
+3. **Ajuda de Configurações → Pauta** (baixa; confirmado): `hora_padrao` passa a dizer que vale para a importação **e** para a "+ Nova
+   peça" (também no LEIAME, item 11).
+4. **Textos que mandavam usar o termo para sócio(a)** (baixa; confirmado nos três pontos): o "Excluir" de sócio(a) diz "desmarque
+   “Ativa”: para sócio(a) da Artecon, a revogação do termo não vale"; o sobrenome no texto de sócio(a) continua barrado, com o recado
+   "O “Nome na peça” do(a) sócio(a) é só “Bruno”: tire o sobrenome (ou mude o Nome na peça em Pessoas e termos)" (menor de idade e quem
+   não é sócio(a) continuam com "O termo autoriza só…"); a lista de peças publicadas de sócio(a) inativo(a) diz "sócio(a) da Artecon não
+   tem termo: retire das redes o que for combinado com ele(a)" em vez de "no prazo do termo".
+
+Também a entrada 0.28.0 de Versões e o LEIAME contam as perguntas ao marcar e ao tirar a marca e a prévia que fecha.
+
+**Testes ajustados** (nenhum novo; o total continua 1.141): `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor` (o recado do
+sobrenome do(a) sócio(a), o do menor e a peça sem sobrenome de novo sem item); `test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante`
+(a prévia com o dia "nova", fechada ao abrir a "+ Nova peça", com o recado; o arquivo de novo mostra "0 nova(s), 1 alterada(s)");
+`test_pessoas_socio_dispensa_termos_so_admin_e_selo` (a pergunta ao cadastrar com a marca, sem confirmar nada grava; o aviso de "Revogado
+em" em quem já é sócio(a) e ao marcar de novo; o "Excluir" e as peças publicadas falando de "Ativa"); `test_versao_visivel_e_aba_de_versoes`
+(os trechos novos da entrada 0.28.0).
+
+**Resultados desta rodada** (pela fila compartilhada, depois das correções):
+
+- `testes/test_radar_banco.py` e `testes/test_radar_video_banco.py`: **309 aprovados, 0 falhas**, em 205 s;
+- `testes/test_radar_repositorio.py`: **16 aprovados, 0 falhas, 1 pulado** (o dos commits do push);
+- `testes/test_radar_telas.py` inteiro: **222 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 527 s (8min47s).
+
+O `testes/test_radar_funcao_video.py` não rodou: a função `radar-video` não mudou.
+
+**Mutações das correções** (cada uma sozinha, com o teste indicado pela fila; o arquivo restaurado depois):
+
+- R1. "+ Nova peça" sem fechar a prévia → derruba `test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante` (a prévia continua à vista).
+- R2. marcar sem a pergunta → derruba `test_pessoas_socio_dispensa_termos_so_admin_e_selo`.
+- R3. "Revogado em" preenchido em quem já é sócio(a) sem o aviso → derruba o mesmo teste.
+- R4. "Excluir" sem o texto de sócio(a) → derruba o mesmo teste (a pergunta ainda manda marcar a revogação).
+- R5. a lista de peças publicadas sem o texto de sócio(a) → derruba o mesmo teste.
+- R6. o recado do sobrenome sem o ramo de sócio(a) → derruba `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor`.
+- R7. o recado de sócio(a) também para o(a) menor de idade → derruba o mesmo teste.
+
+As 7 derrubaram o teste indicado; nenhuma sobreviveu.
+
+**Prints** (Playwright, como os testes de tela, pela fila; dados de mentira: "Ana Teste", "Bruno Exemplo", domínios `.test`; fora do
+repositório): a semana de 12/10 a 18/10/2026 com "+ Nova peça" em 16, 17 e 18/10; o formulário preenchido (Reel / Reel, 18/10), também
+a 375 px; a peça reel criada, planejada, com o quadro "Corretor de vídeo"; Pessoas e termos com "Bruno Exemplo" marcado "Sócio(a) —
+termos dispensados", sem termo nenhum; e o quadro do corretor com o Bruno sem termo, as quatro declarações marcadas e o envio aceito
+("Gravação enviada: na fila do corretor"), sem nenhuma peça publicada ou agendada.
 
 ## v0.27.0 — cronograma de publicações na Pauta
 

@@ -16,8 +16,11 @@
    corretor, "quer ver a peça" e menor de idade, com as peças publicadas de quem revogou o termo ou ficou inativa.
    v0.27.0: no alto da semana, o cronograma de publicações (blocoCronograma): o mínimo (o plano da Pauta e as notícias de alta que a
    busca achou) ao lado do feito, na semana e no mês dela; só lê e conta números.
+   v0.28.0: "+ Nova peça" nos dias da semana sem peça (de hoje em diante, só o administrador: formNovaPeca e radar_pauta_criar, que nasce
+   planejada e não publica nem agenda nada) e, em Pessoas e termos, a marca "Sócio(a) da Artecon" (só o administrador marca): para quem a
+   tem, o banco não pede o termo de uso de imagem nem o do corretor de vídeo, e a tela mostra o selo "Sócio(a) — termos dispensados".
    ==================================================================== */
-const PAUTA_VERSAO = "0.27.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.28.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -53,7 +56,8 @@ const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PA
 // o banco ainda é o da v0.20.0 (a tabela da Pauta não existe): a tela diz o que falta em vez do erro cru do PostgREST
 // (v0.22.0: as colunas novas de radar_pessoas também dizem que o banco é de antes)
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.25.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.25.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+// (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0)
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.28.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.28.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){
@@ -90,10 +94,12 @@ function seloPeca(p){
   if(p.situacao === "aprovada" && p.aprovado_modo === "manual") return selo("Aprovada (à mão)", "ok");
   return selo(SITUACOES_PAUTA[p.situacao] || p.situacao, {planejada:"neutro", em_producao:"alerta", pronta:"", aprovada:"ok"}[p.situacao] ?? "neutro");
 }
-/* O selo do termo de uso de imagem de uma pessoa da peça (radar_v_pauta_pessoas: o banco confere no dia da peça) */
+/* O selo do termo de uso de imagem de uma pessoa da peça (radar_v_pauta_pessoas: o banco confere no dia da peça). v0.28.0: sócio(a) da
+   Artecon, maior de idade e ativo(a), "Sócio(a) — termos dispensados" (inativo(a), o banco devolve o motivo e o selo é o de erro) */
+const SELO_SOCIO = "Sócio(a) — termos dispensados";
 function seloTermo(s){
   if(!s) return "";
-  if(!s.motivo_instagram && !s.motivo_facebook) return selo("termo ok", "ok");
+  if(!s.motivo_instagram && !s.motivo_facebook) return s.termos_dispensados ? selo(SELO_SOCIO, "ok") : selo("termo ok", "ok");
   const motivos = s.motivo_instagram === s.motivo_facebook ? s.motivo_instagram
     : [s.motivo_instagram ? "Instagram: " + s.motivo_instagram : "", s.motivo_facebook ? "Facebook: " + s.motivo_facebook : ""].filter(Boolean).join("; ");
   return `<span class="selo erro" title="${h(motivos)}">sem termo válido (${h(motivos)})</span>`;
@@ -221,7 +227,7 @@ async function telaSemana(){
   const [pecas, termos, prontas, falhas, agenda, crono] = await Promise.all([
     ler("radar_pauta_pecas", {select:"id,data,hora,tipo,formato,assunto,situacao,pessoas,aprovado_modo,link_instagram,link_facebook,publicado_manual_em," +
       "radar_redes_envios(id,canal,situacao,agendado_para,enviado_em,erro,url,publicado_em)", and:faixa, order:"data"}),
-    ed ? ler("radar_v_pauta_pessoas", {select:"peca_id,pessoa_id,nome_na_peca,motivo_instagram,motivo_facebook", and:faixa}) : [],
+    ed ? ler("radar_v_pauta_pessoas", {select:"peca_id,pessoa_id,nome_na_peca,motivo_instagram,motivo_facebook,termos_dispensados", and:faixa}) : [],
     adm ? ler("radar_pauta_pecas", {select:"id,data,tipo,formato", situacao:"eq.pronta", order:"data", limit:"20"}) : [],
     // "Não saíram": a mesma condição de radar_v_painel.pauta_falhas (erro; parada em "enviando" há mais de 15 min; agendada que passou da hora há mais de 20 min)
     adm ? ler("radar_redes_envios", {select:"id,peca_id,canal,situacao,agendado_para,enviado_em,erro,radar_pauta_pecas(data,tipo)", peca_id:"not.is.null",
@@ -230,8 +236,12 @@ async function telaSemana(){
     adm ? rpc("radar_agenda_situacao").catch(() => ({})) : {}, lerCronograma(seg, hoje).catch(() => null)]);    // v0.27.0: o cronograma
   const porDia = Object.fromEntries(pecas.map(p => [p.data, p]));
   const pessoasDe = p => termos.filter(t => t.peca_id === p.id);
+  // v0.28.0: o dia sem peça, de hoje em diante, ganha "+ Nova peça" para o administrador (o formulário abre no próprio dia)
+  const novaAqui = d => adm && d >= hoje;
   const cartao = d => { const p = porDia[d];
-    if(!p) return `<article class="pauta-dia vazio${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3><p class="sub">Sem peça neste dia.</p></article>`;
+    if(!p && novaAqui(d) && E.pauta.nova === d) return `<article class="pauta-dia nova${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3>${formNovaPeca(d, hoje)}</article>`;
+    if(!p) return `<article class="pauta-dia vazio${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3><p class="sub">Sem peça neste dia.</p>${novaAqui(d)
+      ? `<div class="acoes"><button class="btn peq sec" type="button" data-acao="pauta-nova" data-dia="${d}">+ Nova peça</button></div>` : ""}</article>`;
     const quem = pessoasDe(p);
     return `<article class="pauta-dia${d === hoje ? " hoje" : ""}" data-dia="${d}" data-peca="${p.id}">
       <h3>${dataCurta(d)}${p.tipo !== "noticia" && p.tipo !== "sem_post" ? ` · ${h(String(p.hora).slice(0, 5))}` : ""}</h3>
@@ -267,6 +277,25 @@ async function telaSemana(){
     ${ed ? `<div class="painel pauta-ferramentas"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-pessoas">Pessoas e termos</button></div>
       <label for="pauta-csv">Importar o calendário (CSV)</label><input id="pauta-csv" type="file" accept=".csv,text/csv" data-csv-pauta>
       <p class="sub" style="margin:4px 0 0">O CSV do plano de publicações, com as colunas data;dia;semana;tipo;formato;assunto;quem_aparece;objetivo;observacao. A tela confere o arquivo inteiro e mostra o que muda antes de gravar. Ele tem nomes da equipe: nunca vai para o GitHub.</p></div>` : ""}`;
+}
+
+/* v0.28.0: "+ Nova peça" num dia sem peça (só o administrador; o banco confere tudo de novo em radar_pauta_criar: o papel, o dia livre e
+   não passado, de Brasília, e os campos da importação). A peça nasce planejada: abre como qualquer outra (roteiro, Quem aparece, fotos e, no
+   reel, o corretor de vídeo) e nunca publica nem agenda nada sozinha */
+function formNovaPeca(d, hoje){
+  // "novalidate": quem confere é o formulário (forms.novaPeca), com o recado em português; o "—" do formato é dito por extenso
+  return `<form class="pauta-nova" id="pauta-nova" data-form="novaPeca" data-dia="${d}" novalidate>
+    <p class="sub">Peça nova para ${h(dataAgenda(d))}. Ela entra planejada: não publica nem agenda nada; sai só depois de pronta e aprovada pelo administrador.</p>
+    ${d === hoje ? `<p class="sub" id="pauta-nova-hoje">É para hoje: depois de criar, confira a hora na peça (a hora padrão pode já ter passado).</p>` : ""}
+    <label for="pauta-nova-tipo">Tipo</label><select id="pauta-nova-tipo" name="tipo" required>${opcoes(TIPOS_PAUTA, "", "Escolha o tipo")}</select>
+    <label for="pauta-nova-formato">Formato</label><select id="pauta-nova-formato" name="formato" required>${opcoes({...FORMATOS_PAUTA, nenhum:"Nenhum (sem post no feed)"}, "", "Escolha o formato")}</select>
+    <label for="pauta-nova-assunto">Assunto</label><textarea id="pauta-nova-assunto" name="assunto" rows="3" maxlength="1000" required></textarea>
+    <label for="pauta-nova-objetivo">Objetivo (opcional)</label><input id="pauta-nova-objetivo" type="text" name="objetivo" maxlength="200">
+    <label for="pauta-nova-quem">Quem aparece (lembrete, opcional)</label><input id="pauta-nova-quem" type="text" name="quem_aparece" maxlength="300">
+    <label for="pauta-nova-observacao">Observação (opcional)</label><textarea id="pauta-nova-observacao" name="observacao" rows="2" maxlength="1000"></textarea>
+    <p class="sub">Reel: escolha o formato Reel (o quadro do corretor de vídeo aparece na peça). As pessoas são marcadas depois, na própria peça, entre as cadastradas em Pessoas e termos.</p>
+    <div class="acoes"><button class="btn verde">Criar a peça</button><button class="btn sec" type="button" data-acao="pauta-nova-cancelar">Cancelar</button></div>
+  </form>`;
 }
 
 /* ------------------------------------------------- importar o calendário (CSV) */
@@ -349,7 +378,7 @@ async function lerCsvPauta(campo){
     for(const l of r.linhas){ const p = atuais[l.data];
       l.efeito = !p ? "nova" : p.situacao !== "planejada" ? "mantida" : CAMPOS.every(k => (p[k] || "") === l[k]) ? "igual" : "alterada"; }
   }
-  E.pauta.previa = r; E.pauta.peca = null; E.pauta.vista = "semana";
+  E.pauta.previa = r; E.pauta.peca = null; E.pauta.vista = "semana"; E.pauta.nova = null;
   await desenhar();
   $("#pauta-previa")?.scrollIntoView({block:"start"});
 }
@@ -414,8 +443,8 @@ async function telaPeca(id){
   // edita: são a equipe, como as pessoas, que o leitor não vê; as pessoas com a categoria e o CRC (a linha da pessoa na arte)
   const [fotos, pessoas, termos, artes] = await Promise.all([
     ed && p.fotos.length && p.situacao !== "aprovada" ? ler("radar_imagens", {select:"id,dados", id:"in.(" + p.fotos.join(",") + ")"}) : [],
-    ed ? ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo,termo_corretor_em,quer_ver_peca,menor", order:"nome_na_peca,id"}) : [],
-    ed && p.pessoas.length ? ler("radar_v_pauta_pessoas", {select:"pessoa_id,motivo_instagram,motivo_facebook", peca_id:"eq." + p.id}) : [],
+    ed ? ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo,termo_corretor_em,quer_ver_peca,menor,socio", order:"nome_na_peca,id"}) : [],
+    ed && p.pessoas.length ? ler("radar_v_pauta_pessoas", {select:"pessoa_id,motivo_instagram,motivo_facebook,termos_dispensados", peca_id:"eq." + p.id}) : [],
     ed && p.artes.length ? ler("radar_imagens", {select:"id,dados", id:"in.(" + p.artes.join(",") + ")"}) : []]);
   E.pauta.fotos = Object.fromEntries(fotos.map(x => [x.id, x.dados]));
   E.pauta.pessoas = Object.fromEntries(pessoas.map(x => [x.id, x]));
@@ -464,7 +493,7 @@ async function telaPeca(id){
         ${ativas.length ? `<div class="peca-pessoas">${ativas.map(x => `<label><input type="checkbox" name="pessoa" class="peca-arte-campo" value="${x.id}"${p.pessoas.includes(x.id) ? " checked" : ""}${desAr}>
             <span><b>${h(x.nome_na_peca)}</b>${x.area ? ` · ${h(x.area)}` : ""}${x.ativo ? "" : " " + selo("inativa", "erro")} ${seloTermo(termoDe(x.id))}</span></label>`).join("")}</div>
           <p class="sub">Marque só quem aparece nas fotos e nos textos (ou ninguém). O selo do termo de uso de imagem vale para o dia da peça e aparece depois de salvar.</p>`
-          : `<p class="sub">Nenhuma pessoa cadastrada. ${ehAdmin() ? "Cadastre" : "O administrador cadastra"} em Pauta → Pessoas e termos, só com o termo de uso de imagem assinado.</p>`}` : ""}
+          : `<p class="sub">Nenhuma pessoa cadastrada. ${ehAdmin() ? "Cadastre" : "O administrador cadastra"} em Pauta → Pessoas e termos, só com o termo de uso de imagem assinado (sócio(a) da Artecon: marque “Sócio(a) da Artecon”).</p>`}` : ""}
       ${vaiAoAr ? `<h3>Informações conferidas</h3>
         <p class="sub">Cada fato da peça (número, data, prazo, regra, o que a Artecon faz) com a fonte oficial em que foi conferido. Número que não estiver aqui trava a aprovação; o boletim pago (ITC) não serve de fonte.</p>
         <div class="conf-linhas" id="peca-conferidas"${desAr ? ` data-travado="1"` : ""}>${conferidasDe(p).map(c => linhaConferida(c, desAr)).join("")}</div>
@@ -1101,21 +1130,25 @@ function linhaPessoa(x){
 }
 async function telaPessoas(){
   const adm = ehAdmin(), lista = await ler("radar_pessoas", {select:"*", order:"ativo.desc,nome_na_peca,id"});
-  // v0.22.0: quem revogou o termo ou ficou inativa: as peças publicadas com ela (os links a retirar das redes no prazo do termo)
-  const pecas = await Promise.all(lista.map(x => adm && (x.termo_revogado_em || !x.ativo) ? rpc("radar_pauta_pecas_da_pessoa", {p_pessoa:x.id}) : null));
+  // v0.22.0: quem revogou o termo ou ficou inativa: as peças publicadas com ela (os links a retirar das redes no prazo do termo). v0.28.0:
+  // de sócio(a) da Artecon (maior de idade) a revogação não conta (os termos são dispensados): só "Ativa" desmarcada
+  const pecas = await Promise.all(lista.map(x => adm && (!x.ativo || (x.termo_revogado_em && !(x.socio && !x.menor)))
+    ? rpc("radar_pauta_pecas_da_pessoa", {p_pessoa:x.id}) : null));
   lista.forEach((x, i) => { x.pecasPublicadas = pecas[i]; });
   return `<button class="voltar" data-acao="voltar">← Voltar para a semana</button>
     <h1>Pessoas e termos</h1>
     <p class="sub">Quem pode aparecer nas peças da Pauta e o termo de uso de imagem de cada pessoa. Fica só no banco (o repositório do Radar é público); o leitor não vê. ${adm ? "" : "Só o administrador cadastra e altera."}</p>
-    <div class="aviso info">Registre só com o termo assinado em mãos e marque exatamente o que a pessoa marcou (nome completo ou só o primeiro, canais, finalidades e prazo).</div>
+    <div class="aviso info">Registre só com o termo assinado em mãos e marque exatamente o que a pessoa marcou (nome completo ou só o primeiro, canais, finalidades e prazo). Sócio(a) da Artecon não precisa de termo: marque “Sócio(a) da Artecon” (o Radar dispensa o termo de uso de imagem e o do corretor de vídeo).</div>
     ${adm ? `<details class="nova-pessoa"${lista.length ? "" : " open"}><summary>Cadastrar pessoa</summary>${formPessoa({ativo:true}, true)}</details>` : ""}
     <div class="pessoas-lista">${lista.length ? lista.map(x => formPessoa(x, adm)).join("") : `<p class="sub">Nenhuma pessoa cadastrada.</p>`}</div>`;
 }
 function formPessoa(x, ed){
   const id = x.id || "nova", des = ed ? "" : " disabled", marca = (lista, v) => (Array.isArray(lista) ? lista : []).includes(v) ? " checked" : "";
   const campo = (nome, rotulo, extra) => `<div><label for="pe-${nome}-${id}">${rotulo}</label><input id="pe-${nome}-${id}" name="${nome}" ${extra} value="${h(x[nome] || "")}"${des}></div>`;
-  return `<form class="painel pessoa${x.id && !x.ativo ? " inativa" : ""}" data-form="${x.id ? "pessoa" : "novaPessoa"}"${x.id ? ` data-id="${x.id}"` : ""}>
-    ${x.id ? `<h2>${h(x.nome_na_peca)}${x.ativo ? "" : " " + selo("inativa", "neutro")}</h2>` : ""}
+  // v0.28.0: o selo de sócio(a) da Artecon (maior de idade: termos dispensados; menor de idade: os termos continuam exigidos)
+  const socio = x.socio && !x.menor ? " " + selo(SELO_SOCIO, "ok") : x.socio ? " " + selo("Sócio(a), menor de idade: termos exigidos", "alerta") : "";
+  return `<form class="painel pessoa${x.id && !x.ativo ? " inativa" : ""}" data-form="${x.id ? "pessoa" : "novaPessoa"}"${x.id ? ` data-id="${x.id}"` : ""} data-socio="${x.socio ? 1 : 0}">
+    ${x.id ? `<h2>${h(x.nome_na_peca)}${x.ativo ? "" : " " + selo("inativa", "neutro")}${socio}</h2>` : ""}
     <div class="grade">
       ${campo("nome", "Nome completo (interno)", 'type="text" required minlength="2" maxlength="80"')}
       ${campo("nome_na_peca", "Nome na peça (como o termo autoriza)", 'type="text" required minlength="2" maxlength="60"')}
@@ -1131,34 +1164,39 @@ function formPessoa(x, ed){
       `<label><input type="checkbox" name="canal" value="${k}"${marca(x.termo_canais, k)}${des}> ${NOME_REDE[k]}</label>`).join("")}</fieldset>
     <fieldset class="checks"><legend>Finalidades autorizadas no termo</legend>${Object.entries(USOS_TERMO).map(([k, v]) =>
       `<label><input type="checkbox" name="uso" value="${k}"${marca(x.termo_usos, k)}${des}> ${v}</label>`).join("")}</fieldset>
-    <fieldset class="checks"><legend>Situação</legend><label><input type="checkbox" name="ativo"${x.ativo !== false ? " checked" : ""}${des}> Ativa (desmarque para tirar a pessoa das próximas peças)</label></fieldset>
+    <fieldset class="checks"><legend>Situação</legend><label><input type="checkbox" name="ativo"${x.ativo !== false ? " checked" : ""}${des}> Ativa (desmarque para tirar a pessoa das próximas peças)</label>
+      <label><input type="checkbox" name="socio"${x.socio ? " checked" : ""}${des}> Sócio(a) da Artecon: termos dispensados (o termo de uso de imagem e o do corretor de vídeo; continuam valendo “Ativa”, maior de idade e as quatro declarações do envio do vídeo)</label>
+      ${x.socio ? `<p class="sub pessoa-socio">Para sócio(a), as datas, os canais e as finalidades do termo e o termo do corretor não são conferidos. Para tirar das próximas peças e dos vídeos, desmarque “Ativa”.</p>` : ""}</fieldset>
     <fieldset class="checks"><legend>Corretor de vídeo (reel)</legend>
       <label><input type="checkbox" name="quer_ver_peca"${x.quer_ver_peca ? " checked" : ""}${des}> Pediu no termo para ver a peça antes (a aprovação do reel pede “A pessoa viu o vídeo final”)</label>
       <label><input type="checkbox" name="menor"${x.menor ? " checked" : ""}${des}> Menor de 18 anos (o corretor de vídeo não aceita nesta versão)</label></fieldset>
     ${x.id ? `<p class="sub linha-pessoa">Como sai na arte: <b>${h(linhaPessoa(x))}</b></p>` : ""}
-    ${blocoPecasDaPessoa(x.pecasPublicadas)}
+    ${blocoPecasDaPessoa(x.pecasPublicadas, x.socio && !x.menor)}
     ${ed ? `<div class="acoes"><button class="btn">${x.id ? "Salvar" : "Cadastrar pessoa"}</button>${x.id ? `<button class="btn peq perigo" type="button" data-acao="pessoa-excluir" data-id="${x.id}">Excluir</button>` : ""}</div>` : ""}
   </form>`;
 }
 /* v0.22.0: as peças publicadas com a pessoa que revogou o termo ou ficou inativa (radar_pauta_pecas_da_pessoa, só o administrador): os
-   links a retirar das redes no prazo do termo e se ainda há vídeo dela guardado (a limpeza seguinte apaga) */
-function blocoPecasDaPessoa(l){
+   links a retirar das redes no prazo do termo e se ainda há vídeo dela guardado (a limpeza seguinte apaga). v0.28.0: sócio(a) da
+   Artecon (maior de idade) não tem termo, então não há "prazo do termo": a retirada é o que for combinado com ele(a) */
+function blocoPecasDaPessoa(l, socio){
   if(!Array.isArray(l)) return "";
   if(!l.length) return `<p class="sub pecas-da-pessoa">Nenhuma peça publicada com esta pessoa.</p>`;
-  return `<div class="aviso alerta pecas-da-pessoa"><b>Peças publicadas com esta pessoa:</b> retire das redes no prazo do termo.<ul class="pauta-erros">${l.map(x => {
+  return `<div class="aviso alerta pecas-da-pessoa"><b>Peças publicadas com esta pessoa:</b> ${socio
+    ? "sócio(a) da Artecon não tem termo: retire das redes o que for combinado com ele(a)." : "retire das redes no prazo do termo."}<ul class="pauta-erros">${l.map(x => {
     const links = [["instagram", x.link_instagram], ["facebook", x.link_facebook]].filter(([, u]) => u).map(([k, u]) => `${NOME_REDE[k]} (${linkFonte(u, "ver o post")})`);
     const d = String(x.data || "");
     return `<li>${/^\d{4}-\d{2}-\d{2}$/.test(d) ? h(dataCurta(d) + "/" + d.slice(0, 4)) : "—"}: ${links.join(" · ") || "publicada, sem link registrado"}${x.video_guardado ? " · vídeo ainda guardado (sai na próxima limpeza)" : ""}</li>`; }).join("")}</ul></div>`;
 }
 /* O que vai ao banco: o CRC padronizado por crcFormatado (como o da empresa); "contador(a)" e "técnico(a)" só com o registro (o banco
    também recusa); o prazo depois da assinatura; a assinatura nunca no futuro (de Brasília). v0.22.0: o termo do corretor de vídeo
-   (também nunca no futuro), "quer ver a peça" e menor de idade */
+   (também nunca no futuro), "quer ver a peça" e menor de idade. v0.28.0: sócio(a) da Artecon */
 function dadosPessoa(f){
   const t = n => f.elements[n].value.trim(), d = n => f.elements[n].value || null;
   const corpo = {nome:t("nome"), nome_na_peca:t("nome_na_peca"), area:t("area"), categoria:f.elements.categoria.value, crc:"",
     termo_assinado_em:d("termo_assinado_em"), termo_valido_ate:d("termo_valido_ate"), termo_revogado_em:d("termo_revogado_em"),
     termo_canais:[...f.querySelectorAll("input[name=canal]:checked")].map(c => c.value), termo_usos:[...f.querySelectorAll("input[name=uso]:checked")].map(c => c.value),
-    ativo:f.elements.ativo.checked, termo_corretor_em:d("termo_corretor_em"), quer_ver_peca:f.elements.quer_ver_peca.checked, menor:f.elements.menor.checked};
+    ativo:f.elements.ativo.checked, termo_corretor_em:d("termo_corretor_em"), quer_ver_peca:f.elements.quer_ver_peca.checked, menor:f.elements.menor.checked,
+    socio:f.elements.socio.checked};                                                   // v0.28.0: sócio(a) da Artecon
   if(corpo.nome.length < 2) throw new ErroApi("Informe o nome completo (interno).");
   if(corpo.nome_na_peca.length < 2) throw new ErroApi("Informe o nome na peça, como o termo autoriza (o nome completo ou só o primeiro).");
   if(t("crc")){ corpo.crc = crcFormatado(t("crc"));
@@ -1171,18 +1209,39 @@ function dadosPessoa(f){
     throw new ErroApi("“Válido até” precisa da data de assinatura e não pode ser antes dela.");
   return corpo;
 }
+/* v0.28.0: a pergunta antes de gravar quando a pessoa passa a ter os termos dispensados (marcou “Sócio(a) da Artecon”, maior de idade: é o
+   lado que deixa as peças e os vídeos com ela passarem sem termo) e o aviso de que, para sócio(a), “Revogado em” não vale (quem tira das
+   peças e dos vídeos é “Ativa”), também quando a data é preenchida em quem já é sócio(a). Vazio: nada a perguntar. O que estava gravado
+   vem do próprio formulário (defaultChecked e defaultValue) */
+function perguntaSocio(f, corpo){
+  const el = f.elements, antes = el.socio.defaultChecked && !el.menor.defaultChecked;
+  if(!corpo.socio || corpo.menor) return "";
+  const revogado = !!corpo.termo_revogado_em && corpo.ativo && (!antes || corpo.termo_revogado_em !== (el.termo_revogado_em.defaultValue || null));
+  const aviso = "Esta pessoa tem data em “Revogado em”, e para sócio(a) a revogação não vale: as peças e os vídeos com ela podem sair. Para tirar a pessoa das peças e dos vídeos, desmarque “Ativa”.";
+  if(!antes) return (el.socio.defaultChecked
+      ? "Sem “Menor de 18 anos”, esta pessoa (sócio(a) da Artecon) passa a ter os termos dispensados: o Radar deixa de pedir o termo de uso de imagem e o termo do corretor de vídeo dela. Confirmar?"
+      : "Marcar como sócio(a) da Artecon? O Radar deixa de pedir o termo de uso de imagem e o termo do corretor de vídeo desta pessoa (marque só quem é sócio(a) da empresa).") +
+    (revogado ? " Atenção: " + aviso : "");
+  return revogado ? aviso + " Salvar assim mesmo?" : "";
+}
 
 /* ------------------------------------------------- ações e formulários (o index.html junta) */
 const PAUTA = {
   // não gravam nada: navegação e mudanças só na tela (o que grava é feito uma ação por vez)
   navegacao:["pauta-semana", "abrir-peca", "pauta-pessoas", "pauta-importar-cancelar", "peca-conf-linha", "peca-conf-remover",
              "peca-cartao-linha", "peca-cartao-remover", "peca-agenda", "peca-completar-legenda", "peca-baixar", "peca-copiar-legenda", "peca-copiar-roteiro",
-             "peca-usar-ia"],
+             "peca-usar-ia", "pauta-nova", "pauta-nova-cancelar"],
   acoes:{
     "pauta-semana"(el){ const passo = Number(el.dataset.passo), base = E.pauta.semana || segundaDe(hojeBrasilia());
-      E.pauta.semana = passo ? somarDias(base, 7 * passo) : segundaDe(hojeBrasilia()); return desenhar(); },
-    "abrir-peca"(el){ E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; window.scrollTo(0, 0); return desenhar(); },
-    "pauta-pessoas"(){ E.pauta.vista = "pessoas"; E.pauta.peca = null; window.scrollTo(0, 0); return desenhar(); },
+      E.pauta.semana = passo ? somarDias(base, 7 * passo) : segundaDe(hojeBrasilia()); E.pauta.nova = null; return desenhar(); },
+    "abrir-peca"(el){ E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },
+    "pauta-pessoas"(){ E.pauta.vista = "pessoas"; E.pauta.peca = null; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },
+    // v0.28.0: "+ Nova peça" abre o formulário no próprio dia (um de cada vez); Cancelar fecha sem gravar. A prévia da importação aberta
+    // fecha: o efeito de cada linha foi calculado antes da peça nova (o dia dela diria "nova" e "Gravar" trocaria o que foi digitado)
+    "pauta-nova"(el){ const previa = !!E.pauta.previa; E.pauta.nova = el.dataset.dia; E.pauta.previa = null;
+      return desenhar().then(() => { $("#pauta-nova")?.scrollIntoView({block:"center"}); $("#pauta-nova [name=tipo]")?.focus();
+        if(previa) recado("A prévia da importação do calendário foi fechada, sem gravar nada: depois de criar a peça, escolha o arquivo de novo para ver o que muda.", "aviso"); }); },
+    "pauta-nova-cancelar"(){ E.pauta.nova = null; return desenhar(); },
     "pauta-importar-cancelar"(){ E.pauta.previa = null; return desenhar(); },
     async "pauta-importar-gravar"(){
       const pr = E.pauta.previa; if(!pr || pr.erros.length || !pr.linhas.length) return;
@@ -1412,11 +1471,27 @@ const PAUTA = {
     "peca-cancelar"(el){ return situacaoDaPeca(el, "cancelada", "Cancelar esta peça? Ela fica no calendário como cancelada (dá para reabrir).", "Peça cancelada."); },
     "peca-reabrir"(el){ return situacaoDaPeca(el, "planejada", "", "Peça reaberta: voltou a planejada."); },
     async "pessoa-excluir"(el){
-      if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, marque a revogação do termo).")) return;
+      // v0.28.0: para sócio(a) da Artecon (maior de idade) a revogação do termo não vale: o caminho é só “Ativa”
+      const f = el.closest("form"), socio = !!f?.elements.socio?.defaultChecked && !f.elements.menor?.defaultChecked;
+      if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (" + (socio
+        ? "para tirá-la das próximas peças e dos vídeos, desmarque “Ativa”: para sócio(a) da Artecon, a revogação do termo não vale)."
+        : "para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, marque a revogação do termo)."))) return;
       await apagar("radar_pessoas", {id:"eq." + el.dataset.id, select:"id"}); await desenhar(); recado("Pessoa excluída.");
     }
   },
   forms:{
+    /* v0.28.0: "+ Nova peça": o banco confere de novo (só o administrador, o dia livre e não passado, os campos) e devolve o número; a
+       peça abre em seguida, planejada */
+    async novaPeca(f){
+      const v = n => (f.elements[n]?.value || "").trim(), dia = f.dataset.dia;
+      if(!v("tipo") || !v("formato")) throw new ErroApi("Escolha o tipo e o formato da peça.");
+      if(!v("assunto")) throw new ErroApi("Escreva o assunto da peça.");
+      const id = await rpc("radar_pauta_criar", {p_peca:{data:dia, tipo:v("tipo"), formato:v("formato"), assunto:v("assunto"),
+        objetivo:v("objetivo"), quem_aparece:v("quem_aparece"), observacao:v("observacao")}});
+      E.pauta.nova = null; E.pauta.previa = null; E.pauta.peca = Number(id); E.pauta.vista = "semana"; window.scrollTo(0, 0);
+      await desenhar();
+      recado(`Peça criada para ${dataAgenda(dia)}. Ela está planejada: nada é publicado sem a aprovação do administrador.`);
+    },
     async peca(f){
       if(!f.reportValidity()) throw new ErroApi("Confira os campos da peça.");
       const corpo = corpoDaPeca(f);
@@ -1431,7 +1506,13 @@ const PAUTA = {
       await rpc("radar_pauta_registrar_manual", {p_peca:Number(f.dataset.id), p_link_instagram:ig || null, p_link_facebook:fb || null, p_data:dia});
       await desenhar(); recado("Publicação registrada.");
     },
-    async pessoa(f){ await alterar("radar_pessoas", {id:"eq." + f.dataset.id, select:"id"}, dadosPessoa(f)); await desenhar(); recado("Pessoa salva."); },
-    async novaPessoa(f){ await rest("POST", "radar_pessoas", {corpo:dadosPessoa(f)}); await desenhar(); recado("Pessoa cadastrada."); }
+    async pessoa(f){ const corpo = dadosPessoa(f), pergunta = perguntaSocio(f, corpo);
+      // v0.28.0: tirar a marca de sócio(a) faz a pessoa voltar a precisar dos dois termos: confirma antes
+      if(f.dataset.socio === "1" && !corpo.socio && !confirm("Tirar a marca de sócio(a) desta pessoa? Ela volta a precisar do termo de uso de imagem e do termo do corretor de vídeo: sem eles, as peças com ela não ficam prontas nem saem, e os vídeos do corretor com ela são apagados na limpeza do dia seguinte.")) return;
+      if(pergunta && !confirm(pergunta)) return;                                         // v0.28.0: marcar também confirma
+      await alterar("radar_pessoas", {id:"eq." + f.dataset.id, select:"id"}, corpo); await desenhar(); recado("Pessoa salva."); },
+    async novaPessoa(f){ const corpo = dadosPessoa(f), pergunta = perguntaSocio(f, corpo);
+      if(pergunta && !confirm(pergunta)) return;                                         // v0.28.0: cadastrar já como sócio(a) confirma
+      await rest("POST", "radar_pessoas", {corpo}); await desenhar(); recado("Pessoa cadastrada."); }
   }
 };

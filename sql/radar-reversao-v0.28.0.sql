@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.25.0.sql
--- DESFAZ a instalação do radar-setup-v0.25.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.28.0.sql
+-- DESFAZ a instalação do radar-setup-v0.28.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -221,6 +221,10 @@ drop function if exists public.radar_pauta_problemas(bigint, text[], date);
 drop function if exists public.radar_fn_pauta_peca();
 drop function if exists public.radar_fn_pessoa_apagar();
 drop function if exists public.radar_pauta_importar(jsonb);
+-- v0.28.0: "+ Nova peça" e a conferência da linha do calendário que ela divide com a importação
+drop function if exists public.radar_pauta_criar(jsonb);
+drop function if exists public.radar_pauta_linha_invalida(jsonb);
+drop function if exists public.radar_pauta_hora_padrao();
 drop function if exists public.radar_pauta_conferir(bigint, text[]);
 drop function if exists public.radar_pauta_marcar_pronta(bigint, timestamptz);
 drop function if exists public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[]);
