@@ -2,8 +2,8 @@
 
 Data: 16/10/2026. **A suíte inteira da v0.26.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram o arquivo inteiro dos testes
 de tela (`testes/test_radar_telas.py`) e o `testes/test_radar_repositorio.py` (resultados na seção da v0.26.0, logo abaixo). Na v0.25.1
-(16/10/2026), a suíte inteira deu **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s (19min30s); a v0.26.0 tem 11 testes novos (de
-1.118 para 1.129 no total). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste
+(16/10/2026), a suíte inteira deu **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s (19min30s); a v0.26.0 tem 13 testes novos (de
+1.118 para 1.131 no total). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste
 repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está instalado neste
 ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits do push, que só
 roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0 (depois da revisão, 16/10/2026), a mesma suíte deu 1.048
@@ -17,11 +17,13 @@ da v0.23.0, da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes 
 
 ## v0.26.0 — o assunto em 3 passos (Preparar · Conferir e aprovar · Publicar)
 
-Só a tela muda (o banco continua no `sql/radar-setup-v0.25.0.sql`; as funções e o robô não mudam). São **11 testes novos** (10 de tela e 1
-do repositório) e 24 ajustados (23 de tela e 1 do repositório). Resultado neste ambiente: `testes/test_radar_telas.py` inteiro, **215 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 490 s; `testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado** (o dos commits do push).
-A fila compartilhada dos testes ficou travada nesta sessão (o PostgreSQL de teste, ligado de dentro da fila, ficou com o arquivo da
-trava aberto e a fila não andava): os testes de tela desta etapa rodaram num PostgreSQL só desta etapa (outra porta) e em portas
-próprias, sem tocar no banco nem nas portas da outra equipe; o código dos testes é o mesmo. Uma verificação à parte, fora dos testes,
+Só a tela muda (o banco continua no `sql/radar-setup-v0.25.0.sql`; as funções e o robô não mudam). São **13 testes novos** (12 de tela e 1
+do repositório) e 24 ajustados (23 de tela e 1 do repositório). Resultado neste ambiente, depois da revisão: `testes/test_radar_telas.py`
+inteiro, **217 aprovados, 0 falhas, 61 pulados**, em 513 s (os pulados são os da IA Central de verdade); `testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas,
+1 pulado** (o dos commits do push); `testes/test_radar_publicidade.py`, **4 aprovados**. **A suíte inteira roda no GitHub (CI) antes de
+juntar**; aqui ela não foi rodada. Estes resultados saíram da fila compartilhada dos testes (o mesmo banco de teste e as mesmas portas da
+outra equipe, uma rodada de cada vez). Antes da revisão, com a fila parada, o mesmo arquivo tinha rodado num banco de teste só desta
+etapa: 215 aprovados, 0 falhas, 61 pulados. Uma verificação à parte, fora dos testes,
 desenhou a trilha em 18 situações (os ramos 1a a 1e, 2a a 2c, o passo 3 em cada estado, fora do site e assunto ignorado) para o
 administrador, a editora e quem só lê, com um servidor de mentira dentro do navegador: nenhum erro de página e nenhuma das frases que
 os testes clicam sem escopo ("Novo conteúdo", "Registrar publicação no site", "Gerar texto com IA", "Concluído"…) dentro da trilha.
@@ -78,8 +80,28 @@ os testes clicam sem escopo ("Novo conteúdo", "Registrar publicação no site",
   `test_trilha_desfaz_a_liberacao_e_leitor_nao_ve_botoes`); "Cancelar só o Instagram" chamando o cancelamento do site (novo 10); o passo
   2 do Informativo sem o `data-informativo` (`test_informativo_so_publica_depois_da_autorizacao_do_administrador` e novo 8); a lista da
   trilha com `data-item` (novo 6).
+- **Revisão** (7 achados, 2 deles o mesmo; os 6 problemas foram reproduzidos por um teste que falhava antes e corrigidos):
+  - Texto Informativo cuja conferência falhou no Preparar: o recado manda clicar em "Conferir com IA", mas o passo 2 ("Autorizar o
+    Informativo") não tinha esse botão. Agora tem, com "?" ou ✗, para a editora e para o administrador (a conferência não depende da
+    autorização). Teste: `test_preparar_com_falha_no_meio_deixa_cada_passo_claro`, com um assunto só de fonte não oficial (print 56b).
+  - "Preparar este texto" num assunto sem texto oficial: o recado mandava "conferir na fonte oficial". Agora diz que o site exige o
+    texto oficial (o passo 3 mostra como resolver) e o Informativo Mensal, não. Novo: `test_preparar_este_texto_sem_texto_oficial_nao_manda_conferir_na_fonte`.
+  - "Preparar este texto" com texto digitado e não salvo neste navegador (quadro "Texto não salvo"): não chama mais a IA; abre o passo 2
+    com o quadro à vista e pede para recuperar e salvar, ou descartar, como o "Revisar com IA". Teste: o do rascunho do robô, no modo
+    "um passo de cada vez".
+  - A capa refeita com o título novo que não sai: a capa feita antes, com o título antigo (que podia ter o "[VERIFICAR]"), agora fica
+    com o lembrete de refazer, no recado e no conteúdo. Novo: `test_preparar_este_texto_avisa_quando_a_capa_nova_nao_sai`.
+  - A linha da fonte do passo 1, com o texto aprovado que não vai ao site, dizia "falta você confirmar (no passo 3)"; agora diz "no
+    passo 2", onde o botão está (no aviso do alto da seção). Teste: o dos 3 passos, nos dois modos de exibição.
+  - Quem só lê: a conferência de que não vê "Preparar este texto", "Conferir com IA" nem "✓ Aprovar" estava só num teste pulado (sem a
+    IA Central). Agora `test_assunto_leitor_ve_os_passos_sem_botoes` abre o rascunho e o texto em revisão e confere que não há botão na
+    trilha.
+  - **7 mutações** (cada uma desfaz uma correção; o `index.html` foi restaurado da cópia), todas derrubaram o teste delas.
+  - Não procede, em parte: a linha da fonte com o texto rejeitado diz "no passo 2" e está certa, porque o botão "✓ Conferi na fonte
+    oficial" fica no aviso "Ainda não pode ser publicado no site", no alto da seção do passo 2, que é a que abre nesse caso.
 - **Fora do plano, de propósito:** a capa refeita com o título novo não deixa 2 imagens no banco (o gatilho `radar_fn_imagem_sem_uso`
-  apaga a que ficou sem uso): o teste confere que foram desenhadas 2 capas e ficou 1, a nova.
+  apaga a que ficou sem uso): o teste confere que foram desenhadas 2 capas e ficou 1, a nova. E o passo 2 do Informativo tem também o
+  "Conferir com IA" (o plano previa só o "Autorizar…"): sem ele, o recado do Preparar mandava para um botão que não existia.
 ## v0.25.1 — legenda do Radar com os itens de lista em linhas próprias, kit das redes sem a arte e rótulo único da imagem
 
 São 3 testes novos (de 1.115 para 1.118 no total) e 18 ajustados — 7 só pelo número da versão (a função `radar-ia` e os scripts na

@@ -1235,6 +1235,7 @@ conteúdo, logo abaixo da Conferência das Diretrizes, o quadro **"Revisão edit
    dizer que o assunto não tem base legal específica (um alerta, um dado econômico); aí o texto também é Informativo.
 2. O conteúdo aparece com o selo **"Informativo — aguardando autorização"**, sem o botão Aprovar. No passo 2 (Conferir e aprovar), a
    trilha mostra "Autorizar o Informativo", com a lista dos 10 critérios e o aviso de que a autorização vale para o assunto inteiro.
+   Se algum critério estiver "?" ou com ✗, o "Conferir com IA" já aparece ali: a conferência não precisa esperar a autorização.
 3. O administrador confere e clica em **"Autorizar a publicação do Informativo…"** (no conteúdo ou na trilha), escreve o motivo e
    confirma: quem, quando e o motivo ficam no assunto e no Histórico. A autorização vale para o assunto inteiro (é o "Publicar mesmo
    assim"): os outros textos dele também podem ir ao site sem a fundamentação oficial. "Desfazer a liberação" devolve o Informativo

@@ -1338,7 +1338,7 @@ const TELAS = {
         <div class="acoes"><button class="btn" data-acao="testar-ia">Testar a IA</button></div><div id="diag-ia"></div>
         ${formOrientacoes(conf.ia_orientacoes)}</div>
       ${bloco("relevancia", "Relevância das capturas", `Regras da nota de cada captura. <b>termos</b>: lista de palavras ou expressões com os <b>pontos</b> que somam (positivos) ou tiram (negativos). No título, o termo vale o dobro. A captura é de relevância <b>alta</b> a partir de <b>limite_alta</b> pontos e <b>média</b> a partir de <b>limite_media</b>; abaixo disso é baixa e não aparece na triagem. Ao salvar, as capturas que estão na fila são reavaliadas. Maiúsculas e acentos não fazem diferença; só casa palavra inteira. Opcionais: <b>nota_corte</b> (nota mínima da IA para entrar em “Em alta”; padrão 6) e <b>quantidade</b> (quantas capturas a lista “Em alta” mostra; padrão 10) e <b>nota_promove</b> (nota da IA que tira a captura de “baixa” e a leva para “média”, mesmo sem palavras da lista; padrão 8; use 11 para desligar) e <b>nota_rebaixa</b> (captura “alta” com nota da IA até este valor desce para “média”; padrão 3; use -1 para desligar). Fila: <b>arquivar_dias</b> (a captura que está na fila há mais dias que isso e é baixa, ou tem nota da IA até <b>arquivar_nota</b>, sai sozinha da triagem e vai para Assuntos → Ignorado; padrão 10 dias e nota 2; use 0 dias para desligar). <b>dias_baixa</b>: notícia com mais dias que isso (pela data da notícia ou, sem ela, da captura) vira baixa relevância; padrão 5; 0 desliga. A que ficou baixa só pela idade continua em “Baixa relevância” e não sai sozinha da fila.`)}
-      ${bloco("rascunhos", "Rascunhos automáticos", `O robô prepara sozinho o rascunho das notícias de topo (Assuntos → “Conteúdo gerado”), com as mesmas regras do “Gerar com IA”. Ele não envia para revisão, não aprova e não publica. Só entram capturas de <b>fonte oficial</b>, com o texto oficial capturado, relevância alta, ainda na fila e com nota da IA a partir de <b>nota_minima</b> (padrão 9). <b>por_dia</b>: no máximo quantos rascunhos por dia (padrão 2; 0 desliga); <b>dias</b>: só capturas destes últimos dias (padrão 3); <b>formato</b>: “flash”, “informativo” ou “artigo”; <b>ligado</b>: true ou false.`)}
+      ${bloco("rascunhos", "Rascunhos automáticos", `O robô prepara sozinho o rascunho das notícias de topo (Assuntos → “Conteúdo gerado”), com as mesmas regras de escrita do “Preparar com IA” (só o texto: a capa, a conferência e as legendas ficam para o “Preparar este texto”, no passo 1 do assunto). Ele não envia para revisão, não aprova e não publica. Só entram capturas de <b>fonte oficial</b>, com o texto oficial capturado, relevância alta, ainda na fila e com nota da IA a partir de <b>nota_minima</b> (padrão 9). <b>por_dia</b>: no máximo quantos rascunhos por dia (padrão 2; 0 desliga); <b>dias</b>: só capturas destes últimos dias (padrão 3); <b>formato</b>: “flash”, “informativo” ou “artigo”; <b>ligado</b>: true ou false.`)}
       ${bloco("pauta", "Pauta e agenda automática", `A Pauta (calendário de publicações no Instagram e no Facebook). <b>agenda_ligada</b>: true ou false; com false, a agenda automática para inteira, sem mexer no SQL (o que está agendado espera, e a peça só sai se alguém clicar em Publicar agora). <b>hora_padrao</b>: a hora de Brasília (“09:30”) que as peças novas recebem ao importar o calendário. <b>janela_horas</b>: de 1 a 48; passado esse tempo da hora marcada, a peça não sai atrasada sozinha (aparece em “Não saíram”). <b>hashtags</b>: as hashtags fixas das legendas, até 3, cada uma começando com # (ex.: ["#Contabilidade", "#Palhoça"]). <b>fatos_fixos</b>: os fatos da Artecon que valem em toda peça, cada um com a fonte, para os números deles não pedirem informação conferida (ex.: [{"informacao": "A Artecon atende empresas desde 1984", "fonte": "Contrato social"}]); até 20.`)}
       ${bloco("corretor_video", "Corretor de vídeo", `O corretor de vídeo dos reels (Pauta → peça reel). <b>glossario</b>: os termos que a legenda escreve sempre do mesmo jeito (de 1 a 200, cada um de 2 a 40 caracteres, como ["eSocial", "Simples Nacional"]). <b>variantes</b>: como a transcrição costuma errar cada termo do glossário (até 20 por termo, como {"IBS": ["ips", "ibis"]}; só vale onde o roteiro tem o termo). <b>duracao_max_s</b>: o limite do reel com a cartela, de 15 a 90 s (acima dele, a aprovação pede confirmação; acima de 90 s, o Facebook não aceita). <b>pausa_max_s</b> (de 0,6 a 2) e <b>pausa_bloco_s</b> (de 0,4 a 2): a partir de quantos segundos a pausa dentro da frase e entre frases é encurtada. <b>lufs</b>: o volume final, de −24 a −9 (o padrão das redes é −14). <b>cartela_s</b>: a duração da cartela final, de 2 a 5 s. <b>cartela_extra</b>: uma linha a mais na cartela, até 120 caracteres (ex.: “Desde 1984 · (48) 3242-0530 · artecon.cnt.br”; vazio, nada). <b>limite_min_mes</b>: minutos de transcrição por mês, de 1 a 300; padrão 30 (a Azure gratuita dá 300 minutos por mês ao recurso inteiro e a Agenda se reserva 270: acima de 30, só com o serviço pago ou com a Agenda reservando menos). <b>retencao_dias</b> (de 7 a 120) e <b>retencao_publicado_dias</b> (de 0 a 365): por quantos dias os clipes, o vídeo e os textos ficam guardados (depois do envio; depois de publicado). Fora desses limites, o corretor usa o padrão.`,
         typeof diagnosticoVideo === "function" ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="video-diagnostico">Testar o corretor de vídeo</button>
@@ -1673,6 +1673,10 @@ async function telaAssunto(id){
       : !cv.travas.length ? (cv.conf.ok ? "✓ Os 10 critérios atendem (ou não se aplicam): " : "Revisado e assumido pelo administrador: ") + (aguarda ? "depois da autorização, pode ser aprovado." : "pode aprovar.")
       : `Para aprovar, falta: ${cv.travas.join("; ")}.` + (cv.conf.travaAntes ? " O [VERIFICAR] e a frase do boletim pago precisam sair do texto: nem o “Revisei e assumo” passa por cima deles." : "")
         + (comConferir ? " “Conferir com IA” também corrige o que estiver marcado: o texto pode mudar." : "")}</p>`;
+  // “Conferir com IA” (usa o “Revisar com IA” da Conferência, no formulário): com “?” ou ✗, sem o “Revisei e assumo” e com o banco novo.
+  // Também no texto Informativo que espera a autorização: a conferência não depende dela (e o recado do Preparar aponta este botão)
+  const conferirBtn = (cv, id) => !E.semConferencia && !cv.conf.assumida && (cv.temPendente || cv.temX)
+    ? `<button class="btn sec" type="button" data-acao="trilha-clicar" data-botao="revisar" data-id="${id}">${cv.temPendente ? "Conferir com IA" : "Conferir de novo com IA"}</button>` : "";
   // v0.26.0: a fonte no passo 2 — a confirmação continua sendo um clique de quem conferiu (a IA acha o trecho, mas não confirma sozinha)
   const fonteConferir = () => liberado ? `<p class="fonte-passo">Fonte: publicação liberada sem a fonte oficial pelo administrador (o motivo está no passo 1).</p>`
     : pronto ? `<p class="fonte-passo">✓ Fonte oficial conferida, com ${conferidasOficiais} trecho(s) que comprovam.</p>`
@@ -1680,10 +1684,11 @@ async function telaAssunto(id){
       <div class="acoes-fonte"><button class="btn peq verde" type="button" data-acao="confirmar-oficial">✓ Conferi na fonte oficial</button>${ir("#sec-fundamentacao", "Ver os trechos", "peq sec")}</div>`
     : `<p class="fonte-passo">${temOficial ? "Fonte oficial: falta o trecho que comprova. Só o site exige; depois de aprovar, o passo 3 mostra como resolver."
       : "Fonte oficial: este assunto não tem texto oficial. O site exige; o Informativo Mensal, não."}</p>`;
-  // v0.26.0: a linha da fonte no passo 1, em qualquer estado (só informa; o “Desfazer” da liberação é do administrador)
+  // v0.26.0: a linha da fonte no passo 1, em qualquer estado (só informa; o “Desfazer” da liberação é do administrador). O botão de
+  // confirmar fica no passo 3 quando há texto aprovado que vai ao site; senão, no passo 2 (na trilha ou no aviso do alto da seção)
   const linhaFonte = () => `<p class="fonte-passo">${liberado ? `Fonte: liberada sem fonte oficial pelo administrador em ${dataHora(a.liberado_sem_base_em)}. Motivo: ${h(String(a.liberado_sem_base_motivo || "").replace(/[.\s]+$/, ""))}. Vale para o assunto inteiro (é a mesma autorização do texto Informativo e do “Publicar mesmo assim”).${ehAdmin() ? ` <button class="link" type="button" data-acao="desfazer-liberacao">Desfazer</button>` : ""}`
     : pronto ? `Fonte oficial confirmada, com ${conferidasOficiais} trecho(s) conferido(s) em fonte oficial.`
-    : `Fonte oficial: ${!temTexto ? "sem texto capturado" : !temOficial ? "só fonte não oficial" : !conferidasOficiais ? "falta o trecho que comprova" : `falta você confirmar (no passo ${aprovados.length ? 3 : 2})`}. Necessária só para o site; o Informativo Mensal não exige.`}</p>`;
+    : `Fonte oficial: ${!temTexto ? "sem texto capturado" : !temOficial ? "só fonte não oficial" : !conferidasOficiais ? "falta o trecho que comprova" : `falta você confirmar (no passo ${vaoAoSite.length ? 3 : 2})`}. Necessária só para o site; o Informativo Mensal não exige.`}</p>`;
   // v0.26.0: uma linha por canal no passo 3 (só informa: os botões ficam no passo de agora). O texto de referência é o que está no site
   // (ou o primeiro aprovado que falta). “Desfazer” o “não vai” e “Cancelar só o Instagram/Facebook” que ia junto com o site são do
   // administrador; “Não publicar” nunca aparece com a rede esperando o site (o banco recusaria)
@@ -1749,16 +1754,15 @@ async function telaAssunto(id){
       prepararBtn("Preparar este texto", "btn verde", r0.id) + `<button class="btn sec" type="button" data-acao="trilha-clicar" data-botao="revisao" data-id="${r0.id}">Enviar para revisão (sem IA)</button>`, 0, "",
       irTexto(r0.id, "Abrir o texto")]; }
   // v0.24.0: em revisão só o Informativo, ainda sem a autorização do administrador: o passo é autorizar (só ele, com o motivo)
-  else if(!aprovados.length && !aprovavel) prox = ["Autorizar o Informativo", "O texto é <b>Informativo</b> (sem base legal específica): só é aprovado depois que o administrador autoriza a publicação, com o motivo (fica no histórico). Atenção: a autorização vale para o assunto inteiro — é a mesma do “Publicar mesmo assim”, e os outros textos deste assunto também poderão ir ao site sem a fonte oficial. Depois, ele é conferido e aprovado como os outros." +
+  else if(!aprovados.length && !aprovavel){ const cv = confDaVez(revisando[0]), conferir = conferirBtn(cv, revisando[0].id);
+    prox = ["Autorizar o Informativo", "O texto é <b>Informativo</b> (sem base legal específica): só é aprovado depois que o administrador autoriza a publicação, com o motivo (fica no histórico). Atenção: a autorização vale para o assunto inteiro — é a mesma do “Publicar mesmo assim”, e os outros textos deste assunto também poderão ir ao site sem a fonte oficial. Depois, ele é conferido e aprovado como os outros." +
       (!temOficial && Array.isArray(a.verificacao?.fontes) && a.verificacao.fontes.length ? " A busca achou uma página oficial: se preferir, inclua o texto oficial no passo 1 e prepare outro texto — com a fonte, não é preciso esta autorização." : "") +
-      (ehAdmin() ? "" : " Falta o administrador autorizar."),
-    ehAdmin() ? `<button class="btn" type="button" data-acao="abrir-motivo" data-informativo="1">Autorizar a publicação do Informativo…</button>` : "", 1,
-    fonteConferir() + listaConf(confDaVez(revisando[0]), false, true), irTexto(revisando[0].id)];
+      (ehAdmin() ? "" : " Falta o administrador autorizar.") + (conferir ? " A conferência dos 10 critérios não precisa esperar a autorização." : ""),
+    (ehAdmin() ? `<button class="btn" type="button" data-acao="abrir-motivo" data-informativo="1">Autorizar a publicação do Informativo…</button>` : "") + conferir, 1,
+    fonteConferir() + listaConf(cv, !!conferir, true), irTexto(revisando[0].id)]; }
   // v0.26.0: conferir e aprovar — a lista dos 10 critérios no próprio passo, e o “✓ Aprovar” desligado enquanto houver trava (ele clica o
   // Aprovar do formulário, que confere tudo de novo e só aprova o texto que estava na tela)
-  else if(!aprovados.length){ const cv = cvAprovavel, outros = revisando.length - 1;
-    const conferir = !E.semConferencia && !cv.conf.assumida && (cv.temPendente || cv.temX)
-      ? `<button class="btn sec" type="button" data-acao="trilha-clicar" data-botao="revisar" data-id="${aprovavel.id}">${cv.temPendente ? "Conferir com IA" : "Conferir de novo com IA"}</button>` : "";
+  else if(!aprovados.length){ const cv = cvAprovavel, outros = revisando.length - 1, conferir = conferirBtn(cv, aprovavel.id);
     // “Revisei e assumo” só com ✗ (com “?” só, a IA ainda não conferiu) e quando a única trava é a dos critérios
     const assumir = ehAdmin() && cv.temX && !cv.conf.travaAntes && cv.travaConf && cv.travas.length === 1
       ? `<button class="btn perigo" type="button" data-acao="abrir-assumir" data-id="${aprovavel.id}">Revisei e assumo…</button>` : "";
@@ -3041,11 +3045,17 @@ const ACOES = {
       [base] = await ler("radar_conteudos", {select:"id,titulo,status,imagem_id,kit_ia,avisos_ia", id:"eq." + dado, assunto_id:"eq." + assunto});
       if(!base || base.status !== "rascunho" || String((Array.isArray(base.avisos_ia) && base.avisos_ia[0]) || "").startsWith("TEXTO PARA ANÁLISE")){
         await desenhar(); recado("Este texto não está mais em rascunho: a tela foi atualizada.", "aviso"); return; }
+      // texto digitado e não salvo guardado neste navegador: a IA parte do texto salvo, então ele não pode ficar para trás sem a pessoa
+      // decidir (como no “Revisar com IA”); o quadro “Texto não salvo” fica à vista no passo 2
+      const q = $(`form[data-form=conteudo][data-id="${dado}"] .rascunho`);
+      if(q){ mostrarEtapa("conteudo"); q.scrollIntoView({behavior:"smooth", block:"center"});
+        recado("Há um texto não salvo deste conteúdo neste navegador (quadro “Texto não salvo”, no passo 2): recupere e salve, ou descarte, antes de preparar.", true); return; }
+      apagarRascunho(dado);                                 // sem o quadro, o que houver guardado é igual ao texto salvo
     }
     else if(ja && !confirm(`Já há ${ja} texto(s) neste assunto. Preparar outro texto com IA, com texto, capa e legendas novos?`)) return;
     if(!(await liberarIA())) return;
     const etapa = n => { IA_PASSO = `${dado ? "Preparar este texto" : "Preparar"} · etapa ${n} de 4`; };
-    let busca = "", r = null, trechoFalhou = "", g = null, id = dado, capa = true, capaFeita = false, rev = null, revFalhou = "", kit = null, kitFalhou = "", atual = null;
+    let busca = "", r = null, trechoFalhou = "", g = null, id = dado, capa = true, capaFeita = false, capaVelha = false, rev = null, revFalhou = "", kit = null, kitFalhou = "", atual = null;
     try{
       etapa(1);
       if(oficial && !trechos){ try{ r = await ia("fundamentar", {assunto_id:assunto}); } catch(e){ trechoFalhou = e.message || "erro"; } }
@@ -3063,15 +3073,16 @@ const ACOES = {
         try{ const [lido] = await ler("radar_conteudos", {select:"atualizado_em", id:"eq." + id});
           rev = await ia("revisar", {conteudo_id:id, lido:lido?.atualizado_em, assunto_id:assunto});
           // a conferência mudou o título (tirou um [VERIFICAR]): a capa feita agora é refeita com o título novo. Não derruba a conferência:
-          // a versão dela só olha se o texto tem imagem (e qual imagem da IA), não qual capa
-          if(rev.titulo_mudou && capaFeita) await capaAutomatica(id, true).catch(() => null); }
+          // a versão dela só olha se o texto tem imagem (e qual imagem da IA), não qual capa. Se a capa nova não sair, a de agora (com o
+          // título antigo) fica com o lembrete de refazer
+          if(rev.titulo_mudou && capaFeita) capaVelha = !(await capaAutomatica(id, true).then(() => true, () => false)); }
         catch(e){ revFalhou = e.message || "erro"; }
       }
       etapa(4);
       [atual] = await ler("radar_conteudos", {select:"titulo,kit_ia,imagem_id", id:"eq." + id});    // relido depois da conferência (o texto pode ter mudado)
       if(!kitDe(atual)){ try{ kit = await ia("kit", {conteudo_id:id, assunto_id:assunto}); } catch(e){ kitFalhou = e.message || "erro"; } }
-      // a capa padrão de antes, com o título antigo: fica o lembrete de refazer (como no “Revisar com IA”)
-      if(rev?.titulo_mudou && !capaFeita && E.capaDesenhada?.has(atual?.imagem_id)) E.capaAntiga = id;
+      // a capa padrão de antes (ou a de agora, se a nova não saiu), com o título antigo: fica o lembrete de refazer (como no “Revisar com IA”)
+      if(capaVelha || (rev?.titulo_mudou && !capaFeita && E.capaDesenhada?.has(atual?.imagem_id))) E.capaAntiga = id;
     }finally{ IA_PASSO = ""; }
     // o texto vai para o passo 2: só sai do rascunho (o filtro do status não deixa mexer no rejeitado nem no aprovado)
     let paraRevisao = false;
@@ -3090,11 +3101,11 @@ const ACOES = {
       (trechoFalhou ? ` A busca do trecho que comprova não deu certo (${trechoFalhou.replace(/[.\s]+$/, "")}): tente de novo em “Buscar trecho que comprova com IA”, no passo 1.` : "") +
       (revFalhou ? ` A conferência dos 10 critérios não saiu agora (${revFalhou.replace(/[.\s]+$/, "")}): no passo 2, clique em “Conferir com IA”.`
         : rev?.corrigiu ? (dado ? " A conferência corrigiu o texto (o que estava marcado): confira antes de aprovar." : " A conferência corrigiu o texto; a revisão editorial ficou da versão anterior (só informa, não trava a aprovação).") : "") +
-      (E.capaAntiga === id && !capaFeita && rev?.titulo_mudou ? " O título mudou: refaça a capa padrão com “Usar a capa padrão Artecon”." : "") +
+      (E.capaAntiga === id && rev?.titulo_mudou && (capaVelha || !capaFeita) ? " O título mudou: refaça a capa padrão com “Usar a capa padrão Artecon”." : "") +
       (kitFalhou ? ` O kit das redes (legendas e roteiro do reel) não saiu agora (${kitFalhou.replace(/[.\s]+$/, "")}): use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.`
         : kit?.avisos?.length ? ` O kit das redes tem ${kit.avisos.length} ponto(s) a conferir (veja o quadro “Kit das redes”, no conteúdo).` : "") +
       (paraRevisao ? "" : " O texto continua em rascunho: envie para a revisão no passo 1.");
-    const amarelo = !!pontos || !capa || !!trechoFalhou || !!revFalhou || !!rev?.corrigiu || naoAtende.length > 0 || !!kitFalhou || !!kit?.avisos?.length ||
+    const amarelo = !!pontos || !capa || capaVelha || !!trechoFalhou || !!revFalhou || !!rev?.corrigiu || naoAtende.length > 0 || !!kitFalhou || !!kit?.avisos?.length ||
       editorialFalhou(g?.editorial) || !paraRevisao || informativo;
     if(!oficial && !dado){
       // v0.24.0: sem texto oficial, o texto é Informativo: só é aprovado depois que o administrador autorizar a publicação
@@ -3108,7 +3119,10 @@ const ACOES = {
     recado((dado ? `Preparado o texto “${atual?.titulo || base.titulo || ""}”` : "Preparado") + (partes.length ? ": " + juntar(partes) : "") + "." + falhas +
       (g?.informativo ? " O texto é Informativo (sem fundamentação legal específica): só vai ao site e às redes depois que o administrador autorizar a publicação." : "") +
       (!paraRevisao ? "" : informativo && !liberado ? " Agora, no passo 2: o administrador autoriza o texto Informativo, com o motivo."
-        : " Agora, no passo 2: leia o texto, confira na fonte oficial e aprove."), amarelo ? "aviso" : false);
+        : oficial ? " Agora, no passo 2: leia o texto, confira na fonte oficial e aprove."
+        // “Preparar este texto” sem texto oficial (o texto da equipe): não há fonte oficial para conferir
+        : " Agora, no passo 2: leia o texto e aprove." + (liberado ? "" : " O assunto não tem texto oficial: o site exige (depois de aprovar, o passo 3 mostra como resolver); o Informativo Mensal, não.")),
+      amarelo ? "aviso" : false);
   },
   /* v0.25.0 (etapa 6): “Usar a capa padrão Artecon (sem imagem)” — a capa padrão, com o título atual, vira a imagem da publicação; a
      imagem da IA guardada continua guardada (antes: “Atualizar a capa”, com ou sem a ilustração ao fundo). A ilustração crua de antes da

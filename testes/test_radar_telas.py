@@ -2699,6 +2699,20 @@ def test_assunto_leitor_ve_os_passos_sem_botoes(pagina, limpo):
     pagina.wait_for_selector(".trilha")
     assert pagina.locator("#proximo-passo").count() == 0 and pagina.locator("text=Gerar com IA").count() == 0
     assert pagina.locator("text=Preparar com IA").count() == 0
+    # v0.26.0: nem com o rascunho (o “Preparar este texto” de quem edita) nem com o texto em revisão (o “Conferir com IA” e o “✓ Aprovar”)
+    a = limpo.execute("select id from radar_assuntos where titulo = 'CBS na transição'").fetchone()[0]
+    c = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status)
+                         values (%s, 'informativo', 'Rascunho do robô', 'Texto do rascunho do robô.', 'ia', 'm (robô)', 'rascunho') returning id""",
+                      (a,)).fetchone()[0]
+    for status in ("rascunho", "em_revisao"):
+        limpo.execute("update radar_conteudos set status = %s where id = %s", (status, c))
+        pagina.evaluate("desenhar()")
+        pagina.wait_for_selector(f"form[data-form=conteudo][data-id='{c}']")
+        assert pagina.locator(".autorizacao button, .trilha button, #proximo-passo").count() == 0, status
+        assert pagina.locator("[data-acao=ia-tudo], [data-botao=revisar], [data-botao=aprovar], [data-acao=abrir-assumir]").count() == 0, status
+        for texto in ("Preparar este texto", "Conferir com IA", "Enviar para revisão (sem IA)"):
+            assert pagina.locator(f"text={texto}").count() == 0, (status, texto)
+    assert "Conferir e aprovar" in passo(pagina, "conferir").inner_text() and passo(pagina, "conferir").get_attribute("class") == "passo-a agora"
 
 
 def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
@@ -9050,6 +9064,16 @@ def test_assunto_em_tres_passos_do_preparar_ao_publicar(pagina, limpo):
     pagina.evaluate("desenhar()")
     pagina.wait_for_selector(".autorizacao li.agora[data-passo=publicar] >> text=Para o site: confirmar o assunto")
     assert pagina.locator("#proximo-passo [data-acao=confirmar-oficial]").count() == 1 and pagina.locator(".trilha li.feito").count() == 2
+    assert "falta você confirmar (no passo 3)" in passo(pagina, "preparar").inner_text()
+    # o texto aprovado que não vai ao site: o passo 3 fica concluído e o botão de confirmar está no aviso do passo 2
+    limpo.execute("update radar_conteudos set fora_do_site = true where assunto_id = %s", (a,))
+    pagina.evaluate("desenhar()")
+    pagina.wait_for_selector(".proximo.fim >> text=Concluído: conteúdo aprovado, só do Informativo Mensal")
+    assert "falta você confirmar (no passo 2)" in passo(pagina, "preparar").inner_text()
+    aviso = pagina.locator(".aviso", has_text="Ainda não pode ser publicado no site")
+    assert aviso.locator("[data-acao=confirmar-oficial]").count() == 1 and pagina.locator("section[data-etapa=publicar] [data-acao=confirmar-oficial]").count() == 0
+    pagina.evaluate("() => { sessionStorage.setItem('por_etapas', '1'); localStorage.removeItem('radar_tudo'); return desenhar(); }")   # um passo de cada vez
+    pagina.wait_for_selector("section[data-etapa=conteudo]:not([hidden]) .aviso [data-acao=confirmar-oficial]")
 
 
 def test_preparar_confere_os_10_criterios_de_verdade_e_nao_marca_confirmado(pagina, limpo, conferencia_de_verdade):
@@ -9163,6 +9187,19 @@ def test_preparar_este_texto_completa_o_rascunho_do_robo_sem_escrever_outro(pagi
     abrir_assunto(pagina, "CBS na transição")
     assert "Preparar o rascunho" in pagina.inner_text("#proximo-passo") and "preparado pelo robô" in pagina.inner_text("#proximo-passo")
     assert pagina.locator("#proximo-passo >> text=Enviar para revisão (sem IA)").count() == 1
+    # há texto digitado e não salvo neste navegador: o Preparar não começa (a IA reescreveria a versão salva), como no “Revisar com IA”
+    pagina.evaluate(f"""() => {{ localStorage.setItem(chaveRascunho({rasc}), JSON.stringify({{titulo:'CBS', corpo:'Texto digitado e não salvo.',
+        base:document.querySelector('form[data-form=conteudo]').dataset.lido, quando:new Date().toISOString()}})); return desenhar(); }}""")
+    pagina.wait_for_selector("form[data-form=conteudo] .rascunho")
+    # um passo de cada vez, como no uso normal, aberto no passo 1: o quadro “Texto não salvo” (no passo 2) começa escondido
+    pagina.evaluate("() => { sessionStorage.setItem('por_etapas', '1'); localStorage.removeItem('radar_tudo'); E.etapa = 'fonte'; return desenhar(); }")
+    assert pagina.locator("form[data-form=conteudo] .rascunho").count() == 1 and not pagina.locator("form[data-form=conteudo] .rascunho").is_visible()
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado .erro >> text=Há um texto não salvo deste conteúdo neste navegador")
+    assert pedidos == [] and limpo.execute("select status from radar_conteudos where id = %s", (rasc,)).fetchone()[0] == "rascunho"
+    pagina.wait_for_selector("form[data-form=conteudo] .rascunho", state="visible")         # o passo 2 abre, com o quadro à vista
+    pagina.locator("form[data-form=conteudo] [data-acao=descartar-rascunho]").click()
+    pagina.evaluate("() => { localStorage.setItem('radar_tudo', '1'); return desenhar(); }")  # de volta ao “tudo numa página” dos testes
     limpar_recados(pagina)
     pagina.click("#proximo-passo [data-acao=ia-tudo]")                                       # “Preparar este texto”
     pagina.wait_for_selector("#recado >> text=Preparado o texto “CBS no documento fiscal”")
@@ -9177,13 +9214,71 @@ def test_preparar_este_texto_completa_o_rascunho_do_robo_sem_escrever_outro(pagi
     assert passo(pagina, "conferir").get_attribute("class") == "passo-a agora"
 
 
-def test_preparar_com_falha_no_meio_deixa_cada_passo_claro(pagina, limpo, conferencia_de_verdade):
+def test_preparar_este_texto_sem_texto_oficial_nao_manda_conferir_na_fonte(pagina, limpo, conferencia_de_verdade):
+    """v0.26.0: “Preparar este texto” num assunto sem texto oficial (o texto escrito pela equipe) não manda conferir “na fonte oficial”:
+    o recado diz que o site exige o texto oficial (o passo 3 mostra como resolver) e o Informativo Mensal, não."""
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Texto da equipe sem fonte oficial') returning id").fetchone()[0]
+    equipe = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, status)
+                              values (%s, 'informativo', 'Cadastros para a CBS', 'Texto da equipe sobre os cadastros para a CBS.', 'humano', 'rascunho')
+                              returning id""", (a,)).fetchone()[0]
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK, revisar_texto=False)
+    abrir_assunto(pagina, "Texto da equipe sem fonte oficial")
+    assert "Preparar o rascunho" in pagina.inner_text("#proximo-passo")
+    pagina.click(f"#proximo-passo [data-acao=ia-tudo][data-id='{equipe}']")
+    pagina.wait_for_selector("#recado >> text=Preparado o texto “Cadastros para a CBS”")
+    recado = pagina.inner_text("#recado")
+    assert "confira na fonte oficial" not in recado and "Agora, no passo 2: leia o texto e aprove." in recado
+    assert "O assunto não tem texto oficial: o site exige" in recado and "o Informativo Mensal, não." in recado
+    assert limpo.execute("select status from radar_conteudos where id = %s", (equipe,)).fetchone()[0] == "em_revisao"
+
+
+def test_preparar_este_texto_avisa_quando_a_capa_nova_nao_sai(pagina, limpo, conferencia_de_verdade):
+    """v0.26.0: quando a conferência tira o [VERIFICAR] do título e a capa nova (com o título novo) não sai, a capa feita na mesma rodada,
+    com o título antigo, fica com o lembrete de refazer — no recado e no conteúdo (ela não pode ir ao site sem ninguém ver)."""
+    b, _ = assunto_com_texto(limpo, "Capa nova que não sai")
+    robo = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia)
+                            values (%s, 'informativo', 'CBS no documento fiscal [VERIFICAR data]', 'Texto do rascunho do robô com tamanho suficiente.',
+                                    'ia', 'm (robô)', 'rascunho', '["Rascunho preparado automaticamente pelo robô"]') returning id""", (b,)).fetchone()[0]
+    pedidos, capas = [], []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK)                       # o "revisar" tira o [VERIFICAR] do título
+
+    def segunda_capa_falha(rota):
+        if rota.request.method == "POST":
+            capas.append(1)
+            if len(capas) == 2:
+                return rota.fulfill(status=500, content_type="application/json", body='{"message":"falha simulada"}')
+        rota.continue_()
+    pagina.route("**/rest/v1/radar_imagens*", segunda_capa_falha)
+    abrir_assunto(pagina, "Capa nova que não sai")
+    pagina.click(f"#proximo-passo [data-acao=ia-tudo][data-id='{robo}']")
+    pagina.wait_for_selector("#recado >> text=Preparado o texto “CBS no documento fiscal”")
+    assert len(capas) == 2 and "O título mudou: refaça a capa padrão com “Usar a capa padrão Artecon”." in pagina.inner_text("#recado")
+    titulo, status, imagem = limpo.execute("select titulo, status, imagem_id from radar_conteudos where id = %s", (robo,)).fetchone()
+    assert (titulo, status) == ("CBS no documento fiscal", "em_revisao") and imagem
+    assert limpo.execute("select largura, altura from radar_imagens where id = %s", (imagem,)).fetchone() == (1200, 630)
+    assert pagina.locator(f"form[data-form=conteudo][data-id='{robo}'] .capa-antiga").count() == 1
+
+
+def test_preparar_com_falha_no_meio_deixa_cada_passo_claro(pagina, limpo, conferencia_de_verdade, request):
     """v0.26.0: só a falha do texto para o Preparar (nada é gravado e o passo 1 continua). Se a conferência falhar, o texto vai para o
-    passo 2 com os critérios “?” e o “Conferir com IA”, e o recado diz isso. Se o kit falhar, o recado aponta o botão do kit, e o passo 3
-    usa a legenda montada pelo Radar."""
+    passo 2 com os critérios “?” e o “Conferir com IA”, e o recado diz isso — também no texto Informativo, que espera a autorização do
+    administrador (a conferência não depende dela). Se o kit falhar, o recado aponta o botão do kit, e o passo 3 usa a legenda montada
+    pelo Radar."""
     a1, _ = assunto_oficial(limpo, "Falha no texto", 1)
     a2, _ = assunto_oficial(limpo, "Falha na conferência", 2)
     a3, cap3 = assunto_oficial(limpo, "Falha no kit", 3)
+    limpo.execute("update radar_fontes set oficial = false, nome = 'Portal de exemplo', orgao = 'Portal de exemplo' where slug = 'cgibs-noticias'")
+    request.addfinalizer(lambda: limpo.execute("update radar_fontes set oficial = true, nome = 'Comitê Gestor do IBS — Notícias', "
+                                               "orgao = 'Comitê Gestor do IBS' where slug = 'cgibs-noticias'"))   # só fonte não oficial: Informativo
+    a4 = limpo.execute("insert into radar_assuntos (titulo) values ('Informativo com a conferência que falha') returning id").fetchone()[0]
+    limpo.execute("insert into radar_assunto_capturas values (%s, %s)",
+                  (a4, captura(limpo, "Portal: cadastros para a CBS", "https://portal.exemplo.test/cbs", "cgibs-noticias",
+                               "As empresas estão revisando os cadastros para a CBS, segundo o portal.")))
     pedidos = []
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
@@ -9207,6 +9302,18 @@ def test_preparar_com_falha_no_meio_deixa_cada_passo_claro(pagina, limpo, confer
     assert pagina.locator("#proximo-passo .conf-trilha li[data-situacao=pendente]").count() == 10
     assert pagina.locator("#proximo-passo [data-botao=revisar]").inner_text() == "Conferir com IA"
     assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_disabled()
+    # a conferência do texto Informativo falha: o passo 2 espera a autorização, mas o “Conferir com IA” do recado está lá
+    limpar_recados(pagina)
+    abrir_assunto(pagina, "Informativo com a conferência que falha")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado .aviso >> text=A conferência dos 10 critérios não saiu agora")
+    assert "no passo 2, clique em “Conferir com IA”" in pagina.inner_text("#recado")
+    assert limpo.execute("select status from radar_conteudos where assunto_id = %s", (a4,)).fetchone()[0] == "em_revisao"
+    assert "Autorizar o Informativo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo [data-acao=abrir-motivo][data-informativo]").count() == 1
+    assert pagina.locator("#proximo-passo .conf-trilha li[data-situacao=pendente]").count() == 10
+    assert pagina.locator("#proximo-passo [data-botao=revisar]").inner_text() == "Conferir com IA"
+    assert "“Conferir com IA” também corrige o que estiver marcado" in pagina.inner_text("#proximo-passo .conf-trilha-resumo")
+    pagina.screenshot(path=str(FOTOS / "56b-informativo-conferir-com-ia.png"), full_page=True)
     # o kit falha: o recado aponta o botão do kit; o passo 3 usa a legenda montada pelo Radar
     pagina.unroute("**/functions/v1/radar-ia")
     ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK, revisar_texto=False, kit_falha=(400, "Ação desconhecida."))
