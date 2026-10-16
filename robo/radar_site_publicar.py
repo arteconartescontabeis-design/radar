@@ -1,4 +1,4 @@
-"""Radar Artecon — publicação no site da Artecon com autorização (v0.10.0; v0.17.0: redes junto e exclusão).
+"""Radar Artecon — publicação no site da Artecon com autorização (v0.10.0; v0.17.0: redes junto e exclusão; v0.25.0: a mesma imagem).
 
 Na tela do assunto, o administrador clica em "Autorizar publicação no site" (passo 4). Isso grava uma linha em
 radar_site_envios (situação "autorizado"). A cada 15 minutos este robô:
@@ -19,6 +19,9 @@ Regras combinadas com o escritório (05/10/2026), as mesmas do radar_site_admin.
 Se o envio for interrompido no meio (queda, tempo esgotado), a linha fica "enviando": nas rodadas seguintes o robô
 só PROCURA a notícia no site; se não achar em 2 horas, marca "erro" e pede para conferir no painel do site antes
 de autorizar de novo (para não duplicar).
+
+v0.25.0 (etapa 6): a capa da notícia é a imagem da publicação do conteúdo (radar_conteudos.imagem_id), a mesma que vai ao Instagram e
+ao Facebook; com a imagem da IA, o texto do site termina com a linha "Imagem ilustrativa gerada por IA." (para_html).
 
 v0.17.0, na mesma rodada:
   * "Publicar em todos": o Instagram e o Facebook que o administrador autorizou junto com o site ficam prontos quando a
@@ -63,6 +66,9 @@ CAMPOS = {"title", "keywords", "metadescription", "text", "category", "image"}
 # linha "Conteúdo informativo"
 _ENDERECO = re.compile(r"(https?://[^\s<>\"']+)", re.I)
 LINHA_INFORMATIVO = "Conteúdo informativo"         # v0.24.0: a linha do texto Informativo no fim da notícia (a mesma da tela)
+# v0.25.0 (etapa 6): com a imagem da IA na publicação (a mesma no site, no Instagram e no Facebook, com o aviso desenhado no canto pela
+# tela), o texto do site também termina com esta linha (a mesma da tela, LINHA_AVISO_IA)
+LINHA_AVISO_IA = "Imagem ilustrativa gerada por IA."
 
 
 def _ligar(t: str) -> str:
@@ -98,9 +104,10 @@ JUSTIFICADO = "text-align:justify"
 
 
 def para_html(corpo: str, autor: str | None = None, fonte: str | None = None, fonte_url: str | None = None,
-              informativo: bool = False) -> str:
+              informativo: bool = False, imagem_ia: bool = False) -> str:
     """A mesma formatação da tela ("## " subtítulo, "- " lista, **negrito**, linhas com "|" tabela) e os créditos no fim.
-    v0.24.0: o endereço no texto vira link, e o texto Informativo leva a linha "Conteúdo informativo" no fim."""
+    v0.24.0: o endereço no texto vira link, e o texto Informativo leva a linha "Conteúdo informativo" no fim. v0.25.0: com a imagem
+    da IA na publicação, a linha "Imagem ilustrativa gerada por IA." por último."""
     saida, paragrafo, lista, tabela = [], [], [], []
 
     def fechar():
@@ -146,6 +153,8 @@ def para_html(corpo: str, autor: str | None = None, fonte: str | None = None, fo
                      + (f'<a href="{html_lib.escape(url, quote=True)}" target="_blank" rel="noopener">{nome}</a>' if url else nome) + '</em></p>')
     if informativo:
         saida.append(f'<p style="text-align:right"><em>{LINHA_INFORMATIVO}</em></p>')
+    if imagem_ia:
+        saida.append(f'<p style="text-align:right"><em>{LINHA_AVISO_IA}</em></p>')
     return "\n".join(saida)
 
 
@@ -153,6 +162,13 @@ def eh_informativo(c: dict) -> bool:
     """v0.24.0: o texto Informativo (sem fundamentação legal específica): o primeiro aviso da IA começa com "INFORMATIVO"."""
     avisos = c.get("avisos_ia")
     return isinstance(avisos, list) and bool(avisos) and str(avisos[0] or "").startswith("INFORMATIVO")
+
+
+def imagem_da_ia(c: dict) -> bool:
+    """v0.25.0: a imagem da publicação é a imagem da IA (a tela a grava como a ilustração do conteúdo: imagem_id = ilustracao_id), com o
+    aviso no canto. A capa montada antes da v0.25.0 com a ilustração ao fundo (imagem_id diferente) não conta: nela o aviso é o que a
+    equipe escreveu no texto, como antes."""
+    return bool(c.get("imagem_id")) and c.get("imagem_id") == c.get("ilustracao_id")
 
 
 def texto_simples(corpo: str) -> str:
@@ -265,7 +281,8 @@ class Publicador:
 
     def conteudo(self, conteudo_id: int) -> dict | None:
         linhas = self.banco._pedir("GET", "radar_conteudos", params={
-            "select": "id,assunto_id,titulo,corpo,status,atualizado_em,aprovado_em,fora_do_site,imagem_id,autor,fonte_credito,avisos_ia,radar_divulgacoes!left(id,url)",
+            "select": "id,assunto_id,titulo,corpo,status,atualizado_em,aprovado_em,fora_do_site,imagem_id,ilustracao_id,autor,fonte_credito,avisos_ia,"
+                      "radar_divulgacoes!left(id,url)",
             "id": f"eq.{conteudo_id}"}) or []
         return linhas[0] if linhas else None
 
@@ -292,7 +309,8 @@ class Publicador:
         valor = categorias.get(envio["categoria"])
         if not valor:
             raise admin.Parada(f"a categoria \"{envio['categoria']}\" não existe mais no site; escolha outra e autorize de novo")
-        dados.update({"title": c["titulo"], "text": para_html(c["corpo"], c.get("autor"), c.get("fonte_credito"), self.link_fonte(c), eh_informativo(c)),
+        dados.update({"title": c["titulo"], "text": para_html(c["corpo"], c.get("autor"), c.get("fonte_credito"), self.link_fonte(c), eh_informativo(c),
+                                                              imagem_da_ia(c)),
                       "category": valor})
         if "keywords" in tipos:
             dados["keywords"] = ", ".join(x for x in (envio["categoria"], c.get("fonte_credito") or "", "Artecon") if x)[:250]

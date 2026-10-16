@@ -1,16 +1,64 @@
-# Radar Artecon — v0.24.0
+# Radar Artecon — v0.25.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
 Esta versão entrega a Fase 1 enxuta completa: o **banco**, os **coletores das fontes
 oficiais**, as **telas** (dashboard de curadoria) e a
-**inteligência artificial** (pela IA Central do Portal Artecon: Anthropic para o texto, OpenAI só para a ilustração da capa) para sugerir classificação, buscar trechos de
+**inteligência artificial** (pela IA Central do Portal Artecon: Anthropic para o texto, OpenAI só para a imagem da publicação) para sugerir classificação, buscar trechos de
 fundamentação e redigir rascunhos.
 
 A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (agenda de
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.25.0 faz da imagem **uma só para todas as publicações**: a mesma imagem (o mesmo arquivo) vai para o **site**, o **Instagram** e
+o **Facebook**, e a imagem da IA passa a ter **aparência de foto** e a ir **inteira**, com o aviso de IA pequeno no canto:
+
+- **Imagem única:** no conteúdo, o bloco **"Imagem da publicação"** diz "A mesma imagem vai para o site, o Instagram e o Facebook." É
+  a imagem que o robô manda ao site e a que o administrador vê e autoriza no passo de cada rede, no "Publicar em todos" e no "Publicar
+  nos canais que faltam" (os mesmos bytes). A **arte vertical** das notícias nas redes (1080×1350, com chamada, apoio e rodapé por cima,
+  v0.20.0) saiu, e com ela os campos "Chamada da arte", "Linha de apoio" e "Fundo da arte". A arte vertical continua **só nas peças da
+  Pauta** (posts de pessoas com foto, carrossel, captação, agenda), que não mudam. O Instagram aceita imagens de 4:5 a 1,91:1: a 3:2 e a
+  capa padrão (1200×630) servem como estão, e a função `radar-redes` não muda.
+- **Imagem com aparência de foto:** o "Gerar imagem com IA" pede uma **fotografia realista de estilo editorial** (luz natural,
+  profundidade de campo, cores naturais, ambiente brasileiro de trabalho), coerente com o assunto. **A cena que você descreve e as
+  orientações do escritório para as imagens mandam na cena** (antes, uma regra fixa de "ilustração plana, nas cores da marca, com figuras
+  estilizadas" vinha antes do pedido e passava por cima dele). Pessoas sempre fictícias e adultas, sem foco em rosto reconhecível; nunca
+  texto, logotipo, marca-d'água, pessoa real ou conhecida, estilo de artista ou fotógrafo, nem cena que induza a erro (documento oficial
+  simulado, fachada de órgão público com nome, dinheiro em destaque). A descrição vai até **500 caracteres** (antes 200).
+- **Inteira, em 3:2, com o aviso no canto:** a imagem da IA é gravada inteira, no formato horizontal 3:2 em que a IA cria (até
+  1500×1000), sem título, logotipo, selo, degradê nem rodapé por cima, e com o aviso **"Imagem ilustrativa gerada por IA"** pequeno no
+  canto de baixo, à direita (letra branca numa faixa escura translúcida). No site, o texto termina com a linha **"Imagem ilustrativa
+  gerada por IA."**; nas legendas do Instagram e do Facebook, a mesma linha vem logo antes da **identificação legal** (empresa · CNPJ ·
+  CRC), que continua no fim de toda legenda. A legenda sem a linha não é autorizada.
+- **Qualidade alta:** a imagem sai em qualidade alta (`quality: "high"`), que **custa mais por imagem** do que a média de antes (o valor
+  fica no Portal → Consumo de IA). Se a IA Central não aceitar a qualidade alta, a função não troca de qualidade sozinha: a tela mostra o
+  recado para o administrador liberar.
+- **Os botões:** "Gerar imagem com IA" (vira a imagem da publicação, com o aviso), enviar uma **foto própria** (vai em 3:2, cortada no
+  centro, sem nada por cima e sem aviso; foto de alguém da equipe só com o termo de uso de imagem assinado), **"Usar a capa padrão
+  Artecon (sem imagem)"** (o fundo azul com o título) e, quando há uma imagem da IA guardada, **"Usar a imagem da IA de novo"** (sem
+  nova cobrança). Sem nenhuma imagem escolhida, vai a capa padrão (todo conteúdo nasce com ela). O aviso de título mudado só aparece com
+  a capa padrão, a única que leva o título. Saíram "Atualizar a capa (com a ilustração)", "Capa padrão, sem a ilustração" e "Remover
+  imagem".
+- **O que é antigo não muda sozinho:** a capa montada antes com a ilustração ao fundo continua até alguém trocar a imagem ("Usar a imagem
+  da IA de novo" faz dela a imagem inteira, em 3:2, com o aviso, sem consultar a IA; trocada pela capa padrão ou por uma foto, a
+  ilustração fica guardada já em 3:2, com o aviso, e o critério 6 atende); o que já foi publicado fica como está. Enquanto não é
+  trocada, a capa antiga vai às redes com a linha "Imagem ilustrativa gerada por IA." na legenda (sem ela, não autoriza). A foto
+  enviada antes desta versão ficou na proporção original: fora de 4:5 a 1,91:1, a tela avisa no quadro das redes e não autoriza o
+  Instagram até a foto ser enviada de novo (vai em 3:2) ou trocada pela capa padrão; o Facebook aceita.
+- **A prévia mostra a imagem inteira:** nos quadros das redes e no "Ver como fica no site", a imagem aparece inteira, na proporção dela,
+  com o aviso do canto à vista (antes, a caixa 4:5 da arte vertical e a prévia do site cortavam as bordas).
+- **Conferência das Diretrizes, critério 6:** a imagem da IA em uso, com o aviso no canto, atende sozinha; a capa padrão e a foto da
+  equipe atendem como antes (também com a imagem da IA guardada fora da publicação); a capa antiga montada com a ilustração continua
+  pedindo o aviso escrito no fim do texto (✗ sem ele).
+
+Mudam o banco (`radar-setup-v0.25.0.sql`: só a função `radar_conferencia_codigo`, do critério 6; nenhuma tabela nem coluna nova, nada
+apagado), a função `radar-ia` (v0.25.0: o pedido da imagem, a qualidade alta e a descrição até 500), a tela (`index.html`; no
+`radar-pauta.js` e no `radar-video.js`, só o número da versão e o nome do SQL no aviso) e o robô do site (`robo/radar_site_publicar.py`:
+a linha do aviso de IA no fim do texto). A `radar-redes` continua na v0.22.0 (ela não confere tamanho nem proporção da imagem, só que
+seja JPEG); as agendas não mudam. As fotos do banco gratuito (Pexels) ficam para uma etapa seguinte. Para instalar, "Da v0.24.0 para a
+v0.25.0".
 
 A v0.24.0 põe as **Diretrizes editoriais do escritório** dentro do Radar: a IA escreve seguindo-as, o texto sem base legal vira
 **Informativo** (que só o administrador autoriza), a aprovação passa pela **Conferência das Diretrizes** (os 10 critérios), o escritório
@@ -272,7 +320,8 @@ A v0.20.0 completou o **"Gerar com IA" para as redes**, dentro das regras da pub
   IA), o kit continua valendo e a tela pede para conferir a chamada da arte. O kit é sugestão: gravá-lo não muda o conteúdo nem
   derruba autorização, e só vai ao ar o que o administrador autoriza. O reel é gravado e postado à mão. Antes de a notícia
   estar no site, o "Copiar legenda do Facebook" leva o endereço do site da Artecon no lugar do `{LINK DO SITE}`.
-- **Arte vertical (1080×1350)** para o Instagram e o Facebook: chamada grande, linha de apoio, "Matéria completa em
+- **Arte vertical (1080×1350)** para o Instagram e o Facebook (v0.25.0: na notícia, deu lugar à imagem da publicação, a mesma do
+  site; continua nas peças da Pauta): chamada grande, linha de apoio, "Matéria completa em
   www.artecon.cnt.br" e a faixa legal com a identificação da empresa; o selo "NORMA ESTADUAL · SC" só nas normas estaduais. A
   chamada, o apoio e o fundo (padrão, ilustração da IA ou imagem de capa) podem ser trocados na hora de publicar. Se a chamada
   ou o apoio não couberem, a arte corta com "…" e a tela avisa embaixo da imagem e na confirmação.
@@ -349,7 +398,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.24.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.25.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -376,7 +425,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.24.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.25.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -413,7 +462,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.24.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.25.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -442,7 +491,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.24.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.25.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -450,7 +499,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.24.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.25.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -466,7 +515,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.24.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.25.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -481,7 +530,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.24.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.25.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -509,7 +558,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.24.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.25.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -521,7 +570,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.24.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.25.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -534,7 +583,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.24.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.25.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -546,7 +595,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.24.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.25.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -558,7 +607,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.24.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.25.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -573,7 +622,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.24.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.25.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -622,8 +671,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.22.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.22.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.25.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.25.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0). |
@@ -678,10 +727,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.22.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.25.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
    Esperado: 27 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.22.0`).
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.25.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -759,13 +808,19 @@ Segredos opcionais (no projeto do Radar):
 |---|---|---|
 | `RADAR_IA_MODELO` | `claude-sonnet-4-6` | modelo que busca trechos e redige |
 | `RADAR_IA_MODELO_RAPIDO` | `claude-haiku-4-5` | modelo que classifica |
-| `RADAR_IA_MODELO_IMAGEM` | `gpt-image-2` | modelo da ilustração de capa (OpenAI) |
+| `RADAR_IA_MODELO_IMAGEM` | `gpt-image-2` | modelo da imagem da publicação (OpenAI). v0.25.0: sempre em qualidade alta (`quality: "high"`, 1536×1024), que custa mais por imagem que a média de antes |
 | `RADAR_IA_LIMITE_MENSAL_TOKENS` | `3000000` | teto de consumo por mês dentro do Radar, além dos limites em dólar da IA Central |
 | `IA_GATEWAY_URL` | endereço do `ia-gateway` do projeto do DP | só muda se a IA Central mudar de projeto |
 
 Os modelos são os que a IA Central já tem com preço cadastrado e que os outros aplicativos usam.
 Para usar outro modelo, cadastre o preço em `core.ia_precos` e libere em `core.ia_apps.modelos`
 do aplicativo `radar` antes de trocar o segredo; senão a IA Central recusa a chamada.
+
+Custo da imagem (v0.25.0): a imagem da IA sai em **qualidade alta**, que custa mais por imagem do que a qualidade média usada até a
+v0.24.0; o valor de cada uma fica no Portal → Consumo de IA (na conta da OpenAI). A qualidade não é configurável por segredo: se a IA
+Central recusar a qualidade alta, a função **não troca de qualidade sozinha** e o recado diz para liberar a qualidade alta do modelo de
+imagem do Radar no Portal. A imagem só é gerada quando alguém clica em "Gerar imagem com IA" (o "Gerar com IA" faz a capa padrão, sem
+custo de imagem).
 
 Quando a IA "não funciona", o teste do item 4 mostra a causa. As mais comuns: a função `radar-ia`
 não foi criada com esse nome; falta o segredo `IA_GATEWAY_TOKEN` ou o token foi trocado no
@@ -937,20 +992,39 @@ um passo de cada vez: o passo de **Agora** tem os botões (por exemplo "Enviar p
 sem fonte oficial mostra o motivo e, para o administrador, "Desfazer"); os seguintes ficam **Aguardando**.
 "Publicar mesmo assim…" abre o campo do motivo na própria tela (mínimo de 10 caracteres).
 
-### Imagem de capa (v0.6.0)
+### Imagem da publicação (v0.6.0; v0.25.0: uma só para o site, o Instagram e o Facebook)
 
-Todo conteúdo novo (escrito pela equipe ou gerado pela IA) recebe uma capa de 1200 × 630
-no padrão da Artecon — logotipo, faixa, categoria e o título —, desenhada no próprio
-navegador, sem depender de IA. A ilustração por IA é opcional (desde a v0.20.0 o "Gerar com IA" faz a capa padrão) e,
-desde a v0.20.0, é uma ilustração editorial nas cores da marca (da v0.7.0 à v0.19.0 era uma fotografia realista); pode
-ter pessoas (sempre fictícias) e tem um campo opcional para dizer como você quer a imagem; o pedido
-proíbe texto, marca, assinatura, pessoa real e estilo de autor, e a descrição (até 200 caracteres)
-é recusada, antes de gerar e de cobrar, se pedir marca, logotipo, brasão, assinatura de autor,
-autoridade ou pessoa famosa, ou "no estilo de" alguém. É um filtro por palavras: não reconhece
-nome de pessoa real escrito sem cargo, nem confere o título do conteúdo — por isso o pedido
-enviado à OpenAI repete sempre as proibições, e a imagem deve ser conferida antes de aprovar. No conteúdo há três opções: "Gerar capa padrão Artecon"
-(refaz com o título atual), "Gerar ilustração com IA" (imagem sem texto, pela OpenAI) e o
-envio de uma imagem própria. Trocar a imagem de um conteúdo aprovado devolve-o à revisão.
+**A mesma imagem vai para o site, o Instagram e o Facebook.** Cada conteúdo tem uma imagem da publicação (o mesmo arquivo nos três
+lugares): o robô a manda ao site como capa da notícia, e o administrador a vê e autoriza no passo de cada rede, no "Publicar em todos"
+e no "Publicar nos canais que faltam". É uma destas três:
+
+- **A imagem gerada pela IA** ("Gerar imagem com IA"): uma imagem com **aparência de foto**, de estilo editorial (luz natural,
+  profundidade de campo, cores naturais, ambiente brasileiro de trabalho), coerente com o assunto e com a cena pedida no campo "Como
+  você quer a imagem" (opcional, até 500 caracteres; em branco, a IA escolhe a cena pela notícia). As orientações do escritório para as
+  imagens (Configurações) também valem para a cena. Ela vai **inteira**, no formato horizontal **3:2** em que a IA cria (gravada em até
+  1500×1000, JPEG), sem título, logotipo, selo, degradê nem rodapé por cima, com o aviso **"Imagem ilustrativa gerada por IA"** pequeno
+  no canto de baixo, à direita, colocado pelo Radar (letra branca de uns 2% da altura, numa faixa escura translúcida). No site, o texto
+  termina com a linha "Imagem ilustrativa gerada por IA."; nas legendas das redes, a mesma linha vem logo antes da identificação legal.
+  É gerada em **qualidade alta** (custa mais por imagem que antes) e fica guardada: se outra imagem entrar no lugar, **"Usar a imagem
+  da IA de novo"** a traz de volta sem nova cobrança.
+- **Uma foto própria** (enviar o arquivo): vai em 3:2, cortada no centro, sem nada por cima e sem aviso. Foto de alguém da equipe só
+  com a foto tirada de verdade e o termo de uso de imagem assinado (Pauta → Pessoas e termos).
+- **A capa padrão Artecon** ("Usar a capa padrão Artecon (sem imagem)"): 1200 × 630, fundo azul-marinho com o logotipo, a categoria e o
+  título, desenhada no próprio navegador, sem IA. Todo conteúdo novo já nasce com ela, e é ela que vai quando nenhuma outra foi
+  escolhida. Como leva o título, depois de mudar o título a tela lembra de refazê-la (o mesmo botão).
+
+A **arte vertical** (1080×1350, com chamada, apoio e rodapé legal) ficou **só nas peças da Pauta**; a notícia vai às redes com a
+imagem da publicação. O pedido da imagem proíbe sempre: texto, letra, número ou legenda; logotipo, marca, brasão, bandeira ou símbolo
+oficial; marca-d'água, assinatura ou crédito; pessoa real, pública ou identificável (ou parecida com alguém conhecido: as pessoas são
+fictícias, adultas, em ambiente profissional, sem foco em rostos); obra ou estilo de artista ou fotógrafo existente; e cena que induza a
+erro (documento oficial simulado, fachada de órgão público com nome, dinheiro em destaque). A descrição é recusada, antes de gerar e de
+cobrar, se pedir marca, logotipo, brasão, assinatura de autor, autoridade ou pessoa famosa, ou "no estilo de" alguém. É um filtro por
+palavras: não reconhece nome de pessoa real escrito sem cargo — por isso o pedido enviado à OpenAI repete sempre as proibições, e a
+imagem deve ser conferida antes de aprovar. Trocar a imagem de um conteúdo aprovado devolve-o à revisão. A capa montada antes da
+v0.25.0 com a ilustração ao fundo (título e logotipo por cima) continua até alguém trocar a imagem; enquanto isso, vai às redes com a
+linha do aviso na legenda. Trocada pela capa padrão ou por uma foto, a ilustração dela fica guardada já em 3:2, com o aviso. A foto
+enviada antes da v0.25.0 ficou na proporção original: o Instagram só aceita de 4:5 (em pé) a 1,91:1 (deitada), e a tela não autoriza o
+Instagram com uma foto fora disso (envie a foto de novo, que ela vai em 3:2, ou use a capa padrão).
 
 ### Fale Conosco do informativo (v0.6.0)
 
@@ -1002,7 +1076,7 @@ ou ? ainda não conferido, e o motivo numa linha):
 | 3 | O que não tem fundamento normativo está só como informativo? | a IA; o Radar marca ✗ no Informativo sem a fonte (campo Fonte) |
 | 4 | O texto é original, sem reproduzir terceiros indevidamente? | a IA; o Radar marca ✗ com trecho igual ao da fonte fora de aspas ou frase do boletim pago (a transcrição entre aspas com a fonte citada não) |
 | 5 | As citações literais estão identificadas (entre aspas e com a fonte)? | a IA; o Radar marca ✗ com trecho igual ao da fonte fora de aspas |
-| 6 | A imagem é foto real autorizada, a capa institucional ou ilustração de IA com o aviso? | o Radar: capa padrão ou foto da equipe ✓; ilustração da IA sem o aviso "Imagem ilustrativa gerada por IA" escrito no texto ✗; sem capa, não se aplica |
+| 6 | A imagem é foto real autorizada, a capa institucional ou ilustração de IA com o aviso? | o Radar: capa padrão ou foto da equipe ✓; v0.25.0: a imagem da IA inteira, com o aviso no canto, ✓; a capa antiga montada com a ilustração da IA sem o aviso "Imagem ilustrativa gerada por IA" escrito no texto ✗; sem capa, não se aplica |
 | 7 | O título corresponde exatamente à informação? | a IA |
 | 8 | O conteúdo está atualizado? | a IA; o Radar marca ✗ com [VERIFICAR] |
 | 9 | A redação é profissional e compreensível? | a IA |
@@ -1124,13 +1198,15 @@ gostou. Um exemplo bom:
 
 **Orientações para as imagens** (até 500 caracteres): estilo, cenas preferidas e o que evitar. Um exemplo bom:
 
-> Ilustração limpa, com bastante espaço vazio e poucas pessoas. Prefira cenas de escritório, de pequenos comércios e de atendimento
-> ao cliente. Evite cofres, pilhas de dinheiro, martelo de juiz e setas de gráfico subindo.
+> Fotos claras, com luz natural e pessoas em situação real de trabalho. Prefira cenas de escritório, de pequenos comércios e de
+> atendimento ao cliente. Evite cofres, pilhas de dinheiro, martelo de juiz e setas de gráfico subindo.
+
+(v0.25.0: a imagem já sai com aparência de foto; as orientações e a cena pedida mandam no que aparece nela.)
 
 **O que não adianta pedir** (as regras e as Diretrizes passam por cima das orientações, e o Radar confere por código):
 
-- **Texto dentro da imagem** (título, número, nome da empresa): a ilustração nunca tem letra nem número. O título entra por cima, na
-  capa e na arte, desenhado pela tela.
+- **Texto dentro da imagem** (título, número, nome da empresa): a imagem da IA nunca tem letra nem número, e vai inteira (v0.25.0):
+  o único texto nela é o aviso "Imagem ilustrativa gerada por IA", colocado pelo Radar no canto. O título só aparece na capa padrão.
 - **Pessoa real ou conhecida** (alguém da equipe, um político, um artista), **marca ou logotipo** (da Artecon ou de outra empresa) e
   **"no estilo de"** um artista ou estúdio: o pedido da imagem proíbe isso sempre. Se as orientações para as imagens pedirem, elas
   ficam de fora daquela imagem inteira e a tela avisa, com a palavra que travou; reescreva só com o estilo e as cenas.
@@ -1252,7 +1328,7 @@ Se o resultado ainda não sair como quer, mude uma coisa de cada vez e gere de n
   continuam indispensáveis. O uso da IA pelo robô (nota das capturas e rascunhos automáticos)
   aparece só na IA Central, não no painel do Radar.
 - O texto oficial capturado é enviado à IA (Anthropic, pela IA Central do Portal) para análise;
-  a ilustração de capa vai à OpenAI só com o tema. Nada de dados de clientes, tokens ou
+  a imagem da publicação é pedida à OpenAI só com o tema (e a cena pedida). Nada de dados de clientes, tokens ou
   e-mails de usuários é enviado.
 
 ## Fontes: cadastrar e ajustar sem mexer em código
@@ -1475,8 +1551,8 @@ Sem os segredos, o botão "Autorizar e publicar" grava a autorização e avisa q
 só usar "Publicar agora" no mesmo passo.
 
 6. **Antes do primeiro post (v0.20.0):** em Configurações → "Fecho, assinatura e identificação legal", preencha `cnpj` e `crc`
-   (o registro da empresa no CRC-SC, como "CRC-SC 007129/O-0", com a letra O depois da barra) e salve: a arte e as legendas levam
-   essa identificação no fim. Confira também o link da bio do Instagram, que deve abrir artecon.cnt.br/news. Sem eles, a Pauta
+   (o registro da empresa no CRC-SC, como "CRC-SC 007129/O-0", com a letra O depois da barra) e salve: as legendas (e a arte das
+   peças da Pauta) levam essa identificação no fim. Confira também o link da bio do Instagram, que deve abrir artecon.cnt.br/news. Sem eles, a Pauta
    (v0.21.0) não aprova nenhuma peça.
 7. **Agenda da Pauta (v0.21.0):** rode uma vez `sql/radar-redes-agenda.sql` no SQL Editor, **depois** do setup e do Deploy da
    `radar-redes` v0.21.0. Ele liga o pg_cron (como manda a página "Install pg_cron" do Supabase), cria no Vault a chave
@@ -1997,6 +2073,31 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 
 ## Atualizações futuras
 
+**Da v0.24.0 para a v0.25.0** (muda o banco: SQL novo, só uma função, que pode rodar de novo; nada de chave ou segredo pelo chat).
+Faça tudo de uma vez, num momento em que ninguém esteja gerando imagem nem aprovando conteúdo:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.25.0.sql` inteiro. Confira no fim: 27 tabelas e "instalacoes concluidas"
+   com a **v0.25.0**. Ele só atualiza a conferência do critério 6 (`radar_conferencia_codigo`): nenhuma tabela nem coluna nova, nada é
+   apagado, a conferência já gravada continua valendo, e pode rodar de novo. As agendas (`sql/radar-*-agenda.sql`) não mudam.
+2. Edge Functions → `radar-ia` → cole o `index.ts` desta versão → Deploy, com "Verify JWT" como já está. Nenhum segredo muda (o
+   `RADAR_IA_MODELO_IMAGEM` continua `gpt-image-2`). A `radar-redes` **não muda** (continua na v0.22.0).
+3. A tela e o robô do site chegam pelo repositório: `index.html`, `radar-pauta.js` e `radar-video.js` juntos, e o
+   `robo/radar_site_publicar.py`. Ctrl+F5 em todos os aparelhos. A aba Versões mostra a v0.25.0.
+4. Configurações → Inteligência artificial → **Testar a IA**: a função aparece como **v0.25.0** (o painel avisa se ela for mais velha).
+5. Teste num assunto de teste, sem publicar: no conteúdo, "Gerar imagem com IA" (com uma descrição, por exemplo "contadora conversando
+   com o casal dono de uma padaria, no balcão da loja"): a imagem aparece inteira, com aparência de foto e o aviso pequeno no canto; "Ver
+   como fica no site" termina com "Imagem ilustrativa gerada por IA."; "Usar a capa padrão Artecon" e depois "Usar a imagem da IA de
+   novo" trocam a imagem sem nova cobrança. No passo Publicar, a imagem dos quadros das redes é a mesma, e as legendas terminam com a
+   linha do aviso antes da identificação legal. Se aparecer o recado "A IA Central não aceitou a imagem em qualidade alta", libere a
+   qualidade alta do modelo de imagem do Radar no Portal → Consumo de IA (o Radar não troca a qualidade sozinho) e tente de novo.
+
+Depois da instalação: os conteúdos com a capa antiga (montada com a ilustração ao fundo) e o que já foi publicado não mudam; a regra
+nova vale quando se gera ou troca a imagem. A imagem da IA custa mais por imagem (qualidade alta).
+
+Para desfazer: rode o `sql/radar-setup-v0.24.0.sql` da v0.24.0 (no histórico do GitHub): o critério 6 volta a pedir o aviso escrito no
+texto também para a imagem da IA. Cole de novo o `index.ts` da `radar-ia` da v0.24.0 e volte a tela e o robô do site da v0.24.0. As
+imagens gravadas nesta versão ficam como estão (no site e nas redes já publicadas, com o aviso no canto).
+
 **Da v0.23.0 para a v0.24.0** (muda o banco: SQL novo, que pode rodar de novo; nada de chave ou segredo pelo chat). Faça tudo de uma
 vez, num momento em que ninguém esteja aprovando conteúdo: do SQL até a tela nova, a aprovação passa a pedir a Conferência das
 Diretrizes, que só a função e a tela novas fazem.
@@ -2162,7 +2263,7 @@ Cuidados nesta versão:
   workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
   reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
 - **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
-  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.24.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.25.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
   também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
   as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
   guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do

@@ -558,3 +558,33 @@ def test_linha_fonte_oficial_vira_link_e_o_robo_nao_poe_chamada_comercial(cenari
             'target="_blank" rel="noopener">https://normas.receita.fazenda.gov.br/in-2290</a></p>') in texto
     assert not re.search(r"fale (com|conosco)|entre em contato|whats ?app|contrate|agende|procure a artecon|n[ãa]o perca", texto, re.I)
     assert pub.para_html("Texto.") == '<p style="text-align:justify">Texto.</p>'          # nada além do texto
+
+
+def test_imagem_da_ia_vai_ao_site_como_esta_e_o_texto_termina_com_a_linha_do_aviso(cenario):
+    """v0.25.0 (etapa 6): a capa da notícia no site é a imagem da publicação do conteúdo (a mesma do Instagram e do Facebook), com os
+    mesmos bytes. Com a imagem da IA (imagem_id = ilustracao_id: a imagem inteira, com o aviso desenhado no canto pela tela), o texto termina
+    com a linha "Imagem ilustrativa gerada por IA.", depois dos créditos; com a foto da equipe ou a capa padrão (sem a ilustração) e com a
+    capa antiga montada com a ilustração ao fundo (imagem_id diferente), não."""
+    import base64 as b64
+    jpeg = "data:image/jpeg;base64," + b64.b64encode(b"\xff\xd8\xff\xe0" + b"imagem-de-teste" * 20 + b"\xff\xd9").decode()
+    a, _ = cenario_publicavel(cenario)
+    img = cenario.execute("insert into radar_imagens (dados, largura, altura) values (%s, 1500, 1000) returning id", (jpeg,)).fetchone()[0]
+    c = cenario.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por, fonte_credito, imagem_id, ilustracao_id)
+                           values (%s, 'informativo', 'Simples Nacional: prazo de opção até 31 de janeiro', %s, 'em_revisao', 'ia', 'Receita Federal', %s, %s)
+                           returning id""", (a, CORPO, img, img)).fetchone()[0]
+    aprovar(c)
+    lido = cenario.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    with como("authenticated", ADMIN) as x:
+        envio = x.execute("select radar_autorizar_site(%s, 'Simples Nacional', %s)", (c, lido)).fetchone()[0]
+    assert rodar() == [f"envio {envio}: publicado"]
+    e = SITE["envios"][-1]
+    assert e["image"][0] == "capa-radar.jpg" and e["image"][1] == b64.b64decode(jpeg.split(",", 1)[1])        # os mesmos bytes
+    assert e["text"].endswith('rel="noopener">Receita Federal</a></em></p>\n<p style="text-align:right"><em>Imagem ilustrativa gerada por IA.</em></p>')
+    assert e["text"].count("Imagem ilustrativa gerada por IA.") == 1
+    # a decisão: só a imagem da IA em uso (a mesma imagem guardada como a ilustração)
+    assert pub.imagem_da_ia({"imagem_id": 7, "ilustracao_id": 7})
+    assert not pub.imagem_da_ia({"imagem_id": 7, "ilustracao_id": None}) and not pub.imagem_da_ia({"imagem_id": 8, "ilustracao_id": 7})
+    assert not pub.imagem_da_ia({"imagem_id": None, "ilustracao_id": None}) and not pub.imagem_da_ia({})
+    assert "Imagem ilustrativa" not in pub.para_html("Texto.", fonte="Receita Federal")
+    assert pub.para_html("Texto.", informativo=True, imagem_ia=True).endswith(
+        '<p style="text-align:right"><em>Conteúdo informativo</em></p>\n<p style="text-align:right"><em>Imagem ilustrativa gerada por IA.</em></p>')

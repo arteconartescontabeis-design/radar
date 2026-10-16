@@ -1,16 +1,94 @@
-# Radar Artecon — Relatório de testes (v0.24.0)
+# Radar Artecon — Relatório de testes (v0.25.0)
 
-Data: 15/10/2026. Resultado neste ambiente, com a suíte inteira da v0.24.0 (até a etapa 5, com os acertos da revisão e a norma
-seguida de vírgula): **1.039 aprovados, 0 falhas, 67 pulados**, em 1.130 s (18min50s). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`,
-fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está
-instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits
-do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na etapa 1 da v0.24.0 (14/10/2026), a mesma suíte
-deu 1.025 aprovados, 0 falhas e 67 pulados, em 921 s; na v0.23.0, 996 aprovados, 0 falhas e 67 pulados. As funções `radar-ia`,
-`radar-itc`, `radar-redes`, `radar-concorrentes` e `radar-video` rodam de verdade no Deno nos testes delas, e o ffmpeg do corretor de
-vídeo roda de verdade. Nenhum teste chama a Microsoft, a Azure, o GitHub, o Supabase ou a IA Central de verdade; todo boletim da ITC dos
-testes é inventado, toda pessoa é fictícia ("Ana Teste", domínios `.test`), e todo vídeo e toda voz são **sintéticos**, gerados na hora.
-Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da v0.21.0 e
-da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+Data: 16/10/2026. Resultado neste ambiente, com a suíte inteira da v0.25.0 depois da revisão: **1.047 aprovados, 1 falha, 67 pulados**, em 1.060 s
+(17min40s). A falha é o `test_peca_nao_publicar_neste_canal_com_o_outro_ja_publicado` (Pauta), que depende do dia em que a suíte roda: na
+madrugada de sexta-feira, 16/10, a peça de "daqui a 2 dias" cai no domingo e a tela não acha a peça na semana aberta. Ela falha igual no
+código da v0.24.0 (6bb5c57), rodado no mesmo momento, e nada desta versão toca a Pauta; antes da revisão, num outro horário, a mesma
+suíte deu 1.044 aprovados, 0 falhas e 67 pulados, em 1.008 s. Dos pulados, 61 são os testes de tela que
+sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição
+com o Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não
+tem o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na
+v0.24.0 (até a etapa 5, 15/10/2026), a mesma suíte deu 1.039 aprovados, 0 falhas e 67 pulados, em 1.130 s; na etapa 1 da v0.24.0,
+1.025 aprovados; na v0.23.0, 996. As funções `radar-ia`, `radar-itc`, `radar-redes`, `radar-concorrentes` e `radar-video` rodam de
+verdade no Deno nos testes delas, e o ffmpeg do corretor de vídeo roda de verdade. Nenhum teste chama a Microsoft, a Azure, o GitHub, o
+Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado, toda pessoa é fictícia ("Ana Teste",
+domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas desenhadas na hora), e todo vídeo e toda voz são
+**sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.25.0, da v0.24.0 (etapas
+5 e 1), da v0.23.0, da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.25.0 (etapa 6) — uma imagem só para o site, o Instagram e o Facebook, com aparência de foto e o aviso de IA no canto
+
+São 15 testes novos — 11 inteiramente novos (4 deles da revisão, abaixo) e 4 que reescrevem, com nome novo, um teste antigo cuja regra
+mudou (a ilustração plana, a capa refeita com a ilustração, a arte vertical e o "Revisar com IA" que refazia a capa) — e 2 testes da
+arte vertical das notícias que saíram com ela (os campos que redesenham a arte e o texto que não cabia nela): de 1.106 para 1.115 no
+total, como a v0.24.0 e esta versão coletam neste ambiente. 33 testes antigos foram ajustados (11 deles só pelo número da versão). Cada
+parte foi conferida desfazendo-a no arquivo (o teste novo falha) e restaurando: **36 mutações** (6 na função `radar-ia`, 25 na tela, 3
+no banco e 2 no robô do site), todas derrubaram o teste delas:
+
+- **Função `radar-ia`** (`test_radar_funcao_ia.py`, 3 novos e 3 ajustados): o pedido da imagem é de **fotografia realista de estilo
+  editorial** (luz natural, profundidade de campo, cores naturais, de preferência sóbrias, ambiente brasileiro de trabalho), sem a regra
+  fixa da v0.20.0 ("Ilustração editorial digital, plana", "figuras estilizadas", a paleta da marca); `quality: "high"`, `size:
+  "1536x1024"`, modelo `gpt-image-2` (o padrão do `RADAR_IA_MODELO_IMAGEM`); a cena pedida vem logo depois do estilo, as preferências do
+  escritório depois dela e antes da composição (3:2, o essencial no centro, o canto inferior direito livre), e as proibições por último,
+  sempre (agora também a cena que induz a erro: documento oficial simulado, fachada de órgão público com nome, dinheiro em destaque). A
+  descrição de 500 caracteres passa inteira e a de 501 é recusada antes de gerar; o filtro de marca, logotipo, pessoa conhecida e estilo
+  de autor vale no texto inteiro (também depois dos 200 primeiros caracteres). A IA Central que recusa a qualidade alta (pela mensagem
+  dela ou da OpenAI) vira o recado para o administrador, num pedido só (sem cair para "medium") e sem consumo registrado; outro erro da
+  imagem continua com a mensagem de antes. Mutações: a qualidade "medium", a regra fixa da ilustração plana de volta, sem a proibição da
+  cena que induz a erro, as preferências fora do pedido, a descrição até 200 e a recusa da qualidade alta sem o recado.
+- **Tela: a imagem da publicação** (`test_radar_telas.py`, 2 novos e 3 ajustados): "Gerar imagem com IA" grava **uma** imagem, a da IA,
+  inteira, em 3:2, guardada também como a ilustração (imagem_id = ilustracao_id) — os pontos da imagem gravada mostram o azul da imagem
+  da IA no alto (nada de logotipo, título ou degradê) e o aviso no canto inferior direito (a faixa escura com a letra branca); a capa
+  antiga sai do banco. "Usar a capa padrão Artecon (sem imagem)" mantém a imagem da IA guardada e mostra "Usar a imagem da IA de novo",
+  que a traz de volta sem nova consulta; a foto própria vai em 3:2 (900×900 vira 900×600), sem aviso; o aviso de título mudado só aparece
+  com a capa padrão; a prévia do site termina com "Imagem ilustrativa gerada por IA." só com a imagem da IA. O conteúdo antigo (a capa
+  1200×630 montada com a ilustração crua) não muda ao abrir; "Usar a imagem da IA de novo" faz dela, sem consultar a IA, a imagem em 3:2
+  (945×630) com o aviso, e o critério 6 do banco passa de ✗ a ✓. A imagem criada e não gravada é gravada de novo ("Gravar a imagem de
+  novo") como uma imagem só, em 3:2. Mutações: a imagem da IA sem o aviso, a capa com o título por cima, a imagem da IA não guardada
+  como a ilustração, a capa padrão apagando a imagem da IA guardada, a foto fora de 3:2, o lembrete de título mudado com qualquer imagem, a prévia
+  sem a linha e o "Usar a imagem da IA de novo" sem refazer a antiga em 3:2.
+- **Tela: as redes** (`test_radar_telas.py`, 3 novos e 16 ajustados): o passo de cada rede, o "Publicar em todos" e o "Publicar nos
+  canais que faltam" mostram a imagem da publicação, a mesma do site (o mesmo data URL de `radar_imagens`), e o que vai para
+  `radar_redes_envios.imagem` (no Instagram, no Facebook e nos dois de uma vez) são **os mesmos bytes**; nada da arte vertical aparece
+  (chamada, apoio, fundo, corte). A legenda continua com a identificação legal antes das hashtags (sem CNPJ e CRC, só o nome da empresa e
+  o aviso do que falta); com a imagem da IA, as legendas montadas e as do kit ganham "Imagem ilustrativa gerada por IA." logo antes da
+  identificação, nunca cortada, e a legenda sem a linha não é autorizada. Sem imagem nenhuma, os quadros das redes mostram o aviso e o
+  "Publicar em todos" não autoriza nada. Os termos da publicidade e a frase do boletim pago passam a ser conferidos só na legenda; o kit
+  das redes não mostra mais a chamada e o apoio da arte. Mutações: as redes com a imagem regravada (outros bytes), a legenda sem a linha
+  do aviso, a legenda sem a linha autorizada e as redes saindo sem imagem.
+- **Banco** (`test_radar_banco.py`, 1 novo e 5 ajustados só pelo número da versão da instalação): o critério 6 atende com a imagem da IA
+  em uso (imagem_id = ilustracao_id, em 3:2) e com ela guardada fora da publicação (a capa padrão ou a foto no lugar, sem mudar a versão
+  da conferência); a capa antiga montada com a ilustração crua (1200×630) continua ✗ sem o aviso escrito no texto (com o motivo novo, que
+  aponta "Usar a imagem da IA de novo") e ✓ com ele; a crua posta como imagem continua ✗. Mutações: o critério como na v0.24.0, a
+  guardada fora da publicação não reconhecida e a imagem da IA aceita sem conferir o 3:2.
+- **Robô do site** (`test_radar_site_publicar.py`, 1 novo): a capa da notícia é a imagem da publicação, com os mesmos bytes; com a imagem
+  da IA, o texto termina com "Imagem ilustrativa gerada por IA." depois dos créditos (e depois de "Conteúdo informativo"); com a foto, a
+  capa padrão ou a capa antiga (imagem_id diferente da ilustração), não. Mutações: sem a linha e a linha também na capa antiga.
+- **Versão** (`test_radar_telas.py`, ajustado): a aba Versões abre com a v0.25.0 (os pontos da imagem única, do aviso, da qualidade
+  alta, dos botões e da instalação), a função `radar-ia` e a tela na v0.25.0, o SQL (setup e reversão) renomeado para a v0.25.0 e citado
+  no aviso da Pauta e do corretor de vídeo; a `radar-redes` continua na v0.22.0 (atende à mínima). O `test_radar_repositorio.py` não
+  mudou: ele lê as versões dos próprios arquivos (a tela, os scripts, as funções, o SQL e o LEIAME) e passou com a v0.25.0.
+- **Revisão da v0.25.0** (`test_radar_telas.py`, 4 novos e 2 ajustados), dos achados dos revisores: (1) a imagem da publicação aparece
+  **inteira** nos quadros das redes (o passo da trilha e os canais que faltam) e na prévia "Ver como fica no site": a caixa tem a mesma
+  proporção da imagem (1,5 na 3:2; antes, a caixa 4:5 da arte vertical mostrava só o miolo e a prévia cortava 380 px de altura, e o aviso
+  do canto sumia); (2) o conteúdo antigo (a capa montada e a ilustração crua 1200×630 guardada) trocado pela capa padrão ou por uma foto
+  guarda a imagem da IA já em 3:2 (945×630), com o aviso, sem consultar a IA — o critério 6 do banco passa a atender, a tela diz "Capa
+  padrão da Artecon" ou "Foto ou imagem enviada pela equipe", "Usar a imagem da IA de novo" continua, a confirmação não fala em
+  "refazer"; a crua que não pode ser lida sai, como na v0.24.0; (3) a capa antiga montada com a ilustração vai às redes com a linha
+  "Imagem ilustrativa gerada por IA." nas legendas (a legenda sem ela não é autorizada), e a tela diz o que ela é; sem a crua guardada,
+  nada da linha; (4) a foto enviada antes da v0.25.0 fora de 4:5 a 1,91:1 (900×1200, 2400×1000) tem o aviso no quadro e não autoriza o
+  Instagram — no passo da trilha, nos canais que faltam e no "Publicar em todos" (que não deixa nem o site sair) —; desmarcado o
+  Instagram, o Facebook (e o site) vão; 1080×1350, 1200×630, 1500×1000 e 1910×1000 servem. **13 mutações**, todas derrubaram o teste
+  delas: a caixa 4:5 de volta nas redes, a prévia cortada de volta, a capa padrão e a foto sem guardar a IA em 3:2, a crua ilegível
+  travando a troca, a confirmação dizendo "refazer" na capa montada, a capa antiga sem a linha na legenda e sem exigi-la, cada um dos três
+  caminhos das redes sem conferir a proporção, o limite de 4:5 exclusivo e o quadro sem o aviso da proporção.
+
+Os 2 testes de tela que sobem a IA Central de verdade e geram a imagem foram ajustados (botão, recado, imagem 3:2, `quality: "high"`; o
+custo da imagem em qualidade alta não é mais conferido pelo valor, que é o da tabela da IA Central) — são pulados aqui.
+
+Comandos (neste ambiente): os arquivos afetados (`test_radar_funcao_ia.py`, `test_radar_banco.py`, `test_radar_telas.py`,
+`test_radar_site_publicar.py` e `test_radar_repositorio.py`), as mutações (um script que troca o trecho, roda o teste dele, confere que
+falhou e restaura o arquivo) e, no fim, a suíte inteira (`python -m pytest testes -q`).
 
 ## v0.24.0, etapa 5 — humanização dos textos, linha "Fonte oficial" e revisão editorial automática
 
