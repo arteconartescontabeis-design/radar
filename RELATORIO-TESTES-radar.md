@@ -1,19 +1,61 @@
-# Radar Artecon — Relatório de testes (v0.25.0)
+# Radar Artecon — Relatório de testes (v0.25.1)
 
-Data: 16/10/2026. Resultado neste ambiente, com a suíte inteira da v0.25.0 depois da revisão: **1.048 aprovados, 0 falhas, 67 pulados**, em 1.000 s
-(16min40s). O `test_peca_nao_publicar_neste_canal_com_o_outro_ja_publicado` (Pauta) dependia do dia em que a suíte roda (na madrugada de
-sexta-feira, 16/10, a peça de "daqui a 3 dias" caía na semana seguinte e a tela não a achava na semana aberta; falhava igual no código da
-v0.24.0): agora ele abre a segunda peça pela semana dela. Dos pulados, 61 são os testes de tela que
-sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição
-com o Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não
-tem o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na
-v0.24.0 (até a etapa 5, 15/10/2026), a mesma suíte deu 1.039 aprovados, 0 falhas e 67 pulados, em 1.130 s; na etapa 1 da v0.24.0,
-1.025 aprovados; na v0.23.0, 996. As funções `radar-ia`, `radar-itc`, `radar-redes`, `radar-concorrentes` e `radar-video` rodam de
-verdade no Deno nos testes delas, e o ffmpeg do corretor de vídeo roda de verdade. Nenhum teste chama a Microsoft, a Azure, o GitHub, o
-Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado, toda pessoa é fictícia ("Ana Teste",
-domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas desenhadas na hora), e todo vídeo e toda voz são
-**sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.25.0, da v0.24.0 (etapas
-5 e 1), da v0.23.0, da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+Data: 16/10/2026. Resultado neste ambiente, com a suíte inteira da v0.25.1: **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s
+(19min30s). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui
+não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI
+instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits do push, que só roda no
+`radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0 (depois da revisão, 16/10/2026), a mesma suíte deu 1.048
+aprovados, 0 falhas e 67 pulados, em 1.000 s; na v0.24.0 (até a etapa 5, 15/10/2026), 1.039 aprovados; na etapa 1 da v0.24.0, 1.025;
+na v0.23.0, 996. As funções `radar-ia`, `radar-itc`, `radar-redes`, `radar-concorrentes` e `radar-video` rodam de verdade no Deno nos
+testes delas, e o ffmpeg do corretor de vídeo roda de verdade. Nenhum teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI
+ou a IA Central de verdade; todo boletim da ITC dos testes é inventado, toda pessoa é fictícia ("Ana Teste", domínios `.test`), nenhuma
+imagem de teste tem pessoa (são cores lisas e formas desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora.
+Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0,
+da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.25.1 — legenda do Radar com os itens de lista em linhas próprias, kit das redes sem a arte e rótulo único da imagem
+
+São 3 testes novos (de 1.115 para 1.118 no total) e 18 ajustados — 7 só pelo número da versão (a função `radar-ia` e os scripts na
+v0.25.1). Cada parte foi conferida desfazendo-a no arquivo (o teste falha) e restaurando: **11 mutações** (7 na tela, 3 na função
+`radar-ia` e 1 na aba Versões), todas derrubaram o teste delas:
+
+- **Legenda montada pelo Radar** (`test_radar_telas.py`, 1 novo: `test_legenda_montada_pelo_radar_poe_os_itens_de_lista_em_linhas_proprias`):
+  um conteúdo com a imagem da IA e um texto com parágrafo, subtítulo, lista ("- item", com **negrito** num deles, "eSocial" e "30 dias")
+  e parágrafo depois da lista. No passo do Instagram e no "Publicar nos canais que faltam" (Facebook), a legenda inteira é a esperada:
+  o título, o parágrafo, cada item na sua linha como "• Item" (a inicial maiúscula; "eSocial" e "30 dias" como estão; sem o negrito; sem
+  o subtítulo), o parágrafo seguinte na linha dele, o caminho até o site, a fonte, "Imagem ilustrativa gerada por IA." e a identificação
+  legal no fim e, no Instagram, as hashtags; nada de "transição. revisar" nem "produtos; confirmar". No "Publicar em todos" (2.000, com o
+  `{LINK DO SITE}`), o mesmo. No limite (360 e 450 no Instagram, 300 e 400 no Facebook) a legenda é exatamente o título e as primeiras
+  linhas inteiras do resumo (nenhum item pela metade), com o aviso de IA, a identificação e as hashtags inteiros. Os marcadores "1. ",
+  "2) ", "* " e "• " também viram "• " ("e-CAC" fica como está; "“lucro presumido”" vira "“Lucro presumido”"; "3 dias depois…", sem
+  marcador, não é item). O resumo que passa de 600 caracteres (um item comprido, sem ponto) para no fim da linha de antes, sem o item
+  pela metade. Sem lista, o resumo é o de antes (os parágrafos numa linha só). Mutações: os itens emendados como antes, o item sem a
+  inicial maiúscula, "1. item" sem ser item e o corte dos 600 só no ponto (como antes).
+- **Kit das redes sem a arte — função `radar-ia`** (`test_radar_funcao_ia.py`, 6 ajustados): o kit imitado da IA não tem mais a
+  "arte"; o pedido tem o esquema `required` = instagram, facebook e reel (sem a propriedade "arte") e as instruções sem a regra da arte
+  ("'chamada'", "'apoio'", "linha de apoio"), com as letras de (b) a (f); o kit gravado não tem a chave "arte", mesmo quando a IA a
+  devolve fora do esquema (com HTML e link, que também não entram); sem as legendas, o kit não é gravado ("A IA devolveu o kit
+  incompleto (sem as legendas)"); os termos de publicidade e a marca [VERIFICAR] que estavam na arte do teste passaram para o gancho e a
+  chamada final do reel (os mesmos avisos); o "CRC em 2026" que estava no apoio passou para o gancho (fica, não é registro). A peça da
+  Pauta (`peca`) continua pedindo e devolvendo a arte (os testes dela não mudaram). Mutações: o esquema ainda pedindo a arte, as
+  instruções ainda com a regra da arte e a arte da resposta entrando no kit.
+- **Kit das redes sem a arte — tela** (`test_radar_telas.py`, 1 novo: `test_kit_sem_a_arte_vale_e_o_kit_antigo_com_a_arte_continua_valendo`,
+  e 3 ajustados): o kit da função nova (sem a arte) vale — as legendas dele entram no passo da trilha, nos canais que faltam e no quadro
+  "Kit das redes" ("gerado em", o roteiro); o kit gravado antes, com a arte, continua valendo igual, e a arte não aparece em lugar nenhum
+  da tela (nem no que está fechado), sem erro de página. O `KIT_EXEMPLO`/`KIT_TELA` dos testes perdeu a arte (o `KIT_ANTIGO` é o de
+  antes, com ela). Mutação: a tela exigindo a chamada da arte (como na v0.25.0: o kit novo caía em "incompleto").
+- **Rótulo único da imagem** (`test_radar_telas.py`, 1 novo: `test_campo_de_arquivo_da_imagem_tem_um_rotulo_so_com_a_mesma_aparencia`):
+  o campo de arquivo da imagem tem um rótulo só, "enviar uma foto própria" (`label[for]`, `input.labels` e o `get_by_label` do
+  Playwright); "Imagem da publicação" não é mais rótulo, é um título (`div.rotulo`) com a mesma aparência de um rótulo no mesmo lugar
+  (letra, tamanho, peso, cor, margens, altura de linha e tamanho na tela iguais); nenhum rótulo do formulário aponta para campo que não
+  existe; quem só lê não tem o campo nem rótulo para ele, e o título continua. Mutações: os dois `<label for>` de volta e o título sem
+  a aparência de rótulo.
+- **Versão** (`test_radar_telas.py`, 2 ajustados com conteúdo e 3 só pelo número; `test_radar_funcao_ia.py`, 4 só pelo número): a aba
+  Versões abre com a v0.25.1 (os três ajustes em português simples e "Administrador: instalar a radar-ia 0.25.1; o banco não muda"), e
+  as entradas seguintes passam uma posição; a `FUNCAO_MINIMA` continua "0.25.0" (a tela nova funciona com a função da v0.25.0: o kit
+  dela traz a arte, que a tela ignora), com a tela na v0.25.1. O `test_radar_repositorio.py` não mudou: ele lê as versões dos próprios
+  arquivos (a tela, os scripts, a função, o LEIAME, o relatório) e passou com a v0.25.1 e o banco na v0.25.0. Mutação: a entrada da
+  v0.25.1 sem o item do kit.
 
 ## v0.25.0 (etapa 6) — uma imagem só para o site, o Instagram e o Facebook, com aparência de foto e o aviso de IA no canto
 
@@ -84,6 +126,11 @@ no banco e 2 no robô do site), todas derrubaram o teste delas:
 
 Os 2 testes de tela que sobem a IA Central de verdade e geram a imagem foram ajustados (botão, recado, imagem 3:2, `quality: "high"`; o
 custo da imagem em qualidade alta não é mais conferido pelo valor, que é o da tabela da IA Central) — são pulados aqui.
+
+Também na revisão, o `test_peca_nao_publicar_neste_canal_com_o_outro_ja_publicado` (Pauta, `test_radar_telas.py`) dependia do dia em
+que a suíte roda (na madrugada de sexta-feira, 16/10, a peça de "daqui a 3 dias" caía na semana seguinte e a tela não a achava na semana
+aberta; falhava igual no código da v0.24.0): agora ele abre a segunda peça pela semana dela. Com isso, a suíte inteira da v0.25.0, depois
+da revisão, deu 1.048 aprovados, 0 falhas e 67 pulados, em 1.000 s (16min40s).
 
 Comandos (neste ambiente): os arquivos afetados (`test_radar_funcao_ia.py`, `test_radar_banco.py`, `test_radar_telas.py`,
 `test_radar_site_publicar.py` e `test_radar_repositorio.py`), as mutações (um script que troca o trecho, roda o teste dele, confere que

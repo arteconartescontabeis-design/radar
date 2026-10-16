@@ -1,4 +1,4 @@
-# Radar Artecon — v0.25.0
+# Radar Artecon — v0.25.1
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,29 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.25.1 traz três ajustes pequenos, anotados na revisão da v0.25.0:
+
+- **Legenda montada pelo Radar com os itens de lista em linhas próprias:** quando não há kit da IA, a legenda do Instagram e a do
+  Facebook resumem o começo do texto. Os itens de lista ("- item", "* item", "• item", "1. item" ou "1) item") saíam emendados no fim
+  da frase de antes ("…com 0,9% na fase de transição. revisar o cadastro fiscal dos produtos e serviços; confirmar com o fornecedor…").
+  Agora cada item sai na sua linha, como "• Item", com a primeira letra maiúscula e sem o negrito (a palavra que já tem maiúscula no
+  meio, como "eSocial" ou "e-CAC", e o item que começa com número ficam como estão). O resto da montagem não muda: o título, o resumo
+  de cerca de 280 caracteres, o caminho até o site, a fonte, a linha "Imagem ilustrativa gerada por IA." (quando a imagem é da IA) e a
+  identificação legal no fim, que nunca são cortadas, e as hashtags no Instagram. O limite (2.200 caracteres, ou 2.000 no "Publicar em
+  todos") continua, e o corte tira só o fim do texto, numa linha inteira. As legendas já gravadas, editadas na tela ou publicadas não
+  mudam.
+- **Kit das redes sem a arte:** a função `radar-ia` não pede mais à IA a chamada e o apoio da arte, que só serviam à arte vertical das
+  notícias (ela saiu na v0.25.0). O pedido e o esquema da resposta do kit ficam com as legendas do Instagram e do Facebook e o roteiro
+  do reel. A tela aceita o kit novo e também o kit gravado antes, com a arte (que ela ignora). A peça da Pauta (ação `peca`) tem a
+  própria arte e não muda.
+- **Acessibilidade:** o campo de arquivo da imagem do conteúdo tinha dois rótulos ligados a ele ("Imagem da publicação" e "enviar uma
+  foto própria"); fica um só, "enviar uma foto própria". "Imagem da publicação" continua como título do bloco, com a mesma aparência.
+
+Mudam a função `radar-ia` (v0.25.1: o kit sem a arte) e a tela (`index.html`; no `radar-pauta.js` e no `radar-video.js`, só o número
+da versão). **O banco continua na v0.25.0** (`radar-setup-v0.25.0.sql`, sem SQL novo); a `radar-redes`, a `radar-video`, a
+`radar-itc`, a `radar-concorrentes` e os robôs não mudam. A versão mínima da `radar-ia` que a tela pede continua a v0.25.0: a tela nova
+funciona com a função da v0.25.0 (o kit dela traz a arte, que a tela ignora). Para instalar, "Da v0.25.0 para a v0.25.1".
 
 A v0.25.0 faz da imagem **uma só para todas as publicações**: a mesma imagem (o mesmo arquivo) vai para o **site**, o **Instagram** e
 o **Facebook**, e a imagem da IA passa a ter **aparência de foto** e a ir **inteira**, com o aviso de IA pequeno no canto:
@@ -312,14 +335,15 @@ publicação agendada" e, para instalar, "Da v0.20.0 para a v0.21.0".
 A v0.20.0 completou o **"Gerar com IA" para as redes**, dentro das regras da publicidade contábil:
 
 - **Kit das redes:** o "Gerar com IA" ganha a etapa 3, que monta a partir do texto final a **legenda do Instagram**, a do
-  **Facebook**, a **chamada e a linha de apoio da arte** e o **roteiro de um reel** (de 30 a 45 segundos, com a fala e o texto na
-  tela de cada cena, para alguém da equipe gravar). Fica no quadro **"Kit das redes"**, no conteúdo, com "Copiar legenda" e
-  "Copiar roteiro"; **"Gerar kit das redes com IA"** refaz só o kit. As caixas de legenda das redes (passo da trilha, "Publicar em
-  todos" e "Publicar nos canais que faltam") já vêm com o texto do kit. Se o texto mudar depois, o kit fica **desatualizado** e
-  as redes voltam à legenda montada pelo Radar até gerar de novo; se só o título mudar (por exemplo, outro título sugerido pela
-  IA), o kit continua valendo e a tela pede para conferir a chamada da arte. O kit é sugestão: gravá-lo não muda o conteúdo nem
-  derruba autorização, e só vai ao ar o que o administrador autoriza. O reel é gravado e postado à mão. Antes de a notícia
-  estar no site, o "Copiar legenda do Facebook" leva o endereço do site da Artecon no lugar do `{LINK DO SITE}`.
+  **Facebook**, a **chamada e a linha de apoio da arte** (v0.25.1: saíram do kit) e o **roteiro de um reel** (de 30 a 45 segundos,
+  com a fala e o texto na tela de cada cena, para alguém da equipe gravar). Fica no quadro **"Kit das redes"**, no conteúdo, com
+  "Copiar legenda" e "Copiar roteiro"; **"Gerar kit das redes com IA"** refaz só o kit. As caixas de legenda das redes (passo da
+  trilha, "Publicar em todos" e "Publicar nos canais que faltam") já vêm com o texto do kit. Se o texto mudar depois, o kit fica
+  **desatualizado** e as redes voltam à legenda montada pelo Radar até gerar de novo; se só o título mudar (por exemplo, outro título
+  sugerido pela IA), o kit continua valendo e a tela pede para conferir a chamada da arte (desde a v0.25.0, a primeira linha das
+  legendas). O kit é sugestão: gravá-lo não muda o conteúdo nem derruba autorização, e só vai ao ar o que o administrador autoriza. O
+  reel é gravado e postado à mão. Antes de a notícia estar no site, o "Copiar legenda do Facebook" leva o endereço do site da Artecon
+  no lugar do `{LINK DO SITE}`.
 - **Arte vertical (1080×1350)** para o Instagram e o Facebook (v0.25.0: na notícia, deu lugar à imagem da publicação, a mesma do
   site; continua nas peças da Pauta): chamada grande, linha de apoio, "Matéria completa em
   www.artecon.cnt.br" e a faixa legal com a identificação da empresa; o selo "NORMA ESTADUAL · SC" só nas normas estaduais. A
@@ -2072,6 +2096,26 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.25.0 para a v0.25.1** (o banco não muda: não há SQL para rodar; nada de chave ou segredo pelo chat). Nesta ordem:
+
+1. A tela chega pelo repositório: `index.html`, `radar-pauta.js` e `radar-video.js` juntos (nos dois scripts, só o número da versão);
+   Ctrl+F5 em todos os aparelhos. A aba Versões mostra a v0.25.1. A tela nova funciona também com a função `radar-ia` da v0.25.0 (o kit
+   dela traz a chamada e o apoio da arte, que a tela ignora): por isso ela vem primeiro.
+2. Edge Functions → `radar-ia` → cole o `index.ts` desta versão → Deploy, com "Verify JWT" como já está. Nenhum segredo muda. A
+   `radar-redes` não muda.
+3. Configurações → Inteligência artificial → **Testar a IA**: a função aparece como **v0.25.1**.
+4. Teste num assunto de teste, sem publicar: (a) num conteúdo com lista no texto e sem kit, o passo Publicar mostra a legenda com cada
+   item na sua linha ("• Item", com a primeira letra maiúscula) e a identificação legal no fim; (b) "Gerar kit das redes com IA" gera as
+   legendas e o roteiro do reel (sem chamada nem apoio da arte), e um conteúdo com o kit antigo continua mostrando as legendas dele.
+
+O banco continua na v0.25.0 (`sql/radar-setup-v0.25.0.sql`). Se a função for instalada antes da tela (ou se algum aparelho ainda
+estiver com a tela da v0.25.0 guardada), o kit gerado nesse meio-tempo aparece como "incompleto" na tela antiga e as redes usam a
+legenda montada pelo Radar; com a tela nova (Ctrl+F5), ele vale normalmente, sem gerar de novo.
+
+Para desfazer: cole de novo o `index.ts` da `radar-ia` da v0.25.0 (no histórico do GitHub) e volte a tela da v0.25.0. O kit gerado pela
+v0.25.1 (sem a arte) aparece como "incompleto" na tela da v0.25.0: gere o kit de novo, se quiser usá-lo. As legendas já gravadas ou
+publicadas não mudam.
 
 **Da v0.24.0 para a v0.25.0** (muda o banco: SQL novo, só uma função, que pode rodar de novo; nada de chave ou segredo pelo chat).
 Faça tudo de uma vez, num momento em que ninguém esteja gerando imagem nem aprovando conteúdo:
