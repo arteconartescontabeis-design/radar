@@ -152,21 +152,18 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 #recado div.aviso{background:#8A5A00}
 .trilha li{cursor:pointer}
 .trilha li.aberta{box-shadow:0 0 0 2px var(--marinho) inset}
-/* v0.10.0: tela do assunto em quatro passos, com o quadro lateral */
-.trilha.passos4 li{border-top-width:5px}
-.trilha.passos4 li.aberta{background:var(--marinho);border-color:var(--marinho)} .trilha.passos4 li.aberta b,.trilha.passos4 li.aberta span{color:#fff}
 .proximo{display:flex;gap:14px;align-items:center;flex-wrap:wrap} .proximo > div:first-child{flex:1;min-width:240px} .proximo .acoes{margin:0}
 .proximo .acoes .btn{padding:10px 18px;font-weight:700}
-/* v0.12.2: trilha de autorização — barra numerada e um passo de cada vez, com os botões só no passo de agora */
-.trilha.passos7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
-.trilha.passos7 li{min-width:0;background:none;border:0;border-radius:8px;padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;font-size:.78rem}
-.trilha.passos7 li i{font-style:normal;width:34px;height:34px;border-radius:50%;border:2px solid #C9D2DC;background:#fff;color:#8A96A3;font-weight:700;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
-.trilha.passos7 li b{color:#8A96A3} .trilha.passos7 li span{color:#8A96A3;font-size:.72rem;overflow-wrap:anywhere}
-.trilha.passos7 li.feito i{background:var(--ok);border-color:var(--ok);color:#fff} .trilha.passos7 li.feito b,.trilha.passos7 li.feito span{color:var(--ok)}
-.trilha.passos7 li.agora i{border-color:var(--azul);color:var(--marinho);box-shadow:0 0 0 4px var(--azul-claro)} .trilha.passos7 li.agora b{color:var(--marinho)}
-.trilha.passos7 li.pendente i{border-color:var(--alerta);color:var(--alerta)}
-.trilha.passos7 li.breve{cursor:default} .trilha.passos7 li.breve i{border-style:dashed}
-.trilha.passos7 li.aberta{background:var(--azul-claro);box-shadow:none}
+/* v0.12.2: trilha de autorização — barra numerada e um passo de cada vez, com os botões só no passo de agora. v0.26.0: três passos
+   (Preparar, Conferir e aprovar, Publicar), sempre para a frente */
+.trilha.passos3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.trilha.passos3 li{min-width:0;background:none;border:0;border-radius:8px;padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;font-size:.85rem}
+.trilha.passos3 li i{font-style:normal;width:34px;height:34px;border-radius:50%;border:2px solid #C9D2DC;background:#fff;color:#8A96A3;font-weight:700;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.trilha.passos3 li b{color:#8A96A3} .trilha.passos3 li span{color:#8A96A3;font-size:.72rem;overflow-wrap:anywhere}
+.trilha.passos3 li.feito i{background:var(--ok);border-color:var(--ok);color:#fff} .trilha.passos3 li.feito b,.trilha.passos3 li.feito span{color:var(--ok)}
+.trilha.passos3 li.agora i{border-color:var(--azul);color:var(--marinho);box-shadow:0 0 0 4px var(--azul-claro)} .trilha.passos3 li.agora b{color:var(--marinho)}
+.trilha.passos3 li.pendente i{border-color:var(--alerta);color:var(--alerta)}
+.trilha.passos3 li.aberta{background:var(--azul-claro);box-shadow:none}
 .autorizacao{list-style:none;padding:0;margin:0 0 16px;display:flex;flex-direction:column;gap:8px}
 .passo-a{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:10px 14px;display:grid;grid-template-columns:30px minmax(0,1fr);gap:2px 12px;align-items:start}
 .passo-a .num{width:30px;height:30px;border-radius:50%;border:2px solid #C9D2DC;color:#8A96A3;font-weight:700;display:flex;align-items:center;justify-content:center;grid-row:span 2;font-variant-numeric:tabular-nums}
@@ -177,8 +174,19 @@ textarea.json{font-family:monospace;min-height:200px;font-size:.85rem}
 .passo-a.agora{border-color:var(--azul);box-shadow:0 0 0 3px var(--azul-claro);padding:14px 16px} .passo-a.agora .num{border-color:var(--azul);color:var(--marinho)}
 .passo-a.agora .estado{background:var(--azul-claro);color:var(--marinho)} .passo-a.agora .acoes .btn{padding:10px 18px;font-weight:700}
 .passo-a.pendente .num{border-color:var(--alerta);color:var(--alerta)} .passo-a.pendente .estado{background:var(--alerta-fundo);color:var(--alerta)}
-.passo-a.espera,.passo-a.breve{background:transparent;color:#7A8591} .passo-a.espera h3,.passo-a.breve h3{color:#7A8591} .passo-a.breve .num{border-style:dashed}
+.passo-a.espera{background:transparent;color:#7A8591} .passo-a.espera h3{color:#7A8591}
 .prox-titulo{color:var(--marinho);display:block}
+/* v0.26.0: no passo 2, os 10 critérios da Conferência (só leitura) e o que falta para aprovar; no passo 3, uma linha por canal; no
+   passo 1, a linha da fonte; e, no passo de agora, os outros botões numa linha "Mais opções" (sempre à vista) */
+.conf-trilha{list-style:none;padding:0;margin:8px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:2px 12px;font-size:.85rem}
+.conf-trilha .marca{display:inline-block;width:1.3em;border:0;padding:0;font:inherit;font-weight:700;color:inherit}     /* sem o estilo do nome “Radar” do topo (.marca) */
+.conf-trilha li[data-situacao=atende] .marca{color:var(--ok)}
+.conf-trilha li[data-situacao=nao_atende]{color:var(--erro)} .conf-trilha li[data-situacao=pendente]{color:var(--alerta)}
+.conf-trilha-resumo{margin:4px 0 0}
+.canais-passo{list-style:none;padding:0;margin:2px 0 8px;display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.85rem}
+.canais-passo li.c-feito{color:var(--ok)} .canais-passo li.c-vez{color:var(--marinho);font-weight:700}
+.fonte-passo{margin:8px 0 0;font-size:.85rem}
+.mais-opcoes,.acoes-fonte{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 0}
 .link{background:none;border:0;padding:0;color:var(--azul);text-decoration:underline;cursor:pointer;font:inherit}
 .motivo-liberar{border:1px dashed var(--erro);border-radius:8px;padding:10px 12px;margin:8px 0 0;background:#fff} .motivo-liberar label{color:var(--erro);margin-top:0}
 .motivo-liberar input{width:100%} .motivo-liberar .acoes{align-items:center}
@@ -203,7 +211,7 @@ table.roteiro{table-layout:fixed;margin:6px 0} table.roteiro th{white-space:norm
 .excluir-grupo{align-items:center} .excluir-grupo label{display:inline-flex;gap:4px;align-items:center;margin:0}
 details.todos{margin:12px 0 0} details.todos summary{cursor:pointer} .rede-legenda label input{width:auto;margin:0 4px 0 0}
 details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
-@media (max-width:560px){.trilha.passos7 li i{width:28px;height:28px}.trilha.passos7 li span,.trilha.passos7 li b{display:none}}
+@media (max-width:560px){.trilha.passos3 li i{width:28px;height:28px}.trilha.passos3 li span{display:none}}
 .assunto-corpo{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
 .lateral .painel{padding:14px} .lateral h3{margin-bottom:6px} .lateral label{display:block;margin-top:8px}
 .lateral input,.lateral select,.lateral textarea{width:100%}
@@ -295,19 +303,29 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.25.1"></script>
-<script src="radar-video.js?v=0.25.1"></script>
+<script src="radar-pauta.js?v=0.26.0"></script>
+<script src="radar-video.js?v=0.26.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.25.1";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte)
+const VERSAO = "0.26.0";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.26.0", "16/10/2026", [
+    "O assunto agora tem 3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar. Só o passo de agora tem botões: o principal em destaque e, em “Mais opções”, os outros.",
+    "Passo 1: “Preparar com IA” (antes “Gerar com IA”), com o tamanho do texto ao lado do botão, faz tudo de uma vez — busca o trecho que comprova (só se ainda não houver) ou procura a fonte oficial na internet, escreve o texto, faz a capa padrão, confere os 10 critérios das Diretrizes e monta as legendas das redes — e manda o texto para o passo 2. Conta como uma consulta só. A imagem com IA continua opcional, no botão do texto.",
+    "Rascunho que já existe (o do robô ou o escrito pela equipe): “Preparar este texto” completa o que falta nele, sem escrever outro. Sem IA: “Enviar para revisão (sem IA)”.",
+    "Passo 2: a lista dos 10 critérios aparece no próprio passo. O “✓ Aprovar” fica desligado enquanto houver ✗, critério não conferido, [VERIFICAR], frase do boletim pago, trecho igual ao da fonte sem autorização ou campo Fonte vazio — e a tela diz o que falta. Com ✗, o administrador pode usar “Revisei e assumo”, com o motivo (nunca com [VERIFICAR] ou boletim pago).",
+    "A confirmação da fonte é o botão “✓ Conferi na fonte oficial”, no passo 2: a IA acha o trecho, mas não confirma sozinha. Só o site exige.",
+    "Texto Informativo: no passo 2, “Autorizar o Informativo” (só o administrador, com o motivo); a tela avisa que vale para o assunto inteiro, como o “Publicar mesmo assim”, e o aviso do “Publicar mesmo assim” passou a dizer isso também.",
+    "Passo 3: uma linha por canal (Site, Instagram, Facebook) e o “Publicar em todos (site, Instagram e Facebook)”: cada rede tem a sua caixa e a sua legenda, e a tela pede confirmação. O site sai primeiro; as redes, logo depois que a notícia entrar no site. O passo só fica concluído com cada canal publicado ou com “Não publicar”. Dá para cancelar só o Instagram (ou só o Facebook) que ia junto com o site.",
+    "Depois de aprovado, o que falta para o site (texto oficial, trecho, confirmação) aparece no passo 3: a trilha não volta para o começo.",
+    "Administrador: só publicar a tela (index.html com o radar-pauta.js e o radar-video.js; Ctrl+F5). O banco não muda (continua o sql/radar-setup-v0.25.0.sql) e as funções radar-ia e radar-redes não mudam. Passo a passo no LEIAME, “Da v0.25.1 para a v0.26.0”."]],
   ["0.25.1", "16/10/2026", [
     "Legenda das redes montada pelo Radar (a que vai quando não há kit da IA): os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula, e não mais emendados no fim da frase de antes (“…na transição. revisar o cadastro; confirmar com o fornecedor…”). Vale para o Instagram e o Facebook. O resto continua igual: o tamanho máximo, a fonte, a linha “Imagem ilustrativa gerada por IA.” e a identificação legal no fim, que nunca são cortadas. As legendas já gravadas ou publicadas não mudam.",
     "Kit das redes: a IA não escreve mais a chamada e o apoio da arte, que só serviam à arte vertical das notícias (ela saiu na v0.25.0). O kit fica com as legendas do Instagram e do Facebook e o roteiro do reel. Os kits já gravados continuam valendo como estão. As peças da Pauta continuam com a arte delas, sem mudança.",
@@ -816,8 +834,10 @@ const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
 const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo e revisando o texto (até 2 minutos e meio)",
   classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a imagem da publicação em qualidade alta (até 2 minutos e meio)",
   verificar:"procurando a fonte oficial na internet (até 2 minutos)", kit:"montando as legendas e o roteiro do reel (até 1 minuto)",
-  peca:"escrevendo a chamada, as legendas e os cartões da peça (até 1 minuto)", editorial:"fazendo a revisão editorial do texto (até 2 minutos)"};
-/* v0.19.0: no “Gerar com IA” (várias chamadas seguidas), o aviso diz também em que etapa está */
+  peca:"escrevendo a chamada, as legendas e os cartões da peça (até 1 minuto)", editorial:"fazendo a revisão editorial do texto (até 2 minutos)",
+  // v0.26.0: a etapa 3 do “Preparar com IA” (e o “Revisar com IA” do texto)
+  revisar:"conferindo o texto pelos 10 critérios das Diretrizes e corrigindo o que estiver marcado (até 2 minutos)"};
+/* v0.19.0: no “Gerar com IA” (várias chamadas seguidas), o aviso diz também em que etapa está (v0.26.0: “Preparar · etapa X de 4”) */
 let IA_PASSO = "";
 function avisoIA(texto){
   let a = $("#ia-trabalhando");
@@ -1340,9 +1360,9 @@ const TELAS = {
       <p class="sub">O Radar acompanha as fontes oficiais, ajuda a escrever e a conferir, e guarda o registro do que foi divulgado. A publicação é feita nas páginas da Artecon.</p>
       <div class="painel"><h2>O caminho de uma publicação</h2><ol class="passos">
         <li><b>Capturas.</b> O robô lê as fontes cadastradas e, depois de cada coleta, a IA dá uma nota a cada novidade. A tela abre só com o que está <b>em alta</b>: as 10 de maior nota, sem repetição. Em cada item, clique em <b>Abrir assunto</b> para trabalhar ou em <b>Ignorar</b>. Cada cartão diz se a notícia tem <b>fundamentação legal</b>: “com fundamentação legal” mostra as normas que o texto capturado cita (lei, lei complementar, decreto, medida provisória, instrução normativa, resolução, portaria, solução de consulta, ato declaratório, ato conjunto do CGIBS, convênio ICMS, edital de transação e outros atos, além da Constituição, do CTN, do RIR, do RICMS e da CLT); “sem fundamentação legal” quer dizer que o texto não cita nenhuma, e “fundamentação legal não identificada”, que o texto capturado está cortado e não cita norma no trecho que veio — nos dois casos, confira na fonte antes de usar. É uma leitura automática do texto: diz o que está citado, não se a citação está certa nem se a norma está em vigor; decisões judiciais (Tema, RE, ADI) e projetos de lei não contam. Não muda a nota nem a relevância. O restante fica em “Relevantes”, “Baixa relevância” e “Todas”, e pode ser ignorado de uma vez.</li>
-        <li><b>Assunto.</b> No alto ficam os cinco passos e o quadro <b>Próximo passo</b>, com o botão do que falta fazer. A tela mostra uma etapa de cada vez: <b>Fonte e fundamentação</b>, <b>Conteúdo</b> e <b>Classificação</b>. <b>Gerar com IA</b> busca a fonte (ou o trecho que comprova), escreve o rascunho, faz a capa padrão e o <b>kit das redes</b> (as legendas do Instagram e do Facebook e o roteiro de um reel). Marque <b>Confirmado oficialmente</b> quando conferir na fonte.</li>
+        <li><b>Assunto.</b> No alto ficam os três passos — <b>1. Preparar</b>, <b>2. Conferir e aprovar</b> e <b>3. Publicar</b> — e, no passo de agora, o botão do que falta fazer. <b>Preparar com IA</b> busca o trecho que comprova (ou a fonte oficial na internet), escreve o texto, faz a capa padrão, confere os 10 critérios e monta as legendas das redes; o rascunho que já existe é completado com <b>Preparar este texto</b>. Em <b>Conferir e aprovar</b> ficam os 10 critérios: o Aprovar só funciona com todos em ✓ (ou com o “Revisei e assumo” do administrador). Clique em <b>Conferi na fonte oficial</b> quando conferir a informação na fonte (o site exige). Em <b>Publicar</b>, o administrador autoriza o site, o Instagram e o Facebook — de uma vez, em “Publicar em todos”, ou um por um.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
-        <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Gerar com IA</b>, que produz um rascunho). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida. <b>A mesma imagem vai para o site, o Instagram e o Facebook</b>: se preferir, use <b>Gerar imagem com IA</b> (uma imagem com aparência de foto, com pessoas fictícias; dá para dizer como quer a imagem, em até 500 caracteres; ela vai inteira, com o aviso “Imagem ilustrativa gerada por IA” pequeno no canto) ou envie uma foto própria (foto de alguém da equipe só com o termo de uso de imagem assinado). O Radar compara o texto com a fonte: o trecho igual ao da fonte fica num quadro (citar a fonte não autoriza copiar: transcrição literal só entre aspas e com a fonte); o botão <b>Revisar com IA</b> reescreve com palavras próprias — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Antes de aprovar, o quadro <b>Conferência das Diretrizes</b> mostra os 10 critérios do escritório: <b>Revisar com IA</b> confere o texto, e com ✗ ou critério não conferido o <b>Aprovar</b> fica travado (o administrador pode liberar com <b>Revisei e assumo</b>, com o motivo). Logo abaixo, o quadro <b>Revisão editorial</b> mostra como a IA releu o texto que escreveu (10 perguntas, com ✓ ou ✎, e o que foi reescrito); ele só informa. Sem fonte oficial, a IA escreve um texto <b>Informativo</b>, que só vai ao site depois que o administrador autoriza. Salve, envie para revisão e <b>aprove</b>.</li>
+        <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Preparar com IA</b>, no passo 1). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida. <b>A mesma imagem vai para o site, o Instagram e o Facebook</b>: se preferir, use <b>Gerar imagem com IA</b> (uma imagem com aparência de foto, com pessoas fictícias; dá para dizer como quer a imagem, em até 500 caracteres; ela vai inteira, com o aviso “Imagem ilustrativa gerada por IA” pequeno no canto) ou envie uma foto própria (foto de alguém da equipe só com o termo de uso de imagem assinado). O Radar compara o texto com a fonte: o trecho igual ao da fonte fica num quadro (citar a fonte não autoriza copiar: transcrição literal só entre aspas e com a fonte); o botão <b>Revisar com IA</b> reescreve com palavras próprias — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Antes de aprovar, o quadro <b>Conferência das Diretrizes</b> mostra os 10 critérios do escritório: <b>Revisar com IA</b> confere o texto, e com ✗ ou critério não conferido o <b>Aprovar</b> fica travado (o administrador pode liberar com <b>Revisei e assumo</b>, com o motivo). Logo abaixo, o quadro <b>Revisão editorial</b> mostra como a IA releu o texto que escreveu (10 perguntas, com ✓ ou ✎, e o que foi reescrito); ele só informa. Sem fonte oficial, a IA escreve um texto <b>Informativo</b>, que só vai ao site depois que o administrador autoriza. Salve, envie para revisão e <b>aprove</b>.</li>
         <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
         <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
       </ol></div>
@@ -1534,8 +1554,9 @@ async function reordenarItens(ids){
 }
 
 /* ------------------------------------------------------ tela do assunto */
-/* v0.10.0: quatro passos (conferir a fonte → escrever → revisar e aprovar → publicar no site), o próximo passo em
-   destaque e, ao lado, um quadro com a base do texto, a capa e os demais dados do assunto. */
+/* v0.10.0: o próximo passo em destaque e, ao lado, um quadro com a base do texto, a capa e os demais dados do assunto. v0.26.0: três
+   passos, sempre para a frente — 1. Preparar (a fonte oficial, o texto, a capa, a Conferência e as legendas), 2. Conferir e aprovar e
+   3. Publicar (site, Instagram e Facebook) — no lugar dos sete da v0.12.2 (Fonte, Texto, Revisão, Aprovar, Site, Instagram e Facebook). */
 const TAMANHO_TEXTO = {flash:"Curto (aviso rápido)", informativo:"Médio (notícia)", artigo:"Longo (artigo)"};
 const CATEGORIAS_DO_SITE = ["IRRF", "Economia", "Legislação Federal", "E-social", "Área Trabalhista e Previdenciária", "Simples Nacional",
   "Tributário", "Legislação Estadual (SC)", "Legislação Municipal"];
@@ -1596,11 +1617,12 @@ async function telaAssunto(id){
   const liberado = !!a.liberado_sem_base_em;                            // v0.12.0: "Publicar mesmo assim" do administrador
   const pronto = liberado || (a.situacao_confirmacao === "confirmado_oficialmente" && conferidasOficiais > 0);
   if(ed) FONTES_LISTA = await ler("radar_fontes", {select:"id,nome,oficial,url", order:"nome"});
-  // os quatro passos do trabalho e o que falta agora
+  // os três passos do trabalho (v0.26.0) e o que falta agora
   const temTexto = vinc.some(v => v.radar_capturas.texto), temOficial = vinc.some(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial);
   const paraPublicar = cont.filter(c => !ehAnalise(c)), analises = cont.filter(ehAnalise);   // o texto para análise não entra na revisão
   const aprovados = cont.filter(c => c.status === "aprovado"), revisando = paraPublicar.filter(c => c.status === "em_revisao");
   const rejeitados = paraPublicar.filter(c => c.status === "rejeitado"), rascunhos = paraPublicar.filter(c => c.status === "rascunho");
+  const preparados = paraPublicar.filter(c => c.status !== "rascunho");                 // v0.26.0: o passo 1 feito (em revisão, rejeitado ou aprovado)
   const vaoAoSite = aprovados.filter(c => !c.fora_do_site);
   const emDia = c => pubs.some(p => p.conteudo_id === c.id && !p.texto_mudou && !p.versao_anterior);      // registro que vale para o texto atual
   const faltamRegistrar = vaoAoSite.filter(c => !emDia(c)), baseCaiu = pubs.some(p => p.base_caiu && !p.versao_anterior);
@@ -1610,7 +1632,6 @@ async function telaAssunto(id){
   const aguardando = faltamRegistrar.filter(c => ["autorizado","enviando"].includes(envioDe(c)?.situacao));
   const falhou = faltamRegistrar.find(c => envioDe(c)?.situacao === "erro");
   const semRegistro = faltamRegistrar.find(c => envioDe(c)?.situacao === "publicado" && !pubs.some(p => p.conteudo_id === c.id));     // o robô publicou, mas o registro não entrou
-  // v0.12.2: trilha de autorização — cinco passos em sequência (mais Instagram e Facebook, em breve); só o passo de agora mostra os botões
   const ultimoAprovado = aprovados.map(c => c.aprovado_em).filter(Boolean).sort().pop();
   // v0.13.0: Instagram e Facebook depois do site — o conteúdo que já está no site (a legenda leva até ele)
   const cRede = noSite ? vaoAoSite.find(emDia) : null;
@@ -1618,110 +1639,183 @@ async function telaAssunto(id){
   const redeAgora = cRede ? ["instagram", "facebook"].find(canal => !["publicado","dispensado"].includes(redeDe(canal)?.situacao)) : null;
   // v0.19.0: algum canal ainda livre depois do site (o quadro “Publicar nos canais que faltam” aparece no passo Publicar)
   const faltaRede = !!cRede && ehAdmin() && pronto && redeLivre(redes.filter(r => r.conteudo_id === cRede.id)).length > 0;
-  const passos = [
-    {chave:"fonte", nome:"Fonte", titulo:"Conferir a fonte", etapa:"fonte", feito:pronto,
-      nota:pronto ? (liberado ? "liberada sem fonte oficial" : "fundamentação confirmada") : !temTexto ? "sem texto oficial" : !temOficial ? "só fonte não oficial" : conferidasOficiais ? "falta confirmar" : "falta o trecho que comprova",
-      feitoTxt:liberado ? `Liberado sem fonte oficial pelo administrador em ${dataHora(a.liberado_sem_base_em)}. Motivo: ${h(a.liberado_sem_base_motivo || "")}`
-        : `Fonte oficial confirmada, com ${conferidasOficiais} trecho(s) conferido(s) em fonte oficial.`,
-      desfazer:liberado && ehAdmin() ? `<button class="link" type="button" data-acao="desfazer-liberacao">Desfazer</button>` : ""},
-    {chave:"texto", nome:"Texto", titulo:"Escrever o texto para publicar", etapa:"conteudo", feito:paraPublicar.length > 0,
-      nota:paraPublicar.length ? paraPublicar.length + " escrito(s)" : analises.length ? "só texto para análise" : "falta",
-      feitoTxt:`${paraPublicar.length} texto(s) para publicar.`},
-    {chave:"revisao", nome:"Revisão", titulo:"Revisão", etapa:"conteudo", feito:aprovados.length > 0 || revisando.length > 0,
-      nota:aprovados.length ? "feita" : revisando.length ? "em revisão" : rejeitados.length && !rascunhos.length ? "rejeitado" : "falta",
-      feitoTxt:aprovados.length ? "Revisão concluída." : `${revisando.length} conteúdo(s) em revisão.`},
-    {chave:"aprovar", nome:"Aprovar", titulo:"Aprovação", etapa:"conteudo", feito:aprovados.length > 0,
-      nota:aprovados.length ? "aprovado" : "falta", feitoTxt:"Aprovado" + (ultimoAprovado ? " em " + dataHora(ultimoAprovado) : "") + "."},
-    {chave:"site", nome:"Site", titulo:"Autorização do site", etapa:"publicar", feito:noSite || foraDoSite,
-      nota:noSite ? "publicado" : foraDoSite ? "não vai ao site" : aguardando.length ? "aguardando o robô" : jaRegistrado || baseCaiu ? "rever" : "falta",
-      feitoTxt:noSite ? "Publicado no site e registrado." : "O conteúdo aprovado não vai ao site: fica só para o Informativo Mensal."},
-    ...["instagram", "facebook"].map(canal => { const r = redeDe(canal), nome = NOME_REDE[canal];
-      const junto = redes.some(x => x.canal === canal && x.situacao === "aguardando_site" && vaoAoSite.some(c => c.id === x.conteudo_id));   // v0.17.0
-      return {chave:canal, nome, titulo:"Autorização do " + nome, etapa:"publicar", feito:!!r && ["publicado","dispensado"].includes(r.situacao),
-        nota:!cRede ? (junto ? "vai junto com o site" : "depois do site") : situacaoRede(r),
-        feitoTxt:r?.situacao === "publicado" ? `Publicado em ${dataHora(r.publicado_em)}${r.url ? " — " + linkFonte(r.url, "ver no " + nome + " ↗") : "."}` : "Não publicado neste canal.",
-        desfazer:r?.situacao === "dispensado" && ehAdmin() ? `<button class="link" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Desfazer</button>` : ""}; })];
+  // v0.18.0: cada fonte com os nomes pelos quais o texto pode citá-la e se é boletim pago (o detector de cópia usa os três). v0.26.0: lido
+  // antes dos passos — o passo 2 confere o texto com as mesmas contas do formulário (analiseConteudo)
+  const fontesTxt = vinc.filter(v => v.radar_capturas.texto).sort((x, y) => y.radar_capturas.radar_fontes.oficial - x.radar_capturas.radar_fontes.oficial)
+    .map(({radar_capturas:k}) => ({texto:k.texto, nome:k.radar_fontes.orgao || "",
+    nomes:nomesDaFonte(k.radar_fontes.nome, k.radar_fontes.orgao), paga:FONTES_PAGAS.includes(k.radar_fontes.slug)}));
+  E.fontesAssunto = fontesTxt;                // v0.20.0: a legenda das redes também é comparada com o boletim pago (só na memória)
   const ir = (alvo, rotulo, classe = "") => `<button class="btn ${classe}" data-acao="ir" data-alvo="${alvo}">${rotulo}</button>`;
+  const irTexto = (id, rotulo = "Ir para o texto") => `<button class="btn peq sec" type="button" data-acao="ir-conteudo" data-id="${id}">${rotulo}</button>`;
   // v0.14.0: a IA procura a fonte oficial na internet (se já procurou, o botão leva ao resultado)
   const verificarBtn = a.verificacao ? ir("#sec-verificacao", "Ver a verificação em fontes oficiais", "sec") : `<button class="btn" data-acao="ia-verificar">Verificar em fontes oficiais</button>`;
   const semFonte = ehAdmin() ? `<button class="btn perigo" type="button" data-acao="abrir-motivo">Publicar mesmo assim…</button>` : "";
-  // v0.19.0: “Gerar com IA” (busca a fonte e escreve o texto), com ou sem texto oficial; v0.20.0: com a capa padrão e o kit das redes
-  const gerarIA = (classe = "btn") => `<button class="${classe}" data-acao="ia-tudo" data-oficial="${temOficial ? 1 : ""}" data-conteudos="${cont.length}">Gerar com IA</button>`;
-  const paraRevisar = rascunhos[0] || rejeitados[0];
+  // v0.19.0: “Gerar com IA” (busca a fonte e escreve o texto), com ou sem texto oficial; v0.20.0: com a capa padrão e o kit das redes.
+  // v0.26.0: “Preparar com IA”, com o tamanho do texto ao lado (os seletores da tela andam juntos), também a Conferência dos 10 critérios;
+  // com data-id, “Preparar este texto” completa o rascunho que já existe. data-trechos: há trecho oficial conferido (o Preparar não busca
+  // outro); data-conteudos: os textos para publicar (o texto para análise não conta)
+  const seletorFormato = idSel => `<label for="${idSel}" class="sub" style="margin:0">Tamanho do texto</label><select id="${idSel}" data-formato>${opcoes(TAMANHO_TEXTO, E.formato || "informativo")}</select>`;
+  const prepararBtn = (rotulo = "Preparar com IA", classe = "btn verde", id = null) => `<button class="${classe}" type="button" data-acao="ia-tudo" data-oficial="${temOficial ? 1 : ""}" data-trechos="${conferidasOficiais}" data-conteudos="${paraPublicar.length}"${id ? ` data-id="${id}"` : ""}>${rotulo}</button>`;
+  // v0.26.0: o passo 2 do texto da vez — o que trava o Aprovar, na ordem do ACOES.aprovar ([VERIFICAR], trecho igual ao da fonte ou frase do
+  // boletim pago, campo Fonte e a Conferência), com as mesmas contas do formulário; o ACOES.aprovar confere tudo de novo ao clicar
+  const confDaVez = c => { const x = analiseConteudo(c, fontesTxt), conf = x.conf, travaConf = !E.semConferencia && !conf.liberado;
+    const faltam = conf.itens.filter(i => i.situacao === "nao_atende" || i.situacao === "pendente").length;
+    const travas = [x.marcas.length ? `resolver ${x.marcas.length} ponto(s) marcado(s) com [VERIFICAR] no texto` : "",
+      x.vermelho.length && !x.autorizada ? (x.pagas.length ? "reescrever a frase do boletim pago (ITC) com palavras próprias"
+        : "reescrever o trecho igual ao da fonte (ou usar “Autorizar mesmo assim”, no quadro vermelho do texto)") : "",
+      x.semCredito && x.daTela.length ? "preencher o campo Fonte do texto e salvar" : "",
+      travaConf ? `${faltam} critério(s) com ✗ ou ?` : ""].filter(Boolean);
+    return {conf, travas, travaConf, pode:!travas.length, temX:conf.itens.some(i => i.situacao === "nao_atende"), temPendente:conf.itens.some(i => i.situacao === "pendente")}; };
+  // a lista dos 10 critérios (só leitura: sem id nem data-item, para não repetir o quadro do formulário) e o que falta para aprovar
+  const listaConf = (cv, comConferir, aguarda = false) => (E.semConferencia ? "" : `<ol class="conf-trilha" aria-label="Os 10 critérios das Diretrizes">${cv.conf.itens.map(i =>
+      `<li data-criterio="${i.n}" data-situacao="${i.situacao}"><span class="marca" title="${ROTULO_CONFERENCIA[i.situacao]}">${MARCA_CONFERENCIA[i.situacao]}</span> ${i.n}. ${h(i.nome)}${i.situacao === "nao_atende" ? ` <span class="sub">— ${h(i.motivo)}</span>` : ""}</li>`).join("")}</ol>`)
+    + `<p class="sub conf-trilha-resumo">${E.semConferencia ? "A conferência espera o banco novo; a aprovação segue como antes." + (cv.travas.length ? ` Para aprovar, falta: ${cv.travas.join("; ")}.` : "")
+      : !cv.travas.length ? (cv.conf.ok ? "✓ Os 10 critérios atendem (ou não se aplicam): " : "Revisado e assumido pelo administrador: ") + (aguarda ? "depois da autorização, pode ser aprovado." : "pode aprovar.")
+      : `Para aprovar, falta: ${cv.travas.join("; ")}.` + (cv.conf.travaAntes ? " O [VERIFICAR] e a frase do boletim pago precisam sair do texto: nem o “Revisei e assumo” passa por cima deles." : "")
+        + (comConferir ? " “Conferir com IA” também corrige o que estiver marcado: o texto pode mudar." : "")}</p>`;
+  // v0.26.0: a fonte no passo 2 — a confirmação continua sendo um clique de quem conferiu (a IA acha o trecho, mas não confirma sozinha)
+  const fonteConferir = () => liberado ? `<p class="fonte-passo">Fonte: publicação liberada sem a fonte oficial pelo administrador (o motivo está no passo 1).</p>`
+    : pronto ? `<p class="fonte-passo">✓ Fonte oficial conferida, com ${conferidasOficiais} trecho(s) que comprovam.</p>`
+    : conferidasOficiais ? `<p class="fonte-passo">A IA achou ${conferidasOficiais} trecho(s) do texto oficial que comprovam a notícia. Conferiu na fonte? Essa confirmação é sua: a IA não confirma sozinha. Só o site exige.</p>
+      <div class="acoes-fonte"><button class="btn peq verde" type="button" data-acao="confirmar-oficial">✓ Conferi na fonte oficial</button>${ir("#sec-fundamentacao", "Ver os trechos", "peq sec")}</div>`
+    : `<p class="fonte-passo">${temOficial ? "Fonte oficial: falta o trecho que comprova. Só o site exige; depois de aprovar, o passo 3 mostra como resolver."
+      : "Fonte oficial: este assunto não tem texto oficial. O site exige; o Informativo Mensal, não."}</p>`;
+  // v0.26.0: a linha da fonte no passo 1, em qualquer estado (só informa; o “Desfazer” da liberação é do administrador)
+  const linhaFonte = () => `<p class="fonte-passo">${liberado ? `Fonte: liberada sem fonte oficial pelo administrador em ${dataHora(a.liberado_sem_base_em)}. Motivo: ${h(String(a.liberado_sem_base_motivo || "").replace(/[.\s]+$/, ""))}. Vale para o assunto inteiro (é a mesma autorização do texto Informativo e do “Publicar mesmo assim”).${ehAdmin() ? ` <button class="link" type="button" data-acao="desfazer-liberacao">Desfazer</button>` : ""}`
+    : pronto ? `Fonte oficial confirmada, com ${conferidasOficiais} trecho(s) conferido(s) em fonte oficial.`
+    : `Fonte oficial: ${!temTexto ? "sem texto capturado" : !temOficial ? "só fonte não oficial" : !conferidasOficiais ? "falta o trecho que comprova" : `falta você confirmar (no passo ${aprovados.length ? 3 : 2})`}. Necessária só para o site; o Informativo Mensal não exige.`}</p>`;
+  // v0.26.0: uma linha por canal no passo 3 (só informa: os botões ficam no passo de agora). O texto de referência é o que está no site
+  // (ou o primeiro aprovado que falta). “Desfazer” o “não vai” e “Cancelar só o Instagram/Facebook” que ia junto com o site são do
+  // administrador; “Não publicar” nunca aparece com a rede esperando o site (o banco recusaria)
+  const canaisPasso = () => { if(!vaoAoSite.length) return "";
+    const cL = cRede || faltamRegistrar[0] || vaoAoSite[0], e = envioDe(cL), adm = ehAdmin(), registro = pubs.find(p => p.conteudo_id === cL.id && !p.texto_mudou && !p.versao_anterior);
+    const site = noSite ? `publicado${registro?.url ? " — " + linkFonte(registro.url, "ver no site ↗") : ""}` : ["autorizado","enviando"].includes(e?.situacao) ? "aguardando o robô"
+      : e?.situacao === "publicado" && !pubs.some(p => p.conteudo_id === cL.id) ? "publicado pelo robô; falta o registro" : e?.situacao === "erro" ? "não concluída"
+      : pubs.some(p => p.conteudo_id === cL.id) || baseCaiu ? "rever" : !pronto ? "falta a fonte oficial" : "falta";
+    const rede = k => { const r = redes.find(x => x.conteudo_id === cL.id && x.canal === k && x.situacao !== "cancelado"), nome = NOME_REDE[k];
+      const txt = r?.situacao === "publicado" ? `publicado em ${dataHora(r.publicado_em)}${r.url ? " — " + linkFonte(r.url, "ver no " + nome + " ↗") : ""}`
+        : r?.situacao === "dispensado" ? "não vai" + (adm ? ` <button class="link" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Desfazer</button>` : "")
+        : r?.situacao === "aguardando_site" ? "vai junto com o site" + (adm ? ` <button class="link" type="button" data-acao="cancelar-rede" data-envio="${r.id}" data-pergunta="Cancelar só o ${nome}? O site continua autorizado; o ${nome} fica para depois.">Cancelar só o ${nome}</button>` : "")
+        : r ? situacaoRede(r) : noSite ? "falta" : "depois do site";
+      return `<li data-canal="${k}" class="${["publicado","dispensado"].includes(r?.situacao) ? "c-feito" : noSite && k === redeAgora ? "c-vez" : "c-falta"}"><b>${nome}:</b> ${txt}</li>`; };
+    return `<ul class="canais-passo" aria-label="Os canais"><li data-canal="site" class="${noSite ? "c-feito" : "c-vez"}"><b>Site:</b> ${site}</li>${rede("instagram")}${rede("facebook")}</ul>`; };
   const aprovavel = revisando.find(c => liberado || !ehInformativo(c));   // v0.24.0: o Informativo espera a autorização do administrador
-  let prox;                                   // [título, explicação, botões, passo (0 a 4; -1 fora da trilha)]
+  const cvAprovavel = aprovavel && !aprovados.length ? confDaVez(aprovavel) : null;
+  const passos = [
+    {chave:"preparar", nome:"Preparar", titulo:"Preparar: fonte oficial, texto e imagem", etapa:"fonte", feito:preparados.length > 0,
+      nota:preparados.length ? preparados.length + " texto(s)" : rascunhos.length ? "rascunho" : analises.length ? "só texto para análise" : "falta",
+      feitoTxt:`${preparados.length} texto(s) preparado(s).`, fim:linhaFonte()},
+    {chave:"conferir", nome:"Conferir e aprovar", titulo:"Conferir e aprovar", etapa:"conteudo", feito:aprovados.length > 0,
+      nota:aprovados.length ? "aprovado" : cvAprovavel ? (cvAprovavel.pode ? "pronto para aprovar" : "falta conferir") : revisando.length ? "falta autorizar"
+        : rejeitados.length && !rascunhos.length ? "rejeitado" : "falta",
+      feitoTxt:"Aprovado" + (ultimoAprovado ? " em " + dataHora(ultimoAprovado) : "") + ". Se o texto mudar, ele volta para conferir." +
+        (revisando.length || rascunhos.length ? " Há outro texto deste assunto ainda em rascunho ou em revisão." : ""),
+      espera:"Depois que o texto estiver preparado (passo 1)."},
+    {chave:"publicar", nome:"Publicar", titulo:"Publicar: site, Instagram e Facebook", etapa:"publicar", feito:foraDoSite || (noSite && !redeAgora),
+      nota:foraDoSite ? "não vai ao site" : !vaoAoSite.length ? "falta" : noSite ? (redeAgora ? "falta o " + NOME_REDE[redeAgora] : "publicado")
+        : aguardando.length ? "aguardando o robô" : falhou ? "não concluída" : jaRegistrado || baseCaiu ? "rever" : !pronto ? "falta a fonte" : "falta",
+      feitoTxt:foraDoSite ? "O texto aprovado não vai ao site: fica só para o Informativo Mensal." : "Publicado no site e registrado; Instagram e Facebook resolvidos (publicados ou “não vai”).",
+      espera:"Depois que o texto for aprovado (passo 2). Nada vai ao site nem às redes sem a autorização do administrador.", topo:canaisPasso()}];
+  let prox;                                   // [título, explicação, botões, passo 0 a 2 (−1 fora da trilha), extra, mais opções]
   if(!ed) prox = null;
   else if(a.status === "ignorado" || a.status === "arquivado") prox = [a.status === "ignorado" ? "Assunto ignorado" : "Assunto arquivado", "Este item está fora do trabalho do dia. Para retomar, troque a etapa em “Mais detalhes” e salve.", ir("#mais-campos", "Abrir “Mais detalhes”", "sec"), -1];
-  else if(!cont.length && temOficial) prox = ["Escrever o conteúdo", "O texto oficial já está aqui. “Gerar com IA” busca o trecho que comprova, escreve o rascunho, faz a capa e o kit das redes, de uma vez; ou escreva você mesmo.",
-    gerarIA() + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
-  else if(!cont.length) prox = ["Escrever o conteúdo", "Assunto sem texto de fonte oficial. O texto escrito pela equipe vai ao Informativo Mensal depois de aprovado; para o site, inclua o texto oficial e fundamente (ou o administrador usa “Publicar mesmo assim”)." +
-    // v0.24.0: sem texto oficial, o “Gerar com IA” escreve um texto Informativo, que só é aprovado depois da autorização do administrador
-    (temTexto ? " “Gerar com IA” procura a fonte oficial na internet, escreve um texto <b>Informativo</b> a partir da fonte capturada (só é aprovado — para o site, as redes e o Informativo Mensal — depois que o administrador autoriza a publicação, com o motivo) e faz a capa e o kit das redes." : ""),
-    (temTexto ? gerarIA() + verificarBtn.replace('class="btn"', 'class="btn sec"') : "") + ir("#sec-conteudos", "Escrever o conteúdo", temTexto ? "sec" : "") + ir("#sec-texto", "Ir para o texto oficial", "sec"), 1];
+  // passo 1 (Preparar): sem texto ainda
+  else if(!cont.length && temOficial) prox = ["Preparar a publicação", "O texto oficial já está aqui. “Preparar com IA” faz tudo de uma vez: busca no texto oficial o trecho que comprova a notícia, escreve o texto, faz a capa padrão Artecon, confere os 10 critérios das Diretrizes e monta as legendas do Instagram e do Facebook. Leva de 2 a 5 minutos, e nada é publicado. Depois, você confere e aprova no passo 2.",
+    seletorFormato("prox-formato") + prepararBtn(), 0, "", ir("#sec-conteudos", "Escrever sem IA", "peq sec")];
+  // v0.24.0: sem texto oficial, o texto da IA é Informativo, que só é aprovado depois da autorização do administrador
+  else if(!cont.length && temTexto) prox = ["Preparar a publicação", "Este assunto só tem fonte não oficial. “Preparar com IA” procura a fonte oficial na internet e escreve um texto <b>Informativo</b> (sem base legal específica), com a capa padrão, a conferência dos 10 critérios e as legendas. O texto Informativo só é aprovado depois que o administrador autoriza, com o motivo. Para o texto sair com a fonte oficial, verifique antes e inclua o texto oficial.",
+    seletorFormato("prox-formato") + prepararBtn() + verificarBtn.replace('class="btn"', 'class="btn sec"'), 0, "",
+    ir("#sec-conteudos", "Escrever sem IA", "peq sec") + ir("#sec-texto", "Ir para o texto oficial", "peq sec")];
+  // a função radar-ia exige texto capturado: sem nenhum, não há Preparar
+  else if(!cont.length) prox = ["Escrever o texto", "Este assunto não tem texto capturado, então a IA não tem de onde partir. Escreva o texto — depois de aprovado, ele já pode ir ao Informativo Mensal — ou cole o texto da fonte oficial logo abaixo, em “Texto oficial capturado”: com ele, o “Preparar com IA” faz o resto.",
+    ir("#sec-conteudos", "Escrever sem IA"), 0, "", ir("#sec-texto", "Ir para o texto oficial", "peq sec")];
   else if(!paraPublicar.length && !aprovados.length){                 // só o texto para análise (fonte não oficial)
     if(liberado) prox = ["Transformar o texto para análise", "O texto para análise não vai ao site. " + (ehAdmin() ? "Transforme-o em texto para publicar: a cópia entra como rascunho, com o aviso de fonte não oficial, e segue revisão e aprovação."
       : "O administrador transforma o texto para análise em texto para publicar."),
-      ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${analises[0].id}">Transformar em texto para publicar</button>` : ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 1];
-    else if(pronto) prox = ["Escrever o texto para publicar", "A fonte oficial está conferida. Gere o texto com IA ou escreva você mesmo; o texto para análise fica só como apoio.",
-      `<button class="btn" data-acao="ia-gerar">Gerar texto com IA</button>` + ir("#sec-conteudos", "Escrever sem IA", "sec"), 1];
-    else prox = ["Conferir a fonte", "Só há texto para análise, feito a partir de fonte não oficial. “Gerar com IA” escreve um texto Informativo, que só é aprovado depois que o administrador autoriza a publicação, com o motivo; a IA também pode procurar a fonte oficial na internet. Com ela, inclua o texto oficial e fundamente" + (ehAdmin() ? ", ou libere a publicação sem a fonte oficial (o motivo fica registrado)." : "."),
-      verificarBtn + gerarIA("btn sec") + ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
+      ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${analises[0].id}">Transformar em texto para publicar</button>` : "", 0, "",
+      ehAdmin() ? "" : irTexto(analises[0].id)];
+    else if(pronto) prox = ["Preparar o texto para publicar", "A fonte oficial está conferida. “Preparar com IA” escreve o texto para publicar, com a capa, a conferência dos 10 critérios e as legendas; o texto para análise fica só como apoio.",
+      temTexto ? seletorFormato("prox-formato") + prepararBtn() : "", 0, "", ir("#sec-conteudos", "Escrever sem IA", "peq sec")];
+    else prox = ["Conferir a fonte", "Só há texto para análise, feito a partir de fonte não oficial. “Preparar com IA” escreve um texto Informativo, que só é aprovado depois que o administrador autoriza a publicação, com o motivo; a IA também pode procurar a fonte oficial na internet. Com ela, inclua o texto oficial e fundamente" + (ehAdmin() ? ", ou libere a publicação sem a fonte oficial (o motivo fica registrado)." : "."),
+      verificarBtn + (temTexto ? prepararBtn("Preparar com IA", "btn sec") : "") + semFonte, 0, "", ir("#sec-texto", "Ir para o texto oficial", "peq sec")];
   }
-  else if(!aprovados.length && !revisando.length && !rascunhos.length && rejeitados.length) prox = ["Conteúdo rejeitado", "O conteúdo foi rejeitado na revisão. Corrija o texto, salve e mande de novo para a revisão — ou escreva outro.",
-    ir("#sec-conteudos", "Ir para o conteúdo"), 2];
-  else if(!aprovados.length && !revisando.length) prox = ["Revisar o rascunho", "Escolha o título, confira o texto e a capa e mande para a revisão. O que estiver digitado é salvo junto.",
-    (paraRevisar ? `<button class="btn" type="button" data-acao="trilha-clicar" data-botao="revisao" data-id="${paraRevisar.id}">Enviar para revisão</button>` : "") + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 2];
+  // passo 2: só o rejeitado — nunca “Aprovar” aqui (e o Preparar não mexe em texto rejeitado)
+  else if(!aprovados.length && !revisando.length && !rascunhos.length && rejeitados.length) prox = ["Conteúdo rejeitado", "O texto foi rejeitado na revisão. Corrija, salve e envie de novo para a revisão — ou prepare outro texto (barra do passo 1).",
+    `<button class="btn" type="button" data-acao="trilha-clicar" data-botao="revisao" data-id="${rejeitados[0].id}">Enviar para revisão de novo</button>`, 1, "", irTexto(rejeitados[0].id)];
+  // v0.26.0: o rascunho que já existe (o do robô ou o da equipe) volta ao passo 1: “Preparar este texto” completa o mesmo texto
+  else if(!aprovados.length && !revisando.length){ const r0 = rascunhos[0], robo = r0.gerado_por === "ia" && /\(robô\)$/.test(r0.modelo_ia || "");
+    prox = ["Preparar o rascunho", `Há um texto em rascunho${robo ? " preparado pelo robô" : ""}: “${h(r0.titulo || "")}”. “Preparar este texto” completa o que falta nele — o trecho que comprova (se ainda não houver), a capa padrão (se não tiver imagem), a conferência dos 10 critérios e as legendas das redes — sem escrever outro texto, e manda o texto para o passo 2. Se você escreveu o texto e não quer a IA, salve e envie para a revisão.` +
+      (rascunhos.length > 1 ? ` Há mais ${rascunhos.length - 1} rascunho(s) abaixo.` : ""),
+      prepararBtn("Preparar este texto", "btn verde", r0.id) + `<button class="btn sec" type="button" data-acao="trilha-clicar" data-botao="revisao" data-id="${r0.id}">Enviar para revisão (sem IA)</button>`, 0, "",
+      irTexto(r0.id, "Abrir o texto")]; }
   // v0.24.0: em revisão só o Informativo, ainda sem a autorização do administrador: o passo é autorizar (só ele, com o motivo)
-  else if(!aprovados.length && !aprovavel) prox = ["Autorizar o Informativo", "O texto em revisão é <b>Informativo</b> (sem fundamentação legal específica): só vai ao site e às redes depois que o administrador autoriza a publicação, com o motivo (fica no histórico do assunto). Depois, ele é aprovado como os outros.",
-    (ehAdmin() ? `<button class="btn" type="button" data-acao="abrir-motivo" data-informativo="1">Autorizar a publicação do Informativo…</button>` : "") + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 3];
-  else if(!aprovados.length) prox = ["Aprovar o conteúdo", "O conteúdo está em revisão. Leia com atenção (use “Ver como fica no site”), confira a Conferência das Diretrizes (os 10 critérios; “Revisar com IA” confere) e clique em “Aprovar” (ou “Rejeitar”).",
-    `<button class="btn verde" type="button" data-acao="trilha-clicar" data-botao="aprovar" data-id="${aprovavel.id}">✓ Aprovar</button>` + ir("#sec-conteudos", "Ir para o conteúdo", "sec"), 3];
+  else if(!aprovados.length && !aprovavel) prox = ["Autorizar o Informativo", "O texto é <b>Informativo</b> (sem base legal específica): só é aprovado depois que o administrador autoriza a publicação, com o motivo (fica no histórico). Atenção: a autorização vale para o assunto inteiro — é a mesma do “Publicar mesmo assim”, e os outros textos deste assunto também poderão ir ao site sem a fonte oficial. Depois, ele é conferido e aprovado como os outros." +
+      (!temOficial && Array.isArray(a.verificacao?.fontes) && a.verificacao.fontes.length ? " A busca achou uma página oficial: se preferir, inclua o texto oficial no passo 1 e prepare outro texto — com a fonte, não é preciso esta autorização." : "") +
+      (ehAdmin() ? "" : " Falta o administrador autorizar."),
+    ehAdmin() ? `<button class="btn" type="button" data-acao="abrir-motivo" data-informativo="1">Autorizar a publicação do Informativo…</button>` : "", 1,
+    fonteConferir() + listaConf(confDaVez(revisando[0]), false, true), irTexto(revisando[0].id)];
+  // v0.26.0: conferir e aprovar — a lista dos 10 critérios no próprio passo, e o “✓ Aprovar” desligado enquanto houver trava (ele clica o
+  // Aprovar do formulário, que confere tudo de novo e só aprova o texto que estava na tela)
+  else if(!aprovados.length){ const cv = cvAprovavel, outros = revisando.length - 1;
+    const conferir = !E.semConferencia && !cv.conf.assumida && (cv.temPendente || cv.temX)
+      ? `<button class="btn sec" type="button" data-acao="trilha-clicar" data-botao="revisar" data-id="${aprovavel.id}">${cv.temPendente ? "Conferir com IA" : "Conferir de novo com IA"}</button>` : "";
+    // “Revisei e assumo” só com ✗ (com “?” só, a IA ainda não conferiu) e quando a única trava é a dos critérios
+    const assumir = ehAdmin() && cv.temX && !cv.conf.travaAntes && cv.travaConf && cv.travas.length === 1
+      ? `<button class="btn perigo" type="button" data-acao="abrir-assumir" data-id="${aprovavel.id}">Revisei e assumo…</button>` : "";
+    prox = ["Conferir e aprovar o texto", "Leia o texto (use “Ver como fica no site”) e confira a lista das Diretrizes. O “✓ Aprovar” só funciona com os 10 critérios em ✓ (ou —, quando não se aplica). Vai trocar a imagem ou o título? Troque antes de aprovar: a troca pede uma nova conferência." +
+      (outros ? ` Este é “${h(aprovavel.titulo || "")}”; há mais ${outros} texto(s) em revisão, abaixo.` : "") +
+      (liberado && ehInformativo(aprovavel) ? ` Este texto é Informativo (sem base legal específica) e já pode ser aprovado: a publicação deste assunto foi liberada pelo administrador em ${dataHora(a.liberado_sem_base_em)}.` : "") +
+      (!ehAdmin() && cv.temX ? " Um ✗ no mesmo texto só sai quando o texto muda (corrija e salve) ou com o “Revisei e assumo” do administrador." : ""),
+      `<button class="btn verde" type="button" data-acao="trilha-clicar" data-botao="aprovar" data-id="${aprovavel.id}"${cv.pode ? "" : ` disabled aria-disabled="true" title="${h(cv.travas[0])}"`}>✓ Aprovar</button>` +
+        conferir + assumir + `<button class="btn sec" type="button" data-acao="previa" data-id="${aprovavel.id}">Ver como fica no site</button>`, 1,
+      fonteConferir() + listaConf(cv, !!conferir), irTexto(aprovavel.id)]; }
+  // passo 3 (Publicar)
   else if(foraDoSite || (noSite && !redeAgora)) prox = null;
   else if(noSite){ prox = proxRede(redeAgora, redeDe(redeAgora), cRede, imgs[cRede.imagem_id], a.categoria, pubs.find(p => p.conteudo_id === cRede.id && !p.versao_anterior)?.url || "",
                                   redes.find(r => r.conteudo_id === cRede.id && r.canal === redeAgora),
                                   canceladaNoEnvio(redes.filter(r => r.conteudo_id === cRede.id), redeAgora));
     // v0.19.0: o outro canal não precisa esperar este: “Publicar nos canais que faltam” (passo Publicar) publica cada um ou os dois
-    if(faltaRede) prox[2] += ir(`#faltam-${cRede.id}`, "Publicar nos canais que faltam", "sec"); }
-  else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação"), 0];
-  else if(!pronto && !temOficial) prox = ["Para o site: incluir o texto oficial", "O conteúdo aprovado já pode entrar no Informativo Mensal. Para publicar no site, inclua o texto da fonte oficial e fundamente (a IA pode procurar a fonte oficial na internet).", verificarBtn + ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 0];
+    if(faltaRede) prox[5] = ir(`#faltam-${cRede.id}`, "Publicar nos canais que faltam", "peq sec"); }
+  // v0.26.0: depois de aprovado, o que falta para o site fica no passo 3 (a trilha não volta para o começo)
+  else if(baseCaiu && !faltamRegistrar.length) prox = ["Rever o que está no site", "A fundamentação deixou de estar completa depois do registro (assunto sem confirmação oficial ou sem trecho conferido em fonte oficial). Confira a notícia publicada e refaça a fundamentação.", ir("#sec-fundamentacao", "Ir para a fundamentação"), 2];
+  else if(!pronto && !temOficial) prox = ["Para o site: incluir o texto oficial", "O conteúdo aprovado já pode entrar no Informativo Mensal. Para publicar no site, inclua o texto da fonte oficial e fundamente (a IA pode procurar a fonte oficial na internet).", verificarBtn + ir("#sec-texto", "Ir para o texto oficial", "sec") + semFonte, 2];
   else if(!pronto && !conferidasOficiais) prox = ["Para o site: fundamentar", "Falta ao menos um trecho conferido em fonte oficial. Selecione o trecho no texto oficial, ou peça à IA.",
-    ir("#sec-texto", "Selecionar trecho no texto") + ir("#sec-fundamentacao", "Ir para a fundamentação", "sec") + semFonte, 0];
+    ir("#sec-texto", "Selecionar trecho no texto") + ir("#sec-fundamentacao", "Ir para a fundamentação", "sec") + semFonte, 2];
   else if(!pronto) prox = ["Para o site: confirmar o assunto", "Há trecho conferido em fonte oficial. Se você conferiu a informação na fonte, marque o assunto como confirmado oficialmente.",
-    `<button class="btn verde" data-acao="confirmar-oficial">✓ Marcar como confirmado oficialmente</button>` + semFonte, 0];
+    `<button class="btn verde" type="button" data-acao="confirmar-oficial">✓ Conferi na fonte oficial</button>` + semFonte, 2];
   else if(aguardando.length === faltamRegistrar.length) prox = ["Aguardando o robô publicar", "A publicação foi autorizada. O robô é acionado na hora e cadastra a notícia no site em 1 a 2 minutos (se não der, na próxima rodada automática do GitHub), e registra o link aqui sozinho." +
-    (redes.some(x => x.situacao === "aguardando_site") ? " O Instagram e o Facebook autorizados junto saem logo depois que a notícia entrar no site." : ""), ir("#sec-publicar", "Ver a publicação"), 4];
+    (redes.some(x => x.situacao === "aguardando_site") ? " O Instagram e o Facebook autorizados junto saem logo depois que a notícia entrar no site." : ""), ir("#sec-publicar", "Ver a publicação"), 2];
   else if(semRegistro) prox = ["Registrar o link da notícia publicada", "O robô publicou a notícia no site, mas o registro em “Publicações no site” não entrou" +
-    (envioDe(semRegistro).erro ? ": " + h(envioDe(semRegistro).erro) : ".") + " Confira e registre o link à mão (não autorize de novo, para não duplicar).", ir("#sec-conteudos", "Ir para registrar"), 4];
-  else if(falhou) prox = ["Publicação não concluída", h(envioDe(falhou).erro || "O robô não conseguiu publicar."), ir("#sec-publicar", "Ir para publicar"), 4];
-  else if(jaRegistrado) prox = ["Atualizar o site e registrar de novo", "O conteúdo foi alterado depois do registro. Atualize a notícia no site da Artecon e registre de novo, para o Radar guardar o texto que está no ar.", ir("#sec-conteudos", "Ir para copiar e registrar"), 4];
+    (envioDe(semRegistro).erro ? ": " + h(envioDe(semRegistro).erro) : ".") + " Confira e registre o link à mão (não autorize de novo, para não duplicar).", ir("#sec-conteudos", "Ir para registrar"), 2];
+  else if(falhou) prox = ["Publicação não concluída", h(envioDe(falhou).erro || "O robô não conseguiu publicar."), ir("#sec-publicar", "Ir para publicar"), 2];
+  else if(jaRegistrado) prox = ["Atualizar o site e registrar de novo", "O conteúdo foi alterado depois do registro. Atualize a notícia no site da Artecon e registre de novo, para o Radar guardar o texto que está no ar.", ir("#sec-conteudos", "Ir para copiar e registrar"), 2];
   else { const cTodos = ehAdmin() ? faltamRegistrar.find(c => !pubs.some(p => p.conteudo_id === c.id) && !["autorizado","enviando","publicado"].includes(envioDe(c)?.situacao)
                                                   && redeLivre(redes.filter(r => r.conteudo_id === c.id)).length) : null;
-    prox = ["Publicar no site", ehAdmin() ? "Confira a prévia, escolha a categoria e autorize só o site ou em todos de uma vez (site, Instagram e Facebook): o robô cadastra a notícia no site em 1 a 2 minutos e registra o link aqui."
-      : "O conteúdo está pronto para o site. Falta o administrador autorizar a publicação.",
-      (cTodos ? ir(`#todos-${cTodos.id}`, "Publicar em todos (site, Instagram e Facebook)", "verde") + ir("#sec-publicar", "Ir para publicar", "sec") : ir("#sec-publicar", "Ir para publicar")), 4]; }
+    // v0.26.0: o site sai primeiro; as redes marcadas no “Publicar em todos”, logo depois que a notícia entra no site
+    prox = [cTodos ? "Publicar no site, no Instagram e no Facebook" : "Publicar no site", !ehAdmin() ? "O texto está pronto para o site. Falta o administrador autorizar a publicação."
+      : cTodos ? "Confira a prévia, a categoria, a imagem e as legendas no quadro “Publicar em todos de uma vez”. Cada rede tem a sua caixa: só vai o que estiver marcado, e o Radar pede a sua confirmação antes. O site sai primeiro (em 1 a 2 minutos); o Instagram e o Facebook saem sozinhos logo depois que a notícia entrar no site. Também dá para autorizar só o site, no mesmo quadro de publicar."
+      : "Confira a prévia, escolha a categoria e autorize a publicação: o robô cadastra a notícia no site em 1 a 2 minutos e registra o link aqui.",
+      cTodos ? ir(`#todos-${cTodos.id}`, "Publicar em todos (site, Instagram e Facebook)", "verde") : ir("#sec-publicar", "Ir para publicar"), 2, "",
+      cTodos ? ir("#sec-publicar", "Ir para publicar", "peq sec") : ""]; }
   const atual = prox ? prox[3] : ed ? -1 : passos.findIndex(x => !x.feito);
-  const estado = (x, n) => n === atual && prox ? "agora" : x.feito ? "feito" : n === atual ? "agora" : x.breve ? "breve" : n < atual ? "pendente" : "espera";
-  const ROTULO_ESTADO = {feito:"Feito", agora:"Agora", breve:"Em breve", pendente:"Falta", espera:"Aguardando"};
-  const corpoPasso = (x, n, st) => st === "feito" ? `<p class="feito-info">${x.feitoTxt}${x.desfazer ? " " + x.desfazer : ""}</p>`
-    : st === "agora" && prox ? `<p><b class="prox-titulo">${prox[0]}</b> ${prox[1]}</p><div class="acoes">${prox[2]}</div>`
-    : st === "agora" ? `<p>${h(x.nota)}.</p>`
-    : st === "breve" ? `<p>Em breve. Vai seguir a mesma regra do site: só publica depois da autorização do administrador.</p>`
-    : st === "pendente" ? `<p>${h(x.nota)}. ${x.chave === "fonte" ? "Necessário só para o site; o Informativo Mensal não exige." : ""}</p>`
-    : (x.chave === "instagram" || x.chave === "facebook") && cRede && !foraDoSite
-      ? `<p>A notícia já está no site: dá para publicar aqui sem esperar o outro canal.</p>${faltaRede ? `<div class="acoes">${ir(`#faltam-${cRede.id}`, "Publicar nos canais que faltam", "sec")}</div>` : ""}`
-    : `<p>${x.chave === "site" ? "Precisa da fonte (passo 1) e do conteúdo aprovado (passo 4)."
-        : x.chave === "instagram" || x.chave === "facebook" ? (foraDoSite ? "Este conteúdo não vai ao site; as redes ficam de fora." : "Depois que a notícia estiver no site (passo 5).") : `Vem depois do passo ${n}.`}</p>`;
-  // uma etapa de cada vez (ou tudo numa página, para quem preferir); abre na etapa que falta fazer
+  // v0.26.0: o “Concluído” diz o canal que ficou de fora (“Não publicar”)
+  const foraDasRedes = () => { const fora = ["instagram", "facebook"].filter(k => redeDe(k)?.situacao === "dispensado");
+    return fora.length === 2 ? " (o Instagram e o Facebook ficaram de fora)" : fora.length ? ` (o ${NOME_REDE[fora[0]]} ficou de fora)` : ""; };
+  const estado = (x, n) => n === atual && prox ? "agora" : x.feito ? "feito" : n === atual ? "agora" : n < atual ? "pendente" : "espera";
+  const ROTULO_ESTADO = {feito:"Feito", agora:"Agora", pendente:"Falta", espera:"Aguardando"};
+  // v0.26.0: o passo de agora tem o título, a explicação, o bloco extra, os botões e a linha “Mais opções”; os outros, o que foi feito, o
+  // que esperam ou a nota (fora da trilha, como no assunto ignorado, só a nota). As linhas dos canais (passo 3, feito ou agora) e a linha
+  // da fonte (passo 1) ficam sempre
+  const corpoPasso = (x, n, st) => (["agora", "feito"].includes(st) && x.topo ? x.topo : "") + (st === "feito" ? `<p class="feito-info">${x.feitoTxt}</p>`
+    : st === "agora" && prox ? `<p><b class="prox-titulo">${prox[0]}</b> ${prox[1]}</p>${prox[4] || ""}${prox[2] ? `<div class="acoes">${prox[2]}</div>` : ""}${prox[5] ? `<div class="mais-opcoes"><span class="sub">Mais opções:</span> ${prox[5]}</div>` : ""}`
+    : st === "espera" && atual >= 0 && x.espera ? `<p>${x.espera}</p>` : `<p>${h(x.nota)}.</p>`) + (x.fim || "");
+  // uma etapa de cada vez (ou tudo numa página, para quem preferir); abre na etapa que falta fazer (v0.26.0: com o texto aprovado e a fonte
+  // pendente, no passo 3, onde está o “Para o site: …”)
   const tudo = modoTudo();
-  if(!["fonte","conteudo","publicar"].includes(E.etapa)) E.etapa = !cont.length && vinc.length ? "fonte" : aprovados.length && (!noSite || redeAgora) && !foraDoSite && pronto ? "publicar" : "conteudo";
+  if(!["fonte","conteudo","publicar"].includes(E.etapa)) E.etapa = !cont.length && vinc.length ? "fonte" : aprovados.length && (!noSite || redeAgora) && !foraDoSite ? "publicar" : "conteudo";
   const oculta = e => tudo || E.etapa === e ? "" : " hidden";
-  // v0.18.0: cada fonte com os nomes pelos quais o texto pode citá-la e se é boletim pago (o detector de cópia usa os três)
-  const fontesTxt = vinc.filter(v => v.radar_capturas.texto).sort((x, y) => y.radar_capturas.radar_fontes.oficial - x.radar_capturas.radar_fontes.oficial)
-    .map(({radar_capturas:k}) => ({texto:k.texto, nome:k.radar_fontes.orgao || "",
-    nomes:nomesDaFonte(k.radar_fontes.nome, k.radar_fontes.orgao), paga:FONTES_PAGAS.includes(k.radar_fontes.slug)}));
-  E.fontesAssunto = fontesTxt;                // v0.20.0: a legenda das redes também é comparada com o boletim pago (só na memória)
   const avisoRegistro = `<div class="aviso alerta"><b>Ainda não pode ser publicado no site.</b> ${a.situacao_confirmacao !== "confirmado_oficialmente" ? "O assunto precisa estar marcado como “Confirmado oficialmente”. " : ""}${conferidasOficiais ? "" : conferidas ? "Os trechos conferidos são de fonte não oficial: é preciso ao menos um trecho conferido em fonte oficial. " : "É preciso ao menos um trecho conferido em fonte oficial (FUNDAMENTAÇÃO NÃO CONFIRMADA). "}<span class="sub">O Informativo Mensal exige só o conteúdo aprovado.</span>
-    ${podeEditar() ? `<div class="acoes" style="margin:8px 0 0">${a.situacao_confirmacao !== "confirmado_oficialmente" ? `<button class="btn peq verde" data-acao="confirmar-oficial">Marcar como confirmado oficialmente</button>` : ""}
+    ${podeEditar() ? `<div class="acoes" style="margin:8px 0 0">${a.situacao_confirmacao !== "confirmado_oficialmente" ? `<button class="btn peq verde" type="button" data-acao="confirmar-oficial">✓ Conferi na fonte oficial</button>` : ""}
       ${conferidasOficiais ? "" : `<button class="btn peq sec" data-acao="etapa" data-etapa="fonte">Buscar o trecho que comprova (passo 1)</button>`}
       ${ehAdmin() ? `<button class="btn peq perigo" type="button" data-acao="abrir-motivo">Publicar mesmo assim…</button>` : ""}</div>` : ""}</div>`;
   const avisoLiberado = liberado ? `<div class="aviso alerta"><b>Publicação liberada sem a fundamentação oficial</b> pelo administrador em ${dataHora(a.liberado_sem_base_em)}.
@@ -1740,14 +1834,14 @@ async function telaAssunto(id){
   return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
     <h1>${h(a.titulo)}</h1>
     <p>${seloSituacao(a.situacao_confirmacao)} ${selo(ROTULOS.status[a.status],"neutro")} ${selo(conferidas + " trecho(s) conferido(s)", conferidas ? "ok" : "erro")}${origem ? ` <span class="sub">${h(origem.radar_fontes.orgao)} · capturado em ${data(origem.capturado_em)}</span>` : ""}</p>
-    <ol class="trilha passos7" aria-label="Andamento da autorização">${passos.map((x, n) => { const st = estado(x, n);
-      return `<li class="${st}${!tudo && x.etapa === E.etapa ? " aberta" : ""}" data-passo="${x.chave}"${x.etapa ? ` data-acao="etapa" data-etapa="${x.etapa}" role="button" tabindex="0" title="Ir para este passo"` : ""}><i>${x.feito ? "✓" : n + 1}</i><b>${x.nome}</b><span>${h(x.breve ? "em breve" : x.nota)}</span></li>`; }).join("")}</ol>
+    <ol class="trilha passos3" aria-label="Andamento do assunto">${passos.map((x, n) => { const st = estado(x, n);
+      return `<li class="${st}${!tudo && x.etapa === E.etapa ? " aberta" : ""}" data-passo="${x.chave}" data-acao="etapa" data-etapa="${x.etapa}" role="button" tabindex="0" title="Ir para este passo"><i>${x.feito ? "✓" : n + 1}</i><b>${x.nome}</b><span>${h(x.nota)}</span></li>`; }).join("")}</ol>
     ${prox && prox[3] < 0 ? `<div class="proximo" id="proximo-passo"><div><h2>${prox[0]}</h2><p style="margin:0">${prox[1]}</p></div><div class="acoes">${prox[2]}</div></div>` : ""}
     <ol class="autorizacao" aria-label="Trilha de autorização">${passos.map((x, n) => { const st = estado(x, n);
       return `<li class="passo-a ${st}" data-passo="${x.chave}"${st === "agora" && prox ? ` id="proximo-passo"` : ""}><span class="num">${x.feito ? "✓" : n + 1}</span>
         <div class="cab"><h3>${x.titulo}</h3><span class="estado">${ROTULO_ESTADO[st]}</span></div><div class="corpo">${corpoPasso(x, n, st)}</div></li>`; }).join("")}</ol>
     ${ed && (foraDoSite || (noSite && !redeAgora)) ? `<div class="proximo fim" id="proximo-passo"><h2>${noSite ? "Concluído: publicado no site" +
-      ["instagram", "facebook"].filter(k => redeDe(k)?.situacao === "publicado").map(k => " e no " + NOME_REDE[k]).join("") : "Concluído: conteúdo aprovado, só do Informativo Mensal"}</h2><p style="margin:0">${revisando.length || rascunhos.length ? "Há outro conteúdo deste assunto ainda em rascunho ou em revisão." : "Nada pendente neste assunto."}</p></div>` : ""}
+      ["instagram", "facebook"].filter(k => redeDe(k)?.situacao === "publicado").map(k => " e no " + NOME_REDE[k]).join("") + foraDasRedes() : "Concluído: conteúdo aprovado, só do Informativo Mensal"}</h2><p style="margin:0">${revisando.length || rascunhos.length ? "Há outro conteúdo deste assunto ainda em rascunho ou em revisão." : "Nada pendente neste assunto."}</p></div>` : ""}
     ${!tudo ? "" : (pronto ? avisoLiberado : avisoRegistro)}
 
     <nav class="etapas" aria-label="Modo de exibição"><button class="voltar modo" data-acao="modo-tudo" style="margin:0">${tudo ? "Mostrar um passo de cada vez" : "Mostrar tudo numa página"}</button></nav>
@@ -1787,14 +1881,14 @@ async function telaAssunto(id){
 
     <div class="principal">
     <section data-etapa="fonte"${oculta("fonte")}>
-    <div class="painel" id="sec-origem"><h2>1. Conferir a fonte</h2>
+    <div class="painel" id="sec-origem"><h2>1. Preparar: a fonte oficial</h2>
       ${origem ? `<div class="original"><span class="sub">Título original da captura</span><b>${h(origem.titulo)}</b>
         <span class="sub">Fonte: <b>${h(origem.radar_fontes.orgao)}</b>${origem.data_publicacao ? ` · publicado em ${data(origem.data_publicacao)}` : ""} · </span>${linkFonte(origem.url, "Abrir na fonte ↗")}</div>`
         : `<p class="sub">Assunto criado pela equipe, sem captura de origem.</p>`}
-      ${ed ? `<div class="acoes ia-barra">${temTexto ? gerarIA() : ""}<button class="btn sec" data-acao="ia-verificar">Verificar em fontes oficiais</button>
+      ${ed ? `<div class="acoes ia-barra">${temTexto ? seletorFormato("formato-fonte") + prepararBtn(paraPublicar.length ? "Preparar outro texto" : "Preparar com IA", "btn") : ""}<button class="btn sec" data-acao="ia-verificar">Verificar em fontes oficiais</button>
         <button class="btn sec" data-acao="ia-fundamentar">Buscar trecho que comprova com IA</button>
         <button class="btn sec" type="button" data-acao="ia-classificar">Classificar com IA</button>
-        <span class="sub">${temTexto ? `“Gerar com IA” ${temOficial ? "busca o trecho que comprova" : "procura a fonte oficial na internet"}, escreve o rascunho e faz a capa e o kit das redes, de uma vez (o tamanho do texto é o escolhido no passo 2). ` : ""}A IA propõe; só entram os trechos que existem literalmente no texto oficial. A classificação vai para “Mais detalhes”.</span></div>` : ""}
+        <span class="sub">${temTexto ? `“Preparar com IA” ${temOficial ? "busca o trecho que comprova" : "procura a fonte oficial na internet"}, escreve o texto, faz a capa padrão, confere os 10 critérios e monta as legendas das redes, de uma vez. ` : ""}A IA propõe; só entram os trechos que existem literalmente no texto oficial. A classificação vai para “Mais detalhes”.</span></div>` : ""}
     </div>
     ${painelVerificacao(a.verificacao, ed)}
     <div class="painel" id="sec-texto"><h2>Texto oficial capturado</h2>
@@ -1829,12 +1923,11 @@ async function telaAssunto(id){
 
     <section data-etapa="conteudo"${oculta("conteudo")}>
     ${tudo || !cont.length ? "" : (pronto ? avisoLiberado : avisoRegistro)}
-    <div class="painel" id="sec-conteudos"><h2>2. Escrever · 3. Revisar e aprovar</h2>
-      ${ed ? `<div class="acoes ia-barra"><label for="novo-formato" style="margin:0">Tamanho do texto</label>
-        <select id="novo-formato">${opcoes(TAMANHO_TEXTO, "informativo")}</select>
-        ${temTexto ? gerarIA("btn") + `<button class="btn sec" data-acao="ia-gerar">Gerar texto com IA</button>` : ""}
+    <div class="painel" id="sec-conteudos"><h2>2. Conferir e aprovar</h2>
+      ${ed ? `<div class="acoes ia-barra"><span class="sub">Outro texto:</span> ${seletorFormato("novo-formato")}
+        ${temTexto ? `<button class="btn sec" data-acao="ia-gerar">Gerar texto com IA</button>` : ""}
         <button class="btn sec" data-acao="novo-conteudo" data-id="${a.id}">Novo conteúdo (sem IA)</button></div>
-        <p class="sub" style="margin-top:0">${temOficial ? "“Gerar com IA” busca o trecho que comprova, escreve o rascunho e faz a capa e o kit das redes; “Gerar texto com IA” só escreve (e faz a capa). Revisar e aprovar continua sendo da equipe."
+        <p class="sub" style="margin-top:0">${temOficial ? "Aqui ficam os textos do assunto. “Gerar texto com IA” só escreve (e faz a capa); para o trecho, a conferência e as legendas, use “Preparar este texto” no passo 1. Conferir e aprovar é sempre da equipe."
           : temTexto ? "Este assunto só tem fonte <b>não oficial</b>: a IA escreve um texto <b>Informativo</b> a partir dela, com palavras próprias (sem fundamentação legal específica), que só é aprovado — para o site, as redes e o Informativo Mensal — depois que o administrador autoriza a publicação, com o motivo. O texto escrito pela equipe é revisado e aprovado como antes; para o site, inclua o texto oficial e fundamente no passo 1, ou o administrador usa “Publicar mesmo assim”."
           : "Sem texto capturado: escreva sem IA, ou inclua o texto oficial no passo 1."}</p>` : ""}
       ${cont.map(c => blocoConteudo(c, pubs.filter(p => p.conteudo_id === c.id), ed, imgs[c.imagem_id], pronto, fontesTxt, a.categoria, urlFonte, liberado, jaConvertido,
@@ -1843,8 +1936,8 @@ async function telaAssunto(id){
     </section>
 
     <section data-etapa="publicar"${oculta("publicar")}>
-    <div class="painel" id="sec-publicar"><h2>4. Publicar no site</h2>
-      ${!aprovados.length ? `<div class="aviso info"><b>Ainda não há conteúdo aprovado.</b> A publicação no site aparece aqui depois que um conteúdo for aprovado no passo 3.
+    <div class="painel" id="sec-publicar"><h2>3. Publicar (site, Instagram e Facebook)</h2>
+      ${!aprovados.length ? `<div class="aviso info"><b>Ainda não há conteúdo aprovado.</b> A publicação no site aparece aqui depois que um conteúdo for aprovado no passo 2.
           ${revisando.length ? `<br>Há ${revisando.length} conteúdo(s) em revisão esperando o “Aprovar”.` : ""}
           <div class="acoes" style="margin:8px 0 0"><button class="btn peq" data-acao="ir-conteudo" data-id="${(revisando[0] || cont.find(c => !ehAnalise(c)) || cont[0] || {}).id || ""}">Ir para o conteúdo${revisando.length ? " em revisão" : ""}</button></div></div>`
         : !vaoAoSite.length ? `<p class="sub">O conteúdo aprovado está marcado como “não vai ao site”: fica só para o Informativo Mensal.</p>`
@@ -1893,9 +1986,9 @@ const redeLivre = redes => ["instagram", "facebook"].filter(k => !redes.some(r =
 /* O próximo passo da trilha num canal: a imagem e a legenda para o administrador conferir e autorizar. v0.25.0 (etapa 6): a imagem é a da
    publicação, a mesma do site (imagemRede), e não mais a arte vertical montada pela tela (v0.20.0). */
 function proxRede(canal, r, c, capa, categoria, urlSite, ultima, conferir = false){
-  const nome = NOME_REDE[canal], adm = ehAdmin(), passo = canal === "instagram" ? 5 : 6;
+  const nome = NOME_REDE[canal], adm = ehAdmin(), passo = 2;                  // v0.26.0: o passo 3 (Publicar), o índice 2 da trilha
   const cancelar = r => adm ? `<button class="btn sec" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Cancelar autorização</button>` : "";
-  if(r?.situacao === "autorizado") return [`Publicar no ${nome}`, `A publicação foi autorizada em ${dataHora(r.autorizado_em)} e ainda não saiu (a Meta pode não estar configurada).`,
+  if(r?.situacao === "autorizado") return [`Publicar no ${nome}`, `A publicação foi autorizada em ${dataHora(r.autorizado_em)} e ainda não saiu (a Meta pode não estar configurada). Tente de novo; se o ${nome} não estiver ligado ao Radar (veja o teste de conexão, na aba Publicações), cancele e escolha “Não publicar no ${nome}”.`,
     adm ? `<button class="btn" type="button" data-acao="tentar-rede" data-envio="${r.id}" data-canal="${canal}">Publicar agora</button>` + cancelar(r) : "", passo];
   if(r?.situacao === "enviando") return [`Publicando no ${nome}…`, `A publicação está saindo (desde ${dataHora(r.enviado_em)}). Recarregue em instantes.`,
     adm && Date.now() - new Date(r.enviado_em).getTime() > 10 * 60000 ? `<span class="sub">Parada há mais de 10 minutos: confira no ${nome} se saiu antes de cancelar.</span>` + cancelar(r) : "", passo];
@@ -2110,8 +2203,8 @@ async function abrirParaPublicar(el, qual){
   E.assunto = Number(el.dataset.assunto); E.etapa = "publicar"; if(E.todosFechado === id) E.todosFechado = null;
   window.scrollTo(0, 0); await desenhar();
   const alvo = $(`#${qual}-${id}`) || $(`.publicar-item[data-conteudo="${id}"]`);
-  if(alvo){ alvo.scrollIntoView({block:"start"}); if(!$(`#${qual}-${id}`)) recado(qual === "todos" ? "O “Publicar em todos” não está disponível para este conteúdo agora: veja o que falta no passo Publicar (a fundamentação, ou uma autorização em aberto)."
-    : "Não há canal livre para publicar neste conteúdo: veja a situação de cada canal no passo Publicar.", "aviso"); }
+  if(alvo){ alvo.scrollIntoView({block:"start"}); if(!$(`#${qual}-${id}`)) recado(qual === "todos" ? "O “Publicar em todos” não está disponível para este conteúdo agora: veja o que falta no passo 3, Publicar (a fundamentação, ou uma autorização em aberto)."
+    : "Não há canal livre para publicar neste conteúdo: veja a situação de cada canal no passo 3 (Publicar).", "aviso"); }
 }
 /* v0.19.0: o robô do site roda no GitHub, e o agendamento de lá atrasa horas. Depois de autorizar a publicação (ou pedir a
    exclusão), a tela pede à função radar-redes que acione o robô na hora (segredo RADAR_GITHUB_TOKEN no Supabase). Nunca lança
@@ -2155,7 +2248,7 @@ async function excluirPublicacao(conteudo, canal, envio, emGrupo = false){
     return {ok:false, msg:`${titulo} (${canal === "site" ? "site" : NOME_REDE[canal]}): ${msg}`};
   }
 }
-/* O passo 4 de um conteúdo aprovado: prévia, autorização (só o administrador) e o andamento do robô. */
+/* O passo 3 (Publicar) de um conteúdo aprovado: prévia, autorização (só o administrador) e o andamento do robô. */
 function blocoPublicar(c, envio, pubs, pronto, categoria, redes = [], capa = null){
   const sugerida = CATEGORIA_SITE[categoria] || "";
   const atual = pubs.find(p => !p.texto_mudou && !p.versao_anterior);
@@ -2662,7 +2755,9 @@ function resumoEditorial(e){
 /* v0.24.0: o texto Informativo (sem fundamentação legal específica): o primeiro aviso começa com “INFORMATIVO” (como o texto para análise,
    que começa com “TEXTO PARA ANÁLISE”). Só é aprovado depois que o administrador autoriza a publicação do assunto (o banco confere: RADAR180) */
 const ehInformativo = c => Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("INFORMATIVO");
-function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false, siteNaFila = false){
+/* v0.26.0: as contas do conteúdo que travam a aprovação (o trecho igual ao da fonte, a frase do boletim pago, o campo Fonte, o [VERIFICAR]
+   e a Conferência das Diretrizes), separadas do formulário: as mesmas no formulário (blocoConteudo) e no passo 2 da trilha (telaAssunto) */
+function analiseConteudo(c, fontes){
   const analise = Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
   // rodada 2: mais a frase do boletim que só o banco vê (matéria de outro assunto ou na fila: telaAssunto, E.pagoBanco), no título
   // ou no texto; a mesma frase, achada também pela tela, não aparece duas vezes
@@ -2679,18 +2774,26 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
   const soFaltaFonte = !vermelho.length && semCredito && todas.length > 0;      // está tudo citado: falta só o campo Fonte
   const marcas = marcasVerificar(c.titulo || "", c.corpo || ""), duvidas = comentariosDuvida(c.titulo || "", c.corpo || "");
   const termos = termosPublicidade(c.titulo || "", c.corpo || "");             // v0.20.0: publicidade da profissão contábil (só aviso aqui)
-  // v0.16.0: "Revisar com IA" corrige só as marcas e os trechos iguais ao da fonte (v0.19.0: reescreve com palavras próprias);
-  // "Autorizar mesmo assim" deixa o trecho como está (com motivo)
-  const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
   // varredura geral (v0.22.0): a autorização vale só para o trecho igual ao de fonte livre; a frase do boletim pago nunca se
   // autoriza (o banco também recusa: RADAR146) e continua travando a aprovação mesmo com uma autorização antiga
   const autorizada = !pagas.length && semFonte.length && c.copia_autorizada_em;
+  // v0.24.0: o Informativo (só o administrador autoriza a publicação) e a Conferência das Diretrizes (os 10 critérios antes de aprovar)
+  const informativo = ehInformativo(c);
+  const conf = conferenciaDoConteudo(c, {marcas, semFonte, citadas:citadasFora, pagas, autorizada:!pagas.length && !!c.copia_autorizada_em});
+  return {analise, daTela, todas, semCredito, citadas, pagas, semFonte, citadasFora, citadasAspas, vermelho, soFaltaFonte, marcas, duvidas, termos,
+          autorizada, informativo, conf};
+}
+function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte = "", liberado = false, jaConvertido = false, siteNaFila = false){
+  // v0.26.0: as contas que travam a aprovação vêm de analiseConteudo (as mesmas do passo 2 da trilha)
+  const {analise, daTela, todas, semCredito, pagas, semFonte, citadasFora, citadasAspas, vermelho, soFaltaFonte, marcas, duvidas, termos,
+         autorizada, informativo, conf} = analiseConteudo(c, fontes);
+  // v0.16.0: "Revisar com IA" corrige só as marcas e os trechos iguais ao da fonte (v0.19.0: reescreve com palavras próprias);
+  // "Autorizar mesmo assim" deixa o trecho como está (com motivo)
+  const revisarIA = ed ? `<button class="btn peq" type="button" data-acao="ia-revisar" data-id="${c.id}">Revisar com IA</button>` : "";
   const deOnde = t => t.paga ? ` <span class="sub">(boletim pago${t.fonte ? ": " + h(t.fonte) : ""} — reescreva com palavras próprias)</span>`
     : t.fonte ? ` <span class="sub">(${h(t.fonte)})</span>` : "";
   const tipo = c.status==="aprovado" ? "ok" : c.status==="rejeitado" ? "erro" : c.status==="em_revisao" ? "alerta" : "neutro";
-  // v0.24.0: o Informativo (só o administrador autoriza a publicação) e a Conferência das Diretrizes (os 10 critérios antes de aprovar)
-  const informativo = ehInformativo(c), lib = E.liberacao || {};
-  const conf = conferenciaDoConteudo(c, {marcas, semFonte, citadas:citadasFora, pagas, autorizada:!pagas.length && !!c.copia_autorizada_em});
+  const lib = E.liberacao || {};
   const caixaAspas = citadasAspas.length && !semCredito ? `<div class="aviso info copia-aspas"><b>Transcrição literal entre aspas em ${citadasAspas.length} trecho(s), com a fonte citada no parágrafo.</b> Pode ficar assim (Diretriz 3: dispositivo legal ou declaração relevante, entre aspas e com a fonte); deixe só o indispensável. A notícia sai com “Fonte: ${h(String(c.fonte_credito || "").trim())}” no fim.
       <ul>${citadasAspas.slice(0, 4).map(t => `<li><span class="copiado">${h(t.texto.length > 160 ? t.texto.slice(0, 160) + "…" : t.texto)}</span>${deOnde(t)}</li>`).join("")}</ul></div>` : "";
   const travaConferencia = !E.semConferencia && !conf.liberado;
@@ -2922,45 +3025,90 @@ const ACOES = {
      oficial na internet (a busca rápida; se demorar, segue sem ela); com texto oficial, busca o trecho que comprova; escreve o
      rascunho (com ou sem fundamentação). v0.20.0: faz a capa padrão (sem ilustração: ela é opcional, pelo botão do conteúdo) e, na
      etapa 3, o kit das redes (legendas e roteiro do reel; v0.25.1: sem a arte); se o kit falhar, o texto e a capa ficam. Conta como uma
-     consulta só. */
+     consulta só.
+     v0.26.0: “Preparar com IA” (passo 1), em 4 etapas, ainda uma consulta só (a senha no máximo uma vez): 1. a fonte — o trecho que
+     comprova só se ainda não houver trecho oficial conferido, ou a busca da fonte oficial na internet; 2. o texto (só o “gerar” para tudo
+     se falhar) e a capa padrão, só se o texto não tiver imagem; com data-id (“Preparar este texto”), completa o rascunho que já existe, sem
+     escrever outro; 3. a Conferência dos 10 critérios (o “revisar”, que também corrige o que estiver marcado); 4. as legendas das redes, se
+     o kit não estiver em dia. No fim, o texto sai do rascunho para “em revisão” (só do rascunho: nunca mexe no rejeitado nem no aprovado;
+     não é aprovação). Nunca faz a imagem da IA (é paga), nunca marca “confirmado oficialmente”, não aprova nem autoriza nada. */
   async "ia-tudo"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
-    const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo";
-    const oficial = el?.dataset.oficial !== "", ja = Number(el?.dataset.conteudos || 0);
-    if(ja && !confirm(`Já há ${ja} conteúdo(s) neste assunto. Gerar outro rascunho com IA, com texto e capa novos?`)) return;
+    const assunto = E.assunto, formato = formatoEscolhido(el), dado = Number(el?.dataset.id || 0) || null, liberado = !!E.liberacao?.em;
+    const oficial = el?.dataset.oficial !== "", trechos = Number(el?.dataset.trechos || 0), ja = Number(el?.dataset.conteudos || 0);
+    let base = null;                                                // “Preparar este texto”: o rascunho como está no banco agora
+    if(dado){
+      [base] = await ler("radar_conteudos", {select:"id,titulo,status,imagem_id,kit_ia,avisos_ia", id:"eq." + dado, assunto_id:"eq." + assunto});
+      if(!base || base.status !== "rascunho" || String((Array.isArray(base.avisos_ia) && base.avisos_ia[0]) || "").startsWith("TEXTO PARA ANÁLISE")){
+        await desenhar(); recado("Este texto não está mais em rascunho: a tela foi atualizada.", "aviso"); return; }
+    }
+    else if(ja && !confirm(`Já há ${ja} texto(s) neste assunto. Preparar outro texto com IA, com texto, capa e legendas novos?`)) return;
     if(!(await liberarIA())) return;
-    const total = 3;
-    let busca = "", r = null, trechoFalhou = "", g, capa, kit = null, kitFalhou = "";
+    const etapa = n => { IA_PASSO = `${dado ? "Preparar este texto" : "Preparar"} · etapa ${n} de 4`; };
+    let busca = "", r = null, trechoFalhou = "", g = null, id = dado, capa = true, capaFeita = false, rev = null, revFalhou = "", kit = null, kitFalhou = "", atual = null;
     try{
-      IA_PASSO = `Gerar com IA · etapa 1 de ${total}`;
-      if(oficial){ try{ r = await ia("fundamentar", {assunto_id:assunto}); } catch(e){ trechoFalhou = e.message || "erro"; } }
-      else busca = await buscarFonteOficial(assunto, true);
-      IA_PASSO = `Gerar com IA · etapa 2 de ${total}`;
-      try{ g = await ia("gerar", {formato, assunto_id:assunto}); }
-      catch(e){ if(E.assunto === assunto) await desenhar(); throw new ErroApi(`${r ? `Trechos registrados: ${r.inseridas.length}. ` : ""}O rascunho não foi gerado: ${e.message}`); }
-      capa = await capaAutomatica(g.conteudo_id);                    // a capa padrão Artecon, sem IA (antes do kit: a capa muda a versão do conteúdo)
-      IA_PASSO = `Gerar com IA · etapa 3 de ${total}`;
-      try{ kit = await ia("kit", {conteudo_id:g.conteudo_id, assunto_id:assunto}); } catch(e){ kitFalhou = e.message || "erro"; }
+      etapa(1);
+      if(oficial && !trechos){ try{ r = await ia("fundamentar", {assunto_id:assunto}); } catch(e){ trechoFalhou = e.message || "erro"; } }
+      else if(!oficial && !dado) busca = await buscarFonteOficial(assunto, true);
+      etapa(2);
+      if(!dado){
+        try{ g = await ia("gerar", {formato, assunto_id:assunto}); }
+        catch(e){ if(E.assunto === assunto) await desenhar(); throw new ErroApi(`${r ? `Trechos registrados: ${r.inseridas.length}. ` : ""}O texto não foi escrito: ${e.message}`); }
+        id = g.conteudo_id;
+      }
+      // a capa padrão Artecon, sem IA, só no texto sem imagem (antes da conferência: ela confere se o texto tem imagem)
+      if(!base?.imagem_id){ capa = await capaAutomatica(id); capaFeita = capa; }
+      etapa(3);
+      if(!E.semConferencia){
+        try{ const [lido] = await ler("radar_conteudos", {select:"atualizado_em", id:"eq." + id});
+          rev = await ia("revisar", {conteudo_id:id, lido:lido?.atualizado_em, assunto_id:assunto});
+          // a conferência mudou o título (tirou um [VERIFICAR]): a capa feita agora é refeita com o título novo. Não derruba a conferência:
+          // a versão dela só olha se o texto tem imagem (e qual imagem da IA), não qual capa
+          if(rev.titulo_mudou && capaFeita) await capaAutomatica(id, true).catch(() => null); }
+        catch(e){ revFalhou = e.message || "erro"; }
+      }
+      etapa(4);
+      [atual] = await ler("radar_conteudos", {select:"titulo,kit_ia,imagem_id", id:"eq." + id});    // relido depois da conferência (o texto pode ter mudado)
+      if(!kitDe(atual)){ try{ kit = await ia("kit", {conteudo_id:id, assunto_id:assunto}); } catch(e){ kitFalhou = e.message || "erro"; } }
+      // a capa padrão de antes, com o título antigo: fica o lembrete de refazer (como no “Revisar com IA”)
+      if(rev?.titulo_mudou && !capaFeita && E.capaDesenhada?.has(atual?.imagem_id)) E.capaAntiga = id;
     }finally{ IA_PASSO = ""; }
+    // o texto vai para o passo 2: só sai do rascunho (o filtro do status não deixa mexer no rejeitado nem no aprovado)
+    let paraRevisao = false;
+    try{ const linhas = await rest("PATCH", "radar_conteudos", {params:{id:"eq." + id, status:"eq.rascunho", select:"id"}, corpo:{status:"em_revisao"}, prefer:"return=representation"});
+      paraRevisao = Array.isArray(linhas) && linhas.length > 0; }catch(e){}
     if(!telaDoAssunto(assunto)) return;
-    E.etapa = "conteudo"; E.capaFoco = g.conteudo_id;
-    if(kit || kitFalhou) (E.kitAberto ||= {})[g.conteudo_id] = true;      // o recado aponta o botão do kit: o quadro fica aberto
-    await desenhar(); rolarAteConteudo(g.conteudo_id);
-    const pontos = g.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : "";
-    const feitos = [capa ? "a capa padrão" : "", kit ? "o kit das redes" : ""].filter(Boolean);
-    const depois = avisoCapa(capa) + (kitFalhou ? ` O kit das redes (legendas e roteiro do reel) não saiu agora (${kitFalhou.replace(/[.\s]+$/, "")}): use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.`
-      : kit?.avisos?.length ? ` O kit das redes tem ${kit.avisos.length} ponto(s) a conferir (veja o quadro “Kit das redes”, no conteúdo).` : "");
-    const amarelo = g.avisos.length > 0 || !capa || !!kitFalhou || !!kit?.avisos?.length || editorialFalhou(g.editorial);
-    if(!oficial){
-      // v0.24.0: sem texto oficial, o texto é Informativo: fica em análise até o administrador autorizar a publicação
-      recado(`Assunto sem fonte oficial: a IA escreveu um texto Informativo${pontos} (sem fundamentação legal específica), a partir da fonte não oficial. Ele fica em análise: só vai ao site e às redes depois que o administrador autorizar a publicação, com o motivo.` +
-        busca + (feitos.length ? ` ${feitos.length > 1 ? "Já estão" : "Já está"} no conteúdo ${feitos.join(" e ")}.` : "") + recadoEditorial(g.editorial) + depois + " Revise antes de mandar para a revisão.", "aviso");
+    E.etapa = "conteudo"; E.capaFoco = id;
+    if(kit || kitFalhou) (E.kitAberto ||= {})[id] = true;           // o recado aponta o botão do kit: o quadro fica aberto
+    await desenhar(); $("#proximo-passo")?.scrollIntoView({behavior:"smooth", block:"start"});
+    const juntar = l => l.length > 1 ? l.slice(0, -1).join(", ") + " e " + l[l.length - 1] : l.join("");
+    const pontos = g?.avisos.length ? ` com ${g.avisos.length} ponto(s) a conferir` : "";
+    const itens = Array.isArray(rev?.conferencia?.itens) ? rev.conferencia.itens : [], naoAtende = itens.filter(x => x.situacao === "nao_atende").map(x => x.item);
+    const conferencia = "a conferência dos 10 critérios" + (!itens.length ? "" : naoAtende.length ? ` (${naoAtende.length} com ✗: ${naoAtende.join(", ")})` : " (os 10 atendem)");
+    const informativo = g ? !!g.informativo : String((Array.isArray(base.avisos_ia) && base.avisos_ia[0]) || "").startsWith("INFORMATIVO");
+    const falhas = recadoEditorial(g?.editorial) + avisoCapa(capa) +
+      (trechoFalhou ? ` A busca do trecho que comprova não deu certo (${trechoFalhou.replace(/[.\s]+$/, "")}): tente de novo em “Buscar trecho que comprova com IA”, no passo 1.` : "") +
+      (revFalhou ? ` A conferência dos 10 critérios não saiu agora (${revFalhou.replace(/[.\s]+$/, "")}): no passo 2, clique em “Conferir com IA”.`
+        : rev?.corrigiu ? (dado ? " A conferência corrigiu o texto (o que estava marcado): confira antes de aprovar." : " A conferência corrigiu o texto; a revisão editorial ficou da versão anterior (só informa, não trava a aprovação).") : "") +
+      (E.capaAntiga === id && !capaFeita && rev?.titulo_mudou ? " O título mudou: refaça a capa padrão com “Usar a capa padrão Artecon”." : "") +
+      (kitFalhou ? ` O kit das redes (legendas e roteiro do reel) não saiu agora (${kitFalhou.replace(/[.\s]+$/, "")}): use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.`
+        : kit?.avisos?.length ? ` O kit das redes tem ${kit.avisos.length} ponto(s) a conferir (veja o quadro “Kit das redes”, no conteúdo).` : "") +
+      (paraRevisao ? "" : " O texto continua em rascunho: envie para a revisão no passo 1.");
+    const amarelo = !!pontos || !capa || !!trechoFalhou || !!revFalhou || !!rev?.corrigiu || naoAtende.length > 0 || !!kitFalhou || !!kit?.avisos?.length ||
+      editorialFalhou(g?.editorial) || !paraRevisao || informativo;
+    if(!oficial && !dado){
+      // v0.24.0: sem texto oficial, o texto é Informativo: só é aprovado depois que o administrador autorizar a publicação
+      const feitos = [capaFeita ? "a capa padrão" : "", rev ? "a conferência dos 10 critérios" : "", kit ? "o kit das redes" : ""].filter(Boolean);
+      recado(`Assunto sem fonte oficial: a IA escreveu um texto Informativo${pontos} (sem fundamentação legal específica), a partir da fonte não oficial. Ele só vai ao site e às redes depois que o administrador autorizar a publicação, com o motivo (passo 2).` +
+        busca + (feitos.length ? ` ${feitos.length > 1 ? "Já estão" : "Já está"} no texto ${juntar(feitos)}.` : "") + falhas, "aviso");
       return;
     }
-    recado(`IA: ${r ? `${r.inseridas.length} trecho(s) de fundamentação, ` : ""}um rascunho${pontos}${feitos.length ? ", " + feitos.join(" e ") : ""}.` + recadoEditorial(g.editorial) + depois +
-      (trechoFalhou ? ` A busca do trecho que comprova não deu certo (${trechoFalhou.replace(/[.\s]+$/, "")}); o texto saiu sem fundamentação.` : "") +
-      (g.informativo ? " O texto é Informativo (sem fundamentação legal específica): só vai ao site e às redes depois que o administrador autorizar a publicação." : "") +
-      " Revise antes de mandar para a revisão.", amarelo || trechoFalhou || g.informativo ? "aviso" : false);
+    const partes = [r?.inseridas.length ? `${r.inseridas.length} trecho(s) que comprova(m) a notícia` : "", dado ? "" : "o texto" + pontos, capaFeita ? "a capa padrão" : "",
+      rev ? conferencia : "", kit ? "o kit das redes" : ""].filter(Boolean);
+    recado((dado ? `Preparado o texto “${atual?.titulo || base.titulo || ""}”` : "Preparado") + (partes.length ? ": " + juntar(partes) : "") + "." + falhas +
+      (g?.informativo ? " O texto é Informativo (sem fundamentação legal específica): só vai ao site e às redes depois que o administrador autorizar a publicação." : "") +
+      (!paraRevisao ? "" : informativo && !liberado ? " Agora, no passo 2: o administrador autoriza o texto Informativo, com o motivo."
+        : " Agora, no passo 2: leia o texto, confira na fonte oficial e aprove."), amarelo ? "aviso" : false);
   },
   /* v0.25.0 (etapa 6): “Usar a capa padrão Artecon (sem imagem)” — a capa padrão, com o título atual, vira a imagem da publicação; a
      imagem da IA guardada continua guardada (antes: “Atualizar a capa”, com ou sem a ilustração ao fundo). A ilustração crua de antes da
@@ -3057,7 +3205,7 @@ const ACOES = {
     const inf = el.dataset.informativo ? ` data-informativo="1"` : "";
     (el.closest(".acoes") || el).insertAdjacentHTML("afterend", `<div class="motivo-liberar"><label for="motivo-liberar">${inf
         ? "Autorizar a publicação do Informativo (sem fundamentação legal específica): escreva o motivo (fica registrado com o seu nome, no histórico do assunto). A autorização vale para o assunto inteiro: é o mesmo “Publicar mesmo assim”, e os outros textos dele também podem ir ao site sem a fundamentação oficial"
-        : "Publicar no site SEM a fundamentação oficial: escreva o motivo (fica registrado com o seu nome)"}</label>
+        : "Publicar no site SEM a fundamentação oficial: escreva o motivo (fica registrado com o seu nome). Vale para o assunto inteiro: os outros textos dele também poderão ir ao site sem a fonte oficial, e um texto Informativo deste assunto passa a poder ser aprovado sem outra autorização."}</label>
       <input type="text" id="motivo-liberar" maxlength="500" data-enter="liberar-publicacao"${inf} placeholder="${inf ? "Ex.: conferi os números no portal da Receita" : "Ex.: autorizado por Cleiver"}">
       <div class="acoes"><button class="btn peq perigo" type="button" data-acao="liberar-publicacao"${inf}>${inf ? "Autorizar a publicação" : "Liberar sem fonte oficial"}</button><button class="link" type="button" data-acao="fechar-motivo">Cancelar</button></div></div>`);
     $("#motivo-liberar").focus();
@@ -3165,6 +3313,7 @@ const ACOES = {
     await desenhar(); recado(`Combinado: não vai ao ${NOME_REDE[el.dataset.canal]}.`);
   },
   async "cancelar-rede"(el){
+    if(el.dataset.pergunta && !confirm(el.dataset.pergunta)) return;          // v0.26.0: “Cancelar só o Instagram/Facebook”, na linha do canal
     await rpc("radar_cancelar_rede", {p_envio:Number(el.dataset.envio)});
     await desenhar(); recado("Feito.");
   },
@@ -3179,12 +3328,14 @@ const ACOES = {
       <p class="sub" id="redes-versao">Função radar-redes ${r.versao ? "v" + h(r.versao) : "de versão anterior à v0.21.0 (não informa a versão)"}.</p>
       ${velha ? `<div class="aviso alerta" id="redes-versao-velha"><b>A função radar-redes instalada é ${qual}</b> e este painel precisa da v${REDES_MINIMA} ou mais nova: sem ela, as peças da Pauta agendadas não saem (a agenda chama 3 vezes e desiste). Faça o Deploy da radar-redes desta versão (cole de novo o arquivo supabase/functions/radar-redes/index.ts; veja o LEIAME).</div>` : ""}`;
   },
-  /* v0.12.2: "Enviar para revisão" e "Aprovar" da trilha usam os botões do próprio conteúdo (salvam o que estiver digitado) */
+  /* v0.12.2: "Enviar para revisão" e "Aprovar" da trilha usam os botões do próprio conteúdo (salvam o que estiver digitado). v0.26.0: e o
+     "Conferir com IA" do passo 2 usa o "Revisar com IA" da Conferência; o Aprovar continua sendo o do formulário (todas as travas e o
+     texto que estava na tela) */
   "trilha-clicar"(el){
     mostrarEtapa("conteudo");
     const f = $(`form[data-form=conteudo][data-id="${el.dataset.id}"]`); if(!f) return;
     f.scrollIntoView({behavior:"smooth", block:"start"});
-    f.querySelector(el.dataset.botao === "aprovar" ? '[data-acao="aprovar"]' : '[data-acao="mudar-conteudo"][data-status="em_revisao"]')?.click();
+    f.querySelector({aprovar:'[data-acao="aprovar"]', revisar:'.conferencia [data-acao="ia-revisar"]'}[el.dataset.botao] || '[data-acao="mudar-conteudo"][data-status="em_revisao"]')?.click();
   },
   async "converter-analise"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
@@ -3192,7 +3343,7 @@ const ACOES = {
     const novo = await rpc("radar_converter_analise", {p_conteudo:Number(el.dataset.id)});
     E.etapa = "conteudo"; await desenhar();
     $(`form[data-form=conteudo][data-id="${novo}"]`)?.scrollIntoView({behavior:"smooth", block:"start"});
-    recado("Cópia criada como rascunho. Revise, envie para revisão e aprove; depois autorize a publicação no passo 4.", "aviso");
+    recado("Cópia criada como rascunho. No passo 1, “Preparar este texto” completa o que falta (ou envie para a revisão sem IA); depois, confira e aprove (passo 2) e publique (passo 3).", "aviso");
   },
   "ir-conteudo"(el){
     mostrarEtapa("conteudo");
@@ -3280,10 +3431,10 @@ const ACOES = {
     if(d && r.descartadas.length) d.innerHTML = `<details open><summary>Trechos propostos pela IA e descartados (${r.descartadas.length})</summary>
       <ul>${r.descartadas.map(x => `<li><q>${h(x.trecho)}</q> — ${h(x.motivo)}</li>`).join("")}</ul></details>`;
   },
-  async "ia-analise"(){
+  async "ia-analise"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     if(!(await liberarIA())) return;
-    const assunto = E.assunto, formato = $("#novo-formato")?.value || "informativo", busca = await buscarFonteOficial(assunto);
+    const assunto = E.assunto, formato = formatoEscolhido(el), busca = await buscarFonteOficial(assunto);
     const r = await ia("gerar", {formato, analise:true, assunto_id:assunto});
     const capa = await capaAutomatica(r.conteudo_id);                    // v0.20.0: a capa padrão (a ilustração é opcional, pelo botão dela)
     if(!telaDoAssunto(assunto)) return;
@@ -3291,9 +3442,9 @@ const ACOES = {
     await desenhar();
     recado("Texto para análise gerado a partir de fonte não oficial. Ele não vai ao site: para publicar, inclua o texto oficial no passo 1." + busca + avisoCapa(capa), "aviso");
   },
-  async "ia-gerar"(){
+  async "ia-gerar"(el){
     if(!(await liberarIA())) return;
-    const assunto = E.assunto, r = await ia("gerar", {formato:$("#novo-formato").value, assunto_id:assunto});
+    const assunto = E.assunto, r = await ia("gerar", {formato:formatoEscolhido(el), assunto_id:assunto});
     const capa = await capaAutomatica(r.conteudo_id);               // v0.20.0: a capa padrão (v0.19.0: com a ilustração da IA)
     if(!telaDoAssunto(assunto)) return;
     E.etapa = "conteudo"; E.capaFoco = r.conteudo_id; (E.kitAberto ||= {})[r.conteudo_id] = true;     // o recado aponta o botão do kit
@@ -3463,7 +3614,7 @@ const ACOES = {
 
   async "novo-conteudo"(el){
     const [a] = await ler("radar_assuntos", {select:"titulo", id:"eq." + el.dataset.id});
-    const [novo] = await rest("POST", "radar_conteudos", {corpo:{assunto_id:Number(el.dataset.id), formato:$("#novo-formato").value, titulo:a.titulo,
+    const [novo] = await rest("POST", "radar_conteudos", {corpo:{assunto_id:Number(el.dataset.id), formato:formatoEscolhido(el), titulo:a.titulo,
       corpo:ESTRUTURA_PADRAO, gerado_por:"humano", status:"rascunho"}, params:{select:"id"}, prefer:"return=representation"});
     const capa = await capaAutomatica(novo.id);
     E.etapa = "conteudo";
@@ -3635,7 +3786,9 @@ async function salvarConteudo(f, extra = {}){
 const telaSuja = () => [...document.querySelectorAll("main form[data-form]")].some(sujo);
 /* Assunto por etapas: o que foi digitado e não salvo numa etapa que não está à vista não pode se perder quando uma
    ação feita em outra etapa redesenha a tela. Antes da ação os campos alterados são guardados; depois, devolvidos. */
-const NOME_ETAPA = {fonte:"1. Conferir a fonte", conteudo:"2. Escrever", publicar:"4. Publicar no site"};
+const NOME_ETAPA = {fonte:"1. Preparar", conteudo:"2. Conferir e aprovar", publicar:"3. Publicar"};
+/* v0.26.0: o tamanho do texto escolhido ao lado do botão (o seletor do mesmo grupo de botões); sem ele, o da barra do passo 2 */
+const formatoEscolhido = el => (el?.closest?.(".acoes")?.querySelector("select[data-formato]") || $("#novo-formato"))?.value || "informativo";
 const alterado = c => c.name && c.type !== "file" && (c.tagName === "SELECT" ? [...c.options].some(o => o.selected !== o.defaultSelected)
   : c.type === "checkbox" ? c.checked !== c.defaultChecked : c.value !== c.defaultValue);
 const mexido = f => [...f.elements].some(alterado);
@@ -4177,6 +4330,9 @@ document.addEventListener("toggle", ev => { if(ev.target.id === "mais-detalhes")
 // v0.17.0: Publicações — marcar todos os conteúdos para excluir em grupo
 document.addEventListener("change", ev => {
   if(ev.target.id === "marcar-todas") document.querySelectorAll("#tab-canais .sel-pub").forEach(x => { x.checked = ev.target.checked; });
+  // v0.26.0: o tamanho do texto (ao lado do Preparar, na barra do passo 1 e na do passo 2) é um só, e fica escolhido depois de redesenhar
+  if(ev.target.matches?.("select[data-formato]")){ E.formato = ev.target.value;
+    document.querySelectorAll("select[data-formato]").forEach(s => { if(s !== ev.target) s.value = ev.target.value; }); }
 });
 document.addEventListener("keydown", ev => {
   if(ev.key === "Escape" && $("#previa-site")){ fecharPrevia(); return; }

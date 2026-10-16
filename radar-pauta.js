@@ -15,7 +15,7 @@
    viu (videoParaAprovar, p_video_sha256, as caixas "video" e "viu"), "Baixar o vídeo aprovado" e, em Pessoas e termos, o termo do
    corretor, "quer ver a peça" e menor de idade, com as peças publicadas de quem revogou o termo ou ficou inativa.
    ==================================================================== */
-const PAUTA_VERSAO = "0.25.1";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.26.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};

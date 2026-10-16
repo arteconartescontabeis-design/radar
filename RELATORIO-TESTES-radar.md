@@ -1,18 +1,85 @@
-# Radar Artecon — Relatório de testes (v0.25.1)
+# Radar Artecon — Relatório de testes (v0.26.0)
 
-Data: 16/10/2026. Resultado neste ambiente, com a suíte inteira da v0.25.1: **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s
-(19min30s). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui
-não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI
-instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits do push, que só roda no
-`radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0 (depois da revisão, 16/10/2026), a mesma suíte deu 1.048
+Data: 16/10/2026. **A suíte inteira da v0.26.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram o arquivo inteiro dos testes
+de tela (`testes/test_radar_telas.py`) e o `testes/test_radar_repositorio.py` (resultados na seção da v0.26.0, logo abaixo). Na v0.25.1
+(16/10/2026), a suíte inteira deu **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s (19min30s); a v0.26.0 tem 11 testes novos (de
+1.118 para 1.129 no total). Dos pulados, 61 são os testes de tela que sobem a IA Central de verdade (pacote `ia-central`, fora deste
+repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o Speech SDK de verdade (o SDK não está instalado neste
+ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem o serviço rodando) e 1 é o dos commits do push, que só
+roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0 (depois da revisão, 16/10/2026), a mesma suíte deu 1.048
 aprovados, 0 falhas e 67 pulados, em 1.000 s; na v0.24.0 (até a etapa 5, 15/10/2026), 1.039 aprovados; na etapa 1 da v0.24.0, 1.025;
 na v0.23.0, 996. As funções `radar-ia`, `radar-itc`, `radar-redes`, `radar-concorrentes` e `radar-video` rodam de verdade no Deno nos
 testes delas, e o ffmpeg do corretor de vídeo roda de verdade. Nenhum teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI
 ou a IA Central de verdade; todo boletim da ITC dos testes é inventado, toda pessoa é fictícia ("Ana Teste", domínios `.test`), nenhuma
 imagem de teste tem pessoa (são cores lisas e formas desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora.
-Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0,
-da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+Entre a v0.7.1 e a v0.19.1 este relatório não foi atualizado: as seções da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1),
+da v0.23.0, da v0.22.0, da v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
 
+## v0.26.0 — o assunto em 3 passos (Preparar · Conferir e aprovar · Publicar)
+
+Só a tela muda (o banco continua no `sql/radar-setup-v0.25.0.sql`; as funções e o robô não mudam). São **11 testes novos** (10 de tela e 1
+do repositório) e 24 ajustados (23 de tela e 1 do repositório). Resultado neste ambiente: `testes/test_radar_telas.py` inteiro, **215 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 490 s; `testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado** (o dos commits do push).
+A fila compartilhada dos testes ficou travada nesta sessão (o PostgreSQL de teste, ligado de dentro da fila, ficou com o arquivo da
+trava aberto e a fila não andava): os testes de tela desta etapa rodaram num PostgreSQL só desta etapa (outra porta) e em portas
+próprias, sem tocar no banco nem nas portas da outra equipe; o código dos testes é o mesmo. Uma verificação à parte, fora dos testes,
+desenhou a trilha em 18 situações (os ramos 1a a 1e, 2a a 2c, o passo 3 em cada estado, fora do site e assunto ignorado) para o
+administrador, a editora e quem só lê, com um servidor de mentira dentro do navegador: nenhum erro de página e nenhuma das frases que
+os testes clicam sem escopo ("Novo conteúdo", "Registrar publicação no site", "Gerar texto com IA", "Concluído"…) dentro da trilha.
+
+- **Os 3 passos** (`test_assunto_em_tres_passos_do_preparar_ao_publicar`): a barra e a trilha com 3 passos ("Preparar", "Conferir e
+  aprovar", "Publicar"); no passo 1, "Preparar a publicação", o tamanho do texto ao lado do "Preparar com IA" e "Escrever sem IA" em "Mais
+  opções"; os passos 2 e 3 "Aguardando", sem botões. O Preparar faz, numa consulta só e sem a senha, o trecho, o texto, a capa padrão
+  (1200×630), a conferência e o kit ("fundamentar", "gerar", "revisar" com o `lido` e "kit") e deixa o texto "em revisão". Sem o trecho
+  que comprova, o passo 2 não oferece "Conferi na fonte oficial"; com ele, oferece; confirmado, aprova pela trilha e o passo 3 mostra
+  "Site: falta · Instagram: depois do site · Facebook: depois do site" e o "Publicar em todos (site, Instagram e Facebook)". Aprovado
+  sem a confirmação, "Para o site: confirmar o assunto" fica no passo 3 (a trilha não volta). Passos feitos: 0 → 1 → 2.
+- **A Conferência dentro do Preparar** (`test_preparar_confere_os_10_criterios_de_verdade_e_nao_marca_confirmado`, com a conferência
+  de verdade): os 10 ✓ no passo 2, o formulário em `data-conferencia="ok"` e o Aprovar ligado; o aviso mostrou "Preparar · etapa 1 de 4"
+  e "Preparar · etapa 3 de 4 — A IA está conferindo o texto…" (com a etapa 3 segurada para o print); a situação da confirmação do assunto
+  não muda e não há pedido de imagem.
+- **O tamanho ao lado do botão e o trecho já conferido** (`test_preparar_usa_o_tamanho_ao_lado_e_pula_o_trecho_ja_conferido`): "Longo
+  (artigo)" no seletor da trilha vale para os três seletores e vai no "gerar"; com o trecho oficial já conferido, o Preparar não busca
+  outro ("gerar", "revisar", "kit") e usa o tamanho do seletor ao lado do botão; sem texto capturado, não há Preparar e o "Novo conteúdo
+  (sem IA)" cria o rascunho com o tamanho escolhido.
+- **"Preparar este texto"** (`test_preparar_este_texto_completa_o_rascunho_do_robo_sem_escrever_outro`): o rascunho do robô fica em
+  "Preparar o rascunho" ("preparado pelo robô"); o Preparar completa o mesmo texto ("fundamentar", "revisar", "kit"; um conteúdo só),
+  tira o [VERIFICAR] do título, refaz a capa feita agora com o título novo e a conferência continua valendo; o texto que virou rejeitado
+  em outra tela não chama a IA ("Este texto não está mais em rascunho").
+- **Falha no meio** (`test_preparar_com_falha_no_meio_deixa_cada_passo_claro`): o "gerar" com 500 não grava nada e o passo 1 continua;
+  a conferência com 502 deixa o texto "em revisão" com os 10 "?", "Conferir com IA" e o Aprovar desligado (e o recado diz isso); o kit com
+  400 aponta o botão do kit e, no passo 3, a legenda é a montada pelo Radar.
+- **Conferir e aprovar** (`test_conferir_e_aprovar_mostra_os_10_criterios_e_trava_o_aprovar`): os 10 "?" e o Aprovar desligado; "Revisei
+  e assumo" não aparece com "?" só; "Conferir com IA" usa o "Revisar com IA" do quadro; com ✗ no 7, o motivo aparece e a editora não tem
+  "Revisei e assumo"; o administrador assume pela trilha e aprova. A lista da trilha não repete o quadro (`data-item` só no formulário).
+- **Travas do Aprovar da trilha** (`test_aprovar_pela_trilha_continua_com_todas_as_travas`): desligado com [VERIFICAR] (e, forçado, o
+  formulário recusa), com o trecho igual ao da fonte e com o campo Fonte vazio, com o resumo do que falta; o Informativo esperando e o
+  texto rejeitado não têm Aprovar na trilha.
+- **Informativo** (`test_informativo_no_passo_2_e_a_liberacao_na_linha_da_fonte`): "Autorizar o Informativo" no passo 2, com "vale para
+  o assunto inteiro"; autorizado, "Conferir e aprovar o texto" e a liberação na linha da fonte do passo 1 (motivo e "Desfazer"); desfeita,
+  volta; o rótulo do "Publicar mesmo assim" diz que libera o Informativo do assunto.
+- **Os 3 canais** (`test_publicar_mostra_os_tres_canais_e_so_conclui_com_cada_um_resolvido`): as linhas do site (publicado), do
+  Instagram (da vez) e do Facebook, sem botões; o passo 3 só fica feito com cada rede publicada ou "Não publicar", e o "Concluído" diz
+  "(o Facebook ficou de fora)"; quem só lê vê as linhas, sem "Desfazer".
+- **Cancelar só uma rede** (`test_cancelar_so_uma_rede_que_ia_junto_com_o_site`): com a confirmação recusada, nada muda; aceita, só o
+  Instagram é cancelado (o Facebook continua junto com o site e o site continua autorizado).
+- **Numeração antiga** (`test_radar_repositorio.py::test_tela_sem_a_numeracao_antiga_dos_passos`): fora da aba Versões, a tela não fala
+  mais dos passos de antes ("passo 4", "2. Escrever", "4. Publicar no site", "passos7"…).
+- **Ajustados:** os testes da trilha passaram para os 3 passos (`data-passo` preparar/conferir/publicar, as linhas `data-canal` do passo
+  3, "Preparar a publicação", "Preparar o rascunho", "Conferir e aprovar o texto", "✓ Conferi na fonte oficial", os nomes das etapas
+  "1. Preparar" e "2. Conferir e aprovar"); os do "Gerar com IA" passaram a esperar o "revisar" antes do kit e o texto "em revisão"; os de
+  versão, a v0.26.0 (a `FUNCAO_MINIMA` continua "0.25.0"); o do celular ganhou o print dos 3 passos. No `test_radar_repositorio.py`, a
+  `radar-ia` pode ficar na versão em que mudou por último (0.25.1), nunca à frente da tela.
+- **Mutações** (cada uma derrubou o teste dela, e o `index.html` foi restaurado da cópia): **14 mutações**, todas derrubaram o teste delas: o "✓ Aprovar" nunca desligado (novos 6 e
+  7); o Preparar sem a etapa "revisar" (novos 1 e 2); o Preparar marcando "confirmado oficialmente" (novo 2); o Preparar sem levar o texto
+  para "em revisão" (novo 1); o filtro do status aceitando o rejeitado (novo 4); o Preparar ignorando o `data-id` e escrevendo outro texto
+  (novo 4); a busca do trecho mesmo com trecho conferido (novo 3); o tamanho lido só da barra do passo 2 (novo 3); "Revisei e assumo" na
+  trilha também com "?" (novo 6); o passo 3 feito só com o site (novo 9 — a 1ª versão do teste não pegava: ganhou a conferência do
+  círculo "3" enquanto falta rede); "Desfazer" e "Cancelar só o …" sem a conferência do administrador (novo 9 e
+  `test_trilha_desfaz_a_liberacao_e_leitor_nao_ve_botoes`); "Cancelar só o Instagram" chamando o cancelamento do site (novo 10); o passo
+  2 do Informativo sem o `data-informativo` (`test_informativo_so_publica_depois_da_autorizacao_do_administrador` e novo 8); a lista da
+  trilha com `data-item` (novo 6).
+- **Fora do plano, de propósito:** a capa refeita com o título novo não deixa 2 imagens no banco (o gatilho `radar_fn_imagem_sem_uso`
+  apaga a que ficou sem uso): o teste confere que foram desenhadas 2 capas e ficou 1, a nova.
 ## v0.25.1 — legenda do Radar com os itens de lista em linhas próprias, kit das redes sem a arte e rótulo único da imagem
 
 São 3 testes novos (de 1.115 para 1.118 no total) e 18 ajustados — 7 só pelo número da versão (a função `radar-ia` e os scripts na

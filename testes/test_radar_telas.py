@@ -345,16 +345,34 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.25.1"
+    assert pagina.inner_text(".versao") == "v0.26.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.25.1: a entrada do topo é a da versão em uso e conta ao dono, em português simples, os três ajustes (os itens de lista da legenda
-    # montada pelo Radar em linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o
-    # administrador instala (a radar-ia 0.25.1; o banco não muda)
+    # v0.26.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, os 3 passos (Preparar, Conferir e aprovar,
+    # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
+    # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
+    # funções não mudam)
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.25.1" and data == "16/10/2026"
+    assert topo == pagina.evaluate("VERSAO") == "0.26.0" and data == "16/10/2026"
+    texto = " ".join(itens)
+    for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
+                   "“Preparar com IA” (antes “Gerar com IA”)", "confere os 10 critérios das Diretrizes", "Conta como uma consulta só",
+                   "A imagem com IA continua opcional", "“Preparar este texto” completa o que falta nele, sem escrever outro",
+                   "“Enviar para revisão (sem IA)”", "O “✓ Aprovar” fica desligado enquanto houver ✗", "frase do boletim pago",
+                   "“Revisei e assumo”", "nunca com [VERIFICAR] ou boletim pago", "“✓ Conferi na fonte oficial”", "a IA acha o trecho, mas não confirma sozinha",
+                   "“Autorizar o Informativo”", "vale para o assunto inteiro", "uma linha por canal (Site, Instagram, Facebook)",
+                   "“Publicar em todos (site, Instagram e Facebook)”", "O site sai primeiro", "cancelar só o Instagram (ou só o Facebook)",
+                   "a trilha não volta para o começo", "Administrador: só publicar a tela", "continua o sql/radar-setup-v0.25.0.sql",
+                   "as funções radar-ia e radar-redes não mudam", "Da v0.25.1 para a v0.26.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
+    # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
+    # 0.25.1; o banco não muda)
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
                    "Vale para o Instagram e o Facebook", "a linha “Imagem ilustrativa gerada por IA.” e a identificação legal no fim, que nunca são cortadas",
@@ -369,7 +387,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -385,7 +403,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -410,7 +428,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -419,7 +437,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -903,6 +921,9 @@ def test_telas_cabem_no_celular_sem_rolagem_lateral(navegador, limpo):
     abrir_assunto(pg, "Informativo de teste")
     assert sem_rolagem_lateral(pg), "assunto"
     pg.screenshot(path=str(FOTOS / "09-celular-assunto.png"), full_page=True)
+    # v0.26.0: no celular, os 3 passos com o nome à vista (só a nota some)
+    assert all(b.is_visible() for b in pg.locator(".trilha.passos3 li b").all()) and not pg.locator(".trilha.passos3 li span").first.is_visible()
+    pg.locator(".trilha").screenshot(path=str(FOTOS / "60-celular-tres-passos.png"))
     pg.click("form[data-form=conteudo] >> text=Aprovar")
     pg.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     registrar_no_site(pg, "https://artecon.cnt.br/news/um-endereco-bem-comprido-para-testar-a-quebra-de-linha-em-telas-estreitas-de-celular-item-12345")
@@ -1418,7 +1439,8 @@ def test_leitor_nao_ve_botoes_de_ia(pagina, limpo, openai):
     entrar(pagina, "leitor@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "CBS na transição")
-    for texto in ["Classificar com IA", "Buscar trecho que comprova com IA", "Gerar texto com IA", "Gerar com IA"]:
+    for texto in ["Classificar com IA", "Buscar trecho que comprova com IA", "Gerar texto com IA", "Gerar com IA", "Preparar com IA", "Preparar este texto",
+                  "Conferir com IA"]:
         assert pagina.locator(f"text={texto}").count() == 0
 
 
@@ -1723,7 +1745,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.25.0 mudou a função de IA (a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres): a v0.24.0
     # passa a ser apontada como antiga. v0.25.1: a mínima não sobe (a tela aceita o kit com e sem a arte: a função v0.25.0 serve)
     assert pagina.evaluate("[versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.25.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.25.1"]
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.26.0"]       # v0.26.0: só a tela muda; a mínima não sobe
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2549,7 +2571,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.25.1" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.26.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2633,11 +2655,12 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector("#proximo-passo")
-    assert pagina.locator(".trilha li").all_inner_texts()[0].split("\n")[:2] == ["1", "Fonte"]
-    assert pagina.locator(".trilha li").count() == 7 and pagina.locator(".trilha li.feito").count() == 0
-    assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "texto"          # um passo de cada vez
-    assert pagina.locator(".autorizacao li.espera[data-passo=instagram]").count() == 1                # Instagram e Facebook depois do site
-    assert "Escrever o conteúdo" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo [data-acao=ia-tudo]").count() == 1
+    assert pagina.locator(".trilha li").all_inner_texts()[0].split("\n")[:2] == ["1", "Preparar"]
+    assert pagina.locator(".trilha li").count() == 3 and pagina.locator(".trilha li.feito").count() == 0     # v0.26.0: três passos
+    assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "preparar"       # um passo de cada vez
+    assert pagina.locator(".autorizacao li.espera[data-passo=publicar]").count() == 1                 # publicar depois de aprovar
+    assert "Preparar a publicação" in pagina.inner_text("#proximo-passo") and pagina.locator("#proximo-passo [data-acao=ia-tudo]").count() == 1
+    assert pagina.locator("#proximo-passo #prox-formato").count() == 1                               # o tamanho do texto ao lado do botão
     assert "Título original da captura" in pagina.inner_text("#sec-origem") and pagina.locator("#sec-origem >> text=Abrir na fonte").count() == 1
     assert not pagina.locator("#a-cat").is_visible() and not pagina.locator("#a-pub").is_visible()    # dados do assunto recolhidos ao lado
     pagina.click("#mais-detalhes summary")
@@ -2646,9 +2669,9 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     assert pagina.locator("#a-pub").is_visible()
     pagina.click("#proximo-passo >> text=Escrever sem IA")
     pagina.click("text=Novo conteúdo")
-    pagina.wait_for_selector("text=Revisar o rascunho")
+    pagina.wait_for_selector("text=Preparar o rascunho")
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
-    pagina.wait_for_selector("#proximo-passo >> text=Aprovar o conteúdo")
+    pagina.wait_for_selector("#proximo-passo >> text=Conferir e aprovar o texto")
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
     pagina.wait_for_selector("#proximo-passo >> text=Para o site: fundamentar")
     limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a, cap, TRECHO))
@@ -2657,13 +2680,13 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector("#proximo-passo >> text=Para o site: confirmar o assunto")
     assert pagina.locator("[data-acao=registrar-site]").count() == 0
-    pagina.click("text=Marcar como confirmado oficialmente")
+    pagina.click("#proximo-passo >> text=Conferi na fonte oficial")
     pagina.wait_for_selector("#proximo-passo >> text=Publicar no site")
-    assert pagina.locator(".trilha li.feito").count() == 4
+    assert pagina.locator(".trilha li.feito").count() == 2
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")                # o registro manual continua valendo
     pagina.click("text=Registrar publicação no site")
-    pagina.wait_for_selector(".autorizacao li[data-passo=site].feito")
-    assert pagina.locator(".trilha li.feito").count() == 5
+    pagina.wait_for_selector(".autorizacao li[data-canal=site].c-feito")
+    assert pagina.locator(".trilha li.feito").count() == 2                            # o passo 3 espera o Instagram e o Facebook
     assert limpo.execute("select situacao_confirmacao from radar_assuntos where id = %s", (a,)).fetchone()[0] == "confirmado_oficialmente"
 
 
@@ -2675,6 +2698,7 @@ def test_assunto_leitor_ve_os_passos_sem_botoes(pagina, limpo):
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector(".trilha")
     assert pagina.locator("#proximo-passo").count() == 0 and pagina.locator("text=Gerar com IA").count() == 0
+    assert pagina.locator("text=Preparar com IA").count() == 0
 
 
 def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
@@ -2726,15 +2750,17 @@ def test_ia_preparar_tudo_e_ilustracao(pagina, limpo, openai):
     a, cap = assunto_com_texto(limpo)
     openai["respostas"]["fundamentacao"] = {"trechos": [{"captura_id": cap, "trecho_literal": TRECHO, "dispositivo": "Art. 2º", "motivo": "regra"}]}
     openai["respostas"]["conteudo"] = {"titulo": "CBS destacada no documento fiscal", "corpo": "A CBS será destacada no documento fiscal à alíquota de 0,9%.\n\n## Análise Artecon\nRecomenda-se avaliar o cadastro fiscal das empresas."}
+    openai["respostas"]["conferencia"] = {"conferencia": CONFERENCIA_OK}       # v0.26.0: a etapa 3 do Preparar (os 10 critérios)
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
     pagina.click("#proximo-passo [data-acao=ia-tudo]")
-    pagina.wait_for_selector("text=1 trecho(s) de fundamentação, um rascunho")
+    pagina.wait_for_selector("text=Preparado: 1 trecho(s) que comprova(m) a notícia, o texto")
     assert limpo.execute("select count(*) from radar_evidencias where trecho_conferido").fetchone()[0] == 1
-    assert limpo.execute("select gerado_por, status, imagem_id is not null from radar_conteudos").fetchall() == [("ia", "rascunho", True)]
-    # v0.20.0: o “Gerar com IA” não pede ilustração (capa padrão) e grava o kit das redes (a 3ª etapa, pela função de verdade)
+    # v0.26.0: o Preparar leva o texto para o passo 2 (em revisão; não é aprovação)
+    assert limpo.execute("select gerado_por, status, imagem_id is not null from radar_conteudos").fetchall() == [("ia", "em_revisao", True)]
+    # v0.20.0: o “Gerar com IA” não pede ilustração (capa padrão) e grava o kit das redes (a 4ª etapa do Preparar, pela função de verdade)
     assert not [x for x in openai["pedidos"] if x["caminho"].endswith("images/generations")]
     assert [x["corpo"]["tool_choice"]["name"] for x in openai["pedidos"]][-1] == "kit"
     # v0.25.1: o kit gravado sem a arte (a função não pede mais a chamada e o apoio)
@@ -2906,7 +2932,7 @@ def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
     pagina.click("text=Novo conteúdo")
-    pagina.wait_for_selector("text=Revisar o rascunho")
+    pagina.wait_for_selector("text=Preparar o rascunho")
     pagina.click("form[data-form=conteudo] >> text=Enviar para revisão")
     pagina.wait_for_selector("form[data-form=conteudo] >> text=Rejeitar")
     pagina.click("form[data-form=conteudo] >> text=Rejeitar")
@@ -2917,7 +2943,7 @@ def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
     pagina.wait_for_selector("#proximo-passo >> text=Publicar no site")
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
     pagina.click("text=Registrar publicação no site")
-    pagina.wait_for_selector(".autorizacao li[data-passo=site].feito")
+    pagina.wait_for_selector(".autorizacao li[data-canal=site].c-feito")
     # texto alterado e aprovado de novo depois do registro: não está concluído
     form = pagina.locator("form[data-form=conteudo]")
     form.locator("[name=corpo]").fill("Texto corrigido depois de publicado, com mais de trinta caracteres.")
@@ -2930,16 +2956,16 @@ def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
     pagina.wait_for_selector("#proximo-passo >> text=Para o site: confirmar o assunto")
     assert pagina.locator("text=Concluído").count() == 0
     form.locator("[name=autor]").fill("Digitado e não salvo")
-    pagina.click("text=Marcar como confirmado oficialmente")
+    pagina.click("#proximo-passo >> text=Conferi na fonte oficial")
     pagina.wait_for_selector("text=Há alterações não salvas nesta tela.")
     assert form.locator("[name=autor]").input_value() == "Digitado e não salvo"
     form.locator("[name=autor]").fill("")
-    pagina.click("text=Marcar como confirmado oficialmente")
+    pagina.click("#proximo-passo >> text=Conferi na fonte oficial")
     pagina.wait_for_selector("#proximo-passo >> text=Atualizar o site e registrar de novo")
     assert "rever" in pagina.inner_text(".trilha")
     pagina.fill("[id^=site-url-]", "https://artecon.cnt.br/news/cbs")
     pagina.click("text=Registrar publicação no site")
-    pagina.wait_for_selector(".autorizacao li[data-passo=site].feito")
+    pagina.wait_for_selector(".autorizacao li[data-canal=site].c-feito")
     limpo.execute("""insert into radar_redes_envios (conteudo_id, canal, legenda, conteudo_lido_em, situacao)
                      select id, k, '(não publicado neste canal)', atualizado_em, 'dispensado' from radar_conteudos, unnest(array['instagram','facebook']) k""")
     # segundo conteúdo em rascunho: o quadro avisa
@@ -3026,25 +3052,24 @@ def test_assunto_abre_uma_etapa_de_cada_vez_e_guarda_o_que_foi_digitado(pagina, 
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Assuntos")
     pagina.click("text=CBS na transição")
-    pagina.wait_for_selector(".trilha.passos7")
+    pagina.wait_for_selector(".trilha.passos3")
     visiveis = lambda: [x for x in ("#sec-texto", "#sec-fundamentacao", "#sec-conteudos", "#sec-publicar") if pagina.locator(x).is_visible()]
-    assert [t.split("\n")[1] for t in pagina.locator(".trilha li").all_inner_texts()] == \
-        ["Fonte", "Texto", "Revisão", "Aprovar", "Site", "Instagram", "Facebook"]
+    assert [t.split("\n")[1] for t in pagina.locator(".trilha li").all_inner_texts()] == ["Preparar", "Conferir e aprovar", "Publicar"]
     assert visiveis() == ["#sec-texto", "#sec-fundamentacao"]                             # sem conteúdo ainda: abre na fonte
     assert "Ainda não pode ser publicado no site" not in pagina.inner_text("main")               # o aviso geral saiu: o "Próximo passo" já orienta
     detalhes(pagina)                                                                      # os dados do assunto ficam ao lado, em qualquer passo
     pagina.fill("#a-titulo", "CBS na transição — título digitado")
     pagina.click("#proximo-passo >> text=Escrever sem IA")                                # o botão do próximo passo troca de etapa
     assert visiveis() == ["#sec-conteudos"]
-    pagina.click(".trilha li[data-passo=fonte]")                                # os passos do alto também
+    pagina.click(".trilha li[data-passo=preparar]")                             # os passos do alto também
     assert visiveis() == ["#sec-texto", "#sec-fundamentacao"]
-    pagina.click(".trilha li[data-passo=site]")
+    pagina.click(".trilha li[data-passo=publicar]")
     assert visiveis() == ["#sec-publicar"] and "depois que um conteúdo for aprovado" in pagina.inner_text("#sec-publicar")
     assert pagina.input_value("#a-titulo") == "CBS na transição — título digitado"        # trocar de passo não perde o que foi digitado
     pagina.click("text=Salvar dados do assunto")
     pagina.wait_for_selector("text=Assunto salvo.")
     assert visiveis() == ["#sec-publicar"]                                                # depois de salvar, continua no mesmo passo
-    pagina.click(".trilha li[data-passo=texto]")
+    pagina.click(".trilha li[data-passo=conferir]")
     pagina.click("text=Novo conteúdo")
     pagina.wait_for_selector("form[data-form=conteudo]")
     assert visiveis() == ["#sec-conteudos"]
@@ -3377,28 +3402,28 @@ def test_digitacao_em_outra_etapa_nao_se_perde_por_acao_feita_em_outra(pagina, l
     assert limpo.execute("select corpo from radar_conteudos").fetchone()[0] == "Texto do conteúdo com tamanho suficiente."
     # ação que não pode seguir com alteração pendente diz em que etapa ela está
     pagina.click("text=Mostrar tudo numa página")
-    pagina.wait_for_selector("#recado .erro >> text=alterações não salvas no passo “2. Escrever”")
-    pagina.click(".trilha li[data-passo=texto]")
+    pagina.wait_for_selector("#recado .erro >> text=alterações não salvas no passo “2. Conferir e aprovar”")
+    pagina.click(".trilha li[data-passo=conferir]")
     assert pagina.input_value("form[data-form=conteudo] [name=corpo]").startswith("Texto digitado e ainda não salvo")
     # com conteúdo e sem fundamentação confirmada, a etapa Conteúdo explica por que ainda não dá para registrar no site
     assert "Ainda não pode ser publicado no site." in pagina.inner_text("section[data-etapa=conteudo]")
     # lista trocada (e não salva) nos dados do assunto: salvar o conteúdo não a desfaz
     pagina.select_option("#a-rel", "baixa")
-    pagina.click(".trilha li[data-passo=texto]")
+    pagina.click(".trilha li[data-passo=conferir]")
     pagina.click("form[data-form=conteudo] >> text=Salvar")
     pagina.wait_for_selector("text=Conteúdo salvo")
     assert limpo.execute("select corpo from radar_conteudos").fetchone()[0].startswith("Texto digitado e ainda não salvo")
     assert pagina.evaluate("document.querySelector('#a-rel').value") == "baixa"
     assert limpo.execute("select relevancia from radar_assuntos where id = %s", (a,)).fetchone()[0] != "baixa"
     # formulário aberto na hora (evidência) e preenchido, escondido em outra etapa: a ação é barrada com o aviso
-    pagina.click(".trilha li[data-passo=fonte]")
+    pagina.click(".trilha li[data-passo=preparar]")
     pagina.click("text=Usar trecho selecionado como evidência")
     pagina.wait_for_selector("#form-evidencia form")
     pagina.fill("#form-evidencia textarea", "trecho digitado e ainda não registrado")
-    pagina.click(".trilha li[data-passo=texto]")
+    pagina.click(".trilha li[data-passo=conferir]")
     pagina.fill("form[data-form=conteudo] [name=autor]", "Equipe Artecon")
     pagina.click("form[data-form=conteudo] >> text=Salvar")
-    pagina.wait_for_selector("#recado .erro >> text=alterações não salvas no passo “1. Conferir a fonte”")
+    pagina.wait_for_selector("#recado .erro >> text=alterações não salvas no passo “1. Preparar”")
     assert limpo.execute("select autor from radar_conteudos").fetchone()[0] is None
     # o aviso não deixa a tela "ocupada": as próximas ações continuam funcionando (v0.9.1)
     assert pagina.evaluate("OCUPADO") is False and not pagina.evaluate("document.body.classList.contains('ocupado')")
@@ -3492,8 +3517,8 @@ def test_so_o_administrador_autoriza_e_pode_cancelar(pagina, limpo):
     assert "Publicação não concluída" in pagina.inner_text("#proximo-passo") and "o site exigiu a verificação" in pagina.inner_text("#proximo-passo")
     limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/cbs', current_date)", (c,))
     pagina.evaluate("desenhar()")                                                          # redesenha a tela aberta
-    pagina.wait_for_selector(".autorizacao li[data-passo=site].feito")
-    assert pagina.locator(".trilha li.feito").count() == 5
+    pagina.wait_for_selector(".autorizacao li[data-canal=site].c-feito")
+    assert pagina.locator(".trilha li.feito").count() == 2                            # o passo 3 espera o Instagram e o Facebook
 
 
 def test_noticia_ja_no_site_nao_oferece_autorizar_de_novo(pagina, limpo):
@@ -3629,7 +3654,7 @@ def test_trocar_de_assunto_enquanto_a_ia_trabalha_nao_grava_nem_aplica_no_outro(
     presos[0].fallback()
     pagina.wait_for_selector("text=A tela mudou enquanto a IA trabalhava")
     pagina.wait_for_selector("#ia-trabalhando", state="detached")
-    assert [p["assunto_id"] for p in pedidos] == [a1, a1, a1]          # fundamentar, gerar e kit (v0.20.0): todos no assunto pedido
+    assert [p["assunto_id"] for p in pedidos] == [a1, a1, a1, a1]      # fundamentar, gerar, revisar (v0.26.0) e kit: todos no assunto pedido
     assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s", (a2,)).fetchone()[0] == 0
     assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s", (a1,)).fetchone()[0] == 1
     assert pagina.locator("form[data-form=conteudo]").count() == 0     # a tela do outro assunto não ganhou o rascunho
@@ -3672,7 +3697,8 @@ def test_ia_mostra_que_esta_trabalhando_e_pede_senha_a_partir_da_segunda_consult
 
 
 def test_gerar_com_ia_faz_o_kit_e_a_capa_padrao_e_rascunho_sem_fonte_oficial(pagina, limpo, request):
-    """v0.20.0: o “Gerar com IA” faz a capa padrão (sem pedir ilustração) e, na etapa 3, o kit das redes."""
+    """v0.20.0: o “Gerar com IA” faz a capa padrão (sem pedir ilustração) e, na etapa 3, o kit das redes. v0.26.0: o “Preparar com IA”
+    confere também os 10 critérios (o "revisar", antes do kit) e leva o texto para "em revisão" (o passo 2)."""
     a, cap = assunto_com_texto(limpo)
     limpo.execute("update radar_fontes set oficial = false, orgao = 'ITC Consultoria' where slug = 'cgibs-noticias'")   # faz as vezes do boletim
     request.addfinalizer(lambda: limpo.execute("update radar_fontes set oficial = true, orgao = 'Comitê Gestor do IBS' where slug = 'cgibs-noticias'"))
@@ -3683,12 +3709,14 @@ def test_gerar_com_ia_faz_o_kit_e_a_capa_padrao_e_rascunho_sem_fonte_oficial(pag
     pedidos = []
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    ia_de_mentira(pagina, limpo, pedidos)
+    ia_de_mentira(pagina, limpo, pedidos, revisar_texto=False)
     abrir_assunto(pagina, "CBS na transição")
     assert pagina.locator("#sec-origem [data-acao=ia-tudo]").count() == 1                 # v0.19.0: também no passo 1 (Fonte)
+    assert pagina.locator("#sec-conteudos [data-acao=ia-tudo]").count() == 0              # v0.26.0: a barra do passo 2 não tem mais o Preparar
     pagina.click("#proximo-passo [data-acao=ia-tudo]")
-    pagina.wait_for_selector("text=um rascunho, a capa padrão e o kit das redes.")
-    assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "kit"] and pagina.locator("#senha-ia").count() == 0
+    pagina.wait_for_selector("text=Preparado: o texto, a capa padrão, a conferência dos 10 critérios e o kit das redes.")
+    assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "revisar", "kit"] and pagina.locator("#senha-ia").count() == 0
+    assert limpo.execute("select status from radar_conteudos where assunto_id = %s", (a,)).fetchone()[0] == "em_revisao"
     # v0.20.0: a capa padrão Artecon, sem ilustração (ela é opcional, pelo botão do conteúdo); o kit gravado e o quadro dele aberto
     capa, ilus, kit = limpo.execute("select imagem_id, ilustracao_id, kit_ia from radar_conteudos where assunto_id = %s", (a,)).fetchone()
     assert capa and ilus is None and kit == KIT_TELA and "arte" not in kit                    # v0.25.1: sem a arte
@@ -3711,11 +3739,12 @@ def test_gerar_com_ia_faz_o_kit_e_a_capa_padrao_e_rascunho_sem_fonte_oficial(pag
     # v0.24.0: sem texto oficial, o texto é Informativo: fica em análise até o administrador autorizar a publicação
     pagina.wait_for_selector("text=Assunto sem fonte oficial: a IA escreveu um texto Informativo")
     assert "só vai ao site e às redes depois que o administrador autorizar a publicação" in pagina.inner_text("#recado")
-    assert pedidos[-3]["acao"] == "verificar" and pedidos[-3].get("rapido") is True
-    assert pedidos[-2]["acao"] == "gerar" and "analise" not in pedidos[-2]
+    assert pedidos[-4]["acao"] == "verificar" and pedidos[-4].get("rapido") is True
+    assert pedidos[-3]["acao"] == "gerar" and "analise" not in pedidos[-3]
+    assert pedidos[-2]["acao"] == "revisar"                                        # v0.26.0: a conferência dos 10 critérios
     assert pedidos[-1]["acao"] == "kit"                                            # o kit das redes; nenhuma ilustração
     pagina.wait_for_selector("text=A busca em fontes oficiais não encontrou página oficial (veja no passo 1).")
-    pagina.wait_for_selector("text=Já estão no conteúdo a capa padrão e o kit das redes.")
+    pagina.wait_for_selector("text=Já estão no texto a capa padrão, a conferência dos 10 critérios e o kit das redes.")
     assert not any(p["acao"] == "ilustrar" for p in pedidos)
     assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s and imagem_id is not null and ilustracao_id is null", (b,)).fetchone()[0] == 1
     assert "TEXTO PARA ANÁLISE" not in pagina.inner_text("main") and "Informativo — aguardando autorização" in pagina.inner_text("main")
@@ -3733,8 +3762,9 @@ def test_gerar_com_ia_com_a_funcao_antiga_ou_o_banco_sem_o_sql_fica_com_o_texto_
     abrir_assunto(pagina, "CBS na transição")
     pagina.click("#proximo-passo [data-acao=ia-tudo]")
     aviso = pagina.wait_for_selector("#recado .aviso >> text=O kit das redes (legendas e roteiro do reel) não saiu agora").inner_text()
-    assert "um rascunho, a capa padrão." in aviso and "versão anterior" in aviso and "use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo." in aviso
-    assert pagina.locator("#recado .erro").count() == 0 and [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "kit"]
+    assert "Preparado: o texto, a capa padrão e a conferência dos 10 critérios." in aviso and "versão anterior" in aviso
+    assert "use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo." in aviso
+    assert pagina.locator("#recado .erro").count() == 0 and [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "revisar", "kit"]
     c, capa, ilus, kit = limpo.execute("select id, imagem_id, ilustracao_id, kit_ia from radar_conteudos where assunto_id = %s", (a,)).fetchone()
     assert capa and ilus is None and kit == {}
     assert "não gerado" in pagina.inner_text(f"details.kit-redes[data-id='{c}'] summary")
@@ -3747,7 +3777,7 @@ def test_gerar_com_ia_com_a_funcao_antiga_ou_o_banco_sem_o_sql_fica_com_o_texto_
     confirmar_senha_ia(pagina)
     aviso = pagina.wait_for_selector("#recado .aviso >> text=O kit das redes (legendas e roteiro do reel) não saiu agora").inner_text()
     assert "rode o radar-setup-v0.21.0.sql" in aviso and "use “Gerar kit das redes com IA”" in aviso
-    assert [p["acao"] for p in pedidos][-3:] == ["fundamentar", "gerar", "kit"]
+    assert [p["acao"] for p in pedidos][-4:] == ["fundamentar", "gerar", "revisar", "kit"]
     assert limpo.execute("select count(*), count(imagem_id), count(*) filter (where kit_ia = '{}') from radar_conteudos where assunto_id = %s", (a,)).fetchone() == (2, 2, 2)
 
 
@@ -3813,14 +3843,14 @@ def test_aviso_de_publicacao_tem_os_botoes_e_o_administrador_libera_com_motivo(p
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Informativo de teste")
     aviso = pagina.locator(".aviso:visible", has_text="Ainda não pode ser publicado no site")
-    assert aviso.locator("text=Marcar como confirmado oficialmente").count() == 1
+    assert aviso.locator("text=Conferi na fonte oficial").count() == 1                 # v0.26.0: o mesmo nome em todo lugar
     aviso.locator("text=Publicar mesmo assim").click()                            # v0.12.2: o motivo é digitado na própria tela
     pagina.click("text=Liberar sem fonte oficial")
     pagina.wait_for_selector("text=Escreva o motivo da liberação.")
     pagina.fill("#motivo-liberar", "Confirmado por telefone com a Receita Federal")
     pagina.press("#motivo-liberar", "Enter")
     pagina.wait_for_selector("text=Publicação liberada sem a fundamentação oficial")
-    assert pagina.locator(".autorizacao li[data-passo=fonte] >> text=Motivo: Confirmado por telefone com a Receita Federal").count() == 1
+    assert pagina.locator(".autorizacao li[data-passo=preparar] >> text=Motivo: Confirmado por telefone com a Receita Federal").count() == 1
     assert limpo.execute("select liberado_sem_base_motivo from radar_assuntos where id = %s", (a,)).fetchone()[0].startswith("Confirmado")
     assert pagina.locator(".aviso:visible", has_text="Ainda não pode ser publicado no site").count() == 0
 
@@ -3842,7 +3872,7 @@ def test_texto_para_analise_transformado_vai_para_baixo_e_o_passo_4_diz_o_que_fa
     assert ids[-1] == analise and len(ids) == 2                                   # a cópia vem antes do texto para análise
     assert pagina.locator("text=Transformar em texto para publicar").count() == 0   # não dá para transformar de novo
     assert pagina.locator("text=já foi transformado em texto para publicar").count() == 1
-    pagina.click(".trilha li[data-passo=site]")
+    pagina.click(".trilha li[data-passo=publicar]")
     pagina.wait_for_selector("text=Ainda não há conteúdo aprovado.")
     pagina.click("#sec-publicar >> text=Ir para o conteúdo")
     assert pagina.locator(f"form[data-form=conteudo][data-id='{ids[0]}']").is_visible()
@@ -3859,29 +3889,30 @@ def test_trilha_de_autorizacao_mostra_um_passo_de_cada_vez_com_os_botoes(pagina,
     abrir_assunto(pagina, "Desenrola na trilha")
     trilha = pagina.locator(".autorizacao")
     agora = lambda: trilha.locator("li.agora").get_attribute("data-passo")
-    # só o texto para análise e sem fonte oficial: o passo de agora é a fonte, com "Publicar mesmo assim"
-    assert agora() == "fonte" and trilha.locator("li.agora .btn").count() >= 2
-    assert trilha.locator("li[data-passo=texto] .btn").count() == 0 and "aguardando" in trilha.locator("li[data-passo=texto]").inner_text().lower()
-    assert "aguardando" in trilha.locator("li[data-passo=instagram]").inner_text().lower() and "aguardando" in trilha.locator("li[data-passo=facebook]").inner_text().lower()
+    # só o texto para análise e sem fonte oficial: o passo de agora é o 1 (Preparar), com "Publicar mesmo assim"; v0.26.0: três passos
+    assert agora() == "preparar" and trilha.locator("li.agora .btn").count() >= 2
+    assert trilha.locator("li[data-passo=conferir] .btn").count() == 0 and "aguardando" in trilha.locator("li[data-passo=conferir]").inner_text().lower()
+    assert "aguardando" in trilha.locator("li[data-passo=publicar]").inner_text().lower()
     trilha.locator("li.agora .btn", has_text="Publicar mesmo assim").click()
     pagina.fill("#motivo-liberar", "curto")
     pagina.click("text=Liberar sem fonte oficial")
     pagina.wait_for_selector("text=Escreva um motivo com pelo menos 10 caracteres.")
     pagina.fill("#motivo-liberar", "Autorizado pelo responsável técnico")
     pagina.click("text=Liberar sem fonte oficial")
-    pagina.wait_for_selector(".autorizacao li[data-passo=fonte].feito")
-    assert "Motivo: Autorizado pelo responsável técnico" in trilha.locator("li[data-passo=fonte]").inner_text()
-    assert trilha.locator("li[data-passo=fonte] >> text=Desfazer").count() == 1
-    # passo 2: transformar; passo 3: enviar para revisão; passo 4: aprovar — tudo pela trilha
-    assert agora() == "texto"
+    pagina.wait_for_selector(".autorizacao li[data-passo=preparar] >> text=Transformar em texto para publicar")
+    # a liberação fica na linha da fonte do passo 1, com o motivo e, para o administrador, "Desfazer"
+    assert "Motivo: Autorizado pelo responsável técnico" in trilha.locator("li[data-passo=preparar]").inner_text()
+    assert trilha.locator("li[data-passo=preparar] >> text=Desfazer").count() == 1
+    # transformar e preparar o rascunho (passo 1), enviar e aprovar (passo 2), publicar (passo 3) — tudo pela trilha
+    assert agora() == "preparar"
     pagina.once("dialog", lambda d: d.accept())
     trilha.locator("li.agora .btn", has_text="Transformar em texto para publicar").click()
-    pagina.wait_for_selector(".autorizacao li[data-passo=revisao].agora")
-    trilha.locator("li.agora .btn", has_text="Enviar para revisão").click()
-    pagina.wait_for_selector(".autorizacao li[data-passo=aprovar].agora")
+    pagina.wait_for_selector(".autorizacao li[data-passo=preparar].agora >> text=Preparar o rascunho")
+    trilha.locator("li.agora .btn", has_text="Enviar para revisão (sem IA)").click()
+    pagina.wait_for_selector(".autorizacao li[data-passo=conferir].agora")
     trilha.locator("li.agora .btn", has_text="Aprovar").click()
-    pagina.wait_for_selector(".autorizacao li[data-passo=site].agora")
-    assert pagina.locator(".trilha li.feito").count() == 4
+    pagina.wait_for_selector(".autorizacao li[data-passo=publicar].agora")
+    assert pagina.locator(".trilha li.feito").count() == 2
     assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s and status = 'aprovado'", (a,)).fetchone()[0] == 1
     trilha.locator("li.agora .btn", has_text="Ir para publicar").click()
     assert pagina.locator("[data-acao=autorizar-site]").is_visible()
@@ -3895,7 +3926,7 @@ def test_trilha_desfaz_a_liberacao_e_leitor_nao_ve_botoes(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     abrir_assunto(pagina, "Liberado e desfeito")
     assert pagina.locator(".autorizacao .btn").count() == 0 and pagina.locator(".autorizacao >> text=Desfazer").count() == 0
-    assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "texto"
+    assert pagina.locator(".autorizacao li.agora").get_attribute("data-passo") == "preparar"
 
 
 # ------------------------------------------------------------ v0.13.0 — Instagram e Facebook na trilha
@@ -3929,7 +3960,7 @@ def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo
     pagina.wait_for_selector("text=Painel do dia")
     abrir_por_id(pagina, a)
     trilha = pagina.locator(".autorizacao")
-    assert trilha.locator("li.agora").get_attribute("data-passo") == "instagram"
+    assert trilha.locator("li.agora").get_attribute("data-passo") == "publicar" and trilha.locator("li[data-canal=instagram].c-vez").count() == 1
     pagina.wait_for_function("() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
     tamanho = pagina.evaluate("() => { const i = document.querySelector('#rede-imagem'); return [i.naturalWidth, i.naturalHeight]; }")
     # v0.25.0: a imagem da publicação, a mesma do site (a capa padrão, 1200×630), e não mais a arte vertical 4:5 (1080×1350) da v0.20.0
@@ -3949,12 +3980,12 @@ def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo
     assert "Imagem ilustrativa gerada por IA" not in linha[1]                 # a capa padrão não é da IA
     assert pedidos[-1]["acao"] == "publicar"
     # Facebook: a legenda leva o link clicável do site; o administrador escolhe não publicar
-    assert trilha.locator("li.agora").get_attribute("data-passo") == "facebook"
+    assert trilha.locator("li.agora").get_attribute("data-passo") == "publicar" and trilha.locator("li[data-canal=facebook].c-vez").count() == 1
     assert "Leia a matéria completa: https://artecon.cnt.br/news/view/cbs" in pagina.input_value("#rede-legenda")
-    assert "ver no Instagram" in trilha.locator("li[data-passo=instagram]").inner_text()
+    assert "ver no Instagram" in trilha.locator("li[data-canal=instagram]").inner_text()
     trilha.locator("li.agora .btn", has_text="Não publicar no Facebook").click()
     pagina.wait_for_selector("text=Concluído: publicado no site e no Instagram")
-    assert trilha.locator("li[data-passo=facebook] >> text=Desfazer").count() == 1
+    assert trilha.locator("li[data-canal=facebook] >> text=Desfazer").count() == 1
     # Publicações › Canais
     pagina.click("nav.abas >> text=Publicações")
     pagina.wait_for_selector("#tab-canais")
@@ -4573,7 +4604,7 @@ def test_publicar_em_todos_de_uma_vez(pagina, limpo):
     assert [x[0] for x in limpo.execute("select imagem from radar_redes_envios order by canal").fetchall()] == [site, site]
     assert redes[0][3].endswith("Editado na tela.") and "{LINK DO SITE}" in redes[0][3]
     assert "saem logo depois que a notícia entrar no site" in pagina.inner_text("#proximo-passo")
-    assert "vai junto com o site" in pagina.inner_text(".trilha li[data-passo=instagram]")
+    assert "vai junto com o site" in pagina.inner_text(".autorizacao li[data-canal=instagram]")
     assert pagina.locator(f"#todos-{c}").count() == 0                                      # já autorizado: o quadro some
     # varredura geral (v0.22.0): com o site na vez do robô, nada de "Registrar publicação no site" à mão (o banco recusa: RADAR145)
     assert pagina.locator(f"#site-url-{c}").count() == 0 and pagina.locator("form[data-form=conteudo] .registrar-site-robo").count() == 1
@@ -5911,7 +5942,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.25.1"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.26.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -8326,7 +8357,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.25.1"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.26.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -8938,3 +8969,446 @@ def test_conferencia_item_2_aceita_a_linha_fonte_oficial_com_link(pagina, limpo,
     pagina.locator(f"form[data-form=conteudo][data-id='{com}'] [data-acao=previa]").click()
     assert pagina.locator("#previa-site p", has_text="Fonte oficial:").locator("a[href='https://www.gov.br/exemplo/in-2290']").count() == 1
     assert "Fonte oficial: Instrução Normativa RFB nº 2.290 — https://www.gov.br/exemplo/in-2290" in pagina.inner_text("#previa-site .previa")
+
+
+# ------------------------------------------------ v0.26.0: o assunto em 3 passos (Preparar · Conferir e aprovar · Publicar)
+def passo(pg, chave):
+    """O passo da trilha (preparar, conferir ou publicar)."""
+    return pg.locator(f".autorizacao li[data-passo={chave}]")
+
+
+def assunto_oficial(db, titulo, n):
+    """Outro assunto com texto oficial (a captura com outro endereço e outro título: o mesmo endereço na mesma fonte não entra duas vezes)."""
+    cap = captura(db, f"IN RFB nº 2.290 — apuração da CBS ({titulo})", f"https://www.gov.br/exemplo/in-2290-{n}")
+    a = db.execute("insert into radar_assuntos (titulo, resumo) values (%s, 'Apuração da CBS.') returning id", (titulo,)).fetchone()[0]
+    db.execute("insert into radar_assunto_capturas values (%s, %s)", (a, cap))
+    return a, cap
+
+
+def falhar_na_ia(pg, acao, status, mensagem):
+    """A ação "acao" da função radar-ia falha com o status e a mensagem; as outras seguem para a IA de mentira (registrada antes)."""
+    def responder(rota):
+        if json.loads(rota.request.post_data or "{}").get("acao") == acao:
+            return rota.fulfill(status=status, content_type="application/json", body=json.dumps({"message": mensagem}))
+        rota.fallback()
+    pg.route("**/functions/v1/radar-ia", responder)
+
+
+def test_assunto_em_tres_passos_do_preparar_ao_publicar(pagina, limpo):
+    """v0.26.0: a barra e a trilha têm 3 passos, sempre para a frente. No passo 1, “Preparar com IA”, com o tamanho do texto ao lado, faz
+    tudo numa consulta só (o trecho que comprova, o texto, a capa padrão, a Conferência dos 10 critérios e as legendas), sem pedir a senha,
+    e leva o texto para “em revisão”. No passo 2, a confirmação da fonte é um clique de quem conferiu (“✓ Conferi na fonte oficial”, que
+    só aparece com o trecho que comprova) e o “✓ Aprovar”; no passo 3, uma linha por canal e o “Publicar em todos (site, Instagram e
+    Facebook)”. Aprovado sem a confirmação, o que falta para o site fica no passo 3: a trilha não volta para o começo."""
+    a, cap = assunto_com_texto(limpo)
+    pedidos = []
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, revisar_texto=False)
+    abrir_assunto(pagina, "CBS na transição")
+    assert pagina.locator(".trilha.passos3 li").count() == 3 and pagina.locator(".autorizacao li.passo-a").count() == 3
+    assert [x.split("\n")[1] for x in pagina.locator(".trilha li").all_inner_texts()] == ["Preparar", "Conferir e aprovar", "Publicar"]
+    assert passo(pagina, "preparar").get_attribute("class") == "passo-a agora" and "Preparar a publicação" in pagina.inner_text("#proximo-passo")
+    assert pagina.locator("#proximo-passo #prox-formato").count() == 1 and pagina.locator("#proximo-passo [data-acao=ia-tudo]").count() == 1
+    assert pagina.locator("#proximo-passo .mais-opcoes >> text=Escrever sem IA").count() == 1               # o resto, em “Mais opções”
+    for chave in ("conferir", "publicar"):                                                                # só o passo de agora tem botões
+        assert "aguardando" in passo(pagina, chave).inner_text().lower() and passo(pagina, chave).locator(".btn").count() == 0
+    assert pagina.locator(".trilha li.feito").count() == 0
+    pagina.screenshot(path=str(FOTOS / "52-tres-passos-preparar.png"), full_page=True)
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado >> text=Preparado: o texto, a capa padrão, a conferência dos 10 critérios e o kit das redes.")
+    assert "Agora, no passo 2: leia o texto, confira na fonte oficial e aprove." in pagina.inner_text("#recado")
+    assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "revisar", "kit"] and pagina.locator("#senha-ia").count() == 0
+    c, status, capa, kit = limpo.execute("select id, status, imagem_id, kit_ia from radar_conteudos where assunto_id = %s", (a,)).fetchone()
+    assert status == "em_revisao" and kit == KIT_TELA and pedidos[2]["conteudo_id"] == c and pedidos[2]["lido"]
+    assert limpo.execute("select largura, altura from radar_imagens where id = %s", (capa,)).fetchone() == (1200, 630)
+    assert passo(pagina, "conferir").get_attribute("class") == "passo-a agora" and "Conferir e aprovar o texto" in pagina.inner_text("#proximo-passo")
+    assert "Fonte oficial: falta o trecho que comprova" in passo(pagina, "preparar").inner_text() and pagina.locator(".trilha li.feito").count() == 1
+    # sem o trecho que comprova, nada de confirmar: o passo 2 diz o que falta (só o site exige)
+    assert pagina.locator("#proximo-passo [data-acao=confirmar-oficial]").count() == 0
+    assert "falta o trecho que comprova" in pagina.inner_text("#proximo-passo")
+    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a, cap, TRECHO))
+    pagina.evaluate("desenhar()")
+    pagina.wait_for_selector("#proximo-passo >> text=A IA achou 1 trecho(s) do texto oficial que comprovam a notícia")
+    assert pagina.locator("#proximo-passo .conf-trilha li[data-situacao=atende]").count() == 10
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_enabled()
+    pagina.screenshot(path=str(FOTOS / "54-conferir-e-aprovar.png"), full_page=True)
+    pagina.click("#proximo-passo >> text=Conferi na fonte oficial")
+    pagina.wait_for_selector("#recado >> text=Assunto marcado como confirmado oficialmente.")
+    assert "✓ Fonte oficial conferida, com 1 trecho(s) que comprovam." in pagina.inner_text("#proximo-passo")
+    pagina.click("#proximo-passo [data-botao=aprovar]")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
+    pagina.wait_for_selector(".autorizacao li[data-passo=publicar].agora")
+    assert "Publicar no site" in pagina.inner_text("#proximo-passo") and pagina.locator(".trilha li.feito").count() == 2
+    assert pagina.locator("#proximo-passo >> text=Publicar em todos (site, Instagram e Facebook)").count() == 1
+    assert [pagina.inner_text(f"#proximo-passo li[data-canal={k}]") for k in ("site", "instagram", "facebook")] == \
+        ["Site: falta", "Instagram: depois do site", "Facebook: depois do site"]
+    assert "Aprovado em" in passo(pagina, "conferir").inner_text() and "Se o texto mudar, ele volta para conferir." in passo(pagina, "conferir").inner_text()
+    pagina.screenshot(path=str(FOTOS / "57-publicar-tres-canais.png"), full_page=True)
+    # aprovado sem a confirmação da fonte: o que falta para o site fica no passo 3 (a trilha não volta para o começo)
+    limpo.execute("update radar_assuntos set situacao_confirmacao = 'em_verificacao' where id = %s", (a,))
+    pagina.evaluate("desenhar()")
+    pagina.wait_for_selector(".autorizacao li.agora[data-passo=publicar] >> text=Para o site: confirmar o assunto")
+    assert pagina.locator("#proximo-passo [data-acao=confirmar-oficial]").count() == 1 and pagina.locator(".trilha li.feito").count() == 2
+
+
+def test_preparar_confere_os_10_criterios_de_verdade_e_nao_marca_confirmado(pagina, limpo, conferencia_de_verdade):
+    """v0.26.0: a etapa 3 do Preparar é a Conferência dos 10 critérios de verdade (a lista vai ao banco como a função grava): o texto
+    chega ao passo 2 com os 10 ✓ e o “✓ Aprovar” ligado. O aviso diz em que etapa está (“Preparar · etapa 3 de 4”). O Preparar nunca
+    marca “confirmado oficialmente” (é um clique de quem conferiu) e nunca pede a imagem da IA (é paga)."""
+    a, _ = assunto_com_texto(limpo)
+    pedidos, presos = [], []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK, revisar_texto=False)
+
+    def segurar(rota):                                       # a conferência fica "trabalhando" até o teste soltar (o print do aviso)
+        if json.loads(rota.request.post_data or "{}").get("acao") == "revisar" and not presos:
+            presos.append(rota)
+        else:
+            rota.fallback()
+    pagina.route("**/functions/v1/radar-ia", segurar)
+    abrir_assunto(pagina, "CBS na transição")
+    situacao = limpo.execute("select situacao_confirmacao from radar_assuntos where id = %s", (a,)).fetchone()[0]
+    pagina.evaluate("""() => { window.__aviso = [];
+        new MutationObserver(() => { const a = document.querySelector('#ia-trabalhando .txt'); if(a) window.__aviso.push(a.textContent); })
+          .observe(document.body, {childList: true, subtree: true, characterData: true}); }""")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    for _ in range(100):
+        if presos:
+            break
+        pagina.wait_for_timeout(100)
+    pagina.wait_for_selector("#ia-trabalhando >> text=Preparar · etapa 3 de 4")
+    pagina.screenshot(path=str(FOTOS / "53-preparar-andando.png"))
+    presos[0].fallback()
+    pagina.wait_for_selector("#recado >> text=a conferência dos 10 critérios (os 10 atendem)")
+    assert any(x.startswith("Preparar · etapa 3 de 4 — A IA está conferindo o texto") for x in pagina.evaluate("window.__aviso"))
+    assert any(x.startswith("Preparar · etapa 1 de 4 — A IA está buscando o trecho") for x in pagina.evaluate("window.__aviso"))
+    c = limpo.execute("select id from radar_conteudos where assunto_id = %s", (a,)).fetchone()[0]
+    assert pagina.get_attribute(f"form[data-form=conteudo][data-id='{c}']", "data-conferencia") == "ok"
+    assert pagina.locator("#proximo-passo .conf-trilha li[data-situacao=atende]").count() == 10
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_enabled()
+    assert "✓ Os 10 critérios atendem (ou não se aplicam): pode aprovar." in pagina.inner_text("#proximo-passo")
+    assert limpo.execute("select a.situacao_confirmacao, c.status from radar_conteudos c join radar_assuntos a on a.id = c.assunto_id where c.id = %s",
+                         (c,)).fetchone() == (situacao, "em_revisao")
+    assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "revisar", "kit"] and not any(p["acao"] == "ilustrar" for p in pedidos)
+
+
+def test_preparar_usa_o_tamanho_ao_lado_e_pula_o_trecho_ja_conferido(pagina, limpo):
+    """v0.26.0: o tamanho do texto fica ao lado do “Preparar com IA” (e o mesmo nas barras dos passos 1 e 2: escolhido num, vale nos
+    outros). Com o trecho oficial já conferido, o Preparar não busca outro. Sem texto capturado, “Novo conteúdo (sem IA)” continua
+    funcionando, com o tamanho escolhido."""
+    a, _ = assunto_com_texto(limpo)
+    b, cap_b = assunto_oficial(limpo, "Com trecho conferido", 2)
+    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (b, cap_b, TRECHO))
+    limpo.execute("insert into radar_assuntos (titulo) values ('Assunto sem texto capturado')")
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, revisar_texto=False)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.select_option("#prox-formato", label="Longo (artigo)")
+    assert [pagina.input_value(s) for s in ("#prox-formato", "#formato-fonte", "#novo-formato")] == ["artigo"] * 3
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado >> text=Preparado:")
+    assert [p.get("formato") for p in pedidos if p["acao"] == "gerar"] == ["artigo"]
+    assert pagina.input_value("#novo-formato") == "artigo"                                  # continua escolhido depois de redesenhar
+    # outro assunto, com o trecho oficial já conferido: sem a busca do trecho
+    pedidos.clear()
+    limpar_recados(pagina)
+    pagina.click("text=Voltar para a lista")
+    pagina.locator("tr.clicavel", has_text="Com trecho conferido").click()
+    pagina.wait_for_selector("#proximo-passo [data-acao=ia-tudo][data-trechos='1']")
+    # vale o tamanho que está ao lado do botão clicado (aqui trocado sem avisar os outros seletores)
+    pagina.evaluate("document.querySelector('#proximo-passo #prox-formato').value = 'flash'")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado >> text=Preparado:")
+    assert [p["acao"] for p in pedidos] == ["gerar", "revisar", "kit"] and pedidos[0]["formato"] == "flash"
+    # sem texto capturado: não há Preparar, e o “Novo conteúdo (sem IA)” cria o rascunho com o tamanho escolhido
+    pagina.click("text=Voltar para a lista")
+    pagina.locator("tr.clicavel", has_text="Assunto sem texto capturado").click()
+    pagina.wait_for_selector("#proximo-passo >> text=Escrever o texto")
+    assert pagina.locator("[data-acao=ia-tudo]").count() == 0
+    pagina.click("text=Novo conteúdo (sem IA)")
+    pagina.wait_for_selector("text=Conteúdo criado como rascunho.")
+    assert limpo.execute("select c.formato from radar_conteudos c join radar_assuntos a on a.id = c.assunto_id where a.titulo = 'Assunto sem texto capturado'").fetchone()[0] == "artigo"
+
+
+def test_preparar_este_texto_completa_o_rascunho_do_robo_sem_escrever_outro(pagina, limpo, conferencia_de_verdade):
+    """v0.26.0: o rascunho do robô (só o texto: sem capa, kit nem conferência) fica no passo 1, “Preparar o rascunho”: “Preparar este
+    texto” completa o MESMO texto — o trecho que comprova, a capa padrão, a conferência e as legendas —, sem escrever outro, e o leva
+    para “em revisão”. A conferência tirou o [VERIFICAR] do título: a capa feita agora é refeita com o título novo, e a conferência
+    continua valendo. Se o texto não estiver mais em rascunho (rejeitado em outra tela), o Preparar não chama a IA e a tela é atualizada."""
+    a, _ = assunto_com_texto(limpo)
+    rasc = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, modelo_ia, status, avisos_ia)
+                            values (%s, 'informativo', 'CBS no documento fiscal [VERIFICAR data]', 'Texto do rascunho do robô com tamanho suficiente.',
+                                    'ia', 'm (robô)', 'rascunho', '["Rascunho preparado automaticamente pelo robô"]') returning id""", (a,)).fetchone()[0]
+    b = limpo.execute("insert into radar_assuntos (titulo) values ('Rascunho rejeitado em outra tela') returning id").fetchone()[0]
+    outro = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, gerado_por, status)
+                             values (%s, 'informativo', 'Outro rascunho', 'Texto de outro rascunho.', 'humano', 'rascunho') returning id""", (b,)).fetchone()[0]
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK)
+    # o texto mudou de situação com a tela aberta: nada de IA
+    abrir_assunto(pagina, "Rascunho rejeitado em outra tela")
+    assert pagina.locator(f"#proximo-passo [data-acao=ia-tudo][data-id='{outro}']").count() == 1
+    limpo.execute("update radar_conteudos set status = 'em_revisao' where id = %s", (outro,))
+    limpo.execute("update radar_conteudos set status = 'rejeitado' where id = %s", (outro,))
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado >> text=Este texto não está mais em rascunho: a tela foi atualizada.")
+    assert pedidos == [] and limpo.execute("select status from radar_conteudos where id = %s", (outro,)).fetchone()[0] == "rejeitado"
+    assert "Conteúdo rejeitado" in pagina.inner_text("#proximo-passo")
+    # o rascunho do robô
+    abrir_assunto(pagina, "CBS na transição")
+    assert "Preparar o rascunho" in pagina.inner_text("#proximo-passo") and "preparado pelo robô" in pagina.inner_text("#proximo-passo")
+    assert pagina.locator("#proximo-passo >> text=Enviar para revisão (sem IA)").count() == 1
+    limpar_recados(pagina)
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")                                       # “Preparar este texto”
+    pagina.wait_for_selector("#recado >> text=Preparado o texto “CBS no documento fiscal”")
+    assert [p["acao"] for p in pedidos] == ["fundamentar", "revisar", "kit"] and all(p.get("conteudo_id") in (None, rasc) for p in pedidos)
+    assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s", (a,)).fetchone()[0] == 1
+    titulo, status, imagem = limpo.execute("select titulo, status, imagem_id from radar_conteudos where id = %s", (rasc,)).fetchone()
+    assert (titulo, status) == ("CBS no documento fiscal", "em_revisao") and imagem
+    # a capa feita agora foi refeita com o título novo (2 capas desenhadas; a 1ª, sem uso, o banco apaga), e a conferência continua
+    # valendo (a versão dela não olha qual capa)
+    assert limpo.execute("select count(*), max(id) from radar_imagens").fetchone() == (1, 2) and imagem == 2
+    assert pagina.get_attribute(f"form[data-form=conteudo][data-id='{rasc}']", "data-conferencia") == "ok"
+    assert passo(pagina, "conferir").get_attribute("class") == "passo-a agora"
+
+
+def test_preparar_com_falha_no_meio_deixa_cada_passo_claro(pagina, limpo, conferencia_de_verdade):
+    """v0.26.0: só a falha do texto para o Preparar (nada é gravado e o passo 1 continua). Se a conferência falhar, o texto vai para o
+    passo 2 com os critérios “?” e o “Conferir com IA”, e o recado diz isso. Se o kit falhar, o recado aponta o botão do kit, e o passo 3
+    usa a legenda montada pelo Radar."""
+    a1, _ = assunto_oficial(limpo, "Falha no texto", 1)
+    a2, _ = assunto_oficial(limpo, "Falha na conferência", 2)
+    a3, cap3 = assunto_oficial(limpo, "Falha no kit", 3)
+    pedidos = []
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK, revisar_texto=False)
+    falhar_na_ia(pagina, "gerar", 500, "A IA não respondeu.")
+    abrir_assunto(pagina, "Falha no texto")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado .erro >> text=O texto não foi escrito")
+    assert limpo.execute("select count(*) from radar_conteudos where assunto_id = %s", (a1,)).fetchone()[0] == 0
+    assert "Preparar a publicação" in pagina.inner_text("#proximo-passo")
+    # a conferência falha: o texto segue para o passo 2, com os critérios a conferir
+    pagina.unroute("**/functions/v1/radar-ia")
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK, revisar_texto=False)
+    falhar_na_ia(pagina, "revisar", 502, "A IA demorou demais.")
+    limpar_recados(pagina)
+    abrir_assunto(pagina, "Falha na conferência")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado .aviso >> text=A conferência dos 10 critérios não saiu agora")
+    assert "no passo 2, clique em “Conferir com IA”" in pagina.inner_text("#recado")
+    assert limpo.execute("select status from radar_conteudos where assunto_id = %s", (a2,)).fetchone()[0] == "em_revisao"
+    assert pagina.locator("#proximo-passo .conf-trilha li[data-situacao=pendente]").count() == 10
+    assert pagina.locator("#proximo-passo [data-botao=revisar]").inner_text() == "Conferir com IA"
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_disabled()
+    # o kit falha: o recado aponta o botão do kit; o passo 3 usa a legenda montada pelo Radar
+    pagina.unroute("**/functions/v1/radar-ia")
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=CONFERENCIA_OK, revisar_texto=False, kit_falha=(400, "Ação desconhecida."))
+    limpar_recados(pagina)
+    abrir_assunto(pagina, "Falha no kit")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado .aviso >> text=O kit das redes (legendas e roteiro do reel) não saiu agora")
+    c3, kit = limpo.execute("select id, kit_ia from radar_conteudos where assunto_id = %s", (a3,)).fetchone()
+    assert kit == {} and "use “Gerar kit das redes com IA”" in pagina.inner_text("#recado")
+    limpo.execute("update radar_assuntos set situacao_confirmacao = 'confirmado_oficialmente' where id = %s", (a3,))
+    limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a3, cap3, TRECHO))
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c3,))
+    limpo.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/view/kit', current_date)", (c3,))
+    pagina.evaluate("desenhar()")
+    pagina.wait_for_function(IMAGEM_PRONTA)
+    assert pagina.input_value("#rede-legenda").startswith("Texto da IA")                 # sem kit: a legenda montada pelo Radar
+
+
+def test_conferir_e_aprovar_mostra_os_10_criterios_e_trava_o_aprovar(pagina, limpo, conferencia_de_verdade):
+    """v0.26.0: no passo 2, a lista dos 10 critérios (só leitura, sem repetir o quadro do formulário) e o que falta para aprovar; o
+    “✓ Aprovar” fica desligado enquanto houver “?” ou ✗. “Conferir com IA” usa o “Revisar com IA” do quadro. “Revisei e assumo” fica
+    na trilha só para o administrador e só com ✗ (com “?”, a IA ainda não conferiu); assumido, o Aprovar liga e aprova."""
+    a, _ = assunto_com_texto(limpo)
+    c = conteudo_em_revisao(limpo, a)
+    pedidos = []
+    um_x = [dict(x, situacao="nao_atende", motivo="O título promete mais que o texto.") if x["item"] == 7 else x for x in CONFERENCIA_OK]
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    assert pagina.locator("#proximo-passo .conf-trilha li[data-situacao=pendente]").count() == 10
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_disabled()
+    assert "Para aprovar, falta: 10 critério(s) com ✗ ou ?." in pagina.inner_text("#proximo-passo")
+    assert pagina.locator("#proximo-passo [data-acao=abrir-assumir]").count() == 0                 # com “?” só, nada de assumir
+    trocar_para(pagina, "editora@artecon.test")
+    ia_de_mentira(pagina, limpo, pedidos, conferencia=um_x, revisar_texto=False)
+    abrir_assunto(pagina, "CBS na transição")
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_disabled()
+    pagina.click("#proximo-passo [data-botao=revisar]")                                      # “Conferir com IA”
+    pagina.wait_for_selector("#recado >> text=Conferência das Diretrizes: 1 critério(s) não atende(m) (7)")
+    assert pedidos[-1]["acao"] == "revisar" and pedidos[-1]["conteudo_id"] == c
+    sete = pagina.locator("#proximo-passo .conf-trilha li[data-criterio='7']")
+    assert sete.get_attribute("data-situacao") == "nao_atende" and "O título promete mais que o texto." in sete.inner_text()
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_disabled()
+    assert pagina.locator("#proximo-passo [data-acao=abrir-assumir]").count() == 0                 # a editora não assume
+    assert "Um ✗ no mesmo texto só sai quando o texto muda" in pagina.inner_text("#proximo-passo")
+    assert pagina.locator("#proximo-passo [data-botao=revisar]").inner_text() == "Conferir de novo com IA"
+    # o administrador: com ✗, “Revisei e assumo” na trilha; assumido, aprova
+    trocar_para(pagina, "admin@artecon.test")
+    abrir_assunto(pagina, "CBS na transição")
+    assert pagina.locator(f"#conf-{c} li[data-item]").count() == 10 and pagina.locator(".conf-trilha [data-item]").count() == 0
+    assert pagina.locator(".conf-trilha[id], .conf-trilha li[class]").count() == 0
+    pagina.screenshot(path=str(FOTOS / "55-conferir-travado.png"), full_page=True)
+    pagina.click("#proximo-passo [data-acao=abrir-assumir]")
+    pagina.fill("#motivo-assumir", "Conferi o título com a norma e assumo.")
+    pagina.locator(".motivo-assumir [data-acao=assumir-conferencia]").click()
+    pagina.wait_for_selector("#recado >> text=Revisado e assumido")
+    assert "Revisado e assumido pelo administrador: pode aprovar." in pagina.inner_text("#proximo-passo")
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_enabled()
+    pagina.click("#proximo-passo [data-botao=aprovar]")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
+    assert limpo.execute("select status from radar_conteudos where id = %s", (c,)).fetchone()[0] == "aprovado"
+
+
+def test_aprovar_pela_trilha_continua_com_todas_as_travas(pagina, limpo):
+    """v0.26.0: o “✓ Aprovar” da trilha fica desligado com [VERIFICAR], com trecho igual ao da fonte sem autorização e com o campo Fonte
+    vazio (o resumo diz o que falta), e, mesmo forçado, passa pelo Aprovar do formulário, que recusa. O texto Informativo esperando a
+    autorização e o texto rejeitado não têm Aprovar na trilha."""
+    casos = {}
+    a, _ = assunto_oficial(limpo, "Com marca a conferir", 1)
+    casos["marca"] = conteudo_em_revisao(limpo, a, "O prazo vai até [VERIFICAR: data] de outubro, segundo a equipe.", titulo="Prazo da CBS")
+    a, _ = assunto_oficial(limpo, "Com trecho copiado", 2)
+    casos["copia"] = conteudo_em_revisao(limpo, a, "## O que mudou\n" + COPIADO_FONTE + ".\n\nTexto próprio da Artecon sobre a CBS.", titulo="Cópia")
+    a, _ = assunto_oficial(limpo, "Com a fonte vazia", 3)
+    casos["fonte"] = conteudo_em_revisao(limpo, a, "## O que mudou\nSegundo a Receita Federal, " + COPIADO_FONTE[0].lower() + COPIADO_FONTE[1:] +
+                                         ". É preciso ajustar o sistema emissor antes da virada do ano.", titulo="Citado")
+    limpo.execute("update radar_conteudos set fonte_credito = null where id = %s", (casos["fonte"],))      # o banco preenche na criação
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Informativo esperando') returning id").fetchone()[0]
+    conteudo_em_revisao(limpo, a, "Segundo o Portal Contábil SC, as empresas estão revisando os cadastros.",
+                        avisos=["INFORMATIVO (sem fundamentação legal específica): só vai ao site depois que o administrador autoriza a publicação."])
+    a = limpo.execute("insert into radar_assuntos (titulo) values ('Texto rejeitado') returning id").fetchone()[0]
+    limpo.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por) values (%s, 'informativo', 'Rejeitado', 'Texto.', 'rejeitado', 'humano')", (a,))
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Com marca a conferir")
+    aprovar = pagina.locator("#proximo-passo [data-botao=aprovar]")
+    assert aprovar.is_disabled() and "[VERIFICAR]" in aprovar.get_attribute("title")
+    resumo = pagina.inner_text("#proximo-passo .conf-trilha-resumo")
+    assert "resolver 1 ponto(s) marcado(s) com [VERIFICAR] no texto" in resumo and "nem o “Revisei e assumo” passa por cima deles" in resumo
+    pagina.evaluate("(b => { b.disabled = false; b.removeAttribute('aria-disabled'); })(document.querySelector('#proximo-passo [data-botao=aprovar]'))")   # forçado: o formulário recusa
+    aprovar.click()
+    pagina.wait_for_selector("#recado .erro >> text=Resolva antes de aprovar")
+    assert limpo.execute("select status from radar_conteudos where id = %s", (casos["marca"],)).fetchone()[0] == "em_revisao"
+    abrir_assunto(pagina, "Com trecho copiado")
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_disabled()
+    assert "“Autorizar mesmo assim”" in pagina.inner_text("#proximo-passo .conf-trilha-resumo")
+    abrir_assunto(pagina, "Com a fonte vazia")
+    assert pagina.locator("#proximo-passo [data-botao=aprovar]").is_disabled()
+    assert "preencher o campo Fonte do texto e salvar" in pagina.inner_text("#proximo-passo .conf-trilha-resumo")
+    abrir_assunto(pagina, "Informativo esperando")
+    assert "Autorizar o Informativo" in pagina.inner_text("#proximo-passo")
+    assert pagina.locator("#proximo-passo [data-acao=trilha-clicar][data-botao=aprovar]").count() == 0
+    abrir_assunto(pagina, "Texto rejeitado")
+    assert "Conteúdo rejeitado" in pagina.inner_text("#proximo-passo") and pagina.locator(".autorizacao [data-botao=aprovar]").count() == 0
+    assert pagina.locator("#proximo-passo [data-acao=ia-tudo]").count() == 0                    # o Preparar não mexe no rejeitado
+
+
+def test_informativo_no_passo_2_e_a_liberacao_na_linha_da_fonte(pagina, limpo):
+    """v0.26.0: o texto Informativo em revisão deixa o passo 2 em “Autorizar o Informativo”, com o aviso de que a autorização vale para o
+    assunto inteiro (a editora não tem o botão). Autorizado, o passo 2 vira “Conferir e aprovar o texto” e a linha da fonte do passo 1
+    mostra a liberação (o motivo e, para o administrador, “Desfazer”); desfeita, volta. O “Publicar mesmo assim” também avisa que libera
+    o Informativo do assunto."""
+    a, _ = assunto_com_texto(limpo)
+    marca = ("INFORMATIVO (sem fundamentação legal específica), escrito a partir de fonte NÃO oficial (Portal Contábil SC): só vai ao site e às "
+             "redes depois que o administrador autoriza a publicação.")
+    conteudo_em_revisao(limpo, a, "Segundo o Portal Contábil SC, as empresas estão revisando os cadastros para a CBS.", avisos=[marca])
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "CBS na transição")
+    assert passo(pagina, "conferir").get_attribute("class") == "passo-a agora"
+    assert "Autorizar o Informativo" in pagina.inner_text("#proximo-passo") and "vale para o assunto inteiro" in pagina.inner_text("#proximo-passo")
+    assert pagina.locator("#proximo-passo [data-acao=abrir-motivo]").count() == 0 and "Falta o administrador autorizar." in pagina.inner_text("#proximo-passo")
+    trocar_para(pagina, "admin@artecon.test")
+    abrir_assunto(pagina, "CBS na transição")
+    assert pagina.locator("#proximo-passo [data-acao=abrir-motivo][data-informativo]").count() == 1
+    pagina.screenshot(path=str(FOTOS / "56-autorizar-informativo.png"), full_page=True)
+    pagina.click("#proximo-passo [data-acao=abrir-motivo][data-informativo]")
+    pagina.fill("#motivo-liberar", "Conferi os números no portal e autorizo.")
+    pagina.locator(".motivo-liberar [data-acao=liberar-publicacao]").click()
+    pagina.wait_for_selector("#recado >> text=Publicação do Informativo autorizada")
+    assert "Conferir e aprovar o texto" in pagina.inner_text("#proximo-passo") and "já pode ser aprovado" in pagina.inner_text("#proximo-passo")
+    fonte = passo(pagina, "preparar")
+    assert "Motivo: Conferi os números no portal e autorizo." in fonte.inner_text() and "Vale para o assunto inteiro" in fonte.inner_text()
+    fonte.locator("[data-acao=desfazer-liberacao]").click()
+    pagina.wait_for_selector("#recado >> text=Liberação desfeita.")
+    assert "Autorizar o Informativo" in pagina.inner_text("#proximo-passo") and passo(pagina, "preparar").locator("text=Desfazer").count() == 0
+    pagina.locator(".aviso:visible", has_text="Ainda não pode ser publicado no site").locator("text=Publicar mesmo assim").click()
+    assert "um texto Informativo deste assunto passa a poder ser aprovado" in pagina.inner_text("label[for=motivo-liberar]")
+
+
+def test_publicar_mostra_os_tres_canais_e_so_conclui_com_cada_um_resolvido(pagina, limpo):
+    """v0.26.0: no passo 3, uma linha por canal (Site, Instagram, Facebook), sem botões (só os links do administrador); o canal da vez em
+    destaque. O passo só fica concluído com cada canal publicado ou com “Não publicar”, e o “Concluído” diz o canal que ficou de fora.
+    Quem só lê vê as linhas, sem “Desfazer”."""
+    a, c = no_site(limpo)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function(IMAGEM_PRONTA)
+    canal = lambda k: pagina.locator(f".autorizacao li[data-canal={k}]")
+    assert canal("site").get_attribute("class") == "c-feito" and canal("site").inner_text().startswith("Site: publicado")
+    assert canal("instagram").get_attribute("class") == "c-vez" and canal("facebook").get_attribute("class") == "c-falta"
+    assert pagina.locator(".canais-passo .btn").count() == 0
+    assert pagina.locator(".autorizacao li.agora >> text=Publicar nos canais que faltam").count() == 1
+    assert passo(pagina, "publicar").get_attribute("class") == "passo-a agora"
+    assert pagina.inner_text(".trilha li[data-passo=publicar] i") == "3" and pagina.locator(".trilha li.feito").count() == 2     # não feito
+    pagina.screenshot(path=str(FOTOS / "58-publicar-depois-do-site.png"), full_page=True)
+    _publicado_nas_redes(limpo, c, ("instagram",))                         # o Instagram saiu: falta o Facebook
+    pagina.evaluate("desenhar()")
+    pagina.wait_for_selector(".autorizacao li[data-canal=facebook].c-vez")
+    assert passo(pagina, "publicar").get_attribute("class") == "passo-a agora" and pagina.locator("text=Concluído").count() == 0
+    assert pagina.inner_text(".trilha li[data-passo=publicar] i") == "3"                    # só o Instagram resolvido: ainda não feito
+    assert "ver no Instagram ↗" in canal("instagram").inner_text() and canal("instagram").get_attribute("class") == "c-feito"
+    passo(pagina, "publicar").locator(".btn", has_text="Não publicar no Facebook").click()
+    pagina.wait_for_selector("text=Concluído: publicado no site e no Instagram (o Facebook ficou de fora)")
+    assert passo(pagina, "publicar").get_attribute("class") == "passo-a feito" and pagina.locator(".trilha li.feito").count() == 3
+    assert canal("facebook").inner_text().startswith("Facebook: não vai") and canal("facebook").locator("text=Desfazer").count() == 1
+    pagina.screenshot(path=str(FOTOS / "59-concluido.png"), full_page=True)
+    trocar_para(pagina, "leitor@artecon.test")
+    abrir_por_id(pagina, a)
+    assert pagina.locator(".canais-passo li").count() == 3 and pagina.locator(".canais-passo >> text=Desfazer").count() == 0
+    assert pagina.locator(".autorizacao .btn").count() == 0
+
+
+def test_cancelar_so_uma_rede_que_ia_junto_com_o_site(pagina, limpo):
+    """v0.26.0: autorizado o “Publicar em todos”, a linha do canal tem “Cancelar só o Instagram” (do administrador): com a confirmação,
+    só o Instagram é cancelado (o Facebook continua junto com o site e o site continua autorizado); sem a confirmação, nada muda."""
+    a, c = pronto_para_o_site(limpo)
+    com_imagem(limpo, c)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.click("#proximo-passo >> text=Publicar em todos (site, Instagram e Facebook)")
+    pagina.select_option(f"#site-cat-{c}", "Tributário")
+    pagina.wait_for_function(f"() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#todos-imagem-{c}')?.getAttribute('src') || '')")
+    pagina.click(f"#todos-{c} >> text=Autorizar e publicar em todos")
+    pagina.wait_for_selector("text=Autorizado em todos.")
+    linha = pagina.locator(".autorizacao li[data-canal=instagram]")
+    assert "vai junto com o site" in linha.inner_text() and linha.locator("text=Cancelar só o Instagram").count() == 1
+    assert pagina.locator(".autorizacao li[data-canal=facebook] >> text=Cancelar só o Facebook").count() == 1
+    situacoes = lambda: (limpo.execute("select situacao from radar_site_envios").fetchone()[0],
+                         dict(limpo.execute("select canal, situacao from radar_redes_envios").fetchall()))
+    pagina.evaluate("window.perguntas = []; window.confirm = m => (window.perguntas.push(m), false); 0")     # a pessoa desiste
+    linha.locator("text=Cancelar só o Instagram").click()
+    pagina.wait_for_function("window.perguntas.length === 1")
+    assert pagina.evaluate("window.perguntas") == ["Cancelar só o Instagram? O site continua autorizado; o Instagram fica para depois."]
+    assert situacoes() == ("autorizado", {"instagram": "aguardando_site", "facebook": "aguardando_site"})
+    pagina.evaluate("window.confirm = () => true; 0")
+    linha.locator("text=Cancelar só o Instagram").click()
+    pagina.wait_for_selector("#recado >> text=Feito.")
+    assert situacoes() == ("autorizado", {"instagram": "cancelado", "facebook": "aguardando_site"})
+    assert "depois do site" in pagina.inner_text(".autorizacao li[data-canal=instagram]")
+    assert "vai junto com o site" in pagina.inner_text(".autorizacao li[data-canal=facebook]")

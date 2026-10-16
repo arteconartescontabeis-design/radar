@@ -1,4 +1,4 @@
-# Radar Artecon — v0.25.1
+# Radar Artecon — v0.26.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,36 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.26.0 organiza a tela do assunto em **3 passos, sempre para a frente**: **1. Preparar**, **2. Conferir e aprovar** e
+**3. Publicar**. Em cada passo aparece um botão principal; os outros ficam numa linha "Mais opções", sempre à vista. Só a tela muda:
+o banco, as funções e o robô continuam como estão.
+
+- **1. Preparar:** o botão **"Preparar com IA"** (antes "Gerar com IA"), com o tamanho do texto ao lado, faz tudo de uma vez: acha no
+  texto oficial o trecho que comprova a notícia (só se ainda não houver um conferido) ou procura a fonte oficial na internet, escreve
+  o texto, faz a capa padrão, **confere os 10 critérios das Diretrizes** e monta as legendas do Instagram e do Facebook. Leva de 2 a 5
+  minutos, conta como uma consulta só (a senha é pedida no máximo uma vez) e leva o texto para "em revisão" — isso não é aprovação.
+  Se o assunto já tem um rascunho (o do robô, por exemplo), **"Preparar este texto"** completa esse rascunho em vez de escrever outro;
+  sem IA, "Enviar para revisão (sem IA)". A imagem com IA continua opcional (é paga), no botão do texto. A linha da fonte, no fim do
+  passo, diz se a fonte oficial está confirmada ou liberada pelo administrador (com o motivo e o "Desfazer").
+- **2. Conferir e aprovar:** os 10 critérios aparecem no próprio passo, com ✓/✗. O **"✓ Aprovar"** só liga com tudo certo, e a tela
+  escreve o que falta: [VERIFICAR] no texto, frase do boletim pago, trecho igual ao da fonte sem autorização, campo Fonte vazio ou
+  critério com ✗ ou "?" ("Conferir com IA" confere; com ✗, o administrador pode usar "Revisei e assumo", com o motivo — nunca com
+  [VERIFICAR] ou boletim pago). **A confirmação da fonte continua sendo um clique de quem conferiu**: a IA acha o trecho, mas não
+  confirma sozinha; o botão é **"✓ Conferi na fonte oficial"** (só o site exige). O texto Informativo fica em "Autorizar o
+  Informativo" (só o administrador, com o motivo); a tela avisa que a autorização vale para o assunto inteiro, como o "Publicar mesmo
+  assim".
+- **3. Publicar:** uma linha por canal (Site, Instagram e Facebook) e o botão **"Publicar em todos (site, Instagram e Facebook)"**:
+  cada rede tem a sua caixa e a sua legenda, e a tela pede a sua confirmação. O site sai primeiro; o Instagram e o Facebook saem
+  sozinhos logo depois que a notícia entra no site. O passo só fica concluído quando cada canal foi publicado ou recebeu "Não
+  publicar". Dá para cancelar só o Instagram (ou só o Facebook) que ia junto com o site. Depois de aprovado, o que falta para o site
+  (texto oficial, trecho, confirmação) aparece aqui: a trilha não volta para o começo.
+
+Nada muda nas travas: o robô só cadastra a notícia, nada é publicado sem a autorização do administrador (canal por canal), e o
+[VERIFICAR], o boletim pago e o texto Informativo continuam travando. Muda só a tela (`index.html`; no `radar-pauta.js` e no
+`radar-video.js`, só o número da versão). **O banco continua na v0.25.0** (`radar-setup-v0.25.0.sql`, sem SQL novo), e a `radar-ia`
+(continua a v0.25.1; a tela pede a v0.25.0 ou mais nova), a `radar-redes`, a `radar-video`, a `radar-itc`, a `radar-concorrentes` e
+os robôs não mudam. Para instalar, "Da v0.25.1 para a v0.26.0".
 
 A v0.25.1 traz três ajustes pequenos, anotados na revisão da v0.25.0:
 
@@ -993,15 +1023,16 @@ feita na tela: quem grava direto no banco não passa por ela (só pela trava do 
 **Fonte** é preenchido só na criação do conteúdo (com os órgãos das capturas oficiais do assunto e, depois deles, os portais
 de notícia; o boletim pago não entra); capturas incluídas depois não o alteram.
 
-### Assunto em 4 passos (v0.10.0; por etapas desde a v0.7.0)
+### Assunto em 3 passos (v0.26.0; por etapas desde a v0.7.0)
 
-A tela do assunto mostra um passo de cada vez: **1. Conferir a fonte** (título original, órgão, data,
-texto oficial e trechos que comprovam; botões "Buscar trecho que comprova com IA" e "Classificar com IA"),
-**2. Escrever** e **3. Revisar e aprovar** (o conteúdo, com as opções de título, o tamanho do texto,
-"Texto elaborado por", a fonte já preenchida com o órgão, a capa e "Ver como fica no site") e
-**4. Publicar no site** (prévia, categoria do site e autorização). Os dados do assunto (categoria,
-relevância, situação, público, etapa) ficam ao lado, em "Mais detalhes". Abre no passo que falta;
-os passos do alto e o "Próximo passo" trocam de passo.
+Até a v0.25.1 eram 7 passos (Fonte, Texto, Revisão, Aprovar, Site, Instagram e Facebook; antes deles, os 4 da v0.10.0). Desde a
+v0.26.0 são 3, sempre para a frente, e a tela mostra um de cada vez: **1. Preparar** (título original, órgão, data, texto oficial e
+trechos que comprovam; "Preparar com IA", com o tamanho do texto ao lado, "Verificar em fontes oficiais", "Buscar trecho que comprova
+com IA" e "Classificar com IA"), **2. Conferir e aprovar** (os textos do assunto, com as opções de título, "Texto elaborado por", a
+fonte já preenchida com o órgão, a imagem, "Ver como fica no site", a Conferência das Diretrizes e o Aprovar; na barra, "Gerar texto
+com IA" e "Novo conteúdo (sem IA)" para outro texto) e **3. Publicar** (prévia, categoria do site, "Publicar em todos" e as redes). Os
+dados do assunto (categoria, relevância, situação, público, etapa) ficam ao lado, em "Mais detalhes". Abre no passo que falta (com o
+texto aprovado e a fonte pendente, no 3); os passos do alto e os botões da trilha trocam de passo.
 Trocar de etapa não perde o que foi digitado, e uma ação feita em outra etapa (salvar a
 classificação, por exemplo) também não: o que estava digitado ou escolhido e não salvo é devolvido
 aos campos. Se houver um formulário de evidência ou de texto oficial aberto e preenchido em outra
@@ -1009,12 +1040,14 @@ etapa, a ação é barrada com o aviso de onde está a pendência.
 Os passos do alto funcionam também pelo teclado. "Mostrar tudo numa página" volta ao formato
 anterior e a escolha fica guardada no navegador.
 
-**Trilha de autorização (v0.12.2).** No alto do assunto ficam os passos numerados — 1 Fonte, 2 Texto,
-3 Revisão, 4 Aprovar, 5 Site (Instagram e Facebook aparecem como "em breve") — e, abaixo, a trilha com
-um passo de cada vez: o passo de **Agora** tem os botões (por exemplo "Enviar para revisão", "✓ Aprovar",
-"Transformar em texto para publicar", "Ir para publicar"); os **Feitos** dizem o que foi feito (a liberação
-sem fonte oficial mostra o motivo e, para o administrador, "Desfazer"); os seguintes ficam **Aguardando**.
-"Publicar mesmo assim…" abre o campo do motivo na própria tela (mínimo de 10 caracteres).
+**Trilha (v0.12.2; v0.26.0: os 3 passos).** No alto do assunto ficam os passos numerados — 1 Preparar, 2 Conferir e
+aprovar, 3 Publicar — e, abaixo, a trilha com um passo de cada vez: o passo de **Agora** tem o botão principal e, na linha "Mais
+opções", os outros (por exemplo "Preparar com IA" e "Escrever sem IA"; "✓ Aprovar", "Conferir com IA" e "Ver como fica no site";
+"Publicar em todos" e "Ir para publicar"); os **Feitos** dizem o que foi feito; os seguintes ficam **Aguardando**. A linha da fonte (no
+passo 1) diz se a fonte oficial está confirmada ou liberada — com o motivo e, para o administrador, "Desfazer" — e as linhas dos canais
+(no passo 3) dizem como está o site, o Instagram e o Facebook ("Desfazer" o "não vai" e "Cancelar só o Instagram/Facebook" que ia junto
+com o site, para o administrador). No passo 2, o "✓ Aprovar" da trilha clica o Aprovar do texto, que confere tudo de novo e só aprova o
+texto que estava na tela. "Publicar mesmo assim…" abre o campo do motivo na própria tela (mínimo de 10 caracteres).
 
 ### Imagem da publicação (v0.6.0; v0.25.0: uma só para o site, o Instagram e o Facebook)
 
@@ -1197,10 +1230,11 @@ conteúdo, logo abaixo da Conferência das Diretrizes, o quadro **"Revisão edit
 
 **O texto Informativo, passo a passo:**
 
-1. Assunto sem texto oficial (só boletim, portal ou editora): o "Gerar com IA" escreve o texto Informativo. Com texto oficial, a IA
-   também pode dizer que o assunto não tem base legal específica (um alerta, um dado econômico); aí o texto também é Informativo.
-2. O conteúdo aparece com o selo **"Informativo — aguardando autorização"**, sem o botão Aprovar. A equipe revisa e envia para revisão
-   como sempre; a trilha mostra o passo "Autorizar o Informativo".
+1. Assunto sem texto oficial (só boletim, portal ou editora): o "Preparar com IA" (antes "Gerar com IA") escreve o texto Informativo,
+   faz a capa, a conferência dos 10 critérios e as legendas, e leva o texto para "em revisão". Com texto oficial, a IA também pode
+   dizer que o assunto não tem base legal específica (um alerta, um dado econômico); aí o texto também é Informativo.
+2. O conteúdo aparece com o selo **"Informativo — aguardando autorização"**, sem o botão Aprovar. No passo 2 (Conferir e aprovar), a
+   trilha mostra "Autorizar o Informativo", com a lista dos 10 critérios e o aviso de que a autorização vale para o assunto inteiro.
 3. O administrador confere e clica em **"Autorizar a publicação do Informativo…"** (no conteúdo ou na trilha), escreve o motivo e
    confirma: quem, quando e o motivo ficam no assunto e no Histórico. A autorização vale para o assunto inteiro (é o "Publicar mesmo
    assim"): os outros textos dele também podem ir ao site sem a fundamentação oficial. "Desfazer a liberação" devolve o Informativo
@@ -2096,6 +2130,20 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.25.1 para a v0.26.0** (o banco não muda: não há SQL; as funções `radar-ia` e `radar-redes` não mudam; nada de chave ou
+segredo pelo chat).
+
+1. Se a produção ainda estiver na v0.25.0, faça antes o "Da v0.25.0 para a v0.25.1" (a tela da v0.26.0 também funciona com a `radar-ia`
+   0.25.0).
+2. A tela chega pelo repositório: `index.html`, `radar-pauta.js` e `radar-video.js` juntos; Ctrl+F5 em todos os aparelhos. A aba
+   Versões mostra a v0.26.0.
+3. Teste num assunto de teste, **sem autorizar nada**: (a) "Preparar com IA" mostra "Preparar · etapa X de 4" e o texto aparece no
+   passo 2 com os 10 critérios; (b) com um ✗, o "✓ Aprovar" fica desligado e a tela diz o que falta; (c) no passo 3 aparecem as linhas
+   Site/Instagram/Facebook e o "Publicar em todos".
+
+O banco continua no `sql/radar-setup-v0.25.0.sql`. Para desfazer: volte os três arquivos da tela da v0.25.1. Os textos que o Preparar
+deixou "em revisão" continuam em revisão na tela antiga.
 
 **Da v0.25.0 para a v0.25.1** (o banco não muda: não há SQL para rodar; nada de chave ou segredo pelo chat). Nesta ordem:
 
