@@ -3,7 +3,9 @@
 Data: 16/10/2026. **A suíte inteira da v0.28.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram os testes afetados: o
 banco e o corretor de vídeo no banco (`testes/test_radar_banco.py` e `testes/test_radar_video_banco.py`, porque o banco muda), **309
 aprovados, 0 falhas**; `testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado**; e o arquivo inteiro dos testes de
-tela (`testes/test_radar_telas.py`), **222 aprovados, 0 falhas, 61 pulados** (detalhes na seção da v0.28.0, logo abaixo). Na v0.25.1
+tela (`testes/test_radar_telas.py`), **222 aprovados, 0 falhas, 61 pulados** (detalhes na seção da v0.28.0, logo abaixo). Os mesmos
+números se repetiram depois das correções da revisão (seção "v0.28.0 — correções da revisão": banco 309, repositório 16 e 1 pulado,
+tela 222 e 61 pulados, em 527 s). Na v0.25.1
 (16/10/2026), a suíte inteira deu **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s (19min30s); a v0.26.0 tem 13 testes novos (de
 1.118 para 1.131 no total), a v0.27.0, 2 (1.133) e a v0.28.0, 8 (1.141 no total). Dos pulados, 61 são os testes de tela que sobem a IA
 Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o
@@ -132,6 +134,64 @@ conferido no fim):
 As 24 mutações derrubaram o teste indicado; nenhuma sobreviveu. Depois de cada uma o arquivo voltou ao original (`git diff --stat` igual ao de antes).
 
 **Conferência manual do banco** (banco próprio, `radar_v028_manual`, apagado no fim): o `sql/radar-setup-v0.25.0.sql` do commit 722b1c4 (o banco da v0.27.0) com uma pessoa e uma peça; o `sql/radar-setup-v0.28.0.sql` **duas vezes seguidas**, sem erro ("instalacoes concluidas" 2 e 3, v0.28.0), com as contagens de pessoas, peças e trilha iguais e `socio` falso; a "+ Nova peça" do administrador e o(a) sócio(a) sem termo com o termo ok; depois o v0.25.0 de novo (o "desfazer" do LEIAME), sem erro: o termo volta a ser exigido ("sem termo assinado"), a `radar_pauta_criar` perde a permissão da equipe, as duas peças ficam, a vista volta sem `termos_dispensados` e a coluna `socio` fica sem uso; e o v0.28.0 de novo, sem erro.
+
+### v0.28.0 — correções da revisão
+
+Data: 16/10/2026. Quatro achados dos revisores, conferidos no código e corrigidos (nenhum foi descartado). Muda o banco só no texto de
+um recado (`radar_pauta_problemas`, item 9, no mesmo `sql/radar-setup-v0.28.0.sql`) e a tela (`radar-pauta.js` e `index.html`); a
+função `radar-video` e o robô do vídeo continuam sem mudança (0.22.0).
+
+1. **Prévia da importação velha depois da "+ Nova peça"** (gravidade média; confirmado: o efeito de cada linha é calculado só ao ler o
+   arquivo, e nem a "+ Nova peça" nem a gravação dela mexiam na prévia; com a prévia aberta dizendo "nova" para o dia, criar a peça à
+   mão e depois "Gravar" trocava o tipo, o formato e o assunto digitados pelos do arquivo). Agora abrir a "+ Nova peça" fecha a prévia,
+   sem gravar nada, com o recado "A prévia da importação do calendário foi fechada…: depois de criar a peça, escolha o arquivo de novo";
+   escolhido de novo, o dia da peça nova aparece como "alterada" antes de gravar.
+2. **Marcar "Sócio(a) da Artecon" sem pergunta** (baixa; confirmado). Agora marcar pergunta antes ("Marcar como sócio(a) da Artecon? O
+   Radar deixa de pedir o termo de uso de imagem e o termo do corretor de vídeo…"), também no cadastro novo; com data em "Revogado em",
+   a pergunta avisa que, para sócio(a), a revogação não vale e que o caminho é "Ativa"; preencher "Revogado em" em quem já é sócio(a)
+   dá o mesmo aviso ("Salvar assim mesmo?"). Sem confirmar, nada é gravado. O banco não muda (só o administrador marca, como antes).
+3. **Ajuda de Configurações → Pauta** (baixa; confirmado): `hora_padrao` passa a dizer que vale para a importação **e** para a "+ Nova
+   peça" (também no LEIAME, item 11).
+4. **Textos que mandavam usar o termo para sócio(a)** (baixa; confirmado nos três pontos): o "Excluir" de sócio(a) diz "desmarque
+   “Ativa”: para sócio(a) da Artecon, a revogação do termo não vale"; o sobrenome no texto de sócio(a) continua barrado, com o recado
+   "O “Nome na peça” do(a) sócio(a) é só “Bruno”: tire o sobrenome (ou mude o Nome na peça em Pessoas e termos)" (menor de idade e quem
+   não é sócio(a) continuam com "O termo autoriza só…"); a lista de peças publicadas de sócio(a) inativo(a) diz "sócio(a) da Artecon não
+   tem termo: retire das redes o que for combinado com ele(a)" em vez de "no prazo do termo".
+
+Também a entrada 0.28.0 de Versões e o LEIAME contam as perguntas ao marcar e ao tirar a marca e a prévia que fecha.
+
+**Testes ajustados** (nenhum novo; o total continua 1.141): `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor` (o recado do
+sobrenome do(a) sócio(a), o do menor e a peça sem sobrenome de novo sem item); `test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante`
+(a prévia com o dia "nova", fechada ao abrir a "+ Nova peça", com o recado; o arquivo de novo mostra "0 nova(s), 1 alterada(s)");
+`test_pessoas_socio_dispensa_termos_so_admin_e_selo` (a pergunta ao cadastrar com a marca, sem confirmar nada grava; o aviso de "Revogado
+em" em quem já é sócio(a) e ao marcar de novo; o "Excluir" e as peças publicadas falando de "Ativa"); `test_versao_visivel_e_aba_de_versoes`
+(os trechos novos da entrada 0.28.0).
+
+**Resultados desta rodada** (pela fila compartilhada, depois das correções):
+
+- `testes/test_radar_banco.py` e `testes/test_radar_video_banco.py`: **309 aprovados, 0 falhas**, em 205 s;
+- `testes/test_radar_repositorio.py`: **16 aprovados, 0 falhas, 1 pulado** (o dos commits do push);
+- `testes/test_radar_telas.py` inteiro: **222 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 527 s (8min47s).
+
+O `testes/test_radar_funcao_video.py` não rodou: a função `radar-video` não mudou.
+
+**Mutações das correções** (cada uma sozinha, com o teste indicado pela fila; o arquivo restaurado depois):
+
+- R1. "+ Nova peça" sem fechar a prévia → derruba `test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante` (a prévia continua à vista).
+- R2. marcar sem a pergunta → derruba `test_pessoas_socio_dispensa_termos_so_admin_e_selo`.
+- R3. "Revogado em" preenchido em quem já é sócio(a) sem o aviso → derruba o mesmo teste.
+- R4. "Excluir" sem o texto de sócio(a) → derruba o mesmo teste (a pergunta ainda manda marcar a revogação).
+- R5. a lista de peças publicadas sem o texto de sócio(a) → derruba o mesmo teste.
+- R6. o recado do sobrenome sem o ramo de sócio(a) → derruba `test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor`.
+- R7. o recado de sócio(a) também para o(a) menor de idade → derruba o mesmo teste.
+
+As 7 derrubaram o teste indicado; nenhuma sobreviveu.
+
+**Prints** (Playwright, como os testes de tela, pela fila; dados de mentira: "Ana Teste", "Bruno Exemplo", domínios `.test`; fora do
+repositório): a semana de 12/10 a 18/10/2026 com "+ Nova peça" em 16, 17 e 18/10; o formulário preenchido (Reel / Reel, 18/10), também
+a 375 px; a peça reel criada, planejada, com o quadro "Corretor de vídeo"; Pessoas e termos com "Bruno Exemplo" marcado "Sócio(a) —
+termos dispensados", sem termo nenhum; e o quadro do corretor com o Bruno sem termo, as quatro declarações marcadas e o envio aceito
+("Gravação enviada: na fila do corretor"), sem nenhuma peça publicada ou agendada.
 
 ## v0.27.0 — cronograma de publicações na Pauta
 
