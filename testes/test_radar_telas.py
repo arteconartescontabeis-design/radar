@@ -345,17 +345,35 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.26.0"
+    assert pagina.inner_text(".versao") == "v0.27.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.26.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, os 3 passos (Preparar, Conferir e aprovar,
+    # v0.27.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, o cronograma de publicações na Pauta (a
+    # semana e o mês dela, o mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta
+    # não entra; a que envelheceu na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções
+    # não mudam)
+    topo, data, itens = pagina.evaluate("VERSOES[0]")
+    assert topo == pagina.evaluate("VERSAO") == "0.27.0" and data == "16/10/2026"
+    texto = " ".join(itens)
+    for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
+                   "o mínimo de publicações ao lado do que já foi feito", "posts no feed, reels, captação de clientes (quando o período tem)",
+                   "notícias do Radar de relevância alta", "Fica em vermelho o que já devia ter saído e não saiu", "das peças do plano da Pauta",
+                   "sem as canceladas", "cada fato uma vez, sem as repetições",
+                   "A notícia ignorada na triagem enquanto ainda era alta não entra", "por ficar velha na fila continua contando",
+                   "pela agenda ou registrada à mão", "“Como o quadro conta”", "na semana de hoje, o mês é o de hoje",
+                   "o período que ainda não começou nunca fica vermelho", "não publica, não agenda e não cria nada", "mostra só números",
+                   "o leitor inclusive, veem o mesmo quadro", "Administrador: só publicar a tela", "continua o sql/radar-setup-v0.25.0.sql",
+                   "as funções radar-ia e radar-redes não mudam", "Da v0.26.0 para a v0.27.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.26.0: a entrada seguinte conta ao dono, em português simples, os 3 passos (Preparar, Conferir e aprovar,
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.26.0" and data == "16/10/2026"
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
                    "“Preparar com IA” (antes “Gerar com IA”)", "confere os 10 critérios das Diretrizes", "Conta como uma consulta só",
@@ -371,7 +389,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -387,7 +405,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -403,7 +421,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -428,7 +446,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -437,7 +455,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -1745,7 +1763,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.25.0 mudou a função de IA (a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres): a v0.24.0
     # passa a ser apontada como antiga. v0.25.1: a mínima não sobe (a tela aceita o kit com e sem a arte: a função v0.25.0 serve)
     assert pagina.evaluate("[versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.25.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.26.0"]       # v0.26.0: só a tela muda; a mínima não sobe
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.27.0"]       # v0.26.0 e v0.27.0: só a tela muda; a mínima não sobe
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2571,7 +2589,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.26.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.27.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -5891,6 +5909,10 @@ def test_pauta_semana_navega_prontas_e_nao_sairam_e_cabe_no_celular(navegador, p
         pg.wait_for_selector("text=Painel do dia")
         abrir_pauta(pg)
         assert pg.inner_text("#pauta-semana-titulo") == titulo_semana(semana_de_hoje())
+        # v0.27.0: o cronograma no alto, com o mês de hoje (em Brasília) e a semana em andamento
+        hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        assert pg.locator("#pauta-cronograma").count() == 1 and "em andamento" in pg.inner_text("#cron-semana")
+        assert pg.inner_text("#cron-mes h3").startswith(f"{MESES_CRONOGRAMA[hoje.month - 1]} de {hoje.year}")
         assert "Agenda automática desligada" in pg.inner_text("#agenda-desligada") and "não está instalada" in pg.inner_text("#agenda-desligada")
         assert pg.locator("#pauta-falhas tr").count() == 2 and "A Meta recusou a imagem (teste)." in pg.inner_text("#pauta-falhas")
         assert pg.locator("#pauta-prontas li").count() == 1 and "qua, 11/11" in pg.inner_text("#pauta-prontas")
@@ -5920,6 +5942,227 @@ def test_pauta_semana_navega_prontas_e_nao_sairam_e_cabe_no_celular(navegador, p
         assert erros == [], erros
     finally:
         contexto.close()
+
+
+# ------------------------------------------------------------ v0.27.0: o cronograma de publicações
+# O mínimo (o plano da Pauta e as notícias de alta que a busca achou) ao lado do feito, na semana mostrada e no mês dela. As contas são
+# funções puras (o "hoje" entra de fora); o quadro só lê. Datas fixas no passado e nomes de mentira.
+MESES_CRONOGRAMA = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+# os testes clicam nos botões pelo texto (sem escopo, sem diferença de maiúsculas), e o quadro fica acima da barra
+PROIBIDOS_CRONOGRAMA = ["esta semana", "semana anterior", "próxima semana", "sair", "abrir", "pessoas e termos", "gravar", "voltar", "painel do dia"]
+SELECT_CAPTURAS_CRONOGRAMA = ("id,relevancia,data_publicacao,capturado_em,incluido_em:metadados->>incluido_em,"
+                              "radar_assunto_capturas(assunto_id,radar_assuntos(status,radar_conteudos(id,radar_divulgacoes(id))))")
+
+
+def test_cronograma_conta_minimo_e_feito_sem_depender_de_hoje(pagina):
+    """v0.27.0: as contas do cronograma com datas fixas. O mês do quadro (o de hoje na semana de hoje; nas outras, o da quinta-feira), o
+    dia de Brasília, a peça feita (à mão ou com um envio publicado; a excluída, a dispensada e a cancelada não), cada peça numa linha só,
+    o dia de notícia feito pelas notícias nas redes (a mesma nas duas redes uma vez; no máximo uma por dia de notícia), a cancelada fora
+    do mínimo, e a busca: cada fato uma vez, a alta que desceu pela idade conta, a que chegou velha, o texto colado à mão e a ignorada na
+    triagem não. O vermelho respeita o "hoje": a semana em andamento só tem em atraso o que já passou; a que não começou, nada."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    r = pagina.evaluate("""() => {
+      const P = (id, data, tipo, formato, x = {}) => ({id, data, tipo, formato, situacao: "planejada", publicado_manual_em: null, radar_redes_envios: [], ...x});
+      const pecas = [P(1, "2026-08-31", "bastidor", "foto", {publicado_manual_em: "2026-08-31"}), P(2, "2026-09-01", "noticia", "imagem"),
+        P(3, "2026-09-02", "reel", "reel", {situacao: "aprovada"}),
+        P(4, "2026-09-03", "quem_cuida", "foto", {radar_redes_envios: [{situacao: "publicado"}, {situacao: "erro"}]}),
+        P(5, "2026-09-04", "educativo", "carrossel", {situacao: "cancelada"}), P(6, "2026-09-05", "sem_post", "nenhum"),
+        P(7, "2026-09-06", "captacao", "foto", {publicado_manual_em: "2026-09-07"}),
+        P(8, "2026-09-15", "bastidor", "foto", {radar_redes_envios: [{situacao: "excluido"}]}), P(9, "2026-09-22", "noticia", "imagem"),
+        P(10, "2026-09-24", "agenda", "story"),
+        P(11, "2026-09-10", "educativo", "imagem", {radar_redes_envios: [{situacao: "dispensado"}, {situacao: "cancelado"}]})];
+      const noticias = [{conteudo_id: 100, publicado_em: "2026-09-07T02:30:00Z"}, {conteudo_id: 100, publicado_em: "2026-09-07T13:00:00Z"},
+        {conteudo_id: 101, publicado_em: "2026-08-30T15:00:00Z"}, {conteudo_id: 102, publicado_em: "2026-09-23T12:00:00Z"},
+        {conteudo_id: 103, publicado_em: "2026-09-24T12:00:00Z"}];
+      const A = (id, status, site) => ({assunto_id: id, radar_assuntos: {status, radar_conteudos: site ? [{id: id * 10, radar_divulgacoes: [{id: 1}]}] : []}});
+      const C = (id, relevancia, capturado_em, x = {}) => ({id, relevancia, capturado_em, data_publicacao: null, incluido_em: null, radar_assunto_capturas: [], ...x});
+      const capturas = [C(1, "alta", "2026-09-02T12:00:00Z", {radar_assunto_capturas: [A(50, "publicado", true)]}),
+        C(2, "alta", "2026-09-03T12:00:00Z", {radar_assunto_capturas: [A(50, "publicado", true)]}), C(3, "alta", "2026-09-07T02:30:00Z"),
+        C(4, "baixa", "2026-09-20T12:00:00Z", {data_publicacao: "2026-09-20"}), C(5, "baixa", "2026-09-21T12:00:00Z", {data_publicacao: "2026-08-01"}),
+        C(6, "alta", "2026-09-08T12:00:00+00:00", {incluido_em: "2026-09-08T12:00:00.123+00:00"}),
+        C(7, "alta", "2026-09-09T12:00:00Z", {incluido_em: "2026-09-11T10:00:00+00:00", radar_assunto_capturas: [A(52, "aprovado", false)]}),
+        C(8, "alta", "2026-09-10T12:00:00Z", {radar_assunto_capturas: [A(53, "ignorado", false)]}),
+        C(9, "baixa", "2026-09-11T12:00:00Z", {data_publicacao: "2026-09-11", radar_assunto_capturas: [A(54, "ignorado", false)]}),
+        C(10, "alta", "2026-09-12T12:00:00Z", {radar_assunto_capturas: [A(55, "ignorado", true)]}), C(11, "alta", "2026-08-28T12:00:00Z")];
+      const dados = {pecas, noticias, capturas, dias: 5};
+      const conta = (ini, fim, hoje) => { const k = contarCronograma(ini, fim, hoje, dados);
+        return {fase: k.fase, canceladas: k.canceladas, ignoradas: k.ignoradas, semPlano: k.semPlano,
+                linhas: Object.fromEntries(k.linhas.map(l => [l.id, [l.minimo, l.feito, l.atraso]])),
+                selos: Object.fromEntries(k.linhas.map(l => [l.id, seloCronograma(l, k.fase)]))}; };
+      const quadro = hoje => ({semana: conta("2026-08-31", "2026-09-06", hoje), setembro: conta("2026-09-01", "2026-09-30", hoje),
+                               agosto: conta("2026-08-01", "2026-08-31", hoje)});
+      const div = document.createElement("div"), bloco = c => { div.innerHTML = blocoCronograma("2026-08-31", "2026-10-16", c); return div; };
+      const c = {semana: contarCronograma("2026-08-31", "2026-09-06", "2026-10-16", dados), mes: contarCronograma("2026-09-01", "2026-09-30", "2026-10-16", dados), cortado: false};
+      const html = bloco(c), vermelhas = html.querySelectorAll("tr.abaixo").length, texto = html.textContent.replace(/\\s+/g, " ");
+      // a mesma notícia no Instagram em 31/08 e no Facebook em 02/09: setembro dá o mesmo visto da semana de 31/08 (a leitura traz os dois
+      // envios) e da de 07/09 (traz só o de 02/09; o de 31/08 vem em "antes"). E o fato achado de novo em outro mês conta nos dois
+      const dn = {pecas: [P(21, "2026-09-01", "noticia", "imagem"), P(22, "2026-09-08", "noticia", "imagem")], capturas: [], dias: 5};
+      const posts = d => { const l = contarCronograma("2026-09-01", "2026-09-30", "2026-10-16", d).linhas[0]; return [l.minimo, l.feito, l.atraso]; };
+      const umaVez = [posts({...dn, noticias: [{conteudo_id: 200, publicado_em: "2026-08-31T15:00:00Z"}, {conteudo_id: 200, publicado_em: "2026-09-02T15:00:00Z"}]}),
+                      posts({...dn, noticias: [{conteudo_id: 200, publicado_em: "2026-09-02T15:00:00Z"}], antes: [200]})];
+      const doisMeses = {pecas: [], noticias: [], dias: 5, capturas: [C(31, "alta", "2026-08-31T15:00:00Z", {radar_assunto_capturas: [A(70, "capturado", false)]}),
+                                                                      C(32, "alta", "2026-09-02T15:00:00Z", {radar_assunto_capturas: [A(70, "capturado", false)]})]};
+      const noticiasDe = (ini, fim) => { const l = contarCronograma(ini, fim, "2026-10-16", doisMeses).linhas.at(-1); return [l.minimo, l.feito, l.atraso]; };
+      return {umaVez, doisMeses: [noticiasDe("2026-08-01", "2026-08-31"), noticiasDe("2026-09-01", "2026-09-30"), noticiasDe("2026-08-31", "2026-09-06")],
+              meses: [mesDoCronograma("2026-08-31", "2026-10-16"), mesDoCronograma("2026-09-28", "2026-09-29"), mesDoCronograma("2026-09-28", "2026-10-20"),
+                      mesDoCronograma("2029-12-31", "2030-02-01")], fevereiro: fimDoMes("2028-02"), dia: diaBrasilia("2026-09-07T02:30:00Z"),
+              passado: quadro("2026-10-16"), andamento: quadro("2026-09-03"), futuro: quadro("2026-08-20"), vermelhas, texto,
+              cortado: bloco({...c, cortado: true}).textContent, erro: bloco(null).querySelector("#pauta-cronograma-erro") !== null};
+    }""")
+    assert r["meses"] == ["2026-09", "2026-09", "2026-10", "2030-01"] and r["fevereiro"] == "2028-02-29" and r["dia"] == "2026-09-06"
+    p = r["passado"]
+    assert p["semana"]["fase"] == "passou" and p["semana"]["linhas"] == {"posts": [3, 3, 0], "reels": [1, 0, 1], "captacao": [1, 1, 0], "noticias": [2, 1, 1]}
+    assert (p["semana"]["canceladas"], p["semana"]["ignoradas"], p["semana"]["semPlano"]) == (1, 0, False)
+    assert p["setembro"]["linhas"] == {"posts": [5, 3, 2], "reels": [1, 0, 1], "captacao": [1, 1, 0], "noticias": [6, 2, 4]}
+    assert (p["setembro"]["canceladas"], p["setembro"]["ignoradas"]) == (1, 1)
+    assert p["agosto"]["linhas"] == {"posts": [1, 1, 0], "reels": [0, 0, 0], "noticias": [1, 0, 1]}             # sem captação no mês: sem a linha
+    assert p["agosto"]["selos"]["reels"] == "" and p["semana"]["selos"]["posts"] == '<span class="selo ok">mínimo cumprido</span>'
+    # a semana e o mês em andamento: só o que já passou do dia fica em atraso (o que ainda falta, sem vermelho)
+    a = r["andamento"]
+    assert a["semana"]["fase"] == "andamento" and a["semana"]["linhas"]["reels"] == [1, 0, 1] and a["semana"]["linhas"]["noticias"] == [2, 1, 0]
+    assert a["semana"]["selos"]["reels"] == '<span class="selo erro">1 em atraso</span>'
+    assert a["setembro"]["linhas"]["posts"] == [5, 3, 0] and a["setembro"]["selos"]["posts"] == '<span class="selo neutro">faltam 2</span>'
+    # o período que ainda não começou nunca fica vermelho
+    f = r["futuro"]
+    assert f["semana"]["fase"] == f["setembro"]["fase"] == "futuro"
+    assert all(l[2] == 0 for k in ("semana", "setembro") for l in f[k]["linhas"].values())
+    # o quadro: 5 linhas vermelhas (reels e notícias na semana; posts, reels e notícias em setembro), com quantas faltaram
+    assert r["vermelhas"] == 5
+    for trecho in ["Semana de 31/08 a 06/09", "Setembro de 2026", "já passou", "faltou 1", "faltaram 2", "faltaram 4",
+                   "1 peça cancelada não entra no mínimo.", "1 notícia de alta foi ignorada na triagem e não entra no mínimo."]:
+        assert trecho in r["texto"], trecho
+    for proibido in PROIBIDOS_CRONOGRAMA:
+        assert proibido not in r["texto"].lower(), proibido
+    assert "limite de 1.000" in r["cortado"] and "limite de 1.000" not in r["texto"] and r["erro"]
+    # o primeiro dia da notícia nas redes não depende da semana aberta: a de 31/08 não faz o dia de notícia de setembro
+    assert r["umaVez"] == [[2, 0, 2], [2, 0, 2]], r["umaVez"]
+    # o fato achado em 31/08 e de novo em 02/09: uma vez em agosto, uma em setembro e uma vez na semana que pega os dois dias
+    assert r["doisMeses"] == [[1, 0, 1], [1, 0, 1], [1, 0, 1]], r["doisMeses"]
+
+
+def test_cronograma_na_pauta_com_banco_e_leitor(pagina, limpo):
+    """v0.27.0: o cronograma com o banco e o PostgREST de verdade, visto pelo leitor (o mesmo quadro de todos). Só lê (todo pedido é GET),
+    pede às capturas só as colunas da conta (nunca o título, o texto ou a url: o boletim da ITC é pago) e não lê pessoas, quem aparece,
+    fotos nem lâminas. A repetição do mesmo fato (duplicata_de) e a média não entram; a alta que desceu pela idade conta; a que chegou
+    velha, o texto colado à mão e a ignorada na triagem não. "← Semana anterior" troca a semana e o mês. Cabe em 375 px, e a leitura que
+    falha mostra o aviso sem derrubar a semana."""
+    db = limpo
+    peca_db(db, "2026-08-31", "bastidor", "foto", quem_aparece="Ana Teste", publicado_manual_em="2026-08-31")
+    peca_db(db, "2026-09-01", "noticia", "imagem")
+    peca_db(db, "2026-09-02", "reel", "reel")
+    p4 = peca_db(db, "2026-09-03", "quem_cuida", "foto")
+    mudar_situacao(db, peca_db(db, "2026-09-04", "educativo", "carrossel"), "cancelada")
+    peca_db(db, "2026-09-05", "sem_post", "nenhum")
+    peca_db(db, "2026-09-06", "captacao", "foto", publicado_manual_em="2026-09-07")
+    p8 = peca_db(db, "2026-09-15", "bastidor", "foto")
+    peca_db(db, "2026-09-22", "noticia", "imagem")
+    peca_db(db, "2026-08-25", "agenda", "imagem")
+    envio = """insert into radar_redes_envios (peca_id, canal, legenda, conteudo_lido_em, situacao, agendado_para, publicado_em, post_id, url, excluido_em)
+               values (%s, %s, 'Legenda de teste do cronograma.', now(), %s, %s, %s, %s, %s, %s)"""
+    db.execute(envio, (p4, "instagram", "publicado", "2026-09-03 12:30+00", "2026-09-03 12:30+00", "post-crono-4", "https://www.instagram.com/p/crono4/", None))
+    db.execute(envio, (p4, "facebook", "erro", "2026-09-03 12:30+00", None, None, None, None))      # o Instagram saiu: a peça está feita
+    db.execute(envio, (p8, "instagram", "excluido", "2026-09-15 12:30+00", "2026-09-15 12:30+00", "post-crono-8", "https://www.instagram.com/p/crono8/",
+                       "2026-09-16 12:00+00"))                                                 # excluída da rede: não conta
+    # as notícias do Radar: uma no site e nas duas redes (no dia de notícia de 01/09 a 06/09); a outra só no Instagram, em agosto
+    ax, cx = artigo_aprovado(db, "Notícia de teste do cronograma", autor=None, fundamentado=True)
+    with como_editor(db) as ed:
+        ed.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, 'https://artecon.cnt.br/news/teste-cronograma', '2026-09-05')", (cx,))
+    _, cy = artigo_aprovado(db, "Outra notícia de teste do cronograma", autor=None)
+
+    def nas_redes(c, canal, quando):
+        lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
+        db.execute("""insert into radar_redes_envios (conteudo_id, canal, legenda, conteudo_lido_em, situacao, post_id, url, publicado_em)
+                      values (%s, %s, 'Legenda de teste do cronograma.', %s, 'publicado', %s, %s, %s)""",
+                   (c, canal, lido, f"post-{canal}-{c}", f"https://www.{canal}.com/p/crono{c}/", quando))
+    nas_redes(cx, "instagram", "2026-09-07T02:30:00Z")                                          # 06/09 em Brasília
+    nas_redes(cx, "facebook", "2026-09-07T13:00:00Z")
+    nas_redes(cy, "instagram", "2026-08-30T15:00:00Z")
+    # e no Facebook em 01/09: a semana de 31/08 lê só este envio (o de 30/08 fica antes da faixa), mas o primeiro dia dela é 30/08, e ela
+    # não faz o dia de notícia de setembro
+    nas_redes(cy, "facebook", "2026-09-01T12:00:00Z")
+
+    def cap(rotulo, quando, data=None, metadados=None, duplicata=None, titulo=None):
+        titulo = titulo or f"Receita prorroga prazo de adesão ao Simples Nacional (teste do cronograma {rotulo})"
+        return db.execute("""insert into radar_capturas (fonte_id, url, titulo, data_publicacao, hash_titulo, capturado_em, metadados, duplicata_de)
+                             select id, %s, %s, %s, md5(%s), %s, %s::jsonb, %s from radar_fontes where slug = 'rfb-noticias' returning id""",
+                          (f"https://www.gov.br/exemplo/cronograma-{rotulo.lower()}", titulo, data, titulo, quando, json.dumps(metadados or {}),
+                           duplicata)).fetchone()[0]
+    a = cap("A", "2026-09-02 12:00+00")
+    db.execute("insert into radar_assunto_capturas (assunto_id, captura_id) values (%s, %s)", (ax, a))   # o fato que já está no site
+    a2 = cap("A2", "2026-09-03 12:00+00", duplicata=a)                                        # a repetição do mesmo fato
+    b = cap("B", "2026-09-07T02:30:00Z")                                                       # 06/09 em Brasília
+    c = cap("C", "2026-09-20 12:00+00", data="2026-09-20")
+    d = cap("D", "2026-09-21 12:00+00", data="2026-08-01")
+    e = cap("E", "2026-09-08 12:00+00", metadados={"manual": True, "incluido_em": "2026-09-08T12:00:00+00:00"})   # o texto colado à mão
+    e2 = cap("E2", "2026-09-09 12:00+00", metadados={"manual": True, "incluido_em": "2026-09-11T10:00:00+00:00"})  # o robô achou; a equipe completou
+    hh = cap("H", "2026-09-10 12:00+00")
+    f = cap("F", "2026-09-12 12:00+00", titulo="Receita publica novo guia para o cidadão (teste do cronograma)")
+    g = cap("G", "2026-08-28 12:00+00")
+    with como_editor(db) as ed:
+        ed.execute("select radar_abrir_assunto(%s, true)", (hh,))                              # ignorada na triagem enquanto era alta
+    # C e D eram altas e desceram pela idade (o que radar_relevancia_idade anota); D já chegou velha (notícia de 01/08 achada em 21/09)
+    db.execute("select set_config('radar.reavaliando', '1', false)")
+    try:
+        db.execute("""update radar_capturas set relevancia = 'baixa', relevancia_motivos = relevancia_motivos ||
+                      '[{"termo": "notícia com mais de 5 dias", "pontos": 0, "idade": true, "antes": "alta"}]'::jsonb where id in (%s, %s)""", (c, d))
+    finally:
+        db.execute("select set_config('radar.reavaliando', '', false)")
+    rel = dict(db.execute("select id, relevancia || coalesce('>' || duplicata_de, '') from radar_capturas where id = any(%s)",
+                          ([a, a2, b, c, d, e, e2, hh, f, g],)).fetchall())
+    assert rel == {a: "alta", a2: f"alta>{a}", b: "alta", c: "baixa", d: "baixa", e: "alta", e2: "alta", hh: "alta", f: "media", g: "alta"}, rel
+    assert db.execute("select status from radar_assuntos a join radar_assunto_capturas ac on ac.assunto_id = a.id where ac.captura_id = %s", (hh,)).fetchone()[0] == "ignorado"
+
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pedidos = []
+    pagina.on("request", lambda req: pedidos.append((req.method, req.url)) if "/rest/v1/" in req.url else None)
+    abrir_pauta(pagina, "2026-08-31")
+
+    def quadro(periodo):
+        return {l["linha"]: [int(l["minimo"]), int(l["feito"]), l["atraso"] != "0"]
+                for l in pagina.eval_on_selector_all(f"#cron-{periodo} tr[data-linha]", "trs => trs.map(t => ({...t.dataset}))")}
+    assert quadro("semana") == {"posts": [3, 3, False], "reels": [1, 0, True], "captacao": [1, 1, False], "noticias": [2, 1, True]}
+    assert quadro("mes") == {"posts": [4, 2, True], "reels": [1, 0, True], "captacao": [1, 1, False], "noticias": [4, 1, True]}
+    assert "faltaram 2" in pagina.inner_text("#cron-mes tr[data-linha=posts]") and pagina.inner_text("#cron-mes h3").startswith("Setembro de 2026")
+    assert "1 peça cancelada não entra no mínimo." in pagina.inner_text("#cron-semana")
+    assert "1 notícia de alta foi ignorada na triagem e não entra no mínimo." in pagina.inner_text("#cron-mes")
+    assert pagina.evaluate("() => !!(document.querySelector('#pauta-cronograma').compareDocumentPosition(document.querySelector('.pauta-barra')) & Node.DOCUMENT_POSITION_FOLLOWING)")
+    tela = pagina.inner_text("main")
+    assert "Ana" not in tela and "Receita prorroga" not in tela and "teste do cronograma" not in tela
+    pagina.screenshot(path=str(FOTOS / "70-pauta-cronograma.png"), full_page=True)
+    pagina.click("#pauta-cronograma summary")
+    pagina.wait_for_selector("details.crono-como[open]")
+    pagina.screenshot(path=str(FOTOS / "71-pauta-cronograma-como-conta.png"), full_page=True)
+    # a semana anterior: o quadro troca a semana e o mês (agosto: a peça de 31/08 entra em agosto, não em setembro)
+    pagina.click("text=← Semana anterior")
+    pagina.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana('2026-08-24')}")
+    assert quadro("semana") == {"posts": [1, 0, True], "reels": [0, 0, False], "noticias": [1, 0, True]}
+    assert quadro("mes") == {"posts": [2, 1, True], "reels": [0, 0, False], "noticias": [1, 0, True]}
+    assert pagina.inner_text("#cron-mes h3").startswith("Agosto de 2026")
+    pagina.screenshot(path=str(FOTOS / "72-pauta-cronograma-agosto.png"), full_page=True)
+    # só leituras, e só das colunas da conta
+    assert pedidos and all(m == "GET" for m, _ in pedidos), [p for p in pedidos if p[0] != "GET"]
+    capturas = [parse_qs(urlsplit(u).query) for _, u in pedidos if urlsplit(u).path.endswith("/rest/v1/radar_capturas")]
+    assert len(capturas) >= 4 and all(q["select"] == [SELECT_CAPTURAS_CRONOGRAMA] for q in capturas)
+    for proibido in ("quem_aparece", "fotos", "artes", "radar_pessoas", "radar_v_pauta_pessoas"):
+        assert not [u for _, u in pedidos if proibido in u], proibido
+    # no celular, a semana e o mês um embaixo do outro, sem rolagem lateral
+    pagina.click("text=Próxima semana →")
+    pagina.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana('2026-08-31')}")
+    pagina.set_viewport_size({"width": 375, "height": 740})
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#cron-mes")
+    assert sem_rolagem_lateral(pagina), pagina.evaluate("document.scrollingElement.scrollWidth")
+    pagina.screenshot(path=str(FOTOS / "73-celular-pauta-cronograma.png"), full_page=True)
+    # a leitura das capturas falha: o aviso no lugar do quadro, e a semana continua na tela (sem erro de JavaScript: a fixture confere)
+    pagina.set_viewport_size({"width": 1280, "height": 900})
+    pagina.route("**/rest/v1/radar_capturas*", lambda rota: rota.fulfill(status=500, content_type="application/json", body='{"message":"falha de teste"}'))
+    pagina.evaluate("() => desenhar()")
+    pagina.wait_for_selector("#pauta-cronograma-erro")
+    assert pagina.locator(".pauta-semana").count() == 1 and pagina.locator("#cron-semana").count() == 0
+    pagina.screenshot(path=str(FOTOS / "74-pauta-cronograma-erro.png"), full_page=True)
+    pagina.unroute("**/rest/v1/radar_capturas*")
 
 
 def test_selo_com_motivo_longo_cabe_no_celular(pagina, pauta):
@@ -5956,7 +6199,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.26.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.27.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -8371,7 +8614,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.26.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.27.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
