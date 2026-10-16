@@ -365,6 +365,8 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
                    "Sócio(a) da Artecon", "o administrador marca “Sócio(a) da Artecon”", "não pede o termo de uso de imagem (datas, canais e finalidades) nem o termo do corretor de vídeo",
                    "o selo “Sócio(a) — termos dispensados”", "a pessoa estar ativa, ser maior de idade, estar marcada em “Quem aparece” e as quatro declarações do envio do vídeo",
                    "Tirar a marca faz a pessoa voltar a precisar dos dois termos", "fica no Histórico, sem o nome",
+                   "Marcar e tirar a marca pedem confirmação", "a data em “Revogado em” não vale", "desmarque “Ativa”",
+                   "a prévia que estava aberta fecha quando se abre a “+ Nova peça”",
                    "o sql/radar-setup-v0.28.0.sql ANTES de publicar a tela", "nada é apagado", "pode rodar de novo",
                    "As funções radar-ia, radar-redes e radar-video não mudam", "Da v0.27.0 para a v0.28.0"]:
         assert trecho in texto, trecho
@@ -5965,11 +5967,12 @@ def test_pauta_semana_navega_prontas_e_nao_sairam_e_cabe_no_celular(navegador, p
 
 
 # ------------------------------------------------------------ v0.28.0: "+ Nova peça" e "Sócio(a) da Artecon"
-def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta):
+def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta, tmp_path):
     """v0.28.0: nos dias da semana sem peça, de hoje em diante (de Brasília), o administrador vê “+ Nova peça”; o formulário curto (tipo,
     formato, assunto; objetivo, quem aparece e observação opcionais) cria a peça, que abre como qualquer outra (no reel, o roteiro e o
     quadro do corretor de vídeo), planejada e sem nada agendado. O banco confere de novo: a peça gravada por outra tela no mesmo dia e o
-    dia que já passou voltam com o recado. Cabe em 375 px. A editora não vê o botão nem o formulário."""
+    dia que já passou voltam com o recado. A prévia da importação aberta fecha ao abrir o formulário (o efeito dela ficaria velho) e,
+    escolhido o arquivo de novo, mostra o dia da peça nova como “alterada”. Cabe em 375 px. A editora não vê o botão nem o formulário."""
     db = pauta
     hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
     seg = date.fromisoformat(semana_de_hoje())
@@ -5990,9 +5993,19 @@ def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta):
     pagina.wait_for_selector(f"#pauta-semana-titulo >> text={titulo_semana((seg - timedelta(days=7)).isoformat())}")
     assert botoes.count() == 0
     abrir_pauta(pagina, prox.isoformat())
+    # a prévia da importação com uma linha para o dia: “nova”; abrir “+ Nova peça” fecha a prévia, com o recado
+    d2 = prox + timedelta(days=2)
+    arquivo = csv_pauta(tmp_path, [[f"{d2.day}/{d2.month}/{d2.year}", ["seg", "ter", "qua", "qui", "sex", "sab", "dom"][d2.weekday()], "1",
+                                    "Educativo", "Imagem 4:5", "Do arquivo (exemplo)", "", "", ""]])
+    pagina.set_input_files("#pauta-csv", arquivo)
+    pagina.wait_for_selector("#pauta-previa-resumo")
+    assert "1 linha(s): 1 nova(s), 0 alterada(s)" in pagina.inner_text("#pauta-previa-resumo")
+    limpar_recados(pagina)
     pagina.click(f".pauta-dia[data-dia='{dia(2)}'] [data-acao=pauta-nova]")
     form = pagina.locator("#pauta-nova")
     form.wait_for()
+    pagina.wait_for_selector("#recado .aviso >> text=A prévia da importação do calendário foi fechada, sem gravar nada")
+    assert pagina.locator("#pauta-previa").count() == 0
     assert "não publica nem agenda nada" in form.inner_text() and pagina.locator("#pauta-nova-hoje").count() == 0
     assert botoes.count() == 5                                                                    # o dia aberto mostra o formulário
     limpar_recados(pagina)
@@ -6024,9 +6037,16 @@ def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta):
                          from radar_pauta_pecas where data = %s""", (dia(2),)).fetchone() == \
         (prox + timedelta(days=2), "reel", "reel", "planejada", ADMIN, "Reel de teste: o prazo do Simples (exemplo)", "orientar", "Ana Teste", [])
     assert db.execute("select count(*) from radar_redes_envios").fetchone()[0] == 0
-    # a peça gravada por outra tela enquanto o formulário estava aberto: o banco recusa (uma peça por dia)
+    # o arquivo escolhido de novo: o dia da peça nova (planejada) aparece como “alterada”, antes de gravar
     pagina.click("text=← Voltar para a semana")
     pagina.wait_for_selector(".pauta-semana")
+    assert pagina.locator("#pauta-previa").count() == 0
+    pagina.set_input_files("#pauta-csv", arquivo)
+    pagina.wait_for_selector("#pauta-previa-resumo")
+    assert "1 linha(s): 0 nova(s), 1 alterada(s)" in pagina.inner_text("#pauta-previa-resumo")
+    pagina.click("[data-acao=pauta-importar-cancelar]")
+    pagina.wait_for_selector("#pauta-previa", state="detached")
+    # a peça gravada por outra tela enquanto o formulário estava aberto: o banco recusa (uma peça por dia)
     pagina.click(f".pauta-dia[data-dia='{dia(3)}'] [data-acao=pauta-nova]")
     form.wait_for()
     peca_db(db, dia(3), "bastidor", "foto", assunto="Gravada por outra tela (exemplo)")
@@ -6062,9 +6082,11 @@ def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta):
 
 def test_pessoas_socio_dispensa_termos_so_admin_e_selo(pagina, pauta):
     """v0.28.0: em Pessoas e termos, o administrador marca “Sócio(a) da Artecon”: a pessoa sem termo nenhum aparece com o selo
-    “Sócio(a) — termos dispensados” (no cadastro, no dia da semana e em Quem aparece) e a conferência da peça não pede o termo. Tirar a
-    marca pergunta antes (sem confirmar, nada é gravado) e o termo volta a ser pedido. Menor de idade: os termos continuam exigidos. A
-    marca fica no Histórico, sem o nome; a editora vê a caixa, desabilitada."""
+    “Sócio(a) — termos dispensados” (no cadastro, no dia da semana e em Quem aparece) e a conferência da peça não pede o termo. Marcar
+    e tirar a marca perguntam antes (sem confirmar, nada é gravado); com “Revogado em” preenchido, a pergunta avisa que para sócio(a) a
+    revogação não vale (o caminho é “Ativa”), e o “Excluir” e as peças publicadas também falam de “Ativa”, não do termo. Sem a marca, o
+    termo volta a ser pedido. Menor de idade: os termos continuam exigidos. A marca fica no Histórico, sem o nome; a editora vê a caixa,
+    desabilitada."""
     db = pauta
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
@@ -6076,13 +6098,40 @@ def test_pessoas_socio_dispensa_termos_so_admin_e_selo(pagina, pauta):
     nova.locator("[name=nome]").fill("Bruno Exemplo")
     nova.locator("[name=nome_na_peca]").fill("Bruno")
     nova.locator("[name=socio]").check()
+    # marcar pergunta antes (é o lado que dispensa os termos); sem confirmar, nada é gravado
+    pagina.evaluate("() => { window.__perguntas = []; window.confirm = m => { window.__perguntas.push(m); return false; }; }")
+    nova.locator("button", has_text="Cadastrar pessoa").click()
+    pagina.wait_for_function("() => window.__perguntas.length === 1")
+    assert pagina.evaluate("window.__perguntas[0]").startswith("Marcar como sócio(a) da Artecon? O Radar deixa de pedir o termo de uso de imagem")
+    assert "Revogado em" not in pagina.evaluate("window.__perguntas[0]")
+    assert db.execute("select count(*) from radar_pessoas").fetchone()[0] == 0
+    pagina.evaluate("() => { window.confirm = m => { window.__perguntas.push(m); return true; }; }")
     limpar_recados(pagina)
     nova.locator("button", has_text="Cadastrar pessoa").click()
     pagina.wait_for_selector("#recado >> text=Pessoa cadastrada.")
+    assert len(pagina.evaluate("window.__perguntas")) == 2
     bruno, socio, assinado, corretor = db.execute("select id, socio, termo_assinado_em, termo_corretor_em from radar_pessoas").fetchone()
     assert (socio, assinado, corretor) == (True, None, None)
     form = pagina.locator(f"form[data-form=pessoa][data-id='{bruno}']")
     assert "Sócio(a) — termos dispensados" in form.locator("h2").inner_text() and form.locator(".pessoa-socio").count() == 1
+    # já sócio(a): preencher “Revogado em” avisa que não vale (sem confirmar, nada é gravado); “Excluir” fala de “Ativa”
+    ontem = (datetime.now(ZoneInfo("America/Sao_Paulo")).date() - timedelta(days=1)).isoformat()
+    pagina.evaluate("() => { window.__perguntas = []; window.confirm = m => { window.__perguntas.push(m); return false; }; }")
+    form.locator("[name=termo_revogado_em]").fill(ontem)
+    form.locator("button", has_text="Salvar").click()
+    pagina.wait_for_function("() => window.__perguntas.length === 1")
+    pergunta = pagina.evaluate("window.__perguntas[0]")
+    assert pergunta.startswith("Esta pessoa tem data em “Revogado em”, e para sócio(a) a revogação não vale") and \
+        "desmarque “Ativa”" in pergunta and pergunta.endswith("Salvar assim mesmo?") and "Marcar como" not in pergunta
+    assert db.execute("select termo_revogado_em from radar_pessoas where id = %s", (bruno,)).fetchone()[0] is None
+    form.locator("[data-acao=pessoa-excluir]").click()
+    pagina.wait_for_function("() => window.__perguntas.length === 2")
+    assert "para sócio(a) da Artecon, a revogação do termo não vale" in pagina.evaluate("window.__perguntas[1]")
+    assert "marque a revogação do termo" not in pagina.evaluate("window.__perguntas[1]")
+    # as peças publicadas com sócio(a) inativo(a): sem “prazo do termo”
+    bloco = "s => blocoPecasDaPessoa([{data:'2026-10-01', link_instagram:'https://www.instagram.com/p/exemplo/'}], s)"
+    assert "sócio(a) da Artecon não tem termo" in pagina.evaluate(bloco, True) and "prazo do termo" not in pagina.evaluate(bloco, True)
+    assert "retire das redes no prazo do termo." in pagina.evaluate(bloco, False)
     d = (datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=3)).isoformat()
     pid = peca_db(db, d, "bastidor", "foto", pessoas=[bruno], legenda_instagram=LEG_PECA, chamada="Quem cuida da sua folha",
                   conferidas=[{"informacao": "A Artecon atende em Palhoça", "fonte": "Site da Artecon"}])
@@ -6111,6 +6160,16 @@ def test_pessoas_socio_dispensa_termos_so_admin_e_selo(pagina, pauta):
     pagina.wait_for_selector("#recado >> text=Pessoa salva.")
     assert db.execute("select socio from radar_pessoas where id = %s", (bruno,)).fetchone()[0] is False
     assert "Sócio(a)" not in form.locator("h2").inner_text()
+    # marcar de novo quem tem data em “Revogado em”: a pergunta avisa que a revogação deixa de valer
+    pagina.evaluate("() => { window.__perguntas = []; window.confirm = m => { window.__perguntas.push(m); return false; }; }")
+    form.locator("[name=termo_revogado_em]").fill(ontem)
+    form.locator("[name=socio]").check()
+    form.locator("button", has_text="Salvar").click()
+    pagina.wait_for_function("() => window.__perguntas.length === 1")
+    pergunta = pagina.evaluate("window.__perguntas[0]")
+    assert pergunta.startswith("Marcar como sócio(a) da Artecon?") and "Atenção: Esta pessoa tem data em “Revogado em”" in pergunta
+    assert db.execute("select socio, termo_revogado_em from radar_pessoas where id = %s", (bruno,)).fetchone() == (False, None)
+    pagina.evaluate("() => { window.confirm = () => true; }")
     pagina.click("text=← Voltar para a semana")
     abrir_peca(pagina, pid, d)
     assert "sem termo válido (sem termo assinado)" in pagina.inner_text(".peca-pessoas")

@@ -3206,12 +3206,15 @@ begin
    where pe.id = any(p.pessoas);
   for v_pe in select * from public.radar_pessoas order by id loop
     if v_pe.id = any(p.pessoas) then
-      -- marcada: a palavra do nome completo (com maiúscula e 3 letras ou mais) que o termo não autoriza é sobrenome a tirar
+      -- marcada: a palavra do nome completo (com maiúscula e 3 letras ou mais) que o termo não autoriza é sobrenome a tirar. v0.28.0:
+      -- sócio(a) da Artecon (maior de idade) não tem termo: o recado fala do "Nome na peça" do cadastro (a regra é a mesma)
       if exists (select 1 from regexp_split_to_table(btrim(v_pe.nome), '\s+') w
                   where length(w) >= 3 and w ~ '^[A-ZÀ-Ý]'
                     and not public.radar_pauta_sem_acento(w) = any(regexp_split_to_array(public.radar_pauta_sem_acento(btrim(v_pe.nome_na_peca)), '\s+'))
                     and v_cmp ~ public.radar_pauta_rx_nome(w)) then
-        v := array_append(v, 'O termo autoriza só “' || btrim(v_pe.nome_na_peca) || '”: tire o sobrenome');
+        v := array_append(v, case when v_pe.socio and not v_pe.menor
+          then 'O “Nome na peça” do(a) sócio(a) é só “' || btrim(v_pe.nome_na_peca) || '”: tire o sobrenome (ou mude o Nome na peça em Pessoas e termos)'
+          else 'O termo autoriza só “' || btrim(v_pe.nome_na_peca) || '”: tire o sobrenome' end);
       end if;
     else
       for v_forma in select x from unnest(array[btrim(v_pe.nome_na_peca), btrim(v_pe.nome),

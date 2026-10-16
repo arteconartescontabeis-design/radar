@@ -1,4 +1,4 @@
-# Radar Artecon — v0.27.0
+# Radar Artecon — v0.28.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,26 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
+
+- **"+ Nova peça" num dia vazio:** na semana da Pauta, cada dia que ainda não tem peça (de hoje em diante, no horário de Brasília)
+  mostra o botão **"+ Nova peça"** para o **administrador**. Ele pede o tipo, o formato e o assunto (objetivo, quem aparece e observação
+  são opcionais) e cria a peça desse dia, que abre como qualquer outra: roteiro, "Quem aparece", fotos e, no reel, o quadro "Corretor de
+  vídeo". A peça nova nasce **planejada** e **não publica nem agenda nada sozinha**: segue o caminho de sempre (preparar, marcar como
+  pronta e a aprovação do administrador). Continua valendo **uma peça por dia**: o dia que já tem peça (mesmo cancelada) não ganha outra,
+  e dia que já passou não recebe peça nova.
+- **"Sócio(a) da Artecon":** em Pauta → Pessoas e termos, o administrador marca a pessoa como sócio(a). Para ela, o Radar **não pede o
+  termo de uso de imagem** (datas, canais e finalidades) **nem o termo do corretor de vídeo**, e a pessoa aparece com o selo
+  **"Sócio(a) — termos dispensados"**. **Continuam valendo:** a pessoa estar ativa, ser maior de idade, estar marcada em "Quem aparece"
+  na peça e as **quatro declarações** do envio do vídeo (só aparecem as pessoas marcadas; sem tela, documento ou cliente ao fundo; só a
+  voz; a fala é a do roteiro). Marcar e tirar a marca pedem confirmação; para sócio(a), a data em "Revogado em" não vale (para tirar a
+  pessoa das peças e dos vídeos, desmarque "Ativa"). Marcar e desmarcar fica no Histórico, sem o nome.
+
+Mudam o banco (`sql/radar-setup-v0.28.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
+termos; nenhuma tabela nova, nada é apagado) e a tela (`index.html`, `radar-pauta.js` e `radar-video.js`). As funções `radar-ia`,
+`radar-redes` e `radar-video`, as outras funções e os robôs não mudam. **Rode o SQL antes de publicar a tela**: veja "Da v0.27.0 para a
+v0.28.0".
 
 A v0.27.0 põe na **Pauta** o **cronograma de publicações**: no alto da semana, um quadro com a semana mostrada e o mês dela, o
 **mínimo** de cada tipo de publicação ao lado do que já foi **feito**, e em **vermelho** o que já devia ter saído e não saiu. O mínimo
@@ -459,7 +479,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.25.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.28.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -486,7 +506,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.25.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.28.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -523,7 +543,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.25.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.28.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -552,7 +572,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.25.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.28.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -560,7 +580,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.25.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.28.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -576,7 +596,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.25.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.28.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -591,7 +611,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.25.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.28.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -619,7 +639,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.25.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.28.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -631,7 +651,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.25.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.28.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -644,7 +664,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.25.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.28.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -656,7 +676,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.25.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.28.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -668,7 +688,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.25.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.28.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -683,7 +703,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.25.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.28.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -732,8 +752,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.25.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.25.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.28.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.28.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0). |
@@ -788,10 +808,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.25.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.28.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
    Esperado: 27 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.25.0`).
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.28.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -1343,6 +1363,13 @@ Se o resultado ainda não sair como quer, mude uma coisa de cada vez e gere de n
   marcada e "contador" para quem não tem registro impedem a aprovação. Antes de cada publicação automática, o banco confere tudo de novo, e uma publicação nunca sai
   duas vezes: a que deu erro ou ficou sem resposta clara da Meta só é tentada de novo com "Conferi no Instagram e no Facebook: não
   saiu". A trilha de auditoria guarda o que foi ao ar, mas não os nomes, o CRC das pessoas, o plano nem a sugestão da IA.
+- **Peça nova (v0.28.0):** só o administrador cria a peça de um dia vazio ("+ Nova peça"), de hoje em diante (de Brasília), uma
+  peça por dia (o dia com peça, mesmo cancelada, não ganha outra); os campos passam pela mesma conferência da importação do
+  calendário, e o assunto é obrigatório. A peça nasce planejada, sem pessoas, sem aprovação e sem envio: não publica nem agenda nada.
+- **Sócio(a) da Artecon (v0.28.0):** só o administrador marca. Para o(a) sócio(a) maior de idade, o banco não exige o termo de uso de
+  imagem nem o termo do corretor de vídeo; continuam exigidos: a pessoa ativa, maior de idade, marcada em "Quem aparece", e as quatro
+  declarações do envio do vídeo. Sem a marca, os dois termos voltam a ser exigidos (a peça não fica pronta nem sai, e o vídeo do
+  corretor com a pessoa é apagado na limpeza do dia seguinte). A marca vai à trilha, sem o nome.
 
 ## Decisões de projeto que vale conhecer
 
@@ -1654,6 +1681,21 @@ conferido no selo da semana, ao marcar como pronta e ao aprovar (no dia da peça
 (no dia de hoje): revogado ou vencido, a peça não sai. A lâmina aprovada só aparece na peça agendada com o termo valendo no dia
 dela; na peça à mão, só em "Baixar as lâminas", depois dessa conferência; o leitor não vê foto nem lâmina.
 
+**Sócio(a) da Artecon** (v0.28.0; só o administrador marca, o editor vê a caixa desabilitada). Os sócios da empresa não assinam o
+termo: marque **"Sócio(a) da Artecon"** no cadastro da pessoa (no fieldset "Situação"). Com a marca, o Radar não confere as datas,
+os canais e as finalidades do termo de uso de imagem nem o termo do corretor de vídeo, e a pessoa aparece com o selo **"Sócio(a) —
+termos dispensados"** (no cadastro, no dia da semana e em "Quem aparece"); o aviso "sem o termo novo, que cita o corretor de vídeo"
+não aparece para ela no reel. **Continuam valendo:** "Ativa" (para tirar o(a) sócio(a) das próximas peças e dos vídeos, desmarque
+"Ativa"; para sócio(a), a data em "Revogado em" não conta), a idade (menor de idade: os termos continuam exigidos, e o selo diz
+"Sócio(a), menor de idade: termos exigidos"), estar marcado(a) em "Quem aparece" e, no reel, as **quatro declarações** do envio.
+**Marcar** pede confirmação ("Marcar como sócio(a) da Artecon?"): marque só quem é sócio(a) da empresa. Se a pessoa tem data em
+"Revogado em", a pergunta avisa que, para sócio(a), a revogação não vale e que as peças e os vídeos com ela podem sair; o mesmo aviso
+aparece quando a data é preenchida em quem já é sócio(a). **Tirar a marca** também pede confirmação: a pessoa volta a precisar dos
+dois termos, e sem eles as peças com ela não ficam prontas nem saem, e o vídeo do corretor com ela é apagado na limpeza do dia
+seguinte. O sobrenome no texto continua barrado como para todos (o recado fala do "Nome na peça" do cadastro, não do termo), e o
+"Excluir" e a lista de peças publicadas da pessoa inativa falam de "Ativa", não do prazo do termo. Marcar e desmarcar fica no
+Histórico ("socio: false → true"), sem o nome.
+
 **Quando o termo é revogado (ou a pessoa sai da equipe).** Marcar a data em "revogado" impede as próximas publicações, mas **não
 apaga nada**: o Radar não apaga sozinho foto, lâmina nem post (nem a faxina das imagens, nem a reversão). Só os vídeos dos reels
 (v0.22.0) têm prazo de guarda: os do corretor e os textos deles saem sozinhos na limpeza do dia seguinte ("Corretor de vídeo do
@@ -1681,6 +1723,20 @@ lembrete na peça. A hora de cada peça nova é a de Configurações → Pauta (
 têm nomes da equipe: **nunca vão para o GitHub** (o `.gitignore` barra qualquer CSV novo e os `.md` do plano, e o workflow
 `radar-repositorio.yml` confere em todo envio; mas o envio pelo site do GitHub não passa pelo `.gitignore`, e o aviso chega depois
 que o arquivo já ficou público).
+
+**2a. Peça nova num dia vazio** (v0.28.0; só o administrador): na semana, cada dia que ainda não tem peça, de hoje em diante (de
+Brasília), mostra **"+ Nova peça"**. O formulário curto pede o **tipo** e o **formato** (os mesmos da importação), o **assunto**
+(obrigatório) e, se quiser, o objetivo, "quem aparece" (só lembrete, como na importação) e a observação; "Criar a peça" grava e abre a
+peça, que segue como qualquer outra: roteiro, "Quem aparece" (as pessoas são marcadas na própria peça), fotos e, no reel, o quadro
+"Corretor de vídeo". A peça nasce **planejada**, na hora de Configurações → Pauta (`hora_padrao`; se for para hoje, confira a hora
+na peça), e **não publica nem agenda nada**: sai só depois de pronta e aprovada pelo administrador. O banco confere tudo de novo: só
+o administrador, o dia sem peça nenhuma (a cancelada também ocupa o dia: use "Reabrir") e de hoje em diante. O editor continua
+importando o calendário (CSV), como antes. **Importar o calendário depois:** a peça criada à mão é tratada como qualquer outra do
+mesmo dia — se o CSV tiver uma linha para esse dia e a peça ainda estiver **planejada**, ela recebe o tipo, o formato, o assunto,
+"quem aparece", o objetivo e a observação do arquivo (a hora fica; a prévia mostra "alterada" antes de gravar); se ela já entrou em
+produção (ou está pronta, aprovada ou cancelada), fica como está ("mantida"). A importação nunca cria um segundo dia igual nem apaga
+peça. Se a prévia de uma importação estiver aberta, ela fecha (sem gravar nada) quando se abre a "+ Nova peça": a prévia foi
+calculada antes da peça nova e diria "nova" para o dia dela; depois de criar a peça, escolha o arquivo de novo.
 
 **3. Preparar a peça** ("Abrir", na semana; editor e administrador):
 - **Fotos**, no alto: cada foto vira 1080×1350 (corte no centro), enviada uma de cada vez, até 10. A foto do iPhone em HEIC
@@ -1803,7 +1859,7 @@ notícia (use o kit das redes do assunto), reel (roteiro à mão nesta versão),
 as informações conferidas.
 
 **11. Configurações → Pauta e agenda automática:** `agenda_ligada` (true ou false), `hora_padrao` (a hora de Brasília das peças
-novas, "09:30"), `janela_horas` (de 1 a 48; padrão 6), `hashtags` (as fixas, até 3, como "#Contabilidade" e "#Palhoça") e
+novas, da importação e da "+ Nova peça", "09:30"), `janela_horas` (de 1 a 48; padrão 6), `hashtags` (as fixas, até 3, como "#Contabilidade" e "#Palhoça") e
 `fatos_fixos` (opcional: os fatos da Artecon que valem em toda peça, cada um com a fonte, como `[{"informacao": "A Artecon atende
 empresas desde 1984", "fonte": "Contrato social"}]`; os números deles não pedem informação conferida). Na
 agenda de obrigações, `"redes": false` tira a obrigação da Agenda da semana das redes e `"fonte"` é a fonte oficial da regra de
@@ -2168,6 +2224,37 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 
 ## Atualizações futuras
 
+**Da v0.27.0 para a v0.28.0** (muda o banco: SQL novo, que pode rodar de novo; as funções `radar-ia`, `radar-redes` e `radar-video`
+não mudam; nada de chave ou segredo pelo chat). Supõe a v0.27.0 instalada. Nesta ordem:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.28.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: 27
+   tabelas e "instalacoes concluidas" com a **v0.28.0**. Ele acrescenta a coluna `socio` em `radar_pessoas` (desmarcada para todos), a
+   função da "+ Nova peça" e a regra dos termos para sócio(a): nenhuma tabela nova, nada é apagado, e pode rodar de novo (é assim que
+   ele é aplicado: o arquivo inteiro). As agendas (`sql/radar-*-agenda.sql`) não mudam.
+2. A tela chega pelo repositório: publique juntos o `index.html`, o `radar-pauta.js` e o `radar-video.js` e aperte Ctrl+F5 em todos os
+   aparelhos (no celular, recarregue a página). A aba Versões mostra a v0.28.0. Se a tela for publicada antes do SQL, a Pauta mostra
+   "A Pauta desta versão precisa do banco da v0.28.0": rode o passo 1 e recarregue.
+3. O que conferir, **sem publicar nada**:
+   - (a) Pauta → **Pessoas e termos**: marque **"Sócio(a) da Artecon"** em cada sócio(a) e salve (a tela pergunta antes: confirme). O
+     cadastro mostra o selo "Sócio(a) — termos dispensados", e o Histórico mostra "socio: false → true" (sem o nome).
+   - (b) Na semana de 12/10 a 18/10/2026, os dias sem peça de hoje em diante (sábado 17/10 e domingo 18/10, por exemplo) mostram
+     "+ Nova peça". Crie, por exemplo, um **Bastidor / Foto**
+     em 17/10 e um **Reel da semana / Reel** em 18/10. Cada peça abre como as outras: "Planejada", o roteiro, "Quem aparece", as fotos e,
+     no reel, o quadro "Corretor de vídeo". Marque o(a) sócio(a) em "Quem aparece" e salve: o selo é "Sócio(a) — termos dispensados".
+     No reel, o envio do vídeo continua pedindo as **quatro declarações**.
+   - (c) Nada sai sozinho: a peça nova fica planejada até ser preparada, marcada como pronta e aprovada pelo administrador.
+   - (d) Depois do teste, use **"Cancelar a peça"** nas duas peças de teste: a peça cancelada sai do cronograma (sem isso, o quadro
+     "Cronograma de publicações" conta as duas no mínimo e as marca em vermelho quando o dia passar). O dia cancelado não recebe outra
+     peça: para usar o dia de novo, "Reabrir".
+4. Depois, ao importar o calendário (CSV) com uma linha para um dia que já tem a peça criada à mão: se ela ainda estiver planejada, a
+   prévia mostra "alterada" e ela recebe o que está no arquivo; se já entrou em produção, fica como está ("mantida").
+
+Para desfazer: volte a tela da v0.27.0 (`index.html`, `radar-pauta.js` e `radar-video.js`, no histórico do GitHub; Ctrl+F5) e rode o
+`sql/radar-setup-v0.25.0.sql` do commit 722b1c4 (histórico do GitHub). Os termos voltam a ser exigidos de todos (o banco antigo não
+conhece a marca); a "+ Nova peça" perde a permissão; a coluna `socio` fica no banco, sem uso; as peças criadas à mão continuam como
+peças normais. **Atenção:** com o banco antigo, o vídeo do corretor com um(a) sócio(a) que não tem o termo do corretor é apagado na
+limpeza do dia seguinte; antes de desfazer, registre os termos dessa pessoa (ou baixe o que precisar).
+
 **Da v0.26.0 para a v0.27.0** (o banco não muda: não há SQL para rodar; as funções `radar-ia` e `radar-redes` não mudam; nada de
 chave ou segredo pelo chat). Supõe a v0.26.0 instalada (se não estiver, faça antes o "Da v0.25.1 para a v0.26.0").
 
@@ -2403,7 +2490,7 @@ Cuidados nesta versão:
   workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
   reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
 - **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
-  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.25.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.28.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
   também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
   as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
   guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do

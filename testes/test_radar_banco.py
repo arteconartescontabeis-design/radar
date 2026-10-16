@@ -5421,8 +5421,38 @@ def test_pauta_criar_so_admin_dia_livre_de_hoje_em_diante_e_mesma_conferencia_da
     with como("authenticated", EDITOR) as c:
         c.execute("update radar_pauta_pecas set situacao = 'cancelada' where id = %s", (cancelada,))
     for n in (1, 2):
-        with pytest.raises(psycopg.errors.RaiseException, match=re.escape(f"RADAR193: já existe uma peça em {(d + timedelta(days=n)).strftime('%d/%m/%Y')}")):
+        with pytest.raises(psycopg.errors.RaiseException, match=re.escape(f"RADAR193: já existe uma peça em {(d + timedelta(days=n)).strftime('%d/%m/%Y')}: "
+                                                                          "é uma peça por dia (abra a peça desse dia; se ela estiver cancelada, use Reabrir)")):
             criar_peca({"data": dia(n), "tipo": "bastidor", "formato": "foto", "assunto": "Outra no mesmo dia"})
+    # a corrida: a peça gravada direto por outra tela (o INSERT do editor, que não passa pela trava da importação) e ainda não
+    # confirmada; a "+ Nova peça" espera e, quando a outra confirma, devolve o recado (e não o erro cru da chave única)
+    import threading
+    import time
+    outra, resultado = conectar(autocommit=False), []
+    def tentar():
+        try:
+            resultado.append(criar_peca({"data": dia(5), "tipo": "reel", "formato": "reel", "assunto": "Corrida"}))
+        except Exception as e:                                                                 # noqa: BLE001 (o teste confere o tipo)
+            resultado.append(e)
+    try:
+        outra.execute("select set_config('request.jwt.claims', %s, true)", (json.dumps({"role": "authenticated", "sub": EDITOR}),))
+        outra.execute("set local role authenticated")
+        outra.execute("insert into radar_pauta_pecas (data, tipo, formato) values (%s, 'bastidor', 'foto')", (d + timedelta(days=5),))
+        fio = threading.Thread(target=tentar)
+        fio.start()
+        for _ in range(100):                                                                   # até a "+ Nova peça" esperar a outra
+            if db.execute("select count(*) from pg_stat_activity where wait_event_type = 'Lock' and query like '%radar_pauta_criar%'").fetchone()[0]:
+                break
+            time.sleep(0.05)
+        else:
+            pytest.fail("a + Nova peça não esperou a outra gravação")
+        outra.commit()
+        fio.join(timeout=10)
+    finally:
+        outra.close()
+    assert len(resultado) == 1 and isinstance(resultado[0], psycopg.errors.RaiseException), resultado
+    assert f"RADAR193: já existe uma peça em {(d + timedelta(days=5)):%d/%m/%Y}: é uma peça por dia (recarregue a página)" in str(resultado[0])
+    assert db.execute("select count(*), min(criado_por::text) from radar_pauta_pecas where data = %s", (d + timedelta(days=5),)).fetchone() == (1, EDITOR)
     # só o administrador: o editor (que importa o calendário) e o leitor, não; o visitante e a chave do robô nem chamam
     base = {"data": dia(6), "tipo": "bastidor", "formato": "foto", "assunto": "Bastidor"}
     for uid in (EDITOR, LEITOR, SEM_PERFIL):
@@ -5506,6 +5536,10 @@ def test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor(pauta):
     vencer(db, ig)
     assert iniciar(ig)["peca_id"] == pid                                                       # e sai pela agenda
     outra = nova_peca(db, dias=4, pessoas=[bruno])
+    # o sobrenome no texto continua barrado, com o recado do "Nome na peça" do cadastro (sócio(a) não tem termo)
+    apoio = lambda texto: db.execute("update radar_pauta_pecas set apoio = %s where id = %s", (texto, outra))
+    apoio("Uma conversa com o Bruno Exemplo.")
+    assert conferir(outra) == ["O “Nome na peça” do(a) sócio(a) é só “Bruno”: tire o sobrenome (ou mude o Nome na peça em Pessoas e termos)"]
     # inativo(a): a marca não passa por cima de "Ativa"
     db.execute("update radar_pessoas set ativo = false where id = %s", (bruno,))
     assert termo() == "pessoa inativa" and vista() == (True, "pessoa inativa", "pessoa inativa")
@@ -5513,7 +5547,10 @@ def test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor(pauta):
     # menor de idade: a dispensa não vale
     db.execute("update radar_pessoas set menor = true where id = %s", (bruno,))
     assert termo() == "sem termo assinado" and vista() == (False, "sem termo assinado", "sem termo assinado")
+    assert "O termo autoriza só “Bruno”: tire o sobrenome" in conferir(outra)                 # e o recado do sobrenome volta a ser o do termo
     db.execute("update radar_pessoas set menor = false where id = %s", (bruno,))
+    apoio("Uma conversa com o Bruno.")
+    assert conferir(outra) == []
     # a revogação também não conta para sócio(a): quem tira da Pauta é "Ativa"
     db.execute("update radar_pessoas set termo_revogado_em = %s where id = %s", (hoje(db) - timedelta(days=1), bruno))
     assert termo() is None and termo("captacao", "facebook") is None
