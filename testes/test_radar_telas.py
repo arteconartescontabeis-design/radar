@@ -888,7 +888,7 @@ def test_telas_cabem_no_celular_sem_rolagem_lateral(navegador, limpo):
     assert sem_rolagem_lateral(pg), "assunto"
     pg.screenshot(path=str(FOTOS / "09-celular-assunto.png"), full_page=True)
     pg.click("form[data-form=conteudo] >> text=Aprovar")
-    pg.wait_for_selector("text=Conteúdo aprovado.")
+    pg.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     registrar_no_site(pg, "https://artecon.cnt.br/news/um-endereco-bem-comprido-para-testar-a-quebra-de-linha-em-telas-estreitas-de-celular-item-12345")
     assert sem_rolagem_lateral(pg), "assunto com registro no site"
     pg.click("nav.abas >> text=Publicações")
@@ -5075,7 +5075,7 @@ def test_termos_de_publicidade_travam_a_legenda_e_avisam_no_conteudo(pagina, lim
     quadro = pagina.inner_text("form[data-form=conteudo] .termos-publicidade")
     assert "consulta grátis" in quadro and "100%" in quadro and "impede a publicação" in quadro and "aprov" not in quadro.lower()
     pagina.click("form[data-form=conteudo] >> text=Aprovar")
-    pagina.wait_for_selector("text=Conteúdo aprovado.")
+    pagina.wait_for_selector("#recado >> text=Conteúdo aprovado.")
     # no site: a legenda (montada do texto) leva o “grátis”
     cap = limpo.execute("select captura_id from radar_evidencias where assunto_id = %s", (a,)).fetchone()[0]
     limpo.execute("insert into radar_assunto_capturas values (%s, %s) on conflict do nothing", (a, cap))
