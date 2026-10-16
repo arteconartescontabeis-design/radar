@@ -366,11 +366,11 @@ def test_workflow_dos_testes_roda_os_testes_do_video():
 
 
 def test_versao_igual_em_todos_os_arquivos_da_versao():
-    """Uma versão só: a tela (VERSAO e a 1ª entrada de VERSOES), os dois scripts e o ?v= deles, a função nova (v0.23.0: a radar-itc;
-    v0.24.0: a radar-ia), o LEIAME e o relatório. v0.23.0: o que não mudou fica na versão em que mudou por último, nunca à frente da
-    tela — o SQL (um setup e uma reversão, os dos testes, da mesma versão), a função radar-video e o robô do vídeo (os dois da mesma
-    versão) e as outras funções. As que a tela exige (radar-ia e radar-redes) atendem à versão mínima que ela pede (FUNCAO_MINIMA e
-    REDES_MINIMA)."""
+    """Uma versão só: a tela (VERSAO e a 1ª entrada de VERSOES), os dois scripts e o ?v= deles, o LEIAME e o relatório. v0.23.0: o que
+    não mudou fica na versão em que mudou por último, nunca à frente da tela — o SQL (um setup e uma reversão, os dos testes, da mesma
+    versão), a função radar-video e o robô do vídeo (os dois da mesma versão) e as outras funções. v0.26.0: a radar-ia também (a função
+    que mudou fica na versão em que mudou por último, nunca à frente da tela; na v0.26.0, só a tela muda). As que a tela exige (radar-ia e
+    radar-redes) atendem à versão mínima que ela pede (FUNCAO_MINIMA e REDES_MINIMA)."""
     ler = lambda c: (RAIZ / c).read_text(encoding="utf-8")
     achar = lambda padrao, texto: re.search(padrao, texto).group(1)
     html = ler("index.html")
@@ -380,7 +380,7 @@ def test_versao_igual_em_todos_os_arquivos_da_versao():
     assert set(re.findall(r'<script src="radar-(?:pauta|video)\.js\?v=([^"]+)"', html)) == {v}
     assert achar(r'(?m)^const PAUTA_VERSAO = "([^"]+)"', ler("radar-pauta.js")) == v
     assert achar(r'(?m)^const VIDEO_VERSAO = "([^"]+)"', ler("radar-video.js")) == v
-    assert achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-ia/index.ts")) == v
+    assert num(achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-ia/index.ts"))) <= num(v)
     assert ler("LEIAME-radar.md").startswith(f"# Radar Artecon — v{v}\n")
     assert ler("RELATORIO-TESTES-radar.md").startswith(f"# Radar Artecon — Relatório de testes (v{v})\n")
     # o banco: um setup e uma reversão, da mesma versão (a da última mudança no banco), e o setup registra essa versão
@@ -399,6 +399,18 @@ def test_versao_igual_em_todos_os_arquivos_da_versao():
     for constante, funcao in (("FUNCAO_MINIMA", "radar-ia"), ("REDES_MINIMA", "radar-redes")):
         minima = achar(rf'(?m)^const {constante} = "([^"]+)"', html)
         assert num(achar(r'(?m)^const VERSAO = "([^"]+)"', ler(f"supabase/functions/{funcao}/index.ts"))) >= num(minima), funcao
+
+
+def test_tela_sem_a_numeracao_antiga_dos_passos():
+    """v0.26.0: o assunto tem 3 passos (1. Preparar, 2. Conferir e aprovar, 3. Publicar). Fora da aba Versões (que conta a história), a
+    tela não fala mais dos passos de antes (os 4 da v0.10.0 e os 7 da v0.12.2): nenhum recado, título ou ajuda manda para um passo que
+    não existe mais."""
+    html = (RAIZ / "index.html").read_text(encoding="utf-8")
+    ini = html.index("const VERSOES = [")
+    sem_versoes = html[:ini] + html[html.index("\n];", ini) + 3:]
+    for antigo in ("passo 4", "passo 5", "passos 6 e 7", "cinco passos", "quatro passos", "2. Escrever", "4. Publicar no site",
+                   "aprovado no passo 3", "passos7"):
+        assert antigo not in sem_versoes, antigo
 
 
 def test_leiame_da_v0220_ordem_da_instalacao_termo_teste_parar_e_desfazer():
