@@ -1,10 +1,9 @@
 # Radar Artecon — Relatório de testes (v0.25.0)
 
-Data: 16/10/2026. Resultado neste ambiente, com a suíte inteira da v0.25.0 depois da revisão: **1.047 aprovados, 1 falha, 67 pulados**, em 1.060 s
-(17min40s). A falha é o `test_peca_nao_publicar_neste_canal_com_o_outro_ja_publicado` (Pauta), que depende do dia em que a suíte roda: na
-madrugada de sexta-feira, 16/10, a peça de "daqui a 2 dias" cai no domingo e a tela não acha a peça na semana aberta. Ela falha igual no
-código da v0.24.0 (6bb5c57), rodado no mesmo momento, e nada desta versão toca a Pauta; antes da revisão, num outro horário, a mesma
-suíte deu 1.044 aprovados, 0 falhas e 67 pulados, em 1.008 s. Dos pulados, 61 são os testes de tela que
+Data: 16/10/2026. Resultado neste ambiente, com a suíte inteira da v0.25.0 depois da revisão: **1.048 aprovados, 0 falhas, 67 pulados**, em 1.000 s
+(16min40s). O `test_peca_nao_publicar_neste_canal_com_o_outro_ja_publicado` (Pauta) dependia do dia em que a suíte roda (na madrugada de
+sexta-feira, 16/10, a peça de "daqui a 3 dias" caía na semana seguinte e a tela não a achava na semana aberta; falhava igual no código da
+v0.24.0): agora ele abre a segunda peça pela semana dela. Dos pulados, 61 são os testes de tela que
 sobem a IA Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição
 com o Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não
 tem o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na
