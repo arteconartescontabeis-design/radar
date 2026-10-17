@@ -171,6 +171,33 @@ def test_pauta_aprovada_cancelada_sem_post_e_manual_sem_link(cfg):
     assert abertas(db) == {} and devidos(db) == []
 
 
+def test_pauta_a_mao_so_uma_hora_depois_da_hora_marcada(cfg):
+    """v0.29.0 (revisão): a peça aprovada para publicar à mão e ainda sem o registro só é lembrada UMA HORA DEPOIS da hora marcada (antes
+    disso a equipe ainda vai postar; lembrar antes gastava o único lembrete dela). A das 19:00, com o e-mail da Pauta das 16:00 já
+    mandado, espera o dia seguinte e chega como "ontem"; sem e-mail da Pauta no dia, sai no mesmo dia."""
+    db = cfg
+    h = peca(db, HOJE, situacao="aprovada", aprovado_modo="manual", formato="carrossel", hora="19:00")
+    a = peca(db, AMANHA)
+    [g] = lote_em(db)                                                                    # 16:00: só a de amanhã (a das 19:00 ainda vai sair)
+    assert [(i["n"], i["quando"]) for i in g["itens"]] == [(a, "amanha")]
+    assert enviado(db, g["lote"], 1, [i["id"] for i in g["itens"]]) == 1
+    assert devidos(db, "2026-11-03 22:59+00") == [] and f"peca:{h}:{HOJE}:manual" not in abertas(db)   # 19:59: ainda não
+    observar(db, "2026-11-03 23:00+00")                                                 # 20:00: uma hora depois, guardada; o e-mail do
+    assert f"peca:{h}:{HOJE}:manual" in abertas(db) and devidos(db, "2026-11-03 23:00+00") == []      # dia já saiu: espera amanhã
+    assert devidos(db, "2026-11-04 18:59+00") == []                                     # 15:59 do dia seguinte: antes da hora da Pauta
+    [g2] = lote_em(db, "2026-11-04 19:00+00")
+    assert [(i["n"], i["quando"], i["situacao"], i["hora"]) for i in g2["itens"]] == [(h, "ontem", "aprovada_manual", "19:00")]
+    assert radar_lembretes.corpo("pauta", g2).startswith(
+        "**A peça da Pauta de ontem (terça-feira, 03/11) ainda não saiu.**\n\n- Ontem, 03/11 às 19:00 — Carrossel (peça nº "
+        f"{h}): aprovada para publicar à mão e ainda sem o link registrado.")
+    assert enviado(db, g2["lote"], 2, [i["id"] for i in g2["itens"]], "2026-11-04 19:00+00") == 1
+    assert devidos(db, "2026-11-05 19:00+00") == [] and abertas(db) == {}               # uma vez só; a de anteontem já não entra
+    # sem e-mail da Pauta no dia: sai no mesmo dia, uma hora depois da hora marcada (18:30 → 19:30 em ponto)
+    h2 = peca(db, "2026-11-05", situacao="aprovada", aprovado_modo="manual", formato="carrossel", hora="18:30")
+    assert devidos(db, "2026-11-05 22:29+00") == [] and devidos(db, "2026-11-05 22:30+00") == ["pauta"]
+    assert [(i["n"], i["quando"]) for i in grupo(db, "pauta", "2026-11-05 22:30+00")["itens"]] == [(h2, "hoje")]
+
+
 # ----------------------------------------------------------------------------------------------------------------- aprovação
 def test_aprovacao_so_depois_de_n_horas_e_nao_repete(cfg):
     db = cfg
@@ -195,19 +222,30 @@ def test_aprovacao_so_depois_de_n_horas_e_nao_repete(cfg):
     mudar(db, p, situacao="pronta")                                                      # pronta de novo: episódio novo
     observar(db, "2026-11-04 19:10+00")
     assert list(abertas(db)) == [f"aprovacao:{p}"]
-    assert devidos(db, "2026-11-05 19:10+00") == ["aprovacao"]                         # depois das 24 horas, no dia seguinte
+    # v0.29.0 (revisão): o aberto_em do episódio novo vem do atualizado_em da peça, que o gatilho grava com o relógio de verdade; fixa a
+    # hora em que ela voltou a ficar pronta (16:10 de 04/11) para a espera de 24 horas não depender da data em que o teste roda
+    db.execute("update radar_lembretes set aberto_em = '2026-11-04 19:10+00' where resolvido_em is null and avisado_em is null")
+    assert devidos(db, "2026-11-05 19:09+00") == []                                    # 23h59 depois de reaberta: ainda não
+    assert devidos(db, "2026-11-05 19:10+00") == ["aprovacao"]                         # 24 horas em ponto, no dia seguinte
 
 
 def test_aprovacao_de_hoje_e_amanha_fica_com_a_pauta(cfg):
     db = cfg
     p = peca(db, AMANHA, situacao="pronta")
     observar(db)
-    assert list(abertas(db)) == [f"peca:{p}:{AMANHA}"]                                  # um lembrete só para a peça: o da Pauta
-    configurar(db, pauta=False)                                                          # sem o da Pauta, a aprovação cuida dela
-    observar(db)
-    assert set(abertas(db)) == {f"peca:{p}:{AMANHA}", f"aprovacao:{p}"}                # o da Pauta fica guardado, sem sair
+    assert set(abertas(db)) == {f"peca:{p}:{AMANHA}", f"aprovacao:{p}"}                # as duas ficam guardadas...
     db.execute("update radar_lembretes set aberto_em = %s::timestamptz - interval '2 days' where tipo = 'aprovacao'", (AGORA,))
+    assert devidos(db) == ["pauta"] and devidos(db, "2026-11-03 13:00+00") == []      # ...e um lembrete só para a peça: o da Pauta
+    configurar(db, pauta=False)                                                          # sem o da Pauta, a aprovação cuida dela
     assert devidos(db) == ["aprovacao"]
+    # v0.29.0 (revisão): ligar e desligar a Pauta não fecha nem reabre a pendência da aprovação: lembrada, não volta
+    mandar(db, "aprovacao")
+    configurar(db, pauta=True)
+    observar(db, "2026-11-03 19:05+00")
+    configurar(db, pauta=False)
+    observar(db, "2026-11-03 19:10+00")
+    assert db.execute("select count(*), count(resolvido_em), count(avisado_em) from radar_lembretes where tipo = 'aprovacao'").fetchone() == (1, 0, 1)
+    assert devidos(db, "2026-11-04 11:00+00") == []                                    # no dia seguinte, nada de novo
 
 
 # --------------------------------------------------------------------------------------------------------------------- vídeo
@@ -277,19 +315,23 @@ def test_noticia_site_erro_parada_redes_e_a_pauta_nao_entra(cfg):
     pp = peca(db, DEPOIS, situacao="aprovada", aprovado_modo="agendar")
     envio_redes(db, "instagram", "erro", "2026-11-03 12:00+00", "2026-11-03 12:30+00", peca_id=pp)                # da Pauta: não entra
     observar(db)
-    assert set(abertas(db)) == {f"site:{erro}:erro", f"redes:{ig}:erro"}
+    # v0.29.0 (revisão): a parada fica guardada desde quando ficou autorizada (13:01 de Brasília) e só pode ser lembrada com
+    # "parada_horas" (radar_lembretes_madura): mudar o número depois não fecha nem reabre a pendência
+    assert set(abertas(db)) == {f"site:{erro}:erro", f"redes:{ig}:erro", f"redes:{fb}:parada"}
+    assert db.execute("select aberto_em from radar_lembretes where chave = %s", (f"redes:{fb}:parada",)).fetchone()[0] == \
+        db_hora("2026-11-03 16:01+00")
     assert devidos(db) == ["noticia"]
-    # autorizada de novo: o erro antigo fecha; a autorização nova parada há 2h59 ainda não, há 3h00 sim
+    # autorizada de novo: o erro antigo fecha; a autorização nova fica guardada desde as 13:01; parada há 2h59 ainda não, há 3h00 sim
     novo = envio_site(db, c1, "autorizado", "2026-11-03 16:01+00")
     observar(db)
-    assert set(abertas(db)) == {f"redes:{ig}:erro"}
-    db.execute("update radar_site_envios set autorizado_em = '2026-11-03 16:00+00' where id = %s", (novo,))
-    db.execute("update radar_redes_envios set atualizado_em = '2026-11-03 16:00+00' where id = %s", (fb,))
-    g = grupo(db, "noticia")
-    assert g["horas"] == 3
+    assert set(abertas(db)) == {f"redes:{ig}:erro", f"redes:{fb}:parada", f"site:{novo}:parada"}
+    g = grupo(db, "noticia")                                                             # 16:00: as duas paradas há 2h59
+    assert g["horas"] == 3 and [(i["n"], i["situacao"]) for i in g["itens"]] == [(ig, "erro")]
+    g = grupo(db, "noticia", "2026-11-03 19:01+00")                                      # 16:01: há 3h00 (o mesmo lote, retomado)
+    assert g["retomado"] is True
     assert [(i["n"], i["canal"], i["situacao"], db_hora(i["desde"])) for i in g["itens"]] == [          # a mais antiga antes
         (ig, "instagram", "erro", db_hora("2026-11-03 12:40+00")), (fb, "facebook", "parada", db_hora("2026-11-03 12:40+00")),
-        (novo, "site", "parada", db_hora("2026-11-03 16:00+00"))]
+        (novo, "site", "parada", db_hora("2026-11-03 16:01+00"))]
     # saiu, foi cancelada ou o conteúdo deixou de ir ao site: fecha
     db.execute("update radar_site_envios set situacao = 'publicado' where id = %s", (novo,))
     db.execute("update radar_redes_envios set situacao = 'cancelado' where id in (%s, %s)", (ig, fb))
@@ -301,6 +343,29 @@ def test_noticia_site_erro_parada_redes_e_a_pauta_nao_entra(cfg):
     db.execute("update radar_conteudos set fora_do_site = true where id = %s", (c3,))
     observar(db)
     assert abertas(db) == {}
+
+
+def test_mudar_as_configuracoes_nao_lembra_de_novo_a_mesma_pendencia(cfg):
+    """v0.29.0 (revisão): "parada_horas" vale na hora de lembrar (radar_lembretes_madura), não na de observar. Subir e baixar o número
+    depois do lembrete não fecha a pendência, e ela não volta como episódio novo (lembrada de novo); a autorização nova espera as horas
+    novas."""
+    db = cfg
+    c = conteudo_aprovado(db)
+    e = envio_site(db, c, "autorizado", "2026-11-03 14:00+00")                          # 11:00 de Brasília
+    assert devidos(db, "2026-11-03 16:59+00") == []                                     # parada há 2h59
+    [g] = lote_em(db, "2026-11-03 17:00+00")                                            # há 3 horas: lembrada
+    assert [(i["n"], i["situacao"]) for i in g["itens"]] == [(e, "parada")]
+    assert enviado(db, g["lote"], 1, [i["id"] for i in g["itens"]], "2026-11-03 17:00+00") == 1
+    configurar(db, parada_horas=10)
+    observar(db, "2026-11-03 18:00+00")
+    configurar(db, parada_horas=1)
+    observar(db, "2026-11-03 18:05+00")
+    assert devidos(db, "2026-11-04 11:00+00") == [] and devidos(db, "2026-11-04 14:00+00") == []
+    assert db.execute("select count(*), count(resolvido_em), count(avisado_em) from radar_lembretes").fetchone() == (1, 0, 1)
+    configurar(db, parada_horas=10)
+    e2 = envio_site(db, conteudo_aprovado(db), "autorizado", "2026-11-04 12:00+00")    # 09:00 de 04/11
+    assert devidos(db, "2026-11-04 21:59+00") == [] and devidos(db, "2026-11-04 22:00+00") == ["noticia"]   # 10 horas depois
+    assert [i["n"] for i in grupo(db, "noticia", "2026-11-04 22:00+00")["itens"]] == [e2]
 
 
 # ----------------------------------------------------------------------------------------------------- lote, enviado e retomado
@@ -339,6 +404,30 @@ def test_lote_parado_volta_com_o_mesmo_lote_retomado(cfg):
     assert db.execute("select count(*) from radar_lembretes where lote is not null or avisado_em is null").fetchone()[0] == 0
 
 
+def test_um_email_por_dia_conta_pela_reserva_e_nao_pela_confirmacao(cfg):
+    """v0.29.0 (revisão): o dia do e-mail é o da reserva do lote (o robô reserva e comenta em seguida), não o da confirmação. Reservado
+    às 23:55 e confirmado às 00:01: o e-mail é do dia anterior, e o lembrete da véspera do dia seguinte sai. O lote retomado no dia
+    seguinte, com o comentário já feito (o robô acha a marca e só confirma), conta no dia em que saiu: o dia novo continua livre."""
+    db = cfg
+    p1 = peca(db, AMANHA)
+    [g] = lote_em(db, "2026-11-04 02:55+00")                                            # 23:55 de 03/11: o robô reserva e comenta...
+    assert enviado(db, g["lote"], 1, [i["id"] for i in g["itens"]], "2026-11-04 03:01+00") == 1   # ...e confirma às 00:01 de 04/11
+    assert db.execute("select avisado_em from radar_lembretes where chave = %s", (f"peca:{p1}:{AMANHA}",)).fetchone()[0] == \
+        db_hora("2026-11-04 02:55+00")
+    p2 = peca(db, "2026-11-05")                                                          # a peça de amanhã do dia 04/11
+    assert devidos(db, "2026-11-04 19:00+00") == ["pauta"]                              # 16:00 de 04/11: o lembrete da véspera sai
+    [g2] = lote_em(db, "2026-11-04 19:00+00")
+    assert [(i["n"], i["quando"]) for i in g2["itens"]] == [(p2, "amanha")]
+    # o comentário saiu em 04/11 e a confirmação falhou; em 05/11 o robô retoma o lote, acha a marca e só confirma o que foi nele
+    p3 = peca(db, "2026-11-06")
+    g3 = grupo(db, "pauta", "2026-11-05 19:00+00")
+    assert g3["retomado"] is True and g3["lote"] == g2["lote"]
+    assert enviado(db, g3["lote"], 1, [i["id"] for i in g2["itens"]], "2026-11-05 19:00+00") == 1
+    assert devidos(db, "2026-11-05 19:30+00") == ["pauta"]                              # conta em 04/11: o dia 05 continua livre
+    [g4] = lote_em(db, "2026-11-05 19:30+00")
+    assert [(i["n"], i["quando"]) for i in g4["itens"]] == [(p3, "amanha")]
+
+
 # --------------------------------------------------------------------------------------------------------- Configurações
 def test_desligado_e_tipo_desligado(cfg):
     db = cfg
@@ -374,6 +463,16 @@ def test_cfg_fora_dos_limites_usa_o_padrao(cfg):
                      "parada_horas": 48, "noticia": False}
     configurar(db, aprovacao_horas=1, parada_horas=1.0)
     assert ler() == {**padrao, "aprovacao_horas": 1, "parada_horas": 1}
+    # v0.29.0 (revisão): a agenda confere de 15 em 15 minutos. "hora" depois das 23:45, ou menos de 15 minutos entre "de" e "ate":
+    # nenhuma rodada alcançaria o lembrete (ele nunca sairia); vale o padrão
+    configurar(db, hora="23:50", de="08:05", ate="08:10")
+    assert ler() == padrao
+    configurar(db, hora="23:46", de="08:00", ate="08:14")
+    assert ler() == padrao
+    configurar(db, hora="23:45", de="08:00", ate="08:15")                                 # o limite: alcançados
+    assert ler() == {**padrao, "hora": "23:45", "de": "08:00", "ate": "08:15"}
+    peca(db, AMANHA)
+    assert devidos(db, "2026-11-04 02:44+00") == [] and devidos(db, "2026-11-04 02:45+00") == ["pauta"]   # 23:45, a última rodada
     db.execute("update radar_config set valor = '[1, 2]' where chave = 'lembretes'")       # nem objeto é
     assert ler() == padrao
 
@@ -386,7 +485,7 @@ def test_permissoes_dos_lembretes(cfg):
     for sql in ["select radar_lembretes_observar(now())", "select radar_lembretes_devidos(now())", "select radar_lembretes_acionar()",
                 "select radar_lembretes_lote_em(now())", "select radar_lembretes_enviado_em(gen_random_uuid(), 1, '{}', now())",
                 "select radar_lembretes_cfg()", "select radar_lembretes_situacao()", "select * from radar_lembretes",
-                "select radar_lembretes_madura('pauta', now(), '{}', now())"]:
+                "select radar_lembretes_madura('pauta', 'peca:1:2026-11-04', '{}', now(), '{}', now())"]:
         with como("service_role") as c:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 c.execute(sql)
@@ -394,7 +493,8 @@ def test_permissoes_dos_lembretes(cfg):
         s = c.execute("select radar_lembretes_situacao()").fetchone()[0]
         assert set(s) == {"agenda", "tipos", "esperando"} and s["agenda"] == {"instalada": False} and s["esperando"] == 1
         assert s["tipos"] == {"pauta": None, "aprovacao": None, "video": None, "noticia": None}
-        assert c.execute("select count(*) from radar_lembretes").fetchone()[0] == 1          # o administrador lê
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):                          # v0.29.0 (revisão): nem o administrador
+            c.execute("select count(*) from radar_lembretes")                               # lê a tabela (a tela usa a situação)
         for sql in ["select radar_lembretes_lote()", "select radar_lembretes_ha_envio()", "select radar_lembretes_acionar()",
                     "select radar_lembretes_enviado(gen_random_uuid(), 1, '{}')"]:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -404,7 +504,8 @@ def test_permissoes_dos_lembretes(cfg):
     for uid in (EDITOR, LEITOR):
         with como("authenticated", uid) as c:
             assert c.execute("select radar_lembretes_situacao()").fetchone()[0] == {}
-            assert c.execute("select count(*) from radar_lembretes").fetchone()[0] == 0      # a regra: só o administrador
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("select count(*) from radar_lembretes")
     with como("anon") as c:
         for sql in ["select radar_lembretes_situacao()", "select * from radar_lembretes", "select radar_lembretes_lote()"]:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -413,6 +514,10 @@ def test_permissoes_dos_lembretes(cfg):
         assert c.execute("select radar_lembretes_ha_envio()").fetchone()[0] in (True, False)
         assert isinstance(c.execute("select radar_lembretes_lote()").fetchone()[0], list)
         assert c.execute("select radar_lembretes_enviado(gen_random_uuid(), 1, '{}')").fetchone()[0] == 0
+    # v0.29.0 (revisão): "security definer" só nas quatro que outros papéis chamam; as internas rodam com os direitos de quem chama
+    definer = {n for (n,) in db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                                           where n.nspname = 'public' and p.proname like 'radar\\_lembretes\\_%' and p.prosecdef""")}
+    assert definer == {"radar_lembretes_ha_envio", "radar_lembretes_lote", "radar_lembretes_enviado", "radar_lembretes_situacao"}
 
 
 # ------------------------------------------------------------------------------------------------------------ nada de nome
@@ -479,6 +584,15 @@ def test_textos_exatos_dos_quatro_tipos():
     assert corpo("pauta", um(data="2026-10-28", situacao="planejada", quando="amanha")).startswith(
         "**A peça da Pauta de amanhã (quarta-feira, 28/10) ainda não está aprovada.**\n\n- Amanhã, 28/10 às 09:30 — Imagem 4:5 (peça nº 9): "
         "planejada, ainda não começou. Falta preparar, clicar em “Salvar e marcar como pronta” e o administrador aprovar.\n\n")
+    assert corpo("pauta", um(data="2026-10-26", situacao="aprovada_manual", quando="ontem")).startswith(      # v0.29.0 (revisão)
+        "**A peça da Pauta de ontem (segunda-feira, 26/10) ainda não saiu.**\n\n- Ontem, 26/10 às 09:30 — Imagem 4:5 (peça nº 9): "
+        "aprovada para publicar à mão e ainda sem o link registrado.")
+    tres = {"lote": LOTE, "itens": [{**pauta2["itens"][0]}, {**pauta2["itens"][1], "situacao": "pronta"},
+                                    {"id": 7, "n": 409, "data": "2026-10-26", "hora": "19:00", "formato": "reel", "situacao": "aprovada_manual",
+                                     "quando": "ontem"}]}
+    assert corpo("pauta", tres).startswith("**A Pauta tem 3 peças pendentes: a de amanhã, a de hoje e a de ontem.**\n\n")
+    assert corpo("pauta", {**tres, "itens": [tres["itens"][0], tres["itens"][2]]}).startswith(
+        "**A Pauta tem 2 peças pendentes: a de amanhã e a de ontem.**\n\n- Amanhã, 28/10 às 09:30 — Reel (peça nº 412)")
     assert corpo("pauta", um(data="2026-10-27", situacao="pronta", quando="hoje")).startswith(
         "**A peça da Pauta de hoje (terça-feira, 27/10) ainda não saiu.**\n\n- Hoje, 27/10 às 09:30 — Imagem 4:5 (peça nº 9): pronta. "
         "Falta o administrador conferir e aprovar.\n\n")
@@ -539,7 +653,7 @@ def test_textos_exatos_dos_quatro_tipos():
 # ------------------------------------------------------------------------------------- o setup por cima do banco da v0.28.1
 SEM_OS_LEMBRETES = """
 drop table public.radar_lembretes;
-drop function public.radar_lembretes_cfg(), public.radar_lembretes_madura(text, timestamptz, jsonb, timestamptz),
+drop function public.radar_lembretes_cfg(), public.radar_lembretes_madura(text, text, jsonb, timestamptz, jsonb, timestamptz),
   public.radar_lembretes_observar(timestamptz), public.radar_lembretes_devidos(timestamptz), public.radar_lembretes_acionar(),
   public.radar_lembretes_ha_envio(), public.radar_lembretes_lote_em(timestamptz), public.radar_lembretes_lote(),
   public.radar_lembretes_enviado_em(uuid, int, bigint[], timestamptz), public.radar_lembretes_enviado(uuid, int, bigint[]),

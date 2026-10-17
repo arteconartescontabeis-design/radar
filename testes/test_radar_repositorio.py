@@ -391,6 +391,11 @@ def test_versao_igual_em_todos_os_arquivos_da_versao():
     # a tela avisa "precisa do banco da vX: rode o sql/radar-setup-vX.sql" com o banco desta versão
     for script in ("radar-pauta.js", "radar-video.js"):
         assert set(re.findall(r"sql/radar-setup-v(\d+\.\d+\.\d+)\.sql", ler(script))) == {banco}, script
+    # v0.29.0 (revisão): o index.html também (o recado da Conferência das Diretrizes ainda citava o setup da v0.28.0, que não existe
+    # mais); fora a aba Versões, que conta a história com o setup de cada versão
+    inicio = html.index("const VERSOES = [")
+    sem_versoes = html[:inicio] + html[html.index("\n];", inicio):]
+    assert set(re.findall(r"sql/radar-setup-v(\d+\.\d+\.\d+)\.sql", sem_versoes)) == {banco}
     # o corretor de vídeo: a função e o robô (no repositório privado) da mesma versão
     video = achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-video/index.ts"))
     assert achar(r'(?m)^ROBO = "([^"]+)"', ler("robo/video/relatorio.py")) == video

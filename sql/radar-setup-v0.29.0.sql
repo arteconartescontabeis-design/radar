@@ -786,16 +786,18 @@ create index if not exists radar_auditoria_registro_idx on public.radar_auditori
 -- v0.29.0: lembretes antes do dia. Uma linha por pendência ("episódio": a peça de amanhã ainda não aprovada, a peça pronta esperando a
 -- aprovação, o vídeo do reel que o corretor terminou, a notícia que não saiu). O que vai ao e-mail é só o que está em "ref" (número,
 -- data, hora, formato, situação, canal e desde quando): nunca nome, assunto, legenda, erro ou texto do boletim (o aviso é público).
--- Só as funções radar_lembretes_* gravam; o administrador lê (a situação, em Configurações). A pendência resolvida ganha resolvido_em
--- e sai sozinha depois de 90 dias.
+-- Só as funções radar_lembretes_* leem e gravam (a tela vê só a situação, por radar_lembretes_situacao). A pendência resolvida ganha
+-- resolvido_em e sai sozinha depois de 90 dias.
 create table if not exists public.radar_lembretes (
   id           bigint generated always as identity primary key,
   tipo         text        not null check (tipo in ('pauta','aprovacao','video','noticia')),
   chave        text        not null check (chave ~ '^[a-z]+(:[0-9a-z_-]+){1,4}$' and length(chave) <= 120),
   ref          jsonb       not null default '{}' check (jsonb_typeof(ref) = 'object' and length(ref::text) <= 1000),
-  aberto_em    timestamptz not null default now(),   -- desde quando a pendência existe (a peça pronta: desde quando está pronta)
+  aberto_em    timestamptz not null default now(),   -- desde quando a pendência existe (a peça pronta: desde quando está pronta; a
+                                                     -- autorização parada: desde quando foi autorizada)
   acionado_em  timestamptz,                          -- último pedido da agenda ao GitHub (no máximo 1 a cada 30 minutos)
   lote         uuid,                                 -- reservada pelo robô dos lembretes (até ele confirmar o e-mail)
+  reservado_em timestamptz,                          -- quando entrou no lote: é a hora do e-mail (o dia que conta no "um por dia")
   avisado_em   timestamptz,                          -- foi para um e-mail: nunca mais é lembrada
   aviso        int         check (aviso > 0),        -- o número do aviso no GitHub
   resolvido_em timestamptz                           -- a condição sumiu (aprovada, cancelada, saiu, autorizada de novo…)
@@ -5969,8 +5971,9 @@ end $$;
 
 -- Configurações → Lembretes por e-mail, com o padrão no que faltar ou estiver fora dos limites (como radar_pauta_janela: nada do que está
 -- ali trava os lembretes). "ligado" e os 4 tipos: true ou false (padrão true); "hora", "de" e "ate": "HH:MM" de Brasília (padrão "16:00",
--- "08:00" e "20:00"; com "de" depois de "ate", valem os dois padrões); "aprovacao_horas": inteiro de 1 a 168 (padrão 24);
--- "parada_horas": inteiro de 1 a 48 (padrão 3).
+-- "08:00" e "20:00"); "aprovacao_horas": inteiro de 1 a 168 (padrão 24); "parada_horas": inteiro de 1 a 48 (padrão 3). v0.29.0
+-- (revisão): a agenda confere de 15 em 15 minutos, então "hora" vai até "23:45" (depois disso, nenhuma rodada alcançaria o lembrete da
+-- Pauta) e entre "de" e "ate" há pelo menos 15 minutos (com "de" depois de "ate", ou perto demais, valem os dois padrões).
 create or replace function public.radar_lembretes_cfg() returns jsonb
 language plpgsql stable set search_path = public as $$
 declare
@@ -5985,9 +5988,10 @@ begin
     r := r || jsonb_build_object(k, case when jsonb_typeof(v->k) = 'boolean' then v->k else 'true'::jsonb end);
   end loop;
   foreach k in array array['hora','de','ate'] loop
-    r := r || jsonb_build_object(k, case when jsonb_typeof(v->k) = 'string' and v->>k ~ rx then v->k else hora->k end);
+    r := r || jsonb_build_object(k, case when jsonb_typeof(v->k) = 'string' and v->>k ~ rx and (k <> 'hora' or v->>k <= '23:45') then v->k
+                                         else hora->k end);
   end loop;
-  if (r->>'de')::time > (r->>'ate')::time then
+  if (r->>'ate')::time - (r->>'de')::time < interval '15 minutes' then
     r := r || jsonb_build_object('de', hora->'de', 'ate', hora->'ate');
   end if;
   foreach k in array array['aprovacao_horas','parada_horas'] loop
@@ -5999,33 +6003,44 @@ begin
   return r;
 end $$;
 
--- A pendência já pode ser lembrada? A peça pronta só depois de "aprovacao_horas" pronta (desde aberto_em); as outras, na hora.
-create or replace function public.radar_lembretes_madura(p_tipo text, p_aberto timestamptz, p_cfg jsonb, p_agora timestamptz) returns boolean
-language sql immutable set search_path = public as $$
-  select p_tipo <> 'aprovacao' or p_aberto <= p_agora - make_interval(hours => (p_cfg->>'aprovacao_horas')::int)
+-- A pendência já pode ser lembrada, com as Configurações de agora? A peça pronta, só depois de "aprovacao_horas" pronta (desde
+-- aberto_em) e, com o lembrete da Pauta ligado, só a de depois de amanhã em diante (a de hoje e a de amanhã ficam com o lembrete da
+-- Pauta: um lembrete só por peça); a notícia autorizada e parada, só depois de "parada_horas" (desde aberto_em); as outras, na hora.
+-- v0.29.0 (revisão): o que depende das Configurações fica AQUI, e não em radar_lembretes_observar. Lá, mudar "parada_horas" ou ligar e
+-- desligar a Pauta "fechava" a pendência já lembrada, que depois voltava como episódio novo e era lembrada de novo.
+create or replace function public.radar_lembretes_madura(p_tipo text, p_chave text, p_ref jsonb, p_aberto timestamptz, p_cfg jsonb,
+                                                         p_agora timestamptz) returns boolean
+language sql stable set search_path = public as $$
+  select coalesce(case p_tipo
+           when 'aprovacao' then p_aberto <= p_agora - make_interval(hours => (p_cfg->>'aprovacao_horas')::int)
+                                 and (not (p_cfg->>'pauta')::boolean
+                                      or (p_ref->>'data')::date >= (p_agora at time zone 'America/Sao_Paulo')::date + 2)
+           when 'noticia' then p_chave not like '%:parada'
+                               or p_aberto <= p_agora - make_interval(hours => (p_cfg->>'parada_horas')::int)
+           else true end, false)
 $$;
 
 -- O que está pendente agora, comparado com o que já está em radar_lembretes: a pendência nova entra; a que ainda não foi avisada (nem
 -- reservada pelo robô) fica com o "ref" de agora; a que sumiu ganha resolvido_em (fecha); a resolvida há mais de 90 dias sai. Só o
--- dono executa (a agenda, o robô e a tela chegam aqui pelas funções abaixo). Peça cancelada, "sem post" ou sem formato não entra.
---   pauta     a peça de hoje ou de amanhã ainda não aprovada (planejada, em produção ou pronta) e a de hoje aprovada para publicar à mão
---             e ainda sem o registro da publicação. A chave não muda de um dia para o outro: lembrada na véspera, não é lembrada de novo
---             no dia (a de hoje entra só se ainda não foi lembrada: criada hoje, por exemplo)
---   aprovacao a peça pronta que espera a aprovação do administrador, desde quando ficou pronta (a de hoje e a de amanhã ficam com o
---             lembrete da Pauta, quando ele está ligado: um lembrete só por peça)
+-- dono executa (a agenda, o robô e a tela chegam aqui pelas funções abaixo). Peça cancelada, "sem post" ou sem formato não entra. Nada
+-- aqui depende das Configurações (as horas de espera e o lembrete da Pauta ligado ficam em radar_lembretes_madura).
+--   pauta     a peça de hoje ou de amanhã ainda não aprovada (planejada, em produção ou pronta). A chave não muda de um dia para o
+--             outro: lembrada na véspera, não é lembrada de novo no dia (a de hoje entra só se ainda não foi lembrada: criada hoje, por
+--             exemplo). E a aprovada para publicar à mão e ainda sem o registro da publicação, só UMA HORA DEPOIS da hora marcada (v0.29.0,
+--             revisão: antes disso a equipe ainda vai postar; lembrar antes da hora gastava o único lembrete dela); a de ontem também,
+--             para a que passou da hora depois do e-mail da Pauta daquele dia (ela não espera um dia que já passou)
+--   aprovacao a peça pronta (de hoje em diante) que espera a aprovação do administrador, desde quando ficou pronta
 --   video     o vídeo do reel que o corretor terminou (pronto para conferir, precisa regravar ou parou), enquanto a peça (de hoje em
 --             diante) não for aprovada com ele; cada resultado novo do corretor (outra rodada, outra situação) é um episódio novo
 --   noticia   o envio ao site com erro (o mais novo do conteúdo, que continua aprovado, vai ao site e ainda não está no site), a
---             autorização do site parada há mais de "parada_horas" (o robô do site depende do GitHub, que atrasa), e o Instagram e o
---             Facebook da notícia com erro ou parados (os da Pauta têm o aviso "publicação agendada não saiu"). Erro de mais de 7 dias
---             fica de fora (a primeira rodada não traz o que é antigo)
+--             autorização do site que ainda não saiu (desde quando foi autorizada: o robô do site depende do GitHub, que atrasa), e o
+--             Instagram e o Facebook da notícia com erro ou que ainda não saíram (desde quando ficaram autorizados, também os que
+--             esperavam o site, ou desde o início do envio; os da Pauta têm o aviso "publicação agendada não saiu"). Erro de mais de 7
+--             dias fica de fora (a primeira rodada não traz o que é antigo)
 create or replace function public.radar_lembretes_observar(p_agora timestamptz) returns void
-language plpgsql security definer set search_path = public as $$
+language plpgsql set search_path = public as $$
 declare
-  v_cfg    jsonb := public.radar_lembretes_cfg();
   v_hoje   date := (p_agora at time zone 'America/Sao_Paulo')::date;
-  v_parada interval := make_interval(hours => (v_cfg->>'parada_horas')::int);
-  v_aprov  date := (p_agora at time zone 'America/Sao_Paulo')::date + case when (v_cfg->>'pauta')::boolean then 2 else 0 end;
   v_n      int;
 begin
   perform pg_advisory_xact_lock(hashtext('radar_lembretes'));        -- a agenda e o robô ao mesmo tempo: um de cada vez
@@ -6041,14 +6056,15 @@ begin
            jsonb_build_object('n', p.id, 'data', to_char(p.data, 'YYYY-MM-DD'), 'hora', to_char(p.hora, 'HH24:MI'), 'formato', p.formato,
                               'situacao', 'aprovada_manual'), p_agora
       from public.radar_pauta_pecas p
-     where p.data = v_hoje and p.situacao = 'aprovada' and p.aprovado_modo = 'manual' and p.publicado_manual_em is null
+     where p.data in (v_hoje - 1, v_hoje) and p.situacao = 'aprovada' and p.aprovado_modo = 'manual' and p.publicado_manual_em is null
        and p.link_instagram is null and p.link_facebook is null and p.tipo <> 'sem_post' and p.formato <> 'nenhum'
+       and (p.data + p.hora) at time zone 'America/Sao_Paulo' <= p_agora - interval '1 hour'
     union all
     select 'aprovacao', 'aprovacao:' || p.id,
            jsonb_build_object('n', p.id, 'data', to_char(p.data, 'YYYY-MM-DD'), 'hora', to_char(p.hora, 'HH24:MI'), 'formato', p.formato),
            least(p.atualizado_em, p_agora)
       from public.radar_pauta_pecas p
-     where p.situacao = 'pronta' and p.data >= v_aprov and p.tipo <> 'sem_post' and p.formato <> 'nenhum'
+     where p.situacao = 'pronta' and p.data >= v_hoje and p.tipo <> 'sem_post' and p.formato <> 'nenhum'
     union all
     select 'video', 'video:' || v.id || ':' || v.rodada || ':' || v.situacao,
            jsonb_build_object('n', p.id, 'data', to_char(p.data, 'YYYY-MM-DD'), 'formato', p.formato, 'situacao', v.situacao), p_agora
@@ -6066,19 +6082,19 @@ begin
        and not exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = e.conteudo_id)
     union all
     select 'noticia', 'site:' || e.id || ':parada',
-           jsonb_build_object('n', e.id, 'canal', 'site', 'situacao', 'parada', 'desde', e.autorizado_em), p_agora
+           jsonb_build_object('n', e.id, 'canal', 'site', 'situacao', 'parada', 'desde', e.autorizado_em), least(e.autorizado_em, p_agora)
       from public.radar_site_envios e
-     where e.situacao in ('autorizado','enviando') and e.autorizado_em <= p_agora - v_parada
+     where e.situacao in ('autorizado','enviando')
     union all
     select 'noticia', 'redes:' || e.id || ':' || case when e.situacao = 'erro' then 'erro' else 'parada' end,
            jsonb_build_object('n', e.id, 'canal', e.canal, 'situacao', case when e.situacao = 'erro' then 'erro' else 'parada' end,
-                              'desde', e.autorizado_em), p_agora
+                              'desde', e.autorizado_em),
+           -- parada: desde quando ficou autorizada (também a que esperava o site) ou, "enviando", desde o início do envio
+           case when e.situacao = 'erro' then p_agora
+                else least(coalesce(case when e.situacao = 'enviando' then e.enviado_em end, e.atualizado_em), p_agora) end
       from public.radar_redes_envios e
      where e.conteudo_id is not null
-       and ((e.situacao = 'erro' and e.atualizado_em >= p_agora - interval '7 days')
-            -- parada: autorizada (desde quando ficou autorizada, também a que esperava o site) ou "enviando" (desde o início do envio)
-            or (e.situacao in ('autorizado','enviando')
-                and coalesce(case when e.situacao = 'enviando' then e.enviado_em end, e.atualizado_em) <= p_agora - v_parada))
+       and ((e.situacao = 'erro' and e.atualizado_em >= p_agora - interval '7 days') or e.situacao in ('autorizado','enviando'))
   ),
   novas as (
     insert into public.radar_lembretes (tipo, chave, ref, aberto_em)
@@ -6106,7 +6122,7 @@ end $$;
 -- (a Pauta a partir da "hora", até o fim do dia; os outros entre "de" e "ate"), sem e-mail do tipo HOJE e com pendência nova e madura.
 -- "ligado": false = nada é observado nem devolvido. Só o dono executa.
 create or replace function public.radar_lembretes_devidos(p_agora timestamptz) returns text[]
-language plpgsql security definer set search_path = public as $$
+language plpgsql set search_path = public as $$
 declare
   v_cfg  jsonb := public.radar_lembretes_cfg();
   v_hoje date := (p_agora at time zone 'America/Sao_Paulo')::date;
@@ -6122,12 +6138,12 @@ begin
     continue when not (v_cfg->>t)::boolean;
     continue when case when t = 'pauta' then v_hm < (v_cfg->>'hora')::time
                        else v_hm < (v_cfg->>'de')::time or v_hm > (v_cfg->>'ate')::time end;
-    -- no máximo um e-mail por tipo por dia (de Brasília)
+    -- no máximo um e-mail por tipo por dia (de Brasília; o dia do e-mail é o da reserva: radar_lembretes_enviado_em)
     continue when exists (select 1 from public.radar_lembretes l
                            where l.tipo = t and l.avisado_em is not null and (l.avisado_em at time zone 'America/Sao_Paulo')::date = v_hoje);
     if exists (select 1 from public.radar_lembretes l
                 where l.tipo = t and l.resolvido_em is null and l.avisado_em is null
-                  and public.radar_lembretes_madura(l.tipo, l.aberto_em, v_cfg, p_agora)) then
+                  and public.radar_lembretes_madura(l.tipo, l.chave, l.ref, l.aberto_em, v_cfg, p_agora)) then
       v := v || t;
     end if;
   end loop;
@@ -6136,9 +6152,10 @@ end $$;
 
 -- A agenda do banco (pg_cron, de 15 em 15 minutos: sql/radar-redes-agenda.sql) chama antes de pedir o robô ao GitHub. true = pedir.
 -- Há tipo devido e alguma das pendências dele ainda não foi pedida, ou foi pedida há 30 minutos ou mais (o token falhou, o GitHub não
--- rodou): no máximo um pedido a cada 30 minutos por pendência. Nada a lembrar = nenhum pedido. Só o dono executa.
+-- rodou): no máximo um pedido a cada 30 minutos por pendência. Nada a lembrar = nenhum pedido. Só o dono executa (o pg_cron roda como
+-- o dono).
 create or replace function public.radar_lembretes_acionar() returns boolean
-language plpgsql security definer set search_path = public as $$
+language plpgsql set search_path = public as $$
 declare
   v_cfg   jsonb := public.radar_lembretes_cfg();
   v_tipos text[] := public.radar_lembretes_devidos(now());
@@ -6148,7 +6165,7 @@ begin
   end if;
   update public.radar_lembretes l set acionado_em = now()
    where l.tipo = any(v_tipos) and l.resolvido_em is null and l.avisado_em is null
-     and public.radar_lembretes_madura(l.tipo, l.aberto_em, v_cfg, now())
+     and public.radar_lembretes_madura(l.tipo, l.chave, l.ref, l.aberto_em, v_cfg, now())
      and (l.acionado_em is null or l.acionado_em <= now() - interval '30 minutes');
   return found;
 end $$;
@@ -6161,11 +6178,12 @@ $$;
 
 -- O que o robô dos lembretes manda agora: para cada tipo devido, até 30 pendências maduras, reservadas num lote (o mesmo lote que o
 -- robô reservou e não confirmou volta, com "retomado": true — se o comentário já saiu, o robô só confirma). Cada item leva só número,
--- data, hora, formato, situação, quando ("amanha" ou "hoje", na Pauta), canal e desde quando: nunca nome, assunto, legenda ou erro.
--- [{tipo, lote, retomado, horas, itens: [{id, n, data, hora, formato, situacao, quando, canal, desde}]}]. Só o dono executa (os testes
--- passam a hora); o robô chama radar_lembretes_lote().
+-- data, hora, formato, situação, quando ("amanha", "hoje" ou "ontem", na Pauta), canal e desde quando: nunca nome, assunto, legenda ou
+-- erro. [{tipo, lote, retomado, horas, itens: [{id, n, data, hora, formato, situacao, quando, canal, desde}]}]. reservado_em guarda a
+-- hora da reserva (é a hora do e-mail; a que já estava no lote retomado continua com a dela). Só o dono executa (os testes passam a
+-- hora); o robô chama radar_lembretes_lote().
 create or replace function public.radar_lembretes_lote_em(p_agora timestamptz) returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql set search_path = public as $$
 declare
   v_cfg   jsonb := public.radar_lembretes_cfg();
   v_hoje  date := (p_agora at time zone 'America/Sao_Paulo')::date;
@@ -6182,19 +6200,20 @@ begin
      order by l.id limit 1;
     v_ret := v_lote is not null;
     v_lote := coalesce(v_lote, gen_random_uuid());
-    update public.radar_lembretes l set lote = v_lote
+    update public.radar_lembretes l set lote = v_lote, reservado_em = p_agora
      where l.id in (select x.id from public.radar_lembretes x
                      where x.tipo = t and x.lote is null and x.resolvido_em is null and x.avisado_em is null
-                       and public.radar_lembretes_madura(x.tipo, x.aberto_em, v_cfg, p_agora)
+                       and public.radar_lembretes_madura(x.tipo, x.chave, x.ref, x.aberto_em, v_cfg, p_agora)
                      order by x.aberto_em, x.id
                      limit greatest(30 - (select count(*) from public.radar_lembretes y
                                            where y.lote = v_lote and y.resolvido_em is null and y.avisado_em is null), 0));
     select jsonb_agg(jsonb_build_object(
              'id', l.id, 'n', l.ref->'n', 'data', l.ref->'data', 'hora', l.ref->'hora', 'formato', l.ref->'formato',
              'situacao', l.ref->'situacao', 'canal', l.ref->'canal',
-             'quando', case when t = 'pauta' then case when (l.ref->>'data')::date > v_hoje then 'amanha' else 'hoje' end end,
+             'quando', case when t = 'pauta' then case when (l.ref->>'data')::date > v_hoje then 'amanha'
+                                                       when (l.ref->>'data')::date < v_hoje then 'ontem' else 'hoje' end end,
              'desde', case when t = 'aprovacao' then to_jsonb(l.aberto_em) else l.ref->'desde' end)
-           order by case when t = 'pauta' then l.ref->>'data' end desc nulls last,          -- a de amanhã antes da de hoje
+           order by case when t = 'pauta' then l.ref->>'data' end desc nulls last,          -- amanhã, hoje e ontem, nesta ordem
                     case when t in ('aprovacao','video') then l.ref->>'data' end,
                     case when t = 'noticia' then (l.ref->>'desde')::timestamptz end, l.id)
       into v_itens
@@ -6216,19 +6235,23 @@ $$;
 
 -- O e-mail saiu (o aviso p_aviso foi aberto ou comentado): as pendências p_ids do lote nunca mais são lembradas. O resto do lote (o que
 -- não entrou no comentário) é liberado e fica para o próximo dia. Devolve quantas foram marcadas. Só o dono executa (os testes passam a
--- hora); o robô chama radar_lembretes_enviado().
+-- hora); o robô chama radar_lembretes_enviado(). v0.29.0 (revisão): avisado_em é a hora da RESERVA (reservado_em), não a da confirmação:
+-- o e-mail sai segundos depois da reserva, e a confirmação pode cair no dia seguinte (o robô reservou às 23:55 e confirmou às 00:01; o
+-- lote retomado no dia seguinte, com o comentário já feito no dia anterior). Contar pela confirmação gastava o "um por dia" do dia
+-- seguinte sem e-mail nenhum nele. (Caso raro que fica: o robô caiu ANTES de comentar e só conseguiu no dia seguinte, sem pendência nova
+-- no lote: esse e-mail conta no dia da reserva, e o dia em que saiu ainda pode ter mais um do mesmo tipo.)
 create or replace function public.radar_lembretes_enviado_em(p_lote uuid, p_aviso int, p_ids bigint[], p_agora timestamptz) returns int
-language plpgsql security definer set search_path = public as $$
+language plpgsql set search_path = public as $$
 declare
   v_n int;
 begin
   if p_lote is null or p_aviso is null or p_aviso <= 0 then
     raise exception 'RADAR340: informe o lote e o número do aviso do lembrete' using errcode = 'P0001';
   end if;
-  update public.radar_lembretes set avisado_em = p_agora, aviso = p_aviso, lote = null
+  update public.radar_lembretes set avisado_em = least(p_agora, coalesce(reservado_em, p_agora)), aviso = p_aviso, lote = null
    where lote = p_lote and id = any(coalesce(p_ids, '{}')) and avisado_em is null;
   get diagnostics v_n = row_count;
-  update public.radar_lembretes set lote = null where lote = p_lote and avisado_em is null;
+  update public.radar_lembretes set lote = null, reservado_em = null where lote = p_lote and avisado_em is null;
   return v_n;
 end $$;
 
@@ -6239,11 +6262,12 @@ $$;
 
 -- Configurações → Lembretes por e-mail: a situação, só para o administrador (os outros recebem {}). A agenda do banco (o agendamento
 -- radar-redes-agenda-lembretes do sql/radar-redes-agenda.sql) instalada e a última rodada dela; por tipo, o último lembrete (quando e o
--- número do aviso); e quantas pendências esperam o próximo lembrete. O pg_cron só aparece dentro de "execute": sem ele (ou com qualquer
--- erro), "instalada": false.
+-- número do aviso); e quantas pendências esperam o próximo lembrete (as que já podem ser lembradas, dos tipos ligados). O pg_cron só
+-- aparece dentro de "execute": sem ele (ou com qualquer erro), "instalada": false.
 create or replace function public.radar_lembretes_situacao() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare
+  v_cfg    jsonb := public.radar_lembretes_cfg();
   v_ativa  boolean;
   v_ult    timestamptz;
   v_status text;
@@ -6271,7 +6295,10 @@ begin
                                                   where l.tipo = t and l.avisado_em is not null order by l.avisado_em desc, l.id desc limit 1));
   end loop;
   return jsonb_build_object('agenda', v_agenda, 'tipos', v_tipos,
-                            'esperando', (select count(*) from public.radar_lembretes l where l.resolvido_em is null and l.avisado_em is null));
+                            'esperando', (select count(*) from public.radar_lembretes l
+                                           where l.resolvido_em is null and l.avisado_em is null and (v_cfg->>'ligado')::boolean
+                                             and (v_cfg->>l.tipo)::boolean
+                                             and public.radar_lembretes_madura(l.tipo, l.chave, l.ref, l.aberto_em, v_cfg, now())));
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -6685,12 +6712,12 @@ grant select on public.radar_v_pauta_pessoas to authenticated;
 -- com versão exata e hash, robo/requirements.txt.)
 revoke insert, update, delete on public.radar_videos, public.radar_video_acessos from authenticated;
 revoke select, insert, update, delete on public.radar_videos, public.radar_video_acessos from service_role;
--- v0.29.0: os lembretes. Só as funções radar_lembretes_* gravam; o administrador lê (pela regra abaixo). A chave do robô (service_role,
--- segredo de um repositório público) não lê a tabela: o robô dos lembretes chega aqui só pelas funções do lote (radar_lembretes_lote e
--- radar_lembretes_enviado), que devolvem só número, data, hora, formato, situação e canal.
+-- v0.29.0: os lembretes. Só as funções radar_lembretes_* leem e gravam: ninguém lê a tabela pela API. A tela vê só a situação
+-- (radar_lembretes_situacao, que confere que é o administrador); a chave do robô (service_role, segredo de um repositório público) chega
+-- aqui só pelas funções do lote (radar_lembretes_lote e radar_lembretes_enviado), que devolvem só número, data, hora, formato, situação e
+-- canal. (v0.29.0, revisão: sem o "grant select" para a equipe, que nenhuma tela usava.)
 alter table public.radar_lembretes enable row level security;
 revoke all on public.radar_lembretes from public, anon, authenticated, service_role;
-grant select on public.radar_lembretes to authenticated;
 
 -- sequências das colunas identity: ninguém precisa de acesso direto
 do $$
@@ -6808,7 +6835,9 @@ grant execute on function public.radar_video_limpeza() to service_role;
 grant execute on function public.radar_video_limpo(uuid, text[]) to service_role;
 -- v0.29.0: os lembretes. O robô dos lembretes (workflow radar-lembretes.yml) pergunta se há o que mandar, pega o lote e confirma o
 -- e-mail; a tela (Configurações, só o administrador: a função confere) lê a situação. O resto (observar, devidos, acionar, a
--- configuração e as versões com a hora dos testes) fica só com o dono: o pg_cron roda radar_lembretes_acionar como dono.
+-- configuração e as versões com a hora dos testes) fica só com o dono: o pg_cron roda radar_lembretes_acionar como dono. v0.29.0
+-- (revisão): "security definer" só nestas quatro, as que outros papéis chamam; as internas rodam com os direitos de quem chama (o dono,
+-- ou uma destas quatro), e um "grant" por engano numa delas não daria a ninguém o poder de gravar como o dono.
 grant execute on function public.radar_lembretes_ha_envio(), public.radar_lembretes_lote(),
                           public.radar_lembretes_enviado(uuid, int, bigint[]) to service_role;
 grant execute on function public.radar_lembretes_situacao() to authenticated;
@@ -6924,7 +6953,8 @@ drop policy if exists radar_video_acessos_sel on public.radar_video_acessos;
 create policy radar_video_acessos_sel on public.radar_video_acessos for select to authenticated
   using ((select public.radar_papel()) = 'admin');
 
--- v0.29.0: os lembretes (só número, data, situação e canal; nada de nome): só o administrador lê
+-- v0.29.0: os lembretes (só número, data, situação e canal; nada de nome). Ninguém da equipe tem "select" na tabela (a tela lê pela
+-- radar_lembretes_situacao): esta regra é a trava de reserva (toda tabela do Radar tem uma), para o caso de um "grant" futuro
 drop policy if exists radar_lembretes_sel on public.radar_lembretes;
 create policy radar_lembretes_sel on public.radar_lembretes for select to authenticated
   using ((select public.radar_papel()) = 'admin');

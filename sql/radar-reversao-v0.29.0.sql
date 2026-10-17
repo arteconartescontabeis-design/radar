@@ -301,7 +301,7 @@ drop function if exists public.radar_registrar_revisao_editorial(bigint, timesta
 drop function if exists public.radar_texto_versao(public.radar_conteudos);
 -- v0.29.0: os lembretes por e-mail
 drop function if exists public.radar_lembretes_cfg();
-drop function if exists public.radar_lembretes_madura(text, timestamptz, jsonb, timestamptz);
+drop function if exists public.radar_lembretes_madura(text, text, jsonb, timestamptz, jsonb, timestamptz);
 drop function if exists public.radar_lembretes_observar(timestamptz);
 drop function if exists public.radar_lembretes_devidos(timestamptz);
 drop function if exists public.radar_lembretes_acionar();

@@ -6886,9 +6886,12 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
             assert trecho in sit, trecho
         assert "Desligados" not in sit
         ajuda = pagina.inner_text("form[data-chave=lembretes] .sub")
-        for trecho in ["sem nome de ninguém", "pauta: a peça de amanhã", "a partir da hora (padrão “16:00”)", "aprovacao_horas (padrão 24)",
-                       "parada_horas (padrão 3)", "no máximo um e-mail por dia", "lembrada uma vez só", "entre de e ate (padrão “08:00” e “20:00”)",
-                       "ligado: false desliga tudo", "Recebe quem acompanha o repositório no GitHub"]:
+        for trecho in ["sem nome de ninguém", "pauta: a peça de amanhã", "a partir da hora (padrão “16:00”;", "aprovacao_horas (padrão 24)",
+                       "parada_horas (padrão 3)", "no máximo um e-mail por dia", "lembrada uma vez só", "entre de e ate (padrão “08:00” e “20:00”;",
+                       "ligado: false desliga tudo", "Recebe quem acompanha o repositório no GitHub",
+                       # v0.29.0 (revisão): a peça à mão uma hora depois da hora; os limites da hora e da janela; o aviso é público
+                       "a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada",
+                       "até “23:45”", "pelo menos 15 minutos entre os dois", "que é público"]:
             assert trecho in ajuda, trecho
         campo, salvar = pagina.locator("#cfg-lembretes"), pagina.locator("form[data-chave=lembretes] button")
         for ruim, aviso in [("[]", "Os lembretes precisam ser um objeto"), ('{"ligado": "sim"}', "“ligado” é true ou false."),
@@ -6899,12 +6902,18 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
                             ('{"aprovacao_horas": 2.5}', "“aprovacao_horas” é um número inteiro de 1 a 168"),
                             ('{"parada_horas": 49}', "“parada_horas” é um número inteiro de 1 a 48"),
                             ('{"parada_horas": "3"}', "“parada_horas” é um número inteiro de 1 a 48"),
-                            ('{"horario": "16:00"}', "“horario” não é uma opção dos lembretes")]:
+                            ('{"horario": "16:00"}', "“horario” não é uma opção dos lembretes"),
+                            # v0.29.0 (revisão): depois das 23:45, ou menos de 15 minutos entre "de" e "ate", nenhuma rodada alcança
+                            ('{"hora": "23:50"}', "“hora” vai até"), ('{"hora": "23:46"}', "“hora” vai até"),
+                            ('{"de": "08:05", "ate": "08:10"}', "Entre “de” e “ate” precisa haver pelo menos 15 minutos"),
+                            ('{"de": "19:46"}', "Entre “de” e “ate” precisa haver pelo menos 15 minutos"),
+                            ('{"de": "08:00", "ate": "08:00"}', "Entre “de” e “ate” precisa haver pelo menos 15 minutos")]:
             campo.fill(ruim)
             limpar_recados(pagina)
             salvar.click()
             pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
         assert limpo.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == original
+        assert pagina.evaluate('''validarConfig("lembretes", {hora: "23:45", de: "08:00", ate: "08:15"})''') == ""   # os limites passam
         novo = {"ligado": False, "hora": "17:30", "de": "09:00", "ate": "18:00", "aprovacao_horas": 12, "parada_horas": 2,
                 "pauta": True, "aprovacao": True, "video": False, "noticia": True}
         campo.fill(json.dumps(novo))

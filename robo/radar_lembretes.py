@@ -2,7 +2,8 @@
 
 Hoje o Radar avisa depois que algo falha (a Pauta "não saiu", a fonte parada). Os lembretes avisam antes:
 
-- a peça da Pauta de amanhã (e a de hoje que ainda não saiu) que não está aprovada, na véspera, a partir de um horário;
+- a peça da Pauta de amanhã (e a de hoje que ainda não saiu) que não está aprovada, na véspera, a partir de um horário; e a aprovada
+  para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada;
 - a peça pronta que espera a aprovação do administrador há mais de N horas;
 - o vídeo do reel que o corretor terminou (pronto para conferir, precisa regravar ou parou);
 - a notícia que não saiu: o envio ao site ou às redes com erro, ou a autorização parada há mais de X horas.
@@ -105,15 +106,22 @@ def _horas(n) -> str:
     return f"{n} hora" if n == 1 else f"{n} horas"
 
 
+QUANDO = {"amanha": "Amanhã", "hoje": "Hoje", "ontem": "Ontem"}
+NOMES_QUANDO = {"amanha": "a de amanhã", "hoje": "a de hoje", "ontem": "a de ontem"}
+
+
 def _cabecalho_pauta(itens: list[dict]) -> str:
     if len(itens) == 1:
         i, d = itens[0], _dia(itens[0].get("data"))
         if i.get("quando") == "amanha":
             return f"**A peça da Pauta de amanhã ({_dia_semana(d)}) ainda não está aprovada.**"
-        return f"**A peça da Pauta de hoje ({_dia_semana(d)}) ainda não saiu.**"
-    quando = {i.get("quando") for i in itens}
-    if quando == {"amanha", "hoje"} and len(itens) == 2:
-        return "**A Pauta tem 2 peças pendentes: a de amanhã e a de hoje.**"
+        # v0.29.0 (revisão): a de ontem é a aprovada para publicar à mão que passou da hora depois do e-mail da Pauta daquele dia
+        return f"**A peça da Pauta de {'ontem' if i.get('quando') == 'ontem' else 'hoje'} ({_dia_semana(d)}) ainda não saiu.**"
+    # uma de cada dia: diz quais ("a de amanhã e a de hoje"; v0.29.0, revisão: também "a de ontem")
+    quando = [i.get("quando") for i in itens]
+    if len(set(quando)) == len(quando) and all(q in NOMES_QUANDO for q in quando):
+        nomes = [NOMES_QUANDO[q] for q in quando]
+        return f"**A Pauta tem {len(itens)} peças pendentes: {', '.join(nomes[:-1])} e {nomes[-1]}.**"
     return f"**A Pauta tem {len(itens)} peças pendentes.**"
 
 
@@ -122,7 +130,7 @@ def _linha(tipo: str, i: dict, horas) -> str:
     if tipo == "pauta":
         d = _dia(i.get("data"))
         falta = FALTA_PAUTA.get(str(i.get("situacao")), "ainda não está aprovada.")
-        return (f"- {'Amanhã' if i.get('quando') == 'amanha' else 'Hoje'}, {_dm(d)} às {i.get('hora') or '—'} — "
+        return (f"- {QUANDO.get(str(i.get('quando')), 'Hoje')}, {_dm(d)} às {i.get('hora') or '—'} — "
                 f"{_formato(i.get('formato'))} (peça nº {n}): {falta}")
     if tipo == "aprovacao":
         return (f"- {_dia_semana(_dia(i.get('data')), maiuscula=True)} — {_formato(i.get('formato'))} (peça nº {n}): pronta desde "

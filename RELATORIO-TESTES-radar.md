@@ -1,11 +1,14 @@
 # Radar Artecon — Relatório de testes (v0.29.0)
 
-Data: 17/10/2026. **A suíte inteira da v0.29.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram, pela fila compartilhada,
+Data: 17/10/2026. **A suíte inteira da v0.29.0 roda no GitHub (CI) antes de juntar.** Depois da revisão (seção "v0.29.0 — correções
+da revisão", logo abaixo), rodaram de novo, pela fila compartilhada: o banco, os lembretes, a agenda e o corretor de vídeo no banco,
+**339 aprovados, 0 falhas**; o de ponta a ponta, **78 aprovados**; o arquivo inteiro dos testes de tela, **225 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 697 s; e
+`testes/test_radar_repositorio.py`, **19 aprovados, 0 falhas, 1 pulado**. Antes da revisão, neste ambiente rodaram, pela fila compartilhada,
 os testes afetados: o banco, os lembretes, a agenda e o corretor de vídeo no banco (`testes/test_radar_banco.py`,
 `testes/test_radar_lembretes.py`, `testes/test_radar_agenda.py` e `testes/test_radar_video_banco.py`), **336 aprovados, 0 falhas**; o de
 ponta a ponta (`testes/test_radar_e2e.py`), **78 aprovados**; a função `radar-redes` no Deno (`testes/test_radar_funcao_redes.py`), **39
 aprovados**; o arquivo inteiro dos testes de tela, **225 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 685 s (11min25s); e `testes/test_radar_repositorio.py`, **19 aprovados, 0 falhas, 1 pulado** (detalhes na seção da
-v0.29.0, logo abaixo). A v0.29.0 tem 26 testes novos (de 1.143 para 1.169 no total). Na v0.28.1, só a tela mudou, e neste ambiente rodaram o
+v0.29.0, logo abaixo). A v0.29.0 tem 29 testes novos, 3 deles da revisão (de 1.143 para 1.172 no total). Na v0.28.1, só a tela mudou, e neste ambiente rodaram o
 arquivo inteiro dos testes de tela (`testes/test_radar_telas.py`), **224 aprovados, 0 falhas, 61 pulados**, em 584 s (9min44s), e
 `testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado** (detalhes na seção da v0.28.1, logo abaixo). Na v0.28.0
 (16/10/2026), rodaram os testes afetados: o
@@ -53,10 +56,12 @@ próprio workflow também roda de hora em hora (minuto 29), de reserva, com uma 
 
 - **Banco** (`git mv sql/radar-setup-v0.28.0.sql sql/radar-setup-v0.29.0.sql`, e a reversão): a tabela `radar_lembretes` (uma linha por
   pendência: tipo, chave do episódio, `ref` só com número, data, hora, formato, situação, canal e desde quando; `aberto_em`,
-  `acionado_em`, `lote`, `avisado_em`, `aviso`, `resolvido_em`; uma aberta por tipo e chave), RLS (só o administrador lê; ninguém grava
-  direto; a chave do robô não lê), 11 funções `radar_lembretes_*` (`cfg`, `madura`, `observar`, `devidos`, `acionar`, `ha_envio`, `lote_em`,
-  `lote`, `enviado_em`, `enviado` e `situacao`; todas `security definer` com `search_path`, nenhuma com `current_date`; só `ha_envio`,
-  `lote` e `enviado` para a chave do robô e só `situacao` para a tela) e a chave "lembretes" das Configurações (entra com os padrões;
+  `acionado_em`, `lote`, `reservado_em`, `avisado_em`, `aviso`, `resolvido_em`; uma aberta por tipo e chave), RLS (ninguém lê nem grava
+  a tabela pela API: a tela lê só a situação, e a chave do robô só as funções do lote), 11 funções `radar_lembretes_*` (`cfg`, `madura`,
+  `observar`, `devidos`, `acionar`, `ha_envio`, `lote_em`, `lote`, `enviado_em`, `enviado` e `situacao`; `search_path` fixo em todas,
+  nenhuma com `current_date`; `security definer` só nas quatro que outros papéis chamam — `ha_envio`, `lote` e `enviado` para a chave
+  do robô e `situacao` para a tela —, as outras rodam com os direitos de quem chama, o dono; texto corrigido na revisão, que achou
+  "todas `security definer`" inexato) e a chave "lembretes" das Configurações (entra com os padrões;
   a ajustada não é sobrescrita). Registro `v0.29.0`; evidência "28 tabelas". Nada é apagado.
 - **Agenda** (`sql/radar-redes-agenda.sql`): o agendamento `radar-redes-agenda-lembretes` (`*/15 * * * *`); sem o setup desta versão,
   o arquivo para com "Rode antes o radar-setup-v0.29.0.sql" (antes da criação da chave e de qualquer agendamento); o teste do fim do
@@ -168,6 +173,70 @@ véspera não é lembrada de novo no dia (a regra do dono); a pendência nova de
 a peça de hoje criada depois do e-mail da Pauta daquele dia não é lembrada). **Para quem juntar com a v0.30.0** (outra equipe, em paralelo): refazer o
 `git mv` do setup a partir do v0.29.0 e as contagens (28 tabelas, 9 configurações, 9 blocos nas Configurações), a `VERSAO`/`VERSOES` e o
 topo do LEIAME e deste relatório.
+
+## v0.29.0 — correções da revisão
+
+Data: 17/10/2026. A revisão da v0.29.0 trouxe 9 achados. Cada um foi reproduzido antes da correção: os 5 do banco e dos testes com o
+arquivo de rascunho do revisor (fora do repositório; **5 aprovados** pela fila, ou seja, os defeitos existiam), o do recado do setup com
+`grep` e o histórico do git, e os da permissão e do relatório lendo o setup. Depois das correções, os 4 cenários do revisor que
+mostravam o defeito (A a D) **falham** (o defeito sumiu); o 5º (E) só mostrava que o teste dependia do relógio de verdade, e o teste foi
+corrigido. **Corrigidos: 8. Descartado como defeito de código: 1** (o 9º, que ficou registrado no LEIAME e na tela).
+
+| # | Achado | O que foi feito |
+|---|---|---|
+| 1 | A peça aprovada para publicar à mão era lembrada a partir da `hora` da Pauta (16:00), antes da hora dela (19:00): o único lembrete saía antes de ela poder estar atrasada, e nunca mais | **Corrigido.** Ela só entra uma hora depois da hora marcada (`radar_lembretes_observar`). Se o e-mail da Pauta do dia já saiu antes disso, ela vai no do dia seguinte, como "ontem" (a peça de ontem também é observada; o robô escreve "Ontem, 03/11 às 19:00 — …" e "A peça da Pauta de ontem (…) ainda não saiu."). Teste novo: `test_pauta_a_mao_so_uma_hora_depois_da_hora_marcada`. |
+| 2 | O "um e-mail por dia" contava pelo dia da **confirmação**: reservado às 23:55 e confirmado às 00:01, o e-mail gastava o dia seguinte, e o lembrete da véspera desse dia não saía; o lote retomado no dia seguinte fazia o mesmo | **Corrigido.** Coluna nova `reservado_em` (a hora em que a pendência entrou no lote; a do lote retomado continua a dela). `avisado_em` passa a ser a hora da reserva, que é a do e-mail. Caso raro que fica (registrado no setup): o robô caiu antes de comentar e só comentou no dia seguinte, sem pendência nova no lote; esse e-mail conta no dia da reserva. Teste novo: `test_um_email_por_dia_conta_pela_reserva_e_nao_pela_confirmacao`. |
+| 3 | `hora` depois de 23:45, ou `de`/`ate` com menos de 15 minutos entre os dois, eram aceitos, mas nenhuma rodada (de 15 em 15 minutos; a reserva no minuto 29) caía na janela: o lembrete nunca saía | **Corrigido** nos dois lados: a tela recusa (“hora” vai até "23:45"…; "Entre “de” e “ate” precisa haver pelo menos 15 minutos…") e o banco usa o padrão. LEIAME e ajuda da tela dizem os limites. Testes: `test_cfg_fora_dos_limites_usa_o_padrao` (23:50, 23:46, 08:05–08:10, 08:00–08:14 recusados; 23:45 e 08:00–08:15 aceitos; com 23:45, a rodada das 23:45 manda) e o teste de tela do bloco. |
+| 4 | Parte da regra dependia das Configurações dentro de `observar` (`parada_horas` e o liga/desliga da Pauta para a aprovação): mudar o valor "fechava" a pendência já lembrada, que voltava como episódio novo e era lembrada de novo | **Corrigido.** `observar` não depende mais das Configurações: a autorização do site e das redes é guardada assim que fica autorizada (desde a autorização, ou desde o início do envio), e a peça pronta de hoje em diante. As horas de espera e o "a de hoje e a de amanhã ficam com a Pauta" foram para `radar_lembretes_madura`, que agora recebe a chave e o `ref`. Teste novo: `test_mudar_as_configuracoes_nao_lembra_de_novo_a_mesma_pendencia`; ajustados: o da notícia (2h59 não, 3h00 sim, pela pendência guardada) e o da aprovação de hoje e amanhã (ligar e desligar a Pauta não reabre). A situação em Configurações conta só o que já pode ser lembrado, dos tipos ligados. |
+| 5 | O teste da aprovação "pronta de novo" dependia do relógio de verdade (o `aberto_em` vem do `atualizado_em`, gravado pelo gatilho com `now()`) | **Corrigido no teste:** fixa o `aberto_em` do episódio novo e confere a fronteira (23h59 depois, não; 24h00, sim). |
+| 6 | O recado da Conferência das Diretrizes (`index.html`) ainda mandava rodar o `sql/radar-setup-v0.28.0.sql`, que não existe mais | **Corrigido** para `sql/radar-setup-v0.29.0.sql`. O teste de versão (`test_versao_igual_em_todos_os_arquivos_da_versao`) passa a conferir também o `index.html` (fora da aba Versões, que conta a história): o recado antigo seria pego. |
+| 7 | O relatório dizia "todas `security definer`", e cinco funções internas eram `security definer` sem precisar | **Corrigido:** `security definer` só nas quatro que outros papéis chamam (`ha_envio`, `lote`, `enviado` e `situacao`); `observar`, `devidos`, `acionar`, `lote_em` e `enviado_em` rodam com os direitos de quem chama (o dono: o pg_cron ou uma das quatro). O texto deste relatório foi corrigido. O teste das permissões confere a lista. |
+| 8 | `grant select` da tabela `radar_lembretes` para a equipe, que nenhuma tela usa | **Corrigido:** sem o `grant` (ninguém lê a tabela pela API; a tela usa `radar_lembretes_situacao`). A regra (política) fica como trava de reserva, porque toda tabela do Radar tem uma. O teste das permissões confere que nem o administrador lê a tabela direto. |
+| 9 | O e-mail não vai só aos administradores: o repositório é público (qualquer pessoa pode acompanhar ou ler os avisos), e os lembretes mostram data, hora, formato e situação das peças | **Descartado como defeito de código.** É o mesmo caminho dos avisos de hoje, que o dono pediu ("como os avisos de hoje"), e nada do que o dono proibiu vai no e-mail (nome, assunto, legenda, texto do erro ou do boletim). Trancar a conversa do aviso não foi feito: não dá para conferir aqui, sem chamar o GitHub de verdade, se o robô continua comentando no aviso trancado e se o trancamento não manda e-mail. Ficou escrito para o dono, no topo e na seção dos lembretes do LEIAME, na ajuda da tela e na aba Versões: o aviso fica no repositório público, e quem preferir não deixar isso à vista desliga o tipo. Decisão do dono. |
+
+Também na revisão: o cabeçalho da Pauta com mais de uma peça diz quais são ("A Pauta tem 2 peças pendentes: a de amanhã e a de ontem.").
+
+**Mutações das correções** (cada uma aplicada sozinha, os testes que devem pegá-la rodados pela fila, o arquivo restaurado; no fim, o
+`md5sum` dos 4 arquivos mutados igual ao de antes): **16 de 16 pegas**.
+
+| # | Mutação | Pega por |
+|---|---|---|
+| R1 | a peça à mão sem a hora + 1 h | lembretes: peça à mão |
+| R1b | a peça à mão só no dia (sem a de ontem) | lembretes: peça à mão |
+| R1c | `<` no lugar de `<=` na hora + 1 h | lembretes: peça à mão |
+| R2 | o dia do e-mail pela confirmação | lembretes: conta pela reserva |
+| R2b | a reserva retomada ganha a hora nova | lembretes: conta pela reserva |
+| R3 | o banco aceita `hora` depois das 23:45 | lembretes: padrão fora dos limites |
+| R3b | o banco aceita menos de 15 minutos entre `de` e `ate` | lembretes: padrão fora dos limites |
+| R3c | a tela aceita `hora` depois das 23:45 | tela: bloco dos lembretes |
+| R3d | a tela aceita menos de 15 minutos entre `de` e `ate` | tela: bloco dos lembretes |
+| R4 | a notícia parada sem `parada_horas` na maturidade | lembretes: notícia e "mudar as Configurações" |
+| R4b | a aprovação sem o filtro da Pauta ligada | lembretes: aprovação de hoje e amanhã |
+| R4c | `<` no lugar de `<=` nas N horas da aprovação | lembretes: aprovação depois de N horas |
+| R6 | o recado da Conferência cita o setup v0.28.0 | repositório: versão |
+| R7 | `security definer` de volta no `observar` | lembretes: permissões |
+| R8 | o `grant select` da tabela de volta | lembretes: permissões |
+| R9 | o robô escreve "Hoje" para a de ontem | lembretes: peça à mão e textos exatos |
+
+**Resultados depois das correções** (pela fila compartilhada; nenhuma chamada a GitHub, Supabase, Meta, site ou e-mail de verdade):
+
+- `testes/test_radar_banco.py` (278), `testes/test_radar_lembretes.py` (18, 3 novos), `testes/test_radar_agenda.py` (12) e
+  `testes/test_radar_video_banco.py` (31): **339 aprovados, 0 falhas**, em 331 s; `testes/test_radar_lembretes.py` de novo depois do
+  último ajuste do texto do robô: **18 aprovados**;
+- `testes/test_radar_e2e.py`: **78 aprovados, 0 falhas**, em 111 s; depois do último ajuste do texto do robô, `-k "aviso or lembrete"`:
+  **20 aprovados, 0 falhas**;
+- `testes/test_radar_telas.py` (o arquivo inteiro): **225 aprovados, 0 falhas, 61 pulados**, em 697 s (11min37s). Na primeira
+  rodada inteira depois da revisão, 1 falha: `test_configuracoes_bloco_dos_lembretes_validacao_e_situacao` ainda esperava a ajuda antiga
+  ("(padrão “16:00”)", sem o "até “23:45”"); corrigida a expectativa, as mutações R3c e R3d rodaram de novo (pegas pela validação
+  nova, não por essa falha) e o arquivo inteiro rodou de novo (o resultado acima);
+- `testes/test_radar_repositorio.py`: **19 aprovados, 0 falhas, 1 pulado** (o dos commits do push).
+
+A função `radar-redes`, a agenda (`sql/radar-redes-agenda.sql`) e o workflow não mudaram na revisão (o teste da agenda rodou no grupo
+do banco). **Conferência manual de novo** (banco de rascunho `radar_v029_conf_rev`, apagado no fim): o setup v0.28.0 e a agenda do
+441bcfe, dados de mentira (2 pessoas, uma delas sócio, 3 peças, 1 assunto, "janela_horas" 4), e por cima o setup v0.29.0 desta revisão
+**duas vezes, sem erro**: das 27 tabelas, 24 com as mesmas linhas; mudaram só `radar_config` (8 → 9), `radar_instalacoes` (1 → 3) e
+`radar_auditoria` (21 → 22), e entrou `radar_lembretes`, vazia, com a coluna `reservado_em`; "janela_horas" continua 4 e o sócio
+continua marcado. A agenda nova, duas vezes por cima: 4 agendamentos e a mesma chave no Vault.
 
 ## v0.28.1 — a linha em branco não trava mais a peça, e o aviso diz o que mudou
 

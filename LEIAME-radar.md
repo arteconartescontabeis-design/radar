@@ -16,7 +16,7 @@ A v0.29.0 traz os **lembretes por e-mail antes do dia**, pedidos pelo escritóri
 falhava (a Pauta "não saiu", a fonte parada, o resumo de segunda). Agora ele lembra **antes**:
 
 - **a peça da Pauta de amanhã** que ainda não está aprovada (e a de hoje que ainda não saiu), na véspera, a partir das **16:00** de
-  Brasília;
+  Brasília; e a peça aprovada para publicar à mão que, **uma hora depois da hora marcada**, ainda não tem a publicação registrada;
 - **a peça pronta esperando a aprovação** do administrador há mais de **24 horas**;
 - **o vídeo do reel que o corretor terminou** (pronto para conferir, precisa regravar ou parou);
 - **a notícia que não saiu**: o envio ao site ou às redes deu erro, ou a autorização está parada há mais de **3 horas** (o robô do
@@ -26,8 +26,9 @@ falhava (a Pauta "não saiu", a fonte parada, o resumo de segunda). Agora ele le
 véspera não é lembrada de novo no dia) e, resolvida, sai da lista sozinha. O e-mail é um aviso no GitHub, como os avisos de hoje: um
 aviso fixo por tipo ("Radar: lembrete — …"); o primeiro lembrete abre o aviso e os seguintes chegam como um comentário nele. O
 lembrete leva só a data, a hora, o formato e o número da peça ou do envio: **nunca** o nome de alguém, o assunto, a legenda, o erro ou
-o texto do boletim pago. Nada é publicado pelo lembrete. Horário e liga/desliga: Configurações → **Lembretes por e-mail** (só o
-administrador).
+o texto do boletim pago. O aviso fica na aba Issues do repositório, que é **público**: qualquer pessoa pode ler a data, a hora, o
+formato e a situação das peças lembradas. Nada é publicado pelo lembrete. Horário e liga/desliga: Configurações → **Lembretes por
+e-mail** (só o administrador).
 
 Quem decide o que lembrar e quando é o **banco**, com o relógio dele (o pg_cron, que o GitHub não atrasa nem desliga): de 15 em 15
 minutos ele confere e, só quando há lembrete para mandar, pede à função `radar-redes` que acione o robô dos lembretes no GitHub. O
@@ -1549,7 +1550,7 @@ Os avisos de antes (fonte com falha, a Pauta "não saiu", o resumo de segunda) c
 
 | Lembrete (título do aviso) | Quando chega | O que lembra |
 |---|---|---|
-| "Radar: lembrete — Pauta de amanhã sem aprovação" | na véspera, a partir da `hora` (padrão 16:00), até o fim do dia | a peça de amanhã que ainda não está aprovada (planejada, em produção ou pronta) e a de hoje que ainda não saiu (inclusive a aprovada para publicar à mão e ainda sem o link registrado) |
+| "Radar: lembrete — Pauta de amanhã sem aprovação" | na véspera, a partir da `hora` (padrão 16:00), até o fim do dia | a peça de amanhã que ainda não está aprovada (planejada, em produção ou pronta) e a de hoje que ainda não saiu; e a aprovada para publicar à mão que, **uma hora depois da hora marcada**, ainda não tem o link registrado (antes disso a equipe ainda vai postar). Se o e-mail da Pauta do dia já saiu antes dessa hora, ela vai no do dia seguinte, como "ontem" |
 | "Radar: lembrete — peça pronta esperando aprovação" | entre `de` e `ate` (padrão 08:00 e 20:00) | a peça pronta há mais de `aprovacao_horas` (padrão 24) esperando a aprovação do administrador; a de hoje e a de amanhã ficam no lembrete da Pauta (um lembrete só por peça) |
 | "Radar: lembrete — vídeo do reel para conferir" | entre `de` e `ate` | o reel que o corretor terminou: "Vídeo corrigido pronto", "Precisa regravar" ou "O corretor parou" (cada resultado novo do corretor é lembrado uma vez, até a peça ser aprovada com o vídeo) |
 | "Radar: lembrete — notícia que não saiu" | entre `de` e `ate` | a notícia cujo envio ao site, ao Instagram ou ao Facebook deu erro, ou cuja autorização está parada há mais de `parada_horas` (padrão 3). A peça da Pauta não entra aqui: ela já tem o aviso "publicação agendada não saiu" |
@@ -1568,11 +1569,18 @@ Os avisos de antes (fonte com falha, a Pauta "não saiu", o resumo de segunda) c
   Nunca o assunto, quem aparece, a legenda, o texto do erro ou do boletim pago (o banco nem entrega isso ao robô).
 - **Nada é publicado pelo lembrete.** Ele só avisa; a publicação continua dependendo da aprovação do administrador.
 - Erro com mais de 7 dias não entra (a primeira rodada não traz o que é antigo).
+- **Mudar as Configurações não repete lembrete.** Subir ou baixar `parada_horas` ou `aprovacao_horas`, ou ligar e desligar um tipo,
+  muda só quando a pendência pode ser lembrada; a que já foi lembrada não volta.
+- O dia que conta no "um por dia" é o da hora em que o robô pegou o lembrete (se ele só confirmar depois da meia-noite, o e-mail
+  continua sendo do dia em que saiu).
 
 **Quem recebe:** como os outros avisos do Radar, o e-mail é a notificação do GitHub quando o robô abre um aviso (issue) ou comenta
 nele. Recebe quem acompanha o repositório: o dono já acompanha (confira em github.com → Settings → Notifications se "Issues" está com
 e-mail ligado). Outro administrador que também queira receber: no repositório, **Watch → Custom → Issues** (e "Issues" com e-mail
-ligado nas Notifications dele). Como o repositório é público, qualquer pessoa poderia acompanhar: por isso o lembrete não leva nomes.
+ligado nas Notifications dele). Como o repositório é público, qualquer pessoa poderia acompanhar e qualquer pessoa pode ler os avisos
+na aba Issues: por isso o lembrete não leva nomes nem o assunto. O que fica à vista é a data, a hora, o formato e a situação das peças
+lembradas (por exemplo, "Amanhã, 28/10 às 09:30 — Reel (peça nº 412): em produção"). Se o escritório preferir não deixar isso à vista,
+desligue o tipo em Configurações (por exemplo, `"pauta": false`).
 
 **Como funciona por dentro:** o banco guarda cada pendência na tabela `radar_lembretes` e decide o que lembrar (as funções
 `radar_lembretes_*`). De 15 em 15 minutos, a agenda do banco (`sql/radar-redes-agenda.sql`, agendamento `radar-redes-agenda-lembretes`)
@@ -1589,13 +1597,13 @@ padrão):
 |---|---|---|
 | `ligado` | `false` desliga todos os lembretes | `true` |
 | `pauta`, `aprovacao`, `video`, `noticia` | `false` desliga só aquele tipo | `true` |
-| `hora` | a hora (de Brasília, "HH:MM") a partir da qual sai o lembrete da Pauta de amanhã | `"16:00"` |
-| `de`, `ate` | o horário dos outros três lembretes (`de` antes de `ate`) | `"08:00"` e `"20:00"` |
+| `hora` | a hora (de Brasília, "HH:MM") a partir da qual sai o lembrete da Pauta de amanhã; vai até `"23:45"` (o Radar confere de 15 em 15 minutos) | `"16:00"` |
+| `de`, `ate` | o horário dos outros três lembretes (`de` antes de `ate`, com pelo menos 15 minutos entre os dois) | `"08:00"` e `"20:00"` |
 | `aprovacao_horas` | quantas horas a peça pronta espera antes do lembrete (1 a 168) | `24` |
 | `parada_horas` | quantas horas a notícia autorizada fica parada antes do lembrete (1 a 48) | `3` |
 
 Embaixo do bloco aparece a **situação**: se a agenda do banco está instalada (e a última rodada), o último lembrete de cada tipo (quando
-e o número do aviso no GitHub) e quantas pendências esperam o próximo lembrete.
+e o número do aviso no GitHub) e quantas pendências já podem ser lembradas e esperam o próximo lembrete.
 
 **Limites desta versão:** se alguém fechar à mão o aviso de um tipo, o GitHub manda um e-mail curto de "fechado", e o próximo lembrete
 abre outro aviso (o robô nunca fecha). Dia sem peça no calendário não gera lembrete (ideia anotada para o futuro). A exclusão no site
@@ -2379,7 +2387,7 @@ não tem o agendamento novo).
 
    ```sql
    drop table if exists public.radar_lembretes;
-   drop function if exists public.radar_lembretes_cfg(), public.radar_lembretes_madura(text, timestamptz, jsonb, timestamptz),
+   drop function if exists public.radar_lembretes_cfg(), public.radar_lembretes_madura(text, text, jsonb, timestamptz, jsonb, timestamptz),
      public.radar_lembretes_observar(timestamptz), public.radar_lembretes_devidos(timestamptz), public.radar_lembretes_acionar(),
      public.radar_lembretes_ha_envio(), public.radar_lembretes_lote_em(timestamptz), public.radar_lembretes_lote(),
      public.radar_lembretes_enviado_em(uuid, int, bigint[], timestamptz), public.radar_lembretes_enviado(uuid, int, bigint[]),
