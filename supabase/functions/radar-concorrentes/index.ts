@@ -1,10 +1,12 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-concorrentes" (v0.19.1, opcional) — SOMENTE LEITURA
+// RADAR ARTECON — Edge Function "radar-concorrentes" (v0.19.1, opcional) — SÓ LEITURA NA META
 //
 // Lê, pela API oficial da Meta (Instagram Graph API, "Business Discovery"), os dados públicos de perfis comerciais (ou de
 // criador) do Instagram de outros escritórios de contabilidade e dos posts recentes deles, para a análise de engajamento
-// (que formatos e temas funcionam). Não publica nada, não grava nada no banco e não guarda imagem: só devolve o que a Meta
-// mostra. A análise serve para formatos e temas, nunca para copiar posts (Código de Ética Profissional do Contador).
+// (que formatos e temas funcionam). Na Meta, só lê (GET): não publica, comenta, curte ou segue, e não guarda imagem. As ações
+// "ler" e "diagnostico" só devolvem o que a Meta mostra, sem gravar nada; desde a v0.34.0, a ação "setor_coletar" grava no banco
+// só as métricas da aba Setor (tabelas radar_setor_*, pelas funções do banco), com a legenda cortada em 300 caracteres (veja
+// abaixo). A análise serve para formatos e temas, nunca para copiar posts (Código de Ética Profissional do Contador).
 //
 // Quem pode chamar ("Verify JWT" DESLIGADO no deploy, como a radar-itc: a função confere sozinha):
 //   * o banco (net.http_post, veja o fim de sql/radar-concorrentes.sql) ou um script, com o cabeçalho x-radar-chave — a chave
@@ -24,6 +26,31 @@
 //
 // Privacidade: o registro (log) só tem contagens e códigos de erro da Meta — nunca nome de perfil, legenda ou token.
 //
+// v0.34.0 — aba Setor (como estão as publicações de um setor, como a contabilidade). Três ações novas:
+//   setor_coletar  (a agenda do banco, com a chave, ou o administrador, pelo botão "Atualizar a análise") → pergunta ao banco quem ler
+//                  (radar_setor_iniciar: até 12 contas devidas; o banco decide: uma vez por semana, sem pausa da Meta, nada em dobro),
+//                  lê uma conta por vez e grava cada resultado (radar_setor_gravar) antes da seguinte; no fim, fecha a rodada
+//                  (radar_setor_concluir) com as chamadas, o uso que a Meta informou e a pausa;
+//   setor_propria  (só o administrador) → o @ da conta da Artecon (1 chamada), para o botão "Incluir a conta da Artecon";
+//   setor_teste    (a chave ou o administrador) → {ok, versao}, sem tocar na Meta (o teste do fim do sql/radar-setor-agenda.sql).
+// Agora a função GRAVA no banco do Radar, mas só nas tabelas da aba Setor e só pelas funções radar_setor_* (pela chave interna). Na
+// Meta, continua só fazendo GET: nunca publica, comenta, curte ou segue. Campos pedidos (os oficiais, sem imagem, nome, biografia ou
+// site): id, username, followers_count e media_count da conta; id, timestamp, media_type, media_product_type, like_count,
+// comments_count, caption e permalink de até 50 publicações (1 chamada por conta; até 3 páginas se a Meta mandar menos por página).
+// Limites: 1,5 s de pausa entre as chamadas, até 12 contas por chamada, a mesma @ em dois setores lida uma vez só; lê os cabeçalhos
+// X-App-Usage e X-Business-Use-Case-Usage e, com 80% de uso ou com a recusa de limite (4, 17, 32, 613, 80002), para na hora e grava a
+// pausa (60 minutos, ou o tempo que a Meta informar, se for maior; o banco limita a 24 horas). Token vencido, permissão ou o
+// META_IG_USER_ID errado: para e pausa só a agenda por 6 horas (o botão do administrador continua, para testar depois de trocar o
+// token). A legenda vai cortada em 300 caracteres (só para os temas) e as hashtags dela, à parte (até 20).
+// A Meta ou a rede fora do ar não é falha da conta: sem conseguir falar com a Meta (rede), ou com duas contas seguidas sem resposta,
+// com resposta ilegível ou com os códigos 1 e 2 da Meta (erro desconhecido, serviço indisponível), a rodada para e nenhuma conta leva
+// falha; elas continuam devidas e a agenda tenta de novo na hora seguinte (sem pausa). Uma conta só com essa falha (a seguinte leu)
+// leva a falha, como antes.
+// Hashtag (só com radar_config.setor.hashtag_ligada, depois que a Meta aprovar o Instagram Public Content Access): GET
+// /ig_hashtag_search (uma vez na vida de cada hashtag: o banco guarda o número dela; a Meta permite 30 hashtags diferentes a cada 7
+// dias) e GET /{hashtag}/top_media (e /recent_media, conforme o modo), até 50 publicações. A recusa da hashtag não para as contas.
+// O registro (log) da aba Setor também só tem contagens e códigos: nunca nome de conta, hashtag, legenda ou link.
+//
 // Segredos (Supabase → Edge Functions → Secrets), os mesmos da radar-redes:
 //   META_IG_USER_ID   id da conta do Instagram profissional da Artecon (a consulta é feita "a partir" dela)
 //   META_IG_TOKEN     token do usuário do sistema do aplicativo "Radar Artecon Publicações", com instagram_basic e
@@ -34,7 +61,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.22.0";                 // v0.22.0 (rodada 2): a chave pública nova (SUPABASE_PUBLISHABLE_KEYS)
+const VERSAO = "0.30.0";                 // v0.34.0 (fase A): as ações da aba Setor; a versão sobe na fase B (v0.22.0: a chave pública nova)
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -70,6 +97,15 @@ const CAMPOS_POST = ["id", "caption", "media_type", "media_product_type", "times
                      "permalink", "media_url", "thumbnail_url"];
 // campos que saem, nesta ordem, se a Meta recusar (#100 de campo inexistente ou não suportado)
 const OPCIONAIS = ["view_count", "media_product_type"];
+// v0.34.0: a aba Setor. Só os campos oficiais pedidos: nada de imagem (media_url, thumbnail_url), nome, biografia, site ou view_count
+const CAMPOS_CONTA_SETOR = "id,username,followers_count,media_count";
+const CAMPOS_POST_SETOR = ["id", "timestamp", "media_type", "media_product_type", "like_count", "comments_count", "caption", "permalink"];
+const CAMPOS_HASHTAG = "id,media_type,comments_count,like_count,caption,permalink,timestamp";
+const MAX_CONTAS_SETOR = 12, MAX_PAGINAS_SETOR = 3, LEGENDA_MAX = 300, HASHTAGS_MAX = 20, USO_LIMITE = 80;
+const PAUSA_MS = Number(env("RADAR_SETOR_PAUSA_MS", "1500"));                       // entre uma chamada à Meta e a seguinte (só os testes trocam)
+// a hashtag também vai dentro da consulta: só letras (com acento), números e sublinhado, como o banco guarda
+const HASHTAG = /^[0-9a-z_à-öø-ÿ]{1,100}$/;
+const LIMITE_META = [4, 17, 32, 613, 80002];
 const AVISO_CAMPO: Record<string, string> = {
   view_count: "a Meta não aceitou o campo view_count: as visualizações ficaram null",
   media_product_type: "a Meta não aceitou o campo media_product_type: o produto (FEED, REELS) ficou null",
@@ -171,8 +207,13 @@ const explicarFalta = (faltam: string[]) => `Faltam os segredos ${faltam.join(",
 
 /** Relógio do pedido (orçamento total), os códigos de erro da Meta vistos (para o registro) e a recusa que vale para todos os
  *  perfis (token, permissão, limite): depois dela, os perfis seguintes nem são pedidos. */
-type Contexto = { resta: () => number; codigos: Set<string>; geral: string };
-const contexto = (inicio: number): Contexto => ({ resta: () => ORCAMENTO_MS - (Date.now() - inicio), codigos: new Set(), geral: "" });
+// v0.34.0: e as chamadas feitas, o maior uso informado pela Meta (%), o tempo que ela pediu para esperar (minutos), a pausa entre as
+// chamadas (só na aba Setor), o tipo da recusa geral (limite ou configuração) e a recusa da hashtag (vale para as outras hashtags)
+// (revisão da v0.34.0: e se a recusa geral é a Meta ou a rede fora do ar — "passageira": a rodada para, sem pausa)
+type Contexto = { resta: () => number; codigos: Set<string>; geral: string; chamadas: number; uso: number; recuperarMin: number;
+                  pausaMs: number; limite: boolean; hashtag: string; passageira: boolean };
+const contexto = (inicio: number, pausaMs = 0): Contexto => ({ resta: () => ORCAMENTO_MS - (Date.now() - inicio), codigos: new Set(), geral: "",
+  chamadas: 0, uso: 0, recuperarMin: 0, pausaMs, limite: false, hashtag: "", passageira: false });
 
 /** Tira da mensagem qualquer token cadastrado (a Meta às vezes repete o token recebido). */
 const limpar = (m: string) => [env("META_IG_TOKEN").trim(), env("META_PAGE_TOKEN").trim()].filter(Boolean)
@@ -182,7 +223,8 @@ const limpar = (m: string) => [env("META_IG_TOKEN").trim(), env("META_PAGE_TOKEN
 function traduzir(codigo: number | null, sub: number | null, bruta: string, status: number): { mensagem: string; geral: boolean } {
   const cod = `Meta ${codigo ?? "HTTP " + status}${sub ? "/" + sub : ""}`;
   if (codigo === 110 || sub === 2207013) {
-    return { geral: false, mensagem: `conta não encontrada ou não é comercial/criador (a Meta só mostra perfis comerciais ou de criador) (${cod})` };
+    return { geral: false, mensagem: "conta não encontrada, privada ou que não é comercial/criador (a Meta só mostra perfis comerciais ou de " +
+      `criador públicos): confira o @ (${cod})` };
   }
   if (codigo === 190) {
     return { geral: true, mensagem: "o token da Meta venceu, foi revogado ou foi copiado errado: gere outro no Business (Usuários do " +
@@ -192,7 +234,7 @@ function traduzir(codigo: number | null, sub: number | null, bruta: string, stat
     return { geral: true, mensagem: "falta permissão no META_IG_TOKEN: o aplicativo \"Radar Artecon Publicações\" precisa de " +
       `instagram_basic e instagram_manage_insights (${cod})` };
   }
-  if (codigo !== null && [4, 17, 32, 613, 80002].includes(codigo)) {
+  if (codigo !== null && LIMITE_META.includes(codigo)) {
     return { geral: true, mensagem: `limite de chamadas da Meta atingido: espere cerca de 1 hora e peça de novo (${cod})` };
   }
   if (codigo === 100 && (sub === 33 || /nonexisting field \(business_discovery\)/i.test(bruta))) {
@@ -210,15 +252,42 @@ function semResposta(prazo: number, ctx: Contexto): never {
   throw new ErroMeta(504, `a Meta não respondeu em ${Math.round(prazo / 1000)} s; tente de novo em alguns minutos`);
 }
 
-/** GET na Graph API com o META_IG_TOKEN. O token vai na consulta e nunca aparece em mensagem de erro nem no registro. */
-async function chamarMeta(caminho: string, fields: string, ctx: Contexto): Promise<any> {
+/** v0.34.0: o uso informado pela Meta nos cabeçalhos X-App-Usage ({call_count, total_cputime, total_time}, em %) e
+ *  X-Business-Use-Case-Usage ({"<id>": [{type, call_count, ..., estimated_time_to_regain_access}]}): guarda o maior. Ilegível: ignora. */
+function lerUso(cab: Headers, ctx: Contexto) {
+  const visitar = (o: unknown): void => {
+    if (Array.isArray(o)) { o.forEach(visitar); return; }
+    if (!o || typeof o !== "object") return;
+    for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+      if (["call_count", "total_cputime", "total_time"].includes(k) && typeof v === "number" && Number.isFinite(v)) ctx.uso = Math.max(ctx.uso, v);
+      else if (k === "estimated_time_to_regain_access" && typeof v === "number" && Number.isFinite(v)) ctx.recuperarMin = Math.max(ctx.recuperarMin, v);
+      else visitar(v);
+    }
+  };
+  for (const nome of ["x-app-usage", "x-business-use-case-usage"]) {
+    const v = cab.get(nome);
+    if (!v) continue;
+    try { visitar(JSON.parse(v)); } catch { /* cabeçalho ilegível: ignora */ }
+  }
+}
+
+/** GET na Graph API com o META_IG_TOKEN. O token vai na consulta e nunca aparece em mensagem de erro nem no registro.
+ *  v0.34.0: o caminho pode vir em partes (["<id da hashtag>", "top_media"]), cada uma codificada; "extra" entra na consulta (user_id,
+ *  q, limit); com ctx.pausaMs (só a aba Setor), espera entre uma chamada e a seguinte; lê o uso informado pela Meta. */
+async function chamarMeta(caminho: string | string[], fields: string, ctx: Contexto, extra: Record<string, string> = {}): Promise<any> {
+  if (ctx.pausaMs > 0 && ctx.chamadas > 0) {
+    const espera = Math.min(ctx.pausaMs, ctx.resta() - 100);
+    if (espera > 0) await new Promise((ok) => setTimeout(ok, espera));
+  }
   const resta = ctx.resta();
   if (resta < 100) throw new ErroMeta(504, NAO_COUBE);
   const prazo = Math.min(PRAZO_META_MS, resta);
-  const p = new URLSearchParams({ fields, access_token: env("META_IG_TOKEN").trim() });
+  const p = new URLSearchParams({ ...extra, ...(fields ? { fields } : {}), access_token: env("META_IG_TOKEN").trim() });
+  const rota = (Array.isArray(caminho) ? caminho : [caminho]).map((x) => encodeURIComponent(x)).join("/");
+  ctx.chamadas++;
   let r: Response;
   try {
-    r = await fetch(`${GRAPH}/${encodeURIComponent(caminho)}?${p}`, { signal: AbortSignal.timeout(prazo) });
+    r = await fetch(`${GRAPH}/${rota}?${p}`, { signal: AbortSignal.timeout(prazo) });
   } catch (e) {
     // a mensagem de erro do fetch pode trazer o endereço (com o token): nunca é usada, só o tipo do erro
     if (ehPrazo(e)) semResposta(prazo, ctx);
@@ -226,6 +295,7 @@ async function chamarMeta(caminho: string, fields: string, ctx: Contexto): Promi
     ctx.codigos.add("rede");
     throw new ErroMeta(502, "não foi possível falar com a Meta (rede ou META_GRAPH_URL errado); tente de novo em alguns minutos");
   }
+  lerUso(r.headers, ctx);
   // o prazo também vale para a leitura do corpo: corpo atrasado é "não respondeu", não "ilegível"
   let d: any = null;
   try { d = await r.json(); } catch (e) { if (ehPrazo(e)) semResposta(prazo, ctx); }
@@ -239,6 +309,7 @@ async function chamarMeta(caminho: string, fields: string, ctx: Contexto): Promi
     const codigo = Number.isInteger(e.code) ? Number(e.code) : null, sub = Number.isInteger(e.error_subcode) ? Number(e.error_subcode) : null;
     const bruta = limpar([e.message, e.error_user_msg].filter((x) => typeof x === "string" && x).join(" — ") || `erro ${r.status}`).slice(0, 300);
     ctx.codigos.add(String(codigo ?? "http" + r.status) + (sub ? "/" + sub : ""));
+    if (codigo !== null && LIMITE_META.includes(codigo)) ctx.limite = true;            // v0.34.0: a aba Setor pausa a leitura
     const t = traduzir(codigo, sub, bruta, r.status);
     throw new ErroMeta(502, t.mensagem, { codigo, sub, bruta, geral: t.geral });
   }
@@ -282,11 +353,14 @@ function post(m: any) {
 
 /** Campos dos posts pedidos nesta chamada: o que a Meta recusar sai também para os perfis seguintes. */
 type Pedido = { campos: string[]; retirados: string[] };
-type Perfil = { usuario: string; ok: true; conta: Record<string, unknown>; posts: ReturnType<typeof post>[]; aviso?: string };
+type Perfil = { usuario: string; ok: true; conta: Record<string, unknown>; posts: any[]; aviso?: string; metaId?: string | null };
 type Falha = { usuario: string; ok: false; erro: string };
 
-/** Conta e posts recentes de um perfil (até n), em páginas. Erro na primeira página: o perfil volta com erro (lança). */
-async function lerPerfil(u: string, n: number, pedido: Pedido, ctx: Contexto): Promise<Perfil> {
+/** Conta e posts recentes de um perfil (até n), em páginas. Erro na primeira página: o perfil volta com erro (lança).
+ *  v0.34.0: a aba Setor pede outros campos da conta, no máximo 3 páginas e monta o post do seu jeito (postSetor); devolve também o
+ *  número da conta (metaId), que a ação "ler" não mostra. */
+async function lerPerfil(u: string, n: number, pedido: Pedido, ctx: Contexto, contaCampos = CAMPOS_CONTA, maxPaginas = MAX_PAGINAS,
+                         mapear: (m: any) => unknown = post): Promise<Perfil> {
   const ig = env("META_IG_USER_ID").trim();
   let lote = POR_PAGINA;
   /** Uma página: a primeira traz também a conta; as outras, só os posts depois do cursor. */
@@ -295,7 +369,7 @@ async function lerPerfil(u: string, n: number, pedido: Pedido, ctx: Contexto): P
       const limite = Math.min(falta, lote);
       const midia = `${cursor ? `media.after(${cursor})` : "media"}.limit(${limite}){${pedido.campos.join(",")}}`;
       try {
-        const d = await chamarMeta(ig, `business_discovery.username(${u}){${cursor ? midia : CAMPOS_CONTA + "," + midia}}`, ctx);
+        const d = await chamarMeta(ig, `business_discovery.username(${u}){${cursor ? midia : contaCampos + "," + midia}}`, ctx);
         const bd = d?.business_discovery;
         if (!bd || typeof bd !== "object") throw new ErroMeta(502, "a Meta respondeu sem os dados do perfil; tente de novo");
         return bd;
@@ -334,7 +408,7 @@ async function lerPerfil(u: string, n: number, pedido: Pedido, ctx: Contexto): P
     // as outras paradas deixam o perfil com menos posts do que o pedido: sem o aviso, ele pareceria completo
     const parada = !novos ? "a Meta repetiu os posts da página anterior"
       : typeof cursor !== "string" || !CURSOR.test(cursor) ? "a Meta não mandou como continuar"
-      : paginas >= MAX_PAGINAS ? `a Meta mandou poucos posts por página e a leitura parou em ${MAX_PAGINAS} páginas` : "";
+      : paginas >= maxPaginas ? `a Meta mandou poucos posts por página e a leitura parou em ${maxPaginas} páginas` : "";
     if (parada) {
       avisos.push(`vieram ${brutos.length} dos ${n} posts pedidos: ${parada}`);
       break;
@@ -357,7 +431,7 @@ async function lerPerfil(u: string, n: number, pedido: Pedido, ctx: Contexto): P
     usuario: u, ok: true,
     conta: { username: txt(bd.username) ?? u, name: txt(bd.name), biografia: txt(bd.biography), site: txt(bd.website),
              seguidores: num(bd.followers_count), seguindo: num(bd.follows_count), posts_total: num(bd.media_count) },
-    posts: brutos.slice(0, n).map(post),
+    posts: brutos.slice(0, n).map(mapear), metaId: txt(bd.id),
   };
   if (avisos.length) r.aviso = avisos.join("; ") + ".";
   return r;
@@ -371,7 +445,7 @@ async function ler(perfis: string[], n: number, inicio: number, quem: string) {
   for (const u of perfis) {                          // um de cada vez: o limite de chamadas da Meta agradece
     if (ctx.geral) { saida.push({ usuario: u, ok: false, erro: ctx.geral }); continue; }   // não insiste
     if (ctx.resta() < COMECAR_MS) { saida.push({ usuario: u, ok: false, erro: NAO_COUBE }); continue; }
-    try { saida.push(await lerPerfil(u, n, pedido, ctx)); }
+    try { const { metaId: _, ...p } = await lerPerfil(u, n, pedido, ctx); saida.push(p); }   // v0.34.0: o número da conta não sai
     catch (e) {
       if (e instanceof ErroMeta && e.geral) ctx.geral = e.message;
       if (!(e instanceof Erro)) console.error("radar-concorrentes: erro inesperado num perfil", e instanceof Error ? e.name : "");
@@ -425,6 +499,200 @@ async function diagnostico(inicio: number) {
   return { itens, tudo_certo: itens.every((i) => i.ok), versao: VERSAO };
 }
 
+// ------------------------------------------------------------------ v0.34.0: aba Setor
+/** Corta por ponto de código (Array.from): não parte um emoji no meio. */
+const trecho = (t: string, n: number) => Array.from(t).slice(0, n).join("");
+/** As hashtags da legenda INTEIRA (antes do corte), minúsculas, sem repetir, até 20. */
+function extrairHashtags(t: string): string[] {
+  const saida: string[] = [];
+  for (const m of t.matchAll(/#([\p{L}\p{N}_]{2,60})/gu)) {
+    const h = m[1].toLowerCase();
+    if (!saida.includes(h)) saida.push(h);
+    if (saida.length >= HASHTAGS_MAX) break;
+  }
+  return saida;
+}
+/** A publicação como a aba Setor guarda: sem imagem; a legenda cortada em 300 caracteres e as hashtags à parte. A data vai em ISO
+ *  ("+0000" da Meta vira "+00:00"); a que não for data o banco recusa (a publicação é pulada). */
+function postSetor(m: any) {
+  const ts = txt(m?.timestamp);
+  const quando = ts ? new Date(ts.replace(/([+-]\d{2})(\d{2})$/, "$1:$2")) : null;
+  const legenda = typeof m?.caption === "string" ? m.caption : "";
+  return {
+    id: String(m?.id ?? ""), data: quando && !isNaN(quando.getTime()) ? quando.toISOString() : ts, tipo: txt(m?.media_type),
+    produto: txt(m?.media_product_type), curtidas: num(m?.like_count), comentarios: num(m?.comments_count),
+    legenda: trecho(legenda, LEGENDA_MAX), hashtags: extrairHashtags(legenda), link: txt(m?.permalink),
+  };
+}
+/** O código da recusa para o banco ("110/2207013", "190", "sem_resposta"...). */
+const codigoDe = (e: unknown) => e instanceof ErroMeta
+  ? (e.codigo !== null ? String(e.codigo) + (e.sub ? "/" + e.sub : "") : e.message === NAO_COUBE ? "tempo" : /não respondeu/.test(e.message)
+     ? "sem_resposta" : /ilegível/.test(e.message) ? "ilegivel" : /falar com a Meta/.test(e.message) ? "rede" : "http" + e.status)
+  : "inesperado";
+/** A falha que não é da conta, mas da Meta ou da rede, e passa sozinha. "certa": não deu para falar com a Meta (rede, DNS, conexão
+ *  recusada): vale para todas. "talvez": a Meta não respondeu a tempo, respondeu ilegível ou com o código 1 ou 2 (erro desconhecido,
+ *  serviço indisponível) — pode ser só daquela conta (uma conta grande demais): vale para todas só se a conta seguinte também falhar assim. */
+function passageira(e: unknown): "certa" | "talvez" | null {
+  if (!(e instanceof ErroMeta) || e.geral || e.message === NAO_COUBE) return null;
+  const c = codigoDe(e);
+  if (c === "rede") return "certa";
+  return c === "sem_resposta" || c === "ilegivel" || e.codigo === 1 || e.codigo === 2 ? "talvez" : null;
+}
+/** A recusa como o banco grava. A que vale para todas (token, permissão, limite) para a rodada (ctx.geral) e diz se é de limite. */
+function falhaDe(e: unknown, ctx: Contexto): Record<string, unknown> {
+  const geral = e instanceof ErroMeta && e.geral;
+  if (geral) ctx.geral = (e as ErroMeta).message;
+  if (!(e instanceof Erro)) console.error("radar-concorrentes: erro inesperado numa conta do setor", e instanceof Error ? e.name : "");
+  const p = passageira(e);
+  return { ok: false, erro: e instanceof Erro ? e.message : "erro inesperado ao ler esta conta", codigo: codigoDe(e), geral, ...(p ? { passageira: p } : {}) };
+}
+/** A recusa da busca por hashtag em português (null: não é dela; segue a tradução de sempre). Os códigos ainda não foram conferidos
+ *  na Meta de verdade (o recurso Instagram Public Content Access não está aprovado): vêm da documentação. */
+function recusaHashtag(e: ErroMeta): string | null {
+  const c = e.codigo, cod = `Meta ${c ?? "HTTP " + e.status}${e.sub ? "/" + e.sub : ""}`;
+  if (/30 unique hashtags|hashtag limit/i.test(e.bruta) || c === 24) {
+    return `limite da Meta: 30 hashtags diferentes a cada 7 dias; espere alguns dias (${cod})`;
+  }
+  if (c === 10 || (c !== null && c >= 200 && c <= 299) || /public content access/i.test(e.bruta)) {
+    return `a Meta ainda não liberou a busca por hashtag (recurso Instagram Public Content Access na Análise do App) (${cod})`;
+  }
+  return null;
+}
+/** Uma hashtag: o número dela (ig_hashtag_search, só se o banco ainda não tem) e as publicações (top_media e/ou recent_media). */
+async function lerHashtag(nome: string, metaId: unknown, modo: unknown, ctx: Contexto): Promise<Record<string, unknown>> {
+  if (ctx.hashtag) return { ok: false, erro: ctx.hashtag, codigo: "hashtag", geral: false };     // a recusa vale para as outras: não insiste
+  const ig = env("META_IG_USER_ID").trim();
+  let id = typeof metaId === "string" && /^\d{1,30}$/.test(metaId) ? metaId : "";
+  let buscada = false;
+  try {
+    if (!id) {
+      const r = await chamarMeta("ig_hashtag_search", "id", ctx, { user_id: ig, q: nome });
+      const achado = (Array.isArray(r?.data) ? r.data : []).map((x: any) => String(x?.id ?? "")).find((x: string) => /^\d{1,30}$/.test(x));
+      if (!achado) return { ok: false, erro: "a Meta não encontrou esta hashtag", codigo: "hashtag_vazia", geral: false };
+      id = achado;
+      buscada = true;
+    }
+    const arestas = modo === "recentes" ? ["recent_media"] : modo === "ambos" ? ["top_media", "recent_media"] : ["top_media"];
+    const vistos = new Set<string>(), posts: ReturnType<typeof postSetor>[] = [];
+    for (const aresta of arestas) {
+      const r = await chamarMeta([id, aresta], CAMPOS_HASHTAG, ctx, { user_id: ig, limit: "50" });
+      for (const m of Array.isArray(r?.data) ? r.data : []) {
+        const p = postSetor(m);
+        if (p.id && !vistos.has(p.id)) { vistos.add(p.id); posts.push(p); }
+      }
+    }
+    return { ok: true, meta_id: id, buscada, seguidores: null, posts_total: null, posts };
+  } catch (e) {
+    const propria = e instanceof ErroMeta && !LIMITE_META.includes(e.codigo ?? -1) && e.codigo !== 190 ? recusaHashtag(e) : null;
+    if (propria) ctx.hashtag = propria;
+    const falha = propria ? { ok: false, erro: propria, codigo: codigoDe(e), geral: false } : falhaDe(e, ctx);
+    // a busca do número já foi feita (conta para as 30 hashtags da Meta em 7 dias): o banco registra e guarda o número
+    return buscada ? { ...falha, buscada: true, meta_id: id } : falha;
+  }
+}
+
+/** "Atualizar a análise" e a leitura automática: até 12 contas devidas (o banco escolhe), uma por vez, cada uma gravada antes da
+ *  seguinte. Para na recusa geral, com 80% de uso ou sem tempo para mais uma: o que sobrar continua devido para a próxima rodada. */
+async function setorColetar(quem: "chave" | "admin", inicio: number) {
+  const faltam = faltamSegredos();
+  if (faltam.length) throw new Erro(503, explicarFalta(faltam));
+  const origem = quem === "chave" ? "agenda" : "admin";
+  const servico = comoServico();
+  let ini: any;
+  try { ini = await banco(servico, "POST", "rpc/radar_setor_iniciar", { p_origem: origem, p_limite: MAX_CONTAS_SETOR }); }
+  catch (e) {
+    if (e instanceof Erro && /radar_setor_iniciar/.test(e.message)) {
+      throw new Erro(503, "O banco ainda não tem a aba Setor: rode o sql/radar-setup desta versão (Supabase → SQL Editor).");
+    }
+    throw e;
+  }
+  if (!ini || typeof ini !== "object" || ini.motivo || !Array.isArray(ini.contas)) {
+    const motivo = String(ini?.motivo ?? "nada");
+    console.log(`radar-concorrentes (${quem}): setor, nada a ler (${motivo.replace(/[^a-z_]/g, "")})`);
+    return { versao: VERSAO, motivo, ...(ini?.pausa_ate ? { pausa_ate: ini.pausa_ate, pausa_motivo: ini.pausa_motivo } : {}) };
+  }
+  const ctx = contexto(inicio, PAUSA_MS);
+  const pedido: Pedido = { campos: [...CAMPOS_POST_SETOR], retirados: [] };
+  const ig = env("META_IG_USER_ID").trim();
+  const n = Number.isInteger(ini.posts) && ini.posts >= 10 && ini.posts <= 50 ? ini.posts : 50;
+  const contas: { tipo: string; nome: string; ok: boolean; erro?: string }[] = [];
+  let lidas = 0, comErro = 0, posts = 0;
+  /** Grava o resultado de uma conta (ou hashtag) e conta. Banco fora: só o registro (a conta continua devida). */
+  const gravar = async (tipo: string, nome: string, dados: Record<string, unknown>) => {
+    try {
+      await banco(servico, "POST", "rpc/radar_setor_gravar", { p_coleta: ini.coleta, p_tipo: tipo, p_nome: nome, p_dados: dados });
+    } catch (e) {
+      console.log(`radar-concorrentes (${quem}): setor, uma conta não foi gravada (${e instanceof Erro ? e.status : "sem resposta do banco"})`);
+      return;
+    }
+    if (dados.ok) { lidas++; posts += Array.isArray(dados.posts) ? dados.posts.length : 0; contas.push({ tipo, nome, ok: true }); }
+    else { comErro++; contas.push({ tipo, nome, ok: false, erro: String(dados.erro) }); }
+  };
+  // a falha "talvez passageira" espera a conta seguinte: se ela também falhar assim, é a Meta (ou a rede) fora do ar
+  let suspeita: { tipo: string; nome: string; dados: Record<string, unknown> } | null = null;
+  for (const item of ini.contas) {
+    if (ctx.geral || ctx.uso >= USO_LIMITE || ctx.resta() < COMECAR_MS + PAUSA_MS) break;     // o resto continua devido
+    const tipo = String(item?.tipo ?? ""), nome = String(item?.nome ?? "");
+    let dados: Record<string, unknown>;
+    if (tipo === "conta" && USUARIO.test(nome)) {
+      try {
+        const r = await lerPerfil(nome, n, pedido, ctx, CAMPOS_CONTA_SETOR, MAX_PAGINAS_SETOR, postSetor);
+        dados = { ok: true, meta_id: r.metaId ?? null, propria: !!r.metaId && r.metaId === ig, seguidores: r.conta.seguidores,
+                  posts_total: r.conta.posts_total, aviso: r.aviso ?? null, posts: r.posts };
+      } catch (e) {
+        if (e instanceof ErroMeta && e.message === NAO_COUBE) break;                          // sem tempo: fica para a próxima rodada
+        dados = falhaDe(e, ctx);
+      }
+    } else if (tipo === "hashtag" && HASHTAG.test(nome)) {
+      dados = await lerHashtag(nome, item?.meta_id, ini.hashtag_modo, ctx);
+      if (!dados.ok && dados.codigo === "tempo") break;
+    } else {
+      dados = { ok: false, erro: "nome fora do padrão do Instagram", codigo: "nome", geral: false };     // nem chega à Meta
+    }
+    const falha = dados.ok ? null : dados.passageira;
+    if (falha === "certa" || (falha === "talvez" && suspeita)) {
+      // a Meta (ou a rede) está fora: a rodada para e ninguém leva falha (continuam devidas; a agenda tenta de novo na hora seguinte)
+      ctx.geral = String(dados.erro);
+      ctx.passageira = true;
+      for (const x of [suspeita, { tipo, nome, dados }]) if (x) await gravar(x.tipo, x.nome, { ...x.dados, geral: true });
+      suspeita = null;
+      break;
+    }
+    if (suspeita) { await gravar(suspeita.tipo, suspeita.nome, suspeita.dados); suspeita = null; }   // esta respondeu: a falha era só daquela
+    if (falha === "talvez") { suspeita = { tipo, nome, dados }; continue; }
+    await gravar(tipo, nome, dados);
+  }
+  if (suspeita) await gravar(suspeita.tipo, suspeita.nome, suspeita.dados);     // sem a seguinte para comparar: falha da conta, como antes
+  // a pausa: limite da Meta (a recusa ou 80% de uso) → 60 minutos ou o que a Meta pediu; token, permissão ou conta da Artecon → 6 horas,
+  // só para a agenda (o botão do administrador continua, para testar logo depois de trocar o token); a Meta ou a rede fora do ar → sem
+  // pausa (a agenda, de hora em hora, tenta de novo na hora seguinte)
+  const limite = ctx.limite || ctx.uso >= USO_LIMITE;
+  const pausa = limite ? { pausa_minutos: Math.max(60, Math.ceil(ctx.recuperarMin)), pausa_motivo: "limite" }
+    : ctx.geral && !ctx.passageira ? { pausa_minutos: 360, pausa_motivo: "configuracao" } : { pausa_minutos: 0 };
+  const geral = ctx.geral || (ctx.uso >= USO_LIMITE ? `a Meta informou ${Math.round(ctx.uso)}% de uso das chamadas: a leitura parou para não passar do limite` : "");
+  const fim = await banco(servico, "POST", "rpc/radar_setor_concluir", { p_coleta: ini.coleta, p_resumo: {
+    chamadas: ctx.chamadas, uso_max: Math.round(ctx.uso), codigos: [...ctx.codigos].join(","), ...pausa, geral: geral || null,
+  } });
+  // só contagens e códigos: nome de conta, hashtag, legenda, link e token nunca vão para o registro
+  console.log(`radar-concorrentes (${quem}): setor, ${ini.contas.length} conta(s), ${lidas} lida(s), ${comErro} com erro, ${posts} post(s), ` +
+    `${ctx.chamadas} chamada(s)` + (ctx.uso ? `, uso ${Math.round(ctx.uso)}%` : "") +
+    (pedido.retirados.length ? `, campos retirados: ${pedido.retirados.join(",")}` : "") +
+    (ctx.codigos.size ? `, códigos da Meta: ${[...ctx.codigos].join(",")}` : ""));
+  return { versao: VERSAO, coleta: ini.coleta, lidas, com_erro: comErro, faltam: Number(fim?.faltam ?? 0), chamadas: ctx.chamadas,
+           ...(fim?.pausa_ate ? { pausa_ate: fim.pausa_ate, pausa_motivo: pausa.pausa_motivo } : {}), ...(geral ? { geral } : {}), contas };
+}
+
+/** O @ da conta da Artecon (1 chamada), para o botão "Incluir a conta da Artecon". */
+async function setorPropria(inicio: number) {
+  const faltam = faltamSegredos();
+  if (faltam.length) throw new Erro(503, explicarFalta(faltam));
+  const eu = await chamarMeta(env("META_IG_USER_ID").trim(), "username", contexto(inicio));
+  const usuario = String(eu?.username ?? "").toLowerCase();
+  if (!USUARIO.test(usuario)) throw new Erro(502, "A Meta não devolveu o nome da conta do META_IG_USER_ID.");
+  console.log("radar-concorrentes (admin): setor, a conta da Artecon foi lida");
+  return { versao: VERSAO, usuario };
+}
+
 // ------------------------------------------------------------------ pedido
 function validarPerfis(lista: unknown): string[] {
   if (!Array.isArray(lista) || lista.length < 1 || lista.length > MAX_PERFIS) {
@@ -463,6 +731,13 @@ async function tratar(req: Request): Promise<Response> {
       const r = await diagnostico(inicio);
       console.log(`radar-concorrentes (${quem}): diagnóstico, ${r.itens.filter((i) => i.ok).length} de ${r.itens.length} item(ns) OK`);
       return responder(200, r);
+    }
+    // v0.34.0: a aba Setor (a agenda, com a chave, ou o administrador; a conta da Artecon, só o administrador)
+    if (acao === "setor_teste") return responder(200, { ok: true, versao: VERSAO });
+    if (acao === "setor_coletar") return responder(200, await setorColetar(quem, inicio));
+    if (acao === "setor_propria") {
+      if (quem !== "admin") throw new Erro(403, "Só o administrador lê a conta da Artecon por aqui.");
+      return responder(200, await setorPropria(inicio));
     }
     if (acao !== "ler") throw new Erro(400, "Ação desconhecida.");
     const perfis = validarPerfis(pedido?.perfis);
