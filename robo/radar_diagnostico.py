@@ -2,6 +2,8 @@
 
 Com SUPABASE_URL e SUPABASE_SERVICE_KEY, confere as fontes ATIVAS do banco (inclusive as
 cadastradas pela tela); sem elas, ou se o banco não responder, usa robo/radar_fontes.json.
+v0.31.0: no campo "endereços" do workflow, o identificador de uma fonte (ex.: rfb-normas) confere essa fonte mesmo DESLIGADA
+(para testar pelo GitHub antes de ligar), e um endereço do sistema Normas da Receita é testado como a fonte de atos da Receita.
 Para cada fonte, tenta reconhecer os itens, baixa o
 texto do primeiro item e grava tudo em ./diagnostico/ (páginas originais +
 relatorio.json + relatorio.md). Serve para validar as fontes reais antes de
@@ -20,8 +22,9 @@ import requests
 from bs4 import BeautifulSoup
 
 import radar_inlabs
+import radar_normas
 from radar_banco import Banco, ErroBanco
-from radar_coletores import enderecos_da_listagem as listar_enderecos, listar_paginas
+from radar_coletores import enderecos_da_listagem as listar_enderecos, listar_paginas, texto_do_ato_normas
 from radar_util import VERSAO, ErroDownload, baixar, extrair_texto
 
 AQUI = Path(__file__).resolve().parent
@@ -88,10 +91,11 @@ def normalizar(t: str) -> str:
 def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
     slug = fonte["slug"]
     config = fonte.get("config") or {}
-    r = {"fonte": slug, "url": fonte["url"], "http": None, "bytes": 0, "brutos": 0, "na_janela": 0,
+    r = {"fonte": slug, "url": fonte["url"], "http": None, "bytes": 0, "brutos": 0, "na_janela": 0, "fora_do_tema": 0,
          "amostra": [], "texto_primeiro_item": 0, "inicio_texto": "", "veredito": "FALHA", "erro": None}
     try:
         paginas = []
+        recusa = None                                   # v0.31.0: o texto do 1º item recusado (a lista respondeu)
 
         def baixar_e_guardar(url):
             status, conteudo = baixar(url, sessao)
@@ -100,10 +104,17 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
             (pasta / f"{slug}-lista{sufixo}.txt").write_text(conteudo, encoding="utf-8")
             return status, conteudo
 
+        def guardar_pesquisa(n, texto):                 # v0.31.0: as respostas (JSON) da pesquisa do Normas
+            paginas.append(texto)
+            (pasta / f"{slug}-lista{'' if n == 1 else f'-p{n}'}.txt").write_text(texto, encoding="utf-8")
+
         if fonte.get("tipo_coletor") == "inlabs":
             listagem, r["http"] = radar_inlabs.listar_paginas(sessao, fonte)
+        elif fonte.get("tipo_coletor") == "normas_rfb":
+            listagem, r["http"] = radar_normas.listar_paginas(sessao, fonte, guardar=guardar_pesquisa)
         else:
             listagem, r["http"] = listar_paginas(baixar_e_guardar, fonte)
+        r["fora_do_tema"] = listagem.fora_do_tema
         r["bytes"] = sum(len(c.encode("utf-8")) for c in paginas)
         r["brutos"], r["na_janela"] = listagem.brutos, len(listagem.itens)
         r["amostra"] = [{"titulo": i.titulo, "data": i.data.isoformat() if i.data else None, "url": i.url}
@@ -120,11 +131,23 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
                     pass
         elif listagem.itens:
             primeiro = listagem.itens[0]
-            _, html = baixar(primeiro.url_texto or primeiro.url, sessao, tentativas=2)
-            (pasta / f"{slug}-item.txt").write_text(html, encoding="utf-8")
-            texto = extrair_texto(html, config.get("seletor_texto"))
-            r["texto_primeiro_item"] = len(texto)
-            r["inicio_texto"] = texto[:300]
+            try:
+                _, html = baixar(primeiro.url_texto or primeiro.url, sessao, tentativas=2)
+            except ErroDownload as e:
+                # v0.31.0: a lista respondeu e só o texto do 1º item foi recusado: o HTTP do relatório continua o da lista (não vira
+                # o 403 do texto) e o veredito diz o caso, que tem saída própria ("sem_pagina_de_texto")
+                recusa, html = e, None
+            if html is not None:
+                (pasta / f"{slug}-item.txt").write_text(html, encoding="utf-8")
+                if fonte.get("tipo_coletor") == "normas_rfb":
+                    try:
+                        texto = texto_do_ato_normas(html)        # v0.31.0: o texto do ato vem em JSON
+                    except (ValueError, TypeError, AttributeError):
+                        texto = ""
+                else:
+                    texto = extrair_texto(html, config.get("seletor_texto"))
+                r["texto_primeiro_item"] = len(texto)
+                r["inicio_texto"] = texto[:300]
         if fonte.get("avulsa"):                     # teste de site novo: sempre mostra como a página está montada
             r["estrutura"] = estrutura_da_pagina(paginas[0] if paginas else "")
         if r["brutos"] == 0:
@@ -136,6 +159,10 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
                         listar_enderecos(fonte)[0], r["estrutura"]["scripts_src"], sessao)
                 except Exception as e:
                     r["estrutura"]["enderecos_js"] = {"erro": [f"{type(e).__name__}: {e}"]}
+        elif recusa is not None:
+            r["veredito"] = (f"REVISAR — lista ok, texto do 1º item recusado (HTTP {recusa.http_status or '?'}): com "
+                             '"sem_pagina_de_texto": true a fonte guarda só o que a lista traz (no Normas, a ementa)')
+            r["erro"] = str(recusa)
         elif r["na_janela"] and r["texto_primeiro_item"] < (40 if config.get("sem_pagina_de_texto") else 200):
             r["veredito"] = "REVISAR — lista ok, texto do item não extraído"
         elif any(i["data"] is None for i in r["amostra"]):
@@ -153,10 +180,10 @@ def diagnosticar(fonte: dict, pasta: Path, sessao: requests.Session) -> dict:
 
 def relatorio_md(resultados: list[dict]) -> str:
     linhas = [f"## Radar Artecon — diagnóstico das fontes (robô v{VERSAO})", "",
-              "| Fonte | HTTP | Reconhecidos | Na janela | Texto do 1º item | Veredito |",
-              "|---|---:|---:|---:|---:|---|"]
+              "| Fonte | HTTP | Reconhecidos | Na janela | Fora do tema | Texto do 1º item | Veredito |",
+              "|---|---:|---:|---:|---:|---:|---|"]
     for r in resultados:
-        linhas.append(f"| {r['fonte']} | {r['http'] or '—'} | {r['brutos']} | {r['na_janela']} | "
+        linhas.append(f"| {r['fonte']} | {r['http'] or '—'} | {r['brutos']} | {r['na_janela']} | {r.get('fora_do_tema', 0)} | "
                       f"{r['texto_primeiro_item']} | {r['veredito']}{' — ' + r['erro'] if r['erro'] else ''} |")
     for r in resultados:
         linhas += ["", f"### {r['fonte']}"]
@@ -177,19 +204,61 @@ def relatorio_md(resultados: list[dict]) -> str:
     return "\n".join(linhas)
 
 
+RE_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def _fontes_do_arquivo() -> list[dict]:
+    return json.loads((AQUI / "radar_fontes.json").read_text(encoding="utf-8"))
+
+
 def fontes_avulsas(enderecos: str, padrao: str = "") -> list[dict]:
     """Endereços para testar antes de cadastrar (Actions → diagnóstico → "endereços"): cada um vira uma fonte
-    provisória do tipo "página com lista de links"; sem padrão, todos os links contam."""
+    provisória do tipo "página com lista de links"; sem padrão, todos os links contam. v0.31.0: um endereço do sistema Normas
+    da Receita vira a fonte de atos da Receita (a pesquisa nova, com as opções da rfb-normas de robo/radar_fontes.json)."""
     fontes = []
     for n, url in enumerate([u for u in re.split(r"[\s,;]+", enderecos or "") if u.startswith(("http://", "https://"))][:10], 1):
+        if re.match(r"https?://normas\.receita\.fazenda\.gov\.br(/|$)", url, re.I):
+            modelo = next((f for f in _fontes_do_arquivo() if f["slug"] == "rfb-normas"), {"config": {}})
+            fontes.append({"slug": f"teste-{n}", "url": radar_normas.ENDERECO_PESQUISA, "tipo_coletor": "normas_rfb",
+                           "config": dict(modelo["config"]), "avulsa": True})
+            continue
         fontes.append({"slug": f"teste-{n}", "url": url, "tipo_coletor": "rss" if re.search(r"(rss|feed|atom)", url, re.I) else "html_links",
                        "config": {"padrao_url": padrao or ".", "janela_dias": 30, "texto_do_feed": True}, "avulsa": True})
     return fontes
 
 
+def fontes_pedidas(enderecos: str) -> tuple[list[dict], str] | None:
+    """v0.31.0: identificadores de fontes no campo "endereços" (ex.: "rfb-normas dou-confaz"): confere essas fontes como estão
+    cadastradas, LIGADAS OU NÃO (é o teste pelo GitHub antes de ligar). Do banco, quando há chave; senão, do arquivo."""
+    slugs = [t for t in re.split(r"[\s,;]+", enderecos or "") if RE_SLUG.match(t)][:20]
+    if not slugs:
+        return None
+    url, chave = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
+    if url and chave:
+        try:
+            fontes = [f for f in Banco(url, chave).fontes_por_slug(slugs) if (f.get("config") or {}).get("origem") != "email"]
+            origem = "fontes pedidas, do banco (ligadas ou não)"
+        except ErroBanco as e:
+            print(f"! banco indisponível ({e}); usando robo/radar_fontes.json", file=sys.stderr)
+            fontes, origem = None, ""
+    else:
+        fontes, origem = None, ""
+    if fontes is None:
+        fontes = [f for f in _fontes_do_arquivo() if f["slug"] in slugs]
+        origem = "fontes pedidas, do arquivo robo/radar_fontes.json"
+    faltam = [s for s in slugs if s not in {f["slug"] for f in fontes}]
+    if faltam:
+        print(f"! fonte(s) não encontrada(s): {', '.join(faltam)}", file=sys.stderr)
+        origem += f"; não encontradas: {', '.join(faltam)}"
+    return fontes, origem
+
+
 def carregar_fontes() -> tuple[list[dict], str]:
-    """Endereços avulsos (variável ENDERECOS); senão, fontes ativas do banco quando há chave; senão, as do arquivo."""
+    """Endereços avulsos e fontes pedidas (variável ENDERECOS); senão, fontes ativas do banco quando há chave; senão, as do arquivo."""
     avulsas = fontes_avulsas(os.environ.get("ENDERECOS", ""), os.environ.get("PADRAO", ""))
+    pedidas = fontes_pedidas(os.environ.get("ENDERECOS", ""))
+    if pedidas is not None:
+        return pedidas[0] + avulsas, pedidas[1] + (" e endereços informados para teste" if avulsas else "")
     if avulsas:
         return avulsas, "endereços informados para teste"
     url, chave = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
@@ -199,7 +268,7 @@ def carregar_fontes() -> tuple[list[dict], str]:
             return fontes, "fontes ativas do banco"
         except ErroBanco as e:
             print(f"! banco indisponível ({e}); usando robo/radar_fontes.json", file=sys.stderr)
-    return json.loads((AQUI / "radar_fontes.json").read_text(encoding="utf-8")), "robo/radar_fontes.json"
+    return _fontes_do_arquivo(), "robo/radar_fontes.json"
 
 
 def main() -> int:

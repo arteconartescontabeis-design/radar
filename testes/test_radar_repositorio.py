@@ -536,3 +536,46 @@ def test_leiame_da_v0290_ordem_desligar_e_desfazer():
     for trecho in ("**lembretes por e-mail antes do dia**", "um e-mail por dia", "uma vez só", "nunca", "0.22.0 → **0.29.0**",
                    "`robo/radar_lembretes.py`", "**Nenhum segredo novo.**", "Da v0.28.1 para a v0.29.0"):
         assert trecho in topo, trecho
+
+
+def test_leiame_da_v0310_confere_com_o_cadastro_e_respeita_o_pedido_do_dom_sc():
+    """v0.31.0 (revisão): o LEIAME diz o que o cadastro faz. (1) As unidades da Receita que ficam de fora por padrão são as do
+    excluir_orgao da rfb-normas (a v0.31.0 tirou o DISIT: as Soluções de Consulta das Disit entram). (2) Quem ainda não foi decidido
+    pelo dono não está "desligado por decisão do dono". (3) O robots.txt do DOM/SC pede que robôs não entrem: o LEIAME não manda rodar
+    o diagnóstico (que também é um robô) com uma fonte do DOM/SC antes da autorização do site."""
+    import json
+    leiame = (RAIZ / "LEIAME-radar.md").read_text(encoding="utf-8")
+    rfb = next(f for f in json.loads((RAIZ / "robo" / "radar_fontes.json").read_text(encoding="utf-8")) if f["slug"] == "rfb-normas")
+    unidades = {u.lower() for u in re.fullmatch(r"\^\(([^)]*)\)", rfb["config"]["excluir_orgao"]).group(1).split("|")}
+    citadas = re.search(r"Unidades regionais\s+da Receita \(([^)]*)\)", leiame).group(1)
+    assert [u for u in re.split(r",\s*", citadas.replace("…", "")) if u.lower() not in unidades] == []
+    assert "disit" not in unidades and re.search(r"desde a v0\.31\.0, as Disit entram", leiame)
+    topo = leiame[:leiame.index("A v0.30.0 traz")]
+    assert "por decisão do dono" not in topo and "**desligadas até o dono decidir**" in topo and "por escolha desta versão" in topo
+    # nenhuma fonte do DOM/SC como exemplo do diagnóstico; o item (d) diz para não rodar nem o diagnóstico sem a autorização
+    assert re.findall(r"`(domsc-[a-z]+-[a-z]+)`", leiame) == []
+    inst = leiame[leiame.index("**Da v0.30.0 para a v0.31.0**"):leiame.index("**Da v0.29.0 para a v0.30.0**")]
+    d = inst[inst.index("- (d) **DOM/SC"):inst.index("**Como desligar uma fonte:**")]
+    assert "não rode nem o diagnóstico" in d and "autorização por escrito" in d
+    # o item (c): os três casos pelo veredito do diagnóstico, e não só pelo número HTTP
+    c = inst[inst.index("- (c) **Atos da Receita"):inst.index("- (d) **DOM/SC")]
+    assert c.index('**"OK"**') < c.index('**"REVISAR — lista ok, texto do 1º item recusado"**') < c.index('**"FALHA"** com HTTP 403')
+
+
+def test_amostras_do_diario_oficial_sem_os_nomes_de_quem_assinou():
+    """v0.31.0 (revisão): o LEIA-ME das amostras diz que os nomes de quem assinou os atos foram trocados por um aviso. Nenhum XML do DOU
+    das amostras (repositório público) traz o parágrafo de assinatura, como o do Convênio ICMS 115 (o presidente do CONFAZ e o secretário
+    de Fazenda de cada estado)."""
+    import html
+    ufs = ("Acre|Alagoas|Amapá|Amazonas|Bahia|Ceará|Distrito Federal|Espírito Santo|Goiás|Maranhão|Mato Grosso(?: do Sul)?|Minas Gerais|"
+           "Pará|Paraíba|Paraná|Pernambuco|Piauí|Rio de Janeiro|Rio Grande do Norte|Rio Grande do Sul|Rondônia|Roraima|Santa Catarina|"
+           "São Paulo|Sergipe|Tocantins")
+    arquivos = sorted((RAIZ / "testes" / "amostras").glob("dou-*.xml"))
+    assert len(arquivos) == 6
+    for arq in arquivos:
+        texto = html.unescape(arq.read_text(encoding="utf-8"))
+        assert "Presidente do CONFAZ -" not in texto, arq.name
+        for p in re.findall(r"<p[^>]*>(.*?)</p>", texto, re.S):
+            assert len(re.findall(rf"\b(?:{ufs}) - [A-ZÁÉÍÓÚÂÊÔ]", p)) < 3, (arq.name, p[:80])
+    assert "[nomes dos signatários retirados da amostra]" in (RAIZ / "testes" / "amostras" / "dou-confaz-entra-despacho-48-convenios.xml").read_text(encoding="utf-8")
+    assert "os nomes de quem assinou os atos foram trocados por um aviso" in (RAIZ / "testes" / "amostras" / "LEIA-ME.txt").read_text(encoding="utf-8")

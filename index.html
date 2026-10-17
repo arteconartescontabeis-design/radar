@@ -314,19 +314,26 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.30.0"></script>
-<script src="radar-video.js?v=0.30.0"></script>
+<script src="radar-pauta.js?v=0.31.0"></script>
+<script src="radar-video.js?v=0.31.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.30.0";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos)
-const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0 não sobe: a radar-redes não muda)
+const VERSAO = "0.31.0";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco)
+const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0 e v0.31.0 não sobem: a radar-redes não muda)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.31.0", "17/10/2026", [
+    "Fontes oficiais que faltavam, pelo Diário Oficial da União (o mesmo acesso do INLABS que já funciona; nenhuma senha nova): as leis, leis complementares, decretos, medidas provisórias e emendas à Constituição que tratam de tributos, trabalho e empresas; os convênios, ajustes e protocolos do ICMS do CONFAZ (o site do CONFAZ não abre para o robô, que roda fora do Brasil; pelo Diário Oficial eles chegam do mesmo jeito); e as portarias e resoluções do Ministério do Trabalho, do FGTS, do eSocial, da Previdência e do INSS que tocam o departamento pessoal. O robô baixa o Diário de cada dia uma vez só e cada fonte pega a sua parte.",
+    "Notícias oficiais do departamento pessoal no gov.br: eSocial, comunicados do FGTS Digital e Previdência (desta, só o que fala de empresas e contribuições, como o FAP). A data de cada notícia passa a ser a de publicação: antes, às vezes era um prazo citado no resumo.",
+    "Sem enxurrada: as fontes novas do Diário Oficial, a da Previdência e as do Diário Oficial dos Municípios têm as palavras do tema (Fontes → Configurar → “Outras opções de leitura”, “palavras” e “excluir_palavras”, sem diferença de maiúsculas e acentos); as do eSocial e do FGTS Digital ficam sem, porque tudo o que publicam é do departamento pessoal. O que não é do tema não vira captura e só aparece na contagem “Fora do tema” do resumo da coleta. Conferido com o Diário Oficial de 13 dias úteis: sem o filtro, as três fontes do Diário trariam 47 atos; com ele, 14 (cerca de 1 por dia).",
+    "Atos normativos da Receita (sistema Normas): o robô volta a ler o Normas pela pesquisa pública nova (a mesma que o site usa, sem captcha), com o texto completo de cada ato e as Soluções de Consulta das Disit (IRPJ, Simples Nacional, contribuições), que o Diário Oficial do INLABS não traz. A fonte continua desligada até o teste pelo GitHub dar certo (em 04/10 o site recusou o GitHub). E o texto oficial colado de um ato do Normas passa a ir para a captura desse ato: antes, para o banco, todos os atos do Normas tinham o mesmo endereço.",
+    "Ficam de fora, por enquanto: Florianópolis (o site da prefeitura recusa o robô e, no Diário Oficial dos Municípios, a lista não diz o assunto do ato); Palhoça e São José pelos sites das prefeituras (recusam o robô): entram pelo Diário Oficial dos Municípios (DOM/SC), pela pesquisa do próprio site sobre tributos (que às vezes traz ato de outro assunto: os que apareceram ficam de fora pelas palavras do tema), mas cadastradas desligadas, porque o site pede que robôs não entrem e ligar é decisão do dono (a sugestão é pedir autorização ao consórcio CIGA, que mantém o site); o CONFAZ pelo próprio site (chega pelo Diário Oficial); as notícias do INSS (quase tudo é orientação ao segurado) e as portarias do Ministro da Fazenda (opcional), as duas cadastradas desligadas.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.31.0.sql (só muda a função do endereço dos atos; nenhuma tabela nova, nada é apagado; pode rodar de novo), publique a versão (o robô da coleta, a tela e o diagnóstico vão juntos; Ctrl+F5) e rode a coleta uma vez (GitHub → Actions → “Radar — coleta das fontes oficiais” → Run workflow). Só então rode o sql/radar-fontes-novas-v0.31.0.sql: ele cadastra as fontes novas e para sem mudar nada se o robô novo ainda não tiver coletado. Nenhum segredo novo; as funções radar-ia, radar-redes e radar-video não mudam. Passo a passo no LEIAME, “Da v0.30.0 para a v0.31.0”."]],
   ["0.30.0", "17/10/2026", [
     "Agenda de obrigações com o 13º salário e as obrigações anuais: a 1ª parcela do 13º até 30/11 e a 2ª até 20/12 (Lei 4.749/1965, arts. 2º e 1º; a lei não trata do fim de semana nem do feriado: por segurança, a agenda antecipa para o dia útil anterior, como 20/12/2026, domingo, que fica 18/12), a DEFIS até 31/03 e a DASN-SIMEI até o último dia de maio (Resolução CGSN 140/2018, art. 72, § 1º, e art. 109; não mudam no fim de semana), a ECD no último dia útil de junho (IN RFB 2.003/2021, art. 5º) e a ECF no último dia útil de julho (IN RFB 2.004/2021, art. 3º), cada uma com a fonte oficial conferida. A obrigação anual só entra no Informativo do mês dela e na agenda da semana da Pauta daquela semana; as de todo mês continuam iguais. Em Configurações, a obrigação com “mes” (de 1 a 12) é anual.",
     "Agenda da semana da Pauta: “Calcular a agenda da semana” passa a trazer os vencimentos de segunda a domingo (antes, de segunda a sexta). No fim de semana só vence o que não muda de data, como a DEFIS e a DASN-SIMEI em alguns anos (31/05/2026 é domingo); sem isso, elas não entrariam em post nenhum.",
@@ -1104,7 +1111,7 @@ function linhaProrrogacao(p){
 }
 /* Configurações → Agenda de obrigações: as dos últimos 30 dias, também as já conferidas (com o selo) */
 function listaProrrogacoes(lista){
-  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0: o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
+  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.31.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
   return `<div class="prorrogacoes" id="prorrogacoes-config"><h3>Possíveis prorrogações captadas (últimos 30 dias)</h3>
     ${lista.length ? `<p class="sub">Notícias que falam em prorrogar ou adiar o prazo de uma obrigação desta agenda. O Radar não muda a data sozinho: confira na fonte oficial e, se o prazo mudou, ponha a nova data em “prorrogacoes”.</p>
       <ul>${lista.map(linhaProrrogacao).join("")}</ul>` : `<p class="sub">Nenhuma notícia dos últimos 30 dias fala em prorrogar ou adiar o prazo de uma obrigação desta agenda.</p>`}</div>`;
@@ -1567,7 +1574,7 @@ function formFonte(f){
       <label style="margin:0"><input type="checkbox" name="ativo" ${f.ativo ? "checked" : ""}> Fonte ativa</label>
       <label style="margin:0"><input type="checkbox" name="validada" ${f.validada ? "checked" : ""}> Validada (já conferi que está lendo certo)</label></div>
     <details><summary>Outras opções de leitura (JSON)</summary>
-      <p class="sub" style="margin:4px 0">O padrão dos links, o seletor do texto e a idade máxima ficam nos campos acima (se escritos aqui, valem os campos).</p>
+      <p class="sub" style="margin:4px 0">O padrão dos links, o seletor do texto e a idade máxima ficam nos campos acima (se escritos aqui, valem os campos). Filtro de tema: <code>"palavras": ["FGTS", "eSocial"]</code> (só entra o que tiver uma delas no título ou no resumo) e <code>"excluir_palavras": ["campanha"]</code> (o que tiver uma delas fica de fora), sem diferença de maiúsculas e acentos.</p>
       <textarea id="f-cfg-${id}" name="config" aria-label="Outras opções de leitura (JSON)" style="font-family:monospace;min-height:110px" spellcheck="false">${h(JSON.stringify(outras, null, 2))}</textarea></details>
     <div class="acoes"><button class="btn">${f.id ? "Salvar fonte" : "Cadastrar fonte"}</button>
       ${f.id ? `<button class="btn perigo" type="button" data-acao="excluir-fonte" data-id="${f.id}">Excluir fonte</button>` : `<button class="btn sec" type="button" data-acao="nova-fonte">Cancelar</button>`}</div>
@@ -2803,7 +2810,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.31.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -4401,7 +4408,7 @@ const quandoBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "�
   : d.toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}).replace(",", " às"); };
 function situacaoLembretes(lemb, cfg){
   if(lemb.erro) return `<div class="aviso alerta" id="lembretes-situacao">${lemb.erro.status === 404
-    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.31.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler a situação dos lembretes agora: recarregue a página."}</div>`;
   const s = lemb.r || {}, ag = s.agenda || {};
   const agenda = !ag.instalada ? "não instalada: rode de novo o sql/radar-redes-agenda.sql (Supabase → SQL Editor)"
@@ -4491,6 +4498,18 @@ const FORMS = {
     if(padrao){ try{ new RegExp(padrao); }catch(e){ recado("O padrão dos links não é uma expressão válida: " + e.message, true); return; } }
     // repetição dentro de repetição, como (a+)+, pode travar o robô
     if(repeticaoPerigosa(padrao) || repeticaoPerigosa(typeof config.excluir_url === "string" ? config.excluir_url : "")){ recado("O padrão dos links tem uma repetição dentro de outra — algo como (a+)+ —, o que pode travar o robô. Simplifique o padrão.", true); return; }
+    // v0.31.0: o filtro de tema (“palavras” e “excluir_palavras”, em “Outras opções de leitura”: uma expressão ou uma lista delas, sem
+    // diferença de maiúsculas e acentos) é conferido como o padrão dos links; o robô confere de novo (Python) e, se recusar, a fonte fica com falha
+    for(const campo of ["palavras", "excluir_palavras"]){
+      const valor = config[campo];
+      if(valor === undefined || valor === null || valor === "") continue;
+      const lista = typeof valor === "string" ? [valor] : (Array.isArray(valor) && valor.every(v => typeof v === "string") ? valor : null);
+      if(!lista){ recado(`As palavras do tema (${campo}) precisam ser um texto ou uma lista de textos, como ["FGTS", "eSocial"].`, true); return; }
+      for(const pedaco of lista){
+        try{ new RegExp(pedaco, "i"); }catch(e){ recado(`As palavras do tema (${campo}) não são uma expressão válida: “${pedaco.slice(0, 60)}” — ${e.message}`, true); return; }
+        if(repeticaoPerigosa(pedaco)){ recado(`As palavras do tema (${campo}) têm uma repetição dentro de outra — algo como (a+)+ —, o que pode travar o robô: “${pedaco.slice(0, 60)}”. Simplifique.`, true); return; }
+      }
+    }
     if(janela && !(Number(janela) >= 1 && Number(janela) <= 3650)){ recado("A idade máxima dos itens deve ficar entre 1 e 3650 dias.", true); return; }
     for(const [chave, valor] of [["padrao_url", padrao], ["seletor_texto", seletor], ["janela_dias", janela ? Number(janela) : ""]]){
       if(valor === "") delete config[chave]; else config[chave] = valor; }

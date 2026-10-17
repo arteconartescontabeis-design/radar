@@ -1,6 +1,7 @@
 """Radar Artecon — acesso ao Supabase (PostgREST) com a chave service_role."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -56,6 +57,13 @@ class Banco:
         if slug:
             params["slug"] = f"eq.{slug}"
         return self._pedir("GET", "radar_fontes", params=params)
+
+    def fontes_por_slug(self, slugs: list[str]) -> list[dict]:
+        """v0.31.0: as fontes pedidas pelo identificador, ligadas ou não (o diagnóstico testa antes de ligar)."""
+        validos = [s for s in slugs if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", s or "")]
+        if not validos:
+            return []
+        return self._pedir("GET", "radar_fontes", params={"select": "*", "slug": f"in.({','.join(validos)})", "order": "id"})
 
     # -------------------------------------------------------------- execuções
     def abrir_execucao(self, fonte_id: int) -> int:

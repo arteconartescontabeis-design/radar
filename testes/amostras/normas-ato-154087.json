@@ -1,0 +1,106 @@
+{
+ "_origem": "Resposta REAL de GET https://normasinternet2.receita.fazenda.gov.br/api/consulta-externa/ato/154087/visao/multivigente em 17/10/2026. Reduzida: sem estiloSegmento, ancoras e historico; o nome de quem assinou (segmento de fecho, idTipoSegmento 4) foi trocado por um aviso. Todos os segmentos (a íntegra da Solução de Consulta está no PDF anexo).",
+ "idAto": 154087,
+ "epigrafe": {
+  "tipoAto": {
+   "idTipoAto": 72,
+   "siglaTipoAto": "SC",
+   "nomeTipoAto": "Solução de Consulta",
+   "prioridadeTipoAto": 32,
+   "exibirTipoAto": 1
+  },
+  "numeroAto": "196",
+  "dataAto": "2026-10-08",
+  "orgaos": [
+   {
+    "idOrgao": 111,
+    "siglaOrgao": "Cosit",
+    "nomeOrgao": "Coordenação-Geral de Tributação"
+   }
+  ],
+  "dataAtoPorExtenso": "8 de outubro de 2026"
+ },
+ "epigrafeCompleta": "Solução de Consulta Cosit nº 196, de 8 de outubro de 2026",
+ "epigrafeSimplificada": "Solução de Consulta Cosit nº 196, de 08/10/2026",
+ "epigrafeUrl": "SC Cosit nº 196/2026",
+ "dadosPublicacao": "Publicado(a) no DOU de 14/10/2026, seção 1, página 37",
+ "dataPublicacao": "2026-10-14",
+ "dataVigenciaInicio": "2026-10-14",
+ "exibirVisoes": "1111",
+ "visao": "multivigente",
+ "integro": true,
+ "vigente": true,
+ "ehRepublicado": false,
+ "publicado": true,
+ "internet": true,
+ "ementas": [
+  {
+   "idAto": 154087,
+   "idSegmento": 2741347,
+   "idTipoSegmento": 1,
+   "ordemSegmentoAto": 1,
+   "omitir": false,
+   "tachado": false,
+   "original": true,
+   "compilado": true,
+   "agendado": false,
+   "textoIntegra": "<span style=\"color: black;\">Assunto: Imposto sobre a Renda de Pessoa Jurídica - IRPJ</span>\n<br><span style=\"color: black;\">SUBVENÇÕES GOVERNAMENTAIS. ESTÍMULO À INOVAÇÃO E PESQUISA CIENTÍFICA E TECNOLÓGICA. DESONERAÇÃO.</span>\n<br><span style=\"color: black;\">As subvenções governamentais recebidas nos moldes do art. 19 da Lei nº 10.973, de 2 de dezembro de 2004, e do art. 21 da Lei nº 11.196, de 21 de novembro de 2005, não serão computadas para fins de determinação da base de cálculo do imposto, desde que cumpridos os requisitos estabelecidos na legislação específica e realizadas as contrapartidas assumidas pela empresa beneficiária, em função do permissivo legal do art. 30 da Lei nº 12.350, de 20 de dezembro 2010.</span>\n<br><span style=\"color: black;\">Dispositivos Legais: Lei nº 10.973, de 2 de dezembro de 2004, art. 19; Lei nº 11.196, de 21 de novembro de 2005, art. 21; Lei nº 12.350, de 20 de dezembro de 2010, art. 30; Decreto nº 9.580, de 22 de novembro de 2018, art. 442.</span>\n<br><span style=\"color: black;\">Assunto: Contribuição Social sobre o Lucro Líquido - CSLL</span>\n<br><span style=\"color: black;\">SUBVENÇÕES GOVERNAMENTAIS. ESTÍMULO À INOVAÇÃO E PESQUISA CIENTÍFICA E TECNOLÓGICA. DESONERAÇÃO.</span>\n<br><span style=\"color: black;\">As subvenções governamentais recebidas nos moldes do art. 19 da Lei nº 10.973, de 2 de dezembro de 2004, e do art. 21 da Lei nº 11.196, de 21 de novembro de 2005, não serão computadas para fins de determinação da base de cálculo da contribuição, desde que cumpridos os requisitos estabelecidos na legislação específica e realizadas as contrapartidas assumidas pela empresa beneficiária, em função do permissivo legal do art. 30 da Lei nº 12.350, de 20 de dezembro de 2010.</span>\n<br><span style=\"color: black;\">Dispositivos Legais: Lei nº 10.973, de 2 de dezembro de 2004, art. 19; Lei nº 11.196, de 21 de novembro de 2005, art. 21; Lei nº 12.350, de 20 de dezembro de 2010, art. 30; Decreto nº 9.580, de 22 de novembro de 2018, art. 442.</span>\n<br><span style=\"color: black;\">Assunto: Contribuição para o Financiamento da Seguridade Social - Cofins</span>\n<br><span style=\"color: black;\">SUBVENÇÕES GOVERNAMENTAIS. ESTÍMULO À INOVAÇÃO E PESQUISA CIENTÍFICA E TECNOLÓGICA. DESONERAÇÃO.</span>\n<br><span style=\"color: black;\">As subvenções governamentais recebidas nos moldes do art. 19 da Lei nº 10.973, de 2 de dezembro de 2004, e do art. 21 da Lei nº 11.196, de 21 de novembro de 2005, não serão computadas para fins de determinação da base de cálculo da contribuição, desde que cumpridos os requisitos estabelecidos na legislação específica e realizadas as contrapartidas assumidas pela empresa beneficiária, em função do permissivo legal do art. 30 da Lei nº 12.350, de 20 de dezembro de 2010.</span>\n<br><span style=\"color: black;\">Dispositivos Legais: Lei nº 10.973, de 2 de dezembro de 2004, art. 19; Lei nº 11.196, de 21 de novembro de 2005, art. 21; Lei nº 12.350, de 20 de dezembro de 2010, art. 30; Decreto nº 9.580, de 22 de novembro de 2018, art. 442.</span>\n<br><span style=\"color: black;\">Assunto: Contribuição para o PIS/Pasep</span>\n<br><span style=\"color: black;\">SUBVENÇÕES GOVERNAMENTAIS. ESTÍMULO À INOVAÇÃO E PESQUISA CIENTÍFICA E TECNOLÓGICA. DESONERAÇÃO.</span>\n<br><span style=\"color: black;\">As subvenções governamentais recebidas nos moldes do art. 19 da Lei nº 10.973, de 2 de dezembro de 2004, e do art. 21 da Lei nº 11.196, de 21 de novembro de 2005, não serão computadas para fins de determinação da base de cálculo da contribuição, desde que cumpridos os requisitos estabelecidos na legislação específica e realizadas as contrapartidas assumidas pela empresa beneficiária, em função do permissivo legal do art. 30 da Lei nº 12.350, de 20 de dezembro de 2010.</span>\n<br><span style=\"color: black;\">Dispositivos Legais: Lei nº 10.973, de 2 de dezembro de 2004, art. 19; Lei nº 11.196, de 21 de novembro de 2005, art. 21; Lei nº 12.350, de 20 de dezembro de 2010, art. 30; Decreto nº 9.580, de 22 de novembro de 2018, art. 442.</span>",
+   "arquivoBinario": null
+  }
+ ],
+ "outrosSegmentos": [
+  {
+   "idAto": 154087,
+   "idSegmento": 2741380,
+   "idTipoSegmento": 16,
+   "ordemSegmentoAto": 2,
+   "omitir": false,
+   "tachado": false,
+   "original": true,
+   "compilado": true,
+   "agendado": false,
+   "textoIntegra": "",
+   "arquivoBinario": {
+    "idArquivoBinario": 86879,
+    "idTipoArquivo": 6,
+    "arquivoBinario": null,
+    "nomeArquivoBinario": "SC Cosit nº 196-2026.pdf",
+    "textoArquivoBinario": null,
+    "posicaoArray": null,
+    "mensagemErro": null,
+    "tamanho": null,
+    "conteudoTabela": null
+   }
+  },
+  {
+   "idAto": 154087,
+   "idSegmento": 2741370,
+   "idTipoSegmento": 4,
+   "ordemSegmentoAto": 3,
+   "omitir": false,
+   "tachado": false,
+   "original": true,
+   "compilado": true,
+   "agendado": false,
+   "textoIntegra": "[nome do signatário retirado da amostra]",
+   "arquivoBinario": null
+  }
+ ],
+ "tiposSegmento": [
+  {
+   "idTipoSegmento": 1,
+   "siglaTipoSegmento": "ementa",
+   "nomeTipoSegmento": "Ementa"
+  },
+  {
+   "idTipoSegmento": 4,
+   "siglaTipoSegmento": "fecho",
+   "nomeTipoSegmento": "Fecho"
+  },
+  {
+   "idTipoSegmento": 16,
+   "siglaTipoSegmento": "anexo",
+   "nomeTipoSegmento": "Anexo"
+  }
+ ]
+}

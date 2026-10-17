@@ -10,3 +10,26 @@ Quando o diagnóstico rodar, as páginas reais substituem estas amostras.
 pauta-ficticia.csv (v0.21.0): calendário da Pauta INVENTADO, no formato do plano de publicações (BOM, separador ";",
 aspas com ";" dentro e "" para aspas). Os nomes são de mentira. O calendário verdadeiro tem nomes da equipe e nunca vai
 para o repositório (público): o .gitignore barra e testes/test_radar_repositorio.py confere.
+
+v0.31.0 (17/10/2026): páginas e respostas REAIS das fontes oficiais, baixadas em 17/10/2026 e REDUZIDAS ao necessário (sem scripts,
+imagens, menus inteiros nem créditos de autoria; os nomes de quem assinou os atos foram trocados por um aviso):
+  normas-pesquisar-2026-10-01a17.json  resposta da pesquisa pública do sistema Normas da Receita (POST /api/indexacao/ato/pesquisar),
+                                       período de publicação de 01/10 a 17/10/2026, reduzida de 231 para 7 atos sem mexer nos campos
+                                       (o total, o número de páginas e o sufixo /vs/ foram recalculados; a chave "_origem" explica).
+  normas-pesquisar-vazia.json          resposta real sem atos.
+  normas-ato-154126.json, normas-ato-154087.json
+                                       o texto de dois atos pela consulta externa (visão multivigente): a Portaria Coana nº 214 (6 dos
+                                       29 segmentos) e a Solução de Consulta Cosit nº 196 (ementa em HTML e anexo em PDF).
+  govbr-*-noticias.html, govbr-fgts-comunicados.html, govbr-*-item.html
+                                       as listas e uma notícia de cada: eSocial, FGTS Digital (em ordem de publicação), Previdência e INSS.
+  domsc-rss-palhoca-decretos.xml, domsc-rss-saojose-leis.xml
+                                       o feed RSS de duas pesquisas do Diário Oficial dos Municípios de SC (decretos de Palhoça e leis de
+                                       São José sobre tributos).
+  dou-*.xml                            seis atos do Diário Oficial da União MONTADOS no formato do XML do INLABS a partir do texto real
+                                       das páginas públicas do DOU (o XML do INLABS pede login): o idMateria é o número do portal e o
+                                       texto foi cortado nos primeiros parágrafos. Servem para testar os filtros, não para provar o
+                                       formato exato do INLABS.
+  dou-atos-reais-2025-2026.tsv         112 atos reais do DOU (tipo, órgão, título e ementa, da página de leitura do DOU de 17 dias de
+                                       2025 e 2026) e, para cada fonte do INLABS, o que a medição da pesquisa decidiu: vazio (fora pelo
+                                       órgão ou tipo), ENTRA, fora-tema (palavras) ou fora-excluir (excluir_palavras).
+O rfb-normas.html (tabela do sistema Normas antigo) saiu: o endereço dele não existe mais desde 04/10/2026.

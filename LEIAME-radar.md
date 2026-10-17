@@ -1,4 +1,4 @@
-# Radar Artecon — v0.30.0
+# Radar Artecon — v0.31.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,6 +12,31 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
+A v0.31.0 traz as **fontes oficiais que faltavam**, sem enxurrada: as do Diário Oficial, a da Previdência e as do DOM/SC têm
+**filtro de tema**; o eSocial e o FGTS Digital, não (tudo o que publicam é do departamento pessoal, e são poucas notícias). Pelo **Diário Oficial da
+União** (o mesmo acesso do INLABS da fonte `dou-inlabs`; **nenhuma senha nova**): as leis, leis complementares, decretos, medidas
+provisórias e emendas à Constituição sobre tributos, trabalho e empresas (`dou-presidencia`); os convênios, ajustes e protocolos do
+ICMS do **CONFAZ** (`dou-confaz`: o site do CONFAZ não abre para o robô, que roda fora do Brasil); e as portarias e resoluções do
+Ministério do Trabalho, do FGTS, do eSocial, da Previdência e do INSS que tocam o departamento pessoal (`dou-trabalho-previdencia`).
+O robô baixa o Diário de cada dia **uma vez só por rodada** e cada fonte pega a sua parte. No **gov.br**: notícias do **eSocial**,
+comunicados do **FGTS Digital** e notícias da **Previdência** (só empresas e contribuições). O filtro de tema é uma opção nova de
+qualquer fonte (`"palavras"` e `"excluir_palavras"`, sem diferença de maiúsculas e acentos): o que não é do tema não vira captura e só
+aparece na contagem **"Fora do tema"** do resumo da coleta. A fonte de **atos da Receita (sistema Normas)** volta a ler o Normas pela
+pesquisa pública nova (a mesma que o site usa, sem captcha), com o texto completo de cada ato, mas **continua desligada** até o teste
+pelo GitHub dar certo (em 04/10 o site recusou o GitHub). Ficam **desligadas até o dono decidir** **Palhoça e São José** pelo Diário
+Oficial dos Municípios (DOM/SC; os sites das prefeituras recusam o robô, e o DOM/SC pede no `robots.txt` que robôs não entrem); e,
+por escolha desta versão, as notícias do **INSS** (quase tudo é orientação ao segurado) e as portarias do **Ministro da Fazenda**
+(opcional). **Florianópolis** fica de fora nesta versão.
+
+Mudam o robô da coleta (`robo/radar_coletar.py`, `radar_coletores.py`, `radar_inlabs.py`, `radar_util.py`, `radar_diagnostico.py`,
+`radar_banco.py`, `robo/radar_fontes.json` e o novo `robo/radar_normas.py`; robô **0.31.0**), a tela (`index.html`: a conferência
+das palavras do tema na aba Fontes; `radar-pauta.js` e `radar-video.js` só mudam a versão), o workflow do diagnóstico (o campo
+"endereços" aceita o identificador de uma fonte, ligada ou não) e o banco (`sql/radar-setup-v0.31.0.sql`: só a função
+`radar_url_base`, para o texto oficial colado de um ato do Normas ir para a captura desse ato; nenhuma tabela nova, nada é apagado).
+Entra o `sql/radar-fontes-novas-v0.31.0.sql` (as fontes). **Nenhum segredo novo.** As funções `radar-ia`, `radar-redes` e
+`radar-video` e as agendas do banco não mudam. **O SQL das fontes só depois de o robô novo coletar uma vez**: veja "Da v0.30.0 para a
+v0.31.0".
+
 A v0.30.0 traz a **agenda de obrigações com o 13º salário e as obrigações anuais** e o **aviso de possível prorrogação de
 prazo**. A agenda de obrigações (Informativo Mensal e agenda da semana da Pauta) passa a ter obrigações anuais (`"mes"`: só entram na
 agenda do mês delas) e a prorrogação de um vencimento (`"prorrogacoes"`, que só o administrador escreve). A agenda padrão ganha o 13º
@@ -23,7 +48,7 @@ pelo botão **"Acrescentar o 13º e as obrigações anuais"** (Configurações �
 em prorrogar o prazo de uma obrigação da agenda, avisa no Painel, na edição do Informativo e por e-mail ao administrador (uma vez por
 notícia), **sem mudar data nenhuma**: quem confere na fonte oficial e põe a nova data é o administrador.
 
-Mudam o banco (`sql/radar-setup-v0.30.0.sql`: duas funções novas, `radar_prorrogacao_obrigacoes` e `radar_prorrogacoes`; nenhuma
+Mudam o banco (`sql/radar-setup-v0.30.0.sql`, hoje `radar-setup-v0.31.0.sql`: duas funções novas, `radar_prorrogacao_obrigacoes` e `radar_prorrogacoes`; nenhuma
 tabela nova, nada é apagado; a lista de obrigações do escritório não muda), a tela (`index.html` e `radar-pauta.js`; o `radar-video.js`
 só muda a versão) e o robô dos avisos (`robo/radar_alertas.py` e `robo/radar_banco.py`, que entram no ar pelo merge). **Nenhum segredo
 novo.** As funções `radar-ia`, `radar-redes` e `radar-video`, as agendas do banco (`sql/radar-*-agenda.sql`) e o robô dos lembretes não
@@ -51,7 +76,7 @@ Quem decide o que lembrar e quando é o **banco**, com o relógio dele (o pg_cro
 minutos ele confere e, só quando há lembrete para mandar, pede à função `radar-redes` que acione o robô dos lembretes no GitHub. O
 próprio workflow também roda de hora em hora, de reserva.
 
-Mudam o banco (`sql/radar-setup-v0.29.0.sql`, hoje `radar-setup-v0.30.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
+Mudam o banco (`sql/radar-setup-v0.29.0.sql`, hoje `radar-setup-v0.31.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
 das Configurações; nada é apagado), a agenda do banco (`sql/radar-redes-agenda.sql`: o agendamento novo `radar-redes-agenda-lembretes`),
 a função `radar-redes` (0.22.0 → **0.29.0**: a ação nova `acionar_lembretes`, só da agenda do banco, e o robô dos lembretes na lista
 dos robôs que ela religa) e a tela (Configurações). Entram o robô `robo/radar_lembretes.py` e o workflow
@@ -66,7 +91,7 @@ do vídeo no "Corretor de vídeo", a conferência, o Gerar com IA, a aprovação
 a página. Agora a linha em branco não conta, o aviso diz **o que mudou e não foi salvo** (por exemplo, "Informações conferidas" ou
 "Quem aparece") e o Salvar sem nada para gravar destrava a peça. O texto digitado e não salvo continua barrando, como antes. Só a
 tela muda (`index.html`, `radar-pauta.js` e `radar-video.js`): o banco continua no `sql/radar-setup-v0.28.0.sql` (hoje
-`radar-setup-v0.30.0.sql`) e as funções e os
+`radar-setup-v0.31.0.sql`) e as funções e os
 robôs não mudam. Veja "Da v0.28.0 para a v0.28.1".
 
 A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
@@ -84,7 +109,7 @@ A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
   voz; a fala é a do roteiro). Marcar e tirar a marca pedem confirmação; para sócio(a), a data em "Revogado em" não vale (para tirar a
   pessoa das peças e dos vídeos, desmarque "Ativa"). Marcar e desmarcar fica no Histórico, sem o nome.
 
-Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.30.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
+Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.31.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
 termos; nenhuma tabela nova, nada é apagado) e a tela (`index.html`, `radar-pauta.js` e `radar-video.js`). As funções `radar-ia`,
 `radar-redes` e `radar-video`, as outras funções e os robôs não mudam. **Rode o SQL antes de publicar a tela**: veja "Da v0.27.0 para a
 v0.28.0".
@@ -536,7 +561,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.30.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.31.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -563,7 +588,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.30.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.31.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -600,7 +625,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.30.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.31.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -629,7 +654,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.30.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.31.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -637,7 +662,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.30.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.31.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -653,7 +678,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.30.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.31.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -668,7 +693,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.30.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.31.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -696,7 +721,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.30.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.31.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -708,7 +733,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.30.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.31.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -721,7 +746,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.30.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.31.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -733,7 +758,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.30.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.31.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -745,7 +770,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.30.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.31.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -760,7 +785,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.30.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.31.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -809,8 +834,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.30.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.30.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes) e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.31.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.31.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes) e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
@@ -820,7 +845,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
-| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações. |
+| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações; desde a v0.31.0, o filtro de tema das fontes e a leitura do sistema Normas da Receita pela pesquisa nova (`robo/radar_normas.py`). |
+| `sql/radar-fontes-novas-v0.31.0.sql` | As fontes oficiais da v0.31.0 (Diário Oficial: leis e decretos, CONFAZ, trabalho e previdência; gov.br: eSocial, FGTS Digital e Previdência; DOM/SC, desligadas) e a rfb-normas na pesquisa nova. Roda depois de o robô da v0.31.0 coletar uma vez; pode rodar de novo. |
 | `robo/video/` | O robô do corretor de vídeo (v0.22.0): o código, o `Dockerfile` do ffmpeg isolado, as fontes DM Sans da legenda e da cartela (licença OFL) e o **modelo** do workflow do repositório privado (`workflow/radar-video.yml`). Roda no repositório privado `radar-video`, nunca neste. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes, testes e, desde a v0.29.0, os lembretes por e-mail (`radar-lembretes.yml`, "Radar — lembretes por e-mail"). |
 | `testes/` | Suíte de testes automatizados. O `testes/amostras/pauta-ficticia.csv` é um calendário de mentira, só com nomes inventados; os vídeos e as falas dos testes do corretor são sintéticos, gerados na hora (nenhuma gravação real). |
@@ -833,14 +859,15 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | Receita Federal — Notícias | página "Últimas notícias" | o feed RSS da pasta estava parado em julho; a fonte foi trocada para a página, que estava em dia |
 | PGFN — Notícias | página de notícias | endereços e datas conferem |
 | Simples Nacional — Notícias | página "Todas as notícias" | endereços e datas conferem |
-| Receita Federal — Atos normativos | consulta por período, até 6 páginas de 100 atos | só a **ementa** é capturada: o texto integral não tem endereço direto (o sistema abre por JavaScript) |
+| Receita Federal — Atos normativos | v0.31.0: a pesquisa pública do sistema Normas (a mesma da página), até 5 páginas de 100 atos | o texto completo de cada ato vem da consulta externa do Normas. Na instalação nova ela entra **ligada**, como as outras cinco (o Passo 1 abaixo já roda o diagnóstico dela pelo GitHub): se o diagnóstico der HTTP 403, desligue-a em Fontes → Configurar (os atos da Receita chegam pelo Diário Oficial, fonte `dou-inlabs`). Na instalação que já existe ela continua desligada até o diagnóstico pelo GitHub dar HTTP 200 (veja "Fontes oficiais da v0.31.0") |
 | SEF/SC — Últimas legislações | página inicial da SEF | atos DIAT e decretos conferem; resoluções em `.doc` ficam de fora |
 | Comitê Gestor do IBS — Notícias | página inicial | a lista não traz data; a data é lida do texto da notícia |
 
 A conferência foi feita lendo os endereços, títulos e datas das páginas reais. O HTML
 bruto não pôde ser baixado no ambiente de desenvolvimento, então a leitura pelo robô
 (estrutura da página e extração do texto) ainda se confirma no Passo 1. Unidades regionais
-da Receita (SRRF, DRF, ALF, Disit…) são filtradas por padrão; ajuste em Fontes → Configurar.
+da Receita (SRRF, DRF, ALF, DRJ…) e a Coana (aduana) ficam de fora por padrão; desde a v0.31.0, as Disit entram (pelas Soluções de
+Consulta). Ajuste em Fontes → Configurar.
 Outras fontes você mesmo cadastra na aba Fontes (veja "Fontes: cadastrar e ajustar").
 
 O Diário Oficial da União entrou depois por dois caminhos: os Destaques do DOU (v0.9.0) e o INLABS,
@@ -865,10 +892,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.30.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.31.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
    Esperado: 28 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.30.0`).
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.31.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -1555,7 +1582,9 @@ limite, escreva em "Outras opções de leitura" `"tempo_max_segundos": 120` (de 
 cadastrado a partir do GitHub; cadastre só sites públicos. O diagnóstico
 (Actions → "Radar — diagnóstico das fontes") confere as fontes **ativas** do banco, inclusive
 as cadastradas pela tela; antes do Passo 3 (sem as chaves), confere as seis fontes iniciais do
-arquivo `robo/radar_fontes.json`. Quando uma fonte não é reconhecida, o relatório mostra como a
+arquivo `robo/radar_fontes.json`. Desde a v0.31.0, no campo "endereços" do diagnóstico, o identificador de uma fonte (por exemplo,
+`rfb-normas`) confere essa fonte como está cadastrada, **mesmo desligada**: é o teste pelo GitHub antes
+de ligar (as do DOM/SC, só depois da autorização do site: o diagnóstico também é um robô). Quando uma fonte não é reconhecida, o relatório mostra como a
 página está montada (título, tabelas, links e, se ela for montada por JavaScript, os endereços
 de dados que aparecem nos scripts).
 
@@ -1569,6 +1598,11 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
 | `data_do_texto` | ler a data de publicação no texto do item, quando a lista não traz |
 | `texto_do_feed` | feed RSS que já traz a notícia inteira (`content:encoded`): o texto vem do feed e a página da notícia não é aberta (site lento ou que recusa robôs) |
 | `origem: "email"` | fonte alimentada por fora (boletim lido no e-mail): o robô não visita o endereço |
+| `palavras` | v0.31.0, filtro de tema: só entra o item que tiver uma destas palavras no título ou no resumo (ementa). Lista (`["FGTS", "eSocial", "contribuiç"]`) ou uma expressão (`"FGTS\|eSocial"`); sem diferença de maiúsculas e acentos ("nº" vira "no"). O que fica de fora não vira captura e é contado em "Fora do tema" no resumo da coleta |
+| `excluir_palavras` | v0.31.0: o item que tiver uma destas palavras no título ou no resumo fica de fora (mesmo formato de `palavras`) |
+| `palavras_no_texto` | v0.31.0: `true` faz o filtro de tema procurar também no texto que veio no feed ou no Diário Oficial (cuidado: o preâmbulo dos atos, "O MINISTRO DO TRABALHO...", faz quase tudo passar) |
+| `exigir_data` | item sem data na lista fica de fora (páginas de menu que casam com o padrão dos links) |
+| `sem_pagina_de_texto` | o robô não abre a página de cada item: guarda o resumo ou a ementa da lista, marcado como texto parcial |
 
 ### Publicação no site, avisos e resumo semanal (v0.8.0)
 
@@ -1746,6 +1780,9 @@ Ela entra **desligada**. Para ligar:
    `INLABS_EMAIL` (o e-mail do cadastro) e `INLABS_SENHA` (a senha). Nunca mande a senha pelo chat.
 3. Radar → Fontes → a fonte do INLABS → Configurar → Fonte ativa → Salvar.
 Os filtros (órgãos, tipos de ato, regionais excluídas, dias) ficam em "Outras opções de leitura".
+Desde a v0.31.0 há mais fontes do INLABS (leis e decretos, CONFAZ, trabalho e previdência; veja "Fontes oficiais da v0.31.0"), com o
+mesmo acesso: o robô entra uma vez por rodada, baixa cada dia do Diário uma vez só e cada fonte filtra a sua parte (órgão, tipo e,
+depois, as palavras do tema no título e na ementa do ato — nunca no texto inteiro, porque o preâmbulo faria tudo passar).
 
 ### Fontes novas de outubro/2026
 
@@ -1761,6 +1798,34 @@ também desligado, e do boletim da ITC, descrito abaixo):
 
 Ligue cada uma em Fontes → Configurar → Fonte ativa. Fontes não oficiais servem de alerta e pauta;
 a fundamentação continua vindo só das oficiais.
+
+### Fontes oficiais da v0.31.0
+
+O `sql/radar-fontes-novas-v0.31.0.sql` cadastra estas fontes (todas oficiais). Ele só roda depois de o robô da v0.31.0 coletar
+uma vez: é esse robô que entende o filtro de tema; o antigo traria tudo. Pode rodar de novo: o que você ligou, desligou ou ajustou
+fica.
+
+| Fonte | Entra | Por quê |
+|---|---|---|
+| Diário Oficial da União — leis, decretos e medidas provisórias (`dou-presidencia`) | **ligada** | conferida com 112 atos reais do DOU (13 dias úteis de 2026 e 4 dias antigos); pelo **tipo** do ato (a Imprensa Nacional às vezes publica um decreto com o órgão trocado) e pelo tema; cerca de 0,4 ato por dia |
+| Diário Oficial da União — CONFAZ (`dou-confaz`) | **ligada** | o site do CONFAZ não abre para o robô (fora do Brasil); pelo DOU chegam os despachos que publicam convênios, ajustes e protocolos, os atos declaratórios e os Atos COTEPE; ficam de fora o PMPF (preço dos combustíveis) e as listas de empresas credenciadas (para que entrem, tire `"relação d[aeo]s? (contribuintes\|empresas)"` de `excluir_palavras`); categoria Santa Catarina |
+| Diário Oficial da União — Trabalho, FGTS, eSocial e Previdência (`dou-trabalho-previdencia`) | **ligada** | MTE, Previdência, INSS, Conselho Curador do FGTS, CODEFAT e circulares da Caixa, só no tema do departamento pessoal (orçamento, habitação e governança ficam de fora); entram também os atos cuja ementa só cita a norma consolidada que alteram (a Portaria/MTP 671, a Instrução Normativa/MTP 2) e os de feriados, domingos e registro eletrônico de ponto; categoria Trabalhista |
+| Diário Oficial da União — portarias do Ministro da Fazenda (`dou-fazenda-ministro`) | desligada | opcional, fora do pedido: as alíquotas da CBS e as Portarias Conjuntas MF/CGIBS (cerca de 0,2 por dia); ligue se quiser |
+| eSocial — Notícias (`esocial-noticias`) | **ligada** | página do gov.br conferida (17/10/2026); a data é a de publicação |
+| FGTS Digital — Comunicados (`fgts-digital-comunicados`) | **ligada** | o endereço pede a lista em ordem de publicação (a pasta simples está em ordem manual, com a data da última alteração) |
+| Ministério da Previdência Social — Notícias (`previdencia-noticias`) | **ligada** | só as do tema (FAP, RAT, alíquotas, empresas, eSocial…): de 54 notícias, 1 era do escritório |
+| INSS — Notícias (`inss-noticias`) | desligada | quase tudo é orientação ao segurado (3 de 60 notícias tocavam o escritório); o endereço `/inss/pt-br/noticias` leva à página de login, por isso a fonte usa `/assuntos/noticias/ultimas-noticias` |
+| Palhoça — leis / decretos sobre tributos; São José — leis / decretos sobre tributos (`domsc-…`, Diário Oficial dos Municípios) | desligadas | os sites das prefeituras recusam o robô; o DOM/SC tem o feed RSS de cada pesquisa (tributos, IPTU, ITBI, ISS, nota fiscal, alvará…). Essa pesquisa olha o ato inteiro e até o nome do arquivo, e deixa passar atos de outros assuntos (nos feeds reais, 4 de 10 decretos de Palhoça: um deles entrou porque a sigla do Instituto de Saúde Social, "ISS", estava no nome do arquivo); por isso cada fonte também tira, em `excluir_palavras`, os assuntos de fora que apareceram (qualificação de entidade, Temporada de Verão, nomeação de conselho, utilidade pública, serviços funerários, operação de crédito). Mas o `robots.txt` do DOM/SC pede que robôs não entrem: **ligar é decisão do dono**. Sugestão: pedir autorização ao consórcio CIGA (dom@consorciociga.gov.br). Ligadas, leem só o feed (1 pedido por fonte por dia), sem abrir a página de cada ato: o texto guardado é o começo do ato (parcial; o texto integral está no PDF) |
+| Receita Federal — Atos normativos (`rfb-normas`) | continua desligada | passa para a pesquisa pública nova do Normas, com o texto completo de cada ato e as Soluções de Consulta das Disit (IRPJ, Simples, contribuições), que a `dou-inlabs` não traz; saem a Coana (aduana), a classificação de mercadorias (NCM), devedor contumaz, Remessa Conforme e OEA. Em 04/10 a mesma pesquisa recusou o GitHub (HTTP 403): ligue só depois do diagnóstico pelo GitHub (veja "Da v0.30.0 para a v0.31.0") |
+
+Ficam de fora nesta versão: **Florianópolis** (o site da prefeitura recusa o robô e, no DOM/SC, a lista não diz o assunto do ato:
+precisaria ler o PDF de cada ato), o **CONFAZ pelo próprio site** (chega pelo DOU) e **Palhoça e São José pelos sites das
+prefeituras** (entram pelo DOM/SC, quando o dono decidir).
+
+Para ajustar o tema de uma fonte: Fontes → Configurar → "Outras opções de leitura" → `palavras` (o que precisa aparecer no título ou
+na ementa) e `excluir_palavras` (o que tira o item). A tela confere a expressão antes de salvar. O resumo de cada coleta (GitHub →
+Actions → "Radar — coleta das fontes oficiais") mostra, por fonte, quantos itens ficaram **fora do tema**: se um assunto importante
+ficar de fora, acrescente a palavra em `palavras`.
 
 ### Instagram e Facebook pela API da Meta (v0.13.0)
 
@@ -2377,6 +2442,78 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 
 ## Atualizações futuras
 
+**Da v0.30.0 para a v0.31.0** (muda o robô da coleta; o banco muda só a função `radar_url_base`, com SQL que pode rodar de novo;
+entra o SQL das fontes novas; **nenhum segredo novo**: as fontes do Diário Oficial usam o mesmo acesso do INLABS da `dou-inlabs`; as
+funções `radar-ia`, `radar-redes` e `radar-video` e as agendas do banco não mudam; nada de chave ou segredo pelo chat). Supõe a v0.30.0
+instalada. **Nesta ordem** (o SQL das fontes por último, depois de o robô novo coletar):
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.31.0.sql` inteiro. Confira no fim: **28 tabelas** e "instalacoes
+   concluidas" com a **v0.31.0**. Ele só troca a função `radar_url_base` (o endereço de um ato do Normas, `…/#/consulta/externa/154126`,
+   não perde mais o `#/…`, e o texto oficial colado de um ato vai para a captura desse ato) e a rfb-normas da carga inicial (só para
+   instalação nova). Nenhuma tabela nem coluna nova, nada é apagado, e pode rodar de novo. A tela não depende dele.
+   Depois, confira se um texto oficial colado de um ato do Normas, **antes desta versão**, foi parar na captura de outro ato (a função
+   antiga guardava só `https://normasinternet2.receita.fazenda.gov.br` de todo ato do Normas). Esta consulta **só lê**, não muda nada:
+
+   ```sql
+   -- textos colados pela equipe cujo endereço guardado ficou só com o site (o número do ato se perdeu) e os assuntos ligados a eles
+   select c.id as captura, c.titulo as ato_da_captura, c.url as endereco_guardado,
+          a.id as assunto, a.titulo as titulo_do_assunto
+     from public.radar_capturas c
+     join public.radar_assunto_capturas ac on ac.captura_id = c.id
+     join public.radar_assuntos a on a.id = ac.assunto_id
+    where c.metadados->>'manual' = 'true' and c.url ~* '^https?://[^/]+/?$'
+    order by c.id, a.id;
+   ```
+
+   **Nenhuma linha:** nada a fazer. **Com linhas:** o "ato_da_captura" é o primeiro ato do Normas que a equipe colou; os outros
+   assuntos da mesma captura ficaram ligados ao texto DESSE ato (o texto que vocês colaram neles não foi guardado). Em cada assunto
+   cujo título não é sobre o "ato_da_captura": não use a fundamentação que veio desse texto; abra o assunto → **Incluir texto
+   oficial** e cole de novo o texto e o endereço completo do ato certo (com a v0.31.0, ele vira uma captura própria, com o endereço do
+   ato). O "abrir na fonte" dessas capturas antigas leva só à página inicial do Normas.
+2. Publique a versão no repositório (`main`): o robô da coleta (`robo/radar_coletar.py`, `radar_coletores.py`, `radar_inlabs.py`,
+   `radar_normas.py`, `radar_util.py`, `radar_diagnostico.py`, `radar_banco.py` e `radar_fontes.json`), a tela (`index.html`,
+   `radar-pauta.js` e `radar-video.js`) e o workflow do diagnóstico vão juntos. Aperte **Ctrl+F5** em todos os aparelhos. A aba
+   Versões mostra a v0.31.0.
+3. GitHub → Actions → **"Radar — coleta das fontes oficiais"** → **Run workflow**. No resumo da execução, o título passa a ser "coleta
+   v0.31.0" e a tabela ganha a coluna "Fora do tema". É essa coleta que libera o passo 4 (o banco guarda a versão do robô de cada
+   coleta).
+4. Supabase → **SQL Editor** → execute o `sql/radar-fontes-novas-v0.31.0.sql` inteiro. Se ele parar com "rode este SQL depois de
+   publicar a v0.31.0 e de o robô novo coletar uma vez", nada foi alterado: faça o passo 3 e rode de novo. O resultado lista as fontes:
+   **ligadas** `dou-presidencia`, `dou-confaz`, `dou-trabalho-previdencia`, `esocial-noticias`, `fgts-digital-comunicados` e
+   `previdencia-noticias`; **desligadas** `dou-fazenda-ministro`, `inss-noticias`, as quatro `domsc-…` e a `rfb-normas` (com o endereço
+   novo). Pode rodar de novo: o que você ligou, desligou ou ajustou fica.
+
+**O que conferir, sem publicar nada:**
+
+- (a) Na coleta seguinte (a cada 6 horas, ou Run workflow de novo), Fontes → "Últimas execuções do robô": as seis fontes novas com
+  **ok**. As do Diário Oficial podem vir com 0 novos em dia sem ato do tema: é normal (o resumo da coleta mostra quantos ficaram "fora
+  do tema"). As três do INLABS rodam juntas: a primeira baixa o Diário, as outras só filtram.
+- (b) Capturas: as do Diário Oficial vêm com o texto do ato; as do gov.br, com o texto da notícia e a data de publicação.
+- (c) **Atos da Receita (Normas):** GitHub → Actions → **"Radar — diagnóstico das fontes"** → Run workflow → no campo "endereços"
+  escreva `rfb-normas`. Leia a coluna **Veredito** da linha `rfb-normas`:
+  - **"OK"** (HTTP 200, com o texto do 1º ato): ligue: Fontes → "Receita Federal — Atos normativos (Normas)" → Configurar →
+    **Fonte ativa** → Salvar.
+  - **"REVISAR — lista ok, texto do 1º item recusado"** (HTTP 200: a pesquisa respondeu, só o texto do ato foi recusado): escreva em
+    "Outras opções de leitura" `"sem_pagina_de_texto": true` (guarda só a ementa, como antes) e ligue.
+  - **"FALHA"** com HTTP 403 ("o site da Receita recusou o pedido do robô"): deixe desligada; os atos da Receita continuam chegando
+    pelo Diário Oficial (`dou-inlabs`).
+- (d) **DOM/SC (Palhoça e São José):** decisão do dono. O site pede, no `robots.txt`, que robôs não entrem; o próprio site oferece o
+  feed RSS e o alerta por e-mail de cada pesquisa. Sugestão: pedir autorização ao consórcio CIGA (dom@consorciociga.gov.br). Sem a
+  autorização, não rode nem o diagnóstico com elas (o diagnóstico também é um robô). Com a autorização por escrito: Fontes → cada uma
+  → Configurar → Fonte ativa (1 pedido por fonte por dia).
+
+**Como desligar uma fonte:** Fontes → a fonte → Configurar → desmarque **Fonte ativa** → Salvar (as capturas que ela já trouxe
+ficam). **Para mudar o tema:** a mesma tela, "Outras opções de leitura", `palavras` e `excluir_palavras` (a tela confere a expressão).
+
+**Para desfazer** (nesta ordem):
+
+1. Desligue as fontes novas (Fontes → Configurar → Fonte ativa). Fonte que ainda não trouxe nada pode ser excluída na mesma tela.
+2. Volte o robô e a tela da v0.30.0 (os arquivos do passo 2, no histórico do GitHub; Ctrl+F5). O robô antigo não entende
+   `palavras`: por isso o passo 1 vem antes.
+3. Se quiser, rode o `sql/radar-setup-v0.30.0.sql` da v0.30.0 (histórico do GitHub): a `radar_url_base` volta a tirar o `#/…` (e o
+   texto colado de um ato do Normas volta a poder ir para a captura de outro). A rfb-normas fica com o endereço novo: desligada, não
+   faz nada.
+
 **Da v0.29.0 para a v0.30.0** (muda o banco: SQL novo, que pode rodar de novo; o robô dos avisos muda, mas sem segredo novo; as funções
 `radar-ia`, `radar-redes` e `radar-video` e as agendas do banco não mudam; nada de chave ou segredo pelo chat). Supõe a v0.29.0
 instalada. **Nesta ordem** (o banco antes da tela):
@@ -2766,7 +2903,7 @@ Cuidados nesta versão:
   workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
   reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
 - **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
-  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.30.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.31.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
   também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
   as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
   guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do

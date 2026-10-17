@@ -23,7 +23,7 @@ import pytest
 import requests
 
 import radar_coletar
-from conftest import API, jwt
+from conftest import API, RAIZ, jwt
 from radar_banco import Banco, ErroBanco
 
 PORTA_SITE = 3998
@@ -31,6 +31,8 @@ SITE = f"http://127.0.0.1:{PORTA_SITE}"
 HOJE = date(2026, 10, 1)
 PAGINAS: dict[str, tuple[int, str]] = {}
 IA = {"pedidos": [], "status": 200, "mensagem": "", "responder": None}
+# v0.31.0: a pesquisa do sistema Normas da Receita (POST com JSON): a resposta de cada página e os pedidos recebidos
+NORMAS: dict = {"paginas": {}, "pedidos": []}
 
 
 class Site(BaseHTTPRequestHandler):
@@ -44,8 +46,18 @@ class Site(BaseHTTPRequestHandler):
         self.wfile.write(dados)
 
     def do_POST(self):
-        """IA Central de mentira (o robô chama o ia-gateway no formato da Anthropic)."""
+        """IA Central de mentira (o robô chama o ia-gateway no formato da Anthropic). v0.31.0: e a pesquisa do Normas, pelo caminho."""
         corpo = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        if self.path == "/api/indexacao/ato/pesquisar":
+            NORMAS["pedidos"].append({"corpo": corpo, "cab": {k.lower(): v for k, v in self.headers.items()}})
+            status, texto = NORMAS["paginas"].get(corpo.get("paginacaoPaginaAtual"), (404, ""))
+            dados = texto.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(dados)))
+            self.end_headers()
+            self.wfile.write(dados)
+            return
         IA["pedidos"].append({"corpo": corpo, "cab": {k.lower(): v for k, v in self.headers.items()}})
         if IA.get("bruto") is not None:
             dados = IA["bruto"].encode()
@@ -98,6 +110,8 @@ def lista(itens: list[tuple[str, str, str]]) -> str:
 def cenario(servicos, limpo):
     """Duas fontes de teste ativas (as reais ficam inativas durante o teste)."""
     PAGINAS.clear()
+    NORMAS["paginas"].clear()
+    NORMAS["pedidos"].clear()
     PAGINAS.update({
         "/a/lista": (200, lista([("/a/noticias/2026/prazo-do-simples-prorrogado", "Prazo do Simples Nacional é prorrogado", "30/09/2026"),
                                  ("/a/noticias/2026/nova-transacao-tributaria", "PGFN abre nova transação tributária", "28/09/2026"),
@@ -138,7 +152,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.21.0", True), ("ok", 1, 200, "0.21.0", True)]
+    assert ex == [("ok", 2, 200, "0.31.0", True), ("ok", 1, 200, "0.31.0", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -917,30 +931,58 @@ def test_frequencia_e_respeitada_sem_forcar(cenario):
     assert list(r) == ["teste-a"] and pulados == ["teste-b"]
 
 
-def test_normas_rfb_de_ponta_a_ponta(cenario):
-    PAGINAS["/n/consulta"] = (200, """<html><body><table>
-      <tr><th>Tipo</th><th>Nº</th><th>Órgão</th><th>Publicação</th><th>Ementa</th></tr>
-      <tr><td><a href="https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/153990/vs/AAA=">Instrução Normativa</a></td>
-          <td>2290</td><td>RFB</td><td>30/09/2026</td><td>Dispõe sobre a apuração da CBS no período de transição.</td></tr>
-      <tr><td><a href="https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/153881/vs/AAA=">Ato Declaratório Executivo</a></td>
-          <td>7</td><td>SRRF01</td><td>01/10/2026</td><td>Retificação</td></tr></table></body></html>""")
-    PAGINAS["/n/ato?idAto=153990"] = (200, "<html><body><div id='divTexto'>" + "Art. 1º Esta Instrução Normativa dispõe sobre a CBS. " * 6 + "</div></body></html>")
+def _ato_normas(n, sigla="RFB", publicacao="30/09/2026", tipo="Instrução Normativa", ementa=None, vs="AAA="):
+    return {"idAto": n, "tipoAto": {"nomeTipoAto": tipo, "siglaTipoAto": "IN", "idTipoAto": 42}, "numeroAto": str(n % 10000),
+            "dataAto": "29/09/2026", "dataPublicacao": publicacao, "orgaos": [{"siglaOrgao": sigla, "idOrgao": 1}],
+            "ementa": ementa if ementa is not None else f"<p class=\"ementa\">Ementa oficial do ato número {n}, com texto suficiente.</p>",
+            "urlVisualizacao": f"https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{n}/vs/{vs}", "vigente": "1"}
+
+
+def _pesquisa(atos, paginas=1):
+    return 200, json.dumps({"atos": atos, "refinos": [], "quantidadeTotal": len(atos), "quantidadePaginas": paginas,
+                            "sufixoUrlVisualizacaoAtoSequencial": "/vs/AAA="})
+
+
+def _fonte_normas(cenario, config):
     cenario.execute("""insert into radar_fontes (slug, nome, orgao, tipo_coletor, url, config)
                        values ('teste-normas', 'normas', 'RFB', 'normas_rfb', %s, %s::jsonb)""",
-                    (SITE + "/n/consulta", json.dumps({"janela_dias": 15, "excluir_orgao": "^SRRF",
-                                                       "url_texto": SITE + "/n/ato?idAto={id}", "seletor_texto": "#divTexto"})))
+                    (SITE + "/api/indexacao/ato/pesquisar", json.dumps(config)))
+
+
+def test_normas_rfb_de_ponta_a_ponta(cenario):
+    """v0.31.0: a pesquisa pública nova do Normas (POST, JSON) e o texto de cada ato pela consulta externa (GET, JSON)."""
+    NORMAS["paginas"][1] = _pesquisa([_ato_normas(153990, ementa="<span>Dispõe sobre a apuração da CBS</span><br />no período de transição."),
+                                      _ato_normas(153881, sigla="SRRF01", tipo="Ato Declaratório Executivo")])
+    ato = json.loads((RAIZ / "testes" / "amostras" / "normas-ato-154087.json").read_text(encoding="utf-8"))
+    PAGINAS["/api/consulta-externa/ato/153990/visao/multivigente"] = (200, json.dumps(dict(ato, idAto=153990)))
+    _fonte_normas(cenario, {"janela_dias": 15, "excluir_orgao": "^SRRF",
+                            "url_texto": SITE + "/api/consulta-externa/ato/{id}/visao/multivigente"})
     r, _ = robo("teste-normas")
-    assert (r["teste-normas"]["status"], r["teste-normas"]["novos"]) == ("ok", 1)
-    linha = cenario.execute("select url, titulo, resumo_fonte, metadados->>'id_ato', left(texto, 40) from radar_capturas").fetchone()
+    assert (r["teste-normas"]["status"], r["teste-normas"]["novos"], r["teste-normas"]["sem_texto"]) == ("ok", 1, 0)
+    pedido = NORMAS["pedidos"][0]
+    assert (pedido["corpo"]["dataInicio"], pedido["corpo"]["dataFim"], pedido["corpo"]["paginacaoPaginaAtual"]) == ("16/09/2026", "01/10/2026", 1)
+    assert pedido["cab"]["content-type"] == "application/json; charset=UTF-8" and pedido["cab"]["user-agent"].startswith("ArteconRadar/0.31.0")
+    linha = cenario.execute("select url, titulo, resumo_fonte, metadados->>'id_ato', metadados->>'link_permanente', left(texto, 60), "
+                            "metadados ? 'texto_parcial' from radar_capturas").fetchone()
     assert linha == ("https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/153990",
-                     "Instrução Normativa RFB nº 2290, de 30/09/2026",
+                     "Instrução Normativa RFB nº 3990, de 29/09/2026",
                      "Dispõe sobre a apuração da CBS no período de transição.", "153990",
-                     "Art. 1º Esta Instrução Normativa dispõe ")
+                     "https://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=153990",
+                     "Solução de Consulta Cosit nº 196, de 8 de outubro de 2026 As", False)
     # mesma norma com outro sufixo "/vs/..." na consulta seguinte não duplica
-    PAGINAS["/n/consulta"] = (200, PAGINAS["/n/consulta"][1].replace("/vs/AAA=", "/vs/ZZZ="))
+    NORMAS["paginas"][1] = _pesquisa([_ato_normas(153990, vs="ZZZ=")])
     r, _ = robo("teste-normas")
     assert r["teste-normas"]["novos"] == 0
     assert cenario.execute("select count(*) from radar_capturas").fetchone()[0] == 1
+    # a pesquisa mudou de formato (a página da aplicação no lugar do JSON): falha com o motivo, nunca "sem novidades"
+    NORMAS["paginas"][1] = (200, "<!doctype html><html><body><app-root></app-root></body></html>")
+    r, _ = robo("teste-normas")
+    assert r["teste-normas"]["status"] == "falha" and "mudou de formato" in r["teste-normas"]["erro"]
+    # e a recusa do site (HTTP 403) diz o que houve
+    NORMAS["paginas"][1] = (403, "")
+    r, _ = robo("teste-normas")
+    assert r["teste-normas"]["status"] == "falha" and "recusou o pedido do robô" in r["teste-normas"]["erro"]
+    assert cenario.execute("select http_status from radar_execucoes order by id desc limit 1").fetchone()[0] == 403
 
 
 def test_api_publica_nao_expoe_dados_internos(cenario):
@@ -1064,19 +1106,15 @@ def test_fonte_que_funcionava_e_passa_a_nao_entregar_texto_dos_itens_novos(cenar
 
 
 def test_fonte_sem_pagina_de_texto_guarda_a_ementa_e_fica_saudavel(cenario):
-    linhas = "".join(f'<tr><td><a href="https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{n}/vs/A=">Portaria</a></td>'
-                     f"<td>{n}</td><td>RFB</td><td>30/09/2026</td><td>Ementa oficial da portaria número {n}, com texto suficiente.</td></tr>" for n in (501, 502))
-    PAGINAS["/n/consulta?ini=21/09/2026&fim=01/10/2026&p=1"] = (200, f"<table>{linhas}</table>")
-    cenario.execute("""insert into radar_fontes (slug, nome, orgao, tipo_coletor, url, config)
-                       values ('teste-normas', 'normas', 'RFB', 'normas_rfb', %s, %s::jsonb)""",
-                    (SITE + "/n/consulta?ini={inicio}&fim={fim}&p={p}",
-                     json.dumps({"janela_dias": 10, "paginas_max": 3, "itens_por_pagina": 100, "sem_pagina_de_texto": True})))
+    """O plano B da fonte de atos da Receita ("sem_pagina_de_texto": a consulta do texto bloqueada): só a ementa, como texto parcial."""
+    NORMAS["paginas"][1] = _pesquisa([_ato_normas(n, tipo="Portaria") for n in (501, 502)])
+    _fonte_normas(cenario, {"janela_dias": 10, "paginas_max": 3, "itens_por_pagina": 100, "sem_pagina_de_texto": True})
     for _ in range(2):
         r, _p = robo("teste-normas")
         assert (r["teste-normas"]["status"], r["teste-normas"]["sem_texto"]) == ("ok", 0)
     linhas = cenario.execute("select titulo, texto, metadados->>'texto_parcial', versao from radar_capturas order by id").fetchall()
-    assert linhas == [("Portaria RFB nº 501, de 30/09/2026", "Portaria RFB nº 501, de 30/09/2026. Ementa: Ementa oficial da portaria número 501, com texto suficiente.", "true", 1),
-                      ("Portaria RFB nº 502, de 30/09/2026", "Portaria RFB nº 502, de 30/09/2026. Ementa: Ementa oficial da portaria número 502, com texto suficiente.", "true", 1)]
+    assert linhas == [("Portaria RFB nº 501, de 29/09/2026", "Portaria RFB nº 501, de 29/09/2026. Ementa: Ementa oficial do ato número 501, com texto suficiente.", "true", 1),
+                      ("Portaria RFB nº 502, de 29/09/2026", "Portaria RFB nº 502, de 29/09/2026. Ementa: Ementa oficial do ato número 502, com texto suficiente.", "true", 1)]
     assert cenario.execute("select saude from radar_v_saude_fontes where slug = 'teste-normas'").fetchone()[0] == "ok"
 
 
@@ -1100,16 +1138,26 @@ def test_noticia_antiga_sem_data_na_listagem_fica_de_fora(cenario):
 
 
 def test_pagina_2_com_erro_aproveita_a_1_e_marca_parcial(cenario):
-    def linha(n):
-        return (f'<tr><td><a href="https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{n}/vs/A=">Portaria</a></td>'
-                f"<td>{n}</td><td>RFB</td><td>30/09/2026</td><td>Ementa oficial da portaria número {n}, com texto.</td></tr>")
-    PAGINAS["/n/c?p=1"] = (200, "<table>" + "".join(linha(n) for n in range(600, 603)) + "</table>")
-    PAGINAS["/n/c?p=2"] = (404, "x")
-    cenario.execute("""insert into radar_fontes (slug, nome, orgao, tipo_coletor, url, config)
-                       values ('teste-normas', 'normas', 'RFB', 'normas_rfb', %s, %s::jsonb)""",
-                    (SITE + "/n/c?p={p}", json.dumps({"janela_dias": 10, "paginas_max": 3, "itens_por_pagina": 3, "sem_pagina_de_texto": True})))
+    NORMAS["paginas"][1] = _pesquisa([_ato_normas(n, tipo="Portaria") for n in range(600, 603)], paginas=3)
+    NORMAS["paginas"][2] = (404, "")                                      # a página 2 some no meio da pesquisa
+    _fonte_normas(cenario, {"janela_dias": 10, "paginas_max": 3, "itens_por_pagina": 3, "sem_pagina_de_texto": True})
     r, _ = robo("teste-normas")
     assert (r["teste-normas"]["status"], r["teste-normas"]["novos"]) == ("parcial", 3) and "página 2" in r["teste-normas"]["erro"]
+    assert [p["corpo"]["paginacaoPaginaAtual"] for p in NORMAS["pedidos"]] == [1, 2]
+
+
+def test_filtro_de_tema_deixa_de_fora_e_conta_na_rodada(cenario):
+    """v0.31.0: "palavras" (e "excluir_palavras") na fonte: o que não é do tema não vira captura e é contado no resumo da rodada."""
+    cenario.execute("""update radar_fontes set config = config || '{"palavras": ["simples nacional", "ICMS"]}'::jsonb where slug = 'teste-a'""")
+    r, _ = robo("teste-a")
+    assert (r["teste-a"]["status"], r["teste-a"]["novos"], r["teste-a"]["fora_do_tema"]) == ("ok", 1, 1)
+    assert [t for (t,) in cenario.execute("select titulo from radar_capturas")] == ["Prazo do Simples Nacional é prorrogado"]
+    assert "| teste-a | ok | 1 | 1 | 1 |" in radar_coletar.resumo_markdown(list(r.values()), [])
+    # palavras que o robô não aceita: falha da fonte com o motivo (a rodada segue)
+    cenario.execute("""update radar_fontes set config = config || '{"palavras": "(simples"}'::jsonb where slug = 'teste-a'""")
+    r, _ = robo()
+    assert r["teste-a"]["status"] == "falha" and "palavras do tema (palavras) não são uma expressão válida" in r["teste-a"]["erro"]
+    assert r["teste-b"]["status"] == "ok"
 
 
 # ------------------------------------------------------------ v0.5.0 — fontes cadastradas pela tela
