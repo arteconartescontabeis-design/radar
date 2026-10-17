@@ -273,9 +273,10 @@ class GitHubFalso:
         self.avisos = dict(abertos or {})          # título -> número
         self.criados, self.fechados, self.prox = [], [], 100
 
-    def avisos_abertos(self):
+    def avisos_abertos(self, *prefixos):
         import radar_alertas                        # como o GitHub de verdade: só os títulos dos avisos do Radar
-        return {t: n for t, n in self.avisos.items() if t.startswith(radar_alertas.PREFIXOS_PADRAO)}
+        # v0.29.0: com os prefixos pedidos (o robô dos lembretes pede só os dele), como radar_alertas.GitHub
+        return {t: n for t, n in self.avisos.items() if t.startswith(prefixos or radar_alertas.PREFIXOS_PADRAO)}
 
     def abrir(self, f):
         import radar_alertas
@@ -1531,3 +1532,132 @@ def test_rascunho_do_robo_com_copia_passa_pela_revisao_e_sem_ela_fica_com_aviso(
         assert any(a.startswith("A revisão automática (marcas e trechos iguais ao da fonte) não pôde ser feita agora") for a in avisos)
     finally:
         ia.execute("delete from radar_assuntos")
+
+
+
+# ------------------------------------------------------------------- v0.29.0: lembretes por e-mail antes do dia
+from datetime import datetime, timezone                                                                      # noqa: E402
+
+import radar_lembretes                                                                                       # noqa: E402
+from test_radar_lembretes import conteudo_aprovado, envio_redes, peca                                        # noqa: E402
+
+NOMES_LEMBRETE = ("Ana", "Teste", "Bruno", "Exemplo", "Bastidor", "folha", "Meta", "11.222.333", "Palhoça")
+
+
+def _agora(**menos):
+    return datetime.now(timezone.utc) - timedelta(**menos)
+
+
+def test_lembretes_um_aviso_por_tipo_depois_comentario_sem_nome(api_postgrest, lembretes_abertos, pauta):
+    """O robô dos lembretes, de verdade, pelo PostgREST com a chave do robô: a primeira rodada abre UM aviso por tipo (o corpo começa
+    pela explicação do aviso fixo e termina com a marca do lote); a seguinte não manda nada (cada pendência uma vez só, um e-mail por
+    tipo por dia); no dia seguinte, a pendência nova chega como UM comentário no mesmo aviso, sem abrir outro. Nada de nome, assunto,
+    legenda ou erro nos textos nem no registro; os avisos do radar_alertas ficam como estão."""
+    db = lembretes_abertos
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso({"Radar: fonte com falha — sumiu": 8})
+    ana = nova_pessoa(db, nome="Ana Teste", na_peca="Ana")
+    amanha = db.execute("select radar_pauta_hoje() + 1").fetchone()[0]
+    pid = peca(db, amanha, assunto="Bastidor com Ana Teste", quem_aparece="Ana Teste", observacao="Ana Teste, da folha", pessoas=[ana])
+    c = conteudo_aprovado(db)
+    ig = envio_redes(db, "instagram", "erro", _agora(hours=1), conteudo=c)
+    feito = radar_lembretes.executar(banco, gh)
+    t_pauta, t_noticia = radar_lembretes.TITULOS["pauta"], radar_lembretes.TITULOS["noticia"]
+    assert [t for _, t, _ in gh.criados] == [t_pauta, t_noticia]
+    assert feito == ["pauta: 1 item no aviso #101 (aviso novo)", "noticia: 1 item no aviso #102 (aviso novo)"]
+    for numero, _, corpo in gh.criados:
+        assert corpo.startswith(radar_lembretes.ABERTURA + "\n\n**") and radar_lembretes.MARCA.search(corpo)
+    assert f"(peça nº {pid})" in gh.criados[0][2] and f"(envio nº {ig})" in gh.criados[1][2]
+    assert radar_lembretes.executar(banco, gh) == [] and len(gh.criados) == 2 and not getattr(gh, "comentarios", [])
+    # no dia seguinte (os e-mails de ontem), uma falha nova: um comentário no aviso que já está aberto
+    db.execute("update radar_lembretes set avisado_em = avisado_em - interval '1 day'")
+    fb = envio_redes(db, "facebook", "erro", _agora(minutes=10), conteudo=c)
+    assert radar_lembretes.executar(banco, gh) == ["noticia: 1 item no aviso #102 (comentário)"]
+    assert len(gh.criados) == 2 and [n for n, _ in gh.comentarios] == [102]
+    assert gh.comentarios[0][1].startswith("**1 publicação de notícia não saiu.**\n\n- Facebook, autorizada em ")
+    assert f"(envio nº {fb})" in gh.comentarios[0][1] and radar_lembretes.ABERTURA not in gh.comentarios[0][1]
+    assert radar_lembretes.executar(banco, gh) == []
+    for texto in [c_ for _, _, c_ in gh.criados] + [c_ for _, c_ in gh.comentarios] + feito:
+        for nome in NOMES_LEMBRETE:
+            assert nome not in texto, (nome, texto)
+    assert gh.fechados == [] and gh.avisos["Radar: fonte com falha — sumiu"] == 8                 # o robô nunca fecha nem mexe nos outros
+    assert db.execute("select count(*) from radar_lembretes where avisado_em is null").fetchone()[0] == 0
+
+
+def test_lembrete_retomado_nao_repete_o_comentario(api_postgrest, lembretes_abertos):
+    """O robô caiu depois de comentar e antes de confirmar: o mesmo lote volta ("retomado") e a marca dele já está no aviso: só confirma,
+    sem outro e-mail. Sem a marca (caiu antes de comentar), comenta uma vez."""
+    db = lembretes_abertos
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    titulo = radar_lembretes.TITULOS["noticia"]
+    gh = GitHubFalso({titulo: 50})
+    c = conteudo_aprovado(db)
+    envio_redes(db, "instagram", "erro", _agora(hours=2), conteudo=c)
+    [g] = banco.lembretes_lote()                                                                  # reservou...
+    gh.comentar(50, radar_lembretes.corpo("noticia", g))                                          # ...comentou e caiu
+    feito = radar_lembretes.executar(banco, gh)
+    assert feito == ["noticia: 1 item já estava no aviso #50 (só confirmado)"] and len(gh.comentarios) == 1
+    assert radar_lembretes.executar(banco, gh) == []
+    # caiu antes de comentar: o lote volta e o comentário sai uma vez
+    db.execute("update radar_lembretes set avisado_em = avisado_em - interval '1 day'")
+    envio_redes(db, "facebook", "erro", _agora(hours=1), conteudo=c)
+    [g2] = banco.lembretes_lote()
+    assert g2["retomado"] is False
+    assert banco.lembretes_lote()[0]["retomado"] is True
+    assert radar_lembretes.executar(banco, gh) == ["noticia: 1 item no aviso #50 (comentário)"] and len(gh.comentarios) == 2
+    assert radar_lembretes.executar(banco, gh) == [] and len(gh.comentarios) == 2
+
+
+def test_lembretes_nao_mexem_nos_avisos_do_radar_alertas(api_postgrest, lembretes_abertos):
+    """Os avisos "Radar: lembrete — …" ficam abertos de propósito (a caixa de cada tipo): o radar_alertas, que fecha os avisos dele
+    quando o problema some, nem os vê; e o GitHub falhou num tipo: os outros seguem e ele fica para a próxima rodada."""
+    import radar_alertas
+    db = lembretes_abertos
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso({radar_lembretes.TITULOS["noticia"]: 60, radar_lembretes.TITULOS["pauta"]: 61})
+    radar_alertas.executar(banco, gh, sem_rede)
+    assert gh.fechados == [] and set(gh.avisos.values()) == {60, 61}
+    peca(db, db.execute("select radar_pauta_hoje() + 1").fetchone()[0])
+    envio_redes(db, "instagram", "erro", _agora(hours=1), conteudo=conteudo_aprovado(db))
+
+    def recusa(numero, corpo):
+        if numero == 61:
+            raise RuntimeError("GitHub POST /issues/61/comments: HTTP 403 — Resource not accessible by integration")
+        GitHubFalso.comentar(gh, numero, corpo)
+    gh.comentar = recusa
+    assert radar_lembretes.executar(banco, gh) == ["pauta: fica para a próxima rodada (RuntimeError, HTTP 403)",
+                                                   "noticia: 1 item no aviso #60 (comentário)"]
+    gh.comentar = lambda numero, corpo: GitHubFalso.comentar(gh, numero, corpo)
+    assert radar_lembretes.executar(banco, gh) == ["pauta: 1 item no aviso #61 (comentário)"]     # a pauta, na rodada seguinte
+    assert [n for n, _ in gh.comentarios] == [60, 61]
+
+
+def test_robo_dos_lembretes_nunca_vermelho_sem_variaveis_banco_antigo_e_sem_segredo_no_log(api_postgrest, monkeypatch, capsys):
+    for nome in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "GITHUB_TOKEN", "GITHUB_REPOSITORY"):
+        monkeypatch.delenv(nome, raising=False)
+    assert radar_lembretes.main() == 0 and "sem as variáveis necessárias; nada a fazer" in capsys.readouterr().out
+    # banco fora do ar: código 0, e o registro sem a chave, o token nem o endereço
+    monkeypatch.setenv("SUPABASE_URL", "http://127.0.0.1:9/projeto-secreto")
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "sb_secret_SEGREDOlembrete123")
+    monkeypatch.setenv("GITHUB_TOKEN", "ghs_SEGREDOdoGitHub456")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "dono/radar")
+    assert radar_lembretes.main() == 0
+    saida = capsys.readouterr()
+    assert "! lembretes: nada foi mandado agora (ErroBanco)" in saida.err
+    for segredo in ("SEGREDOlembrete123", "SEGREDOdoGitHub456", "projeto-secreto", "127.0.0.1"):
+        assert segredo not in saida.out + saida.err
+    # banco sem o SQL da v0.29.0 (a função não existe): nada a fazer, sem erro; erro DENTRO da função não é banco antigo
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    monkeypatch.setattr(banco, "_pedir", lambda *a, **k: (_ for _ in ()).throw(
+        ErroBanco('POST rpc/radar_lembretes_lote: HTTP 404 — {"code":"PGRST202","message":"Could not find the function"}')))
+    assert banco.lembretes_lote() is None and banco.lembretes_ha_envio() is None
+    assert radar_lembretes.executar(banco, GitHubFalso()) == ["o banco ainda não tem os lembretes (rode o sql/radar-setup-v0.29.0.sql); nada a fazer"]
+    monkeypatch.setattr(banco, "_pedir", lambda *a, **k: (_ for _ in ()).throw(
+        ErroBanco('POST rpc/radar_lembretes_lote: HTTP 404 — {"code":"42P01","message":"relation does not exist"}')))
+    with pytest.raises(ErroBanco):
+        banco.lembretes_lote()
+    monkeypatch.setattr(radar_lembretes, "Banco", lambda url, chave: banco)
+    assert radar_lembretes.main() == 0 and "(ErroBanco, HTTP 404)" in capsys.readouterr().err
+    # o que der errado (até o inesperado) nunca deixa o workflow vermelho: o GitHub mandaria um e-mail de falha a cada rodada
+    monkeypatch.setattr(radar_lembretes, "executar", lambda b, g: 1 / 0)
+    assert radar_lembretes.main() == 0 and "(ZeroDivisionError)" in capsys.readouterr().err

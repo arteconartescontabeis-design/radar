@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.28.0.sql
--- DESFAZ a instalação do radar-setup-v0.28.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.29.0.sql
+-- DESFAZ a instalação do radar-setup-v0.29.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -23,6 +23,10 @@
 --     Fine-grained tokens → Delete): ele tem escrita em Actions no radar-video;
 --   * as chaves 'radar_video_robo' e 'radar_video_agenda' ficam no Vault de propósito (para zerar, o delete do comentário do
 --     sql/radar-video-agenda-reversao.sql). As chaves do Azure nunca são regeneradas: a do artecon-voz é a mesma da Agenda.
+-- v0.29.0: os lembretes por e-mail. O agendamento radar-redes-agenda-lembretes sai com os da Pauta (radar-redes-agenda%) e a tabela
+-- radar_lembretes com as outras. Fora do banco: no GitHub, Actions → "Radar — lembretes por e-mail" → Disable workflow (sem o banco, a
+-- rodada de hora em hora só diria "nada a fazer", mas não precisa rodar) e os avisos "Radar: lembrete — …" abertos ficam no GitHub:
+-- feche-os à mão (o robô nunca fecha, para não mandar mais um e-mail).
 -- =====================================================================
 begin;
 
@@ -61,6 +65,7 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_lembretes,
   public.radar_video_acessos,
   public.radar_videos,
   public.radar_site_exclusoes,
@@ -294,6 +299,18 @@ drop function if exists public.radar_conferencia_pendente(public.radar_conteudos
 -- v0.24.0 (etapa 5): a revisão editorial
 drop function if exists public.radar_registrar_revisao_editorial(bigint, timestamptz, jsonb);
 drop function if exists public.radar_texto_versao(public.radar_conteudos);
+-- v0.29.0: os lembretes por e-mail
+drop function if exists public.radar_lembretes_cfg();
+drop function if exists public.radar_lembretes_madura(text, text, jsonb, timestamptz, jsonb, timestamptz);
+drop function if exists public.radar_lembretes_observar(timestamptz);
+drop function if exists public.radar_lembretes_devidos(timestamptz);
+drop function if exists public.radar_lembretes_acionar();
+drop function if exists public.radar_lembretes_ha_envio();
+drop function if exists public.radar_lembretes_lote_em(timestamptz);
+drop function if exists public.radar_lembretes_lote();
+drop function if exists public.radar_lembretes_enviado_em(uuid, int, bigint[], timestamptz);
+drop function if exists public.radar_lembretes_enviado(uuid, int, bigint[]);
+drop function if exists public.radar_lembretes_situacao();
 -- v0.19.1 (opcional): a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql), se foi instalada
 drop function if exists public.radar_concorrentes_conferir(text);
 

@@ -1,0 +1,71 @@
+name: Radar — lembretes por e-mail
+
+# v0.29.0: lembra ANTES do dia, por e-mail (um aviso no GitHub, como os outros avisos do Radar, sem nome de ninguém): a peça da Pauta de
+# amanhã que não está aprovada, a peça pronta esperando a aprovação do administrador, o vídeo do reel que o corretor terminou e a
+# notícia que não saiu. Quem decide o que lembrar e quando é o banco (Configurações → Lembretes por e-mail; no máximo um e-mail por
+# tipo por dia e cada pendência uma vez só). Nada é publicado por aqui.
+# A agenda do banco (pg_cron, sql/radar-redes-agenda.sql, de 15 em 15 minutos) aciona este workflow na hora, pela função radar-redes,
+# só quando há o que lembrar. O agendamento abaixo é só a reserva (o GitHub atrasa, às vezes em horas, e o acionamento pode falhar por
+# token): sem nada a lembrar, termina em segundos, sem instalar nada. Minuto quebrado: a hora cheia é a mais disputada.
+# Segredos: só RADAR_SUPABASE_URL e RADAR_SUPABASE_SERVICE_KEY (os mesmos da coleta) e o GITHUB_TOKEN do próprio Actions (abre ou
+# comenta o aviso; o GitHub manda o e-mail). Nenhum segredo novo.
+on:
+  schedule:
+    - cron: "29 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-lembretes
+  cancel-in-progress: false
+
+jobs:
+  lembrar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write          # o lembrete é um aviso (issue) ou um comentário nele; o GitHub manda o e-mail
+    timeout-minutes: 8
+    steps:
+      - name: Há lembrete para mandar?
+        id: fila
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+        # o banco responde (radar_lembretes_ha_envio): "false" = nada a lembrar; 404 = banco ainda sem o SQL da v0.29.0; qualquer outra
+        # coisa (erro, sem resposta) = o robô confere. A chave nova (sb_secret_…) vai só no apikey; a antiga (JWT), nos dois cabeçalhos
+        run: |
+          ha=sim
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then ha=nao; else
+            cab=(-H "apikey: $SUPABASE_SERVICE_KEY" -H "Content-Type: application/json")
+            case "$SUPABASE_SERVICE_KEY" in sb_secret_*) ;; *) cab+=(-H "Authorization: Bearer $SUPABASE_SERVICE_KEY") ;; esac
+            codigo=$(curl -sS -o resposta.txt -w "%{http_code}" --max-time 30 -X POST "${cab[@]}" -d '{}' \
+              "${SUPABASE_URL%/}/rest/v1/rpc/radar_lembretes_ha_envio") || codigo="erro"
+            resposta=""
+            if [ -f resposta.txt ]; then resposta=$(tr -d '[:space:]' < resposta.txt); rm -f resposta.txt; fi
+            if [ "$codigo" = "404" ] || { [ "$codigo" = "200" ] && [ "$resposta" = "false" ]; }; then ha=nao; fi
+          fi
+          echo "ha=$ha" >> "$GITHUB_OUTPUT"
+          echo "Há lembrete para mandar: $ha"
+      - if: steps.fila.outputs.ha == 'sim'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
+        with:
+          persist-credentials: false
+      - if: steps.fila.outputs.ha == 'sim'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1   # v6.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: robo/requirements.txt
+      - if: steps.fila.outputs.ha == 'sim'
+        run: pip install --require-hashes --no-deps -r robo/requirements.txt
+      - name: Mandar os lembretes
+        if: steps.fila.outputs.ha == 'sim'
+        working-directory: robo
+        env:
+          SUPABASE_URL: ${{ secrets.RADAR_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.RADAR_SUPABASE_SERVICE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python radar_lembretes.py

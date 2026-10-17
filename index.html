@@ -312,19 +312,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.28.1"></script>
-<script src="radar-video.js?v=0.28.1"></script>
+<script src="radar-pauta.js?v=0.29.0"></script>
+<script src="radar-video.js?v=0.29.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.28.1";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela)
-const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco)
+const VERSAO = "0.29.0";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes)
+const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.29.0", "17/10/2026", [
+    "Lembretes por e-mail antes do dia: o Radar passa a avisar antes, e não só depois que algo falha. São quatro lembretes: a peça da Pauta de amanhã que ainda não está aprovada (e a de hoje que ainda não saiu), na véspera, a partir das 16:00, e a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada; a peça pronta que espera a aprovação do administrador há mais de 24 horas; o vídeo do reel que o corretor terminou (pronto para conferir, precisa regravar ou parou); e a notícia que não saiu (o envio ao site ou às redes deu erro, ou a autorização está parada há mais de 3 horas — o robô do site depende do GitHub, que às vezes atrasa).",
+    "Sem enxurrada e sem nome: cada tipo manda no máximo um e-mail por dia, e cada pendência é lembrada uma vez só (a peça lembrada na véspera não é lembrada de novo no dia); resolvida, ela sai da lista sozinha. O e-mail é um aviso no GitHub, como os avisos de hoje: um aviso fixo por tipo (“Radar: lembrete — …”), e cada lembrete novo chega como um comentário nele. Leva só a data, a hora, o formato e o número da peça ou do envio: nunca o nome de alguém, o assunto, a legenda ou o texto do boletim (o aviso fica no repositório público do GitHub, que qualquer pessoa pode ler). Nada é publicado pelo lembrete.",
+    "Configurações → “Lembretes por e-mail” (só o administrador): liga e desliga tudo (“ligado”) ou cada tipo, a hora do lembrete da Pauta (“hora”), o horário dos outros (“de” e “ate”), as horas de espera da aprovação (“aprovacao_horas”) e da notícia parada (“parada_horas”). Embaixo, a situação: a agenda do banco instalada, o último lembrete de cada tipo e quantas pendências esperam.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.29.0.sql ANTES de publicar a tela (acrescenta a tabela dos lembretes e a chave “lembretes” das Configurações; nada é apagado; pode rodar de novo). Depois publique a versão no GitHub (a tela, o robô e o workflow dos lembretes juntos; Ctrl+F5), instale a radar-redes 0.29.0 e rode de novo o sql/radar-redes-agenda.sql. Passo a passo no LEIAME, “Da v0.28.1 para a v0.29.0”."]],
   ["0.28.1", "17/10/2026", [
     "Pauta: a linha em branco em “Informações conferidas” (de “Acrescentar informação”) e o cartão em branco (de “Acrescentar cartão”) não contam mais como alteração não salva. Antes, o aviso “Há alterações não salvas na peça” barrava o envio do vídeo, a conferência, a aprovação e o “Cancelar a peça” até recarregar a página, mesmo depois de salvar. Agora o aviso diz o que mudou e não foi salvo (por exemplo, “Informações conferidas” ou “Quem aparece”), e o Salvar sem nada para gravar destrava a peça.",
     "Administrador: só publicar a tela (index.html com o radar-pauta.js e o radar-video.js; Ctrl+F5 em todos os aparelhos). O banco não muda (continua o sql/radar-setup-v0.28.0.sql, sem SQL novo) e as funções não mudam. Passo a passo no LEIAME, “Da v0.28.0 para a v0.28.1”."]],
@@ -1354,6 +1359,8 @@ const TELAS = {
     // A linha como sai nas redes aparece embaixo (o CRC já padronizado), para conferir antes do primeiro post
     const ident = conf.assinatura?.valor && typeof conf.assinatura.valor === "object" && !Array.isArray(conf.assinatura.valor) ? conf.assinatura.valor : null;
     const faltaId = faltaIdentificacao(ident), linhaId = ident ? linhaIdentificacao(ident) : "";
+    // v0.29.0: a situação dos lembretes por e-mail (o banco confere de novo que é o administrador); banco antigo (sem a função): o recado
+    const lemb = await rpc("radar_lembretes_situacao").then(r => ({r}), e => ({erro: e}));
     return `<h1>Configurações</h1>
       <div class="painel" id="painel-ia"><h2>Inteligência artificial</h2>
         <p class="sub">A IA do Radar é uma função instalada no Supabase (Edge Function <b>radar-ia</b>) que fala com a <b>IA Central</b> do Portal Artecon: texto pela Anthropic, imagens pela OpenAI. O custo, os limites e a recarga ficam em <a href="https://arteconartescontabeis-design.github.io/portal/" target="_blank" rel="noopener noreferrer">Portal → Consumo de IA</a>. O teste abaixo confere a instalação e diz o que falta.</p>
@@ -1365,6 +1372,8 @@ const TELAS = {
       ${bloco("corretor_video", "Corretor de vídeo", `O corretor de vídeo dos reels (Pauta → peça reel). <b>glossario</b>: os termos que a legenda escreve sempre do mesmo jeito (de 1 a 200, cada um de 2 a 40 caracteres, como ["eSocial", "Simples Nacional"]). <b>variantes</b>: como a transcrição costuma errar cada termo do glossário (até 20 por termo, como {"IBS": ["ips", "ibis"]}; só vale onde o roteiro tem o termo). <b>duracao_max_s</b>: o limite do reel com a cartela, de 15 a 90 s (acima dele, a aprovação pede confirmação; acima de 90 s, o Facebook não aceita). <b>pausa_max_s</b> (de 0,6 a 2) e <b>pausa_bloco_s</b> (de 0,4 a 2): a partir de quantos segundos a pausa dentro da frase e entre frases é encurtada. <b>lufs</b>: o volume final, de −24 a −9 (o padrão das redes é −14). <b>cartela_s</b>: a duração da cartela final, de 2 a 5 s. <b>cartela_extra</b>: uma linha a mais na cartela, até 120 caracteres (ex.: “Desde 1984 · (48) 3242-0530 · artecon.cnt.br”; vazio, nada). <b>limite_min_mes</b>: minutos de transcrição por mês, de 1 a 300; padrão 30 (a Azure gratuita dá 300 minutos por mês ao recurso inteiro e a Agenda se reserva 270: acima de 30, só com o serviço pago ou com a Agenda reservando menos). <b>retencao_dias</b> (de 7 a 120) e <b>retencao_publicado_dias</b> (de 0 a 365): por quantos dias os clipes, o vídeo e os textos ficam guardados (depois do envio; depois de publicado). Fora desses limites, o corretor usa o padrão.`,
         typeof diagnosticoVideo === "function" ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="video-diagnostico">Testar o corretor de vídeo</button>
           <span class="sub">Confere o armazenamento privado, o token do GitHub, o robô, a fila e os minutos do mês (sem mostrar segredo).</span></div><div id="diag-video"></div>` : "")}
+      ${bloco("lembretes", "Lembretes por e-mail", `O Radar lembra antes do dia, por e-mail (um aviso no GitHub, como os avisos de hoje), sem nome de ninguém. <b>pauta</b>: a peça de amanhã (e a de hoje que ainda não saiu) que não está aprovada, a partir da <b>hora</b> (padrão “16:00”; até “23:45”), e a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada. <b>aprovacao</b>: a peça pronta que espera a aprovação há mais de <b>aprovacao_horas</b> (padrão 24). <b>video</b>: o reel que o corretor terminou (pronto para conferir, precisa regravar ou parou). <b>noticia</b>: a notícia que deu erro no envio ao site ou às redes, ou que está autorizada e parada há mais de <b>parada_horas</b> (padrão 3). Cada tipo manda no máximo um e-mail por dia, e cada pendência é lembrada uma vez só. Aprovação, vídeo e notícia só saem entre <b>de</b> e <b>ate</b> (padrão “08:00” e “20:00”; pelo menos 15 minutos entre os dois). <b>ligado</b>: false desliga tudo; false num tipo desliga só ele. Recebe quem acompanha o repositório no GitHub. O aviso fica na aba Issues do repositório, que é público: qualquer pessoa pode ler a data, a hora, o formato e a situação de cada peça lembrada (nunca o assunto nem nomes).`)}
+      ${situacaoLembretes(lemb, conf.lembretes?.valor)}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
       ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento, no formato curto “norma, artigo — endereço oficial”, até 300 caracteres (vai às informações conferidas da agenda da semana da Pauta; sem ela, a peça da agenda espera alguém escrever a fonte).`,
         ehAdmin() ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="preencher-fontes">Preencher fontes oficiais</button>
@@ -1426,7 +1435,7 @@ const TELAS = {
         <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), a peça nova num dia vazio (“+ Nova peça”, só o administrador), as pessoas com o termo de uso de imagem (sócio(a) da Artecon: termos dispensados) e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
-        <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
+        <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, lembretes por e-mail, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
         <tr><td><b>Histórico</b></td><td>Trilha de auditoria: quem fez o quê.</td></tr>` : ""}
         <tr><td><b>Versões</b></td><td>O que mudou em cada versão.</td></tr></table></div></div>
       ${adm ? `<div class="painel"><h2>Cadastrar uma fonte nova</h2><ol class="passos">
@@ -2708,7 +2717,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.28.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.29.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -4199,6 +4208,26 @@ function validarConfig(chave, v){
     const termos = typeof v.cartela_extra === "string" ? [...new Set([...termosPublicidade(v.cartela_extra).trava, ...(typeof termosPeca === "function" ? termosPeca(v.cartela_extra) : [])])] : [];
     if(termos.length) return `“cartela_extra” vai ao ar no fim de todo reel: tire ${termos.map(t => `“${t}”`).join(", ")} (a publicidade da profissão contábil informa, não vende).`;
   }
+  // v0.29.0: os lembretes por e-mail (todos opcionais: sem eles, ou fora dos limites, o banco usa o padrão; a tela recusa antes)
+  if(chave === "lembretes"){
+    if(!obj) return "Os lembretes precisam ser um objeto { … }.";
+    const opcoes = ["ligado", "hora", "de", "ate", "aprovacao_horas", "parada_horas", "pauta", "aprovacao", "video", "noticia"];
+    const outra = Object.keys(v).find(k => !opcoes.includes(k));
+    if(outra !== undefined) return `“${outra}” não é uma opção dos lembretes (as opções: ${opcoes.join(", ")}).`;
+    for(const k of ["ligado", "pauta", "aprovacao", "video", "noticia"]) if(v[k] !== undefined && typeof v[k] !== "boolean") return `“${k}” é true ou false.`;
+    for(const k of ["hora", "de", "ate"])
+      if(v[k] !== undefined && !(typeof v[k] === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v[k]))) return `“${k}” é a hora de Brasília entre aspas, como "${k === "hora" ? "16:00" : k === "de" ? "08:00" : "20:00"}".`;
+    if((v.de ?? "08:00") > (v.ate ?? "20:00")) return "“de” vem antes de “ate” (ex.: \"08:00\" e \"20:00\").";
+    // v0.29.0 (revisão): a agenda do banco confere de 15 em 15 minutos (e o GitHub, de reserva, no minuto 29): depois das 23:45, ou com
+    // menos de 15 minutos entre "de" e "ate", nenhuma rodada alcançaria o lembrete, e ele nunca sairia
+    if(v.hora !== undefined && v.hora > "23:45") return "“hora” vai até \"23:45\": o Radar confere os lembretes de 15 em 15 minutos, e mais tarde que isso o lembrete da Pauta não sairia.";
+    const minutos = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+    if(minutos(v.ate ?? "20:00") - minutos(v.de ?? "08:00") < 15) return "Entre “de” e “ate” precisa haver pelo menos 15 minutos (o Radar confere os lembretes de 15 em 15 minutos), ex.: \"08:00\" e \"20:00\".";
+    if(v.aprovacao_horas !== undefined && !(Number.isInteger(v.aprovacao_horas) && v.aprovacao_horas >= 1 && v.aprovacao_horas <= 168))
+      return "“aprovacao_horas” é um número inteiro de 1 a 168 (horas que a peça pronta espera antes do lembrete).";
+    if(v.parada_horas !== undefined && !(Number.isInteger(v.parada_horas) && v.parada_horas >= 1 && v.parada_horas <= 48))
+      return "“parada_horas” é um número inteiro de 1 a 48 (horas que a notícia autorizada fica parada antes do lembrete).";
+  }
   // v0.24.0: as orientações para a IA (texto livre; vazio = sem orientação)
   if(chave === "ia_orientacoes"){
     if(!obj) return "As orientações para a IA precisam ser um objeto { … }.";
@@ -4222,6 +4251,29 @@ function validarConfig(chave, v){
       return "“crc”: informe o registro no CRC como “CRC-SC 007129/O-0” (depois da barra vem a letra O, de originário, não o número zero), ou deixe vazio (\"\").";
   }
   return "";
+}
+
+/* v0.29.0: Configurações → Lembretes por e-mail → a situação (radar_lembretes_situacao, só o administrador): a agenda do banco que pede o
+   robô dos lembretes, o último lembrete de cada tipo (quando, de Brasília, e o número do aviso no GitHub) e quantas pendências esperam.
+   Banco antigo (a função não existe): o recado do SQL. Só números e datas: nenhum nome. */
+const TIPOS_LEMBRETE = {pauta:"Pauta de amanhã sem aprovação", aprovacao:"Peça pronta esperando aprovação", video:"Vídeo do reel para conferir",
+  noticia:"Notícia que não saiu"};
+const quandoBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "—"
+  : d.toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}).replace(",", " às"); };
+function situacaoLembretes(lemb, cfg){
+  if(lemb.erro) return `<div class="aviso alerta" id="lembretes-situacao">${lemb.erro.status === 404
+    ? "A situação dos lembretes precisa do banco da v0.29.0: o administrador roda o <b>sql/radar-setup-v0.29.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    : "Não deu para ler a situação dos lembretes agora: recarregue a página."}</div>`;
+  const s = lemb.r || {}, ag = s.agenda || {};
+  const agenda = !ag.instalada ? "não instalada: rode de novo o sql/radar-redes-agenda.sql (Supabase → SQL Editor)"
+    : ag.ativa === false ? "instalada, mas desligada no pg_cron: rode de novo o sql/radar-redes-agenda.sql"
+    : "instalada" + (ag.ultima_execucao ? ` (última rodada ${quandoBrasilia(ag.ultima_execucao)}${ag.ultimo_status === "failed" ? ", com falha" : ""})` : " (ainda não rodou)");
+  const tipos = Object.entries(TIPOS_LEMBRETE).map(([k, nome]) => { const t = (s.tipos || {})[k];
+    return `<li>${nome}: ${t?.em ? `${quandoBrasilia(t.em)}, aviso nº ${h(String(t.aviso ?? "—"))}` : "nenhum ainda"}</li>`; }).join("");
+  return `<div class="painel" id="lembretes-situacao"><h3>Situação dos lembretes</h3>
+    ${cfg && typeof cfg === "object" && cfg.ligado === false ? `<p class="aviso alerta">Desligados (“ligado”: false): nenhum lembrete sai.</p>` : ""}
+    <ul><li>Agenda do banco: ${agenda}</li>${tipos}<li>Esperando o próximo lembrete: ${Number(s.esperando) || 0}</li></ul>
+    <p class="sub">O último lembrete de cada tipo é o comentário (ou o aviso) com esse número no GitHub, na aba Issues do repositório.</p></div>`;
 }
 
 /* O Salvar de um bloco das Configurações: confere (validarConfig) e grava em radar_config. false, com o recado, quando não confere.

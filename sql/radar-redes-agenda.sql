@@ -9,6 +9,11 @@
 -- religue os robôs agendados do GitHub (coleta, robô do site, resumo) que o GitHub desliga sozinho no repositório PÚBLICO depois de
 -- 60 dias sem atividade (o GitHub não desliga o pg_cron). Precisa do segredo RADAR_GITHUB_TOKEN na radar-redes (o mesmo do
 -- acionamento do robô do site); o desligado à mão fica desligado.
+-- v0.29.0: e, de 15 em 15 minutos (radar-redes-agenda-lembretes), os lembretes por e-mail antes do dia. Quem decide é o banco
+-- (radar_lembretes_acionar, do radar-setup-v0.29.0.sql: Configurações → Lembretes por e-mail, o horário e "no máximo um e-mail por tipo
+-- por dia"); só quando há lembrete para mandar, pede à radar-redes ("acionar_lembretes") que acione o robô dos lembretes no GitHub
+-- (workflow radar-lembretes.yml), com o mesmo segredo RADAR_GITHUB_TOKEN. Nada a lembrar = nenhum pedido. Desligar sem SQL:
+-- Configurações → Lembretes por e-mail → "ligado": false.
 -- Pode rodar de novo: a chave existente é mantida e a agenda é refeita (v0.23.0: também no Supabase, com as extensões já ligadas).
 --
 -- A radar-redes continua com "Verify JWT" LIGADO: a agenda manda no Authorization a chave anon, que é pública (a mesma de
@@ -35,8 +40,9 @@ end $$;
 
 do $$
 begin
-  if to_regprocedure('public.radar_agenda_vencidas(integer)') is null then
-    raise exception 'Rode antes o radar-setup-v0.21.0.sql (Supabase → SQL Editor).';
+  -- v0.29.0: e os lembretes (radar_lembretes_acionar): o setup desta versão vem antes
+  if to_regprocedure('public.radar_agenda_vencidas(integer)') is null or to_regprocedure('public.radar_lembretes_acionar()') is null then
+    raise exception 'Rode antes o radar-setup-v0.29.0.sql (Supabase → SQL Editor).';
   end if;
   if not exists (select 1 from vault.secrets where name = 'radar_redes_agenda') then
     perform vault.create_secret(replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), 'radar_redes_agenda',
@@ -80,6 +86,14 @@ begin
       headers := jsonb_build_object('Content-Type', 'application/json', %L, %L,
                    'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda')),
       timeout_milliseconds := 60000)$c$, v_url, v_cab_nome, v_cab_valor));
+  -- v0.29.0: os lembretes por e-mail. O banco confere (radar_lembretes_acionar: Configurações → Lembretes por e-mail, o horário, "um por
+  -- tipo por dia" e no máximo um pedido a cada 30 minutos); só então pede à radar-redes que acione o robô dos lembretes no GitHub
+  -- (radar-lembretes.yml). Nada a lembrar = nenhum pedido
+  perform cron.schedule('radar-redes-agenda-lembretes', '*/15 * * * *', format($c$select net.http_post(url := %L,
+      body := '{"acao": "acionar_lembretes"}'::jsonb,
+      headers := jsonb_build_object('Content-Type', 'application/json', %L, %L,
+                   'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda')),
+      timeout_milliseconds := 60000) where public.radar_lembretes_acionar()$c$, v_url, v_cab_nome, v_cab_valor));
   -- cron.job_run_details não é limpo sozinho (a página do Supabase não fala disso): guarda 7 dias
   perform cron.schedule('radar-redes-agenda-limpeza', '41 6 * * *',
     $c$delete from cron.job_run_details where end_time < now() - interval '7 days'
@@ -99,7 +113,7 @@ select jobname, schedule, active from cron.job where jobname like 'radar-redes-a
 --       || case when j.c ~ 'Bearer ' then jsonb_build_object('Authorization', substring(j.c from '(Bearer [^'']+)')) else jsonb_build_object('apikey', substring(j.c from '(sb_publishable_[A-Za-z0-9_-]+)')) end
 --       from (select command as c from cron.job where jobname = 'radar-redes-agenda') j));
 --
--- Depois de alguns segundos (esperado: 200 {"ok":true,"versao":"0.22.0"}; 401 "Invalid JWT" = a chave anon do agendamento não é a
+-- Depois de alguns segundos (esperado: 200 {"ok":true,"versao":"0.29.0"}; 401 "Invalid JWT" = a chave anon do agendamento não é a
 -- deste projeto: troque em v_anon e rode este arquivo de novo; com a chave nova, sb_publishable_…, 401 = a função ainda está com o
 -- "Verify JWT" ligado):
 --
