@@ -345,17 +345,30 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.28.0"
+    assert pagina.inner_text(".versao") == "v0.28.1"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.28.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, a "+ Nova peça" num dia vazio (só o
+    # v0.28.1: a entrada do topo é a da versão em uso e conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
+    # informação”) e o cartão em branco que não travam mais a peça, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava;
+    # e o que o administrador faz (só a tela; o banco continua o da v0.28.0)
+    topo, data, itens = pagina.evaluate("VERSOES[0]")
+    assert topo == pagina.evaluate("VERSAO") == "0.28.1" and data == "17/10/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["a linha em branco em “Informações conferidas” (de “Acrescentar informação”)", "o cartão em branco",
+                   "não contam mais como alteração não salva", "“Há alterações não salvas na peça”", "barrava o envio do vídeo",
+                   "até recarregar a página, mesmo depois de salvar", "o aviso diz o que mudou e não foi salvo",
+                   "o Salvar sem nada para gravar destrava a peça", "Administrador: só publicar a tela",
+                   "continua o sql/radar-setup-v0.28.0.sql, sem SQL novo", "as funções não mudam", "Da v0.28.0 para a v0.28.1"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.28.0: a entrada seguinte conta ao dono, em português simples, a "+ Nova peça" num dia vazio (só o
     # administrador, de hoje em diante, uma peça por dia; nasce planejada e não publica nem agenda nada; a importação depois), a marca
     # "Sócio(a) da Artecon" (os dois termos dispensados; o que continua valendo; o Histórico) e o que o administrador faz (o SQL antes da
     # tela; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.28.0" and data == "16/10/2026"
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.28.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Peça nova num dia vazio", "o administrador vê o botão “+ Nova peça”", "(de hoje em diante)",
                    "o tipo, o formato e o assunto (objetivo, quem aparece e observação são opcionais)", "abre como qualquer outra",
@@ -374,7 +387,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.27.0: a entrada seguinte conta ao dono, em português simples, o cronograma de publicações na Pauta (a semana e o mês dela, o
     # mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta não entra; a que envelheceu
     # na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.27.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
@@ -392,7 +405,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
@@ -409,7 +422,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -425,7 +438,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -441,7 +454,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -466,7 +479,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -475,7 +488,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -1783,7 +1796,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.25.0 mudou a função de IA (a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres): a v0.24.0
     # passa a ser apontada como antiga. v0.25.1: a mínima não sobe (a tela aceita o kit com e sem a arte: a função v0.25.0 serve)
     assert pagina.evaluate("[versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.25.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.28.0"]       # v0.26.0 a v0.28.0: a função de IA não muda; a mínima não sobe
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.28.1"]       # v0.26.0 a v0.28.1: a função de IA não muda; a mínima não sobe
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2609,7 +2622,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.28.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.28.1" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -6450,7 +6463,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.28.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.28.1"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -8875,7 +8888,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.28.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.28.1"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -8947,11 +8960,34 @@ def test_video_socio_sem_termo_do_corretor_sem_aviso_e_desmarcado_com_aviso(pagi
     assert "Bruno: sem o termo novo, que cita o corretor de vídeo" in pagina.inner_text("#video-pessoas-falta")
 
 
-def test_video_socio_peca_nova_pelo_caminho_do_dono_envia_sem_falsa_alteracao(pagina, vtela, mp4_sintetico):
-    """v0.28.1: o caminho do dono, de ponta a ponta."""
+# v0.28.1: um roteiro de reel do sócio do tamanho do que o dono colou (681 caracteres, em tabela, com o número do prazo, que a
+# conferência pede em Informações conferidas)
+ROTEIRO_SOCIO = ("| Tempo | Fala | Texto na tela |\n| --- | --- | --- |\n"
+                 "| 0 a 3 s | \"O prazo do Simples vence no dia 20.\" | PRAZO DIA 20 |\n"
+                 "| 3 a 12 s | \"Sou o Bruno, sócio da Artecon. Hoje eu explico um prazo que pesa no caixa da sua empresa.\" "
+                 "| Tarja: Bruno · Sócio |\n"
+                 "| 12 a 30 s | \"Confira com a gente antes do vencimento para não pagar multa nem juros. Quem paga em dia evita a cobrança "
+                 "e a dor de cabeça no fim do mês. Se o pagamento atrasar, a guia nova sai com os acréscimos do período.\" "
+                 "| EM DIA: SEM MULTA |\n"
+                 "| 30 a 40 s | \"Separe as notas do mês e mande para a equipe até a semana do vencimento. Ficou com alguma dúvida "
+                 "sobre o prazo? Fale com a gente.\" | Fale com a Artecon → cartela final |")
+CONFERIDAS_SUJAS = " O que mudou e não foi salvo: Informações conferidas."
+
+
+def test_video_socio_peca_nova_linha_em_branco_de_acrescentar_informacao_nao_trava_o_envio(pagina, vtela, mp4_sintetico):
+    """v0.28.1: a peça como o dono montou em produção (o administrador cadastra o sócio sem o termo do corretor, cria o reel pela
+    “+ Nova peça” num dia vazio, cola o roteiro e salva, marca o sócio em Quem aparece e salva, recarrega a página e abre a peça) e um
+    passo que não está no relato dele: “Conferir o que falta” pede o número do roteiro em Informações conferidas, e “Acrescentar
+    informação” deixa uma linha em branco. Antes, a trava da peça contava essa linha em branco como alteração, e o Salvar (que não grava
+    linha em branco) respondia “Nada mudou na peça.” sem redesenhar: o envio do vídeo, a conferência, o Gerar com IA, a aprovação e as
+    mudanças de situação ficavam barrados com “Há alterações não salvas na peça” até recarregar a página. Agora a trava é o que o Salvar
+    gravaria: a linha em branco não conta (o envio sai sem salvar nada), e a alteração de verdade não salva continua barrando o envio e a
+    mudança de situação, com o aviso dizendo onde está a diferença."""
     db, fv = vtela
+    assert len(ROTEIRO_SOCIO) == 681
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
     abrir_pauta(pagina)
     pagina.click("[data-acao=pauta-pessoas]")
     pagina.wait_for_selector("h1 >> text=Pessoas e termos")
@@ -8961,9 +8997,11 @@ def test_video_socio_peca_nova_pelo_caminho_do_dono_envia_sem_falsa_alteracao(pa
     nova.locator("[name=termo_assinado_em]").fill("2026-10-01")
     nova.locator("[name=socio]").check()
     limpar_recados(pagina)
-    nova.locator("button", has_text="Cadastrar pessoa").click()
+    nova.locator("button", has_text="Cadastrar pessoa").click()                      # (a pergunta do sócio(a) é aceita pela página)
     pagina.wait_for_selector("#recado >> text=Pessoa cadastrada.")
-    bruno = db.execute("select id from radar_pessoas").fetchone()[0]
+    bruno, socio, termo_corretor = db.execute("select id, socio, termo_corretor_em from radar_pessoas").fetchone()
+    assert (socio, termo_corretor) == (True, None)
+    # “+ Nova peça” de reel num dia vazio (na semana que vem: todos os dias vazios)
     prox = date.fromisoformat(semana_de_hoje()) + timedelta(days=7)
     dia = (prox + timedelta(days=2)).isoformat()
     pagina.click("text=← Voltar para a semana")
@@ -8973,37 +9011,136 @@ def test_video_socio_peca_nova_pelo_caminho_do_dono_envia_sem_falsa_alteracao(pa
     form.wait_for()
     form.locator("[name=tipo]").select_option("reel")
     form.locator("[name=formato]").select_option("reel")
-    form.locator("[name=assunto]").fill("Reel do prazo do Simples (exemplo)")
+    form.locator("[name=assunto]").fill("Reel do prazo do Simples com o sócio (exemplo)")
     form.locator("[name=quem_aparece]").fill("Bruno Exemplo")
     form.locator("button", has_text="Criar a peça").click()
     pagina.wait_for_selector("form[data-form=peca]")
     pagina.wait_for_selector("#recado >> text=nada é publicado sem a aprovação do administrador")
     pid = db.execute("select id from radar_pauta_pecas where data = %s", (dia,)).fetchone()[0]
-    pagina.fill("#peca-roteiro", vb.ROTEIRO)
+    pagina.fill("#peca-roteiro", ROTEIRO_SOCIO)
     salvar_peca(pagina)
+    assert pagina.locator("#video-quem option").count() == 0                         # ninguém em Quem aparece: “Quem fala” vazio
     pagina.check(f"form[data-form=peca] input[name=pessoa][value='{bruno}']")
     salvar_peca(pagina)
-    print(db.execute("select pessoas, situacao, hora, chamada, quem_aparece, apoio, objetivo, observacao, legenda_instagram, legenda_facebook from radar_pauta_pecas where id = %s", (pid,)).fetchone())
+    assert db.execute("select pessoas, situacao, hora, chamada, quem_aparece, length(roteiro) from radar_pauta_pecas where id = %s",
+                      (pid,)).fetchone() == ([bruno], "em_producao", datetime.strptime("09:30", "%H:%M").time(), "", "Bruno Exemplo", 681)
+    # recarrega a página e abre a peça
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
     abrir_peca(pagina, pid, dia)
     pagina.wait_for_selector("#video-envio")
-    if mp4_sintetico:
-        pagina.set_input_files("#video-arquivos", [{"name": "tomada-1.mp4", "mimeType": "video/mp4", "buffer": mp4_sintetico}])
-    else:
-        pagina.set_input_files("#video-arquivos", [clipe("tomada-1.mp4", 100_000)])
+    assert pagina.locator("#video-pessoas-falta").count() == 0                        # sócio(a): sem o aviso do termo do corretor
+    pagina.click("[data-acao=peca-conferir]")
+    pagina.wait_for_selector("#peca-conferencia:not([hidden])")
+    assert "Números que não estão nas informações conferidas: 20. " + ACRESCENTE in pagina.inner_text("#peca-conferencia")
+    pagina.click("[data-acao=peca-conf-linha]")                                       # a linha para preencher depois, em branco
+    assert pagina.locator("#peca-conferidas .conf-linha").count() == 1
+    # o quadro do corretor: 1 clipe (o vídeo sintético), “Quem fala” com o sócio, as 4 declarações
+    pagina.set_input_files("#video-arquivos", [{"name": "IMG_0001.MOV", "mimeType": "video/quicktime",
+                                                "buffer": mp4_sintetico or clipe("IMG_0001.MOV", 200_000)["buffer"]}])
     pagina.wait_for_selector("#video-clipes li[data-i='0']")
-    print(pagina.evaluate("() => [...document.querySelectorAll('#video-quem option')].map(o => [o.value, o.textContent, o.selected])"))
+    assert pagina.evaluate("() => [...document.querySelectorAll('#video-quem option')].map(o => [o.value, o.textContent, o.selected])") == \
+        [[str(bruno), "Bruno", True]]
     for c in pagina.locator("#video-envio .video-declaracao").all():
         c.check()
-    print(pagina.evaluate("""() => { const f = document.querySelector('form[data-form=peca]');
-      const cs = [...f.elements].filter(c => c.name && c.type !== 'file');
-      const agora = JSON.parse(estadoPeca(f)), antes = JSON.parse(f.dataset.original);
-      return {n: [agora.length, antes.length], difere: cs.map((c, i) => [c.name, c.type, JSON.stringify(antes[i]), JSON.stringify(agora[i])]).filter(x => x[2] !== x[3]),
-              nomes: cs.map(c => c.name + ':' + c.type), video: [...f.elements].filter(c => c.closest('#video-reel')).map(c => c.id || c.className)}; }"""))
-    limpar_recados(pagina)
-    pagina.click("[data-acao=video-enviar]")
-    pagina.wait_for_selector("#recado >> text=Gravação enviada: na fila do corretor.", timeout=60000)
+
+    def tentar(acao, esperado):
+        limpar_recados(pagina)
+        pagina.click(f"[data-acao={acao}]")
+        pagina.wait_for_selector("#recado div", timeout=60000)
+        texto = pagina.inner_text("#recado")
+        assert texto.startswith(esperado), texto
+        return texto
+    # a alteração de verdade, não salva (a informação digitada na linha), continua barrando o envio e a mudança de situação; o aviso diz
+    # onde está a diferença
+    pagina.fill("#peca-conferidas [name=conf-informacao]", "O DAS do Simples vence no dia 20")
+    assert tentar("video-enviar", "Há alterações não salvas na peça.").endswith(CONFERIDAS_SUJAS)
+    assert tentar("peca-cancelar", "Há alterações não salvas na peça.").endswith(CONFERIDAS_SUJAS)
+    assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "em_producao"
+    assert db.execute("select count(*) from radar_videos").fetchone()[0] == 0 and fv.ARM["tus_pedidos"] == []
+    # de volta à linha em branco (o que o Salvar não grava), sem salvar nada: o envio sai
+    pagina.fill("#peca-conferidas [name=conf-informacao]", "")
+    assert pagina.locator("#peca-conferidas .conf-linha").count() == 1
+    tentar("video-enviar", "Gravação enviada: na fila do corretor.")
+    vid, sit, quem, decl = db.execute("select id::text, situacao, fala_pessoa, declaracoes from radar_videos where peca_id = %s", (pid,)).fetchone()
+    assert (sit, quem, sorted(decl)) == ("na_fila", bruno, sorted(vb.DECL))
+    assert fv.ARM["objetos"][f"bruto/{vid}/1"]["bytes"] > 0
+    assert db.execute("select conferidas from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == []
+
+
+def test_peca_linhas_em_branco_nao_travam_e_cartao_nao_salvo_trava_com_o_que_mudou(pagina, pauta):
+    """v0.28.1: a mesma trava no carrossel (peça importada, com 2 cartões, 1 informação conferida e 1 pessoa). O cartão em branco de
+    “Acrescentar cartão”, a linha em branco de “Acrescentar informação” e os espaços no fim de um texto não contam como alteração (o
+    Salvar não grava nada disso e responde “Nada mudou na peça.”); o texto de cartão não salvo, o cartão salvo esvaziado, a pessoa
+    desmarcada, a chamada e a informação digitada continuam barrando a conferência e o “Cancelar a peça”, e o aviso diz onde está a
+    diferença. O Salvar sem nada a gravar destrava a peça, qualquer que seja a diferença que ele não grava."""
+    db = pauta
+    ana = nova_pessoa(db)
+    cartoes = [{"titulo": "Separe as notas", "texto": "Junte as notas fiscais do mês."}, {"titulo": "Confira a folha", "texto": "Revise os pagamentos."}]
+    conferidas = [{"informacao": "O fechamento é no último dia útil do mês", "fonte": "Regra do escritório"}]
+    pid = peca_db(db, "2026-11-04", "educativo", "carrossel", chamada="Checklist do fim do mês", apoio="Passos para fechar o mês.",
+                  cartoes=cartoes, conferidas=conferidas, pessoas=[ana])
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, "2026-11-04")
+    form = pagina.locator("form[data-form=peca]")
+    titulos, textos = form.locator(".cartao-linha input"), form.locator(".cartao-linha textarea")
+
+    def tentar(acao, mudou=None):
+        """Sem `mudou`: a ação roda (a conferência aparece, ou a peça é cancelada). Com `mudou`: o aviso de alteração não salva, com o que
+        mudou no fim ("" = o aviso sem a lista)."""
+        limpar_recados(pagina)
+        pagina.evaluate("() => { document.querySelector('#peca-conferencia').hidden = true; }")
+        pagina.click(f"[data-acao={acao}]")
+        if mudou is None:
+            pagina.wait_for_selector("#peca-conferencia:not([hidden])" if acao == "peca-conferir" else "#recado >> text=Peça cancelada.")
+            assert pagina.locator("#recado .erro").count() == 0, pagina.inner_text("#recado")
+            return
+        pagina.wait_for_selector("#recado .erro")
+        texto = pagina.inner_text("#recado")
+        assert texto.startswith("Há alterações não salvas" + (": salve antes de conferir" if acao == "peca-conferir" else " na peça.")), texto
+        assert texto.endswith(f" O que mudou e não foi salvo: {mudou}.") if mudou else "O que mudou" not in texto, texto
+        assert pagina.locator("#peca-conferencia[hidden]").count() == 1
+
+    tentar("peca-conferir")
+    pagina.click("[data-acao=peca-cartao-linha]")
+    pagina.click("[data-acao=peca-conf-linha]")
+    assert titulos.count() == 3 and form.locator(".conf-linha").count() == 2
+    tentar("peca-conferir")                                                   # as linhas em branco não contam
+    titulos.nth(2).fill("Guarde os recibos")                                  # o cartão novo, não salvo
+    tentar("peca-conferir", "Cartões")
+    tentar("peca-cancelar", "Cartões")
+    titulos.nth(2).fill("")
+    tentar("peca-conferir")
+    textos.first.fill(cartoes[0]["texto"] + "   ")                             # os espaços do fim: o Salvar tira
+    form.locator("[name=conf-informacao]").first.fill(conferidas[0]["informacao"] + "  ")
+    tentar("peca-conferir")
+    titulos.nth(1).fill("")                                                   # o cartão salvo, esvaziado: o Salvar tiraria
+    textos.nth(1).fill("")
+    tentar("peca-conferir", "Cartões")
+    titulos.nth(1).fill(cartoes[1]["titulo"])
+    textos.nth(1).fill(cartoes[1]["texto"])
+    tentar("peca-conferir")
+    form.locator(f"input[name=pessoa][value='{ana}']").uncheck()
+    tentar("peca-cancelar", "Quem aparece")
+    form.locator(f"input[name=pessoa][value='{ana}']").check()
+    form.locator("[name=chamada]").fill("Checklist do mês")
+    form.locator("[name=conf-informacao]").nth(1).fill("O DAS vence no dia 20")
+    tentar("peca-conferir", "Chamada da arte, Informações conferidas")
+    form.locator("[name=chamada]").fill("Checklist do fim do mês")
+    form.locator("[name=conf-informacao]").nth(1).fill("")
+    tentar("peca-conferir")
+    salvar_peca(pagina, "Nada mudou na peça.")                                # nada disso é gravado
+    assert db.execute("select cartoes, conferidas, pessoas, chamada, situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone() == \
+        (cartoes, conferidas, [ana], "Checklist do fim do mês", "planejada")
+    # uma diferença que o Salvar não grava (aqui, o estado guardado da tela trocado à mão): o aviso sem a lista; o Salvar destrava
+    pagina.evaluate("() => { document.querySelector('form[data-form=peca]').dataset.original = '{}'; }")
+    tentar("peca-conferir", "")
+    salvar_peca(pagina, "Nada mudou na peça.")
+    tentar("peca-conferir")
+    tentar("peca-cancelar")
+    assert db.execute("select cartoes, conferidas, situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (cartoes, conferidas, "cancelada")
 
 
 def test_pessoas_termo_do_corretor_quer_ver_menor_e_pecas_publicadas(pagina, vtela):

@@ -19,8 +19,10 @@
    v0.28.0: "+ Nova peça" nos dias da semana sem peça (de hoje em diante, só o administrador: formNovaPeca e radar_pauta_criar, que nasce
    planejada e não publica nem agenda nada) e, em Pessoas e termos, a marca "Sócio(a) da Artecon" (só o administrador marca): para quem a
    tem, o banco não pede o termo de uso de imagem nem o do corretor de vídeo, e a tela mostra o selo "Sócio(a) — termos dispensados".
+   v0.28.1: a trava da peça (estadoPeca) conta as informações conferidas e os cartões como o Salvar os grava (a linha em branco não
+   conta), o aviso diz o que mudou e não foi salvo (avisoPecaSuja) e o Salvar sem nada a gravar destrava a peça.
    ==================================================================== */
-const PAUTA_VERSAO = "0.28.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.28.1";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -533,10 +535,33 @@ async function telaPeca(id){
     ${vaiAoAr && p.situacao === "pronta" ? ehAdmin() ? blocoAprovar(p) : ed ? `<div class="aviso info" id="peca-espera">Pronta: falta o administrador aprovar.</div>` : "" : ""}
     ${p.situacao === "aprovada" ? blocoAprovada(p) : ""}`;
 }
-/* O estado do formulário da peça (para saber se há algo não salvo: inclui as linhas acrescentadas ou tiradas) */
-const estadoPeca = f => JSON.stringify([...f.elements].filter(c => c.name && c.type !== "file").map(c => c.type === "checkbox" ? c.checked : c.value));
+/* O estado do formulário da peça (para saber se há algo não salvo: inclui as linhas acrescentadas ou tiradas). v0.28.1: as informações
+   conferidas e os cartões entram como o Salvar os grava (linhasDoForm, a mesma de corpoDaPeca: sem os espaços das pontas e sem a linha em
+   branco). Antes, a linha em branco de “Acrescentar informação” (o reel com número no roteiro chega a ela pelo “Conferir o que falta”)
+   contava como alteração, e o Salvar, que não grava linha em branco, respondia “Nada mudou na peça.” sem redesenhar: o envio do vídeo, a
+   conferência, o Gerar com IA, a aprovação e as mudanças de situação ficavam barrados com AVISO_PECA_SUJA até recarregar a página.
+   Cada campo vai com o nome (para o aviso dizer onde está a diferença: mudancasPeca) */
+const estadoPeca = f => JSON.stringify({campos:[...f.elements].filter(c => c.name && c.type !== "file" && !c.closest("#peca-conferidas, #peca-cartoes"))
+    .map(c => [c.name, c.type === "checkbox" ? c.checked : c.value]),
+  conferidas:linhasDoForm(f, "#peca-conferidas", [["informacao", "[name=conf-informacao]"], ["fonte", "[name=conf-fonte]"]], Infinity, ""),
+  cartoes:linhasDoForm(f, "#peca-cartoes", [["titulo", "[name=cartao-titulo]"], ["texto", "[name=cartao-texto]"]], Infinity, "")});
 const pecaMudou = f => !!f && estadoPeca(f) !== f.dataset.original;
 const AVISO_PECA_SUJA = "Há alterações não salvas na peça. Salve (ou recarregue a página para descartar) antes de continuar.";
+/* v0.28.1: o que mudou e não foi salvo, com o nome que a tela mostra; vai no fim do aviso (avisoPecaSuja), para o print dizer onde está
+   a diferença. Sem o estado de antes (ou num formato que não é este), nada: o aviso sai como sempre. */
+function mudancasPeca(f){
+  let antes; try{ antes = JSON.parse(f.dataset.original || ""); }catch(e){ return []; }
+  if(!antes || !Array.isArray(antes.campos)) return [];
+  const agora = JSON.parse(estadoPeca(f)), porNome = l => l.reduce((m, [n, v]) => ((m[n] ||= []).push(v), m), {}), a = porNome(antes.campos), b = porNome(agora.campos);
+  const nomes = {hora:"Hora", tipo:"Tipo", formato:"Formato", pessoa:"Quem aparece", chamada:f.dataset.formato === "reel" ? "Texto do gancho" : "Chamada da arte",
+    apoio:"Linha de apoio", roteiro:"Roteiro", legenda_instagram:"Legenda do Instagram", legenda_facebook:"Legenda do Facebook", assunto:"Assunto",
+    objetivo:"Objetivo", quem_aparece:"Quem aparece (lembrete)", observacao:"Observação"};
+  const mudou = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(n => JSON.stringify(a[n]) !== JSON.stringify(b[n])).map(n => nomes[n] || n);
+  if(JSON.stringify(antes.conferidas) !== JSON.stringify(agora.conferidas)) mudou.push("Informações conferidas");
+  if(JSON.stringify(antes.cartoes) !== JSON.stringify(agora.cartoes)) mudou.push("Cartões");
+  return mudou;
+}
+const avisoPecaSuja = (f, texto = AVISO_PECA_SUJA) => { const m = f ? mudancasPeca(f) : []; return m.length ? `${texto} O que mudou e não foi salvo: ${m.join(", ")}.` : texto; };
 /* As linhas de uma lista do formulário (informações conferidas ou cartões); null quando a lista está travada ou não aparece */
 function linhasDoForm(f, caixa, campos, max, nome){
   const box = f.querySelector(caixa); if(!box || box.dataset.travado) return null;
@@ -578,7 +603,7 @@ async function gravarPeca(f, corpo){
 }
 async function situacaoDaPeca(el, situacao, pergunta, msg){
   const f = el.closest("form[data-form=peca]");
-  if(pecaMudou(f)) throw new ErroApi(AVISO_PECA_SUJA);
+  if(pecaMudou(f)) throw new ErroApi(avisoPecaSuja(f));
   if(pergunta && !confirm(pergunta)) return;
   await gravarPeca(f, {situacao}); await desenhar(); recado(msg);
 }
@@ -1295,7 +1320,7 @@ const PAUTA = {
     /* Conferir (sem mudar nada): a lista do banco e a da tela, sobre a peça salva */
     async "peca-conferir"(el){
       const f = el.closest("form[data-form=peca]");
-      if(pecaMudou(f)) throw new ErroApi("Há alterações não salvas: salve antes de conferir (a conferência é feita na peça salva).");
+      if(pecaMudou(f)) throw new ErroApi(avisoPecaSuja(f, "Há alterações não salvas: salve antes de conferir (a conferência é feita na peça salva)."));
       mostrarConferencia(await conferirPecaTela(f, null, await artesDaTela()), "Conferência da peça");
     },
     /* "Salvar e marcar como pronta": salva o que mudou, confere (o banco e a tela) e, sem nada a resolver, a peça fica pronta para o
@@ -1318,7 +1343,7 @@ const PAUTA = {
        confere tudo de novo. À mão (carrossel e reel nesta versão, ou quem preferir), não cria envio: libera baixar e copiar. */
     async "peca-aprovar"(){
       const f = $("form[data-form=peca]"), painel = $("#peca-aprovar"); if(!f || !painel) return;
-      if(pecaMudou(f)) throw new ErroApi(AVISO_PECA_SUJA);
+      if(pecaMudou(f)) throw new ErroApi(avisoPecaSuja(f));
       const canais = [...painel.querySelectorAll(".aprovar-canal:checked:not(:disabled)")].map(c => c.value);
       const modo = painel.querySelector("input[name=aprovar-modo]:checked:not(:disabled)")?.value, caixas = [...painel.querySelectorAll(".aprovar-conf")];
       if(!canais.length) throw new ErroApi("Marque o Instagram, o Facebook ou os dois (só os canais com legenda).");
@@ -1424,7 +1449,7 @@ const PAUTA = {
        sugestão (o que foi digitado enquanto a IA trabalhava continua onde está) */
     async "peca-ia"(el){
       const f = el.closest("form[data-form=peca]"); if(!f) return;
-      if(pecaMudou(f)) throw new ErroApi("Há alterações não salvas: salve a peça antes de gerar com IA (a IA parte da peça salva).");
+      if(pecaMudou(f)) throw new ErroApi(avisoPecaSuja(f, "Há alterações não salvas: salve a peça antes de gerar com IA (a IA parte da peça salva)."));
       const id = Number(f.dataset.id), naTela = () => E.aba === "pauta" && E.pauta.peca === id;
       if(!(await liberarIA("pauta-" + id, naTela))) return;
       const r = await ia("peca", {peca_id:id, lido:f.dataset.lido});
@@ -1495,7 +1520,9 @@ const PAUTA = {
     async peca(f){
       if(!f.reportValidity()) throw new ErroApi("Confira os campos da peça.");
       const corpo = corpoDaPeca(f);
-      if(!Object.keys(corpo).length){ recado("Nada mudou na peça."); return; }
+      // v0.28.1: nada a gravar é a tela igual à peça salva (o que o Salvar não grava, como a linha em branco, não conta): a trava passa
+      // a valer a partir daqui. Antes, uma diferença que o Salvar não grava deixava a peça barrada com o aviso até recarregar a página
+      if(!Object.keys(corpo).length){ f.dataset.original = estadoPeca(f); recado("Nada mudou na peça."); return; }
       await gravarPeca(f, corpo); await desenhar(); recado("Peça salva.");
     },
     /* À mão: o link do post (Instagram ou Facebook) e o dia; o banco confere o link, o dia (da aprovação até hoje) e o termo nesse dia */

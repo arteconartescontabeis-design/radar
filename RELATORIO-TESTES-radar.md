@@ -1,13 +1,16 @@
-# Radar Artecon — Relatório de testes (v0.28.0)
+# Radar Artecon — Relatório de testes (v0.28.1)
 
-Data: 16/10/2026. **A suíte inteira da v0.28.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram os testes afetados: o
+Data: 17/10/2026. **A suíte inteira da v0.28.1 roda no GitHub (CI) antes de juntar**; só a tela muda, e neste ambiente rodaram o
+arquivo inteiro dos testes de tela (`testes/test_radar_telas.py`), **224 aprovados, 0 falhas, 61 pulados**, em 584 s (9min44s), e
+`testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado** (detalhes na seção da v0.28.1, logo abaixo). Na v0.28.0
+(16/10/2026), rodaram os testes afetados: o
 banco e o corretor de vídeo no banco (`testes/test_radar_banco.py` e `testes/test_radar_video_banco.py`, porque o banco muda), **309
 aprovados, 0 falhas**; `testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado**; e o arquivo inteiro dos testes de
-tela (`testes/test_radar_telas.py`), **222 aprovados, 0 falhas, 61 pulados** (detalhes na seção da v0.28.0, logo abaixo). Os mesmos
+tela (`testes/test_radar_telas.py`), **222 aprovados, 0 falhas, 61 pulados** (detalhes na seção da v0.28.0). Os mesmos
 números se repetiram depois das correções da revisão (seção "v0.28.0 — correções da revisão": banco 309, repositório 16 e 1 pulado,
 tela 222 e 61 pulados, em 527 s). Na v0.25.1
 (16/10/2026), a suíte inteira deu **1.051 aprovados, 0 falhas, 67 pulados**, em 1.171 s (19min30s); a v0.26.0 tem 13 testes novos (de
-1.118 para 1.131 no total), a v0.27.0, 2 (1.133) e a v0.28.0, 8 (1.141 no total). Dos pulados, 61 são os testes de tela que sobem a IA
+1.118 para 1.131 no total), a v0.27.0, 2 (1.133), a v0.28.0, 8 (1.141) e a v0.28.1, 2 (1.143 no total). Dos pulados, 61 são os testes de tela que sobem a IA
 Central de verdade (pacote `ia-central`, fora deste repositório: aqui não há a pasta `../ia-central`), 3 são os da transcrição com o
 Speech SDK de verdade (o SDK não está instalado neste ambiente; o CI instala), 2 são os do contêiner do ffmpeg (aqui o `docker` não tem
 o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-repositorio.yml` (precisa do commit de antes do push). Na v0.25.0
@@ -17,8 +20,78 @@ o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-reposit
 teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado,
 toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
-atualizado: as seções da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
+atualizado: as seções da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.28.1 — a linha em branco não trava mais a peça, e o aviso diz o que mudou
+
+Data: 17/10/2026. Só a tela muda: o `radar-pauta.js` (a trava da peça), o `radar-video.js` (o aviso das duas ações do vídeo que
+conferem a trava e o número da versão) e o `index.html` (a versão e a entrada de Versões). O banco continua no
+`sql/radar-setup-v0.28.0.sql`, sem SQL novo; as funções e os robôs não mudam; por isso o `test_radar_banco.py`, o
+`test_radar_video_banco.py` e os testes das funções não rodaram aqui. **A suíte inteira roda no GitHub (CI) antes de juntar**; nesta
+rodada, os testes abaixo rodaram pela fila compartilhada, com o PostgreSQL e o PostgREST de teste de verdade.
+
+**O que estava errado.** Em produção, num reel criado pela "+ Nova peça", o envio do vídeo no "Corretor de vídeo" era recusado com
+"Há alterações não salvas na peça", também depois de salvar. A trava da peça (`estadoPeca`) contava todo campo com nome e, por isso,
+a linha em branco que "Acrescentar informação" deixa em "Informações conferidas" (o reel com número no roteiro chega a ela pelo
+"Conferir o que falta"). O Salvar não grava linha em branco: respondia "Nada mudou na peça." sem redesenhar a tela, e daí em diante o
+envio do vídeo, a conferência, o Gerar com IA, a aprovação e as mudanças de situação ficavam barrados até recarregar a página. O mesmo
+valia para o cartão em branco do carrossel. Prova, na tela com o código da v0.28.0, depois do Salvar: o estado guardado tinha 12
+valores e o da tela, 14 (os mesmos, mais `conf-informacao` e `conf-fonte` vazios), com nada a gravar. **Ressalva:** o caminho
+exatamente como o dono contou (sem "Acrescentar informação") não falha no Chromium com o código da v0.28.0 (4 variações: administrador,
+editora, sem recarregar e peça de hoje); não está provado que foi esta a diferença no aparelho dele. Por isso a v0.28.1 também faz o
+aviso dizer o que mudou e faz o Salvar sem nada a gravar destravar a peça.
+
+**A correção** (`radar-pauta.js`):
+
+- a trava pega os campos soltos como antes (agora com o nome de cada um) e as informações conferidas e os cartões pela mesma
+  `linhasDoForm` que o Salvar usa: a linha em branco e os espaços das pontas não contam; tudo o que o Salvar gravaria continua contando;
+- o aviso termina com "O que mudou e não foi salvo: …", com o nome que a tela mostra ("Informações conferidas", "Cartões", "Quem
+  aparece", "Roteiro", "Texto do gancho" ou "Chamada da arte"…), nas seis recusas (o envio e a nova conferência do vídeo, o "Conferir o
+  que falta", o Gerar com IA, a aprovação e as mudanças de situação);
+- o Salvar sem nada a gravar ("Nada mudou na peça.") passa a guardar o estado da tela como o salvo: uma diferença que o Salvar não
+  grava não barra mais nada depois dele.
+
+Resultados desta rodada:
+
+- o arquivo inteiro dos testes de tela (`testes/test_radar_telas.py`): **224 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 584 s (9min44s);
+- `testes/test_radar_repositorio.py`: **16 aprovados, 0 falhas, 1 pulado** (o dos commits do push, que só roda no `radar-repositorio.yml`).
+
+São 2 testes novos em `test_radar_telas.py` (de 1.141 para 1.143 no total) e 5 ajustados:
+
+- `test_video_socio_peca_nova_linha_em_branco_de_acrescentar_informacao_nao_trava_o_envio` (novo): o administrador cadastra "Bruno
+  Exemplo" como sócio (termo assinado, sem o termo do corretor), cria o reel pela "+ Nova peça" num dia vazio, cola um roteiro de 681
+  caracteres e salva ("Quem fala" vazio), marca o sócio em "Quem aparece" e salva (o banco confere as pessoas, "em produção", 09:30, a
+  chamada vazia e o tamanho do roteiro), recarrega a página e abre a peça (sem o aviso do termo do corretor). "Conferir o que falta" pede
+  o 20 em Informações conferidas; "Acrescentar informação" deixa a linha em branco; 1 clipe sintético, "Quem fala" = Bruno e as 4
+  declarações. Com texto digitado na linha e não salvo, o envio e o "Cancelar a peça" são recusados com o aviso terminado em "O que mudou
+  e não foi salvo: Informações conferidas." e nada vai ao banco nem ao armazenamento; com a linha de volta em branco, **sem salvar nada**,
+  sai "Gravação enviada: na fila do corretor." e o vídeo fica na fila com Bruno e as 4 declarações (as informações conferidas continuam
+  vazias no banco).
+- `test_peca_linhas_em_branco_nao_travam_e_cartao_nao_salvo_trava_com_o_que_mudou` (novo): um carrossel importado com 2 cartões, 1
+  informação conferida e "Ana Teste". O cartão e a informação em branco e os espaços no fim de um texto não barram a conferência; o
+  título de cartão não salvo barra a conferência e o "Cancelar a peça" ("Cartões"), e também o cartão salvo esvaziado ("Cartões"), a
+  pessoa desmarcada ("Quem aparece") e a chamada com a informação digitada ("Chamada da arte, Informações conferidas"); desfeito, a
+  conferência roda; o Salvar responde "Nada mudou na peça." e o banco não muda. Com o estado guardado da tela trocado à mão (uma
+  diferença que o Salvar não grava), a conferência é recusada com o aviso sem a lista; o Salvar ("Nada mudou na peça.") destrava, e a
+  peça é cancelada.
+- **Versão** (5 ajustados): a aba Versões (`test_versao_visivel_e_aba_de_versoes`: a entrada do topo é a 0.28.1, com 2 itens — a linha
+  e o cartão em branco, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava e o "Administrador:" só com a tela e o
+  banco da v0.28.0; as entradas da 0.28.0 à 0.22.0 continuam conferidas, uma posição abaixo), a `FUNCAO_MINIMA` que não sobe ("0.25.0")
+  com a tela na 0.28.1, o rodapé com "v0.28.1" e os arquivos antigos imitados do `radar-pauta.js` e do `radar-video.js` (que pedem
+  Ctrl+F5).
+
+**Mutações** (cada uma no `radar-pauta.js`, com os 2 testes novos; o arquivo foi restaurado depois de cada uma):
+
+- as linhas das listas cruas na trava, como na v0.28.0 (a linha em branco conta): **os 2 falham** (o do carrossel no "Conferir" com as
+  linhas em branco);
+- os cartões fora da trava: **o do carrossel falha** (o título não salvo do cartão deixa conferir);
+- as informações conferidas fora da trava: **os 2 falham** (o envio do vídeo sai com a informação digitada e não salva);
+- sem o "Salvar sem nada a gravar destrava": **o do carrossel falha** (a conferência continua barrada depois do Salvar).
+
+Com a tela da v0.28.0 (o `radar-pauta.js` e o `radar-video.js` do commit 2ab8153, só com o número da versão trocado para 0.28.1),
+**os 2 testes novos falham**: o do carrossel no primeiro "Conferir" com o cartão e a informação em branco (recusado com o aviso, sem
+nada digitado), e o do reel no aviso do envio, que não dizia o que mudou.
 
 ## v0.28.0 — "+ Nova peça" e "Sócio(a) da Artecon"
 
