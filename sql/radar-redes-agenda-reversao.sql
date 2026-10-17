@@ -1,9 +1,11 @@
 -- =====================================================================
 -- Radar Artecon v0.21.0 — desfaz o sql/radar-redes-agenda.sql (rodar no Supabase → SQL Editor)
 --
--- Tira os agendamentos da Pauta (radar-redes-agenda, radar-redes-agenda-limpeza e, v0.22.0, radar-redes-agenda-robos) e confere
--- que não sobrou nenhum. Sem a agenda, a peça aprovada para agendar espera: sai só pelo "Publicar agora" da Pauta; e os robôs
--- agendados do GitHub que ele desligar por inatividade só voltam com "Enable workflow". Pode rodar mais de uma vez.
+-- Tira os agendamentos da Pauta (radar-redes-agenda, radar-redes-agenda-limpeza, v0.22.0, radar-redes-agenda-robos e, v0.29.0,
+-- radar-redes-agenda-lembretes) e confere que não sobrou nenhum. Sem a agenda, a peça aprovada para agendar espera: sai só pelo
+-- "Publicar agora" da Pauta; os robôs agendados do GitHub que ele desligar por inatividade só voltam com "Enable workflow"; e os
+-- lembretes por e-mail saem só pela rodada de hora em hora do próprio workflow (radar-lembretes.yml), quando o GitHub roda. Pode rodar
+-- mais de uma vez.
 -- Para só pausar, sem SQL: Configurações → Pauta → "agenda_ligada": false.
 -- =====================================================================
 do $$

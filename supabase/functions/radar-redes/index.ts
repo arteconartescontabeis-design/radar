@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.22.0)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.29.0)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha) e, v0.21.0, a peça da Pauta que ele aprovou para sair pela agenda.
@@ -28,7 +28,12 @@
 //                             repositório PÚBLICO, o GitHub desliga sozinho os workflows agendados (coleta, robô do site, resumo)
 //                             depois de 60 dias sem atividade, e eles só voltam com "Enable workflow". A função religa o desligado
 //                             por inatividade e renova o ativo (PUT .../enable); o desligado à mão fica como está. Responde
-//                             { ok, robos: [{ workflow, estado, religado }] }
+//                             { ok, robos: [{ workflow, estado, religado }] }. v0.29.0: o robô dos lembretes (radar-lembretes.yml)
+//                             entra na lista
+//   acionar_lembretes       → v0.29.0: só a agenda do banco (sql/radar-redes-agenda.sql, de 15 em 15 minutos, e só quando o banco diz
+//                             que há lembrete para mandar: radar_lembretes_acionar). Aciona o robô dos lembretes por e-mail no GitHub
+//                             (workflow FIXO radar-lembretes.yml, nunca vindo do pedido), com o mesmo RADAR_GITHUB_TOKEN. Responde 200
+//                             com { acionado, motivo? }; sem dar para acionar, a rodada de hora em hora do próprio workflow é a reserva
 //
 // Como publica:
 //   Instagram: POST /{ig-user-id}/media (image_url + caption) → espera o contêiner ficar pronto → POST /{ig-user-id}/media_publish
@@ -63,7 +68,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.22.0";
+const VERSAO = "0.29.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -564,7 +569,8 @@ async function acionarRobo(): Promise<Acionamento> {
 // e eles só voltam com "Enable workflow", mesmo que entre commit novo depois. Parados, a coleta da manhã, o robô do site (e as redes
 // "junto com o site"), os avisos (que rodam dentro da coleta) e o resumo de segunda param sem aviso nenhum. A lista é fixa aqui
 // (nunca vem do pedido) e o token é o mesmo do acionamento (RADAR_GITHUB_TOKEN, Actions: leitura e escrita, só o repositório radar).
-const ROBOS_AGENDADOS = ["radar-coletar.yml", "radar-site-publicar.yml", "radar-resumo.yml"];
+// v0.29.0: + o robô dos lembretes por e-mail (rodada de hora em hora, a reserva do acionamento pela agenda do banco)
+const ROBOS_AGENDADOS = ["radar-coletar.yml", "radar-site-publicar.yml", "radar-resumo.yml", "radar-lembretes.yml"];
 
 function pedirGithub(token: string, metodo: string, caminho: string, corpo?: unknown): Promise<Response> {
   return fetch(`${GITHUB_API}/repos/${REPO}/actions/workflows/${caminho}`, {
@@ -573,7 +579,9 @@ function pedirGithub(token: string, metodo: string, caminho: string, corpo?: unk
                "User-Agent": "radar-artecon", ...(corpo === undefined ? {} : { "Content-Type": "application/json" }) },
   });
 }
-const dispararRobo = (token: string) => pedirGithub(token, "POST", `${WORKFLOW}/dispatches`, { ref: RAMO });
+// v0.29.0: o acionamento de um workflow fixo (o robô do site ou o dos lembretes; nunca vem do pedido)
+const disparar = (token: string, arquivo: string) => pedirGithub(token, "POST", `${arquivo}/dispatches`, { ref: RAMO });
+const dispararRobo = (token: string) => disparar(token, WORKFLOW);
 
 /** O estado do workflow no GitHub ("active", "disabled_inactivity", "disabled_manually"…); "" se não deu para ler */
 async function estadoWorkflow(token: string, arquivo: string): Promise<string> {
@@ -604,6 +612,56 @@ async function manterRobos() {
   }
   console.log("radar-redes: robôs agendados — " + robos.map((r) => `${r.workflow} ${r.estado}${r.religado ? " (religado)" : ""}`).join("; "));
   return { ok: robos.every((r) => r.estado === "active"), robos };
+}
+
+// ------------------------------------------------------------------ robô dos lembretes (v0.29.0)
+// A agenda do banco pede só quando o banco diz que há lembrete para mandar (radar_lembretes_acionar: o horário, "um e-mail por tipo por
+// dia" e no máximo um pedido a cada 30 minutos). O workflow é fixo aqui (nunca vem do pedido) e o token é o mesmo do robô do site. Na
+// memória desta instância, uma pausa de 60 s entre dois acionamentos que deram certo. Nunca lança erro; o registro é um texto fixo
+// (nunca o token nem a resposta do GitHub).
+const WORKFLOW_LEMBRETES = "radar-lembretes.yml";
+const PAUSA_LEMBRETES_MS = 60_000;
+let ultimoLembrete = 0;
+
+async function acionarLembretes(): Promise<{ acionado: boolean; motivo?: string; religado?: boolean }> {
+  const token = env("RADAR_GITHUB_TOKEN").trim();
+  const falhou = (motivo: string) => {
+    console.log(`radar-redes: robô dos lembretes não acionado (${motivo})`);
+    return { acionado: false, motivo };
+  };
+  if (!token) return falhou("sem_token");
+  if (Date.now() - ultimoLembrete < PAUSA_LEMBRETES_MS) return { acionado: true, motivo: "ja_acionado" };
+  const antes = ultimoLembrete;
+  ultimoLembrete = Date.now();                                // reserva já: dois pedidos ao mesmo tempo não acionam duas vezes
+  const naoFoi = (motivo: string) => { ultimoLembrete = antes; return falhou(motivo); };
+  let r: Response;
+  try { r = await disparar(token, WORKFLOW_LEMBRETES); } catch { return naoFoi("github_fora"); }
+  await r.body?.cancel().catch(() => {});                     // a resposta do GitHub não é usada (nem registrada)
+  if (r.status === 204 || r.status === 200) {
+    console.log("radar-redes: robô dos lembretes acionado");
+    return { acionado: true };
+  }
+  if (r.status === 401) return naoFoi("token_recusado");
+  if (r.status === 403 || r.status === 404) return naoFoi("sem_acesso");
+  if (r.status === 422) {
+    // desligado pelo GitHub por inatividade (60 dias sem atividade no repositório público): religa e aciona de novo, uma vez
+    const estado = await estadoWorkflow(token, WORKFLOW_LEMBRETES);
+    if (estado === "disabled_inactivity" && await religar(token, WORKFLOW_LEMBRETES)) {
+      try {
+        const r2 = await disparar(token, WORKFLOW_LEMBRETES);
+        await r2.body?.cancel().catch(() => {});
+        if (r2.status === 204 || r2.status === 200) {
+          console.log("radar-redes: robô dos lembretes religado e acionado");
+          return { acionado: true, religado: true };
+        }
+      } catch { /* cai no recado abaixo */ }
+      return naoFoi("workflow_religado");
+    }
+    if (estado.startsWith("disabled")) return naoFoi("workflow_desligado");
+    return naoFoi("workflow_recusou");
+  }
+  if (r.status === 429) return naoFoi("limite_github");
+  return naoFoi("erro_github");
 }
 
 async function diagnostico() {
@@ -663,12 +721,15 @@ async function tratar(req: Request): Promise<Response> {
     if (chaveAgenda) {
       await conferirAgenda(chaveAgenda);
       quem = "agenda";
-      if (!["publicar", "agenda_teste", "manter_robos"].includes(acao)) throw new Erro(403, "A agenda só publica.");   // v0.22.0: e mantém os robôs
+      // v0.22.0: e mantém os robôs; v0.29.0: e aciona o robô dos lembretes
+      if (!["publicar", "agenda_teste", "manter_robos", "acionar_lembretes"].includes(acao)) throw new Erro(403, "A agenda só publica.");
     } else {
       sessao = await quemChamou(req, acao);                   // null = o robô do site (só "publicar" do que foi junto com o site)
       quem = sessao === null ? "robo" : "admin";
     }
-    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste", "manter_robos"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste", "manter_robos", "acionar_lembretes"].includes(acao)) {
+      throw new Erro(400, "Ação desconhecida.");
+    }
     if (quem === "robo" && acao !== "publicar") throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
     if (acao === "agenda_teste") {                            // v0.21.0: o teste do sql/radar-redes-agenda.sql; não toca na Meta
       if (quem !== "agenda") throw new Erro(403, "Só a agenda do banco usa o teste da agenda.");
@@ -677,6 +738,10 @@ async function tratar(req: Request): Promise<Response> {
     if (acao === "diagnostico") return responder(200, await diagnostico());
     if (acao === "acionar_robo") return responder(200, await acionarRobo());     // v0.19.0: só o administrador chega aqui
     if (acao === "manter_robos") return responder(200, await manterRobos());     // v0.22.0 (rodada 2): a agenda ou o administrador
+    if (acao === "acionar_lembretes") {                       // v0.29.0: só a agenda do banco
+      if (quem !== "agenda") throw new Erro(403, "Só a agenda do banco aciona os lembretes.");
+      return responder(200, await acionarLembretes());
+    }
     const envio = Number(pedido?.envio);
     if (!Number.isSafeInteger(envio) || envio <= 0) throw new Erro(400, "Informe a autorização (envio).");
     if (acao === "excluir") {

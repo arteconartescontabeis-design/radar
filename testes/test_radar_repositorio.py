@@ -465,3 +465,69 @@ def test_workflows_publicos_com_acoes_fixas_e_robo_com_hash():
     # e o LEIAME não promete mais que a chave do robô "não lê as fotos, as lâminas": ela é service_role e lê os buckets privados
     leiame = " ".join((RAIZ / "LEIAME-radar.md").read_text(encoding="utf-8").split())
     assert "**os arquivos do armazenamento ela lê**" in leiame and "não lê as pessoas, as peças, as fotos, as lâminas" not in leiame
+
+
+# ------------------------------------------------------------------- v0.29.0: lembretes por e-mail antes do dia
+def test_workflow_dos_lembretes_so_issues_e_tres_segredos():
+    """O robô dos lembretes roda no repositório público: só abre ou comenta aviso (issues: write, no job; o resto do workflow só lê), usa
+    só os segredos da coleta (a URL e a chave do banco) e o GITHUB_TOKEN — nunca a senha do site nem o INLABS —, não mostra comando no
+    registro (set -x), roda na hora (workflow_dispatch, pela agenda do banco) e de hora em hora (a reserva, em minuto quebrado), uma
+    rodada de cada vez, e pergunta ao banco antes de instalar qualquer coisa."""
+    yml = (RAIZ / ".github" / "workflows" / "radar-lembretes.yml").read_text(encoding="utf-8")
+    codigo = "\n".join(re.sub(r"\s+#\s.*$", "", l) for l in yml.splitlines() if not l.lstrip().startswith("#"))   # sem os comentários
+    assert re.search(r"(?m)^on:\s*\n\s+schedule:\s*\n\s+- cron: \"29 \* \* \* \*\"\s*\n\s+workflow_dispatch:\s*$", codigo), codigo
+    assert re.search(r"(?m)^permissions:\s*\n\s+contents: read\s*$", codigo)                       # o padrão do workflow: só ler
+    assert len(re.findall(r"(?m)^\s+issues: write\s*$", codigo)) == 1 and "write" not in codigo.replace("issues: write", "")
+    assert re.search(r"(?m)^jobs:\s*\n\s+lembrar:\s*\n\s+runs-on: ubuntu-latest\s*\n\s+permissions:\s*\n\s+contents: read\s*\n\s+issues: write", codigo)
+    assert re.search(r"(?m)^concurrency:\s*\n\s+group: radar-lembretes\s*\n\s+cancel-in-progress: false\s*$", codigo)
+    assert set(re.findall(r"secrets\.(\w+)", codigo)) == {"RADAR_SUPABASE_URL", "RADAR_SUPABASE_SERVICE_KEY", "GITHUB_TOKEN"}
+    for proibido in ("ARTECON_SITE", "INLABS", "RADAR_IA_GATEWAY_TOKEN", "set -x", "curl -v", "--verbose", "pull_request"):
+        assert proibido not in codigo, proibido
+    assert "rpc/radar_lembretes_ha_envio" in codigo and "python radar_lembretes.py" in codigo
+    assert codigo.count("if: steps.fila.outputs.ha == 'sim'") == 4                                 # nada instala sem lembrete
+    assert re.search(r"sb_secret_\*\) ;;", codigo)                                                  # a chave nova só no apikey
+    assert 5 <= int(re.search(r"(?m)^\s+timeout-minutes:\s*(\d+)", codigo).group(1)) <= 10
+
+
+def test_robos_agendados_da_radar_redes_sao_os_workflows_com_schedule():
+    """A radar-redes religa uma vez por dia os workflows agendados que o GitHub desliga no repositório público (manter_robos): a lista
+    dela é a dos workflows com "schedule:" (v0.29.0: + o dos lembretes). Workflow agendado fora da lista pararia sem aviso em 60 dias."""
+    ts = (RAIZ / "supabase" / "functions" / "radar-redes" / "index.ts").read_text(encoding="utf-8")
+    lista = set(re.findall(r'"([\w.-]+\.yml)"', re.search(r"const ROBOS_AGENDADOS = \[([^\]]*)\]", ts).group(1)))
+    agendados = {y.name for y in (RAIZ / ".github" / "workflows").glob("*.yml")
+                 if re.search(r"(?m)^\s+schedule:\s*$", "\n".join(l for l in y.read_text(encoding="utf-8").splitlines()
+                                                                if not l.lstrip().startswith("#")))}
+    assert lista == agendados == {"radar-coletar.yml", "radar-site-publicar.yml", "radar-resumo.yml", "radar-lembretes.yml"}
+    assert 'const WORKFLOW_LEMBRETES = "radar-lembretes.yml";' in ts                                # fixo: nunca vem do pedido
+    assert "pedido?.workflow" not in ts and "pedido.workflow" not in ts
+
+
+def test_leiame_da_v0290_ordem_desligar_e_desfazer():
+    """O passo a passo da v0.29.0 diz o que o código faz: o banco antes da tela (a tela nova com o banco antigo mostra o recado do SQL),
+    a função radar-redes antes da agenda (a agenda nova com a função antiga seria recusada: "A agenda só publica"), nenhum segredo novo,
+    como desligar sem SQL ("ligado": false), como parar de vez (o workflow e o agendamento) e como desfazer (o SQL que apaga tudo dos
+    lembretes tem as mesmas funções do setup)."""
+    leiame = (RAIZ / "LEIAME-radar.md").read_text(encoding="utf-8")
+    assert leiame.index("**Da v0.28.1 para a v0.29.0**") < leiame.index("**Da v0.28.0 para a v0.28.1**")
+    inst = leiame[leiame.index("**Da v0.28.1 para a v0.29.0**"):leiame.index("**Da v0.28.0 para a v0.28.1**")]
+    passos = [inst.index(f"\n{n}. ") for n in (1, 2, 3, 4)]
+    p1, p2, p3, p4 = (inst[a:b] for a, b in zip(passos, passos[1:] + [inst.index("**O que configurar:**")]))
+    assert "`sql/radar-setup-v0.29.0.sql`" in p1 and "antes de publicar a tela" in p1 and "28" in p1 and "v0.29.0" in p1
+    assert "`index.html`" in p2 and "`robo/radar_lembretes.py`" in p2 and "`.github/workflows/radar-lembretes.yml`" in p2 and "Ctrl+F5" in p2
+    assert "`radar-redes`" in p3 and "Deploy" in p3 and "`RADAR_GITHUB_TOKEN`" in p3 and "já serve" in p3
+    assert "`sql/radar-redes-agenda.sql`" in p4 and "radar-redes-agenda-lembretes" in p4 and '"versao":"0.29.0"' in p4
+    assert "nenhum segredo novo" in inst.lower() and "sem publicar nada" in inst
+    desligar = inst[inst.index("**Como desligar:**"):inst.index("**Para desfazer**")]
+    assert '"ligado": false' in desligar and "Disable workflow" in desligar and "cron.unschedule('radar-redes-agenda-lembretes')" in desligar
+    desfazer = inst[inst.index("**Para desfazer**"):]
+    assert "441bcfe" in desfazer and "Disable workflow" in desfazer and "Radar: lembrete" in desfazer
+    setup = {n for n in re.findall(r"create or replace function public\.(radar_lembretes_\w+)\(", SETUP.read_text(encoding="utf-8"))}
+    assert len(setup) == 11 and set(re.findall(r"public\.(radar_lembretes_\w+)\(", desfazer)) == setup
+    assert "drop table if exists public.radar_lembretes;" in desfazer and "delete from public.radar_config where chave = 'lembretes';" in desfazer
+    reversao = REVERSAO.read_text(encoding="utf-8")
+    assert set(re.findall(r"drop function if exists public\.(radar_lembretes_\w+)\(", reversao)) == setup
+    # o topo do LEIAME conta a versão e o que muda
+    topo = leiame[:leiame.index("A v0.28.1 corrige")]
+    for trecho in ("**lembretes por e-mail antes do dia**", "um e-mail por dia", "uma vez só", "nunca", "0.22.0 → **0.29.0**",
+                   "`robo/radar_lembretes.py`", "**Nenhum segredo novo.**", "Da v0.28.1 para a v0.29.0"):
+        assert trecho in topo, trecho

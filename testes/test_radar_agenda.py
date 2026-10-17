@@ -108,10 +108,10 @@ def test_agenda_cria_a_chave_e_agenda_de_5_em_5_min_sem_a_chave_no_comando(banco
     assert re.fullmatch(r"[0-9a-f]{64}", agenda)                                          # 64 caracteres aleatórios, só no Vault
     with conectar(banco_agenda) as c:
         jobs = c.execute("select jobname, schedule, command, active from cron.job order by jobname").fetchall()
-    assert [(n, s, a) for n, s, _, a in jobs] == [("radar-redes-agenda", "*/5 * * * *", True), ("radar-redes-agenda-limpeza", "41 6 * * *", True),
-                                                  ("radar-redes-agenda-robos", "13 8 * * *", True)]
-    comando, limpeza, robos = jobs[0][2], jobs[1][2], jobs[2][2]
-    assert agenda not in comando and agenda not in limpeza and agenda not in robos         # a chave é lida do Vault a cada rodada
+    assert [(n, s, a) for n, s, _, a in jobs] == [("radar-redes-agenda", "*/5 * * * *", True), ("radar-redes-agenda-lembretes", "*/15 * * * *", True),
+                                                  ("radar-redes-agenda-limpeza", "41 6 * * *", True), ("radar-redes-agenda-robos", "13 8 * * *", True)]
+    comando, lembretes, limpeza, robos = (j[2] for j in jobs)                               # v0.29.0: + os lembretes por e-mail
+    assert all(agenda not in c for c in (comando, lembretes, limpeza, robos))               # a chave é lida do Vault a cada rodada
     for trecho in (URL, "Bearer " + chave_anon_do_config(), "'x-radar-agenda'", "vault.decrypted_secrets", "radar_redes_agenda",
                    "public.radar_agenda_vencidas(2)", "timeout_milliseconds := 150000", "'acao', 'publicar'"):
         assert trecho in comando, trecho
@@ -159,7 +159,7 @@ def test_agenda_comando_faz_um_pedido_por_envio_vencido_com_anon_e_chave_e_nenhu
         assert len(rodar()[1]) == 2
 
 
-def test_agenda_sem_o_setup_v021_para_com_recado(tmp_path):
+def test_agenda_sem_o_setup_para_com_recado(tmp_path):
     novo_banco("radar_agenda_sem", com_setup=False, simulados=False)
     try:
         r = psql(AGENDA_REVERSAO, "radar_agenda_sem")                                        # sem o pg_cron, a reversão só avisa
@@ -169,11 +169,75 @@ def test_agenda_sem_o_setup_v021_para_com_recado(tmp_path):
             c.execute(NET_SIMULADO)
             c.execute(VAULT_SIMULADO)
         r = psql(sem_extensoes(AGENDA.read_text(), tmp_path), "radar_agenda_sem")
-        assert r.returncode != 0 and "Rode antes o radar-setup-v0.21.0.sql" in r.stderr
+        assert r.returncode != 0 and "Rode antes o radar-setup-v0.29.0.sql" in r.stderr          # v0.29.0: o setup desta versão
         with conectar("radar_agenda_sem") as c:                                               # nada ficou pela metade
             assert c.execute("select (select count(*) from vault.secrets), (select count(*) from cron.job)").fetchone() == (0, 0)
     finally:
         apagar_banco("radar_agenda_sem")
+
+
+# ------------------------------------------------------------------- v0.29.0: os lembretes por e-mail
+LEMBRETES_ABERTOS = json.dumps({"ligado": True, "hora": "00:00", "de": "00:00", "ate": "23:59"})   # a qualquer hora do dia
+
+
+def test_agenda_lembretes_so_pede_quando_ha_e_no_maximo_a_cada_30_min(banco_agenda, agenda):
+    """De 15 em 15 minutos, o comando pergunta ao banco (radar_lembretes_acionar) e só com lembrete para mandar pede à radar-redes
+    ("acionar_lembretes", com a chave da agenda) que acione o robô dos lembretes. A mesma pendência é pedida no máximo uma vez a cada 30
+    minutos (o token falhou ou o GitHub não rodou: o pedido volta 30 minutos depois); mandada hoje, o tipo espera o dia seguinte;
+    desligado, nada é pedido."""
+    with conectar(banco_agenda) as c:
+        comando = c.execute("select command from cron.job where jobname = 'radar-redes-agenda-lembretes'").fetchone()[0]
+        assert "where public.radar_lembretes_acionar()" in comando and "timeout_milliseconds := 60000" in comando
+        pedidos = lambda: (c.execute("truncate net.pedidos"), c.execute(comando),
+                           [tuple(r) for r in c.execute("select url, body, headers from net.pedidos order by id").fetchall()])[2]
+        c.execute("""insert into radar_config (chave, valor) values ('lembretes', %s)
+                     on conflict (chave) do update set valor = excluded.valor""", (LEMBRETES_ABERTOS,))
+        minhas = []
+        try:
+            assert pedidos() == []                                                          # nada a lembrar: nenhum pedido
+            peca = c.execute("""insert into radar_pauta_pecas (data, tipo, formato) values (radar_pauta_hoje() + 1, 'bastidor', 'foto')
+                                returning id""").fetchone()[0]                              # a peça de amanhã, planejada
+            minhas.append(peca)
+            cab = {"Content-Type": "application/json", "Authorization": "Bearer " + chave_anon_do_config(), "x-radar-agenda": agenda}
+            assert pedidos() == [(URL, {"acao": "acionar_lembretes"}, cab)]
+            assert pedidos() == []                                                          # pedida há pouco: espera 30 minutos
+            c.execute("update radar_lembretes set acionado_em = now() - interval '29 minutes'")
+            assert pedidos() == []
+            c.execute("update radar_lembretes set acionado_em = now() - interval '31 minutes'")
+            assert len(pedidos()) == 1                                                      # o robô não veio: pede de novo
+            minhas.append(c.execute("""insert into radar_pauta_pecas (data, tipo, formato) values (radar_pauta_hoje(), 'bastidor', 'foto')
+                                       returning id""").fetchone()[0])
+            assert len(pedidos()) == 1                                                      # pendência nova: pede (uma vez)
+            assert pedidos() == []
+            c.execute("""update radar_config set valor = valor || '{"ligado": false}' where chave = 'lembretes'""")
+            c.execute("update radar_lembretes set acionado_em = null")
+            assert pedidos() == []                                                          # desligado: nada
+            c.execute("""update radar_config set valor = valor || '{"ligado": true}' where chave = 'lembretes'""")
+            lote = c.execute("select radar_lembretes_lote_em(now())").fetchone()[0]       # o robô mandou o e-mail do dia
+            for g in lote:
+                c.execute("select radar_lembretes_enviado_em(%s::uuid, 9, %s::bigint[], now())", (g["lote"], [i["id"] for i in g["itens"]]))
+            assert pedidos() == []                                                          # um e-mail por tipo por dia
+        finally:
+            c.execute("delete from radar_config where chave = 'lembretes'")
+            c.execute("truncate radar_lembretes")
+            c.execute("delete from radar_pauta_pecas where id = any(%s)", (minhas,))
+
+
+def test_agenda_sem_o_setup_v029_para_com_recado(tmp_path):
+    """O banco da v0.28.1 (sem as funções dos lembretes): o arquivo da agenda para com o recado, sem mexer no que estava agendado."""
+    banco = "radar_agenda_v028"
+    novo_banco(banco, com_setup=True, simulados=True)
+    try:
+        with conectar(banco) as c:
+            c.execute("drop function public.radar_lembretes_acionar()")
+            c.execute("select cron.schedule('radar-redes-agenda', '*/5 * * * *', 'select 1')")
+        r = psql(sem_extensoes(AGENDA.read_text(), tmp_path), banco)
+        assert r.returncode != 0 and "Rode antes o radar-setup-v0.29.0.sql" in r.stderr
+        with conectar(banco) as c:
+            assert c.execute("select jobname, command from cron.job").fetchall() == [("radar-redes-agenda", "select 1")]
+            assert c.execute("select count(*) from vault.secrets").fetchone()[0] == 0
+    finally:
+        apagar_banco(banco)
 
 
 def test_agenda_recusa_jwt_service_role_e_sb_secret(banco_agenda, tmp_path):
@@ -250,8 +314,8 @@ def test_agenda_roda_de_novo_sem_duplicar_e_reversao_tira_tudo(banco_agenda, age
     r = psql(sem_extensoes(AGENDA.read_text(), tmp_path), banco_agenda)
     assert r.returncode == 0, r.stderr
     with conectar(banco_agenda) as c:
-        assert [n for (n,) in c.execute("select jobname from cron.job order by jobname").fetchall()] == ["radar-redes-agenda", "radar-redes-agenda-limpeza",
-                                                                                                 "radar-redes-agenda-robos"]
+        assert [n for (n,) in c.execute("select jobname from cron.job order by jobname").fetchall()] == [
+            "radar-redes-agenda", "radar-redes-agenda-lembretes", "radar-redes-agenda-limpeza", "radar-redes-agenda-robos"]
         assert c.execute("select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda'").fetchone()[0] == agenda
         for nome in ("radar-itc", "copia-do-projeto"):                                        # as outras agendas ficam
             c.execute("select cron.schedule(%s, '55 5 * * *', 'select 1')", (nome,))
@@ -297,7 +361,7 @@ def test_as_tres_agendas_rodam_de_novo_sem_tocar_nas_extensoes(tmp_path):
                     assert estado == antes, arquivo.name                                   # a 2ª rodada refaz igual
                 antes = estado
         jobs, segredos = dict((n, (s, cmd)) for n, s, cmd in antes[0]), dict(antes[1])
-        assert sorted(jobs) == ["radar-itc", "radar-itc-completa", "radar-redes-agenda", "radar-redes-agenda-limpeza",
+        assert sorted(jobs) == ["radar-itc", "radar-itc-completa", "radar-redes-agenda", "radar-redes-agenda-lembretes", "radar-redes-agenda-limpeza",
                                 "radar-redes-agenda-robos", "radar-video-limpeza", "radar-video-reserva"]
         assert sorted(segredos) == ["radar_itc_agenda", "radar_redes_agenda", "radar_video_agenda", "radar_video_robo"]
         # a agenda da ITC (sem teste antes): 02h55 de Brasília, o complemento só com boletim para depois, a chave lida do Vault na hora

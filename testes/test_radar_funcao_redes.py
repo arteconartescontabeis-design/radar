@@ -641,12 +641,15 @@ def test_agenda_religa_os_robos_agendados_desligados_por_inatividade_e_nao_os_de
     desligado à mão fica (o LEIAME manda desligar ao desfazer a versão). Só a agenda e o administrador; o robô do site, não."""
     db, c1 = peca
     ESTADO["workflows"].update({"radar-coletar.yml": "disabled_inactivity", "radar-site-publicar.yml": "active",
-                                "radar-resumo.yml": "disabled_manually"})
+                                "radar-resumo.yml": "disabled_manually", "radar-lembretes.yml": "disabled_inactivity"})
     status, r = pedir({"acao": "manter_robos"}, cab=AGENDA, porta=PORTA_GITHUB)
     assert status == 200 and r == {"ok": False, "robos": [{"workflow": "radar-coletar.yml", "estado": "active", "religado": True},
                                                           {"workflow": "radar-site-publicar.yml", "estado": "active", "religado": False},
-                                                          {"workflow": "radar-resumo.yml", "estado": "disabled_manually", "religado": False}]}, r
-    assert [(m, a) for m, a, _ in ESTADO["github_wf"] if m == "PUT"] == [("PUT", "radar-coletar.yml"), ("PUT", "radar-site-publicar.yml")]
+                                                          {"workflow": "radar-resumo.yml", "estado": "disabled_manually", "religado": False},
+                                                          # v0.29.0: o robô dos lembretes (a rodada de hora em hora é a reserva)
+                                                          {"workflow": "radar-lembretes.yml", "estado": "active", "religado": True}]}, r
+    assert [(m, a) for m, a, _ in ESTADO["github_wf"] if m == "PUT"] == [("PUT", "radar-coletar.yml"), ("PUT", "radar-site-publicar.yml"),
+                                                                         ("PUT", "radar-lembretes.yml")]
     assert ESTADO["workflows"]["radar-resumo.yml"] == "disabled_manually" and ESTADO["github"] == []     # nada é acionado
     assert all(auth == "Bearer " + TOKEN_GITHUB for *_, auth in ESTADO["github_wf"])
     registro = LOGS[PORTA_GITHUB].read_text()
@@ -861,11 +864,49 @@ def test_agenda_com_a_chave_publica_so_peca_vencida_e_recusa_o_resto(peca):
     assert situacao_envio(db, noticia) == ("autorizado", None) and situacao_envio(db, futura) == ("autorizado", None)
 
 
+CAMINHO_LEMBRETES = "/github/repos/arteconartescontabeis-design/radar/actions/workflows/radar-lembretes.yml/dispatches"
+
+
+def test_agenda_aciona_o_robo_dos_lembretes_e_so_ela(peca):
+    """v0.29.0: a agenda do banco (sql/radar-redes-agenda.sql, só quando o banco diz que há lembrete para mandar) pede "acionar_lembretes"
+    e a função aciona o robô dos lembretes no GitHub: o workflow é FIXO (radar-lembretes.yml, nunca vem do pedido), com o mesmo
+    RADAR_GITHUB_TOKEN. O administrador, o editor e o robô do site não acionam. Sem o token ou com a recusa do GitHub, responde 200 com o
+    motivo (a rodada de hora em hora do workflow é a reserva); desligado pelo GitHub por inatividade, religa e aciona; desligado à mão,
+    fica. Uma vez acionado, a pausa de 60 s não aciona de novo. O registro é um texto fixo, sem o token."""
+    db, c1 = peca
+    corpo = {"acao": "acionar_lembretes", "workflow": "radar-site-publicar.yml"}               # o workflow do pedido não vale
+    assert pedir(corpo, porta=PORTA_GITHUB) == (403, {"message": "Só a agenda do banco aciona os lembretes."})
+    assert pedir(corpo, uid=EDITOR, porta=PORTA_GITHUB)[0] == 403
+    assert pedir(corpo, cab=ROBO, porta=PORTA_GITHUB)[0] == 403
+    assert pedir(corpo, cab={}, porta=PORTA_GITHUB)[0] == 401
+    assert pedir(corpo, cab={**AGENDA, "x-radar-agenda": "b2" * 32}, porta=PORTA_GITHUB) == (401, {"message": "Chave não confere."})
+    assert ESTADO["github"] == []
+    assert pedir(corpo, cab=AGENDA, porta=PORTA_SEM_META) == (200, {"acionado": False, "motivo": "sem_token"})
+    for st, motivo in ((401, "token_recusado"), (403, "sem_acesso"), (404, "sem_acesso"), (429, "limite_github"), (500, "erro_github"),
+                       (0, "github_fora")):
+        ESTADO["github_status"] = st
+        assert pedir(corpo, cab=AGENDA, porta=PORTA_GITHUB) == (200, {"acionado": False, "motivo": motivo}), motivo
+    assert len(ESTADO["github"]) == 6                                                            # cada recusa: o próximo pedido tenta
+    ESTADO["github_status"] = 204
+    ESTADO["workflows"]["radar-lembretes.yml"] = "disabled_manually"
+    assert pedir(corpo, cab=AGENDA, porta=PORTA_GITHUB) == (200, {"acionado": False, "motivo": "workflow_desligado"})
+    assert not [g for g in ESTADO["github_wf"] if g[0] == "PUT"]                                 # o desligado à mão fica
+    ESTADO["workflows"]["radar-lembretes.yml"] = "disabled_inactivity"
+    assert pedir(corpo, cab=AGENDA, porta=PORTA_GITHUB) == (200, {"acionado": True, "religado": True})
+    assert ESTADO["workflows"]["radar-lembretes.yml"] == "active"
+    assert pedir(corpo, cab=AGENDA, porta=PORTA_GITHUB) == (200, {"acionado": True, "motivo": "ja_acionado"})   # a pausa de 60 s
+    assert {(m, c, a, json.dumps(b)) for m, c, a, b in ESTADO["github"]} == {("POST", CAMINHO_LEMBRETES, "Bearer " + TOKEN_GITHUB, '{"ref": "main"}')}
+    assert len(ESTADO["github"]) == 9
+    registro = ler_log(PORTA_GITHUB, espera="radar-redes: robô dos lembretes religado e acionado")
+    assert "radar-redes: robô dos lembretes não acionado (token_recusado)" in registro and TOKEN_GITHUB not in registro
+    assert "Bad credentials" not in registro and ESTADO["meta"] == [] and ESTADO["storage"] == []
+
+
 def test_agenda_teste_responde_sem_publicar(peca):
     db, c1 = peca
     ig = agendada(db)["instagram"]                                                  # há peça vencida: o teste não a toca
     for porta in (PORTA_FUNCAO, PORTA_SEM_META):                                    # nem precisa da Meta configurada
-        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.22.0"})
+        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.29.0"})
     assert pedir({"acao": "agenda_teste"}) == (403, {"message": "Só a agenda do banco usa o teste da agenda."})
     assert pedir({"acao": "agenda_teste"}, uid=EDITOR)[0] == 403
     assert pedir({"acao": "agenda_teste"}, cab=ROBO)[0] == 403

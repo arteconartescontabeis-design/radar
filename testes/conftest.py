@@ -17,8 +17,8 @@ sys.path.insert(0, str(RAIZ / "robo"))
 PG = {"host": os.environ.get("RADAR_PGHOST", "/tmp"), "port": os.environ.get("RADAR_PGPORT", "5544"),
       "user": os.environ.get("RADAR_PGUSER", "postgres")}
 BANCO = "radar_teste"
-SETUP = RAIZ / "sql" / "radar-setup-v0.28.0.sql"
-REVERSAO = RAIZ / "sql" / "radar-reversao-v0.28.0.sql"
+SETUP = RAIZ / "sql" / "radar-setup-v0.29.0.sql"
+REVERSAO = RAIZ / "sql" / "radar-reversao-v0.29.0.sql"
 
 ADMIN = "00000000-0000-0000-0000-00000000000a"
 EDITOR = "00000000-0000-0000-0000-00000000000e"
@@ -174,12 +174,13 @@ def carregar_fontes_novas(db, request):
 def limpo(db):
     """Zera os dados operacionais entre testes (mantém fontes, categorias e perfis)."""
     db.execute("alter table radar_auditoria disable trigger user")
-    # v0.21.0: a Pauta e as pessoas não são alcançadas pelo cascade de radar_conteudos; v0.22.0: nem os vídeos dos reels
+    # v0.21.0: a Pauta e as pessoas não são alcançadas pelo cascade de radar_conteudos; v0.22.0: nem os vídeos dos reels; v0.29.0: nem
+    # os lembretes
     db.execute("""truncate radar_conteudos, radar_evidencias,
                   radar_assunto_capturas, radar_assuntos, radar_normas, radar_capturas_versoes,
                   radar_capturas, radar_execucoes, radar_auditoria, radar_ia_uso, radar_informativo_itens,
                   radar_informativos, radar_imagens, radar_divulgacoes, radar_pauta_pecas, radar_pessoas,
-                  radar_videos, radar_video_acessos restart identity cascade""")
+                  radar_videos, radar_video_acessos, radar_lembretes restart identity cascade""")
     db.execute("update radar_fontes set ultimo_sucesso_em = null, ultima_falha_em = null, "
                "falhas_consecutivas = 0, ultimo_erro = null")
     db.execute("delete from radar_fontes where slug like 'teste-%'")
@@ -190,6 +191,22 @@ def limpo(db):
     db.execute("truncate radar_auditoria restart identity")
     db.execute("alter table radar_auditoria enable trigger user")
     return db
+
+
+@pytest.fixture()
+def lembretes_abertos(limpo):
+    """v0.29.0: Configurações → Lembretes por e-mail com o horário aberto (os quatro tipos a qualquer hora do dia: os testes que usam o
+    relógio de verdade não dependem da hora em que rodam). No fim, a configuração volta ao que era."""
+    antes = limpo.execute("select valor from radar_config where chave = 'lembretes'").fetchone()
+    limpo.execute("""insert into radar_config (chave, valor) values ('lembretes', %s)
+                     on conflict (chave) do update set valor = excluded.valor""",
+                  (json.dumps({"ligado": True, "hora": "00:00", "de": "00:00", "ate": "23:59", "aprovacao_horas": 24, "parada_horas": 3,
+                               "pauta": True, "aprovacao": True, "video": True, "noticia": True}),))
+    yield limpo
+    if antes:
+        limpo.execute("update radar_config set valor = %s where chave = 'lembretes'", (json.dumps(antes[0]),))
+    else:
+        limpo.execute("delete from radar_config where chave = 'lembretes'")
 
 
 # ------------------------------------------------------------ API (PostgREST) para os testes

@@ -1,4 +1,4 @@
-# Radar Artecon — v0.28.1
+# Radar Artecon — v0.29.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -12,13 +12,43 @@ obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salv
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
 
+A v0.29.0 traz os **lembretes por e-mail antes do dia**, pedidos pelo escritório. Até aqui o Radar só avisava depois que algo
+falhava (a Pauta "não saiu", a fonte parada, o resumo de segunda). Agora ele lembra **antes**:
+
+- **a peça da Pauta de amanhã** que ainda não está aprovada (e a de hoje que ainda não saiu), na véspera, a partir das **16:00** de
+  Brasília;
+- **a peça pronta esperando a aprovação** do administrador há mais de **24 horas**;
+- **o vídeo do reel que o corretor terminou** (pronto para conferir, precisa regravar ou parou);
+- **a notícia que não saiu**: o envio ao site ou às redes deu erro, ou a autorização está parada há mais de **3 horas** (o robô do
+  site depende do GitHub, que às vezes atrasa horas).
+
+**Sem enxurrada:** cada tipo manda no máximo **um e-mail por dia**; cada pendência é lembrada **uma vez só** (a peça lembrada na
+véspera não é lembrada de novo no dia) e, resolvida, sai da lista sozinha. O e-mail é um aviso no GitHub, como os avisos de hoje: um
+aviso fixo por tipo ("Radar: lembrete — …"); o primeiro lembrete abre o aviso e os seguintes chegam como um comentário nele. O
+lembrete leva só a data, a hora, o formato e o número da peça ou do envio: **nunca** o nome de alguém, o assunto, a legenda, o erro ou
+o texto do boletim pago. Nada é publicado pelo lembrete. Horário e liga/desliga: Configurações → **Lembretes por e-mail** (só o
+administrador).
+
+Quem decide o que lembrar e quando é o **banco**, com o relógio dele (o pg_cron, que o GitHub não atrasa nem desliga): de 15 em 15
+minutos ele confere e, só quando há lembrete para mandar, pede à função `radar-redes` que acione o robô dos lembretes no GitHub. O
+próprio workflow também roda de hora em hora, de reserva.
+
+Mudam o banco (`sql/radar-setup-v0.29.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
+das Configurações; nada é apagado), a agenda do banco (`sql/radar-redes-agenda.sql`: o agendamento novo `radar-redes-agenda-lembretes`),
+a função `radar-redes` (0.22.0 → **0.29.0**: a ação nova `acionar_lembretes`, só da agenda do banco, e o robô dos lembretes na lista
+dos robôs que ela religa) e a tela (Configurações). Entram o robô `robo/radar_lembretes.py` e o workflow
+`.github/workflows/radar-lembretes.yml` ("Radar — lembretes por e-mail"). **Nenhum segredo novo.** As funções `radar-ia` e
+`radar-video`, as outras funções, a coleta (robô 0.21.0), os avisos de hoje e o resumo semanal não mudam. **Rode o SQL antes de
+publicar a tela**: veja "Da v0.28.1 para a v0.29.0".
+
 A v0.28.1 corrige a **trava da peça** na Pauta. Uma linha em branco em "Informações conferidas" (do botão "Acrescentar
 informação") ou um cartão em branco (do "Acrescentar cartão") contava como alteração não salva. Como o Salvar não grava linha em
 branco, ele respondia "Nada mudou na peça." e a peça continuava barrada com o aviso **"Há alterações não salvas na peça"**: o envio
 do vídeo no "Corretor de vídeo", a conferência, o Gerar com IA, a aprovação e o "Cancelar a peça" só voltavam depois de recarregar
 a página. Agora a linha em branco não conta, o aviso diz **o que mudou e não foi salvo** (por exemplo, "Informações conferidas" ou
 "Quem aparece") e o Salvar sem nada para gravar destrava a peça. O texto digitado e não salvo continua barrando, como antes. Só a
-tela muda (`index.html`, `radar-pauta.js` e `radar-video.js`): o banco continua no `sql/radar-setup-v0.28.0.sql` e as funções e os
+tela muda (`index.html`, `radar-pauta.js` e `radar-video.js`): o banco continua no `sql/radar-setup-v0.28.0.sql` (hoje
+`radar-setup-v0.29.0.sql`) e as funções e os
 robôs não mudam. Veja "Da v0.28.0 para a v0.28.1".
 
 A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
@@ -36,7 +66,7 @@ A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
   voz; a fala é a do roteiro). Marcar e tirar a marca pedem confirmação; para sócio(a), a data em "Revogado em" não vale (para tirar a
   pessoa das peças e dos vídeos, desmarque "Ativa"). Marcar e desmarcar fica no Histórico, sem o nome.
 
-Mudam o banco (`sql/radar-setup-v0.28.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
+Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.29.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
 termos; nenhuma tabela nova, nada é apagado) e a tela (`index.html`, `radar-pauta.js` e `radar-video.js`). As funções `radar-ia`,
 `radar-redes` e `radar-video`, as outras funções e os robôs não mudam. **Rode o SQL antes de publicar a tela**: veja "Da v0.27.0 para a
 v0.28.0".
@@ -488,7 +518,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.28.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.29.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -515,7 +545,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.28.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.29.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -552,7 +582,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.28.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.29.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -581,7 +611,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.28.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.29.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -589,7 +619,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.28.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.29.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -605,7 +635,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.28.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.29.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -620,7 +650,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.28.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.29.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -648,7 +678,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.28.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.29.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -660,7 +690,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.28.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.29.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -673,7 +703,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.28.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.29.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -685,7 +715,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.28.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.29.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -697,7 +727,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.28.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.29.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -712,7 +742,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.28.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.29.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -761,20 +791,20 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.28.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.28.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.29.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.29.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes) e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
-| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0). |
+| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
 | `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda. É a única que toca no armazenamento privado `radar-videos`. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase (desde a v0.23.0, pode rodar de novo, como as outras agendas). |
-| `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
+| `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. Desde a v0.29.0, também pede (de 15 em 15 minutos, só quando há o que lembrar) o robô dos lembretes por e-mail. |
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
-| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. |
+| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`). |
 | `robo/video/` | O robô do corretor de vídeo (v0.22.0): o código, o `Dockerfile` do ffmpeg isolado, as fontes DM Sans da legenda e da cartela (licença OFL) e o **modelo** do workflow do repositório privado (`workflow/radar-video.yml`). Roda no repositório privado `radar-video`, nunca neste. |
-| `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes e testes. |
+| `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes, testes e, desde a v0.29.0, os lembretes por e-mail (`radar-lembretes.yml`, "Radar — lembretes por e-mail"). |
 | `testes/` | Suíte de testes automatizados. O `testes/amostras/pauta-ficticia.csv` é um calendário de mentira, só com nomes inventados; os vídeos e as falas dos testes do corretor são sintéticos, gerados na hora (nenhuma gravação real). |
 | `RELATORIO-TESTES-radar.md` | O que foi testado, o que não foi e o que as revisões independentes encontraram. |
 
@@ -817,10 +847,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.28.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.29.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
-   Esperado: 27 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.28.0`).
+   Esperado: 28 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.29.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -1512,6 +1542,65 @@ Outras opções, no campo "Outras opções de leitura (JSON)":
   "média" quando a IA dá nota 8 ou mais (`nota_promove` em Configurações → Relevância; 11 desliga).
   A que foi rebaixada por termos negativos (apreensão, concurso, leilão...) continua baixa.
 
+### Lembretes por e-mail antes do dia (v0.29.0)
+
+Os avisos de antes (fonte com falha, a Pauta "não saiu", o resumo de segunda) chegam **depois** que algo aconteceu. Os lembretes chegam
+**antes**, para dar tempo de resolver:
+
+| Lembrete (título do aviso) | Quando chega | O que lembra |
+|---|---|---|
+| "Radar: lembrete — Pauta de amanhã sem aprovação" | na véspera, a partir da `hora` (padrão 16:00), até o fim do dia | a peça de amanhã que ainda não está aprovada (planejada, em produção ou pronta) e a de hoje que ainda não saiu (inclusive a aprovada para publicar à mão e ainda sem o link registrado) |
+| "Radar: lembrete — peça pronta esperando aprovação" | entre `de` e `ate` (padrão 08:00 e 20:00) | a peça pronta há mais de `aprovacao_horas` (padrão 24) esperando a aprovação do administrador; a de hoje e a de amanhã ficam no lembrete da Pauta (um lembrete só por peça) |
+| "Radar: lembrete — vídeo do reel para conferir" | entre `de` e `ate` | o reel que o corretor terminou: "Vídeo corrigido pronto", "Precisa regravar" ou "O corretor parou" (cada resultado novo do corretor é lembrado uma vez, até a peça ser aprovada com o vídeo) |
+| "Radar: lembrete — notícia que não saiu" | entre `de` e `ate` | a notícia cujo envio ao site, ao Instagram ou ao Facebook deu erro, ou cuja autorização está parada há mais de `parada_horas` (padrão 3). A peça da Pauta não entra aqui: ela já tem o aviso "publicação agendada não saiu" |
+
+**As regras (sem enxurrada):**
+
+- **No máximo um e-mail por tipo por dia** (dia de Brasília). O que aparecer depois do e-mail do dia espera o dia seguinte (dentro
+  do horário). Na prática, de 0 a 2 e-mails por dia; no máximo 4.
+- **Cada pendência é lembrada uma vez só.** A peça lembrada na véspera como "amanhã" não é lembrada de novo no dia como "hoje"; a de
+  hoje entra só se ainda não foi lembrada (criada hoje, por exemplo). A pendência volta a ser lembrada só se acontecer de novo: a
+  peça saiu de "pronta" e voltou, o corretor devolveu outro resultado, outro envio deu erro.
+- **Resolvida, ela sai da lista sozinha**: a peça foi aprovada, cancelada ou mudou de dia; o vídeo foi aprovado com a peça ou voltou
+  para a fila; o envio saiu, foi cancelado ou autorizado de novo. O aviso no GitHub não é fechado nem editado (cada mudança mandaria
+  mais um e-mail): ele fica aberto, como a "caixa" daquele tipo.
+- **Sem nome:** o repositório é público. O lembrete leva só a data, a hora, o formato e o número da peça ou do envio, e o que fazer.
+  Nunca o assunto, quem aparece, a legenda, o texto do erro ou do boletim pago (o banco nem entrega isso ao robô).
+- **Nada é publicado pelo lembrete.** Ele só avisa; a publicação continua dependendo da aprovação do administrador.
+- Erro com mais de 7 dias não entra (a primeira rodada não traz o que é antigo).
+
+**Quem recebe:** como os outros avisos do Radar, o e-mail é a notificação do GitHub quando o robô abre um aviso (issue) ou comenta
+nele. Recebe quem acompanha o repositório: o dono já acompanha (confira em github.com → Settings → Notifications se "Issues" está com
+e-mail ligado). Outro administrador que também queira receber: no repositório, **Watch → Custom → Issues** (e "Issues" com e-mail
+ligado nas Notifications dele). Como o repositório é público, qualquer pessoa poderia acompanhar: por isso o lembrete não leva nomes.
+
+**Como funciona por dentro:** o banco guarda cada pendência na tabela `radar_lembretes` e decide o que lembrar (as funções
+`radar_lembretes_*`). De 15 em 15 minutos, a agenda do banco (`sql/radar-redes-agenda.sql`, agendamento `radar-redes-agenda-lembretes`)
+pergunta ao banco e, só com lembrete para mandar, pede à `radar-redes` (ação `acionar_lembretes`) que acione o workflow "Radar —
+lembretes por e-mail" no GitHub, com o mesmo `RADAR_GITHUB_TOKEN` do robô do site (o pedido para a mesma pendência sai no máximo uma
+vez a cada 30 minutos). O workflow também roda sozinho de hora em hora (no minuto 29), de reserva: se o GitHub atrasar ou o acionamento
+falhar, o lembrete sai na rodada seguinte. Sem nada a lembrar, ele termina em segundos. O robô (`robo/radar_lembretes.py`) nunca fica
+vermelho: um erro vai só para o registro, sem segredo, e a próxima rodada tenta de novo.
+
+**Configurações → Lembretes por e-mail** (só o administrador; o valor fora dos limites a tela recusa e, se chegar ao banco, vale o
+padrão):
+
+| Chave | O que é | Padrão |
+|---|---|---|
+| `ligado` | `false` desliga todos os lembretes | `true` |
+| `pauta`, `aprovacao`, `video`, `noticia` | `false` desliga só aquele tipo | `true` |
+| `hora` | a hora (de Brasília, "HH:MM") a partir da qual sai o lembrete da Pauta de amanhã | `"16:00"` |
+| `de`, `ate` | o horário dos outros três lembretes (`de` antes de `ate`) | `"08:00"` e `"20:00"` |
+| `aprovacao_horas` | quantas horas a peça pronta espera antes do lembrete (1 a 168) | `24` |
+| `parada_horas` | quantas horas a notícia autorizada fica parada antes do lembrete (1 a 48) | `3` |
+
+Embaixo do bloco aparece a **situação**: se a agenda do banco está instalada (e a última rodada), o último lembrete de cada tipo (quando
+e o número do aviso no GitHub) e quantas pendências esperam o próximo lembrete.
+
+**Limites desta versão:** se alguém fechar à mão o aviso de um tipo, o GitHub manda um e-mail curto de "fechado", e o próximo lembrete
+abre outro aviso (o robô nunca fecha). Dia sem peça no calendário não gera lembrete (ideia anotada para o futuro). A exclusão no site
+que deu erro continua aparecendo só em Publicações. O aviso "publicação agendada não saiu" continua com a coleta (de 6 em 6 horas).
+
 ### Publicar no site com autorização (v0.10.0)
 
 Regras combinadas com o escritório: o robô **só cadastra notícias** no painel do site
@@ -1563,7 +1652,8 @@ os registros. Quando ele vencer, o recado avisa ("o GitHub recusou o token") e b
 **Robôs desligados pelo GitHub (v0.22.0).** Neste repositório público, o GitHub desliga sozinho os workflows agendados (a coleta, o
 robô do site e o resumo) depois de **60 dias sem atividade** no repositório (o recesso de fim de ano é o caso provável), e eles só
 voltam com "Enable workflow" — mesmo que entre commit novo depois. Com o mesmo token, a agenda do banco (`sql/radar-redes-agenda.sql`)
-pede uma vez por dia à `radar-redes` que religue os desligados por inatividade (o desligado à mão fica). Se o robô do site estiver
+pede uma vez por dia à `radar-redes` que religue os desligados por inatividade (o desligado à mão fica; v0.29.0: o dos lembretes por
+e-mail também). Se o robô do site estiver
 desligado na hora de acionar, a função o religa e aciona; se não conseguir, o recado diz onde religar (GitHub → Actions → "Radar —
 publicar no site" → Enable workflow), sem prometer a rodada automática. O **Painel** avisa quando a coleta não roda há mais de 12 horas.
 - **Sessão no site**: o login do robô pode encerrar a sessão de quem estiver usando o mesmo usuário no
@@ -2233,6 +2323,71 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 
 ## Atualizações futuras
 
+**Da v0.28.1 para a v0.29.0** (muda o banco: SQL novo, que pode rodar de novo; mudam a função `radar-redes` e a agenda do banco;
+entram um robô e um workflow; **nenhum segredo novo**; nada de chave ou segredo pelo chat). Supõe a v0.28.1 instalada. **Nesta ordem**
+(o banco antes da tela; a função antes da agenda):
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.29.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **28
+   tabelas** e "instalacoes concluidas" com a **v0.29.0**. Ele acrescenta a tabela `radar_lembretes` (vazia), as funções dos lembretes
+   e a chave "lembretes" das Configurações, com os padrões; nada é apagado, e pode rodar de novo (é assim que ele é aplicado: o arquivo
+   inteiro). Ainda não sai lembrete nenhum pela agenda: falta o passo 4.
+2. Publique a versão no repositório (`main`): a tela (`index.html`, `radar-pauta.js` e `radar-video.js`), o robô
+   (`robo/radar_lembretes.py` e `robo/radar_banco.py`) e o workflow (`.github/workflows/radar-lembretes.yml`) vão juntos. Aperte
+   **Ctrl+F5** em todos os aparelhos (no celular, recarregue a página). A aba Versões mostra a v0.29.0. Se a tela for publicada antes
+   do SQL, Configurações → Lembretes por e-mail mostra "A situação dos lembretes precisa do banco da v0.29.0": rode o passo 1 e
+   recarregue.
+3. Supabase → **Edge Functions** → `radar-redes` → cole o `supabase/functions/radar-redes/index.ts` desta versão e clique em
+   **Deploy** (deixe o "Verify JWT" como está). O segredo `RADAR_GITHUB_TOKEN` (o do robô do site) já serve: o token fino tem
+   "Actions: leitura e escrita" no repositório `radar`, e aciona o workflow novo também.
+4. Supabase → **SQL Editor** → execute de novo o `sql/radar-redes-agenda.sql` inteiro. Ele refaz a agenda da Pauta com o agendamento
+   novo `radar-redes-agenda-lembretes` (de 15 em 15 minutos); a chave do Vault continua a mesma. Confira no resultado os 4
+   agendamentos: `radar-redes-agenda`, `radar-redes-agenda-lembretes`, `radar-redes-agenda-limpeza` e `radar-redes-agenda-robos`. O teste
+   do fim do arquivo agora responde `{"ok":true,"versao":"0.29.0"}` (é a função nova). Se o arquivo parar em "Rode antes o
+   radar-setup-v0.29.0.sql", faça o passo 1.
+
+**O que configurar:** os padrões já servem (a Pauta de amanhã às 16:00; os outros das 08:00 às 20:00; a peça pronta depois de 24 horas;
+a notícia parada depois de 3 horas). Para mudar: Configurações → **Lembretes por e-mail** → mude o valor → Salvar. Confira quem
+recebe: github.com → Settings → Notifications → "Issues" com e-mail ligado; outro administrador que queira receber: no repositório,
+**Watch → Custom → Issues**.
+
+**O que conferir, sem publicar nada:**
+
+- (a) GitHub → Actions → "Radar — lembretes por e-mail" → **Run workflow**: sem nada a lembrar, o registro diz "Há lembrete para mandar:
+  nao" (ou, se o robô chegar a rodar, "Lembretes: nada a lembrar agora."). Fica verde.
+- (b) Uns 15 minutos depois do passo 4, Configurações → Lembretes por e-mail → situação: "Agenda do banco: instalada (última rodada
+  …)".
+- (c) Para ver um lembrete de verdade antes do calendário: na Pauta, num dia de amanhã sem peça, "+ Nova peça" (por exemplo, Bastidor /
+  Foto, assunto "Teste do lembrete"). A partir das 16:00, em até 15 minutos chega o e-mail "Radar: lembrete — Pauta de amanhã sem
+  aprovação", sem nome nenhum. Depois, "Cancelar a peça" (o lembrete fecha sozinho e a peça sai do cronograma). Nada é publicado: a
+  peça fica planejada até ser cancelada.
+- O primeiro lembrete do calendário de verdade sai no domingo, 25/10, a partir das 16:00 (a peça de segunda, 26/10).
+
+**Como desligar:** sem SQL, Configurações → Lembretes por e-mail → `"ligado": false` (todos) ou só um tipo (por exemplo,
+`"video": false`) → Salvar. **Para parar de vez:** GitHub → Actions → "Radar — lembretes por e-mail" → "…" → **Disable workflow**, e
+no SQL Editor `select cron.unschedule('radar-redes-agenda-lembretes');` (ou rode o `sql/radar-redes-agenda.sql` do commit 441bcfe, que
+não tem o agendamento novo).
+
+**Para desfazer** (nesta ordem):
+
+1. GitHub → Actions → "Radar — lembretes por e-mail" → **Disable workflow**.
+2. SQL Editor → rode o `sql/radar-redes-agenda.sql` do commit 441bcfe (histórico do GitHub): a agenda volta sem os lembretes (a chave
+   do Vault fica a mesma).
+3. Volte a tela da v0.28.1 (`index.html`, `radar-pauta.js` e `radar-video.js` do commit 441bcfe) e aperte Ctrl+F5.
+4. Opcional: a `radar-redes` 0.22.0 (o `index.ts` do commit 441bcfe → Deploy). A 0.29.0 também funciona com a agenda antiga.
+5. Opcional: rode o `sql/radar-setup-v0.28.0.sql` do commit 441bcfe. A tabela e as funções dos lembretes ficam no banco, sem uso. Para
+   apagar de vez, no SQL Editor:
+
+   ```sql
+   drop table if exists public.radar_lembretes;
+   drop function if exists public.radar_lembretes_cfg(), public.radar_lembretes_madura(text, timestamptz, jsonb, timestamptz),
+     public.radar_lembretes_observar(timestamptz), public.radar_lembretes_devidos(timestamptz), public.radar_lembretes_acionar(),
+     public.radar_lembretes_ha_envio(), public.radar_lembretes_lote_em(timestamptz), public.radar_lembretes_lote(),
+     public.radar_lembretes_enviado_em(uuid, int, bigint[], timestamptz), public.radar_lembretes_enviado(uuid, int, bigint[]),
+     public.radar_lembretes_situacao();
+   delete from public.radar_config where chave = 'lembretes';
+   ```
+6. No GitHub, feche à mão os avisos "Radar: lembrete — …" que estiverem abertos (aba Issues): o robô nunca fecha.
+
 **Da v0.28.0 para a v0.28.1** (o banco não muda: não há SQL para rodar; as funções e os robôs não mudam; nada de chave ou segredo
 pelo chat). Supõe a v0.28.0 instalada, com o `sql/radar-setup-v0.28.0.sql` já rodado.
 
@@ -2513,7 +2668,7 @@ Cuidados nesta versão:
   workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
   reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
 - **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
-  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.28.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.29.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
   também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
   as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
   guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do

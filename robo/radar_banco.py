@@ -172,6 +172,40 @@ class Banco:
                 or (e.get("situacao") == "enviando" and passou(e.get("enviado_em"), 15))
                 or (e.get("situacao") == "autorizado" and passou(e.get("agendado_para"), 20))]
 
+    # ------------------------------------------------------- lembretes (v0.29.0)
+    @staticmethod
+    def _sem_funcao(e: ErroBanco) -> bool:
+        """A função ainda não existe no banco (o SQL da v0.29.0 não foi rodado): HTTP 404 do PostgREST sem código do Postgres (com ele,
+        o 404 é erro DENTRO da função, como uma tabela que sumiu, e não falta dela)."""
+        s = str(e)
+        return "PGRST202" in s or ("HTTP 404" in s and '"code":"42' not in s)
+
+    def lembretes_ha_envio(self) -> bool | None:
+        """Há lembrete para mandar agora (o banco decide: Configurações → Lembretes por e-mail, o horário e um e-mail por tipo por dia)?
+        None: banco ainda sem o SQL da v0.29.0."""
+        try:
+            return self._pedir("POST", "rpc/radar_lembretes_ha_envio", corpo={}) is True
+        except ErroBanco as e:
+            if self._sem_funcao(e):
+                return None
+            raise
+
+    def lembretes_lote(self) -> list[dict] | None:
+        """O lote dos lembretes de agora: [{tipo, lote, retomado, horas, itens: [{id, n, data, hora, formato, situacao, quando, canal,
+        desde}]}], só com números, datas e situações (nunca nome, assunto, legenda ou erro: o aviso vai para o GitHub). Lista vazia:
+        nada a lembrar. None: banco ainda sem o SQL da v0.29.0."""
+        try:
+            return self._pedir("POST", "rpc/radar_lembretes_lote", corpo={}) or []
+        except ErroBanco as e:
+            if self._sem_funcao(e):
+                return None
+            raise
+
+    def lembretes_enviado(self, lote: str, aviso: int, ids) -> int:
+        """O e-mail do lote saiu no aviso `aviso`: as pendências `ids` nunca mais são lembradas (o resto do lote fica para o dia seguinte)."""
+        return int(self._pedir("POST", "rpc/radar_lembretes_enviado",
+                               corpo={"p_lote": str(lote), "p_aviso": int(aviso), "p_ids": [int(i) for i in ids]}) or 0)
+
     # ------------------------------------------------- publicações no site (v0.8.0)
     def capa(self, imagem_id) -> str | None:
         """A capa do conteúdo (data URL) para o site, por radar_v_capas: desde a v0.21.0 a chave do robô não lê radar_imagens, onde

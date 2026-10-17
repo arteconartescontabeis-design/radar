@@ -345,16 +345,32 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.28.1"
+    assert pagina.inner_text(".versao") == "v0.29.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.28.1: a entrada do topo é a da versão em uso e conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
+    # v0.29.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, em 4 itens: os quatro lembretes por e-mail
+    # (a Pauta de amanhã às 16:00, a peça pronta há mais de 24 horas, o vídeo do reel e a notícia que não saiu); as regras (um e-mail
+    # por tipo por dia, cada pendência uma vez só, sem nome, nada publicado); as Configurações; e o que o administrador faz (o SQL antes
+    # da tela, a radar-redes 0.29.0 e a agenda de novo)
+    topo, data, itens = pagina.evaluate("VERSOES[0]")
+    assert topo == pagina.evaluate("VERSAO") == "0.29.0" and data == "17/10/2026" and len(itens) == 4
+    texto = " ".join(itens)
+    for trecho in ["Lembretes por e-mail antes do dia", "a peça da Pauta de amanhã que ainda não está aprovada", "a partir das 16:00",
+                   "há mais de 24 horas", "o vídeo do reel que o corretor terminou", "a notícia que não saiu", "parada há mais de 3 horas",
+                   "no máximo um e-mail por dia", "lembrada uma vez só", "não é lembrada de novo no dia", "sai da lista sozinha",
+                   "“Radar: lembrete — …”", "nunca o nome de alguém", "Nada é publicado pelo lembrete",
+                   "Configurações → “Lembretes por e-mail” (só o administrador)", "“ligado”", "“aprovacao_horas”", "“parada_horas”",
+                   "o sql/radar-setup-v0.29.0.sql ANTES de publicar a tela", "nada é apagado", "pode rodar de novo",
+                   "instale a radar-redes 0.29.0", "rode de novo o sql/radar-redes-agenda.sql", "Da v0.28.1 para a v0.29.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.28.1: a entrada seguinte conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
     # informação”) e o cartão em branco que não travam mais a peça, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava;
     # e o que o administrador faz (só a tela; o banco continua o da v0.28.0)
-    topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.28.1" and data == "17/10/2026" and len(itens) == 2
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.28.1" and data == "17/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["a linha em branco em “Informações conferidas” (de “Acrescentar informação”)", "o cartão em branco",
                    "não contam mais como alteração não salva", "“Há alterações não salvas na peça”", "barrava o envio do vídeo",
@@ -367,7 +383,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # administrador, de hoje em diante, uma peça por dia; nasce planejada e não publica nem agenda nada; a importação depois), a marca
     # "Sócio(a) da Artecon" (os dois termos dispensados; o que continua valendo; o Histórico) e o que o administrador faz (o SQL antes da
     # tela; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.28.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Peça nova num dia vazio", "o administrador vê o botão “+ Nova peça”", "(de hoje em diante)",
@@ -387,7 +403,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.27.0: a entrada seguinte conta ao dono, em português simples, o cronograma de publicações na Pauta (a semana e o mês dela, o
     # mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta não entra; a que envelheceu
     # na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.27.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
@@ -405,7 +421,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
@@ -422,7 +438,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -438,7 +454,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -454,7 +470,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -479,7 +495,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -488,7 +504,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[8]")
+    topo, data, itens = pagina.evaluate("VERSOES[9]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -1796,7 +1812,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.25.0 mudou a função de IA (a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres): a v0.24.0
     # passa a ser apontada como antiga. v0.25.1: a mínima não sobe (a tela aceita o kit com e sem a arte: a função v0.25.0 serve)
     assert pagina.evaluate("[versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.25.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.28.1"]       # v0.26.0 a v0.28.1: a função de IA não muda; a mínima não sobe
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.29.0"]       # v0.26.0 a v0.29.0: a função de IA não muda; a mínima não sobe
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -1972,7 +1988,7 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
         pagina.wait_for_selector("text=Painel do dia")
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
-        assert pagina.locator("form[data-form=config]").count() == 8                # v0.9.0: + rascunhos automáticos; v0.21.0: + Pauta; v0.22.0: + corretor de vídeo
+        assert pagina.locator("form[data-form=config]").count() == 9                # v0.9.0: + rascunhos automáticos; v0.21.0: + Pauta; v0.22.0: + corretor de vídeo; v0.29.0: + lembretes
         campo = pagina.locator("#cfg-feriados_extras")
         salvar = pagina.locator("form[data-chave=feriados_extras] button")
         for ruim, aviso in [("[", "não é um JSON válido"), ('{"a": 1}', "precisam ser uma lista"), ('["24/12/2026"]', "Data inválida")]:
@@ -2622,7 +2638,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.28.1" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.29.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -4922,7 +4938,7 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Configurações")
     pagina.wait_for_selector("h2 >> text=Fecho, assinatura e identificação legal")
-    assert pagina.locator("form[data-form=config]").count() == 8                   # v0.21.0: + Pauta e agenda automática; v0.22.0: + corretor de vídeo
+    assert pagina.locator("form[data-form=config]").count() == 9                   # v0.21.0: + Pauta e agenda automática; v0.22.0: + corretor de vídeo; v0.29.0: + lembretes
     form = pagina.locator("form[data-chave=assinatura]")
     falta = form.locator(".identificacao-falta").inner_text()
     assert "falta o CNPJ e o CRC" in falta and "Até serem preenchidos" in falta and ', "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 007129/O-0"' in falta
@@ -6463,7 +6479,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.28.1"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.29.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -6477,7 +6493,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
-    assert "o administrador roda o sql/radar-setup-v0.28.0.sql" in pagina.inner_text("#pauta-sem-banco")
+    assert "o administrador roda o sql/radar-setup-v0.29.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0: o setup desta versão
     # v0.28.0: a tela nova com o banco da v0.27.0 (a vista das pessoas da peça sem a coluna termos_dispensados): o mesmo aviso, com o
     # setup da v0.28.0
     pagina.unroute("**/rest/v1/radar_pauta_pecas*")
@@ -6487,7 +6503,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
     aviso = pagina.inner_text("#pauta-sem-banco")
-    assert "precisa do banco da v0.28.0" in aviso and "o administrador roda o sql/radar-setup-v0.28.0.sql" in aviso
+    assert "precisa do banco da v0.29.0" in aviso and "o administrador roda o sql/radar-setup-v0.29.0.sql" in aviso
 
 
 def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
@@ -6844,6 +6860,74 @@ def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
         for chave, valor in original.items():
             limpo.execute("update radar_config set valor = %s where chave = %s", (json.dumps(valor), chave))
 
+
+
+def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
+    """v0.29.0: Configurações → Lembretes por e-mail (só o administrador). O bloco mostra a chave "lembretes" com os padrões e explica cada
+    opção; a tela recusa antes de gravar o tipo errado, a hora fora de "HH:MM", o "de" depois do "ate", as horas fora dos limites e a
+    opção que não existe. Embaixo, a situação: a agenda do banco (aqui não instalada), o último lembrete de cada tipo (quando, de
+    Brasília, e o número do aviso) e quantas pendências esperam; desligados, o recado; com o banco antigo (sem a função), o recado do SQL."""
+    original = limpo.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0]
+    assert original == {"ligado": True, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3,
+                        "pauta": True, "aprovacao": True, "video": True, "noticia": True}
+    try:
+        limpo.execute("""insert into radar_lembretes (tipo, chave, ref, avisado_em, aviso)
+                         values ('pauta', 'peca:1:2026-10-27', '{"n": 1}', '2026-10-26 19:01+00', 77)""")
+        limpo.execute("""insert into radar_lembretes (tipo, chave, ref) values ('noticia', 'site:5:erro', '{"n": 5}')""")
+        entrar(pagina, "admin@artecon.test")
+        pagina.wait_for_selector("text=Painel do dia")
+        pagina.click("nav.abas >> text=Configurações")
+        pagina.wait_for_selector("h2 >> text=Lembretes por e-mail")
+        assert json.loads(pagina.locator("#cfg-lembretes").input_value()) == original
+        sit = pagina.inner_text("#lembretes-situacao")
+        for trecho in ["Agenda do banco: não instalada: rode de novo o sql/radar-redes-agenda.sql",
+                       "Pauta de amanhã sem aprovação: 26/10 às 16:01, aviso nº 77", "Peça pronta esperando aprovação: nenhum ainda",
+                       "Vídeo do reel para conferir: nenhum ainda", "Notícia que não saiu: nenhum ainda", "Esperando o próximo lembrete: 1"]:
+            assert trecho in sit, trecho
+        assert "Desligados" not in sit
+        ajuda = pagina.inner_text("form[data-chave=lembretes] .sub")
+        for trecho in ["sem nome de ninguém", "pauta: a peça de amanhã", "a partir da hora (padrão “16:00”)", "aprovacao_horas (padrão 24)",
+                       "parada_horas (padrão 3)", "no máximo um e-mail por dia", "lembrada uma vez só", "entre de e ate (padrão “08:00” e “20:00”)",
+                       "ligado: false desliga tudo", "Recebe quem acompanha o repositório no GitHub"]:
+            assert trecho in ajuda, trecho
+        campo, salvar = pagina.locator("#cfg-lembretes"), pagina.locator("form[data-chave=lembretes] button")
+        for ruim, aviso in [("[]", "Os lembretes precisam ser um objeto"), ('{"ligado": "sim"}', "“ligado” é true ou false."),
+                            ('{"video": 1}', "“video” é true ou false."), ('{"hora": "16h"}', "“hora” é a hora de Brasília entre aspas"),
+                            ('{"de": "24:00"}', "“de” é a hora de Brasília entre aspas"), ('{"ate": "8:00"}', "“ate” é a hora de Brasília entre aspas"),
+                            ('{"de": "21:00"}', "“de” vem antes de “ate”"), ('{"de": "10:00", "ate": "09:59"}', "“de” vem antes de “ate”"),
+                            ('{"aprovacao_horas": 0}', "“aprovacao_horas” é um número inteiro de 1 a 168"),
+                            ('{"aprovacao_horas": 2.5}', "“aprovacao_horas” é um número inteiro de 1 a 168"),
+                            ('{"parada_horas": 49}', "“parada_horas” é um número inteiro de 1 a 48"),
+                            ('{"parada_horas": "3"}', "“parada_horas” é um número inteiro de 1 a 48"),
+                            ('{"horario": "16:00"}', "“horario” não é uma opção dos lembretes")]:
+            campo.fill(ruim)
+            limpar_recados(pagina)
+            salvar.click()
+            pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
+        assert limpo.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == original
+        novo = {"ligado": False, "hora": "17:30", "de": "09:00", "ate": "18:00", "aprovacao_horas": 12, "parada_horas": 2,
+                "pauta": True, "aprovacao": True, "video": False, "noticia": True}
+        campo.fill(json.dumps(novo))
+        limpar_recados(pagina)
+        salvar.click()
+        pagina.wait_for_selector("#recado >> text=Configuração salva.")
+        assert limpo.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == novo
+        assert "Desligados (“ligado”: false): nenhum lembrete sai." in pagina.inner_text("#lembretes-situacao")
+        # o editor não chega às Configurações (e a função devolve {} para quem não é administrador)
+        with como("authenticated", EDITOR) as c:
+            assert c.execute("select radar_lembretes_situacao()").fetchone()[0] == {}
+        # a tela nova com o banco da v0.28.1 (sem a função): o recado do SQL, e o resto das Configurações abre
+        pagina.route("**/rest/v1/rpc/radar_lembretes_situacao*", lambda rota: rota.fulfill(status=404, content_type="application/json",
+                     body='{"code":"PGRST202","details":null,"hint":null,"message":"Could not find the function public.radar_lembretes_situacao"}'))
+        pagina.reload()
+        pagina.wait_for_selector("text=Painel do dia")
+        pagina.click("nav.abas >> text=Configurações")
+        pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
+        assert "A situação dos lembretes precisa do banco da v0.29.0" in pagina.inner_text("#lembretes-situacao")
+        assert "sql/radar-setup-v0.29.0.sql" in pagina.inner_text("#lembretes-situacao")
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'lembretes'", (json.dumps(original),))
+        limpo.execute("truncate radar_lembretes")
 
 
 # a agenda de teste do “Preencher fontes oficiais”: nomes públicos de obrigação, mais uma fictícia
@@ -8888,7 +8972,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.28.1"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.29.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -9215,7 +9299,7 @@ def test_orientacoes_para_a_ia_o_administrador_salva_e_rele(pagina, sem_orientac
     abrir_configuracoes(pagina)
     painel = pagina.locator("#painel-ia")
     assert painel.locator("h3").inner_text() == "Orientações para a IA" and AJUDA_ORIENTACOES in painel.inner_text()
-    assert pagina.locator("form[data-form=config]").count() == 8 and pagina.locator("#painel-ia form[data-form=iaOrientacoes]").count() == 1
+    assert pagina.locator("form[data-form=config]").count() == 9 and pagina.locator("#painel-ia form[data-form=iaOrientacoes]").count() == 1   # v0.29.0: + lembretes
     texto, imagem = pagina.locator("#ia-ori-texto"), pagina.locator("#ia-ori-imagem")
     assert texto.input_value() == "" and imagem.input_value() == ""
     assert texto.get_attribute("placeholder").startswith("Ex.: Tom próximo e direto") and "Post de que gostamos" in texto.get_attribute("placeholder")

@@ -1,6 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.28.1)
+# Radar Artecon — Relatório de testes (v0.29.0)
 
-Data: 17/10/2026. **A suíte inteira da v0.28.1 roda no GitHub (CI) antes de juntar**; só a tela muda, e neste ambiente rodaram o
+Data: 17/10/2026. **A suíte inteira da v0.29.0 roda no GitHub (CI) antes de juntar**; neste ambiente rodaram, pela fila compartilhada,
+os testes afetados: o banco, os lembretes, a agenda e o corretor de vídeo no banco (`testes/test_radar_banco.py`,
+`testes/test_radar_lembretes.py`, `testes/test_radar_agenda.py` e `testes/test_radar_video_banco.py`), **336 aprovados, 0 falhas**; o de
+ponta a ponta (`testes/test_radar_e2e.py`), **78 aprovados**; a função `radar-redes` no Deno (`testes/test_radar_funcao_redes.py`), **39
+aprovados**; o arquivo inteiro dos testes de tela, **225 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 685 s (11min25s); e `testes/test_radar_repositorio.py`, **19 aprovados, 0 falhas, 1 pulado** (detalhes na seção da
+v0.29.0, logo abaixo). A v0.29.0 tem 26 testes novos (de 1.143 para 1.169 no total). Na v0.28.1, só a tela mudou, e neste ambiente rodaram o
 arquivo inteiro dos testes de tela (`testes/test_radar_telas.py`), **224 aprovados, 0 falhas, 61 pulados**, em 584 s (9min44s), e
 `testes/test_radar_repositorio.py`, **16 aprovados, 0 falhas, 1 pulado** (detalhes na seção da v0.28.1, logo abaixo). Na v0.28.0
 (16/10/2026), rodaram os testes afetados: o
@@ -20,8 +25,149 @@ o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-reposit
 teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado,
 toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
-atualizado: as seções da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
+atualizado: as seções da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.29.0 — lembretes por e-mail antes do dia
+
+Data: 17/10/2026. Pedido do dono: hoje o Radar só avisa depois que algo falha (o aviso da Pauta "não saiu", o resumo semanal, a fonte
+parada). Agora ele lembra **antes**: (1) a peça da Pauta de amanhã (e a de hoje que ainda não saiu) que não está aprovada, na véspera, a
+partir da `hora` (16:00 de Brasília); (2) a peça pronta esperando a aprovação do administrador há mais de `aprovacao_horas` (24); (3) o
+vídeo do reel que o corretor terminou (pronto, regravar ou erro); (4) a notícia que não saiu (envio ao site ou às redes com erro, ou a
+autorização parada há mais de `parada_horas`, 3). Regras do dono, todas no banco: no máximo um e-mail por tipo por dia; cada pendência
+uma vez só, que "fecha" quando é resolvida; nada de nome nem de texto do boletim pago no e-mail; nada é publicado pelo lembrete.
+
+**Como o e-mail sai (conferido no código).** O projeto não tem SMTP nem API de e-mail: todo "e-mail" do Radar é a notificação que o
+GitHub manda quando o robô (`github-actions[bot]`, com o `GITHUB_TOKEN`) abre um aviso (issue) ou comenta nele, no repositório
+público. Os lembretes usam o mesmo caminho (um aviso fixo por tipo, "Radar: lembrete — …"; o primeiro abre, os seguintes comentam;
+o robô nunca fecha nem edita), então chegam às mesmas pessoas dos avisos de hoje.
+
+**Onde roda (o mais confiável que já existia).** O relógio é o pg_cron do banco (o GitHub atrasa e desliga agendamentos; o pg_cron já é
+o relógio da Pauta e do vídeo): de 15 em 15 minutos, `select net.http_post(... {"acao":"acionar_lembretes"} ...) where
+public.radar_lembretes_acionar()` — o banco observa as pendências, confere Configurações, horário, "um por tipo por dia" e o freio de
+30 minutos por pendência; nada a lembrar = nenhum pedido. A `radar-redes` (0.22.0 → **0.29.0**) aciona o workflow FIXO
+`radar-lembretes.yml` (o mesmo token e o mesmo caminho do robô do site; nenhum segredo novo), que roda `robo/radar_lembretes.py`. O
+próprio workflow também roda de hora em hora (minuto 29), de reserva, com uma pré-checagem barata (`rpc/radar_lembretes_ha_envio`).
+
+**O que mudou:**
+
+- **Banco** (`git mv sql/radar-setup-v0.28.0.sql sql/radar-setup-v0.29.0.sql`, e a reversão): a tabela `radar_lembretes` (uma linha por
+  pendência: tipo, chave do episódio, `ref` só com número, data, hora, formato, situação, canal e desde quando; `aberto_em`,
+  `acionado_em`, `lote`, `avisado_em`, `aviso`, `resolvido_em`; uma aberta por tipo e chave), RLS (só o administrador lê; ninguém grava
+  direto; a chave do robô não lê), 11 funções `radar_lembretes_*` (`cfg`, `madura`, `observar`, `devidos`, `acionar`, `ha_envio`, `lote_em`,
+  `lote`, `enviado_em`, `enviado` e `situacao`; todas `security definer` com `search_path`, nenhuma com `current_date`; só `ha_envio`,
+  `lote` e `enviado` para a chave do robô e só `situacao` para a tela) e a chave "lembretes" das Configurações (entra com os padrões;
+  a ajustada não é sobrescrita). Registro `v0.29.0`; evidência "28 tabelas". Nada é apagado.
+- **Agenda** (`sql/radar-redes-agenda.sql`): o agendamento `radar-redes-agenda-lembretes` (`*/15 * * * *`); sem o setup desta versão,
+  o arquivo para com "Rode antes o radar-setup-v0.29.0.sql" (antes da criação da chave e de qualquer agendamento); o teste do fim do
+  arquivo espera a versão 0.29.0. A reversão da agenda já tirava `radar-redes-agenda%` (só os comentários mudaram).
+- **Função `radar-redes` 0.29.0**: a ação `acionar_lembretes`, só da agenda do banco (o administrador recebe 403 "Só a agenda do banco
+  aciona os lembretes.", o editor e o robô do site também 403); `disparar(token, arquivo)` generaliza o acionamento (o do robô do site
+  não muda); respostas `{acionado, motivo?, religado?}` (sem_token, token_recusado, sem_acesso, limite_github, github_fora,
+  erro_github, workflow_desligado, workflow_religado, workflow_recusou, ja_acionado: pausa de 60 s); 422 com o workflow desligado por
+  inatividade religa e aciona uma vez; o registro é texto fixo, nunca o token. `ROBOS_AGENDADOS` ganha `radar-lembretes.yml` (o
+  `manter_robos` diário o religa). A tela não usa a ação nova: `REDES_MINIMA` continua "0.21.0".
+- **Robô e workflow novos**: `robo/radar_lembretes.py` (os textos de cada tipo, a marca escondida `<!-- radar-lembrete: lote … itens …
+  -->` que deixa retomar sem repetir, código de saída sempre 0) e três métodos em `robo/radar_banco.py` (`lembretes_ha_envio`,
+  `lembretes_lote`, `lembretes_enviado`; banco sem o SQL da v0.29.0 = `None`). `.github/workflows/radar-lembretes.yml` ("Radar —
+  lembretes por e-mail"): `issues: write` só no job, só os segredos `RADAR_SUPABASE_URL`, `RADAR_SUPABASE_SERVICE_KEY` e o `GITHUB_TOKEN`,
+  ações fixadas por SHA, `--require-hashes`. O robô de coleta (0.21.0), o `radar_alertas.py` e o `radar_resumo.py` não mudam.
+- **Tela** (`index.html`, `radar-pauta.js` e `radar-video.js`, v0.29.0): Configurações → "Lembretes por e-mail" (o bloco, a validação de
+  cada chave e a situação embaixo: agenda do banco, último lembrete de cada tipo, quantas esperam; com o banco antigo, o recado do SQL),
+  a linha das Configurações em "Como usar", a entrada 0.29.0 em Versões e o recado do banco citando o `sql/radar-setup-v0.29.0.sql`.
+
+**Onde o código corrigiu o plano:**
+
+- Notícia nas redes "parada": o plano media desde `coalesce(enviado_em, autorizado_em)`. A publicação do "Publicar em todos" fica
+  `aguardando_site` e só vira `autorizado` quando a notícia entra no site (o gatilho põe `atualizado_em = now()`): medir pela autorização
+  lembraria, como parada, a que acabou de ser liberada depois de um robô do site atrasado. Ficou: "enviando" desde `enviado_em`;
+  "autorizado" desde `atualizado_em` (quando ficou autorizada). O texto do e-mail continua dizendo "autorizada em" (`autorizado_em`).
+- "Atualiza o `ref` das que ainda não foram avisadas": também não mexe na pendência já reservada num lote (o conteúdo do e-mail não muda
+  entre a reserva e a confirmação). A ordem dos itens da notícia é pela data e hora (`timestamptz`), não pelo texto.
+- A função auxiliar `radar_lembretes_madura` (11 funções, não 10): a mesma regra das N horas em `devidos`, `acionar` e `lote_em`.
+- A agenda sem o setup: em vez de dois recados (o da v0.21.0 e o da v0.29.0), um só, "Rode antes o radar-setup-v0.29.0.sql" (é o único
+  setup no repositório); o teste antigo (`test_agenda_sem_o_setup_para_com_recado`) passou a conferir esse texto.
+- O recado da Pauta e do vídeo sem banco cita o `sql/radar-setup-v0.29.0.sql` (o teste de versão exige um setup só); nos dois, "precisa do
+  banco da v0.29.0".
+- O teste "setup por cima do banco da v0.28.1" não usa `git show` (o CI baixa só o último commit): ele roda o setup desta versão, tira
+  a tabela, as funções e a chave dos lembretes e roda o setup de novo. O `git show 441bcfe` ficou na conferência manual (abaixo).
+- A mutação "devidos sem 'já mandou hoje'" não era pega pelos testes 1 e 3 do plano (sem pendência nova no mesmo dia, nada a mandar de
+  qualquer jeito): o teste 1 ganhou a peça nova de hoje criada depois do e-mail (espera o dia seguinte); ela também é pega pelos testes
+  do vídeo e do "enviado".
+
+**Resultados desta rodada** (pela fila compartilhada, com o PostgreSQL 16, o PostgREST, o Deno e o Chromium de teste; nenhuma chamada a
+GitHub, Supabase, Meta, site ou e-mail de verdade):
+
+- `testes/test_radar_banco.py` (278), `testes/test_radar_lembretes.py` (15, novo), `testes/test_radar_agenda.py` (12) e
+  `testes/test_radar_video_banco.py` (31): **336 aprovados, 0 falhas**, em 311 s;
+- `testes/test_radar_e2e.py`: **78 aprovados, 0 falhas**, em 108 s;
+- `testes/test_radar_funcao_redes.py` (a função no Deno, com o `deno check`): **39 aprovados, 0 falhas**, em 51 s;
+- `testes/test_radar_telas.py` (o arquivo inteiro): **225 aprovados, 0 falhas, 61 pulados** (os que sobem a IA Central de verdade), em 685 s (11min25s);
+- `testes/test_radar_repositorio.py`: **19 aprovados, 0 falhas, 1 pulado** (o dos commits do push, que só roda no `radar-repositorio.yml`).
+
+Na primeira rodada inteira da tela, 1 falha: `test_orientacoes_para_a_ia_o_administrador_salva_e_rele` ainda contava 8 blocos nas
+Configurações (agora são 9); corrigido o número, ele passou, e o arquivo inteiro rodou de novo (o resultado acima).
+
+**Testes novos (26) e ajustados.** Novos: `test_radar_lembretes.py` (15: a Pauta na véspera a partir da hora e um e-mail por dia; a
+aprovada, a cancelada, a sem post e a manual sem link; a aprovação depois de N horas, sem repetir e sem duplicar a Pauta; o vídeo por
+resultado e até ser amarrado; a notícia no site e nas redes, sem a Pauta e sem erro antigo; o "enviado" só com os itens do e-mail; o lote
+retomado; o desligado; o padrão fora dos limites; as permissões; nada de nome no `ref`, no lote e nos textos; o "hoje" de Brasília com o
+servidor em Kiritimati; os textos exatos dos 4 tipos; o setup por cima do banco sem os lembretes); `test_radar_e2e.py` (4: um aviso por
+tipo e depois comentário, sem nome; o retomado não repete; os avisos do `radar_alertas` intocados e o erro do GitHub num tipo não para
+os outros; nunca vermelho, banco antigo e nada de segredo no registro); `test_radar_agenda.py` (2: só pede quando há e no máximo a cada
+30 minutos; sem o setup da v0.29.0, para com o recado); `test_radar_funcao_redes.py` (1: só a agenda aciona, workflow fixo, recusas e
+religar); `test_radar_repositorio.py` (3: o workflow só com `issues: write` e três segredos; os robôs agendados da `radar-redes` são os
+workflows com `schedule:`; o LEIAME da v0.29.0); `test_radar_telas.py` (1: o bloco, a validação e a situação). Ajustados: as contagens
+(28 tabelas, 37 relações, 9 configurações, 9 blocos nas Configurações), a versão `v0.29.0` nos testes de instalação, a reversão
+(a tabela, as funções e o agendamento novos), as listas de agendamentos da agenda, o `manter_robos` com 4 robôs, o `agenda_teste` com
+0.29.0, a aba Versões (a 0.29.0 no topo; as de antes uma posição abaixo) e o `GitHubFalso.avisos_abertos(*prefixos)`.
+
+**Mutações rápidas** (cada uma aplicada sozinha, os testes que devem pegá-la rodados pela fila, o arquivo restaurado; no fim, o
+`md5sum` dos 6 arquivos e o `git diff --stat` iguais aos de antes): **21 de 21 pegas**.
+
+| # | Mutação | Pega por |
+|---|---|---|
+| 1 | `devidos` sem "já mandou hoje" | lembretes: Pauta na véspera, vídeo e "enviado" (antes do reforço do teste 1, só os dois últimos) |
+| 2 | `<=` no lugar de `<` na hora da Pauta (16:00 em ponto não sai) | lembretes: Pauta na véspera |
+| 3 | a aprovada (agendar) entra na Pauta | lembretes: aprovada/cancelada/manual |
+| 4 | `<` no lugar de `<=` nas N horas | lembretes: aprovação depois de N horas |
+| 4b | `aberto_em` refeito a cada rodada (o `atualizado_em` ao vivo) | lembretes: aprovação depois de N horas |
+| 5 | site com erro sem "o envio mais novo" | lembretes: notícia |
+| 6 | redes sem `conteudo_id is not null` (a Pauta entra) | lembretes: notícia |
+| 7 | vídeo sem a exclusão do vídeo amarrado | lembretes: vídeo |
+| 8 | `enviado` marca o lote inteiro | lembretes: "enviado" |
+| 9 | o `ref` ganha o assunto | lembretes: nada de nome |
+| 10 | a configuração aceita "25:00" | lembretes: padrão fora dos limites |
+| 11 | o robô ignora a marca do lote retomado | e2e: retomado |
+| 12 | o `main` devolve 1 no erro | e2e: nunca vermelho |
+| 13 | `acionar_lembretes` aceito do administrador | radar-redes: só a agenda |
+| 13b | o workflow vindo do pedido | radar-redes: só a agenda |
+| 14 | `ROBOS_AGENDADOS` sem `radar-lembretes.yml` | repositório e radar-redes (`manter_robos`) |
+| 15 | o agendamento sem `where public.radar_lembretes_acionar()` | agenda: só pede quando há |
+| 15b | sem o freio de 30 minutos | agenda: só pede quando há |
+| 16 | o workflow sem `issues: write` | repositório: workflow dos lembretes |
+| 16b | o workflow com `ARTECON_SITE_SENHA` | repositório: workflow dos lembretes |
+| 17 | `validarConfig` aceita "de" depois de "ate" | tela: bloco dos lembretes |
+
+**Conferência manual (o banco da v0.28.1 de verdade).** Num banco de rascunho (`radar_v029_conferencia`, apagado no fim): o
+`sql/radar-setup-v0.28.0.sql` do commit 441bcfe (`git show`), o pg_cron, o pg_net e o Vault de mentira dos testes, a agenda do 441bcfe
+(3 agendamentos) e dados de mentira (2 pessoas, "Ana Teste" e "Bruno Exemplo" sócio, 3 peças, 1 assunto, a "janela_horas" da Pauta
+ajustada para 4). Depois, o `sql/radar-setup-v0.29.0.sql` **duas vezes seguidas: as duas sem erro**. Das 27 tabelas de antes, 24 com as
+mesmas linhas; mudaram só `radar_config` (8 → 9: a chave "lembretes", com os padrões), `radar_instalacoes` (1 → 3: v0.29.0 duas vezes,
+27 → 28 tabelas) e `radar_auditoria` (22 → 23: a inclusão da chave nova, que vai para a trilha), e entrou `radar_lembretes` (vazia). A
+"janela_horas" ajustada ficou 4 e as pessoas ficaram como estavam (o sócio marcado). A agenda nova, rodada duas vezes por cima da do
+441bcfe: sem erro, 4 agendamentos (o novo `radar-redes-agenda-lembretes`, `*/15 * * * *`) e a mesma chave no Vault.
+
+**O que não foi testado aqui:** o e-mail de verdade do GitHub (a notificação da issue e do comentário para quem acompanha o repositório),
+o pg_cron e o pg_net de verdade, a `radar-redes` no Supabase e o workflow rodando no GitHub (o passo da pré-checagem com o `curl`). O
+caminho é o mesmo dos avisos de hoje e do acionamento do robô do site, que já rodam em produção.
+
+**Limites registrados:** se alguém fechar à mão o aviso de um tipo, o GitHub manda um e-mail curto de "fechado" e o próximo lembrete
+abre outro (o robô nunca fecha); na primeira rodada, o lembrete da notícia pode trazer falhas dos últimos 7 dias; a peça lembrada na
+véspera não é lembrada de novo no dia (a regra do dono); a pendência nova depois do e-mail do dia espera o dia seguinte (por exemplo,
+a peça de hoje criada depois do e-mail da Pauta daquele dia não é lembrada). **Para quem juntar com a v0.30.0** (outra equipe, em paralelo): refazer o
+`git mv` do setup a partir do v0.29.0 e as contagens (28 tabelas, 9 configurações, 9 blocos nas Configurações), a `VERSAO`/`VERSOES` e o
+topo do LEIAME e deste relatório.
 
 ## v0.28.1 — a linha em branco não trava mais a peça, e o aviso diz o que mudou
 
