@@ -1905,7 +1905,7 @@ def test_robo_dos_lembretes_nunca_vermelho_sem_variaveis_banco_antigo_e_sem_segr
     monkeypatch.setattr(banco, "_pedir", lambda *a, **k: (_ for _ in ()).throw(
         ErroBanco('POST rpc/radar_lembretes_lote: HTTP 404 — {"code":"PGRST202","message":"Could not find the function"}')))
     assert banco.lembretes_lote() is None and banco.lembretes_ha_envio() is None
-    assert radar_lembretes.executar(banco, GitHubFalso()) == ["o banco ainda não tem os lembretes (rode o sql/radar-setup-v0.29.0.sql); nada a fazer"]
+    assert radar_lembretes.executar(banco, GitHubFalso()) == ["o banco ainda não tem os lembretes (rode o setup do banco da v0.29.0 ou mais novo); nada a fazer"]
     monkeypatch.setattr(banco, "_pedir", lambda *a, **k: (_ for _ in ()).throw(
         ErroBanco('POST rpc/radar_lembretes_lote: HTTP 404 — {"code":"42P01","message":"relation does not exist"}')))
     with pytest.raises(ErroBanco):
