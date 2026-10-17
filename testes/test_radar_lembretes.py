@@ -696,7 +696,7 @@ def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
         assert {t: n for t, n in depois.items() if t not in ("radar_config", "radar_instalacoes", "radar_lembretes", "radar_auditoria")} == \
                {t: n for t, n in antes.items() if t not in ("radar_config", "radar_instalacoes", "radar_auditoria")}
         assert depois["radar_config"] == antes["radar_config"] + 1 and depois["radar_instalacoes"] == antes["radar_instalacoes"] + 2
-        assert depois["radar_lembretes"] == 0 and len(depois) == 30                          # v0.32.0: + 2 tabelas
+        assert depois["radar_lembretes"] == 0 and len(depois) == 34          # v0.32.0: + 2 tabelas; v0.34.0: + as 4 da aba Setor
         with conectar(banco) as c:
             assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {
                 "ligado": True, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3,

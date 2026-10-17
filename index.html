@@ -365,6 +365,7 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <script src="radar-config.js"></script>
 <script src="radar-pauta.js?v=0.33.0"></script>
 <script src="radar-video.js?v=0.33.0"></script>
+<script src="radar-setor.js?v=0.33.0"></script>
 <script>
 "use strict";
 /* ====================================================================
@@ -1599,6 +1600,7 @@ const TELAS = {
         <tr><td><b>Publicações</b></td><td>Aprovados que faltam publicar no site e o registro do que já foi.</td></tr>
         <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), a peça nova num dia vazio (“+ Nova peça”, só o administrador), as pessoas com o termo de uso de imagem (sócio(a) da Artecon: termos dispensados) e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         ${podeEditar() ? `<tr><td><b>Vídeo</b></td><td>O vídeo corrigido de cada reel: o editor vê; o administrador corta o começo, o fim e trechos, corrige o texto da legenda, escolhe o estilo da legenda, o gancho, a cartela e a capa e monta de novo (sem transcrever de novo). A aprovação continua na peça.</td></tr>` : ""}
+        <tr><td><b>Setor</b></td><td>Como estão as publicações de um setor no Instagram (contas públicas comerciais ou de criador, como outros escritórios de contabilidade, e a da Artecon para comparar): frequência, formatos, engajamento, dias e horários, temas e as publicações de maior engajamento, com o link. Serve para ver formatos e temas, nunca para copiar.${adm ? " O administrador escolhe as contas e atualiza a análise; a leitura automática é toda segunda-feira." : ""}</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
         <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, lembretes por e-mail, vencimentos de chaves e contas, cópia de segurança no OneDrive, agenda de obrigações (com o 13º, as anuais, a nova data de uma prorrogação conferida e as possíveis prorrogações captadas), feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
@@ -4836,6 +4838,10 @@ const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-
 if(typeof PAUTA === "object"){ Object.assign(ACOES, PAUTA.acoes); Object.assign(FORMS, PAUTA.forms); PAUTA.navegacao.forEach(a => NAVEGACAO.add(a)); }
 // v0.22.0: as do corretor de vídeo do reel (radar-video.js); sem o arquivo, a peça reel mostra o recado
 if(typeof VIDEO === "object"){ Object.assign(ACOES, VIDEO.acoes); Object.assign(FORMS, VIDEO.forms); VIDEO.navegacao.forEach(a => NAVEGACAO.add(a)); }
+// v0.34.0: a aba Setor (radar-setor.js), entre a Pauta e as Fontes, para todos os perfis; sem o arquivo, a aba mostra o recado
+ABAS.splice(ABAS.findIndex(a => a[0] === "fontes"), 0, ["setor", "Setor"]);
+TELAS.setor = () => typeof telaSetor === "function" ? telaSetor() : '<h1>Setor</h1><div class="aviso erro" id="setor-sem-arquivo">O arquivo radar-setor.js não carregou. Aperte Ctrl+F5 (no celular, recarregue a página); se continuar, avise o administrador.</div>';
+if(typeof SETOR === "object"){ Object.assign(ACOES, SETOR.acoes); Object.assign(FORMS, SETOR.forms); SETOR.navegacao.forEach(a => NAVEGACAO.add(a)); }
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa

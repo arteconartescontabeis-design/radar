@@ -121,6 +121,8 @@ class Servidor(BaseHTTPRequestHandler):
             return self._responder(200, (RAIZ / "radar-pauta.js").read_bytes(), "application/javascript; charset=utf-8")
         if u.path == "/radar-video.js":                         # v0.22.0: o corretor de vídeo do reel, depois do radar-pauta.js
             return self._responder(200, (RAIZ / "radar-video.js").read_bytes(), "application/javascript; charset=utf-8")
+        if u.path == "/radar-setor.js":                         # v0.34.0: a aba Setor, depois do radar-video.js
+            return self._responder(200, (RAIZ / "radar-setor.js").read_bytes(), "application/javascript; charset=utf-8")
         if u.path == "/functions/v1/radar-video":               # v0.22.0: a função de verdade, quando o teste a subiu
             if not CORRETOR["porta"]:
                 return self._responder(404, b'{"code":"NOT_FOUND","message":"Requested function was not found"}')

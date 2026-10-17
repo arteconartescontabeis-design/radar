@@ -35,6 +35,10 @@
 -- COPIA_PASTA_ID (o GRAPH_TENANT_ID é da ITC: fica); entra.microsoft.com → Registros de aplicativo → apague “Radar Artecon — cópias de
 -- segurança” (corta o acesso à pasta na hora); a chave 'radar_copia_agenda' fica no Vault de propósito; os arquivos no OneDrive ficam
 -- (são seus); o aviso “Radar: lembrete — …” aberto no GitHub fica: feche à mão.
+-- v0.34.0: a aba Setor. As tabelas radar_setor_* (setores, contas, publicações lidas e rodadas) e as funções delas saem; a leitura
+-- automática e a guarda diária (radar-setor-coleta e radar-setor-guarda, do sql/radar-setor-agenda.sql) saem junto, antes delas.
+-- Ficam a função radar-concorrentes (apague pelo painel se quiser: Edge Functions → radar-concorrentes → Delete function), a chave
+-- 'radar_concorrentes' no Vault e a radar_concorrentes_conferir (do sql/radar-concorrentes.sql, que sai mais abaixo, como já saía).
 -- =====================================================================
 begin;
 
@@ -54,6 +58,25 @@ drop view if exists public.radar_v_em_alta;
 drop view if exists public.radar_v_assuntos;
 drop view if exists public.radar_v_fila;
 drop view if exists public.radar_v_saude_fontes;
+
+-- v0.34.0: a aba Setor. A leitura automática (sql/radar-setor-agenda.sql) sai antes das funções que ela chama; as tabelas e as funções
+-- radar_setor_* saem aqui (a linha "setor" de radar_config sai com a tabela, mais abaixo)
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'cron') then
+    perform cron.unschedule(j.jobid) from cron.job j where j.jobname like 'radar-setor%';
+  end if;
+exception when others then null;
+end $$;
+drop table if exists public.radar_setor_posts, public.radar_setor_contas, public.radar_setor_coletas, public.radar_setor_setores cascade;
+do $$
+declare f record;
+begin
+  for f in select p.oid::regprocedure as a from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname like 'radar\_setor\_%' loop
+    execute format('drop function if exists %s cascade', f.a);
+  end loop;
+end $$;
 
 -- v0.12.1: a agenda da leitura do boletim da ITC (pg_cron), se existir
 -- v0.21.0: e a que publica a Pauta (radar-redes-agenda e a limpeza dela), ANTES de apagar as funções que ela chama; o que sobrar
