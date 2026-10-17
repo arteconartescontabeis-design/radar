@@ -21,9 +21,12 @@
    tem, o banco não pede o termo de uso de imagem nem o do corretor de vídeo, e a tela mostra o selo "Sócio(a) — termos dispensados".
    v0.28.1: a trava da peça (estadoPeca) conta as informações conferidas e os cartões como o Salvar os grava (a linha em branco não
    conta), o aviso diz o que mudou e não foi salvo (avisoPecaSuja) e o Salvar sem nada a gravar destrava a peça.
-   v0.29.0: só a versão e o recado do banco (sql/radar-setup-v0.29.0.sql): os lembretes por e-mail ficam em Configurações (index.html).
+   v0.29.0: só a versão e o recado do banco (o setup da v0.29.0): os lembretes por e-mail ficam em Configurações (index.html).
+   v0.30.0: a agenda da semana (agendaDaSemana) vai até o domingo seguinte, e o vencimento prorrogado pelo administrador leva a fonte do
+   ato da prorrogação; a versão e o recado do banco (sql/radar-setup-v0.30.0.sql). O 13º, as anuais e o aviso de prorrogação ficam no
+   index.html (Configurações, Painel e Informativo).
    ==================================================================== */
-const PAUTA_VERSAO = "0.29.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.30.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -59,9 +62,9 @@ const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PA
 // o banco ainda é o da v0.20.0 (a tabela da Pauta não existe): a tela diz o que falta em vez do erro cru do PostgREST
 // (v0.22.0: as colunas novas de radar_pessoas também dizem que o banco é de antes)
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
-// (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0; v0.29.0: o
-// recado manda rodar o setup desta versão, que traz junto o da v0.28.0)
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.29.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+// (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0; v0.29.0 e
+// v0.30.0: o recado manda rodar o setup desta versão, que traz junto os anteriores)
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){
@@ -502,7 +505,7 @@ async function telaPeca(id){
         <p class="sub">Cada fato da peça (número, data, prazo, regra, o que a Artecon faz) com a fonte oficial em que foi conferido. Número que não estiver aqui trava a aprovação; o boletim pago (ITC) não serve de fonte.</p>
         <div class="conf-linhas" id="peca-conferidas"${desAr ? ` data-travado="1"` : ""}>${conferidasDe(p).map(c => linhaConferida(c, desAr)).join("")}</div>
         ${desAr ? "" : `<div class="acoes"><button class="btn peq sec" type="button" data-acao="peca-conf-linha">Acrescentar informação</button>
-          ${p.tipo === "agenda" ? `<button class="btn peq sec" type="button" data-acao="peca-agenda">Calcular a agenda da semana</button><span class="sub">De segunda a sexta seguintes, pelas regras das Configurações: confira as datas.</span>` : ""}</div>`}
+          ${p.tipo === "agenda" ? `<button class="btn peq sec" type="button" data-acao="peca-agenda">Calcular a agenda da semana</button><span class="sub">Da segunda ao domingo seguintes (no fim de semana, só vence o que não muda de data, como a DEFIS e a DASN-SIMEI), pelas regras das Configurações: confira as datas.</span>` : ""}</div>`}
         ${ed ? blocoIaPeca(p, travada) : ""}
         <h3>Textos</h3>
         ${p.formato !== "reel" ? `<div class="grade">
@@ -655,16 +658,22 @@ async function enviarFotosPeca(campo){
 /* A agenda da semana (tipo "Agenda da semana", no domingo D): os vencimentos de D+1 a D+5 (segunda a sexta seguintes), pelas regras das
    Configurações (calcularAgenda, um mês por vez: a semana pode atravessar o mês), sem as obrigações com "redes": false. Cada uma vira uma
    informação conferida ("10/11 (ter) · ICMS"), com a "fonte" da obrigação; sem ela, a fonte fica em branco (a regra das Configurações
-   não é fonte oficial): a peça não fica pronta até alguém conferir e escrever a fonte (o texto provisório iria ao ar no "Fonte: …"). */
+   não é fonte oficial): a peça não fica pronta até alguém conferir e escrever a fonte (o texto provisório iria ao ar no "Fonte: …").
+   v0.30.0: o vencimento que vem de uma prorrogação (a nova data que o administrador escreveu em "prorrogacoes") leva a fonte do ato da
+   prorrogação; os outros, a da obrigação. E a semana vai até o domingo seguinte (D+7): a DEFIS e a DASN-SIMEI ("ajuste": "nenhum") vencem
+   no sábado ou no domingo em alguns anos (31/05/2026 é domingo) e, só de segunda a sexta, não entrariam em post nenhum; o post do
+   domingo seguinte (D+7) começa na segunda, D+8, então nada se repete. */
 function agendaDaSemana(dia){
-  const de = somarDias(dia, 1), ate = somarDias(dia, 5);
+  const de = somarDias(dia, 1), ate = somarDias(dia, 7);
   const obrig = (Array.isArray(CONF_PAUTA.obrigacoes) ? CONF_PAUTA.obrigacoes : []).filter(o => o && typeof o === "object" && o.redes !== false);
-  const fonteDe = nome => textoDe(obrig.find(x => String(x.nome) === nome)?.fonte);
+  const fonteDe = (nome, data) => { const o = obrig.find(x => String(x.nome) === nome);
+    const p = (Array.isArray(o?.prorrogacoes) ? o.prorrogacoes : []).find(x => x && typeof x === "object" && x.para === data);
+    return textoDe(p ? p.fonte : o?.fonte); };
   return [...new Set([de.slice(0, 7), ate.slice(0, 7)])]
     .flatMap(m => calcularAgenda(Number(m.slice(0, 4)), Number(m.slice(5, 7)), obrig, CONF_PAUTA.feriados_extras))
     .filter(l => l.data >= de && l.data <= ate)
     .flatMap(l => l.obrigacoes.map(nome => ({informacao:`${l.data.slice(8, 10)}/${l.data.slice(5, 7)} (${DIAS_CURTOS[diaDaSemana(l.data)]}) · ${nome}`.slice(0, 300),
-                                             fonte:fonteDe(nome).slice(0, 300)})));
+                                             fonte:fonteDe(nome, l.data).slice(0, 300)})));
 }
 const contarPeca = campo => { const s = document.getElementById(campo.dataset.conta); if(s) s.textContent = campo.value.length.toLocaleString("pt-BR") + "/2.200"; };
 
@@ -1289,7 +1298,7 @@ const PAUTA = {
     "peca-cartao-remover"(el){ el.closest(".cartao-linha").remove(); pecaArteMudou(); },
     "peca-agenda"(el){
       const f = el.closest("form"), dia = f.dataset.data, box = $("#peca-conferidas"); if(!box) return;
-      const linhas = agendaDaSemana(dia), de = somarDias(dia, 1), ate = somarDias(dia, 5);
+      const linhas = agendaDaSemana(dia), de = somarDias(dia, 1), ate = somarDias(dia, 7);     // v0.30.0: até o domingo
       if(!linhas.length){ recado(`Não há vencimento de ${dataCurta(de)} a ${dataCurta(ate)} pelas regras das Configurações (Agenda de obrigações).`, true); return; }
       if([...box.querySelectorAll("textarea, input")].some(c => c.value.trim()) && !confirm("Trocar as informações conferidas desta tela pela agenda calculada?")) return;
       box.innerHTML = linhas.slice(0, 20).map(c => linhaConferida(c, "")).join(""); pecaArteMudou();

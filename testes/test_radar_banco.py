@@ -498,7 +498,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.28.0: "+ Nova peça" (a função confere que é o administrador)
                                                            'radar_pauta_criar',
                                                            -- v0.29.0: a situação dos lembretes (a função confere que é o administrador)
-                                                           'radar_lembretes_situacao')
+                                                           'radar_lembretes_situacao',
+                                                           -- v0.30.0: possível prorrogação na agenda (a função confere o perfil)
+                                                           'radar_prorrogacoes')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -740,7 +742,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.29.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.30.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -956,7 +958,13 @@ def test_configuracoes_iniciais_e_quem_pode_alterar(limpo):
     conf = dict(limpo.execute("select chave, valor from radar_config").fetchall())
     assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia", "rascunhos", "pauta",
                          "corretor_video", "lembretes"}   # v0.9.0: rascunhos; v0.21.0: pauta; v0.22.0: corretor_video; v0.29.0: lembretes
-    assert len(conf["obrigacoes"]) == 22 and conf["assinatura"]["responsavel"] == "Cleiver Gonçalves"
+    assert len(conf["obrigacoes"]) == 28 and conf["assinatura"]["responsavel"] == "Cleiver Gonçalves"   # v0.30.0: + o 13º e as anuais
+    # v0.30.0: o 13º e as anuais vêm no fim, com o mês do vencimento ("mes") e, quando as notícias usam outro nome, os "termos"
+    assert [(o["nome"], o.get("mes"), "termos" in o) for o in conf["obrigacoes"][22:]] == [
+        ("13º Salário (1ª parcela)", 11, True), ("13º Salário (2ª parcela)", 12, True),
+        ("DEFIS - Declaração de Informações Socioeconômicas e Fiscais", 3, False), ("DASN-SIMEI - Declaração Anual do MEI", 5, True),
+        ("ECD - Escrituração Contábil Digital", 6, False), ("ECF - Escrituração Contábil Fiscal", 7, False)]
+    assert all("mes" not in o and "termos" not in o for o in conf["obrigacoes"][:22])
     assert (conf["assinatura"]["cnpj"], conf["assinatura"]["crc"]) == ("", "")   # v0.20.0: identificação legal vazia até o administrador preencher
     assert all(o["regra"] in ("quinto_dia_util", "dia", "ultimo_dia_util") for o in conf["obrigacoes"])
     with como("authenticated", LEITOR) as c:
@@ -1201,7 +1209,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (28, 6, 8, 9, 1, 0)          # v0.29.0: + radar_lembretes e a chave "lembretes"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.29.0", [], 28)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.30.0", [], 28)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -2056,9 +2064,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.29.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.30.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.29.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.30.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2088,7 +2096,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.29.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.30.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -5615,8 +5623,163 @@ def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
             assert contar() == antes and estado() == como_estava
         assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
         assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
-        # (o setup registra a versão dele: v0.29.0, que traz junto o da v0.28.0)
-        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.29.0",), ("v0.29.0",)]
+        # (o setup registra a versão dele: v0.30.0, que traz junto os da v0.28.0 e da v0.29.0)
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.30.0",), ("v0.30.0",)]
         assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
     finally:
         assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro
+
+
+# ------------------------------------------------- v0.30.0: possível prorrogação na agenda de obrigações
+def casa(db, texto, obrigacoes=None):
+    """As obrigações que a regra do aviso de prorrogação acha no texto (radar_prorrogacao_obrigacoes, só do dono); sem a lista, a
+    agenda que está no banco (a padrão)."""
+    if obrigacoes is None:
+        obrigacoes = db.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    return db.execute("select radar_prorrogacao_obrigacoes(%s, %s)", (texto, json.dumps(obrigacoes))).fetchone()[0]
+
+
+TREZE = ["13º Salário (1ª parcela)", "13º Salário (2ª parcela)"]
+DEFIS = "DEFIS - Declaração de Informações Socioeconômicas e Fiscais"
+DASN = "DASN-SIMEI - Declaração Anual do MEI"
+IRRF = ["IRRF (Rendimento Serviço Prestado Cód. 1708)", "IRRF (Rendimento de Trabalhador Cód. 0561)"]
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("Receita prorroga o prazo de pagamento da primeira parcela do 13° salário", TREZE),        # 13° (grau) = 13º; as duas parcelas
+    ("Adiada a entrega da DASN SIMEI do ano-calendário de 2026", [DASN]),                      # sem o traço
+    ("Novo prazo para a Escrituração Contábil Digital", ["ECD - Escrituração Contábil Digital"]),  # a parte depois do traço
+    ("Receita posterga o vencimento do FGTS de março", ["FGTS - Fundo de Garantia Por Tempo de Serviço"]),   # a sigla antes do traço
+    ("PRORROGAÇÃO DO PRAZO DE ENTREGA DA DEFIS", [DEFIS]),                                      # maiúsculas com acento
+    ("prorrogacao do prazo de entrega da defis", [DEFIS]),                                      # sem acento
+    ("Prorrogado o prazo de recolhimento do IRRF", IRRF),                                       # a sigla antes dos parênteses
+    ("Receita adia o prazo da DASN", [DASN]),                                                   # só pelos "termos"
+    ("Gratificação natalina: governo adia o prazo de pagamento", TREZE),                        # idem
+    ("Adiantamento do 13º salário: o prazo de pagamento vai até 30 de novembro", []),            # "adiantamento" não é adiamento
+    ("Decreto prorroga benefício fiscal do ICMS na importação. Este Decreto entra em vigor na data de sua publicação.", []),   # sem prazo
+    ("Receita prorroga o prazo para a empresa atualizar o cadastro", []),                      # "empresa" é de "GPS (Empresa)"
+    ("Prorrogado o prazo da 1ª parcela do acordo", []),                                         # "1ª parcela" é do 13º, entre parênteses
+    ("Prorrogado o prazo de entrega da ECDX", []),                                              # só palavra inteira
+    ("Simples Nacional: prazo de opção vai até 31 de janeiro", []),                             # sem palavra de prorrogação
+    # v0.30.0 (revisão): o que parece prorrogação de prazo e não é
+    ("Convênio ICMS 10/26 - Prorroga o prazo de vigência das disposições do Convênio ICMS 100/97", []),   # vigência não é vencimento
+    ("Decreto SC prorroga até 2027 o prazo de vigência de benefícios fiscais do ICMS", []),
+    ("Caixa prorroga o prazo de validade do Certificado de Regularidade do FGTS", []),          # validade da certidão
+    ("Lei prorroga a desoneração da folha de pagamento e reduz a contribuição ao INSS", []),   # "folha de pagamento" não é prazo
+    ("Portaria disciplina o parcelamento do ICMS. O contribuinte terá prazo de 30 dias, prorrogável por igual período, para apresentar "
+     "documentos.", []),                                                                       # "prorrogável": só a possibilidade
+    ("O prazo de recolhimento do ICMS poderá ser prorrogado pela Secretaria", []),            # "poderá ser prorrogado": idem
+    ("INSS prorroga prazo da prova de vida dos aposentados", []),                             # INSS: sigla de órgão, não da obrigação
+    ("Governo prorroga prazo para pagamento de salários de servidores estaduais", []),        # "Salários - …": a parte não é sigla
+    ("Transação: PGFN prorroga prazo de adesão para débitos do Simples Nacional", ["Simples Nacional"]),   # e não o Parcelamento Especial
+    # …e o que continua casando
+    ("Prorroga o prazo de vigência do benefício e o prazo de recolhimento do ICMS", ["ICMS"]),  # o outro prazo conta
+    ("Fica prorrogado o prazo de recolhimento do ICMS de março", ["ICMS"]),
+    ("Prorrogado o prazo de pagamento do PERT", ["PERT – Programa Esp. Regularização Tributária"]),       # sigla antes do travessão
+    ("Prorrogado o prazo de pagamento do Programa Esp. Regularização Tributária", ["PERT – Programa Esp. Regularização Tributária"]),
+    ("Receita adia o prazo da GPS", ["GPS (Empresa)"]),                                        # o nome sem os parênteses
+])
+def test_prorrogacao_casa_nome_sigla_termos_e_palavras(limpo, texto, esperado):
+    """v0.30.0: a regra do aviso de possível prorrogação (uma só, no banco, para a tela e o robô) precisa de uma palavra de prorrogação
+    (lista fechada), de um contexto de prazo e de um termo da obrigação da agenda: o nome inteiro, cada parte do nome sem o que está entre
+    parênteses (separada por " - ", " – " ou " — ") ou um dos "termos"; só palavra inteira, sem diferença de maiúscula, acento ou traço."""
+    assert casa(limpo, texto) == esperado
+
+
+def test_prorrogacao_agenda_malformada_nao_quebra_e_nao_repete(limpo):
+    texto = "Receita prorroga o prazo de entrega da DEFIS"
+    assert casa(limpo, texto, {"a": 1}) == [] and casa(limpo, texto, "texto") == [] and casa(limpo, None, []) == []
+    lista = [1, "x", None, {"regra": "dia"}, {"nome": ""}, {"nome": "   "}, {"nome": 7}, {"nome": "DEFIS", "termos": "não é lista"},
+             {"nome": "DEFIS"}, {"nome": "Outra", "termos": [3, None, "de", "DEFIS"]}]
+    assert casa(limpo, texto, lista) == ["DEFIS", "Outra"]                                       # o mesmo nome uma vez só
+    assert casa(limpo, texto, [{"nome": "Obrigação X", "termos": ["DE"]}]) == []                 # termo com menos de 3 letras não conta
+    # v0.30.0 (revisão): o termo conta em letras e números, sem acento e sem pontuação ("13º" vira "13", com 2), como na tela
+    assert casa(limpo, "Receita prorroga o prazo de pagamento do 13º", [{"nome": "Gratificação X", "termos": ["13º"]}]) == []
+    assert casa(limpo, "Receita prorroga o prazo de pagamento do 13º", [{"nome": "Gratificação X", "termos": ["13º X"]}]) == []
+    assert casa(limpo, "Receita prorroga o prazo do I.R. de pessoa física", [{"nome": "Obrigação Y", "termos": ["I.R."]}]) == []   # "ir": 2
+    assert casa(limpo, "Receita prorroga o prazo de pagamento do 13º salário", [{"nome": "Gratificação X", "termos": ["13º salário"]}]) == ["Gratificação X"]
+    # a sigla de um nome com outra sigla de órgão na frente ("INSS - …", "PGFN - …") não vale sozinha; a de obrigação, sim
+    assert casa(limpo, "Prorrogado o prazo de pagamento do INSS", [{"nome": "INSS - Parcelamento X"}, {"nome": "PGFN - Transação Y"}]) == []
+    assert casa(limpo, "Prorrogado o prazo de entrega da DCTFWeb", [{"nome": "DCTFWeb - Declaração de Débitos"}]) == ["DCTFWeb - Declaração de Débitos"]
+
+
+def test_radar_prorrogacoes_janela_repeticao_conferida_e_papeis(limpo):
+    """v0.30.0: radar_prorrogacoes devolve as capturas dos últimos 30 dias (p_dias de 1 a 90) que casam com uma obrigação da agenda,
+    sem as repetições (um aviso por fato), da mais nova para a mais antiga, com o assunto (se já virou um), se é do boletim pago (ITC) e
+    se o administrador já conferiu (radar_config.prorrogacoes_conferidas; o que não for número de captura não conta). A equipe com perfil
+    ativo e o robô (service_role) leem; o logado sem perfil ativo recebe nada; o visitante não executa. Agenda malformada: lista vazia."""
+    db = limpo
+    db.execute("""insert into radar_fontes (slug, nome, orgao, oficial, tipo_coletor, url, config)
+                  values ('teste-itc-ficticia', 'Boletim fictício de teste', 'Consultoria fictícia', false, 'rss', 'https://boletim.exemplo/rss',
+                          '{"origem": "email"}')""")
+
+    def cap(titulo, horas, slug="rfb-noticias", dup=None, texto=None, n=[0]):
+        n[0] += 1
+        return db.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo, texto, duplicata_de, capturado_em)
+                             select id, %s, %s, md5(%s), %s, %s, now() - make_interval(hours => %s) from radar_fontes where slug = %s
+                             returning id""", (f"https://exemplo.gov.br/prorroga-{n[0]}", titulo, titulo + str(n[0]), texto, dup, horas, slug)).fetchone()[0]
+
+    try:
+        a = cap("Receita prorroga o prazo de entrega da DEFIS", 1)
+        repeticao = cap("Prazo da DEFIS é prorrogado", 1, dup=a)                              # o mesmo fato: não repete
+        itc = cap("Boletim: adiado o vencimento do FGTS", 2, slug="teste-itc-ficticia")
+        no_texto = cap("Comunicado da Receita", 3, texto="Fica prorrogado o prazo de entrega da ECF para 31 de agosto.")   # o começo do texto conta
+        cap("Receita publica o calendário da DEFIS", 4)                                         # sem prorrogação
+        cap("Fica prorrogado o prazo do Simples Nacional", 24 * 40)                             # 40 dias: fora dos 30
+        cap("Fica prorrogado o prazo do Simples Nacional, de novo", 24 * 100)                   # 100 dias: fora até do máximo (90)
+        longo = cap("Título longo " + "palavra " * 120 + "prorrogado o prazo da ECD", 5)      # no título, conta inteiro
+        longe = cap("Comunicado longo", 6, texto="Texto. " * 120 + "Fica prorrogado o prazo de entrega da ECD.")   # depois dos 600 caracteres
+        assert repeticao and longe and longo
+        ler = lambda c, dias=30: c.execute("select * from radar_prorrogacoes(%s)", (dias,)).fetchall()
+        with como("service_role") as c:
+            linhas = ler(c)
+            cols = [d.name for d in c.execute("select * from radar_prorrogacoes(30)").description]
+        assert cols == ["captura_id", "titulo", "url", "fonte", "do_email", "oficial", "capturado_em", "data_publicacao", "assunto_id",
+                        "assunto_status", "obrigacoes", "conferida"]
+        por_id = {l[0]: l for l in linhas}
+        assert [l[0] for l in linhas] == [a, itc, no_texto, longo]                         # da mais nova para a mais antiga
+        assert por_id[a][3:6] == ("Receita Federal — Notícias", False, True) and por_id[a][8:] == (None, None, [DEFIS], False)
+        assert por_id[itc][3:6] == ("Boletim fictício de teste", True, False)
+        assert por_id[itc][10] == ["FGTS - Fundo de Garantia Por Tempo de Serviço"] and por_id[no_texto][10] == ["ECF - Escrituração Contábil Fiscal"]
+        with como("service_role") as c:
+            assert len(ler(c, 45)) == 5 and len(ler(c, 1000)) == 5 and len(ler(c, 0)) == 4 and len(ler(c, None)) == 4   # 90 no máximo; 1 no mínimo
+        # o assunto aberto da captura e o "Conferido" do administrador (o que não é número de captura não conta)
+        with como("authenticated", EDITOR) as c:
+            assunto = c.execute("select radar_abrir_assunto(%s)", (a,)).fetchone()[0]
+        db.execute("insert into radar_config (chave, valor) values ('prorrogacoes_conferidas', %s)", (json.dumps([itc, "x", 1.5, -3, None]),))
+        papeis = {}
+        for nome, uid in [("leitor", LEITOR), ("editor", EDITOR), ("admin", ADMIN)]:
+            with como("authenticated", uid) as c:
+                papeis[nome] = ler(c)
+        assert papeis["leitor"] == papeis["editor"] == papeis["admin"]
+        por_id = {l[0]: l for l in papeis["admin"]}
+        assert por_id[a][8:10] == (assunto, "capturado") and por_id[a][11] is False and por_id[itc][11] is True
+        assert [l[11] for l in papeis["admin"]] == [False, True, False, False]
+        with como("authenticated", SEM_PERFIL) as c:
+            assert ler(c) == []
+        db.execute("update radar_perfis set ativo = false where user_id = %s", (LEITOR,))
+        try:
+            with como("authenticated", LEITOR) as c:
+                assert ler(c) == []                                                             # perfil desativado: nada
+        finally:
+            db.execute("update radar_perfis set ativo = true where user_id = %s", (LEITOR,))
+        with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+            ler(c)
+        for papel, uid in [("authenticated", ADMIN), ("service_role", None)]:                   # a regra de casamento é só do dono
+            with como(papel, uid) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("select radar_prorrogacao_obrigacoes('x', '[]')")
+        # agenda malformada: lista vazia, sem erro (e a lista volta com a agenda certa)
+        original = db.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+        try:
+            for ruim in ({"nome": "DEFIS"}, "texto", [None, 3]):
+                db.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(ruim),))
+                with como("service_role") as c:
+                    assert ler(c) == []
+        finally:
+            db.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(original),))
+        with como("service_role") as c:
+            assert len(ler(c)) == 4
+    finally:
+        db.execute("delete from radar_config where chave = 'prorrogacoes_conferidas'")
+        db.execute("delete from radar_capturas where fonte_id = (select id from radar_fontes where slug = 'teste-itc-ficticia')")
+        db.execute("delete from radar_fontes where slug = 'teste-itc-ficticia'")

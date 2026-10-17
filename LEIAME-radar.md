@@ -1,4 +1,4 @@
-# Radar Artecon — v0.29.0
+# Radar Artecon — v0.30.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,23 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.30.0 traz a **agenda de obrigações com o 13º salário e as obrigações anuais** e o **aviso de possível prorrogação de
+prazo**. A agenda de obrigações (Informativo Mensal e agenda da semana da Pauta) passa a ter obrigações anuais (`"mes"`: só entram na
+agenda do mês delas) e a prorrogação de um vencimento (`"prorrogacoes"`, que só o administrador escreve). A agenda padrão ganha o 13º
+salário (1ª parcela até 30/11; 2ª até 20/12, Lei 4.749/1965, arts. 2º e 1º; a lei não trata do fim de semana: por segurança, a agenda
+antecipa para o dia útil anterior), a DEFIS (31/03, Res. CGSN 140/2018, art. 72, § 1º), a DASN-SIMEI (último dia de maio, art. 109), a
+ECD (último dia útil de junho, IN RFB 2.003/2021, art. 5º) e a ECF (último dia útil de julho, IN RFB 2.004/2021, art. 3º), cada uma com a
+fonte oficial. A agenda da semana da Pauta passa a ir de segunda a domingo. Na instalação que já existe, o administrador as acrescenta
+pelo botão **"Acrescentar o 13º e as obrigações anuais"** (Configurações → Agenda de obrigações). Quando o Radar capta notícia que fala
+em prorrogar o prazo de uma obrigação da agenda, avisa no Painel, na edição do Informativo e por e-mail ao administrador (uma vez por
+notícia), **sem mudar data nenhuma**: quem confere na fonte oficial e põe a nova data é o administrador.
+
+Mudam o banco (`sql/radar-setup-v0.30.0.sql`: duas funções novas, `radar_prorrogacao_obrigacoes` e `radar_prorrogacoes`; nenhuma
+tabela nova, nada é apagado; a lista de obrigações do escritório não muda), a tela (`index.html` e `radar-pauta.js`; o `radar-video.js`
+só muda a versão) e o robô dos avisos (`robo/radar_alertas.py` e `robo/radar_banco.py`, que entram no ar pelo merge). **Nenhum segredo
+novo.** As funções `radar-ia`, `radar-redes` e `radar-video`, as agendas do banco (`sql/radar-*-agenda.sql`) e o robô dos lembretes não
+mudam. **Rode o SQL antes de publicar a tela**: veja "Da v0.29.0 para a v0.30.0".
 
 A v0.29.0 traz os **lembretes por e-mail antes do dia**, pedidos pelo escritório. Até aqui o Radar só avisava depois que algo
 falhava (a Pauta "não saiu", a fonte parada, o resumo de segunda). Agora ele lembra **antes**:
@@ -34,7 +51,7 @@ Quem decide o que lembrar e quando é o **banco**, com o relógio dele (o pg_cro
 minutos ele confere e, só quando há lembrete para mandar, pede à função `radar-redes` que acione o robô dos lembretes no GitHub. O
 próprio workflow também roda de hora em hora, de reserva.
 
-Mudam o banco (`sql/radar-setup-v0.29.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
+Mudam o banco (`sql/radar-setup-v0.29.0.sql`, hoje `radar-setup-v0.30.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
 das Configurações; nada é apagado), a agenda do banco (`sql/radar-redes-agenda.sql`: o agendamento novo `radar-redes-agenda-lembretes`),
 a função `radar-redes` (0.22.0 → **0.29.0**: a ação nova `acionar_lembretes`, só da agenda do banco, e o robô dos lembretes na lista
 dos robôs que ela religa) e a tela (Configurações). Entram o robô `robo/radar_lembretes.py` e o workflow
@@ -49,7 +66,7 @@ do vídeo no "Corretor de vídeo", a conferência, o Gerar com IA, a aprovação
 a página. Agora a linha em branco não conta, o aviso diz **o que mudou e não foi salvo** (por exemplo, "Informações conferidas" ou
 "Quem aparece") e o Salvar sem nada para gravar destrava a peça. O texto digitado e não salvo continua barrando, como antes. Só a
 tela muda (`index.html`, `radar-pauta.js` e `radar-video.js`): o banco continua no `sql/radar-setup-v0.28.0.sql` (hoje
-`radar-setup-v0.29.0.sql`) e as funções e os
+`radar-setup-v0.30.0.sql`) e as funções e os
 robôs não mudam. Veja "Da v0.28.0 para a v0.28.1".
 
 A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
@@ -67,7 +84,7 @@ A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
   voz; a fala é a do roteiro). Marcar e tirar a marca pedem confirmação; para sócio(a), a data em "Revogado em" não vale (para tirar a
   pessoa das peças e dos vídeos, desmarque "Ativa"). Marcar e desmarcar fica no Histórico, sem o nome.
 
-Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.29.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
+Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.30.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
 termos; nenhuma tabela nova, nada é apagado) e a tela (`index.html`, `radar-pauta.js` e `radar-video.js`). As funções `radar-ia`,
 `radar-redes` e `radar-video`, as outras funções e os robôs não mudam. **Rode o SQL antes de publicar a tela**: veja "Da v0.27.0 para a
 v0.28.0".
@@ -519,7 +536,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.29.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.30.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -546,7 +563,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.29.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.30.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -583,7 +600,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.29.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.30.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -612,7 +629,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.29.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.30.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -620,7 +637,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.29.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.30.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -636,7 +653,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.29.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.30.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -651,7 +668,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.29.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.30.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -679,7 +696,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.29.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.30.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -691,7 +708,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.29.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.30.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -704,7 +721,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.29.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.30.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -716,7 +733,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.29.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.30.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -728,7 +745,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.29.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.30.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -743,7 +760,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.29.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.30.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -792,8 +809,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.29.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.29.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes) e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.30.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.30.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes) e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
@@ -803,7 +820,7 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
-| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`). |
+| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações. |
 | `robo/video/` | O robô do corretor de vídeo (v0.22.0): o código, o `Dockerfile` do ffmpeg isolado, as fontes DM Sans da legenda e da cartela (licença OFL) e o **modelo** do workflow do repositório privado (`workflow/radar-video.yml`). Roda no repositório privado `radar-video`, nunca neste. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes, testes e, desde a v0.29.0, os lembretes por e-mail (`radar-lembretes.yml`, "Radar — lembretes por e-mail"). |
 | `testes/` | Suíte de testes automatizados. O `testes/amostras/pauta-ficticia.csv` é um calendário de mentira, só com nomes inventados; os vídeos e as falas dos testes do corretor são sintéticos, gerados na hora (nenhuma gravação real). |
@@ -848,10 +865,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.29.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.30.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
    Esperado: 28 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.29.0`).
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.30.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -991,8 +1008,36 @@ O mesmo passo a passo está dentro do sistema, na aba **Como usar**.
 A agenda é uma **sugestão calculada**: considera fins de semana, feriados nacionais,
 Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente
 bancário). Feriados de Palhoça e de Santa Catarina
-precisam ser cadastrados em Configurações, e prorrogações oficiais de prazo são ajustadas
-à mão na edição. As regras reproduzem os informativos 8, 9 e 10/2026.
+precisam ser cadastrados em Configurações. As regras reproduzem os informativos 8, 9 e 10/2026.
+
+Desde a v0.30.0, a agenda também tem as **obrigações anuais**: a obrigação com `"mes"` (de 1 a 12) só entra
+na agenda desse mês. A agenda padrão traz o **13º salário** (1ª parcela até 30/11 e 2ª até 20/12, Lei
+4.749/1965, arts. 2º e 1º; a lei não trata do fim de semana nem do feriado: por segurança, a agenda
+antecipa para o dia útil anterior, como em 20/12/2026, domingo, que fica 18/12; é uma escolha do
+escritório, não da lei), a **DEFIS** (31/03) e a **DASN-SIMEI** (31/05), que não mudam no fim de semana
+(Resolução CGSN 140/2018, art. 72, § 1º, e art. 109), a **ECD** (último dia útil de junho, IN RFB
+2.003/2021, art. 5º) e a **ECF** (último dia útil de julho, IN RFB 2.004/2021, art. 3º), cada uma com a
+fonte oficial. Na
+instalação que já existia, o administrador acrescenta essas seis em Configurações → Agenda de obrigações →
+**"Acrescentar o 13º e as obrigações anuais"** (o SQL não mexe na lista do escritório).
+
+**Prorrogação oficial de prazo.** Quando o Radar capta uma notícia (dos últimos 30 dias) que fala em
+prorrogar ou adiar o prazo de uma obrigação da agenda, o **Painel** mostra "Possível prorrogação de
+prazo", a edição do Informativo que tem essa obrigação mostra um aviso e o administrador recebe **um**
+e-mail (aviso no GitHub; cada notícia nova ganha um comentário). O Radar **nunca muda a data sozinho**:
+o administrador confere na fonte oficial e, se o prazo mudou, põe a nova data na obrigação, em
+`"prorrogacoes"` (por exemplo `[{"de": "2027-03", "para": "2027-04-30", "fonte": "norma, artigo —
+endereço"}]`: vale só para aquele vencimento e para as próximas edições; a edição já criada se ajusta à
+mão ou com "Recalcular pelo mês escolhido"). Depois clica em **"Conferido"** (no Painel), e a notícia sai
+do Painel e do aviso. Fechar o aviso pelo GitHub não tira a notícia do Painel, mas o robô também não avisa
+de novo a mesma notícia. Para a regra achar a obrigação por outro nome nas notícias, use `"termos"` (ex.:
+`["DASN"]`, com pelo menos 3 letras ou números). A regra pede as três coisas: uma palavra de prorrogação
+(prorroga, adia, posterga, novo prazo, nova data; "adiantamento", "prorrogável" e "pode ser prorrogado" não
+contam), uma palavra de prazo (prazo, vencimento, entrega, pagamento, recolhimento, apresentação,
+transmissão, data limite; "prazo de vigência", "prazo de validade" e "folha de pagamento" não contam) e o
+nome da obrigação, a sigla do começo do nome (como FGTS, ECD, DEFIS; a de órgão, como INSS, não) ou um dos
+termos. Pode avisar o que não é prorrogação (ECF também é "Emissor de Cupom Fiscal"; "Simples Nacional"
+aparece na prorrogação da opção): por isso quem decide é o administrador.
 
 No quadro do Fale Conosco vieram só os setores, os e-mails e o telefone geral. Os nomes
 da equipe e os demais telefones você preenche em Configurações (ficam no banco, não no
@@ -1852,7 +1897,8 @@ calculada antes da peça nova e diria "nova" para o dia dela; depois de criar a 
 - **Quem aparece:** as pessoas ativas, com o selo do termo (vale no dia da peça ou não).
 - **Informações conferidas:** cada fato que a peça usa (número, data, prazo, valor, norma), com a **fonte oficial**. O boletim
   pago da ITC não serve de fonte. Na Agenda da semana (domingo), **"Calcular a agenda da semana"** traz os vencimentos de segunda a
-  sexta seguintes, das regras das Configurações (sem as obrigações com `"redes": false`, como o honorário contábil), já como
+  domingo seguintes (até a v0.29.0, de segunda a sexta; no sábado e no domingo só vence o que não muda de data, como a DEFIS e a
+  DASN-SIMEI em alguns anos), das regras das Configurações (sem as obrigações com `"redes": false`, como o honorário contábil), já como
   informações conferidas: confira cada data antes de aprovar. A fonte vem da obrigação (a chave `"fonte"` na agenda de
   obrigações); sem ela, fica **em branco**, e a peça só fica pronta depois que alguém escreve a fonte oficial em que conferiu (a
   regra das Configurações não é fonte, e o texto da fonte vai ao ar no "Fonte: …" da legenda). "(conferir)" no texto ou na fonte
@@ -2331,6 +2377,50 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 
 ## Atualizações futuras
 
+**Da v0.29.0 para a v0.30.0** (muda o banco: SQL novo, que pode rodar de novo; o robô dos avisos muda, mas sem segredo novo; as funções
+`radar-ia`, `radar-redes` e `radar-video` e as agendas do banco não mudam; nada de chave ou segredo pelo chat). Supõe a v0.29.0
+instalada. **Nesta ordem** (o banco antes da tela):
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.30.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **28
+   tabelas** e "instalacoes concluidas" com a **v0.30.0**. Ele acrescenta as funções do aviso de possível prorrogação
+   (`radar_prorrogacoes` e a regra `radar_prorrogacao_obrigacoes`): nenhuma tabela nem coluna nova, nada é apagado, e pode rodar de novo
+   (é assim que ele é aplicado: o arquivo inteiro). **A lista de obrigações do escritório não muda** (o 13º e as anuais entram pelo
+   passo 3). As agendas (`sql/radar-*-agenda.sql`) não mudam: não precisa rodá-las de novo.
+2. Publique a versão no repositório (`main`): a tela (`index.html`, `radar-pauta.js` e `radar-video.js`) e o robô dos avisos
+   (`robo/radar_alertas.py` e `robo/radar_banco.py`) vão juntos. Aperte **Ctrl+F5** em todos os aparelhos (no celular, recarregue a
+   página). A aba Versões mostra a v0.30.0. Se a tela for publicada antes do SQL, nada quebra: as Configurações dizem ao administrador
+   "O aviso de prorrogação precisa do banco da v0.30.0" (rode o passo 1 e recarregue).
+3. Configurações → **Agenda de obrigações** → **"Acrescentar o 13º e as obrigações anuais"**, **antes do Informativo de novembro** (a 1ª
+   parcela do 13º vence em 30/11/2026, segunda-feira). A tela mostra o que vai entrar (13º salário, 1ª e 2ª parcelas; DEFIS; DASN-SIMEI;
+   ECD; ECF) e pede confirmação. **Antes de confirmar, confira se a agenda já não tem alguma delas com outro nome** (por exemplo, "13º
+   Salário" numa linha só): se tiver, cancele, apague a repetida na caixa e clique de novo. Cada uma entra no fim da lista com a fonte
+   oficial; as que já estavam não mudam. Clicar de novo diz "Nada a acrescentar".
+4. Confira, **sem publicar nada**:
+   - (a) Informativos → uma edição de teste de **novembro de 2026**: a agenda traz "13º Salário (1ª parcela)" em 30/11; uma de
+     **dezembro**, "13º Salário (2ª parcela)" em 18/12 (o dia 20 é domingo: antecipa). Exclua as edições de teste depois.
+   - (b) **Painel**: se houver notícia dos últimos 30 dias que fala em prorrogar o prazo de uma obrigação da agenda, aparece "Possível
+     prorrogação de prazo", com a obrigação, a notícia e o link da fonte. Confira na fonte oficial. Se o prazo mudou, ponha a nova data
+     na obrigação (Configurações → Agenda de obrigações, em "prorrogacoes", por exemplo `[{"de": "2027-03", "para": "2027-04-30",
+     "fonte": "norma, artigo — endereço oficial"}]`, dentro da obrigação) e, nas edições do Informativo e na agenda da semana da Pauta já
+     montadas, ajuste a data (ou "Recalcular pelo mês escolhido"). Depois clique em **"Conferido"**. A notícia sai do Painel e do aviso.
+   - (c) Se não houver nenhuma agora, não há o que fazer: o Painel avisa quando aparecer.
+   - (d) **Pauta**: numa Agenda da semana de teste, "Calcular a agenda da semana" diz "de seg, … a dom, …" (agora vai até o domingo).
+     Exclua a peça de teste depois.
+5. O **robô** não muda nada na sua rotina: ele entra no ar pelo merge e, depois de cada coleta (4 vezes por dia), abre **um** aviso no
+   GitHub "Radar: possível prorrogação na agenda de obrigações" (o GitHub manda o e-mail). Cada notícia nova ganha um comentário (um
+   e-mail); ele fecha sozinho quando todas forem conferidas (ou passarem de 30 dias). Se alguém fechar o aviso à mão, o robô não abre
+   outro com as mesmas notícias (só com uma notícia nova). O repositório é público: do boletim da ITC, o aviso só conta quantas são.
+   **Nenhum segredo novo.** Se o robô rodar antes do SQL, ele simplesmente não abre esse aviso. Os lembretes por e-mail (v0.29.0)
+   continuam como estão.
+
+Para desfazer: volte a tela da v0.29.0 (`index.html`, `radar-pauta.js` e `radar-video.js`, no histórico do GitHub; Ctrl+F5), volte o
+robô (`robo/radar_alertas.py` e `robo/radar_banco.py` da v0.29.0) e rode o `sql/radar-setup-v0.29.0.sql` da v0.29.0 (histórico do
+GitHub). As duas funções novas ficam no banco sem uso (para tirar: `drop function if exists public.radar_prorrogacoes(int);` e `drop
+function if exists public.radar_prorrogacao_obrigacoes(text, jsonb);` no SQL Editor). O aviso aberto no GitHub fica aberto: feche à
+mão. As obrigações acrescentadas pelo botão continuam na lista; a tela antiga não conhece "mes" e passa a pôr as anuais em **todos** os
+meses: tire-as da lista (Configurações → Agenda de obrigações) **antes** de voltar a tela. A chave `prorrogacoes_conferidas`
+(Configurações) fica no banco, sem uso.
+
 **Da v0.28.1 para a v0.29.0** (muda o banco: SQL novo, que pode rodar de novo; mudam a função `radar-redes` e a agenda do banco;
 entram um robô e um workflow; **nenhum segredo novo**; nada de chave ou segredo pelo chat). Supõe a v0.28.1 instalada. **Nesta ordem**
 (o banco antes da tela; a função antes da agenda):
@@ -2676,7 +2766,7 @@ Cuidados nesta versão:
   workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
   reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
 - **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
-  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.29.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.30.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
   também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
   as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
   guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do

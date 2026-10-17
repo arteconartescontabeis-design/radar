@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.29.0.sql
--- DESFAZ a instalação do radar-setup-v0.29.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.30.0.sql
+-- DESFAZ a instalação do radar-setup-v0.30.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -27,6 +27,9 @@
 -- radar_lembretes com as outras. Fora do banco: no GitHub, Actions → "Radar — lembretes por e-mail" → Disable workflow (sem o banco, a
 -- rodada de hora em hora só diria "nada a fazer", mas não precisa rodar) e os avisos "Radar: lembrete — …" abertos ficam no GitHub:
 -- feche-os à mão (o robô nunca fecha, para não mandar mais um e-mail).
+-- v0.30.0: as duas funções do aviso de possível prorrogação (radar_prorrogacoes e radar_prorrogacao_obrigacoes) saem com as outras, e
+-- a lista de obrigações e o "Conferido" (radar_config) saem com a tabela. Fora do banco: o aviso "Radar: possível prorrogação na agenda
+-- de obrigações", se estiver aberto no GitHub, fica aberto: feche-o à mão.
 -- =====================================================================
 begin;
 
@@ -313,6 +316,9 @@ drop function if exists public.radar_lembretes_enviado(uuid, int, bigint[]);
 drop function if exists public.radar_lembretes_situacao();
 -- v0.19.1 (opcional): a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql), se foi instalada
 drop function if exists public.radar_concorrentes_conferir(text);
+-- v0.30.0: o aviso de possível prorrogação na agenda de obrigações
+drop function if exists public.radar_prorrogacoes(int);
+drop function if exists public.radar_prorrogacao_obrigacoes(text, jsonb);
 
 commit;
 

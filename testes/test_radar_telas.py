@@ -345,17 +345,38 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.29.0"
+    assert pagina.inner_text(".versao") == "v0.30.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.29.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, em 4 itens: os quatro lembretes por e-mail
-    # (a Pauta de amanhã às 16:00, a peça pronta há mais de 24 horas, o vídeo do reel e a notícia que não saiu); as regras (um e-mail
-    # por tipo por dia, cada pendência uma vez só, sem nome, nada publicado); as Configurações; e o que o administrador faz (o SQL antes
-    # da tela, a radar-redes 0.29.0 e a agenda de novo)
+    # v0.30.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, em 5 itens: o 13º e as obrigações anuais
+    # (com as datas, as normas e o fim de semana), a agenda da semana da Pauta até o domingo, a nova data de uma prorrogação conferida
+    # (só o administrador escreve), o aviso de possível prorrogação (onde aparece, o "Conferido", o que não conta) e o que o
+    # administrador faz (o SQL antes da tela, o botão das anuais antes do Informativo de novembro; o robô dos avisos entra pelo merge)
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.29.0" and data == "17/10/2026" and len(itens) == 4
+    assert topo == pagina.evaluate("VERSAO") == "0.30.0" and data == "17/10/2026" and len(itens) == 5
+    texto = " ".join(itens)
+    for trecho in ["13º salário e as obrigações anuais", "a 1ª parcela do 13º até 30/11 e a 2ª até 20/12", "Lei 4.749/1965",
+                   "a agenda antecipa para o dia útil anterior", "20/12/2026, domingo, que fica 18/12", "a DEFIS até 31/03",
+                   "a DASN-SIMEI até o último dia de maio", "Resolução CGSN 140/2018", "a ECD no último dia útil de junho",
+                   "a ECF no último dia útil de julho", "cada uma com a fonte oficial conferida", "a obrigação com “mes” (de 1 a 12) é anual",
+                   "de segunda a domingo (antes, de segunda a sexta)", "31/05/2026 é domingo",
+                   "“prorrogacoes”", "vale só para aquele vencimento", "O Radar nunca escreve isso sozinho",
+                   "“Possível prorrogação de prazo”", "uma vez por notícia", "clica em “Conferido”", "Ele não muda a data sozinho",
+                   "“prorrogável por igual período”", "“prazo de vigência”", "“folha de pagamento”", "Do boletim da ITC, o e-mail só conta quantas são",
+                   "o sql/radar-setup-v0.30.0.sql desta versão ANTES de publicar a tela", "nenhuma tabela nova, nada é apagado", "pode rodar de novo",
+                   "não mexe na lista de obrigações do escritório", "“Acrescentar o 13º e as obrigações anuais” antes do Informativo de novembro",
+                   "O robô dos avisos muda e entra no ar sozinho pelo merge", "nenhum segredo novo",
+                   "as funções radar-ia, radar-redes e radar-video não mudam", "Da v0.29.0 para a v0.30.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.29.0: a entrada seguinte conta ao dono, em português simples, em 4 itens: os quatro lembretes por e-mail (a Pauta de amanhã às
+    # 16:00, a peça pronta há mais de 24 horas, o vídeo do reel e a notícia que não saiu); as regras (um e-mail por tipo por dia, cada
+    # pendência uma vez só, sem nome, nada publicado); as Configurações; e o que o administrador faz (o SQL antes da tela, a radar-redes
+    # 0.29.0 e a agenda de novo)
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.29.0" and data == "17/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Lembretes por e-mail antes do dia", "a peça da Pauta de amanhã que ainda não está aprovada", "a partir das 16:00",
                    "há mais de 24 horas", "o vídeo do reel que o corretor terminou", "a notícia que não saiu", "parada há mais de 3 horas",
@@ -369,7 +390,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.28.1: a entrada seguinte conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
     # informação”) e o cartão em branco que não travam mais a peça, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava;
     # e o que o administrador faz (só a tela; o banco continua o da v0.28.0)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.28.1" and data == "17/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["a linha em branco em “Informações conferidas” (de “Acrescentar informação”)", "o cartão em branco",
@@ -383,7 +404,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # administrador, de hoje em diante, uma peça por dia; nasce planejada e não publica nem agenda nada; a importação depois), a marca
     # "Sócio(a) da Artecon" (os dois termos dispensados; o que continua valendo; o Histórico) e o que o administrador faz (o SQL antes da
     # tela; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.28.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Peça nova num dia vazio", "o administrador vê o botão “+ Nova peça”", "(de hoje em diante)",
@@ -403,7 +424,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.27.0: a entrada seguinte conta ao dono, em português simples, o cronograma de publicações na Pauta (a semana e o mês dela, o
     # mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta não entra; a que envelheceu
     # na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.27.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
@@ -421,7 +442,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
@@ -438,7 +459,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -454,7 +475,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -470,7 +491,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -495,7 +516,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[8]")
+    topo, data, itens = pagina.evaluate("VERSOES[9]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -504,7 +525,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[9]")
+    topo, data, itens = pagina.evaluate("VERSOES[10]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -1812,7 +1833,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.25.0 mudou a função de IA (a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres): a v0.24.0
     # passa a ser apontada como antiga. v0.25.1: a mínima não sobe (a tela aceita o kit com e sem a arte: a função v0.25.0 serve)
     assert pagina.evaluate("[versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.25.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.29.0"]       # v0.26.0 a v0.29.0: a função de IA não muda; a mínima não sobe
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.30.0"]       # v0.26.0 a v0.30.0: a função de IA não muda; a mínima não sobe
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2012,7 +2033,7 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
         salvar.click()
         pagina.wait_for_selector("text=Configuração salva.")
         assert limpo.execute("select valor from radar_config where chave = 'feriados_extras'").fetchone()[0] == ["2026-10-20", "04-24"]
-        assert len(limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]) == 22
+        assert len(limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]) == 28     # v0.30.0: + o 13º e as anuais
         # o feriado local entra na próxima edição criada
         pagina.click("nav.abas >> text=Informativos")
         pagina.fill("#ni-mes", "2026-10")
@@ -2638,7 +2659,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.29.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.30.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -6479,7 +6500,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.29.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.30.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -6493,7 +6514,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
-    assert "o administrador roda o sql/radar-setup-v0.29.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.30.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 e v0.30.0: o setup desta versão
     # v0.28.0: a tela nova com o banco da v0.27.0 (a vista das pessoas da peça sem a coluna termos_dispensados): o mesmo aviso, com o
     # setup da v0.28.0
     pagina.unroute("**/rest/v1/radar_pauta_pecas*")
@@ -6503,7 +6524,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
     aviso = pagina.inner_text("#pauta-sem-banco")
-    assert "precisa do banco da v0.29.0" in aviso and "o administrador roda o sql/radar-setup-v0.29.0.sql" in aviso
+    assert "precisa do banco da v0.30.0" in aviso and "o administrador roda o sql/radar-setup-v0.30.0.sql" in aviso
 
 
 def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
@@ -6638,8 +6659,8 @@ def test_peca_foto_1080x1350_uma_por_vez_heic_com_recado_e_texto_nao_salvo_fica(
 
 
 def test_peca_agenda_de_domingo_atravessa_o_mes_tira_honorario_e_vira_conferidas(pagina, limpo):
-    """v0.21.0: na “Agenda da semana” (domingo D), “Calcular a agenda da semana” traz os vencimentos de D+1 a D+5 pelas regras das
-    Configurações, um mês de cada vez (29/11/2026 cobre 30/11 a 04/12), sem as obrigações com "redes": false (o Honorário contábil, que
+    """v0.21.0: na “Agenda da semana” (domingo D), “Calcular a agenda da semana” traz os vencimentos de D+1 a D+5 (v0.30.0: a D+7, até o
+    domingo) pelas regras das Configurações, um mês de cada vez (29/11/2026 cobre 30/11 a 06/12), sem as obrigações com "redes": false (o Honorário contábil, que
     é interno). Cada vencimento vira uma informação conferida, com a "fonte" da obrigação, e só é gravado ao salvar. Sem a fonte na
     obrigação, ela fica em branco (o recado avisa): a regra das Configurações não é fonte oficial, e um texto provisório como “(conferir)”
     iria ao ar no “Fonte: …” da legenda; em branco, a peça não fica pronta até alguém escrever a fonte. Semana do Natal: 25/12 é feriado
@@ -6655,20 +6676,20 @@ def test_peca_agenda_de_domingo_atravessa_o_mes_tira_honorario_e_vira_conferidas
         pagina.wait_for_selector("text=Painel do dia")
         abrir_peca(pagina, novembro, "2026-11-29")
         pagina.click("text=Calcular a agenda da semana")
-        pagina.wait_for_selector("#recado >> text=Agenda calculada: 8 vencimento(s) de seg, 30/11 a sex, 04/12")
-        assert "escreva a fonte de 7 vencimentos (ficou em branco)" in pagina.inner_text("#recado")
+        pagina.wait_for_selector("#recado >> text=Agenda calculada: 9 vencimento(s) de seg, 30/11 a dom, 06/12")    # v0.30.0: + a 1ª parcela do 13º; até domingo
+        assert "escreva a fonte de 8 vencimentos (ficou em branco)" in pagina.inner_text("#recado")
         lidas = lambda: [(i.input_value(), f.input_value()) for i, f in zip(pagina.locator(".conf-linha textarea").all(), pagina.locator(".conf-linha input").all())]
         assert pagina.locator(".conf-linha input").first.get_attribute("placeholder") == "Fonte oficial"
         assert lidas() == [("30/11 (seg) · " + n, "") for n in [
             "CSLL - Contribuição Social sobre o Lucro Líquido", "IRPJ - Imposto de Renda Pessoa Jurídica", "Imposto de Renda Pessoa Física (Cód. 0190)",
             "INSS - Parcelamento p/ Ingresso no Simples Nacional", "Parcelamentos Federais e Parcelamento Especial",
-            "PERT – Programa Esp. Regularização Tributária", "Parcelamento Especial - Simples Nacional"]] + [
+            "PERT – Programa Esp. Regularização Tributária", "Parcelamento Especial - Simples Nacional", "13º Salário (1ª parcela)"]] + [
             ("04/12 (sex) · Salário dos Colaboradores (Empregados)", "Portal do eSocial (exemplo)")]
         assert limpo.execute("select conferidas from radar_pauta_pecas where id = %s", (novembro,)).fetchone()[0] == []     # só na tela
         pagina.locator(".conf-linha textarea").last.fill("04/12 (sex) · Salário dos Colaboradores (conferido)")             # editável
         salvar_peca(pagina)
         conf = limpo.execute("select conferidas from radar_pauta_pecas where id = %s", (novembro,)).fetchone()[0]
-        assert len(conf) == 8 and conf[-1] == {"informacao": "04/12 (sex) · Salário dos Colaboradores (conferido)", "fonte": "Portal do eSocial (exemplo)"}
+        assert len(conf) == 9 and conf[-1] == {"informacao": "04/12 (sex) · Salário dos Colaboradores (conferido)", "fonte": "Portal do eSocial (exemplo)"}
         assert "(conferir)" not in json.dumps(conf, ensure_ascii=False) and conf[0]["fonte"] == ""
         with como("authenticated", EDITOR) as c:                                           # sem a fonte, a peça não fica pronta
             probs = c.execute("select radar_pauta_conferir(%s, null)", (novembro,)).fetchone()[0]["problemas"]
@@ -6933,7 +6954,7 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         assert "A situação dos lembretes precisa do banco da v0.29.0" in pagina.inner_text("#lembretes-situacao")
-        assert "sql/radar-setup-v0.29.0.sql" in pagina.inner_text("#lembretes-situacao")
+        assert "sql/radar-setup-v0.30.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0: o setup desta versão
     finally:
         limpo.execute("update radar_config set valor = %s where chave = 'lembretes'", (json.dumps(original),))
         limpo.execute("truncate radar_lembretes")
@@ -6966,7 +6987,7 @@ def test_configuracoes_preencher_fontes_oficiais_so_onde_falta_e_grava_como_o_sa
         # a tabela cobre a agenda padrão inteira (menos o Honorário, que não vai às redes), e o resultado passa no Salvar
         r = pagina.evaluate("o => { const x = preencherFontes(o); return {...x, valida: validarConfig('obrigacoes', x.lista),"
                             " maior: Math.max(...Object.values(FONTES_OFICIAIS).map(f => f.length))}; }", original)
-        assert len(r["preenchidas"]) == 21 and r["semTabela"] == [] and r["valida"] == "" and r["maior"] <= 300, r
+        assert len(r["preenchidas"]) == 27 and r["semTabela"] == [] and r["valida"] == "" and r["maior"] <= 300, r     # v0.30.0: + o 13º e as anuais
         assert [{k: v for k, v in o.items() if k != "fonte"} for o in r["lista"]] == original
         assert [o["nome"] for o in r["lista"] if "fonte" not in o] == ["Honorário contábil"]
         assert all(re.search(r" — https://[a-z0-9.]+\.gov\.br/", o["fonte"]) for o in r["lista"] if "fonte" in o)
@@ -7039,6 +7060,364 @@ def test_configuracoes_preencher_fontes_oficiais_so_onde_falta_e_grava_como_o_sa
         assert "Agenda de obrigações" in html and "preencher-fontes" not in html
     finally:
         limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(original),))
+
+
+# ------------------------------------------------------- v0.30.0 — o 13º, as obrigações anuais e a possível prorrogação
+ANUAIS = {"13º Salário (1ª parcela)", "13º Salário (2ª parcela)", "DEFIS - Declaração de Informações Socioeconômicas e Fiscais",
+          "DASN-SIMEI - Declaração Anual do MEI", "ECD - Escrituração Contábil Digital", "ECF - Escrituração Contábil Fiscal"}
+
+
+def test_agenda_anual_13_salario_e_declaracoes_nas_datas_oficiais(pagina, limpo):
+    """v0.30.0: a agenda padrão traz o 13º (1ª parcela até 30/11, 2ª até 20/12, Lei 4.749/1965; no fim de semana, antecipa), a DEFIS
+    (31/03) e a DASN-SIMEI (31/05), que não mudam no fim de semana (Resolução CGSN 140/2018; Perguntas e Respostas do Simples, 6.10), e a
+    ECD e a ECF (último dia útil de junho e de julho). Cada uma entra só no mês dela; os outros meses continuam com as 22 de sempre."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    obrig = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    agenda = lambda ano, mes: pagina.evaluate("([a, m, o]) => calcularAgenda(a, m, o, [])", [ano, mes, obrig])
+    datas = lambda ano, mes: {n: l["data"] for l in agenda(ano, mes) for n in l["obrigacoes"] if n in ANUAIS}
+    em2026 = {}
+    for mes in range(1, 13):
+        for nome, dia in datas(2026, mes).items():
+            assert nome not in em2026, nome                                                   # uma vez só no ano
+            em2026[nome] = dia
+    assert em2026 == {"DEFIS - Declaração de Informações Socioeconômicas e Fiscais": "2026-03-31",
+                      "DASN-SIMEI - Declaração Anual do MEI": "2026-05-31",                   # domingo: não muda (Agenda Tributária 2026)
+                      "ECD - Escrituração Contábil Digital": "2026-06-30", "ECF - Escrituração Contábil Fiscal": "2026-07-31",
+                      "13º Salário (1ª parcela)": "2026-11-30", "13º Salário (2ª parcela)": "2026-12-18"}   # 20/12/2026 é domingo
+    assert datas(2025, 11) == {"13º Salário (1ª parcela)": "2025-11-28"}                       # 30/11/2025, domingo: sexta, 28
+    assert datas(2025, 12) == {"13º Salário (2ª parcela)": "2025-12-19"}                       # 20/12/2025, sábado: sexta, 19
+    assert datas(2029, 3) == {"DEFIS - Declaração de Informações Socioeconômicas e Fiscais": "2029-03-31"}   # sábado: não muda
+    assert datas(2029, 6) == {"ECD - Escrituração Contábil Digital": "2029-06-29"}             # 30/06/2029 é sábado
+    assert datas(2027, 7) == {"ECF - Escrituração Contábil Fiscal": "2027-07-30"}              # 31/07/2027 é sábado
+    for mes in (8, 9, 10):
+        assert sum(len(l["obrigacoes"]) for l in agenda(2026, mes)) == 22 and datas(2026, mes) == {}
+    assert sum(len(l["obrigacoes"]) for l in agenda(2026, 11)) == 23 and sum(len(l["obrigacoes"]) for l in agenda(2026, 3)) == 23
+    # a fonte oficial de cada uma está na tabela do “Preencher fontes oficiais”, com o link .gov.br
+    fontes = pagina.evaluate("() => FONTES_OFICIAIS")
+    assert all(re.search(r" — https://[a-z0-9.]+\.gov\.br/", fontes[n]) for n in ANUAIS)
+    assert fontes["DEFIS - Declaração de Informações Socioeconômicas e Fiscais"].startswith("Resolução CGSN 140/2018, art. 72")
+    assert fontes["13º Salário (1ª parcela)"].startswith("Lei 4.749/1965, art. 2º") and fontes["13º Salário (2ª parcela)"].startswith("Lei 4.749/1965, art. 1º")
+    assert "(conferir)" not in json.dumps(fontes, ensure_ascii=False)
+    # v0.30.0 (revisão): o artigo de cada declaração, conferido no texto da norma (Normas da Receita Federal, 17/10/2026)
+    assert fontes["DEFIS - Declaração de Informações Socioeconômicas e Fiscais"].startswith("Resolução CGSN 140/2018, art. 72, § 1º;")
+    assert fontes["DASN-SIMEI - Declaração Anual do MEI"].startswith("Resolução CGSN 140/2018, art. 109;")
+    assert fontes["ECD - Escrituração Contábil Digital"].startswith("IN RFB 2.003/2021, art. 5º (redação da IN RFB 2.142/2023)")
+    assert fontes["ECF - Escrituração Contábil Fiscal"].startswith("IN RFB 2.004/2021, art. 3º")
+
+
+def test_agenda_da_semana_ate_domingo_traz_a_declaracao_do_fim_de_semana(pagina, limpo):
+    """v0.30.0 (revisão): a DEFIS e a DASN-SIMEI não mudam no fim de semana (“ajuste”: “nenhum”) e às vezes vencem no sábado ou no
+    domingo (31/05/2026 é domingo; 31/03/2029, sábado). A agenda da semana do domingo D vai até o domingo seguinte (D+7): cada uma entra
+    no post da semana dela, uma vez só (o post seguinte começa na segunda, D+8)."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina)
+    anuais = lambda dia: [l["informacao"] for l in pagina.evaluate("d => agendaDaSemana(d)", dia) if l["informacao"].split(" · ")[1] in ANUAIS]
+    assert anuais("2026-05-24") == ["31/05 (dom) · DASN-SIMEI - Declaração Anual do MEI"]
+    assert anuais("2029-03-25") == ["31/03 (sáb) · DEFIS - Declaração de Informações Socioeconômicas e Fiscais"]
+    assert anuais("2026-05-31") == [] and anuais("2029-04-01") == []                            # o post seguinte não repete
+    # cada anual entra em um post só da Pauta, em todos os anos de 2026 a 2031
+    for ano in range(2026, 2032):
+        vistos = pagina.evaluate("""ano => { const r = []; let d = new Date(Date.UTC(ano, 0, 1));
+            while(d.getUTCDay() !== 0) d = new Date(d.getTime() + 864e5);
+            for(; d.getUTCFullYear() === ano; d = new Date(d.getTime() + 7 * 864e5)) for(const l of agendaDaSemana(d.toISOString().slice(0, 10)))
+              r.push(l.informacao.split(" · ")[1]);
+            return r; }""", ano)
+        assert sorted(n for n in vistos if n in ANUAIS) == sorted(ANUAIS), ano
+
+
+def test_agenda_prorrogacao_so_no_vencimento_indicado(pagina, limpo):
+    """v0.30.0: a prorrogação que o administrador escreve na obrigação ("prorrogacoes": de, para e fonte) vale só para aquele vencimento:
+    no mês “de”, a data da regra sai; no mês de “para” (mesmo no ano seguinte), entra a data nova; nos outros anos, a regra continua. O
+    mesmo nome não se repete na mesma data (o vencimento de abril prorrogado para o dia do vencimento de maio)."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    obrig = [
+        {"nome": "Declaração Anual Fictícia", "regra": "dia", "dia": 31, "mes": 3, "ajuste": "nenhum",
+         "prorrogacoes": [{"de": "2027-03", "para": "2027-04-30", "fonte": "Ato fictício de teste nº 1"}]},
+        {"nome": "Imposto Mensal Fictício", "regra": "dia", "dia": 20, "ajuste": "posterga",
+         "prorrogacoes": [{"de": "2027-04", "para": "2027-05-20", "fonte": "Ato fictício de teste nº 2"}]},
+        {"nome": "Obrigação de Dezembro Fictícia", "regra": "ultimo_dia_util", "mes": 12,
+         "prorrogacoes": [{"de": "2027-12", "para": "2028-01-31", "fonte": "Ato fictício de teste nº 3"}]}]
+    assert pagina.evaluate("o => validarConfig('obrigacoes', o)", obrig) == ""
+    calc = lambda ano, mes: [(l["data"], l["obrigacoes"]) for l in pagina.evaluate("([a, m, o]) => calcularAgenda(a, m, o, [])", [ano, mes, obrig])]
+    assert calc(2027, 3) == [("2027-03-22", ["Imposto Mensal Fictício"])]                       # a declaração saiu de março…
+    assert calc(2027, 4) == [("2027-04-30", ["Declaração Anual Fictícia"])]                     # …e entrou em 30/04; o de abril saiu
+    assert calc(2027, 5) == [("2027-05-20", ["Imposto Mensal Fictício"])]                       # o de abril cai no dia do de maio: uma vez
+    assert calc(2028, 3) == [("2028-03-20", ["Imposto Mensal Fictício"]), ("2028-03-31", ["Declaração Anual Fictícia"])]   # 2028: a regra
+    assert calc(2028, 4) == [("2028-04-20", ["Imposto Mensal Fictício"])]
+    assert ("2027-12-31", ["Obrigação de Dezembro Fictícia"]) not in calc(2027, 12)
+    assert calc(2028, 1) == [("2028-01-20", ["Imposto Mensal Fictício"]), ("2028-01-31", ["Obrigação de Dezembro Fictícia"])]   # virou o ano
+    assert ("2026-12-30", ["Obrigação de Dezembro Fictícia"]) in calc(2026, 12)                 # 2026: o último dia útil, sem prorrogação
+
+
+def test_configuracoes_valida_mes_termos_e_prorrogacoes(pagina, limpo):
+    """v0.30.0: “mes” (1 a 12; com “dia”, o dia que o mês tem), “termos” (até 10, de 3 a 80 caracteres) e “prorrogacoes” (até 20: “de”
+    em "AAAA-MM", no mês do vencimento se a obrigação é anual; “para” uma data de verdade, não antes do mês “de”; “fonte” escrita; sem
+    repetir o mesmo “de”) são conferidos antes de gravar; com erro, nada é gravado."""
+    base = {"nome": "X", "regra": "dia", "dia": 31, "ajuste": "nenhum"}
+    p = lambda **k: {"de": "2027-03", "para": "2027-04-30", "fonte": "Ato fictício nº 1", **k}
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    valida = lambda o: pagina.evaluate("o => validarConfig('obrigacoes', o)", [o])
+    casos = [({**base, "mes": 0}, "“X”: “mes” é o mês do vencimento anual, de 1 a 12 (sem “mes”, vence todo mês)."),
+             ({**base, "mes": 13}, "“mes” é o mês do vencimento anual"), ({**base, "mes": "3"}, "“mes” é o mês do vencimento anual"),
+             ({**base, "mes": 3.5}, "“mes” é o mês do vencimento anual"), ({**base, "mes": None}, "“mes” é o mês do vencimento anual"),
+             ({**base, "mes": 4}, "“X”: abril não tem dia 31."), ({**base, "dia": 30, "mes": 2}, "“X”: fevereiro não tem dia 30."),
+             ({**base, "termos": "DASN"}, "“termos” é uma lista de até 10"), ({**base, "termos": ["DA"]}, "“termos” é uma lista de até 10"),
+             ({**base, "termos": ["x" * 81]}, "“termos” é uma lista"), ({**base, "termos": ["DASN"] * 11}, "“termos” é uma lista"),
+             ({**base, "termos": ["13º"]}, "pelo menos 3 letras ou números"), ({**base, "termos": ["D.F"]}, "pelo menos 3 letras ou números"),
+             ({**base, "prorrogacoes": {}}, "“prorrogacoes” é uma lista (até 20)"), ({**base, "prorrogacoes": [p()] * 21}, "“prorrogacoes” é uma lista (até 20)"),
+             ({**base, "prorrogacoes": [p(de="2027-3")]}, "“de” é o mês em que o vencimento caía"),
+             ({**base, "prorrogacoes": [p(de="2027-13")]}, "“de” é o mês em que o vencimento caía"),
+             ({**base, "prorrogacoes": ["2027-03"]}, "“de” é o mês em que o vencimento caía"),
+             ({**base, "prorrogacoes": [p(para="2027-02-30")]}, "“para” é a nova data"), ({**base, "prorrogacoes": [p(para="30/04/2027")]}, "“para” é a nova data"),
+             ({**base, "prorrogacoes": [p(para="2027-02-28")]}, "não pode ser antes do mês em que o vencimento caía"),
+             ({**base, "mes": 3, "prorrogacoes": [p(de="2027-04", para="2027-05-31")]}, "“X”: a prorrogação “de” 2027-04 não é do mês do vencimento (a obrigação vence em março)."),
+             ({**base, "prorrogacoes": [p(fonte="  ")]}, "escreva a “fonte”"), ({**base, "prorrogacoes": [p(fonte=None)]}, "escreva a “fonte”"),
+             ({**base, "prorrogacoes": [p(fonte="x" * 301)]}, "escreva a “fonte”"),
+             ({**base, "prorrogacoes": [p(), p(para="2027-04-29")]}, "“X”: há duas prorrogações para 2027-03; deixe só uma.")]
+    for valor, aviso in casos:
+        assert aviso in valida(valor), (valor, valida(valor))
+    for bom in [{**base, "mes": 3}, {**base, "dia": 29, "mes": 2}, {**base, "regra": "ultimo_dia_util", "mes": 6}, {**base, "termos": ["DASN", "x" * 80]},
+                {**base, "mes": 3, "prorrogacoes": [p(), p(de="2028-03", para="2028-03-31")]}, {**base, "prorrogacoes": [p(de="2027-12", para="2028-01-31")]}]:
+        assert valida(bom) == "", bom
+    assert pagina.evaluate("validarConfig('prorrogacoes_conferidas', [1, 2, 3])") == ""
+    for ruim in ['{}', '[0]', '[1.5]', '["1"]', json.dumps(list(range(1, 502)))]:
+        assert "lista de números de captura" in pagina.evaluate(f"validarConfig('prorrogacoes_conferidas', {ruim})")
+    # pela tela: o Salvar recusa e não grava nada; o que confere é gravado
+    original = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    try:
+        pagina.click("nav.abas >> text=Configurações")
+        pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
+        texto = pagina.inner_text("form[data-chave=obrigacoes] p.sub")
+        for trecho in ["mes (opcional, de 1 a 12): a obrigação é anual e só entra na agenda desse mês", "sem “mes”, vence todo mês",
+                       "prorrogacoes (opcional): quando um ato oficial muda o prazo", "O Radar nunca muda a data sozinho", "termos (opcional)"]:
+            assert trecho in texto, trecho
+        caixa, salvar = pagina.locator("#cfg-obrigacoes"), pagina.locator("form[data-chave=obrigacoes] button:not([type=button])")
+        for valor, aviso in [([{**base, "mes": 4}], "abril não tem dia 31"), ([{**base, "prorrogacoes": [p(fonte="")]}], "escreva a “fonte”")]:
+            caixa.fill(json.dumps(valor, ensure_ascii=False))
+            limpar_recados(pagina)
+            salvar.click()
+            pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
+        assert limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0] == 0
+        bom = original + [{"nome": "Obrigação Fictícia Anual", "regra": "dia", "dia": 15, "mes": 9, "ajuste": "posterga", "termos": ["OFA"],
+                           "prorrogacoes": [{"de": "2027-09", "para": "2027-10-15", "fonte": "Ato fictício nº 9"}]}]
+        caixa.fill(json.dumps(bom, ensure_ascii=False))
+        salvar.click()
+        pagina.wait_for_selector("#recado >> text=Configuração salva.")
+        assert limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0] == bom
+        assert limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0] == 1
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(original),))
+
+
+def test_configuracoes_acrescentar_13_e_anuais_so_admin(pagina, limpo):
+    """v0.30.0: na instalação que já existia, o banco não muda a lista do escritório: o administrador clica em “Acrescentar o 13º e as
+    obrigações anuais”. Acrescenta no fim só as que faltam (outro traço ou acento conta como a mesma), com a fonte oficial da tabela,
+    depois de confirmar; grava pelo Salvar do bloco (com a trilha); de novo, “nada a acrescentar”. Só o administrador vê o botão."""
+    original = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    antigas = original[:22]                                                                   # a agenda de antes desta versão
+    assert {o["nome"] for o in original[22:]} == ANUAIS
+    com_defis = antigas + [{"nome": "DEFIS – Declaracao de Informacoes Socioeconomicas e Fiscais", "regra": "dia", "dia": 31, "mes": 3, "ajuste": "nenhum"}]
+    limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(com_defis),))
+    try:
+        entrar(pagina, "admin@artecon.test")
+        pagina.wait_for_selector("text=Painel do dia")
+        # a lista da tela é a mesma da carga inicial do banco, sem a fonte (que vem da tabela)
+        assert pagina.evaluate("() => OBRIGACOES_ANUAIS") == original[22:]
+        pagina.click("nav.abas >> text=Configurações")
+        pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
+        form = pagina.locator("form[data-chave=obrigacoes]")
+        pagina.set_viewport_size({"width": 375, "height": 740})                              # o botão e a explicação cabem no celular
+        assert sem_rolagem_lateral(pagina) and form.locator("[data-acao=acrescentar-anuais]").is_visible()
+        form.screenshot(path=str(FOTOS / "56-celular-agenda-anuais.png"))
+        pagina.set_viewport_size({"width": 1280, "height": 900})
+        pagina.evaluate("() => { window.__confirmar = []; window.confirm = m => { window.__confirmar.push(m); return window.__resposta; }; }")
+        antes = limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0]   # a agenda de teste
+        trilha = lambda: limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0] - antes
+        # cancelado: nada é gravado
+        pagina.evaluate("() => { window.__resposta = false; }")
+        form.locator("[data-acao=acrescentar-anuais]").click()
+        pagina.wait_for_function("() => window.__confirmar.length === 1")
+        pagina.wait_for_timeout(300)
+        (msg,) = pagina.evaluate("() => window.__confirmar")
+        assert msg.startswith("Acrescentar 5 obrigações no fim da agenda e salvar?"), msg
+        assert "• 13º Salário (1ª parcela)\n• 13º Salário (2ª parcela)\n• DASN-SIMEI - Declaração Anual do MEI\n" in msg and "DEFIS" not in msg
+        assert "Confira se a agenda já não tem estas obrigações com outro nome" in msg
+        assert trilha() == 0 and limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0] == com_defis
+        # confirmado: as cinco que faltam, no fim, com a fonte; a DEFIS escrita de outro jeito fica como estava
+        pagina.evaluate("() => { window.__resposta = true; }")
+        form.locator("[data-acao=acrescentar-anuais]").click()
+        pagina.wait_for_selector("#recado >> text=5 obrigações acrescentadas no fim da agenda, com a fonte oficial. Configuração salva.")
+        fontes = pagina.evaluate("() => FONTES_OFICIAIS")
+        esperado = com_defis + [dict(o, fonte=fontes[o["nome"]]) for o in original[22:] if not o["nome"].startswith("DEFIS")]
+        assert limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0] == esperado and trilha() == 1
+        # de novo: nada a acrescentar (sem confirmar e sem gravar)
+        pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
+        limpar_recados(pagina)
+        form.locator("[data-acao=acrescentar-anuais]").click()
+        pagina.wait_for_selector("#recado >> text=Nada a acrescentar: a agenda já tem o 13º salário e as obrigações anuais")
+        assert pagina.evaluate("() => window.__confirmar.length") == 2 and trilha() == 1
+        # a caixa com erro: o mesmo recado do Salvar
+        pagina.locator("#cfg-obrigacoes").fill("[")
+        limpar_recados(pagina)
+        form.locator("[data-acao=acrescentar-anuais]").click()
+        pagina.wait_for_selector("#recado .erro >> text=O conteúdo não é um JSON válido")
+        # só o administrador vê o botão
+        pagina.click("text=Sair")
+        pagina.wait_for_selector("#email")
+        entrar(pagina)
+        pagina.wait_for_selector("text=Painel do dia")
+        html = pagina.evaluate("() => TELAS.configuracoes()")
+        assert "Agenda de obrigações" in html and "acrescentar-anuais" not in html and "preencher-fontes" not in html
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(original),))
+
+
+def test_agenda_da_semana_usa_a_fonte_da_prorrogacao(pagina, limpo):
+    """v0.30.0: na agenda da semana da Pauta, o vencimento que vem de uma prorrogação vai com a fonte do ato da prorrogação; os outros,
+    com a fonte da obrigação."""
+    original = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    obrig = [{"nome": "Tributo Fictício", "regra": "dia", "dia": 10, "ajuste": "posterga", "fonte": "Fonte fictícia da regra",
+              "prorrogacoes": [{"de": "2026-11", "para": "2026-12-02", "fonte": "Ato fictício da prorrogação"}]},
+             {"nome": "Outro Tributo Fictício", "regra": "dia", "dia": 3, "ajuste": "posterga", "fonte": "Outra fonte fictícia"}]
+    limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(obrig),))
+    try:
+        entrar(pagina)
+        pagina.wait_for_selector("text=Painel do dia")
+        abrir_pauta(pagina)
+        assert pagina.evaluate("() => agendaDaSemana('2026-11-29')") == [
+            {"informacao": "02/12 (qua) · Tributo Fictício", "fonte": "Ato fictício da prorrogação"},
+            {"informacao": "03/12 (qui) · Outro Tributo Fictício", "fonte": "Outra fonte fictícia"}]
+        assert pagina.evaluate("() => agendaDaSemana('2026-12-06')") == [
+            {"informacao": "10/12 (qui) · Tributo Fictício", "fonte": "Fonte fictícia da regra"}]
+        assert pagina.evaluate("() => agendaDaSemana('2026-11-08')") == []                    # o de novembro foi para 02/12
+    finally:
+        limpo.execute("update radar_config set valor = %s where chave = 'obrigacoes'", (json.dumps(original),))
+
+
+def tirar_fonte_de_teste(db, slug):
+    db.execute("delete from radar_capturas where fonte_id in (select id from radar_fontes where slug = %s)", (slug,))
+    db.execute("delete from radar_fontes where slug = %s", (slug,))
+
+
+def capturas_de_prorrogacao(db, request):
+    """Duas notícias fictícias que falam em prorrogar o prazo de obrigações da agenda padrão (uma de site público e uma do boletim pago
+    fictício) e uma que não fala (não aparece). A fonte do boletim sai no fim do teste."""
+    request.addfinalizer(lambda: tirar_fonte_de_teste(db, "teste-boletim-ficticio"))
+    db.execute("""insert into radar_fontes (slug, nome, orgao, oficial, tipo_coletor, url, config)
+                  values ('teste-boletim-ficticio', 'Boletim fictício de teste', 'Consultoria fictícia', false, 'rss',
+                          'https://boletim.exemplo/rss', '{"origem": "email"}')""")
+    ins = lambda slug, titulo, url, horas: db.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo, data_publicacao, capturado_em)
+        select id, %s, %s, md5(%s), '2026-10-15', now() - make_interval(hours => %s) from radar_fontes where slug = %s returning id""",
+        (url, titulo, titulo, horas, slug)).fetchone()[0]
+    publica = ins("rfb-noticias", "Receita prorroga o prazo de entrega da DEFIS (notícia fictícia de teste)", "https://www.gov.br/exemplo/prorroga-defis", 1)
+    boletim = ins("teste-boletim-ficticio", "Boletim fictício: adiado o vencimento do FGTS", "https://boletim.exemplo/fgts", 2)
+    ins("rfb-noticias", "Receita publica o calendário da DEFIS (notícia fictícia de teste)", "https://www.gov.br/exemplo/calendario-defis", 3)
+    return publica, boletim
+
+
+def test_painel_possivel_prorrogacao_e_conferido_so_admin(pagina, limpo, request):
+    """v0.30.0: o Painel mostra “Possível prorrogação de prazo” quando o Radar captou notícia (dos últimos 30 dias) que fala em prorrogar ou
+    adiar o prazo de uma obrigação da agenda: a obrigação, o título com o link, a fonte, a data, “na triagem” ou “Abrir assunto”. O editor vê
+    sem botão; o administrador clica em “Conferido” (confirma; a agenda não muda), a notícia sai do Painel e o número vai para
+    radar_config.prorrogacoes_conferidas, com a trilha. Nas Configurações, a lista fica com o selo “conferida”. Sem a função no banco
+    (antes do SQL), o Painel abre normal e o administrador vê nas Configurações o que falta."""
+    publica, boletim = capturas_de_prorrogacao(limpo, request)
+    with como("authenticated", EDITOR) as c:
+        assunto = c.execute("select radar_abrir_assunto(%s)", (publica,)).fetchone()[0]
+    entrar(pagina)
+    pagina.wait_for_selector("#prorrogacoes")
+    bloco = pagina.inner_text("#prorrogacoes")
+    assert "Possível prorrogação de prazo" in bloco and "Ele não muda a data sozinho: confira na fonte oficial." in bloco
+    assert pagina.locator("#prorrogacoes li.prorrogacao").count() == 2 and pagina.locator("[data-acao=prorrogacao-conferida]").count() == 0
+    linha = pagina.locator(f"li.prorrogacao[data-captura='{publica}']")
+    assert "DEFIS - Declaração de Informações Socioeconômicas e Fiscais" in linha.inner_text() and "Receita Federal — Notícias" in linha.inner_text()
+    assert linha.locator("a").get_attribute("href") == "https://www.gov.br/exemplo/prorroga-defis" and "15/10/2026" in linha.inner_text()
+    assert "na triagem" in pagina.inner_text(f"li.prorrogacao[data-captura='{boletim}']")       # ainda não virou assunto
+    assert "calendário" not in bloco
+    linha.locator("[data-acao=abrir-assunto]").click()
+    pagina.wait_for_function(f"() => E.assunto === {assunto} && !document.querySelector('#prorrogacoes')")
+    # o administrador confere
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("#prorrogacoes")
+    pagina.set_viewport_size({"width": 375, "height": 740})
+    assert sem_rolagem_lateral(pagina)
+    pagina.locator("#prorrogacoes").screenshot(path=str(FOTOS / "57-celular-painel-prorrogacao.png"))
+    pagina.set_viewport_size({"width": 1280, "height": 900})
+    assert pagina.locator("[data-acao=prorrogacao-conferida]").count() == 2
+    trilha = lambda: limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_config'").fetchone()[0]
+    obrig = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    pagina.evaluate("() => { window.__confirmar = []; window.confirm = m => { window.__confirmar.push(m); return window.__resposta; }; }")
+    pagina.evaluate("() => { window.__resposta = false; }")
+    pagina.locator(f"li.prorrogacao[data-captura='{boletim}'] [data-acao=prorrogacao-conferida]").click()
+    pagina.wait_for_function("() => window.__confirmar.length === 1")
+    pagina.wait_for_timeout(300)
+    assert pagina.evaluate("() => window.__confirmar[0]").startswith("Marcar como conferida?\n\nA agenda não muda")
+    assert trilha() == 0
+    pagina.evaluate("() => { window.__resposta = true; }")
+    pagina.locator(f"li.prorrogacao[data-captura='{boletim}'] [data-acao=prorrogacao-conferida]").click()
+    pagina.wait_for_selector("#recado >> text=Marcada como conferida. A agenda não mudou.")
+    pagina.wait_for_function(f"() => !document.querySelector(\"li.prorrogacao[data-captura='{boletim}']\")")
+    assert limpo.execute("select valor from radar_config where chave = 'prorrogacoes_conferidas'").fetchone()[0] == [boletim] and trilha() == 1
+    assert limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0] == obrig     # a agenda não mudou
+    pagina.locator(f"li.prorrogacao[data-captura='{publica}'] [data-acao=prorrogacao-conferida]").click()
+    pagina.wait_for_selector("#recado >> text=Marcada como conferida. A agenda não mudou.")
+    pagina.wait_for_function("() => !document.querySelector('#prorrogacoes')")
+    assert limpo.execute("select valor from radar_config where chave = 'prorrogacoes_conferidas'").fetchone()[0] == [boletim, publica] and trilha() == 2
+    # nas Configurações: as duas, com o selo; sem o botão
+    pagina.click("nav.abas >> text=Configurações")
+    pagina.wait_for_selector("#prorrogacoes-config")
+    assert pagina.locator("#prorrogacoes-config li.prorrogacao").count() == 2 and pagina.locator("#prorrogacoes-config .selo.ok", has_text="conferida").count() == 2
+    assert pagina.locator("[data-acao=prorrogacao-conferida]").count() == 0 and pagina.locator("form[data-form=config]").count() == 9   # v0.29.0: + lembretes
+    # banco sem a função (antes do SQL desta versão): o Painel abre normal e as Configurações dizem o que falta
+    pagina.route("**/rest/v1/rpc/radar_prorrogacoes", lambda rota: rota.fulfill(status=404, content_type="application/json",
+                 body='{"code":"PGRST202","message":"Could not find the function public.radar_prorrogacoes"}'))
+    limpo.execute("delete from radar_config where chave = 'prorrogacoes_conferidas'")
+    pagina.click("nav.abas >> text=Painel")
+    pagina.wait_for_selector("text=Conteúdos aguardando aprovação")
+    assert pagina.locator("#prorrogacoes").count() == 0
+    pagina.click("nav.abas >> text=Configurações")
+    pagina.wait_for_selector("#prorrogacao-sem-banco >> text=O aviso de prorrogação precisa do banco da v0.30.0")
+    assert "o administrador roda o sql/radar-setup-v0.30.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")
+    assert pagina.locator("#prorrogacoes-config").count() == 0
+
+
+def test_informativo_avisa_prorrogacao_pendente_da_edicao(pagina, limpo, request):
+    """v0.30.0: na edição do Informativo, a possível prorrogação (ainda não conferida) de uma obrigação que está na agenda da edição aparece
+    num aviso; a de outra obrigação, não. O texto diz que a nova data vai na obrigação (Configurações) e que nesta edição se ajusta aqui."""
+    obrig = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
+    request.addfinalizer(lambda: tirar_fonte_de_teste(limpo, "teste-gov-ficticio"))
+    limpo.execute("""insert into radar_fontes (slug, nome, orgao, tipo_coletor, url)
+                     values ('teste-gov-ficticio', 'Portal fictício de teste', 'Órgão fictício', 'rss', 'https://exemplo.gov.br/rss')""")
+    cap = limpo.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo) select id, 'https://exemplo.gov.br/13', %s, md5(%s)
+                           from radar_fontes where slug = 'teste-gov-ficticio' returning id""",
+                        ("Governo adia o prazo de pagamento da gratificação natalina (notícia fictícia)",) * 2).fetchone()[0]
+    entrar(pagina)
+    pagina.wait_for_selector("#prorrogacoes")
+    novembro = pagina.evaluate("o => calcularAgenda(2026, 11, o, [])", obrig)
+    assert novembro[-1]["data"] == "2026-11-30" and "13º Salário (1ª parcela)" in novembro[-1]["obrigacoes"]
+    ids = [limpo.execute("insert into radar_informativos (numero, ano, mes, agenda) values (%s, 2026, %s, %s) returning id",
+                         (n, mes, json.dumps(ag))).fetchone()[0] for n, mes, ag in [(11, "2026-11-01", novembro),
+                                                                                   (10, "2026-10-01", pagina.evaluate("o => calcularAgenda(2026, 10, o, [])", obrig))]]
+    pagina.click("nav.abas >> text=Informativos")
+    pagina.click("text=N.º 0011/2026")
+    pagina.wait_for_selector("#ag-prorrogacao")
+    aviso = pagina.inner_text("#ag-prorrogacao")
+    assert "“13º Salário (1ª parcela)”, que está nesta edição" in aviso and "2ª parcela" not in aviso and "O Radar não muda a data sozinho." in aviso
+    assert "Prorrogação oficial: a nova data vai na obrigação, em Configurações, e vale para as próximas edições" in pagina.inner_text("form[data-form=informativo]")
+    pagina.click("text=← Voltar para a lista")
+    pagina.click("text=N.º 0010/2026")
+    pagina.wait_for_selector("text=Dados da edição")
+    assert pagina.locator("#ag-prorrogacao").count() == 0                                      # outubro não tem o 13º
+    limpo.execute("insert into radar_config (chave, valor) values ('prorrogacoes_conferidas', %s)", (json.dumps([cap]),))
+    pagina.evaluate("id => { E.informativo = id; return desenhar(); }", ids[0])
+    pagina.wait_for_selector("text=Informativo Mensal N.º 0011/2026")
+    assert pagina.locator("#ag-prorrogacao").count() == 0                                      # conferida: o aviso sai
 
 
 # ------------------------------------------------------- v0.21.0 — a arte da peça, a conferência, a aprovação e a publicação
@@ -8981,7 +9360,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.29.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.30.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")

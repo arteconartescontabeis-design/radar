@@ -114,6 +114,8 @@ body.ocupado{cursor:progress}
 .previa{border:1px dashed #B8C4D0;border-radius:8px;padding:14px;background:#fff}
 .previa h2,.previa h3{margin-top:.8em}
 .acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+/* v0.30.0: a possível prorrogação (Painel e Configurações): o título longo e o endereço quebram a linha no celular */
+.prorrogacoes ul{padding-left:18px;margin:8px 0} li.prorrogacao{margin:8px 0;overflow-wrap:anywhere} li.prorrogacao .acoes{margin-top:4px}
 .entrada{max-width:380px;margin:8vh auto;background:#fff;border:1px solid var(--linha);border-top:6px solid var(--marinho);border-radius:12px;padding:26px;box-shadow:0 6px 24px rgba(1,31,72,.10)}
 .entrada input{width:100%}
 .logo-nome{font-family:"Playfair Display",serif;font-size:2rem;font-weight:700;color:var(--cinza);line-height:1}
@@ -312,19 +314,25 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.29.0"></script>
-<script src="radar-video.js?v=0.29.0"></script>
+<script src="radar-pauta.js?v=0.30.0"></script>
+<script src="radar-video.js?v=0.30.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.29.0";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes)
-const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes)
+const VERSAO = "0.30.0";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos)
+const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0 não sobe: a radar-redes não muda)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.30.0", "17/10/2026", [
+    "Agenda de obrigações com o 13º salário e as obrigações anuais: a 1ª parcela do 13º até 30/11 e a 2ª até 20/12 (Lei 4.749/1965, arts. 2º e 1º; a lei não trata do fim de semana nem do feriado: por segurança, a agenda antecipa para o dia útil anterior, como 20/12/2026, domingo, que fica 18/12), a DEFIS até 31/03 e a DASN-SIMEI até o último dia de maio (Resolução CGSN 140/2018, art. 72, § 1º, e art. 109; não mudam no fim de semana), a ECD no último dia útil de junho (IN RFB 2.003/2021, art. 5º) e a ECF no último dia útil de julho (IN RFB 2.004/2021, art. 3º), cada uma com a fonte oficial conferida. A obrigação anual só entra no Informativo do mês dela e na agenda da semana da Pauta daquela semana; as de todo mês continuam iguais. Em Configurações, a obrigação com “mes” (de 1 a 12) é anual.",
+    "Agenda da semana da Pauta: “Calcular a agenda da semana” passa a trazer os vencimentos de segunda a domingo (antes, de segunda a sexta). No fim de semana só vence o que não muda de data, como a DEFIS e a DASN-SIMEI em alguns anos (31/05/2026 é domingo); sem isso, elas não entrariam em post nenhum.",
+    "Prorrogação oficial: quando um ato oficial muda o prazo, o administrador põe a nova data na obrigação (Configurações → Agenda de obrigações, “prorrogacoes”, com o mês em que vencia, a nova data e a fonte do ato). Ela vale só para aquele vencimento: a agenda do Informativo e a da semana da Pauta saem com a nova data (e com a fonte do ato); nos outros meses e anos, a regra de sempre. O Radar nunca escreve isso sozinho.",
+    "Possível prorrogação: quando o Radar capta notícia (dos últimos 30 dias) que fala em prorrogar, adiar ou dar novo prazo a uma obrigação da agenda, avisa no Painel (“Possível prorrogação de prazo”), na edição do Informativo que tem essa obrigação e por e-mail ao administrador, uma vez por notícia (um aviso só; cada notícia nova ganha um comentário). Ele não muda a data sozinho: o administrador confere na fonte oficial e clica em “Conferido”, e a notícia sai do Painel e do aviso. Fechar o aviso pelo GitHub não tira a notícia do Painel, e o robô não avisa de novo a mesma notícia. Não contam como prorrogação “prorrogável por igual período”, “poderá ser prorrogado”, o “prazo de vigência” de um benefício, o “prazo de validade” de uma certidão nem a “folha de pagamento”; e a sigla de órgão (como INSS) no começo do nome da obrigação não basta. Do boletim da ITC, o e-mail só conta quantas são.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.30.0.sql desta versão ANTES de publicar a tela (duas funções novas; nenhuma tabela nova, nada é apagado; pode rodar de novo; ele não mexe na lista de obrigações do escritório). Depois publique o index.html com o radar-pauta.js e o radar-video.js (Ctrl+F5) e clique em Configurações → Agenda de obrigações → “Acrescentar o 13º e as obrigações anuais” antes do Informativo de novembro. O robô dos avisos muda e entra no ar sozinho pelo merge (nada a fazer, nenhum segredo novo); as funções radar-ia, radar-redes e radar-video não mudam. Passo a passo no LEIAME, “Da v0.29.0 para a v0.30.0”."]],
   ["0.29.0", "17/10/2026", [
     "Lembretes por e-mail antes do dia: o Radar passa a avisar antes, e não só depois que algo falha. São quatro lembretes: a peça da Pauta de amanhã que ainda não está aprovada (e a de hoje que ainda não saiu), na véspera, a partir das 16:00, e a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada; a peça pronta que espera a aprovação do administrador há mais de 24 horas; o vídeo do reel que o corretor terminou (pronto para conferir, precisa regravar ou parou); e a notícia que não saiu (o envio ao site ou às redes deu erro, ou a autorização está parada há mais de 3 horas — o robô do site depende do GitHub, que às vezes atrasa).",
     "Sem enxurrada e sem nome: cada tipo manda no máximo um e-mail por dia, e cada pendência é lembrada uma vez só (a peça lembrada na véspera não é lembrada de novo no dia); resolvida, ela sai da lista sozinha. O e-mail é um aviso no GitHub, como os avisos de hoje: um aviso fixo por tipo (“Radar: lembrete — …”), e cada lembrete novo chega como um comentário nele. Leva só a data, a hora, o formato e o número da peça ou do envio: nunca o nome de alguém, o assunto, a legenda ou o texto do boletim (o aviso fica no repositório público do GitHub, que qualquer pessoa pode ler). Nada é publicado pelo lembrete.",
@@ -751,8 +759,33 @@ const FONTES_OFICIAIS = {
   "INSS - Parcelamento p/ Ingresso no Simples Nacional": "LC 123/2006, art. 79, § 4º; Receita Federal, Parcelamento previdenciário — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-ordinario-e-simplificado/parcelamento-previdenciario",
   "Parcelamentos Federais e Parcelamento Especial": "Lei 10.522/2002; IN RFB 2.063/2022 — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-ordinario-e-simplificado/parcelamento-nao-previdenciario-acesso-via-portal-e-cac",
   "PERT – Programa Esp. Regularização Tributária": "IN RFB 1.752/2017; Receita Federal, Pert: Orientações — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/parcelamentos-especiais/programa-especial-de-regularizacao-tributaria/pert-orientacoes.docx",
-  "Parcelamento Especial - Simples Nacional": "LC 155/2016, art. 9º; Receita Federal, Agenda Tributária — https://www.gov.br/receitafederal/pt-br/assuntos/agenda-tributaria"
+  "Parcelamento Especial - Simples Nacional": "LC 155/2016, art. 9º; Receita Federal, Agenda Tributária — https://www.gov.br/receitafederal/pt-br/assuntos/agenda-tributaria",
+  // v0.30.0: as seis do 13º e das anuais, conferidas em 17/10/2026: o texto da Lei 4.749/1965 no Planalto (art. 1º, 20/12; art. 2º, o
+  // adiantamento "entre os meses de fevereiro e novembro"), o texto compilado da Resolução CGSN 140/2018 (art. 72, § 1º, DEFIS até 31/03;
+  // art. 109, DASN-SIMEI até o último dia de maio) e das IN RFB 2.003/2021 (art. 5º, na redação da IN RFB 2.142/2023, ECD até o último dia
+  // útil de junho) e 2.004/2021 (art. 3º, ECF até o último dia útil de julho) no Normas da Receita Federal, a Agenda Tributária 2026, o
+  // Perguntas e Respostas do Simples Nacional de 09/10/2026 e o Manual da DASN-SIMEI. A DEFIS e a DASN-SIMEI não mudam no fim de semana (a
+  // Receita diz isso da DEFIS, e a Agenda Tributária de 2026 põe a DASN-SIMEI no domingo, 31/05). A lei do 13º não trata do fim de semana:
+  // antecipar para o dia útil anterior é a regra da agenda, por segurança (decisão do escritório), não da lei
+  "13º Salário (1ª parcela)": "Lei 4.749/1965, art. 2º — https://www.planalto.gov.br/ccivil_03/leis/l4749.htm",
+  "13º Salário (2ª parcela)": "Lei 4.749/1965, art. 1º — https://www.planalto.gov.br/ccivil_03/leis/l4749.htm",
+  "DEFIS - Declaração de Informações Socioeconômicas e Fiscais": "Resolução CGSN 140/2018, art. 72, § 1º; Perguntas e Respostas do Simples Nacional, item 6.10 — https://www8.receita.fazenda.gov.br/SimplesNacional/Arquivos/manual/PerguntaoSN.pdf",
+  "DASN-SIMEI - Declaração Anual do MEI": "Resolução CGSN 140/2018, art. 109; Manual da DASN-SIMEI, item 2.2 — https://www8.receita.fazenda.gov.br/SimplesNacional/Arquivos/manual/MANUAL_DASN-SIMEI.pdf",
+  "ECD - Escrituração Contábil Digital": "IN RFB 2.003/2021, art. 5º (redação da IN RFB 2.142/2023); Receita Federal, Agenda Tributária — https://www.gov.br/receitafederal/pt-br/assuntos/agenda-tributaria",
+  "ECF - Escrituração Contábil Fiscal": "IN RFB 2.004/2021, art. 3º; Receita Federal, Agenda Tributária — https://www.gov.br/receitafederal/pt-br/assuntos/agenda-tributaria"
 };
+/* v0.30.0: o 13º e as obrigações anuais, iguais aos da carga inicial do banco (sql, “Configurações iniciais”), sem a fonte (que vem da
+   tabela acima). “mes”: a obrigação só entra na agenda desse mês. Quem usa é o “Acrescentar o 13º e as obrigações anuais” (administrador),
+   na instalação que já existia antes desta versão: o banco não muda a lista do escritório. */
+const OBRIGACOES_ANUAIS = [
+  {nome:"13º Salário (1ª parcela)", regra:"dia", dia:30, mes:11, ajuste:"antecipa", termos:["décimo terceiro", "gratificação natalina"]},
+  {nome:"13º Salário (2ª parcela)", regra:"dia", dia:20, mes:12, ajuste:"antecipa", termos:["décimo terceiro", "gratificação natalina"]},
+  {nome:"DEFIS - Declaração de Informações Socioeconômicas e Fiscais", regra:"dia", dia:31, mes:3, ajuste:"nenhum"},
+  {nome:"DASN-SIMEI - Declaração Anual do MEI", regra:"dia", dia:31, mes:5, ajuste:"nenhum",
+   termos:["DASN", "Declaração Anual do Simples Nacional para o Microempreendedor Individual"]},
+  {nome:"ECD - Escrituração Contábil Digital", regra:"ultimo_dia_util", mes:6},
+  {nome:"ECF - Escrituração Contábil Fiscal", regra:"ultimo_dia_util", mes:7}];
+const DIAS_DO_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];     // v0.30.0: a data fixa anual (fevereiro aceita 29)
 /* o nome da obrigação comparado sem acento, sem diferença de maiúscula e com toda pontuação ou traço igualados (“PERT – …” = “PERT - …”) */
 const chaveObrigacao = n => String(n ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 /* A agenda (já conferida por validarConfig) com a fonte da tabela nas obrigações das redes (“redes” diferente de false) que estão sem
@@ -789,15 +822,21 @@ function feriados(ano, extras){
   }
   return s;
 }
-/* Calcula a agenda do mês (1 a 12) pelas regras de radar_config.obrigacoes. É uma SUGESTÃO: a equipe confere. */
+/* Calcula a agenda do mês (1 a 12) pelas regras de radar_config.obrigacoes. É uma SUGESTÃO: a equipe confere.
+   v0.30.0: a obrigação com “mes” é anual e só entra no mês dela (com a mesma regra, dia e ajuste). A prorrogação que o administrador
+   escreveu na obrigação (“prorrogacoes”: [{de: "AAAA-MM", para: "AAAA-MM-DD", fonte}]) vale só para aquele vencimento: no mês “de”, a
+   data da regra sai; no mês de “para”, entra a data nova. O mesmo nome não se repete na mesma data. O Radar nunca escreve isso sozinho. */
 function calcularAgenda(ano, mes, obrigacoes, extras){
   const fer = feriados(ano, extras), ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
   const util = (d, sabadoConta) => d.getUTCDay() !== 0 && (sabadoConta || d.getUTCDay() !== 6) && !fer.has(isoDia(d));
   const mover = (d, passo) => { while(!util(d)) d = new Date(d.getTime() + passo * 864e5); return d; };
-  const porData = new Map();
+  const porData = new Map(), esteMes = `${ano}-${String(mes).padStart(2, "0")}`;
+  const por = (k, nome) => { if(!porData.has(k)) porData.set(k, []); if(!porData.get(k).includes(nome)) porData.get(k).push(nome); };
   for(const o of Array.isArray(obrigacoes) ? obrigacoes : []){
     if(!o || !o.nome) continue; let d;
-    if(o.regra === "quinto_dia_util"){             // sábado conta como dia útil; se o 5º cair no sábado, antecipa
+    const prorrogacoes = Array.isArray(o.prorrogacoes) ? o.prorrogacoes.filter(p => p && typeof p === "object") : [];
+    if(o.mes !== undefined && o.mes !== null && Number(o.mes) !== mes) d = null;      // v0.30.0: anual, de outro mês
+    else if(o.regra === "quinto_dia_util"){             // sábado conta como dia útil; se o 5º cair no sábado, antecipa
       let n = 0, dia = 0; while(n < 5){ dia++; d = new Date(Date.UTC(ano, mes - 1, dia)); if(util(d, true)) n++; }
       d = mover(d, -1);
     }else if(o.regra === "ultimo_dia_util") d = mover(new Date(Date.UTC(ano, mes - 1, ultimo)), -1);
@@ -805,7 +844,9 @@ function calcularAgenda(ano, mes, obrigacoes, extras){
       d = new Date(Date.UTC(ano, mes - 1, Math.min(Number(o.dia), ultimo)));
       if(o.ajuste === "posterga") d = mover(d, 1); else if(o.ajuste !== "nenhum") d = mover(d, -1);
     }else continue;
-    const k = isoDia(d); if(!porData.has(k)) porData.set(k, []); porData.get(k).push(String(o.nome));
+    if(d && !prorrogacoes.some(p => p.de === esteMes)) por(isoDia(d), String(o.nome));     // v0.30.0: prorrogado, sai daqui
+    for(const p of prorrogacoes)                                                            // …e entra na data nova
+      if(typeof p.para === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.para) && p.para.startsWith(esteMes)) por(p.para, String(o.nome));
   }
   return [...porData.keys()].sort().map(k => ({data:k, obrigacoes:porData.get(k)}));
 }
@@ -1044,6 +1085,31 @@ function telaEntrada(erro){
     <div class="acoes"><button class="btn">Entrar</button><span class="sub">v${VERSAO}</span></div></form>`;
 }
 
+/* v0.30.0: possível prorrogação na agenda de obrigações. As capturas dos últimos 30 dias que falam em prorrogar ou adiar o prazo de uma
+   obrigação da agenda (radar_prorrogacoes: a mesma regra do aviso por e-mail ao administrador). null: o banco ainda é de antes desta
+   versão (sem a função); com outro erro, a lista fica vazia e a tela segue. Só o Painel, as Configurações e a edição do Informativo
+   perguntam (fora do radar_v_painel, que é lido em toda tela). O Radar nunca muda a data sozinho: o administrador confere. */
+async function prorrogacoesCaptadas(){
+  try{ const r = await rpc("radar_prorrogacoes", {p_dias:30}); return Array.isArray(r) ? r : []; }
+  catch(e){ return e.status === 404 ? null : []; }
+}
+/* uma possível prorrogação: a obrigação, a notícia (com o link da fonte), a fonte e a data; “Abrir assunto” quando já virou assunto
+   (senão, está na triagem); o “Conferido” é só do administrador */
+function linhaProrrogacao(p){
+  return `<li class="prorrogacao" data-captura="${h(p.captura_id)}"><b>${h((Array.isArray(p.obrigacoes) ? p.obrigacoes : []).join("; "))}</b>:
+    ${linkFonte(p.url, p.titulo)} <span class="sub">· ${h(p.fonte)} · ${data(p.data_publicacao || p.capturado_em)}</span>${p.conferida ? " " + selo("conferida", "ok") : ""}
+    <div class="acoes">${p.assunto_id ? `<button class="btn peq sec" type="button" data-acao="abrir-assunto" data-id="${h(p.assunto_id)}">Abrir assunto</button>`
+      : `<span class="sub">na triagem (aba Capturas)</span>`}${!p.conferida && ehAdmin()
+      ? `<button class="btn peq" type="button" data-acao="prorrogacao-conferida" data-id="${h(p.captura_id)}">Conferido</button>` : ""}</div></li>`;
+}
+/* Configurações → Agenda de obrigações: as dos últimos 30 dias, também as já conferidas (com o selo) */
+function listaProrrogacoes(lista){
+  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0: o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
+  return `<div class="prorrogacoes" id="prorrogacoes-config"><h3>Possíveis prorrogações captadas (últimos 30 dias)</h3>
+    ${lista.length ? `<p class="sub">Notícias que falam em prorrogar ou adiar o prazo de uma obrigação desta agenda. O Radar não muda a data sozinho: confira na fonte oficial e, se o prazo mudou, ponha a nova data em “prorrogacoes”.</p>
+      <ul>${lista.map(linhaProrrogacao).join("")}</ul>` : `<p class="sub">Nenhuma notícia dos últimos 30 dias fala em prorrogar ou adiar o prazo de uma obrigação desta agenda.</p>`}</div>`;
+}
+
 /* ----------------------------------------------------------------- telas */
 const TELAS = {
   async painel(){
@@ -1059,7 +1125,14 @@ const TELAS = {
       ? ` (a última rodada foi em ${dataHora(p.ultima_coleta)})` : ""}. Ele roda de 6 em 6 horas no GitHub; parado, param também o robô do site, os avisos por e-mail e o resumo de segunda. O GitHub desliga sozinho os robôs agendados do repositório público depois de 60 dias sem atividade: ${ehAdmin()
       ? "no GitHub, Actions → “Radar — coleta das fontes oficiais” → Enable workflow (e também “Radar — publicar no site” e “Radar — resumo semanal”). A agenda do banco religa uma vez por dia os desligados por inatividade (sql/radar-redes-agenda.sql, com o segredo RADAR_GITHUB_TOKEN na função radar-redes)."
       : "avise o administrador."}</div>` : "";
+    // v0.30.0: possível prorrogação do prazo de uma obrigação da agenda (as que o administrador ainda não marcou como conferidas)
+    const pendentes = ((await prorrogacoesCaptadas()) || []).filter(x => !x.conferida);
+    const prorrogacao = pendentes.length ? `<div class="painel prorrogacoes" id="prorrogacoes"><h2>Possível prorrogação de prazo</h2>
+      <div class="aviso alerta">O Radar captou notícia que fala em prorrogar ou adiar o prazo de uma obrigação da agenda. Ele não muda a data sozinho: confira na fonte oficial. Se o prazo mudou, o administrador põe a nova data na obrigação (Configurações → Agenda de obrigações, “prorrogacoes”) e confere as edições do Informativo e a agenda da semana da Pauta já montadas.</div>
+      <ul>${pendentes.slice(0, 10).map(linhaProrrogacao).join("")}</ul>${pendentes.length > 10 ? `<p class="sub">e mais ${pendentes.length - 10}${ehAdmin()
+        ? " (a lista inteira fica em Configurações → Agenda de obrigações)" : ""}</p>` : ""}</div>` : "";
     return `<h1>Painel do dia</h1>${parada}
+      ${prorrogacao}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
         ${c(p.capturas_24h, "Capturas nas últimas 24h", "fila")}
@@ -1351,7 +1424,8 @@ const TELAS = {
   },
 
   async configuracoes(){
-    const conf = Object.fromEntries((await ler("radar_config", {select:"*"})).map(c => [c.chave, c]));
+    const [linhasConf, prorrogacoes] = await Promise.all([ler("radar_config", {select:"*"}), prorrogacoesCaptadas()]);      // v0.30.0
+    const conf = Object.fromEntries(linhasConf.map(c => [c.chave, c]));
     const bloco = (chave, titulo, ajuda, extra = "") => `<form class="painel" data-form="config" data-chave="${chave}"><h2>${titulo}</h2><p class="sub">${ajuda}</p>${extra}
       <label for="cfg-${chave}">Conteúdo (JSON)</label><textarea class="json" id="cfg-${chave}" name="valor" spellcheck="false">${h(JSON.stringify(conf[chave]?.valor ?? null, null, 2))}</textarea>
       <div class="acoes"><button class="btn">Salvar</button>${conf[chave] ? `<span class="sub">alterado em ${dataHora(conf[chave].atualizado_em)}</span>` : ""}</div></form>`;
@@ -1375,9 +1449,16 @@ const TELAS = {
       ${bloco("lembretes", "Lembretes por e-mail", `O Radar lembra antes do dia, por e-mail (um aviso no GitHub, como os avisos de hoje), sem nome de ninguém. <b>pauta</b>: a peça de amanhã (e a de hoje que ainda não saiu) que não está aprovada, a partir da <b>hora</b> (padrão “16:00”; até “23:45”), e a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada. <b>aprovacao</b>: a peça pronta que espera a aprovação há mais de <b>aprovacao_horas</b> (padrão 24). <b>video</b>: o reel que o corretor terminou (pronto para conferir, precisa regravar ou parou). <b>noticia</b>: a notícia que deu erro no envio ao site ou às redes, ou que está autorizada e parada há mais de <b>parada_horas</b> (padrão 3). Cada tipo manda no máximo um e-mail por dia, e cada pendência é lembrada uma vez só. Aprovação, vídeo e notícia só saem entre <b>de</b> e <b>ate</b> (padrão “08:00” e “20:00”; pelo menos 15 minutos entre os dois). <b>ligado</b>: false desliga tudo; false num tipo desliga só ele. Recebe quem acompanha o repositório no GitHub. O aviso fica na aba Issues do repositório, que é público: qualquer pessoa pode ler a data, a hora, o formato e a situação de cada peça lembrada (nunca o assunto nem nomes).`)}
       ${situacaoLembretes(lemb, conf.lembretes?.valor)}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
-      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento, no formato curto “norma, artigo — endereço oficial”, até 300 caracteres (vai às informações conferidas da agenda da semana da Pauta; sem ela, a peça da agenda espera alguém escrever a fonte).`,
-        ehAdmin() ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="preencher-fontes">Preencher fontes oficiais</button>
-          <span class="sub">Põe a fonte conferida pelo Radar (links abertos em 12/10/2026) nas obrigações das redes que estão sem fonte, pelo nome, e salva. Não muda regra, dia, ajuste, nome nem fonte já escrita; a obrigação que não está na tabela fica para conferir à mão.</span></div>` : "")}
+      ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento, no formato curto “norma, artigo — endereço oficial”, até 300 caracteres (vai às informações conferidas da agenda da semana da Pauta; sem ela, a peça da agenda espera alguém escrever a fonte).
+        <b>mes</b> (opcional, de 1 a 12): a obrigação é anual e só entra na agenda desse mês (ex.: a DEFIS: <code>"dia": 31, "mes": 3, "ajuste": "nenhum"</code>); sem “mes”, vence todo mês.
+        <b>prorrogacoes</b> (opcional): quando um ato oficial muda o prazo, a nova data, só daquele vencimento: <code>[{"de": "2027-03", "para": "2027-04-30", "fonte": "…"}]</code> (“de”: o mês em que vencia; “para”: a nova data; “fonte”: o ato oficial que mudou o prazo). O Radar nunca muda a data sozinho.
+        <b>termos</b> (opcional): outros nomes da obrigação nas notícias, para o aviso de prorrogação (ex.: <code>["DASN"]</code>).`,
+        // v0.30.0: o “Acrescentar o 13º e as obrigações anuais” (administrador) e as possíveis prorrogações captadas
+        (ehAdmin() ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="preencher-fontes">Preencher fontes oficiais</button>
+          <span class="sub">Põe a fonte conferida pelo Radar (links abertos em 12/10/2026; os do 13º e das anuais, em 17/10/2026) nas obrigações das redes que estão sem fonte, pelo nome, e salva. Não muda regra, dia, ajuste, nome nem fonte já escrita; a obrigação que não está na tabela fica para conferir à mão.</span></div>
+          <div class="acoes"><button class="btn sec" type="button" data-acao="acrescentar-anuais">Acrescentar o 13º e as obrigações anuais</button>
+          <span class="sub">Acrescenta no fim da agenda, com a fonte oficial, as que ainda faltam entre o 13º salário (1ª parcela até 30/11; 2ª até 20/12), a DEFIS (31/03), a DASN-SIMEI (31/05), a ECD (último dia útil de junho) e a ECF (último dia útil de julho), e salva. As que já estão na agenda não mudam.</span></div>` : "")
+        + listaProrrogacoes(prorrogacoes))}
       ${bloco("feriados_extras", "Feriados locais e pontos facultativos", `Os feriados nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e o último dia útil do ano (sem expediente bancário) já são considerados. Acrescente aqui os demais: "AAAA-MM-DD" (uma data) ou "MM-DD" (todo ano). Exemplo: ["2026-12-24", "04-24"].`)}
       ${bloco("fale_conosco", "Fale Conosco", `Quadro da última página. Cada setor tem <b>nome</b> (faixa azul), <b>rotulo</b>, <b>telefones</b>, <b>emails</b> e <b>equipe</b> (listas). Telefone pode ser só o número ("48-3033-4978", telefone fixo) ou {"numero": "48-3242-0530", "whatsapp": true, "nome": "opcional"}. Um setor pode ter <b>responsaveis</b> (lista de {"nome", "telefone", "whatsapp"}) e <b>responsaveis_rotulo</b> (ex.: “Contadores Responsáveis”), mostrados numa linha logo abaixo do setor. <b>observacao</b> é uma linha livre no fim do quadro.`)}
       ${bloco("assinatura", "Fecho, assinatura e identificação legal", `<b>local</b> (ex.: “Palhoça, SC”), <b>empresa</b> e <b>responsavel</b>, usados no fecho do informativo. <b>cnpj</b> (com ou sem pontuação; vale também o CNPJ alfanumérico) e <b>crc</b> (o registro da empresa no CRC, ex.: “CRC-SC 007129/O-0”: depois da barra vem a letra O, de originário, não o número zero; escrito de outro jeito, como “SC-007129/0-0”, a tela padroniza): a identificação legal que a arte e as legendas do Instagram e do Facebook levam no fim, com a <b>empresa</b> (“empresa · CNPJ … · CRC-SC …”). Cada valor vai entre aspas, e os campos são separados por vírgula. Quem acrescenta é a tela, nunca a IA; o que estiver vazio fica de fora, com aviso.`,
@@ -1399,7 +1480,7 @@ const TELAS = {
       </ol></div>
       <div class="painel"><h2>Informativo Mensal</h2><ol class="passos">
         <li><b>Artigos.</b> Em Assuntos, use <b>Novo assunto criado pela equipe</b>, escreva o conteúdo e aprove. Para o informativo basta estar aprovado.</li>
-        <li><b>Edição.</b> Em Informativos, informe o número e o mês e clique em <b>Criar edição</b>. A agenda de obrigações já vem calculada: confira as datas.</li>
+        <li><b>Edição.</b> Em Informativos, informe o número e o mês e clique em <b>Criar edição</b>. A agenda de obrigações já vem calculada: confira as datas. Ela traz as obrigações de todo mês e, no mês delas, o 13º salário e as anuais (DEFIS, DASN-SIMEI, ECD e ECF). Quando o Radar capta notícia que fala em prorrogar o prazo de uma obrigação da agenda, o Painel avisa; ele nunca muda a data sozinho.</li>
         <li><b>Montagem.</b> Inclua os artigos aprovados e ordene com as setas.</li>
         <li><b>PDF.</b> Clique em <b>Abrir para imprimir / salvar em PDF</b>. Na janela de impressão do Chrome ou Edge: papel A4, margens “Nenhuma” e “Gráficos de segundo plano” marcado.</li>
         <li><b>Fechamento.</b> Com tudo conferido, clique em <b>Fechar edição</b>. Depois disso só o administrador reabre.</li>
@@ -1427,7 +1508,7 @@ const TELAS = {
       </ul></div>
       <div class="painel"><h2>Onde fica cada coisa</h2><div class="rolagem"><table>
         <tr><th>Aba</th><th>Para quê</th></tr>
-        <tr><td><b>Painel</b></td><td>Resumo do dia: fontes, capturas, o que aguarda aprovação e o que falta publicar.</td></tr>
+        <tr><td><b>Painel</b></td><td>Resumo do dia: fontes, capturas, o que aguarda aprovação e o que falta publicar. Quando há, a possível prorrogação de prazo de uma obrigação da agenda, para conferir na fonte oficial.</td></tr>
         <tr><td><b>Capturas</b></td><td>O que o robô encontrou e ainda não foi triado, filtrado pela relevância.</td></tr>
         <tr><td><b>Assuntos</b></td><td>Onde o trabalho acontece: classificação, fundamentação e conteúdos.</td></tr>
         <tr><td><b>Informativos</b></td><td>Edições do Informativo Mensal e o PDF.</td></tr>
@@ -1435,7 +1516,7 @@ const TELAS = {
         <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), a peça nova num dia vazio (“+ Nova peça”, só o administrador), as pessoas com o termo de uso de imagem (sócio(a) da Artecon: termos dispensados) e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
-        <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, lembretes por e-mail, agenda de obrigações, feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
+        <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, lembretes por e-mail, agenda de obrigações (com o 13º, as anuais, a nova data de uma prorrogação conferida e as possíveis prorrogações captadas), feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
         <tr><td><b>Histórico</b></td><td>Trilha de auditoria: quem fez o quê.</td></tr>` : ""}
         <tr><td><b>Versões</b></td><td>O que mudou em cada versão.</td></tr></table></div></div>
       ${adm ? `<div class="painel"><h2>Cadastrar uma fonte nova</h2><ol class="passos">
@@ -1504,15 +1585,19 @@ function linhaAgenda(l, des){
 async function telaInformativo(id){
   const [i] = await ler("radar_informativos", {select:"*", id:"eq." + id});
   if(!i) return `<button class="voltar" data-acao="voltar">← Voltar</button><div class="aviso erro">Informativo não encontrado.</div>`;
-  const [itens, aprovados, conf] = await Promise.all([
+  const [itens, aprovados, conf, prorrogacoes] = await Promise.all([
     ler("radar_informativo_itens", {select:"ordem,conteudo_id,radar_conteudos(id,titulo,status,formato,autor,assunto_id,imagem_id,atualizado_em)", informativo_id:"eq." + id, order:"ordem,conteudo_id"}),
     ler("radar_conteudos", {select:"id,titulo,formato,aprovado_em", status:"eq.aprovado", order:"aprovado_em.desc", limit:"200"}),
-    ler("radar_config", {select:"chave,valor", chave:"in.(obrigacoes,feriados_extras)"})]);
+    ler("radar_config", {select:"chave,valor", chave:"in.(obrigacoes,feriados_extras)"}), prorrogacoesCaptadas()]);
   CONF_AGENDA = Object.fromEntries(conf.map(c => [c.chave, c.valor]));
   const fechado = i.status === "fechado", ed = podeEditar() && !fechado, des = ed ? "" : " disabled";
   const dentro = new Set(itens.map(x => x.conteudo_id)), livres = aprovados.filter(c => !dentro.has(c.id));
   const pendentes = itens.filter(x => x.radar_conteudos.status !== "aprovado");
   const mudados = fechado && i.fechado_em ? itens.filter(x => new Date(x.radar_conteudos.atualizado_em) > new Date(i.fechado_em)) : [];
+  // v0.30.0: possível prorrogação (ainda não conferida) de uma obrigação que está na agenda desta edição
+  const naEdicao = new Set((Array.isArray(i.agenda) ? i.agenda : []).flatMap(l => l && Array.isArray(l.obrigacoes) ? l.obrigacoes : []).map(chaveObrigacao));
+  const prorrogadas = [...new Set((prorrogacoes || []).filter(p => !p.conferida).flatMap(p => Array.isArray(p.obrigacoes) ? p.obrigacoes : [])
+    .filter(n => naEdicao.has(chaveObrigacao(n))))];
   return `<button class="voltar" data-acao="voltar">← Voltar para a lista</button>
     <h1>Informativo Mensal N.º ${h(numInformativo(i))}</h1>
     <p>${selo(fechado ? "Fechado" : "Em montagem", fechado ? "ok" : "alerta")} <a href="informativo.html?id=${i.id}" target="_blank" rel="opener">Abrir para imprimir / salvar em PDF ↗</a></p>
@@ -1526,7 +1611,8 @@ async function telaInformativo(id){
         <div><label for="i-data">Data do fecho (assinatura)</label><input id="i-data" type="date" name="data_assinatura" required value="${h(i.data_assinatura)}"${des}></div>
       </div>
       <h3 style="margin-top:16px">Agenda de obrigações</h3>
-      <p class="sub">Datas calculadas pelas regras das Configurações (dias úteis e feriados). <b>Confira antes de enviar</b>: feriados locais e prorrogações oficiais precisam ser ajustados aqui.</p>
+      <p class="sub">Datas calculadas pelas regras das Configurações (dias úteis e feriados). <b>Confira antes de enviar</b>: os feriados locais são ajustados aqui. Prorrogação oficial: a nova data vai na obrigação, em Configurações, e vale para as próximas edições; nesta, ajuste a data aqui (ou recalcule a agenda pelo botão abaixo).</p>
+      ${prorrogadas.length ? `<div class="aviso alerta" id="ag-prorrogacao"><b>Possível prorrogação:</b> o Radar captou notícia que fala em prorrogar ou adiar o prazo de ${h(prorrogadas.map(n => `“${n}”`).join(", "))}, que ${prorrogadas.length > 1 ? "estão" : "está"} nesta edição. Confira na fonte oficial antes de enviar (a notícia está no Painel); se o prazo mudou, ajuste a data aqui. O Radar não muda a data sozinho.</div>` : ""}
       <div class="rolagem"><table class="agenda-ed"><thead><tr><th style="width:170px">Dia de vencimento</th><th>Obrigações (uma por linha)</th><th style="width:110px"></th></tr></thead>
         <tbody id="ag-corpo">${(Array.isArray(i.agenda) ? i.agenda : []).filter(l => l && typeof l === "object").map(l => linhaAgenda(l, des)).join("")}</tbody></table></div>
       ${ed ? `<div class="acoes"><button class="btn sec" type="button" data-acao="ag-linha">Adicionar linha</button>
@@ -2717,7 +2803,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.29.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -3239,6 +3325,33 @@ const ACOES = {
     if(!confirm(`Preencher a fonte oficial de ${n} ${n > 1 ? "obrigações" : "obrigação"} e salvar a agenda?\n\nSó entra a fonte de quem está sem ela; regra, dia, ajuste, nome e as fontes já escritas não mudam. A agenda é salva como está na caixa.`
       + (semTabela.length ? `\n\nFicam sem fonte (não estão na tabela; confira à mão):\n${semTabela.map(x => "• " + x).join("\n")}` : ""))) return;
     if(await gravarConfig("obrigacoes", lista)) recado(`Fonte oficial preenchida em ${n} ${n > 1 ? "obrigações" : "obrigação"}. Configuração salva.` + (conferir ? " " + conferir : ""), semTabela.length ? "aviso" : false);
+  },
+  /* v0.30.0: Configurações → Agenda de obrigações → “Acrescentar o 13º e as obrigações anuais” (administrador). Lê a agenda que está na
+     caixa (com o que foi digitado e não salvo) e acrescenta no fim só as de OBRIGACOES_ANUAIS que faltam (pelo nome sem acento, sem
+     maiúscula e com qualquer traço igualado), cada uma com a fonte da tabela; confirmado, grava pelo mesmo caminho do Salvar do bloco. As
+     que já estão na agenda não mudam. Sem nada a acrescentar, só o recado. */
+  async "acrescentar-anuais"(el){
+    const f = el.closest("form[data-chave=obrigacoes]");
+    let valor; try{ valor = JSON.parse(f.valor.value); }catch(e){ recado("O conteúdo não é um JSON válido: " + e.message, true); return; }
+    const problema = validarConfig("obrigacoes", valor); if(problema){ recado(problema, true); return; }
+    const tem = new Set(valor.map(o => chaveObrigacao(o.nome))), fontes = new Map(Object.entries(FONTES_OFICIAIS).map(([n, x]) => [chaveObrigacao(n), x]));
+    const novas = OBRIGACOES_ANUAIS.filter(o => !tem.has(chaveObrigacao(o.nome))).map(o => ({...JSON.parse(JSON.stringify(o)), fonte:fontes.get(chaveObrigacao(o.nome))}));
+    if(!novas.length){ recado("Nada a acrescentar: a agenda já tem o 13º salário e as obrigações anuais (DEFIS, DASN-SIMEI, ECD e ECF)."); return; }
+    const n = novas.length, plural = n > 1;
+    if(!confirm(`Acrescentar ${n} ${plural ? "obrigações" : "obrigação"} no fim da agenda e salvar?\n\n${novas.map(o => "• " + o.nome).join("\n")}\n\n`
+      + "Confira se a agenda já não tem estas obrigações com outro nome (se tiver, cancele e apague a repetida antes). As que já estão na agenda não mudam.")) return;
+    if(await gravarConfig("obrigacoes", [...valor, ...novas]))
+      recado(`${n} ${plural ? "obrigações acrescentadas" : "obrigação acrescentada"} no fim da agenda, com a fonte oficial. Configuração salva.`);
+  },
+  /* v0.30.0: “Conferido” (administrador) na possível prorrogação. A agenda NÃO muda: guarda só o número da captura em
+     radar_config.prorrogacoes_conferidas (relido do banco na hora; ficam os 500 últimos), pelo mesmo caminho do Salvar das Configurações
+     (com a trilha). A tela é redesenhada e a notícia sai do Painel e do aviso por e-mail. */
+  async "prorrogacao-conferida"(el){
+    const id = Number(el.dataset.id); if(!Number.isInteger(id) || id <= 0) return;
+    if(!confirm("Marcar como conferida?\n\nA agenda não muda: se o prazo mudou, ponha antes a nova data na obrigação (Configurações → Agenda de obrigações, “prorrogacoes”) e confira as edições do Informativo e a agenda da semana da Pauta já montadas.")) return;
+    const [linha] = await ler("radar_config", {select:"valor", chave:"eq.prorrogacoes_conferidas"});
+    const antes = (Array.isArray(linha?.valor) ? linha.valor : []).filter(x => Number.isInteger(x) && x > 0 && x !== id);
+    if(await gravarConfig("prorrogacoes_conferidas", [...antes, id].slice(-500))) recado("Marcada como conferida. A agenda não mudou.");
   },
 
   /* v0.12.0: boletim da ITC lido no e-mail pela função radar-itc (Microsoft Graph). O resultado traz só contagens. */
@@ -4138,7 +4251,33 @@ function validarConfig(chave, v){
       // v0.21.0: opcionais da agenda da semana da Pauta
       if(o.redes !== undefined && typeof o.redes !== "boolean") return `“${o.nome}”: “redes” é true ou false (false tira a obrigação da agenda publicada nas redes).`;
       if(o.fonte !== undefined && !(typeof o.fonte === "string" && o.fonte.length <= 300)) return `“${o.nome}”: “fonte” é um texto de até 300 caracteres (a fonte oficial da regra).`;
+      // v0.30.0: a obrigação anual (“mes”), os outros nomes nas notícias (“termos”, para o aviso de prorrogação) e a prorrogação de um
+      // vencimento (“prorrogacoes”, que o administrador escreve depois de conferir o ato oficial)
+      if(o.mes !== undefined && !(Number.isInteger(o.mes) && o.mes >= 1 && o.mes <= 12)) return `“${o.nome}”: “mes” é o mês do vencimento anual, de 1 a 12 (sem “mes”, vence todo mês).`;
+      if(o.mes !== undefined && o.regra === "dia" && o.dia > DIAS_DO_MES[o.mes - 1]) return `“${o.nome}”: ${MESES[o.mes - 1]} não tem dia ${o.dia}.`;
+      // (o termo conta como o aviso do banco compara: só letras e números, sem acento; "13º" vira "13", com 2, e nunca acharia nada)
+      if(o.termos !== undefined && !(Array.isArray(o.termos) && o.termos.length <= 10 && o.termos.every(t => typeof t === "string" && chaveObrigacao(t).replace(/ /g, "").length >= 3 && t.trim().length <= 80)))
+        return `“${o.nome}”: “termos” é uma lista de até 10 outros nomes da obrigação nas notícias, cada um com até 80 caracteres e pelo menos 3 letras ou números (sem contar acento, pontuação e “º”), como ["DASN"].`;
+      if(o.prorrogacoes !== undefined){
+        if(!(Array.isArray(o.prorrogacoes) && o.prorrogacoes.length <= 20)) return `“${o.nome}”: “prorrogacoes” é uma lista (até 20), como [{"de": "2027-03", "para": "2027-04-30", "fonte": "norma, artigo — endereço oficial"}].`;
+        const vistos = new Set();
+        for(const p of o.prorrogacoes){
+          const de = p && typeof p === "object" && typeof p.de === "string" && /^(\d{4})-(0[1-9]|1[0-2])$/.exec(p.de);
+          if(!de) return `“${o.nome}”: na prorrogação, “de” é o mês em que o vencimento caía, no formato "AAAA-MM" (ex.: "2027-03").`;
+          const para = typeof p.para === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.para) ? new Date(p.para + "T12:00:00Z") : null;
+          if(!para || isNaN(para) || isoDia(para) !== p.para) return `“${o.nome}”: na prorrogação de ${p.de}, “para” é a nova data, no formato "AAAA-MM-DD" (ex.: "2027-04-30").`;
+          if(p.para < p.de + "-01") return `“${o.nome}”: na prorrogação de ${p.de}, a nova data (${p.para}) não pode ser antes do mês em que o vencimento caía.`;
+          if(o.mes !== undefined && Number(de[2]) !== o.mes) return `“${o.nome}”: a prorrogação “de” ${p.de} não é do mês do vencimento (a obrigação vence em ${MESES[o.mes - 1]}).`;
+          if(!(typeof p.fonte === "string" && p.fonte.trim() && p.fonte.length <= 300)) return `“${o.nome}”: na prorrogação de ${p.de}, escreva a “fonte” (o ato oficial que mudou o prazo, até 300 caracteres).`;
+          if(vistos.has(p.de)) return `“${o.nome}”: há duas prorrogações para ${p.de}; deixe só uma.`;
+          vistos.add(p.de);
+        }
+      }
     }
+  }
+  // v0.30.0: as capturas que o administrador marcou como conferidas no aviso de possível prorrogação (números; não aparece como bloco)
+  if(chave === "prorrogacoes_conferidas"){
+    if(!(lista && v.length <= 500 && v.every(n => Number.isInteger(n) && n > 0))) return "As prorrogações conferidas são uma lista de números de captura (até 500).";
   }
   if(chave === "feriados_extras"){
     if(!lista) return "Os feriados precisam ser uma lista [ … ].";
@@ -4262,7 +4401,7 @@ const quandoBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "�
   : d.toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}).replace(",", " às"); };
 function situacaoLembretes(lemb, cfg){
   if(lemb.erro) return `<div class="aviso alerta" id="lembretes-situacao">${lemb.erro.status === 404
-    ? "A situação dos lembretes precisa do banco da v0.29.0: o administrador roda o <b>sql/radar-setup-v0.29.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler a situação dos lembretes agora: recarregue a página."}</div>`;
   const s = lemb.r || {}, ag = s.agenda || {};
   const agenda = !ag.instalada ? "não instalada: rode de novo o sql/radar-redes-agenda.sql (Supabase → SQL Editor)"

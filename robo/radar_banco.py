@@ -175,8 +175,9 @@ class Banco:
     # ------------------------------------------------------- lembretes (v0.29.0)
     @staticmethod
     def _sem_funcao(e: ErroBanco) -> bool:
-        """A função ainda não existe no banco (o SQL da v0.29.0 não foi rodado): HTTP 404 do PostgREST sem código do Postgres (com ele,
-        o 404 é erro DENTRO da função, como uma tabela que sumiu, e não falta dela)."""
+        """A função ainda não existe no banco (o SQL da versão que a criou não foi rodado: v0.29.0 nos lembretes, v0.30.0 nas
+        prorrogações): HTTP 404 do PostgREST sem código do Postgres (com ele, o 404 é erro DENTRO da função, como uma tabela que sumiu, e
+        não falta dela)."""
         s = str(e)
         return "PGRST202" in s or ("HTTP 404" in s and '"code":"42' not in s)
 
@@ -205,6 +206,19 @@ class Banco:
         """O e-mail do lote saiu no aviso `aviso`: as pendências `ids` nunca mais são lembradas (o resto do lote fica para o dia seguinte)."""
         return int(self._pedir("POST", "rpc/radar_lembretes_enviado",
                                corpo={"p_lote": str(lote), "p_aviso": int(aviso), "p_ids": [int(i) for i in ids]}) or 0)
+
+    # --------------------------------------- possível prorrogação na agenda (v0.30.0)
+    def prorrogacoes(self) -> list[dict] | None:
+        """As capturas dos últimos 30 dias que falam em prorrogar ou adiar o prazo de uma obrigação da agenda (radar_prorrogacoes, a
+        mesma regra da tela), para o aviso ao administrador. Cada uma traz "conferida" (o administrador já clicou em "Conferido") e
+        "do_email" (do boletim pago, que o aviso só conta). Banco ainda sem o SQL da v0.30.0 (a função não existe: PGRST202, ou 404 sem
+        código do Postgres): None (o aviso nem abre nem fecha). Outro erro continua sendo erro."""
+        try:
+            return self._pedir("POST", "rpc/radar_prorrogacoes", corpo={"p_dias": 30}) or []
+        except ErroBanco as e:
+            if self._sem_funcao(e):     # 404 com código do Postgres (42883, 42P01) é erro DENTRO da função, não a falta dela
+                return None
+            raise
 
     # ------------------------------------------------- publicações no site (v0.8.0)
     def capa(self, imagem_id) -> str | None:
