@@ -8947,6 +8947,65 @@ def test_video_socio_sem_termo_do_corretor_sem_aviso_e_desmarcado_com_aviso(pagi
     assert "Bruno: sem o termo novo, que cita o corretor de vídeo" in pagina.inner_text("#video-pessoas-falta")
 
 
+def test_video_socio_peca_nova_pelo_caminho_do_dono_envia_sem_falsa_alteracao(pagina, vtela, mp4_sintetico):
+    """v0.28.1: o caminho do dono, de ponta a ponta."""
+    db, fv = vtela
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina)
+    pagina.click("[data-acao=pauta-pessoas]")
+    pagina.wait_for_selector("h1 >> text=Pessoas e termos")
+    nova = pagina.locator("form[data-form=novaPessoa]")
+    nova.locator("[name=nome]").fill("Bruno Exemplo")
+    nova.locator("[name=nome_na_peca]").fill("Bruno")
+    nova.locator("[name=termo_assinado_em]").fill("2026-10-01")
+    nova.locator("[name=socio]").check()
+    limpar_recados(pagina)
+    nova.locator("button", has_text="Cadastrar pessoa").click()
+    pagina.wait_for_selector("#recado >> text=Pessoa cadastrada.")
+    bruno = db.execute("select id from radar_pessoas").fetchone()[0]
+    prox = date.fromisoformat(semana_de_hoje()) + timedelta(days=7)
+    dia = (prox + timedelta(days=2)).isoformat()
+    pagina.click("text=← Voltar para a semana")
+    abrir_pauta(pagina, prox.isoformat())
+    pagina.click(f".pauta-dia[data-dia='{dia}'] [data-acao=pauta-nova]")
+    form = pagina.locator("#pauta-nova")
+    form.wait_for()
+    form.locator("[name=tipo]").select_option("reel")
+    form.locator("[name=formato]").select_option("reel")
+    form.locator("[name=assunto]").fill("Reel do prazo do Simples (exemplo)")
+    form.locator("[name=quem_aparece]").fill("Bruno Exemplo")
+    form.locator("button", has_text="Criar a peça").click()
+    pagina.wait_for_selector("form[data-form=peca]")
+    pagina.wait_for_selector("#recado >> text=nada é publicado sem a aprovação do administrador")
+    pid = db.execute("select id from radar_pauta_pecas where data = %s", (dia,)).fetchone()[0]
+    pagina.fill("#peca-roteiro", vb.ROTEIRO)
+    salvar_peca(pagina)
+    pagina.check(f"form[data-form=peca] input[name=pessoa][value='{bruno}']")
+    salvar_peca(pagina)
+    print(db.execute("select pessoas, situacao, hora, chamada, quem_aparece, apoio, objetivo, observacao, legenda_instagram, legenda_facebook from radar_pauta_pecas where id = %s", (pid,)).fetchone())
+    pagina.reload()
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_peca(pagina, pid, dia)
+    pagina.wait_for_selector("#video-envio")
+    if mp4_sintetico:
+        pagina.set_input_files("#video-arquivos", [{"name": "tomada-1.mp4", "mimeType": "video/mp4", "buffer": mp4_sintetico}])
+    else:
+        pagina.set_input_files("#video-arquivos", [clipe("tomada-1.mp4", 100_000)])
+    pagina.wait_for_selector("#video-clipes li[data-i='0']")
+    print(pagina.evaluate("() => [...document.querySelectorAll('#video-quem option')].map(o => [o.value, o.textContent, o.selected])"))
+    for c in pagina.locator("#video-envio .video-declaracao").all():
+        c.check()
+    print(pagina.evaluate("""() => { const f = document.querySelector('form[data-form=peca]');
+      const cs = [...f.elements].filter(c => c.name && c.type !== 'file');
+      const agora = JSON.parse(estadoPeca(f)), antes = JSON.parse(f.dataset.original);
+      return {n: [agora.length, antes.length], difere: cs.map((c, i) => [c.name, c.type, JSON.stringify(antes[i]), JSON.stringify(agora[i])]).filter(x => x[2] !== x[3]),
+              nomes: cs.map(c => c.name + ':' + c.type), video: [...f.elements].filter(c => c.closest('#video-reel')).map(c => c.id || c.className)}; }"""))
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-enviar]")
+    pagina.wait_for_selector("#recado >> text=Gravação enviada: na fila do corretor.", timeout=60000)
+
+
 def test_pessoas_termo_do_corretor_quer_ver_menor_e_pecas_publicadas(pagina, vtela):
     """v0.22.0: Pessoas e termos: o administrador grava o termo do corretor de vídeo (nunca no futuro), “pediu para ver a peça antes” e
     menor de idade; na peça reel, a pessoa menor aparece no aviso antes do envio. Com o termo revogado (ou a pessoa inativa), a lista das
