@@ -23,6 +23,17 @@ de autorizar de novo (para não duplicar).
 v0.25.0 (etapa 6): a capa da notícia é a imagem da publicação do conteúdo (radar_conteudos.imagem_id), a mesma que vai ao Instagram e
 ao Facebook; com a imagem da IA, o texto do site termina com a linha "Imagem ilustrativa gerada por IA." (para_html).
 
+v0.32.0 (17/10/2026): o título vai ao site sem "nº" e sem "º"/"ª"/"°" depois de números ("Lei nº 15.415/2026" → "Lei 15.415/2026";
+radar_site.titulo_para_o_site), porque o site monta o endereço da notícia com o título e não abre a página quando ele tem esses sinais. No
+Radar, no Instagram e no Facebook o título não muda; o texto da notícia também não. Achada a notícia na lista do site, a página dela tem
+de abrir com o texto: se a lista mostra a notícia (o mesmo título) e a página não abre (404, 500) ou abre sem o texto, o envio vira
+"erro" com o pedido de apagá-la no painel do site e autorizar de novo — nada é reenviado sozinho (vale também para o envio "enviando").
+Revisão: só quando se repete. Na primeira vez o envio continua "enviando" com a nota PAGINA_A_CONFERIR (no campo erro; a hora é o
+atualizado_em) e vira "erro" só se a página continuar sem abrir numa rodada pelo menos CONFERIR_DE_NOVO depois: uma falha passageira do
+site (HTTP 500 duas vezes, um 404 isolado, a página "em manutenção") não manda apagar uma notícia boa. Só o 404 e o 5xx contam
+(endereco_quebrado): o 401 e o 403 (acesso recusado ao robô), o 410 e a sobrecarga (SITE_OCUPADO) não; a página que abre sem o texto tem
+a sua mensagem (PAGINA_SEM_TEXTO), sem "endereço quebrado".
+
 v0.17.0, na mesma rodada:
   * "Publicar em todos": o Instagram e o Facebook que o administrador autorizou junto com o site ficam prontos quando a
     notícia entra no site; o robô pede à função radar-redes (Supabase) que publique — a função confere tudo de novo;
@@ -57,6 +68,25 @@ ESPERA_MAXIMA = timedelta(hours=2)       # "enviando" sem achar a notícia no si
 FONTES_PAGAS = ("itc-email",)            # v0.18.0: boletim pago (o mesmo de radar_rascunhos.FONTES_PAGAS): nunca é o link da fonte
 OBSERVACAO = "Publicado pelo robô com autorização do administrador (envio nº {})."
 CAMPOS = {"title", "keywords", "metadescription", "text", "category", "image"}
+# v0.32.0: a lista do site mostra a notícia, mas a página dela não abre (o endereço com "º" do título: HTTP 404) ou abre sem o texto
+PAGINA_QUEBRADA = ("A notícia foi gravada no site, mas a página dela não abre (endereço quebrado). Apague-a no painel do site e "
+                   "autorize de novo.")
+# revisão: a página abre, mas sem o texto aprovado (o site em manutenção, outra notícia com o mesmo título): não é "endereço quebrado"
+PAGINA_SEM_TEXTO = ("A notícia foi gravada no site, mas a página dela abre sem o texto aprovado. Confira-a no site: se estiver errada, "
+                    "apague-a no painel do site e autorize de novo; se estiver certa, registre o link à mão (sem autorizar de novo, para "
+                    "não duplicar).")
+# revisão: a primeira vez que a página não abre, o envio continua "enviando" com esta nota (no campo erro, que a tela não mostra enquanto
+# "enviando"); vira "erro" só se a página continuar sem abrir numa rodada pelo menos CONFERIR_DE_NOVO depois da nota
+PAGINA_A_CONFERIR = "A página da notícia no site ainda não abriu; o robô confere de novo na próxima rodada."
+CONFERIR_DE_NOVO = timedelta(minutes=10)
+SITE_OCUPADO = (408, 429, 502, 503, 504)  # página que não abriu por sobrecarga do site: não é endereço quebrado (procura de novo depois)
+titulo_para_o_site = radar_site.titulo_para_o_site     # v0.32.0: o título que vai ao campo "title" do cadastro do site
+
+
+def endereco_quebrado(status: int | None) -> bool:
+    """Revisão: só o 404 e o erro do próprio site (5xx fora da sobrecarga) dizem que a página não abre. Sem resposta (tempo esgotado),
+    o 401 e o 403 (acesso recusado ao robô), o 410 e os outros 4xx não dizem nada do endereço: não contam."""
+    return status == 404 or (status is not None and 500 <= status < 600 and status not in SITE_OCUPADO)
 
 
 # ------------------------------------------------------------------ texto do Radar → HTML do site
@@ -253,6 +283,14 @@ class SiteFora(Exception):
     """O site não respondeu antes do envio (fora do ar, lento): nada foi enviado; a autorização continua valendo."""
 
 
+class PaginaQuebrada(Exception):
+    """v0.32.0: a lista do site mostra a notícia (o mesmo título), mas a página dela não abre ou abre sem o texto (sem_texto)."""
+
+    def __init__(self, url: str, sem_texto: bool = False):
+        super().__init__(url)
+        self.url, self.sem_texto = url, sem_texto
+
+
 class Publicador:
     def __init__(self, banco: Banco, usuario: str, senha: str, sessao: requests.Session | None = None,
                  baixar_pagina=lambda url: baixar(url, tentativas=2)[1], agora=None):
@@ -309,7 +347,7 @@ class Publicador:
         valor = categorias.get(envio["categoria"])
         if not valor:
             raise admin.Parada(f"a categoria \"{envio['categoria']}\" não existe mais no site; escolha outra e autorize de novo")
-        dados.update({"title": c["titulo"], "text": para_html(c["corpo"], c.get("autor"), c.get("fonte_credito"), self.link_fonte(c), eh_informativo(c),
+        dados.update({"title": titulo_para_o_site(c["titulo"]), "text": para_html(c["corpo"], c.get("autor"), c.get("fonte_credito"), self.link_fonte(c), eh_informativo(c),
                                                               imagem_da_ia(c)),
                       "category": valor})
         if "keywords" in tipos:
@@ -346,20 +384,49 @@ class Publicador:
             self.feito.append(f"envio {envio['id']}: o site respondeu HTTP {resposta.status_code} ao gravar")
 
     def procurar(self, c: dict) -> str | None:
-        """O link da notícia em artecon.cnt.br/news que corresponde ao conteúdo (o mesmo critério do registro automático)."""
+        """O link da notícia em artecon.cnt.br/news que corresponde ao conteúdo (o mesmo critério do registro automático).
+        v0.32.0: a página tem de abrir com o texto. Se nenhuma abre e a lista mostra uma notícia com o mesmo título (o do Radar ou o
+        que vai ao site) cuja página não abre (HTTP 404, 500...: endereco_quebrado) ou abre sem o texto, levanta PaginaQuebrada (quem
+        chama decide se já é "erro": pagina_quebrada)."""
         cfg = radar_site.configuracao(self.banco)
         registrados = {radar_site.chave_url(r["url"]) for r in self.banco.links_publicados() if r.get("url")}
         alvo = {"id": c["id"], "titulo": c["titulo"], "corpo": c["corpo"], "aprovado_em": c.get("aprovado_em")}
-        for url in radar_site.links_da_lista(self.baixar(cfg["lista"]), cfg["lista"], cfg["padrao"], int(cfg["max_noticias"])):
+        titulos = {radar_site_excluir.titulo_normal(t).rstrip(" .") for t in (c["titulo"], titulo_para_o_site(c["titulo"]))}
+        aprovado, quebrada, sem_texto = radar_site.dia_brasilia(c.get("aprovado_em")), None, None
+        for item in radar_site.noticias_da_lista(self.baixar(cfg["lista"]), cfg["lista"], cfg["padrao"], int(cfg["max_noticias"])):
+            url = item["url"]
             if radar_site.chave_url(url) in registrados or not radar_site.no_site(url, cfg):
                 continue
+            na_lista = any(radar_site_excluir.titulo_normal(t).rstrip(" .") in titulos for t in item["textos"])
             try:
                 noticia = radar_site.ler_noticia(self.baixar(url))
-            except ErroDownload:
+            except ErroDownload as e:
+                if na_lista and endereco_quebrado(e.http_status):
+                    quebrada = quebrada or url              # a lista mostra a notícia, mas a página não abre
                 continue
             if radar_site.escolher(noticia, [alvo]):
                 return url
+            if na_lista and not (noticia["data"] and aprovado and noticia["data"] < aprovado) and \
+                    radar_site.contido(c["corpo"], noticia["texto"]) < radar_site.TEXTO_COM_TITULO:
+                sem_texto = sem_texto or url                # abre, mas sem o texto (e não é uma notícia de antes da aprovação)
+        if quebrada or sem_texto:
+            raise PaginaQuebrada(quebrada or sem_texto, sem_texto=not quebrada)
         return None
+
+    def pagina_quebrada(self, envio: dict, q: PaginaQuebrada):
+        """v0.32.0: gravada no site, mas a página não abre (ou abre sem o texto): "erro" para o administrador apagar no painel e
+        autorizar de novo (nunca reenvia sozinho, para não duplicar). Revisão: só quando se repete — na primeira vez fica "enviando" com
+        a nota PAGINA_A_CONFERIR; vira "erro" se a página continuar assim numa rodada pelo menos CONFERIR_DE_NOVO depois da nota (a hora
+        da nota é o atualizado_em do envio, que o robô grava com ela)."""
+        nota = self._limpo(PAGINA_A_CONFERIR)
+        desde = _quando(envio.get("atualizado_em")) if envio.get("erro") == nota else None
+        if desde is not None and self.agora() - desde >= CONFERIR_DE_NOVO:
+            self.marcar(envio, "enviando", situacao="erro", erro=PAGINA_SEM_TEXTO if q.sem_texto else PAGINA_QUEBRADA)
+            self.feito.append(f"envio {envio['id']}: gravado no site, mas a página da notícia " + ("abre sem o texto" if q.sem_texto else "não abre"))
+            return
+        if desde is None:
+            self.marcar(envio, "enviando", erro=PAGINA_A_CONFERIR)
+        self.feito.append(f"envio {envio['id']}: a notícia está na lista do site, mas a página dela ainda não abriu; confere de novo na próxima rodada")
 
     def concluir(self, envio: dict, c: dict, url: str):
         erro = None
@@ -373,7 +440,7 @@ class Publicador:
     # -------------------------------------------------------------- a rodada
     def executar(self) -> list[str]:
         envios = self.banco._pedir("GET", "radar_site_envios", params={
-            "select": "id,conteudo_id,categoria,conteudo_lido_em,situacao,enviado_em", "situacao": "in.(autorizado,enviando)",
+            "select": "id,conteudo_id,categoria,conteudo_lido_em,situacao,enviado_em,erro,atualizado_em", "situacao": "in.(autorizado,enviando)",
             "order": "id"}) or []
         fora = False
         for envio in envios:
@@ -397,7 +464,11 @@ class Publicador:
         c = self.conteudo(envio["conteudo_id"])
         if envio["situacao"] == "enviando":                 # rodada anterior interrompida: só procura, nunca reenvia
             registrado = (c or {}).get("radar_divulgacoes") or []
-            url = registrado[-1]["url"] if registrado else (self.procurar(c) if c else None)
+            try:
+                url = registrado[-1]["url"] if registrado else (self.procurar(c) if c else None)
+            except PaginaQuebrada as q:                     # v0.32.0: está na lista, mas a página não abre
+                self.pagina_quebrada(envio, q)
+                return
             if registrado:                                  # a coleta (radar_site.py) já achou e registrou a notícia
                 self.marcar(envio, "enviando", situacao="publicado", url=url, erro=None)
                 self.feito.append(f"envio {envio['id']}: publicado (registro já feito pela coleta)")
@@ -441,6 +512,9 @@ class Publicador:
             url = self.procurar(c)
         except ErroDownload:
             url = None
+        except PaginaQuebrada as q:                         # v0.32.0: gravada, mas a página da notícia não abre (ainda)
+            self.pagina_quebrada(dict(envio, erro=None), q)  # logo depois do envio: é sempre a primeira vez
+            return
         if url:
             self.concluir(envio, c, url)
         else:

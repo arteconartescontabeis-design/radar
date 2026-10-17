@@ -1,7 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.31.0)
+# Radar Artecon — Relatório de testes (v0.32.0)
 
-Data: 17/10/2026. **A suíte inteira da v0.31.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, pela fila
-compartilhada, os testes afetados: o robô da coleta, o de ponta a ponta, o repositório, o banco, a agenda, o corretor de vídeo no banco
+Data: 17/10/2026. **A suíte inteira da v0.32.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, pela fila
+compartilhada, os testes afetados: o quadro de vencimentos e o registro das cópias no banco, a função `radar-copia` no Deno, os
+lembretes, o banco, a agenda e o repositório (`testes/test_radar_vencimentos.py`, `test_radar_funcao_copia.py`,
+`test_radar_lembretes.py`, `test_radar_banco.py`, `test_radar_agenda.py` e `test_radar_repositorio.py`), **400 aprovados, 2 falhas
+(as esperadas antes de terminar a versão, corrigidas e aprovadas depois), 1 pulado**; e os 57 testes de tela das Configurações, dos
+lembretes, da versão e dos recados do banco, **56 aprovados, 0 falhas, 1 pulado** (detalhes na seção da v0.32.0, logo abaixo). Na correção do
+título no site (junto da v0.32.0), rodaram o robô do site, a regra do título, o repositório, o de ponta a ponta inteiro, o topo do LEIAME
+e os 21 testes de tela do passo Publicar, **153 aprovados, 0 falhas, 1 pulado**; e, na revisão dessa correção, o robô do site, a regra
+do título, o repositório, o de ponta a ponta, o topo do LEIAME e o arquivo inteiro dos testes de tela, **381 aprovados, 0 falhas, 62
+pulados**. A v0.32.0 tem 63 testes novos, 15 deles da correção do título no site (de 1.259 para 1.322 no total). Na v0.31.0 rodaram, pela fila compartilhada, os testes afetados: o robô da coleta, o de ponta a ponta, o repositório, o banco, a agenda, o corretor de vídeo no banco
 e os lembretes (`testes/test_radar_coletores.py`, `test_radar_e2e.py`, `test_radar_repositorio.py`, `test_radar_banco.py`,
 `test_radar_agenda.py`, `test_radar_video_banco.py` e `test_radar_lembretes.py`), **582 aprovados, 2 falhas (as esperadas antes de
 terminar a versão, corrigidas e aprovadas depois), 1 pulado**; e o arquivo inteiro dos testes de tela, com o repositório e os
@@ -43,8 +51,182 @@ o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-reposit
 teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado,
 toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
-atualizado: as seções da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
+atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.32.0 — vencimentos de chaves e contas e cópia no OneDrive
+
+Data: 17/10/2026. Pedido do dono: um quadro com o vencimento de cada chave, conta e assinatura que o Radar usa, com lembrete antes, e
+uma cópia de segurança do banco fora do Supabase, no OneDrive do escritório. Feita em duas fases, em paralelo com a v0.31.0: a fase A
+sobre a v0.30.0 (sem subir a versão) e a fase B por cima da v0.31.0 (a junção, a versão, os textos e um ajuste da tabela do quadro
+achado nos prints).
+
+**O que mudou:**
+
+- **Banco** (`git mv sql/radar-setup-v0.31.0.sql sql/radar-setup-v0.32.0.sql`, e a reversão; o bloco "v0.32.0", perto do fim):
+  as tabelas novas `radar_vencimentos` (o quadro: só o administrador, pela RLS; o gatilho recusa texto com cara de chave e link que
+  não é `https://`; a trilha de quem mexeu) e `radar_copias` (só a situação de cada cópia; o arquivo nunca passa pelo banco); os tipos
+  de lembrete `vencimento` e `copia` (a chave "lembretes" ganha os dois, ligados, sem mexer no que o administrador ajustou); as funções
+  `radar_vencimento*`, `radar_vencimentos_conhecidos` (os nove, sem duplicar), `radar_vencimentos_renovei`, `radar_copia_conferir_agenda`
+  e `radar_copias_*` (a exportação página por página pela chave primária, só com a chave da agenda ou o administrador). Registro
+  `v0.32.0`; evidência "30 tabelas". Nada é apagado.
+- **Agenda** (`sql/radar-copia-agenda.sql` e a reversão, novos): a chave da agenda no Vault e os três horários (dia 1 às 04h10, de
+  novo às 05h10 e dia 2 às 04h10, só se o mês ainda não tem cópia).
+- **Função `radar-copia`** (nova, **0.32.0**, "Verify JWT" desligado): exporta as 30 tabelas, monta o .zip (um JSON por tabela, o
+  `manifesto.json` com o sha256 de cada arquivo e um `LEIA-ME.txt`), mascara chave colada num texto do banco e grava na pasta do
+  OneDrive pelo Microsoft Graph (PUT até 4 MiB; acima disso, sessão de envio em pedaços); o "Testar" confere a ligação e que o resto
+  do OneDrive fica fora do alcance.
+- **Robô dos lembretes** (`robo/radar_lembretes.py`): os títulos e os textos dos dois tipos novos (só a data; nunca o nome, o número do
+  item nem o motivo da falha). O recado para o banco sem os lembretes não cita mais o `sql/radar-setup-v0.29.0.sql`, que não existe
+  mais no repositório: agora diz "rode o setup do banco da v0.29.0 ou mais novo" (o teste de ponta a ponta confere o texto).
+- **Tela** (`index.html`): Configurações → Vencimentos de chaves e contas e Cópia de segurança no OneDrive; os tipos novos nos
+  Lembretes por e-mail; a entrada 0.32.0 em Versões; o recado do banco com o `sql/radar-setup-v0.32.0.sql` (também em
+  `radar-pauta.js` e `radar-video.js`, que só mudam a versão).
+
+**A junção com a v0.31.0 (rebase da fase A sobre 9329083):** o git acompanhou a renomeação do setup e da reversão para a v0.31.0.
+Dois arquivos com conflito, resolvidos mantendo os dois lados: o setup (no cabeçalho, o parágrafo da v0.31.0 e depois o da v0.32.0,
+com uma linha "Reversão:" só; no fim, o "Esperado" com as 30 tabelas da fase A e a versão da v0.31.0) e
+`testes/test_radar_banco.py` (a instalação sem a transação do editor: as 30 tabelas da fase A e as conferências da v0.31.0 sobre as
+fontes iniciais ligadas e o LEIAME). O resto (o `index.html`, a reversão, o robô dos lembretes, os outros testes) juntou sozinho.
+Conferido linha a linha (as linhas acrescentadas e tiradas pela fase A antes e depois do rebase): tudo o que a fase A trouxe está no
+resultado, e a diferença para a v0.31.0 é só a fase A mais as duas resoluções. A v0.31.0 não criou tabela: a lista da cópia continua
+com as 30.
+
+**Ajuste da fase B (os prints da fase A):** na tabela do quadro, a regra `main{overflow-wrap:anywhere}` deixava as colunas encolherem
+até quebrar no meio da palavra: a data saía "14/10/202" + "6" e, no celular, Nome e Tipo quebravam quase letra a letra. Agora a
+tabela tem largura mínima de 900 px (rola para o lado dentro do quadro; a página não) e `overflow-wrap: normal`; a data e os selos
+ficam numa linha; só "Onde renovar" e "Observação" quebram no meio. O teste novo
+`test_quadro_de_vencimentos_nao_quebra_a_data_nem_as_palavras` mede, no computador (1280 px) e no celular (390 px), as linhas da
+data e do selo e cada palavra de Nome e Tipo (`getClientRects`): **falhava antes do ajuste** (a data em 2 linhas já a 1280 px) e passa
+depois.
+
+**Resultados desta rodada** (pela fila compartilhada, com o PostgreSQL 16, o PostgREST 12.2.3, o Deno e o Chromium de teste; nenhuma
+chamada à Microsoft, ao GitHub, ao Supabase, à Meta ou ao registro.br de verdade: o login e o OneDrive são simulados). **A suíte
+inteira roda no GitHub (CI) antes de juntar.**
+
+- `testes/test_radar_vencimentos.py` (20), `testes/test_radar_funcao_copia.py` (18), `testes/test_radar_lembretes.py` (18),
+  `testes/test_radar_banco.py` (312), `testes/test_radar_agenda.py` (13) e `testes/test_radar_repositorio.py` (22), numa rodada só:
+  **400 aprovados, 2 falhas, 1 pulado** (o dos commits do push, que só roda no `radar-repositorio.yml`), em 347 s. As 2 falhas eram as
+  esperadas antes de terminar a versão: o título deste relatório (o teste da versão igual em todos os arquivos) e a versão da função
+  num teste da `radar-copia` (`0.30.0` → `0.32.0`); corrigidas, passaram na rodada seguinte (`testes/test_radar_funcao_copia.py` e `testes/test_radar_repositorio.py`: **39 aprovados,
+  0 falhas, 1 pulado**, em 37 s);
+- `testes/test_radar_telas.py -k "<os 57 testes que abrem as Configurações, mexem nos lembretes, na versão, em Versões ou nos recados
+  do banco, entre eles os 9 da v0.32.0>"`: **56 aprovados, 0 falhas, 1 pulado** (o que precisa
+  do pacote da IA Central, fora deste repositório), 246 fora do filtro, em 146 s;
+- `testes/test_radar_coletores.py -k textos_para_o_dono` (o topo do LEIAME, com o parágrafo novo da v0.32.0, continua dizendo quais
+  fontes da v0.31.0 ficam sem filtro de tema): **1 aprovado**.
+
+Não rodaram aqui (rodam no GitHub): as outras funções no Deno, o corretor de vídeo, os robôs que não mudaram e o resto dos testes de
+tela.
+
+**O setup duas vezes.** O `sql/radar-setup-v0.32.0.sql` roda duas vezes seguidas nos testes de instalação (`test_radar_banco.py`: por
+cima da v0.1, da v0.6, da v0.7, sem a transação do editor, e `test_radar_lembretes.py`: por cima do banco sem os lembretes), **sem
+erro**, com 30 tabelas e o registro `v0.32.0`; o ajuste do administrador nos lembretes fica, e só "vencimento" e "copia" entram.
+
+**Testes novos (48 coletados a mais: de 1.259 para 1.307) e ajustados.** Novos, da fase A:
+- `test_radar_vencimentos.py` (20): o quadro (RLS só do administrador, gatilho que recusa valor de chave e link sem https, a trilha,
+  os nove conhecidos sem duplicar — nem o que foi incluído à mão com o mesmo nome ou o nome do segredo —, "Renovei" com o hoje de
+  Brasília, o espaço rígido U+00A0 e os outros espaços Unicode iguais na tela e no banco); o lembrete `vencimento` (30, 7, 1 e no dia,
+  cada marco uma vez — também ao desligar e religar o item ou voltar à data de antes —, o marco perdido não acumula, um e-mail por dia
+  com todos os itens, nada de nome); o lembrete `copia` (só depois das três tentativas e só para quem já configurou, uma vez por mês);
+  a exportação só com a chave da agenda ou o administrador (nunca a chave de serviço sozinha), página por página pela chave primária
+  (o marcador no fim; uma linha apagada no meio não faz outra pular; tabela sem chave primária recusada); a lista de tabelas da função
+  igual à do banco, todas com chave primária; nenhuma coluna com nome de segredo; os textos exatos do robô (o aviso público sem o
+  número do item).
+- `test_radar_funcao_copia.py` (18): a função `radar-copia` de verdade no Deno, com PostgREST real e um Microsoft Graph de mentira:
+  sem segredos "não configurada"; quem pode chamar; o .zip conferido pelo Python (testzip, linhas e sha256 de cada tabela iguais ao
+  banco); PUT até 4 MiB; sessão de envio em pedaços de 327 680 bytes sem Authorization; 5xx repetido; 404 da sessão; endereço de envio
+  fora do OneDrive recusado sem mandar nada; tamanho diferente = erro e arquivo apagado; o "Testar" (inclusive o 403 esperado na raiz
+  do OneDrive e a permissão a mais); limite de tamanho; chave com formato conhecido colada no banco sai mascarada na cópia (Supabase,
+  GitHub, IA Central, Meta, Azure, JWT, chave privada; o JSON continua válido; o base64 não é tocado); imagem apagada no meio da cópia
+  não tira outra do .zip; página cortada (sem o marcador) = falha com recado; sessão perto de vencer = 401 antes de começar, nada
+  registrado; resposta perdida do envio (PUT único ou último pedaço) com o arquivo já na pasta = cópia OK; nada no log nem no Storage.
+- `test_radar_agenda.py` (+1): a agenda da cópia (3 horários, chave só no Vault, só sem cópia OK no mês, reversão).
+- `test_radar_telas.py` (+8): o quadro (cores, ordem, incluir, editar, remover, Renovei, conhecidos sem duplicar, valor de chave
+  recusado na tela e no banco); a cópia não configurada, sem a função e configurada (Testar e Fazer a cópia agora); os lembretes novos
+  nas Configurações; o banco antigo.
+
+Novo, da fase B: `test_radar_telas.py` (+1), a tabela do quadro sem quebrar a data, os selos e as palavras (acima). Ajustados na fase
+B: a versão `v0.32.0` nos testes de instalação, no dos lembretes, no do quadro (o "banco" da exportação) e nos da função (a versão da
+função, do manifesto e das respostas); a aba Versões (a 0.32.0 no topo, com 5 itens; as de antes uma posição abaixo); o rodapé; o
+`FUNCAO_MINIMA`/`VERSAO`; os recados do banco (Pauta, vídeo, lembretes, aviso de prorrogação, quadro e cópia, agora com o
+`sql/radar-setup-v0.32.0.sql`); a agenda da cópia ("Rode antes o radar-setup-v0.32.0.sql").
+
+Mudaram (só números): 28 → 30 tabelas; 37 → 39 tabelas e visões; a chave "lembretes" com "vencimento" e "copia"; 6 títulos de
+lembrete; 6 funções novas que a equipe logada pode chamar (cada uma confere o papel ou a chave da agenda).
+
+**Números da fase A** (17/10/2026, sobre a v0.30.0, pela mesma fila): o quadro, a função, os lembretes, o banco, a agenda e o
+repositório, **397 aprovados, 1 pulado**, em 316 s; os 37 testes de tela das Configurações e dos lembretes, **36 aprovados, 1 pulado**
+("deno ou o pacote da IA Central não disponível"), em 93 s. Prova contrária das correções da revisão da fase A (os testes novos contra o
+código de antes delas): banco e função, **10 falhas, 1 aprovado** (o guarda "todas as tabelas com chave primária", que já valia); tela,
+**4 falhas**. `deno check` da função e `node --check` do script do `index.html`: sem erro.
+
+**Correção do título no site (17/10/2026, entra na v0.32.0).** O caso real: o conteúdo "Salário-maternidade: Lei nº 15.415/2026
+garante concessão em até 30 dias pela Previdência Social" foi gravado no site, que montou o endereço com o "º"
+(`…/news/view/salario-maternidade-lei-nº-154152026-…`) e responde HTTP 404 nele (também com `%C2%BA`); o robô não reconheceu a
+publicação, e o envio seguinte recebeu HTTP 500 ao gravar (a notícia já existia). Decisão do dono: o título que vai ao site sai sem o
+"nº" e sem o "º"/"ª"/"°" depois de números; no Radar, no Instagram e no Facebook ele não muda.
+
+- **Robô do site** (`robo/radar_site.py`, `radar_site_publicar.py` e `radar_site_excluir.py`): `titulo_para_o_site`, função pura, só
+  no campo `title` do cadastro ("nº"/"Nº"/"n.º"/"N.º"/"n°"/"nº."/"nºs" antes de número sai; "º"/"ª"/"°" depois de número sai; o que
+  sobrar sai; os espaços dobrados viram um; título sem esses sinais vai exatamente como está). O texto, a descrição, o título no Radar
+  e o das redes não mudam. A lista do site é lida com os textos do quadro de cada notícia (`noticias_da_lista`: a categoria, a data e
+  o título, como em artecon.cnt.br/news), e a procura aceita o título do Radar ou o convertido (`escolher`, que serve também ao
+  registro automático da coleta; e a exclusão no painel, que procurava só o título do Radar). Se a lista tem uma notícia com o mesmo
+  título cuja página não abre (HTTP 4xx ou 5xx; 408, 429, 502, 503 e 504 são sobrecarga e não contam) ou abre sem o texto, e nenhuma
+  outra abre, o envio vira "erro" com "A notícia foi gravada no site, mas a página dela não abre (endereço quebrado). Apague-a no
+  painel do site e autorize de novo." — logo depois do envio ou na rodada seguinte de um "enviando"; nada é reenviado.
+- **Tela** (`index.html`): `tituloParaOSite`, a mesma regra, e, na autorização do site (acima do botão e do "Publicar em todos"), o
+  aviso "No site, o título sai sem “nº”, “º” e “ª” (o site da Artecon não aceita esses sinais no endereço): <o título como vai ao
+  site>", só quando o título tem "º", "ª" ou "°" (só o administrador o vê). A entrada 0.32.0 em Versões ganha a linha (6 itens).
+- **Testes novos (9 coletados a mais: de 1.307 para 1.316; com a revisão, abaixo, 15: 1.322):** `test_radar_titulo_site.py` (2): 22 casos (o caso real, as formas do
+  "nº", o ordinal, o solto, os espaços, o "no" que fica, o título sem sinais que não muda) na função do robô; a função do `index.html`,
+  rodada no Node, dá o mesmo nos 22 casos e em 3.000 títulos sorteados. `test_radar_site_publicar.py` (+6): o título vai convertido, o
+  endereço abre, o registro e a exclusão acham a notícia (o título no Radar não muda); a página que dá 404, 500 ou abre sem o texto
+  vira "erro" com a mensagem exata, sem reenviar (3); o "enviando" com a notícia na lista e a página que não abre (o título convertido
+  com HTTP 500; o do Radar com o endereço com "º", como no caso real), enquanto a notícia de outro título que não abre e a página com
+  HTTP 503 não mudam nada, e a página certa ao lado da quebrada vale; a lista com o título de cada quadro e a procura pelo título
+  convertido. `test_radar_telas.py` (+1): o aviso, o texto convertido igual ao do robô, o lugar dele, o celular sem rolar para o lado,
+  nada sem os sinais, o título escapado e a editora sem o aviso. Ajustados: a aba Versões (6 itens, a linha nova), o 1º teste do robô
+  (o título exato) e o site simulado (o quadro de cada notícia com o título, como o real; o endereço montado pelo título, como o real,
+  com o "º" dando 404; a página com 404, 500, 503 ou sem o texto).
+- **Resultados** (pela fila compartilhada): `testes/test_radar_site_publicar.py` (26), `testes/test_radar_titulo_site.py` (2) e
+  `testes/test_radar_repositorio.py` (22), **49 aprovados, 0 falhas, 1 pulado** (o dos commits do push), em 33 s; os 21 testes de tela
+  do passo Publicar e da aba Versões (`testes/test_radar_telas.py -k "<os que abrem o passo Publicar, o novo e a aba Versões>"`), **21
+  aprovados, 0 falhas**, em 64 s; `testes/test_radar_e2e.py` inteiro (o registro automático da coleta usa a mesma lista e a mesma
+  procura), **82 aprovados, 0 falhas**, em 107 s; `testes/test_radar_coletores.py -k textos_para_o_dono` (o topo do LEIAME),
+  **1 aprovado**.
+- **Prova contrária:** 11 mutações, cada uma sozinha (o título sem a conversão; sem o "erro" da página que não abre; sem o caso "abre
+  sem o texto"; o 503 contando como página quebrada; a lista comparada só com o título do Radar; a procura e a exclusão sem o título
+  convertido; duas na regra do `index.html`; sem o aviso; sem juntar os espaços): **as 11 derrubadas** pelos testes novos.
+- **Revisão (3 achados, os 3 corrigidos, cada um com teste que falhava antes).** (1) Uma falha passageira (HTTP 500 duas vezes, um
+  404 isolado, a página "em manutenção") marcava "erro" e pedia para apagar uma notícia boa: agora, na primeira vez, o envio continua
+  "enviando" com a nota "A página da notícia no site ainda não abriu; o robô confere de novo na próxima rodada." (no campo `erro`, que a
+  tela não mostra enquanto "enviando"; a hora é o `atualizado_em`) e só vira "erro" se a página continuar sem abrir numa rodada pelo
+  menos 10 minutos depois (`CONFERIR_DE_NOVO`); só o 404 e o 5xx contam (`endereco_quebrado`: o 401, o 403, o 410 e a sobrecarga não);
+  a página que abre sem o texto tem a sua mensagem, sem "endereço quebrado" (`PAGINA_SEM_TEXTO`: conferir; apagar e autorizar de novo
+  se estiver errada, registrar o link à mão se estiver certa). (2) O caminho manual levava o "nº": o "Copiar título" do quadro "Para o
+  site da Artecon" copia o título como vai ao site (com o recado "Título copiado como vai ao site…"), a prévia "Ver como fica no site"
+  mostra esse título, e o aviso aparece também no quadro, para qualquer perfil (`#titulo-site-copiar-<id>`); a ajuda diz isso. (3) A
+  regra da tela e a do robô divergiam no BOM (U+FEFF), no NEL (U+0085) e em U+001C a U+001F (o `\s` e o `trim()`/`strip()` não são
+  iguais em JS e em Python): as duas usam a mesma lista de espaços por extenso (`ESPACOS_DO_SITE`). Testes: `test_radar_site_publicar.py`
+  (+6 coletados: de 26 para 32): a página que não abre (404, 500, sem o texto) só vira "erro" na rodada 10 minutos depois, com a
+  mensagem de cada caso (3); a falha passageira (500, 404, sem o texto) sai "publicado" na rodada seguinte (3); o 401, o 403 e o 410
+  não contam e caem no pedido de conferência de 2 horas (3); o "enviando" com a nota e a página certa ao lado da quebrada (o antigo,
+  refeito). `test_radar_titulo_site.py`: 6 casos novos (28) e as peças do sorteio com esses espaços. `test_radar_telas.py`: o "Copiar
+  título" e a prévia com o "nº" e o aviso no quadro (no teste do "Copiar para o site"), e o aviso do quadro também para a editora.
+  Antes da correção: **14 falhas** nesses testes. Depois, pela fila compartilhada: `testes/test_radar_site_publicar.py`,
+  `test_radar_titulo_site.py`, `test_radar_repositorio.py` e `test_radar_e2e.py`, **137 aprovados, 0 falhas, 1 pulado**, em 153 s;
+  `testes/test_radar_coletores.py -k textos_para_o_dono`, **1 aprovado**; `testes/test_radar_telas.py` inteiro, **243 aprovados, 0
+  falhas, 61 pulados**, em 680 s. Prova contrária: 10 mutações, cada uma sozinha ("erro" já na primeira vez; sem o intervalo de 10
+  minutos; o 401/403/410 contando; a mensagem do endereço quebrado na página sem o texto; a nota esquecida; o `\s` do Python no robô;
+  o `\s` do JS na tela; o "Copiar título" com o título do Radar; a prévia com o título do Radar; sem o aviso no quadro): **as 10
+  derrubadas**.
+- Não testado aqui: o site da Artecon de verdade (o endereço que ele monta com o título convertido e a página aberta).
+
+**O que não foi testado aqui:** a Microsoft de verdade (o registro no Entra, o consentimento, a liberação da pasta pelo PowerShell e o
+envio ao OneDrive), a agenda no pg_cron do Supabase e o aviso de verdade no GitHub. A medir na primeira cópia de verdade: o tempo de
+exportar, compactar e enviar, o tamanho (`bytes` e `bytes_brutos`) e o sha256 no `manifesto.json`.
 
 ## v0.31.0 — fontes oficiais que faltavam
 

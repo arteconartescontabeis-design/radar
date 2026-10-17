@@ -116,6 +116,13 @@ body.ocupado{cursor:progress}
 .acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
 /* v0.30.0: a possível prorrogação (Painel e Configurações): o título longo e o endereço quebram a linha no celular */
 .prorrogacoes ul{padding-left:18px;margin:8px 0} li.prorrogacao{margin:8px 0;overflow-wrap:anywhere} li.prorrogacao .acoes{margin-top:4px}
+/* v0.32.0: o quadro de vencimentos (linha vermelha: vencido ou até 7 dias; amarela: até 30) e a situação da cópia no OneDrive */
+.venc-tabela td{vertical-align:top} .venc-tabela tr.vermelho td:first-child{border-left:4px solid var(--erro)} .venc-tabela tr.amarelo td:first-child{border-left:4px solid var(--alerta)}
+.venc-tabela .onde{overflow-wrap:anywhere;max-width:280px}
+/* v0.32.0 (prints): o main{overflow-wrap:anywhere} deixava a tabela encolher até quebrar a data ("14/10/202" + "6") e, no celular, Nome e
+   Tipo quase letra a letra. A tabela tem largura mínima e rola dentro da .rolagem; a data e os selos ficam numa linha; Onde renovar quebra */
+.venc-tabela{min-width:900px;overflow-wrap:normal} .venc-tabela td.venc-data,.venc-tabela .selo{white-space:nowrap} .venc-form{border:1px solid var(--linha);border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copia-situacao li{margin:4px 0;overflow-wrap:anywhere} .copia-passos li{margin:6px 0}
 .entrada{max-width:380px;margin:8vh auto;background:#fff;border:1px solid var(--linha);border-top:6px solid var(--marinho);border-radius:12px;padding:26px;box-shadow:0 6px 24px rgba(1,31,72,.10)}
 .entrada input{width:100%}
 .logo-nome{font-family:"Playfair Display",serif;font-size:2rem;font-weight:700;color:var(--cinza);line-height:1}
@@ -314,19 +321,26 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.31.0"></script>
-<script src="radar-video.js?v=0.31.0"></script>
+<script src="radar-pauta.js?v=0.32.0"></script>
+<script src="radar-video.js?v=0.32.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.31.0";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco)
-const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0 e v0.31.0 não sobem: a radar-redes não muda)
+const VERSAO = "0.32.0";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia)
+const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0, v0.31.0 e v0.32.0 não sobem: a radar-redes não muda)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.32.0", "17/10/2026", [
+    "Quadro de vencimentos de chaves e contas (Configurações, só o administrador): cada chave, conta, assinatura e o domínio, com a data em que vence e onde renovar. Vermelho: vencido ou até 7 dias; amarelo: até 30 dias. “Renovei” pede a nova data. “Acrescentar os vencimentos conhecidos” põe, sem data, os nove que o Radar usa (as chaves do robô do site e do corretor de vídeo no GitHub, os segredos dos aplicativos da ITC e das cópias no Azure, a assinatura do Azure, o token da Meta, o domínio artecon.cnt.br, o plano do Supabase e a assinatura do Microsoft 365), menos os que você já anotou à mão (com o mesmo nome ou o nome do segredo); você preenche as datas. O valor de uma chave nunca entra no quadro: só o nome e a data.",
+    "Lembrete de vencimento por e-mail: 30, 7 e 1 dia antes e no dia, cada marco uma vez só por item (desligar e religar o item, ou voltar à data de antes, não repete o marco), todos os do dia num e-mail só, no horário dos lembretes. O aviso (público, no GitHub) leva só a data: nunca o nome nem o número do item. Liga e desliga em Configurações → Lembretes por e-mail (“vencimento”).",
+    "Cópia de segurança no OneDrive: todo dia 1, às 04h10, o Radar grava sozinho uma cópia do banco inteiro (as tabelas, em arquivos JSON num .zip) numa pasta do OneDrive (Aplicativo Criado Artecon → Radar Artecon → Cópias de segurança). O aplicativo da Microsoft só enxerga essa pasta. Se não sair, tenta de novo às 05h10 e no dia 2; se ainda assim não sair, chega um lembrete por e-mail, sem detalhes (“copia”). A cópia vai direto do Supabase para o OneDrive: nunca passa pelo GitHub.",
+    "Configurações → “Cópia de segurança no OneDrive”: a situação (configurada ou não, a última cópia, as falhas), “Testar a ligação com o OneDrive”, “Fazer a cópia agora” e o passo a passo.",
+    "Site da Artecon: o título vai ao site sem o “nº” e sem o “º”, “ª” ou “°” depois de número (“Lei nº 15.415/2026” vira “Lei 15.415/2026”; “1ª parcela”, “1 parcela”), porque o site monta o endereço da notícia com o título e não abria a página com esses sinais. No Radar, no Instagram e no Facebook o título não muda; na autorização do site e no quadro “Para o site da Artecon” um aviso mostra como ele vai, e o “Copiar título” e a prévia “Ver como fica no site” já o trazem assim. Se a notícia entra na lista do site mas a página dela não abre e isso se repete numa rodada seguinte (uma falha passageira do site não conta), a publicação vira erro com o pedido de apagá-la no painel do site e autorizar de novo (se a página abre sem o texto, o pedido é de conferir): o robô não reenvia sozinho.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.32.0.sql ANTES de publicar a tela (duas tabelas novas: o quadro e o registro das cópias; nada é apagado; pode rodar de novo). Depois publique a versão (a tela e o robô dos lembretes juntos; Ctrl+F5) e clique em Configurações → “Acrescentar os vencimentos conhecidos”. A cópia no OneDrive precisa do passo a passo do LEIAME, “Da v0.31.0 para a v0.32.0”."]],
   ["0.31.0", "17/10/2026", [
     "Fontes oficiais que faltavam, pelo Diário Oficial da União (o mesmo acesso do INLABS que já funciona; nenhuma senha nova): as leis, leis complementares, decretos, medidas provisórias e emendas à Constituição que tratam de tributos, trabalho e empresas; os convênios, ajustes e protocolos do ICMS do CONFAZ (o site do CONFAZ não abre para o robô, que roda fora do Brasil; pelo Diário Oficial eles chegam do mesmo jeito); e as portarias e resoluções do Ministério do Trabalho, do FGTS, do eSocial, da Previdência e do INSS que tocam o departamento pessoal. O robô baixa o Diário de cada dia uma vez só e cada fonte pega a sua parte.",
     "Notícias oficiais do departamento pessoal no gov.br: eSocial, comunicados do FGTS Digital e Previdência (desta, só o que fala de empresas e contribuições, como o FAP). A data de cada notícia passa a ser a de publicação: antes, às vezes era um prazo citado no resumo.",
@@ -633,7 +647,8 @@ const ESTRUTURA_PADRAO = ["## O que aconteceu?", "", "## O que mudou?", "", "## 
   "## Quando começa ou entra em vigor?", "", "## O que a empresa precisa observar?", "", "## Análise Artecon", ""].join("\n");
 
 const E = { etapa:null, sessao:null, perfil:null, aba:"painel", assunto:null, informativo:null, categorias:[], contagem:{}, filtros:{assuntos:"abertos"}, mais:{},
-           pauta:{semana:null, peca:null, vista:"semana", previa:null, nova:null}, video:{arquivos:{}} };       // v0.21.0: a aba Pauta (radar-pauta.js); v0.22.0: o vídeo do reel (radar-video.js)
+           pauta:{semana:null, peca:null, vista:"semana", previa:null, nova:null}, video:{arquivos:{}},       // v0.21.0: a aba Pauta (radar-pauta.js); v0.22.0: o vídeo do reel (radar-video.js)
+           venc:{editar:null, renovar:null} };                                                                 // v0.32.0: o quadro de vencimentos
 /* Listas longas: carregam uma leva por vez; "Mostrar mais" traz a seguinte (a contagem vale por tela e filtro) */
 const limiteDe = (chave, base) => base * Math.max(1, (E.mais || {})[chave] || 1);
 const botaoMais = (chave, n, limite, rotulo, total) => n >= limite
@@ -1111,7 +1126,7 @@ function linhaProrrogacao(p){
 }
 /* Configurações → Agenda de obrigações: as dos últimos 30 dias, também as já conferidas (com o selo) */
 function listaProrrogacoes(lista){
-  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.31.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
+  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.32.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
   return `<div class="prorrogacoes" id="prorrogacoes-config"><h3>Possíveis prorrogações captadas (últimos 30 dias)</h3>
     ${lista.length ? `<p class="sub">Notícias que falam em prorrogar ou adiar o prazo de uma obrigação desta agenda. O Radar não muda a data sozinho: confira na fonte oficial e, se o prazo mudou, ponha a nova data em “prorrogacoes”.</p>
       <ul>${lista.map(linhaProrrogacao).join("")}</ul>` : `<p class="sub">Nenhuma notícia dos últimos 30 dias fala em prorrogar ou adiar o prazo de uma obrigação desta agenda.</p>`}</div>`;
@@ -1442,6 +1457,9 @@ const TELAS = {
     const faltaId = faltaIdentificacao(ident), linhaId = ident ? linhaIdentificacao(ident) : "";
     // v0.29.0: a situação dos lembretes por e-mail (o banco confere de novo que é o administrador); banco antigo (sem a função): o recado
     const lemb = await rpc("radar_lembretes_situacao").then(r => ({r}), e => ({erro: e}));
+    // v0.32.0: o quadro de vencimentos e a cópia no OneDrive (o banco confere de novo que é o administrador); banco antigo: o recado do SQL
+    const [venc, copiaBanco, copiaFuncao] = await Promise.all([ler("radar_vencimentos", {select:"*", order:"id.asc"}).then(r => ({r}), e => ({erro: e})),
+      rpc("radar_copias_situacao").then(r => ({r}), e => ({erro: e})), situacaoFuncaoCopia()]);
     return `<h1>Configurações</h1>
       <div class="painel" id="painel-ia"><h2>Inteligência artificial</h2>
         <p class="sub">A IA do Radar é uma função instalada no Supabase (Edge Function <b>radar-ia</b>) que fala com a <b>IA Central</b> do Portal Artecon: texto pela Anthropic, imagens pela OpenAI. O custo, os limites e a recarga ficam em <a href="https://arteconartescontabeis-design.github.io/portal/" target="_blank" rel="noopener noreferrer">Portal → Consumo de IA</a>. O teste abaixo confere a instalação e diz o que falta.</p>
@@ -1453,8 +1471,9 @@ const TELAS = {
       ${bloco("corretor_video", "Corretor de vídeo", `O corretor de vídeo dos reels (Pauta → peça reel). <b>glossario</b>: os termos que a legenda escreve sempre do mesmo jeito (de 1 a 200, cada um de 2 a 40 caracteres, como ["eSocial", "Simples Nacional"]). <b>variantes</b>: como a transcrição costuma errar cada termo do glossário (até 20 por termo, como {"IBS": ["ips", "ibis"]}; só vale onde o roteiro tem o termo). <b>duracao_max_s</b>: o limite do reel com a cartela, de 15 a 90 s (acima dele, a aprovação pede confirmação; acima de 90 s, o Facebook não aceita). <b>pausa_max_s</b> (de 0,6 a 2) e <b>pausa_bloco_s</b> (de 0,4 a 2): a partir de quantos segundos a pausa dentro da frase e entre frases é encurtada. <b>lufs</b>: o volume final, de −24 a −9 (o padrão das redes é −14). <b>cartela_s</b>: a duração da cartela final, de 2 a 5 s. <b>cartela_extra</b>: uma linha a mais na cartela, até 120 caracteres (ex.: “Desde 1984 · (48) 3242-0530 · artecon.cnt.br”; vazio, nada). <b>limite_min_mes</b>: minutos de transcrição por mês, de 1 a 300; padrão 30 (a Azure gratuita dá 300 minutos por mês ao recurso inteiro e a Agenda se reserva 270: acima de 30, só com o serviço pago ou com a Agenda reservando menos). <b>retencao_dias</b> (de 7 a 120) e <b>retencao_publicado_dias</b> (de 0 a 365): por quantos dias os clipes, o vídeo e os textos ficam guardados (depois do envio; depois de publicado). Fora desses limites, o corretor usa o padrão.`,
         typeof diagnosticoVideo === "function" ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="video-diagnostico">Testar o corretor de vídeo</button>
           <span class="sub">Confere o armazenamento privado, o token do GitHub, o robô, a fila e os minutos do mês (sem mostrar segredo).</span></div><div id="diag-video"></div>` : "")}
-      ${bloco("lembretes", "Lembretes por e-mail", `O Radar lembra antes do dia, por e-mail (um aviso no GitHub, como os avisos de hoje), sem nome de ninguém. <b>pauta</b>: a peça de amanhã (e a de hoje que ainda não saiu) que não está aprovada, a partir da <b>hora</b> (padrão “16:00”; até “23:45”), e a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada. <b>aprovacao</b>: a peça pronta que espera a aprovação há mais de <b>aprovacao_horas</b> (padrão 24). <b>video</b>: o reel que o corretor terminou (pronto para conferir, precisa regravar ou parou). <b>noticia</b>: a notícia que deu erro no envio ao site ou às redes, ou que está autorizada e parada há mais de <b>parada_horas</b> (padrão 3). Cada tipo manda no máximo um e-mail por dia, e cada pendência é lembrada uma vez só. Aprovação, vídeo e notícia só saem entre <b>de</b> e <b>ate</b> (padrão “08:00” e “20:00”; pelo menos 15 minutos entre os dois). <b>ligado</b>: false desliga tudo; false num tipo desliga só ele. Recebe quem acompanha o repositório no GitHub. O aviso fica na aba Issues do repositório, que é público: qualquer pessoa pode ler a data, a hora, o formato e a situação de cada peça lembrada (nunca o assunto nem nomes).`)}
+      ${bloco("lembretes", "Lembretes por e-mail", `O Radar lembra antes do dia, por e-mail (um aviso no GitHub, como os avisos de hoje), sem nome de ninguém. <b>pauta</b>: a peça de amanhã (e a de hoje que ainda não saiu) que não está aprovada, a partir da <b>hora</b> (padrão “16:00”; até “23:45”), e a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada. <b>aprovacao</b>: a peça pronta que espera a aprovação há mais de <b>aprovacao_horas</b> (padrão 24). <b>video</b>: o reel que o corretor terminou (pronto para conferir, precisa regravar ou parou). <b>noticia</b>: a notícia que deu erro no envio ao site ou às redes, ou que está autorizada e parada há mais de <b>parada_horas</b> (padrão 3). <b>vencimento</b>: o quadro de vencimentos de chaves e contas (abaixo), 30, 7 e 1 dia antes e no dia, cada marco uma vez só por item, só com a data. <b>copia</b>: a cópia de segurança do mês no OneDrive que não saiu até o dia 2 (uma vez por mês). Cada tipo manda no máximo um e-mail por dia, e cada pendência é lembrada uma vez só. Aprovação, vídeo, notícia, vencimento e cópia só saem entre <b>de</b> e <b>ate</b> (padrão “08:00” e “20:00”; pelo menos 15 minutos entre os dois). <b>ligado</b>: false desliga tudo; false num tipo desliga só ele. Recebe quem acompanha o repositório no GitHub. O aviso fica na aba Issues do repositório, que é público: qualquer pessoa pode ler a data, a hora, o formato e a situação de cada peça lembrada (nunca o assunto nem nomes).`)}
       ${situacaoLembretes(lemb, conf.lembretes?.valor)}
+      ${quadroVencimentos(venc)}${painelCopia(copiaBanco, copiaFuncao)}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
       ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento, no formato curto “norma, artigo — endereço oficial”, até 300 caracteres (vai às informações conferidas da agenda da semana da Pauta; sem ela, a peça da agenda espera alguém escrever a fonte).
         <b>mes</b> (opcional, de 1 a 12): a obrigação é anual e só entra na agenda desse mês (ex.: a DEFIS: <code>"dia": 31, "mes": 3, "ajuste": "nenhum"</code>); sem “mes”, vence todo mês.
@@ -1482,7 +1501,7 @@ const TELAS = {
         <li><b>Assunto.</b> No alto ficam os três passos — <b>1. Preparar</b>, <b>2. Conferir e aprovar</b> e <b>3. Publicar</b> — e, no passo de agora, o botão do que falta fazer. <b>Preparar com IA</b> busca o trecho que comprova (ou a fonte oficial na internet), escreve o texto, faz a capa padrão, confere os 10 critérios e monta as legendas das redes; o rascunho que já existe é completado com <b>Preparar este texto</b>. Em <b>Conferir e aprovar</b> ficam os 10 critérios: o Aprovar só funciona com todos em ✓ (ou com o “Revisei e assumo” do administrador). Clique em <b>Conferi na fonte oficial</b> quando conferir a informação na fonte (o site exige). Em <b>Publicar</b>, o administrador autoriza o site, o Instagram e o Facebook — de uma vez, em “Publicar em todos”, ou um por um.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Preparar com IA</b>, no passo 1). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida. <b>A mesma imagem vai para o site, o Instagram e o Facebook</b>: se preferir, use <b>Gerar imagem com IA</b> (uma imagem com aparência de foto, com pessoas fictícias; dá para dizer como quer a imagem, em até 500 caracteres; ela vai inteira, com o aviso “Imagem ilustrativa gerada por IA” pequeno no canto) ou envie uma foto própria (foto de alguém da equipe só com o termo de uso de imagem assinado). O Radar compara o texto com a fonte: o trecho igual ao da fonte fica num quadro (citar a fonte não autoriza copiar: transcrição literal só entre aspas e com a fonte); o botão <b>Revisar com IA</b> reescreve com palavras próprias — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Antes de aprovar, o quadro <b>Conferência das Diretrizes</b> mostra os 10 critérios do escritório: <b>Revisar com IA</b> confere o texto, e com ✗ ou critério não conferido o <b>Aprovar</b> fica travado (o administrador pode liberar com <b>Revisei e assumo</b>, com o motivo). Logo abaixo, o quadro <b>Revisão editorial</b> mostra como a IA releu o texto que escreveu (10 perguntas, com ✓ ou ✎, e o que foi reescrito); ele só informa. Sem fonte oficial, a IA escreve um texto <b>Informativo</b>, que só vai ao site depois que o administrador autoriza. Salve, envie para revisão e <b>aprove</b>.</li>
-        <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b>, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
+        <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b> — já sem o “nº”, o “º” e o “ª”, que o site não aceita no endereço —, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
         <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
       </ol></div>
       <div class="painel"><h2>Informativo Mensal</h2><ol class="passos">
@@ -1523,7 +1542,7 @@ const TELAS = {
         <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), a peça nova num dia vazio (“+ Nova peça”, só o administrador), as pessoas com o termo de uso de imagem (sócio(a) da Artecon: termos dispensados) e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
-        <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, lembretes por e-mail, agenda de obrigações (com o 13º, as anuais, a nova data de uma prorrogação conferida e as possíveis prorrogações captadas), feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
+        <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, lembretes por e-mail, vencimentos de chaves e contas, cópia de segurança no OneDrive, agenda de obrigações (com o 13º, as anuais, a nova data de uma prorrogação conferida e as possíveis prorrogações captadas), feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
         <tr><td><b>Histórico</b></td><td>Trilha de auditoria: quem fez o quê.</td></tr>` : ""}
         <tr><td><b>Versões</b></td><td>O que mudou em cada versão.</td></tr></table></div></div>
       ${adm ? `<div class="painel"><h2>Cadastrar uma fonte nova</h2><ol class="passos">
@@ -2376,6 +2395,25 @@ async function excluirPublicacao(conteudo, canal, envio, emGrupo = false){
     return {ok:false, msg:`${titulo} (${canal === "site" ? "site" : NOME_REDE[canal]}): ${msg}`};
   }
 }
+/* Os espaços, por extenso (o \s e o trim() do JS não são o \s e o strip() do Python: o JS conta o BOM U+FEFF, o Python conta o NEL
+   U+0085 e U+001C a U+001F): a soma dos dois, a mesma lista de ESPACOS_DO_SITE no robô, para a regra dar o mesmo resultado nos dois lados. */
+const ESPACOS_DO_SITE = "[\\t\\n\\v\\f\\r \\x1c-\\x1f\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]";
+/* v0.32.0: o título como vai ao site da Artecon — a mesma regra de titulo_para_o_site (robo/radar_site.py, o robô que cadastra a
+   notícia): sem o “nº” antes de número (fica só o número), sem o “º”/“ª”/“°” depois de número e sem nenhum que sobrar; os espaços
+   dobrados viram um. O site monta o endereço da notícia com o título e não abre a página quando ele tem esses sinais (caso de
+   17/10/2026). Sem esses sinais, o título vai como está. No Radar, no Instagram e no Facebook o título não muda. */
+function tituloParaOSite(titulo){
+  const t = String(titulo ?? "");
+  if(!/[ºª°]/.test(t)) return t;
+  return t.replace(new RegExp("(?<![0-9A-Za-zÀ-ÖØ-öø-ÿ])[nN]\\.?[º°][sS]?\\.?" + ESPACOS_DO_SITE + "*(?=[0-9])", "g"), "")
+    .replace(/(?<=[0-9])\.?[ºª°]/g, "").replace(/[ºª°]/g, "").replace(new RegExp(ESPACOS_DO_SITE + "+", "g"), " ").replace(/^ | $/g, "");
+}
+/* v0.32.0: o aviso de como o título vai ao site (só quando ele tem “º”, “ª” ou “°”): na autorização do site (só o administrador) e, desde a
+   revisão, no quadro “Para o site da Artecon” do conteúdo aprovado (quem publica à mão, qualquer perfil; id “titulo-site-copiar-…”). */
+function avisoTituloSite(c, id = `titulo-site-${c.id}`){
+  if(!/[ºª°]/.test(String(c.titulo ?? ""))) return "";
+  return `<div class="aviso info titulo-site" id="${h(id)}">No site, o título sai sem “nº”, “º” e “ª” (o site da Artecon não aceita esses sinais no endereço): <b>${h(tituloParaOSite(c.titulo))}</b></div>`;
+}
 /* O passo 3 (Publicar) de um conteúdo aprovado: prévia, autorização (só o administrador) e o andamento do robô. */
 function blocoPublicar(c, envio, pubs, pronto, categoria, redes = [], capa = null){
   const sugerida = CATEGORIA_SITE[categoria] || "";
@@ -2392,7 +2430,7 @@ function blocoPublicar(c, envio, pubs, pronto, categoria, redes = [], capa = nul
   else if(envio?.situacao === "enviando") corpo = `<div class="aviso alerta envio-site"><b>O robô está publicando</b> (desde ${dataHora(envio.enviado_em)}). Assim que a notícia aparecer no site, o link é registrado aqui.</div>`;
   else {
     const ultimo = envio && ["erro","cancelado"].includes(envio.situacao) && envio.erro ? `<div class="aviso ${envio.situacao === "erro" ? "erro" : "alerta"} envio-site">${envio.situacao === "erro" ? "<b>A última publicação não foi concluída.</b> " : ""}${h(envio.erro)}</div>` : "";
-    corpo = ultimo + (!pronto ? "" : ehAdmin() ? `<div class="acoes autorizar-site"><label for="site-cat-${c.id}" style="margin:0">Categoria no site</label>
+    corpo = ultimo + (!pronto ? "" : ehAdmin() ? `${avisoTituloSite(c)}<div class="acoes autorizar-site"><label for="site-cat-${c.id}" style="margin:0">Categoria no site</label>
         <select id="site-cat-${c.id}">${opcoes(Object.fromEntries(CATEGORIAS_DO_SITE.map(x => [x, x])), sugerida, "— escolher —")}</select>
         <button class="btn verde" type="button" data-acao="autorizar-site" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar publicação no site</button></div>
         <p class="sub">Ao autorizar, o robô é acionado na hora: cadastra a notícia no site em 1 a 2 minutos (o site publica na hora) e registra o link aqui. Dá para cancelar enquanto o robô não começou.</p>
@@ -2450,7 +2488,7 @@ function abrirPrevia(id){
     <div class="caixa-previa" role="dialog" aria-modal="true" aria-label="Prévia da notícia no site">
       <div class="barra-previa"><span>Prévia — assim a notícia vai aparecer em artecon.cnt.br/news</span><button class="btn peq" type="button" data-acao="fechar-previa">Fechar</button></div>
       <div class="previa"><span class="sub">${cat ? h(cat) + " · " : ""}Publicada em ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}</span>
-        <h2>${h(f.titulo.value)}</h2>${/^data:image\/(jpeg|png|webp);base64,/.test(img) ? `<img class="capa-previa" src="${h(img)}" alt="">` : ""}${renderTexto(f.corpo.value)}${creditos({autor:f.autor?.value.trim(), fonte_credito:f.fonte_credito?.value.trim(), fonte_url:f.dataset.fonteUrl, informativo:!!f.dataset.informativo, imagemIA:!!f.dataset.imagemIa})}</div>
+        <h2>${h(tituloParaOSite(f.titulo.value))}</h2>${/^data:image\/(jpeg|png|webp);base64,/.test(img) ? `<img class="capa-previa" src="${h(img)}" alt="">` : ""}${renderTexto(f.corpo.value)}${creditos({autor:f.autor?.value.trim(), fonte_credito:f.fonte_credito?.value.trim(), fonte_url:f.dataset.fonteUrl, informativo:!!f.dataset.informativo, imagemIA:!!f.dataset.imagemIa})}</div>
     </div></div>`);
   $("#previa-site .barra-previa button").focus();
 }
@@ -2810,7 +2848,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.31.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.32.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -2994,7 +3032,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
     <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>
     ${analise ? "" : blocoKit(c, ed, pubs.find(p => !p.versao_anterior)?.url || "")}
     ${c.status === "aprovado" ? `<div class="aviso info">Se você alterar o título, o texto, o autor, a fonte ou a imagem, o conteúdo volta para revisão e precisa ser aprovado de novo.</div>
-      <div class="acoes para-site"><b class="sub">Para o site da Artecon:</b>
+      ${avisoTituloSite(c, `titulo-site-copiar-${c.id}`)}<div class="acoes para-site"><b class="sub">Para o site da Artecon:</b>
         <span class="sub">1.</span><button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
         <span class="sub">2.</span><button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
         ${imagem ? `<span class="sub">3.</span><a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>
@@ -3359,6 +3397,50 @@ const ACOES = {
     const [linha] = await ler("radar_config", {select:"valor", chave:"eq.prorrogacoes_conferidas"});
     const antes = (Array.isArray(linha?.valor) ? linha.valor : []).filter(x => Number.isInteger(x) && x > 0 && x !== id);
     if(await gravarConfig("prorrogacoes_conferidas", [...antes, id].slice(-500))) recado("Marcada como conferida. A agenda não mudou.");
+  },
+
+  /* v0.32.0: o quadro de vencimentos (Configurações, só o administrador; a RLS confere de novo). Editar e Renovei só abrem o formulário. */
+  "venc-editar"(el){ E.venc = {editar:Number(el.dataset.id), renovar:null};
+    return desenhar().then(() => $(`form[data-form=vencimento][data-id="${el.dataset.id}"]`)?.scrollIntoView({block:"center"})); },
+  "venc-renovei"(el){ E.venc = {editar:null, renovar:Number(el.dataset.id)};
+    return desenhar().then(() => $(`form[data-form=vencimentoRenovei][data-id="${el.dataset.id}"]`)?.scrollIntoView({block:"center"})); },
+  "venc-cancelar"(){ E.venc = {editar:null, renovar:null}; return desenhar(); },
+  async "venc-remover"(el){
+    const id = Number(el.dataset.id); if(!Number.isInteger(id) || id <= 0) return;
+    if(!confirm("Remover este item do quadro de vencimentos? Os lembretes dele param.")) return;
+    const r = await rest("DELETE", "radar_vencimentos", {params:{id:"eq." + id}, prefer:"return=representation"});
+    if(!Array.isArray(r) || !r.length) throw new ErroApi("Nada foi alterado: o seu perfil não permite esta ação.");
+    E.venc = {editar:null, renovar:null}; await desenhar(); recado("Item removido.");
+  },
+  async "venc-conhecidos"(){
+    const n = Number(await rpc("radar_vencimentos_conhecidos")) || 0;
+    await desenhar();
+    recado(n ? `${n} ${n === 1 ? "vencimento acrescentado" : "vencimentos acrescentados"}, sem data: clique em Editar em cada um e preencha a data.`
+             : "Nada a acrescentar: o quadro já tem todos os vencimentos conhecidos.");
+  },
+  /* v0.32.0: a cópia de segurança no OneDrive (função radar-copia). "Testar" mostra os 8 itens; "Fazer a cópia agora" grava o .zip na
+     pasta (a resposta traz só o nome, o tamanho e as linhas; o arquivo nunca passa pela tela). */
+  async "copia-testar"(){
+    const d = $("#copia-resultado"); if(d) d.innerHTML = `<p class="sub">Testando… pode levar uns 30 segundos.</p>`;
+    let r; try{ r = await pedir("POST", "/functions/v1/radar-copia", {corpo:{acao:"testar"}, tempo:120000}); }
+    catch(e){ if(d) d.innerHTML = `<div class="aviso erro">${h(e.status === 404 ? "A função radar-copia ainda não foi instalada no Supabase (veja o passo a passo abaixo)." : e.message)}</div>`; return; }
+    E.copiaFuncao = null;                                       // a situação da função é perguntada de novo no próximo desenho
+    const itens = Array.isArray(r.itens) ? r.itens : [];
+    if(d) d.innerHTML = `<ul class="diag">${itens.map(i => `<li>${selo(i.ok ? "OK" : "Falhou", i.ok ? "ok" : "erro")} <b>${h(i.item)}</b><br><span class="sub">${h(i.detalhe)}</span></li>`).join("")}</ul>` +
+      (r.tudo_certo ? `<div class="aviso info">A ligação com o OneDrive está funcionando.</div>` : "");
+  },
+  async "copia-agora"(){
+    if(!confirm("Fazer agora uma cópia do banco inteiro no OneDrive?\n\nLeva 1 ou 2 minutos. O arquivo vai para a pasta Aplicativo Criado Artecon → Radar Artecon → Cópias de segurança. A cópia automática do mês continua.")) return;
+    const d = $("#copia-resultado"); if(d) d.innerHTML = `<p class="sub">Fazendo a cópia… pode levar 1 ou 2 minutos.</p>`;
+    let r;
+    try{ r = await pedir("POST", "/functions/v1/radar-copia", {corpo:{acao:"copiar"}, tempo:280000}); }
+    catch(e){
+      await desenhar();                                         // a falha aparece na situação ("Últimas falhas")
+      throw e.status === 404 ? new ErroApi("A função radar-copia ainda não foi instalada no Supabase (veja o passo a passo).", 404) : e;
+    }
+    await desenhar();
+    if(r?.configurada === false){ recado(r.mensagem || "Cópia não configurada.", "aviso"); return; }
+    recado(`Cópia gravada no OneDrive: ${r.arquivo}, ${mbTela(r.bytes)}, ${numTela(r.linhas)} linhas.`);
   },
 
   /* v0.12.0: boletim da ITC lido no e-mail pela função radar-itc (Microsoft Graph). O resultado traz só contagens. */
@@ -3831,7 +3913,10 @@ const ACOES = {
     if(!confirm("Excluir esta edição do informativo? Os conteúdos continuam existindo.")) return;
     await apagar("radar_informativos", {id:"eq." + E.informativo}); E.informativo = null; await desenhar(); recado("Edição excluída.");
   },
-  async "copiar-titulo"(el){ await copiar(el.closest("form").titulo.defaultValue); recado("Título copiado."); },
+  async "copiar-titulo"(el){        // v0.32.0 (revisão): o título como vai ao site (sem o “nº”), o mesmo que o robô cadastra
+    const titulo = el.closest("form").titulo.defaultValue, noSite = tituloParaOSite(titulo);
+    await copiar(noSite);
+    recado(noSite === titulo ? "Título copiado." : "Título copiado como vai ao site (sem “nº”, “º” e “ª”, que o site da Artecon não aceita no endereço)."); },
   async "copiar-texto"(el){
     const f = el.closest("form"), c = {autor:f.autor.defaultValue, fonte_credito:f.fonte_credito.defaultValue, fonte_url:f.dataset.fonteUrl, informativo:!!f.dataset.informativo,
       imagemIA:!!f.dataset.imagemIa};
@@ -4357,10 +4442,10 @@ function validarConfig(chave, v){
   // v0.29.0: os lembretes por e-mail (todos opcionais: sem eles, ou fora dos limites, o banco usa o padrão; a tela recusa antes)
   if(chave === "lembretes"){
     if(!obj) return "Os lembretes precisam ser um objeto { … }.";
-    const opcoes = ["ligado", "hora", "de", "ate", "aprovacao_horas", "parada_horas", "pauta", "aprovacao", "video", "noticia"];
+    const opcoes = ["ligado", "hora", "de", "ate", "aprovacao_horas", "parada_horas", "pauta", "aprovacao", "video", "noticia", "vencimento", "copia"];   // v0.32.0: + 2
     const outra = Object.keys(v).find(k => !opcoes.includes(k));
     if(outra !== undefined) return `“${outra}” não é uma opção dos lembretes (as opções: ${opcoes.join(", ")}).`;
-    for(const k of ["ligado", "pauta", "aprovacao", "video", "noticia"]) if(v[k] !== undefined && typeof v[k] !== "boolean") return `“${k}” é true ou false.`;
+    for(const k of ["ligado", "pauta", "aprovacao", "video", "noticia", "vencimento", "copia"]) if(v[k] !== undefined && typeof v[k] !== "boolean") return `“${k}” é true ou false.`;
     for(const k of ["hora", "de", "ate"])
       if(v[k] !== undefined && !(typeof v[k] === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v[k]))) return `“${k}” é a hora de Brasília entre aspas, como "${k === "hora" ? "16:00" : k === "de" ? "08:00" : "20:00"}".`;
     if((v.de ?? "08:00") > (v.ate ?? "20:00")) return "“de” vem antes de “ate” (ex.: \"08:00\" e \"20:00\").";
@@ -4403,12 +4488,12 @@ function validarConfig(chave, v){
    robô dos lembretes, o último lembrete de cada tipo (quando, de Brasília, e o número do aviso no GitHub) e quantas pendências esperam.
    Banco antigo (a função não existe): o recado do SQL. Só números e datas: nenhum nome. */
 const TIPOS_LEMBRETE = {pauta:"Pauta de amanhã sem aprovação", aprovacao:"Peça pronta esperando aprovação", video:"Vídeo do reel para conferir",
-  noticia:"Notícia que não saiu"};
+  noticia:"Notícia que não saiu", vencimento:"Vencimento de chave ou conta", copia:"Cópia de segurança do mês"};   // v0.32.0: + 2
 const quandoBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "—"
   : d.toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}).replace(",", " às"); };
 function situacaoLembretes(lemb, cfg){
   if(lemb.erro) return `<div class="aviso alerta" id="lembretes-situacao">${lemb.erro.status === 404
-    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.31.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.32.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler a situação dos lembretes agora: recarregue a página."}</div>`;
   const s = lemb.r || {}, ag = s.agenda || {};
   const agenda = !ag.instalada ? "não instalada: rode de novo o sql/radar-redes-agenda.sql (Supabase → SQL Editor)"
@@ -4420,6 +4505,127 @@ function situacaoLembretes(lemb, cfg){
     ${cfg && typeof cfg === "object" && cfg.ligado === false ? `<p class="aviso alerta">Desligados (“ligado”: false): nenhum lembrete sai.</p>` : ""}
     <ul><li>Agenda do banco: ${agenda}</li>${tipos}<li>Esperando o próximo lembrete: ${Number(s.esperando) || 0}</li></ul>
     <p class="sub">O último lembrete de cada tipo é o comentário (ou o aviso) com esse número no GitHub, na aba Issues do repositório.</p></div>`;
+}
+
+/* v0.32.0: Configurações → Vencimentos de chaves e contas (radar_vencimentos, só o administrador: a RLS confere). Só o NOME e a DATA do
+   que vence: o valor de uma chave nunca vem para cá (a tela recusa antes, com pareceSegredo, e o banco recusa de novo, no gatilho).
+   Vermelho: vencido ou até 7 dias; amarelo: até 30 dias. O "hoje" é o de Brasília. */
+const TIPOS_VENCIMENTO = {chave:"Chave ou token", conta:"Conta", assinatura:"Assinatura ou plano", dominio:"Domínio", outro:"Outro"};
+// o mesmo teste do banco (radar_vencimento_parece_segredo): prefixos conhecidos (Supabase, GitHub, IA Central, Meta, segredo de
+// aplicativo do Azure, JWT, chave privada) ou um pedaço de 40+ caracteres sem espaço fora de um endereço https. v0.32.0 (revisão):
+// "espaço" é a mesma lista explícita nos dois lados (a do \s, com o espaço rígido U+00A0 do texto colado), trocada por " " antes
+const RX_SEGREDO = /(sb_(secret|publishable)_|gh[pousr]_[A-Za-z0-9]{20}|github_pat_|iagw_|EAA[A-Za-z0-9]{30}|[0-9]Q~[A-Za-z0-9_.~-]{20}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|-----BEGIN)/;
+const pareceSegredo = t => { const s = String(t ?? "").replace(/[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/g, " ");
+  return RX_SEGREDO.test(s) || /[^ ]{40,}/.test(s.replace(/https?:\/\/[^ ]+/gi, "")); };
+const hojeVencimentos = () => new Date().toLocaleDateString("en-CA", {timeZone:"America/Sao_Paulo"});
+const diaBR = d => d ? String(d).slice(0, 10).split("-").reverse().join("/") : "—";
+const MSG_SEGREDO = "Isto parece o valor de uma chave. O quadro guarda só o nome e a data; o valor fica só nos segredos do Supabase ou do GitHub.";
+function situacaoVencimento(v, hoje){
+  if(!v.ativo) return {classe:"", rotulo:"Desligado (não lembra)", cor:"", ordem:3};
+  if(!v.vence_em) return {classe:"", rotulo:"Sem data — preencha", cor:"", ordem:2};
+  const dias = Math.round((Date.parse(v.vence_em + "T00:00:00Z") - Date.parse(hoje + "T00:00:00Z")) / 86400000);
+  if(dias < 0) return {classe:"vermelho", rotulo:`Vencido há ${-dias} dia${dias === -1 ? "" : "s"}`, cor:"erro", ordem:0};
+  if(dias === 0) return {classe:"vermelho", rotulo:"Vence hoje", cor:"erro", ordem:0};
+  if(dias === 1) return {classe:"vermelho", rotulo:"Vence amanhã", cor:"erro", ordem:0};
+  if(dias <= 7) return {classe:"vermelho", rotulo:`Vence em ${dias} dias`, cor:"erro", ordem:0};
+  if(dias <= 30) return {classe:"amarelo", rotulo:`Vence em ${dias} dias`, cor:"alerta", ordem:0};
+  return {classe:"", rotulo:"Em dia", cor:"ok", ordem:0};
+}
+function formVencimento(v){
+  const k = v ? v.id : "novo";
+  return `<form class="venc-form" data-form="vencimento"${v ? ` data-id="${v.id}"` : ""}>
+    <div class="grade">
+      <div><label for="venc-nome-${k}">Nome</label><input id="venc-nome-${k}" type="text" name="nome" maxlength="120" value="${h(v?.nome || "")}" placeholder="Ex.: Chave do robô do site no GitHub (RADAR_GITHUB_TOKEN)"></div>
+      <div><label for="venc-tipo-${k}">Tipo</label><select id="venc-tipo-${k}" name="tipo">${opcoes(TIPOS_VENCIMENTO, v?.tipo || "chave")}</select></div>
+      <div><label for="venc-data-${k}">Vence em</label><input id="venc-data-${k}" type="date" name="vence_em" value="${h(v?.vence_em || "")}"></div>
+    </div>
+    <label for="venc-onde-${k}">Onde renovar</label><input id="venc-onde-${k}" type="text" name="onde_renovar" maxlength="500" style="width:100%" value="${h(v?.onde_renovar || "")}" placeholder="link https:// ou o caminho em palavras">
+    <label for="venc-obs-${k}">Observação</label><textarea id="venc-obs-${k}" name="observacao" maxlength="1000" style="min-height:60px">${h(v?.observacao || "")}</textarea>
+    <label class="video-check"><input type="checkbox" name="ativo"${v?.ativo === false ? "" : " checked"}> lembrar deste item (lembrete por e-mail 30, 7 e 1 dia antes e no dia)</label>
+    <p class="sub">Só o nome e a data. Nunca cole aqui o valor de uma chave: ele fica só nos segredos do Supabase ou do GitHub.</p>
+    <div class="acoes"><button class="btn">Salvar</button>${v ? `<button class="btn sec" type="button" data-acao="venc-cancelar">Cancelar</button>` : ""}</div></form>`;
+}
+function quadroVencimentos(venc){
+  const topo = `<div class="painel" id="vencimentos"><h2>Vencimentos de chaves e contas</h2>`;
+  if(venc.erro) return topo + `<div class="aviso alerta">${venc.erro.status === 404
+    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.32.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    : "Não deu para ler o quadro de vencimentos agora: recarregue a página."}</div></div>`;
+  const hoje = hojeVencimentos(), ed = E.venc || {};
+  const itens = (venc.r || []).map(v => ({v, s:situacaoVencimento(v, hoje)}))
+    .sort((a, b) => a.s.ordem - b.s.ordem || (a.s.ordem === 0 ? a.v.vence_em.localeCompare(b.v.vence_em) : 0) || a.v.id - b.v.id);
+  const semData = itens.filter(x => x.v.ativo && !x.v.vence_em).length;
+  const onde = t => !t ? "—" : /^https:\/\/\S+$/.test(t) ? `<a href="${h(t)}" target="_blank" rel="noopener noreferrer">${h(t)}</a>` : h(t);
+  const renovado = v => v.renovado_em ? `<br><span class="sub">renovado em ${h(new Date(v.renovado_em).toLocaleDateString("pt-BR", {timeZone:"America/Sao_Paulo"}))}</span>` : "";
+  const linha = ({v, s}) => ed.editar === v.id ? `<tr class="venc-editando" data-id="${v.id}"><td colspan="8">${formVencimento(v)}</td></tr>` : `
+    <tr class="${s.classe}" data-id="${v.id}"><td>${v.id}</td><td>${selo(s.rotulo, s.cor)}</td><td>${h(v.nome)}${renovado(v)}</td><td>${h(TIPOS_VENCIMENTO[v.tipo] || v.tipo)}</td>
+      <td class="venc-data">${diaBR(v.vence_em)}</td><td class="onde">${onde(v.onde_renovar)}</td><td class="onde">${h(v.observacao || "—")}</td>
+      <td><div class="acoes" style="margin:0"><button class="btn peq sec" type="button" data-acao="venc-editar" data-id="${v.id}">Editar</button>
+        <button class="btn peq sec" type="button" data-acao="venc-renovei" data-id="${v.id}">Renovei</button>
+        <button class="btn peq sec" type="button" data-acao="venc-remover" data-id="${v.id}">Remover</button></div></td></tr>` + (ed.renovar === v.id ? `
+    <tr class="venc-renovar"><td colspan="8"><form data-form="vencimentoRenovei" data-id="${v.id}">
+      <label for="venc-nova-${v.id}">Nova data de vencimento</label><input id="venc-nova-${v.id}" type="date" name="nova" min="${diaSeguinte(hoje)}">
+      <p class="sub">Renove primeiro no site do serviço e, se for uma chave, troque o segredo no Supabase.</p>
+      <div class="acoes"><button class="btn">Salvar a nova data</button><button class="btn sec" type="button" data-acao="venc-cancelar">Cancelar</button></div></form></td></tr>` : "");
+  return topo + `<p class="sub">Só o administrador vê. Anote o que vence: chaves (tokens e segredos), contas, assinaturas e o domínio. <b>Só o nome e a data</b>: o valor de uma chave nunca vem para cá (ele fica só nos segredos do Supabase ou do GitHub). O Radar lembra por e-mail 30, 7 e 1 dia antes e no dia (Lembretes por e-mail, “vencimento”), só com a data: nunca o nome nem o número do item (o aviso fica no GitHub, que é público). Vermelho: vencido ou até 7 dias; amarelo: até 30 dias.</p>
+    ${semData ? `<div class="aviso alerta">${semData === 1 ? "1 item sem data" : `${semData} itens sem data`}: clique em Editar e preencha a data de vencimento.</div>` : ""}
+    ${itens.length ? `<div class="rolagem"><table class="venc-tabela"><tr><th>Nº</th><th>Situação</th><th>Nome</th><th>Tipo</th><th>Vence em</th><th>Onde renovar</th><th>Observação</th><th></th></tr>${itens.map(linha).join("")}</table></div>`
+      : `<p class="sub">Nenhum vencimento anotado ainda. Clique em “Acrescentar os vencimentos conhecidos” ou em “+ Incluir vencimento”.</p>`}
+    <details id="venc-novo"><summary>+ Incluir vencimento</summary>${formVencimento(null)}</details>
+    <div class="acoes"><button class="btn sec" type="button" data-acao="venc-conhecidos">Acrescentar os vencimentos conhecidos</button>
+      <span class="sub">Acrescenta, sem data, os que ainda faltam: as chaves do robô do site e do corretor de vídeo no GitHub, os segredos dos aplicativos da ITC e das cópias no Azure, a assinatura do Azure, o token da Meta, o domínio artecon.cnt.br, o plano do Supabase e a assinatura do Microsoft 365. Os que já estão no quadro não mudam.</span></div></div>`;
+}
+const diaSeguinte = d => new Date(Date.parse(d + "T12:00:00Z") + 86400000).toISOString().slice(0, 10);
+
+/* v0.32.0: Configurações → Cópia de segurança no OneDrive. A situação vem de dois lugares: o banco (radar_copias_situacao, só o
+   administrador: a agenda, a última cópia, as falhas, o tamanho) e a função radar-copia ("situacao": instalada, configurada e os NOMES
+   dos segredos que faltam; nunca o valor). A função é perguntada no máximo a cada 2 minutos (cada redesenho das Configurações não
+   espera por ela de novo). */
+const mbTela = n => (Number(n || 0) / 1048576).toLocaleString("pt-BR", {minimumFractionDigits:1, maximumFractionDigits:1}) + " MB";
+const numTela = n => Number(n || 0).toLocaleString("pt-BR");
+async function situacaoFuncaoCopia(){
+  const c = E.copiaFuncao;
+  if(c && Date.now() - c.em < 120000) return c.valor;
+  const valor = await pedir("POST", "/functions/v1/radar-copia", {corpo:{acao:"situacao"}, tempo:10000}).then(r => ({r}), e => ({erro:e}));
+  E.copiaFuncao = {em:Date.now(), valor};
+  return valor;
+}
+function painelCopia(sb, sf){
+  const topo = `<div class="painel" id="copia-onedrive"><h2>Cópia de segurança no OneDrive</h2>`;
+  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.32.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
+  const s = sb.r || {}, f = sf.r && typeof sf.r === "object" ? sf.r : null, configurada = f?.configurada === true;
+  const funcao = f ? `instalada (versão ${h(f.versao || "—")})` : sf.erro?.status === 404 ? "não instalada (Supabase → Edge Functions)"
+    : "não respondeu agora (confira em Supabase → Edge Functions se a radar-copia está instalada)";
+  const falta = f && !configurada ? [(f.faltam || []).length ? "faltam " + f.faltam.join(", ") : "",
+                                     (f.invalidos || []).length ? "com formato inválido " + f.invalidos.join(", ") : ""].filter(Boolean).join("; ") : "";
+  const ag = s.agenda || {};
+  const agenda = sb.erro ? "não deu para ler agora" : !ag.instalada ? "não instalada: rode o sql/radar-copia-agenda.sql (Supabase → SQL Editor)"
+    : ag.ativa === false ? "desligada no pg_cron: rode de novo o sql/radar-copia-agenda.sql"
+    : "instalada (dia 1 às 04h10" + (ag.ultima_execucao ? `; última rodada ${quandoBrasilia(ag.ultima_execucao)}${ag.ultimo_status === "failed" ? ", com falha" : ""}` : "") + ")";
+  const ok = s.ultima_ok;
+  const ultima = ok ? `${quandoBrasilia(ok.em)} — ${mbTela(ok.bytes)} (${mbTela(ok.bytes_brutos)} de dados), ${numTela(ok.linhas)} linhas em ${numTela(ok.tabelas)} tabelas (${h(ok.arquivo)})`
+    : "nenhuma ainda";
+  const falhas = Array.isArray(s.falhas) ? s.falhas : [];
+  return topo + `<p class="sub">Todo dia 1, às 04h10, o Radar grava sozinho uma cópia do banco inteiro (as tabelas, em arquivos JSON dentro de um .zip) numa pasta do seu OneDrive: Aplicativo Criado Artecon → Radar Artecon → Cópias de segurança. O aplicativo da Microsoft só enxerga essa pasta. A cópia vai direto do Supabase para o OneDrive: não passa pelo GitHub. Não entram os arquivos do armazenamento (vídeos e lâminas), os logins e as senhas. Se a cópia do mês não sair até o dia 2, chega um lembrete por e-mail, sem detalhes.</p>
+    <ul class="copia-situacao">
+      <li>Função radar-copia: ${funcao}</li>
+      <li>Ligação com o OneDrive: ${!f ? "—" : configurada ? "configurada" : `não configurada: ${h(falta)}`}</li>
+      <li>Agenda do banco: ${agenda}</li>
+      <li>Última cópia: ${ultima}</li>
+      ${s.em_andamento ? `<li>Em andamento: começou às ${h(quandoBrasilia(s.em_andamento.desde).split(" às ").pop())}</li>` : ""}
+      ${falhas.length ? `<li>Últimas falhas:<ul>${falhas.map(x => `<li>${quandoBrasilia(x.em)} — ${h(x.erro || "falhou")}</li>`).join("")}</ul></li>` : ""}
+      ${sb.erro ? "" : `<li>Tamanho das tabelas no banco: ${Number(s.tamanho_mb || 0).toLocaleString("pt-BR", {minimumFractionDigits:1, maximumFractionDigits:1})} MB (limite da cópia automática: 100 MB de dados)</li>`}
+    </ul>
+    <div class="acoes"><button class="btn sec" type="button" data-acao="copia-testar"${f ? "" : " disabled"}>Testar a ligação com o OneDrive</button>
+      <button class="btn" type="button" data-acao="copia-agora"${f && configurada ? "" : " disabled"}>Fazer a cópia agora</button></div>
+    <div id="copia-resultado"></div>
+    <details class="copia-passos"${configurada ? "" : " open"}><summary>Como configurar (uma vez, uns 25 minutos)</summary>
+      <ol>
+        <li><b>Entra</b> (entra.microsoft.com, com a conta de administrador): Registros de aplicativo → Novo registro “Radar Artecon — cópias de segurança” (só este diretório); Permissões de API → Microsoft Graph → Permissões de aplicativo → <b>Files.SelectedOperations.Selected</b>; tire o “User.Read” que o Entra põe sozinho (“…” → Remover permissão), para ficar só ela; depois “Conceder consentimento do administrador”. Nada com “All”.</li>
+        <li>O bloco do PowerShell do LEIAME (“Cópia de segurança no OneDrive”) cria a pasta e libera só ela para o aplicativo (papel “write”). Na tela da Microsoft, <b>não</b> marque “Consentir em nome da sua organização”.</li>
+        <li><b>Entra</b> → o aplicativo → Certificados e segredos → novo segredo de 12 meses (só agora, logo antes de guardar; anote o vencimento no quadro acima) e, no <b>Supabase</b> → Edge Functions → Secrets: COPIA_CLIENT_ID, COPIA_CLIENT_SECRET, COPIA_DRIVE_ID e COPIA_PASTA_ID (o GRAPH_TENANT_ID da ITC já serve). A função radar-copia fica com “Verify JWT” desligado. Nenhuma chave pelo chat.</li>
+        <li>SQL Editor: rode o <b>sql/radar-copia-agenda.sql</b>.</li>
+        <li>Aqui: <b>Testar a ligação com o OneDrive</b> (tudo OK) → <b>Fazer a cópia agora</b> → confira o .zip na pasta do OneDrive.</li>
+      </ol></details></div>`;
 }
 
 /* O Salvar de um bloco das Configurações: confere (validarConfig) e grava em radar_config. false, com o recado, quando não confere.
@@ -4441,6 +4647,27 @@ const FORMS = {
     E.informativo = i.id; window.scrollTo(0,0); return desenhar();
   },
   async informativo(f){ await salvarInformativo(f); await desenhar(); recado("Edição salva."); },
+  /* v0.32.0: o item do quadro de vencimentos (incluir e editar). A tela recusa antes o valor de uma chave e o link que não é https; o
+     banco recusa de novo (RADAR360 e RADAR361) */
+  async vencimento(f){
+    const v = {nome:f.nome.value.trim(), tipo:f.tipo.value, vence_em:f.vence_em.value || null, onde_renovar:f.onde_renovar.value.trim() || null,
+               observacao:f.observacao.value.trim() || null, ativo:f.ativo.checked};
+    if(v.nome.length < 2 || v.nome.length > 120){ recado("Escreva o nome do que vence (de 2 a 120 caracteres).", true); return; }
+    if(!TIPOS_VENCIMENTO[v.tipo]){ recado("Escolha o tipo.", true); return; }
+    if([v.nome, v.onde_renovar, v.observacao].some(pareceSegredo)){ recado(MSG_SEGREDO, true); return; }
+    if(v.onde_renovar && /^(http|javascript|data|vbscript|file):/i.test(v.onde_renovar)){ recado("Use o endereço com https:// (ou escreva o caminho em palavras).", true); return; }
+    const id = Number(f.dataset.id) || null;
+    const r = await rest(id ? "PATCH" : "POST", "radar_vencimentos", {params:id ? {id:"eq." + id} : undefined, corpo:v, prefer:"return=representation"});
+    if(!Array.isArray(r) || !r.length) throw new ErroApi("Nada foi alterado: o seu perfil não permite esta ação.");
+    E.venc = {editar:null, renovar:null}; await desenhar(); recado("Item salvo.");
+  },
+  async vencimentoRenovei(f){
+    const nova = f.nova.value;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(nova)){ recado("Escolha a nova data de vencimento.", true); return; }
+    await rpc("radar_vencimentos_renovei", {p_id:Number(f.dataset.id), p_nova:nova});
+    E.venc = {editar:null, renovar:null}; await desenhar();
+    recado(`Vencimento renovado: nova data ${diaBR(nova)}. Se o segredo mudou, confira que trocou no Supabase.`);
+  },
   async config(f){
     let valor; try{ valor = JSON.parse(f.valor.value); }catch(e){ recado("O conteúdo não é um JSON válido: " + e.message, true); return; }
     if(await gravarConfig(f.dataset.chave, valor)) recado(f.dataset.chave === "relevancia" ? "Regras salvas. As capturas da fila foram reavaliadas." : "Configuração salva.");
@@ -4544,7 +4771,8 @@ const FORMS = {
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
-  "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","abrir-assumir","fechar-assumir","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de"]);
+  "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","abrir-assumir","fechar-assumir","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de",
+  "venc-editar","venc-renovei","venc-cancelar"]);                                                      // v0.32.0: só abrem e fecham o formulário
 // v0.21.0: as ações e os formulários da Pauta (radar-pauta.js); sem o arquivo, a aba mostra o recado e nada mais muda
 if(typeof PAUTA === "object"){ Object.assign(ACOES, PAUTA.acoes); Object.assign(FORMS, PAUTA.forms); PAUTA.navegacao.forEach(a => NAVEGACAO.add(a)); }
 // v0.22.0: as do corretor de vídeo do reel (radar-video.js); sem o arquivo, a peça reel mostra o recado

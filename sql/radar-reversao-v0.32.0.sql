@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.31.0.sql
--- DESFAZ a instalação do radar-setup-v0.31.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.32.0.sql
+-- DESFAZ a instalação do radar-setup-v0.32.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -30,6 +30,11 @@
 -- v0.30.0: as duas funções do aviso de possível prorrogação (radar_prorrogacoes e radar_prorrogacao_obrigacoes) saem com as outras, e
 -- a lista de obrigações e o "Conferido" (radar_config) saem com a tabela. Fora do banco: o aviso "Radar: possível prorrogação na agenda
 -- de obrigações", se estiver aberto no GitHub, fica aberto: feche-o à mão.
+-- v0.32.0: o quadro de vencimentos e o registro das cópias saem com as tabelas; a agenda da cópia (radar-copia%) sai junto. Fora do
+-- banco: Supabase → Edge Functions → apague a função radar-copia e os segredos COPIA_CLIENT_ID, COPIA_CLIENT_SECRET, COPIA_DRIVE_ID e
+-- COPIA_PASTA_ID (o GRAPH_TENANT_ID é da ITC: fica); entra.microsoft.com → Registros de aplicativo → apague “Radar Artecon — cópias de
+-- segurança” (corta o acesso à pasta na hora); a chave 'radar_copia_agenda' fica no Vault de propósito; os arquivos no OneDrive ficam
+-- (são seus); o aviso “Radar: lembrete — …” aberto no GitHub fica: feche à mão.
 -- =====================================================================
 begin;
 
@@ -59,7 +64,8 @@ do $$
 begin
   if exists (select 1 from pg_namespace where nspname = 'cron') then
     perform cron.unschedule(j.jobid) from cron.job j
-     where j.jobname like 'radar-itc%' or j.jobname like 'radar-redes-agenda%' or j.jobname like 'radar-video-%';
+     where j.jobname like 'radar-itc%' or j.jobname like 'radar-redes-agenda%' or j.jobname like 'radar-video-%'
+        or j.jobname like 'radar-copia%';                                       -- v0.32.0
     if exists (select 1 from cron.job where jobname like 'radar-%') then
       raise notice 'Sobrou agendamento do Radar no pg_cron: confira cron.job';
     end if;
@@ -68,6 +74,8 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_copias,
+  public.radar_vencimentos,
   public.radar_lembretes,
   public.radar_video_acessos,
   public.radar_videos,
@@ -319,6 +327,18 @@ drop function if exists public.radar_concorrentes_conferir(text);
 -- v0.30.0: o aviso de possível prorrogação na agenda de obrigações
 drop function if exists public.radar_prorrogacoes(int);
 drop function if exists public.radar_prorrogacao_obrigacoes(text, jsonb);
+-- v0.32.0: o quadro de vencimentos e a cópia mensal no OneDrive
+drop function if exists public.radar_vencimento_parece_segredo(text);
+drop function if exists public.radar_fn_vencimento();
+drop function if exists public.radar_vencimentos_conhecidos();
+drop function if exists public.radar_vencimentos_renovei(bigint, date);
+drop function if exists public.radar_copia_conferir_agenda(text);
+drop function if exists public.radar_copias_pode(text);
+drop function if exists public.radar_copias_comecar(text);
+drop function if exists public.radar_copias_terminar(text, bigint, boolean, bigint, bigint, bigint, int, text, text);
+drop function if exists public.radar_copias_exportar(text, text, text, int);
+drop function if exists public.radar_copias_falta_mes();
+drop function if exists public.radar_copias_situacao();
 
 commit;
 

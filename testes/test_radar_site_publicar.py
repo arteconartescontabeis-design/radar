@@ -9,14 +9,16 @@ import html
 import json
 import re
 import threading
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from email.parser import BytesParser
 from email.policy import HTTP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
 
 import pytest
 
+import radar_site
 import radar_site_admin
 import radar_site_publicar as pub
 from conftest import ADMIN, EDITOR, como, jwt, API
@@ -28,7 +30,7 @@ PORTA = 3997
 BASE = f"http://127.0.0.1:{PORTA}"
 MESES = "Janeiro Fevereiro Março Abril Maio Junho Julho Agosto Setembro Outubro Novembro Dezembro".split()
 SITE = {"noticias": [], "envios": [], "logins": 0, "exigir_captcha": False, "publicar": True, "categorias": None, "fora": False,
-        "exclusoes": [], "excluir": True, "encurtar": None, "editar": True}
+        "exclusoes": [], "excluir": True, "encurtar": None, "editar": True, "slug_do_titulo": False, "quebrar": None}
 FORM = """<form method="post" action="/admin/news/register" enctype="multipart/form-data">
   <input type="hidden" name="_token" value="tok123">
   <label for="t">Título</label><input id="t" name="title" type="text" required>
@@ -38,6 +40,13 @@ FORM = """<form method="post" action="/admin/news/register" enctype="multipart/f
 LOGIN = """<html><script src="https://www.google.com/recaptcha/api.js"></script><form method="post" action="/admin/signin">
   <input type="hidden" name="_token" value="tok123"><input name="email" type="email"><input name="password" type="password">
   <div class="g-recaptcha"></div><button>Entrar</button></form></html>"""
+
+
+def slug_do_site(titulo):
+    """v0.32.0: como o site da Artecon monta o endereço da notícia: o título sem acento e sem pontuação, mas com o "º" (o caso real de
+    17/10/2026: ".../news/view/salario-maternidade-lei-nº-154152026-garante-...", que o próprio site não abre)."""
+    t = "".join(ch if ch in "ºª°" else unicodedata.normalize("NFKD", ch)[:1] for ch in titulo.lower())
+    return re.sub(r"[ -]+", "-", re.sub(r"[^a-z0-9ºª° -]", "", t)).strip("-")
 
 
 class Site(BaseHTTPRequestHandler):
@@ -88,15 +97,23 @@ class Site(BaseHTTPRequestHandler):
                 return self._html(302, "", [("Location", "/admin/signin")])
             cats = SITE["categorias"] or ["IRRF", "Simples Nacional", "Tributário"]
             return self._html(200, FORM.format(opcoes="".join(f"<option value='{i + 1}'>{c}</option>" for i, c in enumerate(cats))))
-        if self.path == "/news":
-            return self._html(200, "".join(f"<div><a href='/news/view/{n['slug']}'>LEIA</a></div>" for n in reversed(SITE["noticias"])))
+        if self.path == "/news":                                    # v0.32.0: o quadro de cada notícia, como no site real
+            d = hoje_brasilia()
+            return self._html(200, "<div class='row'>" + "".join(
+                f"<div class='col-sm-3'><div class='card card-news'><div class='card-body'><h6>Tributário</h6>"
+                f"<small>{d.day} de {MESES[d.month - 1]} de {d.year}</small><p>{html.escape(n['title'])}</p>"
+                f"<a href='/news/view/{n['slug']}' class='btn'>LEIA</a></div></div></div>" for n in reversed(SITE["noticias"])) + "</div>")
         m = re.fullmatch(r"/news/view/(.+)", self.path)
         if m:
-            n = next((n for n in SITE["noticias"] if n["slug"] == m.group(1)), None)
+            slug = unquote(m.group(1))
+            n = next((n for n in SITE["noticias"] if n["slug"] == slug), None)
+            if n and (not slug.isascii() or isinstance(n.get("quebrada"), int)):
+                return self._html(404 if not slug.isascii() else n["quebrada"], "erro")   # o site real: endereço com "º" dá 404
             if n:
                 d = hoje_brasilia()
+                corpo = "<p>Notícia indisponível no momento.</p>" if n.get("quebrada") == "vazia" else n["text"]
                 return self._html(200, f"<html><head><meta property='og:title' content='{n['title']}'></head><body>"
-                                       f"<p>Publicada em {d.day:02d} de {MESES[d.month - 1]} de {d.year}</p>{n['text']}</body></html>")
+                                       f"<p>Publicada em {d.day:02d} de {MESES[d.month - 1]} de {d.year}</p>{corpo}</body></html>")
         return self._html(404, "nao encontrado")
 
     def do_POST(self):
@@ -116,7 +133,8 @@ class Site(BaseHTTPRequestHandler):
                 campos[nome] = (parte.get_filename(), bruto_parte) if parte.get_filename() else bruto_parte.decode("utf-8")
             SITE["envios"].append(campos)
             if SITE["publicar"]:
-                SITE["noticias"].append({"slug": f"noticia-{len(SITE['noticias']) + 1}", "title": campos["title"], "text": campos["text"]})
+                slug = slug_do_site(campos["title"]) if SITE["slug_do_titulo"] else f"noticia-{len(SITE['noticias']) + 1}"
+                SITE["noticias"].append({"slug": slug, "title": campos["title"], "text": campos["text"], "quebrada": SITE["quebrar"]})
             return self._html(302, "", [("Location", "/admin/news")])
         return self._html(403, "proibido")
 
@@ -139,7 +157,7 @@ def site():
 @pytest.fixture()
 def cenario(api_postgrest, site, limpo):
     SITE.update(noticias=[], envios=[], logins=0, exigir_captcha=False, publicar=True, categorias=None, fora=False, exclusoes=[], excluir=True,
-                encurtar=None, editar=True)
+                encurtar=None, editar=True, slug_do_titulo=False, quebrar=None)
     limpo.execute("insert into radar_config (chave, valor) values ('site', %s::jsonb) "
                   "on conflict (chave) do update set valor = excluded.valor", (f'{{"lista": "{BASE}/news"}}',))
     yield limpo
@@ -153,11 +171,11 @@ CORPO = ("O Comitê Gestor do Simples Nacional estendeu o prazo para as empresas
 from test_radar_banco import PIXEL as CAPA                                 # noqa: E402
 
 
-def autorizado(db, categoria="Simples Nacional"):
+def autorizado(db, categoria="Simples Nacional", titulo="Prazo de opção pelo Simples Nacional vai até 31 de janeiro de 2027", corpo=CORPO):
     a, c = cenario_publicavel(db)
     img = db.execute("insert into radar_imagens (dados) values (%s) returning id", (CAPA,)).fetchone()[0]
-    db.execute("update radar_conteudos set titulo = 'Prazo de opção pelo Simples Nacional vai até 31 de janeiro de 2027', "
-               "corpo = %s, autor = 'Equipe Artecon', fonte_credito = 'Receita Federal', imagem_id = %s where id = %s", (CORPO, img, c))
+    db.execute("update radar_conteudos set titulo = %s, "
+               "corpo = %s, autor = 'Equipe Artecon', fonte_credito = 'Receita Federal', imagem_id = %s where id = %s", (titulo, corpo, img, c))
     aprovar(c)
     lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c,)).fetchone()[0]
     with como("authenticated", ADMIN) as x:
@@ -180,7 +198,7 @@ def test_publica_so_o_autorizado_registra_o_link_e_nunca_reenvia(cenario):
     feito = rodar()
     assert feito == [f"envio {envio}: publicado"] and len(SITE["envios"]) == 1
     e = SITE["envios"][0]
-    assert e["_token"] == "tok123" and e["category"] == "2" and e["title"].startswith("Prazo de opção pelo Simples")
+    assert e["_token"] == "tok123" and e["category"] == "2" and e["title"] == "Prazo de opção pelo Simples Nacional vai até 31 de janeiro de 2027"
     assert "<h2>Quem pode optar</h2>" in e["text"] and "<strong>31 de janeiro de 2027</strong>" in e["text"]
     assert "Texto elaborado por: <strong>Equipe Artecon</strong>" in e["text"]
     assert 'Fonte: <a href="https://exemplo.gov.br/in-2290" target="_blank" rel="noopener">Receita Federal</a>' in e["text"]   # v0.11.0
@@ -588,3 +606,150 @@ def test_imagem_da_ia_vai_ao_site_como_esta_e_o_texto_termina_com_a_linha_do_avi
     assert "Imagem ilustrativa" not in pub.para_html("Texto.", fonte="Receita Federal")
     assert pub.para_html("Texto.", informativo=True, imagem_ia=True).endswith(
         '<p style="text-align:right"><em>Conteúdo informativo</em></p>\n<p style="text-align:right"><em>Imagem ilustrativa gerada por IA.</em></p>')
+
+
+# ------------------------------------------------------------------- v0.32.0: título sem "nº" no site e página que não abre
+# O caso real de 17/10/2026: o site gravou a notícia com este título, montou o endereço com o "º" e não abre a página (HTTP 404)
+TITULO_REAL = "Salário-maternidade: Lei nº 15.415/2026 garante concessão em até 30 dias pela Previdência Social"
+TITULO_SITE = "Salário-maternidade: Lei 15.415/2026 garante concessão em até 30 dias pela Previdência Social"
+CORPO_LEI = ("A Lei nº 15.415/2026 determina que a Previdência Social conceda o salário-maternidade em até 30 dias, contados do pedido "
+             "completo. O prazo vale para as seguradas empregadas, avulsas, domésticas, contribuintes individuais e facultativas.\n\n"
+             "## O que muda para as empresas\n- **Documentos**: o pedido precisa estar completo para o prazo começar a contar\n"
+             "- **Folha de pagamento**: a empresa segue as regras de sempre para a empregada afastada\n\n"
+             "## Análise Artecon\nConfira os documentos da empregada antes do afastamento, para o pedido não voltar por falta de informação.")
+QUEBRADA = "A notícia foi gravada no site, mas a página dela não abre (endereço quebrado). Apague-a no painel do site e autorize de novo."
+# a página que abre sem o texto não é "endereço quebrado" (pode ser o site em manutenção ou outra notícia com o mesmo título)
+SEM_TEXTO = ("A notícia foi gravada no site, mas a página dela abre sem o texto aprovado. Confira-a no site: se estiver errada, apague-a "
+             "no painel do site e autorize de novo; se estiver certa, registre o link à mão (sem autorizar de novo, para não duplicar).")
+# a primeira vez que a página não abre: o envio continua "enviando" com esta nota, e só vira "erro" se a página continuar sem abrir numa
+# rodada pelo menos 10 minutos depois (uma falha passageira do site não pode mandar apagar uma notícia boa)
+A_CONFERIR = "A página da notícia no site ainda não abriu; o robô confere de novo na próxima rodada."
+AINDA = "a notícia está na lista do site, mas a página dela ainda não abriu; confere de novo na próxima rodada"
+
+
+def depois(minutos):
+    return lambda: datetime.now(timezone.utc) + timedelta(minutes=minutos)
+
+
+def test_titulo_vai_ao_site_sem_o_numero_abreviado_e_a_noticia_e_achada_registrada_e_excluida(cenario):
+    """v0.32.0: o título vai ao site sem o "nº" ("Lei nº 15.415/2026" → "Lei 15.415/2026"): o site monta um endereço que abre. O texto,
+    a descrição e o título no Radar não mudam. A notícia é achada na lista e registrada; o "Excluir do site" (pedido com o título do
+    Radar) ainda a acha no painel, onde o título é o que foi ao site."""
+    assert slug_do_site(TITULO_REAL) == "salario-maternidade-lei-nº-154152026-garante-concessao-em-ate-30-dias-pela-previdencia-social"
+    SITE["slug_do_titulo"] = True
+    c, envio = autorizado(cenario, titulo=TITULO_REAL, corpo=CORPO_LEI)
+    assert rodar() == [f"envio {envio}: publicado"] and len(SITE["envios"]) == 1
+    e = SITE["envios"][0]
+    assert e["title"] == TITULO_SITE
+    assert "A Lei nº 15.415/2026 determina" in e["text"] and e["metadescription"] == pub.resumo(CORPO_LEI)     # o texto vai como está
+    url = BASE + "/news/view/salario-maternidade-lei-154152026-garante-concessao-em-ate-30-dias-pela-previdencia-social"
+    assert situacao(cenario, envio) == ("publicado", url, None)
+    assert cenario.execute("select titulo from radar_conteudos where id = %s", (c,)).fetchone()[0] == TITULO_REAL   # no Radar não muda
+    assert cenario.execute("select url, titulo from radar_divulgacoes where conteudo_id = %s", (c,)).fetchone() == (url, TITULO_REAL)
+    x = pedir_exclusao(c)
+    assert excluir() == [f"exclusão {x}: excluída do site"] and SITE["exclusoes"] == [url.rsplit("/", 1)[1]] and SITE["noticias"] == []
+
+
+@pytest.mark.parametrize("quebra", [404, 500, "vazia"])
+def test_pagina_da_noticia_que_nao_abre_vira_erro_quando_se_repete_sem_reenviar(cenario, quebra):
+    """v0.32.0: o site gravou a notícia e a lista a mostra, mas a página dela não abre (404, 500) ou abre sem o texto. Na primeira vez o
+    envio continua "enviando" com a nota (pode ser falha passageira do site); se a página continua sem abrir numa rodada pelo menos 10
+    minutos depois, vira "erro" — com o pedido de apagá-la no painel e autorizar de novo, ou, na que abre sem o texto, o de conferir —, e
+    nada é reenviado."""
+    SITE["quebrar"] = quebra
+    c, envio = autorizado(cenario, titulo=TITULO_REAL, corpo=CORPO_LEI)
+    assert rodar() == [f"envio {envio}: {AINDA}"]
+    assert situacao(cenario, envio) == ("enviando", None, A_CONFERIR) and len(SITE["envios"]) == 1
+    assert rodar(depois(5)) == [f"envio {envio}: {AINDA}"]                 # poucos minutos depois: ainda não conta como repetida
+    assert situacao(cenario, envio) == ("enviando", None, A_CONFERIR)
+    fim = "abre sem o texto" if quebra == "vazia" else "não abre"
+    assert rodar(depois(11)) == [f"envio {envio}: gravado no site, mas a página da notícia {fim}"]
+    assert situacao(cenario, envio) == ("erro", None, SEM_TEXTO if quebra == "vazia" else QUEBRADA) and len(SITE["envios"]) == 1
+    assert "endereço quebrado" not in SEM_TEXTO
+    assert cenario.execute("select count(*) from radar_divulgacoes where conteudo_id = %s", (c,)).fetchone()[0] == 0
+    assert rodar(depois(30)) == [] and len(SITE["envios"]) == 1           # nunca reenvia sozinho
+
+
+@pytest.mark.parametrize("falha", [500, 404, "vazia"])
+def test_falha_passageira_da_pagina_nao_vira_erro_e_a_noticia_sai_publicada_depois(cenario, falha):
+    """v0.32.0 (revisão): a página de uma notícia boa que não abre numa rodada (HTTP 500 duas vezes, um 404 isolado, a página "em
+    manutenção" sem o texto) não vira "erro" nem pede para apagar: na rodada seguinte, com a página abrindo, o envio sai "publicado"."""
+    SITE["slug_do_titulo"], SITE["quebrar"] = True, falha
+    c, envio = autorizado(cenario, titulo=TITULO_REAL, corpo=CORPO_LEI)
+    assert rodar() == [f"envio {envio}: {AINDA}"] and situacao(cenario, envio) == ("enviando", None, A_CONFERIR)
+    for n in SITE["noticias"]:
+        n["quebrada"] = None                                              # o site voltou: a página abre
+    assert rodar(depois(15)) == [f"envio {envio}: publicado"] and len(SITE["envios"]) == 1
+    assert situacao(cenario, envio) == ("publicado", BASE + "/news/view/" + slug_do_site(TITULO_SITE), None)
+
+
+@pytest.mark.parametrize("status", [401, 403, 410])
+def test_pagina_recusada_nao_e_endereco_quebrado(cenario, status):
+    """v0.32.0 (revisão): 401, 403 ou 410 na página da notícia (acesso recusado ao robô) não dizem que o endereço está quebrado: o envio
+    continua "enviando" sem nota e, sem achar a notícia em 2 horas, cai no pedido de conferência de sempre (nunca no "Apague-a")."""
+    SITE["quebrar"] = status
+    c, envio = autorizado(cenario, titulo=TITULO_REAL, corpo=CORPO_LEI)
+    assert rodar() == [f"envio {envio}: enviado; a notícia ainda não apareceu na lista do site"]
+    assert situacao(cenario, envio) == ("enviando", None, None)
+    assert rodar(depois(20)) == [] and situacao(cenario, envio) == ("enviando", None, None)
+    assert rodar(depois(180)) == [f"envio {envio}: não achado no site"]
+    assert situacao(cenario, envio)[0] == "erro" and "antes de autorizar de novo" in situacao(cenario, envio)[2]
+    assert len(SITE["envios"]) == 1
+
+
+def test_envio_enviando_com_a_pagina_que_nao_abre_vira_erro_quando_se_repete(cenario):
+    """v0.32.0: o envio ficou "enviando" (a notícia ainda não estava na lista). Numa rodada seguinte a lista mostra uma notícia com o mesmo
+    título — o que foi ao site (convertido) ou o do Radar (gravado antes da correção, com o endereço com "º", como no caso real) — e a
+    página dela não abre: fica a nota e, se continuar assim 10 minutos depois, vira "erro" com o pedido, sem reenviar. Notícia de outro
+    título que não abre, ou a página que não abriu porque o site está sobrecarregado (503), não mudam nada: continua procurando."""
+    SITE["publicar"] = False
+    c, envio = autorizado(cenario, titulo=TITULO_REAL, corpo=CORPO_LEI)
+    assert rodar() == [f"envio {envio}: enviado; a notícia ainda não apareceu na lista do site"]
+    assert situacao(cenario, envio)[0] == "enviando" and SITE["envios"][0]["title"] == TITULO_SITE
+    texto = SITE["envios"][0]["text"]
+    SITE["noticias"] += [{"slug": "outra-que-nao-abre", "title": "Outra notícia do dia", "text": texto, "quebrada": 404},
+                         {"slug": "sobrecarga", "title": TITULO_SITE, "text": texto, "quebrada": 503}]
+    assert rodar() == [] and situacao(cenario, envio) == ("enviando", None, None)
+    SITE["noticias"].append({"slug": "salario-maternidade-lei-154152026", "title": TITULO_SITE, "text": texto, "quebrada": 500})
+    assert rodar() == [f"envio {envio}: {AINDA}"] and situacao(cenario, envio) == ("enviando", None, A_CONFERIR)
+    assert rodar(depois(11)) == [f"envio {envio}: gravado no site, mas a página da notícia não abre"]
+    assert situacao(cenario, envio) == ("erro", None, QUEBRADA) and len(SITE["envios"]) == 1
+    # o caso real: gravada antes da correção, com o título do Radar e o endereço com "º" (o site responde 404)
+    cenario.execute("update radar_site_envios set situacao = 'enviando', erro = null where id = %s", (envio,))
+    SITE["noticias"] = [{"slug": slug_do_site(TITULO_REAL), "title": TITULO_REAL, "text": texto}]
+    assert rodar() == [f"envio {envio}: {AINDA}"]
+    assert rodar(depois(11)) == [f"envio {envio}: gravado no site, mas a página da notícia não abre"]
+    assert situacao(cenario, envio) == ("erro", None, QUEBRADA) and len(SITE["envios"]) == 1
+    # a página certa (que abre) está na lista junto com a quebrada: vale a certa (e a nota sai)
+    cenario.execute("update radar_site_envios set situacao = 'enviando', erro = %s where id = %s", (A_CONFERIR, envio))
+    SITE["noticias"].append({"slug": slug_do_site(TITULO_SITE), "title": TITULO_SITE, "text": texto})
+    assert rodar() == [f"envio {envio}: publicado"]
+    assert situacao(cenario, envio) == ("publicado", BASE + "/news/view/" + slug_do_site(TITULO_SITE), None)
+
+
+def test_lista_do_site_traz_o_titulo_de_cada_noticia_e_a_procura_aceita_o_titulo_que_foi_ao_site():
+    """v0.32.0: a lista de artecon.cnt.br/news (o quadro de cada notícia: categoria, data, título e "LEIA") dá o título mesmo quando a
+    página não abre. E a comparação aceita o título que foi ao site: num título curto, sem o "13º"/"1ª" as palavras mudam o bastante
+    para o título deixar de ser "praticamente igual" ao do Radar."""
+    lista = """<div class="row"><div class="col-sm-3"><div class="card"><div class="card-body"><h6>Área Trabalhista e Previdenciária</h6>
+      <small>17 de Outubro de 2026</small><p class="text-white">Salário-maternidade: Lei nº 15.415/2026 garante concessão</p>
+      <a href="https://artecon.cnt.br/news/view/salario-maternidade-lei-nº-154152026-garante-concessao" class="btn">LEIA</a></div></div></div>
+      <div class="col-sm-3"><div class="card"><div class="card-body"><h6>Simples Nacional</h6><small>16 de Outubro de 2026</small>
+      <p>Prazo do Simples</p><a href="/news/view/prazo-do-simples">LEIA</a><a href="/news/view/prazo-do-simples#topo">LEIA</a></div></div></div></div>
+      <a href="/news">Todas</a>"""
+    noticias = radar_site.noticias_da_lista(lista, "https://artecon.cnt.br/news", r"/news/view/[^/?#]+$", 15)
+    assert [n["url"] for n in noticias] == ["https://artecon.cnt.br/news/view/salario-maternidade-lei-nº-154152026-garante-concessao",
+                                            "https://artecon.cnt.br/news/view/prazo-do-simples"]
+    assert "Salário-maternidade: Lei nº 15.415/2026 garante concessão" in noticias[0]["textos"] and "Prazo do Simples" in noticias[1]["textos"]
+    assert "Prazo do Simples" not in noticias[0]["textos"]                            # cada notícia só com o seu quadro
+    assert radar_site.links_da_lista(lista, "https://artecon.cnt.br/news", r"/news/view/[^/?#]+$", 1) == [noticias[0]["url"]]
+    corpo = " ".join(f"palavra{i}" for i in range(40))
+    radar = {"id": 1, "titulo": "13º salário: 1ª parcela até 30/11", "corpo": corpo, "aprovado_em": None}
+    no_site = {"titulo": "13 salário: 1 parcela até 30/11", "data": None, "texto": " ".join(f"palavra{i}" for i in range(24))}
+    assert radar_site.semelhanca(no_site["titulo"], radar["titulo"]) < radar_site.TITULO_IGUAL
+    assert radar_site.escolher(no_site, [radar]) is radar
+    assert radar_site.escolher(dict(no_site, titulo="13º salário: 1ª parcela até 30/11"), [radar]) is radar
+    assert radar_site.escolher(dict(no_site, titulo="13 salário: 2 parcela até 20/12"), [radar]) is None       # outro número: outra
+    # a exclusão também acha a notícia pelo título que foi ao site
+    painel = [{"titulo": exc.titulo_normal(TITULO_SITE), "excluir": "x", "editar": None}]
+    assert exc.Excluidor.achar(painel, TITULO_REAL) == painel and exc.Excluidor.achar(painel, "Outro título") == []

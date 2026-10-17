@@ -10,6 +10,9 @@ título igual com texto diferente), não registra nada: o registro manual contin
 Também serve aos avisos (radar_alertas.py): `texto_alterado` diz se a página publicada ainda traz o
 texto que foi aprovado e registrado.
 
+v0.32.0: o título vai ao site sem "nº" e sem "º"/"ª"/"°" depois de números (titulo_para_o_site: o site da Artecon monta o endereço
+da notícia com o título e não abre a página quando o endereço tem esses sinais); a notícia é achada pelo título do Radar ou por esse.
+
 Configuração (opcional) na chave `site` de Configurações (radar_config):
     {"lista": "https://artecon.cnt.br/news", "padrao": "/news/view/[^/?#]+$", "max_noticias": 15,
      "desligado": false}
@@ -45,6 +48,30 @@ PALAVRAS_MINIMAS = 20      # texto aprovado mais curto que isso não é comparad
 MESES = {"janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"}
 
 
+# v0.32.0 (17/10/2026): o site da Artecon monta o endereço da notícia com o título ("…/news/view/salario-maternidade-lei-nº-154152026-…")
+# e não abre a página quando o endereço tem "º" (responde 404, também com %C2%BA). Decisão do dono: no título que vai ao site,
+# "Lei nº 15.415/2026" vira "Lei 15.415/2026" e o "º"/"ª"/"°" depois de número sai ("1ª parcela" → "1 parcela"). No Radar, no
+# Instagram e no Facebook o título continua como foi escrito. A mesma regra está na tela (tituloParaOSite, no index.html).
+_SINAIS_DO_SITE = re.compile("[ºª°]")
+# os espaços, por extenso (o \s e o strip() do Python não são o \s e o trim() do JS: o Python conta o NEL U+0085 e U+001C a U+001F, o JS
+# conta o BOM U+FEFF): a soma dos dois, a mesma lista no ESPACOS_DO_SITE da tela, para a regra dar o mesmo resultado nos dois lados
+ESPACOS_DO_SITE = "[\t\n\x0b\x0c\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+_NUMERO_ABREVIADO = re.compile(r"(?<![0-9A-Za-zÀ-ÖØ-öø-ÿ])[nN]\.?[º°][sS]?\.?" + ESPACOS_DO_SITE + r"*(?=[0-9])")   # "nº ", "Nº", "n.º", "N.º", "n°", "nº.", "nºs"
+_ORDINAL = re.compile(r"(?<=[0-9])\.?[ºª°]")                                                   # "1ª", "2º", "13º", "1.º", "25°"
+_ESPACOS = re.compile(ESPACOS_DO_SITE + "+")
+
+
+def titulo_para_o_site(titulo: str | None) -> str:
+    """O título como vai ao site da Artecon: sem o "nº" antes de número (fica só o número), sem o "º"/"ª"/"°" depois de número e sem
+    nenhum "º"/"ª"/"°" que sobrar; os espaços que ficam dobrados viram um (qualquer espaço de ESPACOS_DO_SITE) e os das pontas saem.
+    Título sem esses sinais vai exatamente como está."""
+    t = str(titulo or "")
+    if not _SINAIS_DO_SITE.search(t):
+        return t
+    t = _SINAIS_DO_SITE.sub("", _ORDINAL.sub("", _NUMERO_ABREVIADO.sub("", t)))
+    return _ESPACOS.sub(" ", t).strip(" ")
+
+
 def palavras(texto: str | None) -> set[str]:
     """Palavras de 3 letras ou mais, sem acento e sem caixa (a marcação do texto não conta)."""
     return {p for p in re.findall(r"[a-z0-9]+", sem_acentos(texto or "").lower()) if len(p) >= 3}
@@ -78,12 +105,35 @@ def marcas(titulo: str | None) -> set[str]:
 
 def links_da_lista(html: str, base: str, padrao: str, limite: int) -> list[str]:
     """Endereços das notícias na ordem da página (a mais nova primeiro), sem repetição."""
-    regex, vistos = re.compile(padrao), []
-    for a in BeautifulSoup(html or "", "lxml").find_all("a", href=True):
+    return [n["url"] for n in noticias_da_lista(html, base, padrao, limite)]
+
+
+def noticias_da_lista(html: str, base: str, padrao: str, limite: int) -> list[dict]:
+    """v0.32.0: as notícias da lista, na ordem da página e sem repetição, cada uma com o endereço e os textos do quadro dela na lista
+    (em artecon.cnt.br/news: a categoria, a data, o título e o "LEIA"). O quadro é o maior bloco em volta do link que não tem link de
+    outra notícia. Serve para achar a notícia pelo título mesmo quando a página dela não abre."""
+    regex, sopa = re.compile(padrao), BeautifulSoup(html or "", "lxml")
+    endereco = {}
+    for a in sopa.find_all("a", href=True):
         url = canonizar_url(urljoin(base, a["href"]))
-        if regex.search(url) and url not in vistos:
-            vistos.append(url)
-    return vistos[:limite]
+        if regex.search(url):
+            endereco[id(a)] = url
+    achadas: dict[str, dict] = {}
+    for a in sopa.find_all("a", href=True):
+        url = endereco.get(id(a))
+        if url is None:
+            continue
+        noticia = achadas.setdefault(url, {"url": url, "textos": []})
+        quadro = a
+        while quadro.parent is not None and quadro.parent.name not in ("body", "html", "[document]") and all(
+                endereco.get(id(x), url) == url for x in quadro.parent.find_all("a", href=True)):
+            quadro = quadro.parent
+        for el in [quadro, *quadro.find_all(True)]:
+            for texto in (el.get_text(" "), el.get("title") or ""):
+                texto = normalizar_espacos(texto)
+                if texto and texto not in noticia["textos"]:
+                    noticia["textos"].append(texto)
+    return list(achadas.values())[:limite]
 
 
 def ler_noticia(html: str) -> dict:
@@ -106,15 +156,17 @@ def dia_brasilia(instante) -> date | None:
 
 
 def escolher(noticia: dict, candidatos: list[dict]) -> dict | None:
-    """O conteúdo aprovado que corresponde à notícia, só se houver um, sem dúvida."""
+    """O conteúdo aprovado que corresponde à notícia, só se houver um, sem dúvida. v0.32.0: o título da notícia no site pode ser o do
+    Radar ou o que vai ao site (titulo_para_o_site: sem o "nº" e sem o "º"/"ª" depois de número); vale o que for mais parecido."""
     aceitos = []
     for c in candidatos:
-        if len(palavras(c.get("corpo"))) < PALAVRAS_MINIMAS or marcas(c["titulo"]) != marcas(noticia["titulo"]):
+        titulos = [t for t in dict.fromkeys((c["titulo"], titulo_para_o_site(c["titulo"]))) if marcas(t) == marcas(noticia["titulo"])]
+        if len(palavras(c.get("corpo"))) < PALAVRAS_MINIMAS or not titulos:
             continue
         aprovado = dia_brasilia(c.get("aprovado_em"))
         if noticia["data"] and aprovado and noticia["data"] < aprovado:
             continue                     # publicada antes de o conteúdo ser aprovado: não é ele
-        tit, txt = semelhanca(noticia["titulo"], c["titulo"]), contido(c.get("corpo"), noticia["texto"])
+        tit, txt = max(semelhanca(noticia["titulo"], t) for t in titulos), contido(c.get("corpo"), noticia["texto"])
         if (tit >= TITULO_IGUAL and txt >= TEXTO_COM_TITULO) or (tit >= TITULO_PARECIDO and txt >= TEXTO_QUASE_TODO):
             aceitos.append((tit + txt, c))
     if len(aceitos) != 1:
