@@ -313,6 +313,48 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 .video-quadros figure{margin:0} .video-quadros img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:6px;border:1px solid var(--linha);display:block}
 .video-relatorio{border-top:1px solid var(--linha);margin-top:10px} .video-trava{color:var(--erro)}
 .video-bloco input{width:100%} .video-ajustes{background:#FCFDFE}
+/* v0.33.0: a aba Vídeo (radar-video.js): a lista dos reels (cartões no celular) e o editor (duas colunas no computador, uma no celular,
+   com o rodapé fixo embaixo); nada passa da largura da tela */
+.vaba-lista-caixa{max-width:100%;overflow-x:auto} .vaba-lista{width:100%} .vaba-lista td{vertical-align:middle} .vaba-assunto{overflow-wrap:anywhere}
+.vaba-filtros{margin:6px 0 12px}
+@media (max-width:640px){ .vaba-lista thead{display:none} .vaba-lista,.vaba-lista tbody,.vaba-lista tr,.vaba-lista td{display:block;width:100%}
+  .vaba-lista tr{border:1px solid var(--linha);border-radius:8px;padding:8px 10px;margin:0 0 10px;background:#fff}
+  .vaba-lista td{border:0;padding:2px 0} .vaba-lista td[data-rotulo]::before{content:attr(data-rotulo) ": ";font-weight:700;color:var(--marinho)}
+  .vaba-lista td .btn{width:100%;min-height:40px} .vaba-lista .vaba-assunto{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} }
+.vaba-pagina{min-width:0} .vaba-topo h1{margin:4px 0} .vaba-titulo{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0 0 8px;min-width:0}
+.vaba-editor{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:16px;align-items:start}
+.vaba-player{min-width:0} .vaba-player video{display:block;width:100%;max-height:70vh;background:#000;border-radius:8px}
+@media (min-width:861px){ .vaba-player{position:sticky;top:8px} }
+@media (max-width:860px){ .vaba-editor{grid-template-columns:minmax(0,1fr)} .vaba-player video{max-height:55vh} }
+.vaba-passos .btn{min-height:40px;min-width:44px} .vaba-quadros summary{cursor:pointer;margin:6px 0}
+.vaba-quadros figure,.vaba-capa{margin:6px 0} .vaba-quadros img,.vaba-capa img{max-width:135px;aspect-ratio:9/16;object-fit:cover;border-radius:6px;border:1px solid var(--linha);display:block}
+.vaba-secoes{min-width:0} .vaba-secao{margin:0 0 10px} .vaba-secao>summary{cursor:pointer} .vaba-secao>summary h2{display:inline;font-size:1.05rem;margin:0}
+.vaba-secao h3{margin:12px 0 6px;font-size:1rem} .vaba-secao .btn{white-space:normal}
+.vaba-linha{position:relative;height:28px;background:var(--azul-claro);border-radius:6px;margin:8px 0 4px;overflow:hidden;touch-action:none}
+.vaba-faixa{position:absolute;top:0;bottom:0} .vaba-faixa.novo{background:repeating-linear-gradient(45deg,#BC151B 0 4px,#E79A9D 4px 8px)} .vaba-faixa.cartela{background:var(--marinho)}
+.vaba-cursor{position:absolute;top:0;bottom:0;width:2px;background:#FFD700}
+.vaba-marca{display:inline-block;width:12px;height:10px;border-radius:2px;vertical-align:middle} .vaba-marca.novo{background:#BC151B} .vaba-marca.cartela{background:var(--marinho)}
+.vaba-palavras{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0;min-width:0}
+.vaba-p{min-height:32px;border:1px solid var(--linha);background:#fff;border-radius:6px;padding:2px 7px;cursor:pointer;overflow-wrap:anywhere;max-width:100%}
+.vaba-p.cortada{text-decoration:line-through;color:var(--erro);background:var(--erro-fundo)} .vaba-p.fora{color:#999} .vaba-p.atual{outline:2px solid #FFD700}
+.vaba-p.sel{background:var(--azul-claro);border-color:var(--marinho);font-weight:700}
+.vaba-cortes{padding-left:20px;margin:4px 0} .vaba-cortes li{margin:5px 0;overflow-wrap:anywhere} .vaba-cortes .acoes{display:inline-flex;margin:0 0 0 6px}
+.vaba-bloco{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;border-bottom:1px solid var(--linha);padding:6px 0;min-width:0}
+.vaba-bloco.sai{opacity:.55} .vaba-bloco-palavras{display:flex;flex-wrap:wrap;gap:3px;min-width:0} .vaba-bloco input{width:auto;max-width:100%;padding:3px 5px}
+.vaba-recusa{color:var(--erro);flex-basis:100%}
+.vaba-escolha label,.vaba-cores label,.vaba-extra label{display:flex;gap:6px;align-items:center;margin:4px 0}
+.vaba-amostra-cor{display:inline-block;min-width:34px;text-align:center;border-radius:4px;padding:1px 6px;font-weight:700;border:1px solid var(--linha)}
+.vaba-amostra{position:relative;aspect-ratio:9/16;width:135px;background:linear-gradient(135deg,#011F48 0%,#0D3B73 60%,#1B5E9B 100%);border-radius:8px;overflow:hidden;margin:8px 0}
+.vaba-amostra-rosto{position:absolute;left:30%;width:40%;top:12%;height:26%;border-radius:50% 50% 45% 45%;background:#C9D6E3}
+.vaba-amostra span.vaba-amostra-fala,.vaba-amostra span.vaba-amostra-gancho{position:absolute;left:6%;right:6%;font:700 8px/1.25 "DM Sans",sans-serif;padding:2px 3px;text-align:center;border-radius:2px}
+.vaba-amostra-fala.compacta{font-size:7px}
+.vaba-amostra[data-tamanho="P"] .vaba-amostra-fala{font-size:7px} .vaba-amostra[data-tamanho="G"] .vaba-amostra-fala{font-size:9.5px}
+.vaba-amostra[data-posicao="baixo"] .vaba-amostra-fala{bottom:36%} .vaba-amostra[data-posicao="baixo"] .vaba-amostra-gancho{bottom:50%}
+.vaba-amostra[data-posicao="meio"] .vaba-amostra-fala{top:46%} .vaba-amostra[data-posicao="meio"] .vaba-amostra-gancho{top:15%}
+.vaba-amostra[data-posicao="cima"] .vaba-amostra-fala{top:15%} .vaba-amostra[data-posicao="cima"] .vaba-amostra-gancho{top:30%}
+.vaba-rodape{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--linha);padding:8px 0;z-index:5;min-width:0}
+.vaba-rodape p{margin:2px 0;overflow-wrap:anywhere} .vaba-fora{color:var(--erro);font-weight:700}
+@media (max-width:640px){ .vaba-amostra{width:108px} .vaba-rodape .btn.verde{width:100%;min-height:44px} }
 @media (max-width:640px){ main{padding:12px 16px 60px} td,th{padding:6px 5px} .quem{margin-left:0} .topo{padding:8px 14px;gap:10px} .topo .logo{height:38px} .marca{font-size:1.1rem;padding-left:10px} }
 </style>
 </head>
@@ -1054,8 +1096,9 @@ const catMapa = () => Object.fromEntries(E.categorias.map(c => [c.slug, c.nome])
 function papelDaChave(){ try{ return JSON.parse(atob(CHAVE.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).role || ""; }catch(e){ return ""; } }
 
 /* ------------------------------------------------------------- estrutura */
+// v0.33.0: a aba Vídeo é da equipe que edita ("equipe": o editor e o administrador; o leitor não vê o vídeo, que tem o rosto e a voz da equipe)
 const ABAS = [["painel","Painel"],["fila","Capturas"],["assuntos","Assuntos"],["informativos","Informativos"],["publicacoes","Publicações"],["pauta","Pauta"],
-              ["fontes","Fontes"],["usuarios","Usuários",true],["configuracoes","Configurações",true],["auditoria","Histórico",true],["ajuda","Como usar"],["versoes","Versões"]];
+              ["video","Vídeo","equipe"],["fontes","Fontes"],["usuarios","Usuários",true],["configuracoes","Configurações",true],["auditoria","Histórico",true],["ajuda","Como usar"],["versoes","Versões"]];
 const LOGO = `<img class="logo-entrada" src="radar-logo-artecon.png" alt="Artecon Artes Contábeis">`;
 function moldura(conteudo){
   return `<div class="tricolor"></div><header class="topo"><img class="logo" src="radar-logo-artecon.png" alt="Artecon Artes Contábeis">
@@ -1063,7 +1106,7 @@ function moldura(conteudo){
     <button class="versao" data-acao="aba" data-aba="versoes" title="Ver o histórico de versões">v${VERSAO}</button>
     <span class="quem"><span>${h(E.perfil.nome)} · ${h(ROTULOS.papel[E.perfil.papel])}</span>
     <button data-acao="sair">Sair</button></span></header><div class="faixa"></div>
-    <nav class="abas">${ABAS.filter(a => !a[2] || ehAdmin()).map(([id,nome]) =>
+    <nav class="abas">${ABAS.filter(a => !a[2] || (a[2] === "equipe" ? podeEditar() : ehAdmin())).map(([id,nome]) =>
       `<button data-acao="aba" data-aba="${id}" class="${E.aba===id?"ativa":""}">${nome}${E.contagem[id] ? `<span class="conta">${E.contagem[id]}</span>` : ""}</button>`).join("")}</nav>
     <main id="conteudo">${conteudo}</main>
     <footer class="rodape"><b>Artecon Artes Contábeis</b> · Rua Livorno, nº 15, Sala 101 · Parque Residencial Pagani · Palhoça/SC · (48) 3242-0530 · www.artecon.cnt.br<br>Radar v${VERSAO} · uso interno</footer>`;
@@ -1095,7 +1138,8 @@ async function desenhar(){
     const html = E.assunto ? await telaAssunto(E.assunto) : await TELAS[E.aba]();
     if(g === GERACAO){ app.innerHTML = moldura(html);
       const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi);
-      if(!E.assunto && E.aba === "pauta" && typeof depoisDeDesenharPauta === "function") depoisDeDesenharPauta(); }     // v0.21.0: a peça aberta (radar-pauta.js)
+      if(!E.assunto && E.aba === "pauta" && typeof depoisDeDesenharPauta === "function") depoisDeDesenharPauta();      // v0.21.0: a peça aberta (radar-pauta.js)
+      if(!E.assunto && E.aba === "video" && typeof depoisDeDesenharAbaVideo === "function") depoisDeDesenharAbaVideo(); }   // v0.33.0: o editor do vídeo (radar-video.js)
   }catch(e){ if(g === GERACAO && E.sessao && E.perfil) app.innerHTML = moldura(`<div class="aviso erro">${h(e.message)}</div>`); }
 }
 function telaEntrada(erro){
@@ -1364,6 +1408,10 @@ const TELAS = {
 
   // v0.21.0: a aba Pauta fica em radar-pauta.js (carregado antes deste script); sem ele, o recado
   pauta: () => typeof telaPauta === "function" ? telaPauta() : '<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-arquivo">O arquivo radar-pauta.js não carregou. Aperte Ctrl+F5 (no celular, recarregue a página); se continuar, avise o administrador.</div>',
+  // v0.33.0: a aba Vídeo (radar-video.js): o editor do vídeo corrigido do reel, só para o editor (vê) e o administrador (edita)
+  video: () => !podeEditar() ? '<h1>Vídeo</h1><p class="sub" id="vaba-so-equipe">Os vídeos dos reels (com o rosto e a voz da equipe) só o editor e o administrador veem.</p>'
+    : typeof telaAbaVideo === "function" ? telaAbaVideo()
+    : '<h1>Vídeo</h1><div class="aviso erro" id="vaba-sem-arquivo">O arquivo radar-video.js não carregou. Aperte Ctrl+F5 (no celular, recarregue a página); se continuar, avise o administrador.</div>',
 
   async fontes(){
     const fontes = await ler("radar_fontes", {select:"*", order:"id"});
@@ -1516,6 +1564,7 @@ const TELAS = {
         <li><b>Enviar.</b> Na Pauta, abra a peça reel: confira a <b>Fala para conferência</b>, escolha os clipes na ordem (até 12), quem fala e as 4 declarações e clique em <b>Enviar a gravação</b>. No celular, não feche nem bloqueie a tela até 100%. Guarde os clipes no celular até o relatório dizer <b>Vídeo corrigido pronto</b> (se precisar regravar um bloco, os outros vão de novo, sem regravar) e então, no mesmo dia, apague do celular e da nuvem pessoal e marque <b>Apaguei</b>.</li>
         <li><b>O corretor.</b> Em poucos minutos, o robô transcreve (Azure gratuita), compara com o roteiro, corta o começo, o fim, as pausas longas e as hesitações, acerta o som e grava a legenda e a cartela final. Ele nunca troca nem inventa palavra: número, data ou termo diferente do roteiro vira <b>Precisa regravar</b>.</li>
         <li><b>Relatório e prévia.</b> A peça mostra o que regravar, os cortes, a legenda, o som e 4 quadros. O administrador ouve a prévia e pode manter um corte, marcar “A transcrição errou (vale o roteiro)” ou editar a legenda, sem mudar o áudio.</li>
+        <li><b>Editar na aba Vídeo.</b> O administrador abre o reel na aba Vídeo (ou “Editar na aba Vídeo”, na peça) e muda o começo, o fim e trechos do meio (a prévia já pula os cortes), o texto da legenda palavra por palavra, o tamanho, a posição e a cor da legenda (só as cores da Artecon), o texto do gancho, o texto extra da cartela e a capa. “Montar de novo com estas mudanças” não transcreve de novo: em alguns minutos o vídeo novo aparece, e a aprovação continua na peça.</li>
         <li><b>Aprovar e postar.</b> O administrador aprova o reel com o vídeo da prévia. Depois, <b>Baixar o vídeo aprovado</b>, postar no Instagram e no Facebook com a legenda copiada, apagar do celular e registrar o link.</li>
       </ol></div>` : ""}
       <div class="painel"><h2>Como o Radar escolhe o que está em alta</h2><ul>
@@ -1540,6 +1589,7 @@ const TELAS = {
         <tr><td><b>Informativos</b></td><td>Edições do Informativo Mensal e o PDF.</td></tr>
         <tr><td><b>Publicações</b></td><td>Aprovados que faltam publicar no site e o registro do que já foi.</td></tr>
         <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), a peça nova num dia vazio (“+ Nova peça”, só o administrador), as pessoas com o termo de uso de imagem (sócio(a) da Artecon: termos dispensados) e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
+        ${podeEditar() ? `<tr><td><b>Vídeo</b></td><td>O vídeo corrigido de cada reel: o editor vê; o administrador corta o começo, o fim e trechos, corrige o texto da legenda, escolhe o estilo da legenda, o gancho, a cartela e a capa e monta de novo (sem transcrever de novo). A aprovação continua na peça.</td></tr>` : ""}
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
         <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, lembretes por e-mail, vencimentos de chaves e contas, cópia de segurança no OneDrive, agenda de obrigações (com o 13º, as anuais, a nova data de uma prorrogação conferida e as possíveis prorrogações captadas), feriados locais, Fale Conosco e assinatura do informativo.</td></tr>

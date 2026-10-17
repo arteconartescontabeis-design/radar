@@ -507,7 +507,10 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.32.0: cada uma confere o papel ou a chave da agenda
                                                            'radar_vencimentos_conhecidos', 'radar_vencimentos_renovei',
                                                            'radar_copias_situacao', 'radar_copias_comecar', 'radar_copias_terminar',
-                                                           'radar_copias_exportar')
+                                                           'radar_copias_exportar',
+                                                           -- v0.33.0: a aba Vídeo (o editor confere que é o administrador; a paleta
+                                                           -- não tem dado de ninguém)
+                                                           'radar_video_editar', 'radar_video_paleta')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace

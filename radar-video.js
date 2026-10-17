@@ -47,7 +47,7 @@ const ERROS_VIDEO = {
   longo_demais:"os clipes somam mais de 120 s: envie só as tomadas boas",
   arquivo_grande:"um clipe chegou maior que o declarado: envie a gravação de novo",
   sem_fala:"nenhuma fala foi encontrada nos clipes: confira o som e grave de novo",
-  cartela_nao_cabe:"a cartela final não coube: encurte a identificação (Configurações → Assinatura), o nome na peça de quem fala (Pauta → Pessoas e termos) ou o texto extra (Configurações → Corretor de vídeo) e use Tentar de novo (a cartela é refeita com o que estiver lá)",
+  cartela_nao_cabe:"a cartela final não coube: encurte a identificação (Configurações → Assinatura), o nome na peça de quem fala (Pauta → Pessoas e termos) ou o texto extra (Configurações → Corretor de vídeo) e use Tentar de novo (a cartela é refeita com o que estiver lá; o texto extra próprio deste vídeo, escolhido na aba Vídeo, sai e volta o das Configurações: um mais curto se escolhe de novo na aba Vídeo, com o vídeo pronto)",
   conferencia_falhou:"o vídeo montado não passou na conferência final: tente de novo; se repetir, avise o administrador",
   transcricao_ocupada:"Transcrição ocupada; tente de novo (a Azure gratuita atende um pedido por vez e é dividida com a Agenda)",
   azure_cota:"A cota grátis da Azure do mês acabou (5 h, divididas com a Agenda) ou a assinatura parou",
@@ -68,7 +68,10 @@ const ERROS_VIDEO = {
   storage:"o armazenamento não respondeu: tente de novo", rede:"falha de rede no robô: tente de novo",
   limite_armazenamento:"o vídeo corrigido passou do limite de tamanho de arquivo do armazenamento (no plano Free do Supabase, 50 MB por arquivo): grave um reel mais curto e envie de novo; no plano Pro, o administrador sobe o limite em Supabase → Storage → Settings e usa Tentar de novo",
   ffmpeg_falhou:"a montagem do vídeo falhou: tente de novo; se repetir, avise o administrador",
-  ffmpeg_tempo:"a montagem do vídeo passou do tempo: tente de novo", medida_falhou:"a medida do som falhou: tente de novo"};
+  ffmpeg_tempo:"a montagem do vídeo passou do tempo: tente de novo", medida_falhou:"a medida do som falhou: tente de novo",
+  // v0.33.0: a aba Vídeo
+  robo_desatualizado:"o robô do repositório privado ainda está no commit antigo e não aplica as mudanças da aba Vídeo: o administrador troca a variável RADAR_VIDEO_COMMIT do repositório radar-video pelo commit desta versão (LEIAME) e usa Tentar de novo",
+  edicao_curta:"os cortes da aba Vídeo deixaram menos de 2 s de fala: desfaça os cortes do editor e monte de novo"};
 const ERRO_INTERNO_VIDEO = "erro interno do corretor: tente de novo; se repetir, avise o administrador";
 const AVISOS_VIDEO = {
   fala_diferente_do_roteiro:"A fala ficou muito diferente do roteiro (menos de 60% do roteiro foi reconhecido): ouça a prévia e confira a fala para conferência.",
@@ -78,14 +81,15 @@ const AVISOS_VIDEO = {
   transcricao_vazia:"A transcrição não reconheceu nenhuma palavra: os cortes foram feitos só pelos silêncios; ouça a prévia antes de aprovar.",
   boletim_pago:"A fala tem frase igual à do boletim pago (ITC): grave de novo com palavras próprias.",
   gancho_nao_cabe:"O texto do gancho não coube na tela e ficou de fora: encurte o texto do gancho ou marque “Sem o texto do gancho”.",
-  lista_resumida:"As listas do relatório ficaram longas e foram resumidas."};
+  lista_resumida:"As listas do relatório ficaram longas e foram resumidas.",
+  capa_movida:"A capa escolhida caiu num trecho cortado e foi para o quadro mais perto: confira na aba Vídeo."};
 const MOTIVOS_LEGENDA = {bloco_inexistente:"o bloco não existe mais (o vídeo mudou: recarregue a peça)",
   texto_invalido:"texto vazio, com mais de 120 caracteres ou com { } \\ < >",
   numero_de_palavras:"o bloco fica com o mesmo número de palavras (troque palavra por palavra)",
   numero_ou_termo:"número, data, mês ou termo do glossário não muda pela legenda (se a fala está errada, regrave; se a transcrição errou, use “A transcrição errou (vale o roteiro)”)",
   palavra_diferente:"cada palavra nova é a do roteiro ou parecida com a que estava"};
 const TIPOS_CORTE = {pausa:"pausa longa encurtada", hesitacao:"hesitação", voz_entre_palavras:"voz entre palavras (hesitação ou repetição)",
-  repeticao:"repetição", falso_inicio:"falso início", remover:"trecho"};
+  repeticao:"repetição", falso_inicio:"falso início", remover:"trecho", editor:"corte da aba Vídeo", editor_fora:"fora do começo ou do fim marcados"};
 const TIPOS_DIVERGENCIA = {numero:"número", data:"data", termo:"termo"};
 // varredura geral (v0.22.0): + "pessoas" (quem estava marcada no envio): a caixa "A pessoa viu o vídeo final" da aprovação olha para elas
 const CAMPOS_VIDEO = "id,peca_id,versao,situacao,modo,partes,fala_pessoa,pessoas,fala_roteiro,roteiro_hash,cartela_linhas,gancho,ajustes,tentativas," +
@@ -497,6 +501,9 @@ function situacaoVideo(v, p, livre, adm){
     partes.push(`<div class="aviso alerta" id="video-roteiro-mudou">O roteiro da peça mudou depois desta gravação. Se a fala gravada continua valendo, “Conferir com o roteiro novo” (o corretor compara de novo, sem transcrever de novo); senão, grave de novo.
       <div class="acoes"><button class="btn peq" type="button" data-acao="video-reconferir" data-id="${h(v.id)}">Conferir com o roteiro novo</button></div></div>`);
   if(Object.keys(r).length) partes.push(blocoRelatorio(v, podeAjustar));
+  // v0.33.0: o editor do vídeo na aba Vídeo (cortes, legenda, estilo, gancho, cartela e capa)
+  if(v.situacao !== "aguardando_envio")
+    partes.push(`<div class="acoes video-ir-aba"><button class="btn sec" type="button" data-acao="video-aba" data-id="${h(v.id)}">${adm ? "Editar na aba Vídeo" : "Ver na aba Vídeo"}</button></div>`);
   if(final && v.sha256 && !(Array.isArray(v.arquivos_apagados) ? v.arquivos_apagados : []).includes("corrigido"))
     partes.push(`<div class="video-previa-quadro"><h3>Prévia</h3><div id="video-previa">${htmlPrevia()}</div></div>`);
   if(podeAjustar) partes.push(blocoAjustes(v));
@@ -525,7 +532,7 @@ function blocoRelatorio(v, podeAjustar){
   const divs = listaVideo(r.divergencias), abertas = divs.filter(d => d.regravar !== false && !d.transcricao_errou && !errou.has(d.id));
   if(divs.length) itens.push(`<div class="${abertas.length ? "aviso erro" : "aviso info"} video-divergencias"><b>${abertas.length ? "Precisa regravar:" : "Divergências (marcadas: a transcrição errou):"}</b>
     <ul class="pauta-erros">${divs.map(d => { const k = Number(d.k), marca = ID_DIVERGENCIA.test(String(d.id ?? "")) ? d.id : "", marcado = !!d.transcricao_errou || errou.has(marca);
-      return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${deMapaVideo(TIPOS_DIVERGENCIA, d.tipo) ? ` (${h(deMapaVideo(TIPOS_DIVERGENCIA, d.tipo))})` : ""}.${ouvir(d.em_s)}
+      return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${deMapaVideo(TIPOS_DIVERGENCIA, d.tipo) ? ` (${h(deMapaVideo(TIPOS_DIVERGENCIA, d.tipo))})` : ""}.${d.cortada === true ? ` <span class="selo ok">cortada na aba Vídeo: não vai ao ar</span>` : ""}${ouvir(d.em_s)}
         ${podeAjustar && marca ? `<label class="video-check"><input type="checkbox" class="video-errou" value="${h(marca)}"${marcado ? " checked" : ""}> A transcrição errou (vale o roteiro)</label>`
           : marcado ? ` <span class="selo ok">a transcrição errou: vale o roteiro</span>` : ""}</li>`; }).join("")}</ul>
     ${podeAjustar && abertas.length ? `<p class="sub">Administrador: ouça na prévia; se a pessoa disse o que está no roteiro, marque “A transcrição errou (vale o roteiro)” e aplique os ajustes (a legenda passa a usar o roteiro naquele trecho; o áudio não muda). Se a fala está errada, grave de novo.</p>` : ""}</div>`);
@@ -812,6 +819,717 @@ async function concluirEnvio(pid, id){
   }
 }
 
+/* ====================================================================
+   v0.33.0: a aba Vídeo — o editor do vídeo corrigido
+   A aba lista os reels com vídeo (o vivo de cada peça) e abre o EDITOR: a prévia, a linha do tempo com as palavras da legenda, os
+   cortes (o começo, o fim e trechos do meio), o texto da legenda palavra por palavra, o estilo (tamanho, posição e cor, só a paleta da
+   Artecon: radar_video_paleta), o texto do gancho, o texto extra da cartela e a capa. Só o administrador muda; o editor só vê (o
+   leitor não vê a aba: o vídeo tem o rosto e a voz da equipe). As mudanças ficam SÓ na memória desta tela (E.video.aba.rascunhos,
+   por vídeo: nada no localStorage, nem a fala) até "Montar de novo com estas mudanças" (radar_video_editar): o robô monta outra
+   rodada SEM transcrever de novo. A prévia pula os cortes novos no próprio navegador, sobre o vídeo já montado.
+   Os cortes, o começo, o fim e a capa vão em QUADROS (1/30 s) da linha original (os clipes em sequência): a tela converte o instante
+   do vídeo que o administrador vê pelo "mapa" que o robô gravou no relatório (qDoVideo; tDoQ é o contrário), e a duração depois de
+   montar é a mesma conta do banco e do robô (duracaoEstimadaVideo). Quem trava de verdade é o banco: a tela só ajuda e confere antes.
+   ==================================================================== */
+const CHAVES_EDITOR_VIDEO = ["cortar", "inicio_q", "fim_q", "capa_q", "legenda_tamanho", "legenda_posicao", "legenda_cor", "cartela_extra"];
+const ABA_VIDEO_FPS = 30;
+const ABA_VIDEO_LIMITES = {min:5, max:45, fala:2, cortes:30, corteMin:3};
+const ABA_VIDEO_CAMPOS = CAMPOS_VIDEO + ",palavras_tentativa,rodada";
+const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const abaVideo = () => (estadoVideo().aba ||= {filtro:"futuro", rascunhos:{}, previaLigada:true, abertas:{cortar:true}});
+const ehEditorVideo = v => CHAVES_EDITOR_VIDEO.some(k => Object.prototype.hasOwnProperty.call(objVideo(v?.ajustes), k));
+const inteiroVideo = x => Number.isInteger(x) ? x : null;
+
+/* ------------------------------------------------------------- o mapa (a linha original) */
+const mapaVideo = v => { const m = objVideo(objVideo(v?.relatorio).mapa);
+  return Number.isInteger(m.linha_q) && Array.isArray(m.trechos) && Array.isArray(m.faixas) ? m : null; };
+/* o quadro da linha original do instante t do vídeo corrigido (null: depois da fala, na cartela) — cortes.original do robô */
+function qDoVideo(mapa, t){
+  const q = Math.floor(Number(t) * ABA_VIDEO_FPS + 1e-6); let acum = 0;
+  for(const [qa, qb] of mapa.trechos){ if(q < acum + (qb - qa)) return qa + Math.max(0, q - acum); acum += qb - qa; }
+  return null;
+}
+/* o instante no vídeo corrigido do quadro q da linha original e se ele ficou (false: caiu num corte, levado à emenda) — cortes.video_de */
+function tDoQ(mapa, q){
+  let acum = 0;
+  for(const [qa, qb] of mapa.trechos){
+    if(q < qa) return [acum / ABA_VIDEO_FPS, false];
+    if(q < qb) return [(acum + q - qa) / ABA_VIDEO_FPS, true];
+    acum += qb - qa;
+  }
+  return [acum / ABA_VIDEO_FPS, false];
+}
+const falaDoVideoS = mapa => mapa.trechos.reduce((s, [a, b]) => s + b - a, 0) / ABA_VIDEO_FPS;
+/* o quadro q fica depois de montar com estes ajustes? (radar_video_edicao_duracao no banco, cortes._fica no robô) */
+function quadroFicaVideo(mapa, aj, q){
+  const manter = new Set((Array.isArray(aj.manter) ? aj.manter : []).filter(x => typeof x === "string"));
+  const ini = inteiroVideo(aj.inicio_q), fim = inteiroVideo(aj.fim_q), cortar = Array.isArray(aj.cortar) ? aj.cortar : [];
+  return mapa.faixas.some(([a, b]) => q >= a && q < b) && !listaVideo(mapa.automaticos).some(x => q >= x.de && q < x.ate && !manter.has(x.chave))
+    && !cortar.some(([a, b]) => q >= a && q < b) && (ini === null || q >= ini) && (fim === null || q < fim);
+}
+const quadrosQueFicamVideo = (mapa, aj) => { const out = []; for(let q = 0; q < Math.min(mapa.linha_q, 4000); q++) if(quadroFicaVideo(mapa, aj, q)) out.push(q); return out; };
+const falaEstimadaQVideo = (mapa, aj) => quadrosQueFicamVideo(mapa, aj).length;
+const cartelaSVideo = () => { const n = numVideo(confVideo().cartela_s); return n !== null && n >= 2 && n <= 5 ? n : 3; };
+/* o pad do fim (o último quadro parado, como o robô monta): o vídeo precisa de 0,45 s depois da última palavra que fica. O último trecho
+   é a última sequência de quadros que ficam, dentro da faixa do clipe; a última palavra é a que termina mais tarde entre as que passam
+   por ele (mapa.palavras, [ini, fim] em ms; cortada no meio, termina onde o trecho termina; nenhuma, o começo do trecho) */
+function padEstimadoVideo(mapa, ficam){
+  if(!ficam.length) return 0;
+  const qb = ficam[ficam.length - 1] + 1, f = mapa.faixas.filter(([a, b]) => qb - 1 >= a && qb - 1 < b).map(([a]) => a);
+  const f0 = f.length ? Math.min(...f) : qb - 1; let i = ficam.length - 1;
+  while(i > 0 && ficam[i - 1] === ficam[i] - 1 && ficam[i - 1] >= f0) i--;
+  const qa = ficam[i], fins = listaVideo(mapa.palavras).filter(w => Array.isArray(w) && w.length === 2 && w.every(Number.isFinite) && w[0] * 3 < qb * 100 && w[1] * 3 > qa * 100).map(w => w[1]);
+  const u = fins.length ? Math.min(Math.max(...fins) * 3 / 100, qb) : qa;
+  return Math.max(0, Math.ceil(u - qb + 13.5 - 1e-6));                                      // 13,5 quadros = 0,45 s
+}
+/* a duração depois de montar: a fala que fica + o pad do fim + a cartela − 0,4 s da transição, arredondada como o numeric do banco */
+function duracaoEstimadaVideo(mapa, aj, cartela_s = cartelaSVideo()){
+  const ficam = quadrosQueFicamVideo(mapa, objVideo(aj)), total = ficam.length + padEstimadoVideo(mapa, ficam);
+  return Math.floor((total - 12 + 30 * cartela_s) / 3 + 0.5 + 1e-9) / 10;                // (quadros − 0,4 s + cartela) × 10 / 30
+}
+
+/* ------------------------------------------------------------- o rascunho (as mudanças ainda não montadas) */
+function rascunhoNovoVideo(v){
+  const aj = objVideo(v.ajustes);
+  return {sha256:v.sha256, cortar:(Array.isArray(aj.cortar) ? aj.cortar : []).map(c => [c[0], c[1]]),
+    inicio_q:inteiroVideo(aj.inicio_q), fim_q:inteiroVideo(aj.fim_q), capa_q:inteiroVideo(aj.capa_q),
+    tamanho:aj.legenda_tamanho || "M", posicao:aj.legenda_posicao || "baixo", cor:aj.legenda_cor || "marinho", compacta:aj.estilo === "compacta",
+    gancho:textoDe(v.gancho), sem_gancho:aj.sem_gancho === true,
+    extra:typeof aj.cartela_extra === "string" ? {modo:aj.cartela_extra ? "proprio" : "sem", texto:aj.cartela_extra} : {modo:"config", texto:""},
+    refazer:false, legenda:{}, manter:listaMarcas(aj.manter, CHAVE_CORTE), errou:listaMarcas(aj.transcricao_errou, ID_DIVERGENCIA)};
+}
+function rascunhoVideo(v){
+  const a = abaVideo(); let r = a.rascunhos[v.id];
+  if(r && r.sha256 !== v.sha256){ a.rascunhoPerdido = r.mexido === true; r = null; }     // montado de novo (ou trocado) enquanto a tela guardava
+  return (a.rascunhos[v.id] = r || rascunhoNovoVideo(v));
+}
+/* o rascunho que vai mudar agora (a marca "mexido": só a mudança de verdade conta como perdida, se o vídeo for montado de novo) */
+const rascunhoMexidoVideo = v => { const r = rascunhoVideo(v); r.mexido = true; return r; };
+/* os cortes em ordem, juntos e dentro da linha (o banco recusa os que se sobrepõem) */
+function juntarCortesVideo(lista, linha){
+  const ord = lista.map(([a, b]) => [Math.max(0, Math.min(linha, a)), Math.max(0, Math.min(linha, b))]).filter(([a, b]) => b - a >= ABA_VIDEO_LIMITES.corteMin)
+    .sort((x, y) => x[0] - y[0] || x[1] - y[1]), out = [];
+  for(const c of ord){ if(out.length && c[0] <= out[out.length - 1][1]) out[out.length - 1][1] = Math.max(out[out.length - 1][1], c[1]); else out.push([c[0], c[1]]); }
+  return out;
+}
+/* os ajustes que vão ao banco: os de antes que o editor não mexe (as edições da legenda já aplicadas) e o que está no rascunho */
+function ajustesDoEditor(v, r){
+  const antes = objVideo(v.ajustes), aj = {}, blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista);
+  if(r.manter.length) aj.manter = [...r.manter];
+  if(r.errou.length) aj.transcricao_errou = [...r.errou];
+  let legenda = edicoesLegenda(antes.legenda);
+  for(const [i, novo] of Object.entries(r.legenda)){
+    const b = blocos[Number(i)], u = numVideo(b?.u), n = numVideo(b?.palavras);
+    if(!b || !Number.isInteger(u) || !Number.isInteger(n) || novo === b.texto) continue;
+    legenda = legenda.filter(([k]) => k !== String(u) && !k.startsWith(u + ":"));
+    legenda.push([`${u}:${n}`, novo]);
+  }
+  if(legenda.length) aj.legenda = legenda;
+  if(r.compacta) aj.estilo = "compacta";
+  if(r.sem_gancho) aj.sem_gancho = true;
+  const m = mapaVideo(v), cortar = juntarCortesVideo(r.cortar, m ? m.linha_q : 4000);
+  if(cortar.length) aj.cortar = cortar;
+  for(const k of ["inicio_q", "fim_q", "capa_q"]) if(r[k] !== null && r[k] !== undefined) aj[k] = r[k];
+  if(r.tamanho !== "M") aj.legenda_tamanho = r.tamanho;
+  if(r.posicao !== "baixo") aj.legenda_posicao = r.posicao;
+  if(r.cor !== "marinho") aj.legenda_cor = r.cor;
+  if(r.extra.modo === "proprio") aj.cartela_extra = r.extra.texto.replace(/\s+/g, " ").trim();
+  if(r.extra.modo === "sem") aj.cartela_extra = "";
+  return aj;
+}
+/* o texto do gancho que vai à função: null = não mexe; "" = sem o texto do gancho; texto = o novo (muda também a chamada da peça) */
+function ganchoDoEditor(v, r){
+  const antes = objVideo(v.ajustes).sem_gancho === true, texto = r.gancho.replace(/\s+/g, " ").trim(), atual = textoDe(v.gancho);
+  if(r.sem_gancho || !texto) return antes || (!atual && !texto) ? null : "";
+  if(texto !== atual || antes) return texto;
+  return null;
+}
+const cartelaDoEditor = (v, r) => r.refazer ? linhasCartela(v.fala_pessoa) : null;
+const mudouAbaVideo = (v, r) => !ajustesIguais(ajustesDoEditor(v, r), v.ajustes) || ganchoDoEditor(v, r) !== null || r.refazer;
+/* as recusas da legenda (a mesma regra do robô): {bloco: motivo} */
+function recusasLegendaVideo(v, r){
+  const blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista), out = {};
+  for(const [i, novo] of Object.entries(r.legenda)){
+    const b = blocos[Number(i)]; if(!b || novo === b.texto) continue;
+    const n = numVideo(b.palavras), motivo = Number.isInteger(n) ? recusaLegenda(b.texto, novo, n, Array.isArray(b.perto) ? b.perto : v.fala_roteiro) : "bloco_inexistente";
+    if(motivo) out[i] = motivo;
+  }
+  return out;
+}
+/* os termos da publicidade que travam no gancho e no texto extra (antes de mandar) */
+function termosDoEditor(r){
+  const trava = t => [...new Set([...termosPublicidade(t).trava, ...termosPeca(t)])];
+  return [["no texto do gancho", r.sem_gancho ? "" : r.gancho], ["no texto extra da cartela", r.extra.modo === "proprio" ? r.extra.texto : ""]]
+    .map(([lugar, t]) => [lugar, trava(t)]).filter(([, l]) => l.length);
+}
+/* o resumo das mudanças, em português */
+function resumoMudancasVideo(v, r){
+  const antes = objVideo(v.ajustes), m = mapaVideo(v), partes = [], velhos = Array.isArray(antes.cortar) ? antes.cortar : [];
+  const chave = c => c[0] + ":" + c[1], novos = r.cortar.filter(c => !velhos.some(x => chave(x) === chave(c))), desfeitos = velhos.filter(c => !r.cortar.some(x => chave(x) === chave(c)));
+  if(novos.length) partes.push(`${novos.length} corte${novos.length > 1 ? "s" : ""} novo${novos.length > 1 ? "s" : ""} (−${segVideo(novos.reduce((s, [a, b]) => s + b - a, 0) / ABA_VIDEO_FPS)} s)`);
+  if(desfeitos.length) partes.push(`${desfeitos.length} corte${desfeitos.length > 1 ? "s" : ""} desfeito${desfeitos.length > 1 ? "s" : ""}`);
+  if(r.inicio_q !== inteiroVideo(antes.inicio_q)) partes.push(r.inicio_q === null ? "sem o começo marcado" : `começo aos ${segVideo(m ? tDoQ(m, r.inicio_q)[0] : 0)} s`);
+  if(r.fim_q !== inteiroVideo(antes.fim_q)) partes.push(r.fim_q === null ? "sem o fim marcado" : `fim aos ${segVideo(m ? tDoQ(m, r.fim_q)[0] : 0)} s`);
+  const nLeg = Object.entries(r.legenda).filter(([i, t]) => t !== listaVideo(objVideo(objVideo(v.relatorio).legenda).lista)[Number(i)]?.texto).length;
+  if(nLeg) partes.push(`legenda: ${nLeg} bloco${nLeg > 1 ? "s" : ""} editado${nLeg > 1 ? "s" : ""}`);
+  const pal = objVideo(abaVideo().paleta), nome = (lista, k) => listaVideo(pal[lista]).find(x => x.chave === k)?.nome?.replace(/ \(padrão\)$/, "").toLowerCase() || k;
+  if(r.tamanho !== (antes.legenda_tamanho || "M") || r.posicao !== (antes.legenda_posicao || "baixo") || r.cor !== (antes.legenda_cor || "marinho"))
+    partes.push(`legenda ${nome("tamanhos", r.tamanho)}, ${nome("posicoes", r.posicao)}, ${nome("cores", r.cor)}`);
+  if(r.compacta !== (antes.estilo === "compacta")) partes.push(r.compacta ? "legenda compacta" : "legenda normal");
+  const g = ganchoDoEditor(v, r);
+  if(g !== null) partes.push(g === "" ? "sem o texto do gancho" : "texto do gancho novo");
+  const extraAntes = typeof antes.cartela_extra === "string" ? antes.cartela_extra : null, extraAgora = r.extra.modo === "config" ? null : r.extra.modo === "sem" ? "" : r.extra.texto.trim();
+  if(extraAgora !== extraAntes) partes.push(extraAgora === null ? "texto extra das Configurações" : extraAgora === "" ? "sem texto extra na cartela" : "texto extra próprio na cartela");
+  if(r.refazer) partes.push("cartela refeita");
+  if(r.capa_q !== inteiroVideo(antes.capa_q)) partes.push(r.capa_q === null ? "sem a capa escolhida" : `capa aos ${segVideo(m ? tDoQ(m, r.capa_q)[0] : 0)} s`);
+  if(JSON.stringify([...r.manter].sort()) !== JSON.stringify(listaMarcas(antes.manter, CHAVE_CORTE).sort())) partes.push("cortes do robô mantidos ou desfeitos");
+  if(JSON.stringify([...r.errou].sort()) !== JSON.stringify(listaMarcas(antes.transcricao_errou, ID_DIVERGENCIA).sort())) partes.push("“a transcrição errou” marcada ou desmarcada");
+  return partes;
+}
+/* os trechos que a prévia pula (no tempo do vídeo já montado): os cortes novos, o começo e o fim marcados agora */
+function pulosDaPreviaVideo(v, r){
+  const m = mapaVideo(v); if(!m) return [];
+  const antes = objVideo(v.ajustes), velhos = (Array.isArray(antes.cortar) ? antes.cortar : []).map(c => c.join(":")), pulos = [];
+  const fala = falaDoVideoS(m), cartela = Math.max(0, fala + numVideo(m.pad_q || 0) / ABA_VIDEO_FPS - 0.4);
+  for(const c of r.cortar){ if(velhos.includes(c.join(":"))) continue; const a = tDoQ(m, c[0])[0], b = tDoQ(m, c[1])[0]; if(b - a > 0.01) pulos.push([a, b]); }
+  if(r.inicio_q !== null && (inteiroVideo(antes.inicio_q) === null || r.inicio_q > antes.inicio_q)){ const b = tDoQ(m, r.inicio_q)[0]; if(b > 0.01) pulos.push([0, b]); }
+  if(r.fim_q !== null && (inteiroVideo(antes.fim_q) === null || r.fim_q < antes.fim_q)){ const a = tDoQ(m, r.fim_q)[0]; if(cartela - a > 0.01) pulos.push([a, cartela]); }
+  return pulos.sort((x, y) => x[0] - y[0]);
+}
+
+/* ------------------------------------------------------------- a lista */
+async function telaAbaVideo(){
+  const a = abaVideo();
+  if(VIDEO_VERSAO !== VERSAO) return `<h1>Vídeo</h1><div class="aviso erro" id="vaba-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
+  try{
+    if(!a.paleta) a.paleta = objVideo(await rpc("radar_video_paleta", {}));
+    await lerConfPauta();
+    return a.id ? await editorAbaVideo(a.id) : await listaAbaVideo();
+  }catch(e){ if(semTabelaDoVideo(e) || /radar_video_paleta/.test(e.message || "")) return `<h1>Vídeo</h1>${ABA_VIDEO_SEM_BANCO}`; throw e; }
+}
+async function listaAbaVideo(){
+  const a = abaVideo(), hoje = hojeBrasilia(), desde = a.filtro === "60" ? somarDias(hoje, -60) : hoje;
+  const vivos = await ler("radar_videos", {select:"id,peca_id,versao,situacao,duracao_final,sha256,ajustes,erro_codigo,atualizado_em,rodada", situacao:VIVAS_VIDEO,
+    order:"atualizado_em.desc", limit:"200"});
+  const ids = [...new Set(vivos.map(v => v.peca_id))];
+  const pecas = ids.length ? await ler("radar_pauta_pecas", {select:"id,data,hora,situacao,assunto,formato", id:`in.(${ids.join(",")})`, data:"gte." + desde}) : [];
+  const linhas = pecas.map(p => { const dela = vivos.filter(v => v.peca_id === p.id);
+    return {p, v:dela.find(v => v.situacao !== "aguardando_envio") || dela[0], envio:dela.some(v => v.situacao === "aguardando_envio") && dela.some(v => v.situacao !== "aguardando_envio")}; })
+    .filter(x => x.v).sort((x, y) => (x.p.data + x.p.hora).localeCompare(y.p.data + y.p.hora));
+  const adm = ehAdmin();
+  return `<h1>Vídeo dos reels</h1><p class="sub">O vídeo corrigido de cada reel da Pauta. O administrador edita aqui; a aprovação continua na peça e nada é publicado sem ela.</p>
+    <div class="acoes vaba-filtros"><button class="btn peq${a.filtro === "60" ? " sec" : ""}" type="button" data-acao="vaba-filtro" data-filtro="futuro">De hoje em diante</button>
+      <button class="btn peq${a.filtro === "60" ? "" : " sec"}" type="button" data-acao="vaba-filtro" data-filtro="60">Últimos 60 dias</button></div>
+    ${!linhas.length ? `<p class="sub" id="vaba-vazia">Nenhum reel com vídeo neste período.</p>` : `<div class="vaba-lista-caixa"><table class="vaba-lista" id="vaba-lista">
+      <thead><tr><th>Dia</th><th>Reel</th><th>Vídeo</th><th>Peça</th><th></th></tr></thead><tbody>
+      ${linhas.map(({p, v, envio}) => `<tr data-video="${h(v.id)}"><td data-rotulo="Dia">${h(dataCurta(p.data))} ${h(String(p.hora || "").slice(0, 5))}</td>
+        <td data-rotulo="Reel" class="vaba-assunto">${h(cortarPauta(p.assunto || "Reel sem assunto", 60))}</td>
+        <td data-rotulo="Vídeo">${seloVideo(v)}${numVideo(v.duracao_final) !== null ? ` <span class="sub">${segVideo(v.duracao_final)} s</span>` : ""}${ehEditorVideo(v) ? " " + selo("editado", "neutro") : ""}${envio ? " " + selo("envio novo a caminho", "alerta") : ""}</td>
+        <td data-rotulo="Peça">${selo(deMapaVideo(SITUACOES_PAUTA, p.situacao) || p.situacao, p.situacao === "aprovada" ? "ok" : "neutro")}</td>
+        <td><button class="btn peq${adm ? "" : " sec"}" type="button" data-acao="vaba-abrir" data-id="${h(v.id)}">${adm ? "Editar" : "Ver"}</button></td></tr>`).join("")}
+      </tbody></table></div>`}`;
+}
+
+/* ------------------------------------------------------------- o editor */
+async function editorAbaVideo(id){
+  const a = abaVideo();
+  const [v] = await ler("radar_videos", {select:ABA_VIDEO_CAMPOS, id:"eq." + id});
+  if(!v){ a.id = null; return `<button class="voltar" data-acao="vaba-voltar">← Voltar à lista</button><div class="aviso erro">Vídeo não encontrado (foi substituído ou descartado).</div>`; }
+  const [p] = await ler("radar_pauta_pecas", {select:"id,data,hora,situacao,assunto,chamada,roteiro,pessoas,formato,aprovado_modo,video_id", id:"eq." + v.peca_id});
+  const pessoas = await ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo,termo_corretor_em,quer_ver_peca,menor,socio", order:"nome_na_peca,id"});
+  E.pauta.pessoas = Object.fromEntries(pessoas.map(x => [x.id, x]));
+  const hash = await hashTextoVideo(p?.roteiro || "");
+  a.v = v; a.peca = p || null;
+  a.roteiroMudou = !!p && (hash ? hash !== v.roteiro_hash : extrairFala(p.roteiro).fala !== v.fala_roteiro);
+  if(a.previa && (a.previa.id !== v.id || a.previa.sha256 !== v.sha256)) a.previa = null;
+  if(v.situacao !== "aguardando_envio") rascunhoVideo(v);
+  return htmlEditorAbaVideo();
+}
+/* o vídeo pode ser editado agora? (o administrador, a peça livre, o vídeo pronto ou para regravar, montado, com a transcrição guardada) */
+function editavelVideo(v, p){
+  return ehAdmin() && !!p && ["planejada", "em_producao", "pronta"].includes(p.situacao) && ["pronto", "regravar"].includes(v.situacao)
+    && !relatorioParcial(v) && !!v.sha256 && !(Array.isArray(v.arquivos_apagados) ? v.arquivos_apagados : []).includes("corrigido") && v.palavras_tentativa !== null;
+}
+function htmlEditorAbaVideo(){
+  const a = abaVideo(), v = a.v, p = a.peca, adm = ehAdmin();
+  const topo = `<div class="vaba-topo"><button class="voltar" data-acao="vaba-voltar">← Voltar à lista</button>
+    <h1>Reel de ${p ? h(dataCurta(p.data)) + " · " + h(String(p.hora || "").slice(0, 5)) : "—"}</h1>
+    <p class="vaba-titulo"><span class="vaba-assunto">${h(cortarPauta(p?.assunto || "", 90))}</span> ${seloVideo(v)}${numVideo(v.duracao_final) !== null ? ` <span class="sub">${segVideo(v.duracao_final)} s</span>` : ""}${numVideo(v.rodada) > 1 ? ` <span class="sub">· montado ${numVideo(v.rodada)} vezes</span>` : ""}
+      ${p ? `<button class="btn peq sec" type="button" data-acao="vaba-peca" data-id="${h(p.id)}">Abrir a peça na Pauta</button>` : ""}</p></div>`;
+  const avisos = [];
+  if(a.rascunhoPerdido){ avisos.push(`<div class="aviso alerta" id="vaba-perdido">O vídeo foi montado de novo enquanto esta tela guardava mudanças: as mudanças ainda não montadas foram descartadas.</div>`); a.rascunhoPerdido = false; }
+  if(p?.situacao === "aprovada") avisos.push(`<div class="aviso info" id="vaba-aprovada">Peça aprovada: o vídeo não muda. Para editar, Desfazer aprovação na peça.</div>`);
+  if(p?.situacao === "cancelada") avisos.push(`<div class="aviso alerta" id="vaba-cancelada">Peça cancelada: o vídeo não muda. Para editar, Reabrir a peça.</div>`);
+  if(v.situacao === "aguardando_envio") avisos.push(`<div class="aviso alerta" id="vaba-envio">O envio da gravação ${h(v.versao)} não terminou: termine (ou descarte) na peça.</div>`);
+  if(["na_fila", "processando"].includes(v.situacao))
+    avisos.push(`<div class="aviso info" id="vaba-trabalhando">O corretor está montando${v.modo === "montagem" ? " (sem transcrever de novo)" : ""}. Esta tela atualiza sozinha; pode sair e voltar depois.</div>`);
+  if(v.situacao === "erro"){
+    const r = objVideo(v.relatorio);
+    avisos.push(`<div class="aviso erro" id="vaba-erro"><b>O corretor parou:</b> ${h(erroDoVideo(v.erro_codigo))}.
+      ${p && ["planejada", "em_producao", "pronta"].includes(p.situacao) ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-de-novo" data-id="${h(v.id)}">Tentar de novo</button>
+        ${adm && v.erro_codigo === "edicao_curta" && r.parcial === false && r.mapa ? `<button class="btn peq sec" type="button" data-acao="vaba-desfazer-edicao" data-id="${h(v.id)}">Desfazer os cortes do editor e montar de novo</button>` : ""}</div>` : ""}</div>`);
+  }
+  if(a.roteiroMudou && ["pronto", "regravar", "erro"].includes(v.situacao))
+    avisos.push(`<div class="aviso alerta" id="vaba-roteiro-mudou">O roteiro da peça mudou depois desta gravação: confira na peça (“Conferir com o roteiro novo”) antes de editar.</div>`);
+  if(v.palavras_tentativa === null && ["pronto", "regravar"].includes(v.situacao))
+    avisos.push(`<div class="aviso alerta" id="vaba-sem-transcricao">A transcrição desta gravação não ficou guardada: o editor não monta de novo (transcreveria outra vez e gastaria minutos do mês). Para mudar, envie a gravação de novo.</div>`);
+  if(!adm) avisos.push(`<p class="sub" id="vaba-so-ver">Só o administrador muda o vídeo; aqui você vê o vídeo e o que foi feito.</p>`);
+  const tem = ["pronto", "regravar"].includes(v.situacao) && v.sha256 && !(Array.isArray(v.arquivos_apagados) ? v.arquivos_apagados : []).includes("corrigido");
+  return `<div id="vaba-editor" class="vaba-pagina" data-video="${h(v.id)}">${topo}<div id="vaba-avisos">${avisos.join("")}</div>
+    ${tem ? `<div class="vaba-editor"><div class="vaba-player" id="vaba-player-col">${htmlPlayerAbaVideo()}</div>
+      <div class="vaba-secoes" id="vaba-secoes">${htmlSecoesAbaVideo()}</div></div>
+      <div class="vaba-rodape" id="vaba-rodape">${htmlRodapeAbaVideo()}</div>`
+      : `<p class="sub">${v.situacao === "aguardando_envio" ? "" : "O vídeo corrigido aparece aqui quando o corretor terminar."}</p>`}</div>`;
+}
+function htmlPlayerAbaVideo(){
+  const a = abaVideo(), v = a.v, pv = a.previa, r = objVideo(v.relatorio), qms = Array.isArray(r.quadros_ms) ? r.quadros_ms : [], capa = objVideo(r.capa);
+  if(!pv || pv.id !== v.id) return `<div class="acoes"><button class="btn" type="button" data-acao="vaba-previa" data-id="${h(v.id)}">Ver o vídeo (link de 10 minutos)</button></div>
+    <p class="sub">Só para quem está logado; quem viu fica registrado.</p>`;
+  return `<video id="vaba-player" controls playsinline preload="auto" src="${h(pv.video)}"></video>
+    <p class="sub" id="vaba-tempo">0 s</p>
+    <div class="acoes vaba-passos"><button class="btn peq sec" type="button" data-acao="vaba-passo" data-passo="-1">−1 s</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-passo" data-passo="-0.1">−0,1 s</button>
+      <button class="btn peq" type="button" data-acao="vaba-passo" data-passo="0" aria-label="Tocar ou pausar">▶ / ❚❚</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-passo" data-passo="0.1">+0,1 s</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-passo" data-passo="1">+1 s</button></div>
+    <label class="video-check"><input type="checkbox" id="vaba-previa-ligada"${a.previaLigada ? " checked" : ""}> Prévia com as mudanças (pula os cortes)</label>
+    <details class="vaba-quadros"><summary>Capa e quadros</summary>
+      ${pv.capa ? `<figure><img src="${h(pv.capa)}" alt="Capa do reel"><figcaption class="sub">Capa${numVideo(capa.em_ms) !== null ? `, aos ${segVideo(capa.em_ms / 1000)} s` : ""}</figcaption></figure>` : `<p class="sub">Sem capa escolhida.</p>`}
+      <div class="video-quadros">${pv.quadros.map((q, i) => `<figure><img src="${h(q)}" alt="Quadro ${i + 1} do vídeo corrigido">
+        <figcaption class="sub">Quadro ${i + 1}${numVideo(qms[i]) !== null ? `, aos ${segVideo(qms[i] / 1000)} s` : ""}</figcaption></figure>`).join("")}</div></details>
+    <p class="sub">Aberto às ${h(new Date(pv.em).toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"}))}; o link vale 10 minutos (vencido, a tela pede outro sozinha). A prévia pula os cortes novos; o que volta ao vídeo (um corte desfeito, um trecho mantido) só aparece depois de montar.</p>`;
+}
+const secaoAbaVideo = (id, titulo, corpo) => `<details class="painel vaba-secao" id="vaba-sec-${id}" data-secao="${id}"${abaVideo().abertas[id] ? " open" : ""}><summary><h2>${titulo}</h2></summary>${corpo}</details>`;
+function htmlSecoesAbaVideo(){
+  const a = abaVideo(), v = a.v, ed = editavelVideo(v, a.peca), r = rascunhoVideo(v);
+  return [secaoAbaVideo("cortar", "1. Cortar: começo, fim e trechos", htmlCortesAbaVideo(v, r, ed)),
+    secaoAbaVideo("legenda", "2. Texto da legenda (palavra por palavra)", htmlLegendaAbaVideo(v, r, ed)),
+    secaoAbaVideo("estilo", "3. Estilo da legenda", htmlEstiloAbaVideo(v, r, ed)),
+    secaoAbaVideo("gancho", "4. Gancho (0 a 3 s)", htmlGanchoAbaVideo(v, r, ed)),
+    secaoAbaVideo("cartela", "5. Cartela final", htmlCartelaAbaVideo(v, r, ed)),
+    secaoAbaVideo("capa", "6. Capa do reel", htmlCapaAbaVideo(v, r, ed))].join("");
+}
+/* 1. Cortar: a linha do tempo, as palavras, a seleção, os cortes novos, os já no vídeo, os do robô e as divergências */
+function htmlCortesAbaVideo(v, r, ed){
+  const a = abaVideo(), m = mapaVideo(v), rel = objVideo(v.relatorio), dis = ed ? "" : " disabled";
+  if(!m) return `<div class="aviso alerta" id="vaba-sem-mapa">Este vídeo foi montado pelo robô de antes desta versão: os cortes e a capa precisam de uma montagem nova (não transcreve de novo).</div>
+    ${ed ? `<div class="acoes"><button class="btn" type="button" data-acao="vaba-liberar">Montar de novo para liberar os cortes e a capa</button></div>` : ""}`;
+  const fala = falaDoVideoS(m), total = fala + numVideo(m.pad_q || 0) / ABA_VIDEO_FPS + cartelaSVideo() - 0.4, pct = t => Math.max(0, Math.min(100, 100 * t / total));
+  const pulos = pulosDaPreviaVideo(v, r), unidades = listaVideo(rel.unidades);
+  const linha = `<div class="vaba-linha" id="vaba-linha" role="img" aria-label="Linha do tempo do vídeo">
+    ${pulos.map(([x, y]) => `<span class="vaba-faixa novo" style="left:${pct(x)}%;width:${pct(y) - pct(x)}%"></span>`).join("")}
+    <span class="vaba-faixa cartela" style="left:${pct(Math.max(0, fala + numVideo(m.pad_q || 0) / ABA_VIDEO_FPS - 0.4))}%;right:0"></span>
+    <span class="vaba-cursor" id="vaba-cursor" style="left:0"></span></div>
+    <p class="sub vaba-legenda-linha"><span class="vaba-marca novo"></span> corte novo · <span class="vaba-marca cartela"></span> cartela (fica sempre)</p>`;
+  const cortada = u => pulos.some(([x, y]) => u.a >= x - 0.01 && u.b <= y + 0.01);
+  const sel = a.selecao;
+  const palavras = unidades.length ? `<div class="vaba-palavras" id="vaba-palavras">${unidades.map((u, i) => `<button type="button" class="vaba-p${cortada(u) ? " cortada" : ""}${sel && i >= sel[0] && i <= sel[1] ? " sel" : ""}" data-acao="vaba-palavra" data-i="${i}" data-a="${numVideo(u.a) ?? 0}">${h(u.t)}</button>`).join("")}</div>`
+    : `<p class="sub">As palavras não vieram no relatório (ele ficou grande e foi resumido): marque os cortes pelo player.</p>`;
+  const nomeSel = sel ? `“${h(unidades[sel[0]]?.t)}”${sel[1] !== sel[0] ? ` a “${h(unidades[sel[1]]?.t)}”` : ""}` : "";
+  const botoes = !ed ? "" : `<div class="acoes vaba-sel">${sel ? `<button class="btn peq" type="button" data-acao="vaba-cortar">Cortar ${nomeSel}</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-comecar-palavra">Começar nesta palavra</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-terminar-palavra">Terminar depois dela</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-limpar-selecao">Limpar a seleção</button>` : `<span class="sub">Selecione uma palavra (ou duas, para um trecho).</span>`}</div>
+    <div class="acoes vaba-pelo-player"><span class="sub">Pelo player:</span>
+      <button class="btn peq sec" type="button" data-acao="vaba-marcar-de"${a.previa ? "" : " disabled"}>Marcar começo do corte</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-marcar-ate"${a.previa && a.marca !== null && a.marca !== undefined ? "" : " disabled"}>Marcar fim do corte</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-comecar-aqui"${a.previa ? "" : " disabled"}>Começar aqui</button>
+      <button class="btn peq sec" type="button" data-acao="vaba-terminar-aqui"${a.previa ? "" : " disabled"}>Terminar aqui</button></div>
+    ${a.marca !== null && a.marca !== undefined ? `<p class="sub" id="vaba-marca">Começo do corte marcado aos ${segVideo(tDoQ(m, a.marca)[0])} s: leve o player ao fim e clique em “Marcar fim do corte”.</p>` : ""}`;
+  // os cortes novos (ainda não montados) e os do editor que já estão no vídeo (com o desfazer)
+  const antes = objVideo(v.ajustes), velhos = Array.isArray(antes.cortar) ? antes.cortar : [], chave = c => c[0] + ":" + c[1];
+  const cortesRel = listaVideo(rel.cortes).filter(c => c.tipo === "editor");
+  const novos = r.cortar.filter(c => !velhos.some(x => chave(x) === chave(c)));
+  const listaNovos = `<h3>Mudanças de corte (ainda não montadas)</h3>${novos.length || r.inicio_q !== inteiroVideo(antes.inicio_q) || r.fim_q !== inteiroVideo(antes.fim_q) ? `<ol class="vaba-cortes" id="vaba-cortes-novos">
+    ${novos.map(c => { const x = tDoQ(m, c[0])[0], y = tDoQ(m, c[1])[0], txt = unidades.filter(u => u.a >= x - 0.01 && u.b <= y + 0.01).map(u => u.t).join(" ");
+      return `<li>${segVideo(x)} s a ${segVideo(y)} s (${segVideo((c[1] - c[0]) / ABA_VIDEO_FPS)} s)${txt ? ` “${h(cortarPauta(txt, 60))}”` : ""}
+        <span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-ouvir" data-em="${x}">Ouvir</button>${ed ? `<button class="btn peq sec" type="button" data-acao="vaba-desfazer" data-de="${c[0]}" data-ate="${c[1]}">Desfazer</button>` : ""}</span></li>`; }).join("")}
+    ${r.inicio_q !== inteiroVideo(antes.inicio_q) ? `<li>${r.inicio_q === null ? "Sem o começo marcado (volta na próxima montagem)" : `Começa aos ${segVideo(tDoQ(m, r.inicio_q)[0])} s`}${ed ? ` <span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-desfazer" data-marca="inicio_q">Desfazer</button></span>` : ""}</li>` : ""}
+    ${r.fim_q !== inteiroVideo(antes.fim_q) ? `<li>${r.fim_q === null ? "Sem o fim marcado (volta na próxima montagem)" : `Termina aos ${segVideo(tDoQ(m, r.fim_q)[0])} s`}${ed ? ` <span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-desfazer" data-marca="fim_q">Desfazer</button></span>` : ""}</li>` : ""}</ol>`
+    : `<p class="sub">Nenhuma ainda. Até 30 cortes por vídeo.</p>`}`;
+  const listaVelhos = velhos.length || inteiroVideo(antes.inicio_q) !== null || inteiroVideo(antes.fim_q) !== null ? `<h3>Já no vídeo</h3><ul class="vaba-cortes" id="vaba-cortes-velhos">
+    ${velhos.map(c => { const fica = r.cortar.some(x => chave(x) === chave(c)), info = cortesRel.find(x => x.chave === "e:" + c[0]);
+      return `<li>Corte do editor${info && numVideo(info.em_s) !== null ? ` aos ${segVideo(info.em_s)} s` : ""} (${segVideo((c[1] - c[0]) / ABA_VIDEO_FPS)} s)${textoDe(info?.texto) ? ` “${h(info.texto)}”` : ""}
+        ${fica ? (ed ? `<span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-desfazer-salvo" data-de="${c[0]}" data-ate="${c[1]}">Desfazer</button></span>` : "")
+          : ` ${selo("desfeito: volta na próxima montagem (a prévia ainda não mostra)", "alerta")}${ed ? ` <span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-refazer-salvo" data-de="${c[0]}" data-ate="${c[1]}">Manter o corte</button></span>` : ""}`}</li>`; }).join("")}
+    ${inteiroVideo(antes.inicio_q) !== null ? `<li>Começo marcado (${segVideo(objVideo(rel.edicao).inicio_cortado_s || 0)} s tirados do começo)</li>` : ""}
+    ${inteiroVideo(antes.fim_q) !== null ? `<li>Fim marcado (${segVideo(objVideo(rel.edicao).fim_cortado_s || 0)} s tirados do fim)</li>` : ""}</ul>` : "";
+  // os cortes do robô no meio da fala ("Manter este trecho") e as divergências ("A transcrição errou" e "Cortar este trecho")
+  const meio = listaVideo(rel.cortes).filter(c => numVideo(c.em_s) !== null && c.tipo !== "editor");
+  const robo = meio.length ? `<h3>Cortes do robô</h3><ul class="vaba-cortes" id="vaba-cortes-robo">${meio.map(c => { const k = CHAVE_CORTE.test(String(c.chave ?? "")) ? c.chave : "";
+    return `<li>${h(deMapaVideo(TIPOS_CORTE, c.tipo) || c.tipo)} aos ${segVideo(c.em_s)} s (${segVideo(c.dur_s, 2)} s)${textoDe(c.texto) ? ` “${h(c.texto)}”` : ""}
+      ${k ? `<label class="video-check"><input type="checkbox" class="vaba-manter" value="${h(k)}"${r.manter.includes(k) ? " checked" : ""}${dis}> Manter este trecho</label>` : ""}</li>`; }).join("")}</ul>` : "";
+  const divs = listaVideo(rel.divergencias);
+  const divergencias = divs.length ? `<h3>Divergências com o roteiro</h3><ul class="vaba-cortes" id="vaba-divergencias">${divs.map((d, i) => { const marca = ID_DIVERGENCIA.test(String(d.id ?? "")) ? d.id : "";
+    return `<li>${numVideo(d.em_s) !== null ? `Aos ${segVideo(d.em_s)} s` : "No vídeo"} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${d.cortada ? ` ${selo("cortada: não vai ao ar", "ok")}` : ""}
+      ${!d.cortada && ed && numVideo(d.ate_s) !== null ? `<span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-cortar-divergencia" data-i="${i}">Cortar este trecho</button></span>` : ""}
+      ${!d.cortada && marca ? `<label class="video-check"><input type="checkbox" class="vaba-errou" value="${h(marca)}"${r.errou.includes(marca) ? " checked" : ""}${dis}> A transcrição errou (vale o roteiro)</label>` : ""}</li>`; }).join("")}</ul>` : "";
+  return linha + palavras + botoes + listaNovos + listaVelhos + robo + divergencias;
+}
+/* 2. Texto da legenda: um bloco por linha, cada palavra num campo */
+function htmlLegendaAbaVideo(v, r, ed){
+  const blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista), recusas = recusasLegendaVideo(v, r), rec = listaVideo(objVideo(objVideo(v.relatorio).legenda).recusados);
+  const pulos = pulosDaPreviaVideo(v, r);
+  if(!blocos.length) return `<p class="sub">A lista dos blocos da legenda não veio no relatório.</p>`;
+  return `<p class="sub">Troque palavra por palavra: cada palavra nova é a do roteiro ou parecida com a que estava; número, data, mês e termo do glossário não mudam aqui (se a fala está errada, corte o trecho ou grave de novo).</p>
+    ${rec.length ? `<div class="aviso alerta" id="vaba-recusados">Na montagem anterior, foi recusado: ${rec.map(x => `bloco ${h(x.bloco)}, ${h(deMapaVideo(MOTIVOS_LEGENDA, x.motivo) || x.motivo)}`).join("; ")}.</div>` : ""}
+    ${blocos.map((b, i) => { const texto = String(r.legenda[i] ?? b.texto ?? ""), ok = Number.isInteger(numVideo(b.u)) && Number.isInteger(numVideo(b.palavras)), em = numVideo(b.em_s);
+      const sai = em !== null && pulos.some(([x, y]) => em >= x - 0.01 && em < y);
+      return `<div class="vaba-bloco${sai ? " sai" : ""}" data-bloco="${i}"><span class="sub">${em !== null ? `Aos ${segVideo(em)} s` : `Bloco ${i + 1}`}${sai ? " · sai com o corte" : ""}${!ok ? " · não editável" : ""}</span>
+        <span class="vaba-bloco-palavras">${texto.split(" ").map((w, k) => `<input type="text" class="vaba-leg" data-bloco="${i}" data-k="${k}" value="${h(w)}" size="${Math.max(2, Array.from(w).length + 1)}" maxlength="40" aria-label="Palavra ${k + 1} do bloco ${i + 1}"${ed && ok ? "" : " disabled"}>`).join("")}</span>
+        ${ed && ok ? `<button class="btn peq sec" type="button" data-acao="vaba-desfazer-bloco" data-bloco="${i}" aria-label="Desfazer a edição do bloco ${i + 1}">Desfazer</button>` : ""}
+        <span class="vaba-recusa sub" id="vaba-recusa-${i}">${recusas[i] ? h("Recusado: " + (deMapaVideo(MOTIVOS_LEGENDA, recusas[i]) || recusas[i]) + ".") : ""}</span></div>`; }).join("")}`;
+}
+/* 3. Estilo: tamanho, posição e cor (a paleta do banco), a compacta e a amostra */
+function htmlEstiloAbaVideo(v, r, ed){
+  const pal = objVideo(abaVideo().paleta), dis = ed ? "" : " disabled";
+  const grupo = (nome, lista, atual, rotulo) => `<fieldset class="checks vaba-escolha"><legend>${rotulo}</legend>${listaVideo(pal[lista]).map(x =>
+    `<label><input type="radio" name="vaba-${nome}" value="${h(x.chave)}"${x.chave === atual ? " checked" : ""}${dis}> ${h(x.nome)}</label>`).join("")}</fieldset>`;
+  return `${grupo("tamanho", "tamanhos", r.tamanho, "Tamanho")}${grupo("posicao", "posicoes", r.posicao, "Posição")}
+    <fieldset class="checks vaba-cores"><legend>Cor (só as da Artecon)</legend>${listaVideo(pal.cores).map(c =>
+      `<label class="vaba-cor"><input type="radio" name="vaba-cor" value="${h(c.chave)}"${c.chave === r.cor ? " checked" : ""}${dis}>
+        <span class="vaba-amostra-cor" style="background:${/^#[0-9A-Fa-f]{6}$/.test(c.caixa) ? c.caixa : "#011F48"};color:${/^#[0-9A-Fa-f]{6}$/.test(c.texto) ? c.texto : "#FFFFFF"}">Aa</span> ${h(c.nome)}</label>`).join("")}</fieldset>
+    <label class="video-check"><input type="checkbox" id="vaba-compacta"${r.compacta ? " checked" : ""}${dis}> Legenda compacta (1 linha, letra menor)</label>
+    <div class="vaba-amostra-caixa">${htmlAmostraLegenda(v, r)}<p class="sub">Amostra: o vídeo muda depois de montar de novo. “Em cima” pode cobrir o rosto.</p></div>`;
+}
+function htmlAmostraLegenda(v, r){
+  const c = listaVideo(objVideo(abaVideo().paleta).cores).find(x => x.chave === r.cor) || {texto:"#FFFFFF", caixa:"#011F48"};
+  const cor = x => /^#[0-9A-Fa-f]{6}$/.test(x) ? x : "#011F48", bloco = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista)[0];
+  const texto = r.legenda[0] ?? bloco?.texto ?? "O texto da legenda";
+  const gancho = r.sem_gancho ? "" : r.gancho.replace(/\s+/g, " ").trim();
+  return `<div class="vaba-amostra" id="vaba-amostra" data-posicao="${h(r.posicao)}" data-tamanho="${h(r.tamanho)}">
+    <span class="vaba-amostra-rosto"></span>
+    ${gancho ? `<span class="vaba-amostra-gancho" style="background:${cor(c.caixa)}cc;color:${cor(c.texto)}">${h(cortarPauta(gancho, 44))}</span>` : ""}
+    <span class="vaba-amostra-fala${r.compacta ? " compacta" : ""}" style="background:${cor(c.caixa)}cc;color:${cor(c.texto)}">${h(cortarPauta(texto, r.compacta ? 30 : 48))}</span></div>`;
+}
+/* 4. Gancho */
+function htmlGanchoAbaVideo(v, r, ed){
+  const dis = ed ? "" : " disabled", travas = termosDoEditor(r).filter(([l]) => l === "no texto do gancho");
+  return `<label for="vaba-gancho">Texto do gancho (de 0 a 3 s)</label>
+    <input id="vaba-gancho" type="text" maxlength="120" value="${h(r.gancho)}"${r.sem_gancho ? " disabled" : dis}>
+    <p class="sub"><span id="vaba-gancho-conta">${Array.from(r.gancho).length}</span>/120 · Até uns 44 caracteres cabem em 2 linhas; o que não couber fica de fora com aviso.</p>
+    <label class="video-check"><input type="checkbox" id="vaba-sem-gancho"${r.sem_gancho ? " checked" : ""}${dis}> Sem texto do gancho</label>
+    <div id="vaba-gancho-termos">${travas.length ? `<div class="aviso erro">${h(msgTermosPeca(travas, "montar"))}</div>` : ""}</div>
+    <p class="sub">É o “Texto do gancho” da peça: mudar aqui muda lá também (a peça pronta volta a “em produção”).</p>`;
+}
+/* 5. Cartela final: as linhas (refazer) e o texto extra (o das Configurações, um próprio ou sem) */
+function htmlCartelaAbaVideo(v, r, ed){
+  const dis = ed ? "" : " disabled", nova = linhasCartela(v.fala_pessoa), mudou = JSON.stringify(nova) !== JSON.stringify(v.cartela_linhas || []);
+  const linhas = r.refazer ? nova : (Array.isArray(v.cartela_linhas) ? v.cartela_linhas : []), conf = textoDe(confVideo().cartela_extra);
+  const travas = termosDoEditor(r).filter(([l]) => l === "no texto extra da cartela");
+  return `<ul class="video-cartela" id="vaba-cartela-linhas">${linhas.map(l => `<li>${h(l)}</li>`).join("")}</ul>
+    <label class="video-check"><input type="checkbox" id="vaba-refazer"${r.refazer ? " checked" : ""}${dis}> Refazer com as Configurações e Pessoas e termos de hoje${mudou ? ` <span class="selo alerta">mudou</span>` : ""}</label>
+    <fieldset class="checks vaba-extra"><legend>Texto extra</legend>
+      <label><input type="radio" name="vaba-extra" value="config"${r.extra.modo === "config" ? " checked" : ""}${dis}> O das Configurações: “${h(conf || "nenhum")}”</label>
+      <label><input type="radio" name="vaba-extra" value="proprio"${r.extra.modo === "proprio" ? " checked" : ""}${dis}> Próprio deste vídeo:</label>
+      <input id="vaba-extra-texto" type="text" maxlength="120" value="${h(r.extra.texto)}" aria-label="Texto extra próprio deste vídeo"${ed && r.extra.modo === "proprio" ? "" : " disabled"}>
+      <label><input type="radio" name="vaba-extra" value="sem"${r.extra.modo === "sem" ? " checked" : ""}${dis}> Sem texto extra</label></fieldset>
+    <div id="vaba-extra-termos">${travas.length ? `<div class="aviso erro">${h(msgTermosPeca(travas, "montar"))}</div>` : ""}</div>
+    ${faltaIdentificacao().length ? `<div class="aviso erro">A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.</div>` : ""}
+    <p class="sub">A identificação legal e a linha de quem fala vêm das Configurações e de Pessoas e termos: não se editam aqui.</p>`;
+}
+/* 6. Capa */
+function htmlCapaAbaVideo(v, r, ed){
+  const a = abaVideo(), m = mapaVideo(v), capa = objVideo(objVideo(v.relatorio).capa);
+  const caiu = m && r.capa_q !== null && !quadroFicaVideo(m, ajustesDoEditor(v, r), r.capa_q);
+  return `${a.previa?.capa ? `<figure class="vaba-capa"><img src="${h(a.previa.capa)}" alt="Capa atual do reel"><figcaption class="sub">Capa atual${numVideo(capa.em_ms) !== null ? `, aos ${segVideo(capa.em_ms / 1000)} s` : ""}${capa.movida ? " (foi para o quadro mais perto)" : ""}</figcaption></figure>`
+      : `<p class="sub" id="vaba-capa-atual">${numVideo(capa.em_ms) !== null ? `Capa aos ${segVideo(capa.em_ms / 1000)} s (abra o vídeo para ver).` : "Sem capa escolhida: o Instagram usa o primeiro quadro."}</p>`}
+    ${r.capa_q !== inteiroVideo(objVideo(v.ajustes).capa_q) && m ? `<p id="vaba-capa-nova">${r.capa_q === null ? "A capa escolhida sai na próxima montagem." : `Capa nova aos ${segVideo(tDoQ(m, r.capa_q)[0])} s (aparece depois de montar).`}</p>` : ""}
+    ${caiu ? `<div class="aviso erro" id="vaba-capa-cortada">A capa caiu num trecho cortado: escolha outro quadro.</div>` : ""}
+    ${ed && m ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-capa-aqui"${a.previa ? "" : " disabled"}>Usar o quadro do player como capa (agora: <span id="vaba-capa-agora">0</span> s)</button>
+      ${r.capa_q !== null ? `<button class="btn peq sec" type="button" data-acao="vaba-capa-tirar">Tirar a capa escolhida</button>` : ""}</div>` : ""}
+    <p class="sub">A capa é um quadro da fala, sem a legenda; na peça aprovada, baixe-a junto com o vídeo para postar.</p>`;
+}
+/* O rodapé: o resumo, a duração e os botões (só o administrador, com o vídeo editável) */
+function htmlRodapeAbaVideo(){
+  const a = abaVideo(), v = a.v;
+  if(!editavelVideo(v, a.peca)) return "";
+  const r = rascunhoVideo(v), m = mapaVideo(v), mudou = mudouAbaVideo(v, r), resumo = resumoMudancasVideo(v, r);
+  const dur = m ? duracaoEstimadaVideo(m, ajustesDoEditor(v, r)) : null, fora = dur !== null && (dur < ABA_VIDEO_LIMITES.min || dur > ABA_VIDEO_LIMITES.max);
+  return `<p class="vaba-resumo" id="vaba-resumo">${resumo.length ? "Mudanças: " + h(resumo.join(", ")) : "Nenhuma mudança ainda."}</p>
+    ${dur !== null ? `<p id="vaba-duracao" class="${fora ? "vaba-fora" : ""}">Duração depois de montar: cerca de ${segVideo(dur)} s (de 5 a 45 s)</p>` : ""}
+    <div class="acoes">${mudou ? `<button class="btn peq sec" type="button" data-acao="vaba-descartar">Descartar as mudanças</button>` : ""}
+      <button class="btn verde" type="button" data-acao="vaba-montar"${mudou && !fora ? "" : " disabled"}>Montar de novo com estas mudanças</button></div>`;
+}
+/* refaz as seções e o rodapé (o player fica: o vídeo não recarrega), com as seções abertas como estavam */
+function redesenharEditorVideo(){
+  const a = abaVideo(); if(!a.v || !$("#vaba-secoes")) return;
+  a.pulos = pulosDaPreviaVideo(a.v, rascunhoVideo(a.v));
+  const s = $("#vaba-secoes"), rod = $("#vaba-rodape"), y = window.scrollY;
+  s.innerHTML = htmlSecoesAbaVideo();
+  if(rod) rod.innerHTML = htmlRodapeAbaVideo();
+  window.scrollTo(0, y);
+  atualizarTempoVideo();
+}
+/* só o rodapé, a amostra e as recusas (enquanto digita: o campo não perde o foco) */
+function atualizarRodapeVideo(){
+  const a = abaVideo(), v = a.v; if(!v) return;
+  const r = rascunhoVideo(v), rod = $("#vaba-rodape"), am = $("#vaba-amostra"), rec = recusasLegendaVideo(v, r);
+  a.pulos = pulosDaPreviaVideo(v, r);
+  if(rod) rod.innerHTML = htmlRodapeAbaVideo();
+  if(am) am.outerHTML = htmlAmostraLegenda(v, r);
+  document.querySelectorAll(".vaba-recusa").forEach(el => { const i = el.id.replace("vaba-recusa-", "");
+    el.textContent = rec[i] ? "Recusado: " + (deMapaVideo(MOTIVOS_LEGENDA, rec[i]) || rec[i]) + "." : ""; });
+  const termos = termosDoEditor(r), g = $("#vaba-gancho-termos"), x = $("#vaba-extra-termos");
+  const msg = lugar => { const t = termos.filter(([l]) => l === lugar); return t.length ? `<div class="aviso erro">${h(msgTermosPeca(t, "montar"))}</div>` : ""; };
+  if(g) g.innerHTML = msg("no texto do gancho");
+  if(x) x.innerHTML = msg("no texto extra da cartela");
+}
+
+/* ------------------------------------------------------------- o player e a prévia */
+async function abrirPreviaAbaVideo(silencioso){
+  const a = abaVideo(), v = a.v; if(!v) return;
+  const r = await funcaoVideo("previa", {id:v.id});
+  if(!linkVideoOk(r?.video) || !Array.isArray(r?.quadros) || r.quadros.length !== 4 || !r.quadros.every(linkVideoOk) || !/^[0-9a-f]{64}$/.test(String(r?.sha256))
+     || (r.capa !== null && r.capa !== undefined && !linkVideoOk(r.capa)))
+    throw new ErroApi("A função devolveu a prévia fora do formato.");
+  if(r.sha256 !== v.sha256) throw new ErroApi("O vídeo corrigido mudou enquanto a prévia abria: volte à lista e abra de novo.");
+  a.previa = {id:v.id, sha256:r.sha256, video:r.video, quadros:r.quadros, capa:r.capa || null, em:Date.now()};
+  const col = $("#vaba-player-col"); if(col) col.innerHTML = htmlPlayerAbaVideo();
+  redesenharEditorVideo();
+  ligarPlayerAbaVideo();
+  if(!silencioso) $("#vaba-player")?.scrollIntoView({block:"nearest"});
+}
+/* o instante do player nos textos (o tempo, a palavra atual, o cursor da linha do tempo e a capa "agora") */
+function atualizarTempoVideo(){
+  const a = abaVideo(), pl = $("#vaba-player"); if(!pl || !a.v) return;
+  const t = pl.currentTime || 0, m = mapaVideo(a.v), el = $("#vaba-tempo"), agora = $("#vaba-capa-agora"), cur = $("#vaba-cursor");
+  if(el) el.textContent = `${segVideo(t)} s${Number.isFinite(pl.duration) ? ` de ${segVideo(pl.duration)} s` : ""}`;
+  if(agora) agora.textContent = segVideo(t);
+  if(cur && m){ const total = falaDoVideoS(m) + numVideo(m.pad_q || 0) / ABA_VIDEO_FPS + cartelaSVideo() - 0.4; cur.style.left = Math.max(0, Math.min(100, 100 * t / total)) + "%"; }
+  const us = listaVideo(objVideo(a.v.relatorio).unidades);
+  document.querySelectorAll("#vaba-palavras .vaba-p").forEach((b, i) => b.classList.toggle("atual", !!us[i] && t >= us[i].a && t < us[i].b + 0.05));
+}
+/* a prévia com as mudanças: dentro de um trecho que sai, o player salta para o fim dele (laço a cada quadro enquanto toca) */
+function pularCortesVideo(){
+  const a = abaVideo(), pl = $("#vaba-player");
+  if(!pl || !a.previaLigada) return;
+  const t = pl.currentTime;
+  for(const [x, y] of a.pulos || []) if(t >= x && t < y - 0.02){ pl.currentTime = y; break; }
+}
+function ligarPlayerAbaVideo(){
+  const a = abaVideo(), pl = $("#vaba-player"); if(!pl || pl.dataset.ligado) return;
+  pl.dataset.ligado = "1";
+  a.pulos = a.v ? pulosDaPreviaVideo(a.v, rascunhoVideo(a.v)) : [];
+  const laco = () => { if(pl.paused || pl.ended || !pl.isConnected) return; pularCortesVideo(); atualizarTempoVideo(); requestAnimationFrame(laco); };
+  pl.addEventListener("play", () => { pularCortesVideo(); requestAnimationFrame(laco); });
+  for(const ev of ["seeking", "timeupdate"]) pl.addEventListener(ev, () => { pularCortesVideo(); atualizarTempoVideo(); });
+  pl.addEventListener("loadedmetadata", atualizarTempoVideo);
+  // o link venceu (10 minutos): pede outro uma vez
+  pl.addEventListener("error", () => { const pv = abaVideo().previa;
+    if(pv && !pv.renovado && Date.now() - pv.em > 60000){ pv.renovado = true; abrirPreviaAbaVideo(true).catch(() => {}); } });
+}
+/* os campos do editor (input e change, no próprio #vaba-editor; nada roda no carregamento do arquivo) */
+function ligarEditorVideo(){
+  const box = $("#vaba-editor"); if(!box || box.dataset.ligado) return;
+  box.dataset.ligado = "1";
+  const r = () => rascunhoMexidoVideo(abaVideo().v);
+  box.addEventListener("input", ev => {
+    const t = ev.target, a = abaVideo(); if(!a.v || !editavelVideo(a.v, a.peca)) return;
+    if(t.matches(".vaba-leg")){
+      const i = t.dataset.bloco, ws = [...box.querySelectorAll(`.vaba-leg[data-bloco="${i}"]`)].map(x => x.value.replace(/\s+/g, " ").trim());
+      r().legenda[i] = ws.join(" ").replace(/\s+/g, " ").trim();
+    }
+    if(t.id === "vaba-gancho"){ r().gancho = t.value; const c = $("#vaba-gancho-conta"); if(c) c.textContent = Array.from(t.value).length; }
+    if(t.id === "vaba-extra-texto") r().extra.texto = t.value;
+    atualizarRodapeVideo();
+  });
+  box.addEventListener("change", ev => {
+    const t = ev.target, a = abaVideo(); if(!a.v) return;
+    if(t.id === "vaba-previa-ligada"){ a.previaLigada = t.checked; return; }
+    if(!editavelVideo(a.v, a.peca)) return;
+    const rr = r();
+    if(t.matches(".vaba-manter")) rr.manter = [...box.querySelectorAll(".vaba-manter:checked")].map(x => x.value).filter(x => CHAVE_CORTE.test(x));
+    else if(t.matches(".vaba-errou")) rr.errou = [...box.querySelectorAll(".vaba-errou:checked")].map(x => x.value).filter(x => ID_DIVERGENCIA.test(x));
+    else if(t.name === "vaba-tamanho") rr.tamanho = t.value;
+    else if(t.name === "vaba-posicao") rr.posicao = t.value;
+    else if(t.name === "vaba-cor") rr.cor = t.value;
+    else if(t.id === "vaba-compacta") rr.compacta = t.checked;
+    else if(t.id === "vaba-sem-gancho"){ rr.sem_gancho = t.checked; const g = $("#vaba-gancho"); if(g) g.disabled = t.checked; }
+    else if(t.id === "vaba-refazer"){ rr.refazer = t.checked; return redesenharEditorVideo(); }
+    else if(t.name === "vaba-extra"){ rr.extra.modo = t.value; const x = $("#vaba-extra-texto"); if(x) x.disabled = t.value !== "proprio"; }
+    else return;
+    atualizarRodapeVideo();
+  });
+  box.addEventListener("toggle", ev => { if(ev.target.dataset?.secao) abaVideo().abertas[ev.target.dataset.secao] = ev.target.open; }, true);
+  // a linha do tempo: o toque leva o player ao ponto tocado
+  box.addEventListener("click", ev => {
+    const barra = ev.target.closest?.("#vaba-linha"), pl = $("#vaba-player"), m = mapaVideo(abaVideo().v);
+    if(!barra || !pl || !m) return;
+    const c = barra.getBoundingClientRect(), total = falaDoVideoS(m) + numVideo(m.pad_q || 0) / ABA_VIDEO_FPS + cartelaSVideo() - 0.4;
+    pl.currentTime = Math.max(0, Math.min(total, total * (ev.clientX - c.left) / Math.max(1, c.width)));
+  });
+}
+/* Depois de desenhar (index.html, desenhar()): liga o editor e o player; enquanto o vídeo está na fila ou com o robô, sonda */
+function depoisDeDesenharAbaVideo(atraso){
+  const a = abaVideo();
+  clearTimeout(a.relogio);
+  if(!a.visibilidade){ a.visibilidade = true; document.addEventListener("visibilitychange", () => { if(!document.hidden && E.aba === "video") depoisDeDesenharAbaVideo(500); }); }
+  ligarEditorVideo();
+  ligarPlayerAbaVideo();
+  atualizarTempoVideo();
+  const v = a.v;
+  if(!a.id || !v || !$("#vaba-editor") || !["na_fila", "processando"].includes(v.situacao)) return;
+  a.relogio = setTimeout(sondarAbaVideo, atraso ?? VIDEO_INTERVALO);
+}
+async function sondarAbaVideo(){
+  const a = abaVideo(), v = a.v;
+  if(!v || E.aba !== "video" || a.id !== v.id || !$("#vaba-editor") || document.hidden) return;
+  let novo = null;
+  try{ [novo] = await ler("radar_videos", {select:"id,situacao,atualizado_em", id:"eq." + v.id}); }
+  catch(e){ depoisDeDesenharAbaVideo(); return; }
+  if(abaVideo().id !== v.id || !$("#vaba-editor")) return;
+  if(novo && (novo.situacao !== v.situacao || novo.atualizado_em !== v.atualizado_em)){
+    if(["pronto", "regravar"].includes(novo.situacao)) recado("Vídeo montado de novo: confira a prévia; a aprovação é na peça.");
+    else if(novo.situacao === "erro") recado("O corretor parou com erro: veja o motivo.", "aviso");
+    if(!["na_fila", "processando"].includes(novo.situacao) || novo.situacao !== v.situacao) return desenhar();
+  }
+  depoisDeDesenharAbaVideo();
+}
+
+/* ------------------------------------------------------------- as ações */
+const videoDaAba = () => { const a = abaVideo(); if(!a.v || !$("#vaba-editor")) throw new ErroApi("Abra o vídeo de novo na aba Vídeo."); return a.v; };
+const playerDaAba = () => { const pl = $("#vaba-player"); if(!pl) throw new ErroApi("Abra o vídeo (“Ver o vídeo”) para marcar pelo player."); return pl; };
+const editavelDaAba = () => { const a = abaVideo(), v = videoDaAba(); if(!editavelVideo(v, a.peca)) throw new ErroApi("Este vídeo não pode ser editado agora."); return v; };
+/* a seleção de palavras vira quadros da linha original: do meio do vão antes da 1ª ao meio do vão depois da última */
+function corteDasPalavrasVideo(v, i0, i1){
+  const m = mapaVideo(v), us = listaVideo(objVideo(v.relatorio).unidades), fala = falaDoVideoS(m), u0 = us[i0], u1 = us[i1], ant = us[i0 - 1], prox = us[i1 + 1];
+  const de = ant ? (ant.b + u0.a) / 2 : Math.max(0, u0.a - 0.1), ate = prox ? (u1.b + prox.a) / 2 : Math.min(fala, u1.b + 0.1);
+  const q0 = qDoVideo(m, de), q1 = qDoVideo(m, Math.max(de, ate - 1e-6));
+  if(q0 === null || q1 === null) throw new ErroApi("A cartela fica sempre (identificação legal).");
+  return [q0, q1 + 1];
+}
+function acrescentarCorteVideo(v, c){
+  const r = rascunhoMexidoVideo(v), m = mapaVideo(v), novo = juntarCortesVideo([...r.cortar, c], m.linha_q);
+  if(novo.length > ABA_VIDEO_LIMITES.cortes) throw new ErroApi("Até 30 cortes por vídeo.");
+  if(c[1] - c[0] < ABA_VIDEO_LIMITES.corteMin) throw new ErroApi("O trecho é curto demais (menos de 0,1 s): marque um trecho maior.");
+  r.cortar = novo; abaVideo().selecao = null;
+  redesenharEditorVideo();
+}
+const ACOES_ABA_VIDEO = {
+  /* da peça (radar-pauta.js): "Editar na aba Vídeo"; com texto não salvo na peça, pergunta antes */
+  "video-aba"(el){
+    const f = $("form[data-form=peca]");
+    if(f && pecaMudou(f) && !confirm(avisoPecaSuja(f, "A peça tem alteração não salva.") + " Sair da peça sem salvar?")) return;
+    E.etapa = null; E.assunto = null; E.informativo = null; E.aba = "video"; E.pauta.peca = null;
+    const a = abaVideo(); a.id = String(el.dataset.id || ""); a.selecao = null; a.marca = null;
+    window.scrollTo(0, 0); return desenhar();
+  },
+  "vaba-filtro"(el){ const a = abaVideo(); a.filtro = el.dataset.filtro === "60" ? "60" : "futuro"; return desenhar(); },
+  "vaba-abrir"(el){ const a = abaVideo(); a.id = String(el.dataset.id || ""); a.selecao = null; a.marca = null; window.scrollTo(0, 0); return desenhar(); },
+  "vaba-voltar"(){ const a = abaVideo(); a.id = null; a.v = null; a.selecao = null; a.marca = null; return desenhar(); },
+  "vaba-peca"(el){ E.aba = "pauta"; E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; abaVideo().id = null; window.scrollTo(0, 0); return desenhar(); },
+  "vaba-palavra"(el){
+    const a = abaVideo(), i = Number(el.dataset.i), pl = $("#vaba-player");
+    if(pl && Number.isFinite(Number(el.dataset.a))) pl.currentTime = Number(el.dataset.a);
+    if(!editavelVideo(a.v, a.peca)) return;
+    a.selecao = a.selecao && a.selecao[0] === a.selecao[1] && a.selecao[0] !== i ? [Math.min(a.selecao[0], i), Math.max(a.selecao[0], i)] : [i, i];
+    redesenharEditorVideo();
+  },
+  "vaba-limpar-selecao"(){ abaVideo().selecao = null; redesenharEditorVideo(); },
+  "vaba-cortar"(){ const v = editavelDaAba(), s = abaVideo().selecao; if(!s) throw new ErroApi("Selecione uma palavra (ou duas, para um trecho).");
+    acrescentarCorteVideo(v, corteDasPalavrasVideo(v, s[0], s[1])); },
+  "vaba-comecar-palavra"(){ const v = editavelDaAba(), s = abaVideo().selecao, u = listaVideo(objVideo(v.relatorio).unidades)[s?.[0]];
+    if(!u) throw new ErroApi("Selecione uma palavra.");
+    rascunhoMexidoVideo(v).inicio_q = qDoVideo(mapaVideo(v), Math.max(0, u.a - 0.12)); abaVideo().selecao = null; redesenharEditorVideo(); },
+  "vaba-terminar-palavra"(){ const v = editavelDaAba(), s = abaVideo().selecao, us = listaVideo(objVideo(v.relatorio).unidades), u = us[s?.[1]], prox = us[(s?.[1] ?? -2) + 1];
+    if(!u) throw new ErroApi("Selecione uma palavra.");
+    const m = mapaVideo(v), t = Math.min(u.b + 0.45, prox ? prox.a - 0.05 : u.b + 0.45, falaDoVideoS(m) - 1e-6), q = qDoVideo(m, Math.max(u.b, t));
+    rascunhoMexidoVideo(v).fim_q = q === null ? null : q + 1; abaVideo().selecao = null; redesenharEditorVideo(); },
+  "vaba-marcar-de"(){ const v = editavelDaAba(), q = qDoVideo(mapaVideo(v), playerDaAba().currentTime);
+    if(q === null) throw new ErroApi("A cartela fica sempre (identificação legal)."); abaVideo().marca = q; redesenharEditorVideo(); },
+  "vaba-marcar-ate"(){ const v = editavelDaAba(), a = abaVideo(), q = qDoVideo(mapaVideo(v), playerDaAba().currentTime);
+    if(a.marca === null || a.marca === undefined) throw new ErroApi("Marque antes o começo do corte.");
+    if(q === null) throw new ErroApi("A cartela fica sempre (identificação legal).");
+    const c = [Math.min(a.marca, q), Math.max(a.marca, q) + 1]; a.marca = null; acrescentarCorteVideo(v, c); },
+  "vaba-comecar-aqui"(){ const v = editavelDaAba(), q = qDoVideo(mapaVideo(v), playerDaAba().currentTime);
+    if(q === null) throw new ErroApi("A cartela fica sempre (identificação legal)."); rascunhoMexidoVideo(v).inicio_q = q; redesenharEditorVideo(); },
+  "vaba-terminar-aqui"(){ const v = editavelDaAba(), q = qDoVideo(mapaVideo(v), playerDaAba().currentTime);
+    if(q === null) throw new ErroApi("A cartela fica sempre (identificação legal)."); rascunhoMexidoVideo(v).fim_q = q; redesenharEditorVideo(); },
+  "vaba-desfazer"(el){ const v = editavelDaAba(), r = rascunhoMexidoVideo(v), antes = objVideo(v.ajustes);
+    if(el.dataset.marca === "inicio_q" || el.dataset.marca === "fim_q") r[el.dataset.marca] = inteiroVideo(antes[el.dataset.marca]);
+    else r.cortar = r.cortar.filter(c => !(c[0] === Number(el.dataset.de) && c[1] === Number(el.dataset.ate)));
+    redesenharEditorVideo(); },
+  "vaba-desfazer-salvo"(el){ const v = editavelDaAba(), r = rascunhoMexidoVideo(v);
+    r.cortar = r.cortar.filter(c => !(c[0] === Number(el.dataset.de) && c[1] === Number(el.dataset.ate))); redesenharEditorVideo(); },
+  "vaba-refazer-salvo"(el){ const v = editavelDaAba(), r = rascunhoMexidoVideo(v);
+    r.cortar = juntarCortesVideo([...r.cortar, [Number(el.dataset.de), Number(el.dataset.ate)]], mapaVideo(v).linha_q); redesenharEditorVideo(); },
+  "vaba-desfazer-bloco"(el){ const v = editavelDaAba(); delete rascunhoMexidoVideo(v).legenda[el.dataset.bloco]; redesenharEditorVideo(); },
+  "vaba-ouvir"(el){ const pl = playerDaAba(); pl.currentTime = Math.max(0, Number(el.dataset.em) - 2); pl.scrollIntoView({block:"nearest"}); pl.play?.().catch(() => {}); },
+  "vaba-passo"(el){ const pl = playerDaAba(), passo = Number(el.dataset.passo);
+    if(!passo){ if(pl.paused) pl.play?.().catch(() => {}); else pl.pause(); return; }
+    pl.pause(); pl.currentTime = Math.max(0, Math.min(Number.isFinite(pl.duration) ? pl.duration : 1e9, pl.currentTime + passo)); },
+  "vaba-capa-aqui"(){ const v = editavelDaAba(), q = qDoVideo(mapaVideo(v), playerDaAba().currentTime);
+    if(q === null) throw new ErroApi("A capa é um quadro da fala: a cartela não vira capa."); rascunhoMexidoVideo(v).capa_q = q; redesenharEditorVideo(); },
+  "vaba-capa-tirar"(){ const v = editavelDaAba(); rascunhoMexidoVideo(v).capa_q = null; redesenharEditorVideo(); },
+  "vaba-cortar-divergencia"(el){
+    const v = editavelDaAba(), d = listaVideo(objVideo(v.relatorio).divergencias)[Number(el.dataset.i)], us = listaVideo(objVideo(v.relatorio).unidades);
+    if(!d || numVideo(d.em_s) === null || numVideo(d.ate_s) === null) throw new ErroApi("O trecho desta divergência não está no relatório.");
+    const dentro = us.map((u, i) => [u, i]).filter(([u]) => u.b > d.em_s + 0.01 && u.a < d.ate_s - 0.01).map(([, i]) => i);
+    if(dentro.length) return acrescentarCorteVideo(v, corteDasPalavrasVideo(v, dentro[0], dentro[dentro.length - 1]));
+    const m = mapaVideo(v), q0 = qDoVideo(m, Math.max(0, d.em_s - 0.05)), q1 = qDoVideo(m, d.ate_s + 0.05);
+    if(q0 === null || q1 === null) throw new ErroApi("A cartela fica sempre (identificação legal).");
+    acrescentarCorteVideo(v, [q0, q1 + 1]);
+  },
+  "vaba-descartar"(){ const a = abaVideo(), v = videoDaAba();
+    if(!confirm("Descartar as mudanças que ainda não foram montadas?")) return;
+    a.rascunhos[v.id] = rascunhoNovoVideo(v); a.selecao = null; a.marca = null; redesenharEditorVideo(); recado("Mudanças descartadas."); },
+  async "vaba-previa"(){ await abrirPreviaAbaVideo(false); },
+  /* Montar de novo com estas mudanças (só o administrador): a tela confere o que sabe; o banco confere tudo de novo */
+  async "vaba-montar"(){
+    if(!ehAdmin()) throw new ErroApi("Só o administrador edita o vídeo do reel.");
+    const v = editavelDaAba(), r = rascunhoMexidoVideo(v), m = mapaVideo(v);
+    if(!mudouAbaVideo(v, r)) throw new ErroApi("Nada mudou.");
+    const aj = ajustesDoEditor(v, r), dur = m ? duracaoEstimadaVideo(m, aj) : null;
+    if(m && falaEstimadaQVideo(m, aj) < ABA_VIDEO_LIMITES.fala * ABA_VIDEO_FPS) throw new ErroApi("Os cortes deixam menos de 2 s de fala: desfaça um corte.");
+    if(dur !== null && (dur < ABA_VIDEO_LIMITES.min || dur > ABA_VIDEO_LIMITES.max))
+      throw new ErroApi(`O vídeo ficaria com cerca de ${segVideo(dur)} s: ${dur < ABA_VIDEO_LIMITES.min ? "o mínimo é 5 s" : "o máximo é 45 s (corte mais um trecho)"}.`);
+    const recusas = recusasLegendaVideo(v, r), blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista);
+    for(const [i, motivo] of Object.entries(recusas)) throw new ErroApi(`Legenda (aos ${segVideo(numVideo(blocos[Number(i)]?.em_s) ?? 0)} s): ${MOTIVOS_LEGENDA[motivo] || motivo}.`);
+    const termos = termosDoEditor(r);
+    if(termos.length) throw new ErroApi(msgTermosPeca(termos, "montar"));
+    if(m && aj.capa_q !== undefined && !quadroFicaVideo(m, aj, aj.capa_q)) throw new ErroApi("A capa caiu num trecho cortado: escolha outro quadro.");
+    if(r.refazer && faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.`);
+    const gancho = ganchoDoEditor(v, r);
+    if(!confirm("Montar o vídeo de novo com estas mudanças? Não transcreve de novo (não gasta minutos do mês) e leva alguns minutos. Enquanto o robô monta, o reel não pode ser aprovado."
+      + (gancho !== null && gancho !== "" ? " O texto do gancho também muda na peça." : ""))) return;
+    await rpc("radar_video_editar", {p_id:v.id, p_sha256:v.sha256, p_ajustes:aj, p_cartela:cartelaDoEditor(v, r), p_gancho:gancho});
+    const robo = await acionarCorretor();
+    delete abaVideo().rascunhos[v.id];
+    abaVideo().previa = null;
+    await desenhar();
+    recado(`Mudanças gravadas: o corretor monta o vídeo de novo. ${robo}`);
+  },
+  /* o vídeo do robô de antes (sem o mapa): monta de novo com os mesmos ajustes, para liberar os cortes e a capa (não transcreve) */
+  async "vaba-liberar"(){
+    const v = editavelDaAba();
+    if(!confirm("Montar o vídeo de novo, sem mudança, para liberar os cortes e a capa? Não transcreve de novo e leva alguns minutos.")) return;
+    await rpc("radar_video_editar", {p_id:v.id, p_sha256:v.sha256, p_ajustes:objVideo(v.ajustes), p_cartela:null, p_gancho:null});
+    const robo = await acionarCorretor(); abaVideo().previa = null; await desenhar(); recado(`O corretor monta o vídeo de novo. ${robo}`);
+  },
+  async "vaba-de-novo"(){
+    const v = videoDaAba(), refazer = v.erro_codigo === "cartela_nao_cabe";
+    if(refazer && faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.`);
+    await rpc("radar_video_de_novo", {p_id:v.id, p_cartela:refazer ? linhasCartela(v.fala_pessoa) : null});
+    const robo = await acionarCorretor(); await desenhar(); recado(`Pedido de novo ao corretor. ${robo}`);
+  },
+  /* edicao_curta: os cortes do editor deixaram menos de 2 s de fala — tira os cortes, o começo e o fim e monta de novo */
+  async "vaba-desfazer-edicao"(){
+    if(!ehAdmin()) throw new ErroApi("Só o administrador edita o vídeo do reel.");
+    const v = videoDaAba(), aj = {...objVideo(v.ajustes)};
+    for(const k of ["cortar", "inicio_q", "fim_q", "capa_q"]) delete aj[k];
+    if(!confirm("Tirar os cortes, o começo e o fim marcados na aba Vídeo e montar de novo? Não transcreve de novo.")) return;
+    await rpc("radar_video_editar", {p_id:v.id, p_sha256:v.sha256, p_ajustes:aj, p_cartela:null, p_gancho:null});
+    delete abaVideo().rascunhos[v.id];
+    const robo = await acionarCorretor(); await desenhar(); recado(`O corretor monta o vídeo de novo, sem os cortes do editor. ${robo}`);
+  }
+};
+// as que não gravam nada (só a tela): navegam sem a trava de "uma ação por vez"
+const NAVEGACAO_ABA_VIDEO = ["video-aba", "vaba-filtro", "vaba-abrir", "vaba-voltar", "vaba-peca", "vaba-palavra", "vaba-limpar-selecao", "vaba-cortar",
+  "vaba-comecar-palavra", "vaba-terminar-palavra", "vaba-marcar-de", "vaba-marcar-ate", "vaba-comecar-aqui", "vaba-terminar-aqui", "vaba-desfazer",
+  "vaba-desfazer-salvo", "vaba-refazer-salvo", "vaba-desfazer-bloco", "vaba-ouvir", "vaba-passo", "vaba-capa-aqui", "vaba-capa-tirar",
+  "vaba-cortar-divergencia", "vaba-descartar"];
+
 /* ------------------------------------------------- ações (o index.html junta) */
 const pecaDoVideo = () => { const f = $("form[data-form=peca]"), p = estadoVideo().pecaDados;
   if(!f || !p || Number(f.dataset.id) !== p.id) throw new ErroApi("Abra a peça de novo."); return {f, p}; };
@@ -819,7 +1537,7 @@ const videoDaTela = el => { const ev = estadoVideo(), v = [ev.atual, ev.envio].f
   if(!v) throw new ErroApi("A gravação mudou: recarregue a peça."); return v; };
 const VIDEO = {
   // não gravam nada: só a tela (o que grava é feito uma ação por vez)
-  navegacao:["video-nova", "video-nova-cancelar", "video-clipe-mover", "video-clipe-tirar", "video-ouvir"],
+  navegacao:["video-nova", "video-nova-cancelar", "video-clipe-mover", "video-clipe-tirar", "video-ouvir", ...NAVEGACAO_ABA_VIDEO],
   acoes:{
     "video-nova"(){ const ev = estadoVideo(); ev.nova = true; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); $("#video-envio")?.scrollIntoView({block:"nearest"}); },
     "video-nova-cancelar"(){ const ev = estadoVideo(); ev.nova = false; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); },
@@ -915,7 +1633,9 @@ const VIDEO = {
       const {p} = pecaDoVideo(), v = videoDaTela(el);
       if(!ehAdmin()) throw new ErroApi("Só o administrador ajusta o vídeo corrigido.");
       const aj = ajustesDaTela(v), cartela = $("#video-refazer-cartela")?.checked ? linhasCartela(v.fala_pessoa) : null;
-      if(ajustesIguais(aj, v.ajustes) && !cartela){ recado("Nada mudou nos ajustes."); return; }
+      // v0.33.0: as chaves do editor da aba Vídeo não estão neste quadro (o banco as guarda): compara sem elas
+      const semEditor = x => { const y = {...objVideo(x)}; for(const k of CHAVES_EDITOR_VIDEO) delete y[k]; return y; };
+      if(ajustesIguais(aj, semEditor(v.ajustes)) && !cartela){ recado("Nada mudou nos ajustes."); return; }
       if(cartela && faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.`);
       if(!confirm("Montar o vídeo de novo com estes ajustes? O áudio não muda (sem transcrever de novo); leva alguns minutos.")) return;
       await rpc("radar_video_ajustar", {p_id:v.id, p_ajustes:aj, p_cartela:cartela});
@@ -927,14 +1647,16 @@ const VIDEO = {
     async "video-baixar"(){
       const f = $("form[data-form=peca]"), box = $("#video-baixar"), a = E.pauta.aberta; if(!f || !box || !a) return;
       const r = await funcaoVideo("baixar", {peca:Number(f.dataset.id), lido:f.dataset.lido});
-      if(!linkVideoOk(r?.url)) throw new ErroApi("A função devolveu o link fora do formato.");
-      const nome = `reel-${a.data}.mp4`, v = estadoVideo().atual;
+      if(!linkVideoOk(r?.url) || (r.capa_url !== null && r.capa_url !== undefined && !linkVideoOk(r.capa_url))) throw new ErroApi("A função devolveu o link fora do formato.");
+      const nome = `reel-${a.data}.mp4`, v = estadoVideo().atual, capa = linkVideoOk(r.capa_url);    // v0.33.0: + a capa escolhida na aba Vídeo
       box.innerHTML = `<p><a class="btn peq" id="video-baixar-link" href="${h(r.url)}" download="${h(nome)}" rel="noopener noreferrer">Baixar ${h(nome)}</a>
-        <span class="sub">O link vale 5 minutos (vencido, clique em “Baixar o vídeo aprovado” de novo). Poste no Instagram e no Facebook e registre o link abaixo.</span></p>
-        ${v ? `<div class="acoes" id="video-apaguei-baixado"><button class="btn peq sec" type="button" data-acao="video-apaguei-baixado" data-id="${h(v.id)}">Apaguei do celular e da nuvem pessoal (depois de postar)</button></div>` : ""}`;
+        ${capa ? `<a class="btn peq sec" id="video-baixar-capa" href="${h(r.capa_url)}" download="${h(`reel-${a.data}-capa.jpg`)}" rel="noopener noreferrer">Baixar a capa</a>` : ""}
+        <span class="sub">O link vale 5 minutos (vencido, clique em “Baixar o vídeo aprovado” de novo). Poste no Instagram e no Facebook e registre o link abaixo.${capa ? " Ao postar o reel, na tela da capa, escolha adicionar da galeria e use esta imagem." : ""}</span></p>
+        ${v ? `<div class="acoes" id="video-apaguei-baixado"><button class="btn peq sec" type="button" data-acao="video-apaguei-baixado" data-id="${h(v.id)}">Apaguei do celular e da nuvem pessoal (depois de postar${capa ? ": o vídeo e a capa" : ""})</button></div>` : ""}`;
       recado("Vídeo aprovado liberado: baixe, poste e depois apague do aparelho.");
     },
-    "video-diagnostico"(){ return diagnosticoVideo(); }
+    "video-diagnostico"(){ return diagnosticoVideo(); },
+    ...ACOES_ABA_VIDEO                                    // v0.33.0: a aba Vídeo
   },
   forms:{}
 };

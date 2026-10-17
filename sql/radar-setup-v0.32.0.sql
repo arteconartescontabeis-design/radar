@@ -7818,6 +7818,597 @@ update public.radar_config set valor = '{"vencimento": true, "copia": true}'::js
  where chave = 'lembretes' and jsonb_typeof(valor) = 'object' and not (valor ? 'vencimento' and valor ? 'copia');
 
 -- ---------------------------------------------------------------------
+-- v0.33.0: A ABA VÍDEO — o editor do vídeo corrigido do reel
+-- O administrador abre o reel na aba Vídeo e muda o começo, o fim e trechos do meio, o texto da legenda (palavra por palavra), o
+-- tamanho, a posição e a cor da legenda (só a paleta da Artecon), o texto do gancho, o texto extra da cartela e a capa; o robô monta
+-- de novo SEM transcrever de novo (a transcrição guardada, modo "montagem"). Nenhuma tabela nem coluna nova: tudo vai em
+-- radar_videos.ajustes (o que o administrador pediu) e radar_videos.relatorio (o que o robô fez: o "mapa" do vídeo, as unidades da
+-- legenda, a "edicao" e a "capa"). Os cortes, o começo, o fim e a capa vão em QUADROS (1/30 s) da linha original (a de fala48k.wav, os
+-- clipes em sequência): a mesma referência das chaves do "Manter este trecho", que não muda de uma montagem para a outra.
+-- Este bloco vem DEPOIS do laço que revoga as funções (seção 5): as funções novas fazem o próprio revoke/grant aqui embaixo. As que
+-- já existiam são redefinidas aqui (create or replace: os privilégios ficam); a definição de antes, mais acima, fica como estava.
+-- Os ajustes (v0.33.0):
+--   da v0.22.0: manter, transcricao_errou, legenda, estilo, sem_gancho (iguais);
+--   do editor: cortar [[q0, q1], …] (até 30, em ordem, sem sobrepor, cada um com 3 quadros ou mais), inicio_q, fim_q, capa_q (quadros
+--   da linha original), legenda_tamanho (P, M, G), legenda_posicao (cima, meio, baixo), legenda_cor (a chave da paleta) e
+--   cartela_extra (o texto extra DESTA cartela: "" = sem; sem a chave, o das Configurações).
+-- ---------------------------------------------------------------------
+
+-- As constantes da edição: a paleta da legenda (texto sobre a caixa, 20% transparente no vídeo; da identidade da Artecon: o marinho
+-- e o azul de :root no index.html, o vermelho e o amarelo da faixa de três cores da cartela), os tamanhos, as posições e os limites.
+-- A tela lê daqui e o banco confere por aqui; o robô tem a mesma tabela (robo/video/legenda.py: CORES, TAMANHOS, POSICOES), e um
+-- teste confere que são iguais (e o contraste de cada cor). Sem dado de ninguém: o leitor também pode ler.
+create or replace function public.radar_video_paleta() returns jsonb
+language sql immutable set search_path = public as $$
+  select '{"cores": [{"chave": "marinho", "nome": "Marinho (padrão)", "texto": "#FFFFFF", "caixa": "#011F48"},
+                     {"chave": "branco", "nome": "Branco", "texto": "#011F48", "caixa": "#FFFFFF"},
+                     {"chave": "vermelho", "nome": "Vermelho Artecon", "texto": "#FFFFFF", "caixa": "#BC151B"},
+                     {"chave": "azul", "nome": "Azul Artecon", "texto": "#011F48", "caixa": "#569DCC"},
+                     {"chave": "amarelo", "nome": "Amarelo", "texto": "#011F48", "caixa": "#FFD700"}],
+           "tamanhos": [{"chave": "P", "nome": "Pequena", "fator": 0.85}, {"chave": "M", "nome": "Média (padrão)", "fator": 1.0},
+                        {"chave": "G", "nome": "Grande", "fator": 1.15}],
+           "posicoes": [{"chave": "cima", "nome": "Em cima"}, {"chave": "meio", "nome": "No meio"},
+                        {"chave": "baixo", "nome": "Embaixo (padrão)"}],
+           "fps": 30, "duracao_min_s": 5, "duracao_max_s": 45, "fala_min_s": 2, "cortes_max": 30, "corte_min_q": 3,
+           "folga_fim_s": 0.45, "transicao_s": 0.4}'::jsonb
+$$;
+
+-- Os ajustes têm a forma que o robô espera? NULL = têm; senão o motivo. (v0.33.0: + as chaves do editor; a legenda e o texto extra
+-- da cartela também sem < >, como o robô e a tela já recusavam.) As regras de antes estão no comentário da definição de cima.
+create or replace function public.radar_video_ajustes_falta(p jsonb) returns text
+language plpgsql immutable set search_path = public as $$
+declare
+  k   text;
+  x   jsonb;
+  pal constant jsonb := public.radar_video_paleta();
+begin
+  if p is null or jsonb_typeof(p) <> 'object' or length(p::text) > 20000 then return 'os ajustes vão num objeto de até 20.000 caracteres'; end if;
+  if exists (select 1 from jsonb_object_keys(p) c
+              where c not in ('manter','transcricao_errou','legenda','estilo','sem_gancho',
+                              'cortar','inicio_q','fim_q','capa_q','legenda_tamanho','legenda_posicao','legenda_cor','cartela_extra')) then
+    return 'ajuste desconhecido';
+  end if;
+  -- (cada conferência só depois da forma: jsonb_array_elements e jsonb_each não rodam sobre o que não é lista nem objeto)
+  foreach k in array array['manter','transcricao_errou'] loop
+    continue when not p ? k;
+    x := p->k;
+    if jsonb_typeof(x) <> 'array' or jsonb_array_length(x) > 200
+       or exists (select 1 from jsonb_array_elements(x) y
+                   where jsonb_typeof(y) <> 'string'
+                      or (y #>> '{}') !~ case k when 'manter' then '^[0-9]{1,2}:[0-9]{1,6}b{0,3}$' else '^[0-9a-f]{16}$' end) then
+      return k || case k when 'manter' then ': uma lista de até 200 chaves de corte do relatório ("clipe:quadro")'
+                         else ': uma lista de até 200 códigos de divergência do relatório' end;
+    end if;
+  end loop;
+  if p ? 'legenda' then
+    x := p->'legenda';
+    if jsonb_typeof(x) = 'array' then                   -- cada item [chave, texto] (o case confere a forma antes do resto)
+      if jsonb_array_length(x) > 200
+         or exists (select 1 from jsonb_array_elements(x) y
+                     where case when jsonb_typeof(y) <> 'array' then true
+                                when jsonb_array_length(y) <> 2 then true
+                                when jsonb_typeof(y->0) <> 'string' or jsonb_typeof(y->1) <> 'string' then true
+                                else (y->>0) !~ '^[0-9]{1,4}(:[0-9]{1,3})?$' or length(btrim(y->>1)) not between 1 and 120
+                                     or (y->>1) ~ '[{}\\<>[:cntrl:]]' end) then
+        return 'legenda: até 200 blocos ("u" ou "u:n"), cada um com um texto de 1 a 120 caracteres, sem { } \ < > nem caractere de controle';
+      end if;
+    elsif jsonb_typeof(x) <> 'object' then
+      return 'legenda: até 200 blocos ("u" ou "u:n"), cada um com um texto de 1 a 120 caracteres, sem { } \ < > nem caractere de controle';
+    elsif (select count(*) from jsonb_object_keys(x)) > 200
+       or exists (select 1 from jsonb_each(x) w
+                   where w.key !~ '^[0-9]{1,4}(:[0-9]{1,3})?$' or jsonb_typeof(w.value) <> 'string'
+                      or length(btrim(w.value #>> '{}')) not between 1 and 120 or (w.value #>> '{}') ~ '[{}\\<>[:cntrl:]]') then
+      return 'legenda: até 200 blocos ("u" ou "u:n"), cada um com um texto de 1 a 120 caracteres, sem { } \ < > nem caractere de controle';
+    end if;
+  end if;
+  if p ? 'estilo' and (jsonb_typeof(p->'estilo') <> 'string' or p->>'estilo' not in ('normal','compacta')) then
+    return 'estilo: normal ou compacta';
+  end if;
+  if p ? 'sem_gancho' and jsonb_typeof(p->'sem_gancho') <> 'boolean' then return 'sem_gancho: sim ou não'; end if;
+  -- v0.33.0: o editor da aba Vídeo
+  if p ? 'cortar' then
+    x := p->'cortar';
+    if jsonb_typeof(x) <> 'array' or jsonb_array_length(x) > 30
+       or exists (select 1 from jsonb_array_elements(x) y
+                   where case when jsonb_typeof(y) <> 'array' then true
+                              when jsonb_array_length(y) <> 2 then true
+                              when jsonb_typeof(y->0) <> 'number' or jsonb_typeof(y->1) <> 'number' then true
+                              when (y->>0) !~ '^[0-9]{1,4}$' or (y->>1) !~ '^[0-9]{1,4}$' then true
+                              else (y->>1)::int > 4000 or (y->>1)::int - (y->>0)::int < 3 end) then
+      return 'cortar: até 30 trechos [começo, fim] em quadros (inteiros de 0 a 4000, cada um com 3 quadros ou mais)';
+    end if;
+  end if;
+  foreach k in array array['inicio_q','fim_q','capa_q'] loop
+    continue when not p ? k;
+    if jsonb_typeof(p->k) <> 'number' or (p->>k) !~ '^[0-9]{1,4}$' or (p->>k)::int > 4000 then
+      return k || ': um quadro do vídeo (inteiro de 0 a 4000)';
+    end if;
+  end loop;
+  if p ? 'legenda_tamanho' and (jsonb_typeof(p->'legenda_tamanho') <> 'string'
+       or not exists (select 1 from jsonb_array_elements(pal->'tamanhos') t where t->>'chave' = p->>'legenda_tamanho')) then
+    return 'tamanho da legenda: pequena, média ou grande';
+  end if;
+  if p ? 'legenda_posicao' and (jsonb_typeof(p->'legenda_posicao') <> 'string'
+       or not exists (select 1 from jsonb_array_elements(pal->'posicoes') t where t->>'chave' = p->>'legenda_posicao')) then
+    return 'posição da legenda: em cima, no meio ou embaixo';
+  end if;
+  if p ? 'legenda_cor' and (jsonb_typeof(p->'legenda_cor') <> 'string'
+       or not exists (select 1 from jsonb_array_elements(pal->'cores') t where t->>'chave' = p->>'legenda_cor')) then
+    return 'cor da legenda fora da paleta da Artecon';
+  end if;
+  if p ? 'cartela_extra' and (jsonb_typeof(p->'cartela_extra') <> 'string' or length(p->>'cartela_extra') > 120
+                              or (p->>'cartela_extra') ~ '[{}\\<>[:cntrl:]]') then
+    return 'texto extra da cartela: até 120 caracteres, sem { } \ < > nem quebra de linha';
+  end if;
+  return null;
+end $$;
+
+-- A duração do vídeo depois de montar, estimada pelo "mapa" que o robô gravou no relatório (NULL sem ele: o vídeo do robô de antes),
+-- como o robô monta: os quadros q da linha original que ficam — numa faixa de clipe (do 1º ao último som, com as folgas), fora de um
+-- corte automático que não está em "manter", fora de "cortar", de inicio_q em diante e antes de fim_q —, mais o pad do fim (o último
+-- quadro parado: o vídeo precisa de 0,45 s depois da última palavra que fica; a faixa já tem essa folga, e só o fim marcado ou um
+-- corte perto dela pede o pad), mais a cartela, menos a transição (0,4 s). O último trecho é a última sequência de quadros que ficam,
+-- dentro da faixa do clipe; a última palavra é a que termina mais tarde entre as que passam por ele (mapa.palavras, [ini, fim] em ms;
+-- cortada no meio, termina onde o trecho termina; nenhuma, o começo do trecho). A tela (duracaoEstimadaVideo) e o robô
+-- (cortes.duracao_estimada, a conta do planejar) fazem a mesma conta.
+create or replace function public.radar_video_edicao_duracao(v public.radar_videos, p jsonb) returns numeric
+language plpgsql stable set search_path = public as $$
+declare
+  m        jsonb := case when jsonb_typeof(v.relatorio->'mapa') = 'object' then v.relatorio->'mapa' end;
+  v_manter jsonb := case when jsonb_typeof(p->'manter') = 'array' then p->'manter' else '[]'::jsonb end;
+  v_cortar jsonb := case when jsonb_typeof(p->'cortar') = 'array' then p->'cortar' else '[]'::jsonb end;
+  v_ini    int := case when jsonb_typeof(p->'inicio_q') = 'number' then (p->>'inicio_q')::numeric::int end;
+  v_fim    int := case when jsonb_typeof(p->'fim_q') = 'number' then (p->>'fim_q')::numeric::int end;
+  v_q      int[];
+  v_n      int;
+  v_i      int;
+  v_qa     int;
+  v_qb     int;
+  v_f0     int;
+  v_u      numeric;
+  v_pad    int := 0;
+begin
+  if m is null or jsonb_typeof(m->'linha_q') <> 'number' or jsonb_typeof(m->'faixas') <> 'array' then return null; end if;
+  select coalesce(array_agg(q order by q), '{}') into v_q
+    from generate_series(0, least((m->>'linha_q')::numeric::int, 4000) - 1) q
+   where exists (select 1 from jsonb_array_elements(m->'faixas') f where q >= (f->>0)::numeric and q < (f->>1)::numeric)
+     and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(m->'automaticos') = 'array' then m->'automaticos' else '[]' end) a
+                      where q >= (a->>'de')::numeric and q < (a->>'ate')::numeric and not v_manter ? (a->>'chave'))
+     and not exists (select 1 from jsonb_array_elements(v_cortar) c where q >= (c->>0)::numeric and q < (c->>1)::numeric)
+     and (v_ini is null or q >= v_ini) and (v_fim is null or q < v_fim);
+  v_n := cardinality(v_q);
+  if v_n > 0 then
+    v_qb := v_q[v_n] + 1;
+    select min((f->>0)::numeric::int) into v_f0 from jsonb_array_elements(m->'faixas') f
+     where v_qb - 1 >= (f->>0)::numeric and v_qb - 1 < (f->>1)::numeric;
+    v_i := v_n;
+    while v_i > 1 and v_q[v_i - 1] = v_q[v_i] - 1 and v_q[v_i - 1] >= coalesce(v_f0, v_q[v_n]) loop
+      v_i := v_i - 1;
+    end loop;
+    v_qa := v_q[v_i];
+    select max((w->>1)::numeric) * 3 / 100 into v_u
+      from jsonb_array_elements(case when jsonb_typeof(m->'palavras') = 'array' then m->'palavras' else '[]' end) w
+     where jsonb_typeof(w) = 'array' and jsonb_typeof(w->0) = 'number' and jsonb_typeof(w->1) = 'number'
+       and (w->>0)::numeric * 3 < v_qb * 100 and (w->>1)::numeric * 3 > v_qa * 100;
+    v_pad := greatest(0, ceil(least(coalesce(v_u, v_qa), v_qb) - v_qb + 13.5 - 0.000001))::int;     -- 13,5 quadros = 0,45 s
+  end if;
+  return round((v_n + v_pad) / 30.0 + public.radar_video_cfg_num('cartela_s', 3, 2, 5) - 0.4, 1);
+end $$;
+
+-- As mudanças do editor conferem com ESTE vídeo (o mapa do relatório)? NULL = conferem; senão o motivo, sem nome. Supõe a forma já
+-- conferida por radar_video_ajustes_falta.
+create or replace function public.radar_video_edicao_falta(v public.radar_videos, p jsonb) returns text
+language plpgsql stable set search_path = public as $$
+declare
+  m        jsonb := case when jsonb_typeof(v.relatorio->'mapa') = 'object' and jsonb_typeof(v.relatorio->'mapa'->'linha_q') = 'number'
+                         then v.relatorio->'mapa' end;
+  v_linha  int;
+  v_ant    int;
+  v_n      int := 0;
+  c        jsonb;
+  v_ini    int := (p->>'inicio_q')::int;
+  v_fim    int := (p->>'fim_q')::int;
+  v_capa   int := (p->>'capa_q')::int;
+  v_manter jsonb := case when jsonb_typeof(p->'manter') = 'array' then p->'manter' else '[]'::jsonb end;
+  v_dur    numeric;
+  v_fala   numeric;
+  v_extra  text := public.radar_pauta_sem_acento(coalesce(p->>'cartela_extra', ''));
+  b constant text := '(?<![A-Za-zÀ-ÿ0-9])';
+  e constant text := '(?![A-Za-zÀ-ÿ0-9])';
+begin
+  if p ?| array['cortar','inicio_q','fim_q','capa_q'] and m is null then
+    return 'os cortes e a capa precisam do vídeo montado pelo robô desta versão: use “Montar de novo para liberar os cortes e a capa” (não transcreve de novo)';
+  end if;
+  if m is not null then
+    v_linha := (m->>'linha_q')::numeric::int;
+    for c in select x from jsonb_array_elements(case when jsonb_typeof(p->'cortar') = 'array' then p->'cortar' else '[]' end) x loop
+      v_n := v_n + 1;
+      if (c->>0)::int < 0 or (c->>1)::int > v_linha or (c->>1)::int - (c->>0)::int < 3 or (v_ant is not null and (c->>0)::int < v_ant) then
+        return format('o corte nº %s está fora do vídeo, tem menos de 0,1 s ou passa por cima de outro', v_n);
+      end if;
+      v_ant := (c->>1)::int;
+    end loop;
+    if v_ini > v_linha or v_fim > v_linha then
+      return 'o começo ou o fim marcado está fora do vídeo';
+    end if;
+    if v_fim - v_ini < 30 then
+      return 'o começo marcado tem de vir pelo menos 1 s antes do fim marcado';
+    end if;
+    -- a fala que fica (os quadros, como em radar_video_edicao_duracao, sem as folgas) e a duração do vídeo inteiro
+    select count(*) / 30.0 into v_fala
+      from generate_series(0, least(v_linha, 4000) - 1) q
+     where exists (select 1 from jsonb_array_elements(m->'faixas') f where q >= (f->>0)::numeric and q < (f->>1)::numeric)
+       and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(m->'automaticos') = 'array' then m->'automaticos' else '[]' end) a
+                        where q >= (a->>'de')::numeric and q < (a->>'ate')::numeric and not v_manter ? (a->>'chave'))
+       and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p->'cortar') = 'array' then p->'cortar' else '[]' end) x
+                        where q >= (x->>0)::numeric and q < (x->>1)::numeric)
+       and (v_ini is null or q >= v_ini) and (v_fim is null or q < v_fim);
+    v_dur := public.radar_video_edicao_duracao(v, p);
+    if v_fala < 2 then
+      return format('os cortes deixam só %s s de fala: o mínimo é 2 s', replace(round(v_fala, 1)::text, '.', ','));
+    end if;
+    if v_dur < 5 then
+      return format('o vídeo ficaria com cerca de %s s: o mínimo é 5 s', replace(v_dur::text, '.', ','));
+    end if;
+    if v_dur > 45 then
+      return format('o vídeo ficaria com cerca de %s s: o máximo é 45 s (corte mais um trecho)', replace(v_dur::text, '.', ','));
+    end if;
+    -- a capa é um quadro que fica no vídeo (a mesma regra da contagem)
+    if v_capa is not null and not (
+         exists (select 1 from jsonb_array_elements(m->'faixas') f where v_capa >= (f->>0)::numeric and v_capa < (f->>1)::numeric)
+         and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(m->'automaticos') = 'array' then m->'automaticos' else '[]' end) a
+                          where v_capa >= (a->>'de')::numeric and v_capa < (a->>'ate')::numeric and not v_manter ? (a->>'chave'))
+         and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p->'cortar') = 'array' then p->'cortar' else '[]' end) x
+                          where v_capa >= (x->>0)::numeric and v_capa < (x->>1)::numeric)
+         and (v_ini is null or v_capa >= v_ini) and (v_fim is null or v_capa < v_fim)) then
+      return 'a capa caiu num trecho cortado: escolha outro quadro';
+    end if;
+  end if;
+  -- o texto extra desta cartela: as mesmas regras de radar_video_cartela_falta (contador(a) e técnico(a) só na linha de quem fala,
+  -- com o registro no CRC; "especialista", nunca)
+  if v_extra ~ (b || public.radar_rx_termo('contador') || '(?:[aA]|\([aA]\))?' || e)
+     or v_extra ~ (b || public.radar_rx_termo('tecnic') || '(?:[oO]\([aA]\)|[oaOA])' || e)
+     or v_extra ~ (b || public.radar_rx_termo('especialista') || '[sS]?' || e) then
+    return 'o texto extra da cartela não diz contador(a), técnico(a) nem especialista';
+  end if;
+  -- a cartela quebra o texto nas palavras (robo/video/cartela.py: linhas de até 950 px, a DM Sans de 40 px para cima): uma "palavra" de
+  -- mais de 45 caracteres (um endereço longo) não cabe numa linha, e o robô pararia com cartela_nao_cabe depois de gastar a montagem
+  if coalesce(p->>'cartela_extra', '') ~ '[^[:space:]]{46,}' then
+    return 'o texto extra da cartela tem uma palavra (ou endereço) com mais de 45 caracteres, sem espaço: não cabe na linha da cartela';
+  end if;
+  return null;
+end $$;
+
+-- O editor da aba Vídeo: grava as mudanças e põe o vídeo na fila para MONTAR de novo, sem transcrever de novo (a transcrição guardada).
+-- Só o administrador, só o vídeo que ele viu (p_sha256: os quadros que a tela mandou foram convertidos com o "mapa" DAQUELE vídeo), só
+-- com a transcrição guardada. p_ajustes: os ajustes inteiros (os de antes e as mudanças); p_cartela: as linhas de hoje ("Refazer"; nulo =
+-- as de antes); p_gancho: nulo = não mexe; "" = sem o texto do gancho; texto = o texto novo, que vira também o "Texto do gancho" da
+-- peça (a chamada: a peça pronta volta a "em produção", como em qualquer mudança no que vai ao ar). Devolve {id, modo, duracao_s}.
+create or replace function public.radar_video_editar(p_id uuid, p_sha256 text, p_ajustes jsonb, p_cartela text[] default null,
+                                                     p_gancho text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v      public.radar_videos%rowtype;
+  v_aj   jsonb := p_ajustes;
+  v_modo text;
+  v_x    text;
+  v_g    text := btrim(regexp_replace(coalesce(p_gancho, ''), '[[:space:]]+', ' ', 'g'));
+  v_peca text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR300: só o administrador edita o vídeo do reel' using errcode = '42501';
+  end if;
+  v := public.radar_video_travar(p_id);
+  if not (v.situacao in ('pronto','regravar')
+          or (v.situacao = 'erro' and v.erro_codigo = 'edicao_curta' and v.relatorio->'parcial' = 'false'::jsonb and v.relatorio ? 'mapa')) then
+    raise exception 'RADAR309: só o vídeo pronto ou para regravar se edita (situação atual: %)', v.situacao using errcode = 'P0001';
+  end if;
+  if p_sha256 is null or v.sha256 is null or p_sha256 <> v.sha256 then
+    raise exception 'RADAR318: o vídeo mudou enquanto você editava (foi montado de novo, ajustado ou trocado): recarregue a aba Vídeo e refaça as mudanças'
+      using errcode = 'P0001';
+  end if;
+  if v.palavras_tentativa is null then
+    raise exception 'RADAR319: a transcrição desta gravação não ficou guardada: montar de novo pelo editor transcreveria outra vez (gasta minutos do mês). Envie a gravação de novo'
+      using errcode = 'P0001';
+  end if;
+  v_modo := public.radar_video_refazer(v);
+  v_x := public.radar_video_ajustes_falta(p_ajustes);
+  if v_x is null then
+    v_x := public.radar_video_edicao_falta(v, p_ajustes);              -- (só sobre a forma já conferida)
+  end if;
+  if v_x is not null then
+    raise exception 'RADAR310: %', v_x using errcode = 'P0001';
+  end if;
+  if p_cartela is not null then
+    v_x := public.radar_video_cartela_falta(p_cartela, v.fala_pessoa);
+    if v_x is not null then
+      raise exception 'RADAR305: %', v_x using errcode = 'P0001';
+    end if;
+  end if;
+  if public.radar_pauta_copia_paga(array[case when p_gancho is not null then v_g else '' end, coalesce(p_ajustes->>'cartela_extra', '')]) then
+    raise exception 'RADAR303: o texto do gancho (ou o texto extra da cartela) tem frase igual à do boletim pago (ITC): reescreva com palavras próprias'
+      using errcode = 'P0001';
+  end if;
+  if p_gancho is not null then
+    if v_g = '' then
+      v_aj := v_aj || '{"sem_gancho": true}'::jsonb;
+    else
+      if length(v_g) > 120 or v_g ~ '[{}\\<>[:cntrl:]]' then
+        raise exception 'RADAR308: o texto do gancho tem de 1 a 120 caracteres, sem { } \ < >' using errcode = 'P0001';
+      end if;
+      v_aj := v_aj - 'sem_gancho';
+      select chamada into v_peca from public.radar_pauta_pecas where id = v.peca_id;
+      if v_peca is distinct from v_g then
+        -- como uma mudança feita na peça: o gatilho leva a peça pronta de volta à produção e a trilha registra quem mudou
+        update public.radar_pauta_pecas set chamada = v_g where id = v.peca_id;
+      end if;
+    end if;
+  end if;
+  update public.radar_videos
+     set ajustes = v_aj,
+         gancho = case when p_gancho is not null and v_g <> '' then v_g else gancho end,
+         cartela_linhas = case when p_cartela is null then cartela_linhas
+                               else array(select btrim(l) from unnest(p_cartela) with ordinality t(l, o) order by o) end,
+         modo = v_modo, situacao = 'na_fila', tentativas = 0, fila_em = now(), reservas = 0, pego_em = null, erro_codigo = null
+   where id = v.id;
+  return jsonb_build_object('id', v.id, 'modo', v_modo, 'duracao_s', public.radar_video_edicao_duracao(v, v_aj));
+end $$;
+
+-- Os ajustes da peça (v0.33.0): como antes, mas as mudanças do editor da aba Vídeo que o pedido não traz FICAM (a tela da peça — mesmo
+-- a antiga, guardada no navegador — não apaga em silêncio os cortes, o estilo, a capa nem o texto extra da cartela). E as chaves do
+-- editor NÃO entram por aqui: só pela aba Vídeo (radar_video_editar), que confere cada uma com o vídeo (os cortes dentro da linha, a
+-- duração de 5 a 45 s, a capa num quadro que fica, o sha256 que o administrador viu, o texto extra sem contador(a), técnico(a) nem
+-- especialista e sem a frase do boletim pago).
+create or replace function public.radar_video_ajustar(p_id uuid, p_ajustes jsonb, p_cartela text[] default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v      public.radar_videos%rowtype;
+  v_aj   jsonb;
+  v_modo text;
+  v_x    text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR300: só o administrador ajusta o vídeo corrigido' using errcode = '42501';
+  end if;
+  v := public.radar_video_travar(p_id);
+  v_modo := public.radar_video_refazer(v);
+  v_x := public.radar_video_ajustes_falta(p_ajustes);
+  if v_x is not null then
+    raise exception 'RADAR310: %', v_x using errcode = 'P0001';
+  end if;
+  if p_ajustes ?| array['cortar','inicio_q','fim_q','capa_q','legenda_tamanho','legenda_posicao','legenda_cor','cartela_extra'] then
+    raise exception 'RADAR310: os cortes, o começo e o fim, a capa, o estilo da legenda e o texto extra da cartela mudam na aba Vídeo'
+      using errcode = 'P0001';
+  end if;
+  v_aj := p_ajustes || ((v.ajustes - array['manter','transcricao_errou','legenda','estilo','sem_gancho'])
+                        - array(select jsonb_object_keys(p_ajustes)));
+  v_x := public.radar_video_ajustes_falta(v_aj);
+  if v_x is not null then
+    raise exception 'RADAR310: %', v_x using errcode = 'P0001';
+  end if;
+  if p_cartela is not null then
+    v_x := public.radar_video_cartela_falta(p_cartela, v.fala_pessoa);
+    if v_x is not null then
+      raise exception 'RADAR305: %', v_x using errcode = 'P0001';
+    end if;
+  end if;
+  update public.radar_videos
+     set ajustes = v_aj,
+         cartela_linhas = case when p_cartela is null then cartela_linhas
+                               else array(select btrim(l) from unnest(p_cartela) with ordinality t(l, o) order by o) end,
+         modo = v_modo, situacao = 'na_fila', tentativas = 0, fila_em = now(), reservas = 0, pego_em = null, erro_codigo = null
+   where id = v.id;
+  return jsonb_build_object('id', v.id, 'modo', v_modo);
+end $$;
+
+-- "Tentar de novo" (v0.33.0): como antes, mas a cartela que não coube COM o texto extra próprio deste vídeo (o da aba Vídeo,
+-- ajustes.cartela_extra) volta ao texto extra das Configurações — sem isso, nada tiraria a chave (a aba Vídeo não edita o vídeo com
+-- erro, e os ajustes da peça guardam as chaves do editor) e o vídeo ficaria preso no erro; um texto mais curto se escolhe de novo na
+-- aba Vídeo, com o vídeo pronto. O resto como antes (as linhas da cartela de hoje, p_cartela).
+create or replace function public.radar_video_de_novo(p_id uuid, p_cartela text[] default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v      public.radar_videos%rowtype;
+  v_modo text;
+  v_x    text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR300: só o editor ou o administrador mexe no vídeo do reel' using errcode = '42501';
+  end if;
+  v := public.radar_video_travar(p_id);
+  if v.situacao <> 'erro' then
+    raise exception 'RADAR309: só o vídeo com erro é tentado de novo (situação atual: %)', v.situacao using errcode = 'P0001';
+  end if;
+  v_modo := public.radar_video_refazer(v);
+  if p_cartela is not null then
+    v_x := public.radar_video_cartela_falta(p_cartela, v.fala_pessoa);
+    if v_x is not null then
+      raise exception 'RADAR305: %', v_x using errcode = 'P0001';
+    end if;
+  end if;
+  update public.radar_videos set modo = v_modo, situacao = 'na_fila', tentativas = 0, fila_em = now(), reservas = 0, pego_em = null,
+         erro_codigo = null,
+         cartela_linhas = case when p_cartela is null then cartela_linhas
+                               else array(select btrim(l) from unnest(p_cartela) with ordinality t(l, o) order by o) end,
+         ajustes = case when v.erro_codigo = 'cartela_nao_cabe' and coalesce(ajustes->>'cartela_extra', '') <> ''
+                        then ajustes - 'cartela_extra' else ajustes end
+   where id = v.id;
+  return jsonb_build_object('id', v.id, 'modo', v_modo);
+end $$;
+
+-- O que falta no vídeo do reel (v0.33.0): o texto extra da cartela que o robô gravou é conferido com o desta cartela (ajustes.cartela_extra,
+-- do editor) ou, sem ele, com o das Configurações. O resto como antes.
+create or replace function public.radar_video_pendencia(p_peca bigint) returns text
+language plpgsql stable set search_path = public as $$
+declare
+  p   public.radar_pauta_pecas%rowtype;
+  v   public.radar_videos%rowtype;
+  v_x text;
+begin
+  select * into p from public.radar_pauta_pecas where id = p_peca;
+  if p.id is null or p.formato <> 'reel' then return null; end if;
+  if exists (select 1 from public.radar_videos where peca_id = p.id and situacao = 'aguardando_envio') then
+    return 'Reel: termine de enviar a gravação (Corretor de vídeo)';
+  end if;
+  select * into v from public.radar_videos
+   where peca_id = p.id and situacao in ('na_fila','processando','pronto','regravar','erro') order by versao desc limit 1;
+  if v.id is null then return 'Reel: envie a gravação (Corretor de vídeo)'; end if;
+  if v.situacao in ('na_fila','processando') then return 'Reel: o corretor ainda está trabalhando'; end if;
+  if v.situacao = 'erro' then return 'Reel: o corretor parou com erro (' || coalesce(v.erro_codigo, 'erro_interno') || ')'; end if;
+  if v.situacao = 'regravar' then return 'Reel: o vídeo precisa ser regravado (veja o relatório)'; end if;
+  if v.sha256 is null or 'corrigido' = any(v.arquivos_apagados) then
+    return 'Reel: o vídeo corrigido foi apagado (prazo de guarda): envie a gravação de novo';
+  end if;
+  if v.roteiro_hash is distinct from public.radar_hash_texto(p.roteiro) then
+    return 'Reel: o roteiro mudou depois da gravação: use “Conferir com o roteiro novo” ou grave de novo';
+  end if;
+  v_x := public.radar_video_pessoas_falta(p.id, v.fala_pessoa, v.pessoas);
+  if v_x is not null then return 'Reel: ' || v_x; end if;
+  if public.radar_video_cartela_falta(v.cartela_linhas, v.fala_pessoa) is not null then
+    return 'Reel: a cartela não confere com as Configurações ou com Pessoas e termos: refaça a cartela';
+  end if;
+  if v.gancho is not null and v.ajustes->'sem_gancho' is distinct from 'true'::jsonb and v.gancho is distinct from btrim(p.chamada) then
+    return 'Reel: o texto do gancho mudou depois da gravação (o vídeo tem o de antes): o administrador marca “Sem o texto do gancho” nos ajustes, ou envie a gravação de novo';
+  end if;
+  if v.relatorio ? 'cartela_extra' and v.relatorio->>'cartela_extra' is distinct from
+       (case when jsonb_typeof(v.ajustes->'cartela_extra') = 'string' then v.ajustes->>'cartela_extra' else public.radar_video_cfg_texto('cartela_extra') end) then
+    return 'Reel: o texto extra da cartela mudou nas Configurações depois da montagem: o administrador marca “Refazer a cartela” nos ajustes (o vídeo é montado de novo)';
+  end if;
+  if v.duracao_final > 90 then return 'Reel: o vídeo passou de 90 s'; end if;
+  return null;
+end $$;
+
+-- O robô terminou (v0.33.0: + a trava do robô de antes). Com mudanças do editor nos ajustes e o relatório sem "edicao" (o robô do commit
+-- antigo, RADAR_VIDEO_COMMIT, não conhece as chaves novas e montaria sem elas), o vídeo NÃO é aceito: vira erro "robo_desatualizado";
+-- ficam o sha256 e o relatório de antes, e o arquivo que subiu sai na limpeza ("antigos"). O resto como antes: o banco decide a situação
+-- de novo — a divergência que o administrador não marcou "a transcrição errou" pede regravar, a não ser a que o robô marcou cortada
+-- (regravar false: o trecho não vai ao ar) — e a frase do boletim pago também.
+create or replace function public.radar_video_concluir(p_id uuid, p_tentativa int, p_situacao text, p_relatorio jsonb, p_sha256 text,
+                                                       p_bytes bigint, p_duracao numeric) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v      public.radar_videos%rowtype;
+  v_rel  jsonb;
+  v_sit  text := p_situacao;
+  v_err  jsonb;
+begin
+  v := public.radar_video_do_robo(p_id, p_tentativa, true);
+  if v.arquivos_apagados && array['bruto','textos'] then
+    raise exception 'RADAR316: os clipes ou os textos deste pedido foram apagados (revogação ou prazo de guarda)' using errcode = 'P0001';
+  end if;
+  if p_situacao is null or p_situacao not in ('pronto','regravar') then
+    raise exception 'RADAR316: situação final fora do esperado' using errcode = 'P0001';
+  end if;
+  if p_sha256 is null or p_sha256 !~ '^[0-9a-f]{64}$' or p_bytes is null or p_bytes not between 1 and 314572800
+     or p_duracao is null or p_duracao <= 0 or p_duracao > 600 then
+    raise exception 'RADAR316: o vídeo corrigido não confere (hash, tamanho ou duração)' using errcode = 'P0001';
+  end if;
+  if p_relatorio is null or jsonb_typeof(p_relatorio) <> 'object' or length(p_relatorio::text) > 59000
+     or (p_relatorio ? 'capa' and not (jsonb_typeof(p_relatorio->'capa') = 'object'
+                                        and coalesce(p_relatorio->'capa'->>'sha256', '') ~ '^[0-9a-f]{64}$')) then
+    raise exception 'RADAR316: relatório fora do formato' using errcode = 'P0001';
+  end if;
+  if v.ajustes ?| array['cortar','inicio_q','fim_q','capa_q','legenda_tamanho','legenda_posicao','legenda_cor','cartela_extra']
+     and not p_relatorio ? 'edicao' then
+    update public.radar_videos
+       set situacao = 'erro', erro_codigo = 'robo_desatualizado', pego_em = null,
+           antigos = antigos or (sha256 is distinct from p_sha256)
+     where id = v.id;
+    return jsonb_build_object('situacao', 'erro');
+  end if;
+  v_rel := p_relatorio || '{"parcial": false}'::jsonb;
+  v_err := case when jsonb_typeof(v.ajustes->'transcricao_errou') = 'array' then v.ajustes->'transcricao_errou' else '[]'::jsonb end;
+  if exists (select 1 from jsonb_array_elements(case when jsonb_typeof(v_rel->'divergencias') = 'array' then v_rel->'divergencias' else '[]' end) d
+              where jsonb_typeof(d) <> 'object' or coalesce(d->'regravar', 'true'::jsonb) <> 'false'::jsonb
+                    and not exists (select 1 from jsonb_array_elements(v_err) k where k = d->'id')) then
+    v_sit := 'regravar';
+  end if;
+  if public.radar_pauta_copia_paga(array[coalesce(v_rel->>'texto_final', '')]) then
+    v_sit := 'regravar';
+    v_rel := v_rel || jsonb_build_object('avisos', (case when jsonb_typeof(v_rel->'avisos') = 'array' then v_rel->'avisos' else '[]'::jsonb end)
+                                                   || '["boletim_pago"]'::jsonb);
+  end if;
+  update public.radar_videos
+     set situacao = v_sit, relatorio = v_rel, sha256 = p_sha256, bytes = p_bytes, duracao_final = round(p_duracao, 2),
+         erro_codigo = null, pego_em = null, antigos = antigos or (sha256 is not null and sha256 <> p_sha256)
+   where id = v.id;
+  return jsonb_build_object('situacao', v_sit);
+end $$;
+
+-- A prévia (v0.33.0: + a capa, quadros/<id>/<sha256 do vídeo>/capa-<sha256 da capa>.jpg, quando o robô a gravou: relatorio.capa; o
+-- sha256 da capa vai no nome porque trocar só a capa monta o mesmo vídeo, e o armazenamento nunca sobrescreve). O resto como antes.
+create or replace function public.radar_video_para_previa(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v   public.radar_videos%rowtype;
+  v_x text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR300: só o editor ou o administrador vê o vídeo do reel' using errcode = '42501';
+  end if;
+  select * into v from public.radar_videos where id = p_id;
+  if v.id is null or v.situacao not in ('pronto','regravar') or v.sha256 is null or 'corrigido' = any(v.arquivos_apagados) then
+    raise exception 'RADAR309: o vídeo corrigido não está disponível (ainda não ficou pronto, foi substituído ou apagado)' using errcode = 'P0001';
+  end if;
+  v_x := public.radar_video_pessoas_falta(v.peca_id, v.fala_pessoa, v.pessoas);
+  if v_x is not null then
+    raise exception 'RADAR304: %', v_x using errcode = 'P0001';
+  end if;
+  insert into public.radar_video_acessos (video_id, usuario, acao) values (v.id, auth.uid(), 'previa');
+  return jsonb_build_object('video', format('corrigido/%s/%s.mp4', v.id, v.sha256), 'sha256', v.sha256,
+                            'quadros', (select jsonb_agg(format('quadros/%s/%s/q%s.jpg', v.id, v.sha256, k) order by k) from generate_series(1, 4) k))
+         || case when jsonb_typeof(v.relatorio->'capa') = 'object' and coalesce(v.relatorio->'capa'->>'sha256', '') ~ '^[0-9a-f]{64}$'
+                 then jsonb_build_object('capa', format('quadros/%s/%s/capa-%s.jpg', v.id, v.sha256, v.relatorio->'capa'->>'sha256'))
+                 else '{}'::jsonb end;
+end $$;
+
+-- Baixar o vídeo aprovado (v0.33.0: + a capa do mesmo sha256, quando o robô a gravou). O resto como antes.
+create or replace function public.radar_video_para_baixar(p_peca bigint, p_lido timestamptz) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_r jsonb;
+  p   public.radar_pauta_pecas%rowtype;
+  v   public.radar_videos%rowtype;
+  v_i bigint;
+  v_x text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR300: só o editor ou o administrador baixa o vídeo do reel' using errcode = '42501';
+  end if;
+  v_r := public.radar_pauta_pode_copiar(p_peca, p_lido, null);
+  if v_r ? 'motivo' then return v_r; end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca;
+  if p.formato <> 'reel' or p.video_id is null or p.video_sha256 is null then
+    return jsonb_build_object('motivo', 'Só o reel aprovado com o vídeo corrigido tem vídeo para baixar.');
+  end if;
+  select * into v from public.radar_videos where id = p.video_id;
+  if v.sha256 is distinct from p.video_sha256 or v.situacao <> 'pronto' then
+    return jsonb_build_object('motivo', 'O vídeo aprovado não é mais o vídeo da peça: desfaça a aprovação e confira.');
+  end if;
+  if 'corrigido' = any(v.arquivos_apagados) then
+    return jsonb_build_object('motivo', 'O vídeo corrigido foi apagado (prazo de guarda): desfaça a aprovação e envie a gravação de novo.');
+  end if;
+  foreach v_i in array p.pessoas || array(select x from unnest(v.pessoas) x where not x = any(p.pessoas)) loop
+    v_x := public.radar_video_pessoa_falta(v_i, p.id);
+    if v_x is not null then
+      return jsonb_build_object('motivo', format('Uma pessoa da peça não pode aparecer no vídeo hoje (%s): confira em Pauta → Pessoas e termos.', v_x));
+    end if;
+  end loop;
+  insert into public.radar_video_acessos (video_id, usuario, acao) values (v.id, auth.uid(), 'baixar');
+  return jsonb_build_object('ok', true, 'caminho', format('corrigido/%s/%s.mp4', v.id, v.sha256), 'data', p.data)
+         || case when jsonb_typeof(v.relatorio->'capa') = 'object' and coalesce(v.relatorio->'capa'->>'sha256', '') ~ '^[0-9a-f]{64}$'
+                 then jsonb_build_object('capa', format('quadros/%s/%s/capa-%s.jpg', v.id, v.sha256, v.relatorio->'capa'->>'sha256'))
+                 else '{}'::jsonb end;
+end $$;
+
+-- os privilégios das funções novas (o laço que revoga tudo, na seção 5, já passou): a paleta (sem dado de ninguém) e o editor (a função
+-- confere que é o administrador) para a tela; as auxiliares só com o dono. As redefinidas acima ficam com os privilégios de antes.
+revoke all on function public.radar_video_paleta(), public.radar_video_editar(uuid, text, jsonb, text[], text),
+  public.radar_video_edicao_falta(public.radar_videos, jsonb), public.radar_video_edicao_duracao(public.radar_videos, jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.radar_video_paleta(), public.radar_video_editar(uuid, text, jsonb, text[], text) to authenticated;
+
+-- ---------------------------------------------------------------------
 -- 7. REGISTRO DA INSTALAÇÃO E EVIDÊNCIA
 -- ---------------------------------------------------------------------
 update public.radar_instalacoes
