@@ -742,7 +742,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.30.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.31.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1209,7 +1209,13 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (28, 6, 8, 9, 1, 0)          # v0.29.0: + radar_lembretes e a chave "lembretes"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.30.0", [], 28)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.31.0", [], 28)
+            # v0.31.0 (revisão): na instalação nova as seis fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
+            # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso
+            assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (6, True)
+        leiame = (RAIZ / "LEIAME-radar.md").read_text(encoding="utf-8")
+        linha = next(l for l in leiame.splitlines() if l.startswith("| Receita Federal — Atos normativos |"))
+        assert "Na instalação nova ela entra **ligada**" in linha and "se o diagnóstico der HTTP 403, desligue-a" in linha
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_sem_tx with (force)")
@@ -1685,8 +1691,20 @@ def test_endereco_em_forma_unica():
     with conectar() as c:
         for entrada, saida in [("https://x.gov.br/a/", "https://x.gov.br/a"), ("https://x.gov.br/a#b", "https://x.gov.br/a"), ("https://x.gov.br/", "https://x.gov.br"),
                                ("https://x.gov.br/a?id=1&utm_source=z", "https://x.gov.br/a?id=1"), ("https://x.gov.br/a?utm_source=z&id=1", "https://x.gov.br/a?id=1"),
-                               ("  https://x.gov.br/a?id=1  ", "https://x.gov.br/a?id=1"), ("https://x.gov.br/a?fbclid=q", "https://x.gov.br/a")]:
+                               ("  https://x.gov.br/a?id=1  ", "https://x.gov.br/a?id=1"), ("https://x.gov.br/a?fbclid=q", "https://x.gov.br/a"),
+                               # v0.31.0: o "#/…" de uma página montada no navegador é o endereço do ato (sistema Normas da Receita); o
+                               # "/vs/…" da consulta sai, como no robô; a âncora comum continua saindo
+                               ("https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/154087",
+                                "https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/154087"),
+                               ("https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/154087/vs/MTU0MDg3LDE1NDA1/Nw==",
+                                "https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/154087"),
+                               ("https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/154087/", "https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/154087"),
+                               ("https://x.gov.br/app#!/ato/9", "https://x.gov.br/app#!/ato/9"), ("https://x.gov.br/a/#/b#c", "https://x.gov.br/a/#/b"),
+                               ("https://x.gov.br/a#secao-2", "https://x.gov.br/a")]:
             assert c.execute("select radar_url_base(%s)", (entrada,)).fetchone()[0] == saida, entrada
+        # dois atos do Normas não são mais o mesmo endereço (o texto colado de um ato não vai para a captura de outro)
+        assert c.execute("select radar_url_base('https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/1') <> "
+                         "radar_url_base('https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/2')").fetchone()[0] is True
 
 
 # ----------------------------------------------------------------------- relevância das capturas (v0.6.0)
@@ -2064,9 +2082,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.30.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.31.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.30.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.31.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2096,7 +2114,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.30.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.31.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -5623,8 +5641,8 @@ def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
             assert contar() == antes and estado() == como_estava
         assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
         assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
-        # (o setup registra a versão dele: v0.30.0, que traz junto os da v0.28.0 e da v0.29.0)
-        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.30.0",), ("v0.30.0",)]
+        # (o setup registra a versão dele: v0.31.0, que traz junto os da v0.28.0 a v0.30.0)
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.31.0",), ("v0.31.0",)]
         assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
     finally:
         assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro
@@ -5783,3 +5801,114 @@ def test_radar_prorrogacoes_janela_repeticao_conferida_e_papeis(limpo):
         db.execute("delete from radar_config where chave = 'prorrogacoes_conferidas'")
         db.execute("delete from radar_capturas where fonte_id = (select id from radar_fontes where slug = 'teste-itc-ficticia')")
         db.execute("delete from radar_fontes where slug = 'teste-itc-ficticia'")
+
+
+# ------------------------------------------------- v0.31.0: fontes oficiais que faltavam
+FONTES_V031 = RAIZ / "sql" / "radar-fontes-novas-v0.31.0.sql"
+SLUGS_V031 = ("dou-presidencia", "dou-confaz", "dou-trabalho-previdencia", "dou-fazenda-ministro", "esocial-noticias",
+              "fgts-digital-comunicados", "previdencia-noticias", "inss-noticias", "domsc-palhoca-leis", "domsc-palhoca-decretos",
+              "domsc-saojose-leis", "domsc-saojose-decretos")
+NORMAS_ANTIGA = ("http://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?tipoData=2&dt_inicio={inicio}&dt_fim={fim}"
+                 "&optOrdem=Publicacao_DESC&p={p}")
+
+
+def test_fontes_da_v0310_so_com_o_robo_novo_ligadas_as_conferidas_e_o_sql_pode_rodar_de_novo(limpo):
+    """O SQL das fontes novas para no começo enquanto o robô da v0.31.0 não coletou (o robô antigo ignoraria o filtro de tema e traria
+    tudo); depois cadastra as fontes (ligadas só as conferidas), troca o endereço da rfb-normas (que continua desligada) e pode rodar
+    de novo sem desfazer nada do que o administrador mudou."""
+    setup = limpo.execute("select url, config, ativo from radar_fontes where slug = 'rfb-normas'").fetchone()
+    lista = "(" + ",".join(f"'{s}'" for s in SLUGS_V031) + ")"
+    try:
+        r = psql(FONTES_V031)
+        assert r.returncode != 0 and "rode este SQL depois de publicar a v0.31.0" in r.stderr and "Nada foi alterado" in r.stderr
+        fid = limpo.execute("select id from radar_fontes where slug = 'rfb-noticias'").fetchone()[0]
+        limpo.execute("insert into radar_execucoes (fonte_id, versao_robo, status) values (%s, '0.21.0', 'ok'), (%s, '0.4.0', 'ok'), "
+                      "(%s, '0.31.0-teste', 'ok'), (%s, null, 'falha')", (fid, fid, fid, fid))
+        r = psql(FONTES_V031)                                   # o robô antigo (0.21.0; "0.4.0" não passa por ordem de texto) e versão estranha
+        assert r.returncode != 0 and "rode este SQL depois" in r.stderr
+        assert limpo.execute(f"select count(*) from radar_fontes where slug in {lista}").fetchone()[0] == 0
+        limpo.execute("insert into radar_execucoes (fonte_id, versao_robo, status) values (%s, '0.31.0', 'ok')", (fid,))
+        # em produção, a rfb-normas ainda tem o endereço da consulta antiga e está desligada
+        limpo.execute("update radar_fontes set url = %s, config = '{\"sem_pagina_de_texto\": true}', ativo = false where slug = 'rfb-normas'",
+                      (NORMAS_ANTIGA,))
+        r = psql(FONTES_V031)
+        assert r.returncode == 0, r.stderr
+        linhas = {s: (a, o, c, t, ab) for s, a, o, c, t, ab in limpo.execute(
+            f"select slug, ativo, oficial, categoria_padrao, tipo_coletor, abrangencia from radar_fontes where slug in {lista}").fetchall()}
+        assert {s: v[0] for s, v in linhas.items()} == {
+            "dou-presidencia": True, "dou-confaz": True, "dou-trabalho-previdencia": True, "dou-fazenda-ministro": False,
+            "esocial-noticias": True, "fgts-digital-comunicados": True, "previdencia-noticias": True, "inss-noticias": False,
+            "domsc-palhoca-leis": False, "domsc-palhoca-decretos": False, "domsc-saojose-leis": False, "domsc-saojose-decretos": False}
+        assert all(v[1] for v in linhas.values())                                        # todas oficiais
+        assert (linhas["dou-confaz"][2], linhas["dou-trabalho-previdencia"][2], linhas["esocial-noticias"][2],
+                linhas["domsc-palhoca-leis"][2], linhas["dou-presidencia"][2]) == ("santa-catarina", "trabalhista", "trabalhista",
+                                                                                   "santa-catarina", "federal")
+        assert linhas["domsc-saojose-decretos"][3:] == ("rss", "municipal") and linhas["dou-confaz"][3] == "inlabs"
+        palavras = limpo.execute("select config->'palavras' from radar_fontes where slug = 'dou-presidencia'").fetchone()[0]
+        assert "\\bPIS\\b" in palavras and "contribuiç" in palavras                       # a barra invertida e o acento chegam inteiros
+        # a rfb-normas: a pesquisa nova, as opções iguais às da carga inicial (e às do robo/radar_fontes.json) e continua desligada
+        assert limpo.execute("select url, config, ativo from radar_fontes where slug = 'rfb-normas'").fetchone() == (setup[0], setup[1], False)
+        assert "dou-presidencia|Diário Oficial da União — leis, decretos e medidas provisórias (INLABS)|ligada" in r.stdout
+        assert "domsc-palhoca-leis|Palhoça — leis sobre tributos (Diário Oficial dos Municípios)|desligada" in r.stdout
+        # de novo: o que o administrador ligou, desligou ou ajustou fica
+        limpo.execute("update radar_fontes set ativo = false where slug = 'esocial-noticias'")
+        limpo.execute("update radar_fontes set ativo = true where slug = 'domsc-palhoca-decretos'")
+        limpo.execute("""update radar_fontes set config = config || '{"excluir_orgao": "^(SRRF|DRF|DISIT)"}', ativo = true where slug = 'rfb-normas'""")
+        assert psql(FONTES_V031).returncode == 0
+        assert dict(limpo.execute("select slug, ativo from radar_fontes where slug in ('esocial-noticias', 'domsc-palhoca-decretos', 'rfb-normas')")
+                    .fetchall()) == {"esocial-noticias": False, "domsc-palhoca-decretos": True, "rfb-normas": True}
+        assert limpo.execute("select config->>'excluir_orgao' from radar_fontes where slug = 'rfb-normas'").fetchone()[0] == "^(SRRF|DRF|DISIT)"
+        assert limpo.execute(f"select count(*) from radar_fontes where slug in {lista}").fetchone()[0] == 12
+    finally:
+        limpo.execute(f"delete from radar_fontes where slug in {lista}")
+        limpo.execute("update radar_fontes set url = %s, config = %s, ativo = %s where slug = 'rfb-normas'",
+                      (setup[0], json.dumps(setup[1]), setup[2]))
+
+
+def test_texto_oficial_de_um_ato_do_normas_vai_para_a_captura_desse_ato(limpo):
+    """v0.31.0: a radar_url_base tirava o "#/…" do endereço dos atos do Normas, e todos viravam o mesmo endereço: o texto colado de um
+    ato ia para a captura de OUTRO ato da fonte. Agora vai para a do próprio ato (com ou sem o "/vs/…" da consulta), e um ato que o robô
+    ainda não viu entra como captura nova da fonte (o domínio da consulta externa está em "dominios")."""
+    base = "https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/"
+    outro = nova_captura(limpo, url=base + "154087")                                     # já tem texto
+    fid = limpo.execute("select id from radar_fontes where slug = 'rfb-normas'").fetchone()[0]
+    sem_texto = limpo.execute("insert into radar_capturas (fonte_id, url, titulo, hash_titulo) values (%s, %s, 'Portaria Coana nº 214', 'h') "
+                              "returning id", (fid, base + "154126")).fetchone()[0]
+    a = novo_assunto(limpo)
+    r = incluir_texto(a, fonte="rfb-normas", url=base + "154126/vs/MTU0MTI2LDE1NDExNA==", titulo="Portaria Coana nº 214")
+    assert (r["captura_id"], r["ja_existia"], r["texto_incluido"]) == (sem_texto, True, True)
+    assert limpo.execute("select texto from radar_capturas where id = %s", (outro,)).fetchone()[0] == TEXTO_OFICIAL      # o outro ato não muda
+    r = incluir_texto(a, fonte="rfb-normas", url=base + "154999", titulo="Ato que o robô não viu")
+    assert r["ja_existia"] is False and limpo.execute("select url from radar_capturas where id = %s", (r["captura_id"],)).fetchone()[0] == base + "154999"
+
+
+def test_consulta_do_leiame_acha_o_texto_do_normas_que_a_versao_anterior_ligou_ao_ato_errado(limpo):
+    """v0.31.0 (revisão): na v0.30.0, a radar_url_base guardava só o site de todo ato do Normas (tirava o "#/consulta/externa/N"): o 1º
+    ato colado virava uma captura com esse endereço, e o 2º ato colado era ligado à captura do 1º (e o texto dele não era guardado).
+    A versão nova não desfaz isso sozinha; a consulta do LEIAME (passo 1 de "Da v0.30.0 para a v0.31.0", só de leitura) acha essas
+    ligações para o dono conferir, e não acusa o ato colado já na v0.31.0 (que tem o endereço do ato)."""
+    leiame = (RAIZ / "LEIAME-radar.md").read_text(encoding="utf-8")
+    passo1 = leiame[leiame.index("**Da v0.30.0 para a v0.31.0**"):leiame.index("\n2. Publique a versão no repositório (`main`): o robô da coleta")]
+    consulta = re.search(r"```sql\n(.*?)```", passo1, re.S).group(1)
+    assert re.fullmatch(r"(?:\s*--[^\n]*\n)*\s*select\b[^;]*;\s*", consulta, re.S)           # só lê: um select, nada mais
+    atual = re.search(r"create or replace function public\.radar_url_base\(p_url text\).*?\n\$\$;", SETUP.read_text(encoding="utf-8"), re.S).group(0)
+    antiga = r"""create or replace function public.radar_url_base(p_url text) returns text
+language sql immutable set search_path = public as $$
+  select regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(btrim(coalesce(p_url, '')),
+           '#.*$', ''), '([?&])(utm_[a-z_]+|fbclid|gclid)=[^&]*', '\1', 'gi'), '([?&])&+', '\1', 'g'), '[?&]+$', ''), '(.)/+$', '\1');
+$$;"""
+    base = "https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/"
+    a1, a2, a3 = novo_assunto(limpo), novo_assunto(limpo), novo_assunto(limpo)
+    try:
+        limpo.execute(antiga)                                                  # o banco da v0.30.0
+        r1 = incluir_texto(a1, fonte="rfb-normas", url=base + "154126", titulo="Portaria Coana nº 214")
+        r2 = incluir_texto(a2, fonte="rfb-normas", url=base + "154087", titulo="Solução de Consulta Cosit nº 196")
+        assert (r2["captura_id"], r2["texto_incluido"]) == (r1["captura_id"], False)        # o erro: o 2º ato foi para a captura do 1º
+    finally:
+        limpo.execute(atual)
+    r3 = incluir_texto(a3, fonte="rfb-normas", url=base + "154087", titulo="Solução de Consulta Cosit nº 196")    # já na v0.31.0
+    assert r3["captura_id"] != r1["captura_id"] and r3["ja_existia"] is False
+    linhas = limpo.execute(consulta).fetchall()
+    assert [l[:4] for l in linhas] == [(r1["captura_id"], "Portaria Coana nº 214", "https://normasinternet2.receita.fazenda.gov.br", a1),
+                                       (r1["captura_id"], "Portaria Coana nº 214", "https://normasinternet2.receita.fazenda.gov.br", a2)]
+    assert limpo.execute("select count(*) from radar_capturas where id = %s and url = %s", (r3["captura_id"], base + "154087")).fetchone()[0] == 1

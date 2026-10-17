@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import time
 import unicodedata
@@ -12,7 +13,7 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from bs4 import BeautifulSoup
 
-VERSAO = "0.21.0"
+VERSAO = "0.31.0"     # v0.31.0: a coleta muda (filtro de tema, Normas da Receita pela API nova, INLABS uma vez por rodada)
 AGENTE = f"ArteconRadar/{VERSAO} (+https://www.artecon.cnt.br; monitoramento de fontes oficiais)"
 
 MESES = {
@@ -159,7 +160,8 @@ def baixar(url: str, sessao: requests.Session | None = None, tentativas: int = 3
             if r.status_code == 200:
                 declarado = (r.headers.get("content-type") or "").lower()
                 if "charset" not in declarado:
-                    r.encoding = r.apparent_encoding or "utf-8"
+                    # v0.31.0: JSON é sempre UTF-8 (RFC 8259); adivinhar a codificação estragaria os acentos do texto do ato
+                    r.encoding = "utf-8" if "json" in declarado else (r.apparent_encoding or "utf-8")
                 return r.status_code, r.text
             ultimo = ErroDownload(f"HTTP {r.status_code} em {url}", r.status_code)
             if r.status_code in (400, 401, 403, 404, 410):
@@ -169,6 +171,46 @@ def baixar(url: str, sessao: requests.Session | None = None, tentativas: int = 3
         if n < tentativas:
             time.sleep(espera * n)
     raise ultimo or ErroDownload(f"falha ao baixar {url}")
+
+
+def _mensagem_do_erro(r: requests.Response) -> str:
+    """O "message" do JSON de erro (a API do Normas diz, por exemplo, "Indexação: Falha ao pesquisar os atos")."""
+    try:
+        dados = r.json()
+    except ValueError:
+        return ""
+    msg = dados.get("message") if isinstance(dados, dict) else None
+    return f" ({normalizar_espacos(str(msg))[:200]})" if msg else ""
+
+
+def postar_json(url: str, corpo: dict, sessao: requests.Session | None = None, tentativas: int = 3,
+                espera: float = 2.0, limite: int = 40) -> tuple[int, str]:
+    """v0.31.0: o mesmo que baixar(), com POST de um corpo JSON (a pesquisa pública do sistema Normas da Receita).
+    Devolve (status HTTP, texto da resposta). Não tenta de novo quando o site recusa (400, 401, 403, 404, 410); em erro 5xx ou
+    queda de conexão tenta de novo, com pausa, e no fim levanta ErroDownload (com o "message" do JSON de erro, quando houver)."""
+    sessao = sessao or requests.Session()
+    dados = json.dumps(corpo, ensure_ascii=False).encode("utf-8")
+    ultimo = None
+    for n in range(1, tentativas + 1):
+        try:
+            r = sessao.post(url, data=dados, timeout=limite, headers={
+                "User-Agent": AGENTE,
+                "Content-Type": "application/json; charset=UTF-8",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "pt-BR,pt;q=0.9",
+            })
+            if r.status_code == 200:
+                if "charset" not in (r.headers.get("content-type") or "").lower():
+                    r.encoding = "utf-8"
+                return r.status_code, r.text
+            ultimo = ErroDownload(f"HTTP {r.status_code} em {url}{_mensagem_do_erro(r)}", r.status_code)
+            if r.status_code in (400, 401, 403, 404, 410):
+                break
+        except requests.RequestException as e:
+            ultimo = ErroDownload(f"{type(e).__name__}: {e}")
+        if n < tentativas:
+            time.sleep(espera * n)
+    raise ultimo or ErroDownload(f"falha ao enviar a pesquisa a {url}")
 
 
 def agora_iso() -> str:

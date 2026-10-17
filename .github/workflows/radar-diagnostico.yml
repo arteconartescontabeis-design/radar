@@ -2,11 +2,12 @@ name: Radar — diagnóstico das fontes
 
 # Baixa as páginas reais e mostra o que o robô reconhece. Só lê: com as chaves do robô,
 # confere as fontes ativas do banco; sem elas, as do arquivo robo/radar_fontes.json.
+# v0.31.0: em "enderecos", o identificador de uma fonte (ex.: rfb-normas) confere essa fonte mesmo desligada (teste antes de ligar).
 on:
   workflow_dispatch:
     inputs:
       enderecos:
-        description: "Testar endereços antes de cadastrar (separe por espaço). Vazio = fontes ativas"
+        description: "Endereços para testar antes de cadastrar, ou identificadores de fontes (ex.: rfb-normas), mesmo desligadas; separe por espaço. Vazio = fontes ativas"
         required: false
         default: ""
       padrao:

@@ -4,9 +4,13 @@ Cada função recebe o CONTEÚDO já baixado e a configuração da fonte e devol
 os itens encontrados. Não acessam rede nem banco: por isso são testáveis com
 amostras salvas, e uma mudança de layout se resolve ajustando a `config` da
 fonte (padrão de URL/seletor), sem mexer em código.
+
+v0.31.0: o filtro de tema ("palavras" e "excluir_palavras", em qualquer tipo de fonte), a data marcada como "publicado" nos cartões
+do gov.br e o sistema Normas da Receita pela pesquisa pública nova (JSON; a rede fica em radar_normas.py).
 """
 from __future__ import annotations
 
+import json
 import re
 import xml.etree.ElementTree as ET
 from html.entities import name2codepoint
@@ -16,12 +20,15 @@ from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
-from radar_util import RE_DATA_BR, RE_DATA_EXTENSO, canonizar_url, hoje_brasilia, interpretar_data, normalizar_espacos
+from radar_util import (RE_DATA_BR, RE_DATA_EXTENSO, canonizar_url, hoje_brasilia, interpretar_data, normalizar_espacos,
+                        sem_acentos)
 
 RE_ANCORA_GENERICA = re.compile(
     r"^(acess(e|ar)|baix(e|ar)|leia|saiba|ver|veja|clique|continue|mais|download|abrir)\b", re.I)
 LIMITES_DO_CARTAO = ("li", "article", "tr", "dd")
 TAMANHO_MAXIMO_DO_CARTAO = 700
+# v0.31.0: gov.br (summary_view) — o resumo vem antes da linha "publicado 27/08/2026 17h11" e costuma citar prazos
+RE_DATA_PUBLICADO = re.compile(r"\bpublicad[oa]\s*(?:em\s*)?:?\s*(\d{1,2}º?[/.]\d{1,2}[/.]\d{4})", re.I)
 
 
 def _ancora_generica(texto: str) -> bool:
@@ -41,6 +48,7 @@ class Item:
     url_texto: str | None = None          # de onde baixar o texto, se diferente da url
     texto_da_listagem: str | None = None  # o que a própria listagem traz de texto oficial (ex.: ementa)
     metadados: dict = field(default_factory=dict)
+    trecho_do_tema: str | None = None     # v0.31.0: onde o filtro de tema também procura (DOU sem ementa: o começo do texto)
 
 
 @dataclass
@@ -48,6 +56,7 @@ class Listagem:
     brutos: int                            # itens reconhecidos antes do filtro de data
     itens: list[Item]                      # itens dentro da janela, já sem repetição
     incompleta: str | None = None          # motivo, se alguma página além da primeira não pôde ser lida
+    fora_do_tema: int = 0                  # v0.31.0: itens da janela que o filtro de tema deixou de fora (não viram captura)
 
 
 def _local(tag: str) -> str:
@@ -80,8 +89,55 @@ def data_no_texto(texto: str, config: dict, hoje: date | None = None) -> tuple[d
     return None, True
 
 
+# ------------------------------------------------------------ filtro de tema (v0.31.0)
+CHAVES_DO_TEMA = ("palavras", "excluir_palavras")
+
+
+def expressao_do_tema(valor, campo: str = "palavras") -> re.Pattern | None:
+    """config.palavras / config.excluir_palavras: uma expressão regular (texto) ou uma lista de pedaços de expressão (basta um casar).
+    Sem diferença de maiúsculas e de acentos: o acento sai da expressão e do texto ("contribuiç" casa com "CONTRIBUIÇÃO" e com
+    "contribuicao"; atenção: "nº" vira "no"). Vazio = sem filtro. Expressão inválida vira erro claro (a fonte fica com falha)."""
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return None
+    if isinstance(valor, str):
+        partes = [valor]
+    elif isinstance(valor, list) and all(isinstance(v, str) for v in valor):
+        partes = [v for v in valor if v.strip()]
+    else:
+        raise ValueError(f"as palavras do tema ({campo}) precisam ser um texto ou uma lista de textos, como [\"FGTS\", \"eSocial\"]")
+    if not partes:
+        return None
+    for n, parte in enumerate(partes, 1):
+        try:
+            re.compile(sem_acentos(parte), re.I)
+        except re.error as e:
+            qual = f'o item {n} ("{parte[:60]}")' if isinstance(valor, list) else f'"{parte[:60]}"'
+            raise ValueError(f"as palavras do tema ({campo}) não são uma expressão válida: {qual} — {e}") from e
+    junta = partes[0] if isinstance(valor, str) else "|".join(f"(?:{p})" for p in partes)
+    return re.compile(sem_acentos(junta), re.I)
+
+
+def filtro_de_tema(config: dict):
+    """O item entra se "palavras" achar algo E "excluir_palavras" não achar nada, no título + resumo (ementa) do item, mais o
+    trecho_do_tema (DOU sem ementa: o começo do texto). Nunca no texto inteiro: o preâmbulo dos atos ("O MINISTRO DE ESTADO DO
+    TRABALHO...") faria tudo passar — a não ser com "palavras_no_texto": true (procura também no texto que veio no feed ou no XML).
+    Devolve None quando a fonte não tem filtro de tema."""
+    incluir = expressao_do_tema(config.get("palavras"), "palavras")
+    excluir = expressao_do_tema(config.get("excluir_palavras"), "excluir_palavras")
+    if incluir is None and excluir is None:
+        return None
+    no_texto = bool(config.get("palavras_no_texto"))
+
+    def passa(it: Item) -> bool:
+        alvo = sem_acentos(" ".join(p for p in (it.titulo, it.resumo, it.trecho_do_tema,
+                                                it.texto_da_listagem if no_texto else None) if p))
+        return (incluir is None or incluir.search(alvo) is not None) and not (excluir is not None and excluir.search(alvo))
+    return passa
+
+
 def _finalizar(itens: list[Item], config: dict, hoje: date | None) -> Listagem:
     hoje = hoje or hoje_brasilia()
+    tema = filtro_de_tema(config)          # expressão inválida: erro antes de qualquer coisa
     vistos: dict[str, Item] = {}
     for it in itens:
         if not re.match(r"https?://", it.url, re.I):
@@ -91,8 +147,14 @@ def _finalizar(itens: list[Item], config: dict, hoje: date | None) -> Listagem:
             vistos[it.url] = it
     unicos = list(vistos.values())
     janela = [it for it in unicos if _na_janela(it.data, config, hoje)]
+    fora = 0
+    if tema is not None:
+        # v0.31.0: depois da janela (conta só o que viraria captura) e depois de "brutos": a página lida em que nada é do tema
+        # não vira "nenhum item reconhecido" (vazio_suspeito)
+        no_tema = [it for it in janela if tema(it)]
+        fora, janela = len(janela) - len(no_tema), no_tema
     janela.sort(key=lambda i: (i.data or date.min), reverse=True)
-    return Listagem(brutos=len(unicos), itens=janela[: int(config.get("max_itens", 40))])
+    return Listagem(brutos=len(unicos), itens=janela[: int(config.get("max_itens", 40))], fora_do_tema=fora)
 
 
 # ---------------------------------------------------------------- RSS / Atom
@@ -184,6 +246,10 @@ def listar_rss(conteudo: str, fonte: dict, hoje: date | None = None) -> Listagem
         completo = campos.get("encoded") or campos.get("content")
         if completo:
             completo = normalizar_espacos(BeautifulSoup(completo, "lxml").get_text(" ", strip=True)) or None
+        elif config.get("sem_pagina_de_texto") and resumo:
+            # v0.31.0 (DOM/SC): a fonte não abre a página de cada item; o resumo oficial do feed (título, ementa e começo do ato)
+            # é o texto guardado, marcado como parcial
+            completo = resumo
         itens.append(Item(url=url, titulo=titulo, data=quando, resumo=resumo, texto_da_listagem=completo))
     return _finalizar(itens, config, hoje)
 
@@ -257,8 +323,16 @@ def listar_html_links(conteudo: str, fonte: dict, hoje: date | None = None) -> L
             fora_do_titulo = texto_cartao
             for a in lista:
                 fora_do_titulo = fora_do_titulo.replace(normalizar_espacos(a.get_text(" ", strip=True)), " ", 1)
-            m = RE_DATA_BR.search(fora_do_titulo) or RE_DATA_EXTENSO.search(fora_do_titulo)
-            quando = interpretar_data(m.group(0)) if m else None
+            # v0.31.0: a data marcada como de publicação ("publicado 27/08/2026") vale mais que a primeira data do cartão (no
+            # gov.br o resumo vem antes e cita prazos: 7 de 30 notícias do eSocial ficavam com a data errada). Vale a ÚLTIMA: o resumo,
+            # que vem antes da linha "publicado", pode dizer "a portaria publicada em 10/03/2026"
+            ms = list(RE_DATA_PUBLICADO.finditer(fora_do_titulo))
+            m = ms[-1] if ms else None
+            if m:
+                quando = interpretar_data(m.group(1))
+            else:
+                m = RE_DATA_BR.search(fora_do_titulo) or RE_DATA_EXTENSO.search(fora_do_titulo)
+                quando = interpretar_data(m.group(0)) if m else None
 
         generica = _ancora_generica(texto_ancora)
         titulo = texto_ancora
@@ -284,56 +358,129 @@ def listar_html_links(conteudo: str, fonte: dict, hoje: date | None = None) -> L
 
 
 # ---------------------------------------------------- Normas da Receita
-RE_ID_ATO = re.compile(r"(?:consulta/externa/|idAto=)(\d+)")
+# v0.31.0: desde 04/10/2026 o sistema Normas é uma aplicação montada no navegador. Os dados vêm da mesma pesquisa pública que a
+# página usa (POST /api/indexacao/ato/pesquisar, JSON, sem captcha nem login) e o texto de cada ato, da consulta externa
+# (GET normasinternet2…/api/consulta-externa/ato/{id}/visao/multivigente). Aqui só a leitura; os pedidos ficam em radar_normas.py.
+URL_ATO_NORMAS = "https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{id}"
+URL_TEXTO_NORMAS = "https://normasinternet2.receita.fazenda.gov.br/api/consulta-externa/ato/{id}/visao/multivigente"
+LINK_PERMANENTE_NORMAS = "https://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto={id}"
 
 
 class SistemaNormasMudou(ValueError):
-    """v0.22.0 (varredura geral): desde 04/10/2026 o endereço antigo do sistema Normas (sijut2consulta) devolve a casca da aplicação
-    nova (normasinternet2, montada no navegador por JavaScript), sem a tabela de atos. O leitor desta fonte não serve mais: em vez do
-    "nenhum item reconhecido" genérico, a fonte mostra o motivo e o que fazer (a consulta da aplicação nova recusa o pedido direto)."""
-    def __init__(self):
-        super().__init__("o sistema Normas da Receita passou a ser uma aplicação montada no navegador (normasinternet2), sem a tabela "
-                         "de atos: este leitor não serve mais. Enquanto não houver leitor novo, desmarque \"Fonte ativa\" desta fonte "
-                         "e cubra os atos da Receita pelo DOU (dou-inlabs ou Destaques do DOU)")
+    """A pesquisa do sistema Normas não respondeu no formato conhecido (página da aplicação no lugar do JSON, ou JSON sem a lista
+    de atos): em vez do "nenhum item reconhecido" genérico, a fonte diz o motivo e por onde os atos continuam chegando."""
+    def __init__(self, detalhe: str = ""):
+        super().__init__("a pesquisa do sistema Normas da Receita mudou de formato" + (f" ({detalhe})" if detalhe else "") +
+                         "; o leitor desta fonte precisa de ajuste. Os atos da Receita continuam chegando pelo DOU (dou-inlabs)")
 
 
-def listar_normas_rfb(conteudo: str, fonte: dict, hoje: date | None = None) -> Listagem:
-    """Tabela do sistema Normas (tipo, nº, órgão, publicação, ementa)."""
+def _sem_html(texto) -> str:
+    texto = "" if texto is None else str(texto)
+    if "<" not in texto and "&" not in texto:
+        return normalizar_espacos(texto)
+    return normalizar_espacos(BeautifulSoup(texto, "lxml").get_text(" ", strip=True))
+
+
+def json_da_pesquisa_normas(conteudo) -> dict:
+    """A resposta da pesquisa (texto, bytes ou já lida). Página no lugar do JSON, ou JSON sem "atos": SistemaNormasMudou."""
+    if isinstance(conteudo, dict):
+        dados = conteudo
+    else:
+        if isinstance(conteudo, bytes):
+            conteudo = conteudo.decode("utf-8", "replace")
+        try:
+            dados = json.loads(conteudo or "")
+        except ValueError:
+            pagina = re.search(r"<\s*(app-root|html|!doctype)", conteudo or "", re.I)
+            raise SistemaNormasMudou("veio uma página do site no lugar da resposta da pesquisa" if pagina
+                                     else "a resposta não é JSON") from None
+    if not isinstance(dados, dict) or not isinstance(dados.get("atos"), list):
+        raise SistemaNormasMudou("a resposta não traz a lista de atos")
+    return dados
+
+
+def _regex_da_config(config: dict, chave: str) -> re.Pattern | None:
+    if not config.get(chave):
+        return None
+    try:
+        return re.compile(config[chave], re.I)
+    except re.error as e:
+        raise ValueError(f"a opção {chave} da fonte não é uma expressão válida: {e}") from e
+
+
+def listar_normas_rfb(conteudo, fonte: dict, hoje: date | None = None) -> Listagem:
+    """Atos da pesquisa do sistema Normas (JSON). O título é o nome oficial do ato ("Portaria Coana nº 214, de 15/10/2026", a data
+    do ato); a data do item é a da publicação. Endereço estável: o da página do ato, sem o sufixo "/vs/..." da consulta."""
     config = fonte.get("config") or {}
-    excluir_orgao = re.compile(config["excluir_orgao"], re.I) if config.get("excluir_orgao") else None
-    molde_texto = config.get("url_texto")
-    sopa = BeautifulSoup(conteudo or "", "lxml")
+    dados = json_da_pesquisa_normas(conteudo)
+    excluir_orgao = _regex_da_config(config, "excluir_orgao")
+    molde_texto = config.get("url_texto") or URL_TEXTO_NORMAS
     itens: list[Item] = []
-    reconhecidos = 0
-    for linha in sopa.find_all("tr"):
-        ancora = None
-        for a in linha.find_all("a", href=True):
-            if RE_ID_ATO.search(a["href"]):
-                ancora = a
-                break
-        celulas = [normalizar_espacos(c.get_text(" ", strip=True)) for c in linha.find_all("td")]
-        if ancora is None or len(celulas) < 5:
+    for ato in dados["atos"]:
+        if not isinstance(ato, dict):
             continue
-        reconhecidos += 1
-        id_ato = RE_ID_ATO.search(ancora["href"]).group(1)
-        tipo, numero, orgao, publicacao, ementa = celulas[:5]
+        id_ato = str(ato.get("idAto") or "").strip()
+        tipo_ato = ato.get("tipoAto") if isinstance(ato.get("tipoAto"), dict) else {}
+        tipo = normalizar_espacos(str(tipo_ato.get("nomeTipoAto") or ""))
+        if not (id_ato.isdigit() and tipo):
+            continue
+        numero = normalizar_espacos(str(ato.get("numeroAto") or ""))
+        orgao = " / ".join(normalizar_espacos(str(o["siglaOrgao"])) for o in (ato.get("orgaos") or [])
+                           if isinstance(o, dict) and o.get("siglaOrgao"))
         if excluir_orgao and excluir_orgao.search(orgao):
             continue
-        quando = interpretar_data(publicacao)
-        titulo = f"{tipo} {orgao} nº {numero}" + (f", de {quando:%d/%m/%Y}" if quando else "")
+        ementa = _sem_html(ato.get("ementa"))
+        data_ato = interpretar_data(str(ato.get("dataAto") or ""))
+        publicacao = interpretar_data(str(ato.get("dataPublicacao") or ""))
+        de = data_ato or publicacao
+        titulo = " ".join(p for p in (tipo, orgao) if p) + (f" nº {numero}" if numero else "") + (f", de {de:%d/%m/%Y}" if de else "")
+        url = re.sub(r"/vs/.*$", "", str(ato.get("urlVisualizacao") or "").strip())
+        if not re.match(rf"https://[!-~]+/{id_ato}$", url):
+            url = URL_ATO_NORMAS.format(id=id_ato)
         itens.append(Item(
-            # endereço estável: sem o sufixo "/vs/..." que muda a cada consulta
-            url=f"https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{id_ato}",
-            titulo=titulo, data=quando, resumo=ementa or None,
-            url_texto=molde_texto.format(id=id_ato) if molde_texto else None,
-            metadados={"tipo": tipo, "numero": numero, "orgao": orgao, "id_ato": id_ato},
+            url=url, titulo=titulo, data=publicacao, resumo=ementa or None,
+            url_texto=molde_texto.format(id=id_ato),
+            metadados={"tipo": tipo, "numero": numero, "orgao": orgao, "id_ato": id_ato,
+                       "sigla_tipo": normalizar_espacos(str(tipo_ato.get("siglaTipoAto") or "")) or None,
+                       "data_ato": data_ato.isoformat() if data_ato else None,
+                       "link_permanente": LINK_PERMANENTE_NORMAS.format(id=id_ato)},
             texto_da_listagem=(f"{titulo}. Ementa: {ementa}" if ementa else None),
         ))
-    if not reconhecidos and sopa.find("app-root") is not None:
-        raise SistemaNormasMudou()
     resultado = _finalizar(itens, config, hoje)
-    resultado.brutos = reconhecidos   # linhas reconhecidas, mesmo as filtradas por órgão
+    resultado.brutos = len(dados["atos"])      # atos recebidos, mesmo os filtrados por órgão ou tema
     return resultado
+
+
+def texto_do_ato_normas(conteudo) -> str:
+    """Texto do ato pela consulta externa (JSON da visão "multivigente"): a epígrafe, a ementa e os demais segmentos na ordem do
+    ato, sem HTML e sem o que está riscado (revogado) ou omitido. Nada é inventado: o anexo em PDF (nas Soluções de Consulta, a
+    íntegra) não entra; a ementa completa que vem como texto basta. Formato inesperado: ValueError."""
+    dados = conteudo if isinstance(conteudo, dict) else json.loads(conteudo.decode("utf-8") if isinstance(conteudo, bytes) else conteudo)
+    if not isinstance(dados, dict) or not isinstance(dados.get("ementas") or [], list) \
+            or not isinstance(dados.get("outrosSegmentos") or [], list):
+        raise ValueError("o texto do ato veio em formato inesperado")
+    segmentos = [s for s in (dados.get("ementas") or []) + (dados.get("outrosSegmentos") or []) if isinstance(s, dict)]
+    segmentos.sort(key=lambda s: s.get("ordemSegmentoAto") if isinstance(s.get("ordemSegmentoAto"), (int, float)) else 10 ** 9)
+    partes = [_sem_html(dados.get("epigrafeCompleta"))]
+    partes += [_sem_html(s.get("textoIntegra")) for s in segmentos if not s.get("omitir") and not s.get("tachado")]
+    return normalizar_espacos(" ".join(p for p in partes if p))
+
+
+def corpo_pesquisa_normas(fonte: dict, hoje: date | None = None, pagina: int = 1) -> dict:
+    """O pedido que a tela de pesquisa do Normas faz (serializarFiltrosPesquisa), pela data de publicação, do mais novo para o mais
+    antigo. As datas vão em DD/MM/AAAA (no formato ISO a API responde erro 500). Filtros opcionais da fonte: "tipos_ids" (ids dos
+    tipos de ato, separados por ";") e "orgaos_siglas" (siglas dos órgãos, separadas por ";")."""
+    config = fonte.get("config") or {}
+    hoje = hoje or hoje_brasilia()
+    inicio = hoje - timedelta(days=int(config.get("janela_dias", 10)))
+    junta = lambda v: ";".join(str(x).strip() for x in v if str(x).strip()) if isinstance(v, list) else str(v or "").strip()
+    return {"tipoData": "dataPublicacao", "tiposAtosSelecionados": junta(config.get("tipos_ids")),
+            "orgaosSelecionados": junta(config.get("orgaos_siglas")), "numeroAto": "",
+            "dataInicio": f"{inicio:%d/%m/%Y}", "dataFim": f"{hoje:%d/%m/%Y}",
+            "publicado": True, "internet": True, "apenasAtosVigentes": False, "apenasAtosInternos": False,
+            "termo": "", "refino": {}, "paginacaoPaginaAtual": int(pagina),
+            "paginacaoQuantidadePorPagina": max(10, min(int(config.get("itens_por_pagina") or 100), 300)),
+            "tipoPesquisa": "formulario", "ordenacaoColuna": "publicacao", "ordenacaoDirecao": "desc", "skipAggregations": True}
 
 
 def enderecos_da_listagem(fonte: dict, hoje: date | None = None) -> list[str]:
@@ -354,7 +501,8 @@ def listar_paginas(baixar_pagina, fonte: dict, hoje: date | None = None) -> tupl
     `baixar_pagina(url)` devolve (status HTTP, conteúdo)."""
     config = fonte.get("config") or {}
     por_pagina = int(config.get("itens_por_pagina", 0))
-    sem_corte = dict(config, max_itens=10 ** 6)
+    # o limite de itens e o filtro de tema valem para o conjunto (v0.31.0: o que ficou fora do tema é contado uma vez só, no fim)
+    sem_corte = {k: v for k, v in dict(config, max_itens=10 ** 6).items() if k not in CHAVES_DO_TEMA}
     itens, brutos, http, incompleta = [], 0, None, None
     for n, url in enumerate(enderecos_da_listagem(fonte, hoje), start=1):
         try:

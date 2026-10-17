@@ -23,10 +23,11 @@
    conta), o aviso diz o que mudou e não foi salvo (avisoPecaSuja) e o Salvar sem nada a gravar destrava a peça.
    v0.29.0: só a versão e o recado do banco (o setup da v0.29.0): os lembretes por e-mail ficam em Configurações (index.html).
    v0.30.0: a agenda da semana (agendaDaSemana) vai até o domingo seguinte, e o vencimento prorrogado pelo administrador leva a fonte do
-   ato da prorrogação; a versão e o recado do banco (sql/radar-setup-v0.30.0.sql). O 13º, as anuais e o aviso de prorrogação ficam no
+   ato da prorrogação; a versão e o recado do banco (o setup da v0.30.0). O 13º, as anuais e o aviso de prorrogação ficam no
    index.html (Configurações, Painel e Informativo).
+   v0.31.0: só a versão e o recado do banco (sql/radar-setup-v0.31.0.sql); a versão traz as fontes oficiais que faltavam (robô).
    ==================================================================== */
-const PAUTA_VERSAO = "0.30.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.31.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -62,9 +63,9 @@ const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PA
 // o banco ainda é o da v0.20.0 (a tabela da Pauta não existe): a tela diz o que falta em vez do erro cru do PostgREST
 // (v0.22.0: as colunas novas de radar_pessoas também dizem que o banco é de antes)
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
-// (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0; v0.29.0 e
-// v0.30.0: o recado manda rodar o setup desta versão, que traz junto os anteriores)
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+// (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0; v0.29.0 a
+// v0.31.0: o recado manda rodar o setup desta versão, que traz junto os anteriores)
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.31.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.31.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){

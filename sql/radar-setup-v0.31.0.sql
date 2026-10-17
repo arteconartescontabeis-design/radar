@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.30.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.31.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -41,7 +41,12 @@
 -- regra de casamento, só do dono) e radar_prorrogacoes (as capturas dos últimos 30 dias que falam em prorrogar ou adiar o prazo de uma
 -- obrigação da agenda, para a tela e o robô dos avisos). O Radar não muda nenhuma data sozinho; o "Conferido" do administrador fica em
 -- radar_config.prorrogacoes_conferidas. Nenhuma tabela ou coluna nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
--- Reversão: radar-reversao-v0.30.0.sql
+-- v0.31.0: fontes oficiais que faltavam. No banco, só a radar_url_base: o endereço de um ato do sistema Normas da Receita
+-- (…/#/consulta/externa/154126, uma aplicação montada no navegador) não perde mais o "#/…" — antes, todos os atos viravam o mesmo
+-- endereço, e o texto oficial colado de um ato podia ser ligado à captura de outro. A fonte rfb-normas da carga inicial passa a usar a
+-- pesquisa nova do Normas (na instalação que já existe, quem troca é o sql/radar-fontes-novas-v0.31.0.sql, que também cadastra as
+-- fontes novas). Nenhuma tabela ou coluna nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.31.0.sql
 -- =====================================================================
 
 begin;
@@ -67,7 +72,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.30.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.31.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -2162,11 +2167,16 @@ begin
   return new;
 end $$;
 
--- Endereço em forma única para comparar: sem âncora, sem parâmetros de rastreio e sem barra no fim
+-- Endereço em forma única para comparar: sem âncora, sem parâmetros de rastreio e sem barra no fim.
+-- v0.31.0: a "âncora" que começa com "#/" (ou "#!/") é o caminho de uma página montada no navegador — o ato do sistema Normas da
+-- Receita é https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/154126 — e fica no endereço. Antes, todos os atos do
+-- Normas viravam o mesmo endereço e o texto oficial colado de um ato podia ser ligado à captura de outro ato. O sufixo "/vs/…" que a
+-- pesquisa do Normas acrescenta ao endereço do ato (muda a cada pesquisa) sai, como o robô já faz.
 create or replace function public.radar_url_base(p_url text) returns text
 language sql immutable set search_path = public as $$
-  select regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(btrim(coalesce(p_url, '')),
-           '#.*$', ''), '([?&])(utm_[a-z_]+|fbclid|gclid)=[^&]*', '\1', 'gi'), '([?&])&+', '\1', 'g'), '[?&]+$', ''), '(.)/+$', '\1');
+  select regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(btrim(coalesce(p_url, '')),
+           '#(?!!?/).*$', ''), '(/consulta/externa/[0-9]+)/vs/.*$', '\1'), '([?&])(utm_[a-z_]+|fbclid|gclid)=[^&]*', '\1', 'gi'),
+           '([?&])&+', '\1', 'g'), '[?&]+$', ''), '(.)/+$', '\1');
 $$;
 
 -- Fotografia das evidências conferidas em fonte oficial de um assunto (o que fundamenta a divulgação)
@@ -7122,7 +7132,7 @@ select v.* from (values
   ('rfb-noticias', 'Receita Federal — Notícias', 'Receita Federal do Brasil', 'federal', 'html_links', 'https://www.gov.br/receitafederal/pt-br/assuntos/noticias/ultimas-noticias', '{"janela_dias": 30, "padrao_url": "/receitafederal/pt-br/assuntos/noticias/\\d{4}/[a-z]+/[^/?#]+$", "seletor_texto": "[property=''rnews:articleBody''], #parent-fieldname-text, #content-core, article, main"}'::jsonb, 'federal', 6),
   ('pgfn-noticias', 'PGFN — Notícias', 'Procuradoria-Geral da Fazenda Nacional', 'federal', 'html_links', 'https://www.gov.br/pgfn/pt-br/assuntos/noticias', '{"janela_dias": 30, "padrao_url": "/pgfn/pt-br/assuntos/noticias/\\d{4}/[^/?#]+$", "seletor_texto": "[property=''rnews:articleBody''], #parent-fieldname-text, #content-core, article, main"}'::jsonb, 'pgfn', 6),
   ('simples-noticias', 'Simples Nacional — Notícias', 'Comitê Gestor do Simples Nacional', 'federal', 'html_links', 'https://www8.receita.fazenda.gov.br/SimplesNacional/Noticias/TodasNoticias.aspx', '{"janela_dias": 60, "padrao_url": "NoticiaCompleta\\.aspx\\?id=[0-9a-fA-F-]{36}", "seletor_texto": "#conteudo, .conteudo, form, body"}'::jsonb, 'simples-nacional', 12),
-  ('rfb-normas', 'Receita Federal — Atos normativos (Normas)', 'Receita Federal do Brasil', 'federal', 'normas_rfb', 'http://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?tipoData=2&dt_inicio={inicio}&dt_fim={fim}&optOrdem=Publicacao_DESC&p={p}', '{"janela_dias": 10, "paginas_max": 6, "itens_por_pagina": 100, "max_itens": 300, "excluir_orgao": "^(SRRF|DRF|ALF|IRF|DERAT|DEFIS|DELEX|DECEX|DEMAC|DRJ|ARF|DISIT)", "sem_pagina_de_texto": true, "diagnostico_urls": ["http://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=153881", "https://normasinternet2.receita.fazenda.gov.br/"]}'::jsonb, 'federal', 6),
+  ('rfb-normas', 'Receita Federal — Atos normativos (Normas)', 'Receita Federal do Brasil', 'federal', 'normas_rfb', 'https://normas.receita.fazenda.gov.br/api/indexacao/ato/pesquisar', '{"janela_dias": 10, "paginas_max": 5, "itens_por_pagina": 100, "max_itens": 300, "excluir_orgao": "^(SRRF|DRF|ALF|IRF|DERAT|DEFIS|DELEX|DECEX|DEMAC|DRJ|ARF|Coana)", "excluir_palavras": "Classificação de Mercadorias|devedora contumaz|Remessa Conforme|Operador Econômico Autorizado", "url_texto": "https://normasinternet2.receita.fazenda.gov.br/api/consulta-externa/ato/{id}/visao/multivigente", "dominios": ["normasinternet2.receita.fazenda.gov.br"], "tempo_max_segundos": 180}'::jsonb, 'federal', 6),
   ('sefsc-legislacao', 'SEF/SC — Últimas legislações', 'Secretaria de Estado da Fazenda de Santa Catarina', 'estadual_sc', 'html_links', 'https://www.sef.sc.gov.br/', '{"janela_dias": 30, "padrao_url": "legislacao\\.sef\\.sc\\.gov\\.br/html/.+\\.html?$", "titulo_do_contexto": true, "seletor_texto": "body"}'::jsonb, 'santa-catarina', 12),
   ('cgibs-noticias', 'Comitê Gestor do IBS — Notícias', 'Comitê Gestor do IBS', 'federal', 'html_links', 'https://www.cgibs.gov.br/', '{"janela_dias": 30, "padrao_url": "^https://www\\.cgibs\\.gov\\.br/[a-z0-9]+(-[a-z0-9]+){4,}$", "data_do_texto": true, "seletor_texto": "article, main, #content, body"}'::jsonb, 'reforma-tributaria', 12)
 ) as v (slug, nome, orgao, abrangencia, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
@@ -7219,7 +7229,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 28 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.30.0).
+-- Esperado: 28 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.31.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

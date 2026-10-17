@@ -10,7 +10,7 @@ import pytest
 
 import radar_coletores as coletores
 from radar_coletores import listar, listar_html_links, listar_normas_rfb, listar_rss
-from radar_util import canonizar_url, extrair_texto, hash_conteudo, hash_titulo, interpretar_data
+from radar_util import canonizar_url, extrair_texto, hash_conteudo, hash_titulo, interpretar_data, sem_acentos
 
 AMOSTRAS = Path(__file__).resolve().parent / "amostras"
 FONTES = {f["slug"]: f for f in json.loads(
@@ -124,36 +124,176 @@ def test_limite_de_itens_por_execucao():
 
 
 # ---------------------------------------------------------------- normas RFB
-def test_normas_rfb_filtra_unidades_regionais_e_estabiliza_a_url():
-    fonte = dict(FONTES["rfb-normas"], config=dict(FONTES["rfb-normas"]["config"], janela_dias=15))
-    r = listar_normas_rfb(amostra("rfb-normas.html"), fonte, HOJE)
-    assert r.brutos == 5                       # 5 linhas reconhecidas na tabela
-    assert [i.titulo for i in r.itens] == [
-        "Instrução Normativa RFB nº 2290, de 30/09/2026",
-        "Solução de Consulta Cosit nº 198, de 29/09/2026"]     # SRRF fora; portaria de janeiro fora da janela
+# v0.31.0: o sistema Normas virou uma aplicação montada no navegador; os atos vêm da pesquisa pública (JSON) que a própria página usa.
+# Amostras REAIS de 17/10/2026, reduzidas (veja testes/amostras/LEIA-ME.txt).
+RFB = FONTES["rfb-normas"]
+DIA_NORMAS = date(2026, 10, 17)
+
+
+def test_normas_rfb_le_a_pesquisa_real_filtra_orgao_e_tema_e_usa_o_nome_oficial():
+    r = listar_normas_rfb(amostra("normas-pesquisar-2026-10-01a17.json"), RFB, DIA_NORMAS)
+    assert r.brutos == 7                       # os 7 atos da resposta, mesmo os filtrados (é o que separa "vazio" de "mudou")
+    # o título é o nome oficial (com a data do ATO); a data do item é a da publicação. Coana (aduana) e DRF/SOR (regional) saem pelo
+    # órgão; a SC de classificação de mercadoria (NCM) sai pelo tema; a Portaria Conjunta de 05/10 fica fora da janela de 10 dias
+    assert [(i.titulo, i.data) for i in r.itens] == [
+        ("Solução de Consulta Cosit nº 196, de 08/10/2026", date(2026, 10, 14)),
+        ("Solução de Consulta Disit/SRRF03 nº 3056, de 09/10/2026", date(2026, 10, 13)),
+        ("Portaria MF nº 3074, de 09/10/2026", date(2026, 10, 9))]
+    assert r.fora_do_tema == 1
     it = r.itens[0]
-    assert it.url == "https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/153990"   # sem "/vs/..."
-    assert it.url_texto is None                # o texto integral não tem endereço direto: fica a ementa
-    assert it.texto_da_listagem == ("Instrução Normativa RFB nº 2290, de 30/09/2026. Ementa: Dispõe sobre a apuração da "
-                                    "Contribuição Social sobre Bens e Serviços (CBS) no período de transição.")
-    assert it.metadados == {"tipo": "Instrução Normativa", "numero": "2290", "orgao": "RFB", "id_ato": "153990"}
-    com_molde = dict(fonte, config=dict(fonte["config"], url_texto="http://x/link.action?idAto={id}"))
-    assert listar_normas_rfb(amostra("rfb-normas.html"), com_molde, HOJE).itens[0].url_texto == "http://x/link.action?idAto=153990"
+    assert it.url == "https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/154087"         # sem "/vs/...", como antes
+    assert it.url_texto == "https://normasinternet2.receita.fazenda.gov.br/api/consulta-externa/ato/154087/visao/multivigente"
+    assert it.metadados == {"tipo": "Solução de Consulta", "numero": "196", "orgao": "Cosit", "id_ato": "154087", "sigla_tipo": "SC",
+                            "data_ato": "2026-10-08",
+                            "link_permanente": "https://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=154087"}
+    assert it.resumo.startswith("Assunto: Imposto sobre a Renda de Pessoa Jurídica - IRPJ") and "<" not in it.resumo   # a ementa vem em HTML
+    assert it.texto_da_listagem.startswith("Solução de Consulta Cosit nº 196, de 08/10/2026. Ementa: Assunto: Imposto sobre a Renda")
+    # janela de 5 dias: só as duas Soluções de Consulta
+    curta = dict(RFB, config=dict(RFB["config"], janela_dias=5))
+    assert [i.titulo for i in listar_normas_rfb(amostra("normas-pesquisar-2026-10-01a17.json"), curta, DIA_NORMAS).itens] == [
+        "Solução de Consulta Cosit nº 196, de 08/10/2026", "Solução de Consulta Disit/SRRF03 nº 3056, de 09/10/2026"]
+    # o ato conjunto leva os dois órgãos no nome; sem filtros, o NCM e a Coana entram
+    solta = dict(RFB, config={"janela_dias": 17})
+    titulos = [i.titulo for i in listar_normas_rfb(amostra("normas-pesquisar-2026-10-01a17.json"), solta, DIA_NORMAS).itens]
+    assert len(titulos) == 7 and "Portaria Conjunta MF / CGIBS nº 14, de 02/10/2026" in titulos and "Portaria Coana nº 214, de 15/10/2026" in titulos
 
 
-def test_normas_rfb_sem_tabela_devolve_zero_reconhecidos():
-    assert listar_normas_rfb(amostra("layout-mudou.html"), FONTES["rfb-normas"], HOJE).brutos == 0
+def test_normas_rfb_pesquisa_vazia_e_zero_reconhecidos():
+    r = listar_normas_rfb(amostra("normas-pesquisar-vazia.json"), RFB, DIA_NORMAS)
+    assert r.brutos == 0 and r.itens == []              # na coleta, "vazio_suspeito" (nunca "sem novidades")
 
 
-def test_normas_rfb_na_aplicacao_nova_diz_o_motivo():
-    """Varredura geral (v0.22.0): o endereço antigo devolve a casca da aplicação nova (Angular, montada no navegador), sem tabela: a
-    fonte diz o motivo e o que fazer, em vez de "nenhum item reconhecido" (12 coletas seguidas em produção, desde 04/10/2026)."""
+def test_normas_rfb_formato_novo_diz_o_motivo_e_por_onde_os_atos_chegam():
+    """A casca da aplicação (HTML) no lugar do JSON, ou um JSON sem a lista "atos": a fonte diz o que houve, não "nenhum item"."""
     casca = ('<!doctype html><html lang="pt-br"><head><title>Normas</title><base href="/"></head><body><app-root></app-root>'
-             '<script src="runtime.82edaeaa183a48dc.js" type="module"></script><script src="main.60aa44047ffb2919.js" type="module"></script></body></html>')
-    with pytest.raises(coletores.SistemaNormasMudou, match="aplicação montada no navegador.*desmarque \"Fonte ativa\""):
-        listar_normas_rfb(casca, FONTES["rfb-normas"], HOJE)
+             '<script src="main-L3RVA65H.js" type="module"></script></body></html>')
+    with pytest.raises(coletores.SistemaNormasMudou, match="mudou de formato .veio uma página do site.*continuam chegando pelo DOU .dou-inlabs."):
+        listar_normas_rfb(casca, RFB, DIA_NORMAS)
+    with pytest.raises(coletores.SistemaNormasMudou, match="não traz a lista de atos"):
+        listar_normas_rfb('{"resultado": [], "total": 0}', RFB, DIA_NORMAS)
+    with pytest.raises(coletores.SistemaNormasMudou, match="não é JSON"):
+        listar_normas_rfb("Erro interno", RFB, DIA_NORMAS)
     with pytest.raises(ValueError):                                                    # pelo listar() também (a coleta registra a falha)
-        listar(casca, dict(FONTES["rfb-normas"], url="https://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action"), HOJE)
+        listar(casca, RFB, DIA_NORMAS)
+
+
+def test_texto_do_ato_normas_monta_epigrafe_ementa_e_artigos_sem_o_riscado():
+    texto = coletores.texto_do_ato_normas(amostra("normas-ato-154126.json"))
+    assert texto.startswith("Portaria Coana nº 214, de 15 de outubro de 2026 Altera a Portaria Coana nº 188, de 22 de abril de 2026")
+    assert "Art. 2º Esta Portaria entre em vigor" in texto and "<" not in texto and len(texto) > 1000
+    sc = coletores.texto_do_ato_normas(amostra("normas-ato-154087.json"))          # Solução de Consulta: a ementa completa basta
+    assert sc.startswith("Solução de Consulta Cosit nº 196, de 8 de outubro de 2026 Assunto: Imposto sobre a Renda de Pessoa Jurídica")
+    assert 3000 < len(sc) < 4000 and "<span" not in sc and "Anexo" not in sc         # o PDF anexo não entra, e nada é inventado
+    # o texto revogado (riscado) e o omitido ficam de fora; a ordem é a do ato, não a da lista
+    ato = {"epigrafeCompleta": "Instrução Normativa RFB nº 9, de 1º de outubro de 2026",
+           "ementas": [{"ordemSegmentoAto": 0, "textoIntegra": "<p>Dispõe sobre a <b>CBS</b>.</p>"}],
+           "outrosSegmentos": [{"ordemSegmentoAto": 3, "textoIntegra": "Art. 2º Vigência."},
+                               {"ordemSegmentoAto": 1, "textoIntegra": "Art. 1º Fica revogado.", "tachado": True},
+                               {"ordemSegmentoAto": 2, "textoIntegra": "Art. 1º Nova redação."},
+                               {"ordemSegmentoAto": 4, "textoIntegra": "nota interna", "omitir": True},
+                               {"ordemSegmentoAto": 5, "textoIntegra": "", "arquivoBinario": {"idArquivoBinario": 1}}]}
+    assert coletores.texto_do_ato_normas(ato) == ("Instrução Normativa RFB nº 9, de 1º de outubro de 2026 Dispõe sobre a CBS . "
+                                                  "Art. 1º Nova redação. Art. 2º Vigência.")
+    for ruim in ("<html>erro</html>", "[]", '{"ementas": "x"}'):
+        with pytest.raises(ValueError):
+            coletores.texto_do_ato_normas(ruim)
+
+
+def test_corpo_da_pesquisa_normas_igual_ao_da_pagina_com_datas_em_dd_mm_aaaa():
+    corpo = coletores.corpo_pesquisa_normas(RFB, DIA_NORMAS, 1)
+    esperado = {"tipoData": "dataPublicacao", "tiposAtosSelecionados": "", "orgaosSelecionados": "", "numeroAto": "",
+                "dataInicio": "07/10/2026", "dataFim": "17/10/2026", "publicado": True, "internet": True, "apenasAtosVigentes": False,
+                "apenasAtosInternos": False, "termo": "", "refino": {}, "paginacaoPaginaAtual": 1, "paginacaoQuantidadePorPagina": 100,
+                "tipoPesquisa": "formulario", "ordenacaoColuna": "publicacao", "ordenacaoDirecao": "desc", "skipAggregations": True}
+    assert corpo == esperado and list(corpo) == list(esperado)        # o mesmo pedido da tela (no formato ISO a API responde 500)
+    filtrada = dict(RFB, config=dict(RFB["config"], tipos_ids=[42, 79], orgaos_siglas="Cosit;Sutri;MF", itens_por_pagina=5000))
+    corpo = coletores.corpo_pesquisa_normas(filtrada, DIA_NORMAS, 3)
+    assert (corpo["tiposAtosSelecionados"], corpo["orgaosSelecionados"], corpo["paginacaoPaginaAtual"],
+            corpo["paginacaoQuantidadePorPagina"]) == ("42;79", "Cosit;Sutri;MF", 3, 300)
+
+
+def _ato_normas(n, sigla="RFB", publicacao="16/10/2026", ementa="Ementa do ato."):
+    return {"idAto": n, "tipoAto": {"nomeTipoAto": "Portaria", "siglaTipoAto": "Port.", "idTipoAto": 57}, "numeroAto": str(n),
+            "dataAto": publicacao, "dataPublicacao": publicacao, "orgaos": [{"siglaOrgao": sigla, "idOrgao": 1}], "ementa": ementa,
+            "urlVisualizacao": f"https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{n}"}
+
+
+def test_normas_pela_api_pagina_por_pagina_e_pagina_com_erro_nao_perde_as_anteriores(monkeypatch):
+    import radar_normas
+    from radar_util import ErroDownload
+    paginas = {1: [_ato_normas(1000 + i, "DRF/SOR") for i in range(100)],          # a 1ª página inteira é de unidade regional
+               2: [_ato_normas(2000 + i) for i in range(100)], 3: [_ato_normas(3000 + i) for i in range(30)]}
+    pedidos = []
+
+    def postar(url, corpo, sessao=None, **_):
+        pedidos.append((url, corpo["paginacaoPaginaAtual"], corpo["dataInicio"], corpo["dataFim"]))
+        n = corpo["paginacaoPaginaAtual"]
+        if n in falhar:
+            raise ErroDownload(f"HTTP 500 em {url} (Indexação: Falha ao pesquisar os atos)", 500)
+        return 200, json.dumps({"atos": paginas.get(n, []), "refinos": [], "quantidadeTotal": 230, "quantidadePaginas": 3})
+
+    monkeypatch.setattr(radar_normas, "postar_json", postar)
+    falhar = set()
+    fonte = dict(RFB, config=dict(RFB["config"], max_itens=500))
+    r, http = radar_normas.listar_paginas(None, fonte, DIA_NORMAS, pausa=0)
+    assert [p[1] for p in pedidos] == [1, 2, 3] and {p[0] for p in pedidos} == {RFB["url"]}
+    assert pedidos[0][2:] == ("07/10/2026", "17/10/2026")
+    assert (r.brutos, len(r.itens), http, r.incompleta) == (230, 130, 200, None)
+    pedidos.clear()
+    r, _ = radar_normas.listar_paginas(None, dict(fonte, config=dict(fonte["config"], paginas_max=2)), DIA_NORMAS, pausa=0)
+    assert [p[1] for p in pedidos] == [1, 2] and len(r.itens) == 100                 # o limite de páginas da fonte
+    falhar = {2}
+    r, _ = radar_normas.listar_paginas(None, fonte, DIA_NORMAS, pausa=0)
+    assert r.brutos == 100 and r.itens == [] and "a página 2 da pesquisa não pôde ser lida" in r.incompleta
+    falhar = {1}
+    with pytest.raises(ErroDownload, match="HTTP 500"):                              # a 1ª página: falha de verdade
+        radar_normas.listar_paginas(None, fonte, DIA_NORMAS, pausa=0)
+
+
+def test_normas_recusa_do_site_e_cadastro_antigo_dizem_o_que_fazer(monkeypatch):
+    import radar_normas
+    from radar_util import ErroDownload
+
+    def recusa(url, corpo, sessao=None, **_):
+        raise ErroDownload(f"HTTP 403 em {url}", 403)
+    monkeypatch.setattr(radar_normas, "postar_json", recusa)
+    with pytest.raises(ErroDownload, match="o site da Receita recusou o pedido do robô .HTTP 403.*dou-inlabs") as e:
+        radar_normas.listar_paginas(None, RFB, DIA_NORMAS, pausa=0)
+    assert e.value.http_status == 403
+    antiga = dict(RFB, url="http://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?dt_inicio={inicio}&dt_fim={fim}&p={p}")
+    with pytest.raises(ValueError, match="consulta antiga.*sql/radar-fontes-novas-v0.31.0.sql"):
+        radar_normas.listar_paginas(None, antiga, DIA_NORMAS, pausa=0)
+
+
+def test_postar_json_tenta_de_novo_no_erro_do_servidor_e_para_na_recusa(monkeypatch):
+    import radar_util
+
+    class Resp:
+        def __init__(self, status, corpo):
+            self.status_code, self.text, self.headers, self.encoding = status, corpo, {"content-type": "application/json"}, None
+        def json(self):
+            return json.loads(self.text)
+
+    class Sessao:
+        def __init__(self, respostas):
+            self.respostas, self.pedidos = list(respostas), []
+        def post(self, url, data, timeout, headers):
+            self.pedidos.append((json.loads(data.decode("utf-8")), headers))
+            return self.respostas.pop(0)
+
+    monkeypatch.setattr(radar_util.time, "sleep", lambda s: None)
+    s = Sessao([Resp(502, ""), Resp(200, '{"atos": []}')])
+    assert radar_util.postar_json("https://x/api", {"termo": "ação"}, s) == (200, '{"atos": []}')
+    corpo, cab = s.pedidos[0]
+    assert corpo == {"termo": "ação"} and cab["Content-Type"] == "application/json; charset=UTF-8" and cab["User-Agent"].startswith("ArteconRadar/")
+    s = Sessao([Resp(500, '{"message": "Indexação: Falha ao pesquisar os atos"}')] * 3)
+    with pytest.raises(radar_util.ErroDownload, match=r"HTTP 500 em https://x/api \(Indexação: Falha ao pesquisar os atos\)"):
+        radar_util.postar_json("https://x/api", {}, s)
+    assert len(s.pedidos) == 3
+    s = Sessao([Resp(403, "")])
+    with pytest.raises(radar_util.ErroDownload, match="HTTP 403"):
+        radar_util.postar_json("https://x/api", {}, s)
+    assert len(s.pedidos) == 1                                                       # recusa: não insiste
 
 
 def test_tipo_de_coletor_desconhecido_e_erro():
@@ -330,16 +470,29 @@ def test_diagnostico_classifica_cada_situacao(tmp_path, monkeypatch):
     assert (tmp_path / "pgfn-noticias-lista.txt").exists() and (tmp_path / "pgfn-noticias-item.txt").exists()
     mudou = radar_diagnostico.diagnosticar(FONTES["simples-noticias"], tmp_path, None)
     assert mudou["veredito"].startswith("REVISAR") and mudou["brutos"] == 0
+    # v0.31.0: o sistema Normas pela pesquisa nova (POST); a recusa do site (HTTP 403) é falha com o motivo
+    import radar_normas
+    from radar_util import ErroDownload as Erro
+    monkeypatch.setattr(radar_normas, "hoje_brasilia", lambda: DIA_NORMAS)
+    monkeypatch.setattr(radar_normas, "postar_json", lambda url, corpo, sessao=None, **_: (_ for _ in ()).throw(Erro(f"HTTP 403 em {url}", 403)))
     bloqueada = radar_diagnostico.diagnosticar(FONTES["rfb-normas"], tmp_path, None)
-    assert bloqueada["veredito"] == "FALHA" and bloqueada["http"] == 403
-    # fonte paginada e sem página de texto (normas): guarda cada página e mede a ementa
-    url1 = "http://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?tipoData=2&dt_inicio=21/09/2026&dt_fim=01/10/2026&optOrdem=Publicacao_DESC&p=1"
-    paginas[url1] = amostra("rfb-normas.html")
+    assert bloqueada["veredito"] == "FALHA" and bloqueada["http"] == 403 and "recusou o pedido do robô" in bloqueada["erro"]
+    # a resposta da pesquisa e o texto do 1º ato (JSON) ficam guardados; o texto é medido como a coleta o monta
+    monkeypatch.setattr(radar_normas, "postar_json", lambda url, corpo, sessao=None, **_: (200, amostra("normas-pesquisar-2026-10-01a17.json")))
+    # revisão: a pesquisa respondeu e só o texto do 1º ato foi recusado (HTTP 403): o relatório mostra o HTTP da pesquisa (200), não o
+    # do texto, e o veredito diz o caso que tem saída ("sem_pagina_de_texto"), diferente da recusa da pesquisa (FALHA, HTTP 403)
+    so_texto = radar_diagnostico.diagnosticar(FONTES["rfb-normas"], tmp_path, None)
+    assert (so_texto["http"], so_texto["brutos"], so_texto["na_janela"], so_texto["texto_primeiro_item"]) == (200, 7, 3, 0)
+    assert so_texto["veredito"].startswith("REVISAR — lista ok, texto do 1º item recusado (HTTP 403)")
+    assert '"sem_pagina_de_texto": true' in so_texto["veredito"] and so_texto["erro"].startswith("HTTP 403 em https://normasinternet2.")
+    assert "| rfb-normas | 200 | 7 | 3 | 1 | 0 | REVISAR — lista ok, texto do 1º item recusado" in radar_diagnostico.relatorio_md([so_texto])
+    paginas["https://normasinternet2.receita.fazenda.gov.br/api/consulta-externa/ato/154087/visao/multivigente"] = amostra("normas-ato-154087.json")
     normas = radar_diagnostico.diagnosticar(FONTES["rfb-normas"], tmp_path, None)
-    assert normas["veredito"] == "OK" and normas["brutos"] == 5 and normas["na_janela"] == 2
-    assert normas["inicio_texto"].startswith("Instrução Normativa RFB nº 2290") and (tmp_path / "rfb-normas-lista.txt").exists()
-    texto = radar_diagnostico.relatorio_md([ok, mudou, bloqueada])
-    assert "| pgfn-noticias | 200 | 4 |" in texto and "HTTP 403" in texto
+    assert (normas["veredito"], normas["http"], normas["brutos"], normas["na_janela"], normas["fora_do_tema"]) == ("OK", 200, 7, 3, 1)
+    assert normas["inicio_texto"].startswith("Solução de Consulta Cosit nº 196, de 8 de outubro de 2026 Assunto:") and normas["texto_primeiro_item"] > 3000
+    assert (tmp_path / "rfb-normas-lista.txt").read_text(encoding="utf-8").startswith("{") and (tmp_path / "rfb-normas-item.txt").exists()
+    texto = radar_diagnostico.relatorio_md([ok, mudou, bloqueada, normas])
+    assert "| pgfn-noticias | 200 | 4 |" in texto and "HTTP 403" in texto and "| rfb-normas | 200 | 7 | 3 | 1 |" in texto
     # página não reconhecida: o relatório mostra a estrutura, para ajustar a fonte só pelo log
     assert mudou["estrutura"]["titulo"] == "Portal em manutenção" and mudou["estrutura"]["links"] == 1
     assert "Página não reconhecida — título: _Portal em manutenção_" in texto and "/novo-portal" in texto
@@ -423,59 +576,55 @@ def test_janela_de_30_dias_sobre_as_noticias_reais():
     assert len(r.itens) == 4 and all(i.data is None for i in r.itens)         # a página inicial do CGIBS não traz datas
 
 
-def test_normas_reais_filtro_por_orgao_e_texto_da_ementa():
-    linhas = "".join(f'<tr><td><a href="https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{i}/vs/QUJD">{t}</a></td>'
-                     f'<td><a href="https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{i}/vs/QUJD">{n}</a></td>'
-                     f"<td>{o}</td><td>{d}</td><td>{e}</td></tr>" for t, n, o, d, e, i in REAIS["rfb-normas"]["linhas"])
-    r = listar_normas_rfb(f"<table><tr><th>Tipo do ato</th><th>Nº</th><th>Órgão</th><th>Publicação</th><th>Ementa</th></tr>{linhas}</table>",
-                          FONTES["rfb-normas"], DIA)
+def test_normas_reais_de_02_10_filtro_por_orgao_e_texto_da_ementa():
+    """Os atos reais lidos em 02/10/2026 (testes/amostras/links-reais-2026-10-02.json), na resposta da pesquisa nova (JSON)."""
+    atos = [{"idAto": int(i), "tipoAto": {"nomeTipoAto": t}, "numeroAto": n, "dataPublicacao": d, "orgaos": [{"siglaOrgao": o}],
+             "ementa": e, "urlVisualizacao": f"https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{i}"}
+            for t, n, o, d, e, i in REAIS["rfb-normas"]["linhas"]]
+    r = listar_normas_rfb({"atos": atos, "quantidadePaginas": 1}, RFB, DIA)
     assert r.brutos == 7
+    # regionais (SRRF01, Decex/RJO, ALF/STS, DRF/SOR) e Coana fora; a Solução de Consulta da Disit entra (a dou-inlabs não a traz)
     assert [i.titulo for i in r.itens] == ["Ato Declaratório Executivo Sutri nº 11, de 02/10/2026",
-                                           "Ato Declaratório Executivo Coana nº 132, de 28/09/2026"]
+                                           "Solução de Consulta Disit/SRRF04 nº 4041, de 02/10/2026"]
     assert r.itens[0].texto_da_listagem.endswith("Ementa: Altera o Ato Declaratório Executivo Sutri nº 8.")
+    assert r.itens[1].texto_da_listagem is None and r.itens[1].resumo is None       # sem ementa na lista: o texto vem do ato
+
+
+def _pagina_de_links(inicio, n, quando="01/10/2026"):
+    return "<ul>" + "".join(f'<li><a href="/pgfn/pt-br/assuntos/noticias/2026/noticia-{k}">Notícia número {k} da lista</a> {quando}</li>'
+                            for k in range(inicio, inicio + n)) + "</ul>"
 
 
 def test_enderecos_da_listagem_com_janela_de_datas_e_paginas():
     from radar_coletores import enderecos_da_listagem, listar_paginas
-    urls = enderecos_da_listagem(FONTES["rfb-normas"], DIA)
+    paginada = dict(PGFN, url="https://www.gov.br/pgfn/busca?de={inicio}&ate={fim}&b={p}",
+                    config=dict(PGFN["config"], janela_dias=10, paginas_max=6, itens_por_pagina=100, max_itens=500))
+    urls = enderecos_da_listagem(paginada, DIA)
     assert len(urls) == 6
-    assert urls[0] == ("http://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?tipoData=2&dt_inicio=22/09/2026"
-                       "&dt_fim=02/10/2026&optOrdem=Publicacao_DESC&p=1")
-    assert urls[5].endswith("&p=6")
+    assert urls[0] == "https://www.gov.br/pgfn/busca?de=22/09/2026&ate=02/10/2026&b=1" and urls[5].endswith("&b=6")
     assert enderecos_da_listagem(FONTES["pgfn-noticias"], DIA) == ["https://www.gov.br/pgfn/pt-br/assuntos/noticias"]
-
-    def linha(n, orgao="RFB", quando="01/10/2026"):
-        return (f'<tr><td><a href="https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{n}/vs/A">Portaria</a></td>'
-                f"<td>{n}</td><td>{orgao}</td><td>{quando}</td><td>Ementa {n}</td></tr>")
-    paginas = {1: "<table>" + "".join(linha(n, "DRF/SOR") for n in range(1000, 1100)) + "</table>",
-               2: "<table>" + "".join(linha(n) for n in range(2000, 2100)) + "</table>",
-               3: "<table>" + "".join(linha(n) for n in range(3000, 3030)) + "</table>"}
+    paginas = {1: _pagina_de_links(1000, 100, "05/01/2026"), 2: _pagina_de_links(2000, 100), 3: _pagina_de_links(3000, 30)}
     pedidos = []
 
     def baixar_falso(url):
         pedidos.append(url)
         return 200, paginas[int(url.rsplit("=", 1)[1])]
 
-    fonte = dict(FONTES["rfb-normas"], config=dict(FONTES["rfb-normas"]["config"], max_itens=500))
-    r, http = listar_paginas(baixar_falso, fonte, DIA)
+    r, http = listar_paginas(baixar_falso, paginada, DIA)
     assert len(pedidos) == 3                      # parou na página incompleta
-    assert (r.brutos, len(r.itens), http) == (230, 130, 200)      # a 1ª página inteira era de unidade regional
+    assert (r.brutos, len(r.itens), http) == (230, 130, 200)      # a 1ª página inteira era de notícias antigas
 
 
 def test_paginacao_limite_vale_para_o_conjunto_e_pagina_com_erro_nao_perde_as_anteriores():
     from radar_coletores import listar_paginas
-
-    def linha(n):
-        return (f'<tr><td><a href="https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/{n}/vs/A">Portaria</a></td>'
-                f"<td>{n}</td><td>RFB</td><td>01/10/2026</td><td>Ementa {n}</td></tr>")
-    paginas = {n: "<table>" + "".join(linha(n * 1000 + i) for i in range(100)) + "</table>" for n in (1, 2, 3)}
-    fonte = dict(FONTES["rfb-normas"], config=dict(FONTES["rfb-normas"]["config"], max_itens=250))
-    r, _ = listar_paginas(lambda url: (200, paginas.get(int(url.rsplit("=", 1)[1]), "<table></table>")), fonte, DIA)
-    ids = sorted(int(i.metadados["id_ato"]) // 1000 for i in r.itens)
+    paginas = {n: _pagina_de_links(n * 1000, 100) for n in (1, 2, 3)}
+    fonte = dict(PGFN, url="https://www.gov.br/pgfn/busca?b={p}", config=dict(PGFN["config"], paginas_max=6, itens_por_pagina=100, max_itens=250))
+    r, _ = listar_paginas(lambda url: (200, paginas.get(int(url.rsplit("=", 1)[1]), "<ul></ul>")), fonte, DIA)
+    ids = sorted(int(i.url.rsplit("-", 1)[1]) // 1000 for i in r.itens)
     assert len(r.itens) == 250 and set(ids) == {1, 2, 3} and r.incompleta is None      # itens das 3 páginas, não só da 1ª
 
     def com_falha(url):
-        if url.endswith("p=2"):
+        if url.endswith("b=2"):
             raise RuntimeError("HTTP 500")
         return 200, paginas[1]
     r, _ = listar_paginas(com_falha, fonte, DIA)
@@ -506,6 +655,15 @@ def test_diagnostico_testa_enderecos_avulsos_antes_de_cadastrar(monkeypatch):
     assert radar_diagnostico.fontes_avulsas("https://a.b/x")[0]["config"]["padrao_url"] == "."      # sem padrão: todos os links
     monkeypatch.setenv("ENDERECOS", "https://ex.com.br/")
     assert radar_diagnostico.carregar_fontes()[1] == "endereços informados para teste"
+    # v0.31.0: um endereço do sistema Normas vira a fonte de atos da Receita (a pesquisa nova, com as opções da rfb-normas)
+    normas = radar_diagnostico.fontes_avulsas("https://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action")[0]
+    assert (normas["tipo_coletor"], normas["url"], normas["config"]) == ("normas_rfb", RFB["url"], RFB["config"])
+    # e o identificador de uma fonte confere essa fonte como está cadastrada, ligada ou não (sem chave do banco: o arquivo)
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.setenv("ENDERECOS", "rfb-normas, nao-existe https://ex.com.br/")
+    fontes, origem = radar_diagnostico.carregar_fontes()
+    assert [f["slug"] for f in fontes] == ["rfb-normas", "teste-1"] and fontes[0]["url"] == RFB["url"]
+    assert origem == "fontes pedidas, do arquivo robo/radar_fontes.json; não encontradas: nao-existe e endereços informados para teste"
     html = '<html><head><title>T</title><link rel="alternate" type="application/rss+xml" title="Notícias" href="/rss/"></head><body></body></html>'
     assert radar_diagnostico.estrutura_da_pagina(html)["feeds"] == ["Notícias -> /rss/"]
 
@@ -680,3 +838,393 @@ def test_pagina_de_categoria_segue_o_feed_da_categoria_e_paginada_nao_baixa_a_se
     listagem, _ = coletores.listar_paginas(baixar, fonte, date(2026, 10, 9))
     assert pedidos == ["https://portalcontabilsc.com.br/categoria/noticias/page/1/", "https://portalcontabilsc.com.br/categoria/noticias/feed/"]
     assert [i.url for i in listagem.itens] == ["https://portalcontabilsc.com.br/stf-exclui"]
+
+
+# ============================================================ v0.31.0 — fontes oficiais que faltavam
+# As fontes novas são lidas do próprio sql/radar-fontes-novas-v0.31.0.sql: o que se testa aqui é o cadastro que vai para o banco.
+RAIZ_REPO = Path(__file__).resolve().parent.parent
+SQL_V031 = (RAIZ_REPO / "sql" / "radar-fontes-novas-v0.31.0.sql").read_text(encoding="utf-8")
+_LIT = r"'((?:[^']|'')*)'"
+_LINHA = re.compile(r"\(\s*" + r",\s*".join([_LIT] * 4) + r",\s*(true|false),\s*(true|false),\s*" + _LIT + r",\s*" + _LIT +
+                    r",\s*" + _LIT + r"::jsonb,\s*(?:" + _LIT + r"|null),\s*(\d+)\)")
+
+
+def _fontes_do_sql(texto: str) -> dict:
+    tira = lambda x: x.replace("''", "'") if x is not None else None
+    fontes = {}
+    for m in _LINHA.finditer(texto):
+        slug, nome, orgao, abrangencia, oficial, ativo, tipo, url, config, categoria, freq = m.groups()
+        fontes[tira(slug)] = {"slug": tira(slug), "nome": tira(nome), "orgao": tira(orgao), "abrangencia": tira(abrangencia),
+                              "oficial": oficial == "true", "ativo": ativo == "true", "tipo_coletor": tira(tipo), "url": tira(url),
+                              "config": json.loads(tira(config)), "categoria_padrao": tira(categoria), "frequencia_horas": int(freq)}
+    return fontes
+
+
+NOVAS = _fontes_do_sql(SQL_V031)
+
+
+def test_fontes_novas_ligadas_so_as_conferidas_e_rfb_normas_igual_nos_tres_lugares():
+    assert {s: f["ativo"] for s, f in NOVAS.items()} == {
+        "dou-presidencia": True, "dou-confaz": True, "dou-trabalho-previdencia": True, "dou-fazenda-ministro": False,
+        "esocial-noticias": True, "fgts-digital-comunicados": True, "previdencia-noticias": True, "inss-noticias": False,
+        "domsc-palhoca-leis": False, "domsc-palhoca-decretos": False, "domsc-saojose-leis": False, "domsc-saojose-decretos": False}
+    assert all(f["oficial"] for f in NOVAS.values())
+    assert {f["tipo_coletor"] for s, f in NOVAS.items() if s.startswith("dou-")} == {"inlabs"}
+    for f in NOVAS.values():                           # o filtro de tema de cada uma é uma expressão que o robô aceita
+        coletores.filtro_de_tema(f["config"])
+        assert len(f["nome"]) <= 200 and re.fullmatch(r"https?://[!-~]+", f["url"]) and len(json.dumps(f["config"])) < 20000
+    # a rfb-normas: o mesmo endereço e as mesmas opções no SQL desta versão, no setup (carga inicial) e em robo/radar_fontes.json
+    m = re.search(r"set url = '([^']+)',\s*config = '([^']+)'::jsonb\s*where slug = 'rfb-normas'", SQL_V031)
+    assert (m.group(1), json.loads(m.group(2))) == (RFB["url"], RFB["config"])
+    assert "sem_pagina_de_texto" not in RFB["config"] and "{" not in RFB["url"] and "ativo = true" not in SQL_V031
+
+
+def test_textos_para_o_dono_dizem_quais_fontes_novas_ficam_sem_filtro_de_tema():
+    """Revisão: a aba Versões, o topo do LEIAME e o cabeçalho do SQL diziam que TODA fonte nova tinha filtro de tema, e o DOM/SC "já
+    filtrado por tributos". Ficam sem filtro só o eSocial e o FGTS Digital (tudo o que publicam é do departamento pessoal), e os
+    textos dizem isso."""
+    assert {s for s, f in NOVAS.items() if coletores.filtro_de_tema(f["config"]) is None} == {"esocial-noticias", "fgts-digital-comunicados"}
+    html = (RAIZ_REPO / "index.html").read_text(encoding="utf-8")
+    versao = html[html.index('["0.31.0", "17/10/2026", ['):html.index('["0.30.0", "17/10/2026", [')]
+    leiame = (RAIZ_REPO / "LEIAME-radar.md").read_text(encoding="utf-8")
+    textos = {"Versões": versao, "LEIAME (topo)": leiame[:leiame.index("A v0.30.0 traz")], "SQL (cabeçalho)": SQL_V031[:SQL_V031.index("do $$")],
+              "LEIAME (fontes da v0.31.0)": leiame[leiame.index("### Fontes oficiais da v0.31.0"):leiame.index("### Instagram e Facebook")]}
+    for onde, texto in textos.items():
+        assert not re.search(r"todas (?:oficiais e )?com (?:\*\*)?filtro de tema|cada fonte nova tem as palavras|já filtrad", texto), onde
+    for onde in ("Versões", "LEIAME (topo)", "SQL (cabeçalho)"):
+        assert re.search(r"(?:o|do) eSocial e (?:o|do) FGTS Digital", textos[onde], re.I), onde
+
+
+def test_cadastro_do_dom_sc_filtro_do_proprio_site_e_sem_abrir_a_pagina_do_ato():
+    from urllib.parse import parse_qs, unquote, urlsplit
+    domsc = {s: f for s, f in NOVAS.items() if s.startswith("domsc-")}
+    assert len(domsc) == 4
+    for slug, f in domsc.items():
+        partes = urlsplit(f["url"])
+        assert partes.netloc == "diariomunicipal.sc.gov.br" and partes.query.endswith("&view=rss")
+        args = parse_qs(partes.query)
+        assert args["codigoEntidade"][0] in {"185", "251"} and args["categoria"][0] in {"Leis", "Decretos"}
+        q = unquote(re.search(r"[?&]q=([^&]+)", f["url"]).group(1))
+        assert len(q) <= 200 and q.startswith("(") and q.endswith(")") and "-" not in q and "tribut*" in q     # limites do site
+        assert re.fullmatch(r"[a-z%0-9*]+", re.search(r"excluiTermos=([^&]+)", f["url"]).group(1))         # sem acento (estraga)
+        assert (f["abrangencia"], f["categoria_padrao"], f["config"]["sem_pagina_de_texto"]) == ("municipal", "santa-catarina", True)
+    assert {(s.split("-")[1], s.split("-")[2]) for s in domsc} == {("palhoca", "leis"), ("palhoca", "decretos"), ("saojose", "leis"),
+                                                                   ("saojose", "decretos")}
+
+
+# ------------------------------------------------------------ filtro de tema
+CONTEUDO = '<content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/"><![CDATA[{}]]></content:encoded>'
+
+
+def _feed(*itens):
+    return ("<rss><channel>" + "".join(
+        f"<item><title>{t}</title><link>https://ex.gov.br/n{n}</link><pubDate>{d}</pubDate><description>{r}</description>"
+        + (CONTEUDO.format(c) if c else "") + "</item>"
+        for n, (t, r, d, c) in enumerate(itens)) + "</channel></rss>")
+
+
+QUINTA = "Thu, 15 Oct 2026 10:00:00 -0300"
+FEED_TEMA = _feed(("Novo leiaute do eSocial", "Versão S-1.3 dos eventos", QUINTA, ""),
+                  ("Campanha do FGTS na televisão", "Publicidade institucional do fundo", QUINTA, ""),
+                  ("CONTRIBUIÇÃO PREVIDENCIÁRIA: novo prazo", "Recolhimento até o dia 20", QUINTA, ""),
+                  ("Dia nacional do ribeirinho", "Homenagem", QUINTA, "<p>O MINISTRO DO TRABALHO E EMPREGO, no uso...</p>"),
+                  ("Notícia antiga de janeiro", "Sem tema", "Thu, 15 Jan 2026 10:00:00 -0300", ""))
+
+
+def test_filtro_de_tema_entra_fica_fora_e_e_contado_sem_virar_vazio_suspeito():
+    fonte = {"url": "u", "config": {"janela_dias": 30, "palavras": ["esocial", "FGTS", "contribuiç"], "excluir_palavras": "campanha"}}
+    r = listar_rss(FEED_TEMA, fonte, DIA_NORMAS)
+    assert [i.titulo for i in r.itens] == ["Novo leiaute do eSocial", "CONTRIBUIÇÃO PREVIDENCIÁRIA: novo prazo"]
+    # a campanha (excluir_palavras) e o dia do ribeirinho (fora das palavras) contam; a notícia de janeiro, fora da janela, não
+    assert (r.brutos, r.fora_do_tema) == (5, 2)
+    # a mesma coisa como uma expressão só, sem acento e em maiúsculas: casa do mesmo jeito (sem diferença de acento e maiúscula)
+    outra = {"url": "u", "config": {"janela_dias": 30, "palavras": "ESOCIAL|fgts|CONTRIBUIC", "excluir_palavras": ["Campanha"]}}
+    assert [i.titulo for i in listar_rss(FEED_TEMA, outra, DIA_NORMAS).itens] == [i.titulo for i in r.itens]
+    # nada do tema: a página foi lida (brutos > 0), então não é "nenhum item reconhecido"
+    nada = {"url": "u", "config": {"janela_dias": 30, "palavras": "imposto de renda"}}
+    r = listar_rss(FEED_TEMA, nada, DIA_NORMAS)
+    assert (r.itens, r.brutos, r.fora_do_tema) == ([], 5, 4)
+    # vazio = sem filtro
+    for vazio in ("", [], ["  "], None):
+        assert len(listar_rss(FEED_TEMA, {"url": "u", "config": {"janela_dias": 30, "palavras": vazio}}, DIA_NORMAS).itens) == 4
+
+
+def test_filtro_de_tema_nao_procura_no_texto_inteiro_a_nao_ser_que_a_fonte_peca():
+    fonte = {"url": "u", "config": {"janela_dias": 30, "palavras": "trabalho"}}
+    assert listar_rss(FEED_TEMA, fonte, DIA_NORMAS).itens == []          # "TRABALHO" só no preâmbulo do texto do feed
+    com_texto = {"url": "u", "config": {"janela_dias": 30, "palavras": "trabalho", "palavras_no_texto": True}}
+    assert [i.titulo for i in listar_rss(FEED_TEMA, com_texto, DIA_NORMAS).itens] == ["Dia nacional do ribeirinho"]
+
+
+@pytest.mark.parametrize("palavras, trecho", [
+    ("(FAP", 'as palavras do tema (palavras) não são uma expressão válida: "(FAP"'),
+    (["FGTS", "[eSocial"], 'não são uma expressão válida: o item 2 ("[eSocial")'),
+    (5, "precisam ser um texto ou uma lista de textos"),
+    ({"a": 1}, "precisam ser um texto ou uma lista de textos"),
+])
+def test_palavras_invalidas_viram_erro_claro(palavras, trecho):
+    with pytest.raises(ValueError) as e:
+        listar_rss(FEED_TEMA, {"url": "u", "config": {"palavras": palavras}}, DIA_NORMAS)
+    assert trecho in str(e.value)
+    with pytest.raises(ValueError, match=r"excluir_palavras"):
+        listar_html_links("<a href='/x/1'>Notícia</a>", {"url": "https://ex.gov.br/", "config": {"padrao_url": "/x/", "excluir_palavras": ["a)"]}}, DIA_NORMAS)
+
+
+def test_filtro_de_tema_na_listagem_paginada_conta_uma_vez_no_conjunto():
+    from radar_coletores import listar_paginas
+    paginas = {1: _feed(*[(f"Tema FGTS {n}", "x", QUINTA, "") for n in range(3)] + [("Outro assunto", "x", QUINTA, "")]),
+               2: _feed(("Outro assunto 2", "y", QUINTA, ""))}
+    paginas[2] = paginas[2].replace("https://ex.gov.br/n0", "https://ex.gov.br/p2")
+    fonte = {"slug": "x", "tipo_coletor": "rss", "url": "https://ex.gov.br/feed?p={p}",
+             "config": {"janela_dias": 30, "paginas_max": 2, "itens_por_pagina": 4, "palavras": "FGTS"}}
+    r, _ = listar_paginas(lambda url: (200, paginas[int(url[-1])]), fonte, DIA_NORMAS)
+    assert (len(r.itens), r.brutos, r.fora_do_tema) == (3, 5, 2)
+
+
+# ------------------------------------------------------------ gov.br: eSocial, FGTS Digital, Previdência (e INSS, desligada)
+def _govbr(slug, arquivo, **mudancas):
+    fonte = dict(NOVAS[slug], config=dict(NOVAS[slug]["config"], **mudancas))
+    return listar(amostra(arquivo), fonte, DIA_NORMAS)
+
+
+def test_govbr_data_e_a_de_publicacao_e_nao_a_do_resumo():
+    datas = {i.url.rsplit("/", 1)[-1]: i.data for i in _govbr("esocial-noticias", "govbr-esocial-noticias.html", janela_dias=3650).itens}
+    # o resumo cita prazos (24/06/2026, 25/04/2026, 31/07/2026); vale a linha "publicado dd/mm/aaaa"
+    assert datas["atualizacao-de-certificado-do-esocial-para-um-novo-padrao-de-seguranca"] == date(2025, 12, 11)
+    assert datas["indisponibilidade-do-sistema-dctfweb"] == date(2026, 4, 17)
+    assert datas["parada-do-esocial-em-31-07-2026-19h-manutencao-programada-para-implantacao-do-cnpj-alfanumerico"] == date(2026, 7, 30)
+    assert datas["parada-do-esocial-em-21-01-2026-manutencao-programada"] == date(2026, 1, 16)
+    r = itens_de('<li><a href="/pgfn/pt-br/assuntos/noticias/2026/prazo">Prazo novo</a> <span>Vence em 31/12/2026 e 01/12/2026.</span>'
+                 ' <span>publicado 28/09/2026 10h00</span></li>')
+    assert r.itens[0].data == date(2026, 9, 28)
+    # revisão: o resumo, que vem ANTES da linha "publicado", pode dizer "a portaria publicada em 10/03/2026": vale a última data
+    # marcada como de publicação (a da linha), e não a primeira (a citada no resumo)
+    original = "Sistema ficará indisponível no dia 25/04/2026, entre 0h e 12h, com reflexos no eSocial."
+    pagina = amostra("govbr-esocial-noticias.html")
+    assert pagina.count(original) == 1
+    citada = pagina.replace(original, "A Portaria Conjunta publicada em 10/03/2026 previa a parada; o sistema ficará indisponível no dia 25/04/2026.")
+    fonte = dict(NOVAS["esocial-noticias"], config=dict(NOVAS["esocial-noticias"]["config"], janela_dias=3650))
+    datas = {i.url.rsplit("/", 1)[-1]: i.data for i in listar(citada, fonte, DIA_NORMAS).itens}
+    assert datas["indisponibilidade-do-sistema-dctfweb"] == date(2026, 4, 17)
+    r = itens_de('<li><a href="/pgfn/pt-br/assuntos/noticias/2026/prazo">Prazo novo</a> <span>A IN publicada em 10/03/2026 vence em '
+                 '31/12/2026.</span> <span>publicado 28/09/2026 10h00</span></li>')
+    assert r.itens[0].data == date(2026, 9, 28)
+
+
+def test_esocial_ignora_menu_termos_mais_buscados_colecoes_e_paginacao():
+    r = _govbr("esocial-noticias", "govbr-esocial-noticias.html", janela_dias=3650)
+    urls = [i.url for i in r.itens]
+    assert r.brutos == 10 and len(urls) == 10
+    assert not any("colecao-" in u or "search" in u or "b_start" in u for u in urls)
+    assert any("/noticias/receita-federal/antecipacao-de-atividades" in u for u in urls)   # a subpasta entra
+    r = _govbr("esocial-noticias", "govbr-esocial-noticias.html")
+    assert r.brutos == 10 and r.itens == []        # nada novo desde 27/08: a página foi reconhecida (não é "layout mudou")
+
+
+def test_fgts_digital_comunicados_em_ordem_de_publicacao():
+    r = _govbr("fgts-digital-comunicados", "govbr-fgts-comunicados.html", janela_dias=3650)
+    assert r.brutos == 7 and r.itens[0].titulo == "A emissão antecipada da guia não antecipa a obrigação de pagamento"
+    assert r.itens[0].data == date(2026, 9, 23)
+    assert all("summary_view" not in i.url and "b_start" not in i.url for i in r.itens)
+    datas = {i.url.rsplit("/", 1)[-1]: i.data for i in r.itens}
+    assert datas["recolhimentos-de-fgts-em-processos-trabalhistas-serao-efetuados-via-fgts-digital-a-partir-de-maio-2026"] == date(2026, 4, 2)
+    assert [i.data for i in _govbr("fgts-digital-comunicados", "govbr-fgts-comunicados.html").itens] == [date(2026, 9, 23)]
+
+
+def test_previdencia_e_inss_so_entra_o_que_e_do_escritorio():
+    sem_filtro = _govbr("previdencia-noticias", "govbr-previdencia-noticias.html", palavras="")
+    com_filtro = _govbr("previdencia-noticias", "govbr-previdencia-noticias.html")
+    assert len(sem_filtro.itens) == 9                 # fraude, mutirão, Lei Maria da Penha, FAP...
+    assert [i.titulo[:39] for i in com_filtro.itens] == ["Fator Acidentário de Prevenção (FAP) co"]
+    assert (com_filtro.brutos, com_filtro.fora_do_tema) == (9, 8)
+    inss = _govbr("inss-noticias", "govbr-inss-noticias.html", palavras="")
+    assert inss.brutos == 9 and len(inss.itens) == 6 and all(i.data for i in inss.itens)    # as 3 páginas do menu, sem data, saem
+    assert [i.url.rsplit("/", 1)[-1][:40] for i in _govbr("inss-noticias", "govbr-inss-noticias.html").itens] == [
+        "fez-alguma-contribuicao-com-base-em-valo"]
+    assert "/inss/pt-br/noticias" not in NOVAS["inss-noticias"]["url"]          # esse endereço leva à página de login
+
+
+@pytest.mark.parametrize("slug, arquivo, comeco", [
+    ("esocial-noticias", "govbr-esocial-item.html", "Com fundamento na Lei Complementar nº 224/2025"),
+    ("fgts-digital-comunicados", "govbr-fgts-item.html", "Considerando que o vencimento do FGTS mensal"),
+    ("previdencia-noticias", "govbr-previdencia-item.html", "As informações referentes ao Fator Acidentário de Prevenção (FAP) 2026"),
+    ("inss-noticias", "govbr-inss-item.html", "Você sabia que nenhum benefício do Instituto Nacional do Seguro Social"),
+])
+def test_texto_da_noticia_do_govbr_sem_o_menu(slug, arquivo, comeco):
+    texto = extrair_texto(amostra(arquivo), NOVAS[slug]["config"]["seletor_texto"])
+    assert texto.startswith(comeco) and len(texto) > 1000
+    assert "Termos mais buscados" not in texto and "Desenrola" not in texto and "Compartilhe" not in texto
+
+
+# ------------------------------------------------------------ DOM/SC (Palhoça e São José), desligadas
+def test_dom_sc_le_o_feed_real_com_data_resumo_e_texto_parcial_sem_abrir_o_ato():
+    fonte = NOVAS["domsc-palhoca-decretos"]
+    # revisão: a pesquisa do site olha o ato inteiro e até o nome do arquivo. O único decreto dos últimos 30 dias, o 4.033 ("QUALIFICAÇÃO.
+    # OS. Dispõe sobre a qualificação de entidade"), só veio porque o PDF se chama "..._instituto_de_saude_social._iss_extrato.pdf":
+    # é lido e fica fora do tema (excluir_palavras), sem virar captura
+    r = listar(amostra("domsc-rss-palhoca-decretos.xml"), fonte, DIA_NORMAS)
+    assert (r.brutos, r.itens, r.fora_do_tema) == (10, [], 1)
+    r = listar(amostra("domsc-rss-palhoca-decretos.xml"), dict(fonte, config=dict(fonte["config"], janela_dias=60)), DIA_NORMAS)
+    assert [(i.url, i.data, i.titulo) for i in r.itens] == [
+        ("https://diariomunicipal.sc.gov.br/?q=id:8706903", date(2026, 9, 14), "DECRETO Nº 4.002, DE 09 DE SETEMBRO DE 2026")]
+    assert r.fora_do_tema == 2                                     # o 4.033 (qualificação de entidade) e o 3.996 (Temporada de Verão)
+    assert r.itens[0].texto_da_listagem == r.itens[0].resumo and r.itens[0].resumo.startswith(
+        "DECRETO Nº 4.002, DE 09 DE SETEMBRO DE 2026. NOTA FISCAL ELETRÔNICA.")
+    r = listar(amostra("domsc-rss-palhoca-decretos.xml"), dict(fonte, config=dict(fonte["config"], janela_dias=400)), DIA_NORMAS)
+    assert (len(r.itens), r.fora_do_tema) == (6, 4)                # fora: OS, Temporada de Verão e os dois do Conselho de Habitação
+    assert not any(p in i.resumo for i in r.itens for p in ("QUALIFICAÇÃO", "TEMPORADA", "HABITAÇÃO"))
+    sj = NOVAS["domsc-saojose-leis"]
+    r = listar(amostra("domsc-rss-saojose-leis.xml"), dict(sj, config=dict(sj["config"], janela_dias=400)), DIA_NORMAS)
+    lc183 = next(i for i in r.itens if "COMPLEMENTAR N.º 183" in i.titulo)
+    assert (len(r.itens), r.fora_do_tema) == (7, 3) and lc183.data == date(2025, 12, 10) and "NOTA PREMIADA" in lc183.resumo
+    fora = {"LEI N.º 6.611 DE 14 DE JULHO DE 2026", "LEI COMPLEMENTAR N.º 192 DE 12 DE MAIO DE 2026", "LEI N.º 6.547 DE 18 DE DEZEMBRO DE 2025"}
+    assert not fora & {i.titulo for i in r.itens}                  # utilidade pública, serviços funerários e operação de crédito
+    assert listar(amostra("domsc-rss-saojose-leis.xml"), sj, DIA_NORMAS).itens == []      # nada nos últimos 30 dias
+    # as quatro fontes do DOM/SC tiram os mesmos assuntos
+    assert len({json.dumps(f["config"]["excluir_palavras"]) for s, f in NOVAS.items() if s.startswith("domsc-")}) == 1
+
+
+# ------------------------------------------------------------ Diário Oficial (INLABS): leis e decretos, CONFAZ, trabalho
+def _xml_amostra(nome):
+    import radar_inlabs
+    return radar_inlabs.ler_xml((AMOSTRAS / nome).read_bytes())
+
+
+def _destino(ato, hoje=DIA_NORMAS):
+    """As fontes do INLABS (desta versão e a dou-inlabs) que gravariam o ato: órgão, tipo e regionais; depois o tema."""
+    import radar_inlabs
+    destino = []
+    for slug, f in NOVAS.items():
+        if f["tipo_coletor"] == "inlabs" and radar_inlabs.filtrar([ato], f["config"]):
+            r = coletores._finalizar([radar_inlabs.para_item(ato)], dict(f["config"], janela_dias=4000), hoje)
+            destino.append((slug, len(r.itens)))
+    return destino
+
+
+@pytest.mark.parametrize("arquivo, esperado", [
+    ("dou-presidencia-entra-decreto-13134-pis-cofins.xml", [("dou-presidencia", 1)]),
+    ("dou-presidencia-entra-ec-141-jornada.xml", [("dou-presidencia", 1)]),
+    ("dou-presidencia-fora-tema-mp-1396-orgao-trocado.xml", [("dou-presidencia", 0)]),     # órgão trocado (STF): passa pelo tipo; tema não
+    ("dou-confaz-entra-despacho-48-convenios.xml", [("dou-confaz", 1)]),
+    ("dou-confaz-fora-excluir-pmpf-28.xml", [("dou-confaz", 0)]),                           # PMPF: excluir_palavras
+    ("dou-trabalho-entra-portaria-conjunta-49-salario-maternidade.xml", [("dou-trabalho-previdencia", 1)]),
+])
+def test_atos_reais_do_dou_vao_para_a_fonte_certa(arquivo, esperado):
+    assert _destino(_xml_amostra(arquivo)) == esperado
+
+
+@pytest.mark.parametrize("titulo, ementa", [
+    # reais (DOU): a portaria do trabalho em feriados no comércio e a prorrogação dela; a ementa só cita a norma que alteram
+    ("PORTARIA MTE Nº 3.665, DE 13 DE NOVEMBRO DE 2023",
+     "Altera a Portaria/MTP nº 671, de 8 de novembro de 2021. (Processo nº 19964.203605/2023-95)."),
+    ("PORTARIA MTE Nº 1.066, DE 17 DE JUNHO DE 2025", "Prorroga o início da vigência da Portaria MTE nº 3.665, de 13 de novembro de 2023."),
+    # montadas: o termo da própria Portaria/MTP 671 e a Instrução Normativa consolidada da inspeção do trabalho
+    ("PORTARIA MTE Nº 1, DE 2 DE JANEIRO DE 2026", "Dispõe sobre o registro eletrônico de ponto."),
+    ("INSTRUÇÃO NORMATIVA MTE Nº 1, DE 2 DE JANEIRO DE 2026", "Altera a Instrução Normativa/MTP nº 2, de 8 de novembro de 2021."),
+    ("PORTARIA MTE Nº 2, DE 2 DE JANEIRO DE 2026", "Dispõe sobre o trabalho aos domingos e feriados autorizado em convenção coletiva."),
+])
+def test_dou_trabalho_ato_que_so_cita_a_norma_consolidada_que_altera_entra(titulo, ementa):
+    """Revisão: o ato do MTE com ementa (o filtro não olha o texto) que só cita a portaria consolidada que altera (Portaria/MTP 671, IN/MTP
+    2) ou só prorroga outra portaria ficava "fora do tema", embora passe pelo órgão e pelo tipo."""
+    tipo = "Instrução Normativa" if titulo.startswith("INSTRUÇÃO") else "Portaria"
+    ato = {"id": "1", "tipo": tipo, "orgao": "Ministério do Trabalho e Emprego/Gabinete do Ministro", "titulo": titulo, "ementa": ementa,
+           "texto": "", "data": None, "secao": "DO1", "pagina": ""}
+    assert _destino(ato) == [("dou-trabalho-previdencia", 1)]
+    # outra portaria do MTE, de outro assunto, continua fora
+    assert _destino(dict(ato, ementa="Altera a Portaria MTE nº 9, que dispõe sobre o Regimento Interno da Mesa Nacional.")) == [
+        ("dou-trabalho-previdencia", 0)]
+
+
+def test_ato_do_dou_sem_ementa_no_xml_usa_o_paragrafo_da_ementa_do_texto():
+    import radar_inlabs
+    ato = _xml_amostra("dou-trabalho-entra-portaria-conjunta-49-salario-maternidade.xml")
+    assert ato["ementa"].startswith("Dispõe sobre a concessão automática e provisória do salário-maternidade")
+    it = radar_inlabs.para_item(ato)
+    assert it.resumo == ato["ementa"] and it.trecho_do_tema is None
+    # sem ementa nenhuma, o tema olha só o começo do texto (500 caracteres), nunca o texto inteiro
+    sem = dict(ato, ementa="", texto="O MINISTRO resolve: " + "x " * 400 + "salário-maternidade")
+    it = radar_inlabs.para_item(sem)
+    assert len(it.trecho_do_tema) == 500 and "salário-maternidade" not in it.trecho_do_tema
+    assert _destino(sem) == [("dou-trabalho-previdencia", 0)]
+
+
+def test_112_atos_reais_do_dou_cada_fonte_decide_como_na_medicao():
+    """Os 112 atos de 17 dias reais do DOU (2025 e 2026) da medição da pesquisa: para cada fonte do INLABS, se o ato fica de fora
+    pelo órgão ou tipo (vazio), entra (ENTRA), sai pelas palavras do tema (fora-tema) ou pelas palavras excluídas (fora-excluir)."""
+    import csv
+    import radar_inlabs
+    linhas = list(csv.DictReader((AMOSTRAS / "dou-atos-reais-2025-2026.tsv").open(encoding="utf-8"), delimiter="\t"))
+    assert len(linhas) == 112
+    contagem = {}
+    for l in linhas:
+        ato = {"id": "1", "tipo": l["tipo"], "orgao": l["orgao"], "titulo": l["titulo"], "ementa": l["ementa"], "texto": "",
+               "data": None, "secao": l["edicao"], "pagina": ""}
+        for slug in ("dou-presidencia", "dou-confaz", "dou-trabalho-previdencia", "dou-fazenda-ministro"):
+            config = NOVAS[slug]["config"]
+            if not radar_inlabs.filtrar([ato], config):
+                obtido = ""
+            elif coletores.filtro_de_tema(config)(radar_inlabs.para_item(ato)):
+                obtido = "ENTRA"
+            else:
+                alvo = sem_acentos(f"{ato['titulo']} {ato['ementa']}")
+                palavras = coletores.expressao_do_tema(config.get("palavras"))
+                obtido = "fora-tema" if palavras is not None and not palavras.search(alvo) else "fora-excluir"
+            assert obtido == l[slug], (slug, l["titulo"])
+            contagem[(slug, obtido)] = contagem.get((slug, obtido), 0) + 1
+    assert {s: contagem.get((s, "ENTRA"), 0) for s in ("dou-presidencia", "dou-confaz", "dou-trabalho-previdencia", "dou-fazenda-ministro")} == \
+        {"dou-presidencia": 10, "dou-confaz": 9, "dou-trabalho-previdencia": 6, "dou-fazenda-ministro": 3}
+
+
+def test_varias_fontes_do_inlabs_na_mesma_rodada_baixam_cada_dia_uma_vez(monkeypatch):
+    import radar_coletar
+    import radar_inlabs
+
+    class Resp:
+        def __init__(self, status, content=b""): self.status_code, self.content = status, content
+
+    class Sessao:
+        def __init__(self):
+            self.pedidos, self.logins, self.cookies = [], 0, {}
+        def post(self, url, data, timeout):
+            self.logins += 1
+            self.cookies["inlabs_session_cookie"] = "x"
+            return Resp(200)
+        def get(self, url, params, timeout, headers):
+            self.pedidos.append(params["dl"])
+            xmls = [(AMOSTRAS / n).read_bytes() for n in ("dou-presidencia-entra-decreto-13134-pis-cofins.xml",
+                                                          "dou-confaz-entra-despacho-48-convenios.xml",
+                                                          "dou-confaz-fora-excluir-pmpf-28.xml")]
+            return Resp(200, _zip_dou(xmls)) if params["dl"] == "2026-10-14-DO1.zip" else Resp(404)
+
+    monkeypatch.setenv("INLABS_EMAIL", "a@b.c")
+    monkeypatch.setenv("INLABS_SENHA", "s")
+    presidencia = {"slug": "dou-presidencia", "tipo_coletor": "inlabs", "config": dict(NOVAS["dou-presidencia"]["config"], janela_dias=7)}
+    confaz = {"slug": "dou-confaz", "tipo_coletor": "inlabs", "config": dict(NOVAS["dou-confaz"]["config"], janela_dias=7)}
+    s = Sessao()
+    assert radar_coletar.tempo_da_fonte(presidencia, s, DIA_NORMAS) == 600
+    r1, _ = radar_inlabs.listar_paginas(s, presidencia, DIA_NORMAS)
+    assert len(s.pedidos) == 14 and s.logins == 1                      # 7 dias × (DO1 e DO1E), com um login
+    assert radar_inlabs.janela_em_memoria(s, confaz, DIA_NORMAS)
+    assert radar_coletar.tempo_da_fonte(confaz, s, DIA_NORMAS) == radar_coletar.TEMPO_INLABS_EM_MEMORIA     # só filtra: cabe na rodada
+    r2, _ = radar_inlabs.listar_paginas(s, confaz, DIA_NORMAS)
+    assert len(s.pedidos) == 14 and s.logins == 1                      # nada baixado de novo
+    assert [i.titulo for i in r1.itens] == ["DECRETO Nº 13.134, DE 9 DE OUTUBRO DE 2026"]
+    assert [i.titulo for i in r2.itens] == ["DESPACHO Nº 48, DE 13 DE OUTUBRO DE 2026"] and r2.fora_do_tema == 1 and r2.brutos == 3
+    # uma janela maior baixa só os dias que faltam; a rodada seguinte (outra sessão) baixa tudo de novo
+    radar_inlabs.listar_paginas(s, dict(confaz, config=dict(confaz["config"], janela_dias=8)), DIA_NORMAS)
+    assert s.pedidos[14:] == ["2026-10-10-DO1.zip", "2026-10-10-DO1E.zip"] and s.logins == 1
+    nova = Sessao()
+    assert not radar_inlabs.janela_em_memoria(nova, confaz, DIA_NORMAS)
+    radar_inlabs.listar_paginas(nova, confaz, DIA_NORMAS)
+    assert len(nova.pedidos) == 14 and nova.logins == 1
+
+
+def test_resumo_da_rodada_conta_o_que_ficou_fora_do_tema():
+    import radar_coletar
+    texto = radar_coletar.resumo_markdown([
+        {"fonte": "dou-presidencia", "status": "ok", "encontrados": 1, "fora_do_tema": 4, "novos": 1, "atualizados": 0, "sem_texto": 0,
+         "com_erro": 0, "erro": None},
+        {"fonte": "rfb-noticias", "status": "ok", "encontrados": 2, "novos": 0, "atualizados": 0, "sem_texto": 0, "com_erro": 0, "erro": None}], [])
+    assert "| Fonte | Situação | Na janela | Fora do tema | Novos |" in texto
+    assert "| dou-presidencia | ok | 1 | 4 | 1 |" in texto and "| rfb-noticias | ok | 2 | 0 | 0 |" in texto
+    assert "Fora do tema (não viraram captura): 4 item(ns)" in texto

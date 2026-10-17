@@ -28,9 +28,10 @@ import requests
 
 import radar_ia
 import radar_inlabs
+import radar_normas
 import radar_rascunhos
 from radar_banco import Banco, ErroBanco
-from radar_coletores import Item, data_no_texto, listar_paginas
+from radar_coletores import Item, data_no_texto, listar_paginas, texto_do_ato_normas
 from radar_util import (VERSAO, ErroDownload, agora_iso, baixar, extrair_texto,
                         hash_conteudo, hash_titulo)
 
@@ -61,12 +62,25 @@ def deve_revisitar(existente: dict, config: dict, agora: datetime) -> bool:
     return dentro and agora - verificado >= timedelta(hours=20)
 
 
-def obter_texto(item: Item, config: dict, sessao: requests.Session) -> tuple[str | None, str | None]:
+def obter_texto(item: Item, config: dict, sessao: requests.Session, tipo: str | None = None) -> tuple[str | None, str | None]:
     if config.get("sem_pagina_de_texto"):
         # a fonte não oferece o texto integral por endereço direto: guarda-se o que a
         # listagem oficial traz (ementa) e isso fica anotado na captura
         return (item.texto_da_listagem, None) if item.texto_da_listagem else (None, "a listagem não trouxe ementa")
     minimo = int(config.get("texto_minimo", 80))
+    if tipo == "normas_rfb" and item.url_texto:
+        # v0.31.0: o texto do ato vem da consulta externa do Normas, em JSON (epígrafe, ementa e artigos)
+        try:
+            _, conteudo = baixar(item.url_texto, sessao, tentativas=2)
+        except ErroDownload as e:
+            return None, str(e)
+        try:
+            texto = texto_do_ato_normas(conteudo)
+        except (ValueError, TypeError, AttributeError):
+            return None, "o texto do ato veio em formato inesperado"
+        if len(texto) < minimo:
+            return None, f"texto curto demais ({len(texto)} caracteres)"
+        return texto, None
     if config.get("texto_do_feed") and len(item.texto_da_listagem or "") >= minimo:
         # o feed já traz a notícia inteira: não é preciso abrir a página (site lento ou que recusa robôs)
         return item.texto_da_listagem, None
@@ -138,21 +152,37 @@ def tempo_maximo(config: dict) -> float:
     return valor if 0 < valor <= 3600 else TEMPO_MAX_PADRAO
 
 
+# v0.31.0: a fonte do INLABS cujos dias a rodada já baixou (para outra fonte do INLABS) só filtra e grava: não precisa dos 10 minutos
+TEMPO_INLABS_EM_MEMORIA = 90
+
+
+def tempo_da_fonte(fonte: dict, sessao, hoje: date | None = None) -> float:
+    """O tempo máximo da fonte nesta rodada: é com ele que a rodada decide se ela cabe e é ele que interrompe a fonte."""
+    tempo = tempo_maximo(fonte.get("config") or {})
+    if fonte.get("tipo_coletor") == "inlabs" and radar_inlabs.janela_em_memoria(sessao, fonte, hoje):
+        return min(tempo, TEMPO_INLABS_EM_MEMORIA)
+    return tempo
+
+
 def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
                   hoje: date | None = None, pausa: float = 1.0) -> dict:
     config = fonte.get("config") or {}
     agora = datetime.now(timezone.utc)
     resultado = {"fonte": fonte["slug"], "status": "falha", "encontrados": 0, "novos": 0,
-                 "atualizados": 0, "sem_texto": 0, "com_erro": 0, "erro": None}
+                 "atualizados": 0, "sem_texto": 0, "com_erro": 0, "fora_do_tema": 0, "erro": None}
     execucao = banco.abrir_execucao(fonte["id"])      # se nem isto funcionar, o banco está fora: aborta
     http = None
+    tipo = fonte.get("tipo_coletor")
     try:
-        with limite_de_tempo(tempo_maximo(config)):
-            if fonte.get("tipo_coletor") == "inlabs":
+        with limite_de_tempo(tempo_da_fonte(fonte, sessao, hoje)):
+            if tipo == "inlabs":
                 listagem, http = radar_inlabs.listar_paginas(sessao, fonte, hoje)
+            elif tipo == "normas_rfb":
+                listagem, http = radar_normas.listar_paginas(sessao, fonte, hoje, pausa=pausa)    # v0.31.0: a pesquisa nova (POST)
             else:
                 listagem, http = listar_paginas(lambda url: baixar(url, sessao), fonte, hoje)
             resultado["encontrados"] = len(listagem.itens)
+            resultado["fora_do_tema"] = listagem.fora_do_tema      # v0.31.0: não viram captura; só contam no resumo da rodada
 
             if listagem.brutos == 0:
                 resultado["status"] = "vazio_suspeito"
@@ -166,7 +196,7 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
                     existente = existentes.get(item.url)
                     if existente and not deve_revisitar(existente, config, agora):
                         continue
-                    texto, erro_texto = obter_texto(item, config, sessao)
+                    texto, erro_texto = obter_texto(item, config, sessao, tipo)
                     if not (config.get("sem_pagina_de_texto") or config.get("texto_do_feed")):
                         time.sleep(pausa)                          # gentileza com o site (só quando houve pedido)
                     if item.data is None and texto and config.get("data_do_texto"):
@@ -254,11 +284,16 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
 
 def resumo_markdown(resultados: list[dict], pulados: list[str]) -> str:
     linhas = [f"## Radar Artecon — coleta v{VERSAO}", "",
-              "| Fonte | Situação | Na janela | Novos | Alterados | Sem texto | Com erro | Observação |",
-              "|---|---|---:|---:|---:|---:|---:|---|"]
+              "| Fonte | Situação | Na janela | Fora do tema | Novos | Alterados | Sem texto | Com erro | Observação |",
+              "|---|---|---:|---:|---:|---:|---:|---:|---|"]
     for r in resultados:
-        linhas.append(f"| {r['fonte']} | {r['status']} | {r['encontrados']} | {r['novos']} | "
+        linhas.append(f"| {r['fonte']} | {r['status']} | {r['encontrados']} | {r.get('fora_do_tema', 0)} | {r['novos']} | "
                       f"{r['atualizados']} | {r['sem_texto']} | {r['com_erro']} | {(r['erro'] or '')[:160]} |")
+    fora = sum(r.get("fora_do_tema", 0) for r in resultados)
+    if fora:
+        # v0.31.0: o filtro de tema ("palavras" / "excluir_palavras" da fonte) deixou de fora; nada disso vira captura
+        linhas += ["", f"Fora do tema (não viraram captura): {fora} item(ns). O filtro fica em Fontes → Configurar → "
+                       "\"palavras\" e \"excluir_palavras\"."]
     if pulados:
         linhas += ["", "Fora do horário (frequência ainda não venceu): " + ", ".join(pulados)]
     return "\n".join(linhas)
@@ -288,16 +323,18 @@ def executar(banco: Banco, slug: str | None = None, forcar: bool = False,
         if not forcar and not fonte_esta_na_hora(fonte, agora):
             pulados.append(fonte["slug"])
             continue
-        if restante(prazo) < tempo_maximo(fonte.get("config") or {}) + FOLGA_FONTE:
+        if restante(prazo) < tempo_da_fonte(fonte, sessao, hoje) + FOLGA_FONTE:
             # o prazo da rodada acabou: a fonte não é visitada (nem conta como falha) e entra na próxima coleta
             resultados.append({"fonte": fonte["slug"], "status": "sem tempo", "encontrados": 0, "novos": 0, "atualizados": 0,
-                               "sem_texto": 0, "com_erro": 0, "erro": "o prazo desta rodada acabou; fica para a próxima coleta"})
+                               "sem_texto": 0, "com_erro": 0, "fora_do_tema": 0,
+                               "erro": "o prazo desta rodada acabou; fica para a próxima coleta"})
             print(f"→ {fonte['slug']}: sem tempo nesta rodada")
             continue
         print(f"→ {fonte['slug']}")
         r = coletar_fonte(banco, fonte, sessao, hoje, pausa)
         print(f"  {r['status']}: {r['encontrados']} na janela, {r['novos']} novos, "
-              f"{r['atualizados']} alterados" + (f" — {r['erro']}" if r["erro"] else ""))
+              f"{r['atualizados']} alterados" + (f", {r['fora_do_tema']} fora do tema" if r.get("fora_do_tema") else "")
+              + (f" — {r['erro']}" if r["erro"] else ""))
         resultados.append(r)
     return resultados, pulados
 

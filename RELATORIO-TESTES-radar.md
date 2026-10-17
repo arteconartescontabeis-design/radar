@@ -1,7 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.30.0)
+# Radar Artecon — Relatório de testes (v0.31.0)
 
-Data: 17/10/2026. **A suíte inteira da v0.30.0 roda no GitHub (CI) antes de juntar.** A v0.30.0 foi feita em paralelo com a v0.29.0
-e juntada por cima dela; neste ambiente rodaram, pela fila compartilhada, os testes afetados: `testes/test_radar_repositorio.py`, **19
+Data: 17/10/2026. **A suíte inteira da v0.31.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, pela fila
+compartilhada, os testes afetados: o robô da coleta, o de ponta a ponta, o repositório, o banco, a agenda, o corretor de vídeo no banco
+e os lembretes (`testes/test_radar_coletores.py`, `test_radar_e2e.py`, `test_radar_repositorio.py`, `test_radar_banco.py`,
+`test_radar_agenda.py`, `test_radar_video_banco.py` e `test_radar_lembretes.py`), **582 aprovados, 2 falhas (as esperadas antes de
+terminar a versão, corrigidas e aprovadas depois), 1 pulado**; e o arquivo inteiro dos testes de tela, com o repositório e os
+lembretes de novo, **270 aprovados, 0 falhas, 62 pulados**, em 714 s (detalhes na seção da v0.31.0, logo abaixo). A v0.31.0 tem 45
+testes novos, 9 deles da revisão (de 1.214 para 1.259 no total). Depois da revisão (seção "v0.31.0 — correções da revisão", logo
+abaixo), rodaram de novo o robô da coleta, o de ponta a ponta, o repositório e o banco, **532 aprovados, 0 falhas, 1 pulado**, e o
+arquivo inteiro dos testes de tela com o repositório, **254 aprovados, 0 falhas, 62 pulados**. Na v0.30.0 (feita em paralelo com a v0.29.0 e juntada por cima dela), rodaram, pela fila
+compartilhada, os testes afetados: `testes/test_radar_repositorio.py`, **19
 aprovados, 0 falhas, 1 pulado**; o banco, a agenda e o corretor de vídeo no banco (`testes/test_radar_banco.py`,
 `testes/test_radar_agenda.py` e `testes/test_radar_video_banco.py`), **352 aprovados, 0 falhas**; os lembretes e o de ponta a ponta
 (`testes/test_radar_lembretes.py` e `testes/test_radar_e2e.py`), **99 aprovados, 0 falhas**; e o arquivo inteiro dos testes de tela,
@@ -35,8 +43,198 @@ o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-reposit
 teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado,
 toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
-atualizado: as seções da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
+atualizado: as seções da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.31.0 — fontes oficiais que faltavam
+
+Data: 17/10/2026. Pedido do dono: as fontes oficiais que faltavam (leis e decretos, CONFAZ, trabalho e previdência, eSocial, FGTS
+Digital, as prefeituras de Palhoça e São José) e o Normas da Receita de volta, **sem enxurrada**. Feita a partir de quatro pesquisas
+com páginas e respostas reais de 17/10/2026 (de um servidor fora do Brasil, como o GitHub Actions): o Normas, o Diário Oficial
+(INLABS), o Diário Oficial dos Municípios (DOM/SC) e as páginas do gov.br.
+
+**O que mudou:**
+
+- **Robô da coleta** (robô **0.31.0**; antes 0.21.0, a versão que vai em cada execução e no User-Agent):
+  - filtro de tema em qualquer fonte (`radar_coletores.filtro_de_tema`): `"palavras"` (o item entra se uma casar) e
+    `"excluir_palavras"` (o item sai se uma casar), lista de pedaços de expressão ou uma expressão só, sem diferença de maiúsculas e de
+    acentos (o acento sai do texto e da expressão), sobre o título + resumo (ementa) — nunca o texto inteiro, a não ser com
+    `"palavras_no_texto": true`. Roda depois da janela de datas e depois de contar os "reconhecidos": página lida em que nada é do tema
+    não vira `vazio_suspeito`. Expressão inválida vira `ValueError` com o campo e o item ("o item 2 ("[eSocial")"), e a fonte fica com
+    falha (a rodada segue). O que fica de fora é contado: `Listagem.fora_do_tema` → coluna **"Fora do tema"** no resumo da coleta e no
+    relatório do diagnóstico (não vai para o banco). Na listagem paginada, o tema e o limite de itens valem para o conjunto;
+  - a data marcada como de publicação ("publicado 27/08/2026") vale mais que a primeira data do cartão (gov.br: o resumo cita prazos);
+  - RSS com `"sem_pagina_de_texto"`: o resumo oficial do feed é o texto guardado (parcial), sem abrir a página de cada item (DOM/SC);
+  - **Normas da Receita** pela pesquisa pública nova: `radar_util.postar_json` (POST JSON, para em 400/401/403/404/410, tenta de novo
+    em 5xx com o "message" do erro), `robo/radar_normas.py` (página a página até `paginas_max`, com pausa; página seguinte com erro =
+    leitura incompleta; HTTP 403 = "o site da Receita recusou o pedido do robô"; cadastro antigo = erro que manda rodar o SQL da
+    versão), `listar_normas_rfb` lendo o JSON (nome oficial do ato com a data do ato, data da publicação, ementa sem HTML, endereço
+    estável sem `/vs/`, metadados com o link permanente; página da aplicação ou JSON sem "atos" = `SistemaNormasMudou`, com a mensagem
+    nova), `texto_do_ato_normas` (a consulta externa em JSON: epígrafe, ementa e segmentos na ordem, sem o riscado e o omitido, sem
+    inventar o anexo) e `corpo_pesquisa_normas` (o mesmo pedido da tela, datas em DD/MM/AAAA). O leitor da tabela HTML antiga saiu
+    (o endereço não existe desde 04/10/2026), com a amostra `rfb-normas.html`. `baixar()` lê JSON sem charset como UTF-8;
+  - **INLABS**: a ementa vazia no XML vem do `<p class="ementa">` do texto; sem ementa nenhuma, o tema olha os 500 primeiros
+    caracteres do texto; o que a rodada já baixou fica na sessão (o login e os atos de cada dia e seção): a 1ª fonte do INLABS baixa, as
+    outras só filtram, e a fonte cuja janela já está na memória conta 90 s no prazo da rodada (não os 600 s), para as quatro caberem;
+  - **diagnóstico**: o campo "endereços" aceita o identificador de uma fonte (do banco, ligada ou não; sem chave, do
+    `robo/radar_fontes.json`) e o endereço do Normas vira a fonte de atos da Receita; guarda o JSON da pesquisa e do texto.
+- **Banco** (`git mv sql/radar-setup-v0.30.0.sql sql/radar-setup-v0.31.0.sql`, e a reversão): só a `radar_url_base`, que guardava só
+  `https://normasinternet2.receita.fazenda.gov.br` de todo ato do Normas (tirava o `#/consulta/externa/N`): o texto oficial colado de
+  um ato era ligado à captura de OUTRO ato da mesma fonte. Agora o `#/…` (e o `#!/…`) fica e o `/vs/…` da consulta sai. A carga inicial
+  da rfb-normas passa para a pesquisa nova (espelho de `robo/radar_fontes.json`). Registro `v0.31.0`; nenhuma tabela nem coluna nova;
+  o gatilho `radar_fn_fonte_formato` não muda (ele não recusa campo novo da config; a expressão inválida é recusada pela tela, no
+  JavaScript, e pelo robô, no Python — o PostgreSQL usa outra sintaxe de expressão e recusaria ou aceitaria errado).
+- **Fontes** (`sql/radar-fontes-novas-v0.31.0.sql`, novo): para no começo, sem mudar nada, enquanto nenhuma coleta do robô 0.31.0
+  estiver registrada em `radar_execucoes` (o robô antigo traria tudo das fontes novas); cadastra 12 fontes com `on conflict (slug) do
+  nothing` (ligadas: `dou-presidencia`, `dou-confaz`, `dou-trabalho-previdencia`, `esocial-noticias`, `fgts-digital-comunicados`,
+  `previdencia-noticias`; desligadas: `dou-fazenda-ministro`, `inss-noticias` e as quatro `domsc-…`) e troca o endereço e as opções da
+  `rfb-normas` só se ainda forem os da consulta antiga, sem ligá-la.
+- **Tela** (`index.html`): a conferência de `palavras` e `excluir_palavras` ao salvar a fonte (texto ou lista de textos; expressão
+  válida; sem repetição dentro de repetição), a ajuda no campo "Outras opções de leitura", a entrada 0.31.0 em Versões e o recado do
+  banco com o setup da v0.31.0 (também em `radar-pauta.js` e `radar-video.js`, que só mudam a versão). Workflow do diagnóstico: só o
+  texto do campo "endereços".
+
+**Conferido com as amostras reais** (copiadas para `testes/amostras/`, reduzidas; veja o `LEIA-ME.txt` de lá):
+
+- Normas (resposta real de 01 a 17/10, reduzida a 7 atos): com a config nova, hoje 17/10 e janela de 10 dias, **7 reconhecidos e 3
+  itens**, nesta ordem: "Solução de Consulta Cosit nº 196, de 08/10/2026", "Solução de Consulta Disit/SRRF03 nº 3056, de 09/10/2026"
+  e "Portaria MF nº 3074, de 09/10/2026"; 1 fora do tema (a SC de classificação de mercadoria). Janela de 5 dias: só as duas SC.
+  Resposta vazia: 0 reconhecidos. Texto da Portaria Coana 214: 1.291 caracteres, começando por "Portaria Coana nº 214, de 15 de
+  outubro de 2026 Altera a Portaria Coana nº 188…"; da SC Cosit 196: 3.509 caracteres. O corpo do pedido é igual ao da tela.
+- DOU: os 112 atos reais da medição (17 dias de 2025 e 2026): **para cada uma das 4 fontes, a decisão do robô é a da medição em todos
+  os 112** (vazio, ENTRA, fora-tema ou fora-excluir); entram 10 em `dou-presidencia`, 9 em `dou-confaz`, 6 em
+  `dou-trabalho-previdencia` e 3 em `dou-fazenda-ministro`. Os 6 XML montados vão para a fonte certa (a MP com o órgão trocado passa
+  pelo tipo e sai pelo tema; o PMPF sai pelas palavras excluídas; a Portaria Conjunta 49, com `<Ementa>` vazio, entra pela ementa do
+  texto).
+- gov.br: eSocial 10 reconhecidos e 0 na janela de 30 dias (nada novo desde 27/08), com as datas de publicação certas (11/12/2025, e
+  não 24/06/2026; 17/04, e não 25/04); FGTS Digital 7 reconhecidos e 1 na janela (23/09); Previdência 9 reconhecidos, 1 do tema (FAP)
+  e 8 fora; INSS 9 reconhecidos (3 do menu, sem data, saem), 1 do tema; o texto das 4 notícias sem o menu do gov.br.
+- DOM/SC (depois da revisão, com as palavras excluídas): decretos de Palhoça, janela de 30 dias, 10 reconhecidos, 0 itens e 1 fora do
+  tema (o decreto 4.033, qualificação de OS); janela de 60, 1 item (o 4.002, NOTA FISCAL ELETRÔNICA) e 2 fora; janela de 400, 6 itens
+  e 4 fora; leis de São José, janela de 400, 7 itens e 3 fora (a LC 183, Nota Premiada, em 10/12/2025, entra). O cadastro: `q` com até
+  200 caracteres, entre parênteses e sem hífen; `excluiTermos` sem acento; `view=rss`.
+- Todas as 311 expressões das fontes desta versão e do `robo/radar_fontes.json` (272 antes da revisão) passam na conferência da tela
+  (expressão válida no JavaScript e sem repetição perigosa), conferido com o Node e a função `repeticaoPerigosa` do próprio
+  `index.html`.
+
+**Resultados desta rodada** (pela fila compartilhada, com o PostgreSQL 16, o PostgREST, o Deno e o Chromium de teste; nenhuma chamada
+ao Normas, ao INLABS, ao gov.br, ao DOM/SC, ao GitHub ou ao Supabase de verdade: as respostas reais estão nas amostras e o site falso
+dos testes de ponta a ponta responde à pesquisa do Normas por POST). **A suíte inteira roda no GitHub (CI) antes de juntar.**
+
+- `testes/test_radar_coletores.py` (111), `testes/test_radar_e2e.py` (82), `testes/test_radar_repositorio.py` (20),
+  `testes/test_radar_banco.py` (311), `testes/test_radar_agenda.py` (12), `testes/test_radar_video_banco.py` (31) e
+  `testes/test_radar_lembretes.py` (18), numa rodada só: **582 aprovados, 2 falhas, 1 pulado**, em 457 s. As 2 falhas eram as
+  esperadas antes de terminar a versão: o título deste relatório (o teste da versão igual em todos os arquivos) e a versão registrada
+  pelo setup num teste dos lembretes (`v0.30.0` → `v0.31.0`); corrigidas, passaram na rodada seguinte;
+- `testes/test_radar_repositorio.py` (20), `testes/test_radar_lembretes.py` (18) e o arquivo inteiro dos testes de tela
+  (`testes/test_radar_telas.py`, 294): **270 aprovados, 0 falhas, 62 pulados** (61 de tela, os que sobem a IA Central de verdade, e o
+  dos commits do push), em 714 s (11min54s);
+- depois do último ajuste (a conferência da versão do robô no SQL das fontes não quebra com versão fora do padrão),
+  `testes/test_radar_banco.py -k "v0310 or normas_vai"`: **2 aprovados**.
+
+Não rodaram aqui (rodam no GitHub): as funções no Deno, os outros testes do corretor de vídeo e os dos robôs que não mudaram.
+
+**O setup duas vezes e o SQL das fontes duas vezes.** O `sql/radar-setup-v0.31.0.sql` roda duas vezes seguidas nos testes de
+instalação (`test_radar_banco.py`: por cima da v0.1, da v0.6, da v0.7 e do banco sem os lembretes), **sem erro**, com 28 tabelas e o
+registro `v0.31.0`. O `sql/radar-fontes-novas-v0.31.0.sql` (`test_fontes_da_v0310_…`): sem coleta do robô 0.31.0 (e com coletas
+0.21.0, 0.4.0, "0.31.0-teste" e sem versão), **para sem mudar nada**; com ela, roda **duas vezes sem erro**: 12 fontes (6 ligadas, 6
+desligadas, todas oficiais, com as categorias certas), a barra invertida e o acento das palavras chegam inteiros ao banco, a
+rfb-normas sai do endereço antigo para o novo (igual à carga inicial e ao `robo/radar_fontes.json`) e continua desligada; na 2ª vez,
+a fonte desligada pelo administrador, a ligada e o ajuste na rfb-normas ficam como estavam.
+
+**Testes novos (36 coletados a mais: de 1.214 para 1.250) e ajustados.** Novos: `test_radar_coletores.py` (+33: o Normas pela
+resposta real, vazia, de formato novo, o texto do ato, o corpo da pesquisa, a paginação e a recusa pela API, o `postar_json`, os atos
+reais de 02/10 na resposta nova; o filtro de tema — entra, fica fora, contado, sem acento, lista ou texto, vazio, inválido, só no
+título e no resumo, paginado; as 4 fontes do gov.br com as amostras; o DOM/SC; os 6 XML e os 112 atos do DOU; o INLABS uma vez por
+rodada e o prazo de 90 s da fonte que só filtra; o resumo da rodada; o cadastro das fontes lido do próprio SQL), `test_radar_e2e.py`
+(+1: o filtro de tema na coleta de verdade, com a contagem e a expressão inválida) e `test_radar_banco.py` (+2: o SQL das fontes; o
+texto oficial colado de um ato do Normas vai para a captura desse ato). Ajustados: os 3 testes de ponta a ponta do Normas (agora a
+pesquisa por POST e o texto em JSON, com a recusa HTTP 403 e o formato novo), os da paginação genérica e do diagnóstico (sem a tabela
+do Normas antigo), o endereço em forma única (os casos do `#/…`), a versão do robô (`0.31.0`) e do setup (`v0.31.0`), a aba Versões (a
+0.31.0 no topo, com 6 itens; as de antes uma posição abaixo), o rodapé, `FUNCAO_MINIMA`/`VERSAO`, os recados do banco e o cadastro de
+fonte pela tela (as palavras do tema inválidas são recusadas antes de gravar).
+
+**O que não foi testado aqui (e por quê):**
+
+- **Nada saiu daqui para o GitHub Actions** (não foi acionado nenhum workflow). Em 04/10/2026, a pesquisa do Normas recusou o GitHub
+  (HTTP 403 "Request forbidden by administrative rules"); em 17/10 respondeu 200 de um servidor fora do Brasil. Por isso a rfb-normas
+  continua desligada: o diagnóstico com `rfb-normas` no campo "endereços" é o teste que decide (LEIAME, "Da v0.30.0 para a v0.31.0").
+  O endereço do FGTS Digital (`summary_view` com a ordem por publicação) também não foi aberto do GitHub (a pasta do gov.br, sim).
+- **O XML de verdade do INLABS** não foi aberto nesta pesquisa (pede login): os 6 XML foram montados a partir das páginas públicas do
+  DOU. Conferir no primeiro dia: o `artType` dos decretos ("Decreto numerado" ou "Decreto"; a expressão aceita os dois) e se a
+  edição extra vem como "DO1E" (a fonte `dou-inlabs`, que já funciona, usa as mesmas seções).
+- **DOM/SC no GitHub:** as fontes ficam desligadas (o `robots.txt` do site pede que robôs não entrem), e o diagnóstico com elas não
+  foi rodado (nem deve ser, antes da autorização do site). Ligadas, leem só o feed de `diariomunicipal.sc.gov.br`, que abre do
+  GitHub; a página de cada ato (`static.dom.sc.gov.br`) não é aberta.
+
+**Limites registrados:** as palavras do tema foram calibradas com 17 dias do DOU e páginas de um dia; podem deixar passar um assunto
+que não use nenhuma delas (revisar com a contagem "Fora do tema" nas primeiras semanas). As palavras excluídas do DOM/SC saíram de dois
+feeds reais (10 decretos de Palhoça e 10 leis de São José): um ato de outro assunto ainda não visto pode passar. A rfb-normas, ligada, repete os atos centrais
+da Receita que a `dou-inlabs` já traz (títulos e endereços diferentes: a IA marca a repetição na triagem). Com
+`"sem_pagina_de_texto"` ligado ou desligado na rfb-normas, os itens ainda em revisita mudam de texto e contam como "alterados" uma vez.
+
+## v0.31.0 — correções da revisão
+
+Data: 17/10/2026. A revisão independente da v0.31.0 achou 10 pontos. Os 10 foram reproduzidos (com os scripts da revisão e as amostras
+reais) e corrigidos com o menor ajuste; cada um tem teste que **falha sem a correção** (conferido trocando o arquivo corrigido pelo do
+commit anterior e rodando o teste: 7 falhas com o SQL das fontes antigo, 1 com o `radar_coletores.py` antigo, 1 com o
+`radar_diagnostico.py`, 2 com o LEIAME, 1 com o `index.html` e 1 com a amostra; e, no banco, 2 com o LEIAME antigo).
+
+1. **`dou-trabalho-previdencia` deixava de fora atos do departamento pessoal** cuja ementa só cita a norma consolidada que alteram (a
+   Portaria MTE nº 3.665/2023, dos feriados no comércio: "Altera a Portaria/MTP nº 671…"; a prorrogação dela, Portaria MTE nº
+   1.066/2025) e o "registro eletrônico de ponto". Entram nas `palavras`: registro eletrônico de ponto, feriados, domingos, convenção
+   coletiva, Portaria/MTP 671, Portaria MTE 3.665 e Instrução Normativa/MTP 2. Nos 112 atos reais da medição, **nenhuma decisão
+   mudou** (para as 4 fontes).
+2. **DOM/SC trazia atos de outros assuntos**: a pesquisa do site olha o ato inteiro e até o nome do arquivo (o decreto 4.033 de
+   Palhoça, qualificação de OS, entrou porque o PDF tinha "iss" de Instituto de Saúde Social). As 4 fontes ganham as mesmas
+   `excluir_palavras` (qualificação de entidade, organização social, Temporada de Verão, nomeação dos membros, utilidade pública,
+   serviços funerários, operação de crédito): nos feeds reais saem os 4 decretos de fora de Palhoça e as 3 leis de fora de São José, e
+   ficam os 6 e os 7 do tema. Não entrou um filtro `palavras` (o que precisa aparecer): o resumo do feed de São José traz só a 1ª linha
+   da ementa, cortada, e atos do tema (como a LC 182 e a LC 184) ficariam de fora.
+3. **gov.br**: vale a ÚLTIMA data marcada como de publicação no cartão (o resumo vem antes da linha "publicado" e pode dizer "a
+   portaria publicada em 10/03/2026"; com a amostra real assim modificada, a data era 10/03 e passa a ser 17/04/2026).
+4. **Diagnóstico**: com a pesquisa do Normas respondendo e só o texto do 1º ato recusado, o relatório mostra o HTTP da pesquisa (200)
+   e o veredito "REVISAR — lista ok, texto do 1º item recusado (HTTP 403): com "sem_pagina_de_texto": true…" (antes: HTTP 403 e
+   FALHA, igual à recusa da própria pesquisa). O item (c) do LEIAME passa a ler o veredito: OK → ligar; REVISAR (texto recusado) →
+   `"sem_pagina_de_texto": true` e ligar; FALHA com HTTP 403 → deixar desligada.
+5. **DOM/SC e o `robots.txt`** (`User-agent: *` / `Disallow: /`): o LEIAME não manda mais rodar o diagnóstico com uma fonte
+   `domsc-…` antes da autorização do site (o diagnóstico também é um robô); o exemplo do campo "endereços" fica só com `rfb-normas`.
+6. **Textos**: a aba Versões, o topo do LEIAME, o cabeçalho do SQL das fontes e a tabela das fontes da v0.31.0 dizem quais fontes
+   ficam sem filtro de tema (o eSocial e o FGTS Digital: tudo o que publicam é do departamento pessoal) e não dizem mais que o DOM/SC
+   vem "já filtrado por tributos".
+7. **Amostra `dou-confaz-entra-despacho-48-convenios.xml`**: o parágrafo de assinatura do Convênio ICMS 115 (o presidente do CONFAZ e
+   os secretários de Fazenda de cada estado) virou "[nomes dos signatários retirados da amostra]", como o LEIA-ME das amostras diz. O
+   teste do repositório confere os 6 XML do DOU.
+8. **rfb-normas na instalação nova**: corrigido o LEIAME ("Fontes iniciais": na instalação nova ela entra ligada, como as outras
+   cinco, porque o Passo 1 da instalação já roda o diagnóstico dela; com HTTP 403, desligar). O setup não muda: deixá-la desligada só
+   na carga inicial mudaria as fontes ativas que o Painel conta numa instalação nova e não vale para a instalação que já existe (onde
+   ela continua desligada).
+9. **LEIAME**: as unidades da Receita que ficam de fora por padrão são as do `excluir_orgao` (as Disit entram desde a v0.31.0, pelas
+   Soluções de Consulta); o DOM/SC fica desligado "até o dono decidir", e o INSS e o Ministro da Fazenda, "por escolha desta versão".
+10. **Ligações erradas da v0.30.0**: o passo 1 de "Da v0.30.0 para a v0.31.0" traz uma consulta **só de leitura** que acha os textos
+    colados de atos do Normas que a versão anterior ligou à captura de outro ato (captura incluída pela equipe com o endereço só do
+    site) e diz o que fazer. Testada no banco de teste: com a `radar_url_base` da v0.30.0, o 2º ato colado vai para a captura do 1º; a
+    consulta acha os dois assuntos e não acusa o ato colado já na v0.31.0. Nada é corrigido sozinho (o banco de produção não foi
+    consultado).
+
+**Testes novos da revisão: 9** (de 1.250 para 1.259 no total): `test_radar_coletores.py` +6 (os 5 casos do ato do MTE que só cita a
+norma consolidada; os textos que dizem quais fontes ficam sem filtro de tema), `test_radar_repositorio.py` +2 (o LEIAME da v0.31.0 contra
+o cadastro e o pedido do DOM/SC; as amostras do DOU sem os nomes de quem assinou) e `test_radar_banco.py` +1 (a consulta do LEIAME acha
+as ligações erradas da v0.30.0). Ajustados: o DOM/SC com o feed real (0 itens e 1 fora do tema em 30 dias; 6 e 7 itens em 400 dias), a
+data do gov.br (+ o resumo com "publicada em"), o diagnóstico (+ a pesquisa ok e o texto recusado), a aba Versões (os textos novos) e a
+instalação sem a transação do editor (as 6 fontes iniciais ligadas e o LEIAME dizendo isso).
+
+**Resultados depois da revisão** (pela fila compartilhada):
+
+- `testes/test_radar_coletores.py` (117), `testes/test_radar_e2e.py` (82), `testes/test_radar_repositorio.py` (22) e
+  `testes/test_radar_banco.py` (312), numa rodada só: **532 aprovados, 0 falhas, 1 pulado** (o dos commits do push), em 391 s;
+- o arquivo inteiro dos testes de tela (`testes/test_radar_telas.py`, 294) e `testes/test_radar_repositorio.py` (22): **254 aprovados,
+  0 falhas, 62 pulados** (61 de tela, os que sobem a IA Central de verdade, e o dos commits do push), em 653 s (10min53s).
+- rodada final, depois de fechar este relatório: `testes/test_radar_repositorio.py` e `testes/test_radar_coletores.py`, **138
+  aprovados, 1 pulado**.
+
+Não rodaram de novo aqui: a agenda, o corretor de vídeo no banco e os lembretes (o setup e o banco não mudaram na revisão; rodaram
+antes, na rodada de 582), as funções no Deno e os robôs que não mudaram. **A suíte inteira roda no GitHub (CI) antes de juntar.**
 
 ## v0.30.0 — agenda com o 13º e as obrigações anuais, e aviso de possível prorrogação
 

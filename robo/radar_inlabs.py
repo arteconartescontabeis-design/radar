@@ -10,6 +10,11 @@ Para não haver enxurrada, só entram os atos dos órgãos e tipos escolhidos na
     config.excluir_orgao expressão para tirar unidades regionais, ex.: "Superintendência Regional|Delegacia"
     config.secoes       seções do DOU (padrão ["DO1", "DO1E"]: seção 1 e edição extra)
     config.janela_dias  quantos dias para trás (padrão 5: cobre fim de semana e feriado emendado)
+    config.palavras / config.excluir_palavras   v0.31.0: filtro de tema sobre o título e a ementa do ato (lista de pedaços de
+                        expressão ou um texto; sem diferença de maiúsculas e acentos). Veja radar_coletores.filtro_de_tema.
+
+v0.31.0: várias fontes do INLABS na mesma rodada (atos da Receita, leis e decretos, CONFAZ, trabalho e previdência) entram uma vez
+só no site: o que a rodada já baixou fica guardado na sessão (o login e os atos de cada dia e seção); as outras fontes só filtram.
 """
 from __future__ import annotations
 
@@ -30,10 +35,6 @@ BASE = "https://inlabs.in.gov.br"
 LEITURA = "https://www.in.gov.br/leiturajornal?data={data}&secao={secao}"
 
 
-def _texto_html(html: str | None) -> str:
-    return normalizar_espacos(BeautifulSoup(html or "", "lxml").get_text(" ", strip=True))
-
-
 def _data_br(valor: str | None) -> date | None:
     m = re.match(r"\s*(\d{2})/(\d{2})/(\d{4})", valor or "")
     try:
@@ -51,7 +52,12 @@ def ler_xml(conteudo: bytes | str) -> dict | None:
     corpo = art.find("body")
     pega = lambda nome: (corpo.findtext(nome) if corpo is not None else None) or ""
     identifica, ementa = normalizar_espacos(pega("Identifica")), normalizar_espacos(pega("Ementa"))
-    texto = _texto_html(pega("Texto"))
+    sopa = BeautifulSoup(pega("Texto"), "lxml")
+    texto = normalizar_espacos(sopa.get_text(" ", strip=True))
+    if not ementa:
+        # v0.31.0: o campo <Ementa> pode vir vazio; a ementa está no <p class="ementa"> do texto (é dela que o filtro de tema precisa)
+        p = sopa.select_one("p.ementa")
+        ementa = normalizar_espacos(p.get_text(" ", strip=True)) if p is not None else ""
     return {"id": art.get("idMateria") or art.get("id") or "", "tipo": art.get("artType") or "",
             "pagina": art.get("pdfPage") or "",
             "orgao": art.get("artCategory") or "", "secao": art.get("pubName") or "",
@@ -92,7 +98,10 @@ def para_item(ato: dict) -> Item:
     texto = " ".join(p for p in (ato["titulo"], ato["ementa"], ato["texto"]) if p)
     return Item(url=endereco(ato), titulo=ato["titulo"][:300], data=ato["data"],
                 resumo=ato["ementa"] or None, texto_da_listagem=texto or None,
-                metadados={"orgao": ato["orgao"], "tipo": ato["tipo"], "secao": ato["secao"], "inlabs_id": ato["id"]})
+                metadados={"orgao": ato["orgao"], "tipo": ato["tipo"], "secao": ato["secao"], "inlabs_id": ato["id"]},
+                # v0.31.0: ato sem ementa nenhuma — o filtro de tema olha só o começo do texto (nunca o texto todo: o preâmbulo
+                # "O MINISTRO DE ESTADO DO TRABALHO E EMPREGO..." faria tudo passar)
+                trecho_do_tema=None if ato["ementa"] else (ato["texto"][:500] or None))
 
 
 def entrar(sessao: requests.Session, email: str | None = None, senha: str | None = None) -> None:
@@ -129,18 +138,46 @@ def baixar_secao(sessao: requests.Session, dia: date, secao: str) -> bytes | Non
     return r.content
 
 
+def _memoria(sessao) -> dict:
+    """v0.31.0: o que a rodada já leu do INLABS (o login e os atos de cada dia e seção), guardado na própria sessão da rodada: a
+    rodada seguinte (outra sessão) baixa tudo de novo, então a edição extra que sair depois entra na próxima coleta."""
+    memoria = getattr(sessao, "radar_inlabs", None)
+    if memoria is None:
+        memoria = {"logado": False, "atos": {}}
+        try:
+            setattr(sessao, "radar_inlabs", memoria)
+        except AttributeError:
+            pass
+    return memoria
+
+
+def _dias_e_secoes(config: dict, hoje: date) -> list[tuple[date, str]]:
+    return [(hoje - timedelta(days=n), secao) for n in range(int(config.get("janela_dias", 5)))
+            for secao in (config.get("secoes") or ["DO1", "DO1E"])]
+
+
+def janela_em_memoria(sessao, fonte: dict, hoje: date | None = None) -> bool:
+    """A rodada já tem todos os dias e seções da fonte (ela não vai baixar nada: só filtrar)."""
+    memoria = getattr(sessao, "radar_inlabs", None)
+    if not memoria:
+        return False
+    return all(chave in memoria["atos"] for chave in _dias_e_secoes(fonte.get("config") or {}, hoje or hoje_brasilia()))
+
+
 def listar_paginas(sessao: requests.Session, fonte: dict, hoje: date | None = None) -> tuple[Listagem, int | None]:
     config = fonte.get("config") or {}
     hoje = hoje or hoje_brasilia()
     janela = int(config.get("janela_dias", 5))
-    entrar(sessao)
+    memoria = _memoria(sessao)
     atos = []
-    for n in range(janela):
-        dia = hoje - timedelta(days=n)
-        for secao in config.get("secoes") or ["DO1", "DO1E"]:
+    for dia, secao in _dias_e_secoes(config, hoje):
+        if (dia, secao) not in memoria["atos"]:
+            if not memoria["logado"]:
+                entrar(sessao)
+                memoria["logado"] = True
             dados = baixar_secao(sessao, dia, secao)
-            if dados:
-                atos += atos_do_zip(dados)
+            memoria["atos"][(dia, secao)] = atos_do_zip(dados) if dados else []
+        atos += memoria["atos"][(dia, secao)]
     escolhidos = filtrar(atos, config)
     resultado = _finalizar([para_item(a) for a in escolhidos], dict(config, janela_dias=janela + 1), hoje)
     resultado.brutos = len(atos)

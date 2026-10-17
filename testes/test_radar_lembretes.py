@@ -672,7 +672,7 @@ def _contagens(banco):
 
 def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
     """O banco da v0.28.1 (o setup desta versão sem a tabela, as funções e a chave dos lembretes), com dados de mentira: o setup desta
-    versão (v0.30.0, que traz junto o da v0.29.0) roda duas vezes seguidas sem erro, nada some, a chave "lembretes" entra com os padrões
+    versão (v0.31.0, que traz junto os da v0.29.0 e da v0.30.0) roda duas vezes seguidas sem erro, nada some, a chave "lembretes" entra com os padrões
     e, ajustada, não é sobrescrita."""
     banco = "radar_lembretes_cima"
     with conectar("postgres") as c:
@@ -703,7 +703,7 @@ def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
                 "pauta": True, "aprovacao": True, "video": True, "noticia": True}
             assert c.execute("select valor->>'janela_horas' from radar_config where chave = 'pauta'").fetchone()[0] == "4"
             c.execute("""update radar_config set valor = '{"ligado": false, "hora": "17:30"}' where chave = 'lembretes'""")
-            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.30.0"
+            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.31.0"
         assert psql(SETUP, banco).returncode == 0
         with conectar(banco) as c:                                                         # o ajuste do administrador fica
             assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {"ligado": False, "hora": "17:30"}

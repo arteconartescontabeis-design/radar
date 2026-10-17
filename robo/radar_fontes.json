@@ -50,20 +50,21 @@
     "orgao": "Receita Federal do Brasil",
     "abrangencia": "federal",
     "tipo_coletor": "normas_rfb",
-    "url": "http://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?tipoData=2&dt_inicio={inicio}&dt_fim={fim}&optOrdem=Publicacao_DESC&p={p}",
+    "url": "https://normas.receita.fazenda.gov.br/api/indexacao/ato/pesquisar",
     "categoria_padrao": "federal",
     "frequencia_horas": 6,
     "config": {
       "janela_dias": 10,
-      "paginas_max": 6,
+      "paginas_max": 5,
       "itens_por_pagina": 100,
       "max_itens": 300,
-      "excluir_orgao": "^(SRRF|DRF|ALF|IRF|DERAT|DEFIS|DELEX|DECEX|DEMAC|DRJ|ARF|DISIT)",
-      "sem_pagina_de_texto": true,
-      "diagnostico_urls": [
-        "http://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=153881",
-        "https://normasinternet2.receita.fazenda.gov.br/"
-      ]
+      "excluir_orgao": "^(SRRF|DRF|ALF|IRF|DERAT|DEFIS|DELEX|DECEX|DEMAC|DRJ|ARF|Coana)",
+      "excluir_palavras": "Classificação de Mercadorias|devedora contumaz|Remessa Conforme|Operador Econômico Autorizado",
+      "url_texto": "https://normasinternet2.receita.fazenda.gov.br/api/consulta-externa/ato/{id}/visao/multivigente",
+      "dominios": [
+        "normasinternet2.receita.fazenda.gov.br"
+      ],
+      "tempo_max_segundos": 180
     }
   },
   {
