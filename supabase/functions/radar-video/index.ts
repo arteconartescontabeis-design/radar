@@ -28,9 +28,11 @@
 //          envio_concluido{id} → confere cada clipe no armazenamento (tamanho e tipo iguais aos declarados), põe na fila
 //                          (radar_video_enviado) e aciona o robô
 //          previa         {id} → links do vídeo corrigido e dos 4 quadros, 600 s (o prazo é daqui: o que vier no pedido não conta);
-//                          o banco registra quem viu
+//                          o banco registra quem viu. v0.33.0: + o link da capa (capa, ou null), quando o editor da aba Vídeo a escolheu
+//                          (quadros/<id>/<sha256 do vídeo>/capa-<sha256 da capa>.jpg: trocar só a capa monta o mesmo vídeo)
 //          baixar         {peca, lido} → link de 300 s do vídeo aprovado (radar_video_para_baixar: aprovado à mão, o mesmo sha256,
-//                          o termo de hoje), com o nome reel-<data>.mp4; o banco registra quem baixou
+//                          o termo de hoje), com o nome reel-<data>.mp4; o banco registra quem baixou. v0.33.0: + o link da capa do
+//                          mesmo vídeo (capa_url, reel-<data>-capa.jpg, ou null), para postar o reel com ela
 //          acionar        → aciona o robô (workflow_dispatch de radar-video.yml no repositório privado), só com pedido na fila e
 //                          com pausa de 30 s; responde sempre 200 {acionado, motivo?, mensagem}
 //          diagnostico    (só o administrador) → o bucket privado (corrige se estiver público), o token do GitHub e o workflow, a
@@ -41,12 +43,14 @@
 //          links          {id, tentativa, ler:[caminhos], gravar:[caminhos]} → links de leitura (600 s) e tokens de envio por caminho,
 //                          só os do pedido: ler bruto/<id>/<n> e trabalho/<id>/<t guardada>/palavras.json; gravar
 //                          trabalho/<id>/<t>/palavras.json, corrigido/<id>/<sha256>.mp4 (só se ainda não existe: nunca se
-//                          sobrescreve) e quadros/<id>/<sha256>/q1…q4.jpg
+//                          sobrescreve) e quadros/<id>/<sha256>/q1…q4.jpg (v0.33.0: e capa-<sha256 da capa>.jpg, a capa escolhida na
+//                          aba Vídeo)
 //          audio          {id, tentativa, segundos} → soma os segundos na cota do mês e, se o palavras.json desta rodada está no
 //                          armazenamento, passa a valer (radar_video_registrar_audio)
 //          parcial        {id, tentativa, relatorio} → o relatório parcial (radar_video_parcial)
 //          concluir       {id, tentativa, situacao, relatorio, sha256, bytes, duracao} → confere o vídeo (tamanho e tipo) e os 4
-//                          quadros no armazenamento e conclui (radar_video_concluir: o banco decide de novo se precisa regravar)
+//                          quadros no armazenamento (v0.33.0: e a capa, se o relatório diz que há) e conclui (radar_video_concluir: o
+//                          banco decide de novo se precisa regravar)
 //          falhar         {id, tentativa, codigo} → radar_video_falhar (o código fixo; os transitórios voltam à fila)
 //                          Depois de concluir ou falhar, se ainda há pedido na fila, aciona o robô de novo (proximoDaFila): ele trata
 //                          um pedido por execução, e o envio que chegou enquanto ele trabalhava não espera a reserva da agenda
@@ -111,6 +115,8 @@ const responder = (status: number, corpo: unknown) =>
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
+// v0.33.0: o caminho da capa de um vídeo (o sha256 da capa no nome)
+const capaDe = (id: string, sha: string) => new RegExp(`^quadros/${id}/${sha}/capa-[0-9a-f]{64}\\.jpg$`);
 function uuid(x: unknown): string {
   const s = String(x ?? "");
   if (!UUID.test(s)) throw new Erro(400, "Informe o vídeo (id).");
@@ -422,21 +428,25 @@ async function previa(sessao: string, id: string) {
   const sha = String(r?.sha256 ?? "");
   const quadros = Array.isArray(r?.quadros) ? r.quadros.map(String) : [];
   if (!SHA.test(sha) || r?.video !== `corrigido/${id}/${sha}.mp4` || quadros.length !== 4
-      || quadros.some((q: string, i: number) => q !== `quadros/${id}/${sha}/q${i + 1}.jpg`)) {
+      || quadros.some((q: string, i: number) => q !== `quadros/${id}/${sha}/q${i + 1}.jpg`)
+      || (r?.capa !== undefined && r?.capa !== null && !capaDe(id, sha).test(String(r.capa)))) {
     throw new Erro(502, "O banco devolveu um caminho fora do esperado.");
   }
   return { video: await linkDeLeitura(r.video, LINK_PREVIA_S), quadros: await Promise.all(quadros.map((q: string) => linkDeLeitura(q, LINK_PREVIA_S))),
-           sha256: sha, expira_s: LINK_PREVIA_S };
+           capa: r?.capa ? await linkDeLeitura(r.capa, LINK_PREVIA_S) : null, sha256: sha, expira_s: LINK_PREVIA_S };
 }
 
 async function baixar(sessao: string, peca: number, lido: string) {
   const r = await banco(sessao, "POST", "rpc/radar_video_para_baixar", { p_peca: peca, p_lido: lido });
   if (r?.motivo) throw new Erro(409, String(r.motivo));
   const caminho = String(r?.caminho ?? ""), data = String(r?.data ?? "");
-  if (!/^corrigido\/[0-9a-f-]{36}\/[0-9a-f]{64}\.mp4$/.test(caminho) || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+  const m = /^corrigido\/([0-9a-f-]{36})\/([0-9a-f]{64})\.mp4$/.exec(caminho);
+  // v0.33.0: a capa é a do mesmo vídeo aprovado (o mesmo id e o mesmo sha256)
+  if (!m || !/^\d{4}-\d{2}-\d{2}$/.test(data) || (r?.capa !== undefined && r?.capa !== null && !capaDe(m[1], m[2]).test(String(r.capa)))) {
     throw new Erro(502, "O banco devolveu um caminho fora do esperado.");
   }
-  return { url: await linkDeLeitura(caminho, LINK_BAIXAR_S, `reel-${data}.mp4`), expira_s: LINK_BAIXAR_S };
+  return { url: await linkDeLeitura(caminho, LINK_BAIXAR_S, `reel-${data}.mp4`),
+           capa_url: r?.capa ? await linkDeLeitura(r.capa, LINK_BAIXAR_S, `reel-${data}-capa.jpg`) : null, expira_s: LINK_BAIXAR_S };
 }
 
 async function diagnostico(sessao: string) {
@@ -512,7 +522,7 @@ async function links(servico: Record<string, string>, id: string, t: number, ler
       || (guardada > 0 && k === `trabalho/${id}/${guardada}/palavras.json`);
   };
   const podeGravar = (k: string) => k === `trabalho/${id}/${t}/palavras.json` || new RegExp(`^corrigido/${id}/[0-9a-f]{64}\\.mp4$`).test(k)
-    || new RegExp(`^quadros/${id}/[0-9a-f]{64}/q[1-4]\\.jpg$`).test(k);
+    || new RegExp(`^quadros/${id}/[0-9a-f]{64}/(q[1-4]|capa-[0-9a-f]{64})\\.jpg$`).test(k);   // v0.33.0: + a capa (vídeo + 4 quadros + capa = 6)
   const recusados = [...paraLer.filter((k) => !podeLer(k)), ...paraGravar.filter((k) => !podeGravar(k))];
   if (recusados.length) throw new Erro(403, `${recusados.length} caminho(s) fora do pedido.`);
   // o vídeo corrigido nunca se sobrescreve: o caminho tem o sha256, e o que já existe não ganha token
@@ -550,6 +560,15 @@ async function concluir(servico: Record<string, string>, id: string, t: number, 
   const quadros = (await listar(`quadros/${id}/${sha}`)).arquivos;
   const faltam = [1, 2, 3, 4].filter((k) => !quadros.some((a) => a.nome === `q${k}.jpg` && a.tipo === "image/jpeg" && a.bytes > 0 && a.bytes <= 5 * 1024 * 1024));
   if (faltam.length) throw new Erro(409, `Faltam quadros no armazenamento (q${faltam.join(", q")}): suba de novo.`);
+  // v0.33.0: a capa escolhida na aba Vídeo, ao lado dos quadros (o mesmo sha256), com o sha256 DELA no nome: a capa de antes do mesmo
+  // vídeo (trocar só a capa monta o mesmo vídeo) não passa pela nova
+  if (p?.relatorio?.capa) {
+    const capa = String(p.relatorio.capa?.sha256 ?? "");
+    if (!SHA.test(capa)) throw new Erro(400, "Informe o sha256 da capa.");
+    if (!quadros.some((a) => a.nome === `capa-${capa}.jpg` && a.tipo === "image/jpeg" && a.bytes > 0 && a.bytes <= 5 * 1024 * 1024)) {
+      throw new Erro(409, "Falta a capa no armazenamento: suba de novo.");
+    }
+  }
   return await banco(servico, "POST", "rpc/radar_video_concluir", {
     p_id: id, p_tentativa: t, p_situacao: p?.situacao ?? null, p_relatorio: p?.relatorio ?? null, p_sha256: sha, p_bytes: bytes,
     p_duracao: Number(p?.duracao),

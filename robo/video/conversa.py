@@ -55,7 +55,8 @@ _PUBLICA_NOVA = re.compile(r"sb_publishable_[A-Za-z0-9_-]{16,200}")      # v0.22
 _FUNCAO = re.compile(r"https://([a-z0-9]{20})\.supabase\.co/functions/v1/radar-video")
 _LOCAL = re.compile(r"http://127\.0\.0\.1:\d{2,5}(?:/[A-Za-z0-9_./-]*)?")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-_CAMINHO = re.compile(r"(bruto|trabalho|corrigido|quadros)/[0-9a-f-]{36}/[A-Za-z0-9_./-]{1,90}")
+# (v0.33.0: até 140 depois do id — quadros/<id>/<sha256 do vídeo>/capa-<sha256 da capa>.jpg tem 138)
+_CAMINHO = re.compile(r"(bruto|trabalho|corrigido|quadros)/[0-9a-f-]{36}/[A-Za-z0-9_./-]{1,140}")
 _PERDIDO = "este pedido não está mais com o robô"           # RADAR316 de radar_video_do_robo (a função tira o código)
 _dormir = time.sleep                                        # os testes trocam
 

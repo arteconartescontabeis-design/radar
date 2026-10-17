@@ -595,3 +595,183 @@ def test_receita_no_conteiner_sem_rede(imagem_docker, pastas, acervo, monkeypatc
         isolado.rodar("t", "ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", "anullsrc", "-t", "0.1",
                                       "/ent/escrito.wav"], pastas)
     assert not (pastas.ent / "escrito.wav").exists()
+
+
+# ------------------------------------------------------------------ v0.33.0: a aba Vídeo (o editor do vídeo corrigido)
+def _quadros_rgb(pastas: isolado.Pastas, ass: Path, dur: float, nome: str) -> list[Image.Image]:
+    """Desenha o .ass sobre fundo preto em RGB (sem a subamostragem de cor do YUV), 4 quadros por segundo."""
+    d = pastas.sai / nome
+    d.mkdir()
+    subprocess.run([*sint.F, "-f", "lavfi", "-i", f"color=black:s=1080x1920:r=4:d={dur}", "-vf",
+                    f"format=rgb24,ass=filename={ass}:fontsdir={ROBO / 'fontes'}", str(d / "q%03d.png")], capture_output=True, check=True)
+    return [Image.open(q).convert("RGB") for q in sorted(d.glob("q*.png"))]
+
+
+def test_legenda_tamanho_posicao_e_cor_na_area_livre(pastas):
+    """O tamanho (P, M, G), a posição (em cima, no meio, embaixo) e a cor (só a paleta) da legenda, nos dois estilos: toda caixa dentro
+    da área livre do Reels, o gancho nunca encosta na legenda (8 px ou mais entre as caixas), a caixa na cor da paleta (20%
+    transparente: sobre o preto, 80% da cor) e, sem a aparência (ou com a padrão), o .ass de antes."""
+    x0, y0, x1, y1 = legenda.AREA_LIVRE
+    texto = "O prazo do eSocial e da DCTFWeb para o Simples Nacional vence no dia 15 e quem é MEI paga o DAS até o dia 20 sem multa."
+    palavras, t = [], 0.1
+    for p in texto.split():
+        palavras.append({"texto": p, "ini": t, "fim": t + 0.2})
+        t += 0.25
+    gancho = "Prazo novo do eSocial para o MEI em 2027"
+    # sem a aparência: o arquivo de antes (as duas linhas de estilo da v0.22.0), e igual ao da aparência padrão
+    for estilo, fonte in (("normal", 70), ("compacta", 58)):
+        legenda.gravar(pastas.sai / f"antes-{estilo}.ass", palavras, GLOSSARIO, estilo, gancho)
+        legenda.gravar(pastas.sai / f"padrao-{estilo}.ass", palavras, GLOSSARIO, estilo, gancho, aparencia=legenda.aparencia({}))
+        antes = (pastas.sai / f"antes-{estilo}.ass").read_text(encoding="utf-8")
+        assert antes == (pastas.sai / f"padrao-{estilo}.ass").read_text(encoding="utf-8")
+        assert f"Style: Fala,DM Sans,{fonte},&H00FFFFFF,&H00FFFFFF,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,100,100,700,1" in antes
+        assert "Style: Gancho,DM Sans,64,&H00FFFFFF,&H00FFFFFF,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,100,100,910,1" in antes
+    assert legenda.aparencia({"legenda_tamanho": "XG", "legenda_posicao": "lado", "legenda_cor": "roxo"}) == legenda.APARENCIA_PADRAO
+    assert legenda.aparencia({"legenda_tamanho": "G", "legenda_posicao": "cima", "legenda_cor": "amarelo"}) == {
+        "tamanho": "G", "posicao": "cima", "cor": "amarelo"}
+    k = 0
+    for estilo in ("normal", "compacta"):
+        for tamanho in ("P", "M", "G"):
+            for posicao in legenda.POSICOES:
+                cor = list(legenda.CORES)[k % len(legenda.CORES)]
+                k += 1
+                ap = {"tamanho": tamanho, "posicao": posicao, "cor": cor}
+                nome = f"{estilo}-{tamanho}-{posicao}"
+                info = legenda.gravar(pastas.sai / f"{nome}.ass", palavras, GLOSSARIO, estilo, None, aparencia=ap)
+                assert (info["tamanho"], info["posicao"], info["cor"]) == (tamanho, posicao, cor)
+                ass = (pastas.sai / f"{nome}.ass").read_text(encoding="utf-8")
+                texto_cor, caixa_cor = legenda.CORES[cor]
+                bgr = lambda c: c[4:6] + c[2:4] + c[0:2]
+                assert f"&H00{bgr(texto_cor)},&H00{bgr(texto_cor)},&H33{bgr(caixa_cor)}," in ass
+                eventos = [l.split(",,0,0,0,,", 1)[1] for l in ass.splitlines() if l.startswith("Dialogue:")]
+                car = legenda.CAR_TAMANHO[estilo][tamanho]
+                for e in eventos:
+                    e = re.sub(r"^\{\\fs\d+\}", "", e)
+                    assert all(len(l.replace("\\h", " ")) <= car for l in e.split("\\N")), (nome, e)
+                imgs = _quadros_rgb(pastas, pastas.sai / f"{nome}.ass", t + 0.3, nome)
+                caixas = [c for c in (im.convert("L").point(lambda v: 255 if v > 12 else 0).getbbox() for im in imgs) if c]
+                assert caixas and all(c[0] >= x0 and c[1] >= y0 and c[2] <= x1 and c[3] <= y1 for c in caixas), (nome, caixas)
+                # a cor da caixa: a mais comum fora do fundo preto (a caixa ocupa mais que as letras)
+                im = next(im for im in imgs if im.convert("L").getextrema()[1] > 12)
+                px = max((n, c) for n, c in im.getcolors(1 << 22) if sum(c) > 30)[1]
+                esperado = tuple(round(int(caixa_cor[i:i + 2], 16) * 0.8) for i in (0, 2, 4))
+                assert all(abs(a - b) <= 12 for a, b in zip(px, esperado)), (nome, px, esperado)
+                # o gancho sozinho (de 0 a 3 s): dentro da área livre e longe da caixa de duas linhas (ou de uma) da legenda
+                legenda.gravar(pastas.sai / f"{nome}-g.ass", [], [], estilo, gancho, aparencia=ap)
+                g = [c for c in (im.convert("L").point(lambda v: 255 if v > 12 else 0).getbbox()
+                                 for im in _quadros_rgb(pastas, pastas.sai / f"{nome}-g.ass", 2.0, nome + "-g")) if c][0]
+                assert g[0] >= x0 and g[1] >= y0 and g[2] <= x1 and g[3] <= y1, (nome, g)
+                if posicao == "cima":
+                    assert g[1] >= max(c[3] for c in caixas) + 8, (nome, g, caixas)
+                else:
+                    assert g[3] <= min(c[1] for c in caixas) - 8, (nome, g, caixas)
+                if posicao == "meio":
+                    meio = [(c[1] + c[3]) / 2 for c in caixas]
+                    assert all(abs(m - legenda.CENTRO_MEIO) <= 30 for m in meio), (nome, meio)
+
+
+# a mesma fala do teste "nunca passa de um clipe para o outro": dois clipes, 3 s e 2 s
+PARTES_EDITOR = [{"n": 1, "inicio_q": 0, "quadros": 90}, {"n": 2, "inicio_q": 90, "quadros": 60}]
+FALA_EDITOR = [("Até", 0.50, 1.00), ("o", 1.10, 1.20), ("fim.", 1.30, 2.95), ("Começo", 3.02, 3.60), ("já.", 3.70, 4.00)]
+
+
+def test_cortes_do_editor_na_linha_original():
+    """Os cortes, o começo e o fim do editor (quadros da linha original): edicao_de normaliza; o plano corta exatamente aqueles quadros
+    (até por cima de uma palavra), o clipe que fica sem nada sai inteiro ("editor_fora"), a fala com menos de 2 s para com
+    "edicao_curta", e o mapa (faixas, automáticos, linha) dá a mesma conta do plano. Sem as mudanças, o plano é o de antes."""
+    assert cortes.edicao_de({}, 150) is None and cortes.edicao_de({"capa_q": 10, "legenda_cor": "azul"}, 150) is None
+    assert cortes.edicao_de({"cortar": [[50, 52], [100, 120], [110, 130], [5000, 6000], ["1", 9], [True, 9], [1.5, 9]],
+                             "inicio_q": 40, "fim_q": 30}, 150) == {"cortar": [(100, 130)], "inicio_q": None, "fim_q": None}
+    assert cortes.edicao_de({"cortar": [[140, 6000]], "inicio_q": -5, "fim_q": 4000}, 150) == {"cortar": [(140, 150)], "inicio_q": 0, "fim_q": 150}
+    palavras = sint.palavras(FALA_EDITOR)
+    antes = cortes.planejar(PARTES_EDITOR, [], CFG, palavras)
+    assert antes["trechos"] == [[11, 90], [90, 134]] and antes["edicao"] is None
+    assert antes["faixas"] == [[11, 90], [90, 134]] and antes["automaticos"] == [] and antes["linha_q"] == 150
+    assert cortes.planejar(PARTES_EDITOR, [], CFG, palavras, edicao=None) == antes
+    # começo em 1 s, o "o" cortado, um corte por cima do "fim." e o fim no meio do "já."
+    ed = cortes.edicao_de({"inicio_q": 30, "cortar": [[33, 39], [50, 60]], "fim_q": 115}, 150)
+    plano = cortes.planejar(PARTES_EDITOR, [], CFG, palavras, edicao=ed)
+    assert plano["trechos"] == [[30, 33], [39, 50], [60, 90], [90, 115]] and plano["fala_q"] == 69
+    assert [(c["tipo"], c.get("chave"), c.get("texto")) for c in plano["cortes"]] == [
+        ("inicio", None, None), ("editor", "e:33", "o"), ("editor", "e:50", "fim."), ("fim", None, None)]
+    assert [c["k"] for c in plano["cortes"]] == [0, 1, 2, 3] and plano["cortes"][1]["dur_s"] == 0.2 and plano["cortes"][1]["mantido"] is False
+    assert plano["edicao"] == {"cortar": [[33, 39], [50, 60]], "inicio_q": 30, "fim_q": 115} and plano["faixas"] == antes["faixas"]
+    # a fala acaba no fim marcado, no meio do "já.": o último quadro fica parado 0,45 s (o pad), em vez de esmaecer a palavra
+    assert plano["ultima_s"] == pytest.approx(69 / 30, abs=1e-3) and plano["pad_q"] == 14
+    ajustes = {"inicio_q": 30, "cortar": [[33, 39], [50, 60]], "fim_q": 115}
+    assert cortes.fala_estimada_q({**antes, "trechos": antes["trechos"]}, ajustes) == plano["fala_q"]
+    # a estimativa segue o plano: a fala que fica mais o pad (o fim no meio da palavra: 14 quadros); sem o fim marcado, o fim da faixa
+    # já tem a folga depois da última palavra (pad 0)
+    assert antes["palavras"] == [[round(a * 1000), round(b * 1000)] for _, a, b in FALA_EDITOR]
+    assert cortes.estimada_q(antes, ajustes) == plano["fala_q"] + plano["pad_q"] == 69 + 14
+    assert antes["pad_q"] == 0 and cortes.estimada_q(antes, {}) == antes["fala_q"] == 123
+    # o "manter" não vale para o corte do editor
+    assert cortes.planejar(PARTES_EDITOR, [], CFG, palavras, manter=["e:33", "1:33"], edicao=ed)["trechos"] == plano["trechos"]
+    # o 2º clipe inteiro antes do fim marcado: sai inteiro
+    fora = cortes.planejar(PARTES_EDITOR, [], CFG, palavras, edicao=cortes.edicao_de({"fim_q": 80}, 150))
+    assert fora["trechos"] == [[11, 80]] and [c["tipo"] for c in fora["cortes"]] == ["inicio", "fim", "editor_fora"]
+    assert fora["cortes"][-1] == {"clipe": 2, "de_s": 0.0, "ate_s": 1.45, "tipo": "editor_fora", "k": 2}
+    # menos de 2 s de fala, ou nada: edicao_curta (e não sem_fala)
+    for aj in ({"inicio_q": 10, "fim_q": 50}, {"inicio_q": 140, "fim_q": 150}, {"cortar": [[0, 150]]}):
+        with pytest.raises(ErroVideo) as e:
+            cortes.planejar(PARTES_EDITOR, [], CFG, palavras, edicao=cortes.edicao_de(aj, 150))
+        assert e.value.codigo == "edicao_curta", aj
+    # o corte que pega dois clipes vira dois pedaços (cada clipe tem o seu select)
+    dois = cortes.planejar(PARTES_EDITOR, [], CFG, palavras, edicao=cortes.edicao_de({"cortar": [[80, 100]]}, 150))
+    assert dois["trechos"] == [[11, 80], [100, 134]] and [c.get("chave") for c in dois["cortes"] if c["tipo"] == "editor"] == ["e:80", "e:80b2"]
+    # a conversão entre o tempo do vídeo e a linha original
+    assert cortes.original(plano, 0) == 30 and cortes.original(plano, 0.1) == 39 and cortes.original(plano, 69 / 30) is None
+    assert cortes.video_de(plano, 39) == (pytest.approx(0.1), True) and cortes.video_de(plano, 35) == (pytest.approx(0.1), False)
+    assert all(cortes.video_de(plano, cortes.original(plano, k / 30))[0] == pytest.approx(k / 30) for k in range(69))
+
+
+def test_duracao_estimada_igual_a_do_plano(pastas, acervo):
+    """A estimativa da duração (a mesma do banco e da tela) bate com o plano que o robô monta — a fala que fica MAIS o pad do fim
+    (fala_q + pad_q, a duração do montar) —, com os cortes automáticos de verdade (as pausas do vídeo sintético), o "manter", os cortes
+    do editor, o começo e o fim: até 1 quadro de diferença. Sem o fim marcado, a faixa já tem a folga depois da última palavra (pad 0:
+    nada de somar 0,45 s); o fim marcado no meio de uma palavra pede o pad inteiro (14 quadros), e perto do fim dela, só o que falta."""
+    infos = sondar.sondar_todas(_entrar(pastas, acervo("vertical")), pastas)
+    audio.extrair(infos, pastas)
+    sil, palavras = _silencios(pastas), sint.palavras(sint.FRASES)
+    base = cortes.planejar(infos, sil, CFG, palavras)
+    mapa = {"linha_q": base["linha_q"], "faixas": base["faixas"], "automaticos": base["automaticos"], "trechos": base["trechos"],
+            "palavras": base["palavras"]}
+    assert len(mapa["automaticos"]) == 2 and cortes.fala_estimada_q(mapa, {}) == base["fala_q"]
+    assert len(mapa["palavras"]) == len(palavras) and base["pad_q"] == 0
+    chave = mapa["automaticos"][0]["chave"]
+    fim_palavra = [round(w["fim"] * 30) for w in palavras]
+    meio = round((palavras[5]["ini"] + palavras[5]["fim"]) / 2 * 30)                        # no meio do "prazo." (a 6ª palavra)
+    pads = []
+    for aj in ({}, {"manter": [chave]}, {"cortar": [[100, 130]]}, {"inicio_q": 60, "fim_q": 200}, {"inicio_q": 60},
+               {"manter": [chave], "cortar": [[50, 55], [150, 170]], "fim_q": 220}, {"fim_q": meio}, {"fim_q": fim_palavra[5] + 5},
+               {"cortar": [[meio, base["linha_q"]]]}):
+        plano = cortes.planejar(infos, sil, CFG, palavras, manter=aj.get("manter") or [], edicao=cortes.edicao_de(aj, base["linha_q"]))
+        assert abs(cortes.fala_estimada_q(mapa, aj) - plano["fala_q"]) <= 1, aj
+        assert abs(cortes.estimada_q(mapa, aj) - (plano["fala_q"] + plano["pad_q"])) <= 1, (aj, plano["pad_q"])
+        real = (plano["fala_q"] + plano["pad_q"]) / 30 + 3 - 0.4                                  # a duração que o montar dá
+        assert abs(cortes.duracao_estimada(mapa, aj, 3) - real) <= 1 / 30 + 0.05, aj
+        pads.append(plano["pad_q"])
+    assert pads[0] == pads[1] == pads[2] == pads[4] == 0 and pads[6] == pads[8] == 14 and 0 < pads[7] < 14, pads
+
+
+def test_capa_e_o_quadro_escolhido_sem_legenda(pastas, acervo):
+    """A capa (ajustes.capa_q, na linha original) é o quadro do vídeo, em 1080×1920, sem a legenda; caída num corte, vai para o quadro
+    que ficou mais perto (movida)."""
+    infos, palavras, plano, rel = _receita(pastas, _entrar(pastas, acervo("vertical")), [sint.FRASES])
+    q = round(5.75 * 30)                                                                     # no meio do "eSocial": o alto branco
+    capa = montar.capa(infos, plano, q, pastas, {i["n"]: montar.ajuste_cor({}) for i in infos})
+    assert capa["q"] == q and capa["movida"] is False and capa["em_ms"] == round(cortes.video_de(plano, q)[0] * 1000)
+    im = Image.open(pastas.sai / "capa.jpg")
+    assert im.size == (1080, 1920) and im.format == "JPEG"
+    luz = sint.luz_do_alto(pastas.sai / "reel.mp4")[round(capa["em_ms"] / 1000 * 30)]
+    alto = sum(im.convert("L").crop((0, 100, 1080, 500)).resize((8, 8)).tobytes()) / 64
+    assert alto > 150 and abs(alto - luz) < 25, (alto, luz)
+    # sem a legenda: a faixa dela (embaixo) é só o fundo cinza do vídeo sintético
+    assert im.convert("L").crop((100, 1000, 980, 1240)).getextrema()[1] < 110
+    # no silêncio cortado entre "vamos" e "falar" (a pausa de 1,1 s): vai para o quadro que ficou mais perto
+    (pastas.sai / "capa.jpg").unlink()
+    cortado = round(2.8 * 30)
+    assert not any(a <= cortado < b for a, b in plano["trechos"])
+    movida = montar.capa(infos, plano, cortado, pastas, {i["n"]: "" for i in infos})
+    assert movida["movida"] is True and any(a <= movida["q"] < b for a, b in plano["trechos"]) and abs(movida["q"] - cortado) <= 20
+    assert (pastas.sai / "capa.jpg").is_file()

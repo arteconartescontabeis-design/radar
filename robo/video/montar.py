@@ -16,6 +16,10 @@ e sai/cartela.png (cartela.desenhar). Sai: sai/reel.mp4 e os 4 quadros sai/q1..q
     não passam), moov no começo (faststart) e sem lista de edição (-use_editlist 0 com +negative_cts_offsets, para vídeo e áudio
     começarem no zero) — "no edit lists, moov atom at the front" (Instagram) e GOP de 2 a 5 s (Facebook). Passando de ~250 MB,
     refaz com taxa menor.
+  * v0.33.0, a capa (a aba Vídeo): o quadro que o administrador escolheu (ajustes.capa_q, na linha original) vira sai/capa.jpg,
+    1080×1920, com o mesmo recorte, a mesma cor e o mesmo eq do vídeo, mas sem a legenda e sem o gancho (a cadeia de _render sem o
+    ass). Caiu num trecho cortado (um corte automático que mudou desde a escolha): vai para o quadro que ficou mais perto, com o aviso
+    capa_movida. em_ms é o instante dele no vídeo (o thumb_offset da API do Instagram, para quando a publicação do reel for automática).
 """
 from __future__ import annotations
 
@@ -173,8 +177,31 @@ def quadros(fala_s: float, pastas: isolado.Pastas) -> list[int]:
     return [round(t * 1000) for t in tempos]
 
 
-def montar(infos: list[dict], plano: dict, pastas: isolado.Pastas, cfg: dict, preset: str = "medium") -> dict:
-    """Monta sai/reel.mp4 e os quadros. Devolve o pedaço do relatório: {saida, imagem, audio, quadros_ms}."""
+def capa(infos: list[dict], plano: dict, capa_q: int, pastas: isolado.Pastas, cores: dict) -> dict:
+    """Grava sai/capa.jpg: o quadro capa_q da linha original (ou o que ficou mais perto dele no vídeo), sem a legenda. Devolve {q,
+    em_ms, movida}."""
+    q = int(capa_q)
+    ficam = [(qa, qb) for qa, qb in plano["trechos"]]
+    if not any(qa <= q < qb for qa, qb in ficam):
+        q = min((x for qa, qb in ficam for x in (qa, qb - 1)), key=lambda x: (abs(x - q), x))
+        movida = True
+    else:
+        movida = False
+    info = next(i for i in infos if i["inicio_q"] <= q < i["inicio_q"] + i["quadros"])
+    local = q - info["inicio_q"]
+    cadeia = ",".join(x for x in [f"fps=fps={FPS}:start_time=0", f"select='eq(n,{local})'", _corte_9x16(info["w"], info["h"]),
+                                  _conversao(info), "setsar=1", cores.get(info["n"], "")] if x)
+    isolado.rodar("capa", "ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", *ENTRADA, "-i", f"/ent/{info['n']}",
+                                     "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", cadeia, "-frames:v", "1", "-q:v", "2",
+                                     "-map_metadata", "-1", "/sai/capa.jpg"], pastas, isolado.TEMPO_SONDAR)
+    if not (pastas.sai / "capa.jpg").is_file():
+        raise ErroVideo("conferencia_falhou", "montar", ["capa"])
+    return {"q": q, "em_ms": round(cortes.video_de(plano, q)[0] * 1000), "movida": movida}
+
+
+def montar(infos: list[dict], plano: dict, pastas: isolado.Pastas, cfg: dict, preset: str = "medium", capa_q: int | None = None) -> dict:
+    """Monta sai/reel.mp4 e os quadros (e, com capa_q, a capa). Devolve o pedaço do relatório: {saida, imagem, audio, quadros_ms,
+    capa?}."""
     if not plano.get("trechos"):
         raise ErroVideo("sem_fala", "montar")
     lufs = float(cfg.get("lufs", -14))
@@ -190,7 +217,8 @@ def montar(infos: list[dict], plano: dict, pastas: isolado.Pastas, cfg: dict, pr
         if tamanho <= LIMITE_BYTES:
             break
     cartela_s = float(cfg.get("cartela_s", 3))
-    return {"saida": {"duracao_s": round(fala + cartela_s - TRANSICAO, 2), "fala_s": round(fala, 2), "cartela_s": cartela_s,
+    extra = {"capa": capa(infos, plano, capa_q, pastas, cores)} if isinstance(capa_q, int) and not isinstance(capa_q, bool) else {}
+    return {**extra, "saida": {"duracao_s": round(fala + cartela_s - TRANSICAO, 2), "fala_s": round(fala, 2), "cartela_s": cartela_s,
                       "transicao_s": TRANSICAO, "mb": round(tamanho / 1024 / 1024, 1), "taxa": taxa[0]},
             "imagem": {"luz": {n: {k: (round(v, 1) if v is not None else None) for k, v in l.items()} for n, l in luzes.items()}},
             "audio": {"ruido_antes_db": ruido_relativo("/sai/fala48k.wav", pastas),

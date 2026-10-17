@@ -15,6 +15,12 @@ trechos alinhados). Formato (desenho 4.1, item 7):
     número `u` da sua 1ª unidade e quantas palavras tem — é por ele que o editor de legenda do administrador (ajustes.legenda,
     alinhar.py) diz qual trecho mudou — e as palavras do roteiro perto dele (`perto`, as letras: a tela recusa a palavra nova que o
     robô recusaria, sem rodar a montagem à toa).
+v0.33.0 (a aba Vídeo): a aparência da legenda (ajustes.legenda_tamanho, legenda_posicao e legenda_cor; aparencia()) — o tamanho P, M
+ou G (a fonte e os caracteres por linha), a posição (embaixo, como antes; no meio, centrada em y=960; em cima, com o topo em y=300) e a
+cor, só da paleta da Artecon (CORES: o texto sobre a caixa, a mesma de radar_video_paleta() no banco, conferida por teste). O gancho
+segue a cor da legenda e fica sempre longe dela (38 px entre as caixas); o tamanho dele não muda. Sem a aparência (ou com a padrão: M,
+embaixo, marinho), o .ass sai igual ao de antes. Dois blocos nunca juntam unidades que não são seguidas (um corte do editor tirou a do
+meio): o editor de legenda (alinhar._edicao) troca as palavras a partir da 1ª unidade do bloco, em sequência.
 Além do limite de caracteres, cada linha é medida em pixels com a mesma fonte (o libass dimensiona a fonte pela altura
 usWinAscent + usWinDescent: 1012 + 310 para 1000 unidades na DM Sans) e precisa caber entre as margens (x 100 a 980); uma palavra
 que sozinha passa disso leva o bloco para uma fonte menor ({\\fs}), nunca para fora da área livre.
@@ -35,11 +41,24 @@ MARGEM_H = 100                         # MarginL/MarginR: o texto vai de x 100 a
 LARGURA_TEXTO = LARGURA - 2 * MARGEM_H
 BASE_FALA, BASE_GANCHO = 1220, 1010
 ESTILOS = {"normal": {"fonte": 70, "linhas": 2, "car": 24}, "compacta": {"fonte": 58, "linhas": 1, "car": 30}}
+# v0.33.0: a aparência (a aba Vídeo). A paleta é a de radar_video_paleta() (texto, caixa: RRGGBB); o 1º de cada um é o padrão
+CORES = {"marinho": ("FFFFFF", "011F48"), "branco": ("011F48", "FFFFFF"), "vermelho": ("FFFFFF", "BC151B"), "azul": ("011F48", "569DCC"),
+         "amarelo": ("011F48", "FFD700")}
+TAMANHOS = {"P": .85, "M": 1.0, "G": 1.15}
+POSICOES = ("cima", "meio", "baixo")
+# a fonte e os caracteres por linha de cada tamanho (a fonte é a base × o fator, arredondada para um número par de px; os caracteres,
+# a base ÷ o fator)
+FONTES_TAMANHO = {"normal": {"P": 60, "M": 70, "G": 80}, "compacta": {"P": 50, "M": 58, "G": 66}}
+CAR_TAMANHO = {"normal": {"P": 28, "M": 24, "G": 21}, "compacta": {"P": 35, "M": 30, "G": 26}}
+TOPO_CIMA, CENTRO_MEIO = 300, 960      # y: o topo do texto "em cima" (a caixa começa 16 px antes: 284, dentro da área livre) e o centro "no meio"
+VAO_GANCHO = 38                        # px entre a caixa do gancho e a da legenda
+CAIXA = 16                             # a caixa em volta do texto (Outline do BorderStyle 3)
+APARENCIA_PADRAO = {"tamanho": "M", "posicao": "baixo", "cor": "marinho"}
 GANCHO = {"fonte": 64, "linhas": 2, "car": 22, "ate_s": 3.0}
 BLOCO_MAX_S = 3.2
 FRACAS = {"a", "o", "as", "os", "da", "de", "do", "das", "dos", "e", "em", "no", "na", "nos", "nas", "para", "pra", "com", "por",
           "pelo", "pela", "um", "uma", "é", "que", "ao", "aos", "à", "às", "se", "sem", "seu", "sua"}
-_ESTILO = ("Style: {nome},DM Sans,{fonte},&H00FFFFFF,&H00FFFFFF,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,"
+_ESTILO = ("Style: {nome},DM Sans,{fonte},&H00{texto},&H00{texto},&H33{caixa},&H66000000,-1,0,0,0,100,100,0,0,3,16,0,{alinhamento},"
            f"{MARGEM_H},{MARGEM_H},{{margem}},1")
 _cache_fontes: dict[int, ImageFont.FreeTypeFont] = {}
 
@@ -49,6 +68,37 @@ def _fonte(tamanho_ass: float) -> ImageFont.FreeTypeFont:
     if px not in _cache_fontes:
         _cache_fontes[px] = ImageFont.truetype(str(FONTE_LEGENDA), px)
     return _cache_fontes[px]
+
+
+def aparencia(ajustes: dict | None) -> dict:
+    """A aparência pedida nos ajustes (o editor da aba Vídeo): o que não estiver na tabela vale o padrão (M, embaixo, marinho)."""
+    a = ajustes if isinstance(ajustes, dict) else {}
+    pega = lambda chave, validos, padrao: a.get(chave) if isinstance(a.get(chave), str) and a.get(chave) in validos else padrao
+    return {"tamanho": pega("legenda_tamanho", TAMANHOS, "M"), "posicao": pega("legenda_posicao", POSICOES, "baixo"),
+            "cor": pega("legenda_cor", CORES, "marinho")}
+
+
+def _bgr(rgb: str) -> str:
+    """RRGGBB → BBGGRR (a ordem das cores no ASS)."""
+    return rgb[4:6] + rgb[2:4] + rgb[0:2]
+
+
+def _medidas(estilo: str, ap: dict) -> dict:
+    """A fonte e os caracteres por linha do estilo no tamanho pedido."""
+    return {**ESTILOS[estilo], "fonte": FONTES_TAMANHO[estilo][ap["tamanho"]], "car": CAR_TAMANHO[estilo][ap["tamanho"]]}
+
+
+def _posicoes(e: dict, ap: dict) -> dict:
+    """O alinhamento (numpad do ASS) e a margem vertical da legenda (Fala) e do gancho. Embaixo (como antes): a base da legenda em
+    y=1220 e a do gancho acima da caixa de duas linhas dela (1010 em M, como antes; mais alta com a letra G); no meio: a legenda
+    centrada em y=960 e o gancho com o topo em y=300; em cima: a legenda com o topo em y=300 e o gancho logo abaixo da caixa dela."""
+    caixa = e["linhas"] * e["fonte"] + 2 * CAIXA                       # a altura da caixa da legenda com todas as linhas
+    if ap["posicao"] == "meio":
+        return {"fala": (5, 0), "gancho": (8, TOPO_CIMA)}
+    if ap["posicao"] == "cima":
+        return {"fala": (8, TOPO_CIMA), "gancho": (8, TOPO_CIMA + caixa + VAO_GANCHO)}
+    base_gancho = min(BASE_GANCHO, BASE_FALA - caixa - VAO_GANCHO)
+    return {"fala": (2, ALTURA - BASE_FALA), "gancho": (2, ALTURA - base_gancho)}
 
 
 def largura(texto: str, tamanho_ass: float) -> float:
@@ -119,13 +169,19 @@ def _ts(t: float) -> str:
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
 
 
-def blocos(palavras: list[dict], glossario: list[str] = (), estilo: str = "normal") -> list[dict]:
+def _seguidas(a: dict, b: dict) -> bool:
+    """As duas unidades são seguidas no alinhamento (sem o número u, como nos testes, contam como seguidas)?"""
+    return not (isinstance(a.get("u"), int) and isinstance(b.get("u"), int)) or b["u"] == a["u"] + 1
+
+
+def blocos(palavras: list[dict], glossario: list[str] = (), estilo: str = "normal", aparencia: dict | None = None) -> list[dict]:
     """Os blocos da legenda: [{ini, fim, linhas, fonte}], no tempo do vídeo corrigido."""
-    e = ESTILOS[estilo]
+    e = _medidas(estilo, aparencia or APARENCIA_PADRAO)
     us = [u for u in _unidades([{**p, "texto": limpar(p["texto"])} for p in palavras], list(glossario)) if u["texto"]]
     grupos, atual = [], []
     for u in us:
-        if atual and (u["fim"] - atual[0]["ini"] > BLOCO_MAX_S or arranjar(atual + [u], e["linhas"], e["car"], e["fonte"]) is None):
+        if atual and (u["fim"] - atual[0]["ini"] > BLOCO_MAX_S or not _seguidas(atual[-1], u)
+                      or arranjar(atual + [u], e["linhas"], e["car"], e["fonte"]) is None):
             grupos.append(atual)
             atual = []
         atual.append(u)
@@ -160,19 +216,26 @@ def gancho_linhas(texto: str) -> list[str] | None:
     return arranjar(us, GANCHO["linhas"], GANCHO["car"], GANCHO["fonte"]) if us else None
 
 
-def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estilo: str = "normal", gancho: str | None = None) -> dict:
-    """Grava o .ass. palavras: [{texto, ini, fim, u?}] no tempo do vídeo corrigido (cortes.no_video). Devolve o resumo para o
-    relatório, com a lista dos blocos ({u, em_s, palavras, texto, perto}) para o editor de legenda."""
+def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estilo: str = "normal", gancho: str | None = None,
+           aparencia: dict | None = None) -> dict:
+    """Grava o .ass. palavras: [{texto, ini, fim, u?}] no tempo do vídeo corrigido (cortes.no_video); aparencia: {tamanho, posicao,
+    cor} (aparencia(ajustes); sem ela, a padrão). Devolve o resumo para o relatório, com a lista dos blocos ({u, em_s, palavras, texto,
+    perto}) para o editor de legenda."""
     if estilo not in ESTILOS:
         estilo = "normal"
-    bs = blocos(palavras, glossario, estilo)
+    ap = aparencia if isinstance(aparencia, dict) and aparencia.get("tamanho") in TAMANHOS and aparencia.get("posicao") in POSICOES \
+        and aparencia.get("cor") in CORES else APARENCIA_PADRAO
+    medidas = _medidas(estilo, ap)
+    pos = _posicoes(medidas, ap)
+    texto_cor, caixa_cor = (_bgr(c) for c in CORES[ap["cor"]])
+    bs = blocos(palavras, glossario, estilo, ap)
     avisos, eventos = [], []
     g = gancho_linhas(gancho) if gancho else None
     if gancho and g is None:
         avisos.append("gancho_nao_cabe")
     if g:
         eventos.append(f"Dialogue: 1,{_ts(0)},{_ts(GANCHO['ate_s'])},Gancho,,0,0,0,," + "\\N".join(g))
-    padrao = ESTILOS[estilo]["fonte"]
+    padrao = medidas["fonte"]
     for b in bs:
         tag = f"{{\\fs{b['fonte']}}}" if b["fonte"] != padrao else ""
         eventos.append(f"Dialogue: 0,{_ts(b['ini'])},{_ts(b['fim'])},Fala,,0,0,0,,{tag}" + "\\N".join(b["linhas"]))
@@ -180,10 +243,11 @@ def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estil
            "YCbCr Matrix: TV.709\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
            "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
            "MarginL, MarginR, MarginV, Encoding\n"
-           + _ESTILO.format(nome="Fala", fonte=padrao, margem=ALTURA - BASE_FALA) + "\n"
-           + _ESTILO.format(nome="Gancho", fonte=GANCHO["fonte"], margem=ALTURA - BASE_GANCHO) + "\n\n"
+           + _ESTILO.format(nome="Fala", fonte=padrao, texto=texto_cor, caixa=caixa_cor, alinhamento=pos["fala"][0], margem=pos["fala"][1]) + "\n"
+           + _ESTILO.format(nome="Gancho", fonte=GANCHO["fonte"], texto=texto_cor, caixa=caixa_cor, alinhamento=pos["gancho"][0],
+                            margem=pos["gancho"][1]) + "\n\n"
            "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     destino.write_text(cab + "".join(e + "\n" for e in eventos), encoding="utf-8")
-    return {"blocos": len(bs), "estilo": estilo, "gancho": bool(g), "avisos": avisos,
+    return {"blocos": len(bs), "estilo": estilo, "gancho": bool(g), "avisos": avisos, **ap,
             "lista": [{"u": b["u"], "em_s": round(b["ini"], 2), "palavras": b["palavras"],
                        "texto": " ".join(b["linhas"]).replace("\\h", " "), "perto": b["perto"]} for b in bs]}

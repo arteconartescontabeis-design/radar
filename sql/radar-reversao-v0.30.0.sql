@@ -319,6 +319,11 @@ drop function if exists public.radar_concorrentes_conferir(text);
 -- v0.30.0: o aviso de possível prorrogação na agenda de obrigações
 drop function if exists public.radar_prorrogacoes(int);
 drop function if exists public.radar_prorrogacao_obrigacoes(text, jsonb);
+-- v0.33.0: o editor do vídeo (a aba Vídeo); as que recebem a linha de radar_videos já saíram com a tabela (cascade)
+drop function if exists public.radar_video_editar(uuid, text, jsonb, text[], text);
+drop function if exists public.radar_video_paleta();
+drop function if exists public.radar_video_edicao_falta(public.radar_videos, jsonb);
+drop function if exists public.radar_video_edicao_duracao(public.radar_videos, jsonb);
 
 commit;
 

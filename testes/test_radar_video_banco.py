@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -1060,11 +1061,418 @@ def test_socio_grava_sem_os_termos_e_continua_com_ativa_menor_e_declaracoes(corr
 def test_funcoes_do_video_sem_current_date_com_caminho_e_configuracao_inicial(db):
     funcoes = db.execute("""select p.proname, p.prosrc, p.proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                             where n.nspname = 'public' and (p.proname like 'radar\\_video\\_%' or p.proname = 'radar_pauta_pecas_da_pessoa')""").fetchall()
-    assert len(funcoes) == 40                                                                   # v0.22.0: + radar_video_cota
+    assert len(funcoes) == 44                                    # v0.22.0: + radar_video_cota; v0.33.0: + as 4 do editor
     assert [n for n, src, _ in funcoes if "current_date" in src.lower()] == []                    # "hoje" é o de Brasília
     assert [n for n, _, cfg in funcoes if not cfg] == []
     cfg = db.execute("select valor from radar_config where chave = 'corretor_video'").fetchone()[0]
     assert cfg["limite_min_mes"] == 30 and cfg["retencao_dias"] == 30 and cfg["cartela_extra"] == "" and len(cfg["glossario"]) == 15
+
+
+# ------------------------------------------------------------------ v0.33.0: a aba Vídeo (o editor do vídeo corrigido)
+# O "mapa" que o robô da v0.33.0 grava no relatório (robo/video/cortes.py): a linha original (os clipes em sequência, em quadros de
+# 1/30 s), a faixa de cada clipe (do 1º ao último som, com as folgas), os cortes automáticos no meio da fala (pela chave) e os trechos
+# deste vídeo e as palavras ([ini, fim] em ms da linha original: a última de cada faixa termina 0,45 s antes do fim dela). Aqui: 570 + 550
+# quadros nas faixas, menos 30 + 60 dos automáticos = 1030 quadros (34,33 s), sem pad (o fim da faixa já tem a folga depois da última
+# palavra) → 34,33 + 3 − 0,4 = 36,9 s
+MAPA = {"fps": 30, "linha_q": 1200, "faixas": [[30, 600], [630, 1180]],
+        "automaticos": [{"chave": "1:282", "de": 282, "ate": 312}, {"chave": "2:900", "de": 900, "ate": 960}],
+        "trechos": [[30, 282], [312, 600], [630, 900], [960, 1180]], "pad_q": 0,
+        "palavras": [[1120, 4000], [4200, 9300], [10500, 15000], [15200, 19550], [21120, 29900], [32100, 35000], [35200, 38883]]}
+EDICAO = {"versao": 1, "cortes": 0, "inicio_cortado_s": 0, "fim_cortado_s": 0, "tamanho": "M", "posicao": "baixo", "cor": "marinho",
+          "cartela_extra_propria": False}
+REL_MAPA = {**RELATORIO, "mapa": MAPA, "edicao": EDICAO, "cartela_extra": ""}
+EDITAR = "select radar_video_editar(%s, %s, %s, %s::text[], %s)"
+CHAVES_EDITOR = ("cortar", "inicio_q", "fim_q", "capa_q", "legenda_tamanho", "legenda_posicao", "legenda_cor", "cartela_extra")
+
+
+def editar(vid, ajustes, sha=SHA_VIDEO, cartela=None, gancho=None, uid=ADMIN):
+    return tela(EDITAR, vid, sha, json.dumps(ajustes), cartela, gancho, uid=uid)
+
+
+def pronto_com_mapa(db, relatorio=None, **campos):
+    """Peça reel com o vídeo pronto, montado pelo robô desta versão (o relatório com o mapa) e a transcrição guardada."""
+    pid, ana = reel(db, **campos)
+    vid, _ = ate_pronto(db, pid, ana, relatorio=relatorio or REL_MAPA)
+    return pid, ana, vid
+
+
+def montado(vid, relatorio=None, sha=SHA2):
+    """O robô pega o pedido da fila (montagem) e conclui com o relatório do robô desta versão (com a "edicao")."""
+    p = pegar()
+    assert p["id"] == vid and p["modo"] == "montagem"
+    return concluir(vid, p["tentativa"], relatorio=relatorio or REL_MAPA, sha=sha)["situacao"]
+
+
+def _contraste(a: str, b: str) -> float:
+    def lum(h):
+        c = [int(h.lstrip("#")[k:k + 2], 16) / 255 for k in (0, 2, 4)]
+        c = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    claro, escuro = sorted((lum(a), lum(b)), reverse=True)
+    return (claro + 0.05) / (escuro + 0.05)
+
+
+def test_paleta_da_edicao_igual_no_banco_no_robo_e_contraste(corretor):
+    """A paleta da legenda é uma só: a função do banco (que a tela lê e o banco usa para conferir) e a tabela do robô (legenda.py) são
+    iguais; toda cor tem contraste de leitura (WCAG AA, 4,5 ou mais) entre o texto e a caixa. Sem dado de ninguém: o leitor lê também."""
+    sys.path.insert(0, str(RAIZ / "robo" / "video"))
+    import legenda
+    pal = tela("select radar_video_paleta()", uid=LEITOR)
+    assert {c["chave"]: (c["texto"].lstrip("#"), c["caixa"].lstrip("#")) for c in pal["cores"]} == legenda.CORES
+    assert {t["chave"]: t["fator"] for t in pal["tamanhos"]} == legenda.TAMANHOS
+    assert tuple(p["chave"] for p in pal["posicoes"]) == legenda.POSICOES
+    assert [c["chave"] for c in pal["cores"]][0] == "marinho" and pal["duracao_max_s"] == 45 and pal["fps"] == 30
+    for c in pal["cores"]:
+        assert re.fullmatch(r"#[0-9A-F]{6}", c["texto"]) and re.fullmatch(r"#[0-9A-F]{6}", c["caixa"])
+        assert _contraste(c["texto"], c["caixa"]) >= 4.5, c
+    with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        c.execute("select radar_video_paleta()")
+    for funcao in ("radar_video_edicao_falta(radar_videos, jsonb)", "radar_video_edicao_duracao(radar_videos, jsonb)"):
+        assert db_privilegio(corretor, funcao) == (False, False)                                # só o dono
+    assert db_privilegio(corretor, "radar_video_editar(uuid, text, jsonb, text[], text)") == (False, True)
+
+
+def db_privilegio(db, funcao):
+    return db.execute(f"select has_function_privilege('anon', 'public.{funcao}'::regprocedure, 'execute'), "
+                      f"has_function_privilege('authenticated', 'public.{funcao}'::regprocedure, 'execute')").fetchone()
+
+
+def test_editar_so_o_administrador_no_video_que_ele_viu_sem_transcrever(corretor):
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    for uid in (EDITOR, LEITOR):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR300: só o administrador edita"):
+            editar(vid, {"legenda_cor": "azul"}, uid=uid)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR318"):                       # outro vídeo que o que a tela mostrou
+        editar(vid, {"legenda_cor": "azul"}, sha="c" * 64)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR318"):
+        editar(vid, {"legenda_cor": "azul"}, sha=None)
+    db.execute("update radar_videos set palavras_tentativa = null where id = %s", (vid,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR319: a transcrição desta gravação não ficou guardada"):
+        editar(vid, {"legenda_cor": "azul"})
+    db.execute("update radar_videos set palavras_tentativa = 1, situacao = 'na_fila' where id = %s", (vid,))
+    with pytest.raises(psycopg.errors.RaiseException, match=r"RADAR309: só o vídeo pronto ou para regravar se edita \(situação atual: na_fila\)"):
+        editar(vid, {"legenda_cor": "azul"})
+    db.execute("update radar_videos set situacao = 'erro', erro_codigo = 'storage' where id = %s", (vid,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR309"):                       # com erro: "Tentar de novo" antes
+        editar(vid, {"legenda_cor": "azul"})
+    db.execute("update radar_videos set situacao = 'pronto', erro_codigo = null where id = %s", (vid,))
+    antes = video(db, vid, "rodada")
+    assert editar(vid, {"legenda_cor": "azul"}) == {"id": vid, "modo": "montagem", "duracao_s": 36.9}
+    assert video(db, vid, "situacao, modo, tentativas, erro_codigo, ajustes, rodada") == ("na_fila", "montagem", 0, None, {"legenda_cor": "azul"}, antes)
+    # montar de novo não transcreve: com a cota do mês esgotada, o robô pega do mesmo jeito (só a montagem)
+    config(db, limite_min_mes=1)
+    db.execute("update radar_videos set segundos_audio = 600 where id = %s", (vid,))
+    p = pegar()
+    assert (p["id"], p["modo"], p["palavras_tentativa"], p["ajustes"]) == (vid, "montagem", 1, {"legenda_cor": "azul"})
+    concluir(vid, p["tentativa"], relatorio=REL_MAPA, sha=SHA2)
+    assert video(db, vid, "situacao, sha256, segundos_audio") == ("pronto", SHA2, 600.0)
+    # a peça cancelada ou aprovada não se edita
+    mudar_por_fora(db, pid, "situacao = 'cancelada'")
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR301: a peça está cancelada"):
+        editar(vid, {}, sha=SHA2)
+    mudar_por_fora(db, pid, "situacao = 'em_producao'")
+    marcar_pronta(db, pid)
+    aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA2)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR301: a peça está aprovada"):
+        editar(vid, {}, sha=SHA2)
+
+
+def test_editar_confere_cortes_comeco_fim_e_capa_na_linha_original(corretor):
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    recusas = [({"cortar": [[1.5, 10]]}, "cortar: até 30 trechos"), ({"cortar": [[10, 10]]}, "cortar: até 30"), ({"cortar": [[20, 10]]}, "cortar: até 30"),
+               ({"cortar": [[10, 12]]}, "cortar: até 30"), ({"cortar": [[k * 10, k * 10 + 5] for k in range(31)]}, "cortar: até 30"),
+               ({"cortar": [[-5, 10]]}, "cortar: até 30"), ({"cortar": [["1", "9"]]}, "cortar: até 30"), ({"cortar": {"0": [1, 9]}}, "cortar: até 30"),
+               ({"cortar": [[100, 200], [150, 250]]}, "o corte nº 2 está fora do vídeo, tem menos de 0,1 s ou passa por cima de outro"),
+               ({"cortar": [[300, 400], [100, 200]]}, "o corte nº 2 está fora"), ({"cortar": [[1100, 1250]]}, "o corte nº 1 está fora do vídeo"),
+               ({"inicio_q": 4001}, "inicio_q: um quadro do vídeo"), ({"fim_q": 2.5}, "fim_q: um quadro"), ({"capa_q": "30"}, "capa_q: um quadro"),
+               ({"inicio_q": 1300}, "o começo ou o fim marcado está fora do vídeo"),
+               ({"inicio_q": 500, "fim_q": 510}, "o começo marcado tem de vir pelo menos 1 s antes do fim marcado"),
+               ({"inicio_q": 500, "fim_q": 400}, "pelo menos 1 s antes"),
+               ({"capa_q": 290}, "a capa caiu num trecho cortado"), ({"capa_q": 610}, "a capa caiu"), ({"capa_q": 5}, "a capa caiu"),
+               ({"cortar": [[400, 450]], "capa_q": 420}, "a capa caiu"), ({"inicio_q": 100, "capa_q": 90}, "a capa caiu"),
+               ({"fim_q": 900, "capa_q": 900}, "a capa caiu")]
+    for ajustes, msg in recusas:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: .*" + re.escape(msg)):
+            editar(vid, ajustes)
+    assert video(db, vid, "situacao, ajustes") == ("pronto", {})
+    # o corte automático mantido ("Manter este trecho") volta ao vídeo: a capa pode cair nele
+    bom = {"manter": ["1:282"], "cortar": [[100, 200], [400, 450]], "inicio_q": 60, "fim_q": 1150, "capa_q": 290}
+    assert editar(vid, bom)["modo"] == "montagem"
+    assert video(db, vid, "ajustes") == bom
+    # o vídeo do robô de antes (sem o mapa): os cortes e a capa esperam a montagem desta versão; o estilo, não
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    pid2, ana2 = reel(db, dias=6, pessoa=pessoa_do_corretor(db, "Bruno Exemplo", "Bruno"))
+    vid2, _ = ate_pronto(db, pid2, ana2)
+    for ajustes in ({"cortar": [[100, 200]]}, {"capa_q": 100}, {"inicio_q": 40}, {"fim_q": 900}):
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: os cortes e a capa precisam do vídeo montado pelo robô desta versão"):
+            editar(vid2, ajustes)
+    assert editar(vid2, {"legenda_tamanho": "G", "legenda_posicao": "cima", "legenda_cor": "amarelo"}) == {"id": vid2, "modo": "montagem", "duracao_s": None}
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid2,))
+    assert editar(vid2, {})["modo"] == "montagem"                                               # "Montar de novo para liberar os cortes e a capa"
+
+
+def test_editar_duracao_estimada_entre_5_e_45_e_fala_de_2_s(corretor):
+    """A duração depois de montar segue o plano do robô: a fala que fica MAIS o pad do fim (o último quadro parado: o vídeo precisa de
+    0,45 s depois da última palavra que fica). Sem o fim marcado, a faixa já tem essa folga (pad 0: nada de somar 0,45 s a mais, que
+    deixaria passar um vídeo abaixo de 5 s); o fim no meio de uma palavra pede o pad inteiro (14 quadros); perto do fim dela, o que falta."""
+    db = corretor
+    mapa = {"fps": 30, "linha_q": 1500, "faixas": [[0, 1300]], "automaticos": [{"chave": "1:500", "de": 500, "ate": 800}],
+            "trechos": [[0, 500], [800, 1300]], "pad_q": 0, "palavras": [[100, 16500], [27000, 42883]]}    # quadros 3–495 e 810–1286,5
+    pid, ana, vid = pronto_com_mapa(db, relatorio={**REL_MAPA, "mapa": mapa})
+    dur = lambda a: db.execute("select radar_video_edicao_duracao(v, %s) from radar_videos v where id = %s", (json.dumps(a), vid)).fetchone()[0]
+    assert dur({}) == Decimal("35.9")                                                            # 1000 quadros: 33,33 + 3 − 0,4
+    assert dur({"manter": ["1:500"]}) == Decimal("45.9")                                        # mantido, o automático volta
+    assert dur({"cortar": [[0, 100]]}) == dur({"inicio_q": 100}) == Decimal("32.6")
+    # o fim no meio da 2ª palavra (pelo fim marcado ou por um corte até o fim): + 14 quadros de pad → (900 + 14) / 30 + 2,6
+    assert dur({"cortar": [[1200, 1300]]}) == dur({"fim_q": 1200}) == Decimal("33.1")
+    assert dur({"cortar": [[450, 850]]}) == Decimal("32.6")                                     # só conta o que não tinha saído
+    # o fim 25 quadros depois da 1ª palavra (que termina no 495), com o automático mantido: a folga está lá (pad 0) → 520 / 30 + 2,6
+    assert dur({"manter": ["1:500"], "fim_q": 520}) == Decimal("19.9")
+    # sem o automático, o último quadro que fica é o 499: faltam 8,5 quadros de folga (pad 9) → 509 / 30 + 2,6
+    assert dur({"fim_q": 520}) == Decimal("19.6")
+    # sem as palavras no mapa: o último trecho sem palavra (a conta do robô sem palavra no último trecho: pad só se ele for curto)
+    assert db.execute("select radar_video_edicao_duracao(jsonb_populate_record(null::radar_videos, jsonb_build_object('relatorio', %s::jsonb)), %s)",
+                      (json.dumps({"mapa": {k: x for k, x in mapa.items() if k != "palavras"}}), json.dumps({"fim_q": 1200}))).fetchone()[0] == Decimal("32.6")
+    with pytest.raises(psycopg.errors.RaiseException, match=r"RADAR310: o vídeo ficaria com cerca de 45,9 s: o máximo é 45 s \(corte mais um trecho\)"):
+        editar(vid, {"manter": ["1:500"]})
+    assert editar(vid, {"manter": ["1:500"], "cortar": [[1200, 1300]]})["duracao_s"] == 43.1
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    r = editar(vid, {"cortar": [[100, 400]]})
+    assert r["duracao_s"] == float(dur({"cortar": [[100, 400]]})) == 25.9
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: os cortes deixam só 1,9 s de fala: o mínimo é 2 s"):
+        editar(vid, {"inicio_q": 1000, "fim_q": 1057})
+    assert editar(vid, {"inicio_q": 1000, "fim_q": 1060})["duracao_s"] == 5.1                  # 2 s de fala (+ o pad): passa
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    # o mínimo de 5 s vale pela duração de verdade: sem o fim marcado, 2,1 s de fala (e o pad 0) dão 4,7 s — recusado
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: o vídeo ficaria com cerca de 4,7 s: o mínimo é 5 s"):
+        editar(vid, {"inicio_q": 1237})
+    config(db, cartela_s=2)                                                                       # com a cartela de 2 s, o mínimo de 5 s pesa
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: o vídeo ficaria com cerca de 4,1 s: o mínimo é 5 s"):
+        editar(vid, {"inicio_q": 1000, "fim_q": 1060})
+    assert editar(vid, {"inicio_q": 1000, "fim_q": 1090})["duracao_s"] == 5.1
+
+
+def test_editar_estilo_so_da_paleta_e_textos_sem_marcacao(corretor, request):
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    for ajustes, msg in [({"legenda_cor": "roxo"}, "cor da legenda fora da paleta da Artecon"), ({"legenda_cor": "#FF0000"}, "cor da legenda fora"),
+                         ({"legenda_cor": 1}, "cor da legenda fora"), ({"legenda_tamanho": "XG"}, "tamanho da legenda: pequena, média ou grande"),
+                         ({"legenda_posicao": "lado"}, "posição da legenda: em cima, no meio ou embaixo"),
+                         ({"cartela_extra": "x" * 121}, "texto extra da cartela: até 120 caracteres"), ({"cartela_extra": "com {chave}"}, "texto extra da cartela"),
+                         ({"cartela_extra": "linha\nquebrada"}, "texto extra da cartela"), ({"cartela_extra": "<b>forte</b>"}, "texto extra da cartela"),
+                         ({"cartela_extra": 5}, "texto extra da cartela"),
+                         ({"cartela_extra": "Atendimento com especialista"}, "o texto extra da cartela não diz contador(a), técnico(a) nem especialista"),
+                         ({"cartela_extra": "Fale com a contadora"}, "não diz contador(a)"), ({"cartela_extra": "Fale com a técnica"}, "não diz"),
+                         ({"legenda": [["3:2", "com <b> marca"]]}, "legenda: até 200 blocos"), ({"legenda": {"3": "a > b"}}, "legenda: até 200 blocos"),
+                         ({"outra": 1}, "ajuste desconhecido")]:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: .*" + re.escape(msg)):
+            editar(vid, ajustes)
+    # a legenda com marcação também é recusada nos ajustes da peça (antes da v0.33.0, só o robô e a tela recusavam < >)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: legenda"):
+        tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"legenda": [["3:2", "com <b> marca"]]}), uid=ADMIN)
+    # a frase do boletim pago no texto extra
+    carregar_fontes_novas(db, request)
+    frase = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega das declarações"
+    db.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                  select id, 'https://boletim.exemplo/e', 'Boletim de mentira', %s, 'h-boletim-editar' from radar_fontes where slug = 'itc-email'""",
+               (frase,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR303"):
+        editar(vid, {"cartela_extra": frase[:110]})
+    bom = {"legenda_tamanho": "P", "legenda_posicao": "meio", "legenda_cor": "vermelho", "cartela_extra": "Desde 2000 · (00) 0000-0000",
+           "estilo": "compacta"}
+    assert editar(vid, bom)["modo"] == "montagem" and video(db, vid, "ajustes") == bom
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    assert editar(vid, {**bom, "cartela_extra": ""})["modo"] == "montagem"                     # "Sem texto extra" (vazio)
+
+
+def test_editar_gancho_muda_o_video_e_o_texto_do_gancho_da_peca(corretor, request):
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    assert conferir(pid) == []
+    marcar_pronta(db, pid)
+    assert db.execute("select situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "pronta"
+    for gancho, msg in [("x" * 121, "RADAR308"), ("Prazo <b>novo</b>", "RADAR308"), ("Com {chave}", "RADAR308")]:
+        with pytest.raises(psycopg.errors.RaiseException, match=msg):
+            editar(vid, {}, gancho=gancho)
+    assert editar(vid, {"legenda_cor": "azul"}, gancho="  Prazo novo   do Simples  ")["modo"] == "montagem"
+    assert video(db, vid, "gancho, ajustes") == ("Prazo novo do Simples", {"legenda_cor": "azul"})
+    assert db.execute("select chamada, situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("Prazo novo do Simples", "em_producao")
+    trilha = db.execute("""select depois->>'chamada' from radar_auditoria where tabela = 'radar_pauta_pecas' and registro_id = %s::text
+                            order by id desc limit 1""", (pid,)).fetchone()
+    assert trilha == ("Prazo novo do Simples",)
+    assert montado(vid) == "pronto"
+    assert conferir(pid) == []                                                                   # o gancho gravado é o da peça
+    # "Sem texto do gancho" (vazio): marca sem_gancho; o gancho de antes fica guardado no vídeo
+    assert editar(vid, {"legenda_cor": "azul"}, gancho="", sha=SHA2)["modo"] == "montagem"
+    assert video(db, vid, "gancho, ajustes") == ("Prazo novo do Simples", {"legenda_cor": "azul", "sem_gancho": True})
+    assert montado(vid, sha=SHA_VIDEO) == "pronto"
+    # o texto de antes, de novo: tira o sem_gancho
+    assert editar(vid, {"legenda_cor": "azul", "sem_gancho": True}, gancho="Prazo novo do Simples")["modo"] == "montagem"
+    assert video(db, vid, "ajustes") == {"legenda_cor": "azul"}
+    assert montado(vid) == "pronto"
+    carregar_fontes_novas(db, request)
+    frase = "o comitê gestor publicou nesta semana a orientação completa sobre o novo prazo de entrega"
+    db.execute("""insert into radar_capturas (fonte_id, url, titulo, texto, hash_titulo)
+                  select id, 'https://boletim.exemplo/g', 'Boletim de mentira', %s, 'h-boletim-gancho' from radar_fontes where slug = 'itc-email'""",
+               (frase,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR303"):
+        editar(vid, {}, gancho=frase, sha=SHA2)
+
+
+def test_ajustes_da_peca_guardam_as_mudancas_do_editor(corretor):
+    """A tela da peça (mesmo a antiga, guardada no navegador) manda só as chaves de antes: as mudanças do editor ficam."""
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    editor = {"cortar": [[100, 200]], "capa_q": 400, "legenda_cor": "amarelo", "cartela_extra": "Fale com a gente"}
+    editar(vid, editor)
+    montado(vid)
+    assert tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"estilo": "compacta", "manter": ["2:900"]}), uid=ADMIN)["modo"] == "montagem"
+    assert video(db, vid, "ajustes") == {**editor, "estilo": "compacta", "manter": ["2:900"]}
+    montado(vid, sha=SHA_VIDEO)
+    # sem "manter" no pedido, o "manter" de antes sai (é dos ajustes da peça); as do editor ficam
+    tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({}), uid=ADMIN)
+    assert video(db, vid, "ajustes") == editor
+
+
+def test_ajustes_da_peca_nao_aceitam_as_chaves_do_editor(corretor):
+    """As chaves do editor só entram pela aba Vídeo (radar_video_editar), que confere cada uma com o vídeo: os ajustes da peça
+    (radar_video_ajustar) recusam — senão o texto extra com "especialista" (NBC PG 01), o corte fora do vídeo e a capa num trecho
+    cortado passariam sem conferência, e o robô gravaria a cartela com "especialista"."""
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    for chave, valor in [("cartela_extra", "Especialistas em eSocial"), ("cortar", [[1100, 1250]]), ("capa_q", 290), ("inicio_q", 40),
+                         ("fim_q", 900), ("legenda_tamanho", "G"), ("legenda_posicao", "cima"), ("legenda_cor", "azul"), ("cartela_extra", "")]:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: os cortes, o começo e o fim, a capa, o estilo da legenda e o texto "
+                                                                "extra da cartela mudam na aba Vídeo"):
+            tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"estilo": "compacta", chave: valor}), uid=ADMIN)
+    assert video(db, vid, "situacao, ajustes") == ("pronto", {})
+    for ruim in ({"cartela_extra": "Especialistas em eSocial"}, {"cortar": [[1100, 1250]]}, {"capa_q": 290}):   # a aba Vídeo confere
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR310"):
+            editar(vid, ruim)
+    assert video(db, vid, "situacao, ajustes") == ("pronto", {})
+
+
+def test_cartela_que_nao_coube_com_o_texto_extra_do_editor_sai_do_erro(corretor):
+    """O texto extra próprio da cartela (aba Vídeo) que não cabe: o endereço longo, sem espaço, é recusado antes de montar; o que só o
+    robô descobre (cartela_nao_cabe) não prende o vídeo no erro — "Tentar de novo" monta com o texto extra das Configurações (a aba Vídeo
+    não edita o vídeo com erro, e os ajustes da peça não tiram a chave). Os outros erros e o "sem texto extra" não mexem nele."""
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    longo = "artecon.cnt.br/servicos/abertura-de-empresas-e-planejamento-tributario-palhoca-sc"
+    with pytest.raises(psycopg.errors.RaiseException, match=re.escape("RADAR310: o texto extra da cartela tem uma palavra (ou endereço) com "
+                                                                      "mais de 45 caracteres, sem espaço: não cabe na linha da cartela")):
+        editar(vid, {"cartela_extra": longo})
+    extra = "Atendimento presencial e online para empresas do Simples Nacional, do Lucro Presumido e do Lucro Real em SC"
+    assert editar(vid, {"legenda_cor": "azul", "cartela_extra": extra})["modo"] == "montagem"
+    falhar = lambda codigo: robo("select radar_video_falhar(%s, %s, %s)", vid, pegar()["tentativa"], codigo)
+    assert falhar("cartela_nao_cabe") == {"situacao": "erro"}
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR309"):                       # a aba Vídeo não edita o vídeo com erro
+        editar(vid, {"legenda_cor": "azul"})
+    tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({}), uid=ADMIN)            # os ajustes da peça guardam a chave
+    assert video(db, vid, "ajustes") == {"legenda_cor": "azul", "cartela_extra": extra}
+    assert falhar("cartela_nao_cabe") == {"situacao": "erro"}
+    # "Tentar de novo" (o editor também pode): o texto extra próprio sai; o resto do editor fica
+    assert tela("select radar_video_de_novo(%s, null)", vid, uid=EDITOR)["modo"] == "montagem"
+    assert video(db, vid, "situacao, ajustes") == ("na_fila", {"legenda_cor": "azul"})
+    assert montado(vid) == "pronto"
+    # "sem texto extra" ("") e o texto extra com outro erro (que não é da cartela) ficam
+    for aj, codigo in [({"cartela_extra": ""}, "cartela_nao_cabe"), ({"cartela_extra": "Fale com a gente"}, "conferencia_falhou")]:
+        editar(vid, aj, sha=video(db, vid, "sha256"))
+        assert falhar(codigo) == {"situacao": "erro"}
+        tela("select radar_video_de_novo(%s, null)", vid)
+        assert video(db, vid, "situacao, ajustes") == ("na_fila", aj)
+        assert montado(vid, sha=SHA_VIDEO if video(db, vid, "sha256") == SHA2 else SHA2) == "pronto"
+
+
+def test_robo_antigo_com_mudancas_do_editor_vira_erro_robo_desatualizado(corretor):
+    """O robô do commit de antes (RADAR_VIDEO_COMMIT) não conhece as chaves do editor e montaria sem elas: o vídeo não é aceito."""
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    editar(vid, {"cortar": [[100, 200]], "legenda_cor": "azul"})
+    p = pegar()
+    sem_edicao = {k: v for k, v in REL_MAPA.items() if k != "edicao"}
+    assert concluir(vid, p["tentativa"], relatorio=sem_edicao, sha=SHA2) == {"situacao": "erro"}
+    assert video(db, vid, "situacao, erro_codigo, sha256, antigos, pego_em") == ("erro", "robo_desatualizado", SHA_VIDEO, True, None)
+    assert video(db, vid, "relatorio")["edicao"] == EDICAO                                       # o relatório de antes
+    assert conferir(pid) == ["Reel: o corretor parou com erro (robo_desatualizado)"]
+    # trocado o RADAR_VIDEO_COMMIT, "Tentar de novo": o robô desta versão monta
+    assert tela("select radar_video_de_novo(%s)", vid)["modo"] == "montagem"
+    assert montado(vid) == "pronto" and video(db, vid, "sha256") == SHA2
+    # sem mudança do editor, o robô de antes continua valendo (os ajustes da peça)
+    pid2, ana2 = reel(db, dias=6, pessoa=pessoa_do_corretor(db, "Bruno Exemplo", "Bruno"))
+    vid2, _ = ate_pronto(db, pid2, ana2)
+    tela("select radar_video_ajustar(%s, %s, null)", vid2, json.dumps({"estilo": "compacta"}), uid=ADMIN)
+    assert montado(vid2, relatorio=RELATORIO) == "pronto"
+
+
+def test_divergencia_cortada_nao_pede_regravar(corretor):
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    editar(vid, {"cortar": [[100, 200]]})
+    cortada = {**DIVERGENCIA, "regravar": False, "cortada": True}
+    assert montado(vid, relatorio={**REL_MAPA, "divergencias": [cortada]}) == "pronto"
+    editar(vid, {"cortar": [[100, 200]]}, sha=SHA2)
+    aberta = {**DIVERGENCIA, "id": "fedcba9876543210", "k": 1}
+    assert montado(vid, relatorio={**REL_MAPA, "divergencias": [cortada, aberta]}, sha=SHA_VIDEO) == "regravar"
+
+
+def test_previa_e_baixar_devolvem_a_capa_do_mesmo_sha256(corretor):
+    """A capa é a do relatório, pelo sha256 DELA no nome (quadros/<id>/<sha256 do vídeo>/capa-<sha256 da capa>.jpg): trocar só a capa
+    monta o mesmo vídeo (o mesmo sha256), e a prévia e o baixar passam a apontar a capa nova, nunca a de antes."""
+    db = corretor
+    capa_a, capa_b = "e" * 64, "f" * 64
+    pid, ana, vid = pronto_com_mapa(db)
+    sem = tela("select radar_video_para_previa(%s)", vid)
+    assert "capa" not in sem
+    editar(vid, {"capa_q": 400})
+    # o relatório com a capa sem o sha256 dela (ou fora do formato) não é aceito
+    p = pegar()
+    for ruim in ({"q": 400, "em_ms": 12300, "movida": False}, {"q": 400, "em_ms": 12300, "movida": False, "sha256": "E" * 64}, "capa.jpg"):
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR316: relatório fora do formato"):
+            concluir(vid, p["tentativa"], relatorio={**REL_MAPA, "capa": ruim}, sha=SHA2)
+    concluir(vid, p["tentativa"], relatorio={**REL_MAPA, "capa": {"q": 400, "em_ms": 12300, "movida": False, "sha256": capa_a}}, sha=SHA2)
+    assert tela("select radar_video_para_previa(%s)", vid)["capa"] == f"quadros/{vid}/{SHA2}/capa-{capa_a}.jpg"
+    # só a capa muda: o mesmo vídeo (SHA2), a capa nova
+    editar(vid, {"capa_q": 450}, sha=SHA2)
+    montado(vid, relatorio={**REL_MAPA, "capa": {"q": 450, "em_ms": 14000, "movida": False, "sha256": capa_b}}, sha=SHA2)
+    assert tela("select radar_video_para_previa(%s)", vid)["capa"] == f"quadros/{vid}/{SHA2}/capa-{capa_b}.jpg"
+    marcar_pronta(db, pid)
+    aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA2)
+    r = tela("select radar_video_para_baixar(%s, %s)", pid, lido_peca(db, pid))
+    assert r == {"ok": True, "caminho": f"corrigido/{vid}/{SHA2}.mp4", "data": str(hoje(db) + timedelta(days=5)),
+                 "capa": f"quadros/{vid}/{SHA2}/capa-{capa_b}.jpg"}
+
+
+def test_pendencia_aceita_o_texto_extra_proprio_da_cartela(corretor):
+    db = corretor
+    config(db, cartela_extra="Fale com a gente")
+    pid, ana, vid = pronto_com_mapa(db, relatorio={**REL_MAPA, "cartela_extra": "Fale com a gente"})
+    assert conferir(pid) == []
+    editar(vid, {"cartela_extra": "Atendimento em Palhoça"})
+    montado(vid, relatorio={**REL_MAPA, "cartela_extra": "Atendimento em Palhoça"})
+    assert conferir(pid) == []                                                                   # o próprio deste vídeo, não o das Configurações
+    editar(vid, {"cartela_extra": ""}, sha=SHA2)                                                   # "Sem texto extra"
+    montado(vid, relatorio={**REL_MAPA, "cartela_extra": ""}, sha=SHA_VIDEO)
+    assert conferir(pid) == []
+    db.execute("""update radar_videos set relatorio = relatorio || '{"cartela_extra": "Fale com a gente"}' where id = %s""", (vid,))
+    assert any(p.startswith("Reel: o texto extra da cartela mudou") for p in conferir(pid))
+
+
+def test_reconferir_mantem_cortes_estilo_e_capa(corretor):
+    """O roteiro mudou: com a fala nova, as marcas do alinhamento de antes saem (manter, a transcrição errou, a legenda); os cortes, o
+    começo, o fim e a capa estão na linha ORIGINAL (a mesma gravação) e ficam, como o estilo."""
+    db = corretor
+    pid, ana, vid = pronto_com_mapa(db)
+    editor = {"cortar": [[100, 200]], "inicio_q": 40, "capa_q": 300, "legenda_posicao": "cima", "cartela_extra": ""}
+    editar(vid, {**editor, "manter": ["1:282"], "legenda": [["0:5", "O prazo do Simples vence"]]})
+    montado(vid)
+    novo = ROTEIRO.replace("nem juros.", "nem juros, e fale com a gente.")
+    db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (novo, pid))
+    assert tela("select radar_video_reconferir(%s, %s)", vid, FALA[:-1] + ", e fale com a gente.")["modo"] == "montagem"
+    assert video(db, vid, "ajustes") == editor
 
 
 # ------------------------------------------------------------------ sql/radar-video-agenda.sql e as reversões

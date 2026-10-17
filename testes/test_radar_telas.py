@@ -7,6 +7,7 @@ tipo de token (JWT) que o Supabase Auth emite. Sem Playwright ou PostgREST, o ar
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -129,7 +130,8 @@ class Servidor(BaseHTTPRequestHandler):
         if u.path.startswith("/storage/v1/") and CORRETOR["ponte"]:   # v0.22.0: o armazenamento de mentira (com o TUS)
             cab = {k: v for k, v in self.headers.items() if k.lower() not in ("host", "content-length", "connection", "accept-encoding")}
             r = requests.request(self.command, CORRETOR["ponte"] + self.path, headers=cab, data=corpo, timeout=120, allow_redirects=False)
-            extras = {k: v for k, v in r.headers.items() if k.lower() in ("location", "upload-offset", "upload-length", "tus-resumable", "cache-control")}
+            extras = {k: v for k, v in r.headers.items() if k.lower() in ("location", "upload-offset", "upload-length", "tus-resumable", "cache-control",
+                                                                          "accept-ranges", "content-range")}       # v0.33.0: o player vai a qualquer ponto
             return self._responder(r.status_code, r.content, r.headers.get("Content-Type", "application/json"), extras)
         if u.path == "/auth/v1/token":
             dados = json.loads(corpo or b"{}")
@@ -10711,3 +10713,476 @@ def test_cancelar_so_uma_rede_que_ia_junto_com_o_site(pagina, limpo):
     assert situacoes() == ("autorizado", {"instagram": "cancelado", "facebook": "aguardando_site"})
     assert "depois do site" in pagina.inner_text(".autorizacao li[data-canal=instagram]")
     assert "vai junto com o site" in pagina.inner_text(".autorizacao li[data-canal=facebook]")
+
+
+# ----------------------------------------------------------------------- v0.33.0: a aba Vídeo (o editor do vídeo corrigido)
+# o mapa do vídeo (a linha original em quadros de 1/30 s): um clipe com a fala de 0 a 10 s e um corte automático de 4 a 5 s (a chave
+# "1:120"); este vídeo tem 9 s de fala. As unidades da legenda da fala vb.FALA (21 palavras), uma a cada 0,36 s, no tempo deste vídeo
+MAPA_TELA = {"fps": 30, "linha_q": 330, "faixas": [[0, 300]], "automaticos": [{"chave": "1:120", "de": 120, "ate": 150}],
+             "trechos": [[0, 120], [150, 300]], "pad_q": 0}
+UNIDADES_TELA = [{"u": k, "t": w, "a": round(0.3 + 0.36 * k, 2), "b": round(0.56 + 0.36 * k, 2)} for k, w in enumerate(vb.FALA.split())]
+# as palavras no mapa ([ini, fim] em ms da linha original: o vídeo depois dos 4 s está 1 s adiante, depois do corte automático)
+MAPA_TELA["palavras"] = [[round((t + (1 if t >= 4 else 0)) * 1000) for t in (u["a"], u["b"])] for u in UNIDADES_TELA]
+EDICAO_TELA = {"versao": 1, "cortes": 0, "inicio_cortado_s": 0, "fim_cortado_s": 0, "tamanho": "M", "posicao": "baixo", "cor": "marinho",
+               "cartela_extra_propria": False}
+
+
+def relatorio_editor(**extra):
+    """O relatório final do robô desta versão: com o mapa, as unidades da legenda e a edição."""
+    return relatorio_final(**{"mapa": MAPA_TELA, "unidades": UNIDADES_TELA, "edicao": EDICAO_TELA, "cartela_extra": "", **extra})
+
+
+@pytest.fixture(scope="module")
+def mp4_8s(tmp_path_factory):
+    """Um vídeo vertical de 8 s (testsrc2, VP9 em MP4), para a prévia que pula os cortes; None sem o ffmpeg com o VP9."""
+    if shutil.which("ffmpeg") is None:
+        return None
+    saida = tmp_path_factory.mktemp("mp4-8s") / "reel.mp4"
+    r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=108x192:r=30:d=8", "-c:v", "libvpx-vp9", "-b:v", "100k",
+                        "-g", "15", "-pix_fmt", "yuv420p", "-an", "-f", "mp4", str(saida)], capture_output=True, timeout=180)
+    return saida.read_bytes() if r.returncode == 0 and saida.exists() else None
+
+
+def abrir_aba_video(pg, vid=None):
+    """A aba Vídeo (a lista ou, se um vídeo ficou aberto, o editor dele: trocar de aba e voltar não perde nada) e o editor do vídeo."""
+    pg.click("nav.abas >> text=Vídeo")
+    pg.wait_for_selector("#vaba-lista, #vaba-vazia, #vaba-editor")
+    if vid and pg.locator(f"#vaba-editor[data-video='{vid}']").count():
+        return
+    if pg.locator("#vaba-editor").count():
+        pg.click("[data-acao=vaba-voltar]")
+        pg.wait_for_selector("#vaba-lista, #vaba-vazia")
+    if vid:
+        pg.click(f"#vaba-lista tr[data-video='{vid}'] [data-acao=vaba-abrir]")
+        pg.wait_for_selector("#vaba-editor")
+
+
+def abrir_previa_aba(pg, mp4=True):
+    pg.click("[data-acao=vaba-previa]")
+    pg.wait_for_selector("#vaba-player")
+    if mp4:                    # o vídeo inteiro no navegador (o armazenamento de mentira não serve pedaços): dá para ir a qualquer ponto
+        pg.wait_for_function("() => { const p = document.querySelector('#vaba-player'); return p.readyState >= 1 && p.seekable.length > 0 "
+                             "&& p.seekable.end(p.seekable.length - 1) >= p.duration - 0.05; }", timeout=20000)
+
+
+def player_em(pg, t):
+    pg.evaluate("t => { const p = document.querySelector('#vaba-player'); p.pause(); p.currentTime = t; }", t)
+    pg.wait_for_function("t => Math.abs(document.querySelector('#vaba-player').currentTime - t) < 0.05", arg=t)
+
+
+def montar_na_aba(pg, recado="Mudanças gravadas: o corretor monta o vídeo de novo."):
+    limpar_recados(pg)
+    pg.click("[data-acao=vaba-montar]")
+    pg.wait_for_selector(f"#recado >> text={recado}")
+
+
+def test_aba_video_so_admin_e_editor_e_o_editor_so_ve(pagina, vtela):
+    """A aba Vídeo é da equipe que edita: o leitor não vê a aba (o vídeo tem o rosto e a voz da equipe); o editor vê a lista e o editor,
+    sem campos nem botões de mudança; o administrador vê tudo."""
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    entrar(pagina, "leitor@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    assert pagina.locator("nav.abas button[data-aba=video]").count() == 0
+    pagina.evaluate("() => { E.aba = 'video'; return desenhar(); }")
+    pagina.wait_for_selector("#vaba-so-equipe")
+    assert db.execute("select count(*) from radar_video_acessos").fetchone()[0] == 0
+    sair_e_entrar(pagina, "editora@artecon.test")
+    abrir_aba_video(pagina)
+    assert pagina.inner_text(f"#vaba-lista tr[data-video='{vid}'] [data-acao=vaba-abrir]") == "Ver"
+    abrir_aba_video(pagina, vid)
+    assert pagina.locator("#vaba-so-ver").count() == 1 and pagina.inner_text("#vaba-rodape").strip() == ""
+    assert pagina.locator("#vaba-editor input:not([disabled])").count() == 0
+    assert pagina.locator("[data-acao=vaba-cortar], [data-acao=vaba-montar], [data-acao=vaba-capa-aqui]").count() == 0
+    assert pagina.locator(".vaba-leg").count() == 21 and pagina.locator(".vaba-leg:not([disabled])").count() == 0
+    sair_e_entrar(pagina, "admin@artecon.test")
+    abrir_aba_video(pagina, vid)
+    assert pagina.locator("[data-acao=vaba-montar]").is_disabled() and "Nenhuma mudança ainda." in pagina.inner_text("#vaba-rodape")
+    # 270 quadros de fala (9 s), sem pad (a faixa já tem a folga depois da última palavra) + 3 − 0,4
+    assert "Duração depois de montar: cerca de 11,6 s (de 5 a 45 s)" in pagina.inner_text("#vaba-rodape")
+
+
+def test_aba_video_lista_o_video_vivo_de_cada_peca_e_filtra(pagina, vtela):
+    """Uma linha por peça com vídeo, o vivo (o envio novo a caminho é só um selo ao lado); "De hoje em diante" e "Últimos 60 dias"."""
+    db, fv = vtela
+    pid, ana, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    envio = vb.criar(pid, ana)["id"]                                                     # um envio novo, ainda sem os arquivos
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno")
+    pid2, _ = vb.reel(db, dias=-10, pessoa=bruno, assunto="Reel antigo do eSocial")
+    vid2 = vb.na_fila(db, pid2, bruno)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina)
+    linhas = pagina.locator("#vaba-lista tbody tr")
+    assert linhas.count() == 1 and linhas.first.get_attribute("data-video") == vid and envio != vid
+    assert "envio novo a caminho" in linhas.first.inner_text() and "Vídeo corrigido pronto (gravação 1)" in linhas.first.inner_text()
+    pagina.click("[data-acao=vaba-filtro][data-filtro='60']")
+    pagina.wait_for_selector(f"#vaba-lista tr[data-video='{vid2}']")
+    assert [pagina.locator("#vaba-lista tbody tr").nth(k).get_attribute("data-video") for k in range(2)] == [vid2, vid]
+    assert "Reel antigo do eSocial" in pagina.inner_text(f"#vaba-lista tr[data-video='{vid2}']")
+    assert "Na fila do corretor" in pagina.inner_text(f"#vaba-lista tr[data-video='{vid2}']")
+
+
+def test_aba_video_previa_pula_os_cortes_sem_montar(pagina, vtela, mp4_8s):
+    """A prévia com as mudanças pula os cortes novos no próprio navegador, sobre o vídeo já montado: o corte de 2 a 4 s, o começo e o
+    fim marcados. Nada vai ao banco nem à função (além da prévia) enquanto o administrador corta e ouve."""
+    if not mp4_8s:
+        pytest.skip("ffmpeg com o VP9 não instalado")
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor(), mp4=mp4_8s)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina, vid)
+    abrir_previa_aba(pagina)
+    pedidos = []
+    pagina.on("request", lambda r: pedidos.append(r.url) if "/rest/v1/" in r.url or "/functions/v1/" in r.url else None)
+    player_em(pagina, 2.0)
+    pagina.click("[data-acao=vaba-marcar-de]")
+    player_em(pagina, 3.99)
+    pagina.click("[data-acao=vaba-marcar-ate]")
+    assert "2 s a 4 s (2 s) “no dia 20. Confira com”" in pagina.inner_text("#vaba-cortes-novos")
+    assert pagina.locator("#vaba-palavras .vaba-p.cortada").count() == 5
+    pagina.evaluate("() => { const p = document.querySelector('#vaba-player'); p.currentTime = 1.5; return p.play(); }")
+    pagina.wait_for_timeout(900)
+    t = pagina.evaluate("() => document.querySelector('#vaba-player').currentTime")
+    assert 4.0 <= t < 5.5, t
+    # sem a prévia com as mudanças, toca o vídeo como está
+    pagina.uncheck("#vaba-previa-ligada")
+    pagina.evaluate("() => { const p = document.querySelector('#vaba-player'); p.currentTime = 1.8; return p.play(); }")
+    pagina.wait_for_timeout(500)
+    assert pagina.evaluate("() => document.querySelector('#vaba-player').currentTime") < 3.0
+    pagina.check("#vaba-previa-ligada")
+    # o começo e o fim marcados pelo player também valem
+    player_em(pagina, 1.0)
+    pagina.click("[data-acao=vaba-comecar-aqui]")
+    pagina.evaluate("() => { const p = document.querySelector('#vaba-player'); p.currentTime = 0.2; return p.play(); }")
+    pagina.wait_for_timeout(500)
+    assert pagina.evaluate("() => document.querySelector('#vaba-player').currentTime") >= 1.0
+    player_em(pagina, 7.0)
+    pagina.click("[data-acao=vaba-terminar-aqui]")
+    pagina.evaluate("() => { const p = document.querySelector('#vaba-player'); p.currentTime = 6.8; return p.play(); }")
+    pagina.wait_for_function("() => { const p = document.querySelector('#vaba-player'); return p.ended || p.currentTime >= 7.9; }", timeout=5000)
+    # a linha do tempo: o toque leva o player ao ponto tocado (no meio da barra: metade dos 11,6 s, fala e cartela)
+    pagina.evaluate("() => document.querySelector('#vaba-player').pause()")
+    caixa = pagina.locator("#vaba-linha").bounding_box()
+    pagina.mouse.click(caixa["x"] + caixa["width"] / 2, caixa["y"] + caixa["height"] / 2)
+    assert abs(pagina.evaluate("() => document.querySelector('#vaba-player').currentTime") - 5.8) < 0.5 or \
+        pagina.evaluate("() => document.querySelector('#vaba-player').currentTime") >= 7.0          # (ou já saltou um trecho cortado)
+    assert pedidos == [], pedidos
+    assert db.execute("select situacao, ajustes from radar_videos where id = %s", (vid,)).fetchone() == ("pronto", {})
+    assert "Duração depois de montar: cerca de" in pagina.inner_text("#vaba-rodape") and pagina.locator("[data-acao=vaba-montar]").is_enabled()
+
+
+def test_aba_video_corte_por_palavras_e_pelo_tempo_vira_quadros_da_linha_original(pagina, vtela):
+    """A seleção de palavras vira quadros da linha original (do meio do vão antes da 1ª ao meio do vão depois da última), pelo mapa
+    do relatório, como o robô converte (cortes.original); "Começar nesta palavra" e "Terminar depois dela" também. Montar de novo grava
+    os ajustes (radar_video_editar: só a montagem, sem transcrever) e aciona o robô."""
+    sys.path.insert(0, str(RAIZ / "robo" / "video"))
+    import cortes
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina, vid)
+    confirmacoes(pagina)
+    pagina.click("#vaba-palavras .vaba-p[data-i='5']")
+    pagina.click("#vaba-palavras .vaba-p[data-i='6']")
+    assert "Cortar “no” a “dia”" in pagina.inner_text(".vaba-sel")
+    pagina.click("[data-acao=vaba-cortar]")
+    pagina.click("#vaba-palavras .vaba-p[data-i='2']")
+    pagina.click("[data-acao=vaba-comecar-palavra]")
+    pagina.click("#vaba-palavras .vaba-p[data-i='19']")
+    pagina.click("[data-acao=vaba-terminar-palavra]")
+    u = UNIDADES_TELA
+    esperado = {"cortar": [[cortes.original(MAPA_TELA, (u[4]["b"] + u[5]["a"]) / 2), cortes.original(MAPA_TELA, (u[6]["b"] + u[7]["a"]) / 2 - 1e-6) + 1]],
+                "inicio_q": cortes.original(MAPA_TELA, u[2]["a"] - 0.12), "fim_q": cortes.original(MAPA_TELA, u[20]["a"] - 0.05) + 1}
+    assert esperado == {"cortar": [[61, 84]], "inicio_q": 27, "fim_q": 254}
+    dur = cortes.duracao_estimada(MAPA_TELA, esperado, 3)
+    assert f"Duração depois de montar: cerca de {str(dur).replace('.', ',')} s (de 5 a 45 s)" in pagina.inner_text("#vaba-rodape")
+    assert "1 corte novo (−0,8 s), começo aos 0,9 s, fim aos 7,5 s" in pagina.inner_text("#vaba-resumo")
+    fv.ARM["github"].clear()
+    montar_na_aba(pagina)
+    assert pagina.evaluate("() => window.__perguntas")[-1].startswith("Montar o vídeo de novo com estas mudanças? Não transcreve de novo")
+    assert db.execute("select ajustes, situacao, modo from radar_videos where id = %s", (vid,)).fetchone() == (esperado, "na_fila", "montagem")
+    assert db.execute("select radar_video_edicao_duracao(v, ajustes) from radar_videos v where id = %s", (vid,)).fetchone()[0] == Decimal(str(dur))
+    # o robô acionado (ou, se outro teste o acionou há menos de 30 s, a pausa da função: "já foi acionado há instantes")
+    assert [g[0] for g in fv.ARM["github"]] == ["POST"] or "O robô já foi acionado há instantes." in pagina.inner_text("#recado")
+    assert "O corretor está montando (sem transcrever de novo)" in pagina.inner_text("#vaba-trabalhando")
+
+
+def test_conversao_de_tempo_e_duracao_da_tela_iguais_ao_robo_e_ao_banco(pagina, vtela):
+    """A conversão entre o tempo do vídeo e os quadros da linha original e a duração estimada: a tela, o robô e o banco dão o mesmo."""
+    sys.path.insert(0, str(RAIZ / "robo" / "video"))
+    import cortes
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    tempos = [0, 0.5, 2.05, 3.99, 4.0, 4.01, 6.5, 8.99, 9.0, 12]
+    assert pagina.evaluate("([m, ts]) => ts.map(t => qDoVideo(m, t))", [MAPA_TELA, tempos]) == [cortes.original(MAPA_TELA, t) for t in tempos]
+    quadros = [0, 60, 119, 120, 135, 149, 150, 299, 300, 320]
+    tela = pagina.evaluate("([m, qs]) => qs.map(q => tDoQ(m, q))", [MAPA_TELA, quadros])
+    assert [(pytest.approx(t), f) for t, f in tela] == [cortes.video_de(MAPA_TELA, q) for q in quadros]
+    casos = [{}, {"manter": ["1:120"]}, {"cortar": [[10, 50]]}, {"inicio_q": 33}, {"fim_q": 200}, {"cortar": [[100, 160]]},
+             {"cortar": [[100, 160]], "manter": ["1:120"]}, {"inicio_q": 140, "fim_q": 290}, {"cortar": [[0, 3], [5, 9], [200, 299]]},
+             {"cortar": [[250, 330]], "inicio_q": 1}, {"fim_q": 61}, {"manter": ["1:120", "9:9"], "cortar": [[121, 149]], "fim_q": 151}]
+    tela = pagina.evaluate("([m, casos]) => casos.map(a => duracaoEstimadaVideo(m, a, 3))", [MAPA_TELA, casos])
+    robo = [cortes.duracao_estimada(MAPA_TELA, a, 3) for a in casos]
+    banco = [float(db.execute("select radar_video_edicao_duracao(v, %s) from radar_videos v where id = %s", (json.dumps(a), vid)).fetchone()[0]) for a in casos]
+    assert tela == robo == banco, (tela, robo, banco)
+    # o pad do fim (o último quadro parado) entra igual nas três: sem o fim marcado, nenhum; o fim no meio de uma palavra, 14 quadros; o
+    # fim logo depois de uma palavra, o que falta para 0,45 s
+    pads = [cortes.estimada_q(MAPA_TELA, a) - cortes.fala_estimada_q(MAPA_TELA, a) for a in casos]
+    assert pads[0] == pads[1] == 0 and 14 in pads and any(0 < x < 14 for x in pads), pads
+    assert pagina.evaluate("([m, casos]) => casos.map(a => { const f = quadrosQueFicamVideo(m, a); return padEstimadoVideo(m, f); })",
+                           [MAPA_TELA, casos]) == pads
+
+
+def test_aba_video_legenda_palavra_por_palavra_recusa_como_o_robo(pagina, vtela):
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina, vid)
+    pagina.click("#vaba-sec-legenda summary")
+    pagina.fill(".vaba-leg[data-bloco='1'][data-k='2']", "26.")
+    assert "número, data, mês ou termo do glossário não muda pela legenda" in pagina.inner_text("#vaba-recusa-1")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=vaba-montar]")
+    pagina.wait_for_selector("#recado .erro >> text=número, data, mês ou termo do glossário não muda pela legenda")
+    pagina.fill(".vaba-leg[data-bloco='1'][data-k='2']", "20.")
+    assert pagina.inner_text("#vaba-recusa-1") == ""
+    pagina.fill(".vaba-leg[data-bloco='2'][data-k='6']", "almoço")
+    assert "cada palavra nova é a do roteiro ou parecida com a que estava" in pagina.inner_text("#vaba-recusa-2")
+    pagina.click("[data-acao=vaba-desfazer-bloco][data-bloco='2']")
+    pagina.fill(".vaba-leg[data-bloco='0'][data-k='3']", "simples")
+    assert pagina.inner_text("#vaba-recusa-0") == "" and "legenda: 1 bloco editado" in pagina.inner_text("#vaba-resumo")
+    montar_na_aba(pagina)
+    assert db.execute("select ajustes from radar_videos where id = %s", (vid,)).fetchone()[0] == {"legenda": [["0:5", "O prazo do simples vence"]]}
+
+
+def test_aba_video_estilo_so_da_paleta_e_amostra(pagina, vtela):
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina, vid)
+    pagina.click("#vaba-sec-estilo summary")
+    nomes = pagina.locator(".vaba-cores label").all_inner_texts()
+    assert [n.replace("Aa", "").strip() for n in nomes] == ["Marinho (padrão)", "Branco", "Vermelho Artecon", "Azul Artecon", "Amarelo"]
+    assert pagina.get_attribute("#vaba-amostra", "data-posicao") == "baixo"
+    pagina.check("input[name=vaba-tamanho][value=G]")
+    pagina.check("input[name=vaba-posicao][value=cima]")
+    pagina.check("input[name=vaba-cor][value=amarelo]")
+    assert (pagina.get_attribute("#vaba-amostra", "data-posicao"), pagina.get_attribute("#vaba-amostra", "data-tamanho")) == ("cima", "G")
+    assert pagina.evaluate("() => getComputedStyle(document.querySelector('.vaba-amostra-fala')).backgroundColor").startswith("rgba(255, 215, 0")
+    assert "legenda grande, em cima, amarelo" in pagina.inner_text("#vaba-resumo")
+    # uma cor de fora da paleta (a página mexida): o banco recusa
+    pagina.evaluate("() => { const r = E.video.aba.rascunhos[E.video.aba.v.id]; r.cor = 'roxo'; }")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=vaba-montar]")
+    pagina.wait_for_selector("#recado .erro >> text=cor da legenda fora da paleta da Artecon")
+    pagina.check("input[name=vaba-cor][value=marinho]")
+    pagina.check("input[name=vaba-cor][value=amarelo]")
+    montar_na_aba(pagina)
+    assert db.execute("select ajustes from radar_videos where id = %s", (vid,)).fetchone()[0] == {
+        "legenda_tamanho": "G", "legenda_posicao": "cima", "legenda_cor": "amarelo"}
+
+
+def test_aba_video_gancho_e_texto_extra_passam_pelos_termos_e_mudam_a_peca(pagina, vtela):
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina, vid)
+    pagina.click("#vaba-sec-gancho summary")
+    pagina.fill("#vaba-gancho", "Resultado garantido no prazo do Simples")
+    assert "“resultado garantido” no texto do gancho" in pagina.inner_text("#vaba-gancho-termos")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=vaba-montar]")
+    pagina.wait_for_selector("#recado .erro >> text=Troque antes de montar:")
+    assert db.execute("select ajustes from radar_videos where id = %s", (vid,)).fetchone()[0] == {}
+    pagina.fill("#vaba-gancho", "Prazo novo do Simples")
+    pagina.click("#vaba-sec-cartela summary")
+    pagina.check("input[name=vaba-extra][value=proprio]")
+    pagina.fill("#vaba-extra-texto", "Consulta grátis na Artecon")
+    assert "“consulta grátis”" in pagina.inner_text("#vaba-extra-termos") and "no texto extra da cartela" in pagina.inner_text("#vaba-extra-termos")
+    pagina.fill("#vaba-extra-texto", "Atendimento em Palhoça")
+    confirmacoes(pagina)
+    montar_na_aba(pagina)
+    assert pagina.evaluate("() => window.__perguntas")[-1].endswith("O texto do gancho também muda na peça.")
+    assert db.execute("select gancho, ajustes from radar_videos where id = %s", (vid,)).fetchone() == (
+        "Prazo novo do Simples", {"cartela_extra": "Atendimento em Palhoça"})
+    assert db.execute("select chamada from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0] == "Prazo novo do Simples"
+
+
+def test_aba_video_capa_e_baixar_a_capa_na_peca_aprovada(pagina, vtela, mp4_sintetico):
+    if not mp4_sintetico:
+        pytest.skip("ffmpeg com o VP9 não instalado")
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor(), mp4=mp4_sintetico)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina, vid)
+    abrir_previa_aba(pagina)
+    pagina.click("#vaba-sec-capa summary")
+    player_em(pagina, 1.0)
+    pagina.click("[data-acao=vaba-capa-aqui]")
+    assert "Capa nova aos 1 s" in pagina.inner_text("#vaba-sec-capa")
+    montar_na_aba(pagina)
+    assert db.execute("select ajustes from radar_videos where id = %s", (vid,)).fetchone()[0] == {"capa_q": 30}
+    # o robô monta, com a capa ao lado dos quadros
+    capa = quadro_jpeg((250, 215, 0))
+    capa_sha = hashlib.sha256(capa).hexdigest()                                       # o sha256 da capa no nome do arquivo
+    fv.ARM["objetos"][f"quadros/{vid}/{SHA_NOVO}/capa-{capa_sha}.jpg"] = {"bytes": len(capa), "tipo": "image/jpeg", "dados": capa}
+    assert robo_conclui(fv, vid, relatorio_editor(capa={"q": 30, "em_ms": 1000, "movida": False, "sha256": capa_sha}), sha=SHA_NOVO,
+                        mp4=mp4_sintetico, audio=False) == "pronto"
+    marcar_pronta(db, pid)
+    vb.aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA_NOVO)
+    abrir_video(pagina, db, pid)
+    pagina.click("[data-acao=video-baixar]")
+    pagina.wait_for_selector("#video-baixar-capa")
+    assert pagina.get_attribute("#video-baixar-capa", "download") == f"reel-{data_peca(db, pid)}-capa.jpg"
+    assert pagina.get_attribute("#video-baixar-capa", "href").startswith(f"{BASE}/storage/v1/object/sign/radar-videos/quadros/{vid}/{SHA_NOVO}/capa-{capa_sha}.jpg?token=")
+    assert "escolha adicionar da galeria e use esta imagem" in pagina.inner_text("#video-baixar")
+    assert "(depois de postar: o vídeo e a capa)" in pagina.inner_text("#video-apaguei-baixado")
+
+
+def test_ajustes_da_peca_nada_mudou_com_as_mudancas_do_editor(pagina, vtela):
+    """Depois de uma edição na aba Vídeo, a trava “Nada mudou nos ajustes” do quadro Ajustes da peça continua valendo: as chaves do
+    editor não estão no quadro (o banco as guarda), e sem mudança nada vai ao banco nem volta à fila (montar à toa gasta minutos do
+    GitHub e trava a aprovação). Com uma mudança, só as chaves do quadro vão, e as do editor ficam."""
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    editor = {"legenda_cor": "azul", "cortar": [[10, 50]], "capa_q": 200, "cartela_extra": ""}
+    db.execute("update radar_videos set ajustes = %s where id = %s", (json.dumps(editor), vid))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    confirmacoes(pagina)
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-ajustar]")
+    pagina.wait_for_selector("#recado >> text=Nada mudou nos ajustes.")
+    assert pagina.evaluate("() => window.__perguntas") == []
+    assert db.execute("select situacao, ajustes from radar_videos where id = %s", (vid,)).fetchone() == ("pronto", editor)
+    pagina.check("#video-compacta")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=video-ajustar]")
+    pagina.wait_for_selector("#recado >> text=Ajustes gravados: o corretor monta o vídeo de novo.")
+    assert db.execute("select situacao, ajustes from radar_videos where id = %s", (vid,)).fetchone() == ("na_fila", {**editor, "estilo": "compacta"})
+
+
+def test_aba_video_sem_mapa_pede_montar_para_liberar_e_robo_desatualizado_explica(pagina, vtela):
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv)                                          # o relatório do robô de antes (sem o mapa)
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina, vid)
+    assert "os cortes e a capa precisam de uma montagem nova" in pagina.inner_text("#vaba-sem-mapa")
+    assert pagina.locator("[data-acao=vaba-cortar], [data-acao=vaba-capa-aqui]").count() == 0
+    confirmacoes(pagina)
+    limpar_recados(pagina)
+    pagina.click("[data-acao=vaba-liberar]")
+    pagina.wait_for_selector("#recado >> text=O corretor monta o vídeo de novo.")
+    assert db.execute("select ajustes, situacao, modo from radar_videos where id = %s", (vid,)).fetchone() == ({}, "na_fila", "montagem")
+    # o robô do commit antigo com uma mudança do editor: o vídeo para em "robô desatualizado", e a tela diz o que fazer
+    db.execute("""update radar_videos set situacao = 'erro', erro_codigo = 'robo_desatualizado', ajustes = '{"legenda_cor": "azul"}' where id = %s""", (vid,))
+    pagina.click("[data-acao=vaba-voltar]")
+    pagina.wait_for_selector("#vaba-lista")
+    pagina.click(f"#vaba-lista tr[data-video='{vid}'] [data-acao=vaba-abrir]")
+    pagina.wait_for_selector("#vaba-erro")
+    assert "troca a variável RADAR_VIDEO_COMMIT do repositório radar-video pelo commit desta versão" in pagina.inner_text("#vaba-erro")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=vaba-de-novo]")
+    pagina.wait_for_selector("#recado >> text=Pedido de novo ao corretor.")
+    assert db.execute("select situacao, modo from radar_videos where id = %s", (vid,)).fetchone() == ("na_fila", "montagem")
+
+
+def test_aba_video_mudancas_ficam_ao_trocar_de_aba_e_descartar_limpa(pagina, vtela):
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina, vid)
+    pagina.click("#vaba-sec-estilo summary")
+    pagina.check("input[name=vaba-cor][value=vermelho]")
+    pagina.click("#vaba-palavras .vaba-p[data-i='10']")
+    pagina.click("[data-acao=vaba-cortar]")
+    abrir_pauta(pagina)
+    abrir_aba_video(pagina, vid)
+    assert pagina.locator("input[name=vaba-cor][value=vermelho]").is_checked() and pagina.locator("#vaba-cortes-novos li").count() == 1
+    assert pagina.evaluate("() => Object.keys(localStorage).filter(k => !k.startsWith('radar_tudo'))") == []     # nada no navegador
+    confirmacoes(pagina)
+    pagina.click("[data-acao=vaba-descartar]")
+    pagina.wait_for_selector("#recado >> text=Mudanças descartadas.")
+    assert pagina.locator("input[name=vaba-cor][value=marinho]").is_checked() and pagina.locator("#vaba-cortes-novos").count() == 0
+    assert "Nenhuma mudança ainda." in pagina.inner_text("#vaba-rodape")
+
+
+def test_aba_video_relatorio_hostil_escapado(pagina, vtela):
+    db, fv = vtela
+    ataque = "<img src=x onerror=window.xss=1>"
+    unidades = [{**u, "t": ataque if u["u"] == 3 else u["t"]} for u in UNIDADES_TELA]
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor(unidades=unidades, divergencias=[{**DIVERGENCIA_DIA, "falado": ataque, "ate_s": 2.2}]),
+                                    assunto=ataque + " reel")
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina)
+    assert ataque in pagina.inner_text("#vaba-lista")
+    abrir_aba_video(pagina, vid)
+    assert ataque in pagina.inner_text("#vaba-palavras") and ataque in pagina.inner_text("#vaba-divergencias") and ataque in pagina.inner_text(".vaba-topo")
+    assert pagina.locator("#vaba-editor img[src=x], #vaba-lista img").count() == 0 and pagina.evaluate("() => window.xss") is None
+    # "Cortar este trecho" de uma divergência: as palavras de em_s a ate_s
+    pagina.click("[data-acao=vaba-cortar-divergencia][data-i='0']")
+    assert pagina.locator("#vaba-cortes-novos li").count() == 1
+
+
+def test_aba_video_no_celular_375_px_sem_rolagem_lateral(navegador, vtela):
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor(divergencias=[{**DIVERGENCIA_DIA, "ate_s": 2.2}]),
+                                    assunto="Um assunto de reel bem comprido para ver se o cartão do celular corta em uma linha só sem rolar")
+    contexto = navegador.new_context(viewport={"width": 375, "height": 740}, locale="pt-BR")
+    contexto.route(re.compile(r"fonts\.(googleapis|gstatic)\.com"), lambda rota: rota.abort())
+    pg = contexto.new_page()
+    erros = []
+    pg.on("pageerror", lambda e: erros.append(str(e)))
+    try:
+        entrar(pg, "admin@artecon.test")
+        pg.wait_for_selector("text=Painel do dia")
+        abrir_aba_video(pg)
+        assert sem_rolagem_lateral(pg), "lista"
+        pg.screenshot(path=str(FOTOS / "62-celular-aba-video-lista.png"), full_page=True)
+        abrir_aba_video(pg, vid)
+        for s in ("legenda", "estilo", "gancho", "cartela", "capa"):
+            pg.click(f"#vaba-sec-{s} summary")
+        pg.click("#vaba-palavras .vaba-p[data-i='8']")
+        pg.click("[data-acao=vaba-cortar]")
+        assert sem_rolagem_lateral(pg), "editor"
+        assert pg.locator("[data-acao=vaba-montar]").is_visible()
+        caixa = pg.locator("#vaba-rodape").bounding_box()
+        assert caixa and caixa["y"] + caixa["height"] <= 740 + 1                                    # o rodapé fixo embaixo, à vista
+        assert pg.evaluate("() => { const ids = [...document.querySelectorAll('[id]')].map(e => e.id); return ids.filter((x, i) => ids.indexOf(x) !== i); }") == []
+        pg.screenshot(path=str(FOTOS / "63-celular-aba-video-editor.png"), full_page=True)
+        assert erros == [], erros
+    finally:
+        contexto.close()
+
+
+def test_peca_reel_tem_editar_na_aba_video_e_avisa_texto_nao_salvo(pagina, vtela):
+    db, fv = vtela
+    pid, _, vid, _ = reel_com_video(db, fv, relatorio=relatorio_editor())
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    assert pagina.inner_text(".video-ir-aba") == "Editar na aba Vídeo"
+    pagina.fill("form[data-form=peca] [name=chamada]", "Chamada mudada e não salva")
+    pagina.evaluate("() => { window.__perguntas = []; window.confirm = m => { window.__perguntas.push(m); return false; }; }")
+    pagina.click("[data-acao=video-aba]")
+    pagina.wait_for_function("() => window.__perguntas.length === 1")
+    assert "Sair da peça sem salvar?" in pagina.evaluate("() => window.__perguntas[0]") and pagina.locator("form[data-form=peca]").count() == 1
+    pagina.evaluate("() => { window.confirm = () => true; }")
+    pagina.click("[data-acao=video-aba]")
+    pagina.wait_for_selector(f"#vaba-editor[data-video='{vid}']")
+    assert pagina.locator("nav.abas button[data-aba=video].ativa").count() == 1
+    pagina.click("[data-acao=vaba-peca]")
+    pagina.wait_for_selector(f"form[data-form=peca][data-id='{pid}']")

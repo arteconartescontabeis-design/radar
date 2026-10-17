@@ -810,3 +810,55 @@ def test_de_ponta_a_ponta_tira_o_eee_e_o_hum_e_a_legenda_e_o_roteiro(tmp_path, m
     assert rel["saida"]["lufs"] == conf["lufs"] and rel["conferencia"]["sem_gps"] is True and formato == "tabela"
     assert len(json.dumps(rel, ensure_ascii=False)) <= relatorio.LIMITE
     assert capfd.readouterr() == ("", "")
+
+
+# ------------------------------------------------------------------ v0.33.0: a divergência que um corte do editor tirou
+def _final(al, plano, infos):
+    leg = {"blocos": 1, "estilo": "normal", "gancho": False, "avisos": [], "lista": [], "tamanho": "M", "posicao": "baixo", "cor": "marinho"}
+    return relatorio.final(al, plano, infos, {"saida": {"duracao_s": 8.0, "fala_s": 5.4}, "audio": {}, "quadros_ms": [1, 2, 3, 4]},
+                           {"lufs": -14.0}, leg, None, "montagem", {**CFG, "cartela_extra": ""})
+
+
+def test_divergencia_traz_o_fim_e_o_relatorio_marca_a_cortada():
+    """Cada divergência traz o fim da fala dela (t_fim); no relatório, com os cortes do editor, a que saiu inteira no corte fica
+    "cortada" e não pede regravar (o trecho não vai ao ar), a outra ganha ate_s (o fim dela no vídeo), e t_fim nunca sai. O falado
+    fora do roteiro do trecho cortado também sai, e o texto final é só o que ficou. caber() tira as unidades antes da lista da legenda."""
+    fala = "O prazo vence dia 25. Fale com a gente."
+    ws = falas("o prazo vence dia quinze fale com a gente")
+    dur = 4.5
+    infos = [{"n": 1, "inicio_q": 0, "quadros": int(dur * 30), "w": 1080, "h": 1920, "fps": 30, "hdr": None, "girado": False, "dur": dur}]
+    al = alinhar.alinhar(fala, ws, [], CFG)
+    (d,) = al["divergencias"]
+    assert d["t"] == ws[4]["inicio"] and d["t_fim"] == ws[4]["fim"]
+    sem = cortes.planejar(infos, [], CFG, al["palavras"], al["remover"])
+    rel = _final(al, sem, infos)
+    (x,) = rel["divergencias"]
+    assert "t_fim" not in x and "cortada" not in x and x["regravar"] is True and x["ate_s"] == pytest.approx(x["em_s"] + 0.26, abs=0.02)
+    assert rel["texto_final"] == "O prazo vence dia 15 Fale com a gente." and relatorio.situacao(rel) == "regravar"
+    assert rel["edicao"]["cortes"] == 0 and rel["mapa"]["linha_q"] == 135 and len(rel["unidades"]) == 9
+    # o administrador corta o "quinze" (do meio do vão de antes ao meio do vão de depois)
+    corte = [[cortes._q_ini((ws[3]["fim"] + ws[4]["inicio"]) / 2), cortes._q_fim((ws[4]["fim"] + ws[5]["inicio"]) / 2)]]
+    plano = cortes.planejar(infos, [], CFG, al["palavras"], al["remover"], edicao=cortes.edicao_de({"cortar": corte}, 135))
+    rel = _final(al, plano, infos)
+    (x,) = rel["divergencias"]
+    assert (x["cortada"], x["regravar"], "ate_s" in x, "t_fim" in x) == (True, False, False, False)
+    assert relatorio.situacao(rel) == "pronto" and rel["texto_final"] == "O prazo vence dia Fale com a gente."
+    assert [u["t"] for u in rel["unidades"]] == ["O", "prazo", "vence", "dia", "Fale", "com", "a", "gente."]
+    assert rel["edicao"]["cortes"] == 1 and [c["tipo"] for c in rel["cortes"]].count("editor") == 1
+    # o parcial já marca (a equipe não vê "Precisa regravar" de um trecho cortado durante a montagem)
+    assert relatorio.parcial(al, plano, infos)["divergencias"][0]["cortada"] is True
+    # o falado fora do roteiro dentro do corte sai da lista e do texto final
+    ws2 = falas("fale com tchau a gente hoje mesmo")
+    al2 = alinhar.alinhar("Fale com a gente hoje mesmo.", ws2, [], CFG)
+    assert [f["texto"] for f in al2["fora_do_roteiro"]] == ["tchau"]
+    corte2 = [[cortes._q_ini((ws2[1]["fim"] + ws2[2]["inicio"]) / 2), cortes._q_fim((ws2[2]["fim"] + ws2[3]["inicio"]) / 2)]]
+    plano2 = cortes.planejar(infos, [], CFG, al2["palavras"], al2["remover"], edicao=cortes.edicao_de({"cortar": corte2}, 135))
+    rel2 = _final(al2, plano2, infos)
+    assert rel2["fora_do_roteiro"] == [] and rel2["texto_final"] == "Fale com a gente hoje mesmo."
+    assert "tchau" in _final(al2, cortes.planejar(infos, [], CFG, al2["palavras"], al2["remover"]), infos)["texto_final"]
+    # caber(): as unidades saem antes da lista dos blocos da legenda
+    grande = {"avisos": [], "unidades": [{"u": k, "t": "x" * 60, "a": 0.0, "b": 0.1} for k in range(1200)],
+              "legenda": {"lista": [{"u": 0, "texto": "bloco"}]}, "mapa": {"linha_q": 10}}
+    r = relatorio.caber(grande)
+    assert "unidades" not in r and r["legenda"]["lista"] == [{"u": 0, "texto": "bloco"}] and r["mapa"] == {"linha_q": 10}
+    assert r["avisos"] == ["relatorio_resumido"]

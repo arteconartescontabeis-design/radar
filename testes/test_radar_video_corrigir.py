@@ -16,6 +16,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -45,6 +46,7 @@ from test_radar_video_robo import imagem_docker  # noqa: E402,F401 — a imagem 
 
 import conversa  # noqa: E402
 import corrigir  # noqa: E402
+import cortes  # noqa: E402
 import segredo  # noqa: E402
 import transcrever  # noqa: E402
 from segredo import ErroVideo  # noqa: E402
@@ -272,6 +274,133 @@ def test_ajuste_monta_com_a_transcricao_guardada_sem_azure_e_com_o_mesmo_audio(c
                                   capture_output=True, text=True, check=True).stdout)
     assert md5[0] == md5[1]
     _log_limpo(log.getvalue())
+
+
+def _montagem_do_editor(f: FuncaoFalsa, ajustes: dict) -> dict:
+    """O pedido "montagem" com as mudanças do editor da aba Vídeo (a transcrição guardada da rodada 1)."""
+    f.chamadas.clear()
+    f.puts.clear()
+    f.gets.clear()
+    p = pedido(VID, _partes(f.objetos[f"bruto/{VID}/1"]["dados"], f.objetos[f"bruto/{VID}/2"]["dados"]), FALA, CFG, modo="montagem",
+               cartela=CARTELA, gancho=GANCHO, ajustes=ajustes, palavras_tentativa=1)
+    f.enfileirar(p)
+    return p
+
+
+@FFMPEG
+def test_editor_monta_sem_transcrever_com_cortes_capa_estilo_e_cartela_propria(completo, tmp_path):
+    """v0.33.0, a aba Vídeo: o administrador corta "do e social" (do meio do vão antes ao meio do vão depois, em quadros da linha
+    original), termina antes de "gente", escolhe a capa e a legenda grande, em cima e amarela, e um texto extra só desta cartela. O
+    robô monta com a transcrição guardada (a Azure não é chamada, os segundos não mudam), sobe a capa ao lado dos quadros, e o
+    relatório leva o mapa, as unidades, a edição e a capa; no vídeo, cada palavra que ficou com o branco e a voz juntos (sem as
+    cortadas) e a duração bate com a estimativa da tela e do banco."""
+    f = completo.funcao
+    q = lambda s: round(s * 30)
+    desloca = int(DUR1 * 30)                                     # o clipe 2 na linha original (fala48k.wav)
+    corte = [math.floor((1.10 + 1.22) / 2 * 30) + 1, math.ceil((2.10 + 2.22) / 2 * 30) - 1]       # [35, 64]: "do", "e", "social"
+    fim_q = desloca + math.floor((1.52 + 1.65) / 2 * 30)         # entre "a" e "gente"
+    ajustes = {"cortar": [corte], "fim_q": fim_q, "capa_q": q(0.9), "legenda_tamanho": "G", "legenda_posicao": "cima",
+               "legenda_cor": "amarelo", "cartela_extra": "Texto extra de teste"}
+    mapa = f.final[VID]["relatorio"]["mapa"]
+    estimada = cortes.duracao_estimada(mapa, ajustes, CFG["cartela_s"])
+    _montagem_do_editor(f, ajustes)
+    log = io.StringIO()
+    with _ambiente(f, sdk_passos=[("erro", "AuthenticationFailure", "não pode ser chamada")]) as amb, contextlib.redirect_stdout(log):
+        passos = _workflow(tmp_path / "trabalho", tmp_path / "saidas")
+    assert "transcrever" not in passos and amb.sdk.feitos == [] and passos["pegar"][1]["modo"] == "montagem"
+    assert f.acoes() == ["pegar", "parcial", "links", "concluir"] and f.segundos[VID] == round(DUR1 + DUR2, 1)
+    fim = f.final[VID]
+    rel, sha = fim["relatorio"], fim["sha256"]
+    assert fim["situacao"] == "pronto" and rel["modo"] == "montagem"
+    capa = f"quadros/{VID}/{sha}/capa-{rel['capa']['sha256']}.jpg"                     # o sha256 da capa no nome
+    assert capa in [c for c, _ in f.puts] and f.objetos[capa]["tipo"] == "image/jpeg"
+    assert hashlib.sha256(f.objetos[capa]["dados"]).hexdigest() == rel["capa"]["sha256"]
+    assert rel["edicao"] == {"versao": 1, "cortes": 1, "inicio_cortado_s": 0, "fim_cortado_s": rel["edicao"]["fim_cortado_s"], "tamanho": "G",
+                             "posicao": "cima", "cor": "amarelo", "cartela_extra_propria": True} and rel["edicao"]["fim_cortado_s"] > 0.5
+    assert rel["capa"] == {"q": q(0.9), "em_ms": rel["capa"]["em_ms"], "movida": False, "sha256": rel["capa"]["sha256"]} and 0 < rel["capa"]["em_ms"] < 1000
+    assert rel["cartela_extra"] == "Texto extra de teste" and rel["legenda"]["blocos"] >= 1
+    assert rel["mapa"]["linha_q"] == mapa["linha_q"] and rel["mapa"]["faixas"] == mapa["faixas"]
+    assert [c["chave"] for c in rel["cortes"] if c["tipo"] == "editor"] == [f"e:{corte[0]}"]
+    assert "eSocial" not in rel["texto_final"] and "gente" not in rel["texto_final"] and rel["texto_final"].startswith("O prazo vence")
+    assert [u["t"] for u in rel["unidades"]][:3] == ["O", "prazo", "vence"]
+    # o vídeo: as palavras que ficaram (7 do clipe 1 e 3 do clipe 2), cada uma com o branco e a voz juntos; a duração estimada
+    (tmp_path / "editado.mp4").write_bytes(f.objetos[f"corrigido/{VID}/{sha}.mp4"]["dados"])
+    luz = sint.subidas([x > 150 for x in sint.luz_do_alto(tmp_path / "editado.mp4")])
+    voz = sint.subidas(sint.voz_por_quadro(tmp_path / "editado.mp4"))
+    assert len(luz) == len(voz) == 10 and all(abs(a - b) <= 1 for a, b in zip(luz, voz)), (luz, voz)
+    assert fim["duracao"] == pytest.approx(estimada, abs=1 / 30 + 0.05)                     # a estimativa (arredondada a 0,1 s) é a real
+    ass = (tmp_path / "trabalho" / "sai" / "legenda.ass").read_text(encoding="utf-8")
+    assert "Style: Fala,DM Sans,80,&H00481F01,&H00481F01,&H3300D7FF," in ass and ",8,100,100,300,1" in ass
+    # a capa: o quadro do "prazo" (o alto branco), sem a legenda
+    (tmp_path / "capa.jpg").write_bytes(f.objetos[capa]["dados"])
+    from PIL import Image
+    im = Image.open(tmp_path / "capa.jpg").convert("L")
+    assert im.size == (1080, 1920) and sum(im.crop((0, 100, 1080, 500)).resize((8, 8)).tobytes()) / 64 > 150
+    _log_limpo(log.getvalue(), "Texto extra")
+    assert " cortes_editor=1" in log.getvalue() and " capa=sim" in log.getvalue()
+
+
+SQL_DURACAO = """select radar_video_edicao_duracao(v, %s::jsonb), radar_video_edicao_falta(v, %s::jsonb)
+                   from jsonb_populate_record(null::radar_videos, jsonb_build_object('relatorio', %s::jsonb)) v"""
+
+
+@FFMPEG
+def test_duracao_estimada_e_a_do_video_montado(completo, db, tmp_path):
+    """A duração que o banco (e a tela e o robô: a mesma conta) estima e confere entre 5 e 45 s é a do vídeo que o robô monta de
+    verdade: sem o fim marcado (a faixa já tem a folga depois da última palavra: nada de somar 0,45 s), com o começo marcado no 2º clipe
+    (o vídeo de 4,7 s é recusado antes de montar) e com o fim no meio do "gente" (o último quadro parado: o pad). Até 1 quadro."""
+    f = completo.funcao
+    mapa = f.final[VID]["relatorio"]["mapa"]                     # a linha, as faixas, os automáticos e as palavras não mudam com a edição
+    assert len(mapa["palavras"]) == PALAVRAS_TODAS
+    desloca = int(DUR1 * 30)
+    rel = json.dumps({"mapa": mapa})
+    for k, (aj, falta) in enumerate([({}, None), ({"inicio_q": desloca}, "o vídeo ficaria com cerca de 4,7 s: o mínimo é 5 s"),
+                                     ({"fim_q": desloca + round(1.9 * 30)}, None)]):
+        banco, motivo = db.execute(SQL_DURACAO, (json.dumps(aj), json.dumps(aj), rel)).fetchone()
+        assert float(banco) == cortes.duracao_estimada(mapa, aj, CFG["cartela_s"]) and motivo == falta, (aj, banco, motivo)
+        _montagem_do_editor(f, aj)
+        with _ambiente(f, sdk_passos=[]), contextlib.redirect_stdout(io.StringIO()):
+            _workflow(tmp_path / f"t{k}", tmp_path / f"s{k}")
+        fim = f.final[VID]
+        assert fim["situacao"] == "pronto", fim
+        real = fim["duracao"]
+        assert real == pytest.approx(cortes.estimada_q(mapa, aj) / 30 + CFG["cartela_s"] - 0.4, abs=1 / 30 + 0.005), (aj, real)
+        assert float(banco) == pytest.approx(real, abs=0.05 + 1 / 30), (aj, banco, real)
+        assert (fim["relatorio"]["mapa"]["pad_q"] == 0) == (k < 2), (aj, fim["relatorio"]["mapa"]["pad_q"])
+
+
+@FFMPEG
+def test_trocar_so_a_capa_sobe_a_capa_nova_do_mesmo_video(completo, tmp_path):
+    """Trocar SÓ a capa monta o mesmo vídeo (o mesmo sha256): o vídeo já está no armazenamento ("ja_existe") e o armazenamento nunca
+    sobrescreve. A capa sobe com o sha256 dela no nome: a nova fica ao lado da de antes, o relatório aponta a nova e o concluir confere
+    a nova (a de antes não passa por ela). Voltar à capa de antes reaproveita o arquivo que já está lá (o mesmo conteúdo)."""
+    f = completo.funcao
+    feitas = []
+    for k, capa_q in enumerate((27, 65, 27)):
+        _montagem_do_editor(f, {"capa_q": capa_q})
+        with _ambiente(f, sdk_passos=[]), contextlib.redirect_stdout(io.StringIO()):
+            _workflow(tmp_path / f"t{k}", tmp_path / f"s{k}")
+        fim = f.final[VID]
+        assert fim["situacao"] == "pronto" and fim["relatorio"]["capa"]["q"] == capa_q
+        local = (tmp_path / f"t{k}" / "sai" / "capa.jpg").read_bytes()
+        nome = f"quadros/{VID}/{fim['sha256']}/capa-{fim['relatorio']['capa']['sha256']}.jpg"
+        assert hashlib.sha256(local).hexdigest() == fim["relatorio"]["capa"]["sha256"]
+        assert f.objetos[nome]["dados"] == local                                   # a capa guardada é a que o robô fez agora
+        feitas.append((fim["sha256"], nome, [c for c, _ in f.puts]))
+    (sha_a, capa_a, _), (sha_b, capa_b, puts_b), (sha_c, capa_c, puts_c) = feitas
+    assert sha_a == sha_b == sha_c and capa_a != capa_b and capa_c == capa_a       # o mesmo vídeo; a capa nova, depois a de antes de volta
+    assert capa_b in puts_b and f"corrigido/{VID}/{sha_b}.mp4" not in puts_b       # o vídeo não sobe de novo; a capa nova, sim
+    assert capa_a in puts_c and capa_a in f.objetos and capa_b in f.objetos         # a de antes: o PUT encontra o mesmo arquivo (não sobrescreve)
+
+
+@FFMPEG
+def test_corte_do_editor_que_deixa_menos_de_2_s_para_com_edicao_curta(completo, tmp_path):
+    f = completo.funcao
+    _montagem_do_editor(f, {"inicio_q": 20, "fim_q": 60})
+    with _ambiente(f, sdk_passos=[]):
+        passos = _workflow(tmp_path / "trabalho", tmp_path / "saidas")
+    assert passos["alinhar"][0] == 0 and f.acoes() == ["pegar", "falhar"] and f.puts == []
+    assert f.final[VID] == {"situacao": "erro", "codigo": "edicao_curta"}
 
 
 @FFMPEG

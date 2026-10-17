@@ -500,7 +500,10 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.29.0: a situação dos lembretes (a função confere que é o administrador)
                                                            'radar_lembretes_situacao',
                                                            -- v0.30.0: possível prorrogação na agenda (a função confere o perfil)
-                                                           'radar_prorrogacoes')
+                                                           'radar_prorrogacoes',
+                                                           -- v0.33.0: a aba Vídeo (o editor confere que é o administrador; a paleta
+                                                           -- não tem dado de ninguém)
+                                                           'radar_video_editar', 'radar_video_paleta')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace

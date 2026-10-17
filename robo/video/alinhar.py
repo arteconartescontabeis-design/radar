@@ -371,7 +371,8 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
       * remover: as sugestões de repetição e falso início, para cortes.planejar;
       * legenda: [{u, texto, ini, fim}] na linha de fala48k.wav (cortes.no_video leva ao tempo do vídeo corrigido);
       * texto_final (a legenda inteira, que o banco confere: boletim pago, nomes, termos de publicidade), trocas, divergencias,
-        fora_do_roteiro, omitido (com `t`, o instante na linha de fala48k.wav; relatorio.py leva ao vídeo corrigido),
+        fora_do_roteiro, omitido (com `t`, o instante na linha de fala48k.wav; relatorio.py leva ao vídeo corrigido; a divergência
+        também com `t_fim`, o fim da última palavra falada dela),
         legenda_ajustes {editados, recusados}, cobertura (fração das fichas do roteiro que foram ditas) e avisos (códigos)."""
     cfg, ajustes = cfg or {}, ajustes or {}
     gl = numeros.glossario(cfg.get("glossario") or (), cfg.get("variantes") or {})
@@ -416,7 +417,8 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
             tipo = _tipo_divergencia(rs + fs)
             marca = _id_divergencia(t, tipo, falado, roteiro)
             g["errou"] = marca in errou
-            divergencias.append({"k": g["k"], "id": marca, "t": t, "falado": falado, "roteiro": roteiro, "tipo": tipo,
+            # t_fim (v0.33.0): o fim da última palavra falada dela (sem fala, a omissão: = t); o relatório diz se um corte do editor a tirou
+            divergencias.append({"k": g["k"], "id": marca, "t": t, "t_fim": fs[-1]["fim"] if fs else t, "falado": falado, "roteiro": roteiro, "tipo": tipo,
                                  "regravar": True, "transcricao_errou": g["errou"], **({"confianca": round(min(cs), 2)} if cs else {})})
         else:
             if fs:
