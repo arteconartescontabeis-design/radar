@@ -312,19 +312,22 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.28.0"></script>
-<script src="radar-video.js?v=0.28.0"></script>
+<script src="radar-pauta.js?v=0.28.1"></script>
+<script src="radar-video.js?v=0.28.1"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.28.0";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela)
+const VERSAO = "0.28.1";
+const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.28.1", "17/10/2026", [
+    "Pauta: a linha em branco em “Informações conferidas” (de “Acrescentar informação”) e o cartão em branco (de “Acrescentar cartão”) não contam mais como alteração não salva. Antes, o aviso “Há alterações não salvas na peça” barrava o envio do vídeo, a conferência, a aprovação e o “Cancelar a peça” até recarregar a página, mesmo depois de salvar. Agora o aviso diz o que mudou e não foi salvo (por exemplo, “Informações conferidas” ou “Quem aparece”), e o Salvar sem nada para gravar destrava a peça.",
+    "Administrador: só publicar a tela (index.html com o radar-pauta.js e o radar-video.js; Ctrl+F5 em todos os aparelhos). O banco não muda (continua o sql/radar-setup-v0.28.0.sql, sem SQL novo) e as funções não mudam. Passo a passo no LEIAME, “Da v0.28.0 para a v0.28.1”."]],
   ["0.28.0", "16/10/2026", [
     "Peça nova num dia vazio: na Pauta, nos dias da semana que ainda não têm peça (de hoje em diante), o administrador vê o botão “+ Nova peça”. Ele pede o tipo, o formato e o assunto (objetivo, quem aparece e observação são opcionais) e cria a peça desse dia, que abre como qualquer outra: roteiro, “Quem aparece”, fotos e, no reel, o corretor de vídeo. Continua valendo uma peça por dia: o dia que já tem peça (mesmo cancelada) não ganha outra, e dia que já passou não recebe peça nova.",
     "A peça nova nasce planejada e não publica nem agenda nada sozinha: segue o caminho de sempre (preparar, marcar como pronta e a aprovação do administrador). Se depois o calendário (CSV) for importado com uma linha para o mesmo dia, a peça ainda planejada recebe o que está no arquivo (a prévia mostra “alterada” antes de gravar; a prévia que estava aberta fecha quando se abre a “+ Nova peça”, e basta escolher o arquivo de novo); a que já entrou em produção fica como está.",

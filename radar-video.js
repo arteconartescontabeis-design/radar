@@ -17,7 +17,7 @@
    v0.28.0: o(a) sócio(a) da Artecon (Pauta → Pessoas e termos) não precisa do termo do corretor: o aviso "sem o termo novo" não aparece
    para ele(a); as quatro declarações do envio continuam obrigatórias para todos.
    ==================================================================== */
-const VIDEO_VERSAO = "0.28.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.28.1";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 120;
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -827,7 +827,7 @@ const VIDEO = {
     /* Enviar a gravação: o banco confere tudo ANTES (radar_video_criar, pela função) e só então os clipes sobem, um de cada vez */
     async "video-enviar"(){
       const {f, p} = pecaDoVideo();
-      if(pecaMudou(f)) throw new ErroApi(AVISO_PECA_SUJA);
+      if(pecaMudou(f)) throw new ErroApi(avisoPecaSuja(f));                 // v0.28.1: o aviso diz o que mudou (radar-pauta.js)
       const lista = clipesDe(p.id);
       conferirEnvio(p, lista);
       const quem = Number($("#video-quem")?.value || 0);
@@ -876,7 +876,7 @@ const VIDEO = {
        roteiro novo, e as marcas do administrador continuam valendo. Com a fala mudada, o corretor alinha e monta de novo. */
     async "video-reconferir"(el){
       const {f, p} = pecaDoVideo(), v = videoDaTela(el);
-      if(pecaMudou(f)) throw new ErroApi(AVISO_PECA_SUJA);
+      if(pecaMudou(f)) throw new ErroApi(avisoPecaSuja(f));
       const {fala} = extrairFala(p.roteiro), igual = fala === v.fala_roteiro;
       if(!confirm(igual ? "A fala para conferência do roteiro novo é a mesma da gravação (mudou só o que não é falado): o vídeo continua o mesmo, com os ajustes de antes. Registrar o roteiro novo?"
         : "Conferir a gravação com o roteiro novo? O corretor compara de novo a fala gravada com a fala para conferência do roteiro salvo (sem transcrever de novo); “Manter este trecho”, “A transcrição errou” e a legenda editada deixam de valer.")) return;

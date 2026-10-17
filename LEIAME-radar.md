@@ -1,4 +1,4 @@
-# Radar Artecon — v0.28.0
+# Radar Artecon — v0.28.1
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,15 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.28.1 corrige a **trava da peça** na Pauta. Uma linha em branco em "Informações conferidas" (do botão "Acrescentar
+informação") ou um cartão em branco (do "Acrescentar cartão") contava como alteração não salva. Como o Salvar não grava linha em
+branco, ele respondia "Nada mudou na peça." e a peça continuava barrada com o aviso **"Há alterações não salvas na peça"**: o envio
+do vídeo no "Corretor de vídeo", a conferência, o Gerar com IA, a aprovação e o "Cancelar a peça" só voltavam depois de recarregar
+a página. Agora a linha em branco não conta, o aviso diz **o que mudou e não foi salvo** (por exemplo, "Informações conferidas" ou
+"Quem aparece") e o Salvar sem nada para gravar destrava a peça. O texto digitado e não salvo continua barrando, como antes. Só a
+tela muda (`index.html`, `radar-pauta.js` e `radar-video.js`): o banco continua no `sql/radar-setup-v0.28.0.sql` e as funções e os
+robôs não mudam. Veja "Da v0.28.0 para a v0.28.1".
 
 A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
 
@@ -2223,6 +2232,20 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.28.0 para a v0.28.1** (o banco não muda: não há SQL para rodar; as funções e os robôs não mudam; nada de chave ou segredo
+pelo chat). Supõe a v0.28.0 instalada, com o `sql/radar-setup-v0.28.0.sql` já rodado.
+
+1. A tela chega pelo repositório: publique juntos o `index.html`, o `radar-pauta.js` e o `radar-video.js` e aperte **Ctrl+F5** em
+   todos os aparelhos (no celular, recarregue a página). A aba Versões mostra a v0.28.1. Sem o Ctrl+F5, o navegador pode continuar
+   com o `radar-pauta.js` antigo guardado, e a trava antiga junto.
+2. O que conferir, **sem publicar nada**, numa peça de teste: clique em "Acrescentar informação" e deixe a linha em branco; "Conferir
+   o que falta" (e, no reel, o envio do vídeo) roda sem o aviso. Escreva algo na linha sem salvar: o aviso volta e termina com "O que
+   mudou e não foi salvo: Informações conferidas.". Se o aviso aparecer sem você ter mudado nada, clique em **Salvar**: com nada para
+   gravar, ele responde "Nada mudou na peça." e destrava a peça.
+
+O banco continua no `sql/radar-setup-v0.28.0.sql`. Para desfazer: volte o `index.html`, o `radar-pauta.js` e o `radar-video.js` da
+v0.28.0 (no histórico do GitHub) e aperte Ctrl+F5; nada muda no banco.
 
 **Da v0.27.0 para a v0.28.0** (muda o banco: SQL novo, que pode rodar de novo; as funções `radar-ia`, `radar-redes` e `radar-video`
 não mudam; nada de chave ou segredo pelo chat). Supõe a v0.27.0 instalada. Nesta ordem:
