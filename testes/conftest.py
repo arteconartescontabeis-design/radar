@@ -17,8 +17,8 @@ sys.path.insert(0, str(RAIZ / "robo"))
 PG = {"host": os.environ.get("RADAR_PGHOST", "/tmp"), "port": os.environ.get("RADAR_PGPORT", "5544"),
       "user": os.environ.get("RADAR_PGUSER", "postgres")}
 BANCO = "radar_teste"
-SETUP = RAIZ / "sql" / "radar-setup-v0.29.0.sql"
-REVERSAO = RAIZ / "sql" / "radar-reversao-v0.29.0.sql"
+SETUP = RAIZ / "sql" / "radar-setup-v0.30.0.sql"
+REVERSAO = RAIZ / "sql" / "radar-reversao-v0.30.0.sql"
 
 ADMIN = "00000000-0000-0000-0000-00000000000a"
 EDITOR = "00000000-0000-0000-0000-00000000000e"
@@ -188,6 +188,8 @@ def limpo(db):
     # fica desligada aqui e é ligada só no teste dela
     db.execute("""update radar_config set valor = valor || '{"dias_baixa": 0}'::jsonb
                   where chave = 'relevancia' and valor->'dias_baixa' is distinct from '0'::jsonb""")
+    # v0.30.0: o “Conferido” do aviso de prorrogação de um teste não vale no outro (os números das capturas recomeçam do 1)
+    db.execute("delete from radar_config where chave = 'prorrogacoes_conferidas'")
     db.execute("truncate radar_auditoria restart identity")
     db.execute("alter table radar_auditoria enable trigger user")
     return db

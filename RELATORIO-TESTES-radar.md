@@ -1,6 +1,13 @@
-# Radar Artecon — Relatório de testes (v0.29.0)
+# Radar Artecon — Relatório de testes (v0.30.0)
 
-Data: 17/10/2026. **A suíte inteira da v0.29.0 roda no GitHub (CI) antes de juntar.** Depois da revisão (seção "v0.29.0 — correções
+Data: 17/10/2026. **A suíte inteira da v0.30.0 roda no GitHub (CI) antes de juntar.** A v0.30.0 foi feita em paralelo com a v0.29.0
+e juntada por cima dela; neste ambiente rodaram, pela fila compartilhada, os testes afetados: `testes/test_radar_repositorio.py`, **19
+aprovados, 0 falhas, 1 pulado**; o banco, a agenda e o corretor de vídeo no banco (`testes/test_radar_banco.py`,
+`testes/test_radar_agenda.py` e `testes/test_radar_video_banco.py`), **352 aprovados, 0 falhas**; os lembretes e o de ponta a ponta
+(`testes/test_radar_lembretes.py` e `testes/test_radar_e2e.py`), **99 aprovados, 0 falhas**; e o arquivo inteiro dos testes de tela,
+**233 aprovados, 0 falhas, 61 pulados**, em 675 s (11min15s). O `sql/radar-setup-v0.30.0.sql` rodou duas vezes seguidas sobre o banco
+de teste, as duas sem erro (detalhes na seção da v0.30.0, logo abaixo). A v0.30.0 tem 42 testes novos (de 1.172 para 1.214 no total).
+Na v0.29.0, depois da revisão (seção "v0.29.0 — correções
 da revisão", logo abaixo), rodaram de novo, pela fila compartilhada: o banco, os lembretes, a agenda e o corretor de vídeo no banco,
 **339 aprovados, 0 falhas**; o de ponta a ponta, **78 aprovados**; o arquivo inteiro dos testes de tela, **225 aprovados, 0 falhas, 61 pulados** (os da IA Central de verdade), em 697 s; e
 `testes/test_radar_repositorio.py`, **19 aprovados, 0 falhas, 1 pulado**. Antes da revisão, neste ambiente rodaram, pela fila compartilhada,
@@ -28,8 +35,93 @@ o serviço rodando) e 1 é o dos commits do push, que só roda no `radar-reposit
 teste chama a Microsoft, a Azure, o GitHub, o Supabase, a OpenAI ou a IA Central de verdade; todo boletim da ITC dos testes é inventado,
 toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenhuma imagem de teste tem pessoa (são cores lisas e formas
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
-atualizado: as seções da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
+atualizado: as seções da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.30.0 — agenda com o 13º e as obrigações anuais, e aviso de possível prorrogação
+
+Data: 17/10/2026. Pedido do dono: a agenda de obrigações (Informativo Mensal e agenda da semana da Pauta) tinha só as obrigações de
+todo mês. Agora tem as anuais e o 13º, e o Radar avisa quando capta notícia que fala em prorrogar o prazo de uma obrigação da agenda,
+**sem mudar data nenhuma sozinho**. Feita em duas fases, em paralelo com a v0.29.0: a fase A sobre a v0.28.1 (sem subir a versão) e a
+fase B por cima da v0.29.0 (a junção e a versão).
+
+**O que mudou:**
+
+- **Banco** (`git mv sql/radar-setup-v0.29.0.sql sql/radar-setup-v0.30.0.sql`, e a reversão): duas funções novas,
+  `radar_prorrogacao_obrigacoes(text, jsonb)` (a regra de casamento, só do dono: uma palavra de prorrogação, um contexto de prazo e um
+  termo da obrigação, palavra inteira, sem acento; não contam "prorrogável", "pode ser prorrogado", "prazo de vigência", "prazo de
+  validade" nem "folha de pagamento"; a sigla de órgão no começo do nome não basta) e `radar_prorrogacoes(int)` (as capturas dos
+  últimos 30 dias que casam, sem repetição, com "conferida" e "do_email"; lê a equipe com perfil ativo e o robô; o logado sem perfil
+  não recebe nada). A carga inicial de `obrigacoes` ganha 6 itens no fim (13º, 1ª e 2ª parcelas; DEFIS; DASN-SIMEI; ECD; ECF), com
+  `"mes"` e, quando as notícias usam outro nome, `"termos"`; na instalação que já existe, a lista do escritório **não muda**. Nenhuma
+  tabela nem coluna nova; o "Conferido" fica em `radar_config.prorrogacoes_conferidas`. Registro `v0.30.0`; evidência "28 tabelas".
+  Nada é apagado; as agendas (`sql/radar-*-agenda.sql`) não mudam.
+- **Robô dos avisos** (`robo/radar_alertas.py` e `robo/radar_banco.py`): um aviso só, "Radar: possível prorrogação na agenda de
+  obrigações", que abre na primeira notícia pendente, ganha um comentário a cada notícia nova (a marca escondida guarda as já avisadas),
+  fecha sozinho quando todas forem conferidas (ou passarem de 30 dias) e, fechado à mão, não reabre com as mesmas notícias. Do boletim
+  pago (ITC), só a contagem. Banco sem o SQL desta versão: não abre nem fecha. `RadarBanco.prorrogacoes()` usa o mesmo
+  `_sem_funcao` dos lembretes da v0.29.0.
+- **Tela** (`index.html` e `radar-pauta.js`; o `radar-video.js` só muda a versão e o recado do banco): o cálculo da agenda com `"mes"`
+  e `"prorrogacoes"` (só aquele vencimento, com a fonte do ato); a validação de `mes`, `termos` e `prorrogacoes`; o botão
+  "Acrescentar o 13º e as obrigações anuais" (só o administrador; acrescenta as que faltam, com a fonte oficial); a tabela das fontes
+  oficiais com as 6 novas; "Possível prorrogação de prazo" no Painel (o "Conferido" só do administrador), nas Configurações (com o
+  selo das já conferidas) e na edição do Informativo; a agenda da semana da Pauta de segunda a domingo; a ajuda; a entrada 0.30.0 em
+  Versões; o recado do banco citando o `sql/radar-setup-v0.30.0.sql` (Pauta, vídeo, Conferência das Diretrizes, lembretes e o aviso
+  de prorrogação, que antes dizia só "o SQL de instalação desta versão").
+
+**A junção com a v0.29.0 (rebase da fase A sobre bc471e8):** o git acompanhou a renomeação do setup e da reversão. Conflitos, todos
+resolvidos mantendo os dois lados: o cabeçalho do setup (o parágrafo da v0.29.0 e depois o da v0.30.0, com uma linha "Reversão:" só),
+as funções (as dos lembretes e depois as da prorrogação, antes de "3. GATILHOS"), os `grant` (os dos lembretes e o de
+`radar_prorrogacoes`), o comentário da carga inicial (o da chave "lembretes" e o das anuais); `robo/radar_banco.py` (os métodos dos
+lembretes e o `prorrogacoes`, que passou a usar o `_sem_funcao` da v0.29.0: a mesma regra, sem repetir o código); a linha das
+Configurações em "Como usar" (os lembretes por e-mail e a agenda de obrigações com o 13º e as anuais); e dois testes do banco (a lista
+das funções da equipe com `radar_lembretes_situacao` e `radar_prorrogacoes`; as chaves das Configurações com "lembretes" e as 28
+obrigações). O resto (a reversão, a Pauta, o robô dos avisos, o LEIAME, os testes de tela e de ponta a ponta, o `conftest.py`) juntou
+sozinho. Conferido linha a linha: tudo o que a fase A acrescentou está no resultado, e a diferença para a v0.29.0 é só a fase A mais
+as resoluções acima. Um teste da fase A, escrito sobre a v0.28.1, contava 8 blocos nas Configurações (com os lembretes, são 9):
+corrigido.
+
+**Resultados desta rodada** (pela fila compartilhada, com o PostgreSQL 16, o PostgREST, o Deno e o Chromium de teste; nenhuma chamada a
+GitHub, Supabase, Meta, site ou e-mail de verdade). **A suíte inteira roda no GitHub (CI) antes de juntar.**
+
+- `testes/test_radar_repositorio.py`: **19 aprovados, 0 falhas, 1 pulado** (o dos commits do push, que só roda no
+  `radar-repositorio.yml`), em 2 s. Antes de atualizar o título deste relatório, 1 falha esperada (o teste da versão igual em todos os
+  arquivos); com o título, passou;
+- `testes/test_radar_banco.py -k "prorrogac or funcoes or configuracoes or reversao or idempotente or obrigac or lembrete"`: **39
+  aprovados, 0 falhas** (270 fora do filtro), em 14 s;
+- `testes/test_radar_lembretes.py` (18) e `testes/test_radar_e2e.py` (81): **99 aprovados, 0 falhas**, em 125 s;
+- `testes/test_radar_telas.py -k "agenda or configuracoes or informativo or obrigacoes or painel or prorrogac or versao or anual or
+  lembrete or peca_agenda"`: **38 aprovados, 0 falhas, 1 pulado** (255 fora do filtro), em 93 s;
+- `testes/test_radar_telas.py` (o arquivo inteiro): **233 aprovados, 0 falhas, 61 pulados** (os que sobem a IA Central de verdade), em
+  675 s (11min15s);
+- e, como o banco muda, `testes/test_radar_banco.py` inteiro (309), `testes/test_radar_agenda.py` (12) e
+  `testes/test_radar_video_banco.py` (31): **352 aprovados, 0 falhas**, em 318 s.
+
+Não rodaram aqui (rodam no GitHub): a função `radar-redes` no Deno, os outros testes do corretor de vídeo e os dos robôs que não
+mudaram.
+
+**O setup duas vezes.** O `sql/radar-setup-v0.30.0.sql` rodou duas vezes seguidas sobre o banco de teste (`radar_teste`, com
+`ON_ERROR_STOP`): **as duas sem erro**, 28 tabelas, todas com `rls = true`, 6 fontes, 8 categorias e "instalacoes concluidas" 2 → 3,
+com a `v0.30.0`; depois, as funções `radar_prorrogacoes`, `radar_prorrogacao_obrigacoes` e `radar_lembretes_situacao` existem, a
+agenda tem as 28 obrigações e a chave "lembretes" continua lá. Os testes de instalação por cima da v0.6, da v0.7, do
+banco da v0.27.0 e do "banco sem os lembretes" também rodam o setup duas vezes seguidas.
+
+**Testes novos (42 coletados a mais: de 1.172 para 1.214) e ajustados.** Novos, da fase A: `test_radar_banco.py` (a regra de
+casamento, com a lista de frases que casam e as que não casam; a agenda malformada; a janela, a repetição, o "conferida" e os
+papéis), `test_radar_e2e.py` (um aviso só, comentário nas novas e fechar quando conferidas; o último aviso fechado só do robô, com o
+mesmo título e recente; o banco antigo) e `test_radar_telas.py` (o 13º e as anuais nas datas oficiais; a semana até o domingo; a
+prorrogação só no vencimento indicado; a validação; o botão só do administrador; a fonte da prorrogação na Pauta; o Painel e o
+"Conferido"; o aviso na edição do Informativo). Ajustados na fase B: a versão `v0.30.0` nos testes de instalação e no dos lembretes, a
+aba Versões (a 0.30.0 no topo, com 5 itens; as de antes uma posição abaixo), o rodapé, o `FUNCAO_MINIMA`/`VERSAO`, os recados do banco
+(Pauta, lembretes e o aviso de prorrogação, agora com o nome do setup) e o número de blocos nas Configurações no teste da fase A.
+
+**O que não foi testado aqui:** o aviso de verdade no GitHub (a notificação por e-mail da issue e dos comentários) e o robô rodando no
+Actions. O caminho é o mesmo dos avisos de hoje, que já rodam em produção.
+
+**Limites registrados:** a regra pode avisar o que não é prorrogação (ECF também é "Emissor de Cupom Fiscal"; "Simples Nacional"
+aparece na prorrogação da opção): quem decide é o administrador. O robô dos lembretes (`robo/radar_lembretes.py`) e as agendas
+(`sql/radar-redes-agenda.sql`, `sql/radar-video-agenda.sql`) não mudam nesta versão e continuam citando o setup da versão em que
+passaram a precisar dele (v0.29.0 e v0.22.0), como as funções `radar-ia`; o setup da v0.30.0 serve aos dois.
 
 ## v0.29.0 — lembretes por e-mail antes do dia
 

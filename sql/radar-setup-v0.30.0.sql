@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.29.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.30.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -36,7 +36,12 @@
 -- os padrões; a que já existir não é sobrescrita). Quem decide o que lembrar e quando é o banco (radar_lembretes_devidos: no máximo um
 -- e-mail por tipo por dia, cada pendência uma vez só, e a pendência "fecha" sozinha quando é resolvida). A agenda que pede o robô dos
 -- lembretes ao GitHub (de 15 em 15 minutos) fica em sql/radar-redes-agenda.sql, rodado DEPOIS deste. Nada é apagado.
--- Reversão: radar-reversao-v0.29.0.sql
+-- v0.30.0: agenda de obrigações com o 13º salário e as obrigações anuais (DEFIS, DASN-SIMEI, ECD e ECF; só na carga inicial: na
+-- instalação que já existe, o administrador acrescenta pela tela) e o aviso de possível prorrogação: radar_prorrogacao_obrigacoes (a
+-- regra de casamento, só do dono) e radar_prorrogacoes (as capturas dos últimos 30 dias que falam em prorrogar ou adiar o prazo de uma
+-- obrigação da agenda, para a tela e o robô dos avisos). O Radar não muda nenhuma data sozinho; o "Conferido" do administrador fica em
+-- radar_config.prorrogacoes_conferidas. Nenhuma tabela ou coluna nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.30.0.sql
 -- =====================================================================
 
 begin;
@@ -62,7 +67,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.29.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.30.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -6301,6 +6306,119 @@ begin
                                              and public.radar_lembretes_madura(l.tipo, l.chave, l.ref, l.aberto_em, v_cfg, now())));
 end $$;
 
+-- ---------------------------------------------------------------- v0.30.0: aviso de possível prorrogação na agenda de obrigações
+-- A notícia captada que fala em prorrogar ou adiar o prazo de uma obrigação da agenda (radar_config.obrigacoes) aparece no Painel, nas
+-- Configurações, na edição do Informativo e no aviso por e-mail ao administrador (robo/radar_alertas.py). O Radar NUNCA muda a data
+-- sozinho: quem confere na fonte oficial e põe a nova data na obrigação ("prorrogacoes") é o administrador.
+-- Uma regra só, aqui no banco, para a tela e para o robô. O texto (já juntado por quem chama: título, resumo e o começo do texto) é
+-- comparado em minúsculas, sem acento (também nas maiúsculas acentuadas, sem depender do idioma do servidor) e com todo caractere que
+-- não é letra nem número trocado por espaço ("DASN-SIMEI" = "DASN SIMEI"; "13º" = "13°" = "13"); só casa palavra inteira. Precisa das três:
+--   1. uma palavra de prorrogação, de uma lista fechada: prorroga…, posterga…, adia, adiar, adiado(s), adiada(s), adiamento(s), adiou,
+--      adiam, novo(s) prazo(s), nova(s) data(s) ("adiantamento", do 13º, não é adiamento). Não contam "prorrogável"/"prorrogáveis" nem
+--      "pode (poderá, podendo) ser prorrogado": é só a possibilidade, como na frase-padrão "prazo de 30 dias, prorrogável por igual período";
+--   2. um contexto de prazo: prazo(s), vencimento(s), entrega, pagamento, recolhimento, apresentação, transmissão ou data limite (a
+--      "data" sozinha não conta: "entra em vigor na data de sua publicação" está em quase todo ato); assim "prorroga o benefício" não casa.
+--      "Prazo de vigência", "prazo de validade" e "folha de pagamento" não são vencimento e não contam (o convênio do ICMS que "prorroga o
+--      prazo de vigência" de um benefício, a certidão do FGTS, a desoneração da folha);
+--   3. um termo da obrigação, com 3 letras ou números ou mais: o nome inteiro; o nome sem o que está entre parênteses ("GPS (Empresa)" vira
+--      "GPS" e não casa com "empresa"; "IRRF (…)" vira "IRRF"); cada parte do nome, separada por " - ", " – " ou " — ", só quando a primeira
+--      parte é uma sigla (uma palavra com duas maiúsculas ou mais: "FGTS", "ECD", "DEFIS", "DASN-SIMEI"; a segunda é o nome por extenso) e
+--      não é a sigla de um órgão ("INSS - Parcelamento…" não casa com toda notícia do INSS; "Parcelamento Especial - Simples Nacional" não casa
+--      com toda notícia do Simples); e os "termos" da obrigação (outros nomes nas notícias, como "DASN" ou "gratificação natalina").
+-- Devolve os nomes das obrigações que casaram, na ordem da agenda. Agenda malformada vale como vazia (sem erro).
+create or replace function public.radar_prorrogacao_obrigacoes(p_texto text, p_obrigacoes jsonb) returns text[]
+language plpgsql immutable set search_path = public as $$
+declare
+  v_txt    text;
+  v_ctx    text;
+  v_o      jsonb;
+  v_nome   text;
+  v_sem    text;
+  v_partes text[];
+  v_termos text[];
+  v_t      text;
+  v_res    text[] := '{}';
+begin
+  v_txt := ' ' || btrim(regexp_replace(public.radar_sem_acento(translate(coalesce(p_texto, ''),
+             'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ', 'áàâãäéèêëíìîïóòôõöúùûüçñ')), '[^a-z0-9]+', ' ', 'g')) || ' ';
+  -- "pode (poderá, podendo) ser prorrogado/adiado" é só a possibilidade, não a prorrogação
+  v_txt := regexp_replace(v_txt, ' (pode|podem|podera|poderao|podendo) ser (prorrogad|postergad|adiad)[a-z0-9]* ', ' ', 'g');
+  -- o contexto de prazo sem o que não é vencimento ("prazo de vigência", "prazo de validade", "folha de pagamento")
+  v_ctx := regexp_replace(v_txt, ' (prazos? de (vigencia|validade)|folhas? de pagamentos?) ', ' ', 'g');
+  -- o filtro barato vem antes do laço das obrigações: quase nenhuma captura fala em prorrogar ("prorrogável" não conta)
+  if v_txt !~ ' (prorrog(?!av)[a-z0-9]*|posterg(?!av)[a-z0-9]*|adia|adiar|adiados?|adiadas?|adiamentos?|adiou|adiam|novos? prazos?|novas? datas?) '
+     or v_ctx !~ ' (prazos?|vencimentos?|entrega|pagamento|recolhimento|apresentacao|transmissao|datas? limites?) '
+     or jsonb_typeof(p_obrigacoes) is distinct from 'array' then
+    return v_res;
+  end if;
+  for v_o in select x from jsonb_array_elements(p_obrigacoes) x loop
+    continue when jsonb_typeof(v_o) is distinct from 'object' or jsonb_typeof(v_o->'nome') is distinct from 'string'
+               or btrim(v_o->>'nome') = '';
+    v_nome := btrim(v_o->>'nome');
+    continue when v_nome = any(v_res);
+    v_sem := btrim(regexp_replace(v_nome, '\([^)]*\)', ' ', 'g'));                     -- sem o que está entre parênteses
+    v_partes := regexp_split_to_array(v_sem, '\s+[-–—]\s+');
+    v_termos := array[v_nome, v_sem]
+             || case when cardinality(v_partes) > 1 and btrim(v_partes[1]) !~ '\s' and btrim(v_partes[1]) ~ '[A-Z].*[A-Z]'
+                          and upper(btrim(v_partes[1])) <> all (array['INSS', 'RFB', 'PGFN', 'SEF', 'SEFAZ', 'CEF', 'MTE'])
+                     then v_partes else '{}'::text[] end                                      -- a sigla e o nome por extenso
+             || coalesce((select array_agg(t #>> '{}') from jsonb_array_elements(
+                            case when jsonb_typeof(v_o->'termos') = 'array' then v_o->'termos' else '[]'::jsonb end) t
+                          where jsonb_typeof(t) = 'string'), '{}');
+    foreach v_t in array v_termos loop
+      v_t := btrim(regexp_replace(public.radar_sem_acento(translate(v_t, 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ', 'áàâãäéèêëíìîïóòôõöúùûüçñ')),
+                                  '[^a-z0-9]+', ' ', 'g'));
+      if length(replace(v_t, ' ', '')) >= 3 and strpos(v_txt, ' ' || v_t || ' ') > 0 then     -- 3 letras ou números ou mais
+        v_res := v_res || v_nome;
+        exit;
+      end if;
+    end loop;
+  end loop;
+  return v_res;
+exception when others then
+  return '{}';
+end $$;
+
+-- As possíveis prorrogações captadas nos últimos p_dias (de 1 a 90; padrão 30): as capturas que não são repetição de outra (um aviso por
+-- fato), com as obrigações da agenda que casaram (radar_prorrogacao_obrigacoes sobre o título, o resumo e os primeiros 600 caracteres do
+-- texto: o ato longo cita prazos de outras coisas), da mais nova para a mais antiga, no máximo 100. "do_email": a captura é do boletim
+-- pago (ITC), que o aviso no repositório público só conta (nunca o título, o endereço ou a obrigação). "conferida": o administrador já
+-- clicou em "Conferido" (radar_config.prorrogacoes_conferidas, uma lista de números de captura). Lê a equipe (com perfil ativo) e o robô
+-- (service_role, sem perfil); o logado sem perfil ativo não recebe nada. Só lê: não grava nem muda nenhuma data.
+create or replace function public.radar_prorrogacoes(p_dias int default 30)
+returns table (captura_id bigint, titulo text, url text, fonte text, do_email boolean, oficial boolean, capturado_em timestamptz,
+               data_publicacao date, assunto_id bigint, assunto_status text, obrigacoes text[], conferida boolean)
+language plpgsql stable security definer set search_path = public as $$
+#variable_conflict use_column
+declare
+  v_obrig jsonb;
+  v_ids   bigint[];
+  v_dias  int := least(greatest(coalesce(p_dias, 30), 1), 90);
+begin
+  if coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '') <> 'service_role'
+     and public.radar_papel() is null then
+    return;
+  end if;
+  select c.valor into v_obrig from public.radar_config c where c.chave = 'obrigacoes';
+  select coalesce(array_agg((e #>> '{}')::bigint), '{}') into v_ids
+    from public.radar_config c, jsonb_array_elements(case when jsonb_typeof(c.valor) = 'array' then c.valor else '[]'::jsonb end) e
+   where c.chave = 'prorrogacoes_conferidas' and jsonb_typeof(e) = 'number' and (e #>> '{}') ~ '^[0-9]{1,18}$';
+  return query
+  select k.id, k.titulo, k.url, f.nome, coalesce(f.config->>'origem', '') = 'email', f.oficial, k.capturado_em, k.data_publicacao,
+         a.id, a.status, k.obr, k.id = any(v_ids)
+    from (select x.id, x.fonte_id, x.titulo, x.url, x.capturado_em, x.data_publicacao,
+                 public.radar_prorrogacao_obrigacoes(x.titulo || ' ' || coalesce(x.resumo_fonte, '') || ' ' || left(coalesce(x.texto, ''), 600),
+                                                     v_obrig) as obr
+            from public.radar_capturas x
+           where x.capturado_em > now() - make_interval(days => v_dias) and x.duplicata_de is null) k
+    join public.radar_fontes f on f.id = k.fonte_id
+    left join lateral (select s.id, s.status from public.radar_assunto_capturas ac join public.radar_assuntos s on s.id = ac.assunto_id
+                        where ac.captura_id = k.id order by s.id limit 1) a on true
+   where cardinality(k.obr) > 0
+   order by k.capturado_em desc, k.id desc
+   limit 100;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- 3. GATILHOS
 -- ---------------------------------------------------------------------
@@ -6841,6 +6959,9 @@ grant execute on function public.radar_video_limpo(uuid, text[]) to service_role
 grant execute on function public.radar_lembretes_ha_envio(), public.radar_lembretes_lote(),
                           public.radar_lembretes_enviado(uuid, int, bigint[]) to service_role;
 grant execute on function public.radar_lembretes_situacao() to authenticated;
+-- v0.30.0: as possíveis prorrogações na agenda de obrigações: a tela (a função confere o perfil) e o robô dos avisos. A regra de
+-- casamento (radar_prorrogacao_obrigacoes) fica só com o dono.
+grant execute on function public.radar_prorrogacoes(int) to authenticated, service_role;
 -- v0.20.0: a conferência da chave da radar-concorrentes (sql/radar-concorrentes.sql, v0.19.1, opcional) também perde o acesso no
 -- laço acima: se ela existe, o papel interno volta a executá-la (sem isso, toda chamada com a chave do Vault recebe 401)
 do $$
@@ -7023,8 +7144,15 @@ on conflict (slug) do nothing;
 -- v0.29.0: "lembretes" (os lembretes por e-mail antes do dia: ligados, a Pauta de amanhã a partir das 16:00, os outros das 08:00 às
 -- 20:00, a peça pronta depois de 24 horas sem aprovação e a notícia autorizada depois de 3 horas parada). Na instalação que já existe, a
 -- chave entra com os padrões (o insert abaixo não sobrescreve a que o administrador já tiver ajustado).
+-- v0.30.0: a agenda passa a ter as obrigações ANUAIS ("mes": só entram na agenda desse mês), no fim da lista: o 13º salário (1ª parcela
+-- até 30/11, Lei 4.749/1965, art. 2º; 2ª parcela até 20/12, art. 1º; a lei não trata do fim de semana nem do feriado: a agenda antecipa
+-- para o dia útil anterior, por segurança, escolha do escritório), a DEFIS (31/03, Resolução CGSN 140/2018, art. 72, § 1º: nem antecipa
+-- nem prorroga), a DASN-SIMEI (último dia de maio, Resolução CGSN 140/2018, art. 109: nem antecipa nem prorroga), a ECD (último dia útil
+-- de junho, IN RFB 2.003/2021, art. 5º, na redação da IN RFB 2.142/2023) e a ECF (último dia útil de julho, IN RFB 2.004/2021, art. 3º).
+-- "termos": outros nomes da obrigação nas notícias, para o aviso de possível prorrogação. Na instalação que já existe, a lista do
+-- escritório NÃO muda: o administrador clica em "Acrescentar o 13º e as obrigações anuais" (Configurações → Agenda de obrigações).
 insert into public.radar_config (chave, valor) values
-  ('obrigacoes', '[{"nome": "Salário dos Colaboradores (Empregados)", "regra": "quinto_dia_util"}, {"nome": "Salários - Trabalhador Doméstico", "regra": "dia", "dia": 7, "ajuste": "antecipa"}, {"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "ICMS Substituição Tributária", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "Carnê INSS Individual", "regra": "dia", "dia": 15, "ajuste": "posterga"}, {"nome": "FGTS - Fundo de Garantia Por Tempo de Serviço", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "GPS (Empresa)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento Serviço Prestado Cód. 1708)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento de Trabalhador Cód. 0561)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "Simples Doméstico", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "Simples Nacional", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "Honorário contábil", "regra": "dia", "dia": 20, "ajuste": "posterga", "redes": false}, {"nome": "PIS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "COFINS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "IPI", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "CSLL - Contribuição Social sobre o Lucro Líquido", "regra": "ultimo_dia_util"}, {"nome": "IRPJ - Imposto de Renda Pessoa Jurídica", "regra": "ultimo_dia_util"}, {"nome": "Imposto de Renda Pessoa Física (Cód. 0190)", "regra": "ultimo_dia_util"}, {"nome": "INSS - Parcelamento p/ Ingresso no Simples Nacional", "regra": "ultimo_dia_util"}, {"nome": "Parcelamentos Federais e Parcelamento Especial", "regra": "ultimo_dia_util"}, {"nome": "PERT – Programa Esp. Regularização Tributária", "regra": "ultimo_dia_util"}, {"nome": "Parcelamento Especial - Simples Nacional", "regra": "ultimo_dia_util"}]'::jsonb),
+  ('obrigacoes', '[{"nome": "Salário dos Colaboradores (Empregados)", "regra": "quinto_dia_util"}, {"nome": "Salários - Trabalhador Doméstico", "regra": "dia", "dia": 7, "ajuste": "antecipa"}, {"nome": "ICMS", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "ICMS Substituição Tributária", "regra": "dia", "dia": 10, "ajuste": "posterga"}, {"nome": "Carnê INSS Individual", "regra": "dia", "dia": 15, "ajuste": "posterga"}, {"nome": "FGTS - Fundo de Garantia Por Tempo de Serviço", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "GPS (Empresa)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento Serviço Prestado Cód. 1708)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "IRRF (Rendimento de Trabalhador Cód. 0561)", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "Simples Doméstico", "regra": "dia", "dia": 20, "ajuste": "antecipa"}, {"nome": "Simples Nacional", "regra": "dia", "dia": 20, "ajuste": "posterga"}, {"nome": "Honorário contábil", "regra": "dia", "dia": 20, "ajuste": "posterga", "redes": false}, {"nome": "PIS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "COFINS", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "IPI", "regra": "dia", "dia": 25, "ajuste": "antecipa"}, {"nome": "CSLL - Contribuição Social sobre o Lucro Líquido", "regra": "ultimo_dia_util"}, {"nome": "IRPJ - Imposto de Renda Pessoa Jurídica", "regra": "ultimo_dia_util"}, {"nome": "Imposto de Renda Pessoa Física (Cód. 0190)", "regra": "ultimo_dia_util"}, {"nome": "INSS - Parcelamento p/ Ingresso no Simples Nacional", "regra": "ultimo_dia_util"}, {"nome": "Parcelamentos Federais e Parcelamento Especial", "regra": "ultimo_dia_util"}, {"nome": "PERT – Programa Esp. Regularização Tributária", "regra": "ultimo_dia_util"}, {"nome": "Parcelamento Especial - Simples Nacional", "regra": "ultimo_dia_util"}, {"nome": "13º Salário (1ª parcela)", "regra": "dia", "dia": 30, "mes": 11, "ajuste": "antecipa", "termos": ["décimo terceiro", "gratificação natalina"]}, {"nome": "13º Salário (2ª parcela)", "regra": "dia", "dia": 20, "mes": 12, "ajuste": "antecipa", "termos": ["décimo terceiro", "gratificação natalina"]}, {"nome": "DEFIS - Declaração de Informações Socioeconômicas e Fiscais", "regra": "dia", "dia": 31, "mes": 3, "ajuste": "nenhum"}, {"nome": "DASN-SIMEI - Declaração Anual do MEI", "regra": "dia", "dia": 31, "mes": 5, "ajuste": "nenhum", "termos": ["DASN", "Declaração Anual do Simples Nacional para o Microempreendedor Individual"]}, {"nome": "ECD - Escrituração Contábil Digital", "regra": "ultimo_dia_util", "mes": 6}, {"nome": "ECF - Escrituração Contábil Fiscal", "regra": "ultimo_dia_util", "mes": 7}]'::jsonb),
   ('feriados_extras', '[]'::jsonb),
   ('fale_conosco', '{"setores": [{"nome": "Geral", "rotulo": "Atendimento Geral", "telefones": [{"numero": "48-3242-0530", "whatsapp": true}], "emails": ["artecon@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Contábil", "rotulo": "Setor Contábil", "telefones": [], "emails": ["dc@artecon.cnt.br"], "equipe": [], "responsaveis_rotulo": "Contadores Responsáveis", "responsaveis": []}, {"nome": "Setor Fiscal", "rotulo": "Setor Fiscal", "telefones": [], "emails": ["df@artecon.cnt.br"], "equipe": []}, {"nome": "Departamento Pessoal", "rotulo": "Departamento Pessoal", "telefones": [], "emails": ["rh@artecon.cnt.br"], "equipe": []}, {"nome": "Setor Institucional", "rotulo": "Setor Institucional", "telefones": [], "emails": ["societario@artecon.cnt.br"], "equipe": []}], "observacao": ""}'::jsonb),
   ('assinatura', '{"local": "Palhoça, SC", "empresa": "Artecon Artes Contábeis ME", "responsavel": "Cleiver Gonçalves", "cnpj": "", "crc": ""}'::jsonb),
@@ -7091,7 +7219,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 28 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.29.0).
+-- Esperado: 28 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.30.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

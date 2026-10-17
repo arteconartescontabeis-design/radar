@@ -24,6 +24,13 @@ v0.22.0 (rodada 2 da varredura geral): a publicação que entra na lista com o a
 (um e-mail), com o mesmo tanto de informação; antes, um erro antigo deixado sem resolver calava todas as falhas
 seguintes. Os números já avisados ficam numa marca escondida no corpo e nos comentários do robô.
 
+E a agenda de obrigações (v0.30.0): enquanto houver notícia dos últimos 30 dias que fala em prorrogar ou adiar o prazo de uma
+obrigação da agenda e que o administrador ainda não marcou como conferida (radar_prorrogacoes, a mesma regra da tela), fica aberto
+UM aviso só, "possível prorrogação na agenda de obrigações", do mesmo jeito do da Pauta: o corpo nunca é editado, cada notícia nova
+ganha um comentário (no máximo um por rodada) e ele fecha quando nenhuma espera conferência. O Radar não muda nenhuma data sozinho.
+O repositório é público: das notícias de sites públicos vão a obrigação, o título, o link e a fonte (como no resumo semanal); as do
+boletim da ITC aparecem só como contagem (nunca a obrigação, o título nem o endereço).
+
 Uso (no workflow, depois da coleta):
     python radar_alertas.py
 Variáveis: SUPABASE_URL, SUPABASE_SERVICE_KEY, GITHUB_TOKEN e GITHUB_REPOSITORY (o Actions preenche
@@ -34,7 +41,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
@@ -48,7 +55,9 @@ PREFIXO_LINK = "Radar: link publicado fora do ar — "
 PREFIXO_TEXTO = "Radar: texto do site diferente do aprovado — "
 PREFIXO_PARADA = "Radar: fonte parada — "
 PREFIXO_PAUTA = "Radar: publicação agendada não saiu"        # v0.21.0: um aviso só para toda a Pauta (o título é só isso)
-PREFIXOS_PADRAO = (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO, PREFIXO_PARADA, PREFIXO_PAUTA)   # os avisos que o executar() abre e fecha
+PREFIXO_PRORROGACAO = "Radar: possível prorrogação na agenda de obrigações"   # v0.30.0: um aviso só (o título é só isso)
+PREFIXOS_PADRAO = (PREFIXO, PREFIXO_LINK, PREFIXO_TEXTO, PREFIXO_PARADA, PREFIXO_PAUTA,
+                   PREFIXO_PRORROGACAO)                                    # os avisos que o executar() abre e fecha
 # v0.22.0 (varredura geral): o login com que a API mostra o autor das issues abertas pelo GITHUB_TOKEN dos workflows (o robô)
 AUTOR_DOS_AVISOS = "github-actions[bot]"
 FORA_DO_AR = (404, 410)
@@ -60,6 +69,9 @@ except ZoneInfoNotFoundError:                                # sistema sem a bas
 FALHAS_PARA_AVISAR = 3
 # v0.22.0 (rodada 2): os números dos envios da Pauta já avisados, numa marca que não aparece no aviso nem no e-mail (comentário HTML)
 MARCA_PAUTA = re.compile(r"<!-- radar-pauta-avisados: ([0-9 ]*) -->")
+# v0.30.0: os números das capturas já avisadas no aviso de possível prorrogação (a mesma ideia da marca da Pauta)
+MARCA_PRORROGACAO = re.compile(r"<!-- radar-prorrogacao-avisadas: ([0-9 ]*) -->")
+MAX_PRORROGACOES = 20          # notícias de sites públicos listadas por corpo ou comentário (as outras: "e mais N — veja no Radar")
 API = "https://api.github.com"
 
 
@@ -206,6 +218,103 @@ def decidir_pauta(problemas: list[dict] | None, abertos: dict[str, int]) -> tupl
         return (None if meus else corpo_pauta(problemas)), []
     return None, [(n, "Nenhuma publicação da Pauta está parada ou com erro agora (saiu, foi remarcada, ficou sem aquele canal "
                       "ou a aprovação foi desfeita).") for n in meus]
+
+
+# ------------------------------------------------- v0.30.0: possível prorrogação na agenda de obrigações
+def marca_prorrogacao(ids) -> str:
+    """A marca escondida com os números das capturas já avisadas, no fim do corpo ou do comentário"""
+    return "\n\n<!-- radar-prorrogacao-avisadas: " + " ".join(str(i) for i in sorted(set(ids))) + " -->"
+
+
+def avisadas_prorrogacao(textos: list[str]) -> set[int]:
+    """Os números já avisados, das marcas do corpo e dos comentários do robô"""
+    return {int(n) for t in textos for m in MARCA_PRORROGACAO.finditer(t or "") for n in m.group(1).split()}
+
+
+def pendentes_prorrogacao(lista: list[dict] | None) -> list[dict]:
+    """As que o administrador ainda não marcou como conferidas (as de mais de 30 dias já não vêm do banco)"""
+    return [p for p in lista or [] if not p.get("conferida")]
+
+
+def _texto_publico(t, limite: int = 200) -> str:
+    """Título, fonte ou nome da obrigação de site público, como vão ao aviso (repositório público): numa linha só, sem os caracteres que
+    mudariam o aviso ("<" e ">" de uma marca escondida, colchetes e crase do Markdown) e sem "@" (que chamaria alguém do GitHub)"""
+    s = re.sub(r"\s+", " ", re.sub(r"[<>\[\]`|*_]", " ", str(t or ""))).strip().replace("@", "(a)")
+    return s if len(s) <= limite else s[:limite - 1].rstrip() + "…"
+
+
+def _linha_prorrogacao(p: dict) -> str:
+    """Uma notícia de site público: as obrigações, o título com o link, a fonte e a data (dd/mm/aaaa)"""
+    url = str(p.get("url") or "")
+    titulo = _texto_publico(p.get("titulo")) or "notícia"
+    link = f"[{titulo}]({url})" if re.fullmatch(r"https?://[^\s<>()\[\]\"'`]+", url) else titulo
+    quando = str(p.get("data_publicacao") or p.get("capturado_em") or "")[:10]
+    data = f" ({quando[8:10]}/{quando[5:7]}/{quando[:4]})" if re.fullmatch(r"\d{4}-\d{2}-\d{2}", quando) else ""
+    return (f"- **{_texto_publico('; '.join(p.get('obrigacoes') or []), 300)}**: {link} — "
+            f"{_texto_publico(p.get('fonte')) or 'fonte'}{data}")
+
+
+def _lista_prorrogacoes(itens: list[dict]) -> str:
+    """As de sites públicos (até MAX_PRORROGACOES) e, das do boletim da ITC, só a contagem"""
+    publicas = [p for p in itens if not p.get("do_email")]
+    do_email = len(itens) - len(publicas)
+    linhas = [_linha_prorrogacao(p) for p in publicas[:MAX_PRORROGACOES]]
+    if len(publicas) > MAX_PRORROGACOES:
+        linhas.append(f"- e mais {len(publicas) - MAX_PRORROGACOES} — veja no Radar")
+    if do_email:
+        linhas.append(f"- Mais {do_email} do boletim da ITC — veja no Radar (o conteúdo do boletim não é reproduzido aqui)")
+    return "\n".join(linhas)
+
+
+def corpo_prorrogacao(pendentes: list[dict], ja_avisadas: set[int] = frozenset()) -> str | None:
+    """Corpo do aviso (v0.30.0). O repositório é público: das notícias de sites públicos, a obrigação, o título com o link, a fonte e
+    a data; do boletim da ITC, só a contagem. O corpo não muda depois de aberto. `ja_avisadas`: as notícias que um aviso anterior (já
+    fechado, por exemplo à mão no GitHub) avisou: não entram de novo (uma vez por notícia); None se não sobra nenhuma nova."""
+    novas = [p for p in pendentes if p["captura_id"] not in ja_avisadas]
+    if not novas:
+        return None
+    n = len(novas)
+    abre = ("O Radar captou **1** notícia que fala em prorrogar ou adiar o prazo de uma obrigação da agenda de obrigações"
+            if n == 1 else f"O Radar captou **{n}** notícias que falam em prorrogar ou adiar o prazo de uma obrigação da agenda de "
+                            "obrigações")
+    antes = (f" Ao todo, {len(pendentes)} esperando conferência no Radar (as outras já foram avisadas num aviso anterior)."
+             if len(pendentes) > n else "")
+    return (f"{abre} (usada no Informativo Mensal e na agenda da semana da Pauta). O Radar **não muda a data sozinho**.{antes}\n\n"
+            f"{_lista_prorrogacoes(novas)}\n\n"
+            "O que fazer: abra o Radar → **Painel** → \"Possível prorrogação de prazo\" e confira na fonte oficial. Se o prazo mudou, "
+            "ponha a nova data na obrigação (Configurações → Agenda de obrigações, \"prorrogacoes\") e confira as edições do "
+            "Informativo e a agenda da semana da Pauta já montadas. Depois, clique em **Conferido**.\n\n"
+            "Este aviso não é editado depois de aberto (cada mudança mandaria outro e-mail): cada notícia nova ganha um comentário aqui. "
+            "Ele fecha sozinho quando nenhuma estiver esperando conferência (conferidas no Radar ou com mais de 30 dias). Fechar o aviso "
+            "aqui no GitHub não tira a notícia do Painel (só o \"Conferido\" tira), e o Radar não avisa de novo a mesma notícia."
+            + marca_prorrogacao(set(ja_avisadas) | {p["captura_id"] for p in pendentes}))
+
+
+def comentario_prorrogacao(pendentes: list[dict], avisadas: set[int]) -> str | None:
+    """Com o aviso aberto, as notícias que ainda não foram avisadas ganham UM comentário (um e-mail por rodada); None se não há
+    novidade. A marca do comentário leva as já avisadas e as de agora."""
+    novas = [p for p in pendentes or [] if p["captura_id"] not in avisadas]
+    if not novas:
+        return None
+    abre = ("**1** notícia nova fala em prorrogar ou adiar o prazo de uma obrigação da agenda." if len(novas) == 1 else
+            f"**{len(novas)}** notícias novas falam em prorrogar ou adiar o prazo de uma obrigação da agenda.")
+    return (f"{abre} Ao todo, {len(pendentes)} esperando conferência.\n\n{_lista_prorrogacoes(novas)}\n\n"
+            "O que fazer: abra o Radar → **Painel** → \"Possível prorrogação de prazo\". O Radar não muda a data sozinho."
+            + marca_prorrogacao(avisadas | {p["captura_id"] for p in pendentes}))
+
+
+def decidir_prorrogacao(lista: list[dict] | None, abertos: dict[str, int],
+                        ja_avisadas: set[int] = frozenset()) -> tuple[str | None, list[tuple[int, str]]]:
+    """Um aviso só (v0.30.0), como o da Pauta: abre quando há notícia esperando conferência e nenhum aviso aberto; fecha quando nenhuma
+    espera; nunca edita o corpo. `lista` None (banco ainda sem o SQL da v0.30.0): não abre nem fecha. `ja_avisadas` (as da marca do
+    último aviso fechado): sem notícia nova fora delas, não abre outro (o aviso fechado à mão no GitHub não volta a cada rodada)."""
+    meus = sorted(n for t, n in abertos.items() if t.startswith(PREFIXO_PRORROGACAO))
+    if lista is None:
+        return None, []
+    pendentes = pendentes_prorrogacao(lista)
+    if pendentes:
+        return (None if meus else corpo_prorrogacao(pendentes, ja_avisadas)), []
+    return None, [(n, "Nenhuma possível prorrogação esperando conferência (conferidas no Radar ou com mais de 30 dias).") for n in meus]
 
 
 def titulo_link(url: str) -> str:
@@ -367,6 +476,20 @@ class GitHub:
                 return textos
             pagina += 1
 
+    def ultimo_aviso_fechado(self, titulo_aviso: str, dias: int = 31) -> int | None:
+        """v0.30.0: o número do aviso do robô com este título que foi fechado e mexido nos últimos `dias` (o mais novo), ou None. A marca
+        dele diz quais notícias já foram avisadas: o aviso de possível prorrogação fechado à mão no GitHub não volta a avisar as mesmas."""
+        desde = (datetime.now(timezone.utc) - timedelta(days=dias)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        achados, pagina = [], 1
+        while True:
+            lote = self._pedir("GET", "/issues", params={"state": "closed", "since": desde, "sort": "updated", "direction": "desc",
+                                                        "per_page": 100, "page": pagina}) or []
+            achados += [i["number"] for i in lote if "pull_request" not in i and i.get("title") == titulo_aviso
+                        and (i.get("user") or {}).get("login") == AUTOR_DOS_AVISOS]
+            if len(lote) < 100:
+                return max(achados) if achados else None
+            pagina += 1
+
     def comentar(self, numero: int, corpo: str) -> None:
         self._pedir("POST", f"/issues/{numero}/comments", json={"body": corpo})
 
@@ -379,6 +502,7 @@ def executar(banco: Banco, github: GitHub, status_de=status_http, pagina_de=html
     abertos = github.avisos_abertos()
     saude = banco.saude_fontes()
     pauta = banco.pauta_com_problema()          # v0.21.0: lida antes de abrir qualquer aviso (erro no banco não deixa nada pela metade)
+    prorrogacoes = banco.prorrogacoes()         # v0.30.0: idem (None: banco sem o SQL da v0.30.0)
     abrir, fechar = decidir(saude, abertos)
     feito = []
     for f in abrir:
@@ -400,6 +524,32 @@ def executar(banco: Banco, github: GitHub, status_de=status_http, pagina_de=html
         except (RuntimeError, requests.RequestException) as e:
             feito.append(f"aviso #{numero}: a conferência das publicações novas fica para a próxima rodada ({type(e).__name__})")
     fechar += fechar_pa
+    # v0.30.0: possível prorrogação na agenda de obrigações (no registro, só números)
+    pendentes = pendentes_prorrogacao(prorrogacoes)
+    ja_avisadas: set[int] = set()
+    try:
+        # sem aviso aberto: as notícias da marca do último aviso fechado (à mão no GitHub, por exemplo) não abrem outro aviso
+        if pendentes and not any(t.startswith(PREFIXO_PRORROGACAO) for t in abertos) \
+                and (fechado := github.ultimo_aviso_fechado(PREFIXO_PRORROGACAO)):
+            ja_avisadas = avisadas_prorrogacao(github.textos_do_robo(fechado))
+        corpo_pr, fechar_pr = decidir_prorrogacao(prorrogacoes, abertos, ja_avisadas)
+    except (RuntimeError, requests.RequestException) as e:
+        corpo_pr, fechar_pr = None, []
+        feito.append(f"aviso de possível prorrogação: a conferência dos avisos anteriores fica para a próxima rodada ({type(e).__name__})")
+    if corpo_pr:
+        novas = sum(p["captura_id"] not in ja_avisadas for p in pendentes)
+        feito.append(f"aviso #{github.abrir_aviso(PREFIXO_PRORROGACAO, corpo_pr)} aberto: {novas} possível(is) "
+                     "prorrogação(ões) para conferir")
+    elif pendentes and any(t.startswith(PREFIXO_PRORROGACAO) for t in abertos):   # o aviso aberto ganha um comentário com as novas
+        numero = min(n for t, n in abertos.items() if t.startswith(PREFIXO_PRORROGACAO))
+        try:
+            comentario = comentario_prorrogacao(pendentes, avisadas_prorrogacao(github.textos_do_robo(numero)))
+            if comentario:
+                github.comentar(numero, comentario)
+                feito.append(f"aviso #{numero} comentado: possível(is) prorrogação(ões) nova(s) ({len(pendentes)} para conferir)")
+        except (RuntimeError, requests.RequestException) as e:
+            feito.append(f"aviso #{numero}: a conferência das possíveis prorrogações novas fica para a próxima rodada ({type(e).__name__})")
+    fechar += fechar_pr
     registros = banco.links_publicados()
     fora = conferir_links(registros, status_de)
     abrir_l, fechar_l = decidir_links(registros, fora, abertos)

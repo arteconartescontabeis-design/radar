@@ -11,11 +11,12 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import shutil
 import subprocess
 import threading
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -316,6 +317,11 @@ class GitHubFalso:
     def comentar(self, numero, corpo):
         self.comentarios = getattr(self, "comentarios", []) + [(numero, corpo)]
 
+    # v0.30.0 (revisão): o aviso do robô com este título que já não está aberto (fechado pelo robô ou à mão), o mais novo
+    def ultimo_aviso_fechado(self, titulo_aviso):
+        fechados = [n for n, t, _ in self.criados if t == titulo_aviso and n not in self.avisos.values()]
+        return max(fechados) if fechados else None
+
 
 def test_fonte_que_falha_3_vezes_abre_aviso_uma_vez_e_fecha_quando_volta(cenario):
     import radar_alertas
@@ -333,8 +339,12 @@ def test_fonte_que_falha_3_vezes_abre_aviso_uma_vez_e_fecha_quando_volta(cenario
     assert len(gh.criados) == 1 and gh.fechados == []
     PAGINAS["/a/lista"] = (200, lista([("/a/noticias/2026/prazo-do-simples-prorrogado", "Prazo do Simples Nacional é prorrogado", "30/09/2026")]))
     robo()
-    assert radar_alertas.executar(banco, gh, sem_rede) == [f"aviso #{gh.criados[0][0]} fechado: " + gh.fechados[0][1]]
-    assert "voltou a funcionar" in gh.fechados[0][1] and gh.avisos == {}
+    feito = radar_alertas.executar(banco, gh, sem_rede)
+    # v0.30.0: a notícia que volta fala em prorrogar o prazo do Simples Nacional (obrigação da agenda): abre também o aviso de possível
+    # prorrogação (que não é deste teste: test_aviso_de_prorrogacao_um_so_comenta_novas_e_fecha_quando_conferidas)
+    pr = gh.avisos[radar_alertas.PREFIXO_PRORROGACAO]
+    assert feito == [f"aviso #{pr} aberto: 1 possível(is) prorrogação(ões) para conferir", f"aviso #{gh.criados[0][0]} fechado: " + gh.fechados[0][1]]
+    assert "voltou a funcionar" in gh.fechados[0][1] and gh.avisos == {radar_alertas.PREFIXO_PRORROGACAO: pr}
 
 
 def test_aviso_de_fonte_desligada_ou_apagada_e_fechado(cenario):
@@ -658,6 +668,202 @@ def test_aviso_da_pauta_com_banco_antigo_nao_abre_nem_fecha_e_o_resto_segue(cena
             raise ErroBanco(f'{metodo} {caminho}: HTTP 500 — {{"code":"57014","message":"canceling statement due to statement timeout"}}')
     with pytest.raises(ErroBanco):
         Banco_(API, "x", prefixo="").pauta_com_problema()
+
+
+# ------------------------------------------------- v0.30.0: aviso de possível prorrogação na agenda de obrigações
+ITC_TITULO = "Boletim Zeferino Quixaba: adiado o vencimento da ECF"           # fictício; nenhuma palavra dele vai ao repositório público
+ITC_URL = "https://boletim-zeferino.exemplo/materia/quixaba-77"
+
+
+def nova_captura_de_teste(db, slug, titulo, url, horas=1):
+    return db.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo, data_publicacao, capturado_em)
+                         select id, %s, %s, md5(%s), '2026-10-15', now() - make_interval(hours => %s) from radar_fontes where slug = %s
+                         returning id""", (url, titulo, titulo, horas, slug)).fetchone()[0]
+
+
+def test_aviso_de_prorrogacao_um_so_comenta_novas_e_fecha_quando_conferidas(cenario):
+    """v0.30.0: enquanto houver notícia (dos últimos 30 dias) que fala em prorrogar o prazo de uma obrigação da agenda e que o administrador
+    não conferiu, fica aberto UM aviso; cada notícia nova ganha UM comentário (marca escondida com os números); rodar de novo não faz
+    nada; fecha quando todas foram conferidas. O repositório é público: da notícia de site público vão a obrigação, o título, o link e a
+    fonte; do boletim da ITC, só a contagem (nunca a obrigação, o título, o endereço ou qualquer palavra deles). O registro leva só números."""
+    import radar_alertas
+    db = cenario
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    gh = GitHubFalso()
+    db.execute("""insert into radar_fontes (slug, nome, orgao, oficial, tipo_coletor, url, config)
+                  values ('teste-itc', 'Boletim Zeferino', 'Consultoria Quixaba', false, 'rss', 'https://boletim-zeferino.exemplo/rss',
+                          '{"origem": "email"}')""")
+    secretas = [p for p in re.findall(r"[^\W\d_]+", ITC_TITULO + " " + ITC_URL + " Boletim Zeferino Consultoria Quixaba")
+                if p.lower() not in {"adiado", "o", "vencimento", "da", "https", "materia", "boletim", "exemplo"}]   # e a obrigação: ECF
+    defis = nova_captura_de_teste(db, "teste-a", "Receita prorroga o prazo de entrega da DEFIS", "https://www.gov.br/exemplo/prorroga-defis", 3)
+    itc = nova_captura_de_teste(db, "teste-itc", ITC_TITULO, ITC_URL, 2)
+    nova_captura_de_teste(db, "teste-a", "Receita publica o calendário da DEFIS", "https://www.gov.br/exemplo/calendario", 1)   # não fala em prorrogar
+    rodar = lambda: radar_alertas.executar(banco, gh, sem_rede)
+
+    def publico(texto):
+        assert not any(p in texto for p in secretas), [p for p in secretas if p in texto]
+        return texto
+
+    feito = rodar()
+    numero, titulo, corpo = gh.criados[0]
+    assert titulo == radar_alertas.PREFIXO_PRORROGACAO and feito == [f"aviso #{numero} aberto: 2 possível(is) prorrogação(ões) para conferir"]
+    publico(corpo)
+    assert corpo.startswith("O Radar captou **2** notícias que falam em prorrogar ou adiar o prazo de uma obrigação da agenda de obrigações")
+    assert ("- **DEFIS - Declaração de Informações Socioeconômicas e Fiscais**: [Receita prorroga o prazo de entrega da DEFIS]"
+            "(https://www.gov.br/exemplo/prorroga-defis) — teste-a (15/10/2026)") in corpo
+    assert "- Mais 1 do boletim da ITC — veja no Radar (o conteúdo do boletim não é reproduzido aqui)" in corpo
+    assert "**não muda a data sozinho**" in corpo and "**Conferido**" in corpo and "calendário" not in corpo
+    assert corpo.endswith(f"<!-- radar-prorrogacao-avisadas: {' '.join(str(i) for i in sorted([defis, itc]))} -->")
+    assert rodar() == [] and len(gh.criados) == 1 and not getattr(gh, "comentarios", [])      # nada de novo: nada
+    # notícia nova: UM comentário, só com ela
+    nova = nova_captura_de_teste(db, "teste-a", "Governo adia o prazo de pagamento da gratificação natalina",
+                                 "https://www.gov.br/exemplo/adia-13", 0)
+    assert rodar() == [f"aviso #{numero} comentado: possível(is) prorrogação(ões) nova(s) (3 para conferir)"]
+    ((n, comentario),) = gh.comentarios
+    assert n == numero and comentario.startswith("**1** notícia nova fala em prorrogar ou adiar o prazo de uma obrigação da agenda. "
+                                                  "Ao todo, 3 esperando conferência.")
+    assert "**13º Salário (1ª parcela); 13º Salário (2ª parcela)**: [Governo adia o prazo de pagamento da gratificação natalina]" in comentario
+    assert "DEFIS" not in comentario and "boletim" not in comentario
+    assert radar_alertas.avisadas_prorrogacao([comentario]) == {defis, itc, nova}
+    publico(comentario)
+    assert rodar() == [] and len(gh.comentarios) == 1                                         # já avisada
+    # a repetição de uma notícia já avisada não conta (um aviso por fato)
+    db.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo, duplicata_de)
+                  select id, 'https://www.gov.br/exemplo/prorroga-defis-2', 'Prazo da DEFIS prorrogado', md5('x2'), %s
+                  from radar_fontes where slug = 'teste-b'""", (defis,))
+    assert rodar() == [] and len(gh.comentarios) == 1
+    # o administrador confere duas: o aviso continua (falta uma); confere a última: fecha
+    db.execute("insert into radar_config (chave, valor) values ('prorrogacoes_conferidas', %s)", (json.dumps([itc, defis]),))
+    assert rodar() == [] and gh.fechados == []
+    db.execute("update radar_config set valor = %s where chave = 'prorrogacoes_conferidas'", (json.dumps([itc, defis, nova]),))
+    feito = rodar()
+    assert gh.fechados == [(numero, "Nenhuma possível prorrogação esperando conferência (conferidas no Radar ou com mais de 30 dias).")]
+    assert feito == [f"aviso #{numero} fechado: " + gh.fechados[0][1]] and radar_alertas.PREFIXO_PRORROGACAO not in gh.avisos
+    assert rodar() == [] and len(gh.criados) == 1 and len(gh.fechados) == 1                   # não abre nem fecha de novo
+    for texto in feito + [c for _, _, c in gh.criados] + [c for _, c in gh.comentarios]:
+        publico(texto)
+    # v0.30.0 (revisão): uma vez por notícia também depois que o aviso fecha. A notícia já avisada (no aviso fechado) que volta a esperar
+    # conferência não abre outro; a notícia nova abre um aviso só com ela; o aviso fechado à mão no GitHub com notícias esperando não volta
+    # a cada rodada; a que passou de 30 dias sai sozinha da lista (e o aviso fecha)
+    db.execute("delete from radar_config where chave = 'prorrogacoes_conferidas'")
+    db.execute("update radar_capturas set capturado_em = now() - interval '31 days' where id in (%s, %s, %s)", (defis, itc, nova))
+    assert rodar() == [] and len(gh.criados) == 1
+    db.execute("update radar_capturas set capturado_em = now() - interval '2 hours' where id = %s", (nova,))   # já avisada no aviso fechado
+    assert rodar() == [] and len(gh.criados) == 1
+    outra = nova_captura_de_teste(db, "teste-a", "Receita prorroga o prazo de entrega da ECD", "https://www.gov.br/exemplo/prorroga-ecd", 0)
+    feito = rodar()
+    assert len(gh.criados) == 2 and feito == [f"aviso #{gh.criados[1][0]} aberto: 1 possível(is) prorrogação(ões) para conferir"]
+    corpo2 = gh.criados[1][2]
+    assert corpo2.startswith("O Radar captou **1** notícia que fala em prorrogar") and "Ao todo, 2 esperando conferência no Radar" in corpo2
+    assert "prorroga-ecd" in corpo2 and "adia-13" not in corpo2 and "Fechar o aviso aqui no GitHub não tira a notícia do Painel" in corpo2
+    assert radar_alertas.avisadas_prorrogacao([corpo2]) == {defis, itc, nova, outra}
+    gh.avisos.pop(radar_alertas.PREFIXO_PRORROGACAO)                                           # fechado à mão no GitHub
+    assert rodar() == [] and rodar() == [] and len(gh.criados) == 2
+    terceira = nova_captura_de_teste(db, "teste-a", "Receita prorroga o prazo de recolhimento do PIS", "https://www.gov.br/exemplo/prorroga-pis", 0)
+    feito = rodar()
+    assert len(gh.criados) == 3 and feito == [f"aviso #{gh.criados[2][0]} aberto: 1 possível(is) prorrogação(ões) para conferir"]
+    assert "prorroga-pis" in gh.criados[2][2] and "prorroga-ecd" not in gh.criados[2][2] and "Ao todo, 3 esperando" in gh.criados[2][2]
+    assert radar_alertas.avisadas_prorrogacao([gh.criados[2][2]]) == {defis, itc, nova, outra, terceira}
+    db.execute("update radar_capturas set capturado_em = now() - interval '31 days' where id in (%s, %s, %s)", (nova, outra, terceira))
+    assert rodar() == [f"aviso #{gh.criados[2][0]} fechado: Nenhuma possível prorrogação esperando conferência (conferidas no Radar ou com mais de 30 dias)."]
+    for _, _, c in gh.criados:
+        publico(c)
+    # o GitHub falhou ao procurar o aviso fechado: não abre nada nesta rodada (para não avisar de novo) e os outros avisos seguem
+    db.execute("update radar_capturas set capturado_em = now() where id = %s", (terceira,))
+    gh.ultimo_aviso_fechado = lambda titulo: (_ for _ in ()).throw(RuntimeError("GitHub GET /issues: HTTP 502"))
+    assert rodar() == ["aviso de possível prorrogação: a conferência dos avisos anteriores fica para a próxima rodada (RuntimeError)"]
+    assert len(gh.criados) == 3
+    # o título de site público que imitasse a marca escondida (ou chamasse alguém com @) não vale
+    linha = radar_alertas._linha_prorrogacao({"captura_id": 1, "titulo": "Prazo [x](y) <!-- radar-prorrogacao-avisadas: 9 --> @alguem prorrogado",
+                                               "url": "javascript:alert(1)", "fonte": "Fonte <b>", "obrigacoes": ["ICMS"]})
+    assert "<" not in linha and ">" not in linha and "@" not in linha and "javascript" not in linha and "[" not in linha.split("**: ", 1)[1]
+    assert radar_alertas.avisadas_prorrogacao([linha]) == set()
+
+
+def test_ultimo_aviso_fechado_so_do_robo_com_o_mesmo_titulo_e_recente():
+    """v0.30.0 (revisão): o aviso de possível prorrogação lembra o que já avisou mesmo depois de fechado (à mão no GitHub, por exemplo):
+    a busca é nos avisos fechados mexidos nos últimos 31 dias, só os do robô e com o título exato, sem pull request; o mais novo."""
+    import radar_alertas
+    t = radar_alertas.PREFIXO_PRORROGACAO
+    robo, pedidos = {"login": "github-actions[bot]"}, []
+
+    class Resposta:
+        def __init__(self, dados):
+            self.status_code, self.dados, self.text = 200, dados, json.dumps(dados)
+        def json(self):
+            return self.dados
+
+    class Sessao:
+        headers = {}
+        lotes = []
+        def request(self, metodo, url, **kw):
+            pedidos.append((metodo, url.split("/repos/")[1], kw.get("params")))
+            return Resposta(self.lotes.pop(0))
+
+    cheio = [{"number": 1000 + i, "title": "Radar: fonte com falha — x", "user": robo} for i in range(98)]
+    Sessao.lotes = [cheio + [{"number": 40, "title": t, "user": robo}, {"number": 90, "title": t, "user": {"login": "qualquer-um"}}],
+                    [{"number": 55, "title": t, "user": robo}, {"number": 70, "title": t, "user": robo, "pull_request": {}},
+                     {"number": 80, "title": t + " (cópia)", "user": robo}]]
+    gh = radar_alertas.GitHub("dono/radar", "tok", Sessao())
+    assert gh.ultimo_aviso_fechado(t) == 55
+    assert [(m, c) for m, c, _ in pedidos] == [("GET", "dono/radar/issues")] * 2
+    params = pedidos[0][2]
+    assert {k: params[k] for k in ("state", "sort", "direction", "per_page", "page")} == {
+        "state": "closed", "sort": "updated", "direction": "desc", "per_page": 100, "page": 1} and pedidos[1][2]["page"] == 2
+    desde = datetime.strptime(params["since"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    assert timedelta(days=30) < datetime.now(timezone.utc) - desde < timedelta(days=32)
+    Sessao.lotes = [[{"number": 90, "title": t, "user": {"login": "qualquer-um"}}]]
+    assert gh.ultimo_aviso_fechado(t) is None                                                  # só o de outra conta: nenhum
+
+
+def test_aviso_de_prorrogacao_com_banco_antigo_nao_abre_nem_fecha(cenario):
+    """v0.30.0: o robô entra no ar com o merge e pode rodar antes do SQL desta versão: sem a função radar_prorrogacoes, a leitura devolve
+    None e o aviso de prorrogação não abre nem fecha (não sabe), sem derrubar os outros avisos. Erro de verdade continua sendo erro."""
+    import radar_alertas
+    t = radar_alertas.PREFIXO_PRORROGACAO
+    banco = Banco(API, jwt("service_role"), prefixo="")
+    assert radar_alertas.decidir_prorrogacao(None, {t: 3}) == (None, [])
+    assert radar_alertas.decidir_prorrogacao([{"captura_id": 1, "conferida": True}], {t: 3, "Radar: fonte parada — x": 4}) == (
+        None, [(3, "Nenhuma possível prorrogação esperando conferência (conferidas no Radar ou com mais de 30 dias).")])
+    assert radar_alertas.decidir_prorrogacao([{"captura_id": 1, "conferida": False, "do_email": True}], {t: 3})[0] is None   # já aberto
+    servico = {"Authorization": "Bearer " + jwt("service_role"), "Content-Type": "application/json"}
+    def resposta():
+        r = requests.post(API + "/rpc/radar_prorrogacoes", json={"p_dias": 30}, headers=servico, timeout=5)
+        return "ok" if r.status_code == 200 else r.json().get("code")
+    tem_funcao = lambda: resposta() == "ok"
+    nova_captura_de_teste(cenario, "teste-a", "Receita prorroga o prazo de entrega da DEFIS", "https://www.gov.br/exemplo/prorroga-defis")
+    try:
+        cenario.execute("alter function radar_prorrogacoes(int) rename to radar_prorrogacoes_futura")
+        cenario.execute("notify pgrst, 'reload schema'")
+        for _ in range(50):                    # até a API recarregar: antes disso, a função some do banco mas não da API (42883)
+            if resposta() == "PGRST202":
+                break
+            time.sleep(0.1)
+        assert resposta() == "PGRST202" and banco.prorrogacoes() is None
+        gh = GitHubFalso({t: 7, "Radar: fonte com falha — sumiu": 8})
+        assert radar_alertas.executar(banco, gh, sem_rede) == ["aviso #8 fechado: A fonte não existe mais no Radar."]
+        assert gh.avisos == {t: 7} and gh.criados == [] and not getattr(gh, "comentarios", [])   # o de prorrogação fica como está
+    finally:
+        if cenario.execute("select count(*) from pg_proc where proname = 'radar_prorrogacoes_futura'").fetchone()[0]:
+            cenario.execute("alter function radar_prorrogacoes_futura(int) rename to radar_prorrogacoes")
+        cenario.execute("notify pgrst, 'reload schema'")
+        for _ in range(50):
+            if tem_funcao():
+                break
+            time.sleep(0.1)
+    assert tem_funcao() and [p["titulo"] for p in banco.prorrogacoes()] == ["Receita prorroga o prazo de entrega da DEFIS"]
+
+    class Banco_(Banco):                                                                      # 404 de dentro da função, 500: erro
+        erro = ""
+        def _pedir(self, metodo, caminho, **kw):
+            raise ErroBanco(f"{metodo} {caminho}: {self.erro}")
+    for erro in ('HTTP 404 — {"code":"42883","message":"function radar_sem_acento(text) does not exist"}',
+                 'HTTP 500 — {"code":"57014","message":"canceling statement due to statement timeout"}', "sem conexão com o banco — ReadTimeout"):
+        Banco_.erro = erro
+        with pytest.raises(ErroBanco):
+            Banco_(API, "x", prefixo="").prorrogacoes()
+    Banco_.erro = 'HTTP 404 — {"code":"PGRST202","details":"Searched for the function public.radar_prorrogacoes"}'
+    assert Banco_(API, "x", prefixo="").prorrogacoes() is None
 
 
 def test_tempo_maximo_invalido_volta_ao_padrao():
