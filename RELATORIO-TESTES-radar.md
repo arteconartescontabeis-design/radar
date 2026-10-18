@@ -1,8 +1,11 @@
 # Radar Artecon — Relatório de testes (v0.35.0)
 
 Data: 18/10/2026. **A suíte inteira da v0.35.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
-arquivos afetados pela v0.35.0: <NUMEROS-V35>. A v0.35.0 tem <N-V35> testes novos (os 4 arquivos do Módulo Respostas
-Automáticas). Na v0.34.0: Neste ambiente rodaram, em série, os
+arquivos afetados pela v0.35.0: a bateria dos dez arquivos afetados (**500 aprovados, 1 pulado**, 289 s; as 6
+falhas eram listas de conferência que ainda não conheciam o módulo — funções expostas, a coluna palavra_chave e as contagens 37 —
+corrigidas e rodadas de novo verdes) e o arquivo inteiro dos testes de tela com a aba nova (**276 aprovados, 61 pulados**, 542 s,
+nenhuma falha). A v0.35.0 tem **35** testes novos (os 4 arquivos do Módulo Respostas
+Automáticas); a suíte inteira passa de 1.441 para **1.476** testes. Na v0.34.0: Neste ambiente rodaram, em série, os
 arquivos afetados pela v0.34.0: a bateria dos nove arquivos afetados (**509 aprovados, 1 pulado**, 299 s), a função da cópia com o
 quadro de vencimentos (**37 aprovados e 1 falha de verdade**: a cópia mensal ainda não levava as 4 tabelas do setor — corrigida, a
 `radar-copia` subiu para 0.34.0 e o arquivo rodou de novo inteiro verde) e o arquivo inteiro dos testes de tela com a tela nova do
@@ -92,7 +95,13 @@ exemplo.test, uma Meta DE MENTIRA servida localmente): nenhum comentário real �
   (radar-copia 0.35.0 leva as 3 tabelas novas), o repositório (os 5 scripts da tela; `radar-respostas.js` no workflow dos testes)
   e a rota do `radar-respostas.js` no servidor dos testes de tela.
 
-Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026: <RODADAS-V35>.
+Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026: o banco do módulo sozinho (**11 aprovados**); a agenda
+(**5 aprovados**); a função no Deno com a Meta de mentira (**11 aprovados**); a tela (**8 aprovados**, depois de duas correções
+reais que o teste pediu: o embrulho de rolagem das tabelas no celular e o preencher pela publicação escolhida); a bateria dos dez
+arquivos afetados — os 4 novos mais `test_radar_setor_banco.py`, `test_radar_funcao_concorrentes.py`, `test_radar_banco.py`,
+`test_radar_lembretes.py`, `test_radar_repositorio.py`, `test_radar_funcao_copia.py` e `test_radar_vencimentos.py` — **500
+aprovados, 1 pulado** (289 s; as 6 falhas de listas de conferência corrigidas e rodadas de novo verdes); e o arquivo inteiro das
+telas com `test_radar_respostas_tela.py` e `test_radar_setor_tela.py` (**276 aprovados, 61 pulados**, 542 s, nenhuma falha).
 O setup rodou duas vezes seguidas no banco de teste (os testes que já fazem isso) e a reversão tira as tabelas e funções do módulo.
 
 ## v0.34.0 — aba Setor: a análise das publicações do setor no Instagram
