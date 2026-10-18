@@ -1895,7 +1895,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.25.0 mudou a função de IA (a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres): a v0.24.0
     # passa a ser apontada como antiga. v0.25.1: a mínima não sobe (a tela aceita o kit com e sem a arte: a função v0.25.0 serve)
     assert pagina.evaluate("[versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.25.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.32.0"]       # v0.26.0 a v0.32.0: a função de IA não muda; a mínima não sobe
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.33.0"]       # v0.26.0 a v0.33.0: a função de IA não muda; a mínima não sobe
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2750,7 +2750,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.32.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.33.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -6635,7 +6635,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.32.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.33.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -9354,6 +9354,7 @@ def test_video_envio_mostra_o_que_sobra_da_cota_e_recusa_a_gravacao_que_nao_cabe
     # v0.33.0: dentro da cota, o envio mostra quanto vai gastar
     pagina.evaluate(f"() => {{ clipesDe({pid})[0].duracao = 20; redesenharClipes({pid}); }}")
     assert pagina.inner_text("#video-gasto-cota") == "Este envio gasta cerca de 20 s da transcrição do mês (sobram 10 s)."
+    pagina.evaluate(f"() => {{ clipesDe({pid})[0].duracao = 70; redesenharClipes({pid}); }}")      # de volta aos 70 s do passo seguinte
     for c in pagina.locator("#video-envio .video-declaracao").all():
         c.check()
     limpar_recados(pagina)
@@ -9506,7 +9507,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.32.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.33.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")

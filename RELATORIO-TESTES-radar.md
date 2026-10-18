@@ -1,6 +1,11 @@
 # Radar Artecon — Relatório de testes (v0.33.0)
 
-Data: 17/10/2026. **A suíte inteira da v0.32.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, pela fila
+Data: 18/10/2026. **A suíte inteira da v0.33.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+arquivos afetados pela v0.33.0: o corretor no banco e no alinhamento (**130 aprovados**), o robô com o ffmpeg, a função
+`radar-video` no Deno, o de ponta a ponta e a transcrição (**166 aprovados, 2 pulados**), o banco, o repositório, a agenda e os
+lembretes (**362 aprovados, 1 pulado**) e o arquivo inteiro dos testes de tela (**253 aprovados, 61 pulados**, 572 s) — as oito
+falhas esperadas antes de terminar a versão (asserções com a versão de antes e um passo novo do teste da cota) foram corrigidas e
+aprovadas depois (detalhes na seção da v0.33.0, logo abaixo). A v0.33.0 tem 42 testes novos (de 1.322 para 1.364 no total). Na v0.32.0 rodaram, pela fila
 compartilhada, os testes afetados: o quadro de vencimentos e o registro das cópias no banco, a função `radar-copia` no Deno, os
 lembretes, o banco, a agenda e o repositório (`testes/test_radar_vencimentos.py`, `test_radar_funcao_copia.py`,
 `test_radar_lembretes.py`, `test_radar_banco.py`, `test_radar_agenda.py` e `test_radar_repositorio.py`), **400 aprovados, 2 falhas
@@ -121,8 +126,21 @@ a 375 px sem rolagem lateral, "Editar na aba Vídeo" na peça com o aviso do tex
 mínimo 5 s, máximo 15 min"), o resumo "O corretor corrigiu… / Falta decidir…" no topo do relatório, o "parece erro da transcrição",
 o "Cortar este trecho" do falado fora do roteiro e o gasto da cota no envio.
 
-Rodado neste ambiente (os arquivos afetados; a suíte inteira roda no CI do GitHub antes de juntar): <NUMEROS-V33>.
-O setup rodou duas vezes seguidas no banco de teste (os testes que já fazem isso) e a reversão tira as 4 funções novas.
+Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026:
+- o corretor no banco (`test_radar_video_banco.py`): **45 aprovados**; o alinhamento e os cortes (`test_radar_video_alinhar.py`):
+  **85 aprovados**;
+- o robô (ffmpeg de verdade), a função `radar-video` (Deno de verdade), o de ponta a ponta e a transcrição
+  (`test_radar_video_robo.py`, `test_radar_funcao_video.py`, `test_radar_video_corrigir.py`, `test_radar_video_transcrever.py`):
+  **166 aprovados, 2 pulados** (uma falha esperada antes de terminar a versão — o teto novo do áudio no teste da transcrição —
+  corrigida e aprovada depois, com o arquivo inteiro verde);
+- o banco, o repositório, a agenda e os lembretes (`test_radar_banco.py`, `test_radar_repositorio.py`, `test_radar_agenda.py`,
+  `test_radar_lembretes.py`): **362 aprovados, 1 pulado** (duas falhas esperadas — asserções com a versão de antes — corrigidas e
+  aprovadas depois);
+- o arquivo inteiro dos testes de tela (Chromium): **253 aprovados, 61 pulados** em 572 s (cinco falhas esperadas — asserções com a
+  versão de antes e um passo novo do teste da cota — corrigidas e aprovadas depois, as cinco verdes).
+A v0.33.0 leva a suíte de 1.322 para **1.364 testes** (42 novos, entre eles os 2 da fase B: a muleta que sai por padrão e o
+"parece erro da transcrição"). O setup rodou duas vezes seguidas no banco de teste (os testes que já fazem isso) e a reversão tira
+as 4 funções novas.
 
 ## v0.32.0 — vencimentos de chaves e contas e cópia no OneDrive
 
