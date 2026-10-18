@@ -450,7 +450,7 @@ def test_cfg_fora_dos_limites_usa_o_padrao(cfg):
     db = cfg
     ler = lambda: db.execute("select radar_lembretes_cfg()").fetchone()[0]
     padrao = {"ligado": True, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3,
-              "pauta": True, "aprovacao": True, "video": True, "noticia": True}
+              "pauta": True, "aprovacao": True, "video": True, "noticia": True, "vencimento": True, "copia": True}   # v0.32.0: + 2 tipos
     assert ler() == padrao                                                                 # sem a chave
     configurar(db, ligado="sim", hora="25:00", de="21:00", ate="07:00", aprovacao_horas=0, parada_horas=2.5, pauta=None, video=1)
     assert ler() == padrao
@@ -492,7 +492,7 @@ def test_permissoes_dos_lembretes(cfg):
     with como("authenticated", ADMIN) as c:
         s = c.execute("select radar_lembretes_situacao()").fetchone()[0]
         assert set(s) == {"agenda", "tipos", "esperando"} and s["agenda"] == {"instalada": False} and s["esperando"] == 1
-        assert s["tipos"] == {"pauta": None, "aprovacao": None, "video": None, "noticia": None}
+        assert s["tipos"] == {"pauta": None, "aprovacao": None, "video": None, "noticia": None, "vencimento": None, "copia": None}
         with pytest.raises(psycopg.errors.InsufficientPrivilege):                          # v0.29.0 (revisão): nem o administrador
             c.execute("select count(*) from radar_lembretes")                               # lê a tabela (a tela usa a situação)
         for sql in ["select radar_lembretes_lote()", "select radar_lembretes_ha_envio()", "select radar_lembretes_acionar()",
@@ -647,7 +647,7 @@ def test_textos_exatos_dos_quatro_tipos():
     import radar_alertas
     assert all(t.startswith(radar_lembretes.PREFIXO_LEMBRETE) and not t.startswith(radar_alertas.PREFIXOS_PADRAO)
                for t in radar_lembretes.TITULOS.values())
-    assert sorted(radar_lembretes.TITULOS) == ["aprovacao", "noticia", "pauta", "video"]
+    assert sorted(radar_lembretes.TITULOS) == ["aprovacao", "copia", "noticia", "pauta", "vencimento", "video"]   # v0.32.0: + 2
 
 
 # ------------------------------------------------------------------------------------- o setup por cima do banco da v0.28.1
@@ -672,7 +672,7 @@ def _contagens(banco):
 
 def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
     """O banco da v0.28.1 (o setup desta versão sem a tabela, as funções e a chave dos lembretes), com dados de mentira: o setup desta
-    versão (v0.31.0, que traz junto os da v0.29.0 e da v0.30.0) roda duas vezes seguidas sem erro, nada some, a chave "lembretes" entra com os padrões
+    versão (v0.32.0, que traz junto os da v0.29.0 a v0.31.0) roda duas vezes seguidas sem erro, nada some, a chave "lembretes" entra com os padrões
     e, ajustada, não é sobrescrita."""
     banco = "radar_lembretes_cima"
     with conectar("postgres") as c:
@@ -696,17 +696,18 @@ def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
         assert {t: n for t, n in depois.items() if t not in ("radar_config", "radar_instalacoes", "radar_lembretes", "radar_auditoria")} == \
                {t: n for t, n in antes.items() if t not in ("radar_config", "radar_instalacoes", "radar_auditoria")}
         assert depois["radar_config"] == antes["radar_config"] + 1 and depois["radar_instalacoes"] == antes["radar_instalacoes"] + 2
-        assert depois["radar_lembretes"] == 0 and len(depois) == 28
+        assert depois["radar_lembretes"] == 0 and len(depois) == 30                          # v0.32.0: + 2 tabelas
         with conectar(banco) as c:
             assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {
                 "ligado": True, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3,
-                "pauta": True, "aprovacao": True, "video": True, "noticia": True}
+                "pauta": True, "aprovacao": True, "video": True, "noticia": True, "vencimento": True, "copia": True}
             assert c.execute("select valor->>'janela_horas' from radar_config where chave = 'pauta'").fetchone()[0] == "4"
             c.execute("""update radar_config set valor = '{"ligado": false, "hora": "17:30"}' where chave = 'lembretes'""")
-            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.31.0"
+            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.32.0"
         assert psql(SETUP, banco).returncode == 0
         with conectar(banco) as c:                                                         # o ajuste do administrador fica
-            assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {"ligado": False, "hora": "17:30"}
+            assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {
+                "ligado": False, "hora": "17:30", "vencimento": True, "copia": True}            # v0.32.0: só as chaves que faltavam
             assert c.execute("select count(*) from radar_pessoas where nome = 'Ana Teste'").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:

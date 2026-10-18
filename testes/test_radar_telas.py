@@ -345,17 +345,37 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.31.0"
+    assert pagina.inner_text(".versao") == "v0.32.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.31.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, em 6 itens: as fontes novas do Diário Oficial
+    # v0.32.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, em 6 itens: o quadro de vencimentos (as cores,
+    # o Renovei, os nove conhecidos sem duplicar, nunca o valor da chave), o lembrete de vencimento (os marcos, uma vez só, só a data no
+    # aviso público), a cópia mensal no OneDrive (dia 1 às 04h10, só a pasta, as tentativas, o lembrete "copia", nunca pelo GitHub), a
+    # tela da cópia, o título que vai ao site sem o "nº" (e a página que não abre vira erro) e o que o administrador faz (o SQL antes da
+    # tela, a versão, os conhecidos e o passo a passo do LEIAME)
+    topo, data, itens = pagina.evaluate("VERSOES[0]")
+    assert topo == pagina.evaluate("VERSAO") == "0.32.0" and data == "17/10/2026" and len(itens) == 6
+    texto = " ".join(itens)
+    for trecho in ["Quadro de vencimentos de chaves e contas (Configurações, só o administrador)", "Vermelho: vencido ou até 7 dias; amarelo: até 30 dias",
+                   "“Renovei” pede a nova data", "“Acrescentar os vencimentos conhecidos” põe, sem data, os nove que o Radar usa",
+                   "menos os que você já anotou à mão", "O valor de uma chave nunca entra no quadro: só o nome e a data",
+                   "30, 7 e 1 dia antes e no dia", "cada marco uma vez só por item", "leva só a data: nunca o nome nem o número do item",
+                   "todo dia 1, às 04h10", "Aplicativo Criado Artecon → Radar Artecon → Cópias de segurança", "só enxerga essa pasta",
+                   "tenta de novo às 05h10 e no dia 2", "nunca passa pelo GitHub", "“Testar a ligação com o OneDrive”", "“Fazer a cópia agora”",
+                   "sql/radar-setup-v0.32.0.sql ANTES de publicar a tela", "duas tabelas novas", "nada é apagado", "pode rodar de novo",
+                   "Configurações → “Acrescentar os vencimentos conhecidos”", "Da v0.31.0 para a v0.32.0",
+                   "“Lei nº 15.415/2026” vira “Lei 15.415/2026”", "No Radar, no Instagram e no Facebook o título não muda",
+                   "a página dela não abre", "apagá-la no painel do site e autorizar de novo", "o robô não reenvia sozinho"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.31.0: a entrada seguinte conta ao dono, em português simples, em 6 itens: as fontes novas do Diário Oficial
     # (leis e decretos, CONFAZ, trabalho e previdência), as do gov.br, o filtro de tema (sem enxurrada), o Normas de volta (desligado até o
     # teste pelo GitHub), o que fica de fora e por quê (Florianópolis, Palhoça e São José pelos sites, o CONFAZ pelo site, o DOM/SC
     # desligado pelo pedido do site) e o que o administrador faz (o setup, a versão, a coleta e só então o SQL das fontes)
-    topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.31.0" and data == "17/10/2026" and len(itens) == 6
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.31.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["pelo Diário Oficial da União", "nenhuma senha nova", "leis complementares, decretos, medidas provisórias e emendas à Constituição",
                    "o site do CONFAZ não abre para o robô, que roda fora do Brasil", "Ministério do Trabalho, do FGTS, do eSocial, da Previdência e do INSS",
@@ -375,7 +395,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (com as datas, as normas e o fim de semana), a agenda da semana da Pauta até o domingo, a nova data de uma prorrogação conferida
     # (só o administrador escreve), o aviso de possível prorrogação (onde aparece, o "Conferido", o que não conta) e o que o
     # administrador faz (o SQL antes da tela, o botão das anuais antes do Informativo de novembro; o robô dos avisos entra pelo merge)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.30.0" and data == "17/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["13º salário e as obrigações anuais", "a 1ª parcela do 13º até 30/11 e a 2ª até 20/12", "Lei 4.749/1965",
@@ -396,7 +416,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # 16:00, a peça pronta há mais de 24 horas, o vídeo do reel e a notícia que não saiu); as regras (um e-mail por tipo por dia, cada
     # pendência uma vez só, sem nome, nada publicado); as Configurações; e o que o administrador faz (o SQL antes da tela, a radar-redes
     # 0.29.0 e a agenda de novo)
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.29.0" and data == "17/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Lembretes por e-mail antes do dia", "a peça da Pauta de amanhã que ainda não está aprovada", "a partir das 16:00",
@@ -411,7 +431,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.28.1: a entrada seguinte conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
     # informação”) e o cartão em branco que não travam mais a peça, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava;
     # e o que o administrador faz (só a tela; o banco continua o da v0.28.0)
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.28.1" and data == "17/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["a linha em branco em “Informações conferidas” (de “Acrescentar informação”)", "o cartão em branco",
@@ -425,7 +445,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # administrador, de hoje em diante, uma peça por dia; nasce planejada e não publica nem agenda nada; a importação depois), a marca
     # "Sócio(a) da Artecon" (os dois termos dispensados; o que continua valendo; o Histórico) e o que o administrador faz (o SQL antes da
     # tela; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.28.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Peça nova num dia vazio", "o administrador vê o botão “+ Nova peça”", "(de hoje em diante)",
@@ -445,7 +465,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.27.0: a entrada seguinte conta ao dono, em português simples, o cronograma de publicações na Pauta (a semana e o mês dela, o
     # mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta não entra; a que envelheceu
     # na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.27.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
@@ -463,7 +483,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
@@ -480,7 +500,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -496,7 +516,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[8]")
+    topo, data, itens = pagina.evaluate("VERSOES[9]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -512,7 +532,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[9]")
+    topo, data, itens = pagina.evaluate("VERSOES[10]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -537,7 +557,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[10]")
+    topo, data, itens = pagina.evaluate("VERSOES[11]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -546,7 +566,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[11]")
+    topo, data, itens = pagina.evaluate("VERSOES[12]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -1854,7 +1874,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.25.0 mudou a função de IA (a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres): a v0.24.0
     # passa a ser apontada como antiga. v0.25.1: a mínima não sobe (a tela aceita o kit com e sem a arte: a função v0.25.0 serve)
     assert pagina.evaluate("[versaoMenor('0.24.0', FUNCAO_MINIMA), versaoMenor('0.25.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.31.0"]       # v0.26.0 a v0.31.0: a função de IA não muda; a mínima não sobe
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.25.0", "0.32.0"]       # v0.26.0 a v0.32.0: a função de IA não muda; a mínima não sobe
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2106,6 +2126,25 @@ def test_copiar_para_o_site_leva_titulo_e_texto_formatado(navegador, limpo):
     dica = pg.locator(".dica-site").inner_text()                                    # v0.8.0: categoria do site e registro automático
     assert "Categoria no site: Simples Nacional." in dica and "o robô encontra a notícia no site" in dica
     assert pg.locator(".para-site").inner_text().replace("\n", " ").count("1.") == 1
+    assert pg.locator(".titulo-site").count() == 0                                  # título sem “º”: nenhum aviso
+    # v0.32.0 (revisão): o caminho manual leva o título como vai ao site (sem o “nº”: o site monta o endereço com o título e não abre a
+    # página com “º”); o aviso aparece no quadro “Para o site da Artecon” para quem publica à mão (aqui, a editora), e a prévia mostra o
+    # título como fica no site. No Radar o título não muda.
+    titulo = "Salário-maternidade: Lei nº 15.415/2026 garante concessão em até 30 dias pela Previdência Social"
+    no_site = "Salário-maternidade: Lei 15.415/2026 garante concessão em até 30 dias pela Previdência Social"
+    _, c = artigo_aprovado(limpo, titulo=titulo)
+    abrir_assunto(pg, "Salário-maternidade")
+    aviso = pg.locator(f"#titulo-site-copiar-{c}")
+    assert aviso.is_visible() and aviso.locator("b").inner_text() == no_site
+    assert aviso.evaluate("a => a.nextElementSibling.classList.contains('para-site')")
+    pg.click("text=Copiar título")
+    pg.wait_for_selector("text=Título copiado como vai ao site")
+    assert pg.evaluate("navigator.clipboard.readText()") == no_site
+    pg.click(f"form[data-form=conteudo][data-id='{c}'] >> text=Ver como fica no site")
+    assert pg.locator("#previa-site h2").inner_text() == no_site
+    pg.click("#previa-site >> text=Fechar")
+    assert pg.input_value(f"#c-titulo-{c}") == titulo
+    assert limpo.execute("select titulo from radar_conteudos where id = %s", (c,)).fetchone()[0] == titulo
     assert erros == []
     contexto.close()
 
@@ -2690,7 +2729,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.31.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.32.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3676,6 +3715,50 @@ def test_noticia_ja_no_site_nao_oferece_autorizar_de_novo(pagina, limpo):
     pagina.evaluate("desenhar()")
     pagina.wait_for_selector("text=Esta notícia já está no site")
     assert pagina.locator("[data-acao=autorizar-site]").count() == 0
+
+
+def test_autorizar_o_site_avisa_como_o_titulo_vai_sem_o_numero_abreviado(pagina, limpo):
+    """v0.32.0 (caso real de 17/10/2026): o site da Artecon monta o endereço da notícia com o título e não abre a página quando ele tem
+    “º”. Na autorização do site (e do “Publicar em todos”, logo abaixo), o título com “º”, “ª” ou “°” mostra um aviso com o título como
+    vai ao site, pela mesma regra do robô (tituloParaOSite × titulo_para_o_site). No Radar o título não muda; sem esses sinais, nada de
+    aviso."""
+    import radar_site
+    titulo = "Salário-maternidade: Lei nº 15.415/2026 garante concessão em até 30 dias pela Previdência Social"
+    a, c = pronto_para_o_site(limpo)
+    limpo.execute("update radar_conteudos set titulo = %s where id = %s", (titulo, c))
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.click("#proximo-passo >> text=Ir para publicar")
+    aviso = pagina.locator(f"#titulo-site-{c}")
+    assert aviso.is_visible() and pagina.locator("#sec-publicar .titulo-site").count() == 1
+    assert aviso.inner_text() == ("No site, o título sai sem “nº”, “º” e “ª” (o site da Artecon não aceita esses sinais no endereço): "
+                                  "Salário-maternidade: Lei 15.415/2026 garante concessão em até 30 dias pela Previdência Social")
+    assert aviso.locator("b").inner_text() == radar_site.titulo_para_o_site(titulo)
+    # o aviso fica junto da autorização do site, antes do botão e do “Publicar em todos”
+    assert pagina.evaluate(f"""(() => {{ const a = document.querySelector('#titulo-site-{c}');
+        return a.nextElementSibling.classList.contains('autorizar-site') && !!a.parentElement.querySelector('#todos-{c}'); }})()""")
+    assert pagina.locator(".publicar-item h3").first.inner_text() == titulo                      # no Radar, o título não muda
+    assert limpo.execute("select titulo from radar_conteudos where id = %s", (c,)).fetchone()[0] == titulo
+    pagina.set_viewport_size({"width": 375, "height": 740})
+    assert sem_rolagem_lateral(pagina)
+    pagina.set_viewport_size({"width": 1280, "height": 900})
+    # a mesma regra do robô na tela; sem “º”, “ª” e “°”, nenhum aviso
+    for t in ("13º salário: 1ª parcela até 30/11", "Portaria n.º 45/2026 e Decreto N° 12.345", "Prazo do Simples  em 2027"):
+        assert pagina.evaluate("t => tituloParaOSite(t)", t) == radar_site.titulo_para_o_site(t), t
+    assert pagina.evaluate("avisoTituloSite({id: 1, titulo: 'Prazo do Simples Nacional em 2027'})") == ""
+    assert "Câmaras frias a 25 graus" in pagina.evaluate("avisoTituloSite({id: 1, titulo: 'Câmaras frias a 25° graus'})")
+    assert "&lt;b&gt;" in pagina.evaluate("avisoTituloSite({id: 1, titulo: '<b>1ª parcela</b>'})")                 # o título é escapado
+    # a editora não autoriza: não vê a autorização nem o aviso dela; vê o do quadro “Para o site da Artecon” (o caminho manual)
+    pagina.click("text=Sair")
+    pagina.wait_for_selector("#email")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    assert pagina.locator("#sec-publicar .titulo-site").count() == 0 and "Só o administrador autoriza" in pagina.inner_text("#sec-publicar")
+    assert pagina.locator(f"#titulo-site-copiar-{c} b").inner_text() == radar_site.titulo_para_o_site(titulo)
 
 
 # ------------------------------------------------------------ v0.11.0 — IA com aviso e senha, análise, canais, link da fonte
@@ -6531,7 +6614,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.31.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.32.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -6545,7 +6628,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
-    assert "o administrador roda o sql/radar-setup-v0.31.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 a v0.31.0: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.32.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 a v0.32.0: o setup desta versão
     # v0.28.0: a tela nova com o banco da v0.27.0 (a vista das pessoas da peça sem a coluna termos_dispensados): o mesmo aviso, com o
     # setup da v0.28.0
     pagina.unroute("**/rest/v1/radar_pauta_pecas*")
@@ -6555,7 +6638,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
     aviso = pagina.inner_text("#pauta-sem-banco")
-    assert "precisa do banco da v0.31.0" in aviso and "o administrador roda o sql/radar-setup-v0.31.0.sql" in aviso
+    assert "precisa do banco da v0.32.0" in aviso and "o administrador roda o sql/radar-setup-v0.32.0.sql" in aviso
 
 
 def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
@@ -6921,7 +7004,8 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
     Brasília, e o número do aviso) e quantas pendências esperam; desligados, o recado; com o banco antigo (sem a função), o recado do SQL."""
     original = limpo.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0]
     assert original == {"ligado": True, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3,
-                        "pauta": True, "aprovacao": True, "video": True, "noticia": True}
+                        "pauta": True, "aprovacao": True, "video": True, "noticia": True,
+                        "vencimento": True, "copia": True}                                          # v0.32.0: os dois tipos novos
     try:
         limpo.execute("""insert into radar_lembretes (tipo, chave, ref, avisado_em, aviso)
                          values ('pauta', 'peca:1:2026-10-27', '{"n": 1}', '2026-10-26 19:01+00', 77)""")
@@ -6934,7 +7018,8 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
         sit = pagina.inner_text("#lembretes-situacao")
         for trecho in ["Agenda do banco: não instalada: rode de novo o sql/radar-redes-agenda.sql",
                        "Pauta de amanhã sem aprovação: 26/10 às 16:01, aviso nº 77", "Peça pronta esperando aprovação: nenhum ainda",
-                       "Vídeo do reel para conferir: nenhum ainda", "Notícia que não saiu: nenhum ainda", "Esperando o próximo lembrete: 1"]:
+                       "Vídeo do reel para conferir: nenhum ainda", "Notícia que não saiu: nenhum ainda", "Esperando o próximo lembrete: 1",
+                       "Vencimento de chave ou conta: nenhum ainda", "Cópia de segurança do mês: nenhum ainda"]:   # v0.32.0
             assert trecho in sit, trecho
         assert "Desligados" not in sit
         ajuda = pagina.inner_text("form[data-chave=lembretes] .sub")
@@ -6985,7 +7070,7 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         assert "A situação dos lembretes precisa do banco da v0.29.0" in pagina.inner_text("#lembretes-situacao")
-        assert "sql/radar-setup-v0.31.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 e v0.31.0: o setup desta versão
+        assert "sql/radar-setup-v0.32.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 a v0.32.0: o setup desta versão
     finally:
         limpo.execute("update radar_config set valor = %s where chave = 'lembretes'", (json.dumps(original),))
         limpo.execute("truncate radar_lembretes")
@@ -7414,7 +7499,7 @@ def test_painel_possivel_prorrogacao_e_conferido_so_admin(pagina, limpo, request
     assert pagina.locator("#prorrogacoes").count() == 0
     pagina.click("nav.abas >> text=Configurações")
     pagina.wait_for_selector("#prorrogacao-sem-banco >> text=O aviso de prorrogação precisa do banco da v0.30.0")
-    assert "o administrador roda o sql/radar-setup-v0.31.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.32.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0 e v0.32.0: o setup desta versão
     assert pagina.locator("#prorrogacoes-config").count() == 0
 
 
@@ -9391,7 +9476,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.31.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.32.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10742,3 +10827,382 @@ def test_cancelar_so_uma_rede_que_ia_junto_com_o_site(pagina, limpo):
     assert situacoes() == ("autorizado", {"instagram": "cancelado", "facebook": "aguardando_site"})
     assert "depois do site" in pagina.inner_text(".autorizacao li[data-canal=instagram]")
     assert "vai junto com o site" in pagina.inner_text(".autorizacao li[data-canal=facebook]")
+
+
+# ------------------------------------------------- v0.32.0: vencimentos de chaves e contas e cópia de segurança no OneDrive
+SEGREDO_TELA = "Isto parece o valor de uma chave. O quadro guarda só o nome e a data; o valor fica só nos segredos do Supabase ou do GitHub."
+
+
+@pytest.fixture()
+def quadro_tela(limpo):
+    """O quadro de vencimentos e o registro das cópias vazios antes e depois (as datas são relativas ao "hoje" de Brasília)."""
+    for tabela in ("radar_vencimentos", "radar_copias"):
+        limpo.execute(f"delete from {tabela}")
+    yield limpo
+    for tabela in ("radar_vencimentos", "radar_copias"):
+        limpo.execute(f"delete from {tabela}")
+
+
+def hoje_br():
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+
+
+def vencimento(db, nome, dias=None, **campos):
+    """Um item do quadro, vencendo daqui a "dias" dias (de Brasília); sem "dias", sem data."""
+    campos = {"nome": nome, "vence_em": (hoje_br() + timedelta(days=dias)).isoformat() if dias is not None else None, **campos}
+    return db.execute(f"insert into radar_vencimentos ({', '.join(campos)}) values ({', '.join(['%s'] * len(campos))}) returning id",
+                      tuple(campos.values())).fetchone()[0]
+
+
+def abrir_configuracoes(pg, email="admin@artecon.test"):
+    entrar(pg, email)
+    pg.wait_for_selector("text=Painel do dia")
+    pg.click("nav.abas >> text=Configurações")
+    pg.wait_for_selector("#vencimentos")
+
+
+def funcao_copia_imitada(pg, respostas, status=200):
+    """A função radar-copia imitada: responde pela ação do pedido e guarda o corpo e o Authorization de cada pedido."""
+    pedidos = []
+
+    def rota(r):
+        corpo = json.loads(r.request.post_data or "{}")
+        pedidos.append((corpo, r.request.headers.get("authorization", "")))
+        r.fulfill(status=status, content_type="application/json", body=json.dumps(respostas.get(corpo.get("acao"), {})))
+    pg.route("**/functions/v1/radar-copia", rota)
+    return pedidos
+
+
+def test_quadro_de_vencimentos_cores_e_ordem(pagina, quadro_tela):
+    db = quadro_tela
+    ids = {"desligado": vencimento(db, "Conta desligada de teste", 2, ativo=False),
+           "sem": vencimento(db, "Assinatura sem data de teste"),
+           "60": vencimento(db, "Domínio de teste", 60, tipo="dominio", onde_renovar="registro.br → Domínios → artecon.test"),
+           "20": vencimento(db, "Plano de teste", 20, tipo="assinatura", onde_renovar="https://exemplo.test/renovar"),
+           "5": vencimento(db, "Chave do robô de teste", 5, tipo="chave", observacao="Ana Teste renova"),
+           "1": vencimento(db, "Token de teste", 1),
+           "0": vencimento(db, "Segredo de teste", 0),
+           "-3": vencimento(db, "Conta vencida de teste", -3)}
+    abrir_configuracoes(pagina)
+    linhas = pagina.locator("#vencimentos table.venc-tabela tr[data-id]")
+    ordem = ["-3", "0", "1", "5", "20", "60", "sem", "desligado"]
+    assert [int(x) for x in linhas.evaluate_all("ls => ls.map(l => l.dataset.id)")] == [ids[k] for k in ordem]
+    selos = linhas.evaluate_all("ls => ls.map(l => [l.className, l.querySelector('.selo').className.trim(), l.querySelector('.selo').textContent])")
+    assert selos == [["vermelho", "selo erro", "Vencido há 3 dias"], ["vermelho", "selo erro", "Vence hoje"], ["vermelho", "selo erro", "Vence amanhã"],
+                     ["vermelho", "selo erro", "Vence em 5 dias"], ["amarelo", "selo alerta", "Vence em 20 dias"], ["", "selo ok", "Em dia"],
+                     ["", "selo", "Sem data — preencha"], ["", "selo", "Desligado (não lembra)"]]
+    assert linhas.nth(0).locator("td").first.inner_text() == str(ids["-3"])                   # a coluna Nº (só na tela)
+    assert "1 item sem data: clique em Editar e preencha a data de vencimento." in pagina.inner_text("#vencimentos")
+    # v0.32.0 (revisão): o e-mail (o aviso público no GitHub) leva só a data, nunca o número do item
+    assert "só com a data: nunca o nome nem o número do item (o aviso fica no GitHub, que é público)" in pagina.inner_text("#vencimentos")
+    link = pagina.locator(f'#vencimentos tr[data-id="{ids["20"]}"] a')
+    assert link.get_attribute("href") == "https://exemplo.test/renovar" and link.get_attribute("rel") == "noopener noreferrer" \
+        and link.get_attribute("target") == "_blank"
+    assert pagina.locator(f'#vencimentos tr[data-id="{ids["60"]}"] a').count() == 0                # o caminho em palavras: só texto
+    assert "registro.br → Domínios → artecon.test" in pagina.inner_text(f'#vencimentos tr[data-id="{ids["60"]}"]')
+    assert (hoje_br() + timedelta(days=60)).strftime("%d/%m/%Y") in pagina.inner_text(f'#vencimentos tr[data-id="{ids["60"]}"]')
+    assert sem_rolagem_lateral(pagina)
+    pagina.set_viewport_size({"width": 390, "height": 800})                                     # no celular: a tabela rola, a página não
+    assert sem_rolagem_lateral(pagina)
+    # o editor não vê a aba Configurações (e a leitura direta não traz nada). O botão Sair do cabeçalho, pelo seletor exato: as
+    # Configurações da v0.32.0 têm frases com "sair" ("Se não sair, tenta de novo…") que o "text=Sair" pode pegar no celular
+    pagina.set_viewport_size({"width": 1280, "height": 900})
+    pagina.click('header button[data-acao="sair"]')
+    pagina.wait_for_selector("#email")
+    entrar(pagina, "editora@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    assert pagina.locator("nav.abas >> text=Configurações").count() == 0
+    with como("authenticated", EDITOR) as c:
+        assert c.execute("select count(*) from radar_vencimentos").fetchone()[0] == 0
+
+
+def test_quadro_de_vencimentos_nao_quebra_a_data_nem_as_palavras(pagina, quadro_tela):
+    """v0.32.0 (prints da fase A): o main{overflow-wrap:anywhere} deixava a tabela do quadro encolher as colunas até quebrar no meio da
+    palavra: a data saía "14/10/202" + "6" e, no celular, as colunas Nome e Tipo quebravam quase letra a letra. A tabela tem largura
+    mínima (rola para o lado dentro do quadro, a página não), a data e os selos ficam numa linha só e as palavras de Nome e Tipo só
+    quebram entre palavras; só "Onde renovar" e "Observação" (endereços longos) podem quebrar no meio."""
+    db = quadro_tela
+    longo = "https://exemplo.test/" + "renovar-o-plano-de-teste/" * 6
+    obs = "Conferir a fatura e o cartão antes de renovar; " * 6
+    vencimento(db, "Segredo de aplicativo de teste no Azure", -3, onde_renovar=longo, observacao=obs)
+    vencimento(db, "Assinatura de teste", 20, tipo="assinatura", onde_renovar="portal.exemplo.test → Assinaturas → Renovar",
+               observacao=obs)
+    vencimento(db, "Domínio de teste", None, tipo="dominio")
+    abrir_configuracoes(pagina)
+    # para cada célula: as linhas da data e do selo; e cada palavra de Nome e Tipo numa linha só (um retângulo por palavra)
+    medir = r"""() => [...document.querySelectorAll("#vencimentos table.venc-tabela tr[data-id]")].map(tr => {
+        const tds = tr.querySelectorAll(":scope > td");
+        const linhas = el => { const r = document.createRange(); r.selectNodeContents(el);
+          return new Set([...r.getClientRects()].filter(x => x.width > 0).map(x => Math.round(x.top))).size; };
+        const partidas = el => { const quebradas = [];
+          const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          for(let n = w.nextNode(); n; n = w.nextNode()){
+            for(const m of n.textContent.matchAll(/\S+/g)){
+              const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+              const tops = new Set([...r.getClientRects()].filter(x => x.width > 0).map(x => Math.round(x.top)));
+              if(tops.size > 1) quebradas.push(m[0]);
+            } }
+          return quebradas; };
+        return {data: tds[4].textContent, linhasData: linhas(tds[4]), linhasSelo: linhas(tds[1].querySelector(".selo")),
+                partidas: [...partidas(tds[2]), ...partidas(tds[3])]};
+      })"""
+    tabela = "document.querySelector('#vencimentos table.venc-tabela')"
+    for largura in (1280, 390):
+        pagina.set_viewport_size({"width": largura, "height": 900})
+        celulas = pagina.evaluate(medir)
+        assert [c["data"] for c in celulas] == [(hoje_br() + timedelta(days=-3)).strftime("%d/%m/%Y"),
+                                                (hoje_br() + timedelta(days=20)).strftime("%d/%m/%Y"), "—"]
+        assert all(c["linhasData"] == 1 and c["linhasSelo"] == 1 and c["partidas"] == [] for c in celulas), (largura, celulas)
+        assert pagina.evaluate(f"{tabela}.getBoundingClientRect().width") >= 900                  # a largura mínima
+        assert sem_rolagem_lateral(pagina)                                                         # a página não rola para o lado
+    # no celular, a tabela rola dentro do quadro
+    assert pagina.evaluate(f"(r => r.scrollWidth > r.clientWidth)({tabela}.closest('.rolagem'))")
+    # "Onde renovar" (o endereço longo) continua quebrando dentro da coluna
+    assert pagina.evaluate("""(el => { const r = document.createRange(); r.selectNodeContents(el);
+        return new Set([...r.getClientRects()].filter(x => x.width > 0).map(x => Math.round(x.top))).size; })(
+        document.querySelector('#vencimentos td.onde'))""") > 1
+
+
+def test_incluir_editar_remover_e_valor_de_chave_recusado(pagina, quadro_tela):
+    db = quadro_tela
+    abrir_configuracoes(pagina)
+    pagina.click("#venc-novo summary")
+    form = pagina.locator("#venc-novo form")
+    data = (hoje_br() + timedelta(days=45)).isoformat()
+    form.locator("[name=nome]").fill("Conta de teste")
+    form.locator("[name=tipo]").select_option("conta")
+    form.locator("[name=vence_em]").fill(data)
+    form.locator("[name=onde_renovar]").fill("https://exemplo.test/conta")
+    form.locator("[name=observacao]").fill("Renovação anual.")
+    form.locator("button >> text=Salvar").click()
+    pagina.wait_for_selector("#recado >> text=Item salvo.")
+    [(vid, nome, tipo, vence, onde, obs, ativo)] = db.execute(
+        "select id, nome, tipo, vence_em::text, onde_renovar, observacao, ativo from radar_vencimentos").fetchall()
+    assert (nome, tipo, vence, onde, obs, ativo) == ("Conta de teste", "conta", data, "https://exemplo.test/conta", "Renovação anual.", True)
+    # o valor de uma chave colado no nome ou na observação: a tela recusa e nada é gravado
+    for campo, valor in [("nome", "Chave ghp_" + "A1b2" * 9), ("observacao", "o segredo é abc8Q~" + "Ab1.-~_x" * 5),
+                         ("onde_renovar", "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.abcdefghijk")]:
+        pagina.click("#venc-novo summary") if not pagina.locator("#venc-novo").evaluate("d => d.open") else None
+        form = pagina.locator("#venc-novo form")
+        form.locator("[name=nome]").fill("Conta nova de teste")
+        form.locator("[name=observacao]").fill("")
+        form.locator("[name=onde_renovar]").fill("")
+        form.locator(f"[name={campo}]").fill(valor)
+        limpar_recados(pagina)
+        form.locator("button >> text=Salvar").click()
+        pagina.wait_for_selector(f"#recado .erro >> text={SEGREDO_TELA}")
+    form.locator("[name=observacao]").fill("")
+    form.locator("[name=onde_renovar]").fill("http://exemplo.test/conta")
+    limpar_recados(pagina)
+    form.locator("button >> text=Salvar").click()
+    pagina.wait_for_selector("#recado .erro >> text=Use o endereço com https:// (ou escreva o caminho em palavras).")
+    assert db.execute("select count(*) from radar_vencimentos").fetchone()[0] == 1
+    # o mesmo valor mandado direto à API (fugindo da tela): o banco recusa (RADAR360) e o recado aparece
+    limpar_recados(pagina)
+    pagina.evaluate("executar(() => rest('POST', 'radar_vencimentos', {corpo:{nome:'Chave ghp_' + 'A1b2'.repeat(9)}}))")
+    pagina.wait_for_selector("#recado .erro >> text=isto parece o valor de uma chave")
+    assert db.execute("select count(*) from radar_vencimentos").fetchone()[0] == 1
+    # editar: troca o nome e a data
+    pagina.click(f'#vencimentos tr[data-id="{vid}"] >> text=Editar')
+    edit = pagina.locator(f'form[data-form=vencimento][data-id="{vid}"]')
+    assert edit.locator("[name=nome]").input_value() == "Conta de teste" and edit.locator("[name=vence_em]").input_value() == data
+    nova = (hoje_br() + timedelta(days=10)).isoformat()
+    edit.locator("[name=nome]").fill("Conta renomeada de teste")
+    edit.locator("[name=vence_em]").fill(nova)
+    edit.locator("[name=ativo]").uncheck()
+    limpar_recados(pagina)
+    edit.locator("button >> text=Salvar").click()
+    pagina.wait_for_selector("#recado >> text=Item salvo.")
+    assert db.execute("select nome, vence_em::text, ativo from radar_vencimentos where id = %s", (vid,)).fetchone() == (
+        "Conta renomeada de teste", nova, False)
+    assert pagina.locator("form[data-form=vencimento][data-id]").count() == 0                   # o formulário fecha
+    assert "Desligado (não lembra)" in pagina.inner_text(f'#vencimentos tr[data-id="{vid}"]')
+    # Cancelar fecha sem gravar
+    pagina.click(f'#vencimentos tr[data-id="{vid}"] >> text=Editar')
+    pagina.locator(f'form[data-form=vencimento][data-id="{vid}"] [name=nome]').fill("Não salvo")
+    pagina.click(f'form[data-form=vencimento][data-id="{vid}"] >> text=Cancelar')
+    pagina.wait_for_selector(f'#vencimentos tr[data-id="{vid}"] >> text=Conta renomeada de teste')
+    # remover, com a confirmação
+    limpar_recados(pagina)
+    pagina.click(f'#vencimentos tr[data-id="{vid}"] >> text=Remover')
+    pagina.wait_for_selector("#recado >> text=Item removido.")
+    assert db.execute("select count(*) from radar_vencimentos").fetchone()[0] == 0
+    assert "Nenhum vencimento anotado ainda." in pagina.inner_text("#vencimentos")
+
+
+def test_renovei_pede_a_nova_data(pagina, quadro_tela):
+    db = quadro_tela
+    vid = vencimento(db, "Segredo de teste", 3)
+    abrir_configuracoes(pagina)
+    pagina.click(f'#vencimentos tr[data-id="{vid}"] >> text=Renovei')
+    form = pagina.locator(f'form[data-form=vencimentoRenovei][data-id="{vid}"]')
+    amanha = (hoje_br() + timedelta(days=1)).isoformat()
+    assert form.locator("[name=nova]").get_attribute("min") == amanha
+    assert "Renove primeiro no site do serviço e, se for uma chave, troque o segredo no Supabase." in form.inner_text()
+    nova = (hoje_br() + timedelta(days=365)).isoformat()
+    form.locator("[name=nova]").fill(nova)
+    form.locator("text=Salvar a nova data").click()
+    pagina.wait_for_selector("#recado >> text=Vencimento renovado: nova data")
+    assert f"nova data {(hoje_br() + timedelta(days=365)).strftime('%d/%m/%Y')}" in pagina.inner_text("#recado")
+    assert db.execute("select vence_em::text, renovado_em is not null from radar_vencimentos where id = %s", (vid,)).fetchone() == (nova, True)
+    assert "renovado em " + hoje_br().strftime("%d/%m/%Y") in pagina.inner_text(f'#vencimentos tr[data-id="{vid}"]')
+    assert "Em dia" in pagina.inner_text(f'#vencimentos tr[data-id="{vid}"]')
+    # a data de hoje (num navegador sem o "min"): o banco recusa e o recado aparece
+    pagina.click(f'#vencimentos tr[data-id="{vid}"] >> text=Renovei')
+    form = pagina.locator(f'form[data-form=vencimentoRenovei][data-id="{vid}"]')
+    form.locator("[name=nova]").evaluate("i => i.removeAttribute('min')")
+    form.locator("[name=nova]").fill(hoje_br().isoformat())
+    limpar_recados(pagina)
+    form.locator("text=Salvar a nova data").click()
+    pagina.wait_for_selector("#recado .erro >> text=a nova data de vencimento precisa ser depois de hoje")
+    assert db.execute("select vence_em::text from radar_vencimentos where id = %s", (vid,)).fetchone()[0] == nova
+
+
+def test_acrescentar_os_conhecidos_sem_duplicar(pagina, quadro_tela):
+    db = quadro_tela
+    abrir_configuracoes(pagina)
+    pagina.click("[data-acao=venc-conhecidos]")
+    pagina.wait_for_selector("#recado >> text=9 vencimentos acrescentados, sem data: clique em Editar em cada um e preencha a data.")
+    assert db.execute("select count(*), count(vence_em) from radar_vencimentos").fetchone() == (9, 0)
+    assert pagina.locator("#vencimentos tr[data-id]").count() == 9
+    assert "9 itens sem data" in pagina.inner_text("#vencimentos")
+    for nome in ("Chave do robô do site no GitHub (RADAR_GITHUB_TOKEN)", "Segredo do aplicativo das cópias no Azure (COPIA_CLIENT_SECRET)",
+                 "Domínio artecon.cnt.br", "Assinatura do Microsoft 365"):
+        assert nome in pagina.inner_text("#vencimentos")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=venc-conhecidos]")
+    pagina.wait_for_selector("#recado >> text=Nada a acrescentar: o quadro já tem todos os vencimentos conhecidos.")
+    db.execute("delete from radar_vencimentos where codigo = 'meta_token'")
+    limpar_recados(pagina)
+    pagina.click("[data-acao=venc-conhecidos]")
+    pagina.wait_for_selector("#recado >> text=1 vencimento acrescentado, sem data")
+    assert db.execute("select count(*) from radar_vencimentos").fetchone()[0] == 9
+
+
+def test_copia_nao_configurada_e_funcao_ausente(pagina, quadro_tela):
+    pedidos = funcao_copia_imitada(pagina, {"situacao": {"versao": "0.32.0", "configurada": False, "invalidos": [],
+                                                        "faltam": ["COPIA_CLIENT_ID", "COPIA_CLIENT_SECRET", "COPIA_DRIVE_ID", "COPIA_PASTA_ID"]}})
+    abrir_configuracoes(pagina)
+    texto = pagina.inner_text("#copia-onedrive")
+    for trecho in ["Função radar-copia: instalada (versão 0.32.0)",
+                   "Ligação com o OneDrive: não configurada: faltam COPIA_CLIENT_ID, COPIA_CLIENT_SECRET, COPIA_DRIVE_ID, COPIA_PASTA_ID",
+                   "Agenda do banco: não instalada: rode o sql/radar-copia-agenda.sql (Supabase → SQL Editor)", "Última cópia: nenhuma ainda",
+                   "limite da cópia automática: 100 MB de dados", "não passa pelo GitHub",
+                   "numa pasta do seu OneDrive: Aplicativo Criado Artecon → Radar Artecon → Cópias de segurança."]:  # a do PowerShell
+        assert trecho in texto, trecho
+    assert pagina.locator("#copia-onedrive details.copia-passos").evaluate("d => d.open") is True       # o passo a passo aberto
+    # v0.32.0 (revisão): sem o User.Read (o consentimento do administrador o concederia junto) e o segredo só depois do PowerShell
+    passos = pagina.inner_text("#copia-onedrive details.copia-passos ol")
+    assert "tire o “User.Read” que o Entra põe sozinho (“…” → Remover permissão), para ficar só ela" in passos
+    assert passos.index("Files.SelectedOperations.Selected") < passos.index("bloco do PowerShell") < passos.index("novo segredo de 12 meses")
+    assert pagina.locator("[data-acao=copia-agora]").is_disabled() and pagina.locator("[data-acao=copia-testar]").is_enabled()
+    assert pedidos and all(c == {"acao": "situacao"} and a.startswith("Bearer ") for c, a in pedidos)
+    # a função ainda não instalada: os dois botões desligados
+    pagina.unroute("**/functions/v1/radar-copia")
+    pagina.route("**/functions/v1/radar-copia", lambda r: r.fulfill(status=404, content_type="application/json",
+                                                                     body='{"code":"NOT_FOUND","message":"Requested function was not found"}'))
+    pagina.reload()
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Configurações")
+    pagina.wait_for_selector("#copia-onedrive")
+    assert "Função radar-copia: não instalada (Supabase → Edge Functions)" in pagina.inner_text("#copia-onedrive")
+    assert pagina.locator("[data-acao=copia-agora]").is_disabled() and pagina.locator("[data-acao=copia-testar]").is_disabled()
+
+
+def test_copia_configurada_situacao_testar_e_fazer_agora(pagina, quadro_tela):
+    db = quadro_tela
+    db.execute("""insert into radar_copias (mes, origem, iniciado_em, concluido_em, ok, arquivo, bytes, bytes_brutos, linhas, tabelas, sha256)
+                  values ('2026-10-01', 'agenda', '2026-10-01 07:10+00', '2026-10-01 07:11+00', true, 'radar-copia-2026-10-01-0410.zip',
+                          12900000, 50331648, 45678, 30, %s)""", ("a" * 64,))
+    for k, erro in enumerate(["O OneDrive recusou o acesso (403 accessDenied): confira a liberação da pasta.", "Pasta não encontrada (404)."]):
+        db.execute("""insert into radar_copias (mes, origem, iniciado_em, concluido_em, ok, arquivo, erro)
+                      values ('2026-11-01', 'agenda', %s, %s, false, 'radar-copia-2026-11-01-0410.zip', %s)""",
+                   (f"2026-11-0{k + 1} 07:10+00", f"2026-11-0{k + 1} 07:11+00", erro))
+    itens = [{"item": f"Item {k}", "ok": True, "detalhe": "certo"} for k in range(1, 9)]
+    pedidos = funcao_copia_imitada(pagina, {
+        "situacao": {"versao": "0.32.0", "configurada": True, "faltam": [], "invalidos": []},
+        "testar": {"itens": itens, "tudo_certo": True, "configurada": True, "versao": "0.32.0"},
+        "copiar": {"ok": True, "arquivo": "radar-copia-2026-11-03-1010.zip", "bytes": 1258291, "bytes_brutos": 5000000, "linhas": 45678,
+                   "tabelas": 30, "mascarados": {}, "tempos": {"exportar_ms": 900, "compactar_ms": 300, "enviar_ms": 2000}, "versao": "0.32.0"}})
+    abrir_configuracoes(pagina)
+    texto = pagina.inner_text("#copia-onedrive")
+    for trecho in ["Ligação com o OneDrive: configurada",
+                   "Última cópia: 01/10 às 04:11 — 12,3 MB (48,0 MB de dados), 45.678 linhas em 30 tabelas (radar-copia-2026-10-01-0410.zip)",
+                   "Últimas falhas:", "02/11 às 04:10 — Pasta não encontrada (404).",
+                   "01/11 às 04:10 — O OneDrive recusou o acesso (403 accessDenied): confira a liberação da pasta."]:
+        assert trecho in texto, trecho
+    assert texto.index("02/11 às 04:10") < texto.index("01/11 às 04:10")                     # a falha mais nova antes
+    assert pagina.locator("#copia-onedrive details.copia-passos").evaluate("d => d.open") is False
+    pagina.click("text=Testar a ligação com o OneDrive")
+    pagina.wait_for_selector("#copia-resultado >> text=A ligação com o OneDrive está funcionando.")
+    assert pagina.locator("#copia-resultado ul.diag li").count() == 8 and pagina.locator("#copia-resultado .selo.ok").count() == 8
+    itens[5] = {"item": "O resto do OneDrive fica fora do alcance", "ok": False, "detalhe": "o aplicativo enxerga o OneDrive inteiro"}
+    pagina.click("text=Testar a ligação com o OneDrive")
+    pagina.wait_for_selector("#copia-resultado .selo.erro")
+    assert "o aplicativo enxerga o OneDrive inteiro" in pagina.inner_text("#copia-resultado")
+    pagina.evaluate("window.perguntas = []; window.confirm = m => (window.perguntas.push(m), true); 0")
+    limpar_recados(pagina)
+    pagina.click("text=Fazer a cópia agora")
+    pagina.wait_for_selector("#recado >> text=Cópia gravada no OneDrive: radar-copia-2026-11-03-1010.zip, 1,2 MB, 45.678 linhas.")
+    assert pagina.evaluate("window.perguntas")[0].startswith("Fazer agora uma cópia do banco inteiro no OneDrive?")
+    assert "O arquivo vai para a pasta Aplicativo Criado Artecon → Radar Artecon → Cópias de segurança." in pagina.evaluate("window.perguntas")[0]
+    copiar = [(c, a) for c, a in pedidos if c.get("acao") == "copiar"]
+    assert len(copiar) == 1 and copiar[0][1] == "Bearer " + pagina.evaluate("E.sessao.access_token")
+    assert [c["acao"] for c, _ in pedidos].count("testar") == 2
+
+
+def test_lembretes_vencimento_e_copia_nas_configuracoes(pagina, quadro_tela):
+    db = quadro_tela
+    original = db.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0]
+    try:
+        abrir_configuracoes(pagina)
+        ajuda = pagina.inner_text("form[data-chave=lembretes] .sub")
+        for trecho in ["vencimento: o quadro de vencimentos de chaves e contas (abaixo), 30, 7 e 1 dia antes e no dia",
+                       "copia: a cópia de segurança do mês no OneDrive que não saiu até o dia 2", "Aprovação, vídeo, notícia, vencimento e cópia só saem entre"]:
+            assert trecho in ajuda, trecho
+        sit = pagina.inner_text("#lembretes-situacao")
+        assert "Vencimento de chave ou conta: nenhum ainda" in sit and "Cópia de segurança do mês: nenhum ainda" in sit
+        campo, salvar = pagina.locator("#cfg-lembretes"), pagina.locator("form[data-chave=lembretes] button")
+        for ruim, aviso in [('{"vencimento": 1}', "“vencimento” é true ou false."), ('{"copia": "nao"}', "“copia” é true ou false.")]:
+            campo.fill(ruim)
+            limpar_recados(pagina)
+            salvar.click()
+            pagina.wait_for_selector(f"#recado .erro >> text={aviso}")
+        campo.fill(json.dumps({**original, "copia": False}))
+        limpar_recados(pagina)
+        salvar.click()
+        pagina.wait_for_selector("#recado >> text=Configuração salva.")
+        assert db.execute("select valor->'copia' from radar_config where chave = 'lembretes'").fetchone()[0] is False
+        # a tela e o banco concordam no que parece o valor de uma chave
+        exemplos = ["ghp_" + "A1b2" * 9, "github_pat_" + "11ABCDEFG0" * 3, "sb_secret_abc", "sb_publishable_abc", "iagw_radar_teste",
+                    "abc8Q~" + "Ab1.-~_x" * 5, jwt("anon"), "EAA" + "B7c" * 14, "-----BEGIN PRIVATE KEY-----", "z" * 40,
+                    "Chave do robô (RADAR_GITHUB_TOKEN)", "8b3c1d2e-1111-4a2b-9c3d-0123456789ab",
+                    "https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade/quickStartType~/null",
+                    "registro.br → Domínios", "z" * 39, "HTTPS://EXEMPLO.TEST/" + "a" * 60]
+        # v0.32.0 (revisão): o espaço rígido (U+00A0) e os outros espaços Unicode são espaço nos dois lados (antes a tela aceitava e o
+        # banco recusava o caminho colado do Word ou do Outlook)
+        nb = "\u00a0"
+        exemplos += [nb + "z" * 40 + nb, "\u3000ghp_" + "A1b2" * 9,
+                     f"admin.microsoft.com{nb}→{nb}Cobrança{nb}→{nb}Seus{nb}produtos{nb}→{nb}Microsoft{nb}365",
+                     f"Renovar{nb}no{nb}registro.br{nb}antes{nb}do{nb}vencimento{nb}do{nb}domínio",
+                     "Renovar\u2009no\u202fregistro.br\u3000antes\u2007do\u205fvencimento\ufeffdo\u1680domínio\u2028e\u2029conferir",
+                     "z" * 20 + "\u2007" + "z" * 20, f"https://exemplo.test/{'a' * 50}{nb}fim"]
+        tela = pagina.evaluate("xs => xs.map(pareceSegredo)", exemplos)
+        banco = [db.execute("select radar_vencimento_parece_segredo(%s)", (x,)).fetchone()[0] for x in exemplos]
+        assert tela == banco and tela == [True] * 10 + [False] * 6 + [True] * 2 + [False] * 5
+    finally:
+        db.execute("update radar_config set valor = %s where chave = 'lembretes'", (json.dumps(original),))
+
+
+def test_configuracoes_com_o_banco_antigo(pagina, quadro_tela):
+    """A tela nova com o banco de antes (sem a tabela do quadro nem a função da situação da cópia): os recados do SQL, e o resto das
+    Configurações abre."""
+    falta = lambda r: r.fulfill(status=404, content_type="application/json",
+                                body='{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table"}')
+    pagina.route("**/rest/v1/radar_vencimentos*", falta)
+    pagina.route("**/rest/v1/rpc/radar_copias_situacao*", falta)
+    abrir_configuracoes(pagina)
+    pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
+    assert "O quadro de vencimentos precisa do banco novo: o administrador roda o sql/radar-setup-v0.32.0.sql" in pagina.inner_text("#vencimentos")
+    assert "A cópia de segurança precisa do banco novo: o administrador roda o sql/radar-setup-v0.32.0.sql" in pagina.inner_text("#copia-onedrive")
+    assert pagina.locator("[data-acao=venc-conhecidos]").count() == 0 and pagina.locator("[data-acao=copia-agora]").count() == 0

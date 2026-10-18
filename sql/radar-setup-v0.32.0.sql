@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.31.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.32.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -46,7 +46,11 @@
 -- endereço, e o texto oficial colado de um ato podia ser ligado à captura de outro. A fonte rfb-normas da carga inicial passa a usar a
 -- pesquisa nova do Normas (na instalação que já existe, quem troca é o sql/radar-fontes-novas-v0.31.0.sql, que também cadastra as
 -- fontes novas). Nenhuma tabela ou coluna nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
--- Reversão: radar-reversao-v0.31.0.sql
+-- v0.32.0 (bloco “v0.32.0”, perto do fim): o quadro de vencimentos de chaves e contas (radar_vencimentos, só o administrador) e o
+-- registro da cópia mensal do banco no OneDrive (radar_copias, só a situação; o arquivo nunca passa pelo banco); dois tipos novos de
+-- lembrete, "vencimento" e "copia"; as funções radar_vencimento*, radar_copia_conferir_agenda e radar_copias_*. A agenda da cópia fica
+-- em sql/radar-copia-agenda.sql, rodado DEPOIS deste. Nada é apagado.
+-- Reversão: radar-reversao-v0.32.0.sql
 -- =====================================================================
 
 begin;
@@ -72,7 +76,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.31.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.32.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -5989,6 +5993,7 @@ end $$;
 -- "08:00" e "20:00"); "aprovacao_horas": inteiro de 1 a 168 (padrão 24); "parada_horas": inteiro de 1 a 48 (padrão 3). v0.29.0
 -- (revisão): a agenda confere de 15 em 15 minutos, então "hora" vai até "23:45" (depois disso, nenhuma rodada alcançaria o lembrete da
 -- Pauta) e entre "de" e "ate" há pelo menos 15 minutos (com "de" depois de "ate", ou perto demais, valem os dois padrões).
+-- v0.32.0: redefinida no bloco “v0.32.0” (perto do fim do arquivo), que é a que vale.
 create or replace function public.radar_lembretes_cfg() returns jsonb
 language plpgsql stable set search_path = public as $$
 declare
@@ -6052,6 +6057,7 @@ $$;
 --             Instagram e o Facebook da notícia com erro ou que ainda não saíram (desde quando ficaram autorizados, também os que
 --             esperavam o site, ou desde o início do envio; os da Pauta têm o aviso "publicação agendada não saiu"). Erro de mais de 7
 --             dias fica de fora (a primeira rodada não traz o que é antigo)
+-- v0.32.0: redefinida no bloco “v0.32.0” (perto do fim do arquivo), que é a que vale.
 create or replace function public.radar_lembretes_observar(p_agora timestamptz) returns void
 language plpgsql set search_path = public as $$
 declare
@@ -6136,6 +6142,7 @@ end $$;
 -- Os tipos que podem mandar lembrete agora (depois de observar): ligados em Configurações → Lembretes por e-mail, no horário de Brasília
 -- (a Pauta a partir da "hora", até o fim do dia; os outros entre "de" e "ate"), sem e-mail do tipo HOJE e com pendência nova e madura.
 -- "ligado": false = nada é observado nem devolvido. Só o dono executa.
+-- v0.32.0: redefinida no bloco “v0.32.0” (perto do fim do arquivo), que é a que vale.
 create or replace function public.radar_lembretes_devidos(p_agora timestamptz) returns text[]
 language plpgsql set search_path = public as $$
 declare
@@ -6279,6 +6286,7 @@ $$;
 -- radar-redes-agenda-lembretes do sql/radar-redes-agenda.sql) instalada e a última rodada dela; por tipo, o último lembrete (quando e o
 -- número do aviso); e quantas pendências esperam o próximo lembrete (as que já podem ser lembradas, dos tipos ligados). O pg_cron só
 -- aparece dentro de "execute": sem ele (ou com qualquer erro), "instalada": false.
+-- v0.32.0: redefinida no bloco “v0.32.0” (perto do fim do arquivo), que é a que vale.
 create or replace function public.radar_lembretes_situacao() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare
@@ -7217,6 +7225,598 @@ select public.radar_reavaliar_capturas() as capturas_reavaliadas;
 -- v0.15.0: e têm a fundamentação legal lida pelas regras em vigor
 select public.radar_recalcular_base_legal() as capturas_base_legal;
 
+-- =====================================================================
+-- v0.32.0: quadro de vencimentos de chaves e contas e cópia mensal do banco no OneDrive
+-- (fica perto do fim, depois do laço que tira das funções radar_* o acesso público: por isso este bloco revoga e concede o seu)
+-- =====================================================================
+-- Só o NOME e a DATA do que vence: o valor de uma chave nunca entra aqui (o gatilho recusa texto com cara de chave). Só o
+-- administrador lê e grava (RLS). "codigo": os itens do botão "Acrescentar os vencimentos conhecidos" (não duplica).
+create table if not exists public.radar_vencimentos (
+  id            bigint generated always as identity primary key,
+  nome          text        not null check (length(btrim(nome)) between 2 and 120),
+  tipo          text        not null default 'outro' check (tipo in ('chave','conta','assinatura','dominio','outro')),
+  vence_em      date        check (vence_em between date '2000-01-01' and date '2100-12-31'),   -- sem data: não lembra
+  onde_renovar  text        check (length(onde_renovar) <= 500),                                  -- link https:// ou instrução
+  observacao    text        check (length(observacao) <= 1000),
+  ativo         boolean     not null default true,
+  renovado_em   timestamptz,                                                                       -- o último "Renovei"
+  codigo        text        unique check (codigo ~ '^[a-z0-9_]{3,40}$'),
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+
+-- A situação de cada cópia (nunca o conteúdo): o mês de Brasília, o nome do arquivo, o tamanho, as linhas, o sha256 do
+-- manifesto.json (que traz o sha256 de cada arquivo da cópia), ok (null = em andamento) e o erro curto.
+create table if not exists public.radar_copias (
+  id            bigint generated always as identity primary key,
+  mes           date        not null check (extract(day from mes) = 1),
+  origem        text        not null check (origem in ('agenda','admin')),
+  iniciado_em   timestamptz not null default now(),
+  concluido_em  timestamptz,
+  ok            boolean,
+  arquivo       text        not null check (arquivo ~ '^radar-copia-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}\.zip$'),
+  bytes         bigint      check (bytes >= 0),            -- o .zip enviado
+  bytes_brutos  bigint      check (bytes_brutos >= 0),     -- os dados antes de compactar (acompanha o limite da função)
+  linhas        bigint      check (linhas >= 0),
+  tabelas       int         check (tabelas between 0 and 200),
+  sha256        text        check (sha256 ~ '^[0-9a-f]{64}$'),
+  erro          text        check (length(erro) <= 300)
+);
+create index if not exists radar_copias_mes_idx on public.radar_copias (mes, ok);
+
+-- Os lembretes ganham dois tipos: "vencimento" (o quadro acima) e "copia" (a cópia do mês que não saiu). A restrição do tipo é
+-- trocada uma vez só (na 2ª rodada, já com os tipos novos, nada muda).
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.radar_lembretes'::regclass
+                  and conname = 'radar_lembretes_tipo_check' and pg_get_constraintdef(oid) like '%vencimento%') then
+    alter table public.radar_lembretes drop constraint if exists radar_lembretes_tipo_check;
+    alter table public.radar_lembretes add constraint radar_lembretes_tipo_check
+      check (tipo in ('pauta','aprovacao','video','noticia','vencimento','copia'));
+  end if;
+end $$;
+
+-- As quatro funções dos lembretes que conhecem os tipos (a configuração, o que está pendente, os tipos devidos e a situação),
+-- redefinidas com "vencimento" e "copia". As versões de cima (seção 2) ficam no lugar delas, mas a que vale é esta (vem depois).
+-- As outras sete (madura, acionar, ha_envio, lote_em, lote, enviado_em, enviado) servem a qualquer tipo e não mudam.
+
+-- radar_lembretes_cfg: "vencimento" e "copia" também são true ou false (padrão true).
+create or replace function public.radar_lembretes_cfg() returns jsonb
+language plpgsql stable set search_path = public as $$
+declare
+  v    jsonb := coalesce((select c.valor from public.radar_config c where c.chave = 'lembretes' and jsonb_typeof(c.valor) = 'object'), '{}');
+  r    jsonb := '{}';
+  k    text;
+  rx   constant text := '^([01][0-9]|2[0-3]):[0-5][0-9]$';
+  hora constant jsonb := '{"hora": "16:00", "de": "08:00", "ate": "20:00"}';
+  num  constant jsonb := '{"aprovacao_horas": [1, 168, 24], "parada_horas": [1, 48, 3]}';
+begin
+  foreach k in array array['ligado','pauta','aprovacao','video','noticia','vencimento','copia'] loop
+    r := r || jsonb_build_object(k, case when jsonb_typeof(v->k) = 'boolean' then v->k else 'true'::jsonb end);
+  end loop;
+  foreach k in array array['hora','de','ate'] loop
+    r := r || jsonb_build_object(k, case when jsonb_typeof(v->k) = 'string' and v->>k ~ rx and (k <> 'hora' or v->>k <= '23:45') then v->k
+                                         else hora->k end);
+  end loop;
+  if (r->>'ate')::time - (r->>'de')::time < interval '15 minutes' then
+    r := r || jsonb_build_object('de', hora->'de', 'ate', hora->'ate');
+  end if;
+  foreach k in array array['aprovacao_horas','parada_horas'] loop
+    r := r || jsonb_build_object(k, case when jsonb_typeof(v->k) is distinct from 'number' then num->k->2
+                                         when (v->>k)::numeric <> trunc((v->>k)::numeric)
+                                              or (v->>k)::numeric not between (num->k->>0)::numeric and (num->k->>1)::numeric then num->k->2
+                                         else to_jsonb((v->>k)::numeric::int) end);
+  end loop;
+  return r;
+end $$;
+
+-- radar_lembretes_observar: mais dois ramos em "atuais" (o quadro de vencimentos e a cópia do mês). Os tipos novos PRECISAM estar
+-- em "atuais": sem isso, o "fim" fecharia toda pendência deles.
+create or replace function public.radar_lembretes_observar(p_agora timestamptz) returns void
+language plpgsql set search_path = public as $$
+declare
+  v_hoje   date := (p_agora at time zone 'America/Sao_Paulo')::date;
+  v_mes    date := date_trunc('month', (p_agora at time zone 'America/Sao_Paulo')::date)::date;   -- v0.32.0: o mês da cópia
+  v_n      int;
+begin
+  perform pg_advisory_xact_lock(hashtext('radar_lembretes'));        -- a agenda e o robô ao mesmo tempo: um de cada vez
+  with atuais (tipo, chave, ref, aberto_em) as (
+    select 'pauta'::text, 'peca:' || p.id || ':' || to_char(p.data, 'YYYY-MM-DD'),
+           jsonb_build_object('n', p.id, 'data', to_char(p.data, 'YYYY-MM-DD'), 'hora', to_char(p.hora, 'HH24:MI'), 'formato', p.formato,
+                              'situacao', p.situacao), p_agora
+      from public.radar_pauta_pecas p
+     where p.data in (v_hoje, v_hoje + 1) and p.situacao in ('planejada','em_producao','pronta')
+       and p.tipo <> 'sem_post' and p.formato <> 'nenhum'
+    union all
+    select 'pauta', 'peca:' || p.id || ':' || to_char(p.data, 'YYYY-MM-DD') || ':manual',
+           jsonb_build_object('n', p.id, 'data', to_char(p.data, 'YYYY-MM-DD'), 'hora', to_char(p.hora, 'HH24:MI'), 'formato', p.formato,
+                              'situacao', 'aprovada_manual'), p_agora
+      from public.radar_pauta_pecas p
+     where p.data in (v_hoje - 1, v_hoje) and p.situacao = 'aprovada' and p.aprovado_modo = 'manual' and p.publicado_manual_em is null
+       and p.link_instagram is null and p.link_facebook is null and p.tipo <> 'sem_post' and p.formato <> 'nenhum'
+       and (p.data + p.hora) at time zone 'America/Sao_Paulo' <= p_agora - interval '1 hour'
+    union all
+    select 'aprovacao', 'aprovacao:' || p.id,
+           jsonb_build_object('n', p.id, 'data', to_char(p.data, 'YYYY-MM-DD'), 'hora', to_char(p.hora, 'HH24:MI'), 'formato', p.formato),
+           least(p.atualizado_em, p_agora)
+      from public.radar_pauta_pecas p
+     where p.situacao = 'pronta' and p.data >= v_hoje and p.tipo <> 'sem_post' and p.formato <> 'nenhum'
+    union all
+    select 'video', 'video:' || v.id || ':' || v.rodada || ':' || v.situacao,
+           jsonb_build_object('n', p.id, 'data', to_char(p.data, 'YYYY-MM-DD'), 'formato', p.formato, 'situacao', v.situacao), p_agora
+      from public.radar_videos v join public.radar_pauta_pecas p on p.id = v.peca_id
+     where v.situacao in ('pronto','regravar','erro') and p.data >= v_hoje and p.situacao <> 'cancelada'
+       and p.tipo <> 'sem_post' and p.formato <> 'nenhum'
+       and not (p.situacao = 'aprovada' and p.video_id is not distinct from v.id)
+    union all
+    select 'noticia', 'site:' || e.id || ':erro',
+           jsonb_build_object('n', e.id, 'canal', 'site', 'situacao', 'erro', 'desde', e.autorizado_em), p_agora
+      from public.radar_site_envios e join public.radar_conteudos c on c.id = e.conteudo_id
+     where e.situacao = 'erro' and e.atualizado_em >= p_agora - interval '7 days'
+       and c.status = 'aprovado' and not c.fora_do_site
+       and not exists (select 1 from public.radar_site_envios o where o.conteudo_id = e.conteudo_id and o.id > e.id)
+       and not exists (select 1 from public.radar_divulgacoes d where d.conteudo_id = e.conteudo_id)
+    union all
+    select 'noticia', 'site:' || e.id || ':parada',
+           jsonb_build_object('n', e.id, 'canal', 'site', 'situacao', 'parada', 'desde', e.autorizado_em), least(e.autorizado_em, p_agora)
+      from public.radar_site_envios e
+     where e.situacao in ('autorizado','enviando')
+    union all
+    select 'noticia', 'redes:' || e.id || ':' || case when e.situacao = 'erro' then 'erro' else 'parada' end,
+           jsonb_build_object('n', e.id, 'canal', e.canal, 'situacao', case when e.situacao = 'erro' then 'erro' else 'parada' end,
+                              'desde', e.autorizado_em),
+           -- parada: desde quando ficou autorizada (também a que esperava o site) ou, "enviando", desde o início do envio
+           case when e.situacao = 'erro' then p_agora
+                else least(coalesce(case when e.situacao = 'enviando' then e.enviado_em end, e.atualizado_em), p_agora) end
+      from public.radar_redes_envios e
+     where e.conteudo_id is not null
+       and ((e.situacao = 'erro' and e.atualizado_em >= p_agora - interval '7 days') or e.situacao in ('autorizado','enviando'))
+    union all
+    -- v0.32.0: o quadro de vencimentos. O "ref" leva o número do item (só para a ordem), a data e quantos dias faltam, nunca o nome;
+    -- o texto público do robô leva só a data (v0.32.0, revisão: os números dos itens conhecidos seguem a ordem do SQL público e
+    -- diriam qual chave vence). O marco de agora: 30 (de 30 a 8 dias antes), 7 (de 7 a 2), 1 (na véspera) ou 0 (no dia e depois).
+    -- Um episódio por item, data e marco: cada marco é lembrado uma vez só (o já avisado não volta: "novas", abaixo); o que passou
+    -- sem e-mail (desligado, item novo, data trocada) fecha sozinho, sem acumular. Sem data ou desligado ("ativo" false): nada.
+    -- "Renovei" troca a data: os episódios da data antiga fecham.
+    select 'vencimento', 'vencimento:' || v.id || ':' || to_char(v.vence_em, 'YYYY-MM-DD') || ':' || m.marco,
+           jsonb_build_object('n', v.id, 'data', to_char(v.vence_em, 'YYYY-MM-DD'),
+                              'situacao', case when m.dias < 0 then 'vencido' when m.dias = 0 then 'hoje' else m.dias::text end),
+           p_agora
+      from public.radar_vencimentos v
+      cross join lateral (select v.vence_em - v_hoje as dias) d
+      cross join lateral (select d.dias, case when d.dias <= 0 then 0 when d.dias = 1 then 1 when d.dias <= 7 then 7
+                                              when d.dias <= 30 then 30 end as marco) m
+     where v.ativo and v.vence_em is not null and m.marco is not null
+    union all
+    -- v0.32.0: a cópia de segurança do mês (radar_copias) que não foi concluída até o dia 2 às 06:00 de Brasília (depois das três
+    -- tentativas da agenda: dia 1 às 04h10 e às 05h10, dia 2 às 04h10). Só depois que a cópia já deu certo num mês anterior, ou com
+    -- falha registrada neste mês: sem configurar, nada. Um episódio por mês; fecha com a cópia boa ou na virada do mês.
+    select 'copia', 'copia:' || to_char(v_mes, 'YYYY-MM'), jsonb_build_object('data', to_char(v_mes, 'YYYY-MM-DD')), p_agora
+     where p_agora >= ((v_mes + 1)::timestamp + interval '6 hours') at time zone 'America/Sao_Paulo'
+       and not exists (select 1 from public.radar_copias c where c.mes = v_mes and c.ok)
+       and (exists (select 1 from public.radar_copias c where c.ok and c.mes < v_mes)
+            or exists (select 1 from public.radar_copias c where c.mes = v_mes and c.ok is false))
+  ),
+  novas as (
+    insert into public.radar_lembretes (tipo, chave, ref, aberto_em)
+    select a.tipo, a.chave, a.ref, a.aberto_em from atuais a
+     -- v0.32.0 (revisão): o marco do vencimento (e o mês da cópia) que já foi a um e-mail não volta como episódio novo. Sem isto,
+     -- desligar e religar o item ("lembrar deste item"), ou trocar a data e voltar à de antes, fechava o episódio já avisado e o
+     -- mesmo marco ia a outro e-mail. Cada marco uma vez só por item e data; cada mês da cópia, uma vez só.
+     where a.tipo not in ('vencimento','copia')
+        or not exists (select 1 from public.radar_lembretes l where l.tipo = a.tipo and l.chave = a.chave and l.avisado_em is not null)
+    on conflict (tipo, chave) where resolvido_em is null do nothing
+    returning 1
+  ),
+  refs as (
+    update public.radar_lembretes l set ref = a.ref
+      from atuais a
+     where l.tipo = a.tipo and l.chave = a.chave and l.resolvido_em is null and l.avisado_em is null and l.lote is null
+       and l.ref is distinct from a.ref
+    returning 1
+  ),
+  fim as (
+    update public.radar_lembretes l set resolvido_em = p_agora
+     where l.resolvido_em is null and not exists (select 1 from atuais a where a.tipo = l.tipo and a.chave = l.chave)
+    returning 1
+  )
+  select (select count(*) from novas) + (select count(*) from refs) + (select count(*) from fim) into v_n;
+  delete from public.radar_lembretes where resolvido_em < p_agora - interval '90 days';
+end $$;
+
+-- radar_lembretes_devidos: os tipos novos seguem o horário "de"–"ate", como aprovação, vídeo e notícia (um e-mail por tipo por dia).
+create or replace function public.radar_lembretes_devidos(p_agora timestamptz) returns text[]
+language plpgsql set search_path = public as $$
+declare
+  v_cfg  jsonb := public.radar_lembretes_cfg();
+  v_hoje date := (p_agora at time zone 'America/Sao_Paulo')::date;
+  v_hm   time := to_char(p_agora at time zone 'America/Sao_Paulo', 'HH24:MI')::time;
+  v      text[] := '{}';
+  t      text;
+begin
+  if not (v_cfg->>'ligado')::boolean then
+    return v;
+  end if;
+  perform public.radar_lembretes_observar(p_agora);
+  foreach t in array array['pauta','aprovacao','video','noticia','vencimento','copia'] loop
+    continue when not (v_cfg->>t)::boolean;
+    continue when case when t = 'pauta' then v_hm < (v_cfg->>'hora')::time
+                       else v_hm < (v_cfg->>'de')::time or v_hm > (v_cfg->>'ate')::time end;
+    -- no máximo um e-mail por tipo por dia (de Brasília; o dia do e-mail é o da reserva: radar_lembretes_enviado_em)
+    continue when exists (select 1 from public.radar_lembretes l
+                           where l.tipo = t and l.avisado_em is not null and (l.avisado_em at time zone 'America/Sao_Paulo')::date = v_hoje);
+    if exists (select 1 from public.radar_lembretes l
+                where l.tipo = t and l.resolvido_em is null and l.avisado_em is null
+                  and public.radar_lembretes_madura(l.tipo, l.chave, l.ref, l.aberto_em, v_cfg, p_agora)) then
+      v := v || t;
+    end if;
+  end loop;
+  return v;
+end $$;
+
+-- radar_lembretes_situacao: o último lembrete dos seis tipos.
+create or replace function public.radar_lembretes_situacao() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_cfg    jsonb := public.radar_lembretes_cfg();
+  v_ativa  boolean;
+  v_ult    timestamptz;
+  v_status text;
+  v_agenda jsonb;
+  v_tipos  jsonb := '{}';
+  t        text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    return '{}'::jsonb;
+  end if;
+  begin
+    execute 'select j.active from cron.job j where j.jobname = ''radar-redes-agenda-lembretes'' limit 1' into v_ativa;
+    if v_ativa is null then
+      v_agenda := jsonb_build_object('instalada', false);
+    else
+      execute 'select coalesce(d.end_time, d.start_time), d.status from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+                where j.jobname = ''radar-redes-agenda-lembretes'' order by d.start_time desc nulls last limit 1' into v_ult, v_status;
+      v_agenda := jsonb_build_object('instalada', true, 'ativa', v_ativa, 'ultima_execucao', v_ult, 'ultimo_status', v_status);
+    end if;
+  exception when others then
+    v_agenda := jsonb_build_object('instalada', false);
+  end;
+  foreach t in array array['pauta','aprovacao','video','noticia','vencimento','copia'] loop
+    v_tipos := v_tipos || jsonb_build_object(t, (select jsonb_build_object('em', l.avisado_em, 'aviso', l.aviso) from public.radar_lembretes l
+                                                  where l.tipo = t and l.avisado_em is not null order by l.avisado_em desc, l.id desc limit 1));
+  end loop;
+  return jsonb_build_object('agenda', v_agenda, 'tipos', v_tipos,
+                            'esperando', (select count(*) from public.radar_lembretes l
+                                           where l.resolvido_em is null and l.avisado_em is null and (v_cfg->>'ligado')::boolean
+                                             and (v_cfg->>l.tipo)::boolean
+                                             and public.radar_lembretes_madura(l.tipo, l.chave, l.ref, l.aberto_em, v_cfg, now())));
+end $$;
+
+-- Texto com cara de chave (o mesmo teste da tela, pareceSegredo, em index.html): prefixos conhecidos (Supabase, GitHub, IA Central,
+-- Meta, segredo de aplicativo do Azure, JWT, chave privada) ou um pedaço de 40+ caracteres sem espaço fora de um endereço https.
+-- v0.32.0 (revisão): "espaço" é a mesma lista explícita nos dois lados (a do \s do JavaScript: também o espaço rígido U+00A0 do
+-- texto colado do Word, do Outlook ou de uma página, e os outros espaços Unicode), trocada por um espaço comum antes do teste. O
+-- [[:space:]] do banco depende do locale (no C.UTF-8 e na glibc o U+00A0 não é espaço): a tela aceitava e o banco recusava.
+create or replace function public.radar_vencimento_parece_segredo(p text) returns boolean
+language sql immutable set search_path = public as $$
+  select s ~ '(sb_(secret|publishable)_|gh[pousr]_[A-Za-z0-9]{20}|github_pat_|iagw_|EAA[A-Za-z0-9]{30}|[0-9]Q~[A-Za-z0-9_.~-]{20}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|-----BEGIN)'
+      or regexp_replace(s, 'https?://[^ ]+', '', 'gi') ~ '[^ ]{40,}'
+    from (select regexp_replace(coalesce(p, ''), '[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]', ' ', 'g') as s) t
+$$;
+
+-- Gatilho do quadro: apara os textos, recusa texto com cara de chave (RADAR360) e link que não é https (RADAR361).
+-- security definer: chama radar_vencimento_parece_segredo, que ninguém mais executa.
+create or replace function public.radar_fn_vencimento() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  new.nome := btrim(new.nome);
+  new.onde_renovar := nullif(btrim(new.onde_renovar), '');
+  new.observacao := nullif(btrim(new.observacao), '');
+  if public.radar_vencimento_parece_segredo(new.nome) or public.radar_vencimento_parece_segredo(new.onde_renovar)
+     or public.radar_vencimento_parece_segredo(new.observacao) then
+    raise exception 'RADAR360: isto parece o valor de uma chave. O quadro guarda só o nome e a data; o valor fica só nos segredos do Supabase ou do GitHub.'
+      using errcode = 'P0001';
+  end if;
+  if new.onde_renovar ~* '^(javascript|data|vbscript|file):' or new.onde_renovar ~* '^http://' then
+    raise exception 'RADAR361: o link de onde renovar precisa começar com https:// (ou escreva o caminho em palavras).' using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+
+-- "Acrescentar os vencimentos conhecidos" (administrador): só os que faltam, SEM data. Devolve quantos entraram. Roda como quem chama
+-- (a RLS vale). v0.32.0 (revisão): "falta" não é só pelo codigo: o item que o administrador já incluiu à mão (codigo vazio) com o
+-- mesmo nome (sem diferença de maiúsculas e espaços) ou com o nome do segredo (o que vem entre parênteses, como COPIA_CLIENT_SECRET)
+-- também conta como já no quadro. Sem isso, o mesmo segredo ficava duas vezes, uma com data e outra sem.
+create or replace function public.radar_vencimentos_conhecidos() returns int
+language plpgsql set search_path = public as $$
+declare v_n int;
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR362: só o administrador mexe no quadro de vencimentos' using errcode = 'P0001';
+  end if;
+  insert into public.radar_vencimentos (codigo, nome, tipo, onde_renovar, observacao)
+  select k.codigo, k.nome, k.tipo, k.onde, k.obs from (values
+    ('github_robo_site', 'Chave do robô do site no GitHub (RADAR_GITHUB_TOKEN)', 'chave',
+     'GitHub → foto do perfil → Settings → Developer settings → Personal access tokens → Fine-grained tokens → “Radar — acionar o robô do site” → Regenerate token; depois troque RADAR_GITHUB_TOKEN em Supabase → Edge Functions → Secrets (LEIAME, “Robô do site na hora”).',
+     'A data aparece na lista de tokens do GitHub (Expires on).'),
+    ('github_corretor_video', 'Chave do corretor de vídeo no GitHub (RADAR_VIDEO_GITHUB_TOKEN)', 'chave',
+     'GitHub → Settings → Developer settings → Fine-grained tokens → “Radar — acionar o corretor de vídeo” → Regenerate token; depois troque RADAR_VIDEO_GITHUB_TOKEN em Supabase → Edge Functions → Secrets.',
+     'A data aparece na lista de tokens do GitHub (Expires on).'),
+    ('azure_itc_segredo', 'Segredo do aplicativo da ITC no Azure (GRAPH_CLIENT_SECRET)', 'chave',
+     'entra.microsoft.com → Registros de aplicativo → “Radar Artecon — boletim ITC” → Certificados e segredos → + Novo segredo do cliente; troque GRAPH_CLIENT_SECRET em Supabase → Edge Functions → Secrets e só depois apague o segredo antigo no Entra.',
+     'A data aparece na coluna “Expira” de Certificados e segredos.'),
+    ('azure_copia_segredo', 'Segredo do aplicativo das cópias no Azure (COPIA_CLIENT_SECRET)', 'chave',
+     'entra.microsoft.com → Registros de aplicativo → “Radar Artecon — cópias de segurança” → Certificados e segredos → + Novo segredo do cliente (12 meses); troque COPIA_CLIENT_SECRET no Supabase, clique em “Testar a ligação com o OneDrive” e só depois apague o segredo antigo.',
+     'Criado com 12 meses de validade.'),
+    ('azure_assinatura', 'Assinatura ou crédito do Azure', 'assinatura',
+     'portal.azure.com → Assinaturas (ou Gerenciamento de Custos + Cobrança) → confira a data de fim do crédito ou da assinatura.',
+     'É a conta do Azure dos recursos do Radar (por exemplo, a fala do corretor de vídeo).'),
+    ('meta_token', 'Token da Meta para o Instagram e o Facebook (META_PAGE_TOKEN)', 'chave',
+     'business.facebook.com → Configurações do negócio → Usuários do sistema → o usuário do Radar → Gerar token; troque META_PAGE_TOKEN em Supabase → Edge Functions → Secrets.',
+     'Gerado com validade “Nunca”: se o token tiver data, anote aqui; se não tiver, deixe sem data.'),
+    ('dominio_artecon', 'Domínio artecon.cnt.br', 'dominio',
+     'registro.br → entrar → Domínios → artecon.cnt.br → Renovar (ou confira a renovação automática).', null),
+    ('supabase_plano', 'Plano do Supabase', 'assinatura',
+     'supabase.com → Dashboard → a organização → Billing: confira o plano e o cartão de cobrança.', null),
+    ('microsoft_365', 'Assinatura do Microsoft 365', 'assinatura',
+     'admin.microsoft.com → Cobrança → Seus produtos → a assinatura → data de renovação.', null)
+  ) as k (codigo, nome, tipo, onde, obs)
+  where not exists (select 1 from public.radar_vencimentos v
+                     where lower(regexp_replace(btrim(v.nome), '\s+', ' ', 'g')) = lower(k.nome)
+                        or position(substring(k.nome from '\(([A-Z0-9_]{6,})\)$') in upper(v.nome)) > 0)   -- sem segredo: null
+  on conflict (codigo) do nothing;
+  get diagnostics v_n = row_count;
+  return v_n;
+end $$;
+
+-- "Renovei" (administrador): a nova data (depois de hoje, em Brasília) e a hora da renovação. Os lembretes da data antiga fecham.
+create or replace function public.radar_vencimentos_renovei(p_id bigint, p_nova date) returns void
+language plpgsql set search_path = public as $$
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR362: só o administrador mexe no quadro de vencimentos' using errcode = 'P0001';
+  end if;
+  if p_nova is null or p_nova <= (now() at time zone 'America/Sao_Paulo')::date then
+    raise exception 'RADAR365: a nova data de vencimento precisa ser depois de hoje' using errcode = 'P0001';
+  end if;
+  update public.radar_vencimentos set vence_em = p_nova, renovado_em = now() where id = p_id;
+  if not found then
+    raise exception 'RADAR367: item do quadro de vencimentos não encontrado' using errcode = 'P0001';
+  end if;
+end $$;
+
+-- A agenda da cópia (pg_cron, sql/radar-copia-agenda.sql) chama a radar-copia com a chave 'radar_copia_agenda' do Vault
+-- (cabeçalho x-radar-agenda). Igual à radar_itc_conferir_agenda: sem o Vault (ou sem a chave), nunca confere.
+create or replace function public.radar_copia_conferir_agenda(p_chave text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare v_certa text;
+begin
+  if length(coalesce(p_chave, '')) < 32 then return false; end if;
+  execute 'select decrypted_secret from vault.decrypted_secrets where name = ''radar_copia_agenda'' limit 1' into v_certa;
+  return v_certa is not null and length(v_certa) >= 32 and v_certa = p_chave;
+exception when others then
+  return false;
+end $$;
+
+-- Quem pode fazer a cópia: a agenda (com a chave do Vault) ou o administrador logado. Nunca a chave de serviço sozinha (ela é
+-- segredo dos robôs do repositório público). Interna: ninguém executa direto.
+create or replace function public.radar_copias_pode(p_chave text) returns boolean
+language sql stable set search_path = public as $$
+  select public.radar_copia_conferir_agenda(p_chave) or (auth.uid() is not null and coalesce(public.radar_papel(), '') = 'admin')
+$$;
+
+-- Começo da cópia: fecha como falha a que ficou "em andamento" há mais de 15 minutos (a função foi encerrada pelo Supabase), recusa
+-- se outra está em andamento (RADAR364) e registra esta. Devolve o nome do arquivo (hora de Brasília), a hora e a versão do banco.
+create or replace function public.radar_copias_comecar(p_chave text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_agenda boolean := public.radar_copia_conferir_agenda(p_chave);
+  v_agora  timestamptz := now();
+  v_br     timestamp := now() at time zone 'America/Sao_Paulo';
+  v_arq    text := 'radar-copia-' || to_char(now() at time zone 'America/Sao_Paulo', 'YYYY-MM-DD-HH24MI') || '.zip';
+  v_desde  timestamptz;
+  v_id     bigint;
+begin
+  if not (v_agenda or (auth.uid() is not null and coalesce(public.radar_papel(), '') = 'admin')) then
+    raise exception 'RADAR363: só a agenda da cópia ou o administrador fazem a cópia do banco' using errcode = 'P0001';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('radar_copias'));
+  update public.radar_copias set ok = false, concluido_em = v_agora,
+         erro = 'A cópia parou no meio (limite de tempo ou de memória da função no Supabase).'
+   where ok is null and iniciado_em < v_agora - interval '15 minutes';
+  select c.iniciado_em into v_desde from public.radar_copias c where c.ok is null order by c.id desc limit 1;
+  if v_desde is not null then
+    raise exception 'RADAR364: já há uma cópia em andamento (começou às %). Espere ela terminar.',
+      to_char(v_desde at time zone 'America/Sao_Paulo', 'HH24:MI') using errcode = 'P0001';
+  end if;
+  insert into public.radar_copias (mes, origem, iniciado_em, arquivo)
+  values (date_trunc('month', v_br)::date, case when v_agenda then 'agenda' else 'admin' end, v_agora, v_arq)
+  returning id into v_id;
+  return jsonb_build_object('id', v_id, 'arquivo', v_arq, 'origem', case when v_agenda then 'agenda' else 'admin' end,
+           'gerado_em', to_char(v_br, 'YYYY-MM-DD"T"HH24:MI:SS') || '-03:00',
+           'banco', (select i.versao from public.radar_instalacoes i where i.depois is not null order by i.id desc limit 1));
+end $$;
+
+-- Fim da cópia (só a que está em andamento). O erro é curto e sem controle; nunca o conteúdo.
+create or replace function public.radar_copias_terminar(p_chave text, p_id bigint, p_ok boolean, p_bytes bigint, p_bytes_brutos bigint,
+                                                        p_linhas bigint, p_tabelas int, p_sha256 text, p_erro text) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.radar_copias_pode(p_chave) then
+    raise exception 'RADAR363: só a agenda da cópia ou o administrador fazem a cópia do banco' using errcode = 'P0001';
+  end if;
+  update public.radar_copias
+     set ok = coalesce(p_ok, false), concluido_em = now(),
+         bytes = case when p_ok then p_bytes end, bytes_brutos = p_bytes_brutos, linhas = p_linhas, tabelas = p_tabelas,
+         sha256 = case when p_ok and p_sha256 ~ '^[0-9a-f]{64}$' then p_sha256 end,
+         erro = case when p_ok then null else left(regexp_replace(coalesce(p_erro, 'falhou'), '[[:cntrl:]]+', ' ', 'g'), 300) end
+   where id = p_id and ok is null;
+  return found;
+end $$;
+
+-- Uma página de uma tabela radar_* (base table do schema public), na ordem da chave primária, como JSON por linha, e no fim o
+-- MARCADOR da página: um texto JSON com a chave primária da última linha em hexadecimal (o PostgREST devolve
+-- [{…}, {…}, "7b2269…"] e o Content-Range "0-N/*": a função soma as linhas e acha o marcador sem ler o JSON). A página seguinte
+-- começa DEPOIS dessa chave (p_depois = o marcador; vazio na primeira). Página vazia: só []. Só a agenda (chave do Vault) ou o
+-- administrador. p_tamanho até 999 (o "max rows" do Supabase é 1000: as linhas e o marcador).
+-- v0.32.0 (revisão): pela chave, e não por OFFSET. Cada página é uma transação; com OFFSET, uma linha já exportada que fosse apagada
+-- entre duas páginas (uma capa trocada, a limpeza das imagens, uma exclusão da equipe) fazia a seguinte pular a fronteira e ficar
+-- fora da cópia, sem ninguém perceber (o manifesto contava o que foi lido). Pela chave, toda linha que existe do começo ao fim da
+-- cópia entra. E o marcador vem no fim: se o "max rows" cortasse a página, ele sumiria e a função recusaria a resposta.
+create or replace function public.radar_copias_exportar(p_chave text, p_tabela text, p_depois text, p_tamanho int) returns setof json
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_cols   text[];
+  v_ordem  text;
+  v_onde   text := '';
+  v_depois jsonb;
+  v_linha  json;
+  v_ult    json;
+begin
+  if not public.radar_copias_pode(p_chave) then
+    raise exception 'RADAR363: só a agenda da cópia ou o administrador fazem a cópia do banco' using errcode = 'P0001';
+  end if;
+  if coalesce(p_tabela, '') !~ '^radar_[a-z0-9_]{2,60}$' or not exists (
+       select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relkind = 'r' and c.relname = p_tabela) then
+    raise exception 'RADAR366: tabela fora da cópia: %', left(coalesce(p_tabela, ''), 80) using errcode = 'P0001';
+  end if;
+  if p_tamanho is null or p_tamanho not between 1 and 999 or coalesce(p_depois, '') !~ '^[0-9a-f]*$' or length(coalesce(p_depois, '')) > 2000
+     or length(coalesce(p_depois, '')) % 2 = 1 then
+    raise exception 'RADAR366: página inválida' using errcode = 'P0001';
+  end if;
+  select array_agg(a.attname::text order by array_position(i.indkey::int2[], a.attnum)) into v_cols
+    from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
+   where i.indrelid = ('public.' || quote_ident(p_tabela))::regclass and i.indisprimary;
+  if v_cols is null then
+    raise exception 'RADAR366: tabela sem chave primária: %', p_tabela using errcode = 'P0001';
+  end if;
+  select string_agg(format('t.%I', c), ', ' order by k) into v_ordem from unnest(v_cols) with ordinality u (c, k);
+  if coalesce(p_depois, '') <> '' then
+    begin
+      v_depois := convert_from(decode(p_depois, 'hex'), 'UTF8')::jsonb;
+    exception when others then
+      v_depois := null;
+    end;
+    if jsonb_typeof(v_depois) is distinct from 'object' or not (v_depois ?& v_cols) then
+      raise exception 'RADAR366: página inválida' using errcode = 'P0001';
+    end if;
+    -- (a, b) > (a', b'): a ordem da chave primária (também a composta), com os tipos da tabela
+    v_onde := format('where (%s) > (select %s from jsonb_populate_record(null::public.%I, $1) d)', v_ordem,
+                     (select string_agg(format('d.%I', c), ', ' order by k) from unnest(v_cols) with ordinality u (c, k)), p_tabela);
+  end if;
+  for v_linha in execute format('select row_to_json(t) from public.%I t %s order by %s limit %s', p_tabela, v_onde, v_ordem, p_tamanho)
+                 using v_depois loop
+    return next v_linha;
+    v_ult := v_linha;
+  end loop;
+  if v_ult is not null then
+    return next to_json(encode(convert_to((select json_object_agg(c, v_ult -> c) from unnest(v_cols) c)::text, 'UTF8'), 'hex'));
+  end if;
+end $$;
+
+-- A agenda (pg_cron, como dono) só chama de novo se o mês de Brasília ainda não tem cópia OK nem uma em andamento.
+create or replace function public.radar_copias_falta_mes() returns boolean
+language sql stable set search_path = public as $$
+  select not exists (select 1 from public.radar_copias c
+                      where (c.ok and c.mes = date_trunc('month', now() at time zone 'America/Sao_Paulo')::date)
+                         or (c.ok is null and c.iniciado_em > now() - interval '15 minutes'))
+$$;
+
+-- Configurações → Cópia de segurança no OneDrive (só o administrador; os outros recebem {}): a agenda do banco (o pg_cron só dentro
+-- de "execute"; sem ele, "instalada": false), a última cópia OK, até 3 falhas depois dela, a em andamento, se o mês já tem cópia e o
+-- tamanho das tabelas no disco.
+create or replace function public.radar_copias_situacao() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_ativa  boolean;
+  v_ult    timestamptz;
+  v_status text;
+  v_agenda jsonb;
+  v_ok     public.radar_copias;
+  v_mes    date := date_trunc('month', now() at time zone 'America/Sao_Paulo')::date;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    return '{}'::jsonb;
+  end if;
+  begin
+    execute 'select j.active from cron.job j where j.jobname = ''radar-copia'' limit 1' into v_ativa;
+    if v_ativa is null then
+      v_agenda := jsonb_build_object('instalada', false);
+    else
+      execute 'select coalesce(d.end_time, d.start_time), d.status from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+                where j.jobname like ''radar-copia%'' order by d.start_time desc nulls last limit 1' into v_ult, v_status;
+      v_agenda := jsonb_build_object('instalada', true, 'ativa', v_ativa, 'ultima_execucao', v_ult, 'ultimo_status', v_status);
+    end if;
+  exception when others then
+    v_agenda := jsonb_build_object('instalada', false);
+  end;
+  select c.* into v_ok from public.radar_copias c where c.ok order by c.concluido_em desc nulls last, c.id desc limit 1;
+  return jsonb_build_object(
+    'agenda', v_agenda,
+    'ultima_ok', case when v_ok.id is not null then jsonb_build_object('em', v_ok.concluido_em, 'arquivo', v_ok.arquivo, 'bytes', v_ok.bytes,
+                       'bytes_brutos', v_ok.bytes_brutos, 'linhas', v_ok.linhas, 'tabelas', v_ok.tabelas) end,
+    'falhas', coalesce((select jsonb_agg(jsonb_build_object('em', f.iniciado_em, 'erro', f.erro) order by f.id desc)
+                          from (select c.id, c.iniciado_em, c.erro from public.radar_copias c
+                                 where c.ok is false and c.id > coalesce(v_ok.id, 0) order by c.id desc limit 3) f), '[]'::jsonb),
+    'em_andamento', (select jsonb_build_object('desde', c.iniciado_em) from public.radar_copias c where c.ok is null order by c.id desc limit 1),
+    'mes_ok', exists (select 1 from public.radar_copias c where c.ok and c.mes = v_mes),
+    'tamanho_mb', (select round(coalesce(sum(pg_total_relation_size(c.oid)), 0) / 1048576.0, 1)
+                     from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                    where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\_%'));
+end $$;
+
+-- RLS: só o administrador (o quadro: lê e grava; as cópias: só lê, quem grava são as funções acima)
+alter table public.radar_vencimentos enable row level security;
+alter table public.radar_copias enable row level security;
+-- parte do zero (o Supabase concede tudo por padrão a quem cria depois do laço da seção 5)
+revoke all on public.radar_vencimentos, public.radar_copias from public, anon, authenticated, service_role;
+grant select, insert, update, delete on public.radar_vencimentos to authenticated;      -- quem decide é a RLS: só o administrador
+grant select on public.radar_copias to authenticated;                                   -- só leitura, só o administrador; grava só a função
+drop policy if exists radar_vencimentos_adm on public.radar_vencimentos;
+create policy radar_vencimentos_adm on public.radar_vencimentos for all to authenticated
+  using ((select public.radar_papel()) = 'admin') with check ((select public.radar_papel()) = 'admin');
+drop policy if exists radar_copias_sel on public.radar_copias;
+create policy radar_copias_sel on public.radar_copias for select to authenticated
+  using ((select public.radar_papel()) = 'admin');
+do $$
+declare s text;
+begin
+  foreach s in array array[pg_get_serial_sequence('public.radar_vencimentos', 'id'), pg_get_serial_sequence('public.radar_copias', 'id')] loop
+    execute format('revoke all on sequence %s from public, anon, authenticated, service_role', s);
+  end loop;
+end $$;
+drop trigger if exists radar_tg_vencimento on public.radar_vencimentos;
+create trigger radar_tg_vencimento before insert or update on public.radar_vencimentos
+  for each row execute function public.radar_fn_vencimento();
+drop trigger if exists radar_tg_vencimentos_atualizado on public.radar_vencimentos;
+create trigger radar_tg_vencimentos_atualizado before update on public.radar_vencimentos
+  for each row execute function public.radar_fn_atualizado_em();
+drop trigger if exists radar_tg_auditar on public.radar_vencimentos;                     -- na trilha (Histórico); radar_copias não
+create trigger radar_tg_auditar after insert or update or delete on public.radar_vencimentos
+  for each row execute function public.radar_fn_auditar();
+-- as funções novas: nada ao público; depois, só o necessário
+do $$
+declare f record;
+begin
+  for f in select p.oid::regprocedure as a from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public' and (p.proname like 'radar\_vencimento%' or p.proname like 'radar\_copias\_%'
+                                            or p.proname in ('radar_copia_conferir_agenda', 'radar_fn_vencimento')) loop
+    execute format('revoke all on function %s from public, anon, authenticated, service_role', f.a);
+  end loop;
+end $$;
+grant execute on function public.radar_vencimentos_conhecidos(), public.radar_vencimentos_renovei(bigint, date),
+                          public.radar_copias_situacao() to authenticated;                          -- cada uma confere o papel
+grant execute on function public.radar_copias_comecar(text),
+                          public.radar_copias_terminar(text, bigint, boolean, bigint, bigint, bigint, int, text, text),
+                          public.radar_copias_exportar(text, text, text, int) to authenticated, service_role;  -- chave do Vault ou administrador
+grant execute on function public.radar_copia_conferir_agenda(text) to service_role;
+-- radar_copias_pode, radar_copias_falta_mes (o pg_cron roda como dono), radar_vencimento_parece_segredo e radar_fn_vencimento: só o dono
+
+-- os lembretes ganham "vencimento" e "copia" (ligados); o que o administrador já ajustou fica: só as chaves que faltam
+update public.radar_config set valor = '{"vencimento": true, "copia": true}'::jsonb || valor
+ where chave = 'lembretes' and jsonb_typeof(valor) = 'object' and not (valor ? 'vencimento' and valor ? 'copia');
+
 -- ---------------------------------------------------------------------
 -- 7. REGISTRO DA INSTALAÇÃO E EVIDÊNCIA
 -- ---------------------------------------------------------------------
@@ -7229,7 +7829,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 28 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.31.0).
+-- Esperado: 30 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.32.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

@@ -26,6 +26,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 from bs4 import BeautifulSoup
 
+import radar_site
 import radar_site_admin as admin
 from radar_banco import Banco, ErroBanco
 from radar_util import ErroDownload, baixar
@@ -103,15 +104,20 @@ class Excluidor:
         return saida
 
     @staticmethod
+    def alvos(titulo: str) -> set[str]:
+        """v0.32.0: o título do pedido (o do Radar) e o que foi ao site (sem o "nº" e sem o "º"/"ª" depois de número), comparáveis."""
+        return {titulo_normal(t).rstrip(" .") for t in (titulo, radar_site.titulo_para_o_site(titulo))}
+
+    @staticmethod
     def achar(lista: list[dict], titulo: str) -> list[dict]:
-        alvo = titulo_normal(titulo).rstrip(" .")
-        iguais = [n for n in lista if n["titulo"].rstrip(" .") == alvo]
+        alvos = Excluidor.alvos(titulo)
+        iguais = [n for n in lista if n["titulo"].rstrip(" .") in alvos]
         if iguais:
             return iguais
         # o painel pode encurtar o título longo ("Título muito comprido..."): vale o começo, com pelo menos 30 caracteres; marcada
         # "pelo_comeco" (pode ser outra notícia da mesma série: um() confere o título inteiro antes de excluir)
         curtos = [(n, n["titulo"][:-3].rstrip()) for n in lista if n["titulo"].endswith("...")]
-        return [dict(n, pelo_comeco=True) for n, inicio in curtos if len(inicio) >= 30 and alvo.startswith(inicio)]
+        return [dict(n, pelo_comeco=True) for n, inicio in curtos if len(inicio) >= 30 and any(a.startswith(inicio) for a in alvos)]
 
     def titulo_inteiro(self, noticia: dict) -> str | None:
         """Rodada 2 da varredura geral: o título inteiro de uma notícia do painel, lido no formulário de edição dela (só abre a página,
@@ -197,7 +203,7 @@ class Excluidor:
                 raise admin.Parada("só achei no painel do site uma notícia com o mesmo começo de título (o título longo aparece cortado) "
                                    "e não consegui ler o título inteiro para confirmar que é a pedida. Exclua à mão no painel do site e "
                                    "depois tire o registro em Publicações")
-            if inteiro is None or inteiro.rstrip(" .") != titulo_normal(pedido["titulo"]).rstrip(" ."):
+            if inteiro is None or inteiro.rstrip(" .") not in self.alvos(pedido["titulo"]):
                 achadas = []                                # é outra notícia (ou a pedida já saiu do ar): não é esta que sai
         if not achadas:
             if self.saiu_do_site(pedido["url"]):            # já não está no painel nem no ar (excluída antes, à mão ou numa rodada interrompida)

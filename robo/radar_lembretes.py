@@ -6,7 +6,9 @@ Hoje o Radar avisa depois que algo falha (a Pauta "não saiu", a fonte parada). 
   para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada;
 - a peça pronta que espera a aprovação do administrador há mais de N horas;
 - o vídeo do reel que o corretor terminou (pronto para conferir, precisa regravar ou parou);
-- a notícia que não saiu: o envio ao site ou às redes com erro, ou a autorização parada há mais de X horas.
+- a notícia que não saiu: o envio ao site ou às redes com erro, ou a autorização parada há mais de X horas;
+- v0.32.0: o vencimento de uma chave ou conta do quadro de vencimentos (Configurações), 30, 7 e 1 dia antes e no dia;
+- v0.32.0: a cópia de segurança do mês no OneDrive que não saiu até o dia 2 (depois das tentativas automáticas dos dias 1 e 2).
 
 Quem decide o que lembrar e quando é o BANCO (radar_lembretes_lote: Configurações → Lembretes por e-mail, o horário, no máximo um
 e-mail por tipo por dia e cada pendência uma vez só; a pendência "fecha" sozinha quando é resolvida). Este robô só escreve: como os
@@ -16,7 +18,8 @@ nele (um e-mail). O robô nunca fecha nem edita o aviso (cada mudança mandaria 
 
 O repositório é público: o texto leva só a data, a hora, o formato, a situação, o canal e os números (da peça ou do envio). Nunca o
 assunto, o nome de quem aparece, a legenda, o texto do erro ou do boletim pago — o banco nem entrega isso ao robô. Nada é publicado por
-aqui.
+aqui. v0.32.0: o vencimento e a cópia levam só a data; nunca o nome do item, o número dele nem o motivo da falha (revisão: os
+números dos itens conhecidos seguem a ordem do SQL público, então "Item nº 4" diria qual chave vence).
 
 Se o robô cair depois de comentar e antes de confirmar, o mesmo lote volta na rodada seguinte ("retomado"): a marca escondida no fim
 do comentário (<!-- radar-lembrete: lote … itens … -->) mostra que ele já saiu, e o robô só confirma, sem repetir o e-mail.
@@ -42,7 +45,9 @@ PREFIXO_LEMBRETE = "Radar: lembrete — "
 TITULOS = {"pauta": PREFIXO_LEMBRETE + "Pauta de amanhã sem aprovação",
            "aprovacao": PREFIXO_LEMBRETE + "peça pronta esperando aprovação",
            "video": PREFIXO_LEMBRETE + "vídeo do reel para conferir",
-           "noticia": PREFIXO_LEMBRETE + "notícia que não saiu"}
+           "noticia": PREFIXO_LEMBRETE + "notícia que não saiu",
+           "vencimento": PREFIXO_LEMBRETE + "vencimento de chave ou conta",           # v0.32.0
+           "copia": PREFIXO_LEMBRETE + "cópia de segurança do mês"}
 ABERTURA = ("Este aviso fica aberto: é aqui que o Radar deixa os lembretes deste tipo. Cada lembrete novo chega como um comentário "
             "(um e-mail), no máximo um por dia. Não precisa fechar; se fechar, o próximo lembrete abre outro.")
 RODAPE = ("Cada pendência é lembrada uma vez só. Horário e liga/desliga: Radar → Configurações → Lembretes por e-mail (só o "
@@ -106,6 +111,31 @@ def _horas(n) -> str:
     return f"{n} hora" if n == 1 else f"{n} horas"
 
 
+def _dma(d: date | None) -> str:
+    return f"{d:%d/%m/%Y}" if d else "—"
+
+
+def _prazo(i: dict) -> str:
+    """v0.32.0: quanto falta para o vencimento do item do quadro ("vence em 30 dias (03/12/2026)"), pela "situacao" do banco: os dias
+    que faltam, "hoje" ou "vencido"."""
+    d, s = _dma(_dia(i.get("data"))), str(i.get("situacao") or "")
+    if s == "vencido":
+        return f"venceu em {d}"
+    if s == "hoje":
+        return f"vence hoje ({d})"
+    if s == "1":
+        return f"vence amanhã ({d})"
+    if s.isdigit():
+        return f"vence em {int(s)} dias ({d})"
+    return f"vence em {d}"
+
+
+def _mes(valor) -> str:
+    """v0.32.0: o mês da cópia ("11/2026")."""
+    d = _dia(valor)
+    return f"{d:%m/%Y}" if d else "—"
+
+
 QUANDO = {"amanha": "Amanhã", "hoje": "Hoje", "ontem": "Ontem"}
 NOMES_QUANDO = {"amanha": "a de amanhã", "hoje": "a de hoje", "ontem": "a de ontem"}
 
@@ -138,6 +168,11 @@ def _linha(tipo: str, i: dict, horas) -> str:
     if tipo == "video":
         return (f"- Reel de {_dia_semana(_dia(i.get('data')))} (peça nº {n}): "
                 f"{VIDEO.get(str(i.get('situacao')), 'o corretor terminou.')}")
+    if tipo == "vencimento":                                       # v0.32.0: só a data (o número do item diria qual é)
+        p = _prazo(i)
+        return f"- {p[0].upper()}{p[1:]}."
+    if tipo == "copia":
+        return f"- {_mes(i.get('data'))}: sem cópia concluída depois das tentativas automáticas dos dias 1 e 2."
     canal = CANAIS.get(str(i.get("canal")), str(i.get("canal") or "—"))
     if i.get("situacao") == "erro":
         estado = "o envio deu erro"
@@ -166,6 +201,16 @@ def corpo(tipo: str, grupo: dict) -> str:
         abre = ("**O corretor de vídeo terminou 1 reel que ainda não foi aprovado.**" if n == 1 else
                 f"**O corretor de vídeo terminou {n} reels que ainda não foram aprovados.**")
         fazer = "O que fazer: abra o Radar → **Pauta** → a peça do reel → quadro **Corretor de vídeo**."
+    elif tipo == "vencimento":                                     # v0.32.0: o mais próximo antes; só a data
+        itens = sorted(itens, key=lambda i: (str(i.get("data") or ""), int(i.get("n") or 0)))
+        abre = (f"**1 item do quadro de vencimentos {_prazo(itens[0])}: veja Configurações → Vencimentos.**" if n == 1 else
+                f"**{n} itens do quadro de vencimentos pedem atenção: veja Configurações → Vencimentos.**")
+        fazer = ("O que fazer: o administrador abre o Radar → **Configurações** → **Vencimentos de chaves e contas**, renova pelo caminho "
+                 "anotado no item e clica em **Renovei**, com a nova data. O Radar lembra 30, 7 e 1 dia antes e no dia do vencimento.")
+    elif tipo == "copia":                                          # v0.32.0: o motivo fica só no Radar
+        abre = f"**A cópia de segurança do mês {_mes(itens[0].get('data') if itens else None)} ainda não foi feita.**"
+        fazer = ("O que fazer: o administrador abre o Radar → **Configurações** → **Cópia de segurança no OneDrive**, clica em **Testar a "
+                 "ligação com o OneDrive** e depois em **Fazer a cópia agora**. O motivo aparece só ali, no Radar.")
     else:
         abre = "**1 publicação de notícia não saiu.**" if n == 1 else f"**{n} publicações de notícia não saíram.**"
         fazer = ("O que fazer: abra o Radar → **Publicações**: a notícia aparece como “Não concluída” ou “Autorizado — aguardando o "
@@ -216,7 +261,7 @@ def executar(banco: Banco, github: GitHub) -> list[str]:
     lote volta, "retomado") e os outros tipos seguem."""
     lote = banco.lembretes_lote()
     if lote is None:
-        return ["o banco ainda não tem os lembretes (rode o sql/radar-setup-v0.29.0.sql); nada a fazer"]
+        return ["o banco ainda não tem os lembretes (rode o setup do banco da v0.29.0 ou mais novo); nada a fazer"]
     grupos = [g for g in lote if g.get("tipo") in TITULOS and g.get("itens")]
     if not grupos:
         return []

@@ -19,7 +19,7 @@ import re
 
 import pytest
 
-from conftest import CRON_SIMULADO, NET_SIMULADO, RAIZ, SETUP, VAULT_SIMULADO, conectar, jwt, psql
+from conftest import CRON_SIMULADO, NET_SIMULADO, RAIZ, REVERSAO, SETUP, VAULT_SIMULADO, conectar, jwt, psql
 
 BANCO_AGENDA = "radar_agenda"
 EXTENSOES = ("pg_cron", "pg_net")
@@ -395,3 +395,90 @@ def test_as_tres_agendas_rodam_de_novo_sem_tocar_nas_extensoes(tmp_path):
             assert c.execute("select jobname, schedule, command from cron.job order by jobname").fetchall() == antes[0]
     finally:
         apagar_banco(banco)
+
+
+# ------------------------------------------------------------------- v0.32.0: a cópia mensal do banco no OneDrive
+AGENDA_COPIA = RAIZ / "sql" / "radar-copia-agenda.sql"
+AGENDA_COPIA_REVERSAO = RAIZ / "sql" / "radar-copia-agenda-reversao.sql"
+URL_COPIA = "https://jhxlsvzvqvufyhkjnmeq.supabase.co/functions/v1/radar-copia"
+
+
+def test_agenda_da_copia_mensal_e_reversao(tmp_path):
+    """sql/radar-copia-agenda.sql: roda duas vezes sem erro (com o gatilho da Supabase de mentira, sem tocar nas extensões) e igual; três
+    agendamentos (dia 1 às 04h10 e às 05h10, dia 2 às 04h10 de Brasília); a chave 'radar_copia_agenda' (64 caracteres) só no Vault, fora
+    dos comandos; o comando só pede a cópia quando o mês ainda não tem cópia OK nem uma em andamento, com só o x-radar-agenda (a
+    radar-copia fica com o "Verify JWT" desligado: sem Authorization nem apikey) e 150 s de espera; o teste do fim do arquivo roda como
+    está; sem o setup, para com o recado; a reversão tira os três (a chave fica), e a reversão do setup também."""
+    banco = "radar_agenda_copia"
+    novo_banco(banco, com_setup=True, simulados=True)
+    try:
+        with conectar(banco) as c:
+            c.execute(GATILHO_DA_SUPABASE)
+        antes = None
+        for vez in (1, 2):
+            r = psql(sem_extensoes(AGENDA_COPIA.read_text(), tmp_path, f"copia-{vez}.sql"), banco)
+            assert r.returncode == 0, (vez, r.stderr)
+            with conectar(banco) as c:
+                estado = (c.execute("select jobname, schedule, command, active from cron.job order by jobname").fetchall(),
+                          c.execute("select name, decrypted_secret from vault.decrypted_secrets order by name").fetchall())
+            assert antes is None or estado == antes, "a 2ª rodada refaz igual"
+            antes = estado
+        jobs, segredos = {n: (s, cmd, a) for n, s, cmd, a in antes[0]}, dict(antes[1])
+        assert {n: (s, a) for n, (s, _, a) in jobs.items()} == {"radar-copia": ("10 7 1 * *", True), "radar-copia-de-novo": ("10 8 1 * *", True),
+                                                               "radar-copia-dia-2": ("10 7 2 * *", True)}
+        assert list(segredos) == ["radar_copia_agenda"] and re.fullmatch(r"[0-9a-f]{64}", segredos["radar_copia_agenda"])
+        assert all(segredos["radar_copia_agenda"] not in cmd for _, cmd, _ in jobs.values())
+        assert len({cmd for _, cmd, _ in jobs.values()}) == 1                                    # o mesmo pedido nos três horários
+        comando = jobs["radar-copia"][1]
+        for trecho in (URL_COPIA, "'x-radar-agenda'", "vault.decrypted_secrets", "radar_copia_agenda", "where public.radar_copias_falta_mes()",
+                       "timeout_milliseconds := 150000", '{"acao": "copiar"}'):
+            assert trecho in comando, trecho
+        assert "Authorization" not in comando and "apikey" not in comando and "Bearer" not in comando
+        with conectar(banco) as c:
+            pedidos = lambda: (c.execute("truncate net.pedidos"), c.execute(comando),
+                               [tuple(r) for r in c.execute("select url, body, headers, timeout_milliseconds from net.pedidos order by id")])[2]
+            cab = {"Content-Type": "application/json", "x-radar-agenda": segredos["radar_copia_agenda"]}
+            assert pedidos() == [(URL_COPIA, {"acao": "copiar"}, cab, 150000)]                 # sem cópia no mês: pede
+            c.execute("""insert into radar_copias (mes, origem, iniciado_em, arquivo)
+                         values (date_trunc('month', now() at time zone 'America/Sao_Paulo')::date, 'agenda', now() - interval '3 minutes',
+                                 'radar-copia-2026-11-01-0410.zip')""")
+            assert pedidos() == []                                                              # uma em andamento: espera
+            c.execute("update radar_copias set iniciado_em = now() - interval '30 minutes'")
+            assert len(pedidos()) == 1                                                          # parada há 30 minutos: pede de novo
+            c.execute("update radar_copias set ok = true, concluido_em = now()")
+            assert pedidos() == []                                                              # o mês já tem cópia: nenhum pedido
+            # o teste do fim do arquivo (sem os "--"): um pedido "agenda_teste", com a chave do Vault
+            texto = AGENDA_COPIA.read_text()
+            trecho = texto[texto.index("-- Teste (não copia nada)"):]
+            linhas = re.findall(r"(?m)^--   (.*)$", trecho[:trecho.index("-- Depois de alguns segundos")])
+            assert len(linhas) == 3 and not re.search(r"<[^>]*>", "\n".join(linhas))
+            c.execute("truncate net.pedidos")
+            c.execute("\n".join(linhas))
+            assert [tuple(r) for r in c.execute("select url, body, headers from net.pedidos")] == [(URL_COPIA, {"acao": "agenda_teste"}, cab)]
+            for nome in ("radar-itc", "radar-video-reserva"):                                  # as outras agendas ficam
+                c.execute("select cron.schedule(%s, '55 5 * * *', 'select 1')", (nome,))
+        for _ in range(2):                                                                      # a reversão pode rodar mais de uma vez
+            r = psql(AGENDA_COPIA_REVERSAO, banco)
+            assert r.returncode == 0 and "Agenda da cópia retirada." in r.stderr, r.stderr
+        with conectar(banco) as c:
+            assert sorted(n for (n,) in c.execute("select jobname from cron.job")) == ["radar-itc", "radar-video-reserva"]
+            assert c.execute("select count(*) from vault.secrets where name = 'radar_copia_agenda'").fetchone()[0] == 1   # a chave fica
+        assert psql(sem_extensoes(AGENDA_COPIA.read_text(), tmp_path, "copia-3.sql"), banco).returncode == 0
+        with conectar(banco) as c:                                                              # de volta, com a mesma chave
+            assert c.execute("select decrypted_secret from vault.decrypted_secrets where name = 'radar_copia_agenda'").fetchone()[0] == \
+                segredos["radar_copia_agenda"]
+            c.execute("alter event trigger gatilho_da_supabase_simulado disable")
+        r = psql(REVERSAO, banco)                                                               # a reversão do setup tira a agenda também
+        assert r.returncode == 0, r.stderr
+        with conectar(banco) as c:
+            assert c.execute("select count(*) from cron.job where jobname like 'radar-copia%'").fetchone()[0] == 0
+    finally:
+        apagar_banco(banco)
+    novo_banco("radar_agenda_copia_sem", com_setup=False, simulados=True)                     # sem o setup: o recado, e nada fica pela metade
+    try:
+        r = psql(sem_extensoes(AGENDA_COPIA.read_text(), tmp_path, "copia-sem.sql"), "radar_agenda_copia_sem")
+        assert r.returncode != 0 and "Rode antes o radar-setup-v0.32.0.sql" in r.stderr
+        with conectar("radar_agenda_copia_sem") as c:
+            assert c.execute("select (select count(*) from vault.secrets), (select count(*) from cron.job)").fetchone() == (0, 0)
+    finally:
+        apagar_banco("radar_agenda_copia_sem")

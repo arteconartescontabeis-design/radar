@@ -1,4 +1,4 @@
-# Radar Artecon — v0.31.0
+# Radar Artecon — v0.32.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,25 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.32.0 traz o **quadro de vencimentos de chaves e contas** e a **cópia de segurança mensal do banco no OneDrive**. Em
+Configurações (só o administrador), cada chave, conta, assinatura e o domínio aparecem com a **data em que vence** e **onde renovar**
+(vermelho: vencido ou até 7 dias; amarelo: até 30 dias), com o **"Renovei"** e o botão **"Acrescentar os vencimentos conhecidos"**,
+que põe, sem data, os nove que o Radar usa (sem duplicar o que já foi anotado à mão). **O valor de uma chave nunca entra no quadro**:
+só o nome e a data (o banco recusa texto com cara de chave). O lembrete por e-mail **`vencimento`** sai 30, 7 e 1 dia antes e no dia,
+cada marco uma vez só, e o aviso público leva só a data. Todo **dia 1, às 04h10** de Brasília, a função nova **`radar-copia`** grava
+uma cópia do banco inteiro (as tabelas, em JSON, num .zip) numa pasta do OneDrive (**Aplicativo Criado Artecon → Radar Artecon →
+Cópias de segurança**); o aplicativo da Microsoft só enxerga essa pasta, e a cópia vai direto do Supabase para o OneDrive, **nunca
+pelo GitHub**. Se não sair, tenta de novo às 05h10 e no dia 2; se ainda assim não sair, chega o lembrete **`copia`**, sem detalhes.
+
+Mudam o banco (`sql/radar-setup-v0.32.0.sql`: as tabelas novas `radar_vencimentos` e `radar_copias`, **30 tabelas**; os tipos de
+lembrete `vencimento` e `copia`, ligados; nada é apagado), a tela (`index.html`: Configurações → Vencimentos de chaves e contas e Cópia
+de segurança no OneDrive; `radar-pauta.js` e `radar-video.js` só mudam a versão), o robô dos lembretes (`robo/radar_lembretes.py`) e
+o robô do site (`robo/radar_site_publicar.py`, `radar_site.py` e `radar_site_excluir.py`: o título vai ao site sem o "nº"; veja o passo 6
+de "Da v0.31.0 para a v0.32.0"). Entram a função `radar-copia` (`supabase/functions/radar-copia/index.ts`, **"Verify JWT" desligado**) e a agenda
+`sql/radar-copia-agenda.sql` (com a reversão `sql/radar-copia-agenda-reversao.sql`). **Nenhum segredo novo no GitHub**; os segredos
+da cópia (`COPIA_*`) ficam no Supabase. As funções `radar-ia`, `radar-redes`, `radar-itc` e `radar-video` e as outras agendas não
+mudam. **Rode o SQL antes de publicar a tela**: veja "Da v0.31.0 para a v0.32.0".
 
 A v0.31.0 traz as **fontes oficiais que faltavam**, sem enxurrada: as do Diário Oficial, a da Previdência e as do DOM/SC têm
 **filtro de tema**; o eSocial e o FGTS Digital, não (tudo o que publicam é do departamento pessoal, e são poucas notícias). Pelo **Diário Oficial da
@@ -31,7 +50,7 @@ por escolha desta versão, as notícias do **INSS** (quase tudo é orientação 
 Mudam o robô da coleta (`robo/radar_coletar.py`, `radar_coletores.py`, `radar_inlabs.py`, `radar_util.py`, `radar_diagnostico.py`,
 `radar_banco.py`, `robo/radar_fontes.json` e o novo `robo/radar_normas.py`; robô **0.31.0**), a tela (`index.html`: a conferência
 das palavras do tema na aba Fontes; `radar-pauta.js` e `radar-video.js` só mudam a versão), o workflow do diagnóstico (o campo
-"endereços" aceita o identificador de uma fonte, ligada ou não) e o banco (`sql/radar-setup-v0.31.0.sql`: só a função
+"endereços" aceita o identificador de uma fonte, ligada ou não) e o banco (`sql/radar-setup-v0.31.0.sql`, hoje `radar-setup-v0.32.0.sql`: só a função
 `radar_url_base`, para o texto oficial colado de um ato do Normas ir para a captura desse ato; nenhuma tabela nova, nada é apagado).
 Entra o `sql/radar-fontes-novas-v0.31.0.sql` (as fontes). **Nenhum segredo novo.** As funções `radar-ia`, `radar-redes` e
 `radar-video` e as agendas do banco não mudam. **O SQL das fontes só depois de o robô novo coletar uma vez**: veja "Da v0.30.0 para a
@@ -48,7 +67,7 @@ pelo botão **"Acrescentar o 13º e as obrigações anuais"** (Configurações �
 em prorrogar o prazo de uma obrigação da agenda, avisa no Painel, na edição do Informativo e por e-mail ao administrador (uma vez por
 notícia), **sem mudar data nenhuma**: quem confere na fonte oficial e põe a nova data é o administrador.
 
-Mudam o banco (`sql/radar-setup-v0.30.0.sql`, hoje `radar-setup-v0.31.0.sql`: duas funções novas, `radar_prorrogacao_obrigacoes` e `radar_prorrogacoes`; nenhuma
+Mudam o banco (`sql/radar-setup-v0.30.0.sql`, hoje `radar-setup-v0.32.0.sql`: duas funções novas, `radar_prorrogacao_obrigacoes` e `radar_prorrogacoes`; nenhuma
 tabela nova, nada é apagado; a lista de obrigações do escritório não muda), a tela (`index.html` e `radar-pauta.js`; o `radar-video.js`
 só muda a versão) e o robô dos avisos (`robo/radar_alertas.py` e `robo/radar_banco.py`, que entram no ar pelo merge). **Nenhum segredo
 novo.** As funções `radar-ia`, `radar-redes` e `radar-video`, as agendas do banco (`sql/radar-*-agenda.sql`) e o robô dos lembretes não
@@ -76,7 +95,7 @@ Quem decide o que lembrar e quando é o **banco**, com o relógio dele (o pg_cro
 minutos ele confere e, só quando há lembrete para mandar, pede à função `radar-redes` que acione o robô dos lembretes no GitHub. O
 próprio workflow também roda de hora em hora, de reserva.
 
-Mudam o banco (`sql/radar-setup-v0.29.0.sql`, hoje `radar-setup-v0.31.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
+Mudam o banco (`sql/radar-setup-v0.29.0.sql`, hoje `radar-setup-v0.32.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
 das Configurações; nada é apagado), a agenda do banco (`sql/radar-redes-agenda.sql`: o agendamento novo `radar-redes-agenda-lembretes`),
 a função `radar-redes` (0.22.0 → **0.29.0**: a ação nova `acionar_lembretes`, só da agenda do banco, e o robô dos lembretes na lista
 dos robôs que ela religa) e a tela (Configurações). Entram o robô `robo/radar_lembretes.py` e o workflow
@@ -91,7 +110,7 @@ do vídeo no "Corretor de vídeo", a conferência, o Gerar com IA, a aprovação
 a página. Agora a linha em branco não conta, o aviso diz **o que mudou e não foi salvo** (por exemplo, "Informações conferidas" ou
 "Quem aparece") e o Salvar sem nada para gravar destrava a peça. O texto digitado e não salvo continua barrando, como antes. Só a
 tela muda (`index.html`, `radar-pauta.js` e `radar-video.js`): o banco continua no `sql/radar-setup-v0.28.0.sql` (hoje
-`radar-setup-v0.31.0.sql`) e as funções e os
+`radar-setup-v0.32.0.sql`) e as funções e os
 robôs não mudam. Veja "Da v0.28.0 para a v0.28.1".
 
 A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
@@ -109,7 +128,7 @@ A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
   voz; a fala é a do roteiro). Marcar e tirar a marca pedem confirmação; para sócio(a), a data em "Revogado em" não vale (para tirar a
   pessoa das peças e dos vídeos, desmarque "Ativa"). Marcar e desmarcar fica no Histórico, sem o nome.
 
-Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.31.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
+Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.32.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
 termos; nenhuma tabela nova, nada é apagado) e a tela (`index.html`, `radar-pauta.js` e `radar-video.js`). As funções `radar-ia`,
 `radar-redes` e `radar-video`, as outras funções e os robôs não mudam. **Rode o SQL antes de publicar a tela**: veja "Da v0.27.0 para a
 v0.28.0".
@@ -561,7 +580,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.31.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.32.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -588,7 +607,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.31.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.32.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -625,7 +644,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.31.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.32.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -654,7 +673,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.31.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.32.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -662,7 +681,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.31.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.32.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -678,7 +697,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.31.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.32.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -693,7 +712,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.31.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.32.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -721,7 +740,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.31.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.32.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -733,7 +752,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.31.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.32.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -746,7 +765,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.31.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.32.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -758,7 +777,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.31.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.32.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -770,7 +789,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.31.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.32.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -785,7 +804,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.31.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.32.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -834,18 +853,20 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.31.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.31.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes) e do corretor de vídeo do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.32.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.32.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
 | `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda. É a única que toca no armazenamento privado `radar-videos`. |
+| `supabase/functions/radar-copia/index.ts` | Função da cópia de segurança mensal do banco no OneDrive (v0.32.0): exporta as tabelas, monta o .zip e grava na pasta das cópias pelo Microsoft Graph. O arquivo nunca passa pelo GitHub nem pelo armazenamento do Supabase. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase (desde a v0.23.0, pode rodar de novo, como as outras agendas). |
 | `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. Desde a v0.29.0, também pede (de 15 em 15 minutos, só quando há o que lembrar) o robô dos lembretes por e-mail. |
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
+| `sql/radar-copia-agenda.sql`, `sql/radar-copia-agenda-reversao.sql` | A chave da cópia no Vault e a agenda da cópia mensal no OneDrive (v0.32.0: dia 1 às 04h10, de novo às 05h10 e no dia 2, só se o mês ainda não tem cópia) e como desfazer. Roda no Supabase depois do setup; pode rodar de novo. |
 | `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
-| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações; desde a v0.31.0, o filtro de tema das fontes e a leitura do sistema Normas da Receita pela pesquisa nova (`robo/radar_normas.py`). |
+| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações; desde a v0.31.0, o filtro de tema das fontes e a leitura do sistema Normas da Receita pela pesquisa nova (`robo/radar_normas.py`); desde a v0.32.0, o robô dos lembretes avisa também o vencimento de uma chave ou conta e a cópia do mês que não saiu. |
 | `sql/radar-fontes-novas-v0.31.0.sql` | As fontes oficiais da v0.31.0 (Diário Oficial: leis e decretos, CONFAZ, trabalho e previdência; gov.br: eSocial, FGTS Digital e Previdência; DOM/SC, desligadas) e a rfb-normas na pesquisa nova. Roda depois de o robô da v0.31.0 coletar uma vez; pode rodar de novo. |
 | `robo/video/` | O robô do corretor de vídeo (v0.22.0): o código, o `Dockerfile` do ffmpeg isolado, as fontes DM Sans da legenda e da cartela (licença OFL) e o **modelo** do workflow do repositório privado (`workflow/radar-video.yml`). Roda no repositório privado `radar-video`, nunca neste. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes, testes e, desde a v0.29.0, os lembretes por e-mail (`radar-lembretes.yml`, "Radar — lembretes por e-mail"). |
@@ -892,10 +913,10 @@ com os XML oficiais (v0.8.0; exige cadastro gratuito; veja "Diário Oficial pelo
 1. Crie o projeto novo no Supabase.
 2. **Authentication → Sign In / Providers:** desligue "Allow new users to sign up".
    Sem isso, qualquer pessoa cria conta (não ganha acesso, mas polui a lista de usuários).
-3. SQL Editor → cole e execute `sql/radar-setup-v0.31.0.sql` inteiro.
+3. SQL Editor → cole e execute `sql/radar-setup-v0.32.0.sql` inteiro.
 4. O resultado final é a **evidência**: exporte em CSV e guarde.
-   Esperado: 28 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
-   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.31.0`).
+   Esperado: 30 linhas de tabela, todas com `rls = true`; `fontes = 6`; `categorias = 8`;
+   `instalacoes concluidas` com ao menos 1 e a versão do script (hoje `v0.32.0`).
    Se o script parar com erro, corrija a causa e execute de novo: ele continua de onde parou.
 
 ### Passo 3 — Chaves do robô no GitHub
@@ -1634,6 +1655,11 @@ Os avisos de antes (fonte com falha, a Pauta "não saiu", o resumo de segunda) c
 | "Radar: lembrete — vídeo do reel para conferir" | entre `de` e `ate` | o reel que o corretor terminou: "Vídeo corrigido pronto", "Precisa regravar" ou "O corretor parou" (cada resultado novo do corretor é lembrado uma vez, até a peça ser aprovada com o vídeo) |
 | "Radar: lembrete — notícia que não saiu" | entre `de` e `ate` | a notícia cujo envio ao site, ao Instagram ou ao Facebook deu erro, ou cuja autorização está parada há mais de `parada_horas` (padrão 3). A peça da Pauta não entra aqui: ela já tem o aviso "publicação agendada não saiu" |
 
+v0.32.0: dois tipos novos — `vencimento` (o quadro de vencimentos: 30, 7 e 1 dia antes e no dia; título "Radar: lembrete —
+vencimento de chave ou conta") e `copia` (a cópia de segurança do mês que não saiu até o dia 2, uma vez por mês; título "Radar:
+lembrete — cópia de segurança do mês"). Os dois levam só a data (nunca o nome nem o número do item); ligam e desligam aqui, como os
+outros. Veja "Vencimentos de chaves e contas (v0.32.0)" e "Cópia de segurança no OneDrive (v0.32.0)".
+
 **As regras (sem enxurrada):**
 
 - **No máximo um e-mail por tipo por dia** (dia de Brasília). O que aparecer depois do e-mail do dia espera o dia seguinte (dentro
@@ -1675,7 +1701,7 @@ padrão):
 | Chave | O que é | Padrão |
 |---|---|---|
 | `ligado` | `false` desliga todos os lembretes | `true` |
-| `pauta`, `aprovacao`, `video`, `noticia` | `false` desliga só aquele tipo | `true` |
+| `pauta`, `aprovacao`, `video`, `noticia` (v0.32.0: e `vencimento`, `copia`) | `false` desliga só aquele tipo | `true` |
 | `hora` | a hora (de Brasília, "HH:MM") a partir da qual sai o lembrete da Pauta de amanhã; vai até `"23:45"` (o Radar confere de 15 em 15 minutos) | `"16:00"` |
 | `de`, `ate` | o horário dos outros três lembretes (`de` antes de `ate`, com pelo menos 15 minutos entre os dois) | `"08:00"` e `"20:00"` |
 | `aprovacao_horas` | quantas horas a peça pronta espera antes do lembrete (1 a 168) | `24` |
@@ -2414,6 +2440,136 @@ O mesmo SQL cadastra **ITC Consultoria — boletim por e-mail** (`itc-email`) e 
 boletins da ITC entra uma vez só). O robô não visita essa fonte. Os boletins **não** vão para o
 repositório, que é público: a rotina diária grava direto no banco.
 
+### Vencimentos de chaves e contas (v0.32.0)
+
+Configurações → **Vencimentos de chaves e contas** (só o administrador vê e mexe; a equipe não lê nem pela API). Cada linha é uma
+chave (token ou segredo), conta, assinatura ou o domínio, com a **data em que vence**, **onde renovar** (um link `https://` ou o
+caminho em palavras) e uma observação. **O valor de uma chave nunca entra no quadro**: o banco recusa texto com cara de chave
+(tokens do GitHub, do Supabase, da IA Central, da Meta, segredos do Azure, JWT ou um pedaço de 40 ou mais caracteres sem espaço) e
+a tela avisa antes. Cores: **vermelho**, vencido ou até 7 dias; **amarelo**, até 30 dias; verde, em dia; cinza, sem data ou
+desligado. **Renovei** pede a nova data (depois de hoje) e guarda quando foi renovado. **Acrescentar os vencimentos conhecidos**
+põe, **sem data**, os que ainda faltam: a chave do robô do site (`RADAR_GITHUB_TOKEN`) e a do corretor de vídeo
+(`RADAR_VIDEO_GITHUB_TOKEN`) no GitHub, os segredos dos aplicativos da ITC (`GRAPH_CLIENT_SECRET`) e das cópias
+(`COPIA_CLIENT_SECRET`) no Azure, a assinatura do Azure, o token da Meta (`META_PAGE_TOKEN`), o domínio artecon.cnt.br, o plano
+do Supabase e a assinatura do Microsoft 365 — cada um com o caminho para renovar. Não duplica: nem o que o botão já pôs, nem o que
+você incluiu à mão com o mesmo nome ou com o nome do segredo (por exemplo, `COPIA_CLIENT_SECRET`).
+
+O lembrete por e-mail (tipo `vencimento` em Configurações → Lembretes por e-mail) sai **30, 7 e 1 dia antes e no dia**, cada marco
+**uma vez só** por item (desligar e religar o item, ou trocar a data e voltar à de antes, não repete o marco que já saiu); os itens
+do dia vão num e-mail só, no horário dos lembretes ("de" e "ate"). O marco que passou sem e-mail (lembretes desligados, item
+incluído perto da data) não é mandado depois: vale o próximo. O aviso fica no GitHub (público) e leva **só a data** ("1 item do
+quadro de vencimentos vence em 30 dias (03/12/2026): veja Configurações → Vencimentos"); o nome e o número do item ficam só no
+Radar (os itens conhecidos entram numa ordem que está no SQL público: o número diria qual chave vence).
+
+### Cópia de segurança no OneDrive (v0.32.0)
+
+Todo **dia 1, às 04h10** de Brasília, a agenda do banco (`sql/radar-copia-agenda.sql`) chama a função `radar-copia`, que exporta
+**todas as tabelas** do Radar (uma lista fixa no código; o teste falha se aparecer tabela nova fora dela), monta um
+`radar-copia-AAAA-MM-DD-HHMM.zip` (um JSON por tabela, o `manifesto.json` com a versão, a data, as linhas e o sha256 de cada
+arquivo, e um `LEIA-ME.txt`) e grava numa pasta do OneDrive do administrador: **Aplicativo Criado Artecon → Radar Artecon →
+Cópias de segurança**. Se não der certo, tenta de novo às 05h10 e no dia 2 às 04h10 (só se o mês ainda não tem cópia). Se ainda
+assim não sair, o lembrete `copia` avisa por e-mail no dia 2, sem detalhes; o motivo fica em Configurações → **Cópia de segurança
+no OneDrive**, com "Testar a ligação com o OneDrive" e "Fazer a cópia agora".
+
+- **Permissão mínima:** um registro de aplicativo próprio no Entra ("Radar Artecon — cópias de segurança", sem mexer no da ITC),
+  só com a permissão de aplicativo **Files.SelectedOperations.Selected** e a liberação (papel `write`) **só na pasta** das cópias.
+  O aplicativo não enxerga o resto do OneDrive (o "Testar" confere: pedir a raiz do OneDrive tem que ser recusado).
+- **O arquivo nunca passa** pelo GitHub (Actions, log ou artefato), pelo armazenamento do Supabase nem por e-mail: vai da memória
+  da função direto para o OneDrive. A resposta à agenda é só `{ok, versao}`; o registro (`radar_copias`) guarda só a situação.
+- **Quem pode:** a agenda (chave `radar_copia_agenda` no Vault) e o administrador logado. A chave interna dos robôs do GitHub
+  sozinha **não** exporta nada (as tabelas de pessoas, Pauta e vídeos continuam fora do alcance dela).
+- **Não entram:** os arquivos do armazenamento (vídeos e lâminas), os logins e as senhas, os segredos. Chave com formato conhecido
+  (Supabase, GitHub, IA Central, Meta, segredo de aplicativo do Azure, JWT, chave privada) colada num texto do banco sai
+  `[mascarado]` na cópia (o banco não muda; o `manifesto.json` diz quantas em cada tabela). Texto longo sem formato conhecido não é
+  mascarado na cópia (o quadro de vencimentos recusa também esse; na cópia ele pegaria as imagens e os sha256).
+- **Cada tabela inteira:** a cópia lê o banco página por página, cada uma depois da chave da última linha da anterior: uma linha
+  apagada durante a cópia não faz outra ficar de fora; página cortada ou resposta estranha do banco = a cópia falha, com recado.
+- **Tamanho:** a função tem limite de memória e de tempo. A cópia recusa (com recado) acima de 100 MB de dados; a tela mostra o
+  tamanho de cada cópia e o das tabelas.
+- **Segredos** (Supabase → Edge Functions → Secrets): `COPIA_CLIENT_ID`, `COPIA_CLIENT_SECRET`, `COPIA_DRIVE_ID`,
+  `COPIA_PASTA_ID`; o `GRAPH_TENANT_ID` é o da ITC. Nenhum segredo novo no GitHub.
+
+Configurar (uma vez, quem administra o Microsoft 365; o segredo do aplicativo só no passo 4, logo antes de guardar no Supabase,
+para não estar na tela durante o PowerShell, a parte em que um print de erro pode ser pedido):
+1. https://entra.microsoft.com → Registros de aplicativo → Novo registro: `Radar Artecon — cópias de segurança`, só este diretório,
+   sem URI → Registrar. Anote o **ID do aplicativo (cliente)**.
+2. Permissões de API: **tire o `User.Read`** que o Entra põe em todo registro novo ("…" → Remover permissão; o consentimento do
+   passo seguinte o concederia junto, para todo o escritório) → Adicionar → Microsoft Graph → **Permissões de aplicativo** →
+   `Files.SelectedOperations.Selected` → Adicionar. A lista fica com uma linha só. **Conceder consentimento do administrador** →
+   Sim. Nada com "All". (O "Testar" do Radar não enxerga permissões delegadas: quem confere a lista é você.)
+3. No Windows PowerShell (janela normal), cole o bloco abaixo. Ele pede o ID do aplicativo, abre o login (a conta de
+   administrador, dona do OneDrive) e a tela "Microsoft Graph Command Line Tools" pede **"Ter controle total de todos os conjuntos
+   de sites"**: é a ferramenta da Microsoft agindo em seu nome, porque a Microsoft exige esse nível para liberar uma pasta a outro
+   aplicativo; o Radar não recebe isso. Essa permissão **fica registrada para a sua conta** na ferramenta da Microsoft até você
+   tirar (ver "Depois do passo 3", abaixo) e só funciona quando você entra nela com a sua senha. **Não marque "Consentir em nome
+   da sua organização"**; Aceitar. O bloco cria a pasta (se faltar), libera só ela para o aplicativo (`write`) e mostra
+   `COPIA_DRIVE_ID` e `COPIA_PASTA_ID`. Pode rodar de novo. Se der erro e for preciso mandar um print, só da janela do PowerShell.
+
+   ```powershell
+   & {
+     $ErrorActionPreference = "Stop"
+     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+     Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+     if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication)) {
+       Install-Module Microsoft.Graph.Authentication -Scope CurrentUser -Force -AllowClobber
+     }
+     Import-Module Microsoft.Graph.Authentication
+     $app = (Read-Host "Cole o ID do aplicativo (cliente) - o A").Trim()
+     if ($app -notmatch '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') {
+       throw "Isso nao parece o ID do aplicativo (o A). Confira em Registros de aplicativo e rode de novo."
+     }
+     Connect-MgGraph -Scopes "Sites.FullControl.All" -ContextScope Process -NoWelcome
+     try {
+       Write-Host "Conectado como:" (Get-MgContext).Account
+       $g = "https://graph.microsoft.com/v1.0"
+       $drive = (Invoke-MgGraphRequest -Method GET -Uri "$g/me/drive?`$select=id").id
+       $pai = (Invoke-MgGraphRequest -Method GET -Uri "$g/me/drive/root?`$select=id").id
+       $nomes = @("Aplicativo Criado Artecon", "Radar Artecon", ("C" + [char]0xF3 + "pias de seguran" + [char]0xE7 + "a"))
+       foreach ($n in $nomes) {
+         $f = (Invoke-MgGraphRequest -Method GET -Uri "$g/drives/$drive/items/$pai/children?`$select=id,name,folder&`$top=999").value |
+              Where-Object { $_.name -eq $n -and $_.folder } | Select-Object -First 1
+         if (-not $f) {
+           $corpo = @{ name = $n; folder = @{}; "@microsoft.graph.conflictBehavior" = "fail" } | ConvertTo-Json
+           $f = Invoke-MgGraphRequest -Method POST -Uri "$g/drives/$drive/items/$pai/children" -ContentType "application/json" -Body $corpo
+         }
+         $pai = $f.id
+       }
+       $p = (Invoke-MgGraphRequest -Method GET -Uri "$g/drives/$drive/items/$pai/permissions").value |
+            Where-Object { $_.grantedToV2.application.id -eq $app } | Select-Object -First 1
+       if ($p) {
+         Write-Host "A pasta ja estava liberada para o aplicativo."
+       } else {
+         $corpo = @{ roles = @("write"); grantedToV2 = @{ application = @{ id = $app } } } | ConvertTo-Json -Depth 5
+         $p = Invoke-MgGraphRequest -Method POST -Uri "$g/drives/$drive/items/$pai/permissions" -ContentType "application/json" -Body $corpo
+       }
+       Write-Host ""
+       Write-Host "Permissao criada:" ($p.roles -join ",") "-" $p.grantedToV2.application.displayName
+       Write-Host "COPIA_DRIVE_ID = $drive"
+       Write-Host "COPIA_PASTA_ID = $pai"
+     } finally {
+       Disconnect-MgGraph | Out-Null
+     }
+   }
+   ```
+
+4. Entra → o aplicativo → Certificados e segredos → Novo segredo do cliente, **12 meses** → copie o **Valor** (uma vez só) e, na
+   mesma hora, Supabase → Edge Functions → Secrets: os 4 segredos `COPIA_*`. Nunca pelo chat. Ponha a data do segredo no quadro de
+   vencimentos.
+5. Edge Functions → Deploy a new function → Via Editor → nome **`radar-copia`** → cole `supabase/functions/radar-copia/index.ts`
+   → **"Verify JWT" desligado** → Deploy.
+6. SQL Editor → `sql/radar-copia-agenda.sql` (pode rodar de novo; o teste do fim do arquivo confere a chave da agenda).
+7. Radar → Configurações → Cópia de segurança no OneDrive → **Testar a ligação com o OneDrive** (tudo OK) → **Fazer a cópia
+   agora** → confira o .zip na pasta do OneDrive. (Com a sessão perto de vencer, a cópia não começa: a tela renova a sessão e
+   pede de novo sozinha.)
+
+Renovar o segredo (12 meses): novo segredo no Entra → troque `COPIA_CLIENT_SECRET` no Supabase → Testar → apague o antigo no Entra
+→ "Renovei" no quadro. Desligar: `sql/radar-copia-agenda-reversao.sql` (para a agenda); apagar o aplicativo no Entra (corta o
+acesso na hora); apagar os segredos `COPIA_*` e a função. Os arquivos no OneDrive ficam (o Radar nunca apaga cópias).
+
+Depois do passo 3 (recomendado): a permissão da ferramenta da Microsoft continua registrada para a conta de quem rodou o bloco até
+ser tirada; tirar não desfaz a liberação da pasta. Entra → Aplicativos empresariais (tipo: todos os aplicativos) → "Microsoft
+Graph Command Line Tools" → Propriedades → Excluir.
+
 ### Chaves novas do Supabase (até o fim de 2026)
 
 O Supabase desliga as chaves antigas (a **anon**, pública, e a **service_role**, interna, as duas em formato JWT) até o fim de 2026.
@@ -2424,10 +2580,10 @@ banco ou pelos robôs) ficam com o **"Verify JWT" desligado** e conferem quem ch
 chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de dezembro**, nesta ordem (nada de chave pelo chat):
 
 1. Supabase → **Settings → API Keys**: confira a publishable `default` e crie uma secret só para os robôs do GitHub ("radar-robos").
-2. Edge Functions: as funções desta versão (`radar-ia`, `radar-redes`, `radar-video`, `radar-itc` e, se instalada,
+2. Edge Functions: as funções desta versão (`radar-ia`, `radar-redes`, `radar-video`, `radar-itc`, `radar-copia` e, se instalada,
    `radar-concorrentes`) já usam a publishable no `apikey` quando o Supabase a fornece (`SUPABASE_PUBLISHABLE_KEYS`). Na
    **`radar-redes`** e na **`radar-video`**, desligue o **"Verify JWT"** (as duas conferem no código: a sessão do administrador pelo
-   banco, a chave da agenda no Vault, a chave do robô); a `radar-itc` e a `radar-concorrentes` já estão assim.
+   banco, a chave da agenda no Vault, a chave do robô); a `radar-itc`, a `radar-copia` e a `radar-concorrentes` já estão assim.
 3. `radar-config.js`: troque o valor de `SUPABASE_ANON_KEY` pela publishable (o nome do campo fica), publique no GitHub e
    Ctrl+F5 em todos os aparelhos. A tela manda a chave só no `apikey` quando não há sessão.
 4. SQL Editor: troque a chave escrita em `sql/radar-redes-agenda.sql` e em `sql/radar-video-agenda.sql` (o `v_anon`) pela
@@ -2441,6 +2597,50 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.31.0 para a v0.32.0** (muda o banco: SQL novo, que pode rodar de novo; o robô dos lembretes e o do site mudam; uma função nova,
+`radar-copia`, e uma agenda nova, `sql/radar-copia-agenda.sql`; as funções `radar-ia`, `radar-redes`, `radar-itc` e `radar-video`
+e as outras agendas não mudam; nenhum segredo novo no GitHub; nada de chave ou segredo pelo chat). Supõe a v0.31.0 instalada.
+**Nesta ordem** (o banco antes da tela):
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.32.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **30
+   tabelas** e "instalacoes concluidas" com a **v0.32.0**. Ele cria o quadro de vencimentos (`radar_vencimentos`) e o registro das
+   cópias (`radar_copias`), os tipos de lembrete `vencimento` e `copia` (ligados; o que você já ajustou nos lembretes fica) e as
+   funções da cópia. Nada é apagado.
+2. Publique a versão no repositório (`main`): a tela (`index.html`, `radar-pauta.js`, `radar-video.js`) e o robô dos lembretes
+   (`robo/radar_lembretes.py`) vão juntos. **Ctrl+F5**. A aba Versões mostra a v0.32.0. Tela antes do SQL: nada quebra; as
+   Configurações dizem que o quadro e a cópia precisam do banco novo.
+3. Configurações → **Vencimentos de chaves e contas** → **"Acrescentar os vencimentos conhecidos"** e preencha a data de cada um
+   (Editar). Onde achar: GitHub → Settings → Developer settings → Fine-grained tokens (coluna "Expires"); Entra → Registros de
+   aplicativo → o aplicativo → Certificados e segredos (coluna "Expira"); portal.azure.com → Assinaturas; Meta → Usuários do sistema
+   (o token "Nunca" fica sem data); registro.br → Domínios; Supabase → Billing; admin.microsoft.com → Cobrança → Seus produtos.
+4. **Cópia no OneDrive** (uns 25 minutos; quem administra o Microsoft 365 faz os passos 1 a 4 de "Cópia de segurança no OneDrive",
+   acima): registro no Entra, Files.SelectedOperations.Selected (sem o User.Read) com consentimento, o bloco do PowerShell e, por
+   último, o segredo de 12 meses e os segredos `COPIA_*`. Depois: a função `radar-copia` (**"Verify JWT" desligado**), o `sql/radar-copia-agenda.sql`, e em
+   Configurações → Cópia de segurança no OneDrive: **Testar** (tudo OK, inclusive "O resto do OneDrive fica fora do alcance") e
+   **Fazer a cópia agora**; confira o .zip no OneDrive. Ponha no quadro a data do `COPIA_CLIENT_SECRET`.
+5. Nada a fazer nos lembretes: `vencimento` e `copia` entram ligados (desligar: `"vencimento": false` ou `"copia": false` em
+   Configurações → Lembretes por e-mail). O aviso de cada tipo é um só no GitHub ("Radar: lembrete — vencimento de chave ou conta",
+   "Radar: lembrete — cópia de segurança do mês").
+6. **Título no site** (correção de 17/10/2026; o robô do site — `robo/radar_site_publicar.py`, `radar_site.py` e `radar_site_excluir.py` —
+   entra no ar com a versão no `main`): o site monta o endereço da notícia com o título e não abre a página quando ele tem "º"; o robô passa
+   a mandar o título **sem o "nº" e sem o "º"/"ª"/"°" depois de número** ("Lei nº 15.415/2026" → "Lei 15.415/2026"; "1ª parcela" →
+   "1 parcela"; no Radar, no Instagram e no Facebook o título não muda; a autorização do site e o quadro "Para o site da Artecon"
+   mostram como ele vai, e o "Copiar título" e a prévia do site já o trazem assim, para quem publica à mão). Se a notícia entra na lista
+   do site mas a página dela não abre (404 ou 5xx) e isso **se repete** numa rodada pelo menos 10 minutos depois (uma falha passageira
+   do site não conta; 401, 403 e 410 também não), a publicação vira **erro** ("A notícia foi gravada no site, mas a página dela não
+   abre…"; se a página abre sem o texto, o pedido é de conferir), sem reenviar. Com a versão no ar: apague no painel do site a notícia "Salário-maternidade: Lei nº
+   15.415/2026…" (a do endereço quebrado) e autorize de novo; ela sai como "Salário-maternidade: Lei 15.415/2026…".
+
+Para desfazer: `sql/radar-copia-agenda-reversao.sql`; apague o aplicativo "Radar Artecon — cópias de segurança" no Entra, os
+segredos `COPIA_*` e a função `radar-copia`; volte a tela e o robô da v0.31.0 (no histórico do GitHub; Ctrl+F5) e rode o
+`sql/radar-setup-v0.31.0.sql` da v0.31.0 (histórico do GitHub). As duas tabelas novas e as funções ficam no banco sem uso (para
+tirar: `drop table if exists public.radar_vencimentos, public.radar_copias;` e os `drop function` do bloco v0.32.0 da reversão).
+**E rode também** (SQL Editor):
+`update public.radar_config set valor = valor - 'vencimento' - 'copia' where chave = 'lembretes';` — sem isso, a tela da v0.31.0
+recusa salvar o bloco "Lembretes por e-mail" ("“vencimento” não é uma opção dos lembretes"), porque o setup da v0.32.0 pôs essas
+duas chaves e o da v0.31.0 não tira. A restrição de `radar_lembretes.tipo` com os 6 tipos fica (não atrapalha a v0.31.0). Os
+arquivos no OneDrive ficam.
 
 **Da v0.30.0 para a v0.31.0** (muda o robô da coleta; o banco muda só a função `radar_url_base`, com SQL que pode rodar de novo;
 entra o SQL das fontes novas; **nenhum segredo novo**: as fontes do Diário Oficial usam o mesmo acesso do INLABS da `dou-inlabs`; as
@@ -2903,7 +3103,7 @@ Cuidados nesta versão:
   workflow desligado, o pedido que estiver na fila vira o aviso "robo_nao_pegou" na peça em uns 30 a 40 minutos (3 acionamentos da
   reserva); para voltar, "Enable workflow" e, na peça, "Tentar de novo".
 - **Para desfazer a versão** (além da tela antiga): a agenda sai com o `sql/radar-video-agenda-reversao.sql` e o banco com o
-  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.31.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
+  `sql/radar-reversao-v0.22.0.sql` (hoje `radar-reversao-v0.32.0.sql`), que não apaga os arquivos (antes: Storage → `radar-videos` → apague tudo e depois o bucket; e
   também `radar-pauta`, o bucket privado onde a `radar-redes` guarda as lâminas aprovadas da Pauta, com foto e nome da equipe: sem
   as tabelas, ninguém mais saberia de quem é cada arquivo, e a revogação de um termo não teria como ser atendida — se precisar
   guardar a relação, rode antes a consulta do passo 3 da revogação e guarde o resultado fora do repositório público). Fora do
