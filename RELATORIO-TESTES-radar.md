@@ -100,9 +100,11 @@ tela são gerados na hora pelo ffmpeg): nenhuma gravação real entra nos testes
 
 Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026: o corretor no banco
 (**51 aprovados**, com os 6 novos); a função `radar-video` no Deno (**16 aprovados**, com os 2 novos); o banco geral
-(**312 aprovados**, depois de atualizar os registros de instalação para v0.36.0); o repositório (**21 aprovados, 1 pulado**); e o
-arquivo inteiro dos testes de tela com os 3 novos (**279 aprovados, 61 pulados**, nenhuma falha). O setup rodou duas vezes
-seguidas nos bancos de teste (os testes que já fazem isso) e a reversão tira as duas funções novas junto com as outras.
+(**312 aprovados**, depois de atualizar os registros de instalação para v0.36.0); o repositório (**21 aprovados, 1 pulado**); o
+arquivo inteiro dos testes de tela com os 3 novos (**261 aprovados, 61 pulados**, 562 s; as 15 falhas da 1ª rodada eram
+interferência de outra bateria rodando no mesmo banco ao mesmo tempo — rodadas de novo em série, todas verdes); e as telas das
+abas Respostas e Setor (**18 aprovados**). O setup rodou duas vezes seguidas nos bancos de teste (os testes que já fazem isso) e a
+reversão tira as duas funções novas junto com as outras.
 
 ## v0.35.0 — Módulo Respostas Automáticas (aba Respostas)
 
