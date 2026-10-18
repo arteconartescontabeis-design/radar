@@ -2,7 +2,7 @@
 pasta do OneDrive, o envio direto e a sessão de envio em pedaços). Sem o Deno instalado, o arquivo é pulado.
 
 Confere: sem os segredos, "não configurada" sem erro, sem registro e sem falar com a Microsoft; quem pode chamar (o administrador, ou a
-agenda com a chave do Vault; a chave dos robôs sozinha não); o .zip conferido pelo Python (testzip, as 30 tabelas, as linhas e o sha256
+agenda com a chave do Vault; a chave dos robôs sozinha não); o .zip conferido pelo Python (testzip, as 34 tabelas, as linhas e o sha256
 de cada arquivo iguais ao banco, as imagens sem compactar); até 4 MiB um PUT só; acima, a sessão de envio em pedaços de 327 680 bytes,
 sem o Authorization; 5xx repetido e a desistência; a sessão vencida (404); o endereço de envio de fora do OneDrive recusado sem mandar
 nada; o tamanho diferente (o arquivo é apagado); o "Testar" (o 403 esperado na raiz do OneDrive, a permissão a mais, o consentimento
@@ -311,7 +311,7 @@ def conferir_zip(db, z, arquivo):
     assert z.testzip() is None
     assert z.namelist() == ["LEIA-ME.txt", "manifesto.json"] + [f"tabelas/{t}.json" for t in TABELAS]
     man = json.loads(z.read("manifesto.json"))
-    assert (man["radar"], man["arquivo"], man["versao_funcao"], man["versao_banco"]) == ("Radar Artecon", arquivo, "0.32.0", "v0.34.0")
+    assert (man["radar"], man["arquivo"], man["versao_funcao"], man["versao_banco"]) == ("Radar Artecon", arquivo, "0.34.0", "v0.34.0")
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}-03:00", man["gerado_em"]) and len(man["nao_inclui"]) == 3
     assert [t["tabela"] for t in man["tabelas"]] == TABELAS
     for t in man["tabelas"]:
@@ -331,7 +331,7 @@ def conferir_zip(db, z, arquivo):
 # ------------------------------------------------------------------------------------------------------------- os testes
 def test_sem_segredos_responde_nao_configurada_sem_erro(copia):
     status, r, _ = pedir({"acao": "situacao"}, porta=PORTA_C)
-    assert status == 200 and r == {"versao": "0.32.0", "configurada": False, "invalidos": [],
+    assert status == 200 and r == {"versao": "0.34.0", "configurada": False, "invalidos": [],
                                    "faltam": ["COPIA_CLIENT_ID", "COPIA_CLIENT_SECRET", "COPIA_DRIVE_ID", "COPIA_PASTA_ID"]}
     status, r, _ = pedir({"acao": "copiar"}, porta=PORTA_C)
     assert status == 200 and r["ok"] is False and r["configurada"] is False
@@ -359,11 +359,11 @@ def test_quem_pode_chamar(com_vault):
     for acao in ("testar", "situacao"):
         assert pedir({"acao": acao}, cab=agenda)[0] == 403
     assert pedir({"acao": "agenda_teste"})[0] == 403                                             # o teste da agenda é só da agenda
-    assert pedir({"acao": "agenda_teste"}, cab=agenda)[1] == {"ok": True, "versao": "0.32.0"}
+    assert pedir({"acao": "agenda_teste"}, cab=agenda)[1] == {"ok": True, "versao": "0.34.0"}
     assert pedir({"acao": "outra"})[0:2] == (400, {"message": "Ação desconhecida."})
     ESTADO["arquivos"].clear()
     status, r, bruto = pedir({"acao": "copiar"}, cab=agenda)
-    assert status == 200 and r == {"ok": True, "versao": "0.32.0"} and len(bruto) < 100            # à agenda, só isto
+    assert status == 200 and r == {"ok": True, "versao": "0.34.0"} and len(bruto) < 100            # à agenda, só isto
     [(ok, arquivo, *_resto, origem)] = registro(db)
     assert ok is True and origem == "agenda" and arquivo in ESTADO["arquivos"]
     # a agenda fala com o banco pela chave interna (no apikey) e a chave da agenda (p_chave); nunca com o token de alguém
@@ -376,7 +376,7 @@ def test_copia_pequena_por_put_e_o_zip_confere(copia):
     status, r, _ = copiar()
     assert status == 200 and r["ok"] is True, r
     assert set(r) == {"ok", "arquivo", "bytes", "bytes_brutos", "linhas", "tabelas", "mascarados", "tempos", "versao"}
-    assert set(r["tempos"]) == {"exportar_ms", "compactar_ms", "enviar_ms"} and r["tabelas"] == 30 and r["mascarados"] == {}
+    assert set(r["tempos"]) == {"exportar_ms", "compactar_ms", "enviar_ms"} and r["tabelas"] == 34 and r["mascarados"] == {}
     arquivo = r["arquivo"]
     assert re.fullmatch(r"radar-copia-\d{4}-\d{2}-\d{2}-\d{4}\.zip", arquivo)
     [put] = graph("PUT")
@@ -390,7 +390,7 @@ def test_copia_pequena_por_put_e_o_zip_confere(copia):
     assert all(i.flag_bits & 0x800 for i in z.infolist())                                       # nomes em UTF-8
     dados = ESTADO["arquivos"][arquivo]["dados"]
     assert 1_000_000 < len(dados) <= 4 * 1024 * 1024
-    assert registro(db) == [(True, arquivo, len(dados), man["bytes_brutos"], man["linhas"], 30,
+    assert registro(db) == [(True, arquivo, len(dados), man["bytes_brutos"], man["linhas"], 34,
                              hashlib.sha256(z.read("manifesto.json")).hexdigest(), None, "admin")]
     assert (r["bytes"], r["bytes_brutos"], r["linhas"]) == (len(dados), man["bytes_brutos"], man["linhas"])
 
@@ -699,16 +699,16 @@ def test_nada_vai_para_log_nem_storage(funcao):
         log = (funcao / f"{nome}.log").read_text()
         for proibido in ("Ana Teste", "Bruno Exemplo", "segredo-de-teste", CHAVE_AGENDA, "radar-copia-20", "ghp_", "data:image"):
             assert proibido not in log, (nome, proibido)
-    assert re.search(r"radar-copia \(admin\): ok, 30 tabelas, \d+ linhas, [\d.]+ MB, \d+ ms", (funcao / "a.log").read_text())
+    assert re.search(r"radar-copia \(admin\): ok, 34 tabelas, \d+ linhas, [\d.]+ MB, \d+ ms", (funcao / "a.log").read_text())
     assert STORAGE == []
 
 
 def test_tabelas_da_funcao_tem_versao_e_sem_import():
     codigo = FUNCAO.read_text(encoding="utf-8")
-    assert re.search(r'(?m)^const VERSAO = "0\.32\.0";$', codigo)
+    assert re.search(r'(?m)^const VERSAO = "0\.34\.0";', codigo)
     assert not re.search(r"(?m)^\s*import\b", codigo) and not re.search(r"\b(npm|jsr):|esm\.sh|deno\.land", codigo)
     codigo_sem_comentario = [l for l in codigo.splitlines() if not l.lstrip().startswith(("//", "/*", "*"))]
     usos = [l.strip() for l in codigo_sem_comentario if "RADAR_PORTA_LOCAL" in l]
     assert usos == ['return Boolean(Deno.env.get("RADAR_PORTA_LOCAL")) && url.protocol === "http:" && url.hostname === "127.0.0.1";',
                     'const portaLocal = Deno.env.get("RADAR_PORTA_LOCAL");       // só para rodar/testar fora do Supabase']
-    assert len(TABELAS) == 30
+    assert len(TABELAS) == 34
