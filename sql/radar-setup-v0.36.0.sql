@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.35.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.36.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -68,7 +68,14 @@
 -- pública + mensagem privada com o link do material, limite por hora com fila de pendentes, interruptor geral “Pausar todas”.
 -- Nasce AGUARDANDO A META: os avisos de comentário só chegam depois que a Meta aprovar o acesso avançado do aplicativo.
 -- A agenda da fila fica em sql/radar-respostas-agenda.sql, rodado DEPOIS deste. Nada é apagado.
--- Reversão: radar-reversao-v0.35.0.sql
+-- v0.36.0 (bloco “v0.36.0”, depois do bloco “v0.33.0”): a correção avulsa — analisar e corrigir um vídeo SEM criar uma peça na
+-- Pauta (pedido do dono de 18/10). radar_videos.peca_id passa a ser opcional e o avulso ganha um título próprio (coluna nova
+-- "titulo"; um é a negação do outro: ou peça, ou título). Duas funções novas (radar_video_criar_avulso e radar_video_baixar_avulso
+-- — baixar só o administrador, só o vídeo PRONTO, registrado) e quatro redefinidas com o ramo "sem peça" (radar_video_pessoa_falta,
+-- radar_video_pessoas_falta, radar_video_reconferir e radar_video_limpeza). As travas do dono continuam todas: termos das pessoas,
+-- cartela com a identificação legal, as quatro declarações, a cota do mês e o boletim pago. O robô não muda (o pedido que ele
+-- recebe já é autossuficiente); NENHUMA tabela nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.36.0.sql
 -- =====================================================================
 
 begin;
@@ -94,7 +101,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.35.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.36.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -9977,6 +9984,365 @@ revoke all on function public.radar_video_paleta(), public.radar_video_editar(uu
 grant execute on function public.radar_video_paleta(), public.radar_video_editar(uuid, text, jsonb, text[], text) to authenticated;
 
 -- ---------------------------------------------------------------------
+-- v0.36.0: a correção avulsa — analisar e corrigir um vídeo SEM criar uma peça na Pauta (pedido do dono de 18/10).
+-- O avulso é uma linha de radar_videos SEM peça (peca_id nulo) e COM título próprio (como ele aparece na aba Vídeo): a fala para
+-- conferência colada no envio É o roteiro dele; as pessoas que aparecem ficam guardadas no próprio vídeo (radar_videos.pessoas);
+-- gancho só pelo editor da aba Vídeo (radar_video_editar já guarda o texto no vídeo e, sem peça, não muda chamada nenhuma).
+-- Travas que NÃO mudam: termos das pessoas (o do corretor e o de uso de imagem, valendo hoje — sem peça, como no reel sem legenda
+-- escrita: em pelo menos um dos dois canais), maior de idade, cartela com a identificação legal, as quatro declarações, a cota de
+-- minutos do mês, o boletim pago (ITC) e o mesmo caminho do robô (fila, transcrição, relatório, ajustes, editor).
+-- O que muda de propósito: o avulso NÃO passa pela aprovação da peça e NUNCA é publicado pelo Radar — ele é analisado, corrigido
+-- e baixado; baixar é só do administrador (radar_video_baixar_avulso), só com o vídeo PRONTO (a divergência pendente continua
+-- pedindo regravar ou a marca "a transcrição errou"), e fica registrado (radar_video_acessos). "Conferir com o roteiro novo" não
+-- vale para o avulso (não há roteiro de peça): para mudar a fala, envia-se de novo. Cada avulso é um envio próprio (versão 1):
+-- não há "substituir a gravação" entre avulsos; o envio abandonado sai pela limpeza de sempre (1 dia).
+-- ---------------------------------------------------------------------
+
+-- a peça vira opcional; o título é a marca do avulso (ou um, ou outro — nunca os dois, nunca nenhum)
+alter table public.radar_videos alter column peca_id drop not null;
+alter table public.radar_videos add column if not exists titulo text
+  check (titulo is null or (length(titulo) between 3 and 120 and titulo !~ '[<>{}\\]' and titulo !~ '[[:cntrl:]]'));
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'radar_videos_avulso' and conrelid = 'public.radar_videos'::regclass) then
+    alter table public.radar_videos add constraint radar_videos_avulso check ((peca_id is null) = (titulo is not null));
+  end if;
+end $$;
+
+-- A pessoa pode estar num vídeo do corretor hoje? Como antes (o comentário da definição de cima vale inteiro); v0.36.0: com p_peca
+-- nulo (o vídeo avulso), o termo de uso de imagem vale como no reel ainda sem legenda escrita — em pelo menos um dos dois canais —
+-- e o tipo conferido é 'reel'. O termo do corretor, a idade e o(a) sócio(a) não mudam.
+create or replace function public.radar_video_pessoa_falta(p_pessoa bigint, p_peca bigint) returns text
+language plpgsql stable set search_path = public as $$
+declare
+  pe       public.radar_pessoas%rowtype;
+  p        public.radar_pauta_pecas%rowtype;
+  v_hoje   date := public.radar_pauta_hoje();
+  v_tipo   text;
+  v_canais text[] := '{}';
+  v_canal  text;
+  v_x      text;
+begin
+  select * into pe from public.radar_pessoas where id = p_pessoa;
+  if p_peca is not null then
+    select * into p from public.radar_pauta_pecas where id = p_peca;
+  end if;
+  if pe.id is null then return 'pessoa não cadastrada'; end if;
+  if pe.menor then return 'menor de idade: o corretor de vídeo não aceita nesta versão'; end if;
+  if not pe.socio and (pe.termo_corretor_em is null or pe.termo_corretor_em > v_hoje) then
+    return 'sem o termo novo, que cita o corretor de vídeo';
+  end if;
+  v_tipo := coalesce(p.tipo, 'reel');
+  if p.id is not null then
+    v_canais := public.radar_pauta_canais(p.legenda_instagram, p.legenda_facebook);
+  end if;
+  if cardinality(v_canais) > 0 then
+    foreach v_canal in array v_canais loop
+      v_x := public.radar_pauta_termo_ok(p_pessoa, v_tipo, v_canal, v_hoje);
+      if v_x is not null then return v_x || ' no ' || initcap(v_canal); end if;
+    end loop;
+    return null;
+  end if;
+  v_x := public.radar_pauta_termo_ok(p_pessoa, v_tipo, 'instagram', v_hoje);
+  if v_x is null or public.radar_pauta_termo_ok(p_pessoa, v_tipo, 'facebook', v_hoje) is null then return null; end if;
+  return v_x;
+end $$;
+
+-- As pessoas do vídeo podem estar nele hoje? Como antes (o comentário da definição de cima vale inteiro); v0.36.0: com p_peca nulo
+-- (o vídeo avulso), quem fala e quem aparece são as pessoas guardadas no próprio vídeo (radar_videos.pessoas) — cada uma passa em
+-- radar_video_pessoa_falta do mesmo jeito, em TODO o caminho (o envio, o robô pegar, o ajuste, a prévia, o baixar e a limpeza).
+create or replace function public.radar_video_pessoas_falta(p_peca bigint, p_fala_pessoa bigint, p_pessoas bigint[]) returns text
+language plpgsql stable set search_path = public as $$
+declare
+  p   public.radar_pauta_pecas%rowtype;
+  v_i bigint;
+  v_x text;
+begin
+  if p_peca is null then
+    if p_fala_pessoa is null or not p_fala_pessoa = any(coalesce(p_pessoas, '{}')) then
+      return 'quem fala não está entre as pessoas deste vídeo';
+    end if;
+    foreach v_i in array coalesce(p_pessoas, '{}') loop
+      v_x := public.radar_video_pessoa_falta(v_i, null);
+      if v_x is not null then
+        return 'uma pessoa do vídeo não pode aparecer nele (' || v_x || '): confira em Pauta → Pessoas e termos';
+      end if;
+    end loop;
+    return null;
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_peca;
+  if p.id is null or p_fala_pessoa is null or not p_fala_pessoa = any(p.pessoas) then
+    return 'quem fala não está mais marcada na peça';
+  end if;
+  foreach v_i in array p.pessoas || array(select x from unnest(coalesce(p_pessoas, '{}')) x where not x = any(p.pessoas)) loop
+    v_x := public.radar_video_pessoa_falta(v_i, p.id);
+    if v_x is not null then
+      return 'uma pessoa da peça não pode aparecer no vídeo (' || v_x || '): confira em Pauta → Pessoas e termos';
+    end if;
+  end loop;
+  return null;
+end $$;
+
+-- "Conferir com o roteiro novo" não vale para o avulso: a fala dele É o roteiro (para mudar, envia-se de novo). O resto como antes
+-- (o comentário da definição de cima vale inteiro).
+create or replace function public.radar_video_reconferir(p_id uuid, p_fala_roteiro text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v      public.radar_videos%rowtype;
+  p      public.radar_pauta_pecas%rowtype;
+  v_fala text := btrim(regexp_replace(coalesce(p_fala_roteiro, ''), '[[:space:]]+', ' ', 'g'));
+  v_modo text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR300: só o editor ou o administrador mexe no vídeo do reel' using errcode = '42501';
+  end if;
+  v := public.radar_video_travar(p_id);
+  if v.peca_id is null then
+    raise exception 'RADAR302: o vídeo avulso não tem roteiro de peça: a fala para conferência é a do envio (para mudar, envie a gravação de novo, como um avulso novo)'
+      using errcode = 'P0001';
+  end if;
+  v_modo := public.radar_video_refazer(v);
+  select * into p from public.radar_pauta_pecas where id = v.peca_id;
+  if length(v_fala) not between 20 and 6000 or not public.radar_video_fala_no_roteiro(v_fala, p.roteiro) then
+    raise exception 'RADAR302: a fala para conferência tem de estar no roteiro da peça, palavra por palavra e na ordem (ao menos 10 palavras)'
+      using errcode = 'P0001';
+  end if;
+  if public.radar_pauta_copia_paga(array[p.roteiro, v_fala]) then
+    raise exception 'RADAR303: o roteiro tem frase igual à do boletim pago (ITC): reescreva com palavras próprias' using errcode = 'P0001';
+  end if;
+  if v_fala = v.fala_roteiro then
+    update public.radar_videos set roteiro_hash = public.radar_hash_texto(p.roteiro) where id = v.id;
+    return jsonb_build_object('id', v.id, 'modo', null);
+  end if;
+  update public.radar_videos
+     set fala_roteiro = v_fala, roteiro_hash = public.radar_hash_texto(p.roteiro), ajustes = ajustes - array['manter','transcricao_errou','legenda'],
+         modo = v_modo, situacao = 'na_fila', tentativas = 0, fila_em = now(), reservas = 0, pego_em = null, erro_codigo = null
+   where id = v.id;
+  return jsonb_build_object('id', v.id, 'modo', v_modo);
+end $$;
+
+-- A limpeza diária: como antes (o comentário da definição de cima vale inteiro); v0.36.0: o vídeo avulso (sem peça) entra na mesma
+-- varredura (o join com a peça vira "left join") — para ele valem os prazos do vídeo que não saiu (bruto e trabalho retencao_dias
+-- depois do envio; o corrigido e os textos idem; o envio abandonado em 1 dia; a revogação e a inativação na hora).
+create or replace function public.radar_video_limpeza() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_d      interval := make_interval(days => public.radar_video_cfg_num('retencao_dias', 30, 7, 120)::int);
+  v_pd     interval := make_interval(days => public.radar_video_cfg_num('retencao_publicado_dias', 30, 0, 365)::int);
+  v_hoje   date := public.radar_pauta_hoje();
+  r        record;
+  v_enc    boolean;
+  v_aband  boolean;
+  v_velho  boolean;
+  v_velho_corr boolean;
+  v_grupos text[];
+  v_itens  jsonb := '[]'::jsonb;
+  v_textos int := 0;
+begin
+  for r in
+    select v.id, v.situacao, v.criado_em, v.enviado_em, v.encerrado_em, v.arquivos_apagados, v.antigos, v.sha256,
+           -- o vídeo da peça aprovada, que espera o dia de postar: o prazo do corrigido conta do dia da peça (se for depois do envio)
+           case when p.situacao = 'aprovada' and p.video_id = v.id
+                then greatest(coalesce(v.enviado_em, v.criado_em), p.data::timestamp at time zone 'America/Sao_Paulo')
+                else coalesce(v.enviado_em, v.criado_em) end as prazo_corrigido,
+           least(case when p.publicado_manual_em is not null then p.publicado_manual_em::timestamp at time zone 'America/Sao_Paulo' end,
+                 (select min(e.publicado_em) from public.radar_redes_envios e where e.peca_id = p.id and e.publicado_em is not null)) as saiu_em,
+           -- uma pessoa do vídeo (as marcadas hoje e as do envio, radar_videos.pessoas) que não pode mais estar nele: o termo revogado,
+           -- inativa, o termo do corretor retirado (ou com data no futuro) ou marcada menor de idade — os motivos de radar_video_pessoa_falta
+           -- que tiram a autorização (o termo de imagem só vencido fica de fora: ele pode ser renovado)
+           exists (select 1 from public.radar_pessoas pe
+                    where pe.id = any(coalesce(p.pessoas, '{}') || v.pessoas || v.fala_pessoa)
+                      and (not pe.ativo or pe.menor
+                           -- v0.28.0: de sócio(a) da Artecon (maior de idade) os termos não são exigidos: a revogação e o termo do
+                           -- corretor não contam (quem tira o vídeo dele(a) é "Ativa" desmarcada, ou a marca de sócio(a) tirada sem os termos)
+                           or (not pe.socio and ((pe.termo_revogado_em is not null and pe.termo_revogado_em <= v_hoje)
+                                                 or pe.termo_corretor_em is null or pe.termo_corretor_em > v_hoje))))
+           -- v0.22.0 (varredura geral): a pessoa que nem existe mais (apagada antes da trava de radar_fn_pessoa_apagar) também
+           or exists (select 1 from unnest(coalesce(p.pessoas, '{}') || v.pessoas || v.fala_pessoa) x
+                       where not exists (select 1 from public.radar_pessoas pe where pe.id = x)) as revogado
+      from public.radar_videos v left join public.radar_pauta_pecas p on p.id = v.peca_id
+     where not v.arquivos_apagados @> array['bruto','trabalho','corrigido','textos'] or v.antigos
+     order by v.criado_em
+     for update of v skip locked
+  loop
+    v_enc   := r.situacao in ('substituido','descartado');
+    v_aband := r.situacao = 'aguardando_envio' and r.criado_em < now() - interval '1 day';
+    v_velho := coalesce(r.enviado_em, r.criado_em) < now() - v_d;
+    v_velho_corr := r.prazo_corrigido < now() - v_d;
+    v_grupos := '{}';
+    if v_enc or v_aband or r.revogado or r.saiu_em is not null or v_velho then
+      v_grupos := v_grupos || array['bruto','trabalho'];
+    end if;
+    if v_enc or v_aband or r.revogado or r.saiu_em < now() - v_pd or (r.saiu_em is null and v_velho_corr) then
+      v_grupos := v_grupos || array['corrigido'];
+    end if;
+    v_grupos := array(select g from unnest(v_grupos) g where not g = any(r.arquivos_apagados));
+    -- as versões antigas do vídeo corrigido (cada ajuste gera um sha256 novo); nunca enquanto o robô monta outra
+    if r.antigos and not 'corrigido' = any(v_grupos || r.arquivos_apagados) and r.situacao in ('pronto','regravar','erro') then
+      v_grupos := v_grupos || array['antigos'];
+    end if;
+    if not 'textos' = any(r.arquivos_apagados)
+       and (r.revogado or (v_enc and r.encerrado_em < now() - v_d) or r.saiu_em < now() - v_pd
+            or (r.saiu_em is null and v_velho_corr and not v_enc and not v_aband)) then
+      update public.radar_videos
+         set fala_roteiro = '', relatorio = '{}', ajustes = '{}', cartela_linhas = '{}',
+             arquivos_apagados = array(select distinct g from unnest(arquivos_apagados || array['textos']) g order by g)
+       where id = r.id;
+      v_textos := v_textos + 1;
+    end if;
+    if cardinality(v_grupos) > 0 and jsonb_array_length(v_itens) < 50 then
+      v_itens := v_itens || jsonb_build_array(jsonb_build_object('id', r.id, 'apagar', to_jsonb(v_grupos),
+                                                                 'manter', case when 'antigos' = any(v_grupos) then r.sha256 end));
+    end if;
+  end loop;
+  return jsonb_build_object('itens', v_itens, 'textos', v_textos);
+end $$;
+
+-- O envio do vídeo avulso: as mesmas conferências do envio da peça (radar_video_criar), menos as da peça — o título no lugar dela,
+-- a fala para conferência É o roteiro (o mesmo conferidor: ao menos 10 palavras) e as pessoas são as marcadas aqui (quem fala entre
+-- elas). O avulso nasce "aguardando_envio" (versão 1) e segue o caminho de sempre (radar_video_para_envio, radar_video_enviado, o
+-- robô). Devolve {id, versao}.
+create or replace function public.radar_video_criar_avulso(p_titulo text, p_partes jsonb, p_fala_pessoa bigint, p_pessoas bigint[],
+                                                           p_fala_roteiro text, p_cartela text[], p_declaracoes text[], p_duracao numeric default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_titulo  text := btrim(regexp_replace(coalesce(p_titulo, ''), '[[:space:]]+', ' ', 'g'));
+  v_fala    text := btrim(regexp_replace(coalesce(p_fala_roteiro, ''), '[[:space:]]+', ' ', 'g'));
+  v_pessoas bigint[] := array(select distinct x from unnest(coalesce(p_pessoas, '{}')) x where x is not null order by x);
+  v_partes  jsonb := '[]'::jsonb;
+  v_parte   jsonb;
+  v_n       bigint;
+  v_total   numeric := 0;
+  v_i       bigint;
+  v_x       text;
+  v_id      uuid;
+  v_usado   numeric := public.radar_video_segundos_mes();
+  v_limite  numeric := public.radar_video_limite_s();
+  v_decl    constant text[] := array['so_marcadas','sem_fundo','so_voz','fala_confere'];
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
+    raise exception 'RADAR300: só o editor ou o administrador envia a gravação do reel' using errcode = '42501';
+  end if;
+  -- 1. o título (como o avulso aparece na aba Vídeo; nada de nome de cliente)
+  if length(v_titulo) not between 3 and 120 then
+    raise exception 'RADAR320: dê um título ao vídeo avulso (de 3 a 120 caracteres)' using errcode = 'P0001';
+  end if;
+  if v_titulo ~ '[<>{}\\]' or v_titulo ~ '[[:cntrl:]]' then
+    raise exception 'RADAR320: o título do vídeo avulso não leva < > { } nem \' using errcode = 'P0001';
+  end if;
+  -- 2. a fala para conferência É o roteiro do avulso (o mesmo conferidor do envio da peça: ao menos 10 palavras)
+  if length(v_fala) not between 20 and 6000 or not public.radar_video_fala_no_roteiro(v_fala, v_fala) then
+    raise exception 'RADAR302: cole a fala para conferência: o que foi falado na gravação, palavra por palavra (ao menos 10 palavras)'
+      using errcode = 'P0001';
+  end if;
+  -- 3. o boletim pago: só sim ou não (o trecho não aparece)
+  if public.radar_pauta_copia_paga(array[v_fala]) then
+    raise exception 'RADAR303: a fala tem frase igual à do boletim pago (ITC): reescreva com palavras próprias antes de gravar'
+      using errcode = 'P0001';
+  end if;
+  -- 4. as pessoas (as travas de sempre, guardadas no próprio vídeo)
+  if cardinality(v_pessoas) not between 1 and 12 then
+    raise exception 'RADAR304: marque de 1 a 12 pessoas que aparecem no vídeo' using errcode = 'P0001';
+  end if;
+  if p_fala_pessoa is null or not p_fala_pessoa = any(v_pessoas) then
+    raise exception 'RADAR304: quem fala tem de estar entre as pessoas marcadas' using errcode = 'P0001';
+  end if;
+  foreach v_i in array v_pessoas loop
+    v_x := public.radar_video_pessoa_falta(v_i, null);
+    if v_x is not null then
+      raise exception 'RADAR304: uma pessoa do vídeo não pode aparecer nele (%): confira em Pauta → Pessoas e termos', v_x using errcode = 'P0001';
+    end if;
+  end loop;
+  -- 5. a cartela
+  v_x := public.radar_video_cartela_falta(p_cartela, p_fala_pessoa);
+  if v_x is not null then
+    raise exception 'RADAR305: %', v_x using errcode = 'P0001';
+  end if;
+  -- 6. os clipes, na ordem: [{n: 1…, tipo, bytes}] (a mesma regra do envio da peça)
+  if p_partes is null or jsonb_typeof(p_partes) <> 'array' or jsonb_array_length(p_partes) not between 1 and 12 then
+    raise exception 'RADAR306: envie de 1 a 12 clipes' using errcode = 'P0001';
+  end if;
+  for v_parte, v_n in select x, o from jsonb_array_elements(p_partes) with ordinality t(x, o) loop
+    if jsonb_typeof(v_parte) is distinct from 'object' then v_parte := '{}'::jsonb; end if;
+    if (select count(*) from jsonb_object_keys(v_parte)) <> 3
+       or jsonb_typeof(v_parte->'n') is distinct from 'number' or (v_parte->>'n') <> v_n::text
+       or coalesce(v_parte->>'tipo', '') not in ('video/mp4','video/quicktime')
+       or jsonb_typeof(v_parte->'bytes') is distinct from 'number' or (v_parte->>'bytes') !~ '^[0-9]{1,9}$' then
+      raise exception 'RADAR306: o clipe nº % não confere (MP4 ou MOV, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
+    end if;
+    if (v_parte->>'bytes')::bigint not between 1 and 524288000 then
+      raise exception 'RADAR306: o clipe nº % não confere (MP4 ou MOV, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
+    end if;
+    v_total := v_total + (v_parte->>'bytes')::bigint;
+    v_partes := v_partes || jsonb_build_array(jsonb_build_object('n', v_n, 'tipo', v_parte->>'tipo', 'bytes', (v_parte->>'bytes')::bigint));
+  end loop;
+  if v_total > 524288000 then
+    raise exception 'RADAR306: os clipes passam de 500 MB no total' using errcode = 'P0001';
+  end if;
+  if p_declaracoes is null or not (p_declaracoes @> v_decl and p_declaracoes <@ v_decl) then
+    raise exception 'RADAR307: marque as quatro declarações (só as pessoas marcadas; sem tela, documento ou cliente ao fundo; só a voz; a fala para conferência é o que foi gravado)'
+      using errcode = 'P0001';
+  end if;
+  if v_usado >= v_limite then
+    raise exception 'RADAR312: o limite de minutos do corretor neste mês acabou (Configurações → Corretor de vídeo)' using errcode = 'P0001';
+  end if;
+  if p_duracao is not null and p_duracao > 0 and v_usado + p_duracao > v_limite then
+    raise exception 'RADAR312: a gravação tem cerca de % s, e o corretor só pode transcrever mais % s neste mês (Configurações → Corretor de vídeo → limite_min_mes): grave mais curto ou espere o mês que vem',
+      round(p_duracao), floor(v_limite - v_usado) using errcode = 'P0001';
+  end if;
+  -- 7. cada avulso é um envio próprio (versão 1): nada é substituído
+  insert into public.radar_videos (peca_id, titulo, versao, partes, fala_pessoa, pessoas, fala_roteiro, roteiro_hash, cartela_linhas,
+                                   gancho, declaracoes, enviado_por)
+  values (null, v_titulo, 1, v_partes, p_fala_pessoa, v_pessoas, v_fala, public.radar_hash_texto(v_fala),
+          array(select btrim(l) from unnest(p_cartela) with ordinality t(l, o) order by o),
+          null, array(select d from unnest(v_decl) d), auth.uid())
+  returning id into v_id;
+  return jsonb_build_object('id', v_id, 'versao', 1);
+end $$;
+
+-- Baixar o vídeo avulso corrigido: só o administrador (o avulso não passa pela aprovação da peça: quem decide liberar o arquivo é
+-- ele), só o vídeo PRONTO (a divergência pendente continua pedindo regravar ou a marca "a transcrição errou"), com o corrigido
+-- guardado e com as pessoas do vídeo podendo aparecer nele HOJE. Registra quem baixou (radar_video_acessos). Devolve
+-- {ok, caminho, data, capa?} ou {motivo} (sem nome) — "data" é só o dia de hoje, para o nome do arquivo.
+create or replace function public.radar_video_baixar_avulso(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v   public.radar_videos%rowtype;
+  v_x text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR321: só o administrador baixa o vídeo avulso corrigido' using errcode = '42501';
+  end if;
+  select * into v from public.radar_videos where id = p_id;
+  if v.id is null or v.peca_id is not null then
+    raise exception 'RADAR321: este vídeo não é um vídeo avulso' using errcode = 'P0001';
+  end if;
+  if v.situacao <> 'pronto' or v.sha256 is null then
+    return jsonb_build_object('motivo', 'Só o vídeo avulso PRONTO tem arquivo para baixar: resolva o que o relatório aponta (ou o erro) e monte de novo.');
+  end if;
+  if 'corrigido' = any(v.arquivos_apagados) then
+    return jsonb_build_object('motivo', 'O vídeo corrigido foi apagado (prazo de guarda): envie a gravação de novo.');
+  end if;
+  v_x := public.radar_video_pessoas_falta(null, v.fala_pessoa, v.pessoas);
+  if v_x is not null then
+    return jsonb_build_object('motivo', format('Uma pessoa do vídeo não pode aparecer nele hoje (%s): confira em Pauta → Pessoas e termos.', v_x));
+  end if;
+  insert into public.radar_video_acessos (video_id, usuario, acao) values (v.id, auth.uid(), 'baixar');
+  return jsonb_build_object('ok', true, 'caminho', format('corrigido/%s/%s.mp4', v.id, v.sha256),
+                            'data', to_char(public.radar_pauta_hoje(), 'YYYY-MM-DD'))
+         || case when jsonb_typeof(v.relatorio->'capa') = 'object' and coalesce(v.relatorio->'capa'->>'sha256', '') ~ '^[0-9a-f]{64}$'
+                 then jsonb_build_object('capa', format('quadros/%s/%s/capa-%s.jpg', v.id, v.sha256, v.relatorio->'capa'->>'sha256'))
+                 else '{}'::jsonb end;
+end $$;
+
+-- os privilégios das funções novas (as redefinidas acima ficam com os de antes): as duas conferem o papel por dentro
+revoke all on function public.radar_video_criar_avulso(text, jsonb, bigint, bigint[], text, text[], text[], numeric),
+  public.radar_video_baixar_avulso(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.radar_video_criar_avulso(text, jsonb, bigint, bigint[], text, text[], text[], numeric),
+  public.radar_video_baixar_avulso(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
 -- 7. REGISTRO DA INSTALAÇÃO E EVIDÊNCIA
 -- ---------------------------------------------------------------------
 update public.radar_instalacoes
@@ -9988,7 +10354,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.35.0).
+-- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.36.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

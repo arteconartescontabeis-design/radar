@@ -22,9 +22,15 @@
    v0.31.0: só a versão e o recado do banco (o setup da v0.31.0); a versão traz as fontes oficiais que faltavam (robô).
    v0.33.0: a aba Vídeo (o editor do vídeo corrigido: cortes, legenda, estilo, gancho, cartela e capa), os cortes por padrão
    (muletas, repetições e voz entre palavras), a meta de duração (90 s; o teto é o reel de 15 min do Instagram) e o recado do banco
-   (sql/radar-setup-v0.35.0.sql).
+   (o setup então em uso).
+   v0.36.0: a correção avulsa — analisar e corrigir um vídeo SEM criar uma peça na Pauta (pedido do dono de 18/10). Na aba Vídeo:
+   "Corrigir um vídeo avulso" (título próprio, a fala para conferência colada direto, quem aparece escolhida ali, a mesma cartela,
+   as mesmas 4 declarações e a mesma cota) e a lista das correções avulsas. O avulso segue o MESMO caminho do reel (envio TUS,
+   robô, relatório, ajustes, editor, prévia); o que muda: não passa pela aprovação da peça e NUNCA é publicado pelo Radar — o
+   administrador baixa o vídeo pronto (registrado) e "Conferir com o roteiro novo" não existe (a fala É o roteiro). Banco:
+   sql/radar-setup-v0.36.0.sql (radar_video_criar_avulso, radar_video_baixar_avulso; peca_id opcional + titulo em radar_videos).
    ==================================================================== */
-const VIDEO_VERSAO = "0.35.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.36.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -94,7 +100,7 @@ const TIPOS_CORTE = {pausa:"pausa longa encurtada", hesitacao:"hesitação", mul
   repeticao:"repetição", falso_inicio:"falso início", remover:"trecho", editor:"corte da aba Vídeo", editor_fora:"fora do começo ou do fim marcados"};
 const TIPOS_DIVERGENCIA = {numero:"número", data:"data", termo:"termo"};
 // varredura geral (v0.22.0): + "pessoas" (quem estava marcada no envio): a caixa "A pessoa viu o vídeo final" da aprovação olha para elas
-const CAMPOS_VIDEO = "id,peca_id,versao,situacao,modo,partes,fala_pessoa,pessoas,fala_roteiro,roteiro_hash,cartela_linhas,gancho,ajustes,tentativas," +
+const CAMPOS_VIDEO = "id,peca_id,titulo,versao,situacao,modo,partes,fala_pessoa,pessoas,fala_roteiro,roteiro_hash,cartela_linhas,gancho,ajustes,tentativas," +
   "sha256,bytes,duracao_final,relatorio,erro_codigo,enviado_por,enviado_em,atualizado_em,apagado_aparelho_em,arquivos_apagados";
 const VIVAS_VIDEO = "in.(aguardando_envio,na_fila,processando,pronto,regravar,erro)";
 
@@ -196,7 +202,7 @@ async function blocoVideo(p){
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
   let vivos;
   try{ vivos = await videosDaPeca(p.id); }
-  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.35.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
+  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.36.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
@@ -867,7 +873,7 @@ const CHAVES_EDITOR_VIDEO = ["cortar", "inicio_q", "fim_q", "capa_q", "legenda_t
 const ABA_VIDEO_FPS = 30;
 const ABA_VIDEO_LIMITES = {min:5, max:900, fala:2, cortes:30, corteMin:3};   // v0.33.0: o teto é o da API do Instagram (15 min); a meta das Configurações é só aviso
 const ABA_VIDEO_CAMPOS = CAMPOS_VIDEO + ",palavras_tentativa,rodada";
-const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.35.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.36.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 const abaVideo = () => (estadoVideo().aba ||= {filtro:"futuro", rascunhos:{}, previaLigada:true, abertas:{cortar:true}});
 const ehEditorVideo = v => CHAVES_EDITOR_VIDEO.some(k => Object.prototype.hasOwnProperty.call(objVideo(v?.ajustes), k));
 const inteiroVideo = x => Number.isInteger(x) ? x : null;
@@ -1036,14 +1042,15 @@ async function telaAbaVideo(){
   try{
     if(!a.paleta) a.paleta = objVideo(await rpc("radar_video_paleta", {}));
     await lerConfPauta();
-    return a.id ? await editorAbaVideo(a.id) : await listaAbaVideo();
+    return a.id ? await editorAbaVideo(a.id) : a.nova ? await formAvulso() : await listaAbaVideo();
   }catch(e){ if(semTabelaDoVideo(e) || /radar_video_paleta/.test(e.message || "")) return `<h1>Vídeo</h1>${ABA_VIDEO_SEM_BANCO}`; throw e; }
 }
 async function listaAbaVideo(){
   const a = abaVideo(), hoje = hojeBrasilia(), desde = a.filtro === "60" ? somarDias(hoje, -60) : hoje;
-  const vivos = await ler("radar_videos", {select:"id,peca_id,versao,situacao,duracao_final,sha256,ajustes,erro_codigo,atualizado_em,rodada", situacao:VIVAS_VIDEO,
+  const vivos = await ler("radar_videos", {select:"id,peca_id,titulo,versao,situacao,duracao_final,sha256,ajustes,erro_codigo,atualizado_em,rodada", situacao:VIVAS_VIDEO,
     order:"atualizado_em.desc", limit:"200"});
-  const ids = [...new Set(vivos.map(v => v.peca_id))];
+  const avulsos = vivos.filter(v => v.peca_id === null);
+  const ids = [...new Set(vivos.filter(v => v.peca_id !== null).map(v => v.peca_id))];
   const pecas = ids.length ? await ler("radar_pauta_pecas", {select:"id,data,hora,situacao,assunto,formato", id:`in.(${ids.join(",")})`, data:"gte." + desde}) : [];
   const linhas = pecas.map(p => { const dela = vivos.filter(v => v.peca_id === p.id);
     return {p, v:dela.find(v => v.situacao !== "aguardando_envio") || dela[0], envio:dela.some(v => v.situacao === "aguardando_envio") && dela.some(v => v.situacao !== "aguardando_envio")}; })
@@ -1059,7 +1066,86 @@ async function listaAbaVideo(){
         <td data-rotulo="Vídeo">${seloVideo(v)}${numVideo(v.duracao_final) !== null ? ` <span class="sub">${segVideo(v.duracao_final)} s</span>` : ""}${ehEditorVideo(v) ? " " + selo("editado", "neutro") : ""}${envio ? " " + selo("envio novo a caminho", "alerta") : ""}</td>
         <td data-rotulo="Peça">${selo(deMapaVideo(SITUACOES_PAUTA, p.situacao) || p.situacao, p.situacao === "aprovada" ? "ok" : "neutro")}</td>
         <td><button class="btn peq${adm ? "" : " sec"}" type="button" data-acao="vaba-abrir" data-id="${h(v.id)}">${adm ? "Editar" : "Ver"}</button></td></tr>`).join("")}
+      </tbody></table></div>`}
+    <h2 class="vaba-avulsos-titulo">Correções avulsas</h2>
+    <p class="sub">O vídeo avulso é analisado e corrigido SEM peça na Pauta: ele não passa pela aprovação e nunca é publicado pelo Radar — o administrador baixa o vídeo pronto e posta à mão. As travas são as mesmas (termos das pessoas, cartela, declarações e o limite de minutos do mês).</p>
+    <div class="acoes"><button class="btn verde" type="button" data-acao="vaba-avulso-novo">Corrigir um vídeo avulso</button></div>
+    ${!avulsos.length ? `<p class="sub" id="vaba-avulsos-vazia">Nenhuma correção avulsa em andamento.</p>` : `<div class="vaba-lista-caixa"><table class="vaba-lista" id="vaba-avulsos">
+      <thead><tr><th>Título</th><th>Vídeo</th><th></th></tr></thead><tbody>
+      ${avulsos.map(v => `<tr data-video="${h(v.id)}"><td data-rotulo="Título" class="vaba-assunto">${h(cortarPauta(v.titulo || "Vídeo avulso", 60))}</td>
+        <td data-rotulo="Vídeo">${seloVideo(v)}${numVideo(v.duracao_final) !== null ? ` <span class="sub">${segVideo(v.duracao_final)} s</span>` : ""}${ehEditorVideo(v) ? " " + selo("editado", "neutro") : ""}</td>
+        <td><button class="btn peq${adm ? "" : " sec"}" type="button" data-acao="vaba-abrir" data-id="${h(v.id)}">${adm ? "Editar" : "Ver"}</button></td></tr>`).join("")}
       </tbody></table></div>`}`;
+}
+
+/* ------------------------------------------------------------- a correção avulsa (v0.36.0) */
+/* O formulário do vídeo avulso: título, a fala para conferência colada direto (ela É o roteiro do avulso), quem aparece e quem fala
+   (Pauta → Pessoas e termos), a cartela, as quatro declarações e os clipes. O banco confere tudo ANTES de qualquer arquivo sair
+   (radar_video_criar_avulso, pela função radar-video); dali em diante o caminho é o mesmo do reel. Os clipes escolhidos ficam em
+   clipesDe(0): o avulso não tem número de peça (nenhuma peça tem id 0). */
+async function formAvulso(){
+  const ev = estadoVideo(), a = abaVideo();
+  const pessoas = await ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo,termo_corretor_em,quer_ver_peca,menor,socio", order:"nome_na_peca,id"});
+  E.pauta.pessoas = Object.fromEntries(pessoas.map(x => [x.id, x]));
+  ev.peca = 0; ev.envio = null;
+  ev.cota = await rpc("radar_video_cota", {}).catch(() => null);
+  const f = (a.avulso ||= {titulo:"", fala:"", quem:"", marcadas:[]});
+  // v0.28.0: sócio(a) da Artecon (maior de idade) não precisa do termo novo (o banco também dispensa: radar_video_pessoa_falta)
+  const falta = pessoas.map(x => [x, x.menor ? "menor de idade: o corretor não aceita nesta versão" : !x.ativo ? "inativa" : !x.socio && !x.termo_corretor_em ? "sem o termo novo, que cita o corretor de vídeo" : ""]);
+  const aptas = falta.filter(([, m]) => !m).map(([x]) => x);
+  const pr = ev.progresso;
+  const miolo = pr && pr.peca === 0 ? blocoProgresso(pr) : `<div class="video-envio" id="video-envio">
+    <div class="grade"><div><label for="vaba-avulso-titulo">Título (como o vídeo aparece na lista da aba; nada de nome de cliente)</label>
+      <input id="vaba-avulso-titulo" maxlength="120" value="${h(f.titulo)}"></div></div>
+    <label for="vaba-avulso-fala">Fala para conferência: o que foi falado na gravação, palavra por palavra (ela é o “roteiro” do avulso; ao menos 10 palavras)</label>
+    <textarea id="vaba-avulso-fala" rows="6" maxlength="6000">${h(f.fala)}</textarea>
+    <p class="sub">${h(RECADO_GRAVAR)}</p>
+    ${!aptas.length ? `<div class="aviso alerta" id="vaba-avulso-sem-pessoa">Nenhuma pessoa pode aparecer no vídeo hoje: confira em Pauta → Pessoas e termos (“Ativa”, a idade e o termo do corretor).</div>` : ""}
+    <fieldset class="checks" id="vaba-avulso-pessoas"><legend>Quem aparece no vídeo</legend>${falta.map(([x, m]) =>
+      `<label><input type="checkbox" class="vaba-avulso-pessoa" value="${x.id}"${f.marcadas.includes(x.id) ? " checked" : ""}${m ? " disabled" : ""}> ${h(x.nome_na_peca)}${m ? ` <span class="sub">(${h(m)})</span>` : ""}</label>`).join("")}</fieldset>
+    <div class="grade"><div><label for="vaba-avulso-quem">Quem fala</label><select id="vaba-avulso-quem"><option value="">Escolha</option>${aptas.map(x =>
+      `<option value="${x.id}"${String(x.id) === String(f.quem) ? " selected" : ""}>${h(x.nome_na_peca)}</option>`).join("")}</select></div></div>
+    <label>Cartela final (a identificação legal${aptas.some(x => ROTULO_CATEGORIA[x.categoria]) ? " e a linha de quem fala, se tem registro no CRC" : ""})</label><div id="vaba-avulso-cartela">${htmlCartela(numVideo(f.quem))}</div>
+    ${campoClipes({id:0})}<div id="video-clipes">${listaClipes(0)}</div>${linhaCotaVideo()}
+    <fieldset class="checks video-declaracoes"><legend>Declarações (as quatro são obrigatórias)</legend>${DECLARACOES_VIDEO.map(([k, t]) =>
+      `<label><input type="checkbox" class="video-declaracao" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`).join("")}</fieldset>
+    <p class="sub"><b>${h(AVISO_NOVO_ENVIO)}</b></p>
+    <div class="acoes"><button class="btn verde" type="button" data-acao="vaba-avulso-enviar">Enviar para o corretor</button>
+      <button class="btn sec" type="button" data-acao="vaba-avulso-cancelar">Cancelar</button></div></div>`;
+  return `<div id="vaba-avulso-form"><button class="voltar" data-acao="vaba-avulso-cancelar">← Voltar à lista</button>
+    <h1>Corrigir um vídeo avulso</h1>
+    <p class="sub">Sem peça na Pauta: o corretor transcreve, compara com a fala para conferência, corta e legenda; o vídeo aparece na lista da aba com o relatório e o editor. O avulso não passa pela aprovação e nunca é publicado pelo Radar: só o administrador baixa o vídeo pronto (fica registrado).</p>
+    ${miolo}</div>`;
+}
+/* O envio do avulso que não terminou ("Continuar o envio", dentro do editor da aba) */
+function htmlAvulsoContinuar(v){
+  const lista = clipesDe(0), pr = estadoVideo().progresso;
+  if(pr && pr.peca === 0) return blocoProgresso(pr);
+  if(v.enviado_por !== E.sessao?.user?.id && !ehAdmin()) return `<div class="video-envio" id="video-envio"><h3>Envio não terminado</h3>
+    <div class="aviso alerta" id="vaba-avulso-envio-outro">O envio deste avulso foi começado por outra pessoa e não terminou: só ela (ou o administrador) continua. Você pode descartar este envio e enviar de novo.</div>
+    <div class="acoes"><button class="btn perigo" type="button" data-acao="vaba-avulso-descartar">Descartar este envio</button></div></div>`;
+  return `<div class="video-envio" id="video-envio"><h3>Continuar o envio</h3>
+    <div class="aviso alerta">O envio deste avulso não terminou (${listaVideo(v.partes).length} clipe(s)). ${lista.length === listaVideo(v.partes).length ? "Os arquivos ainda estão nesta tela:" : "Escolha de novo os MESMOS arquivos, na mesma ordem:"} o envio continua de onde parou.</div>
+    ${campoClipes({id:0})}<div id="video-clipes">${listaClipes(0, listaVideo(v.partes))}</div>
+    <p class="sub">${h(AVISO_NAO_FECHE)}</p>
+    <div class="acoes"><button class="btn verde" type="button" data-acao="vaba-avulso-continuar">Continuar o envio</button>
+      <button class="btn perigo" type="button" data-acao="vaba-avulso-descartar">Descartar este envio</button></div></div>`;
+}
+/* Baixar (só o administrador, só o vídeo pronto), o registro do "apaguei" e o descartar do avulso */
+function htmlRodapeAvulso(v){
+  if(v.peca_id !== null || v.situacao === "aguardando_envio") return "";
+  const adm = ehAdmin(), partes = [`<h2 class="vaba-avulsos-titulo">Baixar e postar à mão</h2>`];
+  const pronto = v.situacao === "pronto" && v.sha256 && !(Array.isArray(v.arquivos_apagados) ? v.arquivos_apagados : []).includes("corrigido");
+  if(!pronto) partes.push(`<p class="sub">O vídeo avulso se baixa quando está “Vídeo corrigido pronto” (sem divergência pendente e sem erro).</p>`);
+  else if(!adm) partes.push(`<p class="sub">Só o administrador baixa o vídeo avulso (fica registrado quem baixou).</p>`);
+  else partes.push(`<div id="vaba-avulso-baixar"><div class="acoes"><button class="btn" type="button" data-acao="vaba-avulso-baixar">Baixar o vídeo corrigido (link de 5 minutos)</button></div>
+    <p class="sub">Fica registrado quem baixou. O avulso não é publicado pelo Radar: poste onde quiser e depois apague do aparelho.</p></div>`);
+  partes.push(v.apagado_aparelho_em ? `<p class="sub" id="vaba-avulso-apagou">Registrado: os clipes foram apagados do celular e da nuvem pessoal em ${h(dataHora(v.apagado_aparelho_em))}.</p>`
+    : `<div class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-avulso-apaguei">Apaguei os clipes do celular e da nuvem pessoal</button>
+      <span class="sub">O termo pede apagar no mesmo dia do envio; guarde até o relatório, se precisar regravar um bloco.</span></div>`);
+  partes.push(`<div class="acoes"><button class="btn peq perigo" type="button" data-acao="vaba-avulso-descartar">Descartar esta gravação</button>
+    <span class="sub">Os arquivos saem do armazenamento na limpeza seguinte.</span></div>`);
+  return `<div class="vaba-avulso-rodape" id="vaba-avulso-rodape">${partes.join("")}</div>`;
 }
 
 /* ------------------------------------------------------------- o editor */
@@ -1067,38 +1153,44 @@ async function editorAbaVideo(id){
   const a = abaVideo();
   const [v] = await ler("radar_videos", {select:ABA_VIDEO_CAMPOS, id:"eq." + id});
   if(!v){ a.id = null; return `<button class="voltar" data-acao="vaba-voltar">← Voltar à lista</button><div class="aviso erro">Vídeo não encontrado (foi substituído ou descartado).</div>`; }
-  const [p] = await ler("radar_pauta_pecas", {select:"id,data,hora,situacao,assunto,chamada,roteiro,pessoas,formato,aprovado_modo,video_id", id:"eq." + v.peca_id});
+  const avulso = v.peca_id === null;           // v0.36.0: a correção avulsa não tem peça
+  const [p] = avulso ? [null] : await ler("radar_pauta_pecas", {select:"id,data,hora,situacao,assunto,chamada,roteiro,pessoas,formato,aprovado_modo,video_id", id:"eq." + v.peca_id});
   const pessoas = await ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo,termo_corretor_em,quer_ver_peca,menor,socio", order:"nome_na_peca,id"});
   E.pauta.pessoas = Object.fromEntries(pessoas.map(x => [x.id, x]));
-  const hash = await hashTextoVideo(p?.roteiro || "");
+  const hash = avulso ? null : await hashTextoVideo(p?.roteiro || "");
   a.v = v; a.peca = p || null;
   a.roteiroMudou = !!p && (hash ? hash !== v.roteiro_hash : extrairFala(p.roteiro).fala !== v.fala_roteiro);
   if(a.previa && (a.previa.id !== v.id || a.previa.sha256 !== v.sha256)) a.previa = null;
+  if(avulso && v.situacao === "aguardando_envio"){ const ev = estadoVideo(); ev.peca = 0; ev.envio = v; }
   if(v.situacao !== "aguardando_envio") rascunhoVideo(v);
   return htmlEditorAbaVideo();
 }
-/* o vídeo pode ser editado agora? (o administrador, a peça livre, o vídeo pronto ou para regravar, montado, com a transcrição guardada) */
+/* o vídeo pode ser editado agora? (o administrador, a peça livre — ou o avulso, que não tem peça —, o vídeo pronto ou para regravar,
+   montado, com a transcrição guardada) */
 function editavelVideo(v, p){
-  return ehAdmin() && !!p && ["planejada", "em_producao", "pronta"].includes(p.situacao) && ["pronto", "regravar"].includes(v.situacao)
+  const livre = v.peca_id === null || (!!p && ["planejada", "em_producao", "pronta"].includes(p.situacao));
+  return ehAdmin() && livre && ["pronto", "regravar"].includes(v.situacao)
     && !relatorioParcial(v) && !!v.sha256 && !(Array.isArray(v.arquivos_apagados) ? v.arquivos_apagados : []).includes("corrigido") && v.palavras_tentativa !== null;
 }
 function htmlEditorAbaVideo(){
   const a = abaVideo(), v = a.v, p = a.peca, adm = ehAdmin();
+  const avulso = v.peca_id === null;                    // v0.36.0: a correção avulsa não tem peça
+  const livre = avulso || (p && ["planejada", "em_producao", "pronta"].includes(p.situacao));
   const topo = `<div class="vaba-topo"><button class="voltar" data-acao="vaba-voltar">← Voltar à lista</button>
-    <h1>Reel de ${p ? h(dataCurta(p.data)) + " · " + h(String(p.hora || "").slice(0, 5)) : "—"}</h1>
-    <p class="vaba-titulo"><span class="vaba-assunto">${h(cortarPauta(p?.assunto || "", 90))}</span> ${seloVideo(v)}${numVideo(v.duracao_final) !== null ? ` <span class="sub">${segVideo(v.duracao_final)} s</span>` : ""}${numVideo(v.rodada) > 1 ? ` <span class="sub">· montado ${numVideo(v.rodada)} vezes</span>` : ""}
+    <h1>${avulso ? "Vídeo avulso" : `Reel de ${p ? h(dataCurta(p.data)) + " · " + h(String(p.hora || "").slice(0, 5)) : "—"}`}</h1>
+    <p class="vaba-titulo"><span class="vaba-assunto">${h(cortarPauta(avulso ? v.titulo || "" : p?.assunto || "", 90))}</span> ${seloVideo(v)}${numVideo(v.duracao_final) !== null ? ` <span class="sub">${segVideo(v.duracao_final)} s</span>` : ""}${numVideo(v.rodada) > 1 ? ` <span class="sub">· montado ${numVideo(v.rodada)} vezes</span>` : ""}
       ${p ? `<button class="btn peq sec" type="button" data-acao="vaba-peca" data-id="${h(p.id)}">Abrir a peça na Pauta</button>` : ""}</p></div>`;
   const avisos = [];
   if(a.rascunhoPerdido){ avisos.push(`<div class="aviso alerta" id="vaba-perdido">O vídeo foi montado de novo enquanto esta tela guardava mudanças: as mudanças ainda não montadas foram descartadas.</div>`); a.rascunhoPerdido = false; }
   if(p?.situacao === "aprovada") avisos.push(`<div class="aviso info" id="vaba-aprovada">Peça aprovada: o vídeo não muda. Para editar, Desfazer aprovação na peça.</div>`);
   if(p?.situacao === "cancelada") avisos.push(`<div class="aviso alerta" id="vaba-cancelada">Peça cancelada: o vídeo não muda. Para editar, Reabrir a peça.</div>`);
-  if(v.situacao === "aguardando_envio") avisos.push(`<div class="aviso alerta" id="vaba-envio">O envio da gravação ${h(v.versao)} não terminou: termine (ou descarte) na peça.</div>`);
+  if(v.situacao === "aguardando_envio" && !avulso) avisos.push(`<div class="aviso alerta" id="vaba-envio">O envio da gravação ${h(v.versao)} não terminou: termine (ou descarte) na peça.</div>`);
   if(["na_fila", "processando"].includes(v.situacao))
     avisos.push(`<div class="aviso info" id="vaba-trabalhando">O corretor está montando${v.modo === "montagem" ? " (sem transcrever de novo)" : ""}. Esta tela atualiza sozinha; pode sair e voltar depois.</div>`);
   if(v.situacao === "erro"){
     const r = objVideo(v.relatorio);
     avisos.push(`<div class="aviso erro" id="vaba-erro"><b>O corretor parou:</b> ${h(erroDoVideo(v.erro_codigo))}.
-      ${p && ["planejada", "em_producao", "pronta"].includes(p.situacao) ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-de-novo" data-id="${h(v.id)}">Tentar de novo</button>
+      ${livre ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-de-novo" data-id="${h(v.id)}">Tentar de novo</button>
         ${adm && v.erro_codigo === "edicao_curta" && r.parcial === false && r.mapa ? `<button class="btn peq sec" type="button" data-acao="vaba-desfazer-edicao" data-id="${h(v.id)}">Desfazer os cortes do editor e montar de novo</button>` : ""}</div>` : ""}</div>`);
   }
   if(a.roteiroMudou && ["pronto", "regravar", "erro"].includes(v.situacao))
@@ -1106,12 +1198,20 @@ function htmlEditorAbaVideo(){
   if(v.palavras_tentativa === null && ["pronto", "regravar"].includes(v.situacao))
     avisos.push(`<div class="aviso alerta" id="vaba-sem-transcricao">A transcrição desta gravação não ficou guardada: o editor não monta de novo (transcreveria outra vez e gastaria minutos do mês). Para mudar, envie a gravação de novo.</div>`);
   if(!adm) avisos.push(`<p class="sub" id="vaba-so-ver">Só o administrador muda o vídeo; aqui você vê o vídeo e o que foi feito.</p>`);
+  // v0.36.0: a fala do avulso fica à mão (no reel ela está no roteiro da peça); para mudar a fala, envia-se um avulso novo
+  if(avulso && v.situacao !== "aguardando_envio" && textoDe(v.fala_roteiro)){
+    const n = v.fala_roteiro.split(" ").length;
+    avisos.push(`<details class="video-fala" id="vaba-avulso-fala-guardada"><summary>Fala para conferência (${n} palavra${n === 1 ? "" : "s"}): o que o corretor compara com a gravação</summary>
+      <p class="video-fala-texto">${h(v.fala_roteiro)}</p><p class="sub">Para mudar a fala, envie a gravação de novo (um avulso novo): o avulso não tem “Conferir com o roteiro novo”.</p></details>`);
+  }
   const tem = ["pronto", "regravar"].includes(v.situacao) && v.sha256 && !(Array.isArray(v.arquivos_apagados) ? v.arquivos_apagados : []).includes("corrigido");
   return `<div id="vaba-editor" class="vaba-pagina" data-video="${h(v.id)}">${topo}<div id="vaba-avisos">${avisos.join("")}</div>
+    ${avulso && v.situacao === "aguardando_envio" ? htmlAvulsoContinuar(v) : ""}
     ${tem ? `<div class="vaba-editor"><div class="vaba-player" id="vaba-player-col">${htmlPlayerAbaVideo()}</div>
       <div class="vaba-secoes" id="vaba-secoes">${htmlSecoesAbaVideo()}</div></div>
       <div class="vaba-rodape" id="vaba-rodape">${htmlRodapeAbaVideo()}</div>`
-      : `<p class="sub">${v.situacao === "aguardando_envio" ? "" : "O vídeo corrigido aparece aqui quando o corretor terminar."}</p>`}</div>`;
+      : avulso && v.situacao === "aguardando_envio" ? "" : `<p class="sub">${v.situacao === "aguardando_envio" ? "" : "O vídeo corrigido aparece aqui quando o corretor terminar."}</p>`}
+    ${htmlRodapeAvulso(v)}</div>`;
 }
 function htmlPlayerAbaVideo(){
   const a = abaVideo(), v = a.v, pv = a.previa, r = objVideo(v.relatorio), qms = Array.isArray(r.quadros_ms) ? r.quadros_ms : [], capa = objVideo(r.capa);
@@ -1418,7 +1518,8 @@ async function sondarAbaVideo(){
   catch(e){ depoisDeDesenharAbaVideo(); return; }
   if(abaVideo().id !== v.id || !$("#vaba-editor")) return;
   if(novo && (novo.situacao !== v.situacao || novo.atualizado_em !== v.atualizado_em)){
-    if(["pronto", "regravar"].includes(novo.situacao)) recado("Vídeo montado de novo: confira a prévia; a aprovação é na peça.");
+    if(["pronto", "regravar"].includes(novo.situacao)) recado(v.peca_id === null ? "Vídeo montado de novo: confira a prévia; o avulso pronto se baixa nesta aba (só o administrador)."
+      : "Vídeo montado de novo: confira a prévia; a aprovação é na peça.");
     else if(novo.situacao === "erro") recado("O corretor parou com erro: veja o motivo.", "aviso");
     if(!["na_fila", "processando"].includes(novo.situacao) || novo.situacao !== v.situacao) return desenhar();
   }
@@ -1464,8 +1565,11 @@ const ACOES_ABA_VIDEO = {
     window.scrollTo(0, 0); return desenhar();
   },
   "vaba-filtro"(el){ const a = abaVideo(); a.filtro = el.dataset.filtro === "60" ? "60" : "futuro"; return desenhar(); },
-  "vaba-abrir"(el){ const a = abaVideo(); a.id = String(el.dataset.id || ""); a.selecao = null; a.marca = null; window.scrollTo(0, 0); return desenhar(); },
-  "vaba-voltar"(){ const a = abaVideo(); a.id = null; a.v = null; a.selecao = null; a.marca = null; return desenhar(); },
+  "vaba-abrir"(el){ const a = abaVideo(); a.id = String(el.dataset.id || ""); a.nova = false; a.selecao = null; a.marca = null; window.scrollTo(0, 0); return desenhar(); },
+  "vaba-voltar"(){ const a = abaVideo(); a.id = null; a.v = null; a.nova = false; a.selecao = null; a.marca = null; return desenhar(); },
+  /* v0.36.0: a correção avulsa (o formulário abre e fecha sem gravar nada) */
+  "vaba-avulso-novo"(){ const a = abaVideo(); a.nova = true; a.id = null; a.v = null; window.scrollTo(0, 0); return desenhar(); },
+  "vaba-avulso-cancelar"(){ const a = abaVideo(); a.nova = false; return desenhar(); },
   "vaba-peca"(el){ E.aba = "pauta"; E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; abaVideo().id = null; window.scrollTo(0, 0); return desenhar(); },
   "vaba-palavra"(el){
     const a = abaVideo(), i = Number(el.dataset.i), pl = $("#vaba-player");
@@ -1537,8 +1641,8 @@ const ACOES_ABA_VIDEO = {
     if(m && aj.capa_q !== undefined && !quadroFicaVideo(m, aj, aj.capa_q)) throw new ErroApi("A capa caiu num trecho cortado: escolha outro quadro.");
     if(r.refazer && faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.`);
     const gancho = ganchoDoEditor(v, r);
-    if(!confirm("Montar o vídeo de novo com estas mudanças? Não transcreve de novo (não gasta minutos do mês) e leva alguns minutos. Enquanto o robô monta, o reel não pode ser aprovado."
-      + (gancho !== null && gancho !== "" ? " O texto do gancho também muda na peça." : "")
+    if(!confirm("Montar o vídeo de novo com estas mudanças? Não transcreve de novo (não gasta minutos do mês) e leva alguns minutos." + (v.peca_id === null ? "" : " Enquanto o robô monta, o reel não pode ser aprovado.")
+      + (gancho !== null && gancho !== "" && v.peca_id !== null ? " O texto do gancho também muda na peça." : "")
       + (dur !== null && dur > limiteDuracaoVideo() ? ` O vídeo fica com cerca de ${segVideo(dur)} s, acima da meta de ${segVideo(limiteDuracaoVideo())} s${dur > 90 ? " (acima de 90 s, o reel sai só no Instagram)" : ""}.` : ""))) return;
     await rpc("radar_video_editar", {p_id:v.id, p_sha256:v.sha256, p_ajustes:aj, p_cartela:cartelaDoEditor(v, r), p_gancho:gancho});
     const robo = await acionarCorretor();
@@ -1569,10 +1673,82 @@ const ACOES_ABA_VIDEO = {
     await rpc("radar_video_editar", {p_id:v.id, p_sha256:v.sha256, p_ajustes:aj, p_cartela:null, p_gancho:null});
     delete abaVideo().rascunhos[v.id];
     const robo = await acionarCorretor(); await desenhar(); recado(`O corretor monta o vídeo de novo, sem os cortes do editor. ${robo}`);
+  },
+  /* v0.36.0: o envio do vídeo avulso — a tela confere o que sabe; o banco confere tudo ANTES de qualquer arquivo sair
+     (radar_video_criar_avulso) e só então os clipes sobem, um de cada vez (o mesmo TUS do reel) */
+  async "vaba-avulso-enviar"(){
+    const a = abaVideo();
+    const titulo = juntarFala($("#vaba-avulso-titulo")?.value || "");
+    const fala = cortarFala(juntarFala($("#vaba-avulso-fala")?.value || ""));
+    const quem = Number($("#vaba-avulso-quem")?.value || 0);
+    const marcadas = [...document.querySelectorAll(".vaba-avulso-pessoa:checked")].map(c => Number(c.value));
+    const lista = clipesDe(0);
+    a.avulso = {titulo, fala, quem:quem || "", marcadas};
+    if(titulo.length < 3) throw new ErroApi("Dê um título ao vídeo avulso (de 3 a 120 caracteres).");
+    conferirEnvio(null, lista);
+    if(fala.length < 20 || fala.split(" ").length < 10) throw new ErroApi("Cole a fala para conferência (ao menos 10 palavras): é com ela que o corretor compara a gravação.");
+    if(!marcadas.length) throw new ErroApi("Marque quem aparece no vídeo.");
+    if(!quem || !marcadas.includes(quem)) throw new ErroApi("Escolha quem fala (e marque essa pessoa em Quem aparece).");
+    const decl = [...document.querySelectorAll("#video-envio .video-declaracao")], faltaD = decl.filter(c => !c.checked);
+    if(decl.length !== 4 || faltaD.length) throw new ErroApi("Marque as quatro declarações: " + faltaD.map(c => `“${c.dataset.texto}”`).join(", ") + ".");
+    const achados = [["na fala para conferência", [...new Set([...termosPublicidade(fala).trava, ...termosPeca(fala)])]]].filter(([, l]) => l.length);
+    if(achados.length) throw new ErroApi(msgTermosPeca(achados, "gravar"));
+    if(faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura (o administrador preenche).`);
+    const r = await funcaoVideo("envio_iniciar_avulso", {titulo, partes:lista.map((c, i) => ({n:i + 1, tipo:c.tipo, bytes:c.bytes})), fala_pessoa:quem,
+      pessoas:marcadas, fala_roteiro:fala, cartela:linhasCartela(quem), declaracoes:decl.map(c => c.value), duracao:duracaoClipes(lista)}, 90000);
+    if(!UUID_VIDEO.test(String(r?.id)) || !Array.isArray(r?.envios) || r.envios.length !== lista.length) throw new ErroApi("A função devolveu o envio fora do formato. Nada foi enviado.");
+    try{ await subirClipes(0, r.id, r.envios, lista, String(r.bucket || "radar-videos")); }
+    catch(e){ a.nova = false; a.id = String(r.id); await desenhar().catch(() => {}); throw e; }   // o editor do avulso tem o "Continuar o envio"
+    const fim = await concluirEnvio(0, r.id);
+    delete estadoVideo().arquivos[0]; a.nova = false; a.avulso = null; a.id = String(r.id);
+    await desenhar();
+    recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)} Guarde os clipes no celular até o relatório dizer “Vídeo corrigido pronto” (se precisar regravar um bloco, os outros vão de novo) e então apague do celular e da nuvem pessoal, no mesmo dia.`);
+  },
+  /* Continuar o envio do avulso que não terminou: tokens novos só para os clipes que faltam (como na peça) */
+  async "vaba-avulso-continuar"(){
+    const v = videoDaAba();
+    if(v.peca_id !== null || v.situacao !== "aguardando_envio") throw new ErroApi("Este envio não está mais esperando os arquivos.");
+    const lista = clipesDe(0), partes = listaVideo(v.partes);
+    if(lista.length !== partes.length || lista.some((c, i) => c.bytes !== partes[i].bytes || c.tipo !== partes[i].tipo))
+      throw new ErroApi(`Escolha os MESMOS ${partes.length} arquivos do envio, na mesma ordem (o tamanho de cada um confere), ou descarte este envio e envie de novo.`);
+    const r = await funcaoVideo("envio_renovar", {id:v.id});
+    try{ await subirClipes(0, v.id, Array.isArray(r?.envios) ? r.envios : [], lista, String(r?.bucket || "radar-videos")); }
+    catch(e){ await desenhar().catch(() => {}); throw e; }
+    const fim = await concluirEnvio(0, v.id);
+    delete estadoVideo().arquivos[0];
+    await desenhar();
+    recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)}`);
+  },
+  /* Baixar o vídeo avulso pronto (só o administrador; o banco confere e registra: radar_video_baixar_avulso, pela função) */
+  async "vaba-avulso-baixar"(){
+    if(!ehAdmin()) throw new ErroApi("Só o administrador baixa o vídeo avulso corrigido.");
+    const v = videoDaAba();
+    const r = await funcaoVideo("baixar_avulso", {id:v.id});
+    if(!linkVideoOk(r?.url) || (r.capa_url !== null && r.capa_url !== undefined && !linkVideoOk(r.capa_url))) throw new ErroApi("A função devolveu o link fora do formato.");
+    const nome = `avulso-${hojeBrasilia()}.mp4`, capa = linkVideoOk(r.capa_url), box = $("#vaba-avulso-baixar");
+    if(box) box.innerHTML = `<p><a class="btn peq" id="vaba-avulso-link" href="${h(r.url)}" download="${h(nome)}" rel="noopener noreferrer">Baixar ${h(nome)}</a>
+      ${capa ? `<a class="btn peq sec" id="vaba-avulso-capa" href="${h(r.capa_url)}" download="${h(`avulso-${hojeBrasilia()}-capa.jpg`)}" rel="noopener noreferrer">Baixar a capa</a>` : ""}
+      <span class="sub">O link vale 5 minutos (vencido, clique em “Baixar o vídeo corrigido” de novo). Poste onde quiser e depois apague do celular e da nuvem pessoal.</span></p>`;
+    recado("Vídeo avulso liberado: baixe, poste à mão e depois apague do aparelho.");
+  },
+  async "vaba-avulso-apaguei"(){
+    const v = videoDaAba();
+    await rpc("radar_video_apaguei", {p_id:v.id});
+    await desenhar(); recado("Registrado: os clipes foram apagados do celular e da nuvem pessoal.");
+  },
+  async "vaba-avulso-descartar"(){
+    const v = videoDaAba(), envio = v.situacao === "aguardando_envio";
+    if(!confirm(envio ? "Descartar o envio deste avulso? O que já subiu sai do armazenamento na limpeza seguinte."
+      : "Descartar este vídeo avulso? Os arquivos saem do armazenamento na limpeza seguinte; para corrigir de novo, envie outro avulso.")) return;
+    await rpc("radar_video_descartar", {p_id:v.id});
+    delete estadoVideo().arquivos[0];
+    for(const pt of listaVideo(v.partes)) apagarLocalVideo(`radar_tus_bruto/${v.id}/${pt.n}`);
+    const a = abaVideo(); a.id = null; a.v = null;
+    await desenhar(); recado(envio ? "Envio descartado." : "Gravação descartada.");
   }
 };
 // as que não gravam nada (só a tela): navegam sem a trava de "uma ação por vez"
-const NAVEGACAO_ABA_VIDEO = ["video-aba", "vaba-filtro", "vaba-abrir", "vaba-voltar", "vaba-peca", "vaba-palavra", "vaba-limpar-selecao", "vaba-cortar",
+const NAVEGACAO_ABA_VIDEO = ["video-aba", "vaba-filtro", "vaba-abrir", "vaba-voltar", "vaba-avulso-novo", "vaba-avulso-cancelar", "vaba-peca", "vaba-palavra", "vaba-limpar-selecao", "vaba-cortar",
   "vaba-comecar-palavra", "vaba-terminar-palavra", "vaba-marcar-de", "vaba-marcar-ate", "vaba-comecar-aqui", "vaba-terminar-aqui", "vaba-desfazer",
   "vaba-desfazer-salvo", "vaba-refazer-salvo", "vaba-desfazer-bloco", "vaba-ouvir", "vaba-passo", "vaba-capa-aqui", "vaba-capa-tirar",
   "vaba-cortar-divergencia", "vaba-cortar-fora", "vaba-descartar"];

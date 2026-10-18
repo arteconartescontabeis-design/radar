@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.35.0.sql
--- DESFAZ a instalação do radar-setup-v0.35.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.36.0.sql
+-- DESFAZ a instalação do radar-setup-v0.36.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -44,6 +44,8 @@
 -- Functions → apague a função radar-meta-webhook e os segredos META_APP_SECRET, META_VERIFY_TOKEN e META_PAGE_TOKEN; em
 -- developers.facebook.com, desligue o webhook do aplicativo (senão a Meta continuaria chamando um endereço morto). A chave
 -- 'radar_respostas' fica no Vault de propósito (para zerar, o delete do comentário do sql/radar-respostas-agenda-reversao.sql).
+-- v0.36.0: a correção avulsa. Os vídeos avulsos são linhas de radar_videos (saem com a tabela, como os outros) e as duas funções
+-- novas saem no bloco do corretor, abaixo. Os ARQUIVOS deles no bucket radar-videos seguem o aviso do v0.22.0, acima.
 -- =====================================================================
 begin;
 
@@ -392,6 +394,10 @@ drop function if exists public.radar_video_editar(uuid, text, jsonb, text[], tex
 drop function if exists public.radar_video_paleta();
 drop function if exists public.radar_video_edicao_falta(public.radar_videos, jsonb);
 drop function if exists public.radar_video_edicao_duracao(public.radar_videos, jsonb);
+
+-- v0.36.0: a correção avulsa (o envio e o baixar do vídeo sem peça)
+drop function if exists public.radar_video_criar_avulso(text, jsonb, bigint, bigint[], text, text[], text[], numeric);
+drop function if exists public.radar_video_baixar_avulso(uuid);
 
 commit;
 

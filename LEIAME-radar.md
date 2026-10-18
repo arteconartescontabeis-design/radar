@@ -1,4 +1,4 @@
-# Radar Artecon — v0.35.0
+# Radar Artecon — v0.36.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,17 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.36.0 traz a **correção avulsa**: analisar e corrigir um vídeo **sem criar uma peça na Pauta** (pedido do dono de 18/10). Na
+aba **Vídeo**, "Corrigir um vídeo avulso": um **título** próprio, a **fala para conferência** colada direto (ela é o "roteiro" do
+avulso), **quem aparece e quem fala** escolhidas ali, a mesma **cartela** com a identificação legal, as mesmas **quatro
+declarações** e os clipes — o **mesmo corretor** transcreve, compara, corta e legenda, com o relatório, os ajustes e o editor
+(cortes, legenda, capa) de sempre. O que muda de propósito: o avulso **não passa pela aprovação da peça** e **nunca é publicado
+pelo Radar** — só o **administrador baixa** o vídeo pronto (fica registrado quem baixou) e posta onde quiser; "Conferir com o
+roteiro novo" não existe no avulso (para mudar a fala, envia-se de novo). Mudam o banco (`sql/radar-setup-v0.36.0.sql`:
+`radar_videos.peca_id` vira opcional e entra a coluna `titulo`; **nenhuma tabela nova**, nada é apagado), a função **`radar-video`**
+(as ações `envio_iniciar_avulso` e `baixar_avulso`) e a tela (`index.html` e `radar-video.js`; os outros scripts só mudam a
+versão). **Nenhum segredo novo; o robô e as agendas não mudam.** Veja "Da v0.35.0 para a v0.36.0".
 
 A v0.35.0 traz a aba **Respostas** (o Módulo Respostas Automáticas): o Radar responde sozinho, no Instagram e no Facebook, ao
 comentário que traz a **palavra-chave** de uma publicação escolhida (ex.: "Comente **QUERO** e receba o material") — uma **resposta
@@ -901,19 +912,19 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 |---|---|
 | `index.html` | Dashboard de curadoria (uso interno, com login). Não há página pública. |
 | `radar-pauta.js` | A aba Pauta (v0.21.0), carregada pelo `index.html`. Vai sempre junto com ele: com os dois de versões diferentes, a aba pede Ctrl+F5. |
-| `radar-video.js` | O corretor de vídeo do reel (v0.22.0) e a aba Vídeo (v0.33.0), carregado pelo `index.html` depois do `radar-pauta.js`. Vai sempre junto com os dois. |
+| `radar-video.js` | O corretor de vídeo do reel (v0.22.0), a aba Vídeo (v0.33.0) e a correção avulsa (v0.36.0), carregado pelo `index.html` depois do `radar-pauta.js`. Vai sempre junto com os dois. |
 | `radar-setor.js` | A aba Setor (v0.34.0): a análise das publicações do setor no Instagram. Carregado pelo `index.html` depois do `radar-video.js`; vai sempre junto. |
 | `radar-respostas.js` | A aba Respostas (v0.35.0): as respostas automáticas dos comentários com palavra-chave. Carregado pelo `index.html` depois do `radar-setor.js`; vai sempre junto. |
 | `informativo.html` | Informativo Mensal para imprimir / salvar em PDF (uso interno, usa o login do dashboard). |
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.35.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.35.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.36.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.36.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
-| `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda. É a única que toca no armazenamento privado `radar-videos`. |
+| `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda; desde a v0.36.0, também o envio e o baixar do vídeo avulso. É a única que toca no armazenamento privado `radar-videos`. |
 | `supabase/functions/radar-copia/index.ts` | Função da cópia de segurança mensal do banco no OneDrive (v0.32.0): exporta as tabelas, monta o .zip e grava na pasta das cópias pelo Microsoft Graph. O arquivo nunca passa pelo GitHub nem pelo armazenamento do Supabase. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase (desde a v0.23.0, pode rodar de novo, como as outras agendas). |
 | `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. Desde a v0.29.0, também pede (de 15 em 15 minutos, só quando há o que lembrar) o robô dos lembretes por e-mail. |
@@ -2445,6 +2456,31 @@ num dos quadros ficam para a v0.22.1. As recusas do banco do corretor vêm com o
 fala para conferência não está no roteiro", RADAR304 "pessoa ou termo", RADAR305 "cartela", RADAR312 "cota do mês", RADAR313 "o vídeo
 da aprovação não confere", RADAR317 "registro do reel sem o vídeo aprovado").
 
+### Corrigir um vídeo avulso (v0.36.0)
+
+Para analisar e corrigir um vídeo **sem criar uma peça na Pauta** (um aviso rápido, um vídeo que não entra no calendário). Na aba
+**Vídeo**, "Corrigir um vídeo avulso":
+
+1. Dê um **título** (como o vídeo aparece na lista; nada de nome de cliente) e cole a **fala para conferência**: o que foi falado
+   na gravação, palavra por palavra (ao menos 10 palavras). No avulso ela é o "roteiro": é com ela que o corretor compara a
+   gravação, acha as divergências e monta a legenda.
+2. Marque **quem aparece** e escolha **quem fala** — as mesmas travas da peça: o termo novo do corretor, o termo de uso de imagem
+   valendo hoje, maior de idade ("sócio(a) da Artecon" dispensa os termos, como sempre). A **cartela** é a mesma (a identificação
+   legal das Configurações e a linha de quem fala, se tem registro no CRC) e as **quatro declarações** são obrigatórias.
+3. Envie de 1 a 12 clipes, como na peça (MP4 ou MOV, até 500 MB no total). O banco confere tudo **antes** de qualquer arquivo
+   sair; o envio gasta a mesma **cota de minutos do mês** e a fala passa pela conferência do **boletim pago** (ITC).
+4. O corretor trabalha igual (fila, transcrição, cortes, legenda, cartela) e o vídeo aparece na lista **"Correções avulsas"** da
+   aba, com o relatório, os ajustes e o editor (cortes, legenda palavra por palavra, estilo, gancho pelo editor, capa).
+5. O que muda de propósito: o avulso **não passa pela aprovação da peça** e **nunca é publicado pelo Radar**. Só o
+   **administrador baixa** o vídeo pronto (`avulso-<data>.mp4`, com a capa se houver; fica registrado quem baixou) e posta onde
+   quiser. A divergência pendente continua pedindo **regravar** (ou a marca "a transcrição errou", ou o corte do trecho) antes de
+   liberar o baixar. "Conferir com o roteiro novo" não existe no avulso: para mudar a fala, envie a gravação de novo (um avulso
+   novo). O "Apaguei do celular e da nuvem pessoal" e o **Descartar** ficam no próprio editor da aba.
+
+Os prazos de guarda são os do vídeo que não saiu (a limpeza diária de sempre); o envio abandonado é descartado em 1 dia. As recusas
+vêm com os códigos de sempre (RADAR300 a RADAR312) e os novos **RADAR320** (o título) e **RADAR321** (baixar: só o administrador,
+só o vídeo avulso).
+
 ### Análise do setor no Instagram (v0.34.0)
 
 A aba **Setor** mostra, para a equipe toda, como estão as publicações de um setor no Instagram — a contabilidade, para começar. O
@@ -2810,6 +2846,27 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.35.0 para a v0.36.0** (muda o banco: SQL novo, que pode rodar de novo; muda a função `radar-video`; as funções `radar-ia`,
+`radar-redes`, `radar-itc`, `radar-copia`, `radar-concorrentes` e `radar-meta-webhook`, o robô do vídeo e as agendas **não mudam**;
+**nenhum segredo novo**; nada de chave ou segredo pelo chat). Supõe a v0.35.0 instalada. **Nesta ordem**:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.36.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **37
+   tabelas** (nenhuma nova) e "instalacoes concluidas" com a **v0.36.0**. Ele deixa o `peca_id` do vídeo opcional, cria a coluna
+   `titulo` e as duas funções do avulso; nada é apagado.
+2. Supabase → **Edge Functions** → `radar-video` → cole o `supabase/functions/radar-video/index.ts` desta versão → **Deploy**, com
+   o **"Verify JWT" desligado** (como já está). Entram as ações `envio_iniciar_avulso` e `baixar_avulso`; as outras não mudam.
+3. Publique a tela (`index.html`, `radar-pauta.js`, `radar-video.js`, `radar-setor.js` e `radar-respostas.js`, juntos) e aperte
+   **Ctrl+F5**. O rodapé mostra "Radar v0.36.0" e a aba Vídeo ganha a lista "Correções avulsas" e o botão "Corrigir um vídeo
+   avulso".
+
+**Como desligar:** não há agenda nem segredo novo: basta não usar o botão (o avulso só nasce quando alguém envia um).
+
+**Para desfazer** só a correção avulsa, mantendo o resto da v0.36.0: descarte (ou espere a limpeza levar) os avulsos e rode no SQL
+Editor: `drop function if exists public.radar_video_criar_avulso(text, jsonb, bigint, bigint[], text, text[], text[], numeric);
+drop function if exists public.radar_video_baixar_avulso(uuid);` — os vídeos das peças não são tocados (a coluna `titulo` e o
+`peca_id` opcional ficam, sem efeito). Para voltar a versão inteira, use o pacote da v0.35.0 (tela e função `radar-video` da
+v0.33.0) — o banco da v0.36.0 continua servindo a tela da v0.35.0.
 
 **Da v0.34.0 para a v0.35.0** (muda o banco: SQL novo, que pode rodar de novo; entra a função `radar-meta-webhook` com 3 segredos
 novos e a agenda da fila; muda a função `radar-copia`; as funções `radar-ia`, `radar-redes`, `radar-itc`, `radar-video` e

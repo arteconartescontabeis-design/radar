@@ -34,7 +34,8 @@ import requests
 
 from conftest import ADMIN, API, EDITOR, LEITOR, RAIZ, SECRETA, VAULT_SIMULADO, como, gateway, jwt
 from test_radar_banco import IDENT, SHA_VIDEO, aprovar_peca, hoje, marcar_pronta, pauta  # noqa: F401
-from test_radar_video_banco import DECL, DIVERGENCIA, FALA, PARTES, RELATORIO, corretor, na_fila, reel, video  # noqa: F401
+from test_radar_video_banco import (DECL, DIVERGENCIA, FALA, FALA_AVULSA, PARTES, RELATORIO, avulso_na_fila, corretor, na_fila,  # noqa: F401
+                                    pessoa_do_corretor, reel, video)
 
 PORTA_PONTE, PORTA_FUNCAO, PORTA_SEM_TOKEN, PORTA_ACIONAR = 3978, 3977, 3976, 3975
 PONTE = f"http://127.0.0.1:{PORTA_PONTE}"
@@ -384,7 +385,7 @@ def test_quem_chama_cada_um_nas_suas_acoes_e_nunca_a_chave_interna(vid):
         assert pedir({"acao": "pegar"}, cab=cab) == errada, cab
     assert pedir({"acao": "previa", "id": str(uuidlib.uuid4())}, cab=ROBO) == (403, {"message": "O robô só pega o pedido, pede links e entrega o resultado."})
     assert pedir({"acao": "pegar"}, cab=AGENDA) == (403, {"message": "A agenda só aciona o robô e faz a limpeza."})
-    assert pedir({"acao": "agenda_teste"}, cab=AGENDA) == (200, {"ok": True, "versao": "0.33.0"})
+    assert pedir({"acao": "agenda_teste"}, cab=AGENDA) == (200, {"ok": True, "versao": "0.36.0"})
     assert pedir({"acao": "pegar"}, cab=ROBO) == (200, {"pedido": None})
     assert pedir({"acao": "pe gar"}, cab=ROBO)[0] == 403 and pedir({"acao": "PEGAR"}, cab=ROBO)[0] == 403   # o nome exato da ação
     assert ARM["objetos"] == {} and ARM["envios"] == [] and ARM["github"] == []
@@ -596,7 +597,7 @@ def test_diagnostico_devolve_o_bucket_publico_a_privado_e_mostra_a_fila_sem_os_s
     db = vid
     ARM["buckets"]["radar-videos"] = {"id": "radar-videos", "name": "radar-videos", "public": True}
     status, r = pedir({"acao": "diagnostico"}, uid=ADMIN)
-    assert status == 200 and r["versao"] == "0.33.0"
+    assert status == 200 and r["versao"] == "0.36.0"
     itens = {i["item"]: i for i in r["itens"]}
     assert itens["Armazenamento dos vídeos"] == {"item": "Armazenamento dos vídeos", "ok": True,
                                                  "detalhe": 'bucket privado "radar-videos" (estava público: voltou a privado)'}
@@ -759,3 +760,52 @@ def test_previa_e_baixar_devolvem_o_link_da_capa(vid):
         db.execute("alter function radar_video_para_previa_ok(uuid) rename to radar_video_para_previa")
     texto = "\n".join(l for p in LOGS.values() for l in p.read_text().splitlines())
     assert "capa-" not in texto and "capa.jpg" not in texto and "token=" not in texto
+
+
+# ------------------------------------------------------------------ v0.36.0: a correção avulsa (o vídeo sem peça na Pauta)
+def envio_avulso(pessoa, **extra):
+    return {"acao": "envio_iniciar_avulso", "titulo": "Aviso do caderno da semana", "partes": PARTES, "fala_pessoa": pessoa,
+            "pessoas": [pessoa], "fala_roteiro": FALA_AVULSA, "cartela": [IDENT], "declaracoes": DECL, **extra}
+
+
+def test_envio_avulso_confere_no_banco_antes_e_segue_o_mesmo_caminho_do_reel(vid):
+    db = vid
+    ana = pessoa_do_corretor(db)
+    # o banco confere ANTES: título e fala; nenhum token sai (e o leitor não envia)
+    status, r = pedir(envio_avulso(ana, titulo="ab"))
+    assert status == 400 and r["message"].startswith("dê um título ao vídeo avulso")          # a função tira o código RADAR320
+    status, r = pedir(envio_avulso(ana, fala_roteiro="Prazo: dia vinte."))
+    assert status == 400 and r["message"].startswith("cole a fala para conferência")
+    assert ARM.get("envios", []) == []
+    assert pedir(envio_avulso(ana), cab=ANON)[0] in (401, 403)
+    # deu certo: o mesmo formato do envio da peça (um token por clipe) e o mesmo caminho até a fila
+    status, r = pedir(envio_avulso(ana))
+    assert status == 200 and r["versao"] == 1 and r["bucket"] == "radar-videos"
+    v = r["id"]
+    assert [(e["n"], e["caminho"]) for e in r["envios"]] == [(1, f"bruto/{v}/1"), (2, f"bruto/{v}/2")]
+    assert video(db, v, "peca_id, titulo, situacao") == (None, "Aviso do caderno da semana", "aguardando_envio")
+    assert subir(f"bruto/{v}/1", b"x" * 1000, "video/mp4", r["envios"][0]["token"]) == 200
+    assert subir(f"bruto/{v}/2", b"z" * 2000, "video/quicktime", r["envios"][1]["token"]) == 200
+    status, fim = pedir({"acao": "envio_concluido", "id": v})
+    assert status == 200 and fim["situacao"] == "na_fila" and video(db, v) == "na_fila"
+
+
+def test_baixar_avulso_so_o_administrador_com_300_s_e_o_nome_avulso(vid):
+    db = vid
+    ana = pessoa_do_corretor(db)
+    v = avulso_na_fila(db, ana)
+    for pt in PARTES:
+        guardar(f"bruto/{v}/{pt['n']}", pt["bytes"], pt["tipo"])
+    db.execute("update radar_videos set situacao = 'regravar', sha256 = %s, bytes = 4000, duracao_final = 12, relatorio = %s where id = %s",
+               (SHA_VIDEO, json.dumps(RELATORIO), v))
+    guardar(f"corrigido/{v}/{SHA_VIDEO}.mp4", 4000)
+    # para regravar não baixa; o editor nunca baixa; o administrador baixa o PRONTO com 300 s e o nome avulso-<hoje>.mp4
+    assert pedir({"acao": "baixar_avulso", "id": v}, uid=ADMIN) == (409, {
+        "message": "Só o vídeo avulso PRONTO tem arquivo para baixar: resolva o que o relatório aponta (ou o erro) e monte de novo."})
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (v,))
+    status, r = pedir({"acao": "baixar_avulso", "id": v}, uid=EDITOR)
+    assert status == 403 and "só o administrador baixa o vídeo avulso" in r["message"]
+    status, r = pedir({"acao": "baixar_avulso", "id": v}, uid=ADMIN)
+    assert status == 200 and r["expira_s"] == 300 and r["url"].endswith(f"&download=avulso-{hoje(db)}.mp4") and r["capa_url"] is None
+    assert ARM["assinaturas"][-1] == (f"corrigido/{v}/{SHA_VIDEO}.mp4", 300)
+    assert db.execute("select acao from radar_video_acessos").fetchall() == [("baixar",)]
