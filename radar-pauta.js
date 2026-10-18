@@ -26,10 +26,10 @@
    ato da prorrogação; a versão e o recado do banco (o setup da v0.30.0). O 13º, as anuais e o aviso de prorrogação ficam no
    index.html (Configurações, Painel e Informativo).
    v0.31.0: só a versão e o recado do banco (o setup da v0.31.0); a versão traz as fontes oficiais que faltavam (robô).
-   v0.33.0: só a versão e o recado do banco (sql/radar-setup-v0.33.0.sql); a aba Vídeo (o editor do vídeo corrigido) fica em
+   v0.34.0: só a versão e o recado do banco (sql/radar-setup-v0.34.0.sql); a aba Vídeo fica em radar-video.js e a aba Setor em
    Configurações (index.html).
    ==================================================================== */
-const PAUTA_VERSAO = "0.33.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.34.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -67,7 +67,7 @@ const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PA
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
 // (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0; v0.29.0 a
 // v0.32.0: o recado manda rodar o setup desta versão, que traz junto os anteriores)
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.33.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){

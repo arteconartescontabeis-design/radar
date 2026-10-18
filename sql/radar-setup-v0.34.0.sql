@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.33.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.34.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -56,7 +56,12 @@
 -- NENHUMA tabela ou coluna nova; nada é apagado. Os cortes do corretor passam a sair POR PADRÃO (muletas, repetições, falsos inícios
 -- e voz entre palavras; "Manter este trecho" desfaz) e a duração ganha meta (duracao_max_s, 15 a 900 s; o teto duro é o reel de 15
 -- minutos da API do Instagram) — o teto da coluna duracao_final sobe para 960 s (alter table no bloco).
--- Reversão: radar-reversao-v0.33.0.sql
+-- v0.34.0 (bloco “v0.34.0”, antes da seção 6): a aba Setor — a análise das publicações de um setor no Instagram, pela API oficial
+-- da Meta (Business Discovery, só leitura). Quatro tabelas novas (radar_setor_setores, radar_setor_contas, radar_setor_posts e
+-- radar_setor_coletas, todas com RLS) e as funções radar_setor_* (quem decide o que ler é o banco; a função radar-concorrentes só
+-- pergunta “quem é o próximo?”). Temas por palavras, sem IA; a busca por hashtag nasce DESLIGADA (hashtag_ligada), até a Meta
+-- aprovar. A agenda fica em sql/radar-setor-agenda.sql, rodado DEPOIS deste. Nada é apagado.
+-- Reversão: radar-reversao-v0.34.0.sql
 -- =====================================================================
 
 begin;
@@ -82,7 +87,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.33.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.34.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -7122,6 +7127,1129 @@ drop policy if exists radar_instalacoes_sel on public.radar_instalacoes;
 create policy radar_instalacoes_sel on public.radar_instalacoes for select to authenticated
   using ((select public.radar_papel()) = 'admin');
 
+-- =====================================================================
+-- v0.34.0: aba Setor — como estão as publicações de um setor no Instagram (ex.: contabilidade)
+-- O administrador cria o setor e escolhe as contas públicas (comerciais ou de criador) de outros escritórios — e a da Artecon, para
+-- comparar. Quem lê o Instagram é a função radar-concorrentes (só GET na API oficial da Meta, Business Discovery: nunca publica,
+-- comenta, curte ou segue). Ela pergunta ao banco quem ler (radar_setor_iniciar), grava conta por conta (radar_setor_gravar) e fecha
+-- a rodada (radar_setor_concluir); quem decide o que é devido é o banco (cada conta uma vez por semana, a partir de segunda 04:00 de
+-- Brasília; nada durante a pausa pedida pela Meta; a mesma @ em dois setores é lida uma vez só).
+-- A tela só vê números prontos (radar_setor_painel): nunca a tabela das publicações; das publicações em destaque, só o link do
+-- Instagram e um trecho de até 100 caracteres. A legenda guardada vai cortada em 300 caracteres (só para os temas, por palavras, sem
+-- IA) e a publicação com mais de 400 dias sai sozinha, de todas as contas (radar_setor_guardar_em: no começo de cada rodada e, com a
+-- agenda instalada, uma vez por dia — também a de conta pausada, com erro ou de setor inativo). Nenhuma imagem é pedida, guardada ou
+-- mostrada.
+-- A busca por hashtag fica pronta e DESLIGADA (radar_config.setor.hashtag_ligada; a linha "setor" só existe depois que o
+-- administrador salva a configuração na aba) até a Meta aprovar o recurso Instagram Public Content Access.
+-- A leitura automática (pg_cron) fica em sql/radar-setor-agenda.sql, rodado DEPOIS deste. Quatro tabelas novas; nada é apagado.
+-- Recusas do banco: RADAR400 a RADAR414.
+-- =====================================================================
+create table if not exists public.radar_setor_setores (
+  id            bigint generated always as identity primary key,
+  nome          text        not null check (char_length(btrim(nome)) between 2 and 60),
+  temas         jsonb       not null default '[]'::jsonb check (jsonb_typeof(temas) = 'array' and pg_column_size(temas) <= 30000),
+  ativo         boolean     not null default true,
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+create unique index if not exists radar_setor_setores_nome_uk on public.radar_setor_setores (lower(btrim(nome)));
+
+-- uma linha por conta (ou hashtag) de um setor; a mesma @ em dois setores são duas linhas, lidas numa chamada só
+create table if not exists public.radar_setor_contas (
+  id                  bigint generated always as identity primary key,
+  setor_id            bigint      not null references public.radar_setor_setores(id) on delete cascade,
+  tipo                text        not null default 'conta' check (tipo in ('conta','hashtag')),
+  nome                text        not null,               -- a @ sem a arroba, minúscula; ou a hashtag sem #, minúscula
+  ativa               boolean     not null default true,
+  propria             boolean     not null default false,  -- a conta da Artecon (a função confere: é a do META_IG_USER_ID)
+  meta_id             text        check (meta_id ~ '^[0-9]{1,30}$'),     -- o número da conta (ou da hashtag) no Instagram
+  seguidores          int         check (seguidores >= 0),
+  posts_total         int         check (posts_total >= 0),
+  pedida_em           timestamptz,                         -- "Atualizar a análise" (ou conta nova) esperando a leitura
+  coletada_em         timestamptz,                         -- a última leitura que deu certo
+  tentada_em          timestamptz,                         -- a última tentativa (certa ou não)
+  buscada_em          timestamptz,                         -- hashtag: quando o número dela foi buscado (a conta das 30 em 7 dias
+                                                           -- fica nas rodadas, radar_setor_coletas.buscas: não some com a hashtag)
+  lido_desde          timestamptz,                         -- até onde as leituras chegaram sem buraco: a publicação mais antiga recebida
+                                                           -- ('-infinity' = leu todas). É a cobertura do painel; a guarda de 400 dias não muda
+  erro                text        check (char_length(erro) <= 300),         -- a última recusa, em português (null = leu)
+  erro_codigo         text        check (char_length(erro_codigo) <= 40),   -- "110/2207013", "190", "sem_resposta"...
+  aviso               text        check (char_length(aviso) <= 300),        -- leu, mas com ressalva ("vieram 30 dos 50 posts...")
+  falhas_consecutivas int         not null default 0 check (falhas_consecutivas >= 0),
+  criado_em           timestamptz not null default now(),
+  criado_por          uuid,
+  unique (setor_id, tipo, nome),
+  check ((tipo = 'conta' and nome ~ '^[a-z0-9._]{1,30}$') or (tipo = 'hashtag' and nome ~ '^[0-9a-z_à-öø-ÿ]{1,100}$'))
+);
+create index if not exists radar_setor_contas_nome_idx on public.radar_setor_contas (tipo, nome);
+
+-- as métricas de cada publicação lida (nada de imagem; a legenda só cortada, para os temas)
+create table if not exists public.radar_setor_posts (
+  conta_id        bigint      not null references public.radar_setor_contas(id) on delete cascade,
+  midia_id        text        not null check (midia_id ~ '^[A-Za-z0-9_.-]{1,40}$'),
+  publicado_em    timestamptz not null,
+  tipo            text        not null check (tipo in ('IMAGE','VIDEO','CAROUSEL_ALBUM')),
+  produto         text        check (produto ~ '^[A-Z_]{1,20}$'),           -- FEED, REELS (null: a Meta não mandou)
+  formato         text        generated always as (case when tipo = 'CAROUSEL_ALBUM' then 'carrossel'
+                                                          when tipo = 'VIDEO' and coalesce(produto, 'REELS') = 'REELS' then 'reel'
+                                                          when tipo = 'VIDEO' then 'video' else 'foto' end) stored,
+  curtidas        int         check (curtidas >= 0),                         -- null = curtidas ocultas pelo dono
+  comentarios     int         check (comentarios >= 0),
+  seguidores      int         check (seguidores >= 0),                       -- os seguidores da conta na leitura que gravou o post
+  legenda         text        not null default '' check (char_length(legenda) <= 300),
+  hashtags        text[]      not null default '{}' check (cardinality(hashtags) <= 20),
+  temas           text[]      not null default '{}',
+  link            text        check (link ~ '^https://www\.instagram\.com/[A-Za-z0-9_./?=&%-]{1,250}$'),
+  primeira_vez_em timestamptz not null default now(),
+  atualizado_em   timestamptz not null default now(),
+  primary key (conta_id, midia_id)
+);
+create index if not exists radar_setor_posts_data_idx on public.radar_setor_posts (conta_id, publicado_em desc);
+
+-- cada rodada de leitura (da agenda ou do botão) e a pausa que a Meta pediu
+create table if not exists public.radar_setor_coletas (
+  id           bigint generated always as identity primary key,
+  origem       text        not null check (origem in ('agenda','admin')),
+  iniciada_em  timestamptz not null default now(),
+  terminada_em timestamptz,
+  contas       int         not null default 0,      -- planejadas nesta rodada
+  lidas        int         not null default 0,
+  com_erro     int         not null default 0,
+  posts        int         not null default 0,
+  chamadas     int         not null default 0,      -- chamadas à Meta
+  uso_max      int,                                 -- o maior % de uso que a Meta informou nos cabeçalhos
+  codigos      text        check (char_length(codigos) <= 200),
+  geral        text        check (char_length(geral) <= 300),    -- recusa que vale para todas (token, permissão, limite)
+  pausa_ate    timestamptz,
+  pausa_motivo text        check (pausa_motivo in ('limite','configuracao')),
+  buscas       text[]      not null default '{}' check (cardinality(buscas) <= 50)   -- hashtags buscadas (ig_hashtag_search) nesta rodada
+);
+
+-- ---------------------------------------------------------------- funções da aba Setor
+-- minúsculas sem depender do idioma do servidor (as maiúsculas acentuadas também)
+create or replace function public.radar_setor_minusculas(t text) returns text
+language sql immutable set search_path = public as $$
+  select lower(translate(coalesce(t, ''), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ', 'áàâãäéèêëíìîïóòôõöúùûüçñ'))
+$$;
+-- texto para comparar palavras: minúsculas, sem acento e com os espaços juntados ("Declaração" = "declaracao")
+create or replace function public.radar_setor_sem_acento(t text) returns text
+language sql immutable set search_path = public as $$
+  select regexp_replace(public.radar_sem_acento(public.radar_setor_minusculas(t)), '\s+', ' ', 'g')
+$$;
+-- número inteiro dentro da faixa, vindo do JSON (outra coisa: null). Sem erro de conversão: cada passo só roda depois do anterior
+create or replace function public.radar_setor_int(v jsonb, p_min numeric, p_max numeric) returns int
+language sql immutable set search_path = public as $$
+  select case when jsonb_typeof(v) = 'number' then
+           case when (v #>> '{}')::numeric between p_min and p_max then
+             case when (v #>> '{}')::numeric = trunc((v #>> '{}')::numeric) then (v #>> '{}')::numeric::int end end end
+$$;
+
+-- A configuração da aba (radar_config, chave "setor"), sempre completa: o que faltar ou vier fora do tipo/faixa fica no padrão.
+-- hashtag_ligada é a chave que deixa a busca por hashtag desligada até a Meta aprovar o recurso Instagram Public Content Access.
+create or replace function public.radar_setor_cfg() returns jsonb
+language plpgsql stable set search_path = public as $$
+declare
+  v jsonb;
+  r jsonb := '{"coleta_ligada": true, "hashtag_ligada": false, "hashtag_modo": "top", "posts_por_conta": 50}'::jsonb;
+begin
+  select c.valor into v from public.radar_config c where c.chave = 'setor';
+  if jsonb_typeof(v) is distinct from 'object' then return r; end if;
+  if jsonb_typeof(v->'coleta_ligada') = 'boolean' then r := jsonb_set(r, '{coleta_ligada}', v->'coleta_ligada'); end if;
+  if jsonb_typeof(v->'hashtag_ligada') = 'boolean' then r := jsonb_set(r, '{hashtag_ligada}', v->'hashtag_ligada'); end if;
+  if jsonb_typeof(v->'hashtag_modo') = 'string' then
+    if v->>'hashtag_modo' in ('top', 'recentes', 'ambos') then r := jsonb_set(r, '{hashtag_modo}', v->'hashtag_modo'); end if;
+  end if;
+  if public.radar_setor_int(v->'posts_por_conta', 10, 50) is not null then
+    r := jsonb_set(r, '{posts_por_conta}', to_jsonb(public.radar_setor_int(v->'posts_por_conta', 10, 50)));
+  end if;
+  return r;
+exception when others then
+  return '{"coleta_ligada": true, "hashtag_ligada": false, "hashtag_modo": "top", "posts_por_conta": 50}'::jsonb;
+end $$;
+
+-- Os temas de contabilidade que o setor novo recebe (o administrador edita na aba). Sem sigla que é palavra comum ("das", "ir"):
+-- casam como palavra inteira, sem maiúsculas nem acentos; a hashtag casa com o termo sem espaços (#impostoderenda = "imposto de renda")
+create or replace function public.radar_setor_temas_padrao() returns jsonb
+language sql immutable set search_path = public as $$
+  select '[
+    {"nome": "Reforma tributária", "termos": ["reforma tributária", "IBS", "CBS", "imposto seletivo", "split payment", "IVA", "Comitê Gestor", "EC 132", "LC 214"]},
+    {"nome": "Imposto de Renda", "termos": ["imposto de renda", "IRPF", "IRPJ", "declaração do IR", "malha fina", "restituição", "carnê-leão", "leão", "DIRPF", "informe de rendimentos"]},
+    {"nome": "MEI", "termos": ["MEI", "microempreendedor", "microempreendedor individual", "DASN-SIMEI", "SIMEI", "CCMEI", "DAS do MEI", "desenquadramento"]},
+    {"nome": "Simples Nacional", "termos": ["Simples Nacional", "PGDAS", "PGDAS-D", "DEFIS", "fator R", "anexo III", "anexo V", "sublimite", "exclusão do Simples"]},
+    {"nome": "Folha e eSocial", "termos": ["folha de pagamento", "eSocial", "FGTS", "INSS", "13º salário", "décimo terceiro", "férias", "rescisão", "CLT", "DCTFWeb", "salário mínimo", "pró-labore", "trabalhista", "admissão", "demissão"]},
+    {"nome": "Abertura de empresa", "termos": ["abrir empresa", "abertura de empresa", "abrir CNPJ", "abertura de CNPJ", "contrato social", "junta comercial", "alvará", "inscrição estadual", "inscrição municipal", "natureza jurídica", "sociedade limitada", "holding", "regime tributário", "formalizar", "formalização"]},
+    {"nome": "Notas e impostos", "termos": ["nota fiscal", "NF-e", "NFS-e", "NFC-e", "ICMS", "ISS", "DIFAL", "substituição tributária", "PIS", "Cofins", "IPI", "alíquota"]},
+    {"nome": "Prazos e obrigações", "termos": ["prazo", "prazos", "vencimento", "obrigação acessória", "obrigações acessórias", "agenda tributária", "ECD", "ECF", "DCTF", "EFD", "SPED", "Reinf", "prorrogação", "prorrogado", "multa por atraso"]},
+    {"nome": "Gestão e finanças", "termos": ["fluxo de caixa", "capital de giro", "planejamento tributário", "lucro presumido", "lucro real", "distribuição de lucros", "dividendos", "precificação", "faturamento", "margem", "finanças", "gestão financeira"]},
+    {"nome": "Dicas e explicações", "termos": ["dica", "dicas", "você sabia", "saiba", "entenda", "o que é", "como funciona", "passo a passo", "erros", "cuidado", "atenção", "diferença entre", "guia", "aprenda", "dúvida", "dúvidas"]},
+    {"nome": "Institucional e equipe", "termos": ["nossa equipe", "equipe", "colaborador", "colaboradora", "colaboradores", "bastidores", "nosso escritório", "aniversário da empresa", "anos de história", "confraternização", "nosso time", "sócio", "sócia", "sócios", "evento", "palestra", "treinamento", "inauguração"]},
+    {"nome": "Datas comemorativas", "termos": ["feliz", "parabéns", "dia do contador", "dia das mães", "dia dos pais", "dia da mulher", "dia do cliente", "dia do trabalhador", "natal", "ano novo", "páscoa", "carnaval", "feriado", "recesso", "boas festas", "outubro rosa", "novembro azul", "setembro amarelo", "homenagem"]},
+    {"nome": "Serviços e captação", "termos": ["nossos serviços", "orçamento", "solicite", "contrate", "fale com a gente", "fale conosco", "entre em contato", "chame no whatsapp", "agende", "consultoria", "trocar de contador", "troque de contador", "mudar de contador", "seja nosso cliente", "planos", "promoção", "desconto", "grátis", "gratuita"]},
+    {"nome": "Humor e trends", "termos": ["meme", "memes", "trend", "pov", "kkk", "kkkk", "humor", "quem nunca"]},
+    {"nome": "Vagas", "termos": ["estamos contratando", "vaga", "vagas", "currículo", "trabalhe conosco"]},
+    {"nome": "Depoimentos de clientes", "termos": ["depoimento", "depoimentos", "feedback", "avaliação", "cliente satisfeito", "clientes satisfeitos", "o que dizem"]}
+  ]'::jsonb
+$$;
+
+-- A lista de temas do setor está boa? null = sim; senão, a mensagem (com o número do tema) para a tela
+create or replace function public.radar_setor_temas_validar(p jsonb) returns text
+language plpgsql immutable set search_path = public as $$
+declare
+  t       record;
+  x       jsonb;
+  v_nome  text;
+  v_chave text;
+  v_vistos text[] := '{}';
+begin
+  if jsonb_typeof(p) is distinct from 'array' then return 'A lista de temas não veio como lista.'; end if;
+  if jsonb_array_length(p) > 20 then return 'No máximo 20 temas por setor.'; end if;
+  for t in select q.e, q.i from jsonb_array_elements(p) with ordinality as q(e, i) loop
+    if jsonb_typeof(t.e) is distinct from 'object' then return format('Tema %s: falta o nome.', t.i); end if;
+    if jsonb_typeof(t.e->'nome') is distinct from 'string' then return format('Tema %s: falta o nome.', t.i); end if;
+    v_nome := btrim(t.e->>'nome');
+    if char_length(v_nome) not between 2 and 40 then return format('Tema %s: o nome deve ter de 2 a 40 caracteres.', t.i); end if;
+    v_chave := public.radar_setor_sem_acento(v_nome);
+    if v_chave = 'outros' then return format('Tema %s: “Outros” é reservado (são as publicações sem tema).', t.i); end if;
+    if v_chave = any(v_vistos) then return format('Tema %s: o nome “%s” já está em outro tema.', t.i, v_nome); end if;
+    v_vistos := v_vistos || v_chave;
+    if jsonb_typeof(t.e->'termos') is distinct from 'array' then return format('Tema %s (%s): informe de 1 a 60 palavras.', t.i, v_nome); end if;
+    if jsonb_array_length(t.e->'termos') not between 1 and 60 then return format('Tema %s (%s): informe de 1 a 60 palavras.', t.i, v_nome); end if;
+    for x in select jsonb_array_elements(t.e->'termos') loop
+      if jsonb_typeof(x) is distinct from 'string' then
+        return format('Tema %s (%s): cada palavra deve ter de 2 a 60 caracteres.', t.i, v_nome); end if;
+      if char_length(btrim(x #>> '{}')) not between 2 and 60 then
+        return format('Tema %s (%s): cada palavra deve ter de 2 a 60 caracteres.', t.i, v_nome); end if;
+    end loop;
+  end loop;
+  return null;
+end $$;
+
+-- a lista como é guardada: nomes e palavras sem espaço nas pontas, palavra repetida no mesmo tema uma vez só
+create or replace function public.radar_setor_temas_limpos(p jsonb) returns jsonb
+language sql immutable set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('nome', btrim(w.e->>'nome'),
+           'termos', (select coalesce(jsonb_agg(z.t order by z.o), '[]'::jsonb)
+                        from (select btrim(q.x) as t, min(q.i) as o from jsonb_array_elements_text(w.e->'termos') with ordinality q(x, i)
+                               group by btrim(q.x)) z)) order by w.n), '[]'::jsonb)
+    from jsonb_array_elements(p) with ordinality w(e, n)
+$$;
+
+-- Os temas de uma publicação: a palavra casa como palavra inteira na legenda (maiúsculas e acentos não contam; o mesmo método da
+-- relevância das capturas) ou a hashtag é o termo sem espaços nem hífen. Na ordem dos temas; sem nenhum, '{}' ("Outros" no painel)
+create or replace function public.radar_setor_temas_de(p_legenda text, p_hashtags text[], p_temas jsonb) returns text[]
+language plpgsql immutable set search_path = public as $$
+declare
+  v_txt  text := public.radar_setor_sem_acento(p_legenda);
+  v_tags text[] := array(select regexp_replace(public.radar_setor_sem_acento(x), '[^a-z0-9]', '', 'g') from unnest(coalesce(p_hashtags, '{}'::text[])) x);
+  v_out  text[] := '{}';
+  t      jsonb;
+  v_termo text;
+  v_norm text;
+  v_comp text;
+  v_re   text;
+begin
+  if jsonb_typeof(p_temas) is distinct from 'array' then return '{}'; end if;
+  for t in select e from jsonb_array_elements(p_temas) e loop
+    continue when jsonb_typeof(t) is distinct from 'object';
+    continue when jsonb_typeof(t->'nome') is distinct from 'string' or jsonb_typeof(t->'termos') is distinct from 'array';
+    for v_termo in select jsonb_array_elements_text(t->'termos') loop
+      v_norm := btrim(public.radar_setor_sem_acento(v_termo));
+      continue when char_length(v_norm) < 2;
+      v_comp := regexp_replace(v_norm, '[^a-z0-9]', '', 'g');
+      if char_length(v_comp) >= 2 and v_comp = any(v_tags) then
+        v_out := v_out || (t->>'nome');
+        exit;
+      end if;
+      continue when strpos(v_txt, v_norm) = 0;                         -- atalho: a maioria das palavras não aparece
+      v_re := case when v_norm ~ '^[[:alnum:]]' then '\m' else '' end
+           || regexp_replace(v_norm, '([^[:alnum:][:space:]])', '\\\1', 'g')
+           || case when v_norm ~ '[[:alnum:]]$' then '\M' else '' end;
+      if v_txt ~ v_re then
+        v_out := v_out || (t->>'nome');
+        exit;
+      end if;
+    end loop;
+  end loop;
+  return v_out;
+exception when others then
+  return '{}';
+end $$;
+
+-- O começo da semana de leitura: a última segunda-feira, 04:00 de Brasília (a agenda lê cada conta uma vez depois disso)
+create or replace function public.radar_setor_corte(p_agora timestamptz) returns timestamptz
+language sql immutable set search_path = public as $$
+  select (date_trunc('week', (p_agora at time zone 'America/Sao_Paulo') - interval '4 hours') + interval '4 hours') at time zone 'America/Sao_Paulo'
+$$;
+
+-- As hashtags diferentes buscadas (ig_hashtag_search) nos últimos 7 dias: a Meta permite 30. A conta vem das rodadas (o registro fica
+-- mesmo se a hashtag for removida ou o setor apagado; as rodadas com busca ficam 8 dias, veja radar_setor_concluir_em)
+create or replace function public.radar_setor_buscadas_em(p_agora timestamptz) returns int
+language sql stable set search_path = public as $$
+  select count(distinct b)::int from public.radar_setor_coletas k cross join unnest(k.buscas) b
+   where coalesce(k.terminada_em, p_agora) > p_agora - interval '7 days'
+$$;
+
+-- A guarda: a publicação com mais de 400 dias sai, de TODAS as contas (também a pausada, a que parou de ser lida e a de setor
+-- inativo). Roda no começo de cada rodada e, com o sql/radar-setor-agenda.sql, uma vez por dia. Devolve quantas saíram
+create or replace function public.radar_setor_guardar_em(p_agora timestamptz) returns int
+language plpgsql set search_path = public as $$
+declare v_n int;
+begin
+  delete from public.radar_setor_posts where publicado_em < p_agora - interval '400 days';
+  get diagnostics v_n = row_count;
+  return v_n;
+end $$;
+
+-- As contas (e hashtags) devidas, agrupadas por @: a mesma conta em dois setores é um item só (ids = as linhas dela). "admin": as
+-- pedidas pelo botão. "agenda": as pedidas há mais de 10 minutos (o botão não terminou) e as não lidas desde o corte da semana (fora as
+-- que falharam 3 vezes seguidas). Hashtag só com a busca ligada; a que ainda não tem número gasta uma das 30 buscas da Meta em 7 dias:
+-- entram só as que cabem no que sobrou.
+create or replace function public.radar_setor_devidas_em(p_agora timestamptz, p_origem text)
+returns table (tipo text, nome text, meta_id text, ids bigint[])
+language sql stable set search_path = public as $$
+  with cfg as (select (public.radar_setor_cfg()->>'hashtag_ligada')::boolean as hashtag),
+  d as (
+    select c.tipo, c.nome, max(c.meta_id) as meta_id, array_agg(c.id order by c.id) as ids,
+           min(c.pedida_em) as o1, min(c.coletada_em) as o2, min(c.id) as o3
+      from public.radar_setor_contas c join public.radar_setor_setores s on s.id = c.setor_id cross join cfg
+     where s.ativo and c.ativa
+       and (c.tipo = 'conta' or cfg.hashtag)
+       and case when p_origem = 'admin' then c.pedida_em is not null
+                else c.pedida_em < p_agora - interval '10 minutes'
+                     or (c.falhas_consecutivas < 3
+                         and coalesce(greatest(c.coletada_em, c.tentada_em), '-infinity'::timestamptz) < public.radar_setor_corte(p_agora)) end
+     group by c.tipo, c.nome),
+  r as (
+    select d.*, case when d.tipo = 'hashtag' and d.meta_id is null
+                     then row_number() over (partition by d.tipo = 'hashtag' and d.meta_id is null
+                                             order by d.o1 nulls last, d.o2 nulls first, d.o3) end as k
+      from d)
+  select r.tipo, r.nome, r.meta_id, r.ids from r
+   where r.k is null or r.k <= 30 - public.radar_setor_buscadas_em(p_agora)
+   order by r.o1 nulls last, r.o2 nulls first, r.o3
+$$;
+
+-- A pausa pedida pela Meta que ainda vale (a de limite primeiro)
+create or replace function public.radar_setor_pausa_em(p_agora timestamptz) returns table (ate timestamptz, motivo text)
+language sql stable set search_path = public as $$
+  select k.pausa_ate, k.pausa_motivo from public.radar_setor_coletas k
+   where k.pausa_ate > p_agora
+   order by (k.pausa_motivo = 'limite') desc, k.pausa_ate desc limit 1
+$$;
+
+-- A agenda (pg_cron, de hora em hora) só chama a função quando isto diz sim: leitura automática ligada, sem pausa, sem rodada em
+-- andamento e com conta devida. Qualquer erro: não (o cron nunca falha por causa disto)
+create or replace function public.radar_setor_ha_devidas_em(p_agora timestamptz) returns boolean
+language plpgsql stable set search_path = public as $$
+begin
+  if (public.radar_setor_cfg()->>'coleta_ligada')::boolean is not true then return false; end if;
+  if exists (select 1 from public.radar_setor_pausa_em(p_agora)) then return false; end if;
+  if exists (select 1 from public.radar_setor_coletas k where k.terminada_em is null and k.iniciada_em > p_agora - interval '4 minutes') then
+    return false;
+  end if;
+  return exists (select 1 from public.radar_setor_devidas_em(p_agora, 'agenda'));
+exception when others then
+  return false;
+end $$;
+create or replace function public.radar_setor_ha_devidas() returns boolean
+language sql stable set search_path = public as $$ select public.radar_setor_ha_devidas_em(now()) $$;
+
+-- O começo de uma rodada (a função radar-concorrentes, pela chave interna): até 12 contas devidas, ou o motivo para não ler
+-- (em_andamento, pausa, desligada, nada). A rodada que ficou aberta há mais de 4 minutos (a função parou no meio) é fechada. Antes de
+-- tudo, a guarda dos 400 dias (todas as contas).
+create or replace function public.radar_setor_iniciar_em(p_origem text, p_limite int, p_agora timestamptz) returns jsonb
+language plpgsql set search_path = public as $$
+declare
+  v_cfg   jsonb := public.radar_setor_cfg();
+  v_p     record;
+  v_lista jsonb;
+  v_id    bigint;
+begin
+  if p_origem is null or p_origem not in ('agenda', 'admin') then
+    raise exception 'RADAR411: origem da leitura desconhecida.' using errcode = 'P0001';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('radar_setor'));
+  perform public.radar_setor_guardar_em(p_agora);
+  update public.radar_setor_coletas k set terminada_em = p_agora, geral = coalesce(k.geral, 'não terminou (a função parou no meio)')
+   where k.terminada_em is null and k.iniciada_em <= p_agora - interval '4 minutes';
+  if exists (select 1 from public.radar_setor_coletas k where k.terminada_em is null) then
+    return jsonb_build_object('motivo', 'em_andamento');
+  end if;
+  select * into v_p from public.radar_setor_pausa_em(p_agora);
+  if v_p.ate is not null and (v_p.motivo = 'limite' or p_origem = 'agenda') then
+    return jsonb_build_object('motivo', 'pausa', 'pausa_ate', v_p.ate, 'pausa_motivo', v_p.motivo);
+  end if;
+  if p_origem = 'agenda' and (v_cfg->>'coleta_ligada')::boolean is not true then
+    return jsonb_build_object('motivo', 'desligada');
+  end if;
+  select coalesce(jsonb_agg(jsonb_build_object('tipo', d.tipo, 'nome', d.nome, 'meta_id', d.meta_id) order by d.ordem), '[]'::jsonb)
+    into v_lista
+    from (select * from public.radar_setor_devidas_em(p_agora, p_origem) with ordinality as x(tipo, nome, meta_id, ids, ordem)
+           order by x.ordem limit least(greatest(coalesce(p_limite, 12), 1), 12)) d;
+  if jsonb_array_length(v_lista) = 0 then
+    return jsonb_build_object('motivo', 'nada');
+  end if;
+  insert into public.radar_setor_coletas (origem, iniciada_em, contas) values (p_origem, p_agora, jsonb_array_length(v_lista))
+  returning id into v_id;
+  return jsonb_build_object('coleta', v_id, 'posts', (v_cfg->>'posts_por_conta')::int, 'hashtag_modo', v_cfg->>'hashtag_modo', 'contas', v_lista);
+end $$;
+create or replace function public.radar_setor_iniciar(p_origem text, p_limite int) returns jsonb
+language sql security definer set search_path = public as $$ select public.radar_setor_iniciar_em(p_origem, p_limite, now()) $$;
+
+-- O que a função leu de uma conta (ou hashtag), gravado em todas as linhas ativas dela. Publicação fora do padrão (número, data
+-- ilegível ou mais de 1 dia no futuro, tipo desconhecido, link fora do Instagram, número negativo) é pulada e contada. A legenda vai
+-- cortada em 300 caracteres e os temas são os do setor de cada linha. Recusa: "geral" (token, permissão, limite, a Meta fora do ar)
+-- não conta como falha da conta e ela continua devida; as outras contam (3 seguidas tiram a conta da leitura automática).
+-- A publicação com mais de 400 dias não é guardada, mas conta para lido_desde (a leitura chegou até ela: a cobertura do painel). A busca
+-- da hashtag (ig_hashtag_search) fica registrada na rodada, mesmo com a leitura falhando depois ou a hashtag removida no meio.
+create or replace function public.radar_setor_gravar(p_coleta bigint, p_tipo text, p_nome text, p_dados jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_ids     bigint[];
+  v_ok      boolean := jsonb_typeof(p_dados) = 'object' and coalesce(p_dados->'ok' = 'true'::jsonb, false);
+  v_buscada boolean := p_tipo = 'hashtag' and jsonb_typeof(p_dados) = 'object' and coalesce(p_dados->'buscada' = 'true'::jsonb, false);
+  v_meta    text := case when jsonb_typeof(p_dados) = 'object' and coalesce(p_dados->>'meta_id', '') ~ '^[0-9]{1,30}$' then p_dados->>'meta_id' end;
+  v_total   int;
+  v_recebidos int;
+  v_antiga  timestamptz;
+  v_seg     int;
+  v_validos jsonb := '[]'::jsonb;
+  v_vistos  text[] := '{}';
+  v_ign     int := 0;
+  v_data    timestamptz;
+  v_tags    text[];
+  v_erro    text;
+  v_cod     text;
+  p         jsonb;
+begin
+  if not exists (select 1 from public.radar_setor_coletas k where k.id = p_coleta and k.terminada_em is null) then
+    raise exception 'RADAR409: A rodada de leitura não está aberta (já terminou ou não existe).' using errcode = 'P0001';
+  end if;
+  if v_buscada and coalesce(p_nome, '') ~ '^[0-9a-z_à-öø-ÿ]{1,100}$' then
+    update public.radar_setor_coletas k set buscas = k.buscas || p_nome
+     where k.id = p_coleta and not (p_nome = any(k.buscas)) and cardinality(k.buscas) < 50;
+  end if;
+  select array_agg(c.id order by c.id) into v_ids from public.radar_setor_contas c where c.tipo = p_tipo and c.nome = p_nome and c.ativa;
+  if v_ids is null then
+    return jsonb_build_object('gravados', 0, 'ignorados', 0);          -- removida ou pausada no meio da rodada
+  end if;
+  if not v_ok then
+    v_erro := coalesce(nullif(left(btrim(coalesce(p_dados->>'erro', '')), 300), ''), 'a leitura falhou sem explicação');
+    v_cod := nullif(left(coalesce(p_dados->>'codigo', ''), 40), '');
+    if coalesce(p_dados->'geral' = 'true'::jsonb, false) then
+      update public.radar_setor_contas set erro = v_erro, erro_codigo = v_cod where id = any(v_ids);
+    else
+      update public.radar_setor_contas set erro = v_erro, erro_codigo = v_cod, tentada_em = now(), pedida_em = null,
+             falhas_consecutivas = falhas_consecutivas + 1
+       where id = any(v_ids);
+    end if;
+    if v_buscada and v_meta is not null then                    -- o número da hashtag veio antes da falha: não busca de novo
+      update public.radar_setor_contas set meta_id = v_meta, buscada_em = now() where id = any(v_ids);
+    end if;
+    update public.radar_setor_coletas set com_erro = com_erro + 1 where id = p_coleta;
+    return jsonb_build_object('gravados', 0, 'ignorados', 0);
+  end if;
+  v_seg := public.radar_setor_int(p_dados->'seguidores', 0, 2000000000);
+  for p in select q.e from jsonb_array_elements(case when jsonb_typeof(p_dados->'posts') = 'array' then p_dados->'posts' else '[]'::jsonb end)
+                           with ordinality q(e, i) where q.i <= 100 loop
+    v_data := null;
+    if jsonb_typeof(p) = 'object' and jsonb_typeof(p->'data') = 'string' then
+      begin v_data := (p->>'data')::timestamptz; exception when others then v_data := null; end;
+    end if;
+    if v_data is null or v_data > now() + interval '1 day'
+       or coalesce(p->>'id', '') !~ '^[A-Za-z0-9_.-]{1,40}$' or coalesce(p->>'id', '') = any(v_vistos)
+       or coalesce(p->>'tipo', '') not in ('IMAGE', 'VIDEO', 'CAROUSEL_ALBUM')
+       or (jsonb_typeof(p->'link') = 'string' and (p->>'link') !~ '^https://www\.instagram\.com/[A-Za-z0-9_./?=&%-]{1,250}$')
+       or (jsonb_typeof(p->'link') is not null and jsonb_typeof(p->'link') not in ('string', 'null'))
+       or (jsonb_typeof(p->'curtidas') = 'number' and public.radar_setor_int(p->'curtidas', 0, 2000000000) is null)
+       or (jsonb_typeof(p->'comentarios') = 'number' and public.radar_setor_int(p->'comentarios', 0, 2000000000) is null) then
+      v_ign := v_ign + 1;
+      continue;
+    end if;
+    v_vistos := v_vistos || (p->>'id');
+    v_tags := array(select z.t from (select ltrim(public.radar_setor_minusculas(btrim(q.x)), '#') as t, min(q.i) as o
+                                       from jsonb_array_elements_text(case when jsonb_typeof(p->'hashtags') = 'array' then p->'hashtags' else '[]'::jsonb end)
+                                            with ordinality q(x, i) group by 1) z
+                     where z.t ~ '^[0-9a-z_à-öø-ÿ]{1,60}$' order by z.o limit 20);
+    v_validos := v_validos || jsonb_build_object('id', p->>'id', 'data', v_data, 'tipo', p->>'tipo',
+      'produto', case when coalesce(p->>'produto', '') ~ '^[A-Z_]{1,20}$' then p->>'produto' end,
+      'curtidas', public.radar_setor_int(p->'curtidas', 0, 2000000000), 'comentarios', public.radar_setor_int(p->'comentarios', 0, 2000000000),
+      'legenda', left(regexp_replace(btrim(coalesce(case when jsonb_typeof(p->'legenda') = 'string' then p->>'legenda' end, '')), '\s+', ' ', 'g'), 300),
+      'hashtags', to_jsonb(v_tags), 'link', case when jsonb_typeof(p->'link') = 'string' then p->>'link' end);
+  end loop;
+  -- até onde a leitura chegou: todas (recebeu o total da conta) ou a mais antiga recebida; emenda com as leituras de antes quando não
+  -- há buraco (a mais antiga desta é de antes da leitura anterior)
+  v_total := public.radar_setor_int(p_dados->'posts_total', 0, 2000000000);
+  v_recebidos := case when jsonb_typeof(p_dados->'posts') = 'array' then jsonb_array_length(p_dados->'posts') else 0 end;
+  select min((x.e->>'data')::timestamptz) into v_antiga from jsonb_array_elements(v_validos) x(e);
+  update public.radar_setor_contas c
+     set seguidores = v_seg, posts_total = v_total,
+         meta_id = coalesce(v_meta, c.meta_id),
+         lido_desde = case when v_total is null or v_recebidos >= v_total then '-infinity'::timestamptz
+                           when v_antiga is null then c.lido_desde
+                           when c.lido_desde is not null and v_antiga <= c.coletada_em then least(c.lido_desde, v_antiga)
+                           else v_antiga end,
+         propria = (c.tipo = 'conta' and coalesce(p_dados->'propria' = 'true'::jsonb, false)),
+         coletada_em = now(), tentada_em = now(), pedida_em = null, erro = null, erro_codigo = null,
+         aviso = nullif(left(btrim(coalesce(p_dados->>'aviso', '')), 300), ''), falhas_consecutivas = 0,
+         buscada_em = case when coalesce(p_dados->'buscada' = 'true'::jsonb, false) then now() else c.buscada_em end
+   where c.id = any(v_ids);
+  insert into public.radar_setor_posts as po (conta_id, midia_id, publicado_em, tipo, produto, curtidas, comentarios, seguidores, legenda,
+                                             hashtags, temas, link)
+  select c.id, x.e->>'id', (x.e->>'data')::timestamptz, x.e->>'tipo', x.e->>'produto', (x.e->>'curtidas')::int, (x.e->>'comentarios')::int,
+         v_seg, x.e->>'legenda', array(select jsonb_array_elements_text(x.e->'hashtags')),
+         public.radar_setor_temas_de(x.e->>'legenda', array(select jsonb_array_elements_text(x.e->'hashtags')), s.temas), x.e->>'link'
+    from public.radar_setor_contas c join public.radar_setor_setores s on s.id = c.setor_id
+   cross join jsonb_array_elements(v_validos) x(e)
+   where c.id = any(v_ids) and (x.e->>'data')::timestamptz >= now() - interval '400 days'      -- a guarda: mais de 400 dias não entra
+  on conflict (conta_id, midia_id) do update
+     set publicado_em = excluded.publicado_em, tipo = excluded.tipo, produto = excluded.produto, curtidas = excluded.curtidas,
+         comentarios = excluded.comentarios, seguidores = excluded.seguidores, legenda = excluded.legenda, hashtags = excluded.hashtags,
+         temas = excluded.temas, link = excluded.link, atualizado_em = now();
+  update public.radar_setor_coletas set lidas = lidas + 1, posts = posts + jsonb_array_length(v_validos) where id = p_coleta;
+  return jsonb_build_object('gravados', jsonb_array_length(v_validos), 'ignorados', v_ign);
+end $$;
+
+-- O fim da rodada: chamadas à Meta, o maior uso informado, os códigos e a pausa (de 30 minutos a 24 horas). A rodada que leu alguma
+-- conta sem pedir pausa tira a pausa de configuração de antes (o token foi trocado). Ficam as 200 rodadas mais novas e, mesmo mais
+-- velhas, as com busca de hashtag dos últimos 8 dias (a conta das 30 hashtags em 7 dias).
+create or replace function public.radar_setor_concluir_em(p_coleta bigint, p_resumo jsonb, p_agora timestamptz) returns jsonb
+language plpgsql set search_path = public as $$
+declare
+  v_min   int := coalesce(public.radar_setor_int(p_resumo->'pausa_minutos', 0, 1000000), 0);
+  v_ate   timestamptz;
+  v_lidas int;
+begin
+  if v_min > 0 then
+    v_ate := p_agora + make_interval(mins => least(greatest(v_min, 30), 1440));
+  end if;
+  update public.radar_setor_coletas k
+     set terminada_em = p_agora, chamadas = coalesce(public.radar_setor_int(p_resumo->'chamadas', 0, 100000), 0),
+         uso_max = public.radar_setor_int(p_resumo->'uso_max', 0, 100000),
+         codigos = nullif(left(coalesce(p_resumo->>'codigos', ''), 200), ''),
+         geral = coalesce(nullif(left(btrim(coalesce(p_resumo->>'geral', '')), 300), ''), k.geral),
+         pausa_ate = v_ate,
+         pausa_motivo = case when v_ate is null then null when p_resumo->>'pausa_motivo' = 'configuracao' then 'configuracao' else 'limite' end
+   where k.id = p_coleta and k.terminada_em is null
+  returning k.lidas into v_lidas;
+  if not found then
+    raise exception 'RADAR409: A rodada de leitura não está aberta (já terminou ou não existe).' using errcode = 'P0001';
+  end if;
+  if v_ate is null and v_lidas > 0 then
+    update public.radar_setor_coletas set pausa_ate = p_agora where pausa_motivo = 'configuracao' and pausa_ate > p_agora;
+  end if;
+  delete from public.radar_setor_coletas
+   where id < (select min(z.id) from (select k.id from public.radar_setor_coletas k order by k.id desc limit 200) z)
+     and not (cardinality(buscas) > 0 and coalesce(terminada_em, p_agora) > p_agora - interval '8 days');
+  return jsonb_build_object('faltam', (select count(*) from public.radar_setor_devidas_em(p_agora, 'admin')), 'pausa_ate', v_ate);
+end $$;
+create or replace function public.radar_setor_concluir(p_coleta bigint, p_resumo jsonb) returns jsonb
+language sql security definer set search_path = public as $$ select public.radar_setor_concluir_em(p_coleta, p_resumo, now()) $$;
+
+-- Criar o setor (p_id null) ou mudar nome, temas e "ativo" (o que vier null fica como está). Temas novos: as publicações já lidas
+-- das contas do setor são classificadas de novo. Só o administrador.
+create or replace function public.radar_setor_salvar(p_id bigint, p_nome text, p_temas jsonb, p_ativo boolean) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  v_nome  text := btrim(p_nome);
+  v_erro  text;
+  v_temas jsonb;
+  v_antes jsonb;
+  v_id    bigint;
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR400: Só o administrador mexe nos setores e nas contas da aba Setor.' using errcode = 'P0001';
+  end if;
+  if (p_id is null or p_nome is not null) and coalesce(char_length(v_nome), 0) not between 2 and 60 then
+    raise exception 'RADAR413: O nome do setor deve ter de 2 a 60 caracteres.' using errcode = 'P0001';
+  end if;
+  if p_temas is not null then
+    v_erro := public.radar_setor_temas_validar(p_temas);
+    if v_erro is not null then raise exception 'RADAR403: %', v_erro using errcode = 'P0001'; end if;
+    v_temas := public.radar_setor_temas_limpos(p_temas);
+  end if;
+  if p_id is null then
+    if (select count(*) from public.radar_setor_setores) >= 10 then
+      raise exception 'RADAR402: No máximo 10 setores. Apague um que não use mais.' using errcode = 'P0001';
+    end if;
+    if exists (select 1 from public.radar_setor_setores s where lower(btrim(s.nome)) = lower(v_nome)) then
+      raise exception 'RADAR401: Já existe um setor com este nome.' using errcode = 'P0001';
+    end if;
+    insert into public.radar_setor_setores (nome, temas, ativo)
+    values (v_nome, coalesce(v_temas, public.radar_setor_temas_padrao()), coalesce(p_ativo, true)) returning id into v_id;
+    return v_id;
+  end if;
+  select s.temas into v_antes from public.radar_setor_setores s where s.id = p_id for update;
+  if not found then raise exception 'RADAR412: Setor não encontrado (atualize a página).' using errcode = 'P0001'; end if;
+  if p_nome is not null and exists (select 1 from public.radar_setor_setores s where lower(btrim(s.nome)) = lower(v_nome) and s.id <> p_id) then
+    raise exception 'RADAR401: Já existe um setor com este nome.' using errcode = 'P0001';
+  end if;
+  update public.radar_setor_setores s set nome = coalesce(v_nome, s.nome), temas = coalesce(v_temas, s.temas), ativo = coalesce(p_ativo, s.ativo)
+   where s.id = p_id;
+  if v_temas is not null and v_temas is distinct from v_antes then
+    update public.radar_setor_posts po set temas = public.radar_setor_temas_de(po.legenda, po.hashtags, v_temas)
+     where po.conta_id in (select c.id from public.radar_setor_contas c where c.setor_id = p_id);
+  end if;
+  return p_id;
+end $$;
+
+-- Apagar o setor (as contas e as publicações guardadas dele saem junto). Devolve quantas contas saíram. Só o administrador.
+create or replace function public.radar_setor_apagar(p_id bigint) returns int
+language plpgsql security definer set search_path = public as $$
+declare v_n int;
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR400: Só o administrador mexe nos setores e nas contas da aba Setor.' using errcode = 'P0001';
+  end if;
+  select count(*) into v_n from public.radar_setor_contas c where c.setor_id = p_id;
+  delete from public.radar_setor_setores where id = p_id;
+  if not found then raise exception 'RADAR412: Setor não encontrado (atualize a página).' using errcode = 'P0001'; end if;
+  return v_n;
+end $$;
+
+-- Incluir contas e hashtags: o texto colado, um item por linha (ou separados por espaço, vírgula ou ponto e vírgula): @usuario, o
+-- link do perfil (https://www.instagram.com/usuario/) ou #hashtag. Devolve quantas entraram, quantas já estavam e as posições dos
+-- itens não reconhecidos (sem repetir o texto recusado). Limites: 30 contas por setor, 60 contas ativas no Radar (a mesma @ em dois
+-- setores conta uma vez), 5 hashtags por setor e 10 no total. A conta nova já fica pedida (a próxima rodada lê). Só o administrador.
+create or replace function public.radar_setor_conta_incluir(p_setor bigint, p_texto text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_itens   text[];
+  v_item    text;
+  v_i       int := 0;
+  v_tipo    text;
+  v_nome    text;
+  v_caminho text;
+  v_inval   int[] := '{}';
+  v_rep     int := 0;
+  v_contas  int := 0;
+  v_tags    int := 0;
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR400: Só o administrador mexe nos setores e nas contas da aba Setor.' using errcode = 'P0001';
+  end if;
+  if not exists (select 1 from public.radar_setor_setores s where s.id = p_setor) then
+    raise exception 'RADAR412: Setor não encontrado (atualize a página).' using errcode = 'P0001';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('radar_setor_contas'));          -- dois envios ao mesmo tempo não passam dos limites
+  v_itens := array(select x from regexp_split_to_table(coalesce(p_texto, ''), '[\s,;]+') x where x <> '');
+  if cardinality(v_itens) not between 1 and 50 then
+    raise exception 'RADAR410: Informe de 1 a 50 contas ou hashtags (uma por linha: @usuario, o link do perfil ou #hashtag).' using errcode = 'P0001';
+  end if;
+  foreach v_item in array v_itens loop
+    v_i := v_i + 1;
+    v_tipo := 'conta';
+    if v_item ~* '^https?://(www\.)?instagram\.com/' then
+      v_caminho := regexp_replace(v_item, '^https?://(www\.)?instagram\.com/', '', 'i');
+      v_nome := lower(split_part(split_part(split_part(v_caminho, '/', 1), '?', 1), '#', 1));
+      if v_nome in ('p', 'reel', 'reels', 'explore', 'stories', 'tv', '') then v_nome := null; end if;
+    elsif left(v_item, 1) = '#' then
+      v_tipo := 'hashtag';
+      v_nome := public.radar_setor_minusculas(substr(v_item, 2));
+    else
+      v_nome := lower(regexp_replace(v_item, '^@', ''));
+    end if;
+    if v_nome is null or (v_tipo = 'conta' and v_nome !~ '^[a-z0-9._]{1,30}$') or (v_tipo = 'hashtag' and v_nome !~ '^[0-9a-z_à-öø-ÿ]{1,100}$') then
+      v_inval := v_inval || v_i;
+      continue;
+    end if;
+    if exists (select 1 from public.radar_setor_contas c where c.setor_id = p_setor and c.tipo = v_tipo and c.nome = v_nome) then
+      v_rep := v_rep + 1;
+      continue;
+    end if;
+    if v_tipo = 'conta' then
+      if (select count(*) from public.radar_setor_contas c where c.setor_id = p_setor and c.tipo = 'conta') >= 30 then
+        raise exception 'RADAR404: Cada setor tem no máximo 30 contas. Nada foi incluído.' using errcode = 'P0001';
+      end if;
+      if not exists (select 1 from public.radar_setor_contas c where c.tipo = 'conta' and c.nome = v_nome and c.ativa)
+         and (select count(distinct c.nome) from public.radar_setor_contas c where c.tipo = 'conta' and c.ativa) >= 60 then
+        raise exception 'RADAR405: No máximo 60 contas ativas no Radar (somando os setores; a mesma conta em dois setores conta uma vez). Nada foi incluído.' using errcode = 'P0001';
+      end if;
+      v_contas := v_contas + 1;
+    else
+      if (select count(*) from public.radar_setor_contas c where c.setor_id = p_setor and c.tipo = 'hashtag') >= 5
+         or (not exists (select 1 from public.radar_setor_contas c where c.tipo = 'hashtag' and c.nome = v_nome)
+             and (select count(distinct c.nome) from public.radar_setor_contas c where c.tipo = 'hashtag') >= 10) then
+        raise exception 'RADAR406: No máximo 5 hashtags por setor e 10 no Radar (a Meta permite 30 hashtags diferentes a cada 7 dias). Nada foi incluído.' using errcode = 'P0001';
+      end if;
+      v_tags := v_tags + 1;
+    end if;
+    insert into public.radar_setor_contas (setor_id, tipo, nome, pedida_em, criado_por) values (p_setor, v_tipo, v_nome, now(), auth.uid());
+  end loop;
+  return jsonb_build_object('contas', v_contas, 'hashtags', v_tags, 'repetidas', v_rep, 'invalidas', to_jsonb(v_inval));
+end $$;
+
+-- Pausar (p_ativa false) ou retomar uma conta. Retomar zera as falhas e o erro e já pede a leitura. Só o administrador.
+create or replace function public.radar_setor_conta_mudar(p_id bigint, p_ativa boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare c public.radar_setor_contas%rowtype;
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR400: Só o administrador mexe nos setores e nas contas da aba Setor.' using errcode = 'P0001';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('radar_setor_contas'));
+  select * into c from public.radar_setor_contas where id = p_id for update;
+  if c.id is null then raise exception 'RADAR412: Conta não encontrada (atualize a página).' using errcode = 'P0001'; end if;
+  if p_ativa is null then return; end if;
+  if p_ativa then
+    if c.tipo = 'conta' and not exists (select 1 from public.radar_setor_contas x where x.tipo = 'conta' and x.nome = c.nome and x.ativa)
+       and (select count(distinct x.nome) from public.radar_setor_contas x where x.tipo = 'conta' and x.ativa) >= 60 then
+      raise exception 'RADAR405: No máximo 60 contas ativas no Radar (somando os setores; a mesma conta em dois setores conta uma vez).' using errcode = 'P0001';
+    end if;
+    update public.radar_setor_contas set ativa = true, falhas_consecutivas = 0, erro = null, erro_codigo = null, pedida_em = now() where id = p_id;
+  else
+    update public.radar_setor_contas set ativa = false, pedida_em = null where id = p_id;
+  end if;
+end $$;
+
+-- Tirar a conta do setor (as publicações guardadas dela saem junto). Devolve quantas publicações saíram. Só o administrador.
+create or replace function public.radar_setor_conta_remover(p_id bigint) returns int
+language plpgsql security definer set search_path = public as $$
+declare v_n int;
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR400: Só o administrador mexe nos setores e nas contas da aba Setor.' using errcode = 'P0001';
+  end if;
+  select count(*) into v_n from public.radar_setor_posts p where p.conta_id = p_id;
+  delete from public.radar_setor_contas where id = p_id;
+  if not found then raise exception 'RADAR412: Conta não encontrada (atualize a página).' using errcode = 'P0001'; end if;
+  return v_n;
+end $$;
+
+-- "Atualizar a análise": pede a leitura das contas ativas do setor que não foram lidas (nem tentadas) nas últimas 6 horas. Durante a
+-- pausa pedida pela Meta (limite de chamadas), recusa com a hora de Brasília; setor inativo (não é lido), também. Só o administrador.
+create or replace function public.radar_setor_pedir(p_setor bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_p     record;
+  v_tag   boolean := (public.radar_setor_cfg()->>'hashtag_ligada')::boolean;
+  v_n     int;
+  v_todas int;
+  v_ativo boolean;
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR400: Só o administrador mexe nos setores e nas contas da aba Setor.' using errcode = 'P0001';
+  end if;
+  select s.ativo into v_ativo from public.radar_setor_setores s where s.id = p_setor;
+  if not found then
+    raise exception 'RADAR412: Setor não encontrado (atualize a página).' using errcode = 'P0001';
+  end if;
+  if not v_ativo then
+    raise exception 'RADAR414: O setor está inativo (não é lido): marque “Setor ativo” em Gerenciar o setor e salve.' using errcode = 'P0001';
+  end if;
+  select * into v_p from public.radar_setor_pausa_em(now());
+  if v_p.motivo = 'limite' then
+    raise exception 'RADAR407: A Meta pediu uma pausa nas leituras até % (Brasília). Depois disso as contas são lidas sozinhas.',
+      to_char(v_p.ate at time zone 'America/Sao_Paulo', 'DD/MM "às" HH24:MI') using errcode = 'P0001';
+  end if;
+  select count(*) into v_todas from public.radar_setor_contas c where c.setor_id = p_setor and c.ativa and (c.tipo = 'conta' or v_tag);
+  with m as (update public.radar_setor_contas c set pedida_em = now()
+              where c.setor_id = p_setor and c.ativa and (c.tipo = 'conta' or v_tag)
+                and coalesce(greatest(c.coletada_em, c.tentada_em), '-infinity'::timestamptz) < now() - interval '6 hours'
+             returning 1)
+  select count(*) into v_n from m;
+  return jsonb_build_object('pedidas', v_n, 'recentes', v_todas - v_n);
+end $$;
+
+-- A configuração da aba (só o administrador): leitura automática, busca por hashtag (só depois que a Meta aprovar), o modo da hashtag
+-- e as publicações por conta. Grava radar_config.setor (a trilha do Histórico registra) e devolve a configuração completa.
+create or replace function public.radar_setor_configurar(p_valor jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare k text;
+begin
+  if coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR400: Só o administrador mexe nos setores e nas contas da aba Setor.' using errcode = 'P0001';
+  end if;
+  if jsonb_typeof(p_valor) is distinct from 'object' then
+    raise exception 'RADAR411: Configuração do setor: envie as opções como objeto.' using errcode = 'P0001';
+  end if;
+  for k in select jsonb_object_keys(p_valor) loop
+    if k not in ('coleta_ligada', 'hashtag_ligada', 'hashtag_modo', 'posts_por_conta') then
+      raise exception 'RADAR411: Configuração do setor: a opção "%" não existe.', left(k, 40) using errcode = 'P0001';
+    end if;
+  end loop;
+  if p_valor ? 'coleta_ligada' and jsonb_typeof(p_valor->'coleta_ligada') <> 'boolean' then
+    raise exception 'RADAR411: Configuração do setor: "coleta_ligada" deve ser true ou false.' using errcode = 'P0001';
+  end if;
+  if p_valor ? 'hashtag_ligada' and jsonb_typeof(p_valor->'hashtag_ligada') <> 'boolean' then
+    raise exception 'RADAR411: Configuração do setor: "hashtag_ligada" deve ser true ou false.' using errcode = 'P0001';
+  end if;
+  if p_valor ? 'hashtag_modo' and coalesce(case when jsonb_typeof(p_valor->'hashtag_modo') = 'string' then p_valor->>'hashtag_modo' end, '')
+                                   not in ('top', 'recentes', 'ambos') then
+    raise exception 'RADAR411: Configuração do setor: "hashtag_modo" deve ser "top", "recentes" ou "ambos".' using errcode = 'P0001';
+  end if;
+  if p_valor ? 'posts_por_conta' and public.radar_setor_int(p_valor->'posts_por_conta', 10, 50) is null then
+    raise exception 'RADAR411: Configuração do setor: "posts_por_conta" deve ser um número inteiro de 10 a 50.' using errcode = 'P0001';
+  end if;
+  insert into public.radar_config (chave, valor) values ('setor', public.radar_setor_cfg() || p_valor)
+  on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();
+  return public.radar_setor_cfg();
+end $$;
+
+-- O painel do setor: os números prontos, no fuso de Brasília. Por conta: publicações por semana (no trecho que as leituras cobrem: do
+-- começo do período, ou de onde as leituras chegaram, até o dia da última leitura; conta sem leitura no período fica sem o número e
+-- fora das medianas), mistura de formatos, engajamento típico (a mediana de (curtidas + comentários) ÷ seguidores × 100; curtidas
+-- ocultas ficam fora). O setor (sem a Artecon): a mediana das contas (o engajamento, só das contas com 100 seguidores e 5
+-- publicações ou mais), os formatos somados, a série por semana ou mês (só as contas que cobrem o período inteiro), dias e horários
+-- (cada publicação comparada com o típico da própria conta; casa com menos de 5 publicações: null), temas e as publicações de maior
+-- engajamento (no máximo 3 por conta; só o link e um trecho de até 100 caracteres).
+create or replace function public.radar_setor_painel_em(p_setor bigint, p_dias int, p_agora timestamptz) returns jsonb
+language plpgsql stable set search_path = public as $$
+declare
+  v_dias  int := case when p_dias in (30, 90, 180, 365) then p_dias else 90 end;
+  v_hoje  date := (p_agora at time zone 'America/Sao_Paulo')::date;
+  v_ini   date;
+  v_set   record;
+  v_temas jsonb;
+  v_cs    jsonb;      -- as contas do setor, com as métricas
+  v_ps    jsonb;      -- as publicações do período das contas com dados
+  v_res   jsonb := '{}'::jsonb;
+  v_x     jsonb;
+begin
+  v_ini := v_hoje - (v_dias - 1);
+  select s.id, s.nome, s.temas into v_set from public.radar_setor_setores s where s.id = p_setor;
+  if v_set.id is null then raise exception 'RADAR412: Setor não encontrado (atualize a página).' using errcode = 'P0001'; end if;
+  v_temas := case when jsonb_typeof(v_set.temas) = 'array' then v_set.temas else '[]'::jsonb end;
+
+  -- 1. por conta
+  with q as (
+    select p.conta_id, p.formato, p.temas, p.curtidas, (p.publicado_em at time zone 'America/Sao_Paulo')::date as d,
+           case when p.curtidas is not null and p.seguidores > 0 then (p.curtidas + coalesce(p.comentarios, 0))::numeric / p.seguidores * 100 end as e
+      from public.radar_setor_posts p join public.radar_setor_contas c on c.id = p.conta_id
+     where c.setor_id = p_setor and c.tipo = 'conta'),
+  m as (
+    select c.id, count(q.conta_id) filter (where q.d between v_ini and v_hoje) as n, count(q.conta_id) as coletados, min(q.d) as mais_antigo,
+           percentile_cont(0.5) within group (order by q.e) filter (where q.d between v_ini and v_hoje and q.e is not null) as tipico,
+           count(q.e) filter (where q.d between v_ini and v_hoje) as n_eng,
+           count(q.conta_id) filter (where q.d between v_ini and v_hoje and q.curtidas is null) as ocultas,
+           count(q.conta_id) filter (where q.d between v_ini and v_hoje and q.formato = 'reel') as reel,
+           count(q.conta_id) filter (where q.d between v_ini and v_hoje and q.formato = 'carrossel') as carrossel,
+           count(q.conta_id) filter (where q.d between v_ini and v_hoje and q.formato = 'foto') as foto,
+           count(q.conta_id) filter (where q.d between v_ini and v_hoje and q.formato = 'video') as video
+      from public.radar_setor_contas c left join q on q.conta_id = c.id
+     where c.setor_id = p_setor and c.tipo = 'conta'
+     group by c.id),
+  tt as (
+    select distinct on (q.conta_id) q.conta_id, t.nome
+      from q cross join lateral unnest(q.temas) as u(nome)
+      join (select w.e->>'nome' as nome, w.o from jsonb_array_elements(v_temas) with ordinality w(e, o)) t on t.nome = u.nome
+     where q.d between v_ini and v_hoje
+     group by q.conta_id, t.nome, t.o
+     order by q.conta_id, count(*) desc, t.o),
+  z as (
+    select c.id, c.nome, c.propria, c.ativa, c.seguidores, c.posts_total, c.coletada_em, c.erro, c.falhas_consecutivas, c.aviso,
+           m.n, m.tipico, m.n_eng, m.ocultas, m.reel, m.carrossel, m.foto, m.video, tt.nome as tema_top, y.truncado, y.inicio_cob, y.dias_cob,
+           (select count(*) from q where q.conta_id = c.id and q.d between y.inicio_cob and y.fim_cob) as n_cob,
+           (coalesce(c.seguidores, 0) >= 100 and m.n_eng >= 5) as elegivel
+      from public.radar_setor_contas c join m on m.id = c.id left join tt on tt.conta_id = c.id
+     -- a cobertura termina no dia da última leitura (o que saiu depois ainda não foi lido: não é "zero publicação") e começa no começo
+     -- do período ou, se as leituras não chegaram até lá, na publicação mais antiga que alcançaram (lido_desde; sem ele, as guardadas)
+     cross join lateral (select least(v_hoje, (c.coletada_em at time zone 'America/Sao_Paulo')::date) as fim_cob,
+                                (c.lido_desde at time zone 'America/Sao_Paulo')::date as lido_dia) y0
+     cross join lateral (select coalesce(y0.fim_cob >= v_ini, false) as coberta,
+                                case when c.lido_desde is not null then y0.lido_dia > v_ini
+                                     else coalesce(m.coletados < c.posts_total and m.mais_antigo > v_ini, false) end as corta) y1
+     cross join lateral (select y0.fim_cob, y1.coberta and y1.corta as truncado,
+                                case when y1.coberta and y1.corta then coalesce(y0.lido_dia, m.mais_antigo) else v_ini end as inicio_cob) y2
+     cross join lateral (select y2.fim_cob, y2.truncado, y2.inicio_cob,
+                                case when y1.coberta then greatest(y2.fim_cob - y2.inicio_cob + 1, 1) end as dias_cob) y)
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', z.id, 'nome', z.nome, 'propria', z.propria, 'ativa', z.ativa, 'seguidores', z.seguidores, 'posts_total', z.posts_total,
+           'coletada_em', z.coletada_em, 'erro', z.erro, 'aviso', z.aviso, 'falhas', z.falhas_consecutivas, 'n', z.n,
+           'posts_semana', case when z.dias_cob is not null then round(z.n_cob * 7.0 / z.dias_cob, 4) end, 'dias_cobertos', z.dias_cob, 'truncado', z.truncado, 'inicio_cobertura', z.inicio_cob,
+           'formatos', jsonb_build_object('reel', z.reel, 'carrossel', z.carrossel, 'foto', z.foto, 'video', z.video),
+           'engajamento', round(z.tipico::numeric, 4), 'tipico', z.tipico, 'n_engajamento', z.n_eng, 'ocultas', z.ocultas,
+           'elegivel', z.elegivel, 'tema_top', z.tema_top,
+           'situacao', case when z.coletada_em is null then 'nunca' when z.erro is not null then 'erro' when not z.ativa then 'pausada'
+                            when not z.elegivel then 'poucos_dados' else 'ok' end,
+           'coletada_dia', (z.coletada_em at time zone 'America/Sao_Paulo')::date)
+         order by z.propria desc, z.elegivel desc, z.tipico desc nulls last, z.nome), '[]'::jsonb)
+    into v_cs from z;
+
+  -- 2. as publicações do período das contas com dados (as ativas já lidas), cada uma comparada com o típico da própria conta
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'conta_id', p.conta_id, 'conta', k.nome, 'propria', k.propria, 'elegivel', k.elegivel, 'formato', p.formato,
+           'temas', to_jsonb(p.temas), 'curtidas', p.curtidas, 'comentarios', p.comentarios, 'e', x.e,
+           'rel', case when x.e is not null and k.tipico > 0 then x.e / k.tipico::numeric end,
+           'em', p.publicado_em, 'd', x.d, 'dia', extract(isodow from l.lo)::int, 'hora', extract(hour from l.lo)::int,
+           'data', to_char(l.lo, 'YYYY-MM-DD"T"HH24:MI'),
+           'trecho', left(p.legenda, 100) || case when char_length(p.legenda) > 100 then '…' else '' end, 'link', p.link)), '[]'::jsonb)
+    into v_ps
+    from public.radar_setor_posts p
+    join jsonb_to_recordset(v_cs) as k(id bigint, nome text, propria boolean, ativa boolean, coletada_em timestamptz, elegivel boolean, tipico float8)
+      on k.id = p.conta_id
+   cross join lateral (select p.publicado_em at time zone 'America/Sao_Paulo' as lo) l
+   cross join lateral (select l.lo::date as d,
+                              case when p.curtidas is not null and p.seguidores > 0 then (p.curtidas + coalesce(p.comentarios, 0))::numeric / p.seguidores * 100 end as e) x
+   where k.ativa and k.coletada_em is not null and x.d between v_ini and v_hoje;
+
+  -- 3. o resumo (o setor é sem a Artecon)
+  with k as (select * from jsonb_to_recordset(v_cs) as k(id bigint, propria boolean, ativa boolean, coletada_em timestamptz, elegivel boolean,
+                                                          posts_semana numeric, engajamento numeric, n_engajamento int)),
+  f as (select k.*, (not k.propria and k.ativa and k.coletada_em is not null and k.posts_semana is not null) as dados from k),
+  a as (select * from f where f.propria and f.ativa and f.coletada_em is not null order by f.id limit 1)
+  select jsonb_build_object(
+           'contas', (select count(*) from f where not f.propria),
+           'com_dados', (select count(*) from f where f.dados),
+           'elegiveis', (select count(*) from f where f.dados and f.elegivel),
+           'posts', (select count(*) from jsonb_array_elements(v_ps) e where not (e->>'propria')::boolean),
+           'setor_posts_semana', (select round(percentile_cont(0.5) within group (order by f.posts_semana)::numeric, 4) from f where f.dados),
+           'setor_engajamento', (select round(percentile_cont(0.5) within group (order by f.engajamento)::numeric, 4) from f where f.dados and f.elegivel and f.engajamento is not null),
+           'artecon_posts_semana', (select a.posts_semana from a),
+           'artecon_engajamento', (select case when a.n_engajamento >= 1 then a.engajamento end from a))
+    into v_x;
+  v_res := v_res || jsonb_build_object('resumo', v_x);
+
+  -- 4. formatos: a mistura (contagem somada) do setor e a da Artecon; o engajamento típico por formato (contas elegíveis); reel × foto
+  with e as (select (x->>'propria')::boolean as propria, (x->>'elegivel')::boolean as elegivel, x->>'formato' as formato,
+                    (x->>'e')::numeric as eng, (x->>'conta_id')::bigint as conta_id from jsonb_array_elements(v_ps) x),
+  fs as (select unnest(array['reel', 'carrossel', 'foto', 'video']) as formato),
+  mix as (select e.propria, e.formato, count(*) as n from e group by e.propria, e.formato),
+  tot as (select e.propria, count(*) as n from e group by e.propria)
+  select jsonb_build_object(
+           'setor', (select jsonb_object_agg(fs.formato, jsonb_build_object('n', coalesce(mix.n, 0),
+                       'pct', round(coalesce(mix.n, 0) * 100.0 / nullif((select t.n from tot t where not t.propria), 0), 1)))
+                       from fs left join mix on mix.formato = fs.formato and not mix.propria),
+           'artecon', case when exists (select 1 from tot where tot.propria) then
+                        (select jsonb_object_agg(fs.formato, jsonb_build_object('n', coalesce(mix.n, 0),
+                           'pct', round(coalesce(mix.n, 0) * 100.0 / nullif((select t.n from tot t where t.propria), 0), 1)))
+                           from fs left join mix on mix.formato = fs.formato and mix.propria) end)
+    into v_x;
+  v_res := v_res || jsonb_build_object('formatos', v_x);
+  v_res := v_res || jsonb_build_object('resumo', (v_res->'resumo') || jsonb_build_object('formato_mais_usado',
+             (select jsonb_build_object('formato', f.key, 'pct', f.value->'pct') from jsonb_each(v_x->'setor') f
+               where (f.value->>'n')::int > 0 order by (f.value->>'n')::int desc, f.key limit 1)));
+  with e as (select x->>'formato' as formato, (x->>'e')::numeric as eng from jsonb_array_elements(v_ps) x
+              where not (x->>'propria')::boolean and (x->>'elegivel')::boolean and x->>'e' is not null),
+  fs as (select f, o from unnest(array['reel', 'carrossel', 'foto', 'video']) with ordinality u(f, o))
+  select jsonb_agg(jsonb_build_object('formato', fs.f,
+           'mediana', (select round(percentile_cont(0.5) within group (order by e.eng)::numeric, 4) from e where e.formato = fs.f),
+           'n', (select count(*) from e where e.formato = fs.f)) order by fs.o)
+    into v_x from fs;
+  v_res := v_res || jsonb_build_object('engajamento_formato', v_x);
+  with e as (select (x->>'conta_id')::bigint as conta_id, x->>'formato' as formato, (x->>'e')::numeric as eng from jsonb_array_elements(v_ps) x
+              where not (x->>'propria')::boolean and (x->>'elegivel')::boolean and x->>'e' is not null),
+  c as (select e.conta_id,
+               percentile_cont(0.5) within group (order by e.eng) filter (where e.formato = 'reel') as reel,
+               percentile_cont(0.5) within group (order by e.eng) filter (where e.formato = 'foto') as foto
+          from e group by e.conta_id
+        having count(*) filter (where e.formato = 'reel') >= 3 and count(*) filter (where e.formato = 'foto') >= 3)
+  select jsonb_build_object('acima', count(*) filter (where c.reel > c.foto), 'contas', count(*)) into v_x from c;
+  v_res := v_res || jsonb_build_object('reel_vs_foto', v_x);
+
+  -- 5. dias e horários (Brasília): cada publicação das contas elegíveis comparada com o típico da própria conta
+  with e as (select (x->>'dia')::int as dia, case when (x->>'hora')::int < 6 then 0 else ((x->>'hora')::int - 6) / 3 + 1 end as faixa,
+                    (x->>'rel')::numeric as rel
+               from jsonb_array_elements(v_ps) x
+              where not (x->>'propria')::boolean and (x->>'elegivel')::boolean and x->>'rel' is not null)
+  select jsonb_build_object(
+           'celulas', coalesce((select jsonb_agg(jsonb_build_object('dia', g.dia, 'faixa', g.faixa, 'n', g.n, 'rel', case when g.n >= 5 then round(g.rel::numeric, 2) end)
+                                   order by g.dia, g.faixa)
+                                 from (select e.dia, e.faixa, count(*) as n, percentile_cont(0.5) within group (order by e.rel) as rel
+                                         from e group by e.dia, e.faixa) g), '[]'::jsonb),
+           'dias', (select jsonb_agg(jsonb_build_object('dia', d.dia, 'n', coalesce(g.n, 0), 'rel', case when g.n >= 5 then round(g.rel::numeric, 2) end) order by d.dia)
+                      from generate_series(1, 7) d(dia)
+                      left join (select e.dia, count(*) as n, percentile_cont(0.5) within group (order by e.rel) as rel from e group by e.dia) g on g.dia = d.dia),
+           'faixas', (select jsonb_agg(jsonb_build_object('faixa', d.faixa, 'n', coalesce(g.n, 0), 'rel', case when g.n >= 5 then round(g.rel::numeric, 2) end) order by d.faixa)
+                        from generate_series(0, 6) d(faixa)
+                        left join (select e.faixa, count(*) as n, percentile_cont(0.5) within group (order by e.rel) as rel from e group by e.faixa) g on g.faixa = d.faixa))
+    into v_x;
+  v_res := v_res || jsonb_build_object('dias_horas', v_x);
+
+  -- 6. temas: a parcela das publicações do setor com cada tema (uma pode ter vários), o engajamento relativo e a parcela da Artecon
+  with e as (select (x->>'propria')::boolean as propria, (x->>'elegivel')::boolean as elegivel, (x->>'rel')::numeric as rel,
+                    array(select jsonb_array_elements_text(x->'temas')) as temas from jsonb_array_elements(v_ps) x),
+  t as (select w.e->>'nome' as tema, w.o from jsonb_array_elements(v_temas) with ordinality w(e, o)
+        union all select 'Outros', 100000),
+  tot as (select count(*) filter (where not e.propria) as setor, count(*) filter (where e.propria) as artecon from e),
+  c as (select t.tema, t.o,
+               count(*) filter (where not e.propria and (case when t.tema = 'Outros' then cardinality(e.temas) = 0 else t.tema = any(e.temas) end)) as n,
+               count(*) filter (where e.propria and (case when t.tema = 'Outros' then cardinality(e.temas) = 0 else t.tema = any(e.temas) end)) as na,
+               percentile_cont(0.5) within group (order by e.rel)
+                 filter (where not e.propria and e.elegivel and e.rel is not null
+                           and (case when t.tema = 'Outros' then cardinality(e.temas) = 0 else t.tema = any(e.temas) end)) as rel
+          from t left join e on true group by t.tema, t.o)
+  select coalesce(jsonb_agg(jsonb_build_object('tema', c.tema, 'n', c.n, 'pct', round(c.n * 100.0 / nullif(tot.setor, 0), 1),
+           'rel', round(c.rel::numeric, 2), 'artecon_pct', round(c.na * 100.0 / nullif(tot.artecon, 0), 1)) order by c.n desc, c.o), '[]'::jsonb)
+    into v_x from c cross join tot;
+  v_res := v_res || jsonb_build_object('temas', v_x);
+
+  -- 7. as publicações de maior engajamento: no máximo 3 por conta, 10 no total (empate: a mais nova antes); as 3 melhores da Artecon
+  with e as (select x, (x->>'e')::numeric as eng, (x->>'em')::timestamptz as em, (x->>'conta_id')::bigint as conta_id,
+                    row_number() over (partition by x->>'conta_id' order by (x->>'e')::numeric desc, (x->>'em')::timestamptz desc) as r
+               from jsonb_array_elements(v_ps) x
+              where not (x->>'propria')::boolean and (x->>'elegivel')::boolean and x->>'e' is not null)
+  select coalesce(jsonb_agg(jsonb_build_object('conta', e.x->'conta', 'data', e.x->'data', 'formato', e.x->'formato', 'temas', e.x->'temas',
+           'curtidas', e.x->'curtidas', 'comentarios', e.x->'comentarios', 'engajamento', round(e.eng, 4),
+           'rel', round((e.x->>'rel')::numeric, 2), 'trecho', e.x->'trecho', 'link', e.x->'link') order by e.eng desc, e.em desc), '[]'::jsonb)
+    into v_x from (select * from e where e.r <= 3 order by e.eng desc, e.em desc limit 10) e;
+  v_res := v_res || jsonb_build_object('melhores', v_x);
+  select coalesce(jsonb_agg(jsonb_build_object('conta', e.x->'conta', 'data', e.x->'data', 'formato', e.x->'formato', 'temas', e.x->'temas',
+           'curtidas', e.x->'curtidas', 'comentarios', e.x->'comentarios', 'engajamento', round(e.eng, 4),
+           'rel', round((e.x->>'rel')::numeric, 2), 'trecho', e.x->'trecho', 'link', e.x->'link') order by e.eng desc, e.em desc), '[]'::jsonb)
+    into v_x
+    from (select x, (x->>'e')::numeric as eng, (x->>'em')::timestamptz as em from jsonb_array_elements(v_ps) x
+           where (x->>'propria')::boolean and x->>'e' is not null order by 2 desc, 3 desc limit 3) e;
+  v_res := v_res || jsonb_build_object('melhores_artecon', v_x);
+
+  -- 8. a série: publicações por conta em cada semana (30 e 90 dias) ou mês (180 e 365), só das contas que cobrem o período inteiro
+  with k as (select * from jsonb_to_recordset(v_cs) as k(id bigint, propria boolean, ativa boolean, coletada_em timestamptz,
+                                                          inicio_cobertura date, coletada_dia date)),
+  per as (select g::date as ini,
+                 case when v_dias <= 90 then g::date + 6 else (g + interval '1 month')::date - 1 end as fim
+            from generate_series(case when v_dias <= 90 then (v_ini + ((8 - extract(isodow from v_ini)::int) % 7))::timestamp
+                                      when extract(day from v_ini) = 1 then v_ini::timestamp
+                                      else date_trunc('month', v_ini::timestamp) + interval '1 month' end,
+                                 v_hoje::timestamp, case when v_dias <= 90 then interval '7 days' else interval '1 month' end) g),
+  cob as (select per.ini, per.fim, k.id, k.propria from per join k on k.ativa and k.coletada_em is not null
+            and k.inicio_cobertura <= per.ini and k.coletada_dia >= least(per.fim, v_hoje)),
+  ps as (select (x->>'conta_id')::bigint as conta_id, (x->>'d')::date as d from jsonb_array_elements(v_ps) x),
+  n as (select cob.ini, cob.id, cob.propria, count(ps.conta_id) as posts
+          from cob left join ps on ps.conta_id = cob.id and ps.d between cob.ini and cob.fim
+         group by cob.ini, cob.id, cob.propria)
+  select coalesce(jsonb_agg(jsonb_build_object('inicio', per.ini, 'fim', per.fim, 'em_andamento', per.fim >= v_hoje,
+           'setor', (select round(sum(n.posts)::numeric / nullif(count(*), 0), 4) from n where n.ini = per.ini and not n.propria),
+           'contas', (select count(*) from n where n.ini = per.ini and not n.propria),
+           'artecon', (select n.posts from n where n.ini = per.ini and n.propria order by n.id limit 1)) order by per.ini), '[]'::jsonb)
+    into v_x from per;
+  v_res := v_res || jsonb_build_object('series', v_x);
+
+  -- 9. as hashtags do setor (só com a busca ligada há publicações): sem seguidores de quem postou, o número é absoluto
+  with h as (select c.id, c.nome, c.ativa, c.coletada_em, c.erro from public.radar_setor_contas c where c.setor_id = p_setor and c.tipo = 'hashtag'),
+  hp as (select p.conta_id, p.formato, p.temas, p.curtidas, p.comentarios, p.publicado_em,
+                coalesce(p.curtidas, 0) + coalesce(p.comentarios, 0) as inter,
+                to_char(p.publicado_em at time zone 'America/Sao_Paulo', 'YYYY-MM-DD"T"HH24:MI') as data,
+                left(p.legenda, 100) || case when char_length(p.legenda) > 100 then '…' else '' end as trecho, p.link
+           from public.radar_setor_posts p join h on h.id = p.conta_id
+          where (p.publicado_em at time zone 'America/Sao_Paulo')::date between v_ini and v_hoje)
+  select coalesce(jsonb_agg(jsonb_build_object('id', h.id, 'nome', h.nome, 'ativa', h.ativa, 'coletada_em', h.coletada_em, 'erro', h.erro,
+           'n', (select count(*) from hp where hp.conta_id = h.id),
+           'formatos', (select coalesce(jsonb_object_agg(z.formato, z.n), '{}'::jsonb) from (select hp.formato, count(*) as n from hp where hp.conta_id = h.id group by hp.formato) z),
+           'temas', (select coalesce(jsonb_agg(z.tema order by z.n desc, z.tema), '[]'::jsonb)
+                       from (select u.tema, count(*) as n from hp cross join lateral unnest(hp.temas) u(tema) where hp.conta_id = h.id
+                              group by u.tema order by count(*) desc, u.tema limit 3) z),
+           'interacoes_mediana', (select round(percentile_cont(0.5) within group (order by hp.inter)::numeric, 1) from hp where hp.conta_id = h.id),
+           'melhores', (select coalesce(jsonb_agg(jsonb_build_object('data', z.data, 'formato', z.formato, 'temas', to_jsonb(z.temas), 'curtidas', z.curtidas,
+                                 'comentarios', z.comentarios, 'interacoes', z.inter, 'trecho', z.trecho, 'link', z.link) order by z.inter desc, z.publicado_em desc), '[]'::jsonb)
+                          from (select * from hp where hp.conta_id = h.id order by hp.inter desc, hp.publicado_em desc limit 5) z))
+           order by h.nome), '[]'::jsonb)
+    into v_x from h;
+  v_res := v_res || jsonb_build_object('hashtags', v_x);
+
+  return v_res || jsonb_build_object(
+    'setor', jsonb_build_object('id', v_set.id, 'nome', v_set.nome),
+    'periodo', jsonb_build_object('dias', v_dias, 'inicio', v_ini, 'fim', v_hoje, 'agrupado', case when v_dias <= 90 then 'semana' else 'mes' end),
+    'atualizado_em', (select max(c.coletada_em) from public.radar_setor_contas c where c.setor_id = p_setor),
+    'artecon', exists (select 1 from public.radar_setor_contas c where c.setor_id = p_setor and c.tipo = 'conta' and c.propria),
+    'contas', (select coalesce(jsonb_agg(c - 'tipico' - 'coletada_dia' order by o), '[]'::jsonb) from jsonb_array_elements(v_cs) with ordinality w(c, o)));
+end $$;
+create or replace function public.radar_setor_painel(p_setor bigint, p_dias int) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if auth.uid() is null or public.radar_papel() is null then
+    raise exception 'RADAR408: Seu usuário não tem perfil ativo no Radar.' using errcode = 'P0001';
+  end if;
+  return public.radar_setor_painel_em(p_setor, p_dias, now());
+end $$;
+
+-- A situação da leitura para a aba (a equipe toda): a configuração, a última rodada, a pausa da Meta, se há rodada em andamento, a
+-- próxima leitura automática e as hashtags buscadas em 7 dias. Só para o administrador, a agenda do banco (o agendamento
+-- radar-setor-coleta do sql/radar-setor-agenda.sql); sem o pg_cron (ou com qualquer erro), {instalada: false}.
+create or replace function public.radar_setor_situacao() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_r      jsonb;
+  v_ativa  boolean;
+  v_ult    timestamptz;
+  v_status text;
+  v_agenda jsonb;
+  v_p      record;
+  k        record;
+begin
+  if auth.uid() is null or public.radar_papel() is null then
+    return '{}'::jsonb;
+  end if;
+  select * into k from public.radar_setor_coletas c where c.terminada_em is not null order by c.id desc limit 1;
+  select * into v_p from public.radar_setor_pausa_em(now());
+  v_r := jsonb_build_object('cfg', public.radar_setor_cfg(),
+    'ultima', case when k.id is not null then jsonb_build_object('origem', k.origem, 'iniciada_em', k.iniciada_em, 'terminada_em', k.terminada_em,
+                                                                 'contas', k.contas, 'lidas', k.lidas, 'com_erro', k.com_erro, 'geral', k.geral) end,
+    'pausa_ate', v_p.ate, 'pausa_motivo', v_p.motivo,
+    'em_andamento', exists (select 1 from public.radar_setor_coletas c where c.terminada_em is null and c.iniciada_em > now() - interval '4 minutes'),
+    'proxima', public.radar_setor_corte(now()) + interval '7 days 17 minutes',
+    'hashtags_7d', public.radar_setor_buscadas_em(now()));
+  if public.radar_papel() = 'admin' then
+    begin
+      execute 'select j.active from cron.job j where j.jobname = ''radar-setor-coleta'' limit 1' into v_ativa;
+      if v_ativa is null then
+        v_agenda := jsonb_build_object('instalada', false);
+      else
+        execute 'select coalesce(d.end_time, d.start_time), d.status from cron.job_run_details d join cron.job j on j.jobid = d.jobid where j.jobname = ''radar-setor-coleta'' order by d.start_time desc nulls last limit 1' into v_ult, v_status;
+        v_agenda := jsonb_build_object('instalada', true, 'ativa', v_ativa, 'ultima_execucao', v_ult, 'ultimo_status', v_status);
+      end if;
+    exception when others then
+      v_agenda := jsonb_build_object('instalada', false);
+    end;
+    v_r := v_r || jsonb_build_object('agenda', v_agenda);
+  end if;
+  return v_r;
+end $$;
+
+-- ---------------------------------------------------------------- RLS, privilégios e gatilhos da aba Setor
+-- A equipe lê os setores e a situação de cada conta (a tela); ninguém lê as publicações nem as rodadas pela API (a tela recebe os
+-- números prontos de radar_setor_painel; a função radar-concorrentes chega aqui só pelas funções radar_setor_iniciar, _gravar e
+-- _concluir). Ninguém grava direto: só pelas funções.
+do $$
+declare t text;
+begin
+  foreach t in array array['radar_setor_setores', 'radar_setor_contas', 'radar_setor_posts', 'radar_setor_coletas'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('revoke all on public.%I from public, anon, authenticated, service_role', t);
+  end loop;
+end $$;
+grant select on public.radar_setor_setores, public.radar_setor_contas to authenticated;
+drop policy if exists radar_setor_setores_sel on public.radar_setor_setores;
+create policy radar_setor_setores_sel on public.radar_setor_setores for select to authenticated
+  using ((select public.radar_papel()) is not null);
+drop policy if exists radar_setor_contas_sel on public.radar_setor_contas;
+create policy radar_setor_contas_sel on public.radar_setor_contas for select to authenticated
+  using ((select public.radar_papel()) is not null);
+-- trava de reserva (toda tabela do Radar tem uma regra), para o caso de um "grant" futuro
+drop policy if exists radar_setor_posts_sel on public.radar_setor_posts;
+create policy radar_setor_posts_sel on public.radar_setor_posts for select to authenticated
+  using ((select public.radar_papel()) = 'admin');
+drop policy if exists radar_setor_coletas_sel on public.radar_setor_coletas;
+create policy radar_setor_coletas_sel on public.radar_setor_coletas for select to authenticated
+  using ((select public.radar_papel()) = 'admin');
+-- as sequências e as funções novas (na 1ª instalação, os laços da seção 5 rodaram antes de elas existirem)
+do $$
+declare q record;
+begin
+  for q in select c.oid::regclass as nome from pg_class c join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'public' and c.relkind = 'S' and c.relname like 'radar\_setor\_%' loop
+    execute format('revoke all on sequence %s from public, anon, authenticated, service_role', q.nome);
+  end loop;
+  for q in select p.oid::regprocedure as nome from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname like 'radar\_setor\_%' loop
+    execute format('revoke all on function %s from public, anon, authenticated, service_role', q.nome);
+  end loop;
+end $$;
+-- a tela (cada função confere o perfil: as de mudar, só o administrador; o painel e a situação, a equipe toda)
+grant execute on function public.radar_setor_salvar(bigint, text, jsonb, boolean), public.radar_setor_apagar(bigint),
+                          public.radar_setor_conta_incluir(bigint, text), public.radar_setor_conta_mudar(bigint, boolean),
+                          public.radar_setor_conta_remover(bigint), public.radar_setor_pedir(bigint), public.radar_setor_configurar(jsonb),
+                          public.radar_setor_painel(bigint, int), public.radar_setor_situacao() to authenticated;
+-- a função radar-concorrentes, pela chave interna
+grant execute on function public.radar_setor_iniciar(text, int), public.radar_setor_gravar(bigint, text, text, jsonb),
+                          public.radar_setor_concluir(bigint, jsonb) to service_role;
+drop trigger if exists radar_tg_setor_setores_atualizado on public.radar_setor_setores;
+create trigger radar_tg_setor_setores_atualizado before update on public.radar_setor_setores
+  for each row execute function public.radar_fn_atualizado_em();
+-- o Histórico: criar, renomear, mudar os temas e apagar um setor (as contas guardam quem e quando incluiu; a leitura semanal não entra)
+drop trigger if exists radar_tg_auditar on public.radar_setor_setores;
+create trigger radar_tg_auditar after insert or update or delete on public.radar_setor_setores
+  for each row execute function public.radar_fn_auditar();
+
 -- ---------------------------------------------------------------------
 -- 6. DADOS INICIAIS (não sobrescrevem o que já foi ajustado)
 -- ---------------------------------------------------------------------
@@ -8434,7 +9562,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 30 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.33.0).
+-- Esperado: 34 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.34.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

@@ -672,7 +672,7 @@ def _contagens(banco):
 
 def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
     """O banco da v0.28.1 (o setup desta versão sem a tabela, as funções e a chave dos lembretes), com dados de mentira: o setup desta
-    versão (v0.33.0, que traz junto os da v0.29.0 a v0.32.0) roda duas vezes seguidas sem erro, nada some, a chave "lembretes" entra com os padrões
+    versão (v0.34.0, que traz junto os da v0.29.0 a v0.33.0) roda duas vezes seguidas sem erro, nada some, a chave "lembretes" entra com os padrões
     e, ajustada, não é sobrescrita."""
     banco = "radar_lembretes_cima"
     with conectar("postgres") as c:
@@ -696,14 +696,14 @@ def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
         assert {t: n for t, n in depois.items() if t not in ("radar_config", "radar_instalacoes", "radar_lembretes", "radar_auditoria")} == \
                {t: n for t, n in antes.items() if t not in ("radar_config", "radar_instalacoes", "radar_auditoria")}
         assert depois["radar_config"] == antes["radar_config"] + 1 and depois["radar_instalacoes"] == antes["radar_instalacoes"] + 2
-        assert depois["radar_lembretes"] == 0 and len(depois) == 30                          # v0.32.0: + 2 tabelas
+        assert depois["radar_lembretes"] == 0 and len(depois) == 34          # v0.32.0: + 2 tabelas; v0.34.0: + as 4 da aba Setor
         with conectar(banco) as c:
             assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {
                 "ligado": True, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3,
                 "pauta": True, "aprovacao": True, "video": True, "noticia": True, "vencimento": True, "copia": True}
             assert c.execute("select valor->>'janela_horas' from radar_config where chave = 'pauta'").fetchone()[0] == "4"
             c.execute("""update radar_config set valor = '{"ligado": false, "hora": "17:30"}' where chave = 'lembretes'""")
-            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.33.0"
+            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.34.0"
         assert psql(SETUP, banco).returncode == 0
         with conectar(banco) as c:                                                         # o ajuste do administrador fica
             assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {

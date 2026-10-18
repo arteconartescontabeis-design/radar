@@ -22,9 +22,9 @@
    v0.31.0: só a versão e o recado do banco (o setup da v0.31.0); a versão traz as fontes oficiais que faltavam (robô).
    v0.33.0: a aba Vídeo (o editor do vídeo corrigido: cortes, legenda, estilo, gancho, cartela e capa), os cortes por padrão
    (muletas, repetições e voz entre palavras), a meta de duração (90 s; o teto é o reel de 15 min do Instagram) e o recado do banco
-   (sql/radar-setup-v0.33.0.sql).
+   (sql/radar-setup-v0.34.0.sql).
    ==================================================================== */
-const VIDEO_VERSAO = "0.33.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.34.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -196,7 +196,7 @@ async function blocoVideo(p){
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
   let vivos;
   try{ vivos = await videosDaPeca(p.id); }
-  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.33.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
+  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
@@ -867,7 +867,7 @@ const CHAVES_EDITOR_VIDEO = ["cortar", "inicio_q", "fim_q", "capa_q", "legenda_t
 const ABA_VIDEO_FPS = 30;
 const ABA_VIDEO_LIMITES = {min:5, max:900, fala:2, cortes:30, corteMin:3};   // v0.33.0: o teto é o da API do Instagram (15 min); a meta das Configurações é só aviso
 const ABA_VIDEO_CAMPOS = CAMPOS_VIDEO + ",palavras_tentativa,rodada";
-const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.33.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 const abaVideo = () => (estadoVideo().aba ||= {filtro:"futuro", rascunhos:{}, previaLigada:true, abertas:{cortar:true}});
 const ehEditorVideo = v => CHAVES_EDITOR_VIDEO.some(k => Object.prototype.hasOwnProperty.call(objVideo(v?.ajustes), k));
 const inteiroVideo = x => Number.isInteger(x) ? x : null;

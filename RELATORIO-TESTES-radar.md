@@ -1,6 +1,12 @@
-# Radar Artecon — Relatório de testes (v0.33.0)
+# Radar Artecon — Relatório de testes (v0.34.0)
 
-Data: 18/10/2026. **A suíte inteira da v0.33.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+Data: 18/10/2026. **A suíte inteira da v0.34.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+arquivos afetados pela v0.34.0: a bateria dos nove arquivos afetados (**509 aprovados, 1 pulado**, 299 s), a função da cópia com o
+quadro de vencimentos (**37 aprovados e 1 falha de verdade**: a cópia mensal ainda não levava as 4 tabelas do setor — corrigida, a
+`radar-copia` subiu para 0.34.0 e o arquivo rodou de novo inteiro verde) e o arquivo inteiro dos testes de tela com a tela nova do
+Setor (**267 aprovados, 61 pulados**, 545 s; a única falha era uma asserção do teste novo presa à ordem das abas — quem edita tem a
+aba Vídeo entre a Pauta e a Setor —, corrigida e rodada de novo verde). A v0.34.0 tem **77** testes novos (os 4 arquivos da aba
+Setor); a suíte inteira passa de 1.364 para **1.441** testes. Na v0.33.0: Neste ambiente rodaram, em série, os
 arquivos afetados pela v0.33.0: o corretor no banco e no alinhamento (**130 aprovados**), o robô com o ffmpeg, a função
 `radar-video` no Deno, o de ponta a ponta e a transcrição (**166 aprovados, 2 pulados**), o banco, o repositório, a agenda e os
 lembretes (**362 aprovados, 1 pulado**) e o arquivo inteiro dos testes de tela (**253 aprovados, 61 pulados**, 572 s) — as oito
@@ -58,6 +64,43 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.34.0 — aba Setor: a análise das publicações do setor no Instagram
+
+Todos os testes usam **dados fictícios** (contas "@escritorio.teste", números inventados, uma Meta DE MENTIRA servida localmente):
+nenhuma conta real é consultada e nenhum dado real de concorrente entra no repositório.
+
+- **Banco** (`testes/test_radar_setor_banco.py`): as 4 tabelas com RLS (a equipe lê; só o administrador muda; anon nada); as
+  funções `radar_setor_*` (criar/apagar setor, incluir/mudar/remover conta — remover apaga as publicações da conta —, pedir a
+  leitura, configurar, o painel e a situação); os limites (30 contas por setor, 60 ativas no total, 10 setores, 5 hashtags; a
+  mesma @ em dois setores lida uma vez); a fila do banco (quem decide o que ler: contas devidas, uma por semana, nada em dobro,
+  nada na pausa da Meta, a conta que falha 3 semanas sai); as métricas (engajamento pela mediana, dias e horários relativos à
+  própria conta, temas por palavras com acento e hashtag coladas); a guarda de 400 dias; o trecho de 300 caracteres; a
+  configuração (`radar_setor_cfg` com os padrões; `hashtag_ligada` nasce desligada); os códigos RADAR400–RADAR413.
+- **Função** (`testes/test_radar_funcao_setor.py`, Deno de verdade, PostgREST real e uma Meta de mentira): `setor_coletar` (pega
+  as devidas no banco, lê a Meta com pausa, grava pelo banco, conclui a rodada), `setor_propria`, `setor_teste`; os cabeçalhos de
+  uso da Meta (passou de 80% ou erro de limite → para e grava a pausa); os erros por conta em português; a hashtag desligada
+  recusada; as ações antigas (`ler`, `diagnostico`) sem mudança de comportamento (o arquivo inteiro de
+  `test_radar_funcao_concorrentes.py` continua verde).
+- **Agenda** (`testes/test_radar_setor_agenda.py`): o cron de hora em hora só chama com conta devida; a chave vem do Vault na
+  hora (nunca fica em `cron.job`); sem o setup desta versão, o arquivo para com "Rode antes o radar-setup-v0.34.0.sql".
+- **Tela** (`testes/test_radar_setor_tela.py`, Chromium): a aba para a equipe toda (o leitor vê; só o administrador muda), o
+  painel com os números do banco, as contas com os erros em português, os temas editáveis, o aviso de ética, a hashtag
+  "Aguardando a aprovação da Meta", o celular a 375 px sem rolagem lateral e o texto hostil escapado.
+- Mudam: as contagens de tabelas (30 → **34**) nos testes do banco e dos lembretes, a lista de
+  `test_funcoes_nao_ficam_expostas_ao_publico` (+ as 9 do setor), o repositório (os 4 scripts da tela; `radar-setor.js` no
+  workflow dos testes) e a rota do `radar-setor.js` no servidor dos testes de tela.
+
+Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026: o banco do setor sozinho
+(**35 aprovados**); a bateria dos nove arquivos afetados — `test_radar_setor_banco.py`, `test_radar_setor_agenda.py`,
+`test_radar_funcao_setor.py`, `test_radar_funcao_concorrentes.py`, `test_radar_banco.py`, `test_radar_lembretes.py`,
+`test_radar_repositorio.py`, `test_radar_funcao_copia.py` e `test_radar_vencimentos.py` — **509 aprovados, 1 pulado** (299 s); a
+cópia com os vencimentos (**37 aprovados e 1 falha de verdade**: o teste novo pegou que a cópia mensal ainda não levava as 4 tabelas
+do setor — corrigida, `test_radar_funcao_copia.py` rodou de novo inteiro verde, **18 aprovados**); e o arquivo inteiro das telas com
+`test_radar_setor_tela.py` (**267 aprovados, 61 pulados**, 545 s — a única falha era uma asserção do teste novo presa à ordem das
+abas, quem edita tem a aba Vídeo entre a Pauta e a Setor; corrigida, a tela do Setor rodou de novo inteira verde, **10 aprovados**,
+e o teste das Versões também, com o Deploy da `radar-copia` acrescentado à entrada da v0.34.0).
+O setup rodou duas vezes seguidas no banco de teste (os testes que já fazem isso) e a reversão tira as tabelas e funções do setor.
 
 ## v0.33.0 — aba Vídeo com o editor do vídeo corrigido, cortes por padrão e duração com meta
 

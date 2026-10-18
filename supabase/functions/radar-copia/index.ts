@@ -45,7 +45,7 @@
 // dados. A resposta ao administrador traz os tempos de cada etapa.
 // =====================================================================
 
-const VERSAO = "0.32.0";
+const VERSAO = "0.34.0";             // v0.34.0: + as 4 tabelas da aba Setor na cópia
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -69,7 +69,9 @@ const TABELAS = [
   "radar_assunto_capturas", "radar_assuntos", "radar_auditoria", "radar_capturas", "radar_capturas_versoes", "radar_categorias",
   "radar_config", "radar_conteudos", "radar_copias", "radar_divulgacoes", "radar_evidencias", "radar_execucoes", "radar_fontes",
   "radar_ia_uso", "radar_imagens", "radar_informativo_itens", "radar_informativos", "radar_instalacoes", "radar_itc_lidos",
-  "radar_lembretes", "radar_normas", "radar_pauta_pecas", "radar_perfis", "radar_pessoas", "radar_redes_envios", "radar_site_envios",
+  "radar_lembretes", "radar_normas", "radar_pauta_pecas", "radar_perfis", "radar_pessoas", "radar_redes_envios",
+  // v0.34.0: as 4 da aba Setor (dados públicos do Instagram e a configuração dos setores: vão à cópia como tudo)
+  "radar_setor_coletas", "radar_setor_contas", "radar_setor_posts", "radar_setor_setores", "radar_site_envios",
   "radar_site_exclusoes", "radar_vencimentos", "radar_video_acessos", "radar_videos",
 ] as const;
 // Tabela que não vai à cópia DE PROPÓSITO, com o motivo (hoje nenhuma: nenhuma coluna guarda chave ou senha — revisão coluna a
