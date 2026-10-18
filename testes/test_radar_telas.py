@@ -356,7 +356,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.34.0: a entrada do topo é a da versão em uso e conta ao dono, em português simples, em 4 itens: a aba Setor (as contas, a
     # leitura de segunda-feira, o painel e a ética), a hashtag desligada até a Meta aprovar, os erros da Meta em português e o que o
-    # administrador faz (o SQL, o Deploy da radar-concorrentes, a agenda do setor e a tela com o radar-setor.js)
+    # administrador faz (o SQL, o Deploy da radar-concorrentes e da radar-copia, a agenda do setor e a tela com o radar-setor.js)
     topo, data, itens = pagina.evaluate("VERSOES[0]")
     assert topo == pagina.evaluate("VERSAO") == "0.34.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
@@ -367,7 +367,8 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
                    "Serve para ver formatos e temas, nunca para copiar (NBC PG 01)",
                    "desligada até a Meta aprovar o recurso Instagram Public Content Access", "Aguardando a aprovação da Meta",
                    "continua só de leitura: nunca publica, comenta, curte ou segue", "Nenhum aviso por e-mail",
-                   "sql/radar-setup-v0.34.0.sql", "sql/radar-setor-agenda.sql", "radar-setor.js (novo)",
+                   "sql/radar-setup-v0.34.0.sql", "Deploy das funções radar-concorrentes e radar-copia", "Verify JWT desligado nas duas",
+                   "sql/radar-setor-agenda.sql", "radar-setor.js (novo)",
                    "Da v0.33.0 para a v0.34.0", "Nenhum segredo novo"]:
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")

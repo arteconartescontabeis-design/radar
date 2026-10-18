@@ -71,7 +71,8 @@ def test_leitor_e_editor_veem_o_painel_sem_os_controles(tela, email):
     tela.click("[data-acao=setor-dias][data-dias='30']")                                      # o cenário P é de 30 dias
     tela.wait_for_selector("[data-acao=setor-dias][data-dias='30'].ativa")
     abas = tela.locator("nav.abas button").all_inner_texts()
-    assert abas.index("Setor") == abas.index("Pauta") + 1 and abas.index("Fontes") == abas.index("Setor") + 1
+    # entre a Pauta e as Fontes, colada nas Fontes (a editora tem a aba Vídeo entre a Pauta e a Setor)
+    assert abas.index("Pauta") < abas.index("Setor") and abas.index("Fontes") == abas.index("Setor") + 1
     assert ETICA in tela.inner_text("#setor-etica")
     resumo = tela.inner_text("#setor-resumo")
     for trecho in ("Contas analisadas", "3", "1,4", "Artecon 0,7", "2,00%", "Foto", "69%"):

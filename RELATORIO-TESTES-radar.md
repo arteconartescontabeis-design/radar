@@ -1,7 +1,12 @@
 # Radar Artecon — Relatório de testes (v0.34.0)
 
 Data: 18/10/2026. **A suíte inteira da v0.34.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
-arquivos afetados pela v0.34.0: <NUMEROS-V34>. A v0.34.0 tem <N-V34> testes novos (os 4 arquivos da aba Setor). Na v0.33.0: Neste ambiente rodaram, em série, os
+arquivos afetados pela v0.34.0: a bateria dos nove arquivos afetados (**509 aprovados, 1 pulado**, 299 s), a função da cópia com o
+quadro de vencimentos (**37 aprovados e 1 falha de verdade**: a cópia mensal ainda não levava as 4 tabelas do setor — corrigida, a
+`radar-copia` subiu para 0.34.0 e o arquivo rodou de novo inteiro verde) e o arquivo inteiro dos testes de tela com a tela nova do
+Setor (**267 aprovados, 61 pulados**, 545 s; a única falha era uma asserção do teste novo presa à ordem das abas — quem edita tem a
+aba Vídeo entre a Pauta e a Setor —, corrigida e rodada de novo verde). A v0.34.0 tem **77** testes novos (os 4 arquivos da aba
+Setor); a suíte inteira passa de 1.364 para **1.441** testes. Na v0.33.0: Neste ambiente rodaram, em série, os
 arquivos afetados pela v0.33.0: o corretor no banco e no alinhamento (**130 aprovados**), o robô com o ffmpeg, a função
 `radar-video` no Deno, o de ponta a ponta e a transcrição (**166 aprovados, 2 pulados**), o banco, o repositório, a agenda e os
 lembretes (**362 aprovados, 1 pulado**) e o arquivo inteiro dos testes de tela (**253 aprovados, 61 pulados**, 572 s) — as oito
@@ -86,7 +91,15 @@ nenhuma conta real é consultada e nenhum dado real de concorrente entra no repo
   `test_funcoes_nao_ficam_expostas_ao_publico` (+ as 9 do setor), o repositório (os 4 scripts da tela; `radar-setor.js` no
   workflow dos testes) e a rota do `radar-setor.js` no servidor dos testes de tela.
 
-Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026: <RODADAS-V34>.
+Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026: o banco do setor sozinho
+(**35 aprovados**); a bateria dos nove arquivos afetados — `test_radar_setor_banco.py`, `test_radar_setor_agenda.py`,
+`test_radar_funcao_setor.py`, `test_radar_funcao_concorrentes.py`, `test_radar_banco.py`, `test_radar_lembretes.py`,
+`test_radar_repositorio.py`, `test_radar_funcao_copia.py` e `test_radar_vencimentos.py` — **509 aprovados, 1 pulado** (299 s); a
+cópia com os vencimentos (**37 aprovados e 1 falha de verdade**: o teste novo pegou que a cópia mensal ainda não levava as 4 tabelas
+do setor — corrigida, `test_radar_funcao_copia.py` rodou de novo inteiro verde, **18 aprovados**); e o arquivo inteiro das telas com
+`test_radar_setor_tela.py` (**267 aprovados, 61 pulados**, 545 s — a única falha era uma asserção do teste novo presa à ordem das
+abas, quem edita tem a aba Vídeo entre a Pauta e a Setor; corrigida, a tela do Setor rodou de novo inteira verde, **10 aprovados**,
+e o teste das Versões também, com o Deploy da `radar-copia` acrescentado à entrada da v0.34.0).
 O setup rodou duas vezes seguidas no banco de teste (os testes que já fazem isso) e a reversão tira as tabelas e funções do setor.
 
 ## v0.33.0 — aba Vídeo com o editor do vídeo corrigido, cortes por padrão e duração com meta

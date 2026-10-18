@@ -23,8 +23,9 @@ as publicações de maior engajamento, com o link e só um trecho curto da legen
 pronta e **desligada** até a Meta aprovar o recurso *Instagram Public Content Access* (o pedido tem passo a passo abaixo).
 **Serve para ver formatos e temas, nunca para copiar (NBC PG 01).**
 
-Mudam o banco (`sql/radar-setup-v0.34.0.sql`: as 4 tabelas novas `radar_setor_*`, **34 tabelas**; nada é apagado), a função
-`radar-concorrentes` (as ações da aba Setor; continua **só de leitura** e com o "Verify JWT" desligado) e a tela (`index.html` e o
+Mudam o banco (`sql/radar-setup-v0.34.0.sql`: as 4 tabelas novas `radar_setor_*`, **34 tabelas**; nada é apagado), as funções
+`radar-concorrentes` (as ações da aba Setor; continua **só de leitura** e com o "Verify JWT" desligado) e `radar-copia` (a cópia
+mensal de segurança passa a levar as 4 tabelas do setor) e a tela (`index.html` e o
 **`radar-setor.js`**, novo; `radar-pauta.js` e `radar-video.js` só mudam a versão). Entram a agenda `sql/radar-setor-agenda.sql`
 (com a reversão) — ela usa a chave do `sql/radar-concorrentes.sql`, que o dono já rodou. **Nenhum segredo novo.**
 **Rode o SQL antes de publicar a tela**: veja "Da v0.33.0 para a v0.34.0".
@@ -2746,29 +2747,32 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 
 ## Atualizações futuras
 
-**Da v0.33.0 para a v0.34.0** (muda o banco: SQL novo, que pode rodar de novo; muda a função `radar-concorrentes` e entra a agenda
-do setor; as funções `radar-ia`, `radar-redes`, `radar-itc`, `radar-video` e `radar-copia` e as outras agendas não mudam;
-**nenhum segredo novo**; nada de chave ou segredo pelo chat). Supõe a v0.33.0 instalada. **Nesta ordem**:
+**Da v0.33.0 para a v0.34.0** (muda o banco: SQL novo, que pode rodar de novo; mudam as funções `radar-concorrentes` e
+`radar-copia` e entra a agenda do setor; as funções `radar-ia`, `radar-redes`, `radar-itc` e `radar-video` e as outras agendas não
+mudam; **nenhum segredo novo**; nada de chave ou segredo pelo chat). Supõe a v0.33.0 instalada. **Nesta ordem**:
 
 1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.34.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **34
    tabelas** e "instalacoes concluidas" com a **v0.34.0**. Ele cria as 4 tabelas da aba Setor (`radar_setor_*`); nada é apagado.
 2. Supabase → **Edge Functions** → `radar-concorrentes` → cole o `supabase/functions/radar-concorrentes/index.ts` desta versão →
    **Deploy**, com o **"Verify JWT" desligado** (como já está). Nenhum segredo novo.
-3. Se o `sql/radar-concorrentes.sql` nunca foi rodado neste projeto, rode-o uma vez (cria a chave no Vault). No projeto da Artecon
+3. Supabase → **Edge Functions** → `radar-copia` → cole o `supabase/functions/radar-copia/index.ts` desta versão → **Deploy**, com
+   o **"Verify JWT" desligado** (como já está). A cópia mensal de segurança passa a levar as 4 tabelas do setor; a agenda da cópia
+   não muda.
+4. Se o `sql/radar-concorrentes.sql` nunca foi rodado neste projeto, rode-o uma vez (cria a chave no Vault). No projeto da Artecon
    ele já foi rodado (a análise de outubro): pode pular.
-4. SQL Editor → rode o `sql/radar-setor-agenda.sql` inteiro. No fim ele mesmo testa a função e espera `200 {"ok": true, …}`.
-5. Publique a tela (`index.html`, `radar-pauta.js`, `radar-video.js` e o **novo `radar-setor.js`**, juntos) e aperte **Ctrl+F5** em
+5. SQL Editor → rode o `sql/radar-setor-agenda.sql` inteiro. No fim ele mesmo testa a função e espera `200 {"ok": true, …}`.
+6. Publique a tela (`index.html`, `radar-pauta.js`, `radar-video.js` e o **novo `radar-setor.js`**, juntos) e aperte **Ctrl+F5** em
    todos os aparelhos. A aba Versões mostra a v0.34.0 e aparece a aba **Setor**.
-6. No Radar → aba **Setor**: crie o setor "Contabilidade"; cole as contas (uma por linha: @usuario ou o link do perfil — só contas
+7. No Radar → aba **Setor**: crie o setor "Contabilidade"; cole as contas (uma por linha: @usuario ou o link do perfil — só contas
    de escritórios, comerciais ou de criador); clique em "Incluir a conta da Artecon"; confira os temas; clique em **"Atualizar a
    análise"** e espere (cerca de 2 minutos a cada 12 contas, sem fechar a aba).
-7. Confira na tabela as contas "não encontrada, privada ou que não é comercial": corrija o @ ou remova.
-8. Peça à Meta a aprovação da **busca por hashtag** ("Busca por hashtag: pedir a aprovação da Meta", abaixo) — pode levar semanas e
+8. Confira na tabela as contas "não encontrada, privada ou que não é comercial": corrija o @ ou remova.
+9. Peça à Meta a aprovação da **busca por hashtag** ("Busca por hashtag: pedir a aprovação da Meta", abaixo) — pode levar semanas e
    ser negada; enquanto isso, tudo funciona pelas contas.
-9. Quando a Meta aprovar: aba Setor → Configuração → marque "Busca por hashtag ligada" → Salvar; inclua **1** hashtag
-   (#contabilidade), Atualizar a análise e confira; depois as outras (até 5 por setor; a Meta permite 30 hashtags diferentes a cada
-   7 dias).
-10. Nunca mande token ou senha pelo chat; nada muda nos segredos do GitHub.
+10. Quando a Meta aprovar: aba Setor → Configuração → marque "Busca por hashtag ligada" → Salvar; inclua **1** hashtag
+    (#contabilidade), Atualizar a análise e confira; depois as outras (até 5 por setor; a Meta permite 30 hashtags diferentes a cada
+    7 dias).
+11. Nunca mande token ou senha pelo chat; nada muda nos segredos do GitHub.
 
 **Para desfazer:** rode o `sql/radar-setor-agenda-reversao.sql` (para a leitura automática) e, se quiser tirar tudo, volte a tela
 da v0.33.0 e rode o setup da v0.33.0 (as tabelas do setor ficam, sem uso; a reversão completa apaga o Radar inteiro — nunca a use
