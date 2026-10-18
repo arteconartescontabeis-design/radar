@@ -1,4 +1,4 @@
-# Radar Artecon — v0.34.0
+# Radar Artecon — v0.35.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,24 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.35.0 traz a aba **Respostas** (o Módulo Respostas Automáticas): o Radar responde sozinho, no Instagram e no Facebook, ao
+comentário que traz a **palavra-chave** de uma publicação escolhida (ex.: "Comente **QUERO** e receba o material") — uma **resposta
+pública** ao comentário e uma **mensagem privada** com o link do material. O administrador cadastra o gatilho (dá para escolher uma
+publicação feita pelo próprio Radar) e a equipe toda acompanha o registro: quem comentou, o que o Radar respondeu e por que
+descartou. Proteções de fábrica: o mesmo comentário **nunca** é respondido duas vezes, a própria conta é ignorada, a comparação da
+palavra-chave não diferencia maiúsculas/acentos/pontuação, há um **limite por hora** em cada gatilho (o que passar sai na hora
+seguinte, sozinho) e um interruptor geral **"Pausar todas as respostas"**. A mensagem privada da Meta vale **uma vez por comentário
+e por até 7 dias**. O módulo nasce **aguardando a Meta**: os avisos de comentário só chegam depois que ela aprovar o **acesso
+avançado** do aplicativo (o pedido tem passo a passo abaixo); até lá dá para cadastrar os gatilhos e testar a conexão.
+
+Mudam o banco (`sql/radar-setup-v0.35.0.sql`: as 3 tabelas novas `radar_respostas_*`, **37 tabelas**; nada é apagado), a tela
+(`index.html` e o **`radar-respostas.js`**, novo; `radar-pauta.js`, `radar-video.js` e `radar-setor.js` só mudam a versão) e a
+função `radar-copia` (a cópia mensal passa a levar as 3 tabelas novas). Entram a função **`radar-meta-webhook`** (nova: recebe os
+comentários da Meta, confere a assinatura e responde; "Verify JWT" desligado) com **3 segredos** (`META_APP_SECRET`,
+`META_VERIFY_TOKEN` e `META_PAGE_TOKEN` — só nos segredos da função: nunca em tabela, no HTML nem pelo chat) e a agenda
+`sql/radar-respostas-agenda.sql` (a fila, a cada 5 minutos, com a reversão ao lado). **Rode o SQL antes de publicar a tela**: veja
+"Da v0.34.0 para a v0.35.0".
 
 A v0.34.0 traz a aba **Setor**: como estão as publicações de um setor no Instagram (a contabilidade, para começar). O
 administrador cria o setor, escolhe as **contas públicas** (comerciais ou de criador) de outros escritórios — e a da Artecon, para
@@ -885,12 +903,13 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-pauta.js` | A aba Pauta (v0.21.0), carregada pelo `index.html`. Vai sempre junto com ele: com os dois de versões diferentes, a aba pede Ctrl+F5. |
 | `radar-video.js` | O corretor de vídeo do reel (v0.22.0) e a aba Vídeo (v0.33.0), carregado pelo `index.html` depois do `radar-pauta.js`. Vai sempre junto com os dois. |
 | `radar-setor.js` | A aba Setor (v0.34.0): a análise das publicações do setor no Instagram. Carregado pelo `index.html` depois do `radar-video.js`; vai sempre junto. |
+| `radar-respostas.js` | A aba Respostas (v0.35.0): as respostas automáticas dos comentários com palavra-chave. Carregado pelo `index.html` depois do `radar-setor.js`; vai sempre junto. |
 | `informativo.html` | Informativo Mensal para imprimir / salvar em PDF (uso interno, usa o login do dashboard). |
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.34.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.34.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.35.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.35.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
@@ -901,7 +920,9 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `sql/radar-copia-agenda.sql`, `sql/radar-copia-agenda-reversao.sql` | A chave da cópia no Vault e a agenda da cópia mensal no OneDrive (v0.32.0: dia 1 às 04h10, de novo às 05h10 e no dia 2, só se o mês ainda não tem cópia) e como desfazer. Roda no Supabase depois do setup; pode rodar de novo. |
 | `supabase/functions/radar-concorrentes/index.ts` | Lê, só para análise, os dados públicos de perfis comerciais no Instagram (v0.19.1); desde a v0.34.0, também alimenta a aba Setor (as ações `setor_*`; continua só de leitura). |
+| `supabase/functions/radar-meta-webhook/index.ts` | A função do Módulo Respostas Automáticas (v0.35.0): recebe os comentários da Meta (webhook, com assinatura conferida), pergunta ao banco e responde. "Verify JWT" desligado; 3 segredos próprios. |
 | `sql/radar-setor-agenda.sql`, `sql/radar-setor-agenda-reversao.sql` | A leitura automática da aba Setor (v0.34.0: de hora em hora, só quando há conta devida — na prática, segunda-feira a partir das 04:00) e como desfazer. Usa a chave do `sql/radar-concorrentes.sql`. |
+| `sql/radar-respostas-agenda.sql`, `sql/radar-respostas-agenda-reversao.sql` | A fila das respostas automáticas (v0.35.0: a cada 5 minutos, só quando há pendente que pode sair) e como desfazer. Cria a chave `radar_respostas` no Vault na primeira rodada. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações; desde a v0.31.0, o filtro de tema das fontes e a leitura do sistema Normas da Receita pela pesquisa nova (`robo/radar_normas.py`); desde a v0.32.0, o robô dos lembretes avisa também o vencimento de uma chave ou conta e a cópia do mês que não saiu. |
 | `sql/radar-fontes-novas-v0.31.0.sql` | As fontes oficiais da v0.31.0 (Diário Oficial: leis e decretos, CONFAZ, trabalho e previdência; gov.br: eSocial, FGTS Digital e Previdência; DOM/SC, desligadas) e a rfb-normas na pesquisa nova. Roda depois de o robô da v0.31.0 coletar uma vez; pode rodar de novo. |
@@ -2495,6 +2516,49 @@ só na aba.
 8. Aprovado: aba Setor → Configuração → "Busca por hashtag ligada" → Salvar; teste com **1** hashtag antes das outras. Lembre: a
    Meta permite **30 hashtags diferentes a cada 7 dias**; o Radar busca cada hashtag uma vez só por rodada e guarda o número dela.
 
+### Respostas automáticas no Instagram e no Facebook (v0.35.0)
+
+O Radar responde sozinho ao comentário que traz a **palavra-chave** de uma publicação escolhida. O caminho de cada comentário:
+
+1. Alguém comenta numa publicação do Instagram ou da página do Facebook da Artecon.
+2. A Meta chama a função `radar-meta-webhook` com o comentário; a função **confere a assinatura** da chamada (chamada sem
+   assinatura válida é recusada e nada é processado).
+3. Quem decide é o **banco** (`radar_respostas_receber`): sem gatilho ativo para a publicação, nada é registrado; comentário da
+   própria conta, sem a palavra-chave ou com o interruptor geral pausado fica **descartado com o motivo**; o repetido é ignorado
+   (chave única: o mesmo comentário nunca é respondido duas vezes); passando do **limite por hora**, fica **pendente** e sai na
+   hora seguinte, pela agenda (`sql/radar-respostas-agenda.sql`, a cada 5 minutos, só quando há o que mandar).
+4. A função envia a **resposta pública** (POST `/{comentário}/replies` no Instagram; `/{comentário}/comments` no Facebook) e a
+   **mensagem privada** (POST `/{página}/messages` com o `comment_id`; o link do material vai na linha de baixo). A privada da
+   Meta vale **uma vez por comentário e por até 7 dias**: o pendente que passar disso vira erro, explicado no registro. Se só a
+   privada falhar, a pública não sai de novo (o registro fica "enviado", com a pendência anotada).
+5. Tudo fica no registro da aba: quem comentou (nome público), o texto (cortado em 500), o que o Radar fez e por quê.
+
+Na aba **Respostas**: a equipe toda vê a situação, os gatilhos e o registro (filtrável). Só o administrador cria/edita/exclui
+gatilhos, liga e desliga, usa o **"Testar conexão"** (grava a página e o Instagram ligados; só id e nome — token nenhum), o
+**"Tentar de novo"** de um erro e o **"Pausar todas as respostas"**. Privacidade: respostas de conteúdo geral, sem dado de
+cliente; nenhum token em tabela, no HTML ou no registro — as chaves moram nos segredos da função.
+
+#### Pedir a aprovação da Meta (acesso avançado dos comentários e mensagens)
+
+Sem essa aprovação a Meta **não chama o webhook** (o resto do módulo funciona: gatilhos, teste de conexão, fila). Uma vez só:
+
+1. Confira os pré-requisitos: o Instagram da Artecon como conta **profissional**, ligado à **página do Facebook**; o aplicativo
+   da Meta (developers.facebook.com) com a **verificação da empresa** concluída, Política de Privacidade, ícone e modo
+   **Ao vivo**; os produtos **Webhooks** e **Messenger/Instagram** acrescentados.
+2. No aplicativo → **Webhooks**: cadastre a URL da função
+   (`https://jhxlsvzvqvufyhkjnmeq.supabase.co/functions/v1/radar-meta-webhook`) com o **token de verificação** que você guardou
+   no segredo `META_VERIFY_TOKEN` (a função responde o desafio na hora). Assine os campos **comments** (objeto Instagram) e
+   **feed** (objeto Página).
+3. Peça o **acesso avançado** das permissões de **gerenciar comentários** e **mensagens** do Instagram e do **engajamento e
+   mensagens da página** (Análise do App). Texto para o revisor (inglês, pode copiar): *"The app replies automatically to
+   comments that contain a keyword chosen by the page owner (e.g. QUERO) on the owner's own posts: one public reply and one
+   private reply with a link to the requested material. It only reacts to comments on the owner's own Instagram professional
+   account and Facebook Page, with an hourly cap and full logging. No data is collected from other accounts."*
+4. A análise pode levar dias e pode ser negada; enquanto isso, deixe os gatilhos prontos. Aprovado, faça um teste com um perfil
+   de teste comentando a palavra-chave numa publicação com gatilho, antes de usar numa campanha de verdade.
+5. Nunca mande token ou senha pelo chat; os 3 segredos ficam na função (Supabase → Edge Functions → Secrets). Não dê "Acesso
+   total" ao usuário de sistema: as permissões pedidas bastam.
+
 ### Concorrentes no Instagram (v0.19.1, opcional; v0.34.0: a função também alimenta a aba Setor)
 
 Desde a v0.34.0, a mesma função atende a aba **Setor** (as ações `setor_*`, que gravam a leitura nas tabelas `radar_setor_*` por
@@ -2746,6 +2810,30 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.34.0 para a v0.35.0** (muda o banco: SQL novo, que pode rodar de novo; entra a função `radar-meta-webhook` com 3 segredos
+novos e a agenda da fila; muda a função `radar-copia`; as funções `radar-ia`, `radar-redes`, `radar-itc`, `radar-video` e
+`radar-concorrentes` e as outras agendas não mudam; nada de chave ou segredo pelo chat). Supõe a v0.34.0 instalada. **Nesta ordem**:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.35.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **37
+   tabelas** e "instalacoes concluidas" com a **v0.35.0**. Ele cria as 3 tabelas das respostas (`radar_respostas_*`); nada é apagado.
+2. Supabase → **Edge Functions** → crie a função **`radar-meta-webhook`** → cole o
+   `supabase/functions/radar-meta-webhook/index.ts` desta versão → **Deploy**, com o **"Verify JWT" DESLIGADO** (a Meta não manda
+   JWT; a função confere a assinatura e a chave sozinha).
+3. Nos **Secrets** da função, guarde os 3 segredos: `META_APP_SECRET` (o segredo do aplicativo da Meta), `META_VERIFY_TOKEN` (um
+   texto que você inventa; o mesmo vai no painel da Meta) e `META_PAGE_TOKEN` (o token de longa duração da página). Nunca pelo
+   chat; nunca em tabela.
+4. Supabase → **Edge Functions** → `radar-copia` → cole o `supabase/functions/radar-copia/index.ts` desta versão → **Deploy**, com
+   o **"Verify JWT" desligado** (como já está). A cópia mensal passa a levar as 3 tabelas novas; a agenda da cópia não muda.
+5. SQL Editor → rode o `sql/radar-respostas-agenda.sql` inteiro (cria a chave no Vault na primeira rodada e agenda a fila a cada
+   5 minutos; sem pendente, nenhum pedido sai). No fim dele há o teste: espera `200 {"ok": true, "versao": "0.35.0"}`.
+6. Publique a tela (`index.html`, `radar-pauta.js`, `radar-video.js`, `radar-setor.js` e o **novo `radar-respostas.js`**, juntos)
+   e aperte **Ctrl+F5** em todos os aparelhos. A aba Versões mostra a v0.35.0 e aparece a aba **Respostas**.
+7. Na aba Respostas → **"Testar conexão"**: deve mostrar a página do Facebook e o Instagram ligados. Crie o primeiro gatilho numa
+   publicação de teste.
+8. Peça à Meta o **acesso avançado** ("Pedir a aprovação da Meta", acima) — sem ele os comentários ainda não chegam. Pode levar
+   dias; os gatilhos ficam prontos esperando.
+9. Nunca mande token ou senha pelo chat; nada muda nos segredos do GitHub.
 
 **Da v0.33.0 para a v0.34.0** (muda o banco: SQL novo, que pode rodar de novo; mudam as funções `radar-concorrentes` e
 `radar-copia` e entra a agenda do setor; as funções `radar-ia`, `radar-redes`, `radar-itc` e `radar-video` e as outras agendas não

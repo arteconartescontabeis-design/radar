@@ -174,7 +174,7 @@ def test_gitignore_barra_o_calendario_da_pauta():
                  "4b-captacao-mensal.md", "5-guia-de-producao.md", "6-regras-legais-e-termo.md"):
         assert git("check-ignore", "-q", "--no-index", nome).returncode == 0, nome
     for nome in (AMOSTRA, "testes/ia_central/producao-2026-10-03.csv",                                           # vão para o repositório
-                 "radar-pauta.js", "radar-video.js", "radar-setor.js", "LEIAME-radar.md", "RELATORIO-TESTES-radar.md", "testes/test_radar_agenda.py"):
+                 "radar-pauta.js", "radar-video.js", "radar-setor.js", "radar-respostas.js", "LEIAME-radar.md", "RELATORIO-TESTES-radar.md", "testes/test_radar_agenda.py"):
         assert git("check-ignore", "-q", "--no-index", nome).returncode == 1, nome
 
 
@@ -183,7 +183,7 @@ def test_workflow_dos_testes_roda_quando_mudam_os_arquivos_da_tela():
     caminhos = set(re.findall(r'"([^"]+)"', re.search(r"(?m)^\s*paths:\s*\[([^\]]*)\]", yml).group(1)))
     scripts = {src for pagina in ("index.html", "informativo.html")
                for src in re.findall(r'<script src="([^"?#]+)', (RAIZ / pagina).read_text(encoding="utf-8"))}
-    assert scripts == {"radar-config.js", "radar-pauta.js", "radar-video.js", "radar-setor.js"}  # os da própria tela (nenhum de fora; v0.22.0: o corretor de vídeo; v0.34.0: a aba Setor)
+    assert scripts == {"radar-config.js", "radar-pauta.js", "radar-video.js", "radar-setor.js", "radar-respostas.js"}  # os da própria tela (nenhum de fora; v0.22.0: o corretor de vídeo; v0.34.0: a aba Setor)
     assert scripts | {"index.html", "informativo.html", ".gitignore", "testes/**", "sql/**"} <= caminhos, sorted(caminhos)
 
 
@@ -377,11 +377,12 @@ def test_versao_igual_em_todos_os_arquivos_da_versao():
     v = achar(r'(?m)^const VERSAO = "(\d+\.\d+\.\d+)";', html)
     num = lambda x: tuple(int(p) for p in x.split("."))
     assert achar(r'const VERSOES = \[\s*\["([^"]+)"', html) == v
-    assert len(re.findall(r'<script src="radar-(?:pauta|video|setor)\.js\?v=([^"]+)"', html)) == 3      # v0.34.0: + a aba Setor
-    assert set(re.findall(r'<script src="radar-(?:pauta|video|setor)\.js\?v=([^"]+)"', html)) == {v}
+    assert len(re.findall(r'<script src="radar-(?:pauta|video|setor|respostas)\.js\?v=([^"]+)"', html)) == 4      # v0.35.0: + a aba Respostas (v0.34.0: + a aba Setor)
+    assert set(re.findall(r'<script src="radar-(?:pauta|video|setor|respostas)\.js\?v=([^"]+)"', html)) == {v}
     assert achar(r'(?m)^const PAUTA_VERSAO = "([^"]+)"', ler("radar-pauta.js")) == v
     assert achar(r'(?m)^const VIDEO_VERSAO = "([^"]+)"', ler("radar-video.js")) == v
     assert achar(r'(?m)^const SETOR_VERSAO = "([^"]+)"', ler("radar-setor.js")) == v
+    assert achar(r'(?m)^const RESPOSTAS_VERSAO = "([^"]+)"', ler("radar-respostas.js")) == v
     assert num(achar(r'(?m)^const VERSAO = "([^"]+)"', ler("supabase/functions/radar-ia/index.ts"))) <= num(v)
     assert ler("LEIAME-radar.md").startswith(f"# Radar Artecon — v{v}\n")
     assert ler("RELATORIO-TESTES-radar.md").startswith(f"# Radar Artecon — Relatório de testes (v{v})\n")
@@ -391,7 +392,7 @@ def test_versao_igual_em_todos_os_arquivos_da_versao():
     assert sorted(p.name for p in (RAIZ / "sql").glob("radar-reversao-v*.sql")) == [f"radar-reversao-v{banco}.sql"] == [REVERSAO.name]
     assert f"('v{banco}', v_antes)" in SETUP.read_text(encoding="utf-8") and num(banco) <= num(v)
     # a tela avisa "precisa do banco da vX: rode o sql/radar-setup-vX.sql" com o banco desta versão
-    for script in ("radar-pauta.js", "radar-video.js", "radar-setor.js"):
+    for script in ("radar-pauta.js", "radar-video.js", "radar-setor.js", "radar-respostas.js"):
         assert set(re.findall(r"sql/radar-setup-v(\d+\.\d+\.\d+)\.sql", ler(script))) == {banco}, script
     # v0.29.0 (revisão): o index.html também (o recado da Conferência das Diretrizes ainda citava o setup da v0.28.0, que não existe
     # mais); fora a aba Versões, que conta a história com o setup de cada versão

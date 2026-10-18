@@ -2,7 +2,7 @@ name: Radar — testes
 
 on:
   push:
-    paths: ["robo/**", "sql/**", "testes/**", "supabase/**", "index.html", "informativo.html", "radar-pauta.js", "radar-video.js", "radar-setor.js", "radar-config.js", ".gitignore", ".github/workflows/radar-testes.yml"]
+    paths: ["robo/**", "sql/**", "testes/**", "supabase/**", "index.html", "informativo.html", "radar-pauta.js", "radar-video.js", "radar-setor.js", "radar-respostas.js", "radar-config.js", ".gitignore", ".github/workflows/radar-testes.yml"]
   workflow_dispatch:
 
 permissions:

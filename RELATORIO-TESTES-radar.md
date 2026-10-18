@@ -1,6 +1,8 @@
-# Radar Artecon — Relatório de testes (v0.34.0)
+# Radar Artecon — Relatório de testes (v0.35.0)
 
-Data: 18/10/2026. **A suíte inteira da v0.34.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+Data: 18/10/2026. **A suíte inteira da v0.35.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+arquivos afetados pela v0.35.0: <NUMEROS-V35>. A v0.35.0 tem <N-V35> testes novos (os 4 arquivos do Módulo Respostas
+Automáticas). Na v0.34.0: Neste ambiente rodaram, em série, os
 arquivos afetados pela v0.34.0: a bateria dos nove arquivos afetados (**509 aprovados, 1 pulado**, 299 s), a função da cópia com o
 quadro de vencimentos (**37 aprovados e 1 falha de verdade**: a cópia mensal ainda não levava as 4 tabelas do setor — corrigida, a
 `radar-copia` subiu para 0.34.0 e o arquivo rodou de novo inteiro verde) e o arquivo inteiro dos testes de tela com a tela nova do
@@ -64,6 +66,34 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.35.0 — Módulo Respostas Automáticas (aba Respostas)
+
+Todos os testes usam **dados fictícios** (comentários de "Ana Teste" e "Bruno Exemplo", mídias "123"/"101_202", links
+exemplo.test, uma Meta DE MENTIRA servida localmente): nenhum comentário real é lido e nenhum token de verdade entra nos testes.
+
+- **Banco** (`testes/test_radar_respostas_banco.py`): as 3 tabelas com RLS e ninguém gravando direto; quem executa cada função
+  (tela × webhook); cada recusa com código (RADAR420–429); a decisão do comentário (responder, sem palavra-chave, própria conta,
+  repetido NUNCA responde em dobro, pausado, limite por hora → fila); acentos/maiúsculas/pontuação não atrapalham; o texto cortado
+  em 500; a fila dentro da folga e a janela de 7 dias da Meta; o reenviar; a situação, o registro filtrável e as publicações do
+  próprio Radar para o formulário.
+- **Função** (`testes/test_radar_funcao_respostas.py`, no Deno): o GET de verificação do webhook; o POST só com a assinatura
+  HMAC válida (sem ela, 401 e nada no banco); a resposta pública e a privada nos caminhos oficiais da Graph API com o token só no
+  cabeçalho; a privada que falha não derruba a pública; o diagnóstico ("Testar conexão") grava as contas; as ações com a chave do
+  Vault ou o administrador; o registro (log) sem token, nome, texto ou palavra-chave.
+- **Agenda** (`testes/test_radar_respostas_agenda.py`): o cron de 5 em 5 minutos só chama com pendente que pode sair; a chave vem
+  do Vault na hora (nunca fica em `cron.job`); rodar de novo não duplica nem troca a chave; sem o setup desta versão, o arquivo
+  para com "Rode antes o radar-setup-v0.35.0.sql"; as reversões tiram o agendamento.
+- **Tela** (`testes/test_radar_respostas_tela.py`, Chromium): a aba para a equipe toda (o leitor vê tudo sem os controles), o
+  comentário hostil escapado (nunca roda), o administrador cria/edita/desliga/exclui o gatilho (inclusive escolhendo uma
+  publicação feita pelo próprio Radar), pausa tudo e retoma, o Testar conexão, o filtro do registro, o Tentar de novo e o celular
+  a 375 px sem rolagem lateral.
+- Mudam: as contagens de tabelas (34 → **37**) nos testes do banco, dos lembretes e dos vencimentos, o manifesto da cópia
+  (radar-copia 0.35.0 leva as 3 tabelas novas), o repositório (os 5 scripts da tela; `radar-respostas.js` no workflow dos testes)
+  e a rota do `radar-respostas.js` no servidor dos testes de tela.
+
+Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026: <RODADAS-V35>.
+O setup rodou duas vezes seguidas no banco de teste (os testes que já fazem isso) e a reversão tira as tabelas e funções do módulo.
 
 ## v0.34.0 — aba Setor: a análise das publicações do setor no Instagram
 
