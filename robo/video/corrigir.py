@@ -22,6 +22,11 @@ Estado entre as fases, na pasta de trabalho: pedido.json (o pedido, sem os links
 e o plano), resultado.json (o relatório final e o vídeo) e erro.json ({codigo, etapa, detalhe}: a fase seguinte pula e o entregar
 manda o código). Nada disso vai para log: no log, só a fase, o uuid do pedido, números e códigos (segredo.log).
 
+v0.33.0 (a aba Vídeo): as mudanças do editor nos ajustes — os cortes, o começo e o fim (no plano de cortes, alinhar), o tamanho, a
+posição e a cor da legenda, o texto extra próprio desta cartela e a capa (montar; a capa sobe em
+quadros/<id>/<sha256 do vídeo>/capa-<sha256 da capa>.jpg, com os 4 quadros: trocar só a capa monta o mesmo vídeo). O relatório leva
+o mapa, as unidades, a edição e a capa (relatorio.py). No log, só números.
+
 Saída de cada fase: 0 (fez, ou recusou com código e registrou), 1 (erro de configuração ou inesperado: o job fica vermelho), 2 (uso).
 O pegar escreve em $GITHUB_OUTPUT pedido=sim|nao e seguir=sim|nao; o preparar, transcrever=sim|nao.
 """
@@ -256,8 +261,10 @@ def alinhar(trab: Trabalho) -> int:
         al = alinhamento.alinhar(pedido["fala_roteiro"], r["palavras"], r["frases"], cfg, ajustes)
         infos, silencios = estado["infos"], [tuple(s) for s in estado["silencios"]]
         # sem nenhuma palavra (a Azure não ouviu nada), os cortes vêm só dos silêncios (a reserva), e não o erro sem_fala
+        # v0.33.0: os cortes, o começo e o fim do editor da aba Vídeo (quadros da linha original, a de fala48k.wav)
+        linha_q = infos[-1]["inicio_q"] + infos[-1]["quadros"] if infos else 0
         plano = cortes.planejar(infos, silencios, cfg, al["palavras"] if r["palavras"] else None, al["remover"],
-                                ajustes.get("manter") or [])
+                                ajustes.get("manter") or [], edicao=cortes.edicao_de(ajustes, linha_q))
         parcial = relatorio.parcial(al, plano, infos, r["transcricao"], pedido["modo"])
         conversa.parcial(vid, t, parcial)
     except ErroVideo as e:
@@ -266,7 +273,8 @@ def alinhar(trab: Trabalho) -> int:
     trab.gravar("estado", {**estado, "al": al, "plano": plano, "transcricao": r["transcricao"]})
     segredo.log("alinhar", pedido=vid, palavras=len(r["palavras"]), guardada=guardada, registrada=registrada,
                 divergencias=len(parcial.get("divergencias") or []), fora=len(parcial.get("fora_do_roteiro") or []),
-                cortes=len(plano["cortes"]), sugestoes=len(plano["sugestoes"]), fala_s=round(plano["fala_q"] / 30, 1))
+                cortes=len(plano["cortes"]), sugestoes=len(plano["sugestoes"]), fala_s=round(plano["fala_q"] / 30, 1),
+                cortes_editor=sum(1 for c in plano["cortes"] if c.get("tipo") == "editor"))
     return 0
 
 
@@ -291,11 +299,23 @@ def montar(trab: Trabalho) -> int:
         estilo = ajustes.get("estilo") if ajustes.get("estilo") in legenda.ESTILOS else "normal"
         gancho = None if ajustes.get("sem_gancho") is True else pedido.get("gancho")
         leg = legenda.gravar(trab.sai / "legenda.ass", cortes.no_video(plano, al["legenda"]),
-                             [g for g in cfg.get("glossario") or [] if isinstance(g, str)], estilo, gancho or None)
-        cartela.desenhar(trab.sai / "cartela.png", pedido["cartela_linhas"], str(cfg.get("cartela_extra") or ""))
-        m = montagem.montar(infos, plano, pastas, cfg, preset=PRESET)
+                             [g for g in cfg.get("glossario") or [] if isinstance(g, str)], estilo, gancho or None,
+                             aparencia=legenda.aparencia(ajustes))
+        # v0.33.0: o texto extra DESTA cartela (o editor; "" = sem) ou o das Configurações; o relatório leva o que foi gravado
+        propria = isinstance(ajustes.get("cartela_extra"), str)
+        extra = str(ajustes["cartela_extra"] if propria else cfg.get("cartela_extra") or "")[:120]
+        cartela.desenhar(trab.sai / "cartela.png", pedido["cartela_linhas"], extra)
+        capa_q = ajustes.get("capa_q") if isinstance(ajustes.get("capa_q"), int) and not isinstance(ajustes.get("capa_q"), bool) else None
+        m = montagem.montar(infos, plano, pastas, cfg, preset=PRESET, capa_q=capa_q)
+        if "capa" in m:
+            if not (trab.sai / "capa.jpg").is_file():
+                raise ErroVideo("conferencia_falhou", "montar", ["capa"])
+            # a capa sobe com o sha256 DELA no nome (quadros/<id>/<sha256 do vídeo>/capa-<sha256 da capa>.jpg): trocar só a capa monta
+            # o mesmo vídeo (o mesmo sha256), e o armazenamento nunca sobrescreve — com o nome fixo, ficaria a capa de antes
+            m["capa"]["sha256"] = _sha256(trab.sai / "capa.jpg")
         conf = conferir.conferir(pastas, cfg)
-        rel = relatorio.final(al, plano, infos, m, conf, leg, estado.get("transcricao"), pedido["modo"], cfg)
+        rel = relatorio.final(al, plano, infos, m, conf, leg, estado.get("transcricao"), pedido["modo"], {**cfg, "cartela_extra": extra},
+                              cartela_propria=propria)
         for k in range(1, 5):
             if not (trab.sai / f"q{k}.jpg").is_file():
                 raise ErroVideo("conferencia_falhou", "montar", ["quadros"])
@@ -304,8 +324,9 @@ def montar(trab: Trabalho) -> int:
         return 0
     video = trab.sai / "reel.mp4"
     trab.gravar("resultado", {"situacao": relatorio.situacao(rel), "relatorio": rel, "sha256": _sha256(video),
-                              "bytes": video.stat().st_size, "duracao": conf["duracao_s"]})
-    segredo.log("montar", pedido=pedido["id"], **relatorio.resumo_log(rel))
+                              "bytes": video.stat().st_size, "duracao": conf["duracao_s"],
+                              "capa": m["capa"]["sha256"] if "capa" in m else None})
+    segredo.log("montar", pedido=pedido["id"], **relatorio.resumo_log(rel), capa="capa" in m)
     return 0
 
 
@@ -358,6 +379,12 @@ def _entregar(conversa: Conversa, trab: Trabalho, pedido: dict, resultado: dict)
         raise ErroVideo("erro_interno", "entregar")         # o vídeo mudou depois da conferência
     caminho = f"corrigido/{vid}/{sha}.mp4"
     quadros = {f"quadros/{vid}/{sha}/q{k}.jpg": trab.sai / f"q{k}.jpg" for k in range(1, 5)}
+    capa = resultado.get("capa")
+    if capa is not None:                                    # v0.33.0: a capa escolhida no editor, ao lado dos quadros, com o sha256 dela
+        if not re.fullmatch(r"[0-9a-f]{64}", str(capa)) or not (trab.sai / "capa.jpg").is_file() or _sha256(trab.sai / "capa.jpg") != capa:
+            raise ErroVideo("erro_interno", "entregar")     # a capa mudou depois da montagem
+        # o nome tem o sha256 da capa: o que já estiver lá com este nome é esta mesma imagem (subir() == False não esconde outra)
+        quadros[f"quadros/{vid}/{sha}/capa-{capa}.jpg"] = trab.sai / "capa.jpg"
     links, recusa = None, None
     try:
         links = conversa.links(vid, t, gravar=[caminho, *quadros])["gravar"]

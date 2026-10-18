@@ -1,6 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.32.0)
+# Radar Artecon — Relatório de testes (v0.33.0)
 
-Data: 17/10/2026. **A suíte inteira da v0.32.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, pela fila
+Data: 18/10/2026. **A suíte inteira da v0.33.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+arquivos afetados pela v0.33.0: o corretor no banco e no alinhamento (**130 aprovados**), o robô com o ffmpeg, a função
+`radar-video` no Deno, o de ponta a ponta e a transcrição (**166 aprovados, 2 pulados**), o banco, o repositório, a agenda e os
+lembretes (**362 aprovados, 1 pulado**) e o arquivo inteiro dos testes de tela (**253 aprovados, 61 pulados**, 572 s) — as oito
+falhas esperadas antes de terminar a versão (asserções com a versão de antes e um passo novo do teste da cota) foram corrigidas e
+aprovadas depois (detalhes na seção da v0.33.0, logo abaixo). A v0.33.0 tem 42 testes novos (de 1.322 para 1.364 no total). Na v0.32.0 rodaram, pela fila
 compartilhada, os testes afetados: o quadro de vencimentos e o registro das cópias no banco, a função `radar-copia` no Deno, os
 lembretes, o banco, a agenda e o repositório (`testes/test_radar_vencimentos.py`, `test_radar_funcao_copia.py`,
 `test_radar_lembretes.py`, `test_radar_banco.py`, `test_radar_agenda.py` e `test_radar_repositorio.py`), **400 aprovados, 2 falhas
@@ -53,6 +58,89 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.33.0 — aba Vídeo com o editor do vídeo corrigido, cortes por padrão e duração com meta
+
+Todos os testes do corretor usam **vídeo e voz sintéticos** (gerados na hora, `testes/radar_video_sintetico.py`), roteiros e
+transcrições fictícios e os nomes "Ana Teste" e "Bruno Exemplo": nenhuma gravação, transcrição, roteiro ou nome real.
+
+**Banco** (`testes/test_radar_video_banco.py`):
+- `test_paleta_da_edicao_igual_no_banco_no_robo_e_contraste`: a paleta do banco = a do robô; contraste WCAG ≥ 4,5 em cada cor; o
+  leitor lê; anon não; as auxiliares só com o dono. A paleta diz o teto novo (900 s, o reel de 15 min do Instagram pela API).
+- `test_editar_so_o_administrador_no_video_que_ele_viu_sem_transcrever`: RADAR300 (editor e leitor), RADAR318 (outro sha256),
+  RADAR319 (sem a transcrição guardada), RADAR309 (na fila, com erro), RADAR301 (cancelada, aprovada); passa como montagem, e o robô
+  pega com a cota esgotada.
+- `test_editar_confere_cortes_comeco_fim_e_capa_na_linha_original`: forma, ordem, sobreposição, dentro da linha (quadros até
+  29000), começo/fim, capa no corte; sem o mapa, só o estilo (e "montar para liberar").
+- `test_editar_duracao_estimada_entre_5_s_e_15_min_e_fala_de_2_s`: sem o fim marcado não soma 0,45 s; o fim no meio da palavra soma
+  14 quadros; perto do fim dela, o que falta; 4,7 s e 4,1 s recusados; 45,9 s e 103,1 s aceitos (a meta é só aviso); o mapa longo
+  acima de 15 min recusado ("o máximo é 15 minutos").
+- `test_editar_estilo_so_da_paleta_e_textos_sem_marcacao`, `test_editar_gancho_muda_o_video_e_o_texto_do_gancho_da_peca`,
+  `test_ajustes_da_peca_guardam_as_mudancas_do_editor`, `test_ajustes_da_peca_nao_aceitam_as_chaves_do_editor`,
+  `test_robo_antigo_com_mudancas_do_editor_vira_erro_robo_desatualizado`, `test_divergencia_cortada_nao_pede_regravar`,
+  `test_previa_e_baixar_devolvem_a_capa_do_mesmo_sha256`, `test_pendencia_aceita_o_texto_extra_proprio_da_cartela`,
+  `test_cartela_que_nao_coube_com_o_texto_extra_do_editor_sai_do_erro`, `test_reconferir_mantem_cortes_estilo_e_capa`.
+- `test_pendencia_do_reel_e_aprovacao_amarrada_ao_sha256`: a trava da aprovação passou de 90 s para o teto da API (15 min); a meta
+  (`duracao_max_s`, 15 a 900, padrão 90) é só aviso com confirmação.
+- Mudam: `test_funcoes_do_video_sem_current_date_com_caminho_e_configuracao_inicial` (44 funções) e, em `test_radar_banco.py`,
+  `test_funcoes_nao_ficam_expostas_ao_publico` (+ `radar_video_editar` e `radar_video_paleta`).
+
+**Função `radar-video`** (`testes/test_radar_funcao_video.py`, Deno de verdade): `test_robo_grava_a_capa_so_do_seu_sha256_e_o_concluir_confere`
+(só `capa-<64 hex>.jpg` ganha token; a capa de outra montagem não satisfaz o concluir; sem o sha256 da capa, 400) e
+`test_previa_e_baixar_devolvem_o_link_da_capa` (600 s na prévia; 300 s e `reel-<data>-capa.jpg` no baixar; caminho adulterado: 502;
+registros sem link). A função e o robô dizem 0.33.0 juntos.
+
+**Robô** (`testes/test_radar_video_robo.py`, ffmpeg de verdade): `test_legenda_tamanho_posicao_e_cor_na_area_livre` (18 combinações
+pelo libass: área livre, gancho longe da legenda, cor da caixa; sem `aparencia`, o `.ass` sai igual ao de antes),
+`test_cortes_do_editor_na_linha_original`, `test_duracao_estimada_igual_a_do_plano`, `test_capa_e_o_quadro_escolhido_sem_legenda`;
+`test_recusa_sem_audio_deitado_e_longo_demais` agora prova o teto novo (`TOTAL_MAX_S` = 960 s; dois clipes de 61 s passam) e a regra
+`longo_demais` com o teto baixado por monkeypatch.
+
+**Alinhamento e cortes por padrão** (`testes/test_radar_video_alinhar.py` — o pedido do dono "o aplicativo não corrigiu nada"):
+- `test_muleta_fora_do_roteiro_sai_por_padrao_e_a_do_roteiro_fica`: "né", "tipo" e o "é" solto fora do roteiro saem (tipo
+  "muleta"); a mesma palavra alinhada ao roteiro nunca sai; a muleta colada no fim ("…fale com a gente né") sai com o corte do fim;
+  "Manter este trecho" desfaz; o fora do roteiro que não é muleta fica, leva `t_fim`/`ate_s` (o corte com um clique na aba Vídeo) e
+  continua no relatório — a muleta cortada sai dele.
+- `test_repeticao_sai_por_padrao_e_manter_desfaz`: "devem devem" — a cópia fora do roteiro sai inteira, a alinhada fica, e das duas
+  exatamente uma continua no vídeo; a legenda e o texto final ficam só com o que vai ao ar; "Manter" desfaz.
+- `test_hesitacao_repeticao_e_falso_inicio`: repetição e falso início com `automatico: True` (eram só sugestão).
+- `test_voz_entre_palavras_sai_por_padrao_e_acima_de_2_s_vira_sugestao`: a voz sem palavra sai por padrão mesmo entre palavras que
+  não são seguidas do roteiro (o "omitido" continua avisando; "Manter" desfaz); acima de 2 s continua sugestão.
+- `test_palavra_dita_colada_no_hum_e_perdida_pela_transcricao_nao_sai_com_ele`: a proteção de antes fica — o som de hesitação só sai
+  entre palavras seguidas do roteiro e com a voz dentro dele (a palavra perdida pela transcrição nunca sai junto).
+- `test_divergencia_de_numero_repetido_parece_erro_da_transcricao`: "quatro um um quatro um um" para "Lei 141" leva
+  `parece_transcricao` (palavra repetida colada); confiança abaixo de 0,5 também; a divergência comum, não.
+- `test_divergencia_traz_o_fim_e_o_relatorio_marca_a_cortada` e os demais de antes.
+
+**De ponta a ponta** (`testes/test_radar_video_corrigir.py`, vídeo sintético): `test_editor_monta_sem_transcrever_com_cortes_capa_estilo_e_cartela_propria`
+(a Azure não é chamada, os segundos não mudam, a capa sobe, a duração = a estimada), `test_corte_do_editor_que_deixa_menos_de_2_s_para_com_edicao_curta`,
+`test_duracao_estimada_e_a_do_video_montado`, `test_trocar_so_a_capa_sobe_a_capa_nova_do_mesmo_video`;
+`test_workflow_do_repositorio_privado` confere o tempo-limite novo (60 min, para o vídeo longo).
+
+**Tela** (`testes/test_radar_telas.py`, Chromium): a aba só da equipe (o editor só vê), a lista com o vivo de cada peça e o filtro, a
+prévia que pula os cortes sem nenhum pedido ao banco, o corte por palavras virando os quadros da linha original (iguais aos do robô),
+a conversão e a duração iguais na tela, no robô e no banco (12 casos), a legenda que recusa como o robô, o estilo só da paleta, o
+gancho e o texto extra com os termos da publicidade, a capa e "Baixar a capa" na peça aprovada, o vídeo sem o mapa ("Montar de novo
+para liberar") e o "robô desatualizado", as mudanças que ficam ao trocar de aba e "Descartar", o relatório hostil escapado, o celular
+a 375 px sem rolagem lateral, "Editar na aba Vídeo" na peça com o aviso do texto não salvo; o rodapé com a meta ("meta: até 90 s;
+mínimo 5 s, máximo 15 min"), o resumo "O corretor corrigiu… / Falta decidir…" no topo do relatório, o "parece erro da transcrição",
+o "Cortar este trecho" do falado fora do roteiro e o gasto da cota no envio.
+
+Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026:
+- o corretor no banco (`test_radar_video_banco.py`): **45 aprovados**; o alinhamento e os cortes (`test_radar_video_alinhar.py`):
+  **85 aprovados**;
+- o robô (ffmpeg de verdade), a função `radar-video` (Deno de verdade), o de ponta a ponta e a transcrição
+  (`test_radar_video_robo.py`, `test_radar_funcao_video.py`, `test_radar_video_corrigir.py`, `test_radar_video_transcrever.py`):
+  **166 aprovados, 2 pulados** (uma falha esperada antes de terminar a versão — o teto novo do áudio no teste da transcrição —
+  corrigida e aprovada depois, com o arquivo inteiro verde);
+- o banco, o repositório, a agenda e os lembretes (`test_radar_banco.py`, `test_radar_repositorio.py`, `test_radar_agenda.py`,
+  `test_radar_lembretes.py`): **362 aprovados, 1 pulado** (duas falhas esperadas — asserções com a versão de antes — corrigidas e
+  aprovadas depois);
+- o arquivo inteiro dos testes de tela (Chromium): **253 aprovados, 61 pulados** em 572 s (cinco falhas esperadas — asserções com a
+  versão de antes e um passo novo do teste da cota — corrigidas e aprovadas depois, as cinco verdes).
+A v0.33.0 leva a suíte de 1.322 para **1.364 testes** (42 novos, entre eles os 2 da fase B: a muleta que sai por padrão e o
+"parece erro da transcrição"). O setup rodou duas vezes seguidas no banco de teste (os testes que já fazem isso) e a reversão tira
+as 4 funções novas.
 
 ## v0.32.0 — vencimentos de chaves e contas e cópia no OneDrive
 

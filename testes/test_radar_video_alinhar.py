@@ -494,16 +494,17 @@ def test_forma_de_exibicao_fora_do_roteiro():
 
 
 def test_hesitacao_repeticao_e_falso_inicio():
-    """Os sons de hesitação ficam fora do alinhamento (cortes.py os corta); a palavra repetida e o começo de palavra viram
-    sugestão — nunca corte automático — e ficam na legenda, porque foram ditos."""
+    """Os sons de hesitação ficam fora do alinhamento (cortes.py os corta); a palavra repetida e o começo de palavra saem POR
+    PADRÃO desde a v0.33.0 (pedido do dono; "Manter este trecho" desfaz) — a legenda ainda os tem (foram ditos), mas a unidade
+    que sair inteira num corte fica de fora do vídeo (cortes.no_video)."""
     fala = "As empresas devem pagar até sexta."
     al = alinhar.alinhar(fala, falas("hum as empresas ééé devem devem pagar até sexta"), [], CFG)
     assert al["divergencias"] == [] and al["fora_do_roteiro"] == [] and al["omitido"] == []
-    assert [(r["tipo"], r["texto"], r["automatico"]) for r in al["remover"]] == [("repeticao", "devem devem", False)]
+    assert [(r["tipo"], r["texto"], r["automatico"]) for r in al["remover"]] == [("repeticao", "devem devem", True)]
     assert al["texto_final"] == "As empresas devem devem pagar até sexta."
     assert [(w["texto"], w["rot_de"]) for w in al["palavras"] if w["texto"] in ("hum", "ééé")] == [("hum", None), ("ééé", None)]
     al = alinhar.alinhar(fala, falas("as empresas de devem pagar até sexta"), [], CFG)
-    assert [(r["tipo"], r["texto"]) for r in al["remover"]] == [("falso_inicio", "de devem")]
+    assert [(r["tipo"], r["texto"], r["automatico"]) for r in al["remover"]] == [("falso_inicio", "de devem", True)]
 
 
 def test_unidade_do_roteiro_nunca_se_quebra_na_legenda(tmp_path):
@@ -598,7 +599,7 @@ def test_um_uma_e_e_nunca_saem_nem_ditos_devagar():
     assert all(cortes.e_hesitacao(w) for w in ("ééé", "eee", "Hum,", "hmm", "ãh", "hã", "ahn", "aaa"))
 
 
-def test_voz_entre_palavras_seguidas_do_roteiro_sai_e_fora_disso_vira_sugestao():
+def test_voz_entre_palavras_sai_por_padrao_e_acima_de_2_s_vira_sugestao():
     fala = "O prazo do eSocial vence em 30/10."
     lista = [("o", 0.50, 0.62), ("prazo", 0.72, 1.10), ("do", 1.20, 1.30), ("e", 1.40, 1.50), ("social", 1.60, 2.00),
              ("vence", 2.10, 2.45), ("em", 3.55, 3.70), ("trinta", 3.80, 4.15), ("de", 4.25, 4.35), ("outubro", 4.45, 4.95)]
@@ -616,14 +617,18 @@ def test_voz_entre_palavras_seguidas_do_roteiro_sai_e_fora_disso_vira_sugestao()
     assert c["chave"] == "1:73"                                                              # o quadro de 2,45 s (para baixo)
     mantido = cortes.planejar(parte(dur), sil, CFG, al["palavras"], al["remover"], manter=[c["chave"]])
     assert cortes.remapear(mantido, 2.95)[1] and mantido["fala_q"] - plano["fala_q"] == pytest.approx(24, abs=1)
-    # o roteiro tem uma palavra ali ("hoje") que a transcrição não tem: pode ser ela — só sugestão, a voz fica
+    # o roteiro tem uma palavra ali ("hoje") que a transcrição não tem: pode ser ela — mesmo assim sai POR PADRÃO (v0.33.0, pedido
+    # do dono: as sugestões se aplicam sozinhas), o "omitido" continua avisando e "Manter este trecho" desfaz
     al2 = alinhar.alinhar("O prazo do eSocial vence hoje em 30/10.", ws, [], CFG)
     assert [x["texto"] for x in al2["omitido"]] == ["hoje"]
     p2 = cortes.planejar(parte(dur), sil, CFG, al2["palavras"], al2["remover"])
-    assert [s["tipo"] for s in p2["sugestoes"]] == ["voz_entre_palavras"] and cortes.remapear(p2, 2.95)[1]
-    # sem o alinhamento (as palavras sem rot): também só sugestão
+    (c2,) = [c for c in p2["cortes"] if c["tipo"] == "voz_entre_palavras"]
+    assert c2["automatico"] is True and p2["sugestoes"] == [] and not cortes.remapear(p2, 2.95)[1]
+    m2 = cortes.planejar(parte(dur), sil, CFG, al2["palavras"], al2["remover"], manter=[c2["chave"]])
+    assert cortes.remapear(m2, 2.95)[1]
+    # sem o alinhamento (as palavras sem rot): também sai por padrão
     p3 = cortes.planejar(parte(dur), sil, CFG, [{"texto": w["texto"], "ini": w["inicio"], "fim": w["fim"]} for w in ws])
-    assert [s["tipo"] for s in p3["sugestoes"]] == ["voz_entre_palavras"] and cortes.remapear(p3, 2.95)[1]
+    assert [c["tipo"] for c in p3["cortes"] if c.get("automatico")] == ["voz_entre_palavras"] and not cortes.remapear(p3, 2.95)[1]
     # intervalo comprido demais (2,5 s) com voz: pode ser fala que a transcrição perdeu — sugestão, mesmo entre palavras seguidas
     longe = com_tempos(lista[:6] + [(w, a + 1.4, b + 1.4) for w, a, b in lista[6:]])
     sil4 = silencios([(w["inicio"], w["fim"]) for w in longe] + [(2.75, 3.75)], dur + 1.4)
@@ -693,14 +698,75 @@ def test_palavra_dita_colada_no_hum_e_perdida_pela_transcricao_nao_sai_com_ele()
     assert [(c["tipo"], c["automatico"]) for c in p4["cortes"] if c["tipo"] == "hesitacao"] == [("hesitacao", True)] and p4["sugestoes"] == []
 
 
-def test_repeticao_vira_sugestao_com_o_texto():
+def test_repeticao_sai_por_padrao_e_manter_desfaz():
+    """v0.33.0 (pedido do dono): a repetição ("devem devem") sai por padrão — a cópia fora do roteiro sai inteira, a palavra
+    alinhada fica — e "Manter este trecho" desfaz. A legenda e o texto final ficam só com o que vai ao ar."""
     fala = "As empresas devem pagar até sexta."
     ws = falas("as empresas devem devem pagar até sexta")
     dur = ws[-1]["fim"] + 1.0
     al = alinhar.alinhar(fala, ws, [], CFG)
-    plano = cortes.planejar(parte(dur), silencios([(w["inicio"], w["fim"]) for w in ws], dur), CFG, al["palavras"], al["remover"])
-    assert [(s["tipo"], s.get("texto")) for s in plano["sugestoes"]] == [("repeticao", "devem devem")]
-    assert [c["tipo"] for c in plano["cortes"]] == ["inicio", "fim"] and all(ficou(plano, w["inicio"], w["fim"]) for w in ws)
+    sil = silencios([(w["inicio"], w["fim"]) for w in ws], dur)
+    plano = cortes.planejar(parte(dur), sil, CFG, al["palavras"], al["remover"])
+    (c,) = [c for c in plano["cortes"] if c["tipo"] == "repeticao"]
+    assert c["automatico"] is True and c["texto"] == "devem devem" and plano["sugestoes"] == []
+    # uma cópia saiu e a outra ficou (as duas nunca saem): das duas palavras "devem", exatamente uma continua no vídeo
+    devem = [w for w in ws if w["texto"] == "devem"]
+    assert sum(ficou(plano, w["inicio"], w["fim"]) for w in devem) == 1
+    assert all(ficou(plano, w["inicio"], w["fim"]) for w in ws if w["texto"] != "devem")
+    assert " ".join(u["texto"] for u in cortes.no_video(plano, al["legenda"])) == "As empresas devem pagar até sexta."
+    mantido = cortes.planejar(parte(dur), sil, CFG, al["palavras"], al["remover"], manter=[c["chave"]])
+    assert all(ficou(mantido, w["inicio"], w["fim"]) for w in ws)
+
+
+def test_muleta_fora_do_roteiro_sai_por_padrao_e_a_do_roteiro_fica():
+    """v0.33.0 (pedido do dono: "o aplicativo não corrigiu nada"): "né", "tipo" e o "é" solto fora do roteiro saem por padrão
+    (tipo "muleta"; "Manter este trecho" desfaz); a mesma palavra alinhada ao roteiro ("o tipo de empresa") nunca sai; a muleta
+    colada no fim ("…fale com a gente né") sai com o corte do fim; o fora do roteiro que não é muleta ("praticamente") fica no
+    vídeo, leva t_fim (o "Cortar este trecho" da aba Vídeo) e continua no relatório — a muleta cortada sai dele."""
+    assert all(cortes.e_muleta(t) for t in ("né", "né?", "Tipo", "é", "tipo,"))
+    assert not any(cortes.e_muleta(t) for t in ("e", "um", "neto", "tipos", "há"))
+    assert not cortes.e_hesitacao("né") and cortes.e_hesitacao("hum")                  # a regra de antes não mudou
+    fala = "O tipo de empresa define o imposto. Fale com a gente."
+    ws = falas("o tipo de empresa define né o praticamente imposto tipo fale com a gente né")
+    dur = ws[-1]["fim"] + 1.0
+    sil = silencios([(w["inicio"], w["fim"]) for w in ws], dur)
+    al = alinhar.alinhar(fala, ws, [], CFG)
+    fora = {x["texto"]: x for x in al["fora_do_roteiro"]}
+    assert set(fora) == {"né", "praticamente", "tipo"} and all("t_fim" in x and x["t_fim"] > x["t"] for x in fora.values())
+    plano = cortes.planejar(parte(dur), sil, CFG, al["palavras"], al["remover"])
+    muletas = [c for c in plano["cortes"] if c["tipo"] == "muleta"]
+    assert [(c["texto"], c["automatico"]) for c in muletas] == [("né", True), ("tipo", True)]
+    ne1, prat, tipo2, ne2 = ws[5], ws[7], ws[9], ws[-1]
+    assert not ficou(plano, ne1["inicio"], ne1["fim"]) and not ficou(plano, tipo2["inicio"], tipo2["fim"])
+    assert not ficou(plano, ne2["inicio"], ne2["fim"])                                 # a muleta colada no fim sai com o corte do fim
+    assert ficou(plano, prat["inicio"], prat["fim"])                                   # "praticamente" não é muleta: fica
+    assert all(ficou(plano, w["inicio"], w["fim"]) for k, w in enumerate(ws) if k not in (5, 9, len(ws) - 1))
+    # "Manter este trecho" desfaz o corte da muleta
+    mantido = cortes.planejar(parte(dur), sil, CFG, al["palavras"], al["remover"], manter=[muletas[0]["chave"]])
+    assert ficou(mantido, ne1["inicio"], ne1["fim"])
+    # no relatório, a muleta cortada sai do "falado fora do roteiro"; o que ficou leva em_s e ate_s para o corte com um clique
+    rel = relatorio.parcial(al, plano, parte(dur))
+    assert [x["texto"] for x in rel["fora_do_roteiro"]] == ["praticamente"]
+    (x,) = rel["fora_do_roteiro"]
+    assert x["ate_s"] > x["em_s"] >= 0
+
+
+def test_divergencia_de_numero_repetido_parece_erro_da_transcricao():
+    """v0.33.0 (pedido do dono): "Lei 141" transcrito como "quatro um um quatro um um" tem palavra repetida colada (número em
+    português não repete) — a divergência leva parece_transcricao, e a tela diz "parece erro da transcrição: ouça e confirme".
+    Confiança baixa da transcrição também marca; a divergência comum não."""
+    fala = "A Lei 141 muda o prazo do imposto."
+    al = alinhar.alinhar(fala, falas("a lei quatro um um quatro um um muda o prazo do imposto"), [], CFG)
+    (d,) = al["divergencias"]
+    assert d["tipo"] == "numero" and d.get("parece_transcricao") is True
+    al2 = alinhar.alinhar(fala, falas("a lei cento e quarenta e dois muda o prazo do imposto"), [], CFG)
+    (d2,) = al2["divergencias"]
+    assert "parece_transcricao" not in d2
+    ws3 = falas("a lei cento e quarenta e dois muda o prazo do imposto")
+    for w in ws3:
+        w["confianca"] = 0.3
+    (d3,) = alinhar.alinhar(fala, ws3, [], CFG)["divergencias"]
+    assert d3.get("parece_transcricao") is True
 
 
 # ------------------------------------------------------------------ relatório
@@ -713,7 +779,7 @@ def test_relatorio_parcial_e_final_no_tempo_do_video_corrigido(capfd):
     al = alinhar.alinhar(fala, ws, [], CFG)
     plano = cortes.planejar(infos, silencios([(w["inicio"], w["fim"]) for w in ws], dur), CFG, al["palavras"], al["remover"])
     par = relatorio.parcial(al, plano, infos, {"servico": "azure_f0", "segundos_audio": dur, "palavras": len(ws)})
-    assert par["parcial"] is True and par["versao"] == 2 and par["robo"] == "0.22.0"
+    assert par["parcial"] is True and par["versao"] == 2 and par["robo"] == "0.33.0"
     assert set(par) == {"versao", "robo", "modo", "parcial", "gerado_em", "divergencias", "fora_do_roteiro", "omitido", "avisos",
                         "transcricao"}
     (d,) = par["divergencias"]
@@ -810,3 +876,55 @@ def test_de_ponta_a_ponta_tira_o_eee_e_o_hum_e_a_legenda_e_o_roteiro(tmp_path, m
     assert rel["saida"]["lufs"] == conf["lufs"] and rel["conferencia"]["sem_gps"] is True and formato == "tabela"
     assert len(json.dumps(rel, ensure_ascii=False)) <= relatorio.LIMITE
     assert capfd.readouterr() == ("", "")
+
+
+# ------------------------------------------------------------------ v0.33.0: a divergência que um corte do editor tirou
+def _final(al, plano, infos):
+    leg = {"blocos": 1, "estilo": "normal", "gancho": False, "avisos": [], "lista": [], "tamanho": "M", "posicao": "baixo", "cor": "marinho"}
+    return relatorio.final(al, plano, infos, {"saida": {"duracao_s": 8.0, "fala_s": 5.4}, "audio": {}, "quadros_ms": [1, 2, 3, 4]},
+                           {"lufs": -14.0}, leg, None, "montagem", {**CFG, "cartela_extra": ""})
+
+
+def test_divergencia_traz_o_fim_e_o_relatorio_marca_a_cortada():
+    """Cada divergência traz o fim da fala dela (t_fim); no relatório, com os cortes do editor, a que saiu inteira no corte fica
+    "cortada" e não pede regravar (o trecho não vai ao ar), a outra ganha ate_s (o fim dela no vídeo), e t_fim nunca sai. O falado
+    fora do roteiro do trecho cortado também sai, e o texto final é só o que ficou. caber() tira as unidades antes da lista da legenda."""
+    fala = "O prazo vence dia 25. Fale com a gente."
+    ws = falas("o prazo vence dia quinze fale com a gente")
+    dur = 4.5
+    infos = [{"n": 1, "inicio_q": 0, "quadros": int(dur * 30), "w": 1080, "h": 1920, "fps": 30, "hdr": None, "girado": False, "dur": dur}]
+    al = alinhar.alinhar(fala, ws, [], CFG)
+    (d,) = al["divergencias"]
+    assert d["t"] == ws[4]["inicio"] and d["t_fim"] == ws[4]["fim"]
+    sem = cortes.planejar(infos, [], CFG, al["palavras"], al["remover"])
+    rel = _final(al, sem, infos)
+    (x,) = rel["divergencias"]
+    assert "t_fim" not in x and "cortada" not in x and x["regravar"] is True and x["ate_s"] == pytest.approx(x["em_s"] + 0.26, abs=0.02)
+    assert rel["texto_final"] == "O prazo vence dia 15 Fale com a gente." and relatorio.situacao(rel) == "regravar"
+    assert rel["edicao"]["cortes"] == 0 and rel["mapa"]["linha_q"] == 135 and len(rel["unidades"]) == 9
+    # o administrador corta o "quinze" (do meio do vão de antes ao meio do vão de depois)
+    corte = [[cortes._q_ini((ws[3]["fim"] + ws[4]["inicio"]) / 2), cortes._q_fim((ws[4]["fim"] + ws[5]["inicio"]) / 2)]]
+    plano = cortes.planejar(infos, [], CFG, al["palavras"], al["remover"], edicao=cortes.edicao_de({"cortar": corte}, 135))
+    rel = _final(al, plano, infos)
+    (x,) = rel["divergencias"]
+    assert (x["cortada"], x["regravar"], "ate_s" in x, "t_fim" in x) == (True, False, False, False)
+    assert relatorio.situacao(rel) == "pronto" and rel["texto_final"] == "O prazo vence dia Fale com a gente."
+    assert [u["t"] for u in rel["unidades"]] == ["O", "prazo", "vence", "dia", "Fale", "com", "a", "gente."]
+    assert rel["edicao"]["cortes"] == 1 and [c["tipo"] for c in rel["cortes"]].count("editor") == 1
+    # o parcial já marca (a equipe não vê "Precisa regravar" de um trecho cortado durante a montagem)
+    assert relatorio.parcial(al, plano, infos)["divergencias"][0]["cortada"] is True
+    # o falado fora do roteiro dentro do corte sai da lista e do texto final
+    ws2 = falas("fale com tchau a gente hoje mesmo")
+    al2 = alinhar.alinhar("Fale com a gente hoje mesmo.", ws2, [], CFG)
+    assert [f["texto"] for f in al2["fora_do_roteiro"]] == ["tchau"]
+    corte2 = [[cortes._q_ini((ws2[1]["fim"] + ws2[2]["inicio"]) / 2), cortes._q_fim((ws2[2]["fim"] + ws2[3]["inicio"]) / 2)]]
+    plano2 = cortes.planejar(infos, [], CFG, al2["palavras"], al2["remover"], edicao=cortes.edicao_de({"cortar": corte2}, 135))
+    rel2 = _final(al2, plano2, infos)
+    assert rel2["fora_do_roteiro"] == [] and rel2["texto_final"] == "Fale com a gente hoje mesmo."
+    assert "tchau" in _final(al2, cortes.planejar(infos, [], CFG, al2["palavras"], al2["remover"]), infos)["texto_final"]
+    # caber(): as unidades saem antes da lista dos blocos da legenda
+    grande = {"avisos": [], "unidades": [{"u": k, "t": "x" * 60, "a": 0.0, "b": 0.1} for k in range(1200)],
+              "legenda": {"lista": [{"u": 0, "texto": "bloco"}]}, "mapa": {"linha_q": 10}}
+    r = relatorio.caber(grande)
+    assert "unidades" not in r and r["legenda"]["lista"] == [{"u": 0, "texto": "bloco"}] and r["mapa"] == {"linha_q": 10}
+    assert r["avisos"] == ["relatorio_resumido"]

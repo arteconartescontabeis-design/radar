@@ -1,12 +1,13 @@
 """Radar Artecon — corretor de vídeo (v0.22.0): a conferência automática da saída, antes de liberar para o administrador.
 
   * ffprobe: só um vídeo H.264 High 1080×1920 a 30/1 (taxa fixa, exigência do Facebook) em yuv420p, só um áudio AAC 48 kHz em 2
-    canais, começando no zero; duração de 3 a 90 s (o Facebook aceita reel de 3 a 90 s); sem marcas do celular nos metadados;
+    canais, começando no zero; duração de 3 a 960 s (v0.33.0: o Instagram aceita reel de até 15 min pela API; acima de 90 s o
+    Facebook não aceita, e a tela avisa que sai só no Instagram); sem marcas do celular nos metadados;
   * ebur128 sobre a saída: volume integrado a até 1 LU do alvo das Configurações (-14 LUFS: de -15 a -13);
   * os bytes do MP4, caixa por caixa (sem ler o mdat): `moov` antes do `mdat` (faststart), nenhuma lista de edição (`elst`) e nada de
     local — nem a caixa ©xyz/loci, nem as chaves de local da Apple, nem uma coordenada ISO 6709 no moov ("no edit lists, moov atom at
     the front", Instagram);
-  * até 300 MB (o máximo do Instagram).
+  * até 300 MB (o máximo do reel pela API do Instagram; a tela limita o bruto a 500 MB, e o corrigido de uns minutos fica bem abaixo).
 Uma falha vira ErroVideo("conferencia_falhou") com o nome fixo de cada item que não passou (nunca um valor lido do arquivo).
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ import audio
 import isolado
 from segredo import ErroVideo
 
-DURACAO = (3.0, 90.0)
+DURACAO = (3.0, 960.0)                 # v0.33.0: o teto acompanha a entrada bruta (sondar.TOTAL_MAX_S)
 BYTES_MAX = 300 * 1024 * 1024
 CONTEINERES = {b"moov", b"trak", b"mdia", b"minf", b"stbl", b"edts", b"udta", b"dinf", b"mvex", b"meta", b"ilst", b"tref"}
 PROIBIDAS = {b"elst": "edit_list", b"\xa9xyz": "gps", b"loci": "gps"}

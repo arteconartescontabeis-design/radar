@@ -5,7 +5,8 @@ pegar, links, audio, parcial, concluir e falhar — e como o Supabase Storage ao
 (…/object/sign/radar-videos/<caminho>?token=…) e o PUT do token de envio (…/object/upload/sign/radar-videos/<caminho>?token=…, sem
 upsert: o caminho que já existe responde 400 com statusCode 409, "Duplicate"). As mesmas regras da função: só a chave do robô e a anon;
 links só dos caminhos do pedido que está com o robô, nesta rodada (senão o RADAR316 sem o código, como a função devolve); o corrigido
-que já existe não ganha token (409); o concluir confere o vídeo (tamanho e tipo) e os 4 quadros. As respostas podem ser roteirizadas
+que já existe não ganha token (409); o concluir confere o vídeo (tamanho e tipo) e os 4 quadros (v0.33.0: e a capa, quando o relatório
+diz que há; o caminho quadros/<id>/<sha256>/capa-<sha256 da capa>.jpg também ganha token). As respostas podem ser roteirizadas
 por ação (`falhas`). Guarda cada chamada (`chamadas`) e cada envio (com os cabeçalhos) para o teste conferir. Nada de dado real.
 """
 from __future__ import annotations
@@ -162,7 +163,7 @@ class FuncaoFalsa:
             pode_ler = lambda k: bool(re.fullmatch(rf"bruto/{vid}/([1-9]|1[0-2])", k) and int(k.rsplit("/", 1)[1]) <= n) \
                 or (g and k == f"trabalho/{vid}/{g}/palavras.json")
             pode_gravar = lambda k: k == f"trabalho/{vid}/{t}/palavras.json" or bool(re.fullmatch(rf"corrigido/{vid}/[0-9a-f]{{64}}\.mp4", k)) \
-                or bool(re.fullmatch(rf"quadros/{vid}/[0-9a-f]{{64}}/q[1-4]\.jpg", k))
+                or bool(re.fullmatch(rf"quadros/{vid}/[0-9a-f]{{64}}/(q[1-4]|capa-[0-9a-f]{{64}})\.jpg", k))   # v0.33.0: + a capa
             ler, gravar = c.get("ler") or [], c.get("gravar") or []
             fora = [k for k in ler if not pode_ler(k)] + [k for k in gravar if not pode_gravar(k)]
             if fora:
@@ -188,6 +189,14 @@ class FuncaoFalsa:
                 return 409, {"message": "O vídeo corrigido não está no armazenamento com o tamanho e o tipo informados: suba de novo."}
             if any(f"quadros/{vid}/{c['sha256']}/q{k}.jpg" not in self.objetos for k in range(1, 5)):
                 return 409, {"message": "Faltam quadros no armazenamento: suba de novo."}
+            pedida = (c.get("relatorio") or {}).get("capa")                            # v0.33.0: a capa, se o relatório diz que há
+            if pedida:
+                nome = str(pedida.get("sha256") or "") if isinstance(pedida, dict) else ""
+                if not re.fullmatch(r"[0-9a-f]{64}", nome):
+                    return 400, {"message": "Informe o sha256 da capa."}
+                capa = self.objetos.get(f"quadros/{vid}/{c['sha256']}/capa-{nome}.jpg")
+                if not capa or capa["tipo"] != "image/jpeg" or not capa["dados"]:
+                    return 409, {"message": "Falta a capa no armazenamento: suba de novo."}
             situacao = c["situacao"]
             if any(d.get("regravar") and not d.get("transcricao_errou") for d in c["relatorio"].get("divergencias") or []):
                 situacao = "regravar"                     # o banco decide de novo

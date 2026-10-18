@@ -120,7 +120,22 @@ class Ponte(BaseHTTPRequestHandler):
             o = ARM["objetos"].get(objeto)
             if ARM["links"].get(consulta.get("token")) != objeto or o is None:
                 return self._responder(400, {"statusCode": "404", "error": "not_found", "message": "Object not found"})
-            return self._responder(200, o.get("dados") or b"x" * o["bytes"], o.get("tipo") or "application/octet-stream")
+            dados, tipo = o.get("dados") or b"x" * o["bytes"], o.get("tipo") or "application/octet-stream"
+            # v0.33.0: como o Storage, serve pedaços (Range): o player da aba Vídeo vai a qualquer ponto do vídeo
+            pedaco = re.fullmatch(r"bytes=(\d+)-(\d*)", self.headers.get("Range") or "")
+            ini = int(pedaco.group(1)) if pedaco else 0
+            fim = min(len(dados) - 1, int(pedaco.group(2))) if pedaco and pedaco.group(2) else len(dados) - 1
+            corpo = dados[ini:fim + 1] if pedaco else dados
+            self.send_response(206 if pedaco else 200)
+            self.send_header("Content-Type", tipo)
+            self.send_header("Accept-Ranges", "bytes")
+            if pedaco:
+                self.send_header("Content-Range", f"bytes {ini}-{fim}/{len(dados)}")
+            self.send_header("Content-Length", str(len(corpo)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(corpo)
+            return
         if not self._servico():
             return
         dados = json.loads(corpo or b"null")
@@ -369,7 +384,7 @@ def test_quem_chama_cada_um_nas_suas_acoes_e_nunca_a_chave_interna(vid):
         assert pedir({"acao": "pegar"}, cab=cab) == errada, cab
     assert pedir({"acao": "previa", "id": str(uuidlib.uuid4())}, cab=ROBO) == (403, {"message": "O robô só pega o pedido, pede links e entrega o resultado."})
     assert pedir({"acao": "pegar"}, cab=AGENDA) == (403, {"message": "A agenda só aciona o robô e faz a limpeza."})
-    assert pedir({"acao": "agenda_teste"}, cab=AGENDA) == (200, {"ok": True, "versao": "0.22.0"})
+    assert pedir({"acao": "agenda_teste"}, cab=AGENDA) == (200, {"ok": True, "versao": "0.33.0"})
     assert pedir({"acao": "pegar"}, cab=ROBO) == (200, {"pedido": None})
     assert pedir({"acao": "pe gar"}, cab=ROBO)[0] == 403 and pedir({"acao": "PEGAR"}, cab=ROBO)[0] == 403   # o nome exato da ação
     assert ARM["objetos"] == {} and ARM["envios"] == [] and ARM["github"] == []
@@ -581,7 +596,7 @@ def test_diagnostico_devolve_o_bucket_publico_a_privado_e_mostra_a_fila_sem_os_s
     db = vid
     ARM["buckets"]["radar-videos"] = {"id": "radar-videos", "name": "radar-videos", "public": True}
     status, r = pedir({"acao": "diagnostico"}, uid=ADMIN)
-    assert status == 200 and r["versao"] == "0.22.0"
+    assert status == 200 and r["versao"] == "0.33.0"
     itens = {i["item"]: i for i in r["itens"]}
     assert itens["Armazenamento dos vídeos"] == {"item": "Armazenamento dos vídeos", "ok": True,
                                                  "detalhe": 'bucket privado "radar-videos" (estava público: voltou a privado)'}
@@ -662,3 +677,85 @@ def test_registros_e_erros_sem_link_token_chave_nome_nem_fala(vid):
                      "eyJ", "sb_secret_"):
         assert proibido not in texto, proibido
     assert all(re.fullmatch(r"radar-video: [^:]*", l) for l in texto.splitlines()), texto            # só as linhas fixas da função
+
+
+# ------------------------------------------------------------------ v0.33.0: a capa escolhida na aba Vídeo
+# A capa sobe com o sha256 DELA no nome (quadros/<id>/<sha256 do vídeo>/capa-<sha256 da capa>.jpg): trocar só a capa monta o mesmo vídeo
+# (o mesmo sha256), e o armazenamento nunca sobrescreve — com um nome fixo, a capa de antes ficaria no lugar da nova.
+CAPA_SHA, CAPA_SHA2 = "c" * 64, "d" * 64
+CAPA_REL = {"q": 30, "em_ms": 1000, "movida": False, "sha256": CAPA_SHA}
+
+
+def test_robo_grava_a_capa_so_do_seu_sha256_e_o_concluir_confere(vid):
+    """O robô ganha o token de envio da capa (quadros/<id>/<sha256>/capa-<sha256 da capa>.jpg, ao lado dos quadros) só do pedido que
+    está com ele; com a capa no relatório, o concluir confere que ELA (pelo sha256 do nome) está no armazenamento: a capa de antes do
+    mesmo vídeo não passa pela nova."""
+    db = vid
+    pid, ana, v = na_fila_com_clipes(db)
+    _, r = pedir({"acao": "pegar"}, cab=ROBO)
+    t = r["pedido"]["tentativa"]
+    outro = str(uuidlib.uuid4())
+    for k in (f"quadros/{v}/{SHA_VIDEO}/capa.png", f"quadros/{v}/{SHA_VIDEO}/capa2.jpg", f"quadros/{outro}/{SHA_VIDEO}/capa-{CAPA_SHA}.jpg",
+              f"quadros/{v}/{'A' * 64}/capa-{CAPA_SHA}.jpg", f"quadros/{v}/capa-{CAPA_SHA}.jpg", f"quadros/{v}/{SHA_VIDEO}/capa.jpg",
+              f"quadros/{v}/{SHA_VIDEO}/capa-{'C' * 64}.jpg", f"quadros/{v}/{SHA_VIDEO}/capa-{CAPA_SHA[:63]}.jpg"):
+        assert pedir({"acao": "links", "id": v, "tentativa": t, "gravar": [k]}, cab=ROBO) == (403, {"message": "1 caminho(s) fora do pedido."}), k
+    capa_velha = f"quadros/{v}/{SHA_VIDEO}/capa-{CAPA_SHA2}.jpg"
+    caminhos = [f"corrigido/{v}/{SHA_VIDEO}.mp4"] + [f"quadros/{v}/{SHA_VIDEO}/q{k}.jpg" for k in range(1, 5)] + [f"quadros/{v}/{SHA_VIDEO}/capa-{CAPA_SHA}.jpg"]
+    status, ln = pedir({"acao": "links", "id": v, "tentativa": t, "gravar": caminhos}, cab=ROBO)
+    assert status == 200 and set(ln["gravar"]) == set(caminhos)                              # o vídeo, os 4 quadros e a capa: 6
+    assert subir(ln["gravar"][caminhos[0]]["url"], b"m" * 4000, "video/mp4") == 200
+    for k in range(1, 5):
+        assert subir(ln["gravar"][caminhos[k]]["url"], b"j" * 300, "image/jpeg") == 200
+    guardar(capa_velha, 500, "image/jpeg")                                                      # a capa de outra montagem do mesmo vídeo
+    fim = {"acao": "concluir", "id": v, "tentativa": t, "situacao": "pronto", "relatorio": {**RELATORIO, "capa": CAPA_REL},
+           "sha256": SHA_VIDEO, "bytes": 4000, "duracao": 38.4}
+    assert pedir(fim, cab=ROBO) == (409, {"message": "Falta a capa no armazenamento: suba de novo."})
+    for ruim in ({k: x for k, x in CAPA_REL.items() if k != "sha256"}, {**CAPA_REL, "sha256": "C" * 64}, {**CAPA_REL, "sha256": "../q1"}):
+        assert pedir({**fim, "relatorio": {**RELATORIO, "capa": ruim}}, cab=ROBO) == (400, {"message": "Informe o sha256 da capa."})
+    assert subir(ln["gravar"][caminhos[5]]["url"], b"c" * 500, "image/jpeg") == 200
+    assert pedir(fim, cab=ROBO) == (200, {"situacao": "pronto"})
+    assert video(db, v, "relatorio")["capa"] == CAPA_REL
+
+
+def test_previa_e_baixar_devolvem_o_link_da_capa(vid):
+    """A prévia (600 s) e o baixar do vídeo aprovado (300 s, reel-<data>-capa.jpg) devolvem o link da capa do mesmo sha256 (a do
+    relatório, pelo sha256 dela); sem a capa, null; o caminho fora do esperado que o banco devolvesse dá 502 (nunca um link de outro
+    arquivo)."""
+    db = vid
+    pid, ana, v = na_fila_com_clipes(db)
+    db.execute("update radar_videos set situacao = 'pronto', sha256 = %s, bytes = 4000, duracao_final = 38, relatorio = %s where id = %s",
+               (SHA_VIDEO, json.dumps(RELATORIO), v))
+    guardar(f"corrigido/{v}/{SHA_VIDEO}.mp4", 4000)
+    for k in range(1, 5):
+        guardar(f"quadros/{v}/{SHA_VIDEO}/q{k}.jpg", 300, "image/jpeg")
+    status, p = pedir({"acao": "previa", "id": v})
+    assert status == 200 and p["capa"] is None
+    capa = f"quadros/{v}/{SHA_VIDEO}/capa-{CAPA_SHA}.jpg"
+    db.execute("update radar_videos set relatorio = relatorio || %s where id = %s", (json.dumps({"capa": CAPA_REL}), v))
+    guardar(capa, 500, "image/jpeg")
+    guardar(f"quadros/{v}/{SHA_VIDEO}/capa-{CAPA_SHA2}.jpg", 500, "image/jpeg")               # a de outra montagem do mesmo vídeo: não
+    ARM["assinaturas"].clear()
+    status, p = pedir({"acao": "previa", "id": v})
+    assert status == 200 and p["capa"].split("?")[0] == f"{PONTE}/storage/v1/object/sign/radar-videos/{capa}"
+    assert (capa, 600) in ARM["assinaturas"] and len(ARM["assinaturas"]) == 6
+    marcar_pronta(db, pid)
+    aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)
+    lido = db.execute("select atualizado_em from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0].isoformat()
+    status, r = pedir({"acao": "baixar", "peca": pid, "lido": lido})
+    data = str(hoje(db) + __import__("datetime").timedelta(days=5))
+    assert status == 200 and r["url"].endswith(f"&download=reel-{data}.mp4") and r["capa_url"].endswith(f"&download=reel-{data}-capa.jpg")
+    assert ARM["assinaturas"][-1] == (capa, 300)
+    # o banco que devolvesse a capa de outro caminho (de outro vídeo, ou o nome fixo de antes): a função recusa
+    db.execute("alter function radar_video_para_previa(uuid) rename to radar_video_para_previa_ok")
+    try:
+        for ruim in ("'quadros/' || gen_random_uuid() || '/' || repeat('a', 64) || '/capa-' || repeat('c', 64) || '.jpg'",
+                     f"'quadros/{v}/{SHA_VIDEO}/capa.jpg'", f"'quadros/{v}/{SHA_VIDEO}/capa-../q1.jpg'"):
+            db.execute(f"""create or replace function radar_video_para_previa(p_id uuid) returns jsonb language sql security definer set search_path = public as $$
+                            select radar_video_para_previa_ok(p_id) || jsonb_build_object('capa', {ruim}) $$""")
+            db.execute("grant execute on function radar_video_para_previa(uuid) to authenticated")
+            assert pedir({"acao": "previa", "id": v}) == (502, {"message": "O banco devolveu um caminho fora do esperado."}), ruim
+    finally:
+        db.execute("drop function if exists radar_video_para_previa(uuid)")
+        db.execute("alter function radar_video_para_previa_ok(uuid) rename to radar_video_para_previa")
+    texto = "\n".join(l for p in LOGS.values() for l in p.read_text().splitlines())
+    assert "capa-" not in texto and "capa.jpg" not in texto and "token=" not in texto

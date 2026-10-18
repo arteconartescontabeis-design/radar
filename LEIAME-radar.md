@@ -1,4 +1,4 @@
-# Radar Artecon — v0.32.0
+# Radar Artecon — v0.33.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,23 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.33.0 traz a aba **Vídeo**: o administrador edita o vídeo corrigido de cada reel — o começo, o fim e trechos do meio, o texto
+da legenda palavra por palavra, o tamanho, a posição e a cor da legenda (só as cores da Artecon), o texto do gancho, o texto extra
+da cartela e a capa — e monta de novo **sem transcrever de novo**. O corretor passou a **corrigir sozinho**: as muletas faladas fora
+do roteiro ("né", "tipo", "é" solto), as repetições ("a a") e os falsos inícios saem por padrão, com **"Manter este trecho"** para
+desfazer cada corte; o topo do relatório resume **o que foi corrigido e o que falta decidir**, o falado fora do roteiro se corta
+**com um clique** na aba Vídeo, e a divergência com palavra repetida colada avisa que **parece erro da transcrição**. A duração
+ganhou **meta** (90 s, `duracao_max_s`, agora de 15 a 900 s): o vídeo mais longo é aceito, só com aviso e confirmação na aprovação —
+acima de 90 s o Facebook não aceita reel pela API (sai só no Instagram, que aceita até 15 minutos) —, os clipes brutos podem somar
+até 16 minutos e o envio mostra **quanto da cota de transcrição** vai gastar. A aprovação continua na peça; nada é publicado sozinho.
+
+Mudam o banco (`sql/radar-setup-v0.33.0.sql`: 4 funções novas do editor; **nenhuma tabela nem coluna nova**, nada é apagado), a tela
+(`index.html`, `radar-video.js` com a aba nova; `radar-pauta.js` só muda a versão), a função `radar-video`
+(`supabase/functions/radar-video/index.ts`: a capa) e o robô do vídeo (`robo/video/`: os cortes do editor, os cortes por padrão, a
+legenda com estilo, a capa e os limites novos de duração). **Nenhum segredo novo.** Depois do merge, o dono troca a variável
+**`RADAR_VIDEO_COMMIT`** do repositório privado `radar-video` (passo a passo em "Da v0.32.0 para a v0.33.0"). **Rode o SQL antes de
+publicar a tela.**
 
 A v0.32.0 traz o **quadro de vencimentos de chaves e contas** e a **cópia de segurança mensal do banco no OneDrive**. Em
 Configurações (só o administrador), cada chave, conta, assinatura e o domínio aparecem com a **data em que vence** e **onde renovar**
@@ -50,7 +67,7 @@ por escolha desta versão, as notícias do **INSS** (quase tudo é orientação 
 Mudam o robô da coleta (`robo/radar_coletar.py`, `radar_coletores.py`, `radar_inlabs.py`, `radar_util.py`, `radar_diagnostico.py`,
 `radar_banco.py`, `robo/radar_fontes.json` e o novo `robo/radar_normas.py`; robô **0.31.0**), a tela (`index.html`: a conferência
 das palavras do tema na aba Fontes; `radar-pauta.js` e `radar-video.js` só mudam a versão), o workflow do diagnóstico (o campo
-"endereços" aceita o identificador de uma fonte, ligada ou não) e o banco (`sql/radar-setup-v0.31.0.sql`, hoje `radar-setup-v0.32.0.sql`: só a função
+"endereços" aceita o identificador de uma fonte, ligada ou não) e o banco (`sql/radar-setup-v0.31.0.sql`, hoje `radar-setup-v0.33.0.sql`: só a função
 `radar_url_base`, para o texto oficial colado de um ato do Normas ir para a captura desse ato; nenhuma tabela nova, nada é apagado).
 Entra o `sql/radar-fontes-novas-v0.31.0.sql` (as fontes). **Nenhum segredo novo.** As funções `radar-ia`, `radar-redes` e
 `radar-video` e as agendas do banco não mudam. **O SQL das fontes só depois de o robô novo coletar uma vez**: veja "Da v0.30.0 para a
@@ -67,7 +84,7 @@ pelo botão **"Acrescentar o 13º e as obrigações anuais"** (Configurações �
 em prorrogar o prazo de uma obrigação da agenda, avisa no Painel, na edição do Informativo e por e-mail ao administrador (uma vez por
 notícia), **sem mudar data nenhuma**: quem confere na fonte oficial e põe a nova data é o administrador.
 
-Mudam o banco (`sql/radar-setup-v0.30.0.sql`, hoje `radar-setup-v0.32.0.sql`: duas funções novas, `radar_prorrogacao_obrigacoes` e `radar_prorrogacoes`; nenhuma
+Mudam o banco (`sql/radar-setup-v0.30.0.sql`, hoje `radar-setup-v0.33.0.sql`: duas funções novas, `radar_prorrogacao_obrigacoes` e `radar_prorrogacoes`; nenhuma
 tabela nova, nada é apagado; a lista de obrigações do escritório não muda), a tela (`index.html` e `radar-pauta.js`; o `radar-video.js`
 só muda a versão) e o robô dos avisos (`robo/radar_alertas.py` e `robo/radar_banco.py`, que entram no ar pelo merge). **Nenhum segredo
 novo.** As funções `radar-ia`, `radar-redes` e `radar-video`, as agendas do banco (`sql/radar-*-agenda.sql`) e o robô dos lembretes não
@@ -95,7 +112,7 @@ Quem decide o que lembrar e quando é o **banco**, com o relógio dele (o pg_cro
 minutos ele confere e, só quando há lembrete para mandar, pede à função `radar-redes` que acione o robô dos lembretes no GitHub. O
 próprio workflow também roda de hora em hora, de reserva.
 
-Mudam o banco (`sql/radar-setup-v0.29.0.sql`, hoje `radar-setup-v0.32.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
+Mudam o banco (`sql/radar-setup-v0.29.0.sql`, hoje `radar-setup-v0.33.0.sql`: a tabela nova `radar_lembretes`, as funções `radar_lembretes_*` e a chave "lembretes"
 das Configurações; nada é apagado), a agenda do banco (`sql/radar-redes-agenda.sql`: o agendamento novo `radar-redes-agenda-lembretes`),
 a função `radar-redes` (0.22.0 → **0.29.0**: a ação nova `acionar_lembretes`, só da agenda do banco, e o robô dos lembretes na lista
 dos robôs que ela religa) e a tela (Configurações). Entram o robô `robo/radar_lembretes.py` e o workflow
@@ -110,7 +127,7 @@ do vídeo no "Corretor de vídeo", a conferência, o Gerar com IA, a aprovação
 a página. Agora a linha em branco não conta, o aviso diz **o que mudou e não foi salvo** (por exemplo, "Informações conferidas" ou
 "Quem aparece") e o Salvar sem nada para gravar destrava a peça. O texto digitado e não salvo continua barrando, como antes. Só a
 tela muda (`index.html`, `radar-pauta.js` e `radar-video.js`): o banco continua no `sql/radar-setup-v0.28.0.sql` (hoje
-`radar-setup-v0.32.0.sql`) e as funções e os
+`radar-setup-v0.33.0.sql`) e as funções e os
 robôs não mudam. Veja "Da v0.28.0 para a v0.28.1".
 
 A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
@@ -128,7 +145,7 @@ A v0.28.0 traz duas novidades na **Pauta**, pedidas pelo escritório:
   voz; a fala é a do roteiro). Marcar e tirar a marca pedem confirmação; para sócio(a), a data em "Revogado em" não vale (para tirar a
   pessoa das peças e dos vídeos, desmarque "Ativa"). Marcar e desmarcar fica no Histórico, sem o nome.
 
-Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.32.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
+Mudam o banco (`sql/radar-setup-v0.28.0.sql`, hoje `radar-setup-v0.33.0.sql`: a coluna `socio` em `radar_pessoas`, a função nova `radar_pauta_criar` e a regra dos
 termos; nenhuma tabela nova, nada é apagado) e a tela (`index.html`, `radar-pauta.js` e `radar-video.js`). As funções `radar-ia`,
 `radar-redes` e `radar-video`, as outras funções e os robôs não mudam. **Rode o SQL antes de publicar a tela**: veja "Da v0.27.0 para a
 v0.28.0".
@@ -580,7 +597,7 @@ A v0.18.0 mudou a regra do **texto igual ao da fonte**:
   (ex.: "Receita Federal do Brasil, Portal Contábil SC"); o boletim pago não entra. O link que vai com a Fonte também nunca
   leva ao site do boletim pago quando o assunto tem outra captura.
 
-Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.32.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
+Mudam o banco (`radar-setup-v0.18.0.sql`, hoje `radar-setup-v0.33.0.sql`: só a função `radar_fn_conteudo_fonte`, que preenche o campo Fonte), o `index.html`,
 a função `radar-ia` (v0.18.0), o robô de rascunhos (`radar_rascunhos.py`) e o robô do site (`radar_site_publicar.py`: o link
 da fonte). A função `radar-redes` não muda.
 
@@ -607,7 +624,7 @@ A v0.17.0 trouxe duas opções em **Publicações**:
   - Autorização do escritório (09/10/2026): o robô do site, que até aqui só cadastrava notícias, passa a **excluir** também,
     sempre e só com o pedido do administrador gravado no banco.
 
-Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.32.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
+Mudam o banco (`radar-setup-v0.17.0.sql`, hoje `radar-setup-v0.33.0.sql`: tabela `radar_site_exclusoes`; situações `aguardando_site` e `excluido` nas
 publicações; funções `radar_autorizar_todos`, `radar_pedir_exclusao_site`, `radar_cancelar_exclusao_site`,
 `radar_site_exclusao_concluir` e `radar_rede_marcar_excluida`), o `index.html`, a função `radar-redes` (v0.17.0: ação `excluir`
 e a chamada do robô para as redes que vão junto com o site), o robô do site (`radar_site_publicar.py` e o novo
@@ -644,7 +661,7 @@ A v0.16.0 cuida do **texto da IA**, da **capa** e da **triagem**:
   (antes: "ParseError: undefined entity"). Feed com entidades do HTML (&nbsp;) também é lido. A fonte nova começa como
   **não oficial**.
 
-Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.32.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
+Mudam o banco (`radar-setup-v0.16.0.sql`, hoje `radar-setup-v0.33.0.sql`: colunas `ilustracao_id` e `copia_autorizada_*` em `radar_conteudos`, funções
 `radar_autorizar_copia` e `radar_separar_repeticao`), o `index.html`, a função `radar-ia` (v0.16.0: ação nova `revisar` e a
 segunda passada no `gerar`), o robô (triagem, rascunhos e coletor RSS).
 
@@ -673,7 +690,7 @@ A v0.15.0 mostra na aba **Capturas** se cada notícia tem **fundamentação lega
   norma está em vigor. Ficam de fora a jurisprudência (Tema, RE, ADI), os projetos de lei, as propostas de emenda e as
   minutas. Não muda a nota nem a relevância.
 
-Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.32.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
+Muda só o banco (`radar-setup-v0.15.0.sql`, hoje `radar-setup-v0.33.0.sql`: coluna `base_legal` em `radar_capturas`, calculada por gatilho na entrada e
 quando o título, o resumo ou o texto mudam; função `radar_base_legal`; coluna nova nas visões `radar_v_fila` e
 `radar_v_em_alta`; as capturas que já estavam no banco são lidas na instalação) e o `index.html`. Robô e funções não mudam.
 
@@ -681,7 +698,7 @@ A v0.14.3 impede que um ponto marcado com **[VERIFICAR]** chegue ao leitor: enqu
 tiver alguma marca, o banco não deixa aprovar nem autorizar a publicação no site, no Instagram ou no Facebook, e a mensagem
 de erro lista cada marca (`RADAR139`). A tela mostra as marcas num quadro vermelho no conteúdo. Junto vêm a v0.14.1 (o
 `META_PAGE_TOKEN` aceita o token do usuário do sistema da Meta) e a v0.14.2 (as funções `radar-redes` e `radar-itc` usam a
-chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.32.0.sql`: função
+chave interna nova do Supabase, `sb_secret_…`, só no cabeçalho `apikey`). Muda o banco (`radar-setup-v0.14.3.sql`, hoje `radar-setup-v0.33.0.sql`: função
 `radar_marcas_verificar` e as conferências na aprovação e nas autorizações) e o `index.html`.
 
 A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os textos da IA:
@@ -697,7 +714,7 @@ A v0.14.0 confere a informação em **fontes oficiais na internet** e melhora os
 - **Análise Artecon mais útil**: quem é afetado e como, o que conferir ou providenciar e até quando, o risco de não agir e quando
   procurar a Artecon. Ao gerar, a IA usa a verificação: o que a fonte oficial confirmou deixa de ser marcado com [VERIFICAR].
 
-Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.32.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
+Mudam o banco (`radar-setup-v0.14.0.sql`, hoje `radar-setup-v0.33.0.sql`: colunas `verificacao` e `verificado_em` no assunto), o `index.html`, o robô de rascunhos
 (a nova Análise Artecon) e a função `radar-ia` (v0.14.0: ações `verificar` e `pagina`). Configuração: nenhuma nova — a busca passa
 pela mesma IA Central.
 
@@ -712,7 +729,7 @@ A v0.13.0 leva as notícias ao **Instagram e ao Facebook** da Artecon, sempre co
   autorizado, a autorização cai sozinha.
 - **Publicações › Canais** mostra o Instagram e o Facebook de cada conteúdo e tem **"Testar conexão com o Instagram e o Facebook"**.
 
-Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.32.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
+Mudam o banco (`radar-setup-v0.13.0.sql`, hoje `radar-setup-v0.33.0.sql`: tabela `radar_redes_envios` e as funções de autorização), o `index.html` e entra a
 função nova `radar-redes`. Configuração: "Instagram e Facebook pela API da Meta".
 
 A v0.12.0 traz o **boletim da ITC para dentro do aplicativo** e publica o texto **justificado**:
@@ -740,7 +757,7 @@ A v0.11.1 corrige o que a varredura de erros encontrou:
 - **Coleta com prazo total** (13 minutos; variável `RADAR_PRAZO_MINUTOS`): a fonte que não couber aparece como "sem tempo" no resumo e entra na próxima rodada, sem contar falha; a nota da IA e os rascunhos também respeitam o prazo.
 - **Robôs do GitHub com permissão mínima** (só leitura onde não precisam de mais; o token não fica gravado na cópia do repositório).
 
-Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.32.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
+Mudam o banco (`radar-setup-v0.11.1.sql`, hoje `radar-setup-v0.33.0.sql`), o `index.html`, os robôs, os workflows e a função `radar-ia` (v0.11.1: "Classificar" não chama mais o boletim de "texto oficial").
 
 A v0.11.0 ajusta a IA e a publicação a partir do uso:
 
@@ -752,7 +769,7 @@ A v0.11.0 ajusta a IA e a publicação a partir do uso:
 - **Publicações por canal**: Site (publicado / aguardando o robô / falta) e as colunas Instagram e Facebook (em breve).
 - **Notícia com mais de 5 dias vira baixa relevância** (`dias_baixa` em Configurações → Relevância; 0 desliga).
 
-Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.32.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
+Mudam o banco (`radar-setup-v0.11.0.sql`, hoje `radar-setup-v0.33.0.sql`), o `index.html`, o robô de publicação e a função `radar-ia` (v0.11.0).
 
 A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a **publicação no site com autorização**:
 
@@ -765,7 +782,7 @@ A v0.10.0 refaz só a **tela do assunto** (o resto do Radar não muda) e liga a 
 - **Autorizar publicação no site** (só o administrador): o robô cadastra a notícia no site em até 15 minutos
   e registra o link sozinho. Dá para cancelar enquanto o robô não começou; se o texto mudar, a autorização cai.
 
-Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.32.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
+Mudam o banco (`radar-setup-v0.10.0.sql`, hoje `radar-setup-v0.33.0.sql`), o robô, o `index.html` e a função `radar-ia` (v0.10.0).
 Workflow novo: `radar-site-publicar.yml` (a cada 15 minutos; sem autorização pendente, termina em segundos).
 
 A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
@@ -777,7 +794,7 @@ A v0.9.0 deixa a fila mais limpa e começa a automação dos textos:
 - **DOU Destaques filtrado**: só atos fiscais e leis, decretos e MPs.
 - **Aviso de fonte parada** (vigia da rotina da ITC) e **fontes sem novidade** no resumo de segunda.
 
-Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.32.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.9.0.sql`, hoje `radar-setup-v0.33.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 
@@ -789,7 +806,7 @@ A v0.8.0 tira trabalho manual e aumenta o alcance, sem enxurrada de avisos:
 - **Nota da IA na relevância** e fontes novas (DOU Destaques, Econet, Portal Contábil SC, boletim da ITC).
 - **Limpeza** da antiga publicação dentro do Radar.
 
-Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.32.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.8.0.sql`, hoje `radar-setup-v0.33.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 
@@ -804,7 +821,7 @@ A v0.7.1 é de manutenção e conforto, sem mudar o jeito de trabalhar:
 - Regras de relevância aceitam termos com pontuação ("S.A.", "Ltda."); número da nova edição segue o ano
   do mês; lembrete de capa desatualizada quando o título muda; rotinas do GitHub em Node 24.
 
-Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.32.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
+Mudam o banco (`radar-setup-v0.7.1.sql`, hoje `radar-setup-v0.33.0.sql`), o robô e o `index.html`. A função `radar-ia` **não muda**.
 
 A v0.7.0 reduz o volume e a repetição e simplifica o trabalho:
 
@@ -2155,7 +2172,7 @@ semana que está na tela e o mês dela. Cada linha tem o **mínimo** e o que já
   estar abaixo do real); stories e o Informativo Mensal ficam de fora; não há meta fixa por mês (o mínimo é o plano e o que a busca
   achou). Se a leitura falhar, aparece um aviso amarelo e a semana continua na tela.
 
-### Corretor de vídeo do reel (v0.22.0)
+### Corretor de vídeo do reel (v0.22.0; v0.33.0: a aba Vídeo, os cortes por padrão e a duração com meta)
 
 O reel da Pauta passa pelo **corretor de vídeo**: a equipe grava no celular e envia pela peça; um robô transcreve, compara com o
 roteiro, corta, limpa o som, grava a legenda e a cartela e confere o arquivo; o administrador ouve, ajusta e aprova; o vídeo aprovado
@@ -2168,8 +2185,8 @@ roteiro, corta, limpa o som, grava a legenda e a cartela e confere o arquivo; o 
   celular livre e a até 1 metro da boca.
 - Fundo: **sem tela de computador, documento, cliente ou quadro de avisos**; no vídeo, só as pessoas marcadas na peça.
 - Grave **por bloco** do roteiro (uma ou duas frases por clipe): 1 segundo de silêncio antes de falar e 1 depois de terminar. Errou,
-  pare e grave o bloco de novo; **apague as tomadas ruins** antes de enviar. O corretor recebe de 1 a 12 clipes, já na ordem, e
-  soma até 120 s de gravação.
+  pare e grave o bloco de novo; **apague as tomadas ruins** antes de enviar. O corretor recebe de 1 a 12 clipes, já na ordem, que
+  somam até 16 minutos de gravação (v0.33.0; a meta do reel final é 90 s) — o envio mostra quanto da cota de transcrição vai gastar.
 - Fale o roteiro **como está escrito**, com os números, as datas e os termos (é o que o corretor compara). Trocar uma palavra comum
   não trava; número, data ou termo diferente pede regravar.
 - **Não edite** no celular (sem filtro, música, legenda ou corte) e envie os arquivos originais da câmera (MP4 ou MOV).
@@ -2213,8 +2230,10 @@ da fila:
   "30/10", "cinquenta mil reais" é "R$ 50.000,00", "é social" é "eSocial") e manda o **relatório parcial**;
 - **cortes:** o começo (fica 0,12 s antes da 1ª palavra) e o fim (0,45 s depois da última) de cada clipe; a pausa acima de 1,0 s
   dentro da frase fica com 0,30 s, e acima de 0,8 s entre frases, com 0,40 s (`pausa_max_s` e `pausa_bloco_s`); as hesitações
-  ("ãh", "hum", "ééé") e a voz sem palavra entre duas palavras seguidas do roteiro. Repetição e falso início viram **sugestão** (não
-  saem sozinhos). Cada corte no meio da fala é listado no relatório;
+  ("ãh", "hum", "ééé"), as **muletas faladas fora do roteiro** ("né", "tipo", "é" solto; v0.33.0), a voz sem palavra entre duas
+  palavras, as **repetições** ("a a", "devem devem") e os **falsos inícios** ("pra- prazo") — desde a v0.33.0, tudo isso sai **por
+  padrão**, e "Manter este trecho" desfaz qualquer um; palavra alinhada ao roteiro nunca sai, e o que é falado fora do roteiro de
+  verdade fica (a aba Vídeo corta cada trecho com um clique). Cada corte no meio da fala é listado no relatório;
 - **som:** filtro de grave, redução de ruído, compressor e volume de -14 LUFS (`lufs`), sem cortar a última palavra;
 - **imagem:** 1080×1920 (9:16, sem distorcer), 30 quadros por segundo, cor leve; o HDR é convertido;
 - **legenda** gravada no vídeo, em DM Sans branca sobre a caixa azul-marinho, dentro da área livre do Instagram, em blocos de até 2
@@ -2224,19 +2243,21 @@ da fila:
   Pessoas e termos) e o `cartela_extra`, em letra de pelo menos 28 px de altura; se não couber, para com o erro (nunca corta com
   "…");
 - **confere a saída:** MP4 H.264 1080×1920 a 30/1 e AAC 48 kHz estéreo, o índice no começo do arquivo, sem lista de edição, **sem a
-  localização nem a marca do celular**, volume dentro de 1 LU do alvo, de 3 a 90 s e até 300 MB; tira 4 quadros e entrega.
+  localização nem a marca do celular**, volume dentro de 1 LU do alvo, de 3 s a 15 minutos (o teto do reel pela API do Instagram) e até 300 MB; tira 4 quadros e entrega.
 O tempo no repositório privado (2 processadores) ainda não foi medido: pela conta, 3 a 6 minutos, mais a espera pela vaga da Azure.
 
-**4. O que o corretor NÃO corrige.** Nenhuma palavra é trocada, acrescentada ou inventada, e **"um", "uma", "e" e "é" nunca saem**
-(nem palavra alinhada ao roteiro). **Precisa regravar:** número, data, mês, ano, valor, ordinal ou termo do glossário diferente do
+**4. O que o corretor NÃO corrige.** Nenhuma palavra é trocada, acrescentada ou inventada, e **"um", "uma" e "e" nunca saem** (nem
+palavra alinhada ao roteiro; o "é" solto FORA do roteiro é muleta e sai por padrão desde a v0.33.0 — "Manter este trecho" desfaz). **Precisa regravar:** número, data, mês, ano, valor, ordinal ou termo do glossário diferente do
 roteiro (trocado, faltando ou a mais), termo que a publicidade contábil não usa na fala e frase do boletim pago. Não cria nem imita
 rosto ou voz, não põe música, não tira nada do fundo e não conserta imagem tremida, escura ou fora de foco, nem a luz ou o
 enquadramento diferentes de um clipe para o outro: isso se resolve gravando de novo.
 
 **5. Relatório e prévia.** A peça mostra a situação ("Na fila do corretor", "O corretor está trabalhando", "Vídeo corrigido pronto",
 "Precisa regravar", "O corretor parou") e se atualiza sozinha enquanto o robô trabalha. O relatório, com os tempos do vídeo corrigido:
-o que precisa regravar (o que foi dito e o que o roteiro diz), a duração (acima do limite de 45 s, `duracao_max_s`, a aprovação pede
-confirmação; acima de 90 s, não aprova), os cortes, as sugestões, as trocas de grafia, a legenda, o som, a imagem e **4 quadros**
+**o resumo do que foi corrigido e do que falta decidir** (v0.33.0, no topo), o que precisa regravar (o que foi dito e o que o
+roteiro diz; a divergência com palavra repetida colada avisa que **parece erro da transcrição** — ouça e confirme), a duração (acima
+da meta, `duracao_max_s`, padrão 90 s, a aprovação pede confirmação; acima de 90 s o Facebook não aceita reel pela API, sai só no
+Instagram; acima de 15 minutos, o teto da API do Instagram, não aprova), os cortes, as sugestões, as trocas de grafia, a legenda, o som, a imagem e **4 quadros**
 para conferir o fundo, as pessoas e a posição da legenda. A prévia abre por um link de **10 minutos** (vencido, a tela pede outro),
 e quem viu fica registrado. Quando o robô para, a peça diz o motivo em português (por exemplo: um clipe sem som, deitado ou que não
 é de câmera; "Transcrição ocupada; tente de novo"; a cota grátis da Azure do mês acabou; o limite de minutos do Radar no mês; a
@@ -2262,7 +2283,7 @@ que está no vídeo passa pelas travas, e se a chamada ou o `cartela_extra` muda
 "Refazer a cartela" (ou um envio novo).
 
 **7. Aprovar, baixar e postar.** O reel só fica pronto com o vídeo corrigido pronto e conferido (o roteiro de quando foi gravado,
-quem fala ainda marcada, a cartela de hoje, até 90 s). Na aprovação (só o administrador, modo "à mão"), a tela manda o hash do vídeo
+quem fala ainda marcada, a cartela de hoje, até 15 minutos; acima da meta de 90 s, a aprovação pede confirmação). Na aprovação (só o administrador, modo "à mão"), a tela manda o hash do vídeo
 que ele abriu na prévia e o banco confere com o vídeo pronto: a peça fica **amarrada a esse arquivo**. Ela pede "Conferi o vídeo: só
 aparecem as pessoas marcadas; sem tela, documento ou cliente ao fundo; só a voz" e, se alguma pessoa marcada pediu no termo para ver a
 peça antes, "A pessoa viu o vídeo final". Aprovado: **"Baixar o vídeo aprovado"** (`reel-AAAA-MM-DD.mp4`, link de 5 minutos; o
@@ -2271,7 +2292,7 @@ no aplicativo), marque **"Apaguei do celular e da nuvem pessoal (depois de posta
 registre o link. O registro do reel aprovado com esta versão sem o vídeo aprovado é recusado (RADAR317). "Desfazer aprovação" solta a amarra, e o vídeo pode mudar de novo.
 
 **8. Configurações → Corretor de vídeo** (só o administrador): `glossario` (os termos que a legenda escreve sempre do mesmo jeito, de
-1 a 200), `variantes` (como a transcrição erra cada termo, até 20 por termo: "é social" → eSocial), `duracao_max_s` (15 a 90; 45),
+1 a 200), `variantes` (como a transcrição erra cada termo, até 20 por termo: "é social" → eSocial), `duracao_max_s` (15 a 900; 90, a meta — acima dela só aviso),
 `pausa_max_s` (0,6 a 2; 1,0), `pausa_bloco_s` (0,4 a 2; 0,8), `lufs` (-24 a -9; -14), `cartela_s` (2 a 5; 3), `cartela_extra` (até
 120 caracteres, como "Desde 1984 · (48) 3242-0530 · artecon.cnt.br"; os termos que a publicidade contábil não usa são recusados),
 `limite_min_mes` (1 a 300; 30), `retencao_dias` (7 a 120; 30) e `retencao_publicado_dias` (0 a 365; 30). **"Testar o corretor de
@@ -2288,7 +2309,42 @@ Passando da cota, a Azure recusa (não cobra). Para trocar pelo serviço pago (*
 cadastre no repositório privado os segredos `AZURE_FALA_MODO` = `rapido` e `AZURE_FALA_ENDPOINT` (o endereço do recurso), troque a
 `AZURE_FALA_CHAVE` e, aí sim, aumente o `limite_min_mes` (até 300).
 
-**10. Guarda, acesso e privacidade.**
+**10. Editar na aba Vídeo (v0.33.0).**
+- Onde: a aba **Vídeo** (do administrador e do editor; o leitor não vê), ou o botão **"Editar na aba Vídeo"** no quadro "Corretor de
+  vídeo" da peça. A lista mostra o vídeo de cada reel ("De hoje em diante" ou "Últimos 60 dias"); "Editar" abre o editor. O editor
+  (papel) vê tudo, sem poder mudar.
+- **Cortar:** toque numa palavra (e em outra, para um trecho) e em "Cortar"; ou, pelo player, "Marcar começo do corte" e "Marcar fim
+  do corte". "Começar nesta palavra"/"Começar aqui" e "Terminar depois dela"/"Terminar aqui" marcam o começo e o fim do vídeo. Até 30
+  cortes. Os cortes do robô aparecem com **"Manter este trecho"** (desfaz o corte por padrão), as divergências com **"Cortar este
+  trecho"** e **"A transcrição errou"**, e o falado fora do roteiro com **"Cortar este trecho"** (um clique).
+- **A prévia:** com "Prévia com as mudanças" marcada, o player pula os cortes novos, no próprio navegador, sem gastar nada. O que
+  volta ao vídeo (um corte desfeito, um trecho do robô mantido) e a legenda, o estilo, o gancho, a cartela e a capa novos só aparecem
+  depois de montar (o estilo aparece na amostra).
+- **A duração:** a tela mostra a duração depois de montar (a conta é a do robô: a fala que fica e, se o fim marcado cair no meio ou
+  logo depois de uma palavra, até 0,45 s de imagem parada no fim); o mínimo é 5 s e o máximo 15 minutos (o teto do reel pela API do
+  Instagram), com pelo menos 2 s de fala; acima da meta (`duracao_max_s`, padrão 90 s) é aceito, só com aviso.
+- **A legenda:** troque palavra por palavra (a palavra do roteiro ou uma parecida); número, data, mês e termo do glossário não mudam
+  aqui. O tamanho (pequena, média, grande), a posição (em cima, no meio, embaixo: "em cima" pode cobrir o rosto) e a cor (marinho,
+  branco, vermelho, azul ou amarelo da Artecon).
+- **O gancho:** é o "Texto do gancho" da peça: mudar aqui muda lá também (a peça pronta volta a "em produção"). "Sem texto do gancho"
+  tira o texto do vídeo.
+- **A cartela:** a identificação legal e a linha de quem fala vêm das Configurações e de Pessoas e termos; aqui só "Refazer" e o
+  texto extra (o das Configurações, um próprio deste vídeo ou nenhum). O texto extra próprio não leva "contador(a)", "técnico(a)" nem
+  "especialista", nem um endereço ou palavra de mais de 45 letras sem espaço (não cabe na linha). Se mesmo assim a cartela não
+  couber, o corretor para com "a cartela final não coube": **Tentar de novo** monta com o texto extra das Configurações, e um texto
+  mais curto se escolhe de novo na aba Vídeo, com o vídeo pronto.
+- **Os ajustes da peça** (quadro "Ajustes" do corretor) continuam para a legenda, "Manter este trecho", "A transcrição errou", a
+  legenda compacta e o gancho; os cortes, o estilo da legenda, o texto extra da cartela e a capa só mudam pela aba Vídeo (que confere
+  cada um).
+- **A capa:** leve o player ao quadro e clique em "Usar o quadro do player como capa". A capa é um quadro da fala, sem a legenda. Na
+  peça aprovada, "Baixar o vídeo aprovado" traz também "Baixar a capa": ao postar o reel, na tela da capa, escolha adicionar da
+  galeria e use esta imagem. Trocar só a capa e montar de novo dá o mesmo vídeo com a capa nova. (A API da Meta aceita a capa por
+  imagem ou pelo instante; fica pronta para quando a publicação do reel for automática.)
+- **Montar de novo com estas mudanças:** não transcreve de novo (não gasta os minutos do mês); gasta uns 4 a 6 minutos do GitHub
+  Actions do repositório privado. Enquanto o robô monta, o reel não pode ser aprovado. As mudanças não montadas ficam só nesta tela:
+  sair do Radar as perde ("Descartar as mudanças" também).
+
+**11. Guarda, acesso e privacidade.**
 
 | Dado | Onde | Quem vê | Até quando (a limpeza diária, 03h37) |
 |---|---|---|---|
@@ -2597,6 +2653,55 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.32.0 para a v0.33.0** (muda o banco: SQL novo, que pode rodar de novo; muda a função `radar-video` e o robô do vídeo;
+as funções `radar-ia`, `radar-redes`, `radar-itc`, `radar-concorrentes` e `radar-copia` e as agendas não mudam; **nenhum segredo
+novo**; nada de chave ou segredo pelo chat). Supõe a v0.32.0 instalada. **Nesta ordem**:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.33.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **30
+   tabelas** e "instalacoes concluidas" com a **v0.33.0**. Ele acrescenta as funções do editor do vídeo e sobe o teto de duração do
+   vídeo; **nenhuma tabela nem coluna nova**, nada é apagado.
+2. Supabase → **Edge Functions** → `radar-video` → cole o `supabase/functions/radar-video/index.ts` desta versão → **Deploy**, com o
+   "Verify JWT" como já está. Configurações → Corretor de vídeo → "Testar o corretor de vídeo" mostra **"Função radar-video v0.33.0"**.
+3. Publique a versão no repositório (`main`): a tela (`index.html`, `radar-pauta.js`, `radar-video.js`) e o código do robô vão
+   juntos. Espere o "Radar — testes" ficar verde no commit do merge.
+4. **Logo depois**, troque o commit do robô no repositório **privado**:
+   1. GitHub → repositório público `radar` → **Commits** (ramo `main`) → no commit desta versão, use o botão de copiar o SHA completo
+      (40 letras e números).
+   2. GitHub → repositório privado **`radar-video`** → **Settings → Secrets and variables → Actions** → aba **Variables** →
+      **`RADAR_VIDEO_COMMIT`** → lápis (Edit) → apague o valor antigo (anote-o antes, para poder voltar), cole o SHA novo →
+      **Update variable**.
+   3. Actions → "Radar — corretor de vídeo" → **Run workflow**. Sem vídeo na fila, termina verde em cerca de 1 minuto. Vermelho em
+      "Conferir o commit" quer dizer que o SHA não foi colado inteiro.
+
+   O workflow (`radar-video.yml`) e os segredos do repositório privado **não mudam** (recopiar o modelo do workflow é opcional: o
+   tempo-limite novo, 60 minutos, só faz falta para vídeos bem mais longos que uns 5 minutos). Se alguém montar pela aba Vídeo antes
+   deste passo, o vídeo para com "robô desatualizado"; depois do passo, basta "Tentar de novo".
+5. **Ctrl+F5** em todos os aparelhos. A aba Versões mostra a v0.33.0 e aparece a aba **Vídeo** (para o administrador e o editor).
+6. Confira **sem publicar nada**, com o reel de teste de sempre, numa peça de teste — nunca numa peça real:
+   1. Abra a aba Vídeo → o reel. O vídeo montado antes desta versão mostra "Montar de novo para liberar os cortes e a capa": clique e
+      espere ficar pronto.
+   2. Marque um corte e ouça a prévia pulando.
+   3. Mude a cor e a posição da legenda e escolha a capa.
+   4. Clique em **"Montar de novo com estas mudanças"** e confira o vídeo novo e a capa.
+   5. No fim, descarte a gravação e cancele a peça de teste.
+
+**Para desfazer:**
+1. Volte a tela e o robô da v0.32.0 (histórico do GitHub).
+2. Troque o `RADAR_VIDEO_COMMIT` de volta pelo SHA anterior (o que você anotou).
+3. Faça o Deploy da `radar-video` anterior e rode o setup da v0.32.0.
+
+O que fica depois de desfazer:
+- As 4 funções novas ficam no banco, sem uso. Para tirá-las, cole no SQL Editor **só estas 4 linhas** (nunca rode o arquivo de
+  reversão: ele desinstala o Radar inteiro e apaga todas as tabelas e os dados):
+  ```sql
+  drop function if exists public.radar_video_editar(uuid, text, jsonb, text[], text);
+  drop function if exists public.radar_video_paleta();
+  drop function if exists public.radar_video_edicao_falta(public.radar_videos, jsonb);
+  drop function if exists public.radar_video_edicao_duracao(public.radar_videos, jsonb);
+  ```
+- Os vídeos montados pela aba continuam valendo; o teto novo da coluna `duracao_final` (960 s) também fica, sem efeito prático.
+- As mudanças gravadas em `ajustes` ficam sem efeito para o robô antigo, e a trava "robô desatualizado" sai junto com o setup novo.
 
 **Da v0.31.0 para a v0.32.0** (muda o banco: SQL novo, que pode rodar de novo; o robô dos lembretes e o do site mudam; uma função nova,
 `radar-copia`, e uma agenda nova, `sql/radar-copia-agenda.sql`; as funções `radar-ia`, `radar-redes`, `radar-itc` e `radar-video`
