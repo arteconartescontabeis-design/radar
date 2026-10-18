@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.33.0.sql
--- DESFAZ a instalação do radar-setup-v0.33.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.34.0.sql
+-- DESFAZ a instalação do radar-setup-v0.34.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.

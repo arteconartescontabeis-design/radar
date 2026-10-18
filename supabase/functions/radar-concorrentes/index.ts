@@ -61,7 +61,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.30.0";                 // v0.34.0 (fase A): as ações da aba Setor; a versão sobe na fase B (v0.22.0: a chave pública nova)
+const VERSAO = "0.34.0";                 // v0.34.0: as ações da aba Setor (v0.22.0: a chave pública nova)
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");

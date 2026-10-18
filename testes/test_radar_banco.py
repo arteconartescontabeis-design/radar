@@ -756,7 +756,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.33.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.34.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -2096,9 +2096,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.33.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.34.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.33.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.34.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2128,7 +2128,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.33.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.34.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -5655,8 +5655,8 @@ def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
             assert contar() == antes and estado() == como_estava
         assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
         assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
-        # (o setup registra a versão dele: v0.33.0, que traz junto os da v0.28.0 a v0.32.0)
-        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.33.0",), ("v0.33.0",)]
+        # (o setup registra a versão dele: v0.34.0, que traz junto os da v0.28.0 a v0.33.0)
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.34.0",), ("v0.34.0",)]
         assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
     finally:
         assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro

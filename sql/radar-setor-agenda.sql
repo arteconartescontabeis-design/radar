@@ -1,5 +1,5 @@
 -- =====================================================================
--- Radar Artecon v0.34.0 — leitura automática da aba Setor (rodar no Supabase → SQL Editor, DEPOIS do radar-setup-v0.30.0.sql)
+-- Radar Artecon v0.34.0 — leitura automática da aba Setor (rodar no Supabase → SQL Editor, DEPOIS do radar-setup-v0.34.0.sql)
 --
 -- Toda segunda-feira, a partir das 04:00 de Brasília, o Radar lê sozinho cada conta dos setores da aba Setor uma vez, pela função
 -- radar-concorrentes (só leitura na API oficial da Meta, Business Discovery: nunca publica, comenta, curte ou segue). O pg_cron chama
@@ -33,7 +33,7 @@ end $$;
 do $$
 begin
   if to_regprocedure('public.radar_setor_ha_devidas()') is null then
-    raise exception 'Rode antes o radar-setup-v0.30.0.sql desta versão (Supabase → SQL Editor). Nada foi agendado.';
+    raise exception 'Rode antes o radar-setup-v0.34.0.sql desta versão (Supabase → SQL Editor). Nada foi agendado.';
   end if;
   if to_regprocedure('public.radar_concorrentes_conferir(text)') is null
      or not exists (select 1 from vault.secrets where name = 'radar_concorrentes') then

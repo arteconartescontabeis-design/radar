@@ -13,7 +13,7 @@
    recado, desenhar, ehAdmin, E, ErroApi, VERSAO, $) só quando são chamadas. Quem confere quem pode o quê é o banco.
    A busca por hashtag fica desligada (Configuração da aba) até a Meta aprovar o recurso Instagram Public Content Access.
    ==================================================================== */
-const SETOR_VERSAO = "0.30.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const SETOR_VERSAO = "0.34.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 // o que só a tela guarda: o setor escolhido, o período, o quadro do administrador aberto e o formulário de setor novo
 let SETOR_E = {setor: null, dias: 90, gerir: false, novo: false};
@@ -68,7 +68,7 @@ const setorLink = (u, rotulo = "Ver no Instagram ↗") => setorLinkOk(u) ? `<a h
 const setorPerfil = nome => /^[a-z0-9._]{1,30}$/.test(String(nome || "")) ? `<a href="https://www.instagram.com/${h(nome)}/" target="_blank" rel="noopener noreferrer">@${h(nome)}</a>` : "@" + h(nome);
 // o banco ainda não tem a aba (setup de antes desta versão): a tela diz o que falta em vez do erro cru
 const setorSemBanco = e => e.status === 404 || /radar_setor/.test(e.message || "");
-const SETOR_SEM_BANCO = `<h1>Setor</h1><div class="aviso erro" id="setor-sem-banco">A aba Setor precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const SETOR_SEM_BANCO = `<h1>Setor</h1><div class="aviso erro" id="setor-sem-banco">A aba Setor precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaSetor(){

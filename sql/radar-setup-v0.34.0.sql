@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.33.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.34.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -56,7 +56,12 @@
 -- NENHUMA tabela ou coluna nova; nada é apagado. Os cortes do corretor passam a sair POR PADRÃO (muletas, repetições, falsos inícios
 -- e voz entre palavras; "Manter este trecho" desfaz) e a duração ganha meta (duracao_max_s, 15 a 900 s; o teto duro é o reel de 15
 -- minutos da API do Instagram) — o teto da coluna duracao_final sobe para 960 s (alter table no bloco).
--- Reversão: radar-reversao-v0.33.0.sql
+-- v0.34.0 (bloco “v0.34.0”, antes da seção 6): a aba Setor — a análise das publicações de um setor no Instagram, pela API oficial
+-- da Meta (Business Discovery, só leitura). Quatro tabelas novas (radar_setor_setores, radar_setor_contas, radar_setor_posts e
+-- radar_setor_coletas, todas com RLS) e as funções radar_setor_* (quem decide o que ler é o banco; a função radar-concorrentes só
+-- pergunta “quem é o próximo?”). Temas por palavras, sem IA; a busca por hashtag nasce DESLIGADA (hashtag_ligada), até a Meta
+-- aprovar. A agenda fica em sql/radar-setor-agenda.sql, rodado DEPOIS deste. Nada é apagado.
+-- Reversão: radar-reversao-v0.34.0.sql
 -- =====================================================================
 
 begin;
@@ -82,7 +87,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.33.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.34.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -9557,7 +9562,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 30 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.33.0).
+-- Esperado: 34 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.34.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

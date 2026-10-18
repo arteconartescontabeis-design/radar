@@ -48,7 +48,7 @@ def test_sem_o_setup_desta_versao_nada_e_agendado(tmp_path):
     novo_banco(nome, com_setup=False, simulados=True)
     try:
         r = rodar_agenda(tmp_path, nome)
-        assert r.returncode != 0 and "Rode antes o radar-setup-v0.30.0.sql" in r.stderr, r.stderr
+        assert r.returncode != 0 and "Rode antes o radar-setup-v0.34.0.sql" in r.stderr, r.stderr
         with conectar(nome) as c:
             assert c.execute("select count(*) from cron.job").fetchone()[0] == 0
     finally:

@@ -1,4 +1,4 @@
-# Radar Artecon — v0.33.0
+# Radar Artecon — v0.34.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,23 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.34.0 traz a aba **Setor**: como estão as publicações de um setor no Instagram (a contabilidade, para começar). O
+administrador cria o setor, escolhe as **contas públicas** (comerciais ou de criador) de outros escritórios — e a da Artecon, para
+comparar — e clica em **"Atualizar a análise"**; toda **segunda-feira, a partir das 04:00** de Brasília, o Radar lê sozinho cada
+conta **uma vez por semana**, pela **API oficial da Meta** (Business Discovery, só leitura: nunca publica, comenta, curte ou segue),
+até 50 publicações por conta, com pausa entre as chamadas e **parando quando a Meta pede**. A equipe toda vê o painel: publicações
+por semana, mistura de formatos (reel, carrossel, foto), engajamento por publicação ((curtidas + comentários) ÷ seguidores, pela
+**mediana**), melhores dias e horários, **temas** mais frequentes (por palavras de contabilidade, sem IA e sem custo; editáveis) e
+as publicações de maior engajamento, com o link e só um trecho curto da legenda, **sem imagem**. A **busca por hashtag** nasce
+pronta e **desligada** até a Meta aprovar o recurso *Instagram Public Content Access* (o pedido tem passo a passo abaixo).
+**Serve para ver formatos e temas, nunca para copiar (NBC PG 01).**
+
+Mudam o banco (`sql/radar-setup-v0.34.0.sql`: as 4 tabelas novas `radar_setor_*`, **34 tabelas**; nada é apagado), a função
+`radar-concorrentes` (as ações da aba Setor; continua **só de leitura** e com o "Verify JWT" desligado) e a tela (`index.html` e o
+**`radar-setor.js`**, novo; `radar-pauta.js` e `radar-video.js` só mudam a versão). Entram a agenda `sql/radar-setor-agenda.sql`
+(com a reversão) — ela usa a chave do `sql/radar-concorrentes.sql`, que o dono já rodou. **Nenhum segredo novo.**
+**Rode o SQL antes de publicar a tela**: veja "Da v0.33.0 para a v0.34.0".
 
 A v0.33.0 traz a aba **Vídeo**: o administrador edita o vídeo corrigido de cada reel — o começo, o fim e trechos do meio, o texto
 da legenda palavra por palavra, o tamanho, a posição e a cor da legenda (só as cores da Artecon), o texto do gancho, o texto extra
@@ -865,13 +882,14 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 |---|---|
 | `index.html` | Dashboard de curadoria (uso interno, com login). Não há página pública. |
 | `radar-pauta.js` | A aba Pauta (v0.21.0), carregada pelo `index.html`. Vai sempre junto com ele: com os dois de versões diferentes, a aba pede Ctrl+F5. |
-| `radar-video.js` | O corretor de vídeo do reel (v0.22.0), carregado pelo `index.html` depois do `radar-pauta.js`. Vai sempre junto com os dois. |
+| `radar-video.js` | O corretor de vídeo do reel (v0.22.0) e a aba Vídeo (v0.33.0), carregado pelo `index.html` depois do `radar-pauta.js`. Vai sempre junto com os dois. |
+| `radar-setor.js` | A aba Setor (v0.34.0): a análise das publicações do setor no Instagram. Carregado pelo `index.html` depois do `radar-video.js`; vai sempre junto. |
 | `informativo.html` | Informativo Mensal para imprimir / salvar em PDF (uso interno, usa o login do dashboard). |
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.32.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.32.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.34.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.34.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
@@ -881,7 +899,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. Desde a v0.29.0, também pede (de 15 em 15 minutos, só quando há o que lembrar) o robô dos lembretes por e-mail. |
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `sql/radar-copia-agenda.sql`, `sql/radar-copia-agenda-reversao.sql` | A chave da cópia no Vault e a agenda da cópia mensal no OneDrive (v0.32.0: dia 1 às 04h10, de novo às 05h10 e no dia 2, só se o mês ainda não tem cópia) e como desfazer. Roda no Supabase depois do setup; pode rodar de novo. |
-| `supabase/functions/radar-concorrentes/index.ts` | Opcional (v0.19.1): lê, só para análise, os dados públicos de perfis comerciais de outros escritórios no Instagram. |
+| `supabase/functions/radar-concorrentes/index.ts` | Lê, só para análise, os dados públicos de perfis comerciais no Instagram (v0.19.1); desde a v0.34.0, também alimenta a aba Setor (as ações `setor_*`; continua só de leitura). |
+| `sql/radar-setor-agenda.sql`, `sql/radar-setor-agenda-reversao.sql` | A leitura automática da aba Setor (v0.34.0: de hora em hora, só quando há conta devida — na prática, segunda-feira a partir das 04:00) e como desfazer. Usa a chave do `sql/radar-concorrentes.sql`. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações; desde a v0.31.0, o filtro de tema das fontes e a leitura do sistema Normas da Receita pela pesquisa nova (`robo/radar_normas.py`); desde a v0.32.0, o robô dos lembretes avisa também o vencimento de uma chave ou conta e a cópia do mês que não saiu. |
 | `sql/radar-fontes-novas-v0.31.0.sql` | As fontes oficiais da v0.31.0 (Diário Oficial: leis e decretos, CONFAZ, trabalho e previdência; gov.br: eSocial, FGTS Digital e Previdência; DOM/SC, desligadas) e a rfb-normas na pesquisa nova. Roda depois de o robô da v0.31.0 coletar uma vez; pode rodar de novo. |
@@ -2404,9 +2423,82 @@ num dos quadros ficam para a v0.22.1. As recusas do banco do corretor vêm com o
 fala para conferência não está no roteiro", RADAR304 "pessoa ou termo", RADAR305 "cartela", RADAR312 "cota do mês", RADAR313 "o vídeo
 da aprovação não confere", RADAR317 "registro do reel sem o vídeo aprovado").
 
-### Concorrentes no Instagram (v0.19.1, opcional)
+### Análise do setor no Instagram (v0.34.0)
 
-A função `radar-concorrentes` **só lê**: para uma lista de perfis comerciais (ou de criador) do Instagram de outros
+A aba **Setor** mostra, para a equipe toda, como estão as publicações de um setor no Instagram — a contabilidade, para começar. O
+administrador cria o setor, escolhe as contas (públicas, comerciais ou de criador; outros escritórios e a da Artecon, para
+comparar) e edita os temas; a leitura é **uma vez por semana por conta** (segunda-feira, a partir das 04:00 de Brasília, até 12
+contas por hora), pela **API oficial da Meta** (Business Discovery). A função `radar-concorrentes` continua **só de leitura**:
+nunca publica, comenta, curte ou segue.
+
+**O que cada número quer dizer:**
+- **Publicações por semana**: quantas a conta publicou, em média, nas semanas lidas.
+- **Engajamento por publicação** = (curtidas + comentários) ÷ seguidores × 100. O número da conta é a **mediana** (uma publicação
+  viral não distorce); o número do setor é a mediana das contas (sem a Artecon). Curtidas ocultas ficam de fora.
+- **Dias e horários**: cada publicação é comparada com o típico **da própria conta** (relativo), para a conta grande não engolir as
+  pequenas.
+- **Temas**: classificação **por palavras** (sem IA, sem custo): o termo casa com a palavra inteira, sem acento e sem maiúscula, e
+  a hashtag casa com o termo sem espaços (#impostoderenda = "imposto de renda"). Os temas são do setor e **editáveis** na própria
+  aba (uma linha por tema: "Nome: termo, termo"); salvar reclassifica o que já foi lido.
+
+**O que a Meta não mostra** (e por isso não aparece): alcance, salvamentos, compartilhamentos, visualizações e stories de conta
+dos outros. Por isso a comparação usa o que é público (curtidas e comentários) e a mediana.
+
+**Limites e cuidados:** 30 contas por setor, 60 no total, 10 setores; 1 leitura por semana por conta; pausa de 1,5 s entre as
+chamadas e **pausa geral quando a Meta pede** (a aba mostra e a leitura retoma sozinha); a conta que falha 3 semanas seguidas sai
+da leitura automática ("Retomar" volta); só contas de empresas (comerciais ou de criador); as publicações guardam **até 400 dias**
+e só um trecho de até 300 caracteres da legenda (a tela mostra no máximo 100); **nenhuma imagem é guardada nem mostrada**.
+
+**Ética:** serve para ver **formatos e temas**, nunca para copiar (NBC PG 01). Não reproduza texto, arte ou roteiro de outro
+escritório e não cite nem compare escritórios nos posts.
+
+**Erros que podem aparecer** (em português, conta por conta, na própria aba): conta não encontrada, privada ou que não é
+comercial (corrija o @ ou remova); limite de chamadas da Meta (a leitura para e retoma sozinha depois da pausa); token vencido ou
+sem permissão (Configurações → Vencimentos; o token da Meta é o mesmo da radar-redes). Nenhum aviso por e-mail: a situação fica
+só na aba.
+
+#### Busca por hashtag: pedir a aprovação da Meta (uma vez)
+
+1. Entre em **developers.facebook.com** com a conta que administra o aplicativo **"Radar Artecon Publicações"** → Meus aplicativos
+   → o aplicativo.
+2. Confira antes: (a) a **verificação da empresa** concluída no Gerenciador de Negócios (Configurações da empresa → Central de
+   segurança/Verificação) — a Meta exige para acesso avançado; (b) o aplicativo com **Política de Privacidade** (um endereço
+   público), ícone e categoria preenchidos, no modo **Ao vivo (Live)**; (c) a **Verificação de uso de dados** anual em dia (o
+   painel avisa se faltar).
+3. No menu do aplicativo: **Análise do App (App Review) → Permissões e recursos (Permissions and Features)** → procure
+   **"Instagram Public Content Access"** → **Solicitar acesso avançado (Request advanced access)**. Confira também que a
+   `instagram_basic` está com acesso avançado (já é usada pelo Radar).
+4. No "como o aplicativo usa", cole o texto em inglês (o revisor da Meta lê em inglês):
+
+   > Radar Artecon is an internal tool used only by the staff of Artecon Artes Contábeis, an accounting firm in Brazil. Our
+   > administrator types an accounting-related hashtag (for example #contabilidade). Once a week, the app calls ig_hashtag_search
+   > and the hashtag's top_media edge to show, in an internal dashboard, aggregate statistics about public posts: format (reel,
+   > carousel, photo), posting day and time, number of likes and comments, and topic keywords. We use it only to understand which
+   > formats and topics work in our sector. We never copy content, never publish, comment, like or follow, and we do not store
+   > images. Only a short excerpt (up to 300 characters) of each caption is kept for topic classification, and data older than
+   > 400 days is deleted.
+
+   (Em português: o Radar é uma ferramenta interna da Artecon; o administrador digita uma hashtag do setor; uma vez por semana o
+   aplicativo busca as publicações públicas mais populares dela e mostra números agregados — formato, dia e hora, curtidas,
+   comentários e temas — só para entender que formatos e temas funcionam; nunca copia, publica, comenta, curte ou segue, e não
+   guarda imagens.)
+5. **Vídeo de demonstração** (1 a 3 minutos), gravado na tela do computador (Windows: tecla Windows + G, ou a Ferramenta de
+   Captura em modo vídeo): entrar no Radar → aba Setor → mostrar o aviso de ética → em Configuração, a busca por hashtag →
+   incluir #contabilidade → Atualizar a análise → o quadro da hashtag. Antes da aprovação a Meta às vezes já deixa usar para quem
+   administra o aplicativo; se não deixar, o quadro mostra "a Meta ainda não liberou a busca por hashtag" — grave assim mesmo e
+   explique no texto que é o ponto em que o recurso é usado. Não mostre dados de clientes nem de pessoas no vídeo.
+6. Se a Meta pedir um acesso para testar, crie no Radar um usuário **leitor** temporário só para o revisor (Usuários → novo) e
+   apague depois da resposta. Nunca mande senha por chat.
+7. Envie e acompanhe em **Análise do App → Solicitações**. Pode levar de alguns dias a semanas; se negarem, a Meta diz o motivo:
+   corrija e envie de novo — ou fique só com as contas, que já funcionam.
+8. Aprovado: aba Setor → Configuração → "Busca por hashtag ligada" → Salvar; teste com **1** hashtag antes das outras. Lembre: a
+   Meta permite **30 hashtags diferentes a cada 7 dias**; o Radar busca cada hashtag uma vez só por rodada e guarda o número dela.
+
+### Concorrentes no Instagram (v0.19.1, opcional; v0.34.0: a função também alimenta a aba Setor)
+
+Desde a v0.34.0, a mesma função atende a aba **Setor** (as ações `setor_*`, que gravam a leitura nas tabelas `radar_setor_*` por
+funções do banco): a seção "Análise do setor no Instagram (v0.34.0)", acima, é o jeito de usar pela tela. A ação `ler` desta seção
+continua igual. A função `radar-concorrentes` **só lê**: para uma lista de perfis comerciais (ou de criador) do Instagram de outros
 escritórios de contabilidade, busca pela API oficial da Meta (Business Discovery) os dados públicos da conta (nome, bio, site,
 seguidores, seguindo, total de posts) e dos posts recentes (data, formato, curtidas, comentários, visualizações quando a Meta
 informa, legenda, link e o endereço da imagem). Não publica, não grava nada no banco e não guarda imagem; o registro (log) da
@@ -2653,6 +2745,34 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.33.0 para a v0.34.0** (muda o banco: SQL novo, que pode rodar de novo; muda a função `radar-concorrentes` e entra a agenda
+do setor; as funções `radar-ia`, `radar-redes`, `radar-itc`, `radar-video` e `radar-copia` e as outras agendas não mudam;
+**nenhum segredo novo**; nada de chave ou segredo pelo chat). Supõe a v0.33.0 instalada. **Nesta ordem**:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.34.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **34
+   tabelas** e "instalacoes concluidas" com a **v0.34.0**. Ele cria as 4 tabelas da aba Setor (`radar_setor_*`); nada é apagado.
+2. Supabase → **Edge Functions** → `radar-concorrentes` → cole o `supabase/functions/radar-concorrentes/index.ts` desta versão →
+   **Deploy**, com o **"Verify JWT" desligado** (como já está). Nenhum segredo novo.
+3. Se o `sql/radar-concorrentes.sql` nunca foi rodado neste projeto, rode-o uma vez (cria a chave no Vault). No projeto da Artecon
+   ele já foi rodado (a análise de outubro): pode pular.
+4. SQL Editor → rode o `sql/radar-setor-agenda.sql` inteiro. No fim ele mesmo testa a função e espera `200 {"ok": true, …}`.
+5. Publique a tela (`index.html`, `radar-pauta.js`, `radar-video.js` e o **novo `radar-setor.js`**, juntos) e aperte **Ctrl+F5** em
+   todos os aparelhos. A aba Versões mostra a v0.34.0 e aparece a aba **Setor**.
+6. No Radar → aba **Setor**: crie o setor "Contabilidade"; cole as contas (uma por linha: @usuario ou o link do perfil — só contas
+   de escritórios, comerciais ou de criador); clique em "Incluir a conta da Artecon"; confira os temas; clique em **"Atualizar a
+   análise"** e espere (cerca de 2 minutos a cada 12 contas, sem fechar a aba).
+7. Confira na tabela as contas "não encontrada, privada ou que não é comercial": corrija o @ ou remova.
+8. Peça à Meta a aprovação da **busca por hashtag** ("Busca por hashtag: pedir a aprovação da Meta", abaixo) — pode levar semanas e
+   ser negada; enquanto isso, tudo funciona pelas contas.
+9. Quando a Meta aprovar: aba Setor → Configuração → marque "Busca por hashtag ligada" → Salvar; inclua **1** hashtag
+   (#contabilidade), Atualizar a análise e confira; depois as outras (até 5 por setor; a Meta permite 30 hashtags diferentes a cada
+   7 dias).
+10. Nunca mande token ou senha pelo chat; nada muda nos segredos do GitHub.
+
+**Para desfazer:** rode o `sql/radar-setor-agenda-reversao.sql` (para a leitura automática) e, se quiser tirar tudo, volte a tela
+da v0.33.0 e rode o setup da v0.33.0 (as tabelas do setor ficam, sem uso; a reversão completa apaga o Radar inteiro — nunca a use
+para desfazer uma versão). Na aba Setor, **remover uma conta apaga as publicações guardadas dela**.
 
 **Da v0.32.0 para a v0.33.0** (muda o banco: SQL novo, que pode rodar de novo; muda a função `radar-video` e o robô do vídeo;
 as funções `radar-ia`, `radar-redes`, `radar-itc`, `radar-concorrentes` e `radar-copia` e as agendas não mudam; **nenhum segredo
