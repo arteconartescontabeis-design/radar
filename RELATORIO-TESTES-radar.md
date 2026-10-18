@@ -1,6 +1,9 @@
-# Radar Artecon — Relatório de testes (v0.35.0)
+# Radar Artecon — Relatório de testes (v0.36.0)
 
-Data: 18/10/2026. **A suíte inteira da v0.35.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+Data: 18/10/2026. **A suíte inteira da v0.36.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+arquivos afetados pela v0.36.0 (números na seção "v0.36.0", abaixo). A v0.36.0 tem **11** testes novos (6 do banco em
+`test_radar_video_banco.py`, 2 da função em `test_radar_funcao_video.py` e 3 da tela em `test_radar_telas.py`); a suíte inteira
+passa de 1.476 para **1.487** testes. Na v0.35.0: Neste ambiente rodaram, em série, os
 arquivos afetados pela v0.35.0: a bateria dos dez arquivos afetados (**500 aprovados, 1 pulado**, 289 s; as 6
 falhas eram listas de conferência que ainda não conheciam o módulo — funções expostas, a coluna palavra_chave e as contagens 37 —
 corrigidas e rodadas de novo verdes) e o arquivo inteiro dos testes de tela com a aba nova (**276 aprovados, 61 pulados**, 542 s,
@@ -69,6 +72,39 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.36.0 — correção avulsa: analisar e corrigir um vídeo sem peça na Pauta
+
+Todos os testes usam **dados fictícios** ("Ana Teste" e "Bruno Exemplo", falas de mentira, clipes de bytes sintéticos; os vídeos da
+tela são gerados na hora pelo ffmpeg): nenhuma gravação real entra nos testes.
+
+- **Banco** (6 testes novos em `testes/test_radar_video_banco.py`): o envio do avulso confere TUDO antes de qualquer arquivo sair
+  (título com RADAR320, fala de ao menos 10 palavras, de 1 a 12 pessoas com quem fala entre elas, o termo do corretor de cada uma,
+  a cartela com a identificação legal, os clipes na ordem e as quatro declarações; o leitor não envia); a regra da tabela (ou peça,
+  ou título — nem o dono do banco mistura); o caminho completo até o baixar (o pedido do robô é autossuficiente: nada muda para o
+  robô; baixar é SÓ do administrador, RADAR321, só o vídeo PRONTO, registrado em `radar_video_acessos`; o vídeo de peça não sai por
+  ali); a divergência pendente pede regravar e a marca "a transcrição errou" libera; o termo revogado trava o robô, a prévia e o
+  baixar na hora e a limpeza (agora com o avulso na varredura) leva arquivos e textos; "Conferir com o roteiro novo" recusado no
+  avulso; o gancho do editor fica SÓ no vídeo (nenhuma peça é criada ou tocada); o envio abandonado sai na limpeza de 1 dia.
+- **Função** (2 testes novos em `testes/test_radar_funcao_video.py`, no Deno): `envio_iniciar_avulso` confere no banco ANTES
+  (título e fala recusados sem nenhum token sair) e devolve o mesmo formato do envio da peça (um token por clipe, TUS, bucket
+  privado), seguindo o mesmo caminho até a fila; `baixar_avulso` só o administrador (403 para o editor), só o PRONTO (409 com o
+  motivo), link de 300 s com o nome `avulso-<data>.mp4` e o acesso registrado.
+- **Tela** (3 testes novos em `testes/test_radar_telas.py`, Chromium, com a função de verdade no Deno): o caminho inteiro
+  (formulário → conferência antes de subir → TUS → fila → corretor conclui → lista "Correções avulsas" → fala guardada → baixar do
+  administrador → "apaguei" registrado); o editor só vê (sem baixar e sem montar); o envio que não terminou continua ou descarta na
+  própria aba (não há peça para voltar).
+- Mudam: a contagem das funções do corretor (44 → **46**), a lista de funções expostas (as 2 novas, que conferem o papel por
+  dentro), as versões (tela, `radar-video` e robô em 0.36.0; setup e reversão renomeados para v0.36.0) e os registros de
+  instalação nos testes de atualização (v0.36.0). Nenhuma tabela nova: as contagens de tabelas (37) não mudam.
+
+Rodado neste ambiente, em série (a suíte inteira roda no CI do GitHub antes de juntar), em 18/10/2026: o corretor no banco
+(**51 aprovados**, com os 6 novos); a função `radar-video` no Deno (**16 aprovados**, com os 2 novos); o banco geral
+(**312 aprovados**, depois de atualizar os registros de instalação para v0.36.0); o repositório (**21 aprovados, 1 pulado**); o
+arquivo inteiro dos testes de tela com os 3 novos (**261 aprovados, 61 pulados**, 562 s; as 15 falhas da 1ª rodada eram
+interferência de outra bateria rodando no mesmo banco ao mesmo tempo — rodadas de novo em série, todas verdes); e as telas das
+abas Respostas e Setor (**18 aprovados**). O setup rodou duas vezes seguidas nos bancos de teste (os testes que já fazem isso) e a
+reversão tira as duas funções novas junto com as outras.
 
 ## v0.35.0 — Módulo Respostas Automáticas (aba Respostas)
 

@@ -1061,7 +1061,7 @@ def test_socio_grava_sem_os_termos_e_continua_com_ativa_menor_e_declaracoes(corr
 def test_funcoes_do_video_sem_current_date_com_caminho_e_configuracao_inicial(db):
     funcoes = db.execute("""select p.proname, p.prosrc, p.proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                             where n.nspname = 'public' and (p.proname like 'radar\\_video\\_%' or p.proname = 'radar_pauta_pecas_da_pessoa')""").fetchall()
-    assert len(funcoes) == 44                                    # v0.22.0: + radar_video_cota; v0.33.0: + as 4 do editor
+    assert len(funcoes) == 46                                    # v0.22.0: + radar_video_cota; v0.33.0: + as 4 do editor; v0.36.0: + criar_avulso e baixar_avulso
     assert [n for n, src, _ in funcoes if "current_date" in src.lower()] == []                    # "hoje" é o de Brasília
     assert [n for n, _, cfg in funcoes if not cfg] == []
     cfg = db.execute("select valor from radar_config where chave = 'corretor_video'").fetchone()[0]
@@ -1594,3 +1594,166 @@ def test_reversao_do_setup_tira_os_videos_e_a_agenda_do_corretor():
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_rev22 with (force)")
+
+
+# ------------------------------------------------------------------ v0.36.0: a correção avulsa (o vídeo sem peça na Pauta)
+# O avulso é uma linha de radar_videos SEM peça (peca_id nulo) e COM título; a fala para conferência colada no envio É o roteiro dele;
+# as pessoas ficam guardadas no próprio vídeo. As travas do dono não mudam (termo do corretor, termo de uso de imagem, menor, cartela,
+# declarações, cota, boletim pago); o avulso não passa pela aprovação da peça e só o administrador baixa o vídeo PRONTO (registrado).
+CRIAR_AVULSO = "select radar_video_criar_avulso(%s, %s, %s, %s::bigint[], %s, %s::text[], %s::text[])"
+FALA_AVULSA = "O caderno fiscal da semana fica pronto na sexta e a equipe confere cada prazo antes do envio ao cliente."
+
+
+def criar_avulso(pessoa, titulo="Aviso do caderno da semana", uid=EDITOR, partes=PARTES, fala=FALA_AVULSA, pessoas=None,
+                 cartela=(IDENT,), decl=DECL):
+    with como("authenticated", uid) as c:
+        return c.execute(CRIAR_AVULSO, (titulo, json.dumps(partes), pessoa, [pessoa] if pessoas is None else pessoas, fala, list(cartela), list(decl))).fetchone()[0]
+
+
+def avulso_na_fila(db, pessoa, **kw):
+    vid = criar_avulso(pessoa, **kw)["id"]
+    tela("select radar_video_enviado(%s)", vid)
+    return vid
+
+
+def avulso_pronto(db, pessoa, relatorio=None, sha=SHA_VIDEO, **kw):
+    vid = avulso_na_fila(db, pessoa, **kw)
+    p = pegar()
+    assert p["id"] == vid
+    robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, p["tentativa"], 11.5, True)
+    concluir(vid, p["tentativa"], relatorio=relatorio, sha=sha)
+    return vid
+
+
+def test_avulso_criar_confere_titulo_fala_pessoas_cartela_clipes_e_declaracoes(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    erro = lambda codigo: pytest.raises(psycopg.errors.RaiseException, match=codigo)
+    with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR300"):          # o leitor não envia
+        criar_avulso(ana, uid=LEITOR)
+    with erro("RADAR320: dê um título ao vídeo avulso"):
+        criar_avulso(ana, titulo="ab")
+    with erro(re.escape("RADAR320: o título do vídeo avulso não leva < > { } nem")):
+        criar_avulso(ana, titulo="Aviso <b>urgente</b>")
+    with erro("RADAR302: cole a fala para conferência"):
+        criar_avulso(ana, fala="Prazo do Simples: dia vinte.")                             # menos de 10 palavras
+    with erro("RADAR304: marque de 1 a 12 pessoas"):
+        criar_avulso(ana, pessoas=[])
+    bruno_sem_termo = nova_pessoa(db, "Bruno Exemplo", "Bruno")
+    with erro("RADAR304: quem fala tem de estar entre as pessoas marcadas"):
+        criar_avulso(ana, pessoas=[bruno_sem_termo])
+    with erro(re.escape("RADAR304: uma pessoa do vídeo não pode aparecer nele (sem o termo novo, que cita o corretor de vídeo)")):
+        criar_avulso(ana, pessoas=[ana, bruno_sem_termo])
+    with erro("RADAR305"):
+        criar_avulso(ana, cartela=("Linha sem a identificação legal",))
+    with erro("RADAR306"):
+        criar_avulso(ana, partes=[{"n": 2, "tipo": "video/mp4", "bytes": 1000}])
+    with erro("RADAR307"):
+        criar_avulso(ana, decl=DECL[:3])
+    r = criar_avulso(ana, pessoas=[ana, ana])
+    assert r["versao"] == 1 and re.fullmatch(r"[0-9a-f-]{36}", r["id"])
+    campos = "peca_id, titulo, versao, situacao, pessoas, fala_pessoa, fala_roteiro, gancho"
+    assert video(db, r["id"], campos) == (None, "Aviso do caderno da semana", 1, "aguardando_envio", [ana], ana, FALA_AVULSA, None)
+    assert video(db, r["id"], "roteiro_hash") == db.execute("select radar_hash_texto(%s)", (FALA_AVULSA,)).fetchone()[0]
+    # cada avulso é um envio próprio: o segundo não substitui o primeiro (nem o da peça)
+    r2 = criar_avulso(ana, titulo="Outro aviso da equipe")
+    assert r2["versao"] == 1 and video(db, r["id"]) == "aguardando_envio"
+    # ou peça, ou título (a regra da tabela): nem o dono do banco mistura os dois
+    pid, _ = reel(db, pessoa=ana)
+    da_peca = criar(pid, ana)["id"]
+    for sql, alvo in (("update radar_videos set titulo = 'x' where id = %s", da_peca),
+                      ("update radar_videos set titulo = null where id = %s", r["id"]),
+                      ("update radar_videos set peca_id = null where id = %s", da_peca)):
+        with pytest.raises(psycopg.errors.CheckViolation):
+            db.execute(sql, (alvo,))
+
+
+def test_avulso_caminho_completo_do_envio_ao_baixar_do_administrador(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    vid = avulso_na_fila(db, ana)
+    assert video(db, vid) == "na_fila"
+    p = pegar()                                                           # o pedido do robô é autossuficiente: nada muda no avulso
+    assert p["id"] == vid and p["modo"] == "completo" and p["fala_roteiro"] == FALA_AVULSA
+    assert p["gancho"] is None and p["cartela_linhas"] == [IDENT] and p["partes"] == PARTES
+    robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, p["tentativa"], 11.5, True)
+    capa = {"sha256": "c" * 64, "em_ms": 1200}
+    concluir(vid, p["tentativa"], relatorio={**RELATORIO, "texto_final": FALA_AVULSA, "capa": capa})
+    assert video(db, vid) == "pronto"
+    # a prévia é do editor e do administrador, como na peça; baixar é SÓ do administrador (não há aprovação de peça)
+    assert tela("select radar_video_para_previa(%s)", vid)["video"] == f"corrigido/{vid}/{SHA_VIDEO}.mp4"
+    with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR321: só o administrador baixa o vídeo avulso"):
+        tela("select radar_video_baixar_avulso(%s)", vid, uid=EDITOR)
+    r = tela("select radar_video_baixar_avulso(%s)", vid, uid=ADMIN)
+    assert r["ok"] is True and r["caminho"] == f"corrigido/{vid}/{SHA_VIDEO}.mp4"
+    assert r["data"] == str(hoje(db)) and r["capa"] == f"quadros/{vid}/{SHA_VIDEO}/capa-{'c' * 64}.jpg"
+    acessos = db.execute("select usuario::text, acao from radar_video_acessos where video_id = %s order by id", (vid,)).fetchall()
+    assert acessos == [(EDITOR, "previa"), (ADMIN, "baixar")]
+    # o vídeo de uma peça não sai por aqui
+    pid, _ = reel(db, pessoa=ana)
+    da_peca, _ = ate_pronto(db, pid, ana)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR321: este vídeo não é um vídeo avulso"):
+        tela("select radar_video_baixar_avulso(%s)", da_peca, uid=ADMIN)
+
+
+def test_avulso_para_regravar_nao_baixa_e_a_marca_do_administrador_libera(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    rel = {**RELATORIO, "texto_final": FALA_AVULSA, "divergencias": [DIVERGENCIA]}
+    vid = avulso_pronto(db, ana, relatorio=rel)
+    assert video(db, vid) == "regravar"                                   # a divergência pendente pede regravar, como na peça
+    r = tela("select radar_video_baixar_avulso(%s)", vid, uid=ADMIN)
+    assert r["motivo"].startswith("Só o vídeo avulso PRONTO")
+    tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"transcricao_errou": [DIVERGENCIA["id"]]}), uid=ADMIN)
+    p = pegar()
+    assert p["id"] == vid and p["modo"] == "montagem"
+    concluir(vid, p["tentativa"], relatorio=rel, sha=SHA2)
+    assert video(db, vid) == "pronto"
+    assert tela("select radar_video_baixar_avulso(%s)", vid, uid=ADMIN)["caminho"] == f"corrigido/{vid}/{SHA2}.mp4"
+
+
+def test_avulso_termo_revogado_trava_o_robo_a_previa_e_o_baixar_e_a_limpeza_leva(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    vid = avulso_na_fila(db, ana)
+    db.execute("update radar_pessoas set termo_corretor_em = null where id = %s", (ana,))
+    assert pegar() is None and video(db, vid, "situacao, erro_codigo") == ("erro", "termo")   # antes de qualquer clipe sair
+    db.execute("update radar_pessoas set termo_corretor_em = '2020-01-01' where id = %s", (ana,))
+    tela("select radar_video_de_novo(%s, null)", vid)
+    p = pegar()
+    robo("select radar_video_registrar_audio(%s, %s, %s::numeric, %s)", vid, p["tentativa"], 11.5, True)
+    concluir(vid, p["tentativa"], relatorio={**RELATORIO, "texto_final": FALA_AVULSA})
+    # o termo de uso de imagem revogado fecha a prévia e o baixar na hora, e a limpeza leva arquivos e textos (o "left join" do avulso)
+    db.execute("update radar_pessoas set termo_revogado_em = radar_pauta_hoje() where id = %s", (ana,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR304"):
+        tela("select radar_video_para_previa(%s)", vid)
+    assert "não pode aparecer nele hoje" in tela("select radar_video_baixar_avulso(%s)", vid, uid=ADMIN)["motivo"]
+    r = robo("select radar_video_limpeza()")
+    assert {i["id"]: sorted(i["apagar"]) for i in r["itens"]} == {vid: ["bruto", "corrigido", "trabalho"]} and r["textos"] == 1
+    assert video(db, vid, "fala_roteiro, cartela_linhas, arquivos_apagados") == ("", [], ["textos"])
+
+
+def test_avulso_sem_conferir_com_roteiro_novo_e_o_gancho_do_editor_fica_so_no_video(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    pecas_antes = db.execute("select count(*) from radar_pauta_pecas").fetchone()[0]
+    vid = avulso_pronto(db, ana, relatorio={**REL_MAPA, "texto_final": FALA_AVULSA})
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR302: o vídeo avulso não tem roteiro de peça"):
+        tela("select radar_video_reconferir(%s, %s)", vid, FALA_AVULSA)
+    # o gancho entra pelo editor da aba Vídeo e fica SÓ no vídeo (não há chamada de peça para mudar)
+    r = editar(vid, {}, gancho="O caderno fica pronto na sexta")
+    assert r["modo"] == "montagem"
+    assert video(db, vid, "situacao, gancho") == ("na_fila", "O caderno fica pronto na sexta")
+    assert db.execute("select count(*) from radar_pauta_pecas").fetchone()[0] == pecas_antes
+    assert montado(vid) == "pronto"
+
+
+def test_avulso_envio_abandonado_sai_na_limpeza_de_um_dia(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    vid = criar_avulso(ana)["id"]
+    db.execute("update radar_videos set criado_em = now() - interval '2 days' where id = %s", (vid,))
+    r = robo("select radar_video_limpeza()")
+    assert {i["id"]: sorted(i["apagar"]) for i in r["itens"]} == {vid: ["bruto", "corrigido", "trabalho"]}
+    robo("select radar_video_limpo(%s, %s::text[])", vid, ["bruto", "corrigido", "trabalho"])
+    assert video(db, vid) == "descartado"

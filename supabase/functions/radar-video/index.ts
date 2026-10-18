@@ -1,5 +1,6 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-video" (v0.33.0: + a capa da aba Vídeo nos links, no concluir, na prévia e no baixar)
+// RADAR ARTECON — Edge Function "radar-video" (v0.36.0: + a correção avulsa — envio_iniciar_avulso e baixar_avulso, o vídeo sem
+// peça na Pauta; v0.33.0: + a capa da aba Vídeo nos links, no concluir, na prévia e no baixar)
 //
 // O corretor de vídeo dos reels da Pauta. A equipe grava o reel no celular, em 1 a 12 clipes, e envia pela peça; um robô (GitHub
 // Actions do repositório PRIVADO radar-video, com o código do repositório público em robo/video/ por commit fixo) transcreve (Azure F0,
@@ -24,6 +25,9 @@
 //                          peça só sai quando os clipes chegam: radar_video_enviado); devolve {id, versao, envios:[{n, caminho,
 //                          token}]}: um token de envio (2 h, um caminho só, sem upsert) por clipe, bruto/<id>/<n>, para o envio
 //                          retomável (TUS) direto do navegador ao armazenamento, com o token no cabeçalho x-signature
+//          envio_iniciar_avulso {titulo, partes, fala_pessoa, pessoas:[ids], fala_roteiro, cartela, declaracoes, duracao?} → o vídeo
+//                          AVULSO (v0.36.0, sem peça na Pauta: radar_video_criar_avulso confere tudo, com as mesmas travas); devolve
+//                          o mesmo formato do envio_iniciar e segue o mesmo caminho (renovar, concluir, robô, prévia, aba Vídeo)
 //          envio_renovar  {id} → tokens novos só para os clipes que ainda não chegaram (a tela retoma o envio ao reabrir)
 //          envio_concluido{id} → confere cada clipe no armazenamento (tamanho e tipo iguais aos declarados), põe na fila
 //                          (radar_video_enviado) e aciona o robô
@@ -33,6 +37,8 @@
 //          baixar         {peca, lido} → link de 300 s do vídeo aprovado (radar_video_para_baixar: aprovado à mão, o mesmo sha256,
 //                          o termo de hoje), com o nome reel-<data>.mp4; o banco registra quem baixou. v0.33.0: + o link da capa do
 //                          mesmo vídeo (capa_url, reel-<data>-capa.jpg, ou null), para postar o reel com ela
+//          baixar_avulso  {id} → link de 300 s do vídeo AVULSO pronto (v0.36.0, radar_video_baixar_avulso: só o administrador, só o
+//                          vídeo pronto, registrado), com o nome avulso-<data de hoje>.mp4 (e a capa, se houver)
 //          acionar        → aciona o robô (workflow_dispatch de radar-video.yml no repositório privado), só com pedido na fila e
 //                          com pausa de 30 s; responde sempre 200 {acionado, motivo?, mensagem}
 //          diagnostico    (só o administrador) → o bucket privado (corrige se estiver público), o token do GitHub e o workflow, a
@@ -75,7 +81,7 @@
 // A transcrição é do robô (ajustes do dono): os segredos da Azure ficam no repositório privado, não aqui.
 // =====================================================================
 
-const VERSAO = "0.33.0";
+const VERSAO = "0.36.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -392,6 +398,27 @@ async function envioIniciar(sessao: string, p: any) {
   return { id, versao: r.versao, bucket: BUCKET, cache_s: CACHE_S, envios };
 }
 
+/** v0.36.0: o envio do vídeo AVULSO (sem peça na Pauta): o banco confere tudo (radar_video_criar_avulso — título, fala, pessoas,
+ *  cartela, declarações, cota) ANTES de qualquer arquivo sair; daqui em diante é o mesmo caminho do envio da peça. */
+async function envioIniciarAvulso(sessao: string, p: any) {
+  const partes = Array.isArray(p?.partes) ? p.partes : [];
+  await garantirBucket();
+  const duracao = Number(p?.duracao);
+  const r = await banco(sessao, "POST", "rpc/radar_video_criar_avulso", {
+    p_titulo: p?.titulo ?? null, p_partes: partes, p_fala_pessoa: p?.fala_pessoa ?? null,
+    p_pessoas: Array.isArray(p?.pessoas) ? p.pessoas : null, p_fala_roteiro: p?.fala_roteiro ?? null,
+    p_cartela: Array.isArray(p?.cartela) ? p.cartela : null, p_declaracoes: Array.isArray(p?.declaracoes) ? p.declaracoes : null,
+    p_duracao: p?.duracao !== null && p?.duracao !== undefined && Number.isFinite(duracao) && duracao > 0 && duracao <= 3600 ? duracao : null,
+  });
+  const id = uuid(r?.id);
+  const envios = [];
+  for (let n = 1; n <= partes.length; n++) {
+    const { caminho, token } = await tokenDeEnvio(`bruto/${id}/${n}`);
+    envios.push({ n, caminho, token });
+  }
+  return { id, versao: r.versao, bucket: BUCKET, cache_s: CACHE_S, envios };
+}
+
 /** O envio que espera os clipes (radar_video_para_envio: só quem começou, ou o administrador) e o que já chegou ao armazenamento. */
 async function clipesDoEnvio(sessao: string, id: string) {
   const e = await banco(sessao, "POST", "rpc/radar_video_para_envio", { p_id: id });
@@ -447,6 +474,21 @@ async function baixar(sessao: string, peca: number, lido: string) {
   }
   return { url: await linkDeLeitura(caminho, LINK_BAIXAR_S, `reel-${data}.mp4`),
            capa_url: r?.capa ? await linkDeLeitura(r.capa, LINK_BAIXAR_S, `reel-${data}-capa.jpg`) : null, expira_s: LINK_BAIXAR_S };
+}
+
+/** v0.36.0: baixar o vídeo AVULSO pronto (radar_video_baixar_avulso: só o administrador, só o vídeo pronto, com as pessoas conferidas
+ *  de novo e o acesso registrado). O nome do arquivo leva só o dia de hoje (o título não sai no link). */
+async function baixarAvulso(sessao: string, id: string) {
+  const r = await banco(sessao, "POST", "rpc/radar_video_baixar_avulso", { p_id: id });
+  if (r?.motivo) throw new Erro(409, String(r.motivo));
+  const caminho = String(r?.caminho ?? ""), data = String(r?.data ?? "");
+  const m = /^corrigido\/([0-9a-f-]{36})\/([0-9a-f]{64})\.mp4$/.exec(caminho);
+  if (!m || m[1] !== id || !/^\d{4}-\d{2}-\d{2}$/.test(data)
+      || (r?.capa !== undefined && r?.capa !== null && !capaDe(m[1], m[2]).test(String(r.capa)))) {
+    throw new Erro(502, "O banco devolveu um caminho fora do esperado.");
+  }
+  return { url: await linkDeLeitura(caminho, LINK_BAIXAR_S, `avulso-${data}.mp4`),
+           capa_url: r?.capa ? await linkDeLeitura(r.capa, LINK_BAIXAR_S, `avulso-${data}-capa.jpg`) : null, expira_s: LINK_BAIXAR_S };
 }
 
 async function diagnostico(sessao: string) {
@@ -608,7 +650,7 @@ async function limpar(servico: Record<string, string>, inicio: number) {
 }
 
 // ------------------------------------------------------------------ pedido
-const ACOES_TELA = ["envio_iniciar", "envio_renovar", "envio_concluido", "previa", "baixar", "acionar", "diagnostico"];
+const ACOES_TELA = ["envio_iniciar", "envio_iniciar_avulso", "envio_renovar", "envio_concluido", "previa", "baixar", "baixar_avulso", "acionar", "diagnostico"];
 const ACOES_ROBO = ["pegar", "links", "audio", "parcial", "concluir", "falhar"];
 const ACOES_AGENDA = ["acionar", "limpar", "agenda_teste"];
 
@@ -644,16 +686,18 @@ async function tratar(req: Request): Promise<Response> {
       }
     }
     const servico = quem === "tela" ? {} : comoServico();
-    const precisaId = ["envio_renovar", "envio_concluido", "previa", ...ACOES_ROBO.filter((a) => a !== "pegar")];
+    const precisaId = ["envio_renovar", "envio_concluido", "previa", "baixar_avulso", ...ACOES_ROBO.filter((a) => a !== "pegar")];
     if (precisaId.includes(acao)) id = uuid(pedido?.id);
     const t = quem === "robo" && acao !== "pegar" ? inteiro(pedido?.tentativa, 1, 200, "a tentativa") : 0;
     let r: any;
     switch (acao) {
       case "envio_iniciar": r = await envioIniciar(sessao, pedido); id = r.id; break;
+      case "envio_iniciar_avulso": r = await envioIniciarAvulso(sessao, pedido); id = r.id; break;
       case "envio_renovar": r = await envioRenovar(sessao, id); break;
       case "envio_concluido": r = await envioConcluido(sessao, id); break;
       case "previa": r = await previa(sessao, id); break;
       case "baixar": r = await baixar(sessao, inteiro(pedido?.peca, 1, Number.MAX_SAFE_INTEGER, "a peça"), String(pedido?.lido ?? "")); break;
+      case "baixar_avulso": r = await baixarAvulso(sessao, id); break;
       case "acionar": r = await acionarRobo(); break;
       case "diagnostico":
         if (papel !== "admin") throw new Erro(403, "Só o administrador vê o diagnóstico do corretor de vídeo.");

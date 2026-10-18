@@ -38,7 +38,7 @@ import cortes
 import sondar
 from sondar import FPS
 
-ROBO = "0.33.0"
+ROBO = "0.36.0"
 VERSAO = 2
 LIMITE = 55000                         # folga sobre os 60000 (o jsonb::text do Postgres separa com ", " e ": ", como o json.dumps)
 LISTAS = ("fora_do_roteiro", "omitido", "trocas", "sugestoes", "cortes")
