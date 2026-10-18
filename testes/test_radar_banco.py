@@ -514,7 +514,13 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.34.0: a aba Setor (cada função confere o perfil)
                                                            'radar_setor_salvar', 'radar_setor_apagar', 'radar_setor_conta_incluir',
                                                            'radar_setor_conta_mudar', 'radar_setor_conta_remover', 'radar_setor_pedir',
-                                                           'radar_setor_configurar', 'radar_setor_painel', 'radar_setor_situacao')
+                                                           'radar_setor_configurar', 'radar_setor_painel', 'radar_setor_situacao',
+                                                           -- v0.35.0: a aba Respostas (cada função confere o perfil; o registro já
+                                                           -- sai cortado e sem token nenhum)
+                                                           'radar_respostas_gatilho_salvar', 'radar_respostas_gatilho_mudar',
+                                                           'radar_respostas_gatilho_apagar', 'radar_respostas_configurar',
+                                                           'radar_respostas_situacao', 'radar_respostas_listar',
+                                                           'radar_respostas_reenviar', 'radar_respostas_publicadas')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -1221,7 +1227,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (34, 6, 8, 9, 1, 0)          # v0.29.0: + radar_lembretes e a chave "lembretes"
+        assert _resumo("radar_sem_tx") == (37, 6, 8, 9, 1, 0)          # v0.29.0: + radar_lembretes e a chave "lembretes"
         with conectar("radar_sem_tx") as c:
             assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.35.0", [], 37)
             # v0.31.0 (revisão): na instalação nova as seis fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
@@ -1250,7 +1256,7 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (34, 6, 8, 9, 2, 0)
+        assert _resumo("radar_parcial") == (37, 6, 8, 9, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
@@ -1277,7 +1283,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (34, 6, 8, 9, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (37, 6, 8, 9, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")

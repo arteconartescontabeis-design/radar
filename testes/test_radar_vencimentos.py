@@ -611,7 +611,9 @@ def test_nenhuma_coluna_com_nome_de_segredo(db):
            join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE'
            where c.table_schema = 'public' and c.table_name like 'radar\\_%'
              and c.column_name ~* '(token|secret|segredo|senha|password|api_?key|credencial|chave)'""").fetchall()}
-    assert colunas == {"radar_config.chave", "radar_lembretes.chave", "radar_ia_uso.tokens_entrada", "radar_ia_uso.tokens_saida"}
+    assert colunas == {"radar_config.chave", "radar_lembretes.chave", "radar_ia_uso.tokens_entrada", "radar_ia_uso.tokens_saida",
+                       # v0.35.0: a palavra-chave do gatilho é o "QUERO" do comentário, não uma chave de acesso
+                       "radar_respostas_gatilhos.palavra_chave"}
 
 
 # ----------------------------------------------------------------------------------------------------------- os textos do robô
@@ -701,7 +703,7 @@ def test_setup_duas_vezes_com_as_tabelas_novas(tmp_path):
                 assert c.execute("select count(*) from radar_config").fetchone()[0] == 9
         with conectar(banco) as c:
             assert c.execute("""select count(*) from pg_class k join pg_namespace n on n.oid = k.relnamespace
-                                where n.nspname = 'public' and k.relkind = 'r' and k.relname like 'radar\\_%' and k.relrowsecurity""").fetchone()[0] == 34
+                                where n.nspname = 'public' and k.relkind = 'r' and k.relname like 'radar\\_%' and k.relrowsecurity""").fetchone()[0] == 37
     finally:
         with conectar("postgres") as c:
             c.execute(f"drop database if exists {banco} with (force)")
