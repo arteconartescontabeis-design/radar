@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.34.0.sql
--- DESFAZ a instalação do radar-setup-v0.34.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.35.0.sql
+-- DESFAZ a instalação do radar-setup-v0.35.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -39,6 +39,11 @@
 -- automática e a guarda diária (radar-setor-coleta e radar-setor-guarda, do sql/radar-setor-agenda.sql) saem junto, antes delas.
 -- Ficam a função radar-concorrentes (apague pelo painel se quiser: Edge Functions → radar-concorrentes → Delete function), a chave
 -- 'radar_concorrentes' no Vault e a radar_concorrentes_conferir (do sql/radar-concorrentes.sql, que sai mais abaixo, como já saía).
+-- v0.35.0: o Módulo Respostas Automáticas. As tabelas radar_respostas_* (gatilhos, registro e contas) e as funções delas saem; a
+-- agenda da fila (radar-respostas-fila, do sql/radar-respostas-agenda.sql) sai junto, antes delas. Fora do banco: Supabase → Edge
+-- Functions → apague a função radar-meta-webhook e os segredos META_APP_SECRET, META_VERIFY_TOKEN e META_PAGE_TOKEN; em
+-- developers.facebook.com, desligue o webhook do aplicativo (senão a Meta continuaria chamando um endereço morto). A chave
+-- 'radar_respostas' fica no Vault de propósito (para zerar, o delete do comentário do sql/radar-respostas-agenda-reversao.sql).
 -- =====================================================================
 begin;
 
@@ -58,6 +63,25 @@ drop view if exists public.radar_v_em_alta;
 drop view if exists public.radar_v_assuntos;
 drop view if exists public.radar_v_fila;
 drop view if exists public.radar_v_saude_fontes;
+
+-- v0.35.0: o Módulo Respostas Automáticas. A agenda da fila sai antes das funções que ela chama; as tabelas e as funções
+-- radar_respostas_* saem aqui (a linha "respostas" de radar_config sai com a tabela, mais abaixo)
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'cron') then
+    perform cron.unschedule(j.jobid) from cron.job j where j.jobname like 'radar-respostas%';
+  end if;
+exception when others then null;
+end $$;
+drop table if exists public.radar_respostas_registro, public.radar_respostas_gatilhos, public.radar_respostas_contas cascade;
+do $$
+declare f record;
+begin
+  for f in select p.oid::regprocedure as a from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname like 'radar\_respostas\_%' loop
+    execute format('drop function if exists %s cascade', f.a);
+  end loop;
+end $$;
 
 -- v0.34.0: a aba Setor. A leitura automática (sql/radar-setor-agenda.sql) sai antes das funções que ela chama; as tabelas e as funções
 -- radar_setor_* saem aqui (a linha "setor" de radar_config sai com a tabela, mais abaixo)

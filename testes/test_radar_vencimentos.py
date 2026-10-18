@@ -429,7 +429,7 @@ def test_falta_mes_e_em_andamento(quadro):
         r = c.execute("select radar_copias_comecar('')").fetchone()[0]
     agora = datetime.now(FUSO)
     assert re.fullmatch(r"radar-copia-\d{4}-\d{2}-\d{2}-\d{4}\.zip", r["arquivo"]) and r["arquivo"].startswith(f"radar-copia-{agora:%Y-%m-%d}-")
-    assert (r["origem"], r["banco"]) == ("admin", "v0.34.0") and r["gerado_em"].endswith("-03:00") and r["gerado_em"][:10] == f"{agora:%Y-%m-%d}"
+    assert (r["origem"], r["banco"]) == ("admin", "v0.35.0") and r["gerado_em"].endswith("-03:00") and r["gerado_em"][:10] == f"{agora:%Y-%m-%d}"
     assert db.execute("select ok, erro from radar_copias where id = %s", (antiga,)).fetchone() == (
         False, "A cópia parou no meio (limite de tempo ou de memória da função no Supabase).")
     assert db.execute("select mes, origem, ok from radar_copias where id = %s", (r["id"],)).fetchone() == (mes, "admin", None)
@@ -596,7 +596,7 @@ def test_tabelas_da_copia_sao_todas_as_do_banco(db):
     assert tabelas == sorted(tabelas) and len(tabelas) == len(set(tabelas))
     assert not set(tabelas) & set(fora)
     assert sorted(tabelas + fora) == banco
-    assert len(tabelas) == 34 and fora == []                                             # v0.34.0: + as 4 da aba Setor
+    assert len(tabelas) == 37 and fora == []                                             # v0.35.0: + as 4 da aba Setor
     # a cópia pagina pela chave primária (v0.32.0, revisão): tabela sem ela não é copiada (RADAR366)
     assert db.execute("""select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
                          where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'
@@ -611,7 +611,9 @@ def test_nenhuma_coluna_com_nome_de_segredo(db):
            join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE'
            where c.table_schema = 'public' and c.table_name like 'radar\\_%'
              and c.column_name ~* '(token|secret|segredo|senha|password|api_?key|credencial|chave)'""").fetchall()}
-    assert colunas == {"radar_config.chave", "radar_lembretes.chave", "radar_ia_uso.tokens_entrada", "radar_ia_uso.tokens_saida"}
+    assert colunas == {"radar_config.chave", "radar_lembretes.chave", "radar_ia_uso.tokens_entrada", "radar_ia_uso.tokens_saida",
+                       # v0.35.0: a palavra-chave do gatilho é o "QUERO" do comentário, não uma chave de acesso
+                       "radar_respostas_gatilhos.palavra_chave"}
 
 
 # ----------------------------------------------------------------------------------------------------------- os textos do robô
@@ -701,7 +703,7 @@ def test_setup_duas_vezes_com_as_tabelas_novas(tmp_path):
                 assert c.execute("select count(*) from radar_config").fetchone()[0] == 9
         with conectar(banco) as c:
             assert c.execute("""select count(*) from pg_class k join pg_namespace n on n.oid = k.relnamespace
-                                where n.nspname = 'public' and k.relkind = 'r' and k.relname like 'radar\\_%' and k.relrowsecurity""").fetchone()[0] == 34
+                                where n.nspname = 'public' and k.relkind = 'r' and k.relname like 'radar\\_%' and k.relrowsecurity""").fetchone()[0] == 37
     finally:
         with conectar("postgres") as c:
             c.execute(f"drop database if exists {banco} with (force)")

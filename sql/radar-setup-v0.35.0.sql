@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.34.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.35.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -61,7 +61,14 @@
 -- radar_setor_coletas, todas com RLS) e as funções radar_setor_* (quem decide o que ler é o banco; a função radar-concorrentes só
 -- pergunta “quem é o próximo?”). Temas por palavras, sem IA; a busca por hashtag nasce DESLIGADA (hashtag_ligada), até a Meta
 -- aprovar. A agenda fica em sql/radar-setor-agenda.sql, rodado DEPOIS deste. Nada é apagado.
--- Reversão: radar-reversao-v0.34.0.sql
+-- v0.35.0 (bloco “v0.35.0”, antes da seção 6): o Módulo Respostas Automáticas — responder sozinho, no Instagram e no Facebook,
+-- aos comentários que trazem a palavra-chave de uma publicação escolhida (ex.: “Comente QUERO e receba o material”). Três tabelas
+-- novas (radar_respostas_gatilhos, radar_respostas_registro e radar_respostas_contas, todas com RLS) e as funções
+-- radar_respostas_* (quem decide se responde é o banco; a função radar-meta-webhook só pergunta “e este comentário?”). Resposta
+-- pública + mensagem privada com o link do material, limite por hora com fila de pendentes, interruptor geral “Pausar todas”.
+-- Nasce AGUARDANDO A META: os avisos de comentário só chegam depois que a Meta aprovar o acesso avançado do aplicativo.
+-- A agenda da fila fica em sql/radar-respostas-agenda.sql, rodado DEPOIS deste. Nada é apagado.
+-- Reversão: radar-reversao-v0.35.0.sql
 -- =====================================================================
 
 begin;
@@ -87,7 +94,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.34.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.35.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -8250,6 +8257,425 @@ drop trigger if exists radar_tg_auditar on public.radar_setor_setores;
 create trigger radar_tg_auditar after insert or update or delete on public.radar_setor_setores
   for each row execute function public.radar_fn_auditar();
 
+
+-- =====================================================================
+-- v0.35.0: Módulo Respostas Automáticas — responder sozinho, no Instagram e no Facebook, ao comentário com a palavra-chave
+-- O administrador escolhe uma publicação e cadastra o gatilho: a palavra-chave (ex.: QUERO), a resposta pública, a mensagem
+-- privada e o link do material. Quem recebe os comentários é a função radar-meta-webhook (a Meta chama; a assinatura é conferida
+-- lá); quem decide se responde é o banco (radar_respostas_receber): sem gatilho ativo não registra nada; comentário da própria
+-- conta, sem a palavra-chave ou com o interruptor geral pausado fica DESCARTADO com o motivo; repetido é ignorado (o mesmo
+-- comentário nunca é respondido duas vezes: chave única); passando do limite por hora fica PENDENTE e sai na hora seguinte
+-- (sql/radar-respostas-agenda.sql, rodado DEPOIS deste). A mensagem privada da Meta vale por 7 dias e uma vez por comentário:
+-- o pendente que passar disso vira erro, com a explicação. A comparação da palavra-chave não diferencia maiúsculas, acentos nem
+-- pontuação. Privacidade: só o id, o nome público e o texto do comentário (cortado em 500); nenhum token em tabela nenhuma.
+-- Nasce AGUARDANDO A META: os avisos de comentário só chegam depois que a Meta aprovar o acesso avançado do aplicativo.
+-- Recusas do banco: RADAR420 a RADAR429.
+-- =====================================================================
+create table if not exists public.radar_respostas_gatilhos (
+  id               bigint generated always as identity primary key,
+  rede             text        not null check (rede in ('instagram','facebook')),
+  midia_id         text        not null check (midia_id ~ '^[0-9][0-9_]{0,39}$'),   -- o número da publicação na Meta (no Facebook, pagina_post)
+  titulo           text        not null default '' check (char_length(titulo) <= 120),
+  palavra_chave    text        not null check (char_length(btrim(palavra_chave)) between 2 and 40),
+  resposta_publica text        not null check (char_length(btrim(resposta_publica)) between 1 and 500),
+  mensagem_privada text        not null check (char_length(btrim(mensagem_privada)) between 1 and 900),
+  link_material    text        not null default '' check (link_material = '' or (char_length(link_material) <= 300 and link_material ~ '^https://[^ "''<>]+$')),
+  limite_hora      int         not null default 20 check (limite_hora between 1 and 200),
+  ativo            boolean     not null default true,
+  criado_em        timestamptz not null default now(),
+  criado_por       uuid,
+  atualizado_em    timestamptz not null default now(),
+  unique (rede, midia_id)
+);
+
+-- o histórico completo e a trava contra resposta em dobro (um registro por comentário tratado; sem gatilho, nada é registrado)
+create table if not exists public.radar_respostas_registro (
+  id               bigint generated always as identity primary key,
+  gatilho_id       bigint      references public.radar_respostas_gatilhos(id) on delete set null,
+  rede             text        not null check (rede in ('instagram','facebook')),
+  comentario_id    text        not null check (comentario_id ~ '^[0-9][0-9_]{0,59}$'),
+  autor_id         text        not null default '' check (char_length(autor_id) <= 40),
+  autor_nome       text        not null default '' check (char_length(autor_nome) <= 120),
+  texto_comentario text        not null default '' check (char_length(texto_comentario) <= 500),
+  situacao         text        not null check (situacao in ('enviado','pendente','erro','descartado')),
+  motivo           text        not null default '' check (char_length(motivo) <= 120),
+  erro             text        not null default '' check (char_length(erro) <= 300),
+  resposta_id      text        not null default '' check (char_length(resposta_id) <= 60),
+  privada_ok       boolean     not null default false,
+  criado_em        timestamptz not null default now(),
+  enviado_em       timestamptz,
+  unique (rede, comentario_id)
+);
+create index if not exists radar_respostas_registro_gatilho_idx on public.radar_respostas_registro (gatilho_id, criado_em desc);
+create index if not exists radar_respostas_registro_fila_idx on public.radar_respostas_registro (criado_em) where situacao = 'pendente';
+
+-- as contas ligadas (preenchidas pelo "Testar conexão": a página do Facebook e o Instagram profissional ligado a ela)
+create table if not exists public.radar_respostas_contas (
+  id            bigint generated always as identity primary key,
+  rede          text        not null unique check (rede in ('instagram','facebook')),
+  conta_id      text        not null check (conta_id ~ '^[0-9]{1,30}$'),
+  nome          text        not null default '' check (char_length(nome) <= 120),
+  ativo         boolean     not null default true,
+  atualizado_em timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------- funções do Módulo Respostas Automáticas
+-- texto para comparar a palavra-chave: minúsculas, sem acento, sem pontuação e com os espaços juntados
+create or replace function public.radar_respostas_normalizar(t text) returns text
+language sql immutable set search_path = public as $$
+  select btrim(regexp_replace(regexp_replace(public.radar_sem_acento(public.radar_setor_minusculas(t)),
+                                             '[^a-z0-9à-öø-ÿ ]+', ' ', 'g'), '\s+', ' ', 'g'))
+$$;
+
+-- a configuração (radar_config, chave "respostas"), sempre completa: "ligado" é o interruptor geral ("Pausar todas" = false)
+create or replace function public.radar_respostas_cfg() returns jsonb
+language plpgsql stable set search_path = public as $$
+declare
+  v jsonb;
+  r jsonb := '{"ligado": true}'::jsonb;
+begin
+  select c.valor into v from public.radar_config c where c.chave = 'respostas';
+  if jsonb_typeof(v) is distinct from 'object' then return r; end if;
+  if jsonb_typeof(v->'ligado') = 'boolean' then r := jsonb_set(r, '{ligado}', v->'ligado'); end if;
+  return r;
+end $$;
+
+-- só o administrador liga e desliga o interruptor geral
+create or replace function public.radar_respostas_configurar(p jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if (select public.radar_papel()) is distinct from 'admin' then
+    raise exception 'RADAR420: Só o administrador mexe nas respostas automáticas.' using errcode = 'P0001';
+  end if;
+  if jsonb_typeof(p->'ligado') is distinct from 'boolean' then
+    raise exception 'RADAR427: A configuração espera {"ligado": true} ou {"ligado": false}.' using errcode = 'P0001';
+  end if;
+  insert into public.radar_config (chave, valor) values ('respostas', jsonb_build_object('ligado', p->'ligado'))
+  on conflict (chave) do update set valor = excluded.valor;
+  return public.radar_respostas_cfg();
+end $$;
+
+-- cria ou edita um gatilho (p_id null = novo). Os textos chegam prontos; quem valida as faixas são os "check" da tabela.
+create or replace function public.radar_respostas_gatilho_salvar(p_id bigint, p jsonb) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id bigint;
+begin
+  if (select public.radar_papel()) is distinct from 'admin' then
+    raise exception 'RADAR420: Só o administrador mexe nas respostas automáticas.' using errcode = 'P0001';
+  end if;
+  if p->>'rede' not in ('instagram', 'facebook') then
+    raise exception 'RADAR421: Escolha a rede: instagram ou facebook.' using errcode = 'P0001';
+  end if;
+  if coalesce(p->>'midia_id', '') !~ '^[0-9][0-9_]{0,39}$' then
+    raise exception 'RADAR422: Informe o número da publicação (o ID da mídia na Meta: só dígitos, com _ no Facebook).' using errcode = 'P0001';
+  end if;
+  if char_length(btrim(coalesce(p->>'palavra_chave', ''))) not between 2 and 40 then
+    raise exception 'RADAR423: A palavra-chave deve ter de 2 a 40 caracteres.' using errcode = 'P0001';
+  end if;
+  if char_length(btrim(coalesce(p->>'resposta_publica', ''))) not between 1 and 500 then
+    raise exception 'RADAR424: A resposta pública deve ter de 1 a 500 caracteres.' using errcode = 'P0001';
+  end if;
+  if char_length(btrim(coalesce(p->>'mensagem_privada', ''))) not between 1 and 900 then
+    raise exception 'RADAR425: A mensagem privada deve ter de 1 a 900 caracteres.' using errcode = 'P0001';
+  end if;
+  if coalesce(p->>'link_material', '') <> '' and (char_length(coalesce(p->>'link_material', '')) > 300 or coalesce(p->>'link_material', '') !~ '^https://[^ "''<>]+$') then
+    raise exception 'RADAR426: O link do material deve começar com https:// (ou ficar vazio).' using errcode = 'P0001';
+  end if;
+  if public.radar_setor_int(p->'limite_hora', 1, 200) is null then
+    raise exception 'RADAR427: O limite por hora vai de 1 a 200.' using errcode = 'P0001';
+  end if;
+  if p_id is null then
+    insert into public.radar_respostas_gatilhos (rede, midia_id, titulo, palavra_chave, resposta_publica, mensagem_privada,
+                                                 link_material, limite_hora, ativo, criado_por)
+    values (p->>'rede', p->>'midia_id', left(btrim(coalesce(p->>'titulo', '')), 120), btrim(p->>'palavra_chave'),
+            btrim(p->>'resposta_publica'), btrim(p->>'mensagem_privada'), coalesce(p->>'link_material', ''),
+            public.radar_setor_int(p->'limite_hora', 1, 200), coalesce((p->>'ativo')::boolean, true), auth.uid())
+    returning id into v_id;
+  else
+    update public.radar_respostas_gatilhos
+       set rede = p->>'rede', midia_id = p->>'midia_id', titulo = left(btrim(coalesce(p->>'titulo', '')), 120),
+           palavra_chave = btrim(p->>'palavra_chave'), resposta_publica = btrim(p->>'resposta_publica'),
+           mensagem_privada = btrim(p->>'mensagem_privada'), link_material = coalesce(p->>'link_material', ''),
+           limite_hora = public.radar_setor_int(p->'limite_hora', 1, 200), ativo = coalesce((p->>'ativo')::boolean, true)
+     where id = p_id returning id into v_id;
+    if v_id is null then
+      raise exception 'RADAR428: Gatilho não encontrado.' using errcode = 'P0001';
+    end if;
+  end if;
+  return v_id;
+exception when unique_violation then
+  raise exception 'RADAR422: Esta publicação já tem um gatilho (edite o que existe).' using errcode = 'P0001';
+end $$;
+
+create or replace function public.radar_respostas_gatilho_mudar(p_id bigint, p_ativo boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if (select public.radar_papel()) is distinct from 'admin' then
+    raise exception 'RADAR420: Só o administrador mexe nas respostas automáticas.' using errcode = 'P0001';
+  end if;
+  update public.radar_respostas_gatilhos set ativo = coalesce(p_ativo, ativo) where id = p_id;
+  if not found then
+    raise exception 'RADAR428: Gatilho não encontrado.' using errcode = 'P0001';
+  end if;
+end $$;
+
+create or replace function public.radar_respostas_gatilho_apagar(p_id bigint) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if (select public.radar_papel()) is distinct from 'admin' then
+    raise exception 'RADAR420: Só o administrador mexe nas respostas automáticas.' using errcode = 'P0001';
+  end if;
+  delete from public.radar_respostas_gatilhos where id = p_id;
+  if not found then
+    raise exception 'RADAR428: Gatilho não encontrado.' using errcode = 'P0001';
+  end if;
+end $$;
+
+-- a situação da aba: a configuração, as contas ligadas e cada gatilho com as contagens (última hora, pendentes, enviados)
+create or replace function public.radar_respostas_situacao() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if (select public.radar_papel()) is null then
+    raise exception 'RADAR420: Entre no Radar para ver as respostas automáticas.' using errcode = 'P0001';
+  end if;
+  return jsonb_build_object(
+    'cfg', public.radar_respostas_cfg(),
+    'contas', coalesce((select jsonb_agg(jsonb_build_object('rede', c.rede, 'conta_id', c.conta_id, 'nome', c.nome,
+                                                            'atualizado_em', c.atualizado_em) order by c.rede)
+                        from public.radar_respostas_contas c where c.ativo), '[]'::jsonb),
+    'gatilhos', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', g.id, 'rede', g.rede, 'midia_id', g.midia_id, 'titulo', g.titulo, 'palavra_chave', g.palavra_chave,
+        'resposta_publica', g.resposta_publica, 'mensagem_privada', g.mensagem_privada, 'link_material', g.link_material,
+        'limite_hora', g.limite_hora, 'ativo', g.ativo,
+        'ultima_hora', (select count(*) from public.radar_respostas_registro r
+                        where r.gatilho_id = g.id and r.situacao = 'enviado' and r.enviado_em > now() - interval '1 hour'),
+        'pendentes', (select count(*) from public.radar_respostas_registro r where r.gatilho_id = g.id and r.situacao = 'pendente'),
+        'enviados', (select count(*) from public.radar_respostas_registro r where r.gatilho_id = g.id and r.situacao = 'enviado'))
+        order by g.criado_em desc) from public.radar_respostas_gatilhos g), '[]'::jsonb));
+end $$;
+
+-- o registro, filtrável (a equipe toda lê; o texto já está cortado em 500)
+create or replace function public.radar_respostas_listar(p_gatilho bigint, p_situacao text, p_limite int) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if (select public.radar_papel()) is null then
+    raise exception 'RADAR420: Entre no Radar para ver as respostas automáticas.' using errcode = 'P0001';
+  end if;
+  if p_situacao is not null and p_situacao not in ('enviado', 'pendente', 'erro', 'descartado') then
+    raise exception 'RADAR429: Situação desconhecida no filtro.' using errcode = 'P0001';
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object(
+      'id', r.id, 'gatilho_id', r.gatilho_id, 'rede', r.rede, 'comentario_id', r.comentario_id, 'autor_nome', r.autor_nome,
+      'texto_comentario', r.texto_comentario, 'situacao', r.situacao, 'motivo', r.motivo, 'erro', r.erro,
+      'privada_ok', r.privada_ok, 'criado_em', r.criado_em, 'enviado_em', r.enviado_em) order by r.criado_em desc)
+    from (select * from public.radar_respostas_registro r0
+           where (p_gatilho is null or r0.gatilho_id = p_gatilho) and (p_situacao is null or r0.situacao = p_situacao)
+           order by r0.criado_em desc limit least(greatest(coalesce(p_limite, 100), 1), 500)) r), '[]'::jsonb);
+end $$;
+
+-- o administrador manda tentar de novo um registro com erro (se a janela de 7 dias da Meta ainda vale)
+create or replace function public.radar_respostas_reenviar(p_id bigint) returns void
+language plpgsql security definer set search_path = public as $$
+declare v record;
+begin
+  if (select public.radar_papel()) is distinct from 'admin' then
+    raise exception 'RADAR420: Só o administrador mexe nas respostas automáticas.' using errcode = 'P0001';
+  end if;
+  select * into v from public.radar_respostas_registro where id = p_id;
+  if v.id is null or v.situacao <> 'erro' then
+    raise exception 'RADAR429: Só um registro com erro pode ser reenviado.' using errcode = 'P0001';
+  end if;
+  if v.criado_em <= now() - interval '7 days' then
+    raise exception 'RADAR429: A janela de 7 dias da Meta venceu: este comentário não pode mais ser respondido.' using errcode = 'P0001';
+  end if;
+  update public.radar_respostas_registro set situacao = 'pendente', erro = '' where id = p_id;
+end $$;
+
+-- a função radar-meta-webhook pergunta: "e este comentário?" — o banco responde o que fazer (e já registra)
+create or replace function public.radar_respostas_receber(p_rede text, p_midia text, p_comentario text,
+                                                          p_autor_id text, p_autor_nome text, p_texto text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_g   public.radar_respostas_gatilhos%rowtype;
+  v_id  bigint;
+  v_desc text := null;
+begin
+  if p_rede not in ('instagram', 'facebook') or coalesce(p_comentario, '') !~ '^[0-9][0-9_]{0,59}$' then
+    return jsonb_build_object('acao', 'ignorado', 'motivo', 'pedido fora do formato');
+  end if;
+  select * into v_g from public.radar_respostas_gatilhos g where g.rede = p_rede and g.midia_id = p_midia and g.ativo;
+  if v_g.id is null then
+    return jsonb_build_object('acao', 'ignorado', 'motivo', 'sem gatilho ativo para a publicação');
+  end if;
+  -- a trava contra resposta em dobro: o mesmo comentário entra uma vez só
+  insert into public.radar_respostas_registro (gatilho_id, rede, comentario_id, autor_id, autor_nome, texto_comentario, situacao)
+  values (v_g.id, p_rede, p_comentario, left(coalesce(p_autor_id, ''), 40), left(coalesce(p_autor_nome, ''), 120),
+          left(coalesce(p_texto, ''), 500), 'pendente')
+  on conflict (rede, comentario_id) do nothing
+  returning id into v_id;
+  if v_id is null then
+    return jsonb_build_object('acao', 'ignorado', 'motivo', 'comentário já tratado');
+  end if;
+  if coalesce(p_autor_id, '') <> '' and exists (select 1 from public.radar_respostas_contas c
+                                                where c.rede = p_rede and c.ativo and c.conta_id = p_autor_id) then
+    v_desc := 'comentário da própria conta';
+  elsif position(public.radar_respostas_normalizar(v_g.palavra_chave) in public.radar_respostas_normalizar(p_texto)) = 0
+        or public.radar_respostas_normalizar(v_g.palavra_chave) = '' then
+    v_desc := 'sem a palavra-chave';
+  elsif not (public.radar_respostas_cfg()->>'ligado')::boolean then
+    v_desc := 'pausado (interruptor geral)';
+  end if;
+  if v_desc is not null then
+    update public.radar_respostas_registro set situacao = 'descartado', motivo = v_desc where id = v_id;
+    return jsonb_build_object('acao', 'descartado', 'registro', v_id, 'motivo', v_desc);
+  end if;
+  if (select count(*) from public.radar_respostas_registro r
+      where r.gatilho_id = v_g.id and r.situacao = 'enviado' and r.enviado_em > now() - interval '1 hour') >= v_g.limite_hora then
+    return jsonb_build_object('acao', 'pendente', 'registro', v_id, 'motivo', 'limite por hora: sai na hora seguinte');
+  end if;
+  return jsonb_build_object('acao', 'responder', 'registro', v_id, 'rede', p_rede, 'comentario_id', p_comentario,
+                            'resposta_publica', v_g.resposta_publica, 'mensagem_privada', v_g.mensagem_privada,
+                            'link', v_g.link_material);
+end $$;
+
+-- a função conta o que aconteceu no envio (a resposta pública e a privada)
+create or replace function public.radar_respostas_resultado(p_registro bigint, p_ok boolean, p_resposta_id text,
+                                                            p_privada boolean, p_erro text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.radar_respostas_registro
+     set situacao = case when p_ok then 'enviado' else 'erro' end,
+         resposta_id = left(coalesce(p_resposta_id, ''), 60),
+         privada_ok = coalesce(p_privada, false),
+         erro = left(coalesce(p_erro, ''), 300),
+         enviado_em = case when p_ok then now() else enviado_em end
+   where id = p_registro;
+  if not found then
+    raise exception 'RADAR429: Registro não encontrado.' using errcode = 'P0001';
+  end if;
+end $$;
+
+-- a fila: os pendentes que já podem sair agora (dentro do limite por hora de cada gatilho e da janela de 7 dias da Meta);
+-- o que passou dos 7 dias vira erro aqui mesmo, com a explicação
+create or replace function public.radar_respostas_pendentes(p_max int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.radar_respostas_registro
+     set situacao = 'erro', erro = 'A janela de 7 dias da Meta venceu: este comentário não pode mais ser respondido.'
+   where situacao = 'pendente' and criado_em <= now() - interval '7 days';
+  if not (public.radar_respostas_cfg()->>'ligado')::boolean then
+    return '[]'::jsonb;
+  end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('registro', f.id, 'rede', f.rede, 'comentario_id', f.comentario_id,
+                                        'resposta_publica', f.resposta_publica, 'mensagem_privada', f.mensagem_privada,
+                                        'link', f.link_material) order by f.criado_em)
+    from (select r.id, r.rede, r.comentario_id, r.criado_em, g.resposta_publica, g.mensagem_privada, g.link_material,
+                 row_number() over (partition by g.id order by r.criado_em) as n,
+                 g.limite_hora - (select count(*) from public.radar_respostas_registro e
+                                  where e.gatilho_id = g.id and e.situacao = 'enviado'
+                                    and e.enviado_em > now() - interval '1 hour') as folga
+            from public.radar_respostas_registro r
+            join public.radar_respostas_gatilhos g on g.id = r.gatilho_id and g.ativo
+           where r.situacao = 'pendente') f
+    where f.n <= f.folga limit least(greatest(coalesce(p_max, 25), 1), 100)), '[]'::jsonb);
+end $$;
+
+-- a agenda só chama a função quando há o que mandar (o guarda do pg_cron)
+create or replace function public.radar_respostas_ha_pendentes() returns boolean
+language sql stable security definer set search_path = public as $$
+  select (public.radar_respostas_cfg()->>'ligado')::boolean and exists (
+    select 1 from public.radar_respostas_registro r
+    join public.radar_respostas_gatilhos g on g.id = r.gatilho_id and g.ativo
+    where r.situacao = 'pendente')
+$$;
+
+-- o "Testar conexão" grava a página e o Instagram ligados (só id e nome; token nenhum)
+create or replace function public.radar_respostas_conta_salvar(p_rede text, p_conta text, p_nome text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if p_rede not in ('instagram', 'facebook') or coalesce(p_conta, '') !~ '^[0-9]{1,30}$' then
+    raise exception 'RADAR421: Conta fora do formato (rede instagram/facebook e o número da conta).' using errcode = 'P0001';
+  end if;
+  insert into public.radar_respostas_contas (rede, conta_id, nome)
+  values (p_rede, p_conta, left(coalesce(p_nome, ''), 120))
+  on conflict (rede) do update set conta_id = excluded.conta_id, nome = excluded.nome, ativo = true, atualizado_em = now();
+end $$;
+
+-- as últimas publicações feitas pelo próprio Radar (radar_redes_envios), para escolher no formulário do gatilho sem caçar o ID
+create or replace function public.radar_respostas_publicadas() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if (select public.radar_papel()) is null then
+    raise exception 'RADAR420: Entre no Radar para ver as respostas automáticas.' using errcode = 'P0001';
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('rede', e.canal, 'midia_id', e.post_id, 'url', e.url,
+                                                        'titulo', coalesce(c.titulo, ''), 'publicado_em', e.publicado_em)
+                                    order by e.publicado_em desc)
+                   from (select * from public.radar_redes_envios e0
+                          where e0.situacao = 'publicado' and e0.post_id ~ '^[0-9][0-9_]{0,39}$'
+                          order by e0.publicado_em desc nulls last limit 30) e
+                   left join public.radar_conteudos c on c.id = e.conteudo_id), '[]'::jsonb);
+end $$;
+
+-- a página do Facebook ligada (a mensagem privada sai por ela), para a função radar-meta-webhook
+create or replace function public.radar_respostas_pagina() returns text
+language sql stable security definer set search_path = public as $$
+  select c.conta_id from public.radar_respostas_contas c where c.rede = 'facebook' and c.ativo
+$$;
+
+-- ---------------------------------------------------------------- RLS, privilégios e gatilhos do módulo
+-- A equipe lê os gatilhos, as contas e o registro (as funções conferem o perfil); ninguém grava direto: só pelas funções.
+do $$
+declare t text;
+begin
+  foreach t in array array['radar_respostas_gatilhos', 'radar_respostas_registro', 'radar_respostas_contas'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('revoke all on public.%I from public, anon, authenticated, service_role', t);
+  end loop;
+end $$;
+grant select on public.radar_respostas_gatilhos, public.radar_respostas_contas to authenticated;
+drop policy if exists radar_respostas_gatilhos_sel on public.radar_respostas_gatilhos;
+create policy radar_respostas_gatilhos_sel on public.radar_respostas_gatilhos for select to authenticated
+  using ((select public.radar_papel()) is not null);
+drop policy if exists radar_respostas_contas_sel on public.radar_respostas_contas;
+create policy radar_respostas_contas_sel on public.radar_respostas_contas for select to authenticated
+  using ((select public.radar_papel()) is not null);
+-- trava de reserva (toda tabela do Radar tem uma regra): o registro sai pela função radar_respostas_listar
+drop policy if exists radar_respostas_registro_sel on public.radar_respostas_registro;
+create policy radar_respostas_registro_sel on public.radar_respostas_registro for select to authenticated
+  using ((select public.radar_papel()) = 'admin');
+do $$
+declare q record;
+begin
+  for q in select c.oid::regclass as nome from pg_class c join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'public' and c.relkind = 'S' and c.relname like 'radar\_respostas\_%' loop
+    execute format('revoke all on sequence %s from public, anon, authenticated, service_role', q.nome);
+  end loop;
+  for q in select p.oid::regprocedure as nome from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname like 'radar\_respostas\_%' loop
+    execute format('revoke all on function %s from public, anon, authenticated, service_role', q.nome);
+  end loop;
+end $$;
+-- a tela (cada função confere o perfil: as de mudar, só o administrador; a situação e o registro, a equipe toda)
+grant execute on function public.radar_respostas_gatilho_salvar(bigint, jsonb), public.radar_respostas_gatilho_mudar(bigint, boolean),
+                          public.radar_respostas_gatilho_apagar(bigint), public.radar_respostas_configurar(jsonb),
+                          public.radar_respostas_situacao(), public.radar_respostas_listar(bigint, text, int),
+                          public.radar_respostas_reenviar(bigint), public.radar_respostas_publicadas() to authenticated;
+-- a função radar-meta-webhook, pela chave interna
+grant execute on function public.radar_respostas_receber(text, text, text, text, text, text),
+                          public.radar_respostas_resultado(bigint, boolean, text, boolean, text),
+                          public.radar_respostas_pendentes(int), public.radar_respostas_ha_pendentes(),
+                          public.radar_respostas_conta_salvar(text, text, text), public.radar_respostas_pagina() to service_role;
+drop trigger if exists radar_tg_respostas_gatilhos_atualizado on public.radar_respostas_gatilhos;
+create trigger radar_tg_respostas_gatilhos_atualizado before update on public.radar_respostas_gatilhos
+  for each row execute function public.radar_fn_atualizado_em();
+-- o Histórico: criar, editar, ligar/desligar e apagar um gatilho (os comentários dos clientes não entram no Histórico)
+drop trigger if exists radar_tg_auditar on public.radar_respostas_gatilhos;
+create trigger radar_tg_auditar after insert or update or delete on public.radar_respostas_gatilhos
+  for each row execute function public.radar_fn_auditar();
+
 -- ---------------------------------------------------------------------
 -- 6. DADOS INICIAIS (não sobrescrevem o que já foi ajustado)
 -- ---------------------------------------------------------------------
@@ -9562,7 +9988,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 34 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.34.0).
+-- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.35.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

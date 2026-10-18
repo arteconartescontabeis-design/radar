@@ -363,20 +363,26 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.34.0"></script>
-<script src="radar-video.js?v=0.34.0"></script>
-<script src="radar-setor.js?v=0.34.0"></script>
+<script src="radar-pauta.js?v=0.35.0"></script>
+<script src="radar-video.js?v=0.35.0"></script>
+<script src="radar-setor.js?v=0.35.0"></script>
+<script src="radar-respostas.js?v=0.35.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.34.0";
+const VERSAO = "0.35.0";
 const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0, v0.31.0 e v0.32.0 não sobem: a radar-redes não muda)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.35.0", "18/10/2026", [
+    "Aba Respostas (nova): o Radar responde sozinho, no Instagram e no Facebook, ao comentário que traz a palavra-chave de uma publicação escolhida (ex.: “Comente QUERO e receba o material”). O administrador cadastra o gatilho — a publicação (dá para escolher uma feita pelo próprio Radar), a palavra-chave, a resposta pública, a mensagem privada e o link do material — e a equipe toda acompanha o registro: quem comentou, o que o Radar respondeu e por que descartou. A comparação da palavra-chave não diferencia maiúsculas, acentos nem pontuação.",
+    "Proteções de fábrica: o mesmo comentário nunca é respondido duas vezes; a própria conta da Artecon é ignorada; há um limite de respostas por hora em cada gatilho (o que passar fica na fila e sai na hora seguinte, sozinho, pela agenda nova) e um interruptor geral “Pausar todas as respostas”. A mensagem privada da Meta vale uma vez por comentário e por até 7 dias: o que passar disso vira erro explicado no registro.",
+    "Aguardando a Meta: os avisos de comentário só chegam depois que a Meta aprovar o acesso avançado do aplicativo (comentários e mensagens; o pedido tem passo a passo no LEIAME). Até lá, dá para cadastrar os gatilhos e usar o “Testar conexão”. Nenhum token fica em tabela ou no HTML: as chaves moram nos segredos da função radar-meta-webhook.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.35.0.sql (3 tabelas novas, nada é apagado; pode rodar de novo), faça o Deploy das funções radar-meta-webhook (nova) e radar-copia desta versão (Verify JWT desligado nas duas; a cópia mensal passa a levar as 3 tabelas novas), rode o sql/radar-respostas-agenda.sql (a fila, a cada 5 minutos) e guarde os 3 segredos da Meta na função. Depois publique o index.html com o radar-pauta.js, o radar-video.js, o radar-setor.js e o radar-respostas.js (novo) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.34.0 para a v0.35.0”."]],
   ["0.34.0", "18/10/2026", [
     "Aba Setor (nova): como estão as publicações de um setor no Instagram, como a contabilidade. O administrador cria o setor e escolhe as contas públicas (comerciais ou de criador) de outros escritórios — e a da Artecon, para comparar — e clica em “Atualizar a análise”; toda segunda-feira, a partir das 04:00 de Brasília, o Radar lê sozinho cada conta uma vez, pela API oficial da Meta (Business Discovery), até 50 publicações por conta, com pausa entre as chamadas e parando quando a Meta pede. A equipe toda vê o painel: publicações por semana, mistura de formatos (reel, carrossel, foto), engajamento por publicação ((curtidas + comentários) ÷ seguidores), melhores dias e horários, temas mais frequentes (classificação por palavras de contabilidade, sem IA e sem custo; os temas são editáveis) e as publicações de maior engajamento, com o link para o Instagram e só um trecho curto da legenda, sem imagem. Serve para ver formatos e temas, nunca para copiar (NBC PG 01).",
     "Busca por hashtag (ex.: #contabilidade): pronta, mas desligada até a Meta aprovar o recurso Instagram Public Content Access; a aba mostra “Aguardando a aprovação da Meta”. O passo a passo do pedido está no LEIAME.",
@@ -1185,7 +1191,7 @@ function linhaProrrogacao(p){
 }
 /* Configurações → Agenda de obrigações: as dos últimos 30 dias, também as já conferidas (com o selo) */
 function listaProrrogacoes(lista){
-  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
+  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.35.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
   return `<div class="prorrogacoes" id="prorrogacoes-config"><h3>Possíveis prorrogações captadas (últimos 30 dias)</h3>
     ${lista.length ? `<p class="sub">Notícias que falam em prorrogar ou adiar o prazo de uma obrigação desta agenda. O Radar não muda a data sozinho: confira na fonte oficial e, se o prazo mudou, ponha a nova data em “prorrogacoes”.</p>
       <ul>${lista.map(linhaProrrogacao).join("")}</ul>` : `<p class="sub">Nenhuma notícia dos últimos 30 dias fala em prorrogar ou adiar o prazo de uma obrigação desta agenda.</p>`}</div>`;
@@ -1606,6 +1612,7 @@ const TELAS = {
         <tr><td><b>Pauta</b></td><td>O calendário de publicações no Instagram e no Facebook, semana a semana: cada peça (fotos, quem aparece, informações conferidas, textos e legendas)${podeEditar() ? ", a importação do calendário (CSV), a peça nova num dia vazio (“+ Nova peça”, só o administrador), as pessoas com o termo de uso de imagem (sócio(a) da Artecon: termos dispensados) e, no reel, o corretor de vídeo (envio dos clipes, relatório e prévia)" : ""}. No alto, o quadro “Cronograma de publicações”: o mínimo da semana e do mês ao lado do que já foi feito (em vermelho, o que já devia ter saído e não saiu). O administrador aprova; a agenda do banco publica na hora marcada.</td></tr>
         ${podeEditar() ? `<tr><td><b>Vídeo</b></td><td>O vídeo corrigido de cada reel: o editor vê; o administrador corta o começo, o fim e trechos, corrige o texto da legenda, escolhe o estilo da legenda, o gancho, a cartela e a capa e monta de novo (sem transcrever de novo). A aprovação continua na peça.</td></tr>` : ""}
         <tr><td><b>Setor</b></td><td>Como estão as publicações de um setor no Instagram (contas públicas comerciais ou de criador, como outros escritórios de contabilidade, e a da Artecon para comparar): frequência, formatos, engajamento, dias e horários, temas e as publicações de maior engajamento, com o link. Serve para ver formatos e temas, nunca para copiar.${adm ? " O administrador escolhe as contas e atualiza a análise; a leitura automática é toda segunda-feira." : ""}</td></tr>
+        <tr><td><b>Respostas</b></td><td>As respostas automáticas dos comentários com palavra-chave (“Comente QUERO…”): a resposta pública e a mensagem privada com o link do material, com limite por hora e registro de tudo.${adm ? " O administrador cadastra os gatilhos e pode pausar todas." : ""} Nada é respondido em dobro e a aprovação da Meta é pedida uma vez só (LEIAME).</td></tr>
         <tr><td><b>Fontes</b></td><td>Sites acompanhados, saúde de cada um e últimas execuções do robô.${adm ? " O administrador cadastra fontes novas aqui." : ""}</td></tr>
         ${adm ? `<tr><td><b>Usuários</b></td><td>Quem entra no Radar e com qual perfil.</td></tr>
         <tr><td><b>Configurações</b></td><td>Teste da IA, orientações para a IA (como o escritório quer o texto e as imagens), regras de relevância das capturas, Pauta e agenda automática, corretor de vídeo, lembretes por e-mail, vencimentos de chaves e contas, cópia de segurança no OneDrive, agenda de obrigações (com o 13º, as anuais, a nova data de uma prorrogação conferida e as possíveis prorrogações captadas), feriados locais, Fale Conosco e assinatura do informativo.</td></tr>
@@ -2914,7 +2921,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.35.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -4559,7 +4566,7 @@ const quandoBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "�
   : d.toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}).replace(",", " às"); };
 function situacaoLembretes(lemb, cfg){
   if(lemb.erro) return `<div class="aviso alerta" id="lembretes-situacao">${lemb.erro.status === 404
-    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.35.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler a situação dos lembretes agora: recarregue a página."}</div>`;
   const s = lemb.r || {}, ag = s.agenda || {};
   const agenda = !ag.instalada ? "não instalada: rode de novo o sql/radar-redes-agenda.sql (Supabase → SQL Editor)"
@@ -4614,7 +4621,7 @@ function formVencimento(v){
 function quadroVencimentos(venc){
   const topo = `<div class="painel" id="vencimentos"><h2>Vencimentos de chaves e contas</h2>`;
   if(venc.erro) return topo + `<div class="aviso alerta">${venc.erro.status === 404
-    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.35.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler o quadro de vencimentos agora: recarregue a página."}</div></div>`;
   const hoje = hojeVencimentos(), ed = E.venc || {};
   const itens = (venc.r || []).map(v => ({v, s:situacaoVencimento(v, hoje)}))
@@ -4657,7 +4664,7 @@ async function situacaoFuncaoCopia(){
 }
 function painelCopia(sb, sf){
   const topo = `<div class="painel" id="copia-onedrive"><h2>Cópia de segurança no OneDrive</h2>`;
-  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.34.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
+  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.35.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
   const s = sb.r || {}, f = sf.r && typeof sf.r === "object" ? sf.r : null, configurada = f?.configurada === true;
   const funcao = f ? `instalada (versão ${h(f.versao || "—")})` : sf.erro?.status === 404 ? "não instalada (Supabase → Edge Functions)"
     : "não respondeu agora (confira em Supabase → Edge Functions se a radar-copia está instalada)";
@@ -4847,6 +4854,10 @@ if(typeof VIDEO === "object"){ Object.assign(ACOES, VIDEO.acoes); Object.assign(
 ABAS.splice(ABAS.findIndex(a => a[0] === "fontes"), 0, ["setor", "Setor"]);
 TELAS.setor = () => typeof telaSetor === "function" ? telaSetor() : '<h1>Setor</h1><div class="aviso erro" id="setor-sem-arquivo">O arquivo radar-setor.js não carregou. Aperte Ctrl+F5 (no celular, recarregue a página); se continuar, avise o administrador.</div>';
 if(typeof SETOR === "object"){ Object.assign(ACOES, SETOR.acoes); Object.assign(FORMS, SETOR.forms); SETOR.navegacao.forEach(a => NAVEGACAO.add(a)); }
+// v0.35.0: a aba Respostas (radar-respostas.js), entre a Setor e as Fontes, para todos os perfis; sem o arquivo, a aba mostra o recado
+ABAS.splice(ABAS.findIndex(a => a[0] === "fontes"), 0, ["respostas", "Respostas"]);
+TELAS.respostas = () => typeof telaRespostas === "function" ? telaRespostas() : '<h1>Respostas</h1><div class="aviso erro" id="resp-sem-arquivo">O arquivo radar-respostas.js não carregou. Aperte Ctrl+F5 (no celular, recarregue a página); se continuar, avise o administrador.</div>';
+if(typeof RESPOSTAS === "object"){ Object.assign(ACOES, RESPOSTAS.acoes); Object.assign(FORMS, RESPOSTAS.forms); RESPOSTAS.navegacao.forEach(a => NAVEGACAO.add(a)); }
 let OCUPADO = false, OCUPADO_DESDE = 0;
 async function executar(fn, livre, ...args){
   if(!livre && OCUPADO){                                        // clique duplo: ignora; clique durante ação longa: avisa
@@ -4918,6 +4929,8 @@ document.addEventListener("change", ev => {
   if(ev.target.id === "video-quem" && typeof linhasCartela === "function"){ const c = $("#video-cartela");
     (E.video.quem ||= {})[E.video.peca] = ev.target.value; if(c) c.innerHTML = htmlCartela(Number(ev.target.value)); }
   if(ev.target.id === "filtro-assuntos"){ E.filtros.assuntos = ev.target.value; desenhar(); }
+  // v0.35.0: escolher uma publicação do Radar preenche a rede e o número no formulário do gatilho (só a tela; nada é gravado)
+  if(ev.target.id === "resp-publicada" && typeof RESPOSTAS === "object"){ RESPOSTAS.acoes["resp-publicada"](ev.target); }
   if(ev.target.id === "ni-num") ev.target.dataset.manual = "1";
   if(ev.target.id === "ni-mes"){
     // a numeração recomeça a cada ano: troca o número sugerido conforme o ano do mês escolhido (se não foi digitado à mão)
