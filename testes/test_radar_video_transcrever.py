@@ -201,7 +201,7 @@ def test_configuracao_audio_e_cota_do_radar_conferidos_antes_de_chamar(monkeypat
             mp.delenv(var) if valor is None else mp.setenv(var, valor)
             assert _erro(lambda: transcrever.transcrever(fala)).codigo == codigo, (var, valor)
     ruins = [falsa.wav(tmp_path / "estereo.wav", 1.0, canais=2), falsa.wav(tmp_path / "48k.wav", 1.0, taxa=48000),
-             falsa.wav(tmp_path / "8bits.wav", 1.0, largura=1), falsa.wav(tmp_path / "longo.wav", 131.0),
+             falsa.wav(tmp_path / "8bits.wav", 1.0, largura=1), falsa.wav(tmp_path / "longo.wav", 971.0),   # v0.33.0: o teto subiu para 970 s
              falsa.wav(tmp_path / "vazio.wav", 0.0), tmp_path / "nao_existe.wav"]
     (tmp_path / "nao_e_wav.wav").write_bytes(b"ftypisom" * 100)
     for w in [*ruins, tmp_path / "nao_e_wav.wav"]:

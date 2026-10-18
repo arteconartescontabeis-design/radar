@@ -384,7 +384,7 @@ def test_quem_chama_cada_um_nas_suas_acoes_e_nunca_a_chave_interna(vid):
         assert pedir({"acao": "pegar"}, cab=cab) == errada, cab
     assert pedir({"acao": "previa", "id": str(uuidlib.uuid4())}, cab=ROBO) == (403, {"message": "O robô só pega o pedido, pede links e entrega o resultado."})
     assert pedir({"acao": "pegar"}, cab=AGENDA) == (403, {"message": "A agenda só aciona o robô e faz a limpeza."})
-    assert pedir({"acao": "agenda_teste"}, cab=AGENDA) == (200, {"ok": True, "versao": "0.22.0"})
+    assert pedir({"acao": "agenda_teste"}, cab=AGENDA) == (200, {"ok": True, "versao": "0.33.0"})
     assert pedir({"acao": "pegar"}, cab=ROBO) == (200, {"pedido": None})
     assert pedir({"acao": "pe gar"}, cab=ROBO)[0] == 403 and pedir({"acao": "PEGAR"}, cab=ROBO)[0] == 403   # o nome exato da ação
     assert ARM["objetos"] == {} and ARM["envios"] == [] and ARM["github"] == []
@@ -596,7 +596,7 @@ def test_diagnostico_devolve_o_bucket_publico_a_privado_e_mostra_a_fila_sem_os_s
     db = vid
     ARM["buckets"]["radar-videos"] = {"id": "radar-videos", "name": "radar-videos", "public": True}
     status, r = pedir({"acao": "diagnostico"}, uid=ADMIN)
-    assert status == 200 and r["versao"] == "0.22.0"
+    assert status == 200 and r["versao"] == "0.33.0"
     itens = {i["item"]: i for i in r["itens"]}
     assert itens["Armazenamento dos vídeos"] == {"item": "Armazenamento dos vídeos", "ok": True,
                                                  "detalhe": 'bucket privado "radar-videos" (estava público: voltou a privado)'}

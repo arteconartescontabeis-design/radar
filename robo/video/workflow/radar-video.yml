@@ -50,8 +50,10 @@ concurrency:
 jobs:
   corrigir:
     runs-on: ubuntu-24.04              # fixo: o Speech SDK só lista o Ubuntu até a 24.04 (ubuntu-latest vira 26.04)
-    # pegar + imagem do ffmpeg (1 a 2 min) + transcrição (até ~10 min esperando a vaga do F0, dividido com a Agenda) + montagem
-    timeout-minutes: 35
+    # pegar + imagem do ffmpeg (1 a 2 min) + transcrição (até ~10 min esperando a vaga do F0, dividido com a Agenda, mais ~1 min por
+    # minuto de fala) + montagem. v0.33.0: 60 (era 35), para o vídeo longo (o reel aceita até 15 min no Instagram); recopiar este
+    # workflow no repositório privado é OPCIONAL — só faz falta para vídeos bem mais longos que uns 5 minutos
+    timeout-minutes: 60
     env:
       RADAR_VIDEO_ISOLADO: docker      # o ffmpeg sempre no contêiner (outro valor é erro: nunca roda solto)
     steps:

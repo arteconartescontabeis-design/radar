@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-video" (v0.22.0)
+// RADAR ARTECON — Edge Function "radar-video" (v0.33.0: + a capa da aba Vídeo nos links, no concluir, na prévia e no baixar)
 //
 // O corretor de vídeo dos reels da Pauta. A equipe grava o reel no celular, em 1 a 12 clipes, e envia pela peça; um robô (GitHub
 // Actions do repositório PRIVADO radar-video, com o código do repositório público em robo/video/ por commit fixo) transcreve (Azure F0,
@@ -75,7 +75,7 @@
 // A transcrição é do robô (ajustes do dono): os segredos da Azure ficam no repositório privado, não aqui.
 // =====================================================================
 
-const VERSAO = "0.22.0";
+const VERSAO = "0.33.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");

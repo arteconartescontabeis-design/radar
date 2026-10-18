@@ -158,14 +158,19 @@ def test_entrada_nao_confiavel_e_recusada_sem_abrir_rede(pastas, acervo, monkeyp
     assert e.value.codigo == "arquivo_grande"
 
 
-def test_recusa_sem_audio_deitado_e_longo_demais(pastas, acervo):
+def test_recusa_sem_audio_deitado_e_longo_demais(pastas, acervo, monkeypatch):
     for n, (nome, codigo) in enumerate([("sem_audio", "sem_audio"), ("deitado", "deitado")], 1):
         shutil.copy(acervo(nome), pastas.ent / str(n))
         with pytest.raises(ErroVideo) as e:
             sondar.sondar(n, pastas)
         assert e.value.codigo == codigo
+    # v0.33.0: o teto subiu para 960 s (o Instagram aceita reel de até 15 min pela API; folga sobre os 900 s); dois clipes de 61 s
+    # agora passam — a regra é a mesma, conferida com o teto baixado (gerar 16 min de vídeo sintético custaria caro no CI)
+    assert sondar.TOTAL_MAX_S == 960.0
     partes = _entrar(pastas, acervo("longo"), acervo("longo"))
     assert sondar.sondar(1, pastas)["dur"] == pytest.approx(61, abs=0.1)                  # um sozinho passa
+    assert len(sondar.sondar_todas(partes, pastas)) == 2                                  # e os dois juntos (122 s) também, agora
+    monkeypatch.setattr(sondar, "TOTAL_MAX_S", 120.0)
     with pytest.raises(ErroVideo) as e:
         sondar.sondar_todas(partes, pastas)
     assert e.value.codigo == "longo_demais"

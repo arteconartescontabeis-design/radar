@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.32.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.33.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -50,7 +50,13 @@
 -- registro da cópia mensal do banco no OneDrive (radar_copias, só a situação; o arquivo nunca passa pelo banco); dois tipos novos de
 -- lembrete, "vencimento" e "copia"; as funções radar_vencimento*, radar_copia_conferir_agenda e radar_copias_*. A agenda da cópia fica
 -- em sql/radar-copia-agenda.sql, rodado DEPOIS deste. Nada é apagado.
--- Reversão: radar-reversao-v0.32.0.sql
+-- v0.33.0 (bloco “v0.33.0”, perto do fim): a aba Vídeo — o editor do vídeo corrigido do reel (cortes, começo e fim, legenda palavra
+-- por palavra e estilo, gancho, texto extra da cartela por vídeo e capa), que monta de novo sem transcrever de novo. Quatro funções
+-- novas (radar_video_paleta, radar_video_editar, radar_video_edicao_falta e radar_video_edicao_duracao) e algumas redefinidas;
+-- NENHUMA tabela ou coluna nova; nada é apagado. Os cortes do corretor passam a sair POR PADRÃO (muletas, repetições, falsos inícios
+-- e voz entre palavras; "Manter este trecho" desfaz) e a duração ganha meta (duracao_max_s, 15 a 900 s; o teto duro é o reel de 15
+-- minutos da API do Instagram) — o teto da coluna duracao_final sobe para 960 s (alter table no bloco).
+-- Reversão: radar-reversao-v0.33.0.sql
 -- =====================================================================
 
 begin;
@@ -76,7 +82,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.32.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.33.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -646,7 +652,7 @@ create table if not exists public.radar_videos (
   transcrito_em  timestamptz,
   sha256         text     check (sha256 ~ '^[0-9a-f]{64}$'),
   bytes          bigint   check (bytes between 1 and 314572800),
-  duracao_final  numeric(6,2) check (duracao_final between 0 and 600),
+  duracao_final  numeric(6,2) check (duracao_final between 0 and 960),    -- v0.33.0: o teto acompanha o reel de 15 min do Instagram
   antigos        boolean  not null default false,                             -- há versões antigas de corrigido/ e quadros/ a apagar
   relatorio      jsonb    not null default '{}' check (jsonb_typeof(relatorio) = 'object' and length(relatorio::text) <= 60000),
   erro_codigo    text     check (erro_codigo ~ '^[a-z_]{3,40}$'),
@@ -4864,7 +4870,7 @@ language sql stable set search_path = public as $$
     'lufs',          public.radar_video_cfg_num('lufs', -14, -24, -9),
     'cartela_s',     public.radar_video_cfg_num('cartela_s', 3, 2, 5),
     'cartela_extra', public.radar_video_cfg_texto('cartela_extra'),
-    'duracao_max_s', public.radar_video_cfg_num('duracao_max_s', 45, 15, 90))
+    'duracao_max_s', public.radar_video_cfg_num('duracao_max_s', 90, 15, 900))   -- v0.33.0: meta 90 s; teto 900 s (o reel do Instagram aceita 15 min pela API)
 $$;
 
 -- A cota do Radar no mês (de Brasília): os segundos de áudio que o corretor mandou transcrever e o limite (Configurações → Corretor de
@@ -5120,7 +5126,8 @@ begin
   if v.relatorio ? 'cartela_extra' and v.relatorio->>'cartela_extra' is distinct from public.radar_video_cfg_texto('cartela_extra') then
     return 'Reel: o texto extra da cartela mudou nas Configurações depois da montagem: o administrador marca “Refazer a cartela” nos ajustes (o vídeo é montado de novo)';
   end if;
-  if v.duracao_final > 90 then return 'Reel: o vídeo passou de 90 s'; end if;
+  -- v0.33.0: acima da meta (duracao_max_s) é só aviso com confirmação na tela; o que trava é o teto do reel pela API do Instagram
+  if v.duracao_final > 900 then return 'Reel: o vídeo passou de 15 minutos (o Instagram não aceita reel mais longo)'; end if;
   return null;
 end $$;
 
@@ -5832,7 +5839,7 @@ begin
     raise exception 'RADAR316: situação final fora do esperado' using errcode = 'P0001';
   end if;
   if p_sha256 is null or p_sha256 !~ '^[0-9a-f]{64}$' or p_bytes is null or p_bytes not between 1 and 314572800
-     or p_duracao is null or p_duracao <= 0 or p_duracao > 600 then
+     or p_duracao is null or p_duracao <= 0 or p_duracao > 960 then
     raise exception 'RADAR316: o vídeo corrigido não confere (hash, tamanho ou duração)' using errcode = 'P0001';
   end if;
   if p_relatorio is null or jsonb_typeof(p_relatorio) <> 'object' or length(p_relatorio::text) > 59000 then
@@ -7177,7 +7184,7 @@ insert into public.radar_config (chave, valor) values
   ('rascunhos', '{"ligado": true, "nota_minima": 9, "por_dia": 2, "dias": 3, "formato": "informativo"}'::jsonb),
   ('pauta', '{"agenda_ligada": true, "hora_padrao": "09:30", "janela_horas": 6, "hashtags": ["#Contabilidade", "#Palhoça"]}'::jsonb),
   ('lembretes', '{"ligado": true, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3, "pauta": true, "aprovacao": true, "video": true, "noticia": true}'::jsonb),
-  ('corretor_video', '{"glossario": ["eSocial", "DCTFWeb", "IBS", "CBS", "Simples Nacional", "MEI", "CNPJ", "DAS", "DARF", "FGTS", "Cofins", "PIS", "PGDAS-D", "Artecon", "Palhoça"], "variantes": {"eSocial": ["e social", "é social"], "DCTFWeb": ["dctf web"], "IBS": ["ips", "ibis"], "CBS": ["cps"], "DARF": ["dar f"], "FGTS": ["fgt s"], "Cofins": ["confins"], "PIS": ["piz"], "CNPJ": ["cnp j"], "PGDAS-D": ["pg das d", "pgdasd"], "Artecon": ["arte com", "artcon"]}, "duracao_max_s": 45, "pausa_max_s": 1.0, "pausa_bloco_s": 0.8, "lufs": -14, "cartela_s": 3, "cartela_extra": "", "limite_min_mes": 30, "retencao_dias": 30, "retencao_publicado_dias": 30}'::jsonb),
+  ('corretor_video', '{"glossario": ["eSocial", "DCTFWeb", "IBS", "CBS", "Simples Nacional", "MEI", "CNPJ", "DAS", "DARF", "FGTS", "Cofins", "PIS", "PGDAS-D", "Artecon", "Palhoça"], "variantes": {"eSocial": ["e social", "é social"], "DCTFWeb": ["dctf web"], "IBS": ["ips", "ibis"], "CBS": ["cps"], "DARF": ["dar f"], "FGTS": ["fgt s"], "Cofins": ["confins"], "PIS": ["piz"], "CNPJ": ["cnp j"], "PGDAS-D": ["pg das d", "pgdasd"], "Artecon": ["arte com", "artcon"]}, "duracao_max_s": 90, "pausa_max_s": 1.0, "pausa_bloco_s": 0.8, "lufs": -14, "cartela_s": 3, "cartela_extra": "", "limite_min_mes": 30, "retencao_dias": 30, "retencao_publicado_dias": 30}'::jsonb),
   ('relevancia', '{"limite_alta": 8, "limite_media": 3, "termos": [{"termo": "reforma tributária", "pontos": 5}, {"termo": "IBS", "pontos": 5}, {"termo": "CBS", "pontos": 5}, {"termo": "imposto seletivo", "pontos": 5}, {"termo": "Simples Nacional", "pontos": 5}, {"termo": "MEI", "pontos": 5}, {"termo": "microempreendedor", "pontos": 5}, {"termo": "prorroga", "pontos": 5}, {"termo": "prorrogado", "pontos": 5}, {"termo": "prorrogados", "pontos": 5}, {"termo": "prorrogação", "pontos": 5}, {"termo": "prazo", "pontos": 5}, {"termo": "prazos", "pontos": 5}, {"termo": "lei complementar", "pontos": 5}, {"termo": "transação", "pontos": 5}, {"termo": "parcelamento", "pontos": 5}, {"termo": "regularização", "pontos": 5}, {"termo": "Refis", "pontos": 5}, {"termo": "instrução normativa", "pontos": 4}, {"termo": "vencimento", "pontos": 4}, {"termo": "obrigação acessória", "pontos": 4}, {"termo": "DCTF", "pontos": 4}, {"termo": "DCTFWeb", "pontos": 4}, {"termo": "EFD", "pontos": 4}, {"termo": "ECF", "pontos": 4}, {"termo": "ECD", "pontos": 4}, {"termo": "eSocial", "pontos": 4}, {"termo": "Reinf", "pontos": 4}, {"termo": "imposto de renda", "pontos": 4}, {"termo": "IRPF", "pontos": 4}, {"termo": "IRPJ", "pontos": 4}, {"termo": "CSLL", "pontos": 4}, {"termo": "PIS", "pontos": 4}, {"termo": "Cofins", "pontos": 4}, {"termo": "ICMS", "pontos": 4}, {"termo": "ISS", "pontos": 4}, {"termo": "substituição tributária", "pontos": 4}, {"termo": "DIFAL", "pontos": 4}, {"termo": "NFS-e", "pontos": 4}, {"termo": "NF-e", "pontos": 4}, {"termo": "nota fiscal", "pontos": 4}, {"termo": "FGTS", "pontos": 4}, {"termo": "INSS", "pontos": 4}, {"termo": "contribuição previdenciária", "pontos": 4}, {"termo": "folha de pagamento", "pontos": 4}, {"termo": "desoneração", "pontos": 4}, {"termo": "lucro presumido", "pontos": 4}, {"termo": "lucro real", "pontos": 4}, {"termo": "dividendos", "pontos": 4}, {"termo": "distribuição de lucros", "pontos": 4}, {"termo": "edital", "pontos": 4}, {"termo": "editais", "pontos": 4}, {"termo": "Regularize", "pontos": 4}, {"termo": "exclusão", "pontos": 4}, {"termo": "opção", "pontos": 4}, {"termo": "decreto", "pontos": 3}, {"termo": "medida provisória", "pontos": 3}, {"termo": "alíquota", "pontos": 3}, {"termo": "alíquotas", "pontos": 3}, {"termo": "tabela", "pontos": 3}, {"termo": "CNPJ", "pontos": 3}, {"termo": "contribuinte", "pontos": 3}, {"termo": "contribuintes", "pontos": 3}, {"termo": "empresas", "pontos": 3}, {"termo": "tributária", "pontos": 3}, {"termo": "tributário", "pontos": 3}, {"termo": "tributos", "pontos": 3}, {"termo": "benefício fiscal", "pontos": 3}, {"termo": "TTD", "pontos": 3}, {"termo": "Santa Catarina", "pontos": 3}, {"termo": "salário mínimo", "pontos": 3}, {"termo": "perguntas e respostas", "pontos": 3}, {"termo": "orientação", "pontos": 3}, {"termo": "guia", "pontos": 3}, {"termo": "CGIBS", "pontos": 3}, {"termo": "CGSN", "pontos": 3}, {"termo": "restituição", "pontos": 3}, {"termo": "compensação", "pontos": 3}, {"termo": "crédito", "pontos": 3}, {"termo": "declaração", "pontos": 3}, {"termo": "malha", "pontos": 3}, {"termo": "débitos", "pontos": 3}, {"termo": "dívida ativa", "pontos": 3}, {"termo": "solução de consulta", "pontos": 2}, {"termo": "portaria", "pontos": 2}, {"termo": "resolução", "pontos": 2}, {"termo": "ato DIAT", "pontos": 2}, {"termo": "ato declaratório executivo", "pontos": -3}, {"termo": "apreende", "pontos": -8}, {"termo": "apreensão", "pontos": -8}, {"termo": "apreendidos", "pontos": -8}, {"termo": "apreendidas", "pontos": -8}, {"termo": "contrabando", "pontos": -8}, {"termo": "descaminho", "pontos": -8}, {"termo": "leilão", "pontos": -8}, {"termo": "maconha", "pontos": -8}, {"termo": "cocaína", "pontos": -8}, {"termo": "drogas", "pontos": -8}, {"termo": "haxixe", "pontos": -8}, {"termo": "cigarros", "pontos": -8}, {"termo": "armas", "pontos": -8}, {"termo": "aduana", "pontos": -8}, {"termo": "alfândega", "pontos": -8}, {"termo": "alfandegado", "pontos": -8}, {"termo": "aeroporto", "pontos": -8}, {"termo": "fronteira", "pontos": -8}, {"termo": "concurso", "pontos": -8}, {"termo": "servidores", "pontos": -8}, {"termo": "nomeia", "pontos": -8}, {"termo": "designa", "pontos": -8}, {"termo": "delega", "pontos": -8}, {"termo": "credenciamento", "pontos": -8}, {"termo": "despachante", "pontos": -8}, {"termo": "Instagram", "pontos": -8}, {"termo": "homenagem", "pontos": -8}, {"termo": "prêmio", "pontos": -8}, {"termo": "seminário", "pontos": -8}]}'::jsonb)
 on conflict (chave) do nothing;
 
@@ -7834,6 +7841,11 @@ update public.radar_config set valor = '{"vencimento": true, "copia": true}'::js
 --   cartela_extra (o texto extra DESTA cartela: "" = sem; sem a chave, o das Configurações).
 -- ---------------------------------------------------------------------
 
+-- O vídeo final pode ter até 960 s (o teto do reel pela API do Instagram, 900 s, com folga; era 600): o banco que já existe troca a
+-- regra da coluna aqui (a tabela nova, acima, já nasce com ela)
+alter table public.radar_videos drop constraint if exists radar_videos_duracao_final_check;
+alter table public.radar_videos add constraint radar_videos_duracao_final_check check (duracao_final between 0 and 960);
+
 -- As constantes da edição: a paleta da legenda (texto sobre a caixa, 20% transparente no vídeo; da identidade da Artecon: o marinho
 -- e o azul de :root no index.html, o vermelho e o amarelo da faixa de três cores da cartela), os tamanhos, as posições e os limites.
 -- A tela lê daqui e o banco confere por aqui; o robô tem a mesma tabela (robo/video/legenda.py: CORES, TAMANHOS, POSICOES), e um
@@ -7849,7 +7861,7 @@ language sql immutable set search_path = public as $$
                         {"chave": "G", "nome": "Grande", "fator": 1.15}],
            "posicoes": [{"chave": "cima", "nome": "Em cima"}, {"chave": "meio", "nome": "No meio"},
                         {"chave": "baixo", "nome": "Embaixo (padrão)"}],
-           "fps": 30, "duracao_min_s": 5, "duracao_max_s": 45, "fala_min_s": 2, "cortes_max": 30, "corte_min_q": 3,
+           "fps": 30, "duracao_min_s": 5, "duracao_max_s": 900, "fala_min_s": 2, "cortes_max": 30, "corte_min_q": 3,
            "folga_fim_s": 0.45, "transicao_s": 0.4}'::jsonb
 $$;
 
@@ -7914,14 +7926,14 @@ begin
                               when jsonb_array_length(y) <> 2 then true
                               when jsonb_typeof(y->0) <> 'number' or jsonb_typeof(y->1) <> 'number' then true
                               when (y->>0) !~ '^[0-9]{1,4}$' or (y->>1) !~ '^[0-9]{1,4}$' then true
-                              else (y->>1)::int > 4000 or (y->>1)::int - (y->>0)::int < 3 end) then
-      return 'cortar: até 30 trechos [começo, fim] em quadros (inteiros de 0 a 4000, cada um com 3 quadros ou mais)';
+                              else (y->>1)::int > 29000 or (y->>1)::int - (y->>0)::int < 3 end) then
+      return 'cortar: até 30 trechos [começo, fim] em quadros (inteiros de 0 a 29000, cada um com 3 quadros ou mais)';
     end if;
   end if;
   foreach k in array array['inicio_q','fim_q','capa_q'] loop
     continue when not p ? k;
-    if jsonb_typeof(p->k) <> 'number' or (p->>k) !~ '^[0-9]{1,4}$' or (p->>k)::int > 4000 then
-      return k || ': um quadro do vídeo (inteiro de 0 a 4000)';
+    if jsonb_typeof(p->k) <> 'number' or (p->>k) !~ '^[0-9]{1,5}$' or (p->>k)::int > 29000 then
+      return k || ': um quadro do vídeo (inteiro de 0 a 29000)';
     end if;
   end loop;
   if p ? 'legenda_tamanho' and (jsonb_typeof(p->'legenda_tamanho') <> 'string'
@@ -7970,7 +7982,7 @@ declare
 begin
   if m is null or jsonb_typeof(m->'linha_q') <> 'number' or jsonb_typeof(m->'faixas') <> 'array' then return null; end if;
   select coalesce(array_agg(q order by q), '{}') into v_q
-    from generate_series(0, least((m->>'linha_q')::numeric::int, 4000) - 1) q
+    from generate_series(0, least((m->>'linha_q')::numeric::int, 29000) - 1) q
    where exists (select 1 from jsonb_array_elements(m->'faixas') f where q >= (f->>0)::numeric and q < (f->>1)::numeric)
      and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(m->'automaticos') = 'array' then m->'automaticos' else '[]' end) a
                       where q >= (a->>'de')::numeric and q < (a->>'ate')::numeric and not v_manter ? (a->>'chave'))
@@ -8036,7 +8048,7 @@ begin
     end if;
     -- a fala que fica (os quadros, como em radar_video_edicao_duracao, sem as folgas) e a duração do vídeo inteiro
     select count(*) / 30.0 into v_fala
-      from generate_series(0, least(v_linha, 4000) - 1) q
+      from generate_series(0, least(v_linha, 29000) - 1) q
      where exists (select 1 from jsonb_array_elements(m->'faixas') f where q >= (f->>0)::numeric and q < (f->>1)::numeric)
        and not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(m->'automaticos') = 'array' then m->'automaticos' else '[]' end) a
                         where q >= (a->>'de')::numeric and q < (a->>'ate')::numeric and not v_manter ? (a->>'chave'))
@@ -8050,8 +8062,9 @@ begin
     if v_dur < 5 then
       return format('o vídeo ficaria com cerca de %s s: o mínimo é 5 s', replace(v_dur::text, '.', ','));
     end if;
-    if v_dur > 45 then
-      return format('o vídeo ficaria com cerca de %s s: o máximo é 45 s (corte mais um trecho)', replace(v_dur::text, '.', ','));
+    if v_dur > 900 then
+      -- v0.33.0: o teto é o da API do Instagram (reel de até 15 min); a meta das Configurações (duracao_max_s) é só aviso na tela
+      return format('o vídeo ficaria com cerca de %s s: o máximo é 15 minutos (o Instagram não aceita reel mais longo)', replace(v_dur::text, '.', ','));
     end if;
     -- a capa é um quadro que fica no vídeo (a mesma regra da contagem)
     if v_capa is not null and not (
@@ -8157,7 +8170,7 @@ end $$;
 -- Os ajustes da peça (v0.33.0): como antes, mas as mudanças do editor da aba Vídeo que o pedido não traz FICAM (a tela da peça — mesmo
 -- a antiga, guardada no navegador — não apaga em silêncio os cortes, o estilo, a capa nem o texto extra da cartela). E as chaves do
 -- editor NÃO entram por aqui: só pela aba Vídeo (radar_video_editar), que confere cada uma com o vídeo (os cortes dentro da linha, a
--- duração de 5 a 45 s, a capa num quadro que fica, o sha256 que o administrador viu, o texto extra sem contador(a), técnico(a) nem
+-- duração de 5 s a 15 min (o teto do reel pela API do Instagram; acima da meta das Configurações é só aviso na tela), a capa num quadro que fica, o sha256 que o administrador viu, o texto extra sem contador(a), técnico(a) nem
 -- especialista e sem a frase do boletim pago).
 create or replace function public.radar_video_ajustar(p_id uuid, p_ajustes jsonb, p_cartela text[] default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -8274,7 +8287,8 @@ begin
        (case when jsonb_typeof(v.ajustes->'cartela_extra') = 'string' then v.ajustes->>'cartela_extra' else public.radar_video_cfg_texto('cartela_extra') end) then
     return 'Reel: o texto extra da cartela mudou nas Configurações depois da montagem: o administrador marca “Refazer a cartela” nos ajustes (o vídeo é montado de novo)';
   end if;
-  if v.duracao_final > 90 then return 'Reel: o vídeo passou de 90 s'; end if;
+  -- v0.33.0: acima da meta (duracao_max_s) é só aviso com confirmação na tela; o que trava é o teto do reel pela API do Instagram
+  if v.duracao_final > 900 then return 'Reel: o vídeo passou de 15 minutos (o Instagram não aceita reel mais longo)'; end if;
   return null;
 end $$;
 
@@ -8300,7 +8314,7 @@ begin
     raise exception 'RADAR316: situação final fora do esperado' using errcode = 'P0001';
   end if;
   if p_sha256 is null or p_sha256 !~ '^[0-9a-f]{64}$' or p_bytes is null or p_bytes not between 1 and 314572800
-     or p_duracao is null or p_duracao <= 0 or p_duracao > 600 then
+     or p_duracao is null or p_duracao <= 0 or p_duracao > 960 then
     raise exception 'RADAR316: o vídeo corrigido não confere (hash, tamanho ou duração)' using errcode = 'P0001';
   end if;
   if p_relatorio is null or jsonb_typeof(p_relatorio) <> 'object' or length(p_relatorio::text) > 59000
@@ -8420,7 +8434,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 30 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.32.0).
+-- Esperado: 30 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.33.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

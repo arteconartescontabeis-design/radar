@@ -21,7 +21,7 @@ from segredo import ErroVideo
 
 FPS = 30
 FORMATO = "mov,mp4,m4a,3gp,3g2,mj2"
-TOTAL_MAX_S = 120.0                    # soma dos clipes (o reel tem até 45 s de fala; 120 s brutos dão folga para as tomadas)
+TOTAL_MAX_S = 960.0                    # soma dos clipes (v0.33.0: o Instagram aceita reel de até 15 min — 900 s — pela API; 960 s dão folga)
 ENTRADA = ["-protocol_whitelist", "file", "-f", "mov"]     # vem antes de todo "-i /ent/<n>"
 
 

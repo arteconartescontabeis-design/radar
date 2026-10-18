@@ -849,7 +849,8 @@ def test_workflow_do_repositorio_privado():
     assert w["permissions"] == {"contents": "read"} and w["concurrency"] == {"group": "radar-video", "queue": "max"}
     assert "env" not in w and list(w["jobs"]) == ["corrigir"]
     job = w["jobs"]["corrigir"]
-    assert job["runs-on"] == "ubuntu-24.04" and 30 <= job["timeout-minutes"] <= 40 and job["env"] == {"RADAR_VIDEO_ISOLADO": "docker"}
+    # v0.33.0: 60 minutos (o vídeo longo: a transcrição do F0 leva ~1 min por minuto de fala, mais a espera da vaga)
+    assert job["runs-on"] == "ubuntu-24.04" and 45 <= job["timeout-minutes"] <= 90 and job["env"] == {"RADAR_VIDEO_ISOLADO": "docker"}
     passos = job["steps"]
     usos = [p["uses"] for p in passos if "uses" in p]
     assert usos and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in usos), usos

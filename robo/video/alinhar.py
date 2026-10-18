@@ -20,8 +20,9 @@ números por extenso —, e a frase traz a forma de exibição (Display), com po
      divergência da lista e muda a numeração das outras), e a marca de uma nunca cai em outra — a que não confere fica aberta;
   5. para os cortes (cortes.planejar): as palavras com `fim_frase` (da pontuação do roteiro) e `rot_de`/`rot_ate` (as fichas do
      roteiro a que cada uma se alinhou: o corte de "voz entre palavras" só é automático entre palavras SEGUIDAS do roteiro) e, em
-     `remover`, as sugestões de repetição e de falso início (nunca automáticas). Os sons de hesitação ("hum", "ééé") ficam fora do
-     alinhamento: quem os corta é cortes.py, pela regra dele;
+     `remover`, as repetições e os falsos inícios, cortados por padrão desde a v0.33.0 (cortes.planejar protege a palavra alinhada
+     ao roteiro; "Manter este trecho" desfaz). Os sons de hesitação ("hum", "ééé") ficam fora do alinhamento: quem os corta é
+     cortes.py, pela regra dele (v0.33.0: as muletas "né", "tipo" e "é" solto também saem, por lá);
   6. editor de legenda do administrador (ajustes.legenda: [["<u>:<n>", "texto novo"], …], u = a 1ª unidade do bloco e n as palavras
      dele, da lista do relatório, aplicadas NA ORDEM da lista — a edição nova, no fim, vale sobre a antiga que cai no mesmo trecho; o
      objeto {"<u>:<n>": "texto"} de antes também vale, mas o jsonb não guarda a ordem das chaves dele): troca palavra a palavra, com o
@@ -341,8 +342,10 @@ def _edicao(unidades: list[dict], chave, novo, gl: dict) -> str | None:
 
 # ------------------------------------------------------------------ o alinhamento
 def _repeticao(g: dict, F: list[dict]) -> dict | None:
-    """Trecho só da fala que repete as fichas logo antes ou logo depois ("devem devem"), ou começo de palavra que a seguinte
-    completa ("pra- prazo"): sugestão de corte, nunca automática."""
+    """Trecho só da fala que repete as fichas logo antes ou logo depois ("devem devem", "a a"), ou começo de palavra que a seguinte
+    completa ("pra- prazo"): cortado POR PADRÃO desde a v0.33.0 (pedido do dono; antes era só sugestão). cortes.planejar ainda
+    protege: o corte que pegaria pela metade uma palavra que fica, ou uma palavra alinhada ao roteiro, vira sugestão; "Manter este
+    trecho" desfaz."""
     if g["r"] or not g["f"]:
         return None
     js, n = g["f"], len(g["f"])
@@ -350,13 +353,24 @@ def _repeticao(g: dict, F: list[dict]) -> dict | None:
     ks = [F[j]["chave"] for j in js]
     texto = lambda a, b: " ".join(_canon(F[j]) for j in range(a, b + 1))[:80]
     if ks == [F[j]["chave"] for j in range(j1 + 1, min(len(F), j1 + 1 + n))]:
-        return {"ini": F[j0]["ini"], "fim": F[j1 + 1]["ini"], "tipo": "repeticao", "automatico": False, "texto": texto(j0, j1 + n)}
+        return {"ini": F[j0]["ini"], "fim": F[j1 + 1]["ini"], "tipo": "repeticao", "automatico": True, "texto": texto(j0, j1 + n)}
     if j0 >= n and ks == [F[j]["chave"] for j in range(j0 - n, j0)]:
-        return {"ini": F[j0 - 1]["fim"], "fim": F[j1]["fim"], "tipo": "repeticao", "automatico": False, "texto": texto(j0 - n, j1)}
+        return {"ini": F[j0 - 1]["fim"], "fim": F[j1]["fim"], "tipo": "repeticao", "automatico": True, "texto": texto(j0 - n, j1)}
     if (n == 1 and F[j0]["tipo"] == "palavra" and j1 + 1 < len(F) and len(ks[0]) >= 2
             and F[j1 + 1]["chave"].startswith(ks[0]) and F[j1 + 1]["chave"] != ks[0]):
-        return {"ini": F[j0]["ini"], "fim": F[j1 + 1]["ini"], "tipo": "falso_inicio", "automatico": False, "texto": texto(j0, j1 + 1)}
+        return {"ini": F[j0]["ini"], "fim": F[j1 + 1]["ini"], "tipo": "falso_inicio", "automatico": True, "texto": texto(j0, j1 + 1)}
     return None
+
+
+def _parece_transcricao(fs: list[dict], ftok: list[str]) -> bool:
+    """A divergência parece erro da transcrição? Quando o falado tem a mesma palavra duas vezes seguidas ("quatro um um quatro um
+    um…" para "Lei 141" do roteiro: número em português não repete palavra colada) ou a confiança da transcrição é baixa, o provável
+    é a transcrição ter errado, não a pessoa: a tela diz "parece erro da transcrição — ouça e confirme" (v0.33.0, pedido do dono)."""
+    cs = [f["confianca"] for f in fs if f.get("confianca") is not None]
+    if cs and min(cs) < 0.5:
+        return True
+    baixas = [numeros.letras(t) for f in fs for t in ftok[f["t0"]:f["t1"] + 1]]
+    return any(a and a == b for a, b in zip(baixas, baixas[1:]))
 
 
 def _tipo_divergencia(xs: list[dict]) -> str:
@@ -368,7 +382,7 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
             ajustes: dict | None = None) -> dict:
     """Devolve:
       * palavras: [{texto, ini, fim, fim_frase, rot_de, rot_ate}] — todas as da transcrição, para cortes.planejar;
-      * remover: as sugestões de repetição e falso início, para cortes.planejar;
+      * remover: as repetições e os falsos inícios (cortados por padrão desde a v0.33.0), para cortes.planejar;
       * legenda: [{u, texto, ini, fim}] na linha de fala48k.wav (cortes.no_video leva ao tempo do vídeo corrigido);
       * texto_final (a legenda inteira, que o banco confere: boletim pago, nomes, termos de publicidade), trocas, divergencias,
         fora_do_roteiro, omitido (com `t`, o instante na linha de fala48k.wav; relatorio.py leva ao vídeo corrigido; a divergência
@@ -419,10 +433,12 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
             g["errou"] = marca in errou
             # t_fim (v0.33.0): o fim da última palavra falada dela (sem fala, a omissão: = t); o relatório diz se um corte do editor a tirou
             divergencias.append({"k": g["k"], "id": marca, "t": t, "t_fim": fs[-1]["fim"] if fs else t, "falado": falado, "roteiro": roteiro, "tipo": tipo,
-                                 "regravar": True, "transcricao_errou": g["errou"], **({"confianca": round(min(cs), 2)} if cs else {})})
+                                 "regravar": True, "transcricao_errou": g["errou"], **({"confianca": round(min(cs), 2)} if cs else {}),
+                                 **({"parece_transcricao": True} if fs and _parece_transcricao(fs, ftok) else {})})
         else:
             if fs:
-                fora.append({"t": t, "texto": " ".join(_canon(f) for f in fs)[:120]})
+                # t_fim (v0.33.0): o fim da última palavra, para o "Cortar este trecho" da aba Vídeo
+                fora.append({"t": t, "t_fim": fs[-1]["fim"], "texto": " ".join(_canon(f) for f in fs)[:120]})
             if rs:
                 omitido.append({"t": t, "texto": _grafia(rtok, rs)[:120]})
         if fs:

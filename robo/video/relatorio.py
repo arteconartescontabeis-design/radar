@@ -38,7 +38,7 @@ import cortes
 import sondar
 from sondar import FPS
 
-ROBO = "0.22.0"
+ROBO = "0.33.0"
 VERSAO = 2
 LIMITE = 55000                         # folga sobre os 60000 (o jsonb::text do Postgres separa com ", " e ": ", como o json.dumps)
 LISTAS = ("fora_do_roteiro", "omitido", "trocas", "sugestoes", "cortes")
@@ -99,10 +99,24 @@ def _divergencias(al: dict, plano: dict, infos: list[dict]) -> list[dict]:
     return out
 
 
+def _saiu(plano: dict, t0: float, t1: float | None = None) -> bool:
+    """O trecho [t0, t1] (linha de fala48k.wav) não está mais no vídeo (saiu por QUALQUER corte: automático ou do editor)?"""
+    q0 = cortes._q_ini(float(t0))
+    q1 = max(cortes._q_fim(float(t1)) if t1 is not None else 0, q0 + 1)
+    return not any(qa < q1 and qb > q0 for qa, qb in plano.get("trechos") or [])
+
+
 def _no_video(al: dict, plano: dict, infos: list[dict]) -> dict:
-    """As listas do alinhamento com os tempos do vídeo corrigido (em_s) e o clipe (v0.33.0: sem o que saiu num corte do editor)."""
-    conv = lambda x: {**{k: v for k, v in x.items() if k != "t"}, "em_s": _em(plano, x["t"]), "clipe": _clipe(infos, x["t"])}
-    fora = lambda x: bool(plano.get("edicao")) and _cortado(plano, x["t"])
+    """As listas do alinhamento com os tempos do vídeo corrigido (em_s) e o clipe. v0.33.0: sem o que saiu num corte (a muleta e a
+    repetição cortadas por padrão não aparecem mais como "falado fora do roteiro": não vão ao ar); o fora do roteiro que ficou leva
+    `ate_s` (o fim no vídeo), para o "Cortar este trecho" da aba Vídeo."""
+    def conv(x):
+        y = {**{k: v for k, v in x.items() if k not in ("t", "t_fim")}, "em_s": _em(plano, x["t"]), "clipe": _clipe(infos, x["t"])}
+        fim = x.get("t_fim")
+        if isinstance(fim, (int, float)) and fim > x["t"]:
+            y["ate_s"] = _em(plano, fim)
+        return y
+    fora = lambda x: _saiu(plano, x["t"], x.get("t_fim"))
     return {"trocas": [conv(x) for x in al.get("trocas") or [] if not fora(x)], "divergencias": _divergencias(al, plano, infos),
             "fora_do_roteiro": [conv(x) for x in al.get("fora_do_roteiro") or [] if not fora(x)],
             "omitido": [conv(x) for x in al.get("omitido") or []]}
@@ -149,15 +163,16 @@ def final(al: dict, plano: dict, infos: list[dict], montagem: dict, conferencia:
             saida[k] = conferencia[k]
     leg = legenda_info or {}
     avisos = set(al.get("avisos") or []) | set(leg.get("avisos") or [])
-    if (saida.get("duracao_s") or 0) > float(cfg.get("duracao_max_s", 45)):
-        avisos.add("duracao_acima_do_limite")
+    if (saida.get("duracao_s") or 0) > float(cfg.get("duracao_max_s", 90)):
+        avisos.add("duracao_acima_do_limite")             # v0.33.0: só aviso (a meta; a aprovação pede confirmação, nada é bloqueado)
     listas = _no_video(al, plano, infos)
     unidades = cortes.no_video(plano, al.get("legenda") or [])
     capa = montagem.get("capa") if isinstance(montagem.get("capa"), dict) else None
     if capa and capa.get("movida"):
         avisos.add("capa_movida")
-    # com os cortes do editor, o texto que vai ao ar é só o das unidades que ficaram (o banco confere este: boletim pago, termos, nomes)
-    texto_final = " ".join(u["texto"] for u in unidades) if plano.get("edicao") else al.get("texto_final") or ""
+    # o texto que vai ao ar é só o das unidades que ficaram no vídeo (o banco confere este: boletim pago, termos, nomes) — v0.33.0:
+    # sempre (a muleta e a repetição cortadas por padrão também saem dele), e não só com os cortes do editor
+    texto_final = " ".join(u["texto"] for u in unidades)
     rel = {"versao": VERSAO, "robo": ROBO, "modo": modo, "parcial": False, "gerado_em": _agora(),
            "entrada": sondar.resumo(infos), "saida": saida, "cortes": plano.get("cortes") or [],
            "sugestoes": plano.get("sugestoes") or [], **listas,

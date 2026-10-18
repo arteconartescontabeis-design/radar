@@ -3,26 +3,31 @@
 A linha do tempo é a de fala48k.wav: os clipes em sequência, o clipe n nos quadros [inicio_q, inicio_q + quadros). O plano sai em
 quadros de 1/30 s: o vídeo corta por select(n) e o áudio por atrim (amostra = quadro × 1600), no mesmo instante, sem deriva.
 
-Só saem (desenho 4.1, item 4, e 1.4, decisão 6): silêncio confirmado, som de hesitação que não é palavra e voz entre duas palavras
-SEGUIDAS do roteiro. Nenhuma palavra transcrita (fora os sons de hesitação) cai dentro de um corte automático — "um", "uma", "e" e
-"é" nunca saem, nem palavra alinhada ao roteiro. Em ordem:
+Só saem (desenho 4.1, item 4, e 1.4, decisão 6; v0.33.0: o pedido do dono — "o aplicativo não corrigiu nada" — fez as muletas
+faladas e a voz entre palavras saírem POR PADRÃO, cada corte com a chave e "Manter este trecho" para desfazer): silêncio confirmado,
+som de hesitação que não é palavra, muleta falada fora do roteiro ("né", "tipo", "é" solto; e_muleta) e voz entre duas palavras.
+Nenhuma OUTRA palavra transcrita cai dentro de um corte automático — palavra alinhada ao roteiro nunca sai, e o falado fora do
+roteiro que não é muleta fica (a aba Vídeo o marca para cortar com um clique: pode mudar o sentido). Em ordem:
   1. começo e fim de cada clipe: fica de 0,12 s antes da 1ª palavra a 0,45 s depois da última (sem as palavras — reserva, sem
      transcrição — da 1ª à última voz que o silencedetect acha). Clipe sem fala sai inteiro;
-  2. entre duas palavras seguidas da transcrição (os sons de hesitação não contam como palavra):
-     * com som de hesitação ("hum", "ãh", "ééé"; e_hesitacao), as duas palavras alinhadas a fichas SEGUIDAS do roteiro e a voz do
-       intervalo dentro do som de hesitação (com 0,1 s de folga; fora dele, menos de 0,15 s): sai (automático); senão — a voz que
-       só encosta no "hum" pode ser a palavra do roteiro dita colada nele, que a transcrição perdeu — vira sugestão;
+  2. entre duas palavras seguidas da transcrição (os sons de hesitação e as muletas não contam como palavra):
+     * com som de hesitação ("hum", "ãh", "ééé"; e_hesitacao) ou muleta fora do roteiro ("né", "tipo", "é" solto; e_muleta), as duas
+       palavras alinhadas a fichas SEGUIDAS do roteiro e a voz do intervalo dentro deles (com 0,1 s de folga; fora deles, menos de
+       0,15 s): sai (automático; tipo "muleta" quando há muleta); senão — a voz que só encosta no "hum" pode ser a palavra do
+       roteiro dita colada nele, que a transcrição perdeu — vira sugestão;
      * sem palavra, com voz (o que o silencedetect não marca como silêncio) num intervalo de 0,35 a 2,0 s — o "ééé" ou a repetição
-       que a transcrição não escreveu: sai só se as duas palavras estão alinhadas a fichas SEGUIDAS do roteiro (`rot_de`/`rot_ate`,
-       do alinhar.py: então nenhuma palavra do roteiro pode estar ali); senão — e acima de 2,0 s — vira sugestão;
+       que a transcrição não escreveu: sai POR PADRÃO (v0.33.0; antes pedia palavras seguidas do roteiro) — "Manter este trecho"
+       desfaz, e o que do roteiro não foi dito continua em "omitido": nada some em silêncio; acima de 2,0 s vira sugestão (pode ser
+       fala que a transcrição perdeu);
        nos dois casos o intervalo fica com o mesmo silêncio que uma pausa longa deixaria (o colado em cada palavra) e o corte nunca
        chega a menos de 0,05 s de uma palavra;
      * pausa confirmada como silêncio (silencedetect): dentro da frase, acima de pausa_max_s (1,0) fica com 0,30 s; entre frases (a
        palavra antes da pausa fecha a frase: `fim_frase`, que o alinhamento tira da pontuação do roteiro, ou, sem ele, a pontuação
        da própria palavra), acima de pausa_bloco_s (0,8) fica com 0,40 s. Sem as palavras, toda pausa acima de pausa_bloco_s fica
        com 0,40 s. O corte é só a parte do silêncio que cai entre as duas palavras: nunca entra numa palavra;
-  3. `remover` (do alinhamento): as sugestões de repetição e falso início, com o tipo e o texto ouvido; um pedido automático que
-     cairia sobre uma palavra vira sugestão (nunca corta);
+  3. `remover` (do alinhamento): as repetições ("a a", "devem devem") e os falsos inícios ("pra- prazo"), cortados POR PADRÃO
+     (v0.33.0; antes eram só sugestão) — a palavra repetida, que não está no roteiro, sai inteira; um pedido que cortaria uma
+     palavra pela metade, ou uma palavra alinhada ao roteiro, vira sugestão (nunca corta);
   4. `manter` (ajustes.manter): as chaves dos cortes no meio da fala que o administrador mandou manter.
 Os cortes são numerados (k) na ordem do tempo, para o relatório; o do meio da fala leva também a `chave` "<clipe>:<quadro>", o quadro
 (1/30 s, na linha de fala48k.wav) em que começa o que ele corta — o silêncio da pausa, o vão entre as duas palavras (hesitação, voz
@@ -70,6 +75,9 @@ FALA_MIN_Q = 60                        # e a fala que fica, 2 s ou mais
 FOLGA_FIM_S, TRANSICAO_S = 0.45, 0.4   # a estimativa da duração (radar_video_paleta: folga_fim_s = FOLGA_DEPOIS, transicao_s)
 PROTEGIDAS = frozenset({"um", "uma", "e", "é"})
 _HESITACAO = re.compile(r"ã+h+|hã+|hu+m+|hm+|a+h+n+")
+# v0.33.0: as muletas faladas que saem por padrão quando NÃO estão alinhadas ao roteiro ("né", "tipo" e o "é" solto; o pedido do
+# dono). "tipo" e "é" do roteiro ("o tipo de empresa", "o prazo é dia 20") se alinham e nunca saem; o "Manter este trecho" desfaz.
+MULETAS = frozenset({"né", "ne", "tipo", "é"})
 
 
 def e_hesitacao(texto: object) -> bool:
@@ -81,9 +89,15 @@ def e_hesitacao(texto: object) -> bool:
     return bool(_HESITACAO.fullmatch(t) or re.fullmatch(r"([aeiou])\1{2,}", numeros.letras(t)))
 
 
+def e_muleta(texto: object) -> bool:
+    """Muleta falada ("né", "tipo", "é" solto), que sai do vídeo quando não está alinhada ao roteiro (v0.33.0)."""
+    t = unicodedata.normalize("NFC", str(texto or "")).lower().strip(" .,;:!?…\"'“”()")
+    return t in MULETAS
+
+
 def _hesita(w: dict) -> bool:
-    """Palavra da transcrição que é só som de hesitação (e não está alinhada ao roteiro: palavra do roteiro nunca sai)."""
-    return w.get("rot_de") is None and e_hesitacao(w.get("texto"))
+    """Palavra da transcrição que é só som de hesitação ou muleta (e não está alinhada ao roteiro: palavra do roteiro nunca sai)."""
+    return w.get("rot_de") is None and (e_hesitacao(w.get("texto")) or e_muleta(w.get("texto")))
 
 
 def _seguidas(w1: dict, w2: dict) -> bool:
@@ -93,7 +107,10 @@ def _seguidas(w1: dict, w2: dict) -> bool:
 
 
 def _sobre_palavra(c0: float, c1: float, ws: list[dict]) -> bool:
-    return any(c0 < w["fim"] - 0.01 and c1 > w["ini"] + 0.01 for w in ws)
+    """O corte [c0, c1] pegaria palavra que tem de ficar? A alinhada ao roteiro, sempre; a fora do roteiro, só se o corte a pegasse
+    pela metade (inteira dentro dele, ela É o que o pedido tira: a repetição e o falso início saem por padrão desde a v0.33.0)."""
+    return any(c0 < w["fim"] - 0.01 and c1 > w["ini"] + 0.01
+               and (w.get("rot_de") is not None or not (c0 - 0.01 <= w["ini"] and w["fim"] <= c1 + 0.01)) for w in ws)
 
 
 def _sobra(g0: float, g1: float, sil: list[tuple[float, float]], fica: float) -> tuple[float, float]:
@@ -119,15 +136,19 @@ def _entre(w1: dict, w2: dict, silencios: list[tuple[float, float]], todas: list
     voz = [(a, b) for a, b in _menos((g0, g1), sil) if b - a >= VOZ_MINIMA]
     sugestao = []
     if hes or (g1 - g0 >= VOZ_ENTRE[0] and sum(b - a for a, b in voz) >= VOZ_TRECHO):
-        tipo, texto = ("hesitacao", " ".join(w["texto"] for w in hes)[:40]) if hes else ("voz_entre_palavras", None)
+        tipo = ("muleta" if any(e_muleta(w.get("texto")) for w in hes) else "hesitacao") if hes else "voz_entre_palavras"
+        texto = " ".join(w["texto"] for w in hes)[:40] if hes else None
         if hes:                                         # só entre palavras seguidas do roteiro (nenhuma palavra dele pode estar ali)
-            # e com a voz do intervalo dentro dos sons de hesitação (0,1 s de folga; fora deles, menos de VOZ_TRECHO: o vão curto demais
-            # para o silencedetect): a voz que só encosta no "hum" pode ser a palavra dita colada nele que a transcrição perdeu
-            # ("você hum não precisa", sem o "não")
+            # e com a voz do intervalo dentro dos sons (0,1 s de folga; fora deles, menos de VOZ_TRECHO: o vão curto demais para o
+            # silencedetect): a voz que só encosta no "hum" pode ser a palavra dita colada nele que a transcrição perdeu
+            # ("você hum não precisa", sem o "não") — essa continua sugestão
             fora = sum(b - a for v in voz for a, b in _menos(v, [(h["ini"] - 0.1, h["fim"] + 0.1) for h in hes]))
             auto = _seguidas(w1, w2) and fora < VOZ_TRECHO
-        else:                                           # acima de 2,0 s pode ser fala que a transcrição perdeu: só sugestão
-            auto = g1 - g0 <= VOZ_ENTRE[1] and _seguidas(w1, w2)
+        else:
+            # v0.33.0 (pedido do dono: "aplicar as sugestões por padrão"): a voz sem palavra num intervalo de até 2,0 s sai POR
+            # PADRÃO, mesmo entre palavras que não são seguidas do roteiro — o que do roteiro não foi dito continua em "omitido"
+            # (nada some em silêncio) e "Manter este trecho" desfaz. Acima de 2,0 s pode ser fala que a transcrição perdeu: sugestão
+            auto = g1 - g0 <= VOZ_ENTRE[1]
         if auto:
             a, b = _sobra(g0, g1, sil, sobra)
             return [(a, b, tipo, True, texto, g0)] if b - a >= 1 / FPS else []
@@ -262,6 +283,14 @@ def planejar(partes: list[dict], silencios: list[tuple[float, float]], cfg: dict
             cortes.append({"clipe": p["n"], "de_s": 0.0, "ate_s": round(p1 - p0, 2), "tipo": "clipe_sem_fala"})
             continue
         a, b = max(p0, borda[0] - FOLGA_ANTES), min(p1, borda[1] + FOLGA_DEPOIS)
+        if palavras is not None:                        # v0.33.0: a muleta colada na borda ("…até sexta né") sai com o começo ou o fim
+            soltas = [w for w in todas if _hesita(w)]
+            fim_solto = min((w["ini"] for w in soltas if w["ini"] >= borda[1]), default=None)
+            if fim_solto is not None:
+                b = min(b, max(borda[1] + FOLGA_PALAVRA, fim_solto - FOLGA_PALAVRA))
+            ini_solto = max((w["fim"] for w in soltas if w["fim"] <= borda[0]), default=None)
+            if ini_solto is not None:
+                a = max(a, min(borda[0] - FOLGA_PALAVRA, ini_solto + FOLGA_PALAVRA))
         q0c, q1c = p["inicio_q"], p["inicio_q"] + p["quadros"]
         faixas.append([max(q0c, _q_ini(a)), min(q1c, _q_fim(b))])
         ws_todas += ws if palavras is not None else ws_fim
@@ -360,8 +389,11 @@ def _fica(mapa: dict, ajustes: dict | None, q: int) -> bool:
             and (ini is None or q >= ini) and (fim is None or q < fim))
 
 
+LINHA_MAX_Q = 29000                    # v0.33.0: 960 s (sondar.TOTAL_MAX_S) × 30 + folga (era 4000, quando o bruto parava em 120 s)
+
+
 def _ficam(mapa: dict, ajustes: dict | None) -> list[int]:
-    return [q for q in range(min(int(mapa.get("linha_q") or 0), 4000)) if _fica(mapa, ajustes, q)]
+    return [q for q in range(min(int(mapa.get("linha_q") or 0), LINHA_MAX_Q)) if _fica(mapa, ajustes, q)]
 
 
 def fala_estimada_q(mapa: dict, ajustes: dict | None) -> int:

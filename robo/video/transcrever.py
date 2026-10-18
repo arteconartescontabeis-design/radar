@@ -55,7 +55,7 @@ from segredo import ErroVideo
 IDIOMA = "pt-BR"
 API_RAPIDO = "2025-10-15"
 TAXA = 16000                           # fala16k.wav: 16 kHz, 16 bits, mono (audio.extrair)
-DURACAO_MAX = 130.0                    # s: sondar recusa a soma acima de 120 s (longo_demais)
+DURACAO_MAX = 970.0                    # s: sondar recusa a soma acima de 960 s (longo_demais; v0.33.0)
 ESPERA_MAX = 600.0                     # s: ~10 min esperando a vaga (ou a cota) do F0 antes de desistir
 ESPERA_INICIAL, ESPERA_TETO = 5.0, 60.0
 FALHAS_MAX = 3                         # tentativas em falha de rede ou do serviço (depois, azure_fora)

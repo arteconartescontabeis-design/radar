@@ -275,7 +275,7 @@ def test_enviado_fila_pegar_com_trava_e_robo_ate_o_fim(corretor):
         "palavras_tentativa": None, "restante_s": 1800}                                             # 30 minutos por padrão
     assert p["config"]["glossario"][:3] == ["eSocial", "DCTFWeb", "IBS"] and p["config"]["variantes"]["IBS"] == ["ips", "ibis"]
     assert {k: p["config"][k] for k in ("pausa_max_s", "pausa_bloco_s", "lufs", "cartela_s", "cartela_extra", "duracao_max_s")} == {
-        "pausa_max_s": 1.0, "pausa_bloco_s": 0.8, "lufs": -14, "cartela_s": 3, "cartela_extra": "", "duracao_max_s": 45}
+        "pausa_max_s": 1.0, "pausa_bloco_s": 0.8, "lufs": -14, "cartela_s": 3, "cartela_extra": "", "duracao_max_s": 90}
     assert "Ana" not in json.dumps(p)                                                                # nenhum nome no pedido (sem a cartela de quem fala)
     assert pegar() is None and video(db, vid, "situacao, tentativas, rodada") == ("processando", 1, 1)
     # a rodada errada (o pedido mudou de mãos) nunca grava
@@ -394,7 +394,7 @@ def test_pendencia_do_reel_e_aprovacao_amarrada_ao_sha256(corretor):
         marcar_pronta(db, pid)
     db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
     assert conferir(pid) == []
-    for sql, msg in [("update radar_videos set duracao_final = 91 where id = %(v)s", "Reel: o vídeo passou de 90 s"),
+    for sql, msg in [("update radar_videos set duracao_final = 901 where id = %(v)s", "Reel: o vídeo passou de 15 minutos (o Instagram não aceita reel mais longo)"),
                      ("update radar_videos set arquivos_apagados = '{corrigido}' where id = %(v)s", "Reel: o vídeo corrigido foi apagado (prazo de guarda): envie a gravação de novo"),
                      ("update radar_videos set cartela_linhas = '{\"Só uma linha\"}' where id = %(v)s", "Reel: a cartela não confere com as Configurações ou com Pessoas e termos: refaça a cartela"),
                      ("update radar_pessoas set termo_corretor_em = null where id = %(a)s", "Reel: uma pessoa da peça não pode aparecer no vídeo (sem o termo novo, que cita o corretor de vídeo): confira em Pauta → Pessoas e termos"),
@@ -1121,7 +1121,7 @@ def test_paleta_da_edicao_igual_no_banco_no_robo_e_contraste(corretor):
     assert {c["chave"]: (c["texto"].lstrip("#"), c["caixa"].lstrip("#")) for c in pal["cores"]} == legenda.CORES
     assert {t["chave"]: t["fator"] for t in pal["tamanhos"]} == legenda.TAMANHOS
     assert tuple(p["chave"] for p in pal["posicoes"]) == legenda.POSICOES
-    assert [c["chave"] for c in pal["cores"]][0] == "marinho" and pal["duracao_max_s"] == 45 and pal["fps"] == 30
+    assert [c["chave"] for c in pal["cores"]][0] == "marinho" and pal["duracao_max_s"] == 900 and pal["fps"] == 30
     for c in pal["cores"]:
         assert re.fullmatch(r"#[0-9A-F]{6}", c["texto"]) and re.fullmatch(r"#[0-9A-F]{6}", c["caixa"])
         assert _contraste(c["texto"], c["caixa"]) >= 4.5, c
@@ -1186,7 +1186,7 @@ def test_editar_confere_cortes_comeco_fim_e_capa_na_linha_original(corretor):
                ({"cortar": [[-5, 10]]}, "cortar: até 30"), ({"cortar": [["1", "9"]]}, "cortar: até 30"), ({"cortar": {"0": [1, 9]}}, "cortar: até 30"),
                ({"cortar": [[100, 200], [150, 250]]}, "o corte nº 2 está fora do vídeo, tem menos de 0,1 s ou passa por cima de outro"),
                ({"cortar": [[300, 400], [100, 200]]}, "o corte nº 2 está fora"), ({"cortar": [[1100, 1250]]}, "o corte nº 1 está fora do vídeo"),
-               ({"inicio_q": 4001}, "inicio_q: um quadro do vídeo"), ({"fim_q": 2.5}, "fim_q: um quadro"), ({"capa_q": "30"}, "capa_q: um quadro"),
+               ({"inicio_q": 29001}, "inicio_q: um quadro do vídeo"), ({"fim_q": 2.5}, "fim_q: um quadro"), ({"capa_q": "30"}, "capa_q: um quadro"),
                ({"inicio_q": 1300}, "o começo ou o fim marcado está fora do vídeo"),
                ({"inicio_q": 500, "fim_q": 510}, "o começo marcado tem de vir pelo menos 1 s antes do fim marcado"),
                ({"inicio_q": 500, "fim_q": 400}, "pelo menos 1 s antes"),
@@ -1213,7 +1213,7 @@ def test_editar_confere_cortes_comeco_fim_e_capa_na_linha_original(corretor):
     assert editar(vid2, {})["modo"] == "montagem"                                               # "Montar de novo para liberar os cortes e a capa"
 
 
-def test_editar_duracao_estimada_entre_5_e_45_e_fala_de_2_s(corretor):
+def test_editar_duracao_estimada_entre_5_s_e_15_min_e_fala_de_2_s(corretor):
     """A duração depois de montar segue o plano do robô: a fala que fica MAIS o pad do fim (o último quadro parado: o vídeo precisa de
     0,45 s depois da última palavra que fica). Sem o fim marcado, a faixa já tem essa folga (pad 0: nada de somar 0,45 s a mais, que
     deixaria passar um vídeo abaixo de 5 s); o fim no meio de uma palavra pede o pad inteiro (14 quadros); perto do fim dela, o que falta."""
@@ -1235,8 +1235,8 @@ def test_editar_duracao_estimada_entre_5_e_45_e_fala_de_2_s(corretor):
     # sem as palavras no mapa: o último trecho sem palavra (a conta do robô sem palavra no último trecho: pad só se ele for curto)
     assert db.execute("select radar_video_edicao_duracao(jsonb_populate_record(null::radar_videos, jsonb_build_object('relatorio', %s::jsonb)), %s)",
                       (json.dumps({"mapa": {k: x for k, x in mapa.items() if k != "palavras"}}), json.dumps({"fim_q": 1200}))).fetchone()[0] == Decimal("32.6")
-    with pytest.raises(psycopg.errors.RaiseException, match=r"RADAR310: o vídeo ficaria com cerca de 45,9 s: o máximo é 45 s \(corte mais um trecho\)"):
-        editar(vid, {"manter": ["1:500"]})
+    assert editar(vid, {"manter": ["1:500"]})["duracao_s"] == 45.9        # v0.33.0: acima da meta é aceito (o aviso fica na tela); o teto é 900 s
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
     assert editar(vid, {"manter": ["1:500"], "cortar": [[1200, 1300]]})["duracao_s"] == 43.1
     db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
     r = editar(vid, {"cortar": [[100, 400]]})
@@ -1253,6 +1253,15 @@ def test_editar_duracao_estimada_entre_5_e_45_e_fala_de_2_s(corretor):
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR310: o vídeo ficaria com cerca de 4,1 s: o mínimo é 5 s"):
         editar(vid, {"inicio_q": 1000, "fim_q": 1060})
     assert editar(vid, {"inicio_q": 1000, "fim_q": 1090})["duracao_s"] == 5.1
+    # v0.33.0: o teto é o do reel do Instagram pela API (15 min = 900 s); acima dele, recusa — abaixo, mesmo bem acima da meta, passa
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))          # tira o vídeo de cima da fila
+    config(db, cartela_s=3)
+    longo = {"fps": 30, "linha_q": 28000, "faixas": [[0, 27500]], "automaticos": [], "trechos": [[0, 27500]], "pad_q": 0,
+             "palavras": [[100, 916600]]}
+    pid3, ana3, vid3 = pronto_com_mapa(db, relatorio={**REL_MAPA, "mapa": longo}, dias=11)
+    with pytest.raises(psycopg.errors.RaiseException, match=r"RADAR310: o vídeo ficaria com cerca de .*: o máximo é 15 minutos \(o Instagram não aceita reel mais longo\)"):
+        editar(vid3, {})
+    assert editar(vid3, {"fim_q": 3000})["duracao_s"] == 103.1                                 # 100 s + o pad + a cartela − a transição: bem acima da meta, aceito
 
 
 def test_editar_estilo_so_da_paleta_e_textos_sem_marcacao(corretor, request):

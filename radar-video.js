@@ -20,11 +20,13 @@
    lembretes (robo/radar_lembretes.py).
    v0.30.0: só a versão e o recado do banco (o setup da v0.30.0).
    v0.31.0: só a versão e o recado do banco (o setup da v0.31.0); a versão traz as fontes oficiais que faltavam (robô).
-   v0.32.0: só a versão e o recado do banco (sql/radar-setup-v0.32.0.sql).
+   v0.33.0: a aba Vídeo (o editor do vídeo corrigido: cortes, legenda, estilo, gancho, cartela e capa), os cortes por padrão
+   (muletas, repetições e voz entre palavras), a meta de duração (90 s; o teto é o reel de 15 min do Instagram) e o recado do banco
+   (sql/radar-setup-v0.33.0.sql).
    ==================================================================== */
-const VIDEO_VERSAO = "0.32.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.33.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
-const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 120;
+const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
 // do desenho (a documentação manda o x-signature no envio retomável sem dizer a rota): o teste real 3 confirma qual vale
 const TUS_CAMINHOS = ["/storage/v1/upload/resumable/sign", "/storage/v1/upload/resumable"];
@@ -44,7 +46,7 @@ const ERROS_VIDEO = {
   formato:"um dos clipes não é MP4 ou MOV de câmera (ou não tem imagem): envie os arquivos originais do celular",
   sem_audio:"um dos clipes está sem som: grave de novo com o microfone ligado",
   deitado:"um dos clipes está deitado (horizontal): grave na vertical",
-  longo_demais:"os clipes somam mais de 120 s: envie só as tomadas boas",
+  longo_demais:"os clipes somam mais de 16 minutos (960 s): envie só as tomadas boas",
   arquivo_grande:"um clipe chegou maior que o declarado: envie a gravação de novo",
   sem_fala:"nenhuma fala foi encontrada nos clipes: confira o som e grave de novo",
   cartela_nao_cabe:"a cartela final não coube: encurte a identificação (Configurações → Assinatura), o nome na peça de quem fala (Pauta → Pessoas e termos) ou o texto extra (Configurações → Corretor de vídeo) e use Tentar de novo (a cartela é refeita com o que estiver lá; o texto extra próprio deste vídeo, escolhido na aba Vídeo, sai e volta o das Configurações: um mais curto se escolhe de novo na aba Vídeo, com o vídeo pronto)",
@@ -88,7 +90,7 @@ const MOTIVOS_LEGENDA = {bloco_inexistente:"o bloco não existe mais (o vídeo m
   numero_de_palavras:"o bloco fica com o mesmo número de palavras (troque palavra por palavra)",
   numero_ou_termo:"número, data, mês ou termo do glossário não muda pela legenda (se a fala está errada, regrave; se a transcrição errou, use “A transcrição errou (vale o roteiro)”)",
   palavra_diferente:"cada palavra nova é a do roteiro ou parecida com a que estava"};
-const TIPOS_CORTE = {pausa:"pausa longa encurtada", hesitacao:"hesitação", voz_entre_palavras:"voz entre palavras (hesitação ou repetição)",
+const TIPOS_CORTE = {pausa:"pausa longa encurtada", hesitacao:"hesitação", muleta:"muleta (né, tipo…)", voz_entre_palavras:"voz entre palavras (hesitação ou repetição)",
   repeticao:"repetição", falso_inicio:"falso início", remover:"trecho", editor:"corte da aba Vídeo", editor_fora:"fora do começo ou do fim marcados"};
 const TIPOS_DIVERGENCIA = {numero:"número", data:"data", termo:"termo"};
 // varredura geral (v0.22.0): + "pessoas" (quem estava marcada no envio): a caixa "A pessoa viu o vídeo final" da aprovação olha para elas
@@ -112,7 +114,7 @@ const esperarVideo = ms => new Promise(ok => setTimeout(ok, ms));
 // o link assinado que a função devolve: só do armazenamento deste projeto (nunca outro endereço na tela)
 const linkVideoOk = u => typeof u === "string" && /^https?:\/\/[!-~]+$/.test(u) && !/["'<>`\\]/.test(u) && u.startsWith(URL_BASE + "/storage/v1/object/sign/radar-videos/");
 const confVideo = () => objVideo(CONF_PAUTA.corretor_video);
-const limiteDuracaoVideo = () => { const n = numVideo(confVideo().duracao_max_s); return n !== null && n >= 15 && n <= 90 ? n : 45; };
+const limiteDuracaoVideo = () => { const n = numVideo(confVideo().duracao_max_s); return n !== null && n >= 15 && n <= 900 ? n : 90; };   // v0.33.0: a meta (só aviso); o teto da API é 900 s
 // o texto de um código do robô ou do relatório: só o que é do mapa (nunca "constructor" ou "__proto__", que o objeto herda)
 const deMapaVideo = (m, k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null;
 const erroDoVideo = c => deMapaVideo(ERROS_VIDEO, c) || (/^[a-z_]{3,40}$/.test(String(c || "")) ? ERRO_INTERNO_VIDEO + ` (${c})` : ERRO_INTERNO_VIDEO);
@@ -194,7 +196,7 @@ async function blocoVideo(p){
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
   let vivos;
   try{ vivos = await videosDaPeca(p.id); }
-  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.32.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
+  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.33.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
@@ -322,15 +324,15 @@ function listaClipes(pid, partes){
   const total = l.reduce((s, c) => s + c.bytes, 0), dur = duracaoClipes(l), resta = restaVideo();
   const avisos = [l.length > VIDEO_MAX_CLIPES ? `São ${l.length} clipes: envie no máximo ${VIDEO_MAX_CLIPES}.` : "",
     total > VIDEO_MAX_BYTES ? `Os clipes somam ${mbVideo(total)}: o máximo é 500 MB.` : "",
-    dur && dur > VIDEO_MAX_SEGUNDOS ? `Os clipes somam cerca de ${segVideo(dur, 0)} s: o corretor recusa acima de ${VIDEO_MAX_SEGUNDOS} s (envie só as tomadas boas).` : "",
-    dur && resta !== null && dur > resta ? `Os clipes somam cerca de ${segVideo(dur, 0)} s, e o corretor só pode transcrever mais ${segVideo(resta, 0)} s neste mês: o envio é recusado (grave mais curto ou espere o mês que vem).` : ""].filter(Boolean);
+    dur && dur > VIDEO_MAX_SEGUNDOS ? `Os clipes somam cerca de ${segVideo(dur, 0)} s: o corretor recusa acima de 16 minutos (envie só as tomadas boas).` : "",
+    dur && resta !== null && dur > resta ? `Os clipes somam cerca de ${segVideo(dur, 0)} s, e o corretor só pode transcrever mais ${segVideo(resta, 0)} s neste mês: o envio é recusado (grave mais curto, espere o mês que vem ou peça ao administrador a transcrição paga da Azure — segredo AZURE_FALA_MODO “rapido” no repositório privado).` : ""].filter(Boolean);
   return `<ol class="video-clipes">${l.map((c, i) => { const parte = partes?.[i], difere = parte && (parte.bytes !== c.bytes || parte.tipo !== c.tipo);
     return `<li data-i="${i}"><span class="video-clipe-nome"><b>${i + 1}.</b> ${h(c.nome)} · ${mbVideo(c.bytes)}${c.duracao ? ` · ${segVideo(c.duracao)} s` : ""}</span>
       ${!c.tipo ? selo("não é MP4 nem MOV", "erro") : ""}${c.aviso ? " " + selo(c.aviso, "alerta") : ""}${difere ? " " + selo(`não é o clipe nº ${i + 1} do envio`, "erro") : ""}
       <span class="acoes"><button class="btn peq sec" type="button" data-acao="video-clipe-mover" data-i="${i}" data-passo="-1"${i ? "" : " disabled"} aria-label="Subir o clipe ${i + 1}">↑</button>
         <button class="btn peq sec" type="button" data-acao="video-clipe-mover" data-i="${i}" data-passo="1"${i < l.length - 1 ? "" : " disabled"} aria-label="Descer o clipe ${i + 1}">↓</button>
         <button class="btn peq perigo" type="button" data-acao="video-clipe-tirar" data-i="${i}">Tirar</button></span></li>`; }).join("")}</ol>
-    <p class="sub">${l.length} clipe(s), ${mbVideo(total)} no total${dur ? `, cerca de ${segVideo(dur, 0)} s` : ""}.</p>
+    <p class="sub">${l.length} clipe(s), ${mbVideo(total)} no total${dur ? `, cerca de ${segVideo(dur, 0)} s` : ""}.${dur && resta !== null && dur <= resta ? ` <span id="video-gasto-cota">Este envio gasta cerca de ${segVideo(dur, 0)} s da transcrição do mês (sobram ${segVideo(Math.max(0, resta - dur), 0)} s).</span>` : ""}</p>
     ${avisos.map(a => `<div class="aviso alerta">${h(a)}</div>`).join("")}`;
 }
 const redesenharClipes = pid => { const box = $("#video-clipes"); if(box) box.innerHTML = listaClipes(pid, estadoVideo().envio ? listaVideo(estadoVideo().envio.partes) : null); };
@@ -519,6 +521,33 @@ function situacaoVideo(v, p, livre, adm){
 }
 
 /* ------------------------------------------------------------- o relatório */
+/* v0.33.0 (pedido do dono: "o aplicativo não corrigiu nada"): o resumo, no topo, do que o corretor corrigiu e do que falta decidir */
+function resumoCorrecoesVideo(v){
+  const r = objVideo(v.relatorio), aj = objVideo(v.ajustes);
+  const manter = new Set(listaMarcas(aj.manter, CHAVE_CORTE)), errou = new Set(listaMarcas(aj.transcricao_errou, ID_DIVERGENCIA));
+  const cortes = listaVideo(r.cortes), meio = cortes.filter(c => numVideo(c.em_s) !== null && !c.mantido && !manter.has(String(c.chave ?? "")));
+  const soma = l => segVideo(l.reduce((t, c) => t + (numVideo(c.dur_s) || 0), 0));
+  const bordas = new Set(cortes.filter(c => c.tipo === "inicio" || c.tipo === "fim").map(c => c.clipe)).size;
+  const pausas = meio.filter(c => c.tipo === "pausa"), editor = meio.filter(c => c.tipo === "editor");
+  const sons = meio.filter(c => !["pausa", "editor"].includes(c.tipo));
+  const fez = [];
+  if(bordas) fez.push(`aparou o começo e o fim de ${bordas} clipe(s)`);
+  if(sons.length) fez.push(`tirou ${sons.length} muleta(s), hesitação(ões) ou repetição(ões) (−${soma(sons)} s)`);
+  if(pausas.length) fez.push(`encurtou ${pausas.length} pausa(s) longa(s) (−${soma(pausas)} s)`);
+  if(editor.length) fez.push(`aplicou ${editor.length} corte(s) da aba Vídeo`);
+  const trocas = listaVideo(r.trocas);
+  if(trocas.length) fez.push(`escreveu ${trocas.length} palavra(s) da legenda na grafia do roteiro`);
+  if(numVideo(objVideo(r.saida).lufs) !== null) fez.push("acertou o volume");
+  if(numVideo(objVideo(r.legenda).blocos)) fez.push("gravou a legenda e a cartela");
+  const divs = listaVideo(r.divergencias).filter(d => d.regravar !== false && !d.transcricao_errou && !errou.has(String(d.id ?? "")));
+  const fora = listaVideo(r.fora_do_roteiro), sug = listaVideo(r.sugestoes);
+  const falta = [];
+  if(divs.length) falta.push(`${divs.length} divergência(s) com o roteiro (regravar, cortar o trecho na aba Vídeo ou marcar “A transcrição errou”)`);
+  if(fora.length) falta.push(`${fora.length} trecho(s) falado(s) fora do roteiro (ficam no vídeo; a aba Vídeo corta cada um com um clique)`);
+  if(sug.length) falta.push(`${sug.length} trecho(s) para ouvir`);
+  if(!fez.length && !falta.length) return "";
+  return `<p class="sub" id="video-resumo-correcoes"><b>O corretor corrigiu:</b> ${fez.length ? fez.join("; ") : "nada precisou de correção"}. ${falta.length ? `<b>Falta decidir:</b> ${falta.join("; ")}.` : "<b>Nada falta decidir.</b>"}</p>`;
+}
 /* Em português simples, com os tempos do vídeo corrigido (em_s). O parcial (logo depois do alinhamento) já diz se precisa regravar. */
 function blocoRelatorio(v, podeAjustar){
   const r = objVideo(v.relatorio), parcial = relatorioParcial(v), aj = objVideo(v.ajustes);
@@ -527,12 +556,13 @@ function blocoRelatorio(v, podeAjustar){
   const ouvir = x => !parcial && numVideo(x) !== null ? ` <button class="btn peq sec" type="button" data-acao="video-ouvir" data-em="${numVideo(x)}">▶ ouvir</button>` : "";
   const itens = [], saida = objVideo(r.saida), conf = objVideo(r.conferencia), entrada = objVideo(r.entrada);
   const avisos = [...new Set((Array.isArray(r.avisos) ? r.avisos : []).map(String))];
+  if(!parcial) itens.push(resumoCorrecoesVideo(v));                                  // v0.33.0: o que foi corrigido e o que falta, no topo
   if(avisos.length) itens.push(`<div class="aviso alerta video-avisos"><ul class="pauta-erros">${avisos.map(a => `<li>${h(deMapaVideo(AVISOS_VIDEO, a) || "Aviso do corretor: " + a)}</li>`).join("")}</ul></div>`);
   // o que precisa regravar: número, data ou termo diferente do roteiro
   const divs = listaVideo(r.divergencias), abertas = divs.filter(d => d.regravar !== false && !d.transcricao_errou && !errou.has(d.id));
   if(divs.length) itens.push(`<div class="${abertas.length ? "aviso erro" : "aviso info"} video-divergencias"><b>${abertas.length ? "Precisa regravar:" : "Divergências (marcadas: a transcrição errou):"}</b>
     <ul class="pauta-erros">${divs.map(d => { const k = Number(d.k), marca = ID_DIVERGENCIA.test(String(d.id ?? "")) ? d.id : "", marcado = !!d.transcricao_errou || errou.has(marca);
-      return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${deMapaVideo(TIPOS_DIVERGENCIA, d.tipo) ? ` (${h(deMapaVideo(TIPOS_DIVERGENCIA, d.tipo))})` : ""}.${d.cortada === true ? ` <span class="selo ok">cortada na aba Vídeo: não vai ao ar</span>` : ""}${ouvir(d.em_s)}
+      return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${deMapaVideo(TIPOS_DIVERGENCIA, d.tipo) ? ` (${h(deMapaVideo(TIPOS_DIVERGENCIA, d.tipo))})` : ""}.${d.parece_transcricao === true && !marcado && d.cortada !== true ? ` <b>Parece erro da transcrição</b> (palavra repetida ou confiança baixa): ouça e, se a pessoa disse certo, marque “A transcrição errou”.` : ""}${d.cortada === true ? ` <span class="selo ok">cortada na aba Vídeo: não vai ao ar</span>` : ""}${ouvir(d.em_s)}
         ${podeAjustar && marca ? `<label class="video-check"><input type="checkbox" class="video-errou" value="${h(marca)}"${marcado ? " checked" : ""}> A transcrição errou (vale o roteiro)</label>`
           : marcado ? ` <span class="selo ok">a transcrição errou: vale o roteiro</span>` : ""}</li>`; }).join("")}</ul>
     ${podeAjustar && abertas.length ? `<p class="sub">Administrador: ouça na prévia; se a pessoa disse o que está no roteiro, marque “A transcrição errou (vale o roteiro)” e aplique os ajustes (a legenda passa a usar o roteiro naquele trecho; o áudio não muda). Se a fala está errada, grave de novo.</p>` : ""}</div>`);
@@ -540,8 +570,10 @@ function blocoRelatorio(v, podeAjustar){
     : "Relatório parcial da última rodada: o corretor parou antes de montar o vídeo."}</p>`);
   // a duração
   const dur = numVideo(saida.duracao_s) ?? numVideo(v.duracao_final), max = limiteDuracaoVideo();
-  if(dur !== null) itens.push(`<li id="video-duracao">Duração: ${segVideo(dur)} s${numVideo(saida.fala_s) !== null ? ` (fala ${segVideo(saida.fala_s)} s + cartela ${segVideo(saida.cartela_s ?? 3)} s)` : ""}. ${dur > 90
-    ? "<b>Passou de 90 s: o Facebook não aceita; grave mais curto.</b>" : dur > max ? `<b>Acima do limite de ${max} s</b> (Configurações → Corretor de vídeo): a aprovação pede confirmação.` : `Dentro do limite de ${max} s.`}</li>`);
+  if(dur !== null) itens.push(`<li id="video-duracao">Duração: ${segVideo(dur)} s${numVideo(saida.fala_s) !== null ? ` (fala ${segVideo(saida.fala_s)} s + cartela ${segVideo(saida.cartela_s ?? 3)} s)` : ""}. ${dur > 900
+    ? "<b>Passou de 15 minutos: o Instagram não aceita reel mais longo pela API — corte na aba Vídeo ou grave mais curto.</b>"
+    : dur > max ? `<b>Acima da meta de ${max} s</b> (Configurações → Corretor de vídeo): aceito, e a aprovação pede confirmação.${dur > 90 ? " Acima de 90 s o Facebook não aceita reel: publique só no Instagram." : ""}`
+    : `Dentro da meta de ${max} s.${dur > 90 ? " Acima de 90 s o Facebook não aceita reel: publique só no Instagram." : ""}`}</li>`);
   // os cortes
   const cortes = listaVideo(r.cortes), borda = new Set(cortes.filter(c => c.tipo === "inicio" || c.tipo === "fim").map(c => c.clipe)).size;
   const meio = cortes.filter(c => numVideo(c.em_s) !== null), pausas = meio.filter(c => c.tipo === "pausa"), hes = meio.filter(c => c.tipo !== "pausa");
@@ -557,7 +589,7 @@ function blocoRelatorio(v, podeAjustar){
   const trocas = listaVideo(r.trocas);
   if(trocas.length) itens.push(`<li id="video-trocas">Legenda na grafia do roteiro: ${trocas.map(t => `“${h(t.de)}” → “${h(t.para)}”${em(t.em_s) ? ` (${h(em(t.em_s))})` : ""}`).join("; ")}.</li>`);
   const fora = listaVideo(r.fora_do_roteiro), omitido = listaVideo(r.omitido);
-  if(fora.length) itens.push(`<li id="video-fora">Falado fora do roteiro (vai na legenda como foi dito): ${fora.map(x => `“${h(x.texto)}”${em(x.em_s) ? ` (${h(em(x.em_s))})` : ""}`).join("; ")}.</li>`);
+  if(fora.length) itens.push(`<li id="video-fora">Falado fora do roteiro (vai na legenda como foi dito): ${fora.map(x => `“${h(x.texto)}”${em(x.em_s) ? ` (${h(em(x.em_s))})` : ""}`).join("; ")}. A aba Vídeo corta cada trecho com um clique.</li>`);
   if(omitido.length) itens.push(`<li id="video-omitido">Do roteiro e não dito (fica fora da legenda): ${omitido.map(x => `“${h(x.texto)}”`).join("; ")}.</li>`);
   const fala = textoDe(r.texto_final);
   if(!parcial){
@@ -792,7 +824,7 @@ function conferenciaDoVideo(){
   const aviso = termosPublicidade(fala, gancho, extra).aviso.filter(x => ![...trava, ...noGancho, ...naCartela].some(y => y.includes(x)));
   if(aviso.length) avisos.push(`Termos que a publicidade contábil evita no que está gravado no vídeo (fala, gancho, cartela): ${aviso.map(t => `“${t}”`).join(", ")}. Confira se é informação, e não propaganda.`);
   const dur = numVideo(v.duracao_final) ?? numVideo(objVideo(r.saida).duracao_s), max = limiteDuracaoVideo();
-  if(dur !== null && dur > max && dur <= 90) avisos.push(`O vídeo tem ${segVideo(dur)} s, acima do limite de ${max} s (Configurações → Corretor de vídeo): confirme que é isso mesmo.`);
+  if(dur !== null && dur > max) avisos.push(`O vídeo tem ${segVideo(dur)} s, acima da meta de ${max} s (Configurações → Corretor de vídeo): confirme que é isso mesmo.${dur > 90 ? " Acima de 90 s o Facebook não aceita reel pela API: publique só no Instagram." : ""}`);
   return {travas, avisos};
 }
 /* Na peça aprovada à mão: "Baixar o vídeo aprovado" (link de 300 s, depois que o banco confere o termo de hoje e o hash aprovado) */
@@ -833,9 +865,9 @@ async function concluirEnvio(pid, id){
    ==================================================================== */
 const CHAVES_EDITOR_VIDEO = ["cortar", "inicio_q", "fim_q", "capa_q", "legenda_tamanho", "legenda_posicao", "legenda_cor", "cartela_extra"];
 const ABA_VIDEO_FPS = 30;
-const ABA_VIDEO_LIMITES = {min:5, max:45, fala:2, cortes:30, corteMin:3};
+const ABA_VIDEO_LIMITES = {min:5, max:900, fala:2, cortes:30, corteMin:3};   // v0.33.0: o teto é o da API do Instagram (15 min); a meta das Configurações é só aviso
 const ABA_VIDEO_CAMPOS = CAMPOS_VIDEO + ",palavras_tentativa,rodada";
-const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.30.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.33.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 const abaVideo = () => (estadoVideo().aba ||= {filtro:"futuro", rascunhos:{}, previaLigada:true, abertas:{cortar:true}});
 const ehEditorVideo = v => CHAVES_EDITOR_VIDEO.some(k => Object.prototype.hasOwnProperty.call(objVideo(v?.ajustes), k));
 const inteiroVideo = x => Number.isInteger(x) ? x : null;
@@ -867,7 +899,7 @@ function quadroFicaVideo(mapa, aj, q){
   return mapa.faixas.some(([a, b]) => q >= a && q < b) && !listaVideo(mapa.automaticos).some(x => q >= x.de && q < x.ate && !manter.has(x.chave))
     && !cortar.some(([a, b]) => q >= a && q < b) && (ini === null || q >= ini) && (fim === null || q < fim);
 }
-const quadrosQueFicamVideo = (mapa, aj) => { const out = []; for(let q = 0; q < Math.min(mapa.linha_q, 4000); q++) if(quadroFicaVideo(mapa, aj, q)) out.push(q); return out; };
+const quadrosQueFicamVideo = (mapa, aj) => { const out = []; for(let q = 0; q < Math.min(mapa.linha_q, 29000); q++) if(quadroFicaVideo(mapa, aj, q)) out.push(q); return out; };
 const falaEstimadaQVideo = (mapa, aj) => quadrosQueFicamVideo(mapa, aj).length;
 const cartelaSVideo = () => { const n = numVideo(confVideo().cartela_s); return n !== null && n >= 2 && n <= 5 ? n : 3; };
 /* o pad do fim (o último quadro parado, como o robô monta): o vídeo precisa de 0,45 s depois da última palavra que fica. O último trecho
@@ -927,7 +959,7 @@ function ajustesDoEditor(v, r){
   if(legenda.length) aj.legenda = legenda;
   if(r.compacta) aj.estilo = "compacta";
   if(r.sem_gancho) aj.sem_gancho = true;
-  const m = mapaVideo(v), cortar = juntarCortesVideo(r.cortar, m ? m.linha_q : 4000);
+  const m = mapaVideo(v), cortar = juntarCortesVideo(r.cortar, m ? m.linha_q : 29000);
   if(cortar.length) aj.cortar = cortar;
   for(const k of ["inicio_q", "fim_q", "capa_q"]) if(r[k] !== null && r[k] !== undefined) aj[k] = r[k];
   if(r.tamanho !== "M") aj.legenda_tamanho = r.tamanho;
@@ -1161,10 +1193,15 @@ function htmlCortesAbaVideo(v, r, ed){
       ${k ? `<label class="video-check"><input type="checkbox" class="vaba-manter" value="${h(k)}"${r.manter.includes(k) ? " checked" : ""}${dis}> Manter este trecho</label>` : ""}</li>`; }).join("")}</ul>` : "";
   const divs = listaVideo(rel.divergencias);
   const divergencias = divs.length ? `<h3>Divergências com o roteiro</h3><ul class="vaba-cortes" id="vaba-divergencias">${divs.map((d, i) => { const marca = ID_DIVERGENCIA.test(String(d.id ?? "")) ? d.id : "";
-    return `<li>${numVideo(d.em_s) !== null ? `Aos ${segVideo(d.em_s)} s` : "No vídeo"} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${d.cortada ? ` ${selo("cortada: não vai ao ar", "ok")}` : ""}
+    return `<li>${numVideo(d.em_s) !== null ? `Aos ${segVideo(d.em_s)} s` : "No vídeo"} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${d.parece_transcricao === true && !d.cortada ? ` — <b>parece erro da transcrição</b>: ouça e confirme` : ""}${d.cortada ? ` ${selo("cortada: não vai ao ar", "ok")}` : ""}
       ${!d.cortada && ed && numVideo(d.ate_s) !== null ? `<span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-cortar-divergencia" data-i="${i}">Cortar este trecho</button></span>` : ""}
       ${!d.cortada && marca ? `<label class="video-check"><input type="checkbox" class="vaba-errou" value="${h(marca)}"${r.errou.includes(marca) ? " checked" : ""}${dis}> A transcrição errou (vale o roteiro)</label>` : ""}</li>`; }).join("")}</ul>` : "";
-  return linha + palavras + botoes + listaNovos + listaVelhos + robo + divergencias;
+  // v0.33.0 (pedido do dono): o falado fora do roteiro, marcado para cortar com um clique (não sai sozinho: pode mudar o sentido)
+  const foras = listaVideo(rel.fora_do_roteiro);
+  const foraDoRoteiro = foras.length ? `<h3>Falado fora do roteiro (fica no vídeo e na legenda)</h3><ul class="vaba-cortes" id="vaba-fora">${foras.map((x, i) =>
+    `<li>${numVideo(x.em_s) !== null ? `Aos ${segVideo(x.em_s)} s` : "No vídeo"}: “${h(x.texto)}”
+      ${ed && numVideo(x.em_s) !== null && numVideo(x.ate_s) !== null ? `<span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-cortar-fora" data-i="${i}">Cortar este trecho</button></span>` : ""}</li>`).join("")}</ul>` : "";
+  return linha + palavras + botoes + listaNovos + listaVelhos + robo + divergencias + foraDoRoteiro;
 }
 /* 2. Texto da legenda: um bloco por linha, cada palavra num campo */
 function htmlLegendaAbaVideo(v, r, ed){
@@ -1245,9 +1282,10 @@ function htmlRodapeAbaVideo(){
   const a = abaVideo(), v = a.v;
   if(!editavelVideo(v, a.peca)) return "";
   const r = rascunhoVideo(v), m = mapaVideo(v), mudou = mudouAbaVideo(v, r), resumo = resumoMudancasVideo(v, r);
-  const dur = m ? duracaoEstimadaVideo(m, ajustesDoEditor(v, r)) : null, fora = dur !== null && (dur < ABA_VIDEO_LIMITES.min || dur > ABA_VIDEO_LIMITES.max);
+  const dur = m ? duracaoEstimadaVideo(m, ajustesDoEditor(v, r)) : null, meta = limiteDuracaoVideo();
+  const fora = dur !== null && (dur < ABA_VIDEO_LIMITES.min || dur > ABA_VIDEO_LIMITES.max), acima = !fora && dur !== null && dur > meta;
   return `<p class="vaba-resumo" id="vaba-resumo">${resumo.length ? "Mudanças: " + h(resumo.join(", ")) : "Nenhuma mudança ainda."}</p>
-    ${dur !== null ? `<p id="vaba-duracao" class="${fora ? "vaba-fora" : ""}">Duração depois de montar: cerca de ${segVideo(dur)} s (de 5 a 45 s)</p>` : ""}
+    ${dur !== null ? `<p id="vaba-duracao" class="${fora ? "vaba-fora" : acima ? "vaba-acima" : ""}">Duração depois de montar: cerca de ${segVideo(dur)} s (meta: até ${segVideo(meta)} s; mínimo 5 s, máximo 15 min)${acima ? " — acima da meta: aceito, e a aprovação pede confirmação" + (dur > 90 ? "; acima de 90 s o reel sai só no Instagram" : "") : ""}</p>` : ""}
     <div class="acoes">${mudou ? `<button class="btn peq sec" type="button" data-acao="vaba-descartar">Descartar as mudanças</button>` : ""}
       <button class="btn verde" type="button" data-acao="vaba-montar"${mudou && !fora ? "" : " disabled"}>Montar de novo com estas mudanças</button></div>`;
 }
@@ -1406,6 +1444,16 @@ function acrescentarCorteVideo(v, c){
   r.cortar = novo; abaVideo().selecao = null;
   redesenharEditorVideo();
 }
+/* v0.33.0: corta um trecho apontado pelo relatório (uma divergência ou um falado fora do roteiro), pelas palavras quando dá */
+function cortarTrechoRelatado(v, lista, i, recado){
+  const d = listaVideo(objVideo(v.relatorio)[lista])[i], us = listaVideo(objVideo(v.relatorio).unidades);
+  if(!d || numVideo(d.em_s) === null || numVideo(d.ate_s) === null) throw new ErroApi(recado);
+  const dentro = us.map((u, k) => [u, k]).filter(([u]) => u.b > d.em_s + 0.01 && u.a < d.ate_s - 0.01).map(([, k]) => k);
+  if(dentro.length) return acrescentarCorteVideo(v, corteDasPalavrasVideo(v, dentro[0], dentro[dentro.length - 1]));
+  const m = mapaVideo(v), q0 = qDoVideo(m, Math.max(0, d.em_s - 0.05)), q1 = qDoVideo(m, d.ate_s + 0.05);
+  if(q0 === null || q1 === null) throw new ErroApi("A cartela fica sempre (identificação legal).");
+  acrescentarCorteVideo(v, [q0, q1 + 1]);
+}
 const ACOES_ABA_VIDEO = {
   /* da peça (radar-pauta.js): "Editar na aba Vídeo"; com texto não salvo na peça, pergunta antes */
   "video-aba"(el){
@@ -1463,13 +1511,11 @@ const ACOES_ABA_VIDEO = {
     if(q === null) throw new ErroApi("A capa é um quadro da fala: a cartela não vira capa."); rascunhoMexidoVideo(v).capa_q = q; redesenharEditorVideo(); },
   "vaba-capa-tirar"(){ const v = editavelDaAba(); rascunhoMexidoVideo(v).capa_q = null; redesenharEditorVideo(); },
   "vaba-cortar-divergencia"(el){
-    const v = editavelDaAba(), d = listaVideo(objVideo(v.relatorio).divergencias)[Number(el.dataset.i)], us = listaVideo(objVideo(v.relatorio).unidades);
-    if(!d || numVideo(d.em_s) === null || numVideo(d.ate_s) === null) throw new ErroApi("O trecho desta divergência não está no relatório.");
-    const dentro = us.map((u, i) => [u, i]).filter(([u]) => u.b > d.em_s + 0.01 && u.a < d.ate_s - 0.01).map(([, i]) => i);
-    if(dentro.length) return acrescentarCorteVideo(v, corteDasPalavrasVideo(v, dentro[0], dentro[dentro.length - 1]));
-    const m = mapaVideo(v), q0 = qDoVideo(m, Math.max(0, d.em_s - 0.05)), q1 = qDoVideo(m, d.ate_s + 0.05);
-    if(q0 === null || q1 === null) throw new ErroApi("A cartela fica sempre (identificação legal).");
-    acrescentarCorteVideo(v, [q0, q1 + 1]);
+    cortarTrechoRelatado(editavelDaAba(), "divergencias", Number(el.dataset.i), "O trecho desta divergência não está no relatório.");
+  },
+  /* v0.33.0 (pedido do dono): o falado fora do roteiro se corta com um clique */
+  "vaba-cortar-fora"(el){
+    cortarTrechoRelatado(editavelDaAba(), "fora_do_roteiro", Number(el.dataset.i), "O trecho não está no relatório: monte de novo para liberar.");
   },
   "vaba-descartar"(){ const a = abaVideo(), v = videoDaAba();
     if(!confirm("Descartar as mudanças que ainda não foram montadas?")) return;
@@ -1483,7 +1529,7 @@ const ACOES_ABA_VIDEO = {
     const aj = ajustesDoEditor(v, r), dur = m ? duracaoEstimadaVideo(m, aj) : null;
     if(m && falaEstimadaQVideo(m, aj) < ABA_VIDEO_LIMITES.fala * ABA_VIDEO_FPS) throw new ErroApi("Os cortes deixam menos de 2 s de fala: desfaça um corte.");
     if(dur !== null && (dur < ABA_VIDEO_LIMITES.min || dur > ABA_VIDEO_LIMITES.max))
-      throw new ErroApi(`O vídeo ficaria com cerca de ${segVideo(dur)} s: ${dur < ABA_VIDEO_LIMITES.min ? "o mínimo é 5 s" : "o máximo é 45 s (corte mais um trecho)"}.`);
+      throw new ErroApi(`O vídeo ficaria com cerca de ${segVideo(dur)} s: ${dur < ABA_VIDEO_LIMITES.min ? "o mínimo é 5 s" : "o máximo é 15 minutos (o Instagram não aceita reel mais longo)"}.`);
     const recusas = recusasLegendaVideo(v, r), blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista);
     for(const [i, motivo] of Object.entries(recusas)) throw new ErroApi(`Legenda (aos ${segVideo(numVideo(blocos[Number(i)]?.em_s) ?? 0)} s): ${MOTIVOS_LEGENDA[motivo] || motivo}.`);
     const termos = termosDoEditor(r);
@@ -1492,7 +1538,8 @@ const ACOES_ABA_VIDEO = {
     if(r.refazer && faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.`);
     const gancho = ganchoDoEditor(v, r);
     if(!confirm("Montar o vídeo de novo com estas mudanças? Não transcreve de novo (não gasta minutos do mês) e leva alguns minutos. Enquanto o robô monta, o reel não pode ser aprovado."
-      + (gancho !== null && gancho !== "" ? " O texto do gancho também muda na peça." : ""))) return;
+      + (gancho !== null && gancho !== "" ? " O texto do gancho também muda na peça." : "")
+      + (dur !== null && dur > limiteDuracaoVideo() ? ` O vídeo fica com cerca de ${segVideo(dur)} s, acima da meta de ${segVideo(limiteDuracaoVideo())} s${dur > 90 ? " (acima de 90 s, o reel sai só no Instagram)" : ""}.` : ""))) return;
     await rpc("radar_video_editar", {p_id:v.id, p_sha256:v.sha256, p_ajustes:aj, p_cartela:cartelaDoEditor(v, r), p_gancho:gancho});
     const robo = await acionarCorretor();
     delete abaVideo().rascunhos[v.id];
@@ -1528,7 +1575,7 @@ const ACOES_ABA_VIDEO = {
 const NAVEGACAO_ABA_VIDEO = ["video-aba", "vaba-filtro", "vaba-abrir", "vaba-voltar", "vaba-peca", "vaba-palavra", "vaba-limpar-selecao", "vaba-cortar",
   "vaba-comecar-palavra", "vaba-terminar-palavra", "vaba-marcar-de", "vaba-marcar-ate", "vaba-comecar-aqui", "vaba-terminar-aqui", "vaba-desfazer",
   "vaba-desfazer-salvo", "vaba-refazer-salvo", "vaba-desfazer-bloco", "vaba-ouvir", "vaba-passo", "vaba-capa-aqui", "vaba-capa-tirar",
-  "vaba-cortar-divergencia", "vaba-descartar"];
+  "vaba-cortar-divergencia", "vaba-cortar-fora", "vaba-descartar"];
 
 /* ------------------------------------------------- ações (o index.html junta) */
 const pecaDoVideo = () => { const f = $("form[data-form=peca]"), p = estadoVideo().pecaDados;
