@@ -703,7 +703,7 @@ def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
                 "pauta": True, "aprovacao": True, "video": True, "noticia": True, "vencimento": True, "copia": True}
             assert c.execute("select valor->>'janela_horas' from radar_config where chave = 'pauta'").fetchone()[0] == "4"
             c.execute("""update radar_config set valor = '{"ligado": false, "hora": "17:30"}' where chave = 'lembretes'""")
-            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.40.0"
+            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.42.0"
         assert psql(SETUP, banco).returncode == 0
         with conectar(banco) as c:                                                         # o ajuste do administrador fica
             assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {
