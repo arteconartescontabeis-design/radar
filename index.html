@@ -293,6 +293,7 @@ details.nova-pessoa{margin:0 0 16px} details.nova-pessoa summary{margin-bottom:8
 .crono-periodo th[scope=row]{text-transform:none;letter-spacing:0;font-size:.9rem;font-weight:400;color:var(--cinza);white-space:normal;border-bottom:1px solid var(--linha)}
 .crono-periodo td,.crono-periodo th:nth-child(n+2){text-align:right;white-space:nowrap;width:4.5em} .crono-periodo .selo{white-space:normal} .crono-periodo p{margin:6px 0 0}
 .crono-periodo tr.abaixo>*{background:var(--erro-fundo);color:var(--erro);font-weight:700} details.crono-como{margin-top:10px}
+.proj-resumo{margin:0 0 6px} .proj-resumo.abaixo b{color:var(--erro)}  /* v0.41.0: o "tem × falta" da projeção do Painel */
 /* a arte da peça (as lâminas rolam na horizontal dentro da caixa, também no celular), a conferência, a aprovação e a peça aprovada */
 .peca-artes{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding-bottom:6px} .peca-artes figure{margin:0;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-items:center}
 .peca-artes img{width:216px;height:270px;border-radius:6px;border:1px solid var(--linha);background:#0D3B73;display:block} .peca-artes img[data-pendente]{opacity:.45}
@@ -369,21 +370,25 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.40.0"></script>
-<script src="radar-video.js?v=0.40.0"></script>
-<script src="radar-setor.js?v=0.40.0"></script>
-<script src="radar-respostas.js?v=0.40.0"></script>
+<script src="radar-pauta.js?v=0.41.0"></script>
+<script src="radar-video.js?v=0.41.0"></script>
+<script src="radar-setor.js?v=0.41.0"></script>
+<script src="radar-respostas.js?v=0.41.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.40.0";
+const VERSAO = "0.41.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0, v0.31.0 e v0.32.0 não sobem: a radar-redes não muda)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.41.0", "20/10/2026", [
+    "Projeção de publicações no Painel do dia: um quadro novo no alto mostra, lado a lado, HOJE, a SEMANA e o MÊS — o que o calendário da Pauta e a busca pedem (o mínimo), o que já saiu (o feito) e o que falta alcançar, com o atraso em vermelho. Cada período traz o resumo em uma linha (“Tem X de Y: faltam Z”) e o botão “Abrir a Pauta” leva ao calendário.",
+    "As contas são exatamente as do cronograma de publicações da Pauta (posts no feed, reels, captação e as notícias do Radar achadas pela busca): nada muda no que é contado — muda onde você vê. O quadro só informa: não publica, não grava e não cria nada; se a leitura falhar, o resto do Painel continua funcionando.",
+    "Administrador: só publique o index.html com os demais .js e aperte Ctrl+F5 — o banco, as funções e os robôs não mudam nesta versão (nenhum SQL, nenhum Deploy, nenhum segredo). Passo a passo no LEIAME, “Da v0.40.0 para a v0.41.0”."]],
   ["0.40.0", "20/10/2026", [
     "O corretor de vídeo entende paráfrase (juiz de sentido): quando a fala diverge do roteiro, o robô pergunta à IA Central se a pessoa quis dizer o MESMO com outras palavras. Termo dito de outro jeito (sigla pelo nome por extenso, ordem trocada) deixa de pedir regravação sozinho; número, data e valor continuam exigindo exatidão (isso é conta, não opinião). Se a IA achar que foi a transcrição que errou, a divergência chega com “parece erro da transcrição” e o motivo.",
     "Veredito claro em português e “Aceitar (quis dizer o mesmo)”: cada divergência julgada mostra o motivo (o que faltou ou mudou) e o relatório ganha o resumo do juiz. Se você discordar do corretor, o botão novo “Aceitar (quis dizer o mesmo)” libera a divergência NA HORA, sem montar o vídeo de novo — no avulso, o “Baixar o vídeo corrigido” aparece no mesmo clique. “A transcrição errou (vale o roteiro)” continua como antes.",
@@ -1219,10 +1224,42 @@ function listaProrrogacoes(lista){
       <ul>${lista.map(linhaProrrogacao).join("")}</ul>` : `<p class="sub">Nenhuma notícia dos últimos 30 dias fala em prorrogar ou adiar o prazo de uma obrigação desta agenda.</p>`}</div>`;
 }
 
+/* v0.41.0 (pedido do dono): a projeção de publicações no Painel — hoje, a semana e o mês, o que o calendário pede e o que já
+   saiu. As contas são as MESMAS do cronograma da Pauta (radar-pauta.js: lerCronograma/contarCronograma, funções puras testadas
+   com datas fixas); o quadro só informa — não publica, não grava e não cria nada. */
+function blocoProjecaoPainel(hoje, c){
+  const topo = `<h2>Projeção de publicações</h2>
+    <p class="sub">O que o calendário da Pauta e a busca pedem e o que já saiu — hoje, nesta semana e no mês. Em vermelho, o que já devia ter saído e não saiu. As contas são as do cronograma da Pauta (lá tem o “Como o quadro conta”); o quadro só informa.</p>`;
+  if(!c) return `<div class="painel" id="painel-projecao">${topo}<div class="aviso alerta" id="painel-projecao-erro">Não deu para montar a projeção agora. O resto do Painel está certo; recarregue a página para tentar de novo.</div></div>`;
+  const {semana, mes} = periodosCronograma(segundaDe(hoje), hoje), ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  const nome = mesExtenso(mes.ini);
+  const soma = (k, campo) => k.linhas.reduce((s, l) => s + l[campo], 0);
+  const resumo = k => { const minimo = soma(k, "minimo"), feito = soma(k, "feito"), atraso = soma(k, "atraso");
+    const falta = Math.max(0, minimo - feito);
+    const texto = !minimo ? "Nada pedido no período." : !falta ? `Alcançou: ${feito} de ${minimo}.`
+      : `Tem ${feito} de ${minimo}: falta${falta > 1 ? "m" : ""} ${falta}${atraso ? ` (${atraso} em atraso)` : ""}.`;
+    return `<p class="proj-resumo${atraso ? " abaixo" : ""}" data-minimo="${minimo}" data-feito="${feito}" data-atraso="${atraso}"><b>${h(texto)}</b></p>`; };
+  const periodo = (id, titulo, k, vazio) => `<section class="crono-periodo" id="proj-${id}" data-fase="${k.fase}">
+      <h3>${h(titulo)}</h3>${resumo(k)}
+      <div class="rolagem"><table><tr><th>Publicação</th><th>Mínimo</th><th>Feito</th></tr>${k.linhas.map(l => `
+        <tr data-linha="${l.id}" data-minimo="${l.minimo}" data-feito="${l.feito}" data-atraso="${l.atraso}"${l.atraso ? ` class="abaixo"` : ""}>
+          <th scope="row">${h(l.rotulo)} ${seloCronograma(l, k.fase)}</th><td>${l.minimo}</td><td>${l.feito}</td></tr>`).join("")}</table></div>
+      ${k.semPlano ? `<p class="sub">${h(vazio)}</p>` : ""}</section>`;
+  return `<div class="painel" id="painel-projecao">${topo}
+    <div class="crono-periodos">${periodo("dia", `Hoje (${ddmm(hoje)})`, c.dia, "Sem peça no calendário para hoje.")}${periodo("semana", `Semana de ${ddmm(semana.ini)} a ${ddmm(semana.fim)}`, c.semana, "Nenhuma peça no plano desta semana.")}${periodo("mes", nome[0].toUpperCase() + nome.slice(1), c.mes, "Nenhuma peça no plano deste mês.")}</div>
+    ${c.cortado ? `<p class="aviso alerta">Uma das leituras chegou ao limite de 1.000 registros: algum número pode estar abaixo do real.</p>` : ""}
+    <div class="acoes"><button class="btn peq sec" type="button" data-acao="aba" data-aba="pauta">Abrir a Pauta</button></div></div>`;
+}
+
 /* ----------------------------------------------------------------- telas */
 const TELAS = {
   async painel(){
     const [p] = await ler("radar_v_painel", {select:"*"});
+    // v0.41.0: a projeção (hoje, a semana e o mês) — as contas vêm do radar-pauta.js; sem ele (Ctrl+F5 pendente), o Painel abre
+    // sem o quadro, e a leitura que falha vira o aviso do quadro, sem derrubar o Painel
+    const temPauta = typeof lerCronograma === "function" && typeof hojeBrasilia === "function" && typeof segundaDe === "function";
+    const hoje = temPauta ? hojeBrasilia() : "";
+    const proj = temPauta ? await lerCronograma(segundaDe(hoje), hoje).catch(() => null) : null;
     const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
     const revisao = await ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,atualizado_em", status:"eq.em_revisao", order:"atualizado_em.desc", limit:"10"});
     const doRobo = p.rascunhos_robo ? await ler("radar_conteudos", {select:"id,titulo,assunto_id,criado_em,avisos_ia", status:"eq.rascunho", modelo_ia:"like.*(robô)", order:"criado_em.desc", limit:"10"}) : [];
@@ -1242,6 +1279,7 @@ const TELAS = {
         ? " (a lista inteira fica em Configurações → Agenda de obrigações)" : ""}</p>` : ""}</div>` : "";
     return `<h1>Painel do dia</h1>${parada}
       ${prorrogacao}
+      ${temPauta ? blocoProjecaoPainel(hoje, proj) : ""}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
         ${c(p.capturas_24h, "Capturas nas últimas 24h", "fila")}

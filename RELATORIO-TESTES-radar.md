@@ -1,7 +1,9 @@
-# Radar Artecon — Relatório de testes (v0.40.0)
+# Radar Artecon — Relatório de testes (v0.41.0)
 
-Data: 20/10/2026. **A suíte inteira da v0.40.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
-série (números na seção "v0.40.0", abaixo). A v0.40.0 tem **13** testes novos (5 do robô em `test_radar_video_alinhar.py`, 1 do
+Data: 20/10/2026. **A suíte inteira da v0.41.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
+série (números na seção "v0.41.0", abaixo). A v0.41.0 tem **2** testes novos na tela (`test_radar_telas.py`: a projeção do
+Painel com datas fixas — a renderização pura — e com o banco e o leitor); a suíte inteira passa de 1.505 para **1.507** testes.
+Na v0.40.0: a suíte INTEIRA rodou em série (seção "v0.40.0", abaixo). A v0.40.0 tem **13** testes novos (5 do robô em `test_radar_video_alinhar.py`, 1 do
 robô de ponta a ponta em `test_radar_video_corrigir.py`, 5 do banco em `test_radar_video_banco.py` e 2 da tela em
 `test_radar_telas.py`); a suíte inteira passa de 1.492 para **1.505** testes. Na v0.39.0: a suíte INTEIRA rodou em
 série (números na seção "v0.39.0", abaixo). A v0.39.0 tem **5** testes novos (3 da função em `test_radar_funcao_ia.py` e 2 da tela
@@ -77,6 +79,25 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.41.0 — a projeção de publicações no Painel do dia (hoje, a semana e o mês)
+
+Todos os testes usam **dados fictícios** e datas fixas onde a conta depende do calendário; o teste com o banco usa só o dia de
+"hoje" do próprio banco (`radar_pauta_hoje`), determinístico num banco limpo.
+
+- **Tela** (2 testes novos em `testes/test_radar_telas.py`): a renderização pura de `blocoProjecaoPainel` com datas fixas (os
+  títulos "Hoje (dd/mm)", "Semana de … a …" e o mês por extenso; o resumo "Tem X de Y: faltam Z (N em atraso)" com a classe
+  `abaixo`; "Alcançou"; o aviso de leitura falhada) — as CONTAS já eram testadas (são as mesmas de `contarCronograma`, v0.27.0);
+  e o quadro no Painel com o banco e o PostgREST de verdade, visto pelo leitor: a peça de hoje publicada à mão aparece nos três
+  períodos (1 de 1, "Alcançou"), o botão "Abrir a Pauta" navega, a leitura das capturas que falha vira o aviso
+  `#painel-projecao-erro` sem derrubar os cartões, e nenhuma leitura proibida (pessoas, fotos) é feita.
+- `lerCronograma` passa a devolver também `dia` (a mesma conta, com ini = fim = hoje); nada muda na semana e no mês.
+- Atualizados: as asserções de versão (tela e os 4 .js em 0.41.0; `FUNCAO_MINIMA` fica em 0.39.0), o rodapé, os dois testes de
+  Ctrl+F5 e a entrada nova na aba Versões (índices da lista). O banco **não muda** (o setup continua o da v0.40.0).
+- Suíte inteira neste ambiente, em série: **1.443 aprovados, 0 falhas, 64 pulados** (os 61 da IA Central de verdade — pacote
+  `../ia-central`, fora deste ambiente — e 3 do ambiente), em 23min04s. A única falha da 1ª rodada foi o teste do Ctrl+F5 (a tela
+  sem o radar-pauta.js): o Painel novo usava funções desse script sem guarda — corrigido (sem o script, o Painel abre sem o
+  quadro) e a suíte inteira rodou de novo, verde.
 
 ## v0.40.0 — corretor de vídeo: juiz de sentido, "Aceitar (quis dizer o mesmo)" e avisos de arquivo fraco
 
