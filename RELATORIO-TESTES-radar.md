@@ -1,6 +1,9 @@
-# Radar Artecon — Relatório de testes (v0.39.0)
+# Radar Artecon — Relatório de testes (v0.40.0)
 
-Data: 20/10/2026. **A suíte inteira da v0.39.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
+Data: 20/10/2026. **A suíte inteira da v0.40.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
+série (números na seção "v0.40.0", abaixo). A v0.40.0 tem **13** testes novos (5 do robô em `test_radar_video_alinhar.py`, 1 do
+robô de ponta a ponta em `test_radar_video_corrigir.py`, 5 do banco em `test_radar_video_banco.py` e 2 da tela em
+`test_radar_telas.py`); a suíte inteira passa de 1.492 para **1.505** testes. Na v0.39.0: a suíte INTEIRA rodou em
 série (números na seção "v0.39.0", abaixo). A v0.39.0 tem **5** testes novos (3 da função em `test_radar_funcao_ia.py` e 2 da tela
 em `test_radar_telas.py`); a suíte inteira passa de 1.487 para **1.492** testes. Na v0.36.0: Neste ambiente rodaram, em série, os
 arquivos afetados pela v0.36.0 (números na seção "v0.36.0", abaixo). A v0.36.0 tem **11** testes novos (6 do banco em
@@ -74,6 +77,35 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.40.0 — corretor de vídeo: juiz de sentido, "Aceitar (quis dizer o mesmo)" e avisos de arquivo fraco
+
+Todos os testes usam **dados fictícios** ("Ana Teste", "Bruno Exemplo", falas e vídeos sintéticos) e a IA Central é um dublê local
+(`JuizFalso`, um `http.server` em 127.0.0.1): nenhuma chamada sai para a IA de verdade, e o token dos testes é de mentira.
+
+- **Robô** (5 testes novos em `testes/test_radar_video_alinhar.py`): `ajustes.aceitas` tira a regravação pelo id (e a marca errada
+  não vale; `situacao()` desculpa a aceita por garantia); os avisos de arquivo fraco (`resolucao_baixa` no parcial com o lado menor
+  abaixo de 1000 px, `ruido_alto` no final com o piso a menos de 18 dB da fala; o info antigo sem largura/altura não quebra); o juiz
+  de sentido — "equivalente" libera SÓ o termo (número e data continuam, por guarda de código), "transcricao" marca "parece erro da
+  transcrição", "sentido" só explica, o pedido vai com cache + ferramenta por escrito (e escolha forçada no Haiku), sem token nada
+  muda (nem aviso), com a IA fora do ar só o aviso `juiz_indisponivel`, a resposta sem a ferramenta é reenviada UMA vez e o id
+  desconhecido ou veredito inventado são ignorados.
+- **Robô de ponta a ponta** (1 teste novo em `testes/test_radar_video_corrigir.py`): o passo alinhar com o token no ambiente (como
+  no workflow) pergunta ao juiz e o veredito chega no parcial E no final; `juiz=julgou` no log, sem fala, motivo nem token; o
+  modelo do workflow ganha as 3 variáveis do juiz SÓ no passo alinhar (agora 8 `secrets.` no arquivo).
+- **Banco** (5 testes novos em `testes/test_radar_video_banco.py`; `git mv` do setup para `radar-setup-v0.40.0.sql`, e a reversão):
+  `radar_video_aceitar` decide NA HORA (sem `na_fila`, a mesma rodada e o mesmo sha256), só o administrador, com a forma e o id
+  conferidos contra o relatório de agora; o aceitar não passa por cima do `boletim_pago`; as aceitas valem na montagem nova (o
+  concluir desculpa pelo id mesmo com o robô do commit antigo) e "Conferir com o roteiro novo" as limpa; no avulso, o aceitar
+  libera o `baixar_avulso` no mesmo clique; `radar_video_ajustes_falta` com a chave `aceitas` (e as formas erradas recusadas);
+  a lista de funções expostas ganha a `radar_video_aceitar` (47 funções do vídeo).
+- **Tela** (2 testes novos em `testes/test_radar_telas.py`, Chromium): na peça, o resumo do juiz, o motivo em cada divergência, o
+  selo da liberada, os avisos de arquivo fraco em português e o "Aceitar (quis dizer o mesmo)" → pronto na hora, selo de aceita e
+  o botão some; na aba Vídeo, o avulso para regravar com o motivo do juiz → aceitar → "Baixar o vídeo corrigido" aparece sem
+  montar de novo.
+- Atualizados: as asserções de versão (tela, os 4 .js, a função `radar-video` e o robô em 0.40.0; `FUNCAO_MINIMA` fica em 0.39.0 —
+  a `radar-ia` não muda), o nome do setup nos recados e no `conftest`, e a entrada nova na aba Versões (índices da lista).
+- Suíte inteira neste ambiente, em série: **(números preenchidos após a rodada final desta versão, abaixo)**.
 
 ## v0.39.0 — IA mais barata (modelos novos + cache), preparo em lote e capa com foto real e título
 

@@ -116,7 +116,8 @@ def _ambiente(funcao: FuncaoFalsa | str, sdk_passos=None, chave: str = CHAVE, **
         mp.setenv("RADAR_VIDEO_ISOLADO", "local")
         mp.setenv("AZURE_FALA_CHAVE", CHAVE_AZURE)
         mp.setenv("AZURE_FALA_REGIAO", "brazilsouth")
-        for k in ("AZURE_FALA_MODO", "AZURE_FALA_ENDPOINT", "RADAR_VIDEO_JOB", "GITHUB_OUTPUT"):
+        for k in ("AZURE_FALA_MODO", "AZURE_FALA_ENDPOINT", "RADAR_VIDEO_JOB", "GITHUB_OUTPUT",
+                  "RADAR_IA_GATEWAY_TOKEN", "IA_GATEWAY_URL", "RADAR_VIDEO_IA_MODELO"):    # v0.40.0: o juiz só quando o teste pede
             mp.delenv(k, raising=False)
         for k, v in extra.items():
             mp.setenv(k, v)
@@ -192,6 +193,7 @@ def test_completo_do_pegar_ao_entregar(completo):
     f, trab, passos = completo.funcao, completo.trab, completo.passos
     assert {k: v[0] for k, v in passos.items()} == {"pegar": 0, "preparar": 0, "transcrever": 0, "alinhar": 0, "montar": 0, "entregar": 0}
     assert passos["pegar"][1] == {"pedido": "sim", "seguir": "sim", "modo": "completo"} and passos["preparar"][1] == {"transcrever": "sim"}
+    assert "juiz=sem_chave" in completo.log                  # v0.40.0: sem o token da IA Central, o juiz não roda e nada muda
     # a conversa: pegar, guardar a transcrição (links + PUT), contar os segundos (uma vez), o parcial, os links do vídeo e concluir
     assert f.acoes() == ["pegar", "links", "audio", "parcial", "links", "concluir"]
     chamadas = dict(f.chamadas[1:4])
@@ -519,6 +521,43 @@ def test_transcricao_vazia_corta_so_pelos_silencios_e_pede_regravar(tmp_path, cl
         assert rel["divergencias"] and rel["legenda"]["blocos"] == 0 and rel["transcricao"]["palavras"] == 0
         assert [c["tipo"] for c in rel["cortes"]] == ["inicio", "fim"] and rel["saida"]["fala_s"] < DUR2       # pelos silêncios
     finally:
+        f.fechar()
+
+
+@FFMPEG
+def test_juiz_de_sentido_no_passo_alinhar_vai_no_parcial_e_no_final(tmp_path, clipes, capfd):
+    """v0.40.0: com o token no ambiente (como no passo alinhar do workflow), o robô pergunta ao juiz quando sobra divergência:
+    o parcial e o final chegam com o veredito (o motivo em português) e o log diz juiz=ok — sem fala, motivo nem token no log."""
+    from test_radar_video_alinhar import TOKEN_JUIZ, JuizFalso, _ferramenta
+    import alinhar as alinhamento
+    fala = "O prazo do eSocial vence em 15/11. Fale com a gente."
+    # a divergência que o robô vai achar (a mesma conta do alinhamento, com a transcrição simulada do módulo)
+    desloca = int(DUR1 * 30) / 30
+    ws = ([{"texto": p, "inicio": a, "fim": b, "confianca": 0.92} for p, a, b in CLIPE1]
+          + [{"texto": p, "inicio": round(a + desloca, 3), "fim": round(b + desloca, 3), "confianca": 0.9} for p, a, b in CLIPE2])
+    (d,) = alinhamento.alinhar(fala, ws, [], CFG)["divergencias"]
+    assert d["tipo"] == "data"
+    f = _funcao()
+    gw = JuizFalso([_ferramenta([{"id": d["id"], "veredito": "sentido", "motivo": "O roteiro diz 15/11 e a fala diz 30/10."}],
+                                resumo="Regrave o trecho da data.")])
+    try:
+        _no_ar(f, VID, clipes.c1, clipes.c2, fala=fala, gancho=GANCHO)
+        with _ambiente(f, RADAR_IA_GATEWAY_TOKEN=TOKEN_JUIZ, IA_GATEWAY_URL=gw.url):
+            passos = _workflow(tmp_path / "trabalho", tmp_path / "saidas")
+        assert {k: v[0] for k, v in passos.items()} == {"pegar": 0, "preparar": 0, "transcrever": 0, "alinhar": 0, "montar": 0, "entregar": 0}
+        assert len(gw.pedidos) == 1 and gw.pedidos[0]["cabecalhos"]["x-api-key"] == TOKEN_JUIZ
+        parcial = dict(f.chamadas)["parcial"]["relatorio"]
+        (x,) = parcial["divergencias"]
+        assert (x["veredito"], x["juiz"], x["regravar"]) == ("sentido", "O roteiro diz 15/11 e a fala diz 30/10.", True)
+        assert parcial["veredito"] == {"resumo": "Regrave o trecho da data.", "julgadas": 1, "liberadas": 0}
+        fim = f.final[VID]
+        assert fim["situacao"] == "regravar" and fim["relatorio"]["veredito"]["resumo"] == "Regrave o trecho da data."
+        assert fim["relatorio"]["divergencias"][0]["veredito"] == "sentido"
+        saida = capfd.readouterr().out
+        assert "juiz=julgou" in saida
+        _log_limpo(saida, "15/11", "Regrave", TOKEN_JUIZ)
+    finally:
+        gw.fechar()
         f.fechar()
 
 
@@ -869,9 +908,15 @@ def test_workflow_do_repositorio_privado():
         fase = m.group(2) if m.group(1) == "corrigir" else "transcrever"
         fases.append(fase)
         assert re.search(r'(^|\s)(python3|"\$RUNNER_TEMP/v/bin/python") -I robo/video/', run), run
-        if fase in ("pegar", "alinhar", "entregar"):
+        if fase in ("pegar", "entregar"):
             # a chave do robô: python3 do sistema (só a biblioteca padrão; nada do Pillow nem do SDK no processo com ela)
             assert run.startswith("python3 -I ") and {k: v for k, v in env.items() if k != "RADAR_VIDEO_JOB"} == chave_robo, fase
+        elif fase == "alinhar":
+            # v0.40.0: o juiz de sentido — o token da IA Central (opcional) SÓ neste passo, com a chave do robô de sempre
+            assert run.startswith("python3 -I ") and env == {**chave_robo,
+                                                             "RADAR_IA_GATEWAY_TOKEN": "${{ secrets.RADAR_IA_GATEWAY_TOKEN }}",
+                                                             "IA_GATEWAY_URL": "${{ vars.IA_GATEWAY_URL }}",
+                                                             "RADAR_VIDEO_IA_MODELO": "${{ vars.RADAR_VIDEO_IA_MODELO }}"}
         elif fase == "transcrever":
             assert env == {k: "${{ secrets.%s }}" % k for k in ("AZURE_FALA_CHAVE", "AZURE_FALA_REGIAO", "AZURE_FALA_MODO", "AZURE_FALA_ENDPOINT")}
         else:
@@ -891,7 +936,7 @@ def test_workflow_do_repositorio_privado():
                      "write", "ACTIONS_STEP_DEBUG", "::add-mask::", "cancel-in-progress"):
         assert proibido not in codigo, proibido
     assert all("${{" not in p.get("run", "") for p in passos), "expressão dentro de um run"
-    assert codigo.count("secrets.") == 7                                    # 3 da chave do robô e 4 da Azure, só nos env
+    assert codigo.count("secrets.") == 8                 # 3 da chave do robô, 4 da Azure e 1 do juiz (v0.40.0), só nos env
     assert job["env"]["RADAR_VIDEO_ISOLADO"] == "docker" and all("RADAR_VIDEO_ISOLADO" not in (p.get("env") or {}) for p in passos)
 
 

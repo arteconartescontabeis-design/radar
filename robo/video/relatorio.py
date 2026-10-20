@@ -26,6 +26,12 @@ v0.33.0 (a aba Vídeo): o final grava também
 Com os cortes do editor, a divergência cuja fala saiu inteira no corte fica `cortada` (não pede regravar: o trecho não vai ao ar),
 o falado fora do roteiro, as trocas de grafia e as sugestões do trecho cortado saem, e o texto final é só o das unidades que ficaram.
 Toda divergência com fala leva `ate_s` (o fim dela no vídeo), para o "Cortar este trecho" da aba Vídeo.
+v0.40.0 (o juiz de sentido e o arquivo fraco):
+  * a divergência julgada (juiz.py) leva `veredito` ("equivalente"/"transcricao"/"sentido") e `juiz` (o motivo em português);
+    a aceita pelo administrador ("Aceitar — quis dizer o mesmo") leva `aceita` e não pede regravar; o todo leva `veredito`
+    ({resumo, julgadas, liberadas}), no parcial e no final;
+  * avisos do arquivo fraco: `resolucao_baixa` (o lado menor da entrada abaixo de 1000 px — o WhatsApp comprime; pedir o
+    arquivo original) já no parcial, e `ruido_alto` (o piso de ruído a menos de 18 dB da fala, medido na montagem) no final.
 """
 from __future__ import annotations
 
@@ -38,7 +44,7 @@ import cortes
 import sondar
 from sondar import FPS
 
-ROBO = "0.36.0"
+ROBO = "0.40.0"
 VERSAO = 2
 LIMITE = 55000                         # folga sobre os 60000 (o jsonb::text do Postgres separa com ", " e ": ", como o json.dumps)
 LISTAS = ("fora_do_roteiro", "omitido", "trocas", "sugestoes", "cortes")
@@ -75,6 +81,30 @@ def _transcricao(t: dict | None) -> dict:
     servico = t.get("servico")
     return {"servico": servico if isinstance(servico, str) and SERVICO.match(servico) else None,
             "segundos_audio": _num(t.get("segundos_audio")), "palavras": int(_num(t.get("palavras"), 0) or 0)}
+
+
+RESOLUCAO_MIN = 1000                   # px no lado menor da entrada: abaixo disso, aviso resolucao_baixa (v0.40.0)
+RUIDO_ALTO_DB = -18.0                  # piso de ruído a menos de 18 dB da fala (montar.ruido_relativo): aviso ruido_alto
+
+
+def _avisos_entrada(infos: list[dict], audio: dict | None = None) -> set[str]:
+    """Os avisos de arquivo fraco (v0.40.0): resolução baixa (o WhatsApp comprime; pedir o arquivo original) e, quando o
+    áudio já foi medido (a montagem), ruído alto antes da limpeza."""
+    avisos = set()
+    lados = [(_num(i.get("w"), 0), _num(i.get("h"), 0)) for i in infos]
+    menor = min((min(w, h) for w, h in lados if w is not None and h is not None), default=None)
+    if menor is not None and menor < RESOLUCAO_MIN:
+        avisos.add("resolucao_baixa")
+    ruido = _num((audio or {}).get("ruido_antes_db"))
+    if ruido is not None and ruido > RUIDO_ALTO_DB:
+        avisos.add("ruido_alto")
+    return avisos
+
+
+def _veredito(al: dict) -> dict:
+    """A parte `veredito` do relatório (v0.40.0), quando o juiz de sentido julgou."""
+    v = al.get("veredito")
+    return {"veredito": dict(v)} if isinstance(v, dict) else {}
 
 
 def _cortado(plano: dict, t0: float, t1: float | None = None) -> bool:
@@ -146,8 +176,8 @@ def _edicao(plano: dict, leg: dict, cartela_propria: bool) -> dict:
 def parcial(al: dict, plano: dict, infos: list[dict], transcricao: dict | None = None, modo: str = "completo") -> dict:
     """O relatório parcial (radar_video_parcial), antes da montagem."""
     rel = {"versao": VERSAO, "robo": ROBO, "modo": modo, "parcial": True, "gerado_em": _agora(),
-           **{k: v for k, v in _no_video(al, plano, infos).items() if k != "trocas"},
-           "avisos": sorted(set(al.get("avisos") or [])), "transcricao": _transcricao(transcricao)}
+           **{k: v for k, v in _no_video(al, plano, infos).items() if k != "trocas"}, **_veredito(al),
+           "avisos": sorted(set(al.get("avisos") or []) | _avisos_entrada(infos)), "transcricao": _transcricao(transcricao)}
     return caber(rel)
 
 
@@ -162,7 +192,7 @@ def final(al: dict, plano: dict, infos: list[dict], montagem: dict, conferencia:
         if conferencia.get(k) is not None:
             saida[k] = conferencia[k]
     leg = legenda_info or {}
-    avisos = set(al.get("avisos") or []) | set(leg.get("avisos") or [])
+    avisos = set(al.get("avisos") or []) | set(leg.get("avisos") or []) | _avisos_entrada(infos, montagem.get("audio"))
     if (saida.get("duracao_s") or 0) > float(cfg.get("duracao_max_s", 90)):
         avisos.add("duracao_acima_do_limite")             # v0.33.0: só aviso (a meta; a aprovação pede confirmação, nada é bloqueado)
     listas = _no_video(al, plano, infos)
@@ -175,7 +205,7 @@ def final(al: dict, plano: dict, infos: list[dict], montagem: dict, conferencia:
     texto_final = " ".join(u["texto"] for u in unidades)
     rel = {"versao": VERSAO, "robo": ROBO, "modo": modo, "parcial": False, "gerado_em": _agora(),
            "entrada": sondar.resumo(infos), "saida": saida, "cortes": plano.get("cortes") or [],
-           "sugestoes": plano.get("sugestoes") or [], **listas,
+           "sugestoes": plano.get("sugestoes") or [], **listas, **_veredito(al),
            "legenda": {"blocos": leg.get("blocos", 0), "estilo": leg.get("estilo", "normal"), "gancho": bool(leg.get("gancho")),
                        **(al.get("legenda_ajustes") or {"editados": 0, "recusados": []}), "lista": leg.get("lista") or []},
            "avisos": sorted(avisos), "texto_final": texto_final, "cobertura": al.get("cobertura"),
@@ -193,8 +223,10 @@ def final(al: dict, plano: dict, infos: list[dict], montagem: dict, conferencia:
 
 
 def situacao(rel: dict) -> str:
-    """"regravar" se há divergência (número, prazo ou termo) que o administrador não marcou "a transcrição errou"."""
-    return "regravar" if any(d.get("regravar") and not d.get("transcricao_errou") for d in rel.get("divergencias") or []) else "pronto"
+    """"regravar" se há divergência (número, prazo ou termo) que o administrador não marcou "a transcrição errou" nem aceitou
+    ("Aceitar — quis dizer o mesmo", v0.40.0; a aceita já vem com regravar falso, a checagem aqui é por garantia)."""
+    return "regravar" if any(d.get("regravar") and not d.get("transcricao_errou") and not d.get("aceita")
+                             for d in rel.get("divergencias") or []) else "pronto"
 
 
 def _tam(rel: dict) -> int:
@@ -211,7 +243,8 @@ def _resumir(rel: dict, passo: int) -> None:
     elif passo == 4 and isinstance(rel.get("legenda"), dict):
         rel["legenda"].pop("lista", None)
     elif passo == 5:                                    # as divergências ficam (são o que pede a regravação), com texto curto
-        rel["divergencias"] = [{**d, "falado": str(d.get("falado") or "")[:40], "roteiro": str(d.get("roteiro") or "")[:40]}
+        rel["divergencias"] = [{**d, "falado": str(d.get("falado") or "")[:40], "roteiro": str(d.get("roteiro") or "")[:40],
+                                **({"juiz": str(d["juiz"])[:60]} if d.get("juiz") else {})}
                                for d in (rel.get("divergencias") or [])[:50]]
     elif passo == 6:
         rel["texto_final"] = str(rel.get("texto_final") or "")[:20000]

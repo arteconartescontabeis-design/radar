@@ -15,7 +15,8 @@ números por extenso —, e a frase traz a forma de exibição (Display), com po
      entra em fora_do_roteiro; a do roteiro que não foi dita não entra (omitido). A legenda nunca tem palavra que não foi dita;
   4. divergência (regravar): qualquer diferença de número, data, mês, ano, valor, por cento, ordinal ou termo num trecho fora —
      troca, falta ou sobra. "A transcrição errou (vale o roteiro)" (ajustes.transcricao_errou) põe o roteiro na legenda daquele trecho;
-     o áudio não muda. A marca é o `id` da divergência (o instante e o texto dela, falado e do roteiro), e não o número k na lista: o
+     o áudio não muda. "Aceitar (quis dizer o mesmo)" (ajustes.aceitas, v0.40.0) só tira a regravação: a legenda fica com o que foi
+     dito. A marca é o `id` da divergência (o instante e o texto dela, falado e do roteiro), e não o número k na lista: o
      alinhamento é refeito a cada rodada com as Configurações do momento (uma variante ou um termo novo no glossário tira uma
      divergência da lista e muda a numeração das outras), e a marca de uma nunca cai em outra — a que não confere fica aberta;
   5. para os cortes (cortes.planejar): as palavras com `fim_frase` (da pontuação do roteiro) e `rot_de`/`rot_ate` (as fichas do
@@ -404,6 +405,7 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
         f["confianca"] = min(cs) if cs else None
     grupos = _grupos(R, F, gl)
     errou = _marcas(ajustes.get("transcricao_errou"))
+    aceitas = _marcas(ajustes.get("aceitas"))          # v0.40.0: "Aceitar (quis dizer o mesmo)" — só tira a regravação
 
     divergencias, fora, omitido, remover, trocas = [], [], [], [], []
     ultimo_fim = 0.0
@@ -432,9 +434,12 @@ def alinhar(fala_roteiro: str, palavras: list[dict], frases: list[dict] = (), cf
             marca = _id_divergencia(t, tipo, falado, roteiro)
             g["errou"] = marca in errou
             # t_fim (v0.33.0): o fim da última palavra falada dela (sem fala, a omissão: = t); o relatório diz se um corte do editor a tirou
-            divergencias.append({"k": g["k"], "id": marca, "t": t, "t_fim": fs[-1]["fim"] if fs else t, "falado": falado, "roteiro": roteiro, "tipo": tipo,
-                                 "regravar": True, "transcricao_errou": g["errou"], **({"confianca": round(min(cs), 2)} if cs else {}),
-                                 **({"parece_transcricao": True} if fs and _parece_transcricao(fs, ftok) else {})})
+            d = {"k": g["k"], "id": marca, "t": t, "t_fim": fs[-1]["fim"] if fs else t, "falado": falado, "roteiro": roteiro, "tipo": tipo,
+                 "regravar": True, "transcricao_errou": g["errou"], **({"confianca": round(min(cs), 2)} if cs else {}),
+                 **({"parece_transcricao": True} if fs and _parece_transcricao(fs, ftok) else {})}
+            if marca in aceitas:                       # v0.40.0: aceita não pede regravar; a legenda fica com o que foi dito
+                d["aceita"], d["regravar"] = True, False
+            divergencias.append(d)
         else:
             if fs:
                 # t_fim (v0.33.0): o fim da última palavra, para o "Cortar este trecho" da aba Vídeo

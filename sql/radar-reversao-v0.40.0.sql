@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.36.0.sql
--- DESFAZ a instalação do radar-setup-v0.36.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.40.0.sql
+-- DESFAZ a instalação do radar-setup-v0.40.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -46,6 +46,10 @@
 -- 'radar_respostas' fica no Vault de propósito (para zerar, o delete do comentário do sql/radar-respostas-agenda-reversao.sql).
 -- v0.36.0: a correção avulsa. Os vídeos avulsos são linhas de radar_videos (saem com a tabela, como os outros) e as duas funções
 -- novas saem no bloco do corretor, abaixo. Os ARQUIVOS deles no bucket radar-videos seguem o aviso do v0.22.0, acima.
+-- v0.40.0: o juiz de sentido e o "Aceitar — quis dizer o mesmo". A função radar_video_aceitar sai no bloco do corretor, abaixo; as
+-- marcas (ajustes.aceitas e o veredito no relatório) saem com a tabela radar_videos. Fora do banco: no repositório PRIVADO
+-- radar-video, apague o segredo RADAR_IA_GATEWAY_TOKEN e as variáveis opcionais IA_GATEWAY_URL e RADAR_VIDEO_IA_MODELO (o juiz de
+-- sentido para na hora; o token na IA Central fica: é o mesmo das agendas de coleta do Radar).
 -- =====================================================================
 begin;
 
@@ -398,6 +402,9 @@ drop function if exists public.radar_video_edicao_duracao(public.radar_videos, j
 -- v0.36.0: a correção avulsa (o envio e o baixar do vídeo sem peça)
 drop function if exists public.radar_video_criar_avulso(text, jsonb, bigint, bigint[], text, text[], text[], numeric);
 drop function if exists public.radar_video_baixar_avulso(uuid);
+
+-- v0.40.0: o "Aceitar — quis dizer o mesmo"
+drop function if exists public.radar_video_aceitar(uuid, jsonb);
 
 commit;
 

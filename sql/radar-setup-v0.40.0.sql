@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.36.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.40.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -75,7 +75,14 @@
 -- radar_video_pessoas_falta, radar_video_reconferir e radar_video_limpeza). As travas do dono continuam todas: termos das pessoas,
 -- cartela com a identificação legal, as quatro declarações, a cota do mês e o boletim pago. O robô não muda (o pedido que ele
 -- recebe já é autossuficiente); NENHUMA tabela nova; nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
--- Reversão: radar-reversao-v0.36.0.sql
+-- v0.40.0 (sem bloco próprio: ajustes no bloco “v0.33.0/v0.36.0”): o juiz de sentido e o "Aceitar — quis dizer o mesmo" do corretor
+-- de vídeo. Uma função nova (radar_video_aceitar: o administrador aceita divergências "quis dizer o mesmo" e a situação é decidida
+-- de novo NA HORA, sem montar o vídeo de novo) e quatro redefinidas (radar_video_ajustes_falta e radar_video_ajustar aceitam a
+-- chave nova ajustes.aceitas; radar_video_concluir desculpa as aceitas como já desculpava "a transcrição errou";
+-- radar_video_reconferir limpa as aceitas junto com as outras marcas). O juiz de sentido roda no robô (robo/video/juiz.py, com o
+-- token da IA Central no repositório privado) e não muda o banco. NENHUMA tabela ou coluna nova; nada é apagado; as agendas
+-- (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.40.0.sql
 -- =====================================================================
 
 begin;
@@ -101,7 +108,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.36.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.40.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -9437,12 +9444,13 @@ declare
 begin
   if p is null or jsonb_typeof(p) <> 'object' or length(p::text) > 20000 then return 'os ajustes vão num objeto de até 20.000 caracteres'; end if;
   if exists (select 1 from jsonb_object_keys(p) c
-              where c not in ('manter','transcricao_errou','legenda','estilo','sem_gancho',
+              where c not in ('manter','transcricao_errou','aceitas','legenda','estilo','sem_gancho',
                               'cortar','inicio_q','fim_q','capa_q','legenda_tamanho','legenda_posicao','legenda_cor','cartela_extra')) then
     return 'ajuste desconhecido';
   end if;
   -- (cada conferência só depois da forma: jsonb_array_elements e jsonb_each não rodam sobre o que não é lista nem objeto)
-  foreach k in array array['manter','transcricao_errou'] loop
+  -- v0.40.0: aceitas — as divergências aceitas ("quis dizer o mesmo"), a mesma forma de transcricao_errou
+  foreach k in array array['manter','transcricao_errou','aceitas'] loop
     continue when not p ? k;
     x := p->k;
     if jsonb_typeof(x) <> 'array' or jsonb_array_length(x) > 200
@@ -9754,7 +9762,7 @@ begin
     raise exception 'RADAR310: os cortes, o começo e o fim, a capa, o estilo da legenda e o texto extra da cartela mudam na aba Vídeo'
       using errcode = 'P0001';
   end if;
-  v_aj := p_ajustes || ((v.ajustes - array['manter','transcricao_errou','legenda','estilo','sem_gancho'])
+  v_aj := p_ajustes || ((v.ajustes - array['manter','transcricao_errou','aceitas','legenda','estilo','sem_gancho'])
                         - array(select jsonb_object_keys(p_ajustes)));
   v_x := public.radar_video_ajustes_falta(v_aj);
   if v_x is not null then
@@ -9856,8 +9864,9 @@ end $$;
 -- O robô terminou (v0.33.0: + a trava do robô de antes). Com mudanças do editor nos ajustes e o relatório sem "edicao" (o robô do commit
 -- antigo, RADAR_VIDEO_COMMIT, não conhece as chaves novas e montaria sem elas), o vídeo NÃO é aceito: vira erro "robo_desatualizado";
 -- ficam o sha256 e o relatório de antes, e o arquivo que subiu sai na limpeza ("antigos"). O resto como antes: o banco decide a situação
--- de novo — a divergência que o administrador não marcou "a transcrição errou" pede regravar, a não ser a que o robô marcou cortada
--- (regravar false: o trecho não vai ao ar) — e a frase do boletim pago também.
+-- de novo — a divergência que o administrador não marcou "a transcrição errou" nem aceitou ("quis dizer o mesmo", ajustes.aceitas,
+-- v0.40.0) pede regravar, a não ser a que o robô marcou cortada (regravar false: o trecho não vai ao ar; a liberada pelo juiz de
+-- sentido e a aceita também vêm assim) — e a frase do boletim pago também.
 create or replace function public.radar_video_concluir(p_id uuid, p_tentativa int, p_situacao text, p_relatorio jsonb, p_sha256 text,
                                                        p_bytes bigint, p_duracao numeric) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -9892,7 +9901,9 @@ begin
     return jsonb_build_object('situacao', 'erro');
   end if;
   v_rel := p_relatorio || '{"parcial": false}'::jsonb;
-  v_err := case when jsonb_typeof(v.ajustes->'transcricao_errou') = 'array' then v.ajustes->'transcricao_errou' else '[]'::jsonb end;
+  -- v0.40.0: "a transcrição errou" e as aceitas ("quis dizer o mesmo") desculpam a divergência do mesmo jeito
+  v_err := case when jsonb_typeof(v.ajustes->'transcricao_errou') = 'array' then v.ajustes->'transcricao_errou' else '[]'::jsonb end
+           || case when jsonb_typeof(v.ajustes->'aceitas') = 'array' then v.ajustes->'aceitas' else '[]'::jsonb end;
   if exists (select 1 from jsonb_array_elements(case when jsonb_typeof(v_rel->'divergencias') = 'array' then v_rel->'divergencias' else '[]' end) d
               where jsonb_typeof(d) <> 'object' or coalesce(d->'regravar', 'true'::jsonb) <> 'false'::jsonb
                     and not exists (select 1 from jsonb_array_elements(v_err) k where k = d->'id')) then
@@ -10115,7 +10126,8 @@ begin
     return jsonb_build_object('id', v.id, 'modo', null);
   end if;
   update public.radar_videos
-     set fala_roteiro = v_fala, roteiro_hash = public.radar_hash_texto(p.roteiro), ajustes = ajustes - array['manter','transcricao_errou','legenda'],
+     set fala_roteiro = v_fala, roteiro_hash = public.radar_hash_texto(p.roteiro),
+         ajustes = ajustes - array['manter','transcricao_errou','aceitas','legenda'],
          modo = v_modo, situacao = 'na_fila', tentativas = 0, fila_em = now(), reservas = 0, pego_em = null, erro_codigo = null
    where id = v.id;
   return jsonb_build_object('id', v.id, 'modo', v_modo);
@@ -10336,11 +10348,77 @@ begin
                  else '{}'::jsonb end;
 end $$;
 
--- os privilégios das funções novas (as redefinidas acima ficam com os de antes): as duas conferem o papel por dentro
+-- Aceitar divergências ("Aceitar — quis dizer o mesmo", v0.40.0): só o administrador, só no vídeo PRONTO ou PARA REGRAVAR, e SEM
+-- montar de novo — a fala aceita fica como foi dita (a legenda já é o falado), então nada muda no arquivo: a função acrescenta os
+-- códigos a ajustes.aceitas, marca as divergências no relatório (aceita, sem regravar) e decide a situação de novo NA HORA, como o
+-- concluir — sem divergência pendente (fora as desculpadas por "a transcrição errou" ou aceitas, e as cortadas) e sem frase do
+-- boletim pago: 'pronto', e o avulso já pode ser baixado. Cada código tem de ser de uma divergência do relatório de agora (o
+-- alinhamento muda de uma rodada para a outra). "Conferir com o roteiro novo" limpa as aceitas; "Montar de novo com estas mudanças"
+-- as leva junto (a tela manda a lista). Devolve {id, situacao, aceitas}.
+create or replace function public.radar_video_aceitar(p_id uuid, p_aceitas jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v      public.radar_videos%rowtype;
+  v_ace  jsonb;
+  v_err  jsonb;
+  v_rel  jsonb;
+  v_sit  text;
+  v_x    text;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR322: só o administrador aceita uma divergência do vídeo' using errcode = '42501';
+  end if;
+  v := public.radar_video_travar(p_id);
+  if v.situacao not in ('pronto','regravar') then
+    raise exception 'RADAR322: só o vídeo pronto ou para regravar tem divergência para aceitar (situação atual: %)', v.situacao
+      using errcode = 'P0001';
+  end if;
+  v_x := public.radar_video_ajustes_falta(jsonb_build_object('aceitas', p_aceitas));
+  if v_x is not null then
+    raise exception 'RADAR322: %', v_x using errcode = 'P0001';
+  end if;
+  if jsonb_array_length(p_aceitas) < 1 then
+    raise exception 'RADAR322: informe ao menos um código de divergência do relatório' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from jsonb_array_elements(p_aceitas) a
+              where not exists (select 1 from jsonb_array_elements(case when jsonb_typeof(v.relatorio->'divergencias') = 'array'
+                                                                        then v.relatorio->'divergencias' else '[]'::jsonb end) d
+                                 where d->'id' = a)) then
+    raise exception 'RADAR322: um código não é de uma divergência deste relatório (o alinhamento pode ter mudado: recarregue e confira de novo)'
+      using errcode = 'P0001';
+  end if;
+  -- a lista que fica: as de antes mais as novas, sem repetir (e dentro das regras de sempre, radar_video_ajustes_falta)
+  v_ace := coalesce((select jsonb_agg(x) from (
+             select a as x from jsonb_array_elements(case when jsonb_typeof(v.ajustes->'aceitas') = 'array'
+                                                          then v.ajustes->'aceitas' else '[]'::jsonb end) a
+             union
+             select a from jsonb_array_elements(p_aceitas) a) t), '[]'::jsonb);
+  v_x := public.radar_video_ajustes_falta((v.ajustes - 'aceitas') || jsonb_build_object('aceitas', v_ace));
+  if v_x is not null then
+    raise exception 'RADAR322: %', v_x using errcode = 'P0001';
+  end if;
+  v_err := case when jsonb_typeof(v.ajustes->'transcricao_errou') = 'array' then v.ajustes->'transcricao_errou' else '[]'::jsonb end;
+  v_rel := v.relatorio || jsonb_build_object('divergencias',
+    (select coalesce(jsonb_agg(case when exists (select 1 from jsonb_array_elements(v_ace) a where a = d->'id')
+                                    then d || '{"aceita": true, "regravar": false}'::jsonb else d end order by o), '[]'::jsonb)
+       from jsonb_array_elements(v.relatorio->'divergencias') with ordinality t(d, o)));
+  -- a situação, decidida de novo como no concluir: divergência pendente (fora as desculpadas) ou frase do boletim pago: regravar
+  v_sit := case when exists (select 1 from jsonb_array_elements(v_rel->'divergencias') d
+                              where jsonb_typeof(d) <> 'object' or coalesce(d->'regravar', 'true'::jsonb) <> 'false'::jsonb
+                                    and not exists (select 1 from jsonb_array_elements(v_err || v_ace) k where k = d->'id'))
+                     or (case when jsonb_typeof(v_rel->'avisos') = 'array' then v_rel->'avisos' else '[]'::jsonb end) ? 'boletim_pago'
+                then 'regravar' else 'pronto' end;
+  update public.radar_videos
+     set ajustes = (ajustes - 'aceitas') || jsonb_build_object('aceitas', v_ace), relatorio = v_rel, situacao = v_sit
+   where id = v.id;
+  return jsonb_build_object('id', v.id, 'situacao', v_sit, 'aceitas', v_ace);
+end $$;
+
+-- os privilégios das funções novas (as redefinidas acima ficam com os de antes): as três conferem o papel por dentro
 revoke all on function public.radar_video_criar_avulso(text, jsonb, bigint, bigint[], text, text[], text[], numeric),
-  public.radar_video_baixar_avulso(uuid) from public, anon, authenticated, service_role;
+  public.radar_video_baixar_avulso(uuid), public.radar_video_aceitar(uuid, jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.radar_video_criar_avulso(text, jsonb, bigint, bigint[], text, text[], text[], numeric),
-  public.radar_video_baixar_avulso(uuid) to authenticated;
+  public.radar_video_baixar_avulso(uuid), public.radar_video_aceitar(uuid, jsonb) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 7. REGISTRO DA INSTALAÇÃO E EVIDÊNCIA
@@ -10354,7 +10432,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.36.0).
+-- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.40.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

@@ -22,15 +22,20 @@
 #   AZURE_FALA_CHAVE        segredo: a CHAVE 2 do recurso F0 artecon-voz; AZURE_FALA_REGIAO (ex.: brazilsouth). Só no passo Transcrever
 #   AZURE_FALA_MODO         segredo opcional: vazio = F0 pelo Speech SDK; "rapido" = fast transcription (recurso pago), com
 #   AZURE_FALA_ENDPOINT     o endereço do recurso (segredo opcional). A troca pelo pago é só cadastrar os dois
+#   RADAR_IA_GATEWAY_TOKEN  segredo opcional (v0.40.0): o token do aplicativo "radar" na IA Central (o mesmo das agendas de coleta;
+#                           copiado do painel direto para cá, nunca pelo chat) — liga o juiz de sentido no passo alinhar. Sem ele o
+#                           corretor funciona como antes (sem juiz)
 #   RADAR_VIDEO_URL         variável: https://<projeto>.supabase.co/functions/v1/radar-video (o mesmo projeto de radar-config.js)
 #   RADAR_VIDEO_COMMIT      variável: o SHA (40 caracteres) do commit liberado deste repositório público
+#   IA_GATEWAY_URL          variável opcional (v0.40.0): o endereço do ia-gateway, se não for o padrão (juiz.py)
+#   RADAR_VIDEO_IA_MODELO   variável opcional (v0.40.0): o modelo do juiz (padrão claude-sonnet-5-5)
 #
 # Regras do log (o GitHub avisa que esconder segredo no log "não é garantido"): o robô só escreve a fase, o uuid do pedido, números e
 # códigos (robo/video/segredo.py); o stderr do ffmpeg nunca é impresso; sem upload-artifact, sem set -x, sem cache; segredo só no
 # env do passo que precisa dele, nunca escrito dentro de um run. Settings → Actions → General: retenção dos logs em 7 dias.
 #
 # Isolamento: a chave do robô só nos passos pegar, alinhar e entregar, que rodam com o python3 do sistema e só a biblioteca padrão; a
-# da Azure só no Transcrever; os outros passos não têm segredo. Todo ffmpeg roda no contêiner radar-ffmpeg:local (robo/video/Dockerfile)
+# da Azure só no Transcrever; o token da IA Central (opcional, v0.40.0) só no alinhar; os outros passos não têm segredo. Todo ffmpeg roda no contêiner radar-ffmpeg:local (robo/video/Dockerfile)
 # com --network none, nenhum -e/--env e o sistema de arquivos só de leitura (robo/video/isolado.py). As ações são fixadas pelo SHA e o
 # Python do robô é instalado com --require-hashes.
 name: Radar — corretor de vídeo
@@ -110,6 +115,9 @@ jobs:
         env:
           RADAR_VIDEO_URL: ${{ vars.RADAR_VIDEO_URL }}
           RADAR_VIDEO_ROBO_CHAVE: ${{ secrets.RADAR_VIDEO_ROBO_CHAVE }}
+          RADAR_IA_GATEWAY_TOKEN: ${{ secrets.RADAR_IA_GATEWAY_TOKEN }}        # v0.40.0: o juiz de sentido (opcional)
+          IA_GATEWAY_URL: ${{ vars.IA_GATEWAY_URL }}
+          RADAR_VIDEO_IA_MODELO: ${{ vars.RADAR_VIDEO_IA_MODELO }}
         run: python3 -I robo/video/corrigir.py alinhar "$RUNNER_TEMP/corretor"
 
       - name: Montar e conferir o vídeo (sem segredo)
