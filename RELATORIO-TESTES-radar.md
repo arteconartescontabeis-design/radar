@@ -1,6 +1,8 @@
 # Radar Artecon — Relatório de testes (v0.39.0)
 
-Data: 18/10/2026. **A suíte inteira da v0.36.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
+Data: 20/10/2026. **A suíte inteira da v0.39.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
+série (números na seção "v0.39.0", abaixo). A v0.39.0 tem **5** testes novos (3 da função em `test_radar_funcao_ia.py` e 2 da tela
+em `test_radar_telas.py`); a suíte inteira passa de 1.487 para **1.492** testes. Na v0.36.0: Neste ambiente rodaram, em série, os
 arquivos afetados pela v0.36.0 (números na seção "v0.36.0", abaixo). A v0.36.0 tem **11** testes novos (6 do banco em
 `test_radar_video_banco.py`, 2 da função em `test_radar_funcao_video.py` e 3 da tela em `test_radar_telas.py`); a suíte inteira
 passa de 1.476 para **1.487** testes. Na v0.35.0: Neste ambiente rodaram, em série, os
@@ -72,6 +74,34 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.39.0 — IA mais barata (modelos novos + cache), preparo em lote e capa com foto real e título
+
+Todos os testes usam **dados fictícios** ("Ana Teste", domínios `.test`, fotos de cor lisa geradas na hora); nenhuma chamada sai
+para a Anthropic, a OpenAI, a IA Central ou o Pixabay de verdade (os três têm dublês locais).
+
+- **Função** (3 testes novos em `testes/test_radar_funcao_ia.py`, no Deno): os modelos novos por padrão (o sonnet-5-5 sem a
+  escolha forçada de ferramenta — pedida por escrito, `tool_choice: "auto"` — e o haiku-5-5 com ela), as instruções fixas num
+  bloco com `cache_control` "ephemeral"; a resposta que vem só com texto é reenviada UMA vez (com o consumo somando as duas
+  chamadas) e, texto de novo, o erro de formato de sempre; `foto_buscar`/`foto_baixar` (a busca com safesearch e a chave só no
+  servidor, a foto baixada em `data:`, crédito do autor, nada na IA nem no consumo, busca curta 400, foto sumida 404, leitor 403).
+- **Tela** (2 testes novos em `testes/test_radar_telas.py`, Chromium): o preparo em lote de ponta a ponta (3 marcadas → 2
+  preparadas com fundamentar/gerar/foto/conferência/kit e capa 1200×630 com a foto real, em "Conferir e aprovar"; a sem texto
+  capturado pulada com o motivo; nenhuma imagem de IA); e "Usar foto real com o título" no conteúdo (a janela de busca com as
+  palavras do título, a capa trocada, a imagem da IA guardada intocada, a foto sem `assunto_id` e sem contar para a senha).
+- Atualizados: as asserções de modelo e versão (funcao_ia, telas, e2e, itc), o `system` em bloco (`[0]["text"]`), o gateway de
+  mentira aceitando `tool_choice: "auto"`, a réplica da IA Central com os modelos e preços novos (`subir_ia_central`), o
+  diagnóstico com 5 itens (o do banco de imagens, com uma busca de teste grátis) e os dois testes de Ctrl+F5 (a troca de versão
+  presa à "0.36.0"). O teste da imagem da IA passa a conferir que `quality` NÃO vai no pedido (a IA Central fixa a média e cobra
+  preço fixo por imagem: o "high" da v0.25.0 era ilusório).
+- Mudam: as versões (tela, os 4 .js, `radar-ia` e `radar-itc` em 0.39.0; `FUNCAO_MINIMA` sobe para 0.39.0); o setup continua o
+  da v0.36.0 (o banco não muda: nenhuma tabela, função ou coluna).
+
+Rodado neste ambiente, em 20/10/2026: a suíte INTEIRA em série, **1.428 aprovados, 0 falhas, 64 pulados** (os 61 testes com a IA
+Central de verdade — o pacote `../ia-central` não está neste ambiente — e 3 do ambiente), em ~22 min. Antes disso: a função
+`radar-ia` no Deno (**66 aprovados**, com os 3 novos), os 5 testes de tela dirigidos (com os 2 novos) e os robôs. As 5 falhas da
+primeira rodada completa eram asserções presas à versão de antes (o rodapé v0.36.0, a `FUNCAO_MINIMA`, a versão da `radar-itc` e
+os dois testes de Ctrl+F5) — corrigidas e rodadas de novo verdes.
 
 ## v0.36.0 — correção avulsa: analisar e corrigir um vídeo sem peça na Pauta
 

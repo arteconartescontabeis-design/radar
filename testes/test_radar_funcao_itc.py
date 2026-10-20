@@ -410,7 +410,7 @@ def test_diagnostico_conta_na_caixa_inteira_menos_lixo_e_excluidos(itc):
                         + [email("d-lixo", pasta=LIXO), email("d-exc", pasta=EXCLUIDOS)])
     status, r = pedir({"acao": "diagnostico"})
     assert status == 200 and r["tudo_certo"] is True and r["versao"] == "0.39.0", r
-    assert r["itens"][0] == {"item": "Função radar-itc instalada", "ok": True, "detalhe": "versão 0.23.0"}
+    assert r["itens"][0] == {"item": "Função radar-itc instalada", "ok": True, "detalhe": "versão 0.39.0"}
     assert r["itens"][-1] == {"item": "Leitura da caixa", "ok": True,
                               "detalhe": "14 boletim(ns) da ITC nos últimos 7 dias na caixa inteira (fora o Lixo Eletrônico e os Itens Excluídos)"}
     g = ESTADO["graph"][-1]
