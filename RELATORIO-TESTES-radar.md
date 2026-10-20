@@ -105,7 +105,11 @@ Todos os testes usam **dados fictícios** ("Ana Teste", "Bruno Exemplo", falas e
   montar de novo.
 - Atualizados: as asserções de versão (tela, os 4 .js, a função `radar-video` e o robô em 0.40.0; `FUNCAO_MINIMA` fica em 0.39.0 —
   a `radar-ia` não muda), o nome do setup nos recados e no `conftest`, e a entrada nova na aba Versões (índices da lista).
-- Suíte inteira neste ambiente, em série: **(números preenchidos após a rodada final desta versão, abaixo)**.
+- Suíte inteira neste ambiente, em série: **1.441 aprovados, 0 falhas, 64 pulados** (os 61 da IA Central de verdade — pacote
+  `../ia-central`, fora deste ambiente — e 3 do ambiente), em 22min08s. As 2 falhas da 1ª rodada eram os testes-guarda do robô que
+  ainda não conheciam o juiz: a varredura "nada de IA no código" (ganhou a exceção de propósito: o `juiz.py` fala SÓ com o
+  ia-gateway, nunca outro provedor direto) e o do `python -I` (o módulo próprio `juiz`, que é só biblioteca padrão) — corrigidos e
+  a suíte inteira rodou de novo, verde.
 
 ## v0.39.0 — IA mais barata (modelos novos + cache), preparo em lote e capa com foto real e título
 
