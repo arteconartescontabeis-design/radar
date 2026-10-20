@@ -829,7 +829,8 @@ def test_passos_com_a_chave_rodam_com_python_I_so_com_a_biblioteca_padrao(tmp_pa
     # a biblioteca padrão, o código daqui e o que o próprio Python carrega ao abrir (os .pth do site-packages dele)
     abrir = subprocess.run([sys.executable, "-I", "-X", "importtime", "-c", "pass"], capture_output=True, text=True).stderr
     padrao = set(sys.stdlib_module_names) | set(sys.builtin_module_names) | _modulos(abrir) | {
-        "segredo", "conversa", "corrigir", "alinhar", "cortes", "numeros", "relatorio", "sondar", "isolado", "transcrever"}
+        "segredo", "conversa", "corrigir", "alinhar", "cortes", "numeros", "relatorio", "sondar", "isolado", "transcrever",
+        "juiz"}                                          # v0.40.0: o juiz de sentido (também só a biblioteca padrão)
 
     def com_a_chave(fase, **amb):
         out = tmp_path / f"out_{fase}"

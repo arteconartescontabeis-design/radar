@@ -498,18 +498,24 @@ def test_ffmpeg_nao_recebe_o_ambiente_do_robo(pastas, monkeypatch):
 
 def test_codigo_do_robo_isolado_e_sem_ia(monkeypatch):
     """Estático: só o isolado.py abre processos; todo clipe entra com -protocol_whitelist file -f mov; o prefixo do contêiner tem sem
-    rede, só leitura, sem privilégio e nenhum -e; ninguém imprime o stderr; nada de síntese de voz, interpolação ou IA."""
+    rede, só leitura, sem privilégio e nenhum -e; ninguém imprime o stderr; nada de síntese de voz, interpolação ou IA — a única
+    exceção, de propósito (v0.40.0), é o juiz de sentido (juiz.py), que fala SÓ com o ia-gateway da IA Central (texto; nunca o áudio
+    nem a imagem) e nunca imprime nada."""
     fontes = {p.name: p.read_text(encoding="utf-8") for p in ROBO.glob("*.py")}
     assert {"isolado.py", "sondar.py", "audio.py", "cortes.py", "legenda.py", "cartela.py", "montar.py", "conferir.py", "segredo.py",
-            "alinhar.py", "numeros.py", "relatorio.py", "transcrever.py", "corrigir.py", "conversa.py"} <= set(fontes)
+            "alinhar.py", "numeros.py", "relatorio.py", "transcrever.py", "corrigir.py", "conversa.py", "juiz.py"} <= set(fontes)
     for nome, codigo in fontes.items():
         if nome != "isolado.py":
             assert not re.search(r"\bsubprocess\b|os\.system|os\.popen|\bPopen\b|os\.exec|pty\.", codigo), nome
         if nome != "segredo.py":
             assert "print(" not in codigo, nome                                            # o log é só pelo segredo.log
-        assert not re.search(r"SpeechSynthesizer|minterpolate|images/generations|ia-gateway|anthropic|openai|enable_audio_logging", codigo, re.I), nome
+        assert not re.search(r"SpeechSynthesizer|minterpolate|images/generations|enable_audio_logging", codigo, re.I), nome
+        if nome != "juiz.py":
+            assert not re.search(r"ia-gateway|anthropic|openai", codigo, re.I), nome
         for m in re.finditer(r'"-i", f"/ent/', codigo):                                     # todo clipe com o demuxer forçado e só arquivo
             assert "*ENTRADA" in codigo[max(0, m.start() - 60):m.start()], (nome, codigo[m.start() - 60:m.start()])
+    # o juiz: só o endereço do ia-gateway (ou o de testes), nunca outro provedor direto
+    assert re.search(r"ia-gateway", fontes["juiz.py"]) and not re.search(r"api\.anthropic\.com|openai", fontes["juiz.py"], re.I)
     assert sondar.ENTRADA == ["-protocol_whitelist", "file", "-f", "mov"]
     assert "*ENTRADA" in fontes["sondar.py"] and '"-show_streams"' in fontes["sondar.py"]
     p = isolado.PREFIXO
