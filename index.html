@@ -370,21 +370,27 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.41.0"></script>
-<script src="radar-video.js?v=0.41.0"></script>
-<script src="radar-setor.js?v=0.41.0"></script>
-<script src="radar-respostas.js?v=0.41.0"></script>
+<script src="radar-pauta.js?v=0.42.0"></script>
+<script src="radar-video.js?v=0.42.0"></script>
+<script src="radar-setor.js?v=0.42.0"></script>
+<script src="radar-respostas.js?v=0.42.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.41.0";
-const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia)
-const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0, v0.31.0 e v0.32.0 não sobem: a radar-redes não muda)
+const VERSAO = "0.42.0";
+const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo)
+const REDES_MINIMA = "0.42.0";      // versão da função radar-redes que este painel exige (v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não subiu: só a agenda do banco usa a ação nova, acionar_lembretes)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.42.0", "20/10/2026", [
+    "Formato no assunto — carrossel: na notícia aprovada, o administrador escolhe, no passo 3 (Publicar), entre FOTO (como hoje) e CARROSSEL. No carrossel, a capa é a imagem da publicação com o título da notícia e os cartões vêm do kit das redes (a IA passa a escrever de 3 a 8 cartões no kit); a tela desenha as lâminas no padrão da arte da Artecon (1080×1350, com a identificação legal) e mostra tudo antes de autorizar. O próprio Radar publica: no Instagram sai como carrossel e no Facebook como publicação com as imagens.",
+    "Formato no assunto — reel: na notícia aprovada, o botão “Criar peça de reel na Pauta” leva o roteiro do kit (escrito pela IA a partir da notícia) e as legendas para uma peça nova de reel, no dia que você escolher. Quem grava é a equipe, e o vídeo passa pelo corretor como sempre; a aprovação e a postagem do reel continuam à mão.",
+    "Pôr no Informativo Mensal com um clique: na notícia aprovada, o botão novo inclui o artigo na edição em montagem (a mais nova da aba Informativos). Sem edição aberta, a tela avisa; o artigo que já está na edição não entra duas vezes, e só conteúdo aprovado entra (regra do banco, como sempre).",
+    "Carrossel da Pauta publicado sozinho: a peça em carrossel (ou carrossel de fotos) aprovada agora também pode ser AGENDADA — na hora marcada, o Radar envia as lâminas aprovadas à Meta pelo mesmo canal oficial da foto única; ninguém mais baixa lâmina e posta à mão. Valem todas as travas de hoje (só peça aprovada, termo das pessoas em dia, nunca duas vezes, registrado quem autorizou); só o reel continua saindo à mão.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.42.0.sql (duas colunas novas em radar_redes_envios, nada é apagado; pode rodar de novo) e faça o Deploy das funções radar-redes e radar-ia desta versão (Verify JWT como está em cada uma). Nenhum segredo novo; os robôs e as agendas não mudam. Depois publique o index.html com os demais .js e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.41.0 para a v0.42.0”."]],
   ["0.41.0", "20/10/2026", [
     "Projeção de publicações no Painel do dia: um quadro novo no alto mostra, lado a lado, HOJE, a SEMANA e o MÊS — o que o calendário da Pauta e a busca pedem (o mínimo), o que já saiu (o feito) e o que falta alcançar, com o atraso em vermelho. Cada período traz o resumo em uma linha (“Tem X de Y: faltam Z”) e o botão “Abrir a Pauta” leva ao calendário.",
     "As contas são exatamente as do cronograma de publicações da Pauta (posts no feed, reels, captação e as notícias do Radar achadas pela busca): nada muda no que é contado — muda onde você vê. O quadro só informa: não publica, não grava e não cria nada; se a leitura falhar, o resto do Painel continua funcionando.",
@@ -1187,7 +1193,8 @@ async function desenhar(){
     if(g === GERACAO){ app.innerHTML = moldura(html);
       const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi);
       if(!E.assunto && E.aba === "pauta" && typeof depoisDeDesenharPauta === "function") depoisDeDesenharPauta();      // v0.21.0: a peça aberta (radar-pauta.js)
-      if(!E.assunto && E.aba === "video" && typeof depoisDeDesenharAbaVideo === "function") depoisDeDesenharAbaVideo(); }   // v0.33.0: o editor do vídeo (radar-video.js)
+      if(!E.assunto && E.aba === "video" && typeof depoisDeDesenharAbaVideo === "function") depoisDeDesenharAbaVideo();     // v0.33.0: o editor do vídeo (radar-video.js)
+      if(E.assunto && $("#rede-laminas")) montarLaminasNoticia(); }   // v0.42.0: o carrossel da notícia (as lâminas, desenhadas na tela)
   }catch(e){ if(g === GERACAO && E.sessao && E.perfil) app.innerHTML = moldura(`<div class="aviso erro">${h(e.message)}</div>`); }
 }
 function telaEntrada(erro){
@@ -1218,7 +1225,7 @@ function linhaProrrogacao(p){
 }
 /* Configurações → Agenda de obrigações: as dos últimos 30 dias, também as já conferidas (com o selo) */
 function listaProrrogacoes(lista){
-  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
+  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.42.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
   return `<div class="prorrogacoes" id="prorrogacoes-config"><h3>Possíveis prorrogações captadas (últimos 30 dias)</h3>
     ${lista.length ? `<p class="sub">Notícias que falam em prorrogar ou adiar o prazo de uma obrigação desta agenda. O Radar não muda a data sozinho: confira na fonte oficial e, se o prazo mudou, ponha a nova data em “prorrogacoes”.</p>
       <ul>${lista.map(linhaProrrogacao).join("")}</ul>` : `<p class="sub">Nenhuma notícia dos últimos 30 dias fala em prorrogar ou adiar o prazo de uma obrigação desta agenda.</p>`}</div>`;
@@ -2286,12 +2293,27 @@ function proxRede(canal, r, c, capa, categoria, urlSite, ultima, conferir = fals
   if(!adm) return [`Publicar no ${nome}`, `Falta o administrador autorizar a publicação no ${nome}.`, "", passo];
   const chave = c.id + ":" + canal, legenda = (E.legendas || {})[chave] ?? legendaIA(c, canal, urlSite) ?? legendaRede(c, canal, urlSite, categoria);
   const caiu = ultima?.situacao === "cancelado" && ultima.erro ? `<div class="aviso alerta">${h(ultima.erro)}</div>` : "";
+  // v0.42.0: foto única (como hoje) ou carrossel (a capa com o título + os cartões do kit). A escolha vale para o conteúdo (os dois
+  // canais); as lâminas são desenhadas aqui (montarLaminasNoticia) e vão ao banco na autorização (radar_autorizar_rede, p_artes)
+  const cartoes = cartoesDoKit(c), podeDesenhar = typeof desenharPeca === "function", temImagem = /^data:image\/(jpeg|png|webp);base64,/.test(String(capa || ""));
+  const carrossel = (E.formatoRede || {})[c.id] === "carrossel" && cartoes.length >= 2 && podeDesenhar && temImagem;
+  if(carrossel) E.carrosselRede = {conteudo:c.id, lams:laminasDaNoticia(c, capa), feitas:null};
+  else if(E.carrosselRede?.conteudo === c.id) E.carrosselRede = null;
+  const formatoHtml = `<fieldset class="checks rede-formato" id="rede-formato"><legend>Como sai</legend>
+    <label><input type="radio" name="rede-formato" value="foto" data-acao="rede-formato" data-id="${c.id}" data-valor="foto"${carrossel ? "" : " checked"}> Foto única (a imagem da publicação, como hoje)</label>
+    <label><input type="radio" name="rede-formato" value="carrossel" data-acao="rede-formato" data-id="${c.id}" data-valor="carrossel"${carrossel ? " checked" : ""}${cartoes.length >= 2 && podeDesenhar && temImagem ? "" : " disabled"}> Carrossel (a capa com o título + ${cartoes.length >= 2 ? `os ${cartoes.length} cartões do kit` : "os cartões do kit"})</label>
+    ${cartoes.length >= 2 ? "" : `<span class="sub" id="rede-sem-cartoes">O kit das redes deste conteúdo ainda não tem os cartões do carrossel: use “Gerar kit das redes com IA” (no conteúdo, passo 2) com a função radar-ia desta versão.</span>`}
+    ${podeDesenhar ? "" : `<span class="sub">O arquivo radar-pauta.js (que desenha as lâminas) não carregou: aperte Ctrl+F5.</span>`}
+    ${temImagem ? "" : `<span class="sub">O carrossel precisa da imagem da publicação (a capa): envie a imagem no passo 2.</span>`}</fieldset>`;
+  const laminasHtml = carrossel ? `<div class="aviso info rede-carrossel-aviso">Carrossel: vai ao ar exatamente o que aparece abaixo (a capa e ${cartoes.length} cartão(ões), com a identificação legal em cada lâmina). ${canal === "instagram" ? "No Instagram sai como carrossel (a pessoa arrasta as lâminas)." : "No Facebook sai como uma publicação com as imagens."}</div>
+    <div class="peca-artes" id="rede-laminas" data-conteudo="${c.id}"></div><div id="rede-laminas-avisos"></div>` : "";
   return [`Publicar no ${nome}`, `Confira a imagem e a legenda. Ao autorizar, a publicação sai na hora no ${nome} da Artecon.`,
-    `${caiu}<div class="rede-montagem"><div class="rede-arte">${imagemRede("rede-imagem", c, capa, `Imagem da publicação no ${nome}`)}</div>
+    `${caiu}${formatoHtml}<div class="rede-montagem"><div class="rede-arte">${imagemRede("rede-imagem", c, capa, `Imagem da publicação no ${nome}`)}</div>
       <div class="rede-legenda"><label for="rede-legenda">Legenda</label><textarea id="rede-legenda" maxlength="2200" data-chave="${chave}">${h(legenda)}</textarea>
       <span class="sub">${canal === "instagram" ? "No Instagram o link da legenda não é clicável: a legenda indica o link na bio." : "No Facebook o link da legenda é clicável."} Até 2.200 caracteres.</span></div></div>
+    ${laminasHtml}
     ${conferir ? caixaConferiRede("rede-conferi", canal) : ""}
-    <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}</button>
+    <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}${carrossel ? " (carrossel)" : ""}</button>
       <button class="btn sec" type="button" data-acao="dispensar-rede" data-canal="${canal}" data-id="${c.id}">Não publicar no ${nome}</button></div>`, passo];
 }
 /* As linhas do texto sem a formatação (sem subtítulo, tabela, marcador de lista e negrito): a legenda parte delas. v0.25.1: cada linha
@@ -2369,6 +2391,61 @@ function legendaIA(c, canal, urlSite, limite = 2200){
   const fonte = c.fonte_credito && !/(^|\n)Fonte:/i.test(t) ? "Fonte: " + c.fonte_credito : "";
   const tags = (Array.isArray(parte.hashtags) ? parte.hashtags : []).map(textoDe).filter(x => /^#[\p{L}\p{N}_]+$/u.test(x)).join(" ");
   return comporLegenda([t, fonte].filter(Boolean).join("\n\n"), tags, limite, "", avisoIADaLegenda(c));
+}
+/* v0.42.0: os cartões do carrossel que a IA escreveu no kit (kit_ia.cartoes, função radar-ia v0.42.0). Só valem com o kit em dia
+   (kitDe); o kit antigo, sem cartões, devolve [] e a opção de carrossel pede para gerar o kit de novo. */
+function cartoesDoKit(c){
+  const k = kitDe(c);
+  return (Array.isArray(k?.cartoes) ? k.cartoes : []).map(x => ({titulo:textoDe(x?.titulo), texto:textoDe(x?.texto)}))
+    .filter(x => x.titulo || x.texto).slice(0, 9);
+}
+/* v0.42.0: a notícia como carrossel — a capa (a imagem da publicação em página cheia, com o título da notícia por cima, o modelo
+   "foto" da arte da Pauta) e uma lâmina por cartão do kit (o modelo "texto"), todas 1080×1350 com a identificação legal, desenhadas
+   por desenharPeca (radar-pauta.js). Sem pessoas e sem selo: a notícia não tem “Quem aparece”. */
+function laminasDaNoticia(c, capa){
+  const l = [{modelo:"foto", imagem:capa, titulo:String(c.titulo || "").replace(/\s+/g, " ").trim(), texto:""},
+    ...cartoesDoKit(c).map(x => ({modelo:"texto", titulo:x.titulo, texto:x.texto}))];
+  return l.map((x, i) => ({...x, selo:"", pessoas:[], pessoasJuntas:[], pagina:`${i + 1}/${l.length}`}));
+}
+/* v0.42.0: desenha as lâminas do carrossel no quadro do canal (#rede-laminas) e guarda o resultado em E.carrosselRede.feitas (o que
+   o Autorizar envia). O desenho mais novo é o que vale; nunca lança erro (é chamada depois de desenhar a tela). */
+async function montarLaminasNoticia(){
+  const box = $("#rede-laminas"), cr = E.carrosselRede;
+  if(!box || !cr || Number(box.dataset.conteudo) !== cr.conteudo || typeof desenharPeca !== "function") return;
+  const vez = E.laminaVez = (E.laminaVez || 0) + 1;
+  box.innerHTML = cr.lams.map((_, i) => `<figure><img class="peca-arte" data-ordem="${i + 1}" data-pendente="1" alt="Lâmina ${i + 1} de ${cr.lams.length} (montando…)">
+    <figcaption class="sub">${i ? `Cartão ${i} — lâmina ${i + 1} de ${cr.lams.length}` : `Capa — lâmina 1 de ${cr.lams.length}`}</figcaption></figure>`).join("");
+  const feitas = [];
+  for(const l of cr.lams){
+    let r;
+    try{ r = await desenharPeca(l); }
+    catch(e){ r = {erro:e.message || "Não foi possível montar a lâmina."}; }
+    if(E.laminaVez !== vez) return;
+    const img = box.querySelectorAll("img.peca-arte")[feitas.length]; if(!img) return;
+    if(r.dados){ img.src = r.dados; img.removeAttribute("data-pendente"); img.alt = img.alt.replace(" (montando…)", ""); }
+    else img.dataset.erro = r.erro;
+    feitas.push(r);
+  }
+  cr.feitas = feitas;
+  const avisos = $("#rede-laminas-avisos");
+  if(avisos) avisos.innerHTML = feitas.map((r, i) => r.erro ? `<div class="aviso erro arte-erro">Lâmina ${i + 1}: ${h(r.erro)}</div>`
+    : r.cortes.length ? `<div class="aviso ${r.cortes.includes("identificacao") ? "erro" : "alerta"} arte-corte">${h(msgCortePeca(i + 1, r.cortes))}</div>` : "").join("");
+}
+/* v0.42.0: na notícia aprovada — pôr no Informativo Mensal com um clique e criar a peça de reel na Pauta (com o roteiro do kit).
+   O carrossel fica no passo 3 (Publicar), no quadro de cada canal. */
+function blocoLevar(c, ed){
+  if(!ed) return "";
+  const r = typeof roteiroDoKit === "function" ? roteiroDoKit(kitDe(c)) : {cenas:[]};
+  const temRoteiro = Array.isArray(r.cenas) && r.cenas.length > 0;
+  const hoje = typeof hojeBrasilia === "function" ? hojeBrasilia() : "", amanha = hoje && typeof somarDias === "function" ? somarDias(hoje, 1) : "";
+  return `<div class="acoes levar-redes" id="levar-${c.id}"><b class="sub">Levar a notícia adiante:</b>
+    <button class="btn peq sec" type="button" data-acao="informativo-por" data-id="${c.id}">Pôr no Informativo Mensal</button>
+    ${ehAdmin() ? (temRoteiro && amanha ? `<label class="sub" for="reel-dia-${c.id}" style="margin:0">Reel na Pauta, no dia</label>
+      <input type="date" id="reel-dia-${c.id}" value="${h(amanha)}" min="${h(hoje)}" aria-label="Dia da peça de reel na Pauta">
+      <button class="btn peq sec" type="button" data-acao="reel-pauta" data-id="${c.id}">Criar peça de reel na Pauta</button>`
+      : `<span class="sub" id="reel-sem-kit">${temRoteiro ? "Para criar a peça de reel na Pauta, aperte Ctrl+F5 (o arquivo radar-pauta.js não carregou)."
+        : "Para criar a peça de reel na Pauta, gere antes o kit das redes (o roteiro do reel sai do kit)."}</span>`) : ""}
+    <span class="sub">Carrossel: no passo 3 (Publicar), escolha “Carrossel” no quadro do Instagram ou do Facebook.</span></div>`;
 }
 /* v0.20.0: identificação legal das publicações nas redes, das Configurações (assinatura): “empresa · CNPJ … · CRC-SC …”. Só entra o
    que foi preenchido: a tela avisa o que falta e nunca inventa. Quem acrescenta é a tela (legenda e arte), nunca a IA. */
@@ -2990,7 +3067,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.42.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -3179,7 +3256,8 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
         <span class="sub">1.</span><button class="btn peq sec" type="button" data-acao="copiar-titulo">Copiar título</button>
         <span class="sub">2.</span><button class="btn peq sec" type="button" data-acao="copiar-texto">Copiar texto formatado</button>
         ${imagem ? `<span class="sub">3.</span><a class="btn peq sec" style="text-decoration:none" download="radar-imagem-${c.id}.${imagem.slice(11, 14) === "png" ? "png" : imagem.slice(11, 15) === "webp" ? "webp" : "jpg"}" href="${h(imagem)}">Baixar imagem</a>` : ""}</div>
-      ${CATEGORIA_SITE[categoria] || (!pubs.length && !c.fora_do_site) ? `<p class="sub dica-site">${CATEGORIA_SITE[categoria] ? `Categoria no site: <b>${h(CATEGORIA_SITE[categoria])}</b>. ` : ""}${pubs.length || c.fora_do_site ? "" : "Depois de publicar, o robô encontra a notícia no site e registra o link sozinho na próxima coleta (a cada 6 horas); se preferir, registre agora."}</p>` : ""}` : ""}
+      ${CATEGORIA_SITE[categoria] || (!pubs.length && !c.fora_do_site) ? `<p class="sub dica-site">${CATEGORIA_SITE[categoria] ? `Categoria no site: <b>${h(CATEGORIA_SITE[categoria])}</b>. ` : ""}${pubs.length || c.fora_do_site ? "" : "Depois de publicar, o robô encontra a notícia no site e registra o link sozinho na próxima coleta (a cada 6 horas); se preferir, registre agora."}</p>` : ""}
+      ${analise ? "" : blocoLevar(c, ed)}` : ""}
     ${analise || c.status === "aprovado" ? "" : quadroConferencia(c, conf, ed) + quadroEditorial(c, ed)}
     ${ed ? `<div class="acoes">
       <button class="btn sec" data-acao="salvar-conteudo">Salvar</button>
@@ -3682,29 +3760,58 @@ const ACOES = {
     await rpc("radar_assumir_conferencia", {p_conteudo:Number(el.dataset.id), p_motivo:motivo, p_lido:f.dataset.lido});
     await desenhar(); recado("Revisado e assumido: a aprovação deste texto está liberada (se ele mudar, cai). O motivo ficou no histórico.", "aviso");
   },
-  /* v0.13.0: Instagram e Facebook — autorizar e publicar na hora (só o administrador; as funções do banco conferem) */
+  /* v0.13.0: Instagram e Facebook — autorizar e publicar na hora (só o administrador; as funções do banco conferem).
+     v0.42.0: com “Carrossel” escolhido no quadro, as lâminas desenhadas na tela (a capa com o título + os cartões do kit) são
+     guardadas em radar_imagens e vão na autorização (p_artes); a função radar-redes publica o carrossel. */
   async "autorizar-rede"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const canal = el.dataset.canal, nome = NOME_REDE[canal], img = $("#rede-imagem"), legenda = ($("#rede-legenda")?.value || "").trim();
     const naoPronta = imagemNaoPronta(img, "A imagem"); if(naoPronta){ recado(naoPronta, true); return; }
     if(img.dataset.conteudo !== el.dataset.id){ await desenhar(); recado("A tela mudou: confira a imagem de novo e autorize.", true); return; }
-    const proporcao = canal === "instagram" ? recadoProporcao(img.dataset.imagem) : "";      // v0.25.0: a foto antiga fora de 4:5 a 1,91:1
+    // v0.42.0: o carrossel escolhido — as lâminas prontas, sem erro e com a identificação inteira (as lâminas são 4:5: a proporção serve)
+    const cr = (E.formatoRede || {})[Number(el.dataset.id)] === "carrossel" ? E.carrosselRede : null;
+    if((E.formatoRede || {})[Number(el.dataset.id)] === "carrossel" && (!cr || cr.conteudo !== Number(el.dataset.id))){
+      await desenhar(); recado("A tela mudou: confira o carrossel de novo e autorize.", true); return; }
+    if(cr){
+      if(!Array.isArray(cr.feitas) || cr.feitas.length !== cr.lams.length){ recado("As lâminas do carrossel ainda estão sendo montadas: aguarde um instante e clique de novo.", true); return; }
+      const falha = cr.feitas.find(x => x.erro); if(falha){ recado("Lâmina do carrossel com erro: " + falha.erro, true); return; }
+      const corteId = cr.feitas.findIndex(x => (x.cortes || []).includes("identificacao"));
+      if(corteId >= 0){ recado(typeof msgCortePeca === "function" ? msgCortePeca(corteId + 1, ["identificacao"]) : "A identificação legal não coube na lâmina: encurte-a em Configurações → Assinatura.", true); return; }
+    }
+    const textosLaminas = cr ? cr.lams.map(l => [l.titulo, l.texto].filter(Boolean).join("\n")).join("\n") : "";
+    const proporcao = canal === "instagram" && !cr ? recadoProporcao(img.dataset.imagem) : "";      // v0.25.0: a foto antiga fora de 4:5 a 1,91:1
     if(proporcao){ recado(proporcao, true); return; }
     if(legenda.length < 10){ recado("Escreva a legenda (pelo menos 10 caracteres).", true); $("#rede-legenda")?.focus(); return; }
-    const marcas = [...marcasVerificar(legenda), ...marcasDoConteudo(el.dataset.id)];
+    const marcas = [...marcasVerificar(legenda + (textosLaminas ? "\n" + textosLaminas : "")), ...marcasDoConteudo(el.dataset.id)];
     if(marcas.length){ recado(msgMarcas(marcas, `publicar no ${nome}`), true); $("#rede-legenda")?.focus(); return; }
-    const pub = conferirPublicidade(el.dataset.id, {[canal]:legenda});          // v0.20.0: termos da publicidade e boletim pago
+    // v0.20.0: termos da publicidade e boletim pago (v0.42.0: os textos das lâminas do carrossel entram na mesma conferência)
+    const pub = conferirPublicidade(el.dataset.id, {[canal]:legenda + (textosLaminas ? "\n" + textosLaminas : "")});
     if(pub.erro){ recado(pub.erro, true); $("#rede-legenda")?.focus(); return; }
-    const pagoB = await pagoDoBanco(el.dataset.id, {[canal]:legenda});        // rodada 2: o boletim de outro assunto (o banco recusaria)
+    const pagoB = await pagoDoBanco(el.dataset.id, {[canal]:legenda + (textosLaminas ? "\n" + textosLaminas : "")});        // rodada 2: o boletim de outro assunto (o banco recusaria)
     if(pagoB){ recado(pagoB, true); $("#rede-legenda")?.focus(); return; }
     const conferi = $("#rede-conferi");                                          // v0.22.0: cancelada no meio do envio
     if(conferi && !conferi.checked){ recado(`Confira no ${nome} que a publicação cancelada no meio do envio não saiu e marque a caixa “Conferi no ${nome}: …”.`, true); conferi.focus(); return; }
-    if(!confirm(`Publicar agora no ${nome} da Artecon?\n\nA imagem (a mesma do site) e a legenda vão ao ar como estão na tela.` + pub.aviso)) return;
-    const imagem = await jpegDaPublicacao(img.getAttribute("src"));                // v0.25.0: o mesmo arquivo do site
+    if(!confirm(`Publicar agora no ${nome} da Artecon?\n\n${cr ? `O carrossel (${cr.lams.length} lâminas: a capa e ${cr.lams.length - 1} cartões) e a legenda vão ao ar como estão na tela.`
+      : "A imagem (a mesma do site) e a legenda vão ao ar como estão na tela."}` + pub.aviso)) return;
+    const imagem = cr ? null : await jpegDaPublicacao(img.getAttribute("src"));                // v0.25.0: o mesmo arquivo do site
+    let artes = null;
+    if(cr){
+      artes = [];
+      for(const [i, x] of cr.feitas.entries()){
+        recado(`Guardando a lâmina ${i + 1} de ${cr.feitas.length}…`, "aviso");
+        const [nova] = await rest("POST", "radar_imagens", {corpo:{dados:x.dados, largura:1080, altura:1350}, params:{select:"id"}, prefer:"return=representation"});
+        artes.push(nova.id);
+      }
+    }
     const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:imagem, p_lido:el.dataset.lido,
-      p_conferi_rede:!!conferi?.checked});
+      p_conferi_rede:!!conferi?.checked, ...(artes ? {p_artes:artes} : {})});
     if(E.legendas) delete E.legendas[el.dataset.id + ":" + canal];
     await publicarRede(envio, canal);
+  },
+  /* v0.42.0: a escolha entre foto única e carrossel no quadro do canal (vale para o conteúdo: os dois canais saem iguais) */
+  async "rede-formato"(el){
+    (E.formatoRede ||= {})[Number(el.dataset.id)] = el.dataset.valor;
+    await desenhar();
   },
   async "tentar-rede"(el){ await publicarRede(el.dataset.envio, el.dataset.canal); },
   /* v0.19.0: “Publicar nos que faltam” — autoriza e publica cada canal marcado, um depois do outro; um recado só no fim */
@@ -4085,6 +4192,47 @@ const ACOES = {
     const atuais = await ler("radar_informativo_itens", {select:"ordem", informativo_id:"eq." + E.informativo});
     await rest("POST", "radar_informativo_itens", {corpo:{informativo_id:E.informativo, conteudo_id:Number($("#item-novo").value), ordem:Math.max(0, ...atuais.map(a => a.ordem)) + 10}});
     await desenhar(); recado("Artigo incluído.");
+  },
+  /* v0.42.0: “Pôr no Informativo Mensal” na notícia aprovada (um clique): o artigo entra no fim da edição em montagem mais nova.
+     As regras continuam do banco (só conteúdo aprovado, edição fechada não muda); o que já está na edição não entra duas vezes. */
+  async "informativo-por"(el){
+    const id = Number(el.dataset.id);
+    const [edicao] = await ler("radar_informativos", {select:"id,numero,ano", status:"eq.rascunho", order:"ano.desc,numero.desc,id.desc", limit:"1"});
+    if(!edicao){ recado("Não há edição do Informativo em montagem: crie a edição na aba Informativos (“Nova edição”) e clique de novo.", true); return; }
+    const nome = "N.º " + numInformativo(edicao);
+    const itens = await ler("radar_informativo_itens", {select:"conteudo_id,ordem", informativo_id:"eq." + edicao.id, order:"ordem.desc,conteudo_id.desc", limit:"200"});
+    if(itens.some(x => x.conteudo_id === id)){ recado(`Este conteúdo já está no Informativo ${nome} (veja a ordem na aba Informativos).`); return; }
+    try{ await rest("POST", "radar_informativo_itens", {corpo:{informativo_id:edicao.id, conteudo_id:id, ordem:(itens[0]?.ordem || 0) + 10}}); }
+    catch(e){ if(e.message === "Já existe um registro igual."){ recado(`Este conteúdo já está no Informativo ${nome}.`); return; } throw e; }
+    recado(`Posto no Informativo Mensal ${nome}: confira a ordem dos artigos na aba Informativos.`);
+  },
+  /* v0.42.0: “Criar peça de reel na Pauta” na notícia aprovada (só o administrador, como o “+ Nova peça”): a peça nasce planejada no
+     dia escolhido, com o roteiro do kit (escrito pela IA a partir da notícia) e a legenda do reel; a equipe grava, o corretor confere
+     e a aprovação segue o caminho de sempre. */
+  async "reel-pauta"(el){
+    const id = Number(el.dataset.id), dia = $(`#reel-dia-${id}`)?.value;
+    if(!dia){ recado("Escolha o dia da peça de reel na Pauta.", true); return; }
+    const f = $(`form[data-form=conteudo][data-id="${id}"]`);
+    if(f && sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes: o roteiro parte do texto salvo.", true); return; }
+    const [c] = await ler("radar_conteudos", {select:"id,titulo,status,kit_ia,fonte_credito", id:"eq." + id});
+    if(!c || c.status !== "aprovado"){ recado("Só a notícia aprovada vira peça de reel na Pauta.", true); return; }
+    const r = typeof roteiroDoKit === "function" ? roteiroDoKit(kitDe(c)) : null;
+    if(!r || !r.cenas.length){ recado("O kit das redes deste conteúdo não tem o roteiro do reel: gere o kit de novo e tente outra vez.", true); return; }
+    const titulo = String(c.titulo || "").replace(/\s+/g, " ").trim();
+    if(!confirm(`Criar a peça de reel na Pauta para ${dataAgenda(dia)}?\n\nO roteiro do kit e a legenda do reel vão para a peça (dá para ajustar lá). A equipe grava, o corretor de vídeo confere e a aprovação continua do jeito de sempre (o reel sai à mão).`)) return;
+    const pecaId = await rpc("radar_pauta_criar", {p_peca:{data:dia, tipo:"reel", formato:"reel", assunto:("Reel da notícia: " + titulo).slice(0, 1000),
+      objetivo:"Reel da notícia aprovada no Radar", quem_aparece:"",
+      observacao:(`Criada do assunto nº ${E.assunto || ""}. O roteiro veio do kit das redes; ajuste a fala na peça, se precisar.`).slice(0, 1000)}});
+    // o roteiro no formato que o corretor lê (“… — Fala: … | Na tela: …”); a legenda do reel vai nos campos das legendas
+    const roteiro = [`Roteiro do reel (do kit das redes da notícia: “${titulo}”)`,
+      textoDe(r.reel?.gancho) ? "Gancho: " + textoDe(r.reel.gancho) : "",
+      ...r.cenas.map(x => `${r.tempo(x)} — Fala: ${textoDe(x.fala)}${textoDe(x.texto_tela) ? " | Na tela: " + textoDe(x.texto_tela) : ""}`),
+      textoDe(r.reel?.chamada_final) ? "Chamada final: " + textoDe(r.reel.chamada_final) : ""].filter(Boolean).join("\n\n").slice(0, 6000);
+    await rest("PATCH", "radar_pauta_pecas", {params:{id:"eq." + pecaId, select:"id"},
+      corpo:{roteiro, ...(r.legenda ? {legenda_instagram:r.legenda.slice(0, 2200), legenda_facebook:r.legenda.slice(0, 2200)} : {})}});
+    E.etapa = null; E.assunto = null; E.aba = "pauta"; E.pauta.peca = Number(pecaId); E.pauta.vista = "semana"; E.pauta.nova = null;
+    window.scrollTo(0, 0); await desenhar();
+    recado(`Peça de reel criada para ${dataAgenda(dia)}, com o roteiro do kit: confira a fala para conferência, marque quem grava e siga o caminho de sempre (gravar, corretor, pronta e aprovação).`);
   },
   async "item-remover"(el){
     await salvarEdicaoAberta();
@@ -4845,7 +4993,7 @@ const quandoBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "�
   : d.toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}).replace(",", " às"); };
 function situacaoLembretes(lemb, cfg){
   if(lemb.erro) return `<div class="aviso alerta" id="lembretes-situacao">${lemb.erro.status === 404
-    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.42.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler a situação dos lembretes agora: recarregue a página."}</div>`;
   const s = lemb.r || {}, ag = s.agenda || {};
   const agenda = !ag.instalada ? "não instalada: rode de novo o sql/radar-redes-agenda.sql (Supabase → SQL Editor)"
@@ -4900,7 +5048,7 @@ function formVencimento(v){
 function quadroVencimentos(venc){
   const topo = `<div class="painel" id="vencimentos"><h2>Vencimentos de chaves e contas</h2>`;
   if(venc.erro) return topo + `<div class="aviso alerta">${venc.erro.status === 404
-    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.42.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler o quadro de vencimentos agora: recarregue a página."}</div></div>`;
   const hoje = hojeVencimentos(), ed = E.venc || {};
   const itens = (venc.r || []).map(v => ({v, s:situacaoVencimento(v, hoje)}))
@@ -4943,7 +5091,7 @@ async function situacaoFuncaoCopia(){
 }
 function painelCopia(sb, sf){
   const topo = `<div class="painel" id="copia-onedrive"><h2>Cópia de segurança no OneDrive</h2>`;
-  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
+  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.42.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
   const s = sb.r || {}, f = sf.r && typeof sf.r === "object" ? sf.r : null, configurada = f?.configurada === true;
   const funcao = f ? `instalada (versão ${h(f.versao || "—")})` : sf.erro?.status === 404 ? "não instalada (Supabase → Edge Functions)"
     : "não respondeu agora (confira em Supabase → Edge Functions se a radar-copia está instalada)";
@@ -5171,6 +5319,8 @@ document.addEventListener("change", ev => {
   // v0.26.0: o tamanho do texto (ao lado do Preparar, na barra do passo 1 e na do passo 2) é um só, e fica escolhido depois de redesenhar
   if(ev.target.matches?.("select[data-formato]")){ E.formato = ev.target.value;
     document.querySelectorAll("select[data-formato]").forEach(s => { if(s !== ev.target) s.value = ev.target.value; }); }
+  // v0.42.0: foto única ou carrossel no quadro do canal (o clique em input não passa pelo despacho de data-acao)
+  if(ev.target.matches?.("#rede-formato input[name=rede-formato]")) executar(ACOES["rede-formato"], false, ev.target);
 });
 document.addEventListener("keydown", ev => {
   if(ev.key === "Escape" && $("#foto-escolha")){ $("#foto-escolha").remove(); E.fotoEscolha = null; return; }   // v0.39.0

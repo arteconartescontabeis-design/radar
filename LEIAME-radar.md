@@ -1,4 +1,4 @@
-# Radar Artecon — v0.41.0
+# Radar Artecon — v0.42.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,22 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.42.0 (a melhoria "formato no assunto + Informativo + carrossel automático" da proposta aprovada em 20/10) faz o Radar
+**publicar carrossel sozinho** e dá à notícia aprovada três caminhos novos. **Formato no assunto — carrossel**: no passo 3
+(Publicar), o administrador escolhe entre **foto** (como hoje) e **carrossel** — a capa é a imagem da publicação com o título e os
+cartões vêm do **kit das redes** (a função `radar-ia` passa a escrever de 3 a 8 cartões no kit); a tela desenha as lâminas
+1080×1350 no padrão da arte da Artecon (com a identificação legal) e mostra tudo antes de autorizar; `radar_autorizar_rede` ganha
+`p_artes` e confere as lâminas como a Pauta confere as dela. **Formato no assunto — reel**: o botão "Criar peça de reel na Pauta"
+leva o roteiro do kit (escrito pela IA a partir da notícia) e a legenda do reel para uma **peça nova de reel** no dia escolhido —
+quem grava é a equipe, e o vídeo passa pelo corretor como sempre. **Pôr no Informativo Mensal com um clique**: o botão inclui o
+artigo aprovado na edição em montagem (as regras continuam do banco: só aprovado entra, edição fechada não muda, nada entra duas
+vezes). E o **carrossel da Pauta publicado sozinho**: a peça em carrossel (ou carrossel de fotos) aprovada agora também pode ser
+**agendada** — na hora marcada, a função `radar-redes` envia as lâminas aprovadas à Meta (no Instagram, um contêiner por lâmina +
+o contêiner CAROUSEL + `media_publish`; no Facebook, as fotos sem publicar + uma publicação com `attached_media`); só o **reel**
+continua saindo à mão. Mudam o banco (`sql/radar-setup-v0.42.0.sql`: as colunas `artes` e `imagens_urls` em `radar_redes_envios`
+e cinco funções redefinidas; **nenhuma tabela nova**, nada é apagado), as funções **`radar-redes`** (o carrossel) e **`radar-ia`**
+(os cartões no kit) e a tela. **Nenhum segredo novo; os robôs e as agendas não mudam.** Veja "Da v0.41.0 para a v0.42.0".
 
 A v0.41.0 (a melhoria "dashboard do Painel" da proposta aprovada em 20/10) põe a **projeção de publicações no Painel do dia**: um
 quadro no alto mostra, lado a lado, **hoje, a semana e o mês** — o que o calendário da Pauta e a busca pedem (o mínimo), o que já
@@ -955,11 +971,11 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.40.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.40.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.42.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.42.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
-| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
+| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail; desde a v0.42.0, publica também o carrossel — as lâminas que o banco devolve). |
 | `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda; desde a v0.36.0, também o envio e o baixar do vídeo avulso. É a única que toca no armazenamento privado `radar-videos`. |
 | `supabase/functions/radar-copia/index.ts` | Função da cópia de segurança mensal do banco no OneDrive (v0.32.0): exporta as tabelas, monta o .zip e grava na pasta das cópias pelo Microsoft Graph. O arquivo nunca passa pelo GitHub nem pelo armazenamento do Supabase. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase (desde a v0.23.0, pode rodar de novo, como as outras agendas). |
@@ -2882,6 +2898,27 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.41.0 para a v0.42.0** (muda o banco: SQL novo, que pode rodar de novo; mudam as funções `radar-redes` e `radar-ia` e a
+tela; o robô, as agendas, a função `radar-video` e as demais **não mudam**; **nenhum segredo novo**). Supõe a v0.41.0 instalada:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.42.0.sql` inteiro, **antes de publicar a tela**. Confira no fim:
+   **37 tabelas** com `rls = true` e a instalação **v0.42.0** concluída. Ele acrescenta as colunas `artes` e `imagens_urls` em
+   `radar_redes_envios` e redefine `radar_autorizar_rede`, `radar_rede_iniciar`, `radar_rede_concluir`, `radar_pauta_aprovar`,
+   `radar_pauta_iniciar` e `radar_pauta_pode_sair` (nada é apagado).
+2. Supabase → **Edge Functions** → faça o **Deploy** da `radar-redes` desta versão (cole de novo o
+   `supabase/functions/radar-redes/index.ts`; "Verify JWT" **ligado**, como sempre foi nela) e da `radar-ia`
+   (`supabase/functions/radar-ia/index.ts`; "Verify JWT" como está). Sem a `radar-redes` v0.42.0, a peça em carrossel agendada
+   não sai (a agenda chama 3 vezes e desiste, com o motivo na peça); sem a `radar-ia` v0.42.0, o kit sai sem os cartões e a opção
+   de carrossel da notícia pede para gerar o kit de novo.
+3. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.42.0".
+4. Conferência rápida: numa notícia aprovada, o passo 3 (Publicar) ganha "Como sai" (Foto única / Carrossel) no quadro do
+   Instagram e do Facebook e os botões "Pôr no Informativo Mensal" e "Criar peça de reel na Pauta" (este, só o administrador);
+   na Pauta, a peça em carrossel pronta passa a aceitar "Agendar" na aprovação. O carrossel de verdade só sai quando você
+   autorizar (nada é publicado sozinho sem aprovação, como sempre).
+
+**Como desligar:** sem mexer no banco — basta não escolher "Carrossel" (a foto única continua o padrão) e aprovar o carrossel da
+Pauta com "Vou publicar à mão", como antes. Para voltar tudo, publique a tela da v0.41.0 (o banco v0.42.0 continua servindo).
 
 **Da v0.40.0 para a v0.41.0** (muda SÓ a tela: `index.html` e `radar-pauta.js`, com os outros .js só na versão; o banco, as
 funções, os robôs, as agendas e os segredos **não mudam** — nenhum SQL, nenhum Deploy). Supõe a v0.40.0 instalada:
