@@ -767,7 +767,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.42.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.43.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1234,7 +1234,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (37, 6, 8, 9, 1, 0)          # v0.29.0: + radar_lembretes e a chave "lembretes"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.42.0", [], 37)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.43.0", [], 37)
             # v0.31.0 (revisão): na instalação nova as seis fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
             # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso
             assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (6, True)
@@ -2107,9 +2107,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.42.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.43.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.42.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.43.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2139,7 +2139,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.42.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.43.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -2649,7 +2649,8 @@ def test_redes_a_funcao_envia_uma_vez_e_o_conteudo_alterado_derruba_a_autorizaca
             c.execute("select radar_rede_iniciar(%s)", (envio,))
         assert c.execute("select radar_rede_concluir(%s, false, null, null, 'https://x.supabase.co/storage/v1/object/public/radar-redes/1.jpg', 'Meta recusou')", (envio,)).fetchone()[0]
     sit, erro, img, img_url = limpo.execute("select situacao, erro, imagem, imagem_url from radar_redes_envios where id = %s", (envio,)).fetchone()
-    assert (sit, erro, img) == ("erro", "Meta recusou", None) and img_url.endswith("/1.jpg")   # a imagem fica só no armazenamento
+    # v0.43.0: a recusa clara ganha a hora da nova tentativa automática no fim da mensagem
+    assert (sit, img) == ("erro", None) and erro.startswith("Meta recusou O Radar tenta de novo sozinho às") and img_url.endswith("/1.jpg")
     with como("service_role") as c:                                                         # nova tentativa usa o link já enviado
         r = c.execute("select radar_rede_iniciar(%s)", (envio,)).fetchone()[0]
         assert r["imagem"] is None and r["imagem_url"].endswith("/1.jpg")
@@ -4567,6 +4568,103 @@ def test_autorizar_rede_carrossel_laminas_conferidas_como_na_pauta_e_faxina_nao_
     assert db.execute("select count(*) from radar_imagens where id = %s", (orfa,)).fetchone()[0] == 0
 
 
+# v0.43.0: a nova tentativa automática depois de uma recusa CLARA da Meta. Só ela marca a nova tentativa (radar_rede_concluir com
+# p_ok = false): o Incerto (não deu para saber se saiu) fica "enviando" e nunca entra aqui — nada é publicado duas vezes.
+
+
+def retentar(db, envio):
+    """Vence a nova tentativa marcada (como o relógio passaria por ela)."""
+    db.execute("update radar_redes_envios set retentar_em = now() - interval '1 minute' where id = %s", (envio,))
+
+
+def marcas(db, envio):
+    return db.execute("select situacao, tentativas, retentar_em, disparos from radar_redes_envios where id = %s", (envio,)).fetchone()
+
+
+def test_recusa_clara_marca_nova_tentativa_5_e_15_minutos_e_para_na_terceira(limpo):
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    registrar_site(c1)
+    with como("authenticated", ADMIN) as c:
+        envio = c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s)", (c1, LEGENDA, IMG, _lido(limpo, c1))).fetchone()[0]
+    # 1ª recusa clara: nova tentativa marcada para 5 minutos, com a hora (de Brasília) na mensagem que a tela mostra
+    with como("service_role") as c:
+        c.execute("select radar_rede_iniciar(%s)", (envio,))
+        assert c.execute("select radar_rede_concluir(%s, false, null, null, null, 'A Meta recusou (código 10).')", (envio,)).fetchone()[0]
+    sit, tent, marcada, disparos = marcas(limpo, envio)
+    assert (sit, tent, disparos) == ("erro", 1, 0) and marcada is not None
+    minutos = limpo.execute("select extract(epoch from retentar_em - now()) / 60 from radar_redes_envios where id = %s", (envio,)).fetchone()[0]
+    assert 4 < minutos <= 5
+    hora = limpo.execute("select to_char(retentar_em at time zone 'America/Sao_Paulo', 'HH24:MI') from radar_redes_envios where id = %s",
+                         (envio,)).fetchone()[0]
+    assert situacao_envio(limpo, envio)[1] == f"A Meta recusou (código 10). O Radar tenta de novo sozinho às {hora} (Brasília)."
+    # antes da hora, a agenda não a devolve; vencida, devolve a NOTÍCIA sem mudar a situação (radar_rede_iniciar aceita o "erro",
+    # como no Tentar de novo) e remarca para 10 minutos (se a chamada se perder, volta)
+    assert vencidas(limpo) == []
+    retentar(limpo, envio)
+    assert vencidas(limpo) == [envio]
+    sit, tent, marcada, disparos = marcas(limpo, envio)
+    assert (sit, tent, disparos) == ("erro", 1, 1) and marcada is not None
+    # 2ª recusa: 15 minutos (e o contador de chamadas recomeça)
+    with como("service_role") as c:
+        c.execute("select radar_rede_iniciar(%s)", (envio,))
+        assert c.execute("select radar_rede_concluir(%s, false, null, null, null, 'A Meta recusou de novo.')", (envio,)).fetchone()[0]
+    sit, tent, marcada, disparos = marcas(limpo, envio)
+    assert (sit, tent, disparos) == ("erro", 2, 0) and marcada is not None
+    minutos = limpo.execute("select extract(epoch from retentar_em - now()) / 60 from radar_redes_envios where id = %s", (envio,)).fetchone()[0]
+    assert 14 < minutos <= 15
+    # 3ª recusa: o Radar para (nenhuma hora marcada) e a mensagem pede o Tentar de novo
+    retentar(limpo, envio)
+    assert vencidas(limpo) == [envio]
+    with como("service_role") as c:
+        c.execute("select radar_rede_iniciar(%s)", (envio,))
+        assert c.execute("select radar_rede_concluir(%s, false, null, null, null, 'A Meta recusou pela terceira vez.')", (envio,)).fetchone()[0]
+    sit, tent, marcada, disparos = marcas(limpo, envio)
+    assert (sit, tent, marcada) == ("erro", 3, None)
+    assert situacao_envio(limpo, envio)[1] == "A Meta recusou pela terceira vez. O Radar já tentou 3 vezes: confira o motivo e use Tentar de novo."
+    assert vencidas(limpo) == []                                                      # sem hora marcada, a agenda não toca nela
+    # o Tentar de novo da tela continua valendo (radar_rede_iniciar aceita o "erro" à mão, como sempre); publicada, a marca sai
+    with como("service_role") as c:
+        r = c.execute("select radar_rede_iniciar(%s)", (envio,)).fetchone()[0]
+        assert r["canal"] == "instagram"
+        assert c.execute("select radar_rede_concluir(%s, true, '1789', 'https://www.instagram.com/p/abc/', null, null)", (envio,)).fetchone()[0]
+    assert marcas(limpo, envio) == ("publicado", 3, None, 0)
+
+
+def test_nova_tentativa_da_peca_volta_a_autorizado_e_o_publicar_agora_recomeca(pauta):
+    db = pauta
+    pid = nova_peca(db, dias=2, tipo="educativo", formato="imagem")
+    marcar_pronta(db, pid)
+    ig = aprovar_peca(db, pid, artes=[lamina()])["envios"]["instagram"]
+    vencer(db, ig)
+    assert vencidas(db) == [ig]
+    iniciar(ig)
+    with como("service_role") as c:
+        assert c.execute("select radar_rede_concluir(%s, false, null, null, null, 'A Meta recusou.')", (ig,)).fetchone()[0]
+    sit, tent, marcada, disparos = marcas(db, ig)
+    assert (sit, tent, disparos) == ("erro", 1, 0) and marcada is not None
+    assert "O Radar tenta de novo sozinho às" in situacao_envio(db, ig)[1]
+    # vencida, a nova tentativa da PEÇA volta a 'autorizado' e sai pelo caminho de sempre (radar_pauta_iniciar confere tudo de novo)
+    retentar(db, ig)
+    assert vencidas(db) == [ig]
+    assert marcas(db, ig) == ("autorizado", 1, None, 1)
+    e = iniciar(ig)
+    assert e["canal"] == "instagram" and situacao_envio(db, ig)[0] == "enviando"
+    with como("service_role") as c:
+        assert c.execute("select radar_rede_concluir(%s, false, null, null, null, 'A Meta recusou de novo.')", (ig,)).fetchone()[0]
+    # a chamada que não responde: com 3 marcas de disparo, a nova tentativa para, com o motivo somado à mensagem
+    db.execute("update radar_redes_envios set disparos = 3 where id = %s", (ig,))
+    retentar(db, ig)
+    assert vencidas(db) == []
+    sit, tent, marcada, _ = marcas(db, ig)
+    assert (sit, marcada) == ("erro", None)
+    assert situacao_envio(db, ig)[1].endswith("confira em Publicações → Testar conexão e use Tentar de novo.")
+    # o "Tentar de novo" do administrador zera o contador e recomeça as tentativas automáticas
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_pauta_publicar_agora(%s, true)", (pid,)).fetchone()[0] == [ig]
+    assert marcas(db, ig) == ("autorizado", 0, None, 0)
+
+
 def test_agenda_vencidas_espera_10_min_3_tentativas_janela_e_confere_antes_de_disparar(pauta):
     db = pauta
     pid, r = peca_aprovada(db, canais=("instagram", "facebook"))
@@ -5751,8 +5849,8 @@ def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
             assert contar() == antes and estado() == como_estava
         assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
         assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
-        # (o setup registra a versão dele: v0.42.0, que traz junto os da v0.28.0 a v0.35.0)
-        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.42.0",), ("v0.42.0",)]
+        # (o setup registra a versão dele: v0.43.0, que traz junto os da v0.28.0 a v0.35.0)
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.43.0",), ("v0.43.0",)]
         assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
     finally:
         assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro

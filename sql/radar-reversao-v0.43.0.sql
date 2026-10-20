@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.42.0.sql
--- DESFAZ a instalação do radar-setup-v0.42.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.43.0.sql
+-- DESFAZ a instalação do radar-setup-v0.43.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -54,6 +54,9 @@
 -- saem com as tabelas e as funções, como sempre. As lâminas que a função radar-redes guardou no bucket privado radar-pauta seguem o
 -- aviso do v0.22.0, acima (os nomes p-<uuid>.jpg; radar_redes_envios.imagens_urls diz de que envio é cada uma: guarde a relação
 -- antes, se precisar dela).
+-- v0.43.0: a nova tentativa automática. As colunas novas (radar_redes_envios.tentativas e retentar_em) saem com a tabela e as três
+-- funções redefinidas saem com as outras, como sempre. As sobras da instalação por partes da v0.42.0 (duas funções renomeadas e a
+-- tabela de pedaços radar_tmp_v042), se ainda existirem, saem aqui também.
 -- =====================================================================
 begin;
 
@@ -236,6 +239,10 @@ drop function if exists public.radar_marcas_verificar(text);
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz);
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean);
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean, bigint[]);   -- v0.42.0: + as lâminas
+-- v0.43.0: as sobras da instalação por partes da v0.42.0, se ainda existirem (o setup v0.43.0 também as tira)
+drop function if exists public.radar_autorizar_rede_v040_substituida(bigint, text, text, text, timestamptz, boolean);
+drop function if exists public.radar_rede_concluir_v040_substituida(bigint, boolean, text, text, text, text);
+drop table if exists public.radar_tmp_v042;
 drop function if exists public.radar_rede_cancelada_no_envio(bigint, text);
 drop function if exists public.radar_url_host(text);
 drop function if exists public.radar_site_host();

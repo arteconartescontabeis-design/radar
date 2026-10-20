@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.42.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.43.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -94,7 +94,18 @@
 -- (Instagram: um contêiner por lâmina + o contêiner CAROUSEL + media_publish; Facebook: as fotos sem publicar + uma publicação com
 -- attached_media). Nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam. O "Pôr no Informativo" e a peça de reel criada
 -- do assunto são só tela (nenhuma função nova: valem as regras e os gatilhos de sempre).
--- Reversão: radar-reversao-v0.42.0.sql
+-- v0.43.0 (sem bloco próprio: ajustes no bloco das redes): a nova tentativa automática da publicação que a Meta recusou. Duas
+-- colunas novas em radar_redes_envios — tentativas (quantas recusas claras a publicação já teve) e retentar_em (a hora da nova
+-- tentativa marcada) — e três funções redefinidas: radar_rede_concluir, na recusa CLARA da Meta (só ela: o "não deu para saber"
+-- continua "enviando" e nunca volta sozinho, para nunca publicar duas vezes), marca a nova tentativa (a 1ª para 5 minutos depois,
+-- a 2ª para 15; na 3ª recusa, para — só à mão) e escreve a hora na mensagem de erro que a tela mostra; radar_agenda_vencidas
+-- passa a devolver também as novas tentativas vencidas (a da peça volta a 'autorizado' e sai pelo caminho de sempre; a da notícia
+-- sai direto, pela mesma radar_rede_iniciar do Tentar de novo); radar_pauta_publicar_agora zera o contador (o Tentar de novo do
+-- administrador recomeça as tentativas automáticas). Quem fala com a Meta é a função radar-redes v0.43.0 (a agenda passa a poder
+-- publicar a NOVA TENTATIVA de uma notícia; a primeira publicação da notícia continua saindo só pela tela ou pelo robô do site).
+-- Este setup também faz a faxina das sobras da instalação por partes da v0.42.0 (duas funções renomeadas inertes e a tabela de
+-- pedaços radar_tmp_v042), quando existem. Nada de dados é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.43.0.sql
 -- =====================================================================
 
 begin;
@@ -120,8 +131,15 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.42.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.43.0', v_antes);
 end $$;
+
+-- v0.43.0: a faxina das sobras da instalação por partes da v0.42.0 (feita pelo assistente em 20/10, por etapas pequenas:
+-- as assinaturas antigas foram RENOMEADAS em vez de removidas, e os textos das funções passaram pela tabela de pedaços).
+-- Inertes (sem acesso de ninguém); aqui saem de vez. Em instalação limpa, nada disso existe e nada acontece.
+drop function if exists public.radar_autorizar_rede_v040_substituida(bigint, text, text, text, timestamptz, boolean);
+drop function if exists public.radar_rede_concluir_v040_substituida(bigint, boolean, text, text, text, text);
+drop table if exists public.radar_tmp_v042;
 
 -- ---------------------------------------------------------------------
 -- 1. TABELAS
@@ -750,6 +768,12 @@ alter table public.radar_redes_envios add column if not exists peca_id       big
 alter table public.radar_redes_envios add column if not exists agendado_para timestamptz;            -- nulo na notícia
 alter table public.radar_redes_envios add column if not exists disparos      int not null default 0 check (disparos between 0 and 100);
 alter table public.radar_redes_envios add column if not exists disparado_em  timestamptz;
+-- v0.43.0: a nova tentativa automática depois de uma recusa CLARA da Meta. tentativas = quantas recusas claras esta publicação já
+-- teve (quem conta é radar_rede_concluir; radar_pauta_publicar_agora zera); retentar_em = a hora da nova tentativa marcada (nula =
+-- nenhuma marcada: ou nunca falhou, ou as 3 recusas acabaram e agora é só à mão). O "não deu para saber se saiu" (Incerto) continua
+-- "enviando" e NUNCA entra aqui: é o que garante que o Radar não publica a mesma peça duas vezes.
+alter table public.radar_redes_envios add column if not exists tentativas    int not null default 0 check (tentativas between 0 and 10);
+alter table public.radar_redes_envios add column if not exists retentar_em   timestamptz;
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'radar_redes_envios_origem_ck') then
@@ -767,6 +791,9 @@ create unique index if not exists radar_redes_envios_peca_uk on public.radar_red
   where peca_id is not null and situacao in ('autorizado','enviando','erro','publicado','dispensado');
 create index if not exists radar_redes_envios_agenda_idx on public.radar_redes_envios (agendado_para)
   where situacao = 'autorizado' and peca_id is not null;
+-- v0.43.0: as novas tentativas marcadas (poucas linhas: o índice só das que têm hora)
+create index if not exists radar_redes_envios_retentar_idx on public.radar_redes_envios (retentar_em)
+  where retentar_em is not null;
 -- v0.42.0: o carrossel publicado pelo Radar. artes = as lâminas da publicação (radar_imagens.id, na ordem do post): na peça da Pauta,
 -- a cópia de radar_pauta_pecas.artes na aprovação (por referência: as lâminas aprovadas não mudam e a faxina não as apaga); na
 -- notícia, as lâminas que o administrador desenhou e enviou AGORA (radar_autorizar_rede confere como radar_pauta_aprovar).
@@ -972,10 +999,11 @@ begin
   end if;
   -- v0.21.0: nem a que só mexe no que não vai à trilha (o plano, a sugestão da IA, o nome, a cópia da imagem) ou nas marcas da
   -- agenda do banco (disparos, disparado_em, a cada 5 minutos); v0.22.0: nem as marcas do robô do vídeo (pego_em, tentativas, rodada,
-  -- palavras_tentativa, fila_em) e da reserva da agenda (reservas, a cada 10 minutos)
+  -- palavras_tentativa, fila_em) e da reserva da agenda (reservas, a cada 10 minutos); v0.43.0: nem a marca da nova tentativa
+  -- (retentar_em; a recusa que a marcou já foi à trilha com a situação 'erro')
   if tg_op = 'UPDATE' and tg_table_name in ('radar_redes_envios','radar_pauta_pecas','radar_pessoas','radar_videos')
-     and (to_jsonb(old) - v_tira - array['atualizado_em','disparos','disparado_em','pego_em','tentativas','rodada','palavras_tentativa','fila_em','reservas'])
-       = (to_jsonb(new) - v_tira - array['atualizado_em','disparos','disparado_em','pego_em','tentativas','rodada','palavras_tentativa','fila_em','reservas']) then
+     and (to_jsonb(old) - v_tira - array['atualizado_em','disparos','disparado_em','pego_em','tentativas','rodada','palavras_tentativa','fila_em','reservas','retentar_em'])
+       = (to_jsonb(new) - v_tira - array['atualizado_em','disparos','disparado_em','pego_em','tentativas','rodada','palavras_tentativa','fila_em','reservas','retentar_em']) then
     return new;
   end if;
   insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes, depois)
@@ -2718,7 +2746,8 @@ begin
      where id = p_envio;
     return jsonb_build_object('erro', 'sem imagem');
   end if;
-  update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, atualizado_em = now() where id = p_envio;
+  update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, retentar_em = null, atualizado_em = now()
+   where id = p_envio;                                             -- v0.43.0: a nova tentativa marcada é esta (a marca sai)
   return jsonb_build_object('id', v_e.id, 'canal', v_e.canal, 'conteudo_id', v_e.conteudo_id, 'legenda', v_e.legenda,
                             'imagem', v_e.imagem, 'imagem_url', v_e.imagem_url,
                             'imagens', v_imagens, 'imagens_urls', case when cardinality(v_e.imagens_urls) > 0 then to_jsonb(v_e.imagens_urls) end);
@@ -2728,6 +2757,10 @@ end $$;
 -- "erro" só quando a Meta recusou com certeza (pode tentar de novo); se não deu para saber se saiu, a função deixa "enviando".
 -- v0.42.0: + p_imagens_urls — no carrossel, os endereços internos das lâminas já guardadas no armazenamento privado (todas, na ordem
 -- do post): a nova tentativa assina de novo, sem reenviar. Fora do carrossel, nulo (nada muda).
+-- v0.43.0: a recusa clara da Meta marca a NOVA TENTATIVA automática (retentar_em): a 1ª recusa marca para 5 minutos depois, a 2ª
+-- para 15; na 3ª o Radar para (só à mão). A hora marcada entra na mensagem que a tela mostra, e quem publica a nova tentativa é a
+-- agenda do banco (radar_agenda_vencidas). O Incerto (não deu para saber se saiu) nunca passa por aqui: fica "enviando", sem nova
+-- tentativa — é o que garante que nada é publicado duas vezes. O contador de chamadas sem resposta (disparos) recomeça a cada recusa.
 drop function if exists public.radar_rede_concluir(bigint, boolean, text, text, text, text);
 create or replace function public.radar_rede_concluir(p_envio bigint, p_ok boolean, p_post_id text, p_url text, p_imagem_url text, p_erro text,
                                                       p_imagens_urls text[] default null)
@@ -2737,7 +2770,17 @@ declare
   v_urls text[] := case when cardinality(p_imagens_urls) between 1 and 10
                          and not exists (select 1 from unnest(p_imagens_urls) u where u !~ '^https?://[!-~]+$' or length(u) > 500)
                         then p_imagens_urls end;
+  v_n int;
+  v_quando timestamptz;
 begin
+  if not p_ok then
+    select tentativas + 1 into v_n from public.radar_redes_envios where id = p_envio and situacao = 'enviando' for update;
+    if v_n is null then
+      return false;
+    end if;
+    v_quando := case when v_n = 1 then now() + interval '5 minutes'
+                     when v_n = 2 then now() + interval '15 minutes' end;      -- da 3ª recusa em diante: só à mão
+  end if;
   update public.radar_redes_envios
      set situacao = case when p_ok then 'publicado' else 'erro' end,
          publicado_em = case when p_ok then now() end,
@@ -2746,7 +2789,13 @@ begin
          imagem_url = coalesce(v_img, imagem_url),
          imagens_urls = coalesce(v_urls, imagens_urls),
          imagem = case when coalesce(v_img, imagem_url) is not null then null else imagem end,
-         erro = case when p_ok then null else left(coalesce(nullif(btrim(p_erro), ''), 'Erro sem descrição.'), 1000) end,
+         erro = case when p_ok then null else left(coalesce(nullif(btrim(p_erro), ''), 'Erro sem descrição.'), 850)
+                  || case when v_quando is not null
+                          then format(' O Radar tenta de novo sozinho às %s (Brasília).', to_char(v_quando at time zone 'America/Sao_Paulo', 'HH24:MI'))
+                          else ' O Radar já tentou 3 vezes: confira o motivo e use Tentar de novo.' end end,
+         tentativas = case when p_ok then tentativas else least(v_n, 10) end,
+         retentar_em = case when p_ok then null else v_quando end,
+         disparos = case when p_ok then disparos else 0 end,
          atualizado_em = now()
    where id = p_envio and situacao = 'enviando';
   return found;
@@ -3940,7 +3989,8 @@ begin
   end loop;
   with u as (
     update public.radar_redes_envios
-       set situacao = 'autorizado', agendado_para = now(), disparos = 0, disparado_em = null, erro = null, atualizado_em = now()
+       set situacao = 'autorizado', agendado_para = now(), disparos = 0, disparado_em = null, erro = null, atualizado_em = now(),
+           tentativas = 0, retentar_em = null                      -- v0.43.0: o Tentar de novo recomeça as tentativas automáticas
      where peca_id = p.id and situacao in ('autorizado','erro')
     returning id
   ) select coalesce(array_agg(u.id order by u.id), '{}') into v_ids from u;
@@ -4145,6 +4195,10 @@ end $$;
 -- envio é chamado no máximo 3 vezes, de 10 em 10 minutos; depois vira "erro" (final para a agenda: só o administrador o devolve,
 -- por radar_pauta_publicar_agora). O que não pode sair (radar_pauta_pode_sair) vira "erro" antes de qualquer coisa ir à Meta.
 -- "erro" e "enviando" nunca são pegos. Não trava a peça (a ordem das travas é peça e depois envio, em todas as funções).
+-- v0.43.0: devolve também as NOVAS TENTATIVAS vencidas (a recusa clara da Meta marcou retentar_em — radar_rede_concluir): a da
+-- peça volta a 'autorizado' e sai pelo caminho de sempre (radar_pauta_iniciar confere tudo de novo); a da notícia sai direto,
+-- pela mesma radar_rede_iniciar do Tentar de novo (a função radar-redes v0.43.0 aceita a nova tentativa da notícia pela agenda).
+-- A chamada que não responde continua limitada: 3 por rodada de tentativa, e o contador recomeça a cada recusa clara.
 create or replace function public.radar_agenda_vencidas(p_limite int default 2) returns setof bigint
 language plpgsql security definer set search_path = public as $$
 declare
@@ -4163,7 +4217,7 @@ begin
             for update skip locked loop
     v_motivo := case when r.disparos >= 3
       then 'A publicação agendada não saiu: o Radar chamou a função radar-redes 3 vezes, de 10 em 10 minutos, e ela não publicou. '
-           'Confira em Publicações → Testar conexão se a radar-redes está atualizada (o carrossel pede a v0.42.0) e se o Instagram e o Facebook estão configurados; '
+           'Confira em Publicações → Testar conexão se a radar-redes está atualizada (a nova tentativa pede a v0.43.0) e se o Instagram e o Facebook estão configurados; '
            'depois use Tentar de novo.'
       else public.radar_pauta_pode_sair(r.id) end;            -- confere ANTES de qualquer coisa ir à Meta
     if v_motivo is not null then
@@ -4171,6 +4225,35 @@ begin
       continue;
     end if;
     update public.radar_redes_envios set disparos = disparos + 1, disparado_em = now() where id = r.id;
+    return next r.id;
+  end loop;
+  -- v0.43.0: as novas tentativas vencidas (só as com retentar_em marcado: a recusa clara da Meta; o Incerto fica "enviando" e
+  -- nunca chega aqui)
+  for r in select e.id, e.peca_id, e.disparos from public.radar_redes_envios e
+            where e.situacao = 'erro' and e.retentar_em is not null and e.retentar_em <= now()
+            order by e.retentar_em, e.id
+            limit least(greatest(coalesce(p_limite, 2), 1), 10)
+            for update skip locked loop
+    if r.disparos >= 3 then
+      -- a nova tentativa foi chamada 3 vezes e a função não respondeu: para (como o sumiço da peça, acima)
+      update public.radar_redes_envios
+         set retentar_em = null, atualizado_em = now(),
+             erro = left(coalesce(erro, '') || ' O Radar chamou a nova tentativa 3 vezes e a função radar-redes não respondeu: '
+                         || 'confira em Publicações → Testar conexão e use Tentar de novo.', 1000)
+       where id = r.id;
+      continue;
+    end if;
+    if r.peca_id is not null then
+      -- a peça volta a 'autorizado': se a chamada se perder, o laço de cima a pega de novo (de 10 em 10 minutos, até 3 vezes)
+      update public.radar_redes_envios
+         set situacao = 'autorizado', retentar_em = null, disparos = disparos + 1, disparado_em = now(), atualizado_em = now()
+       where id = r.id;
+    else
+      -- a notícia continua 'erro' (radar_rede_iniciar aceita e confere tudo); se a chamada se perder, volta aqui em 10 minutos
+      update public.radar_redes_envios
+         set retentar_em = now() + interval '10 minutes', disparos = disparos + 1, disparado_em = now(), atualizado_em = now()
+       where id = r.id;
+    end if;
     return next r.id;
   end loop;
 end $$;
@@ -4210,7 +4293,8 @@ begin
       from unnest(e.artes) with ordinality a(id, ord)
       join public.radar_imagens i on i.id = a.id;
   end if;
-  update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, atualizado_em = now() where id = p_envio;
+  update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, retentar_em = null, atualizado_em = now()
+   where id = p_envio;                                             -- v0.43.0: a nova tentativa marcada é esta (a marca sai)
   return jsonb_build_object('id', e.id, 'canal', e.canal, 'conteudo_id', null, 'peca_id', e.peca_id, 'legenda', e.legenda,
                             'imagem', e.imagem, 'imagem_url', e.imagem_url,
                             'imagens', v_imagens, 'imagens_urls', case when cardinality(e.imagens_urls) > 0 then to_jsonb(e.imagens_urls) end);
@@ -10524,7 +10608,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.42.0).
+-- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.43.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

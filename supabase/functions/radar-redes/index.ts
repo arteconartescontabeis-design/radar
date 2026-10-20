@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.42.0)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.43.0)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha) e, v0.21.0, a peça da Pauta que ele aprovou para sair pela agenda.
@@ -12,7 +12,11 @@
 // v0.21.0: a agenda do banco (pg_cron, sql/radar-redes-agenda.sql, de 5 em 5 minutos), com a chave 'radar_redes_agenda' do Vault
 // no cabeçalho x-radar-agenda (quem confere é o banco: radar_redes_conferir_agenda) e a chave anon pública no Authorization (o
 // "Verify JWT" continua ligado). A agenda só publica peça da Pauta, e só a que já venceu (radar_pauta_iniciar confere a hora e
-// tudo o mais de novo), e faz o teste da instalação (agenda_teste). Nada da notícia passa pela agenda.
+// tudo o mais de novo), e faz o teste da instalação (agenda_teste). Nada da notícia passa pela agenda — v0.43.0: com uma exceção,
+// a NOVA TENTATIVA automática de uma notícia que a Meta recusou com clareza (situação "erro", marcada por radar_rede_concluir com
+// a hora em retentar_em e vencida em radar_agenda_vencidas; radar_rede_iniciar confere tudo de novo, como no Tentar de novo da
+// tela). A primeira publicação da notícia continua saindo só pela tela ou pelo robô do site, e o "não deu para saber se saiu"
+// (Incerto) continua "enviando", sem nova tentativa: nada é publicado duas vezes.
 //
 // Ações:
 //   publicar     { envio }  → guarda a imagem no armazenamento privado, publica (a Meta baixa por um link de 10 min) e registra o post
@@ -76,7 +80,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.42.0";
+const VERSAO = "0.43.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -472,7 +476,11 @@ async function publicar(envio: number, inicio: number, quem: Quem) {
   // v0.17.0: o robô só manda o que o administrador autorizou junto com o site ("Publicar em todos")
   if (quem === "robo" && !linha.junto_com_site) throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
   // v0.21.0: a agenda do banco só manda a peça da Pauta (a notícia sai pela tela ou pelo robô do site, como antes)
-  if (quem === "agenda" && !linha.peca_id) throw new Erro(403, "A agenda só publica peças da Pauta.");
+  // v0.43.0: … e a NOVA TENTATIVA de uma notícia que a Meta recusou (situação "erro", marcada por radar_rede_concluir e vencida
+  // em radar_agenda_vencidas); a primeira publicação da notícia continua saindo só pela tela ou pelo robô do site
+  if (quem === "agenda" && !linha.peca_id && linha.situacao !== "erro") {
+    throw new Erro(403, "A agenda só publica peças da Pauta (ou a nova tentativa de uma notícia que deu erro).");
+  }
   const cfg = configMeta(linha.canal);
   if (cfg.faltam.length) {
     throw new Erro(503, `${linha.canal === "instagram" ? "O Instagram" : "O Facebook"} ainda não está configurado: faltam os segredos ` +

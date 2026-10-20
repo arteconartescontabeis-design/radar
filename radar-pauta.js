@@ -32,8 +32,11 @@
    v0.42.0: o carrossel (e o carrossel de fotos) também sai pela agenda — "Agendar" deixa de ser só da imagem única (blocoAprovar);
    quem publica as lâminas na Meta é a função radar-redes v0.42.0, e o banco (radar_pauta_aprovar) confere tudo como antes. Só o
    reel continua saindo à mão. As lâminas da notícia em carrossel (tela do assunto) são desenhadas por desenharPeca daqui.
+   v0.43.0: só a versão e o recado do banco. A nova tentativa automática (a Meta recusou → o Radar marca outra tentativa, 5 e
+   depois 15 minutos; na 3ª recusa, só à mão) é do banco (radar_rede_concluir, radar_agenda_vencidas) e da radar-redes v0.43.0;
+   a hora marcada chega na própria mensagem de erro, que o quadro de andamento já mostra.
    ==================================================================== */
-const PAUTA_VERSAO = "0.42.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.43.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -71,7 +74,7 @@ const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PA
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
 // (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0; v0.29.0 a
 // v0.32.0: o recado manda rodar o setup desta versão, que traz junto os anteriores)
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.42.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.43.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){
