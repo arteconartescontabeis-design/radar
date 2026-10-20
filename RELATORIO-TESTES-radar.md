@@ -1,8 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.41.0)
+# Radar Artecon — Relatório de testes (v0.42.0)
 
-Data: 20/10/2026. **A suíte inteira da v0.41.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
-série (números na seção "v0.41.0", abaixo). A v0.41.0 tem **2** testes novos na tela (`test_radar_telas.py`: a projeção do
-Painel com datas fixas — a renderização pura — e com o banco e o leitor); a suíte inteira passa de 1.505 para **1.507** testes.
+Data: 20/10/2026. **A suíte inteira da v0.42.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
+série (números na seção "v0.42.0", abaixo). A v0.42.0 tem **9** testes novos (2 do banco em `test_radar_banco.py`, 4 da função
+em `test_radar_funcao_redes.py` e 3 da tela em `test_radar_telas.py`); a suíte inteira passa de 1.507 para **1.516** testes.
+Na v0.41.0: a suíte INTEIRA rodou em série (números na seção "v0.41.0", abaixo). A v0.41.0 tem **2** testes novos na tela
+(`test_radar_telas.py`: a projeção do Painel com datas fixas — a renderização pura — e com o banco e o leitor); a suíte inteira
+passa de 1.505 para **1.507** testes.
 Na v0.40.0: a suíte INTEIRA rodou em série (seção "v0.40.0", abaixo). A v0.40.0 tem **13** testes novos (5 do robô em `test_radar_video_alinhar.py`, 1 do
 robô de ponta a ponta em `test_radar_video_corrigir.py`, 5 do banco em `test_radar_video_banco.py` e 2 da tela em
 `test_radar_telas.py`); a suíte inteira passa de 1.492 para **1.505** testes. Na v0.39.0: a suíte INTEIRA rodou em
