@@ -94,7 +94,10 @@ Todos os testes usam **dados fictícios** e datas fixas onde a conta depende do 
 - `lerCronograma` passa a devolver também `dia` (a mesma conta, com ini = fim = hoje); nada muda na semana e no mês.
 - Atualizados: as asserções de versão (tela e os 4 .js em 0.41.0; `FUNCAO_MINIMA` fica em 0.39.0), o rodapé, os dois testes de
   Ctrl+F5 e a entrada nova na aba Versões (índices da lista). O banco **não muda** (o setup continua o da v0.40.0).
-- Suíte inteira neste ambiente, em série: **(números preenchidos após a rodada final desta versão)**.
+- Suíte inteira neste ambiente, em série: **1.443 aprovados, 0 falhas, 64 pulados** (os 61 da IA Central de verdade — pacote
+  `../ia-central`, fora deste ambiente — e 3 do ambiente), em 23min04s. A única falha da 1ª rodada foi o teste do Ctrl+F5 (a tela
+  sem o radar-pauta.js): o Painel novo usava funções desse script sem guarda — corrigido (sem o script, o Painel abre sem o
+  quadro) e a suíte inteira rodou de novo, verde.
 
 ## v0.40.0 — corretor de vídeo: juiz de sentido, "Aceitar (quis dizer o mesmo)" e avisos de arquivo fraco
 
