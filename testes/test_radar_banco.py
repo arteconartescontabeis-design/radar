@@ -767,7 +767,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.40.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.42.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1234,7 +1234,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (37, 6, 8, 9, 1, 0)          # v0.29.0: + radar_lembretes e a chave "lembretes"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.40.0", [], 37)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.42.0", [], 37)
             # v0.31.0 (revisão): na instalação nova as seis fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
             # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso
             assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (6, True)
@@ -2107,9 +2107,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.40.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.42.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.40.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.42.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2139,7 +2139,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.40.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.42.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -4064,11 +4064,13 @@ def test_pauta_aprovar_so_admin_confere_versao_artes_conferencias_e_hora(pauta):
         aprovar_peca(db, p4)
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR166"):                      # a agenda pede "Conferi as datas"
         aprovar_peca(db, p4, modo="manual", conferencias=("pessoas",))
-    # carrossel e reel saem à mão nesta versão
+    # v0.42.0: o carrossel agendado também sai pela agenda — o envio leva as lâminas por referência (artes), sem a cópia (imagem)
     p5 = nova_peca(db, dias=5, tipo="educativo", formato="carrossel", cartoes=[{"titulo": "Um", "texto": "Primeiro passo."}, {"titulo": "Dois", "texto": "Segundo passo."}])
     marcar_pronta(db, p5)
-    with pytest.raises(psycopg.errors.RaiseException, match="RADAR164"):
-        aprovar_peca(db, p5, artes=[lamina(), lamina(), lamina()])
+    artes5 = [lamina(), lamina(), lamina()]
+    r5 = aprovar_peca(db, p5, artes=artes5)
+    assert db.execute("select imagem, artes, imagens_urls from radar_redes_envios where id = %s",
+                      (r5["envios"]["instagram"],)).fetchone() == (None, artes5, [])
     # já há publicação aberta no canal (só pelo SQL): não abre outra
     p6 = nova_peca(db, dias=6)
     marcar_pronta(db, p6)
@@ -4480,6 +4482,89 @@ def test_iniciar_antigo_recusa_envio_da_pauta_sem_mudar_nada(pauta):
         iniciar(envio)
     with como("service_role") as c:
         assert c.execute("select radar_rede_iniciar(%s)", (envio,)).fetchone()[0]["conteudo_id"] == c1
+
+
+# v0.42.0: o carrossel publicado pelo Radar — a peça da Pauta agendada em carrossel e a notícia autorizada com as lâminas.
+LAMINAS_3 = ["data:image/jpeg;base64," + l * 400 for l in ("C", "D", "E")]
+URLS_3 = [URL_INTERNA.replace("000000000001", f"00000000000{n}") for n in (2, 3, 4)]
+
+
+def test_pauta_carrossel_agendado_iniciar_devolve_as_laminas_e_concluir_guarda_os_enderecos(pauta):
+    db = pauta
+    pid = nova_peca(db, dias=2, tipo="educativo", formato="carrossel",
+                    cartoes=[{"titulo": "Um", "texto": "Primeiro passo."}, {"titulo": "Dois", "texto": "Segundo passo."}])
+    marcar_pronta(db, pid)
+    artes = [lamina(dados=d) for d in LAMINAS_3]
+    r = aprovar_peca(db, pid, artes=artes)
+    ig = r["envios"]["instagram"]
+    vencer(db, ig)
+    assert vencidas(db) == [ig]                                            # a agenda pega o carrossel como pega a imagem única
+    e = iniciar(ig)
+    # as lâminas na ordem do post (por referência: imagem vazia), sem endereço ainda (primeira tentativa)
+    assert (e["canal"], e["peca_id"], e["imagem"], e["imagem_url"], e["imagens"], e["imagens_urls"]) == \
+        ("instagram", pid, None, None, LAMINAS_3, None)
+    with como("service_role") as c:                                        # a Meta recusou: os endereços ficam para a nova tentativa
+        assert c.execute("select radar_rede_concluir(%s, false, null, null, null, 'Meta recusou', %s::text[])", (ig, URLS_3)).fetchone()[0]
+    assert db.execute("select situacao, imagem, imagens_urls from radar_redes_envios where id = %s", (ig,)).fetchone() == ("erro", None, URLS_3)
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_pauta_publicar_agora(%s, true)", (pid,)).fetchone()[0] == [ig]
+    e = iniciar(ig)
+    assert e["imagens"] == LAMINAS_3 and e["imagens_urls"] == URLS_3       # a nova tentativa assina de novo, sem reenviar
+    with como("service_role") as c:                                        # endereço fora do formato não entra (fica o que estava)
+        assert c.execute("select radar_rede_concluir(%s, true, '1789', 'https://www.instagram.com/p/abc/', null, null, %s::text[])",
+                         (ig, ["não é url", *URLS_3[1:]])).fetchone()[0]
+    assert db.execute("select situacao, post_id, imagens_urls from radar_redes_envios where id = %s", (ig,)).fetchone() == \
+        ("publicado", "1789", URLS_3)
+    # a lâmina que se perdeu vira "erro" com o motivo, antes de qualquer coisa ir à Meta
+    p2 = nova_peca(db, dias=3, tipo="educativo", formato="carrossel",
+                   cartoes=[{"titulo": "Um", "texto": "Primeiro passo."}, {"titulo": "Dois", "texto": "Segundo passo."}])
+    marcar_pronta(db, p2)
+    artes2 = [lamina(dados=d) for d in LAMINAS_3]
+    e2 = aprovar_peca(db, p2, artes=artes2)["envios"]["instagram"]
+    vencer(db, e2)
+    db.execute("delete from radar_imagens where id = %s", (artes2[1],))                        # a lâmina some (só pelo dono do banco)
+    assert iniciar(e2) == {"erro": "As lâminas da publicação se perderam: desfaça a aprovação e aprove de novo."}
+    assert situacao_envio(db, e2) == ("erro", "As lâminas da publicação se perderam: desfaça a aprovação e aprove de novo.")
+
+
+def test_autorizar_rede_carrossel_laminas_conferidas_como_na_pauta_e_faxina_nao_apaga(pauta):
+    db = pauta
+    a, c1 = cenario_publicavel(db)
+    aprovar(c1)
+    registrar_site(c1)
+    lido = _lido(db, c1)
+    boas = [lamina(dados=d) for d in LAMINAS_3]
+    velha = lamina()
+    db.execute("update radar_imagens set criado_em = now() - interval '3 hours' where id = %s", (velha,))
+    chamada = "select radar_autorizar_rede(%s, 'instagram', %s, %s, %s, false, %s::bigint[])"
+    with como("authenticated", ADMIN) as c:
+        for artes, erro in [([boas[0]], "RADAR177"),                                           # menos de 2 lâminas
+                            ([boas[0], boas[0]], "RADAR177"),                                  # repetida
+                            ([boas[0], lamina(EDITOR)], "RADAR177"),                           # de outra pessoa
+                            ([boas[0], lamina(altura=1080)], "RADAR177"),                      # não é 1080×1350
+                            ([boas[0], velha], "RADAR177")]:                                   # de mais de 2 horas
+            with pytest.raises(psycopg.errors.RaiseException, match=erro):
+                c.execute(chamada, (c1, LEGENDA, None, lido, artes))
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR177"):                   # com as lâminas, a imagem única não vai
+            c.execute(chamada, (c1, LEGENDA, IMG, lido, boas))
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR135"):                   # sem lâminas, a imagem continua obrigatória
+            c.execute(chamada, (c1, LEGENDA, None, lido, []))
+        envio = c.execute(chamada, (c1, LEGENDA, None, lido, boas)).fetchone()[0]
+    assert db.execute("select canal, imagem, artes, imagens_urls from radar_redes_envios where id = %s", (envio,)).fetchone() == \
+        ("instagram", None, boas, [])
+    with como("service_role") as c:
+        e = c.execute("select radar_rede_iniciar(%s)", (envio,)).fetchone()[0]
+    assert e["conteudo_id"] == c1 and e["imagens"] == LAMINAS_3 and e["imagens_urls"] is None and e["imagem"] is None
+    with como("service_role") as c:
+        assert c.execute("select radar_rede_concluir(%s, true, '1789', 'https://www.instagram.com/p/abc/', null, null, %s::text[])",
+                         (envio, URLS_3)).fetchone()[0]
+    assert db.execute("select situacao, imagens_urls from radar_redes_envios where id = %s", (envio,)).fetchone() == ("publicado", URLS_3)
+    # a faxina não apaga a lâmina de um envio (ela não está em conteúdo nenhum); a imagem órfã da mesma idade sai
+    orfa = lamina()
+    db.execute("update radar_imagens set criado_em = now() - interval '25 hours' where id = any(%s::bigint[])", ([*boas, orfa],))
+    db.execute("select radar_limpar_imagens_sem_uso()")
+    assert db.execute("select count(*) from radar_imagens where id = any(%s::bigint[])", (boas,)).fetchone()[0] == 3
+    assert db.execute("select count(*) from radar_imagens where id = %s", (orfa,)).fetchone()[0] == 0
 
 
 def test_agenda_vencidas_espera_10_min_3_tentativas_janela_e_confere_antes_de_disparar(pauta):
@@ -5666,8 +5751,8 @@ def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
             assert contar() == antes and estado() == como_estava
         assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
         assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
-        # (o setup registra a versão dele: v0.40.0, que traz junto os da v0.28.0 a v0.35.0)
-        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.40.0",), ("v0.40.0",)]
+        # (o setup registra a versão dele: v0.42.0, que traz junto os da v0.28.0 a v0.35.0)
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.42.0",), ("v0.42.0",)]
         assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
     finally:
         assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro

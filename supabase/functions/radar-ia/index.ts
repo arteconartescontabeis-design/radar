@@ -33,8 +33,9 @@
 //                  sem a fonte citada; o que ficar sem confirmação vai para os pontos a conferir; (v0.24.0) e confere os 10 critérios
 //                  do escritório (Conferência das Diretrizes), gravados no conteúdo pelo banco
 //   kit          → (v0.20.0) monta o kit das redes de um conteúdo já escrito: legendas do Instagram e do Facebook e roteiro de reel
-//                  (v0.25.1: sem a chamada e o apoio da arte); grava em radar_conteudos.kit_ia (só sugestão: o que vai ao ar é o que o
-//                  administrador autoriza)
+//                  (v0.25.1: sem a chamada e o apoio da arte; v0.42.0: + os cartões do carrossel, para a notícia que o administrador
+//                  escolher publicar como carrossel — a capa é a imagem da publicação com o título, desenhada pela tela);
+//                  grava em radar_conteudos.kit_ia (só sugestão: o que vai ao ar é o que o administrador autoriza)
 //   peca         → (v0.21.0) a sugestão de uma peça da Pauta (aba Pauta, "Gerar com IA"): chamada e apoio da arte, legendas do Instagram
 //                  e do Facebook e os cartões do carrossel, a partir do plano e das informações conferidas; grava em radar_pauta_pecas.ia
 //                  (só sugestão: o que vai ao ar é o que o administrador aprova)
@@ -134,7 +135,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.39.0";
+const VERSAO = "0.42.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -1819,7 +1820,8 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
   // a identificação que a IA escreveu sai do texto (quem acrescenta a das Configurações é a tela): o aviso pede para conferir a frase
   // v0.25.1: sem a chamada e o apoio da arte (a "arte" que viesse na resposta é ignorada: não entra no kit nem na conferência)
   const escritos = [json?.instagram?.texto, json?.facebook?.texto, r.gancho, r.chamada_final, r.legenda,
-    ...(Array.isArray(r.cenas) ? r.cenas : []).flatMap((c: any) => [c?.fala, c?.texto_tela])];
+    ...(Array.isArray(r.cenas) ? r.cenas : []).flatMap((c: any) => [c?.fala, c?.texto_tela]),
+    ...(Array.isArray(json?.cartoes) ? json.cartoes : []).flatMap((c: any) => [c?.titulo, c?.texto])];    // v0.42.0
   if (escritos.some((t) => RE_IDENTIFICACAO.test(semHtmlNemLink(t)))) {
     avisos.push("Saiu do kit o número de CNPJ, de registro no CRC ou de telefone que a IA escreveu (a identificação legal entra pela tela, " +
       "a partir das Configurações): confira se o texto ficou certo.");
@@ -1877,7 +1879,17 @@ function limparKit(json: any): { kit: any; avisos: string[] } {
     const encurtados = validas.filter((c: any) => c.longo).map((c: any) => `de ${c.de} a ${c.ate} s`.replace(/\./g, ","));
     if (encurtados.length) avisos.push(`Texto na tela com mais de 42 caracteres, encurtado ${encurtados.length > 1 ? "nas cenas" : "na cena"} ${encurtados.join("; ")}: confira se o sentido ficou.`);
   }
-  return { kit: { instagram, facebook, reel }, avisos };
+  // v0.42.0: os cartões do carrossel (como em limparPeca): título até 40, texto até 220, até 8; com menos de 3, o carrossel não sai
+  // pela tela (ela pede para gerar o kit de novo), mas o kit continua valendo para as legendas e o reel
+  const recebidosC = (Array.isArray(json?.cartoes) ? json.cartoes : []).map((c: any) => {
+    const titulo = normalizarEspacos(semHashtags(textoKit(c?.titulo))).replace(/[.\s]+$/, ""), txt = normalizarEspacos(semHashtags(textoKit(c?.texto)));
+    return { titulo: cortarFrase(titulo, 40, false).replace(/[.\s]+$/, ""), texto: cortarFrase(txt, 220), longo: titulo.length > 40 };
+  }).filter((c: any) => c.titulo || c.texto);
+  const cartoes = recebidosC.slice(0, 8).map((c: any) => ({ titulo: c.titulo, texto: c.texto }));
+  if (recebidosC.slice(0, 8).some((c: any) => c.longo)) avisos.push("Título de cartão do carrossel com mais de 40 caracteres, encurtado: confira se o sentido ficou.");
+  if (recebidosC.length > 8) avisos.push(`A IA escreveu ${recebidosC.length} cartões; ficaram os 8 primeiros: confira o último.`);
+  if (cartoes.length < 3) avisos.push(`A IA escreveu ${cartoes.length} cartão(ões) do carrossel: a opção de publicar como carrossel pede de 3 a 8 (gere o kit de novo se for usá-la).`);
+  return { kit: { instagram, facebook, reel, cartoes }, avisos };
 }
 
 /** Aviso do kit de até "max" caracteres. Numa lista ("…: a; b; c."), saem os últimos itens inteiros (fica "e outros"); no resto, o
@@ -1921,13 +1933,16 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
     properties: { texto, hashtags: { type: "array", items: texto } } };
   const esquema = {
     // v0.25.1: sem a "arte" (chamada e apoio), que só servia à arte vertical das notícias (saiu na v0.25.0)
-    type: "object", additionalProperties: false, required: ["instagram", "facebook", "reel"],
+    // v0.42.0: + os cartões do carrossel (a capa é a imagem da publicação com o título, desenhada pela tela: não entra aqui)
+    type: "object", additionalProperties: false, required: ["instagram", "facebook", "reel", "cartoes"],
     properties: {
       instagram: legenda, facebook: legenda,
       reel: { type: "object", additionalProperties: false, required: ["gancho", "cenas", "chamada_final", "legenda"],
         properties: { gancho: texto, chamada_final: texto, legenda: texto,
           cenas: { type: "array", items: { type: "object", additionalProperties: false, required: ["de", "ate", "fala", "texto_tela"],
             properties: { de: { type: "number" }, ate: { type: "number" }, fala: texto, texto_tela: texto } } } } },
+      cartoes: { type: "array", items: { type: "object", additionalProperties: false, required: ["titulo", "texto"],
+        properties: { titulo: texto, texto } } },
     },
   };
   const instrucoes = "Você prepara o material das redes sociais da Artecon Artes Contábeis (Palhoça/SC), em português do Brasil, a partir de " +
@@ -1946,7 +1961,10 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
     "onde a anterior termina), a 'fala' (até 3 palavras por segundo) e o 'texto_tela' (até 42 caracteres); a 'chamada_final' (o convite " +
     "para ler a matéria completa, com o link na bio; sem convite comercial); e a 'legenda' " +
     "do reel, com até 800 caracteres, terminando com 'Link na bio.'; " +
-    "(f) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
+    "(f) em 'cartoes': de 3 a 8 cartões, para a notícia poder sair como carrossel — cada um com 'titulo' de até 40 caracteres e " +
+    "'texto' de até 220; o primeiro NÃO repete o título da notícia (a capa do carrossel é a imagem da publicação com o título, montada " +
+    "pelo sistema) e o último diz o que fazer e onde ler mais ('matéria completa no site, link na bio'; sem convite comercial); " +
+    "(g) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
     REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_AUTOCONFERENCIA + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(ctx.reg);
   // só o que a Artecon escreveu (e o que a equipe já classificou no assunto): nada do texto oficial nem do boletim pago. Tudo o que
   // vem do banco (a classificação também: o público afetado pode ter saído da notícia) fica dentro de um bloco de dados, sem as marcas
@@ -1954,14 +1972,15 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
     `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
     `Fonte: ${dado(c.fonte_credito)}\n<<<FIM>>>\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
-  // até 4.000 tokens (cabe nos 6.000 da IA Central): a notícia longa, com as legendas e as 8 cenas no limite, passa de 3.000
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 4000, undefined,
+  // até 4.600 tokens (cabe nos 6.000 da IA Central): a notícia longa, com as legendas, as 8 cenas e os 8 cartões no limite, passa de 4.000
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 4600, undefined,
     "O kit das redes saiu maior que o limite do pedido e veio incompleto: gere de novo (a IA costuma encurtar na segunda vez).");
   const { kit: novo, avisos: doKit } = limparKit(json);
 
   // conferência por código, contra o título e o texto (o texto oficial e o boletim ficam só aqui, na memória)
   const partes: string[] = [novo.instagram.texto, novo.facebook.texto.split(LINK_SITE).join(" "),
-    novo.reel.gancho, ...novo.reel.cenas.flatMap((x: any) => [x.fala, x.texto_tela]), novo.reel.chamada_final, novo.reel.legenda].filter(Boolean);
+    novo.reel.gancho, ...novo.reel.cenas.flatMap((x: any) => [x.fala, x.texto_tela]), novo.reel.chamada_final, novo.reel.legenda,
+    ...novo.cartoes.flatMap((x: any) => [x.titulo, x.texto])].filter(Boolean);    // v0.42.0: os cartões do carrossel também
   const textoDoKit = partes.join("\n\n");
   const termos = termosPublicidade(...partes, [...novo.instagram.hashtags, ...novo.facebook.hashtags].join(" "));
   const avisos: string[] = [];

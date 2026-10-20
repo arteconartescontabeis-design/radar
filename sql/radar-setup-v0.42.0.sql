@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.40.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.42.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -82,7 +82,19 @@
 -- radar_video_reconferir limpa as aceitas junto com as outras marcas). O juiz de sentido roda no robô (robo/video/juiz.py, com o
 -- token da IA Central no repositório privado) e não muda o banco. NENHUMA tabela ou coluna nova; nada é apagado; as agendas
 -- (sql/radar-*-agenda.sql) não mudam.
--- Reversão: radar-reversao-v0.40.0.sql
+-- v0.42.0 (sem bloco próprio: ajustes nos blocos das redes e da Pauta): o carrossel publicado pelo próprio Radar. Duas colunas novas
+-- em radar_redes_envios — artes (as lâminas da publicação, radar_imagens.id, como na peça aprovada) e imagens_urls (os endereços
+-- INTERNOS das lâminas no armazenamento privado, gravados pela função radar-redes v0.42.0 na primeira tentativa: a nova tentativa
+-- assina de novo, sem reenviar) — e cinco funções redefinidas: radar_autorizar_rede ganha p_artes (a notícia aprovada sai como
+-- carrossel: as lâminas desenhadas AGORA pela tela do administrador, conferidas como as da Pauta); radar_pauta_aprovar aceita
+-- "agendar" também no carrossel e no carrossel de fotos (o envio leva as lâminas aprovadas por referência, sem copiar; só o reel
+-- continua saindo à mão); radar_rede_iniciar e radar_pauta_iniciar devolvem também "imagens" (as lâminas) e "imagens_urls";
+-- radar_rede_concluir ganha p_imagens_urls; radar_pauta_pode_sair e a faxina de imagens (radar_fn_imagem_sem_uso e
+-- radar_limpar_imagens_sem_uso) passam a conhecer as lâminas do envio. Quem fala com a Meta é a função radar-redes v0.42.0
+-- (Instagram: um contêiner por lâmina + o contêiner CAROUSEL + media_publish; Facebook: as fotos sem publicar + uma publicação com
+-- attached_media). Nada é apagado; as agendas (sql/radar-*-agenda.sql) não mudam. O "Pôr no Informativo" e a peça de reel criada
+-- do assunto são só tela (nenhuma função nova: valem as regras e os gatilhos de sempre).
+-- Reversão: radar-reversao-v0.42.0.sql
 -- =====================================================================
 
 begin;
@@ -108,7 +120,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.40.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.42.0', v_antes);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -755,6 +767,20 @@ create unique index if not exists radar_redes_envios_peca_uk on public.radar_red
   where peca_id is not null and situacao in ('autorizado','enviando','erro','publicado','dispensado');
 create index if not exists radar_redes_envios_agenda_idx on public.radar_redes_envios (agendado_para)
   where situacao = 'autorizado' and peca_id is not null;
+-- v0.42.0: o carrossel publicado pelo Radar. artes = as lâminas da publicação (radar_imagens.id, na ordem do post): na peça da Pauta,
+-- a cópia de radar_pauta_pecas.artes na aprovação (por referência: as lâminas aprovadas não mudam e a faxina não as apaga); na
+-- notícia, as lâminas que o administrador desenhou e enviou AGORA (radar_autorizar_rede confere como radar_pauta_aprovar).
+-- imagens_urls = os endereços INTERNOS das lâminas no armazenamento privado radar-pauta (como imagem_url), gravados pela função
+-- radar-redes depois do primeiro envio: a nova tentativa assina de novo, sem reenviar. Vazios na publicação de imagem única.
+alter table public.radar_redes_envios add column if not exists artes bigint[] not null default '{}';
+alter table public.radar_redes_envios add column if not exists imagens_urls text[] not null default '{}';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'radar_redes_envios_artes_ck') then
+    alter table public.radar_redes_envios add constraint radar_redes_envios_artes_ck
+      check (cardinality(artes) <= 10 and cardinality(imagens_urls) <= 10) not valid;
+  end if;
+end $$;
 
 -- v0.17.0: exclusão da notícia no site, a pedido do administrador. O robô (workflow "Radar — publicar no site") entra no
 -- painel do site, acha a notícia pelo título na lista do painel, exclui do jeito do botão "Excluir" do painel e confere
@@ -1594,11 +1620,13 @@ language plpgsql security definer set search_path = public as $$
 begin
   -- v0.16.0: vale também para a ilustração guardada (ilustracao_id)
   -- v0.21.0: a foto ou a lâmina aprovada de uma peça da Pauta nunca é apagada por aqui
+  -- v0.42.0: nem a lâmina de uma publicação nas redes (radar_redes_envios.artes: o carrossel da notícia)
   delete from public.radar_imagens i
    where i.id in (old.imagem_id, old.ilustracao_id)
      and (tg_op = 'DELETE' or (i.id is distinct from new.imagem_id and i.id is distinct from new.ilustracao_id))
      and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id or c.ilustracao_id = i.id)
-     and not exists (select 1 from public.radar_pauta_pecas p where i.id = any(p.fotos) or i.id = any(p.artes));
+     and not exists (select 1 from public.radar_pauta_pecas p where i.id = any(p.fotos) or i.id = any(p.artes))
+     and not exists (select 1 from public.radar_redes_envios e where i.id = any(e.artes));
   return null;
 end $$;
 drop trigger if exists radar_tg_imagem_sem_uso on public.radar_conteudos;
@@ -1609,6 +1637,7 @@ create trigger radar_tg_imagem_sem_uso after update of imagem_id, ilustracao_id 
 -- capas trocadas antes da v0.6.0) é apagada pelo robô ao fim de cada coleta. Só as com mais de p_horas (padrão 24):
 -- uma imagem acabada de enviar, que a tela ainda vai ligar ao conteúdo, não é tocada. Devolve quantas apagou.
 -- v0.21.0: as fotos e as lâminas aprovadas das peças da Pauta também ficam (sem isso, sumiriam um dia depois de enviadas)
+-- v0.42.0: e as lâminas das publicações nas redes (radar_redes_envios.artes: o carrossel da notícia)
 create or replace function public.radar_limpar_imagens_sem_uso(p_horas int default 24) returns int
 language plpgsql security definer set search_path = public as $$
 declare v_n int;
@@ -1616,7 +1645,8 @@ begin
   delete from public.radar_imagens i
    where i.criado_em < now() - make_interval(hours => least(greatest(coalesce(p_horas, 24), 1), 8760))
      and not exists (select 1 from public.radar_conteudos c where c.imagem_id = i.id or c.ilustracao_id = i.id)
-     and not exists (select 1 from public.radar_pauta_pecas p where i.id = any(p.fotos) or i.id = any(p.artes));
+     and not exists (select 1 from public.radar_pauta_pecas p where i.id = any(p.fotos) or i.id = any(p.artes))
+     and not exists (select 1 from public.radar_redes_envios e where i.id = any(e.artes));
   get diagnostics v_n = row_count;
   return v_n;
 end $$;
@@ -2510,13 +2540,18 @@ $$;
 -- v0.13.0: Instagram e Facebook. Valem as exigências do site (conteúdo aprovado, assunto com fundamentação — ou liberado
 -- pelo administrador) e mais uma: a notícia já precisa estar no site (a legenda leva o leitor até ela).
 -- v0.22.0 (varredura geral): + p_conferi_rede (radar_rede_cancelada_no_envio)
+-- v0.42.0: + p_artes — a notícia sai como CARROSSEL: as lâminas (radar_imagens.id, na ordem do post) que o administrador desenhou e
+-- enviou AGORA pela tela, conferidas como as da Pauta (radar_pauta_aprovar: de 2 a 10, sem repetir, JPEG 1080×1350 enviado há até
+-- 2 horas por quem autoriza). Com p_artes, p_imagem fica nulo (as imagens do post são as lâminas); sem ele, nada muda (imagem única).
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz);
+drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean);
 create or replace function public.radar_autorizar_rede(p_conteudo bigint, p_canal text, p_legenda text, p_imagem text, p_lido timestamptz,
-                                                       p_conferi_rede boolean default false)
+                                                       p_conferi_rede boolean default false, p_artes bigint[] default null)
 returns bigint language plpgsql security definer set search_path = public as $$
 declare
   v_c public.radar_conteudos%rowtype;
   v_pendencia text;
+  v_artes bigint[] := coalesce(p_artes, '{}');
   v_id bigint;
 begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
@@ -2553,7 +2588,20 @@ begin
   if public.radar_copia_paga_assunto(v_c.assunto_id, array[p_legenda, v_c.titulo, v_c.corpo]) then      -- v0.22.0 (varredura geral)
     raise exception 'RADAR146: frase do boletim pago (ITC) na legenda ou no texto: reescreva com palavras próprias (o boletim pago nunca é reproduzido, nem citando a fonte nem entre aspas)' using errcode = 'P0001';
   end if;
-  if p_imagem is null or p_imagem not like 'data:image/jpeg;base64,%' or length(p_imagem) > 3000000 then
+  -- v0.42.0: ou a imagem única (como sempre), ou as lâminas do carrossel — nunca os dois
+  if cardinality(v_artes) > 0 then
+    if p_imagem is not null then
+      raise exception 'RADAR177: no carrossel vão só as lâminas (sem a imagem única): recarregue a tela e autorize de novo' using errcode = 'P0001';
+    end if;
+    if cardinality(v_artes) not between 2 and 10 or (select count(distinct a) from unnest(v_artes) a) <> cardinality(v_artes)
+       or exists (select 1 from unnest(v_artes) a
+                   where not exists (select 1 from public.radar_imagens i
+                                      where i.id = a and i.dados like 'data:image/jpeg;base64,%' and i.largura = 1080 and i.altura = 1350
+                                        and i.criado_por = auth.uid() and i.criado_em > now() - interval '2 hours')) then
+      raise exception 'RADAR177: as lâminas do carrossel não conferem (de 2 a 10, sem repetir, JPEG 1080×1350 enviado agora por você): desenhe e autorize de novo'
+        using errcode = 'P0001';
+    end if;
+  elsif p_imagem is null or p_imagem not like 'data:image/jpeg;base64,%' or length(p_imagem) > 3000000 then
     raise exception 'RADAR135: falta a imagem (JPEG) da publicação' using errcode = 'P0001';
   end if;
   if exists (select 1 from public.radar_redes_envios e where e.conteudo_id = p_conteudo and e.canal = p_canal
@@ -2564,8 +2612,8 @@ begin
     raise exception 'RADAR166: a publicação deste conteúdo no % foi cancelada no meio do envio: confira no % que ela não saiu e marque “Conferi no %: não saiu”',
       initcap(p_canal), initcap(p_canal), initcap(p_canal) using errcode = 'P0001';
   end if;
-  insert into public.radar_redes_envios (conteudo_id, canal, legenda, imagem, conteudo_lido_em, autorizado_por)
-  values (p_conteudo, p_canal, btrim(p_legenda), p_imagem, v_c.atualizado_em, auth.uid())
+  insert into public.radar_redes_envios (conteudo_id, canal, legenda, imagem, artes, conteudo_lido_em, autorizado_por)
+  values (p_conteudo, p_canal, btrim(p_legenda), p_imagem, v_artes, v_c.atualizado_em, auth.uid())
   returning id into v_id;
   return v_id;
 end $$;
@@ -2620,11 +2668,14 @@ begin
 end $$;
 
 -- A função radar-redes pega a autorização para enviar (uma vez só) e confere de novo as exigências.
+-- v0.42.0: no carrossel (artes), a resposta leva também "imagens" (as lâminas, na ordem do post) e "imagens_urls" (os endereços já
+-- guardados numa tentativa anterior: a nova tentativa assina de novo, sem reenviar).
 create or replace function public.radar_rede_iniciar(p_envio bigint) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   v_e public.radar_redes_envios%rowtype;
   v_c public.radar_conteudos%rowtype;
+  v_imagens jsonb;
   v_pendencia text;
 begin
   -- v0.21.0: a peça da Pauta sai por radar_pauta_iniciar; quem chama aqui é a radar-redes de antes da v0.21.0 (nada muda)
@@ -2652,22 +2703,40 @@ begin
     update public.radar_redes_envios set situacao = 'erro', erro = left(v_pendencia, 1000), atualizado_em = now() where id = p_envio;
     return jsonb_build_object('erro', v_pendencia);
   end if;
-  if v_e.imagem is null and v_e.imagem_url is null then
+  -- v0.42.0: no carrossel, as imagens do post são as lâminas (artes); a que se perdeu vira erro, como a imagem única
+  if cardinality(v_e.artes) > 0 then
+    select jsonb_agg(i.dados order by a.ord) into v_imagens
+      from unnest(v_e.artes) with ordinality a(id, ord)
+      join public.radar_imagens i on i.id = a.id and i.dados like 'data:image/jpeg;base64,%';
+    if coalesce(jsonb_array_length(v_imagens), 0) <> cardinality(v_e.artes) then
+      update public.radar_redes_envios set situacao = 'erro', erro = 'As lâminas da publicação se perderam: cancele e autorize de novo.', atualizado_em = now()
+       where id = p_envio;
+      return jsonb_build_object('erro', 'sem as lâminas');
+    end if;
+  elsif v_e.imagem is null and v_e.imagem_url is null then
     update public.radar_redes_envios set situacao = 'erro', erro = 'A imagem da publicação se perdeu: cancele e autorize de novo.', atualizado_em = now()
      where id = p_envio;
     return jsonb_build_object('erro', 'sem imagem');
   end if;
   update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, atualizado_em = now() where id = p_envio;
   return jsonb_build_object('id', v_e.id, 'canal', v_e.canal, 'conteudo_id', v_e.conteudo_id, 'legenda', v_e.legenda,
-                            'imagem', v_e.imagem, 'imagem_url', v_e.imagem_url);
+                            'imagem', v_e.imagem, 'imagem_url', v_e.imagem_url,
+                            'imagens', v_imagens, 'imagens_urls', case when cardinality(v_e.imagens_urls) > 0 then to_jsonb(v_e.imagens_urls) end);
 end $$;
 
 -- Resultado do envio. A imagem guardada é apagada quando já está no armazenamento público (fica o link).
 -- "erro" só quando a Meta recusou com certeza (pode tentar de novo); se não deu para saber se saiu, a função deixa "enviando".
-create or replace function public.radar_rede_concluir(p_envio bigint, p_ok boolean, p_post_id text, p_url text, p_imagem_url text, p_erro text)
+-- v0.42.0: + p_imagens_urls — no carrossel, os endereços internos das lâminas já guardadas no armazenamento privado (todas, na ordem
+-- do post): a nova tentativa assina de novo, sem reenviar. Fora do carrossel, nulo (nada muda).
+drop function if exists public.radar_rede_concluir(bigint, boolean, text, text, text, text);
+create or replace function public.radar_rede_concluir(p_envio bigint, p_ok boolean, p_post_id text, p_url text, p_imagem_url text, p_erro text,
+                                                      p_imagens_urls text[] default null)
 returns boolean language plpgsql security definer set search_path = public as $$
 declare
   v_img text := case when p_imagem_url ~ '^https?://[!-~]+$' and length(p_imagem_url) <= 500 then p_imagem_url end;
+  v_urls text[] := case when cardinality(p_imagens_urls) between 1 and 10
+                         and not exists (select 1 from unnest(p_imagens_urls) u where u !~ '^https?://[!-~]+$' or length(u) > 500)
+                        then p_imagens_urls end;
 begin
   update public.radar_redes_envios
      set situacao = case when p_ok then 'publicado' else 'erro' end,
@@ -2675,6 +2744,7 @@ begin
          post_id = case when p_ok then left(p_post_id, 100) end,
          url = case when p_ok and p_url ~ '^https://[!-~]+$' and length(p_url) <= 500 then p_url end,
          imagem_url = coalesce(v_img, imagem_url),
+         imagens_urls = coalesce(v_urls, imagens_urls),
          imagem = case when coalesce(v_img, imagem_url) is not null then null else imagem end,
          erro = case when p_ok then null else left(coalesce(nullif(btrim(p_erro), ''), 'Erro sem descrição.'), 1000) end,
          atualizado_em = now()
@@ -3664,8 +3734,9 @@ begin
   if p_modo is null or p_modo not in ('agendar','manual') then
     raise exception 'RADAR164: escolha entre agendar e publicar à mão' using errcode = 'P0001';
   end if;
-  if p_modo = 'agendar' and p.formato not in ('imagem','foto') then
-    raise exception 'RADAR164: carrossel e reel saem à mão nesta versão (escolha “Vou publicar à mão”)' using errcode = 'P0001';
+  -- v0.42.0: o carrossel (e o carrossel de fotos) também sai pela agenda (a função radar-redes v0.42.0 publica as lâminas na Meta)
+  if p_modo = 'agendar' and p.formato not in ('imagem','foto','carrossel','carrossel_fotos') then
+    raise exception 'RADAR164: o reel sai à mão nesta versão (escolha “Vou publicar à mão”)' using errcode = 'P0001';
   end if;
   select coalesce(array_agg(distinct c), '{}') into v_canais from unnest(coalesce(p_canais, '{}')) c;
   v_prob := public.radar_pauta_problemas(p.id, v_canais, p.data);
@@ -3750,11 +3821,18 @@ begin
    where id = p.id;
   perform set_config('radar.pauta', '', true);
   if p_modo = 'agendar' then
-    select i.dados into v_img from public.radar_imagens i where i.id = v_artes[1];
+    -- v0.42.0: no carrossel, o envio leva as lâminas por referência (artes; a lâmina aprovada não muda e a faxina não a apaga);
+    -- na imagem única, a cópia da lâmina, como antes
+    if p.formato in ('carrossel','carrossel_fotos') then
+      v_img := null;
+    else
+      select i.dados into v_img from public.radar_imagens i where i.id = v_artes[1];
+    end if;
     foreach v_canal in array v_canais loop
       begin
-        insert into public.radar_redes_envios (peca_id, canal, legenda, imagem, conteudo_lido_em, situacao, autorizado_por, agendado_para)
+        insert into public.radar_redes_envios (peca_id, canal, legenda, imagem, artes, conteudo_lido_em, situacao, autorizado_por, agendado_para)
         values (p.id, v_canal, btrim(case v_canal when 'instagram' then p.legenda_instagram else p.legenda_facebook end), v_img,
+                case when p.formato in ('carrossel','carrossel_fotos') then v_artes else '{}' end,
                 p.versao_publicavel, 'autorizado', auth.uid(), v_quando)
         returning id into v_id;
       exception when unique_violation then
@@ -4050,7 +4128,13 @@ begin
   if public.radar_marcas_verificar(e.legenda) is not null or e.legenda ~* '\{\s*confirmar[^}]*\}' or e.legenda ~ '\{[^{}\n]{1,120}\}' then
     return 'A legenda tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija.';
   end if;
-  if e.imagem is null and e.imagem_url is null then
+  -- v0.42.0: no carrossel, as imagens do post são as lâminas (artes)
+  if cardinality(e.artes) > 0 then
+    if exists (select 1 from unnest(e.artes) a
+                where not exists (select 1 from public.radar_imagens i where i.id = a and i.dados like 'data:image/jpeg;base64,%')) then
+      return 'As lâminas da publicação se perderam: desfaça a aprovação e aprove de novo.';
+    end if;
+  elsif e.imagem is null and e.imagem_url is null then
     return 'A imagem da publicação se perdeu: desfaça a aprovação e aprove de novo.';
   end if;
   return null;
@@ -4079,7 +4163,7 @@ begin
             for update skip locked loop
     v_motivo := case when r.disparos >= 3
       then 'A publicação agendada não saiu: o Radar chamou a função radar-redes 3 vezes, de 10 em 10 minutos, e ela não publicou. '
-           'Confira em Publicações → Testar conexão se a radar-redes é a v0.21.0 e se o Instagram e o Facebook estão configurados; '
+           'Confira em Publicações → Testar conexão se a radar-redes está atualizada (o carrossel pede a v0.42.0) e se o Instagram e o Facebook estão configurados; '
            'depois use Tentar de novo.'
       else public.radar_pauta_pode_sair(r.id) end;            -- confere ANTES de qualquer coisa ir à Meta
     if v_motivo is not null then
@@ -4097,9 +4181,10 @@ end $$;
 create or replace function public.radar_pauta_iniciar(p_envio bigint) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  v_peca   bigint;
-  e        public.radar_redes_envios%rowtype;
-  v_motivo text;
+  v_peca    bigint;
+  e         public.radar_redes_envios%rowtype;
+  v_imagens jsonb;
+  v_motivo  text;
 begin
   select peca_id into v_peca from public.radar_redes_envios where id = p_envio;     -- sem trava: a ordem é peça, depois envio
   if v_peca is null then
@@ -4119,9 +4204,16 @@ begin
     update public.radar_redes_envios set situacao = 'erro', erro = left(v_motivo, 1000), atualizado_em = now() where id = p_envio;
     return jsonb_build_object('erro', v_motivo);
   end if;
+  -- v0.42.0: no carrossel, as lâminas aprovadas (artes), na ordem do post (pode_sair, acima, já conferiu que estão todas)
+  if cardinality(e.artes) > 0 then
+    select jsonb_agg(i.dados order by a.ord) into v_imagens
+      from unnest(e.artes) with ordinality a(id, ord)
+      join public.radar_imagens i on i.id = a.id;
+  end if;
   update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, atualizado_em = now() where id = p_envio;
   return jsonb_build_object('id', e.id, 'canal', e.canal, 'conteudo_id', null, 'peca_id', e.peca_id, 'legenda', e.legenda,
-                            'imagem', e.imagem, 'imagem_url', e.imagem_url);
+                            'imagem', e.imagem, 'imagem_url', e.imagem_url,
+                            'imagens', v_imagens, 'imagens_urls', case when cardinality(e.imagens_urls) > 0 then to_jsonb(e.imagens_urls) end);
 end $$;
 
 -- v0.17.0: pedido de exclusão da notícia no site. Usa o registro mais recente em "Publicações no site" (link e título).
@@ -6945,11 +7037,11 @@ grant execute on function public.radar_itc_marcar_lido(text, text, timestamptz, 
 grant execute on function public.radar_itc_conferir_agenda(text) to service_role;
 grant execute on function public.radar_itc_registrar_falha(text) to service_role;
 -- v0.13.0: Instagram e Facebook — o administrador autoriza (as funções conferem); a função radar-redes envia
-grant execute on function public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean) to authenticated;   -- v0.22.0: + a caixa
+grant execute on function public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean, bigint[]) to authenticated;   -- v0.22.0: + a caixa; v0.42.0: + as lâminas do carrossel
 grant execute on function public.radar_dispensar_rede(bigint, text) to authenticated;
 grant execute on function public.radar_cancelar_rede(bigint) to authenticated;
 grant execute on function public.radar_rede_iniciar(bigint) to service_role;
-grant execute on function public.radar_rede_concluir(bigint, boolean, text, text, text, text) to service_role;
+grant execute on function public.radar_rede_concluir(bigint, boolean, text, text, text, text, text[]) to service_role;   -- v0.42.0: + os endereços das lâminas
 -- v0.17.0: "Publicar em todos" e exclusão (as funções conferem que é o administrador); o robô conclui a exclusão no site
 grant execute on function public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text, boolean) to authenticated;   -- v0.22.0: + a caixa
 grant execute on function public.radar_rede_marcar_excluida(bigint, text) to authenticated;
@@ -10432,7 +10524,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.40.0).
+-- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.42.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

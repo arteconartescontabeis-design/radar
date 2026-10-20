@@ -47,7 +47,8 @@ CAMINHO_GITHUB = "/github/repos/arteconartescontabeis-design/radar/actions/workf
 JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64).decode()
 ESTADO = {"chaves": [], "bucket_get_falha": False, "busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False,
           "github": [], "github_status": 204, "workflows": {}, "github_wf": [],
-          "publicos": set(), "upsert": [], "assinaturas": [], "assinar_falha": False, "apagados": []}   # v0.21.0: buckets públicos, x-upsert, links assinados
+          "publicos": set(), "upsert": [], "assinaturas": [], "assinar_falha": False, "apagados": [],   # v0.21.0: buckets públicos, x-upsert, links assinados
+          "filhos_ig": [], "carrossel_ig": [], "fotos_fb": [], "feed_fb": []}                           # v0.42.0: o carrossel
 LOGS: dict = {}                               # v0.21.0: a saída de cada instância da função (o que o Supabase mostra em Logs), por porta
 
 
@@ -113,6 +114,8 @@ class Ponte(BaseHTTPRequestHandler):
         if self.command == "GET":
             if caminho == "cont-1":
                 return self._responder(200, {"status_code": ESTADO["status_ig"].pop(0) if len(ESTADO["status_ig"]) > 1 else ESTADO["status_ig"][0]})
+            if caminho.startswith("cont-f") or caminho == "cont-car":        # v0.42.0: os contêineres do carrossel ficam prontos na hora
+                return self._responder(200, {"status_code": "FINISHED"})
             if caminho == "midia-1":
                 return self._responder(200, {"permalink": "https://www.instagram.com/p/ABC123/"})
             if caminho == "pagina-1_post-9":
@@ -124,13 +127,26 @@ class Ponte(BaseHTTPRequestHandler):
             if caminho == "ig-1":
                 return self._responder(200, {"username": "arteconcontabeis"})
         if caminho == "ig-1/media":
+            # v0.42.0: o carrossel — um contêiner por lâmina (is_carousel_item) e o contêiner CAROUSEL (children + caption)
+            if params.get("is_carousel_item") == "true":
+                ESTADO["filhos_ig"].append(params)
+                return self._responder(200, {"id": f"cont-f{len(ESTADO['filhos_ig'])}"})
+            if params.get("media_type") == "CAROUSEL":
+                ESTADO["carrossel_ig"].append(params)
+                return self._responder(200, {"id": "cont-car"})
             return self._responder(200, {"id": "cont-1"})
         if caminho == "ig-1/media_publish":
             if ESTADO["cai_publicar"]:
                 return self._responder(503, {"error": {"code": 2, "message": "Service temporarily unavailable"}})
             return self._responder(200, {"id": "midia-1"})
         if caminho == "pagina-1/photos":
+            if params.get("published") == "false":                           # v0.42.0: a foto do carrossel sobe SEM publicar
+                ESTADO["fotos_fb"].append(params)
+                return self._responder(200, {"id": f"foto-u{len(ESTADO['fotos_fb'])}"})
             return self._responder(200, {"id": "foto-9", "post_id": "pagina-1_post-9"})
+        if caminho == "pagina-1/feed":                                       # v0.42.0: a publicação única com as fotos (attached_media)
+            ESTADO["feed_fb"].append(params)
+            return self._responder(200, {"id": "pagina-1_post-9"})
         self._responder(404, {"error": {"code": 803, "message": "não existe"}})
 
     def do_GET(self):
@@ -274,7 +290,8 @@ def funcao(api_postgrest, tmp_path_factory):
 @pytest.fixture()
 def redes(funcao, limpo):
     ESTADO.update(chaves=[], bucket_get_falha=False, bucket_preso=0, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False,
-                  github=[], github_status=204, publicos=set(), upsert=[], assinaturas=[], assinar_falha=False, apagados=[], workflows={}, github_wf=[])
+                  github=[], github_status=204, publicos=set(), upsert=[], assinaturas=[], assinar_falha=False, apagados=[], workflows={}, github_wf=[],
+                  filhos_ig=[], carrossel_ig=[], fotos_fb=[], feed_fb=[])
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
     registrar_site(c1)
@@ -712,17 +729,28 @@ def peca(redes, pauta):
             db.execute("drop schema vault cascade")
 
 
-def agendada(db, canais=("instagram",), vencida=True, dias=2, **campos):
-    """Peça pronta e aprovada pelo administrador para sair pela agenda, com a lâmina (JPEG) desenhada por ele. vencida: a hora marcada
-    passou há 1 minuto. Devolve {canal: envio}."""
+def agendada(db, canais=("instagram",), vencida=True, dias=2, artes=None, **campos):
+    """Peça pronta e aprovada pelo administrador para sair pela agenda, com a lâmina (JPEG) desenhada por ele (ou as lâminas do
+    carrossel, em `artes`). vencida: a hora marcada passou há 1 minuto. Devolve {canal: envio}."""
     campos.setdefault("legenda_facebook", LEG_PECA if "facebook" in canais else "")
     pid = nova_peca(db, dias=dias, **campos)
     marcar_pronta(db, pid)
-    envios = aprovar_peca(db, pid, canais=canais, artes=[lamina(dados=JPEG)])["envios"]
+    envios = aprovar_peca(db, pid, canais=canais, artes=artes if artes is not None else [lamina(dados=JPEG)])["envios"]
     if vencida:
         for envio in envios.values():
             vencer(db, envio)
     return envios
+
+
+# v0.42.0: as lâminas do carrossel (JPEGs distintos, para conferir a ordem no armazenamento)
+JPEGS_CARROSSEL = ["data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + bytes([65 + n]) * 64).decode() for n in range(3)]
+CARTOES_PECA = [{"titulo": "Um", "texto": "Primeiro passo."}, {"titulo": "Dois", "texto": "Segundo passo."}]
+
+
+def carrossel_agendado(db, canais=("instagram",)):
+    """Peça em carrossel aprovada para a agenda (capa + 2 cartões = 3 lâminas), já vencida. Devolve {canal: envio}."""
+    return agendada(db, canais=canais, tipo="educativo", formato="carrossel", cartoes=CARTOES_PECA,
+                    artes=[lamina(dados=d) for d in JPEGS_CARROSSEL])
 
 
 def publicar_agora(db, envio, conferi=False):
@@ -809,6 +837,82 @@ def test_peca_nova_tentativa_reassina_sem_reenviar(peca):
     assert [prm["image_url"].rsplit("=", 1)[1] for m, p, prm in ESTADO["meta"] if p == "ig-1/media"] == ["assinado.1", "assinado.3"]
     assert db.execute("select situacao, imagem_url from radar_redes_envios where id = %s", (ig,)).fetchone() == ("publicado", interna)
 
+
+
+def test_peca_carrossel_instagram_um_conteiner_por_lamina_e_media_publish(peca):
+    """v0.42.0: a peça em carrossel agendada sai sozinha — cada lâmina vai ao bucket privado e vira um contêiner (is_carousel_item);
+    o contêiner CAROUSEL leva os filhos e a legenda; media_publish publica. No banco ficam os endereços internos (imagens_urls)."""
+    db, c1 = peca
+    ig = carrossel_agendado(db)["instagram"]
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert status == 200 and r == {"situacao": "publicado", "url": "https://www.instagram.com/p/ABC123/", "post_id": "midia-1"}, r
+    # as 3 lâminas no bucket privado, na ordem do post (os bytes de cada uma), e um link assinado para cada
+    assert len(ESTADO["storage"]) == 3 and all(re.fullmatch(RE_INTERNA, PONTE + c) for c, _, _ in ESTADO["storage"])
+    assert [d[4:5] for _, _, d in ESTADO["storage"]] == [b"A", b"B", b"C"]
+    assert [a for a, _ in ESTADO["assinaturas"]] == [c.replace("/object/", "/object/sign/") for c, _, _ in ESTADO["storage"]]
+    chamadas = [(m, p) for m, p, _ in ESTADO["meta"]]
+    assert chamadas == [("POST", "ig-1/media")] * 3 + [("GET", "cont-f1"), ("GET", "cont-f2"), ("GET", "cont-f3"),
+                                                       ("POST", "ig-1/media"), ("GET", "cont-car"), ("POST", "ig-1/media_publish"), ("GET", "midia-1")]
+    assert [f["image_url"].rsplit("=", 1)[1] for f in ESTADO["filhos_ig"]] == ["assinado.1", "assinado.2", "assinado.3"]
+    assert all("caption" not in f for f in ESTADO["filhos_ig"])                     # a legenda vai só no contêiner CAROUSEL
+    assert ESTADO["carrossel_ig"] == [{"media_type": "CAROUSEL", "children": "cont-f1,cont-f2,cont-f3", "caption": LEG_PECA,
+                                       "access_token": TOKEN_PAGINA}]
+    assert ESTADO["meta"][-2][2]["creation_id"] == "cont-car"
+    linha = db.execute("select situacao, post_id, imagem, imagem_url, imagens_urls from radar_redes_envios where id = %s", (ig,)).fetchone()
+    assert linha[:4] == ("publicado", "midia-1", None, None) and [re.fullmatch(RE_INTERNA, u) is not None for u in linha[4]] == [True] * 3
+    assert linha[4] == [PONTE + c for c, _, _ in ESTADO["storage"]]                 # na ordem do post
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)                # nunca duas vezes
+    assert status == 400 and "não está aguardando envio" in r["message"] and len(ESTADO["storage"]) == 3
+
+
+def test_peca_carrossel_facebook_fotos_sem_publicar_e_feed_com_attached_media(peca):
+    db, c1 = peca
+    fb = carrossel_agendado(db, canais=("facebook",))["facebook"]
+    status, r = pedir({"acao": "publicar", "envio": fb}, cab=AGENDA)
+    assert status == 200 and r["url"] == "https://www.facebook.com/artecon/posts/9" and r["post_id"] == "pagina-1_post-9", r
+    chamadas = [(m, p) for m, p, _ in ESTADO["meta"]]
+    assert chamadas == [("POST", "pagina-1/photos")] * 3 + [("POST", "pagina-1/feed"), ("GET", "pagina-1_post-9")]
+    assert [f["published"] for f in ESTADO["fotos_fb"]] == ["false"] * 3            # nenhuma foto aparece sozinha
+    assert all("message" not in f for f in ESTADO["fotos_fb"])
+    [feed] = ESTADO["feed_fb"]
+    assert feed["message"] == LEG_PECA
+    assert [json.loads(feed[f"attached_media[{n}]"]) for n in range(3)] == [{"media_fbid": f"foto-u{n + 1}"} for n in range(3)]
+    assert db.execute("select situacao, post_id from radar_redes_envios where id = %s", (fb,)).fetchone() == ("publicado", "pagina-1_post-9")
+
+
+def test_peca_carrossel_nova_tentativa_reassina_as_laminas_sem_reenviar(peca):
+    db, c1 = peca
+    ig = carrossel_agendado(db)["instagram"]
+    ESTADO["erro_meta"] = "Application does not have permission"
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert status == 502 and TOKEN_PAGINA not in json.dumps(r)
+    sit, erro, urls = db.execute("select situacao, erro, imagens_urls from radar_redes_envios where id = %s", (ig,)).fetchone()
+    assert sit == "erro" and "token=" not in erro and len(urls) == 3                # os endereços ficam para a nova tentativa
+    ESTADO["erro_meta"] = None
+    assert publicar_agora(db, ig, conferi=True) == [ig]
+    status, r = pedir({"acao": "publicar", "envio": ig}, cab=AGENDA)
+    assert (status, r["situacao"]) == (200, "publicado"), r
+    assert len(ESTADO["storage"]) == 3                                              # nenhuma lâmina sobe de novo
+    assert len(ESTADO["assinaturas"]) == 6                                          # cada tentativa assina as 3 de novo
+    assert db.execute("select imagens_urls from radar_redes_envios where id = %s", (ig,)).fetchone()[0] == urls
+
+
+def test_noticia_em_carrossel_autorizada_com_as_laminas_sai_como_carrossel(redes):
+    """v0.42.0: a notícia aprovada também sai como carrossel — o administrador autoriza com as lâminas desenhadas na tela
+    (radar_autorizar_rede, p_artes) e a função publica igual à peça da Pauta."""
+    db, c1 = redes
+    lido = db.execute("select atualizado_em from radar_conteudos where id = %s", (c1,)).fetchone()[0]
+    artes = [lamina(dados=d) for d in JPEGS_CARROSSEL]
+    with como("authenticated", ADMIN) as c:
+        envio = c.execute("select radar_autorizar_rede(%s, 'instagram', %s, null, %s, false, %s::bigint[])",
+                          (c1, "Prazo do Simples prorrogado. Leia no site da Artecon.", lido, artes)).fetchone()[0]
+    status, r = pedir({"acao": "publicar", "envio": envio})
+    assert status == 200 and r == {"situacao": "publicado", "url": "https://www.instagram.com/p/ABC123/", "post_id": "midia-1"}, r
+    assert len(ESTADO["filhos_ig"]) == 3 and len(ESTADO["storage"]) == 3
+    assert ESTADO["carrossel_ig"][0]["children"] == "cont-f1,cont-f2,cont-f3"
+    assert ESTADO["carrossel_ig"][0]["caption"].startswith("Prazo do Simples")
+    sit, imagem, urls = db.execute("select situacao, imagem, imagens_urls from radar_redes_envios where id = %s", (envio,)).fetchone()
+    assert (sit, imagem) == ("publicado", None) and len(urls) == 3
 
 
 def test_peca_armazenamento_preso_vira_erro_e_nao_fica_enviando(peca):
@@ -906,7 +1010,7 @@ def test_agenda_teste_responde_sem_publicar(peca):
     db, c1 = peca
     ig = agendada(db)["instagram"]                                                  # há peça vencida: o teste não a toca
     for porta in (PORTA_FUNCAO, PORTA_SEM_META):                                    # nem precisa da Meta configurada
-        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.29.0"})
+        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.42.0"})
     assert pedir({"acao": "agenda_teste"}) == (403, {"message": "Só a agenda do banco usa o teste da agenda."})
     assert pedir({"acao": "agenda_teste"}, uid=EDITOR)[0] == 403
     assert pedir({"acao": "agenda_teste"}, cab=ROBO)[0] == 403

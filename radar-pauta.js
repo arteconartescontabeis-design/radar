@@ -29,8 +29,11 @@
    v0.34.0: só a versão e o recado do banco (o setup então em uso); a aba Vídeo fica em radar-video.js e a aba Setor em
    Configurações (index.html).
    v0.36.0: só a versão e o recado do banco (o setup então em uso); a correção avulsa fica na aba Vídeo (radar-video.js).
+   v0.42.0: o carrossel (e o carrossel de fotos) também sai pela agenda — "Agendar" deixa de ser só da imagem única (blocoAprovar);
+   quem publica as lâminas na Meta é a função radar-redes v0.42.0, e o banco (radar_pauta_aprovar) confere tudo como antes. Só o
+   reel continua saindo à mão. As lâminas da notícia em carrossel (tela do assunto) são desenhadas por desenharPeca daqui.
    ==================================================================== */
-const PAUTA_VERSAO = "0.41.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.42.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -68,7 +71,7 @@ const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PA
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
 // (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0; v0.29.0 a
 // v0.32.0: o recado manda rodar o setup desta versão, que traz junto os anteriores)
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.42.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){
@@ -1043,10 +1046,11 @@ const passouDaHora = (data, hora) => Date.parse(`${data}T${String(hora).slice(0,
 const ordemCanal = (x, y) => (x.canal === "instagram" ? 0 : 1) - (y.canal === "instagram" ? 0 : 1) || x.id - y.id;
 /* A agenda automática não vai publicar sozinha? (desligada nas Configurações, sem o sql/radar-redes-agenda.sql, ou pausada no pg_cron) */
 const agendaParada = ag => ag?.agenda_ligada === false || ag?.instalada === false || ag?.ativa === false;
-/* O quadro de aprovação (só o administrador, peça pronta): os canais (os que têm legenda), o modo (agendar, só imagem única; ou à
-   mão) e as conferências obrigatórias. "Confirmar" confere tudo de novo, guarda as lâminas da tela e aprova (radar_pauta_aprovar). */
+/* O quadro de aprovação (só o administrador, peça pronta): os canais (os que têm legenda), o modo (agendar ou à mão; v0.42.0: o
+   carrossel e o carrossel de fotos também agendam — a radar-redes v0.42.0 publica as lâminas; só o reel continua à mão) e as
+   conferências obrigatórias. "Confirmar" confere tudo de novo, guarda as lâminas da tela e aprova (radar_pauta_aprovar). */
 function blocoAprovar(p){
-  const canais = ["instagram", "facebook"].filter(k => (p["legenda_" + k] || "").trim()), soMao = !["imagem", "foto"].includes(p.formato);
+  const canais = ["instagram", "facebook"].filter(k => (p["legenda_" + k] || "").trim()), soMao = !["imagem", "foto", "carrossel", "carrossel_fotos"].includes(p.formato);
   // um envio caiu no meio (pode ter saído) ou a aprovação à mão foi desfeita (pode ter sido postada): o administrador confere na rede
   const caiu = (p.radar_redes_envios || []).some(e => e.situacao === "cancelado" && e.enviado_em && !e.post_id), mao = !!p.manual_desfeita_em;
   const caixa = (k, t) => `<label><input type="checkbox" class="aprovar-conf" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`;
@@ -1069,7 +1073,7 @@ function blocoAprovar(p){
     <fieldset class="checks"><legend>Como sai</legend>
       <label><input type="radio" name="aprovar-modo" value="agendar"${soMao ? " disabled" : " checked"}> Agendar para ${h(quandoPeca(p.data, p.hora))} (Brasília): a agenda do banco publica</label>
       <label><input type="radio" name="aprovar-modo" value="manual"${soMao ? " checked" : ""}> Vou publicar à mão (baixar ${p.formato === "reel" ? "o vídeo" : "as lâminas"} e copiar a legenda)</label>
-      ${soMao ? `<span class="sub">Carrossel e reel saem à mão nesta versão.</span>` : ""}</fieldset>
+      ${soMao ? `<span class="sub">O reel sai à mão nesta versão.</span>` : ""}</fieldset>
     ${caixas ? `<fieldset class="checks"><legend>Conferências</legend>${caixas}</fieldset>` : ""}
     <div class="acoes"><button class="btn verde" type="button" data-acao="peca-aprovar" data-id="${p.id}">Confirmar a aprovação</button></div></details>`;
 }
@@ -1358,7 +1362,7 @@ const PAUTA = {
     },
     /* Aprovar (só o administrador): tudo salvo; as caixas; a conferência do banco e da tela sem nada a resolver; a confirmação com o dia
        e a hora (e o aviso da agenda desligada); as lâminas da tela guardadas uma por vez em radar_imagens; e radar_pauta_aprovar, que
-       confere tudo de novo. À mão (carrossel e reel nesta versão, ou quem preferir), não cria envio: libera baixar e copiar. */
+       confere tudo de novo. À mão (o reel nesta versão, ou quem preferir), não cria envio: libera baixar e copiar. */
     async "peca-aprovar"(){
       const f = $("form[data-form=peca]"), painel = $("#peca-aprovar"); if(!f || !painel) return;
       if(pecaMudou(f)) throw new ErroApi(avisoPecaSuja(f));

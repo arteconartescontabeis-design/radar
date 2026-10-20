@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.29.0)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.42.0)
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha) e, v0.21.0, a peça da Pauta que ele aprovou para sair pela agenda.
@@ -38,6 +38,14 @@
 // Como publica:
 //   Instagram: POST /{ig-user-id}/media (image_url + caption) → espera o contêiner ficar pronto → POST /{ig-user-id}/media_publish
 //   Facebook:  POST /{page-id}/photos (url + message)
+//   v0.42.0 — carrossel (o banco devolve "imagens": as lâminas, de 2 a 10, na ordem do post — a peça da Pauta aprovada em carrossel
+//   ou a notícia autorizada com as lâminas):
+//     Instagram: um contêiner por lâmina (image_url + is_carousel_item) → todos prontos → o contêiner CAROUSEL (children + caption)
+//                → pronto → media_publish
+//     Facebook:  uma foto SEM publicar por lâmina (url + published=false) → POST /{page-id}/feed (message + attached_media[i])
+//   Cada lâmina vai para o bucket privado (como a imagem única) e os endereços internos ficam em imagens_urls (radar_rede_concluir):
+//   a nova tentativa assina de novo, sem reenviar. Se a publicação falhar depois de as fotos sem publicar terem subido ao Facebook,
+//   elas ficam lá sem aparecer para ninguém (a Meta não dá como apagá-las daqui); a nova tentativa cria outras.
 // Como exclui (v0.17.0): DELETE /{id do post} — no Facebook com o token da Página (pages_manage_posts); no Instagram com o
 // token do Instagram. Se a Meta não deixar apagar pelo aplicativo, a tela oferece "Já apaguei na rede" para registrar à mão.
 // A Meta só aceita imagem por link. v0.21.0: a arte da peça da Pauta (que pode ter foto da equipe) vai para o bucket PRIVADO
@@ -68,7 +76,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.29.0";
+const VERSAO = "0.42.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -391,6 +399,61 @@ async function publicarFacebook(imagemUrl: string, legenda: string, inicio: numb
   return { post_id: post, url };
 }
 
+// ------------------------------------------------------------------ carrossel (v0.42.0)
+/** Espera um contêiner do Instagram ficar pronto (a mesma espera do publicarInstagram, numa função própria: o carrossel espera
+ *  vários). "nome" é só para a mensagem de erro. */
+async function esperarContainerIg(id: string, inicio: number, nome: string) {
+  for (let t = 0; ; t++) {
+    const s = await metaIg("GET", id, { fields: "status_code" });
+    if (s.status_code === "FINISHED") return;
+    if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new Erro(502, `O Instagram não aceitou ${nome} (contêiner com erro).`);
+    if ((t + 1) * PASSO_IG_MS > ESPERA_IG_MS || Date.now() - inicio >= LIMITE_PUBLICAR_MS) {
+      throw new Erro(504, "O Instagram demorou para processar as imagens do carrossel. Tente de novo.");
+    }
+    await dormir(PASSO_IG_MS);
+  }
+}
+
+/** O carrossel do Instagram: um contêiner por lâmina (is_carousel_item), o contêiner CAROUSEL (children + caption) e a publicação. */
+async function publicarInstagramCarrossel(imagens: string[], legenda: string, inicio: number) {
+  const c = configMeta("instagram");
+  const filhos: string[] = [];
+  for (const url of imagens) {
+    aindaDaTempo(inicio);
+    const f = await metaIg("POST", `${c.ig}/media`, { image_url: url, is_carousel_item: "true" });
+    filhos.push(String(f.id));
+  }
+  for (const [i, id] of filhos.entries()) await esperarContainerIg(id, inicio, `a lâmina ${i + 1}`);
+  aindaDaTempo(inicio);
+  const cont = await metaIg("POST", `${c.ig}/media`, { media_type: "CAROUSEL", children: filhos.join(","), caption: legenda });
+  await esperarContainerIg(String(cont.id), inicio, "o carrossel");
+  aindaDaTempo(inicio);
+  const pub = await metaIg("POST", `${c.ig}/media_publish`, { creation_id: cont.id }, true);
+  let url = "";
+  try { url = (await metaIg("GET", pub.id, { fields: "permalink" })).permalink ?? ""; } catch { /* o post saiu; o link é só conveniência */ }
+  return { post_id: String(pub.id), url };
+}
+
+/** O carrossel do Facebook: cada lâmina sobe como foto SEM publicar e uma publicação única leva todas (attached_media). Se falhar
+ *  depois de alguma foto subir, ela fica lá sem aparecer para ninguém (a nova tentativa cria outras). */
+async function publicarFacebookCarrossel(imagens: string[], legenda: string, inicio: number) {
+  const c = configMeta("facebook");
+  const fotos: string[] = [];
+  for (const url of imagens) {
+    aindaDaTempo(inicio);
+    const f = await meta("POST", `${c.pagina}/photos`, { url, published: "false" });
+    fotos.push(String(f.id));
+  }
+  aindaDaTempo(inicio);
+  const params: Record<string, string> = { message: legenda };
+  fotos.forEach((id, i) => { params[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id }); });
+  const pub = await meta("POST", `${c.pagina}/feed`, params, true);
+  const post = String(pub.id);
+  let url = "";
+  try { url = (await meta("GET", post, { fields: "permalink_url" })).permalink_url ?? ""; } catch { /* idem */ }
+  return { post_id: post, url };
+}
+
 /** v0.21.0: a autorização, com peca_id (a peça da Pauta). Com o banco de antes da v0.21.0 (sem a coluna), lê de novo sem ela:
  *  a notícia continua saindo se esta função for instalada antes do SQL. */
 async function lerEnvio(servico: Record<string, string>, envio: number) {
@@ -421,19 +484,37 @@ async function publicar(envio: number, inicio: number, quem: Quem) {
   if (e?.erro) return { situacao: "erro", mensagem: String(e.erro) };
   // imagemUrl é o que fica no banco; paraMeta, o que a Meta baixa (na peça, o link assinado de 10 min, que nunca é gravado)
   let imagemUrl = e.imagem_url ?? "", paraMeta = "";
+  // v0.42.0: o carrossel — o banco devolveu as lâminas ("imagens") e, numa nova tentativa, os endereços já guardados ("imagens_urls")
+  const imagens: string[] = Array.isArray(e.imagens) ? e.imagens : [];
+  let imagensUrls: string[] = imagens.length && Array.isArray(e.imagens_urls) && e.imagens_urls.length === imagens.length ? e.imagens_urls : [];
+  // só o carrossel completo vai ao registro (p_imagens_urls): a falha antes de todas subirem reenvia tudo na próxima tentativa
+  const urlsCompletas = () => imagens.length >= 2 && imagensUrls.length === imagens.length ? { p_imagens_urls: imagensUrls } : {};
   try {
     // o bucket (até 2 × 10 s), o envio (até 20 s) e a assinatura (até 15 s) contam dentro dos 55 s de aindaDaTempo (passado esse
     // tempo, o pedido à Meta não sai e a recusa vira "erro"): o pior caso depois da publicação continua o de LIMITE_PUBLICAR_MS.
     // v0.22.0 (rodada 2): a notícia também vai para o bucket privado (nome aleatório, link de 10 min); só a nova tentativa de um
     // envio de antes desta versão, com o link público já gravado, manda esse link
-    if (!linha.peca_id && nomePublicoAntigo(imagemUrl)) paraMeta = imagemUrl;
-    else {
-      if (!imagemUrl) imagemUrl = await guardarPrivada(e.imagem);
-      paraMeta = await assinar(imagemUrl);
+    let r: { post_id: string; url: string };
+    if (imagens.length >= 2) {
+      // v0.42.0: cada lâmina no bucket privado (a tentativa anterior já pode ter guardado todas: assina de novo, sem reenviar)
+      if (!imagensUrls.length) {
+        const novas: string[] = [];
+        for (const d of imagens) novas.push(await guardarPrivada(d));
+        imagensUrls = novas;
+      }
+      const assinadas: string[] = [];
+      for (const u of imagensUrls) assinadas.push(await assinar(u));
+      r = e.canal === "instagram" ? await publicarInstagramCarrossel(assinadas, e.legenda, inicio) : await publicarFacebookCarrossel(assinadas, e.legenda, inicio);
+    } else {
+      if (!linha.peca_id && nomePublicoAntigo(imagemUrl)) paraMeta = imagemUrl;
+      else {
+        if (!imagemUrl) imagemUrl = await guardarPrivada(e.imagem);
+        paraMeta = await assinar(imagemUrl);
+      }
+      r = e.canal === "instagram" ? await publicarInstagram(paraMeta, e.legenda, inicio) : await publicarFacebook(paraMeta, e.legenda, inicio);
     }
-    const r = e.canal === "instagram" ? await publicarInstagram(paraMeta, e.legenda, inicio) : await publicarFacebook(paraMeta, e.legenda, inicio);
     // saiu: o registro tenta duas vezes; se não entrar, a autorização fica "enviando" (nunca "erro", que deixaria publicar de novo)
-    const fim = { p_envio: envio, p_ok: true, p_post_id: r.post_id, p_url: r.url || null, p_imagem_url: imagemUrl, p_erro: null };
+    const fim = { p_envio: envio, p_ok: true, p_post_id: r.post_id, p_url: r.url || null, p_imagem_url: imagemUrl || null, p_erro: null, ...urlsCompletas() };
     try { await banco(servico, "POST", "rpc/radar_rede_concluir", fim, 15_000); }
     catch { try { await dormir(500); await banco(servico, "POST", "rpc/radar_rede_concluir", fim, 15_000); }
             catch { return { situacao: "publicado", url: r.url, post_id: r.post_id,
@@ -443,7 +524,7 @@ async function publicar(envio: number, inicio: number, quem: Quem) {
     if (x instanceof Incerto) throw x;                                     // fica "enviando": não oferece "tentar de novo"
     const msg = x instanceof Erro ? x.message : "Erro inesperado ao publicar.";
     await banco(servico, "POST", "rpc/radar_rede_concluir",
-                { p_envio: envio, p_ok: false, p_post_id: null, p_url: null, p_imagem_url: imagemUrl || null, p_erro: msg }).catch(() => {});
+                { p_envio: envio, p_ok: false, p_post_id: null, p_url: null, p_imagem_url: imagemUrl || null, p_erro: msg, ...urlsCompletas() }).catch(() => {});
     throw x instanceof Erro ? x : new Erro(500, msg);
   }
 }
