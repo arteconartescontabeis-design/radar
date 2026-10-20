@@ -21,7 +21,7 @@ Só entram capturas que passaram em TODAS as regras (chave `rascunhos` de Config
   * no máximo `por_dia` rascunhos do robô por dia (horário de Brasília).
 
 Variáveis: as da coleta (SUPABASE_URL, SUPABASE_SERVICE_KEY, RADAR_IA_GATEWAY_TOKEN; opcionais
-IA_GATEWAY_URL e RADAR_IA_MODELO, padrão claude-sonnet-4-6). Nunca deixa a coleta vermelha.
+IA_GATEWAY_URL e RADAR_IA_MODELO, padrão claude-sonnet-5-5 — v0.39.0: antes claude-sonnet-4-6). Nunca deixa a coleta vermelha.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ from radar_banco import Banco, ErroBanco
 from radar_ia import ErroIA, _sem_segredo
 from radar_util import BRASILIA
 
-MODELO_PADRAO = "claude-sonnet-4-6"
+MODELO_PADRAO = "claude-sonnet-5-5"   # v0.39.0: 33% mais barato que o claude-sonnet-4-6, e mais novo
 MARCA_ROBO = "(robô)"                      # vai no modelo_ia: é assim que a tela e a contagem diária reconhecem o rascunho do robô
 AVISO_ROBO = ("Rascunho preparado automaticamente pelo robô a partir da captura de nota mais alta: "
               "confira tudo, gere a capa e só então envie para revisão.")
@@ -573,28 +573,57 @@ ESQUEMA_REVISAO = {"type": "object", "additionalProperties": False, "required": 
                    "properties": {"titulo": {"type": "string"}, "corpo": {"type": "string"}, "pendencias": {"type": "array", "items": {"type": "string"}}}}
 
 
+# v0.39.0: os modelos novos (Opus 5.5, Sonnet 5.5, Fable e Mythos) recusam tool_choice "tool" (escolha forçada): neles a
+# ferramenta é pedida por escrito, e a resposta que vier sem a chamada é reenviada UMA vez (o mesmo que a função radar-ia faz)
+def aceita_escolha_forcada(modelo: str) -> bool:
+    return not re.search(r"opus-5-5|sonnet-5-5|fable-5|mythos-5", modelo or "", re.I)
+
+
+def _pedido_ia(modelo: str, sistema: str, entrada: str, nome: str, esquema: dict, max_tokens: int = 6000) -> dict:
+    """v0.39.0: o corpo do pedido — as instruções fixas com cache (10% do preço a partir da 2ª chamada em até 5 minutos; a
+    primeira grava o cache por 1,25×) e, nos modelos sem escolha forçada, o pedido da ferramenta por escrito."""
+    forcada = aceita_escolha_forcada(modelo)
+    # o pedido por escrito vai ANTES das regras (o mesmo lugar da função radar-ia)
+    texto = sistema if forcada else f'IMPORTANTE: responda SOMENTE chamando a ferramenta "{nome}", uma única vez, sem nenhum texto fora dela.\n' + sistema
+    return {"model": modelo, "max_tokens": max_tokens,
+            "system": [{"type": "text", "text": texto, "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": entrada}],
+            "tools": [{"name": nome, "description": "Registra a resposta no formato pedido.", "input_schema": esquema}],
+            "tool_choice": {"type": "tool", "name": nome} if forcada else {"type": "auto"}}
+
+
 def _resposta_ia(sessao: requests.Session, url: str, token: str, corpo_pedido: dict, tempo: float = 120) -> tuple[dict, dict]:
-    """Chama a IA Central e devolve (dados, entrada da ferramenta). ErroIA para falha da IA; ErroConteudo para resposta inútil."""
-    try:
-        r = sessao.post(url, json=corpo_pedido, timeout=tempo,
-                        headers={"x-api-key": token, "anthropic-version": "2023-06-01", "x-ia-usuario": "robô de rascunhos"})
-    except requests.RequestException as e:
-        raise ErroIA(f"sem conexão com a IA Central ({type(e).__name__})") from e
-    try:
-        dados = r.json()
-    except ValueError:
-        dados = {}
-    if r.status_code >= 300:
-        erro = dados.get("error") if isinstance(dados, dict) else None
-        mensagem = erro.get("message") if isinstance(erro, dict) else None
-        raise ErroIA(_sem_segredo(f"HTTP {r.status_code} — {_espacos(mensagem or r.text)[:300]}", token))
-    if not isinstance(dados, dict) or dados.get("stop_reason") in ("max_tokens", "refusal"):
-        raise ErroConteudo("a resposta da IA veio incompleta ou foi recusada")
-    bloco_ia = next((c for c in dados.get("content") or [] if isinstance(c, dict) and c.get("type") == "tool_use"), None)
-    resposta = bloco_ia.get("input") if bloco_ia else None
-    if not isinstance(resposta, dict):
-        raise ErroConteudo("a IA devolveu uma resposta fora do formato esperado")
-    return dados, resposta
+    """Chama a IA Central e devolve (dados, entrada da ferramenta). ErroIA para falha da IA; ErroConteudo para resposta inútil.
+    v0.39.0: com tool_choice "auto" (modelo sem escolha forçada), a resposta sem a chamada da ferramenta é reenviada UMA vez."""
+    nome = corpo_pedido["tools"][0]["name"]
+    corpo_pedido = {**corpo_pedido, "messages": list(corpo_pedido["messages"])}
+    for vez in range(2):
+        try:
+            r = sessao.post(url, json=corpo_pedido, timeout=tempo,
+                            headers={"x-api-key": token, "anthropic-version": "2023-06-01", "x-ia-usuario": "robô de rascunhos"})
+        except requests.RequestException as e:
+            raise ErroIA(f"sem conexão com a IA Central ({type(e).__name__})") from e
+        try:
+            dados = r.json()
+        except ValueError:
+            dados = {}
+        if r.status_code >= 300:
+            erro = dados.get("error") if isinstance(dados, dict) else None
+            mensagem = erro.get("message") if isinstance(erro, dict) else None
+            raise ErroIA(_sem_segredo(f"HTTP {r.status_code} — {_espacos(mensagem or r.text)[:300]}", token))
+        if not isinstance(dados, dict) or dados.get("stop_reason") in ("max_tokens", "refusal"):
+            raise ErroConteudo("a resposta da IA veio incompleta ou foi recusada")
+        conteudo = [c for c in dados.get("content") or [] if isinstance(c, dict)]
+        bloco_ia = next((c for c in conteudo if c.get("type") == "tool_use"), None)
+        resposta = bloco_ia.get("input") if bloco_ia else None
+        if isinstance(resposta, dict):
+            return dados, resposta
+        if vez or corpo_pedido.get("tool_choice", {}).get("type") != "auto":
+            raise ErroConteudo("a IA devolveu uma resposta fora do formato esperado")
+        corpo_pedido["messages"] = corpo_pedido["messages"] + [
+            {"role": "assistant", "content": conteudo or [{"type": "text", "text": "(sem resposta)"}]},
+            {"role": "user", "content": f'Registre agora a resposta chamando a ferramenta "{nome}", uma única vez, sem texto fora dela.'}]
+    raise ErroConteudo("a IA devolveu uma resposta fora do formato esperado")
 
 
 def copias_sem_fonte(corpo: str, fontes: list) -> list[dict]:
@@ -633,10 +662,8 @@ def revisar(sessao: requests.Session, url: str, token: str, modelo: str, titulo:
                                                            else "fonte: " + sm(c["fonte"] or "a fonte do material")) + ")" for c in copias[:12])
                   + "\n\n" if copias else "")
                + f"Material de consulta (as fontes do assunto):\n{bloco}")
-    _, resposta = _resposta_ia(sessao, url, token, {
-        "model": modelo, "max_tokens": 6000, "system": REVISAO, "messages": [{"role": "user", "content": entrada}],
-        "tools": [{"name": "revisao", "description": "Registra a resposta no formato pedido.", "input_schema": ESQUEMA_REVISAO}],
-        "tool_choice": {"type": "tool", "name": "revisao"}}, 120 if resta is None else max(10, min(120, resta - 5)))
+    _, resposta = _resposta_ia(sessao, url, token, _pedido_ia(modelo, REVISAO, entrada, "revisao", ESQUEMA_REVISAO),
+                               120 if resta is None else max(10, min(120, resta - 5)))
     novo = re.sub(r"</?[a-zA-Z][^<>]*>", "", str(resposta.get("corpo") or "")).strip()
     if len(novo) < 80 or len(novo) < len(corpo) * 0.6:
         raise ErroConteudo("a IA devolveu um texto incompleto")
@@ -655,10 +682,7 @@ def gerar(sessao: requests.Session, url: str, token: str, modelo: str, formato: 
     entrada = (f"Assunto: {sem_marcas_de_bloco(principal['titulo'])}\nCategoria: {fonte.get('categoria_padrao') or '—'}\n"
                f"Resumo da equipe: {sem_marcas_de_bloco(principal.get('resumo_fonte')) or '—'}\nPúblico afetado: —\n\n"
                f"Trechos já conferidos pela equipe (use-os como base):\n(nenhum)\n\n{bloco}")
-    dados, resposta = _resposta_ia(sessao, url, token, {
-        "model": modelo, "max_tokens": 6000, "system": instrucoes(formato), "messages": [{"role": "user", "content": entrada}],
-        "tools": [{"name": "conteudo", "description": "Registra a resposta no formato pedido.", "input_schema": ESQUEMA}],
-        "tool_choice": {"type": "tool", "name": "conteudo"}})
+    dados, resposta = _resposta_ia(sessao, url, token, _pedido_ia(modelo, instrucoes(formato), entrada, "conteudo", ESQUEMA))
     titulo = _espacos(str(resposta.get("titulo") or ""))[:200] or principal["titulo"][:200]
     corpo = re.sub(r"</?[a-zA-Z][^<>]*>", "", str(resposta.get("corpo") or "")).strip()
     if len(corpo) < 80:

@@ -30,7 +30,7 @@
    Configurações (index.html).
    v0.36.0: só a versão e o recado do banco (sql/radar-setup-v0.36.0.sql); a correção avulsa fica na aba Vídeo (radar-video.js).
    ==================================================================== */
-const PAUTA_VERSAO = "0.36.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.39.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};

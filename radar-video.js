@@ -30,7 +30,7 @@
    administrador baixa o vídeo pronto (registrado) e "Conferir com o roteiro novo" não existe (a fala É o roteiro). Banco:
    sql/radar-setup-v0.36.0.sql (radar_video_criar_avulso, radar_video_baixar_avulso; peca_id opcional + titulo em radar_videos).
    ==================================================================== */
-const VIDEO_VERSAO = "0.36.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.39.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva

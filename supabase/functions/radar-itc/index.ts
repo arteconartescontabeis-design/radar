@@ -1,5 +1,6 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-itc" (v0.12.0; v0.14.2: chave interna nova do Supabase; v0.23.0: a caixa inteira)
+// RADAR ARTECON — Edge Function "radar-itc" (v0.12.0; v0.14.2: chave interna nova do Supabase; v0.23.0: a caixa inteira;
+// v0.39.0: o modelo padrão passa a ser o claude-haiku-5-5, 10× mais barato)
 //
 // Lê no Outlook (Microsoft Graph) os boletins da ITC Consultoria, pede à IA que separe as matérias e grava
 // no Radar pela função radar_receber_email (a mesma que a rotina diária usava). Substitui a rotina que
@@ -34,12 +35,12 @@
 //                                                           Excluídos (v0.23.0). Com o id de uma pasta (ou inbox), lê só ela,
 //                                                           como antes da v0.23.0.
 //   IA_GATEWAY_TOKEN, IA_GATEWAY_URL                        os mesmos da função radar-ia (IA Central)
-//   RADAR_ITC_MODELO                                        padrão: claude-haiku-4-5
+//   RADAR_ITC_MODELO                                        padrão: claude-haiku-5-5 (v0.39.0: antes claude-haiku-4-5)
 // SUPABASE_URL, a chave pública (SUPABASE_PUBLISHABLE_KEYS ou SUPABASE_ANON_KEY) e a chave interna (SUPABASE_SECRET_KEYS ou
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.23.0";
+const VERSAO = "0.39.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -56,7 +57,7 @@ function chavePublica(): string {
 }
 const ANON = chavePublica();
 const GATEWAY_URL = env("IA_GATEWAY_URL", "https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway").replace(/\/+$/, "");
-const MODELO = env("RADAR_ITC_MODELO", "claude-haiku-4-5");   // separar matérias é tarefa simples: o modelo rápido basta
+const MODELO = env("RADAR_ITC_MODELO", "claude-haiku-5-5");   // separar matérias é tarefa simples: o modelo rápido basta (v0.39.0: 10× mais barato que o haiku-4-5)
 const LOGIN_URL = env("GRAPH_LOGIN_URL", "https://login.microsoftonline.com").replace(/\/+$/, "");
 const GRAPH_URL = env("GRAPH_URL", "https://graph.microsoft.com/v1.0").replace(/\/+$/, "");
 const REMETENTE = env("ITC_REMETENTE", "itc@itcnet.com.br").trim().toLowerCase();
