@@ -1255,9 +1255,11 @@ function blocoProjecaoPainel(hoje, c){
 const TELAS = {
   async painel(){
     const [p] = await ler("radar_v_painel", {select:"*"});
-    // v0.41.0: a projeção (hoje, a semana e o mês) — a leitura que falha vira o aviso do quadro, sem derrubar o Painel
-    const hoje = hojeBrasilia();
-    const proj = typeof lerCronograma === "function" ? await lerCronograma(segundaDe(hoje), hoje).catch(() => null) : null;
+    // v0.41.0: a projeção (hoje, a semana e o mês) — as contas vêm do radar-pauta.js; sem ele (Ctrl+F5 pendente), o Painel abre
+    // sem o quadro, e a leitura que falha vira o aviso do quadro, sem derrubar o Painel
+    const temPauta = typeof lerCronograma === "function" && typeof hojeBrasilia === "function" && typeof segundaDe === "function";
+    const hoje = temPauta ? hojeBrasilia() : "";
+    const proj = temPauta ? await lerCronograma(segundaDe(hoje), hoje).catch(() => null) : null;
     const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
     const revisao = await ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,atualizado_em", status:"eq.em_revisao", order:"atualizado_em.desc", limit:"10"});
     const doRobo = p.rascunhos_robo ? await ler("radar_conteudos", {select:"id,titulo,assunto_id,criado_em,avisos_ia", status:"eq.rascunho", modelo_ia:"like.*(robô)", order:"criado_em.desc", limit:"10"}) : [];
@@ -1277,7 +1279,7 @@ const TELAS = {
         ? " (a lista inteira fica em Configurações → Agenda de obrigações)" : ""}</p>` : ""}</div>` : "";
     return `<h1>Painel do dia</h1>${parada}
       ${prorrogacao}
-      ${blocoProjecaoPainel(hoje, proj)}
+      ${temPauta ? blocoProjecaoPainel(hoje, proj) : ""}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
         ${c(p.capturas_24h, "Capturas nas últimas 24h", "fila")}
