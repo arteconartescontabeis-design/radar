@@ -12,7 +12,7 @@
    o script principal junta aos dele. Nada roda no carregamento: as funções usam os globais do script principal (h, rpc, pedir,
    recado, desenhar, ehAdmin, ErroApi, $) só quando são chamadas. Quem confere quem pode o quê é o banco.
    ==================================================================== */
-const RESPOSTAS_VERSAO = "0.39.0";    // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const RESPOSTAS_VERSAO = "0.40.0";    // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 // o que só a tela guarda: o formulário aberto (null, "novo" ou o id do gatilho) e os filtros do registro
 let RESP_E = {form: null, f_gatilho: "", f_situacao: ""};
@@ -24,7 +24,7 @@ const respQuando = v => { const d = new Date(v || ""); return !v || isNaN(d) ? "
   : d.toLocaleString("pt-BR", {timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}).replace(",", " às"); };
 // o banco ainda não tem o módulo (setup de antes desta versão): a tela diz o que falta em vez do erro cru
 const respSemBanco = e => e.status === 404 || /radar_respostas/.test(e.message || "");
-const RESP_SEM_BANCO = `<h1>Respostas</h1><div class="aviso erro" id="resp-sem-banco">A aba Respostas precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.36.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const RESP_SEM_BANCO = `<h1>Respostas</h1><div class="aviso erro" id="resp-sem-banco">A aba Respostas precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* o campo "publicação" aceita o número (o ID da mídia) ou, no Facebook, o link da publicação (a tela monta pagina_post) */
 function respMidia(texto, rede, contas){

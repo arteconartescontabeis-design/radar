@@ -1,5 +1,7 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-video" (v0.36.0: + a correção avulsa — envio_iniciar_avulso e baixar_avulso, o vídeo sem
+// RADAR ARTECON — Edge Function "radar-video" (v0.40.0: nenhuma mudança aqui — a versão acompanha o robô, que ganhou o juiz de
+// sentido e os avisos de arquivo fraco; o "Aceitar — quis dizer o mesmo" é função do banco, radar_video_aceitar, chamada pela tela;
+// v0.36.0: + a correção avulsa — envio_iniciar_avulso e baixar_avulso, o vídeo sem
 // peça na Pauta; v0.33.0: + a capa da aba Vídeo nos links, no concluir, na prévia e no baixar)
 //
 // O corretor de vídeo dos reels da Pauta. A equipe grava o reel no celular, em 1 a 12 clipes, e envia pela peça; um robô (GitHub
@@ -81,7 +83,7 @@
 // A transcrição é do robô (ajustes do dono): os segredos da Azure ficam no repositório privado, não aqui.
 // =====================================================================
 
-const VERSAO = "0.36.0";
+const VERSAO = "0.40.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");

@@ -367,16 +367,34 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.39.0"
+    assert pagina.inner_text(".versao") == "v0.40.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.39.0: a entrada do topo é a da versão em uso e conta ao dono, em 4 itens: a IA mais barata (os modelos novos e o cache),
+    # v0.40.0: a entrada do topo é a da versão em uso e conta ao dono, em 4 itens: o juiz de sentido (a paráfrase de termo não pede
+    # mais regravação; número e data continuam exigindo exatidão), o veredito em português com o "Aceitar (quis dizer o mesmo)"
+    # (na hora, sem montar de novo), o aviso de arquivo fraco na chegada e o que o administrador faz (o SQL, o Deploy da
+    # radar-video, o workflow e o commit do repositório privado e o segredo opcional do juiz)
+    topo, data, itens = pagina.evaluate("VERSOES[0]")
+    assert topo == pagina.evaluate("VERSAO") == "0.40.0" and data == "20/10/2026" and len(itens) == 4
+    texto = " ".join(itens)
+    for trecho in ["entende paráfrase (juiz de sentido)", "quis dizer o MESMO com outras palavras",
+                   "Termo dito de outro jeito", "deixa de pedir regravação sozinho",
+                   "número, data e valor continuam exigindo exatidão", "parece erro da transcrição",
+                   "Veredito claro em português", "“Aceitar (quis dizer o mesmo)”", "NA HORA, sem montar o vídeo de novo",
+                   "“Baixar o vídeo corrigido” aparece no mesmo clique", "“A transcrição errou (vale o roteiro)” continua",
+                   "resolução baixa (o WhatsApp comprime", "muito ruído de fundo",
+                   "sql/radar-setup-v0.40.0.sql", "nenhuma tabela nova", "Deploy da função radar-video",
+                   "RADAR_VIDEO_COMMIT", "RADAR_IA_GATEWAY_TOKEN", "copiado do painel",
+                   "sem ele, tudo funciona como antes, só sem o juiz", "Da v0.39.0 para a v0.40.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.39.0: a entrada seguinte conta ao dono, em 4 itens: a IA mais barata (os modelos novos e o cache),
     # o preparo em lote nos Assuntos, a foto real com o título na imagem e o que o administrador faz (o Deploy da radar-ia, o segredo
     # do banco de imagens e os modelos na IA Central; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.39.0" and data == "20/10/2026" and len(itens) == 4
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.39.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["IA mais barata no Radar inteiro", "Claude Sonnet 5.5 (33% mais barato", "Claude Haiku 5.5 (10× mais barato",
                    "memória de regras da Anthropic (cache)", "essa parte custa 10% do normal", "muda o preço",
@@ -391,7 +409,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.36.0: a entrada seguinte conta ao dono, em 3 itens: a correção avulsa (o que é e como se usa), o que
     # não muda (os termos e as travas) e o que muda de propósito (sem aprovação de peça; só o administrador baixa), e o que o
     # administrador faz (o SQL, o Deploy da radar-video e a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.36.0" and data == "18/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Correção avulsa (aba Vídeo): analisar e corrigir um vídeo SEM criar uma peça na Pauta",
@@ -408,7 +426,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.35.0: a entrada seguinte, em 4 itens: a aba Respostas (o gatilho, a palavra-chave, a
     # resposta pública e a privada), as proteções (nunca em dobro, a própria conta, o limite por hora com a fila, o Pausar todas, os
     # 7 dias da Meta), o "aguardando a Meta" e o que o administrador faz (o SQL, os Deploys, a agenda da fila e os 3 segredos)
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.35.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Respostas (nova): o Radar responde sozinho, no Instagram e no Facebook", "Comente", "QUERO",
@@ -426,7 +444,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.34.0: a entrada seguinte, em 4 itens: a aba Setor (as contas, a
     # leitura de segunda-feira, o painel e a ética), a hashtag desligada até a Meta aprovar, os erros da Meta em português e o que o
     # administrador faz (o SQL, o Deploy da radar-concorrentes e da radar-copia, a agenda do setor e a tela com o radar-setor.js)
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.34.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Setor (nova): como estão as publicações de um setor no Instagram", "e a da Artecon, para comparar",
@@ -443,7 +461,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.33.0: a entrada seguinte, em 8 itens: a aba Vídeo (quem vê e quem edita), os cortes, a legenda, o gancho/cartela/capa, os
     # cortes por padrão com o desfazer e o resumo, a duração com meta, o montar sem transcrever e o que o administrador faz
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.33.0" and data == "18/10/2026" and len(itens) == 8
     texto = " ".join(itens)
     for trecho in ["Aba Vídeo: a lista dos reels com vídeo e o editor do vídeo corrigido", "O administrador edita; o editor só vê; o leitor não vê",
@@ -464,7 +482,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # aviso público), a cópia mensal no OneDrive (dia 1 às 04h10, só a pasta, as tentativas, o lembrete "copia", nunca pelo GitHub), a
     # tela da cópia, o título que vai ao site sem o "nº" (e a página que não abre vira erro) e o que o administrador faz (o SQL antes da
     # tela, a versão, os conhecidos e o passo a passo do LEIAME)
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.32.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["Quadro de vencimentos de chaves e contas (Configurações, só o administrador)", "Vermelho: vencido ou até 7 dias; amarelo: até 30 dias",
@@ -483,7 +501,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (leis e decretos, CONFAZ, trabalho e previdência), as do gov.br, o filtro de tema (sem enxurrada), o Normas de volta (desligado até o
     # teste pelo GitHub), o que fica de fora e por quê (Florianópolis, Palhoça e São José pelos sites, o CONFAZ pelo site, o DOM/SC
     # desligado pelo pedido do site) e o que o administrador faz (o setup, a versão, a coleta e só então o SQL das fontes)
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.31.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["pelo Diário Oficial da União", "nenhuma senha nova", "leis complementares, decretos, medidas provisórias e emendas à Constituição",
@@ -504,7 +522,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (com as datas, as normas e o fim de semana), a agenda da semana da Pauta até o domingo, a nova data de uma prorrogação conferida
     # (só o administrador escreve), o aviso de possível prorrogação (onde aparece, o "Conferido", o que não conta) e o que o
     # administrador faz (o SQL antes da tela, o botão das anuais antes do Informativo de novembro; o robô dos avisos entra pelo merge)
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.30.0" and data == "17/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["13º salário e as obrigações anuais", "a 1ª parcela do 13º até 30/11 e a 2ª até 20/12", "Lei 4.749/1965",
@@ -525,7 +543,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # 16:00, a peça pronta há mais de 24 horas, o vídeo do reel e a notícia que não saiu); as regras (um e-mail por tipo por dia, cada
     # pendência uma vez só, sem nome, nada publicado); as Configurações; e o que o administrador faz (o SQL antes da tela, a radar-redes
     # 0.29.0 e a agenda de novo)
-    topo, data, itens = pagina.evaluate("VERSOES[8]")
+    topo, data, itens = pagina.evaluate("VERSOES[9]")
     assert topo == "0.29.0" and data == "17/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Lembretes por e-mail antes do dia", "a peça da Pauta de amanhã que ainda não está aprovada", "a partir das 16:00",
@@ -540,7 +558,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.28.1: a entrada seguinte conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
     # informação”) e o cartão em branco que não travam mais a peça, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava;
     # e o que o administrador faz (só a tela; o banco continua o da v0.28.0)
-    topo, data, itens = pagina.evaluate("VERSOES[9]")
+    topo, data, itens = pagina.evaluate("VERSOES[10]")
     assert topo == "0.28.1" and data == "17/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["a linha em branco em “Informações conferidas” (de “Acrescentar informação”)", "o cartão em branco",
@@ -554,7 +572,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # administrador, de hoje em diante, uma peça por dia; nasce planejada e não publica nem agenda nada; a importação depois), a marca
     # "Sócio(a) da Artecon" (os dois termos dispensados; o que continua valendo; o Histórico) e o que o administrador faz (o SQL antes da
     # tela; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[10]")
+    topo, data, itens = pagina.evaluate("VERSOES[11]")
     assert topo == "0.28.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Peça nova num dia vazio", "o administrador vê o botão “+ Nova peça”", "(de hoje em diante)",
@@ -574,7 +592,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.27.0: a entrada seguinte conta ao dono, em português simples, o cronograma de publicações na Pauta (a semana e o mês dela, o
     # mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta não entra; a que envelheceu
     # na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[11]")
+    topo, data, itens = pagina.evaluate("VERSOES[12]")
     assert topo == "0.27.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
@@ -592,7 +610,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[12]")
+    topo, data, itens = pagina.evaluate("VERSOES[13]")
     assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
@@ -609,7 +627,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[13]")
+    topo, data, itens = pagina.evaluate("VERSOES[14]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -625,7 +643,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[14]")
+    topo, data, itens = pagina.evaluate("VERSOES[15]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -641,7 +659,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[15]")
+    topo, data, itens = pagina.evaluate("VERSOES[16]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -666,7 +684,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[16]")
+    topo, data, itens = pagina.evaluate("VERSOES[17]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -675,7 +693,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[17]")
+    topo, data, itens = pagina.evaluate("VERSOES[18]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -1986,7 +2004,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.36.0', FUNCAO_MINIMA), versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.39.0", "0.39.0"]       # v0.39.0: a função de IA muda (modelos, cache, foto) e a mínima sobe junto
+    assert pagina.evaluate("[FUNCAO_MINIMA, VERSAO]") == ["0.39.0", "0.40.0"]       # v0.40.0: a radar-ia não muda — a mínima fica na 0.39.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2841,7 +2859,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.39.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.40.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -6791,7 +6809,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.39.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.40.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -6805,7 +6823,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
-    assert "o administrador roda o sql/radar-setup-v0.36.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 em diante: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.40.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 em diante: o setup desta versão
     # v0.28.0: a tela nova com o banco da v0.27.0 (a vista das pessoas da peça sem a coluna termos_dispensados): o mesmo aviso, com o
     # setup da v0.28.0
     pagina.unroute("**/rest/v1/radar_pauta_pecas*")
@@ -6815,7 +6833,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
     aviso = pagina.inner_text("#pauta-sem-banco")
-    assert "precisa do banco da v0.32.0" in aviso and "o administrador roda o sql/radar-setup-v0.36.0.sql" in aviso
+    assert "precisa do banco da v0.32.0" in aviso and "o administrador roda o sql/radar-setup-v0.40.0.sql" in aviso
 
 
 def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
@@ -7247,7 +7265,7 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         assert "A situação dos lembretes precisa do banco da v0.29.0" in pagina.inner_text("#lembretes-situacao")
-        assert "sql/radar-setup-v0.36.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 em diante: o setup desta versão
+        assert "sql/radar-setup-v0.40.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 em diante: o setup desta versão
     finally:
         limpo.execute("update radar_config set valor = %s where chave = 'lembretes'", (json.dumps(original),))
         limpo.execute("truncate radar_lembretes")
@@ -7676,7 +7694,7 @@ def test_painel_possivel_prorrogacao_e_conferido_so_admin(pagina, limpo, request
     assert pagina.locator("#prorrogacoes").count() == 0
     pagina.click("nav.abas >> text=Configurações")
     pagina.wait_for_selector("#prorrogacao-sem-banco >> text=O aviso de prorrogação precisa do banco da v0.30.0")
-    assert "o administrador roda o sql/radar-setup-v0.36.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0 em diante: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.40.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0 em diante: o setup desta versão
     assert pagina.locator("#prorrogacoes-config").count() == 0
 
 
@@ -9663,7 +9681,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.39.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.40.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -11390,8 +11408,8 @@ def test_configuracoes_com_o_banco_antigo(pagina, quadro_tela):
     pagina.route("**/rest/v1/rpc/radar_copias_situacao*", falta)
     abrir_configuracoes(pagina)
     pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
-    assert "O quadro de vencimentos precisa do banco novo: o administrador roda o sql/radar-setup-v0.36.0.sql" in pagina.inner_text("#vencimentos")
-    assert "A cópia de segurança precisa do banco novo: o administrador roda o sql/radar-setup-v0.36.0.sql" in pagina.inner_text("#copia-onedrive")
+    assert "O quadro de vencimentos precisa do banco novo: o administrador roda o sql/radar-setup-v0.40.0.sql" in pagina.inner_text("#vencimentos")
+    assert "A cópia de segurança precisa do banco novo: o administrador roda o sql/radar-setup-v0.40.0.sql" in pagina.inner_text("#copia-onedrive")
     assert pagina.locator("[data-acao=venc-conhecidos]").count() == 0 and pagina.locator("[data-acao=copia-agora]").count() == 0
 # ----------------------------------------------------------------------- v0.33.0: a aba Vídeo (o editor do vídeo corrigido)
 # o mapa do vídeo (a linha original em quadros de 1/30 s): um clipe com a fala de 0 a 10 s e um corte automático de 4 a 5 s (a chave
@@ -11950,6 +11968,76 @@ def test_avulso_para_o_editor_so_ver_e_sem_baixar(pagina, vtela):
     assert "Só o administrador baixa o vídeo avulso" in pagina.inner_text("#vaba-avulso-rodape")
     assert pagina.locator("[data-acao=vaba-avulso-baixar]").count() == 0
     assert pagina.locator("[data-acao=vaba-montar]").count() == 0
+
+
+# ----------------------------------------------------------------------- v0.40.0: o juiz de sentido e o "Aceitar (quis dizer o mesmo)"
+def test_video_veredito_do_juiz_e_aceitar_quis_dizer_o_mesmo_na_peca(pagina, vtela):
+    """O relatório mostra o resumo do juiz de sentido, o motivo em cada divergência julgada e o selo da liberada ("quis dizer o
+    mesmo"); o administrador clica "Aceitar (quis dizer o mesmo)" e o banco decide NA HORA (radar_video_aceitar): o vídeo fica
+    pronto sem montar de novo, a divergência ganha o selo de aceita e o botão some."""
+    db, fv = vtela
+    pid, ana = vb.reel(db)
+    vid = vb.na_fila(db, pid, ana)
+    aberta = {**DIVERGENCIA_DIA, "veredito": "sentido", "juiz": "O roteiro diz dia 20 e a fala diz dia 25."}
+    liberada = {"k": 1, "id": "abcdef0123456789", "em_s": 3.0, "clipe": 1, "falado": "no simples nacional", "roteiro": "no Simples",
+                "tipo": "termo", "regravar": False, "transcricao_errou": False, "veredito": "equivalente",
+                "juiz": "Disse o mesmo com outras palavras."}
+    rel = relatorio_final(divergencias=[aberta, liberada], avisos=("resolucao_baixa", "ruido_alto"),
+                          veredito={"resumo": "O termo foi dito com outras palavras; confira o dia.", "julgadas": 2, "liberadas": 1})
+    assert robo_conclui(fv, vid, rel) == "regravar"
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    video_rapido(pagina)
+    abrir_video(pagina, db, pid)
+    veredito = pagina.inner_text("#video-veredito")
+    assert "Juiz de sentido: O termo foi dito com outras palavras; confira o dia." in veredito
+    assert "(1 divergência(s) liberada(s): quis dizer o mesmo)" in veredito
+    rel_texto = pagina.inner_text("#video-relatorio")
+    assert "Precisa regravar:" in rel_texto and "Juiz de sentido: O roteiro diz dia 20 e a fala diz dia 25." in rel_texto
+    assert "quis dizer o mesmo (juiz de sentido)" in rel_texto and "Aceitar (quis dizer o mesmo)" in rel_texto
+    # v0.40.0: os avisos de arquivo fraco, em português simples
+    avisos = pagina.inner_text(".video-avisos")
+    assert "o WhatsApp comprime o vídeo" in avisos and "muito ruído de fundo" in avisos
+    confirmacoes(pagina)
+    limpar_recados(pagina)
+    pagina.click(f".video-btn-aceitar[data-marca='{DIVERGENCIA_DIA['id']}']")
+    pagina.wait_for_selector("#recado >> text=Divergência aceita: o vídeo corrigido está pronto.")
+    assert pagina.evaluate("() => window.__perguntas")[-1].startswith("Aceitar esta divergência")
+    sit, aj, r = db.execute("select situacao, ajustes, relatorio from radar_videos where id = %s", (vid,)).fetchone()
+    assert sit == "pronto" and aj["aceitas"] == [DIVERGENCIA_DIA["id"]] and r["divergencias"][0]["aceita"] is True
+    rel_texto = pagina.inner_text("#video-relatorio")
+    assert "aceita: quis dizer o mesmo" in rel_texto and "Precisa regravar:" not in rel_texto
+    assert "Divergências (todas decididas):" in rel_texto and pagina.locator(".video-btn-aceitar").count() == 0
+    assert "divergência(s) com o roteiro" not in pagina.inner_text("#video-resumo-correcoes")
+
+
+def test_avulso_aceitar_libera_o_baixar_no_mesmo_clique(pagina, vtela):
+    """No avulso para regravar, o "Aceitar (quis dizer o mesmo)" da aba Vídeo deixa o vídeo pronto na hora e o "Baixar o vídeo
+    corrigido" aparece sem montar de novo (o mesmo arquivo)."""
+    db, fv = vtela
+    ana = pessoa_do_corretor(db)
+    vid = vb.avulso_na_fila(db, ana)
+    div = {**DIVERGENCIA_DIA, "veredito": "transcricao", "juiz": "Parece que a transcrição picou o número."}
+    assert robo_conclui(fv, vid, relatorio_editor(texto=vb.FALA_AVULSA, divergencias=[div],
+                                                  veredito={"resumo": "Ouça o trecho do dia.", "julgadas": 1, "liberadas": 0})) == "regravar"
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_aba_video(pagina)
+    linha = pagina.locator(f"#vaba-avulsos tr[data-video='{vid}']")
+    linha.locator("[data-acao=vaba-abrir]").click()
+    pagina.wait_for_selector("#vaba-editor")
+    assert "juiz de sentido: Parece que a transcrição picou o número." in pagina.inner_text("#vaba-divergencias")
+    assert pagina.locator("[data-acao=vaba-avulso-baixar]").count() == 0                     # para regravar: nada de baixar
+    confirmacoes(pagina)
+    limpar_recados(pagina)
+    pagina.click(f"[data-acao=vaba-aceitar][data-marca='{DIVERGENCIA_DIA['id']}']")
+    pagina.wait_for_selector("#recado >> text=Divergência aceita: o vídeo corrigido está pronto.")
+    assert db.execute("select situacao from radar_videos where id = %s", (vid,)).fetchone()[0] == "pronto"
+    pagina.wait_for_selector("[data-acao=vaba-avulso-baixar]")                               # o Baixar aparece sem montar de novo
+    assert "aceita: quis dizer o mesmo" in pagina.inner_text("#vaba-divergencias")
+    assert pagina.locator("[data-acao=vaba-aceitar]").count() == 0
+    pagina.click("[data-acao=vaba-avulso-baixar]")
+    pagina.wait_for_selector("#vaba-avulso-link")
 
 
 def test_avulso_envio_que_nao_terminou_continua_ou_descarta_na_aba(pagina, vtela):

@@ -27,10 +27,17 @@
    "Corrigir um vídeo avulso" (título próprio, a fala para conferência colada direto, quem aparece escolhida ali, a mesma cartela,
    as mesmas 4 declarações e a mesma cota) e a lista das correções avulsas. O avulso segue o MESMO caminho do reel (envio TUS,
    robô, relatório, ajustes, editor, prévia); o que muda: não passa pela aprovação da peça e NUNCA é publicado pelo Radar — o
-   administrador baixa o vídeo pronto (registrado) e "Conferir com o roteiro novo" não existe (a fala É o roteiro). Banco:
-   sql/radar-setup-v0.36.0.sql (radar_video_criar_avulso, radar_video_baixar_avulso; peca_id opcional + titulo em radar_videos).
+   administrador baixa o vídeo pronto (registrado) e "Conferir com o roteiro novo" não existe (a fala É o roteiro). Banco: o setup
+   então em uso (radar_video_criar_avulso, radar_video_baixar_avulso; peca_id opcional + titulo em radar_videos).
+   v0.40.0 (a melhoria "v0.37" da proposta): o corretor entende paráfrase e diz o que faltou — o robô ganha o juiz de sentido
+   (robo/video/juiz.py, IA Central): a divergência de TERMO em que a pessoa quis dizer o mesmo deixa de pedir regravação sozinha, e
+   cada divergência julgada chega com o motivo em português (relatorio.divergencias[].veredito/juiz e relatorio.veredito.resumo).
+   Na tela: o resumo do juiz, o motivo em cada divergência e o botão "Aceitar (quis dizer o mesmo)" (radar_video_aceitar: o banco
+   decide a situação de novo NA HORA, sem montar de novo — o avulso pronto já libera o Baixar). Avisos novos de arquivo fraco na
+   chegada: resolucao_baixa (o WhatsApp comprime) e ruido_alto. Banco: a função radar_video_aceitar e a chave ajustes.aceitas
+   (ajustes_falta/ajustar/concluir/reconferir). O robô honra as aceitas e carrega o veredito no parcial e no final.
    ==================================================================== */
-const VIDEO_VERSAO = "0.39.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.40.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -90,7 +97,11 @@ const AVISOS_VIDEO = {
   boletim_pago:"A fala tem frase igual à do boletim pago (ITC): grave de novo com palavras próprias.",
   gancho_nao_cabe:"O texto do gancho não coube na tela e ficou de fora: encurte o texto do gancho ou marque “Sem o texto do gancho”.",
   lista_resumida:"As listas do relatório ficaram longas e foram resumidas.",
-  capa_movida:"A capa escolhida caiu num trecho cortado e foi para o quadro mais perto: confira na aba Vídeo."};
+  capa_movida:"A capa escolhida caiu num trecho cortado e foi para o quadro mais perto: confira na aba Vídeo.",
+  // v0.40.0: o arquivo fraco na chegada e o juiz de sentido
+  resolucao_baixa:"A gravação chegou com resolução baixa (o WhatsApp comprime o vídeo): da próxima vez, envie o arquivo original do celular (cabo, AirDrop ou um drive) para um reel nítido.",
+  ruido_alto:"O áudio chegou com muito ruído de fundo: o corretor limpa o que dá, mas fica melhor gravando em lugar silencioso ou com microfone.",
+  juiz_indisponivel:"O juiz de sentido (IA) não respondeu nesta rodada: as divergências ficaram sem julgamento (dá para aceitar à mão ou montar de novo)."};
 const MOTIVOS_LEGENDA = {bloco_inexistente:"o bloco não existe mais (o vídeo mudou: recarregue a peça)",
   texto_invalido:"texto vazio, com mais de 120 caracteres ou com { } \\ < >",
   numero_de_palavras:"o bloco fica com o mesmo número de palavras (troque palavra por palavra)",
@@ -202,7 +213,7 @@ async function blocoVideo(p){
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
   let vivos;
   try{ vivos = await videosDaPeca(p.id); }
-  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.36.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
+  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
@@ -531,6 +542,7 @@ function situacaoVideo(v, p, livre, adm){
 function resumoCorrecoesVideo(v){
   const r = objVideo(v.relatorio), aj = objVideo(v.ajustes);
   const manter = new Set(listaMarcas(aj.manter, CHAVE_CORTE)), errou = new Set(listaMarcas(aj.transcricao_errou, ID_DIVERGENCIA));
+  const aceitas = new Set(listaMarcas(aj.aceitas, ID_DIVERGENCIA));                      // v0.40.0: "Aceitar — quis dizer o mesmo"
   const cortes = listaVideo(r.cortes), meio = cortes.filter(c => numVideo(c.em_s) !== null && !c.mantido && !manter.has(String(c.chave ?? "")));
   const soma = l => segVideo(l.reduce((t, c) => t + (numVideo(c.dur_s) || 0), 0));
   const bordas = new Set(cortes.filter(c => c.tipo === "inicio" || c.tipo === "fim").map(c => c.clipe)).size;
@@ -545,10 +557,11 @@ function resumoCorrecoesVideo(v){
   if(trocas.length) fez.push(`escreveu ${trocas.length} palavra(s) da legenda na grafia do roteiro`);
   if(numVideo(objVideo(r.saida).lufs) !== null) fez.push("acertou o volume");
   if(numVideo(objVideo(r.legenda).blocos)) fez.push("gravou a legenda e a cartela");
-  const divs = listaVideo(r.divergencias).filter(d => d.regravar !== false && !d.transcricao_errou && !errou.has(String(d.id ?? "")));
+  const divs = listaVideo(r.divergencias).filter(d => d.regravar !== false && !d.transcricao_errou && d.aceita !== true
+    && !errou.has(String(d.id ?? "")) && !aceitas.has(String(d.id ?? "")));
   const fora = listaVideo(r.fora_do_roteiro), sug = listaVideo(r.sugestoes);
   const falta = [];
-  if(divs.length) falta.push(`${divs.length} divergência(s) com o roteiro (regravar, cortar o trecho na aba Vídeo ou marcar “A transcrição errou”)`);
+  if(divs.length) falta.push(`${divs.length} divergência(s) com o roteiro (regravar, cortar o trecho na aba Vídeo, marcar “A transcrição errou” ou “Aceitar — quis dizer o mesmo”)`);
   if(fora.length) falta.push(`${fora.length} trecho(s) falado(s) fora do roteiro (ficam no vídeo; a aba Vídeo corta cada um com um clique)`);
   if(sug.length) falta.push(`${sug.length} trecho(s) para ouvir`);
   if(!fez.length && !falta.length) return "";
@@ -558,20 +571,26 @@ function resumoCorrecoesVideo(v){
 function blocoRelatorio(v, podeAjustar){
   const r = objVideo(v.relatorio), parcial = relatorioParcial(v), aj = objVideo(v.ajustes);
   const manter = new Set(listaMarcas(aj.manter, CHAVE_CORTE)), errou = new Set(listaMarcas(aj.transcricao_errou, ID_DIVERGENCIA));
+  const aceitasAj = new Set(listaMarcas(aj.aceitas, ID_DIVERGENCIA));                     // v0.40.0
+  const podeAceitar = podeAjustar && ["pronto", "regravar"].includes(v.situacao);         // o aceitar libera NA HORA, sem montar de novo
   const em = x => numVideo(x) !== null ? `aos ${segVideo(x)} s` : "";
   const ouvir = x => !parcial && numVideo(x) !== null ? ` <button class="btn peq sec" type="button" data-acao="video-ouvir" data-em="${numVideo(x)}">▶ ouvir</button>` : "";
   const itens = [], saida = objVideo(r.saida), conf = objVideo(r.conferencia), entrada = objVideo(r.entrada);
   const avisos = [...new Set((Array.isArray(r.avisos) ? r.avisos : []).map(String))];
   if(!parcial) itens.push(resumoCorrecoesVideo(v));                                  // v0.33.0: o que foi corrigido e o que falta, no topo
+  // v0.40.0: o resumo do juiz de sentido (a IA que compara o sentido da fala com o roteiro), quando ele julgou
+  const ver = objVideo(r.veredito);
+  if(textoDe(ver.resumo)) itens.push(`<p class="sub video-veredito" id="video-veredito"><b>Juiz de sentido:</b> ${h(ver.resumo)}${numVideo(ver.liberadas) ? ` (${numVideo(ver.liberadas)} divergência(s) liberada(s): quis dizer o mesmo)` : ""}</p>`);
   if(avisos.length) itens.push(`<div class="aviso alerta video-avisos"><ul class="pauta-erros">${avisos.map(a => `<li>${h(deMapaVideo(AVISOS_VIDEO, a) || "Aviso do corretor: " + a)}</li>`).join("")}</ul></div>`);
   // o que precisa regravar: número, data ou termo diferente do roteiro
-  const divs = listaVideo(r.divergencias), abertas = divs.filter(d => d.regravar !== false && !d.transcricao_errou && !errou.has(d.id));
-  if(divs.length) itens.push(`<div class="${abertas.length ? "aviso erro" : "aviso info"} video-divergencias"><b>${abertas.length ? "Precisa regravar:" : "Divergências (marcadas: a transcrição errou):"}</b>
+  const divs = listaVideo(r.divergencias), abertas = divs.filter(d => d.regravar !== false && !d.transcricao_errou && d.aceita !== true && !errou.has(d.id) && !aceitasAj.has(String(d.id ?? "")));
+  if(divs.length) itens.push(`<div class="${abertas.length ? "aviso erro" : "aviso info"} video-divergencias"><b>${abertas.length ? "Precisa regravar:" : "Divergências (todas decididas):"}</b>
     <ul class="pauta-erros">${divs.map(d => { const k = Number(d.k), marca = ID_DIVERGENCIA.test(String(d.id ?? "")) ? d.id : "", marcado = !!d.transcricao_errou || errou.has(marca);
-      return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${deMapaVideo(TIPOS_DIVERGENCIA, d.tipo) ? ` (${h(deMapaVideo(TIPOS_DIVERGENCIA, d.tipo))})` : ""}.${d.parece_transcricao === true && !marcado && d.cortada !== true ? ` <b>Parece erro da transcrição</b> (palavra repetida ou confiança baixa): ouça e, se a pessoa disse certo, marque “A transcrição errou”.` : ""}${d.cortada === true ? ` <span class="selo ok">cortada na aba Vídeo: não vai ao ar</span>` : ""}${ouvir(d.em_s)}
-        ${podeAjustar && marca ? `<label class="video-check"><input type="checkbox" class="video-errou" value="${h(marca)}"${marcado ? " checked" : ""}> A transcrição errou (vale o roteiro)</label>`
-          : marcado ? ` <span class="selo ok">a transcrição errou: vale o roteiro</span>` : ""}</li>`; }).join("")}</ul>
-    ${podeAjustar && abertas.length ? `<p class="sub">Administrador: ouça na prévia; se a pessoa disse o que está no roteiro, marque “A transcrição errou (vale o roteiro)” e aplique os ajustes (a legenda passa a usar o roteiro naquele trecho; o áudio não muda). Se a fala está errada, grave de novo.</p>` : ""}</div>`);
+      const aceita = d.aceita === true || aceitasAj.has(marca);                           // v0.40.0
+      return `<li class="video-divergencia" data-k="${h(k)}">${h(em(d.em_s) ? em(d.em_s)[0].toUpperCase() + em(d.em_s).slice(1) : "No vídeo")} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${deMapaVideo(TIPOS_DIVERGENCIA, d.tipo) ? ` (${h(deMapaVideo(TIPOS_DIVERGENCIA, d.tipo))})` : ""}.${d.parece_transcricao === true && !marcado && !aceita && d.cortada !== true ? ` <b>Parece erro da transcrição</b> (palavra repetida ou confiança baixa): ouça e, se a pessoa disse certo, marque “A transcrição errou”.` : ""}${textoDe(d.juiz) && !marcado && !aceita && d.cortada !== true ? ` <span class="video-juiz">Juiz de sentido: ${h(d.juiz)}</span>` : ""}${d.veredito === "equivalente" && d.regravar === false && !aceita ? ` <span class="selo ok">quis dizer o mesmo (juiz de sentido)</span>` : ""}${aceita ? ` <span class="selo ok">aceita: quis dizer o mesmo</span>` : ""}${d.cortada === true ? ` <span class="selo ok">cortada na aba Vídeo: não vai ao ar</span>` : ""}${ouvir(d.em_s)}
+        ${podeAjustar && marca && !aceita ? `<label class="video-check"><input type="checkbox" class="video-errou" value="${h(marca)}"${marcado ? " checked" : ""}> A transcrição errou (vale o roteiro)</label>`
+          : marcado ? ` <span class="selo ok">a transcrição errou: vale o roteiro</span>` : ""}${podeAceitar && marca && !aceita && !marcado && d.regravar !== false && d.cortada !== true ? ` <button class="btn peq sec video-btn-aceitar" type="button" data-acao="video-aceitar" data-id="${h(v.id)}" data-marca="${h(marca)}">Aceitar (quis dizer o mesmo)</button>` : ""}</li>`; }).join("")}</ul>
+    ${podeAjustar && abertas.length ? `<p class="sub">Administrador: ouça na prévia. Se a pessoa disse o que está no roteiro e a transcrição é que errou, marque “A transcrição errou (vale o roteiro)” e aplique os ajustes (a legenda passa a usar o roteiro naquele trecho; o áudio não muda). Se disse o MESMO com outras palavras, use “Aceitar (quis dizer o mesmo)”: libera na hora, sem montar de novo. Se a fala está errada, grave de novo.</p>` : ""}</div>`);
   if(parcial) itens.unshift(`<p class="sub video-parcial">${["na_fila", "processando"].includes(v.situacao) ? "Relatório parcial: a fala já foi comparada com o roteiro; o vídeo ainda está sendo montado."
     : "Relatório parcial da última rodada: o corretor parou antes de montar o vídeo."}</p>`);
   // a duração
@@ -751,6 +770,9 @@ function ajustesDaTela(v){
   const errou = [...document.querySelectorAll("#video-reel .video-errou:checked")].map(c => c.value).filter(x => ID_DIVERGENCIA.test(x));
   if(manter.length) aj.manter = manter;
   if(errou.length) aj.transcricao_errou = errou;
+  // v0.40.0: as aceitas ("quis dizer o mesmo") ficam valendo na montagem nova (radar_video_ajustar substitui a lista: vai a de antes)
+  const aceitas = listaMarcas(antes.aceitas, ID_DIVERGENCIA);
+  if(aceitas.length) aj.aceitas = aceitas;
   let legenda = edicoesLegenda(antes.legenda);
   for(const c of document.querySelectorAll("#video-reel .video-legenda-texto:not(:disabled)")){
     const novo = c.value.replace(/\s+/g, " ").trim(), u = c.dataset.u, n = Number(c.dataset.n);
@@ -873,7 +895,7 @@ const CHAVES_EDITOR_VIDEO = ["cortar", "inicio_q", "fim_q", "capa_q", "legenda_t
 const ABA_VIDEO_FPS = 30;
 const ABA_VIDEO_LIMITES = {min:5, max:900, fala:2, cortes:30, corteMin:3};   // v0.33.0: o teto é o da API do Instagram (15 min); a meta das Configurações é só aviso
 const ABA_VIDEO_CAMPOS = CAMPOS_VIDEO + ",palavras_tentativa,rodada";
-const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.36.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.40.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 const abaVideo = () => (estadoVideo().aba ||= {filtro:"futuro", rascunhos:{}, previaLigada:true, abertas:{cortar:true}});
 const ehEditorVideo = v => CHAVES_EDITOR_VIDEO.some(k => Object.prototype.hasOwnProperty.call(objVideo(v?.ajustes), k));
 const inteiroVideo = x => Number.isInteger(x) ? x : null;
@@ -955,6 +977,10 @@ function ajustesDoEditor(v, r){
   const antes = objVideo(v.ajustes), aj = {}, blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista);
   if(r.manter.length) aj.manter = [...r.manter];
   if(r.errou.length) aj.transcricao_errou = [...r.errou];
+  // v0.40.0: as aceitas ("quis dizer o mesmo") não se editam aqui — vão sempre as do vídeo de agora, para continuarem valendo
+  // na montagem nova (o aceitar é na hora, radar_video_aceitar, e pode acontecer com o rascunho já aberto)
+  const aceitas = listaMarcas(antes.aceitas, ID_DIVERGENCIA);
+  if(aceitas.length) aj.aceitas = aceitas;
   let legenda = edicoesLegenda(antes.legenda);
   for(const [i, novo] of Object.entries(r.legenda)){
     const b = blocos[Number(i)], u = numVideo(b?.u), n = numVideo(b?.palavras);
@@ -1291,11 +1317,13 @@ function htmlCortesAbaVideo(v, r, ed){
   const robo = meio.length ? `<h3>Cortes do robô</h3><ul class="vaba-cortes" id="vaba-cortes-robo">${meio.map(c => { const k = CHAVE_CORTE.test(String(c.chave ?? "")) ? c.chave : "";
     return `<li>${h(deMapaVideo(TIPOS_CORTE, c.tipo) || c.tipo)} aos ${segVideo(c.em_s)} s (${segVideo(c.dur_s, 2)} s)${textoDe(c.texto) ? ` “${h(c.texto)}”` : ""}
       ${k ? `<label class="video-check"><input type="checkbox" class="vaba-manter" value="${h(k)}"${r.manter.includes(k) ? " checked" : ""}${dis}> Manter este trecho</label>` : ""}</li>`; }).join("")}</ul>` : "";
-  const divs = listaVideo(rel.divergencias);
+  const divs = listaVideo(rel.divergencias), aceitasAba = listaMarcas(objVideo(v.ajustes).aceitas, ID_DIVERGENCIA);
   const divergencias = divs.length ? `<h3>Divergências com o roteiro</h3><ul class="vaba-cortes" id="vaba-divergencias">${divs.map((d, i) => { const marca = ID_DIVERGENCIA.test(String(d.id ?? "")) ? d.id : "";
-    return `<li>${numVideo(d.em_s) !== null ? `Aos ${segVideo(d.em_s)} s` : "No vídeo"} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${d.parece_transcricao === true && !d.cortada ? ` — <b>parece erro da transcrição</b>: ouça e confirme` : ""}${d.cortada ? ` ${selo("cortada: não vai ao ar", "ok")}` : ""}
+    const aceita = d.aceita === true || aceitasAba.includes(marca);                      // v0.40.0: "Aceitar — quis dizer o mesmo"
+    return `<li>${numVideo(d.em_s) !== null ? `Aos ${segVideo(d.em_s)} s` : "No vídeo"} a fala diz “${h(d.falado)}” e o roteiro diz “${h(d.roteiro)}”${d.parece_transcricao === true && !d.cortada && !aceita ? ` — <b>parece erro da transcrição</b>: ouça e confirme` : ""}${textoDe(d.juiz) && !d.cortada && !aceita && !d.transcricao_errou ? ` — juiz de sentido: ${h(d.juiz)}` : ""}${d.veredito === "equivalente" && d.regravar === false && !aceita ? ` ${selo("quis dizer o mesmo (juiz de sentido)", "ok")}` : ""}${aceita ? ` ${selo("aceita: quis dizer o mesmo", "ok")}` : ""}${d.cortada ? ` ${selo("cortada: não vai ao ar", "ok")}` : ""}
       ${!d.cortada && ed && numVideo(d.ate_s) !== null ? `<span class="acoes"><button class="btn peq sec" type="button" data-acao="vaba-cortar-divergencia" data-i="${i}">Cortar este trecho</button></span>` : ""}
-      ${!d.cortada && marca ? `<label class="video-check"><input type="checkbox" class="vaba-errou" value="${h(marca)}"${r.errou.includes(marca) ? " checked" : ""}${dis}> A transcrição errou (vale o roteiro)</label>` : ""}</li>`; }).join("")}</ul>` : "";
+      ${!d.cortada && marca && !aceita ? `<label class="video-check"><input type="checkbox" class="vaba-errou" value="${h(marca)}"${r.errou.includes(marca) ? " checked" : ""}${dis}> A transcrição errou (vale o roteiro)</label>` : ""}
+      ${ed && ["pronto", "regravar"].includes(v.situacao) && marca && !aceita && !d.transcricao_errou && !r.errou.includes(marca) && d.regravar !== false && !d.cortada ? `<span class="acoes"><button class="btn peq sec video-btn-aceitar" type="button" data-acao="vaba-aceitar" data-marca="${h(marca)}">Aceitar (quis dizer o mesmo)</button></span>` : ""}</li>`; }).join("")}</ul>` : "";
   // v0.33.0 (pedido do dono): o falado fora do roteiro, marcado para cortar com um clique (não sai sozinho: pode mudar o sentido)
   const foras = listaVideo(rel.fora_do_roteiro);
   const foraDoRoteiro = foras.length ? `<h3>Falado fora do roteiro (fica no vídeo e na legenda)</h3><ul class="vaba-cortes" id="vaba-fora">${foras.map((x, i) =>
@@ -1664,6 +1692,16 @@ const ACOES_ABA_VIDEO = {
     await rpc("radar_video_de_novo", {p_id:v.id, p_cartela:refazer ? linhasCartela(v.fala_pessoa) : null});
     const robo = await acionarCorretor(); await desenhar(); recado(`Pedido de novo ao corretor. ${robo}`);
   },
+  /* v0.40.0: "Aceitar (quis dizer o mesmo)" na aba Vídeo — o mesmo radar_video_aceitar da peça: na hora, sem montar de novo */
+  async "vaba-aceitar"(el){
+    if(!ehAdmin()) throw new ErroApi("Só o administrador aceita uma divergência do vídeo.");
+    const v = videoDaAba(), marca = String(el.dataset.marca || "");
+    if(!ID_DIVERGENCIA.test(marca)) throw new ErroApi("A divergência não confere com o relatório: recarregue a aba Vídeo.");
+    if(!confirm("Aceitar esta divergência: a pessoa quis dizer o MESMO com outras palavras? Ela deixa de pedir regravação na hora (sem montar de novo); a legenda fica com o que foi dito.")) return;
+    const r = await rpc("radar_video_aceitar", {p_id:v.id, p_aceitas:[marca]});
+    await desenhar();
+    recado(r?.situacao === "pronto" ? "Divergência aceita: o vídeo corrigido está pronto." : "Divergência aceita; ainda há o que decidir.");
+  },
   /* edicao_curta: os cortes do editor deixaram menos de 2 s de fala — tira os cortes, o começo e o fim e monta de novo */
   async "vaba-desfazer-edicao"(){
     if(!ehAdmin()) throw new ErroApi("Só o administrador edita o vídeo do reel.");
@@ -1865,6 +1903,17 @@ const VIDEO = {
       if(p.id !== estadoVideo().peca) return;
       const robo = await acionarCorretor(); estadoVideo().previa = null; await depoisDoVideo(p.id);
       recado(`Ajustes gravados: o corretor monta o vídeo de novo. ${robo}`);
+    },
+    /* v0.40.0: "Aceitar (quis dizer o mesmo)" — o banco tira a regravação daquela divergência e decide a situação de novo NA HORA
+       (radar_video_aceitar): nada é montado de novo (a legenda já é o que foi dito) e o vídeo pode ficar pronto no mesmo clique */
+    async "video-aceitar"(el){
+      const {p} = pecaDoVideo(), v = videoDaTela(el), marca = String(el.dataset.marca || "");
+      if(!ehAdmin()) throw new ErroApi("Só o administrador aceita uma divergência do vídeo.");
+      if(!ID_DIVERGENCIA.test(marca)) throw new ErroApi("A divergência não confere com o relatório: recarregue a peça.");
+      if(!confirm("Aceitar esta divergência: a pessoa quis dizer o MESMO com outras palavras? Ela deixa de pedir regravação na hora (sem montar de novo); a legenda fica com o que foi dito.")) return;
+      const r = await rpc("radar_video_aceitar", {p_id:v.id, p_aceitas:[marca]});
+      await depoisDoVideo(p.id);
+      recado(r?.situacao === "pronto" ? "Divergência aceita: o vídeo corrigido está pronto." : "Divergência aceita; ainda há o que decidir no relatório.");
     },
     /* À mão: o vídeo aprovado, com o banco conferindo o termo de hoje e o hash aprovado (radar_video_para_baixar, pela função) */
     async "video-baixar"(){

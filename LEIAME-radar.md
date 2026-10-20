@@ -1,4 +1,4 @@
-# Radar Artecon — v0.39.0
+# Radar Artecon — v0.40.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,20 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.40.0 (a melhoria chamada "v0.37" na proposta aprovada em 20/10 — ela sai depois da v0.39.0, e a numeração do aplicativo só
+anda para a frente) deixa o **corretor de vídeo** mais inteligente e mais claro. O **juiz de sentido** (`robo/video/juiz.py`, pela
+IA Central): quando a fala diverge do roteiro, o robô pergunta à IA se a pessoa **quis dizer o mesmo com outras palavras** — a
+divergência de **termo** equivalente deixa de pedir regravação sozinha (número, data e valor continuam exigindo exatidão: isso é
+conta do alinhamento, não opinião), a que parece erro da transcrição chega marcada, e toda divergência julgada traz o **motivo em
+português** (o que faltou ou mudou), com um **resumo do juiz** no relatório. Na tela, o botão novo **"Aceitar (quis dizer o mesmo)"**
+(`radar_video_aceitar`): o banco tira a regravação daquela divergência e decide a situação de novo **na hora**, sem montar o vídeo
+de novo — no avulso, o "Baixar o vídeo corrigido" aparece no mesmo clique. E o relatório passa a avisar o **arquivo fraco na
+chegada**: `resolucao_baixa` (o WhatsApp comprime: envie o arquivo original) e `ruido_alto` (grave em lugar silencioso ou com
+microfone). Mudam o banco (`sql/radar-setup-v0.40.0.sql`: a função nova e a chave `ajustes.aceitas`; **nenhuma tabela nova**, nada é
+apagado), o robô do vídeo e a função `radar-video` (só a versão), e a tela. **Um segredo novo, opcional, no repositório privado**:
+`RADAR_IA_GATEWAY_TOKEN` (o mesmo token do Radar na IA Central; sem ele, tudo funciona como antes, só sem o juiz). Veja "Da v0.39.0
+para a v0.40.0".
 
 A v0.39.0 (pedido do dono de 20/10) barateia a IA do Radar inteiro e acelera o preparo das notícias. **Modelos novos por padrão**:
 o Claude **Sonnet 5.5** (33% mais barato que o Sonnet 4.6, e mais novo) nas ações que redigem e o Claude **Haiku 5.5** (10× mais
@@ -926,15 +940,15 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 |---|---|
 | `index.html` | Dashboard de curadoria (uso interno, com login). Não há página pública. |
 | `radar-pauta.js` | A aba Pauta (v0.21.0), carregada pelo `index.html`. Vai sempre junto com ele: com os dois de versões diferentes, a aba pede Ctrl+F5. |
-| `radar-video.js` | O corretor de vídeo do reel (v0.22.0), a aba Vídeo (v0.33.0) e a correção avulsa (v0.36.0), carregado pelo `index.html` depois do `radar-pauta.js`. Vai sempre junto com os dois. |
+| `radar-video.js` | O corretor de vídeo do reel (v0.22.0), a aba Vídeo (v0.33.0), a correção avulsa (v0.36.0) e o "Aceitar (quis dizer o mesmo)" com o veredito do juiz de sentido (v0.40.0), carregado pelo `index.html` depois do `radar-pauta.js`. Vai sempre junto com os dois. |
 | `radar-setor.js` | A aba Setor (v0.34.0): a análise das publicações do setor no Instagram. Carregado pelo `index.html` depois do `radar-video.js`; vai sempre junto. |
 | `radar-respostas.js` | A aba Respostas (v0.35.0): as respostas automáticas dos comentários com palavra-chave. Carregado pelo `index.html` depois do `radar-setor.js`; vai sempre junto. |
 | `informativo.html` | Informativo Mensal para imprimir / salvar em PDF (uso interno, usa o login do dashboard). |
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.36.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.36.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.40.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.40.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail). |
@@ -951,7 +965,7 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
 | `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações; desde a v0.31.0, o filtro de tema das fontes e a leitura do sistema Normas da Receita pela pesquisa nova (`robo/radar_normas.py`); desde a v0.32.0, o robô dos lembretes avisa também o vencimento de uma chave ou conta e a cópia do mês que não saiu. |
 | `sql/radar-fontes-novas-v0.31.0.sql` | As fontes oficiais da v0.31.0 (Diário Oficial: leis e decretos, CONFAZ, trabalho e previdência; gov.br: eSocial, FGTS Digital e Previdência; DOM/SC, desligadas) e a rfb-normas na pesquisa nova. Roda depois de o robô da v0.31.0 coletar uma vez; pode rodar de novo. |
-| `robo/video/` | O robô do corretor de vídeo (v0.22.0): o código, o `Dockerfile` do ffmpeg isolado, as fontes DM Sans da legenda e da cartela (licença OFL) e o **modelo** do workflow do repositório privado (`workflow/radar-video.yml`). Roda no repositório privado `radar-video`, nunca neste. |
+| `robo/video/` | O robô do corretor de vídeo (v0.22.0): o código, o `Dockerfile` do ffmpeg isolado, as fontes DM Sans da legenda e da cartela (licença OFL) e o **modelo** do workflow do repositório privado (`workflow/radar-video.yml`). Desde a v0.40.0, também o juiz de sentido (`juiz.py`, pela IA Central, com o segredo opcional `RADAR_IA_GATEWAY_TOKEN` do repositório privado). Roda no repositório privado `radar-video`, nunca neste. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes, testes e, desde a v0.29.0, os lembretes por e-mail (`radar-lembretes.yml`, "Radar — lembretes por e-mail"). |
 | `testes/` | Suíte de testes automatizados. O `testes/amostras/pauta-ficticia.csv` é um calendário de mentira, só com nomes inventados; os vídeos e as falas dos testes do corretor são sintéticos, gerados na hora (nenhuma gravação real). |
 | `RELATORIO-TESTES-radar.md` | O que foi testado, o que não foi e o que as revisões independentes encontraram. |
@@ -2860,6 +2874,35 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.39.0 para a v0.40.0** (muda o banco: SQL novo, que pode rodar de novo; mudam a função `radar-video`, o robô do vídeo — pelo
+commit fixo do repositório privado — e a tela; as funções `radar-ia`, `radar-redes`, `radar-itc`, `radar-copia`,
+`radar-concorrentes` e `radar-meta-webhook` e as agendas **não mudam**; **um segredo novo, opcional, no repositório privado**:
+`RADAR_IA_GATEWAY_TOKEN` — copiado do painel da IA Central direto para o GitHub, nunca pelo chat). Supõe a v0.39.0 instalada. Sobre
+o nome: esta é a melhoria chamada **"v0.37"** na proposta aprovada; ela sai **depois** da v0.39.0, e a numeração do aplicativo só
+anda para a frente — por isso, **v0.40.0**. **Nesta ordem**:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.40.0.sql` inteiro, **antes de publicar a tela**. Confira no fim: **37
+   tabelas** (nenhuma nova) e "instalacoes concluidas" com a **v0.40.0**. Ele cria a função `radar_video_aceitar` e ensina as
+   outras a conhecer a chave `ajustes.aceitas`; nada é apagado.
+2. Supabase → **Edge Functions** → `radar-video` → cole o `supabase/functions/radar-video/index.ts` desta versão → **Deploy**, com
+   o **"Verify JWT" desligado** (como já está). Só muda a versão (o teste da instalação confere função e robô iguais).
+3. No repositório **privado** `radar-video` (GitHub): recopie o `.github/workflows/radar-video.yml` a partir do
+   `robo/video/workflow/radar-video.yml` desta versão (o passo "Alinhar" ganha as variáveis do juiz) e, em Settings → Secrets and
+   variables → Actions, troque a variável **`RADAR_VIDEO_COMMIT`** pelo SHA do commit desta versão no repositório público.
+4. Ainda lá, crie o segredo **`RADAR_IA_GATEWAY_TOKEN`**: o token do aplicativo "radar" na IA Central (o MESMO das agendas de
+   coleta deste repositório público), copiado do painel direto para o campo do GitHub — nunca pelo chat. **É opcional**: sem ele, o
+   corretor funciona exatamente como antes, só sem o juiz de sentido (e sem nenhum aviso chato).
+5. Publique a tela (`index.html`, `radar-pauta.js`, `radar-video.js`, `radar-setor.js` e `radar-respostas.js`, juntos) e aperte
+   **Ctrl+F5**. O rodapé mostra "Radar v0.40.0"; nas divergências aparecem o motivo do juiz e o botão "Aceitar (quis dizer o
+   mesmo)".
+6. Conferência: envie um vídeo de teste (pode ser um avulso) com uma palavra trocada de propósito; o relatório deve trazer o
+   veredito do juiz e, se você aceitar, o vídeo fica pronto na hora, sem montar de novo.
+
+**Como desligar o juiz:** apague o segredo `RADAR_IA_GATEWAY_TOKEN` do repositório privado — na rodada seguinte o robô volta ao
+comportamento de antes (sem aviso). O "Aceitar (quis dizer o mesmo)" e os avisos de arquivo fraco não têm nada a desligar: só
+aparecem quando há o que mostrar. **Custo do juiz:** uma chamada por vídeo **com divergência** (sem divergência, nenhuma), uns
+R$ 0,05 a R$ 0,15 por vídeo no Sonnet 5.5, registrada no Consumo de IA como as outras.
 
 **Da v0.36.0 para a v0.39.0** (o banco **não muda** — nenhum SQL; mudam as funções `radar-ia` e `radar-itc` e a tela; o robô muda
 pelo merge; **um segredo novo** na `radar-ia`: `PIXABAY_API_KEY`; nada de chave ou segredo pelo chat). Supõe a v0.36.0 instalada.

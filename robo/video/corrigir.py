@@ -224,6 +224,7 @@ def alinhar(trab: Trabalho) -> int:
     """[chave do robô] Guarda a transcrição e conta os segundos (modo completo), alinha, planeja os cortes e manda o parcial."""
     import alinhar as alinhamento
     import cortes
+    import juiz
     import relatorio
     pedido, estado = trab.ler("pedido"), trab.ler("estado")
     if pedido is None or trab.erro():
@@ -259,6 +260,9 @@ def alinhar(trab: Trabalho) -> int:
                 raise parar
         cfg, ajustes = pedido["config"], pedido["ajustes"]
         al = alinhamento.alinhar(pedido["fala_roteiro"], r["palavras"], r["frases"], cfg, ajustes)
+        # v0.40.0: o juiz de sentido (IA Central, se o token estiver configurado) — paráfrase de termo deixa de pedir
+        # regravação; a falha do juiz vira só o aviso juiz_indisponivel, nunca para a correção
+        julgamento = juiz.julgar(pedido["fala_roteiro"], al)
         infos, silencios = estado["infos"], [tuple(s) for s in estado["silencios"]]
         # sem nenhuma palavra (a Azure não ouviu nada), os cortes vêm só dos silêncios (a reserva), e não o erro sem_fala
         # v0.33.0: os cortes, o começo e o fim do editor da aba Vídeo (quadros da linha original, a de fala48k.wav)
@@ -274,7 +278,7 @@ def alinhar(trab: Trabalho) -> int:
     segredo.log("alinhar", pedido=vid, palavras=len(r["palavras"]), guardada=guardada, registrada=registrada,
                 divergencias=len(parcial.get("divergencias") or []), fora=len(parcial.get("fora_do_roteiro") or []),
                 cortes=len(plano["cortes"]), sugestoes=len(plano["sugestoes"]), fala_s=round(plano["fala_q"] / 30, 1),
-                cortes_editor=sum(1 for c in plano["cortes"] if c.get("tipo") == "editor"))
+                cortes_editor=sum(1 for c in plano["cortes"] if c.get("tipo") == "editor"), juiz=julgamento)
     return 0
 
 

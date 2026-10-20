@@ -489,6 +489,8 @@ def test_ajustes_reconferir_de_novo_descartar_e_apaguei(corretor):
                  # as marcas apontam o trecho pelo que ele é (a chave do corte e o id da divergência), nunca pela posição na lista
                  {"manter": [3]}, {"manter": ["3"]}, {"manter": ["1:30; drop"]}, {"transcricao_errou": [0]}, {"transcricao_errou": ["0123"]},
                  {"transcricao_errou": ["0123456789ABCDEF"]},
+                 # v0.40.0: as aceitas ("quis dizer o mesmo"), a mesma forma de transcricao_errou
+                 {"aceitas": "0123456789abcdef"}, {"aceitas": [0]}, {"aceitas": ["0123456789ABCDEF"]}, {"aceitas": ["0123"] * 201},
                  {"legenda": "3:2"}, {"legenda": {"1:2:3": "texto"}}, {"legenda": {"3:2": "com {\\b1} comando"}}, {"legenda": {"3": ""}},
                  {"legenda": {"3": "x" * 121}}, {"legenda": {str(i): "a" for i in range(201)}}, {"estilo": "grande"}, {"sem_gancho": "sim"},
                  # a lista [[chave, texto], …], na ordem em que o robô aplica
@@ -498,7 +500,7 @@ def test_ajustes_reconferir_de_novo_descartar_e_apaguei(corretor):
             ajustar(ruim)
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR305"):
         ajustar({}, ["Só uma linha"])
-    bom = {"manter": ["2:285", "1:30b"], "transcricao_errou": ["0123456789abcdef"],
+    bom = {"manter": ["2:285", "1:30b"], "transcricao_errou": ["0123456789abcdef"], "aceitas": ["fedcba9876543210"],
            "legenda": [["12:4", "O prazo vence hoje"], ["7", "eSocial"], ["12:4", "O prazo vence já"]],
            "estilo": "compacta", "sem_gancho": True}
     assert ajustar(bom, [IDENT]) == {"id": vid, "modo": "montagem"}
@@ -1061,7 +1063,7 @@ def test_socio_grava_sem_os_termos_e_continua_com_ativa_menor_e_declaracoes(corr
 def test_funcoes_do_video_sem_current_date_com_caminho_e_configuracao_inicial(db):
     funcoes = db.execute("""select p.proname, p.prosrc, p.proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                             where n.nspname = 'public' and (p.proname like 'radar\\_video\\_%' or p.proname = 'radar_pauta_pecas_da_pessoa')""").fetchall()
-    assert len(funcoes) == 46                                    # v0.22.0: + radar_video_cota; v0.33.0: + as 4 do editor; v0.36.0: + criar_avulso e baixar_avulso
+    assert len(funcoes) == 47                                    # v0.22.0: + radar_video_cota; v0.33.0: + as 4 do editor; v0.36.0: + criar_avulso e baixar_avulso; v0.40.0: + aceitar
     assert [n for n, src, _ in funcoes if "current_date" in src.lower()] == []                    # "hoje" é o de Brasília
     assert [n for n, _, cfg in funcoes if not cfg] == []
     cfg = db.execute("select valor from radar_config where chave = 'corretor_video'").fetchone()[0]
@@ -1757,3 +1759,95 @@ def test_avulso_envio_abandonado_sai_na_limpeza_de_um_dia(corretor):
     assert {i["id"]: sorted(i["apagar"]) for i in r["itens"]} == {vid: ["bruto", "corrigido", "trabalho"]}
     robo("select radar_video_limpo(%s, %s::text[])", vid, ["bruto", "corrigido", "trabalho"])
     assert video(db, vid) == "descartado"
+
+
+# ------------------------------------------------------------------ v0.40.0: "Aceitar (quis dizer o mesmo)" (radar_video_aceitar)
+# O administrador aceita a divergência em que a pessoa quis dizer o mesmo com outras palavras: a função acrescenta o id a
+# ajustes.aceitas, marca a divergência no relatório (aceita, sem regravar) e decide a situação DE NOVO NA HORA, sem montar o vídeo
+# de novo — o avulso pronto já libera o baixar no mesmo clique. O concluir desculpa as aceitas como já desculpava "a transcrição
+# errou"; "Montar de novo" as leva junto (a tela manda a lista) e "Conferir com o roteiro novo" as limpa (o alinhamento muda).
+DIVERGENCIA2 = {"k": 1, "id": "fedcba9876543210", "falado": "multa e juros", "roteiro": "multa nem juros", "tipo": "termo",
+                "regravar": True, "transcricao_errou": False}
+
+
+def aceitar(vid, aceitas, uid=ADMIN):
+    return tela("select radar_video_aceitar(%s, %s)", vid, json.dumps(aceitas), uid=uid)
+
+
+def test_aceitar_decide_na_hora_sem_montar_de_novo(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    rel = {**RELATORIO, "divergencias": [DIVERGENCIA, DIVERGENCIA2]}
+    vid, _ = ate_pronto(db, pid, ana, relatorio=rel)
+    assert video(db, vid) == "regravar"
+    with pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR322: só o administrador aceita"):
+        aceitar(vid, [DIVERGENCIA["id"]], uid=EDITOR)
+    # a forma e o id conferidos: lista vazia, forma errada e código que não é de divergência DESTE relatório não valem
+    for ruim, msg in [(["0123"], "RADAR322: aceitas: uma lista de até 200 códigos"),
+                      ("0123456789abcdef", "RADAR322: aceitas: uma lista de até 200 códigos"),
+                      ([], "RADAR322: informe ao menos um código"),
+                      (["0" * 16], "RADAR322: um código não é de uma divergência deste relatório")]:
+        with pytest.raises(psycopg.errors.RaiseException, match=re.escape(msg)):
+            aceitar(vid, ruim)
+    rodada = video(db, vid, "rodada")
+    # aceita a 1ª: continua "regravar" (sobrou a 2ª); NADA volta à fila e o vídeo é o mesmo (sem montagem nova)
+    assert aceitar(vid, [DIVERGENCIA["id"]]) == {"id": vid, "situacao": "regravar", "aceitas": [DIVERGENCIA["id"]]}
+    assert video(db, vid, "situacao, rodada, sha256, tentativas") == ("regravar", rodada, SHA_VIDEO, 1)   # a rodada do robô, intocada
+    r = video(db, vid, "relatorio")
+    assert [(d.get("aceita"), d["regravar"]) for d in r["divergencias"]] == [(True, False), (None, True)]
+    # aceita a 2ª (a 1ª fica guardada): "pronto" na hora, com o mesmo arquivo
+    r2 = aceitar(vid, [DIVERGENCIA2["id"]])
+    assert r2["situacao"] == "pronto" and sorted(r2["aceitas"]) == sorted([DIVERGENCIA["id"], DIVERGENCIA2["id"]])
+    assert video(db, vid, "situacao, rodada, sha256") == ("pronto", rodada, SHA_VIDEO)
+    assert sorted(video(db, vid, "ajustes")["aceitas"]) == sorted([DIVERGENCIA["id"], DIVERGENCIA2["id"]])
+    assert all(d["aceita"] is True and d["regravar"] is False for d in video(db, vid, "relatorio")["divergencias"])
+    assert tela("select radar_video_para_previa(%s)", vid)["sha256"] == SHA_VIDEO               # a prévia segue o caminho de sempre
+    # aceitar o já aceito não duplica nem muda nada
+    assert sorted(aceitar(vid, [DIVERGENCIA["id"]])["aceitas"]) == sorted([DIVERGENCIA["id"], DIVERGENCIA2["id"]])
+    # só o vídeo pronto ou para regravar
+    db.execute("update radar_videos set situacao = 'erro', erro_codigo = 'storage' where id = %s", (vid,))
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR322: só o vídeo pronto ou para regravar"):
+        aceitar(vid, [DIVERGENCIA["id"]])
+
+
+def test_aceitar_nao_passa_por_cima_do_boletim_pago(corretor):
+    """A fala com frase do boletim pago continua "regravar" mesmo com todas as divergências aceitas: o aceitar decide a situação
+    com as MESMAS regras do concluir (o aviso boletim_pago nunca é liberado por aqui)."""
+    db = corretor
+    pid, ana = reel(db)
+    rel = {**RELATORIO, "divergencias": [DIVERGENCIA], "avisos": ["boletim_pago"]}
+    vid, _ = ate_pronto(db, pid, ana, relatorio=rel)                                            # o concluir já deixa "regravar"
+    assert aceitar(vid, [DIVERGENCIA["id"]])["situacao"] == "regravar"
+    assert video(db, vid) == "regravar" and video(db, vid, "relatorio")["divergencias"][0]["aceita"] is True
+
+
+def test_aceitas_valem_na_montagem_nova_e_reconferir_limpa(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    rel = {**RELATORIO, "divergencias": [DIVERGENCIA, DIVERGENCIA2]}
+    vid, _ = ate_pronto(db, pid, ana, relatorio=rel)
+    aceitar(vid, [DIVERGENCIA2["id"]])
+    # "Montar de novo com estas mudanças": a tela manda as aceitas junto (radar_video_ajustar substitui a lista, como as outras marcas)
+    tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"aceitas": [DIVERGENCIA2["id"]], "estilo": "compacta"}), uid=ADMIN)
+    p = pegar()
+    assert p["ajustes"] == {"aceitas": [DIVERGENCIA2["id"]], "estilo": "compacta"}
+    # mesmo o robô do commit antigo (que não honra as aceitas) não prende o vídeo: o concluir desculpa pelo id
+    assert concluir(vid, p["tentativa"], "pronto", rel, sha=SHA2) == {"situacao": "regravar"}   # a 1ª continua aberta
+    assert aceitar(vid, [DIVERGENCIA["id"]])["situacao"] == "pronto"
+    # "Conferir com o roteiro novo" limpa as aceitas (o alinhamento muda; a marca antiga não pode cair em outra divergência)
+    novo = ROTEIRO.replace("nem juros.", "nem juros, e fale com a gente.")
+    db.execute("update radar_pauta_pecas set roteiro = %s where id = %s", (novo, pid))
+    assert tela("select radar_video_reconferir(%s, %s)", vid, FALA[:-1] + ", e fale com a gente.")["modo"] == "montagem"
+    assert video(db, vid, "ajustes") == {"estilo": "compacta"}
+
+
+def test_aceitar_no_avulso_libera_o_baixar_no_mesmo_clique(corretor):
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    rel = {**RELATORIO, "texto_final": FALA_AVULSA, "divergencias": [DIVERGENCIA]}
+    vid = avulso_pronto(db, ana, relatorio=rel)
+    assert video(db, vid) == "regravar"
+    assert tela("select radar_video_baixar_avulso(%s)", vid, uid=ADMIN)["motivo"].startswith("Só o vídeo avulso PRONTO")
+    assert aceitar(vid, [DIVERGENCIA["id"]])["situacao"] == "pronto"
+    r = tela("select radar_video_baixar_avulso(%s)", vid, uid=ADMIN)                            # sem montar de novo: o mesmo arquivo
+    assert r["ok"] is True and r["caminho"] == f"corrigido/{vid}/{SHA_VIDEO}.mp4"
