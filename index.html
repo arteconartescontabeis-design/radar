@@ -248,6 +248,12 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 .caixa-previa .previa{border:0;border-radius:0;padding:22px 30px;overflow-wrap:anywhere}
 .caixa-previa .previa h2{font-family:Georgia,serif;color:#1C1A1B;font-size:1.6rem;margin-top:.4em}
 .capa-previa{width:100%;height:auto;max-height:560px;object-fit:contain;border-radius:6px;display:block;margin:6px 0 12px}   /* v0.25.0: inteira, com o aviso do canto (antes: cortada em 380 px de altura) */
+/* v0.39.0: a janela de escolher a foto real (banco de imagens) */
+.caixa-fotos{width:min(860px,94vw)}
+.foto-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;max-height:60vh;overflow:auto}
+.foto-opcao{padding:0;border:1px solid var(--linha);border-radius:6px;overflow:hidden;cursor:pointer;background:none}
+.foto-opcao img{width:100%;height:110px;object-fit:cover;display:block}
+.foto-opcao:hover,.foto-opcao:focus-visible{outline:3px solid var(--azul,#1B5E9B)}
 @media (max-width:860px){ .assunto-corpo{grid-template-columns:minmax(0,1fr)} .lateral{order:2} .caixa-previa .previa{padding:16px} }
 .etapas{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 12px;border-bottom:2px solid var(--linha)}
 .etapas button{background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-2px;padding:9px 14px;cursor:pointer;color:var(--cinza);font-weight:500}
@@ -363,21 +369,26 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.36.0"></script>
-<script src="radar-video.js?v=0.36.0"></script>
-<script src="radar-setor.js?v=0.36.0"></script>
-<script src="radar-respostas.js?v=0.36.0"></script>
+<script src="radar-pauta.js?v=0.39.0"></script>
+<script src="radar-video.js?v=0.39.0"></script>
+<script src="radar-setor.js?v=0.39.0"></script>
+<script src="radar-respostas.js?v=0.39.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.36.0";
-const FUNCAO_MINIMA = "0.25.0";     // versão da função radar-ia que este painel exige (v0.25.0: a imagem com aparência de foto, em qualidade alta, e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia)
+const VERSAO = "0.39.0";
+const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia)
 const REDES_MINIMA = "0.21.0";      // versão da função radar-redes que este painel exige (v0.21.0: a peça da Pauta e a agenda do banco; v0.29.0 não sobe: só a agenda do banco usa a ação nova, acionar_lembretes; v0.30.0, v0.31.0 e v0.32.0 não sobem: a radar-redes não muda)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.39.0", "20/10/2026", [
+    "IA mais barata no Radar inteiro: os modelos passam a ser o Claude Sonnet 5.5 (33% mais barato que o Sonnet 4.6, e mais novo) e o Claude Haiku 5.5 (10× mais barato, na classificação das capturas), e as instruções fixas (regras e Diretrizes) passam a usar a memória de regras da Anthropic (cache): a partir da segunda chamada da mesma ação em até 5 minutos, essa parte custa 10% do normal. Nada muda no que a IA faz; muda o preço. O gasto continua no cartão “Uso da IA neste mês” e em Portal → Consumo de IA.",
+    "Assuntos: preparar várias notícias de uma vez. Marque as caixas das notícias na lista, escolha o tamanho do texto e a imagem, e clique em “Preparar as marcadas com IA”: o Radar prepara uma a uma (fonte, texto, imagem, conferência dos 10 critérios e legendas), mostrando o andamento, e cada texto chega pronto no passo “Conferir e aprovar” — nada é publicado sozinho. A senha é pedida uma vez só, e apenas se alguma das marcadas já teve consulta. Assunto sem texto capturado ou que já tem texto é pulado, com o motivo no resumo final.",
+    "Foto real com o título na imagem: a capa pode ser uma fotografia de verdade do banco de imagens Pixabay (grátis, com licença para uso comercial), com o título curto escrito por cima pelo próprio Radar, no padrão da marca. No preparo em lote ela é a imagem padrão (se nenhuma foto servir, fica a capa padrão azul); no conteúdo, o botão “Usar foto real com o título” abre a busca para você escolher a foto. A imagem gerada por IA continua como opção, inteira e sem título (com o aviso no canto), e o aviso de “qualidade alta” saiu: a IA Central sempre gera em qualidade média e cobra um preço fixo por imagem.",
+    "Administrador: faça o Deploy da função radar-ia desta versão (Verify JWT desligado, como antes) e crie nela o segredo PIXABAY_API_KEY (chave grátis em pixabay.com → API). Na IA Central (Portal → Consumo de IA), libere os modelos claude-sonnet-5-5 e claude-haiku-5-5 para o Radar e cadastre os preços deles. O banco não muda (nenhum SQL para rodar). Depois publique o index.html com os demais .js e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.36.0 para a v0.39.0”."]],
   ["0.36.0", "18/10/2026", [
     "Correção avulsa (aba Vídeo): analisar e corrigir um vídeo SEM criar uma peça na Pauta. Em “Corrigir um vídeo avulso”, dê um título, cole a fala para conferência (o que foi falado, palavra por palavra), marque quem aparece e quem fala, confira a cartela, marque as quatro declarações e envie os clipes — o mesmo corretor de sempre transcreve, compara, corta e legenda, e o vídeo aparece na lista da aba com o relatório, os ajustes e o editor (cortes, legenda, capa).",
     "O que não muda: os termos das pessoas (o do corretor e o de uso de imagem), maior de idade, a cartela com a identificação legal, as quatro declarações, o limite de minutos do mês e a conferência do boletim pago. O que muda de propósito: o avulso não passa pela aprovação da peça e nunca é publicado pelo Radar — só o administrador baixa o vídeo pronto (fica registrado quem baixou) e posta onde quiser; “Conferir com o roteiro novo” não existe no avulso (a fala colada é o roteiro dele).",
@@ -989,7 +1000,8 @@ const rpc = (nome, corpo) => rest("POST", "rpc/" + nome, {corpo: corpo || {}});
    v0.11.0: enquanto a IA trabalha, um aviso fixo diz o que ela está fazendo e há quanto tempo; e, no mesmo assunto,
    a partir da 2ª consulta o Radar pede a senha de quem está logado (evita consulta repetida sem querer, e gasto). */
 const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial", gerar:"escrevendo e revisando o texto (até 2 minutos e meio)",
-  classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a imagem da publicação em qualidade alta (até 2 minutos e meio)",
+  classificar:"classificando o assunto", titulos:"pensando em outros títulos", ilustrar:"criando a imagem da publicação (até 2 minutos e meio)",
+  foto_buscar:"procurando fotos reais no banco de imagens", foto_baixar:"trazendo a foto escolhida",
   verificar:"procurando a fonte oficial na internet (até 2 minutos)", kit:"montando as legendas e o roteiro do reel (até 1 minuto)",
   peca:"escrevendo a chamada, as legendas e os cartões da peça (até 1 minuto)", editorial:"fazendo a revisão editorial do texto (até 2 minutos)",
   // v0.26.0: a etapa 3 do “Preparar com IA” (e o “Revisar com IA” do texto)
@@ -1051,10 +1063,11 @@ async function liberarIA(chave = E.assunto, naTela = () => E.assunto === chave){
 }
 async function ia(acao, extra = {}, tempo = 150000){
   // v0.21.0: a peça da Pauta não é de assunto: vai sem assunto_id, e as consultas contam por peça ("pauta-<id>")
-  const peca = acao === "peca", assunto = peca ? null : extra.assunto_id ?? E.assunto;   // fixo no início: trocar de tela no meio não muda o destino
+  // v0.39.0: a foto do banco de imagens também vai sem assunto e não conta para a senha (não usa IA e não custa nada)
+  const semAssunto = acao === "peca" || acao.startsWith("foto_"), assunto = semAssunto ? null : extra.assunto_id ?? E.assunto;   // fixo no início: trocar de tela no meio não muda o destino
   avisoIA(IA_FAZENDO[acao] || "trabalhando");
-  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:peca ? {acao, ...extra} : {acao, ...extra, assunto_id:assunto}, tempo});
-    contarUsoIA(peca ? "pauta-" + extra.peca_id : assunto);       // só a consulta que deu certo conta para pedir a senha depois
+  try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:semAssunto ? {acao, ...extra} : {acao, ...extra, assunto_id:assunto}, tempo});
+    if(!acao.startsWith("foto_")) contarUsoIA(acao === "peca" ? "pauta-" + extra.peca_id : assunto);  // só a consulta que deu certo (e que custa) conta para pedir a senha depois
     return r; }
   catch(e){
     if(e.status === 404 && !/(Assunto|Conteúdo|Peça) não encontrad[ao]/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
@@ -1335,8 +1348,15 @@ const TELAS = {
         <div class="linha-filtros" style="margin:0"><input id="na-titulo" type="text" name="titulo" required minlength="5" maxlength="200" placeholder="Título do assunto ou do artigo" style="flex:1;min-width:240px">
         <button class="btn">Criar assunto</button></div>
         <p class="sub" style="margin:6px 0 0">Para os artigos do Informativo Mensal e do site da Artecon. Para o site, inclua depois o texto oficial e a fundamentação.</p></form>` : ""}
-      ${itens.length ? `<div class="painel rolagem"><table><tr><th>Assunto</th><th>Relevância</th><th>Confirmação</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
+      ${podeEditar() && itens.length ? `<div class="painel" id="lote-preparar"><div class="acoes">
+        <b class="sub" style="margin:0">Preparar com IA as notícias marcadas:</b>
+        <label class="sub" for="lote-tamanho" style="margin:0">Tamanho do texto</label><select id="lote-tamanho" data-formato>${opcoes(TAMANHO_TEXTO, E.formato || "informativo")}</select>
+        <label class="sub" for="lote-imagem" style="margin:0">Imagem</label><select id="lote-imagem">${opcoes({foto:"Foto real com o título", padrao:"Capa padrão Artecon"}, E.loteImagem || "foto")}</select>
+        <button class="btn verde" type="button" data-acao="ia-lote">Preparar as marcadas com IA</button></div>
+        <p class="sub" style="margin:6px 0 0">Marque as caixas na primeira coluna da lista. Cada notícia é preparada por inteiro — a fonte, o texto, a imagem, a conferência dos 10 critérios e as legendas — e chega no passo “Conferir e aprovar”; nada é publicado. A que não tem texto capturado, ou que já tem texto, é pulada (o motivo sai no resumo). Deixe esta aba aberta até terminar.</p></div>` : ""}
+      ${itens.length ? `<div class="painel rolagem"><table><tr>${podeEditar() ? `<th><input type="checkbox" id="marcar-assuntos" aria-label="Marcar todos os assuntos da lista"></th>` : ""}<th>Assunto</th><th>Relevância</th><th>Confirmação</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
         <tr class="clicavel" data-acao="abrir-assunto" data-id="${a.id}">
+          ${podeEditar() ? `<td><input type="checkbox" class="sel-assunto" value="${a.id}" data-titulo="${h(a.titulo)}" aria-label="Marcar ${h(a.titulo)}"></td>` : ""}
           <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${a.id}">${h(a.titulo)}</button><br><span class="sub">${h(cat[a.categoria] || "sem categoria")} · ${h(a.orgaos || "sem captura vinculada")}</span></td>
           <td>${selo(ROTULOS.relevancia[a.relevancia], a.relevancia==="alta" ? "erro" : a.relevancia==="media" ? "" : "neutro")}</td>
           <td>${seloSituacao(a.situacao_confirmacao)}</td>
@@ -1574,6 +1594,7 @@ const TELAS = {
         <li><b>Assunto.</b> No alto ficam os três passos — <b>1. Preparar</b>, <b>2. Conferir e aprovar</b> e <b>3. Publicar</b> — e, no passo de agora, o botão do que falta fazer. <b>Preparar com IA</b> busca o trecho que comprova (ou a fonte oficial na internet), escreve o texto, faz a capa padrão, confere os 10 critérios e monta as legendas das redes; o rascunho que já existe é completado com <b>Preparar este texto</b>. Em <b>Conferir e aprovar</b> ficam os 10 critérios: o Aprovar só funciona com todos em ✓ (ou com o “Revisei e assumo” do administrador). Clique em <b>Conferi na fonte oficial</b> quando conferir a informação na fonte (o site exige). Em <b>Publicar</b>, o administrador autoriza o site, o Instagram e o Facebook — de uma vez, em “Publicar em todos”, ou um por um.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Preparar com IA</b>, no passo 1). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida. <b>A mesma imagem vai para o site, o Instagram e o Facebook</b>: se preferir, use <b>Gerar imagem com IA</b> (uma imagem com aparência de foto, com pessoas fictícias; dá para dizer como quer a imagem, em até 500 caracteres; ela vai inteira, com o aviso “Imagem ilustrativa gerada por IA” pequeno no canto) ou envie uma foto própria (foto de alguém da equipe só com o termo de uso de imagem assinado). O Radar compara o texto com a fonte: o trecho igual ao da fonte fica num quadro (citar a fonte não autoriza copiar: transcrição literal só entre aspas e com a fonte); o botão <b>Revisar com IA</b> reescreve com palavras próprias — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Antes de aprovar, o quadro <b>Conferência das Diretrizes</b> mostra os 10 critérios do escritório: <b>Revisar com IA</b> confere o texto, e com ✗ ou critério não conferido o <b>Aprovar</b> fica travado (o administrador pode liberar com <b>Revisei e assumo</b>, com o motivo). Logo abaixo, o quadro <b>Revisão editorial</b> mostra como a IA releu o texto que escreveu (10 perguntas, com ✓ ou ✎, e o que foi reescrito); ele só informa. Sem fonte oficial, a IA escreve um texto <b>Informativo</b>, que só vai ao site depois que o administrador autoriza. Salve, envie para revisão e <b>aprove</b>.</li>
+        <li><b>Preparar em lote (v0.39.0).</b> Na lista de <b>Assuntos</b>, marque as caixas das notícias, escolha o tamanho do texto e a imagem e clique em <b>Preparar as marcadas com IA</b>: o Radar prepara uma a uma (fonte, texto, imagem, Conferência e legendas) e cada texto chega pronto no passo “Conferir e aprovar” — nada é publicado sozinho. A capa pode ser uma <b>foto real</b> do banco de imagens (grátis, sem IA), com o título escrito por cima pelo próprio Radar; no conteúdo, o botão <b>Usar foto real com o título</b> abre a busca para trocar a foto.</li>
         <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b> — já sem o “nº”, o “º” e o “ª”, que o site não aceita no endereço —, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
         <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
       </ol></div>
@@ -3097,12 +3118,13 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
       <div class="acoes" style="margin-top:4px"><input type="text" id="img-desc-${c.id}" data-enter="capa-ia" maxlength="${MAX_DESCRICAO_IMAGEM}" value="${h((E.imgDesc || {})[c.id] || "")}" style="flex:1;min-width:240px"
           aria-label="Como você quer a imagem (opcional, até ${MAX_DESCRICAO_IMAGEM} caracteres)" placeholder="Como você quer a imagem (opcional, até ${MAX_DESCRICAO_IMAGEM} caracteres). Ex.: contadora conversando com o casal dono de uma padaria, no balcão da loja, luz da manhã">
         <button class="btn peq" type="button" data-acao="capa-ia" data-id="${c.id}">Gerar imagem com IA</button></div>
-      <p class="sub imagem-ajuda" style="margin:4px 0 0">A IA cria uma imagem com aparência de foto, com pessoas fictícias (nunca alguém real), sem texto, marca nem assinatura. Em branco, ela escolhe a cena pela notícia. A imagem sai em qualidade alta (cada uma custa mais que antes), inteira, sem título por cima, com o aviso “${AVISO_IA}” pequeno no canto; no site e na legenda das redes vai também a linha “${LINHA_AVISO_IA}”. Foto real de alguém da equipe, só com a foto tirada e o termo de uso de imagem assinado.</p>
+      <p class="sub imagem-ajuda" style="margin:4px 0 0">A IA cria uma imagem com aparência de foto, com pessoas fictícias (nunca alguém real), sem texto, marca nem assinatura. Em branco, ela escolhe a cena pela notícia. A imagem sai inteira, sem título por cima, com o aviso “${AVISO_IA}” pequeno no canto (preço fixo por imagem, na IA Central); no site e na legenda das redes vai também a linha “${LINHA_AVISO_IA}”. Foto real de alguém da equipe, só com a foto tirada e o termo de uso de imagem assinado.</p>
       <div class="acoes" style="margin-top:6px"><span class="sub">Ou:</span>
+        <button class="btn peq sec" type="button" data-acao="foto-capa" data-id="${c.id}">Usar foto real com o título</button>
         <label class="sub" for="c-img-${c.id}" style="margin:0">enviar uma foto própria</label><input id="c-img-${c.id}" type="file" accept="image/jpeg,image/png,image/webp" data-imagem="${c.id}">
         <button class="btn peq sec" type="button" data-acao="capa-auto" data-id="${c.id}">Usar a capa padrão Artecon (sem imagem)</button>
         ${c.ilustracao_id && !imagemDaIA(c) ? `<button class="btn peq sec" type="button" data-acao="usar-ia" data-id="${c.id}">Usar a imagem da IA de novo</button>` : ""}</div>
-      <p class="sub" style="margin:2px 0 0">A foto própria vai em 3:2 (cortada no centro), sem nada por cima. A capa padrão é o fundo azul com o título${c.ilustracao_id && !imagemDaIA(c) ? "; a imagem da IA continua guardada e volta sem nova cobrança" : ""}.</p>
+      <p class="sub" style="margin:2px 0 0">A foto real vem do banco de imagens (grátis, sem IA) e sai com o título curto por cima, no padrão da marca. A foto própria vai em 3:2 (cortada no centro), sem nada por cima. A capa padrão é o fundo azul com o título${c.ilustracao_id && !imagemDaIA(c) ? "; a imagem da IA continua guardada e volta sem nova cobrança" : ""}.</p>
       ${E.ilustracaoPendente?.conteudoId === c.id ? `<div class="aviso alerta ilustracao-pendente"><b>A imagem foi criada pela IA, mas não foi gravada neste conteúdo.</b>
         <div class="rede-montagem"><img class="miniatura" src="${h(E.ilustracaoPendente.imagem)}" alt="Imagem criada pela IA, ainda não gravada">
         <div class="acoes"><button class="btn peq" type="button" data-acao="gravar-ilustracao" data-id="${c.id}">Gravar a imagem de novo</button>
@@ -3389,6 +3411,58 @@ const ACOES = {
     await alterar("radar_conteudos", {id:"eq." + id, select:"id"}, {imagem_id:nova, ilustracao_id:nova});
     E.capaAntiga = null; E.capaFoco = id; await desenhar(); rolarAteConteudo(id);
     recado(`A imagem da IA voltou a ser a imagem da publicação (a mesma no site, no Instagram e no Facebook), inteira e com o aviso “${AVISO_IA}” no canto. Sem nova cobrança.`);
+  },
+  /* v0.39.0: “Usar foto real com o título” — busca uma fotografia de verdade no banco de imagens (Pixabay, grátis, sem IA),
+     a pessoa escolhe, e a capa sai com o título curto por cima, no padrão da marca (desenharCapaFoto). */
+  async "foto-capa"(el){
+    const f = el.closest("form");
+    if(sujo(f)){ recado("Há alterações não salvas. Salve o conteúdo antes de trocar a imagem.", true); return; }
+    if(f.dataset.aprovado && !confirm("O conteúdo está aprovado: ao trocar a imagem ele volta para revisão. Continuar?")) return;
+    const id = Number(el.dataset.id);
+    const [c] = await ler("radar_conteudos", {select:"titulo", id:"eq." + id});
+    if(!c){ await desenhar(); recado("Este conteúdo não existe mais: a tela foi atualizada.", "aviso"); return; }
+    const extra = f.dataset.iaAntiga ? await iaAntigaEm3x2(id) : {};
+    await abrirEscolhaFoto(buscaDaFoto(c.titulo) || c.titulo.slice(0, 60), async fotoId => {
+      const r = await ia("foto_baixar", {foto_id:fotoId});
+      await capaComFoto(id, r.imagem, extra);
+      E.capaAntiga = null; E.capaFoco = id; await desenhar(); rolarAteConteudo(id);
+      recado("Capa com a foto real e o título: é a imagem da publicação, a mesma no site, no Instagram e no Facebook.");
+    });
+  },
+  async "foto-fechar"(){ $("#foto-escolha")?.remove(); E.fotoEscolha = null; },
+  async "foto-buscar-modal"(){ await buscarFotosModal(); },
+  async "foto-escolher"(el){
+    const alvo = E.fotoEscolha; if(!alvo) return;
+    $("#foto-escolha")?.remove(); E.fotoEscolha = null;
+    await alvo.aoEscolher(Number(el.dataset.id));
+  },
+  /* v0.39.0: preparar várias notícias de uma vez (aba Assuntos): cada marcada passa pelo mesmo caminho do “Preparar com IA” —
+     a fonte (trecho que comprova ou busca rápida), o texto, a imagem (foto real com o título, ou a capa padrão), a conferência dos
+     10 critérios e o kit das redes — uma a uma, com o andamento na tela. Nada é publicado: cada texto vai para “Conferir e aprovar”.
+     A senha é pedida uma vez só, e apenas se alguma das marcadas já teve consulta neste navegador. */
+  async "ia-lote"(){
+    const marcados = [...document.querySelectorAll(".sel-assunto:checked")].map(x => ({id:Number(x.value), titulo:x.dataset.titulo || ""}));
+    if(!marcados.length){ recado("Marque ao menos uma notícia na lista (caixas da primeira coluna).", "aviso"); return; }
+    const formato = $("#lote-tamanho")?.value || E.formato || "informativo";
+    const comFoto = ($("#lote-imagem")?.value || "foto") === "foto";
+    if(!confirm(`Preparar ${marcados.length} notícia(s) com IA?\n\nCada uma leva de 2 a 5 minutos e custa centavos (o gasto fica em “Uso da IA neste mês”). Nada é publicado: os textos vão para “Conferir e aprovar”. Deixe esta aba aberta até terminar.`)) return;
+    if(marcados.some(m => usosIA(m.id) >= 1) && !(await pedirSenha())){ recado("Preparo em lote cancelado."); return; }
+    const resultados = [];
+    try{
+      for(const [k, m] of marcados.entries()){
+        const rotulo = `Lote ${k + 1} de ${marcados.length} — “${m.titulo.slice(0, 60)}”`;
+        resultados.push({...m, ...(await prepararUmAssunto(m.id, formato, comFoto,
+          passo => { IA_PASSO = `${rotulo} · ${passo}`; avisoIA("preparando as notícias marcadas"); }))});
+      }
+    }finally{ IA_PASSO = ""; avisoIA(null); }
+    if(E.aba === "assuntos") await desenhar();
+    const ok = resultados.filter(r => r.ok), pulados = resultados.filter(r => r.pulado), falhas = resultados.filter(r => !r.ok && !r.pulado);
+    const avisos = ok.reduce((n, r) => n + (r.avisos || 0), 0), curto = t => `“${String(t).slice(0, 40)}”`;
+    recado(`Preparo em lote: ${ok.length} de ${marcados.length} preparada(s)${avisos ? ` (${avisos} ponto(s) a conferir)` : ""}` +
+      (pulados.length ? `; ${pulados.length} pulada(s): ${pulados.map(p => `${curto(p.titulo)} — ${p.motivo}`).join("; ")}` : "") +
+      (falhas.length ? `; ${falhas.length} com erro: ${falhas.map(p => `${curto(p.titulo)} — ${p.motivo}`).join("; ")}` : "") +
+      (ok.length ? ". Agora, abra cada assunto e confira no passo 2 — conferir e aprovar é sempre da equipe." : "."),
+      falhas.length || pulados.length || avisos ? "aviso" : false);
   },
   /* v0.19.0: a imagem criada e não gravada (queda de conexão, conflito) é gravada de novo sem nova consulta à IA */
   async "gravar-ilustracao"(el){
@@ -4275,7 +4349,164 @@ async function desenharCapa(titulo, rotulo){
   for(const q of [0.86, 0.75, 0.6, 0.45]){ dados = cv.toDataURL("image/jpeg", q); if(dados.length <= LIMITE_IMAGEM) break; }
   return {dados, largura:L, altura:A};
 }
-/* Imagem da publicação pela IA (v0.25.0: com aparência de foto, em qualidade alta; opcional e cobrada; sem texto nem marca). Ela é
+/* v0.39.0: capa com FOTO REAL (banco de imagens) ao fundo e o título curto por cima, no padrão da marca: a foto coberta, uma sombra
+   escura embaixo para o texto ler em qualquer foto, a faixa tricolor, o logotipo, a categoria e o título em até 3 linhas. Sai 1200×630,
+   como a capa padrão: o lembrete de refazer a capa quando o título muda vale para ela também. */
+async function desenharCapaFoto(foto, titulo, rotulo){
+  const img = await carregarImagem(foto);
+  if(!img.naturalWidth || !img.naturalHeight) throw new ErroApi("Não foi possível ler a foto escolhida.");
+  const L = 1200, A = 630, cv = document.createElement("canvas"); cv.width = L; cv.height = A;
+  const cx = cv.getContext("2d");
+  try{ await Promise.race([document.fonts.load('700 56px "Playfair Display"'), new Promise(ok => setTimeout(ok, 1500))]); }catch(e){}
+  const caixa = (x, y, w, a, r) => { cx.beginPath(); cx.roundRect ? cx.roundRect(x, y, w, a, r) : cx.rect(x, y, w, a); cx.fill(); };
+  const f = Math.max(L / img.naturalWidth, A / img.naturalHeight);
+  cx.fillStyle = "#011F48"; cx.fillRect(0, 0, L, A);
+  cx.drawImage(img, (L - img.naturalWidth * f) / 2, (A - img.naturalHeight * f) / 2, img.naturalWidth * f, img.naturalHeight * f);
+  const sombra = cx.createLinearGradient(0, A * .30, 0, A);
+  sombra.addColorStop(0, "rgba(1,21,45,0)"); sombra.addColorStop(.55, "rgba(1,21,45,.62)"); sombra.addColorStop(1, "rgba(1,21,45,.94)");
+  cx.fillStyle = sombra; cx.fillRect(0, 0, L, A);
+  // a faixa tricolor e o logotipo, como na capa padrão (o cartão do logotipo um pouco menor, para cobrir menos a foto)
+  cx.fillStyle = "#BC151B"; cx.fillRect(0, 0, L * .68, 12); cx.fillStyle = "#00AEEF"; cx.fillRect(L * .68, 0, L * .22, 12); cx.fillStyle = "#FFD700"; cx.fillRect(L * .9, 0, L * .1, 12);
+  const logo = await new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = "radar-logo-artecon.png"; });
+  cx.fillStyle = "#fff"; caixa(60, 44, 210, 94, 12);
+  if(logo && logo.naturalWidth){ const e = Math.min(176 / logo.naturalWidth, 70 / logo.naturalHeight);
+    cx.drawImage(logo, 60 + (210 - logo.naturalWidth * e) / 2, 44 + (94 - logo.naturalHeight * e) / 2, logo.naturalWidth * e, logo.naturalHeight * e); }
+  else{ cx.fillStyle = "#011F48"; cx.font = '700 36px Georgia, serif'; cx.textBaseline = "middle"; cx.fillText("Artecon", 84, 91); cx.textBaseline = "alphabetic"; }
+  // o título curto (até 3 linhas, de baixo para cima), com a categoria logo acima
+  const palavras = String(titulo || "").trim().split(/\s+/).filter(Boolean), largura = 1080; let linhas = [], corpo = 56;
+  for(; corpo >= 34; corpo -= 4){
+    cx.font = `700 ${corpo}px "Playfair Display", Georgia, serif`; linhas = []; let atual = "";
+    for(const p of palavras){ const teste = atual ? atual + " " + p : p;
+      if(cx.measureText(teste).width > largura && atual){ linhas.push(atual); atual = p; } else atual = teste; }
+    if(atual) linhas.push(atual);
+    if(linhas.length <= 3) break;
+  }
+  corpo = Math.max(corpo, 34);
+  if(linhas.length > 3){ linhas = linhas.slice(0, 3); linhas[2] = linhas[2].replace(/[\s,.;:]+\S*$/, "") + "…"; }
+  let y = A - 64 - (linhas.length - 1) * corpo * 1.16;
+  if(rotulo){ const bruto = String(rotulo).toUpperCase(), t = bruto.length > 40 ? bruto.slice(0, 39).trimEnd() + "…" : bruto;
+    cx.font = '700 20px "DM Sans", Arial, sans-serif';
+    const w = cx.measureText(t).width + 28; cx.fillStyle = "#BC151B"; caixa(60, y - corpo - 44, w, 36, 6);
+    cx.fillStyle = "#fff"; cx.fillText(t, 74, y - corpo - 19); }
+  cx.fillStyle = "#fff"; cx.shadowColor = "rgba(0,0,0,.55)"; cx.shadowBlur = 6;
+  cx.font = `700 ${corpo}px "Playfair Display", Georgia, serif`;
+  for(const l of linhas){ cx.fillText(l, 60, y, largura + 40); y += corpo * 1.16; }
+  cx.shadowColor = "transparent"; cx.shadowBlur = 0;
+  cx.font = '500 20px "DM Sans", Arial, sans-serif'; cx.fillStyle = "#DCEBF7"; cx.fillText("Artecon Artes Contábeis  ·  www.artecon.cnt.br", 60, A - 28);
+  let dados = "";
+  for(const q of [0.86, 0.75, 0.6, 0.45]){ dados = cv.toDataURL("image/jpeg", q); if(dados.length <= LIMITE_IMAGEM) break; }
+  if(dados.length > LIMITE_IMAGEM) throw new ErroApi("Não foi possível reduzir a capa com esta foto. Tente outra.");
+  return {dados, largura:L, altura:A};
+}
+/* v0.39.0: a capa com a foto real vira a imagem da publicação (a foto crua não fica guardada: só a capa 1200×630) */
+async function capaComFoto(conteudoId, foto, extra = {}){
+  const [c] = await ler("radar_conteudos", {select:"titulo,radar_assuntos(categoria)", id:"eq." + conteudoId});
+  if(!c) throw new ErroApi("O conteúdo não existe mais.");
+  const capa = await desenharCapaFoto(foto, c.titulo, catMapa()[c.radar_assuntos?.categoria] || "Artecon Informa");
+  const [nova] = await rest("POST", "radar_imagens", {corpo:capa, params:{select:"id"}, prefer:"return=representation"});
+  await alterar("radar_conteudos", {id:"eq." + conteudoId, select:"id"}, {imagem_id:nova.id, ...extra});
+}
+/* v0.39.0: as palavras de busca da foto, tiradas do título (sem artigos e preposições) */
+const PALAVRAS_VAZIAS = new Set(("a o as os um uma uns umas de do da dos das em no na nos nas por pelo pela para com sem sob sobre " +
+  "e ou que se ao aos à às é são ser ter tem já não mais menos entre como quando até depois antes").split(" "));
+function buscaDaFoto(titulo){
+  const palavras = String(titulo || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
+    .filter(p => p.length >= 4 && !PALAVRAS_VAZIAS.has(p));
+  return palavras.slice(0, 3).join(" ");
+}
+/* v0.39.0: as buscas tentadas em ordem no preparo em lote (a primeira que achar foto vale; nenhuma: capa padrão) */
+const buscasDaFoto = titulo => [...new Set([buscaDaFoto(titulo), "contabilidade empresa", "escritório negócios"].filter(q => q.length >= 2))];
+/* v0.39.0: a janela de escolher a foto real (as prévias vêm direto do banco de imagens, permitido para resultado de busca;
+   a foto escolhida é baixada pela função e guardada no Radar, dentro da capa com o título) */
+async function abrirEscolhaFoto(busca, aoEscolher){
+  E.fotoEscolha = {aoEscolher};
+  document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="foto-escolha"><div class="caixa-previa caixa-fotos" role="dialog" aria-modal="true" aria-label="Escolher a foto real">
+    <div class="barra-previa"><span>Foto real do banco de imagens (Pixabay)</span><button class="btn peq sec" type="button" data-acao="foto-fechar">Fechar</button></div>
+    <div style="padding:14px 16px">
+      <div class="acoes"><input type="text" id="foto-busca" maxlength="100" value="${h(busca)}" data-enter="foto-buscar-modal" style="flex:1;min-width:220px" aria-label="O que procurar">
+        <button class="btn" type="button" data-acao="foto-buscar-modal">Buscar fotos</button></div>
+      <p class="sub" style="margin:6px 0 8px">Fotos de verdade, grátis e com licença para uso comercial (Pixabay, sem IA e sem custo). Clique na foto: o Radar a baixa e desenha a capa com o título por cima.</p>
+      <div id="foto-lista" class="foto-grade"><p class="sub">Buscando…</p></div></div></div></div>`);
+  $("#foto-busca")?.focus();
+  await buscarFotosModal();
+}
+async function buscarFotosModal(){
+  const caixa = $("#foto-lista"); if(!caixa) return;
+  const q = $("#foto-busca")?.value?.trim() || "";
+  caixa.innerHTML = `<p class="sub">Buscando…</p>`;
+  let fotos = [];
+  try{ fotos = (await ia("foto_buscar", {consulta:q})).fotos || []; }
+  catch(e){ caixa.innerHTML = `<div class="aviso erro">${h(e.message || "A busca não deu certo agora.")}</div>`; return; }
+  caixa.innerHTML = fotos.length ? fotos.map(f => `<button type="button" class="foto-opcao" data-acao="foto-escolher" data-id="${f.id}" title="${h(f.tags || "")}">
+      <img src="${h(f.previa)}" alt="${h(f.tags || "foto")}" loading="lazy"></button>`).join("")
+    : `<p class="sub">Nenhuma foto encontrada para “${h(q)}”. Tente outras palavras (ex.: contabilidade, impostos, escritório, calculadora).</p>`;
+}
+/* v0.39.0: UMA notícia do preparo em lote, do começo ao fim (o mesmo caminho do “Preparar com IA” do assunto, sem depender da tela
+   aberta). Devolve {ok, avisos} quando preparou, {pulado, motivo} quando não era para preparar e {motivo} quando falhou. */
+async function prepararUmAssunto(assunto, formato, comFoto, passo){
+  try{
+    passo("conferindo o assunto");
+    const [[a], vinc, evid, cont] = await Promise.all([
+      ler("radar_assuntos", {select:"id,titulo,status,categoria,verificacao", id:"eq." + assunto}),
+      ler("radar_assunto_capturas", {select:"radar_capturas(id,texto,radar_fontes(oficial))", assunto_id:"eq." + assunto}),
+      ler("radar_evidencias", {select:"trecho_conferido,captura_id", assunto_id:"eq." + assunto}),
+      ler("radar_conteudos", {select:"id,status,avisos_ia", assunto_id:"eq." + assunto})]);
+    if(!a) return {pulado:true, motivo:"não existe mais"};
+    if(["publicado", "ignorado", "arquivado"].includes(a.status)) return {pulado:true, motivo:"fora do trabalho do dia"};
+    if(!vinc.some(v => v.radar_capturas.texto)) return {pulado:true, motivo:"sem texto capturado"};
+    const ehAnalise = c => Array.isArray(c.avisos_ia) && String(c.avisos_ia[0] || "").startsWith("TEXTO PARA ANÁLISE");
+    if(cont.some(c => !ehAnalise(c))) return {pulado:true, motivo:"já tem texto"};
+    const oficiais = new Set(vinc.filter(v => v.radar_capturas.radar_fontes.oficial).map(v => v.radar_capturas.id));
+    const temOficial = vinc.some(v => v.radar_capturas.texto && v.radar_capturas.radar_fontes.oficial);
+    const trechos = evid.filter(e => e.trecho_conferido && oficiais.has(e.captura_id)).length;
+    let avisos = 0;
+    if(temOficial && !trechos){
+      passo("etapa 1 de 4 — o trecho que comprova");
+      try{ await ia("fundamentar", {assunto_id:assunto}); }catch(e){ avisos++; }
+    }else if(!temOficial && !a.verificacao){
+      passo("etapa 1 de 4 — procurando a fonte oficial");
+      try{ await ia("verificar", {assunto_id:assunto, rapido:true}, 90000); }catch(e){}    // sem a busca, o texto sai Informativo mesmo assim
+    }
+    passo("etapa 2 de 4 — escrevendo o texto");
+    const g = await ia("gerar", {formato, assunto_id:assunto});
+    const id = g.conteudo_id;
+    avisos += (Array.isArray(g.avisos) ? g.avisos : []).length;
+    passo("etapa 2 de 4 — a imagem");
+    let fotoUsada = null, capaOk = false;
+    if(comFoto){
+      for(const q of buscasDaFoto(a.titulo)){
+        try{
+          const {fotos} = await ia("foto_buscar", {consulta:q});
+          if(fotos?.length){ fotoUsada = (await ia("foto_baixar", {foto_id:fotos[0].id})).imagem;
+            await capaComFoto(id, fotoUsada); capaOk = true; break; }
+        }catch(e){ break; }                                   // sem chave ou banco de imagens fora do ar: fica a capa padrão
+      }
+    }
+    if(!capaOk) capaOk = await capaAutomatica(id);
+    if(!capaOk) avisos++;
+    passo("etapa 3 de 4 — a conferência dos 10 critérios");
+    if(!E.semConferencia){
+      try{
+        const [lido] = await ler("radar_conteudos", {select:"atualizado_em", id:"eq." + id});
+        const rev = await ia("revisar", {conteudo_id:id, lido:lido?.atualizado_em, assunto_id:assunto});
+        if(rev.titulo_mudou){ passo("refazendo a capa com o título novo");
+          try{ if(fotoUsada && capaOk) await capaComFoto(id, fotoUsada); else await capaAutomatica(id, true); }catch(e){ avisos++; } }
+        const itens = Array.isArray(rev?.conferencia?.itens) ? rev.conferencia.itens : [];
+        avisos += itens.filter(x => x.situacao === "nao_atende").length + (rev?.corrigiu ? 1 : 0);
+      }catch(e){ avisos++; }
+    }
+    passo("etapa 4 de 4 — as legendas das redes");
+    try{ const k = await ia("kit", {conteudo_id:id, assunto_id:assunto}); avisos += (Array.isArray(k.avisos) ? k.avisos : []).length; }
+    catch(e){ avisos++; }
+    // o texto vai para o passo 2 (só sai do rascunho), como no “Preparar com IA” do assunto
+    try{ await rest("PATCH", "radar_conteudos", {params:{id:"eq." + id, status:"eq.rascunho", select:"id"}, corpo:{status:"em_revisao"}, prefer:"return=representation"}); }catch(e){}
+    return {ok:true, avisos};
+  }catch(e){
+    return {motivo:String(e.message || "erro inesperado").slice(0, 120)};
+  }
+}
+
+/* Imagem da publicação pela IA (v0.25.0: com aparência de foto; opcional e cobrada; sem texto nem marca). Ela é
    gravada inteira, em 3:2, com o aviso no canto, e é a imagem do site, do Instagram e do Facebook (gravarIlustracao). */
 async function ilustracaoIA(conteudoId, titulo, descricao = "", assunto = E.assunto){
   if(titulo === undefined) titulo = (await ler("radar_conteudos", {select:"titulo", id:"eq." + conteudoId}))[0]?.titulo || "";
@@ -4877,6 +5108,7 @@ async function executar(fn, livre, ...args){
   finally{ devolverDigitado(digitado); if(!livre){ OCUPADO = false; document.body.classList.remove("ocupado"); } }
 }
 document.addEventListener("click", ev => {
+  if(ev.target.matches?.("input")) return;                     // v0.39.0: marcar uma caixa dentro de uma linha clicável não abre a linha
   const el = ev.target.closest("[data-acao]"); if(!el || el.disabled) return;
   if(el.tagName === "A") return;
   const acao = ACOES[el.dataset.acao];
@@ -4890,11 +5122,15 @@ document.addEventListener("toggle", ev => { if(ev.target.id === "mais-detalhes")
 // v0.17.0: Publicações — marcar todos os conteúdos para excluir em grupo
 document.addEventListener("change", ev => {
   if(ev.target.id === "marcar-todas") document.querySelectorAll("#tab-canais .sel-pub").forEach(x => { x.checked = ev.target.checked; });
+  // v0.39.0: marcar todos os assuntos da lista e lembrar a escolha de imagem do preparo em lote
+  if(ev.target.id === "marcar-assuntos") document.querySelectorAll(".sel-assunto").forEach(x => { x.checked = ev.target.checked; });
+  if(ev.target.id === "lote-imagem") E.loteImagem = ev.target.value;
   // v0.26.0: o tamanho do texto (ao lado do Preparar, na barra do passo 1 e na do passo 2) é um só, e fica escolhido depois de redesenhar
   if(ev.target.matches?.("select[data-formato]")){ E.formato = ev.target.value;
     document.querySelectorAll("select[data-formato]").forEach(s => { if(s !== ev.target) s.value = ev.target.value; }); }
 });
 document.addEventListener("keydown", ev => {
+  if(ev.key === "Escape" && $("#foto-escolha")){ $("#foto-escolha").remove(); E.fotoEscolha = null; return; }   // v0.39.0
   if(ev.key === "Escape" && $("#previa-site")){ fecharPrevia(); return; }
   if((ev.key === "Enter" || ev.key === " ") && ev.target.matches?.(".trilha li[data-acao]")){ ev.preventDefault(); ev.target.click(); return; }
   if(ev.key !== "Enter" || !ev.target.dataset?.enter) return;

@@ -1,5 +1,20 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.25.1)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.39.0)
+//
+// v0.39.0 — IA mais barata e foto real do banco de imagens:
+//   * modelos novos por padrão: claude-sonnet-5-5 (33% mais barato que o sonnet-4-6 e mais novo) e claude-haiku-5-5 (10× mais barato
+//     que o haiku-4-5). Eles precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos) e com preço em
+//     core.ia_precos. Os modelos novos (Opus 5.5, Sonnet 5.5, Fable e Mythos) recusam tool_choice "tool" (escolha forçada): neles o
+//     "perguntar" pede a ferramenta por escrito (tool_choice "auto") e, se a resposta vier sem a chamada, reenvia UMA vez pedindo-a;
+//   * cache das instruções (prompt caching): o bloco fixo de regras e Diretrizes vai com cache_control "ephemeral" — a partir da
+//     segunda chamada da mesma ação em até 5 minutos (o preparo em lote, as rodadas da verificação), essa parte custa 10% do normal
+//     (a primeira grava o cache por 1,25×). O gateway da IA Central repassa o corpo como está e já registra os tokens de cache;
+//   * duas ações novas SEM IA (não contam no limite): "foto_buscar" procura fotos reais no banco de imagens Pixabay (segredo
+//     PIXABAY_API_KEY) e "foto_baixar" traz a foto escolhida para a tela desenhar a capa com o título por cima. A busca mostra as
+//     prévias direto do Pixabay (permitido para resultado de busca); a foto usada é baixada e guardada no Radar (hotlink não é
+//     permitido pelo serviço). A licença do Pixabay libera o uso comercial sem crédito;
+//   * a imagem da IA (ilustrar) deixa de pedir qualidade "high": a IA Central sempre gera em "medium" (e cobra um preço fixo por
+//     imagem), então o pedido e o aviso de "qualidade alta" eram ilusórios.
 //
 // Doze ações, sempre pedidas por um usuário logado (editor ou administrador):
 //   classificar  → sugere categoria, relevância, resumo e público afetado (não grava nada)
@@ -25,6 +40,8 @@
 //                  (só sugestão: o que vai ao ar é o que o administrador aprova)
 //   editorial    → (v0.24.0, etapa 5) refaz a revisão editorial de um conteúdo já gravado (botão "Fazer a revisão editorial", quando a do
 //                  "gerar" não foi feita ou o texto mudou depois): reescreve os trechos com problema e grava o resultado no conteúdo
+//   foto_buscar  → (v0.39.0) procura fotos reais no banco de imagens Pixabay (sem IA, sem custo); devolve as prévias para a tela
+//   foto_baixar  → (v0.39.0) baixa a foto escolhida e a devolve à tela, que desenha a capa com o título por cima e a guarda
 //
 // v0.25.1 — o kit das redes não pede mais à IA a chamada e o apoio da arte: a arte vertical das notícias saiu na v0.25.0 (a notícia vai
 //   às redes com a imagem da publicação, a mesma do site), e eles só serviam a ela. O esquema da resposta e o kit gravado ficam só com as
@@ -107,15 +124,17 @@
 // Segredos (Supabase → Edge Functions → Secrets):
 //   IA_GATEWAY_TOKEN               obrigatório: token do aplicativo "radar" na IA Central
 //   IA_GATEWAY_URL                 padrão: https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway
-//   RADAR_IA_MODELO                padrão: claude-sonnet-4-6   (fundamentar, gerar, kit e peca)
-//   RADAR_IA_MODELO_RAPIDO         padrão: claude-haiku-4-5    (classificar)
-//   RADAR_IA_MODELO_IMAGEM         padrão: gpt-image-2         (ilustrar; v0.25.0: qualidade alta, quality "high", 1536×1024)
+//   RADAR_IA_MODELO                padrão: claude-sonnet-5-5   (fundamentar, gerar, kit e peca; v0.39.0: antes claude-sonnet-4-6)
+//   RADAR_IA_MODELO_RAPIDO         padrão: claude-haiku-5-5    (classificar; v0.39.0: antes claude-haiku-4-5)
+//   RADAR_IA_MODELO_IMAGEM         padrão: gpt-image-2         (ilustrar; 1536×1024 — a IA Central gera em qualidade "medium")
+//   PIXABAY_API_KEY                para "foto_buscar" e "foto_baixar" (foto real do banco de imagens; grátis, pixabay.com/api/docs)
+//   PIXABAY_API_URL                padrão: https://pixabay.com/api/ (só muda em teste)
 //   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês; trava própria do Radar,
 //                                  além dos limites em dólar da IA Central)
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.25.1";
+const VERSAO = "0.39.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -132,9 +151,11 @@ function chavePublica(): string {
 }
 const SUPABASE_ANON_KEY = chavePublica();
 const GATEWAY_URL = env("IA_GATEWAY_URL", "https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway").replace(/\/+$/, "");
-const MODELO = env("RADAR_IA_MODELO", "claude-sonnet-4-6");
-const MODELO_RAPIDO = env("RADAR_IA_MODELO_RAPIDO", "claude-haiku-4-5");
+const MODELO = env("RADAR_IA_MODELO", "claude-sonnet-5-5");
+const MODELO_RAPIDO = env("RADAR_IA_MODELO_RAPIDO", "claude-haiku-5-5");
 const MODELO_IMAGEM = env("RADAR_IA_MODELO_IMAGEM", "gpt-image-2");
+const PIXABAY_URL = env("PIXABAY_API_URL", "https://pixabay.com/api/").replace(/\/+$/, "");
+const PIXABAY_KEY = env("PIXABAY_API_KEY");
 const LIMITE_MENSAL = Number(env("RADAR_IA_LIMITE_MENSAL_TOKENS", "3000000"));
 
 const MAX_TEXTO_POR_CAPTURA = 40000;   // caracteres enviados à IA por texto oficial
@@ -464,26 +485,44 @@ async function chamarGateway(reg: Registro, caminho: string, corpo: unknown, mod
   return dados;
 }
 
-/** Pergunta à Anthropic exigindo a resposta no formato do esquema (uso forçado de ferramenta). */
+// v0.39.0: os modelos novos (Opus 5.5, Sonnet 5.5, Fable e Mythos) recusam tool_choice "tool" (escolha forçada de ferramenta):
+// neles a ferramenta é pedida por escrito (tool_choice "auto"). O Haiku 5.5 continua aceitando a escolha forçada.
+const aceitaEscolhaForcada = (m: string) => !/opus-5-5|sonnet-5-5|fable-5|mythos-5/i.test(m);
+// v0.39.0: o bloco fixo de instruções vai com cache_control — a partir da segunda chamada da mesma ação em até 5 minutos
+// (o preparo em lote, as rodadas da verificação), essa parte é lida do cache por 10% do preço (a primeira grava por 1,25×).
+const sistemaComCache = (instrucoes: string) => [{ type: "text", text: instrucoes, cache_control: { type: "ephemeral" } }];
+
+/** Pergunta à Anthropic exigindo a resposta no formato do esquema (escolha forçada de ferramenta; nos modelos que a recusam,
+ *  o pedido por escrito, com UM reenvio se a resposta vier sem a chamada da ferramenta). */
 async function perguntar(reg: Registro, modelo: string, instrucoes: string, entrada: string, nome: string, esquema: unknown,
                          maxTokens = 4000, tempo = 110_000, corte = ""): Promise<{ json: any }> {
-  const dados = await chamarGateway(reg, "", {
-    model: modelo, max_tokens: maxTokens, system: instrucoes,
-    messages: [{ role: "user", content: entrada }],
-    tools: [{ name: nome, description: "Registra a resposta no formato pedido.", input_schema: esquema }],
-    tool_choice: { type: "tool", name: nome },
-  }, modelo, tempo);
-  const u = dados.usage ?? {};
-  // v0.16.0: soma — o "gerar" pode fazer uma segunda chamada (a revisão) no mesmo pedido
-  reg.uso = { entrada: (reg.uso?.entrada ?? 0) + (Number(u.input_tokens ?? 0) || 0) + (Number(u.cache_creation_input_tokens ?? 0) || 0) + (Number(u.cache_read_input_tokens ?? 0) || 0),
-              saida: (reg.uso?.saida ?? 0) + (Number(u.output_tokens ?? 0) || 0), modelo: String(dados.model ?? modelo) };
-  // "corte": a mensagem de quem pede um teto fixo no código (o kit), que o Portal não muda
-  if (dados.stop_reason === "max_tokens") throw new Erro(502, corte || "A resposta da IA veio incompleta (limite de tamanho). Tente de novo; se repetir, o administrador aumenta o tamanho máximo da resposta do Radar em Portal → Consumo de IA.");
-  if (dados.stop_reason === "refusal") throw new Erro(502, "A IA se recusou a responder a este pedido.");
-  const bloco = (Array.isArray(dados.content) ? dados.content : []).find((c: any) => c?.type === "tool_use" && c?.name === nome);
-  const json = bloco?.input;
-  if (!json || typeof json !== "object" || Array.isArray(json)) throw new Erro(502, "A IA devolveu uma resposta fora do formato esperado. Tente de novo.");
-  return { json };
+  const forcada = aceitaEscolhaForcada(modelo);
+  // o pedido por escrito vai ANTES das regras: as orientações do escritório continuam sendo a última parte das instruções
+  const sistema = sistemaComCache(forcada ? instrucoes
+    : `IMPORTANTE: responda SOMENTE chamando a ferramenta "${nome}", uma única vez, sem nenhum texto fora dela.\n` + instrucoes);
+  const ferramentas = [{ name: nome, description: "Registra a resposta no formato pedido.", input_schema: esquema }];
+  const mensagens: any[] = [{ role: "user", content: entrada }];
+  for (let vez = 0; ; vez++) {
+    const dados = await chamarGateway(reg, "", {
+      model: modelo, max_tokens: maxTokens, system: sistema, messages: mensagens, tools: ferramentas,
+      tool_choice: forcada ? { type: "tool", name: nome } : { type: "auto" },
+    }, modelo, tempo);
+    const u = dados.usage ?? {};
+    // v0.16.0: soma — o "gerar" pode fazer uma segunda chamada (a revisão) no mesmo pedido
+    reg.uso = { entrada: (reg.uso?.entrada ?? 0) + (Number(u.input_tokens ?? 0) || 0) + (Number(u.cache_creation_input_tokens ?? 0) || 0) + (Number(u.cache_read_input_tokens ?? 0) || 0),
+                saida: (reg.uso?.saida ?? 0) + (Number(u.output_tokens ?? 0) || 0), modelo: String(dados.model ?? modelo) };
+    // "corte": a mensagem de quem pede um teto fixo no código (o kit), que o Portal não muda
+    if (dados.stop_reason === "max_tokens") throw new Erro(502, corte || "A resposta da IA veio incompleta (limite de tamanho). Tente de novo; se repetir, o administrador aumenta o tamanho máximo da resposta do Radar em Portal → Consumo de IA.");
+    if (dados.stop_reason === "refusal") throw new Erro(502, "A IA se recusou a responder a este pedido.");
+    const conteudo = Array.isArray(dados.content) ? dados.content : [];
+    const bloco = conteudo.find((c: any) => c?.type === "tool_use" && c?.name === nome);
+    const json = bloco?.input;
+    if (json && typeof json === "object" && !Array.isArray(json)) return { json };
+    // resposta sem a chamada da ferramenta: nos modelos sem escolha forçada, UM reenvio pedindo-a (o texto solto não serve)
+    if (forcada || vez >= 1) throw new Erro(502, "A IA devolveu uma resposta fora do formato esperado. Tente de novo.");
+    mensagens.push({ role: "assistant", content: conteudo.length ? conteudo : [{ type: "text", text: "(sem resposta)" }] },
+                   { role: "user", content: `Registre agora a resposta chamando a ferramenta "${nome}", uma única vez, sem texto fora dela.` });
+  }
 }
 
 // v0.19.0: o texto é escrito com palavras próprias e não diz em cada parágrafo de onde veio a informação (a fonte sai no fim da
@@ -1456,8 +1495,8 @@ function blocoVerificacao(v: any): string {
     `${semMarcasDeBloco(v.resumo ?? "")}\n${fontes ? "Páginas oficiais:\n" + fontes + "\n" : ""}${div ? "Divergências:\n" + div + "\n" : ""}<<<FIM>>>\n`;
 }
 
-// Claude Opus 5.5, Sonnet 5.5, Fable 5.1 e Mythos 5.1 recusam tool_choice "tool": neles a última rodada só pede por escrito
-const FORCA_FERRAMENTA = !/opus-5-5|sonnet-5-5|fable-5-1|mythos-5-1/i.test(MODELO);
+// Os modelos novos recusam tool_choice "tool" (aceitaEscolhaForcada): neles a última rodada da verificação só pede por escrito
+const FORCA_FERRAMENTA = aceitaEscolhaForcada(MODELO);
 const NOVA_GERACAO = (m: string) => !/haiku|sonnet-4-5|opus-4-5|opus-4-1|sonnet-4-2|claude-3/i.test(m);
 async function verificar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, rapido = false) {
   const inicio = Date.now();
@@ -1522,7 +1561,7 @@ async function verificar(token: string, ctx: Awaited<ReturnType<typeof carregar>
     }
     let dados: any;
     try {
-      dados = await chamarGateway(ctx.reg, "", { model: MODELO, max_tokens: 4000, system: instrucoes, messages: mensagens,
+      dados = await chamarGateway(ctx.reg, "", { model: MODELO, max_tokens: 4000, system: sistemaComCache(instrucoes), messages: mensagens,
         // na última rodada a ferramenta de registro é obrigatória (nos modelos que aceitam escolha forçada): a IA não busca mais
         tools: ferramentas(restringir), tool_choice: ultima && FORCA_FERRAMENTA ? { type: "tool", name: "verificacao" } : { type: "auto" } },
         MODELO, Math.min(porChamada, resta - 5_000));
@@ -2398,27 +2437,68 @@ async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: strin
     "marca-d'água, assinatura, crédito ou carimbo de autoria; personagem, obra, fotografia ou estilo de artista ou de fotógrafo existente; " +
     "cena que induza a erro (documento oficial simulado, fachada de órgão público com nome, cédulas de dinheiro em destaque). " +
     "A imagem precisa ser inteiramente original.";
-  // a imagem é gerada pela OpenAI, pela IA Central (?acao=imagem): o custo fica registrado lá, por imagem. v0.25.0: qualidade alta, que
-  // demora mais (até 135 s de espera, dentro dos 150 s que o Supabase dá à função); a recusa dela vira mensagem (a função nunca troca a
-  // qualidade sozinha)
-  let dados: any;
-  try {
-    dados = await chamarGateway(ctx.reg, "?acao=imagem",
-      { model: MODELO_IMAGEM, prompt: pedido, size: "1536x1024", quality: "high", n: 1 }, MODELO_IMAGEM, 135_000);
-  } catch (e) {
-    if (e instanceof Erro && /quality|qualidade/i.test(e.message)) {
-      throw new Erro(e.status === 429 ? 429 : 502, "A IA Central não aceitou a imagem em qualidade alta (quality “high”), e o Radar não troca a " +
-        "qualidade sozinho: nada foi gerado. O administrador confere se a qualidade alta está liberada para o modelo de imagem do Radar em " +
-        "Portal → Consumo de IA. Detalhe: " + e.message.slice(0, 200));
-    }
-    throw e;
-  }
+  // a imagem é gerada pela OpenAI, pela IA Central (?acao=imagem): o custo fica registrado lá, por imagem. v0.39.0: sem pedir
+  // qualidade — a IA Central sempre gera em "medium" (e o preço por imagem é fixo), então o pedido de "high" da v0.25.0 era ilusório
+  const dados: any = await chamarGateway(ctx.reg, "?acao=imagem",
+    { model: MODELO_IMAGEM, prompt: pedido, size: "1536x1024", n: 1 }, MODELO_IMAGEM, 135_000);
   const u = dados.usage ?? {};
   ctx.reg.uso = { entrada: Number(u.input_tokens ?? 0) || 0, saida: Number(u.output_tokens ?? 0) || 0, modelo: MODELO_IMAGEM };
   const b64 = String(dados?.data?.[0]?.b64_json ?? "");
   if (!/^[A-Za-z0-9+/=]{1000,}$/.test(b64)) throw new Erro(502, "A IA não devolveu a imagem. Tente de novo.");
   const tipo = b64.startsWith("/9j/") ? "jpeg" : b64.startsWith("UklGR") ? "webp" : "png";
   return { imagem: `data:image/${tipo};base64,${b64}`, avisos };
+}
+
+// ------------------------------------------------------------------ foto real do banco de imagens (Pixabay, v0.39.0)
+// Sem IA e sem custo (não conta no limite do mês): a busca mostra as prévias direto do Pixabay (permitido para exibir resultado de
+// busca) e a foto escolhida é baixada e devolvida à tela, que desenha a capa com o título por cima e a guarda em radar_imagens
+// (hotlink permanente não é permitido pelo serviço). A licença do Pixabay (Content License) libera o uso comercial sem crédito;
+// a busca segura (safesearch) fica sempre ligada.
+const MAX_FOTO_BYTES = 6_000_000;
+async function pixabay(params: Record<string, string>): Promise<any> {
+  if (!PIXABAY_KEY) {
+    throw new Erro(503, "A busca de fotos não está configurada: o administrador cria o segredo PIXABAY_API_KEY nesta função " +
+      "(a chave é grátis: pixabay.com → API).");
+  }
+  const u = new URL(PIXABAY_URL);
+  u.search = new URLSearchParams({ key: PIXABAY_KEY, ...params }).toString();
+  let r: Response;
+  try { r = await fetch(u, { signal: AbortSignal.timeout(20_000) }); }
+  catch { throw new Erro(504, "O banco de imagens não respondeu a tempo. Tente de novo."); }
+  if (r.status === 429) { await r.body?.cancel(); throw new Erro(429, "O banco de imagens recusou por excesso de pedidos no momento. Tente de novo em um minuto."); }
+  if (!r.ok) { const t = (await r.text()).slice(0, 200); throw new Erro(502, "O banco de imagens respondeu com erro: " + (t || String(r.status))); }
+  try { return await r.json(); } catch { throw new Erro(502, "O banco de imagens devolveu uma resposta fora do esperado."); }
+}
+async function fotoBuscar(consulta: unknown) {
+  const q = normalizarEspacos(String(consulta ?? "")).slice(0, 100);
+  if (q.length < 2) throw new Erro(400, "Diga o que procurar (2 a 100 caracteres).");
+  const dados = await pixabay({ q, lang: "pt", image_type: "photo", orientation: "horizontal", safesearch: "true",
+                                per_page: "12", min_width: "1000" });
+  const fotos = (Array.isArray(dados?.hits) ? dados.hits : []).map((f: any) => ({
+    id: Number(f?.id) || 0, previa: String(f?.webformatURL ?? ""), largura: Number(f?.imageWidth) || 0,
+    altura: Number(f?.imageHeight) || 0, tags: normalizarEspacos(String(f?.tags ?? "")).slice(0, 200),
+    autor: normalizarEspacos(String(f?.user ?? "")).slice(0, 80), pagina: String(f?.pageURL ?? "").slice(0, 300),
+  })).filter((f: { id: number; previa: string }) => f.id > 0 && /^https?:\/\//.test(f.previa));
+  return { fotos };
+}
+async function fotoBaixar(id: unknown) {
+  const n = Number(id);
+  if (!Number.isSafeInteger(n) || n <= 0) throw new Erro(400, "Foto inválida.");
+  const dados = await pixabay({ id: String(n) });
+  const f = Array.isArray(dados?.hits) ? dados.hits[0] : null;
+  const endereco = String(f?.largeImageURL ?? f?.webformatURL ?? "");
+  if (!/^https?:\/\//.test(endereco)) throw new Erro(404, "Esta foto não está mais disponível no banco de imagens: escolha outra.");
+  let r: Response;
+  try { r = await fetch(endereco, { signal: AbortSignal.timeout(30_000) }); }
+  catch { throw new Erro(504, "A foto não chegou a tempo. Tente de novo."); }
+  if (!r.ok) { await r.body?.cancel(); throw new Erro(502, `O banco de imagens não entregou a foto (${r.status}). Tente outra.`); }
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  if (!bytes.length || bytes.length > MAX_FOTO_BYTES) throw new Erro(502, "A foto veio vazia ou grande demais. Tente outra.");
+  const tipo = /\.png(\?|$)/i.test(endereco) ? "png" : "jpeg";
+  let binario = "";
+  for (let i = 0; i < bytes.length; i += 32768) binario += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return { imagem: `data:image/${tipo};base64,${btoa(binario)}`,
+           credito: { autor: normalizarEspacos(String(f?.user ?? "")).slice(0, 80), pagina: String(f?.pageURL ?? "").slice(0, 300) } };
 }
 
 // ------------------------------------------------------------------ diagnóstico
@@ -2441,6 +2521,14 @@ async function diagnostico(quem: string) {
         itens.push({ item: `${papel} (${modelo})`, ok: false, detalhe: e instanceof Error ? e.message : "erro" });
       }
     }
+  }
+  // v0.39.0: o banco de imagens (foto real da capa): confere o segredo e faz UMA busca de teste (grátis)
+  try {
+    const { fotos } = await fotoBuscar("contabilidade");
+    itens.push({ item: "Banco de imagens (segredo PIXABAY_API_KEY)", ok: true,
+      detalhe: `configurado: a busca de teste encontrou ${fotos.length} foto(s)` });
+  } catch (e) {
+    itens.push({ item: "Banco de imagens (segredo PIXABAY_API_KEY)", ok: false, detalhe: e instanceof Error ? e.message : "erro" });
   }
   return { itens, tudo_certo: itens.every((i) => i.ok), modelo_imagem: MODELO_IMAGEM, limite_mensal: LIMITE_MENSAL,
            central: GATEWAY_URL.replace(/^https:\/\/([^/]+).*$/, "$1") };
@@ -2473,8 +2561,9 @@ async function tratar(req: Request): Promise<Response> {
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
     if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar", "kit", "peca",
-          "editorial"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
-    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca";        // v0.21.0: a peça é da Pauta, não de um assunto
+          "editorial", "foto_buscar", "foto_baixar"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+    // v0.21.0: a peça é da Pauta, não de um assunto; v0.39.0: a foto do banco de imagens também vai sem assunto
+    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca" || acao.startsWith("foto_");
     if (!semAssunto && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
     assuntoId = semAssunto ? 0 : pedido.assunto_id;
 
@@ -2486,6 +2575,9 @@ async function tratar(req: Request): Promise<Response> {
     }
 
     if (acao === "pagina") return responder(200, { ...(await pagina(pedido.url)), versao: VERSAO });   // não usa IA: não conta no limite
+    // v0.39.0: a foto real do banco de imagens também não usa IA (sem custo e sem limite)
+    if (acao === "foto_buscar") return responder(200, { ...(await fotoBuscar(pedido.consulta)), versao: VERSAO });
+    if (acao === "foto_baixar") return responder(200, { ...(await fotoBaixar(pedido.foto_id)), versao: VERSAO });
 
     const [mes] = await banco(token, "GET", "radar_v_ia_mes?select=tokens");
     if (LIMITE_MENSAL > 0 && Number(mes?.tokens ?? 0) >= LIMITE_MENSAL) {

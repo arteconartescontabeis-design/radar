@@ -1,4 +1,4 @@
-# Radar Artecon — v0.36.0
+# Radar Artecon — v0.39.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,20 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.39.0 (pedido do dono de 20/10) barateia a IA do Radar inteiro e acelera o preparo das notícias. **Modelos novos por padrão**:
+o Claude **Sonnet 5.5** (33% mais barato que o Sonnet 4.6, e mais novo) nas ações que redigem e o Claude **Haiku 5.5** (10× mais
+barato) na classificação — também no robô de rascunhos, no avaliador da coleta e na função da ITC; e as **instruções fixas** (regras
+e Diretrizes) passam a usar o **cache** da Anthropic: a partir da segunda chamada da mesma ação em até 5 minutos, essa parte custa
+10% do normal. Na aba **Assuntos**, o **preparo em lote**: marque várias notícias e clique em "Preparar as marcadas com IA" — cada
+uma passa pelo caminho inteiro (fonte, texto, imagem, Conferência e legendas) e chega no passo "Conferir e aprovar"; nada é
+publicado sozinho. E a capa pode ser uma **foto real** do banco de imagens **Pixabay** (grátis, licença de uso comercial), com o
+**título curto desenhado por cima pelo próprio Radar** — no lote ela é a imagem padrão, e no conteúdo há o botão "Usar foto real com
+o título" com a busca. A imagem por IA continua como opção (a IA Central sempre gera em qualidade média e cobra preço fixo por
+imagem; o aviso de "qualidade alta" era ilusório e saiu). Mudam as funções **`radar-ia`** (modelos, cache, `foto_buscar` e
+`foto_baixar`, com o segredo novo **`PIXABAY_API_KEY`**) e **`radar-itc`** (só o modelo padrão), o robô (`radar_ia.py` e
+`radar_rascunhos.py`, pelo merge) e a tela; **o banco não muda** (nenhum SQL). Na IA Central, os modelos novos precisam estar
+liberados e com preço. Veja "Da v0.36.0 para a v0.39.0".
 
 A v0.36.0 traz a **correção avulsa**: analisar e corrigir um vídeo **sem criar uma peça na Pauta** (pedido do dono de 18/10). Na
 aba **Vídeo**, "Corrigir um vídeo avulso": um **título** próprio, a **fala para conferência** colada direto (ela é o "roteiro" do
@@ -1061,9 +1075,10 @@ Segredos opcionais (no projeto do Radar):
 
 | Segredo | Padrão | Para quê |
 |---|---|---|
-| `RADAR_IA_MODELO` | `claude-sonnet-4-6` | modelo que busca trechos e redige |
-| `RADAR_IA_MODELO_RAPIDO` | `claude-haiku-4-5` | modelo que classifica |
-| `RADAR_IA_MODELO_IMAGEM` | `gpt-image-2` | modelo da imagem da publicação (OpenAI). v0.25.0: sempre em qualidade alta (`quality: "high"`, 1536×1024), que custa mais por imagem que a média de antes |
+| `RADAR_IA_MODELO` | `claude-sonnet-5-5` | modelo que busca trechos e redige (v0.39.0: antes `claude-sonnet-4-6` — o novo é 33% mais barato) |
+| `RADAR_IA_MODELO_RAPIDO` | `claude-haiku-5-5` | modelo que classifica (v0.39.0: antes `claude-haiku-4-5` — o novo é 10× mais barato) |
+| `RADAR_IA_MODELO_IMAGEM` | `gpt-image-2` | modelo da imagem da publicação (OpenAI), 1536×1024. v0.39.0: a IA Central sempre gera em qualidade média e cobra um preço fixo por imagem — o `quality: "high"` da v0.25.0 era ilusório e saiu |
+| `PIXABAY_API_KEY` | — | v0.39.0: a chave do banco de imagens Pixabay (grátis, em pixabay.com → API), para a foto real da capa (`foto_buscar`/`foto_baixar`); sem ela, o botão e o lote avisam e fica a capa padrão |
 | `RADAR_IA_LIMITE_MENSAL_TOKENS` | `3000000` | teto de consumo por mês dentro do Radar, além dos limites em dólar da IA Central |
 | `IA_GATEWAY_URL` | endereço do `ia-gateway` do projeto do DP | só muda se a IA Central mudar de projeto |
 
@@ -1071,11 +1086,10 @@ Os modelos são os que a IA Central já tem com preço cadastrado e que os outro
 Para usar outro modelo, cadastre o preço em `core.ia_precos` e libere em `core.ia_apps.modelos`
 do aplicativo `radar` antes de trocar o segredo; senão a IA Central recusa a chamada.
 
-Custo da imagem (v0.25.0): a imagem da IA sai em **qualidade alta**, que custa mais por imagem do que a qualidade média usada até a
-v0.24.0; o valor de cada uma fica no Portal → Consumo de IA (na conta da OpenAI). A qualidade não é configurável por segredo: se a IA
-Central recusar a qualidade alta, a função **não troca de qualidade sozinha** e o recado diz para liberar a qualidade alta do modelo de
-imagem do Radar no Portal. A imagem só é gerada quando alguém clica em "Gerar imagem com IA" (o "Gerar com IA" faz a capa padrão, sem
-custo de imagem).
+Custo da imagem (v0.39.0): a IA Central sempre gera em **qualidade média** e cobra um **preço fixo por imagem** (o valor fica no
+Portal → Consumo de IA, na conta da OpenAI); o pedido de qualidade alta da v0.25.0 nunca chegava à OpenAI e saiu, junto com o aviso
+de "qualidade alta" da tela. A foto REAL do banco de imagens (Pixabay) não custa nada. A imagem da IA só é gerada quando alguém clica
+em "Gerar imagem com IA" (o "Preparar com IA" faz a capa padrão ou, no lote, a capa com a foto real, sem custo de imagem).
 
 Quando a IA "não funciona", o teste do item 4 mostra a causa. As mais comuns: a função `radar-ia`
 não foi criada com esse nome; falta o segredo `IA_GATEWAY_TOKEN` ou o token foi trocado no
@@ -1205,7 +1219,7 @@ de qual outra captura ela é **repetição**. O banco valida cada item (`radar_g
     ou abrir assunto novo (abrir uma não leva as outras que têm cartão próprio).
   Se a IA apontar muitas capturas do mesmo lote para a mesma origem (mais de um terço do lote,
   direto ou em cadeia), o robô trata como erro e não esconde nenhuma. Título alterado na fonte pede nova avaliação.
-- **Custo**: modelo rápido (`claude-haiku-4-5`), cerca de US$ 0,01 a cada 25 capturas, registrado no
+- **Custo**: modelo rápido (`claude-haiku-5-5`; v0.39.0: 10× mais barato que o `claude-haiku-4-5` de antes), cerca de US$ 0,001 a cada 25 capturas, registrado no
   Portal em nome de "robô de coleta", dentro dos limites do Radar.
 - **Se a IA faltar** (sem crédito, limite do dia, token errado), a coleta não falha: as capturas
   ficam "aguardando nota da IA", entram em "Em alta" pela ordem das palavras e são avaliadas na
@@ -2674,7 +2688,7 @@ uma vez por quem administra o Microsoft 365 do escritório:
    função não estiver ligada, a rotina antiga é o caminho em produção (varredura geral de 13/10/2026: a agenda da ITC ainda não estava
    no pg_cron).
 
-Opcional: `RADAR_ITC_MODELO` (padrão `claude-haiku-4-5`), `ITC_REMETENTE` (padrão `itc@itcnet.com.br`) e `ITC_PASTA`: vazio (o
+Opcional: `RADAR_ITC_MODELO` (padrão `claude-haiku-5-5`; v0.39.0: antes `claude-haiku-4-5`), `ITC_REMETENTE` (padrão `itc@itcnet.com.br`) e `ITC_PASTA`: vazio (o
 padrão) = a caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos; preenchido com o id de uma pasta (ou `inbox`), a função lê
 só ela, como antes da v0.23.0 (o boletim movido para outra pasta deixa de ser lido). Deixe vazio. Cada leitura com boletim novo usa a
 IA (cerca de 10 a 20 mil tokens por boletim); sem boletim novo, não usa. A lista de e-mails do Microsoft Graph vem em pedaços (até 5):
@@ -2846,6 +2860,31 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.36.0 para a v0.39.0** (o banco **não muda** — nenhum SQL; mudam as funções `radar-ia` e `radar-itc` e a tela; o robô muda
+pelo merge; **um segredo novo** na `radar-ia`: `PIXABAY_API_KEY`; nada de chave ou segredo pelo chat). Supõe a v0.36.0 instalada.
+**Nesta ordem**:
+
+1. **IA Central** (Portal → Consumo de IA, ou no SQL Editor do projeto do DP): libere os modelos novos para o Radar e cadastre os
+   preços — `update core.ia_apps set modelos = modelos || array['claude-haiku-5-5','claude-sonnet-5-5'] where app = 'radar';` e
+   `insert into core.ia_precos (prefixo, provedor, entrada, saida, cache_escrita, cache_leitura) values
+   ('claude-sonnet-5-5','anthropic',2.00,10.00,2.50,0.20), ('claude-haiku-5-5','anthropic',0.10,0.50,0.125,0.01);` (preços da
+   Anthropic por milhão de tokens em 10/2026). Sem isso, a IA Central recusa com "não está liberado"/"não tem preço cadastrado".
+2. Supabase (projeto do Radar) → **Edge Functions** → `radar-ia` → crie o segredo **`PIXABAY_API_KEY`** (chave grátis em
+   pixabay.com → API; serve para a foto real da capa) e cole o `supabase/functions/radar-ia/index.ts` desta versão → **Deploy**,
+   com o **"Verify JWT" desligado** (como já está). Entram os modelos novos por padrão, o cache das instruções e as ações
+   `foto_buscar`/`foto_baixar`.
+3. `radar-itc` → cole o `supabase/functions/radar-itc/index.ts` desta versão → **Deploy** (só muda o modelo padrão para
+   `claude-haiku-5-5`).
+4. Publique a tela (`index.html`, `radar-pauta.js`, `radar-video.js`, `radar-setor.js` e `radar-respostas.js`, juntos) e aperte
+   **Ctrl+F5**. O rodapé mostra "Radar v0.39.0"; a aba Assuntos ganha as caixas e o "Preparar as marcadas com IA", e o conteúdo, o
+   botão "Usar foto real com o título". O robô (avaliador e rascunhos) passa a usar os modelos novos sozinho, pelo merge.
+5. Confira em Configurações → Inteligência artificial → **Testar a instalação da IA**: os dois modelos novos respondem.
+
+**Como desligar:** para voltar aos modelos antigos sem republicar nada, crie na `radar-ia` os segredos `RADAR_IA_MODELO =
+claude-sonnet-4-6` e `RADAR_IA_MODELO_RAPIDO = claude-haiku-4-5` (e `RADAR_ITC_MODELO = claude-haiku-4-5` na `radar-itc`) e faça o
+Deploy de novo; o cache e a foto real não têm nada a desligar (sem a `PIXABAY_API_KEY`, a busca de fotos avisa e fica a capa
+padrão). O preparo em lote usa as mesmas ações de sempre, uma a uma.
 
 **Da v0.35.0 para a v0.36.0** (muda o banco: SQL novo, que pode rodar de novo; muda a função `radar-video`; as funções `radar-ia`,
 `radar-redes`, `radar-itc`, `radar-copia`, `radar-concorrentes` e `radar-meta-webhook`, o robô do vídeo e as agendas **não mudam**;

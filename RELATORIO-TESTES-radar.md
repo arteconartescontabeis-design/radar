@@ -1,4 +1,4 @@
-# Radar Artecon — Relatório de testes (v0.36.0)
+# Radar Artecon — Relatório de testes (v0.39.0)
 
 Data: 18/10/2026. **A suíte inteira da v0.36.0 roda no GitHub (CI) antes de juntar.** Neste ambiente rodaram, em série, os
 arquivos afetados pela v0.36.0 (números na seção "v0.36.0", abaixo). A v0.36.0 tem **11** testes novos (6 do banco em

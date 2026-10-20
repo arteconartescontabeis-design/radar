@@ -211,7 +211,7 @@ def test_le_o_boletim_grava_as_materias_uma_vez_e_nao_devolve_o_conteudo(itc):
     assert {"parentFolderId", "internetMessageId", "body", "subject", "receivedDateTime"} <= set(g["select"].split(","))
     assert sorted(ESTADO["pastas"]) == [("deleteditems", ["id"]), ("junkemail", ["id"])]
     pedido = ESTADO["ia"][-1]
-    assert pedido["model"] == "claude-haiku-4-5" and "Santa Catarina" in pedido["system"] and "<<<BOLETIM>>>" in pedido["messages"][0]["content"]
+    assert pedido["model"] == "claude-haiku-5-5" and "Santa Catarina" in pedido["system"] and "<<<BOLETIM>>>" in pedido["messages"][0]["content"]
     titulo, texto, data, meta = itc.execute("""select c.titulo, c.texto, c.data_publicacao::text, c.metadados from radar_capturas c
                                                join radar_fontes f on f.id = c.fonte_id where f.slug = 'itc-email'""").fetchone()
     assert titulo.startswith("SIMPLES NACIONAL") and "http" not in texto and data == "2026-10-05"
@@ -409,7 +409,7 @@ def test_diagnostico_conta_na_caixa_inteira_menos_lixo_e_excluidos(itc):
     ESTADO["emails"] = ([email(f"d{i}", f"2026-10-0{1 + i % 7}T10:30:00Z", pasta=SUBPASTA if i % 2 else ENTRADA) for i in range(14)]
                         + [email("d-lixo", pasta=LIXO), email("d-exc", pasta=EXCLUIDOS)])
     status, r = pedir({"acao": "diagnostico"})
-    assert status == 200 and r["tudo_certo"] is True and r["versao"] == "0.23.0", r
+    assert status == 200 and r["tudo_certo"] is True and r["versao"] == "0.39.0", r
     assert r["itens"][0] == {"item": "Função radar-itc instalada", "ok": True, "detalhe": "versão 0.23.0"}
     assert r["itens"][-1] == {"item": "Leitura da caixa", "ok": True,
                               "detalhe": "14 boletim(ns) da ITC nos últimos 7 dias na caixa inteira (fora o Lixo Eletrônico e os Itens Excluídos)"}

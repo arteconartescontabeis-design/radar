@@ -10,7 +10,7 @@ radar_gravar_avaliacao_ia do banco, que valida cada item. Se a IA estiver indisp
 crédito ou no limite, a coleta NÃO falha: as capturas ficam sem nota e são avaliadas na próxima.
 
 Variáveis de ambiente: RADAR_IA_GATEWAY_TOKEN (token do aplicativo "radar" na IA Central),
-IA_GATEWAY_URL (opcional) e RADAR_IA_MODELO_RAPIDO (opcional; padrão claude-haiku-4-5).
+IA_GATEWAY_URL (opcional) e RADAR_IA_MODELO_RAPIDO (opcional; padrão claude-haiku-5-5 — v0.39.0: antes claude-haiku-4-5).
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ import requests
 from radar_banco import Banco, ErroBanco
 
 GATEWAY_PADRAO = "https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-gateway"
-MODELO_PADRAO = "claude-haiku-4-5"
+MODELO_PADRAO = "claude-haiku-5-5"   # v0.39.0: 10× mais barato que o claude-haiku-4-5
 LOTE = 25                # capturas por pedido à IA
 MAXIMO_POR_EXECUCAO = 150
 CONTEXTO = 80            # capturas recentes já avaliadas, para a IA reconhecer repetição
@@ -88,7 +88,10 @@ def perguntar(sessao: requests.Session, url: str, token: str, modelo: str, novos
     entrada = ("JÁ VISTOS (só para reconhecer repetição; não avalie):\n"
                + ("\n".join(json.dumps({"id": v["id"], "titulo": _curto(v.get("titulo"), 160)}, ensure_ascii=False) for v in vistos) or "(nenhum)")
                + "\n\nNOVOS (avalie cada um):\n" + "\n".join(_linha(n) for n in novos))
-    corpo = {"model": modelo, "max_tokens": 4000, "system": INSTRUCOES, "messages": [{"role": "user", "content": entrada}],
+    # v0.39.0: as instruções fixas com cache — da 2ª rodada da mesma execução em diante (até 5 min), custam 10% do normal
+    corpo = {"model": modelo, "max_tokens": 4000,
+             "system": [{"type": "text", "text": INSTRUCOES, "cache_control": {"type": "ephemeral"}}],
+             "messages": [{"role": "user", "content": entrada}],
              "tools": [{"name": "avaliacao", "description": "Registra a avaliação de cada item.", "input_schema": ESQUEMA}],
              "tool_choice": {"type": "tool", "name": "avaliacao"}}
     try:
