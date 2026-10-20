@@ -1,4 +1,4 @@
-# Radar Artecon — v0.40.0
+# Radar Artecon — v0.41.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,14 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.41.0 (a melhoria "dashboard do Painel" da proposta aprovada em 20/10) põe a **projeção de publicações no Painel do dia**: um
+quadro no alto mostra, lado a lado, **hoje, a semana e o mês** — o que o calendário da Pauta e a busca pedem (o mínimo), o que já
+saiu (o feito) e **o que falta alcançar**, com o atraso em vermelho e o resumo de cada período em uma linha ("Tem X de Y: faltam
+Z"). As contas são **exatamente as do cronograma de publicações da Pauta** (`lerCronograma`/`contarCronograma`, funções puras
+testadas com datas fixas — o quadro da Pauta continua lá, com o "Como o quadro conta"); o quadro só informa, e a leitura que
+falhar vira um aviso sem derrubar o Painel. Muda **só a tela** (`index.html` e `radar-pauta.js`; os outros .js só mudam a versão):
+**nenhum SQL, nenhum Deploy de função, nenhum segredo**. Veja "Da v0.40.0 para a v0.41.0".
 
 A v0.40.0 (a melhoria chamada "v0.37" na proposta aprovada em 20/10 — ela sai depois da v0.39.0, e a numeração do aplicativo só
 anda para a frente) deixa o **corretor de vídeo** mais inteligente e mais claro. O **juiz de sentido** (`robo/video/juiz.py`, pela
@@ -2874,6 +2882,18 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.40.0 para a v0.41.0** (muda SÓ a tela: `index.html` e `radar-pauta.js`, com os outros .js só na versão; o banco, as
+funções, os robôs, as agendas e os segredos **não mudam** — nenhum SQL, nenhum Deploy). Supõe a v0.40.0 instalada:
+
+1. Publique a tela (`index.html`, `radar-pauta.js`, `radar-video.js`, `radar-setor.js` e `radar-respostas.js`, juntos) e aperte
+   **Ctrl+F5**. O rodapé mostra "Radar v0.41.0" e o Painel do dia ganha, no alto, a **Projeção de publicações** (hoje, a semana e
+   o mês, com o "tem × falta" de cada um e o botão "Abrir a Pauta").
+2. Conferência: os números de "Semana" e "Mês" do quadro novo são os mesmos do cronograma da Pauta (abra a Pauta e compare);
+   "Hoje" é a fatia de hoje.
+
+**Como desligar:** não há nada a desligar — o quadro só lê (as mesmas leituras do cronograma da Pauta). Para não vê-lo, basta
+voltar a tela da v0.40.0.
 
 **Da v0.39.0 para a v0.40.0** (muda o banco: SQL novo, que pode rodar de novo; mudam a função `radar-video`, o robô do vídeo — pelo
 commit fixo do repositório privado — e a tela; as funções `radar-ia`, `radar-redes`, `radar-itc`, `radar-copia`,

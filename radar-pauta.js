@@ -30,7 +30,7 @@
    Configurações (index.html).
    v0.36.0: só a versão e o recado do banco (o setup então em uso); a correção avulsa fica na aba Vídeo (radar-video.js).
    ==================================================================== */
-const PAUTA_VERSAO = "0.40.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.41.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -186,7 +186,10 @@ async function lerCronograma(seg, hoje){
   // a que chegou velha: dias_baixa de Configurações (o padrão do banco é 5; com 0 a idade está desligada e vale o padrão)
   const d = CONF_PAUTA.relevancia?.dias_baixa, dias = Number.isInteger(d) && d > 0 ? d : 5;
   const dados = {pecas, noticias, antes, capturas:[...altas, ...velhas], dias};
-  return {semana:contarCronograma(semana.ini, semana.fim, hoje, dados), mes:contarCronograma(mes.ini, mes.fim, hoje, dados),
+  // v0.41.0 (pedido do dono): também o dia de hoje, para a projeção do Painel (as mesmas contas; hoje está sempre na faixa lida
+  // quando seg é a segunda-feira da semana de hoje — o Painel chama assim)
+  return {dia:contarCronograma(hoje, hoje, hoje, dados),
+          semana:contarCronograma(semana.ini, semana.fim, hoje, dados), mes:contarCronograma(mes.ini, mes.fim, hoje, dados),
           cortado:[noticias, antes, altas, velhas].some(l => l.length >= LIMITE_CRONOGRAMA)};
 }
 const FASES_CRONOGRAMA = {passou:"já passou", andamento:"em andamento", futuro:"ainda não começou"};
