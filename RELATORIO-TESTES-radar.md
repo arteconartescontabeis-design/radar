@@ -83,6 +83,37 @@ desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na h
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
 
+## v0.42.0 — formato no assunto (carrossel e reel), "Pôr no Informativo" e o carrossel publicado pelo Radar
+
+Todos os testes usam **dados fictícios** (lâminas e fotos de mentira, "Ana Teste", tokens falsos); a Meta é um servidor de
+mentira no próprio teste (como nas versões anteriores) e nada toca a Meta de verdade.
+
+- **Banco** (2 testes novos em `testes/test_radar_banco.py`): o carrossel da Pauta agendado — a aprovação guarda as lâminas por
+  referência (`artes`, sem a cópia em `imagem`), a agenda pega o envio, `radar_pauta_iniciar` devolve as lâminas na ordem do post,
+  `radar_rede_concluir` guarda os endereços internos (`imagens_urls`; o fora do formato não entra) e a lâmina perdida vira "erro"
+  com o motivo; e `radar_autorizar_rede` com `p_artes` — os casos recusados (menos de 2, repetida, de outra pessoa, fora de
+  1080×1350, velha, lâminas junto com a imagem única — RADAR177; sem nada, RADAR135) e o bom, com `radar_rede_iniciar` devolvendo
+  as lâminas e a faxina de imagens poupando a lâmina de um envio. A aprovação agendada do carrossel entrou no teste de aprovação
+  que antes a recusava; a reversão tira as assinaturas novas.
+- **Função radar-redes** (4 testes novos em `testes/test_radar_funcao_redes.py`, com a Meta e o armazenamento de mentira): o
+  Instagram em um contêiner por lâmina (`is_carousel_item`, sem legenda) + o contêiner CAROUSEL (filhos + legenda) +
+  `media_publish`; o Facebook com as fotos SEM publicar + uma publicação com `attached_media`; a nova tentativa **reassina sem
+  reenviar** (3 lâminas no armazenamento, 6 assinaturas); e a notícia autorizada com as lâminas saindo como carrossel.
+- **Função radar-ia** (`testes/test_radar_funcao_ia.py`, casos novos nos testes do kit): os cartões no esquema e nas instruções
+  (a regra nova "(f)"), a limpeza (HTML e link fora, título até 40 com aviso, até 8 cartões) e o pedido em 4.600 tokens.
+- **Telas** (3 testes novos em `testes/test_radar_telas.py`): a escolha Foto/Carrossel no quadro do canal (desligada sem os
+  cartões do kit; ligada, desenha as 4 lâminas e a autorização grava os ids em `radar_imagens`, 1080×1350, e o envio fica com as
+  lâminas e sem a imagem única); o "Pôr no Informativo Mensal" (sem edição em montagem avisa; entra no fim da edição e não entra
+  duas vezes); e o "Criar peça de reel na Pauta" (o roteiro do kit no formato que o corretor lê, conferido com `extrairFala`).
+  No teste do carrossel à mão da Pauta, o "Agendar" passa a aparecer habilitado (o administrador ainda escolhe "à mão").
+- Atualizados: as asserções de versão (tela e os 4 .js em 0.42.0; `REDES_MINIMA` sobe para 0.42.0 — o carrossel precisa da função
+  nova; `FUNCAO_MINIMA` fica em 0.39.0), os recados do setup (v0.42.0), os índices da aba Versões e as asserções presas à versão
+  do banco instalada (o manifesto da cópia mensal, o setup por cima do banco e o quadro de vencimentos).
+- Suíte inteira neste ambiente, em série: **1.452 aprovados, 0 falhas, 64 pulados** (os 61 da IA Central de verdade — pacote
+  `../ia-central`, fora deste ambiente — e 3 do ambiente), em 22min29s. Na 1ª rodada, 7 falhas, todas asserções com a versão de
+  antes (corrigidas, nenhum código do produto mudou); a 2ª rodada ficou com a única falha no cabeçalho deste próprio relatório
+  (atualizado por último, de propósito); a 3ª rodada, completa, ficou verde.
+
 ## v0.41.0 — a projeção de publicações no Painel do dia (hoje, a semana e o mês)
 
 Todos os testes usam **dados fictícios** e datas fixas onde a conta depende do calendário; o teste com o banco usa só o dia de
