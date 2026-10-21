@@ -429,7 +429,7 @@ def test_falta_mes_e_em_andamento(quadro):
         r = c.execute("select radar_copias_comecar('')").fetchone()[0]
     agora = datetime.now(FUSO)
     assert re.fullmatch(r"radar-copia-\d{4}-\d{2}-\d{2}-\d{4}\.zip", r["arquivo"]) and r["arquivo"].startswith(f"radar-copia-{agora:%Y-%m-%d}-")
-    assert (r["origem"], r["banco"]) == ("admin", "v0.43.0") and r["gerado_em"].endswith("-03:00") and r["gerado_em"][:10] == f"{agora:%Y-%m-%d}"
+    assert (r["origem"], r["banco"]) == ("admin", "v0.44.0") and r["gerado_em"].endswith("-03:00") and r["gerado_em"][:10] == f"{agora:%Y-%m-%d}"
     assert db.execute("select ok, erro from radar_copias where id = %s", (antiga,)).fetchone() == (
         False, "A cópia parou no meio (limite de tempo ou de memória da função no Supabase).")
     assert db.execute("select mes, origem, ok from radar_copias where id = %s", (r["id"],)).fetchone() == (mes, "admin", None)

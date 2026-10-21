@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.43.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.44.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -105,7 +105,13 @@
 -- publicar a NOVA TENTATIVA de uma notícia; a primeira publicação da notícia continua saindo só pela tela ou pelo robô do site).
 -- Este setup também faz a faxina das sobras da instalação por partes da v0.42.0 (duas funções renomeadas inertes e a tabela de
 -- pedaços radar_tmp_v042), quando existem. Nada de dados é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
--- Reversão: radar-reversao-v0.43.0.sql
+-- v0.44.0 (sem bloco próprio: um ajuste no bloco do corretor de vídeo): o teleprompter com gravação pelo navegador. As funções
+-- radar_video_criar e radar_video_criar_avulso passam a aceitar o tipo 'video/webm' (a gravação do MediaRecorder no Chrome/Android;
+-- o Safari grava MP4, que já entrava) — todo o resto do caminho (envio TUS, robô com a sondagem endurecida, cota, termos,
+-- declarações) fica como está; quem confere o conteúdo do arquivo continua sendo o robô (sondar.py, agora com o espelho do
+-- endurecimento para o WEBM: assinatura EBML + demuxer matroska,webm à força). As letras grandes e o teleprompter em si são só
+-- tela. Nada de dados é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
+-- Reversão: radar-reversao-v0.44.0.sql
 -- =====================================================================
 
 begin;
@@ -131,7 +137,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.43.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.44.0', v_antes);
 end $$;
 
 -- v0.43.0: a faxina das sobras da instalação por partes da v0.42.0 (feita pelo assistente em 20/10, por etapas pequenas:
@@ -5423,12 +5429,12 @@ begin
     if jsonb_typeof(v_parte) is distinct from 'object' then v_parte := '{}'::jsonb; end if;
     if (select count(*) from jsonb_object_keys(v_parte)) <> 3
        or jsonb_typeof(v_parte->'n') is distinct from 'number' or (v_parte->>'n') <> v_n::text
-       or coalesce(v_parte->>'tipo', '') not in ('video/mp4','video/quicktime')
+       or coalesce(v_parte->>'tipo', '') not in ('video/mp4','video/quicktime','video/webm')   -- v0.44.0: + a gravação do teleprompter pelo navegador
        or jsonb_typeof(v_parte->'bytes') is distinct from 'number' or (v_parte->>'bytes') !~ '^[0-9]{1,9}$' then
-      raise exception 'RADAR306: o clipe nº % não confere (MP4 ou MOV, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
+      raise exception 'RADAR306: o clipe nº % não confere (MP4, MOV ou a gravação do navegador, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
     end if;
     if (v_parte->>'bytes')::bigint not between 1 and 524288000 then
-      raise exception 'RADAR306: o clipe nº % não confere (MP4 ou MOV, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
+      raise exception 'RADAR306: o clipe nº % não confere (MP4, MOV ou a gravação do navegador, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
     end if;
     v_total := v_total + (v_parte->>'bytes')::bigint;
     v_partes := v_partes || jsonb_build_array(jsonb_build_object('n', v_n, 'tipo', v_parte->>'tipo', 'bytes', (v_parte->>'bytes')::bigint));
@@ -10455,12 +10461,12 @@ begin
     if jsonb_typeof(v_parte) is distinct from 'object' then v_parte := '{}'::jsonb; end if;
     if (select count(*) from jsonb_object_keys(v_parte)) <> 3
        or jsonb_typeof(v_parte->'n') is distinct from 'number' or (v_parte->>'n') <> v_n::text
-       or coalesce(v_parte->>'tipo', '') not in ('video/mp4','video/quicktime')
+       or coalesce(v_parte->>'tipo', '') not in ('video/mp4','video/quicktime','video/webm')   -- v0.44.0: + a gravação do teleprompter pelo navegador
        or jsonb_typeof(v_parte->'bytes') is distinct from 'number' or (v_parte->>'bytes') !~ '^[0-9]{1,9}$' then
-      raise exception 'RADAR306: o clipe nº % não confere (MP4 ou MOV, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
+      raise exception 'RADAR306: o clipe nº % não confere (MP4, MOV ou a gravação do navegador, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
     end if;
     if (v_parte->>'bytes')::bigint not between 1 and 524288000 then
-      raise exception 'RADAR306: o clipe nº % não confere (MP4 ou MOV, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
+      raise exception 'RADAR306: o clipe nº % não confere (MP4, MOV ou a gravação do navegador, de 1 byte a 500 MB, na ordem)', v_n using errcode = 'P0001';
     end if;
     v_total := v_total + (v_parte->>'bytes')::bigint;
     v_partes := v_partes || jsonb_build_array(jsonb_build_object('n', v_n, 'tipo', v_parte->>'tipo', 'bytes', (v_parte->>'bytes')::bigint));
@@ -10608,7 +10614,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.43.0).
+-- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.44.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

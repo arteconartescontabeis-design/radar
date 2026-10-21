@@ -2,13 +2,17 @@
 
 Cada clipe (bruto/<id>/<n>, baixado como ent/<n>, sem extensão) passa por, nesta ordem:
   1. tamanho: até o declarado no envio (radar_videos.partes[].bytes) — senão `arquivo_grande`;
-  2. `ftyp` no byte 4 (MP4 e MOV do celular começam assim; uma playlist .m3u8 ou um HTML renomeado para .mp4, não) — `formato`;
-  3. ffprobe com `-protocol_whitelist file -f mov` (o demuxer do MP4/MOV, à força: nada de adivinhar o formato pelo conteúdo, nada de
-     protocolo de rede) e `format_name` igual ao do demuxer — `formato`;
+  2. a assinatura do contêiner no começo do arquivo — `ftyp` no byte 4 (MP4 e MOV do celular começam assim) ou, v0.44.0, o EBML do
+     WEBM nos bytes 0–3 (a gravação do teleprompter pelo navegador); uma playlist .m3u8 ou um HTML renomeado, não — `formato`;
+  3. ffprobe com `-protocol_whitelist file -f <demuxer da assinatura>` (mov para MP4/MOV, matroska,webm para WEBM, à força: nada de
+     adivinhar o formato pelo conteúdo, nada de protocolo de rede) e `format_name` igual ao do demuxer — `formato`;
   4. vídeo e áudio presentes (`formato` sem vídeo, `sem_audio` sem áudio), de pé depois do giro (`deitado`), e a soma de até 120 s
-     (`longo_demais`).
+     (`longo_demais`). O WEBM do navegador sem a duração escrita (o MediaRecorder não grava; a tela conserta antes de subir) cai
+     na mesma recusa `formato` da duração fora de 0,2–3600 s.
 O JSON do ffprobe traz o local GPS (format.tags.location) e o modelo do celular: ele só é lido aqui, e só os campos técnicos saem
 desta função. Usamos só o 1º vídeo e o 1º áudio (0:v:0, 0:a:0); faixas de dados e de legenda do celular ficam de fora (-dn -sn).
+v0.44.0: cada clipe carrega o próprio demuxer ("cont") e as outras etapas (áudio, montagem, capa) pedem entrada(info) em vez do
+ENTRADA fixo: o WEBM nunca é lido com o demuxer do MOV, nem o contrário.
 """
 from __future__ import annotations
 
@@ -21,8 +25,14 @@ from segredo import ErroVideo
 
 FPS = 30
 FORMATO = "mov,mp4,m4a,3gp,3g2,mj2"
+FORMATO_WEBM = "matroska,webm"         # v0.44.0: a gravação do teleprompter pelo navegador (Chrome/Android); o Safari grava MP4
 TOTAL_MAX_S = 960.0                    # soma dos clipes (v0.33.0: o Instagram aceita reel de até 15 min — 900 s — pela API; 960 s dão folga)
-ENTRADA = ["-protocol_whitelist", "file", "-f", "mov"]     # vem antes de todo "-i /ent/<n>"
+ENTRADA = ["-protocol_whitelist", "file", "-f", "mov"]     # vem antes de todo "-i /ent/<n>" de MP4/MOV (o padrão de sempre)
+
+
+def entrada(info: dict) -> list[str]:
+    """v0.44.0: as opções de entrada do ffmpeg/ffprobe para ESTE clipe (o demuxer preso ao contêiner visto na sondagem)."""
+    return ["-protocol_whitelist", "file", "-f", FORMATO_WEBM if info.get("cont") == "webm" else "mov"]
 
 
 def _num(v, padrao: float = 0.0) -> float:
@@ -59,16 +69,21 @@ def sondar(n: int, pastas: isolado.Pastas, bytes_declarados: int | None = None) 
         raise ErroVideo("formato", "sondar") from None
     if bytes_declarados is not None and tamanho > bytes_declarados:
         raise ErroVideo("arquivo_grande", "sondar")
-    if len(cabeca) < 12 or cabeca[4:8] != b"ftyp":
+    # v0.44.0: a assinatura decide o contêiner (e o demuxer forçado): ftyp no byte 4 = MP4/MOV; EBML nos bytes 0–3 = WEBM do navegador
+    if len(cabeca) >= 12 and cabeca[4:8] == b"ftyp":
+        cont, esperado = "mov", FORMATO
+    elif len(cabeca) >= 4 and cabeca[:4] == b"\x1a\x45\xdf\xa3":
+        cont, esperado = "webm", FORMATO_WEBM
+    else:
         raise ErroVideo("formato", "sondar")
     try:
-        saida = isolado.rodar("sondar", "ffprobe", ["-v", "error", *ENTRADA, "-show_streams", "-show_format", "-of", "json", f"/ent/{n}"],
-                              pastas, isolado.TEMPO_SONDAR)
+        saida = isolado.rodar("sondar", "ffprobe", ["-v", "error", *entrada({"cont": cont}), "-show_streams", "-show_format", "-of", "json",
+                                                    f"/ent/{n}"], pastas, isolado.TEMPO_SONDAR)
         d = json.loads(saida)
     except (ErroVideo, ValueError):
         raise ErroVideo("formato", "sondar") from None
     fmt = d.get("format") or {}
-    if fmt.get("format_name") != FORMATO:
+    if fmt.get("format_name") != esperado:
         raise ErroVideo("formato", "sondar")
     fluxos = [s for s in d.get("streams") or [] if isinstance(s, dict)]
     v = next((s for s in fluxos if s.get("codec_type") == "video" and not (s.get("disposition") or {}).get("attached_pic")), None)
@@ -91,7 +106,7 @@ def sondar(n: int, pastas: isolado.Pastas, bytes_declarados: int | None = None) 
     if not (1 <= fps <= 240) or not (0.2 <= dur_v <= 3600):
         raise ErroVideo("formato", "sondar")
     trc = v.get("color_transfer") or ""
-    return {"n": n, "w": w, "h": h, "rot": rot, "girado": girado, "codec": str(v.get("codec_name") or "")[:20],
+    return {"n": n, "w": w, "h": h, "cont": cont, "rot": rot, "girado": girado, "codec": str(v.get("codec_name") or "")[:20],
             "hdr": "pq" if trc == "smpte2084" else "hlg" if trc == "arib-std-b67" else None,
             "fps": round(fps, 3), "dur": round(dur_v, 3),
             # quadros a 30 fps que a montagem usa deste clipe: para baixo, para nunca pedir um quadro que o vídeo não tem (o áudio do

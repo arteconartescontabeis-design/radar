@@ -145,9 +145,8 @@ def test_entrada_nao_confiavel_e_recusada_sem_abrir_rede(pastas, acervo, monkeyp
     with pytest.raises(ErroVideo) as e:
         sondar.sondar(2, pastas)
     assert e.value.codigo == "formato"
-    # um Matroska (sem ftyp)
-    subprocess.run([*sint.F, "-f", "lavfi", "-i", "testsrc2=s=108x192:d=1", "-c:v", "libx264", "-f", "matroska", str(pastas.ent / "3")],
-                   check=True)
+    # v0.44.0: começa com o EBML do WEBM mas não é WEBM: o ffprobe (com -f matroska,webm, sem adivinhar) não abre
+    (pastas.ent / "3").write_bytes(b"\x1a\x45\xdf\xa3" + b"lixo" * 400)
     with pytest.raises(ErroVideo) as e:
         sondar.sondar(3, pastas)
     assert e.value.codigo == "formato"
@@ -156,6 +155,38 @@ def test_entrada_nao_confiavel_e_recusada_sem_abrir_rede(pastas, acervo, monkeyp
     with pytest.raises(ErroVideo) as e:
         sondar.sondar(4, pastas, bytes_declarados=1000)
     assert e.value.codigo == "arquivo_grande"
+
+
+# ------------------------------------------------------------------ v0.44.0: o WEBM do navegador (teleprompter)
+def test_webm_do_navegador_entra_com_o_mesmo_rigor(pastas):
+    """A gravação do teleprompter (MediaRecorder): a assinatura EBML leva ao demuxer matroska,webm à força, e valem as mesmas
+    regras do MP4/MOV — vertical, com áudio, com a duração escrita (a tela a escreve; sem ela, a recusa é 'formato')."""
+    webm = lambda n, lados, *extra: subprocess.run(
+        [*sint.F, "-f", "lavfi", "-i", f"testsrc2=s={lados}:r=30:d=1", "-f", "lavfi", "-i", "sine=f=440:r=48000:d=1",
+         "-c:v", "libvpx", "-c:a", "libopus", "-shortest", *extra, "-f", "webm", str(pastas.ent / str(n))], check=True)
+    webm(1, "108x192")
+    i = sondar.sondar(1, pastas)
+    assert (i["cont"], i["w"], i["h"]) == ("webm", 108, 192) and i["dur"] == pytest.approx(1, abs=0.2)
+    assert (pastas.ent / "1").read_bytes()[:4] == b"\x1a\x45\xdf\xa3"              # é mesmo a assinatura do EBML
+    # cada clipe carrega o próprio demuxer para as outras etapas (áudio, montagem, capa)
+    assert sondar.entrada(i) == ["-protocol_whitelist", "file", "-f", "matroska,webm"]
+    assert sondar.entrada({"cont": "mov"}) == sondar.ENTRADA == ["-protocol_whitelist", "file", "-f", "mov"]
+    # deitado e sem áudio: as mesmas recusas de sempre
+    webm(2, "192x108")
+    with pytest.raises(ErroVideo) as e:
+        sondar.sondar(2, pastas)
+    assert e.value.codigo == "deitado"
+    subprocess.run([*sint.F, "-f", "lavfi", "-i", "testsrc2=s=108x192:r=30:d=1", "-c:v", "libvpx", "-an", "-f", "webm",
+                    str(pastas.ent / "3")], check=True)
+    with pytest.raises(ErroVideo) as e:
+        sondar.sondar(3, pastas)
+    assert e.value.codigo == "sem_audio"
+    # sem a duração escrita no arquivo (o -live do muxer, como o MediaRecorder grava): a recusa é 'formato', de propósito —
+    # a tela do teleprompter escreve a duração (consertarDuracaoWebm) antes de o arquivo entrar na lista
+    webm(4, "108x192", "-live", "1")
+    with pytest.raises(ErroVideo) as e:
+        sondar.sondar(4, pastas)
+    assert e.value.codigo == "formato"
 
 
 def test_recusa_sem_audio_deitado_e_longo_demais(pastas, acervo, monkeypatch):
@@ -513,11 +544,13 @@ def test_codigo_do_robo_isolado_e_sem_ia(monkeypatch):
         if nome != "juiz.py":
             assert not re.search(r"ia-gateway|anthropic|openai", codigo, re.I), nome
         for m in re.finditer(r'"-i", f"/ent/', codigo):                                     # todo clipe com o demuxer forçado e só arquivo
-            assert "*ENTRADA" in codigo[max(0, m.start() - 60):m.start()], (nome, codigo[m.start() - 60:m.start()])
+            # v0.44.0: *entrada(i) é o demuxer forçado DO CONTÊINER do clipe (mov ou matroska,webm); *ENTRADA é o fixo do MOV
+            trecho = codigo[max(0, m.start() - 60):m.start()]
+            assert "*ENTRADA" in trecho or "*entrada(" in trecho, (nome, trecho)
     # o juiz: só o endereço do ia-gateway (ou o de testes), nunca outro provedor direto
     assert re.search(r"ia-gateway", fontes["juiz.py"]) and not re.search(r"api\.anthropic\.com|openai", fontes["juiz.py"], re.I)
     assert sondar.ENTRADA == ["-protocol_whitelist", "file", "-f", "mov"]
-    assert "*ENTRADA" in fontes["sondar.py"] and '"-show_streams"' in fontes["sondar.py"]
+    assert "*entrada(" in fontes["sondar.py"] and '"-show_streams"' in fontes["sondar.py"]   # v0.44.0: o demuxer do contêiner visto
     p = isolado.PREFIXO
     for par in (("--network", "none"), ("--user", "1001:1001"), ("--cap-drop", "ALL"), ("--security-opt", "no-new-privileges"),
                 ("--memory", "6g"), ("--pids-limit", "256"), ("--tmpfs", "/tmp:rw,size=512m")):

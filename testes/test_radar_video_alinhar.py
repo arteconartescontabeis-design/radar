@@ -782,7 +782,7 @@ def test_relatorio_parcial_e_final_no_tempo_do_video_corrigido(capfd):
     al = alinhar.alinhar(fala, ws, [], CFG)
     plano = cortes.planejar(infos, silencios([(w["inicio"], w["fim"]) for w in ws], dur), CFG, al["palavras"], al["remover"])
     par = relatorio.parcial(al, plano, infos, {"servico": "azure_f0", "segundos_audio": dur, "palavras": len(ws)})
-    assert par["parcial"] is True and par["versao"] == 2 and par["robo"] == "0.40.0"
+    assert par["parcial"] is True and par["versao"] == 2 and par["robo"] == "0.44.0"
     assert set(par) == {"versao", "robo", "modo", "parcial", "gerado_em", "divergencias", "fora_do_roteiro", "omitido", "avisos",
                         "transcricao"}
     (d,) = par["divergencias"]
