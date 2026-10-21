@@ -948,9 +948,10 @@ def test_agenda_com_a_chave_publica_so_peca_vencida_e_recusa_o_resto(peca):
         for cab in (AGENDA, admin):
             for corpo in ({"acao": "publicar", "envio": envios["instagram"]}, {"acao": "agenda_teste"}):
                 assert pedir(corpo, cab={**cab, "x-radar-agenda": chave}) == (401, {"message": "Chave não confere."})
-    # com a chave certa: a notícia não (nem a do "Publicar em todos"), a peça só na hora, e só publicar
+    # com a chave certa: a notícia não (nem a do "Publicar em todos"; v0.43.0: a EXCEÇÃO é a nova tentativa de uma notícia que deu
+    # erro, testada em test_recusa_clara_marca_nova_tentativa_e_a_agenda_publica_a_da_noticia), a peça só na hora, e só publicar
     st, r = pedir({"acao": "publicar", "envio": noticia}, cab=AGENDA)
-    assert (st, r["message"]) == (403, "A agenda só publica peças da Pauta.")
+    assert (st, r["message"]) == (403, "A agenda só publica peças da Pauta (ou a nova tentativa de uma notícia que deu erro).")
     st, r = pedir({"acao": "publicar", "envio": futura}, cab=AGENDA)
     assert st == 400 and r["message"].startswith("ainda não é a hora: agendada para ") and "(Brasília)" in r["message"]
     for corpo in ({"acao": "excluir", "envio": noticia}, {"acao": "diagnostico"}, {"acao": "acionar_robo"}, {"acao": "apagar_tudo"}):
@@ -966,6 +967,32 @@ def test_agenda_com_a_chave_publica_so_peca_vencida_e_recusa_o_resto(peca):
         assert (st, r["situacao"]) == (200, "publicado"), r
     assert sorted(p for m, p, _ in ESTADO["meta"] if m == "POST") == ["ig-1/media", "ig-1/media_publish", "pagina-1/photos"]
     assert situacao_envio(db, noticia) == ("autorizado", None) and situacao_envio(db, futura) == ("autorizado", None)
+
+
+def test_recusa_clara_marca_nova_tentativa_e_a_agenda_publica_a_da_noticia(peca):
+    """v0.43.0: a recusa CLARA da Meta marca a nova tentativa (a hora fica na mensagem de erro) e a agenda passa a poder publicar
+    a nova tentativa da NOTÍCIA — só ela: a notícia 'autorizado' continua recusada (a primeira publicação sai pela tela ou pelo
+    robô do site, como antes). O caminho é a mesma radar_rede_iniciar do Tentar de novo."""
+    db, c1 = peca
+    envio = autorizar(db, c1, "instagram")
+    # a notícia que NÃO é nova tentativa continua recusada para a agenda, sem tocar em nada
+    st, r = pedir({"acao": "publicar", "envio": envio}, cab=AGENDA)
+    assert (st, r["message"]) == (403, "A agenda só publica peças da Pauta (ou a nova tentativa de uma notícia que deu erro).")
+    assert situacao_envio(db, envio) == ("autorizado", None) and ESTADO["meta"] == []
+    # a Meta recusa com clareza: a função registra (radar_rede_concluir) e o banco marca a nova tentativa
+    ESTADO["erro_meta"] = "Application does not have permission"
+    st, _ = pedir({"acao": "publicar", "envio": envio})
+    assert st == 502
+    ESTADO["erro_meta"] = None
+    sit, erro = situacao_envio(db, envio)
+    marcada = db.execute("select retentar_em from radar_redes_envios where id = %s", (envio,)).fetchone()[0]
+    assert sit == "erro" and marcada is not None and "O Radar tenta de novo sozinho às" in erro and "(Brasília)." in erro
+    # na hora marcada, a agenda chama e a função publica a nova tentativa
+    db.execute("update radar_redes_envios set retentar_em = now() - interval '1 minute' where id = %s", (envio,))
+    assert [x for (x,) in db.execute("select * from radar_agenda_vencidas(2)").fetchall()] == [envio]
+    st, r = pedir({"acao": "publicar", "envio": envio}, cab=AGENDA)
+    assert (st, r["situacao"]) == (200, "publicado"), r
+    assert db.execute("select situacao, retentar_em from radar_redes_envios where id = %s", (envio,)).fetchone() == ("publicado", None)
 
 
 CAMINHO_LEMBRETES = "/github/repos/arteconartescontabeis-design/radar/actions/workflows/radar-lembretes.yml/dispatches"
@@ -1010,7 +1037,7 @@ def test_agenda_teste_responde_sem_publicar(peca):
     db, c1 = peca
     ig = agendada(db)["instagram"]                                                  # há peça vencida: o teste não a toca
     for porta in (PORTA_FUNCAO, PORTA_SEM_META):                                    # nem precisa da Meta configurada
-        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.42.0"})
+        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.43.0"})
     assert pedir({"acao": "agenda_teste"}) == (403, {"message": "Só a agenda do banco usa o teste da agenda."})
     assert pedir({"acao": "agenda_teste"}, uid=EDITOR)[0] == 403
     assert pedir({"acao": "agenda_teste"}, cab=ROBO)[0] == 403

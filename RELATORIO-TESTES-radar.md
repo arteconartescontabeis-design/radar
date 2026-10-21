@@ -1,8 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.42.0)
+# Radar Artecon — Relatório de testes (v0.43.0)
 
-Data: 20/10/2026. **A suíte inteira da v0.42.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
-série (números na seção "v0.42.0", abaixo). A v0.42.0 tem **9** testes novos (2 do banco em `test_radar_banco.py`, 4 da função
-em `test_radar_funcao_redes.py` e 3 da tela em `test_radar_telas.py`); a suíte inteira passa de 1.507 para **1.516** testes.
+Data: 20/10/2026. **A suíte inteira da v0.43.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou em
+série (números na seção "v0.43.0", abaixo). A v0.43.0 tem **3** testes novos (2 do banco em `test_radar_banco.py` e 1 da função
+em `test_radar_funcao_redes.py`); a suíte inteira passa de 1.516 para **1.519** testes.
+Na v0.42.0: a suíte INTEIRA rodou em série (números na seção "v0.42.0", abaixo). A v0.42.0 tem **9** testes novos (2 do banco em
+`test_radar_banco.py`, 4 da função em `test_radar_funcao_redes.py` e 3 da tela em `test_radar_telas.py`); a suíte inteira passa
+de 1.507 para **1.516** testes.
 Na v0.41.0: a suíte INTEIRA rodou em série (números na seção "v0.41.0", abaixo). A v0.41.0 tem **2** testes novos na tela
 (`test_radar_telas.py`: a projeção do Painel com datas fixas — a renderização pura — e com o banco e o leitor); a suíte inteira
 passa de 1.505 para **1.507** testes.
@@ -82,6 +85,30 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.43.0 — a nova tentativa automática da publicação que a Meta recusou
+
+Todos os testes usam **dados fictícios** ("Ana Teste", tokens falsos); a Meta é um servidor de mentira no próprio teste (como
+nas versões anteriores) e nada toca a Meta de verdade.
+
+- **Banco** (2 testes novos em `testes/test_radar_banco.py`): a recusa clara marca a nova tentativa — a 1ª para 5 minutos, a 2ª
+  para 15, com a hora de Brasília na mensagem de erro (conferida contra `retentar_em`), e a 3ª para de vez ("O Radar já tentou 3
+  vezes…"); antes da hora a agenda não devolve nada; vencida, a da NOTÍCIA sai sem mudar a situação (a mesma `radar_rede_iniciar`
+  do Tentar de novo, que também continua valendo à mão) e a publicação limpa a marca. No outro teste, a nova tentativa da PEÇA
+  volta a `autorizado` pela agenda e sai pelo caminho de sempre; a chamada que não responde 3 vezes para, com o motivo somado à
+  mensagem; e o Publicar agora do administrador zera o contador (`tentativas` = 0) e recomeça. O teste antigo da recusa
+  (`test_redes_a_funcao_envia_uma_vez…`) passou a conferir a mensagem nova.
+- **Função radar-redes** (1 teste novo em `testes/test_radar_funcao_redes.py`, com a Meta de mentira): a notícia que NÃO é nova
+  tentativa continua recusada para a agenda (a mensagem nova do portão, também no teste antigo da agenda); a recusa clara da Meta
+  marca a nova tentativa com a hora na mensagem; na hora, a agenda chama e a função publica. O `agenda_teste` responde 0.43.0.
+- **Telas** (sem teste novo; asserções atualizadas): as versões (tela e os 4 .js em 0.43.0; `REDES_MINIMA` sobe para 0.43.0 — no
+  Testar conexão, a radar-redes 0.42.0 passa a receber o aviso de Deploy; `FUNCAO_MINIMA` fica em 0.39.0), a entrada nova da aba
+  Versões (3 itens) com os índices deslocados, os recados do setup (v0.43.0) e as asserções presas à versão do banco instalada.
+- Suíte inteira neste ambiente: **1.455 aprovados, 0 falhas, 64 pulados** (os 61 da IA Central de verdade — pacote
+  `../ia-central`, fora deste ambiente — e 3 do ambiente) = os 1.519. O ambiente desta rodada reiniciava sozinho no meio da
+  execução única (três tentativas morreram em ~37–56%), então a suíte rodou **em série, arquivo por arquivo** (os 32 arquivos,
+  um pytest por arquivo, ~20min31s somados), todos verdes de primeira — e, como em toda versão, a **rodada única e completa**
+  rodou no CI do GitHub no mesmo commit e ficou **verde** (rodada 261, 20min26s).
 
 ## v0.42.0 — formato no assunto (carrossel e reel), "Pôr no Informativo" e o carrossel publicado pelo Radar
 

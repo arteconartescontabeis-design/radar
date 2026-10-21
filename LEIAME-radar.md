@@ -1,4 +1,4 @@
-# Radar Artecon — v0.42.0
+# Radar Artecon — v0.43.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,20 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.43.0 (a melhoria "nova tentativa automática" da proposta aprovada em 20/10) faz o Radar **tentar de novo sozinho** a
+publicação que o Instagram ou o Facebook **recusaram com clareza** (da Pauta agendada ou de uma notícia): a função `radar-redes`
+registra a recusa e o banco (`radar_rede_concluir`) marca a **nova tentativa** — a 1ª para **5 minutos** depois e, se recusar de
+novo, outra para **15 minutos**; na **3ª recusa** o Radar para, e a mensagem de erro (que a tela já mostra, com a **hora marcada**)
+pede o **Tentar de novo**. Quem publica a nova tentativa é a **agenda do banco** (`radar_agenda_vencidas`): a da peça volta a
+"autorizado" e sai pelo caminho de sempre; a da notícia sai pela mesma `radar_rede_iniciar` do Tentar de novo (a `radar-redes`
+v0.43.0 passa a aceitar essa chamada da agenda; a **primeira** publicação da notícia continua saindo só pela tela ou pelo robô do
+site). A segurança de sempre fica: o **"não deu para saber se saiu"** (Incerto) continua **"enviando"**, sem nova tentativa —
+nada é publicado duas vezes — e o **Tentar de novo**/**Publicar agora** do administrador recomeçam as tentativas automáticas
+(`radar_pauta_publicar_agora` zera o contador). Mudam o banco (`sql/radar-setup-v0.43.0.sql`: as colunas `tentativas` e
+`retentar_em` em `radar_redes_envios` e três funções redefinidas; **nenhuma tabela nova**, nada é apagado; ele também faz a
+faxina das sobras da atualização por partes da v0.42.0) e a função **`radar-redes`**. **Nenhum segredo novo; os robôs e as
+agendas não mudam.** Veja "Da v0.42.0 para a v0.43.0".
 
 A v0.42.0 (a melhoria "formato no assunto + Informativo + carrossel automático" da proposta aprovada em 20/10) faz o Radar
 **publicar carrossel sozinho** e dá à notícia aprovada três caminhos novos. **Formato no assunto — carrossel**: no passo 3
@@ -971,11 +985,11 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.42.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.42.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.43.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.43.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
-| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail; desde a v0.42.0, publica também o carrossel — as lâminas que o banco devolve). |
+| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail; desde a v0.42.0, publica também o carrossel — as lâminas que o banco devolve; desde a v0.43.0, publica também a nova tentativa automática que o banco marcou depois de uma recusa clara da Meta). |
 | `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda; desde a v0.36.0, também o envio e o baixar do vídeo avulso. É a única que toca no armazenamento privado `radar-videos`. |
 | `supabase/functions/radar-copia/index.ts` | Função da cópia de segurança mensal do banco no OneDrive (v0.32.0): exporta as tabelas, monta o .zip e grava na pasta das cópias pelo Microsoft Graph. O arquivo nunca passa pelo GitHub nem pelo armazenamento do Supabase. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase (desde a v0.23.0, pode rodar de novo, como as outras agendas). |
@@ -2898,6 +2912,28 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.42.0 para a v0.43.0** (muda o banco: SQL novo, que pode rodar de novo; mudam a função `radar-redes` e a tela; a
+`radar-ia`, a `radar-video`, as demais funções, o robô e as agendas **não mudam**; **nenhum segredo novo**). Supõe a v0.42.0
+instalada:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.43.0.sql` inteiro, **antes de publicar a tela**. Confira no fim:
+   **37 tabelas** com `rls = true` e a instalação **v0.43.0** concluída. Ele acrescenta as colunas `tentativas` e `retentar_em`
+   em `radar_redes_envios`, redefine `radar_rede_concluir`, `radar_agenda_vencidas` e `radar_pauta_publicar_agora` (nada é
+   apagado) e faz a faxina das sobras da atualização por partes da v0.42.0 (duas funções renomeadas inertes e a tabela de
+   pedaços `radar_tmp_v042`), se existirem.
+2. Supabase → **Edge Functions** → faça o **Deploy** da `radar-redes` desta versão (cole de novo o
+   `supabase/functions/radar-redes/index.ts`; "Verify JWT" **ligado**, como sempre foi nela). Sem a `radar-redes` v0.43.0, a
+   nova tentativa da **notícia** não sai (a agenda chama e a função antiga recusa; depois de 3 chamadas o Radar para, com o
+   motivo na mensagem de erro); a da **peça** sai mesmo com a função v0.42.0 (ela volta ao caminho de sempre).
+3. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.43.0".
+4. Conferência rápida: em Publicações → **Testar conexão**, a radar-redes responde **0.43.0**. O resto se vê quando uma
+   publicação falhar de verdade: a mensagem de erro passa a dizer "O Radar tenta de novo sozinho às HH:MM (Brasília)." e, depois
+   da terceira recusa, "O Radar já tentou 3 vezes: confira o motivo e use Tentar de novo."
+
+**Como desligar:** a nova tentativa usa a mesma chave geral da agenda da Pauta — Configurações → Pauta → `agenda_ligada: false`
+pausa tudo (como hoje). Sem mexer em nada, o comportamento de antes volta sozinho depois da 3ª recusa (só à mão). Para voltar
+tudo, publique a tela da v0.42.0 e faça o Deploy da `radar-redes` v0.42.0 (o banco v0.43.0 continua servindo).
 
 **Da v0.41.0 para a v0.42.0** (muda o banco: SQL novo, que pode rodar de novo; mudam as funções `radar-redes` e `radar-ia` e a
 tela; o robô, as agendas, a função `radar-video` e as demais **não mudam**; **nenhum segredo novo**). Supõe a v0.41.0 instalada:
