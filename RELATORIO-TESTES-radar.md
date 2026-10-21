@@ -88,6 +88,39 @@ desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na h
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
 
+## v0.44.0 — letras grandes e o teleprompter com gravação pelo navegador
+
+Todos os testes usam **dados fictícios** (vídeos sintéticos do ffmpeg, uma "câmera" de canvas, "Ana Teste"); nada sai do
+ambiente: a gravação do teste nunca é enviada (o teste confere isso).
+
+- **Robô** (1 teste novo em `testes/test_radar_video_robo.py`): o WEBM do navegador entra com o MESMO rigor — a assinatura EBML
+  leva ao demuxer `matroska,webm` à força; vertical, com áudio e com a duração escrita (o `-live` do muxer, que grava como o
+  MediaRecorder — sem a duração —, é recusado com `formato`, de propósito); o EBML falso é recusado; `entrada(info)` prende o
+  demuxer ao contêiner visto na sondagem. No teste da entrada não confiável, o caso "Matroska é recusado" virou "EBML falso é
+  recusado" (o WEBM de verdade agora entra); a guarda "todo clipe com o demuxer forçado" aprende o `entrada(i)` e o
+  `relatorio.ROBO` sobe para 0.44.0.
+- **Banco** (1 teste novo em `testes/test_radar_video_banco.py`): `video/webm` aceito em `radar_video_criar` (gravado em
+  `partes[].tipo`) e em `radar_video_criar_avulso`; o `video/x-matroska` e os demais continuam recusados (RADAR306, com a
+  mensagem nova "MP4, MOV ou a gravação do navegador").
+- **Função radar-video** (`testes/test_radar_funcao_video.py`, asserções): a lista `allowed_mime_types` do bucket ganha o
+  `video/webm`; a versão da função responde 0.44.0.
+- **Telas** (3 testes novos em `testes/test_radar_telas.py`): o teleprompter abre SÓ as falas do roteiro (nada de "Na tela"),
+  com A−/A+, velocidade, espelho e a rolagem conferidos, e **grava de verdade** — uma câmera de canvas 108×192 + um oscilador
+  entram no `getUserMedia` do teste e o **MediaRecorder real** produz o WEBM real (o teste força o WEBM; este Chromium, como os
+  navegadores novos, prefere MP4), que entra na lista de clipes com a duração escrita e **sem nenhum envio** (o armazenamento de
+  mentira fica vazio); a peça sem roteiro avisa. O conserto da duração (consertarDuracaoWebm) é conferido **byte a byte** num
+  EBML sintético: a Duration entra no Info com a escala respeitada, o resto do arquivo fica intocado e o que não é WEBM volta
+  como veio. E as letras grandes: ligam no A+ do topo, aumentam a fonte do body, ficam guardadas (voltam no recarregar) e
+  desligam no mesmo botão.
+- Atualizados: as asserções de versão (tela e os 4 .js em 0.44.0; `FUNCAO_MINIMA` e `REDES_MINIMA` ficam como estavam), a
+  entrada nova da aba Versões (4 itens) com os índices deslocados, os recados do setup (v0.44.0), as mensagens novas do envio de
+  clipes e as asserções presas à versão do banco instalada e do robô.
+- Suíte inteira neste ambiente: **1.460 aprovados, 0 falhas, 64 pulados** (os 61 da IA Central de verdade — pacote
+  `../ia-central`, fora deste ambiente — e 3 do ambiente) = os 1.524, em série, arquivo por arquivo (~20min22s somados, o
+  mesmo esquema da v0.43.0: o ambiente reinicia no meio de execuções longas). A 1ª rodada teve 1 falha, a asserção do
+  `relatorio.ROBO` presa à versão de antes (corrigida, nenhum código do produto mudou); o arquivo re-rodou verde — e, como em
+  toda versão, a rodada única e completa roda no CI do GitHub no commit do PR.
+
 ## v0.43.0 — a nova tentativa automática da publicação que a Meta recusou
 
 Todos os testes usam **dados fictícios** ("Ana Teste", tokens falsos); a Meta é um servidor de mentira no próprio teste (como
