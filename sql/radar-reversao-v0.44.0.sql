@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.43.0.sql
--- DESFAZ a instalação do radar-setup-v0.43.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.44.0.sql
+-- DESFAZ a instalação do radar-setup-v0.44.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -57,6 +57,7 @@
 -- v0.43.0: a nova tentativa automática. As colunas novas (radar_redes_envios.tentativas e retentar_em) saem com a tabela e as três
 -- funções redefinidas saem com as outras, como sempre. As sobras da instalação por partes da v0.42.0 (duas funções renomeadas e a
 -- tabela de pedaços radar_tmp_v042), se ainda existirem, saem aqui também.
+-- v0.44.0: o tipo novo (video/webm) é só validação dentro das funções do corretor, que saem com as outras, como sempre.
 -- =====================================================================
 begin;
 

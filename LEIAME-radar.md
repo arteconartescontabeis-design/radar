@@ -1,4 +1,4 @@
-# Radar Artecon — v0.43.0
+# Radar Artecon — v0.44.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,19 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.44.0 (a melhoria "letras grandes + teleprompter" da proposta aprovada em 20/10, a última das seis) traz o **teleprompter
+com gravação pelo navegador** e as **letras grandes**. Na peça de reel (e no vídeo avulso), o botão **"Gravar pelo navegador
+(teleprompter)"** abre o roteiro rolando em letras grandes (tamanho, velocidade e espelho ajustáveis) com a câmera do aparelho ao
+lado: a pessoa grava no celular, **em pé**, e cada tomada **entra direto na lista de clipes** (dá para baixar a tomada, se quiser
+guardar). O caminho continua o de sempre: **nada é enviado até a pessoa mandar**, e o envio, o corretor, a cota, os termos e as
+quatro declarações não mudam. Para a gravação do navegador entrar, as funções do corretor aceitam o tipo novo `video/webm`
+(`radar_video_criar` e `radar_video_criar_avulso`, no `sql/radar-setup-v0.44.0.sql`; a função `radar-video`, a lista TIPOS) e o
+robô ganha a **sondagem endurecida do WEBM** (`robo/video/sondar.py`: assinatura EBML no começo do arquivo + demuxer
+`matroska,webm` à força, espelho do que já valia para MP4/MOV; cada clipe passa a carregar o próprio demuxer nas outras etapas).
+O WEBM do Chrome/Android sai sem a duração escrita e a tela a escreve antes (consertarDuracaoWebm); o Safari/iPhone grava MP4,
+que já entrava. E as **letras grandes**: o botão **A+** no topo aumenta as letras do aplicativo inteiro e fica guardado no
+navegador. **Nenhum segredo novo; as agendas não mudam.** Veja "Da v0.43.0 para a v0.44.0".
 
 A v0.43.0 (a melhoria "nova tentativa automática" da proposta aprovada em 20/10) faz o Radar **tentar de novo sozinho** a
 publicação que o Instagram ou o Facebook **recusaram com clareza** (da Pauta agendada ou de uma notícia): a função `radar-redes`
@@ -985,8 +998,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.43.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.43.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `sql/radar-setup-v0.44.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.44.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
 | `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail; desde a v0.42.0, publica também o carrossel — as lâminas que o banco devolve; desde a v0.43.0, publica também a nova tentativa automática que o banco marcou depois de uma recusa clara da Meta). |
@@ -2912,6 +2925,30 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.43.0 para a v0.44.0** (muda o banco: SQL novo, que pode rodar de novo; mudam a função `radar-video`, o robô do vídeo —
+pelo commit fixo do repositório privado — e a tela; a `radar-ia`, a `radar-redes`, as demais funções e as agendas **não mudam**;
+**nenhum segredo novo**). Supõe a v0.43.0 instalada:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.44.0.sql` inteiro, **antes de publicar a tela**. Confira no fim:
+   **37 tabelas** com `rls = true` e a instalação **v0.44.0** concluída. Ele faz as funções `radar_video_criar` e
+   `radar_video_criar_avulso` aceitarem a gravação do navegador (`video/webm`; nada é apagado) e faz a faxina das sobras da
+   atualização por partes da v0.42.0, se ainda existirem.
+2. Supabase → **Edge Functions** → faça o **Deploy** da `radar-video` desta versão (cole de novo o
+   `supabase/functions/radar-video/index.ts`; "Verify JWT" como está nela). Sem ela, o envio com uma gravação do navegador é
+   recusado na porta (a tela avisa) — os clipes MP4/MOV continuam entrando normalmente.
+3. Repositório privado **radar-video** → Settings → Secrets and variables → **Variables** → troque o **RADAR_VIDEO_COMMIT** pelo
+   SHA do commit desta versão no repositório radar (o robô ganha a sondagem do WEBM). Sem isso, a gravação do navegador chega ao
+   corretor e ele a recusa com "formato" — nada quebra, só não entra.
+4. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.44.0".
+5. Conferência rápida: o topo ganha o botão **A+** (letras grandes, que ficam guardadas no navegador); numa peça de reel, o
+   envio de clipes ganha o botão **"Gravar pelo navegador (teleprompter)"** — abra, veja o roteiro rolando e os controles (A−/A+,
+   velocidade, espelhar). A gravação de verdade, teste no celular (em pé): a tomada entra na lista de clipes e o envio segue o
+   caminho de sempre.
+
+**Como desligar:** não gravando pelo navegador — o teleprompter pode ser usado só para ler, e a câmera do celular continua o
+caminho de sempre. As letras grandes desligam no mesmo botão A+. Para voltar tudo, publique a tela da v0.43.0 e faça o Deploy da
+`radar-video` e o commit do robô de antes (o banco v0.44.0 continua servindo: o tipo novo só deixa de ser usado).
 
 **Da v0.42.0 para a v0.43.0** (muda o banco: SQL novo, que pode rodar de novo; mudam a função `radar-redes` e a tela; a
 `radar-ia`, a `radar-video`, as demais funções, o robô e as agendas **não mudam**; **nenhum segredo novo**). Supõe a v0.42.0

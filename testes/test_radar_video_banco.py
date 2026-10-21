@@ -257,6 +257,18 @@ def test_criar_confere_tudo_antes_de_qualquer_arquivo_sair(corretor, request):
     mudar_por_fora(db, pid, "publicado_manual_em = null")
 
 
+def test_criar_aceita_a_gravacao_do_navegador_webm(corretor):
+    """v0.44.0: o teleprompter grava pelo navegador e o tipo video/webm entra (na peça e no avulso); o x-matroska e os outros
+    continuam recusados (o teste acima). Quem confere o conteúdo do arquivo continua sendo o robô (sondar.py)."""
+    db = corretor
+    pid, ana = reel(db)
+    r = criar(pid, ana, partes=[{"n": 1, "tipo": "video/webm", "bytes": 10}, {"n": 2, "tipo": "video/mp4", "bytes": 20}])
+    assert [p["tipo"] for p in db.execute("select partes from radar_videos where id = %s", (r["id"],)).fetchone()[0]] == \
+        ["video/webm", "video/mp4"]
+    a = criar_avulso(ana, partes=[{"n": 1, "tipo": "video/webm", "bytes": 10}])
+    assert [p["tipo"] for p in db.execute("select partes from radar_videos where id = %s", (a["id"],)).fetchone()[0]] == ["video/webm"]
+
+
 def test_enviado_fila_pegar_com_trava_e_robo_ate_o_fim(corretor):
     db = corretor
     pid, ana = reel(db)

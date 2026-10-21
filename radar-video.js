@@ -36,8 +36,15 @@
    decide a situação de novo NA HORA, sem montar de novo — o avulso pronto já libera o Baixar). Avisos novos de arquivo fraco na
    chegada: resolucao_baixa (o WhatsApp comprime) e ruido_alto. Banco: a função radar_video_aceitar e a chave ajustes.aceitas
    (ajustes_falta/ajustar/concluir/reconferir). O robô honra as aceitas e carrega o veredito no parcial e no final.
+   v0.44.0: o TELEPROMPTER com gravação pelo navegador — na peça de reel (e no avulso), o botão "Gravar pelo navegador
+   (teleprompter)" abre o roteiro rolando em letras grandes (tamanho, velocidade e espelho ajustáveis) com a câmera do aparelho;
+   a gravação (MediaRecorder) entra na LISTA DE CLIPES como um arquivo normal — o envio TUS, o robô (sondagem endurecida, agora
+   também para o WEBM do navegador), a cota, os termos e as 4 declarações são os de sempre, e nada sobe até a pessoa ENVIAR.
+   O WEBM do Chrome/Android sai sem a duração escrita e consertarDuracaoWebm a escreve (Segment → Info → Duration) antes de
+   entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
+   (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.43.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.44.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -56,7 +63,7 @@ const AVISO_FORMATO_FALA = "Formato não reconhecido: confira a fala para confer
 const AVISO_NAO_FECHE = "Não feche nem bloqueie a tela até 100%.";
 // os códigos do robô (robo/video) e do banco (radar_video_falhar), em português; o que não estiver aqui aparece com o código
 const ERROS_VIDEO = {
-  formato:"um dos clipes não é MP4 ou MOV de câmera (ou não tem imagem): envie os arquivos originais do celular",
+  formato:"um dos clipes não é MP4 ou MOV de câmera nem gravação do navegador (ou não tem imagem, ou está sem a duração): envie os arquivos originais do celular ou grave de novo pelo teleprompter",
   sem_audio:"um dos clipes está sem som: grave de novo com o microfone ligado",
   deitado:"um dos clipes está deitado (horizontal): grave na vertical",
   longo_demais:"os clipes somam mais de 16 minutos (960 s): envie só as tomadas boas",
@@ -213,7 +220,7 @@ async function blocoVideo(p){
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
   let vivos;
   try{ vivos = await videosDaPeca(p.id); }
-  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.43.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
+  catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.44.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
@@ -290,8 +297,10 @@ function blocoFala(p){
 
 /* ------------------------------------------------------------- o envio */
 const clipesDe = pid => (estadoVideo().arquivos[pid] ||= []);
-// o tipo que o banco aceita: MP4 ou MOV (o iPhone manda "video/quicktime"; sem tipo, pela extensão)
-const tipoClipe = a => /^video\/(mp4|quicktime)$/.test(a.type) ? a.type : /\.(mp4|m4v)$/i.test(a.name) ? "video/mp4" : /\.mov$/i.test(a.name) ? "video/quicktime" : "";
+// o tipo que o banco aceita: MP4 ou MOV (o iPhone manda "video/quicktime"; sem tipo, pela extensão);
+// v0.44.0: + o WEBM da gravação do teleprompter pelo navegador (o MediaRecorder do Chrome/Android; o do Safari grava MP4)
+const tipoClipe = a => /^video\/(mp4|quicktime|webm)$/.test(String(a.type).split(";")[0]) ? String(a.type).split(";")[0]
+  : /\.(mp4|m4v)$/i.test(a.name) ? "video/mp4" : /\.mov$/i.test(a.name) ? "video/quicktime" : /\.webm$/i.test(a.name) ? "video/webm" : "";
 /* v: o vídeo vivo da peça (a gravação nova o substitui quando os clipes chegam); envio: o que espera os arquivos ("Continuar o envio") */
 function formEnvio(p, v, envio){
   const lista = clipesDe(p.id), pessoas = p.pessoas.map(id => (E.pauta.pessoas || {})[id]).filter(Boolean);
@@ -326,8 +335,9 @@ function formEnvio(p, v, envio){
       ${v ? `<button class="btn sec" type="button" data-acao="video-nova-cancelar">Cancelar</button>` : ""}</div></div>`;
 }
 const AVISO_NOVO_ENVIO = "Os clipes vão direto para o armazenamento privado do Radar. " + AVISO_NAO_FECHE + " Se a internet cair, o envio continua de onde parou.";
-const campoClipes = p => `<label for="video-arquivos">Clipes, na ordem do roteiro (1 a 12, MP4 ou MOV, até 500 MB no total)</label>
-  <input id="video-arquivos" type="file" multiple accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" data-video-arquivos="${p.id}">`;
+const campoClipes = p => `<label for="video-arquivos">Clipes, na ordem do roteiro (1 a 12, MP4, MOV ou a gravação do navegador, até 500 MB no total)</label>
+  <input id="video-arquivos" type="file" multiple accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" data-video-arquivos="${p.id}">
+  <div class="acoes"><button class="btn sec" type="button" data-acao="video-teleprompter" data-id="${p.id}">Gravar pelo navegador (teleprompter)</button></div>`;
 /* Os segundos de transcrição que sobram no mês (radar_video_cota) ou null; a linha que o formulário do envio mostra */
 const restaVideo = () => { const c = objVideo(estadoVideo().cota), u = numVideo(c.segundos_mes), l = numVideo(c.limite_s); return u !== null && l !== null ? Math.max(0, l - u) : null; };
 const linhaCotaVideo = () => { const c = objVideo(estadoVideo().cota), r = restaVideo(); return r === null ? "" :
@@ -345,7 +355,7 @@ function listaClipes(pid, partes){
     dur && resta !== null && dur > resta ? `Os clipes somam cerca de ${segVideo(dur, 0)} s, e o corretor só pode transcrever mais ${segVideo(resta, 0)} s neste mês: o envio é recusado (grave mais curto, espere o mês que vem ou peça ao administrador a transcrição paga da Azure — segredo AZURE_FALA_MODO “rapido” no repositório privado).` : ""].filter(Boolean);
   return `<ol class="video-clipes">${l.map((c, i) => { const parte = partes?.[i], difere = parte && (parte.bytes !== c.bytes || parte.tipo !== c.tipo);
     return `<li data-i="${i}"><span class="video-clipe-nome"><b>${i + 1}.</b> ${h(c.nome)} · ${mbVideo(c.bytes)}${c.duracao ? ` · ${segVideo(c.duracao)} s` : ""}</span>
-      ${!c.tipo ? selo("não é MP4 nem MOV", "erro") : ""}${c.aviso ? " " + selo(c.aviso, "alerta") : ""}${difere ? " " + selo(`não é o clipe nº ${i + 1} do envio`, "erro") : ""}
+      ${!c.tipo ? selo("não é MP4, MOV nem gravação do navegador", "erro") : ""}${c.aviso ? " " + selo(c.aviso, "alerta") : ""}${difere ? " " + selo(`não é o clipe nº ${i + 1} do envio`, "erro") : ""}
       <span class="acoes"><button class="btn peq sec" type="button" data-acao="video-clipe-mover" data-i="${i}" data-passo="-1"${i ? "" : " disabled"} aria-label="Subir o clipe ${i + 1}">↑</button>
         <button class="btn peq sec" type="button" data-acao="video-clipe-mover" data-i="${i}" data-passo="1"${i < l.length - 1 ? "" : " disabled"} aria-label="Descer o clipe ${i + 1}">↓</button>
         <button class="btn peq perigo" type="button" data-acao="video-clipe-tirar" data-i="${i}">Tirar</button></span></li>`; }).join("")}</ol>
@@ -376,12 +386,193 @@ async function escolherClipes(campo){
   redesenharClipes(pid);
   if(l.length > VIDEO_MAX_CLIPES) recado(`São ${l.length} clipes: tire ${l.length - VIDEO_MAX_CLIPES} (no máximo ${VIDEO_MAX_CLIPES}).`, true);
 }
+
+/* ------------------------------------------------------------- o teleprompter (v0.44.0) */
+/* O roteiro rolando em LETRAS GRANDES enquanto a pessoa grava pelo próprio navegador (de preferência o do celular, em pé: o
+   corretor só aceita vídeo na vertical). A gravação (MediaRecorder) entra na lista de clipes como um arquivo normal — o envio,
+   o robô e as travas são os de sempre; nada sobe daqui. No Chrome/Android a gravação sai WEBM, e o MediaRecorder não escreve a
+   duração no arquivo: consertarDuracaoWebm a escreve (sem ela o robô recusa, de propósito). No Safari/iPhone sai MP4, que já
+   entrava. Nenhuma imagem ou som sai do aparelho até a pessoa ENVIAR os clipes, como sempre. */
+/* As linhas que rolam: no roteiro do kit, a Fala de cada linha; na tabela do plano, a coluna Fala; sem marcador, as frases. */
+function linhasTeleprompter(roteiro){
+  const linhas = String(roteiro ?? "").replace(/\r\n/g, "\n").split("\n");
+  const kit = linhas.map(l => /^[^\n]*?\s[—–]\s*Fala:\s*([^\n]+?)(?:\s+\|\s*Na tela:[^\n]*)?$/.exec(l.trim())).filter(Boolean).map(m => juntarFala(m[1]));
+  if(kit.length) return kit;
+  const falas = []; let col = null;
+  for(const l of linhas){
+    const s = l.trim();
+    if(!s.startsWith("|")){ col = null; continue; }
+    const cel = s.replace(/^\|+|\|+$/g, "").split("|").map(c => c.trim());
+    if(col === null){ const nomes = cel.map(letrasFala); col = nomes.includes("fala") ? nomes.indexOf("fala") : null; continue; }
+    if(cel.filter(Boolean).every(c => /^:?-{2,}:?$/.test(c))) continue;
+    const c = col < cel.length ? semAspasFala(cel[col]) : "";
+    if(c) falas.push(juntarFala(c));
+  }
+  if(falas.length) return falas;
+  return juntarFala(String(roteiro ?? "")).split(/(?<=[.!?…])\s+/).filter(Boolean);
+}
+/* O WEBM do MediaRecorder sai sem a duração escrita (o navegador não sabe o fim na hora do cabeçalho). Aqui a duração medida
+   pelo relógio da gravação entra no lugar certo (Segment → Info → Duration, id 0x4489), sem tocar no resto do arquivo. EBML:
+   cada elemento é id (1–4 bytes) + tamanho (VINT de 1–8 bytes) + conteúdo; só o começo do arquivo é lido. Qualquer coisa fora
+   do esperado devolve o blob como veio (o robô então recusa com o motivo, como deve). */
+function lerVintTele(b, i, ehId){
+  if(i >= b.length || !b[i]) return null;
+  const n = Math.clz32(b[i]) - 24 + 1;
+  if(n < 1 || n > 8 || i + n > b.length) return null;
+  let v = ehId ? b[i] : b[i] & (0xff >> n);
+  for(let k = 1; k < n; k++) v = v * 256 + b[i + k];
+  return {v, n, desconhecido:!ehId && v === Math.pow(2, 7 * n) - 1};
+}
+async function consertarDuracaoWebm(blob, duracaoMs){
+  try{
+    const b = new Uint8Array(await blob.slice(0, 65536).arrayBuffer());
+    const cab = lerVintTele(b, 0, true);                                        // o cabeçalho EBML (0x1A45DFA3)
+    if(!cab || cab.v !== 0x1A45DFA3) return blob;
+    const cabTam = lerVintTele(b, cab.n);
+    if(!cabTam || cabTam.desconhecido) return blob;
+    let i = cab.n + cabTam.n + cabTam.v;
+    const seg = lerVintTele(b, i, true);                                        // o Segment (0x18538067), tamanho desconhecido
+    if(!seg || seg.v !== 0x18538067) return blob;
+    const segTam = lerVintTele(b, i + seg.n);
+    if(!segTam) return blob;
+    i += seg.n + segTam.n;
+    while(i < b.length){                                                        // os filhos do Segment, até o Info (0x1549A966)
+      const id = lerVintTele(b, i, true), tam = id && lerVintTele(b, i + id.n);
+      if(!id || !tam || tam.desconhecido) return blob;
+      const conteudo = i + id.n + tam.n, fim = conteudo + tam.v;
+      if(id.v === 0x1549A966){
+        if(fim > b.length) return blob;
+        let escala = 1e6, j = conteudo, dur = null;
+        while(j < fim){                                                         // dentro do Info: TimecodeScale e Duration
+          const fid = lerVintTele(b, j, true), ftam = fid && lerVintTele(b, j + fid.n);
+          if(!fid || !ftam || ftam.desconhecido) return blob;
+          const c = j + fid.n + ftam.n;
+          if(fid.v === 0x2AD7B1){ let e = 0; for(let k = 0; k < ftam.v; k++) e = e * 256 + b[c + k]; if(e) escala = e; }
+          if(fid.v === 0x4489) dur = {pos:c, bytes:ftam.v};
+          j = c + ftam.v;
+        }
+        const valor = duracaoMs * 1e6 / escala;
+        if(dur){                                                                // já tem a duração: troca no lugar (4 ou 8 bytes)
+          if(dur.bytes !== 4 && dur.bytes !== 8) return blob;
+          const f = new Uint8Array(dur.bytes), dv = new DataView(f.buffer);
+          if(dur.bytes === 8) dv.setFloat64(0, valor); else dv.setFloat32(0, valor);
+          return new Blob([blob.slice(0, dur.pos), f, blob.slice(dur.pos + dur.bytes)], {type:blob.type});
+        }
+        const f8 = new Uint8Array(8); new DataView(f8.buffer).setFloat64(0, valor);
+        // o Info cresce 11 bytes (44 89 + 88 + os 8 do número) e o tamanho dele é reescrito num VINT de 8 bytes (sempre cabe);
+        // o Segment tem tamanho desconhecido, então nada acima precisa mudar
+        const vint8 = new Uint8Array(8); vint8[0] = 0x01;
+        let v = tam.v + 11;
+        for(let k = 7; k >= 1; k--){ vint8[k] = v % 256; v = Math.floor(v / 256); }
+        if(v) return blob;
+        return new Blob([blob.slice(0, i + id.n), vint8, blob.slice(conteudo, fim),
+                         new Uint8Array([0x44, 0x89, 0x88, ...f8]), blob.slice(fim)], {type:blob.type});
+      }
+      i = fim;
+    }
+    return blob;
+  }catch(e){ return blob; }
+}
+/* O estado do teleprompter aberto (só um por vez); nada dele fica guardado além da gravação que entra na lista de clipes */
+let TELE = null;
+function fecharTeleprompter(){
+  if(!TELE) return;
+  try{ if(TELE.gravador && TELE.gravador.state !== "inactive") TELE.gravador.stop(); }catch(e){ /* já parou */ }
+  try{ (TELE.fluxo?.getTracks() || []).forEach(t => t.stop()); }catch(e){ /* sem câmera */ }
+  if(TELE.relogio) cancelAnimationFrame(TELE.relogio);
+  if(TELE.url) URL.revokeObjectURL(TELE.url);
+  $("#teleprompter")?.remove();
+  TELE = null;
+}
+function rolarTeleprompter(agora){
+  if(!TELE || !TELE.rolando) return;
+  const rolo = $("#tele-rolo");
+  if(rolo){
+    TELE.y += TELE.veloc * ((agora - (TELE.antes || agora)) / 1000);
+    rolo.style.transform = `translateY(${-Math.round(TELE.y)}px)`;
+  }
+  TELE.antes = agora;
+  TELE.relogio = requestAnimationFrame(rolarTeleprompter);
+}
+async function abrirTeleprompter(pid){
+  if(TELE) fecharTeleprompter();
+  // na peça, o roteiro dela; no avulso (pid 0), a fala para conferência colada no formulário (ela é o "roteiro" do avulso)
+  const roteiro = pid ? pecaDoVideo().p?.roteiro : $("#vaba-avulso-fala")?.value;
+  const linhas = linhasTeleprompter(roteiro);
+  if(!linhas.length || !textoDe(roteiro)){ recado(pid ? "A peça está sem roteiro: escreva o roteiro antes de abrir o teleprompter." :
+    "Cole primeiro a fala para conferência: é ela que o teleprompter mostra.", true); return; }
+  const podeGravar = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  TELE = {pid, veloc:40, letra:44, y:0, rolando:false, tomadas:0, gravador:null, fluxo:null, pedacos:[], inicioMs:0, url:null};
+  document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="teleprompter"><div class="caixa-previa caixa-tele" role="dialog" aria-modal="true" aria-label="Teleprompter">
+    <div class="tele-topo">
+      <video id="tele-camera" autoplay muted playsinline></video>
+      <div class="tele-controles">
+        <div class="acoes">${podeGravar ? `<button class="btn verde" type="button" data-acao="tele-gravar" id="tele-gravar">Começar a gravar</button>` : ""}
+          <button class="btn sec" type="button" data-acao="tele-rolar" id="tele-rolar">Rolar o texto</button>
+          <button class="btn sec" type="button" data-acao="tele-fechar">Fechar</button></div>
+        <div class="acoes"><button class="btn peq sec" type="button" data-acao="tele-letra" data-passo="-1" aria-label="Letra menor">A−</button>
+          <button class="btn peq sec" type="button" data-acao="tele-letra" data-passo="1" aria-label="Letra maior">A+</button>
+          <button class="btn peq sec" type="button" data-acao="tele-veloc" data-passo="-1">Mais devagar</button>
+          <button class="btn peq sec" type="button" data-acao="tele-veloc" data-passo="1">Mais rápido</button>
+          <button class="btn peq sec" type="button" data-acao="tele-espelho">Espelhar o texto</button></div>
+        <p class="sub" id="tele-aviso">${podeGravar ? "Grave no celular, EM PÉ (vertical): o corretor recusa vídeo deitado. A gravação entra na lista de clipes; nada é enviado até você mandar."
+          : "Este navegador não grava vídeo: use o teleprompter só para ler e grave pela câmera do celular."}</p>
+      </div>
+    </div>
+    <div class="tele-janela"><div class="tele-rolo" id="tele-rolo" style="font-size:${TELE.letra}px">${linhas.map(l => `<p>${h(l)}</p>`).join("")}</div></div>
+  </div></div>`);
+  if(podeGravar){
+    try{
+      TELE.fluxo = await navigator.mediaDevices.getUserMedia({audio:true,
+        video:{facingMode:"user", width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9 / 16}}});
+      const cam = $("#tele-camera");
+      if(cam) cam.srcObject = TELE.fluxo;
+      const faixa = TELE.fluxo.getVideoTracks()[0], d = faixa?.getSettings?.() || {};
+      if(d.width && d.height && d.width > d.height)
+        $("#tele-aviso").textContent = "A câmera está DEITADA (horizontal): o corretor recusa. Grave pelo celular em pé, ou use o teleprompter só para ler.";
+    }catch(e){
+      const av = $("#tele-aviso");
+      if(av) av.textContent = "A câmera não abriu (sem permissão ou sem câmera): use o teleprompter só para ler e grave pelo celular.";
+    }
+  }
+}
+/* O tipo da gravação: o primeiro que o navegador sabe gravar (Safari grava MP4; Chrome/Android, WEBM) */
+function tipoGravacaoTele(){
+  for(const t of ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"])
+    if(window.MediaRecorder?.isTypeSupported?.(t)) return t;
+  return "";
+}
+async function pararGravacaoTele(){
+  const g = TELE?.gravador;
+  if(!g || g.state === "inactive") return;
+  const fim = new Promise(ok => { g.onstop = ok; });
+  g.stop();
+  await fim;
+  const duracaoMs = Math.max(200, Date.now() - TELE.inicioMs);
+  const tipo = String(g.mimeType || tipoGravacaoTele()).split(";")[0] || "video/webm";
+  let blob = new Blob(TELE.pedacos, {type:tipo});
+  TELE.pedacos = []; TELE.gravador = null;
+  if(tipo === "video/webm") blob = await consertarDuracaoWebm(blob, duracaoMs);
+  TELE.tomadas += 1;
+  const nome = `teleprompter-${TELE.tomadas}.${tipo === "video/mp4" ? "mp4" : "webm"}`;
+  const arquivo = new File([blob], nome, {type:tipo});
+  const d = TELE.fluxo?.getVideoTracks?.()[0]?.getSettings?.() || {};
+  clipesDe(TELE.pid).push({arquivo, nome, bytes:arquivo.size, tipo:tipoClipe(arquivo), duracao:duracaoMs / 1000,
+    aviso:d.width && d.height && d.width > d.height ? "parece deitado (horizontal)" : ""});
+  redesenharClipes(TELE.pid);
+  if(TELE.url) URL.revokeObjectURL(TELE.url);
+  TELE.url = URL.createObjectURL(arquivo);
+  const g2 = $("#tele-gravar");
+  if(g2){ g2.textContent = "Começar a gravar"; g2.classList.remove("perigo"); g2.classList.add("verde"); }
+  const av = $("#tele-aviso");
+  if(av) av.innerHTML = `Tomada ${TELE.tomadas} (${segVideo(duracaoMs / 1000)} s) entrou na lista de clipes. <a href="${TELE.url}" download="${h(nome)}">Baixar esta tomada</a> (se quiser guardar).`;
+}
 /* O que vai à função no envio: confere tudo o que a tela sabe ANTES de qualquer arquivo sair (o banco confere de novo) */
 function conferirEnvio(p, lista){
   if(!lista.length) throw new ErroApi("Escolha os clipes do reel (de 1 a 12, na ordem do roteiro).");
   if(lista.length > VIDEO_MAX_CLIPES) throw new ErroApi(`São ${lista.length} clipes: envie no máximo ${VIDEO_MAX_CLIPES} (tire as tomadas que não vão).`);
   const ruim = lista.filter(c => !c.tipo);
-  if(ruim.length) throw new ErroApi(`Só vídeo MP4 ou MOV, como sai da câmera do celular: ${ruim.map(c => c.nome).join(", ")}.`);
+  if(ruim.length) throw new ErroApi(`Só vídeo MP4 ou MOV, como sai da câmera do celular, ou a gravação do teleprompter: ${ruim.map(c => c.nome).join(", ")}.`);
   const vazio = lista.filter(c => c.bytes < 1);
   if(vazio.length) throw new ErroApi(`Arquivo vazio: ${vazio.map(c => c.nome).join(", ")}.`);
   const total = lista.reduce((s, c) => s + c.bytes, 0);
@@ -895,7 +1086,7 @@ const CHAVES_EDITOR_VIDEO = ["cortar", "inicio_q", "fim_q", "capa_q", "legenda_t
 const ABA_VIDEO_FPS = 30;
 const ABA_VIDEO_LIMITES = {min:5, max:900, fala:2, cortes:30, corteMin:3};   // v0.33.0: o teto é o da API do Instagram (15 min); a meta das Configurações é só aviso
 const ABA_VIDEO_CAMPOS = CAMPOS_VIDEO + ",palavras_tentativa,rodada";
-const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.43.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.44.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 const abaVideo = () => (estadoVideo().aba ||= {filtro:"futuro", rascunhos:{}, previaLigada:true, abertas:{cortar:true}});
 const ehEditorVideo = v => CHAVES_EDITOR_VIDEO.some(k => Object.prototype.hasOwnProperty.call(objVideo(v?.ajustes), k));
 const inteiroVideo = x => Number.isInteger(x) ? x : null;
@@ -1798,8 +1989,35 @@ const videoDaTela = el => { const ev = estadoVideo(), v = [ev.atual, ev.envio].f
   if(!v) throw new ErroApi("A gravação mudou: recarregue a peça."); return v; };
 const VIDEO = {
   // não gravam nada: só a tela (o que grava é feito uma ação por vez)
-  navegacao:["video-nova", "video-nova-cancelar", "video-clipe-mover", "video-clipe-tirar", "video-ouvir", ...NAVEGACAO_ABA_VIDEO],
+  navegacao:["video-nova", "video-nova-cancelar", "video-clipe-mover", "video-clipe-tirar", "video-ouvir",
+    "video-teleprompter", "tele-fechar", "tele-rolar", "tele-letra", "tele-veloc", "tele-espelho", "tele-gravar",   // v0.44.0
+    ...NAVEGACAO_ABA_VIDEO],
   acoes:{
+    /* v0.44.0: o teleprompter (ler o roteiro em letras grandes e, se o navegador souber, gravar ali mesmo) */
+    async "video-teleprompter"(el){ await abrirTeleprompter(Number(el.dataset.id)); },
+    "tele-fechar"(){ fecharTeleprompter(); },
+    "tele-rolar"(){ if(!TELE) return; TELE.rolando = !TELE.rolando; TELE.antes = null;
+      const b = $("#tele-rolar"); if(b) b.textContent = TELE.rolando ? "Parar o texto" : "Rolar o texto";
+      if(TELE.rolando) TELE.relogio = requestAnimationFrame(rolarTeleprompter); },
+    "tele-letra"(el){ if(!TELE) return; TELE.letra = Math.min(96, Math.max(24, TELE.letra + 8 * Number(el.dataset.passo)));
+      const r = $("#tele-rolo"); if(r) r.style.fontSize = `${TELE.letra}px`; },
+    "tele-veloc"(el){ if(!TELE) return; TELE.veloc = Math.min(160, Math.max(10, TELE.veloc + 10 * Number(el.dataset.passo))); },
+    "tele-espelho"(){ $("#tele-rolo")?.classList.toggle("tele-espelhado"); },
+    async "tele-gravar"(){
+      if(!TELE) return;
+      if(TELE.gravador && TELE.gravador.state === "recording"){ await pararGravacaoTele(); return; }
+      if(!TELE.fluxo){ recado("A câmera não está aberta: grave pelo celular e use o teleprompter só para ler.", true); return; }
+      const tipo = tipoGravacaoTele();
+      TELE.pedacos = [];
+      TELE.gravador = new MediaRecorder(TELE.fluxo, tipo ? {mimeType:tipo} : undefined);
+      TELE.gravador.ondataavailable = ev => { if(ev.data?.size) TELE.pedacos.push(ev.data); };
+      TELE.inicioMs = Date.now();
+      TELE.gravador.start(1000);
+      const b = $("#tele-gravar");
+      if(b){ b.textContent = "Parar e guardar"; b.classList.remove("verde"); b.classList.add("perigo"); }
+      const av = $("#tele-aviso");
+      if(av) av.textContent = "Gravando… Fale com o texto rolando; ao terminar, “Parar e guardar” põe a tomada na lista de clipes.";
+    },
     "video-nova"(){ const ev = estadoVideo(); ev.nova = true; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); $("#video-envio")?.scrollIntoView({block:"nearest"}); },
     "video-nova-cancelar"(){ const ev = estadoVideo(); ev.nova = false; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); },
     "video-clipe-mover"(el){ const pid = estadoVideo().peca, l = clipesDe(pid), i = Number(el.dataset.i), j = i + Number(el.dataset.passo);

@@ -29,7 +29,7 @@ import audio
 import cortes
 import isolado
 from segredo import ErroVideo
-from sondar import ENTRADA, FPS
+from sondar import FPS, entrada
 
 LARG, ALT = 1080, 1920
 TRANSICAO = 0.4
@@ -69,7 +69,7 @@ def medir_luz(info: dict, pastas: isolado.Pastas) -> dict:
     n = info["n"]
     cadeia = ",".join(x for x in [_corte_9x16(info["w"], info["h"]), _conversao(info, 270, 480), "signalstats",
                                   f"metadata=mode=print:file=/sai/luz{n}.txt"] if x)
-    isolado.rodar("luz", "ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-skip_frame", "nokey", *ENTRADA,
+    isolado.rodar("luz", "ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-skip_frame", "nokey", *entrada(info),
                                     "-i", f"/ent/{n}", "-map", "0:v:0", "-an", "-dn", "-sn", "-vf", cadeia, "-f", "null", "-"],
                   pastas, isolado.TEMPO_SONDAR)
     texto = (pastas.sai / f"luz{n}.txt").read_text(encoding="utf-8", errors="replace")
@@ -132,7 +132,7 @@ def _render(infos: list[dict], plano: dict, pastas: isolado.Pastas, cfg: dict, m
     cartela_s = float(cfg.get("cartela_s", 3))
     entradas, grafo = [], []
     for k, i in enumerate(usados):
-        entradas += [*ENTRADA, "-i", f"/ent/{i['n']}"]
+        entradas += [*entrada(i), "-i", f"/ent/{i['n']}"]      # v0.44.0: o demuxer do contêiner deste clipe
         sel = "+".join(f"between(n,{a},{b - 1})" for a, b in locais[i["n"]])
         grafo.append(f"[{k}:v:0]fps=fps={FPS}:start_time=0,select='{sel}',setpts=N/({FPS}*TB),"
                      + ",".join(x for x in [_corte_9x16(i["w"], i["h"]), _conversao(i), "setsar=1", cores[i["n"]]] if x) + f"[v{k}]")
@@ -191,7 +191,7 @@ def capa(infos: list[dict], plano: dict, capa_q: int, pastas: isolado.Pastas, co
     local = q - info["inicio_q"]
     cadeia = ",".join(x for x in [f"fps=fps={FPS}:start_time=0", f"select='eq(n,{local})'", _corte_9x16(info["w"], info["h"]),
                                   _conversao(info), "setsar=1", cores.get(info["n"], "")] if x)
-    isolado.rodar("capa", "ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", *ENTRADA, "-i", f"/ent/{info['n']}",
+    isolado.rodar("capa", "ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", *entrada(info), "-i", f"/ent/{info['n']}",
                                      "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", cadeia, "-frames:v", "1", "-q:v", "2",
                                      "-map_metadata", "-1", "/sai/capa.jpg"], pastas, isolado.TEMPO_SONDAR)
     if not (pastas.sai / "capa.jpg").is_file():

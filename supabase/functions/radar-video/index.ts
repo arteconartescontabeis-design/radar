@@ -1,5 +1,7 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-video" (v0.40.0: nenhuma mudança aqui — a versão acompanha o robô, que ganhou o juiz de
+// RADAR ARTECON — Edge Function "radar-video" (v0.44.0: aceita também o tipo video/webm — a gravação do teleprompter pelo
+// navegador; quem confere o conteúdo do arquivo continua sendo o robô, com a sondagem endurecida. Antes, v0.40.0: nenhuma
+// mudança aqui — a versão acompanhava o robô, que ganhou o juiz de
 // sentido e os avisos de arquivo fraco; o "Aceitar — quis dizer o mesmo" é função do banco, radar_video_aceitar, chamada pela tela;
 // v0.36.0: + a correção avulsa — envio_iniciar_avulso e baixar_avulso, o vídeo sem
 // peça na Pauta; v0.33.0: + a capa da aba Vídeo nos links, no concluir, na prévia e no baixar)
@@ -83,7 +85,7 @@
 // A transcrição é do robô (ajustes do dono): os segredos da Azure ficam no repositório privado, não aqui.
 // =====================================================================
 
-const VERSAO = "0.40.0";
+const VERSAO = "0.44.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -103,7 +105,7 @@ const BUCKET = "radar-videos";
 // prazos dos links, fixos aqui (quem chama não escolhe); cada objeto sobe com cacheControl de 60 s (a tela e o robô mandam), então a
 // validade efetiva vai até o prazo + 60 s
 const LINK_PREVIA_S = 600, LINK_BAIXAR_S = 300, LINK_ROBO_S = 600, CACHE_S = 60;
-const TIPOS = ["video/mp4", "video/quicktime", "application/json", "image/jpeg"];
+const TIPOS = ["video/mp4", "video/quicktime", "video/webm", "application/json", "image/jpeg"];   // v0.44.0: + a gravação do teleprompter pelo navegador
 const TEMPO_ARMAZENAMENTO_MS = Number(env("RADAR_VIDEO_ARMAZENAMENTO_MS", "15000"));
 const LIMITE_LIMPEZA_MS = 110_000;                                // a limpeza para antes do corte de ~150 s do Supabase
 const MAX_PEDIDO = 256 * 1024;                                    // o corpo do pedido (o relatório tem até 60.000 caracteres)

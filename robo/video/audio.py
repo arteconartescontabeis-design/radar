@@ -18,7 +18,7 @@ from array import array
 
 import isolado
 from segredo import ErroVideo
-from sondar import ENTRADA, FPS
+from sondar import FPS, entrada
 
 SR = 48000
 AMOSTRAS_POR_QUADRO = SR // FPS        # 1600
@@ -32,7 +32,7 @@ def extrair(infos: list[dict], pastas: isolado.Pastas) -> float:
     entradas, ramos, rotulos, q = [], [], [], 0
     for k, i in enumerate(infos):
         n_amostras = i["quadros"] * AMOSTRAS_POR_QUADRO
-        entradas += [*ENTRADA, "-i", f"/ent/{i['n']}"]
+        entradas += [*entrada(i), "-i", f"/ent/{i['n']}"]      # v0.44.0: o demuxer do contêiner deste clipe
         ramos.append(f"[{k}:a:0]aresample={SR}:async=1:first_pts=0,aformat=sample_fmts=fltp:channel_layouts=mono,"
                      f"apad=whole_len={n_amostras},atrim=end_sample={n_amostras},asetpts=N/SR/TB[a{k}]")
         rotulos.append(f"[a{k}]")
