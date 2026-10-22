@@ -267,6 +267,10 @@ body.letras-grandes{font-size:18px}
 .foto-opcao{padding:0;border:1px solid var(--linha);border-radius:6px;overflow:hidden;cursor:pointer;background:none}
 .foto-opcao img{width:100%;height:110px;object-fit:cover;display:block}
 .foto-opcao:hover,.foto-opcao:focus-visible{outline:3px solid var(--azul,#1B5E9B)}
+.foto-opcao{position:relative}
+.foto-banco{position:absolute;right:4px;bottom:4px;background:rgba(1,21,45,.72);color:#fff;font-size:11px;padding:1px 7px;border-radius:9px}   /* v0.45.0: de qual banco a foto veio */
+.quando-publicar{align-items:center;gap:8px;margin:6px 0 2px}   /* v0.45.0: agora ou em hora marcada */
+.quando-publicar input[type=datetime-local]{padding:6px 8px;border:1px solid var(--linha);border-radius:6px;font:inherit}
 @media (max-width:860px){ .assunto-corpo{grid-template-columns:minmax(0,1fr)} .lateral{order:2} .caixa-previa .previa{padding:16px} }
 .etapas{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 12px;border-bottom:2px solid var(--linha)}
 .etapas button{background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-2px;padding:9px 14px;cursor:pointer;color:var(--cinza);font-weight:500}
@@ -383,21 +387,27 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.44.0"></script>
-<script src="radar-video.js?v=0.44.0"></script>
-<script src="radar-setor.js?v=0.44.0"></script>
-<script src="radar-respostas.js?v=0.44.0"></script>
+<script src="radar-pauta.js?v=0.45.0"></script>
+<script src="radar-video.js?v=0.45.0"></script>
+<script src="radar-setor.js?v=0.45.0"></script>
+<script src="radar-respostas.js?v=0.45.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.44.0";
-const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video)
-const REDES_MINIMA = "0.43.0";      // versão da função radar-redes que este painel exige (v0.43.0: a nova tentativa automática da notícia sai pela agenda — a função de antes recusaria o pedido; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não sobe: nada muda na radar-redes)
+const VERSAO = "0.45.0";
+const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela)
+const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.45.0", "22/10/2026", [
+    "Leis e decretos de Palhoça e São José, sem robô no Diário dos Municípios: a fonte nova “Palhoça e São José — leis e decretos sobre tributos” lê UMA vez por dia os dados abertos oficiais da CIGA (dados.ciga.sc.gov.br, pacote diário com o texto completo de cada ato), filtra por município, categoria e palavras de tributos, e o resto segue o caminho de sempre (fila, assunto, evidência). O site diariomunicipal.sc.gov.br não recebe nenhum acesso de robô — só os links humanos de cada ato.",
+    "Hora marcada na notícia: ao autorizar a publicação (no site, no Instagram, no Facebook ou em todos), o administrador agora escolhe entre “Agora” (como sempre) e “Em hora marcada” — o campo já vem com o melhor horário de engajamento do dia sugerido (o mesmo estudo que agendou a Pauta), e dá para trocar. A agenda do banco publica sozinha na hora certa; para mudar ou desistir, é só cancelar a autorização antes da hora. No “Publicar em todos”, a hora vale para o site, e as redes saem logo que a notícia entra no site, como sempre.",
+    "Foto real em dois bancos: a busca de foto (na publicação e no preparo em lote) agora procura no Pixabay e no Pexels ao mesmo tempo, mostra as opções misturadas com o selo do banco em cada foto e credita o autor como cada banco exige. Com um só configurado, funciona como antes; o segredo novo PEXELS_API_KEY é opcional (crie a chave gratuita em pexels.com/api e cole no painel do Supabase, nunca pelo chat).",
+    "Título SEMPRE na imagem: a ilustração da IA agora recebe o título desenhado em cima (a faixa escura com a letra da Artecon e a categoria), como a capa de foto já tinha — toda imagem que sai carrega o título. As ilustrações antigas, já guardadas, continuam como estão (gere a ilustração de novo para ganhar o título).",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.45.0.sql (colunas e funções da hora marcada; nada é apagado; pode rodar de novo; ele também faz a faxina das sobras da atualização anterior), rode DE NOVO o sql/radar-redes-agenda.sql (a agenda ganha o acionamento do robô do site na hora marcada) e faça o Deploy das funções radar-ia e radar-redes desta versão (Verify JWT como está em cada uma). Depois do primeiro robô de coleta desta versão, rode o sql/radar-fontes-novas-v0.45.0.sql (a fonte da CIGA; ele confere a versão do robô e avisa se for cedo). Segredo novo opcional: PEXELS_API_KEY. Depois publique o index.html com os demais .js e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.44.0 para a v0.45.0”."]],
   ["0.44.0", "21/10/2026", [
     "Teleprompter com gravação pelo navegador: na peça de reel (e no vídeo avulso), o botão “Gravar pelo navegador (teleprompter)” abre o roteiro rolando em LETRAS GRANDES — tamanho, velocidade e espelho ajustáveis — com a câmera do aparelho ao lado. Grave no celular, EM PÉ: a tomada entra direto na lista de clipes, e dá para baixar cada tomada se quiser guardar.",
     "O caminho continua o de sempre: nada é enviado até você mandar; o envio, o corretor (que confere cada arquivo com o mesmo rigor, agora também a gravação do navegador), a cota do mês, os termos e as quatro declarações não mudam. Quem não quiser gravar pelo navegador pode usar o teleprompter só para ler e gravar pela câmera do celular, como antes.",
@@ -1250,7 +1260,7 @@ function linhaProrrogacao(p){
 }
 /* Configurações → Agenda de obrigações: as dos últimos 30 dias, também as já conferidas (com o selo) */
 function listaProrrogacoes(lista){
-  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.44.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
+  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.45.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
   return `<div class="prorrogacoes" id="prorrogacoes-config"><h3>Possíveis prorrogações captadas (últimos 30 dias)</h3>
     ${lista.length ? `<p class="sub">Notícias que falam em prorrogar ou adiar o prazo de uma obrigação desta agenda. O Radar não muda a data sozinho: confira na fonte oficial e, se o prazo mudou, ponha a nova data em “prorrogacoes”.</p>
       <ul>${lista.map(linhaProrrogacao).join("")}</ul>` : `<p class="sub">Nenhuma notícia dos últimos 30 dias fala em prorrogar ou adiar o prazo de uma obrigação desta agenda.</p>`}</div>`;
@@ -1911,7 +1921,7 @@ async function telaAssunto(id){
   // ele recusaria (só as posições; nada do boletim vem). Só para quem edita; sem resposta (banco antigo), fica a comparação da tela.
   const [pubs, envios, redes, pagoBanco] = cont.length ? await Promise.all([ler("radar_v_divulgacoes", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id"}),
     ler("radar_site_envios", {select:"*", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
-    ler("radar_redes_envios", {select:"id,conteudo_id,canal,situacao,url,erro,autorizado_em,enviado_em,publicado_em", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
+    ler("radar_redes_envios", {select:"id,conteudo_id,canal,situacao,url,erro,autorizado_em,enviado_em,publicado_em,agendado_para", conteudo_id:"in.(" + idsCont + ")", order:"id.desc"}),
     podeEditar() ? rpc("radar_copia_paga_trechos", {p_assunto:a.id, p_textos:cont.flatMap(c => [c.titulo || "", c.corpo || ""])}).catch(() => null) : null]) : [[], [], [], null];
   E.pagoBanco = Object.fromEntries(Array.isArray(pagoBanco) ? cont.map((c, k) => [c.id, [...trechosDoBanco(c.titulo, pagoBanco[2 * k]), ...trechosDoBanco(c.corpo, pagoBanco[2 * k + 1])]]) : []);
   const idsImg = [...new Set(cont.map(c => c.imagem_id).filter(Boolean))];
@@ -2294,7 +2304,9 @@ function fonteDoEndereco(url){
 
 /* v0.13.0: Instagram e Facebook */
 const NOME_REDE = {instagram:"Instagram", facebook:"Facebook"};
-const situacaoRede = r => !r ? "falta" : {aguardando_site:"vai junto com o site", autorizado:"autorizado", enviando:"publicando", erro:"não concluída",
+const situacaoRede = r => !r ? "falta"
+  : r.situacao === "autorizado" && r.agendado_para && new Date(r.agendado_para) > new Date() ? `marcada para ${dataHora(r.agendado_para)}`   // v0.45.0: hora marcada
+  : {aguardando_site:"vai junto com o site", autorizado:"autorizado", enviando:"publicando", erro:"não concluída",
   publicado:"publicado", dispensado:"não vai", excluido:"excluída"}[r.situacao] || "falta";
 /* varredura geral (v0.22.0): a publicação cancelada no meio do envio (parada em “publicando”: a Meta pode ter publicado sem o
    registro entrar) pode estar no ar. Autorizar de novo o mesmo canal pede a caixa “Conferi no …: não saiu” (o banco recusa sem
@@ -2309,6 +2321,9 @@ const redeLivre = redes => ["instagram", "facebook"].filter(k => !redes.some(r =
 function proxRede(canal, r, c, capa, categoria, urlSite, ultima, conferir = false){
   const nome = NOME_REDE[canal], adm = ehAdmin(), passo = 2;                  // v0.26.0: o passo 3 (Publicar), o índice 2 da trilha
   const cancelar = r => adm ? `<button class="btn sec" type="button" data-acao="cancelar-rede" data-envio="${r.id}">Cancelar autorização</button>` : "";
+  if(r?.situacao === "autorizado" && r.agendado_para && new Date(r.agendado_para) > new Date())   // v0.45.0: hora marcada
+    return [`Publicar no ${nome}`, `Marcada para ${dataHora(r.agendado_para)}: a agenda do banco publica sozinha na hora certa, com a imagem e a legenda autorizadas. Para mudar a hora (ou desistir), cancele a autorização e, se quiser, autorize de novo.`,
+      adm ? cancelar(r) : "", passo];
   if(r?.situacao === "autorizado") return [`Publicar no ${nome}`, `A publicação foi autorizada em ${dataHora(r.autorizado_em)} e ainda não saiu (a Meta pode não estar configurada). Tente de novo; se o ${nome} não estiver ligado ao Radar (veja o teste de conexão, na aba Publicações), cancele e escolha “Não publicar no ${nome}”.`,
     adm ? `<button class="btn" type="button" data-acao="tentar-rede" data-envio="${r.id}" data-canal="${canal}">Publicar agora</button>` + cancelar(r) : "", passo];
   if(r?.situacao === "enviando") return [`Publicando no ${nome}…`, `A publicação está saindo (desde ${dataHora(r.enviado_em)}). Recarregue em instantes.`,
@@ -2332,12 +2347,13 @@ function proxRede(canal, r, c, capa, categoria, urlSite, ultima, conferir = fals
     ${temImagem ? "" : `<span class="sub">O carrossel precisa da imagem da publicação (a capa): envie a imagem no passo 2.</span>`}</fieldset>`;
   const laminasHtml = carrossel ? `<div class="aviso info rede-carrossel-aviso">Carrossel: vai ao ar exatamente o que aparece abaixo (a capa e ${cartoes.length} cartão(ões), com a identificação legal em cada lâmina). ${canal === "instagram" ? "No Instagram sai como carrossel (a pessoa arrasta as lâminas)." : "No Facebook sai como uma publicação com as imagens."}</div>
     <div class="peca-artes" id="rede-laminas" data-conteudo="${c.id}"></div><div id="rede-laminas-avisos"></div>` : "";
-  return [`Publicar no ${nome}`, `Confira a imagem e a legenda. Ao autorizar, a publicação sai na hora no ${nome} da Artecon.`,
+  return [`Publicar no ${nome}`, `Confira a imagem e a legenda. Ao autorizar, a publicação sai no ${nome} da Artecon na hora — ou na hora marcada, se você escolher.`,
     `${caiu}${formatoHtml}<div class="rede-montagem"><div class="rede-arte">${imagemRede("rede-imagem", c, capa, `Imagem da publicação no ${nome}`)}</div>
       <div class="rede-legenda"><label for="rede-legenda">Legenda</label><textarea id="rede-legenda" maxlength="2200" data-chave="${chave}">${h(legenda)}</textarea>
       <span class="sub">${canal === "instagram" ? "No Instagram o link da legenda não é clicável: a legenda indica o link na bio." : "No Facebook o link da legenda é clicável."} Até 2.200 caracteres.</span></div></div>
     ${laminasHtml}
     ${conferir ? caixaConferiRede("rede-conferi", canal) : ""}
+    ${quandoPublicarHtml(`rede-${c.id}-${canal}`)}
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-rede" data-canal="${canal}" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar no ${nome}${carrossel ? " (carrossel)" : ""}</button>
       <button class="btn sec" type="button" data-acao="dispensar-rede" data-canal="${canal}" data-id="${c.id}">Não publicar no ${nome}</button></div>`, passo];
 }
@@ -2573,6 +2589,42 @@ async function jpegDaPublicacao(dados){
   const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0);
   return cv.toDataURL("image/jpeg", 0.92);
 }
+/* v0.45.0: "Quando publicar" — agora (como sempre) ou em HORA MARCADA. A autorização guarda a hora e quem publica é a agenda do
+   banco (as redes, de 5 em 5 minutos) ou o robô do site (acionado pela agenda quando a hora chega). O dia e a hora são os do
+   relógio deste computador (em Brasília, é a hora de Brasília). */
+function quandoPublicarHtml(sufixo){
+  return `<div class="acoes quando-publicar"><label class="sub" for="quando-${sufixo}" style="margin:0"><b>Quando publicar:</b></label>
+    <select id="quando-${sufixo}" data-acao="quando-mudar" data-sufixo="${sufixo}" aria-label="Quando publicar">
+      <option value="agora">Agora (assim que autorizar)</option><option value="hora">Em hora marcada</option></select>
+    <input type="datetime-local" id="quando-hora-${sufixo}" style="display:none" aria-label="Dia e hora da publicação"></div>`;
+}
+/* A sugestão que aparece ao escolher "Em hora marcada": o melhor horário de engajamento do dia (o mesmo estudo que agendou a
+   Pauta — almoço nos dias úteis, noite na quarta e no domingo), no primeiro dia em que ainda dá tempo. É só sugestão: dá para
+   trocar o dia e a hora à vontade. */
+const MELHOR_HORA = ["19:30", "11:50", "11:40", "19:10", "12:10", "11:20", "10:30"];   // domingo a sábado
+function melhorHorarioSugerido(){
+  const d = new Date();
+  for(let i = 0; i < 8; i++){
+    const [hh, mm] = MELHOR_HORA[d.getDay()].split(":");
+    d.setHours(Number(hh), Number(mm), 0, 0);
+    if(d.getTime() > Date.now() + 10 * 60000)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${hh}:${mm}`;
+    d.setDate(d.getDate() + 1);
+  }
+  return "";
+}
+/* O que foi escolhido: {agendar:null} = agora; {agendar:iso, texto} = hora marcada; {erro} = falta acertar o campo */
+function lerQuandoPublicar(sufixo){
+  if(($(`#quando-${sufixo}`)?.value || "agora") !== "hora") return {agendar:null};
+  const v = $(`#quando-hora-${sufixo}`)?.value || "";
+  const quando = v ? new Date(v) : null;
+  if(!quando || isNaN(quando)) return {erro:"Escolha o dia e a hora da publicação (ou volte para “Agora”)."};
+  if(quando.getTime() <= Date.now() + 2 * 60000) return {erro:"A hora marcada precisa estar no futuro (daqui a alguns minutos, pelo menos)."};
+  if(quando.getTime() > Date.now() + 60 * 86400000) return {erro:"A hora marcada pode ser em até 60 dias."};
+  return {agendar:quando.toISOString(),
+          texto:`${String(quando.getDate()).padStart(2, "0")}/${String(quando.getMonth() + 1).padStart(2, "0")} às ` +
+                `${String(quando.getHours()).padStart(2, "0")}:${String(quando.getMinutes()).padStart(2, "0")}`};
+}
 /* Chama a função radar-redes para publicar a autorização (logo depois de autorizar, ou de novo depois de um erro). */
 /* v0.19.0: com redesenhar = false (várias redes em sequência), devolve {ok, msg} sem redesenhar nem dar o recado. */
 async function publicarRede(envio, canal, redesenhar = true){
@@ -2668,16 +2720,22 @@ function blocoPublicar(c, envio, pubs, pronto, categoria, redes = [], capa = nul
   // já foi ao site (texto mudou depois, ou o robô publicou e o registro não entrou): autorizar de novo duplicaria a notícia
   else if(pubs.length) corpo = `<div class="aviso alerta envio-site"><b>Esta notícia já está no site</b> (${linkFonte(pubs[pubs.length - 1].url, pubs[pubs.length - 1].url)}), com um texto anterior. Para não duplicar, atualize a notícia no painel do site e registre de novo no passo 2 (“Depois de publicar no site”).</div>`;
   else if(envio?.situacao === "publicado") corpo = `<div class="aviso alerta envio-site"><b>Publicado no site pelo robô</b> — ${envio.url ? linkFonte(envio.url, envio.url) : ""}${envio.erro ? `<br>${h(envio.erro)}` : ""}<br><span class="sub">Para não duplicar, não é possível autorizar de novo; se precisar, registre o link à mão no passo 2.</span></div>`;
-  else if(envio?.situacao === "autorizado") corpo = `<div class="aviso alerta envio-site"><b>Autorizado em ${dataHora(envio.autorizado_em)}</b> (categoria ${h(envio.categoria)}) — aguardando o robô, que publica em 1 a 2 minutos depois de acionado.
-      ${ehAdmin() ? `<div class="acoes"><button class="btn peq" type="button" data-acao="acionar-robo">Acionar o robô agora</button>
+  else if(envio?.situacao === "autorizado"){
+    const marcada = envio.agendado_para && new Date(envio.agendado_para) > new Date();          // v0.45.0: hora marcada no site
+    corpo = `<div class="aviso alerta envio-site"><b>Autorizado em ${dataHora(envio.autorizado_em)}</b> (categoria ${h(envio.categoria)}) — ${marcada
+        ? `<b>marcada para ${dataHora(envio.agendado_para)}</b>: a agenda do banco aciona o robô na hora certa.`
+        : "aguardando o robô, que publica em 1 a 2 minutos depois de acionado."}
+      ${ehAdmin() ? `<div class="acoes">${marcada ? "" : `<button class="btn peq" type="button" data-acao="acionar-robo">Acionar o robô agora</button>`}
         <button class="btn peq sec" type="button" data-acao="cancelar-site" data-envio="${envio.id}">Cancelar autorização</button></div>` : ""}</div>`;
+  }
   else if(envio?.situacao === "enviando") corpo = `<div class="aviso alerta envio-site"><b>O robô está publicando</b> (desde ${dataHora(envio.enviado_em)}). Assim que a notícia aparecer no site, o link é registrado aqui.</div>`;
   else {
     const ultimo = envio && ["erro","cancelado"].includes(envio.situacao) && envio.erro ? `<div class="aviso ${envio.situacao === "erro" ? "erro" : "alerta"} envio-site">${envio.situacao === "erro" ? "<b>A última publicação não foi concluída.</b> " : ""}${h(envio.erro)}</div>` : "";
     corpo = ultimo + (!pronto ? "" : ehAdmin() ? `${avisoTituloSite(c)}<div class="acoes autorizar-site"><label for="site-cat-${c.id}" style="margin:0">Categoria no site</label>
         <select id="site-cat-${c.id}">${opcoes(Object.fromEntries(CATEGORIAS_DO_SITE.map(x => [x, x])), sugerida, "— escolher —")}</select>
         <button class="btn verde" type="button" data-acao="autorizar-site" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar publicação no site</button></div>
-        <p class="sub">Ao autorizar, o robô é acionado na hora: cadastra a notícia no site em 1 a 2 minutos (o site publica na hora) e registra o link aqui. Dá para cancelar enquanto o robô não começou.</p>
+        ${quandoPublicarHtml(`site-${c.id}`)}
+        <p class="sub">Em “Agora”, o robô é acionado na hora: cadastra a notícia no site em 1 a 2 minutos (o site publica na hora) e registra o link aqui. Em hora marcada, a agenda do banco aciona o robô quando a hora chega. Dá para cancelar enquanto o robô não começou.</p>
         ${blocoTodos(c, categoria, capa, redes)}`
       : `<p class="sub">Só o administrador autoriza a publicação no site (ou em todos de uma vez).</p>`);
   }
@@ -2703,6 +2761,7 @@ function blocoTodos(c, categoria, capa, redes){
         <textarea id="todos-legenda-${k}-${c.id}" maxlength="2000" data-chave="${c.id}:todos-${k}" aria-label="Legenda do ${NOME_REDE[k]}">${h(legenda(k))}</textarea>
         ${canceladaNoEnvio(redes, k) ? caixaConferiRede(`todos-conferi-${k}-${c.id}`, k) : ""}`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.000 caracteres em cada legenda.</span></div></div>
+    ${quandoPublicarHtml(`todos-${c.id}`)}
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-todos" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Autorizar e publicar em todos</button></div></details>`;
 }
 /* v0.19.0: a notícia já está no site: publicar no Instagram e no Facebook que faltam (cada um ou os dois), sem esperar o
@@ -3092,7 +3151,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.44.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.45.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -3572,8 +3631,8 @@ const ACOES = {
     const [c] = await ler("radar_conteudos", {select:"titulo", id:"eq." + id});
     if(!c){ await desenhar(); recado("Este conteúdo não existe mais: a tela foi atualizada.", "aviso"); return; }
     const extra = f.dataset.iaAntiga ? await iaAntigaEm3x2(id) : {};
-    await abrirEscolhaFoto(buscaDaFoto(c.titulo) || c.titulo.slice(0, 60), async fotoId => {
-      const r = await ia("foto_baixar", {foto_id:fotoId});
+    await abrirEscolhaFoto(buscaDaFoto(c.titulo) || c.titulo.slice(0, 60), async (fotoId, banco) => {
+      const r = await ia("foto_baixar", {foto_id:fotoId, banco});
       await capaComFoto(id, r.imagem, extra);
       E.capaAntiga = null; E.capaFoco = id; await desenhar(); rolarAteConteudo(id);
       recado("Capa com a foto real e o título: é a imagem da publicação, a mesma no site, no Instagram e no Facebook.");
@@ -3584,7 +3643,7 @@ const ACOES = {
   async "foto-escolher"(el){
     const alvo = E.fotoEscolha; if(!alvo) return;
     $("#foto-escolha")?.remove(); E.fotoEscolha = null;
-    await alvo.aoEscolher(Number(el.dataset.id));
+    await alvo.aoEscolher(Number(el.dataset.id), el.dataset.banco || "pixabay");   // v0.45.0: a foto diz de qual banco veio
   },
   /* v0.39.0: preparar várias notícias de uma vez (aba Assuntos): cada marcada passa pelo mesmo caminho do “Preparar com IA” —
      a fonte (trecho que comprova ou busca rápida), o texto, a imagem (foto real com o título, ou a capa padrão), a conferência dos
@@ -3789,9 +3848,16 @@ const ACOES = {
     await rpc("radar_assumir_conferencia", {p_conteudo:Number(el.dataset.id), p_motivo:motivo, p_lido:f.dataset.lido});
     await desenhar(); recado("Revisado e assumido: a aprovação deste texto está liberada (se ele mudar, cai). O motivo ficou no histórico.", "aviso");
   },
+  /* v0.45.0: "Quando publicar" — mostra o campo de dia e hora só em "Em hora marcada", já com o melhor horário sugerido */
+  "quando-mudar"(el){
+    const campo = $(`#quando-hora-${el.dataset.sufixo}`); if(!campo) return;
+    campo.style.display = el.value === "hora" ? "" : "none";
+    if(el.value === "hora" && !campo.value) campo.value = melhorHorarioSugerido();
+  },
   /* v0.13.0: Instagram e Facebook — autorizar e publicar na hora (só o administrador; as funções do banco conferem).
      v0.42.0: com “Carrossel” escolhido no quadro, as lâminas desenhadas na tela (a capa com o título + os cartões do kit) são
-     guardadas em radar_imagens e vão na autorização (p_artes); a função radar-redes publica o carrossel. */
+     guardadas em radar_imagens e vão na autorização (p_artes); a função radar-redes publica o carrossel.
+     v0.45.0: com "Em hora marcada", a autorização guarda a hora (p_publicar_em) e quem publica é a agenda do banco. */
   async "autorizar-rede"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const canal = el.dataset.canal, nome = NOME_REDE[canal], img = $("#rede-imagem"), legenda = ($("#rede-legenda")?.value || "").trim();
@@ -3820,7 +3886,9 @@ const ACOES = {
     if(pagoB){ recado(pagoB, true); $("#rede-legenda")?.focus(); return; }
     const conferi = $("#rede-conferi");                                          // v0.22.0: cancelada no meio do envio
     if(conferi && !conferi.checked){ recado(`Confira no ${nome} que a publicação cancelada no meio do envio não saiu e marque a caixa “Conferi no ${nome}: …”.`, true); conferi.focus(); return; }
-    if(!confirm(`Publicar agora no ${nome} da Artecon?\n\n${cr ? `O carrossel (${cr.lams.length} lâminas: a capa e ${cr.lams.length - 1} cartões) e a legenda vão ao ar como estão na tela.`
+    const quando = lerQuandoPublicar(`rede-${el.dataset.id}-${canal}`);          // v0.45.0: agora ou em hora marcada
+    if(quando.erro){ recado(quando.erro, true); return; }
+    if(!confirm(`${quando.agendar ? `Marcar a publicação no ${nome} da Artecon para ${quando.texto}?` : `Publicar agora no ${nome} da Artecon?`}\n\n${cr ? `O carrossel (${cr.lams.length} lâminas: a capa e ${cr.lams.length - 1} cartões) e a legenda vão ao ar como estão na tela.`
       : "A imagem (a mesma do site) e a legenda vão ao ar como estão na tela."}` + pub.aviso)) return;
     const imagem = cr ? null : await jpegDaPublicacao(img.getAttribute("src"));                // v0.25.0: o mesmo arquivo do site
     let artes = null;
@@ -3833,8 +3901,9 @@ const ACOES = {
       }
     }
     const envio = await rpc("radar_autorizar_rede", {p_conteudo:Number(el.dataset.id), p_canal:canal, p_legenda:legenda, p_imagem:imagem, p_lido:el.dataset.lido,
-      p_conferi_rede:!!conferi?.checked, ...(artes ? {p_artes:artes} : {})});
+      p_conferi_rede:!!conferi?.checked, ...(artes ? {p_artes:artes} : {}), ...(quando.agendar ? {p_publicar_em:quando.agendar} : {})});
     if(E.legendas) delete E.legendas[el.dataset.id + ":" + canal];
+    if(quando.agendar){ await desenhar(); recado(`Marcada: sai no ${nome} em ${quando.texto}, pela agenda do banco. Para mudar a hora (ou desistir), cancele a autorização no quadro do canal antes da hora.`); return; }
     await publicarRede(envio, canal);
   },
   /* v0.42.0: a escolha entre foto única e carrossel no quadro do canal (vale para o conteúdo: os dois canais saem iguais) */
@@ -4089,8 +4158,13 @@ const ACOES = {
     if(!cat){ recado("Escolha a categoria do site antes de autorizar.", true); return; }
     const marcas = marcasDoConteudo(el.dataset.id);
     if(marcas.length){ recado(msgMarcas(marcas, "publicar no site"), true); return; }
-    if(!confirm(`Autorizar a publicação desta notícia no site da Artecon, na categoria “${cat}”?\n\nO robô é acionado na hora e cadastra a notícia em 1 a 2 minutos; o site publica na hora. Dá para cancelar enquanto o robô não começou.`)) return;
-    await rpc("radar_autorizar_site", {p_conteudo:Number(el.dataset.id), p_categoria:cat, p_lido:el.dataset.lido});
+    const quando = lerQuandoPublicar(`site-${el.dataset.id}`);                   // v0.45.0: agora ou em hora marcada
+    if(quando.erro){ recado(quando.erro, true); return; }
+    if(!confirm(`Autorizar a publicação desta notícia no site da Artecon, na categoria “${cat}”?\n\n${quando.agendar
+      ? `Marcada para ${quando.texto}: a agenda do banco aciona o robô na hora certa. Dá para cancelar enquanto não chegar a hora.`
+      : "O robô é acionado na hora e cadastra a notícia em 1 a 2 minutos; o site publica na hora. Dá para cancelar enquanto o robô não começou."}`)) return;
+    await rpc("radar_autorizar_site", {p_conteudo:Number(el.dataset.id), p_categoria:cat, p_lido:el.dataset.lido, ...(quando.agendar ? {p_publicar_em:quando.agendar} : {})});
+    if(quando.agendar){ await desenhar(); recado(`Marcada: a notícia entra no site em ${quando.texto} (hora de Brasília).`); return; }
     const robo = await acionarRoboSite();
     await desenhar(); recado("Publicação autorizada." + (robo || " O robô publica e registra o link aqui."));
   },
@@ -4123,12 +4197,17 @@ const ACOES = {
     const pagoB = await pagoDoBanco(id, legendas);                              // rodada 2: o boletim de outro assunto (o banco recusaria)
     if(pagoB){ recado(pagoB, true); return; }
     const redesTxt = Object.keys(legendas).map(k => NOME_REDE[k]).join(" e ");
-    if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\nO robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.` + pub.aviso)) return;
+    const quando = lerQuandoPublicar(`todos-${id}`);                             // v0.45.0: a hora marcada vale para o site
+    if(quando.erro){ recado(quando.erro, true); return; }
+    if(!confirm(`Autorizar a publicação em todos — site (categoria “${cat}”) e ${redesTxt}?\n\n${quando.agendar
+      ? `Marcada para ${quando.texto}: a notícia entra no site na hora certa e, logo que entrar, o ${redesTxt} sai com a imagem e a legenda que estão na tela.`
+      : `O robô publica no site em 1 a 2 minutos e, logo que a notícia entrar no site, publica no ${redesTxt} com a imagem e a legenda que estão na tela.`}` + pub.aviso)) return;
     await rpc("radar_autorizar_todos", {p_conteudo:Number(id), p_categoria:cat, p_lido:el.dataset.lido, p_imagem:await jpegDaPublicacao(img.getAttribute("src")),
       p_legenda_instagram:legendas.instagram || null, p_legenda_facebook:legendas.facebook || null,
-      p_conferi_rede:Object.keys(legendas).some(k => $(`#todos-conferi-${k}-${id}`)?.checked)});
+      p_conferi_rede:Object.keys(legendas).some(k => $(`#todos-conferi-${k}-${id}`)?.checked), ...(quando.agendar ? {p_publicar_em:quando.agendar} : {})});
     if(E.legendas) for(const k of ["instagram", "facebook"]) delete E.legendas[id + ":todos-" + k];
     E.todosFechado = null;
+    if(quando.agendar){ await desenhar(); recado(`Marcada para ${quando.texto}: a notícia entra no site na hora certa e o ${redesTxt} sai logo depois dela.`); return; }
     const robo = await acionarRoboSite();
     await desenhar(); recado(`Autorizado em todos. O ${redesTxt} sai logo depois que a notícia entrar no site.` + robo);
   },
@@ -4505,6 +4584,45 @@ async function imagemTresPorDois(img, aviso = false){
   }
   throw new ErroApi("Não foi possível reduzir esta imagem o suficiente. Tente outra.");
 }
+/* v0.45.0: o TÍTULO escrito sobre a ilustração da IA (pedido do dono: toda imagem sai com o título). A mesma letra e o mesmo
+   desenho da capa com foto real (sombra embaixo, a categoria no retângulo vermelho e o título em até 3 linhas), por cima da
+   imagem 3:2 que já vem com o aviso “Imagem ilustrativa gerada por IA” no canto (o aviso continua à vista). */
+async function tituloSobreIlustracao(pub, titulo, rotulo){
+  const img = await carregarImagem(pub.dados);
+  const L = pub.largura, A = pub.altura, s = L / 1200;
+  const cv = document.createElement("canvas"); cv.width = L; cv.height = A;
+  const cx = cv.getContext("2d");
+  try{ await Promise.race([document.fonts.load('700 56px "Playfair Display"'), new Promise(ok => setTimeout(ok, 1500))]); }catch(e){}
+  cx.drawImage(img, 0, 0, L, A);
+  const sombra = cx.createLinearGradient(0, A * .40, 0, A);
+  sombra.addColorStop(0, "rgba(1,21,45,0)"); sombra.addColorStop(.55, "rgba(1,21,45,.55)"); sombra.addColorStop(1, "rgba(1,21,45,.9)");
+  cx.fillStyle = sombra; cx.fillRect(0, 0, L, A);
+  const caixa = (x, y, w, a, r) => { cx.beginPath(); cx.roundRect ? cx.roundRect(x, y, w, a, r) : cx.rect(x, y, w, a); cx.fill(); };
+  // o título curto (até 3 linhas, de baixo para cima), mais estreito que o da capa: o aviso do canto continua à vista
+  const palavras = String(titulo || "").trim().split(/\s+/).filter(Boolean), largura = L * .76; let linhas = [], corpo = Math.round(52 * s);
+  for(; corpo >= Math.round(30 * s); corpo -= Math.max(3, Math.round(4 * s))){
+    cx.font = `700 ${corpo}px "Playfair Display", Georgia, serif`; linhas = []; let atual = "";
+    for(const p of palavras){ const teste = atual ? atual + " " + p : p;
+      if(cx.measureText(teste).width > largura && atual){ linhas.push(atual); atual = p; } else atual = teste; }
+    if(atual) linhas.push(atual);
+    if(linhas.length <= 3) break;
+  }
+  if(linhas.length > 3){ linhas = linhas.slice(0, 3); linhas[2] = linhas[2].replace(/[\s,.;:]+\S*$/, "") + "…"; }
+  let y = A - Math.round(44 * s) - (linhas.length - 1) * corpo * 1.16;
+  if(rotulo){ const bruto = String(rotulo).toUpperCase(), t = bruto.length > 40 ? bruto.slice(0, 39).trimEnd() + "…" : bruto;
+    cx.font = `700 ${Math.round(20 * s)}px "DM Sans", Arial, sans-serif`;
+    const w = cx.measureText(t).width + 28 * s; cx.fillStyle = "#BC151B"; caixa(60 * s, y - corpo - 44 * s, w, 36 * s, 6 * s);
+    cx.fillStyle = "#fff"; cx.fillText(t, 74 * s, y - corpo - 19 * s); }
+  cx.fillStyle = "#fff"; cx.shadowColor = "rgba(0,0,0,.55)"; cx.shadowBlur = 6;
+  cx.font = `700 ${corpo}px "Playfair Display", Georgia, serif`;
+  for(const l of linhas){ cx.fillText(l, 60 * s, y, largura + 40 * s); y += corpo * 1.16; }
+  cx.shadowColor = "transparent"; cx.shadowBlur = 0;
+  for(const q of [0.86, 0.78, 0.7, 0.6]){
+    const dados = cv.toDataURL("image/jpeg", q);
+    if(dados.length <= LIMITE_IMAGEM) return {dados, largura:L, altura:A};
+  }
+  throw new ErroApi("Não foi possível reduzir a imagem com o título. Tente de novo.");
+}
 /* Imagem já carregada (data: ou arquivo) → JPEG reduzido. Com largura e altura, corta no centro para caber na proporção. */
 async function reduzirImagemDe(origem, largura, altura){
   const img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => falha(new ErroApi("Não foi possível ler esta imagem.")); i.src = origem; });
@@ -4641,11 +4759,11 @@ const buscasDaFoto = titulo => [...new Set([buscaDaFoto(titulo), "contabilidade 
 async function abrirEscolhaFoto(busca, aoEscolher){
   E.fotoEscolha = {aoEscolher};
   document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="foto-escolha"><div class="caixa-previa caixa-fotos" role="dialog" aria-modal="true" aria-label="Escolher a foto real">
-    <div class="barra-previa"><span>Foto real do banco de imagens (Pixabay)</span><button class="btn peq sec" type="button" data-acao="foto-fechar">Fechar</button></div>
+    <div class="barra-previa"><span>Foto real dos bancos de imagens</span><button class="btn peq sec" type="button" data-acao="foto-fechar">Fechar</button></div>
     <div style="padding:14px 16px">
       <div class="acoes"><input type="text" id="foto-busca" maxlength="100" value="${h(busca)}" data-enter="foto-buscar-modal" style="flex:1;min-width:220px" aria-label="O que procurar">
         <button class="btn" type="button" data-acao="foto-buscar-modal">Buscar fotos</button></div>
-      <p class="sub" style="margin:6px 0 8px">Fotos de verdade, grátis e com licença para uso comercial (Pixabay, sem IA e sem custo). Clique na foto: o Radar a baixa e desenha a capa com o título por cima.</p>
+      <p class="sub" style="margin:6px 0 8px">Fotos de verdade, grátis e com licença para uso comercial (Pixabay e, desde a v0.45.0, também o Pexels — sem IA e sem custo). Clique na foto: o Radar a baixa e desenha a capa com o título por cima.</p>
       <div id="foto-lista" class="foto-grade"><p class="sub">Buscando…</p></div></div></div></div>`);
   $("#foto-busca")?.focus();
   await buscarFotosModal();
@@ -4657,8 +4775,8 @@ async function buscarFotosModal(){
   let fotos = [];
   try{ fotos = (await ia("foto_buscar", {consulta:q})).fotos || []; }
   catch(e){ caixa.innerHTML = `<div class="aviso erro">${h(e.message || "A busca não deu certo agora.")}</div>`; return; }
-  caixa.innerHTML = fotos.length ? fotos.map(f => `<button type="button" class="foto-opcao" data-acao="foto-escolher" data-id="${f.id}" title="${h(f.tags || "")}">
-      <img src="${h(f.previa)}" alt="${h(f.tags || "foto")}" loading="lazy"></button>`).join("")
+  caixa.innerHTML = fotos.length ? fotos.map(f => `<button type="button" class="foto-opcao" data-acao="foto-escolher" data-id="${f.id}" data-banco="${h(f.banco || "pixabay")}" title="${h(f.tags || "")}">
+      <img src="${h(f.previa)}" alt="${h(f.tags || "foto")}" loading="lazy"><span class="foto-banco">${f.banco === "pexels" ? "Pexels" : "Pixabay"}</span></button>`).join("")
     : `<p class="sub">Nenhuma foto encontrada para “${h(q)}”. Tente outras palavras (ex.: contabilidade, impostos, escritório, calculadora).</p>`;
 }
 /* v0.39.0: UMA notícia do preparo em lote, do começo ao fim (o mesmo caminho do “Preparar com IA” do assunto, sem depender da tela
@@ -4697,7 +4815,7 @@ async function prepararUmAssunto(assunto, formato, comFoto, passo){
       for(const q of buscasDaFoto(a.titulo)){
         try{
           const {fotos} = await ia("foto_buscar", {consulta:q});
-          if(fotos?.length){ fotoUsada = (await ia("foto_baixar", {foto_id:fotos[0].id})).imagem;
+          if(fotos?.length){ fotoUsada = (await ia("foto_baixar", {foto_id:fotos[0].id, banco:fotos[0].banco || "pixabay"})).imagem;
             await capaComFoto(id, fotoUsada); capaOk = true; break; }
         }catch(e){ break; }                                   // sem chave ou banco de imagens fora do ar: fica a capa padrão
       }
@@ -4744,9 +4862,11 @@ async function ilustracaoIA(conteudoId, titulo, descricao = "", assunto = E.assu
 async function gravarIlustracao(conteudoId, imagem){
   avisoIA("gravando a imagem no conteúdo");
   try{
-    const [c] = await ler("radar_conteudos", {select:"id", id:"eq." + conteudoId});
+    const [c] = await ler("radar_conteudos", {select:"id,titulo,radar_assuntos(categoria)", id:"eq." + conteudoId});
     if(!c){ E.ilustracaoPendente = null; throw new ErroApi("O conteúdo foi apagado enquanto a IA criava a imagem; nada foi gravado."); }
-    const pub = await imagemTresPorDois(await carregarImagem(imagem), true);
+    // v0.45.0: o título entra na própria imagem (pedido do dono), por cima do 3:2 com o aviso no canto
+    const pub = await tituloSobreIlustracao(await imagemTresPorDois(await carregarImagem(imagem), true),
+                                            c.titulo, catMapa()[c.radar_assuntos?.categoria] || "Artecon Informa");
     let nova;
     for(let vez = 0; ; vez++){
       try{ nova = (await rest("POST", "radar_imagens", {corpo:pub, params:{select:"id"}, prefer:"return=representation", tempo:60000}))[0].id; break; }
@@ -5022,7 +5142,7 @@ const quandoBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "�
   : d.toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}).replace(",", " às"); };
 function situacaoLembretes(lemb, cfg){
   if(lemb.erro) return `<div class="aviso alerta" id="lembretes-situacao">${lemb.erro.status === 404
-    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.44.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.45.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler a situação dos lembretes agora: recarregue a página."}</div>`;
   const s = lemb.r || {}, ag = s.agenda || {};
   const agenda = !ag.instalada ? "não instalada: rode de novo o sql/radar-redes-agenda.sql (Supabase → SQL Editor)"
@@ -5077,7 +5197,7 @@ function formVencimento(v){
 function quadroVencimentos(venc){
   const topo = `<div class="painel" id="vencimentos"><h2>Vencimentos de chaves e contas</h2>`;
   if(venc.erro) return topo + `<div class="aviso alerta">${venc.erro.status === 404
-    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.44.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.45.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler o quadro de vencimentos agora: recarregue a página."}</div></div>`;
   const hoje = hojeVencimentos(), ed = E.venc || {};
   const itens = (venc.r || []).map(v => ({v, s:situacaoVencimento(v, hoje)}))
@@ -5120,7 +5240,7 @@ async function situacaoFuncaoCopia(){
 }
 function painelCopia(sb, sf){
   const topo = `<div class="painel" id="copia-onedrive"><h2>Cópia de segurança no OneDrive</h2>`;
-  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.44.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
+  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.45.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
   const s = sb.r || {}, f = sf.r && typeof sf.r === "object" ? sf.r : null, configurada = f?.configurada === true;
   const funcao = f ? `instalada (versão ${h(f.versao || "—")})` : sf.erro?.status === 404 ? "não instalada (Supabase → Edge Functions)"
     : "não respondeu agora (confira em Supabase → Edge Functions se a radar-copia está instalada)";
@@ -5301,7 +5421,7 @@ const FORMS = {
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","abrir-assumir","fechar-assumir","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de",
-  "venc-editar","venc-renovei","venc-cancelar","letras"]);                                             // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes
+  "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar"]);                              // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar
 // v0.21.0: as ações e os formulários da Pauta (radar-pauta.js); sem o arquivo, a aba mostra o recado e nada mais muda
 if(typeof PAUTA === "object"){ Object.assign(ACOES, PAUTA.acoes); Object.assign(FORMS, PAUTA.forms); PAUTA.navegacao.forEach(a => NAVEGACAO.add(a)); }
 // v0.22.0: as do corretor de vídeo do reel (radar-video.js); sem o arquivo, a peça reel mostra o recado
@@ -5350,6 +5470,8 @@ document.addEventListener("change", ev => {
     document.querySelectorAll("select[data-formato]").forEach(s => { if(s !== ev.target) s.value = ev.target.value; }); }
   // v0.42.0: foto única ou carrossel no quadro do canal (o clique em input não passa pelo despacho de data-acao)
   if(ev.target.matches?.("#rede-formato input[name=rede-formato]")) executar(ACOES["rede-formato"], false, ev.target);
+  // v0.45.0: "Quando publicar" — trocar entre agora e hora marcada (o select não passa pelo despacho de clique)
+  if(ev.target.matches?.('select[data-acao="quando-mudar"]')) executar(ACOES["quando-mudar"], true, ev.target);
 });
 document.addEventListener("keydown", ev => {
   if(ev.key === "Escape" && $("#foto-escolha")){ $("#foto-escolha").remove(); E.fotoEscolha = null; return; }   // v0.39.0

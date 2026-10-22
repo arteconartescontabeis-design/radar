@@ -1,4 +1,4 @@
-# Radar Artecon — v0.44.0
+# Radar Artecon — v0.45.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,26 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.45.0 traz quatro melhorias. (1) **Leis e decretos de Palhoça e São José pelos dados abertos da CIGA**: a fonte nova
+`domsc-ciga` (`tipo_coletor` novo `ciga_dados`, coletor `robo/radar_ciga.py`) lê **uma vez por dia** o portal de dados abertos da
+CIGA (dados.ciga.sc.gov.br — Crawl-Delay de 10 s respeitado, agente identificado, nunca os caminhos proibidos pelo robots.txt),
+baixa os pacotes diários do DOM/SC (o **texto completo** de cada ato vem no próprio pacote), filtra por município (Palhoça e São
+José), categoria (Leis e Decretos) e palavras de tributos, e entrega à fila de sempre; o **diariomunicipal.sc.gov.br não recebe
+nenhum acesso de robô** (os links guardados, para o leitor humano, apontam para lá). A fonte entra pelo
+`sql/radar-fontes-novas-v0.45.0.sql`, **depois** da primeira coleta desta versão. (2) **Hora marcada na notícia**: ao autorizar a
+publicação no site, no Instagram, no Facebook ou em todos, o administrador escolhe **"Agora"** (como sempre) ou **"Em hora
+marcada"** — o campo já vem com o melhor horário de engajamento do dia sugerido; `radar_autorizar_site`, `radar_autorizar_rede` e
+`radar_autorizar_todos` ganham `p_publicar_em` (no futuro, até 60 dias — RADAR178), a notícia de rede marcada sai pela **agenda do
+banco** (`radar_agenda_vencidas`; `radar_rede_iniciar` não deixa sair antes da hora — RADAR179) e o site marcado é acionado pela
+agenda na hora certa (função nova `radar_site_agendada_devida` + o job `radar-redes-agenda-site` do `sql/radar-redes-agenda.sql`,
+que precisa **rodar de novo**; o robô do site só pega envio sem hora ou com a hora vencida). No "Publicar em todos", a hora fica no
+**site** e as redes saem logo depois dele, como sempre. Cancelar continua igual, enquanto a hora não chega. (3) **Foto real em dois
+bancos**: a busca de foto da `radar-ia` procura no **Pixabay e no Pexels** ao mesmo tempo (segredo novo **opcional**
+`PEXELS_API_KEY`; cada foto sai com o selo do banco e o crédito do autor; com uma chave só, funciona como antes). (4) **Título
+sempre na imagem**: a ilustração da IA recebe o **título desenhado** (faixa escura, letra da Artecon, categoria), como a capa de
+foto já tinha; as ilustrações antigas continuam como estão. Mudam o banco (`sql/radar-setup-v0.45.0.sql` + rodar de novo o
+`sql/radar-redes-agenda.sql`), as funções **`radar-ia`** e **`radar-redes`**, o robô e a tela. Veja "Da v0.44.0 para a v0.45.0".
 
 A v0.44.0 (a melhoria "letras grandes + teleprompter" da proposta aprovada em 20/10, a última das seis) traz o **teleprompter
 com gravação pelo navegador** e as **letras grandes**. Na peça de reel (e no vídeo avulso), o botão **"Gravar pelo navegador
@@ -998,15 +1018,15 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `radar-logo-artecon.png` | Logotipo usado no topo do painel e na tela de entrada (recortado do timbrado). |
 | `radar-timbrado-topo.png`, `radar-timbrado-rodape.png` | Papel timbrado do informativo (recortado do seu PDF). Para trocar, substitua os arquivos mantendo os nomes. |
 | `radar-config.js` | Endereço do projeto Supabase e chave **anon**. Preenchido uma vez; não é substituído nas atualizações. |
-| `sql/radar-setup-v0.44.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
-| `sql/radar-reversao-v0.44.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
-| `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). |
+| `sql/radar-setup-v0.45.0.sql` | Cria (ou atualiza) as tabelas `radar_*`, as regras e as 6 fontes iniciais. Pode ser executado mais de uma vez. |
+| `sql/radar-reversao-v0.45.0.sql` | Desfaz a instalação (apaga só objetos `radar_*`; tira também as agendas da Pauta (com a dos lembretes e a da hora marcada do site), do corretor de vídeo e da cópia no OneDrive do pg_cron; os arquivos do armazenamento `radar-videos` saem pelo painel). |
+| `supabase/functions/radar-ia/index.ts` | Função de IA (Edge Function do Supabase). Desde a v0.45.0, a busca de foto real procura no Pixabay e no Pexels ao mesmo tempo (PEXELS_API_KEY opcional). |
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
-| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail; desde a v0.42.0, publica também o carrossel — as lâminas que o banco devolve; desde a v0.43.0, publica também a nova tentativa automática que o banco marcou depois de uma recusa clara da Meta). |
+| `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail; desde a v0.42.0, publica também o carrossel — as lâminas que o banco devolve; desde a v0.43.0, publica também a nova tentativa automática que o banco marcou depois de uma recusa clara da Meta; desde a v0.45.0, publica a notícia com hora marcada e, a pedido da agenda, aciona o robô do site na hora certa — ação `acionar_site`). |
 | `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda; desde a v0.36.0, também o envio e o baixar do vídeo avulso. É a única que toca no armazenamento privado `radar-videos`. |
 | `supabase/functions/radar-copia/index.ts` | Função da cópia de segurança mensal do banco no OneDrive (v0.32.0): exporta as tabelas, monta o .zip e grava na pasta das cópias pelo Microsoft Graph. O arquivo nunca passa pelo GitHub nem pelo armazenamento do Supabase. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase (desde a v0.23.0, pode rodar de novo, como as outras agendas). |
-| `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. Desde a v0.29.0, também pede (de 15 em 15 minutos, só quando há o que lembrar) o robô dos lembretes por e-mail. |
+| `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. Desde a v0.29.0, também pede (de 15 em 15 minutos, só quando há o que lembrar) o robô dos lembretes por e-mail. Desde a v0.45.0, também aciona o robô do site quando a hora marcada de uma notícia chega (job `radar-redes-agenda-site`). |
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `sql/radar-copia-agenda.sql`, `sql/radar-copia-agenda-reversao.sql` | A chave da cópia no Vault e a agenda da cópia mensal no OneDrive (v0.32.0: dia 1 às 04h10, de novo às 05h10 e no dia 2, só se o mês ainda não tem cópia) e como desfazer. Roda no Supabase depois do setup; pode rodar de novo. |
 | `supabase/functions/radar-concorrentes/index.ts` | Lê, só para análise, os dados públicos de perfis comerciais no Instagram (v0.19.1); desde a v0.34.0, também alimenta a aba Setor (as ações `setor_*`; continua só de leitura). |
@@ -1014,8 +1034,9 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-setor-agenda.sql`, `sql/radar-setor-agenda-reversao.sql` | A leitura automática da aba Setor (v0.34.0: de hora em hora, só quando há conta devida — na prática, segunda-feira a partir das 04:00) e como desfazer. Usa a chave do `sql/radar-concorrentes.sql`. |
 | `sql/radar-respostas-agenda.sql`, `sql/radar-respostas-agenda-reversao.sql` | A fila das respostas automáticas (v0.35.0: a cada 5 minutos, só quando há pendente que pode sair) e como desfazer. Cria a chave `radar_respostas` no Vault na primeira rodada. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
-| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações; desde a v0.31.0, o filtro de tema das fontes e a leitura do sistema Normas da Receita pela pesquisa nova (`robo/radar_normas.py`); desde a v0.32.0, o robô dos lembretes avisa também o vencimento de uma chave ou conta e a cópia do mês que não saiu. |
+| `robo/` | Robô de coleta, diagnóstico das fontes e a lista de fontes. Desde a v0.29.0, também o robô dos lembretes por e-mail (`robo/radar_lembretes.py`); desde a v0.30.0, o robô dos avisos (`robo/radar_alertas.py`) avisa também a possível prorrogação de prazo na agenda de obrigações; desde a v0.31.0, o filtro de tema das fontes e a leitura do sistema Normas da Receita pela pesquisa nova (`robo/radar_normas.py`); desde a v0.32.0, o robô dos lembretes avisa também o vencimento de uma chave ou conta e a cópia do mês que não saiu; desde a v0.45.0, o coletor dos dados abertos da CIGA (`robo/radar_ciga.py`: o DOM/SC de Palhoça e São José sem nenhum robô no diariomunicipal.sc.gov.br). |
 | `sql/radar-fontes-novas-v0.31.0.sql` | As fontes oficiais da v0.31.0 (Diário Oficial: leis e decretos, CONFAZ, trabalho e previdência; gov.br: eSocial, FGTS Digital e Previdência; DOM/SC, desligadas) e a rfb-normas na pesquisa nova. Roda depois de o robô da v0.31.0 coletar uma vez; pode rodar de novo. |
+| `sql/radar-fontes-novas-v0.45.0.sql` | A fonte da v0.45.0: `domsc-ciga` — Palhoça e São José, leis e decretos sobre tributos, pelos dados abertos da CIGA (1 leitura por dia; o texto vem no pacote; nenhum robô no diariomunicipal.sc.gov.br). Roda depois de o robô da v0.45.0 coletar uma vez; pode rodar de novo. |
 | `robo/video/` | O robô do corretor de vídeo (v0.22.0): o código, o `Dockerfile` do ffmpeg isolado, as fontes DM Sans da legenda e da cartela (licença OFL) e o **modelo** do workflow do repositório privado (`workflow/radar-video.yml`). Desde a v0.40.0, também o juiz de sentido (`juiz.py`, pela IA Central, com o segredo opcional `RADAR_IA_GATEWAY_TOKEN` do repositório privado). Roda no repositório privado `radar-video`, nunca neste. |
 | `.github/workflows/` | Rotinas do GitHub Actions: coleta agendada, resumo de segunda, publicação no site, teste do login do site, diagnóstico das fontes, testes e, desde a v0.29.0, os lembretes por e-mail (`radar-lembretes.yml`, "Radar — lembretes por e-mail"). |
 | `testes/` | Suíte de testes automatizados. O `testes/amostras/pauta-ficticia.csv` é um calendário de mentira, só com nomes inventados; os vídeos e as falas dos testes do corretor são sintéticos, gerados na hora (nenhuma gravação real). |
@@ -2925,6 +2946,39 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.44.0 para a v0.45.0** (muda o banco: SQL novo, que pode rodar de novo, e a agenda da Pauta rodada DE NOVO; mudam as
+funções `radar-ia` e `radar-redes`, o robô da coleta e a tela; a `radar-video`, a `radar-itc`, as demais funções e os segredos
+de hoje **não mudam**; **um segredo novo OPCIONAL**: `PEXELS_API_KEY`). Supõe a v0.44.0 instalada:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.45.0.sql` inteiro, **antes de publicar a tela**. Confira no fim:
+   **37 tabelas** com `rls = true` e a instalação **v0.45.0** concluída. Ele acrescenta `agendado_para`, `disparado_em` e
+   `disparos` em `radar_site_envios`, dá a hora marcada (`p_publicar_em`) a `radar_autorizar_site`, `radar_autorizar_rede` e
+   `radar_autorizar_todos`, cria `radar_site_agendada_devida`, acrescenta `ciga_dados` aos tipos de coletor (nada é apagado) e
+   faz a faxina das sobras da atualização anterior, se existirem.
+2. Supabase → **SQL Editor** → execute **de novo** o `sql/radar-redes-agenda.sql` inteiro (ele agora exige o setup v0.45.0 e
+   cria o job `radar-redes-agenda-site`: de 5 em 5 minutos, a agenda pergunta ao banco se alguma notícia marcada para o site
+   venceu e, só então, aciona o robô pela `radar-redes`). As chaves do Vault são reaproveitadas; nada muda nos jobs de antes.
+3. Supabase → **Edge Functions** → faça o **Deploy** da `radar-redes` desta versão ("Verify JWT" **ligado**, como sempre foi
+   nela) e da `radar-ia` ("Verify JWT" como está nela). Sem a `radar-redes` v0.45.0, a notícia marcada não sai (a agenda chama e
+   a função antiga recusa) e o site marcado não é acionado; sem a `radar-ia` v0.45.0, a busca de foto segue só no Pixabay.
+4. (Opcional) Pexels: crie a chave gratuita em pexels.com/api e cole no Supabase → Edge Functions → **Secrets** →
+   `PEXELS_API_KEY` (do painel direto, **nunca pelo chat**). Sem ela, tudo funciona como antes, só com o Pixabay.
+5. Robô: o GitHub Actions passa a rodar o robô desta versão sozinho (depois do merge). **Depois da primeira coleta** da
+   v0.45.0, Supabase → SQL Editor → execute o `sql/radar-fontes-novas-v0.45.0.sql` (a fonte `domsc-ciga`; ele confere a versão
+   do robô em `radar_execucoes` e avisa se ainda for cedo; pode rodar de novo).
+6. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.45.0".
+7. Conferência rápida: em Publicações → **Testar conexão**, a `radar-redes` responde **0.45.0**; no teste da IA
+   (Configurações), a `radar-ia` responde **0.45.0**. Numa notícia aprovada, o passo 3 ganha **"Quando publicar"** (Agora / Em
+   hora marcada, já com a sugestão do melhor horário do dia); na troca da foto real, as opções saem com o selo **Pixabay** ou
+   **Pexels** (o Pexels só com a chave do passo 4). Depois do passo 5, a aba Fontes mostra **"Palhoça e São José — leis e
+   decretos sobre tributos (dados abertos da CIGA)"** ligada, e a coleta seguinte traz os primeiros atos (dias sem ato novo dos
+   dois municípios são normais).
+
+**Como desligar:** a hora marcada não muda nada de quem usa "Agora" (o padrão); `agenda_ligada: false` (Configurações → Pauta)
+pausa também as marcadas, como pausa a Pauta. A fonte da CIGA desliga na aba Fontes (botão Desligar). O Pexels desliga apagando o
+segredo `PEXELS_API_KEY`. Para voltar tudo, publique a tela da v0.44.0 e faça o Deploy da `radar-ia` e da `radar-redes` v0.44.0
+(o banco v0.45.0 continua servindo: a hora marcada só deixa de ser oferecida).
 
 **Da v0.43.0 para a v0.44.0** (muda o banco: SQL novo, que pode rodar de novo; mudam a função `radar-video`, o robô do vídeo —
 pelo commit fixo do repositório privado — e a tela; a `radar-ia`, a `radar-redes`, as demais funções e as agendas **não mudam**;

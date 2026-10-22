@@ -171,8 +171,9 @@ CORPO = ("O Comitê Gestor do Simples Nacional estendeu o prazo para as empresas
 from test_radar_banco import PIXEL as CAPA                                 # noqa: E402
 
 
-def autorizado(db, categoria="Simples Nacional", titulo="Prazo de opção pelo Simples Nacional vai até 31 de janeiro de 2027", corpo=CORPO):
-    a, c = cenario_publicavel(db)
+def autorizado(db, categoria="Simples Nacional", titulo="Prazo de opção pelo Simples Nacional vai até 31 de janeiro de 2027", corpo=CORPO,
+               slug_fonte="rfb-normas"):
+    a, c = cenario_publicavel(db, slug_fonte=slug_fonte)
     img = db.execute("insert into radar_imagens (dados) values (%s) returning id", (CAPA,)).fetchone()[0]
     db.execute("update radar_conteudos set titulo = %s, "
                "corpo = %s, autor = 'Equipe Artecon', fonte_credito = 'Receita Federal', imagem_id = %s where id = %s", (titulo, corpo, img, c))
@@ -753,3 +754,25 @@ def test_lista_do_site_traz_o_titulo_de_cada_noticia_e_a_procura_aceita_o_titulo
     # a exclusão também acha a notícia pelo título que foi ao site
     painel = [{"titulo": exc.titulo_normal(TITULO_SITE), "excluir": "x", "editar": None}]
     assert exc.Excluidor.achar(painel, TITULO_REAL) == painel and exc.Excluidor.achar(painel, "Outro título") == []
+
+
+def test_hora_marcada_so_entra_na_rodada_quando_a_hora_chega(cenario):
+    """v0.45.0: a autorização com agendado_para no FUTURO fica fora da rodada do robô (quem o aciona na hora certa é a agenda do
+    banco, pela radar-redes); com a hora vencida, entra como sempre. A "enviando" (rodada interrompida) entra mesmo com hora
+    futura: procurar o que já saiu nunca espera."""
+    c, envio = autorizado(cenario)
+    cenario.execute("update radar_site_envios set agendado_para = now() + interval '2 hours' where id = %s", (envio,))
+    assert rodar() == [] and SITE["logins"] == 0                           # marcada para depois: o robô nem entra no site
+    assert situacao(cenario, envio)[0] == "autorizado"
+    cenario.execute("update radar_site_envios set agendado_para = now() - interval '1 minute' where id = %s", (envio,))
+    feito = rodar()
+    assert feito == [f"envio {envio}: publicado"] and situacao(cenario, envio)[0] == "publicado"
+    # a "enviando" com hora futura: o terceiro ramo do filtro (situacao.eq.enviando) a pega para procurar o que já saiu
+    c2, envio2 = autorizado(cenario, titulo="Outra notícia do Simples para o site de teste", slug_fonte="rfb-noticias")
+    cenario.execute("update radar_site_envios set situacao = 'enviando', enviado_em = now(), "
+                    "agendado_para = now() + interval '2 hours' where id = %s", (envio2,))
+    cenario.execute("insert into radar_divulgacoes (conteudo_id, url, publicado_em) values (%s, %s, current_date)",
+                    (c2, BASE + "/news/view/outra-noticia-do-simples"))
+    feito = rodar()
+    assert feito == [f"envio {envio2}: publicado (registro já feito pela coleta)"]
+    assert situacao(cenario, envio2)[0] == "publicado"

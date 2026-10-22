@@ -1,7 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.44.0)
+# Radar Artecon — Relatório de testes (v0.45.0)
 
-Data: 21/10/2026. **A suíte inteira da v0.44.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou
-(números na seção "v0.44.0", abaixo). A v0.44.0 tem **5** testes novos (1 do robô em `test_radar_video_robo.py`, 1 do banco em
+Data: 22/10/2026. **A suíte inteira da v0.45.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou
+(números na seção "v0.45.0", abaixo). A v0.45.0 tem **18** testes novos (6 do robô em `test_radar_ciga.py`, novo; 4 do banco em
+`test_radar_banco.py`; 1 da agenda em `test_radar_agenda.py`; 1 da função em `test_radar_funcao_ia.py`; 2 da função em
+`test_radar_funcao_redes.py`; 1 do robô do site em `test_radar_site_publicar.py`; e 3 da tela em `test_radar_telas.py`); a suíte
+inteira passa de 1.524 para **1.542** testes.
+Na v0.44.0: a suíte INTEIRA rodou (números na seção "v0.44.0", abaixo). A v0.44.0 tem **5** testes novos (1 do robô em `test_radar_video_robo.py`, 1 do banco em
 `test_radar_video_banco.py` e 3 da tela em `test_radar_telas.py`); a suíte inteira passa de 1.519 para **1.524** testes.
 Na v0.43.0: a suíte INTEIRA rodou em série (números na seção "v0.43.0", abaixo). A v0.43.0 tem **3** testes novos (2 do banco em
 `test_radar_banco.py` e 1 da função em `test_radar_funcao_redes.py`); a suíte inteira passa de 1.516 para **1.519** testes.
@@ -87,6 +91,61 @@ toda pessoa é fictícia ("Ana Teste", "Bruno Exemplo", domínios `.test`), nenh
 desenhadas na hora), e todo vídeo e toda voz são **sintéticos**, gerados na hora. Entre a v0.7.1 e a v0.19.1 este relatório não foi
 atualizado: as seções da v0.32.0, da v0.31.0, da v0.30.0, da v0.29.0, da v0.28.1, da v0.28.0, da v0.27.0, da v0.26.0, da v0.25.1, da v0.25.0, da v0.24.0 (etapas 5 e 1), da v0.23.0, da v0.22.0, da
 v0.21.0 e da v0.20.0 vêm logo abaixo e as seguintes são das versões até a v0.7.1.
+
+## v0.45.0 — a fonte da CIGA (DOM/SC), a hora marcada na notícia, a foto em dois bancos e o título na ilustração
+
+Todos os testes usam **dados fictícios** ("Ana Teste", "Bruno Teste", atos municipais inventados, um portal da CIGA e um Pexels
+de mentira); nenhum teste toca a internet — e os testes do coletor novo conferem exatamente isso: **nenhum pedido sai do portal
+de dados abertos** e o diariomunicipal.sc.gov.br aparece só como link guardado para a pessoa.
+
+- **Robô** (6 testes novos em `testes/test_radar_ciga.py`): o caminho feliz inteiro (a página do mês com `/pt_BR/`, só os
+  arquivos dos dias da janela, a pausa de 10 s do Crawl-Delay antes de cada um, o agente identificado, o filtro por município e
+  categoria, o texto completo vindo do próprio arquivo, o link humano do diário **nunca visitado**); o filtro sem acento e sem
+  caixa (PALHOCA = Palhoça; categorias vazia = todas; sem código ou sem título nunca entram); o arquivo estragado que não
+  derruba a rodada (e o JSON em lista pura que também vale); a virada do mês (o conjunto do mês velho fora do ar é tolerado e
+  avisado; o do mês atual fora do ar é falha de verdade; o arquivo de ontem que ainda não saiu é avisado, e a próxima rodada o
+  pega); o teto `max_zips` (limita os pedidos e avisa); e a amarração do conjunto (a fonte do
+  `sql/radar-fontes-novas-v0.45.0.sql` bate com o despacho `ciga_dados` do `radar_coletar` e com os padrões do coletor).
+- **Banco** (4 testes novos em `testes/test_radar_banco.py`): a hora marcada do site (RADAR178 no passado e acima de 60 dias;
+  a autorização guarda `agendado_para`; `radar_site_agendada_devida` só diz "sim" com a hora vencida, até 3 vezes de 10 em 10
+  minutos; a chave geral `agenda_ligada` pausa; cancelar continua igual); a hora marcada da rede (antes da hora, nem a agenda
+  devolve nem `radar_rede_iniciar` publica — RADAR179; vencida, a agenda devolve com o disparo contado e a função pega o
+  envio); o "Publicar em todos" (a hora fica no SITE; o Instagram e o Facebook ficam `aguardando_site`, sem hora própria); e o
+  tipo novo `ciga_dados` com o `sql/radar-fontes-novas-v0.45.0.sql` (para com o recado antes do robô desta versão; depois,
+  cadastra a fonte ligada; rodar de novo não desfaz o que o administrador mudou).
+- **Agenda do banco** (1 teste novo em `testes/test_radar_agenda.py`): o job novo `radar-redes-agenda-site` (de 5 em 5 minutos,
+  com a guarda `where radar_site_agendada_devida()`) não faz pedido nenhum sem hora vencida; a chave fica no Vault, fora do
+  comando; rodar o arquivo de novo não duplica e a reversão tira os cinco jobs.
+- **Função radar-ia** (1 teste novo em `testes/test_radar_funcao_ia.py`): com as duas chaves, a busca sai no Pixabay e no
+  Pexels ao mesmo tempo e os resultados chegam intercalados, cada foto com o seu banco; `foto_baixar` recebe o banco junto do
+  número (a chave do Pexels no Authorization, como o Pexels pede; a foto grande `large2x` e o crédito do fotógrafo); a foto que
+  sumiu e o banco desconhecido dão erro claro; o Pexels fora do ar **não derruba** a busca do Pixabay.
+- **Função radar-redes** (2 testes novos em `testes/test_radar_funcao_redes.py`): a notícia com hora marcada é a exceção nova
+  do portão da agenda — e só quando a hora vence (antes, RADAR179 sem nada ir à Meta; vencida, a agenda publica); a ação nova
+  `acionar_site` aciona o mesmo robô do botão da tela e é só da agenda (o administrador e o robô do site são recusados).
+- **Robô do site** (1 teste novo em `testes/test_radar_site_publicar.py`): a autorização com a hora no futuro fica fora da
+  rodada do robô (ele nem entra no site); vencida, entra como sempre; a "enviando" (rodada interrompida) entra mesmo com hora
+  futura, porque procurar o que já saiu nunca espera.
+- **Telas** (3 testes novos em `testes/test_radar_telas.py`): a busca de foto mostra o selo do banco em cada opção e manda o
+  banco no baixar (sem o campo, a tela assume Pixabay — a função antiga continua servida); o "Quando publicar" do site (o
+  padrão "Agora" não muda nada; "Em hora marcada" abre o campo já com o melhor horário do dia sugerido; hora no passado é
+  recusada na tela; marcada, a publicação fica guardada sem acionar o robô, a tela mostra "marcada para" só com o Cancelar);
+  e a conferência no fonte da tela (o "Quando publicar" nos TRÊS lugares com `p_publicar_em` só quando há hora; a sugestão
+  `MELHOR_HORA` é a MESMA tabela que agendou a Pauta; a ilustração da IA passa pela `tituloSobreIlustracao` ao ser gravada).
+- Atualizados: as versões (tela e os 4 .js em 0.45.0; `REDES_MINIMA` sobe para 0.45.0 — a notícia marcada precisa da função
+  nova; `FUNCAO_MINIMA` fica em 0.39.0 — a função antiga responde só com o Pixabay e a tela aceita), a entrada nova da aba
+  Versões (5 itens), os recados do setup (v0.45.0), a lista de jobs da agenda (+ radar-redes-agenda-site), as duas mensagens do
+  portão da agenda na radar-redes e o manifesto da cópia/vencimentos (banco v0.45.0).
+- Suíte inteira neste ambiente: **1.478 aprovados, 0 falhas, 64 pulados** (os 61 da IA Central de verdade — pacote
+  `../ia-central`, fora deste ambiente — e 3 do ambiente) = os 1.542, em série, arquivo por arquivo (~20min53s somados, o
+  mesmo esquema resumível das versões anteriores). A 1ª rodada teve 11 falhas e 1 erro, todos de teste, nenhum do produto:
+  9 eram asserções presas às versões de antes (5 no banco e 1 nos lembretes — a versão registrada em `radar_instalacoes` —,
+  2 no e2e — o robô subiu de 0.31.0 para 0.45.0 no User-Agent — e 1 na tela, os índices da aba Versões com a entrada nova no
+  topo), 2 eram o comportamento NOVO desta versão chegando aos testes antigos (a radar-redes 0.43 agora recebe o aviso de
+  versão mínima, e a ilustração da IA agora sai com o título desenhado — os testes passaram a conferir o escurecimento do
+  título embaixo e o alto intocado), e o erro foi uma execução paralela minha sobre o mesmo banco de teste (banco e e2e
+  re-rodaram em série, verdes: 320 e 82). Os arquivos corrigidos re-rodaram verdes — e, como em toda versão, a rodada única e
+  completa roda no CI do GitHub no commit do PR.
 
 ## v0.44.0 — letras grandes e o teleprompter com gravação pelo navegador
 

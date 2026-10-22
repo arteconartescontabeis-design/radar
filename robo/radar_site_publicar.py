@@ -439,8 +439,11 @@ class Publicador:
 
     # -------------------------------------------------------------- a rodada
     def executar(self) -> list[str]:
+        # v0.45.0: a autorização com HORA MARCADA (agendado_para) só entra quando a hora chega; a "enviando" entra sempre
+        agora = datetime.now(timezone.utc).isoformat()
         envios = self.banco._pedir("GET", "radar_site_envios", params={
             "select": "id,conteudo_id,categoria,conteudo_lido_em,situacao,enviado_em,erro,atualizado_em", "situacao": "in.(autorizado,enviando)",
+            "or": f"(agendado_para.is.null,agendado_para.lte.{agora},situacao.eq.enviando)",
             "order": "id"}) or []
         fora = False
         for envio in envios:

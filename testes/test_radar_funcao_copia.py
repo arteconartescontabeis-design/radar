@@ -311,7 +311,7 @@ def conferir_zip(db, z, arquivo):
     assert z.testzip() is None
     assert z.namelist() == ["LEIA-ME.txt", "manifesto.json"] + [f"tabelas/{t}.json" for t in TABELAS]
     man = json.loads(z.read("manifesto.json"))
-    assert (man["radar"], man["arquivo"], man["versao_funcao"], man["versao_banco"]) == ("Radar Artecon", arquivo, "0.35.0", "v0.44.0")
+    assert (man["radar"], man["arquivo"], man["versao_funcao"], man["versao_banco"]) == ("Radar Artecon", arquivo, "0.35.0", "v0.45.0")
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}-03:00", man["gerado_em"]) and len(man["nao_inclui"]) == 3
     assert [t["tabela"] for t in man["tabelas"]] == TABELAS
     for t in man["tabelas"]:

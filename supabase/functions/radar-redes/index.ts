@@ -22,6 +22,9 @@
 //   publicar     { envio }  → guarda a imagem no armazenamento privado, publica (a Meta baixa por um link de 10 min) e registra o post
 //   excluir      { envio }  → v0.17.0: apaga a publicação na rede (pedido do administrador) e registra a exclusão
 //   diagnostico             → confere os segredos, a Página do Facebook, a conta do Instagram e os armazenamentos
+//   acionar_site            → v0.45.0: só a agenda do banco (sql/radar-redes-agenda.sql, de 5 em 5 minutos, e só quando uma
+//                             publicação no site com HORA MARCADA venceu: radar_site_agendada_devida). Aciona o robô do site,
+//                             como o acionar_robo do administrador (mesma pausa de 30 s; sem o token, a rodada automática é a reserva)
 //   acionar_robo            → v0.19.0: aciona na hora o robô do site no GitHub (workflow radar-site-publicar.yml), se houver
 //                             publicação, envio junto com o site ou exclusão esperando por ele. Responde sempre 200 com
 //                             { acionado, motivo?, em?, mensagem }: se não der para acionar, a autorização continua guardada
@@ -80,7 +83,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.43.0";
+const VERSAO = "0.45.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -462,10 +465,10 @@ async function publicarFacebookCarrossel(imagens: string[], legenda: string, ini
  *  a notícia continua saindo se esta função for instalada antes do SQL. */
 async function lerEnvio(servico: Record<string, string>, envio: number) {
   const ler = (campos: string) => banco(servico, "GET", `radar_redes_envios?select=${campos}&id=eq.${envio}`);
-  try { const [linha] = await ler("canal,situacao,junto_com_site,peca_id"); return linha ?? null; }
+  try { const [linha] = await ler("canal,situacao,junto_com_site,peca_id,agendado_para"); return linha ?? null; }
   catch (x) { if (!(x instanceof Erro) || !/peca_id/.test(x.message)) throw x; }
   const [linha] = await ler("canal,situacao,junto_com_site");
-  return linha ? { ...linha, peca_id: null } : null;
+  return linha ? { ...linha, peca_id: null, agendado_para: null } : null;
 }
 
 async function publicar(envio: number, inicio: number, quem: Quem) {
@@ -478,8 +481,10 @@ async function publicar(envio: number, inicio: number, quem: Quem) {
   // v0.21.0: a agenda do banco só manda a peça da Pauta (a notícia sai pela tela ou pelo robô do site, como antes)
   // v0.43.0: … e a NOVA TENTATIVA de uma notícia que a Meta recusou (situação "erro", marcada por radar_rede_concluir e vencida
   // em radar_agenda_vencidas); a primeira publicação da notícia continua saindo só pela tela ou pelo robô do site
-  if (quem === "agenda" && !linha.peca_id && linha.situacao !== "erro") {
-    throw new Erro(403, "A agenda só publica peças da Pauta (ou a nova tentativa de uma notícia que deu erro).");
+  // v0.45.0: … e a notícia com HORA MARCADA (autorizada com agendado_para; radar_rede_iniciar confere a hora e tudo o mais)
+  if (quem === "agenda" && !linha.peca_id && linha.situacao !== "erro"
+      && !(linha.situacao === "autorizado" && linha.agendado_para)) {
+    throw new Erro(403, "A agenda só publica peças da Pauta, notícias com hora marcada ou a nova tentativa de uma notícia que deu erro.");
   }
   const cfg = configMeta(linha.canal);
   if (cfg.faltam.length) {
@@ -810,13 +815,13 @@ async function tratar(req: Request): Promise<Response> {
     if (chaveAgenda) {
       await conferirAgenda(chaveAgenda);
       quem = "agenda";
-      // v0.22.0: e mantém os robôs; v0.29.0: e aciona o robô dos lembretes
-      if (!["publicar", "agenda_teste", "manter_robos", "acionar_lembretes"].includes(acao)) throw new Erro(403, "A agenda só publica.");
+      // v0.22.0: e mantém os robôs; v0.29.0: e aciona o robô dos lembretes; v0.45.0: e o robô do site, na hora marcada
+      if (!["publicar", "agenda_teste", "manter_robos", "acionar_lembretes", "acionar_site"].includes(acao)) throw new Erro(403, "A agenda só publica.");
     } else {
       sessao = await quemChamou(req, acao);                   // null = o robô do site (só "publicar" do que foi junto com o site)
       quem = sessao === null ? "robo" : "admin";
     }
-    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste", "manter_robos", "acionar_lembretes"].includes(acao)) {
+    if (!["publicar", "excluir", "diagnostico", "acionar_robo", "agenda_teste", "manter_robos", "acionar_lembretes", "acionar_site"].includes(acao)) {
       throw new Erro(400, "Ação desconhecida.");
     }
     if (quem === "robo" && acao !== "publicar") throw new Erro(403, "O robô só publica o que foi autorizado junto com o site.");
@@ -826,6 +831,10 @@ async function tratar(req: Request): Promise<Response> {
     }
     if (acao === "diagnostico") return responder(200, await diagnostico());
     if (acao === "acionar_robo") return responder(200, await acionarRobo());     // v0.19.0: só o administrador chega aqui
+    if (acao === "acionar_site") {                            // v0.45.0: só a agenda do banco — a publicação no site com hora marcada
+      if (quem !== "agenda") throw new Erro(403, "Só a agenda do banco aciona o robô do site pela hora marcada.");
+      return responder(200, await acionarRobo());             // o mesmo acionamento do botão da tela (com a pausa de 30 s)
+    }
     if (acao === "manter_robos") return responder(200, await manterRobos());     // v0.22.0 (rodada 2): a agenda ou o administrador
     if (acao === "acionar_lembretes") {                       // v0.29.0: só a agenda do banco
       if (quem !== "agenda") throw new Erro(403, "Só a agenda do banco aciona os lembretes.");
