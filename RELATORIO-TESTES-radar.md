@@ -136,9 +136,16 @@ de dados abertos** e o diariomunicipal.sc.gov.br aparece só como link guardado 
   nova; `FUNCAO_MINIMA` fica em 0.39.0 — a função antiga responde só com o Pixabay e a tela aceita), a entrada nova da aba
   Versões (5 itens), os recados do setup (v0.45.0), a lista de jobs da agenda (+ radar-redes-agenda-site), as duas mensagens do
   portão da agenda na radar-redes e o manifesto da cópia/vencimentos (banco v0.45.0).
-- Suíte inteira neste ambiente: **{APROVADOS} aprovados, 0 falhas, {PULADOS} pulados** = os {TOTAL}, em série, arquivo por
-  arquivo (o mesmo esquema resumível das versões anteriores). {RODADA1} E, como em toda versão, a rodada única e completa roda
-  no CI do GitHub no commit do PR.
+- Suíte inteira neste ambiente: **1.478 aprovados, 0 falhas, 64 pulados** (os 61 da IA Central de verdade — pacote
+  `../ia-central`, fora deste ambiente — e 3 do ambiente) = os 1.542, em série, arquivo por arquivo (~20min53s somados, o
+  mesmo esquema resumível das versões anteriores). A 1ª rodada teve 11 falhas e 1 erro, todos de teste, nenhum do produto:
+  9 eram asserções presas às versões de antes (5 no banco e 1 nos lembretes — a versão registrada em `radar_instalacoes` —,
+  2 no e2e — o robô subiu de 0.31.0 para 0.45.0 no User-Agent — e 1 na tela, os índices da aba Versões com a entrada nova no
+  topo), 2 eram o comportamento NOVO desta versão chegando aos testes antigos (a radar-redes 0.43 agora recebe o aviso de
+  versão mínima, e a ilustração da IA agora sai com o título desenhado — os testes passaram a conferir o escurecimento do
+  título embaixo e o alto intocado), e o erro foi uma execução paralela minha sobre o mesmo banco de teste (banco e e2e
+  re-rodaram em série, verdes: 320 e 82). Os arquivos corrigidos re-rodaram verdes — e, como em toda versão, a rodada única e
+  completa roda no CI do GitHub no commit do PR.
 
 ## v0.44.0 — letras grandes e o teleprompter com gravação pelo navegador
 
