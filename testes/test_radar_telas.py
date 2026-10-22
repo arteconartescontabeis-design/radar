@@ -394,7 +394,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.43.0: a entrada seguinte conta ao dono, em 3 itens: a nova tentativa automática (5 e 15 minutos,
     # para na 3ª recusa, com a hora marcada na própria mensagem de erro), a segurança (só a recusa CLARA da Meta re-tenta; o
     # "não deu para saber" fica "enviando", sem nova tentativa) e o que o administrador faz (o SQL e o Deploy da radar-redes)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.43.0" and data == "20/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Nova tentativa automática", "RECUSAM uma publicação", "a primeira 5 minutos depois", "outra 15 minutos depois",
@@ -407,7 +407,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.42.0: a entrada seguinte conta ao dono, em 5 itens: o carrossel no assunto (a capa com o título +
     # os cartões do kit, desenhados pela tela), a peça de reel criada do assunto, o "Pôr no Informativo Mensal", o carrossel da
     # Pauta agendado (publicado sozinho) e o que o administrador faz (o SQL e o Deploy da radar-redes e da radar-ia)
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.42.0" and data == "20/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["FOTO (como hoje) e CARROSSEL", "a capa é a imagem da publicação com o título", "cartões vêm do kit das redes",
@@ -422,7 +422,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.41.0: a entrada seguinte conta ao dono, em 3 itens: a projeção no Painel (hoje, a semana e o mês,
     # o tem × falta com o atraso em vermelho), as contas iguais às do cronograma da Pauta e o que o administrador faz (só a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.41.0" and data == "20/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Projeção de publicações no Painel do dia", "HOJE, a SEMANA e o MÊS", "o que falta alcançar",
@@ -436,7 +436,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # mais regravação; número e data continuam exigindo exatidão), o veredito em português com o "Aceitar (quis dizer o mesmo)"
     # (na hora, sem montar de novo), o aviso de arquivo fraco na chegada e o que o administrador faz (o SQL, o Deploy da
     # radar-video, o workflow e o commit do repositório privado e o segredo opcional do juiz)
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.40.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["entende paráfrase (juiz de sentido)", "quis dizer o MESMO com outras palavras",
@@ -453,7 +453,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.39.0: a entrada seguinte conta ao dono, em 4 itens: a IA mais barata (os modelos novos e o cache),
     # o preparo em lote nos Assuntos, a foto real com o título na imagem e o que o administrador faz (o Deploy da radar-ia, o segredo
     # do banco de imagens e os modelos na IA Central; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.39.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["IA mais barata no Radar inteiro", "Claude Sonnet 5.5 (33% mais barato", "Claude Haiku 5.5 (10× mais barato",
@@ -469,7 +469,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.36.0: a entrada seguinte conta ao dono, em 3 itens: a correção avulsa (o que é e como se usa), o que
     # não muda (os termos e as travas) e o que muda de propósito (sem aprovação de peça; só o administrador baixa), e o que o
     # administrador faz (o SQL, o Deploy da radar-video e a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.36.0" and data == "18/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Correção avulsa (aba Vídeo): analisar e corrigir um vídeo SEM criar uma peça na Pauta",
@@ -486,7 +486,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.35.0: a entrada seguinte, em 4 itens: a aba Respostas (o gatilho, a palavra-chave, a
     # resposta pública e a privada), as proteções (nunca em dobro, a própria conta, o limite por hora com a fila, o Pausar todas, os
     # 7 dias da Meta), o "aguardando a Meta" e o que o administrador faz (o SQL, os Deploys, a agenda da fila e os 3 segredos)
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.35.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Respostas (nova): o Radar responde sozinho, no Instagram e no Facebook", "Comente", "QUERO",
@@ -504,7 +504,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.34.0: a entrada seguinte, em 4 itens: a aba Setor (as contas, a
     # leitura de segunda-feira, o painel e a ética), a hashtag desligada até a Meta aprovar, os erros da Meta em português e o que o
     # administrador faz (o SQL, o Deploy da radar-concorrentes e da radar-copia, a agenda do setor e a tela com o radar-setor.js)
-    topo, data, itens = pagina.evaluate("VERSOES[8]")
+    topo, data, itens = pagina.evaluate("VERSOES[9]")
     assert topo == "0.34.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Setor (nova): como estão as publicações de um setor no Instagram", "e a da Artecon, para comparar",
@@ -4544,8 +4544,8 @@ def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo
     pagina.wait_for_selector("#redes-resultado >> text=Página do Facebook")
     # v0.21.0: o teste mostra a versão da função; a anterior à v0.21.0 (a agenda da Pauta não publica com ela) recebe o aviso do Deploy
     assert "de versão anterior à v0.21.0" in pagina.inner_text("#redes-versao") and pagina.locator("#redes-versao-velha").count() == 1
-    # v0.43.0: a nova tentativa da notícia precisa da função nova — a mínima sobe para a 0.43.0 (a 0.42.0 passa a receber o aviso)
-    for versao, velha in (("0.19.0", True), ("0.21.0", True), ("0.29.0", True), ("0.42.0", True), ("0.43.0", False)):
+    # v0.45.0: a notícia com hora marcada precisa da função nova — a mínima sobe para a 0.45.0 (a 0.43.0 passa a receber o aviso)
+    for versao, velha in (("0.19.0", True), ("0.21.0", True), ("0.29.0", True), ("0.42.0", True), ("0.43.0", True), ("0.45.0", False)):
         pagina.unroute("**/functions/v1/radar-redes")
         corpo = json.dumps({"tudo_certo": True, "versao": versao, "itens": [{"item": "Página do Facebook", "ok": True, "detalhe": "Artecon"}]})
         pagina.route("**/functions/v1/radar-redes", (lambda c: lambda rota: rota.fulfill(status=200, content_type="application/json", body=c))(corpo))
@@ -4940,7 +4940,8 @@ def _proporcoes(pg, seletor):
 
 
 def test_imagem_da_ia_vira_a_imagem_da_publicacao_inteira_com_o_aviso_no_canto(pagina, limpo):
-    """v0.25.0 (etapa 6): “Gerar imagem com IA” grava UMA imagem: a da IA, inteira, em 3:2, sem título, logotipo nem degradê por cima, com
+    """v0.25.0 (etapa 6): “Gerar imagem com IA” grava UMA imagem: a da IA, inteira, em 3:2, sem logotipo nem nada no ALTO — desde a
+    v0.45.0, com o TÍTULO desenhado embaixo (tituloSobreIlustracao: “Imagens sempre com o título”) —, com
     o aviso “Imagem ilustrativa gerada por IA” pequeno no canto inferior direito; ela é a imagem da publicação e a ilustração guardada
     (imagem_id = ilustracao_id). Os botões: “Usar a capa padrão Artecon (sem imagem)” (a imagem da IA continua guardada), “Usar a imagem da
     IA de novo” (sem nova consulta) e a foto própria (3:2, sem aviso). O aviso de título mudado só aparece com a capa padrão. A prévia do
@@ -4974,11 +4975,12 @@ def test_imagem_da_ia_vira_a_imagem_da_publicacao_inteira_com_o_aviso_no_canto(p
     assert (larg, alt) == (300, 200) and dados.startswith("data:image/jpeg;base64,")     # 3:2, inteira (a da IA de mentira tem 300×200)
     assert limpo.execute("select count(*) from radar_imagens where id = %s", (capa0,)).fetchone()[0] == 0     # a capa antiga saiu
     assert [p["acao"] for p in pedidos] == ["ilustrar"] and pedidos[0]["descricao"] == "contadora conversando com o casal dono de uma padaria"
-    # os pontos: a imagem da IA (azul liso, 30/90/150) aparece inteira — nada de logotipo, título ou degradê marinho no alto —, e o canto
-    # inferior direito tem o aviso (faixa escura com letra branca: mais escuro e mais variado que a imagem logo acima)
+    # os pontos: a imagem da IA (azul liso, 30/90/150) aparece inteira no ALTO — nada de logotipo nem degradê lá —; embaixo, o
+    # v0.45.0 desenha o TÍTULO (o degradê marinho escurece a parte de baixo: "Imagens sempre com o título"), e o canto inferior
+    # direito continua com o aviso (ainda mais escuro que a faixa do título logo acima)
     (tam, canto, acima, alto) = _canto(pagina, f"form[data-form=conteudo][data-id='{c}'] img.miniatura")
     assert tam == [300, 200] and abs(alto[0] - 30) < 12 and abs(alto[1] - 90) < 12 and abs(alto[2] - 150) < 12, alto
-    assert abs(acima[2] - 150) < 12 and canto != acima and canto[2] < acima[2] - 15, (canto, acima)
+    assert acima[2] < 150 - 30 and canto != acima and canto[2] < acima[2] - 15, (canto, acima)   # v0.45.0: o título escurece embaixo
     assert "Imagem gerada pela IA, inteira, com o aviso “Imagem ilustrativa gerada por IA” no canto." in form.inner_text()
     assert form.get_attribute("data-imagem-ia") == "1"
     # a prévia do site termina com a linha do aviso
