@@ -1,6 +1,6 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.44.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
+-- radar-setup-v0.45.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels e lembretes
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -111,7 +111,16 @@
 -- declarações) fica como está; quem confere o conteúdo do arquivo continua sendo o robô (sondar.py, agora com o espelho do
 -- endurecimento para o WEBM: assinatura EBML + demuxer matroska,webm à força). As letras grandes e o teleprompter em si são só
 -- tela. Nada de dados é apagado; as agendas (sql/radar-*-agenda.sql) não mudam.
--- Reversão: radar-reversao-v0.44.0.sql
+-- v0.45.0: a HORA MARCADA da notícia e a fonte do DOM/SC pelos dados abertos da CIGA. (1) radar_site_envios ganha agendado_para,
+-- disparado_em e disparos; radar_autorizar_site, radar_autorizar_rede e radar_autorizar_todos ganham p_publicar_em (nulo = agora,
+-- como sempre; com hora: no futuro e em até 60 dias — RADAR178). A notícia de rede marcada fica 'autorizado' com agendado_para e
+-- sai pela agenda do banco (radar_agenda_vencidas); radar_rede_iniciar não deixa publicar antes da hora (RADAR179). No site, a
+-- função nova radar_site_agendada_devida() diz à agenda (sql/radar-redes-agenda.sql, rodar DE NOVO: job radar-redes-agenda-site)
+-- quando acionar o robô; o robô só pega envio sem hora, com a hora vencida ou já 'enviando'. No "Publicar em todos", a hora fica
+-- no SITE e as redes saem logo depois dele, como sempre. Cancelar continua igual (enquanto não chegar a hora). (2) tipo_coletor
+-- ganha 'ciga_dados' (a fonte entra pelo sql/radar-fontes-novas-v0.45.0.sql, DEPOIS da primeira coleta do robô desta versão).
+-- Nada de dados é apagado.
+-- Reversão: radar-reversao-v0.45.0.sql
 -- =====================================================================
 
 begin;
@@ -137,7 +146,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.44.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.45.0', v_antes);
 end $$;
 
 -- v0.43.0: a faxina das sobras da instalação por partes da v0.42.0 (feita pelo assistente em 20/10, por etapas pequenas:
@@ -146,6 +155,11 @@ end $$;
 drop function if exists public.radar_autorizar_rede_v040_substituida(bigint, text, text, text, timestamptz, boolean);
 drop function if exists public.radar_rede_concluir_v040_substituida(bigint, boolean, text, text, text, text);
 drop table if exists public.radar_tmp_v042;
+-- v0.45.0: e as sobras da atualização v0.44→v0.45 feita por partes (as assinaturas antigas de radar_autorizar_site,
+-- radar_autorizar_rede e radar_autorizar_todos, renomeadas em vez de removidas na produção). Inertes; aqui saem de vez.
+drop function if exists public.radar_autorizar_site_v044_substituida(bigint, text, timestamptz);
+drop function if exists public.radar_autorizar_rede_v044_substituida(bigint, text, text, text, timestamptz, boolean, bigint[]);
+drop function if exists public.radar_autorizar_todos_v044_substituida(bigint, text, timestamptz, text, text, text, boolean);
 
 -- ---------------------------------------------------------------------
 -- 1. TABELAS
@@ -175,7 +189,7 @@ create table if not exists public.radar_fontes (
                        check (abrangencia in ('federal','estadual_sc','municipal','geral')),
   oficial              boolean     not null default true,
   tipo_coletor         text        not null
-                       check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs')),
+                       check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados')),
   url                  text        not null,
   config               jsonb       not null default '{}'::jsonb,
   categoria_padrao     text        references public.radar_categorias(slug),
@@ -523,6 +537,14 @@ create index if not exists radar_site_envios_conteudo_idx on public.radar_site_e
 -- uma autorização em aberto por conteúdo
 create unique index if not exists radar_site_envios_aberto_uk on public.radar_site_envios (conteudo_id)
   where situacao in ('autorizado','enviando');
+-- v0.45.0: a publicação no site em HORA MARCADA (nulo = sai na rodada seguinte do robô, como sempre). Quando a hora chega, a
+-- agenda do banco (sql/radar-redes-agenda.sql) pede à função radar-redes que acione o robô do site na hora ("disparado_em" e
+-- "disparos" contam esses avisos: até 3, de 10 em 10 minutos; depois fica a rodada automática do robô como reserva).
+alter table public.radar_site_envios add column if not exists agendado_para timestamptz;
+alter table public.radar_site_envios add column if not exists disparado_em  timestamptz;
+alter table public.radar_site_envios add column if not exists disparos      int not null default 0;
+create index if not exists radar_site_envios_agendado_idx on public.radar_site_envios (agendado_para)
+  where situacao = 'autorizado' and agendado_para is not null;
 
 -- v0.13.0: publicação no Instagram e no Facebook (API da Meta), sempre depois da autorização do administrador.
 -- A tela monta a imagem (JPEG; vertical, 1080×1350, desde a v0.20.0) e a legenda; o administrador confere e autoriza;
@@ -839,10 +861,11 @@ create index if not exists radar_site_exclusoes_conteudo_idx on public.radar_sit
 create unique index if not exists radar_site_exclusoes_aberta_uk on public.radar_site_exclusoes (conteudo_id)
   where situacao in ('pedido','excluindo');
 
--- v0.8.0: o Diário Oficial da União pelo INLABS é um tipo de leitura a mais
+-- v0.8.0: o Diário Oficial da União pelo INLABS é um tipo de leitura a mais; v0.45.0: + ciga_dados (os dados abertos da CIGA,
+-- com o DOM/SC de Palhoça e São José — a fonte em si entra pelo sql/radar-fontes-novas-v0.45.0.sql, depois do robô desta versão)
 alter table public.radar_fontes drop constraint if exists radar_fontes_tipo_coletor_check;
 alter table public.radar_fontes add constraint radar_fontes_tipo_coletor_check
-  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs'));
+  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados'));
 -- (o formato do cadastro de fontes é conferido pelo gatilho radar_fn_fonte_formato, mais abaixo)
 alter table public.radar_fontes drop constraint if exists radar_fontes_formato;
 
@@ -2468,7 +2491,11 @@ end $$;
 
 -- v0.10.0: o administrador autoriza a publicação no site. Valem as mesmas exigências do registro (conteúdo aprovado,
 -- assunto confirmado oficialmente, trecho conferido em fonte oficial) e o texto tem de ser o que estava na tela.
-create or replace function public.radar_autorizar_site(p_conteudo bigint, p_categoria text, p_lido timestamptz)
+-- v0.45.0: + p_publicar_em — a HORA MARCADA da publicação no site (nulo = sai na rodada seguinte do robô, como sempre). A
+-- autorização guarda a hora (agendado_para); quando ela chega, a agenda do banco aciona o robô do site. Cancelar continua igual.
+drop function if exists public.radar_autorizar_site(bigint, text, timestamptz);
+create or replace function public.radar_autorizar_site(p_conteudo bigint, p_categoria text, p_lido timestamptz,
+                                                       p_publicar_em timestamptz default null)
 returns bigint language plpgsql security definer set search_path = public as $$
 declare
   v_c public.radar_conteudos%rowtype;
@@ -2515,8 +2542,11 @@ begin
      or exists (select 1 from public.radar_site_envios e where e.conteudo_id = p_conteudo and e.situacao = 'publicado') then
     raise exception 'RADAR117: este conteúdo já tem publicação registrada no site; para mudar a notícia, altere no painel do site' using errcode = 'P0001';
   end if;
-  insert into public.radar_site_envios (conteudo_id, categoria, conteudo_lido_em, autorizado_por)
-  values (p_conteudo, btrim(p_categoria), v_c.atualizado_em, auth.uid())
+  if p_publicar_em is not null and (p_publicar_em <= now() or p_publicar_em > now() + interval '60 days') then
+    raise exception 'RADAR178: a hora marcada precisa estar no futuro (e em até 60 dias)' using errcode = 'P0001';
+  end if;
+  insert into public.radar_site_envios (conteudo_id, categoria, conteudo_lido_em, autorizado_por, agendado_para)
+  values (p_conteudo, btrim(p_categoria), v_c.atualizado_em, auth.uid(), p_publicar_em)
   returning id into v_id;
   return v_id;
 end $$;
@@ -2577,10 +2607,14 @@ $$;
 -- v0.42.0: + p_artes — a notícia sai como CARROSSEL: as lâminas (radar_imagens.id, na ordem do post) que o administrador desenhou e
 -- enviou AGORA pela tela, conferidas como as da Pauta (radar_pauta_aprovar: de 2 a 10, sem repetir, JPEG 1080×1350 enviado há até
 -- 2 horas por quem autoriza). Com p_artes, p_imagem fica nulo (as imagens do post são as lâminas); sem ele, nada muda (imagem única).
+-- v0.45.0: + p_publicar_em — a HORA MARCADA (nulo = a tela publica na hora, como sempre). Com hora, a autorização fica guardada
+-- (agendado_para) e quem publica é a agenda do banco (radar_agenda_vencidas), como na Pauta; a tela não chama a função na hora.
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz);
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean);
+drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean, bigint[]);
 create or replace function public.radar_autorizar_rede(p_conteudo bigint, p_canal text, p_legenda text, p_imagem text, p_lido timestamptz,
-                                                       p_conferi_rede boolean default false, p_artes bigint[] default null)
+                                                       p_conferi_rede boolean default false, p_artes bigint[] default null,
+                                                       p_publicar_em timestamptz default null)
 returns bigint language plpgsql security definer set search_path = public as $$
 declare
   v_c public.radar_conteudos%rowtype;
@@ -2646,8 +2680,11 @@ begin
     raise exception 'RADAR166: a publicação deste conteúdo no % foi cancelada no meio do envio: confira no % que ela não saiu e marque “Conferi no %: não saiu”',
       initcap(p_canal), initcap(p_canal), initcap(p_canal) using errcode = 'P0001';
   end if;
-  insert into public.radar_redes_envios (conteudo_id, canal, legenda, imagem, artes, conteudo_lido_em, autorizado_por)
-  values (p_conteudo, p_canal, btrim(p_legenda), p_imagem, v_artes, v_c.atualizado_em, auth.uid())
+  if p_publicar_em is not null and (p_publicar_em <= now() or p_publicar_em > now() + interval '60 days') then
+    raise exception 'RADAR178: a hora marcada precisa estar no futuro (e em até 60 dias)' using errcode = 'P0001';
+  end if;
+  insert into public.radar_redes_envios (conteudo_id, canal, legenda, imagem, artes, conteudo_lido_em, autorizado_por, agendado_para)
+  values (p_conteudo, p_canal, btrim(p_legenda), p_imagem, v_artes, v_c.atualizado_em, auth.uid(), p_publicar_em)
   returning id into v_id;
   return v_id;
 end $$;
@@ -2719,6 +2756,11 @@ begin
   select * into v_e from public.radar_redes_envios where id = p_envio for update;
   if v_e.id is null or v_e.situacao not in ('autorizado','erro') then
     raise exception 'RADAR138: esta autorização não está aguardando envio (já saiu, foi cancelada ou está saindo)' using errcode = 'P0001';
+  end if;
+  -- v0.45.0: a notícia com hora marcada só sai quando a hora chega (quem a publica é a agenda do banco)
+  if v_e.agendado_para is not null and v_e.agendado_para > now() then
+    raise exception 'RADAR179: esta publicação tem hora marcada (%): a agenda publica sozinha quando a hora chegar',
+      to_char(v_e.agendado_para at time zone 'America/Sao_Paulo', 'DD/MM à\s HH24:MI') using errcode = 'P0001';
   end if;
   select * into v_c from public.radar_conteudos where id = v_e.conteudo_id;
   if v_c.status is distinct from 'aprovado' or v_c.atualizado_em is distinct from v_e.conteudo_lido_em then
@@ -2811,9 +2853,13 @@ end $$;
 -- de cada canal (as do site pela própria radar_autorizar_site). As redes ficam "aguardando_site": saem sozinhas logo depois que
 -- a notícia entra no site; se o site não sair (cancelado ou erro) ou o texto mudar, elas caem junto.
 -- v0.22.0 (varredura geral): + p_conferi_rede (radar_rede_cancelada_no_envio)
+-- v0.45.0: + p_publicar_em — a HORA MARCADA do conjunto: ela fica na autorização do SITE; o Instagram e o Facebook continuam
+-- "aguardando_site" e saem sozinhos logo depois que a notícia entra no site (na hora marcada), como sempre.
 drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text);
+drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text, boolean);
 create or replace function public.radar_autorizar_todos(p_conteudo bigint, p_categoria text, p_lido timestamptz, p_imagem text,
-                                                        p_legenda_instagram text, p_legenda_facebook text, p_conferi_rede boolean default false)
+                                                        p_legenda_instagram text, p_legenda_facebook text, p_conferi_rede boolean default false,
+                                                        p_publicar_em timestamptz default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_c public.radar_conteudos%rowtype;
@@ -2850,8 +2896,9 @@ begin
   if p_imagem is null or p_imagem not like 'data:image/jpeg;base64,%' or length(p_imagem) > 3000000 then
     raise exception 'RADAR135: falta a imagem (JPEG) da publicação' using errcode = 'P0001';
   end if;
-  -- o site: confere tudo o que a autorização do site confere (perfil, aprovação, fundamentação, texto da tela, marcas)
-  v_site := public.radar_autorizar_site(p_conteudo, p_categoria, p_lido);
+  -- o site: confere tudo o que a autorização do site confere (perfil, aprovação, fundamentação, texto da tela, marcas);
+  -- v0.45.0: a hora marcada (se houver) fica aqui — as redes esperam o site e saem logo depois dele
+  v_site := public.radar_autorizar_site(p_conteudo, p_categoria, p_lido, p_publicar_em);
   select * into v_c from public.radar_conteudos c where c.id = p_conteudo;
   v_pendencia := public.radar_marcas_verificar(coalesce(p_legenda_instagram, '') || E'\n' || coalesce(p_legenda_facebook, ''));
   if v_pendencia is not null then
@@ -4215,8 +4262,10 @@ begin
   if (select c.valor->'agenda_ligada' from public.radar_config c where c.chave = 'pauta') = 'false'::jsonb then
     return;
   end if;
-  for r in select e.id, e.disparos from public.radar_redes_envios e
-            where e.situacao = 'autorizado' and e.peca_id is not null and e.agendado_para <= now()
+  -- v0.45.0: além da peça da Pauta, entra a NOTÍCIA com hora marcada (peca_id nulo e agendado_para preenchido; quem confere
+  -- tudo de novo na hora de sair é radar_rede_iniciar, como no Tentar de novo da tela)
+  for r in select e.id, e.peca_id, e.disparos from public.radar_redes_envios e
+            where e.situacao = 'autorizado' and e.agendado_para <= now()
               and (e.disparado_em is null or e.disparado_em < now() - interval '10 minutes')
             order by e.agendado_para, e.id
             limit least(greatest(coalesce(p_limite, 2), 1), 10)
@@ -4225,7 +4274,8 @@ begin
       then 'A publicação agendada não saiu: o Radar chamou a função radar-redes 3 vezes, de 10 em 10 minutos, e ela não publicou. '
            'Confira em Publicações → Testar conexão se a radar-redes está atualizada (a nova tentativa pede a v0.43.0) e se o Instagram e o Facebook estão configurados; '
            'depois use Tentar de novo.'
-      else public.radar_pauta_pode_sair(r.id) end;            -- confere ANTES de qualquer coisa ir à Meta
+      when r.peca_id is not null then public.radar_pauta_pode_sair(r.id)
+      else null end;                                          -- confere ANTES de qualquer coisa ir à Meta
     if v_motivo is not null then
       update public.radar_redes_envios set situacao = 'erro', erro = left(v_motivo, 1000), atualizado_em = now() where id = r.id;
       continue;
@@ -4262,6 +4312,29 @@ begin
     end if;
     return next r.id;
   end loop;
+end $$;
+
+-- v0.45.0: a publicação no SITE com hora marcada venceu? A agenda do banco (sql/radar-redes-agenda.sql, de 5 em 5 minutos)
+-- pergunta aqui e, com "sim", pede à função radar-redes que acione o robô do site na hora (acionar_site). Cada envio vencido é
+-- avisado até 3 vezes, de 10 em 10 minutos (como a peça da Pauta); depois disso fica a rodada automática do robô como reserva —
+-- o envio continua autorizado e sai nela. Só o relógio muda aqui: quem publica e confere tudo é o robô do site, como sempre.
+create or replace function public.radar_site_agendada_devida() returns boolean
+language plpgsql security definer set search_path = public as $$
+declare v_n int := 0;
+begin
+  -- pausa sem SQL: Configurações → Pauta → "agenda_ligada": false (o que está marcado espera, como na Pauta)
+  if (select c.valor->'agenda_ligada' from public.radar_config c where c.chave = 'pauta') = 'false'::jsonb then
+    return false;
+  end if;
+  update public.radar_site_envios e
+     set disparos = e.disparos + 1, disparado_em = now(), atualizado_em = now()
+   where e.id in (select d.id from public.radar_site_envios d
+                   where d.situacao = 'autorizado' and d.agendado_para is not null and d.agendado_para <= now()
+                     and d.disparos < 3 and (d.disparado_em is null or d.disparado_em < now() - interval '10 minutes')
+                   order by d.agendado_para, d.id limit 5
+                   for update skip locked);
+  get diagnostics v_n = row_count;
+  return v_n > 0;
 end $$;
 
 -- A função radar-redes (v0.21.0) pega o envio da peça para publicar: uma vez só (autorizado → enviando, com a peça e o envio
@@ -7114,7 +7187,7 @@ grant execute on function public.radar_registrar_uso_ia(text, text, int, int, bi
 grant execute on function public.radar_registrar_evidencia_ia(bigint, bigint, text, text) to authenticated;
 grant execute on function public.radar_incluir_texto_oficial(bigint, bigint, text, text, date, text) to authenticated;
 -- v0.10.0: autorização de publicação no site (a função confere que é o administrador)
-grant execute on function public.radar_autorizar_site(bigint, text, timestamptz) to authenticated;
+grant execute on function public.radar_autorizar_site(bigint, text, timestamptz, timestamptz) to authenticated;   -- v0.45.0: + a hora marcada
 grant execute on function public.radar_cancelar_site(bigint) to authenticated;
 -- o robô confere de novo as exigências do assunto logo antes de enviar ao site
 grant execute on function public.radar_pendencia_assunto(bigint) to service_role;
@@ -7127,13 +7200,13 @@ grant execute on function public.radar_itc_marcar_lido(text, text, timestamptz, 
 grant execute on function public.radar_itc_conferir_agenda(text) to service_role;
 grant execute on function public.radar_itc_registrar_falha(text) to service_role;
 -- v0.13.0: Instagram e Facebook — o administrador autoriza (as funções conferem); a função radar-redes envia
-grant execute on function public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean, bigint[]) to authenticated;   -- v0.22.0: + a caixa; v0.42.0: + as lâminas do carrossel
+grant execute on function public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean, bigint[], timestamptz) to authenticated;   -- v0.22.0: + a caixa; v0.42.0: + as lâminas; v0.45.0: + a hora marcada
 grant execute on function public.radar_dispensar_rede(bigint, text) to authenticated;
 grant execute on function public.radar_cancelar_rede(bigint) to authenticated;
 grant execute on function public.radar_rede_iniciar(bigint) to service_role;
 grant execute on function public.radar_rede_concluir(bigint, boolean, text, text, text, text, text[]) to service_role;   -- v0.42.0: + os endereços das lâminas
 -- v0.17.0: "Publicar em todos" e exclusão (as funções conferem que é o administrador); o robô conclui a exclusão no site
-grant execute on function public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text, boolean) to authenticated;   -- v0.22.0: + a caixa
+grant execute on function public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text, boolean, timestamptz) to authenticated;   -- v0.22.0: + a caixa; v0.45.0: + a hora marcada
 grant execute on function public.radar_rede_marcar_excluida(bigint, text) to authenticated;
 grant execute on function public.radar_pedir_exclusao_site(bigint) to authenticated;
 grant execute on function public.radar_cancelar_exclusao_site(bigint) to authenticated;
@@ -10614,7 +10687,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 37 tabelas, todas com rls = true; 6 fontes; 8 categorias; ao menos 1 instalação concluída (v0.44.0).
+-- Esperado: 37 tabelas, todas com rls = true; 6 fontes (mais as dos radar-fontes-novas, na instalação que já as rodou); 8 categorias; ao menos 1 instalação concluída (v0.45.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

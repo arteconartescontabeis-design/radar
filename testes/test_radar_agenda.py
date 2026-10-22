@@ -109,13 +109,17 @@ def test_agenda_cria_a_chave_e_agenda_de_5_em_5_min_sem_a_chave_no_comando(banco
     with conectar(banco_agenda) as c:
         jobs = c.execute("select jobname, schedule, command, active from cron.job order by jobname").fetchall()
     assert [(n, s, a) for n, s, _, a in jobs] == [("radar-redes-agenda", "*/5 * * * *", True), ("radar-redes-agenda-lembretes", "*/15 * * * *", True),
-                                                  ("radar-redes-agenda-limpeza", "41 6 * * *", True), ("radar-redes-agenda-robos", "13 8 * * *", True)]
-    comando, lembretes, limpeza, robos = (j[2] for j in jobs)                               # v0.29.0: + os lembretes por e-mail
-    assert all(agenda not in c for c in (comando, lembretes, limpeza, robos))               # a chave é lida do Vault a cada rodada
+                                                  ("radar-redes-agenda-limpeza", "41 6 * * *", True), ("radar-redes-agenda-robos", "13 8 * * *", True),
+                                                  ("radar-redes-agenda-site", "*/5 * * * *", True)]   # v0.45.0: + a hora marcada do site
+    comando, lembretes, limpeza, robos, site = (j[2] for j in jobs)                         # v0.29.0: + os lembretes por e-mail
+    assert all(agenda not in c for c in (comando, lembretes, limpeza, robos, site))         # a chave é lida do Vault a cada rodada
     for trecho in (URL, "Bearer " + chave_anon_do_config(), "'x-radar-agenda'", "vault.decrypted_secrets", "radar_redes_agenda",
                    "public.radar_agenda_vencidas(2)", "timeout_milliseconds := 150000", "'acao', 'publicar'"):
         assert trecho in comando, trecho
     assert "cron.job_run_details" in limpeza and "interval '7 days'" in limpeza and "like 'radar-%'" in limpeza
+    # v0.45.0: o job da hora marcada do site só chama quando o banco diz que uma hora venceu
+    for trecho in (URL, '{"acao": "acionar_site"}', "where public.radar_site_agendada_devida()", "timeout_milliseconds := 60000"):
+        assert trecho in site, trecho
 
 
 def test_agenda_pede_uma_vez_por_dia_que_a_funcao_religue_os_robos_do_github(banco_agenda, agenda):
@@ -159,6 +163,17 @@ def test_agenda_comando_faz_um_pedido_por_envio_vencido_com_anon_e_chave_e_nenhu
         assert len(rodar()[1]) == 2
 
 
+def test_agenda_site_so_pede_quando_uma_hora_marcada_do_site_vence(banco_agenda, agenda):
+    """v0.45.0: o job radar-redes-agenda-site pergunta ao banco (radar_site_agendada_devida) e, sem publicação no site com hora
+    marcada vencida, não faz pedido nenhum. O disparo com a hora vencida (até 3 vezes, de 10 em 10 minutos) é testado no banco,
+    em test_radar_banco.py (test_hora_marcada_no_site_...)."""
+    with conectar(banco_agenda) as c:
+        comando = c.execute("select command from cron.job where jobname = 'radar-redes-agenda-site'").fetchone()[0]
+        c.execute("truncate net.pedidos")
+        c.execute(comando)
+        assert c.execute("select count(*) from net.pedidos").fetchone()[0] == 0
+
+
 def test_agenda_sem_o_setup_para_com_recado(tmp_path):
     novo_banco("radar_agenda_sem", com_setup=False, simulados=False)
     try:
@@ -169,7 +184,7 @@ def test_agenda_sem_o_setup_para_com_recado(tmp_path):
             c.execute(NET_SIMULADO)
             c.execute(VAULT_SIMULADO)
         r = psql(sem_extensoes(AGENDA.read_text(), tmp_path), "radar_agenda_sem")
-        assert r.returncode != 0 and "Rode antes o radar-setup-v0.29.0.sql" in r.stderr          # v0.29.0: o setup desta versão
+        assert r.returncode != 0 and "Rode antes o radar-setup-v0.45.0.sql" in r.stderr          # v0.29.0: o setup desta versão
         with conectar("radar_agenda_sem") as c:                                               # nada ficou pela metade
             assert c.execute("select (select count(*) from vault.secrets), (select count(*) from cron.job)").fetchone() == (0, 0)
     finally:
@@ -232,7 +247,7 @@ def test_agenda_sem_o_setup_v029_para_com_recado(tmp_path):
             c.execute("drop function public.radar_lembretes_acionar()")
             c.execute("select cron.schedule('radar-redes-agenda', '*/5 * * * *', 'select 1')")
         r = psql(sem_extensoes(AGENDA.read_text(), tmp_path), banco)
-        assert r.returncode != 0 and "Rode antes o radar-setup-v0.29.0.sql" in r.stderr
+        assert r.returncode != 0 and "Rode antes o radar-setup-v0.45.0.sql" in r.stderr
         with conectar(banco) as c:
             assert c.execute("select jobname, command from cron.job").fetchall() == [("radar-redes-agenda", "select 1")]
             assert c.execute("select count(*) from vault.secrets").fetchone()[0] == 0
@@ -315,7 +330,7 @@ def test_agenda_roda_de_novo_sem_duplicar_e_reversao_tira_tudo(banco_agenda, age
     assert r.returncode == 0, r.stderr
     with conectar(banco_agenda) as c:
         assert [n for (n,) in c.execute("select jobname from cron.job order by jobname").fetchall()] == [
-            "radar-redes-agenda", "radar-redes-agenda-lembretes", "radar-redes-agenda-limpeza", "radar-redes-agenda-robos"]
+            "radar-redes-agenda", "radar-redes-agenda-lembretes", "radar-redes-agenda-limpeza", "radar-redes-agenda-robos", "radar-redes-agenda-site"]
         assert c.execute("select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda'").fetchone()[0] == agenda
         for nome in ("radar-itc", "copia-do-projeto"):                                        # as outras agendas ficam
             c.execute("select cron.schedule(%s, '55 5 * * *', 'select 1')", (nome,))
@@ -362,7 +377,7 @@ def test_as_tres_agendas_rodam_de_novo_sem_tocar_nas_extensoes(tmp_path):
                 antes = estado
         jobs, segredos = dict((n, (s, cmd)) for n, s, cmd in antes[0]), dict(antes[1])
         assert sorted(jobs) == ["radar-itc", "radar-itc-completa", "radar-redes-agenda", "radar-redes-agenda-lembretes", "radar-redes-agenda-limpeza",
-                                "radar-redes-agenda-robos", "radar-video-limpeza", "radar-video-reserva"]
+                                "radar-redes-agenda-robos", "radar-redes-agenda-site", "radar-video-limpeza", "radar-video-reserva"]
         assert sorted(segredos) == ["radar_itc_agenda", "radar_redes_agenda", "radar_video_agenda", "radar_video_robo"]
         # a agenda da ITC (sem teste antes): 02h55 de Brasília, o complemento só com boletim para depois, a chave lida do Vault na hora
         assert jobs["radar-itc"][0] == "55 5 * * *" and jobs["radar-itc-completa"][0] == "10,25 6 * * *"

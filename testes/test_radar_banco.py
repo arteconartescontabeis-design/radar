@@ -767,7 +767,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.44.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.45.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1234,7 +1234,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (37, 6, 8, 9, 1, 0)          # v0.29.0: + radar_lembretes e a chave "lembretes"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.44.0", [], 37)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.45.0", [], 37)
             # v0.31.0 (revisão): na instalação nova as seis fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
             # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso
             assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (6, True)
@@ -2107,9 +2107,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.44.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.45.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.44.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.45.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2139,7 +2139,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.44.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.45.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -5850,7 +5850,7 @@ def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
         assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
         assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
         # (o setup registra a versão dele: v0.44.0, que traz junto os da v0.28.0 a v0.35.0)
-        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.44.0",), ("v0.44.0",)]
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.45.0",), ("v0.45.0",)]
         assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
     finally:
         assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro
@@ -6120,3 +6120,123 @@ $$;"""
     assert [l[:4] for l in linhas] == [(r1["captura_id"], "Portaria Coana nº 214", "https://normasinternet2.receita.fazenda.gov.br", a1),
                                        (r1["captura_id"], "Portaria Coana nº 214", "https://normasinternet2.receita.fazenda.gov.br", a2)]
     assert limpo.execute("select count(*) from radar_capturas where id = %s and url = %s", (r3["captura_id"], base + "154087")).fetchone()[0] == 1
+
+
+# ------------------------------------------------ v0.45.0: hora marcada na notícia (site e redes) e o coletor ciga_dados
+FONTES_V045 = RAIZ / "sql" / "radar-fontes-novas-v0.45.0.sql"
+
+
+def test_hora_marcada_no_site_valida_guarda_e_a_agenda_avisa_ate_3_vezes(limpo):
+    """v0.45.0: radar_autorizar_site com p_publicar_em guarda a hora (futuro, até 60 dias — RADAR178) e radar_site_agendada_devida
+    só diz "sim" à agenda com a hora vencida: até 3 vezes, de 10 em 10 minutos; a chave geral (agenda_ligada) pausa; cancelar
+    continua igual enquanto o robô não começou."""
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    lido = _lido(limpo, c1)
+    devida = lambda: limpo.execute("select radar_site_agendada_devida()").fetchone()[0]
+    with como("authenticated", ADMIN) as c:
+        for ruim in ("now() - interval '1 minute'", "now() + interval '61 days'"):
+            with pytest.raises(psycopg.errors.RaiseException, match="RADAR178"):
+                c.execute(f"select radar_autorizar_site(%s, 'Tributário', %s, {ruim})", (c1, lido))
+        envio = c.execute("select radar_autorizar_site(%s, 'Tributário', %s, now() + interval '2 hours')", (c1, lido)).fetchone()[0]
+    assert limpo.execute("select situacao, agendado_para > now(), disparos, disparado_em from radar_site_envios where id = %s",
+                         (envio,)).fetchone() == ("autorizado", True, 0, None)
+    assert devida() is False                                                        # antes da hora, a agenda não aciona
+    limpo.execute("update radar_site_envios set agendado_para = now() - interval '1 minute' where id = %s", (envio,))
+    assert devida() is True                                                         # a hora venceu: 1º aviso
+    assert devida() is False                                                        # o próximo só depois de 10 minutos
+    assert limpo.execute("select disparos from radar_site_envios where id = %s", (envio,)).fetchone()[0] == 1
+    limpo.execute("update radar_site_envios set disparado_em = now() - interval '11 minutes', disparos = 2 where id = %s", (envio,))
+    assert devida() is True                                                         # 3º e último aviso
+    limpo.execute("update radar_site_envios set disparado_em = now() - interval '11 minutes' where id = %s", (envio,))
+    assert devida() is False                                                        # parou: fica a rodada automática do robô
+    assert limpo.execute("select situacao, disparos from radar_site_envios where id = %s", (envio,)).fetchone() == ("autorizado", 3)
+    limpo.execute("update radar_site_envios set disparos = 0, disparado_em = null where id = %s", (envio,))
+    limpo.execute("""update radar_config set valor = valor || '{"agenda_ligada": false}' where chave = 'pauta'""")
+    try:
+        assert devida() is False                                                    # pausada em Configurações → Pauta
+    finally:
+        limpo.execute("""update radar_config set valor = valor || '{"agenda_ligada": true}' where chave = 'pauta'""")
+    assert devida() is True
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_cancelar_site(%s)", (envio,)).fetchone()[0] is True
+    assert devida() is False
+
+
+def test_hora_marcada_na_rede_sai_pela_agenda_e_nunca_antes_da_hora(limpo):
+    """v0.45.0: radar_autorizar_rede com p_publicar_em deixa a notícia 'autorizado' com a hora; antes dela, nem a agenda devolve o
+    envio nem radar_rede_iniciar publica (RADAR179); vencida, a agenda devolve (com o disparo contado) e a função pega o envio."""
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    registrar_site(c1)
+    lido = _lido(limpo, c1)
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR178"):
+            c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s, false, null, now() - interval '1 minute')",
+                      (c1, LEGENDA, IMG, lido))
+        envio = c.execute("select radar_autorizar_rede(%s, 'instagram', %s, %s, %s, false, null, now() + interval '3 hours')",
+                          (c1, LEGENDA, IMG, lido)).fetchone()[0]
+    assert limpo.execute("select situacao, peca_id, agendado_para > now() from radar_redes_envios where id = %s",
+                         (envio,)).fetchone() == ("autorizado", None, True)
+    assert limpo.execute("select count(*) from radar_agenda_vencidas(5)").fetchone()[0] == 0
+    with como("service_role") as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR179"):
+        c.execute("select radar_rede_iniciar(%s)", (envio,))
+    assert limpo.execute("select situacao from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == "autorizado"
+    limpo.execute("update radar_redes_envios set agendado_para = now() - interval '1 minute' where id = %s", (envio,))
+    assert [x for (x,) in limpo.execute("select * from radar_agenda_vencidas(5)").fetchall()] == [envio]
+    assert limpo.execute("select disparos from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == 1
+    with como("service_role") as c:
+        r = c.execute("select radar_rede_iniciar(%s)", (envio,)).fetchone()[0]
+    assert isinstance(r, dict) and r.get("legenda") == LEGENDA
+    assert limpo.execute("select situacao from radar_redes_envios where id = %s", (envio,)).fetchone()[0] == "enviando"
+    with como("authenticated", ADMIN) as c:                                         # cancelar a marcada continua igual
+        outro = c.execute("select radar_autorizar_rede(%s, 'facebook', %s, %s, %s, false, null, now() + interval '3 hours')",
+                          (c1, LEGENDA, IMG, lido)).fetchone()[0]
+        assert c.execute("select radar_cancelar_rede(%s)", (outro,)).fetchone()[0] is True
+
+
+def test_hora_marcada_no_publicar_em_todos_fica_no_site_e_as_redes_esperam_o_site(limpo):
+    """v0.45.0: no "Publicar em todos", p_publicar_em vale para o SITE; o Instagram e o Facebook ficam aguardando_site (sem hora
+    própria) e saem logo que a notícia entrar no site, como sempre."""
+    a, c1 = cenario_publicavel(limpo)
+    aprovar(c1)
+    lido = _lido(limpo, c1)
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR178"):
+            c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, %s, %s, false, now() - interval '1 minute')",
+                      (c1, lido, IMG, LEGENDA, LEGENDA))
+        c.execute("select radar_autorizar_todos(%s, 'Tributário', %s, %s, %s, %s, false, now() + interval '2 hours')",
+                  (c1, lido, IMG, LEGENDA, LEGENDA))
+    assert limpo.execute("select situacao, agendado_para > now() from radar_site_envios where conteudo_id = %s",
+                         (c1,)).fetchone() == ("autorizado", True)
+    assert limpo.execute("""select canal, situacao, agendado_para from radar_redes_envios
+                             where conteudo_id = %s order by canal""", (c1,)).fetchall() == \
+        [("facebook", "aguardando_site", None), ("instagram", "aguardando_site", None)]
+
+
+def test_tipo_ciga_dados_e_a_fonte_nova_da_v045(limpo):
+    """v0.45.0: o tipo de coletor novo (ciga_dados) passa na restrição e o sql/radar-fontes-novas-v0.45.0.sql: antes do robô desta
+    versão, para com o recado, sem mudar nada; depois, cadastra a fonte LIGADA (1 leitura por dia, dados abertos da CIGA); rodar
+    de novo não desfaz o que o administrador mudou."""
+    try:
+        r = psql(FONTES_V045)
+        assert r.returncode != 0 and "rode este SQL depois de publicar a v0.45.0" in r.stderr and "Nada foi alterado" in r.stderr
+        assert limpo.execute("select count(*) from radar_fontes where slug = 'domsc-ciga'").fetchone()[0] == 0
+        fid = limpo.execute("select id from radar_fontes where slug = 'rfb-noticias'").fetchone()[0]
+        limpo.execute("insert into radar_execucoes (fonte_id, versao_robo, status) values (%s, '0.45.0', 'ok')", (fid,))
+        r = psql(FONTES_V045)
+        assert r.returncode == 0, r.stderr
+        linha = limpo.execute("""select ativo, oficial, tipo_coletor, abrangencia, categoria_padrao, frequencia_horas, config
+                                   from radar_fontes where slug = 'domsc-ciga'""").fetchone()
+        assert linha[:6] == (True, True, "ciga_dados", "municipal", "santa-catarina", 24)
+        config = linha[6]
+        assert config["municipios"] == ["Palhoça", "São José"] and config["categorias"] == ["Leis", "Decretos"]
+        assert config["texto_do_feed"] is True and config["max_zips"] == 8 and config["janela_dias"] == 2
+        assert "IPTU" in config["palavras"] and "crédito suplementar" in config["excluir_palavras"]
+        assert "domsc-ciga|Palhoça e São José — leis e decretos sobre tributos (dados abertos da CIGA)|ligada|ciga_dados|24" in r.stdout
+        limpo.execute("update radar_fontes set ativo = false where slug = 'domsc-ciga'")      # o administrador desligou: fica
+        assert psql(FONTES_V045).returncode == 0
+        assert limpo.execute("select ativo from radar_fontes where slug = 'domsc-ciga'").fetchone()[0] is False
+    finally:
+        limpo.execute("delete from radar_fontes where slug = 'domsc-ciga'")
+        limpo.execute("delete from radar_execucoes where versao_robo = '0.45.0'")

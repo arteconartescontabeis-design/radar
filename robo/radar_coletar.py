@@ -26,6 +26,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import requests
 
+import radar_ciga
 import radar_ia
 import radar_inlabs
 import radar_normas
@@ -177,6 +178,9 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
         with limite_de_tempo(tempo_da_fonte(fonte, sessao, hoje)):
             if tipo == "inlabs":
                 listagem, http = radar_inlabs.listar_paginas(sessao, fonte, hoje)
+            elif tipo == "ciga_dados":
+                # v0.45.0: DOM/SC pelos dados abertos da CIGA (1 rodada/dia; nunca diariomunicipal.sc.gov.br)
+                listagem, http = radar_ciga.listar_paginas(sessao, fonte, hoje)
             elif tipo == "normas_rfb":
                 listagem, http = radar_normas.listar_paginas(sessao, fonte, hoje, pausa=pausa)    # v0.31.0: a pesquisa nova (POST)
             else:

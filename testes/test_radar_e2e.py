@@ -152,7 +152,7 @@ def test_primeira_coleta_grava_itens_da_janela_com_texto_e_hash(cenario):
     assert all(l[3] == 64 and l[4] == 1 for l in linhas)
     ex = cenario.execute("select status, itens_novos, http_status, versao_robo, finalizado_em is not null "
                          "from radar_execucoes order by id").fetchall()
-    assert ex == [("ok", 2, 200, "0.31.0", True), ("ok", 1, 200, "0.31.0", True)]
+    assert ex == [("ok", 2, 200, "0.45.0", True), ("ok", 1, 200, "0.45.0", True)]
     assert cenario.execute("select count(*) from radar_fontes where slug like 'teste-%' and ultimo_sucesso_em is not null").fetchone()[0] == 2
 
 
@@ -961,7 +961,7 @@ def test_normas_rfb_de_ponta_a_ponta(cenario):
     assert (r["teste-normas"]["status"], r["teste-normas"]["novos"], r["teste-normas"]["sem_texto"]) == ("ok", 1, 0)
     pedido = NORMAS["pedidos"][0]
     assert (pedido["corpo"]["dataInicio"], pedido["corpo"]["dataFim"], pedido["corpo"]["paginacaoPaginaAtual"]) == ("16/09/2026", "01/10/2026", 1)
-    assert pedido["cab"]["content-type"] == "application/json; charset=UTF-8" and pedido["cab"]["user-agent"].startswith("ArteconRadar/0.31.0")
+    assert pedido["cab"]["content-type"] == "application/json; charset=UTF-8" and pedido["cab"]["user-agent"].startswith("ArteconRadar/0.45.0")
     linha = cenario.execute("select url, titulo, resumo_fonte, metadados->>'id_ato', metadados->>'link_permanente', left(texto, 60), "
                             "metadados ? 'texto_parcial' from radar_capturas").fetchone()
     assert linha == ("https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/153990",

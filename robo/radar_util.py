@@ -13,7 +13,7 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from bs4 import BeautifulSoup
 
-VERSAO = "0.31.0"     # v0.31.0: a coleta muda (filtro de tema, Normas da Receita pela API nova, INLABS uma vez por rodada)
+VERSAO = "0.45.0"     # v0.45.0: DOM/SC pelos dados abertos da CIGA (radar_ciga); v0.31.0: filtro de tema, Normas pela API nova, INLABS 1x por rodada
 AGENTE = f"ArteconRadar/{VERSAO} (+https://www.artecon.cnt.br; monitoramento de fontes oficiais)"
 
 MESES = {

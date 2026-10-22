@@ -216,7 +216,7 @@ def test_sem_o_banco_desta_versao_tem_recado(tela):
     try:
         tela.db.execute("notify pgrst, 'reload schema'")
         abrir(tela, LEITOR_EMAIL, "#resp-sem-banco")
-        assert "sql/radar-setup-v0.44.0.sql" in tela.inner_text("#resp-sem-banco")
+        assert "sql/radar-setup-v0.45.0.sql" in tela.inner_text("#resp-sem-banco")
     finally:
         tela.db.execute("alter function radar_respostas_situacao_x() rename to radar_respostas_situacao")
         tela.db.execute("notify pgrst, 'reload schema'")

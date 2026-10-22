@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.44.0.sql
--- DESFAZ a instalação do radar-setup-v0.44.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.45.0.sql
+-- DESFAZ a instalação do radar-setup-v0.45.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -58,6 +58,11 @@
 -- funções redefinidas saem com as outras, como sempre. As sobras da instalação por partes da v0.42.0 (duas funções renomeadas e a
 -- tabela de pedaços radar_tmp_v042), se ainda existirem, saem aqui também.
 -- v0.44.0: o tipo novo (video/webm) é só validação dentro das funções do corretor, que saem com as outras, como sempre.
+-- v0.45.0: a hora marcada e a fonte da CIGA. As colunas novas (radar_site_envios.agendado_para, disparado_em e disparos) e a fonte
+-- domsc-ciga saem com as tabelas; as assinaturas novas (radar_autorizar_site, _rede e _todos com p_publicar_em), a função nova
+-- radar_site_agendada_devida e as sobras renomeadas da atualização por partes saem abaixo; o job radar-redes-agenda-site sai com os
+-- radar-redes-agenda%. Fora do banco: Supabase → Edge Functions → o segredo opcional PEXELS_API_KEY (apague se quiser; a chave do
+-- Pixabay segue a mesma regra).
 -- =====================================================================
 begin;
 
@@ -196,6 +201,7 @@ drop function if exists public.radar_separar_repeticao(bigint);
 drop function if exists public.radar_autorizar_copia(bigint, text, timestamptz);
 drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text);
 drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text, boolean);
+drop function if exists public.radar_autorizar_todos(bigint, text, timestamptz, text, text, text, boolean, timestamptz);   -- v0.45.0: + a hora marcada
 drop function if exists public.radar_fn_site_envio_redes();
 drop function if exists public.radar_rede_marcar_excluida(bigint, text);
 drop function if exists public.radar_pedir_exclusao_site(bigint);
@@ -233,6 +239,7 @@ drop function if exists public.radar_fn_divulgacao_efeitos();
 drop function if exists public.radar_registrar_uso_ia(text, text, int, int, bigint);
 drop function if exists public.radar_registrar_evidencia_ia(bigint, bigint, text, text);
 drop function if exists public.radar_autorizar_site(bigint, text, timestamptz);
+drop function if exists public.radar_autorizar_site(bigint, text, timestamptz, timestamptz);                      -- v0.45.0: + a hora marcada
 drop function if exists public.radar_cancelar_site(bigint);
 drop function if exists public.radar_fn_conteudo_envio();
 drop function if exists public.radar_tirar_aviso_fonte(text);
@@ -240,10 +247,16 @@ drop function if exists public.radar_marcas_verificar(text);
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz);
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean);
 drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean, bigint[]);   -- v0.42.0: + as lâminas
+drop function if exists public.radar_autorizar_rede(bigint, text, text, text, timestamptz, boolean, bigint[], timestamptz);   -- v0.45.0: + a hora marcada
 -- v0.43.0: as sobras da instalação por partes da v0.42.0, se ainda existirem (o setup v0.43.0 também as tira)
 drop function if exists public.radar_autorizar_rede_v040_substituida(bigint, text, text, text, timestamptz, boolean);
 drop function if exists public.radar_rede_concluir_v040_substituida(bigint, boolean, text, text, text, text);
 drop table if exists public.radar_tmp_v042;
+-- v0.45.0: a hora marcada do site e as sobras da atualização por partes v0.44→v0.45, se ainda existirem
+drop function if exists public.radar_site_agendada_devida();
+drop function if exists public.radar_autorizar_site_v044_substituida(bigint, text, timestamptz);
+drop function if exists public.radar_autorizar_rede_v044_substituida(bigint, text, text, text, timestamptz, boolean, bigint[]);
+drop function if exists public.radar_autorizar_todos_v044_substituida(bigint, text, timestamptz, text, text, text, boolean);
 drop function if exists public.radar_rede_cancelada_no_envio(bigint, text);
 drop function if exists public.radar_url_host(text);
 drop function if exists public.radar_site_host();

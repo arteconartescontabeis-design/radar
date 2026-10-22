@@ -368,25 +368,29 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.44.0"
+    assert pagina.inner_text(".versao") == "v0.45.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.44.0: a entrada do topo é a da versão em uso e conta ao dono, em 4 itens: o teleprompter com gravação pelo navegador
-    # (a tomada entra na lista de clipes), o caminho de sempre (nada sobe até enviar; o corretor confere com o mesmo rigor),
-    # as letras grandes (o A+ do topo) e o que o administrador faz (o SQL, o Deploy da radar-video e o commit do robô)
+    # v0.45.0: a entrada do topo é a da versão em uso e conta ao dono, em 5 itens: a fonte da CIGA (sem robô no diário), a hora
+    # marcada na notícia (com o melhor horário sugerido), a foto em dois bancos, o título sempre na imagem e o que o
+    # administrador faz (o SQL, a agenda de novo, o Deploy da radar-ia e da radar-redes, o fontes-novas depois do robô)
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.44.0" and data == "21/10/2026" and len(itens) == 4
+    assert topo == pagina.evaluate("VERSAO") == "0.45.0" and data == "22/10/2026" and len(itens) == 5
     texto = " ".join(itens)
-    for trecho in ["Teleprompter com gravação pelo navegador", "roteiro rolando em LETRAS GRANDES",
-                   "tamanho, velocidade e espelho ajustáveis", "entra direto na lista de clipes", "EM PÉ",
-                   "nada é enviado até você mandar", "agora também a gravação do navegador", "a cota do mês",
-                   "Letras grandes no aplicativo inteiro", "botão A+ no topo", "fica guardado neste navegador",
-                   "sql/radar-setup-v0.44.0.sql", "Deploy da função radar-video", "RADAR_VIDEO_COMMIT",
-                   "Nenhum segredo novo", "Da v0.43.0 para a v0.44.0"]:
+    for trecho in ["dados abertos oficiais da CIGA", "não recebe nenhum acesso de robô", "UMA vez por dia",
+                   "Hora marcada na notícia", "melhor horário de engajamento do dia sugerido", "agenda do banco publica sozinha",
+                   "a hora vale para o site", "Pixabay e no Pexels ao mesmo tempo", "selo do banco", "PEXELS_API_KEY",
+                   "nunca pelo chat", "Título SEMPRE na imagem", "título desenhado", "continuam como estão",
+                   "sql/radar-setup-v0.45.0.sql", "rode DE NOVO o sql/radar-redes-agenda.sql",
+                   "Deploy das funções radar-ia e radar-redes", "sql/radar-fontes-novas-v0.45.0.sql",
+                   "Da v0.44.0 para a v0.45.0"]:
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
+    # v0.44.0: a entrada seguinte (o teleprompter com gravação pelo navegador e as letras grandes) fica
+    v44 = pagina.evaluate("VERSOES[1]")
+    assert v44[0] == "0.44.0" and len(v44[2]) == 4 and "Teleprompter com gravação pelo navegador" in " ".join(v44[2])
     # v0.43.0: a entrada seguinte conta ao dono, em 3 itens: a nova tentativa automática (5 e 15 minutos,
     # para na 3ª recusa, com a hora marcada na própria mensagem de erro), a segurança (só a recusa CLARA da Meta re-tenta; o
     # "não deu para saber" fica "enviando", sem nova tentativa) e o que o administrador faz (o SQL e o Deploy da radar-redes)
@@ -2060,7 +2064,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.36.0', FUNCAO_MINIMA), versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.39.0", "0.43.0", "0.44.0"]       # v0.44.0: nada muda na radar-redes nem na radar-ia (o teleprompter é da tela; o WEBM, do banco, do robô e da radar-video)
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.39.0", "0.45.0", "0.45.0"]       # v0.44.0: nada muda na radar-redes nem na radar-ia (o teleprompter é da tela; o WEBM, do banco, do robô e da radar-video)
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2915,7 +2919,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.44.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.45.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3959,7 +3963,7 @@ def _png_base64(cor=(30, 90, 150)):
 
 
 def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_falha=None, ilustrar_avisos=None, conferencia=None,
-                  revisar_texto=True, editorial=None):
+                  revisar_texto=True, editorial=None, fotos=None):
     """Responde no lugar da função radar-ia (a IA Central não roda aqui): grava o rascunho como a função faria. Com kit_falha
     ((status, mensagem)), o kit falha como na função antiga ou no banco sem o SQL da v0.20.0. v0.21.0: "peca" é a sugestão da peça da
     Pauta que a função grava (radar_pauta_pecas.ia, sem mudar a versão da peça); peca_falha, como kit_falha. v0.24.0: ilustrar_avisos,
@@ -4020,8 +4024,9 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_fal
         elif acao == "peca" and peca_falha:
             return rota.fulfill(status=peca_falha[0], content_type="application/json", body=json.dumps({"message": peca_falha[1]}))
         elif acao == "foto_buscar":                          # v0.39.0: a foto real do banco de imagens (sem IA, sem assunto_id)
-            r = {"fotos": [{"id": 777, "previa": _png_base64((90, 120, 60)), "largura": 1280, "altura": 853,
-                            "tags": "contabilidade, escritório", "autor": "Ana Teste", "pagina": "https://pixabay.com/pt/photos/777/"}]}
+            r = {"fotos": fotos if fotos is not None else
+                 [{"id": 777, "banco": "pixabay", "previa": _png_base64((90, 120, 60)), "largura": 1280, "altura": 853,
+                   "tags": "contabilidade, escritório", "autor": "Ana Teste", "pagina": "https://pixabay.com/pt/photos/777/"}]}
         elif acao == "foto_baixar":
             r = {"imagem": _png_base64((40, 90, 160)), "credito": {"autor": "Ana Teste", "pagina": "https://pixabay.com/pt/photos/777/"}}
         elif acao == "peca":                                 # v0.21.0: a sugestão da peça, gravada como a função grava (não muda a versão da peça)
@@ -4116,7 +4121,7 @@ def test_usar_foto_real_com_titulo_no_conteudo(pagina, limpo):
     abrir_assunto(pagina, "CBS na transição")
     pagina.click(f"form[data-form=conteudo][data-id='{c}'] >> text=Usar foto real com o título")
     pagina.wait_for_selector("#foto-escolha .foto-opcao")
-    assert "Pixabay" in pagina.inner_text("#foto-escolha .barra-previa")
+    assert "Foto real dos bancos de imagens" in pagina.inner_text("#foto-escolha .barra-previa")   # v0.45.0: Pixabay e Pexels
     assert pagina.input_value("#foto-busca") == "transição destaque 2027"   # a busca já vem com as palavras do título
     pagina.click("#foto-escolha .foto-opcao")
     pagina.wait_for_selector("text=Capa com a foto real e o título")
@@ -4125,6 +4130,83 @@ def test_usar_foto_real_com_titulo_no_conteudo(pagina, limpo):
     assert ilus is None and limpo.execute("select largura, altura from radar_imagens where id = %s", (imagem,)).fetchone() == (1200, 630)
     assert [p["acao"] for p in pedidos] == ["foto_buscar", "foto_baixar"]
     assert "foto_id" in pedidos[-1] and "assunto_id" not in pedidos[-1]     # a foto vai sem assunto (não conta para a senha)
+
+
+def test_foto_real_em_dois_bancos_mostra_o_selo_e_manda_o_banco_no_baixar(pagina, limpo):
+    """v0.45.0: a busca devolve fotos do Pixabay e do Pexels misturadas — cada opção carrega o selo do seu banco — e o baixar
+    manda o banco junto do número (a função antiga, só com o Pixabay, segue funcionando: sem o campo, a tela assume pixabay)."""
+    a, _ = assunto_com_texto(limpo)
+    c = limpo.execute("""insert into radar_conteudos (assunto_id, formato, titulo, corpo, status, gerado_por)
+                         values (%s, 'informativo', 'CBS na transição: destaque em 2027', 'Corpo do texto com tamanho suficiente.',
+                                 'em_revisao', 'humano') returning id""", (a,)).fetchone()[0]
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos, fotos=[
+        {"id": 777, "banco": "pixabay", "previa": _png_base64((90, 120, 60)), "largura": 1280, "altura": 853,
+         "tags": "contabilidade", "autor": "Ana Teste", "pagina": "https://pixabay.com/pt/photos/777/"},
+        {"id": 9001, "banco": "pexels", "previa": _png_base64((60, 90, 150)), "largura": 1600, "altura": 1067,
+         "tags": "mesa de escritório", "autor": "Bruno Teste", "pagina": "https://www.pexels.com/pt-br/foto/9001/"}])
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.click(f"form[data-form=conteudo][data-id='{c}'] >> text=Usar foto real com o título")
+    pagina.wait_for_selector("#foto-escolha .foto-opcao")
+    assert "também o Pexels" in pagina.inner_text("#foto-escolha")                    # o aviso fala dos dois bancos
+    assert pagina.locator("#foto-escolha .foto-opcao .foto-banco").all_inner_texts() == ["Pixabay", "Pexels"]
+    pagina.click('#foto-escolha .foto-opcao[data-banco="pexels"]')
+    pagina.wait_for_selector("text=Capa com a foto real e o título")
+    assert pedidos[-1]["acao"] == "foto_baixar" and pedidos[-1]["foto_id"] == 9001 and pedidos[-1]["banco"] == "pexels"
+    imagem = limpo.execute("select imagem_id from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    assert limpo.execute("select largura, altura from radar_imagens where id = %s", (imagem,)).fetchone() == (1200, 630)
+
+
+def test_quando_publicar_em_hora_marcada_agenda_o_site_sem_acionar_o_robo(pagina, limpo):
+    """v0.45.0: o "Quando publicar" na autorização do site — "Agora" é o padrão (nada muda); "Em hora marcada" abre o campo já
+    com o melhor horário de engajamento do dia sugerido; a hora no passado é recusada na tela; autorizada, a publicação fica
+    guardada com a hora (sem acionar o robô), a tela mostra "marcada para" só com o Cancelar, e cancelar continua igual."""
+    a, c = pronto_para_o_site(limpo)
+    with como("authenticated", EDITOR) as x:
+        x.execute("update radar_conteudos set status = 'aprovado' where id = %s", (c,))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_assunto(pagina, "Informativo de teste")
+    pagina.click("#proximo-passo >> text=Ir para publicar")
+    pagina.select_option(f"#site-cat-{c}", "Tributário")
+    assert pagina.input_value(f"#quando-site-{c}") == "agora"                         # o padrão: tudo como sempre
+    assert not pagina.is_visible(f"#quando-hora-site-{c}")
+    pagina.select_option(f"#quando-site-{c}", "hora")
+    pagina.wait_for_selector(f"#quando-hora-site-{c}", state="visible")
+    sugerido = pagina.input_value(f"#quando-hora-site-{c}")                           # a sugestão do melhor horário do dia
+    assert sugerido[11:] in ("19:30", "11:50", "11:40", "19:10", "12:10", "11:20", "10:30"), sugerido
+    pagina.fill(f"#quando-hora-site-{c}", "2020-01-01T10:00")                         # passado: a tela recusa antes do banco
+    pagina.click("text=Autorizar publicação no site")
+    pagina.wait_for_selector("text=precisa estar no futuro")
+    assert limpo.execute("select count(*) from radar_site_envios").fetchone()[0] == 0
+    pagina.fill(f"#quando-hora-site-{c}", sugerido)
+    pagina.click("text=Autorizar publicação no site")
+    pagina.wait_for_selector("text=Marcada: a notícia entra no site em")
+    assert limpo.execute("select situacao, agendado_para is not null, disparos from radar_site_envios").fetchone() == \
+        ("autorizado", True, 0)
+    assert "marcada para" in pagina.inner_text("#sec-publicar")
+    assert pagina.locator("[data-acao=acionar-robo]").count() == 0                    # antes da hora, só o Cancelar
+    pagina.click("text=Cancelar autorização")
+    pagina.wait_for_selector("text=Autorização cancelada.")
+    assert limpo.execute("select situacao from radar_site_envios").fetchone()[0] == "cancelado"
+
+
+def test_v045_na_tela_hora_marcada_nos_tres_lugares_e_titulo_na_ilustracao():
+    """v0.45.0, conferido no fonte da tela: o "Quando publicar" está nos TRÊS lugares (canal, site e "Publicar em todos") e os
+    três handlers mandam p_publicar_em só quando há hora; a sugestão (MELHOR_HORA) é a MESMA tabela de horários que agendou a
+    Pauta (seg 11:50 … dom 19:30); e a ilustração da IA passa pela tituloSobreIlustracao (o título SEMPRE na imagem)."""
+    tela = (RAIZ / "index.html").read_text(encoding="utf-8")
+    assert "quandoPublicarHtml(`rede-${c.id}-${canal}`)" in tela
+    assert "quandoPublicarHtml(`site-${c.id}`)" in tela
+    assert "quandoPublicarHtml(`todos-${c.id}`)" in tela
+    assert tela.count("...(quando.agendar ? {p_publicar_em:quando.agendar} : {})") == 3
+    assert 'const MELHOR_HORA = ["19:30", "11:50", "11:40", "19:10", "12:10", "11:20", "10:30"];' in tela
+    assert "tituloSobreIlustracao(" in tela and "function tituloSobreIlustracao" in tela
+    gravar = tela[tela.index("async function gravarIlustracao"):]
+    gravar = gravar[:gravar.index("\nasync function") if "\nasync function" in gravar else len(gravar)]
+    assert "tituloSobreIlustracao(" in gravar                                         # a ilustração ganha o título ao ser gravada
 
 
 def test_ia_mostra_que_esta_trabalhando_e_pede_senha_a_partir_da_segunda_consulta(pagina, limpo):
@@ -7063,7 +7145,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.44.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.45.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -7077,7 +7159,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
-    assert "o administrador roda o sql/radar-setup-v0.44.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 em diante: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.45.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 em diante: o setup desta versão
     # v0.28.0: a tela nova com o banco da v0.27.0 (a vista das pessoas da peça sem a coluna termos_dispensados): o mesmo aviso, com o
     # setup da v0.28.0
     pagina.unroute("**/rest/v1/radar_pauta_pecas*")
@@ -7087,7 +7169,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
     aviso = pagina.inner_text("#pauta-sem-banco")
-    assert "precisa do banco da v0.32.0" in aviso and "o administrador roda o sql/radar-setup-v0.44.0.sql" in aviso
+    assert "precisa do banco da v0.32.0" in aviso and "o administrador roda o sql/radar-setup-v0.45.0.sql" in aviso
 
 
 def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
@@ -7519,7 +7601,7 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         assert "A situação dos lembretes precisa do banco da v0.29.0" in pagina.inner_text("#lembretes-situacao")
-        assert "sql/radar-setup-v0.44.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 em diante: o setup desta versão
+        assert "sql/radar-setup-v0.45.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 em diante: o setup desta versão
     finally:
         limpo.execute("update radar_config set valor = %s where chave = 'lembretes'", (json.dumps(original),))
         limpo.execute("truncate radar_lembretes")
@@ -7948,7 +8030,7 @@ def test_painel_possivel_prorrogacao_e_conferido_so_admin(pagina, limpo, request
     assert pagina.locator("#prorrogacoes").count() == 0
     pagina.click("nav.abas >> text=Configurações")
     pagina.wait_for_selector("#prorrogacao-sem-banco >> text=O aviso de prorrogação precisa do banco da v0.30.0")
-    assert "o administrador roda o sql/radar-setup-v0.44.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0 em diante: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.45.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0 em diante: o setup desta versão
     assert pagina.locator("#prorrogacoes-config").count() == 0
 
 
@@ -10056,7 +10138,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.44.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.45.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -11783,8 +11865,8 @@ def test_configuracoes_com_o_banco_antigo(pagina, quadro_tela):
     pagina.route("**/rest/v1/rpc/radar_copias_situacao*", falta)
     abrir_configuracoes(pagina)
     pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
-    assert "O quadro de vencimentos precisa do banco novo: o administrador roda o sql/radar-setup-v0.44.0.sql" in pagina.inner_text("#vencimentos")
-    assert "A cópia de segurança precisa do banco novo: o administrador roda o sql/radar-setup-v0.44.0.sql" in pagina.inner_text("#copia-onedrive")
+    assert "O quadro de vencimentos precisa do banco novo: o administrador roda o sql/radar-setup-v0.45.0.sql" in pagina.inner_text("#vencimentos")
+    assert "A cópia de segurança precisa do banco novo: o administrador roda o sql/radar-setup-v0.45.0.sql" in pagina.inner_text("#copia-onedrive")
     assert pagina.locator("[data-acao=venc-conhecidos]").count() == 0 and pagina.locator("[data-acao=copia-agora]").count() == 0
 # ----------------------------------------------------------------------- v0.33.0: a aba Vídeo (o editor do vídeo corrigido)
 # o mapa do vídeo (a linha original em quadros de 1/30 s): um clipe com a fala de 0 a 10 s e um corte automático de 4 a 5 s (a chave

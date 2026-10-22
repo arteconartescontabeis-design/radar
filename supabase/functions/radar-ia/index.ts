@@ -13,6 +13,9 @@
 //     PIXABAY_API_KEY) e "foto_baixar" traz a foto escolhida para a tela desenhar a capa com o título por cima. A busca mostra as
 //     prévias direto do Pixabay (permitido para resultado de busca); a foto usada é baixada e guardada no Radar (hotlink não é
 //     permitido pelo serviço). A licença do Pixabay libera o uso comercial sem crédito;
+//     v0.45.0: com o segredo PEXELS_API_KEY, a busca sai TAMBÉM no Pexels e os resultados chegam juntos, intercalados (cada foto
+//     diz o seu banco; "foto_baixar" recebe o banco junto do número). Basta um dos dois segredos; com os dois, mais fotos.
+//     A licença do Pexels também libera o uso comercial sem crédito (atribuição é opcional);
 //   * a imagem da IA (ilustrar) deixa de pedir qualidade "high": a IA Central sempre gera em "medium" (e cobra um preço fixo por
 //     imagem), então o pedido e o aviso de "qualidade alta" eram ilusórios.
 //
@@ -130,12 +133,14 @@
 //   RADAR_IA_MODELO_IMAGEM         padrão: gpt-image-2         (ilustrar; 1536×1024 — a IA Central gera em qualidade "medium")
 //   PIXABAY_API_KEY                para "foto_buscar" e "foto_baixar" (foto real do banco de imagens; grátis, pixabay.com/api/docs)
 //   PIXABAY_API_URL                padrão: https://pixabay.com/api/ (só muda em teste)
+//   PEXELS_API_KEY                 v0.45.0: a busca sai também no Pexels, junto (grátis, pexels.com/api); opcional
+//   PEXELS_API_URL                 padrão: https://api.pexels.com/v1 (só muda em teste)
 //   RADAR_IA_LIMITE_MENSAL_TOKENS  padrão: 3000000 (entrada + saída, por mês; trava própria do Radar,
 //                                  além dos limites em dólar da IA Central)
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.42.0";
+const VERSAO = "0.45.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -157,6 +162,8 @@ const MODELO_RAPIDO = env("RADAR_IA_MODELO_RAPIDO", "claude-haiku-5-5");
 const MODELO_IMAGEM = env("RADAR_IA_MODELO_IMAGEM", "gpt-image-2");
 const PIXABAY_URL = env("PIXABAY_API_URL", "https://pixabay.com/api/").replace(/\/+$/, "");
 const PIXABAY_KEY = env("PIXABAY_API_KEY");
+const PEXELS_URL = env("PEXELS_API_URL", "https://api.pexels.com/v1").replace(/\/+$/, "");   // v0.45.0
+const PEXELS_KEY = env("PEXELS_API_KEY");
 const LIMITE_MENSAL = Number(env("RADAR_IA_LIMITE_MENSAL_TOKENS", "3000000"));
 
 const MAX_TEXTO_POR_CAPTURA = 40000;   // caracteres enviados à IA por texto oficial
@@ -2468,17 +2475,17 @@ async function ilustrar(ctx: Awaited<ReturnType<typeof carregar>>, titulo: strin
   return { imagem: `data:image/${tipo};base64,${b64}`, avisos };
 }
 
-// ------------------------------------------------------------------ foto real do banco de imagens (Pixabay, v0.39.0)
-// Sem IA e sem custo (não conta no limite do mês): a busca mostra as prévias direto do Pixabay (permitido para exibir resultado de
+// ------------------------------------------------------------------ foto real dos bancos de imagens (Pixabay v0.39.0; + Pexels v0.45.0)
+// Sem IA e sem custo (não conta no limite do mês): a busca mostra as prévias direto dos bancos (permitido para exibir resultado de
 // busca) e a foto escolhida é baixada e devolvida à tela, que desenha a capa com o título por cima e a guarda em radar_imagens
-// (hotlink permanente não é permitido pelo serviço). A licença do Pixabay (Content License) libera o uso comercial sem crédito;
-// a busca segura (safesearch) fica sempre ligada.
+// (hotlink permanente não é permitido). As licenças dos dois (Pixabay Content License e Pexels License) liberam o uso comercial
+// sem crédito; a busca segura fica sempre ligada no Pixabay (o Pexels já é curado). Basta um dos segredos; com os dois, as buscas
+// saem juntas e os resultados chegam intercalados, cada foto dizendo o seu banco ("pixabay" ou "pexels").
 const MAX_FOTO_BYTES = 6_000_000;
+const SEM_CHAVE_FOTO = "A busca de fotos não está configurada: o administrador cria nesta função o segredo PIXABAY_API_KEY " +
+  "(grátis: pixabay.com → API) ou PEXELS_API_KEY (grátis: pexels.com/api) — pode ter os dois, e as buscas saem juntas.";
 async function pixabay(params: Record<string, string>): Promise<any> {
-  if (!PIXABAY_KEY) {
-    throw new Erro(503, "A busca de fotos não está configurada: o administrador cria o segredo PIXABAY_API_KEY nesta função " +
-      "(a chave é grátis: pixabay.com → API).");
-  }
+  if (!PIXABAY_KEY) throw new Erro(503, SEM_CHAVE_FOTO);
   const u = new URL(PIXABAY_URL);
   u.search = new URLSearchParams({ key: PIXABAY_KEY, ...params }).toString();
   let r: Response;
@@ -2488,24 +2495,68 @@ async function pixabay(params: Record<string, string>): Promise<any> {
   if (!r.ok) { const t = (await r.text()).slice(0, 200); throw new Erro(502, "O banco de imagens respondeu com erro: " + (t || String(r.status))); }
   try { return await r.json(); } catch { throw new Erro(502, "O banco de imagens devolveu uma resposta fora do esperado."); }
 }
+// v0.45.0: o Pexels (API v1; a chave vai no cabeçalho Authorization)
+async function pexels(caminho: string, params: Record<string, string>): Promise<any> {
+  if (!PEXELS_KEY) throw new Erro(503, SEM_CHAVE_FOTO);
+  const u = new URL(PEXELS_URL + caminho);
+  u.search = new URLSearchParams(params).toString();
+  let r: Response;
+  try { r = await fetch(u, { headers: { Authorization: PEXELS_KEY }, signal: AbortSignal.timeout(20_000) }); }
+  catch { throw new Erro(504, "O banco de imagens não respondeu a tempo. Tente de novo."); }
+  if (r.status === 429) { await r.body?.cancel(); throw new Erro(429, "O banco de imagens recusou por excesso de pedidos no momento. Tente de novo em um minuto."); }
+  if (r.status === 404) { await r.body?.cancel(); throw new Erro(404, "Esta foto não está mais disponível no banco de imagens: escolha outra."); }
+  if (!r.ok) { const t = (await r.text()).slice(0, 200); throw new Erro(502, "O banco de imagens respondeu com erro: " + (t || String(r.status))); }
+  try { return await r.json(); } catch { throw new Erro(502, "O banco de imagens devolveu uma resposta fora do esperado."); }
+}
+type Foto = { id: number; banco: string; previa: string; largura: number; altura: number; tags: string; autor: string; pagina: string };
 async function fotoBuscar(consulta: unknown) {
   const q = normalizarEspacos(String(consulta ?? "")).slice(0, 100);
   if (q.length < 2) throw new Erro(400, "Diga o que procurar (2 a 100 caracteres).");
-  const dados = await pixabay({ q, lang: "pt", image_type: "photo", orientation: "horizontal", safesearch: "true",
-                                per_page: "12", min_width: "1000" });
-  const fotos = (Array.isArray(dados?.hits) ? dados.hits : []).map((f: any) => ({
-    id: Number(f?.id) || 0, previa: String(f?.webformatURL ?? ""), largura: Number(f?.imageWidth) || 0,
+  if (!PIXABAY_KEY && !PEXELS_KEY) throw new Erro(503, SEM_CHAVE_FOTO);
+  // com os dois segredos, as buscas saem juntas; a falha de UM banco não derruba a do outro (o que respondeu aparece)
+  const [px, pe] = await Promise.allSettled([
+    PIXABAY_KEY ? pixabay({ q, lang: "pt", image_type: "photo", orientation: "horizontal", safesearch: "true",
+                            per_page: "12", min_width: "1000" }) : Promise.resolve(null),
+    PEXELS_KEY ? pexels("/search", { query: q, locale: "pt-BR", orientation: "landscape", per_page: "12" }) : Promise.resolve(null),
+  ]);
+  const doPixabay: Foto[] = (px.status === "fulfilled" && Array.isArray(px.value?.hits) ? px.value.hits : []).map((f: any) => ({
+    id: Number(f?.id) || 0, banco: "pixabay", previa: String(f?.webformatURL ?? ""), largura: Number(f?.imageWidth) || 0,
     altura: Number(f?.imageHeight) || 0, tags: normalizarEspacos(String(f?.tags ?? "")).slice(0, 200),
     autor: normalizarEspacos(String(f?.user ?? "")).slice(0, 80), pagina: String(f?.pageURL ?? "").slice(0, 300),
-  })).filter((f: { id: number; previa: string }) => f.id > 0 && /^https?:\/\//.test(f.previa));
+  })).filter((f: Foto) => f.id > 0 && /^https?:\/\//.test(f.previa));
+  const doPexels: Foto[] = (pe.status === "fulfilled" && Array.isArray(pe.value?.photos) ? pe.value.photos : []).map((f: any) => ({
+    id: Number(f?.id) || 0, banco: "pexels", previa: String(f?.src?.medium ?? f?.src?.large ?? ""), largura: Number(f?.width) || 0,
+    altura: Number(f?.height) || 0, tags: normalizarEspacos(String(f?.alt ?? "")).slice(0, 200),
+    autor: normalizarEspacos(String(f?.photographer ?? "")).slice(0, 80), pagina: String(f?.url ?? "").slice(0, 300),
+  })).filter((f: Foto) => f.id > 0 && /^https?:\/\//.test(f.previa));
+  // os dois bancos pedidos e nenhum respondeu: o erro de um deles explica (o mais grave primeiro)
+  if (!doPixabay.length && !doPexels.length && px.status === "rejected" && (pe.status === "rejected" || !PEXELS_KEY)) throw px.reason;
+  if (!doPixabay.length && !doPexels.length && pe.status === "rejected" && !PIXABAY_KEY) throw pe.reason;
+  const fotos: Foto[] = [];
+  for (let i = 0; i < Math.max(doPixabay.length, doPexels.length) && fotos.length < 18; i++) {
+    if (i < doPixabay.length) fotos.push(doPixabay[i]);
+    if (i < doPexels.length && fotos.length < 18) fotos.push(doPexels[i]);
+  }
   return { fotos };
 }
-async function fotoBaixar(id: unknown) {
+async function fotoBaixar(id: unknown, banco: unknown = "pixabay") {
   const n = Number(id);
   if (!Number.isSafeInteger(n) || n <= 0) throw new Erro(400, "Foto inválida.");
-  const dados = await pixabay({ id: String(n) });
-  const f = Array.isArray(dados?.hits) ? dados.hits[0] : null;
-  const endereco = String(f?.largeImageURL ?? f?.webformatURL ?? "");
+  const qual = String(banco ?? "pixabay");
+  if (!["pixabay", "pexels"].includes(qual)) throw new Erro(400, "Banco de imagens desconhecido.");
+  let endereco = "", autor = "", pagina = "";
+  if (qual === "pexels") {                                    // v0.45.0
+    const f = await pexels(`/photos/${n}`, {});
+    endereco = String(f?.src?.large2x ?? f?.src?.large ?? f?.src?.original ?? "");
+    autor = normalizarEspacos(String(f?.photographer ?? "")).slice(0, 80);
+    pagina = String(f?.url ?? "").slice(0, 300);
+  } else {
+    const dados = await pixabay({ id: String(n) });
+    const f = Array.isArray(dados?.hits) ? dados.hits[0] : null;
+    endereco = String(f?.largeImageURL ?? f?.webformatURL ?? "");
+    autor = normalizarEspacos(String(f?.user ?? "")).slice(0, 80);
+    pagina = String(f?.pageURL ?? "").slice(0, 300);
+  }
   if (!/^https?:\/\//.test(endereco)) throw new Erro(404, "Esta foto não está mais disponível no banco de imagens: escolha outra.");
   let r: Response;
   try { r = await fetch(endereco, { signal: AbortSignal.timeout(30_000) }); }
@@ -2516,8 +2567,7 @@ async function fotoBaixar(id: unknown) {
   const tipo = /\.png(\?|$)/i.test(endereco) ? "png" : "jpeg";
   let binario = "";
   for (let i = 0; i < bytes.length; i += 32768) binario += String.fromCharCode(...bytes.subarray(i, i + 32768));
-  return { imagem: `data:image/${tipo};base64,${btoa(binario)}`,
-           credito: { autor: normalizarEspacos(String(f?.user ?? "")).slice(0, 80), pagina: String(f?.pageURL ?? "").slice(0, 300) } };
+  return { imagem: `data:image/${tipo};base64,${btoa(binario)}`, credito: { autor, pagina } };
 }
 
 // ------------------------------------------------------------------ diagnóstico
@@ -2544,10 +2594,10 @@ async function diagnostico(quem: string) {
   // v0.39.0: o banco de imagens (foto real da capa): confere o segredo e faz UMA busca de teste (grátis)
   try {
     const { fotos } = await fotoBuscar("contabilidade");
-    itens.push({ item: "Banco de imagens (segredo PIXABAY_API_KEY)", ok: true,
+    itens.push({ item: "Banco de imagens (segredos PIXABAY_API_KEY e/ou PEXELS_API_KEY)", ok: true,
       detalhe: `configurado: a busca de teste encontrou ${fotos.length} foto(s)` });
   } catch (e) {
-    itens.push({ item: "Banco de imagens (segredo PIXABAY_API_KEY)", ok: false, detalhe: e instanceof Error ? e.message : "erro" });
+    itens.push({ item: "Banco de imagens (segredos PIXABAY_API_KEY e/ou PEXELS_API_KEY)", ok: false, detalhe: e instanceof Error ? e.message : "erro" });
   }
   return { itens, tudo_certo: itens.every((i) => i.ok), modelo_imagem: MODELO_IMAGEM, limite_mensal: LIMITE_MENSAL,
            central: GATEWAY_URL.replace(/^https:\/\/([^/]+).*$/, "$1") };
@@ -2596,7 +2646,7 @@ async function tratar(req: Request): Promise<Response> {
     if (acao === "pagina") return responder(200, { ...(await pagina(pedido.url)), versao: VERSAO });   // não usa IA: não conta no limite
     // v0.39.0: a foto real do banco de imagens também não usa IA (sem custo e sem limite)
     if (acao === "foto_buscar") return responder(200, { ...(await fotoBuscar(pedido.consulta)), versao: VERSAO });
-    if (acao === "foto_baixar") return responder(200, { ...(await fotoBaixar(pedido.foto_id)), versao: VERSAO });
+    if (acao === "foto_baixar") return responder(200, { ...(await fotoBaixar(pedido.foto_id, pedido.banco)), versao: VERSAO });   // v0.45.0: + o banco
 
     const [mes] = await banco(token, "GET", "radar_v_ia_mes?select=tokens");
     if (LIMITE_MENSAL > 0 && Number(mes?.tokens ?? 0) >= LIMITE_MENSAL) {

@@ -20,6 +20,9 @@
 -- radar-config.js; o teste do repositório confere que são iguais e este arquivo recusa qualquer chave que não seja a anon).
 -- v0.22.0 (rodada 2): ou a chave pública nova (sb_publishable_…, a de radar-config.js depois da troca), que vai só no apikey; com
 -- ela, a radar-redes fica com o "Verify JWT" DESLIGADO (LEIAME, "Chaves novas do Supabase").
+-- v0.45.0: e, de 5 em 5 minutos (radar-redes-agenda-site), a publicação no SITE com hora marcada. Quem decide é o banco
+-- (radar_site_agendada_devida, do radar-setup-v0.45.0.sql); só quando uma hora vence, pede à radar-redes ("acionar_site") que
+-- acione o robô do site no GitHub, como o botão da tela. Nada vencido = nenhum pedido.
 -- Pausa sem SQL: Configurações → Pauta → "agenda_ligada": false. Para desfazer: sql/radar-redes-agenda-reversao.sql.
 -- Troque o endereço abaixo se o projeto do Supabase for outro.
 -- =====================================================================
@@ -40,9 +43,11 @@ end $$;
 
 do $$
 begin
-  -- v0.29.0: e os lembretes (radar_lembretes_acionar): o setup desta versão vem antes
-  if to_regprocedure('public.radar_agenda_vencidas(integer)') is null or to_regprocedure('public.radar_lembretes_acionar()') is null then
-    raise exception 'Rode antes o radar-setup-v0.29.0.sql (Supabase → SQL Editor).';
+  -- v0.29.0: e os lembretes (radar_lembretes_acionar); v0.45.0: e a hora marcada do site (radar_site_agendada_devida):
+  -- o setup desta versão vem antes
+  if to_regprocedure('public.radar_agenda_vencidas(integer)') is null or to_regprocedure('public.radar_lembretes_acionar()') is null
+     or to_regprocedure('public.radar_site_agendada_devida()') is null then
+    raise exception 'Rode antes o radar-setup-v0.45.0.sql (Supabase → SQL Editor).';
   end if;
   if not exists (select 1 from vault.secrets where name = 'radar_redes_agenda') then
     perform vault.create_secret(replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), 'radar_redes_agenda',
@@ -94,6 +99,15 @@ begin
       headers := jsonb_build_object('Content-Type', 'application/json', %L, %L,
                    'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda')),
       timeout_milliseconds := 60000) where public.radar_lembretes_acionar()$c$, v_url, v_cab_nome, v_cab_valor));
+  -- v0.45.0: a publicação no SITE com hora marcada. O banco confere (radar_site_agendada_devida: envio autorizado com a hora
+  -- vencida, avisado até 3 vezes, de 10 em 10 minutos); só então pede à radar-redes que acione o robô do site no GitHub
+  -- (acionar_site, o mesmo acionamento do botão da tela). Nada vencido = nenhum pedido; sem o segredo RADAR_GITHUB_TOKEN, a
+  -- rodada automática do robô (minutos 7, 22, 37 e 52) é a reserva
+  perform cron.schedule('radar-redes-agenda-site', '*/5 * * * *', format($c$select net.http_post(url := %L,
+      body := '{"acao": "acionar_site"}'::jsonb,
+      headers := jsonb_build_object('Content-Type', 'application/json', %L, %L,
+                   'x-radar-agenda', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_redes_agenda')),
+      timeout_milliseconds := 60000) where public.radar_site_agendada_devida()$c$, v_url, v_cab_nome, v_cab_valor));
   -- cron.job_run_details não é limpo sozinho (a página do Supabase não fala disso): guarda 7 dias
   perform cron.schedule('radar-redes-agenda-limpeza', '41 6 * * *',
     $c$delete from cron.job_run_details where end_time < now() - interval '7 days'
