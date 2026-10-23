@@ -152,6 +152,9 @@ class PonteRespostas(BaseHTTPRequestHandler):
             if ESTADO["erro_privada"]:
                 return self._erro(*ESTADO["erro_privada"])
             return self._responder(200, {"recipient_id": "999", "message_id": "m-1"})
+        if caminho == f"{PAGINA}/subscribed_apps":
+            # v0.35.2: o diagnostico inscreve o app na própria página (campo "feed")
+            return self._responder(200, {"success": True})
         self._erro(100, "Unsupported post request")
 
     def do_GET(self):
@@ -350,7 +353,7 @@ def test_acoes_exigem_a_chave_ou_o_administrador(resp, funcao):
     assert acao({"acao": "agenda_teste"}).status_code == 401
     assert acao({"acao": "agenda_teste"}, chave="x" * 64).status_code == 401
     r = acao({"acao": "agenda_teste"}, chave=funcao)
-    assert (r.status_code, r.json()) == (200, {"ok": True, "versao": "0.35.1"})
+    assert (r.status_code, r.json()) == (200, {"ok": True, "versao": "0.35.2"})
     assert acao({"acao": "diagnostico"}, chave=funcao).status_code == 403            # o Testar conexão é só do administrador
     assert acao({"acao": "diagnostico"}, uid=EDITOR).status_code == 403
     assert acao({"acao": "qualquer"}, chave=funcao).status_code == 400
@@ -364,7 +367,9 @@ def test_diagnostico_grava_as_contas(resp):
     assert dados["ok"] is True and {c["rede"] for c in dados["contas"]} == {"facebook", "instagram"}
     assert resp.execute("select conta_id from radar_respostas_contas where rede = 'facebook'").fetchone()[0] == PAGINA
     assert resp.execute("select nome from radar_respostas_contas where rede = 'instagram'").fetchone()[0] == "artecon.teste"
-    assert [p["caminho"] for p in ESTADO["meta"]] == ["me"]
+    assert dados["pagina_inscrita"] is True                                          # v0.35.2: o app inscrito na própria página
+    assert [p["caminho"] for p in ESTADO["meta"]] == ["me", f"{PAGINA}/subscribed_apps"]
+    assert ESTADO["meta"][1]["corpo"] == {"subscribed_fields": "feed"}
     ESTADO["erro_me"] = (190, "Error validating access token: Session has expired")
     r = acao({"acao": "diagnostico"}, uid=ADMIN)
     assert r.status_code == 503 and "Meta 190" in r.json()["message"]

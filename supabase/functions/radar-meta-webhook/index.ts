@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-meta-webhook" (v0.35.1) — MÓDULO RESPOSTAS AUTOMÁTICAS
+// RADAR ARTECON — Edge Function "radar-meta-webhook" (v0.35.2) — MÓDULO RESPOSTAS AUTOMÁTICAS
 //
 // A Meta chama esta função a cada comentário novo nas publicações da Artecon (Instagram e página do Facebook). A função confere a
 // assinatura da chamada, pergunta ao banco o que fazer (radar_respostas_receber: o banco decide — gatilho ativo, palavra-chave,
@@ -18,8 +18,9 @@
 // Ações (POST com JSON {"acao": …}, sem o cabeçalho da Meta):
 //   pendentes     (a chave ou o administrador) → envia os pendentes que já podem sair (o banco lista, dentro do limite por hora)
 //   diagnostico   (só o administrador)         → confere os segredos e lê a própria página pela Graph API (GET /me, com o
-//                                                Instagram ligado); grava as contas (radar_respostas_conta_salvar) — é o
-//                                                "Testar conexão" da aba
+//                                                Instagram ligado); grava as contas (radar_respostas_conta_salvar) e inscreve o
+//                                                app na própria página (POST /{página}/subscribed_apps, campo "feed" — sem a
+//                                                inscrição a Meta não entrega os avisos de comentário) — é o "Testar conexão"
 //   agenda_teste  (a chave ou o administrador) → {ok, versao}, sem tocar na Meta (o teste do fim do sql/radar-respostas-agenda.sql)
 //
 // Como responde (Graph API, api oficial; nunca curte, segue nem publica post):
@@ -46,7 +47,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.35.1";
+const VERSAO = "0.35.2";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -303,8 +304,16 @@ async function diagnostico(): Promise<Record<string, unknown>> {
                 { p_rede: "instagram", p_conta: String(iba.id), p_nome: String(iba?.username ?? "") });
     contas.push({ rede: "instagram", conta_id: String(iba.id), nome: String(iba?.username ?? "") });
   }
-  return { ok: true, versao: VERSAO, contas,
-           avisos: contas.length < 2 ? ["A página não tem um Instagram profissional ligado (ou o token não o enxerga)."] : [] };
+  const avisos: string[] = contas.length < 2 ? ["A página não tem um Instagram profissional ligado (ou o token não o enxerga)."] : [];
+  // v0.35.2: inscreve o app na própria página (campo "feed") — sem a inscrição a Meta não entrega os avisos de comentário.
+  // Pode rodar de novo à vontade: inscrever quem já está inscrito não muda nada.
+  let paginaInscrita = false;
+  if (/^[0-9]{1,30}$/.test(String(r.dados?.id ?? ""))) {
+    const s = await meta(`${r.dados.id}/subscribed_apps`, { subscribed_fields: "feed" });
+    paginaInscrita = s.ok && s.dados?.success === true;
+    if (!paginaInscrita) avisos.push(`O app não ficou inscrito na página (os avisos de comentário não chegariam): ${s.erro || "resposta inesperada da Meta"}`);
+  }
+  return { ok: true, versao: VERSAO, contas, pagina_inscrita: paginaInscrita, avisos };
 }
 
 // ------------------------------------------------------------------ o tratador
