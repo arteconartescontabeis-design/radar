@@ -1030,7 +1030,7 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
 | `sql/radar-copia-agenda.sql`, `sql/radar-copia-agenda-reversao.sql` | A chave da cópia no Vault e a agenda da cópia mensal no OneDrive (v0.32.0: dia 1 às 04h10, de novo às 05h10 e no dia 2, só se o mês ainda não tem cópia) e como desfazer. Roda no Supabase depois do setup; pode rodar de novo. |
 | `supabase/functions/radar-concorrentes/index.ts` | Lê, só para análise, os dados públicos de perfis comerciais no Instagram (v0.19.1); desde a v0.34.0, também alimenta a aba Setor (as ações `setor_*`; continua só de leitura). |
-| `supabase/functions/radar-meta-webhook/index.ts` | A função do Módulo Respostas Automáticas (v0.35.0): recebe os comentários da Meta (webhook, com assinatura conferida), pergunta ao banco e responde. "Verify JWT" desligado; 3 segredos próprios. |
+| `supabase/functions/radar-meta-webhook/index.ts` | A função do Módulo Respostas Automáticas (v0.35.1): recebe os comentários da Meta (webhook, com assinatura conferida), pergunta ao banco e responde. "Verify JWT" desligado; 3 segredos próprios (o `META_PAGE_TOKEN` aceita o token da página ou o do usuário de sistema: a função troca sozinha). |
 | `sql/radar-setor-agenda.sql`, `sql/radar-setor-agenda-reversao.sql` | A leitura automática da aba Setor (v0.34.0: de hora em hora, só quando há conta devida — na prática, segunda-feira a partir das 04:00) e como desfazer. Usa a chave do `sql/radar-concorrentes.sql`. |
 | `sql/radar-respostas-agenda.sql`, `sql/radar-respostas-agenda-reversao.sql` | A fila das respostas automáticas (v0.35.0: a cada 5 minutos, só quando há pendente que pode sair) e como desfazer. Cria a chave `radar_respostas` no Vault na primeira rodada. |
 | `sql/radar-concorrentes.sql`, `sql/radar-concorrentes-reversao.sql` | Opcional (v0.19.1): chave da função `radar-concorrentes` no Vault (roda uma vez) e como desfazer. |
@@ -2673,6 +2673,12 @@ Na aba **Respostas**: a equipe toda vê a situação, os gatilhos e o registro (
 gatilhos, liga e desliga, usa o **"Testar conexão"** (grava a página e o Instagram ligados; só id e nome — token nenhum), o
 **"Tentar de novo"** de um erro e o **"Pausar todas as respostas"**. Privacidade: respostas de conteúdo geral, sem dado de
 cliente; nenhum token em tabela, no HTML ou no registro — as chaves moram nos segredos da função.
+
+Desde a **v0.35.1 da função**, o segredo `META_PAGE_TOKEN` aceita **tanto o token da página quanto o token do usuário de
+sistema** (como a `radar-redes` faz desde a v0.14.1): com o do usuário, a própria função busca o token da página
+(GET `/me/accounts`, token só no cabeçalho) e o guarda só na memória. Espaços e quebras de linha colados por engano são
+ignorados. O "Testar conexão" avisa quando o usuário de sistema está **sem a página atribuída** (Atribuir ativos, acesso
+de GERENCIAR).
 
 #### Pedir a aprovação da Meta (acesso avançado dos comentários e mensagens)
 

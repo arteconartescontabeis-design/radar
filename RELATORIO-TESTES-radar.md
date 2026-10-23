@@ -1,5 +1,12 @@
 # Radar Artecon — Relatório de testes (v0.45.0)
 
+Correção **v0.35.1 da função `radar-meta-webhook`** (23/10/2026): o `META_PAGE_TOKEN` passa a aceitar também o token do
+**usuário de sistema** — a função troca sozinha pelo da página (GET `/me/accounts`, token só no cabeçalho), como a
+`radar-redes` faz desde a v0.14.1. **1** teste novo em `test_radar_funcao_respostas.py`; a suíte inteira passa de 1.542 para
+**1.543** testes. Neste ambiente rodaram os arquivos afetados — `test_radar_funcao_respostas.py` (12),
+`test_radar_respostas_agenda.py` (5), `test_radar_repositorio.py` + `test_radar_respostas_banco.py` (32 e 1 pulado) — todos
+verdes; a suíte INTEIRA roda no CI antes de juntar.
+
 Data: 22/10/2026. **A suíte inteira da v0.45.0 roda no GitHub (CI) antes de juntar.** Neste ambiente a suíte INTEIRA rodou
 (números na seção "v0.45.0", abaixo). A v0.45.0 tem **18** testes novos (6 do robô em `test_radar_ciga.py`, novo; 4 do banco em
 `test_radar_banco.py`; 1 da agenda em `test_radar_agenda.py`; 1 da função em `test_radar_funcao_ia.py`; 2 da função em
@@ -352,6 +359,10 @@ reversão tira as duas funções novas junto com as outras.
 
 Todos os testes usam **dados fictícios** (comentários de "Ana Teste" e "Bruno Exemplo", mídias "123"/"101_202", links
 exemplo.test, uma Meta DE MENTIRA servida localmente): nenhum comentário real é lido e nenhum token de verdade entra nos testes.
+
+v0.35.1 (23/10/2026): + 1 teste em `test_radar_funcao_respostas.py` — com o token do USUÁRIO DE SISTEMA no `META_PAGE_TOKEN`,
+a função troca sozinha pelo token da página (a Meta de mentira ganhou o GET `/me/accounts`), o Testar conexão passa, o token
+vai só no cabeçalho e o registro (log) continua sem token nenhum.
 
 - **Banco** (`testes/test_radar_respostas_banco.py`): as 3 tabelas com RLS e ninguém gravando direto; quem executa cada função
   (tela × webhook); cada recusa com código (RADAR420–429); a decisão do comentário (responder, sem palavra-chave, própria conta,
