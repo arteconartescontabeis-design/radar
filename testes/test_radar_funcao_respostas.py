@@ -7,8 +7,9 @@ resposta pública (POST /{comentário}/replies no Instagram; /{comentário}/comm
 (POST /{página}/messages com o comment_id e o link na linha de baixo), com o token SÓ no cabeçalho Authorization; o sem palavra-chave
 é descartado sem chamada nenhuma à Meta; a privada que falha não derruba a pública (registro "enviado" com privada_ok = false e o
 erro anotado); a pública que falha vira erro; sem a página gravada, a privada fica anotada para rodar o Testar conexão; as ações
-(agenda_teste, pendentes, diagnostico) exigem a chave do Vault ou o administrador; o diagnostico grava as contas; e o registro (log)
-da função nunca tem token, nome, texto de comentário ou palavra-chave.
+(agenda_teste, pendentes, diagnostico) exigem a chave do Vault ou o administrador; o diagnostico grava as contas; com o token do
+USUÁRIO DE SISTEMA no META_PAGE_TOKEN a função troca sozinha pelo da página (v0.35.1); e o registro (log) da função nunca tem
+token, nome, texto de comentário ou palavra-chave.
 
 Dados de mentira: comentários de "Ana Teste" e "Bruno Exemplo" em mídias "123"/"101_202"; nada real.
 """
@@ -52,6 +53,7 @@ FUNCAO = f"http://127.0.0.1:{PORTA_FUNCAO}/"
 APP_SECRET = "segredo-do-app-de-teste"
 VERIFY = "token-de-verificacao-teste"
 TOKEN_PAGINA = "EAApaginaRespostas345"
+TOKEN_USUARIO = "EAAusuarioDeSistema678"                    # v0.35.1: o token do usuário de sistema; a função troca sozinha
 PAGINA, IG = "101", "17841400000000001"
 ESTADO: dict = {"meta": [], "erro_publica": None, "erro_privada": None, "erro_me": None}
 
@@ -126,6 +128,13 @@ class PonteRespostas(BaseHTTPRequestHandler):
         pedido = {"metodo": self.command, "caminho": caminho, "corpo": corpo, "auth": self.headers.get("Authorization", ""),
                   "query": urlparse(self.path).query}
         ESTADO["meta"].append(pedido)
+        if self.command == "GET" and caminho == "me/accounts":
+            # v0.35.1: a troca do token do usuário de sistema pelo da página — o token vai no cabeçalho, como nas outras chamadas
+            if pedido["auth"] == "Bearer " + TOKEN_USUARIO:
+                return self._responder(200, {"data": [{"access_token": TOKEN_PAGINA, "id": PAGINA}]})
+            if pedido["auth"] == "Bearer " + TOKEN_PAGINA:
+                return self._erro(100, "Tried accessing nonexisting field (accounts)")   # o token de página não tem /accounts
+            return self._erro(190, "Invalid OAuth access token")
         if pedido["auth"] != "Bearer " + TOKEN_PAGINA:
             return self._erro(190, "Invalid OAuth access token")
         if self.command == "GET" and caminho == "me":
@@ -143,6 +152,9 @@ class PonteRespostas(BaseHTTPRequestHandler):
             if ESTADO["erro_privada"]:
                 return self._erro(*ESTADO["erro_privada"])
             return self._responder(200, {"recipient_id": "999", "message_id": "m-1"})
+        if caminho == f"{PAGINA}/subscribed_apps":
+            # v0.35.2: o diagnostico inscreve o app na própria página (campo "feed")
+            return self._responder(200, {"success": True})
         self._erro(100, "Unsupported post request")
 
     def do_GET(self):
@@ -341,7 +353,7 @@ def test_acoes_exigem_a_chave_ou_o_administrador(resp, funcao):
     assert acao({"acao": "agenda_teste"}).status_code == 401
     assert acao({"acao": "agenda_teste"}, chave="x" * 64).status_code == 401
     r = acao({"acao": "agenda_teste"}, chave=funcao)
-    assert (r.status_code, r.json()) == (200, {"ok": True, "versao": "0.35.0"})
+    assert (r.status_code, r.json()) == (200, {"ok": True, "versao": "0.35.2"})
     assert acao({"acao": "diagnostico"}, chave=funcao).status_code == 403            # o Testar conexão é só do administrador
     assert acao({"acao": "diagnostico"}, uid=EDITOR).status_code == 403
     assert acao({"acao": "qualquer"}, chave=funcao).status_code == 400
@@ -355,10 +367,36 @@ def test_diagnostico_grava_as_contas(resp):
     assert dados["ok"] is True and {c["rede"] for c in dados["contas"]} == {"facebook", "instagram"}
     assert resp.execute("select conta_id from radar_respostas_contas where rede = 'facebook'").fetchone()[0] == PAGINA
     assert resp.execute("select nome from radar_respostas_contas where rede = 'instagram'").fetchone()[0] == "artecon.teste"
-    assert [p["caminho"] for p in ESTADO["meta"]] == ["me"]
+    assert dados["pagina_inscrita"] is True                                          # v0.35.2: o app inscrito na própria página
+    assert [p["caminho"] for p in ESTADO["meta"]] == ["me", f"{PAGINA}/subscribed_apps"]
+    assert ESTADO["meta"][1]["corpo"] == {"subscribed_fields": "feed"}
     ESTADO["erro_me"] = (190, "Error validating access token: Session has expired")
     r = acao({"acao": "diagnostico"}, uid=ADMIN)
     assert r.status_code == 503 and "Meta 190" in r.json()["message"]
+
+
+def test_token_do_usuario_de_sistema_troca_sozinho(resp, tmp_path):
+    """v0.35.1: com o token do USUÁRIO DE SISTEMA em META_PAGE_TOKEN, a função troca sozinha pelo da página (GET /me/accounts,
+    token só no cabeçalho) e o Testar conexão passa; o registro (log) continua sem token nenhum."""
+    resp.execute("truncate radar_respostas_contas restart identity cascade")
+    porta = 3956
+    with open(tmp_path / "usuario.log", "wb") as registro:
+        proc = _subir(porta, {"META_APP_SECRET": APP_SECRET, "META_VERIFY_TOKEN": VERIFY, "META_PAGE_TOKEN": TOKEN_USUARIO,
+                              "SUPABASE_SERVICE_ROLE_KEY": SECRETA, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA})},
+                      registro)
+        try:
+            r = acao({"acao": "diagnostico"}, uid=ADMIN, porta=porta)
+        finally:
+            proc.terminate()
+            proc.wait(timeout=10)
+    assert r.status_code == 200 and r.json()["ok"] is True
+    assert {c["rede"] for c in r.json()["contas"]} == {"facebook", "instagram"}
+    assert resp.execute("select conta_id from radar_respostas_contas where rede = 'facebook'").fetchone()[0] == PAGINA
+    trocas = [p for p in ESTADO["meta"] if p["caminho"] == "me/accounts"]
+    assert trocas and all(p["auth"] == "Bearer " + TOKEN_USUARIO and TOKEN_USUARIO not in p["query"] for p in trocas)
+    assert [p for p in ESTADO["meta"] if p["caminho"] == "me"][-1]["auth"] == "Bearer " + TOKEN_PAGINA   # o /me já vai trocado
+    texto = (tmp_path / "usuario.log").read_text(encoding="utf-8", errors="replace")
+    assert TOKEN_USUARIO not in texto and TOKEN_PAGINA not in texto
 
 
 def test_pendentes_envia_a_fila_dentro_da_folga(resp, funcao):

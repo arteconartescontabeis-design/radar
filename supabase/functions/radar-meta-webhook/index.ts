@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-meta-webhook" (v0.35.0) — MÓDULO RESPOSTAS AUTOMÁTICAS
+// RADAR ARTECON — Edge Function "radar-meta-webhook" (v0.35.2) — MÓDULO RESPOSTAS AUTOMÁTICAS
 //
 // A Meta chama esta função a cada comentário novo nas publicações da Artecon (Instagram e página do Facebook). A função confere a
 // assinatura da chamada, pergunta ao banco o que fazer (radar_respostas_receber: o banco decide — gatilho ativo, palavra-chave,
@@ -18,8 +18,9 @@
 // Ações (POST com JSON {"acao": …}, sem o cabeçalho da Meta):
 //   pendentes     (a chave ou o administrador) → envia os pendentes que já podem sair (o banco lista, dentro do limite por hora)
 //   diagnostico   (só o administrador)         → confere os segredos e lê a própria página pela Graph API (GET /me, com o
-//                                                Instagram ligado); grava as contas (radar_respostas_conta_salvar) — é o
-//                                                "Testar conexão" da aba
+//                                                Instagram ligado); grava as contas (radar_respostas_conta_salvar) e inscreve o
+//                                                app na própria página (POST /{página}/subscribed_apps, campo "feed" — sem a
+//                                                inscrição a Meta não entrega os avisos de comentário) — é o "Testar conexão"
 //   agenda_teste  (a chave ou o administrador) → {ok, versao}, sem tocar na Meta (o teste do fim do sql/radar-respostas-agenda.sql)
 //
 // Como responde (Graph API, api oficial; nunca curte, segue nem publica post):
@@ -38,14 +39,15 @@
 // Segredos (Supabase → Edge Functions → Secrets):
 //   META_APP_SECRET    o segredo do aplicativo da Meta (valida a assinatura X-Hub-Signature-256)
 //   META_VERIFY_TOKEN  o token de verificação do webhook (você inventa; o mesmo vai no painel da Meta)
-//   META_PAGE_TOKEN    o token de longa duração da página do Facebook (dá acesso também ao Instagram ligado), com as permissões
-//                      de comentários e mensagens aprovadas pela Meta
+//   META_PAGE_TOKEN    o token de longa duração da PÁGINA do Facebook — ou o token do USUÁRIO DE SISTEMA do Gerenciador de
+//                      Negócios: a função percebe e troca sozinha pelo da página (GET /me/accounts), guardando só na memória.
+//                      Espaços e quebras de linha de colagem são ignorados. Permissões de comentários e mensagens aprovadas pela Meta.
 //   META_GRAPH_URL     opcional; padrão https://graph.facebook.com/v23.0
 // SUPABASE_URL, a chave pública (SUPABASE_PUBLISHABLE_KEYS ou SUPABASE_ANON_KEY) e a chave interna (SUPABASE_SECRET_KEYS ou
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.35.0";
+const VERSAO = "0.35.2";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -160,11 +162,31 @@ function limparErro(x: unknown): string {
   return m.replace(/access_token=[^&\s"']+/gi, "access_token=…").replace(/Bearer\s+\S+/gi, "Bearer …").slice(0, 200);
 }
 
+// O segredo META_PAGE_TOKEN aceita o token da PÁGINA ou o do USUÁRIO DE SISTEMA: com o do usuário, /me/accounts lista as páginas
+// e a função usa o token da primeira — a troca manual deixou de existir. O token vai SÓ no cabeçalho (como nas outras chamadas) e
+// o trocado fica só na memória da instância; a Meta fora do ar na troca não é gravada (a próxima chamada tenta de novo).
+let tokenPaginaMemo = "";
+let trocaSemPagina = false;        // o token é de usuário, a Meta respondeu, mas nenhuma página está atribuída a ele
+async function tokenPagina(): Promise<string> {
+  if (tokenPaginaMemo) return tokenPaginaMemo;
+  const bruto = env("META_PAGE_TOKEN").replace(/\s+/g, "").replace(/^["']+|["']+$/g, "");
+  if (!bruto) return "";
+  try {
+    const r = await fetch(`${GRAPH}/me/accounts?fields=access_token&limit=25`,
+                          { headers: { Authorization: "Bearer " + bruto }, signal: AbortSignal.timeout(PRAZO_META_MS) });
+    const d = await r.json().catch(() => null);
+    const primeira = Array.isArray(d?.data) ? d.data.find((p: any) => typeof p?.access_token === "string" && p.access_token) : null;
+    trocaSemPagina = !primeira && Array.isArray(d?.data) && !d?.error;
+    tokenPaginaMemo = primeira ? String(primeira.access_token) : bruto;   // sem lista = já é o token da página (ou o erro sai claro adiante)
+    return tokenPaginaMemo;
+  } catch { return bruto; }
+}
+
 async function meta(caminho: string, corpo: Record<string, unknown>): Promise<{ ok: boolean; dados: any; erro: string; codigo: number | null }> {
   try {
     const r = await fetch(`${GRAPH}/${caminho}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + env("META_PAGE_TOKEN").trim() },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + await tokenPagina() },
       body: JSON.stringify(corpo),
       signal: AbortSignal.timeout(PRAZO_META_MS),
     });
@@ -253,7 +275,7 @@ async function diagnostico(): Promise<Record<string, unknown>> {
   const r = await (async () => {
     try {
       const resp = await fetch(`${GRAPH}/me?fields=id,name,instagram_business_account{id,username}`, {
-        headers: { Authorization: "Bearer " + env("META_PAGE_TOKEN").trim() }, signal: AbortSignal.timeout(PRAZO_META_MS),
+        headers: { Authorization: "Bearer " + await tokenPagina() }, signal: AbortSignal.timeout(PRAZO_META_MS),
       });
       const dados = await resp.json().catch(() => null);
       if (!resp.ok) {
@@ -263,7 +285,13 @@ async function diagnostico(): Promise<Record<string, unknown>> {
       return { ok: true as const, dados };
     } catch (e) { return { ok: false as const, erro: limparErro(e) }; }
   })();
-  if (!r.ok) return { ok: false, versao: VERSAO, message: `O token não passou no teste: ${r.erro}` };
+  if (!r.ok) {
+    const dica = trocaSemPagina
+      ? " O token é do usuário de sistema, mas nenhuma página está atribuída a ele: no Gerenciador de Negócios, abra o usuário de" +
+        " sistema → Atribuir ativos → marque a página da Artecon com acesso de GERENCIAR → gere um token novo e cole de novo."
+      : "";
+    return { ok: false, versao: VERSAO, message: `O token não passou no teste: ${r.erro}.${dica}` };
+  }
   const contas: Array<Record<string, string>> = [];
   if (/^[0-9]{1,30}$/.test(String(r.dados?.id ?? ""))) {
     await banco(comoServico(), "POST", "rpc/radar_respostas_conta_salvar",
@@ -276,8 +304,16 @@ async function diagnostico(): Promise<Record<string, unknown>> {
                 { p_rede: "instagram", p_conta: String(iba.id), p_nome: String(iba?.username ?? "") });
     contas.push({ rede: "instagram", conta_id: String(iba.id), nome: String(iba?.username ?? "") });
   }
-  return { ok: true, versao: VERSAO, contas,
-           avisos: contas.length < 2 ? ["A página não tem um Instagram profissional ligado (ou o token não o enxerga)."] : [] };
+  const avisos: string[] = contas.length < 2 ? ["A página não tem um Instagram profissional ligado (ou o token não o enxerga)."] : [];
+  // v0.35.2: inscreve o app na própria página (campo "feed") — sem a inscrição a Meta não entrega os avisos de comentário.
+  // Pode rodar de novo à vontade: inscrever quem já está inscrito não muda nada.
+  let paginaInscrita = false;
+  if (/^[0-9]{1,30}$/.test(String(r.dados?.id ?? ""))) {
+    const s = await meta(`${r.dados.id}/subscribed_apps`, { subscribed_fields: "feed" });
+    paginaInscrita = s.ok && s.dados?.success === true;
+    if (!paginaInscrita) avisos.push(`O app não ficou inscrito na página (os avisos de comentário não chegariam): ${s.erro || "resposta inesperada da Meta"}`);
+  }
+  return { ok: true, versao: VERSAO, contas, pagina_inscrita: paginaInscrita, avisos };
 }
 
 // ------------------------------------------------------------------ o tratador
@@ -345,6 +381,8 @@ async function tratar(req: Request): Promise<Response> {
     return responder(500, { message: "Erro inesperado nas respostas automáticas." });
   }
 }
+
+if (env("META_PAGE_TOKEN").trim()) tokenPagina().catch(() => {});   // aquece a troca no arranque; se falhar, a próxima chamada refaz
 
 const portaLocal = Deno.env.get("RADAR_PORTA_LOCAL");       // só para rodar/testar fora do Supabase
 portaLocal ? Deno.serve({ port: Number(portaLocal), hostname: "127.0.0.1" }, tratar) : Deno.serve(tratar);
