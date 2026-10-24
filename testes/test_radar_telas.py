@@ -1219,7 +1219,7 @@ def test_conteudo_malicioso_e_exibido_como_texto_no_painel(pagina, limpo):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     for aba in ["Capturas", "Assuntos", "Publicações", "Painel"]:
-        pagina.click(f"nav.abas >> text={aba}")
+        ir_aba(pagina, aba)
         pagina.wait_for_timeout(250)
     abrir_assunto(pagina, "Título <img")
     pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
@@ -1317,7 +1317,7 @@ def test_telas_cabem_no_celular_sem_rolagem_lateral(navegador, limpo):
     pg.wait_for_selector("text=Painel do dia")
     assert sem_rolagem_lateral(pg), "painel"
     for aba in ["Capturas", "Assuntos", "Informativos", "Publicações", "Pauta", "Fontes", "Como usar", "Versões"]:
-        pg.click(f"nav.abas >> text={aba}")
+        ir_aba(pg, aba)
         pg.wait_for_timeout(300)
         assert sem_rolagem_lateral(pg), aba
     abrir_assunto(pg, "Informativo de teste")
@@ -1491,7 +1491,7 @@ def test_endereco_perigoso_nao_vira_link_no_dashboard(pagina, limpo):
         entrar(pagina)
         pagina.wait_for_selector("text=Painel do dia")
         for aba in ["Capturas", "Fontes"]:
-            pagina.click(f"nav.abas >> text={aba}")
+            ir_aba(pagina, aba)
             pagina.wait_for_timeout(300)
             hrefs = pagina.eval_on_selector_all("main a", "els => els.map(a => a.getAttribute('href'))")
             assert not any(h.lower().startswith("javascript") for h in hrefs), (aba, hrefs)
@@ -3041,8 +3041,8 @@ def test_capturas_abrem_so_com_o_relevante_e_as_de_baixa_saem_de_uma_vez(pagina,
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     assert "mais 3 fora da lista principal" in pagina.inner_text(".cartoes")
-    assert pagina.inner_text("nav.abas >> text=Capturas").endswith("1")            # o contador da aba só conta o relevante
     ir_aba(pagina, "Capturas")
+    assert pagina.inner_text("nav.subnav [data-aba=fila]").endswith("1")           # o contador da aba só conta o relevante
     pagina.wait_for_selector("article.cap")
     assert pagina.locator("article.cap").count() == 1 and "Relevância alta" in pagina.inner_text("article.cap")
     assert [c.replace("\n", "") for c in pagina.locator("#filtro-fila .chip").all_inner_texts()] == ["Em alta1", "Relevantes1", "Baixa relevância3", "Todas4"]
@@ -3465,8 +3465,8 @@ def test_capturas_abrem_com_as_dez_em_alta_e_a_repeticao_entra_junto_no_assunto(
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     assert "Aguardando triagem (em alta)" in pagina.inner_text(".cartoes") and "mais 5 fora da lista principal" in pagina.inner_text(".cartoes")
-    assert pagina.inner_text("nav.abas >> text=Capturas").endswith("10")
     ir_aba(pagina, "Capturas")
+    assert pagina.inner_text("nav.subnav [data-aba=fila]").endswith("10")
     pagina.wait_for_selector("article.cap")
     cartoes = pagina.locator("article.cap")
     assert cartoes.count() == 10 and [c.replace("\n", "") for c in pagina.locator("#filtro-fila .chip").all_inner_texts()] == ["Em alta10", "Relevantes14", "Baixa relevância0", "Todas15"]
@@ -3815,8 +3815,7 @@ def test_repeticao_de_assunto_em_andamento_pode_ser_separada_e_a_de_assunto_igno
     pagina.click("text=Receita prorroga prazo do Simples Nacional — fonte 0")
     pagina.wait_for_selector("text=repetição do mesmo fato, apontada pela IA")
     assert pagina.locator("[data-acao=separar-captura]").count() == 1
-    pagina.once("dialog", lambda d: d.accept())
-    pagina.click("text=Não é o mesmo fato")
+    pagina.click("text=Não é o mesmo fato")                                   # o confirm é aceito pelo tratador global da fixture (sem um once duplicado que disputaria o mesmo diálogo)
     pagina.wait_for_selector("text=Captura devolvida para a triagem.")
     assert pagina.locator("[data-acao=separar-captura]").count() == 0
     assert limpo.execute("select captura_id from radar_assunto_capturas where assunto_id = %s", (assunto,)).fetchall() == [(a,)]
