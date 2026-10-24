@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.47.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.48.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -174,9 +174,10 @@ function contarCronograma(ini, fim, hoje, {pecas, noticias, antes = [], capturas
        atraso:contam.filter(f => !f.site && passou(f.dia)).length}]};
 }
 // uma leitura por tabela para a semana e o mês juntos (a faixa que cobre os dois), só com as colunas da conta
-async function lerCronograma(seg, hoje){
-  const {semana, mes} = periodosCronograma(seg, hoje), limite = String(LIMITE_CRONOGRAMA);
-  const ini = semana.ini < mes.ini ? semana.ini : mes.ini, fim = semana.fim > mes.fim ? semana.fim : mes.fim;
+// v0.48.0: carrega os dados do cronograma (peças, publicações e capturas) para a faixa [ini, fim] — usado pela projeção do Painel
+// (semana + mês) e pelo período escolhido no seletor "Período". Só leitura; devolve {dados, cortado}.
+async function dadosCronograma(ini, fim){
+  const limite = String(LIMITE_CRONOGRAMA);
   const desde = ini + "T00:00:00-03:00", ate = somarDias(fim, 1) + "T00:00:00-03:00";    // o dia de Brasília (-03:00 fixo, como em passouDaHora)
   // só a principal de cada fato (sem as repetições); a "baixa" só a que era alta e desceu pela idade (radar_relevancia_idade)
   const capturas = filtro => ler("radar_capturas", {select:"id,relevancia,data_publicacao,capturado_em,incluido_em:metadados->>incluido_em," +
@@ -193,12 +194,25 @@ async function lerCronograma(seg, hoje){
     publicado_em:`lt.${desde}`, limit:limite})).map(e => e.conteudo_id) : [];
   // a que chegou velha: dias_baixa de Configurações (o padrão do banco é 5; com 0 a idade está desligada e vale o padrão)
   const d = CONF_PAUTA.relevancia?.dias_baixa, dias = Number.isInteger(d) && d > 0 ? d : 5;
-  const dados = {pecas, noticias, antes, capturas:[...altas, ...velhas], dias};
+  return {dados:{pecas, noticias, antes, capturas:[...altas, ...velhas], dias},
+          cortado:[noticias, antes, altas, velhas].some(l => l.length >= LIMITE_CRONOGRAMA)};
+}
+async function lerCronograma(seg, hoje){
+  const {semana, mes} = periodosCronograma(seg, hoje);
+  const ini = semana.ini < mes.ini ? semana.ini : mes.ini, fim = semana.fim > mes.fim ? semana.fim : mes.fim;
+  const {dados, cortado} = await dadosCronograma(ini, fim);
   // v0.41.0 (pedido do dono): também o dia de hoje, para a projeção do Painel (as mesmas contas; hoje está sempre na faixa lida
   // quando seg é a segunda-feira da semana de hoje — o Painel chama assim)
   return {dia:contarCronograma(hoje, hoje, hoje, dados),
-          semana:contarCronograma(semana.ini, semana.fim, hoje, dados), mes:contarCronograma(mes.ini, mes.fim, hoje, dados),
-          cortado:[noticias, antes, altas, velhas].some(l => l.length >= LIMITE_CRONOGRAMA)};
+          semana:contarCronograma(semana.ini, semana.fim, hoje, dados), mes:contarCronograma(mes.ini, mes.fim, hoje, dados), cortado};
+}
+// v0.48.0 (melhoria A): o cronograma de um período escolhido (de..ate, datas ISO) para o seletor "Período" do Painel. É só um
+// recorte de LEITURA — mantém todo o histórico. Devolve as contas do período (linhas, fase…) com {cortado, de, ate}, ou null se
+// as datas não servem (faltando ou a inicial depois da final).
+async function cronogramaPeriodo(de, ate, hoje){
+  if(!de || !ate || de > ate) return null;
+  const {dados, cortado} = await dadosCronograma(de, ate);
+  return Object.assign(contarCronograma(de, ate, hoje, dados), {cortado, de, ate});
 }
 const FASES_CRONOGRAMA = {passou:"já passou", andamento:"em andamento", futuro:"ainda não começou"};
 // o selo da linha: o que faltou (o período passou) ou está em atraso (em vermelho); o que ainda falta, sem atraso; o mínimo cumprido

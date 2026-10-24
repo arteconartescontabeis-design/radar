@@ -1,4 +1,4 @@
-# Radar Artecon — v0.47.0
+# Radar Artecon — v0.48.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,13 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.48.0 deixa o **Painel mais esperto**, em duas melhorias **só de tela**. (1) **Seletor "Período"**: no "Projeção e desempenho",
+além de **Dia / Semana / Mês**, você escolhe as **datas de início e fim** e o cronograma (o que falta, os números e as barras)
+**recalcula só para aquele intervalo** — é um **recorte de leitura**, não apaga nada (o histórico e os gráficos continuam
+intactos). (2) **Gráficos de linha interativos**: em "Publicações por canal" e na comparação com os escritórios, **passar o mouse
+ou o dedo** em qualquer ponto mostra um balãozinho com o **valor de cada semana**. Muda **só a tela** (`index.html` e os `.js`);
+**nada no banco, nenhum SQL, nenhuma função** muda; **nenhum segredo novo**. Veja "Da v0.47.0 para a v0.48.0".
 
 A v0.47.0 traz o **Painel com gráficos**. O Painel do dia ganhou um **seletor Dia / Semana / Mês**: para o período escolhido ele
 mostra **o que falta publicar**, os números em destaque (**feito, mínimo, a fazer e em atraso**) e o **cronograma em barras**
@@ -2975,6 +2982,19 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.47.0 para a v0.48.0** (muda **só a tela**; **nada no banco**, nenhuma função, **nenhum segredo novo**). Supõe a v0.47.0
+instalada:
+
+1. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.48.0". **Não há SQL
+   para rodar** nesta versão.
+2. Conferência rápida: abra o **Painel do dia** → "Projeção e desempenho". No seletor, clique em **"Período"**: aparecem os campos
+   **de / até** (já vêm do 1º do mês até hoje) — escolha as datas e clique **"Aplicar"**; o cronograma recalcula só para esse
+   intervalo (o selo "✓ não apaga nada — é só um recorte" lembra que o histórico fica). Nos gráficos de linha ("Publicações por
+   canal" e a comparação), **passe o mouse ou o dedo** em qualquer ponto: aparece o valor de cada semana.
+
+**Como desligar:** não há o que ligar/desligar — são melhorias de leitura na tela. Para voltar à tela anterior, publique a tela da
+v0.47.0 (o banco não muda em nenhum dos dois sentidos).
 
 **Da v0.46.0 para a v0.47.0** (muda **só o banco** — um SQL novo, que pode rodar de novo, **uma função de leitura** e **nenhuma
 tabela nova** — e a **tela**; as funções `radar-ia`, `radar-redes`, `radar-video`, as demais e os segredos de hoje **não mudam**;

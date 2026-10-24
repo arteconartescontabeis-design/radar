@@ -1,4 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.47.0)
+# Radar Artecon — Relatório de testes (v0.48.0)
+
+**v0.48.0 — Painel mais esperto** (24/10/2026): duas melhorias **só de tela**. (1) o seletor **"Período"** no "Projeção e
+desempenho": escolhidas as datas de início e fim, o cronograma (feito × mínimo, o que falta e os números) recalcula só para o
+intervalo (recorte de leitura — `cronogramaPeriodo`/`dadosCronograma` em `radar-pauta.js`; não apaga nada). (2) os **gráficos de
+linha interativos**: cada semana vira uma faixa sensível (`.g-faixa`) e o balãozinho (`mostrarDicaGrafico`) mostra o valor ao passar
+o mouse/dedo. **Nada no banco**; o banco segue na v0.47.0. Testes de tela do Painel (seletor de período que recalcula; o balãozinho
+dos gráficos) e a renderização pura dos gráficos com a faixa por semana; **a suíte INTEIRA roda no CI antes de juntar.**
 
 **v0.47.0 — Painel com gráficos** (24/10/2026): o Painel ganhou um seletor **Dia / Semana / Mês** (o que falta, feito/mínimo/a
 fazer/em atraso e o cronograma em barras) e quatro gráficos — **notícias por fonte**, **publicações por canal** (site, Instagram e

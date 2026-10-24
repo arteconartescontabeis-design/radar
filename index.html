@@ -338,6 +338,14 @@ details.nova-pessoa{margin:0 0 16px} details.nova-pessoa summary{margin-bottom:8
 .dash-leg i{width:11px;height:11px;border-radius:3px;display:inline-block}
 .dash-bloco svg{display:block;width:100%;height:auto;overflow:visible} .g-eixo{fill:#8a8789;font-size:9px} .g-val{font-size:9.5px;font-weight:700}
 .dash-meter{background:#EEF1F5;border-radius:999px;height:16px;overflow:hidden;margin:8px 0 4px} .dash-meter span{display:block;height:100%;background:var(--ok);border-radius:999px}
+/* v0.48.0 (melhoria B): o balãozinho dos gráficos de linha — a faixa sensível por semana e o balão que segue o ponteiro */
+.g-faixa{cursor:crosshair}
+.dash-tip{position:fixed;pointer-events:none;background:var(--marinho);color:#fff;border-radius:8px;padding:6px 10px;font-size:.78rem;line-height:1.3;transform:translate(-50%,calc(-100% - 10px));white-space:nowrap;max-width:92vw;box-shadow:0 4px 14px rgba(1,31,72,.25);z-index:50}
+.dash-tip[hidden]{display:none}
+/* v0.48.0 (melhoria A): a linha de datas do seletor "Período" */
+.dash-datas{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border:1px dashed var(--linha);border-radius:10px;background:#FBFEFE}
+.dash-datas label{font-size:.82rem;color:var(--marinho);font-weight:600} .dash-datas input{font:inherit;font-size:.86rem;padding:5px 8px;border:1px solid var(--linha);border-radius:7px;color:var(--cinza)}
+.dash-datas-hist{font-size:.76rem;color:var(--ok);font-weight:600;margin-left:auto}
 @media (max-width:640px){ .dash-kpis{grid-template-columns:repeat(2,1fr)} .dash-grade{grid-template-columns:1fr} }
 /* a arte da peça (as lâminas rolam na horizontal dentro da caixa, também no celular), a conferência, a aprovação e a peça aprovada */
 .peca-artes{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding-bottom:6px} .peca-artes figure{margin:0;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-items:center}
@@ -415,21 +423,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.47.0"></script>
-<script src="radar-video.js?v=0.47.0"></script>
-<script src="radar-setor.js?v=0.47.0"></script>
-<script src="radar-respostas.js?v=0.47.0"></script>
+<script src="radar-pauta.js?v=0.48.0"></script>
+<script src="radar-video.js?v=0.48.0"></script>
+<script src="radar-setor.js?v=0.48.0"></script>
+<script src="radar-respostas.js?v=0.48.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.47.0";
+const VERSAO = "0.48.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.48.0", "24/10/2026", [
+    "Painel mais esperto, em duas melhorias. (1) O “Projeção e desempenho” ganhou o seletor “Período”: além de Dia, Semana e Mês, você escolhe as datas de início e fim e o cronograma (o que falta, os números feito/mínimo/a fazer/em atraso e as barras) recalcula só para aquele intervalo — sem apagar nada, o histórico e os gráficos continuam intactos (é só um recorte de leitura). (2) Os gráficos de linha (publicações por canal e a comparação com os escritórios) ficaram interativos: passe o mouse ou o dedo em qualquer ponto e aparece um balãozinho com o valor de cada semana.",
+    "Administrador: muda só a tela. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Nada no banco, nenhum SQL para rodar, nenhuma função muda. Passo a passo no LEIAME, “Da v0.47.0 para a v0.48.0”."]],
   ["0.47.0", "24/10/2026", [
     "Painel com gráficos: o Painel ganhou um seletor Dia / Semana / Mês e, para o período escolhido, mostra o que falta publicar, os números (feito, mínimo, a fazer e em atraso) e o cronograma em barras. Abaixo, quatro gráficos: notícias por fonte, publicações por canal (site, Instagram e Facebook) nas últimas 6 semanas, a comparação do ritmo da Artecon com a média dos escritórios acompanhados (dado público, pela aba Setor) e os minutos do corretor de vídeo usados no mês. É só leitura — não publica nem grava nada.",
     "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.47.0.sql (uma função nova de leitura, radar_painel_graficos; nenhuma tabela nova; nada é apagado; pode rodar de novo). As funções radar-ia, radar-redes e radar-video não mudam. Depois publique o index.html com os demais .js e aperte Ctrl+F5. A comparação com outros escritórios aparece quando a aba Setor tiver a conta da Artecon e ao menos um outro escritório. Passo a passo no LEIAME, “Da v0.46.0 para a v0.47.0”."]],
@@ -1309,7 +1320,7 @@ const DASH_PERIODOS = [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]];
 const somaCrono = (k, campo) => (k && Array.isArray(k.linhas) ? k.linhas : []).reduce((s, l) => s + (l[campo] || 0), 0);
 function dashResumoPeriodo(k, id){
   const minimo = somaCrono(k, "minimo"), feito = somaCrono(k, "feito"), atraso = somaCrono(k, "atraso"), falta = Math.max(0, minimo - feito);
-  const q = {dia:"hoje", semana:"nesta semana", mes:"neste mês"}[id];
+  const q = {dia:"hoje", semana:"nesta semana", mes:"neste mês", periodo:"no período"}[id] || "no período";
   if(!minimo) return `<div class="dash-falta ok"><b>Nada pedido ${q}.</b></div>`;
   if(!falta) return `<div class="dash-falta ok"><b>Tudo em dia ${q} ✓</b> <span class="dash-chip ok">${feito} de ${minimo} feito</span></div>`;
   const chips = k.linhas.filter(l => l.feito < l.minimo).map(l => `<span class="dash-chip">faltam ${l.minimo - l.feito} ${h(l.rotulo.toLowerCase())}</span>`).join("");
@@ -1334,32 +1345,47 @@ function dashFonte(graf, id){
   return lst.map(f => `<div class="dash-barh"><span class="dash-bar-rot">${h(f.fonte)}</span><span class="dash-barh-fill" style="width:${Math.round(f.n / max * 100)}%" title="${h(f.fonte)}: ${f.n}"></span><span class="dash-bar-val">${f.n}</span></div>`).join("");
 }
 /* um gráfico de linhas simples em SVG (sem biblioteca): rótulos no eixo x, uma ou mais séries {nome,cor,dash,w,valores}. O y vai de 0
-   ao maior valor (mínimo 6). Cada série ganha o número no fim e um ponto com o valor (passar o dedo/mouse mostra). */
+   ao maior valor (mínimo 6). Cada série tem um ponto em cada semana e o número no fim. v0.48.0 (melhoria B): uma faixa sensível por
+   semana (.g-faixa, com o valor de cada série no data-tip) — passar o mouse ou o dedo mostra o balãozinho (mostrarDicaGrafico). */
 function graficoLinhas(labels, series, aria){
   const n = labels.length, W = 600, H = 150, x0 = 38, x1 = 585, y0 = 14, y1 = 120;
   const max = Math.max(6, ...series.flatMap(s => s.valores.map(v => Number(v) || 0)));
   const px = i => n <= 1 ? x0 : x0 + (x1 - x0) * i / (n - 1);
   const py = v => y1 - (y1 - y0) * (Number(v) || 0) / max;
   const desenho = series.map(s => { const pts = s.valores.map((v, i) => `${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(" "), fim = s.valores[s.valores.length - 1];
-    return `<polyline fill="none" stroke="${s.cor}" stroke-width="${s.w || 2}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ""} points="${pts}"/>`
-      + `<circle cx="${px(n - 1).toFixed(1)}" cy="${py(fim).toFixed(1)}" r="3" fill="${s.cor}"><title>${h(s.nome)}: ${fim}</title></circle>`
+    const pontos = s.valores.map((v, i) => `<circle cx="${px(i).toFixed(1)}" cy="${py(v).toFixed(1)}" r="2.6" fill="${s.cor}"/>`).join("");   // v0.48.0: um ponto por semana
+    return `<polyline fill="none" stroke="${s.cor}" stroke-width="${s.w || 2}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ""} points="${pts}"/>${pontos}`
       + `<text x="${x1 + 6}" y="${(py(fim) + 3).toFixed(1)}" class="g-val" style="fill:${s.cor}">${fim}</text>`; }).join("");
   const eixoY = [0, Math.round(max / 2), max].map(v => `<text x="${x0 - 4}" y="${(py(v) + 3).toFixed(1)}" class="g-eixo" text-anchor="end">${v}</text>`).join("");
   const eixoX = labels.map((lb, i) => `<text x="${px(i).toFixed(1)}" y="${H - 14}" class="g-eixo" text-anchor="middle">${h(lb)}</text>`).join("");
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(aria)}"><line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="var(--linha)"/><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--linha)"/>${eixoY}${eixoX}${desenho}</svg>`;
+  const larg = n <= 1 ? (x1 - x0) : (x1 - x0) / (n - 1);
+  const faixas = labels.map((lb, i) => { const quando = lb === "atual" ? "semana atual" : "semana de " + lb;
+    const dica = `${quando} — ${series.map(s => `${s.nome}: ${s.valores[i]}`).join(" · ")}`;
+    return `<rect class="g-faixa" data-tip="${h(dica)}" x="${(px(i) - larg / 2).toFixed(1)}" y="${y0}" width="${larg.toFixed(1)}" height="${(y1 - y0).toFixed(1)}" fill="transparent"/>`; }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(aria)}"><line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="var(--linha)"/><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--linha)"/>${eixoY}${eixoX}${desenho}${faixas}</svg>`;
 }
 const dashSemanas = arr => (arr || []).map((x, i) => i === arr.length - 1 ? "atual" : `${String(x.ini).slice(8, 10)}/${String(x.ini).slice(5, 7)}`);
 function blocoDashboard(hoje, c, graf, cota){
   const per = E.painelPeriodo || "mes";
   const topo = `<h2>Projeção e desempenho</h2>
-    <p class="sub">Escolha <b>Dia</b>, <b>Semana</b> ou <b>Mês</b> para ver o que falta publicar e os números do período (em vermelho, o que já devia ter saído). As contas são as do cronograma da Pauta. Os gráficos de 6 semanas e a cota do corretor valem para o período corrente. Só leitura.</p>`;
-  const seletor = `<div class="dash-periodo" id="dash-periodo">${DASH_PERIODOS.map(([id, nm]) => `<button type="button" data-acao="painel-periodo" data-p="${id}" class="${id === per ? "ativa" : ""}">${nm}</button>`).join("")}</div>`;
+    <p class="sub">Escolha <b>Dia</b>, <b>Semana</b>, <b>Mês</b> ou <b>Período</b> (datas à sua escolha) para ver o que falta publicar e os números (em vermelho, o que já devia ter saído). As contas são as do cronograma da Pauta. Os gráficos de 6 semanas e a cota do corretor valem para o período corrente. Só leitura — escolher um período não apaga nada.</p>`;
+  // v0.48.0 (melhoria A): o seletor ganha "Período" (datas à escolha); os três de sempre vêm de DASH_PERIODOS
+  const seletor = `<div class="dash-periodo" id="dash-periodo">${[...DASH_PERIODOS, ["periodo", "Período"]].map(([id, nm]) => `<button type="button" data-acao="painel-periodo" data-p="${id}" class="${id === per ? "ativa" : ""}">${nm}</button>`).join("")}</div>`;
   const semCrono = c ? "" : `<div class="aviso alerta" id="painel-projecao-erro">Não deu para montar a projeção agora (recarregue a página — Ctrl+F5). Os gráficos abaixo continuam.</div>`;
+  // v0.48.0: a seção "Período" começa com as datas (do 1º do mês até hoje) e carrega o cronograma do recorte só quando o dono clica Aplicar
+  const iniMes = hoje ? hoje.slice(0, 8) + "01" : "";
+  const secaoPeriodo = c ? `<section class="dash-p" data-p="periodo"${per === "periodo" ? "" : " hidden"}>
+      <div class="dash-datas"><label>de <input type="date" id="dash-de" value="${h(iniMes)}" max="2999-12-31"></label>
+        <label>até <input type="date" id="dash-ate" value="${h(hoje || "")}" max="2999-12-31"></label>
+        <button class="btn peq" type="button" data-acao="dash-periodo-aplicar">Aplicar</button>
+        <span class="dash-datas-hist">✓ não apaga nada — é só um recorte de leitura</span></div>
+      <div id="dash-periodo-crono"><p class="sub">Escolha as datas e clique <b>Aplicar</b> para ver o cronograma só desse período. O histórico e os gráficos continuam intactos.</p></div>
+    </section>` : "";
   const secoes = c ? DASH_PERIODOS.map(([id]) => { const k = c[id];
     return `<section class="dash-p" data-p="${id}"${id === per ? "" : " hidden"}>
       ${dashResumoPeriodo(k, id)}${dashKpis(k)}
       <div class="dash-grade"><div class="dash-bloco"><h3>Cronograma — feito × mínimo</h3>${dashBarras(k)}</div>
-        ${graf ? `<div class="dash-bloco"><h3>Notícias por fonte</h3>${dashFonte(graf, id)}</div>` : ""}</div></section>`; }).join("") : "";
+        ${graf ? `<div class="dash-bloco"><h3>Notícias por fonte</h3>${dashFonte(graf, id)}</div>` : ""}</div></section>`; }).join("") + secaoPeriodo : "";
   const g = [];
   if(graf && Array.isArray(graf.canais) && graf.canais.length){
     const svg = graficoLinhas(dashSemanas(graf.canais), [
@@ -3483,6 +3509,20 @@ const ACOES = {
   "painel-periodo"(el){ const p = el.dataset.p; E.painelPeriodo = p;
     document.querySelectorAll("#dash-periodo button").forEach(b => b.classList.toggle("ativa", b.dataset.p === p));
     document.querySelectorAll("#painel-dashboard .dash-p").forEach(s => { s.hidden = s.dataset.p !== p; }); },
+  /* v0.48.0 (melhoria A): carrega e mostra o cronograma do período escolhido (de..ate), sem apagar nada. Só leitura. */
+  async "dash-periodo-aplicar"(){
+    const de = document.getElementById("dash-de")?.value, ate = document.getElementById("dash-ate")?.value, alvo = document.getElementById("dash-periodo-crono");
+    if(!alvo) return;
+    if(!de || !ate || de > ate){ alvo.innerHTML = `<div class="aviso alerta">Escolha a data inicial e a final (a inicial não pode ser depois da final).</div>`; return; }
+    if(typeof cronogramaPeriodo !== "function"){ alvo.innerHTML = `<div class="aviso alerta">Recarregue a página (Ctrl+F5) para habilitar o período.</div>`; return; }
+    alvo.innerHTML = `<p class="sub">Carregando o período…</p>`;
+    const hoje = typeof hojeBrasilia === "function" ? hojeBrasilia() : de;
+    let k = null; try{ k = await cronogramaPeriodo(de, ate, hoje); }catch(e){ k = null; }
+    if(!k){ alvo.innerHTML = `<div class="aviso alerta">Não deu para montar o cronograma do período agora. Tente de novo.</div>`; return; }
+    const ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+    alvo.innerHTML = `<p class="sub">Cronograma de <b>${ddmm(de)}</b> a <b>${ddmm(ate)}</b>.${k.cortado ? " (Muitos dados no período; alguns podem ter ficado de fora — escolha um intervalo menor.)" : ""}</p>`
+      + dashResumoPeriodo(k, "periodo") + dashKpis(k)
+      + `<div class="dash-bloco"><h3>Cronograma — feito × mínimo</h3>${dashBarras(k)}</div>`; },
   /* v0.44.0: letras grandes — liga e desliga na hora, para o aplicativo inteiro, e fica guardado só neste navegador */
   letras(){ const ligou = document.body.classList.toggle("letras-grandes");
     try{ localStorage.setItem("radar_letras", ligou ? "1" : "0"); }catch(e){}
@@ -5527,7 +5567,7 @@ const FORMS = {
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","abrir-assumir","fechar-assumir","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de",
-  "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar","painel-periodo"]);              // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar; v0.47.0: + o seletor dia/semana/mês do Painel
+  "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar","painel-periodo","dash-periodo-aplicar"]);  // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar; v0.47.0: + o seletor dia/semana/mês do Painel; v0.48.0: + aplicar o período escolhido
 // v0.21.0: as ações e os formulários da Pauta (radar-pauta.js); sem o arquivo, a aba mostra o recado e nada mais muda
 if(typeof PAUTA === "object"){ Object.assign(ACOES, PAUTA.acoes); Object.assign(FORMS, PAUTA.forms); PAUTA.navegacao.forEach(a => NAVEGACAO.add(a)); }
 // v0.22.0: as do corretor de vídeo do reel (radar-video.js); sem o arquivo, a peça reel mostra o recado
@@ -5562,6 +5602,18 @@ document.addEventListener("click", ev => {
   if(acao){ ev.preventDefault(); executar(acao, NAVEGACAO.has(el.dataset.acao), el); }
 });
 document.addEventListener("click", ev => { if(ev.target.id === "previa-site") fecharPrevia(); });
+// v0.48.0 (melhoria B): o balãozinho dos gráficos de linha do Painel — segue o ponteiro na faixa da semana e mostra o valor de cada
+// série; fora de uma faixa (ou ao sair da janela), some. Não atrapalha nada: só age sobre .g-faixa e nunca cancela outro evento.
+function mostrarDicaGrafico(ev){
+  const faixa = ev.target?.closest?.(".g-faixa"), tip = document.getElementById("dash-tip");
+  if(!faixa){ if(tip) tip.hidden = true; return; }
+  const t = tip || Object.assign(document.body.appendChild(document.createElement("div")), {id: "dash-tip", className: "dash-tip"});
+  t.textContent = faixa.dataset.tip || "";
+  t.hidden = false; t.style.left = ev.clientX + "px"; t.style.top = ev.clientY + "px";
+}
+document.addEventListener("pointermove", mostrarDicaGrafico);
+document.addEventListener("pointerdown", mostrarDicaGrafico);       // no toque: aparece ao encostar
+document.addEventListener("pointerleave", () => { const t = document.getElementById("dash-tip"); if(t) t.hidden = true; });
 document.addEventListener("toggle", ev => { if(ev.target.id === "mais-detalhes") E.maisDetalhes = ev.target.open;   // continua aberto depois de salvar
   if(ev.target.classList?.contains("todos")) E.todosFechado = ev.target.open ? null : Number(ev.target.id.slice(6));   // v0.19.0: aberto por padrão
   if(ev.target.classList?.contains("kit-redes")) (E.kitAberto ||= {})[ev.target.dataset.id] = ev.target.open; }, true);   // v0.20.0: continua como estava
