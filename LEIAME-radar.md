@@ -1,4 +1,4 @@
-# Radar Artecon — v0.46.0
+# Radar Artecon — v0.47.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,16 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.47.0 traz o **Painel com gráficos**. O Painel do dia ganhou um **seletor Dia / Semana / Mês**: para o período escolhido ele
+mostra **o que falta publicar**, os números em destaque (**feito, mínimo, a fazer e em atraso**) e o **cronograma em barras**
+(o mesmo da projeção da v0.41.0). Abaixo entram **quatro gráficos**: **notícias por fonte** (no período), **publicações por canal**
+(site, Instagram e Facebook) nas **últimas 6 semanas**, a **comparação do ritmo da Artecon com a média dos escritórios
+acompanhados** — dado **público**, pela aba Setor, só aparece quando há a conta da Artecon e ao menos um outro escritório — e os
+**minutos do corretor de vídeo** usados no mês (a cota). É **só leitura**: nada publica nem grava. Muda **só o banco**
+(`sql/radar-setup-v0.47.0.sql` — **uma função nova de leitura**, `radar_painel_graficos`; **nenhuma tabela nova**) e a **tela**;
+as funções `radar-ia`, `radar-redes` e `radar-video`, o robô e os segredos **não mudam**; **nenhum segredo novo**. Veja "Da
+v0.46.0 para a v0.47.0".
 
 A v0.46.0 traz o **termo de uso de imagem assinado na própria tela**. Em Pauta → Pessoas e termos, o "aceite" por data virou uma
 **assinatura de verdade**: o administrador abre o cadastro da pessoa, clica em **"Assinar o termo na tela"**, aparece o texto do
@@ -2965,6 +2975,25 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.46.0 para a v0.47.0** (muda **só o banco** — um SQL novo, que pode rodar de novo, **uma função de leitura** e **nenhuma
+tabela nova** — e a **tela**; as funções `radar-ia`, `radar-redes`, `radar-video`, as demais e os segredos de hoje **não mudam**;
+**nenhum segredo novo**). Supõe a v0.46.0 instalada:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.47.0.sql` inteiro, **antes de publicar a tela**. Confira no fim:
+   **38 tabelas** com `rls = true` (as mesmas da v0.46.0 — esta versão **não cria tabela**) e a instalação **v0.47.0** concluída.
+   Ele cria **uma função de leitura**, `radar_painel_graficos`, que devolve os números dos gráficos novos (notícias por fonte,
+   publicações por canal e a comparação com os escritórios acompanhados). **Nada é apagado; pode rodar de novo.**
+2. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.47.0".
+3. Conferência rápida: abra o **Painel do dia**. Em cima, o seletor **Dia / Semana / Mês** troca o que falta, os números e o
+   cronograma; abaixo, os gráficos de **notícias por fonte** e de **publicações por canal** (6 semanas). A **comparação com outros
+   escritórios** só aparece quando a **aba Setor** tiver a conta da Artecon (marcada como "própria") e **ao menos um outro**
+   escritório ativo; sem isso, o Painel mostra "configure a aba Setor". O **medidor do corretor de vídeo** (minutos usados no mês)
+   aparece para quem edita. Tudo é **só leitura**.
+
+**Como desligar:** não há o que ligar/desligar — são gráficos de leitura. Para voltar à tela anterior, publique a tela da v0.46.0
+(o banco v0.47.0 continua servindo; a função nova fica sem uso). **Para desfazer no banco** (opcional), o
+`sql/radar-reversao-v0.47.0.sql` apaga a função `radar_painel_graficos` (nenhum dado é afetado).
 
 **Da v0.45.0 para a v0.46.0** (muda **só o banco** — um SQL novo, que pode rodar de novo — e a **tela**; as funções `radar-ia`,
 `radar-redes`, `radar-video`, as demais e os segredos de hoje **não mudam**; **nenhum segredo novo**). Supõe a v0.45.0 instalada:

@@ -368,15 +368,26 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.46.0"
+    assert pagina.inner_text(".versao") == "v0.47.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.46.0: a entrada do topo é a da versão em uso e conta ao dono, em 2 itens: o termo de imagem assinado na tela (CPF + a
-    # assinatura desenhada; todos assinam, sócios inclusive) e o que o administrador faz (o SQL; as funções não mudam)
+    # v0.47.0: a entrada do topo é a da versão em uso e conta ao dono, em 2 itens: o Painel com gráficos (seletor de período, o que
+    # falta, os quatro gráficos, só leitura) e o que o administrador faz (o SQL de uma função nova; as funções não mudam)
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.46.0" and data == "24/10/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.47.0" and data == "24/10/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["Painel com gráficos", "seletor Dia / Semana / Mês", "o que falta publicar", "feito, mínimo, a fazer e em atraso",
+                   "notícias por fonte", "publicações por canal", "últimas 6 semanas", "a comparação do ritmo da Artecon",
+                   "os minutos do corretor de vídeo", "É só leitura",
+                   "sql/radar-setup-v0.47.0.sql", "uma função nova de leitura, radar_painel_graficos",
+                   "As funções radar-ia, radar-redes e radar-video não mudam", "Da v0.46.0 para a v0.47.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.46.0: a entrada seguinte é o termo de imagem assinado na tela (CPF + a assinatura desenhada; todos assinam, sócios inclusive)
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.46.0" and data == "24/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Termo de uso de imagem assinado na tela", "virou uma ASSINATURA de verdade", "“Assinar o termo na tela”",
                    "informa o CPF e DESENHA a assinatura", "num histórico que nunca se apaga", "Um único termo autoriza",
@@ -384,10 +395,10 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
                    "sql/radar-setup-v0.46.0.sql", "As funções radar-ia, radar-redes e radar-video não mudam", "Da v0.45.0 para a v0.46.0"]:
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
-    # v0.45.0: a entrada do topo é a da versão em uso e conta ao dono, em 5 itens: a fonte da CIGA (sem robô no diário), a hora
+    # v0.45.0: a entrada de v0.45.0 conta ao dono, em 5 itens: a fonte da CIGA (sem robô no diário), a hora
     # marcada na notícia (com o melhor horário sugerido), a foto em dois bancos, o título sempre na imagem e o que o
     # administrador faz (o SQL, a agenda de novo, o Deploy da radar-ia e da radar-redes, o fontes-novas depois do robô)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.45.0" and data == "22/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["dados abertos oficiais da CIGA", "não recebe nenhum acesso de robô", "UMA vez por dia",
@@ -400,12 +411,12 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.44.0: a entrada seguinte (o teleprompter com gravação pelo navegador e as letras grandes) fica
-    v44 = pagina.evaluate("VERSOES[2]")
+    v44 = pagina.evaluate("VERSOES[3]")
     assert v44[0] == "0.44.0" and len(v44[2]) == 4 and "Teleprompter com gravação pelo navegador" in " ".join(v44[2])
     # v0.43.0: a entrada seguinte conta ao dono, em 3 itens: a nova tentativa automática (5 e 15 minutos,
     # para na 3ª recusa, com a hora marcada na própria mensagem de erro), a segurança (só a recusa CLARA da Meta re-tenta; o
     # "não deu para saber" fica "enviando", sem nova tentativa) e o que o administrador faz (o SQL e o Deploy da radar-redes)
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.43.0" and data == "20/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Nova tentativa automática", "RECUSAM uma publicação", "a primeira 5 minutos depois", "outra 15 minutos depois",
@@ -418,7 +429,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.42.0: a entrada seguinte conta ao dono, em 5 itens: o carrossel no assunto (a capa com o título +
     # os cartões do kit, desenhados pela tela), a peça de reel criada do assunto, o "Pôr no Informativo Mensal", o carrossel da
     # Pauta agendado (publicado sozinho) e o que o administrador faz (o SQL e o Deploy da radar-redes e da radar-ia)
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.42.0" and data == "20/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["FOTO (como hoje) e CARROSSEL", "a capa é a imagem da publicação com o título", "cartões vêm do kit das redes",
@@ -433,7 +444,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.41.0: a entrada seguinte conta ao dono, em 3 itens: a projeção no Painel (hoje, a semana e o mês,
     # o tem × falta com o atraso em vermelho), as contas iguais às do cronograma da Pauta e o que o administrador faz (só a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.41.0" and data == "20/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Projeção de publicações no Painel do dia", "HOJE, a SEMANA e o MÊS", "o que falta alcançar",
@@ -447,7 +458,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # mais regravação; número e data continuam exigindo exatidão), o veredito em português com o "Aceitar (quis dizer o mesmo)"
     # (na hora, sem montar de novo), o aviso de arquivo fraco na chegada e o que o administrador faz (o SQL, o Deploy da
     # radar-video, o workflow e o commit do repositório privado e o segredo opcional do juiz)
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.40.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["entende paráfrase (juiz de sentido)", "quis dizer o MESMO com outras palavras",
@@ -464,7 +475,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.39.0: a entrada seguinte conta ao dono, em 4 itens: a IA mais barata (os modelos novos e o cache),
     # o preparo em lote nos Assuntos, a foto real com o título na imagem e o que o administrador faz (o Deploy da radar-ia, o segredo
     # do banco de imagens e os modelos na IA Central; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.39.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["IA mais barata no Radar inteiro", "Claude Sonnet 5.5 (33% mais barato", "Claude Haiku 5.5 (10× mais barato",
@@ -480,7 +491,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.36.0: a entrada seguinte conta ao dono, em 3 itens: a correção avulsa (o que é e como se usa), o que
     # não muda (os termos e as travas) e o que muda de propósito (sem aprovação de peça; só o administrador baixa), e o que o
     # administrador faz (o SQL, o Deploy da radar-video e a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[8]")
+    topo, data, itens = pagina.evaluate("VERSOES[9]")
     assert topo == "0.36.0" and data == "18/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Correção avulsa (aba Vídeo): analisar e corrigir um vídeo SEM criar uma peça na Pauta",
@@ -497,7 +508,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.35.0: a entrada seguinte, em 4 itens: a aba Respostas (o gatilho, a palavra-chave, a
     # resposta pública e a privada), as proteções (nunca em dobro, a própria conta, o limite por hora com a fila, o Pausar todas, os
     # 7 dias da Meta), o "aguardando a Meta" e o que o administrador faz (o SQL, os Deploys, a agenda da fila e os 3 segredos)
-    topo, data, itens = pagina.evaluate("VERSOES[9]")
+    topo, data, itens = pagina.evaluate("VERSOES[10]")
     assert topo == "0.35.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Respostas (nova): o Radar responde sozinho, no Instagram e no Facebook", "Comente", "QUERO",
@@ -515,7 +526,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.34.0: a entrada seguinte, em 4 itens: a aba Setor (as contas, a
     # leitura de segunda-feira, o painel e a ética), a hashtag desligada até a Meta aprovar, os erros da Meta em português e o que o
     # administrador faz (o SQL, o Deploy da radar-concorrentes e da radar-copia, a agenda do setor e a tela com o radar-setor.js)
-    topo, data, itens = pagina.evaluate("VERSOES[10]")
+    topo, data, itens = pagina.evaluate("VERSOES[11]")
     assert topo == "0.34.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Setor (nova): como estão as publicações de um setor no Instagram", "e a da Artecon, para comparar",
@@ -532,7 +543,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.33.0: a entrada seguinte, em 8 itens: a aba Vídeo (quem vê e quem edita), os cortes, a legenda, o gancho/cartela/capa, os
     # cortes por padrão com o desfazer e o resumo, a duração com meta, o montar sem transcrever e o que o administrador faz
-    topo, data, itens = pagina.evaluate("VERSOES[11]")
+    topo, data, itens = pagina.evaluate("VERSOES[12]")
     assert topo == "0.33.0" and data == "18/10/2026" and len(itens) == 8
     texto = " ".join(itens)
     for trecho in ["Aba Vídeo: a lista dos reels com vídeo e o editor do vídeo corrigido", "O administrador edita; o editor só vê; o leitor não vê",
@@ -553,7 +564,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # aviso público), a cópia mensal no OneDrive (dia 1 às 04h10, só a pasta, as tentativas, o lembrete "copia", nunca pelo GitHub), a
     # tela da cópia, o título que vai ao site sem o "nº" (e a página que não abre vira erro) e o que o administrador faz (o SQL antes da
     # tela, a versão, os conhecidos e o passo a passo do LEIAME)
-    topo, data, itens = pagina.evaluate("VERSOES[12]")
+    topo, data, itens = pagina.evaluate("VERSOES[13]")
     assert topo == "0.32.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["Quadro de vencimentos de chaves e contas (Configurações, só o administrador)", "Vermelho: vencido ou até 7 dias; amarelo: até 30 dias",
@@ -572,7 +583,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (leis e decretos, CONFAZ, trabalho e previdência), as do gov.br, o filtro de tema (sem enxurrada), o Normas de volta (desligado até o
     # teste pelo GitHub), o que fica de fora e por quê (Florianópolis, Palhoça e São José pelos sites, o CONFAZ pelo site, o DOM/SC
     # desligado pelo pedido do site) e o que o administrador faz (o setup, a versão, a coleta e só então o SQL das fontes)
-    topo, data, itens = pagina.evaluate("VERSOES[13]")
+    topo, data, itens = pagina.evaluate("VERSOES[14]")
     assert topo == "0.31.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["pelo Diário Oficial da União", "nenhuma senha nova", "leis complementares, decretos, medidas provisórias e emendas à Constituição",
@@ -593,7 +604,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (com as datas, as normas e o fim de semana), a agenda da semana da Pauta até o domingo, a nova data de uma prorrogação conferida
     # (só o administrador escreve), o aviso de possível prorrogação (onde aparece, o "Conferido", o que não conta) e o que o
     # administrador faz (o SQL antes da tela, o botão das anuais antes do Informativo de novembro; o robô dos avisos entra pelo merge)
-    topo, data, itens = pagina.evaluate("VERSOES[14]")
+    topo, data, itens = pagina.evaluate("VERSOES[15]")
     assert topo == "0.30.0" and data == "17/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["13º salário e as obrigações anuais", "a 1ª parcela do 13º até 30/11 e a 2ª até 20/12", "Lei 4.749/1965",
@@ -614,7 +625,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # 16:00, a peça pronta há mais de 24 horas, o vídeo do reel e a notícia que não saiu); as regras (um e-mail por tipo por dia, cada
     # pendência uma vez só, sem nome, nada publicado); as Configurações; e o que o administrador faz (o SQL antes da tela, a radar-redes
     # 0.29.0 e a agenda de novo)
-    topo, data, itens = pagina.evaluate("VERSOES[15]")
+    topo, data, itens = pagina.evaluate("VERSOES[16]")
     assert topo == "0.29.0" and data == "17/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Lembretes por e-mail antes do dia", "a peça da Pauta de amanhã que ainda não está aprovada", "a partir das 16:00",
@@ -629,7 +640,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.28.1: a entrada seguinte conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
     # informação”) e o cartão em branco que não travam mais a peça, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava;
     # e o que o administrador faz (só a tela; o banco continua o da v0.28.0)
-    topo, data, itens = pagina.evaluate("VERSOES[16]")
+    topo, data, itens = pagina.evaluate("VERSOES[17]")
     assert topo == "0.28.1" and data == "17/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["a linha em branco em “Informações conferidas” (de “Acrescentar informação”)", "o cartão em branco",
@@ -643,7 +654,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # administrador, de hoje em diante, uma peça por dia; nasce planejada e não publica nem agenda nada; a importação depois), a marca
     # "Sócio(a) da Artecon" (os dois termos dispensados; o que continua valendo; o Histórico) e o que o administrador faz (o SQL antes da
     # tela; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[17]")
+    topo, data, itens = pagina.evaluate("VERSOES[18]")
     assert topo == "0.28.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Peça nova num dia vazio", "o administrador vê o botão “+ Nova peça”", "(de hoje em diante)",
@@ -663,7 +674,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.27.0: a entrada seguinte conta ao dono, em português simples, o cronograma de publicações na Pauta (a semana e o mês dela, o
     # mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta não entra; a que envelheceu
     # na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[18]")
+    topo, data, itens = pagina.evaluate("VERSOES[19]")
     assert topo == "0.27.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
@@ -681,7 +692,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[19]")
+    topo, data, itens = pagina.evaluate("VERSOES[20]")
     assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
@@ -698,7 +709,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[20]")
+    topo, data, itens = pagina.evaluate("VERSOES[21]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -714,7 +725,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[21]")
+    topo, data, itens = pagina.evaluate("VERSOES[22]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -730,7 +741,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[22]")
+    topo, data, itens = pagina.evaluate("VERSOES[23]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -755,7 +766,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[23]")
+    topo, data, itens = pagina.evaluate("VERSOES[24]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -764,7 +775,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[24]")
+    topo, data, itens = pagina.evaluate("VERSOES[25]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -2075,7 +2086,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.36.0', FUNCAO_MINIMA), versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.39.0", "0.45.0", "0.46.0"]       # v0.44.0: nada muda na radar-redes nem na radar-ia (o teleprompter é da tela; o WEBM, do banco, do robô e da radar-video)
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.39.0", "0.45.0", "0.47.0"]       # v0.44.0: nada muda na radar-redes nem na radar-ia (o teleprompter é da tela; o WEBM, do banco, do robô e da radar-video)
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2930,7 +2941,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.46.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.47.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7009,10 +7020,11 @@ def test_cronograma_na_pauta_com_banco_e_leitor(pagina, limpo):
 
 
 # ------------------------------------------------------------ v0.41.0: a projeção de publicações no Painel (hoje, a semana e o mês)
-def test_projecao_do_painel_renderiza_com_datas_fixas(pagina):
-    """v0.41.0: a renderização pura de blocoProjecaoPainel (as contas são as mesmas de contarCronograma, testadas acima): os três
-    períodos com os títulos certos, o resumo "Tem X de Y: faltam Z (N em atraso)" com a classe abaixo, o "Alcançou" do período
-    cumprido, o recado do dia sem peça, o botão da Pauta, o aviso do corte de 1.000 e o da leitura que falhou."""
+def test_dashboard_do_painel_renderiza_com_datas_fixas(pagina):
+    """v0.47.0: a renderização pura de blocoDashboard (as contas vêm de contarCronograma, testado acima): o seletor Dia/Semana/Mês
+    (Mês ativo por padrão), as três seções por período (só a do Mês visível), o "o que falta" e os quatro números, o cronograma em
+    barras, as notícias por fonte, o gráfico de canais (6 semanas), a comparação com os escritórios e o medidor do corretor de vídeo;
+    sem o cronograma, o aviso no lugar (e os gráficos continuam); sem a comparação, o recado para configurar a aba Setor."""
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     r = pagina.evaluate("""() => {
@@ -7022,34 +7034,46 @@ def test_projecao_do_painel_renderiza_com_datas_fixas(pagina):
                      noticias: [], antes: [], capturas: [], dias: 5};
       const hoje = "2026-09-03";
       const c = {dia: contarCronograma(hoje, hoje, hoje, dados), semana: contarCronograma("2026-08-31", "2026-09-06", hoje, dados),
-                 mes: contarCronograma("2026-09-01", "2026-09-30", hoje, dados), cortado: false};
-      const div = document.createElement("div");
-      div.innerHTML = blocoProjecaoPainel(hoje, c);
-      const resumo = id => { const p = div.querySelector(`#proj-${id} .proj-resumo`);
-        return {texto: p.textContent.trim(), abaixo: p.classList.contains("abaixo"), ...p.dataset}; };
-      const d2 = document.createElement("div");
-      d2.innerHTML = blocoProjecaoPainel("2026-09-04", {...c, dia: contarCronograma("2026-09-04", "2026-09-04", "2026-09-04", dados)});
-      const d3 = document.createElement("div"); d3.innerHTML = blocoProjecaoPainel(hoje, null);
-      const d4 = document.createElement("div"); d4.innerHTML = blocoProjecaoPainel(hoje, {...c, cortado: true});
-      return {titulos: [...div.querySelectorAll(".crono-periodo h3")].map(x => x.textContent.trim()),
-              dia: resumo("dia"), semana: resumo("semana"), mes: resumo("mes"),
-              vermelhas: div.querySelectorAll("tr.abaixo").length, semPeca: d2.querySelector("#proj-dia").textContent,
-              botao: !!div.querySelector("#painel-projecao [data-acao=aba][data-aba=pauta]"),
-              erro: d3.querySelector("#painel-projecao-erro") !== null, cortado: d4.textContent.includes("limite de 1.000")};
+                 mes: contarCronograma("2026-09-01", "2026-09-30", hoje, dados)};
+      const semanas = ["2026-07-28","2026-08-04","2026-08-11","2026-08-18","2026-08-25","2026-09-01"];
+      const graf = {hoje, fontes: {dia: [{fonte: "Receita Federal", n: 3}, {fonte: "PGFN", n: 1}], semana: [], mes: [{fonte: "Receita Federal", n: 5}]},
+                    canais: semanas.map((ini, i) => ({ini, site: i, instagram: i, facebook: 0})),
+                    comparacao: semanas.map(ini => ({ini, artecon: 2, media: 1.5}))};
+      const cota = {segundos_mes: 600, limite_s: 1800};
+      const div = document.createElement("div"); div.innerHTML = blocoDashboard(hoje, c, graf, cota);
+      const semCrono = document.createElement("div"); semCrono.innerHTML = blocoDashboard(hoje, null, graf, cota);
+      const semComp = document.createElement("div"); semComp.innerHTML = blocoDashboard(hoje, c, {...graf, comparacao: null}, null);
+      return {
+        botoes: [...div.querySelectorAll("#dash-periodo button")].map(b => ({t: b.textContent.trim(), ativa: b.classList.contains("ativa")})),
+        mesVisivel: !div.querySelector('.dash-p[data-p=mes]').hidden, diaOculto: !!div.querySelector('.dash-p[data-p=dia]').hidden,
+        falta: !!div.querySelector('.dash-p[data-p=mes] .dash-falta'),
+        kpis: div.querySelectorAll('.dash-p[data-p=mes] .dash-kpi').length,
+        barras: div.querySelectorAll('.dash-p[data-p=mes] .dash-bar').length,
+        fonteBarras: div.querySelectorAll('.dash-p[data-p=mes] .dash-barh').length,
+        canal: div.textContent.includes("Publicações por canal"), svgs: div.querySelectorAll("svg").length,
+        comp: div.textContent.includes("Estamos na mesma linha"), cota: div.textContent.includes("10 de 30 minutos"),
+        botao: !!div.querySelector("#painel-dashboard [data-acao=aba][data-aba=pauta]"),
+        semCronoErro: semCrono.querySelector("#painel-projecao-erro") !== null,
+        semCronoGrafico: semCrono.textContent.includes("Publicações por canal"), semCronoSemSecao: semCrono.querySelectorAll(".dash-p").length,
+        semCompTexto: semComp.textContent.includes("configure os perfis na aba"), semCota: semComp.textContent.includes("minutos usados no mês")};
     }""")
-    assert r["titulos"] == ["Hoje (03/09)", "Semana de 31/08 a 06/09", "Setembro de 2026"]
-    assert r["dia"] == {"texto": "Alcançou: 1 de 1.", "abaixo": False, "minimo": "1", "feito": "1", "atraso": "0"}
-    assert r["semana"] == {"texto": "Tem 1 de 2: falta 1 (1 em atraso).", "abaixo": True, "minimo": "2", "feito": "1", "atraso": "1"}
-    assert r["mes"] == {"texto": "Tem 1 de 3: faltam 2 (1 em atraso).", "abaixo": True, "minimo": "3", "feito": "1", "atraso": "1"}
-    assert r["vermelhas"] == 2 and "Sem peça no calendário para hoje." in r["semPeca"]
-    assert r["botao"] and r["erro"] and r["cortado"]
+    assert [b["t"] for b in r["botoes"]] == ["Dia", "Semana", "Mês"]
+    assert [b["ativa"] for b in r["botoes"]] == [False, False, True]        # Mês ativo por padrão
+    assert r["mesVisivel"] and r["diaOculto"]                              # só o Mês aparece de início
+    assert r["falta"] and r["kpis"] == 4 and r["barras"] >= 1
+    assert r["fonteBarras"] == 1                                          # o Mês tem 1 fonte no gráfico de notícias por fonte
+    assert r["canal"] and r["svgs"] >= 2                                  # os dois gráficos de linha (canais + comparação)
+    assert r["comp"] and r["cota"]                                        # 600 s = 10 min de 1800 s = 30 min
+    assert r["botao"]
+    assert r["semCronoErro"] and r["semCronoGrafico"] and r["semCronoSemSecao"] == 0   # sem cronograma: aviso, mas os gráficos continuam
+    assert r["semCompTexto"] and not r["semCota"]                          # sem comparação: recado da aba Setor; sem cota: sem medidor
 
 
-def test_projecao_no_painel_com_banco_e_leitor(pagina, limpo):
-    """v0.41.0: o quadro no Painel com o banco e o PostgREST de verdade, visto pelo leitor: a peça de HOJE publicada à mão aparece
-    nos três períodos (1 de 1, "Alcançou"), o botão "Abrir a Pauta" navega (e o cronograma de lá dá o mesmo número), e a leitura
-    das capturas que falha vira o aviso sem derrubar o resto do Painel (os cartões continuam). Só leituras; nada de pessoas,
-    quem aparece ou fotos."""
+def test_dashboard_no_painel_com_banco_e_leitor(pagina, limpo):
+    """v0.47.0: o Painel com o banco e o PostgREST de verdade, visto pelo leitor: começa no Mês; a peça de HOJE publicada à mão
+    deixa cada período "tudo em dia" (1 de 1), e o seletor Dia/Semana/Mês troca a seção visível (uma só por vez). O botão "Abrir a
+    Pauta" navega (e o cronograma de lá dá o mesmo número). A leitura das capturas que falha vira o aviso sem derrubar o resto do
+    Painel (os cartões e os gráficos continuam). Só leituras; nada de pessoas, quem aparece ou fotos."""
     from test_radar_banco import hoje as hoje_db
     db = limpo
     hj = str(hoje_db(db))
@@ -7057,33 +7081,35 @@ def test_projecao_no_painel_com_banco_e_leitor(pagina, limpo):
     pedidos = []
     pagina.on("request", lambda req: pedidos.append((req.method, req.url)) if "/rest/v1/" in req.url else None)
     entrar(pagina, "leitor@artecon.test")
-    pagina.wait_for_selector("#painel-projecao")
-
-    def quadro(periodo):
-        return {l["linha"]: [int(l["minimo"]), int(l["feito"]), l["atraso"] != "0"]
-                for l in pagina.eval_on_selector_all(f"#proj-{periodo} tr[data-linha]", "trs => trs.map(t => ({...t.dataset}))")}
-    for periodo in ("dia", "semana", "mes"):
-        assert quadro(periodo)["posts"] == [1, 1, False], periodo
-        assert "Alcançou: 1 de 1." in pagina.inner_text(f"#proj-{periodo} .proj-resumo"), periodo
-    assert pagina.inner_text("#proj-dia h3").startswith("Hoje (")
-    pagina.screenshot(path=str(FOTOS / "75-painel-projecao.png"), full_page=True)
+    pagina.wait_for_selector("#painel-dashboard")
+    assert pagina.locator("#dash-periodo button.ativa").inner_text() == "Mês"          # começa no Mês
+    # cada período mostra a peça de hoje (1 de 1, tudo em dia) e o cronograma em barra (Posts no feed 1/1); o toggle deixa uma só seção
+    for p in ("mes", "dia", "semana"):
+        pagina.click(f"#dash-periodo button[data-p={p}]")
+        pagina.wait_for_selector(f"#painel-dashboard .dash-p[data-p={p}]:not([hidden])")
+        txt = pagina.inner_text(f"#painel-dashboard .dash-p[data-p={p}]")
+        assert "Tudo em dia" in txt and "1 de 1 feito" in txt, p
+        assert "Posts no feed" in txt and "1/1" in txt, p
+        assert pagina.locator("#painel-dashboard .dash-p:not([hidden])").count() == 1, p
+    pagina.screenshot(path=str(FOTOS / "75-painel-dashboard.png"), full_page=True)
     # o botão leva à Pauta, e o cronograma de lá dá o mesmo número da semana
-    pagina.click("#painel-projecao [data-acao=aba][data-aba=pauta]")
+    pagina.click("#painel-dashboard [data-acao=aba][data-aba=pauta]")
     pagina.wait_for_selector("#pauta-cronograma")
     semana = {l["linha"]: [int(l["minimo"]), int(l["feito"])]
               for l in pagina.eval_on_selector_all("#cron-semana tr[data-linha]", "trs => trs.map(t => ({...t.dataset}))")}
     assert semana["posts"] == [1, 1]
-    # só leituras (o Painel também usa rpc de consulta, que o PostgREST chama por POST), nada proibido
+    # só leituras (o Painel também usa rpc de consulta, inclusive radar_painel_graficos, que o PostgREST chama por POST), nada proibido
     assert pedidos and all(m == "GET" or (m == "POST" and "/rest/v1/rpc/" in u) for m, u in pedidos), \
         [p for p in pedidos if p[0] != "GET" and "/rest/v1/rpc/" not in p[1]]
     for proibido in ("quem_aparece", "fotos", "artes", "radar_pessoas", "radar_v_pauta_pessoas"):
         assert not [u for _, u in pedidos if proibido in u], proibido
-    # a leitura das capturas falha: o aviso no lugar do quadro, e o resto do Painel continua (os cartões ficam)
+    # a leitura das capturas falha: o aviso no lugar do cronograma, e o resto do Painel continua (os cartões e os gráficos ficam)
     pagina.route("**/rest/v1/radar_capturas*", lambda rota: rota.fulfill(status=500, content_type="application/json", body='{"message":"falha de teste"}'))
     pagina.click("nav.abas >> text=Painel")
     pagina.wait_for_selector("#painel-projecao-erro")
-    assert pagina.locator(".cartoes").count() == 1 and pagina.locator("#proj-dia").count() == 0
-    pagina.screenshot(path=str(FOTOS / "76-painel-projecao-erro.png"), full_page=True)
+    assert pagina.locator(".cartoes").count() == 1 and pagina.locator("#painel-dashboard .dash-p").count() == 0
+    assert "Publicações por canal" in pagina.inner_text("#painel-dashboard")           # os gráficos (RPC própria) continuam
+    pagina.screenshot(path=str(FOTOS / "76-painel-dashboard-erro.png"), full_page=True)
     pagina.unroute("**/rest/v1/radar_capturas*")
 
 
@@ -7121,7 +7147,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.click("nav.abas >> text=Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.46.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.47.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -7135,7 +7161,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
-    assert "o administrador roda o sql/radar-setup-v0.46.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 em diante: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.47.0.sql" in pagina.inner_text("#pauta-sem-banco")      # v0.29.0 em diante: o setup desta versão
     # v0.28.0: a tela nova com o banco da v0.27.0 (a vista das pessoas da peça sem a coluna termos_dispensados): o mesmo aviso, com o
     # setup da v0.28.0
     pagina.unroute("**/rest/v1/radar_pauta_pecas*")
@@ -7145,7 +7171,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
     aviso = pagina.inner_text("#pauta-sem-banco")
-    assert "precisa do banco da v0.32.0" in aviso and "o administrador roda o sql/radar-setup-v0.46.0.sql" in aviso
+    assert "precisa do banco da v0.32.0" in aviso and "o administrador roda o sql/radar-setup-v0.47.0.sql" in aviso
 
 
 def test_peca_salva_com_trava_de_versao_e_aprovada_nao_edita(pagina, limpo):
@@ -7573,7 +7599,7 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
         pagina.click("nav.abas >> text=Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         assert "A situação dos lembretes precisa do banco da v0.29.0" in pagina.inner_text("#lembretes-situacao")
-        assert "sql/radar-setup-v0.46.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 em diante: o setup desta versão
+        assert "sql/radar-setup-v0.47.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 em diante: o setup desta versão
     finally:
         limpo.execute("update radar_config set valor = %s where chave = 'lembretes'", (json.dumps(original),))
         limpo.execute("truncate radar_lembretes")
@@ -8002,7 +8028,7 @@ def test_painel_possivel_prorrogacao_e_conferido_so_admin(pagina, limpo, request
     assert pagina.locator("#prorrogacoes").count() == 0
     pagina.click("nav.abas >> text=Configurações")
     pagina.wait_for_selector("#prorrogacao-sem-banco >> text=O aviso de prorrogação precisa do banco da v0.30.0")
-    assert "o administrador roda o sql/radar-setup-v0.46.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0 em diante: o setup desta versão
+    assert "o administrador roda o sql/radar-setup-v0.47.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0 em diante: o setup desta versão
     assert pagina.locator("#prorrogacoes-config").count() == 0
 
 
@@ -10110,7 +10136,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.46.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.47.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -11834,8 +11860,8 @@ def test_configuracoes_com_o_banco_antigo(pagina, quadro_tela):
     pagina.route("**/rest/v1/rpc/radar_copias_situacao*", falta)
     abrir_configuracoes(pagina)
     pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
-    assert "O quadro de vencimentos precisa do banco novo: o administrador roda o sql/radar-setup-v0.46.0.sql" in pagina.inner_text("#vencimentos")
-    assert "A cópia de segurança precisa do banco novo: o administrador roda o sql/radar-setup-v0.46.0.sql" in pagina.inner_text("#copia-onedrive")
+    assert "O quadro de vencimentos precisa do banco novo: o administrador roda o sql/radar-setup-v0.47.0.sql" in pagina.inner_text("#vencimentos")
+    assert "A cópia de segurança precisa do banco novo: o administrador roda o sql/radar-setup-v0.47.0.sql" in pagina.inner_text("#copia-onedrive")
     assert pagina.locator("[data-acao=venc-conhecidos]").count() == 0 and pagina.locator("[data-acao=copia-agora]").count() == 0
 # ----------------------------------------------------------------------- v0.33.0: a aba Vídeo (o editor do vídeo corrigido)
 # o mapa do vídeo (a linha original em quadros de 1/30 s): um clipe com a fala de 0 a 10 s e um corte automático de 4 a 5 s (a chave
