@@ -1422,8 +1422,8 @@ const TELAS = {
       <ul>${pendentes.slice(0, 10).map(linhaProrrogacao).join("")}</ul>${pendentes.length > 10 ? `<p class="sub">e mais ${pendentes.length - 10}${ehAdmin()
         ? " (a lista inteira fica em Configurações → Agenda de obrigações)" : ""}</p>` : ""}</div>` : "";
     return `<h1>Painel do dia</h1>${parada}
-      ${prorrogacao}
       ${blocoDashboard(hoje, proj, graf, cota)}
+      ${prorrogacao}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
         ${c(p.capturas_24h, "Capturas nas últimas 24h", "fila")}
