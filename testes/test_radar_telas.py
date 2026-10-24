@@ -6787,6 +6787,16 @@ def test_pessoas_termo_assinado_na_tela_e_todos_assinam(pagina, pauta):
     assert form.locator("[data-acao=pessoa-assinar]").count() == 0
 
 
+# ------------------------------------------------------------ v0.27.0: o cronograma de publicações
+# O mínimo (o plano da Pauta e as notícias de alta que a busca achou) ao lado do feito, na semana mostrada e no mês dela. As contas são
+# funções puras (o "hoje" entra de fora); o quadro só lê. Datas fixas no passado e nomes de mentira.
+MESES_CRONOGRAMA = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+# os testes clicam nos botões pelo texto (sem escopo, sem diferença de maiúsculas), e o quadro fica acima da barra
+PROIBIDOS_CRONOGRAMA = ["esta semana", "semana anterior", "próxima semana", "sair", "abrir", "pessoas e termos", "gravar", "voltar", "painel do dia"]
+SELECT_CAPTURAS_CRONOGRAMA = ("id,relevancia,data_publicacao,capturado_em,incluido_em:metadados->>incluido_em,"
+                              "radar_assunto_capturas(assunto_id,radar_assuntos(status,radar_conteudos(id,radar_divulgacoes(id))))")
+
+
 def test_cronograma_conta_minimo_e_feito_sem_depender_de_hoje(pagina):
     """v0.27.0: as contas do cronograma com datas fixas. O mês do quadro (o de hoje na semana de hoje; nas outras, o da quinta-feira), o
     dia de Brasília, a peça feita (à mão ou com um envio publicado; a excluída, a dispensada e a cancelada não), cada peça numa linha só,
@@ -10100,7 +10110,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.45.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.46.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10357,9 +10367,9 @@ def test_peca_linhas_em_branco_nao_travam_e_cartao_nao_salvo_trava_com_o_que_mud
 
 
 def test_pessoas_termo_do_corretor_quer_ver_menor_e_pecas_publicadas(pagina, vtela):
-    """v0.22.0: Pessoas e termos: o administrador grava o termo do corretor de vídeo (nunca no futuro), “pediu para ver a peça antes” e
-    menor de idade; na peça reel, a pessoa menor aparece no aviso antes do envio. Com o termo revogado (ou a pessoa inativa), a lista das
-    peças publicadas com ela, com os links a retirar e se ainda há vídeo guardado."""
+    """v0.22.0: Pessoas e termos: o administrador grava “pediu para ver a peça antes” e menor de idade; na peça reel, a pessoa menor
+    aparece no aviso antes do envio. Com o termo revogado (ou a pessoa inativa), a lista das peças publicadas com ela, com os links a
+    retirar e se ainda há vídeo guardado. v0.46.0: o termo do corretor passa a vir da assinatura única na tela (não é mais um campo de data)."""
     db, fv = vtela
     ana = vb.nova_pessoa(db, "Ana Teste", "Ana")
     pid = vb.nova_peca(db, dias=3, tipo="quem_cuida", formato="foto", pessoas=[ana])
@@ -10373,18 +10383,14 @@ def test_pessoas_termo_do_corretor_quer_ver_menor_e_pecas_publicadas(pagina, vte
     form = pagina.locator(f"form[data-form=pessoa][data-id='{ana}']")
     form.wait_for()
     assert form.locator(".pecas-da-pessoa").count() == 0                                           # ativa e com o termo valendo
-    amanha = (datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)).isoformat()
-    form.locator("[name=termo_corretor_em]").fill(amanha)
-    limpar_recados(pagina)
-    form.locator("button", has_text="Salvar").click()
-    pagina.wait_for_selector("#recado .erro >> text=o termo do corretor de vídeo foi assinado não pode estar no futuro")
-    form.locator("[name=termo_corretor_em]").fill("2026-10-01")
     form.locator("[name=quer_ver_peca]").check()
     form.locator("[name=menor]").check()
     limpar_recados(pagina)
     form.locator("button", has_text="Salvar").click()
     pagina.wait_for_selector("#recado >> text=Pessoa salva.")
-    assert db.execute("select termo_corretor_em, quer_ver_peca, menor from radar_pessoas where id = %s", (ana,)).fetchone() == (date(2026, 10, 1), True, True)
+    assert db.execute("select quer_ver_peca, menor from radar_pessoas where id = %s", (ana,)).fetchone() == (True, True)
+    # v0.46.0: o termo do corretor vem da assinatura na tela; aqui entra pelo banco para isolar o aviso de menor de idade
+    db.execute("update radar_pessoas set termo_corretor_em = '2020-01-01' where id = %s", (ana,))
     reel_id, _ = vb.reel(db, pessoa=ana)
     abrir_video(pagina, db, reel_id)
     assert "Ana: menor de idade: o corretor não aceita nesta versão" in pagina.inner_text("#video-pessoas-falta")
