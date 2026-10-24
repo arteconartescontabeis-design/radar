@@ -1,6 +1,6 @@
 -- =====================================================================
--- RADAR ARTECON — radar-reversao-v0.45.0.sql
--- DESFAZ a instalação do radar-setup-v0.45.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
+-- RADAR ARTECON — radar-reversao-v0.46.0.sql
+-- DESFAZ a instalação do radar-setup-v0.46.0.sql (e tira a agenda da Pauta, sql/radar-redes-agenda.sql, e a do corretor de vídeo,
 -- sql/radar-video-agenda.sql, se existirem).
 -- ATENÇÃO: apaga TODAS as tabelas radar_* e os dados nelas contidos.
 -- Só toca em objetos com prefixo "radar_"; nada mais no banco é alterado.
@@ -140,6 +140,7 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_pessoas_termos,   -- v0.46.0
   public.radar_copias,
   public.radar_vencimentos,
   public.radar_lembretes,
@@ -432,6 +433,10 @@ drop function if exists public.radar_video_baixar_avulso(uuid);
 
 -- v0.40.0: o "Aceitar — quis dizer o mesmo"
 drop function if exists public.radar_video_aceitar(uuid, jsonb);
+
+-- v0.46.0: o termo de imagem com assinatura na tela (a tabela do histórico já saiu com a lista acima)
+drop function if exists public.radar_pessoa_assinar_termo(bigint, text, text, text);
+drop function if exists public.radar_pessoa_revogar_termo(bigint);
 
 commit;
 

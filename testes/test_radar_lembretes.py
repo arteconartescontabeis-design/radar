@@ -696,14 +696,14 @@ def test_setup_por_cima_do_banco_sem_os_lembretes_nao_perde_dados():
         assert {t: n for t, n in depois.items() if t not in ("radar_config", "radar_instalacoes", "radar_lembretes", "radar_auditoria")} == \
                {t: n for t, n in antes.items() if t not in ("radar_config", "radar_instalacoes", "radar_auditoria")}
         assert depois["radar_config"] == antes["radar_config"] + 1 and depois["radar_instalacoes"] == antes["radar_instalacoes"] + 2
-        assert depois["radar_lembretes"] == 0 and len(depois) == 37          # v0.32.0: + 2 tabelas; v0.34.0: + as 4 da aba Setor
+        assert depois["radar_lembretes"] == 0 and len(depois) == 38          # v0.32.0: + 2 tabelas; v0.34.0: + as 4 da aba Setor; v0.46.0: + radar_pessoas_termos
         with conectar(banco) as c:
             assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {
                 "ligado": True, "hora": "16:00", "de": "08:00", "ate": "20:00", "aprovacao_horas": 24, "parada_horas": 3,
                 "pauta": True, "aprovacao": True, "video": True, "noticia": True, "vencimento": True, "copia": True}
             assert c.execute("select valor->>'janela_horas' from radar_config where chave = 'pauta'").fetchone()[0] == "4"
             c.execute("""update radar_config set valor = '{"ligado": false, "hora": "17:30"}' where chave = 'lembretes'""")
-            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.45.0"
+            assert c.execute("select versao from radar_instalacoes where depois is not null order by id desc limit 1").fetchone()[0] == "v0.46.0"
         assert psql(SETUP, banco).returncode == 0
         with conectar(banco) as c:                                                         # o ajuste do administrador fica
             assert c.execute("select valor from radar_config where chave = 'lembretes'").fetchone()[0] == {

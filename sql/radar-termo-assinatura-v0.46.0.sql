@@ -52,11 +52,11 @@ declare
   v_pessoa public.radar_pessoas%rowtype;
   v_cfg    jsonb;
   v_cpf    text := regexp_replace(coalesce(p_cpf, ''), '\D', '', 'g');   -- só os dígitos
-  v_canais text[] := array['site','instagram','facebook'];
+  v_canais text[] := array['instagram','facebook'];       -- os canais que a conferência da Pauta usa (o texto do termo cobre também o site)
   v_usos   text[] := array['equipe','orientacao','datas','captacao'];
   v_hist   bigint;
 begin
-  if (select public.radar_papel()) <> 'admin' then
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
     raise exception 'RADAR190: só o administrador registra a assinatura do termo.' using errcode = 'P0001';
   end if;
   select * into v_pessoa from public.radar_pessoas where id = p_pessoa;
@@ -94,7 +94,7 @@ end $$;
 create or replace function public.radar_pessoa_revogar_termo(p_pessoa bigint) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
-  if (select public.radar_papel()) <> 'admin' then
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
     raise exception 'RADAR190: só o administrador revoga o termo.' using errcode = 'P0001';
   end if;
   update public.radar_pessoas set termo_revogado_em = current_date, atualizado_em = now() where id = p_pessoa;
@@ -136,6 +136,40 @@ select p.id as peca_id, p.data, pe.id as pessoa_id, pe.nome_na_peca,
 from public.radar_pauta_pecas p
 cross join lateral unnest(p.pessoas) as u(pessoa_id)
 join public.radar_pessoas pe on pe.id = u.pessoa_id;
+
+-- 7b) o CPF também fica FORA da trilha de auditoria (como o nome, o nome na peça, o CRC e a área): a prova completa (com o CPF e a
+--     imagem da assinatura) fica em radar_pessoas_termos, que não é auditada. A trilha de radar_pessoas segue sem dado pessoal.
+create or replace function public.radar_fn_auditar() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_reg jsonb;
+  v_tira text[] := case tg_table_name
+                     when 'radar_redes_envios' then array['imagem']
+                     when 'radar_pauta_pecas'  then array['ia','assunto','objetivo','observacao','quem_aparece']
+                     when 'radar_pessoas'      then array['nome','nome_na_peca','crc','area','cpf']   -- v0.46.0: + cpf
+                     when 'radar_videos'       then array['relatorio','fala_roteiro','ajustes','cartela_linhas']
+                     else array[]::text[] end;
+begin
+  if tg_op = 'DELETE' then v_reg := to_jsonb(old); else v_reg := to_jsonb(new); end if;
+  if tg_op = 'UPDATE'
+     and (to_jsonb(old) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em'])
+       = (to_jsonb(new) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em']) then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and tg_table_name in ('radar_redes_envios','radar_pauta_pecas','radar_pessoas','radar_videos')
+     and (to_jsonb(old) - v_tira - array['atualizado_em','disparos','disparado_em','pego_em','tentativas','rodada','palavras_tentativa','fila_em','reservas','retentar_em'])
+       = (to_jsonb(new) - v_tira - array['atualizado_em','disparos','disparado_em','pego_em','tentativas','rodada','palavras_tentativa','fila_em','reservas','retentar_em']) then
+    return new;
+  end if;
+  insert into public.radar_auditoria (tabela, registro_id, acao, usuario, antes, depois)
+  values (tg_table_name,
+          coalesce(v_reg->>'id', v_reg->>'user_id', v_reg->>'slug', v_reg->>'chave', '?'),
+          tg_op, auth.uid(),
+          case when tg_op <> 'INSERT' then to_jsonb(old) - v_tira end,
+          case when tg_op <> 'DELETE' then to_jsonb(new) - v_tira end);
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
+end $$;
 
 -- 8) RLS e privilégios da tabela nova e das funções
 alter table public.radar_pessoas_termos enable row level security;

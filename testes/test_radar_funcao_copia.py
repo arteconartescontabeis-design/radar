@@ -2,7 +2,7 @@
 pasta do OneDrive, o envio direto e a sessão de envio em pedaços). Sem o Deno instalado, o arquivo é pulado.
 
 Confere: sem os segredos, "não configurada" sem erro, sem registro e sem falar com a Microsoft; quem pode chamar (o administrador, ou a
-agenda com a chave do Vault; a chave dos robôs sozinha não); o .zip conferido pelo Python (testzip, as 37 tabelas, as linhas e o sha256
+agenda com a chave do Vault; a chave dos robôs sozinha não); o .zip conferido pelo Python (testzip, as 38 tabelas, as linhas e o sha256
 de cada arquivo iguais ao banco, as imagens sem compactar); até 4 MiB um PUT só; acima, a sessão de envio em pedaços de 327 680 bytes,
 sem o Authorization; 5xx repetido e a desistência; a sessão vencida (404); o endereço de envio de fora do OneDrive recusado sem mandar
 nada; o tamanho diferente (o arquivo é apagado); o "Testar" (o 403 esperado na raiz do OneDrive, a permissão a mais, o consentimento
@@ -311,7 +311,7 @@ def conferir_zip(db, z, arquivo):
     assert z.testzip() is None
     assert z.namelist() == ["LEIA-ME.txt", "manifesto.json"] + [f"tabelas/{t}.json" for t in TABELAS]
     man = json.loads(z.read("manifesto.json"))
-    assert (man["radar"], man["arquivo"], man["versao_funcao"], man["versao_banco"]) == ("Radar Artecon", arquivo, "0.35.0", "v0.45.0")
+    assert (man["radar"], man["arquivo"], man["versao_funcao"], man["versao_banco"]) == ("Radar Artecon", arquivo, "0.35.0", "v0.46.0")
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}-03:00", man["gerado_em"]) and len(man["nao_inclui"]) == 3
     assert [t["tabela"] for t in man["tabelas"]] == TABELAS
     for t in man["tabelas"]:
@@ -376,7 +376,7 @@ def test_copia_pequena_por_put_e_o_zip_confere(copia):
     status, r, _ = copiar()
     assert status == 200 and r["ok"] is True, r
     assert set(r) == {"ok", "arquivo", "bytes", "bytes_brutos", "linhas", "tabelas", "mascarados", "tempos", "versao"}
-    assert set(r["tempos"]) == {"exportar_ms", "compactar_ms", "enviar_ms"} and r["tabelas"] == 37 and r["mascarados"] == {}
+    assert set(r["tempos"]) == {"exportar_ms", "compactar_ms", "enviar_ms"} and r["tabelas"] == 38 and r["mascarados"] == {}
     arquivo = r["arquivo"]
     assert re.fullmatch(r"radar-copia-\d{4}-\d{2}-\d{2}-\d{4}\.zip", arquivo)
     [put] = graph("PUT")
@@ -390,7 +390,7 @@ def test_copia_pequena_por_put_e_o_zip_confere(copia):
     assert all(i.flag_bits & 0x800 for i in z.infolist())                                       # nomes em UTF-8
     dados = ESTADO["arquivos"][arquivo]["dados"]
     assert 1_000_000 < len(dados) <= 4 * 1024 * 1024
-    assert registro(db) == [(True, arquivo, len(dados), man["bytes_brutos"], man["linhas"], 37,
+    assert registro(db) == [(True, arquivo, len(dados), man["bytes_brutos"], man["linhas"], 38,
                              hashlib.sha256(z.read("manifesto.json")).hexdigest(), None, "admin")]
     assert (r["bytes"], r["bytes_brutos"], r["linhas"]) == (len(dados), man["bytes_brutos"], man["linhas"])
 
@@ -699,7 +699,7 @@ def test_nada_vai_para_log_nem_storage(funcao):
         log = (funcao / f"{nome}.log").read_text()
         for proibido in ("Ana Teste", "Bruno Exemplo", "segredo-de-teste", CHAVE_AGENDA, "radar-copia-20", "ghp_", "data:image"):
             assert proibido not in log, (nome, proibido)
-    assert re.search(r"radar-copia \(admin\): ok, 37 tabelas, \d+ linhas, [\d.]+ MB, \d+ ms", (funcao / "a.log").read_text())
+    assert re.search(r"radar-copia \(admin\): ok, 38 tabelas, \d+ linhas, [\d.]+ MB, \d+ ms", (funcao / "a.log").read_text())
     assert STORAGE == []
 
 
@@ -711,4 +711,4 @@ def test_tabelas_da_funcao_tem_versao_e_sem_import():
     usos = [l.strip() for l in codigo_sem_comentario if "RADAR_PORTA_LOCAL" in l]
     assert usos == ['return Boolean(Deno.env.get("RADAR_PORTA_LOCAL")) && url.protocol === "http:" && url.hostname === "127.0.0.1";',
                     'const portaLocal = Deno.env.get("RADAR_PORTA_LOCAL");       // só para rodar/testar fora do Supabase']
-    assert len(TABELAS) == 37
+    assert len(TABELAS) == 38

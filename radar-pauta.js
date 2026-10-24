@@ -17,8 +17,9 @@
    v0.27.0: no alto da semana, o cronograma de publicações (blocoCronograma): o mínimo (o plano da Pauta e as notícias de alta que a
    busca achou) ao lado do feito, na semana e no mês dela; só lê e conta números.
    v0.28.0: "+ Nova peça" nos dias da semana sem peça (de hoje em diante, só o administrador: formNovaPeca e radar_pauta_criar, que nasce
-   planejada e não publica nem agenda nada) e, em Pessoas e termos, a marca "Sócio(a) da Artecon" (só o administrador marca): para quem a
-   tem, o banco não pede o termo de uso de imagem nem o do corretor de vídeo, e a tela mostra o selo "Sócio(a) — termos dispensados".
+   planejada e não publica nem agenda nada) e, em Pessoas e termos, a marca "Sócio(a) da Artecon" (só o administrador marca).
+   v0.46.0: o termo de uso de imagem vira uma ASSINATURA de verdade na tela (assinarTermo: CPF + a assinatura desenhada com a caneta/dedo,
+   guardada como prova em radar_pessoas_termos). TODOS assinam, sócios inclusive — não há mais dispensa; o selo volta a ser só "termo ok".
    v0.28.1: a trava da peça (estadoPeca) conta as informações conferidas e os cartões como o Salvar os grava (a linha em branco não
    conta), o aviso diz o que mudou e não foi salvo (avisoPecaSuja) e o Salvar sem nada a gravar destrava a peça.
    v0.29.0: só a versão e o recado do banco (o setup da v0.29.0): os lembretes por e-mail ficam em Configurações (index.html).
@@ -38,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.45.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.46.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -76,7 +77,7 @@ const hashtagsPauta = () => (Array.isArray(CONF_PAUTA.pauta?.hashtags) ? CONF_PA
 const semTabelaDaPauta = e => e.status === 404 || /radar_pauta_pecas|radar_pessoas|radar_v_pauta_pessoas|peca_id/.test(e.message || "");
 // (v0.28.0: também a coluna socio de radar_pessoas e a termos_dispensados de radar_v_pauta_pessoas, do banco da v0.28.0; v0.29.0 a
 // v0.32.0: o recado manda rodar o setup desta versão, que traz junto os anteriores)
-const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.45.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
+const AVISO_SEM_TABELA = `<h1>Pauta</h1><div class="aviso erro" id="pauta-sem-banco">A Pauta desta versão precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.46.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
 
 /* ------------------------------------------------------------------------- a aba */
 async function telaPauta(){
@@ -113,12 +114,11 @@ function seloPeca(p){
   if(p.situacao === "aprovada" && p.aprovado_modo === "manual") return selo("Aprovada (à mão)", "ok");
   return selo(SITUACOES_PAUTA[p.situacao] || p.situacao, {planejada:"neutro", em_producao:"alerta", pronta:"", aprovada:"ok"}[p.situacao] ?? "neutro");
 }
-/* O selo do termo de uso de imagem de uma pessoa da peça (radar_v_pauta_pessoas: o banco confere no dia da peça). v0.28.0: sócio(a) da
-   Artecon, maior de idade e ativo(a), "Sócio(a) — termos dispensados" (inativo(a), o banco devolve o motivo e o selo é o de erro) */
-const SELO_SOCIO = "Sócio(a) — termos dispensados";
+/* O selo do termo de uso de imagem de uma pessoa da peça (radar_v_pauta_pessoas: o banco confere no dia da peça). v0.46.0: todos assinam
+   (sócios inclusive); sem a dispensa, o selo é só "termo ok" ou o motivo de erro (a coluna termos_dispensados da vista vem sempre falsa). */
 function seloTermo(s){
   if(!s) return "";
-  if(!s.motivo_instagram && !s.motivo_facebook) return s.termos_dispensados ? selo(SELO_SOCIO, "ok") : selo("termo ok", "ok");
+  if(!s.motivo_instagram && !s.motivo_facebook) return selo("termo ok", "ok");
   const motivos = s.motivo_instagram === s.motivo_facebook ? s.motivo_instagram
     : [s.motivo_instagram ? "Instagram: " + s.motivo_instagram : "", s.motivo_facebook ? "Facebook: " + s.motivo_facebook : ""].filter(Boolean).join("; ");
   return `<span class="selo erro" title="${h(motivos)}">sem termo válido (${h(motivos)})</span>`;
@@ -515,7 +515,7 @@ async function telaPeca(id){
         ${ativas.length ? `<div class="peca-pessoas">${ativas.map(x => `<label><input type="checkbox" name="pessoa" class="peca-arte-campo" value="${x.id}"${p.pessoas.includes(x.id) ? " checked" : ""}${desAr}>
             <span><b>${h(x.nome_na_peca)}</b>${x.area ? ` · ${h(x.area)}` : ""}${x.ativo ? "" : " " + selo("inativa", "erro")} ${seloTermo(termoDe(x.id))}</span></label>`).join("")}</div>
           <p class="sub">Marque só quem aparece nas fotos e nos textos (ou ninguém). O selo do termo de uso de imagem vale para o dia da peça e aparece depois de salvar.</p>`
-          : `<p class="sub">Nenhuma pessoa cadastrada. ${ehAdmin() ? "Cadastre" : "O administrador cadastra"} em Pauta → Pessoas e termos, só com o termo de uso de imagem assinado (sócio(a) da Artecon: marque “Sócio(a) da Artecon”).</p>`}` : ""}
+          : `<p class="sub">Nenhuma pessoa cadastrada. ${ehAdmin() ? "Cadastre" : "O administrador cadastra"} em Pauta → Pessoas e termos, e registre o termo de uso de imagem assinado na tela (todos assinam, sócios inclusive).</p>`}` : ""}
       ${vaiAoAr ? `<h3>Informações conferidas</h3>
         <p class="sub">Cada fato da peça (número, data, prazo, regra, o que a Artecon faz) com a fonte oficial em que foi conferido. Número que não estiver aqui trava a aprovação; o boletim pago (ITC) não serve de fonte.</p>
         <div class="conf-linhas" id="peca-conferidas"${desAr ? ` data-travado="1"` : ""}>${conferidasDe(p).map(c => linhaConferida(c, desAr)).join("")}</div>
@@ -1182,23 +1182,22 @@ function linhaPessoa(x){
 }
 async function telaPessoas(){
   const adm = ehAdmin(), lista = await ler("radar_pessoas", {select:"*", order:"ativo.desc,nome_na_peca,id"});
-  // v0.22.0: quem revogou o termo ou ficou inativa: as peças publicadas com ela (os links a retirar das redes no prazo do termo). v0.28.0:
-  // de sócio(a) da Artecon (maior de idade) a revogação não conta (os termos são dispensados): só "Ativa" desmarcada
-  const pecas = await Promise.all(lista.map(x => adm && (!x.ativo || (x.termo_revogado_em && !(x.socio && !x.menor)))
+  // v0.22.0: quem revogou o termo ou ficou inativa: as peças publicadas com ela (os links a retirar das redes no prazo do termo).
+  const pecas = await Promise.all(lista.map(x => adm && (!x.ativo || x.termo_revogado_em)
     ? rpc("radar_pauta_pecas_da_pessoa", {p_pessoa:x.id}) : null));
   lista.forEach((x, i) => { x.pecasPublicadas = pecas[i]; });
   return `<button class="voltar" data-acao="voltar">← Voltar para a semana</button>
     <h1>Pessoas e termos</h1>
     <p class="sub">Quem pode aparecer nas peças da Pauta e o termo de uso de imagem de cada pessoa. Fica só no banco (o repositório do Radar é público); o leitor não vê. ${adm ? "" : "Só o administrador cadastra e altera."}</p>
-    <div class="aviso info">Registre só com o termo assinado em mãos e marque exatamente o que a pessoa marcou (nome completo ou só o primeiro, canais, finalidades e prazo). Sócio(a) da Artecon não precisa de termo: marque “Sócio(a) da Artecon” (o Radar dispensa o termo de uso de imagem e o do corretor de vídeo).</div>
+    <div class="aviso info">O termo é <b>assinado na própria tela</b> (com o CPF e a assinatura desenhada pela caneta ou pelo dedo). <b>Todos assinam, sócios inclusive.</b> Cadastre a pessoa, abra o cadastro dela e clique em <b>“Assinar o termo na tela”</b>. Um único termo autoriza o uso da imagem nos canais site, Instagram e Facebook e o corretor de vídeo. Fica guardado como prova (data/hora, CPF e a imagem da assinatura).</div>
     ${adm ? `<details class="nova-pessoa"${lista.length ? "" : " open"}><summary>Cadastrar pessoa</summary>${formPessoa({ativo:true}, true)}</details>` : ""}
     <div class="pessoas-lista">${lista.length ? lista.map(x => formPessoa(x, adm)).join("") : `<p class="sub">Nenhuma pessoa cadastrada.</p>`}</div>`;
 }
 function formPessoa(x, ed){
-  const id = x.id || "nova", des = ed ? "" : " disabled", marca = (lista, v) => (Array.isArray(lista) ? lista : []).includes(v) ? " checked" : "";
+  const id = x.id || "nova", des = ed ? "" : " disabled";
   const campo = (nome, rotulo, extra) => `<div><label for="pe-${nome}-${id}">${rotulo}</label><input id="pe-${nome}-${id}" name="${nome}" ${extra} value="${h(x[nome] || "")}"${des}></div>`;
-  // v0.28.0: o selo de sócio(a) da Artecon (maior de idade: termos dispensados; menor de idade: os termos continuam exigidos)
-  const socio = x.socio && !x.menor ? " " + selo(SELO_SOCIO, "ok") : x.socio ? " " + selo("Sócio(a), menor de idade: termos exigidos", "alerta") : "";
+  // v0.46.0: a marca "Sócio(a) da Artecon" é só uma referência; o termo é exigido de todos (sócios inclusive)
+  const socio = x.socio ? " " + selo("Sócio(a) da Artecon", "neutro") : "";
   return `<form class="painel pessoa${x.id && !x.ativo ? " inativa" : ""}" data-form="${x.id ? "pessoa" : "novaPessoa"}"${x.id ? ` data-id="${x.id}"` : ""} data-socio="${x.socio ? 1 : 0}">
     ${x.id ? `<h2>${h(x.nome_na_peca)}${x.ativo ? "" : " " + selo("inativa", "neutro")}${socio}</h2>` : ""}
     <div class="grade">
@@ -1207,74 +1206,134 @@ function formPessoa(x, ed){
       ${campo("area", "Área", 'type="text" maxlength="60" placeholder="Departamento Pessoal"')}
       <div><label for="pe-categoria-${id}">Categoria</label><select id="pe-categoria-${id}" name="categoria"${des}>${opcoes(CATEGORIAS_PESSOA, x.categoria || "")}</select></div>
       ${campo("crc", "Registro no CRC (contador e técnico)", 'type="text" maxlength="40" placeholder="CRC-SC 000000/O-0"')}
-      ${campo("termo_assinado_em", "Termo assinado em", 'type="date"')}
-      ${campo("termo_valido_ate", "Válido até (vazio: sem prazo)", 'type="date"')}
-      ${campo("termo_revogado_em", "Revogado em", 'type="date"')}
-      ${campo("termo_corretor_em", "Termo do corretor de vídeo assinado em", 'type="date"')}
     </div>
-    <fieldset class="checks"><legend>Canais autorizados no termo</legend>${["instagram", "facebook"].map(k =>
-      `<label><input type="checkbox" name="canal" value="${k}"${marca(x.termo_canais, k)}${des}> ${NOME_REDE[k]}</label>`).join("")}</fieldset>
-    <fieldset class="checks"><legend>Finalidades autorizadas no termo</legend>${Object.entries(USOS_TERMO).map(([k, v]) =>
-      `<label><input type="checkbox" name="uso" value="${k}"${marca(x.termo_usos, k)}${des}> ${v}</label>`).join("")}</fieldset>
+    ${x.id ? blocoTermoAssinatura(x, ed) : `<p class="sub">Cadastre a pessoa primeiro. Depois abra o cadastro dela e clique em <b>“Assinar o termo na tela”</b> para registrar a assinatura (com o CPF, pela caneta ou pelo dedo na tela).</p>`}
     <fieldset class="checks"><legend>Situação</legend><label><input type="checkbox" name="ativo"${x.ativo !== false ? " checked" : ""}${des}> Ativa (desmarque para tirar a pessoa das próximas peças)</label>
-      <label><input type="checkbox" name="socio"${x.socio ? " checked" : ""}${des}> Sócio(a) da Artecon: termos dispensados (o termo de uso de imagem e o do corretor de vídeo; continuam valendo “Ativa”, maior de idade e as quatro declarações do envio do vídeo)</label>
-      ${x.socio ? `<p class="sub pessoa-socio">Para sócio(a), as datas, os canais e as finalidades do termo e o termo do corretor não são conferidos. Para tirar das próximas peças e dos vídeos, desmarque “Ativa”.</p>` : ""}</fieldset>
+      <label><input type="checkbox" name="socio"${x.socio ? " checked" : ""}${des}> Sócio(a) da Artecon (só uma marca de referência; o termo de uso de imagem é exigido de todos, inclusive dos sócios)</label></fieldset>
     <fieldset class="checks"><legend>Corretor de vídeo (reel)</legend>
       <label><input type="checkbox" name="quer_ver_peca"${x.quer_ver_peca ? " checked" : ""}${des}> Pediu no termo para ver a peça antes (a aprovação do reel pede “A pessoa viu o vídeo final”)</label>
       <label><input type="checkbox" name="menor"${x.menor ? " checked" : ""}${des}> Menor de 18 anos (o corretor de vídeo não aceita nesta versão)</label></fieldset>
     ${x.id ? `<p class="sub linha-pessoa">Como sai na arte: <b>${h(linhaPessoa(x))}</b></p>` : ""}
-    ${blocoPecasDaPessoa(x.pecasPublicadas, x.socio && !x.menor)}
+    ${blocoPecasDaPessoa(x.pecasPublicadas)}
     ${ed ? `<div class="acoes"><button class="btn">${x.id ? "Salvar" : "Cadastrar pessoa"}</button>${x.id ? `<button class="btn peq perigo" type="button" data-acao="pessoa-excluir" data-id="${x.id}">Excluir</button>` : ""}</div>` : ""}
   </form>`;
 }
+/* v0.46.0: o bloco do termo no cadastro da pessoa — o estado atual (assinado/sem/revogado/vencido), o CPF e os botões de assinar e
+   revogar (só o administrador). O termo em si é assinado na janela de assinarTermo (CPF + a assinatura desenhada na tela). */
+function blocoTermoAssinatura(x, ed){
+  const hoje = hojeBrasilia(), ass = x.termo_assinado_em, rev = x.termo_revogado_em, ate = x.termo_valido_ate;
+  const vigente = !!ass && !(rev && rev <= hoje) && !(ate && ate < hoje);
+  const quando = iso => `${dataCurta(iso)}/${iso.slice(0, 4)}`;
+  const estado = vigente ? `${selo("termo assinado", "ok")} em ${h(quando(ass))}`
+    : rev ? `${selo("termo revogado", "erro")} em ${h(quando(rev))}`
+    : (ass && ate && ate < hoje) ? `${selo("termo vencido", "erro")} (venceu em ${h(quando(ate))})`
+    : selo("sem termo assinado", "alerta");
+  return `<div class="aviso ${vigente ? "ok" : "alerta"} termo-assinatura">
+    <p style="margin:.2em 0"><b>Termo de uso de imagem:</b> ${estado} · CPF: <b>${x.cpf ? h(formatarCpf(x.cpf)) : "—"}</b></p>
+    <p class="sub" style="margin:.2em 0">${vigente
+      ? "Autoriza o uso da imagem, voz e nome nos canais site, Instagram e Facebook, e o corretor de vídeo. Um único termo, para todos."
+      : "Enquanto não houver o termo assinado, as peças e os vídeos com esta pessoa não ficam prontos nem saem."}</p>
+    ${ed ? `<div class="acoes" style="margin-top:8px"><button class="btn peq" type="button" data-acao="pessoa-assinar" data-id="${x.id}">${vigente ? "Assinar de novo" : "Assinar o termo na tela"}</button>${vigente ? `<button class="btn peq sec" type="button" data-acao="pessoa-revogar" data-id="${x.id}">Revogar termo</button>` : ""}</div>` : ""}
+  </div>`;
+}
 /* v0.22.0: as peças publicadas com a pessoa que revogou o termo ou ficou inativa (radar_pauta_pecas_da_pessoa, só o administrador): os
-   links a retirar das redes no prazo do termo e se ainda há vídeo dela guardado (a limpeza seguinte apaga). v0.28.0: sócio(a) da
-   Artecon (maior de idade) não tem termo, então não há "prazo do termo": a retirada é o que for combinado com ele(a) */
-function blocoPecasDaPessoa(l, socio){
+   links a retirar das redes no prazo do termo e se ainda há vídeo dela guardado (a limpeza seguinte apaga). */
+function blocoPecasDaPessoa(l){
   if(!Array.isArray(l)) return "";
   if(!l.length) return `<p class="sub pecas-da-pessoa">Nenhuma peça publicada com esta pessoa.</p>`;
-  return `<div class="aviso alerta pecas-da-pessoa"><b>Peças publicadas com esta pessoa:</b> ${socio
-    ? "sócio(a) da Artecon não tem termo: retire das redes o que for combinado com ele(a)." : "retire das redes no prazo do termo."}<ul class="pauta-erros">${l.map(x => {
+  return `<div class="aviso alerta pecas-da-pessoa"><b>Peças publicadas com esta pessoa:</b> retire das redes no prazo do termo.<ul class="pauta-erros">${l.map(x => {
     const links = [["instagram", x.link_instagram], ["facebook", x.link_facebook]].filter(([, u]) => u).map(([k, u]) => `${NOME_REDE[k]} (${linkFonte(u, "ver o post")})`);
     const d = String(x.data || "");
     return `<li>${/^\d{4}-\d{2}-\d{2}$/.test(d) ? h(dataCurta(d) + "/" + d.slice(0, 4)) : "—"}: ${links.join(" · ") || "publicada, sem link registrado"}${x.video_guardado ? " · vídeo ainda guardado (sai na próxima limpeza)" : ""}</li>`; }).join("")}</ul></div>`;
 }
-/* O que vai ao banco: o CRC padronizado por crcFormatado (como o da empresa); "contador(a)" e "técnico(a)" só com o registro (o banco
-   também recusa); o prazo depois da assinatura; a assinatura nunca no futuro (de Brasília). v0.22.0: o termo do corretor de vídeo
-   (também nunca no futuro), "quer ver a peça" e menor de idade. v0.28.0: sócio(a) da Artecon */
+/* O que vai ao banco pelo Salvar do cadastro: os dados da pessoa (o termo em si é assinado à parte, em assinarTermo, e grava sozinho as
+   datas, o CPF, os canais e as finalidades). O CRC é padronizado por crcFormatado (como o da empresa); "contador(a)" e "técnico(a)" só com
+   o registro (o banco também recusa). v0.22.0: "quer ver a peça" e menor de idade. v0.46.0: sem as datas/canais/finalidades à mão. */
 function dadosPessoa(f){
-  const t = n => f.elements[n].value.trim(), d = n => f.elements[n].value || null;
+  const t = n => f.elements[n].value.trim();
   const corpo = {nome:t("nome"), nome_na_peca:t("nome_na_peca"), area:t("area"), categoria:f.elements.categoria.value, crc:"",
-    termo_assinado_em:d("termo_assinado_em"), termo_valido_ate:d("termo_valido_ate"), termo_revogado_em:d("termo_revogado_em"),
-    termo_canais:[...f.querySelectorAll("input[name=canal]:checked")].map(c => c.value), termo_usos:[...f.querySelectorAll("input[name=uso]:checked")].map(c => c.value),
-    ativo:f.elements.ativo.checked, termo_corretor_em:d("termo_corretor_em"), quer_ver_peca:f.elements.quer_ver_peca.checked, menor:f.elements.menor.checked,
-    socio:f.elements.socio.checked};                                                   // v0.28.0: sócio(a) da Artecon
+    ativo:f.elements.ativo.checked, quer_ver_peca:f.elements.quer_ver_peca.checked, menor:f.elements.menor.checked,
+    socio:f.elements.socio.checked};
   if(corpo.nome.length < 2) throw new ErroApi("Informe o nome completo (interno).");
   if(corpo.nome_na_peca.length < 2) throw new ErroApi("Informe o nome na peça, como o termo autoriza (o nome completo ou só o primeiro).");
   if(t("crc")){ corpo.crc = crcFormatado(t("crc"));
     if(!(/^CRC/.test(corpo.crc) && /\d{4,6}/.test(corpo.crc) && corpo.crc.length <= 40))
       throw new ErroApi("Registro no CRC não reconhecido: escreva como “CRC-SC 012345/O-5” (depois da barra vem a letra O, não o número zero)."); }
   if(corpo.categoria && !corpo.crc) throw new ErroApi("Contador(a) e técnico(a) só com o registro no CRC: preencha o registro ou escolha “Sem registro no CRC”.");
-  if(corpo.termo_assinado_em && corpo.termo_assinado_em > hojeBrasilia()) throw new ErroApi("A data em que o termo foi assinado não pode estar no futuro.");
-  if(corpo.termo_corretor_em && corpo.termo_corretor_em > hojeBrasilia()) throw new ErroApi("A data em que o termo do corretor de vídeo foi assinado não pode estar no futuro.");
-  if(corpo.termo_valido_ate && (!corpo.termo_assinado_em || corpo.termo_valido_ate < corpo.termo_assinado_em))
-    throw new ErroApi("“Válido até” precisa da data de assinatura e não pode ser antes dela.");
   return corpo;
 }
-/* v0.28.0: a pergunta antes de gravar quando a pessoa passa a ter os termos dispensados (marcou “Sócio(a) da Artecon”, maior de idade: é o
-   lado que deixa as peças e os vídeos com ela passarem sem termo) e o aviso de que, para sócio(a), “Revogado em” não vale (quem tira das
-   peças e dos vídeos é “Ativa”), também quando a data é preenchida em quem já é sócio(a). Vazio: nada a perguntar. O que estava gravado
-   vem do próprio formulário (defaultChecked e defaultValue) */
-function perguntaSocio(f, corpo){
-  const el = f.elements, antes = el.socio.defaultChecked && !el.menor.defaultChecked;
-  if(!corpo.socio || corpo.menor) return "";
-  const revogado = !!corpo.termo_revogado_em && corpo.ativo && (!antes || corpo.termo_revogado_em !== (el.termo_revogado_em.defaultValue || null));
-  const aviso = "Esta pessoa tem data em “Revogado em”, e para sócio(a) a revogação não vale: as peças e os vídeos com ela podem sair. Para tirar a pessoa das peças e dos vídeos, desmarque “Ativa”.";
-  if(!antes) return (el.socio.defaultChecked
-      ? "Sem “Menor de 18 anos”, esta pessoa (sócio(a) da Artecon) passa a ter os termos dispensados: o Radar deixa de pedir o termo de uso de imagem e o termo do corretor de vídeo dela. Confirmar?"
-      : "Marcar como sócio(a) da Artecon? O Radar deixa de pedir o termo de uso de imagem e o termo do corretor de vídeo desta pessoa (marque só quem é sócio(a) da empresa).") +
-    (revogado ? " Atenção: " + aviso : "");
-  return revogado ? aviso + " Salvar assim mesmo?" : "";
+/* v0.46.0: o CPF escrito só com os números, "000.000.000-00" (parcial enquanto digita). */
+function formatarCpf(v){
+  const d = String(v || "").replace(/\D/g, "").slice(0, 11);
+  if(!d) return "";
+  let s = d.slice(0, 3);
+  if(d.length > 3) s += "." + d.slice(3, 6);
+  if(d.length > 6) s += "." + d.slice(6, 9);
+  if(d.length > 9) s += "-" + d.slice(9, 11);
+  return s;
+}
+/* v0.46.0: a janela de assinatura do termo (só o administrador). Mostra o texto do termo (de radar_config.termo_imagem, com o nome e o CPF),
+   pede o CPF e a assinatura DESENHADA na tela (caneta/dedo/mouse, por pointer events) e grava tudo pela função radar_pessoa_assinar_termo,
+   que guarda a prova em radar_pessoas_termos. A imagem da assinatura vai como PNG (data URL). */
+async function assinarTermo(idPessoa){
+  const [pessoa] = await ler("radar_pessoas", {select:"id,nome,nome_na_peca,cpf", id:"eq." + idPessoa});
+  if(!pessoa){ recado("Pessoa não encontrada.", true); return; }
+  const [cfg] = await ler("radar_config", {select:"valor", chave:"eq.termo_imagem"});
+  if(!cfg?.valor?.texto){ recado("O texto do termo não está configurado no banco: rode o SQL da v0.46.0 (Supabase → SQL Editor).", true); return; }
+  const nomeLegal = pessoa.nome || pessoa.nome_na_peca || "";
+  const corpoTermo = h(cfg.valor.texto)
+    .replace(/\{NOME\}/g, `<b>${h(nomeLegal)}</b>`)
+    .replace(/\{CPF\}/g, `<b class="cpf-vivo">___.___.___-__</b>`);
+  document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="assinar-termo"><form class="caixa-previa caixa-assinatura" role="dialog" aria-modal="true" aria-label="Assinar o termo de uso de imagem">
+    <div class="barra-previa"><span>Assinar o termo de uso de imagem — ${h(nomeLegal)}</span><button class="btn peq sec" type="button" data-cancelar>Fechar</button></div>
+    <div style="padding:16px 18px">
+      <div class="termo-texto" style="white-space:pre-wrap;max-height:230px;overflow:auto;border:1px solid #e0e3ea;border-radius:8px;padding:12px 14px;background:#fafbfc;font-size:.92rem;line-height:1.5">${corpoTermo}</div>
+      <div style="margin-top:12px"><label for="assinar-cpf">CPF de quem assina</label>
+        <input id="assinar-cpf" type="text" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" value="${pessoa.cpf ? h(formatarCpf(pessoa.cpf)) : ""}" style="width:100%"></div>
+      <label style="display:block;margin-top:12px">Assinatura (desenhe com a caneta, o dedo ou o mouse)</label>
+      <div class="assinatura-quadro" style="position:relative;border:1px dashed #9aa4b8;border-radius:8px;background:#fff">
+        <canvas id="assinar-quadro" style="display:block;width:100%;height:190px;touch-action:none;cursor:crosshair"></canvas>
+        <span class="assinatura-linha" style="position:absolute;left:18px;right:18px;bottom:34px;border-bottom:1px solid #c7ccd8;pointer-events:none"></span></div>
+      <div class="acoes" style="margin-top:8px"><button class="btn peq sec" type="button" data-limpar>Apagar e refazer</button></div>
+      <p class="sub erro-assinatura" hidden style="color:var(--erro)"></p>
+      <div class="acoes" style="margin-top:12px"><button class="btn">Assinar e gravar</button><button class="btn sec" type="button" data-cancelar>Cancelar</button></div>
+    </div></form></div>`);
+  const caixa = $("#assinar-termo"), form = caixa.querySelector("form"), cv = $("#assinar-quadro"), campoCpf = $("#assinar-cpf");
+  const ctx = cv.getContext("2d"), msg = form.querySelector(".erro-assinatura");
+  const fim = () => { caixa.remove(); document.removeEventListener("keydown", aoEscape, true); };
+  const aoEscape = ev => { if(ev.key === "Escape"){ ev.stopPropagation(); fim(); } };
+  const erro = txt => { msg.textContent = txt; msg.hidden = false; };
+  // o quadro em pixels de verdade (nítido no celular); fundo branco para a imagem não sair transparente
+  let desenhou = false;
+  function limpar(){ const r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, r.width, r.height);
+    ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#01204a"; desenhou = false; }
+  const pos = ev => { const r = cv.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+  let tracando = false, px = 0, py = 0;
+  cv.addEventListener("pointerdown", ev => { ev.preventDefault(); tracando = true; desenhou = true; [px, py] = pos(ev);
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + 0.1, py + 0.1); ctx.stroke(); try{ cv.setPointerCapture(ev.pointerId); }catch(e){} });
+  cv.addEventListener("pointermove", ev => { if(!tracando) return; const [x, y] = pos(ev); ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, y); ctx.stroke(); [px, py] = [x, y]; });
+  const soltar = () => { tracando = false; };
+  cv.addEventListener("pointerup", soltar); cv.addEventListener("pointercancel", soltar); cv.addEventListener("pointerleave", soltar);
+  const verCpfVivo = () => caixa.querySelectorAll(".cpf-vivo").forEach(s => { s.textContent = formatarCpf(campoCpf.value) || "___.___.___-__"; });
+  campoCpf.addEventListener("input", () => { campoCpf.value = formatarCpf(campoCpf.value); verCpfVivo(); });
+  caixa.querySelectorAll("[data-cancelar]").forEach(b => { b.onclick = fim; });
+  form.querySelector("[data-limpar]").onclick = limpar;
+  document.addEventListener("keydown", aoEscape, true);
+  requestAnimationFrame(() => { limpar(); verCpfVivo(); });
+  form.onsubmit = async ev => {
+    ev.preventDefault(); ev.stopPropagation();
+    msg.hidden = true;
+    const cpf = (campoCpf.value || "").replace(/\D/g, "");
+    if(cpf.length !== 11){ erro("Informe o CPF com os 11 números."); campoCpf.focus(); return; }
+    if(!desenhou){ erro("Assine no quadro: desenhe a assinatura com a caneta, o dedo ou o mouse."); return; }
+    const b = form.querySelector(".btn"); b.disabled = true;
+    try{
+      await rpc("radar_pessoa_assinar_termo", {p_pessoa:idPessoa, p_cpf:cpf, p_assinatura:cv.toDataURL("image/png"), p_aparelho:navigator.userAgent});
+      fim(); await desenhar(); recado("Termo assinado e guardado.");
+    }catch(e){ b.disabled = false; erro(e.message || "Não foi possível gravar a assinatura agora."); }
+  };
 }
 
 /* ------------------------------------------------- ações e formulários (o index.html junta) */
@@ -1523,12 +1582,14 @@ const PAUTA = {
     "peca-cancelar"(el){ return situacaoDaPeca(el, "cancelada", "Cancelar esta peça? Ela fica no calendário como cancelada (dá para reabrir).", "Peça cancelada."); },
     "peca-reabrir"(el){ return situacaoDaPeca(el, "planejada", "", "Peça reaberta: voltou a planejada."); },
     async "pessoa-excluir"(el){
-      // v0.28.0: para sócio(a) da Artecon (maior de idade) a revogação do termo não vale: o caminho é só “Ativa”
-      const f = el.closest("form"), socio = !!f?.elements.socio?.defaultChecked && !f.elements.menor?.defaultChecked;
-      if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (" + (socio
-        ? "para tirá-la das próximas peças e dos vídeos, desmarque “Ativa”: para sócio(a) da Artecon, a revogação do termo não vale)."
-        : "para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, marque a revogação do termo)."))) return;
+      if(!confirm("Excluir esta pessoa? Só dá se ela não estiver em nenhuma peça nem em vídeo do corretor ainda guardado (para tirá-la das próximas, desmarque “Ativa”; se ela retirou a autorização, clique em “Revogar termo”).")) return;
       await apagar("radar_pessoas", {id:"eq." + el.dataset.id, select:"id"}); await desenhar(); recado("Pessoa excluída.");
+    },
+    // v0.46.0: assinar e revogar o termo de uso de imagem (a assinatura é na janela de assinarTermo; cada função confere que é o administrador)
+    "pessoa-assinar"(el){ return assinarTermo(Number(el.dataset.id)); },
+    async "pessoa-revogar"(el){
+      if(!confirm("Revogar o termo desta pessoa? As peças e os vídeos com ela deixam de ficar prontos e de sair. O que já foi publicado continua no ar — a revogação não apaga o passado (retire à mão o que for combinado).")) return;
+      await rpc("radar_pessoa_revogar_termo", {p_pessoa:Number(el.dataset.id)}); await desenhar(); recado("Termo revogado.");
     }
   },
   forms:{
@@ -1560,13 +1621,9 @@ const PAUTA = {
       await rpc("radar_pauta_registrar_manual", {p_peca:Number(f.dataset.id), p_link_instagram:ig || null, p_link_facebook:fb || null, p_data:dia});
       await desenhar(); recado("Publicação registrada.");
     },
-    async pessoa(f){ const corpo = dadosPessoa(f), pergunta = perguntaSocio(f, corpo);
-      // v0.28.0: tirar a marca de sócio(a) faz a pessoa voltar a precisar dos dois termos: confirma antes
-      if(f.dataset.socio === "1" && !corpo.socio && !confirm("Tirar a marca de sócio(a) desta pessoa? Ela volta a precisar do termo de uso de imagem e do termo do corretor de vídeo: sem eles, as peças com ela não ficam prontas nem saem, e os vídeos do corretor com ela são apagados na limpeza do dia seguinte.")) return;
-      if(pergunta && !confirm(pergunta)) return;                                         // v0.28.0: marcar também confirma
+    async pessoa(f){ const corpo = dadosPessoa(f);
       await alterar("radar_pessoas", {id:"eq." + f.dataset.id, select:"id"}, corpo); await desenhar(); recado("Pessoa salva."); },
-    async novaPessoa(f){ const corpo = dadosPessoa(f), pergunta = perguntaSocio(f, corpo);
-      if(pergunta && !confirm(pergunta)) return;                                         // v0.28.0: cadastrar já como sócio(a) confirma
-      await rest("POST", "radar_pessoas", {corpo}); await desenhar(); recado("Pessoa cadastrada."); }
+    async novaPessoa(f){ const corpo = dadosPessoa(f);
+      await rest("POST", "radar_pessoas", {corpo}); await desenhar(); recado("Pessoa cadastrada. Agora abra o cadastro dela e clique em “Assinar o termo na tela”."); }
   }
 };

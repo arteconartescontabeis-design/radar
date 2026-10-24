@@ -45,7 +45,7 @@ def aprovar(conteudo, uid=EDITOR):
 def test_instalacao_cria_19_tabelas_com_rls(db):
     linhas = db.execute("""select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
                            where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'""").fetchall()
-    assert len(linhas) == 37       # v0.35.0: + radar_respostas_gatilhos, radar_respostas_registro e radar_respostas_contas; v0.34.0: + radar_setor_setores, radar_setor_contas, radar_setor_posts e radar_setor_coletas; v0.32.0: + radar_vencimentos e radar_copias; v0.29.0: + radar_lembretes; v0.22.0: + radar_videos e radar_video_acessos; v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
+    assert len(linhas) == 38       # v0.46.0: + radar_pessoas_termos (o histórico das assinaturas do termo de imagem); v0.35.0: + radar_respostas_gatilhos, radar_respostas_registro e radar_respostas_contas; v0.34.0: + radar_setor_setores, radar_setor_contas, radar_setor_posts e radar_setor_coletas; v0.32.0: + radar_vencimentos e radar_copias; v0.29.0: + radar_lembretes; v0.22.0: + radar_videos e radar_video_acessos; v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
     assert all(rls for _, rls in linhas), [n for n, rls in linhas if not rls]
 
 
@@ -95,7 +95,7 @@ def test_setup_e_idempotente(db):
     assert db.execute("select frequencia_horas, ativo from radar_fontes where slug = 'pgfn-noticias'").fetchone() == (9, False)
     db.execute("update radar_fontes set frequencia_horas = 6, ativo = true where slug = 'pgfn-noticias'")
     reg = db.execute("select antes, depois from radar_instalacoes order by id desc limit 1").fetchone()
-    assert len(reg[0]) == 37 and len(reg[1]) == 37   # 2ª execução: já havia 37 antes (v0.34.0: + as 4 da aba Setor; v0.35.0: + as 3 das respostas)
+    assert len(reg[0]) == 38 and len(reg[1]) == 38   # 2ª execução: já havia 38 antes (v0.46.0: + radar_pessoas_termos; v0.34.0: + as 4 da aba Setor; v0.35.0: + as 3 das respostas)
 
 
 def test_fontes_do_sql_espelham_o_json_do_robo(db):
@@ -113,7 +113,7 @@ def test_anonimo_nao_le_nada_do_radar(limpo):
     no_ar(limpo)
     tabelas = [r[0] for r in limpo.execute("""select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                              where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'radar\\_%'""").fetchall()]
-    assert len(tabelas) == 46 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 37 tabelas e 9 visões (v0.35.0: + as 3 das respostas; v0.34.0: + as 4 da aba Setor; v0.32.0: + radar_vencimentos e radar_copias; v0.21.0: + radar_v_pauta_pessoas e radar_v_capas; v0.22.0: + radar_videos e radar_video_acessos; v0.29.0: + radar_lembretes)
+    assert len(tabelas) == 47 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 38 tabelas e 9 visões (v0.46.0: + radar_pessoas_termos; v0.35.0: + as 3 das respostas; v0.34.0: + as 4 da aba Setor; v0.32.0: + radar_vencimentos e radar_copias; v0.21.0: + radar_v_pauta_pessoas e radar_v_capas; v0.22.0: + radar_videos e radar_video_acessos; v0.29.0: + radar_lembretes)
     with como("anon") as c:
         for tabela in tabelas:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -525,7 +525,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- o envio é do editor ou do administrador; baixar, só do administrador)
                                                            'radar_video_criar_avulso', 'radar_video_baixar_avulso',
                                                            -- v0.40.0: "Aceitar (quis dizer o mesmo)" (só o administrador, por dentro)
-                                                           'radar_video_aceitar')
+                                                           'radar_video_aceitar',
+                                                           -- v0.46.0: o termo de imagem com assinatura na tela (as duas conferem que é o administrador, por dentro)
+                                                           'radar_pessoa_assinar_termo', 'radar_pessoa_revogar_termo')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -767,7 +769,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.45.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.46.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -981,7 +983,7 @@ def test_trocar_imagem_autor_ou_fonte_de_conteudo_aprovado_volta_para_revisao(li
 
 def test_configuracoes_iniciais_e_quem_pode_alterar(limpo):
     conf = dict(limpo.execute("select chave, valor from radar_config").fetchall())
-    assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia", "rascunhos", "pauta",
+    assert set(conf) == {"obrigacoes", "feriados_extras", "fale_conosco", "assinatura", "relevancia", "rascunhos", "pauta", "termo_imagem",
                          "corretor_video", "lembretes"}   # v0.9.0: rascunhos; v0.21.0: pauta; v0.22.0: corretor_video; v0.29.0: lembretes
     assert len(conf["obrigacoes"]) == 28 and conf["assinatura"]["responsavel"] == "Cleiver Gonçalves"   # v0.30.0: + o 13º e as anuais
     # v0.30.0: o 13º e as anuais vêm no fim, com o mês do vencimento ("mes") e, quando as notícias usam outro nome, os "termos"
@@ -993,7 +995,7 @@ def test_configuracoes_iniciais_e_quem_pode_alterar(limpo):
     assert (conf["assinatura"]["cnpj"], conf["assinatura"]["crc"]) == ("", "")   # v0.20.0: identificação legal vazia até o administrador preencher
     assert all(o["regra"] in ("quinto_dia_util", "dia", "ultimo_dia_util") for o in conf["obrigacoes"])
     with como("authenticated", LEITOR) as c:
-        assert c.execute("select count(*) from radar_config").fetchone()[0] == 9          # a equipe lê (v0.22.0: + corretor_video; v0.29.0: + lembretes)
+        assert c.execute("select count(*) from radar_config").fetchone()[0] == 10         # a equipe lê (v0.22.0: + corretor_video; v0.29.0: + lembretes; v0.46.0: + termo_imagem)
     with como("authenticated", EDITOR) as c:
         assert c.execute("update radar_config set valor = '[]' where chave = 'feriados_extras' returning chave").fetchone() is None
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -1232,9 +1234,9 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (37, 6, 8, 9, 1, 0)          # v0.29.0: + radar_lembretes e a chave "lembretes"
+        assert _resumo("radar_sem_tx") == (38, 6, 8, 10, 1, 0)         # v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e a chave "termo_imagem"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.45.0", [], 37)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.46.0", [], 38)
             # v0.31.0 (revisão): na instalação nova as seis fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
             # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso
             assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (6, True)
@@ -1261,14 +1263,14 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (37, 6, 8, 9, 2, 0)
+        assert _resumo("radar_parcial") == (38, 6, 8, 10, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
             assert c.execute("""select (select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from information_schema.column_privileges where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from pg_policies where schemaname = 'public' and 'anon' = any(roles))""").fetchone()[0] == 0
-            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (37,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0), radar_videos e radar_video_acessos (v0.22.0), radar_lembretes (v0.29.0), radar_vencimentos e radar_copias (v0.32.0), as 4 da aba Setor (v0.34.0), as 3 das respostas (v0.35.0)
+            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (38,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0), radar_videos e radar_video_acessos (v0.22.0), radar_lembretes (v0.29.0), radar_vencimentos e radar_copias (v0.32.0), as 4 da aba Setor (v0.34.0), as 3 das respostas (v0.35.0), radar_pessoas_termos (v0.46.0)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_parcial with (force)")
@@ -1288,7 +1290,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (37, 6, 8, 9, 1, 1)        # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (38, 6, 8, 10, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -2107,9 +2109,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.45.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.46.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.45.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.46.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2139,7 +2141,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.45.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.46.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -5751,71 +5753,78 @@ def test_importar_depois_de_peca_criada_a_mao(pauta):
     assert db.execute("select count(*), count(distinct data) from radar_pauta_pecas").fetchone() == (3, 3)
 
 
-def test_socio_dispensa_os_termos_mas_nao_ativa_nem_menor(pauta):
-    """v0.28.0: o(a) sócio(a) da Artecon (radar_pessoas.socio), maior de idade e ativo(a), não precisa do termo de uso de imagem (nenhuma
-    data, canal ou finalidade, nem a revogação) em nenhum tipo de peça: a peça fica pronta, é aprovada e sai. Continuam valendo "Ativa" e
-    a idade (menor: o termo volta a ser pedido). Tirar a marca faz o termo voltar. Só o administrador marca; a marca vai à trilha sem o
-    nome; o leitor e a chave do robô continuam sem ler as pessoas."""
+def test_todos_assinam_o_termo_na_tela_inclusive_socio(pauta):
+    """v0.46.0: o termo de uso de imagem é assinado na tela (radar_pessoa_assinar_termo), com o CPF e a imagem da assinatura, e vale para
+    TODOS — sócios inclusive: a dispensa acabou. Sem o termo assinado, a pessoa é barrada mesmo marcada "Sócio(a)". Depois de assinar, a
+    peça com ela fica pronta, é aprovada e sai, e o mesmo termo cobre o corretor de vídeo (termo_corretor_em). Só o administrador assina e
+    revoga; a prova fica em radar_pessoas_termos; a trilha de radar_pessoas não leva nome nem CPF; o leitor, a chave do robô e o visitante
+    não leem as pessoas nem o histórico."""
     db = pauta
+    PNG = "data:image/png;base64," + "A" * 800
+    cur = db.execute("select current_date").fetchone()[0]
     with como("authenticated", ADMIN) as c:
-        bruno = c.execute("insert into radar_pessoas (nome, nome_na_peca) values ('Bruno Exemplo', 'Bruno') returning id").fetchone()[0]
-        assert c.execute("update radar_pessoas set socio = true where id = %s", (bruno,)).rowcount == 1
-    trilha = db.execute("select acao, usuario::text, antes, depois from radar_auditoria where tabela = 'radar_pessoas' order by id").fetchall()
-    assert [(a, u) for a, u, _, _ in trilha] == [("INSERT", ADMIN), ("UPDATE", ADMIN)]
-    assert (trilha[1][2]["socio"], trilha[1][3]["socio"]) == (False, True)
-    assert not re.search("Bruno|Exemplo", json.dumps([x for *_, a, b in trilha for x in (a, b)], ensure_ascii=False))
-    with como("authenticated", EDITOR) as c:                                                   # o editor lê, mas não marca nem desmarca
-        assert c.execute("select socio from radar_pessoas where id = %s", (bruno,)).fetchone()[0] is True
-        assert c.execute("update radar_pessoas set socio = false where id = %s", (bruno,)).rowcount == 0
+        bruno = c.execute("insert into radar_pessoas (nome, nome_na_peca, socio) values ('Bruno Exemplo', 'Bruno', true) returning id").fetchone()[0]
     d = hoje(db) + timedelta(days=3)
-    tipos = ["noticia", "reel", "quem_cuida", "agenda", "bastidor", "educativo", "captacao", "data_equipe", "sem_post"]
+    tipos = ["noticia", "reel", "quem_cuida", "agenda", "bastidor", "educativo", "captacao", "data_equipe"]   # sem_post não publica no feed: não tem finalidade no termo
     def termo(tipo="bastidor", canal="instagram", uid=EDITOR):
         with como("authenticated", uid) as c:
             return c.execute("select radar_pauta_termo_ok(%s, %s, %s, %s)", (bruno, tipo, canal, d)).fetchone()[0]
+    # sócio, mas SEM termo assinado: barrado em todo tipo e canal (não há mais dispensa)
     assert {(t, canal): termo(t, canal) for t in tipos for canal in ("instagram", "facebook")} == \
-        {(t, canal): None for t in tipos for canal in ("instagram", "facebook")}             # sem termo nenhum: dispensado
+        {(t, canal): "sem termo assinado" for t in tipos for canal in ("instagram", "facebook")}
+    # o editor não assina
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException):
+        c.execute("select radar_pessoa_assinar_termo(%s, %s, %s, %s)", (bruno, "111.444.777-35", PNG, "teste"))
+    # CPF inválido, sem imagem ou imagem curta/estranha: o administrador também é barrado
+    with como("authenticated", ADMIN) as c:
+        for cpf, img in [("123", PNG), ("111.444.777-35", ""), ("111.444.777-35", "data:image/png;base64,AAA"),
+                         ("111.444.777-35", "texto qualquer que nao e imagem" * 20)]:
+            with pytest.raises(psycopg.errors.RaiseException):
+                c.execute("select radar_pessoa_assinar_termo(%s, %s, %s, %s)", (bruno, cpf, img, "teste"))
+    # o administrador assina: grava a prova e "liga" o termo (datas, CPF, canais, finalidades e o corretor)
+    with como("authenticated", ADMIN) as c:
+        r = c.execute("select radar_pessoa_assinar_termo(%s, %s, %s, %s)", (bruno, "111.444.777-35", PNG, "Agente/1.0")).fetchone()[0]
+    assert r["ok"] is True
+    pe = db.execute("""select cpf, termo_assinado_em, termo_corretor_em, termo_canais, termo_usos, termo_valido_ate, termo_revogado_em
+                       from radar_pessoas where id = %s""", (bruno,)).fetchone()
+    assert pe == ("11144477735", cur, cur, ["instagram", "facebook"],
+                  ["equipe", "orientacao", "datas", "captacao"], None, None)
+    hist = db.execute("""select nome, cpf, termo_versao, left(termo_texto, 30), canais, usos, length(assinatura), aparelho, revogado_em
+                         from radar_pessoas_termos where pessoa_id = %s""", (bruno,)).fetchall()
+    assert len(hist) == 1 and hist[0] == ("Bruno Exemplo", "11144477735", 1, "TERMO DE AUTORIZAÇÃO DE USO DE",
+                                          ["instagram", "facebook"], ["equipe", "orientacao", "datas", "captacao"], len(PNG), "Agente/1.0", None)
+    # agora o termo vale em todo tipo e canal
+    assert {(t, canal): termo(t, canal) for t in tipos for canal in ("instagram", "facebook")} == \
+        {(t, canal): None for t in tipos for canal in ("instagram", "facebook")}
+    # a trilha de radar_pessoas não leva o nome nem o CPF; o histórico (a prova) não é auditado
+    trilha = db.execute("select antes, depois from radar_auditoria where tabela = 'radar_pessoas' order by id").fetchall()
+    assert trilha and not re.search("Bruno|Exemplo|11144477735", json.dumps([x for a, b in trilha for x in (a, b)], ensure_ascii=False))
+    assert db.execute("select count(*) from radar_auditoria where tabela = 'radar_pessoas_termos'").fetchone()[0] == 0
+    # a peça com Bruno fica pronta, é aprovada e sai pela agenda; ninguém é mais "dispensado"
     pid = nova_peca(db, dias=3, pessoas=[bruno])
     vista = lambda: db.execute("""select termos_dispensados, motivo_instagram, motivo_facebook from radar_v_pauta_pessoas
                                   where peca_id = %s and pessoa_id = %s""", (pid, bruno)).fetchone()
-    assert vista() == (True, None, None)
-    assert conferir(pid) == []                                                                  # nenhum item de termo
+    assert vista() == (False, None, None)
+    assert conferir(pid) == []
     marcar_pronta(db, pid)
-    r = aprovar_peca(db, pid)
-    ig = r["envios"]["instagram"]
+    ig = aprovar_peca(db, pid)["envios"]["instagram"]
     vencer(db, ig)
-    assert iniciar(ig)["peca_id"] == pid                                                       # e sai pela agenda
-    outra = nova_peca(db, dias=4, pessoas=[bruno])
-    # o sobrenome no texto continua barrado, com o recado do "Nome na peça" do cadastro (sócio(a) não tem termo)
-    apoio = lambda texto: db.execute("update radar_pauta_pecas set apoio = %s where id = %s", (texto, outra))
-    apoio("Uma conversa com o Bruno Exemplo.")
-    assert conferir(outra) == ["O “Nome na peça” do(a) sócio(a) é só “Bruno”: tire o sobrenome (ou mude o Nome na peça em Pessoas e termos)"]
-    # inativo(a): a marca não passa por cima de "Ativa"
-    db.execute("update radar_pessoas set ativo = false where id = %s", (bruno,))
-    assert termo() == "pessoa inativa" and vista() == (True, "pessoa inativa", "pessoa inativa")
-    db.execute("update radar_pessoas set ativo = true where id = %s", (bruno,))
-    # menor de idade: a dispensa não vale
-    db.execute("update radar_pessoas set menor = true where id = %s", (bruno,))
-    assert termo() == "sem termo assinado" and vista() == (False, "sem termo assinado", "sem termo assinado")
-    assert "O termo autoriza só “Bruno”: tire o sobrenome" in conferir(outra)                 # e o recado do sobrenome volta a ser o do termo
-    db.execute("update radar_pessoas set menor = false where id = %s", (bruno,))
-    apoio("Uma conversa com o Bruno.")
-    assert conferir(outra) == []
-    # a revogação também não conta para sócio(a): quem tira da Pauta é "Ativa"
-    db.execute("update radar_pessoas set termo_revogado_em = %s where id = %s", (hoje(db) - timedelta(days=1), bruno))
-    assert termo() is None and termo("captacao", "facebook") is None
-    # sem a marca, o termo volta a ser pedido
-    db.execute("update radar_pessoas set socio = false where id = %s", (bruno,))
-    assert "“Bruno” (Instagram): sem termo assinado" in conferir(outra)
-    assert vista() == (False, "sem termo assinado", "sem termo assinado")
-    # o leitor continua sem ler as pessoas; a chave do robô e o visitante nem a tabela
-    db.execute("update radar_pessoas set socio = true where id = %s", (bruno,))
-    assert termo(uid=LEITOR) == "pessoa não cadastrada"
+    assert iniciar(ig)["peca_id"] == pid
+    # o editor não revoga; o administrador revoga: o termo cai e a última assinatura fica marcada como revogada
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException):
+        c.execute("select radar_pessoa_revogar_termo(%s)", (bruno,))
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_pessoa_revogar_termo(%s)", (bruno,))
+    assert termo() == "termo revogado" and vista()[1] == "termo revogado"
+    assert db.execute("select termo_revogado_em is not null from radar_pessoas where id = %s", (bruno,)).fetchone()[0] is True
+    assert db.execute("select revogado_em is not null from radar_pessoas_termos where pessoa_id = %s", (bruno,)).fetchone()[0] is True
+    # o leitor não lê as pessoas nem o histórico; a chave do robô e o visitante nem a tabela
     with como("authenticated", LEITOR) as c:
         assert c.execute("select count(*) from radar_pessoas").fetchone()[0] == 0
-        assert c.execute("select count(*) from radar_v_pauta_pessoas").fetchone()[0] == 0
+        assert c.execute("select count(*) from radar_pessoas_termos").fetchone()[0] == 0
     for papel in ("service_role", "anon"):
         with como(papel) as c, pytest.raises(psycopg.errors.InsufficientPrivilege):
-            c.execute("select socio from radar_pessoas")
+            c.execute("select * from radar_pessoas_termos")
 
 
 def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
@@ -5850,7 +5859,7 @@ def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
         assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
         assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
         # (o setup registra a versão dele: v0.44.0, que traz junto os da v0.28.0 a v0.35.0)
-        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.45.0",), ("v0.45.0",)]
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.46.0",), ("v0.46.0",)]
         assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
     finally:
         assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro
