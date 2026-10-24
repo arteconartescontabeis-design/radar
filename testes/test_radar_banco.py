@@ -527,7 +527,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.40.0: "Aceitar (quis dizer o mesmo)" (só o administrador, por dentro)
                                                            'radar_video_aceitar',
                                                            -- v0.46.0: o termo de imagem com assinatura na tela (as duas conferem que é o administrador, por dentro)
-                                                           'radar_pessoa_assinar_termo', 'radar_pessoa_revogar_termo')
+                                                           'radar_pessoa_assinar_termo', 'radar_pessoa_revogar_termo',
+                                                           -- v0.47.0: os dados dos gráficos do Painel (a função confere o perfil, por dentro; é só leitura)
+                                                           'radar_painel_graficos')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -769,7 +771,7 @@ def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():
             assert c.execute("select status, aprovado_por::text from radar_conteudos").fetchone() == ("aprovado", EDITOR)
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3
             assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 5
-            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.46.0"]
+            assert c.execute("select array_agg(versao order by id) from radar_instalacoes").fetchone()[0] == ["v0.1.0", "v0.47.0"]
             assert c.execute("select count(*) from radar_v_painel").fetchone()[0] == 1
     finally:
         with conectar("postgres") as c:
@@ -1236,7 +1238,7 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert r.returncode == 0, r.stderr
         assert _resumo("radar_sem_tx") == (38, 6, 8, 10, 1, 0)         # v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e a chave "termo_imagem"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.46.0", [], 38)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.47.0", [], 38)
             # v0.31.0 (revisão): na instalação nova as seis fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
             # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso
             assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (6, True)
@@ -2109,9 +2111,9 @@ def test_atualizacao_da_v0_7_0_para_a_v0_8_0_preserva_os_dados_e_aplica_duas_vez
             r = psql(SETUP, "radar_up7")
             assert r.returncode == 0, r.stderr
         # a evidência mostra a versão da instalação mais nova (como texto, "v0.7.0" viria depois de "v0.24.0")
-        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.46.0||"]
+        assert [l for l in r.stdout.splitlines() if l.startswith("instalacoes concluidas|")] == ["instalacoes concluidas|3|v0.47.0||"]
         with conectar("radar_up7") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.46.0", "v0.7.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.47.0", "v0.7.0"]
             assert c.execute("select count(*) from radar_capturas").fetchone()[0] == antes
             assert c.execute("select imagem_id from radar_conteudos where id = %s", (cid,)).fetchone()[0] == img
             assert c.execute("select to_regprocedure('public.radar_limpar_imagens_sem_uso(int)')").fetchone()[0] is not None
@@ -2141,7 +2143,7 @@ def test_atualizacao_da_v0_6_0_para_a_versao_atual_preserva_os_dados_e_aplica_du
             r = psql(SETUP, "radar_up6")
             assert r.returncode == 0, r.stderr
         with conectar("radar_up6") as c:
-            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.46.0", "v0.6.0"]
+            assert c.execute("select array_agg(distinct versao order by versao) from radar_instalacoes").fetchone()[0] == ["v0.47.0", "v0.6.0"]
             assert c.execute("select ia_nota, ia_avaliado_em, duplicata_de from radar_capturas where id = %s", (solta,)).fetchone() == (None, None, None)
             assert c.execute("select juntada_pela_ia_em from radar_assunto_capturas where captura_id = %s", (cap,)).fetchone()[0] is None
             assert c.execute("select fonte_credito from radar_conteudos where id = %s", (cid,)).fetchone()[0] is None   # conteúdo antigo não é mexido
@@ -5859,7 +5861,7 @@ def test_setup_v0_28_0_sobre_o_banco_da_v0_27_0_mantem_os_dados(pauta):
         assert db.execute("select socio from radar_pessoas where id = %s", (ana,)).fetchone()[0] is False
         assert db.execute("select termos_dispensados from radar_v_pauta_pessoas where pessoa_id = %s", (ana,)).fetchone()[0] is False
         # (o setup registra a versão dele: v0.44.0, que traz junto os da v0.28.0 a v0.35.0)
-        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.46.0",), ("v0.46.0",)]
+        assert db.execute("select versao from radar_instalacoes order by id desc limit 2").fetchall() == [("v0.47.0",), ("v0.47.0",)]
         assert criar_peca({"data": (hoje(db) + timedelta(days=9)).isoformat(), "tipo": "bastidor", "formato": "foto", "assunto": "Depois do setup"})
     finally:
         assert psql(SETUP).returncode == 0                                                     # o banco dos testes volta inteiro
@@ -6249,3 +6251,78 @@ def test_tipo_ciga_dados_e_a_fonte_nova_da_v045(limpo):
     finally:
         limpo.execute("delete from radar_fontes where slug = 'domsc-ciga'")
         limpo.execute("delete from radar_execucoes where versao_robo = '0.45.0'")
+
+
+# ------------------------------------------------------------- v0.47.0: os dados dos gráficos do Painel (radar_painel_graficos)
+def _cap_painel(db, slug, quando, i, duplicata=None):
+    """Uma captura da fonte `slug` com capturado_em em `quando` (texto com fuso). `i` deixa a URL e o hash únicos; `duplicata` marca
+    a captura como repetição de outra (não entra na conta). (Nome próprio: `_cap_em` já existe neste arquivo, para os boletins.)"""
+    return db.execute("""insert into radar_capturas (fonte_id, url, titulo, hash_titulo, capturado_em, duplicata_de)
+                         select id, %s, 'N', %s, %s, %s from radar_fontes where slug = %s returning id""",
+                      (f"https://x.gov.br/c{i}", f"h{i}", quando, duplicata, slug)).fetchone()[0]
+
+
+def _envio(db, conteudo, canal, publicado):
+    db.execute("""insert into radar_redes_envios (conteudo_id, canal, legenda, conteudo_lido_em, situacao, publicado_em)
+                  values (%s, %s, 'Legenda de teste do envio.', now(), 'publicado', %s)""", (conteudo, canal, publicado))
+
+
+def test_painel_graficos_so_entra_logado_e_soma_fontes_canais_e_comparacao(limpo):
+    """v0.47.0: radar_painel_graficos (security definer, só leitura) devolve, para a data pedida, as notícias por fonte nos três
+    períodos (sem as duplicatas), as publicações por canal (site/Instagram/Facebook) nas últimas 6 semanas e a comparação do ritmo
+    da Artecon com a média das outras contas do Setor. Sem estar logado (sem perfil), recusa com RADAR320."""
+    hoje = "2026-10-21"                    # uma quarta-feira; a segunda da semana é 2026-10-19
+    # 1) notícias por fonte: Receita (rfb-normas) e PGFN (pgfn-noticias), em datas que caem no dia, na semana e no mês
+    c1 = _cap_painel(limpo, "rfb-normas",    f"{hoje} 12:00-03", 1)
+    _cap_painel(limpo, "rfb-normas",    f"{hoje} 13:00-03", 2)
+    _cap_painel(limpo, "pgfn-noticias", f"{hoje} 14:00-03", 3)
+    _cap_painel(limpo, "rfb-normas",    "2026-10-06 12:00-03", 4)       # no mês, fora da semana
+    _cap_painel(limpo, "pgfn-noticias", "2026-10-02 12:00-03", 5)       # no mês, fora da semana
+    _cap_painel(limpo, "rfb-normas",    f"{hoje} 15:00-03", 6, duplicata=c1)   # duplicata: nunca conta
+    # 2) publicações por canal: a semana atual (2026-10-19) e uma anterior; uma bem no começo das 6 semanas (2026-09-14). As peças
+    # passam pelo caminho de verdade (fundamentadas e aprovadas, como o site exige); a captura que a fundamentação cria é jogada para
+    # novembro, fora de todas as janelas, para não contar como notícia por fonte.
+    _a1, ct = fundamentado(limpo); aprovar(ct)
+    _a2, ct2 = fundamentado(limpo); aprovar(ct2)                    # o 2º envio no Instagram é de outra peça (uma peça só tem um envio aberto por canal)
+    limpo.execute("update radar_capturas set capturado_em = '2026-11-20 12:00-03' where url like 'https://exemplo.gov.br/%'")
+    _envio(limpo, ct, "instagram", f"{hoje} 10:00-03")             # semana atual
+    _envio(limpo, ct, "facebook",  "2026-10-20 10:00-03")         # semana atual
+    _envio(limpo, ct2, "instagram", "2026-09-16 10:00-03")        # primeira das 6 semanas (segunda 2026-09-14)
+    registrar_site(ct,  url="https://artecon.cnt.br/n1", quando="2026-10-22")    # site, semana atual
+    registrar_site(ct2, url="https://artecon.cnt.br/n2", quando="2026-10-14")    # site, semana anterior (2026-10-12)
+    # 3) comparação do Setor: a conta própria (Artecon) e uma outra ativa
+    limpo.execute("truncate radar_setor_posts, radar_setor_coletas, radar_setor_contas, radar_setor_setores restart identity cascade")
+    sid = limpo.execute("insert into radar_setor_setores (nome, temas) values ('Contabilidade', radar_setor_temas_padrao()) returning id").fetchone()[0]
+    art = limpo.execute("""insert into radar_setor_contas (setor_id, nome, propria, meta_id) values (%s, 'artecon.teste', true, '1784140000001')
+                           returning id""", (sid,)).fetchone()[0]
+    out = limpo.execute("""insert into radar_setor_contas (setor_id, nome, propria, meta_id) values (%s, 'bruno.exemplo', false, '1784140000002')
+                           returning id""", (sid,)).fetchone()[0]
+    for cid, midia, quando in [(art, "m1", f"{hoje} 10:00-03"), (out, "m2", f"{hoje} 10:00-03"), (out, "m3", f"{hoje} 11:00-03")]:
+        limpo.execute("insert into radar_setor_posts (conta_id, midia_id, publicado_em, tipo) values (%s, %s, %s, 'IMAGE')", (cid, midia, quando))
+
+    with como("authenticated", ADMIN) as c:
+        g = c.execute("select radar_painel_graficos(%s)", (hoje,)).fetchone()[0]
+    # as notícias por fonte, por período (ordenadas por quantidade), sem a duplicata
+    pares = lambda lst: [(x["fonte"], x["n"]) for x in lst]
+    assert pares(g["fontes"]["dia"]) == [("Receita Federal — Atos normativos (Normas)", 2), ("PGFN — Notícias", 1)]
+    assert pares(g["fontes"]["semana"]) == [("Receita Federal — Atos normativos (Normas)", 2), ("PGFN — Notícias", 1)]
+    assert pares(g["fontes"]["mes"]) == [("Receita Federal — Atos normativos (Normas)", 3), ("PGFN — Notícias", 2)]
+    # publicações por canal: 6 semanas, a última é a de hoje
+    assert len(g["canais"]) == 6 and g["canais"][-1]["ini"] == "2026-10-19"
+    assert (g["canais"][-1]["site"], g["canais"][-1]["instagram"], g["canais"][-1]["facebook"]) == (1, 1, 1)
+    assert (g["canais"][-2]["ini"], g["canais"][-2]["site"]) == ("2026-10-12", 1)
+    assert g["canais"][0]["ini"] == "2026-09-14" and g["canais"][0]["instagram"] == 1
+    # comparação: a Artecon (1 na semana atual) × a média das outras ativas (2 posts / 1 conta = 2.0)
+    assert len(g["comparacao"]) == 6 and g["comparacao"][-1]["ini"] == "2026-10-19"
+    assert g["comparacao"][-1]["artecon"] == 1 and float(g["comparacao"][-1]["media"]) == 2.0
+    assert g["hoje"] == hoje
+    # sem a conta própria ou sem outra ativa, a comparação vem nula (o Painel mostra "configure a aba Setor")
+    limpo.execute("update radar_setor_contas set ativa = false where id = %s", (out,))
+    with como("authenticated", ADMIN) as c:
+        assert c.execute("select radar_painel_graficos(%s)", (hoje,)).fetchone()[0]["comparacao"] is None
+    # quem não está logado (sem perfil) não vê o Painel (RADAR320, com errcode 42501 → InsufficientPrivilege)
+    with como("authenticated", SEM_PERFIL) as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="RADAR320"):
+        c.execute("select radar_painel_graficos(%s)", (hoje,))
+    with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="permission denied for function"):
+        c.execute("select radar_painel_graficos(%s)", (hoje,))     # o visitante nem tem permissão de executar a função
+    limpo.execute("truncate radar_setor_posts, radar_setor_coletas, radar_setor_contas, radar_setor_setores restart identity cascade")

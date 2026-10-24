@@ -1,4 +1,16 @@
-# Radar Artecon — Relatório de testes (v0.46.0)
+# Radar Artecon — Relatório de testes (v0.47.0)
+
+**v0.47.0 — Painel com gráficos** (24/10/2026): o Painel ganhou um seletor **Dia / Semana / Mês** (o que falta, feito/mínimo/a
+fazer/em atraso e o cronograma em barras) e quatro gráficos — **notícias por fonte**, **publicações por canal** (site, Instagram e
+Facebook, 6 semanas), a **comparação do ritmo** da Artecon com a média dos escritórios acompanhados (pela aba Setor) e o **medidor
+de minutos** do corretor de vídeo. Muda **só o banco** (uma função de leitura, `radar_painel_graficos`; **nenhuma tabela nova**) e
+a **tela**. Testes: **1 novo de banco** (`radar_painel_graficos` em `test_radar_banco.py`: fontes por período sem duplicatas,
+canais por semana e a comparação; e as recusas de quem não está logado) e **2 de tela refeitos** (`test_radar_telas.py`: o
+dashboard no lugar da projeção da v0.41.0 — a renderização pura e com o banco e o leitor, com o seletor de período). Neste ambiente
+rodaram os arquivos afetados — `test_radar_banco.py` e os de versão/contagem (`test_radar_repositorio.py`,
+`test_radar_funcao_copia.py`, `test_radar_lembretes.py`, `test_radar_vencimentos.py`) e `test_radar_telas.py` (os dois do Painel) —
+todos verdes. Neste ambiente a suíte **INTEIRA** rodou verde: **1480 testes passaram** e 64 foram pulados (os pulados dependem das
+ferramentas instaladas aqui; o CI roda tudo). **A suíte INTEIRA roda no CI antes de juntar.**
 
 Correções **v0.35.1 e v0.35.2 da função `radar-meta-webhook`** (23/10/2026): o `META_PAGE_TOKEN` passa a aceitar também o
 token do **usuário de sistema** — a função troca sozinha pelo da página (GET `/me/accounts`, token só no cabeçalho), como a

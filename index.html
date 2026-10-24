@@ -311,6 +311,34 @@ details.nova-pessoa{margin:0 0 16px} details.nova-pessoa summary{margin-bottom:8
 .crono-periodo td,.crono-periodo th:nth-child(n+2){text-align:right;white-space:nowrap;width:4.5em} .crono-periodo .selo{white-space:normal} .crono-periodo p{margin:6px 0 0}
 .crono-periodo tr.abaixo>*{background:var(--erro-fundo);color:var(--erro);font-weight:700} details.crono-como{margin-top:10px}
 .proj-resumo{margin:0 0 6px} .proj-resumo.abaixo b{color:var(--erro)}  /* v0.41.0: o "tem × falta" da projeção do Painel */
+/* v0.47.0: Painel com gráficos */
+.dash-periodo{display:inline-flex;border:1px solid var(--linha);border-radius:999px;overflow:hidden;margin:0 0 12px}
+.dash-periodo button{border:0;background:#fff;color:var(--cinza);font:inherit;font-size:.9rem;padding:7px 18px;cursor:pointer}
+.dash-periodo button.ativa{background:var(--marinho);color:#fff;font-weight:700}
+.dash-p[hidden]{display:none}
+.dash-falta{border:1px solid var(--linha);border-left:4px solid var(--vermelho);border-radius:10px;padding:10px 14px;margin:0 0 12px;background:#fff}
+.dash-falta.ok{border-left-color:var(--ok)} .dash-falta b{color:var(--marinho)}
+.dash-chip{display:inline-block;background:var(--alerta-fundo);color:var(--alerta);border-radius:999px;padding:2px 10px;margin:3px 6px 0 0;font-size:.84rem;font-weight:600}
+.dash-chip.ok{background:var(--ok-fundo);color:var(--ok)} .dash-chip.atraso{background:var(--erro-fundo);color:var(--erro)}
+.dash-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 14px}
+.dash-kpi{border:1px solid var(--linha);border-radius:10px;padding:10px 12px}
+.dash-kpi .dash-n{font-size:1.6rem;font-weight:700;color:var(--marinho);font-family:"Playfair Display",serif;line-height:1}
+.dash-kpi .dash-n.alerta{color:var(--alerta)} .dash-kpi .dash-n.erro{color:var(--erro)}
+.dash-kpi .dash-r{font-size:.78rem;color:var(--cinza);margin-top:3px}
+.dash-grade{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.dash-bloco{border:1px solid var(--linha);border-radius:10px;padding:12px 14px} .dash-bloco.largo{grid-column:1/-1}
+.dash-bloco h3{font-family:"DM Sans",system-ui,sans-serif;font-size:.95rem;color:var(--marinho);margin:0 0 8px}
+.dash-bar,.dash-barh{display:grid;align-items:center;gap:8px;margin:7px 0;font-size:.86rem}
+.dash-bar{grid-template-columns:minmax(110px,40%) 1fr 52px} .dash-barh{grid-template-columns:minmax(110px,45%) 1fr 30px}
+.dash-bar-rot{color:var(--marinho)} .dash-bar-track{background:#EEF1F5;border-radius:6px;height:14px;overflow:hidden}
+.dash-bar-feito{display:block;height:100%;background:var(--marinho);border-radius:6px} .dash-bar-feito.atraso{background:var(--vermelho)}
+.dash-barh-fill{height:11px;background:var(--marinho);border-radius:5px;min-width:2px}
+.dash-bar-val{text-align:right;font-weight:700;color:var(--marinho)} .dash-bar-val.atraso{color:var(--erro)}
+.dash-leg{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;margin:2px 0 8px} .dash-leg span{display:inline-flex;align-items:center;gap:5px}
+.dash-leg i{width:11px;height:11px;border-radius:3px;display:inline-block}
+.dash-bloco svg{display:block;width:100%;height:auto;overflow:visible} .g-eixo{fill:#8a8789;font-size:9px} .g-val{font-size:9.5px;font-weight:700}
+.dash-meter{background:#EEF1F5;border-radius:999px;height:16px;overflow:hidden;margin:8px 0 4px} .dash-meter span{display:block;height:100%;background:var(--ok);border-radius:999px}
+@media (max-width:640px){ .dash-kpis{grid-template-columns:repeat(2,1fr)} .dash-grade{grid-template-columns:1fr} }
 /* a arte da peça (as lâminas rolam na horizontal dentro da caixa, também no celular), a conferência, a aprovação e a peça aprovada */
 .peca-artes{display:flex;gap:10px;overflow-x:auto;max-width:100%;padding-bottom:6px} .peca-artes figure{margin:0;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-items:center}
 .peca-artes img{width:216px;height:270px;border-radius:6px;border:1px solid var(--linha);background:#0D3B73;display:block} .peca-artes img[data-pendente]{opacity:.45}
@@ -387,21 +415,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.46.0"></script>
-<script src="radar-video.js?v=0.46.0"></script>
-<script src="radar-setor.js?v=0.46.0"></script>
-<script src="radar-respostas.js?v=0.46.0"></script>
+<script src="radar-pauta.js?v=0.47.0"></script>
+<script src="radar-video.js?v=0.47.0"></script>
+<script src="radar-setor.js?v=0.47.0"></script>
+<script src="radar-respostas.js?v=0.47.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.46.0";
+const VERSAO = "0.47.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.47.0", "24/10/2026", [
+    "Painel com gráficos: o Painel ganhou um seletor Dia / Semana / Mês e, para o período escolhido, mostra o que falta publicar, os números (feito, mínimo, a fazer e em atraso) e o cronograma em barras. Abaixo, quatro gráficos: notícias por fonte, publicações por canal (site, Instagram e Facebook) nas últimas 6 semanas, a comparação do ritmo da Artecon com a média dos escritórios acompanhados (dado público, pela aba Setor) e os minutos do corretor de vídeo usados no mês. É só leitura — não publica nem grava nada.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.47.0.sql (uma função nova de leitura, radar_painel_graficos; nenhuma tabela nova; nada é apagado; pode rodar de novo). As funções radar-ia, radar-redes e radar-video não mudam. Depois publique o index.html com os demais .js e aperte Ctrl+F5. A comparação com outros escritórios aparece quando a aba Setor tiver a conta da Artecon e ao menos um outro escritório. Passo a passo no LEIAME, “Da v0.46.0 para a v0.47.0”."]],
   ["0.46.0", "24/10/2026", [
     "Termo de uso de imagem assinado na tela: em Pauta → Pessoas e termos, o termo deixou de ser um “aceite” por data e virou uma ASSINATURA de verdade. O administrador abre o cadastro da pessoa e clica em “Assinar o termo na tela”: aparece o texto do termo com o nome e o CPF, a pessoa informa o CPF e DESENHA a assinatura na própria tela (caneta, dedo ou mouse) e confirma. Fica guardado como prova, num histórico que nunca se apaga: a imagem da assinatura, o nome, o CPF, a data e a hora, o aparelho e o texto exato assinado. Um único termo autoriza o uso da imagem, da voz e do nome nos canais site, Instagram e Facebook e o corretor de vídeo. Agora TODOS assinam, sócios inclusive: a dispensa de quem era “Sócio(a) da Artecon” acabou (a marca continua, só como referência). Para encerrar a autorização, “Revogar termo” (o que já saiu continua no ar; a revogação não apaga o passado).",
     "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.46.0.sql (a tabela do histórico das assinaturas, o CPF da pessoa, o texto do termo e as funções novas; nenhuma tela publica nada sem ele; nada é apagado; pode rodar de novo). As funções radar-ia, radar-redes e radar-video não mudam. Depois publique o index.html com os demais .js e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.45.0 para a v0.46.0”."]],
@@ -1263,36 +1294,99 @@ function linhaProrrogacao(p){
 }
 /* Configurações → Agenda de obrigações: as dos últimos 30 dias, também as já conferidas (com o selo) */
 function listaProrrogacoes(lista){
-  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.46.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
+  if(lista === null) return ehAdmin() ? `<div class="aviso alerta" id="prorrogacao-sem-banco">O aviso de prorrogação precisa do banco da v0.30.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.47.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>` : "";
   return `<div class="prorrogacoes" id="prorrogacoes-config"><h3>Possíveis prorrogações captadas (últimos 30 dias)</h3>
     ${lista.length ? `<p class="sub">Notícias que falam em prorrogar ou adiar o prazo de uma obrigação desta agenda. O Radar não muda a data sozinho: confira na fonte oficial e, se o prazo mudou, ponha a nova data em “prorrogacoes”.</p>
       <ul>${lista.map(linhaProrrogacao).join("")}</ul>` : `<p class="sub">Nenhuma notícia dos últimos 30 dias fala em prorrogar ou adiar o prazo de uma obrigação desta agenda.</p>`}</div>`;
 }
 
-/* v0.41.0 (pedido do dono): a projeção de publicações no Painel — hoje, a semana e o mês, o que o calendário pede e o que já
-   saiu. As contas são as MESMAS do cronograma da Pauta (radar-pauta.js: lerCronograma/contarCronograma, funções puras testadas
-   com datas fixas); o quadro só informa — não publica, não grava e não cria nada. */
-function blocoProjecaoPainel(hoje, c){
-  const topo = `<h2>Projeção de publicações</h2>
-    <p class="sub">O que o calendário da Pauta e a busca pedem e o que já saiu — hoje, nesta semana e no mês. Em vermelho, o que já devia ter saído e não saiu. As contas são as do cronograma da Pauta (lá tem o “Como o quadro conta”); o quadro só informa.</p>`;
-  if(!c) return `<div class="painel" id="painel-projecao">${topo}<div class="aviso alerta" id="painel-projecao-erro">Não deu para montar a projeção agora. O resto do Painel está certo; recarregue a página para tentar de novo.</div></div>`;
-  const {semana, mes} = periodosCronograma(segundaDe(hoje), hoje), ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-  const nome = mesExtenso(mes.ini);
-  const soma = (k, campo) => k.linhas.reduce((s, l) => s + l[campo], 0);
-  const resumo = k => { const minimo = soma(k, "minimo"), feito = soma(k, "feito"), atraso = soma(k, "atraso");
-    const falta = Math.max(0, minimo - feito);
-    const texto = !minimo ? "Nada pedido no período." : !falta ? `Alcançou: ${feito} de ${minimo}.`
-      : `Tem ${feito} de ${minimo}: falta${falta > 1 ? "m" : ""} ${falta}${atraso ? ` (${atraso} em atraso)` : ""}.`;
-    return `<p class="proj-resumo${atraso ? " abaixo" : ""}" data-minimo="${minimo}" data-feito="${feito}" data-atraso="${atraso}"><b>${h(texto)}</b></p>`; };
-  const periodo = (id, titulo, k, vazio) => `<section class="crono-periodo" id="proj-${id}" data-fase="${k.fase}">
-      <h3>${h(titulo)}</h3>${resumo(k)}
-      <div class="rolagem"><table><tr><th>Publicação</th><th>Mínimo</th><th>Feito</th></tr>${k.linhas.map(l => `
-        <tr data-linha="${l.id}" data-minimo="${l.minimo}" data-feito="${l.feito}" data-atraso="${l.atraso}"${l.atraso ? ` class="abaixo"` : ""}>
-          <th scope="row">${h(l.rotulo)} ${seloCronograma(l, k.fase)}</th><td>${l.minimo}</td><td>${l.feito}</td></tr>`).join("")}</table></div>
-      ${k.semPlano ? `<p class="sub">${h(vazio)}</p>` : ""}</section>`;
-  return `<div class="painel" id="painel-projecao">${topo}
-    <div class="crono-periodos">${periodo("dia", `Hoje (${ddmm(hoje)})`, c.dia, "Sem peça no calendário para hoje.")}${periodo("semana", `Semana de ${ddmm(semana.ini)} a ${ddmm(semana.fim)}`, c.semana, "Nenhuma peça no plano desta semana.")}${periodo("mes", nome[0].toUpperCase() + nome.slice(1), c.mes, "Nenhuma peça no plano deste mês.")}</div>
-    ${c.cortado ? `<p class="aviso alerta">Uma das leituras chegou ao limite de 1.000 registros: algum número pode estar abaixo do real.</p>` : ""}
+/* v0.41.0/v0.47.0 (pedido do dono): o Painel com gráficos. Reaproveita a projeção (c = lerCronograma: c.dia/c.semana/c.mes, cada um
+   com .linhas {id,rotulo,minimo,feito,atraso}, .fase e .semPlano — contas puras testadas), a cota do corretor (radar_video_cota) e a
+   função de dados nova (radar_painel_graficos: fontes por período, canais em 6 semanas e a comparação com os escritórios). Só LÊ —
+   não publica, não grava, não cria. O seletor Dia/Semana/Mês (ação painel-periodo) troca só o que é por período (o que falta, os
+   números e o cronograma); os gráficos de 6 semanas e a cota ficam. */
+const DASH_PERIODOS = [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]];
+const somaCrono = (k, campo) => (k && Array.isArray(k.linhas) ? k.linhas : []).reduce((s, l) => s + (l[campo] || 0), 0);
+function dashResumoPeriodo(k, id){
+  const minimo = somaCrono(k, "minimo"), feito = somaCrono(k, "feito"), atraso = somaCrono(k, "atraso"), falta = Math.max(0, minimo - feito);
+  const q = {dia:"hoje", semana:"nesta semana", mes:"neste mês"}[id];
+  if(!minimo) return `<div class="dash-falta ok"><b>Nada pedido ${q}.</b></div>`;
+  if(!falta) return `<div class="dash-falta ok"><b>Tudo em dia ${q} ✓</b> <span class="dash-chip ok">${feito} de ${minimo} feito</span></div>`;
+  const chips = k.linhas.filter(l => l.feito < l.minimo).map(l => `<span class="dash-chip">faltam ${l.minimo - l.feito} ${h(l.rotulo.toLowerCase())}</span>`).join("");
+  return `<div class="dash-falta"><b>O que falta ${q}:</b> ${chips}${atraso ? ` <span class="dash-chip atraso">${atraso} em atraso</span>` : ""}</div>`;
+}
+function dashKpis(k){
+  const minimo = somaCrono(k, "minimo"), feito = somaCrono(k, "feito"), atraso = somaCrono(k, "atraso"), falta = Math.max(0, minimo - feito);
+  const tile = (n, r, cls) => `<div class="dash-kpi"><div class="dash-n ${cls || ""}">${n}</div><div class="dash-r">${r}</div></div>`;
+  return `<div class="dash-kpis">${tile(feito, "Publicações feitas")}${tile(minimo, "Mínimo do período")}${tile(falta, "A fazer", falta ? "alerta" : "")}${tile(atraso, "Em atraso", atraso ? "erro" : "")}</div>`;
+}
+function dashBarras(k){
+  if(!k || !Array.isArray(k.linhas) || !k.linhas.length) return `<p class="sub">Nenhuma peça no plano deste período.</p>`;
+  return k.linhas.map(l => { const max = Math.max(l.minimo, 1), fp = Math.min(100, Math.round(l.feito / max * 100)), atr = l.feito < l.minimo && l.atraso;
+    return `<div class="dash-bar"><span class="dash-bar-rot">${h(l.rotulo)} ${seloCronograma(l, k.fase)}</span>
+      <span class="dash-bar-track"><span class="dash-bar-feito${atr ? " atraso" : ""}" style="width:${fp}%"></span></span>
+      <span class="dash-bar-val${atr ? " atraso" : ""}">${l.feito}/${l.minimo}</span></div>`; }).join("");
+}
+function dashFonte(graf, id){
+  const lst = graf && graf.fontes && Array.isArray(graf.fontes[id]) ? graf.fontes[id].slice(0, 6) : [];
+  if(!lst.length) return `<p class="sub">Nenhuma notícia captada no período.</p>`;
+  const max = Math.max(...lst.map(f => f.n), 1);
+  return lst.map(f => `<div class="dash-barh"><span class="dash-bar-rot">${h(f.fonte)}</span><span class="dash-barh-fill" style="width:${Math.round(f.n / max * 100)}%" title="${h(f.fonte)}: ${f.n}"></span><span class="dash-bar-val">${f.n}</span></div>`).join("");
+}
+/* um gráfico de linhas simples em SVG (sem biblioteca): rótulos no eixo x, uma ou mais séries {nome,cor,dash,w,valores}. O y vai de 0
+   ao maior valor (mínimo 6). Cada série ganha o número no fim e um ponto com o valor (passar o dedo/mouse mostra). */
+function graficoLinhas(labels, series, aria){
+  const n = labels.length, W = 600, H = 150, x0 = 38, x1 = 585, y0 = 14, y1 = 120;
+  const max = Math.max(6, ...series.flatMap(s => s.valores.map(v => Number(v) || 0)));
+  const px = i => n <= 1 ? x0 : x0 + (x1 - x0) * i / (n - 1);
+  const py = v => y1 - (y1 - y0) * (Number(v) || 0) / max;
+  const desenho = series.map(s => { const pts = s.valores.map((v, i) => `${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(" "), fim = s.valores[s.valores.length - 1];
+    return `<polyline fill="none" stroke="${s.cor}" stroke-width="${s.w || 2}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ""} points="${pts}"/>`
+      + `<circle cx="${px(n - 1).toFixed(1)}" cy="${py(fim).toFixed(1)}" r="3" fill="${s.cor}"><title>${h(s.nome)}: ${fim}</title></circle>`
+      + `<text x="${x1 + 6}" y="${(py(fim) + 3).toFixed(1)}" class="g-val" style="fill:${s.cor}">${fim}</text>`; }).join("");
+  const eixoY = [0, Math.round(max / 2), max].map(v => `<text x="${x0 - 4}" y="${(py(v) + 3).toFixed(1)}" class="g-eixo" text-anchor="end">${v}</text>`).join("");
+  const eixoX = labels.map((lb, i) => `<text x="${px(i).toFixed(1)}" y="${H - 14}" class="g-eixo" text-anchor="middle">${h(lb)}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(aria)}"><line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="var(--linha)"/><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--linha)"/>${eixoY}${eixoX}${desenho}</svg>`;
+}
+const dashSemanas = arr => (arr || []).map((x, i) => i === arr.length - 1 ? "atual" : `${String(x.ini).slice(8, 10)}/${String(x.ini).slice(5, 7)}`);
+function blocoDashboard(hoje, c, graf, cota){
+  const per = E.painelPeriodo || "mes";
+  const topo = `<h2>Projeção e desempenho</h2>
+    <p class="sub">Escolha <b>Dia</b>, <b>Semana</b> ou <b>Mês</b> para ver o que falta publicar e os números do período (em vermelho, o que já devia ter saído). As contas são as do cronograma da Pauta. Os gráficos de 6 semanas e a cota do corretor valem para o período corrente. Só leitura.</p>`;
+  const seletor = `<div class="dash-periodo" id="dash-periodo">${DASH_PERIODOS.map(([id, nm]) => `<button type="button" data-acao="painel-periodo" data-p="${id}" class="${id === per ? "ativa" : ""}">${nm}</button>`).join("")}</div>`;
+  const semCrono = c ? "" : `<div class="aviso alerta" id="painel-projecao-erro">Não deu para montar a projeção agora (recarregue a página — Ctrl+F5). Os gráficos abaixo continuam.</div>`;
+  const secoes = c ? DASH_PERIODOS.map(([id]) => { const k = c[id];
+    return `<section class="dash-p" data-p="${id}"${id === per ? "" : " hidden"}>
+      ${dashResumoPeriodo(k, id)}${dashKpis(k)}
+      <div class="dash-grade"><div class="dash-bloco"><h3>Cronograma — feito × mínimo</h3>${dashBarras(k)}</div>
+        ${graf ? `<div class="dash-bloco"><h3>Notícias por fonte</h3>${dashFonte(graf, id)}</div>` : ""}</div></section>`; }).join("") : "";
+  const g = [];
+  if(graf && Array.isArray(graf.canais) && graf.canais.length){
+    const svg = graficoLinhas(dashSemanas(graf.canais), [
+      {nome:"Site", cor:"#2a78d6", valores:graf.canais.map(x => x.site)},
+      {nome:"Instagram", cor:"#eb6834", valores:graf.canais.map(x => x.instagram)},
+      {nome:"Facebook", cor:"#1baf7a", valores:graf.canais.map(x => x.facebook)}], "Publicações por canal nas últimas 6 semanas");
+    g.push(`<div class="dash-bloco largo"><h3>Publicações por canal — últimas 6 semanas</h3>
+      <div class="dash-leg"><span><i style="background:#2a78d6"></i> Site</span><span><i style="background:#eb6834"></i> Instagram</span><span><i style="background:#1baf7a"></i> Facebook</span></div>${svg}</div>`);
+  }
+  if(graf){
+    let comp;
+    if(Array.isArray(graf.comparacao) && graf.comparacao.length){
+      const svg = graficoLinhas(dashSemanas(graf.comparacao), [
+        {nome:"Artecon", cor:"#011F48", w:2.4, valores:graf.comparacao.map(x => x.artecon)},
+        {nome:"Média dos escritórios", cor:"#8a8789", dash:"5 4", valores:graf.comparacao.map(x => x.media)}], "Ritmo de publicações: Artecon x média dos escritórios");
+      comp = `<div class="dash-leg"><span><i style="background:#011F48"></i> Artecon</span><span><i style="background:#8a8789"></i> Média dos escritórios</span></div>${svg}
+        <p class="sub">Compara só a quantidade de publicações (dado público, pela API oficial, pela aba Setor). Os escritórios que entram na conta você escolhe na aba Setor.</p>`;
+    } else comp = `<p class="sub">Para comparar com outros escritórios, configure os perfis na aba <b>Setor</b> (a conta da Artecon e ao menos um outro escritório). Aí este gráfico mostra o ritmo da Artecon × a média deles.</p>`;
+    g.push(`<div class="dash-bloco largo"><h3>Estamos na mesma linha? — ritmo de publicações</h3>${comp}</div>`);
+  }
+  if(cota && cota.limite_s){
+    const usado = Math.round((cota.segundos_mes || 0) / 60), lim = Math.round(cota.limite_s / 60), pct = Math.min(100, Math.round((cota.segundos_mes || 0) / cota.limite_s * 100));
+    g.push(`<div class="dash-bloco largo"><h3>Corretor de vídeo — minutos usados no mês</h3><div class="dash-meter"><span style="width:${pct}%"></span></div>
+      <p class="sub"><b>${usado} de ${lim} minutos</b> usados (${pct}%).${lim - usado >= 0 ? ` Sobram ${lim - usado} minutos neste mês.` : ""} A cota é sempre mensal.</p></div>`);
+  }
+  return `<div class="painel" id="painel-dashboard">${topo}${seletor}${semCrono}${secoes}
+    ${g.length ? `<div class="dash-grade">${g.join("")}</div>` : ""}
     <div class="acoes"><button class="btn peq sec" type="button" data-acao="aba" data-aba="pauta">Abrir a Pauta</button></div></div>`;
 }
 
@@ -1305,6 +1399,11 @@ const TELAS = {
     const temPauta = typeof lerCronograma === "function" && typeof hojeBrasilia === "function" && typeof segundaDe === "function";
     const hoje = temPauta ? hojeBrasilia() : "";
     const proj = temPauta ? await lerCronograma(segundaDe(hoje), hoje).catch(() => null) : null;
+    // v0.47.0: os dados dos gráficos (sem o banco novo, a função não existe: o Painel abre sem os gráficos). A cota do corretor é só
+    // do editor/administrador; o leitor vê o resto.
+    let graf = null, cota = null;
+    try{ graf = await rpc("radar_painel_graficos", {p_hoje: hoje || null}); }catch(e){ graf = null; }
+    if(podeEditar()){ try{ cota = await rpc("radar_video_cota"); }catch(e){ cota = null; } }
     const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
     const revisao = await ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,atualizado_em", status:"eq.em_revisao", order:"atualizado_em.desc", limit:"10"});
     const doRobo = p.rascunhos_robo ? await ler("radar_conteudos", {select:"id,titulo,assunto_id,criado_em,avisos_ia", status:"eq.rascunho", modelo_ia:"like.*(robô)", order:"criado_em.desc", limit:"10"}) : [];
@@ -1324,7 +1423,7 @@ const TELAS = {
         ? " (a lista inteira fica em Configurações → Agenda de obrigações)" : ""}</p>` : ""}</div>` : "";
     return `<h1>Painel do dia</h1>${parada}
       ${prorrogacao}
-      ${temPauta ? blocoProjecaoPainel(hoje, proj) : ""}
+      ${blocoDashboard(hoje, proj, graf, cota)}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
         ${c(p.capturas_24h, "Capturas nas últimas 24h", "fila")}
@@ -3154,7 +3253,7 @@ function conferenciaDoConteudo(c, {marcas = [], semFonte = [], citadas = [], pag
   return {itens, atual, assumida, conf, ok, liberado:ok || !!assumida, travaAntes:marcas.length > 0 || pagas.length > 0};
 }
 function quadroConferencia(c, conf, ed){
-  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.46.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
+  if(E.semConferencia) return `<div class="conferencia aviso alerta" id="conf-${c.id}"><b>Conferência das Diretrizes:</b> o banco ainda está na versão anterior. O administrador roda o <b>sql/radar-setup-v0.47.0.sql</b> (Supabase → SQL Editor); até lá, a aprovação segue como antes.</div>`;
   const faltam = conf.itens.filter(x => x.situacao === "nao_atende" || x.situacao === "pendente").length;
   const quando = conf.atual && conf.conf.em ? `Conferido com IA em ${dataHora(conf.conf.em)}.`
     : conf.conf.versao ? "A conferência anterior era de outra versão (o título, o texto, a fonte ou a capa mudaram): confira de novo." : "";
@@ -3380,6 +3479,10 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
 const ACOES = {
   aba(el){ E.etapa = null; E.aba = el.dataset.aba; E.assunto = null; E.informativo = null; E.pauta.peca = null; E.pauta.vista = "semana"; E.pauta.nova = null; return desenhar(); },
   recarregar(){ return desenhar(); },
+  /* v0.47.0: o seletor Dia/Semana/Mês do Painel — só troca o que está à vista (não busca de novo): guarda a escolha e mostra a seção do período */
+  "painel-periodo"(el){ const p = el.dataset.p; E.painelPeriodo = p;
+    document.querySelectorAll("#dash-periodo button").forEach(b => b.classList.toggle("ativa", b.dataset.p === p));
+    document.querySelectorAll("#painel-dashboard .dash-p").forEach(s => { s.hidden = s.dataset.p !== p; }); },
   /* v0.44.0: letras grandes — liga e desliga na hora, para o aplicativo inteiro, e fica guardado só neste navegador */
   letras(){ const ligou = document.body.classList.toggle("letras-grandes");
     try{ localStorage.setItem("radar_letras", ligou ? "1" : "0"); }catch(e){}
@@ -5145,7 +5248,7 @@ const quandoBrasilia = v => { const d = new Date(v || ""); return isNaN(d) ? "�
   : d.toLocaleString("pt-BR", {timeZone:"America/Sao_Paulo", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}).replace(",", " às"); };
 function situacaoLembretes(lemb, cfg){
   if(lemb.erro) return `<div class="aviso alerta" id="lembretes-situacao">${lemb.erro.status === 404
-    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.46.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "A situação dos lembretes precisa do banco da v0.29.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.47.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler a situação dos lembretes agora: recarregue a página."}</div>`;
   const s = lemb.r || {}, ag = s.agenda || {};
   const agenda = !ag.instalada ? "não instalada: rode de novo o sql/radar-redes-agenda.sql (Supabase → SQL Editor)"
@@ -5200,7 +5303,7 @@ function formVencimento(v){
 function quadroVencimentos(venc){
   const topo = `<div class="painel" id="vencimentos"><h2>Vencimentos de chaves e contas</h2>`;
   if(venc.erro) return topo + `<div class="aviso alerta">${venc.erro.status === 404
-    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.46.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
+    ? "O quadro de vencimentos precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.47.0.sql</b> (Supabase → SQL Editor) e recarrega esta página."
     : "Não deu para ler o quadro de vencimentos agora: recarregue a página."}</div></div>`;
   const hoje = hojeVencimentos(), ed = E.venc || {};
   const itens = (venc.r || []).map(v => ({v, s:situacaoVencimento(v, hoje)}))
@@ -5243,7 +5346,7 @@ async function situacaoFuncaoCopia(){
 }
 function painelCopia(sb, sf){
   const topo = `<div class="painel" id="copia-onedrive"><h2>Cópia de segurança no OneDrive</h2>`;
-  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.46.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
+  if(sb.erro?.status === 404) return topo + `<div class="aviso alerta">A cópia de segurança precisa do banco novo: o administrador roda o <b>sql/radar-setup-v0.47.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div></div>`;
   const s = sb.r || {}, f = sf.r && typeof sf.r === "object" ? sf.r : null, configurada = f?.configurada === true;
   const funcao = f ? `instalada (versão ${h(f.versao || "—")})` : sf.erro?.status === 404 ? "não instalada (Supabase → Edge Functions)"
     : "não respondeu agora (confira em Supabase → Edge Functions se a radar-copia está instalada)";
@@ -5424,7 +5527,7 @@ const FORMS = {
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","abrir-assumir","fechar-assumir","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de",
-  "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar"]);                              // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar
+  "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar","painel-periodo"]);              // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar; v0.47.0: + o seletor dia/semana/mês do Painel
 // v0.21.0: as ações e os formulários da Pauta (radar-pauta.js); sem o arquivo, a aba mostra o recado e nada mais muda
 if(typeof PAUTA === "object"){ Object.assign(ACOES, PAUTA.acoes); Object.assign(FORMS, PAUTA.forms); PAUTA.navegacao.forEach(a => NAVEGACAO.add(a)); }
 // v0.22.0: as do corretor de vídeo do reel (radar-video.js); sem o arquivo, a peça reel mostra o recado
