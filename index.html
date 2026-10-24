@@ -41,6 +41,11 @@ nav.abas{background:#fff;border-bottom:1px solid var(--linha);display:flex;gap:2
 nav.abas button{background:none;border:0;border-bottom:3px solid transparent;padding:11px 12px;cursor:pointer;white-space:nowrap;color:var(--cinza)}
 nav.abas button.ativa{border-bottom-color:var(--vermelho);color:var(--marinho);font-weight:700}
 nav.abas .conta{background:var(--vermelho);color:#fff;border-radius:999px;font-size:.72rem;padding:0 6px;margin-left:4px}
+/* v0.49.0 (abas unidas): a faixa de escolha dentro de uma família (Notícias / Administração) */
+nav.subnav{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px 0;overflow-x:auto}
+nav.subnav button{border:1px solid var(--linha);background:#fff;border-radius:999px;padding:7px 14px;font:inherit;font-size:.88rem;color:var(--cinza);cursor:pointer;white-space:nowrap}
+nav.subnav button.ativa{background:var(--marinho);color:#fff;border-color:var(--marinho);font-weight:700}
+nav.subnav .conta{background:var(--vermelho);color:#fff;border-radius:999px;font-size:.72rem;padding:0 6px;margin-left:4px}
 main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
 .cartoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
 .cartao{background:#fff;border:1px solid var(--linha);border-top:3px solid var(--azul);border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left;box-shadow:0 1px 2px rgba(1,31,72,.06)}
@@ -423,21 +428,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.48.0"></script>
-<script src="radar-video.js?v=0.48.0"></script>
-<script src="radar-setor.js?v=0.48.0"></script>
-<script src="radar-respostas.js?v=0.48.0"></script>
+<script src="radar-pauta.js?v=0.49.0"></script>
+<script src="radar-video.js?v=0.49.0"></script>
+<script src="radar-setor.js?v=0.49.0"></script>
+<script src="radar-respostas.js?v=0.49.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.48.0";
+const VERSAO = "0.49.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.49.0", "24/10/2026", [
+    "Menos abas, mais organização: a faixa do alto ficou mais enxuta. “Notícias” reúne Capturas e Assuntos; “Administração” reúne Configurações, Usuários, Histórico e Versões (só o administrador vê, como as três já eram). Ao abrir uma dessas, aparece uma faixa de escolha com as telas de sempre — nada mudou dentro delas, só passaram a morar juntas. O número da versão no alto continua abrindo o histórico de Versões com um clique, para todos.",
+    "Administrador: muda só a tela. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Nada no banco, nenhum SQL para rodar, nenhuma função muda. Passo a passo no LEIAME, “Da v0.48.0 para a v0.49.0”."]],
   ["0.48.0", "24/10/2026", [
     "Painel mais esperto, em duas melhorias. (1) O “Projeção e desempenho” ganhou o seletor “Período”: além de Dia, Semana e Mês, você escolhe as datas de início e fim e o cronograma (o que falta, os números feito/mínimo/a fazer/em atraso e as barras) recalcula só para aquele intervalo — sem apagar nada, o histórico e os gráficos continuam intactos (é só um recorte de leitura). (2) Os gráficos de linha (publicações por canal e a comparação com os escritórios) ficaram interativos: passe o mouse ou o dedo em qualquer ponto e aparece um balãozinho com o valor de cada semana.",
     "Administrador: muda só a tela. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Nada no banco, nenhum SQL para rodar, nenhuma função muda. Passo a passo no LEIAME, “Da v0.47.0 para a v0.48.0”."]],
@@ -1232,6 +1240,21 @@ function papelDaChave(){ try{ return JSON.parse(atob(CHAVE.split(".")[1].replace
 // v0.33.0: a aba Vídeo é da equipe que edita ("equipe": o editor e o administrador; o leitor não vê o vídeo, que tem o rosto e a voz da equipe)
 const ABAS = [["painel","Painel"],["fila","Capturas"],["assuntos","Assuntos"],["informativos","Informativos"],["publicacoes","Publicações"],["pauta","Pauta"],
               ["video","Vídeo","equipe"],["fontes","Fontes"],["usuarios","Usuários",true],["configuracoes","Configurações",true],["auditoria","Histórico",true],["ajuda","Como usar"],["versoes","Versões"]];
+// v0.49.0 (abas unidas): "Notícias" junta Capturas + Assuntos; "Administração" junta Configurações + Usuários + Histórico + Versões
+// (só o administrador, como as três já eram; Versões continua a um clique pelo número da versão, para todos). As abas continuam as
+// mesmas (mesmos ids e telas); só passam a morar dentro da família, com uma faixa de escolha (sub-navegação).
+const FAMILIAS = [{id:"noticias", nome:"Notícias", abas:["fila","assuntos"]},
+                  {id:"administracao", nome:"Administração", abas:["configuracoes","usuarios","auditoria","versoes"], admin:true}];
+const FAMILIA_DE = {};  FAMILIAS.forEach(f => f.abas.forEach(a => FAMILIA_DE[a] = f));   // id da aba -> família
+const NOME_DA_ABA = Object.fromEntries(ABAS.map(([id, nome]) => [id, nome]));
+// a faixa de escolha de uma família: vazia quando a aba atual não é de família (ou é da Administração e quem olha não é admin — o
+// não-admin só chega a "Versões" pelo número da versão; aí mostra a tela, sem a faixa)
+function subNav(){
+  const f = FAMILIA_DE[E.aba];
+  if(!f || (f.admin && !ehAdmin())) return "";
+  return `<nav class="subnav" aria-label="${h(f.nome)}">${f.abas.map(a =>
+    `<button data-acao="aba" data-aba="${a}" class="${E.aba === a ? "ativa" : ""}">${h(NOME_DA_ABA[a] || a)}${E.contagem[a] ? `<span class="conta">${E.contagem[a]}</span>` : ""}</button>`).join("")}</nav>`;
+}
 const LOGO = `<img class="logo-entrada" src="radar-logo-artecon.png" alt="Artecon Artes Contábeis">`;
 function moldura(conteudo){
   return `<div class="tricolor"></div><header class="topo"><img class="logo" src="radar-logo-artecon.png" alt="Artecon Artes Contábeis">
@@ -1240,8 +1263,22 @@ function moldura(conteudo){
     <span class="quem"><span>${h(E.perfil.nome)} · ${h(ROTULOS.papel[E.perfil.papel])}</span>
     <button data-acao="letras" id="botao-letras" title="Letras grandes (fica guardado neste navegador)" aria-pressed="${document.body.classList.contains("letras-grandes")}">A+</button>
     <button data-acao="sair">Sair</button></span></header><div class="faixa"></div>
-    <nav class="abas">${ABAS.filter(a => !a[2] || (a[2] === "equipe" ? podeEditar() : ehAdmin())).map(([id,nome]) =>
-      `<button data-acao="aba" data-aba="${id}" class="${E.aba===id?"ativa":""}">${nome}${E.contagem[id] ? `<span class="conta">${E.contagem[id]}</span>` : ""}</button>`).join("")}</nav>
+    <nav class="abas">${(() => {                                        // v0.49.0: famílias no lugar das abas que foram unidas
+      const vistas = new Set(), botoes = [], oculta = v => v && (v === "equipe" ? !podeEditar() : !ehAdmin());
+      for(const [id, nome, vis] of ABAS){
+        const f = FAMILIA_DE[id];
+        if(f){
+          if(vistas.has(f.id)) continue;  vistas.add(f.id);
+          if(f.admin && !ehAdmin()) continue;
+          const naFamilia = f.abas.includes(E.aba), alvo = naFamilia ? E.aba : f.abas[0];
+          const conta = f.abas.reduce((s, a) => s + (E.contagem[a] || 0), 0);
+          botoes.push(`<button data-acao="aba" data-aba="${alvo}" data-familia="${f.id}" class="${naFamilia ? "ativa" : ""}">${f.nome}${conta ? `<span class="conta">${conta}</span>` : ""}</button>`);
+        } else if(!oculta(vis)){
+          botoes.push(`<button data-acao="aba" data-aba="${id}" class="${E.aba === id ? "ativa" : ""}">${nome}${E.contagem[id] ? `<span class="conta">${E.contagem[id]}</span>` : ""}</button>`);
+        }
+      }
+      return botoes.join("");
+    })()}</nav>
     <main id="conteudo">${conteudo}</main>
     <footer class="rodape"><b>Artecon Artes Contábeis</b> · Rua Livorno, nº 15, Sala 101 · Parque Residencial Pagani · Palhoça/SC · (48) 3242-0530 · www.artecon.cnt.br<br>Radar v${VERSAO} · uso interno</footer>`;
 }
@@ -1265,12 +1302,12 @@ async function desenhar(){
       <button class="btn sec" data-acao="sair">Sair</button></div>`; return; }
   }
   // a tela antiga sai na hora: ninguém digita num formulário que está prestes a ser recarregado
-  app.innerHTML = moldura(`<p class="sub">Carregando…</p>`);
+  app.innerHTML = moldura(`${E.assunto ? "" : subNav()}<p class="sub">Carregando…</p>`);   // v0.49.0: a faixa da família já no carregamento
   try{
     const [n] = await ler("radar_v_painel", {select:"em_alta,aprovados_sem_site,aguardando_aprovacao"});     // em_alta: as melhores, sem repetição
     E.contagem = {fila:n.em_alta, publicacoes:n.aprovados_sem_site, assuntos:n.aguardando_aprovacao};
     const html = E.assunto ? await telaAssunto(E.assunto) : await TELAS[E.aba]();
-    if(g === GERACAO){ app.innerHTML = moldura(html);
+    if(g === GERACAO){ app.innerHTML = moldura((E.assunto ? "" : subNav()) + html);   // v0.49.0: a faixa de escolha da família, acima da tela
       const fi = $("form[data-form=informativo]"); if(fi) fi.dataset.original = estadoEdicao(fi);
       if(!E.assunto && E.aba === "pauta" && typeof depoisDeDesenharPauta === "function") depoisDeDesenharPauta();      // v0.21.0: a peça aberta (radar-pauta.js)
       if(!E.assunto && E.aba === "video" && typeof depoisDeDesenharAbaVideo === "function") depoisDeDesenharAbaVideo();     // v0.33.0: o editor do vídeo (radar-video.js)

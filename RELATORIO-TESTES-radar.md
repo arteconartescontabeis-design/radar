@@ -1,4 +1,10 @@
-# Radar Artecon — Relatório de testes (v0.48.0)
+# Radar Artecon — Relatório de testes (v0.49.0)
+
+**v0.49.0 — abas unidas** (24/10/2026): a faixa do alto ficou mais enxuta — "Notícias" (Capturas + Assuntos) e
+"Administração" (Configurações + Usuários + Histórico + Versões, só o administrador). É **só de tela** (`FAMILIAS`/`subNav` no
+`index.html`; as abas mantêm ids e telas, só ganham a família e a faixa de escolha). **Nada no banco** (segue na v0.47.0). Os testes
+de tela navegam por um ajudante (`ir_aba`) que abre a família e escolhe a sub-aba; a cobertura de navegação de sempre continua
+(seletor por papel, tela lenta, Versões pelo número da versão). **A suíte INTEIRA roda no CI antes de juntar.**
 
 **v0.48.0 — Painel mais esperto** (24/10/2026): duas melhorias **só de tela**. (1) o seletor **"Período"** no "Projeção e
 desempenho": escolhidas as datas de início e fim, o cronograma (feito × mínimo, o que falta e os números) recalcula só para o

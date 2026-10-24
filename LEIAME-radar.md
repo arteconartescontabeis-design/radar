@@ -1,4 +1,4 @@
-# Radar Artecon — v0.48.0
+# Radar Artecon — v0.49.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,13 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.49.0 traz as **abas unidas**: a faixa do alto ficou **mais enxuta**. **"Notícias"** reúne **Capturas +
+Assuntos** e **"Administração"** reúne **Configurações + Usuários + Histórico + Versões** (só o administrador vê a família, como as
+três já eram). Ao abrir uma delas, aparece uma **faixa de escolha** (sub-navegação) com as telas de sempre — **nada mudou dentro
+delas**, só passaram a morar juntas (mesmos ids, mesmas telas). O **número da versão** no alto continua abrindo o histórico de
+**Versões** com um clique, para todos. Muda **só a tela**; **nada no banco**, nenhuma função, **nenhum segredo novo**. Veja "Da
+v0.48.0 para a v0.49.0".
 
 A v0.48.0 deixa o **Painel mais esperto**, em duas melhorias **só de tela**. (1) **Seletor "Período"**: no "Projeção e desempenho",
 além de **Dia / Semana / Mês**, você escolhe as **datas de início e fim** e o cronograma (o que falta, os números e as barras)
@@ -2982,6 +2989,19 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.48.0 para a v0.49.0** (muda **só a tela**; **nada no banco**, nenhuma função, **nenhum segredo novo**). Supõe a v0.48.0
+instalada:
+
+1. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.49.0". **Não há SQL**
+   nesta versão.
+2. Conferência rápida: a faixa do alto agora está **mais curta**. Abra **"Notícias"** → aparece a faixa de escolha **Capturas | Assuntos**
+   (o círculo vermelho das capturas novas fica na aba "Notícias" e no botão "Capturas"). Como administrador, abra **"Administração"**
+   → **Configurações | Usuários | Histórico | Versões**; leitor e editor **não** veem essa família (como já era com Configurações,
+   Usuários e Histórico). O **número da versão** no alto continua abrindo "Versões" para todos. As telas por dentro são as mesmas.
+
+**Como desligar:** não há o que ligar/desligar — é a organização das abas. Para voltar à faixa com todas as abas soltas, publique a
+tela da v0.48.0 (o banco não muda em nenhum sentido).
 
 **Da v0.47.0 para a v0.48.0** (muda **só a tela**; **nada no banco**, nenhuma função, **nenhum segredo novo**). Supõe a v0.47.0
 instalada:

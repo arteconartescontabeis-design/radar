@@ -339,6 +339,24 @@ def entrar(pg, email="editora@artecon.test", senha=SENHA):
     pg.click("text=Entrar")
 
 
+# v0.49.0 (abas unidas): navegar para uma aba pelo nome visível. Capturas/Assuntos moram em "Notícias"; Configurações/Usuários/
+# Histórico/Versões em "Administração" (só o admin vê a família; "Versões" todos alcançam pelo número da versão). Abre a família no
+# topo e, se a sub-aba não for a primeira da família, escolhe na faixa de escolha.
+_SUBABA = {"Capturas": ("noticias", "fila", True), "Assuntos": ("noticias", "assuntos", False),
+           "Configurações": ("administracao", "configuracoes", True), "Usuários": ("administracao", "usuarios", False),
+           "Histórico": ("administracao", "auditoria", False)}
+def ir_aba(pg, nome):
+    if nome == "Versões":
+        pg.click(".versao"); return
+    if nome in _SUBABA:
+        fam, aba, primeira = _SUBABA[nome]
+        pg.click(f"nav.abas [data-familia={fam}]")
+        if not primeira:
+            pg.click(f"nav.subnav [data-aba={aba}]")
+        return
+    pg.click(f"nav.abas >> text={nome}")
+
+
 def selecionar(pg, trecho):
     """Seleciona o trecho dentro da caixa do texto oficial, como o usuário faria com o mouse."""
     ok = pg.evaluate("""trecho => {
@@ -368,15 +386,25 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.48.0"
+    assert pagina.inner_text(".versao") == "v0.49.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.48.0: a entrada do topo é a da versão em uso e conta ao dono, em 2 itens: o Painel mais esperto (o seletor "Período" que
-    # recalcula o cronograma sem apagar nada, e os gráficos de linha interativos) e o que o administrador faz (só a tela, nada no banco)
+    # v0.49.0: a entrada do topo é a da versão em uso e conta ao dono, em 2 itens: as abas unidas (Notícias e Administração, com a
+    # faixa de escolha) e o que o administrador faz (só a tela, nada no banco)
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.48.0" and data == "24/10/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.49.0" and data == "24/10/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["Menos abas", "reúne Capturas e Assuntos", "Administração",
+                   "só o administrador vê", "faixa de escolha", "nada mudou dentro delas", "Nada no banco, nenhum SQL",
+                   "Da v0.48.0 para a v0.49.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.48.0: a entrada seguinte conta ao dono em 2 itens: o Painel mais esperto (o seletor "Período" que recalcula o cronograma sem
+    # apagar nada, e os gráficos de linha interativos) e o que o administrador faz (só a tela, nada no banco)
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.48.0" and data == "24/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Painel mais esperto", "o seletor", "datas de início e fim", "recalcula só para aquele intervalo",
                    "sem apagar nada", "gráficos de linha", "ficaram interativos", "passe o mouse ou o dedo",
@@ -385,7 +413,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.47.0: a entrada seguinte conta ao dono em 2 itens: o Painel com gráficos (seletor de período, o que falta, os quatro
     # gráficos, só leitura) e o que o administrador faz (o SQL de uma função nova; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.47.0" and data == "24/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Painel com gráficos", "seletor Dia / Semana / Mês", "o que falta publicar", "feito, mínimo, a fazer e em atraso",
@@ -396,7 +424,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.46.0: a entrada seguinte é o termo de imagem assinado na tela (CPF + a assinatura desenhada; todos assinam, sócios inclusive)
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.46.0" and data == "24/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Termo de uso de imagem assinado na tela", "virou uma ASSINATURA de verdade", "“Assinar o termo na tela”",
@@ -408,7 +436,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.45.0: a entrada de v0.45.0 conta ao dono, em 5 itens: a fonte da CIGA (sem robô no diário), a hora
     # marcada na notícia (com o melhor horário sugerido), a foto em dois bancos, o título sempre na imagem e o que o
     # administrador faz (o SQL, a agenda de novo, o Deploy da radar-ia e da radar-redes, o fontes-novas depois do robô)
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.45.0" and data == "22/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["dados abertos oficiais da CIGA", "não recebe nenhum acesso de robô", "UMA vez por dia",
@@ -421,12 +449,12 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.44.0: a entrada seguinte (o teleprompter com gravação pelo navegador e as letras grandes) fica
-    v44 = pagina.evaluate("VERSOES[4]")
+    v44 = pagina.evaluate("VERSOES[5]")
     assert v44[0] == "0.44.0" and len(v44[2]) == 4 and "Teleprompter com gravação pelo navegador" in " ".join(v44[2])
     # v0.43.0: a entrada seguinte conta ao dono, em 3 itens: a nova tentativa automática (5 e 15 minutos,
     # para na 3ª recusa, com a hora marcada na própria mensagem de erro), a segurança (só a recusa CLARA da Meta re-tenta; o
     # "não deu para saber" fica "enviando", sem nova tentativa) e o que o administrador faz (o SQL e o Deploy da radar-redes)
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.43.0" and data == "20/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Nova tentativa automática", "RECUSAM uma publicação", "a primeira 5 minutos depois", "outra 15 minutos depois",
@@ -439,7 +467,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.42.0: a entrada seguinte conta ao dono, em 5 itens: o carrossel no assunto (a capa com o título +
     # os cartões do kit, desenhados pela tela), a peça de reel criada do assunto, o "Pôr no Informativo Mensal", o carrossel da
     # Pauta agendado (publicado sozinho) e o que o administrador faz (o SQL e o Deploy da radar-redes e da radar-ia)
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.42.0" and data == "20/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["FOTO (como hoje) e CARROSSEL", "a capa é a imagem da publicação com o título", "cartões vêm do kit das redes",
@@ -454,7 +482,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.41.0: a entrada seguinte conta ao dono, em 3 itens: a projeção no Painel (hoje, a semana e o mês,
     # o tem × falta com o atraso em vermelho), as contas iguais às do cronograma da Pauta e o que o administrador faz (só a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.41.0" and data == "20/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Projeção de publicações no Painel do dia", "HOJE, a SEMANA e o MÊS", "o que falta alcançar",
@@ -468,7 +496,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # mais regravação; número e data continuam exigindo exatidão), o veredito em português com o "Aceitar (quis dizer o mesmo)"
     # (na hora, sem montar de novo), o aviso de arquivo fraco na chegada e o que o administrador faz (o SQL, o Deploy da
     # radar-video, o workflow e o commit do repositório privado e o segredo opcional do juiz)
-    topo, data, itens = pagina.evaluate("VERSOES[8]")
+    topo, data, itens = pagina.evaluate("VERSOES[9]")
     assert topo == "0.40.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["entende paráfrase (juiz de sentido)", "quis dizer o MESMO com outras palavras",
@@ -485,7 +513,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.39.0: a entrada seguinte conta ao dono, em 4 itens: a IA mais barata (os modelos novos e o cache),
     # o preparo em lote nos Assuntos, a foto real com o título na imagem e o que o administrador faz (o Deploy da radar-ia, o segredo
     # do banco de imagens e os modelos na IA Central; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[9]")
+    topo, data, itens = pagina.evaluate("VERSOES[10]")
     assert topo == "0.39.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["IA mais barata no Radar inteiro", "Claude Sonnet 5.5 (33% mais barato", "Claude Haiku 5.5 (10× mais barato",
@@ -501,7 +529,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.36.0: a entrada seguinte conta ao dono, em 3 itens: a correção avulsa (o que é e como se usa), o que
     # não muda (os termos e as travas) e o que muda de propósito (sem aprovação de peça; só o administrador baixa), e o que o
     # administrador faz (o SQL, o Deploy da radar-video e a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[10]")
+    topo, data, itens = pagina.evaluate("VERSOES[11]")
     assert topo == "0.36.0" and data == "18/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Correção avulsa (aba Vídeo): analisar e corrigir um vídeo SEM criar uma peça na Pauta",
@@ -518,7 +546,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.35.0: a entrada seguinte, em 4 itens: a aba Respostas (o gatilho, a palavra-chave, a
     # resposta pública e a privada), as proteções (nunca em dobro, a própria conta, o limite por hora com a fila, o Pausar todas, os
     # 7 dias da Meta), o "aguardando a Meta" e o que o administrador faz (o SQL, os Deploys, a agenda da fila e os 3 segredos)
-    topo, data, itens = pagina.evaluate("VERSOES[11]")
+    topo, data, itens = pagina.evaluate("VERSOES[12]")
     assert topo == "0.35.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Respostas (nova): o Radar responde sozinho, no Instagram e no Facebook", "Comente", "QUERO",
@@ -536,7 +564,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.34.0: a entrada seguinte, em 4 itens: a aba Setor (as contas, a
     # leitura de segunda-feira, o painel e a ética), a hashtag desligada até a Meta aprovar, os erros da Meta em português e o que o
     # administrador faz (o SQL, o Deploy da radar-concorrentes e da radar-copia, a agenda do setor e a tela com o radar-setor.js)
-    topo, data, itens = pagina.evaluate("VERSOES[12]")
+    topo, data, itens = pagina.evaluate("VERSOES[13]")
     assert topo == "0.34.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Setor (nova): como estão as publicações de um setor no Instagram", "e a da Artecon, para comparar",
@@ -553,7 +581,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.33.0: a entrada seguinte, em 8 itens: a aba Vídeo (quem vê e quem edita), os cortes, a legenda, o gancho/cartela/capa, os
     # cortes por padrão com o desfazer e o resumo, a duração com meta, o montar sem transcrever e o que o administrador faz
-    topo, data, itens = pagina.evaluate("VERSOES[13]")
+    topo, data, itens = pagina.evaluate("VERSOES[14]")
     assert topo == "0.33.0" and data == "18/10/2026" and len(itens) == 8
     texto = " ".join(itens)
     for trecho in ["Aba Vídeo: a lista dos reels com vídeo e o editor do vídeo corrigido", "O administrador edita; o editor só vê; o leitor não vê",
@@ -574,7 +602,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # aviso público), a cópia mensal no OneDrive (dia 1 às 04h10, só a pasta, as tentativas, o lembrete "copia", nunca pelo GitHub), a
     # tela da cópia, o título que vai ao site sem o "nº" (e a página que não abre vira erro) e o que o administrador faz (o SQL antes da
     # tela, a versão, os conhecidos e o passo a passo do LEIAME)
-    topo, data, itens = pagina.evaluate("VERSOES[14]")
+    topo, data, itens = pagina.evaluate("VERSOES[15]")
     assert topo == "0.32.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["Quadro de vencimentos de chaves e contas (Configurações, só o administrador)", "Vermelho: vencido ou até 7 dias; amarelo: até 30 dias",
@@ -593,7 +621,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (leis e decretos, CONFAZ, trabalho e previdência), as do gov.br, o filtro de tema (sem enxurrada), o Normas de volta (desligado até o
     # teste pelo GitHub), o que fica de fora e por quê (Florianópolis, Palhoça e São José pelos sites, o CONFAZ pelo site, o DOM/SC
     # desligado pelo pedido do site) e o que o administrador faz (o setup, a versão, a coleta e só então o SQL das fontes)
-    topo, data, itens = pagina.evaluate("VERSOES[15]")
+    topo, data, itens = pagina.evaluate("VERSOES[16]")
     assert topo == "0.31.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["pelo Diário Oficial da União", "nenhuma senha nova", "leis complementares, decretos, medidas provisórias e emendas à Constituição",
@@ -614,7 +642,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (com as datas, as normas e o fim de semana), a agenda da semana da Pauta até o domingo, a nova data de uma prorrogação conferida
     # (só o administrador escreve), o aviso de possível prorrogação (onde aparece, o "Conferido", o que não conta) e o que o
     # administrador faz (o SQL antes da tela, o botão das anuais antes do Informativo de novembro; o robô dos avisos entra pelo merge)
-    topo, data, itens = pagina.evaluate("VERSOES[16]")
+    topo, data, itens = pagina.evaluate("VERSOES[17]")
     assert topo == "0.30.0" and data == "17/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["13º salário e as obrigações anuais", "a 1ª parcela do 13º até 30/11 e a 2ª até 20/12", "Lei 4.749/1965",
@@ -635,7 +663,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # 16:00, a peça pronta há mais de 24 horas, o vídeo do reel e a notícia que não saiu); as regras (um e-mail por tipo por dia, cada
     # pendência uma vez só, sem nome, nada publicado); as Configurações; e o que o administrador faz (o SQL antes da tela, a radar-redes
     # 0.29.0 e a agenda de novo)
-    topo, data, itens = pagina.evaluate("VERSOES[17]")
+    topo, data, itens = pagina.evaluate("VERSOES[18]")
     assert topo == "0.29.0" and data == "17/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Lembretes por e-mail antes do dia", "a peça da Pauta de amanhã que ainda não está aprovada", "a partir das 16:00",
@@ -650,7 +678,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.28.1: a entrada seguinte conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
     # informação”) e o cartão em branco que não travam mais a peça, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava;
     # e o que o administrador faz (só a tela; o banco continua o da v0.28.0)
-    topo, data, itens = pagina.evaluate("VERSOES[18]")
+    topo, data, itens = pagina.evaluate("VERSOES[19]")
     assert topo == "0.28.1" and data == "17/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["a linha em branco em “Informações conferidas” (de “Acrescentar informação”)", "o cartão em branco",
@@ -664,7 +692,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # administrador, de hoje em diante, uma peça por dia; nasce planejada e não publica nem agenda nada; a importação depois), a marca
     # "Sócio(a) da Artecon" (os dois termos dispensados; o que continua valendo; o Histórico) e o que o administrador faz (o SQL antes da
     # tela; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[19]")
+    topo, data, itens = pagina.evaluate("VERSOES[20]")
     assert topo == "0.28.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Peça nova num dia vazio", "o administrador vê o botão “+ Nova peça”", "(de hoje em diante)",
@@ -684,7 +712,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.27.0: a entrada seguinte conta ao dono, em português simples, o cronograma de publicações na Pauta (a semana e o mês dela, o
     # mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta não entra; a que envelheceu
     # na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[20]")
+    topo, data, itens = pagina.evaluate("VERSOES[21]")
     assert topo == "0.27.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
@@ -702,7 +730,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[21]")
+    topo, data, itens = pagina.evaluate("VERSOES[22]")
     assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
@@ -719,7 +747,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[22]")
+    topo, data, itens = pagina.evaluate("VERSOES[23]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -735,7 +763,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[23]")
+    topo, data, itens = pagina.evaluate("VERSOES[24]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -751,7 +779,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[24]")
+    topo, data, itens = pagina.evaluate("VERSOES[25]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -776,7 +804,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[25]")
+    topo, data, itens = pagina.evaluate("VERSOES[26]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -785,7 +813,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[26]")
+    topo, data, itens = pagina.evaluate("VERSOES[27]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -797,13 +825,39 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert set(re.findall(r"CRC-SC (\d{6})", pagina.inner_text("main"))) == {"007129"}   # o CRC de exemplo antigo (errado) saiu de todas as versões
 
 
+def test_abas_unidas_noticias_e_administracao(pagina, limpo):
+    """v0.49.0: a faixa do alto tem 9 botões (Capturas+Assuntos viraram "Notícias"; Configurações+Usuários+Histórico+Versões viraram
+    "Administração"). Como admin, abrir "Notícias" mostra a faixa Capturas|Assuntos (começa em Capturas) e "Administração" mostra as
+    quatro; e navegar pela faixa troca a tela. As telas por dentro continuam as mesmas (ids iguais)."""
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    nomes = [n.strip() for n in pagina.eval_on_selector_all("nav.abas button", "bs => bs.map(b => b.textContent.trim())")]
+    assert any(n.startswith("Notícias") for n in nomes) and any(n.startswith("Administração") for n in nomes)
+    for sumiu in ("Capturas", "Assuntos", "Configurações", "Usuários", "Histórico", "Versões"):
+        assert sumiu not in nomes, sumiu   # viraram sub-abas; não ficam soltas no topo
+    # "Notícias" abre a faixa Capturas|Assuntos e começa na tela de Capturas
+    pagina.click("nav.abas [data-familia=noticias]")
+    pagina.wait_for_selector("nav.subnav [data-aba=assuntos]")
+    sub = [s.strip() for s in pagina.eval_on_selector_all("nav.subnav button", "bs => bs.map(b => b.textContent.trim())")]
+    assert any(s.startswith("Capturas") for s in sub) and "Assuntos" in sub
+    assert pagina.locator("nav.subnav button.ativa").inner_text().startswith("Capturas")
+    assert pagina.locator("nav.abas [data-familia=noticias]").get_attribute("class").find("ativa") >= 0   # a família fica marcada
+    pagina.click("nav.subnav [data-aba=assuntos]")
+    pagina.wait_for_selector("nav.subnav button.ativa")
+    assert pagina.locator("nav.subnav button.ativa").inner_text() == "Assuntos"   # a faixa troca a tela sem sair da família
+    # "Administração" (admin) reúne as quatro, na ordem
+    pagina.click("nav.abas [data-familia=administracao]")
+    pagina.wait_for_selector("nav.subnav [data-aba=versoes]")
+    assert [s.strip() for s in pagina.eval_on_selector_all("nav.subnav button", "bs => bs.map(b => b.textContent.trim())")] == ["Configurações", "Usuários", "Histórico", "Versões"]
+
+
 def test_leitor_consulta_mas_nao_tem_botoes_de_acao(pagina, limpo):
     captura(limpo)
     entrar(pagina, "leitor@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abas = pagina.inner_text("nav.abas")
     assert "Usuários" not in abas and "Histórico" not in abas
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.wait_for_selector("text=IN RFB nº 2.290")
     assert pagina.locator("text=Abrir assunto").count() == 0 and pagina.locator("text=Ignorar").count() == 0
     pagina.click("nav.abas >> text=Como usar")                          # v0.22.0: o leitor não envia reel: sem o passo a passo do corretor
@@ -820,7 +874,7 @@ def test_sessao_vencida_e_renovada_sem_o_usuario_perceber(pagina, limpo):
                               sessionStorage.setItem('radar_sessao', JSON.stringify(s)); }""", vencido)
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.wait_for_selector("text=IN RFB nº 2.290")
 
 
@@ -900,7 +954,7 @@ def test_ciclo_completo_da_captura_ate_o_registro_no_site(pagina, limpo):
     pagina.screenshot(path=str(FOTOS / "01-painel.png"), full_page=True)
 
     # triagem: ignora uma, abre assunto da outra
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     # a tela abre só com o que é relevante; o leilão (baixa relevância) fica no filtro próprio
     pagina.wait_for_selector("article.cap.rel-alta >> text=IN RFB nº 2.290")
     assert pagina.locator("text=Notícia irrelevante sobre leilão").count() == 0
@@ -1045,7 +1099,7 @@ def registrar_no_site(pg, url="https://artecon.cnt.br/news/noticia-de-teste", qu
 
 
 def abrir_assunto(pg, titulo):
-    pg.click("nav.abas >> text=Assuntos")
+    ir_aba(pg, "Assuntos")
     pg.locator("tr.clicavel", has_text=titulo).click()
     pg.wait_for_selector("#base-texto")
 
@@ -1105,7 +1159,7 @@ def test_texto_nao_salvo_sobrevive_a_queda_da_sessao_e_pode_ser_recuperado(pagin
     assert pagina.evaluate("Object.keys(localStorage).filter(k => k.startsWith('radar_rascunho_')).length") == 0
     # descartar: o aviso some e não volta
     form.locator("[name=corpo]").fill("Outro texto que a pessoa desistiu de usar.")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     abrir_assunto(pagina, "Informativo de teste")
     pagina.click(".rascunho >> text=Descartar")
     assert pagina.locator(".rascunho").count() == 0
@@ -1189,7 +1243,7 @@ def test_admin_gerencia_usuarios_fontes_e_ve_o_historico(pagina, limpo):
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     limpo.execute("update auth.users set email = 'novo@artecon.test' where id = %s", (SEM_PERFIL,))
-    pagina.click("nav.abas >> text=Usuários")
+    ir_aba(pagina, "Usuários")
     linha = pagina.locator("tr", has_text="novo@artecon.test")
     linha.locator("button", has_text="Salvar").wait_for()
     linha.locator("[name=papel]").select_option("leitor")
@@ -1229,7 +1283,7 @@ def test_admin_gerencia_usuarios_fontes_e_ve_o_historico(pagina, limpo):
              "seletor_texto": "[property='rnews:articleBody'], #parent-fieldname-text, #content-core, article, main"}, "PGFN — Notícias", "pgfn-noticias")
     pagina.screenshot(path=str(FOTOS / "08-fontes.png"), full_page=True)
 
-    pagina.click("nav.abas >> text=Histórico")
+    ir_aba(pagina, "Histórico")
     pagina.wait_for_selector("text=Trilha de auditoria")
     historico = pagina.inner_text("main")
     assert "alterou fontes" in historico and "frequencia_horas: 6 → 8" in historico and "Admin" in historico
@@ -1317,7 +1371,7 @@ def test_clique_duplo_nao_duplica_assunto_conteudo_nem_registro_no_site(pagina, 
     pagina.route("**/rest/v1/**", lambda rota: (time.sleep(0.15), rota.continue_()))      # latência de rede
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.dblclick("text=Abrir assunto")
     pagina.wait_for_selector("#base-texto")
     assert limpo.execute("select count(*) from radar_assuntos").fetchone()[0] == 1
@@ -1373,7 +1427,7 @@ def test_painel_avisa_que_o_robo_de_coleta_parou(pagina, limpo):
         entrar(pagina, "leitor@artecon.test")
         assert "avise o administrador" in pagina.wait_for_selector("#coleta-parada").inner_text()
         limpo.execute("insert into radar_execucoes (fonte_id, iniciado_em, status) values (%s, now() - interval '2 hours', 'ok')", (fonte[0],))
-        pagina.click("nav.abas >> text=Assuntos")
+        ir_aba(pagina, "Assuntos")
         pagina.click("nav.abas >> text=Painel")
         pagina.wait_for_selector("text=Painel do dia")
         assert pagina.locator("#coleta-parada").count() == 0
@@ -1385,7 +1439,7 @@ def test_proximo_usuario_nao_herda_a_tela_do_anterior(pagina, limpo):
     preparar_aprovado(limpo)
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Usuários")
+    ir_aba(pagina, "Usuários")
     pagina.wait_for_selector("h1 >> text=Usuários")
     pagina.click("text=Sair")
     pagina.fill("#email", "leitor@artecon.test"); pagina.fill("#senha", SENHA); pagina.click("text=Entrar")
@@ -1397,13 +1451,13 @@ def test_ultimo_administrador_nao_consegue_se_trancar_para_fora(pagina, limpo):
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     limpo.execute("update auth.users set email = 'admin@artecon.test' where id = %s", (ADMIN,))
-    pagina.click("nav.abas >> text=Usuários")
+    ir_aba(pagina, "Usuários")
     linha = pagina.locator("tr", has_text="admin@artecon.test")
     linha.locator("[name=papel]").select_option("leitor")
     linha.locator("button", has_text="Salvar").click()
     pagina.wait_for_selector("#recado .erro >> text=não pode ficar sem nenhum administrador")
     assert limpo.execute("select papel from radar_perfis where user_id = %s", (ADMIN,)).fetchone()[0] == "admin"
-    pagina.click("nav.abas >> text=Usuários")
+    ir_aba(pagina, "Usuários")
     linha = pagina.locator("tr", has_text="admin@artecon.test")
     linha.locator("[name=papel]").select_option("")
     linha.locator("button", has_text="Salvar").click()
@@ -1414,9 +1468,9 @@ def test_ultimo_administrador_nao_consegue_se_trancar_para_fora(pagina, limpo):
 def test_novo_usuario_ja_vem_marcado_como_ativo(pagina, limpo):
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Usuários")
+    ir_aba(pagina, "Usuários")
     limpo.execute("update auth.users set email = 'novo@artecon.test' where id = %s", (SEM_PERFIL,))
-    pagina.click("nav.abas >> text=Usuários")
+    ir_aba(pagina, "Usuários")
     linha = pagina.locator("tr", has_text="novo@artecon.test")
     linha.locator("[name=papel]").select_option("editor")
     linha.locator("[name=nome]").fill("Nova Editora")
@@ -1441,7 +1495,7 @@ def test_endereco_perigoso_nao_vira_link_no_dashboard(pagina, limpo):
             pagina.wait_for_timeout(300)
             hrefs = pagina.eval_on_selector_all("main a", "els => els.map(a => a.getAttribute('href'))")
             assert not any(h.lower().startswith("javascript") for h in hrefs), (aba, hrefs)
-        pagina.click("nav.abas >> text=Capturas")
+        ir_aba(pagina, "Capturas")
         pagina.click("text=Abrir assunto")
         pagina.wait_for_selector("#base-texto")
         hrefs = pagina.eval_on_selector_all("main a", "els => els.map(a => a.getAttribute('href'))")
@@ -1458,7 +1512,7 @@ def test_assunto_e_evidencia_pelo_teclado(pagina, limpo):
     limpo.execute("insert into radar_assunto_capturas values (%s, %s)", (a, cap))
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.focus("button.titulo-link")
     pagina.keyboard.press("Enter")
     pagina.wait_for_selector("#base-texto")
@@ -1513,13 +1567,13 @@ def test_navegar_nunca_fica_travado_mesmo_com_o_servidor_lento(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     lento = {"ligado": True}
     pagina.route("**/rest/v1/radar_v_fila**", lambda rota: (time.sleep(2.5) if lento["ligado"] else None, rota.continue_()))
-    pagina.click("nav.abas >> text=Capturas")            # esta tela vai demorar…
+    ir_aba(pagina, "Capturas")            # esta tela vai demorar…
     pagina.wait_for_selector("text=Carregando")
-    pagina.click("nav.abas >> text=Versões")             # …e o usuário muda de ideia: tem de funcionar na hora
+    ir_aba(pagina, "Versões")             # …e o usuário muda de ideia: tem de funcionar na hora
     pagina.wait_for_selector("text=Versão em uso", timeout=2000)
     pagina.wait_for_timeout(3000)                        # a resposta atrasada da outra tela não toma o lugar
     assert "Versão em uso" in pagina.inner_text("main")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.wait_for_selector("text=Carregando")
     pagina.click("text=Sair")                            # sair também não espera
     pagina.wait_for_selector("#email", timeout=2000)
@@ -1965,7 +2019,7 @@ def test_informativo_do_assunto_manual_ate_o_pdf_no_timbrado(pagina, limpo, tmp_
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     # assunto criado pela equipe, sem captura do robô
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.fill("#na-titulo", "CGSN prorroga prazo para adesão ao Simples Nacional até 15 de outubro")
     pagina.click("text=Criar assunto")
     pagina.wait_for_selector("text=assunto criado pela equipe")
@@ -2096,7 +2150,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.36.0', FUNCAO_MINIMA), versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.39.0", "0.45.0", "0.48.0"]       # v0.44.0: nada muda na radar-redes nem na radar-ia (o teleprompter é da tela; o WEBM, do banco, do robô e da radar-video)
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.39.0", "0.45.0", "0.49.0"]       # v0.44.0: nada muda na radar-redes nem na radar-ia (o teleprompter é da tela; o WEBM, do banco, do robô e da radar-video)
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -2106,7 +2160,7 @@ def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
                      select 'Assunto em lote ' || g, 'geral', 'selecionado' from generate_series(1, 301) g""")
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.click("[data-acao=filtro-fila][data-valor=todas]")
     pagina.wait_for_selector(".mostrar-mais >> text=Mostrar mais capturas")
     assert pagina.locator("#tab-fila article").count() == 150
@@ -2114,7 +2168,7 @@ def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
     pagina.click("text=Mostrar mais capturas")
     pagina.wait_for_function("document.querySelectorAll('#tab-fila article').length === 160")
     assert pagina.locator(".mostrar-mais").count() == 0                     # chegou ao fim: o botão some
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector(".mostrar-mais >> text=Mostrar mais assuntos")
     assert pagina.locator("tr.clicavel").count() == 300
     pagina.click("text=Mostrar mais assuntos")
@@ -2234,7 +2288,7 @@ def test_informativo_numero_repetido_e_leitor(pagina, limpo):
     for botao in ["Salvar edição", "Adicionar linha", "Incluir artigo", "Fechar edição", "Excluir edição"]:
         assert pagina.locator(f"text={botao}").count() == 0, botao
     assert "Configurações" not in pagina.inner_text("nav.abas")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     assert pagina.locator("#na-titulo").count() == 0
 
@@ -2270,7 +2324,7 @@ def test_configuracoes_so_admin_e_valores_invalidos_sao_recusados(pagina, limpo)
     try:
         entrar(pagina, "admin@artecon.test")
         pagina.wait_for_selector("text=Painel do dia")
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         assert pagina.locator("form[data-form=config]").count() == 9                # v0.9.0: + rascunhos automáticos; v0.21.0: + Pauta; v0.22.0: + corretor de vídeo; v0.29.0: + lembretes
         campo = pagina.locator("#cfg-feriados_extras")
@@ -2382,7 +2436,7 @@ def test_tabela_e_campos_novos_nao_executam_html(pagina, limpo):
     limpo.execute("insert into radar_informativo_itens (informativo_id, conteudo_id) values (%s, %s)", (iid, c))
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.locator("tr.clicavel").first.click()
     pagina.wait_for_selector("#base-texto")
     pagina.click("form[data-form=conteudo] >> text=Ver como fica no site")
@@ -2442,7 +2496,7 @@ def test_edicao_do_informativo_recusa_dados_incoerentes(pagina, limpo):
     limpo.execute("insert into radar_informativos (numero, ano, mes) values (8, 2026, '2026-08-01')")
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.fill("#na-titulo", "        ")
     pagina.locator("#na-titulo").press("Enter")
     pagina.wait_for_timeout(300)
@@ -2659,7 +2713,7 @@ def test_conteudo_so_do_informativo_sai_da_fila_de_publicacoes(pagina, limpo):
     assert pagina.locator("nav.abas button", has_text="Publicações").locator(".conta").count() == 0
     assert limpo.execute("select fora_do_site, status from radar_conteudos where id = %s", (c,)).fetchone() == (True, "aprovado")
     # continua disponível para o Informativo Mensal e pode voltar para a fila
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.select_option("#filtro-assuntos", "todos")
     pagina.locator("tr.clicavel", has_text="CGSN prorroga").click()
     pagina.wait_for_selector(".fora-do-site")
@@ -2951,7 +3005,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.48.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.49.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -2969,7 +3023,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("text=Cadastrar uma fonte nova")
-    pagina.click("nav.abas >> text=Versões")
+    ir_aba(pagina, "Versões")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Fontes em aberto" in pagina.inner_text("main") and "A exigência de fonte oficial continua" in pagina.inner_text("main")
 
@@ -2988,7 +3042,7 @@ def test_capturas_abrem_so_com_o_relevante_e_as_de_baixa_saem_de_uma_vez(pagina,
     pagina.wait_for_selector("text=Painel do dia")
     assert "mais 3 fora da lista principal" in pagina.inner_text(".cartoes")
     assert pagina.inner_text("nav.abas >> text=Capturas").endswith("1")            # o contador da aba só conta o relevante
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.wait_for_selector("article.cap")
     assert pagina.locator("article.cap").count() == 1 and "Relevância alta" in pagina.inner_text("article.cap")
     assert [c.replace("\n", "") for c in pagina.locator("#filtro-fila .chip").all_inner_texts()] == ["Em alta1", "Relevantes1", "Baixa relevância3", "Todas4"]
@@ -3015,7 +3069,7 @@ def test_capturas_leitor_ve_a_relevancia_mas_nao_ignora(pagina, limpo):
     _captura_rel(limpo, "Leilão de mercadorias apreendidas <img src=x onerror=window.__xss=1>")
     entrar(pagina, "leitor@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.wait_for_selector("text=Nada em alta aguardando triagem.")
     pagina.click("#filtro-fila >> text=Baixa relevância")
     pagina.wait_for_selector("article.cap")
@@ -3032,7 +3086,7 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     a, cap = assunto_com_texto(limpo)
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector("#proximo-passo")
     assert pagina.locator(".trilha li").all_inner_texts()[0].split("\n")[:2] == ["1", "Preparar"]
@@ -3056,7 +3110,7 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     pagina.wait_for_selector("#proximo-passo >> text=Para o site: fundamentar")
     limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a, cap, TRECHO))
     pagina.reload()
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector("#proximo-passo >> text=Para o site: confirmar o assunto")
     assert pagina.locator("[data-acao=registrar-site]").count() == 0
@@ -3074,7 +3128,7 @@ def test_assunto_leitor_ve_os_passos_sem_botoes(pagina, limpo):
     assunto_com_texto(limpo)
     entrar(pagina, "leitor@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector(".trilha")
     assert pagina.locator("#proximo-passo").count() == 0 and pagina.locator("text=Gerar com IA").count() == 0
@@ -3099,7 +3153,7 @@ def test_conteudo_novo_ja_nasce_com_capa_no_padrao_artecon(pagina, limpo):
     assunto_com_texto(limpo, "Título com <b>marcação</b> e \"aspas\" bem comprido " + "muito " * 30)
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=Título com")
     pagina.click("text=Novo conteúdo")
     pagina.wait_for_selector("form[data-form=conteudo] > img.miniatura")
@@ -3147,7 +3201,7 @@ def test_ia_preparar_tudo_e_ilustracao(pagina, limpo, openai):
     openai["respostas"]["conferencia"] = {"conferencia": CONFERENCIA_OK}       # v0.26.0: a etapa 3 do Preparar (os 10 critérios)
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.click("#proximo-passo [data-acao=ia-tudo]")
     pagina.wait_for_selector("text=Preparado: 1 trecho(s) que comprova(m) a notícia, o texto")
@@ -3194,7 +3248,7 @@ def test_ia_preparar_tudo_e_ilustracao(pagina, limpo, openai):
 def test_ia_teste_em_configuracoes_diz_o_que_falta(pagina, limpo, openai):
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Configurações")
+    ir_aba(pagina, "Configurações")
     openai["respostas"]["teste"] = {"ok": True}
     pagina.click("text=Testar a IA")
     pagina.wait_for_selector("text=A IA está funcionando.")
@@ -3230,7 +3284,7 @@ def test_configuracao_da_relevancia_valida_e_reavalia_a_fila(pagina, limpo):
     try:
         entrar(pagina, "admin@artecon.test")
         pagina.wait_for_selector("text=Painel do dia")
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         campo, salvar = pagina.locator("#cfg-relevancia"), pagina.locator("form[data-chave=relevancia] button")
         for ruim, aviso in [('{"termos": []}', "Informe “limite_alta”"), ('{"limite_alta": 3, "limite_media": 8, "termos": []}', "não pode ser maior"),
                             ('{"limite_alta": 8, "limite_media": 3, "termos": [{"termo": "x", "pontos": 5}]}', "de 2 a 80 caracteres"),
@@ -3259,7 +3313,7 @@ def test_informativo_fale_conosco_no_modelo(pagina, limpo, tmp_path):
     try:
         entrar(pagina, "admin@artecon.test")
         pagina.wait_for_selector("text=Painel do dia")
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         pagina.locator("#cfg-fale_conosco").fill(json.dumps(dict(fc, setores=[dict(fc["setores"][0], telefones=[{"whatsapp": True}])])))
         pagina.locator("form[data-chave=fale_conosco] button").click()
         pagina.wait_for_selector("text=cada telefone é um texto ou")
@@ -3325,7 +3379,7 @@ def test_proximo_passo_nao_diz_concluido_com_pendencia(pagina, limpo):
     limpo.execute("insert into radar_evidencias (assunto_id, captura_id, trecho_literal) values (%s, %s, %s)", (a, cap, TRECHO))
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.click("text=Novo conteúdo")
     pagina.wait_for_selector("text=Preparar o rascunho")
@@ -3376,7 +3430,7 @@ def test_capa_que_falha_e_avisada_e_botao_de_lote_acompanha_a_busca(pagina, limp
         _captura_rel(limpo, f"Leilão de mercadorias — lote {i}")
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.click("#filtro-fila >> text=Baixa relevância")
     pagina.wait_for_selector("text=Ignorar as 3 desta lista")
     pagina.fill("#busca-fila", "lote 2")
@@ -3384,7 +3438,7 @@ def test_capa_que_falha_e_avisada_e_botao_de_lote_acompanha_a_busca(pagina, limp
     pagina.fill("#busca-fila", "nada parecido")
     assert pagina.locator("#ignorar-lista").is_disabled()
     pagina.route("**/rest/v1/radar_imagens**", lambda rota: rota.fulfill(status=500, body='{"message":"falha simulada"}', content_type="application/json"))
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.click("text=Novo conteúdo")
     pagina.wait_for_selector("text=A capa automática não pôde ser gerada agora")
@@ -3412,7 +3466,7 @@ def test_capturas_abrem_com_as_dez_em_alta_e_a_repeticao_entra_junto_no_assunto(
     pagina.wait_for_selector("text=Painel do dia")
     assert "Aguardando triagem (em alta)" in pagina.inner_text(".cartoes") and "mais 5 fora da lista principal" in pagina.inner_text(".cartoes")
     assert pagina.inner_text("nav.abas >> text=Capturas").endswith("10")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.wait_for_selector("article.cap")
     cartoes = pagina.locator("article.cap")
     assert cartoes.count() == 10 and [c.replace("\n", "") for c in pagina.locator("#filtro-fila .chip").all_inner_texts()] == ["Em alta10", "Relevantes14", "Baixa relevância0", "Todas15"]
@@ -3446,7 +3500,7 @@ def test_assunto_abre_uma_etapa_de_cada_vez_e_guarda_o_que_foi_digitado(pagina, 
     por_etapas(pagina)
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector(".trilha.passos3")
     visiveis = lambda: [x for x in ("#sec-texto", "#sec-fundamentacao", "#sec-conteudos", "#sec-publicar") if pagina.locator(x).is_visible()]
@@ -3489,7 +3543,7 @@ def test_texto_copiado_da_fonte_e_apontado_e_impede_a_aprovacao(pagina, limpo):
     copiado = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9% (nove décimos por cento) a partir de 1º de janeiro de 2027"
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.click("text=Novo conteúdo")
     form = pagina.locator("form[data-form=conteudo]")
@@ -3568,7 +3622,7 @@ def test_texto_igual_com_a_fonte_citada_so_e_aprovado_entre_aspas_e_o_do_boletim
     copiado = "O contribuinte deverá destacar a CBS no documento fiscal à alíquota de 0,9% (nove décimos por cento) a partir de 1º de janeiro de 2027"
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.click("text=Novo conteúdo")
     form = pagina.locator("form[data-form=conteudo]")
@@ -3638,7 +3692,7 @@ def test_frase_do_boletim_de_outro_assunto_aparece_no_quadro_e_impede_a_aprovaca
                          %s, 'em_revisao') returning id""", (a, corpo)).fetchone()[0]
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     quadro = pagina.wait_for_selector(".copia").inner_text()
     assert "Frase do boletim pago em 1 trecho" in quadro and "conferido pelo banco com todas as matérias do boletim" in quadro
@@ -3655,7 +3709,7 @@ def test_frase_do_boletim_de_outro_assunto_aparece_no_quadro_e_impede_a_aprovaca
                    + "Texto próprio da Artecon sobre a CBS, escrito pela equipe com as informações da Receita Federal e do Comitê Gestor. " * 2, c))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector(".sem-copia")
     assert pagina.locator(".copia").count() == 0 and "todo o boletim pago" in pagina.inner_text(".sem-copia")
@@ -3666,7 +3720,7 @@ def test_ilustracao_aceita_descricao_e_o_pedido_proibe_autoria_e_pessoa_real(pag
     limpo.execute("insert into radar_conteudos (assunto_id, formato, titulo, corpo) values (%s, 'informativo', 'CBS destacada na nota fiscal', 'Texto do conteúdo com tamanho suficiente.')", (a,))
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     campo = pagina.locator("[id^=img-desc-]")
     campo.fill("contadora atendendo um casal de empresários numa mesa de reunião")
@@ -3726,7 +3780,7 @@ def test_aviso_de_pontos_a_conferir_e_amarelo_e_o_texto_gerado_pede_a_fonte_cita
     openai["respostas"]["conteudo"] = {"titulo": "CBS na nota fiscal", "corpo": "A alíquota será de 2,5% a partir de março de 2031, segundo o texto.\n\n## Análise Artecon\nRecomenda-se avaliar o cadastro."}
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.click("text=Gerar texto com IA")
     pagina.wait_for_selector("#recado .aviso >> text=ponto(s) a conferir")
@@ -3746,7 +3800,7 @@ def test_repeticao_de_assunto_em_andamento_pode_ser_separada_e_a_de_assunto_igno
     assert r["juntadas_a_assunto"] == 1
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.wait_for_selector("article.cap")
     cartao = pagina.inner_text("article.cap")
     # a repetição de um assunto IGNORADO não some: aparece, com a nota, avisando de que assunto parece ser
@@ -3757,7 +3811,7 @@ def test_repeticao_de_assunto_em_andamento_pode_ser_separada_e_a_de_assunto_igno
     assert ignorado
     # no assunto em andamento, a que a IA juntou vem marcada e pode ser devolvida para a triagem
     pagina.click("text=Voltar para a lista")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=Receita prorroga prazo do Simples Nacional — fonte 0")
     pagina.wait_for_selector("text=repetição do mesmo fato, apontada pela IA")
     assert pagina.locator("[data-acao=separar-captura]").count() == 1
@@ -3768,7 +3822,7 @@ def test_repeticao_de_assunto_em_andamento_pode_ser_separada_e_a_de_assunto_igno
     assert limpo.execute("select captura_id from radar_assunto_capturas where assunto_id = %s", (assunto,)).fetchall() == [(a,)]
     assert limpo.execute("select duplicata_de from radar_capturas where id = %s", (b,)).fetchone()[0] is None
     pagina.click("text=Voltar para a lista")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.wait_for_selector("article.cap >> text=fonte 1")
     assert pagina.locator("article.cap").count() == 2
 
@@ -3779,7 +3833,7 @@ def test_digitacao_em_outra_etapa_nao_se_perde_por_acao_feita_em_outra(pagina, l
     por_etapas(pagina)
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.click("text=CBS na transição")
     pagina.wait_for_selector("form[data-form=conteudo]")
     pagina.fill("form[data-form=conteudo] [name=corpo]", "Texto digitado e ainda não salvo, com tamanho suficiente para valer.")
@@ -4119,7 +4173,7 @@ def test_preparar_em_lote_na_lista_de_assuntos(pagina, limpo):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     ia_de_mentira(pagina, limpo, pedidos)
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("#lote-preparar")
     pagina.check("#marcar-assuntos")                                   # a caixa do cabeçalho marca os 3
     assert pagina.locator(".sel-assunto:checked").count() == 3
@@ -4840,7 +4894,7 @@ def test_capturas_dizem_se_tem_fundamentacao_legal_e_quais_normas(pagina, limpo)
             "Dispositivos Legais: Lei nº 9.430, de 1996, art. 1º.")
     entrar(pagina, "leitor@artecon.test")                            # quem só lê também vê
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.click("#filtro-fila >> text=Todas")
     pagina.wait_for_selector("article.cap >> nth=2")
     cartao = lambda t: pagina.locator("article.cap", has=pagina.locator("h3", has_text=t))
@@ -4872,7 +4926,7 @@ def test_capturas_mostram_a_fundamentacao_da_repeticao_e_quantas_faltam(pagina, 
             "A Receita informou que o prazo do parcelamento foi prorrogado e que as empresas devem...")
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.click("#filtro-fila >> text=Todas")
     pagina.wait_for_selector("article.cap >> nth=2")
     cartao = lambda t: pagina.locator("article.cap", has=pagina.locator("h3", has_text=t))
@@ -5202,7 +5256,7 @@ def test_capturas_listam_as_repeticoes_e_separam_o_que_nao_e_o_mesmo_fato(pagina
     limpo.execute("update radar_capturas set duplicata_de = %s where id = %s", (a, b))
     entrar(pagina, "leitor@artecon.test")                            # quem só lê vê as repetições, mas não separa
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.click("#filtro-fila >> text=Todas")
     cartao = lambda t: pagina.locator("article.cap", has=pagina.locator("h3", has_text=t))
     cartao("Subvenção").locator(".repetidas li").wait_for()
@@ -5212,7 +5266,7 @@ def test_capturas_listam_as_repeticoes_e_separam_o_que_nao_e_o_mesmo_fato(pagina
     pagina.wait_for_selector("input[type=password]")
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Capturas")
+    ir_aba(pagina, "Capturas")
     pagina.click("#filtro-fila >> text=Todas")
     cartao("Subvenção").locator(".repetidas li").wait_for()
     assert cartao("ficam fora da base do PIS").locator("[data-acao=separar-repeticao]").count() == 1      # o cartão da própria repetição também tem
@@ -5557,7 +5611,7 @@ def test_identificacao_legal_em_configuracoes_valida_cnpj_e_crc_e_avisa(pagina, 
     _assinatura(limpo, request)
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Configurações")
+    ir_aba(pagina, "Configurações")
     pagina.wait_for_selector("h2 >> text=Fecho, assinatura e identificação legal")
     assert pagina.locator("form[data-form=config]").count() == 9                   # v0.21.0: + Pauta e agenda automática; v0.22.0: + corretor de vídeo; v0.29.0: + lembretes
     form = pagina.locator("form[data-chave=assinatura]")
@@ -5883,7 +5937,7 @@ def test_legenda_editada_antes_da_identificacao_ganha_a_linha_e_a_sem_linha_pede
     assert "\n\nArtecon Artes Contábeis ME\n\n#Contabilidade" in original
     pagina.fill("#rede-legenda", "Legenda escrita na tela.\n\n" + original)
     # vai às Configurações, preenche o CNPJ e o CRC (os dados de verdade) e volta ao assunto
-    pagina.click("nav.abas >> text=Configurações")
+    ir_aba(pagina, "Configurações")
     pagina.wait_for_selector("h2 >> text=Fecho, assinatura e identificação legal")
     pagina.fill("#cfg-assinatura", json.dumps({**ASSINATURA, "cnpj": "79.876.769/0001-28", "crc": "CRC-SC 007129/O-0"}, ensure_ascii=False))
     pagina.locator("form[data-chave=assinatura] button").click()
@@ -7173,10 +7227,10 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     pagina.wait_for_selector("text=Painel do dia")
     pagina.click("nav.abas >> text=Pauta")
     pagina.wait_for_selector("#pauta-sem-arquivo >> text=O arquivo radar-pauta.js não carregou. Aperte Ctrl+F5")
-    pagina.click("nav.abas >> text=Assuntos")
+    ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.48.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.49.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -7515,7 +7569,7 @@ def test_configuracoes_bloco_da_pauta_e_validacao(pagina, limpo):
     try:
         entrar(pagina, "admin@artecon.test")
         pagina.wait_for_selector("text=Painel do dia")
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         pagina.wait_for_selector("h2 >> text=Pauta e agenda automática")
         assert json.loads(pagina.locator("#cfg-pauta").input_value()) == original["pauta"]
         campo, salvar = pagina.locator("#cfg-pauta"), pagina.locator("form[data-chave=pauta] button")
@@ -7570,7 +7624,7 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
         limpo.execute("""insert into radar_lembretes (tipo, chave, ref) values ('noticia', 'site:5:erro', '{"n": 5}')""")
         entrar(pagina, "admin@artecon.test")
         pagina.wait_for_selector("text=Painel do dia")
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         pagina.wait_for_selector("h2 >> text=Lembretes por e-mail")
         assert json.loads(pagina.locator("#cfg-lembretes").input_value()) == original
         sit = pagina.inner_text("#lembretes-situacao")
@@ -7625,7 +7679,7 @@ def test_configuracoes_bloco_dos_lembretes_validacao_e_situacao(pagina, limpo):
                      body='{"code":"PGRST202","details":null,"hint":null,"message":"Could not find the function public.radar_lembretes_situacao"}'))
         pagina.reload()
         pagina.wait_for_selector("text=Painel do dia")
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         assert "A situação dos lembretes precisa do banco da v0.29.0" in pagina.inner_text("#lembretes-situacao")
         assert "sql/radar-setup-v0.47.0.sql" in pagina.inner_text("#lembretes-situacao")       # v0.30.0 em diante: o setup desta versão
@@ -7665,7 +7719,7 @@ def test_configuracoes_preencher_fontes_oficiais_so_onde_falta_e_grava_como_o_sa
         assert [{k: v for k, v in o.items() if k != "fonte"} for o in r["lista"]] == original
         assert [o["nome"] for o in r["lista"] if "fonte" not in o] == ["Honorário contábil"]
         assert all(re.search(r" — https://[a-z0-9.]+\.gov\.br/", o["fonte"]) for o in r["lista"] if "fonte" in o)
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         form = pagina.locator("form[data-chave=obrigacoes]")
         assert "informações conferidas da agenda da semana da Pauta" in form.locator("p.sub").first.inner_text()
@@ -7863,7 +7917,7 @@ def test_configuracoes_valida_mes_termos_e_prorrogacoes(pagina, limpo):
     # pela tela: o Salvar recusa e não grava nada; o que confere é gravado
     original = limpo.execute("select valor from radar_config where chave = 'obrigacoes'").fetchone()[0]
     try:
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         texto = pagina.inner_text("form[data-chave=obrigacoes] p.sub")
         for trecho in ["mes (opcional, de 1 a 12): a obrigação é anual e só entra na agenda desse mês", "sem “mes”, vence todo mês",
@@ -7901,7 +7955,7 @@ def test_configuracoes_acrescentar_13_e_anuais_so_admin(pagina, limpo):
         pagina.wait_for_selector("text=Painel do dia")
         # a lista da tela é a mesma da carga inicial do banco, sem a fonte (que vem da tabela)
         assert pagina.evaluate("() => OBRIGACOES_ANUAIS") == original[22:]
-        pagina.click("nav.abas >> text=Configurações")
+        ir_aba(pagina, "Configurações")
         pagina.wait_for_selector("h2 >> text=Agenda de obrigações")
         form = pagina.locator("form[data-chave=obrigacoes]")
         pagina.set_viewport_size({"width": 375, "height": 740})                              # o botão e a explicação cabem no celular
@@ -8044,7 +8098,7 @@ def test_painel_possivel_prorrogacao_e_conferido_so_admin(pagina, limpo, request
     pagina.wait_for_function("() => !document.querySelector('#prorrogacoes')")
     assert limpo.execute("select valor from radar_config where chave = 'prorrogacoes_conferidas'").fetchone()[0] == [boletim, publica] and trilha() == 2
     # nas Configurações: as duas, com o selo; sem o botão
-    pagina.click("nav.abas >> text=Configurações")
+    ir_aba(pagina, "Configurações")
     pagina.wait_for_selector("#prorrogacoes-config")
     assert pagina.locator("#prorrogacoes-config li.prorrogacao").count() == 2 and pagina.locator("#prorrogacoes-config .selo.ok", has_text="conferida").count() == 2
     assert pagina.locator("[data-acao=prorrogacao-conferida]").count() == 0 and pagina.locator("form[data-form=config]").count() == 9   # v0.29.0: + lembretes
@@ -8055,7 +8109,7 @@ def test_painel_possivel_prorrogacao_e_conferido_so_admin(pagina, limpo, request
     pagina.click("nav.abas >> text=Painel")
     pagina.wait_for_selector("text=Conteúdos aguardando aprovação")
     assert pagina.locator("#prorrogacoes").count() == 0
-    pagina.click("nav.abas >> text=Configurações")
+    ir_aba(pagina, "Configurações")
     pagina.wait_for_selector("#prorrogacao-sem-banco >> text=O aviso de prorrogação precisa do banco da v0.30.0")
     assert "o administrador roda o sql/radar-setup-v0.47.0.sql" in pagina.inner_text("#prorrogacao-sem-banco")      # v0.31.0 em diante: o setup desta versão
     assert pagina.locator("#prorrogacoes-config").count() == 0
@@ -10165,7 +10219,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.48.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.49.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10187,7 +10241,7 @@ def test_configuracoes_corretor_de_video_valida_e_testa(pagina, vtela):
     db, fv = vtela
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Configurações")
+    ir_aba(pagina, "Configurações")
     form = pagina.locator("form[data-form=config][data-chave=corretor_video]")
     form.wait_for()
     valor = json.loads(form.locator("textarea").input_value())
@@ -10477,7 +10531,7 @@ def sem_orientacoes(limpo, request):
 def abrir_configuracoes(pg, email="admin@artecon.test"):
     entrar(pg, email)
     pg.wait_for_selector("text=Painel do dia")
-    pg.click("nav.abas >> text=Configurações")
+    ir_aba(pg, "Configurações")
     pg.wait_for_selector("#ia-orientacoes")
 
 
@@ -10510,7 +10564,7 @@ def test_orientacoes_para_a_ia_o_administrador_salva_e_rele(pagina, sem_orientac
     assert pagina.locator("#ia-ori-texto").input_value() == escrito and pagina.inner_text("#ia-ori-texto-conta") == f"{len(escrito)} de 2.000 caracteres"
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Configurações")
+    ir_aba(pagina, "Configurações")
     pagina.wait_for_selector("#ia-orientacoes")
     assert pagina.locator("#ia-ori-texto").input_value() == escrito and pagina.locator("#ia-ori-imagem").input_value() == "Ilustração limpa, cenas de pequenos comércios."
     # apagar tudo também é salvar (vazio = sem orientação: a IA trabalha como antes)
@@ -10767,7 +10821,7 @@ def test_revisei_e_assumo_so_para_o_administrador_e_grava_o_motivo(pagina, limpo
     assert "Revisado e assumido pelo administrador" in quadro.inner_text() and "Conferi o prazo no site da Receita e assumo." in quadro.inner_text()
     assert quadro.locator("[data-acao=abrir-assumir]").count() == 0 and quadro.get_attribute("data-situacao") == "ok"
     # o motivo fica legível no Histórico (e a lista da IA também, com os critérios que não atendem)
-    pagina.click("nav.abas >> text=Histórico")
+    ir_aba(pagina, "Histórico")
     pagina.wait_for_selector("text=Trilha de auditoria")
     historico = pagina.inner_text("main")
     assert "Conferência das Diretrizes: “Revisei e assumo” — motivo: “Conferi o prazo no site da Receita e assumo.”" in historico
@@ -10909,7 +10963,7 @@ def test_revisao_editorial_mostra_as_10_perguntas_e_o_que_foi_reescrito(pagina, 
     assert quadro.locator("[data-acao=ia-editorial]").inner_text() == "Fazer a revisão editorial de novo"
     # o Histórico (administrador): a revisão numa linha legível
     trocar_para(pagina, "admin@artecon.test")
-    pagina.click("nav.abas >> text=Histórico")
+    ir_aba(pagina, "Histórico")
     pagina.wait_for_selector("text=Trilha de auditoria")
     historico = pagina.inner_text("main")
     detalhes = pagina.locator("main td.sub").all_inner_texts()
@@ -11543,7 +11597,7 @@ def vencimento(db, nome, dias=None, **campos):
 def abrir_configuracoes(pg, email="admin@artecon.test"):
     entrar(pg, email)
     pg.wait_for_selector("text=Painel do dia")
-    pg.click("nav.abas >> text=Configurações")
+    ir_aba(pg, "Configurações")
     pg.wait_for_selector("#vencimentos")
 
 
@@ -11789,7 +11843,7 @@ def test_copia_nao_configurada_e_funcao_ausente(pagina, quadro_tela):
                                                                      body='{"code":"NOT_FOUND","message":"Requested function was not found"}'))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
-    pagina.click("nav.abas >> text=Configurações")
+    ir_aba(pagina, "Configurações")
     pagina.wait_for_selector("#copia-onedrive")
     assert "Função radar-copia: não instalada (Supabase → Edge Functions)" in pagina.inner_text("#copia-onedrive")
     assert pagina.locator("[data-acao=copia-agora]").is_disabled() and pagina.locator("[data-acao=copia-testar]").is_disabled()
