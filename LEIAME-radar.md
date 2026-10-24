@@ -1,4 +1,4 @@
-# Radar Artecon — v0.45.0
+# Radar Artecon — v0.46.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,17 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.46.0 traz o **termo de uso de imagem assinado na própria tela**. Em Pauta → Pessoas e termos, o "aceite" por data virou uma
+**assinatura de verdade**: o administrador abre o cadastro da pessoa, clica em **"Assinar o termo na tela"**, aparece o texto do
+termo com o nome e o CPF, a pessoa **informa o CPF e desenha a assinatura** (caneta, dedo ou mouse) e confirma. Fica guardado como
+**prova** — num histórico que nunca se apaga (`radar_pessoas_termos`): a imagem da assinatura, o nome, o CPF, a data e a hora, o
+aparelho e o **texto exato** assinado. Um **único termo** autoriza o uso da imagem, da voz e do nome nos canais site, Instagram e
+Facebook e cobre também o **corretor de vídeo**. Agora **todos assinam, sócios inclusive** — a dispensa de quem era "Sócio(a) da
+Artecon" acabou (a marca continua, só como referência). Para encerrar, **"Revogar termo"** (o que já foi publicado continua no ar;
+a revogação não apaga o passado). O CPF fica **fora da trilha de auditoria** (como o nome): a prova completa está só no histórico,
+que **só o administrador** lê. Muda **só o banco** (`sql/radar-setup-v0.46.0.sql`) e a **tela**; as funções `radar-ia`,
+`radar-redes` e `radar-video`, o robô e os segredos **não mudam**. Veja "Da v0.45.0 para a v0.46.0".
 
 A v0.45.0 traz quatro melhorias. (1) **Leis e decretos de Palhoça e São José pelos dados abertos da CIGA**: a fonte nova
 `domsc-ciga` (`tipo_coletor` novo `ciga_dados`, coletor `robo/radar_ciga.py`) lê **uma vez por dia** o portal de dados abertos da
@@ -2954,6 +2965,24 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.45.0 para a v0.46.0** (muda **só o banco** — um SQL novo, que pode rodar de novo — e a **tela**; as funções `radar-ia`,
+`radar-redes`, `radar-video`, as demais e os segredos de hoje **não mudam**; **nenhum segredo novo**). Supõe a v0.45.0 instalada:
+
+1. Supabase → **SQL Editor** → execute o `sql/radar-setup-v0.46.0.sql` inteiro, **antes de publicar a tela**. Confira no fim:
+   **38 tabelas** com `rls = true` e a instalação **v0.46.0** concluída. Ele cria a tabela do histórico das assinaturas
+   (`radar_pessoas_termos`), acrescenta o `cpf` em `radar_pessoas`, guarda o texto do termo em `radar_config` (chave
+   `termo_imagem`) e cria as funções `radar_pessoa_assinar_termo` e `radar_pessoa_revogar_termo`; tira a dispensa de sócio(a) da
+   conferência do termo e o CPF da trilha de auditoria. Nada é apagado; pode rodar de novo.
+2. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.46.0".
+3. Conferência rápida: em Pauta → **Pessoas e termos**, cadastre uma pessoa de teste e clique em **"Assinar o termo na tela"** —
+   informe um CPF e desenhe a assinatura; o cadastro passa a mostrar **"termo assinado"** e o CPF, e numa peça com ela o selo é
+   **"termo ok"**. **"Revogar termo"** derruba o termo. As pessoas e as assinaturas ficam **só no banco** (o repositório é
+   público; o leitor não vê), e só o administrador assina, revoga e lê o histórico.
+
+**Como desligar:** não há o que ligar/desligar — é o modo de registrar o termo. Para voltar à tela anterior, publique a tela da
+v0.45.0 (o banco v0.46.0 continua servindo; a tela antiga mostra os campos de data do termo no lugar do botão de assinar). As
+assinaturas já guardadas ficam preservadas.
 
 **Da v0.44.0 para a v0.45.0** (muda o banco: SQL novo, que pode rodar de novo, e a agenda da Pauta rodada DE NOVO; mudam as
 funções `radar-ia` e `radar-redes`, o robô da coleta e a tela; a `radar-video`, a `radar-itc`, as demais funções e os segredos

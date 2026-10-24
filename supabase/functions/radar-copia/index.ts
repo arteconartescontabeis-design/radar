@@ -69,7 +69,7 @@ const TABELAS = [
   "radar_assunto_capturas", "radar_assuntos", "radar_auditoria", "radar_capturas", "radar_capturas_versoes", "radar_categorias",
   "radar_config", "radar_conteudos", "radar_copias", "radar_divulgacoes", "radar_evidencias", "radar_execucoes", "radar_fontes",
   "radar_ia_uso", "radar_imagens", "radar_informativo_itens", "radar_informativos", "radar_instalacoes", "radar_itc_lidos",
-  "radar_lembretes", "radar_normas", "radar_pauta_pecas", "radar_perfis", "radar_pessoas", "radar_redes_envios",
+  "radar_lembretes", "radar_normas", "radar_pauta_pecas", "radar_perfis", "radar_pessoas", "radar_pessoas_termos", "radar_redes_envios",
   // v0.35.0: as 3 do Módulo Respostas Automáticas (gatilhos, registro dos comentários e contas ligadas: sem token nenhum)
   "radar_respostas_contas", "radar_respostas_gatilhos", "radar_respostas_registro",
   // v0.34.0: as 4 da aba Setor (dados públicos do Instagram e a configuração dos setores: vão à cópia como tudo)

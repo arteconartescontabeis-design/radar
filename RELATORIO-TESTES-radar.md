@@ -1,4 +1,4 @@
-# Radar Artecon — Relatório de testes (v0.45.0)
+# Radar Artecon — Relatório de testes (v0.46.0)
 
 Correções **v0.35.1 e v0.35.2 da função `radar-meta-webhook`** (23/10/2026): o `META_PAGE_TOKEN` passa a aceitar também o
 token do **usuário de sistema** — a função troca sozinha pelo da página (GET `/me/accounts`, token só no cabeçalho), como a
