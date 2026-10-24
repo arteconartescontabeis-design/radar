@@ -342,17 +342,16 @@ def entrar(pg, email="editora@artecon.test", senha=SENHA):
 # v0.49.0 (abas unidas): navegar para uma aba pelo nome visível. Capturas/Assuntos moram em "Notícias"; Configurações/Usuários/
 # Histórico/Versões em "Administração" (só o admin vê a família; "Versões" todos alcançam pelo número da versão). Abre a família no
 # topo e, se a sub-aba não for a primeira da família, escolhe na faixa de escolha.
-_SUBABA = {"Capturas": ("noticias", "fila", True), "Assuntos": ("noticias", "assuntos", False),
-           "Configurações": ("administracao", "configuracoes", True), "Usuários": ("administracao", "usuarios", False),
-           "Histórico": ("administracao", "auditoria", False)}
+_SUBABA = {"Capturas": ("noticias", "fila"), "Assuntos": ("noticias", "assuntos"),
+           "Configurações": ("administracao", "configuracoes"), "Usuários": ("administracao", "usuarios"),
+           "Histórico": ("administracao", "auditoria")}
 def ir_aba(pg, nome):
     if nome == "Versões":
         pg.click(".versao"); return
     if nome in _SUBABA:
-        fam, aba, primeira = _SUBABA[nome]
-        pg.click(f"nav.abas [data-familia={fam}]")
-        if not primeira:
-            pg.click(f"nav.subnav [data-aba={aba}]")
+        fam, aba = _SUBABA[nome]
+        pg.click(f"nav.abas [data-familia={fam}]")      # abre a família (se já estiver nela, o botão mantém a sub-aba atual)
+        pg.click(f"nav.subnav [data-aba={aba}]")        # escolhe a sub-aba na faixa — sempre, mesmo a primeira (senão, vindo de outra sub-aba, ela não troca)
         return
     pg.click(f"nav.abas >> text={nome}")
 
