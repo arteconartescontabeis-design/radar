@@ -1,5 +1,5 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-meta-webhook" (v0.35.2) — MÓDULO RESPOSTAS AUTOMÁTICAS
+// RADAR ARTECON — Edge Function "radar-meta-webhook" (v0.35.4) — MÓDULO RESPOSTAS AUTOMÁTICAS
 //
 // A Meta chama esta função a cada comentário novo nas publicações da Artecon (Instagram e página do Facebook). A função confere a
 // assinatura da chamada, pergunta ao banco o que fazer (radar_respostas_receber: o banco decide — gatilho ativo, palavra-chave,
@@ -42,12 +42,18 @@
 //   META_PAGE_TOKEN    o token de longa duração da PÁGINA do Facebook — ou o token do USUÁRIO DE SISTEMA do Gerenciador de
 //                      Negócios: a função percebe e troca sozinha pelo da página (GET /me/accounts), guardando só na memória.
 //                      Espaços e quebras de linha de colagem são ignorados. Permissões de comentários e mensagens aprovadas pela Meta.
+//   META_APP_SECRET_2  opcional: o segredo do app irmão do Instagram ("Chave secreta do app do Instagram", na Configuração da
+//                      API com login do Instagram) — os avisos da Meta podem vir validados por qualquer um dos dois
+//   META_APP_ID,       opcionais: os números do app principal e do irmão do Instagram; com eles o "Testar conexão" diz qual
+//   META_APP_ID_2      segredo confere com qual app (o veredito sai nos avisos)
 //   META_GRAPH_URL     opcional; padrão https://graph.facebook.com/v23.0
+//   META_INSTAGRAM_GRAPH_URL  opcional; padrão https://graph.instagram.com — onde o "Testar conexão" confere a chave do app do
+//                      Instagram (a Graph do Facebook não a reconhece; por isso o veredito dela também tenta aqui)
 // SUPABASE_URL, a chave pública (SUPABASE_PUBLISHABLE_KEYS ou SUPABASE_ANON_KEY) e a chave interna (SUPABASE_SECRET_KEYS ou
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.35.2";
+const VERSAO = "0.35.4";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -61,6 +67,7 @@ function chavePublica(): string {
 }
 const ANON = chavePublica();
 const GRAPH = env("META_GRAPH_URL", "https://graph.facebook.com/v23.0").replace(/\/+$/, "");
+const GRAPH_INSTAGRAM = env("META_INSTAGRAM_GRAPH_URL", "https://graph.instagram.com").replace(/\/+$/, "");   // v0.35.4: a chave do app do Instagram confere aqui
 const PRAZO_META_MS = Number(env("RADAR_RESPOSTAS_PRAZO_MS", "15000"));          // só os testes trocam
 const MAX_EVENTOS = 50;                                                          // comentários por chamada da Meta (sobra vira pendente? não: a Meta manda poucos por vez)
 const PENDENTES_POR_VEZ = 25;
@@ -140,18 +147,23 @@ async function autorizar(req: Request): Promise<"chave" | "admin"> {
 
 // ------------------------------------------------------------------ assinatura da Meta
 const te = new TextEncoder();
+// v0.35.3: a validação aceita o segredo do app principal (META_APP_SECRET) e, se existir, o do app irmão do Instagram
+// (META_APP_SECRET_2) — os avisos da Meta podem vir validados por qualquer um dos dois.
 async function assinaturaConfere(corpo: Uint8Array, cabecalho: string): Promise<boolean> {
-  const segredo = env("META_APP_SECRET").trim();
-  if (!segredo) return false;
   const m = /^sha256=([0-9a-f]{64})$/.exec((cabecalho ?? "").trim());
   if (!m) return false;
-  const chave = await crypto.subtle.importKey("raw", te.encode(segredo), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", chave, corpo as BufferSource));
-  const esperada = Array.from(mac).map((b) => b.toString(16).padStart(2, "0")).join("");
-  // comparação em tempo constante (os dois têm 64 caracteres)
-  let dif = 0;
-  for (let i = 0; i < 64; i++) dif |= esperada.charCodeAt(i) ^ m[1].charCodeAt(i);
-  return dif === 0;
+  for (const nome of ["META_APP_SECRET", "META_APP_SECRET_2"]) {
+    const segredo = env(nome).trim();
+    if (!segredo) continue;
+    const chave = await crypto.subtle.importKey("raw", te.encode(segredo), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", chave, corpo as BufferSource));
+    const esperada = Array.from(mac).map((b) => b.toString(16).padStart(2, "0")).join("");
+    // comparação em tempo constante (os dois têm 64 caracteres)
+    let dif = 0;
+    for (let i = 0; i < 64; i++) dif |= esperada.charCodeAt(i) ^ m[1].charCodeAt(i);
+    if (dif === 0) return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ Meta (Graph API)
@@ -312,6 +324,39 @@ async function diagnostico(): Promise<Record<string, unknown>> {
     const s = await meta(`${r.dados.id}/subscribed_apps`, { subscribed_fields: "feed" });
     paginaInscrita = s.ok && s.dados?.success === true;
     if (!paginaInscrita) avisos.push(`O app não ficou inscrito na página (os avisos de comentário não chegariam): ${s.erro || "resposta inesperada da Meta"}`);
+  }
+  // v0.35.3/v0.35.4: com os números dos apps nos segredos opcionais (META_APP_ID e META_APP_ID_2), o Testar conexão pergunta à
+  // própria Meta qual segredo guardado confere com qual app — o veredito sai nos avisos, sem expor valor nenhum. O app principal
+  // confere na Graph do Facebook; o app irmão do Instagram (META_APP_ID_2) tem uma "Chave secreta do app do Instagram" que a Graph
+  // do Facebook NÃO reconhece — por isso, para ele, o veredito também tenta a Graph do Instagram. Quando nem uma nem outra confirma
+  // o app do Instagram, NÃO pedimos recópia: essa chave vale do mesmo jeito na hora de conferir a assinatura do webhook.
+  const confereApp = async (base: string, app: string, s: string): Promise<boolean> => {
+    try {
+      const rr = await fetch(`${base}/${app}?fields=id`, { headers: { Authorization: `Bearer ${app}|${s}` },
+                             signal: AbortSignal.timeout(PRAZO_META_MS) });
+      const dd = await rr.json().catch(() => null);
+      return rr.ok && String(dd?.id ?? "") === app;
+    } catch { return false; /* a Meta fora do ar: este par fica sem veredito */ }
+  };
+  for (const idNome of ["META_APP_ID", "META_APP_ID_2"]) {
+    const app = env(idNome).replace(/\D/g, "");
+    if (!app) continue;
+    const ehInstagram = idNome === "META_APP_ID_2";
+    let dono = "";
+    for (const sNome of ["META_APP_SECRET", "META_APP_SECRET_2"]) {
+      const s = env(sNome).trim();
+      if (!s) continue;
+      if (await confereApp(GRAPH, app, s) || (ehInstagram && await confereApp(GRAPH_INSTAGRAM, app, s))) { dono = sNome; break; }
+    }
+    if (dono) avisos.push(`App ${app}: o ${dono} confere.`);
+    else if (ehInstagram) {
+      const salvo = env("META_APP_SECRET_2").trim() || env("META_APP_SECRET").trim();
+      avisos.push(salvo
+        ? `App ${app} (Instagram): a chave está salva. É a "Chave secreta do app do Instagram" — a Meta só a confere na hora do comentário, não precisa recopiar.`
+        : `App ${app} (Instagram): falta a chave. Cole a "Chave secreta do app do Instagram" no META_APP_SECRET_2 (Supabase → Edge Functions → Secrets).`);
+    } else {
+      avisos.push(`App ${app}: NENHUM dos segredos guardados confere — recopie na Meta e cole de novo.`);
+    }
   }
   return { ok: true, versao: VERSAO, contas, pagina_inscrita: paginaInscrita, avisos };
 }

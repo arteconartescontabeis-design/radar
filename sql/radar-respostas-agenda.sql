@@ -85,7 +85,7 @@ select jobname, schedule, active from cron.job where jobname like 'radar-respost
 --     headers := jsonb_build_object('Content-Type', 'application/json',
 --                  'x-radar-chave', (select decrypted_secret from vault.decrypted_secrets where name = 'radar_respostas')));
 --
--- Depois de alguns segundos (esperado: 200 {"ok":true,"versao":"0.35.2"}; 401 "Chave não confere." = este arquivo não foi rodado
+-- Depois de alguns segundos (esperado: 200 {"ok":true,"versao":"0.35.4"}; 401 "Chave não confere." = este arquivo não foi rodado
 -- neste projeto; 404 = a função radar-meta-webhook não está instalada: faça o Deploy do index.ts desta versão):
 --
 --   select status_code, content from net._http_response order by id desc limit 1;
