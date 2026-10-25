@@ -1,6 +1,7 @@
 -- =====================================================================
 -- RADAR ARTECON — Plataforma de Inteligência Contábil e Tributária
--- radar-setup-v0.47.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels, lembretes e termo de imagem com assinatura na tela
+-- radar-setup-v0.50.0.sql  ·  banco, coletores, telas, IA, Informativo Mensal, Pauta das redes, corretor de vídeo dos reels, lembretes e termo de imagem com assinatura na tela
+-- v0.50.0: a assinatura e a revogação do termo passam a gravar a data no dia de Brasília (radar_pauta_hoje), não no current_date (UTC), que vira às 21h.
 --
 -- Serve para instalar do zero e para atualizar qualquer versão anterior (se já estiver instalada).
 -- IDEMPOTENTE: pode ser executado mais de uma vez sem duplicar nem apagar
@@ -120,7 +121,7 @@
 -- no SITE e as redes saem logo depois dele, como sempre. Cancelar continua igual (enquanto não chegar a hora). (2) tipo_coletor
 -- ganha 'ciga_dados' (a fonte entra pelo sql/radar-fontes-novas-v0.45.0.sql, DEPOIS da primeira coleta do robô desta versão).
 -- Nada de dados é apagado.
--- Reversão: radar-reversao-v0.47.0.sql
+-- Reversão: radar-reversao-v0.50.0.sql
 -- =====================================================================
 
 begin;
@@ -146,7 +147,7 @@ begin
     antes         jsonb       not null,
     depois        jsonb
   );
-  insert into public.radar_instalacoes (versao, antes) values ('v0.47.0', v_antes);
+  insert into public.radar_instalacoes (versao, antes) values ('v0.50.0', v_antes);
 end $$;
 
 -- v0.43.0: a faxina das sobras da instalação por partes da v0.42.0 (feita pelo assistente em 20/10, por etapas pequenas:
@@ -10761,8 +10762,8 @@ begin
 
   update public.radar_pessoas set
     cpf = v_cpf,
-    termo_assinado_em = current_date,
-    termo_corretor_em = current_date,          -- o termo único cobre também o corretor de vídeo
+    termo_assinado_em = public.radar_pauta_hoje(),   -- v0.50.0: o dia de Brasília, não o current_date (em UTC, vira às 21h) — perto da meia-noite gravava amanhã
+    termo_corretor_em = public.radar_pauta_hoje(),   -- o termo único cobre também o corretor de vídeo
     termo_canais = v_canais,
     termo_usos = v_usos,
     termo_valido_ate = null,
@@ -10770,7 +10771,7 @@ begin
     atualizado_em = now()
   where id = p_pessoa;
 
-  return jsonb_build_object('ok', true, 'historico', v_hist, 'assinado_em', current_date);
+  return jsonb_build_object('ok', true, 'historico', v_hist, 'assinado_em', public.radar_pauta_hoje());
 end $$;
 
 -- 5) revogar o termo (só o administrador): marca a revogação, na pessoa e na última assinatura
@@ -10780,7 +10781,7 @@ begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
     raise exception 'RADAR190: só o administrador revoga o termo.' using errcode = 'P0001';
   end if;
-  update public.radar_pessoas set termo_revogado_em = current_date, atualizado_em = now() where id = p_pessoa;
+  update public.radar_pessoas set termo_revogado_em = public.radar_pauta_hoje(), atualizado_em = now() where id = p_pessoa;   -- v0.50.0: o dia de Brasília
   update public.radar_pessoas_termos set revogado_em = now()
    where pessoa_id = p_pessoa and revogado_em is null;
   return jsonb_build_object('ok', true);
@@ -10960,7 +10961,7 @@ where id = (select max(id) from public.radar_instalacoes) and depois is null;
 commit;
 
 -- EVIDÊNCIA: exporte este resultado em CSV e guarde/envie para conferência.
--- Esperado: 38 tabelas, todas com rls = true; 6 fontes (mais as dos radar-fontes-novas, na instalação que já as rodou); 8 categorias; ao menos 1 instalação concluída (v0.47.0).
+-- Esperado: 38 tabelas, todas com rls = true; 6 fontes (mais as dos radar-fontes-novas, na instalação que já as rodou); 8 categorias; ao menos 1 instalação concluída (v0.50.0).
 select 'tabela' as item, c.relname as nome, c.relrowsecurity::text as rls,
        (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)::text as politicas,
        (select count(*) from pg_trigger g where g.tgrelid = c.oid and not g.tgisinternal)::text as gatilhos

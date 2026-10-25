@@ -1,4 +1,10 @@
-# Radar Artecon — Relatório de testes (v0.49.0)
+# Radar Artecon — Relatório de testes (v0.50.0)
+
+**v0.50.0 — data do termo no horário de Brasília** (25/10/2026): `radar_pessoa_assinar_termo` e `radar_pessoa_revogar_termo`
+gravam a data pelo dia de Brasília (`radar_pauta_hoje`), não mais pelo `current_date` (UTC) — que, entre 21h e a meia-noite, podia
+gravar o dia seguinte e **barrar uma publicação** ("termo assinado depois desta data") ou mostrar o estado errado na tela.
+**Mudança no banco** (duas funções; nenhuma tabela nova, nada é apagado). Os testes do termo (banco e tela) deixam de depender do
+fuso do servidor. **A suíte INTEIRA roda no CI antes de juntar.**
 
 **v0.49.0 — abas unidas** (24/10/2026): a faixa do alto ficou mais enxuta — "Notícias" (Capturas + Assuntos) e
 "Administração" (Configurações + Usuários + Histórico + Versões, só o administrador). É **só de tela** (`FAMILIAS`/`subNav` no

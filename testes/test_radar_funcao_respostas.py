@@ -55,6 +55,8 @@ VERIFY = "token-de-verificacao-teste"
 TOKEN_PAGINA = "EAApaginaRespostas345"
 TOKEN_USUARIO = "EAAusuarioDeSistema678"                    # v0.35.1: o token do usuário de sistema; a função troca sozinha
 PAGINA, IG = "101", "17841400000000001"
+APP_ID, APP_ID_2 = "2452237768635139", "4470474209936489"   # v0.35.4: o app principal e o irmão do Instagram (veredito do Testar conexão)
+APPS_VALIDOS = {f"{APP_ID}|{APP_SECRET}"}                    # os pares app|segredo que a Graph de mentira aceita como token de app
 ESTADO: dict = {"meta": [], "erro_publica": None, "erro_privada": None, "erro_me": None}
 
 
@@ -128,6 +130,12 @@ class PonteRespostas(BaseHTTPRequestHandler):
         pedido = {"metodo": self.command, "caminho": caminho, "corpo": corpo, "auth": self.headers.get("Authorization", ""),
                   "query": urlparse(self.path).query}
         ESTADO["meta"].append(pedido)
+        if self.command == "GET" and caminho.isdigit():
+            # v0.35.4: o veredito do app — GET {app}?fields=id com Bearer {app}|{segredo}; devolve o id só se o par for válido
+            tok = pedido["auth"].removeprefix("Bearer ")
+            if tok in APPS_VALIDOS and tok.split("|", 1)[0] == caminho:
+                return self._responder(200, {"id": caminho})
+            return self._erro(190, "Invalid OAuth access token")
         if self.command == "GET" and caminho == "me/accounts":
             # v0.35.1: a troca do token do usuário de sistema pelo da página — o token vai no cabeçalho, como nas outras chamadas
             if pedido["auth"] == "Bearer " + TOKEN_USUARIO:
@@ -353,7 +361,7 @@ def test_acoes_exigem_a_chave_ou_o_administrador(resp, funcao):
     assert acao({"acao": "agenda_teste"}).status_code == 401
     assert acao({"acao": "agenda_teste"}, chave="x" * 64).status_code == 401
     r = acao({"acao": "agenda_teste"}, chave=funcao)
-    assert (r.status_code, r.json()) == (200, {"ok": True, "versao": "0.35.2"})
+    assert (r.status_code, r.json()) == (200, {"ok": True, "versao": "0.35.4"})
     assert acao({"acao": "diagnostico"}, chave=funcao).status_code == 403            # o Testar conexão é só do administrador
     assert acao({"acao": "diagnostico"}, uid=EDITOR).status_code == 403
     assert acao({"acao": "qualquer"}, chave=funcao).status_code == 400
@@ -373,6 +381,33 @@ def test_diagnostico_grava_as_contas(resp):
     ESTADO["erro_me"] = (190, "Error validating access token: Session has expired")
     r = acao({"acao": "diagnostico"}, uid=ADMIN)
     assert r.status_code == 503 and "Meta 190" in r.json()["message"]
+
+
+def test_diagnostico_nao_da_alarme_falso_na_chave_do_instagram(resp, tmp_path):
+    """v0.35.4: com os números dos apps, o veredito diz qual segredo confere com qual app. O app principal confere na Graph do
+    Facebook; a "Chave secreta do app do Instagram" a Graph do Facebook NÃO reconhece — e, em vez de pedir recópia (o alarme
+    falso), o aviso diz que a chave está salva, conferida pela Meta só na hora do comentário. A chave nunca vai para o registro."""
+    resp.execute("truncate radar_respostas_contas restart identity cascade")
+    porta = 3955
+    with open(tmp_path / "apps.log", "wb") as registro:
+        proc = _subir(porta, {"META_APP_SECRET": APP_SECRET, "META_VERIFY_TOKEN": VERIFY, "META_PAGE_TOKEN": TOKEN_PAGINA,
+                              "SUPABASE_SERVICE_ROLE_KEY": SECRETA, "SUPABASE_SECRET_KEYS": json.dumps({"default": SECRETA}),
+                              "META_APP_ID": APP_ID, "META_APP_ID_2": APP_ID_2,
+                              "META_APP_SECRET_2": "chave-do-instagram-que-a-graph-fb-ignora",
+                              "META_INSTAGRAM_GRAPH_URL": PONTE + "/meta"}, registro)
+        try:
+            r = acao({"acao": "diagnostico"}, uid=ADMIN, porta=porta)
+        finally:
+            proc.terminate()
+            proc.wait(timeout=10)
+    assert r.status_code == 200 and r.json()["ok"] is True
+    avisos = r.json()["avisos"]
+    assert f"App {APP_ID}: o META_APP_SECRET confere." in avisos                 # o principal confere na Graph do Facebook
+    ig = [a for a in avisos if a.startswith(f"App {APP_ID_2}")]
+    assert len(ig) == 1 and "está salva" in ig[0] and "não precisa recopiar" in ig[0]
+    assert all("recopie na Meta" not in a for a in avisos)                       # nunca mais o alarme falso
+    assert "chave-do-instagram-que-a-graph-fb-ignora" not in \
+        (tmp_path / "apps.log").read_text(encoding="utf-8", errors="replace")    # a chave nunca no registro
 
 
 def test_token_do_usuario_de_sistema_troca_sozinho(resp, tmp_path):
