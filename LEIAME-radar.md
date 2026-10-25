@@ -1,4 +1,4 @@
-# Radar Artecon — v0.49.0
+# Radar Artecon — v0.50.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.50.0 corrige a **data do termo de uso de imagem**: ao **assinar** ou **revogar** o termo (Pauta → Pessoas e termos), a data
+passa a ser gravada pelo **dia de Brasília**, e não mais pelo relógio do servidor (em UTC). Antes, **entre 21h e a meia-noite**, a
+data podia pular para o **dia seguinte** — e aí uma publicação chegava a ser **barrada** ("termo assinado depois desta data") ou o
+estado do termo aparecia **errado** na tela. Agora fica sempre certo. É uma **mudança no banco** (duas funções do termo). Veja "Da
+v0.49.0 para a v0.50.0".
 
 A v0.49.0 traz as **abas unidas**: a faixa do alto ficou **mais enxuta**. **"Notícias"** reúne **Capturas +
 Assuntos** e **"Administração"** reúne **Configurações + Usuários + Histórico + Versões** (só o administrador vê a família, como as
@@ -2989,6 +2995,19 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.49.0 para a v0.50.0** (mudança **no banco** — duas funções do termo; **nenhuma tabela nova**, **nada é apagado**;
+**nenhum segredo novo**). Supõe a v0.49.0 instalada:
+
+1. No Supabase → **SQL Editor**, rode o `sql/radar-setup-v0.50.0.sql` (é **idempotente**: continua com as **38 tabelas**, não cria
+   tabela nem apaga dado; atualiza as funções `radar_pessoa_assinar_termo` e `radar_pessoa_revogar_termo` para gravarem a data pelo
+   **dia de Brasília**, e não mais pelo `current_date` do servidor, que está em UTC e vira às 21h de Brasília).
+2. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.50.0".
+3. Conferência rápida: em **Pauta → Pessoas e termos**, ao assinar ou revogar um termo perto da virada do dia, a data registrada é a
+   de **Brasília**. As funções `radar-ia`, `radar-redes` e `radar-video` **não mudam**.
+
+**Para desfazer no banco** (opcional): o `sql/radar-reversao-v0.50.0.sql` desfaz a instalação (atenção: apaga as tabelas `radar_*` e
+os dados). Em geral não é preciso — basta publicar de novo a tela da versão anterior.
 
 **Da v0.48.0 para a v0.49.0** (muda **só a tela**; **nada no banco**, nenhuma função, **nenhum segredo novo**). Supõe a v0.48.0
 instalada:
