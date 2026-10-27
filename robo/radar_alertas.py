@@ -67,6 +67,10 @@ try:
 except ZoneInfoNotFoundError:                                # sistema sem a base de fusos: Brasília não tem horário de verão
     FUSO = BRASILIA
 FALHAS_PARA_AVISAR = 3
+# v0.54.0: quando a fonte está num serviço oficial em manutenção/fora do ar (ex.: o INLABS do DOU), o problema não é nosso
+# nem dá para resolver mexendo na fonte — então não se abre alarme por uma queda curta. Só se a indisponibilidade durar
+# mesmo (≈3 dias, a 1 coleta a cada 6 h = ~12 tentativas) é que vale avisar, para alguém verificar se o serviço voltou.
+FALHAS_PARA_AVISAR_INDISPONIVEL = 12
 # v0.22.0 (rodada 2): os números dos envios da Pauta já avisados, numa marca que não aparece no aviso nem no e-mail (comentário HTML)
 MARCA_PAUTA = re.compile(r"<!-- radar-pauta-avisados: ([0-9 ]*) -->")
 # v0.30.0: os números das capturas já avisadas no aviso de possível prorrogação (a mesma ideia da marca da Pauta)
@@ -94,12 +98,20 @@ def corpo_aviso(f: dict) -> str:
             "Este aviso fecha sozinho quando a fonte voltar a funcionar ou for desligada.")
 
 
+def _indisponivel(f: dict) -> bool:
+    """v0.54.0: o último erro é uma indisponibilidade do serviço oficial (manutenção/fora do ar), que não dá para nós resolvermos."""
+    erro = (f.get("ultimo_erro") or "").lower()
+    return "indisponível" in erro or "indisponivel" in erro or "manutenção" in erro or "manutencao" in erro
+
+
 def decidir(saude: list[dict], abertos: dict[str, int]) -> tuple[list[dict], list[tuple[int, str]]]:
     """Devolve (fontes para abrir aviso, [(número do aviso, motivo do fechamento)])."""
     abrir, fechar = [], []
     por_slug = {f["slug"]: f for f in saude}
     for f in saude:
-        if f.get("ativo") and (f.get("falhas_consecutivas") or 0) >= FALHAS_PARA_AVISAR and titulo(f["slug"]) not in abertos:
+        # v0.54.0: serviço oficial em manutenção/fora do ar só vira alarme se a queda durar mesmo (não é problema nosso)
+        limite = FALHAS_PARA_AVISAR_INDISPONIVEL if _indisponivel(f) else FALHAS_PARA_AVISAR
+        if f.get("ativo") and (f.get("falhas_consecutivas") or 0) >= limite and titulo(f["slug"]) not in abertos:
             abrir.append(f)
     for t, numero in abertos.items():
         if not t.startswith(PREFIXO):

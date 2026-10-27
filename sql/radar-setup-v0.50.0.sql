@@ -6964,7 +6964,10 @@ select a.id, a.titulo, a.categoria, a.subcategoria, a.abrangencia, a.relevancia,
        (select count(*) from public.radar_conteudos c where c.assunto_id = a.id and c.status = 'em_revisao') as em_revisao,
        (select string_agg(distinct f.orgao, ' · ') from public.radar_assunto_capturas ac
           join public.radar_capturas c on c.id = ac.captura_id
-          join public.radar_fontes f on f.id = c.fonte_id where ac.assunto_id = a.id) as orgaos
+          join public.radar_fontes f on f.id = c.fonte_id where ac.assunto_id = a.id) as orgaos,
+       -- v0.54.0: a data em que a informação foi capturada da fonte (a primeira captura do assunto), para a lista de Assuntos
+       (select min(c.capturado_em) from public.radar_assunto_capturas ac
+          join public.radar_capturas c on c.id = ac.captura_id where ac.assunto_id = a.id) as capturado_em
 from public.radar_assuntos a;
 
 -- Consumo da IA no mês corrente (uma linha)

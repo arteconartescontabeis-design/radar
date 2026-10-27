@@ -1,4 +1,4 @@
-# Radar Artecon — v0.53.0
+# Radar Artecon — v0.54.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,15 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.54.0 traz duas melhorias. (1) Na **lista de Assuntos** (Notícias → Assuntos), principalmente em **"📥 Capturado — falta
+tratar"**, entram duas colunas: **"Capturado em"** (a data em que a informação foi capturada da fonte — a primeira captura do
+assunto) e **"Fonte"** (de qual órgão veio: ex. Receita Federal, Imprensa Nacional, Portal Contábil SC). Ajuda a priorizar e a ver
+a origem num relance. É uma **mudança no banco** (uma consulta — a coluna "Fonte" já existia). (2) O **Diário Oficial da União
+(INLABS)** ficou mais resistente a quedas: quando o serviço oficial do governo está **em manutenção/fora do ar**, o robô avisa com
+clareza ("INLABS em manutenção/indisponível", em vez de culpar o e-mail e a senha) e **não dispara alarme à toa**; e, quando o
+INLABS volta, o robô **recupera sozinho os dias parados** no período — nada se perde. É só do **robô** (nada a fazer). Veja "Da
+v0.53.0 para a v0.54.0".
 
 A v0.53.0 deixa o **filtro de situação dos Assuntos** (Notícias → Assuntos) mais claro. Antes era uma lista só, confusa e com
 etapas que nem são usadas. Agora vem **agrupado**: em "Principais", as três que importam — **📥 Capturado** (falta tratar),
@@ -3011,6 +3020,21 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.53.0 para a v0.54.0** (uma **mudança no banco** — uma consulta — mais uma melhoria **só do robô**; **nenhum segredo novo**).
+Supõe a v0.53.0 instalada:
+
+1. **SQL Editor** → execute `sql/radar-assunto-captura-data-v0.54.0.sql`. Ele só acrescenta a coluna **capturado_em** (a data da
+   primeira captura do assunto) na consulta `radar_v_assuntos`. **Não cria tabela, não apaga nada, pode rodar de novo.** A coluna
+   "Fonte" já existia na consulta (o órgão de onde a informação veio) — nada a fazer para ela.
+2. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.54.0". Em **Notícias →
+   Assuntos** (principalmente em "📥 Capturado — falta tratar") aparecem as colunas **"Capturado em"** e **"Fonte"**. Se você ainda
+   não rodou o SQL do passo 1, a coluna "Capturado em" aparece com "—"; depois do SQL, mostra a data certa.
+3. **Robô do INLABS (DOU):** nada a fazer. O robô se atualiza sozinho na próxima coleta. A partir desta versão, quando o serviço
+   oficial do INLABS está **em manutenção/fora do ar**, o robô registra "INLABS indisponível (em manutenção ou fora do ar)" —
+   deixando claro que **não é o e-mail nem a senha** — e **não abre aviso à toa** por uma queda curta (só avisa se durar ~3 dias).
+   Quando o INLABS volta, o robô **alarga a janela** e **recupera sozinho os dias parados** do período. As funções `radar-ia`,
+   `radar-redes` e `radar-video` **não mudam**; o banco, fora essa consulta, segue na **v0.50.0**.
 
 **Da v0.52.0 para a v0.53.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a
 v0.52.0 instalada:
