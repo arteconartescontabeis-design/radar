@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.51.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.52.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -578,7 +578,7 @@ async function pararGravacaoTele(){
   if(TELE.url) URL.revokeObjectURL(TELE.url);
   TELE.url = URL.createObjectURL(arquivo);
   const av = $("#tele-aviso");
-  if(av) av.innerHTML = `Tomada ${TELE.tomadas} (${segVideo(duracaoMs / 1000)} s) entrou na lista de clipes. <a href="${TELE.url}" download="${h(nome)}">Baixar esta tomada</a> (se quiser guardar).`;
+  if(av) av.innerHTML = `Tomada ${TELE.tomadas} (${segVideo(duracaoMs / 1000)} s) entrou na lista de clipes. <button class="btn peq sec" type="button" data-acao="tele-assistir">▶ Assistir</button> <a href="${TELE.url}" download="${h(nome)}">Baixar esta tomada</a>.`;
 }
 /* v0.51.0: a lista de microfones (o nome só aparece depois da permissão da câmera/áudio). Com um só, a linha fica escondida
    (não há o que escolher). Trocar é só fora da gravação: para a faixa de áudio atual e põe a do microfone escolhido (a lapela). */
@@ -2031,6 +2031,7 @@ const VIDEO = {
   navegacao:["video-nova", "video-nova-cancelar", "video-clipe-mover", "video-clipe-tirar", "video-ouvir",
     "video-teleprompter", "tele-fechar", "tele-rolar", "tele-letra", "tele-veloc", "tele-espelho", "tele-gravar",   // v0.44.0
     "tele-inicio", "tele-cancelar",   // v0.51.0: voltar o texto ao início e cancelar a gravação (nada sobe)
+    "tele-assistir",   // v0.52.0: rever a tomada gravada no próprio teleprompter
     ...NAVEGACAO_ABA_VIDEO],
   acoes:{
     /* v0.44.0: o teleprompter (ler o roteiro em letras grandes e, se o navegador souber, gravar ali mesmo) */
@@ -2057,6 +2058,7 @@ const VIDEO = {
       TELE.y = 0; TELE.antes = null;                                  // v0.51.0: o texto volta ao início ao começar a gravar
       const rolo = $("#tele-rolo"); if(rolo) rolo.style.transform = "translateY(0)";
       $("#teleprompter")?.classList.add("tele-gravando");             // v0.51.0: encolhe o vídeo e deixa o texto grande
+      $("#tele-previa")?.remove();                                    // v0.52.0: fecha a prévia da tomada anterior ao gravar de novo
       const cancel = $("#tele-cancelar"); if(cancel) cancel.hidden = false;
       const b = $("#tele-gravar");
       if(b){ b.textContent = "Parar e guardar"; b.classList.remove("verde"); b.classList.add("perigo"); }
@@ -2067,6 +2069,10 @@ const VIDEO = {
       const r = $("#tele-rolo"); if(r) r.style.transform = "translateY(0)"; },
     async "tele-cancelar"(){ if(!TELE?.gravador || TELE.gravador.state !== "recording") return;   // v0.51.0: descarta a tomada
       TELE.cancelando = true; await pararGravacaoTele(); },
+    "tele-assistir"(){ if(!TELE?.url) return;                                   // v0.52.0: rever a tomada no teleprompter (abre/fecha a prévia)
+      const aberta = $("#tele-previa"); if(aberta){ aberta.remove(); return; }
+      $(".tele-topo")?.insertAdjacentHTML("beforeend", `<div id="tele-previa" class="tele-previa-caixa"><video controls autoplay playsinline src="${TELE.url}"></video>
+        <button class="btn peq sec" type="button" data-acao="tele-assistir">Fechar a prévia</button></div>`); },
     "video-nova"(){ const ev = estadoVideo(); ev.nova = true; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); $("#video-envio")?.scrollIntoView({block:"nearest"}); },
     "video-nova-cancelar"(){ const ev = estadoVideo(); ev.nova = false; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); },
     "video-clipe-mover"(el){ const pid = estadoVideo().peca, l = clipesDe(pid), i = Number(el.dataset.i), j = i + Number(el.dataset.passo);

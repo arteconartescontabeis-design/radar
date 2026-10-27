@@ -1,4 +1,9 @@
-# Radar Artecon — Relatório de testes (v0.51.0)
+# Radar Artecon — Relatório de testes (v0.52.0)
+
+**v0.52.0 — assistir a tomada no teleprompter** (27/10/2026): depois de cada gravação, um botão **"▶ Assistir"** abre a prévia do
+vídeo gravado no próprio teleprompter (fecha com "Fechar a prévia"; some ao gravar de novo). É **só de tela** (`radar-video.js` e
+`index.html`); **nada no banco** (segue na v0.50.0). O teste de tela do teleprompter cobre o botão. **A suíte INTEIRA roda no CI
+antes de juntar.**
 
 **v0.51.0 — teleprompter melhorado** (27/10/2026): na aba Vídeo, o teleprompter ganhou **"↑ Início"** (volta o texto ao começo),
 **"Cancelar"** (descarta a tomada sem guardar), seletor de **Microfone** (lapela) e o **preview mostra o enquadramento inteiro**
