@@ -1,4 +1,13 @@
-# Radar Artecon — Relatório de testes (v0.54.0)
+# Radar Artecon — Relatório de testes (v0.55.0)
+
+**v0.55.0 — logotipo novo em tudo, sem a "caixa branca" (preto/branco automático)** (27/10/2026): o logotipo da Artecon
+passou a ser desenhado **direto na arte** das publicações (capa da notícia `desenharCapaFoto`, capa padrão
+`desenharCapa`, arte do reel/carrossel em `radar-pauta.js`) e no cabeçalho do app, **sem o cartão branco**. A cor é
+escolhida pela **luminância** do cantinho onde o logo entra (`luminanciaDoCanvas` + `corDoLogo`): **preto** em fundo
+claro, **branco** em fundo escuro; o caduceu é **recorte vazado** (sem mancha branca). Dois arquivos novos de imagem
+(`radar-logo-artecon.png` atualizado e `radar-logo-artecon-branco.png`, liberados no `.gitignore` e na lista do
+pacote). É **só de tela** (`index.html`, `radar-pauta.js`) + imagens; **nada no banco** (segue na v0.50.0). Teste novo
+cobre `corDoLogo` (claro→preto, escuro→branco) e a existência/validade dos dois PNGs. **A suíte INTEIRA roda no CI antes de juntar.**
 
 **v0.54.0 — colunas "Capturado em" e "Fonte" nos Assuntos + INLABS resistente a quedas** (27/10/2026): (1) a lista de Assuntos
 ganhou as colunas **Capturado em** (data da primeira captura do assunto) e **Fonte** (órgão de origem). É uma mudança de consulta

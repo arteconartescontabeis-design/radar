@@ -12,7 +12,7 @@
    o script principal junta aos dele. Nada roda no carregamento: as funções usam os globais do script principal (h, rpc, pedir,
    recado, desenhar, ehAdmin, ErroApi, $) só quando são chamadas. Quem confere quem pode o quê é o banco.
    ==================================================================== */
-const RESPOSTAS_VERSAO = "0.54.0";    // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const RESPOSTAS_VERSAO = "0.55.0";    // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 // o que só a tela guarda: o formulário aberto (null, "novo" ou o id do gatilho) e os filtros do registro
 let RESP_E = {form: null, f_gatilho: "", f_situacao: ""};
