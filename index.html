@@ -435,21 +435,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.52.0"></script>
-<script src="radar-video.js?v=0.52.0"></script>
-<script src="radar-setor.js?v=0.52.0"></script>
-<script src="radar-respostas.js?v=0.52.0"></script>
+<script src="radar-pauta.js?v=0.53.0"></script>
+<script src="radar-video.js?v=0.53.0"></script>
+<script src="radar-setor.js?v=0.53.0"></script>
+<script src="radar-respostas.js?v=0.53.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.52.0";
+const VERSAO = "0.53.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.53.0", "27/10/2026", [
+    "O filtro de situação dos Assuntos (Notícias → Assuntos) ficou mais claro. Antes era uma lista só, confusa e com etapas que nem são usadas. Agora vem agrupado: em “Principais”, as três situações que importam — 📥 Capturado (falta tratar), ✍️ Falta publicar (em tratamento) e ✅ Publicado (já no ar); abaixo, “Por etapa” (Selecionado, Conteúdo gerado, Aprovado), “Descartados” (Ignorado) e “Visão geral” (Em andamento, Todos). O preparo em lote com IA (marcar vários e “Preparar as marcadas”) continua igual.",
+    "Administrador: é só a tela — nada muda no banco, nenhum SQL. As funções radar-ia, radar-redes e radar-video não mudam. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.52.0 para a v0.53.0”."]],
   ["0.52.0", "27/10/2026", [
     "No teleprompter (aba Vídeo), um botão “▶ Assistir” aparece depois de cada tomada: dá para rever o vídeo gravado ali mesmo, antes de decidir se mantém ou regrava. Fecha com “Fechar a prévia”, e some sozinho quando você grava de novo. Continua sem enviar nada até você mandar.",
     "Administrador: é só a tela — nada muda no banco, nenhum SQL. As funções radar-ia, radar-redes e radar-video não mudam. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.51.0 para a v0.52.0”."]],
@@ -1604,12 +1607,28 @@ const TELAS = {
     const f = E.filtros.assuntos;
     const lim = limiteDe("assuntos:" + f, 300), params = {select:"*", order:"atualizado_em.desc", limit:String(lim)};
     if(f === "abertos") params.status = "not.in.(publicado,ignorado,arquivado)";
+    else if(f === "falta_publicar") params.status = "in.(classificado,analisado,selecionado,conteudo_gerado,revisao,aprovado)";   // v0.53.0: em tratamento, ainda não publicado
     else if(f !== "todos") params.status = "eq." + f;
     const itens = await ler("radar_v_assuntos", params); const cat = catMapa();
     return `<h1>Assuntos</h1>
       <div class="linha-filtros"><select data-filtro="assuntos" id="filtro-assuntos" aria-label="Situação do assunto">
-        <option value="abertos"${f==="abertos"?" selected":""}>Em andamento</option>
-        <option value="todos"${f==="todos"?" selected":""}>Todos</option>${Object.entries(ROTULOS.status).map(([k,v]) => `<option value="${k}"${f===k?" selected":""}>${v}</option>`).join("")}</select></div>
+        <optgroup label="Principais">
+          <option value="capturado"${f==="capturado"?" selected":""}>📥 Capturado — falta tratar</option>
+          <option value="falta_publicar"${f==="falta_publicar"?" selected":""}>✍️ Falta publicar — em tratamento</option>
+          <option value="publicado"${f==="publicado"?" selected":""}>✅ Publicado — já no ar</option>
+        </optgroup>
+        <optgroup label="Por etapa">
+          <option value="selecionado"${f==="selecionado"?" selected":""}>Selecionado</option>
+          <option value="conteudo_gerado"${f==="conteudo_gerado"?" selected":""}>Conteúdo gerado</option>
+          <option value="aprovado"${f==="aprovado"?" selected":""}>Aprovado</option>
+        </optgroup>
+        <optgroup label="Descartados">
+          <option value="ignorado"${f==="ignorado"?" selected":""}>🚫 Ignorado</option>
+        </optgroup>
+        <optgroup label="Visão geral">
+          <option value="abertos"${f==="abertos"?" selected":""}>Em andamento</option>
+          <option value="todos"${f==="todos"?" selected":""}>Todos</option>
+        </optgroup></select></div>
       ${podeEditar() ? `<form class="painel" data-form="novoAssunto"><label for="na-titulo">Novo assunto criado pela equipe (sem captura do robô)</label>
         <div class="linha-filtros" style="margin:0"><input id="na-titulo" type="text" name="titulo" required minlength="5" maxlength="200" placeholder="Título do assunto ou do artigo" style="flex:1;min-width:240px">
         <button class="btn">Criar assunto</button></div>
