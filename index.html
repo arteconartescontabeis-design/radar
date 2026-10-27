@@ -435,21 +435,25 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.53.0"></script>
-<script src="radar-video.js?v=0.53.0"></script>
-<script src="radar-setor.js?v=0.53.0"></script>
-<script src="radar-respostas.js?v=0.53.0"></script>
+<script src="radar-pauta.js?v=0.54.0"></script>
+<script src="radar-video.js?v=0.54.0"></script>
+<script src="radar-setor.js?v=0.54.0"></script>
+<script src="radar-respostas.js?v=0.54.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.53.0";
+const VERSAO = "0.54.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.54.0", "27/10/2026", [
+    "Na lista de Assuntos (Notícias → Assuntos), principalmente em “📥 Capturado — falta tratar”, entram duas colunas: “Capturado em” (a data em que a informação foi capturada da fonte) e “Fonte” (de qual órgão veio — ex.: Receita Federal, Imprensa Nacional, Portal Contábil SC). Ajuda a priorizar o que tratar primeiro e a ver a origem de cada item num relance.",
+    "Diário Oficial da União (INLABS) mais resistente a quedas: quando o serviço oficial do governo está em manutenção ou fora do ar, o robô passa a avisar com clareza (“INLABS em manutenção/indisponível”, em vez de culpar o e-mail e a senha) e não dispara mais alarme à toa; e, quando o INLABS volta, o robô recupera sozinho os dias que ficaram parados no período — nada se perde.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-assunto-captura-data-v0.54.0.sql (só acrescenta a data da captura na consulta radar_v_assuntos; nenhuma tabela nova; nada é apagado; pode rodar de novo). O robô do INLABS se atualiza sozinho na próxima coleta (nada a fazer). Nenhuma função muda (radar-ia, radar-redes, radar-video). Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Enquanto o SQL não for rodado, a coluna “Capturado em” aparece com “—”. Passo a passo no LEIAME, “Da v0.53.0 para a v0.54.0”."]],
   ["0.53.0", "27/10/2026", [
     "O filtro de situação dos Assuntos (Notícias → Assuntos) ficou mais claro. Antes era uma lista só, confusa e com etapas que nem são usadas. Agora vem agrupado: em “Principais”, as três situações que importam — 📥 Capturado (falta tratar), ✍️ Falta publicar (em tratamento) e ✅ Publicado (já no ar); abaixo, “Por etapa” (Selecionado, Conteúdo gerado, Aprovado), “Descartados” (Ignorado) e “Visão geral” (Em andamento, Todos). O preparo em lote com IA (marcar vários e “Preparar as marcadas”) continua igual.",
     "Administrador: é só a tela — nada muda no banco, nenhum SQL. As funções radar-ia, radar-redes e radar-video não mudam. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.52.0 para a v0.53.0”."]],
@@ -1639,10 +1643,12 @@ const TELAS = {
         <label class="sub" for="lote-imagem" style="margin:0">Imagem</label><select id="lote-imagem">${opcoes({foto:"Foto real com o título", padrao:"Capa padrão Artecon"}, E.loteImagem || "foto")}</select>
         <button class="btn verde" type="button" data-acao="ia-lote">Preparar as marcadas com IA</button></div>
         <p class="sub" style="margin:6px 0 0">Marque as caixas na primeira coluna da lista. Cada notícia é preparada por inteiro — a fonte, o texto, a imagem, a conferência dos 10 critérios e as legendas — e chega no passo “Conferir e aprovar”; nada é publicado. A que não tem texto capturado, ou que já tem texto, é pulada (o motivo sai no resumo). Deixe esta aba aberta até terminar.</p></div>` : ""}
-      ${itens.length ? `<div class="painel rolagem"><table><tr>${podeEditar() ? `<th><input type="checkbox" id="marcar-assuntos" aria-label="Marcar todos os assuntos da lista"></th>` : ""}<th>Assunto</th><th>Relevância</th><th>Confirmação</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
+      ${itens.length ? `<div class="painel rolagem"><table><tr>${podeEditar() ? `<th><input type="checkbox" id="marcar-assuntos" aria-label="Marcar todos os assuntos da lista"></th>` : ""}<th>Assunto</th><th>Capturado em</th><th>Fonte</th><th>Relevância</th><th>Confirmação</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
         <tr class="clicavel" data-acao="abrir-assunto" data-id="${a.id}">
           ${podeEditar() ? `<td><input type="checkbox" class="sel-assunto" value="${a.id}" data-titulo="${h(a.titulo)}" aria-label="Marcar ${h(a.titulo)}"></td>` : ""}
-          <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${a.id}">${h(a.titulo)}</button><br><span class="sub">${h(cat[a.categoria] || "sem categoria")} · ${h(a.orgaos || "sem captura vinculada")}</span></td>
+          <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${a.id}">${h(a.titulo)}</button><br><span class="sub">${h(cat[a.categoria] || "sem categoria")}</span></td>
+          <td class="sub">${data(a.capturado_em)}</td>
+          <td class="sub">${h(a.orgaos || "—")}</td>
           <td>${selo(ROTULOS.relevancia[a.relevancia], a.relevancia==="alta" ? "erro" : a.relevancia==="media" ? "" : "neutro")}</td>
           <td>${seloSituacao(a.situacao_confirmacao)}</td>
           <td>${selo(ROTULOS.status[a.status], a.status==="publicado" ? "ok" : "neutro")}${a.em_revisao ? " " + selo("aguarda aprovação","alerta") : ""}</td>

@@ -729,12 +729,27 @@ def test_painel_e_lista_de_assuntos_trazem_os_numeros_certos(limpo):
         p = c.execute("select fontes_ativas, na_fila, alta_relevancia, em_verificacao, aguardando_aprovacao, no_site "
                       "from radar_v_painel").fetchone()
         assert p == (6, 1, 1, 1, 1, 1)
-        linha = c.execute("select evidencias, evidencias_conferidas, conteudos, orgaos, status "
+        linha = c.execute("select evidencias, evidencias_conferidas, conteudos, orgaos, status, capturado_em "
                           "from radar_v_assuntos where id = %s", (a,)).fetchone()
-        assert linha == (1, 1, 1, "Receita Federal do Brasil", "publicado")
+        assert linha[:5] == (1, 1, 1, "Receita Federal do Brasil", "publicado")
+        assert linha[5] is not None      # v0.54.0: a data da captura (primeira captura do assunto) na lista de Assuntos
     with como("authenticated", SEM_PERFIL) as c:
         assert c.execute("select na_fila, no_site from radar_v_painel").fetchone() == (0, 0)
         assert c.execute("select count(*) from radar_v_assuntos").fetchone()[0] == 0
+
+
+def test_sql_incremental_da_data_de_captura_da_v0540(limpo):
+    """v0.54.0: o sql/radar-assunto-captura-data-v0.54.0.sql (que o administrador roda) acrescenta capturado_em na
+    radar_v_assuntos — a data da PRIMEIRA captura do assunto. É um create or replace (pode rodar de novo)."""
+    a, c1, pid = no_ar(limpo)
+    arq = RAIZ / "sql" / "radar-assunto-captura-data-v0.54.0.sql"
+    assert psql(arq).returncode == 0
+    assert psql(arq).returncode == 0                                         # idempotente: roda de novo sem erro
+    with como("authenticated", LEITOR) as c:
+        base = c.execute("select min(rc.capturado_em)::date from radar_capturas rc "
+                         "join radar_assunto_capturas ac on ac.captura_id = rc.id where ac.assunto_id = %s", (a,)).fetchone()[0]
+        vista = c.execute("select capturado_em::date from radar_v_assuntos where id = %s", (a,)).fetchone()[0]
+        assert vista is not None and vista == base
 
 
 def test_atualizacao_da_v0_1_0_para_a_v0_2_0_preserva_os_dados():

@@ -760,6 +760,57 @@ def test_inlabs_baixa_os_dias_da_janela_e_pede_o_cadastro_quando_falta():
 
 
 
+def test_inlabs_manutencao_do_governo_nao_culpa_a_senha():
+    """v0.54.0: 404/5xx ou a página de manutenção no login do INLABS = serviço do governo fora do ar. A mensagem é honesta
+    (“indisponível/manutenção”), não “confira a senha”. Senha errada de verdade (200 sem sessão) continua pedindo para conferir."""
+    import os, radar_inlabs
+    from radar_util import ErroDownload
+
+    class Resp:
+        def __init__(self, status, content=b""): self.status_code, self.content = status, content
+
+    class Sessao:
+        def __init__(self, resposta): self.resposta, self.cookies = resposta, {}
+        def post(self, url, data, timeout): return self.resposta
+
+    os.environ.update(INLABS_EMAIL="a@b.c", INLABS_SENHA="s")
+    try:
+        manut = "<html><body>Site em manutenção, acesso temporariamente indisponível.</body></html>".encode()
+        for resp in (Resp(404), Resp(503), Resp(200, manut)):
+            with pytest.raises(ErroDownload, match="indisponível"):
+                radar_inlabs.entrar(Sessao(resp))
+        with pytest.raises(ErroDownload, match="login não foi aceito"):      # 200 sem sessão e sem manutenção = senha mesmo
+            radar_inlabs.entrar(Sessao(Resp(200, b"<html>entrar</html>")))
+    finally:
+        os.environ.pop("INLABS_EMAIL", None); os.environ.pop("INLABS_SENHA", None)
+
+
+def test_inlabs_recupera_os_dias_parados_quando_o_servico_volta():
+    """v0.54.0: ao voltar depois de dias fora do ar, a janela alarga para cobrir o período parado (não perde nada), com teto.
+    Em operação normal (sem/último sucesso recente) a janela é a da configuração, como antes."""
+    import os, radar_inlabs
+
+    class Resp:
+        def __init__(self, status, content=b""): self.status_code, self.content = status, content
+
+    class Sessao:
+        def __init__(self): self.pedidos, self.cookies = [], {}
+        def post(self, url, data, timeout): self.cookies["inlabs_session_cookie"] = "x"; return Resp(200)
+        def get(self, url, params, timeout, headers): self.pedidos.append(params["dl"]); return Resp(200, b"<html>sem edicao</html>")
+
+    os.environ.update(INLABS_EMAIL="a@b.c", INLABS_SENHA="s")
+    try:
+        fonte = {"slug": "dou-inlabs", "tipo_coletor": "inlabs", "config": {"janela_dias": 1, "secoes": ["DO1"]}}
+        s = Sessao(); radar_inlabs.listar_paginas(s, fonte, date(2026, 10, 27))
+        assert s.pedidos == ["2026-10-27-DO1.zip"]                                   # normal: só o dia da config
+        s2 = Sessao(); radar_inlabs.listar_paginas(s2, dict(fonte, ultimo_sucesso_em="2026-10-19T16:29:00+00:00"), date(2026, 10, 27))
+        assert len(s2.pedidos) == 9 and s2.pedidos[0] == "2026-10-27-DO1.zip" and "2026-10-19-DO1.zip" in s2.pedidos   # 8 dias parados + hoje
+        s3 = Sessao(); radar_inlabs.listar_paginas(s3, dict(fonte, ultimo_sucesso_em="2026-01-01T00:00:00+00:00"), date(2026, 10, 27))
+        assert len(s3.pedidos) == radar_inlabs.TETO_JANELA_DIAS                       # queda muito longa: respeita o teto
+    finally:
+        os.environ.pop("INLABS_EMAIL", None); os.environ.pop("INLABS_SENHA", None)
+
+
 def test_inlabs_erro_do_servidor_ou_sessao_perdida_nao_vira_dia_sem_edicao():
     import radar_inlabs
     from radar_util import ErroDownload

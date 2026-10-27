@@ -23,7 +23,7 @@ import os
 import re
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup
@@ -33,6 +33,7 @@ from radar_util import ErroDownload, hoje_brasilia, normalizar_espacos
 
 BASE = "https://inlabs.in.gov.br"
 LEITURA = "https://www.in.gov.br/leiturajornal?data={data}&secao={secao}"
+TETO_JANELA_DIAS = 20   # v0.54.0: teto da janela de recuperação quando o INLABS fica dias fora do ar (não baixa o mundo)
 
 
 def _data_br(valor: str | None) -> date | None:
@@ -104,6 +105,17 @@ def para_item(ato: dict) -> Item:
                 trecho_do_tema=None if ato["ementa"] else (ato["texto"][:500] or None))
 
 
+def _parece_manutencao(r) -> bool:
+    """v0.54.0: a resposta é a página de manutenção/indisponibilidade do INLABS (status 200, mas o site avisa que está fora do ar)."""
+    bruto = getattr(r, "content", None) or b""
+    try:
+        corpo = bruto[:20000].decode("utf-8", "ignore").lower()
+    except Exception:
+        return False
+    return ("em manutenção" in corpo or "em manutencao" in corpo or "temporariamente indispon" in corpo
+            or "em atualização" in corpo or "em atualizacao" in corpo)
+
+
 def entrar(sessao: requests.Session, email: str | None = None, senha: str | None = None) -> None:
     # v0.23.0: sem os espaços e as quebras de linha das pontas (um colado no segredo do GitHub fez o login falhar em produção)
     email = (email or os.environ.get("INLABS_EMAIL") or "").strip()
@@ -115,6 +127,11 @@ def entrar(sessao: requests.Session, email: str | None = None, senha: str | None
         r = sessao.post(f"{BASE}/logar.php", data={"email": email, "password": senha}, timeout=40)
     except requests.RequestException as e:
         raise ErroDownload(f"INLABS: sem conexão — {type(e).__name__}: {e}") from e
+    # v0.54.0: 404 ou 5xx (ou a página de manutenção) no login = o serviço oficial do INLABS está em manutenção/fora do ar.
+    # Não é o e-mail nem a senha — a mensagem honesta evita caçar um problema que não existe (e alarme à toa; ver radar_alertas).
+    if r.status_code == 404 or r.status_code >= 500 or _parece_manutencao(r):
+        raise ErroDownload(f"INLABS indisponível (em manutenção ou fora do ar — HTTP {r.status_code}); é o serviço oficial do "
+                           "governo, não o e-mail nem a senha. O robô tenta de novo na próxima coleta.")
     if r.status_code >= 400 or not sessao.cookies.get("inlabs_session_cookie"):
         raise ErroDownload(f"INLABS: o login não foi aceito (HTTP {r.status_code}); confira o e-mail e a senha nos segredos")
 
@@ -151,8 +168,33 @@ def _memoria(sessao) -> dict:
     return memoria
 
 
-def _dias_e_secoes(config: dict, hoje: date) -> list[tuple[date, str]]:
-    return [(hoje - timedelta(days=n), secao) for n in range(int(config.get("janela_dias", 5)))
+def _data_do_instante(valor) -> date | None:
+    """A data (dia) de um instante do banco — texto ISO ('2026-10-19T16:29:...') ou datetime."""
+    if not valor:
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    m = re.match(r"\s*(\d{4})-(\d{2})-(\d{2})", str(valor))
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+    except ValueError:
+        return None
+
+
+def _janela_dias(fonte: dict, hoje: date) -> int:
+    """v0.54.0: a janela normal (config, padrão 5), alargada para cobrir os dias em que o INLABS ficou fora do ar.
+    Assim, quando o serviço volta, o robô recupera sozinho o período parado — com um teto, para não baixar demais.
+    Em operação normal (sucesso recente) nada muda: volta a ser a janela da configuração."""
+    base = int((fonte.get("config") or {}).get("janela_dias", 5))
+    desde = _data_do_instante(fonte.get("ultimo_sucesso_em"))
+    if desde and desde < hoje:
+        base = max(base, (hoje - desde).days + 1)
+    return min(base, TETO_JANELA_DIAS)
+
+
+def _dias_e_secoes(fonte: dict, hoje: date) -> list[tuple[date, str]]:
+    config = fonte.get("config") or {}
+    return [(hoje - timedelta(days=n), secao) for n in range(_janela_dias(fonte, hoje))
             for secao in (config.get("secoes") or ["DO1", "DO1E"])]
 
 
@@ -161,16 +203,16 @@ def janela_em_memoria(sessao, fonte: dict, hoje: date | None = None) -> bool:
     memoria = getattr(sessao, "radar_inlabs", None)
     if not memoria:
         return False
-    return all(chave in memoria["atos"] for chave in _dias_e_secoes(fonte.get("config") or {}, hoje or hoje_brasilia()))
+    return all(chave in memoria["atos"] for chave in _dias_e_secoes(fonte, hoje or hoje_brasilia()))
 
 
 def listar_paginas(sessao: requests.Session, fonte: dict, hoje: date | None = None) -> tuple[Listagem, int | None]:
     config = fonte.get("config") or {}
     hoje = hoje or hoje_brasilia()
-    janela = int(config.get("janela_dias", 5))
+    janela = _janela_dias(fonte, hoje)      # v0.54.0: janela normal, alargada para recuperar os dias parados do INLABS
     memoria = _memoria(sessao)
     atos = []
-    for dia, secao in _dias_e_secoes(config, hoje):
+    for dia, secao in _dias_e_secoes(fonte, hoje):
         if (dia, secao) not in memoria["atos"]:
             if not memoria["logado"]:
                 entrar(sessao)

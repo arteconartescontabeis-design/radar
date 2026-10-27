@@ -1,4 +1,13 @@
-# Radar Artecon — Relatório de testes (v0.53.0)
+# Radar Artecon — Relatório de testes (v0.54.0)
+
+**v0.54.0 — colunas "Capturado em" e "Fonte" nos Assuntos + INLABS resistente a quedas** (27/10/2026): (1) a lista de Assuntos
+ganhou as colunas **Capturado em** (data da primeira captura do assunto) e **Fonte** (órgão de origem). É uma mudança de consulta
+no banco (`radar_v_assuntos` ganha `capturado_em`; a `Fonte`/`orgaos` já existia), entregue como `sql/radar-assunto-captura-data-v0.54.0.sql`
+(create or replace, idempotente) e dobrada no setup. (2) o robô do **DOU/INLABS** passou a reconhecer manutenção/fora do ar do serviço
+oficial (404/5xx ou página de manutenção): mensagem honesta ("indisponível", não "confira a senha"), **sem alarme à toa** (só avisa
+se a queda durar ~3 dias — `FALHAS_PARA_AVISAR_INDISPONIVEL`), e **janela de recuperação** que cobre os dias parados ao voltar (com
+teto). Novos testes: view com `capturado_em` + SQL incremental idempotente (banco), mensagem de manutenção e recuperação de dias
+(coletores), limite de alarme de indisponibilidade (e2e), colunas na tela (telas). **A suíte INTEIRA roda no CI antes de juntar.**
 
 **v0.53.0 — filtro de Assuntos reagrupado** (27/10/2026): o filtro de situação dos Assuntos foi agrupado — "Principais"
 (Capturado, Falta publicar, Publicado), "Por etapa", "Descartados" (Ignorado) e "Visão geral" (Em andamento, Todos), com um filtro

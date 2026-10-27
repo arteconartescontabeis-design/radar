@@ -466,6 +466,19 @@ def test_avisos_conversam_com_a_api_do_github_no_formato_certo():
     assert Sessao.headers["Authorization"] == "Bearer tok"
 
 
+def test_alertas_indisponibilidade_do_servico_nao_alarma_por_queda_curta():
+    """v0.54.0: fonte num serviço oficial em manutenção/fora do ar (ex.: INLABS do DOU) só vira aviso se a queda durar mesmo
+    (≈3 dias ≈ 12 coletas); uma queda curta não abre alarme à toa. Erro comum de outra fonte continua alarmando a 3 falhas."""
+    import radar_alertas
+    outage = {"slug": "dou-inlabs", "nome": "DOU", "ativo": True, "falhas_consecutivas": 3,
+              "ultimo_erro": "INLABS indisponível (em manutenção ou fora do ar — HTTP 404); é o serviço oficial do governo."}
+    normal = {"slug": "rfb", "nome": "RFB", "ativo": True, "falhas_consecutivas": 3, "ultimo_erro": "HTTP 500 em ..."}
+    abrir, _ = radar_alertas.decidir([outage, normal], {})
+    assert [f["slug"] for f in abrir] == ["rfb"]                      # a RFB (erro comum) alarma a 3; o INLABS em manutenção, não
+    abrir2, _ = radar_alertas.decidir([dict(outage, falhas_consecutivas=12)], {})
+    assert [f["slug"] for f in abrir2] == ["dou-inlabs"]              # mas uma indisponibilidade longa (≈3 dias) alarma
+
+
 def test_avisos_sem_variaveis_ou_com_erro_nunca_derrubam_a_coleta(monkeypatch, capsys):
     import radar_alertas
     for v in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "GITHUB_TOKEN", "GITHUB_REPOSITORY"):
