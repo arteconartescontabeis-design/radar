@@ -1,4 +1,4 @@
-# Radar Artecon — v0.52.0
+# Radar Artecon — v0.53.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.53.0 deixa o **filtro de situação dos Assuntos** (Notícias → Assuntos) mais claro. Antes era uma lista só, confusa e com
+etapas que nem são usadas. Agora vem **agrupado**: em "Principais", as três que importam — **📥 Capturado** (falta tratar),
+**✍️ Falta publicar** (em tratamento) e **✅ Publicado** (já no ar); abaixo, "Por etapa", "Descartados" (Ignorado) e "Visão geral"
+(Em andamento, Todos). O **preparo em lote com IA** (marcar vários e "Preparar as marcadas") **não muda**. É **só de tela** (nada no
+banco). Veja "Da v0.52.0 para a v0.53.0".
 
 A v0.52.0 acrescenta no **teleprompter** (aba Vídeo) um botão **"▶ Assistir"** que aparece depois de cada tomada: dá para **rever o
 vídeo gravado ali mesmo**, antes de decidir se mantém ou regrava. Fecha com "Fechar a prévia" e some sozinho ao gravar de novo. É
@@ -3005,6 +3011,14 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.52.0 para a v0.53.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a
+v0.52.0 instalada:
+
+1. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.53.0".
+2. Conferência rápida: em **Notícias → Assuntos**, o filtro de situação (no alto) agora vem **agrupado** — "Principais"
+   (Capturado, Falta publicar, Publicado), "Por etapa", "Descartados" e "Visão geral". O preparo em lote com IA continua igual.
+   As funções `radar-ia`, `radar-redes` e `radar-video` **não mudam**; o banco segue na **v0.50.0**.
 
 **Da v0.51.0 para a v0.52.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a
 v0.51.0 instalada:

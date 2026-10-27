@@ -1,4 +1,10 @@
-# Radar Artecon — Relatório de testes (v0.52.0)
+# Radar Artecon — Relatório de testes (v0.53.0)
+
+**v0.53.0 — filtro de Assuntos reagrupado** (27/10/2026): o filtro de situação dos Assuntos foi agrupado — "Principais"
+(Capturado, Falta publicar, Publicado), "Por etapa", "Descartados" (Ignorado) e "Visão geral" (Em andamento, Todos), com um filtro
+derivado novo `falta_publicar` (status em tratamento, ainda não publicado). É **só de tela** (`index.html`); **nada no banco**
+(segue na v0.50.0). O preparo em lote com IA não muda. Teste de tela novo cobre os filtros Capturado/Falta publicar/Publicado.
+**A suíte INTEIRA roda no CI antes de juntar.**
 
 **v0.52.0 — assistir a tomada no teleprompter** (27/10/2026): depois de cada gravação, um botão **"▶ Assistir"** abre a prévia do
 vídeo gravado no próprio teleprompter (fecha com "Fechar a prévia"; some ao gravar de novo). É **só de tela** (`radar-video.js` e
