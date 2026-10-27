@@ -1,4 +1,10 @@
-# Radar Artecon — Relatório de testes (v0.50.0)
+# Radar Artecon — Relatório de testes (v0.51.0)
+
+**v0.51.0 — teleprompter melhorado** (27/10/2026): na aba Vídeo, o teleprompter ganhou **"↑ Início"** (volta o texto ao começo),
+**"Cancelar"** (descarta a tomada sem guardar), seletor de **Microfone** (lapela) e o **preview mostra o enquadramento inteiro**
+(9:16) — que **encolhe** ao começar a gravar, deixando o texto grande e bem visível. É **só de tela** (`radar-video.js` e
+`index.html`); **nada no banco** (segue na v0.50.0). O teste de tela do teleprompter cobre os botões novos. **A suíte INTEIRA roda
+no CI antes de juntar.**
 
 **v0.50.0 — data do termo no horário de Brasília** (25/10/2026): `radar_pessoa_assinar_termo` e `radar_pessoa_revogar_termo`
 gravam a data pelo dia de Brasília (`radar_pauta_hoje`), não mais pelo `current_date` (UTC) — que, entre 21h e a meia-noite, podia

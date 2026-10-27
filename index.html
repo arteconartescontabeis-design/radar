@@ -254,11 +254,16 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 /* v0.44.0: o teleprompter (fundo preto, letras grandes rolando; a câmera pequena no alto) */
 .caixa-tele{max-width:720px;background:#000;color:#fff}
 .tele-topo{display:flex;gap:12px;padding:12px;align-items:flex-start;background:#101418;flex-wrap:wrap}
-#tele-camera{width:112px;aspect-ratio:9/16;background:#000;border-radius:8px;object-fit:cover;flex:none}
+#tele-camera{width:150px;aspect-ratio:9/16;background:#000;border-radius:8px;object-fit:contain;flex:none}
+.tele-gravando #tele-camera{width:76px}
+.tele-mic-linha{align-items:center}
+#tele-mic{background:#1a1f25;color:#fff;border:1px solid #39424c;border-radius:6px;padding:6px;max-width:100%}
 .tele-controles{flex:1;min-width:230px;display:flex;flex-direction:column;gap:8px}
 .tele-controles .sub{color:#C7D0D9}
 .tele-controles .sub a{color:#9FD1FF}
 .tele-janela{height:min(52vh,460px);overflow:hidden;background:#000;padding:0 20px}
+.tele-gravando .tele-janela{height:min(70vh,640px)}
+.tele-gravando .tele-ajustes,.tele-gravando .tele-mic-linha{display:none}
 .tele-rolo{font-weight:700;line-height:1.35;padding:38vh 0 70vh;will-change:transform}
 .tele-rolo p{margin:0 0 .6em}
 .tele-espelhado{scale:-1 1}
@@ -428,21 +433,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.50.0"></script>
-<script src="radar-video.js?v=0.50.0"></script>
-<script src="radar-setor.js?v=0.50.0"></script>
-<script src="radar-respostas.js?v=0.50.0"></script>
+<script src="radar-pauta.js?v=0.51.0"></script>
+<script src="radar-video.js?v=0.51.0"></script>
+<script src="radar-setor.js?v=0.51.0"></script>
+<script src="radar-respostas.js?v=0.51.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.50.0";
+const VERSAO = "0.51.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.51.0", "27/10/2026", [
+    "Teleprompter melhorado (aba Vídeo → “Gravar pelo navegador (teleprompter)”). Agora tem um botão “↑ Início” para voltar o texto ao começo, um botão “Cancelar” para descartar a gravação sem guardar, a escolha do Microfone (para usar a lapela em vez do microfone do celular) e o preview da câmera mostra o enquadramento inteiro — o quadro 9:16 que vai ser gravado. Enquanto você enquadra, o vídeo aparece maior; quando a gravação começa, o vídeo encolhe e o texto fica grande e bem visível. O texto também volta sozinho ao início ao começar a gravar.",
+    "Administrador: é só a tela — nada muda no banco, nenhum SQL. As funções radar-ia, radar-redes e radar-video não mudam. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.50.0 para a v0.51.0”."]],
   ["0.50.0", "25/10/2026", [
     "Data do termo sempre no horário de Brasília: ao assinar ou revogar o termo de uso de imagem (Pauta → Pessoas e termos), a data passa a ser gravada pelo dia de Brasília, e não mais pelo relógio do servidor (UTC). Antes, entre 21h e a meia-noite, a data podia pular para o dia seguinte — e aí uma publicação chegava a ser barrada (“termo assinado depois desta data”) ou o estado do termo aparecia errado na tela. Agora fica sempre certo.",
     "Administrador: rode no Supabase (SQL Editor) o sql/radar-setup-v0.50.0.sql (atualiza duas funções do termo; nenhuma tabela nova; nada é apagado; pode rodar de novo). As funções radar-ia, radar-redes e radar-video não mudam. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.49.0 para a v0.50.0”."]],

@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.50.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.51.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -502,20 +502,24 @@ async function abrirTeleprompter(pid){
   if(!linhas.length || !textoDe(roteiro)){ recado(pid ? "A peça está sem roteiro: escreva o roteiro antes de abrir o teleprompter." :
     "Cole primeiro a fala para conferência: é ela que o teleprompter mostra.", true); return; }
   const podeGravar = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
-  TELE = {pid, veloc:40, letra:44, y:0, rolando:false, tomadas:0, gravador:null, fluxo:null, pedacos:[], inicioMs:0, url:null};
+  TELE = {pid, veloc:40, letra:44, y:0, rolando:false, tomadas:0, gravador:null, fluxo:null, pedacos:[], inicioMs:0, url:null, cancelando:false, micId:""};
   document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="teleprompter"><div class="caixa-previa caixa-tele" role="dialog" aria-modal="true" aria-label="Teleprompter">
     <div class="tele-topo">
       <video id="tele-camera" autoplay muted playsinline></video>
       <div class="tele-controles">
-        <div class="acoes">${podeGravar ? `<button class="btn verde" type="button" data-acao="tele-gravar" id="tele-gravar">Começar a gravar</button>` : ""}
+        <div class="acoes">${podeGravar ? `<button class="btn verde" type="button" data-acao="tele-gravar" id="tele-gravar">Começar a gravar</button>
+          <button class="btn perigo" type="button" data-acao="tele-cancelar" id="tele-cancelar" hidden>Cancelar</button>` : ""}
           <button class="btn sec" type="button" data-acao="tele-rolar" id="tele-rolar">Rolar o texto</button>
+          <button class="btn sec" type="button" data-acao="tele-inicio">↑ Início</button>
           <button class="btn sec" type="button" data-acao="tele-fechar">Fechar</button></div>
-        <div class="acoes"><button class="btn peq sec" type="button" data-acao="tele-letra" data-passo="-1" aria-label="Letra menor">A−</button>
+        <div class="acoes tele-ajustes"><button class="btn peq sec" type="button" data-acao="tele-letra" data-passo="-1" aria-label="Letra menor">A−</button>
           <button class="btn peq sec" type="button" data-acao="tele-letra" data-passo="1" aria-label="Letra maior">A+</button>
           <button class="btn peq sec" type="button" data-acao="tele-veloc" data-passo="-1">Mais devagar</button>
           <button class="btn peq sec" type="button" data-acao="tele-veloc" data-passo="1">Mais rápido</button>
           <button class="btn peq sec" type="button" data-acao="tele-espelho">Espelhar o texto</button></div>
-        <p class="sub" id="tele-aviso">${podeGravar ? "Grave no celular, EM PÉ (vertical): o corretor recusa vídeo deitado. A gravação entra na lista de clipes; nada é enviado até você mandar."
+        ${podeGravar ? `<div class="acoes tele-mic-linha" hidden><label for="tele-mic" class="sub">Microfone:</label>
+          <select id="tele-mic" aria-label="Microfone"><option value="">Microfone padrão</option></select></div>` : ""}
+        <p class="sub" id="tele-aviso">${podeGravar ? "Enquadre pelo preview (mostra o quadro inteiro, 9:16). Grave no celular, EM PÉ (vertical): o corretor recusa vídeo deitado. Ao começar a gravar, o vídeo encolhe e o texto fica grande. Nada é enviado até você mandar."
           : "Este navegador não grava vídeo: use o teleprompter só para ler e grave pela câmera do celular."}</p>
       </div>
     </div>
@@ -530,6 +534,8 @@ async function abrirTeleprompter(pid){
       const faixa = TELE.fluxo.getVideoTracks()[0], d = faixa?.getSettings?.() || {};
       if(d.width && d.height && d.width > d.height)
         $("#tele-aviso").textContent = "A câmera está DEITADA (horizontal): o corretor recusa. Grave pelo celular em pé, ou use o teleprompter só para ler.";
+      await popularMicsTele();                                        // v0.51.0: lista os microfones (lapela) e liga a troca
+      const selMic = $("#tele-mic"); if(selMic) selMic.addEventListener("change", trocarMicTele);
     }catch(e){
       const av = $("#tele-aviso");
       if(av) av.textContent = "A câmera não abriu (sem permissão ou sem câmera): use o teleprompter só para ler e grave pelo celular.";
@@ -545,13 +551,22 @@ function tipoGravacaoTele(){
 async function pararGravacaoTele(){
   const g = TELE?.gravador;
   if(!g || g.state === "inactive") return;
+  const cancelado = TELE.cancelando; TELE.cancelando = false;
   const fim = new Promise(ok => { g.onstop = ok; });
   g.stop();
   await fim;
+  TELE.gravador = null;
+  $("#teleprompter")?.classList.remove("tele-gravando");            // v0.51.0: o vídeo volta ao tamanho de enquadrar e o texto ao normal
+  const cancelBtn = $("#tele-cancelar"); if(cancelBtn) cancelBtn.hidden = true;
+  const gBtn = $("#tele-gravar");
+  if(gBtn){ gBtn.textContent = "Começar a gravar"; gBtn.classList.remove("perigo"); gBtn.classList.add("verde"); }
+  if(cancelado){ TELE.pedacos = [];
+    const avC = $("#tele-aviso"); if(avC) avC.textContent = "Gravação cancelada: nada foi guardado. Quando quiser, “Começar a gravar” de novo.";
+    return; }
   const duracaoMs = Math.max(200, Date.now() - TELE.inicioMs);
   const tipo = String(g.mimeType || tipoGravacaoTele()).split(";")[0] || "video/webm";
   let blob = new Blob(TELE.pedacos, {type:tipo});
-  TELE.pedacos = []; TELE.gravador = null;
+  TELE.pedacos = [];
   if(tipo === "video/webm") blob = await consertarDuracaoWebm(blob, duracaoMs);
   TELE.tomadas += 1;
   const nome = `teleprompter-${TELE.tomadas}.${tipo === "video/mp4" ? "mp4" : "webm"}`;
@@ -562,10 +577,34 @@ async function pararGravacaoTele(){
   redesenharClipes(TELE.pid);
   if(TELE.url) URL.revokeObjectURL(TELE.url);
   TELE.url = URL.createObjectURL(arquivo);
-  const g2 = $("#tele-gravar");
-  if(g2){ g2.textContent = "Começar a gravar"; g2.classList.remove("perigo"); g2.classList.add("verde"); }
   const av = $("#tele-aviso");
   if(av) av.innerHTML = `Tomada ${TELE.tomadas} (${segVideo(duracaoMs / 1000)} s) entrou na lista de clipes. <a href="${TELE.url}" download="${h(nome)}">Baixar esta tomada</a> (se quiser guardar).`;
+}
+/* v0.51.0: a lista de microfones (o nome só aparece depois da permissão da câmera/áudio). Com um só, a linha fica escondida
+   (não há o que escolher). Trocar é só fora da gravação: para a faixa de áudio atual e põe a do microfone escolhido (a lapela). */
+async function popularMicsTele(){
+  const sel = $("#tele-mic"); if(!sel || !navigator.mediaDevices?.enumerateDevices) return;
+  try{
+    const mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+    const linha = sel.closest(".tele-mic-linha");
+    if(mics.length < 2){ linha?.setAttribute("hidden", ""); return; }
+    const atual = TELE?.fluxo?.getAudioTracks?.()[0]?.getSettings?.().deviceId || "";
+    sel.innerHTML = mics.map((d, i) => `<option value="${h(d.deviceId)}"${d.deviceId === atual ? " selected" : ""}>${h(d.label || ("Microfone " + (i + 1)))}</option>`).join("");
+    linha?.removeAttribute("hidden");
+  }catch(e){ /* sem lista de microfones: fica o padrão */ }
+}
+async function trocarMicTele(){
+  const sel = $("#tele-mic");
+  if(!TELE || !sel || (TELE.gravador && TELE.gravador.state === "recording")) return;
+  const id = sel.value;
+  try{
+    const novo = await navigator.mediaDevices.getUserMedia(id ? {audio:{deviceId:{exact:id}}} : {audio:true});
+    const faixa = novo.getAudioTracks()[0];
+    if(!faixa){ return; }
+    (TELE.fluxo?.getAudioTracks?.() || []).forEach(t => { try{ TELE.fluxo.removeTrack(t); }catch(e){ /* já saiu */ } t.stop(); });
+    TELE.fluxo?.addTrack(faixa);
+    TELE.micId = id;
+  }catch(e){ recado("Não consegui usar esse microfone (o aparelho pode não aceitar): escolha outro.", true); }
 }
 /* O que vai à função no envio: confere tudo o que a tela sabe ANTES de qualquer arquivo sair (o banco confere de novo) */
 function conferirEnvio(p, lista){
@@ -1991,6 +2030,7 @@ const VIDEO = {
   // não gravam nada: só a tela (o que grava é feito uma ação por vez)
   navegacao:["video-nova", "video-nova-cancelar", "video-clipe-mover", "video-clipe-tirar", "video-ouvir",
     "video-teleprompter", "tele-fechar", "tele-rolar", "tele-letra", "tele-veloc", "tele-espelho", "tele-gravar",   // v0.44.0
+    "tele-inicio", "tele-cancelar",   // v0.51.0: voltar o texto ao início e cancelar a gravação (nada sobe)
     ...NAVEGACAO_ABA_VIDEO],
   acoes:{
     /* v0.44.0: o teleprompter (ler o roteiro em letras grandes e, se o navegador souber, gravar ali mesmo) */
@@ -2013,11 +2053,20 @@ const VIDEO = {
       TELE.gravador.ondataavailable = ev => { if(ev.data?.size) TELE.pedacos.push(ev.data); };
       TELE.inicioMs = Date.now();
       TELE.gravador.start(1000);
+      TELE.cancelando = false;
+      TELE.y = 0; TELE.antes = null;                                  // v0.51.0: o texto volta ao início ao começar a gravar
+      const rolo = $("#tele-rolo"); if(rolo) rolo.style.transform = "translateY(0)";
+      $("#teleprompter")?.classList.add("tele-gravando");             // v0.51.0: encolhe o vídeo e deixa o texto grande
+      const cancel = $("#tele-cancelar"); if(cancel) cancel.hidden = false;
       const b = $("#tele-gravar");
       if(b){ b.textContent = "Parar e guardar"; b.classList.remove("verde"); b.classList.add("perigo"); }
       const av = $("#tele-aviso");
       if(av) av.textContent = "Gravando… Fale com o texto rolando; ao terminar, “Parar e guardar” põe a tomada na lista de clipes.";
     },
+    "tele-inicio"(){ if(!TELE) return; TELE.y = 0; TELE.antes = null;      // v0.51.0: volta o texto ao começo
+      const r = $("#tele-rolo"); if(r) r.style.transform = "translateY(0)"; },
+    async "tele-cancelar"(){ if(!TELE?.gravador || TELE.gravador.state !== "recording") return;   // v0.51.0: descarta a tomada
+      TELE.cancelando = true; await pararGravacaoTele(); },
     "video-nova"(){ const ev = estadoVideo(); ev.nova = true; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); $("#video-envio")?.scrollIntoView({block:"nearest"}); },
     "video-nova-cancelar"(){ const ev = estadoVideo(); ev.nova = false; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); },
     "video-clipe-mover"(el){ const pid = estadoVideo().peca, l = clipesDe(pid), i = Number(el.dataset.i), j = i + Number(el.dataset.passo);

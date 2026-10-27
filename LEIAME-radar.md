@@ -1,4 +1,4 @@
-# Radar Artecon — v0.50.0
+# Radar Artecon — v0.51.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.51.0 melhora o **teleprompter** da aba Vídeo ("Gravar pelo navegador (teleprompter)"): um botão **"↑ Início"** volta o texto
+ao começo, um botão **"Cancelar"** descarta a gravação sem guardar, dá para **escolher o microfone** (a lapela, em vez do microfone
+do celular) e o **preview mostra o enquadramento inteiro** (o quadro 9:16 que será gravado). Ao enquadrar, o vídeo aparece
+**maior**; ao começar a gravar, o vídeo **encolhe** e o **texto fica grande**. É **só de tela** (nada no banco). Veja "Da v0.50.0
+para a v0.51.0".
 
 A v0.50.0 corrige a **data do termo de uso de imagem**: ao **assinar** ou **revogar** o termo (Pauta → Pessoas e termos), a data
 passa a ser gravada pelo **dia de Brasília**, e não mais pelo relógio do servidor (em UTC). Antes, **entre 21h e a meia-noite**, a
@@ -2995,6 +3001,15 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.50.0 para a v0.51.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a
+v0.50.0 instalada:
+
+1. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5**. O rodapé mostra "Radar v0.51.0".
+2. Conferência rápida: na **aba Vídeo** → **"Gravar pelo navegador (teleprompter)"**, confira o botão **"↑ Início"** (volta o
+   texto ao começo), o **"Cancelar"** (aparece enquanto grava e descarta a tomada), o seletor **Microfone** (a lapela) e que o
+   **preview mostra o quadro inteiro** e **encolhe** quando a gravação começa, deixando o texto grande. As funções `radar-ia`,
+   `radar-redes` e `radar-video` **não mudam**; o banco segue na **v0.50.0**.
 
 **Da v0.49.0 para a v0.50.0** (mudança **no banco** — duas funções do termo; **nenhuma tabela nova**, **nada é apagado**;
 **nenhum segredo novo**). Supõe a v0.49.0 instalada:
