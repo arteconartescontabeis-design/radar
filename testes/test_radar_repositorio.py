@@ -53,7 +53,7 @@ NOMES_DA_AMOSTRA = {"Ana Teste", "Bruno Exemplo", "Carla Modelo", "Equipe", "—
 MIDIA = {".mp4", ".mov", ".m4v", ".m4a", ".3gp", ".3g2", ".mkv", ".webm", ".avi", ".wmv", ".flv", ".m2ts", ".hevc",
          ".h264", ".wav", ".mp3", ".aac", ".flac", ".ogg", ".oga", ".opus", ".wma", ".amr", ".aif", ".aiff", ".caf",
          ".jpg", ".jpeg", ".heic", ".heif", ".webp", ".gif", ".tif", ".tiff", ".bmp", ".dng", ".png", ".ass", ".ssa", ".srt", ".vtt"}
-IMAGENS_DO_PACOTE = {"radar-logo-artecon.png", "radar-timbrado-topo.png", "radar-timbrado-rodape.png"}
+IMAGENS_DO_PACOTE = {"radar-logo-artecon.png", "radar-logo-artecon-branco.png", "radar-timbrado-topo.png", "radar-timbrado-rodape.png"}
 # (o pedido com a fala e a cartela, o estado com o alinhamento, o resultado com o relatório, o erro, os temporários ".<nome>.json" de
 # cada um, a transcrição guardada e a enviada, o pedido da transcrição, o erro dela e a luz de cada clipe)
 TRABALHO_DO_ROBO = {"palavras.json", "palavras_envio.json", "pedido_fala.json", "transcricao_erro.txt", "pedido.json", "estado.json",

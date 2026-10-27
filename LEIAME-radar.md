@@ -1,4 +1,4 @@
-# Radar Artecon — v0.54.0
+# Radar Artecon — v0.55.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.55.0 troca o **logotipo** da Artecon em **todas as imagens das publicações** (capa da notícia, reel, carrossel
+e capa padrão) e no **cabeçalho do app**, e **acaba com a "caixa branca"** atrás do logo: agora ele é desenhado
+**direto na arte**, transparente, e **se ajusta ao fundo** — **preto** em foto clara, **branco** em foto escura. O
+símbolo (caduceu) virou um **recorte vazado**, sem mancha branca. É **só de tela** (mais os arquivos do logo),
+**nada no banco**. Veja "Da v0.54.0 para a v0.55.0".
 
 A v0.54.0 traz duas melhorias. (1) Na **lista de Assuntos** (Notícias → Assuntos), principalmente em **"📥 Capturado — falta
 tratar"**, entram duas colunas: **"Capturado em"** (a data em que a informação foi capturada da fonte — a primeira captura do
@@ -3020,6 +3026,11 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.54.0 para a v0.55.0** (mudança **só de tela** + os arquivos do logo — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a v0.54.0 instalada:
+
+1. Publique a tela (`index.html` com os demais .js) **junto com os arquivos do logo**: `radar-logo-artecon.png` (o logo novo, em preto/transparente) e `radar-logo-artecon-branco.png` (a versão branca). Aperte **Ctrl+F5** (no celular, recarregue) — o rodapé mostra "Radar v0.55.0".
+2. Conferência: ao **gerar a capa** de uma notícia (com foto ou a capa padrão) e na **arte do reel/carrossel**, o logo aparece **sem o cartão branco**, **preto** sobre fundo claro e **branco** sobre fundo escuro, com o caduceu vazado. O cabeçalho do app também mostra o logo novo. As imagens **já geradas** continuam como estão; **gere a capa de novo** para o logo novo entrar. As funções `radar-ia`, `radar-redes` e `radar-video` **não mudam**; o banco segue na **v0.50.0**.
 
 **Da v0.53.0 para a v0.54.0** (uma **mudança no banco** — uma consulta — mais uma melhoria **só do robô**; **nenhum segredo novo**).
 Supõe a v0.53.0 instalada:

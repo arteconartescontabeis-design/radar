@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.54.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.55.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -812,13 +812,13 @@ async function desenharPeca(d){
     cx.fillStyle = veu; cx.fillRect(0, TOPO - 720, L, 720); }
   else for(const [raio, cor] of [[380, "rgba(86,157,204,.30)"], [290, "rgba(86,157,204,.45)"], [200, "rgba(86,157,204,.75)"]]){
     cx.beginPath(); cx.arc(L + 60, TOPO + 30, raio, 0, Math.PI * 2); cx.fillStyle = cor; cx.fill(); }
-  // faixa tricolor, o logotipo sobre cartão branco e a página ("2/6") à direita
+  // v0.55.0: faixa tricolor, o logotipo BRANCO direto (sem cartão) e a página ("2/6") à direita
   cx.fillStyle = "#BC151B"; cx.fillRect(0, 0, L * .68, 14); cx.fillStyle = "#00AEEF"; cx.fillRect(L * .68, 0, L * .22, 14); cx.fillStyle = "#FFD700"; cx.fillRect(L * .9, 0, L * .1, 14);
-  const logo = await carregar("radar-logo-artecon.png");
-  cx.fillStyle = "#fff"; caixa(M, 52, 240, 104, 14); cx.textBaseline = "middle";
+  const logo = await carregar("radar-logo-artecon-branco.png");
+  cx.textBaseline = "middle";
   if(logo && logo.naturalWidth){ const f = Math.min(200 / logo.naturalWidth, 80 / logo.naturalHeight);
-    cx.drawImage(logo, M + (240 - logo.naturalWidth * f) / 2, 52 + (104 - logo.naturalHeight * f) / 2, logo.naturalWidth * f, logo.naturalHeight * f); }
-  else{ cx.fillStyle = "#011F48"; cx.font = '700 40px Georgia, serif'; escrever("Artecon", M + 30, 104); }
+    cx.drawImage(logo, M, 52 + (104 - logo.naturalHeight * f) / 2, logo.naturalWidth * f, logo.naturalHeight * f); }
+  else{ cx.fillStyle = "#fff"; cx.font = '700 40px Georgia, serif'; escrever("Artecon", M + 30, 104); }
   if(d.pagina){ cx.font = fonte(700, 28); const w = cx.measureText(d.pagina).width + 40;
     cx.fillStyle = "rgba(255,255,255,.2)"; caixa(L - M - w, 76, w, 56, 28); cx.fillStyle = "#fff"; escrever(d.pagina, L - M - w + 20, 104); }
   const selo = y => { cx.font = fonte(700, 26); const w = cx.measureText(d.selo).width + 44;

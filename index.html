@@ -435,21 +435,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.54.0"></script>
-<script src="radar-video.js?v=0.54.0"></script>
-<script src="radar-setor.js?v=0.54.0"></script>
-<script src="radar-respostas.js?v=0.54.0"></script>
+<script src="radar-pauta.js?v=0.55.0"></script>
+<script src="radar-video.js?v=0.55.0"></script>
+<script src="radar-setor.js?v=0.55.0"></script>
+<script src="radar-respostas.js?v=0.55.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.54.0";
+const VERSAO = "0.55.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.55.0", "27/10/2026", [
+    "Logotipo novo da Artecon em tudo, sem a “caixa branca”: nas imagens das publicações (capa da notícia, reel, carrossel e capa padrão) o logo passou a ser desenhado direto na arte, transparente, sem o cartão branco atrás. Ele se ajusta sozinho ao fundo — fica PRETO em foto clara e BRANCO em foto escura — e o símbolo (caduceu) virou um recorte vazado, sem mancha branca. O cabeçalho do app também usa o logo novo.",
+    "Administrador: é só a tela e os arquivos do logo — nada muda no banco, nenhum SQL. Publique o index.html com os demais .js e os arquivos radar-logo-artecon.png (novo) e radar-logo-artecon-branco.png (juntos) e aperte Ctrl+F5. As imagens já geradas continuam como estão; gere a capa de novo para o logo novo entrar. Passo a passo no LEIAME, “Da v0.54.0 para a v0.55.0”."]],
   ["0.54.0", "27/10/2026", [
     "Na lista de Assuntos (Notícias → Assuntos), principalmente em “📥 Capturado — falta tratar”, entram duas colunas: “Capturado em” (a data em que a informação foi capturada da fonte) e “Fonte” (de qual órgão veio — ex.: Receita Federal, Imprensa Nacional, Portal Contábil SC). Ajuda a priorizar o que tratar primeiro e a ver a origem de cada item num relance.",
     "Diário Oficial da União (INLABS) mais resistente a quedas: quando o serviço oficial do governo está em manutenção ou fora do ar, o robô passa a avisar com clareza (“INLABS em manutenção/indisponível”, em vez de culpar o e-mail e a senha) e não dispara mais alarme à toa; e, quando o INLABS volta, o robô recupera sozinho os dias que ficaram parados no período — nada se perde.",
@@ -4868,6 +4871,21 @@ async function gravarImagem(conteudoId, img){
 /* Capa no padrão da Artecon, desenhada no navegador: fundo marinho, logotipo, categoria e o título. Sem depender de IA. */
 /* v0.25.0 (etapa 6): só a capa padrão (o fundo marinho com as curvas do papel timbrado). A capa montada com a ilustração da IA ao fundo
    (v0.16.0 a v0.24.0: o título, o logotipo e um degradê cobriam boa parte dela) saiu: a imagem da IA vai inteira (imagemTresPorDois). */
+// v0.55.0: o logotipo da marca — PRETO em fundo claro, BRANCO em fundo escuro — transparente, com o caduceu vazado (sem cartão branco)
+const _logoCache = {};
+function carregarLogo(cor){
+  const src = cor === "branco" ? "radar-logo-artecon-branco.png" : "radar-logo-artecon.png";
+  return _logoCache[src] || (_logoCache[src] = new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; }));
+}
+// a luminância média (0–255) de um retângulo do canvas; claro → logo preto, escuro → logo branco
+function luminanciaDoCanvas(cx, x, y, w, h){
+  try{ const d = cx.getImageData(x, y, w, h).data; let s = 0, n = 0;
+    for(let i = 0; i < d.length; i += 16){ s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; n++; }
+    return n ? s / n : 255;
+  }catch(e){ return 255; }   // canvas "tingido" por imagem de outra origem (raro): assume claro → logo preto
+}
+function corDoLogo(luminancia){ return luminancia < 140 ? "branco" : "preto"; }   // v0.55.0: < 140 (fundo escuro) → logo branco
+
 async function desenharCapa(titulo, rotulo){
   const L = 1200, A = 630, cv = document.createElement("canvas"); cv.width = L; cv.height = A;
   const cx = cv.getContext("2d");
@@ -4880,12 +4898,11 @@ async function desenharCapa(titulo, rotulo){
     cx.beginPath(); cx.arc(L + 60, A + 90, raio, 0, Math.PI * 2); cx.fillStyle = cor; cx.fill(); }
   // faixa tricolor no alto
   cx.fillStyle = "#BC151B"; cx.fillRect(0, 0, L * .68, 12); cx.fillStyle = "#00AEEF"; cx.fillRect(L * .68, 0, L * .22, 12); cx.fillStyle = "#FFD700"; cx.fillRect(L * .9, 0, L * .1, 12);
-  // logotipo sobre cartão branco
-  const logo = await new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = "radar-logo-artecon.png"; });
-  cx.fillStyle = "#fff"; caixa(60, 52, 250, 112, 14);
-  if(logo && logo.naturalWidth){ const f = Math.min(210 / logo.naturalWidth, 84 / logo.naturalHeight);
-    cx.drawImage(logo, 60 + (250 - logo.naturalWidth * f) / 2, 52 + (112 - logo.naturalHeight * f) / 2, logo.naturalWidth * f, logo.naturalHeight * f); }
-  else{ cx.fillStyle = "#011F48"; cx.font = '700 44px Georgia, serif'; cx.textBaseline = "middle"; cx.fillText("Artecon", 92, 108); }
+  // v0.55.0: logotipo BRANCO direto (fundo marinho escuro), sem cartão
+  const logo = await carregarLogo("branco");
+  if(logo && logo.naturalWidth){ const f = Math.min(220 / logo.naturalWidth, 96 / logo.naturalHeight);
+    cx.drawImage(logo, 60, 52 + (112 - logo.naturalHeight * f) / 2, logo.naturalWidth * f, logo.naturalHeight * f); }
+  else{ cx.fillStyle = "#fff"; cx.font = '700 44px Georgia, serif'; cx.textBaseline = "middle"; cx.fillText("Artecon", 60, 108); }
   // categoria
   let y = 232; cx.textBaseline = "alphabetic";
   if(rotulo){ const bruto = String(rotulo).toUpperCase(), t = bruto.length > 40 ? bruto.slice(0, 39).trimEnd() + "…" : bruto; cx.font = '700 22px "DM Sans", Arial, sans-serif';
@@ -4927,13 +4944,13 @@ async function desenharCapaFoto(foto, titulo, rotulo){
   const sombra = cx.createLinearGradient(0, A * .30, 0, A);
   sombra.addColorStop(0, "rgba(1,21,45,0)"); sombra.addColorStop(.55, "rgba(1,21,45,.62)"); sombra.addColorStop(1, "rgba(1,21,45,.94)");
   cx.fillStyle = sombra; cx.fillRect(0, 0, L, A);
-  // a faixa tricolor e o logotipo, como na capa padrão (o cartão do logotipo um pouco menor, para cobrir menos a foto)
+  // v0.55.0: a faixa tricolor e o logotipo SEM cartão — preto em foto clara, branco em foto escura (pela luminância do cantinho), caduceu vazado
   cx.fillStyle = "#BC151B"; cx.fillRect(0, 0, L * .68, 12); cx.fillStyle = "#00AEEF"; cx.fillRect(L * .68, 0, L * .22, 12); cx.fillStyle = "#FFD700"; cx.fillRect(L * .9, 0, L * .1, 12);
-  const logo = await new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = "radar-logo-artecon.png"; });
-  cx.fillStyle = "#fff"; caixa(60, 44, 210, 94, 12);
+  const corLogo = corDoLogo(luminanciaDoCanvas(cx, 60, 44, 176, 70)), logo = await carregarLogo(corLogo);
   if(logo && logo.naturalWidth){ const e = Math.min(176 / logo.naturalWidth, 70 / logo.naturalHeight);
-    cx.drawImage(logo, 60 + (210 - logo.naturalWidth * e) / 2, 44 + (94 - logo.naturalHeight * e) / 2, logo.naturalWidth * e, logo.naturalHeight * e); }
-  else{ cx.fillStyle = "#011F48"; cx.font = '700 36px Georgia, serif'; cx.textBaseline = "middle"; cx.fillText("Artecon", 84, 91); cx.textBaseline = "alphabetic"; }
+    cx.save(); cx.shadowColor = "rgba(0,0,0,.35)"; cx.shadowBlur = 6;
+    cx.drawImage(logo, 60, 44 + (94 - logo.naturalHeight * e) / 2, logo.naturalWidth * e, logo.naturalHeight * e); cx.restore(); }
+  else{ cx.fillStyle = corLogo === "branco" ? "#fff" : "#011F48"; cx.font = '700 36px Georgia, serif'; cx.textBaseline = "middle"; cx.fillText("Artecon", 60, 91); cx.textBaseline = "alphabetic"; }
   // o título curto (até 3 linhas, de baixo para cima), com a categoria logo acima
   const palavras = String(titulo || "").trim().split(/\s+/).filter(Boolean), largura = 1080; let linhas = [], corpo = 56;
   for(; corpo >= 34; corpo -= 4){

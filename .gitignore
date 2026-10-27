@@ -59,6 +59,7 @@ __pycache__/
 *.[Bb][Mm][Pp]
 *.[Dd][Nn][Gg]
 !/radar-logo-artecon.png
+!/radar-logo-artecon-branco.png
 !/radar-timbrado-topo.png
 !/radar-timbrado-rodape.png
 # os arquivos de trabalho do robô (robo/video/corrigir.py: o pedido com a fala e a cartela, o estado com o alinhamento e as palavras
