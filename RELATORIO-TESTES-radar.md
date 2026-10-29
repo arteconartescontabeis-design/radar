@@ -1,4 +1,16 @@
-# Radar Artecon — Relatório de testes (v0.55.0)
+# Radar Artecon — Relatório de testes (v0.56.0)
+
+**v0.56.0 — dica opcional de deixar o vídeo mais firme (Captions + Adobe Podcast) no fluxo do reel** (29/10/2026): no
+campo de clipes do reel (`campoClipes`, em `radar-video.js`), logo onde se grava pelo teleprompter ou se enviam os
+arquivos, entra um aviso **opcional** (`#video-dica-captions`): depois de gravar, dá para passar a tomada por apps de IA
+— o **Captions** e o **Adobe Podcast** (grátis) — que fazem a **correção automática** (tirar os vícios de fala, cortar
+pausas, ajustar o contato visual, melhorar o som e pôr legenda), e então enviar o arquivo pronto ao corretor, **revisar
+e aprovar antes de publicar**. O aviso traz ainda **quatro dicas na hora de gravar** (olhar na lente, em pé, luz na
+frente, 2–3 tomadas) e deixa claro que é **só edição** — a fala e a imagem continuam reais, **sem rótulo de IA**
+(diferente de um avatar ou voz clonada). É **só de tela** (`radar-video.js`, `index.html`); **nada no banco** (segue na
+v0.50.0), nenhuma função muda. Teste novo confere que a dica (Captions, Adobe Podcast, correção automática, as quatro
+dicas de gravação, revisar antes de publicar e "sem rótulo de IA") aparece no fluxo do reel. **A suíte INTEIRA roda no
+CI antes de juntar.**
 
 **v0.55.0 — logotipo novo em tudo, sem a "caixa branca" (preto/branco automático)** (27/10/2026): o logotipo da Artecon
 passou a ser desenhado **direto na arte** das publicações (capa da notícia `desenharCapaFoto`, capa padrão

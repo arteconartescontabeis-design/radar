@@ -1,4 +1,4 @@
-# Radar Artecon — v0.55.0
+# Radar Artecon — v0.56.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,16 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.56.0 acrescenta, no **fluxo do reel** (aba Vídeo, no campo onde se grava pelo teleprompter ou se enviam os
+clipes), um **aviso opcional** de que, depois de gravar, dá para **deixar o vídeo mais firme** com apps de IA — o
+**Captions** e o **Adobe Podcast** (grátis) — que fazem a **correção automática** (tirar os vícios de fala, cortar
+pausas, ajustar o contato visual, melhorar o som e pôr legenda), e só então enviar o arquivo pronto ao corretor,
+**revisar e aprovar antes de publicar**. O aviso traz ainda **quatro dicas na hora de gravar** (olhar na lente, gravar
+em pé e com luz na frente, fazer 2 ou 3 tomadas, respirar antes e falar mais devagar) e deixa claro que isso é **só
+edição**: a fala e a imagem continuam **reais**, **sem rótulo de IA** (diferente de um avatar ou de uma voz clonada, que
+exigiriam aviso). É **só de tela**, **nada no banco**, e os apps são **de fora e opcionais**. Veja "Da v0.55.0 para a
+v0.56.0".
 
 A v0.55.0 troca o **logotipo** da Artecon em **todas as imagens das publicações** (capa da notícia, reel, carrossel
 e capa padrão) e no **cabeçalho do app**, e **acaba com a "caixa branca"** atrás do logo: agora ele é desenhado
@@ -3026,6 +3036,11 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.55.0 para a v0.56.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a v0.55.0 instalada:
+
+1. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5** (no celular, recarregue) — o rodapé mostra "Radar v0.56.0".
+2. Conferência: abra uma peça de **reel** na aba **Vídeo**. No campo onde você grava ou envia os clipes aparece um aviso opcional com o título **"Dica (opcional): deixe o vídeo mais firme antes de aprovar."**, citando o **Captions** e o **Adobe Podcast** (grátis) — que fazem a **correção automática** —, as **quatro dicas na hora de gravar** (olhar na lente, em pé, luz na frente, 2–3 tomadas) e o lembrete de **revisar e aprovar antes de publicar**, deixando claro que é **só edição** (fala e imagem reais, **sem rótulo de IA**). Nada no fluxo de envio/aprovação mudou. As funções `radar-ia`, `radar-redes` e `radar-video` **não mudam**; o banco segue na **v0.50.0**. O Captions e o Adobe Podcast são apps de fora, **opcionais** e à parte do Radar.
 
 **Da v0.54.0 para a v0.55.0** (mudança **só de tela** + os arquivos do logo — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a v0.54.0 instalada:
 
