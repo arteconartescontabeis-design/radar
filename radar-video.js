@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.55.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.56.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -337,7 +337,8 @@ function formEnvio(p, v, envio){
 const AVISO_NOVO_ENVIO = "Os clipes vão direto para o armazenamento privado do Radar. " + AVISO_NAO_FECHE + " Se a internet cair, o envio continua de onde parou.";
 const campoClipes = p => `<label for="video-arquivos">Clipes, na ordem do roteiro (1 a 12, MP4, MOV ou a gravação do navegador, até 500 MB no total)</label>
   <input id="video-arquivos" type="file" multiple accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" data-video-arquivos="${p.id}">
-  <div class="acoes"><button class="btn sec" type="button" data-acao="video-teleprompter" data-id="${p.id}">Gravar pelo navegador (teleprompter)</button></div>`;
+  <div class="acoes"><button class="btn sec" type="button" data-acao="video-teleprompter" data-id="${p.id}">Gravar pelo navegador (teleprompter)</button></div>
+  <div class="aviso info" id="video-dica-captions"><b>Dica (opcional): deixe o vídeo mais firme antes de aprovar.</b> Depois de gravar, você pode passar a tomada por apps de IA — o <b>Captions</b> e o <b>Adobe Podcast</b> (grátis) — que fazem a correção <b>automática</b>: tiram os vícios de fala (“é…/ããh”), cortam as pausas, ajustam o contato visual, melhoram o som (voz de estúdio) e põem legenda. Depois é só enviar o arquivo pronto aqui ao corretor, <b>revisar e aprovar antes de publicar</b>. É só edição — a fala e a imagem continuam reais, sem rótulo de IA.<br><b>Na hora de gravar, para passar mais segurança:</b><ul><li>Olhe <b>na lente</b> da câmera (teleprompter na altura dos olhos).</li><li>Grave <b>em pé</b> e com a <b>luz na sua frente</b>.</li><li>Faça <b>2 ou 3 tomadas</b> e escolha a melhor.</li><li>Respire antes e fale um pouco mais devagar.</li></ul></div>`;
 /* Os segundos de transcrição que sobram no mês (radar_video_cota) ou null; a linha que o formulário do envio mostra */
 const restaVideo = () => { const c = objVideo(estadoVideo().cota), u = numVideo(c.segundos_mes), l = numVideo(c.limite_s); return u !== null && l !== null ? Math.max(0, l - u) : null; };
 const linhaCotaVideo = () => { const c = objVideo(estadoVideo().cota), r = restaVideo(); return r === null ? "" :
