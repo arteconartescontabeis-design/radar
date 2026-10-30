@@ -8,7 +8,7 @@ ao tocar, **fecha o teleprompter** (`fecharTeleprompter`), rola até `#video-env
 quatro declarações, termos): faltando algo, o `recado` de erro de sempre aparece e a tomada **fica na lista**. É **só de
 tela** (`radar-video.js`, `index.html`); **nada no banco** (segue na v0.50.0) e **nenhuma função muda**. Teste novo de
 tela: grava uma tomada pelo teleprompter de mentira, confere o botão escondido antes e visível depois, toca nele, vê o
-teleprompter fechar com o aviso "Escolha quem fala no vídeo." e a tomada preservada (nada sobe), e confere que, ao
+teleprompter fechar com o aviso de sempre ("Marque as quatro declarações…") e a tomada preservada (nada sobe), e confere que, ao
 reabrir, o botão já aparece. **A suíte INTEIRA roda no CI antes de juntar.**
 
 **v0.58.0 — polir vários vídeos em fila + pré-visualizar (só tela)** (30/10/2026): a tela "Polir um vídeo (sem
