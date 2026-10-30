@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.57.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.58.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -1334,15 +1334,17 @@ async function listaAbaVideo(){
         <td><button class="btn peq${adm ? "" : " sec"}" type="button" data-acao="vaba-abrir" data-id="${h(v.id)}">${adm ? "Editar" : "Ver"}</button></td></tr>`).join("")}
       </tbody></table></div>`}
     <h2 class="vaba-avulsos-titulo">Polir um vídeo (sem roteiro)</h2>
-    <p class="sub">Para vídeos <b>sem roteiro</b> (vídeos de venda, gravações livres): a IA tira os vícios de fala (“é/né”), corta as pausas, melhora o áudio e gera a legenda em português. Nada é publicado — você baixa o vídeo pronto. Usa a cota de polimento do mês (Configurações → Polimento). <i>Diferente do corretor dos reels, que já faz isso quando há roteiro.</i></p>
-    <div id="vpolir-area"><label for="vpolir-arquivo">Escolha o vídeo (MP4 ou MOV)</label>
-      <input id="vpolir-arquivo" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v">
-      <div class="acoes"><button class="btn verde" type="button" data-acao="vpolir-polir" id="vpolir-botao">Polir com IA</button></div></div>
+    <p class="sub">Para vídeos <b>sem roteiro</b> (vídeos de venda, gravações livres): a IA tira os vícios de fala (“é/né”), corta as pausas, melhora o áudio e gera a legenda em português. Nada é publicado — você baixa o vídeo pronto. Dá para <b>escolher vários</b> e <b>pré-visualizar</b> antes de polir. Usa a cota de polimento do mês (Configurações → Polimento). <i>Diferente do corretor dos reels, que já faz isso quando há roteiro.</i></p>
+    <div id="vpolir-area"><label for="vpolir-arquivo">Escolha um ou mais vídeos (MP4 ou MOV)</label>
+      <input id="vpolir-arquivo" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" multiple>
+      <div id="vpolir-fila"></div>
+      <div class="acoes"><button class="btn verde" type="button" data-acao="vpolir-todos" id="vpolir-botao">Polir todos</button></div></div>
     <div id="vpolir-resultado"></div>`;
 }
 
-/* ------------------------------------------------------------- Polir um vídeo sem roteiro (v0.57.0) */
-const estadoPolir = () => (estadoVideo().polir ||= {fase:"", erro:"", resultado:null});
+/* ---------------------------------- Polir vídeos SEM roteiro: pré-visualizar + fila (v0.58.0) */
+const estadoPolir = () => (estadoVideo().polir ||= {fila:[], ocupado:false, cota:null});
+let POLIR_SEQ = 0;
 async function funcaoPolir(acao, extra = {}, tempo = 120000){
   try{ return await pedir("POST", "/functions/v1/radar-polir", {corpo:{acao, ...extra}, tempo}); }
   catch(e){
@@ -1356,38 +1358,86 @@ function linhaCotaPolirTexto(c){
   if(u === null || l === null) return "";
   return `<p class="sub" id="vpolir-cota">Polimento usado no mês: ${Math.round(u / 60)} de ${Math.round(l / 60)} min${custo !== null ? ` · custo estimado R$ ${custo.toFixed(2)}` : ""}.</p>`;
 }
-function polirRedesenhar(){
-  const box = $("#vpolir-resultado"), pol = estadoPolir(); if(!box) return;
-  if(pol.fase){ box.innerHTML = `<div class="aviso info" id="vpolir-fase">${h(pol.fase)}</div>`; return; }
-  if(pol.erro){ box.innerHTML = `<div class="aviso erro" id="vpolir-erro">${h(pol.erro)}</div>`; return; }
-  if(!pol.resultado){ box.innerHTML = ""; return; }
-  const r = pol.resultado, c = objVideo(r.cota);
-  const srtUrl = r.srt ? "data:text/plain;charset=utf-8," + encodeURIComponent(r.srt) : "";
-  box.innerHTML = `<div class="aviso info" id="vpolir-pronto"><b>Vídeo polido!</b> Revise e baixe — nada foi publicado.</div>
-    <video id="vpolir-player" controls playsinline preload="metadata" src="${h(r.video_url)}" style="max-width:100%;max-height:60vh;border-radius:8px"></video>
-    <div class="acoes"><a class="btn verde" href="${h(r.video_url)}" download="polido.mp4">Baixar o vídeo tratado</a>${srtUrl ? ` <a class="btn sec" href="${srtUrl}" download="legenda.srt">Baixar a legenda (.srt)</a>` : ""}</div>
-    ${r.transcricao ? `<details id="vpolir-transcricao"><summary>Ver a transcrição</summary><p class="sub" style="white-space:pre-wrap">${h(r.transcricao)}</p></details>` : `<p class="sub">Legenda não gerada nesta vez.</p>`}
-    ${c ? linhaCotaPolirTexto(c) : ""}`;
+/* Os vídeos escolhidos entram na fila (lê a duração e cria o link local da pré-visualização). */
+async function escolherPolir(campo){
+  const novos = [...(campo.files || [])]; campo.value = "";
+  if(!novos.length) return;
+  const pol = estadoPolir();
+  for(const arquivo of novos){
+    const m = await lerMetadadosVideo(arquivo).catch(() => null);
+    pol.fila.push({id: ++POLIR_SEQ, arquivo, nome: arquivo.name || "vídeo", bytes: arquivo.size || 0, dur: m?.duracao || 60,
+      url: URL.createObjectURL(arquivo), previa: false, situacao: "espera", fase: "", erro: "", resultado: null});
+  }
+  polirRedesenhar();
 }
-async function polir(){
-  const campo = $("#vpolir-arquivo"), arquivo = campo && campo.files && campo.files[0];
-  if(!arquivo) throw new ErroApi("Escolha um vídeo primeiro (botão “Escolher arquivo”).");
-  const pol = estadoPolir(), botao = $("#vpolir-botao"); if(botao) botao.disabled = true;
+function seloPolirItem(it){
+  if(it.situacao === "fazendo") return selo(it.fase || "processando…", "alerta");
+  if(it.situacao === "pronto") return selo("polido", "ok");
+  if(it.situacao === "erro") return selo("erro", "erro");
+  return selo("na fila", "neutro");
+}
+/* Desenha a fila do polimento (restaurada a cada render da aba por depoisDeDesenharAbaVideo). */
+function polirRedesenhar(){
+  const box = $("#vpolir-fila"), pol = estadoPolir(); if(!box) return;
+  box.innerHTML = !pol.fila.length ? `<p class="sub" id="vpolir-fila-vazia">Nenhum vídeo escolhido ainda.</p>`
+    : pol.fila.map(it => {
+      const r = it.resultado, srtUrl = r?.srt ? "data:text/plain;charset=utf-8," + encodeURIComponent(r.srt) : "";
+      return `<div class="vpolir-item" id="vpolir-item-${it.id}" style="border:1px solid var(--linha);border-radius:8px;padding:10px 12px;margin:8px 0">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b>${h(cortarPauta(it.nome, 48))}</b>
+          <span class="sub">${(it.bytes / 1048576).toFixed(1)} MB</span> ${seloPolirItem(it)}
+          <span class="acoes" style="margin:0 0 0 auto">
+            <button class="btn peq sec" type="button" data-acao="vpolir-previa" data-id="${it.id}">${it.previa ? "Ocultar" : "👁 Pré-visualizar"}</button>
+            ${it.situacao === "espera" ? `<button class="btn peq sec" type="button" data-acao="vpolir-tirar" data-id="${it.id}">Tirar</button>` : ""}</span></div>
+        ${it.previa ? `<video controls playsinline preload="metadata" src="${h(it.url)}" style="max-width:100%;max-height:40vh;border-radius:8px;margin-top:8px"></video>` : ""}
+        ${it.situacao === "fazendo" ? `<div class="aviso info" style="margin-top:8px">${h(it.fase || "Processando…")}</div>` : ""}
+        ${it.situacao === "erro" ? `<div class="aviso erro" style="margin-top:8px">${h(it.erro)}</div>` : ""}
+        ${it.situacao === "pronto" && r ? `<div class="aviso info" style="margin-top:8px"><b>Vídeo polido!</b> Revise e baixe — nada foi publicado.</div>
+          <video controls playsinline preload="metadata" src="${h(r.video_url)}" style="max-width:100%;max-height:40vh;border-radius:8px"></video>
+          <div class="acoes"><a class="btn verde" href="${h(r.video_url)}" download="polido-${it.id}.mp4">Baixar o vídeo</a>${srtUrl ? ` <a class="btn sec" href="${srtUrl}" download="legenda-${it.id}.srt">Baixar a legenda</a>` : ""}</div>
+          ${r.transcricao ? `<details><summary>Ver a transcrição</summary><p class="sub" style="white-space:pre-wrap">${h(r.transcricao)}</p></details>` : ""}` : ""}
+      </div>`;
+    }).join("");
+  const botao = $("#vpolir-botao");
+  if(botao){ botao.disabled = pol.ocupado || !pol.fila.some(it => it.situacao === "espera");
+    botao.textContent = pol.ocupado ? "Polindo…" : "Polir todos"; }
+  const res = $("#vpolir-resultado"); if(res) res.innerHTML = pol.cota ? linhaCotaPolirTexto(pol.cota) : "";
+}
+function previaPolir(id){ const it = estadoPolir().fila.find(x => x.id === id); if(it){ it.previa = !it.previa; polirRedesenhar(); } }
+function tirarPolir(id){
+  const pol = estadoPolir(), i = pol.fila.findIndex(x => x.id === id);
+  if(i < 0 || pol.fila[i].situacao !== "espera") return;
+  try{ URL.revokeObjectURL(pol.fila[i].url); }catch(e){ /* ignora */ }
+  pol.fila.splice(i, 1); polirRedesenhar();
+}
+async function polirUm(it){
+  it.situacao = "fazendo"; it.erro = ""; it.resultado = null;
+  it.fase = "Preparando o envio…"; polirRedesenhar();
+  const pre = await funcaoPolir("preparar", {duracao_s: it.dur});
+  it.fase = "Enviando o vídeo…"; polirRedesenhar();
+  const up = await fetch(pre.envio.url, {method:"PUT", body: it.arquivo, headers:{"content-type": it.arquivo.type || "video/mp4", "cache-control":"60", "x-upsert":"true"}});
+  if(!up.ok) throw new ErroApi(`O armazenamento não aceitou o vídeo (erro ${up.status}). Tente de novo.`, up.status);
+  it.fase = "Tratando com IA (vícios, pausas, áudio e legenda) — um ou dois minutos…"; polirRedesenhar();
+  it.resultado = await funcaoPolir("processar", {id: pre.id, duracao_s: it.dur}, 300000);
+  if(it.resultado?.cota) estadoPolir().cota = it.resultado.cota;
+  it.situacao = "pronto"; it.fase = "";
+}
+async function polirTodos(){
+  const pol = estadoPolir();
+  if(pol.ocupado) return;
+  const pendentes = pol.fila.filter(it => it.situacao === "espera");
+  if(!pendentes.length) return;
+  pol.ocupado = true; polirRedesenhar();
   try{
-    const m = await lerMetadadosVideo(arquivo), dur = m?.duracao || 60;
-    pol.erro = ""; pol.resultado = null; pol.fase = "Preparando o envio…"; polirRedesenhar();
-    const pre = await funcaoPolir("preparar", {duracao_s:dur});
-    pol.fase = "Enviando o vídeo…"; polirRedesenhar();
-    const up = await fetch(pre.envio.url, {method:"PUT", body:arquivo, headers:{"content-type":arquivo.type || "video/mp4", "cache-control":"60", "x-upsert":"true"}});
-    if(!up.ok) throw new ErroApi(`O armazenamento não aceitou o vídeo (erro ${up.status}). Tente de novo.`, up.status);
-    pol.fase = "Tratando com IA (vícios, pausas, áudio e legenda) — pode levar um ou dois minutos…"; polirRedesenhar();
-    pol.resultado = await funcaoPolir("processar", {id:pre.id, duracao_s:dur}, 300000);
-    pol.fase = "";
-  }catch(e){
-    pol.fase = ""; pol.resultado = null; pol.erro = e?.message || "Não foi possível polir o vídeo. Tente de novo.";
+    for(const it of pendentes){
+      try{ await polirUm(it); }
+      catch(e){
+        it.situacao = "erro"; it.fase = ""; it.erro = e?.message || "Não foi possível polir este vídeo.";
+        polirRedesenhar();
+        if(/cota/i.test(it.erro)) break;        // cota do mês esgotada: para a fila; os demais ficam esperando
+      }
+    }
   }finally{
-    const b = $("#vpolir-botao"); if(b) b.disabled = false;
-    polirRedesenhar();
+    pol.ocupado = false; polirRedesenhar();
   }
 }
 
@@ -1821,6 +1871,7 @@ function depoisDeDesenharAbaVideo(atraso){
   ligarEditorVideo();
   ligarPlayerAbaVideo();
   atualizarTempoVideo();
+  polirRedesenhar();        // v0.58.0: restaura a fila do polimento (vídeos sem roteiro) depois de cada render da aba
   const v = a.v;
   if(!a.id || !v || !$("#vaba-editor") || !["na_fila", "processando"].includes(v.situacao)) return;
   a.relogio = setTimeout(sondarAbaVideo, atraso ?? VIDEO_INTERVALO);
@@ -1885,7 +1936,9 @@ const ACOES_ABA_VIDEO = {
   /* v0.36.0: a correção avulsa (o formulário abre e fecha sem gravar nada) */
   "vaba-avulso-novo"(){ const a = abaVideo(); a.nova = true; a.id = null; a.v = null; window.scrollTo(0, 0); return desenhar(); },
   "vaba-avulso-cancelar"(){ const a = abaVideo(); a.nova = false; return desenhar(); },
-  "vpolir-polir"(){ return polir(); },
+  "vpolir-todos"(){ return polirTodos(); },
+  "vpolir-previa"(el){ previaPolir(Number(el.dataset.id)); },
+  "vpolir-tirar"(el){ tirarPolir(Number(el.dataset.id)); },
   "vaba-peca"(el){ E.aba = "pauta"; E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; abaVideo().id = null; window.scrollTo(0, 0); return desenhar(); },
   "vaba-palavra"(el){
     const a = abaVideo(), i = Number(el.dataset.i), pl = $("#vaba-player");
