@@ -13,7 +13,7 @@
    recado, desenhar, ehAdmin, E, ErroApi, VERSAO, $) só quando são chamadas. Quem confere quem pode o quê é o banco.
    A busca por hashtag fica desligada (Configuração da aba) até a Meta aprovar o recurso Instagram Public Content Access.
    ==================================================================== */
-const SETOR_VERSAO = "0.58.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const SETOR_VERSAO = "0.59.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 // o que só a tela guarda: o setor escolhido, o período, o quadro do administrador aberto e o formulário de setor novo
 let SETOR_E = {setor: null, dias: 90, gerir: false, novo: false};
