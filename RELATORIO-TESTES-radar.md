@@ -1,4 +1,21 @@
-# Radar Artecon — Relatório de testes (v0.56.0)
+# Radar Artecon — Relatório de testes (v0.57.0)
+
+**v0.57.0 — corretor de polimento para vídeos SEM roteiro (Cleanvoice + AssemblyAI) + controle de custo** (30/10/2026):
+uma tela nova na aba **Vídeo** ("Polir um vídeo (sem roteiro)", em `radar-video.js`) para os vídeos de **venda**, que
+**não** passam pelo corretor dos reels. A tela lê o arquivo, pede um envio assinado (`radar-polir` ação `preparar`), faz
+o `PUT` do arquivo e dispara o `processar`: a Edge Function **`radar-polir`** (`supabase/functions/radar-polir/index.ts`,
+VERSAO 0.57.0) manda a URL assinada ao **Cleanvoice** (vícios/pausas/som) e ao **AssemblyAI** (legenda pt-BR), guarda o
+vídeo tratado e a legenda `.srt`, e registra o uso. O **controle de custo** espelha o do corretor: a tabela
+**`radar_polimento_uso`** (minutos e custo por chamada) e as funções `radar_polimento_cota`/`radar_polimento_registrar`
+(calcula o custo pelo preço por minuto da config, câmbio em R$), com **cota mensal** (`limite_min_mes`, padrão 30),
+**aviso** em `aviso_pct` e os preços/câmbio em **Configurações → "Polir vídeo (sem roteiro)"**. O **Painel** mostra os
+minutos usados e o **gasto estimado em R$**. No banco: a tabela e as funções entram no **setup** (idempotente) e no
+incremental **`sql/radar-polimento-v0.57.0.sql`**; a tabela e a sequência da identity são **revogadas** do anon/público
+(RLS: leitura só do editor/admin; registro só pela função, service_role). A **`radar-copia`** passa a incluir a tabela
+nova na cópia do OneDrive (VERSAO 0.57.0, `TABELAS` 38→**39**). Testes: cota/registro/custo no banco, contagem de tabelas
+(39) e de config (11), cobertura da cópia, mock de `radar-polir` no harness e o fluxo da tela "Polir um vídeo". O
+corretor dos **reels** (que já tira vícios, pausas, limpa o som e legenda **alinhada ao roteiro**) **não muda**. **A suíte
+INTEIRA roda no CI antes de juntar.**
 
 **v0.56.0 — dica opcional de deixar o vídeo mais firme (Captions + Adobe Podcast) no fluxo do reel** (29/10/2026): no
 campo de clipes do reel (`campoClipes`, em `radar-video.js`), logo onde se grava pelo teleprompter ou se enviam os

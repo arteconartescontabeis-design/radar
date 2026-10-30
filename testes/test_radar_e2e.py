@@ -1264,6 +1264,10 @@ def test_ia_indisponivel_nao_derruba_a_coleta(ia, monkeypatch, tmp_path):
     monkeypatch.setenv("SUPABASE_URL", API)
     monkeypatch.setenv("SUPABASE_SERVICE_KEY", jwt("service_role"))
     monkeypatch.setattr(radar_coletar, "Banco", lambda url, chave: Banco(url, chave, prefixo=""))
+    # como os demais testes de coleta, a janela é a partir de HOJE fixo (as fontes de teste têm datas fixas): main() não recebe "hoje",
+    # então fixamos aqui — senão, conforme o relógio real passa de HOJE + janela_dias, as capturas saem da janela e a conta muda.
+    _executar = radar_coletar.executar
+    monkeypatch.setattr(radar_coletar, "executar", lambda *a, **k: _executar(*a, **{**k, "hoje": HOJE}))
     resumo = tmp_path / "resumo.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(resumo))
     monkeypatch.setenv("IA_GATEWAY_URL", SITE + "/gateway")
