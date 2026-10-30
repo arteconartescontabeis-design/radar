@@ -1,4 +1,4 @@
-# Radar Artecon — v0.56.0
+# Radar Artecon — v0.57.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,14 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.57.0 acrescenta o **corretor de polimento para vídeos SEM roteiro** (os vídeos de **venda**): uma tela nova na aba
+**Vídeo** ("Polir um vídeo") que manda o arquivo à IA para **tirar os vícios de fala e as pausas** e **melhorar o som**
+(**Cleanvoice**) e devolve uma **legenda em português** para baixar (**AssemblyAI**). O corretor dos **reels** (que já faz
+tudo isso **alinhado ao roteiro**) **não muda** — esta tela é só para os vídeos **sem roteiro**. Tem **controle de custo**
+como o corretor: uma **cota de minutos por mês** (30 por padrão), com o **gasto estimado em R$**, no **Painel** e em
+**Configurações → "Polir vídeo (sem roteiro)"**. **Muda o banco** (uma tabela de uso e as funções da cota), entra a função
+nova **`radar-polir`** e **dois segredos** (CLEANVOICE_API_KEY e ASSEMBLYAI_API_KEY). Veja "Da v0.56.0 para a v0.57.0".
 
 A v0.56.0 acrescenta, no **fluxo do reel** (aba Vídeo, no campo onde se grava pelo teleprompter ou se enviam os
 clipes), um **aviso opcional** de que, depois de gravar, dá para **deixar o vídeo mais firme** com apps de IA — o
@@ -1106,7 +1114,8 @@ tela**, inclusão de **texto oficial pela equipe**, visual no padrão da Artecon
 | `supabase/functions/radar-itc/index.ts` | Função que lê o boletim da ITC no e-mail (v0.12.0; desde a v0.23.0, na caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos). |
 | `supabase/functions/radar-redes/index.ts` | Função que publica no Instagram e no Facebook (v0.13.0; a peça da Pauta e a chamada da agenda desde a v0.21.0; desde a v0.29.0, também aciona, a pedido da agenda do banco, o robô dos lembretes por e-mail; desde a v0.42.0, publica também o carrossel — as lâminas que o banco devolve; desde a v0.43.0, publica também a nova tentativa automática que o banco marcou depois de uma recusa clara da Meta; desde a v0.45.0, publica a notícia com hora marcada e, a pedido da agenda, aciona o robô do site na hora certa — ação `acionar_site`). |
 | `supabase/functions/radar-video/index.ts` | Função do corretor de vídeo (v0.22.0): o envio dos clipes, a prévia, o baixar, a conversa com o robô e a agenda; desde a v0.36.0, também o envio e o baixar do vídeo avulso. É a única que toca no armazenamento privado `radar-videos`. |
-| `supabase/functions/radar-copia/index.ts` | Função da cópia de segurança mensal do banco no OneDrive (v0.32.0): exporta as tabelas, monta o .zip e grava na pasta das cópias pelo Microsoft Graph. O arquivo nunca passa pelo GitHub nem pelo armazenamento do Supabase. |
+| `supabase/functions/radar-copia/index.ts` | Função da cópia de segurança mensal do banco no OneDrive (v0.32.0; v0.57.0: inclui a tabela `radar_polimento_uso`): exporta as tabelas, monta o .zip e grava na pasta das cópias pelo Microsoft Graph. O arquivo nunca passa pelo GitHub nem pelo armazenamento do Supabase. |
+| `supabase/functions/radar-polir/index.ts` | Função do corretor de polimento de vídeos SEM roteiro (v0.57.0): recebe o arquivo por um envio assinado, manda ao Cleanvoice (vícios/pausas/som) e ao AssemblyAI (legenda pt-BR) e devolve o vídeo tratado e a legenda, registrando o uso (minutos e custo) para a cota do mês. Precisa dos segredos `CLEANVOICE_API_KEY` e `ASSEMBLYAI_API_KEY`. |
 | `sql/radar-itc-agenda.sql` | Agenda (1 vez por dia, às 02h55) da leitura do boletim da ITC; roda uma vez no Supabase (desde a v0.23.0, pode rodar de novo, como as outras agendas). |
 | `sql/radar-redes-agenda.sql`, `sql/radar-redes-agenda-reversao.sql` | Agenda (de 5 em 5 minutos) que publica a Pauta aprovada na hora marcada (v0.21.0; roda uma vez no Supabase, depois do setup) e como desfazer. Desde a v0.29.0, também pede (de 15 em 15 minutos, só quando há o que lembrar) o robô dos lembretes por e-mail. Desde a v0.45.0, também aciona o robô do site quando a hora marcada de uma notícia chega (job `radar-redes-agenda-site`). |
 | `sql/radar-video-agenda.sql`, `sql/radar-video-agenda-reversao.sql` | As chaves do corretor de vídeo no Vault (a do robô e a da agenda), a reserva da fila (de 10 em 10 minutos, só com vídeo esperando, até 3 vezes por pedido: depois, erro "robo_nao_pegou" na peça) e a limpeza diária dos prazos de guarda (v0.22.0; roda uma vez no Supabase, depois do setup) e como desfazer. |
@@ -3036,6 +3045,26 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.56.0 para a v0.57.0** (uma **mudança no banco** — uma tabela de uso e as funções da cota —, uma **função nova**
+(`radar-polir`) e **dois segredos novos** nas Edge Functions). Supõe a v0.56.0 instalada:
+
+1. **SQL Editor** → execute `sql/radar-polimento-v0.57.0.sql`. Ele cria a tabela **`radar_polimento_uso`** (os minutos e o
+   custo de cada polimento) e as funções da cota (`radar_polimento_cota`, `radar_polimento_registrar` e as de leitura), e
+   acrescenta a chave **"polimento"** nas Configurações (com os padrões). **Não mexe em nenhuma tabela existente, não apaga
+   nada, pode rodar de novo.**
+2. **Segredos das Edge Functions** (Supabase → Edge Functions → Secrets — **nunca pelo chat**): cadastre
+   **`CLEANVOICE_API_KEY`** (crie em cleanvoice.ai) e **`ASSEMBLYAI_API_KEY`** (crie em assemblyai.com). Sem eles, a tela
+   do polimento avisa que o serviço ainda não está configurado.
+3. **Deploy** da função **nova** `radar-polir` (`supabase/functions/radar-polir/index.ts`, **"Verify JWT" ligado**, como a
+   `radar-video`) e, **de novo**, da `radar-copia` (`supabase/functions/radar-copia/index.ts`): ela passa a incluir a
+   tabela nova na cópia mensal do OneDrive. As funções `radar-ia`, `radar-redes` e `radar-video` **não mudam**.
+4. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5** — o rodapé mostra "Radar v0.57.0". Na aba
+   **Vídeo**, abaixo das "Correções avulsas", aparece **"Polir um vídeo (sem roteiro)"**: escolha um arquivo e clique em
+   **"Polir com IA"**; ao terminar, aparece o vídeo tratado para baixar, a **legenda (.srt)** e a linha da **cota**. O gasto
+   do mês (minutos e R$) também aparece no **Painel**, e a cota se ajusta em **Configurações → "Polir vídeo (sem roteiro)"**.
+   Enquanto o SQL do passo 1 não for rodado, a tela avisa que precisa do banco novo. O corretor dos **reels** (que já tira
+   vícios, pausas, limpa o som e legenda **alinhada ao roteiro**) **não muda**: esta tela é só para vídeos **sem roteiro**.
 
 **Da v0.55.0 para a v0.56.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a v0.55.0 instalada:
 

@@ -435,21 +435,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.56.0"></script>
-<script src="radar-video.js?v=0.56.0"></script>
-<script src="radar-setor.js?v=0.56.0"></script>
-<script src="radar-respostas.js?v=0.56.0"></script>
+<script src="radar-pauta.js?v=0.57.0"></script>
+<script src="radar-video.js?v=0.57.0"></script>
+<script src="radar-setor.js?v=0.57.0"></script>
+<script src="radar-respostas.js?v=0.57.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.56.0";
+const VERSAO = "0.57.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.57.0", "30/10/2026", [
+    "Polir um vídeo de VENDA (sem roteiro): uma tela nova na aba Vídeo (“Polir um vídeo”), só para os vídeos que NÃO passam pelo corretor dos reels. Você escolhe o arquivo e a IA tira os vícios de fala (“é…/ããh”) e as pausas e melhora o som (Cleanvoice) e devolve uma legenda em português para baixar (AssemblyAI). O corretor dos reels, que já faz tudo isso alinhado ao roteiro, não muda — esta tela é só para os vídeos sem roteiro. Tem controle de custo como o corretor: uma cota de minutos por mês (30 por padrão), com o gasto estimado em R$, que aparece no Painel e se ajusta em Configurações → “Polir vídeo (sem roteiro)”.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-polimento-v0.57.0.sql (a tabela do uso e as funções da cota; nenhuma tabela existente muda; nada é apagado; pode rodar de novo), faça o Deploy da função NOVA radar-polir e, de novo, da radar-copia (que passa a incluir a tabela nova na cópia) e, nos segredos das Edge Functions do Supabase, cadastre CLEANVOICE_API_KEY e ASSEMBLYAI_API_KEY (nunca pelo chat). As funções radar-ia, radar-redes e radar-video não mudam. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Enquanto o SQL não for rodado, a tela avisa que precisa do banco novo. Passo a passo no LEIAME, “Da v0.56.0 para a v0.57.0”."]],
   ["0.56.0", "29/10/2026", [
     "Dica de deixar o vídeo mais firme antes de aprovar (aba Vídeo → reel): logo onde você grava ou escolhe os clipes do reel, aparece um aviso opcional explicando que, depois de gravar, dá para passar a tomada por apps de IA — o Captions e o Adobe Podcast (grátis) — que fazem a correção automática: tiram os vícios de fala (“é…/ããh”), cortam as pausas, ajustam o contato visual, melhoram o som (voz de estúdio) e põem legenda. Depois é só enviar o arquivo pronto ao corretor, revisar e aprovar antes de publicar. O aviso traz ainda quatro dicas na hora de gravar (olhar na lente, gravar em pé e com luz na frente, fazer 2 ou 3 tomadas, respirar antes e falar mais devagar) e deixa claro que isso é só edição: a fala e a imagem continuam reais, sem necessidade de rótulo de IA (diferente de um avatar ou de uma voz clonada, que exigiriam aviso).",
     "Administrador: é só a tela — nada muda no banco, nenhum SQL, nenhum segredo novo. As funções radar-ia, radar-redes e radar-video não mudam. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. O Captions e o Adobe Podcast são apps de fora, opcionais e à parte do Radar — ninguém é obrigado a usar, e o Radar não envia nada a eles. Passo a passo no LEIAME, “Da v0.55.0 para a v0.56.0”."]],
@@ -1431,7 +1434,7 @@ function graficoLinhas(labels, series, aria){
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(aria)}"><line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="var(--linha)"/><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="var(--linha)"/>${eixoY}${eixoX}${desenho}${faixas}</svg>`;
 }
 const dashSemanas = arr => (arr || []).map((x, i) => i === arr.length - 1 ? "atual" : `${String(x.ini).slice(8, 10)}/${String(x.ini).slice(5, 7)}`);
-function blocoDashboard(hoje, c, graf, cota){
+function blocoDashboard(hoje, c, graf, cota, polim){
   const per = E.painelPeriodo || "mes";
   const topo = `<h2>Projeção e desempenho</h2>
     <p class="sub">Escolha <b>Dia</b>, <b>Semana</b>, <b>Mês</b> ou <b>Período</b> (datas à sua escolha) para ver o que falta publicar e os números (em vermelho, o que já devia ter saído). As contas são as do cronograma da Pauta. Os gráficos de 6 semanas e a cota do corretor valem para o período corrente. Só leitura — escolher um período não apaga nada.</p>`;
@@ -1477,6 +1480,13 @@ function blocoDashboard(hoje, c, graf, cota){
     g.push(`<div class="dash-bloco largo"><h3>Corretor de vídeo — minutos usados no mês</h3><div class="dash-meter"><span style="width:${pct}%"></span></div>
       <p class="sub"><b>${usado} de ${lim} minutos</b> usados (${pct}%).${lim - usado >= 0 ? ` Sobram ${lim - usado} minutos neste mês.` : ""} A cota é sempre mensal.</p></div>`);
   }
+  // v0.57.0: a cota do corretor de polimento (vídeos sem roteiro), com o gasto estimado em R$; só aparece com o banco novo e o polimento ligado
+  if(polim && polim.ligado && polim.limite_s){
+    const usado = Math.round((polim.segundos_mes || 0) / 60), lim = Math.round(polim.limite_s / 60), pct = Math.min(100, Math.round((polim.segundos_mes || 0) / polim.limite_s * 100));
+    const rs = (Number(polim.custo_mes_brl) || 0).toFixed(2).replace(".", ",");
+    g.push(`<div class="dash-bloco largo"><h3>Polir vídeo (sem roteiro) — minutos usados no mês</h3><div class="dash-meter"><span style="width:${pct}%"></span></div>
+      <p class="sub"><b>${usado} de ${lim} minutos</b> usados (${pct}%).${lim - usado >= 0 ? ` Sobram ${lim - usado} minutos neste mês.` : ""} Gasto estimado no mês: <b>R$ ${rs}</b>. A cota é sempre mensal.</p></div>`);
+  }
   return `<div class="painel" id="painel-dashboard">${topo}${seletor}${semCrono}${secoes}
     ${g.length ? `<div class="dash-grade">${g.join("")}</div>` : ""}
     <div class="acoes"><button class="btn peq sec" type="button" data-acao="aba" data-aba="pauta">Abrir a Pauta</button></div></div>`;
@@ -1493,9 +1503,10 @@ const TELAS = {
     const proj = temPauta ? await lerCronograma(segundaDe(hoje), hoje).catch(() => null) : null;
     // v0.47.0: os dados dos gráficos (sem o banco novo, a função não existe: o Painel abre sem os gráficos). A cota do corretor é só
     // do editor/administrador; o leitor vê o resto.
-    let graf = null, cota = null;
+    let graf = null, cota = null, polim = null;
     try{ graf = await rpc("radar_painel_graficos", {p_hoje: hoje || null}); }catch(e){ graf = null; }
-    if(podeEditar()){ try{ cota = await rpc("radar_video_cota"); }catch(e){ cota = null; } }
+    if(podeEditar()){ try{ cota = await rpc("radar_video_cota"); }catch(e){ cota = null; }
+                      try{ polim = await rpc("radar_polimento_cota"); }catch(e){ polim = null; } }
     const fontes = await ler("radar_v_saude_fontes", {select:"*", ativo:"eq.true", saude:"neq.ok", order:"slug"});
     const revisao = await ler("radar_conteudos", {select:"id,titulo,formato,assunto_id,atualizado_em", status:"eq.em_revisao", order:"atualizado_em.desc", limit:"10"});
     const doRobo = p.rascunhos_robo ? await ler("radar_conteudos", {select:"id,titulo,assunto_id,criado_em,avisos_ia", status:"eq.rascunho", modelo_ia:"like.*(robô)", order:"criado_em.desc", limit:"10"}) : [];
@@ -1514,7 +1525,7 @@ const TELAS = {
       <ul>${pendentes.slice(0, 10).map(linhaProrrogacao).join("")}</ul>${pendentes.length > 10 ? `<p class="sub">e mais ${pendentes.length - 10}${ehAdmin()
         ? " (a lista inteira fica em Configurações → Agenda de obrigações)" : ""}</p>` : ""}</div>` : "";
     return `<h1>Painel do dia</h1>${parada}
-      ${blocoDashboard(hoje, proj, graf, cota)}
+      ${blocoDashboard(hoje, proj, graf, cota, polim)}
       ${prorrogacao}
       <div class="cartoes">
         ${c(`${p.fontes_ok}/${p.fontes_ativas}`, "Fontes funcionando", "fontes")}
@@ -1861,6 +1872,7 @@ const TELAS = {
       ${bloco("corretor_video", "Corretor de vídeo", `O corretor de vídeo dos reels (Pauta → peça reel). <b>glossario</b>: os termos que a legenda escreve sempre do mesmo jeito (de 1 a 200, cada um de 2 a 40 caracteres, como ["eSocial", "Simples Nacional"]). <b>variantes</b>: como a transcrição costuma errar cada termo do glossário (até 20 por termo, como {"IBS": ["ips", "ibis"]}; só vale onde o roteiro tem o termo). <b>duracao_max_s</b>: a meta do reel com a cartela, de 15 a 900 s (acima dela, só aviso: a aprovação pede confirmação; acima de 90 s o Facebook não aceita reel pela API, sai só no Instagram, que aceita até 15 minutos). <b>pausa_max_s</b> (de 0,6 a 2) e <b>pausa_bloco_s</b> (de 0,4 a 2): a partir de quantos segundos a pausa dentro da frase e entre frases é encurtada. <b>lufs</b>: o volume final, de −24 a −9 (o padrão das redes é −14). <b>cartela_s</b>: a duração da cartela final, de 2 a 5 s. <b>cartela_extra</b>: uma linha a mais na cartela, até 120 caracteres (ex.: “Desde 1984 · (48) 3242-0530 · artecon.cnt.br”; vazio, nada). <b>limite_min_mes</b>: minutos de transcrição por mês, de 1 a 300; padrão 30 (a Azure gratuita dá 300 minutos por mês ao recurso inteiro e a Agenda se reserva 270: acima de 30, só com o serviço pago ou com a Agenda reservando menos). <b>retencao_dias</b> (de 7 a 120) e <b>retencao_publicado_dias</b> (de 0 a 365): por quantos dias os clipes, o vídeo e os textos ficam guardados (depois do envio; depois de publicado). Fora desses limites, o corretor usa o padrão.`,
         typeof diagnosticoVideo === "function" ? `<div class="acoes" style="margin-top:0"><button class="btn sec" type="button" data-acao="video-diagnostico">Testar o corretor de vídeo</button>
           <span class="sub">Confere o armazenamento privado, o token do GitHub, o robô, a fila e os minutos do mês (sem mostrar segredo).</span></div><div id="diag-video"></div>` : "")}
+      ${bloco("polimento", "Polir vídeo (sem roteiro)", `Para os vídeos de VENDA, que não passam pelo corretor dos reels (aba Vídeo → “Polir um vídeo”): a IA tira os vícios de fala e as pausas, melhora o som (Cleanvoice) e põe legenda em português (AssemblyAI). <b>ligado</b>: true ou false (false desliga o polimento). <b>limite_min_mes</b>: a cota de minutos por mês, de 1 a 600; padrão 30 (acima disso o Radar recusa, para o custo não disparar). <b>aviso_pct</b>: a % da cota em que o Radar avisa que está perto do limite, de 50 a 100 (padrão 80). <b>preco_cleanvoice_usd_min</b> e <b>preco_assemblyai_usd_min</b>: o preço de cada serviço por minuto, em dólar (servem só para estimar o gasto; confira no faturamento de cada serviço). <b>usd_brl</b>: o câmbio do dólar em reais, para mostrar o gasto estimado em R$ (atualize de vez em quando). As chaves dos serviços (CLEANVOICE_API_KEY e ASSEMBLYAI_API_KEY) ficam nos segredos das Edge Functions do Supabase, nunca aqui.`)}
       ${bloco("lembretes", "Lembretes por e-mail", `O Radar lembra antes do dia, por e-mail (um aviso no GitHub, como os avisos de hoje), sem nome de ninguém. <b>pauta</b>: a peça de amanhã (e a de hoje que ainda não saiu) que não está aprovada, a partir da <b>hora</b> (padrão “16:00”; até “23:45”), e a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada. <b>aprovacao</b>: a peça pronta que espera a aprovação há mais de <b>aprovacao_horas</b> (padrão 24). <b>video</b>: o reel que o corretor terminou (pronto para conferir, precisa regravar ou parou). <b>noticia</b>: a notícia que deu erro no envio ao site ou às redes, ou que está autorizada e parada há mais de <b>parada_horas</b> (padrão 3). <b>vencimento</b>: o quadro de vencimentos de chaves e contas (abaixo), 30, 7 e 1 dia antes e no dia, cada marco uma vez só por item, só com a data. <b>copia</b>: a cópia de segurança do mês no OneDrive que não saiu até o dia 2 (uma vez por mês). Cada tipo manda no máximo um e-mail por dia, e cada pendência é lembrada uma vez só. Aprovação, vídeo, notícia, vencimento e cópia só saem entre <b>de</b> e <b>ate</b> (padrão “08:00” e “20:00”; pelo menos 15 minutos entre os dois). <b>ligado</b>: false desliga tudo; false num tipo desliga só ele. Recebe quem acompanha o repositório no GitHub. O aviso fica na aba Issues do repositório, que é público: qualquer pessoa pode ler a data, a hora, o formato e a situação de cada peça lembrada (nunca o assunto nem nomes).`)}
       ${situacaoLembretes(lemb, conf.lembretes?.valor)}
       ${quadroVencimentos(venc)}${painelCopia(copiaBanco, copiaFuncao)}
@@ -5331,6 +5343,16 @@ function validarConfig(chave, v){
     // a linha extra vai ao ar no fim de todo reel: os termos que a publicidade da profissão não usa ficam de fora
     const termos = typeof v.cartela_extra === "string" ? [...new Set([...termosPublicidade(v.cartela_extra).trava, ...(typeof termosPeca === "function" ? termosPeca(v.cartela_extra) : [])])] : [];
     if(termos.length) return `“cartela_extra” vai ao ar no fim de todo reel: tire ${termos.map(t => `“${t}”`).join(", ")} (a publicidade da profissão contábil informa, não vende).`;
+  }
+  // v0.57.0: o corretor de polimento (vídeos SEM roteiro) — todos opcionais; fora dos limites, o banco usa o padrão
+  if(chave === "polimento"){
+    if(!obj) return "O polimento precisa ser um objeto { … }.";
+    if(v.ligado !== undefined && typeof v.ligado !== "boolean") return "“ligado” é true ou false.";
+    for(const [k, min, max, inteiro, o] of [["limite_min_mes", 1, 600, true, "a cota de minutos por mês"], ["aviso_pct", 50, 100, true, "a % da cota em que avisa"],
+        ["preco_cleanvoice_usd_min", 0, 10, false, "o preço do Cleanvoice por minuto, em US$"], ["preco_assemblyai_usd_min", 0, 10, false, "o preço do AssemblyAI por minuto, em US$"],
+        ["usd_brl", 1, 20, false, "o câmbio do dólar em reais"]])
+      if(v[k] !== undefined && !(typeof v[k] === "number" && Number.isFinite(v[k]) && v[k] >= min && v[k] <= max && (!inteiro || Number.isInteger(v[k]))))
+        return `“${k}” é ${o}: ${inteiro ? "número inteiro" : "número"} de ${String(min).replace(".", ",")} a ${String(max).replace(".", ",")} (sem aspas).`;
   }
   // v0.29.0: os lembretes por e-mail (todos opcionais: sem eles, ou fora dos limites, o banco usa o padrão; a tela recusa antes)
   if(chave === "lembretes"){

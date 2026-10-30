@@ -140,6 +140,7 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_polimento_uso,    -- v0.57.0 (corretor de polimento)
   public.radar_pessoas_termos,   -- v0.46.0
   public.radar_copias,
   public.radar_vencimentos,
@@ -440,6 +441,15 @@ drop function if exists public.radar_pessoa_revogar_termo(bigint);
 
 -- v0.47.0: o Painel com gráficos (função de dados)
 drop function if exists public.radar_painel_graficos(date);
+
+-- v0.57.0: o corretor de polimento (a tabela radar_polimento_uso já saiu com a lista acima)
+drop function if exists public.radar_polimento_cfg_num(text, numeric, numeric, numeric);
+drop function if exists public.radar_polimento_ligado();
+drop function if exists public.radar_polimento_segundos_mes();
+drop function if exists public.radar_polimento_limite_s();
+drop function if exists public.radar_polimento_custo_mes_brl();
+drop function if exists public.radar_polimento_cota();
+drop function if exists public.radar_polimento_registrar(bigint, text, numeric, text, text);
 
 commit;
 
