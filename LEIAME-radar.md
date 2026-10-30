@@ -1,4 +1,4 @@
-# Radar Artecon — v0.57.0
+# Radar Artecon — v0.58.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.58.0 melhora a tela **"Polir um vídeo (sem roteiro)"** (aba Vídeo): agora dá para escolher **vários vídeos** de
+uma vez e **pré-visualizar** cada um antes de polir. Eles entram numa **fila** e o botão **"Polir todos"** cuida de um
+de cada vez (respeitando a cota do mês); cada vídeo mostra o resultado para assistir e baixar quando fica pronto, e se a
+cota acabar no meio, o Radar **avisa e para** sem perder os já prontos. É **só de tela**, **nada no banco**. Veja "Da
+v0.57.0 para a v0.58.0".
 
 A v0.57.0 acrescenta o **corretor de polimento para vídeos SEM roteiro** (os vídeos de **venda**): uma tela nova na aba
 **Vídeo** ("Polir um vídeo") que manda o arquivo à IA para **tirar os vícios de fala e as pausas** e **melhorar o som**
@@ -3045,6 +3051,15 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.57.0 para a v0.58.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a v0.57.0 instalada:
+
+1. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5** (no celular, recarregue) — o rodapé mostra "Radar v0.58.0".
+2. Conferência: aba **Vídeo** → **"Polir um vídeo (sem roteiro)"**. O campo passa a aceitar **vários arquivos**; cada um
+   entra numa **fila** com **"👁 Pré-visualizar"** (vê o original) e **"Tirar"**. O botão **"Polir todos"** processa um de
+   cada vez; cada vídeo mostra **assistir/baixar** quando fica pronto, e a **cota** aparece embaixo. Se a cota do mês
+   acabar no meio, o Radar **avisa e para**, mantendo os já prontos. As funções `radar-polir`, `radar-copia`, `radar-ia`,
+   `radar-redes` e `radar-video` **não mudam**; o banco segue na **v0.50.0**.
 
 **Da v0.56.0 para a v0.57.0** (uma **mudança no banco** — uma tabela de uso e as funções da cota —, uma **função nova**
 (`radar-polir`) e **dois segredos novos** nas Edge Functions). Supõe a v0.56.0 instalada:

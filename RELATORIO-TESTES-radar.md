@@ -1,4 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.57.0)
+# Radar Artecon — Relatório de testes (v0.58.0)
+
+**v0.58.0 — polir vários vídeos em fila + pré-visualizar (só tela)** (30/10/2026): a tela "Polir um vídeo (sem
+roteiro)" (`radar-video.js`, aba Vídeo) ganhou **seleção múltipla** e uma **fila**: ao escolher um ou mais arquivos
+(evento change em `#vpolir-arquivo`, `escolherPolir`), cada vídeo entra em `estadoPolir().fila` com **"👁 Pré-visualizar"**
+(um `<video>` do original, via objectURL) e **"Tirar"**. O botão **"Polir todos"** (`polirTodos`) processa um de cada vez
+(`polirUm`: preparar → PUT → processar), atualizando o selo de cada item (na fila / processando / polido / erro); quando a
+`radar-polir` recusa por **cota do mês**, a fila **para** e os demais ficam esperando. A fila é restaurada a cada render
+da aba (`depoisDeDesenharAbaVideo` → `polirRedesenhar`). É **só de tela** (`radar-video.js`, `index.html`); **nada no
+banco** (segue na v0.50.0), e as funções `radar-polir`/`radar-copia` **não mudam**. Teste de tela reescrito: escolher 2
+vídeos → pré-visualizar → "Polir todos" → os dois ficam prontos com assistir/baixar + legenda, e a cota aparece. **A suíte
+INTEIRA roda no CI antes de juntar.**
 
 **v0.57.0 — corretor de polimento para vídeos SEM roteiro (Cleanvoice + AssemblyAI) + controle de custo** (30/10/2026):
 uma tela nova na aba **Vídeo** ("Polir um vídeo (sem roteiro)", em `radar-video.js`) para os vídeos de **venda**, que
