@@ -1,4 +1,14 @@
-# Radar Artecon — Relatório de testes (v0.60.0)
+# Radar Artecon — Relatório de testes (v0.61.0)
+
+**v0.61.0 — polimento no Consumo de IA do Portal (só a função radar-polir)** (31/10/2026): a `radar-polir` (VERSAO
+0.61.0) ganhou `avisarCentral()`: com o token do Radar na IA Central (o **`IA_GATEWAY_TOKEN`** que a `radar-ia` já tem
+no projeto; **`RADAR_IA_GATEWAY_TOKEN`**, se existir, prevalece), cada uso da Cleanvoice/AssemblyAI é avisado
+à IA Central (POST à função `ia-uso-externo` do projeto Departamento Pessoal, com `{provedor, segundos}`), que calcula o
+custo pelo `core.ia_precos.por_minuto` e registra em `core.ia_uso` (ia_central_v1.2.0.sql, fonte no repo artecon-supabase,
+validado em banco de rascunho: custo por minuto, recusa de token, saldo da Cleanvoice e aviso de 80% com link). Sem o
+segredo, a função não chama nada (comportamento idêntico ao anterior — coberto pela suíte de sempre); a falha do aviso
+vira só uma linha de log, sem travar o polimento. Nada muda na tela, no banco do Radar nem nas demais funções. **A suíte
+INTEIRA roda no CI antes de juntar.**
 
 **v0.60.0 — Vídeo de venda: roteiro pela IA + biblioteca (banco + radar-ia + tela)** (31/10/2026): a aba Vídeo ganhou a
 seção **"Vídeo de venda (roteiro pela IA)"** (`radar-video.js`): serviço (lista + "Outro serviço"), destaque, ação

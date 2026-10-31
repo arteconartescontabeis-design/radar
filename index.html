@@ -435,21 +435,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.60.0"></script>
-<script src="radar-video.js?v=0.60.0"></script>
-<script src="radar-setor.js?v=0.60.0"></script>
-<script src="radar-respostas.js?v=0.60.0"></script>
+<script src="radar-pauta.js?v=0.61.0"></script>
+<script src="radar-video.js?v=0.61.0"></script>
+<script src="radar-setor.js?v=0.61.0"></script>
+<script src="radar-respostas.js?v=0.61.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.60.0";
+const VERSAO = "0.61.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.61.0", "31/10/2026", [
+    "O polimento de vídeo agora entra no CONSUMO DE IA do Portal: a cada vídeo polido, o Radar avisa a IA Central, e o gasto da Cleanvoice e da AssemblyAI aparece lá, junto do texto e das imagens — inclusive no quadro “Saldo acabando”, com o saldo da Cleanvoice lançável como o das outras contas. A cota de minutos do Radar continua a mesma; nada muda na tela do Radar.",
+    "Administrador: o ia_central_v1.2.0.sql (projeto Departamento Pessoal) e a função nova ia-uso-externo já foram aplicados em 31/10/2026. No RADAR é só o Deploy da função radar-polir desta versão — NENHUM segredo novo: ela usa o IA_GATEWAY_TOKEN que a radar-ia já tem no projeto (um RADAR_IA_GATEWAY_TOKEN próprio, se existir, prevalece). As funções radar-ia, radar-video, radar-redes e radar-copia não mudam; o banco do Radar segue na v0.50.0. Passo a passo no LEIAME, “Da v0.60.0 para a v0.61.0”."]],
   ["0.60.0", "31/10/2026", [
     "Vídeo de venda (aba Vídeo): a IA escreve o ROTEIRO FALADO (30 a 60 s) que apresenta um serviço da Artecon — informa, não vende: sem número, sem promessa, sem preço, com as travas de publicidade de sempre. Você escolhe o serviço (Departamento Pessoal, Abertura de empresa, Fiscal e Reforma Tributária, Contábil ou outro), diz o que destacar, revisa o texto, ajusta o FECHO com o contato (que entra no fim da fala) e guarda na BIBLIOTECA de roteiros, para reaproveitar. O botão “Gravar este roteiro” abre o vídeo avulso já preenchido: teleprompter, correção, declarações e cartela de sempre — nada é publicado pelo Radar.",
     "Administrador: rode no Supabase (SQL Editor) o sql/radar-venda-v0.60.0.sql (a tabela da biblioteca e as funções; nenhuma tabela existente muda; nada é apagado; pode rodar de novo), cole o index.ts desta versão na função radar-ia (Deploy; ela ganha a ação roteiro_venda) e faça o Deploy, de novo, da radar-copia (a cópia mensal do OneDrive passa a levar a biblioteca). As funções radar-video, radar-polir e radar-redes não mudam; nenhum segredo novo. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.59.0 para a v0.60.0”."]],
