@@ -3073,14 +3073,15 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
 
 ## Atualizações futuras
 
-**Da v0.60.0 para a v0.61.0** (o **Deploy da `radar-polir`** e **um segredo novo no Radar**; a parte da IA Central —
+**Da v0.60.0 para a v0.61.0** (só o **Deploy da `radar-polir`** — **nenhum segredo novo**; a parte da IA Central —
 `ia_central_v1.2.0.sql` e a função `ia-uso-externo` do projeto Departamento Pessoal — **já foi aplicada em 31/10/2026**).
 Supõe a v0.60.0 instalada:
 
 1. **Deploy** da função **`radar-polir`** desta versão (`supabase/functions/radar-polir/index.ts`, "Verify JWT" como está).
-2. **Segredo novo** (Supabase do RADAR → Edge Functions → Secrets — **nunca pelo chat**): **`RADAR_IA_GATEWAY_TOKEN`**,
-   com o token do Radar na IA Central (o mesmo do robô do corretor, no repositório radar-video). **Sem o segredo, tudo
-   funciona como antes** — o polimento só não avisa a central.
+2. **Segredos**: nenhum a cadastrar — o aviso usa o **`IA_GATEWAY_TOKEN`** que a `radar-ia` já tem neste projeto (os
+   segredos das Edge Functions valem para o projeto inteiro). Se um dia quiser um token separado só para o polimento,
+   cadastre **`RADAR_IA_GATEWAY_TOKEN`**, que prevalece. Sem nenhum dos dois, tudo funciona como antes — o polimento
+   só não avisa a central.
 3. Conferência: faça um polimento na aba Vídeo e abra **Portal → Consumo de IA**: o gasto da Cleanvoice (e da AssemblyAI,
    quando a legenda sai) aparece nas Últimas chamadas e no gasto do Radar; no quadro "Saldo acabando", a Cleanvoice ganha
    barra própria depois de "Corrigir o saldo" com a conta cleanvoice. As funções `radar-ia`, `radar-video`, `radar-redes`

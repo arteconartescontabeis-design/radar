@@ -2,7 +2,7 @@
 // RADAR ARTECON — Edge Function "radar-polir" (v0.61.0)
 //
 // v0.61.0 — o polimento entra no Consumo de IA do Portal: com o segredo RADAR_IA_GATEWAY_TOKEN (o mesmo token do
-//   Radar na IA Central, o do robô do corretor), cada uso da Cleanvoice e da AssemblyAI é avisado à IA Central
+//   Radar na IA Central — o IA_GATEWAY_TOKEN que a radar-ia já tem serve), cada uso da Cleanvoice e da AssemblyAI é avisado à IA Central
 //   (função ia-uso-externo do projeto Departamento Pessoal), que calcula o custo pelo preço por minuto e soma no
 //   gasto do Radar. Sem o segredo, nada muda (o aviso é pulado). O aviso NUNCA trava o polimento.
 //
@@ -24,7 +24,7 @@
 // Segredos (Supabase → Edge Functions → Secrets):
 //   CLEANVOICE_API_KEY   Cleanvoice (cabeçalho X-API-Key). Sem ela, "processar" recusa com aviso claro.
 //   ASSEMBLYAI_API_KEY   AssemblyAI (cabeçalho authorization). Sem ela, a legenda é pulada (o resto segue).
-//   RADAR_IA_GATEWAY_TOKEN  (v0.61.0, opcional) o token do Radar na IA Central: liga o aviso do uso ao Portal.
+//   (v0.61.0) o aviso usa o IA_GATEWAY_TOKEN que a radar-ia já tem no projeto; RADAR_IA_GATEWAY_TOKEN, se existir, prevalece.
 // SUPABASE_URL e as chaves pública/interna o Supabase já fornece.
 // =====================================================================
 
@@ -38,7 +38,9 @@ const CLEANVOICE_BASE = env("CLEANVOICE_API_URL", "https://api.cleanvoice.ai/v2"
 const ASSEMBLY_BASE = env("ASSEMBLYAI_API_URL", "https://api.assemblyai.com/v2").replace(/\/+$/, "");
 const POLL_MS = 4000, POLL_MAX = 30;                          // espera a IA (até ~2 min); vídeos curtos
 // v0.61.0: o aviso à IA Central (Portal → Consumo de IA); o endereço só muda nos testes
-const IA_CENTRAL_TOKEN = env("RADAR_IA_GATEWAY_TOKEN");
+// o token do Radar na IA Central: o IA_GATEWAY_TOKEN que a radar-ia já tem neste projeto serve (os segredos
+// valem para o projeto inteiro); um RADAR_IA_GATEWAY_TOKEN próprio, se existir, prevalece. Sem nenhum: aviso pulado.
+const IA_CENTRAL_TOKEN = env("RADAR_IA_GATEWAY_TOKEN") || env("IA_GATEWAY_TOKEN");
 const IA_USO_EXTERNO_URL = env("IA_USO_EXTERNO_URL", "https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-uso-externo").replace(/\/+$/, "");
 /** Avisa a IA Central do uso de uma IA de vídeo. Sem o segredo, não faz nada; falha vira só uma linha de log
  *  (sem nome, sem link e sem segredo) e o polimento segue normal. */
