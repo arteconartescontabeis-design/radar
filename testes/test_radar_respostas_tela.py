@@ -59,6 +59,9 @@ def abrir(pg, email=LEITOR_EMAIL, esperar="#resp-situacao"):
     pg.wait_for_selector("nav.abas")
     pg.click("nav.abas button[data-aba=respostas]")
     pg.wait_for_selector(esperar)
+    # no runner carregado do CI, o executar() do login ainda pode estar OCUPADO quando a tela já apareceu — e um clique
+    # com OCUPADO há menos de 1,5 s é IGNORADO em silêncio (regra do clique duplo). Espera desocupar antes de clicar.
+    pg.wait_for_function("() => !OCUPADO")
 
 
 def funcao_imitada(pg, respostas, pedidos):
