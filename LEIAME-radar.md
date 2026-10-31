@@ -1,4 +1,4 @@
-# Radar Artecon — v0.59.0
+# Radar Artecon — v0.60.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,15 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.60.0 traz o **Vídeo de venda** (aba Vídeo, o projeto dos vídeos dos serviços): a IA escreve o **roteiro
+falado** (30 a 60 s) que apresenta um serviço da Artecon — **informa, não vende**: sem número, sem promessa, sem
+preço, com as travas de publicidade de sempre. A equipe escolhe o serviço (Departamento Pessoal, Abertura de
+empresa, Fiscal e Reforma Tributária, Contábil ou outro), diz o que destacar, **revisa o texto**, ajusta o **fecho
+com o contato** (entra no fim da fala; nunca vai à IA) e guarda na **biblioteca de roteiros**. "Gravar este
+roteiro" abre o **vídeo avulso** já preenchido: teleprompter, correção, declarações e cartela de sempre — nada é
+publicado pelo Radar. **Muda o banco** (a tabela da biblioteca, pelo `sql/radar-venda-v0.60.0.sql`) e a função
+**`radar-ia`** (ação nova `roteiro_venda`). Veja "Da v0.59.0 para a v0.60.0".
 
 A v0.59.0 põe no **teleprompter** o botão **"Enviar para a correção"**: assim que a tomada entra na lista de clipes
 (e também ao reabrir o teleprompter com clipes já na lista), dá para mandar a gravação ao corretor **dali mesmo**, sem
@@ -3057,6 +3066,26 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.59.0 para a v0.60.0** (uma **mudança no banco** — a tabela da biblioteca e duas funções — e o **Deploy da
+`radar-ia`**; **nenhum segredo novo**). Supõe a v0.59.0 instalada:
+
+1. **SQL Editor** → execute `sql/radar-venda-v0.60.0.sql`. Ele cria a tabela **`radar_venda_roteiros`** (a biblioteca
+   dos roteiros de venda) e as funções `radar_venda_gravar` (editor e administrador) e `radar_venda_apagar` (só o
+   administrador). **Não mexe em nenhuma tabela existente, não apaga nada, pode rodar de novo.**
+2. **Deploy** da função **`radar-ia`** desta versão (`supabase/functions/radar-ia/index.ts`, "Verify JWT" como está):
+   ela ganha a ação **`roteiro_venda`**. As funções `radar-video`, `radar-polir`, `radar-redes` e `radar-copia`
+   **não mudam**; o custo do roteiro entra no consumo normal da IA (conta como "gerar" no
+   limite do mês e aparece no Portal → Consumo de IA).
+3. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5** (no celular, recarregue) — o rodapé
+   mostra "Radar v0.60.0".
+4. Conferência: aba **Vídeo** → **"Vídeo de venda (roteiro pela IA)"**. Escolha **Departamento Pessoal**, escreva um
+   destaque e toque em **"Escrever o roteiro com a IA"**: o texto aparece para revisão, com o título e o **fecho com o
+   contato** (padrão "Fale com a gente: www.artecon.cnt.br", editável). **"Guardar na biblioteca"** grava (a lista
+   aparece embaixo, com "Usar" e, para o administrador, "Apagar"); **"Gravar este roteiro (vídeo avulso)"** abre o
+   avulso preenchido — dali é o fluxo de sempre (teleprompter, "Enviar para a correção", declarações, cartela).
+   Enquanto o SQL do passo 1 não for rodado, a seção avisa que falta a biblioteca no banco; enquanto a `radar-ia`
+   for a antiga, o botão avisa que falta colar o index.ts novo.
 
 **Da v0.58.0 para a v0.59.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a v0.58.0 instalada:
 

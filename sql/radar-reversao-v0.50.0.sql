@@ -140,6 +140,7 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_venda_roteiros,   -- v0.60.0 (a biblioteca dos vídeos de venda)
   public.radar_polimento_uso,    -- v0.57.0 (corretor de polimento)
   public.radar_pessoas_termos,   -- v0.46.0
   public.radar_copias,
@@ -450,6 +451,10 @@ drop function if exists public.radar_polimento_limite_s();
 drop function if exists public.radar_polimento_custo_mes_brl();
 drop function if exists public.radar_polimento_cota();
 drop function if exists public.radar_polimento_registrar(bigint, text, numeric, text, text);
+
+-- v0.60.0: a biblioteca dos vídeos de venda (a tabela radar_venda_roteiros já saiu com a lista acima)
+drop function if exists public.radar_venda_gravar(text, text, text);
+drop function if exists public.radar_venda_apagar(bigint);
 
 commit;
 
