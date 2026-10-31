@@ -59,6 +59,9 @@ def abrir(pg, email=LEITOR_EMAIL, esperar="#resp-situacao"):
     pg.wait_for_selector("nav.abas")
     pg.click("nav.abas button[data-aba=respostas]")
     pg.wait_for_selector(esperar)
+    # no runner carregado do CI, o executar() do login ainda pode estar OCUPADO quando a tela já apareceu — e um clique
+    # com OCUPADO há menos de 1,5 s é IGNORADO em silêncio (regra do clique duplo). Espera desocupar antes de clicar.
+    pg.wait_for_function("() => !OCUPADO")
 
 
 def funcao_imitada(pg, respostas, pedidos):
@@ -168,7 +171,9 @@ def test_pausar_todas_e_retomar(tela):
     cenario(tela.db)
     abrir(tela, ADMIN_EMAIL)
     tela.click("[data-acao=resp-pausar]")                                             # o confirm() é aceito
-    tela.wait_for_selector("#recado >> text=Respostas automáticas pausadas.")
+    # 120 s só nesta primeira espera: é a 1ª escrita da tela recém-aberta e, no runner carregado do CI, a resposta
+    # às vezes passa dos 30 s padrão (timeouts intermitentes registrados no PR #92); o resto da suíte segue em 30 s
+    tela.wait_for_selector("#recado >> text=Respostas automáticas pausadas.", timeout=120000)
     tela.wait_for_selector("#resp-situacao >> text=PAUSADAS")
     assert tela.db.execute("select valor from radar_config where chave = 'respostas'").fetchone()[0] == {"ligado": False}
     tela.click("[data-acao=resp-pausar]")

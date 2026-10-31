@@ -1,4 +1,4 @@
-# Radar Artecon — v0.58.0
+# Radar Artecon — v0.59.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.59.0 põe no **teleprompter** o botão **"Enviar para a correção"**: assim que a tomada entra na lista de clipes
+(e também ao reabrir o teleprompter com clipes já na lista), dá para mandar a gravação ao corretor **dali mesmo**, sem
+fechar e procurar o botão na tela de trás. O teleprompter fecha e o envio é o **mesmo de sempre** — as declarações,
+"quem fala" e as travas continuam valendo; faltando algo, a tela avisa o que falta e a tomada fica guardada na lista.
+Funciona no **reel da Pauta** e no **vídeo avulso**. É **só de tela**, **nada no banco**. Veja "Da v0.58.0 para a v0.59.0".
 
 A v0.58.0 melhora a tela **"Polir um vídeo (sem roteiro)"** (aba Vídeo): agora dá para escolher **vários vídeos** de
 uma vez e **pré-visualizar** cada um antes de polir. Eles entram numa **fila** e o botão **"Polir todos"** cuida de um
@@ -3051,6 +3057,16 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.58.0 para a v0.59.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a v0.58.0 instalada:
+
+1. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5** (no celular, recarregue) — o rodapé mostra "Radar v0.59.0".
+2. Conferência: abra um **reel** na aba **Vídeo** (ou um **avulso**) e toque em **"Gravar pelo navegador (teleprompter)"**.
+   Grave uma tomada ("Parar e guardar"): junto aos controles aparece o botão verde **"Enviar para a correção"** — ele
+   fecha o teleprompter e dispara o **mesmo envio** da tela ("quem fala", as quatro declarações e as travas continuam
+   obrigatórios; faltando algo, o aviso diz o que falta e a tomada fica na lista). Ao reabrir o teleprompter com clipes
+   já na lista, o botão já aparece. As funções `radar-polir`, `radar-copia`, `radar-ia`, `radar-redes` e `radar-video`
+   **não mudam**; o banco segue na **v0.50.0**.
 
 **Da v0.57.0 para a v0.58.0** (mudança **só de tela** — **nada no banco**, **nenhum SQL**, **nenhum segredo novo**). Supõe a v0.57.0 instalada:
 

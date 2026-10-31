@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.58.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.59.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -512,7 +512,8 @@ async function abrirTeleprompter(pid){
           <button class="btn perigo" type="button" data-acao="tele-cancelar" id="tele-cancelar" hidden>Cancelar</button>` : ""}
           <button class="btn sec" type="button" data-acao="tele-rolar" id="tele-rolar">Rolar o texto</button>
           <button class="btn sec" type="button" data-acao="tele-inicio">↑ Início</button>
-          <button class="btn sec" type="button" data-acao="tele-fechar">Fechar</button></div>
+          <button class="btn sec" type="button" data-acao="tele-fechar">Fechar</button>
+          <button class="btn verde" type="button" data-acao="tele-enviar" id="tele-enviar" hidden>Enviar para a correção</button></div>
         <div class="acoes tele-ajustes"><button class="btn peq sec" type="button" data-acao="tele-letra" data-passo="-1" aria-label="Letra menor">A−</button>
           <button class="btn peq sec" type="button" data-acao="tele-letra" data-passo="1" aria-label="Letra maior">A+</button>
           <button class="btn peq sec" type="button" data-acao="tele-veloc" data-passo="-1">Mais devagar</button>
@@ -526,6 +527,8 @@ async function abrirTeleprompter(pid){
     </div>
     <div class="tele-janela"><div class="tele-rolo" id="tele-rolo" style="font-size:${TELE.letra}px">${linhas.map(l => `<p>${h(l)}</p>`).join("")}</div></div>
   </div></div>`);
+  // v0.59.0: com clipes já na lista (tomadas de antes ou arquivos escolhidos), o envio à correção já fica à mão aqui
+  if(clipesDe(TELE.pid).length){ const env = $("#tele-enviar"); if(env) env.hidden = false; }
   if(podeGravar){
     try{
       TELE.fluxo = await navigator.mediaDevices.getUserMedia({audio:true,
@@ -580,6 +583,7 @@ async function pararGravacaoTele(){
   TELE.url = URL.createObjectURL(arquivo);
   const av = $("#tele-aviso");
   if(av) av.innerHTML = `Tomada ${TELE.tomadas} (${segVideo(duracaoMs / 1000)} s) entrou na lista de clipes. <button class="btn peq sec" type="button" data-acao="tele-assistir">▶ Assistir</button> <a href="${TELE.url}" download="${h(nome)}">Baixar esta tomada</a>.`;
+  const env = $("#tele-enviar"); if(env) env.hidden = false;        // v0.59.0: dá para mandar ao corretor dali mesmo
 }
 /* v0.51.0: a lista de microfones (o nome só aparece depois da permissão da câmera/áudio). Com um só, a linha fica escondida
    (não há o que escolher). Trocar é só fora da gravação: para a faixa de áudio atual e põe a do microfone escolhido (a lapela). */
@@ -2184,6 +2188,17 @@ const VIDEO = {
       const aberta = $("#tele-previa"); if(aberta){ aberta.remove(); return; }
       $(".tele-topo")?.insertAdjacentHTML("beforeend", `<div id="tele-previa" class="tele-previa-caixa"><video controls autoplay playsinline src="${TELE.url}"></video>
         <button class="btn peq sec" type="button" data-acao="tele-assistir">Fechar a prévia</button></div>`); },
+    /* v0.59.0: enviar ao corretor dali mesmo — fecha o teleprompter e dispara o MESMO envio da tela de trás (peça ou
+       avulso): as conferências de sempre (quem fala, declarações, termos) continuam valendo e, faltando algo, o aviso
+       de sempre diz o que falta (a tomada fica guardada na lista de clipes) */
+    async "tele-enviar"(){
+      if(!TELE) return;
+      const acao = TELE.pid ? "video-enviar" : "vaba-avulso-enviar";
+      if(!clipesDe(TELE.pid).length){ recado("Grave uma tomada primeiro: é ela que vai ao corretor.", true); return; }
+      fecharTeleprompter();
+      $("#video-envio")?.scrollIntoView({block:"start"});
+      await VIDEO.acoes[acao]();
+    },
     "video-nova"(){ const ev = estadoVideo(); ev.nova = true; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); $("#video-envio")?.scrollIntoView({block:"nearest"}); },
     "video-nova-cancelar"(){ const ev = estadoVideo(); ev.nova = false; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); },
     "video-clipe-mover"(el){ const pid = estadoVideo().peca, l = clipesDe(pid), i = Number(el.dataset.i), j = i + Number(el.dataset.passo);

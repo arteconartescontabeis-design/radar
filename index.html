@@ -435,21 +435,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.58.0"></script>
-<script src="radar-video.js?v=0.58.0"></script>
-<script src="radar-setor.js?v=0.58.0"></script>
-<script src="radar-respostas.js?v=0.58.0"></script>
+<script src="radar-pauta.js?v=0.59.0"></script>
+<script src="radar-video.js?v=0.59.0"></script>
+<script src="radar-setor.js?v=0.59.0"></script>
+<script src="radar-respostas.js?v=0.59.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.58.0";
+const VERSAO = "0.59.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.59.0", "30/10/2026", [
+    "O teleprompter ganhou o botão “Enviar para a correção”: assim que a tomada entra na lista de clipes (e também ao reabrir o teleprompter com clipes já na lista), dá para mandar a gravação ao corretor DALI MESMO, sem fechar e procurar o botão na tela de trás. O teleprompter fecha e o envio é o MESMO de sempre: as declarações, “quem fala” e as travas continuam valendo — faltando algo, a tela avisa o que falta e a tomada fica guardada na lista. Funciona no reel da Pauta e no vídeo avulso.",
+    "Administrador: é só a tela — nada muda no banco, nenhum SQL, nenhum segredo novo. As funções radar-polir, radar-copia, radar-ia, radar-redes e radar-video não mudam. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5 (no celular, recarregue a página). Passo a passo no LEIAME, “Da v0.58.0 para a v0.59.0”."]],
   ["0.58.0", "30/10/2026", [
     "Na tela “Polir um vídeo (sem roteiro)” (aba Vídeo) agora dá para escolher VÁRIOS vídeos de uma vez e PRÉ-VISUALIZAR cada um antes de polir. Os vídeos entram numa fila; o botão “Polir todos” cuida de um de cada vez (respeitando a cota do mês), e cada vídeo mostra o resultado para assistir e baixar quando fica pronto. Se a cota acabar no meio, o Radar avisa e para, sem perder os que já ficaram prontos.",
     "Administrador: é só a tela — nada muda no banco, nenhum SQL, nenhum segredo novo. As funções radar-polir, radar-copia, radar-ia, radar-redes e radar-video não mudam. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.57.0 para a v0.58.0”."]],

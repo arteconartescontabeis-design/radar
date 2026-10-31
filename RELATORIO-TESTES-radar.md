@@ -1,4 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.58.0)
+# Radar Artecon — Relatório de testes (v0.59.0)
+
+**v0.59.0 — "Enviar para a correção" no teleprompter (só tela)** (30/10/2026): o teleprompter (`radar-video.js`) ganhou
+o botão **"Enviar para a correção"** (`#tele-enviar`, ação `tele-enviar`): ele fica escondido até a primeira tomada
+entrar na lista de clipes (`fimDaGravacaoTele`) — ou aparece já na abertura, quando `clipesDe(TELE.pid)` tem clipes — e,
+ao tocar, **fecha o teleprompter** (`fecharTeleprompter`), rola até `#video-envio` e dispara o **mesmo envio** da tela
+(`video-enviar` na peça; `vaba-avulso-enviar` no avulso), com todas as conferências de sempre (clipes, "quem fala", as
+quatro declarações, termos): faltando algo, o `recado` de erro de sempre aparece e a tomada **fica na lista**. É **só de
+tela** (`radar-video.js`, `index.html`); **nada no banco** (segue na v0.50.0) e **nenhuma função muda**. Teste novo de
+tela: grava uma tomada pelo teleprompter de mentira, confere o botão escondido antes e visível depois, toca nele, vê o
+teleprompter fechar com o aviso de sempre ("Marque as quatro declarações…") e a tomada preservada (nada sobe), e confere que, ao
+reabrir, o botão já aparece. **A suíte INTEIRA roda no CI antes de juntar.**
 
 **v0.58.0 — polir vários vídeos em fila + pré-visualizar (só tela)** (30/10/2026): a tela "Polir um vídeo (sem
 roteiro)" (`radar-video.js`, aba Vídeo) ganhou **seleção múltipla** e uma **fila**: ao escolher um ou mais arquivos
