@@ -1,5 +1,10 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-polir" (v0.57.0)
+// RADAR ARTECON — Edge Function "radar-polir" (v0.61.0)
+//
+// v0.61.0 — o polimento entra no Consumo de IA do Portal: com o segredo RADAR_IA_GATEWAY_TOKEN (o mesmo token do
+//   Radar na IA Central, o do robô do corretor), cada uso da Cleanvoice e da AssemblyAI é avisado à IA Central
+//   (função ia-uso-externo do projeto Departamento Pessoal), que calcula o custo pelo preço por minuto e soma no
+//   gasto do Radar. Sem o segredo, nada muda (o aviso é pulado). O aviso NUNCA trava o polimento.
 //
 // Polimento de vídeo SEM roteiro (ex.: os vídeos de venda): tira vícios de fala e pausas e limpa o áudio
 // (Cleanvoice) e gera a legenda pt-BR (AssemblyAI). Diferente do corretor de reels (radar-video), que já faz
@@ -19,10 +24,11 @@
 // Segredos (Supabase → Edge Functions → Secrets):
 //   CLEANVOICE_API_KEY   Cleanvoice (cabeçalho X-API-Key). Sem ela, "processar" recusa com aviso claro.
 //   ASSEMBLYAI_API_KEY   AssemblyAI (cabeçalho authorization). Sem ela, a legenda é pulada (o resto segue).
+//   RADAR_IA_GATEWAY_TOKEN  (v0.61.0, opcional) o token do Radar na IA Central: liga o aviso do uso ao Portal.
 // SUPABASE_URL e as chaves pública/interna o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.57.0";
+const VERSAO = "0.61.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
 const BUCKET = "radar-videos";
@@ -31,6 +37,24 @@ const ARMAZENAMENTO_MS = Number(env("RADAR_VIDEO_ARMAZENAMENTO_MS", "20000"));
 const CLEANVOICE_BASE = env("CLEANVOICE_API_URL", "https://api.cleanvoice.ai/v2").replace(/\/+$/, "");
 const ASSEMBLY_BASE = env("ASSEMBLYAI_API_URL", "https://api.assemblyai.com/v2").replace(/\/+$/, "");
 const POLL_MS = 4000, POLL_MAX = 30;                          // espera a IA (até ~2 min); vídeos curtos
+// v0.61.0: o aviso à IA Central (Portal → Consumo de IA); o endereço só muda nos testes
+const IA_CENTRAL_TOKEN = env("RADAR_IA_GATEWAY_TOKEN");
+const IA_USO_EXTERNO_URL = env("IA_USO_EXTERNO_URL", "https://fbxelwhdiisfmnwrerbl.supabase.co/functions/v1/ia-uso-externo").replace(/\/+$/, "");
+/** Avisa a IA Central do uso de uma IA de vídeo. Sem o segredo, não faz nada; falha vira só uma linha de log
+ *  (sem nome, sem link e sem segredo) e o polimento segue normal. */
+async function avisarCentral(provedor: "cleanvoice" | "assemblyai", segundos: number): Promise<void> {
+  if (!IA_CENTRAL_TOKEN) return;
+  try {
+    const r = await fetch(IA_USO_EXTERNO_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": IA_CENTRAL_TOKEN },
+      body: JSON.stringify({ provedor, segundos, detalhe: "polimento de vídeo (Radar)" }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) console.log("radar-polir: a IA Central não registrou o uso", r.status);
+    await r.body?.cancel().catch(() => {});
+  } catch { console.log("radar-polir: IA Central fora de alcance (uso não registrado lá)"); }
+}
 
 function chavePublica(): string {
   try {
@@ -261,11 +285,13 @@ async function processar(req: Request, corpo: any): Promise<Response> {
     const tratado = await cleanvoice(fonteUrl);
     await guardar(`polimento/${id}/tratado.mp4`, tratado, "video/mp4");
     await banco(comoServico(), "POST", "rpc/radar_polimento_registrar", { p_peca: null, p_provedor: "cleanvoice", p_segundos: dur });
+    await avisarCentral("cleanvoice", dur);                   // v0.61.0: o gasto aparece no Portal → Consumo de IA
     // 2) AssemblyAI: legenda pt-BR (da fonte; não trava o resultado se falhar)
     srtTexto = await assemblyai(fonteUrl);
     if (srtTexto.srt) {
       await guardar(`polimento/${id}/legenda.srt`, srtTexto.srt, "text/plain; charset=utf-8");
       await banco(comoServico(), "POST", "rpc/radar_polimento_registrar", { p_peca: null, p_provedor: "assemblyai", p_segundos: dur });
+      await avisarCentral("assemblyai", dur);                 // v0.61.0: idem
     }
   } catch (e) {
     await banco(comoServico(), "POST", "rpc/radar_polimento_registrar", { p_peca: null, p_provedor: "cleanvoice", p_segundos: 0, p_status: "erro", p_erro: (e as Error).message }).catch(() => {});

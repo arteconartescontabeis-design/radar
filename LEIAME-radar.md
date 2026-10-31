@@ -1,4 +1,4 @@
-# Radar Artecon — v0.60.0
+# Radar Artecon — v0.61.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.61.0 liga o **polimento de vídeo ao Consumo de IA do Portal**: a cada vídeo polido, a `radar-polir` avisa a
+IA Central (função `ia-uso-externo`, com o token do Radar), o custo da **Cleanvoice** e da **AssemblyAI** é calculado
+pelo preço por minuto (`core.ia_precos`) e aparece no Portal — inclusive no quadro "Saldo acabando", com o saldo da
+Cleanvoice lançável como o das outras contas. **Nada muda na tela do Radar** e a cota de minutos continua. Veja "Da
+v0.60.0 para a v0.61.0".
 
 A v0.60.0 traz o **Vídeo de venda** (aba Vídeo, o projeto dos vídeos dos serviços): a IA escreve o **roteiro
 falado** (30 a 60 s) que apresenta um serviço da Artecon — **informa, não vende**: sem número, sem promessa, sem
@@ -3066,6 +3072,19 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.60.0 para a v0.61.0** (o **Deploy da `radar-polir`** e **um segredo novo no Radar**; a parte da IA Central —
+`ia_central_v1.2.0.sql` e a função `ia-uso-externo` do projeto Departamento Pessoal — **já foi aplicada em 31/10/2026**).
+Supõe a v0.60.0 instalada:
+
+1. **Deploy** da função **`radar-polir`** desta versão (`supabase/functions/radar-polir/index.ts`, "Verify JWT" como está).
+2. **Segredo novo** (Supabase do RADAR → Edge Functions → Secrets — **nunca pelo chat**): **`RADAR_IA_GATEWAY_TOKEN`**,
+   com o token do Radar na IA Central (o mesmo do robô do corretor, no repositório radar-video). **Sem o segredo, tudo
+   funciona como antes** — o polimento só não avisa a central.
+3. Conferência: faça um polimento na aba Vídeo e abra **Portal → Consumo de IA**: o gasto da Cleanvoice (e da AssemblyAI,
+   quando a legenda sai) aparece nas Últimas chamadas e no gasto do Radar; no quadro "Saldo acabando", a Cleanvoice ganha
+   barra própria depois de "Corrigir o saldo" com a conta cleanvoice. As funções `radar-ia`, `radar-video`, `radar-redes`
+   e `radar-copia` **não mudam**; o banco do Radar segue na **v0.50.0**.
 
 **Da v0.59.0 para a v0.60.0** (uma **mudança no banco** — a tabela da biblioteca e duas funções — e o **Deploy da
 `radar-ia`**; **nenhum segredo novo**). Supõe a v0.59.0 instalada:
