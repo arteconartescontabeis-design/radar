@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.59.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.60.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -1317,6 +1317,9 @@ async function listaAbaVideo(){
     return {p, v:dela.find(v => v.situacao !== "aguardando_envio") || dela[0], envio:dela.some(v => v.situacao === "aguardando_envio") && dela.some(v => v.situacao !== "aguardando_envio")}; })
     .filter(x => x.v).sort((x, y) => (x.p.data + x.p.hora).localeCompare(y.p.data + y.p.hora));
   const adm = ehAdmin();
+  let vendaRoteiros = null;   // v0.60.0: null = o banco ainda não tem a biblioteca (a seção orienta a rodar o SQL)
+  try{ vendaRoteiros = await ler("radar_venda_roteiros", {select:"id,servico,titulo,roteiro,criado_em", order:"criado_em.desc", limit:"60"}); }
+  catch(e){ vendaRoteiros = null; }
   return `<h1>Vídeo dos reels</h1><p class="sub">O vídeo corrigido de cada reel da Pauta. O administrador edita aqui; a aprovação continua na peça e nada é publicado sem ela.</p>
     <div class="acoes vaba-filtros"><button class="btn peq${a.filtro === "60" ? " sec" : ""}" type="button" data-acao="vaba-filtro" data-filtro="futuro">De hoje em diante</button>
       <button class="btn peq${a.filtro === "60" ? "" : " sec"}" type="button" data-acao="vaba-filtro" data-filtro="60">Últimos 60 dias</button></div>
@@ -1337,6 +1340,7 @@ async function listaAbaVideo(){
         <td data-rotulo="Vídeo">${seloVideo(v)}${numVideo(v.duracao_final) !== null ? ` <span class="sub">${segVideo(v.duracao_final)} s</span>` : ""}${ehEditorVideo(v) ? " " + selo("editado", "neutro") : ""}</td>
         <td><button class="btn peq${adm ? "" : " sec"}" type="button" data-acao="vaba-abrir" data-id="${h(v.id)}">${adm ? "Editar" : "Ver"}</button></td></tr>`).join("")}
       </tbody></table></div>`}
+    ${blocoVenda(adm, vendaRoteiros)}
     <h2 class="vaba-avulsos-titulo">Polir um vídeo (sem roteiro)</h2>
     <p class="sub">Para vídeos <b>sem roteiro</b> (vídeos de venda, gravações livres): a IA tira os vícios de fala (“é/né”), corta as pausas, melhora o áudio e gera a legenda em português. Nada é publicado — você baixa o vídeo pronto. Dá para <b>escolher vários</b> e <b>pré-visualizar</b> antes de polir. Usa a cota de polimento do mês (Configurações → Polimento). <i>Diferente do corretor dos reels, que já faz isso quando há roteiro.</i></p>
     <div id="vpolir-area"><label for="vpolir-arquivo">Escolha um ou mais vídeos (MP4 ou MOV)</label>
@@ -1344,6 +1348,49 @@ async function listaAbaVideo(){
       <div id="vpolir-fila"></div>
       <div class="acoes"><button class="btn verde" type="button" data-acao="vpolir-todos" id="vpolir-botao">Polir todos</button></div></div>
     <div id="vpolir-resultado"></div>`;
+}
+
+/* ---------------------------------- Vídeo de VENDA (v0.60.0): roteiro pela IA + biblioteca (o projeto dos serviços) */
+const VENDA_SERVICOS = ["Departamento Pessoal", "Abertura de empresa", "Fiscal e Reforma Tributária", "Contábil", "Outro serviço"];
+const VENDA_FECHO_PADRAO = "Fale com a gente: www.artecon.cnt.br";
+function estadoVenda(){
+  const a = abaVideo();
+  a.venda = {servico:VENDA_SERVICOS[0], outro:"", destaque:"", fecho:VENDA_FECHO_PADRAO, titulo:"", roteiro:"", avisos:[], ...(a.venda || {})};
+  return a.venda;
+}
+const servicoVenda = v => (v.servico === "Outro serviço" ? v.outro : v.servico).trim();
+function blocoVenda(adm, roteiros){
+  const v = estadoVenda();
+  const biblioteca = roteiros === null
+    ? `<div class="aviso alerta" id="venda-sem-banco">A biblioteca dos vídeos de venda ainda não está no banco: o administrador roda o <b>sql/radar-venda-v0.60.0.sql</b> no SQL Editor (passo a passo no LEIAME, “Da v0.59.0 para a v0.60.0”).</div>`
+    : !roteiros.length ? `<p class="sub" id="venda-vazia">Nenhum roteiro guardado ainda.</p>`
+    : `<div class="vaba-lista-caixa"><table class="vaba-lista" id="venda-lista"><thead><tr><th>Serviço</th><th>Roteiro</th><th>Guardado em</th><th></th></tr></thead><tbody>
+      ${roteiros.map(r => `<tr data-roteiro="${r.id}"><td data-rotulo="Serviço">${h(cortarPauta(r.servico, 40))}</td>
+        <td data-rotulo="Roteiro" class="vaba-assunto">${h(cortarPauta(r.titulo, 60))}</td>
+        <td data-rotulo="Guardado em">${h(dataCurta(String(r.criado_em).slice(0, 10)))}</td>
+        <td><span class="acoes"><button class="btn peq" type="button" data-acao="venda-usar" data-id="${r.id}">Usar</button>
+          ${adm ? `<button class="btn peq perigo" type="button" data-acao="venda-apagar" data-id="${r.id}">Apagar</button>` : ""}</span></td></tr>`).join("")}
+      </tbody></table></div>`;
+  return `<h2 class="vaba-avulsos-titulo">Vídeo de venda (roteiro pela IA)</h2>
+    <p class="sub">A IA escreve o <b>roteiro falado</b> (30 a 60 s) que apresenta um serviço da Artecon — <b>informa, não vende</b>: sem número, sem promessa, sem preço (as travas de publicidade valem como nas peças). Você revisa o texto, guarda na <b>biblioteca</b> e grava <b>lendo no teleprompter</b> pelo vídeo avulso: a correção, as declarações e a cartela são as de sempre, e nada é publicado pelo Radar.</p>
+    <div class="grade"><div><label for="venda-servico">Serviço</label><select id="venda-servico">${VENDA_SERVICOS.map(s =>
+      `<option${s === v.servico ? " selected" : ""}>${h(s)}</option>`).join("")}</select></div>
+      <div id="venda-outro-caixa"${v.servico === "Outro serviço" ? "" : " hidden"}><label for="venda-outro">Qual serviço?</label><input id="venda-outro" maxlength="80" value="${h(v.outro)}"></div></div>
+    <label for="venda-destaque">O que destacar (opcional: o problema do cliente, o diferencial, o público)</label>
+    <textarea id="venda-destaque" rows="2" maxlength="300">${h(v.destaque)}</textarea>
+    <div class="acoes"><button class="btn${v.roteiro ? "" : " verde"}" type="button" data-acao="venda-gerar">${v.roteiro ? "Escrever outro roteiro com a IA" : "Escrever o roteiro com a IA"}</button></div>
+    <div id="venda-resultado">${!v.roteiro ? "" : `
+      ${(v.avisos || []).map(a => `<div class="aviso alerta">${h(a)}</div>`).join("")}
+      <div class="grade"><div><label for="venda-titulo">Título do roteiro (como fica na biblioteca)</label><input id="venda-titulo" maxlength="120" value="${h(v.titulo)}"></div></div>
+      <label for="venda-roteiro">Roteiro (revise à vontade: é exatamente o que você vai ler no teleprompter)</label>
+      <textarea id="venda-roteiro" rows="8" maxlength="4000">${h(v.roteiro)}</textarea>
+      <label for="venda-fecho">Fecho com o contato (entra no fim da fala; a identificação legal da cartela continua automática)</label>
+      <input id="venda-fecho" maxlength="160" value="${h(v.fecho)}">
+      <div class="acoes"><button class="btn" type="button" data-acao="venda-guardar">Guardar na biblioteca</button>
+        <button class="btn verde" type="button" data-acao="venda-gravar-video">Gravar este roteiro (vídeo avulso)</button></div>`}
+    </div>
+    <h3 class="vaba-avulsos-titulo" style="font-size:1rem">Biblioteca de roteiros</h3>
+    ${biblioteca}`;
 }
 
 /* ---------------------------------- Polir vídeos SEM roteiro: pré-visualizar + fila (v0.58.0) */
@@ -2131,6 +2178,54 @@ const ACOES_ABA_VIDEO = {
   }
 };
 // as que não gravam nada (só a tela): navegam sem a trava de "uma ação por vez"
+const ACOES_VENDA = {
+  /* v0.60.0: o vídeo de venda — a IA escreve o roteiro; a pessoa revisa, guarda na biblioteca e grava pelo avulso */
+  async "venda-gerar"(){
+    const v = estadoVenda();
+    v.servico = $("#venda-servico")?.value || v.servico; v.outro = $("#venda-outro")?.value ?? v.outro;
+    v.destaque = $("#venda-destaque")?.value ?? v.destaque;
+    const servico = servicoVenda(v);
+    if(servico.length < 3) throw new ErroApi("Diga o serviço do vídeo (de 3 a 80 caracteres).");
+    const r = await ia("roteiro_venda", {servico, destaque:v.destaque.trim()});
+    v.titulo = String(r.titulo || "").slice(0, 120); v.roteiro = String(r.roteiro || ""); v.avisos = Array.isArray(r.avisos) ? r.avisos : [];
+    await desenhar();
+    $("#venda-roteiro")?.scrollIntoView({block:"center"});
+    recado("Roteiro escrito: revise o texto (e o fecho com o contato) antes de guardar ou gravar.");
+  },
+  async "venda-guardar"(){
+    const v = estadoVenda();
+    v.titulo = $("#venda-titulo")?.value ?? v.titulo; v.roteiro = $("#venda-roteiro")?.value ?? v.roteiro;
+    const id = await rpc("radar_venda_gravar", {p_servico:servicoVenda(v), p_titulo:v.titulo.trim(), p_roteiro:v.roteiro.trim()});
+    await desenhar();
+    recado(`Roteiro nº ${id} guardado na biblioteca.`);
+  },
+  /* abre o formulário do vídeo avulso com o título e a fala (roteiro + fecho) preenchidos: teleprompter, envio e travas de sempre */
+  "venda-gravar-video"(){
+    const v = estadoVenda(), a = abaVideo();
+    v.titulo = $("#venda-titulo")?.value ?? v.titulo; v.roteiro = $("#venda-roteiro")?.value ?? v.roteiro; v.fecho = $("#venda-fecho")?.value ?? v.fecho;
+    const fala = (v.roteiro.trim() + (v.fecho.trim() ? "\n" + v.fecho.trim() : "")).trim();
+    if(fala.split(/\s+/).length < 10) throw new ErroApi("Escreva (ou gere) o roteiro antes: é ele que você lê no teleprompter.");
+    a.avulso = {titulo:v.titulo.trim().slice(0, 120) || "Vídeo de venda", fala, quem:"", marcadas:[]};
+    a.nova = true; a.id = null;
+    return desenhar();
+  },
+  async "venda-usar"(el){
+    const [r] = await ler("radar_venda_roteiros", {select:"id,servico,titulo,roteiro", id:"eq." + Number(el.dataset.id)});
+    if(!r) throw new ErroApi("Roteiro não encontrado (atualize a página).");
+    const v = estadoVenda();
+    v.servico = VENDA_SERVICOS.includes(r.servico) ? r.servico : "Outro serviço";
+    if(v.servico === "Outro serviço") v.outro = r.servico;
+    v.titulo = r.titulo; v.roteiro = r.roteiro; v.avisos = [];
+    await desenhar();
+    $("#venda-roteiro")?.scrollIntoView({block:"center"});
+  },
+  async "venda-apagar"(el){
+    if(!confirm("Apagar este roteiro da biblioteca? Os vídeos já gravados não mudam.")) return;
+    await rpc("radar_venda_apagar", {p_id:Number(el.dataset.id)});
+    await desenhar(); recado("Roteiro apagado da biblioteca.");
+  },
+};
+
 const NAVEGACAO_ABA_VIDEO = ["video-aba", "vaba-filtro", "vaba-abrir", "vaba-voltar", "vaba-avulso-novo", "vaba-avulso-cancelar", "vaba-peca", "vaba-palavra", "vaba-limpar-selecao", "vaba-cortar",
   "vaba-comecar-palavra", "vaba-terminar-palavra", "vaba-marcar-de", "vaba-marcar-ate", "vaba-comecar-aqui", "vaba-terminar-aqui", "vaba-desfazer",
   "vaba-desfazer-salvo", "vaba-refazer-salvo", "vaba-desfazer-bloco", "vaba-ouvir", "vaba-passo", "vaba-capa-aqui", "vaba-capa-tirar",
@@ -2327,7 +2422,8 @@ const VIDEO = {
       recado("Vídeo aprovado liberado: baixe, poste e depois apague do aparelho.");
     },
     "video-diagnostico"(){ return diagnosticoVideo(); },
-    ...ACOES_ABA_VIDEO                                    // v0.33.0: a aba Vídeo
+    ...ACOES_ABA_VIDEO,                                   // v0.33.0: a aba Vídeo
+    ...ACOES_VENDA                                        // v0.60.0: o vídeo de venda (roteiro pela IA + biblioteca)
   },
   forms:{}
 };

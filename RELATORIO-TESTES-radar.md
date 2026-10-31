@@ -1,4 +1,17 @@
-# Radar Artecon — Relatório de testes (v0.59.0)
+# Radar Artecon — Relatório de testes (v0.60.0)
+
+**v0.60.0 — Vídeo de venda: roteiro pela IA + biblioteca (banco + radar-ia + tela)** (31/10/2026): a aba Vídeo ganhou a
+seção **"Vídeo de venda (roteiro pela IA)"** (`radar-video.js`): serviço (lista + "Outro serviço"), destaque, ação
+**`roteiro_venda`** da **`radar-ia`** (v0.60.0, sem assunto; as travas `termosPublicidade`/`termosPeca` valem na saída e o
+consumo conta como "gerar"), texto revisável, **fecho com o contato** acrescentado pela tela (nunca vai à IA) e a
+**biblioteca** na tabela **`radar_venda_roteiros`** (RLS: leitura do editor/admin; escrita só pelas funções
+`radar_venda_gravar` — editor/admin, limite de 60 — e `radar_venda_apagar` — só admin), instalada pelo setup (idempotente)
+e pelo incremental **`sql/radar-venda-v0.60.0.sql`** — e incluída na cópia mensal do OneDrive (**`radar-copia`** VERSAO
+0.60.0, `TABELAS` 39→**40**). "Gravar este roteiro" abre o **vídeo avulso** preenchido (título +
+roteiro + fecho), de onde seguem o teleprompter e o envio de sempre. Testes: banco (papéis, validações RADAR330–333,
+limite de 60, RLS/revogações e as contagens de tabelas 39→40) e tela (radar-ia imitada por rota: gerar → revisar →
+guardar → biblioteca → abrir o avulso preenchido; o Apagar só aparece ao administrador). **A suíte INTEIRA roda no CI
+antes de juntar.**
 
 **v0.59.0 — "Enviar para a correção" no teleprompter (só tela)** (30/10/2026): o teleprompter (`radar-video.js`) ganhou
 o botão **"Enviar para a correção"** (`#tele-enviar`, ação `tele-enviar`): ele fica escondido até a primeira tomada

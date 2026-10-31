@@ -435,21 +435,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.59.0"></script>
-<script src="radar-video.js?v=0.59.0"></script>
-<script src="radar-setor.js?v=0.59.0"></script>
-<script src="radar-respostas.js?v=0.59.0"></script>
+<script src="radar-pauta.js?v=0.60.0"></script>
+<script src="radar-video.js?v=0.60.0"></script>
+<script src="radar-setor.js?v=0.60.0"></script>
+<script src="radar-respostas.js?v=0.60.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.59.0";
+const VERSAO = "0.60.0";
 const FUNCAO_MINIMA = "0.39.0";     // versão da função radar-ia que este painel exige (v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.60.0", "31/10/2026", [
+    "Vídeo de venda (aba Vídeo): a IA escreve o ROTEIRO FALADO (30 a 60 s) que apresenta um serviço da Artecon — informa, não vende: sem número, sem promessa, sem preço, com as travas de publicidade de sempre. Você escolhe o serviço (Departamento Pessoal, Abertura de empresa, Fiscal e Reforma Tributária, Contábil ou outro), diz o que destacar, revisa o texto, ajusta o FECHO com o contato (que entra no fim da fala) e guarda na BIBLIOTECA de roteiros, para reaproveitar. O botão “Gravar este roteiro” abre o vídeo avulso já preenchido: teleprompter, correção, declarações e cartela de sempre — nada é publicado pelo Radar.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-venda-v0.60.0.sql (a tabela da biblioteca e as funções; nenhuma tabela existente muda; nada é apagado; pode rodar de novo), cole o index.ts desta versão na função radar-ia (Deploy; ela ganha a ação roteiro_venda) e faça o Deploy, de novo, da radar-copia (a cópia mensal do OneDrive passa a levar a biblioteca). As funções radar-video, radar-polir e radar-redes não mudam; nenhum segredo novo. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.59.0 para a v0.60.0”."]],
   ["0.59.0", "30/10/2026", [
     "O teleprompter ganhou o botão “Enviar para a correção”: assim que a tomada entra na lista de clipes (e também ao reabrir o teleprompter com clipes já na lista), dá para mandar a gravação ao corretor DALI MESMO, sem fechar e procurar o botão na tela de trás. O teleprompter fecha e o envio é o MESMO de sempre: as declarações, “quem fala” e as travas continuam valendo — faltando algo, a tela avisa o que falta e a tomada fica guardada na lista. Funciona no reel da Pauta e no vídeo avulso.",
     "Administrador: é só a tela — nada muda no banco, nenhum SQL, nenhum segredo novo. As funções radar-polir, radar-copia, radar-ia, radar-redes e radar-video não mudam. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5 (no celular, recarregue a página). Passo a passo no LEIAME, “Da v0.58.0 para a v0.59.0”."]],
@@ -1143,6 +1146,7 @@ const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial
   foto_buscar:"procurando fotos reais no banco de imagens", foto_baixar:"trazendo a foto escolhida",
   verificar:"procurando a fonte oficial na internet (até 2 minutos)", kit:"montando as legendas e o roteiro do reel (até 1 minuto)",
   peca:"escrevendo a chamada, as legendas e os cartões da peça (até 1 minuto)", editorial:"fazendo a revisão editorial do texto (até 2 minutos)",
+  roteiro_venda:"escrevendo o roteiro do vídeo de venda (até 1 minuto)",   // v0.60.0
   // v0.26.0: a etapa 3 do “Preparar com IA” (e o “Revisar com IA” do texto)
   revisar:"conferindo o texto pelos 10 critérios das Diretrizes e corrigindo o que estiver marcado (até 2 minutos)"};
 /* v0.19.0: no “Gerar com IA” (várias chamadas seguidas), o aviso diz também em que etapa está (v0.26.0: “Preparar · etapa X de 4”) */
@@ -1203,10 +1207,11 @@ async function liberarIA(chave = E.assunto, naTela = () => E.assunto === chave){
 async function ia(acao, extra = {}, tempo = 150000){
   // v0.21.0: a peça da Pauta não é de assunto: vai sem assunto_id, e as consultas contam por peça ("pauta-<id>")
   // v0.39.0: a foto do banco de imagens também vai sem assunto e não conta para a senha (não usa IA e não custa nada)
-  const semAssunto = acao === "peca" || acao.startsWith("foto_"), assunto = semAssunto ? null : extra.assunto_id ?? E.assunto;   // fixo no início: trocar de tela no meio não muda o destino
+  // v0.60.0: o roteiro do vídeo de venda também vai sem assunto
+  const semAssunto = acao === "peca" || acao === "roteiro_venda" || acao.startsWith("foto_"), assunto = semAssunto ? null : extra.assunto_id ?? E.assunto;   // fixo no início: trocar de tela no meio não muda o destino
   avisoIA(IA_FAZENDO[acao] || "trabalhando");
   try{ const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:semAssunto ? {acao, ...extra} : {acao, ...extra, assunto_id:assunto}, tempo});
-    if(!acao.startsWith("foto_")) contarUsoIA(acao === "peca" ? "pauta-" + extra.peca_id : assunto);  // só a consulta que deu certo (e que custa) conta para pedir a senha depois
+    if(!acao.startsWith("foto_")) contarUsoIA(acao === "peca" ? "pauta-" + extra.peca_id : acao === "roteiro_venda" ? "venda" : assunto);  // só a consulta que deu certo (e que custa) conta para pedir a senha depois
     return r; }
   catch(e){
     if(e.status === 404 && !/(Assunto|Conteúdo|Peça) não encontrad[ao]/.test(e.message)) throw new ErroApi("A função de IA ainda não foi instalada neste projeto (Supabase → Edge Functions → radar-ia). O administrador vê o passo a passo em Configurações → Inteligência artificial.", 404);
@@ -5801,6 +5806,13 @@ document.addEventListener("change", ev => {
     executar(escolherPolir, false, ev.target); return; }
   if(ev.target.id === "video-quem" && typeof linhasCartela === "function"){ const c = $("#video-cartela");
     (E.video.quem ||= {})[E.video.peca] = ev.target.value; if(c) c.innerHTML = htmlCartela(Number(ev.target.value)); }
+  // v0.60.0: o formulário do vídeo de venda guarda o que foi digitado entre os desenhos da aba
+  if(typeof abaVideo === "function" && typeof estadoVenda === "function" &&
+     ["venda-servico", "venda-outro", "venda-destaque", "venda-titulo", "venda-roteiro", "venda-fecho"].includes(ev.target.id)){
+    const vd = estadoVenda();
+    if(ev.target.id === "venda-servico"){ vd.servico = ev.target.value; const cx = $("#venda-outro-caixa"); if(cx) cx.hidden = vd.servico !== "Outro serviço"; }
+    else vd[ev.target.id.replace("venda-", "")] = ev.target.value;
+  }
   // v0.36.0: o formulário do vídeo avulso (aba Vídeo) guarda o que foi digitado e refaz a cartela ao trocar quem fala
   if(typeof abaVideo === "function" && (["vaba-avulso-titulo", "vaba-avulso-fala", "vaba-avulso-quem"].includes(ev.target.id) || ev.target.matches?.(".vaba-avulso-pessoa"))){
     const f = (abaVideo().avulso ||= {titulo:"", fala:"", quem:"", marcadas:[]});

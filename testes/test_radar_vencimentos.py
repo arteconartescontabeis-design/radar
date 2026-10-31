@@ -596,7 +596,7 @@ def test_tabelas_da_copia_sao_todas_as_do_banco(db):
     assert tabelas == sorted(tabelas) and len(tabelas) == len(set(tabelas))
     assert not set(tabelas) & set(fora)
     assert sorted(tabelas + fora) == banco
-    assert len(tabelas) == 39 and fora == []                                             # v0.35.0: + as 4 da aba Setor; v0.57.0: + radar_polimento_uso
+    assert len(tabelas) == 40 and fora == []                                             # v0.35.0: + as 4 da aba Setor; v0.57.0: + radar_polimento_uso; v0.60.0: + radar_venda_roteiros
     # a cópia pagina pela chave primária (v0.32.0, revisão): tabela sem ela não é copiada (RADAR366)
     assert db.execute("""select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
                          where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'
@@ -703,7 +703,7 @@ def test_setup_duas_vezes_com_as_tabelas_novas(tmp_path):
                 assert c.execute("select count(*) from radar_config").fetchone()[0] == 11
         with conectar(banco) as c:
             assert c.execute("""select count(*) from pg_class k join pg_namespace n on n.oid = k.relnamespace
-                                where n.nspname = 'public' and k.relkind = 'r' and k.relname like 'radar\\_%' and k.relrowsecurity""").fetchone()[0] == 39
+                                where n.nspname = 'public' and k.relkind = 'r' and k.relname like 'radar\\_%' and k.relrowsecurity""").fetchone()[0] == 40
     finally:
         with conectar("postgres") as c:
             c.execute(f"drop database if exists {banco} with (force)")

@@ -1,5 +1,10 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-ia" (v0.39.0)
+// RADAR ARTECON — Edge Function "radar-ia" (v0.60.0)
+//
+// v0.60.0 — roteiro do vídeo de VENDA ("roteiro_venda"): a IA escreve só o texto falado (30–60 s) de um vídeo que
+//   apresenta um serviço da Artecon, para gravação no teleprompter; sem assunto e sem gravação no banco (a tela guarda
+//   na biblioteca radar_venda_roteiros depois da revisão da equipe). Sem número, promessa ou contato no texto (o fecho
+//   com o contato é acrescentado pela tela e nunca vai à IA); as travas de publicidade contábil valem como nas peças.
 //
 // v0.39.0 — IA mais barata e foto real do banco de imagens:
 //   * modelos novos por padrão: claude-sonnet-5-5 (33% mais barato que o sonnet-4-6 e mais novo) e claude-haiku-5-5 (10× mais barato
@@ -46,6 +51,7 @@
 //                  "gerar" não foi feita ou o texto mudou depois): reescreve os trechos com problema e grava o resultado no conteúdo
 //   foto_buscar  → (v0.39.0) procura fotos reais no banco de imagens Pixabay (sem IA, sem custo); devolve as prévias para a tela
 //   foto_baixar  → (v0.39.0) baixa a foto escolhida e a devolve à tela, que desenha a capa com o título por cima e a guarda
+//   roteiro_venda→ (v0.60.0) escreve o roteiro falado de um vídeo de venda de um serviço (não grava nada)
 //
 // v0.25.1 — o kit das redes não pede mais à IA a chamada e o apoio da arte: a arte vertical das notícias saiu na v0.25.0 (a notícia vai
 //   às redes com a imagem da publicação, a mesma do site), e eles só serviam a ela. O esquema da resposta e o kit gravado ficam só com as
@@ -140,7 +146,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.45.0";
+const VERSAO = "0.60.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -2603,11 +2609,44 @@ async function diagnostico(quem: string) {
            central: GATEWAY_URL.replace(/^https:\/\/([^/]+).*$/, "$1") };
 }
 
+// ------------------------------------------------------------------ roteiro do vídeo de VENDA (v0.60.0)
+// O projeto "vídeos de venda dos serviços": a IA escreve só o TEXTO FALADO (30–60 s) para o teleprompter; a equipe revisa,
+// guarda na biblioteca (radar_venda_gravar) e grava pelo fluxo do vídeo AVULSO, com as travas de sempre. Sem contato no
+// texto: telefone, link e endereço são o FECHO, acrescentado pela tela — e o que a pessoa digitar de link ou dado de
+// identificação no pedido é limpo antes de ir à IA (semLinkNemDado), como nas demais ações.
+async function roteiroVenda(reg: Registro, servico: unknown, destaque: unknown) {
+  const limpar = (v: unknown, max: number) => semMarcasDeBloco(normalizarEspacos(semLinkNemDado(v))).slice(0, max);
+  const s = limpar(servico, 80), d = limpar(destaque, 300);
+  if (s.length < 3) throw new Erro(400, "Diga o serviço do vídeo (de 3 a 80 caracteres).");
+  const texto = { type: "string" };
+  const esquema = { type: "object", additionalProperties: false, required: ["titulo", "roteiro", "duracao_s"],
+    properties: { titulo: texto, roteiro: texto, duracao_s: { type: "integer" } } };
+  const instrucoes = "Você escreve o ROTEIRO FALADO de um vídeo curto e vertical (30 a 60 segundos) em que uma pessoa da equipe da " +
+    "Artecon Artes Contábeis (Palhoça/SC) apresenta um serviço do escritório, em português do Brasil, para gravar lendo no teleprompter. " +
+    "Regras OBRIGATÓRIAS: " +
+    "(a) só o texto FALADO, em frases curtas e naturais, em parágrafos simples (nada de rubrica de cena, emoji, hashtag, título de seção ou marcação de tempo); " +
+    "(b) estrutura: uma abertura de até 3 segundos que prenda a atenção; o problema que esse público vive; como o serviço da Artecon ajuda, em linguagem simples; " +
+    "e um fecho com convite moderado ('fale com a gente', 'agende uma conversa') — SEM telefone, link, endereço, preço ou CNPJ: o contato é acrescentado depois, pelo sistema; " +
+    "(c) FATOS: nenhum número, data, prazo, valor, percentual, norma ou estatística — o vídeo apresenta o serviço, não dá consultoria nem promete resultado; " +
+    "(d) 'titulo' com até 60 caracteres (o nome do roteiro na biblioteca) e 'duracao_s' com a duração estimada da fala, em segundos (30 a 60); " +
+    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_DADOS + blocoOrientacoes(reg);
+  const entrada = `<<<TEXTO pedido>>>\nServiço: ${s}\nO que destacar: ${d || "—"}\n<<<FIM>>>`;
+  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "roteiro_venda", esquema, 1500);
+  const titulo = normalizarEspacos(String(json.titulo ?? "")).slice(0, 60) || ("Vídeo de venda — " + s).slice(0, 60);
+  const roteiro = semMarcasDeBloco(String(json.roteiro ?? "")).replace(/\r\n?/g, "\n").trim().slice(0, 2400);
+  if (roteiro.split(/\s+/).length < 30) throw new Erro(502, "O roteiro veio curto demais: tente de novo.");
+  const avisos: string[] = [], pub = termosPublicidade(titulo, roteiro);
+  const trava = [...new Set([...pub.trava, ...termosPeca(titulo, roteiro)])];
+  if (trava.length) avisos.push(`Termo que a publicidade contábil não admite: ${trava.join(", ")}. Troque antes de gravar (o envio ao corretor trava com ele).`);
+  if (pub.aviso.length) avisos.push(`Confira o tom destes termos (a publicidade da profissão contábil informa, não vende): ${pub.aviso.join(", ")}.`);
+  return { titulo, roteiro, duracao_s: Math.min(90, Math.max(20, Math.round(Number(json.duracao_s)) || 45)), avisos };
+}
+
 // ------------------------------------------------------------------ entrada
 // v0.24.0: as ações que levam as orientações do escritório (as que escrevem texto para publicar, a revisão editorial da etapa 5 e a
 // ilustração); "pagina" não usa IA, e
 // classificar, fundamentar, verificar e diagnostico não escrevem para publicar
-const ORIENTADAS = ["gerar", "titulos", "revisar", "kit", "peca", "ilustrar", "editorial"];
+const ORIENTADAS = ["gerar", "titulos", "revisar", "kit", "peca", "ilustrar", "editorial", "roteiro_venda"];
 /** E-mail de quem pediu (para a IA Central mostrar quem usou). Se não der para saber, segue sem. */
 async function emailDoUsuario(token: string): Promise<string> {
   try {
@@ -2630,9 +2669,9 @@ async function tratar(req: Request): Promise<Response> {
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
     if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar", "kit", "peca",
-          "editorial", "foto_buscar", "foto_baixar"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+          "editorial", "foto_buscar", "foto_baixar", "roteiro_venda"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
     // v0.21.0: a peça é da Pauta, não de um assunto; v0.39.0: a foto do banco de imagens também vai sem assunto
-    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca" || acao.startsWith("foto_");
+    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca" || acao === "roteiro_venda" || acao.startsWith("foto_");
     if (!semAssunto && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
     assuntoId = semAssunto ? 0 : pedido.assunto_id;
 
@@ -2665,6 +2704,14 @@ async function tratar(req: Request): Promise<Response> {
       return responder(200, { ...r, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
     }
 
+    // v0.60.0: o roteiro do vídeo de VENDA (sem assunto e sem gravação: a tela guarda na biblioteca depois da revisão)
+    if (acao === "roteiro_venda") {
+      const [quem, ori] = await Promise.all([emailDoUsuario(token), orientacoes()]);
+      reg = { uso: null, quem, orientacoes: ori };
+      const r = await roteiroVenda(reg, pedido.servico, pedido.destaque), usado = reg.uso as Uso | null;
+      return responder(200, { ...r, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
+    }
+
     const ctx = await carregar(token, assuntoId);
     reg = ctx.reg;
     [reg.quem, reg.orientacoes] = await Promise.all([emailDoUsuario(token), orientacoes()]);
@@ -2691,7 +2738,7 @@ async function tratar(req: Request): Promise<Response> {
     const usado = reg.uso;
     if (usado && token) {
       await banco(token, "POST", "rpc/radar_registrar_uso_ia", {
-        p_acao: ["titulos", "revisar", "kit", "peca", "editorial"].includes(acao) ? "gerar" : acao === "verificar" ? "fundamentar" : acao,
+        p_acao: ["titulos", "revisar", "kit", "peca", "editorial", "roteiro_venda"].includes(acao) ? "gerar" : acao === "verificar" ? "fundamentar" : acao,
         p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
       }).catch((e) => console.error("uso da IA não registrado:", e?.message));
     }

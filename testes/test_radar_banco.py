@@ -45,7 +45,7 @@ def aprovar(conteudo, uid=EDITOR):
 def test_instalacao_cria_19_tabelas_com_rls(db):
     linhas = db.execute("""select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
                            where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'radar\\_%'""").fetchall()
-    assert len(linhas) == 39       # v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos (o histórico das assinaturas do termo de imagem); v0.35.0: + radar_respostas_gatilhos, radar_respostas_registro e radar_respostas_contas; v0.34.0: + radar_setor_setores, radar_setor_contas, radar_setor_posts e radar_setor_coletas; v0.32.0: + radar_vencimentos e radar_copias; v0.29.0: + radar_lembretes; v0.22.0: + radar_videos e radar_video_acessos; v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
+    assert len(linhas) == 40       # v0.60.0: + radar_venda_roteiros (a biblioteca dos vídeos de venda); v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos (o histórico das assinaturas do termo de imagem); v0.35.0: + radar_respostas_gatilhos, radar_respostas_registro e radar_respostas_contas; v0.34.0: + radar_setor_setores, radar_setor_contas, radar_setor_posts e radar_setor_coletas; v0.32.0: + radar_vencimentos e radar_copias; v0.29.0: + radar_lembretes; v0.22.0: + radar_videos e radar_video_acessos; v0.21.0: + radar_pessoas e radar_pauta_pecas; v0.17.0: + radar_site_exclusoes; v0.8.0: saíram radar_publicacoes e radar_publicacao_normas; v0.10.0: + radar_site_envios; v0.12.0: + radar_itc_lidos; v0.13.0: + radar_redes_envios
     assert all(rls for _, rls in linhas), [n for n, rls in linhas if not rls]
 
 
@@ -95,7 +95,7 @@ def test_setup_e_idempotente(db):
     assert db.execute("select frequencia_horas, ativo from radar_fontes where slug = 'pgfn-noticias'").fetchone() == (9, False)
     db.execute("update radar_fontes set frequencia_horas = 6, ativo = true where slug = 'pgfn-noticias'")
     reg = db.execute("select antes, depois from radar_instalacoes order by id desc limit 1").fetchone()
-    assert len(reg[0]) == 39 and len(reg[1]) == 39   # 2ª execução: já havia 39 antes (v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos; v0.34.0: + as 4 da aba Setor; v0.35.0: + as 3 das respostas)
+    assert len(reg[0]) == 40 and len(reg[1]) == 40   # 2ª execução: já havia 40 antes (v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos; v0.34.0: + as 4 da aba Setor; v0.35.0: + as 3 das respostas)
 
 
 def test_fontes_do_sql_espelham_o_json_do_robo(db):
@@ -113,7 +113,7 @@ def test_anonimo_nao_le_nada_do_radar(limpo):
     no_ar(limpo)
     tabelas = [r[0] for r in limpo.execute("""select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                              where n.nspname = 'public' and c.relkind in ('r', 'v') and c.relname like 'radar\\_%'""").fetchall()]
-    assert len(tabelas) == 48 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 39 tabelas e 9 visões (v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos; v0.35.0: + as 3 das respostas; v0.34.0: + as 4 da aba Setor; v0.32.0: + radar_vencimentos e radar_copias; v0.21.0: + radar_v_pauta_pessoas e radar_v_capas; v0.22.0: + radar_videos e radar_video_acessos; v0.29.0: + radar_lembretes)
+    assert len(tabelas) == 49 and "radar_publicacoes" not in tabelas and "radar_v_divulgacoes" in tabelas   # 40 tabelas e 9 visões (v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.46.0: + radar_pessoas_termos; v0.35.0: + as 3 das respostas; v0.34.0: + as 4 da aba Setor; v0.32.0: + radar_vencimentos e radar_copias; v0.21.0: + radar_v_pauta_pessoas e radar_v_capas; v0.22.0: + radar_videos e radar_video_acessos; v0.29.0: + radar_lembretes)
     with como("anon") as c:
         for tabela in tabelas:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -493,6 +493,8 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_video_descartar', 'radar_video_apaguei', 'radar_video_apaguei_baixado',
                                                            'radar_video_para_previa', 'radar_video_para_baixar', 'radar_video_resumo',
                                                            'radar_video_cota', 'radar_polimento_cota',
+                                                           -- v0.60.0: a biblioteca dos vídeos de venda (cada função confere o papel)
+                                                           'radar_venda_gravar', 'radar_venda_apagar',
                                                            'radar_pauta_pecas_da_pessoa',
                                                            -- v0.24.0: a Conferência das Diretrizes (cada função confere o papel)
                                                            'radar_registrar_conferencia', 'radar_assumir_conferencia', 'radar_conferencia_versao',
@@ -1251,9 +1253,9 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (39, 6, 8, 11, 1, 0)         # v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e "termo_imagem"; v0.57.0: + radar_polimento_uso e "polimento"
+        assert _resumo("radar_sem_tx") == (40, 6, 8, 11, 1, 0)         # v0.60.0: + radar_venda_roteiros; v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e "termo_imagem"; v0.57.0: + radar_polimento_uso e "polimento"
         with conectar("radar_sem_tx") as c:
-            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.50.0", [], 39)
+            assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.50.0", [], 40)
             # v0.31.0 (revisão): na instalação nova as seis fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
             # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso
             assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (6, True)
@@ -1280,14 +1282,14 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (39, 6, 8, 11, 2, 0)
+        assert _resumo("radar_parcial") == (40, 6, 8, 11, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
             assert c.execute("""select (select count(*) from information_schema.role_table_grants where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from information_schema.column_privileges where table_schema = 'public' and table_name like 'radar\\_%' and grantee = 'anon')
                                      + (select count(*) from pg_policies where schemaname = 'public' and 'anon' = any(roles))""").fetchone()[0] == 0
-            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (39,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0), radar_videos e radar_video_acessos (v0.22.0), radar_lembretes (v0.29.0), radar_vencimentos e radar_copias (v0.32.0), as 4 da aba Setor (v0.34.0), as 3 das respostas (v0.35.0), radar_pessoas_termos (v0.46.0)
+            assert c.execute("select jsonb_array_length(antes) from radar_instalacoes order by id").fetchall() == [(20,), (40,)]     # a v0.4 tinha 20; saem as 2 vazias da publicação antiga, entram radar_site_envios (v0.10.0), radar_itc_lidos (v0.12.0), radar_redes_envios (v0.13.0), radar_site_exclusoes (v0.17.0), radar_pessoas e radar_pauta_pecas (v0.21.0), radar_videos e radar_video_acessos (v0.22.0), radar_lembretes (v0.29.0), radar_vencimentos e radar_copias (v0.32.0), as 4 da aba Setor (v0.34.0), as 3 das respostas (v0.35.0), radar_pessoas_termos (v0.46.0), radar_polimento_uso (v0.57.0), radar_venda_roteiros (v0.60.0)
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_parcial with (force)")
@@ -1307,7 +1309,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (39, 6, 8, 11, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (40, 6, 8, 11, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -6341,3 +6343,54 @@ def test_painel_graficos_so_entra_logado_e_soma_fontes_canais_e_comparacao(limpo
     with como("anon") as c, pytest.raises(psycopg.errors.InsufficientPrivilege, match="permission denied for function"):
         c.execute("select radar_painel_graficos(%s)", (hoje,))     # o visitante nem tem permissão de executar a função
     limpo.execute("truncate radar_setor_posts, radar_setor_coletas, radar_setor_contas, radar_setor_setores restart identity cascade")
+
+
+# ------------------------------------------------------------------ v0.60.0: a biblioteca dos vídeos de venda
+ROTEIRO_VENDA = ("Você sabia que as férias e as rescisões da sua equipe não precisam tirar o seu sono? "
+                 "Aqui na Artecon o Departamento Pessoal cuida de tudo isso para você, com calma e sem surpresa. "
+                 "Quer entender como funciona? Fale com a gente e agende uma conversa.")
+
+
+def test_venda_roteiros_gravar_ler_apagar_e_papeis(limpo):
+    limpo.execute("truncate radar_venda_roteiros restart identity")
+    with como("authenticated", EDITOR) as c:
+        rid = c.execute("select radar_venda_gravar('Departamento Pessoal', 'Férias sem dor de cabeça', %s)",
+                        (ROTEIRO_VENDA,)).fetchone()[0]
+        assert c.execute("select servico, titulo, roteiro from radar_venda_roteiros where id = %s", (rid,)).fetchone() == \
+            ("Departamento Pessoal", "Férias sem dor de cabeça", ROTEIRO_VENDA)
+        # escrita direta não existe: só pelas funções (a tabela é revogada; fica só o select da RLS)
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute("insert into radar_venda_roteiros (servico, titulo, roteiro) values ('abc', 'titulo', %s)", (ROTEIRO_VENDA,))
+        # o editor grava, mas não apaga
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR333"):
+            c.execute("select radar_venda_apagar(%s)", (rid,))
+    with como("authenticated", LEITOR) as c:
+        assert c.execute("select count(*) from radar_venda_roteiros").fetchone()[0] == 0      # o leitor não vê a biblioteca
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR330"):
+            c.execute("select radar_venda_gravar('Abertura de empresa', 'Título válido', %s)", (ROTEIRO_VENDA,))
+    with como("anon") as c:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            c.execute("select count(*) from radar_venda_roteiros")                            # o visitante nem lê
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_venda_apagar(%s)", (rid,))
+        assert c.execute("select count(*) from radar_venda_roteiros").fetchone()[0] == 0
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR333"):
+            c.execute("select radar_venda_apagar(%s)", (rid,))                                # já não existe
+
+
+def test_venda_roteiros_validacoes_e_limite(limpo):
+    limpo.execute("truncate radar_venda_roteiros restart identity")
+    with como("authenticated", ADMIN) as c:
+        for servico, titulo, roteiro in [("DP", "Título válido", ROTEIRO_VENDA),              # serviço curto
+                                         ("Departamento Pessoal", "xy", ROTEIRO_VENDA),       # título curto
+                                         ("Departamento Pessoal", "Título válido", "curto"),  # roteiro curto
+                                         ("Fiscal <oferta>", "Título válido", ROTEIRO_VENDA)]:   # < > { } \ não entram
+            with pytest.raises(psycopg.errors.RaiseException, match="RADAR331"):
+                c.execute("select radar_venda_gravar(%s, %s, %s)", (servico, titulo, roteiro))
+    # o limite da biblioteca: com 60 roteiros, a função recusa o 61º
+    limpo.execute("insert into radar_venda_roteiros (servico, titulo, roteiro, criado_por) " +
+                  "select 'Serviço ' || n, 'Roteiro nº ' || n, %s, %s from generate_series(1, 60) n", (ROTEIRO_VENDA, ADMIN))
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR332"):
+            c.execute("select radar_venda_gravar('Departamento Pessoal', 'O 61º', %s)", (ROTEIRO_VENDA,))
+    limpo.execute("truncate radar_venda_roteiros restart identity")
