@@ -132,7 +132,9 @@ def test_administrador_cria_inclui_edita_temas_pausa_remove_e_apaga(tela):
     abrir_setor(tela, ADMIN_EMAIL, "[data-form=setorNovo]")
     assert tela.input_value("#setor-novo-nome") == "Contabilidade"
     tela.click("[data-form=setorNovo] button.btn")
-    tela.wait_for_selector("#setor-gerir")
+    # 120 s só nesta primeira espera: é a 1ª escrita da tela recém-aberta e, no runner carregado do CI, a resposta
+    # às vezes passa dos 30 s padrão (timeouts intermitentes registrados no PR #92); o resto da suíte segue em 30 s
+    tela.wait_for_selector("#setor-gerir", timeout=120000)
     sid = db.execute("select id from radar_setor_setores").fetchone()[0]
     tela.fill("#setor-incluir", "@ana.teste\nhttps://www.instagram.com/bruno.exemplo/\n#contabilidade\nhttps://www.instagram.com/p/X1/\nconta-com-hífen")
     tela.click("[data-form=setorContas] button.btn:not(.sec)")
