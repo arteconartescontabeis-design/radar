@@ -3074,9 +3074,10 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    dos roteiros de venda) e as funções `radar_venda_gravar` (editor e administrador) e `radar_venda_apagar` (só o
    administrador). **Não mexe em nenhuma tabela existente, não apaga nada, pode rodar de novo.**
 2. **Deploy** da função **`radar-ia`** desta versão (`supabase/functions/radar-ia/index.ts`, "Verify JWT" como está):
-   ela ganha a ação **`roteiro_venda`**. As funções `radar-video`, `radar-polir`, `radar-redes` e `radar-copia`
-   **não mudam**; o custo do roteiro entra no consumo normal da IA (conta como "gerar" no
-   limite do mês e aparece no Portal → Consumo de IA).
+   ela ganha a ação **`roteiro_venda`** — e, **de novo**, da **`radar-copia`**
+   (`supabase/functions/radar-copia/index.ts`): a cópia mensal do OneDrive passa a levar a biblioteca. As funções
+   `radar-video`, `radar-polir` e `radar-redes` **não mudam**; o custo do roteiro entra no consumo normal da IA
+   (conta como "gerar" no limite do mês e aparece no Portal → Consumo de IA).
 3. Publique a tela (`index.html` com os demais .js, juntos) e aperte **Ctrl+F5** (no celular, recarregue) — o rodapé
    mostra "Radar v0.60.0".
 4. Conferência: aba **Vídeo** → **"Vídeo de venda (roteiro pela IA)"**. Escolha **Departamento Pessoal**, escreva um

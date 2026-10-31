@@ -45,7 +45,7 @@
 // dados. A resposta ao administrador traz os tempos de cada etapa.
 // =====================================================================
 
-const VERSAO = "0.57.0";             // v0.57.0: + radar_polimento_uso na cópia; v0.35.0: + as 3 tabelas do Módulo Respostas Automáticas
+const VERSAO = "0.60.0";             // v0.60.0: + radar_venda_roteiros na cópia; v0.57.0: + radar_polimento_uso; v0.35.0: + as 3 tabelas do Módulo Respostas Automáticas
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -76,7 +76,9 @@ const TABELAS = [
   "radar_respostas_contas", "radar_respostas_gatilhos", "radar_respostas_registro",
   // v0.34.0: as 4 da aba Setor (dados públicos do Instagram e a configuração dos setores: vão à cópia como tudo)
   "radar_setor_coletas", "radar_setor_contas", "radar_setor_posts", "radar_setor_setores", "radar_site_envios",
-  "radar_site_exclusoes", "radar_vencimentos", "radar_video_acessos", "radar_videos",
+  "radar_site_exclusoes", "radar_vencimentos",
+  // v0.60.0: a biblioteca dos roteiros de vídeo de venda (texto revisado pela equipe; nenhuma chave, nenhum dado pessoal)
+  "radar_venda_roteiros", "radar_video_acessos", "radar_videos",
 ] as const;
 // Tabela que não vai à cópia DE PROPÓSITO, com o motivo (hoje nenhuma: nenhuma coluna guarda chave ou senha — revisão coluna a
 // coluna na v0.32.0). Tabela nova fora das duas listas: o teste test_tabelas_da_copia_sao_todas_as_do_banco falha.
