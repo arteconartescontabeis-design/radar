@@ -4275,7 +4275,8 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_fal
     pg.route("**/functions/v1/radar-ia", responder)
     # v0.62.0: os testes escritos antes do seletor de imagem valem para a CAPA PADRÃO — aqui ela fica escolhida de saída; o padrão
     # novo do seletor (a foto real) e as outras escolhas (imagem da IA, carrossel combinado) têm testes próprios, que mexem no seletor
-    pg.evaluate("window.E && (E.prepImagem = 'padrao')")
+    # (E é const de escopo global da página — não existe em window.E: o acesso tem de ser direto)
+    pg.evaluate("() => { if (typeof E !== 'undefined') E.prepImagem = 'padrao'; }")
 
 
 def test_trocar_de_assunto_enquanto_a_ia_trabalha_nao_grava_nem_aplica_no_outro(pagina, limpo):
