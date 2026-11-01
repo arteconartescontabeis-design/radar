@@ -1671,7 +1671,8 @@ const TELAS = {
       ${podeEditar() && itens.length ? `<div class="painel" id="lote-preparar"><div class="acoes">
         <b class="sub" style="margin:0">Preparar com IA as notícias marcadas:</b>
         <label class="sub" for="lote-tamanho" style="margin:0">Tamanho do texto</label><select id="lote-tamanho" data-formato>${opcoes(TAMANHO_TEXTO, E.formato || "informativo")}</select>
-        <label class="sub" for="lote-imagem" style="margin:0">Imagem</label><select id="lote-imagem">${opcoes({foto:"Foto real com o título", padrao:"Capa padrão Artecon"}, E.loteImagem || "foto")}</select>
+        <label class="sub" for="lote-imagem" style="margin:0">Imagem</label><select id="lote-imagem">${opcoes(IMAGEM_PREPARO, E.loteImagem || "foto")}</select>
+        <label class="sub" for="lote-redes" style="margin:0">Nas redes</label><select id="lote-redes">${opcoes(REDES_PREPARO, E.loteRedes || "foto")}</select>
         <button class="btn verde" type="button" data-acao="ia-lote">Preparar as marcadas com IA</button></div>
         <p class="sub" style="margin:6px 0 0">Marque as caixas na primeira coluna da lista. Cada notícia é preparada por inteiro — a fonte, o texto, a imagem, a conferência dos 10 critérios e as legendas — e chega no passo “Conferir e aprovar”; nada é publicado. A que não tem texto capturado, ou que já tem texto, é pulada (o motivo sai no resumo). Deixe esta aba aberta até terminar.</p></div>` : ""}
       ${itens.length ? `<div class="painel rolagem"><table><tr>${podeEditar() ? `<th><input type="checkbox" id="marcar-assuntos" aria-label="Marcar todos os assuntos da lista"></th>` : ""}<th>Assunto</th><th>Capturado em</th><th>Fonte</th><th>Relevância</th><th>Confirmação</th><th>Etapa</th><th>Fundamentação</th></tr>${itens.map(a => `
@@ -2123,6 +2124,11 @@ async function reordenarItens(ids){
    passos, sempre para a frente — 1. Preparar (a fonte oficial, o texto, a capa, a Conferência e as legendas), 2. Conferir e aprovar e
    3. Publicar (site, Instagram e Facebook) — no lugar dos sete da v0.12.2 (Fonte, Texto, Revisão, Aprovar, Site, Instagram e Facebook). */
 const TAMANHO_TEXTO = {flash:"Curto (aviso rápido)", informativo:"Médio (notícia)", artigo:"Longo (artigo)"};
+/* v0.62.0: tudo combinado ANTES do “Preparar com IA” — além do tamanho, a imagem e o formato nas redes. A IA já faz tudo de uma
+   vez: a imagem escolhida entra no preparo, e os cartões do carrossel só são escritos quando a notícia vai sair como carrossel
+   (foto única não gasta IA com cartões que ninguém usa; no passo 3 dá para escrevê-los depois, se mudar de ideia). */
+const IMAGEM_PREPARO = {foto:"Foto real com o título", ia:"Imagem com IA (paga, com o aviso)", padrao:"Capa padrão Artecon"};
+const REDES_PREPARO = {foto:"Foto única", carrossel:"Carrossel (a IA escreve os cartões)"};
 const CATEGORIAS_DO_SITE = ["IRRF", "Economia", "Legislação Federal", "E-social", "Área Trabalhista e Previdenciária", "Simples Nacional",
   "Tributário", "Legislação Estadual (SC)", "Legislação Municipal"];
 /* v0.24.0: os conteúdos do assunto com a versão do texto que a Conferência das Diretrizes vale (coluna calculada pelo banco) e, na etapa
@@ -2220,6 +2226,10 @@ async function telaAssunto(id){
   // com data-id, “Preparar este texto” completa o rascunho que já existe. data-trechos: há trecho oficial conferido (o Preparar não busca
   // outro); data-conteudos: os textos para publicar (o texto para análise não conta)
   const seletorFormato = idSel => `<label for="${idSel}" class="sub" style="margin:0">Tamanho do texto</label><select id="${idSel}" data-formato>${opcoes(TAMANHO_TEXTO, E.formato || "informativo")}</select>`;
+  // v0.62.0: a imagem e o formato nas redes também são combinados antes (os seletores da tela andam juntos, como o tamanho)
+  const seletorImagem = idSel => `<label for="${idSel}" class="sub" style="margin:0">Imagem</label><select id="${idSel}" data-imagem>${opcoes(IMAGEM_PREPARO, E.prepImagem || "foto")}</select>`;
+  const seletorRedes = idSel => `<label for="${idSel}" class="sub" style="margin:0">Nas redes</label><select id="${idSel}" data-redes>${opcoes(REDES_PREPARO, E.prepRedes || "foto")}</select>`;
+  const seletoresPreparo = pfx => seletorFormato(pfx + "-formato") + seletorImagem(pfx + "-imagem") + seletorRedes(pfx + "-redes");
   const prepararBtn = (rotulo = "Preparar com IA", classe = "btn verde", id = null) => `<button class="${classe}" type="button" data-acao="ia-tudo" data-oficial="${temOficial ? 1 : ""}" data-trechos="${conferidasOficiais}" data-conteudos="${paraPublicar.length}"${id ? ` data-id="${id}"` : ""}>${rotulo}</button>`;
   // v0.26.0: o passo 2 do texto da vez — o que trava o Aprovar, na ordem do ACOES.aprovar ([VERIFICAR], trecho igual ao da fonte ou frase do
   // boletim pago, campo Fonte e a Conferência), com as mesmas contas do formulário; o ACOES.aprovar confere tudo de novo ao clicar
@@ -2291,10 +2301,10 @@ async function telaAssunto(id){
   else if(a.status === "ignorado" || a.status === "arquivado") prox = [a.status === "ignorado" ? "Assunto ignorado" : "Assunto arquivado", "Este item está fora do trabalho do dia. Para retomar, troque a etapa em “Mais detalhes” e salve.", ir("#mais-campos", "Abrir “Mais detalhes”", "sec"), -1];
   // passo 1 (Preparar): sem texto ainda
   else if(!cont.length && temOficial) prox = ["Preparar a publicação", "O texto oficial já está aqui. “Preparar com IA” faz tudo de uma vez: busca no texto oficial o trecho que comprova a notícia, escreve o texto, faz a capa padrão Artecon, confere os 10 critérios das Diretrizes e monta as legendas do Instagram e do Facebook. Leva de 2 a 5 minutos, e nada é publicado. Depois, você confere e aprova no passo 2.",
-    seletorFormato("prox-formato") + prepararBtn(), 0, "", ir("#sec-conteudos", "Escrever sem IA", "peq sec")];
+    seletoresPreparo("prox") + prepararBtn(), 0, "", ir("#sec-conteudos", "Escrever sem IA", "peq sec")];
   // v0.24.0: sem texto oficial, o texto da IA é Informativo, que só é aprovado depois da autorização do administrador
   else if(!cont.length && temTexto) prox = ["Preparar a publicação", "Este assunto só tem fonte não oficial. “Preparar com IA” procura a fonte oficial na internet e escreve um texto <b>Informativo</b> (sem base legal específica), com a capa padrão, a conferência dos 10 critérios e as legendas. O texto Informativo só é aprovado depois que o administrador autoriza, com o motivo. Para o texto sair com a fonte oficial, verifique antes e inclua o texto oficial.",
-    seletorFormato("prox-formato") + prepararBtn() + verificarBtn.replace('class="btn"', 'class="btn sec"'), 0, "",
+    seletoresPreparo("prox") + prepararBtn() + verificarBtn.replace('class="btn"', 'class="btn sec"'), 0, "",
     ir("#sec-conteudos", "Escrever sem IA", "peq sec") + ir("#sec-texto", "Ir para o texto oficial", "peq sec")];
   // a função radar-ia exige texto capturado: sem nenhum, não há Preparar
   else if(!cont.length) prox = ["Escrever o texto", "Este assunto não tem texto capturado, então a IA não tem de onde partir. Escreva o texto — depois de aprovado, ele já pode ir ao Informativo Mensal — ou cole o texto da fonte oficial logo abaixo, em “Texto oficial capturado”: com ele, o “Preparar com IA” faz o resto.",
@@ -2305,7 +2315,7 @@ async function telaAssunto(id){
       ehAdmin() ? `<button class="btn" type="button" data-acao="converter-analise" data-id="${analises[0].id}">Transformar em texto para publicar</button>` : "", 0, "",
       ehAdmin() ? "" : irTexto(analises[0].id)];
     else if(pronto) prox = ["Preparar o texto para publicar", "A fonte oficial está conferida. “Preparar com IA” escreve o texto para publicar, com a capa, a conferência dos 10 critérios e as legendas; o texto para análise fica só como apoio.",
-      temTexto ? seletorFormato("prox-formato") + prepararBtn() : "", 0, "", ir("#sec-conteudos", "Escrever sem IA", "peq sec")];
+      temTexto ? seletoresPreparo("prox") + prepararBtn() : "", 0, "", ir("#sec-conteudos", "Escrever sem IA", "peq sec")];
     else prox = ["Conferir a fonte", "Só há texto para análise, feito a partir de fonte não oficial. “Preparar com IA” escreve um texto Informativo, que só é aprovado depois que o administrador autoriza a publicação, com o motivo; a IA também pode procurar a fonte oficial na internet. Com ela, inclua o texto oficial e fundamente" + (ehAdmin() ? ", ou libere a publicação sem a fonte oficial (o motivo fica registrado)." : "."),
       verificarBtn + (temTexto ? prepararBtn("Preparar com IA", "btn sec") : "") + semFonte, 0, "", ir("#sec-texto", "Ir para o texto oficial", "peq sec")];
   }
@@ -2316,7 +2326,7 @@ async function telaAssunto(id){
   else if(!aprovados.length && !revisando.length){ const r0 = rascunhos[0], robo = r0.gerado_por === "ia" && /\(robô\)$/.test(r0.modelo_ia || "");
     prox = ["Preparar o rascunho", `Há um texto em rascunho${robo ? " preparado pelo robô" : ""}: “${h(r0.titulo || "")}”. “Preparar este texto” completa o que falta nele — o trecho que comprova (se ainda não houver), a capa padrão (se não tiver imagem), a conferência dos 10 critérios e as legendas das redes — sem escrever outro texto, e manda o texto para o passo 2. Se você escreveu o texto e não quer a IA, salve e envie para a revisão.` +
       (rascunhos.length > 1 ? ` Há mais ${rascunhos.length - 1} rascunho(s) abaixo.` : ""),
-      prepararBtn("Preparar este texto", "btn verde", r0.id) + `<button class="btn sec" type="button" data-acao="trilha-clicar" data-botao="revisao" data-id="${r0.id}">Enviar para revisão (sem IA)</button>`, 0, "",
+      seletoresPreparo("prox") + prepararBtn("Preparar este texto", "btn verde", r0.id) + `<button class="btn sec" type="button" data-acao="trilha-clicar" data-botao="revisao" data-id="${r0.id}">Enviar para revisão (sem IA)</button>`, 0, "",
       irTexto(r0.id, "Abrir o texto")]; }
   // v0.24.0: em revisão só o Informativo, ainda sem a autorização do administrador: o passo é autorizar (só ele, com o motivo)
   else if(!aprovados.length && !aprovavel){ const cv = confDaVez(revisando[0]), conferir = conferirBtn(cv, revisando[0].id);
@@ -2454,7 +2464,7 @@ async function telaAssunto(id){
       ${origem ? `<div class="original"><span class="sub">Título original da captura</span><b>${h(origem.titulo)}</b>
         <span class="sub">Fonte: <b>${h(origem.radar_fontes.orgao)}</b>${origem.data_publicacao ? ` · publicado em ${data(origem.data_publicacao)}` : ""} · </span>${linkFonte(origem.url, "Abrir na fonte ↗")}</div>`
         : `<p class="sub">Assunto criado pela equipe, sem captura de origem.</p>`}
-      ${ed ? `<div class="acoes ia-barra">${temTexto ? seletorFormato("formato-fonte") + prepararBtn(paraPublicar.length ? "Preparar outro texto" : "Preparar com IA", "btn") : ""}<button class="btn sec" data-acao="ia-verificar">Verificar em fontes oficiais</button>
+      ${ed ? `<div class="acoes ia-barra">${temTexto ? seletoresPreparo("fonte") + prepararBtn(paraPublicar.length ? "Preparar outro texto" : "Preparar com IA", "btn") : ""}<button class="btn sec" data-acao="ia-verificar">Verificar em fontes oficiais</button>
         <button class="btn sec" data-acao="ia-fundamentar">Buscar trecho que comprova com IA</button>
         <button class="btn sec" type="button" data-acao="ia-classificar">Classificar com IA</button>
         <span class="sub">${temTexto ? `“Preparar com IA” ${temOficial ? "busca o trecho que comprova" : "procura a fonte oficial na internet"}, escreve o texto, faz a capa padrão, confere os 10 critérios e monta as legendas das redes, de uma vez. ` : ""}A IA propõe; só entram os trechos que existem literalmente no texto oficial. A classificação vai para “Mais detalhes”.</span></div>` : ""}
@@ -3766,6 +3776,8 @@ const ACOES = {
   async "ia-tudo"(el){
     if(telaSuja()){ recado(avisoSujo(), true); return; }
     const assunto = E.assunto, formato = formatoEscolhido(el), dado = Number(el?.dataset.id || 0) || null, liberado = !!E.liberacao?.em;
+    // v0.62.0: a imagem e o formato nas redes combinados antes — a IA já faz tudo de uma vez
+    const imagem = imagemEscolhida(el), redes = redesEscolhidas(el);
     const oficial = el?.dataset.oficial !== "", trechos = Number(el?.dataset.trechos || 0), ja = Number(el?.dataset.conteudos || 0);
     let base = null;                                                // “Preparar este texto”: o rascunho como está no banco agora
     if(dado){
@@ -3783,6 +3795,7 @@ const ACOES = {
     if(!(await liberarIA())) return;
     const etapa = n => { IA_PASSO = `${dado ? "Preparar este texto" : "Preparar"} · etapa ${n} de 4`; };
     let busca = "", r = null, trechoFalhou = "", g = null, id = dado, capa = true, capaFeita = false, capaVelha = false, rev = null, revFalhou = "", kit = null, kitFalhou = "", atual = null;
+    let fotoUsada = null, imagemIa = null, imagemFalhou = "";          // v0.62.0: a imagem combinada no passo 1
     try{
       etapa(1);
       if(oficial && !trechos){ try{ r = await ia("fundamentar", {assunto_id:assunto}); } catch(e){ trechoFalhou = e.message || "erro"; } }
@@ -3793,8 +3806,32 @@ const ACOES = {
         catch(e){ if(E.assunto === assunto) await desenhar(); throw new ErroApi(`${r ? `Trechos registrados: ${r.inseridas.length}. ` : ""}O texto não foi escrito: ${e.message}`); }
         id = g.conteudo_id;
       }
-      // a capa padrão Artecon, sem IA, só no texto sem imagem (antes da conferência: ela confere se o texto tem imagem)
-      if(!base?.imagem_id){ capa = await capaAutomatica(id); capaFeita = capa; }
+      // a imagem combinada no passo 1 (v0.62.0): a foto real com o título, a imagem da IA (paga, com o aviso) ou a capa padrão —
+      // só no texto sem imagem (antes da conferência: ela confere se o texto tem imagem). Se a escolhida não sair, fica a capa padrão
+      if(!base?.imagem_id){
+        if(imagem === "foto" || imagem === "ia"){
+          const [cNovo] = await ler("radar_conteudos", {select:"titulo", id:"eq." + id});
+          const tituloNovo = cNovo?.titulo || "";
+          if(imagem === "foto"){
+            for(const q of buscasDaFoto(tituloNovo)){
+              try{
+                const {fotos} = await ia("foto_buscar", {consulta:q});
+                if(fotos?.length){ fotoUsada = (await ia("foto_baixar", {foto_id:fotos[0].id, banco:fotos[0].banco || "pixabay"})).imagem;
+                  await capaComFoto(id, fotoUsada); capaFeita = true; break; }
+              }catch(e){ imagemFalhou = e.message || "erro"; break; }     // sem chave ou banco de imagens fora do ar: fica a capa padrão
+            }
+            if(!capaFeita && !imagemFalhou) imagemFalhou = "nenhuma foto encontrada";
+          }else{
+            try{
+              const rIlu = await ia("ilustrar", {titulo:tituloNovo, descricao:"", assunto_id:assunto}, 170000);
+              if(!/^data:image\/(png|jpeg|webp);base64,/.test(String(rIlu.imagem || ""))) throw new ErroApi("a IA não devolveu uma imagem válida");
+              imagemIa = rIlu.imagem; E.ilustracaoPendente = {conteudoId:id, assunto, imagem:imagemIa};
+              await gravarIlustracao(id, imagemIa); capaFeita = true;
+            }catch(e){ imagemFalhou = e.message || "erro"; }
+          }
+        }
+        if(!capaFeita){ capa = await capaAutomatica(id); capaFeita = capa; } else capa = true;
+      }
       etapa(3);
       if(!E.semConferencia){
         try{ const [lido] = await ler("radar_conteudos", {select:"atualizado_em", id:"eq." + id});
@@ -3802,12 +3839,14 @@ const ACOES = {
           // a conferência mudou o título (tirou um [VERIFICAR]): a capa feita agora é refeita com o título novo. Não derruba a conferência:
           // a versão dela só olha se o texto tem imagem (e qual imagem da IA), não qual capa. Se a capa nova não sair, a de agora (com o
           // título antigo) fica com o lembrete de refazer
-          if(rev.titulo_mudou && capaFeita) capaVelha = !(await capaAutomatica(id, true).then(() => true, () => false)); }
+          // v0.62.0: a capa é refeita do jeito que foi feita — a foto real, a imagem da IA (sem nova cobrança) ou a capa padrão
+          if(rev.titulo_mudou && capaFeita) capaVelha = !(await (fotoUsada ? capaComFoto(id, fotoUsada) : imagemIa ? gravarIlustracao(id, imagemIa) : capaAutomatica(id, true)).then(() => true, () => false)); }
         catch(e){ revFalhou = e.message || "erro"; }
       }
       etapa(4);
       [atual] = await ler("radar_conteudos", {select:"titulo,kit_ia,imagem_id", id:"eq." + id});    // relido depois da conferência (o texto pode ter mudado)
-      if(!kitDe(atual)){ try{ kit = await ia("kit", {conteudo_id:id, assunto_id:assunto}); } catch(e){ kitFalhou = e.message || "erro"; } }
+      // v0.62.0: o kit sabe o formato combinado — foto única não gasta IA com os cartões do carrossel
+      if(!kitDe(atual)){ try{ kit = await ia("kit", {conteudo_id:id, assunto_id:assunto, redes_formato:redes}); } catch(e){ kitFalhou = e.message || "erro"; } }
       // a capa padrão de antes (ou a de agora, se a nova não saiu), com o título antigo: fica o lembrete de refazer (como no “Revisar com IA”)
       if(capaVelha || (rev?.titulo_mudou && !capaFeita && E.capaDesenhada?.has(atual?.imagem_id))) E.capaAntiga = id;
     }finally{ IA_PASSO = ""; }
@@ -3824,7 +3863,10 @@ const ACOES = {
     const itens = Array.isArray(rev?.conferencia?.itens) ? rev.conferencia.itens : [], naoAtende = itens.filter(x => x.situacao === "nao_atende").map(x => x.item);
     const conferencia = "a conferência dos 10 critérios" + (!itens.length ? "" : naoAtende.length ? ` (${naoAtende.length} com ✗: ${naoAtende.join(", ")})` : " (os 10 atendem)");
     const informativo = g ? !!g.informativo : String((Array.isArray(base.avisos_ia) && base.avisos_ia[0]) || "").startsWith("INFORMATIVO");
+    // v0.62.0: o nome da capa que saiu de verdade (foto real, imagem da IA ou capa padrão) nos recados
+    const rotuloCapa = fotoUsada ? "a capa com a foto real e o título" : imagemIa ? "a imagem da IA (com o aviso no canto)" : "a capa padrão";
     const falhas = recadoEditorial(g?.editorial) + avisoCapa(capa) +
+      (imagemFalhou ? ` A imagem combinada (${imagem === "ia" ? "imagem com IA" : "foto real"}) não saiu agora (${String(imagemFalhou).replace(/[.\s]+$/, "")}): ficou a capa padrão — para trocar, use os botões da imagem no conteúdo (passo 2).` : "") +
       (trechoFalhou ? ` A busca do trecho que comprova não deu certo (${trechoFalhou.replace(/[.\s]+$/, "")}): tente de novo em “Buscar trecho que comprova com IA”, no passo 1.` : "") +
       (revFalhou ? ` A conferência dos 10 critérios não saiu agora (${revFalhou.replace(/[.\s]+$/, "")}): no passo 2, clique em “Conferir com IA”.`
         : rev?.corrigiu ? (dado ? " A conferência corrigiu o texto (o que estava marcado): confira antes de aprovar." : " A conferência corrigiu o texto; a revisão editorial ficou da versão anterior (só informa, não trava a aprovação).") : "") +
@@ -3832,17 +3874,17 @@ const ACOES = {
       (kitFalhou ? ` O kit das redes (legendas e roteiro do reel) não saiu agora (${kitFalhou.replace(/[.\s]+$/, "")}): use “Gerar kit das redes com IA”, no quadro “Kit das redes” do conteúdo.`
         : kit?.avisos?.length ? ` O kit das redes tem ${kit.avisos.length} ponto(s) a conferir (veja o quadro “Kit das redes”, no conteúdo).` : "") +
       (paraRevisao ? "" : " O texto continua em rascunho: envie para a revisão no passo 1.");
-    const amarelo = !!pontos || !capa || capaVelha || !!trechoFalhou || !!revFalhou || !!rev?.corrigiu || naoAtende.length > 0 || !!kitFalhou || !!kit?.avisos?.length ||
+    const amarelo = !!pontos || !capa || capaVelha || !!imagemFalhou || !!trechoFalhou || !!revFalhou || !!rev?.corrigiu || naoAtende.length > 0 || !!kitFalhou || !!kit?.avisos?.length ||
       editorialFalhou(g?.editorial) || !paraRevisao || informativo;
     if(!oficial && !dado){
       // v0.24.0: sem texto oficial, o texto é Informativo: só é aprovado depois que o administrador autorizar a publicação
-      const feitos = [capaFeita ? "a capa padrão" : "", rev ? "a conferência dos 10 critérios" : "", kit ? "o kit das redes" : ""].filter(Boolean);
+      const feitos = [capaFeita ? rotuloCapa : "", rev ? "a conferência dos 10 critérios" : "", kit ? "o kit das redes" : ""].filter(Boolean);
       recado(`Assunto sem fonte oficial: a IA escreveu um texto Informativo${pontos} (sem fundamentação legal específica), a partir da fonte não oficial. Ele só vai ao site e às redes depois que o administrador autorizar a publicação, com o motivo (passo 2).` +
         busca + (feitos.length ? ` ${feitos.length > 1 ? "Já estão" : "Já está"} no texto ${juntar(feitos)}.` : "") + falhas, "aviso");
       return;
     }
-    const partes = [r?.inseridas.length ? `${r.inseridas.length} trecho(s) que comprova(m) a notícia` : "", dado ? "" : "o texto" + pontos, capaFeita ? "a capa padrão" : "",
-      rev ? conferencia : "", kit ? "o kit das redes" : ""].filter(Boolean);
+    const partes = [r?.inseridas.length ? `${r.inseridas.length} trecho(s) que comprova(m) a notícia` : "", dado ? "" : "o texto" + pontos, capaFeita ? rotuloCapa : "",
+      rev ? conferencia : "", kit ? "o kit das redes" + (redes === "carrossel" && kit?.kit?.cartoes?.length ? ` (com ${kit.kit.cartoes.length} cartões do carrossel)` : "") : ""].filter(Boolean);
     recado((dado ? `Preparado o texto “${atual?.titulo || base.titulo || ""}”` : "Preparado") + (partes.length ? ": " + juntar(partes) : "") + "." + falhas +
       (g?.informativo ? " O texto é Informativo (sem fundamentação legal específica): só vai ao site e às redes depois que o administrador autorizar a publicação." : "") +
       (!paraRevisao ? "" : informativo && !liberado ? " Agora, no passo 2: o administrador autoriza o texto Informativo, com o motivo."
@@ -3902,21 +3944,22 @@ const ACOES = {
     await alvo.aoEscolher(Number(el.dataset.id), el.dataset.banco || "pixabay");   // v0.45.0: a foto diz de qual banco veio
   },
   /* v0.39.0: preparar várias notícias de uma vez (aba Assuntos): cada marcada passa pelo mesmo caminho do “Preparar com IA” —
-     a fonte (trecho que comprova ou busca rápida), o texto, a imagem (foto real com o título, ou a capa padrão), a conferência dos
-     10 critérios e o kit das redes — uma a uma, com o andamento na tela. Nada é publicado: cada texto vai para “Conferir e aprovar”.
+     a fonte (trecho que comprova ou busca rápida), o texto, a imagem (v0.62.0: foto real com o título, imagem da IA ou a capa
+     padrão), a conferência dos 10 critérios e o kit das redes (v0.62.0: com os cartões do carrossel só quando o formato combinado
+     é o carrossel) — uma a uma, com o andamento na tela. Nada é publicado: cada texto vai para “Conferir e aprovar”.
      A senha é pedida uma vez só, e apenas se alguma das marcadas já teve consulta neste navegador. */
   async "ia-lote"(){
     const marcados = [...document.querySelectorAll(".sel-assunto:checked")].map(x => ({id:Number(x.value), titulo:x.dataset.titulo || ""}));
     if(!marcados.length){ recado("Marque ao menos uma notícia na lista (caixas da primeira coluna).", "aviso"); return; }
     const formato = $("#lote-tamanho")?.value || E.formato || "informativo";
-    const comFoto = ($("#lote-imagem")?.value || "foto") === "foto";
-    if(!confirm(`Preparar ${marcados.length} notícia(s) com IA?\n\nCada uma leva de 2 a 5 minutos e custa centavos (o gasto fica em “Uso da IA neste mês”). Nada é publicado: os textos vão para “Conferir e aprovar”. Deixe esta aba aberta até terminar.`)) return;
+    const imagem = $("#lote-imagem")?.value || E.loteImagem || "foto", redes = $("#lote-redes")?.value || E.loteRedes || "foto";
+    if(!confirm(`Preparar ${marcados.length} notícia(s) com IA?\n\nCada uma leva de 2 a 5 minutos e custa centavos (o gasto fica em “Uso da IA neste mês”)${imagem === "ia" ? ", mais o preço fixo da imagem com IA de cada notícia" : ""}. Nada é publicado: os textos vão para “Conferir e aprovar”. Deixe esta aba aberta até terminar.`)) return;
     if(marcados.some(m => usosIA(m.id) >= 1) && !(await pedirSenha())){ recado("Preparo em lote cancelado."); return; }
     const resultados = [];
     try{
       for(const [k, m] of marcados.entries()){
         const rotulo = `Lote ${k + 1} de ${marcados.length} — “${m.titulo.slice(0, 60)}”`;
-        resultados.push({...m, ...(await prepararUmAssunto(m.id, formato, comFoto,
+        resultados.push({...m, ...(await prepararUmAssunto(m.id, formato, imagem, redes,
           passo => { IA_PASSO = `${rotulo} · ${passo}`; avisoIA("preparando as notícias marcadas"); }))});
       }
     }finally{ IA_PASSO = ""; avisoIA(null); }
@@ -4746,6 +4789,10 @@ const telaSuja = () => [...document.querySelectorAll("main form[data-form]")].so
 const NOME_ETAPA = {fonte:"1. Preparar", conteudo:"2. Conferir e aprovar", publicar:"3. Publicar"};
 /* v0.26.0: o tamanho do texto escolhido ao lado do botão (o seletor do mesmo grupo de botões); sem ele, o da barra do passo 2 */
 const formatoEscolhido = el => (el?.closest?.(".acoes")?.querySelector("select[data-formato]") || $("#novo-formato"))?.value || "informativo";
+/* v0.62.0: a imagem e o formato nas redes escolhidos ao lado do Preparar (seletores do mesmo grupo); sem seletor por perto, vale a
+   última escolha da tela (E), e sem nada, a foto real e a foto única — os padrões do preparo em lote */
+const imagemEscolhida = el => el?.closest?.(".acoes")?.querySelector("select[data-imagem]")?.value || E.prepImagem || "foto";
+const redesEscolhidas = el => el?.closest?.(".acoes")?.querySelector("select[data-redes]")?.value || E.prepRedes || "foto";
 const alterado = c => c.name && c.type !== "file" && (c.tagName === "SELECT" ? [...c.options].some(o => o.selected !== o.defaultSelected)
   : c.type === "checkbox" ? c.checked !== c.defaultChecked : c.value !== c.defaultValue);
 const mexido = f => [...f.elements].some(alterado);
@@ -5050,8 +5097,9 @@ async function buscarFotosModal(){
     : `<p class="sub">Nenhuma foto encontrada para “${h(q)}”. Tente outras palavras (ex.: contabilidade, impostos, escritório, calculadora).</p>`;
 }
 /* v0.39.0: UMA notícia do preparo em lote, do começo ao fim (o mesmo caminho do “Preparar com IA” do assunto, sem depender da tela
-   aberta). Devolve {ok, avisos} quando preparou, {pulado, motivo} quando não era para preparar e {motivo} quando falhou. */
-async function prepararUmAssunto(assunto, formato, comFoto, passo){
+   aberta). Devolve {ok, avisos} quando preparou, {pulado, motivo} quando não era para preparar e {motivo} quando falhou.
+   v0.62.0: "imagem" ("foto", "ia" ou "padrao") e "redes" ("foto" ou "carrossel") — o que foi combinado nos seletores do lote. */
+async function prepararUmAssunto(assunto, formato, imagem, redes, passo){
   try{
     passo("conferindo o assunto");
     const [[a], vinc, evid, cont] = await Promise.all([
@@ -5080,8 +5128,8 @@ async function prepararUmAssunto(assunto, formato, comFoto, passo){
     const id = g.conteudo_id;
     avisos += (Array.isArray(g.avisos) ? g.avisos : []).length;
     passo("etapa 2 de 4 — a imagem");
-    let fotoUsada = null, capaOk = false;
-    if(comFoto){
+    let fotoUsada = null, imagemIa = null, capaOk = false;
+    if(imagem === "foto"){
       for(const q of buscasDaFoto(a.titulo)){
         try{
           const {fotos} = await ia("foto_buscar", {consulta:q});
@@ -5089,6 +5137,16 @@ async function prepararUmAssunto(assunto, formato, comFoto, passo){
             await capaComFoto(id, fotoUsada); capaOk = true; break; }
         }catch(e){ break; }                                   // sem chave ou banco de imagens fora do ar: fica a capa padrão
       }
+    }else if(imagem === "ia"){
+      // v0.62.0: a imagem com IA (paga, com o aviso no canto) combinada no lote; se falhar, fica a capa padrão
+      try{
+        const [cNovo] = await ler("radar_conteudos", {select:"titulo", id:"eq." + id});
+        const rIlu = await ia("ilustrar", {titulo:cNovo?.titulo || a.titulo, descricao:"", assunto_id:assunto}, 170000);
+        if(/^data:image\/(png|jpeg|webp);base64,/.test(String(rIlu.imagem || ""))){
+          imagemIa = rIlu.imagem; E.ilustracaoPendente = {conteudoId:id, assunto, imagem:imagemIa};
+          await gravarIlustracao(id, imagemIa); capaOk = true;
+        }
+      }catch(e){ avisos++; }
     }
     if(!capaOk) capaOk = await capaAutomatica(id);
     if(!capaOk) avisos++;
@@ -5098,13 +5156,13 @@ async function prepararUmAssunto(assunto, formato, comFoto, passo){
         const [lido] = await ler("radar_conteudos", {select:"atualizado_em", id:"eq." + id});
         const rev = await ia("revisar", {conteudo_id:id, lido:lido?.atualizado_em, assunto_id:assunto});
         if(rev.titulo_mudou){ passo("refazendo a capa com o título novo");
-          try{ if(fotoUsada && capaOk) await capaComFoto(id, fotoUsada); else await capaAutomatica(id, true); }catch(e){ avisos++; } }
+          try{ if(fotoUsada && capaOk) await capaComFoto(id, fotoUsada); else if(imagemIa && capaOk) await gravarIlustracao(id, imagemIa); else await capaAutomatica(id, true); }catch(e){ avisos++; } }
         const itens = Array.isArray(rev?.conferencia?.itens) ? rev.conferencia.itens : [];
         avisos += itens.filter(x => x.situacao === "nao_atende").length + (rev?.corrigiu ? 1 : 0);
       }catch(e){ avisos++; }
     }
     passo("etapa 4 de 4 — as legendas das redes");
-    try{ const k = await ia("kit", {conteudo_id:id, assunto_id:assunto}); avisos += (Array.isArray(k.avisos) ? k.avisos : []).length; }
+    try{ const k = await ia("kit", {conteudo_id:id, assunto_id:assunto, redes_formato:redes}); avisos += (Array.isArray(k.avisos) ? k.avisos : []).length; }
     catch(e){ avisos++; }
     // o texto vai para o passo 2 (só sai do rascunho), como no “Preparar com IA” do assunto
     try{ await rest("PATCH", "radar_conteudos", {params:{id:"eq." + id, status:"eq.rascunho", select:"id"}, corpo:{status:"em_revisao"}, prefer:"return=representation"}); }catch(e){}
