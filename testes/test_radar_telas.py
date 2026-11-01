@@ -385,21 +385,29 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.61.0"
+    assert pagina.inner_text(".versao") == "v0.62.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.61.0: a entrada do topo é a da versão em uso (polimento no Consumo de IA do Portal) e conta ao dono, em 2 itens
+    # v0.62.0: a entrada do topo é a da versão em uso (perguntar tudo antes do Preparar; cartões só no carrossel) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.61.0" and data == "31/10/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.62.0" and data == "01/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["PERGUNTA TUDO ANTES", "IMAGEM", "NAS REDES", "CARTÕES DO CARROSSEL", "foto única",
+                   "Escrever os cartões do carrossel com IA", "radar-ia", "Da v0.61.0 para a v0.62.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.61.0: a entrada seguinte (polimento no Consumo de IA do Portal) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    assert topo == "0.61.0" and data == "31/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["CONSUMO DE IA", "avisa a IA Central", "Cleanvoice", "AssemblyAI", "Saldo acabando",
                    "radar-polir", "RADAR_IA_GATEWAY_TOKEN", "Da v0.60.0 para a v0.61.0"]:
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.60.0: a entrada seguinte (Vídeo de venda: roteiro pela IA + biblioteca) conta ao dono, em 2 itens
-    topo, data, itens = pagina.evaluate("VERSOES[1]")
+    topo, data, itens = pagina.evaluate("VERSOES[2]")
     assert topo == "0.60.0" and data == "31/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Vídeo de venda", "ROTEIRO FALADO", "informa, não vende", "BIBLIOTECA", "FECHO", "teleprompter",
@@ -407,7 +415,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.59.0: a entrada seguinte ("Enviar para a correção" no teleprompter) conta ao dono, em 2 itens
-    topo, data, itens = pagina.evaluate("VERSOES[2]")
+    topo, data, itens = pagina.evaluate("VERSOES[3]")
     assert topo == "0.59.0" and data == "30/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["teleprompter", "Enviar para a correção", "DALI MESMO", "MESMO de sempre", "declarações",
@@ -415,7 +423,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.58.0: a entrada seguinte (polir vários vídeos em fila + pré-visualizar) conta ao dono, em 2 itens
-    topo, data, itens = pagina.evaluate("VERSOES[3]")
+    topo, data, itens = pagina.evaluate("VERSOES[4]")
     assert topo == "0.58.0" and data == "30/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Polir um vídeo", "VÁRIOS vídeos", "PRÉ-VISUALIZAR", "Polir todos", "fila", "cota do mês",
@@ -423,7 +431,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.57.0: a entrada seguinte (polir vídeo sem roteiro: Cleanvoice + AssemblyAI + cota de custo) conta ao dono, em 2 itens
-    topo, data, itens = pagina.evaluate("VERSOES[4]")
+    topo, data, itens = pagina.evaluate("VERSOES[5]")
     assert topo == "0.57.0" and data == "30/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Polir um vídeo", "vídeos que NÃO passam pelo corretor dos reels", "vícios de fala", "Cleanvoice",
@@ -432,7 +440,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.56.0: a entrada seguinte (dica opcional Captions + Adobe Podcast no fluxo do reel) conta ao dono
-    topo, data, itens = pagina.evaluate("VERSOES[5]")
+    topo, data, itens = pagina.evaluate("VERSOES[6]")
     assert topo == "0.56.0" and data == "29/10/2026"
     texto = " ".join(itens)
     for trecho in ["Captions", "Adobe Podcast", "automática", "contato visual", "revisar e aprovar antes de publicar",
@@ -440,7 +448,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.55.0: a entrada seguinte (logotipo novo, troca automática preto/branco, sem cartão) conta ao dono
-    topo, data, itens = pagina.evaluate("VERSOES[6]")
+    topo, data, itens = pagina.evaluate("VERSOES[7]")
     assert topo == "0.55.0" and data == "27/10/2026"
     texto = " ".join(itens)
     for trecho in ["Logotipo novo", "caixa branca", "PRETO em foto clara e BRANCO em foto escura", "caduceu",
@@ -448,7 +456,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.54.0: a entrada seguinte (colunas Capturado em + Fonte nos Assuntos; INLABS resistente a quedas) conta ao dono
-    topo, data, itens = pagina.evaluate("VERSOES[7]")
+    topo, data, itens = pagina.evaluate("VERSOES[8]")
     assert topo == "0.54.0" and data == "27/10/2026"
     texto = " ".join(itens)
     for trecho in ["Capturado em", "Fonte", "data em que a informação foi capturada", "Receita Federal",
@@ -456,7 +464,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.53.0: a entrada seguinte (filtro de Assuntos reagrupado) conta ao dono, em 2 itens
-    topo, data, itens = pagina.evaluate("VERSOES[8]")
+    topo, data, itens = pagina.evaluate("VERSOES[9]")
     assert topo == "0.53.0" and data == "27/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["filtro de situação dos Assuntos", "Capturado", "Falta publicar", "Publicado",
@@ -464,7 +472,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.52.0: a entrada seguinte (assistir a tomada no teleprompter) conta ao dono, em 2 itens
-    topo, data, itens = pagina.evaluate("VERSOES[9]")
+    topo, data, itens = pagina.evaluate("VERSOES[10]")
     assert topo == "0.52.0" and data == "27/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["▶ Assistir", "rever o vídeo gravado", "Fechar a prévia",
@@ -472,7 +480,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.51.0: a entrada seguinte (teleprompter melhorado) conta ao dono, em 2 itens
-    topo, data, itens = pagina.evaluate("VERSOES[10]")
+    topo, data, itens = pagina.evaluate("VERSOES[11]")
     assert topo == "0.51.0" and data == "27/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Teleprompter melhorado", "voltar o texto ao começo", "Cancelar", "descartar a gravação",
@@ -482,7 +490,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.50.0: a entrada seguinte conta ao dono, em 2 itens: a data do termo no horário de Brasília e o que
     # o administrador faz (rodar o SQL de duas funções do termo; nada é apagado)
-    topo, data, itens = pagina.evaluate("VERSOES[11]")
+    topo, data, itens = pagina.evaluate("VERSOES[12]")
     assert topo == "0.50.0" and data == "25/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Data do termo sempre no horário de Brasília", "dia de Brasília", "termo assinado depois desta data",
@@ -491,7 +499,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.49.0: a entrada seguinte conta ao dono em 2 itens: as abas unidas (Notícias e Administração, com a
     # faixa de escolha) e o que o administrador faz (só a tela, nada no banco)
-    topo, data, itens = pagina.evaluate("VERSOES[12]")
+    topo, data, itens = pagina.evaluate("VERSOES[13]")
     assert topo == "0.49.0" and data == "24/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Menos abas", "reúne Capturas e Assuntos", "Administração",
@@ -501,7 +509,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.48.0: a entrada seguinte conta ao dono em 2 itens: o Painel mais esperto (o seletor "Período" que recalcula o cronograma sem
     # apagar nada, e os gráficos de linha interativos) e o que o administrador faz (só a tela, nada no banco)
-    topo, data, itens = pagina.evaluate("VERSOES[13]")
+    topo, data, itens = pagina.evaluate("VERSOES[14]")
     assert topo == "0.48.0" and data == "24/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Painel mais esperto", "o seletor", "datas de início e fim", "recalcula só para aquele intervalo",
@@ -511,7 +519,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.47.0: a entrada seguinte conta ao dono em 2 itens: o Painel com gráficos (seletor de período, o que falta, os quatro
     # gráficos, só leitura) e o que o administrador faz (o SQL de uma função nova; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[14]")
+    topo, data, itens = pagina.evaluate("VERSOES[15]")
     assert topo == "0.47.0" and data == "24/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Painel com gráficos", "seletor Dia / Semana / Mês", "o que falta publicar", "feito, mínimo, a fazer e em atraso",
@@ -522,7 +530,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.46.0: a entrada seguinte é o termo de imagem assinado na tela (CPF + a assinatura desenhada; todos assinam, sócios inclusive)
-    topo, data, itens = pagina.evaluate("VERSOES[15]")
+    topo, data, itens = pagina.evaluate("VERSOES[16]")
     assert topo == "0.46.0" and data == "24/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["Termo de uso de imagem assinado na tela", "virou uma ASSINATURA de verdade", "“Assinar o termo na tela”",
@@ -534,7 +542,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.45.0: a entrada de v0.45.0 conta ao dono, em 5 itens: a fonte da CIGA (sem robô no diário), a hora
     # marcada na notícia (com o melhor horário sugerido), a foto em dois bancos, o título sempre na imagem e o que o
     # administrador faz (o SQL, a agenda de novo, o Deploy da radar-ia e da radar-redes, o fontes-novas depois do robô)
-    topo, data, itens = pagina.evaluate("VERSOES[16]")
+    topo, data, itens = pagina.evaluate("VERSOES[17]")
     assert topo == "0.45.0" and data == "22/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["dados abertos oficiais da CIGA", "não recebe nenhum acesso de robô", "UMA vez por dia",
@@ -547,12 +555,12 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.44.0: a entrada seguinte (o teleprompter com gravação pelo navegador e as letras grandes) fica
-    v44 = pagina.evaluate("VERSOES[17]")
+    v44 = pagina.evaluate("VERSOES[18]")
     assert v44[0] == "0.44.0" and len(v44[2]) == 4 and "Teleprompter com gravação pelo navegador" in " ".join(v44[2])
     # v0.43.0: a entrada seguinte conta ao dono, em 3 itens: a nova tentativa automática (5 e 15 minutos,
     # para na 3ª recusa, com a hora marcada na própria mensagem de erro), a segurança (só a recusa CLARA da Meta re-tenta; o
     # "não deu para saber" fica "enviando", sem nova tentativa) e o que o administrador faz (o SQL e o Deploy da radar-redes)
-    topo, data, itens = pagina.evaluate("VERSOES[18]")
+    topo, data, itens = pagina.evaluate("VERSOES[19]")
     assert topo == "0.43.0" and data == "20/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Nova tentativa automática", "RECUSAM uma publicação", "a primeira 5 minutos depois", "outra 15 minutos depois",
@@ -565,7 +573,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.42.0: a entrada seguinte conta ao dono, em 5 itens: o carrossel no assunto (a capa com o título +
     # os cartões do kit, desenhados pela tela), a peça de reel criada do assunto, o "Pôr no Informativo Mensal", o carrossel da
     # Pauta agendado (publicado sozinho) e o que o administrador faz (o SQL e o Deploy da radar-redes e da radar-ia)
-    topo, data, itens = pagina.evaluate("VERSOES[19]")
+    topo, data, itens = pagina.evaluate("VERSOES[20]")
     assert topo == "0.42.0" and data == "20/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["FOTO (como hoje) e CARROSSEL", "a capa é a imagem da publicação com o título", "cartões vêm do kit das redes",
@@ -580,7 +588,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.41.0: a entrada seguinte conta ao dono, em 3 itens: a projeção no Painel (hoje, a semana e o mês,
     # o tem × falta com o atraso em vermelho), as contas iguais às do cronograma da Pauta e o que o administrador faz (só a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[20]")
+    topo, data, itens = pagina.evaluate("VERSOES[21]")
     assert topo == "0.41.0" and data == "20/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Projeção de publicações no Painel do dia", "HOJE, a SEMANA e o MÊS", "o que falta alcançar",
@@ -594,7 +602,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # mais regravação; número e data continuam exigindo exatidão), o veredito em português com o "Aceitar (quis dizer o mesmo)"
     # (na hora, sem montar de novo), o aviso de arquivo fraco na chegada e o que o administrador faz (o SQL, o Deploy da
     # radar-video, o workflow e o commit do repositório privado e o segredo opcional do juiz)
-    topo, data, itens = pagina.evaluate("VERSOES[21]")
+    topo, data, itens = pagina.evaluate("VERSOES[22]")
     assert topo == "0.40.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["entende paráfrase (juiz de sentido)", "quis dizer o MESMO com outras palavras",
@@ -611,7 +619,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.39.0: a entrada seguinte conta ao dono, em 4 itens: a IA mais barata (os modelos novos e o cache),
     # o preparo em lote nos Assuntos, a foto real com o título na imagem e o que o administrador faz (o Deploy da radar-ia, o segredo
     # do banco de imagens e os modelos na IA Central; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[22]")
+    topo, data, itens = pagina.evaluate("VERSOES[23]")
     assert topo == "0.39.0" and data == "20/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["IA mais barata no Radar inteiro", "Claude Sonnet 5.5 (33% mais barato", "Claude Haiku 5.5 (10× mais barato",
@@ -627,7 +635,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.36.0: a entrada seguinte conta ao dono, em 3 itens: a correção avulsa (o que é e como se usa), o que
     # não muda (os termos e as travas) e o que muda de propósito (sem aprovação de peça; só o administrador baixa), e o que o
     # administrador faz (o SQL, o Deploy da radar-video e a tela)
-    topo, data, itens = pagina.evaluate("VERSOES[23]")
+    topo, data, itens = pagina.evaluate("VERSOES[24]")
     assert topo == "0.36.0" and data == "18/10/2026" and len(itens) == 3
     texto = " ".join(itens)
     for trecho in ["Correção avulsa (aba Vídeo): analisar e corrigir um vídeo SEM criar uma peça na Pauta",
@@ -644,7 +652,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.35.0: a entrada seguinte, em 4 itens: a aba Respostas (o gatilho, a palavra-chave, a
     # resposta pública e a privada), as proteções (nunca em dobro, a própria conta, o limite por hora com a fila, o Pausar todas, os
     # 7 dias da Meta), o "aguardando a Meta" e o que o administrador faz (o SQL, os Deploys, a agenda da fila e os 3 segredos)
-    topo, data, itens = pagina.evaluate("VERSOES[24]")
+    topo, data, itens = pagina.evaluate("VERSOES[25]")
     assert topo == "0.35.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Respostas (nova): o Radar responde sozinho, no Instagram e no Facebook", "Comente", "QUERO",
@@ -662,7 +670,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.34.0: a entrada seguinte, em 4 itens: a aba Setor (as contas, a
     # leitura de segunda-feira, o painel e a ética), a hashtag desligada até a Meta aprovar, os erros da Meta em português e o que o
     # administrador faz (o SQL, o Deploy da radar-concorrentes e da radar-copia, a agenda do setor e a tela com o radar-setor.js)
-    topo, data, itens = pagina.evaluate("VERSOES[25]")
+    topo, data, itens = pagina.evaluate("VERSOES[26]")
     assert topo == "0.34.0" and data == "18/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Aba Setor (nova): como estão as publicações de um setor no Instagram", "e a da Artecon, para comparar",
@@ -679,7 +687,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:")
     # v0.33.0: a entrada seguinte, em 8 itens: a aba Vídeo (quem vê e quem edita), os cortes, a legenda, o gancho/cartela/capa, os
     # cortes por padrão com o desfazer e o resumo, a duração com meta, o montar sem transcrever e o que o administrador faz
-    topo, data, itens = pagina.evaluate("VERSOES[26]")
+    topo, data, itens = pagina.evaluate("VERSOES[27]")
     assert topo == "0.33.0" and data == "18/10/2026" and len(itens) == 8
     texto = " ".join(itens)
     for trecho in ["Aba Vídeo: a lista dos reels com vídeo e o editor do vídeo corrigido", "O administrador edita; o editor só vê; o leitor não vê",
@@ -700,7 +708,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # aviso público), a cópia mensal no OneDrive (dia 1 às 04h10, só a pasta, as tentativas, o lembrete "copia", nunca pelo GitHub), a
     # tela da cópia, o título que vai ao site sem o "nº" (e a página que não abre vira erro) e o que o administrador faz (o SQL antes da
     # tela, a versão, os conhecidos e o passo a passo do LEIAME)
-    topo, data, itens = pagina.evaluate("VERSOES[27]")
+    topo, data, itens = pagina.evaluate("VERSOES[28]")
     assert topo == "0.32.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["Quadro de vencimentos de chaves e contas (Configurações, só o administrador)", "Vermelho: vencido ou até 7 dias; amarelo: até 30 dias",
@@ -719,7 +727,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (leis e decretos, CONFAZ, trabalho e previdência), as do gov.br, o filtro de tema (sem enxurrada), o Normas de volta (desligado até o
     # teste pelo GitHub), o que fica de fora e por quê (Florianópolis, Palhoça e São José pelos sites, o CONFAZ pelo site, o DOM/SC
     # desligado pelo pedido do site) e o que o administrador faz (o setup, a versão, a coleta e só então o SQL das fontes)
-    topo, data, itens = pagina.evaluate("VERSOES[28]")
+    topo, data, itens = pagina.evaluate("VERSOES[29]")
     assert topo == "0.31.0" and data == "17/10/2026" and len(itens) == 6
     texto = " ".join(itens)
     for trecho in ["pelo Diário Oficial da União", "nenhuma senha nova", "leis complementares, decretos, medidas provisórias e emendas à Constituição",
@@ -740,7 +748,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # (com as datas, as normas e o fim de semana), a agenda da semana da Pauta até o domingo, a nova data de uma prorrogação conferida
     # (só o administrador escreve), o aviso de possível prorrogação (onde aparece, o "Conferido", o que não conta) e o que o
     # administrador faz (o SQL antes da tela, o botão das anuais antes do Informativo de novembro; o robô dos avisos entra pelo merge)
-    topo, data, itens = pagina.evaluate("VERSOES[29]")
+    topo, data, itens = pagina.evaluate("VERSOES[30]")
     assert topo == "0.30.0" and data == "17/10/2026" and len(itens) == 5
     texto = " ".join(itens)
     for trecho in ["13º salário e as obrigações anuais", "a 1ª parcela do 13º até 30/11 e a 2ª até 20/12", "Lei 4.749/1965",
@@ -761,7 +769,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # 16:00, a peça pronta há mais de 24 horas, o vídeo do reel e a notícia que não saiu); as regras (um e-mail por tipo por dia, cada
     # pendência uma vez só, sem nome, nada publicado); as Configurações; e o que o administrador faz (o SQL antes da tela, a radar-redes
     # 0.29.0 e a agenda de novo)
-    topo, data, itens = pagina.evaluate("VERSOES[30]")
+    topo, data, itens = pagina.evaluate("VERSOES[31]")
     assert topo == "0.29.0" and data == "17/10/2026" and len(itens) == 4
     texto = " ".join(itens)
     for trecho in ["Lembretes por e-mail antes do dia", "a peça da Pauta de amanhã que ainda não está aprovada", "a partir das 16:00",
@@ -776,7 +784,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.28.1: a entrada seguinte conta ao dono, em português simples, em 2 itens: a linha em branco (de “Acrescentar
     # informação”) e o cartão em branco que não travam mais a peça, o que o aviso barrava, o aviso que diz o que mudou, o Salvar que destrava;
     # e o que o administrador faz (só a tela; o banco continua o da v0.28.0)
-    topo, data, itens = pagina.evaluate("VERSOES[31]")
+    topo, data, itens = pagina.evaluate("VERSOES[32]")
     assert topo == "0.28.1" and data == "17/10/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["a linha em branco em “Informações conferidas” (de “Acrescentar informação”)", "o cartão em branco",
@@ -790,7 +798,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # administrador, de hoje em diante, uma peça por dia; nasce planejada e não publica nem agenda nada; a importação depois), a marca
     # "Sócio(a) da Artecon" (os dois termos dispensados; o que continua valendo; o Histórico) e o que o administrador faz (o SQL antes da
     # tela; as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[32]")
+    topo, data, itens = pagina.evaluate("VERSOES[33]")
     assert topo == "0.28.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Peça nova num dia vazio", "o administrador vê o botão “+ Nova peça”", "(de hoje em diante)",
@@ -810,7 +818,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.27.0: a entrada seguinte conta ao dono, em português simples, o cronograma de publicações na Pauta (a semana e o mês dela, o
     # mínimo e o feito, o vermelho), de onde vem o mínimo (a notícia ignorada na triagem enquanto ainda era alta não entra; a que envelheceu
     # na fila conta), que o quadro só informa e o que o administrador faz (só a tela; o banco e as funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[33]")
+    topo, data, itens = pagina.evaluate("VERSOES[34]")
     assert topo == "0.27.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["Cronograma de publicações na Pauta", "o quadro “Cronograma de publicações”", "para a semana que está na tela e para o mês dela",
@@ -828,7 +836,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # Publicar), o que o “Preparar com IA” faz (e o “Preparar este texto”), a lista dos 10 critérios que trava o Aprovar, a confirmação da
     # fonte que é um clique de quem conferiu, o Informativo, os canais do passo 3 e o que o administrador faz (só a tela; o banco e as
     # funções não mudam)
-    topo, data, itens = pagina.evaluate("VERSOES[34]")
+    topo, data, itens = pagina.evaluate("VERSOES[35]")
     assert topo == "0.26.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["3 passos, sempre para a frente: 1. Preparar, 2. Conferir e aprovar e 3. Publicar", "“Mais opções”",
@@ -845,7 +853,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.25.1: a entrada seguinte conta ao dono, em português simples, os três ajustes (os itens de lista da legenda montada pelo Radar em
     # linhas próprias, o kit sem a chamada e o apoio da arte, o rótulo único do campo da imagem) e o que o administrador instala (a radar-ia
     # 0.25.1; o banco não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[35]")
+    topo, data, itens = pagina.evaluate("VERSOES[36]")
     assert topo == "0.25.1" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["os itens de lista do texto (“- item” ou “1. item”) saem cada um na sua linha, como “• Item”, com a primeira letra maiúscula",
@@ -861,7 +869,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # arte vertical nas notícias; a da Pauta fica), a imagem com aparência de foto, inteira em 3:2, o aviso pequeno no canto e a linha no
     # fim do site e das legendas (antes da identificação legal), a qualidade alta (custa mais), a descrição até 500, os botões, que o que
     # é antigo não muda sozinho, o critério 6 e o que o administrador instala (o SQL, a função radar-ia e a tela; a radar-redes não muda)
-    topo, data, itens = pagina.evaluate("VERSOES[36]")
+    topo, data, itens = pagina.evaluate("VERSOES[37]")
     assert topo == "0.25.0" and data == "16/10/2026"
     texto = " ".join(itens)
     for trecho in ["a mesma imagem vai para o site, o Instagram e o Facebook (o mesmo arquivo)", "A arte vertical das notícias nas redes",
@@ -877,7 +885,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # v0.24.0: a entrada seguinte conta ao dono as Diretrizes na IA (a fundamentação legal com link, o texto Informativo que só o
     # administrador autoriza, a Conferência das Diretrizes com os 10 critérios e o "Revisei e assumo", o texto igual citado sem aspas), as
     # orientações para a IA (onde ficam, os limites, que as regras passam por cima e o aviso da imagem) e o que o administrador instala
-    topo, data, itens = pagina.evaluate("VERSOES[37]")
+    topo, data, itens = pagina.evaluate("VERSOES[38]")
     assert topo == "0.24.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["Diretrizes editoriais do escritório na IA", "“Fonte oficial: norma — link do documento oficial”", "link inventado sai do texto sozinho",
@@ -902,7 +910,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     assert itens[-1].startswith("Administrador:") and "o banco continua" not in itens[-1]
     # v0.23.0: a outra conta a leitura do boletim da ITC na caixa inteira (a subpasta sim, o Lixo Eletrônico e os Itens
     # Excluídos não; o boletim movido não é lido de novo), a liberação da caixa no Exchange e as agendas que rodam de novo
-    topo, data, itens = pagina.evaluate("VERSOES[38]")
+    topo, data, itens = pagina.evaluate("VERSOES[39]")
     assert topo == "0.23.0" and data == "14/10/2026"
     texto = " ".join(itens)
     for trecho in ["caixa inteira, menos o Lixo Eletrônico e os Itens Excluídos", "“ITC Consultoria”", "não é lido de novo",
@@ -911,7 +919,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     # v0.22.0: a outra conta ao dono o corretor de vídeo (como enviar, o que corrige e o que não corrige, aprovar, baixar e postar; a
     # Azure gratuita), o “Preencher fontes oficiais” e o CRC certo da Artecon
-    topo, data, itens = pagina.evaluate("VERSOES[39]")
+    topo, data, itens = pagina.evaluate("VERSOES[40]")
     assert topo == "0.22.0" and data == "13/10/2026"
     texto = " ".join(itens)
     for trecho in ["Corretor de vídeo do reel — como enviar", "Enviar a gravação", "Azure gratuita", "NÃO corrige", "nunca corta “um”",
@@ -2254,8 +2262,8 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     assert fila(0, 2) == "" and fila(10, -1) == "" and "arquivar_dias" in fila(-1, 2) and "arquivar_nota" in fila(10, 11)
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
-    assert pagina.evaluate("[versaoMenor('0.36.0', FUNCAO_MINIMA), versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.39.0", "0.45.0", "0.61.0"]       # v0.44.0: nada muda na radar-redes nem na radar-ia (o teleprompter é da tela; o WEBM, do banco, do robô e da radar-video)
+    assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.62.0"]       # v0.62.0: o kit com redes_formato e so_cartoes é da radar-ia nova; a radar-redes não muda
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3136,7 +3144,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.61.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.62.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -4233,6 +4241,11 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_fal
             r = {"conteudo_id": corpo["conteudo_id"], "editorial": e, "mudou": True, "titulo_mudou": False, "pendencias": []}
         elif acao == "kit" and kit_falha:
             return rota.fulfill(status=kit_falha[0], content_type="application/json", body=json.dumps({"message": kit_falha[1]}))
+        elif acao == "kit" and corpo.get("so_cartoes"):      # v0.62.0: só os cartões, acrescentados ao kit que já existe (como a função)
+            atual = db.execute("select kit_ia from radar_conteudos where id = %s", (corpo["conteudo_id"],)).fetchone()[0]
+            k = {**atual, "cartoes": KIT_V42["cartoes"], "formato_pretendido": "carrossel", "cartoes_gerados_em": "2026-11-01T12:00:00Z"}
+            db.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(k), corpo["conteudo_id"]))
+            r = {"conteudo_id": corpo["conteudo_id"], "kit": k, "avisos": []}
         elif acao == "kit":                                  # v0.20.0: o kit das redes, gravado como a função grava (não muda a versão do conteúdo)
             k = kit or KIT_TELA
             db.execute("update radar_conteudos set kit_ia = %s where id = %s", (json.dumps(k), corpo["conteudo_id"]))
@@ -4260,6 +4273,9 @@ def ia_de_mentira(pg, db, pedidos, kit=None, kit_falha=None, peca=None, peca_fal
                                              (corpo["conteudo_id"], lido, json.dumps(conferencia))).fetchone()[0]
         rota.fulfill(status=200, content_type="application/json", body=json.dumps(r))
     pg.route("**/functions/v1/radar-ia", responder)
+    # v0.62.0: os testes escritos antes do seletor de imagem valem para a CAPA PADRÃO — aqui ela fica escolhida de saída; o padrão
+    # novo do seletor (a foto real) e as outras escolhas (imagem da IA, carrossel combinado) têm testes próprios, que mexem no seletor
+    pg.evaluate("window.E && (E.prepImagem = 'padrao')")
 
 
 def test_trocar_de_assunto_enquanto_a_ia_trabalha_nao_grava_nem_aplica_no_outro(pagina, limpo):
@@ -4321,6 +4337,64 @@ def test_preparar_em_lote_na_lista_de_assuntos(pagina, limpo):
     assert acoes.count("fundamentar") == 2 and acoes.count("gerar") == 2 and acoes.count("revisar") == 2 and acoes.count("kit") == 2
     assert acoes.count("foto_buscar") == 2 and acoes.count("foto_baixar") == 2 and "ilustrar" not in acoes   # sem custo de imagem
     assert limpo.execute("select count(*) from radar_conteudos where ilustracao_id is not null").fetchone()[0] == 0
+    # v0.62.0: o lote também combina o formato nas redes — "Foto única" (o padrão) vai no pedido do kit, que não escreve os cartões
+    assert all(p.get("redes_formato") == "foto" for p in pedidos if p["acao"] == "kit")
+
+
+def test_preparar_com_ia_pergunta_tudo_antes_e_faz_a_foto_real_por_padrao(pagina, limpo):
+    """v0.62.0: ao lado do “Preparar com IA” ficam o tamanho do texto, a IMAGEM e NAS REDES — e o padrão da imagem é a FOTO
+    REAL com o título. Um clique: fonte, texto, foto (sem custo de IA), conferência e kit, com o formato combinado no pedido
+    do kit (foto única: a função não escreve os cartões do carrossel)."""
+    assunto_com_texto(limpo)
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    pagina.evaluate("E.prepImagem = 'foto'")        # o padrão de fábrica (o ia_de_mentira fixa 'padrao' para os testes antigos)
+    abrir_assunto(pagina, "CBS na transição")
+    for s in ("#prox-formato", "#prox-imagem", "#prox-redes"):                 # os três seletores no quadro do próximo passo
+        assert pagina.locator(f"#proximo-passo {s}").count() == 1, s
+    assert pagina.input_value("#prox-imagem") == "foto" and pagina.input_value("#prox-redes") == "foto"
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado >> text=a capa com a foto real e o título", timeout=90000)
+    assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "foto_buscar", "foto_baixar", "revisar", "kit"]
+    assert pedidos[-1]["redes_formato"] == "foto"
+    assert "assunto_id" not in pedidos[2] and "assunto_id" not in pedidos[3]   # a foto não conta para a senha
+    imagem, ilus = limpo.execute("select imagem_id, ilustracao_id from radar_conteudos order by id desc limit 1").fetchone()
+    assert ilus is None and limpo.execute("select largura, altura from radar_imagens where id = %s", (imagem,)).fetchone() == (1200, 630)
+
+
+def test_preparar_com_imagem_da_ia_escolhida_no_passo_1(pagina, limpo):
+    """v0.62.0: com “Imagem com IA” escolhida ao lado do Preparar, a imagem (paga, com o aviso no canto) sai na MESMA tacada:
+    o ilustrar entra na sequência e a imagem fica como a da publicação (imagem_id = ilustracao_id), inteira, em 3:2."""
+    assunto_com_texto(limpo)
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.select_option("#prox-imagem", "ia")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado >> text=a imagem da IA (com o aviso no canto)", timeout=90000)
+    assert [p["acao"] for p in pedidos] == ["fundamentar", "gerar", "ilustrar", "revisar", "kit"]
+    imagem, ilus = limpo.execute("select imagem_id, ilustracao_id from radar_conteudos order by id desc limit 1").fetchone()
+    assert imagem == ilus and imagem is not None
+    assert limpo.execute("select largura, altura from radar_imagens where id = %s", (imagem,)).fetchone() == (300, 200)   # 3:2, inteira (a da IA de mentira tem 300×200)
+
+
+def test_preparar_com_carrossel_combinado_pede_os_cartoes_no_kit(pagina, limpo):
+    """v0.62.0: “Nas redes: Carrossel” ao lado do Preparar — o pedido do kit leva redes_formato "carrossel" (a função escreve
+    os cartões caprichados e grava o formato_pretendido, que o passo 3 usa para pré-marcar)."""
+    assunto_com_texto(limpo)
+    pedidos = []
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_assunto(pagina, "CBS na transição")
+    pagina.select_option("#prox-redes", "carrossel")
+    pagina.click("#proximo-passo [data-acao=ia-tudo]")
+    pagina.wait_for_selector("#recado >> text=Preparado", timeout=90000)
+    assert [p for p in pedidos if p["acao"] == "kit"][0]["redes_formato"] == "carrossel"
 
 
 def test_usar_foto_real_com_titulo_no_conteudo(pagina, limpo):
@@ -4851,7 +4925,10 @@ def test_noticia_em_carrossel_escolhida_no_canal_desenha_as_laminas_e_autoriza_c
     pagina.wait_for_function("() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
     # sem os cartões no kit: a opção aparece desligada, com o recado do kit novo
     assert pagina.locator("#rede-formato input[value=carrossel]").is_disabled()
-    assert "ainda não tem os cartões do carrossel" in pagina.inner_text("#rede-sem-cartoes")
+    assert "não tem os cartões do carrossel" in pagina.inner_text("#rede-sem-cartoes")
+    # v0.62.0: sem kit em dia não há “Escrever os cartões” (ele acrescenta ao kit que existe); o caminho é gerar o kit inteiro
+    assert pagina.locator("[data-acao=rede-cartoes]").count() == 0
+    assert "Gerar kit das redes com IA" in pagina.inner_text("#rede-sem-cartoes")
     assert pagina.locator("#rede-laminas").count() == 0
     com_kit_v42(limpo, c)
     pagina.evaluate("desenhar()")
@@ -4871,6 +4948,51 @@ def test_noticia_em_carrossel_escolhida_no_canal_desenha_as_laminas_e_autoriza_c
                                where id = any(%s) order by array_position(%s, id)""", (artes, artes)).fetchall()
     assert [d for d, *_ in laminas] == telas and all((l, al, q) == (1080, 1350, ADMIN) for _, l, al, q in laminas)
     assert pedidos[-1] == {"acao": "publicar", "envio": limpo.execute("select id from radar_redes_envios").fetchone()[0]}
+
+
+def test_formato_pretendido_do_kit_pre_marca_o_carrossel_no_canal(pagina, limpo):
+    """v0.62.0: a notícia preparada com “Nas redes: Carrossel” guarda formato_pretendido no kit — o quadro do canal (passo 3)
+    já vem com o carrossel marcado e as lâminas desenhadas; quem publica continua podendo voltar para a foto única."""
+    a, c = no_site(limpo)
+    limpo.execute("update radar_conteudos set kit_ia = %s::jsonb where id = %s",
+                  (json.dumps({**KIT_V42, "formato_pretendido": "carrossel"}), c))
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function("() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
+    assert pagina.locator("#rede-formato input[value=carrossel]").is_checked()         # pré-marcado pelo kit
+    pagina.wait_for_selector("#rede-laminas")
+    pagina.wait_for_function(LAMINAS_REDE_PRONTAS)
+    pagina.click("#rede-formato input[value=foto]")                                    # a palavra final é de quem publica
+    pagina.wait_for_selector("#rede-laminas", state="detached")
+    assert not pagina.locator("#rede-formato input[value=carrossel]").is_checked()
+
+
+def test_escrever_so_os_cartoes_do_carrossel_no_passo_3(pagina, limpo):
+    """v0.62.0: a notícia preparada como FOTO ÚNICA (kit em dia, sem os cartões) ganha no quadro do canal o botão “Escrever os
+    cartões do carrossel com IA” — a função escreve SÓ os cartões (so_cartoes) e os acrescenta ao kit: as legendas e o reel não
+    mudam, e o carrossel fica marcado, com as lâminas desenhadas."""
+    a, c = no_site(limpo)
+    sem_cartoes = {k: v for k, v in KIT_V42.items() if k != "cartoes"}
+    sem_cartoes["formato_pretendido"] = "foto"
+    limpo.execute("update radar_conteudos set kit_ia = %s::jsonb where id = %s", (json.dumps(sem_cartoes), c))
+    pedidos = []
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    ia_de_mentira(pagina, limpo, pedidos)
+    abrir_por_id(pagina, a)
+    pagina.wait_for_function("() => /^data:image\\/jpeg;base64,/.test(document.querySelector('#rede-imagem')?.getAttribute('src') || '')")
+    assert pagina.locator("#rede-formato input[value=carrossel]").is_disabled()
+    assert "a notícia foi preparada como foto única" in pagina.inner_text("#rede-sem-cartoes")
+    pagina.click("[data-acao=rede-cartoes]")
+    pagina.wait_for_selector("#recado >> text=cartão(ões) do carrossel e os acrescentou ao kit")
+    assert [p["acao"] for p in pedidos] == ["kit"] and pedidos[0].get("so_cartoes") is True and pedidos[0]["conteudo_id"] == c
+    pagina.wait_for_selector("#rede-formato input[value=carrossel]:not([disabled])")
+    assert pagina.locator("#rede-formato input[value=carrossel]").is_checked()         # já fica no carrossel, com as lâminas
+    pagina.wait_for_function(LAMINAS_REDE_PRONTAS)
+    novo = limpo.execute("select kit_ia from radar_conteudos where id = %s", (c,)).fetchone()[0]
+    assert len(novo["cartoes"]) == 3 and novo["formato_pretendido"] == "carrossel"
+    assert novo["instagram"] == KIT_V42["instagram"] and novo["reel"] == KIT_V42["reel"]   # as legendas e o reel ficaram
 
 
 def test_por_no_informativo_mensal_com_um_clique(pagina, limpo):
@@ -7360,7 +7482,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.61.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.62.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10547,7 +10669,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.61.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.62.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -11508,7 +11630,7 @@ def test_preparar_usa_o_tamanho_ao_lado_e_pula_o_trecho_ja_conferido(pagina, lim
     ia_de_mentira(pagina, limpo, pedidos, revisar_texto=False)
     abrir_assunto(pagina, "CBS na transição")
     pagina.select_option("#prox-formato", label="Longo (artigo)")
-    assert [pagina.input_value(s) for s in ("#prox-formato", "#formato-fonte", "#novo-formato")] == ["artigo"] * 3
+    assert [pagina.input_value(s) for s in ("#prox-formato", "#fonte-formato", "#novo-formato")] == ["artigo"] * 3
     pagina.click("#proximo-passo [data-acao=ia-tudo]")
     pagina.wait_for_selector("#recado >> text=Preparado:")
     assert [p.get("formato") for p in pedidos if p["acao"] == "gerar"] == ["artigo"]

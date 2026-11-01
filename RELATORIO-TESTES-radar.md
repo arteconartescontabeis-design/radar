@@ -1,4 +1,25 @@
-# Radar Artecon — Relatório de testes (v0.61.0)
+# Radar Artecon — Relatório de testes (v0.62.0)
+
+**v0.62.0 — perguntar tudo antes do Preparar + cartões do carrossel só quando precisa (tela + radar-ia)**
+(01/11/2026): o passo 1 (e o lote de Assuntos) ganhou os seletores **Imagem** (`IMAGEM_PREPARO`: foto real com o
+título — o padrão —, imagem com IA ou capa padrão) e **Nas redes** (`REDES_PREPARO`: foto única — o padrão — ou
+carrossel), sincronizados entre as barras como o tamanho (`data-imagem`/`data-redes`); o `ia-tudo` e o
+`prepararUmAssunto` fazem a imagem escolhida na mesma tacada (foto: `foto_buscar`/`foto_baixar` + `capaComFoto`,
+com a capa padrão de reserva; IA: `ilustrar` + `gravarIlustracao`, refeita com o título novo sem nova cobrança) e
+pedem o kit com **`redes_formato`**. Na **`radar-ia`** (VERSAO 0.62.0), o `kit` com "foto" **não pede os cartões**
+(esquema e instruções sem eles; 3.400 tokens em vez de 4.600), com "carrossel" os capricha (UMA ideia por cartão)
+e grava **`formato_pretendido`**, que pré-marca a escolha no passo 3; **`so_cartoes`** escreve só os cartões e os
+acrescenta ao kit em dia (`kitSoCartoes`, com as mesmas conferências por código — termos, cópias, [VERIFICAR]) —
+o botão **"Escrever os cartões do carrossel com IA"** do quadro do canal (`rede-cartoes`). Testes: função (foto
+única sem cartões no esquema/pedido; carrossel com a orientação e o formato gravado; valor desconhecido = como
+antes; só-os-cartões acrescenta sem mexer nas legendas, recusa sem kit em dia e conta como "gerar") e tela (os
+três seletores no próximo passo; preparo com foto real por padrão — sequência com `foto_buscar`/`foto_baixar` e a
+capa 1200×630; imagem da IA escolhida — `ilustrar` na sequência e `imagem_id = ilustracao_id`; carrossel combinado
+no pedido do kit; `formato_pretendido` pré-marca o canal; o botão do passo 3 escreve só os cartões e desenha as
+lâminas; o lote manda `redes_formato`); os testes anteriores do Preparar fixam a capa padrão no estub
+(`E.prepImagem = 'padrao'`) e continuam valendo tal e qual. FUNCAO_MINIMA 0.39.0→**0.62.0**. Nada no banco (segue
+na v0.50.0); `radar-polir`, `radar-video`, `radar-redes` e `radar-copia` não mudam. **A suíte INTEIRA roda no CI
+antes de juntar.**
 
 **v0.61.0 — polimento no Consumo de IA do Portal (só a função radar-polir)** (31/10/2026): a `radar-polir` (VERSAO
 0.61.0) ganhou `avisarCentral()`: com o token do Radar na IA Central (o **`IA_GATEWAY_TOKEN`** que a `radar-ia` já tem

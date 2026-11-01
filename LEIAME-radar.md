@@ -1,4 +1,4 @@
-# Radar Artecon — v0.61.0
+# Radar Artecon — v0.62.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,15 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.62.0 faz o **"Preparar com IA" perguntar tudo antes**: ao lado do tamanho do texto entram a **Imagem** (foto
+real com o título, imagem com IA — paga, com o aviso — ou a capa padrão Artecon) e **Nas redes** (foto única ou
+carrossel). Um clique e a IA faz tudo de uma vez — fonte, texto, a imagem escolhida, a conferência e o kit — e os
+**cartões do carrossel só são escritos quando a notícia vai sair como carrossel** (foto única não gasta IA com
+cartões que ninguém usa). No passo 3, o formato combinado vem pré-marcado, e a notícia preparada como foto única
+ganha o botão **"Escrever os cartões do carrossel com IA"** (só os cartões; as legendas e o reel ficam). O preparo
+em lote pergunta as mesmas coisas. **Nada muda no banco**; a função **`radar-ia`** ganha o `redes_formato` e o
+`so_cartoes` no kit. Veja "Da v0.61.0 para a v0.62.0".
 
 A v0.61.0 liga o **polimento de vídeo ao Consumo de IA do Portal**: a cada vídeo polido, a `radar-polir` avisa a
 IA Central (função `ia-uso-externo`, com o token do Radar), o custo da **Cleanvoice** e da **AssemblyAI** é calculado
@@ -3072,6 +3081,20 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.61.0 para a v0.62.0** (só o **Deploy da `radar-ia`** e a publicação das telas — **nada no banco, nenhum
+segredo novo**). Supõe a v0.61.0 instalada:
+
+1. **Deploy** da função **`radar-ia`** desta versão (`supabase/functions/radar-ia/index.ts`, "Verify JWT" como está):
+   a ação `kit` ganha o **`redes_formato`** ("foto" = sem os cartões do carrossel, pedido menor e mais barato;
+   "carrossel" = cartões caprichados para a sequência; sem o campo = como antes) e o **`so_cartoes`** (escreve só os
+   cartões e os acrescenta ao kit em dia — o botão novo do passo 3).
+2. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+3. Conferência: abra um assunto com texto — ao lado do "Preparar com IA" aparecem **Tamanho do texto**, **Imagem** e
+   **Nas redes**. Prepare com "Foto única" e, no passo 3, confira o botão "Escrever os cartões do carrossel com IA".
+   Com a função antiga, tudo continua como antes (cartões sempre); **só o botão novo do passo 3 exige a função desta
+   versão** (com a antiga, ele refaria o kit inteiro). As funções `radar-polir`, `radar-video`, `radar-redes` e
+   `radar-copia` **não mudam**; o banco segue na **v0.50.0**.
 
 **Da v0.60.0 para a v0.61.0** (só o **Deploy da `radar-polir`** — **nenhum segredo novo**; a parte da IA Central —
 `ia_central_v1.2.0.sql` e a função `ia-uso-externo` do projeto Departamento Pessoal — **já foi aplicada em 31/10/2026**).
