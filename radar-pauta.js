@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.65.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.66.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -130,12 +130,22 @@ function seloTermo(s){
 // leitura nem relógio: "hoje" vem de fora), testadas com datas fixas
 const LIMITE_CRONOGRAMA = 1000;                                   // o Supabase devolve no máximo 1.000 linhas por leitura
 const diaBrasilia = v => new Date(v).toLocaleDateString("en-CA", {timeZone:"America/Sao_Paulo"});
+// v0.66.0: a data de início da contagem do cronograma (Configurações → Pauta, "cronograma_inicio"): o quadro e a
+// projeção do Painel ignoram o que é anterior a ela — peças, notícias achadas e publicações. Vazio = conta tudo.
+function inicioCronograma(){
+  const d = CONF_PAUTA.pauta && typeof CONF_PAUTA.pauta === "object" ? CONF_PAUTA.pauta.cronograma_inicio : "";
+  return typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "";
+}
+const inicioCronogramaDDMM = () => inicioCronograma().split("-").reverse().join("/");
 const fimDoMes = m => somarDias(somarDias(m + "-01", 31).slice(0, 7) + "-01", -1);               // m = "AAAA-MM"
 // o mês do quadro: na semana de hoje, o de hoje; nas outras, o da quinta-feira (o da maior parte da semana: 26/10 a 01/11 é outubro)
 const mesDoCronograma = (seg, hoje) => (hoje >= seg && hoje <= somarDias(seg, 6) ? hoje : somarDias(seg, 3)).slice(0, 7);
 const periodosCronograma = (seg, hoje) => { const m = mesDoCronograma(seg, hoje);
   return {semana:{ini:seg, fim:somarDias(seg, 6)}, mes:{ini:m + "-01", fim:fimDoMes(m)}}; };
-function contarCronograma(ini, fim, hoje, {pecas, noticias, antes = [], capturas, dias}){
+function contarCronograma(ini, fim, hoje, {pecas, noticias, antes = [], capturas, dias, inicio = ""}){
+  // v0.66.0: a data de início da contagem (Configurações → Pauta, "cronograma_inicio"): o que é anterior a ela
+  // não entra no mínimo, no feito nem no atraso — nada é apagado, só sai da conta
+  if(inicio){ pecas = pecas.filter(p => p.data >= inicio); noticias = noticias.filter(e => diaBrasilia(e.publicado_em) >= inicio); }
   const no = d => d >= ini && d <= fim, passou = d => d < hoje;
   const doPeriodo = pecas.filter(p => no(p.data)), validas = doPeriodo.filter(p => p.situacao !== "cancelada");
   // vai ao feed: a conta de telaPeca (semPauta). Cada peça numa linha só: o dia de notícia em Posts, o reel em Reels, a captação na dela
@@ -159,6 +169,7 @@ function contarCronograma(ini, fim, hoje, {pecas, noticias, antes = [], capturas
   // sozinho, e a tela não sabe quem ignorou). Feito = já está no site, em qualquer dia
   const fatos = new Map();
   for(const c of capturas){ const d = diaBrasilia(c.capturado_em), velha = c.relevancia !== "alta";
+    if(inicio && d < inicio) continue;                              // v0.66.0: antes do início da contagem
     if(!no(d) || (c.incluido_em && Math.abs(Date.parse(c.incluido_em) - Date.parse(c.capturado_em)) < 60000)) continue;
     if(velha && c.data_publicacao && c.data_publicacao < somarDias(d, -dias)) continue;
     const ac = c.radar_assunto_capturas || [], as = ac.map(x => x.radar_assuntos).filter(Boolean);
@@ -194,7 +205,7 @@ async function dadosCronograma(ini, fim){
     publicado_em:`lt.${desde}`, limit:limite})).map(e => e.conteudo_id) : [];
   // a que chegou velha: dias_baixa de Configurações (o padrão do banco é 5; com 0 a idade está desligada e vale o padrão)
   const d = CONF_PAUTA.relevancia?.dias_baixa, dias = Number.isInteger(d) && d > 0 ? d : 5;
-  return {dados:{pecas, noticias, antes, capturas:[...altas, ...velhas], dias},
+  return {dados:{pecas, noticias, antes, capturas:[...altas, ...velhas], dias, inicio:inicioCronograma()},
           cortado:[noticias, antes, altas, velhas].some(l => l.length >= LIMITE_CRONOGRAMA)};
 }
 async function lerCronograma(seg, hoje){
@@ -226,7 +237,8 @@ function seloCronograma(l, fase){
 // ("Esta semana", "← Semana anterior"…), que os testes procuram pelo texto
 function blocoCronograma(seg, hoje, c){
   const topo = `<h2>Cronograma de publicações</h2>
-    <p class="sub">O mínimo de publicações e o que já foi feito, na semana mostrada e no mês dela. Em vermelho, o que já devia ter saído e não saiu. O quadro só informa: não publica nem cria nada.</p>`;
+    <p class="sub">O mínimo de publicações e o que já foi feito, na semana mostrada e no mês dela. Em vermelho, o que já devia ter saído e não saiu. O quadro só informa: não publica nem cria nada.</p>
+    ${inicioCronograma() ? `<p class="sub" id="cronograma-inicio">A contagem começa em <b>${h(inicioCronogramaDDMM())}</b>: o que é anterior não entra no mínimo, no feito nem no atraso (nada foi apagado — ${ehAdmin() ? "o administrador muda a data em Configurações → Pauta, campo “cronograma_inicio”" : "o administrador muda a data em Configurações"}).</p>` : ""}`;
   if(!c) return `<div class="painel" id="pauta-cronograma">${topo}<div class="aviso alerta" id="pauta-cronograma-erro">Não deu para montar o cronograma agora (o mínimo e o feito). A semana abaixo está certa; recarregue a página para tentar de novo.</div></div>`;
   const {semana, mes} = periodosCronograma(seg, hoje), ddmm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`, nome = mesExtenso(mes.ini);
   const periodo = (id, titulo, k) => `<section class="crono-periodo" id="cron-${id}" data-fase="${k.fase}">

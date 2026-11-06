@@ -385,14 +385,22 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.65.0"
+    assert pagina.inner_text(".versao") == "v0.66.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.65.0: a entrada do topo é a da versão em uso (o DOU pela Leitura do Jornal; Destaques consertados) e conta ao dono, em 2 itens
+    # v0.66.0: a entrada do topo é a da versão em uso (o início da contagem do cronograma) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.65.0" and data == "06/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.66.0" and data == "06/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["DATA DE INÍCIO DA CONTAGEM", "cronograma_inicio", "09/11/2026", "NADA É APAGADO",
+                   "10.000", "Da v0.65.0 para a v0.66.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.65.0: a entrada seguinte (o DOU pela Leitura do Jornal; Destaques consertados) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.65.0")')
+    assert topo == "0.65.0" and data == "06/11/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["DIÁRIO OFICIAL", "EM MANUTENÇÃO", "Leitura do Jornal", "dou_site", "4 VEZES POR DIA",
                    "radar-fontes-dou-2026-11.sql", "Da v0.64.0 para a v0.65.0"]:
@@ -2279,7 +2287,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.65.0"]       # v0.65.0: a tela, o robô e as fontes mudam; a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.66.0"]       # v0.66.0: só a contagem do cronograma e os tetos da radar-ia; a exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3160,7 +3168,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.65.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.66.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7229,6 +7237,45 @@ def test_cronograma_conta_minimo_e_feito_sem_depender_de_hoje(pagina):
     assert r["doisMeses"] == [[1, 0, 1], [1, 0, 1], [1, 0, 1]], r["doisMeses"]
 
 
+def test_cronograma_com_data_de_inicio_da_contagem(pagina):
+    """v0.66.0: a data de início da contagem (Configurações → Pauta, "cronograma_inicio"). O que é anterior a ela —
+    peça, notícia nas redes e captura achada pela busca — não entra no mínimo, no feito nem no atraso; nada depois dela
+    muda. A data inválida é ignorada (conta tudo), e os quadros da Pauta e do Painel mostram "A contagem começa em"."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    r = pagina.evaluate("""() => {
+      const P = (id, data, tipo, formato, x = {}) => ({id, data, tipo, formato, situacao: "planejada", publicado_manual_em: null, radar_redes_envios: [], ...x});
+      const C = (id, relevancia, capturado_em, x = {}) => ({id, relevancia, capturado_em, data_publicacao: null, incluido_em: null, radar_assunto_capturas: [], ...x});
+      // setembro: 1 post publicado à mão em 02/09, 1 post pendente em 04/09, 1 notícia nas redes em 03/09 e 2 capturas de alta (02 e 10/09)
+      const dados = {pecas: [P(1, "2026-09-02", "bastidor", "foto", {publicado_manual_em: "2026-09-02"}), P(2, "2026-09-04", "noticia", "imagem")],
+                     noticias: [{conteudo_id: 300, publicado_em: "2026-09-03T15:00:00Z"}],
+                     capturas: [C(41, "alta", "2026-09-02T12:00:00Z"), C(42, "alta", "2026-09-10T12:00:00Z")], dias: 5};
+      const mes = d => { const k = contarCronograma("2026-09-01", "2026-09-30", "2026-10-16", d);
+        return Object.fromEntries(k.linhas.map(l => [l.id, [l.minimo, l.feito, l.atraso]])); };
+      const semInicio = mes(dados), comInicio = mes({...dados, inicio: "2026-09-08"});
+      // a tela: a função lê CONF_PAUTA e os quadros mostram a linha "A contagem começa em"
+      const guardado = CONF_PAUTA;
+      CONF_PAUTA = {...CONF_PAUTA, pauta: {cronograma_inicio: "2026-09-08"}};
+      const valida = inicioCronograma(), ddmm = inicioCronogramaDDMM();
+      const div = document.createElement("div");
+      div.innerHTML = blocoCronograma("2026-08-31", "2026-10-16",
+        {semana: contarCronograma("2026-08-31", "2026-09-06", "2026-10-16", dados), mes: contarCronograma("2026-09-01", "2026-09-30", "2026-10-16", dados), cortado: false});
+      const naPauta = div.querySelector("#cronograma-inicio")?.textContent || "";
+      CONF_PAUTA = {...CONF_PAUTA, pauta: {cronograma_inicio: "09/11/2026"}};
+      const invalida = inicioCronograma();
+      CONF_PAUTA = guardado;
+      const depois = inicioCronograma();
+      return {semInicio, comInicio, valida, ddmm, naPauta, invalida, depois};
+    }""")
+    # sem o início: tudo conta (2 posts, 1 feito, 1 em atraso; 2 notícias achadas, as duas em atraso)
+    assert r["semInicio"]["posts"] == [2, 1, 1] and r["semInicio"]["noticias"] == [2, 0, 2]
+    # com o início em 08/09: as duas peças (02 e 04/09), a notícia nas redes (03/09) e a captura de 02/09 são
+    # anteriores e saem da conta; fica só a captura de 10/09 (1 no mínimo, em atraso)
+    assert r["comInicio"]["posts"] == [0, 0, 0] and r["comInicio"]["noticias"] == [1, 0, 1]
+    assert r["valida"] == "2026-09-08" and r["ddmm"] == "08/09/2026" and r["invalida"] == "" and r["depois"] == ""
+    assert "A contagem começa em" in r["naPauta"] and "08/09/2026" in r["naPauta"]
+
+
 def test_cronograma_na_pauta_com_banco_e_leitor(pagina, limpo):
     """v0.27.0: o cronograma com o banco e o PostgREST de verdade, visto pelo leitor (o mesmo quadro de todos). Só lê (todo pedido é GET),
     pede às capturas só as colunas da conta (nunca o título, o texto ou a url: o boletim da ITC é pago) e não lê pessoas, quem aparece,
@@ -7500,7 +7547,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.65.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.66.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10687,7 +10734,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.65.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.66.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")

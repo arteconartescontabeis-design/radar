@@ -438,21 +438,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.65.0"></script>
-<script src="radar-video.js?v=0.65.0"></script>
-<script src="radar-setor.js?v=0.65.0"></script>
-<script src="radar-respostas.js?v=0.65.0"></script>
+<script src="radar-pauta.js?v=0.66.0"></script>
+<script src="radar-video.js?v=0.66.0"></script>
+<script src="radar-setor.js?v=0.66.0"></script>
+<script src="radar-respostas.js?v=0.66.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.65.0";
+const VERSAO = "0.66.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.66.0", "06/11/2026", [
+    "O CRONOGRAMA ganhou a DATA DE INÍCIO DA CONTAGEM: o quadro “Cronograma de publicações” (Pauta) e a “Projeção e desempenho” (Painel) passam a ignorar tudo o que é anterior a ela — peças, notícias achadas pela busca e publicações não entram no mínimo, no feito nem no atraso. A data ficou marcada em 09/11/2026: as notícias de alta achadas de 01 a 08/11 saem do “em atraso” (NADA É APAGADO — elas continuam na triagem de Capturas para aproveitar as que quiser), e a contagem corre limpa a partir da retomada. A data fica em Configurações → Pauta, campo “cronograma_inicio” (tire o campo para voltar a contar tudo), e os dois quadros mostram a linha “A contagem começa em 09/11/2026”.",
+    "Administrador: a data de 09/11/2026 já foi gravada em Configurações → Pauta em 06/11/2026 — nada a rodar no banco (nenhum SQL, nenhuma tabela muda; o banco segue na v0.50.0 com os incrementais). Aproveite e cole o index.ts atual na função radar-ia (Deploy): os tetos de resposta subiram (o kit com os cartões do carrossel vinha cortado no limite e dava erro 502; o teto do Radar na IA Central já foi elevado para 10.000 em 06/11/2026). As demais funções não mudam. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.65.0 para a v0.66.0”."]],
   ["0.65.0", "06/11/2026", [
     "O DIÁRIO OFICIAL voltou a entrar: o INLABS (o serviço oficial de onde o robô lia o DOU) está EM MANUTENÇÃO desde 19/10/2026 — a própria página avisa — e por isso quase nenhuma notícia do DOU chegava. O robô ganhou o coletor novo \"Leitura do Jornal\" (dou_site): lê o MESMO Diário Oficial pela página pública do site www.in.gov.br, sem login, com os mesmos filtros de órgãos, tipos e palavras das 4 fontes do INLABS — que ficam como estão e voltam sozinhas quando o INLABS reabrir (ato repetido cai na detecção de duplicata). A fonte \"DOU — Destaques\" foi consertada: o tema saiu do padrão dos links e virou filtro de palavras — dia sem destaque fiscal deixa de soar como \"mudança de layout\". E a busca já roda 4 VEZES POR DIA (00h17, 06h17, 12h17 e 18h17 de Brasília), mais que o mínimo de 2 pedido.",
     "Administrador: rode no Supabase (SQL Editor) o sql/radar-fontes-dou-2026-11.sql — a PARTE 1 (o conserto dos Destaques) vale na hora; a PARTE 2 (as 4 fontes-espelho \"(site)\") só depois de o robô novo coletar uma vez (GitHub → Actions → \"Radar — coleta das fontes oficiais\" → Run workflow), porque o robô antigo não conhece o coletor dou_site. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. NENHUMA função Edge muda; o banco segue na v0.50.0 (com os incrementais). Passo a passo no LEIAME, \"Da v0.64.0 para a v0.65.0\"."]],
@@ -1465,8 +1468,11 @@ function graficoLinhas(labels, series, aria){
 const dashSemanas = arr => (arr || []).map((x, i) => i === arr.length - 1 ? "atual" : `${String(x.ini).slice(8, 10)}/${String(x.ini).slice(5, 7)}`);
 function blocoDashboard(hoje, c, graf, cota, polim){
   const per = E.painelPeriodo || "mes";
+  // v0.66.0: a data de início da contagem (Configurações → Pauta, "cronograma_inicio") vale aqui também — a função é do radar-pauta.js
+  const inicioC = typeof inicioCronograma === "function" ? inicioCronograma() : "";
   const topo = `<h2>Projeção e desempenho</h2>
-    <p class="sub">Escolha <b>Dia</b>, <b>Semana</b>, <b>Mês</b> ou <b>Período</b> (datas à sua escolha) para ver o que falta publicar e os números (em vermelho, o que já devia ter saído). As contas são as do cronograma da Pauta. Os gráficos de 6 semanas e a cota do corretor valem para o período corrente. Só leitura — escolher um período não apaga nada.</p>`;
+    <p class="sub">Escolha <b>Dia</b>, <b>Semana</b>, <b>Mês</b> ou <b>Período</b> (datas à sua escolha) para ver o que falta publicar e os números (em vermelho, o que já devia ter saído). As contas são as do cronograma da Pauta. Os gráficos de 6 semanas e a cota do corretor valem para o período corrente. Só leitura — escolher um período não apaga nada.</p>
+    ${inicioC ? `<p class="sub" id="painel-cronograma-inicio">A contagem começa em <b>${h(inicioC.split("-").reverse().join("/"))}</b>: o que é anterior (peças e notícias achadas) não entra no mínimo, no feito nem no atraso.</p>` : ""}`;
   // v0.48.0 (melhoria A): o seletor ganha "Período" (datas à escolha); os três de sempre vêm de DASH_PERIODOS
   const seletor = `<div class="dash-periodo" id="dash-periodo">${[...DASH_PERIODOS, ["periodo", "Período"]].map(([id, nm]) => `<button type="button" data-acao="painel-periodo" data-p="${id}" class="${id === per ? "ativa" : ""}">${nm}</button>`).join("")}</div>`;
   const semCrono = c ? "" : `<div class="aviso alerta" id="painel-projecao-erro">Não deu para montar a projeção agora (recarregue a página — Ctrl+F5). Os gráficos abaixo continuam.</div>`;
@@ -5569,6 +5575,9 @@ function validarConfig(chave, v){
     if(v.janela_horas !== undefined && !(Number.isInteger(v.janela_horas) && v.janela_horas >= 1 && v.janela_horas <= 48)) return "“janela_horas” é um número inteiro de 1 a 48 (horas depois da hora marcada).";
     if(v.hashtags !== undefined && !(Array.isArray(v.hashtags) && v.hashtags.length <= 3 && v.hashtags.every(x => typeof x === "string" && /^#[\p{L}\p{N}_]{1,60}$/u.test(x))))
       return "“hashtags” é uma lista de até 3, cada uma começando com # e sem espaço, como [\"#Contabilidade\", \"#Palhoça\"].";
+    // v0.66.0: a data de início da contagem do cronograma (o quadro da Pauta e a projeção do Painel ignoram o que é anterior)
+    if(v.cronograma_inicio !== undefined && !(typeof v.cronograma_inicio === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.cronograma_inicio) && Number.isFinite(Date.parse(v.cronograma_inicio + "T12:00:00Z"))))
+      return "“cronograma_inicio” é a data em que a contagem do cronograma começa, entre aspas, como \"2026-11-09\" (o que é anterior não entra no mínimo nem no atraso; tire o campo para contar tudo).";
     // v0.21.0: os fatos fixos (com a fonte), cujos números o banco aceita em toda peça (radar_pauta_numeros_fora)
     if(v.fatos_fixos !== undefined && !(Array.isArray(v.fatos_fixos) && v.fatos_fixos.length <= 20 && v.fatos_fixos.every(x => x && typeof x === "object" &&
         ["informacao", "fonte"].every(k => typeof x[k] === "string" && x[k].trim().length >= 1 && x[k].trim().length <= 300) && !/\(\s*conferir\s*\)/i.test(x.informacao + x.fonte))))

@@ -1,4 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.65.0)
+# Radar Artecon — Relatório de testes (v0.66.0)
+
+**v0.66.0 — Início da contagem do cronograma + tetos maiores da radar-ia (tela + função)**
+(06/11/2026): `contarCronograma` ganhou `inicio` nos dados (vindo de `CONF_PAUTA.pauta.cronograma_inicio`, validado
+`AAAA-MM-DD` em `inicioCronograma()`): peças com `data` anterior, notícias publicadas antes e capturas de dia anterior
+ao início **não entram** no mínimo, no feito nem no atraso; `dadosCronograma` injeta o campo e os quadros da Pauta
+(`#cronograma-inicio`) e do Painel (`#painel-cronograma-inicio`) mostram "A contagem começa em 09/11/2026". A
+configuração `pauta` aceita o campo novo (validação na tela; valor gravado em produção em 06/11/2026). Na `radar-ia`,
+os tetos de resposta subiram (gerar/editorial/revisão 8.000; kit com cartões 9.000 — a resposta batia nos 6.000 exatos
+e o 502 voltava; só os cartões 4.000; peça 6.000) e o teto do app na IA Central foi a 10.000. Testes: os das telas
+ganharam o bloco do início da contagem (não rodaram nesta sessão — sem `postgrest`); banco, coletores e repositório
+**verdes nesta sessão**. Nenhuma tabela muda.
 
 **v0.65.0 — DOU pela Leitura do Jornal + conserto dos Destaques (robô + fontes)**
 (06/11/2026): coletor novo `robo/radar_dou_site.py` (tipo `dou_site`): lê a página pública Leitura do Jornal do

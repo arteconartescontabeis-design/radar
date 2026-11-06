@@ -1,4 +1,4 @@
-# Radar Artecon — v0.65.0
+# Radar Artecon — v0.66.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,15 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.66.0 dá ao cronograma a **data de início da contagem**. O quadro "Cronograma de publicações" (Pauta) e a
+"Projeção e desempenho" (Painel) passam a **ignorar o que é anterior** à data gravada em Configurações → Pauta, campo
+**`cronograma_inicio`** — peças, notícias achadas pela busca e publicações não entram no mínimo, no feito nem no
+atraso (campo ausente = conta tudo, como antes). A data ficou marcada em **09/11/2026**: as notícias de alta achadas de
+01 a 08/11 saem do "em atraso" **sem apagar nada** (continuam na triagem de Capturas), e os dois quadros mostram a
+linha "A contagem começa em 09/11/2026". A `radar-ia` ganhou **tetos de resposta maiores** (o kit com os cartões do
+carrossel vinha cortado no limite de 6.000 tokens e dava erro 502; o teto do Radar na IA Central subiu para 10.000).
+**Nada muda no banco**; só a `radar-ia` tem Deploy. Veja "Da v0.65.0 para a v0.66.0".
 
 A v0.65.0 **devolve o Diário Oficial ao Radar**. O **INLABS** (o serviço oficial de onde o robô lia o DOU) está **em
 manutenção desde 19/10/2026** — a própria página avisa e aponta a "Base de Dados de Publicações do DOU" — e as 4 fontes
@@ -3119,6 +3128,21 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.65.0 para a v0.66.0** (a data de início da contagem do cronograma e os tetos maiores da `radar-ia` — **nada no
+banco de estrutura, nenhum segredo novo**). Supõe a v0.65.0 instalada:
+
+1. A data **09/11/2026** já foi gravada em 06/11/2026 em Configurações → Pauta (campo `cronograma_inicio`); para mudar
+   (ou voltar a contar tudo, tirando o campo), edite ali mesmo — nenhum SQL a rodar.
+2. Cole o `index.ts` atual na função **`radar-ia`** (**Deploy**; "Verify JWT" como está): os tetos de resposta sobem
+   (escrever o texto, a revisão editorial e a conferência para 8.000 tokens; o kit com os cartões do carrossel para
+   9.000; só os cartões para 4.000; a peça da Pauta para 6.000). O teto do aplicativo "radar" na IA Central
+   (`core.ia_apps.max_tokens`) foi elevado de 6.000 para **10.000** em 06/11/2026; os limites de gasto (US$ 2/dia,
+   US$ 10/mês) não mudam. As demais funções **não mudam**.
+3. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+4. Conferência: no Painel ("Projeção e desempenho", aba Mês) e no quadro da Pauta aparece "A contagem começa em
+   09/11/2026" e o "em atraso" das notícias de alta de antes de 09/11 zera; num assunto, "Gerar kit das redes com IA"
+   com carrossel completa sem o erro 502.
 
 **Da v0.64.0 para a v0.65.0** (o robô novo, um SQL de fontes e a publicação das telas — **nada no banco de
 estrutura, nenhuma função Edge, nenhum segredo novo**). Supõe a v0.64.0 instalada:
