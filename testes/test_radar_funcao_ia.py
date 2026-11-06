@@ -825,7 +825,7 @@ def test_kit_o_que_vai_para_a_ia(funcao, limpo, request):
     assert status == 200, r
     pedido = IA["pedidos"][-1]
     sistema, msg, tudo = pedido["system"][0]["text"], pedido["messages"][0]["content"], json.dumps(pedido, ensure_ascii=False)
-    assert pedido["model"] == "claude-sonnet-5-5" and pedido["max_tokens"] == 4600 and pedido["tool_choice"] == {"type": "auto"}
+    assert pedido["model"] == "claude-sonnet-5-5" and pedido["max_tokens"] == 6000 and pedido["tool_choice"] == {"type": "auto"}
     assert pedido["system"][0]["cache_control"] == {"type": "ephemeral"} and 'ferramenta "kit"' in pedido["system"][0]["text"]
     assert pedido["tools"][0]["input_schema"]["required"] == ["instagram", "facebook", "reel", "cartoes"]   # v0.42.0: + cartoes
     # v0.25.1: o pedido e o esquema da resposta sem a chamada e o apoio da arte (só serviam à arte vertical das notícias)
@@ -880,14 +880,14 @@ def test_kit_foto_unica_nao_pede_os_cartoes(funcao, limpo):
 
 
 def test_kit_carrossel_combinado_capricha_os_cartoes(funcao, limpo):
-    """v0.62.0: "redes_formato": "carrossel" — o pedido continua com os cartões (4.600 tokens) e ganha a orientação de
+    """v0.62.0: "redes_formato": "carrossel" — o pedido continua com os cartões (6.000 tokens) e ganha a orientação de
     sequência (UMA ideia por cartão); o kit gravado leva formato_pretendido "carrossel" (a tela pré-marca o passo 3)."""
     a, c, lido = _conteudo_do_kit(limpo)
     IA["respostas"]["kit"] = KIT_IA
     status, r = pedir("kit", assunto_id=a, conteudo_id=c, lido=lido, redes_formato="carrossel")
     assert status == 200, r
     pedido = ultimo("kit")
-    assert pedido["max_tokens"] == 4600
+    assert pedido["max_tokens"] == 6000
     assert pedido["tools"][0]["input_schema"]["required"] == ["instagram", "facebook", "reel", "cartoes"]
     sistema = pedido["system"][0]["text"]
     assert "(f) em 'cartoes': de 3 a 8 cartões" in sistema
@@ -900,7 +900,7 @@ def test_kit_carrossel_combinado_capricha_os_cartoes(funcao, limpo):
 
 
 def test_kit_so_cartoes_acrescenta_ao_kit_que_existe(funcao, limpo):
-    """v0.62.0: "so_cartoes": true — a IA escreve SÓ os cartões (esquema só com eles, 2.200 tokens) e a função os acrescenta ao
+    """v0.62.0: "so_cartoes": true — a IA escreve SÓ os cartões (esquema só com eles, 3.000 tokens) e a função os acrescenta ao
     kit em dia: as legendas e o reel ficam como estão, o formato_pretendido vira "carrossel" e o consumo conta como "gerar".
     Sem o kit em dia, recusa com o caminho certo (gerar o kit inteiro)."""
     a, c, lido = _conteudo_do_kit(limpo)
@@ -915,7 +915,7 @@ def test_kit_so_cartoes_acrescenta_ao_kit_que_existe(funcao, limpo):
     status, r = pedir("kit", assunto_id=a, conteudo_id=c, so_cartoes=True)
     assert status == 200, r
     pedido = ultimo("kit")
-    assert pedido["max_tokens"] == 2200
+    assert pedido["max_tokens"] == 3000
     assert pedido["tools"][0]["input_schema"]["required"] == ["cartoes"] and list(pedido["tools"][0]["input_schema"]["properties"]) == ["cartoes"]
     sistema = pedido["system"][0]["text"]
     assert "A notícia VAI sair como carrossel" in sistema and "UMA ideia só por cartão" in sistema

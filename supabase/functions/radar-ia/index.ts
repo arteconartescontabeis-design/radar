@@ -1267,7 +1267,7 @@ async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes
       `Material de consulta (as fontes do assunto):\n${material}`;
     const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "conferencia",
       { type: "object", additionalProperties: false, required: ["conferencia"], properties: { conferencia: ESQUEMA_CONFERENCIA } },
-      2500, Math.min(110_000, resta - 5_000));
+      4000, Math.min(110_000, resta - 5_000));
     return { titulo, corpo, pendencias: [] as string[], marcas: 0, copias: 0, semFundamentacao, corrigiu: false, conferencia: lerConferencia(json.conferencia) };
   }
   const esquema = {
@@ -2010,9 +2010,9 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
     `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
     `Fonte: ${dado(c.fonte_credito)}\n<<<FIM>>>\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
-  // até 4.600 tokens (cabe nos 6.000 da IA Central): a notícia longa, com as legendas, as 8 cenas e os 8 cartões no limite, passa de 4.000
-  // v0.62.0: sem os cartões (foto única), 3.400 bastam — o pedido menor também custa menos
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, comCartoes ? 4600 : 3400, undefined,
+  // até 6.000 tokens (o teto do Radar na IA Central): numa notícia densa, as legendas, as 8 cenas e os cartões passavam dos 4.600
+  // de antes e o kit vinha cortado (stop_reason max_tokens). v0.62.0: sem os cartões (foto única), 3.400 bastam — o pedido menor também custa menos
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, comCartoes ? 6000 : 3400, undefined,
     "O kit das redes saiu maior que o limite do pedido e veio incompleto: gere de novo (a IA costuma encurtar na segunda vez).");
   const { kit: novo, avisos: doKit } = limparKit(json, comCartoes);
 
@@ -2079,7 +2079,7 @@ async function kitSoCartoes(token: string, ctx: Awaited<ReturnType<typeof carreg
   const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
     `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
     `Fonte: ${dado(c.fonte_credito)}\n<<<FIM>>>\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 2200, undefined,
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 3000, undefined,
     "Os cartões saíram maiores que o limite do pedido e vieram incompletos: tente de novo (a IA costuma encurtar na segunda vez).");
   const avisos: string[] = [];
   const cartoes = limparCartoes(json, avisos);
