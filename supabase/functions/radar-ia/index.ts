@@ -930,7 +930,7 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
         `${e.dispositivo ? e.dispositivo + ": " : ""}"${e.trecho_literal}"`;
     }).join("\n") || "(nenhum)") + `\n\n${bloco}` +
     blocoVerificacao(ctx.assunto.verificacao) + (naoOficial ? "" : blocoLinks(links));
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "conteudo", esquema, 6000);
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "conteudo", esquema, 8000);
 
   let titulo = normalizarEspacos(String(json.titulo ?? "")).slice(0, 200) || ctx.assunto.titulo;
   let corpo = limparCorpo(json.corpo);
@@ -1218,7 +1218,7 @@ async function revisaoEditorial(reg: Registro, titulo: string, corpo: string, ma
     regraRevisaoEditorial(informativo) + REGRA_ESTILO + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(reg);
   const entrada = `Título: ${semMarcasDeBloco(titulo)}\n\n<<<TEXTO A REVISAR>>>\n${semMarcasDeBloco(corpo)}\n<<<FIM>>>\n\n` +
     `Material de consulta (as fontes do assunto):\n${material}`;
-  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "editorial", ESQUEMA_EDITORIAL, 6000, Math.min(110_000, resta - 5_000));
+  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "editorial", ESQUEMA_EDITORIAL, 8000, Math.min(110_000, resta - 5_000));
   const perguntas = lerPerguntas(json.perguntas), reescritos = lerReescritos(json.reescritos), novo = limparCorpo(json.corpo);
   // a resposta cortada o perguntar já recusa (limite de tamanho); a revisão pode encurtar (a Análise Artecon que não acrescenta, frase
   // e repetição que sobram), mas o texto que encolheu mais de 40% só vale com o que saiu dito em "reescritos" ("depois" vazio), e nunca
@@ -1311,7 +1311,7 @@ async function revisarTexto(reg: Registro, titulo: string, corpo: string, fontes
       "copiar; reescreva com palavras próprias ou, se a frase for indispensável, deixe o mínimo, entre aspas):\n" + lista(citados) : "") +
     (semFundamentacao ? "Falta a linha 'Fonte oficial' com o link oficial (o texto cita norma): acrescente-a no fim, como no item (e).\n\n" : "") +
     `Material de consulta (as fontes do assunto):\n${material}`;
-  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "revisao", esquema, 6000, Math.min(110_000, resta - 5_000));
+  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "revisao", esquema, 8000, Math.min(110_000, resta - 5_000));
   const novo = limparCorpo(json.corpo);
   // texto muito menor que o original é sinal de resposta cortada: fica o original (a tela continua mostrando o problema)
   if (novo.length < 80 || novo.length < corpo.length * 0.6) throw new Erro(502, "a IA devolveu um texto incompleto");
@@ -2010,9 +2010,10 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
   const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
     `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
     `Fonte: ${dado(c.fonte_credito)}\n<<<FIM>>>\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
-  // até 6.000 tokens (o teto do Radar na IA Central): numa notícia densa, as legendas, as 8 cenas e os cartões passavam dos 4.600
-  // de antes e o kit vinha cortado (stop_reason max_tokens). v0.62.0: sem os cartões (foto única), 3.400 bastam — o pedido menor também custa menos
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, comCartoes ? 6000 : 3400, undefined,
+  // até 9.000 tokens (o teto do Radar na IA Central é 10.000): o Sonnet 5.5 (tool_choice "auto") escreve um raciocínio em texto
+  // antes de chamar a ferramenta, e esse texto conta nos tokens de saída — com 6.000, o kit com os cartões vinha cortado
+  // (stop_reason max_tokens). v0.62.0: sem os cartões (foto única), 3.400 bastam — o pedido menor também custa menos
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, comCartoes ? 9000 : 3400, undefined,
     "O kit das redes saiu maior que o limite do pedido e veio incompleto: gere de novo (a IA costuma encurtar na segunda vez).");
   const { kit: novo, avisos: doKit } = limparKit(json, comCartoes);
 
@@ -2079,7 +2080,7 @@ async function kitSoCartoes(token: string, ctx: Awaited<ReturnType<typeof carreg
   const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
     `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
     `Fonte: ${dado(c.fonte_credito)}\n<<<FIM>>>\n\n<<<TEXTO título: ${titulo}>>>\n${corpo.slice(0, 12000)}\n<<<FIM>>>`;
-  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 3000, undefined,
+  const { json } = await perguntar(ctx.reg, MODELO, instrucoes, entrada, "kit", esquema, 4000, undefined,
     "Os cartões saíram maiores que o limite do pedido e vieram incompletos: tente de novo (a IA costuma encurtar na segunda vez).");
   const avisos: string[] = [];
   const cartoes = limparCartoes(json, avisos);
@@ -2429,8 +2430,8 @@ async function peca(token: string, reg: Registro, pecaId: unknown, lido: unknown
     pendencias: { type: "array", items: texto },
   };
   const esquema = { type: "object", additionalProperties: false, required: Object.keys(campos), properties: campos };
-  // até 4.000 tokens (cabe nos 6.000 da IA Central), uma chamada só
-  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "peca", esquema, 4000, undefined,
+  // até 6.000 tokens (cabe nos 10.000 da IA Central), uma chamada só — o raciocínio em texto do Sonnet 5.5 conta na saída
+  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "peca", esquema, 6000, undefined,
     "A peça saiu maior que o limite do pedido e veio incompleta: gere de novo (a IA costuma encurtar na segunda vez).");
   const { peca: novo, avisos: doLimpo } = limparPeca(json, p.formato, agenda, marcadas.length, nFotos);
 
