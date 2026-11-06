@@ -1,4 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.67.0)
+# Radar Artecon — Relatório de testes (v0.68.0)
+
+**v0.68.0 — Teleprompter endireita a câmera deitada (só telas)**
+(06/11/2026): caso real do dia — num Samsung em pé, a câmera frontal chegou DEITADA ao navegador (sem marca de
+rotação) e o corretor recusou a gravação 1 da peça 1 (`erro_codigo` "deitado"; a rotação em `side_data`/`rotate` o
+robô já lia, o arquivo simplesmente não a tinha). O teleprompter agora detecta a faixa deitada (`getSettings`), monta
+`montarRecorteTele`: um `<video>` escondido recebe a câmera, um canvas 9:16 (altura da faixa; largura par) desenha o
+recorte central que COBRE o quadro a cada `requestAnimationFrame`, `captureStream(30)` vira o preview e, na gravação,
+o vídeo do quadro + o áudio do microfone atual (a troca de lapela continua valendo). Tomada sai vertical, sem o aviso
+"parece deitado"; câmera em pé segue no caminho direto. Teste novo
+`test_teleprompter_endireita_a_camera_deitada` (câmera falsa 192×108 → quadro 60×108; o WEBM gravado é conferido com
+`videoWidth/Height`) — telas não rodaram nesta sessão (sem `postgrest`); repositório **verde nesta sessão**.
 
 **v0.67.0 — Pessoas e termos: área obrigatória em lista fixa + prazo do termo às claras (só telas)**
 (06/11/2026): `AREAS_PESSOA` (Pessoal, Fiscal, Contábil, Societário, Todos) vira um `select` obrigatório no cadastro

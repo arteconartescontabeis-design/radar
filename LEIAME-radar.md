@@ -1,4 +1,4 @@
-# Radar Artecon — v0.67.0
+# Radar Artecon — v0.68.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,13 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.68.0 faz o **teleprompter endireitar a câmera deitada**. Em alguns celulares a câmera chega **deitada
+(horizontal)** ao navegador mesmo com o aparelho em pé, e o corretor recusava a gravação ("um dos clipes está
+deitado"). Agora o teleprompter percebe e **endireita sozinho**: desenha o recorte central da câmera num quadro
+vertical **9:16** e grava esse quadro — o preview mostra exatamente o que o corretor recebe, e a tomada sai em pé. A
+câmera que já chega em pé continua gravando direto (sem redesenho). **Nada muda no banco**; **nenhuma função Edge
+muda**. Veja "Da v0.67.0 para a v0.68.0".
 
 A v0.67.0 arruma o cadastro de **Pessoas e termos**. A **Área** deixou de ser texto livre e virou uma lista fixa
 **obrigatória** — Pessoal, Fiscal, Contábil, Societário ou Todos ("Todos" sai na arte só com o nome, sem "Departamento
@@ -3135,6 +3142,14 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.67.0 para a v0.68.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
+v0.67.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+2. Conferência: no celular em que a câmera chegava deitada, abra o teleprompter — o aviso muda de "o corretor recusa"
+   para "**o Radar endireitou sozinho**", o preview fica vertical (9:16) e a tomada gravada entra na lista **sem** o
+   aviso "parece deitado". Grave a peça de novo por ali; a gravação recusada de hoje pode ser descartada.
 
 **Da v0.66.0 para a v0.67.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
 v0.66.0 instalada:

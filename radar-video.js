@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.67.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.68.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -480,6 +480,9 @@ function fecharTeleprompter(){
   if(!TELE) return;
   try{ if(TELE.gravador && TELE.gravador.state !== "inactive") TELE.gravador.stop(); }catch(e){ /* já parou */ }
   try{ (TELE.fluxo?.getTracks() || []).forEach(t => t.stop()); }catch(e){ /* sem câmera */ }
+  // v0.68.0: desliga o endireitamento (o desenho, o quadro e o vídeo escondido)
+  try{ if(TELE.recorte){ TELE.recorte.vivo = false; if(TELE.recorte.relogio) cancelAnimationFrame(TELE.recorte.relogio);
+    TELE.recorte.fluxo.getTracks().forEach(t => t.stop()); TELE.recorte.fonte.srcObject = null; } }catch(e){ /* sem recorte */ }
   if(TELE.relogio) cancelAnimationFrame(TELE.relogio);
   if(TELE.url) URL.revokeObjectURL(TELE.url);
   $("#teleprompter")?.remove();
@@ -503,7 +506,7 @@ async function abrirTeleprompter(pid){
   if(!linhas.length || !textoDe(roteiro)){ recado(pid ? "A peça está sem roteiro: escreva o roteiro antes de abrir o teleprompter." :
     "Cole primeiro a fala para conferência: é ela que o teleprompter mostra.", true); return; }
   const podeGravar = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
-  TELE = {pid, veloc:40, letra:44, y:0, rolando:false, tomadas:0, gravador:null, fluxo:null, pedacos:[], inicioMs:0, url:null, cancelando:false, micId:""};
+  TELE = {pid, veloc:40, letra:44, y:0, rolando:false, tomadas:0, gravador:null, fluxo:null, pedacos:[], inicioMs:0, url:null, cancelando:false, micId:"", recorte:null};
   document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="teleprompter"><div class="caixa-previa caixa-tele" role="dialog" aria-modal="true" aria-label="Teleprompter">
     <div class="tele-topo">
       <video id="tele-camera" autoplay muted playsinline></video>
@@ -534,10 +537,20 @@ async function abrirTeleprompter(pid){
       TELE.fluxo = await navigator.mediaDevices.getUserMedia({audio:true,
         video:{facingMode:"user", width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9 / 16}}});
       const cam = $("#tele-camera");
-      if(cam) cam.srcObject = TELE.fluxo;
       const faixa = TELE.fluxo.getVideoTracks()[0], d = faixa?.getSettings?.() || {};
-      if(d.width && d.height && d.width > d.height)
-        $("#tele-aviso").textContent = "A câmera está DEITADA (horizontal): o corretor recusa. Grave pelo celular em pé, ou use o teleprompter só para ler.";
+      // v0.68.0: alguns celulares entregam a câmera DEITADA ao navegador mesmo com o aparelho em pé (a gravação era
+      // recusada pelo corretor). Agora a tela ENDIREITA sozinha: desenha o recorte central 9:16 num quadro vertical e
+      // grava o quadro — o preview mostra exatamente o que o corretor recebe.
+      if(d.width && d.height && d.width > d.height && window.HTMLCanvasElement?.prototype?.captureStream){
+        montarRecorteTele(d);
+        if(cam) cam.srcObject = TELE.recorte.fluxo;
+        $("#tele-aviso").textContent = "A câmera deste aparelho entrega a imagem deitada: o Radar endireitou sozinho — " +
+          "grava só o centro, na vertical (9:16), exatamente como aparece no quadro. Enquadre por ele.";
+      }else{
+        if(cam) cam.srcObject = TELE.fluxo;
+        if(d.width && d.height && d.width > d.height)
+          $("#tele-aviso").textContent = "A câmera está DEITADA (horizontal): o corretor recusa. Grave pelo celular em pé, ou use o teleprompter só para ler.";
+      }
       await popularMicsTele();                                        // v0.51.0: lista os microfones (lapela) e liga a troca
       const selMic = $("#tele-mic"); if(selMic) selMic.addEventListener("change", trocarMicTele);
     }catch(e){
@@ -545,6 +558,34 @@ async function abrirTeleprompter(pid){
       if(av) av.textContent = "A câmera não abriu (sem permissão ou sem câmera): use o teleprompter só para ler e grave pelo celular.";
     }
   }
+}
+/* v0.68.0: o endireitamento do teleprompter — a câmera que só entrega a imagem deitada (alguns Android) vira um quadro
+   VERTICAL: um <video> escondido recebe a câmera e um canvas 9:16 desenha o recorte central de cada quadro, 30 por
+   segundo. O preview e a gravação usam o canvas: o que se vê no quadro é o que o corretor recebe, já de pé. */
+function montarRecorteTele(d){
+  const alt = Math.max(2, Math.floor((d.height || 720) / 2) * 2);
+  const larg = Math.max(2, Math.floor(alt * 9 / 16 / 2) * 2);
+  const fonte = document.createElement("video");
+  fonte.muted = true; fonte.playsInline = true; fonte.autoplay = true;
+  fonte.srcObject = new MediaStream(TELE.fluxo.getVideoTracks());
+  const quadro = document.createElement("canvas");
+  quadro.width = larg; quadro.height = alt;
+  const cx = quadro.getContext("2d");
+  cx.fillStyle = "#000"; cx.fillRect(0, 0, larg, alt);
+  TELE.recorte = {fonte, quadro, cx, fluxo:quadro.captureStream(30), vivo:true, relogio:0};
+  const desenhar = () => {
+    const r = TELE?.recorte;
+    if(!r || !r.vivo) return;
+    const vw = fonte.videoWidth, vh = fonte.videoHeight;
+    if(vw && vh){
+      // o recorte central que COBRE o quadro (vale também se a câmera mudar de medida no meio da conversa)
+      const esc = Math.max(larg / vw, alt / vh), cw = larg / esc, ch = alt / esc;
+      r.cx.drawImage(fonte, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, larg, alt);
+    }
+    r.relogio = requestAnimationFrame(desenhar);
+  };
+  fonte.play?.()?.catch?.(() => {});
+  desenhar();
 }
 /* O tipo da gravação: o primeiro que o navegador sabe gravar (Safari grava MP4; Chrome/Android, WEBM) */
 function tipoGravacaoTele(){
@@ -577,7 +618,8 @@ async function pararGravacaoTele(){
   const arquivo = new File([blob], nome, {type:tipo});
   const d = TELE.fluxo?.getVideoTracks?.()[0]?.getSettings?.() || {};
   clipesDe(TELE.pid).push({arquivo, nome, bytes:arquivo.size, tipo:tipoClipe(arquivo), duracao:duracaoMs / 1000,
-    aviso:d.width && d.height && d.width > d.height ? "parece deitado (horizontal)" : ""});
+    // v0.68.0: com o endireitamento, a tomada já sai vertical — sem o aviso de deitado
+    aviso:!TELE.recorte && d.width && d.height && d.width > d.height ? "parece deitado (horizontal)" : ""});
   redesenharClipes(TELE.pid);
   if(TELE.url) URL.revokeObjectURL(TELE.url);
   TELE.url = URL.createObjectURL(arquivo);
@@ -2260,7 +2302,9 @@ const VIDEO = {
       if(!TELE.fluxo){ recado("A câmera não está aberta: grave pelo celular e use o teleprompter só para ler.", true); return; }
       const tipo = tipoGravacaoTele();
       TELE.pedacos = [];
-      TELE.gravador = new MediaRecorder(TELE.fluxo, tipo ? {mimeType:tipo} : undefined);
+      // v0.68.0: com o endireitamento ligado, grava o quadro vertical (o recorte) com o áudio do microfone de agora
+      const origem = TELE.recorte ? new MediaStream([...TELE.recorte.fluxo.getVideoTracks(), ...TELE.fluxo.getAudioTracks()]) : TELE.fluxo;
+      TELE.gravador = new MediaRecorder(origem, tipo ? {mimeType:tipo} : undefined);
       TELE.gravador.ondataavailable = ev => { if(ev.data?.size) TELE.pedacos.push(ev.data); };
       TELE.inicioMs = Date.now();
       TELE.gravador.start(1000);

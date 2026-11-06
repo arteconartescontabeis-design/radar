@@ -385,14 +385,22 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.67.0"
+    assert pagina.inner_text(".versao") == "v0.68.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.67.0: a entrada do topo é a da versão em uso (a área obrigatória e o prazo do termo) e conta ao dono, em 2 itens
+    # v0.68.0: a entrada do topo é a da versão em uso (o teleprompter endireita a câmera deitada) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.67.0" and data == "06/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.68.0" and data == "06/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["TELEPROMPTER ENDIREITA A CÂMERA DEITADA", "ENDIREITA SOZINHO", "9:16",
+                   "Da v0.67.0 para a v0.68.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.67.0: a entrada seguinte (a área obrigatória e o prazo do termo) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.67.0")')
+    assert topo == "0.67.0" and data == "06/11/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["PESSOAS E TERMOS", "Pessoal, Fiscal, Contábil, Societário ou Todos", "OBRIGATÓRIA",
                    "POR PRAZO INDETERMINADO", "Da v0.66.0 para a v0.67.0"]:
@@ -2295,7 +2303,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.67.0"]       # v0.67.0: só a tela de Pessoas e termos; a exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.68.0"]       # v0.68.0: só o teleprompter; a exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3176,7 +3184,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.67.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.68.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7557,7 +7565,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.67.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.68.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -9868,6 +9876,51 @@ def test_teleprompter_abre_o_roteiro_e_grava_pelo_navegador(pagina, vtela):
     assert pagina.locator("#teleprompter").count() == 0
 
 
+def test_teleprompter_endireita_a_camera_deitada(pagina, vtela):
+    """v0.68.0: em alguns celulares a câmera chega DEITADA ao navegador mesmo com o aparelho em pé (o corretor recusava a
+    tomada: "deitado"). O teleprompter agora ENDIREITA sozinho: um quadro vertical 9:16 desenha o recorte central da câmera,
+    o preview mostra esse quadro (o que se vê é o que o corretor recebe) e a tomada gravada sai VERTICAL, sem o aviso de
+    deitado. A câmera em pé continua no caminho de sempre (gravação direta, sem redesenho)."""
+    db, fv = vtela
+    pid, ana = vb.reel(db, roteiro="0–3 s — Fala: Olá, o prazo do Simples mudou. | Na tela: PRAZO NOVO")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    # a "câmera" DEITADA do teste: um canvas 192×108 (horizontal), como a câmera desses aparelhos chega ao navegador
+    pagina.evaluate("""() => { navigator.mediaDevices.getUserMedia = async () => {
+      const c = document.createElement("canvas"); c.width = 192; c.height = 108;
+      const d = c.getContext("2d");
+      (function pinta(n){ d.fillStyle = n % 2 ? "#123456" : "#654321"; d.fillRect(0, 0, 192, 108);
+        requestAnimationFrame(() => pinta(n + 1)); })(0);
+      const s = c.captureStream(30), ac = new AudioContext(), osc = ac.createOscillator(), dest = ac.createMediaStreamDestination();
+      osc.connect(dest); osc.start();
+      dest.stream.getAudioTracks().forEach(t => s.addTrack(t));
+      return s; }; }""")
+    pagina.evaluate("MediaRecorder.isTypeSupported = t => String(t).startsWith('video/webm')")
+    pagina.click("[data-acao=video-teleprompter]")
+    pagina.wait_for_selector("#teleprompter #tele-rolo")
+    # o aviso explica o endireitamento (não manda mais "gravar pelo celular"), e o preview mostra o QUADRO vertical
+    pagina.wait_for_selector("#tele-aviso >> text=endireitou sozinho")
+    pagina.wait_for_function("() => !!document.querySelector('#tele-camera')?.srcObject")
+    assert pagina.evaluate("() => { const t = $('#tele-camera').srcObject.getVideoTracks()[0].getSettings();"
+                           " return t.width < t.height; }")                       # 9:16 de pé (60×108 do quadro de recorte)
+    # grava: a tomada entra na lista SEM o aviso de deitado, e o arquivo gravado é vertical
+    pagina.click("#tele-gravar")
+    pagina.wait_for_selector("#tele-gravar >> text=Parar e guardar")
+    pagina.wait_for_timeout(1500)
+    pagina.click("#tele-gravar")
+    pagina.wait_for_selector("#video-clipes >> text=teleprompter-1.webm")
+    clipes = pagina.evaluate("estadoVideo().arquivos[%d].map(c => [c.nome, c.tipo, c.bytes > 0, c.aviso])" % pid)
+    assert clipes == [["teleprompter-1.webm", "video/webm", True, ""]]
+    assert pagina.evaluate("""async () => {
+      const u = URL.createObjectURL(estadoVideo().arquivos[%d][0].arquivo);
+      const v = document.createElement("video"); v.muted = true; v.src = u;
+      await new Promise(ok => { v.onloadedmetadata = ok; v.onerror = ok; });
+      const r = [v.videoWidth, v.videoHeight]; URL.revokeObjectURL(u); return r; }""" % pid) == [60, 108]
+    pagina.click("[data-acao=tele-fechar]")
+    assert pagina.locator("#teleprompter").count() == 0
+
+
 def test_teleprompter_v51_inicio_cancelar_mic_e_preview(pagina, vtela):
     """v0.51.0: o teleprompter ganhou "↑ Início" (volta o texto ao começo), "Cancelar" (descarta a tomada sem guardar), o
     seletor de Microfone (a lapela) e o preview que mostra o quadro inteiro (object-fit: contain) e ENCOLHE ao gravar
@@ -10748,7 +10801,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.67.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.68.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
