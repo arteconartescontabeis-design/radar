@@ -1,4 +1,16 @@
-# Radar Artecon — Relatório de testes (v0.71.0)
+# Radar Artecon — Relatório de testes (v0.72.0)
+
+**v0.72.0 — Uma foto só por notícia + rodízio do acervo (banco + tela)**
+(06/11/2026): `radar_assuntos.foto_imagem_id` (a foto-base presa à notícia) e `radar_fotos_acervo.usada_em` (o
+rodízio). `radar_assunto_foto(p_assunto)` devolve a foto presa; sem uma, sorteia do acervo "ambiente" — nunca usadas
+primeiro (ao acaso), todas usadas: a usada há mais tempo — marca o uso e prende; acervo vazio devolve nulo (a tela
+segue aos bancos de imagens e prende a baixada por `radar_assunto_foto_gravar`, que também é a porta da escolha
+manual: vale mesmo foto já usada, e fica). A limpeza de imagens (`radar_fn_imagem_sem_uso`,
+`radar_limpar_imagens_sem_uso`, `radar_foto_acervo_apagar`) poupa a foto presa. Na tela, `fotoDaNoticia` substitui o
+sorteio em `ia-tudo` e no lote, e os caminhos manuais ("Usar foto real", acervo na janela, foto própria) prendem a
+escolha. Testes: 3 novos no banco (rodízio e prisão; manual vale já usada; limpeza poupa e o acervo apagado não leva a
+foto presa), allowlist + 2 funções — banco e repositório **verdes nesta sessão**; telas atualizadas (não rodaram aqui,
+sem `postgrest`). SQL incremental `radar-foto-noticia-v0.72.0.sql` + reversão.
 
 **v0.71.0 — Teleprompter: 2 s de respiro antes de o texto andar (só telas)**
 (06/11/2026): pedido do dono — as primeiras palavras saíam da tela antes de ele começar a falar. `tele-rolar` liga a

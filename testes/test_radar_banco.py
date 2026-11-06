@@ -535,7 +535,9 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            -- v0.47.0: os dados dos gráficos do Painel (a função confere o perfil, por dentro; é só leitura)
                                                            'radar_painel_graficos',
                                                            -- v0.63.0: o acervo de fotos da Artecon (as duas conferem o papel, por dentro)
-                                                           'radar_foto_acervo_gravar', 'radar_foto_acervo_apagar')
+                                                           'radar_foto_acervo_gravar', 'radar_foto_acervo_apagar',
+                                                           -- v0.72.0: a foto da notícia (as duas conferem o papel, por dentro)
+                                                           'radar_assunto_foto', 'radar_assunto_foto_gravar')
                                        and has_function_privilege('authenticated', p.oid, 'execute')))""").fetchall()
     assert abertas == []
     semcaminho = db.execute("""select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -6436,6 +6438,84 @@ def test_fotos_acervo_ficam_fora_da_limpeza_de_imagens(limpo):
         assert c.execute("select radar_limpar_imagens_sem_uso()").fetchone()[0] == 1          # só a solta sai
     restantes = {r[0] for r in limpo.execute("select id from radar_imagens").fetchall()}
     assert restantes == {foto}                                                                # a do acervo fica
+
+
+# v0.72.0: a FOTO DA NOTÍCIA — uma foto-base presa ao assunto (a mesma em todo preparo) — e o RODÍZIO do acervo
+def test_assunto_foto_rodizio_prende_ao_assunto_e_so_repete_quando_todas_usadas(limpo):
+    a1, a2, a3 = (novo_assunto(limpo) for _ in range(3))
+    with como("authenticated", EDITOR) as c:
+        ambiente = [c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0] for _ in range(2)]
+        rosto = c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+        for n, i in enumerate(ambiente):
+            c.execute("select radar_foto_acervo_gravar('ambiente', %s, %s)", (f"Ambiente {n + 1}", i))
+        c.execute("select radar_foto_acervo_gravar('socios', 'Sócios', %s)", (rosto,))
+        # 1ª notícia: sai uma foto de AMBIENTE nunca usada (nunca a de sócios), fica presa ao assunto e o uso é marcado
+        r1 = c.execute("select radar_assunto_foto(%s)", (a1,)).fetchone()[0]
+        assert r1["nova"] is True and r1["imagem_id"] in ambiente
+        assert limpo.execute("select foto_imagem_id from radar_assuntos where id = %s", (a1,)).fetchone()[0] == r1["imagem_id"]
+        assert limpo.execute("select count(*) from radar_fotos_acervo where usada_em is not null").fetchone()[0] == 1
+        # a mesma notícia de novo: a MESMA foto, sem novo sorteio
+        r1b = c.execute("select radar_assunto_foto(%s)", (a1,)).fetchone()[0]
+        assert r1b == {"imagem_id": r1["imagem_id"], "nova": False}
+        assert limpo.execute("select count(*) from radar_fotos_acervo where usada_em is not null").fetchone()[0] == 1
+        # 2ª notícia: sai a OUTRA foto de ambiente (a nunca usada vem antes)
+        r2 = c.execute("select radar_assunto_foto(%s)", (a2,)).fetchone()[0]
+        assert r2["nova"] is True and r2["imagem_id"] in ambiente and r2["imagem_id"] != r1["imagem_id"]
+    # 3ª notícia: todas já usadas — repete a usada há MAIS tempo (a da 1ª notícia, com o uso retrocedido para desempatar)
+    limpo.execute("update radar_fotos_acervo set usada_em = now() - interval '1 hour' where imagem_id = %s", (r1["imagem_id"],))
+    with como("authenticated", EDITOR) as c:
+        r3 = c.execute("select radar_assunto_foto(%s)", (a3,)).fetchone()[0]
+        assert r3["nova"] is True and r3["imagem_id"] == r1["imagem_id"]
+        # assunto que não existe e papel sem direito
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR353"):
+            c.execute("select radar_assunto_foto(999999)")
+    with como("authenticated", LEITOR) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR353"):
+            c.execute("select radar_assunto_foto(%s)", (a1,))
+
+
+def test_assunto_foto_gravar_manual_vale_mesmo_ja_usada_e_fica(limpo):
+    a1, a2 = (novo_assunto(limpo) for _ in range(2))
+    with como("authenticated", EDITOR) as c:
+        img = c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+        c.execute("select radar_foto_acervo_gravar('socios', 'Sócios na recepção', %s)", (img,))
+        # a escolha manual prende a foto (mesmo de sócios, mesmo já usada noutra notícia) e marca o uso no acervo
+        c.execute("select radar_assunto_foto_gravar(%s, %s)", (a1, img))
+        c.execute("select radar_assunto_foto_gravar(%s, %s)", (a2, img))
+        assert limpo.execute("select count(*) from radar_assuntos where foto_imagem_id = %s", (img,)).fetchone()[0] == 2
+        assert limpo.execute("select usada_em is not null from radar_fotos_acervo where imagem_id = %s", (img,)).fetchone()[0]
+        # dali em diante, o preparo da notícia devolve a escolhida (sem sorteio)
+        assert c.execute("select radar_assunto_foto(%s)", (a1,)).fetchone()[0] == {"imagem_id": img, "nova": False}
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR354"):
+            c.execute("select radar_assunto_foto_gravar(%s, 999999)", (a1,))                  # imagem que não existe
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR354"):
+            c.execute("select radar_assunto_foto_gravar(999999, %s)", (img,))                 # assunto que não existe
+    with como("authenticated", LEITOR) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR354"):
+            c.execute("select radar_assunto_foto_gravar(%s, %s)", (a1, img))
+
+
+def test_foto_da_noticia_fica_fora_da_limpeza_e_sobrevive_ao_acervo(limpo):
+    a = novo_assunto(limpo)
+    # uma foto-base que NÃO é do acervo (veio do banco de imagens): presa ao assunto, a limpeza poupa
+    base = limpo.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+    solta = limpo.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+    limpo.execute("update radar_imagens set criado_em = now() - interval '3 days' where id in (%s, %s)", (base, solta))
+    with como("authenticated", ADMIN) as c:
+        c.execute("select radar_assunto_foto_gravar(%s, %s)", (a, base))
+    with como("service_role") as c:
+        assert c.execute("select radar_limpar_imagens_sem_uso()").fetchone()[0] == 1          # só a solta sai
+    assert {r[0] for r in limpo.execute("select id from radar_imagens").fetchall()} == {base}
+    # a foto do acervo presa a um assunto: tirar do acervo NÃO apaga a imagem (a notícia continua com a foto dela)
+    b = novo_assunto(limpo)
+    with como("authenticated", ADMIN) as c:
+        img = c.execute("insert into radar_imagens (dados) values (%s) returning id", (PIXEL,)).fetchone()[0]
+        fid = c.execute("select radar_foto_acervo_gravar('ambiente', 'Mesa de reunião', %s)", (img,)).fetchone()[0]
+        c.execute("select radar_assunto_foto_gravar(%s, %s)", (b, img))
+        c.execute("select radar_foto_acervo_apagar(%s)", (fid,))
+    assert limpo.execute("select count(*) from radar_fotos_acervo where id = %s", (fid,)).fetchone()[0] == 0
+    assert limpo.execute("select count(*) from radar_imagens where id = %s", (img,)).fetchone()[0] == 1
+    assert limpo.execute("select foto_imagem_id from radar_assuntos where id = %s", (b,)).fetchone()[0] == img
 
 
 # v0.64.0: mais de uma peça por dia; mudar o dia não derruba a situação (e a aprovada muda pelo radar_pauta_mudar_data)

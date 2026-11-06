@@ -461,6 +461,9 @@ drop function if exists public.radar_venda_apagar(bigint);
 -- v0.63.0: o acervo de fotos da Artecon (a tabela radar_fotos_acervo já saiu com a lista acima)
 drop function if exists public.radar_foto_acervo_gravar(text, text, bigint);
 drop function if exists public.radar_foto_acervo_apagar(bigint);
+-- v0.72.0: a foto da notícia e o rodízio do acervo (as colunas saem com as tabelas, acima)
+drop function if exists public.radar_assunto_foto(bigint);
+drop function if exists public.radar_assunto_foto_gravar(bigint, bigint);
 
 commit;
 

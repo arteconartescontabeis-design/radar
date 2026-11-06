@@ -1,4 +1,4 @@
-# Radar Artecon — v0.71.0
+# Radar Artecon — v0.72.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,14 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.72.0 garante **uma foto só por notícia** e o **rodízio do acervo**. A primeira foto escolhida para uma
+notícia fica **presa a ela** (`radar_assuntos.foto_imagem_id`): todas as publicações e **todo preparo novo com IA**
+usam a mesma foto, só redesenhando o título (antes, cada preparo sorteava outra). O sorteio automático virou
+**rodízio** (`radar_fotos_acervo.usada_em`): só usa foto nunca usada; repete apenas quando **todas** já foram usadas
+(volta pela usada há mais tempo). A **escolha manual manda**: vale mesmo a foto já usada em outra notícia, e fica. A
+limpeza de imagens poupa a foto presa a uma notícia. **Muda o banco** (`sql/radar-foto-noticia-v0.72.0.sql`);
+**nenhuma função Edge muda**. Veja "Da v0.71.0 para a v0.72.0".
 
 A v0.71.0 dá **2 segundos de respiro** ao teleprompter: ao ligar "Rolar o texto" (e ao voltar com "↑ Início"), o
 texto fica **parado por 2 segundos** antes de andar, com a contagem no botão ("Rolando em 2 s…") — as primeiras
@@ -3160,6 +3168,17 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.71.0 para a v0.72.0** (um **SQL novo** — a foto da notícia e o rodízio do acervo — e a publicação das telas;
+**nenhuma função Edge muda, nenhum segredo novo**). Supõe a v0.71.0 instalada:
+
+1. Rode no Supabase (**SQL Editor**) o **`sql/radar-foto-noticia-v0.72.0.sql`**: as colunas `usada_em`
+   (radar_fotos_acervo) e `foto_imagem_id` (radar_assuntos), as funções **`radar_assunto_foto`** (a foto presa; sem
+   uma, o rodízio) e **`radar_assunto_foto_gravar`** (a escolha manual), e a limpeza de imagens poupando a foto presa.
+   Nada é apagado; pode rodar de novo. Para desfazer: `sql/radar-foto-noticia-reversao.sql`.
+2. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+3. Conferência: prepare a mesma notícia duas vezes com "Foto real com o título" — a 2ª capa sai com a MESMA foto; em
+   duas notícias diferentes, fotos diferentes (enquanto houver foto nunca usada no acervo); a escolhida à mão fica.
 
 **Da v0.70.0 para a v0.71.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
 v0.70.0 instalada:
