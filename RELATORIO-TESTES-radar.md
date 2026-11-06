@@ -1,4 +1,19 @@
-# Radar Artecon — Relatório de testes (v0.64.0)
+# Radar Artecon — Relatório de testes (v0.65.0)
+
+**v0.65.0 — DOU pela Leitura do Jornal + conserto dos Destaques (robô + fontes)**
+(06/11/2026): coletor novo `robo/radar_dou_site.py` (tipo `dou_site`): lê a página pública Leitura do Jornal do
+in.gov.br (JSON no `script id="params"`, por dia e seção), filtra por órgão (hierarchyStr), tipo (artType) e pelas
+palavras de sempre, e entrega Itens com o trecho no `trecho_do_tema` — o texto completo vem da página do ato
+(`seletor_texto`), nunca de `texto_do_feed`. Dia sem edição (404) é pulado; dia antigo com erro marca `incompleta`; o
+dia de HOJE com erro derruba; página sem o bloco `params` = erro claro de mudança de formato; `brutos` conta as
+matérias lidas (dia sem matéria fiscal ≠ layout mudado). Despacho no `radar_coletar` e rótulo na tela de Fontes. O
+"DOU — Destaques" trocou o tema do `padrao_url` pelo filtro `palavras` (regex do Python, com `\b`) no
+`sql/radar-fontes-dou-2026-11.sql` — PARTE 1 imediata, PARTE 2 (os 4 espelhos "(site)", copiando a config das fontes
+do INLABS, sem `texto_do_feed`) travada até o robô 0.65.0 coletar. Robô `radar_util.VERSAO` 0.45.0→0.65.0. Testes:
+`testes/test_radar_dou_site.py` novo (6 testes: filtro e campos, 404/erro antigo/erro de hoje, formato mudado, dia
+vazio, tema e seções) — **verdes nesta sessão**, junto com coletores, CIGA, banco e repositório; o coletor também foi
+**testado ao vivo** contra o in.gov.br (1.122 matérias lidas, 8 atos fiscais filtrados). Telas não rodaram aqui (sem
+`postgrest`).
 
 **v0.64.0 — Pauta em dias de semana + mais de uma peça por dia + mudar o dia (banco + tela)**
 (06/11/2026): saiu a trava `radar_pauta_pecas_data_key` (fica o índice `radar_pauta_pecas_data_idx`); no gatilho

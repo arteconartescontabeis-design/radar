@@ -1,4 +1,4 @@
-# Radar Artecon — v0.64.0
+# Radar Artecon — v0.65.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,17 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.65.0 **devolve o Diário Oficial ao Radar**. O **INLABS** (o serviço oficial de onde o robô lia o DOU) está **em
+manutenção desde 19/10/2026** — a própria página avisa e aponta a "Base de Dados de Publicações do DOU" — e as 4 fontes
+do INLABS acumulavam falhas (HTTP 404): quase nenhuma notícia do DOU entrava. O robô ganhou o coletor **`dou_site`**
+(`robo/radar_dou_site.py`): lê o MESMO Diário Oficial pela página pública **Leitura do Jornal** do www.in.gov.br (um
+JSON oficial por dia e seção, sem login), com 4 **fontes-espelho "(site)"** que copiam os filtros de órgãos, tipos e
+palavras das fontes do INLABS (que ficam como estão e **voltam sozinhas** quando o INLABS reabrir; ato repetido cai na
+detecção de duplicata). A fonte **"DOU — Destaques"** foi consertada: o tema saiu do padrão dos links e virou **filtro
+de palavras** — dia sem destaque fiscal deixa de soar "possível mudança de layout". A coleta já roda **4× por dia**
+(00h17, 06h17, 12h17 e 18h17 de Brasília). **Nada muda no banco** (as fontes entram pelo
+`sql/radar-fontes-dou-2026-11.sql`); **nenhuma função Edge muda**. Veja "Da v0.64.0 para a v0.65.0".
 
 A v0.64.0 põe a Pauta em **dias de semana** e libera **mais de uma peça por dia**. Não há publicação no sábado nem no
 domingo (a peça só sai no fim de semana se for lançada manualmente): as peças de fim de semana do calendário foram
@@ -3108,6 +3119,22 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.64.0 para a v0.65.0** (o robô novo, um SQL de fontes e a publicação das telas — **nada no banco de
+estrutura, nenhuma função Edge, nenhum segredo novo**). Supõe a v0.64.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` e o robô (a pasta `robo/`) **juntos** (um push na branch principal: o
+   robô roda de lá) e aperte **Ctrl+F5**.
+2. Rode no Supabase (**SQL Editor**) a **PARTE 1** do **`sql/radar-fontes-dou-2026-11.sql`** (o conserto do "DOU —
+   Destaques"): vale na hora, com qualquer robô.
+3. Rode a coleta uma vez com o robô novo (GitHub → **Actions** → "Radar — coleta das fontes oficiais" → **Run
+   workflow**) e então rode a **PARTE 2** do mesmo SQL: ela cria as 4 fontes-espelho **dou-inlabs-site**,
+   **dou-presidencia-site**, **dou-confaz-site** e **dou-trabalho-previdencia-site** (copiando a configuração das
+   fontes do INLABS; o arquivo recusa rodar antes de o robô novo ter coletado, porque o robô antigo não conhece o
+   coletor `dou_site`).
+4. Conferência: na coleta seguinte (ou noutro Run workflow), as fontes "(site)" aparecem com coleta verde em Fontes, e
+   os atos do DOU voltam à triagem. Quando o INLABS reabrir, as fontes dele voltam sozinhas; aí escolha em **Fontes →
+   Configurar** qual família desligar (os atos repetidos entre as duas caem na detecção de duplicata de sempre).
 
 **Da v0.63.0 para a v0.64.0** (um **SQL novo** — a Pauta em dias de semana e mais de uma peça por dia — e a publicação
 das telas; **nenhuma função Edge muda, nenhum segredo novo**). Supõe a v0.63.0 instalada:

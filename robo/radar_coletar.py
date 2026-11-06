@@ -28,6 +28,7 @@ import requests
 
 import radar_ciga
 import radar_ia
+import radar_dou_site
 import radar_inlabs
 import radar_normas
 import radar_rascunhos
@@ -178,6 +179,9 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
         with limite_de_tempo(tempo_da_fonte(fonte, sessao, hoje)):
             if tipo == "inlabs":
                 listagem, http = radar_inlabs.listar_paginas(sessao, fonte, hoje)
+            elif tipo == "dou_site":
+                # v0.65.0: o DOU pela Leitura do Jornal do site oficial (sem login; o INLABS está em manutenção)
+                listagem, http = radar_dou_site.listar_paginas(sessao, fonte, hoje)
             elif tipo == "ciga_dados":
                 # v0.45.0: DOM/SC pelos dados abertos da CIGA (1 rodada/dia; nunca diariomunicipal.sc.gov.br)
                 listagem, http = radar_ciga.listar_paginas(sessao, fonte, hoje)
