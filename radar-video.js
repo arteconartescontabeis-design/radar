@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.68.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.69.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -524,7 +524,7 @@ async function abrirTeleprompter(pid){
           <button class="btn peq sec" type="button" data-acao="tele-espelho">Espelhar o texto</button></div>
         ${podeGravar ? `<div class="acoes tele-mic-linha" hidden><label for="tele-mic" class="sub">Microfone:</label>
           <select id="tele-mic" aria-label="Microfone"><option value="">Microfone padrão</option></select></div>` : ""}
-        <p class="sub" id="tele-aviso">${podeGravar ? "Enquadre pelo preview (mostra o quadro inteiro, 9:16). Grave no celular, EM PÉ (vertical): o corretor recusa vídeo deitado. Ao começar a gravar, o vídeo encolhe e o texto fica grande. Nada é enviado até você mandar."
+        <p class="sub" id="tele-aviso">${podeGravar ? "Enquadre pelo preview (mostra o quadro inteiro, 9:16) e deixe o celular RETO à sua frente, na altura dos olhos. Ao gravar, o TEXTO sobe para o alto da tela, pertinho da câmera: leia ali e o olhar cai na lente — não olhe para o próprio rosto nem para os botões. Nada é enviado até você mandar."
           : "Este navegador não grava vídeo: use o teleprompter só para ler e grave pela câmera do celular."}</p>
       </div>
     </div>

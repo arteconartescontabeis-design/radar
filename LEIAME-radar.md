@@ -1,4 +1,4 @@
-# Radar Artecon — v0.68.0
+# Radar Artecon — v0.69.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.69.0 põe o **olhar no lugar certo** no teleprompter. Ao gravar, o **texto sobe para o alto da tela** —
+pertinho da câmera frontal — **centralizado**, com os botões e o preview abaixo dele: lendo ali, o olhar cai na lente,
+em vez de fugir para o lado ou para baixo (o texto ficava no meio da tela, longe da câmera). A dica da tela ensina:
+celular **reto à frente, na altura dos olhos**, lendo o texto do alto. **Nada muda no banco**; **nenhuma função Edge
+muda**. Veja "Da v0.68.0 para a v0.69.0".
 
 A v0.68.0 faz o **teleprompter endireitar a câmera deitada**. Em alguns celulares a câmera chega **deitada
 (horizontal)** ao navegador mesmo com o aparelho em pé, e o corretor recusava a gravação ("um dos clipes está
@@ -3142,6 +3148,13 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.68.0 para a v0.69.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
+v0.68.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+2. Conferência: abra o teleprompter e comece a gravar — o texto vai para o **alto da tela, centralizado**, e os botões
+   descem para baixo dele; na gravação, o olhar fica de frente.
 
 **Da v0.67.0 para a v0.68.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
 v0.67.0 instalada:

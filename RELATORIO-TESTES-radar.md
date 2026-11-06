@@ -1,4 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.68.0)
+# Radar Artecon — Relatório de testes (v0.69.0)
+
+**v0.69.0 — Teleprompter: o texto no alto da tela, perto da câmera (só telas)**
+(06/11/2026): na gravação real do dia o olhar fugia para o lado — o texto rolava no meio da tela, longe da câmera
+frontal. Gravando (classe `tele-gravando`), a `.tele-janela` ganha `order:-1` (sobe para o alto da caixa, que virou
+flex-coluna), o `.tele-rolo` fica centralizado com o respiro inicial menor (8vh), e os botões e o preview descem para
+baixo do texto; a dica da tela ensina o celular reto, na altura dos olhos. Teste da gravação confere o `order` e o
+`text-align` no modo gravando (telas não rodaram nesta sessão — sem `postgrest`); repositório **verde nesta sessão**.
 
 **v0.68.0 — Teleprompter endireita a câmera deitada (só telas)**
 (06/11/2026): caso real do dia — num Samsung em pé, a câmera frontal chegou DEITADA ao navegador (sem marca de

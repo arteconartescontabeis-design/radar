@@ -385,14 +385,22 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.68.0"
+    assert pagina.inner_text(".versao") == "v0.69.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.68.0: a entrada do topo é a da versão em uso (o teleprompter endireita a câmera deitada) e conta ao dono, em 2 itens
+    # v0.69.0: a entrada do topo é a da versão em uso (o texto do teleprompter no alto: o olhar na lente) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.68.0" and data == "06/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.69.0" and data == "06/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["OLHAR NO LUGAR CERTO", "TEXTO SOBE PARA O ALTO DA TELA", "CENTRALIZADO",
+                   "Da v0.68.0 para a v0.69.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.68.0: a entrada seguinte (o teleprompter endireita a câmera deitada) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.68.0")')
+    assert topo == "0.68.0" and data == "06/11/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["TELEPROMPTER ENDIREITA A CÂMERA DEITADA", "ENDIREITA SOZINHO", "9:16",
                    "Da v0.67.0 para a v0.68.0"]:
@@ -2303,7 +2311,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.68.0"]       # v0.68.0: só o teleprompter; a exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.69.0"]       # v0.69.0: só o teleprompter; a exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3184,7 +3192,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.68.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.69.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7565,7 +7573,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.68.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.69.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -9964,6 +9972,9 @@ def test_teleprompter_v51_inicio_cancelar_mic_e_preview(pagina, vtela):
     pagina.wait_for_selector("#tele-gravar >> text=Parar e guardar")
     assert pagina.evaluate("$('#teleprompter').classList.contains('tele-gravando')")
     assert pagina.is_visible("#tele-cancelar")
+    # v0.69.0: gravando, o TEXTO sobe para o alto da tela (perto da câmera frontal) e fica centralizado — o olhar cai na lente
+    assert pagina.evaluate("getComputedStyle(document.querySelector('#teleprompter .tele-janela')).order") == "-1"
+    assert pagina.evaluate("getComputedStyle($('#tele-rolo')).textAlign") == "center"
     pagina.wait_for_timeout(600)
     # "Cancelar": descarta a tomada — NADA entra na lista de clipes e a tela volta ao normal
     pagina.click("#tele-cancelar")
@@ -10801,7 +10812,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.68.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.69.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
