@@ -1,4 +1,4 @@
-# Radar Artecon — v0.69.0
+# Radar Artecon — v0.70.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.70.0 avisa **antes de emendar as tomadas**. O "Enviar para a correção" do teleprompter manda **todas** as
+tomadas da lista, e o corretor as **emenda em sequência** num vídeo só (o desenho é gravar por blocos do mesmo
+roteiro). Com mais de uma tomada na lista, o botão agora **pergunta antes**; recusando, nada sobe e o recado mostra
+onde tirar as tomadas que não vão (botão "Tirar", na lista de clipes). **Nada muda no banco**; **nenhuma função Edge
+muda**. Veja "Da v0.69.0 para a v0.70.0".
 
 A v0.69.0 põe o **olhar no lugar certo** no teleprompter. Ao gravar, o **texto sobe para o alto da tela** —
 pertinho da câmera frontal — **centralizado**, com os botões e o preview abaixo dele: lendo ali, o olhar cai na lente,
@@ -3148,6 +3154,13 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.69.0 para a v0.70.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
+v0.69.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+2. Conferência: grave DUAS tomadas no teleprompter e clique em "Enviar para a correção" — a pergunta "Há 2 tomadas…
+   o corretor vai EMENDAR todas" aparece; recusando, nada sobe e a lista de clipes (tela de envio) tem o "Tirar".
 
 **Da v0.68.0 para a v0.69.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
 v0.68.0 instalada:

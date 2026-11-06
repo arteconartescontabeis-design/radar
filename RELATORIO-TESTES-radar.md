@@ -1,4 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.69.0)
+# Radar Artecon — Relatório de testes (v0.70.0)
+
+**v0.70.0 — Aviso antes de emendar as tomadas do teleprompter (só telas)**
+(06/11/2026): caso real — 5 tomadas (4 falsas + 1 boa) subiram num envio só, porque o "Enviar para a correção" manda a
+lista inteira e o corretor emenda tudo em sequência. Com mais de uma tomada, o `tele-enviar` agora pergunta
+(`confirm` com "EMENDAR … em sequência"); recusando, o teleprompter fecha sem enviar e o recado aponta o "Tirar" da
+lista de clipes. Teste do envio pelo teleprompter estendido (2 tomadas, confirm recusado: nada sobe, a lista fica) —
+telas não rodaram nesta sessão (sem `postgrest`); repositório **verde nesta sessão**.
 
 **v0.69.0 — Teleprompter: o texto no alto da tela, perto da câmera (só telas)**
 (06/11/2026): na gravação real do dia o olhar fugia para o lado — o texto rolava no meio da tela, longe da câmera

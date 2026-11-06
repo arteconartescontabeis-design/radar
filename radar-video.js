@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.69.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.70.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -2333,7 +2333,17 @@ const VIDEO = {
     async "tele-enviar"(){
       if(!TELE) return;
       const acao = TELE.pid ? "video-enviar" : "vaba-avulso-enviar";
-      if(!clipesDe(TELE.pid).length){ recado("Grave uma tomada primeiro: é ela que vai ao corretor.", true); return; }
+      const n = clipesDe(TELE.pid).length;
+      if(!n){ recado("Grave uma tomada primeiro: é ela que vai ao corretor.", true); return; }
+      // v0.70.0: TODAS as tomadas da lista vão juntas e o corretor as EMENDA em sequência — quem regravou a mesma
+      // fala precisa tirar as tomadas ruins antes (aconteceu de verdade: 5 tomadas subiram num envio só)
+      if(n > 1 && !confirm(`Há ${n} tomadas na lista, e o corretor vai EMENDAR todas, em sequência, num vídeo só.\n\n` +
+          `Se você gravou a MESMA fala mais de uma vez, cancele e tire as tomadas ruins (botão “Tirar” na lista de clipes), deixando só as boas, na ordem do roteiro.\n\nEnviar as ${n} tomadas emendadas?`)){
+        fecharTeleprompter();
+        $("#video-envio")?.scrollIntoView({block:"start"});
+        recado("Nada foi enviado. Na lista de clipes, use “Tirar” nas tomadas que não vão e envie pelo botão “Enviar a gravação”.", "aviso");
+        return;
+      }
       fecharTeleprompter();
       $("#video-envio")?.scrollIntoView({block:"start"});
       await VIDEO.acoes[acao]();
