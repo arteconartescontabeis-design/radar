@@ -650,7 +650,7 @@ alter table public.radar_pessoas add column if not exists socio boolean not null
 -- não se edita (radar_fn_pauta_peca). "Publicada" não é situação gravada: sai dos envios (radar_redes_envios) e do registro manual.
 create table if not exists public.radar_pauta_pecas (
   id                 bigint generated always as identity primary key,
-  data               date     not null unique,
+  data               date     not null,     -- v0.64.0: sem unique — pode haver mais de uma peça no mesmo dia
   hora               time     not null default '09:30',                      -- hora de Brasília
   tipo               text     not null check (tipo in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post')),
   formato            text     not null check (formato in ('imagem','foto','carrossel','carrossel_fotos','reel','story','nenhum')),
@@ -3532,7 +3532,8 @@ begin
   else
     new.criado_por := public.radar_manter_usuario(old.criado_por, new.criado_por);
     new.criado_em  := old.criado_em;
-    v_mudou := new.data is distinct from old.data or new.tipo is distinct from old.tipo or new.formato is distinct from old.formato
+    -- v0.64.0: "data" saiu daqui — mudar o dia não é mexer no que vai ao ar (a Conferência continua valendo)
+    v_mudou := new.tipo is distinct from old.tipo or new.formato is distinct from old.formato
             or new.chamada is distinct from old.chamada or new.apoio is distinct from old.apoio or new.cartoes is distinct from old.cartoes
             or new.roteiro is distinct from old.roteiro or new.legenda_instagram is distinct from old.legenda_instagram
             or new.legenda_facebook is distinct from old.legenda_facebook or new.fotos is distinct from old.fotos
@@ -3549,11 +3550,12 @@ begin
       new.publicado_manual_por := public.radar_manter_usuario(old.publicado_manual_por, new.publicado_manual_por);
       new.versao_publicavel := old.versao_publicavel;
       if old.situacao = 'aprovada' then
-        if v_mudou or new.hora is distinct from old.hora or new.situacao is distinct from old.situacao then
-          raise exception 'RADAR162: a peça está aprovada: para mudar, use Desfazer aprovação' using errcode = 'P0001';
+        -- v0.64.0: a data entra na trava por extenso (o dia da aprovada muda só por radar_pauta_mudar_data)
+        if v_mudou or new.data is distinct from old.data or new.hora is distinct from old.hora or new.situacao is distinct from old.situacao then
+          raise exception 'RADAR162: a peça está aprovada: para mudar, use Desfazer aprovação (o administrador pode mudar só o dia em "Mudar o dia e a hora")' using errcode = 'P0001';
         end if;
       elsif old.situacao = 'cancelada' then
-        if v_mudou or new.hora is distinct from old.hora then
+        if v_mudou or new.data is distinct from old.data or new.hora is distinct from old.hora then
           raise exception 'RADAR162: a peça está cancelada: para mudar, use Reabrir' using errcode = 'P0001';
         end if;
         if new.situacao not in ('cancelada','planejada') then
@@ -3673,7 +3675,8 @@ begin
   perform pg_advisory_xact_lock(hashtext('radar_pauta_importar'));           -- uma importação por vez
   perform set_config('radar.pauta', '1', true);    -- a importação não leva a peça planejada para a produção
   for x in select t.e from jsonb_array_elements(p_linhas) t(e) loop
-    select * into p from public.radar_pauta_pecas where data = (x->>'data')::date for update;
+    -- v0.64.0: com mais de uma peça no dia, a do calendário é a mais antiga (menor id)
+    select * into p from public.radar_pauta_pecas where data = (x->>'data')::date order by id limit 1 for update;
     if p.id is null then
       insert into public.radar_pauta_pecas (data, hora, tipo, formato, assunto, quem_aparece, objetivo, observacao)
       values ((x->>'data')::date, v_hora, x->>'tipo', x->>'formato', btrim(coalesce(x->>'assunto', '')), btrim(coalesce(x->>'quem_aparece', '')),
@@ -3697,6 +3700,10 @@ begin
   perform set_config('radar.pauta', '', true);
   return jsonb_build_object('novas', v_novas, 'alteradas', v_alteradas, 'iguais', v_iguais, 'mantidas', v_mantidas);
 end $$;
+
+-- v0.64.0: a trava de uma peça por dia saiu (bancos antigos) e a data ganha um índice comum
+alter table public.radar_pauta_pecas drop constraint if exists radar_pauta_pecas_data_key;
+create index if not exists radar_pauta_pecas_data_idx on public.radar_pauta_pecas (data);
 
 -- v0.28.0: "+ Nova peça" (Pauta, só o administrador): a peça de um dia que ainda não tem nenhuma (uma peça por dia: a data é única,
 -- também a da peça cancelada), de hoje em diante (de Brasília), com a conferência da importação (radar_pauta_linha_invalida) e o assunto
@@ -3734,22 +3741,55 @@ begin
     raise exception 'RADAR192: esse dia já passou: a peça nova é de hoje em diante (horário de Brasília)' using errcode = 'P0001';
   end if;
   perform pg_advisory_xact_lock(hashtext('radar_pauta_importar'));          -- não cruza com uma importação em andamento
-  if exists (select 1 from public.radar_pauta_pecas where data = v_data) then
-    raise exception 'RADAR193: já existe uma peça em %: é uma peça por dia (abra a peça desse dia; se ela estiver cancelada, use Reabrir)',
-      to_char(v_data, 'DD/MM/YYYY') using errcode = 'P0001';
-  end if;
-  begin
-    insert into public.radar_pauta_pecas (data, hora, tipo, formato, assunto, quem_aparece, objetivo, observacao)
-    values (v_data, public.radar_pauta_hora_padrao(), p_peca->>'tipo', p_peca->>'formato', v_assunto,
-            btrim(coalesce(p_peca->>'quem_aparece', ''), E' \t\r\n'), btrim(coalesce(p_peca->>'objetivo', ''), E' \t\r\n'),
-            btrim(coalesce(p_peca->>'observacao', ''), E' \t\r\n'))
-    returning id into v_id;
-  exception when unique_violation then                                      -- a peça gravada por outra tela no mesmo instante
-    raise exception 'RADAR193: já existe uma peça em %: é uma peça por dia (recarregue a página)', to_char(v_data, 'DD/MM/YYYY')
-      using errcode = 'P0001';
-  end;
+  -- v0.64.0: o dia pode já ter peça — a trava "uma peça por dia" saiu
+  insert into public.radar_pauta_pecas (data, hora, tipo, formato, assunto, quem_aparece, objetivo, observacao)
+  values (v_data, public.radar_pauta_hora_padrao(), p_peca->>'tipo', p_peca->>'formato', v_assunto,
+          btrim(coalesce(p_peca->>'quem_aparece', ''), E' \t\r\n'), btrim(coalesce(p_peca->>'objetivo', ''), E' \t\r\n'),
+          btrim(coalesce(p_peca->>'observacao', ''), E' \t\r\n'))
+  returning id into v_id;
   return v_id;
 end $$;
+
+
+-- v0.64.0: mudar o dia (e a hora) de uma peça SEM mexer na situação (só o administrador). A aprovada com
+-- publicação agendada tem a agenda remarcada junto; a cancelada pede Reabrir antes. O dia novo não fica no passado.
+create or replace function public.radar_pauta_mudar_data(p_id bigint, p_data date, p_hora time default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p        public.radar_pauta_pecas%rowtype;
+  v_hora   time;
+  v_quando timestamptz;
+  v_envios int := 0;
+begin
+  if auth.uid() is null or coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR350: só o administrador muda o dia de uma peça' using errcode = 'P0001';
+  end if;
+  select * into p from public.radar_pauta_pecas where id = p_id for update;
+  if p.id is null then
+    raise exception 'RADAR351: peça não encontrada (atualize a página)' using errcode = 'P0001';
+  end if;
+  if p.situacao = 'cancelada' then
+    raise exception 'RADAR351: a peça está cancelada: use Reabrir antes de mudar o dia' using errcode = 'P0001';
+  end if;
+  if p_data is null or p_data < (now() at time zone 'America/Sao_Paulo')::date then
+    raise exception 'RADAR352: o dia novo não pode ficar no passado' using errcode = 'P0001';
+  end if;
+  v_hora   := coalesce(p_hora, p.hora);
+  v_quando := (p_data + v_hora) at time zone 'America/Sao_Paulo';
+  if p.situacao = 'aprovada' and v_quando <= now()
+     and exists (select 1 from public.radar_redes_envios e
+                  where e.peca_id = p.id and e.situacao = 'autorizado' and e.agendado_para is not null and e.enviado_em is null) then
+    raise exception 'RADAR352: a hora nova da publicação agendada já passou: escolha um dia e uma hora à frente' using errcode = 'P0001';
+  end if;
+  perform set_config('radar.pauta', '1', true);            -- mudar o dia não derruba a situação nem a aprovação
+  update public.radar_pauta_pecas set data = p_data, hora = v_hora where id = p.id;
+  update public.radar_redes_envios e set agendado_para = v_quando
+   where e.peca_id = p.id and e.situacao = 'autorizado' and e.agendado_para is not null and e.enviado_em is null;
+  get diagnostics v_envios = row_count;
+  return jsonb_build_object('data', p_data, 'hora', v_hora, 'agendados_remarcados', v_envios);
+end $$;
+revoke all on function public.radar_pauta_mudar_data(bigint, date, time) from public, anon, authenticated, service_role;
+grant execute on function public.radar_pauta_mudar_data(bigint, date, time) to authenticated;
 
 -- O que falta resolver na peça (a tela mostra a lista). p_canais nulo: os canais que têm legenda.
 create or replace function public.radar_pauta_conferir(p_peca bigint, p_canais text[]) returns jsonb
@@ -7223,6 +7263,7 @@ grant execute on function public.radar_site_exclusao_concluir(bigint, boolean, t
 -- agenda do banco. As auxiliares (radar_pauta_problemas, radar_pauta_pode_sair, radar_agenda_vencidas…) ficam só com o dono.
 grant execute on function public.radar_pauta_importar(jsonb) to authenticated;
 grant execute on function public.radar_pauta_criar(jsonb) to authenticated;          -- v0.28.0 (a função confere que é o administrador)
+grant execute on function public.radar_pauta_mudar_data(bigint, date, time) to authenticated;   -- v0.64.0 (a função confere que é o administrador)
 grant execute on function public.radar_pauta_conferir(bigint, text[]) to authenticated;
 grant execute on function public.radar_pauta_marcar_pronta(bigint, timestamptz) to authenticated;
 grant execute on function public.radar_pauta_aprovar(bigint, timestamptz, text[], text, bigint[], text, text[], text) to authenticated;   -- v0.22.0: + o vídeo

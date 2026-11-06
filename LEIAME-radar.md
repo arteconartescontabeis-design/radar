@@ -1,4 +1,4 @@
-# Radar Artecon — v0.63.0
+# Radar Artecon — v0.64.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,19 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.64.0 põe a Pauta em **dias de semana** e libera **mais de uma peça por dia**. Não há publicação no sábado nem no
+domingo (a peça só sai no fim de semana se for lançada manualmente): as peças de fim de semana do calendário foram
+remanejadas em 06/11/2026 — sábado foi para a **sexta anterior**; a **agenda da semana** (domingo), para a **sexta às
+19:30**; as demais de domingo, para a **segunda seguinte** — e a retomada começa em **09/11/2026, com nada em atraso**
+(o cronograma conta pelo plano: dia sem peça não tem mínimo). O dia pode ter **duas ou mais peças** (ex.: publicar o
+vídeo de amanhã junto com o de hoje): o "+ Nova peça" aparece em todo dia de hoje em diante e a semana mostra todas as
+peças do dia. A peça ganhou o quadro **"Mudar o dia e a hora"** (só o administrador): muda o calendário **sem derrubar a
+situação** — a pronta continua pronta e a **aprovada** com publicação agendada é **remarcada junto**
+(`radar_pauta_mudar_data`). Mudar só a data pelo formulário também deixou de devolver a peça à produção (o conteúdo não
+mudou; a Conferência continua valendo). **Muda o banco** (`sql/radar-pauta-dias-v0.64.0.sql`: sai a trava de uma peça
+por dia, o gatilho e a importação mudam e entra a função nova); **nenhuma função Edge muda**. Veja "Da v0.63.0 para a
+v0.64.0".
 
 A v0.63.0 traz as **fotos da Artecon para as capas** e a **prévia do carrossel**. As fotos da pasta do OneDrive
 **FOTOS ARTECON** (triagem **"1 Ambiente (sem rosto)"** e **"2 Socios (com rosto)"**) são enviadas ao Radar em
@@ -3095,6 +3108,24 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.63.0 para a v0.64.0** (um **SQL novo** — a Pauta em dias de semana e mais de uma peça por dia — e a publicação
+das telas; **nenhuma função Edge muda, nenhum segredo novo**). Supõe a v0.63.0 instalada:
+
+1. Rode no Supabase (**SQL Editor**) o **`sql/radar-pauta-dias-v0.64.0.sql`**: tira a trava de **uma peça por dia**
+   (fica um índice comum na data), tira a **data** do "mexeu no que vai ao ar" do gatilho (mudar o dia não derruba a
+   peça pronta nem a Conferência), ajusta a importação e a "+ Nova peça" (o dia pode já ter peça) e cria a função
+   **`radar_pauta_mudar_data`** (só o administrador: muda dia e hora sem mexer na situação; a aprovada agendada é
+   remarcada junto). Nada é apagado; pode rodar de novo. Para desfazer: `sql/radar-pauta-dias-reversao.sql` (antes,
+   volte a uma peça por dia — o arquivo diz como conferir).
+2. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+3. O remanejamento do calendário (as peças de fim de semana para os dias úteis, retomada em 09/11/2026) foi aplicado em
+   06/11/2026, com a observação do que mudou em cada peça. Dali em diante é só manter: peça nova em dia útil; no fim de
+   semana, apenas lançamento manual.
+4. Conferência: abra a Pauta — nenhum sábado ou domingo com peça pendente; num dia com peça, o "+ Nova peça" aparece; em
+   uma peça, o quadro "Mudar o dia e a hora" (administrador) remarca sem derrubar a situação. As funções `radar-ia`,
+   `radar-redes`, `radar-video`, `radar-polir` e `radar-copia` **não mudam**; o banco segue na **v0.50.0** (com os
+   incrementais).
 
 **Da v0.62.0 para a v0.63.0** (um **SQL novo** — o acervo —, o **Deploy da `radar-ia`** com os tetos maiores, se
 ainda não fez, e a publicação das telas — **nenhum segredo novo**). Supõe a v0.62.0 instalada:

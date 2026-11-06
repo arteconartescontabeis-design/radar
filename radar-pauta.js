@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.63.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.64.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -270,22 +270,29 @@ async function telaSemana(){
       or:`(situacao.eq.erro,and(situacao.eq.enviando,enviado_em.lt.${minutosAtras(15)}),and(situacao.eq.autorizado,agendado_para.lt.${minutosAtras(20)}))`,
       order:"agendado_para,id", limit:"50"}) : [],
     adm ? rpc("radar_agenda_situacao").catch(() => ({})) : {}, lerCronograma(seg, hoje).catch(() => null)]);    // v0.27.0: o cronograma
-  const porDia = Object.fromEntries(pecas.map(p => [p.data, p]));
+  // v0.64.0: pode haver mais de uma peça no mesmo dia — o dia vira uma lista (por hora e, na mesma hora, pela mais antiga)
+  const porDia = {};
+  for(const p of pecas) (porDia[p.data] ||= []).push(p);
+  for(const lista of Object.values(porDia)) lista.sort((a, b) => String(a.hora).localeCompare(String(b.hora)) || a.id - b.id);
   const pessoasDe = p => termos.filter(t => t.peca_id === p.id);
-  // v0.28.0: o dia sem peça, de hoje em diante, ganha "+ Nova peça" para o administrador (o formulário abre no próprio dia)
+  // v0.28.0: "+ Nova peça" para o administrador, de hoje em diante; v0.64.0: também no dia que já tem peça
   const novaAqui = d => adm && d >= hoje;
-  const cartao = d => { const p = porDia[d];
-    if(!p && novaAqui(d) && E.pauta.nova === d) return `<article class="pauta-dia nova${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3>${formNovaPeca(d, hoje)}</article>`;
-    if(!p) return `<article class="pauta-dia vazio${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3><p class="sub">Sem peça neste dia.</p>${novaAqui(d)
-      ? `<div class="acoes"><button class="btn peq sec" type="button" data-acao="pauta-nova" data-dia="${d}">+ Nova peça</button></div>` : ""}</article>`;
-    const quem = pessoasDe(p);
+  const botaoNova = d => novaAqui(d) ? `<button class="btn peq sec" type="button" data-acao="pauta-nova" data-dia="${d}">+ Nova peça</button>` : "";
+  const blocoPeca = (d, p, extra) => { const quem = pessoasDe(p);
     return `<article class="pauta-dia${d === hoje ? " hoje" : ""}" data-dia="${d}" data-peca="${p.id}">
       <h3>${dataCurta(d)}${p.tipo !== "noticia" && p.tipo !== "sem_post" ? ` · ${h(String(p.hora).slice(0, 5))}` : ""}</h3>
       <div class="selos">${selo(TIPOS_PAUTA[p.tipo] || p.tipo, "neutro")}${p.formato !== "nenhum" ? " " + selo(FORMATOS_PAUTA[p.formato] || p.formato, "neutro") : ""} ${seloPeca(p)}</div>
       ${p.assunto ? `<p class="sub pauta-assunto">${h(cortarPauta(p.assunto, 140))}</p>` : ""}
       ${quem.length ? `<p class="pauta-pessoas">${quem.map(t => `<span>${h(t.nome_na_peca)} ${seloTermo(t)}</span>`).join(" ")}</p>` : ""}
       ${p.tipo === "noticia" ? `<p class="sub">Dia de notícia: publique por <button class="link" type="button" data-acao="aba" data-aba="assuntos">Assuntos</button> ou <button class="link" type="button" data-acao="aba" data-aba="publicacoes">Publicações</button>.</p>` : ""}
-      <div class="acoes"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button></div></article>`; };
+      <div class="acoes"><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir</button>${extra || ""}</div></article>`; };
+  const cartao = d => { const ps = porDia[d] || [];
+    const formulario = novaAqui(d) && E.pauta.nova === d
+      ? `<article class="pauta-dia nova${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3>${formNovaPeca(d, hoje)}</article>` : "";
+    if(!ps.length && formulario) return formulario;
+    if(!ps.length) return `<article class="pauta-dia vazio${d === hoje ? " hoje" : ""}" data-dia="${d}"><h3>${dataCurta(d)}</h3><p class="sub">Sem peça neste dia.</p>${novaAqui(d)
+      ? `<div class="acoes">${botaoNova(d)}</div>` : ""}</article>`;
+    return ps.map((p, i) => blocoPeca(d, p, i === ps.length - 1 && !formulario ? botaoNova(d) : "")).join("") + formulario; };
   const desligada = CONF_PAUTA.pauta && typeof CONF_PAUTA.pauta === "object" && CONF_PAUTA.pauta.agenda_ligada === false;
   const avisoAgenda = !adm ? "" : desligada
       ? `<div class="aviso alerta" id="agenda-desligada"><b>Agenda automática desligada</b> (Configurações → Pauta → "agenda_ligada": false): o que está agendado espera; a peça só sai se alguém clicar em Publicar agora.</div>`
@@ -512,6 +519,11 @@ async function telaPeca(id){
     ${erros.map(e => `<div class="aviso erro peca-erro"><b>${h(NOME_REDE[e.canal] || e.canal)}: não saiu.</b> ${h(e.erro || "A publicação não foi concluída.")}</div>`).join("")}
     ${p.tipo === "noticia" ? `<div class="aviso info">Dia de notícia: publique por <button class="link" type="button" data-acao="aba" data-aba="assuntos">Assuntos</button> ou <button class="link" type="button" data-acao="aba" data-aba="publicacoes">Publicações</button> (o kit das redes do conteúdo).</div>` : ""}
     ${semPauta ? `<div class="aviso info">Sem publicação pela Pauta nesta versão (story ou dia sem post no feed).</div>` : ""}
+    ${ehAdmin() && p.situacao !== "cancelada" ? `<div class="painel" id="peca-mudar-data"><h3 style="margin:0 0 4px">Mudar o dia e a hora</h3>
+      <p class="sub" style="margin:0 0 6px">Muda só o calendário: a situação da peça não muda${p.situacao === "aprovada" ? " e a publicação agendada é remarcada junto" : ""}. Pode haver mais de uma peça no mesmo dia (ex.: publicar o vídeo de amanhã junto com o de hoje).</p>
+      <div class="acoes"><label class="sub" for="peca-novo-dia" style="margin:0">novo dia</label><input id="peca-novo-dia" type="date" value="${h(p.data)}" min="${hojeBrasilia()}">
+        <label class="sub" for="peca-nova-hora" style="margin:0">hora</label><input id="peca-nova-hora" type="time" value="${h(String(p.hora).slice(0, 5))}">
+        <button class="btn peq" type="button" data-acao="peca-mudar-data" data-id="${p.id}">Mudar o dia</button></div></div>` : ""}
     <form class="painel peca" data-form="peca" data-id="${p.id}" data-lido="${h(p.atualizado_em)}" data-data="${h(p.data)}" data-fotos="${h(JSON.stringify(p.fotos))}"
       data-pessoas="${h(JSON.stringify(p.pessoas))}" data-conferidas="${h(JSON.stringify(conferidasDe(p)))}" data-cartoes="${h(JSON.stringify(cartoesDe(p)))}"
       data-tipo="${h(p.tipo)}" data-formato="${h(p.formato)}" data-situacao="${h(p.situacao)}">
@@ -1366,6 +1378,16 @@ const PAUTA = {
     "pauta-nova"(el){ const previa = !!E.pauta.previa; E.pauta.nova = el.dataset.dia; E.pauta.previa = null;
       return desenhar().then(() => { $("#pauta-nova")?.scrollIntoView({block:"center"}); $("#pauta-nova [name=tipo]")?.focus();
         if(previa) recado("A prévia da importação do calendário foi fechada, sem gravar nada: depois de criar a peça, escolha o arquivo de novo para ver o que muda.", "aviso"); }); },
+    /* v0.64.0: "Mudar o dia e a hora" (só o administrador): muda o calendário sem mexer na situação da peça;
+       a aprovada com publicação agendada é remarcada junto (radar_pauta_mudar_data, no banco). */
+    async "peca-mudar-data"(el){
+      const id = Number(el.dataset.id), dia = $("#peca-novo-dia")?.value || "", hora = $("#peca-nova-hora")?.value || "";
+      if(!dia){ recado("Escolha o novo dia.", "aviso"); return; }
+      const r = await rpc("radar_pauta_mudar_data", {p_id:id, p_data:dia, p_hora:hora || null});
+      await desenhar();
+      recado(`Peça remarcada para ${dataAgenda(dia)}${hora ? ` às ${hora}` : ""}.` +
+        (r && Number(r.agendados_remarcados) ? " A publicação agendada foi remarcada junto." : ""));
+    },
     "pauta-nova-cancelar"(){ E.pauta.nova = null; return desenhar(); },
     "pauta-importar-cancelar"(){ E.pauta.previa = null; return desenhar(); },
     async "pauta-importar-gravar"(){

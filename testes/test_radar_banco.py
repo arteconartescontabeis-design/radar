@@ -502,6 +502,8 @@ def test_funcoes_nao_ficam_expostas_ao_publico(db):
                                                            'radar_registrar_revisao_editorial', 'radar_texto_versao',
                                                            -- v0.28.0: "+ Nova peça" (a função confere que é o administrador)
                                                            'radar_pauta_criar',
+                                                           -- v0.64.0: mudar o dia da peça (confere o administrador, por dentro)
+                                                           'radar_pauta_mudar_data',
                                                            -- v0.29.0: a situação dos lembretes (a função confere que é o administrador)
                                                            'radar_lembretes_situacao',
                                                            -- v0.30.0: possível prorrogação na agenda (a função confere o perfil)
@@ -5245,8 +5247,8 @@ def test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date(db):
     novas = db.execute("""select p.proname, p.prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                           where n.nspname = 'public' and (p.proname like 'radar\\_pauta\\_%' or p.proname like 'radar\\_agenda\\_%'
                                 or p.proname in ('radar_redes_conferir_agenda', 'radar_fn_pauta_peca', 'radar_fn_pessoa_apagar'))""").fetchall()
-    # v0.22.0: + radar_pauta_pecas_da_pessoa; v0.28.0: + radar_pauta_criar, radar_pauta_linha_invalida e radar_pauta_hora_padrao
-    assert len(novas) == 33
+    # v0.64.0: + radar_pauta_mudar_data; v0.22.0: + radar_pauta_pecas_da_pessoa; v0.28.0: + radar_pauta_criar, radar_pauta_linha_invalida e radar_pauta_hora_padrao
+    assert len(novas) == 34
     assert [n for n, src in novas if "current_date" in src.lower()] == []
 
 
@@ -5688,43 +5690,14 @@ def test_pauta_criar_so_admin_dia_livre_de_hoje_em_diante_e_mesma_conferencia_da
     reel = criar_peca({"data": dia(0), "tipo": "reel", "formato": "reel", "assunto": "Reel de hoje"})
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR192: esse dia já passou"):
         criar_peca({"data": dia(-1), "tipo": "bastidor", "formato": "foto", "assunto": "Ontem"})
-    # uma peça por dia, também com a peça cancelada (Reabrir é o caminho)
+    # v0.64.0: o dia pode ter mais de uma peça — a segunda entra normalmente (também no dia da cancelada)
     cancelada = criar_peca({"data": dia(2), "tipo": "educativo", "formato": "carrossel", "assunto": "Educativo"})
     with como("authenticated", EDITOR) as c:
         c.execute("update radar_pauta_pecas set situacao = 'cancelada' where id = %s", (cancelada,))
     for n in (1, 2):
-        with pytest.raises(psycopg.errors.RaiseException, match=re.escape(f"RADAR193: já existe uma peça em {(d + timedelta(days=n)).strftime('%d/%m/%Y')}: "
-                                                                          "é uma peça por dia (abra a peça desse dia; se ela estiver cancelada, use Reabrir)")):
-            criar_peca({"data": dia(n), "tipo": "bastidor", "formato": "foto", "assunto": "Outra no mesmo dia"})
-    # a corrida: a peça gravada direto por outra tela (o INSERT do editor, que não passa pela trava da importação) e ainda não
-    # confirmada; a "+ Nova peça" espera e, quando a outra confirma, devolve o recado (e não o erro cru da chave única)
-    import threading
-    import time
-    outra, resultado = conectar(autocommit=False), []
-    def tentar():
-        try:
-            resultado.append(criar_peca({"data": dia(5), "tipo": "reel", "formato": "reel", "assunto": "Corrida"}))
-        except Exception as e:                                                                 # noqa: BLE001 (o teste confere o tipo)
-            resultado.append(e)
-    try:
-        outra.execute("select set_config('request.jwt.claims', %s, true)", (json.dumps({"role": "authenticated", "sub": EDITOR}),))
-        outra.execute("set local role authenticated")
-        outra.execute("insert into radar_pauta_pecas (data, tipo, formato) values (%s, 'bastidor', 'foto')", (d + timedelta(days=5),))
-        fio = threading.Thread(target=tentar)
-        fio.start()
-        for _ in range(100):                                                                   # até a "+ Nova peça" esperar a outra
-            if db.execute("select count(*) from pg_stat_activity where wait_event_type = 'Lock' and query like '%radar_pauta_criar%'").fetchone()[0]:
-                break
-            time.sleep(0.05)
-        else:
-            pytest.fail("a + Nova peça não esperou a outra gravação")
-        outra.commit()
-        fio.join(timeout=10)
-    finally:
-        outra.close()
-    assert len(resultado) == 1 and isinstance(resultado[0], psycopg.errors.RaiseException), resultado
-    assert f"RADAR193: já existe uma peça em {(d + timedelta(days=5)):%d/%m/%Y}: é uma peça por dia (recarregue a página)" in str(resultado[0])
-    assert db.execute("select count(*), min(criado_por::text) from radar_pauta_pecas where data = %s", (d + timedelta(days=5),)).fetchone() == (1, EDITOR)
+        criar_peca({"data": dia(n), "tipo": "bastidor", "formato": "foto", "assunto": "Outra no mesmo dia"})
+        assert db.execute("select count(*) from radar_pauta_pecas where data = %s", (d + timedelta(days=n),)).fetchone()[0] == 2
+    assert db.execute("select count(*) from radar_pauta_pecas where data = %s and situacao = 'planejada'", (d + timedelta(days=2),)).fetchone()[0] == 1
     # só o administrador: o editor (que importa o calendário) e o leitor, não; o visitante e a chave do robô nem chamam
     base = {"data": dia(6), "tipo": "bastidor", "formato": "foto", "assunto": "Bastidor"}
     for uid in (EDITOR, LEITOR, SEM_PERFIL):
@@ -6463,3 +6436,50 @@ def test_fotos_acervo_ficam_fora_da_limpeza_de_imagens(limpo):
         assert c.execute("select radar_limpar_imagens_sem_uso()").fetchone()[0] == 1          # só a solta sai
     restantes = {r[0] for r in limpo.execute("select id from radar_imagens").fetchall()}
     assert restantes == {foto}                                                                # a do acervo fica
+
+
+# v0.64.0: mais de uma peça por dia; mudar o dia não derruba a situação (e a aprovada muda pelo radar_pauta_mudar_data)
+def test_pauta_mudar_data_mantem_situacao_e_remarca_agendado(pauta):
+    db = pauta
+    d = hoje(db)
+    # mudar a data pelo próprio formulário (update) não derruba a peça pronta: o conteúdo não mudou
+    pid = nova_peca(db, dias=3)
+    marcar_pronta(db, pid)
+    v0 = db.execute("select versao_publicavel from radar_pauta_pecas where id = %s", (pid,)).fetchone()[0]
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_pauta_pecas set data = %s where id = %s", (d + timedelta(days=4), pid))
+    assert db.execute("select situacao, versao_publicavel from radar_pauta_pecas where id = %s", (pid,)).fetchone() == ("pronta", v0)
+    # a função do administrador: muda o dia e a hora sem mexer na situação
+    with como("authenticated", ADMIN) as c:
+        r = c.execute("select radar_pauta_mudar_data(%s, %s, %s)", (pid, d + timedelta(days=5), "12:30")).fetchone()[0]
+    assert r["agendados_remarcados"] == 0
+    assert db.execute("select data, hora::text, situacao from radar_pauta_pecas where id = %s", (pid,)).fetchone() == \
+        (d + timedelta(days=5), "12:30:00", "pronta")
+    # a aprovada com publicação agendada: o dia muda e a agenda muda junto
+    ap, _ = peca_aprovada(db, dias=2)
+    with como("authenticated", ADMIN) as c:
+        r = c.execute("select radar_pauta_mudar_data(%s, %s, null)", (ap, d + timedelta(days=6))).fetchone()[0]
+    assert r["agendados_remarcados"] == 1
+    linha = db.execute("""select p.data, p.situacao, (e.agendado_para at time zone 'America/Sao_Paulo')::date
+                          from radar_pauta_pecas p join radar_redes_envios e on e.peca_id = p.id where p.id = %s""", (ap,)).fetchone()
+    assert linha == (d + timedelta(days=6), "aprovada", d + timedelta(days=6))
+    # recusas: dia no passado, peça que não existe, peça cancelada, e só o administrador chama
+    with como("authenticated", ADMIN) as c:
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR352: o dia novo não pode ficar no passado"):
+            c.execute("select radar_pauta_mudar_data(%s, %s, null)", (pid, d - timedelta(days=1)))
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR351: peça não encontrada"):
+            c.execute("select radar_pauta_mudar_data(999999, %s, null)", (d + timedelta(days=3),))
+    canc = nova_peca(db, dias=8)
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_pauta_pecas set situacao = 'cancelada' where id = %s", (canc,))
+        with pytest.raises(psycopg.errors.RaiseException, match="RADAR350: só o administrador muda o dia"):
+            c.execute("select radar_pauta_mudar_data(%s, %s, null)", (pid, d + timedelta(days=3)))
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR351: a peça está cancelada"):
+        c.execute("select radar_pauta_mudar_data(%s, %s, null)", (canc, d + timedelta(days=3)))
+    # a aprovada continua travada no caminho comum: nem o dia muda por update direto
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR162"):
+        c.execute("update radar_pauta_pecas set data = data + 1 where id = %s", (ap,))
+    # duas peças no mesmo dia convivem (a trava única saiu)
+    pid2 = nova_peca(db, dias=5)
+    assert db.execute("select count(*) from radar_pauta_pecas where data = %s", (d + timedelta(days=5),)).fetchone()[0] >= 2
+    assert pid2 != pid

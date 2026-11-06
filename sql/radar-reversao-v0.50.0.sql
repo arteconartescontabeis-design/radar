@@ -323,6 +323,7 @@ drop function if exists public.radar_fn_pessoa_apagar();
 drop function if exists public.radar_pauta_importar(jsonb);
 -- v0.28.0: "+ Nova peça" e a conferência da linha do calendário que ela divide com a importação
 drop function if exists public.radar_pauta_criar(jsonb);
+drop function if exists public.radar_pauta_mudar_data(bigint, date, time);   -- v0.64.0
 drop function if exists public.radar_pauta_linha_invalida(jsonb);
 drop function if exists public.radar_pauta_hora_padrao();
 drop function if exists public.radar_pauta_conferir(bigint, text[]);

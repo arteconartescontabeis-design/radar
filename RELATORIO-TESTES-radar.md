@@ -1,4 +1,19 @@
-# Radar Artecon — Relatório de testes (v0.63.0)
+# Radar Artecon — Relatório de testes (v0.64.0)
+
+**v0.64.0 — Pauta em dias de semana + mais de uma peça por dia + mudar o dia (banco + tela)**
+(06/11/2026): saiu a trava `radar_pauta_pecas_data_key` (fica o índice `radar_pauta_pecas_data_idx`); no gatilho
+`radar_fn_pauta_peca`, a **data saiu de v_mudou** (mudar o dia não derruba a pronta nem a `versao_publicavel`) e a
+aprovada/cancelada ganharam a trava da data por extenso (RADAR162); `radar_pauta_importar` casa com a peça **mais
+antiga** do dia (`order by id limit 1`); `radar_pauta_criar` aceita dia já ocupado (RADAR193 saiu, e com ele o teste da
+corrida da chave única); função nova **`radar_pauta_mudar_data`** (RADAR350–352: só admin; recusa passado, cancelada e
+agendamento para trás; remarca `radar_redes_envios.agendado_para` da aprovada). Na tela (radar-pauta.js): a semana
+agrupa várias peças por dia, o "+ Nova peça" sai em todo dia de hoje em diante e a peça ganhou o quadro "Mudar o dia e
+a hora". O teste histórico da aba Versões passou a achar cada entrada **pela versão** (não mais por índice fixo, que
+quebrava a cada lançamento). Testes: **banco completo nesta sessão, todos verdes** (novo
+`test_pauta_mudar_data_mantem_situacao_e_remarca_agendado`; o da "+ Nova peça" ajustado para o dia ocupado); os de tela
+**não rodaram nesta sessão** (sem o binário `postgrest`): rodar a suíte inteira (`python -m pytest testes -q`) antes de
+publicar. O remanejamento do calendário (fim de semana → dias úteis, retomada 09/11) foi aplicado na produção em
+06/11/2026 com observação em cada peça.
 
 **v0.63.0 — fotos da Artecon nas capas + prévia do carrossel (banco + tela; tetos maiores na radar-ia)**
 (06/11/2026): o banco ganhou a tabela **`radar_fotos_acervo`** (grupos `ambiente`/`socios`, `imagem_id` com chave
