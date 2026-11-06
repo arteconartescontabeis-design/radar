@@ -1,4 +1,21 @@
-# Radar Artecon — Relatório de testes (v0.62.0)
+# Radar Artecon — Relatório de testes (v0.63.0)
+
+**v0.63.0 — fotos da Artecon nas capas + prévia do carrossel (banco + tela; tetos maiores na radar-ia)**
+(06/11/2026): o banco ganhou a tabela **`radar_fotos_acervo`** (grupos `ambiente`/`socios`, `imagem_id` com chave
+para `radar_imagens`) e as funções `radar_foto_acervo_gravar` (editor/admin; recusa grupo inválido, nome com
+`< > { } \`, imagem inexistente ou já usada e o acervo cheio — 300) e `radar_foto_acervo_apagar` (só admin; a imagem
+órfã sai junto); `radar_fn_imagem_sem_uso` e `radar_limpar_imagens_sem_uso` passaram a **poupar o acervo** (sem isso a
+faxina diária falharia na chave estrangeira). Na tela: Configurações → "Fotos da Artecon" (envio múltiplo com
+`reduzirFotoAcervo`, sem corte, até 1600 px; ver e tirar), `fotoDoAcervo("ambiente")` entra ANTES dos bancos de
+imagens no `ia-tudo` e no `prepararUmAssunto`, a janela do "Usar foto real com o título" mostra o acervo
+(`montarAcervoModal`, com o caminho `aoEscolherDados`) e o quadro "Kit das redes" ganhou **"Pré-visualizar o
+carrossel"** (as mesmas lâminas do passo 3, por `laminasDaNoticia` + `desenharPeca`, num modal; nada é gravado).
+Na **`radar-ia`** (VERSAO 0.62.0, só os tetos): conferência 2.500→4.000 tokens, kit com cartões 4.600→6.000, só os
+cartões 2.200→3.000 — numa notícia densa a resposta estourava (`stop_reason max_tokens`) e a conferência e o kit não
+saíam; dentro dos 6.000 do app radar na IA Central (`core.ia_apps.max_tokens`). Testes: **banco completo nesta
+sessão (327, todos verdes)** — os 3 novos do acervo (papéis, validações/limite/imagem em uso, faxina poupando o
+acervo) e as contagens de tabelas atualizadas (41); os de função e de tela desta versão **não rodaram nesta sessão**
+(sem o binário `postgrest` no ambiente): rodar a suíte inteira (`python -m pytest testes -q`) antes de publicar.
 
 **v0.62.0 — perguntar tudo antes do Preparar + cartões do carrossel só quando precisa (tela + radar-ia)**
 (01/11/2026): o passo 1 (e o lote de Assuntos) ganhou os seletores **Imagem** (`IMAGEM_PREPARO`: foto real com o

@@ -276,6 +276,9 @@ body.letras-grandes{font-size:18px}
 /* v0.39.0: a janela de escolher a foto real (banco de imagens) */
 .caixa-fotos{width:min(860px,94vw)}
 .foto-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;max-height:60vh;overflow:auto}
+.acervo-lista{list-style:none;margin:6px 0;padding:0;max-height:300px;overflow:auto}
+.acervo-lista li{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #EEF2F6}
+.acervo-lista li>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .foto-opcao{padding:0;border:1px solid var(--linha);border-radius:6px;overflow:hidden;cursor:pointer;background:none}
 .foto-opcao img{width:100%;height:110px;object-fit:cover;display:block}
 .foto-opcao:hover,.foto-opcao:focus-visible{outline:3px solid var(--azul,#1B5E9B)}
@@ -435,21 +438,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.62.0"></script>
-<script src="radar-video.js?v=0.62.0"></script>
-<script src="radar-setor.js?v=0.62.0"></script>
-<script src="radar-respostas.js?v=0.62.0"></script>
+<script src="radar-pauta.js?v=0.63.0"></script>
+<script src="radar-video.js?v=0.63.0"></script>
+<script src="radar-setor.js?v=0.63.0"></script>
+<script src="radar-respostas.js?v=0.63.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.62.0";
+const VERSAO = "0.63.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.63.0", "06/11/2026", [
+    "FOTOS DA ARTECON nas capas: as fotos da pasta FOTOS ARTECON do OneDrive (triagem “1 Ambiente (sem rosto)” e “2 Socios (com rosto)”) agora são enviadas ao Radar em Configurações → “Fotos da Artecon”, em dois grupos. O “Preparar com IA” com “Foto real com o título” passa a usar uma foto de AMBIENTE (sem rosto) na capa das publicações normais — sempre com o TÍTULO escrito por cima, como todas as capas — e só busca nos bancos de imagens (Pixabay/Pexels) se o acervo estiver vazio; as fotos de SÓCIOS (com rosto) aparecem na janela do “Usar foto real com o título”, para escolher à mão nas publicações sobre a equipe. E o quadro “Kit das redes” (passo 2) ganhou o botão “PRÉ-VISUALIZAR O CARROSSEL”: mostra as lâminas exatamente como vão ao ar (a capa com o título + um cartão por lâmina, com a identificação legal), sem esperar o passo 3 e sem publicar nada.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-fotos-acervo-v0.63.0.sql (a tabela do acervo e as funções; a limpeza de imagens passa a poupar o acervo; nenhuma tabela existente muda; nada é apagado; pode rodar de novo) e envie as fotos das duas pastas de triagem em Configurações → “Fotos da Artecon”. As funções radar-ia, radar-redes, radar-video, radar-polir e radar-copia não mudam nesta versão (na radar-ia, a v0.62.0 ganhou tetos de resposta maiores na conferência e no kit: cole o index.ts atual e faça o Deploy se ainda não fez). Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.62.0 para a v0.63.0”."]],
   ["0.62.0", "01/11/2026", [
     "Preparar com IA agora PERGUNTA TUDO ANTES: ao lado do tamanho do texto entram a IMAGEM (foto real com o título, imagem com IA — paga, com o aviso — ou a capa padrão Artecon) e NAS REDES (foto única ou carrossel). Um clique e a IA faz tudo de uma vez: fonte, texto, a imagem escolhida, a conferência dos 10 critérios e o kit — e os CARTÕES DO CARROSSEL só são escritos quando a notícia vai sair como carrossel (foto única não gasta IA com cartões que ninguém usa). No passo 3 (Publicar), o formato combinado já vem pré-marcado, e a notícia preparada como foto única ganha o botão “Escrever os cartões do carrossel com IA” (só os cartões: as legendas e o reel não mudam). O preparo em lote (Assuntos) pergunta as mesmas coisas.",
     "Administrador: cole o index.ts desta versão na função radar-ia (Deploy; o kit ganha o formato combinado e o “só os cartões”) — nada muda no banco, nenhum SQL, nenhum segredo novo. As funções radar-video, radar-polir, radar-redes e radar-copia não mudam; o banco segue na v0.50.0. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Com a função antiga, tudo continua funcionando como antes (cartões sempre); só o botão novo do passo 3 pede a função desta versão. Passo a passo no LEIAME, “Da v0.61.0 para a v0.62.0”."]],
@@ -1894,6 +1900,7 @@ const TELAS = {
       ${bloco("lembretes", "Lembretes por e-mail", `O Radar lembra antes do dia, por e-mail (um aviso no GitHub, como os avisos de hoje), sem nome de ninguém. <b>pauta</b>: a peça de amanhã (e a de hoje que ainda não saiu) que não está aprovada, a partir da <b>hora</b> (padrão “16:00”; até “23:45”), e a aprovada para publicar à mão que, uma hora depois da hora marcada, ainda não tem a publicação registrada. <b>aprovacao</b>: a peça pronta que espera a aprovação há mais de <b>aprovacao_horas</b> (padrão 24). <b>video</b>: o reel que o corretor terminou (pronto para conferir, precisa regravar ou parou). <b>noticia</b>: a notícia que deu erro no envio ao site ou às redes, ou que está autorizada e parada há mais de <b>parada_horas</b> (padrão 3). <b>vencimento</b>: o quadro de vencimentos de chaves e contas (abaixo), 30, 7 e 1 dia antes e no dia, cada marco uma vez só por item, só com a data. <b>copia</b>: a cópia de segurança do mês no OneDrive que não saiu até o dia 2 (uma vez por mês). Cada tipo manda no máximo um e-mail por dia, e cada pendência é lembrada uma vez só. Aprovação, vídeo, notícia, vencimento e cópia só saem entre <b>de</b> e <b>ate</b> (padrão “08:00” e “20:00”; pelo menos 15 minutos entre os dois). <b>ligado</b>: false desliga tudo; false num tipo desliga só ele. Recebe quem acompanha o repositório no GitHub. O aviso fica na aba Issues do repositório, que é público: qualquer pessoa pode ler a data, a hora, o formato e a situação de cada peça lembrada (nunca o assunto nem nomes).`)}
       ${situacaoLembretes(lemb, conf.lembretes?.valor)}
       ${quadroVencimentos(venc)}${painelCopia(copiaBanco, copiaFuncao)}
+      ${await painelAcervo()}
       <h2 style="margin-top:22px">Informativo Mensal</h2><p class="sub">Dados usados no Informativo Mensal. Valem para as próximas edições; as já criadas não mudam sozinhas.</p>
       ${bloco("obrigacoes", "Agenda de obrigações", `Lista de obrigações e a regra de vencimento de cada uma. <b>regra</b>: “quinto_dia_util” (sábado conta; se cair no sábado, antecipa), “dia” (com <b>dia</b> de 1 a 31 e <b>ajuste</b> “antecipa”, “posterga” ou “nenhum” quando cai em dia não útil) ou “ultimo_dia_util”. Opcionais, para a agenda da semana da Pauta (publicada nas redes): <b>redes</b> false tira a obrigação dessa agenda (ex.: o “Honorário contábil”, que é interno) e <b>fonte</b> é a fonte oficial da regra de vencimento, no formato curto “norma, artigo — endereço oficial”, até 300 caracteres (vai às informações conferidas da agenda da semana da Pauta; sem ela, a peça da agenda espera alguém escrever a fonte).
         <b>mes</b> (opcional, de 1 a 12): a obrigação é anual e só entra na agenda desse mês (ex.: a DEFIS: <code>"dia": 31, "mes": 3, "ajuste": "nenhum"</code>); sem “mes”, vence todo mês.
@@ -1921,7 +1928,7 @@ const TELAS = {
         <li><b>Assunto.</b> No alto ficam os três passos — <b>1. Preparar</b>, <b>2. Conferir e aprovar</b> e <b>3. Publicar</b> — e, no passo de agora, o botão do que falta fazer. Ao lado do <b>Preparar com IA</b> você combina tudo antes: o <b>tamanho do texto</b>, a <b>imagem</b> (foto real com o título, imagem com IA ou a capa padrão) e <b>nas redes</b> (foto única ou carrossel — os cartões só são escritos quando a notícia vai sair como carrossel). Um clique e a IA busca o trecho que comprova (ou a fonte oficial na internet), escreve o texto, faz a imagem escolhida, confere os 10 critérios e monta o kit das redes; o rascunho que já existe é completado com <b>Preparar este texto</b>. Em <b>Conferir e aprovar</b> ficam os 10 critérios: o Aprovar só funciona com todos em ✓ (ou com o “Revisei e assumo” do administrador). Clique em <b>Conferi na fonte oficial</b> quando conferir a informação na fonte (o site exige). Em <b>Publicar</b>, o administrador autoriza o site, o Instagram e o Facebook — de uma vez, em “Publicar em todos”, ou um por um.</li>
         <li><b>Fundamentação.</b> No texto oficial, selecione o trecho que sustenta a informação e clique em <b>Usar trecho selecionado como evidência</b>. O sistema confere se o trecho existe mesmo no texto. Se o robô ainda não capturou a página, use <b>Incluir texto oficial</b> e cole o texto com o endereço.</li>
         <li><b>Conteúdo.</b> Clique em <b>Novo conteúdo</b> e escreva (ou use <b>Preparar com IA</b>, no passo 1). O conteúdo já nasce com a <b>capa no padrão da Artecon</b> e com a <b>fonte</b> preenchida. <b>A mesma imagem vai para o site, o Instagram e o Facebook</b>: se preferir, use <b>Gerar imagem com IA</b> (uma imagem com aparência de foto, com pessoas fictícias; dá para dizer como quer a imagem, em até 500 caracteres; ela vai inteira, com o aviso “Imagem ilustrativa gerada por IA” pequeno no canto) ou envie uma foto própria (foto de alguém da equipe só com o termo de uso de imagem assinado). O Radar compara o texto com a fonte: o trecho igual ao da fonte fica num quadro (citar a fonte não autoriza copiar: transcrição literal só entre aspas e com a fonte); o botão <b>Revisar com IA</b> reescreve com palavras próprias — ou, com o motivo registrado, <b>Autorizar mesmo assim</b>. Do boletim pago (ITC), as frases nunca são reproduzidas. Antes de aprovar, o quadro <b>Conferência das Diretrizes</b> mostra os 10 critérios do escritório: <b>Revisar com IA</b> confere o texto, e com ✗ ou critério não conferido o <b>Aprovar</b> fica travado (o administrador pode liberar com <b>Revisei e assumo</b>, com o motivo). Logo abaixo, o quadro <b>Revisão editorial</b> mostra como a IA releu o texto que escreveu (10 perguntas, com ✓ ou ✎, e o que foi reescrito); ele só informa. Sem fonte oficial, a IA escreve um texto <b>Informativo</b>, que só vai ao site depois que o administrador autoriza. Salve, envie para revisão e <b>aprove</b>.</li>
-        <li><b>Preparar em lote (v0.39.0).</b> Na lista de <b>Assuntos</b>, marque as caixas das notícias, escolha o tamanho do texto, a imagem e o formato nas redes (v0.62.0) e clique em <b>Preparar as marcadas com IA</b>: o Radar prepara uma a uma (fonte, texto, imagem, Conferência e kit) e cada texto chega pronto no passo “Conferir e aprovar” — nada é publicado sozinho. A capa pode ser uma <b>foto real</b> do banco de imagens (grátis, sem IA), com o título escrito por cima pelo próprio Radar; no conteúdo, o botão <b>Usar foto real com o título</b> abre a busca para trocar a foto.</li>
+        <li><b>Preparar em lote (v0.39.0).</b> Na lista de <b>Assuntos</b>, marque as caixas das notícias, escolha o tamanho do texto, a imagem e o formato nas redes (v0.62.0) e clique em <b>Preparar as marcadas com IA</b>: o Radar prepara uma a uma (fonte, texto, imagem, Conferência e kit) e cada texto chega pronto no passo “Conferir e aprovar” — nada é publicado sozinho. A capa pode ser uma <b>foto real</b> — primeiro do <b>acervo da Artecon</b> (Configurações → “Fotos da Artecon”, grupo Ambiente, sem rosto) e, sem acervo, do banco de imagens (grátis, sem IA) —, com o título escrito por cima pelo próprio Radar; no conteúdo, o botão <b>Usar foto real com o título</b> mostra as fotos da Artecon e a busca para trocar a foto.</li>
         <li><b>Site da Artecon.</b> No conteúdo aprovado, siga os passos 1, 2 e 3 (<b>Copiar título</b> — já sem o “nº”, o “º” e o “ª”, que o site não aceita no endereço —, <b>Copiar texto formatado</b> e <b>Baixar imagem</b>), escolha no site a categoria indicada e publique. O robô encontra a notícia no site e registra a publicação sozinho na coleta seguinte.</li>
         <li><b>Registro.</b> Volte ao conteúdo, informe o link e a data da notícia e clique em <b>Registrar publicação no site</b>. O Radar guarda a cópia do texto e da fundamentação.</li>
       </ol></div>
@@ -3365,10 +3372,13 @@ function blocoKit(c, ed, urlSite){
         <span class="sub">O reel é gravado e postado à mão: o Radar publica só a imagem e a legenda.</span></div>
       ${avisos.length ? `<div class="aviso alerta kit-avisos"><b>Pontos a conferir no kit (${avisos.length}):</b><ul>${avisos.map(x => `<li>${h(x)}</li>`).join("")}</ul></div>` : ""}`;
   }
+  // v0.63.0: com 2 ou mais cartões no kit, dá para ver o carrossel pronto já no passo 2 (as mesmas lâminas do passo 3)
+  const previa = cartoesDoKit(c).length >= 2 && typeof desenharPeca === "function"
+    ? `<button class="btn peq sec" type="button" data-acao="kit-carrossel-previa" data-id="${c.id}">Pré-visualizar o carrossel</button>` : "";
   return `<details class="kit-redes" data-id="${c.id}"${(E.kitAberto || {})[c.id] ? " open" : ""}><summary><b>Kit das redes</b> <span class="sub">— legendas do Instagram e do Facebook e roteiro do reel · ${h(situacao)}</span></summary>
     ${corpo}
     <p class="sub" style="margin:6px 0 0">É sugestão da IA: confira antes de usar. No Instagram e no Facebook vai ao ar o que o administrador autorizar no passo Publicar.</p>
-    ${gerar ? `<div class="acoes">${gerar}</div>` : ""}</details>`;
+    ${gerar || previa ? `<div class="acoes">${gerar}${previa}</div>` : ""}</details>`;
 }
 /* v0.24.0: Conferência das Diretrizes (Diretriz 7): os 10 critérios do escritório antes de aprovar, em texto curto (a função radar-ia
    manda à IA os mesmos 10, por extenso, na mesma ordem). A lista da IA vem do “Revisar com IA” e fica no conteúdo
@@ -3800,7 +3810,7 @@ const ACOES = {
     if(!(await liberarIA())) return;
     const etapa = n => { IA_PASSO = `${dado ? "Preparar este texto" : "Preparar"} · etapa ${n} de 4`; };
     let busca = "", r = null, trechoFalhou = "", g = null, id = dado, capa = true, capaFeita = false, capaVelha = false, rev = null, revFalhou = "", kit = null, kitFalhou = "", atual = null;
-    let fotoUsada = null, imagemIa = null, imagemFalhou = "";          // v0.62.0: a imagem combinada no passo 1
+    let fotoUsada = null, imagemIa = null, imagemFalhou = "", fotoArtecon = false;   // v0.62.0: a imagem combinada no passo 1; v0.63.0: a foto do acervo da Artecon
     try{
       etapa(1);
       if(oficial && !trechos){ try{ r = await ia("fundamentar", {assunto_id:assunto}); } catch(e){ trechoFalhou = e.message || "erro"; } }
@@ -3818,7 +3828,13 @@ const ACOES = {
           const [cNovo] = await ler("radar_conteudos", {select:"titulo", id:"eq." + id});
           const tituloNovo = cNovo?.titulo || "";
           if(imagem === "foto"){
-            for(const q of buscasDaFoto(tituloNovo)){
+            // v0.63.0: primeiro o acervo da Artecon (grupo "ambiente", sem rosto — as publicações normais); o título entra por cima,
+            // como sempre (capaComFoto). Acervo vazio (ou banco sem ele): os bancos de imagens, como antes
+            try{
+              const daArtecon = await fotoDoAcervo("ambiente");
+              if(daArtecon){ fotoUsada = daArtecon.imagem; fotoArtecon = true; await capaComFoto(id, fotoUsada); capaFeita = true; }
+            }catch(e){}
+            if(!capaFeita) for(const q of buscasDaFoto(tituloNovo)){
               try{
                 const {fotos} = await ia("foto_buscar", {consulta:q});
                 if(fotos?.length){ fotoUsada = (await ia("foto_baixar", {foto_id:fotos[0].id, banco:fotos[0].banco || "pixabay"})).imagem;
@@ -3869,7 +3885,9 @@ const ACOES = {
     const conferencia = "a conferência dos 10 critérios" + (!itens.length ? "" : naoAtende.length ? ` (${naoAtende.length} com ✗: ${naoAtende.join(", ")})` : " (os 10 atendem)");
     const informativo = g ? !!g.informativo : String((Array.isArray(base.avisos_ia) && base.avisos_ia[0]) || "").startsWith("INFORMATIVO");
     // v0.62.0: o nome da capa que saiu de verdade (foto real, imagem da IA ou capa padrão) nos recados
-    const rotuloCapa = fotoUsada ? "a capa com a foto real e o título" : imagemIa ? "a imagem da IA (com o aviso no canto)" : "a capa padrão";
+    // v0.63.0: a foto do acervo da Artecon tem o nome dela
+    const rotuloCapa = fotoArtecon ? "a capa com a foto da Artecon (acervo, sem rosto) e o título"
+      : fotoUsada ? "a capa com a foto real e o título" : imagemIa ? "a imagem da IA (com o aviso no canto)" : "a capa padrão";
     const falhas = recadoEditorial(g?.editorial) + avisoCapa(capa) +
       (imagemFalhou ? ` A imagem combinada (${imagem === "ia" ? "imagem com IA" : "foto real"}) não saiu agora (${String(imagemFalhou).replace(/[.\s]+$/, "")}): ficou a capa padrão — para trocar, use os botões da imagem no conteúdo (passo 2).` : "") +
       (trechoFalhou ? ` A busca do trecho que comprova não deu certo (${trechoFalhou.replace(/[.\s]+$/, "")}): tente de novo em “Buscar trecho que comprova com IA”, no passo 1.` : "") +
@@ -3934,12 +3952,14 @@ const ACOES = {
     const [c] = await ler("radar_conteudos", {select:"titulo", id:"eq." + id});
     if(!c){ await desenhar(); recado("Este conteúdo não existe mais: a tela foi atualizada.", "aviso"); return; }
     const extra = f.dataset.iaAntiga ? await iaAntigaEm3x2(id) : {};
-    await abrirEscolhaFoto(buscaDaFoto(c.titulo) || c.titulo.slice(0, 60), async (fotoId, banco) => {
-      const r = await ia("foto_baixar", {foto_id:fotoId, banco});
-      await capaComFoto(id, r.imagem, extra);
+    const usar = async (imagemFoto, deOnde) => {
+      await capaComFoto(id, imagemFoto, extra);
       E.capaAntiga = null; E.capaFoco = id; await desenhar(); rolarAteConteudo(id);
-      recado("Capa com a foto real e o título: é a imagem da publicação, a mesma no site, no Instagram e no Facebook.");
-    });
+      recado(`Capa com a foto ${deOnde} e o título: é a imagem da publicação, a mesma no site, no Instagram e no Facebook.`);
+    };
+    await abrirEscolhaFoto(buscaDaFoto(c.titulo) || c.titulo.slice(0, 60),
+      async (fotoId, banco) => { const r = await ia("foto_baixar", {foto_id:fotoId, banco}); await usar(r.imagem, "real"); },
+      async dados => usar(dados, "da Artecon"));               // v0.63.0: a foto do acervo, sem ir ao banco de imagens
   },
   async "foto-fechar"(){ $("#foto-escolha")?.remove(); E.fotoEscolha = null; },
   async "foto-buscar-modal"(){ await buscarFotosModal(); },
@@ -3947,6 +3967,66 @@ const ACOES = {
     const alvo = E.fotoEscolha; if(!alvo) return;
     $("#foto-escolha")?.remove(); E.fotoEscolha = null;
     await alvo.aoEscolher(Number(el.dataset.id), el.dataset.banco || "pixabay");   // v0.45.0: a foto diz de qual banco veio
+  },
+  /* v0.63.0: a foto da Artecon escolhida na janela (do acervo): vai direto à capa, com o título por cima */
+  async "foto-acervo-escolher"(el){
+    const alvo = E.fotoEscolha; if(!alvo?.aoEscolherDados) return;
+    const [img] = await ler("radar_imagens", {select:"dados", id:"eq." + Number(el.dataset.imagem)});
+    if(!/^data:image\/(jpeg|png|webp);base64,/.test(img?.dados || "")){ recado("Esta foto não está mais no acervo: atualize a página.", true); return; }
+    $("#foto-escolha")?.remove(); E.fotoEscolha = null;
+    await alvo.aoEscolherDados(img.dados);
+  },
+  /* v0.63.0: “Pré-visualizar o carrossel” (quadro Kit das redes, passo 2): desenha as MESMAS lâminas do passo 3 —
+     a capa (a imagem da publicação com o título) + um cartão do kit por lâmina, 1080×1350 com a identificação legal.
+     Só mostra: nada é aprovado, publicado nem gravado por aqui. */
+  async "kit-carrossel-previa"(el){
+    const id = Number(el.dataset.id);
+    const [c] = await ler("radar_conteudos", {select:"id,titulo,kit_ia,imagem_id", id:"eq." + id});
+    if(!c){ await desenhar(); recado("Este conteúdo não existe mais: a tela foi atualizada.", "aviso"); return; }
+    if(typeof desenharPeca !== "function"){ recado("Aperte Ctrl+F5: o arquivo radar-pauta.js não carregou.", true); return; }
+    const cartoes = cartoesDoKit(c);
+    if(cartoes.length < 2){ recado("O carrossel precisa de pelo menos 2 cartões no kit: gere o kit das redes com “Nas redes: Carrossel” (ou use “Escrever os cartões do carrossel com IA”).", "aviso"); return; }
+    const [img] = c.imagem_id ? await ler("radar_imagens", {select:"dados", id:"eq." + c.imagem_id}) : [null];
+    const capa = img?.dados || "";
+    if(!/^data:image\/(jpeg|png|webp);base64,/.test(capa)){ recado("O conteúdo está sem a imagem da publicação: gere a capa antes de pré-visualizar o carrossel.", "aviso"); return; }
+    const lams = laminasDaNoticia(c, capa);
+    $("#carrossel-previa")?.remove();
+    document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="carrossel-previa"><div class="caixa-previa caixa-fotos" role="dialog" aria-modal="true" aria-label="Pré-visualização do carrossel">
+      <div class="barra-previa"><span>Carrossel — como vai ficar (a capa + ${lams.length - 1} cartão(ões))</span><button class="btn peq sec" type="button" data-acao="carrossel-previa-fechar">Fechar</button></div>
+      <div style="padding:12px 16px;max-height:72vh;overflow:auto"><p class="sub" style="margin:0 0 8px">São as mesmas lâminas do passo 3 (Publicar): 1080×1350, com a identificação legal em cada uma. Nada é publicado por aqui.</p>
+      <div id="carrossel-previa-laminas" class="peca-artes"></div><div id="carrossel-previa-avisos"></div></div></div></div>`);
+    const box = $("#carrossel-previa-laminas");
+    box.innerHTML = lams.map((_, i) => `<figure><img class="peca-arte" data-pendente="1" alt="Lâmina ${i + 1} de ${lams.length} (montando…)">
+      <figcaption class="sub">${i ? `Cartão ${i} — lâmina ${i + 1} de ${lams.length}` : `Capa — lâmina 1 de ${lams.length}`}</figcaption></figure>`).join("");
+    const feitas = [];
+    for(const l of lams){
+      let r;
+      try{ r = await desenharPeca(l); }
+      catch(e){ r = {erro:e.message || "Não foi possível montar a lâmina."}; }
+      const alvo = $("#carrossel-previa-laminas")?.querySelectorAll("img.peca-arte")[feitas.length]; if(!alvo) return;
+      if(r.dados){ alvo.src = r.dados; alvo.removeAttribute("data-pendente"); alvo.alt = alvo.alt.replace(" (montando…)", ""); }
+      else alvo.dataset.erro = r.erro;
+      feitas.push(r);
+    }
+    const avisos = $("#carrossel-previa-avisos");
+    if(avisos) avisos.innerHTML = feitas.map((r, i) => r.erro ? `<div class="aviso erro">Lâmina ${i + 1}: ${h(r.erro)}</div>`
+      : r.cortes.length ? `<div class="aviso ${r.cortes.includes("identificacao") ? "erro" : "alerta"}">${h(msgCortePeca(i + 1, r.cortes))}</div>` : "").join("");
+  },
+  "carrossel-previa-fechar"(){ $("#carrossel-previa")?.remove(); },
+  /* v0.63.0: ver e tirar uma foto do acervo (Configurações → “Fotos da Artecon”) */
+  async "acervo-ver"(el){
+    const [img] = await ler("radar_imagens", {select:"dados", id:"eq." + Number(el.dataset.imagem)});
+    if(!/^data:image\//.test(img?.dados || "")){ recado("Esta foto não está mais no acervo: atualize a página.", true); return; }
+    $("#acervo-previa")?.remove();
+    document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="acervo-previa"><div class="caixa-previa" role="dialog" aria-modal="true" aria-label="Foto do acervo">
+      <div class="barra-previa"><span>${h(el.dataset.nome || "Foto do acervo")}</span><button class="btn peq sec" type="button" data-acao="acervo-ver-fechar">Fechar</button></div>
+      <div style="padding:12px 16px"><img src="${img.dados}" alt="${h(el.dataset.nome || "foto do acervo")}" style="max-width:100%;max-height:70vh"></div></div></div>`);
+  },
+  "acervo-ver-fechar"(){ $("#acervo-previa")?.remove(); },
+  async "acervo-apagar"(el){
+    if(!confirm(`Tirar do acervo a foto “${el.dataset.nome || "(sem nome)"}”?\n\nAs capas já feitas com ela continuam como estão; a foto original segue na pasta do OneDrive.`)) return;
+    await rpc("radar_foto_acervo_apagar", {p_id:Number(el.dataset.id)});
+    await desenhar(); recado("A foto saiu do acervo.");
   },
   /* v0.39.0: preparar várias notícias de uma vez (aba Assuntos): cada marcada passa pelo mesmo caminho do “Preparar com IA” —
      a fonte (trecho que comprova ou busca rápida), o texto, a imagem (v0.62.0: foto real com o título, imagem da IA ou a capa
@@ -5088,19 +5168,91 @@ function buscaDaFoto(titulo){
 }
 /* v0.39.0: as buscas tentadas em ordem no preparo em lote (a primeira que achar foto vale; nenhuma: capa padrão) */
 const buscasDaFoto = titulo => [...new Set([buscaDaFoto(titulo), "contabilidade empresa", "escritório negócios"].filter(q => q.length >= 2))];
+/* v0.63.0: o acervo de fotos da Artecon (Configurações → “Fotos da Artecon”): grupo "ambiente" (sem rosto, para as
+   publicações normais) e "socios" (com rosto, para escolher à mão). Banco antigo, sem a tabela: null (a tela avisa o SQL). */
+async function listaAcervo(grupo){
+  try{ return await ler("radar_fotos_acervo", {select:"id,grupo,nome,imagem_id", ...(grupo ? {grupo:"eq." + grupo} : {}), order:"id.asc"}); }
+  catch(e){ return null; }
+}
+/* Uma foto do acervo, sorteada (só os dados dela saem do banco): o “Preparar com IA” usa na capa, com o título por cima */
+async function fotoDoAcervo(grupo = "ambiente"){
+  const lista = await listaAcervo(grupo);
+  if(!lista?.length) return null;
+  const alvo = lista[Math.floor(Math.random() * lista.length)];
+  const [img] = await ler("radar_imagens", {select:"dados", id:"eq." + alvo.imagem_id});
+  return /^data:image\/(jpeg|png|webp);base64,/.test(img?.dados || "") ? {imagem:img.dados, nome:alvo.nome, id:alvo.id} : null;
+}
+/* A foto enviada ao acervo é reduzida sem corte (até 1600 px no lado maior), para servir à capa (1200×630) e à lâmina (1080×1350) */
+async function reduzirFotoAcervo(origem){
+  const img = await new Promise((ok, falha) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => falha(new ErroApi("Não foi possível ler esta imagem.")); i.src = origem; });
+  if(!img.naturalWidth || !img.naturalHeight) throw new ErroApi("Não foi possível ler esta imagem.");
+  const f = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * f)), a = Math.max(1, Math.round(img.naturalHeight * f));
+  for(const q of [0.85, 0.7, 0.55, 0.4]){
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = a;
+    const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, a); cx.drawImage(img, 0, 0, w, a);
+    const dados = cv.toDataURL("image/jpeg", q);
+    if(dados.length <= LIMITE_IMAGEM) return {dados, largura:w, altura:a};
+  }
+  throw new ErroApi("Não foi possível reduzir esta foto o suficiente. Tente outra.");
+}
+/* O envio das fotos ao acervo (Configurações → “Fotos da Artecon”): várias de uma vez, uma a uma, com “x de y” na tela.
+   Cada foto vai a radar_imagens e entra no acervo pela função do banco (radar_foto_acervo_gravar). */
+async function enviarFotosAcervo(campo){
+  const grupo = campo.dataset.acervoGrupo, arquivos = [...campo.files]; campo.value = "";
+  if(!grupo || !arquivos.length) return;
+  const andamento = $("#acervo-andamento"), enviadas = [], falhas = [];
+  try{
+    for(const [i, a] of arquivos.entries()){
+      if(andamento) andamento.textContent = `Enviando a foto ${i + 1} de ${arquivos.length}…`;
+      if(!/^image\/(jpeg|png|webp)$/.test(a.type)){ falhas.push(`${a.name}: use JPG, PNG ou WebP`); continue; }
+      const u = URL.createObjectURL(a);
+      try{
+        const img = await reduzirFotoAcervo(u);
+        const [nova] = await rest("POST", "radar_imagens", {corpo:img, params:{select:"id"}, prefer:"return=representation"});
+        const nome = a.name.replace(/\.[^.]+$/, "").replace(/[<>{}\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+        await rpc("radar_foto_acervo_gravar", {p_grupo:grupo, p_nome:nome, p_imagem_id:nova.id});
+        enviadas.push(a.name);
+      }catch(e){ falhas.push(`${a.name}: ${e.message || "não foi enviada"}`); }
+      finally{ URL.revokeObjectURL(u); }
+    }
+  }finally{ if(andamento) andamento.textContent = ""; }
+  await desenhar();
+  if(enviadas.length) recado(`${enviadas.length} foto(s) no acervo (${grupo === "ambiente" ? "Ambiente, sem rosto" : "Sócios, com rosto"}).`);
+  if(falhas.length) recado("Não entraram no acervo: " + falhas.join("; ") + ".", true);
+}
 /* v0.39.0: a janela de escolher a foto real (as prévias vêm direto do banco de imagens, permitido para resultado de busca;
    a foto escolhida é baixada pela função e guardada no Radar, dentro da capa com o título) */
-async function abrirEscolhaFoto(busca, aoEscolher){
-  E.fotoEscolha = {aoEscolher};
+async function abrirEscolhaFoto(busca, aoEscolher, aoEscolherDados){
+  E.fotoEscolha = {aoEscolher, aoEscolherDados};               // v0.63.0: aoEscolherDados recebe a foto do acervo da Artecon
   document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="foto-escolha"><div class="caixa-previa caixa-fotos" role="dialog" aria-modal="true" aria-label="Escolher a foto real">
-    <div class="barra-previa"><span>Foto real dos bancos de imagens</span><button class="btn peq sec" type="button" data-acao="foto-fechar">Fechar</button></div>
+    <div class="barra-previa"><span>Foto real — da Artecon ou dos bancos de imagens</span><button class="btn peq sec" type="button" data-acao="foto-fechar">Fechar</button></div>
     <div style="padding:14px 16px">
+      <div id="foto-acervo"><p class="sub">Carregando as fotos da Artecon…</p></div>
       <div class="acoes"><input type="text" id="foto-busca" maxlength="100" value="${h(busca)}" data-enter="foto-buscar-modal" style="flex:1;min-width:220px" aria-label="O que procurar">
         <button class="btn" type="button" data-acao="foto-buscar-modal">Buscar fotos</button></div>
       <p class="sub" style="margin:6px 0 8px">Fotos de verdade, grátis e com licença para uso comercial (Pixabay e, desde a v0.45.0, também o Pexels — sem IA e sem custo). Clique na foto: o Radar a baixa e desenha a capa com o título por cima.</p>
       <div id="foto-lista" class="foto-grade"><p class="sub">Buscando…</p></div></div></div></div>`);
   $("#foto-busca")?.focus();
-  await buscarFotosModal();
+  await Promise.all([montarAcervoModal(), buscarFotosModal()]);
+}
+/* v0.63.0: as fotos da Artecon na janela da foto real — “ambiente” (sem rosto, as publicações normais) e “sócios”
+   (com rosto, as publicações sobre a equipe). Clicou numa delas: a capa sai com o título por cima, sem ir ao banco de imagens. */
+async function montarAcervoModal(){
+  const caixa = $("#foto-acervo"); if(!caixa) return;
+  const lista = await listaAcervo();
+  if(lista === null){ caixa.innerHTML = `<p class="sub" style="margin:0 0 8px"><b>Fotos da Artecon:</b> o banco ainda não tem o acervo (rode o sql/radar-fotos-acervo-v0.63.0.sql — veja Configurações → “Fotos da Artecon”).</p>`; return; }
+  if(!lista.length){ caixa.innerHTML = `<p class="sub" style="margin:0 0 8px"><b>Fotos da Artecon:</b> o acervo está vazio — envie as fotos das pastas de triagem em Configurações → “Fotos da Artecon”. Enquanto isso, use a busca abaixo.</p>`; return; }
+  let imgs = [];
+  try{ imgs = await ler("radar_imagens", {select:"id,dados", id:"in.(" + lista.map(x => x.imagem_id).join(",") + ")"}); }catch(e){}
+  const dados = Object.fromEntries(imgs.map(i => [i.id, i.dados]));
+  const bloco = (grupo, titulo, aviso) => { const fs = lista.filter(x => x.grupo === grupo && /^data:image\//.test(dados[x.imagem_id] || ""));
+    return fs.length ? `<p class="sub" style="margin:8px 0 4px"><b>${titulo}</b> — ${aviso}</p><div class="foto-grade">` +
+      fs.map(f => `<button type="button" class="foto-opcao" data-acao="foto-acervo-escolher" data-imagem="${f.imagem_id}" title="${h(f.nome || "")}">
+        <img src="${dados[f.imagem_id]}" alt="${h(f.nome || "foto da Artecon")}" loading="lazy"><span class="foto-banco">Artecon</span></button>`).join("") + "</div>" : ""; };
+  caixa.innerHTML = `<p class="sub" style="margin:0 0 2px"><b>Fotos da Artecon</b> (do acervo; clique para usar — o título entra por cima):</p>` +
+    bloco("ambiente", "Ambiente (sem rosto)", "para as publicações normais") +
+    bloco("socios", "Sócios (com rosto)", "use quando a publicação fala da equipe") + `<hr style="margin:10px 0">`;
 }
 async function buscarFotosModal(){
   const caixa = $("#foto-lista"); if(!caixa) return;
@@ -5147,7 +5299,12 @@ async function prepararUmAssunto(assunto, formato, imagem, redes, passo){
     passo("etapa 2 de 4 — a imagem");
     let fotoUsada = null, imagemIa = null, capaOk = false;
     if(imagem === "foto"){
-      for(const q of buscasDaFoto(a.titulo)){
+      // v0.63.0: primeiro o acervo da Artecon ("ambiente", sem rosto), como no "Preparar com IA" do assunto
+      try{
+        const daArtecon = await fotoDoAcervo("ambiente");
+        if(daArtecon){ fotoUsada = daArtecon.imagem; await capaComFoto(id, fotoUsada); capaOk = true; }
+      }catch(e){}
+      if(!capaOk) for(const q of buscasDaFoto(a.titulo)){
         try{
           const {fotos} = await ia("foto_buscar", {consulta:q});
           if(fotos?.length){ fotoUsada = (await ia("foto_baixar", {foto_id:fotos[0].id, banco:fotos[0].banco || "pixabay"})).imagem;
@@ -5549,6 +5706,26 @@ function formVencimento(v){
     <p class="sub">Só o nome e a data. Nunca cole aqui o valor de uma chave: ele fica só nos segredos do Supabase ou do GitHub.</p>
     <div class="acoes"><button class="btn">Salvar</button>${v ? `<button class="btn sec" type="button" data-acao="venc-cancelar">Cancelar</button>` : ""}</div></form>`;
 }
+/* v0.63.0: o acervo de fotos da Artecon (Configurações): as fotos da pasta do OneDrive "FOTOS ARTECON"
+   (triagem "1 Ambiente (sem rosto)" e "2 Socios (com rosto)"), enviadas daqui para o banco, em dois grupos.
+   O "Preparar com IA" usa as de "ambiente" na capa das publicações normais (com o título por cima); as de
+   "socios" ficam para escolher à mão na janela do "Usar foto real com o título". */
+async function painelAcervo(){
+  const lista = await listaAcervo(), adm = ehAdmin(), ed = podeEditar();
+  const grupoHtml = (grupo, titulo, dica) => { const fs = (lista || []).filter(x => x.grupo === grupo);
+    return `<h3 style="margin:12px 0 2px">${titulo} <span class="sub">— ${dica} · ${fs.length} foto(s)</span></h3>
+      ${ed ? `<div class="acoes"><label class="sub" for="acervo-${grupo}" style="margin:0">enviar fotos (JPG, PNG ou WebP; dá para escolher várias de uma vez)</label>
+        <input id="acervo-${grupo}" type="file" accept="image/jpeg,image/png,image/webp" multiple data-acervo-grupo="${grupo}"></div>` : ""}
+      ${fs.length ? `<ul class="acervo-lista">${fs.map(f => `<li><span>${h(f.nome || "(sem nome)")} <span class="sub">· nº ${f.id}</span></span>
+        <button class="btn peq sec" type="button" data-acao="acervo-ver" data-imagem="${f.imagem_id}" data-nome="${h(f.nome)}">Ver</button>
+        ${adm ? `<button class="btn peq perigo" type="button" data-acao="acervo-apagar" data-id="${f.id}" data-nome="${h(f.nome)}">Tirar do acervo</button>` : ""}</li>`).join("")}</ul>`
+        : `<p class="sub">Nenhuma foto neste grupo ainda.</p>`}`; };
+  return `<div class="painel" id="painel-acervo"><h2>Fotos da Artecon (capas das notícias)</h2>
+    <p class="sub">As fotos ficam na pasta do OneDrive <b>FOTOS ARTECON</b> (triagem “1 Ambiente (sem rosto)” e “2 Socios (com rosto)”). Envie-as daqui para o acervo do Radar: o <b>“Preparar com IA”</b> com “Foto real com o título” passa a usar uma foto de <b>Ambiente</b> (sem rosto) na capa das publicações normais — sempre com o <b>título escrito por cima</b> —, e as de <b>Sócios</b> (com rosto) ficam para escolher à mão (janela do “Usar foto real com o título”, no conteúdo). Sem nenhuma foto no acervo, o Radar continua buscando nos bancos de imagens (Pixabay/Pexels), como antes. Foto nova na pasta? Envie-a aqui também (o Radar não lê o OneDrive sozinho). <span id="acervo-andamento"></span></p>
+    ${lista === null ? `<div class="aviso alerta">O banco ainda não tem o acervo: rode no Supabase (SQL Editor) o <b>sql/radar-fotos-acervo-v0.63.0.sql</b> e recarregue a página.</div>`
+      : grupoHtml("ambiente", "Ambiente (sem rosto)", "as capas das publicações normais")
+        + grupoHtml("socios", "Sócios (com rosto)", "escolher à mão, quando a publicação fala da equipe")}</div>`;
+}
 function quadroVencimentos(venc){
   const topo = `<div class="painel" id="vencimentos"><h2>Vencimentos de chaves e contas</h2>`;
   if(venc.erro) return topo + `<div class="aviso alerta">${venc.erro.status === 404
@@ -5776,7 +5953,8 @@ const FORMS = {
    são feitas uma por vez, para um clique duplo não repetir a operação. */
 const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","abrir-assumir","fechar-assumir","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de",
-  "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar","painel-periodo","dash-periodo-aplicar"]);  // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar; v0.47.0: + o seletor dia/semana/mês do Painel; v0.48.0: + aplicar o período escolhido
+  "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar","painel-periodo","dash-periodo-aplicar",
+  "carrossel-previa-fechar","acervo-ver-fechar"]);  // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar; v0.47.0: + o seletor dia/semana/mês do Painel; v0.48.0: + aplicar o período escolhido; v0.63.0: + fechar a prévia do carrossel e a foto do acervo
 // v0.21.0: as ações e os formulários da Pauta (radar-pauta.js); sem o arquivo, a aba mostra o recado e nada mais muda
 if(typeof PAUTA === "object"){ Object.assign(ACOES, PAUTA.acoes); Object.assign(FORMS, PAUTA.forms); PAUTA.navegacao.forEach(a => NAVEGACAO.add(a)); }
 // v0.22.0: as do corretor de vídeo do reel (radar-video.js); sem o arquivo, a peça reel mostra o recado
@@ -5880,6 +6058,10 @@ document.addEventListener("change", ev => {
   if(ev.target.matches?.("[data-foto-peca], [data-csv-pauta]")){
     if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha o arquivo de novo.", true); return; }
     executar(ev.target.dataset.fotoPeca ? enviarFotosPeca : lerCsvPauta, false, ev.target); return; }
+  // v0.63.0: as fotos do acervo da Artecon (Configurações → “Fotos da Artecon”), também uma ação por vez
+  if(ev.target.matches?.("[data-acervo-grupo]")){
+    if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha as fotos de novo.", true); return; }
+    executar(enviarFotosAcervo, false, ev.target); return; }
   // v0.22.0: os clipes do reel (radar-video.js: só lê na tela; nada sai antes de "Enviar a gravação") e a cartela de quem fala
   if(ev.target.matches?.("[data-video-arquivos]")){
     if(OCUPADO){ ev.target.value = ""; recado("Aguarde a ação em andamento terminar e escolha os arquivos de novo.", true); return; }

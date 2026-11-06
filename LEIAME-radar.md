@@ -1,4 +1,4 @@
-# Radar Artecon — v0.62.0
+# Radar Artecon — v0.63.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,19 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.63.0 traz as **fotos da Artecon para as capas** e a **prévia do carrossel**. As fotos da pasta do OneDrive
+**FOTOS ARTECON** (triagem **"1 Ambiente (sem rosto)"** e **"2 Socios (com rosto)"**) são enviadas ao Radar em
+**Configurações → "Fotos da Artecon"**, em dois grupos. O **"Preparar com IA"** com "Foto real com o título" passa a usar
+uma foto de **Ambiente** (sem rosto) na capa das **publicações normais** — sempre com o **título escrito por cima**, como
+toda capa — e só busca nos bancos de imagens (Pixabay/Pexels) se o acervo estiver vazio; as de **Sócios** (com rosto)
+aparecem na janela do "Usar foto real com o título", para escolher à mão nas publicações sobre a equipe. O quadro **"Kit
+das redes"** (passo 2) ganha o botão **"Pré-visualizar o carrossel"**: mostra as lâminas exatamente como vão ao ar (a capa
+com o título + um cartão por lâmina, 1080×1350 com a identificação legal), sem esperar o passo 3 e sem publicar nada.
+**Muda o banco** (a tabela do acervo e as funções, pelo `sql/radar-fotos-acervo-v0.63.0.sql`; a limpeza de imagens passa a
+poupar o acervo); **nenhuma função** muda nesta versão (na `radar-ia`, a v0.62.0 ganhou tetos de resposta maiores na
+conferência e no kit — numa notícia densa eles estouravam e a conferência e o kit não saíam: faça o Deploy do `index.ts`
+atual, se ainda não fez). Veja "Da v0.62.0 para a v0.63.0".
 
 A v0.62.0 faz o **"Preparar com IA" perguntar tudo antes**: ao lado do tamanho do texto entram a **Imagem** (foto
 real com o título, imagem com IA — paga, com o aviso — ou a capa padrão Artecon) e **Nas redes** (foto única ou
@@ -3081,6 +3094,29 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.62.0 para a v0.63.0** (um **SQL novo** — o acervo —, o **Deploy da `radar-ia`** com os tetos maiores, se
+ainda não fez, e a publicação das telas — **nenhum segredo novo**). Supõe a v0.62.0 instalada:
+
+1. Rode no Supabase (**SQL Editor**) o **`sql/radar-fotos-acervo-v0.63.0.sql`**: a tabela **`radar_fotos_acervo`** (o
+   acervo), as funções `radar_foto_acervo_gravar` e `radar_foto_acervo_apagar`, e a limpeza de imagens
+   (`radar_fn_imagem_sem_uso` e `radar_limpar_imagens_sem_uso`) passando a **poupar as fotos do acervo**. Nenhuma tabela
+   existente muda; nada é apagado; pode rodar de novo. Para desfazer: `sql/radar-fotos-acervo-reversao.sql`.
+2. **Deploy** da função **`radar-ia`** com o `index.ts` atual, se ainda não fez ("Verify JWT" como está): os tetos de
+   resposta da **conferência dos 10 critérios** (2.500 → 4.000 tokens) e do **kit com os cartões do carrossel**
+   (4.600 → 6.000; "só os cartões": 2.200 → 3.000) — numa notícia densa a resposta estourava o teto e a conferência e o
+   kit **não saíam** (erro "resposta incompleta — limite de tamanho"). Dentro dos 6.000 do app radar na IA Central.
+3. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+4. Envie as fotos: **Configurações → "Fotos da Artecon"**, grupo a grupo — as da pasta do OneDrive **FOTOS ARTECON**,
+   triagem **"TRIAGEM RADAR - 1 Ambiente (sem rosto)"** no grupo **Ambiente** e **"TRIAGEM RADAR - 2 Socios (com
+   rosto)"** no grupo **Sócios** (dá para escolher várias de uma vez; o Radar reduz cada foto sem cortar, até 1600 px).
+   Foto nova na pasta? Envie-a aqui também: o Radar **não lê o OneDrive sozinho** (as fotos originais continuam na pasta;
+   a cópia mensal do OneDrive não leva o acervo, porque as fotos já nasceram lá).
+5. Conferência: num assunto com texto, **"Preparar com IA"** com "Foto real com o título" — a capa sai com uma foto de
+   Ambiente e o título por cima (o recado diz "a capa com a foto da Artecon"); no conteúdo, "Usar foto real com o
+   título" mostra as fotos da Artecon antes da busca; no quadro "Kit das redes" de uma notícia com kit de carrossel,
+   **"Pré-visualizar o carrossel"** desenha as lâminas. As funções `radar-redes`, `radar-video`, `radar-polir` e
+   `radar-copia` **não mudam**; o banco segue na **v0.50.0** (com os incrementais).
 
 **Da v0.61.0 para a v0.62.0** (só o **Deploy da `radar-ia`** e a publicação das telas — **nada no banco, nenhum
 segredo novo**). Supõe a v0.61.0 instalada:

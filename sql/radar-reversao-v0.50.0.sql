@@ -140,6 +140,7 @@ exception when others then null;
 end $$;
 
 drop table if exists
+  public.radar_fotos_acervo,     -- v0.63.0 (o acervo de fotos da Artecon; sai antes de radar_imagens e de radar_papel)
   public.radar_venda_roteiros,   -- v0.60.0 (a biblioteca dos vídeos de venda)
   public.radar_polimento_uso,    -- v0.57.0 (corretor de polimento)
   public.radar_pessoas_termos,   -- v0.46.0
@@ -455,6 +456,10 @@ drop function if exists public.radar_polimento_registrar(bigint, text, numeric, 
 -- v0.60.0: a biblioteca dos vídeos de venda (a tabela radar_venda_roteiros já saiu com a lista acima)
 drop function if exists public.radar_venda_gravar(text, text, text);
 drop function if exists public.radar_venda_apagar(bigint);
+
+-- v0.63.0: o acervo de fotos da Artecon (a tabela radar_fotos_acervo já saiu com a lista acima)
+drop function if exists public.radar_foto_acervo_gravar(text, text, bigint);
+drop function if exists public.radar_foto_acervo_apagar(bigint);
 
 commit;
 
