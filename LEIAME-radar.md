@@ -1,4 +1,4 @@
-# Radar Artecon — v0.70.0
+# Radar Artecon — v0.71.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.71.0 dá **2 segundos de respiro** ao teleprompter: ao ligar "Rolar o texto" (e ao voltar com "↑ Início"), o
+texto fica **parado por 2 segundos** antes de andar, com a contagem no botão ("Rolando em 2 s…") — as primeiras
+palavras não somem mais da tela antes de a pessoa começar a falar. O silêncio inicial não vai ao ar: o corretor já
+corta a espera do começo sozinho. **Nada muda no banco**; **nenhuma função Edge muda**. Veja "Da v0.70.0 para a
+v0.71.0".
 
 A v0.70.0 avisa **antes de emendar as tomadas**. O "Enviar para a correção" do teleprompter manda **todas** as
 tomadas da lista, e o corretor as **emenda em sequência** num vídeo só (o desenho é gravar por blocos do mesmo
@@ -3154,6 +3160,13 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.70.0 para a v0.71.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
+v0.70.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+2. Conferência: no teleprompter, clique em "Rolar o texto" — o botão conta "Rolando em 2 s…", o texto fica parado e só
+   então anda; "↑ Início" com a rolagem ligada repete o respiro.
 
 **Da v0.69.0 para a v0.70.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
 v0.69.0 instalada:

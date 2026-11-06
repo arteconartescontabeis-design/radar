@@ -1,4 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.70.0)
+# Radar Artecon — Relatório de testes (v0.71.0)
+
+**v0.71.0 — Teleprompter: 2 s de respiro antes de o texto andar (só telas)**
+(06/11/2026): pedido do dono — as primeiras palavras saíam da tela antes de ele começar a falar. `tele-rolar` liga a
+rolagem com `esperaAte = agora + 2000`; `rolarTeleprompter` segura o texto parado até lá (o botão mostra a contagem
+"Rolando em N s…", depois vira "Parar o texto"), e "↑ Início" com a rolagem ligada repete o respiro. Teste da rolagem
+atualizado (contagem no botão, texto parado no clique, andando depois) — telas não rodaram nesta sessão (sem
+`postgrest`); repositório **verde nesta sessão**.
 
 **v0.70.0 — Aviso antes de emendar as tomadas do teleprompter (só telas)**
 (06/11/2026): caso real — 5 tomadas (4 falsas + 1 boa) subiram num envio só, porque o "Enviar para a correção" manda a

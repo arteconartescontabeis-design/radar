@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.70.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.71.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -490,6 +490,15 @@ function fecharTeleprompter(){
 }
 function rolarTeleprompter(agora){
   if(!TELE || !TELE.rolando) return;
+  // v0.71.0: a espera de 2 segundos antes de o texto andar (ao ligar a rolagem e ao voltar ao início): as primeiras
+  // palavras ficam paradas na tela — dava para perdê-las, porque o texto já saía andando no clique
+  if(TELE.esperaAte && agora < TELE.esperaAte){
+    const b = $("#tele-rolar"); if(b) b.textContent = `Rolando em ${Math.ceil((TELE.esperaAte - agora) / 1000)} s…`;
+    TELE.antes = agora;
+    TELE.relogio = requestAnimationFrame(rolarTeleprompter);
+    return;
+  }
+  if(TELE.esperaAte){ TELE.esperaAte = 0; const b = $("#tele-rolar"); if(b) b.textContent = "Parar o texto"; }
   const rolo = $("#tele-rolo");
   if(rolo){
     TELE.y += TELE.veloc * ((agora - (TELE.antes || agora)) / 1000);
@@ -506,7 +515,7 @@ async function abrirTeleprompter(pid){
   if(!linhas.length || !textoDe(roteiro)){ recado(pid ? "A peça está sem roteiro: escreva o roteiro antes de abrir o teleprompter." :
     "Cole primeiro a fala para conferência: é ela que o teleprompter mostra.", true); return; }
   const podeGravar = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
-  TELE = {pid, veloc:40, letra:44, y:0, rolando:false, tomadas:0, gravador:null, fluxo:null, pedacos:[], inicioMs:0, url:null, cancelando:false, micId:"", recorte:null};
+  TELE = {pid, veloc:40, letra:44, y:0, rolando:false, tomadas:0, gravador:null, fluxo:null, pedacos:[], inicioMs:0, url:null, cancelando:false, micId:"", recorte:null, esperaAte:0};
   document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="teleprompter"><div class="caixa-previa caixa-tele" role="dialog" aria-modal="true" aria-label="Teleprompter">
     <div class="tele-topo">
       <video id="tele-camera" autoplay muted playsinline></video>
@@ -2290,7 +2299,9 @@ const VIDEO = {
     async "video-teleprompter"(el){ await abrirTeleprompter(Number(el.dataset.id)); },
     "tele-fechar"(){ fecharTeleprompter(); },
     "tele-rolar"(){ if(!TELE) return; TELE.rolando = !TELE.rolando; TELE.antes = null;
-      const b = $("#tele-rolar"); if(b) b.textContent = TELE.rolando ? "Parar o texto" : "Rolar o texto";
+      // v0.71.0: ligando, o texto espera 2 s parado antes de andar (o botão mostra a contagem)
+      TELE.esperaAte = TELE.rolando ? performance.now() + 2000 : 0;
+      const b = $("#tele-rolar"); if(b) b.textContent = TELE.rolando ? "Rolando em 2 s…" : "Rolar o texto";
       if(TELE.rolando) TELE.relogio = requestAnimationFrame(rolarTeleprompter); },
     "tele-letra"(el){ if(!TELE) return; TELE.letra = Math.min(96, Math.max(24, TELE.letra + 8 * Number(el.dataset.passo)));
       const r = $("#tele-rolo"); if(r) r.style.fontSize = `${TELE.letra}px`; },
@@ -2320,6 +2331,8 @@ const VIDEO = {
       if(av) av.textContent = "Gravando… Fale com o texto rolando; ao terminar, “Parar e guardar” põe a tomada na lista de clipes.";
     },
     "tele-inicio"(){ if(!TELE) return; TELE.y = 0; TELE.antes = null;      // v0.51.0: volta o texto ao começo
+      // v0.71.0: com a rolagem ligada, as primeiras palavras também ganham os 2 s paradas
+      if(TELE.rolando) TELE.esperaAte = performance.now() + 2000;
       const r = $("#tele-rolo"); if(r) r.style.transform = "translateY(0)"; },
     async "tele-cancelar"(){ if(!TELE?.gravador || TELE.gravador.state !== "recording") return;   // v0.51.0: descarta a tomada
       TELE.cancelando = true; await pararGravacaoTele(); },
