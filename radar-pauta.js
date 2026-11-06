@@ -39,13 +39,15 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.66.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.67.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
 const FORMATOS_PAUTA = {imagem:"Imagem 4:5", foto:"Foto", carrossel:"Carrossel", carrossel_fotos:"Carrossel de fotos", reel:"Reel", story:"Story", nenhum:"—"};
 const SITUACOES_PAUTA = {planejada:"Planejada", em_producao:"Em produção", pronta:"Pronta", aprovada:"Aprovada", cancelada:"Cancelada"};
 const CATEGORIAS_PESSOA = {"":"Sem registro no CRC", contador:"Contador", contadora:"Contadora", tecnico:"Técnico em contabilidade", tecnica:"Técnica em contabilidade"};
+// v0.67.0: a área deixou de ser texto livre — é escolhida desta lista (obrigatória no cadastro)
+const AREAS_PESSOA = {Pessoal:"Pessoal", Fiscal:"Fiscal", "Contábil":"Contábil", "Societário":"Societário", Todos:"Todos"};
 const ROTULO_CATEGORIA = {contador:"contador", contadora:"contadora", tecnico:"técnico em contabilidade", tecnica:"técnica em contabilidade"};
 const USOS_TERMO = {equipe:"Apresentar a equipe", orientacao:"Orientação", datas:"Datas da empresa", captacao:"Captação de clientes"};
 const DIAS_CURTOS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
@@ -1212,7 +1214,8 @@ async function publicarPecaAgora(conferi){
 /* --------------------------------------------------------------- pessoas e termos */
 /* A linha da pessoa na arte, escrita pelo código (nunca pela IA): com a categoria, "Ana, contadora · CRC-SC 000000"; sem ela,
    "Ana · Departamento Pessoal" (só o nome, se não há área) */
-const areaPessoa = x => { const area = String(x.area || "").trim(); return !area ? "" : /^(departamento|setor)\b/i.test(area) ? area : "Departamento " + area; };
+// v0.67.0: "Todos" (a pessoa é de todas as áreas) não vira "Departamento Todos" — a arte sai só com o nome
+const areaPessoa = x => { const area = String(x.area || "").trim(); return !area || /^todos$/i.test(area) ? "" : /^(departamento|setor)\b/i.test(area) ? area : "Departamento " + area; };
 function linhaPessoa(x){
   const nome = String(x.nome_na_peca || "").trim(), area = areaPessoa(x);
   if(ROTULO_CATEGORIA[x.categoria]) return `${nome}, ${ROTULO_CATEGORIA[x.categoria]}${x.crc ? " · " + x.crc : ""}`;
@@ -1241,7 +1244,8 @@ function formPessoa(x, ed){
     <div class="grade">
       ${campo("nome", "Nome completo (interno)", 'type="text" required minlength="2" maxlength="80"')}
       ${campo("nome_na_peca", "Nome na peça (como o termo autoriza)", 'type="text" required minlength="2" maxlength="60"')}
-      ${campo("area", "Área", 'type="text" maxlength="60" placeholder="Departamento Pessoal"')}
+      <div><label for="pe-area-${id}">Área (obrigatória)</label><select id="pe-area-${id}" name="area" required${des}>${opcoes(AREAS_PESSOA, String(x.area || "").trim(), "Escolha a área")}${
+        String(x.area || "").trim() && !AREAS_PESSOA[String(x.area || "").trim()] ? `<option value="${h(String(x.area).trim())}" selected>${h(String(x.area).trim())} (antigo — troque por uma área da lista)</option>` : ""}</select></div>
       <div><label for="pe-categoria-${id}">Categoria</label><select id="pe-categoria-${id}" name="categoria"${des}>${opcoes(CATEGORIAS_PESSOA, x.categoria || "")}</select></div>
       ${campo("crc", "Registro no CRC (contador e técnico)", 'type="text" maxlength="40" placeholder="CRC-SC 000000/O-0"')}
     </div>
@@ -1262,14 +1266,15 @@ function blocoTermoAssinatura(x, ed){
   const hoje = hojeBrasilia(), ass = x.termo_assinado_em, rev = x.termo_revogado_em, ate = x.termo_valido_ate;
   const vigente = !!ass && !(rev && rev <= hoje) && !(ate && ate < hoje);
   const quando = iso => `${dataCurta(iso)}/${iso.slice(0, 4)}`;
-  const estado = vigente ? `${selo("termo assinado", "ok")} em ${h(quando(ass))}`
+  // v0.67.0: o prazo fica explícito — o termo assinado na tela vale por prazo indeterminado (sem data de validade)
+  const estado = vigente ? `${selo("termo assinado", "ok")} em ${h(quando(ass))}${ate ? ` · válido até ${h(quando(ate))}` : " · por prazo indeterminado"}`
     : rev ? `${selo("termo revogado", "erro")} em ${h(quando(rev))}`
     : (ass && ate && ate < hoje) ? `${selo("termo vencido", "erro")} (venceu em ${h(quando(ate))})`
     : selo("sem termo assinado", "alerta");
   return `<div class="aviso ${vigente ? "ok" : "alerta"} termo-assinatura">
     <p style="margin:.2em 0"><b>Termo de uso de imagem:</b> ${estado} · CPF: <b>${x.cpf ? h(formatarCpf(x.cpf)) : "—"}</b></p>
     <p class="sub" style="margin:.2em 0">${vigente
-      ? "Autoriza o uso da imagem, voz e nome nos canais site, Instagram e Facebook, e o corretor de vídeo. Um único termo, para todos."
+      ? "Autoriza o uso da imagem, voz e nome nos canais site, Instagram e Facebook, e o corretor de vídeo, por prazo indeterminado (até ser revogado). Um único termo, para todos."
       : "Enquanto não houver o termo assinado, as peças e os vídeos com esta pessoa não ficam prontos nem saem."}</p>
     ${ed ? `<div class="acoes" style="margin-top:8px"><button class="btn peq" type="button" data-acao="pessoa-assinar" data-id="${x.id}">${vigente ? "Assinar de novo" : "Assinar o termo na tela"}</button>${vigente ? `<button class="btn peq sec" type="button" data-acao="pessoa-revogar" data-id="${x.id}">Revogar termo</button>` : ""}</div>` : ""}
   </div>`;
@@ -1294,6 +1299,8 @@ function dadosPessoa(f){
     socio:f.elements.socio.checked};
   if(corpo.nome.length < 2) throw new ErroApi("Informe o nome completo (interno).");
   if(corpo.nome_na_peca.length < 2) throw new ErroApi("Informe o nome na peça, como o termo autoriza (o nome completo ou só o primeiro).");
+  // v0.67.0: a área é obrigatória e sai da lista fixa (o cadastro antigo com texto livre troca ao salvar)
+  if(!AREAS_PESSOA[corpo.area]) throw new ErroApi("Escolha a área da pessoa: Pessoal, Fiscal, Contábil, Societário ou Todos.");
   if(t("crc")){ corpo.crc = crcFormatado(t("crc"));
     if(!(/^CRC/.test(corpo.crc) && /\d{4,6}/.test(corpo.crc) && corpo.crc.length <= 40))
       throw new ErroApi("Registro no CRC não reconhecido: escreva como “CRC-SC 012345/O-5” (depois da barra vem a letra O, não o número zero)."); }

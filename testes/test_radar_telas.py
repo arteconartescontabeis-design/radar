@@ -385,14 +385,22 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.66.0"
+    assert pagina.inner_text(".versao") == "v0.67.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.66.0: a entrada do topo é a da versão em uso (o início da contagem do cronograma) e conta ao dono, em 2 itens
+    # v0.67.0: a entrada do topo é a da versão em uso (a área obrigatória e o prazo do termo) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.66.0" and data == "06/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.67.0" and data == "06/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["PESSOAS E TERMOS", "Pessoal, Fiscal, Contábil, Societário ou Todos", "OBRIGATÓRIA",
+                   "POR PRAZO INDETERMINADO", "Da v0.66.0 para a v0.67.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.66.0: a entrada seguinte (o início da contagem do cronograma) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.66.0")')
+    assert topo == "0.66.0" and data == "06/11/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["DATA DE INÍCIO DA CONTAGEM", "cronograma_inicio", "09/11/2026", "NADA É APAGADO",
                    "10.000", "Da v0.65.0 para a v0.66.0"]:
@@ -2287,7 +2295,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.66.0"]       # v0.66.0: só a contagem do cronograma e os tetos da radar-ia; a exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.67.0"]       # v0.67.0: só a tela de Pessoas e termos; a exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3168,7 +3176,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.66.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.67.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7078,6 +7086,7 @@ def test_pessoas_termo_assinado_na_tela_e_todos_assinam(pagina, pauta):
     nova = pagina.locator("form[data-form=novaPessoa]")
     nova.locator("[name=nome]").fill("Bruno Exemplo")
     nova.locator("[name=nome_na_peca]").fill("Bruno")
+    nova.locator("[name=area]").select_option("Societário")                       # v0.67.0: a área é obrigatória
     nova.locator("[name=socio]").check()
     nova.locator("button", has_text="Cadastrar pessoa").click()
     pagina.wait_for_selector("#recado >> text=Pessoa cadastrada.")
@@ -7114,6 +7123,7 @@ def test_pessoas_termo_assinado_na_tela_e_todos_assinam(pagina, pauta):
     # o cadastro agora mostra "termo assinado" e o CPF
     form = pagina.locator(f"form[data-form=pessoa][data-id='{bruno}']")
     assert "termo assinado" in form.locator(".termo-assinatura").inner_text() and "111.444.777-35" in form.locator(".termo-assinatura").inner_text()
+    assert "por prazo indeterminado" in form.locator(".termo-assinatura").inner_text()        # v0.67.0: o prazo fica explícito
     # numa peça com Bruno, o selo é "termo ok" (ninguém é dispensado)
     d = (datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=3)).isoformat()
     pid = peca_db(db, d, "bastidor", "foto", pessoas=[bruno], legenda_instagram=LEG_PECA, chamada="Quem cuida da sua folha",
@@ -7547,7 +7557,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.66.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.67.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -7771,18 +7781,22 @@ def test_pessoas_e_termos_so_admin_grava_crc_formatado_e_cabe_no_celular(pagina,
     nova = pagina.locator("form[data-form=novaPessoa]")
     assert nova.is_visible()                                                                  # sem ninguém, o cadastro já vem aberto
 
+    # v0.67.0: a área virou uma lista fixa obrigatória (Pessoal, Fiscal, Contábil, Societário, Todos)
+    assert nova.locator("[name=area]").get_attribute("required") is not None
+    assert pagina.evaluate("Object.keys(AREAS_PESSOA)") == ["Pessoal", "Fiscal", "Contábil", "Societário", "Todos"]
     def preencher(nome, na_peca, area="", categoria="", crc=""):
-        for campo, valor in [("nome", nome), ("nome_na_peca", na_peca), ("area", area), ("crc", crc)]:
+        for campo, valor in [("nome", nome), ("nome_na_peca", na_peca), ("crc", crc)]:
             nova.locator(f"[name={campo}]").fill(valor)
+        nova.locator("[name=area]").select_option(area)
         nova.locator("[name=categoria]").select_option(categoria)
-    for args, erro in [(("Ana Teste", "Ana", "Departamento Pessoal", "contadora"), "só com o registro no CRC"),
-                       (("Ana Teste", "Ana", "Departamento Pessoal", "contadora", "registro 12"), "Registro no CRC não reconhecido")]:
+    for args, erro in [(("Ana Teste", "Ana", "Pessoal", "contadora"), "só com o registro no CRC"),
+                       (("Ana Teste", "Ana", "Pessoal", "contadora", "registro 12"), "Registro no CRC não reconhecido")]:
         preencher(*args)
         limpar_recados(pagina)
         nova.locator("button", has_text="Cadastrar pessoa").click()
         pagina.wait_for_selector(f"#recado .erro >> text={erro}")
     assert limpo.execute("select count(*) from radar_pessoas").fetchone()[0] == 0
-    preencher("Ana Teste", "Ana", "Departamento Pessoal", "contadora", "sc-012345/0-5")
+    preencher("Ana Teste", "Ana", "Pessoal", "contadora", "sc-012345/0-5")
     nova.locator("button", has_text="Cadastrar pessoa").click()
     pagina.wait_for_selector("#recado >> text=Pessoa cadastrada.")
     # v0.46.0: o termo (datas, canais, finalidades) só com a assinatura na tela: o cadastro grava sem termo
@@ -10734,7 +10748,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.66.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.67.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10840,6 +10854,7 @@ def test_video_socio_peca_nova_linha_em_branco_de_acrescentar_informacao_nao_tra
     nova = pagina.locator("form[data-form=novaPessoa]")
     nova.locator("[name=nome]").fill("Bruno Exemplo")
     nova.locator("[name=nome_na_peca]").fill("Bruno")
+    nova.locator("[name=area]").select_option("Todos")                            # v0.67.0: a área é obrigatória
     limpar_recados(pagina)
     nova.locator("button", has_text="Cadastrar pessoa").click()
     pagina.wait_for_selector("#recado >> text=Pessoa cadastrada.")

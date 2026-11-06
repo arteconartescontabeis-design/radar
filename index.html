@@ -438,21 +438,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.66.0"></script>
-<script src="radar-video.js?v=0.66.0"></script>
-<script src="radar-setor.js?v=0.66.0"></script>
-<script src="radar-respostas.js?v=0.66.0"></script>
+<script src="radar-pauta.js?v=0.67.0"></script>
+<script src="radar-video.js?v=0.67.0"></script>
+<script src="radar-setor.js?v=0.67.0"></script>
+<script src="radar-respostas.js?v=0.67.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.66.0";
+const VERSAO = "0.67.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.67.0", "06/11/2026", [
+    "PESSOAS E TERMOS mais simples e sem campo solto: a ÁREA do cadastro deixou de ser texto livre e virou uma lista fixa OBRIGATÓRIA — Pessoal, Fiscal, Contábil, Societário ou Todos (quem é de todas as áreas sai na arte só com o nome, sem “Departamento Todos”); o cadastro antigo com texto livre pede a troca ao salvar. O CRC continua obrigatório para contador(a) e técnico(a) (como já era). E o TERMO de uso de imagem mostra o prazo às claras: o termo assinado na tela vale POR PRAZO INDETERMINADO (sem data de validade, até ser revogado) — o cadastro passa a dizer isso ao lado de “termo assinado”.",
+    "Administrador: nada muda no banco (nenhum SQL; a assinatura já gravava o termo sem vencimento — só a tela não dizia). Nenhuma função Edge muda. Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Lembrete: o registro antigo “Escala 6x1” em Pessoas e termos é um engano de cadastro — renomeie para a pessoa certa ou exclua. Passo a passo no LEIAME, “Da v0.66.0 para a v0.67.0”."]],
   ["0.66.0", "06/11/2026", [
     "O CRONOGRAMA ganhou a DATA DE INÍCIO DA CONTAGEM: o quadro “Cronograma de publicações” (Pauta) e a “Projeção e desempenho” (Painel) passam a ignorar tudo o que é anterior a ela — peças, notícias achadas pela busca e publicações não entram no mínimo, no feito nem no atraso. A data ficou marcada em 09/11/2026: as notícias de alta achadas de 01 a 08/11 saem do “em atraso” (NADA É APAGADO — elas continuam na triagem de Capturas para aproveitar as que quiser), e a contagem corre limpa a partir da retomada. A data fica em Configurações → Pauta, campo “cronograma_inicio” (tire o campo para voltar a contar tudo), e os dois quadros mostram a linha “A contagem começa em 09/11/2026”.",
     "Administrador: a data de 09/11/2026 já foi gravada em Configurações → Pauta em 06/11/2026 — nada a rodar no banco (nenhum SQL, nenhuma tabela muda; o banco segue na v0.50.0 com os incrementais). Aproveite e cole o index.ts atual na função radar-ia (Deploy): os tetos de resposta subiram (o kit com os cartões do carrossel vinha cortado no limite e dava erro 502; o teto do Radar na IA Central já foi elevado para 10.000 em 06/11/2026). As demais funções não mudam. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.65.0 para a v0.66.0”."]],

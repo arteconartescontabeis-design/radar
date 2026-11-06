@@ -1,4 +1,12 @@
-# Radar Artecon — Relatório de testes (v0.66.0)
+# Radar Artecon — Relatório de testes (v0.67.0)
+
+**v0.67.0 — Pessoas e termos: área obrigatória em lista fixa + prazo do termo às claras (só telas)**
+(06/11/2026): `AREAS_PESSOA` (Pessoal, Fiscal, Contábil, Societário, Todos) vira um `select` obrigatório no cadastro
+(`dadosPessoa` recusa área fora da lista; o valor antigo em texto livre aparece como opção "(antigo)" e pede troca ao
+salvar); `areaPessoa` não transforma "Todos" em "Departamento Todos" (a arte sai só com o nome); o bloco do termo
+mostra "por prazo indeterminado" quando não há `termo_valido_ate` (a assinatura já gravava `null`; só a tela não
+dizia). Testes das telas: o cadastro usa `select_option`, o `required` da área e o texto do prazo são conferidos (não
+rodaram nesta sessão — sem `postgrest`); repositório **verde nesta sessão**. Nenhuma tabela nem função muda.
 
 **v0.66.0 — Início da contagem do cronograma + tetos maiores da radar-ia (tela + função)**
 (06/11/2026): `contarCronograma` ganhou `inicio` nos dados (vindo de `CONF_PAUTA.pauta.cronograma_inicio`, validado

@@ -1,4 +1,4 @@
-# Radar Artecon — v0.66.0
+# Radar Artecon — v0.67.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,13 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.67.0 arruma o cadastro de **Pessoas e termos**. A **Área** deixou de ser texto livre e virou uma lista fixa
+**obrigatória** — Pessoal, Fiscal, Contábil, Societário ou Todos ("Todos" sai na arte só com o nome, sem "Departamento
+Todos"); o cadastro antigo com texto livre pede a troca ao salvar, e o CRC continua obrigatório para contador(a) e
+técnico(a). O **termo de uso de imagem** passa a dizer o prazo às claras: o termo assinado na tela vale **por prazo
+indeterminado** (sem data de validade, até ser revogado) — o banco já gravava assim; só a tela não dizia. **Nada muda
+no banco**; **nenhuma função Edge muda**. Veja "Da v0.66.0 para a v0.67.0".
 
 A v0.66.0 dá ao cronograma a **data de início da contagem**. O quadro "Cronograma de publicações" (Pauta) e a
 "Projeção e desempenho" (Painel) passam a **ignorar o que é anterior** à data gravada em Configurações → Pauta, campo
@@ -3128,6 +3135,15 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.66.0 para a v0.67.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
+v0.66.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+2. Conferência: em Pauta → Pessoas e termos, o campo **Área** é uma lista (Pessoal, Fiscal, Contábil, Societário,
+   Todos) e não deixa salvar vazio; no cadastro de quem já assinou, aparece "termo assinado … · **por prazo
+   indeterminado**". Aproveite para corrigir o registro antigo "Escala 6x1" (engano de cadastro): renomeie para a
+   pessoa certa ou exclua.
 
 **Da v0.65.0 para a v0.66.0** (a data de início da contagem do cronograma e os tetos maiores da `radar-ia` — **nada no
 banco de estrutura, nenhum segredo novo**). Supõe a v0.65.0 instalada:
