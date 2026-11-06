@@ -190,7 +190,7 @@ create table if not exists public.radar_fontes (
                        check (abrangencia in ('federal','estadual_sc','municipal','geral')),
   oficial              boolean     not null default true,
   tipo_coletor         text        not null
-                       check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados')),
+                       check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados','dou_site')),
   url                  text        not null,
   config               jsonb       not null default '{}'::jsonb,
   categoria_padrao     text        references public.radar_categorias(slug),
@@ -863,10 +863,11 @@ create unique index if not exists radar_site_exclusoes_aberta_uk on public.radar
   where situacao in ('pedido','excluindo');
 
 -- v0.8.0: o Diário Oficial da União pelo INLABS é um tipo de leitura a mais; v0.45.0: + ciga_dados (os dados abertos da CIGA,
--- com o DOM/SC de Palhoça e São José — a fonte em si entra pelo sql/radar-fontes-novas-v0.45.0.sql, depois do robô desta versão)
+-- com o DOM/SC de Palhoça e São José — a fonte em si entra pelo sql/radar-fontes-novas-v0.45.0.sql, depois do robô desta versão);
+-- v0.65.0: + dou_site (a Leitura do Jornal do site oficial — as fontes entram pelo sql/radar-fontes-dou-2026-11.sql)
 alter table public.radar_fontes drop constraint if exists radar_fontes_tipo_coletor_check;
 alter table public.radar_fontes add constraint radar_fontes_tipo_coletor_check
-  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados'));
+  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados','dou_site'));
 -- (o formato do cadastro de fontes é conferido pelo gatilho radar_fn_fonte_formato, mais abaixo)
 alter table public.radar_fontes drop constraint if exists radar_fontes_formato;
 

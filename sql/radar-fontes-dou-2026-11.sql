@@ -52,6 +52,11 @@ begin
   end if;
 end $$;
 
+-- o tipo novo entra na restrição dos coletores (bancos instalados antes da v0.65.0)
+alter table public.radar_fontes drop constraint if exists radar_fontes_tipo_coletor_check;
+alter table public.radar_fontes add constraint radar_fontes_tipo_coletor_check
+  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados','dou_site'));
+
 insert into public.radar_fontes (slug, nome, orgao, abrangencia, oficial, ativo, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
 select f.slug || '-site',
        replace(f.nome, '(INLABS)', '(site oficial)'),
