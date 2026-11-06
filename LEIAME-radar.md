@@ -21,9 +21,10 @@ aparecem na janela do "Usar foto real com o título", para escolher à mão nas 
 das redes"** (passo 2) ganha o botão **"Pré-visualizar o carrossel"**: mostra as lâminas exatamente como vão ao ar (a capa
 com o título + um cartão por lâmina, 1080×1350 com a identificação legal), sem esperar o passo 3 e sem publicar nada.
 **Muda o banco** (a tabela do acervo e as funções, pelo `sql/radar-fotos-acervo-v0.63.0.sql`; a limpeza de imagens passa a
-poupar o acervo); **nenhuma função** muda nesta versão (na `radar-ia`, a v0.62.0 ganhou tetos de resposta maiores na
-conferência e no kit — numa notícia densa eles estouravam e a conferência e o kit não saíam: faça o Deploy do `index.ts`
-atual, se ainda não fez). Veja "Da v0.62.0 para a v0.63.0".
+poupar o acervo); a função **`radar-copia`** ganha o acervo na cópia mensal do
+OneDrive (Deploy), e a **`radar-ia`** (ainda v0.62.0) ganhou tetos de resposta maiores na conferência e no kit — numa
+notícia densa eles estouravam e a conferência e o kit não saíam: faça o Deploy do `index.ts` atual, se ainda não fez.
+Veja "Da v0.62.0 para a v0.63.0".
 
 A v0.62.0 faz o **"Preparar com IA" perguntar tudo antes**: ao lado do tamanho do texto entram a **Imagem** (foto
 real com o título, imagem com IA — paga, com o aviso — ou a capa padrão Artecon) e **Nas redes** (foto única ou
@@ -3102,21 +3103,22 @@ ainda não fez, e a publicação das telas — **nenhum segredo novo**). Supõe 
    acervo), as funções `radar_foto_acervo_gravar` e `radar_foto_acervo_apagar`, e a limpeza de imagens
    (`radar_fn_imagem_sem_uso` e `radar_limpar_imagens_sem_uso`) passando a **poupar as fotos do acervo**. Nenhuma tabela
    existente muda; nada é apagado; pode rodar de novo. Para desfazer: `sql/radar-fotos-acervo-reversao.sql`.
-2. **Deploy** da função **`radar-ia`** com o `index.ts` atual, se ainda não fez ("Verify JWT" como está): os tetos de
+2. **Deploy** da função **`radar-copia`** desta versão ("Verify JWT" como está): a cópia mensal do OneDrive passa a
+   levar a tabela `radar_fotos_acervo` (o grupo e o nome de cada foto; as imagens em si já iam em `radar_imagens`).
+3. **Deploy** da função **`radar-ia`** com o `index.ts` atual, se ainda não fez ("Verify JWT" como está): os tetos de
    resposta da **conferência dos 10 critérios** (2.500 → 4.000 tokens) e do **kit com os cartões do carrossel**
    (4.600 → 6.000; "só os cartões": 2.200 → 3.000) — numa notícia densa a resposta estourava o teto e a conferência e o
    kit **não saíam** (erro "resposta incompleta — limite de tamanho"). Dentro dos 6.000 do app radar na IA Central.
-3. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
-4. Envie as fotos: **Configurações → "Fotos da Artecon"**, grupo a grupo — as da pasta do OneDrive **FOTOS ARTECON**,
+4. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+5. Envie as fotos: **Configurações → "Fotos da Artecon"**, grupo a grupo — as da pasta do OneDrive **FOTOS ARTECON**,
    triagem **"TRIAGEM RADAR - 1 Ambiente (sem rosto)"** no grupo **Ambiente** e **"TRIAGEM RADAR - 2 Socios (com
    rosto)"** no grupo **Sócios** (dá para escolher várias de uma vez; o Radar reduz cada foto sem cortar, até 1600 px).
-   Foto nova na pasta? Envie-a aqui também: o Radar **não lê o OneDrive sozinho** (as fotos originais continuam na pasta;
-   a cópia mensal do OneDrive não leva o acervo, porque as fotos já nasceram lá).
-5. Conferência: num assunto com texto, **"Preparar com IA"** com "Foto real com o título" — a capa sai com uma foto de
+   Foto nova na pasta? Envie-a aqui também: o Radar **não lê o OneDrive sozinho** (as fotos originais continuam na pasta).
+6. Conferência: num assunto com texto, **"Preparar com IA"** com "Foto real com o título" — a capa sai com uma foto de
    Ambiente e o título por cima (o recado diz "a capa com a foto da Artecon"); no conteúdo, "Usar foto real com o
    título" mostra as fotos da Artecon antes da busca; no quadro "Kit das redes" de uma notícia com kit de carrossel,
-   **"Pré-visualizar o carrossel"** desenha as lâminas. As funções `radar-redes`, `radar-video`, `radar-polir` e
-   `radar-copia` **não mudam**; o banco segue na **v0.50.0** (com os incrementais).
+   **"Pré-visualizar o carrossel"** desenha as lâminas. As funções `radar-redes`, `radar-video` e `radar-polir`
+   **não mudam**; o banco segue na **v0.50.0** (com os incrementais).
 
 **Da v0.61.0 para a v0.62.0** (só o **Deploy da `radar-ia`** e a publicação das telas — **nada no banco, nenhum
 segredo novo**). Supõe a v0.61.0 instalada:

@@ -45,7 +45,7 @@
 // dados. A resposta ao administrador traz os tempos de cada etapa.
 // =====================================================================
 
-const VERSAO = "0.60.0";             // v0.60.0: + radar_venda_roteiros na cópia; v0.57.0: + radar_polimento_uso; v0.35.0: + as 3 tabelas do Módulo Respostas Automáticas
+const VERSAO = "0.63.0";             // v0.63.0: + radar_fotos_acervo na cópia (o acervo de fotos da Artecon); v0.60.0: + radar_venda_roteiros; v0.57.0: + radar_polimento_uso; v0.35.0: + as 3 tabelas do Módulo Respostas Automáticas
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -68,6 +68,8 @@ const GRAPH_URL = env("GRAPH_URL", "https://graph.microsoft.com/v1.0").replace(/
 const TABELAS = [
   "radar_assunto_capturas", "radar_assuntos", "radar_auditoria", "radar_capturas", "radar_capturas_versoes", "radar_categorias",
   "radar_config", "radar_conteudos", "radar_copias", "radar_divulgacoes", "radar_evidencias", "radar_execucoes", "radar_fontes",
+  // v0.63.0: o acervo de fotos da Artecon (grupo e nome de cada foto; as imagens em si já vão em radar_imagens)
+  "radar_fotos_acervo",
   "radar_ia_uso", "radar_imagens", "radar_informativo_itens", "radar_informativos", "radar_instalacoes", "radar_itc_lidos",
   "radar_lembretes", "radar_normas", "radar_pauta_pecas", "radar_perfis", "radar_pessoas", "radar_pessoas_termos",
   // v0.57.0: o uso do corretor de polimento (minutos e custo por chamada; nenhuma chave, nenhum dado pessoal)
