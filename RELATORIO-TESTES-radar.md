@@ -1,4 +1,18 @@
-# Radar Artecon — Relatório de testes (v0.76.0)
+# Radar Artecon — Relatório de testes (v0.77.0)
+
+**v0.77.0 — Varredura de erros (7 correções) + Excel dos reels em ordem de data (tela + robô)**
+(10/11/2026): revisão linha a linha das v0.74–0.76 a pedido do dono. (1) O catch do "Enviar mesmo assim" reconhece a
+recusa do banco pelo TEXTO fixo ("frase igual à do boletim pago" / "não pode aparecer no vídeo", excluindo menor de
+idade e pessoa não cadastrada) — a edge remove o código RADAR da mensagem e o regex antigo nunca casava em produção.
+(2) `faltaDecl.forEach(checked = true)` saiu: as declarações ficam como o usuário marcou (falha de upload não gera
+reenvio "limpo" sem assumir). (3) `utilLivre` do reel-pauta usa `feriados(ano, CONF_AGENDA.feriados_extras)` e a
+condição também avisa quando o dia escolhido é feriado. (4) `video-clipe-ver` revoga o blob URL do overlay anterior.
+(5) `trocarCamTele("auto")` falha em silêncio e devolve o select à câmera no ar. (6) `apagarTomadasDe` apaga todas
+as tomadas numa transação só. (7) `legenda.py`: `COR_ESPERA.get(cor, texto)` — cor sem par cai no comportamento
+antigo em vez de KeyError. Excel do "Relatórios dos reels": `xlsxReels(linhas)` vira UMA lista em ordem de data com
+Data · Setor · Quem grava · Título + `<autoFilter>`; validado com openpyxl (cabeçalho, ordem e filtro) e o teste de
+telas atualizado (ordem das datas no XML e `>Setor<`). Suítes: banco (331), corretor (57), repositório (21+1) e
+robô (robo+corrigir+alinhar, 142+2) **verdes nesta sessão**; telas atualizadas (não rodaram aqui, sem `postgrest`).
 
 **v0.76.0 — Legenda progressiva (karaokê) no corretor de vídeo (só o robô)**
 (10/11/2026): pedido do dono, com os prints do estilo de referência. `robo/video/legenda.py` (v0.45.0 do desenho):

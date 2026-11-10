@@ -264,7 +264,8 @@ def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estil
     medidas = _medidas(estilo, ap)
     pos = _posicoes(medidas, ap)
     texto_cor, caixa_cor = (_bgr(c) for c in CORES[ap["cor"]])
-    espera_cor = _bgr(COR_ESPERA[ap["cor"]])                  # v0.45.0: a palavra ainda não dita (karaokê)
+    # v0.45.0: a palavra ainda não dita (karaokê); cor sem par em COR_ESPERA cai no texto (sem karaokê visível), nunca derruba
+    espera_cor = _bgr(COR_ESPERA.get(ap["cor"], CORES[ap["cor"]][0]))
     bs = blocos(palavras, glossario, estilo, ap)
     avisos, eventos = [], []
     g = gancho_linhas(gancho) if gancho else None

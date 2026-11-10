@@ -385,14 +385,22 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.76.0"
+    assert pagina.inner_text(".versao") == "v0.77.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.76.0: a entrada do topo é a da versão em uso (a legenda progressiva) e conta ao dono, em 2 itens
+    # v0.77.0: a entrada do topo é a da versão em uso (a varredura de erros + o Excel por data) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.76.0" and data == "10/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.77.0" and data == "10/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["VARREDURA DE ERROS", "ENVIAR MESMO ASSIM", "FERIADOS", "ORDEM DE DATA",
+                   "RADAR_VIDEO_COMMIT", "Da v0.76.0 para a v0.77.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.76.0: a entrada seguinte (a legenda progressiva) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.76.0")')
+    assert topo == "0.76.0" and data == "10/11/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["LEGENDA PROGRESSIVA", "ACENDE", "CORES DA ARTECON", "RADAR_VIDEO_COMMIT",
                    "Da v0.75.0 para a v0.76.0"]:
@@ -2367,7 +2375,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.76.0"]       # v0.76.0: a legenda progressiva é do robô; a exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.77.0"]       # v0.77.0: varredura (tela e robô); a exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3248,7 +3256,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.76.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.77.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -6936,9 +6944,9 @@ def test_pauta_csv_do_excel_com_colunas_vazias_no_fim(pagina, limpo, tmp_path):
     assert pagina.inner_text("#pauta-previa .pauta-erros") == "Linha 3: tem 10 coluna(s), e o calendário tem 9 (confira o separador e as aspas)."
 
 def test_pauta_relatorios_dos_reels(pagina, limpo):
-    """v0.75.0: "Relatórios dos reels" (Pauta → ferramentas) baixa o Excel (data, quem grava e título, separado por
-    setor — a área de quem grava; "A definir" sem pessoa) e o Word (o roteiro completo de cada reel), dos reels de
-    hoje em diante; a peça que não é reel fica de fora. Os arquivos saem válidos (zip íntegro, conteúdo certo)."""
+    """v0.75.0: "Relatórios dos reels" (Pauta → ferramentas) baixa o Excel e o Word dos reels de hoje em diante; a
+    peça que não é reel fica de fora. v0.77.0: o Excel sai em ORDEM DE DATA com as colunas Data · Setor · Quem grava ·
+    Título (e o filtro no cabeçalho); o Word segue por setor. Os arquivos saem válidos (zip íntegro, conteúdo certo)."""
     ana = nova_pessoa(limpo, "Ana Teste", "Ana")
     peca_db(limpo, "2027-01-13", "reel", "reel", assunto="Reel do teste de relatório", pessoas=[ana],
             roteiro="0–10 s — Fala: primeira linha do roteiro de teste.")
@@ -6963,7 +6971,9 @@ def test_pauta_relatorios_dos_reels(pagina, limpo):
             if d.suggested_filename.endswith(".xlsx"):
                 s = z.read("xl/worksheets/sheet1.xml").decode()
                 assert "Reel do teste de relatório" in s and "13/01/2027 (qua)" in s and "Ana" in s
-                assert "Setor: Departamento Pessoal" in s and "Setor: A definir" in s     # separado por setor
+                # v0.77.0: a coluna do setor e o filtro; a ordem é a das datas (13/01 antes de 14/01)
+                assert ">Setor<" in s and "Departamento Pessoal" in s and "A definir" in s and "autoFilter" in s
+                assert s.index("13/01/2027") < s.index("14/01/2027")
             else:
                 assert d.suggested_filename.endswith(".docx"), d.suggested_filename
                 s = z.read("word/document.xml").decode()
@@ -7683,7 +7693,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.76.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.77.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10940,7 +10950,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.76.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.77.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")

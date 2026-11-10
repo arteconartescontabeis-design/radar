@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.76.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.77.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -327,8 +327,12 @@ async function guardarTomada(pid, c){
 }
 const apagarTomada = chave => chave ? tomadasPedido("readwrite", s => s.delete(chave)).catch(() => {}) : Promise.resolve();
 async function apagarTomadasDe(pid){
-  try{ for(const t of (await tomadasPedido("readonly", s => s.getAll())) || [])
-    if(t.pid === pid) await apagarTomada(t.chave); }catch(e){ /* já saíram */ }
+  try{
+    const chaves = ((await tomadasPedido("readonly", s => s.getAll())) || []).filter(t => t.pid === pid).map(t => t.chave);
+    if(!chaves.length) return;
+    // v0.77.0: todas numa transação só (antes, uma abertura do banco por tomada)
+    await tomadasPedido("readwrite", s => { chaves.slice(0, -1).forEach(k => s.delete(k)); return s.delete(chaves.at(-1)); });
+  }catch(e){ /* já saíram */ }
 }
 async function restaurarTomadas(pid){
   const lista = clipesDe(pid);
@@ -659,10 +663,12 @@ async function popularCamsTele(){
     // sem escolha lembrada, a grande-angular vira a câmera da gravação (dá para voltar pela lista)
     const lembrada = (() => { try{ return localStorage.getItem("radar_tele_cam") || ""; }catch(e){ return ""; } })();
     const aberta = cams.find(camAberta);
-    if(!lembrada && aberta && aberta.deviceId && aberta.deviceId !== atual){ sel.value = aberta.deviceId; await trocarCamTele(); }
+    if(!lembrada && aberta && aberta.deviceId && aberta.deviceId !== atual){ sel.value = aberta.deviceId; await trocarCamTele("auto"); }
   }catch(e){ /* sem lista de câmeras: fica a aberta */ }
 }
-async function trocarCamTele(){
+/* v0.77.0: na troca AUTOMÁTICA (modo "auto", a grande-angular na abertura), a falha é silenciosa — o select volta à
+   câmera que está no ar e nada de recado vermelho sem o usuário ter clicado; o erro só aparece na troca manual. */
+async function trocarCamTele(modo){
   const sel = $("#tele-cam");
   if(!TELE || !sel || (TELE.gravador && TELE.gravador.state === "recording")) return;
   const id = sel.value;
@@ -674,7 +680,11 @@ async function trocarCamTele(){
     TELE.fluxo?.addTrack(faixa);
     try{ localStorage.setItem("radar_tele_cam", id); }catch(e){ /* sem localStorage */ }
     await prepararQuadroTele();
-  }catch(e){ recado("Não consegui usar essa câmera (o aparelho pode não deixar): escolha outra.", true); }
+  }catch(e){
+    const atual = TELE?.fluxo?.getVideoTracks?.()[0]?.getSettings?.().deviceId || "";
+    if(atual && sel.querySelector(`option[value="${CSS?.escape ? CSS.escape(atual) : atual}"]`)) sel.value = atual;
+    if(modo !== "auto") recado("Não consegui usar essa câmera (o aparelho pode não deixar): escolha outra.", true);
+  }
 }
 /* v0.68.0: o endireitamento do teleprompter — a câmera que só entrega a imagem deitada (alguns Android) vira um quadro
    VERTICAL: um <video> escondido recebe a câmera e um canvas 9:16 desenha o recorte central de cada quadro, 30 por
@@ -2485,7 +2495,8 @@ const VIDEO = {
     "video-clipe-ver"(el){
       const c = clipesDe(Number(el.dataset.pid))[Number(el.dataset.i)];
       if(!c?.arquivo){ recado("Este clipe não está mais na lista: atualize a página.", true); return; }
-      $("#clipe-previa")?.remove();
+      const velho = $("#clipe-previa");
+      if(velho){ URL.revokeObjectURL(velho.dataset.url || ""); velho.remove(); }   // v0.77.0: sem vazar o URL do anterior
       const u = URL.createObjectURL(c.arquivo);
       document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="clipe-previa"><div class="caixa-previa" role="dialog" aria-modal="true" aria-label="Assistir o clipe">
         <div class="barra-previa"><span>${h(c.nome)}</span><button class="btn peq sec" type="button" data-acao="video-clipe-ver-fechar">Fechar</button></div>
@@ -2522,7 +2533,8 @@ const VIDEO = {
         if(!ehAdmin()) throw new ErroApi("Há pendências, e só o administrador envia mesmo assim — " + pend.join(" · "));
         if(!confirm(`ENVIAR MESMO ASSIM?\n\nPendências deste envio:\n• ${pend.join("\n• ")}\n\nAo confirmar, você assume as pendências (fica registrado) e o vídeo vai à correção. A aprovação e a publicação continuam exigindo tudo em dia.`)) return;
         assumir = true;
-        faltaDecl.forEach(c => { c.checked = true; });              // a confirmação do administrador cobre as declarações
+        // v0.77.0: as caixas ficam COMO ESTÃO — o assumir vai ao banco e as declarações continuam retratando o que
+        // o usuário marcou (se o envio falhar no meio, a nova tentativa pergunta de novo, com o registro certo)
       }
       const corpo = {peca:p.id, partes:lista.map((c, i) => ({n:i + 1, tipo:c.tipo, bytes:c.bytes})), fala_pessoa:quem,
         fala_roteiro:fala, cartela:linhasCartela(quem), gancho, declaracoes:decl.map(c => c.value), duracao:duracaoClipes(lista),
@@ -2530,9 +2542,13 @@ const VIDEO = {
       let r;
       try{ r = await funcaoVideo("envio_iniciar", corpo, 90000); }
       catch(e){
-        // a trava que só o banco conhece (termo da pessoa, boletim pago): o administrador pode assumir e reenviar na hora
+        // a trava que só o banco conhece (termo da pessoa, boletim pago): o administrador pode assumir e reenviar na
+        // hora. v0.77.0: a função devolve a mensagem SEM o código RADAR (ela o remove), então a recusa é reconhecida
+        // pelo texto fixo; menor de idade e pessoa não cadastrada continuam impeditivos (sem a oferta).
         const m = String(e?.message || "");
-        if(!assumir && ehAdmin() && /RADAR30[34]/.test(m)
+        const assumivel = /RADAR30[34]|frase igual à do boletim pago|não pode aparecer no vídeo/.test(m)
+          && !/menor de idade|pessoa não cadastrada/.test(m);
+        if(!assumir && ehAdmin() && assumivel
            && confirm(`O envio travou numa pendência:\n\n${m}\n\nENVIAR MESMO ASSIM? Ao confirmar, você assume a pendência (fica registrado) e o vídeo vai à correção; a aprovação e a publicação continuam exigindo tudo em dia.`)){
           r = await funcaoVideo("envio_iniciar", {...corpo, assumir:true}, 90000);
         }else throw e;

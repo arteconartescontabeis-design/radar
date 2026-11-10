@@ -1,4 +1,4 @@
-# Radar Artecon — v0.76.0
+# Radar Artecon — v0.77.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,17 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.77.0 é a **varredura de erros** (7 correções da revisão linha a linha das v0.74–0.76) e o **Excel dos reels
+no formato pedido**. As principais: o **"Enviar mesmo assim"** das pendências que só o banco conhece agora é
+oferecido de verdade (a recusa é reconhecida pelo texto — a função devolve a mensagem sem o código RADAR); as
+**declarações não são mais marcadas sozinhas** no confirmar (o registro fica fiel, mesmo se o envio falhar no meio);
+o "próximo dia útil livre" do reel pula os **feriados**; o "Assistir" não vaza memória; a troca automática de câmera
+falha em silêncio; a limpeza das tomadas sai numa operação só; e o robô não cai com cor de legenda sem par no
+karaokê (`COR_ESPERA.get`). O Excel do "Relatórios dos reels" sai em **ordem de data** com as colunas Data · Setor ·
+Quem grava · Título e filtro no cabeçalho. **Nada muda no banco nem nas funções Edge**; o robô muda (correção 7):
+troque `RADAR_VIDEO_COMMIT` pelo SHA desta versão (cobre também o karaokê da v0.76.0). Veja "Da v0.76.0 para a
+v0.77.0".
 
 A v0.76.0 traz a **legenda progressiva (karaokê)** nos reels: a frase continua na caixa embaixo, nas cores da
 Artecon, mas cada palavra **acende na cor do texto no instante em que é dita** — antes disso espera na cor apagada
@@ -3204,6 +3215,17 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.76.0 para a v0.77.0** (só as telas e o robô do corretor — **nada no banco, nenhuma função Edge, nenhum
+segredo novo**). Supõe a v0.76.0 instalada (ou a v0.75.0: esta versão inclui o karaokê da v0.76.0 no robô):
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+2. No repositório privado **radar-video** (Settings → Secrets and variables → Actions → Variables), troque
+   **`RADAR_VIDEO_COMMIT`** pelo SHA desta versão — uma troca só cobre o karaokê (v0.76.0) e a correção da cor sem
+   par (v0.77.0).
+3. Conferência: num envio em que o banco trava (termo da pessoa vencido), o administrador vê o "ENVIAR MESMO
+   ASSIM?" e, confirmando, o envio entra com o registro de quem assumiu; o Excel do "Relatórios dos reels" sai em
+   ordem de data com a coluna Setor e o filtro no cabeçalho.
 
 **Da v0.75.0 para a v0.76.0** (só o robô do corretor e as telas — **nada no banco, nenhuma função Edge, nenhum
 segredo novo**; o robô roda por **commit fixo**). Supõe a v0.75.0 instalada:

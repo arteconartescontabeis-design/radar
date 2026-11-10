@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.76.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.77.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -333,7 +333,7 @@ async function telaSemana(){
     <div class="pauta-semana">${Array.from({length:7}, (_, i) => cartao(somarDias(seg, i))).join("")}</div>
     ${ed ? `<div class="painel pauta-ferramentas"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-pessoas">Pessoas e termos</button>
       <button class="btn sec" type="button" data-acao="pauta-relatorios-reels">Relatórios dos reels</button></div>
-      <p class="sub" style="margin:4px 0 0">Relatórios dos reels: baixa o Excel (data, quem grava e título, separado por setor) e o Word (o roteiro completo de cada reel), dos reels agendados de hoje em diante. Eles têm nomes da equipe: não compartilhe fora do escritório.</p>
+      <p class="sub" style="margin:4px 0 0">Relatórios dos reels: baixa o Excel (em ordem de data, com as colunas Data, Setor, Quem grava e Título — o filtro do cabeçalho mostra um setor só) e o Word (o roteiro completo de cada reel, por setor), dos reels agendados de hoje em diante. Eles têm nomes da equipe: não compartilhe fora do escritório.</p>
       <label for="pauta-csv">Importar o calendário (CSV)</label><input id="pauta-csv" type="file" accept=".csv,text/csv" data-csv-pauta>
       <p class="sub" style="margin:4px 0 0">O CSV do plano de publicações, com as colunas data;dia;semana;tipo;formato;assunto;quem_aparece;objetivo;observacao. A tela confere o arquivo inteiro e mostra o que muda antes de gravar. Ele tem nomes da equipe: nunca vai para o GitHub.</p></div>` : ""}`;
 }
@@ -1418,18 +1418,15 @@ const xml = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").re
   .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ");
 const RELS_RAIZ = tipo => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="${tipo}"/></Relationships>`;
-/* o .xlsx: uma planilha, células de texto (inlineStr), separadas por setor (linha do setor, cabeçalho e as linhas dele) */
-function xlsxReels(grupos){
+/* o .xlsx (v0.77.0, o formato pedido pelo dono): UMA lista em ORDEM DE DATA, com a coluna do setor — Data · Setor ·
+   Quem grava · Título — e o filtro no cabeçalho (para ver um setor só, com um clique). Células de texto (inlineStr). */
+function xlsxReels(linhas){
   const cel = t => `<c t="inlineStr"><is><t xml:space="preserve">${xml(t)}</t></is></c>`;
-  const linha = cs => `<row>${cs.map(cel).join("")}</row>`;
-  const linhas = [];
-  for(const g of grupos){
-    linhas.push(linha([`Setor: ${g.setor}`]), linha(["Data", "Quem grava", "Título"]));
-    for(const r of g.reels) linhas.push(linha([r.data, r.quem, r.titulo]));
-    linhas.push("<row/>");
-  }
+  const row = cs => `<row>${cs.map(cel).join("")}</row>`;
+  const corpo = [row(["Data", "Setor", "Quem grava", "Título"]),
+                 ...linhas.map(r => row([r.data, r.setor, r.quem, r.titulo]))];
   const planilha = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="30" customWidth="1"/><col min="3" max="3" width="80" customWidth="1"/></cols><sheetData>${linhas.join("")}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="14" customWidth="1"/><col min="3" max="3" width="26" customWidth="1"/><col min="4" max="4" width="90" customWidth="1"/></cols><sheetData>${corpo.join("")}</sheetData><autoFilter ref="A1:D${linhas.length + 1}"/></worksheet>`;
   return zipArmazenado([
     {nome:"[Content_Types].xml", texto:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`},
@@ -1485,7 +1482,8 @@ async function relatoriosDosReels(){
   const grupos = [...new Set(linhas.map(l => l.setor))]
     .sort((a, b) => (ordem.indexOf(a) + 1 || 99) - (ordem.indexOf(b) + 1 || 99) || a.localeCompare(b, "pt-BR"))
     .map(setor => ({setor, reels: linhas.filter(l => l.setor === setor)}));
-  baixarRelatorio(xlsxReels(grupos), `reels-agendados-${hoje}.xlsx`);
+  // v0.77.0: o Excel sai em ORDEM DE DATA com a coluna do setor (o pedido do dono); o Word segue por setor
+  baixarRelatorio(xlsxReels(linhas), `reels-agendados-${hoje}.xlsx`);
   baixarRelatorio(docxReels(grupos, `Roteiros dos reels agendados — ${dataRel(hoje)}`), `reels-roteiros-${hoje}.docx`);
   recado(`${linhas.length} reel(s) em ${grupos.length} setor(es): o Excel (lista) e o Word (roteiros) foram baixados.`);
 }
