@@ -5783,11 +5783,13 @@ def test_todos_assinam_o_termo_na_tela_inclusive_socio(pauta):
     assert r["ok"] is True
     pe = db.execute("""select cpf, termo_assinado_em, termo_corretor_em, termo_canais, termo_usos, termo_valido_ate, termo_revogado_em
                        from radar_pessoas where id = %s""", (bruno,)).fetchone()
+    # v0.73.0: o termo novo vale 12 meses a partir da assinatura (cláusula 2)
+    doze = db.execute("select (radar_pauta_hoje() + interval '12 months')::date").fetchone()[0]
     assert pe == ("11144477735", cur, cur, ["instagram", "facebook"],
-                  ["equipe", "orientacao", "datas", "captacao"], None, None)
+                  ["equipe", "orientacao", "datas", "captacao"], doze, None)
     hist = db.execute("""select nome, cpf, termo_versao, left(termo_texto, 30), canais, usos, length(assinatura), aparelho, revogado_em
                          from radar_pessoas_termos where pessoa_id = %s""", (bruno,)).fetchall()
-    assert len(hist) == 1 and hist[0] == ("Bruno Exemplo", "11144477735", 1, "TERMO DE AUTORIZAÇÃO DE USO DE",
+    assert len(hist) == 1 and hist[0] == ("Bruno Exemplo", "11144477735", 2, "TERMO DE AUTORIZAÇÃO DE USO DE",
                                           ["instagram", "facebook"], ["equipe", "orientacao", "datas", "captacao"], len(PNG), "Agente/1.0", None)
     # agora o termo vale em todo tipo e canal
     assert {(t, canal): termo(t, canal) for t in tipos for canal in ("instagram", "facebook")} == \

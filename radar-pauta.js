@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.72.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.73.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -1230,7 +1230,7 @@ async function telaPessoas(){
   return `<button class="voltar" data-acao="voltar">← Voltar para a semana</button>
     <h1>Pessoas e termos</h1>
     <p class="sub">Quem pode aparecer nas peças da Pauta e o termo de uso de imagem de cada pessoa. Fica só no banco (o repositório do Radar é público); o leitor não vê. ${adm ? "" : "Só o administrador cadastra e altera."}</p>
-    <div class="aviso info">O termo é <b>assinado na própria tela</b> (com o CPF e a assinatura desenhada pela caneta ou pelo dedo). <b>Todos assinam, sócios inclusive.</b> Cadastre a pessoa, abra o cadastro dela e clique em <b>“Assinar o termo na tela”</b>. Um único termo autoriza o uso da imagem nos canais site, Instagram e Facebook e o corretor de vídeo. Fica guardado como prova (data/hora, CPF e a imagem da assinatura).</div>
+    <div class="aviso info">O termo é <b>assinado na própria tela</b> (com o CPF e a assinatura desenhada pela caneta ou pelo dedo). <b>Todos assinam, sócios inclusive.</b> Cadastre a pessoa, abra o cadastro dela e clique em <b>“Assinar o termo na tela”</b>. Um único termo autoriza o uso da imagem no site, no Instagram e no Facebook — inclusive anúncios pagos e impulsionamentos — e a edição pelo Radar, <b>por 12 meses</b> (ou até o fim do vínculo). Fica guardado como prova (data/hora, CPF, a imagem da assinatura e o texto exato).</div>
     ${adm ? `<details class="nova-pessoa"${lista.length ? "" : " open"}><summary>Cadastrar pessoa</summary>${formPessoa({ativo:true}, true)}</details>` : ""}
     <div class="pessoas-lista">${lista.length ? lista.map(x => formPessoa(x, adm)).join("") : `<p class="sub">Nenhuma pessoa cadastrada.</p>`}</div>`;
 }
@@ -1266,7 +1266,8 @@ function blocoTermoAssinatura(x, ed){
   const hoje = hojeBrasilia(), ass = x.termo_assinado_em, rev = x.termo_revogado_em, ate = x.termo_valido_ate;
   const vigente = !!ass && !(rev && rev <= hoje) && !(ate && ate < hoje);
   const quando = iso => `${dataCurta(iso)}/${iso.slice(0, 4)}`;
-  // v0.67.0: o prazo fica explícito — o termo assinado na tela vale por prazo indeterminado (sem data de validade)
+  // v0.67.0: o prazo fica explícito; v0.73.0: o termo novo vale 12 meses (termo_valido_ate preenchido pela assinatura) —
+  // a assinatura antiga, sem data, continua "por prazo indeterminado" até ser refeita
   const estado = vigente ? `${selo("termo assinado", "ok")} em ${h(quando(ass))}${ate ? ` · válido até ${h(quando(ate))}` : " · por prazo indeterminado"}`
     : rev ? `${selo("termo revogado", "erro")} em ${h(quando(rev))}`
     : (ass && ate && ate < hoje) ? `${selo("termo vencido", "erro")} (venceu em ${h(quando(ate))})`
@@ -1274,7 +1275,8 @@ function blocoTermoAssinatura(x, ed){
   return `<div class="aviso ${vigente ? "ok" : "alerta"} termo-assinatura">
     <p style="margin:.2em 0"><b>Termo de uso de imagem:</b> ${estado} · CPF: <b>${x.cpf ? h(formatarCpf(x.cpf)) : "—"}</b></p>
     <p class="sub" style="margin:.2em 0">${vigente
-      ? "Autoriza o uso da imagem, voz e nome nos canais site, Instagram e Facebook, e o corretor de vídeo, por prazo indeterminado (até ser revogado). Um único termo, para todos."
+      ? (ate ? "Autoriza o uso da imagem, voz e nome no site, no Instagram e no Facebook da Artecon — inclusive anúncios pagos e impulsionamentos — e a edição pelo Radar e por IA. Vale por 12 meses a partir da assinatura, ou até o encerramento do vínculo (o que ocorrer primeiro)."
+             : "Termo da versão antiga, sem data de validade (vale até ser revogado). Para valer o termo novo — com anúncios pagos, impulsionamento e o prazo de 12 meses — clique em “Assinar de novo”.")
       : "Enquanto não houver o termo assinado, as peças e os vídeos com esta pessoa não ficam prontos nem saem."}</p>
     ${ed ? `<div class="acoes" style="margin-top:8px"><button class="btn peq" type="button" data-acao="pessoa-assinar" data-id="${x.id}">${vigente ? "Assinar de novo" : "Assinar o termo na tela"}</button>${vigente ? `<button class="btn peq sec" type="button" data-acao="pessoa-revogar" data-id="${x.id}">Revogar termo</button>` : ""}</div>` : ""}
   </div>`;

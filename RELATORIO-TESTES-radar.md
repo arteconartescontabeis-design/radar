@@ -1,4 +1,13 @@
-# Radar Artecon — Relatório de testes (v0.72.0)
+# Radar Artecon — Relatório de testes (v0.73.0)
+
+**v0.73.0 — Termo de uso de imagem versão 2 + validade de 12 meses (banco + tela)**
+(10/11/2026): `radar_config.termo_imagem` vira a versão 2 com o texto do administrador (anúncios pagos e
+impulsionamento, edição por Radar/IA, voluntariedade, 12 meses ou fim do vínculo, revogação por e-mail, LGPD);
+`radar_pessoa_assinar_termo` grava `termo_valido_ate = radar_pauta_hoje() + 12 meses` (antes: null). Na tela, o bloco
+do termo explica o prazo novo ("válido até …, 12 meses da assinatura ou fim do vínculo") e marca a assinatura antiga
+como "termo da versão antiga" com o convite a reassinar; o aviso de Pessoas e termos cita anúncios/impulsionamento e
+o prazo. Testes: a assinatura confere a validade (+12 meses) e a versão 2 no histórico; a tela confere "válido até" e
+"12 meses" depois de assinar. SQL incremental `radar-termo-v0.73.0.sql`; setup com o texto novo como padrão.
 
 **v0.72.0 — Uma foto só por notícia + rodízio do acervo (banco + tela)**
 (06/11/2026): `radar_assuntos.foto_imagem_id` (a foto-base presa à notícia) e `radar_fotos_acervo.usada_em` (o

@@ -1,4 +1,4 @@
-# Radar Artecon — v0.72.0
+# Radar Artecon — v0.73.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,14 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.73.0 traz o **termo de uso de imagem novo (versão 2)**, com o texto fornecido pelo administrador em
+10/11/2026: empregadora qualificada, autorização cobrindo **anúncios pagos e impulsionamento** no Instagram e no
+Facebook, edição pelo Radar e por IA, participação voluntária, **prazo de 12 meses** (ou o fim do vínculo), revogação
+pelo e-mail do Atendimento Geral e direitos da LGPD. A assinatura na tela passa a gravar `termo_valido_ate =
+assinatura + 12 meses`, e o cadastro mostra "válido até". Quem já assinou segue sob o termo antigo (sem vencimento)
+até assinar de novo. **Muda o banco** (`sql/radar-termo-v0.73.0.sql`: o texto e a função da assinatura); **nenhuma
+função Edge muda**. Veja "Da v0.72.0 para a v0.73.0".
 
 A v0.72.0 garante **uma foto só por notícia** e o **rodízio do acervo**. A primeira foto escolhida para uma
 notícia fica **presa a ela** (`radar_assuntos.foto_imagem_id`): todas as publicações e **todo preparo novo com IA**
@@ -3168,6 +3176,19 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.72.0 para a v0.73.0** (um **SQL novo** — o termo versão 2 e a validade de 12 meses — e a publicação das
+telas; **nenhuma função Edge muda, nenhum segredo novo**). Supõe a v0.72.0 instalada:
+
+1. Rode no Supabase (**SQL Editor**) o **`sql/radar-termo-v0.73.0.sql`**: grava o texto novo do termo (versão 2) em
+   `radar_config.termo_imagem` e a função `radar_pessoa_assinar_termo` passando a registrar a validade de 12 meses.
+   Pode rodar de novo. Os ajustes feitos no texto colado (para a assinatura na tela) estão comentados no próprio
+   arquivo: {NOME}/{CPF} preenchidos pela tela, as caixas Autorizo/Não autorizo viradas em frase afirmativa, o
+   e-mail artecon@artecon.cnt.br no lugar do marcador, o fecho eletrônico e a correção dos erros de digitação.
+2. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+3. Conferência: em Pessoas e termos, "Assinar o termo na tela" mostra o texto novo; assinado, o cadastro diz
+   "termo assinado … · válido até <data>" e explica os 12 meses. Peça a TODOS que assinem de novo (o termo antigo,
+   sem vencimento, continua valendo até a reassinatura).
 
 **Da v0.71.0 para a v0.72.0** (um **SQL novo** — a foto da notícia e o rodízio do acervo — e a publicação das telas;
 **nenhuma função Edge muda, nenhum segredo novo**). Supõe a v0.71.0 instalada:

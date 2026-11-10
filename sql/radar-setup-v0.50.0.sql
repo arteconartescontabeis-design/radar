@@ -10748,19 +10748,43 @@ grant execute on function public.radar_video_criar_avulso(text, jsonb, bigint, b
 alter table public.radar_pessoas add column if not exists cpf text;
 
 -- 2) o texto e a versão do termo, editáveis pelo administrador (sem mexer no código)
+-- v0.73.0: o termo versão 2 (texto do administrador, 10/11/2026): empregador qualificado, anúncios pagos e
+-- impulsionamento, edição pelo Radar e IA, participação voluntária, PRAZO DE 12 MESES (ou fim do vínculo),
+-- revogação pelo e-mail do Atendimento Geral e direitos LGPD. {NOME} e {CPF} são preenchidos pela tela.
 insert into public.radar_config (chave, valor)
-values ('termo_imagem', jsonb_build_object(
-  'versao', 1,
-  'texto',
-  'TERMO DE AUTORIZAÇÃO DE USO DE IMAGEM, VOZ E NOME' || E'\n\n' ||
-  'Eu, {NOME}, inscrito(a) no CPF {CPF}, autorizo a ARTECON ARTES CONTÁBEIS a captar, usar e divulgar a minha ' ||
-  'imagem, voz e nome em fotos e vídeos produzidos para o escritório, nos canais site, Instagram e Facebook da ' ||
-  'Artecon, com a finalidade de comunicação institucional e divulgação de conteúdo informativo.' || E'\n\n' ||
-  'Esta autorização é gratuita e por prazo indeterminado, podendo ser revogada por mim a qualquer tempo, por ' ||
-  'escrito — a revogação não atinge o conteúdo já publicado antes dela.' || E'\n\n' ||
-  'Estou ciente de que os vídeos passam por um corretor automático de vídeo do sistema Radar, que confere a ' ||
-  'gravação com o roteiro antes da publicação, e autorizo esse processamento.' || E'\n\n' ||
-  'Li e concordo com este termo, que assino eletronicamente abaixo.'))
+values ('termo_imagem', jsonb_build_object('versao', 2, 'texto', $termo$TERMO DE AUTORIZAÇÃO DE USO DE IMAGEM, VOZ E NOME
+
+EMPREGADO(A) — {NOME}, inscrito(a) no CPF {CPF}.
+
+EMPREGADORA E CONTROLADORA DOS DADOS — ARTECON ARTES CONTÁBEIS SOCIEDADE SIMPLES, pessoa jurídica de direito privado, inscrita no Cadastro Nacional de Pessoa Jurídica (CNPJ) sob o n.º 79.876.769/0001-28, com sede na Rua Livorno, n.º 15, Sala 101, CEP 88.132-274, Bairro Parque Residencial Pagani, na cidade de Palhoça, no Estado de Santa Catarina, por seu administrador, Cleiver Gonçalves, portador do documento de identidade RG n.º 3.789.248, expedido pela SSP/SC, inscrito no CPF sob o n.º 004.838.919-67 e no Conselho Regional de Contabilidade de Santa Catarina sob o n.º SC-030315/O-8, doravante denominada Artecon.
+
+1. AUTORIZAÇÃO DE USO DE IMAGEM, VOZ E NOME
+
+A autorização prevista nesta cláusula abrange a captação da minha imagem e voz em fotos e vídeos produzidos pela Artecon ou a seu pedido, o uso e a divulgação desses materiais e a identificação pelo meu nome profissional. Os materiais poderão ser utilizados para comunicação institucional, divulgação de conteúdo informativo e publicidade da Artecon e de seus serviços.
+
+A divulgação poderá ocorrer no site oficial e nos perfis oficiais da Artecon no Instagram e no Facebook. Nessas duas redes sociais, a autorização também abrange anúncios pagos, conteúdos patrocinados e publicações impulsionadas, inclusive o reaproveitamento ou impulsionamento de conteúdo já publicado.
+
+Ao assinar este termo, AUTORIZO a captação, o uso e a divulgação da minha imagem e voz e a identificação pelo meu nome profissional, para as finalidades e nos canais indicados nesta cláusula. Se eu não autorizar, basta não assinar — a recusa não gera penalidade, como garante a cláusula 2.
+
+Estou ciente de que as fotos e os vídeos abrangidos por esta autorização poderão ser editados e tratados pela equipe da Artecon ou por prestadores contratados para essa finalidade, inclusive com o auxílio da ferramenta Radar e de ferramentas de inteligência artificial (IA). O tratamento técnico poderá incluir seleção de trechos, cortes, ajustes de áudio e imagem, redução de ruídos, inclusão e correção de legendas e conferência da gravação com o roteiro, desde que sejam preservados o sentido das minhas falas e o contexto da minha participação. Quando necessário à edição, os arquivos poderão ser disponibilizados aos prestadores responsáveis e terceiros contratados, exclusivamente para essa finalidade e conforme as instruções da Artecon.
+
+2. PARTICIPAÇÃO VOLUNTÁRIA, GRATUIDADE E PRAZO
+
+Minha participação nas gravações é facultativa. A recusa ou a revogação de qualquer autorização não acarretará penalidade nem prejuízo ao meu vínculo de emprego, à minha remuneração, às minhas avaliações ou às minhas oportunidades profissionais.
+
+As autorizações concedidas neste termo são gratuitas e vigoram por 12 meses a partir da assinatura ou até o encerramento do vínculo de emprego, o que ocorrer primeiro.
+
+3. REVOGAÇÃO, RETIRADA DOS MATERIAIS E DIREITOS DO TITULAR
+
+Posso revogar esta autorização, total ou parcialmente, a qualquer momento e sem custo, mediante mensagem enviada ao e-mail artecon@artecon.cnt.br. Posso, inclusive, revogar apenas o uso publicitário e manter a autorização para divulgação institucional e informativa.
+
+Encerrada ou revogada a autorização, a Artecon cessará novas publicações e republicações abrangidas pelo encerramento ou pela revogação e desativará os anúncios e impulsionamentos ativos sob seu controle. As publicações abrangidas serão removidas ou despublicadas dos canais sob controle da Artecon em até 15 dias corridos, contados do término da autorização ou do recebimento da solicitação, conforme o caso. Cópias e compartilhamentos realizados por terceiros podem permanecer fora do controle da Artecon.
+
+Pelo mesmo canal, posso solicitar confirmação e acesso aos dados tratados, correção, informações sobre compartilhamento e eliminação dos dados tratados com base no meu consentimento, observadas as hipóteses legais de conservação, bem como exercer os demais direitos previstos no art. 18 da Lei Geral de Proteção de Dados Pessoais.
+
+Palhoça, SC, na data da assinatura eletrônica registrada pelo sistema — que guarda, como prova, o CPF, a imagem da assinatura, a data e a hora e o texto exato deste termo.
+
+Li e concordo com este termo, que assino eletronicamente.$termo$))
 on conflict (chave) do nothing;
 
 -- 3) o histórico das assinaturas (uma linha por assinatura; nunca se apaga — é prova)
@@ -10819,7 +10843,8 @@ begin
     termo_corretor_em = public.radar_pauta_hoje(),   -- o termo único cobre também o corretor de vídeo
     termo_canais = v_canais,
     termo_usos = v_usos,
-    termo_valido_ate = null,
+    -- v0.73.0: o termo vale por 12 meses a partir da assinatura (cláusula 2 do termo versão 2)
+    termo_valido_ate = (public.radar_pauta_hoje() + interval '12 months')::date,
     termo_revogado_em = null,
     atualizado_em = now()
   where id = p_pessoa;
