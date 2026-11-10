@@ -1,4 +1,4 @@
-# Radar Artecon — v0.74.0
+# Radar Artecon — v0.75.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,16 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.75.0 melhora a **gravação e o planejamento dos reels**. **Câmera menos fechada**: a lista "Câmera" do
+teleprompter mostra só as **frontais**, com nome amigável ("Frontal 1", "Frontal 2 — grande-angular"); o zoom mínimo
+é aplicado dos dois jeitos que os navegadores aceitam e, sem escolha lembrada, a tela troca sozinha para a frontal
+**grande-angular** quando o aparelho a nomeia. **Um reel por dia útil**: ao criar a peça de reel da notícia, o dia no
+fim de semana ou já com reel recebe a oferta do **próximo dia útil livre** (segunda a sexta) — manter o dia e ficar
+com 2 reels continua possível. **"Relatórios dos reels"** na Pauta: um clique baixa o **Excel** (data, quem grava e
+título, separado por **setor** — a área de quem grava) e o **Word** (o roteiro completo de cada reel), dos reels
+agendados de hoje em diante, montados na própria tela (sem biblioteca). **Nada muda no banco nem nas funções**.
+Veja "Da v0.74.0 para a v0.75.0".
 
 A v0.74.0 melhora a **gravação dos reels** em três frentes. **A tomada não some mais**: cada gravação do
 teleprompter fica guardada no aparelho (IndexedDB) — sair da tela ou recarregar não perde nada, a lista de clipes
@@ -3186,6 +3196,16 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.74.0 para a v0.75.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
+v0.74.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+2. Conferência: no teleprompter, a lista "Câmera" mostra só as frontais ("Frontal 1", "Frontal 2 — grande-angular"
+   quando houver) e a imagem abre no ângulo mais aberto; numa notícia aprovada, "Criar peça de reel na Pauta" num
+   sábado (ou num dia que já tem reel) oferece o próximo dia útil livre; na Pauta (ferramentas, embaixo da semana),
+   "Relatórios dos reels" baixa o `reels-agendados-<data>.xlsx` (separado por setor) e o `reels-roteiros-<data>.docx`
+   (os roteiros completos). Os relatórios têm nomes da equipe: não compartilhe fora do escritório.
 
 **Da v0.73.0 para a v0.74.0** (um **SQL novo** — o Enviar mesmo assim —, o **Deploy da radar-video** e a publicação
 das telas; **nenhum segredo novo**). Supõe a v0.73.0 instalada:

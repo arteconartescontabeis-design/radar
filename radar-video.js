@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.74.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.75.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -614,11 +614,15 @@ async function prepararQuadroTele(){
   try{ if(TELE.recorte){ TELE.recorte.vivo = false; if(TELE.recorte.relogio) cancelAnimationFrame(TELE.recorte.relogio);
     TELE.recorte.fluxo.getTracks().forEach(t => t.stop()); TELE.recorte.fonte.srcObject = null; TELE.recorte = null; } }catch(e){ /* sem recorte */ }
   const faixa = TELE.fluxo.getVideoTracks()[0];
-  // v0.74.0: o ÂNGULO MAIS ABERTO que a câmera oferecer — o zoom vai ao mínimo quando o aparelho expõe o controle
+  // v0.74.0: o ÂNGULO MAIS ABERTO que a câmera oferecer — o zoom vai ao mínimo quando o aparelho expõe o controle.
+  // v0.75.0: dos dois jeitos que os navegadores aceitam (alguns aparelhos ignoram o "advanced")
   try{
     const cap = faixa?.getCapabilities?.(), d0 = faixa?.getSettings?.() || {};
-    if(cap?.zoom && typeof cap.zoom.min === "number" && (d0.zoom === undefined || d0.zoom > cap.zoom.min))
-      await faixa.applyConstraints({advanced:[{zoom:cap.zoom.min}]});
+    if(cap?.zoom && typeof cap.zoom.min === "number" && (d0.zoom === undefined || d0.zoom > cap.zoom.min)){
+      try{ await faixa.applyConstraints({advanced:[{zoom:cap.zoom.min}]}); }catch(e){ /* tenta do outro jeito */ }
+      const d1 = faixa?.getSettings?.() || {};
+      if(d1.zoom === undefined || d1.zoom > cap.zoom.min) await faixa.applyConstraints({zoom:cap.zoom.min});
+    }
   }catch(e){ /* a câmera não deixa mexer no zoom: fica como está */ }
   const d = faixa?.getSettings?.() || {};
   // v0.68.0: alguns celulares entregam a câmera DEITADA ao navegador mesmo com o aparelho em pé (a gravação era
@@ -635,16 +639,27 @@ async function prepararQuadroTele(){
       $("#tele-aviso").textContent = "A câmera está DEITADA (horizontal): o corretor recusa. Grave pelo celular em pé, ou use o teleprompter só para ler.";
   }
 }
-/* v0.74.0: a lista de câmeras (a frontal grande-angular, quando o aparelho oferece) — como a de microfones */
+/* v0.74.0: a lista de câmeras — como a de microfones. v0.75.0: SÓ AS FRONTAIS (a traseira não serve para ler o
+   teleprompter), com nome amigável ("Frontal 1", "Frontal 2 — grande-angular"); sem câmera lembrada, a tela troca
+   sozinha para a grande-angular quando o aparelho diz qual é (o ângulo mais aberto a 1,5 m). */
+const camTraseira = d => /\b(back|rear|tras|environment)\b|traseira/i.test(d.label || "");
+const camAberta   = d => /ultra|wide|grande|0[.,]5/i.test(d.label || "") && !/telephoto|tele\b/i.test(d.label || "");
 async function popularCamsTele(){
   const sel = $("#tele-cam"); if(!sel || !navigator.mediaDevices?.enumerateDevices) return;
   try{
-    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    const todas = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    const frontais = todas.filter(d => !camTraseira(d));
+    const cams = frontais.length ? frontais : todas;                      // sem rótulo que diga o lado: ficam todas
     const linha = sel.closest(".tele-cam-linha");
     if(cams.length < 2){ linha?.setAttribute("hidden", ""); return; }
     const atual = TELE?.fluxo?.getVideoTracks?.()[0]?.getSettings?.().deviceId || "";
-    sel.innerHTML = cams.map((d, i) => `<option value="${h(d.deviceId)}"${d.deviceId === atual ? " selected" : ""}>${h(d.label || ("Câmera " + (i + 1)))}</option>`).join("");
+    sel.innerHTML = cams.map((d, i) => `<option value="${h(d.deviceId)}"${d.deviceId === atual ? " selected" : ""} title="${h(d.label || "")}">` +
+      `Frontal ${i + 1}${camAberta(d) ? " — grande-angular" : ""}</option>`).join("");
     linha?.removeAttribute("hidden");
+    // sem escolha lembrada, a grande-angular vira a câmera da gravação (dá para voltar pela lista)
+    const lembrada = (() => { try{ return localStorage.getItem("radar_tele_cam") || ""; }catch(e){ return ""; } })();
+    const aberta = cams.find(camAberta);
+    if(!lembrada && aberta && aberta.deviceId && aberta.deviceId !== atual){ sel.value = aberta.deviceId; await trocarCamTele(); }
   }catch(e){ /* sem lista de câmeras: fica a aberta */ }
 }
 async function trocarCamTele(){

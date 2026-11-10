@@ -385,14 +385,22 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.74.0"
+    assert pagina.inner_text(".versao") == "v0.75.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.74.0: a entrada do topo é a da versão em uso (tomada guardada, ângulo e enviar mesmo assim) e conta ao dono, em 2 itens
+    # v0.75.0: a entrada do topo é a da versão em uso (câmera só frontal, reel por dia útil e os relatórios) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.74.0" and data == "10/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.75.0" and data == "10/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["CÂMERA MENOS FECHADA", "SÓ AS FRONTAIS", "UM REEL POR DIA ÚTIL", "RELATÓRIOS DOS REELS",
+                   "SEPARADO POR SETOR", "Da v0.74.0 para a v0.75.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.74.0: a entrada seguinte (tomada guardada, ângulo e enviar mesmo assim) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.74.0")')
+    assert topo == "0.74.0" and data == "10/11/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["TOMADA NÃO SOME MAIS", "▶ ASSISTIR", "ÂNGULO MAIS ABERTO", "ENVIAR MESMO ASSIM",
                    "radar-video-assumir-v0.74.0.sql", "Da v0.73.0 para a v0.74.0"]:
@@ -2351,7 +2359,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.74.0"]       # v0.74.0: a gravação dos reels; a exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.75.0"]       # v0.75.0: câmera, reel por dia útil e relatórios; a exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3232,7 +3240,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.74.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.75.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -6919,6 +6927,58 @@ def test_pauta_csv_do_excel_com_colunas_vazias_no_fim(pagina, limpo, tmp_path):
     pagina.wait_for_selector("#pauta-previa .pauta-erros")
     assert pagina.inner_text("#pauta-previa .pauta-erros") == "Linha 3: tem 10 coluna(s), e o calendário tem 9 (confira o separador e as aspas)."
 
+def test_pauta_relatorios_dos_reels(pagina, limpo):
+    """v0.75.0: "Relatórios dos reels" (Pauta → ferramentas) baixa o Excel (data, quem grava e título, separado por
+    setor — a área de quem grava; "A definir" sem pessoa) e o Word (o roteiro completo de cada reel), dos reels de
+    hoje em diante; a peça que não é reel fica de fora. Os arquivos saem válidos (zip íntegro, conteúdo certo)."""
+    ana = nova_pessoa(limpo, "Ana Teste", "Ana")
+    peca_db(limpo, "2027-01-13", "reel", "reel", assunto="Reel do teste de relatório", pessoas=[ana],
+            roteiro="0–10 s — Fala: primeira linha do roteiro de teste.")
+    peca_db(limpo, "2027-01-14", "reel", "reel", assunto="Reel sem pessoa marcada")
+    peca_db(limpo, "2027-01-15", "bastidor", "foto", assunto="Não é reel: fica de fora")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_pauta(pagina)
+    baixados = []
+    pagina.on("download", baixados.append)
+    pagina.click("[data-acao=pauta-relatorios-reels]")
+    pagina.wait_for_selector('#recado:has-text("2 reel(s) em 2 setor(es)")')
+    for _ in range(100):                                         # os dois downloads chegam logo depois do recado
+        if len(baixados) == 2:
+            break
+        pagina.wait_for_timeout(50)
+    assert sorted(d.suggested_filename.split("-20")[0] for d in baixados) == ["reels-agendados", "reels-roteiros"]
+    import zipfile
+    for d in baixados:
+        with zipfile.ZipFile(d.path()) as z:
+            assert z.testzip() is None, d.suggested_filename
+            if d.suggested_filename.endswith(".xlsx"):
+                s = z.read("xl/worksheets/sheet1.xml").decode()
+                assert "Reel do teste de relatório" in s and "13/01/2027 (qua)" in s and "Ana" in s
+                assert "Setor: Departamento Pessoal" in s and "Setor: A definir" in s     # separado por setor
+            else:
+                assert d.suggested_filename.endswith(".docx"), d.suggested_filename
+                s = z.read("word/document.xml").decode()
+                assert "primeira linha do roteiro de teste" in s and "Quem grava: Ana" in s
+                assert "(peça ainda sem roteiro)" in s                                     # o reel sem roteiro avisa
+            assert "Não é reel" not in s                                                   # só os reels entram
+
+
+def test_tele_filtra_cameras_frontais(pagina):
+    """v0.75.0: a lista de câmeras do teleprompter descarta as traseiras e aponta a grande-angular pelos rótulos
+    que os aparelhos dão (Android: "camera2 N, facing back/front"; iPhone: "Câmera Traseira/Frontal", "Ultra Wide")."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    assert pagina.evaluate("camTraseira({label: 'camera2 0, facing back'})") is True
+    assert pagina.evaluate("camTraseira({label: 'Câmera Traseira'})") is True
+    assert pagina.evaluate("camTraseira({label: 'camera2 1, facing front'})") is False
+    assert pagina.evaluate("camTraseira({label: ''})") is False                      # sem rótulo, fica na lista
+    assert pagina.evaluate("camAberta({label: 'Front Ultra Wide Camera'})") is True
+    assert pagina.evaluate("camAberta({label: 'Frontal grande-angular'})") is True
+    assert pagina.evaluate("camAberta({label: 'Front Camera'})") is False
+    assert pagina.evaluate("camAberta({label: 'Back Telephoto Camera'})") is False   # a tele não é a aberta
+
+
 def test_pauta_leitor_ve_sem_botoes_e_sem_pessoas(pagina, limpo):
     """v0.21.0: o leitor vê a Pauta e abre a peça só para ler: sem importar, sem Pessoas e termos, sem fotos a enviar, sem os nomes
     das pessoas cadastradas e sem os selos dos termos (ele não lê radar_pessoas). O editor vê a pessoa com o selo do termo."""
@@ -6931,6 +6991,7 @@ def test_pauta_leitor_ve_sem_botoes_e_sem_pessoas(pagina, limpo):
     cartao = pagina.locator(f".pauta-dia[data-peca='{pid}']")
     assert "Série Quem cuida" in cartao.inner_text() and cartao.locator(".pauta-pessoas").count() == 0 and "termo" not in cartao.inner_text()
     assert pagina.locator("#pauta-csv").count() == 0 and pagina.locator("[data-acao=pauta-pessoas]").count() == 0
+    assert pagina.locator("[data-acao=pauta-relatorios-reels]").count() == 0               # v0.75.0: os relatórios também são da equipe
     assert pagina.locator("#pauta-prontas, #pauta-falhas, #agenda-desligada").count() == 0          # o quadro do administrador
     assert pagina.locator("[data-acao=pauta-nova]").count() == 0                                     # v0.28.0: “+ Nova peça”, só o administrador
     cartao.locator("[data-acao=abrir-peca]").click()
@@ -7614,7 +7675,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.74.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.75.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10871,7 +10932,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.74.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.75.0"', 'const VIDEO_VERSAO = "0.21.9"')
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")

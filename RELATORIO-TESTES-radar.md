@@ -1,4 +1,17 @@
-# Radar Artecon — Relatório de testes (v0.74.0)
+# Radar Artecon — Relatório de testes (v0.75.0)
+
+**v0.75.0 — Reels: câmera só frontal (menos zoom), um reel por dia útil e os Relatórios dos reels (só a tela)**
+(10/11/2026): pedidos do dono. (1) `popularCamsTele` filtra as traseiras (`camTraseira`, pelos rótulos
+back/rear/traseira/environment), nomeia "Frontal N" (com "— grande-angular" via `camAberta`: ultra/wide/0,5) e, sem
+câmera lembrada, troca sozinha para a grande-angular; `prepararQuadroTele` aplica o zoom mínimo também sem o
+`advanced` (aparelhos que o ignoram). (2) A ação `reel-pauta` confere fim de semana e dia que já tem reel
+(radar_pauta_pecas, formato=reel, situacao≠cancelada, data≥hoje) e oferece o próximo dia útil livre num confirm —
+manter o dia continua possível (2 reels no dia). (3) "Relatórios dos reels" (Pauta → ferramentas): `relatoriosDosReels`
+monta na tela, sem biblioteca, o `.xlsx` (zip armazenado + SpreadsheetML com inlineStr; data, quem grava e título,
+agrupado por setor = área de quem grava, "A definir" sem pessoa) e o `.docx` (WordprocessingML; roteiro completo por
+reel). Os geradores foram validados fora do navegador: zip íntegro (CRC conferido), XML válidos e os arquivos abertos
+por openpyxl e python-docx com o conteúdo certo (acentos e &/<>" escapados). Nada muda no banco: corretor (57),
+banco (331) e repositório (22) **verdes nesta sessão**; telas atualizadas (não rodaram aqui, sem `postgrest`).
 
 **v0.74.0 — Gravação dos reels: tomada guardada no aparelho, ângulo mais aberto e Enviar mesmo assim (banco + função + tela)**
 (10/11/2026): pedidos do dono. (1) Tomadas do teleprompter em IndexedDB (`guardarTomada`/`restaurarTomadas`):

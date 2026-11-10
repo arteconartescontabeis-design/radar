@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.74.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.75.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -331,7 +331,9 @@ async function telaSemana(){
       <button class="btn peq sec" type="button" data-acao="pauta-semana" data-passo="1">Próxima semana →</button>
       <b id="pauta-semana-titulo">Semana de ${seg.slice(8, 10)}/${seg.slice(5, 7)} a ${dom.slice(8, 10)}/${dom.slice(5, 7)}/${dom.slice(0, 4)}</b></div>
     <div class="pauta-semana">${Array.from({length:7}, (_, i) => cartao(somarDias(seg, i))).join("")}</div>
-    ${ed ? `<div class="painel pauta-ferramentas"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-pessoas">Pessoas e termos</button></div>
+    ${ed ? `<div class="painel pauta-ferramentas"><div class="acoes" style="margin:0"><button class="btn sec" type="button" data-acao="pauta-pessoas">Pessoas e termos</button>
+      <button class="btn sec" type="button" data-acao="pauta-relatorios-reels">Relatórios dos reels</button></div>
+      <p class="sub" style="margin:4px 0 0">Relatórios dos reels: baixa o Excel (data, quem grava e título, separado por setor) e o Word (o roteiro completo de cada reel), dos reels agendados de hoje em diante. Eles têm nomes da equipe: não compartilhe fora do escritório.</p>
       <label for="pauta-csv">Importar o calendário (CSV)</label><input id="pauta-csv" type="file" accept=".csv,text/csv" data-csv-pauta>
       <p class="sub" style="margin:4px 0 0">O CSV do plano de publicações, com as colunas data;dia;semana;tipo;formato;assunto;quem_aparece;objetivo;observacao. A tela confere o arquivo inteiro e mostra o que muda antes de gravar. Ele tem nomes da equipe: nunca vai para o GitHub.</p></div>` : ""}`;
 }
@@ -1383,10 +1385,115 @@ async function assinarTermo(idPessoa){
   };
 }
 
+/* ------------------------------------------------- relatórios dos reels (v0.75.0) */
+/* "Relatórios dos reels": o Excel (data, setor, quem grava e título — separado por setor) e o Word (o roteiro completo
+   de cada reel), dos reels agendados de hoje em diante (a cancelada fica de fora). Os arquivos são montados aqui mesmo,
+   sem biblioteca: um zip "armazenado" (sem compressão) com os XML mínimos que o Excel e o Word abrem. */
+const CRC_TABELA = (() => { const t = new Uint32Array(256);
+  for(let n = 0; n < 256; n++){ let c = n; for(let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t; })();
+const crc32De = b => { let c = 0xFFFFFFFF;
+  for(let i = 0; i < b.length; i++) c = CRC_TABELA[(c ^ b[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0; };
+/* o zip sem compressão: cabeçalho local + central + fim (nomes em UTF-8; a data fica zerada, não importa aos leitores) */
+function zipArmazenado(arquivos){
+  const enc = new TextEncoder(), locais = [], centrais = [];
+  let base = 0;
+  const u16 = x => [x & 255, (x >> 8) & 255], u32 = x => [x & 255, (x >> 8) & 255, (x >> 16) & 255, (x >>> 24) & 255];
+  for(const a of arquivos){
+    const nome = enc.encode(a.nome), dados = enc.encode(a.texto), crc = crc32De(dados);
+    locais.push(Uint8Array.from([0x50, 0x4B, 3, 4, ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0),
+      ...u32(crc), ...u32(dados.length), ...u32(dados.length), ...u16(nome.length), ...u16(0)]), nome, dados);
+    centrais.push(Uint8Array.from([0x50, 0x4B, 1, 2, ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0),
+      ...u32(crc), ...u32(dados.length), ...u32(dados.length), ...u16(nome.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
+      ...u32(0), ...u32(base)]), nome);
+    base += 30 + nome.length + dados.length;
+  }
+  const tamCentral = centrais.reduce((s, x) => s + x.length, 0);
+  const fim = Uint8Array.from([0x50, 0x4B, 5, 6, ...u16(0), ...u16(0), ...u16(arquivos.length), ...u16(arquivos.length),
+    ...u32(tamCentral), ...u32(base), ...u16(0)]);
+  return new Blob([...locais, ...centrais, fim], {type:"application/zip"});
+}
+const xml = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ");
+const RELS_RAIZ = tipo => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="${tipo}"/></Relationships>`;
+/* o .xlsx: uma planilha, células de texto (inlineStr), separadas por setor (linha do setor, cabeçalho e as linhas dele) */
+function xlsxReels(grupos){
+  const cel = t => `<c t="inlineStr"><is><t xml:space="preserve">${xml(t)}</t></is></c>`;
+  const linha = cs => `<row>${cs.map(cel).join("")}</row>`;
+  const linhas = [];
+  for(const g of grupos){
+    linhas.push(linha([`Setor: ${g.setor}`]), linha(["Data", "Quem grava", "Título"]));
+    for(const r of g.reels) linhas.push(linha([r.data, r.quem, r.titulo]));
+    linhas.push("<row/>");
+  }
+  const planilha = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="30" customWidth="1"/><col min="3" max="3" width="80" customWidth="1"/></cols><sheetData>${linhas.join("")}</sheetData></worksheet>`;
+  return zipArmazenado([
+    {nome:"[Content_Types].xml", texto:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`},
+    {nome:"_rels/.rels", texto:RELS_RAIZ("xl/workbook.xml")},
+    {nome:"xl/workbook.xml", texto:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Reels" sheetId="1" r:id="rId1"/></sheets></workbook>`},
+    {nome:"xl/_rels/workbook.xml.rels", texto:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`},
+    {nome:"xl/worksheets/sheet1.xml", texto:planilha}]);
+}
+/* o .docx: título, e para cada setor um cabeçalho e cada reel com a linha de identificação e o roteiro completo */
+function docxReels(grupos, titulo){
+  const par = t => `<w:p><w:r><w:t xml:space="preserve">${xml(t)}</w:t></w:r></w:p>`;
+  const forte = (t, tam) => `<w:p><w:r><w:rPr><w:b/><w:sz w:val="${tam}"/></w:rPr><w:t xml:space="preserve">${xml(t)}</w:t></w:r></w:p>`;
+  const corpo = [forte(titulo, 36)];
+  for(const g of grupos){
+    corpo.push("<w:p/>", forte(`Setor: ${g.setor}`, 30));
+    for(const r of g.reels){
+      corpo.push("<w:p/>", forte(`${r.data} — ${r.titulo}`, 24), par(`Quem grava: ${r.quem}`));
+      for(const l of String(r.roteiro || "(peça ainda sem roteiro)").split(/\r?\n/)) corpo.push(par(l));
+    }
+  }
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${corpo.join("")}</w:body></w:document>`;
+  return zipArmazenado([
+    {nome:"[Content_Types].xml", texto:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`},
+    {nome:"_rels/.rels", texto:RELS_RAIZ("word/document.xml")},
+    {nome:"word/document.xml", texto:doc}]);
+}
+function baixarRelatorio(blob, nome){
+  const u = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = u; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 60_000);
+}
+async function relatoriosDosReels(){
+  const hoje = hojeBrasilia();
+  const [reels, pessoas] = await Promise.all([
+    ler("radar_pauta_pecas", {select:"id,data,assunto,quem_aparece,pessoas,roteiro", formato:"eq.reel",
+      situacao:"neq.cancelada", data:"gte." + hoje, order:"data,id"}),
+    ler("radar_pessoas", {select:"id,nome_na_peca,area"})]);
+  if(!reels.length){ recado("Não há reel agendado de hoje em diante: nada para o relatório.", "aviso"); return; }
+  const porId = Object.fromEntries(pessoas.map(x => [x.id, x]));
+  const dataRel = d => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)} (${DIAS_CURTOS[new Date(d + "T12:00:00Z").getUTCDay()]})`;
+  const linhas = reels.map(p => {
+    const marcadas = (p.pessoas || []).map(id => porId[id]).filter(Boolean);
+    return {data: dataRel(p.data),
+      setor: String(marcadas[0]?.area || "").trim() || "A definir",
+      quem: marcadas.length ? marcadas.map(x => x.nome_na_peca).join(", ") : String(p.quem_aparece || "").trim() || "A definir",
+      titulo: String(p.assunto || "").replace(/\s+/g, " ").trim(), roteiro: p.roteiro};
+  });
+  const ordem = [...Object.keys(AREAS_PESSOA), "A definir"];
+  const grupos = [...new Set(linhas.map(l => l.setor))]
+    .sort((a, b) => (ordem.indexOf(a) + 1 || 99) - (ordem.indexOf(b) + 1 || 99) || a.localeCompare(b, "pt-BR"))
+    .map(setor => ({setor, reels: linhas.filter(l => l.setor === setor)}));
+  baixarRelatorio(xlsxReels(grupos), `reels-agendados-${hoje}.xlsx`);
+  baixarRelatorio(docxReels(grupos, `Roteiros dos reels agendados — ${dataRel(hoje)}`), `reels-roteiros-${hoje}.docx`);
+  recado(`${linhas.length} reel(s) em ${grupos.length} setor(es): o Excel (lista) e o Word (roteiros) foram baixados.`);
+}
+
 /* ------------------------------------------------- ações e formulários (o index.html junta) */
 const PAUTA = {
   // não gravam nada: navegação e mudanças só na tela (o que grava é feito uma ação por vez)
-  navegacao:["pauta-semana", "abrir-peca", "pauta-pessoas", "pauta-importar-cancelar", "peca-conf-linha", "peca-conf-remover",
+  navegacao:["pauta-semana", "abrir-peca", "pauta-pessoas", "pauta-relatorios-reels", "pauta-importar-cancelar", "peca-conf-linha", "peca-conf-remover",
              "peca-cartao-linha", "peca-cartao-remover", "peca-agenda", "peca-completar-legenda", "peca-baixar", "peca-copiar-legenda", "peca-copiar-roteiro",
              "peca-usar-ia", "pauta-nova", "pauta-nova-cancelar"],
   acoes:{
@@ -1394,6 +1501,8 @@ const PAUTA = {
       E.pauta.semana = passo ? somarDias(base, 7 * passo) : segundaDe(hojeBrasilia()); E.pauta.nova = null; return desenhar(); },
     "abrir-peca"(el){ E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },
     "pauta-pessoas"(){ E.pauta.vista = "pessoas"; E.pauta.peca = null; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },
+    // v0.75.0: os dois relatórios dos reels agendados (Excel e Word), baixados na hora
+    "pauta-relatorios-reels"(){ return relatoriosDosReels(); },
     // v0.28.0: "+ Nova peça" abre o formulário no próprio dia (um de cada vez); Cancelar fecha sem gravar. A prévia da importação aberta
     // fecha: o efeito de cada linha foi calculado antes da peça nova (o dia dela diria "nova" e "Gravar" trocaria o que foi digitado)
     "pauta-nova"(el){ const previa = !!E.pauta.previa; E.pauta.nova = el.dataset.dia; E.pauta.previa = null;
