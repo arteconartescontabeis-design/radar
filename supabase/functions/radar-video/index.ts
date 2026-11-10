@@ -392,8 +392,9 @@ async function envioIniciar(sessao: string, p: any) {
     p_peca: p?.peca ?? null, p_partes: partes, p_fala_pessoa: p?.fala_pessoa ?? null, p_fala_roteiro: p?.fala_roteiro ?? null,
     p_cartela: Array.isArray(p?.cartela) ? p.cartela : null, p_gancho: p?.gancho === true, p_declaracoes: Array.isArray(p?.declaracoes) ? p.declaracoes : null,
     p_duracao: p?.duracao !== null && p?.duracao !== undefined && Number.isFinite(duracao) && duracao > 0 && duracao <= 3600 ? duracao : null,
-    // v0.74.0: "Enviar mesmo assim" — o banco exige o administrador e registra quem assumiu
-    p_assumir: p?.assumir === true,
+    // v0.74.0: "Enviar mesmo assim" — o banco exige o administrador e registra quem assumiu.
+    // Só vai no corpo quando pedido: assim o envio comum funciona mesmo antes de o banco ganhar o parâmetro.
+    ...(p?.assumir === true ? { p_assumir: true } : {}),
   });
   const id = uuid(r?.id);                                    // o banco conferiu os clipes: de 1 a 12, na ordem
   const envios = [];
