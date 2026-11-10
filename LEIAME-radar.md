@@ -1,4 +1,4 @@
-# Radar Artecon — v0.75.0
+# Radar Artecon — v0.76.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,14 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.76.0 traz a **legenda progressiva (karaokê)** nos reels: a frase continua na caixa embaixo, nas cores da
+Artecon, mas cada palavra **acende na cor do texto no instante em que é dita** — antes disso espera na cor apagada
+(`COR_ESPERA` da paleta). Quem grava é o corretor (`robo/video/legenda.py`: um `{\k}` por palavra, com os tempos que
+o alinhamento já dava; o gancho segue aceso do início ao fim). Nada muda no banco, nas funções Edge, no editor de
+legenda nem nos tamanhos/posições/cores da aba Vídeo. **O robô roda por commit fixo**: depois de publicar, troque a
+variável `RADAR_VIDEO_COMMIT` do repositório privado radar-video pelo SHA desta versão. Veja "Da v0.75.0 para a
+v0.76.0".
 
 A v0.75.0 melhora a **gravação e o planejamento dos reels**. **Câmera menos fechada**: a lista "Câmera" do
 teleprompter mostra só as **frontais**, com nome amigável ("Frontal 1", "Frontal 2 — grande-angular"); o zoom mínimo
@@ -3196,6 +3204,16 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.75.0 para a v0.76.0** (só o robô do corretor e as telas — **nada no banco, nenhuma função Edge, nenhum
+segredo novo**; o robô roda por **commit fixo**). Supõe a v0.75.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+2. No repositório privado **radar-video** (GitHub → Settings → Secrets and variables → Actions → **Variables**),
+   troque **`RADAR_VIDEO_COMMIT`** pelo SHA (40 caracteres) do commit desta versão no repositório público. Sem a
+   troca, o corretor continua gravando a legenda do jeito antigo.
+3. Conferência: envie uma gravação nova (ou "Montar de novo" na aba Vídeo de um reel já corrigido) — na prévia, a
+   legenda aparece inteira na caixa e cada palavra acende quando é dita; os reels corrigidos antes não mudam.
 
 **Da v0.74.0 para a v0.75.0** (só as telas — **nada no banco, nenhuma função Edge, nenhum segredo novo**). Supõe a
 v0.74.0 instalada:

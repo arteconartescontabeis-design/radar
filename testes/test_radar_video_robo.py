@@ -435,7 +435,7 @@ def test_legenda_e_gancho_na_area_livre_com_a_dm_sans(pastas):
     assert info["blocos"] == len(eventos) >= 5 and "\\an8" not in ass and "{\\an" not in ass        # o texto não vira comando do ASS
     assert any("Simples\\hNacional" in e for e in eventos)                                     # termo do glossário inteiro
     for e in eventos:
-        e = re.sub(r"^\{\\fs\d+\}", "", e)
+        e = re.sub(r"\{\\(fs|k)\d+\}", "", e)                                                  # v0.45.0: fora os tempos do karaokê
         assert len(e.split("\\N")) <= 2 and all(len(l.replace("\\h", " ")) <= 24 for l in e.split("\\N")) or "ANTICONST" in e
     blocos = legenda.blocos(palavras, GLOSSARIO)
     assert all(b["fim"] - b["ini"] <= 3.2 + 0.6 for b in blocos) and blocos[-1]["fim"] == pytest.approx(palavras[-1]["fim"])
@@ -668,7 +668,8 @@ def test_legenda_tamanho_posicao_e_cor_na_area_livre(pastas):
         legenda.gravar(pastas.sai / f"padrao-{estilo}.ass", palavras, GLOSSARIO, estilo, gancho, aparencia=legenda.aparencia({}))
         antes = (pastas.sai / f"antes-{estilo}.ass").read_text(encoding="utf-8")
         assert antes == (pastas.sai / f"padrao-{estilo}.ass").read_text(encoding="utf-8")
-        assert f"Style: Fala,DM Sans,{fonte},&H00FFFFFF,&H00FFFFFF,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,100,100,700,1" in antes
+        # v0.45.0: o SecondaryColour da Fala é a cor de espera do karaokê; o do Gancho segue o texto (sem {\k}, nunca aparece)
+        assert f"Style: Fala,DM Sans,{fonte},&H00FFFFFF,&H00AFA39A,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,100,100,700,1" in antes
         assert "Style: Gancho,DM Sans,64,&H00FFFFFF,&H00FFFFFF,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,100,100,910,1" in antes
     assert legenda.aparencia({"legenda_tamanho": "XG", "legenda_posicao": "lado", "legenda_cor": "roxo"}) == legenda.APARENCIA_PADRAO
     assert legenda.aparencia({"legenda_tamanho": "G", "legenda_posicao": "cima", "legenda_cor": "amarelo"}) == {
@@ -686,11 +687,13 @@ def test_legenda_tamanho_posicao_e_cor_na_area_livre(pastas):
                 ass = (pastas.sai / f"{nome}.ass").read_text(encoding="utf-8")
                 texto_cor, caixa_cor = legenda.CORES[cor]
                 bgr = lambda c: c[4:6] + c[2:4] + c[0:2]
+                # v0.45.0: a Fala espera na COR_ESPERA (karaokê); o Gancho segue na cor do texto
+                assert f"&H00{bgr(texto_cor)},&H00{bgr(legenda.COR_ESPERA[cor])},&H33{bgr(caixa_cor)}," in ass
                 assert f"&H00{bgr(texto_cor)},&H00{bgr(texto_cor)},&H33{bgr(caixa_cor)}," in ass
                 eventos = [l.split(",,0,0,0,,", 1)[1] for l in ass.splitlines() if l.startswith("Dialogue:")]
                 car = legenda.CAR_TAMANHO[estilo][tamanho]
                 for e in eventos:
-                    e = re.sub(r"^\{\\fs\d+\}", "", e)
+                    e = re.sub(r"\{\\(fs|k)\d+\}", "", e)
                     assert all(len(l.replace("\\h", " ")) <= car for l in e.split("\\N")), (nome, e)
                 imgs = _quadros_rgb(pastas, pastas.sai / f"{nome}.ass", t + 0.3, nome)
                 caixas = [c for c in (im.convert("L").point(lambda v: 255 if v > 12 else 0).getbbox() for im in imgs) if c]
@@ -712,6 +715,26 @@ def test_legenda_tamanho_posicao_e_cor_na_area_livre(pastas):
                 if posicao == "meio":
                     meio = [(c[1] + c[3]) / 2 for c in caixas]
                     assert all(abs(m - legenda.CENTRO_MEIO) <= 30 for m in meio), (nome, meio)
+
+
+def test_legenda_karaoke_palavra_acende_quando_e_dita(pastas):
+    """v0.45.0: a legenda progressiva — o bloco inteiro na caixa, a palavra ainda não dita na cor de espera e ACESA na cor do
+    texto no instante em que é dita. Medido nos quadros renderizados (libass): enquanto a 1ª palavra é dita, a 2ª espera (as
+    duas cores na tela); dita a 2ª, a espera some. O .ass leva um {\\k} por palavra, com a folga como sílaba vazia."""
+    palavras = [{"texto": "Primeira", "ini": 0.5, "fim": 1.5}, {"texto": "palavra", "ini": 2.0, "fim": 3.0}]
+    legenda.gravar(pastas.sai / "k.ass", palavras, [], "normal")
+    ass = (pastas.sai / "k.ass").read_text(encoding="utf-8")
+    (evento,) = [l.split(",,0,0,0,,", 1)[1] for l in ass.splitlines() if l.startswith("Dialogue:")]
+    assert evento == "{\\k100}Primeira {\\k50}{\\k100}palavra"       # 1 s dita + 0,5 s de folga (sílaba vazia) + 1 s dita
+    imgs = _quadros_rgb(pastas, pastas.sai / "k.ass", 3.2, "karaoke")
+    branco = (255, 255, 255)
+    espera = tuple(int(legenda.COR_ESPERA["marinho"][i:i + 2], 16) for i in (0, 2, 4))
+    conta = lambda im, cor: sum(n for n, c in im.getcolors(1 << 22) if all(abs(a - b) <= 16 for a, b in zip(c, cor)))
+    aos = lambda t: imgs[round(t * 4)]                               # 4 quadros por segundo
+    assert conta(aos(0.75), branco) > 200 and conta(aos(0.75), espera) > 200, "a 1ª acesa e a 2ª esperando"
+    # no fim, a espera praticamente some: sobra só o serrilhado das bordas das letras acesas sobre a caixa
+    assert conta(aos(2.75), branco) > 400 and conta(aos(2.75), espera) < conta(aos(0.75), espera) / 3, "as duas acesas no fim"
+    assert conta(aos(2.75), branco) > conta(aos(0.75), branco), "mais texto aceso depois da 2ª palavra"
 
 
 # a mesma fala do teste "nunca passa de um clipe para o outro": dois clipes, 3 s e 2 s

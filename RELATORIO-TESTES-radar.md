@@ -1,4 +1,16 @@
-# Radar Artecon — Relatório de testes (v0.75.0)
+# Radar Artecon — Relatório de testes (v0.76.0)
+
+**v0.76.0 — Legenda progressiva (karaokê) no corretor de vídeo (só o robô)**
+(10/11/2026): pedido do dono, com os prints do estilo de referência. `robo/video/legenda.py` (v0.45.0 do desenho):
+`arranjar` passa a devolver as unidades por linha (com os tempos), os blocos ganham `linhas_us`, e `_karaoke` monta o
+texto do evento com um `{\k}` por palavra (centésimos a contar do início do bloco; a folga entre palavras vira
+sílaba vazia; palavra sem tempo sai acesa). O SecondaryColour do estilo Fala vira a `COR_ESPERA` da paleta (a cor
+apagada da palavra ainda não dita, uma por cor da Artecon); o Gancho segue com o Secondary igual ao texto (sem
+`{\k}`, nunca aparece). Teste novo `test_legenda_karaoke_palavra_acende_quando_e_dita` MEDINDO os quadros
+renderizados pelo libass: na 1ª palavra dita, as DUAS cores na tela; dita a 2ª, a espera some (sobra só o serrilhado);
+e o evento sai exatamente `{\k100}Primeira {\k50}{\k100}palavra`. Testes antigos ajustados (o `{\k}` sai antes de
+medir as linhas; os Styles com a espera). Suítes do robô (robo + corrigir + alinhar) verdes nesta sessão; banco e
+telas sem mudança. O robô roda por commit fixo: a variável RADAR_VIDEO_COMMIT precisa apontar para esta versão.
 
 **v0.75.0 — Reels: câmera só frontal (menos zoom), um reel por dia útil e os Relatórios dos reels (só a tela)**
 (10/11/2026): pedidos do dono. (1) `popularCamsTele` filtra as traseiras (`camTraseira`, pelos rótulos

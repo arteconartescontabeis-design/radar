@@ -332,7 +332,7 @@ def test_editor_monta_sem_transcrever_com_cortes_capa_estilo_e_cartela_propria(c
     assert len(luz) == len(voz) == 10 and all(abs(a - b) <= 1 for a, b in zip(luz, voz)), (luz, voz)
     assert fim["duracao"] == pytest.approx(estimada, abs=1 / 30 + 0.05)                     # a estimativa (arredondada a 0,1 s) é a real
     ass = (tmp_path / "trabalho" / "sai" / "legenda.ass").read_text(encoding="utf-8")
-    assert "Style: Fala,DM Sans,80,&H00481F01,&H00481F01,&H3300D7FF," in ass and ",8,100,100,300,1" in ass
+    assert "Style: Fala,DM Sans,80,&H00481F01,&H00477A6E,&H3300D7FF," in ass and ",8,100,100,300,1" in ass   # v0.45.0: espera do karaokê
     # a capa: o quadro do "prazo" (o alto branco), sem a legenda
     (tmp_path / "capa.jpg").write_bytes(f.objetos[capa]["dados"])
     from PIL import Image

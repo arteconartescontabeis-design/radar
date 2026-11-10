@@ -1,5 +1,10 @@
 """Radar Artecon — corretor de vídeo (v0.22.0): a legenda gravada e o texto do gancho (ASS, desenhados pelo libass com a DM Sans).
 
+v0.45.0 (a legenda PROGRESSIVA, pedido do dono em 10/11/2026): o bloco inteiro continua na caixa, mas cada palavra ACENDE na cor
+do texto no instante em que é dita; antes disso fica na cor de espera (COR_ESPERA da paleta, o texto desbotado sobre aquela caixa).
+É o karaokê do ASS ({\\k} por palavra, com a folga entre palavras como sílaba vazia; SecondaryColour = espera), com os tempos que o
+alinhamento já dava. O gancho não tem {\\k} e continua aceso do início ao fim. Nada muda nos blocos, nas medidas ou na área livre.
+
 A legenda só tem palavra que foi dita, no tempo em que foi dita (o texto de cada palavra vem do alinhamento: a grafia do roteiro nos
 trechos alinhados). Formato (desenho 4.1, item 7):
   * `Fala`: DM Sans 70 (negrito), branca sobre caixa marinho #011F48 (20% transparente), embaixo e no centro, com a base em y=1220. A
@@ -44,6 +49,9 @@ ESTILOS = {"normal": {"fonte": 70, "linhas": 2, "car": 24}, "compacta": {"fonte"
 # v0.33.0: a aparência (a aba Vídeo). A paleta é a de radar_video_paleta() (texto, caixa: RRGGBB); o 1º de cada um é o padrão
 CORES = {"marinho": ("FFFFFF", "011F48"), "branco": ("011F48", "FFFFFF"), "vermelho": ("FFFFFF", "BC151B"), "azul": ("011F48", "569DCC"),
          "amarelo": ("011F48", "FFD700")}
+# v0.45.0: a legenda PROGRESSIVA (karaokê) — a frase inteira na caixa, a palavra ainda não dita na cor de espera (apagada)
+# e acesa na cor do texto no instante em que é dita. A cor de espera de cada paleta: o texto desbotado sobre aquela caixa.
+COR_ESPERA = {"marinho": "9AA3AF", "branco": "9AA6BB", "vermelho": "E3B3B5", "azul": "2A5E8F", "amarelo": "6E7A47"}
 TAMANHOS = {"P": .85, "M": 1.0, "G": 1.15}
 POSICOES = ("cima", "meio", "baixo")
 # a fonte e os caracteres por linha de cada tamanho (a fonte é a base × o fator, arredondada para um número par de px; os caracteres,
@@ -58,7 +66,8 @@ GANCHO = {"fonte": 64, "linhas": 2, "car": 22, "ate_s": 3.0}
 BLOCO_MAX_S = 3.2
 FRACAS = {"a", "o", "as", "os", "da", "de", "do", "das", "dos", "e", "em", "no", "na", "nos", "nas", "para", "pra", "com", "por",
           "pelo", "pela", "um", "uma", "é", "que", "ao", "aos", "à", "às", "se", "sem", "seu", "sua"}
-_ESTILO = ("Style: {nome},DM Sans,{fonte},&H00{texto},&H00{texto},&H33{caixa},&H66000000,-1,0,0,0,100,100,0,0,3,16,0,{alinhamento},"
+# v0.45.0: o SecondaryColour é a cor de espera do karaokê (a palavra ainda não dita); sem {\k} no texto (o gancho), só o Primary aparece
+_ESTILO = ("Style: {nome},DM Sans,{fonte},&H00{texto},&H00{espera},&H33{caixa},&H66000000,-1,0,0,0,100,100,0,0,3,16,0,{alinhamento},"
            f"{MARGEM_H},{MARGEM_H},{{margem}},1")
 _cache_fontes: dict[int, ImageFont.FreeTypeFont] = {}
 
@@ -143,12 +152,12 @@ def _tam(us: list[dict]) -> int:
     return len(_texto(us).replace("\\h", " "))
 
 
-def arranjar(us: list[dict], linhas: int, car: int, fonte: float) -> list[str] | None:
-    """As linhas de um bloco (até `linhas`, cada uma até `car` caracteres e até a largura entre as margens), as mais equilibradas;
-    None se não couber."""
+def arranjar(us: list[dict], linhas: int, car: int, fonte: float) -> list[list[dict]] | None:
+    """As linhas de um bloco (até `linhas`, cada uma até `car` caracteres e até a largura entre as margens), as mais equilibradas,
+    cada linha como a LISTA de unidades (v0.45.0: o karaokê precisa do tempo de cada palavra); None se não couber."""
     cabe = lambda xs: _tam(xs) <= car and largura(_texto(xs), fonte) <= LARGURA_TEXTO
     if cabe(us):
-        return [_texto(us)]
+        return [us]
     if linhas < 2:
         return None
     melhor = None
@@ -160,7 +169,7 @@ def arranjar(us: list[dict], linhas: int, car: int, fonte: float) -> list[str] |
         custo += 12 if a[-1]["texto"].lower().strip(".,;:!?") in FRACAS else 0
         custo += 12 if len(b) == 1 and (len(b[0]["texto"]) <= 4 or any(c.isdigit() for c in b[0]["texto"])) else 0
         if melhor is None or custo < melhor[0]:
-            melhor = (custo, [_texto(a), _texto(b)])
+            melhor = (custo, [a, b])
     return melhor[1] if melhor else None
 
 
@@ -195,25 +204,52 @@ def blocos(palavras: list[dict], glossario: list[str] = (), estilo: str = "norma
     for k, g in enumerate(grupos):
         fonte = e["fonte"]
         # uma palavra sozinha com mais caracteres que o limite fica, se couber na largura; mais larga que a linha: letra menor, nunca "…"
-        linhas = arranjar(g, e["linhas"], e["car"], fonte) or arranjar(g, e["linhas"], 99, fonte)
-        while linhas is None and fonte > 30:
+        arr = arranjar(g, e["linhas"], e["car"], fonte) or arranjar(g, e["linhas"], 99, fonte)
+        while arr is None and fonte > 30:
             fonte -= 4
-            linhas = arranjar(g, e["linhas"], 99, fonte)
-        if linhas is None:
-            linhas, fonte = [_texto(g)], 30
+            arr = arranjar(g, e["linhas"], 99, fonte)
+        if arr is None:
+            arr, fonte = [g], 30
         prox = grupos[k + 1][0]["ini"] if k + 1 < len(grupos) else None
         fim = (prox if prox - g[-1]["fim"] < 0.6 else g[-1]["fim"] + 0.25) if prox is not None else g[-1]["fim"]
         if prox is not None:
             fim = min(max(fim, g[0]["ini"] + 0.7), prox)
-        out.append({"ini": g[0]["ini"], "fim": fim, "linhas": linhas, "fonte": fonte, "u": g[0].get("u"),
-                    "palavras": sum(len(x["texto"].replace("\\h", " ").split()) for x in g),
+        out.append({"ini": g[0]["ini"], "fim": fim, "linhas": [_texto(x) for x in arr], "linhas_us": arr, "fonte": fonte,
+                    "u": g[0].get("u"), "palavras": sum(len(x["texto"].replace("\\h", " ").split()) for x in g),
                     "perto": sorted({w for x in g for w in x.get("perto") or ()})})
     return out
 
 
 def gancho_linhas(texto: str) -> list[str] | None:
     us = [{"texto": w} for w in limpar(texto).split()]
-    return arranjar(us, GANCHO["linhas"], GANCHO["car"], GANCHO["fonte"]) if us else None
+    arr = arranjar(us, GANCHO["linhas"], GANCHO["car"], GANCHO["fonte"]) if us else None
+    return None if arr is None else [_texto(x) for x in arr]
+
+
+def _karaoke(b: dict) -> str:
+    """v0.45.0: o texto do bloco com o tempo de cada palavra ({\\k…}, em centésimos de segundo, a contar do início do bloco): a
+    palavra espera na cor de espera (SecondaryColour) e ACENDE na cor do texto (PrimaryColour) no instante em que é dita — a
+    legenda progressiva dos reels. A folga entre palavras entra como sílaba vazia ({\\k…} sem texto); palavra sem tempo (o
+    arranjo sem ini/fim, como no gancho) sai acesa desde o início."""
+    fim_cs = max(1, round((b["fim"] - b["ini"]) * 100))
+    partes: list[str] = []
+    consumido = 0
+    for li, us in enumerate(b["linhas_us"]):
+        if li:
+            partes.append("\\N")
+        for j, u in enumerate(us):
+            texto = u["texto"] + ("" if j == len(us) - 1 else " ")
+            if not (isinstance(u.get("ini"), (int, float)) and isinstance(u.get("fim"), (int, float))):
+                partes.append(texto)
+                continue
+            alvo = min(fim_cs, max(0, round((float(u["ini"]) - b["ini"]) * 100)))
+            if alvo > consumido:
+                partes.append(f"{{\\k{alvo - consumido}}}")
+                consumido = alvo
+            dur = max(1, round((float(u["fim"]) - float(u["ini"])) * 100))
+            partes.append(f"{{\\k{dur}}}{texto}")
+            consumido += dur
+    return "".join(partes)
 
 
 def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estilo: str = "normal", gancho: str | None = None,
@@ -228,6 +264,7 @@ def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estil
     medidas = _medidas(estilo, ap)
     pos = _posicoes(medidas, ap)
     texto_cor, caixa_cor = (_bgr(c) for c in CORES[ap["cor"]])
+    espera_cor = _bgr(COR_ESPERA[ap["cor"]])                  # v0.45.0: a palavra ainda não dita (karaokê)
     bs = blocos(palavras, glossario, estilo, ap)
     avisos, eventos = [], []
     g = gancho_linhas(gancho) if gancho else None
@@ -238,14 +275,15 @@ def gravar(destino: Path, palavras: list[dict], glossario: list[str] = (), estil
     padrao = medidas["fonte"]
     for b in bs:
         tag = f"{{\\fs{b['fonte']}}}" if b["fonte"] != padrao else ""
-        eventos.append(f"Dialogue: 0,{_ts(b['ini'])},{_ts(b['fim'])},Fala,,0,0,0,,{tag}" + "\\N".join(b["linhas"]))
+        eventos.append(f"Dialogue: 0,{_ts(b['ini'])},{_ts(b['fim'])},Fala,,0,0,0,,{tag}" + _karaoke(b))
     cab = ("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\nScaledBorderAndShadow: yes\n"
            "YCbCr Matrix: TV.709\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
            "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
            "MarginL, MarginR, MarginV, Encoding\n"
-           + _ESTILO.format(nome="Fala", fonte=padrao, texto=texto_cor, caixa=caixa_cor, alinhamento=pos["fala"][0], margem=pos["fala"][1]) + "\n"
-           + _ESTILO.format(nome="Gancho", fonte=GANCHO["fonte"], texto=texto_cor, caixa=caixa_cor, alinhamento=pos["gancho"][0],
-                            margem=pos["gancho"][1]) + "\n\n"
+           + _ESTILO.format(nome="Fala", fonte=padrao, texto=texto_cor, espera=espera_cor, caixa=caixa_cor,
+                            alinhamento=pos["fala"][0], margem=pos["fala"][1]) + "\n"
+           + _ESTILO.format(nome="Gancho", fonte=GANCHO["fonte"], texto=texto_cor, espera=texto_cor, caixa=caixa_cor,
+                            alinhamento=pos["gancho"][0], margem=pos["gancho"][1]) + "\n\n"
            "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     destino.write_text(cab + "".join(e + "\n" for e in eventos), encoding="utf-8")
     return {"blocos": len(bs), "estilo": estilo, "gancho": bool(g), "avisos": avisos, **ap,
