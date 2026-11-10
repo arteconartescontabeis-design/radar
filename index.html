@@ -268,7 +268,7 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
    o olhar de quem lê cai na lente, não de lado nem para baixo (os botões e o preview descem para baixo do texto) */
 .tele-gravando .tele-janela{order:-1;height:min(56vh,520px)}
 .tele-gravando .tele-rolo{text-align:center;padding:8vh 0 70vh}
-.tele-gravando .tele-ajustes,.tele-gravando .tele-mic-linha{display:none}
+.tele-gravando .tele-ajustes,.tele-gravando .tele-mic-linha,.tele-gravando .tele-cam-linha{display:none}
 .tele-rolo{font-weight:700;line-height:1.35;padding:38vh 0 70vh;will-change:transform}
 .tele-rolo p{margin:0 0 .6em}
 .tele-espelhado{scale:-1 1}
@@ -441,21 +441,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.73.0"></script>
-<script src="radar-video.js?v=0.73.0"></script>
-<script src="radar-setor.js?v=0.73.0"></script>
-<script src="radar-respostas.js?v=0.73.0"></script>
+<script src="radar-pauta.js?v=0.74.0"></script>
+<script src="radar-video.js?v=0.74.0"></script>
+<script src="radar-setor.js?v=0.74.0"></script>
+<script src="radar-respostas.js?v=0.74.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.73.0";
+const VERSAO = "0.74.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.45.0";      // versão da função radar-redes que este painel exige (v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.74.0", "10/11/2026", [
+    "GRAVAÇÃO DOS REELS em três melhorias: 1) a TOMADA NÃO SOME MAIS — cada gravação do teleprompter fica GUARDADA NO APARELHO; sair da tela, trocar de aplicativo ou recarregar não perde nada: a lista de clipes volta como estava, agora com o botão “▶ ASSISTIR” em cada clipe (a guarda sai sozinha no envio concluído, como o termo pede, ou no Tirar). 2) ÂNGULO MAIS ABERTO: o teleprompter abre a câmera no zoom mais aberto que o aparelho deixar e ganhou o seletor “CÂMERA” (como o de microfone) para escolher a frontal grande-angular, quando houver — a escolha fica lembrada. 3) ENVIAR MESMO ASSIM: a pendência (declarações, termo da pessoa, termos de publicidade, frase do boletim) não trava mais o envio à correção quando o ADMINISTRADOR confirma na hora — fica REGISTRADO quem assumiu e quando; menor de idade continua impeditivo, e a APROVAÇÃO e a publicação continuam exigindo tudo em dia.",
+    "Administrador: rode no Supabase (SQL Editor) o sql/radar-video-assumir-v0.74.0.sql (as colunas assumido_em/assumido_por e as funções radar_video_criar — com p_assumir — e radar_video_enviado; pode rodar de novo) e faça o Deploy da função radar-video desta versão (ela repassa o assumir ao banco). As demais funções não mudam. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5 (no celular, recarregue a página). Passo a passo no LEIAME, “Da v0.73.0 para a v0.74.0”."]],
   ["0.73.0", "10/11/2026", [
     "O TERMO DE USO DE IMAGEM NOVO (versão 2), com o texto fornecido pelo administrador: a empregadora qualificada por extenso, a autorização cobrindo também ANÚNCIOS PAGOS, conteúdo patrocinado e IMPULSIONAMENTO no Instagram e no Facebook, a edição pelo Radar e por ferramentas de IA, a participação voluntária e sem penalidade, o PRAZO DE 12 MESES (ou o encerramento do vínculo, o que vier primeiro), a revogação pelo e-mail artecon@artecon.cnt.br e os direitos da LGPD. A assinatura na tela passa a gravar a validade de 12 meses, e o cadastro mostra “válido até”. Quem já assinou continua sob o termo antigo (sem vencimento) até clicar em “Assinar de novo” — recomendado para todos.",
     "Administrador: rode no Supabase (SQL Editor) o sql/radar-termo-v0.73.0.sql (grava o texto novo — versão 2 — e a função da assinatura com a validade de 12 meses; pode rodar de novo). Ajustes feitos no texto colado, para a assinatura na tela: {NOME}/{CPF} preenchidos pela tela; as caixas “Autorizo/Não autorizo” viraram a frase “Ao assinar este termo, AUTORIZO…” (assinar É autorizar; quem não autoriza não assina); “[e-mail da Artecon]” virou artecon@artecon.cnt.br; o fecho manual virou a frase da assinatura eletrônica; erros de digitação corrigidos. NENHUMA função Edge muda. Depois publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.72.0 para a v0.73.0”."]],

@@ -41,6 +41,7 @@ CONFERIDAS = [{"informacao": "O DAS do Simples vence no dia 20", "fonte": "Porta
 PARTES = [{"n": 1, "tipo": "video/mp4", "bytes": 1000}, {"n": 2, "tipo": "video/quicktime", "bytes": 2000}]
 DECL = ["so_marcadas", "sem_fundo", "so_voz", "fala_confere"]
 CRIAR = "select radar_video_criar(%s, %s, %s, %s, %s::text[], %s, %s::text[])"
+CRIAR_ASSUMIR = "select radar_video_criar(%s, %s, %s, %s, %s::text[], %s, %s::text[], null, true)"   # v0.74.0: o Enviar mesmo assim
 SHA2 = "b" * 64
 RELATORIO = {"versao": 2, "texto_final": FALA, "divergencias": [], "avisos": []}
 DIVERGENCIA = {"k": 0, "id": "0123456789abcdef", "falado": "dia 25", "roteiro": "dia 20", "tipo": "numero", "regravar": True,
@@ -1860,3 +1861,35 @@ def test_aceitar_no_avulso_libera_o_baixar_no_mesmo_clique(corretor):
     assert aceitar(vid, [DIVERGENCIA["id"]])["situacao"] == "pronto"
     r = tela("select radar_video_baixar_avulso(%s)", vid, uid=ADMIN)                            # sem montar de novo: o mesmo arquivo
     assert r["ok"] is True and r["caminho"] == f"corrigido/{vid}/{SHA_VIDEO}.mp4"
+
+
+# v0.74.0: "Enviar mesmo assim" — o administrador assume as pendências (termo, boletim) com a confirmação da tela;
+# fica registrado quem assumiu e quando; menor de idade e o editor continuam travados; a chegada dos clipes
+# (radar_video_enviado) respeita o assumir gravado
+def test_enviar_mesmo_assim_assumir_do_administrador(corretor):
+    db = corretor
+    pid, ana = reel(db)
+    db.execute("update radar_pessoas set termo_corretor_em = null where id = %s", (ana,))      # a pendência: sem o termo novo
+    # o editor não assume (mesmo pedindo)
+    with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR355"):
+        c.execute(CRIAR_ASSUMIR, (pid, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL))
+    # sem o assumir, a pendência trava até o administrador
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="RADAR304"):
+        c.execute(CRIAR, (pid, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL))
+    # com o assumir, o administrador envia — e fica registrado
+    with como("authenticated", ADMIN) as c:
+        r = c.execute(CRIAR_ASSUMIR, (pid, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL)).fetchone()[0]
+    vid = r["id"]
+    assumido = db.execute("select assumido_em is not null, assumido_por from radar_videos where id = %s", (vid,)).fetchone()
+    assert assumido[0] is True and str(assumido[1]) == ADMIN
+    # os clipes chegam: o envio assumido não volta a travar pelo termo
+    assert tela("select radar_video_enviado(%s)", vid, uid=ADMIN) == {"id": str(vid), "situacao": "na_fila"}
+    # o envio comum continua SEM a marca de assumido
+    db.execute("update radar_pessoas set termo_corretor_em = '2020-01-01' where id = %s", (ana,))
+    vid2 = criar(pid, ana)["id"]
+    assert db.execute("select assumido_em is null and assumido_por is null from radar_videos where id = %s", (vid2,)).fetchone()[0]
+    # menor de idade continua impeditivo, mesmo com o assumir
+    db.execute("update radar_pessoas set menor = true where id = %s", (ana,))
+    with como("authenticated", ADMIN) as c, pytest.raises(psycopg.errors.RaiseException, match="menor de idade"):
+        c.execute(CRIAR_ASSUMIR, (pid, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL))
+    db.execute("update radar_pessoas set menor = false where id = %s", (ana,))

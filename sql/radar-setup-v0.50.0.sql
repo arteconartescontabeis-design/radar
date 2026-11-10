@@ -5473,8 +5473,13 @@ end $$;
 -- até os clipes deste envio chegarem (radar_video_enviado o substitui): o envio abandonado, ou que falhou no meio, não leva o vídeo
 -- bom junto; só o envio anterior que esperava os arquivos vira "substituido". Devolve {id, versao}.
 drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[]);
+drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric);
+-- v0.74.0: o "Enviar mesmo assim" (o administrador assume as pendências na confirmação da tela; fica registrado)
+alter table public.radar_videos add column if not exists assumido_em timestamptz;
+alter table public.radar_videos add column if not exists assumido_por uuid references auth.users(id) on delete set null;
 create or replace function public.radar_video_criar(p_peca bigint, p_partes jsonb, p_fala_pessoa bigint, p_fala_roteiro text,
-                                                    p_cartela text[], p_gancho boolean, p_declaracoes text[], p_duracao numeric default null)
+                                                    p_cartela text[], p_gancho boolean, p_declaracoes text[], p_duracao numeric default null,
+                                                    p_assumir boolean default false)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -5494,6 +5499,10 @@ declare
 begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
     raise exception 'RADAR300: só o editor ou o administrador envia a gravação do reel' using errcode = '42501';
+  end if;
+  -- v0.74.0: "Enviar mesmo assim" (pendências assumidas) é só do administrador, sempre confirmado na tela
+  if coalesce(p_assumir, false) and coalesce(public.radar_papel(), '') <> 'admin' then
+    raise exception 'RADAR355: só o administrador envia com pendências (Enviar mesmo assim)' using errcode = 'P0001';
   end if;
   -- 1. a peça
   select * into p from public.radar_pauta_pecas where id = p_peca for update;
@@ -5520,8 +5529,8 @@ begin
     raise exception 'RADAR302: a fala para conferência tem de estar no roteiro da peça, palavra por palavra e na ordem (ao menos 10 palavras)'
       using errcode = 'P0001';
   end if;
-  -- 3. o boletim pago: só sim ou não (o trecho não aparece)
-  if public.radar_pauta_copia_paga(array[p.roteiro, v_fala]) then
+  -- 3. o boletim pago: só sim ou não (o trecho não aparece); v0.74.0: o administrador pode assumir e enviar mesmo assim
+  if not coalesce(p_assumir, false) and public.radar_pauta_copia_paga(array[p.roteiro, v_fala]) then
     raise exception 'RADAR303: o roteiro tem frase igual à do boletim pago (ITC): reescreva com palavras próprias antes de gravar'
       using errcode = 'P0001';
   end if;
@@ -5534,7 +5543,9 @@ begin
   end if;
   foreach v_i in array p.pessoas loop
     v_x := public.radar_video_pessoa_falta(v_i, p.id);
-    if v_x is not null then
+    -- v0.74.0: com o assumir do administrador, a pendência de termo não trava; menor de idade e pessoa
+    -- não cadastrada continuam impeditivos
+    if v_x is not null and (not coalesce(p_assumir, false) or v_x = 'pessoa não cadastrada' or v_x like 'menor de idade%') then
       raise exception 'RADAR304: uma pessoa da peça não pode aparecer no vídeo (%): confira em Pauta → Pessoas e termos', v_x using errcode = 'P0001';
     end if;
   end loop;
@@ -5587,11 +5598,12 @@ begin
   update public.radar_videos set situacao = 'substituido', encerrado_em = now(), pego_em = null
    where peca_id = p.id and situacao = 'aguardando_envio';
   insert into public.radar_videos (peca_id, versao, partes, fala_pessoa, pessoas, fala_roteiro, roteiro_hash, cartela_linhas, gancho, declaracoes,
-                                   enviado_por)
+                                   enviado_por, assumido_em, assumido_por)
   values (p.id, v_versao, v_partes, p_fala_pessoa, p.pessoas, v_fala, public.radar_hash_texto(p.roteiro),
           array(select btrim(l) from unnest(p_cartela) with ordinality t(l, o) order by o),
           case when coalesce(p_gancho, false) then btrim(p.chamada) end,
-          array(select d from unnest(v_decl) d), auth.uid())
+          array(select d from unnest(v_decl) d), auth.uid(),
+          case when coalesce(p_assumir, false) then now() end, case when coalesce(p_assumir, false) then auth.uid() end)
   returning id into v_id;
   return jsonb_build_object('id', v_id, 'versao', v_versao);
 end $$;
@@ -5625,6 +5637,7 @@ declare
   p      public.radar_pauta_pecas%rowtype;
   v      public.radar_videos%rowtype;
   v_x    text;
+  v_i    bigint;
 begin
   if auth.uid() is null or coalesce(public.radar_papel(), '') not in ('admin','editor') then
     raise exception 'RADAR300: só o editor ou o administrador envia a gravação do reel' using errcode = '42501';
@@ -5649,9 +5662,20 @@ begin
   end if;
   -- quem pode estar no vídeo: as marcadas no envio e as marcadas agora, quando os clipes chegaram
   v.pessoas := array(select distinct x from unnest(v.pessoas || p.pessoas) x order by x);
-  v_x := public.radar_video_pessoas_falta(p.id, v.fala_pessoa, v.pessoas);
-  if v_x is not null then
-    raise exception 'RADAR304: %', v_x using errcode = 'P0001';
+  -- v0.74.0: o envio assumido pelo administrador não volta a travar pelo termo quando os clipes chegam;
+  -- menor de idade e pessoa não cadastrada continuam impeditivos
+  if v.assumido_em is null then
+    v_x := public.radar_video_pessoas_falta(p.id, v.fala_pessoa, v.pessoas);
+    if v_x is not null then
+      raise exception 'RADAR304: %', v_x using errcode = 'P0001';
+    end if;
+  else
+    foreach v_i in array v.pessoas loop
+      v_x := public.radar_video_pessoa_falta(v_i, p.id);
+      if v_x = 'pessoa não cadastrada' or v_x like 'menor de idade%' then
+        raise exception 'RADAR304: %', v_x using errcode = 'P0001';
+      end if;
+    end loop;
   end if;
   update public.radar_videos set situacao = 'substituido', encerrado_em = now(), pego_em = null
    where peca_id = p.id and id <> v.id and situacao in ('na_fila','processando','pronto','regravar','erro');
@@ -7286,7 +7310,7 @@ grant execute on function public.radar_redes_conferir_agenda(text) to service_ro
 -- v0.22.0: corretor de vídeo. A tela chama as funções do vídeo (cada uma confere o papel); a função radar-video chama as do robô, da
 -- agenda e da limpeza pelo papel interno. As auxiliares (radar_video_pendencia, _pessoa_falta, _pessoas_falta, _cartela_falta,
 -- _travar…) e a reserva da agenda (radar_video_reserva, que o pg_cron roda como dono) ficam só com o dono.
-grant execute on function public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric) to authenticated;
+grant execute on function public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric, boolean) to authenticated;
 grant execute on function public.radar_video_cota() to authenticated;
 grant execute on function public.radar_video_para_envio(uuid) to authenticated;
 grant execute on function public.radar_video_enviado(uuid) to authenticated;

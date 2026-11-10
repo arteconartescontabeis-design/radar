@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.73.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.74.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -224,6 +224,7 @@ async function blocoVideo(p){
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
   ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
+  await restaurarTomadas(p.id);                        // v0.74.0: as tomadas guardadas no aparelho voltam à lista
   // quanto o corretor ainda transcreve neste mês (o banco confere de novo no envio, com a duração dos clipes); sem a resposta, nada
   ev.cota = ["planejada", "em_producao", "pronta"].includes(p.situacao) ? await rpc("radar_video_cota", {}).catch(() => null) : null;
   await guardarVideos(vivos);
@@ -297,6 +298,50 @@ function blocoFala(p){
 
 /* ------------------------------------------------------------- o envio */
 const clipesDe = pid => (estadoVideo().arquivos[pid] ||= []);
+/* v0.74.0: as tomadas do teleprompter GUARDADAS NO APARELHO (IndexedDB) — sair da tela, trocar de aplicativo ou
+   recarregar a página não perde mais a gravação: ela volta à lista de clipes, para assistir e enviar. Saem do
+   aparelho no envio concluído ou no "Tirar"; sem IndexedDB (ou sem espaço), tudo segue como antes, só sem a guarda. */
+function tomadasPedido(modo, corpo){
+  return new Promise((ok, falha) => {
+    const ab = indexedDB.open("radar_tomadas", 1);
+    ab.onupgradeneeded = () => { ab.result.createObjectStore("tomadas", {keyPath:"chave"}); };
+    ab.onerror = () => falha(ab.error || new Error("sem IndexedDB"));
+    ab.onsuccess = () => {
+      const db = ab.result;
+      try{
+        const tx = db.transaction("tomadas", modo), req = corpo(tx.objectStore("tomadas"));
+        req.onsuccess = () => { db.close(); ok(req.result); };
+        req.onerror = () => { db.close(); falha(req.error); };
+      }catch(e){ db.close(); falha(e); }
+    };
+  });
+}
+async function guardarTomada(pid, c){
+  if(!c) return;
+  const chave = `${pid}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  try{
+    await tomadasPedido("readwrite", s => s.put({chave, pid, nome:c.nome, tipo:c.tipo, duracao:c.duracao || 0,
+      aviso:c.aviso || "", em:Date.now(), blob:c.arquivo}));
+    c.chaveTomada = chave;
+  }catch(e){ /* sem espaço ou sem IndexedDB: a tomada só não fica guardada */ }
+}
+const apagarTomada = chave => chave ? tomadasPedido("readwrite", s => s.delete(chave)).catch(() => {}) : Promise.resolve();
+async function apagarTomadasDe(pid){
+  try{ for(const t of (await tomadasPedido("readonly", s => s.getAll())) || [])
+    if(t.pid === pid) await apagarTomada(t.chave); }catch(e){ /* já saíram */ }
+}
+async function restaurarTomadas(pid){
+  const lista = clipesDe(pid);
+  if(lista.length) return;
+  try{
+    const tudo = ((await tomadasPedido("readonly", s => s.getAll())) || []).filter(t => t.pid === pid && t.blob instanceof Blob);
+    for(const t of tudo.sort((a, b) => a.em - b.em)){
+      const arquivo = new File([t.blob], t.nome || "tomada.webm", {type:t.tipo || t.blob.type || "video/webm"});
+      lista.push({arquivo, nome:arquivo.name, bytes:arquivo.size, tipo:tipoClipe(arquivo), duracao:t.duracao || 0,
+                  aviso:t.aviso || "", chaveTomada:t.chave});
+    }
+  }catch(e){ /* sem IndexedDB: nada a restaurar */ }
+}
 // o tipo que o banco aceita: MP4 ou MOV (o iPhone manda "video/quicktime"; sem tipo, pela extensão);
 // v0.44.0: + o WEBM da gravação do teleprompter pelo navegador (o MediaRecorder do Chrome/Android; o do Safari grava MP4)
 const tipoClipe = a => /^video\/(mp4|quicktime|webm)$/.test(String(a.type).split(";")[0]) ? String(a.type).split(";")[0]
@@ -357,7 +402,8 @@ function listaClipes(pid, partes){
   return `<ol class="video-clipes">${l.map((c, i) => { const parte = partes?.[i], difere = parte && (parte.bytes !== c.bytes || parte.tipo !== c.tipo);
     return `<li data-i="${i}"><span class="video-clipe-nome"><b>${i + 1}.</b> ${h(c.nome)} · ${mbVideo(c.bytes)}${c.duracao ? ` · ${segVideo(c.duracao)} s` : ""}</span>
       ${!c.tipo ? selo("não é MP4, MOV nem gravação do navegador", "erro") : ""}${c.aviso ? " " + selo(c.aviso, "alerta") : ""}${difere ? " " + selo(`não é o clipe nº ${i + 1} do envio`, "erro") : ""}
-      <span class="acoes"><button class="btn peq sec" type="button" data-acao="video-clipe-mover" data-i="${i}" data-passo="-1"${i ? "" : " disabled"} aria-label="Subir o clipe ${i + 1}">↑</button>
+      <span class="acoes"><button class="btn peq sec" type="button" data-acao="video-clipe-ver" data-pid="${pid}" data-i="${i}">▶ Assistir</button>
+        <button class="btn peq sec" type="button" data-acao="video-clipe-mover" data-i="${i}" data-passo="-1"${i ? "" : " disabled"} aria-label="Subir o clipe ${i + 1}">↑</button>
         <button class="btn peq sec" type="button" data-acao="video-clipe-mover" data-i="${i}" data-passo="1"${i < l.length - 1 ? "" : " disabled"} aria-label="Descer o clipe ${i + 1}">↓</button>
         <button class="btn peq perigo" type="button" data-acao="video-clipe-tirar" data-i="${i}">Tirar</button></span></li>`; }).join("")}</ol>
     <p class="sub">${l.length} clipe(s), ${mbVideo(total)} no total${dur ? `, cerca de ${segVideo(dur, 0)} s` : ""}.${dur && resta !== null && dur <= resta ? ` <span id="video-gasto-cota">Este envio gasta cerca de ${segVideo(dur, 0)} s da transcrição do mês (sobram ${segVideo(Math.max(0, resta - dur), 0)} s).</span>` : ""}</p>
@@ -531,7 +577,9 @@ async function abrirTeleprompter(pid){
           <button class="btn peq sec" type="button" data-acao="tele-veloc" data-passo="-1">Mais devagar</button>
           <button class="btn peq sec" type="button" data-acao="tele-veloc" data-passo="1">Mais rápido</button>
           <button class="btn peq sec" type="button" data-acao="tele-espelho">Espelhar o texto</button></div>
-        ${podeGravar ? `<div class="acoes tele-mic-linha" hidden><label for="tele-mic" class="sub">Microfone:</label>
+        ${podeGravar ? `<div class="acoes tele-cam-linha" hidden><label for="tele-cam" class="sub">Câmera:</label>
+          <select id="tele-cam" aria-label="Câmera"></select></div>
+        <div class="acoes tele-mic-linha" hidden><label for="tele-mic" class="sub">Microfone:</label>
           <select id="tele-mic" aria-label="Microfone"><option value="">Microfone padrão</option></select></div>` : ""}
         <p class="sub" id="tele-aviso">${podeGravar ? "Enquadre pelo preview (mostra o quadro inteiro, 9:16) e deixe o celular RETO à sua frente, na altura dos olhos. Ao gravar, o TEXTO sobe para o alto da tela, pertinho da câmera: leia ali e o olhar cai na lente — não olhe para o próprio rosto nem para os botões. Nada é enviado até você mandar."
           : "Este navegador não grava vídeo: use o teleprompter só para ler e grave pela câmera do celular."}</p>
@@ -543,30 +591,75 @@ async function abrirTeleprompter(pid){
   if(clipesDe(TELE.pid).length){ const env = $("#tele-enviar"); if(env) env.hidden = false; }
   if(podeGravar){
     try{
+      // v0.74.0: a câmera lembrada da última gravação (quando o aparelho tem mais de uma frontal, ex.: a grande-angular)
+      const lembrada = (() => { try{ return localStorage.getItem("radar_tele_cam") || ""; }catch(e){ return ""; } })();
       TELE.fluxo = await navigator.mediaDevices.getUserMedia({audio:true,
-        video:{facingMode:"user", width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9 / 16}}});
-      const cam = $("#tele-camera");
-      const faixa = TELE.fluxo.getVideoTracks()[0], d = faixa?.getSettings?.() || {};
-      // v0.68.0: alguns celulares entregam a câmera DEITADA ao navegador mesmo com o aparelho em pé (a gravação era
-      // recusada pelo corretor). Agora a tela ENDIREITA sozinha: desenha o recorte central 9:16 num quadro vertical e
-      // grava o quadro — o preview mostra exatamente o que o corretor recebe.
-      if(d.width && d.height && d.width > d.height && window.HTMLCanvasElement?.prototype?.captureStream){
-        montarRecorteTele(d);
-        if(cam) cam.srcObject = TELE.recorte.fluxo;
-        $("#tele-aviso").textContent = "A câmera deste aparelho entrega a imagem deitada: o Radar endireitou sozinho — " +
-          "grava só o centro, na vertical (9:16), exatamente como aparece no quadro. Enquadre por ele.";
-      }else{
-        if(cam) cam.srcObject = TELE.fluxo;
-        if(d.width && d.height && d.width > d.height)
-          $("#tele-aviso").textContent = "A câmera está DEITADA (horizontal): o corretor recusa. Grave pelo celular em pé, ou use o teleprompter só para ler.";
-      }
+        video:{facingMode:"user", ...(lembrada ? {deviceId:{ideal:lembrada}} : {}), width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9 / 16}}});
+      await prepararQuadroTele();
       await popularMicsTele();                                        // v0.51.0: lista os microfones (lapela) e liga a troca
       const selMic = $("#tele-mic"); if(selMic) selMic.addEventListener("change", trocarMicTele);
+      await popularCamsTele();                                        // v0.74.0: lista as câmeras e liga a troca
+      const selCam = $("#tele-cam"); if(selCam) selCam.addEventListener("change", trocarCamTele);
     }catch(e){
       const av = $("#tele-aviso");
       if(av) av.textContent = "A câmera não abriu (sem permissão ou sem câmera): use o teleprompter só para ler e grave pelo celular.";
     }
   }
+}
+/* v0.74.0: prepara (ou re-prepara, na troca de câmera) o quadro do teleprompter: desliga o recorte anterior, abre o
+   ângulo no máximo que a câmera deixar (zoom no mínimo) e decide entre o caminho direto (câmera em pé) e o
+   endireitamento (câmera deitada — v0.68.0). */
+async function prepararQuadroTele(){
+  const cam = $("#tele-camera");
+  try{ if(TELE.recorte){ TELE.recorte.vivo = false; if(TELE.recorte.relogio) cancelAnimationFrame(TELE.recorte.relogio);
+    TELE.recorte.fluxo.getTracks().forEach(t => t.stop()); TELE.recorte.fonte.srcObject = null; TELE.recorte = null; } }catch(e){ /* sem recorte */ }
+  const faixa = TELE.fluxo.getVideoTracks()[0];
+  // v0.74.0: o ÂNGULO MAIS ABERTO que a câmera oferecer — o zoom vai ao mínimo quando o aparelho expõe o controle
+  try{
+    const cap = faixa?.getCapabilities?.(), d0 = faixa?.getSettings?.() || {};
+    if(cap?.zoom && typeof cap.zoom.min === "number" && (d0.zoom === undefined || d0.zoom > cap.zoom.min))
+      await faixa.applyConstraints({advanced:[{zoom:cap.zoom.min}]});
+  }catch(e){ /* a câmera não deixa mexer no zoom: fica como está */ }
+  const d = faixa?.getSettings?.() || {};
+  // v0.68.0: alguns celulares entregam a câmera DEITADA ao navegador mesmo com o aparelho em pé (a gravação era
+  // recusada pelo corretor). A tela ENDIREITA sozinha: desenha o recorte central 9:16 num quadro vertical e
+  // grava o quadro — o preview mostra exatamente o que o corretor recebe.
+  if(d.width && d.height && d.width > d.height && window.HTMLCanvasElement?.prototype?.captureStream){
+    montarRecorteTele(d);
+    if(cam) cam.srcObject = TELE.recorte.fluxo;
+    $("#tele-aviso").textContent = "A câmera deste aparelho entrega a imagem deitada: o Radar endireitou sozinho — " +
+      "grava só o centro, na vertical (9:16), exatamente como aparece no quadro. Enquadre por ele.";
+  }else{
+    if(cam) cam.srcObject = TELE.fluxo;
+    if(d.width && d.height && d.width > d.height)
+      $("#tele-aviso").textContent = "A câmera está DEITADA (horizontal): o corretor recusa. Grave pelo celular em pé, ou use o teleprompter só para ler.";
+  }
+}
+/* v0.74.0: a lista de câmeras (a frontal grande-angular, quando o aparelho oferece) — como a de microfones */
+async function popularCamsTele(){
+  const sel = $("#tele-cam"); if(!sel || !navigator.mediaDevices?.enumerateDevices) return;
+  try{
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    const linha = sel.closest(".tele-cam-linha");
+    if(cams.length < 2){ linha?.setAttribute("hidden", ""); return; }
+    const atual = TELE?.fluxo?.getVideoTracks?.()[0]?.getSettings?.().deviceId || "";
+    sel.innerHTML = cams.map((d, i) => `<option value="${h(d.deviceId)}"${d.deviceId === atual ? " selected" : ""}>${h(d.label || ("Câmera " + (i + 1)))}</option>`).join("");
+    linha?.removeAttribute("hidden");
+  }catch(e){ /* sem lista de câmeras: fica a aberta */ }
+}
+async function trocarCamTele(){
+  const sel = $("#tele-cam");
+  if(!TELE || !sel || (TELE.gravador && TELE.gravador.state === "recording")) return;
+  const id = sel.value;
+  try{
+    const novo = await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id}, width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9 / 16}}});
+    const faixa = novo.getVideoTracks()[0];
+    if(!faixa) return;
+    (TELE.fluxo?.getVideoTracks?.() || []).forEach(t => { try{ TELE.fluxo.removeTrack(t); }catch(e){ /* já saiu */ } t.stop(); });
+    TELE.fluxo?.addTrack(faixa);
+    try{ localStorage.setItem("radar_tele_cam", id); }catch(e){ /* sem localStorage */ }
+    await prepararQuadroTele();
+  }catch(e){ recado("Não consegui usar essa câmera (o aparelho pode não deixar): escolha outra.", true); }
 }
 /* v0.68.0: o endireitamento do teleprompter — a câmera que só entrega a imagem deitada (alguns Android) vira um quadro
    VERTICAL: um <video> escondido recebe a câmera e um canvas 9:16 desenha o recorte central de cada quadro, 30 por
@@ -629,6 +722,7 @@ async function pararGravacaoTele(){
   clipesDe(TELE.pid).push({arquivo, nome, bytes:arquivo.size, tipo:tipoClipe(arquivo), duracao:duracaoMs / 1000,
     // v0.68.0: com o endireitamento, a tomada já sai vertical — sem o aviso de deitado
     aviso:!TELE.recorte && d.width && d.height && d.width > d.height ? "parece deitado (horizontal)" : ""});
+  await guardarTomada(TELE.pid, clipesDe(TELE.pid).at(-1));   // v0.74.0: a tomada fica no aparelho (sair da tela não perde)
   redesenharClipes(TELE.pid);
   if(TELE.url) URL.revokeObjectURL(TELE.url);
   TELE.url = URL.createObjectURL(arquivo);
@@ -1354,6 +1448,7 @@ async function telaAbaVideo(){
   try{
     if(!a.paleta) a.paleta = objVideo(await rpc("radar_video_paleta", {}));
     await lerConfPauta();
+    if(a.nova) await restaurarTomadas(0);              // v0.74.0: as tomadas do avulso guardadas no aparelho
     return a.id ? await editorAbaVideo(a.id) : a.nova ? await formAvulso() : await listaAbaVideo();
   }catch(e){ if(semTabelaDoVideo(e) || /radar_video_paleta/.test(e.message || "")) return `<h1>Vídeo</h1>${ABA_VIDEO_SEM_BANCO}`; throw e; }
 }
@@ -2182,6 +2277,7 @@ const ACOES_ABA_VIDEO = {
     catch(e){ a.nova = false; a.id = String(r.id); await desenhar().catch(() => {}); throw e; }   // o editor do avulso tem o "Continuar o envio"
     const fim = await concluirEnvio(0, r.id);
     delete estadoVideo().arquivos[0]; a.nova = false; a.avulso = null; a.id = String(r.id);
+    apagarTomadasDe(0);                                             // v0.74.0
     await desenhar();
     recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)} Guarde os clipes no celular até o relatório dizer “Vídeo corrigido pronto” (se precisar regravar um bloco, os outros vão de novo) e então apague do celular e da nuvem pessoal, no mesmo dia.`);
   },
@@ -2197,6 +2293,7 @@ const ACOES_ABA_VIDEO = {
     catch(e){ await desenhar().catch(() => {}); throw e; }
     const fim = await concluirEnvio(0, v.id);
     delete estadoVideo().arquivos[0];
+    apagarTomadasDe(0);                                             // v0.74.0
     await desenhar();
     recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)}`);
   },
@@ -2291,6 +2388,7 @@ const VIDEO = {
   // não gravam nada: só a tela (o que grava é feito uma ação por vez)
   navegacao:["video-nova", "video-nova-cancelar", "video-clipe-mover", "video-clipe-tirar", "video-ouvir",
     "video-teleprompter", "tele-fechar", "tele-rolar", "tele-letra", "tele-veloc", "tele-espelho", "tele-gravar",   // v0.44.0
+    "video-clipe-ver", "video-clipe-ver-fechar",   // v0.74.0: assistir um clipe da lista
     "tele-inicio", "tele-cancelar",   // v0.51.0: voltar o texto ao início e cancelar a gravação (nada sobe)
     "tele-assistir",   // v0.52.0: rever a tomada gravada no próprio teleprompter
     ...NAVEGACAO_ABA_VIDEO],
@@ -2365,7 +2463,21 @@ const VIDEO = {
     "video-nova-cancelar"(){ const ev = estadoVideo(); ev.nova = false; const c = $("#video-corpo"); if(c) c.innerHTML = corpoVideo(); },
     "video-clipe-mover"(el){ const pid = estadoVideo().peca, l = clipesDe(pid), i = Number(el.dataset.i), j = i + Number(el.dataset.passo);
       if(i < 0 || j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; redesenharClipes(pid); },
-    "video-clipe-tirar"(el){ const pid = estadoVideo().peca, l = clipesDe(pid); l.splice(Number(el.dataset.i), 1); redesenharClipes(pid); },
+    "video-clipe-tirar"(el){ const pid = estadoVideo().peca, l = clipesDe(pid), i = Number(el.dataset.i);
+      if(l[i]?.chaveTomada) apagarTomada(l[i].chaveTomada);        // v0.74.0: sai também da guarda do aparelho
+      l.splice(i, 1); redesenharClipes(pid); },
+    /* v0.74.0: "▶ Assistir" em qualquer clipe da lista (a tomada guardada ou o arquivo escolhido) */
+    "video-clipe-ver"(el){
+      const c = clipesDe(Number(el.dataset.pid))[Number(el.dataset.i)];
+      if(!c?.arquivo){ recado("Este clipe não está mais na lista: atualize a página.", true); return; }
+      $("#clipe-previa")?.remove();
+      const u = URL.createObjectURL(c.arquivo);
+      document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="clipe-previa"><div class="caixa-previa" role="dialog" aria-modal="true" aria-label="Assistir o clipe">
+        <div class="barra-previa"><span>${h(c.nome)}</span><button class="btn peq sec" type="button" data-acao="video-clipe-ver-fechar">Fechar</button></div>
+        <div style="padding:12px 16px"><video controls autoplay playsinline src="${u}" style="max-width:100%;max-height:70vh"></video></div></div></div>`);
+      $("#clipe-previa").dataset.url = u;
+    },
+    "video-clipe-ver-fechar"(){ const cx = $("#clipe-previa"); if(cx){ URL.revokeObjectURL(cx.dataset.url || ""); cx.remove(); } },
     "video-ouvir"(el){ const pl = $("#video-player");
       if(!pl){ recado("Abra a prévia (“Ver o vídeo corrigido”) para ouvir o trecho.", "aviso"); $("#video-previa")?.scrollIntoView({block:"nearest"}); return; }
       pl.currentTime = Math.max(0, Number(el.dataset.em) - 1.5); pl.scrollIntoView({block:"nearest"}); pl.play?.().catch(() => {}); },
@@ -2377,22 +2489,45 @@ const VIDEO = {
       conferirEnvio(p, lista);
       const quem = Number($("#video-quem")?.value || 0);
       if(!quem) throw new ErroApi("Escolha quem fala no vídeo.");
-      const decl = [...document.querySelectorAll("#video-envio .video-declaracao")], falta = decl.filter(c => !c.checked);
-      if(decl.length !== 4 || falta.length) throw new ErroApi("Marque as quatro declarações: " + falta.map(c => `“${c.dataset.texto}”`).join(", ") + ".");
+      const decl = [...document.querySelectorAll("#video-envio .video-declaracao")], faltaDecl = decl.filter(c => !c.checked);
+      if(decl.length !== 4) throw new ErroApi("Recarregue a peça: as quatro declarações não apareceram na tela.");
       const {fala} = extrairFala(p.roteiro), gancho = !!$("#video-gancho")?.checked;
       if(fala.length < 20 || fala.split(" ").length < 10) throw new ErroApi("A fala para conferência ficou curta (menos de 10 palavras): confira o roteiro da peça.");
       // o texto do gancho também vai gravado no vídeo (de 0 a 3 s): passa pelos mesmos termos antes de qualquer arquivo sair
       const achados = [["roteiro", fala], ["no texto do gancho", gancho ? p.chamada : ""]]
         .map(([lugar, t]) => [lugar, [...new Set([...termosPublicidade(t).trava, ...termosPeca(t)])]]).filter(([, l]) => l.length);
-      if(achados.length) throw new ErroApi(msgTermosPeca(achados, "gravar"));
       if(faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura (o administrador preenche).`);
-      const r = await funcaoVideo("envio_iniciar", {peca:p.id, partes:lista.map((c, i) => ({n:i + 1, tipo:c.tipo, bytes:c.bytes})), fala_pessoa:quem,
-        fala_roteiro:fala, cartela:linhasCartela(quem), gancho, declaracoes:decl.map(c => c.value), duracao:duracaoClipes(lista)}, 90000);
+      // v0.74.0: ENVIAR MESMO ASSIM — as pendências não travam mais o envio à correção quando o ADMINISTRADOR
+      // confirma (fica registrado no banco quem assumiu). A aprovação e a publicação continuam exigindo tudo em dia.
+      const pend = [];
+      if(faltaDecl.length) pend.push(`declarações não marcadas: ${faltaDecl.map(c => `“${c.dataset.texto}”`).join("; ")}`);
+      if(achados.length) pend.push(msgTermosPeca(achados, "gravar"));
+      let assumir = false;
+      if(pend.length){
+        if(!ehAdmin()) throw new ErroApi("Há pendências, e só o administrador envia mesmo assim — " + pend.join(" · "));
+        if(!confirm(`ENVIAR MESMO ASSIM?\n\nPendências deste envio:\n• ${pend.join("\n• ")}\n\nAo confirmar, você assume as pendências (fica registrado) e o vídeo vai à correção. A aprovação e a publicação continuam exigindo tudo em dia.`)) return;
+        assumir = true;
+        faltaDecl.forEach(c => { c.checked = true; });              // a confirmação do administrador cobre as declarações
+      }
+      const corpo = {peca:p.id, partes:lista.map((c, i) => ({n:i + 1, tipo:c.tipo, bytes:c.bytes})), fala_pessoa:quem,
+        fala_roteiro:fala, cartela:linhasCartela(quem), gancho, declaracoes:decl.map(c => c.value), duracao:duracaoClipes(lista),
+        ...(assumir ? {assumir:true} : {})};
+      let r;
+      try{ r = await funcaoVideo("envio_iniciar", corpo, 90000); }
+      catch(e){
+        // a trava que só o banco conhece (termo da pessoa, boletim pago): o administrador pode assumir e reenviar na hora
+        const m = String(e?.message || "");
+        if(!assumir && ehAdmin() && /RADAR30[34]/.test(m)
+           && confirm(`O envio travou numa pendência:\n\n${m}\n\nENVIAR MESMO ASSIM? Ao confirmar, você assume a pendência (fica registrado) e o vídeo vai à correção; a aprovação e a publicação continuam exigindo tudo em dia.`)){
+          r = await funcaoVideo("envio_iniciar", {...corpo, assumir:true}, 90000);
+        }else throw e;
+      }
       if(!UUID_VIDEO.test(String(r?.id)) || !Array.isArray(r?.envios) || r.envios.length !== lista.length) throw new ErroApi("A função devolveu o envio fora do formato. Nada foi enviado.");
       try{ await subirClipes(p.id, r.id, r.envios, lista, String(r.bucket || "radar-videos")); }
       catch(e){ await depoisDoVideo(p.id); throw e; }
       const fim = await concluirEnvio(p.id, r.id);
       delete estadoVideo().arquivos[p.id]; estadoVideo().nova = false;
+      apagarTomadasDe(p.id);                                        // v0.74.0: a guarda do aparelho sai junto (o termo pede)
       await depoisDoVideo(p.id);
       recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)} Guarde os clipes no celular até o relatório dizer “Vídeo corrigido pronto” (se precisar regravar um bloco, os outros vão de novo) e então apague do celular e da nuvem pessoal, no mesmo dia.`);
     },
@@ -2406,6 +2541,7 @@ const VIDEO = {
       catch(e){ await depoisDoVideo(p.id); throw e; }
       const fim = await concluirEnvio(p.id, v.id);
       delete estadoVideo().arquivos[p.id]; estadoVideo().nova = false;
+      apagarTomadasDe(p.id);                                        // v0.74.0
       await depoisDoVideo(p.id);
       recado(`Gravação enviada: na fila do corretor. ${textoDe(fim?.robo?.mensagem)}`);
     },

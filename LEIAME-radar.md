@@ -1,4 +1,4 @@
-# Radar Artecon — v0.73.0
+# Radar Artecon — v0.74.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,16 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.74.0 melhora a **gravação dos reels** em três frentes. **A tomada não some mais**: cada gravação do
+teleprompter fica guardada no aparelho (IndexedDB) — sair da tela ou recarregar não perde nada, a lista de clipes
+volta como estava, com **"▶ Assistir"** em cada clipe (a guarda sai no envio concluído ou no Tirar). **Ângulo mais
+aberto**: a câmera abre no zoom mínimo que o aparelho deixar e o teleprompter ganhou o seletor **"Câmera"** (a
+frontal grande-angular, quando houver; a escolha fica lembrada). **Enviar mesmo assim**: pendência (declarações,
+termo da pessoa, termos de publicidade, frase do boletim) não trava mais o envio à correção quando o
+**administrador** confirma — fica registrado (`radar_videos.assumido_em/assumido_por`); menor de idade continua
+impeditivo e a aprovação/publicação continua exigindo tudo em dia. **Muda o banco**
+(`sql/radar-video-assumir-v0.74.0.sql`) e a função **radar-video** (Deploy). Veja "Da v0.73.0 para a v0.74.0".
 
 A v0.73.0 traz o **termo de uso de imagem novo (versão 2)**, com o texto fornecido pelo administrador em
 10/11/2026: empregadora qualificada, autorização cobrindo **anúncios pagos e impulsionamento** no Instagram e no
@@ -3176,6 +3186,18 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.73.0 para a v0.74.0** (um **SQL novo** — o Enviar mesmo assim —, o **Deploy da radar-video** e a publicação
+das telas; **nenhum segredo novo**). Supõe a v0.73.0 instalada:
+
+1. Rode no Supabase (**SQL Editor**) o **`sql/radar-video-assumir-v0.74.0.sql`**: as colunas
+   `assumido_em`/`assumido_por`, `radar_video_criar` com `p_assumir` (só o administrador; menor de idade continua
+   impeditivo) e `radar_video_enviado` respeitando o assumir gravado. Pode rodar de novo.
+2. **Deploy** da função **`radar-video`** desta versão ("Verify JWT" como está): ela repassa o `assumir` ao banco.
+3. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+4. Conferência: grave uma tomada no teleprompter, saia da tela e volte — ela continua na lista, com "▶ Assistir";
+   no teleprompter, o seletor "Câmera" aparece quando o aparelho tem mais de uma; num envio com pendência, o
+   administrador vê o "ENVIAR MESMO ASSIM?" e, confirmando, o vídeo vai à correção com o registro de quem assumiu.
 
 **Da v0.72.0 para a v0.73.0** (um **SQL novo** — o termo versão 2 e a validade de 12 meses — e a publicação das
 telas; **nenhuma função Edge muda, nenhum segredo novo**). Supõe a v0.72.0 instalada:

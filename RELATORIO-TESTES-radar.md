@@ -1,4 +1,16 @@
-# Radar Artecon — Relatório de testes (v0.73.0)
+# Radar Artecon — Relatório de testes (v0.74.0)
+
+**v0.74.0 — Gravação dos reels: tomada guardada no aparelho, ângulo mais aberto e Enviar mesmo assim (banco + função + tela)**
+(10/11/2026): pedidos do dono. (1) Tomadas do teleprompter em IndexedDB (`guardarTomada`/`restaurarTomadas`):
+restauradas em `blocoVideo` (peça) e na aba Vídeo (avulso), apagadas no envio concluído e no Tirar; "▶ Assistir" em
+cada clipe da lista (`video-clipe-ver`). (2) `prepararQuadroTele`: zoom no mínimo via `getCapabilities`/
+`applyConstraints` + seletor "Câmera" (`popularCamsTele`/`trocarCamTele`, escolha lembrada em localStorage),
+reavaliando o endireitamento na troca. (3) `radar_video_criar` com `p_assumir` (RADAR355 fora do admin; termo e
+boletim liberados; menor continua RADAR304) gravando `assumido_em/assumido_por`; `radar_video_enviado` respeita o
+assumir; a tela coleta as pendências num único confirm e reenvia com `assumir` quando o banco trava (RADAR303/304);
+a edge radar-video repassa `p_assumir`. Testes: novo `test_enviar_mesmo_assim_assumir_do_administrador` e a
+reversão com a assinatura nova — corretor (57), banco e repositório **verdes nesta sessão**; telas atualizadas (não
+rodaram aqui, sem `postgrest`).
 
 **v0.73.0 — Termo de uso de imagem versão 2 + validade de 12 meses (banco + tela)**
 (10/11/2026): `radar_config.termo_imagem` vira a versão 2 com o texto do administrador (anúncios pagos e
