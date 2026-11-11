@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.81.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.82.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -1867,8 +1867,10 @@ function htmlPlayerAbaVideo(){
       <button class="btn peq sec" type="button" data-acao="vaba-passo" data-passo="0.1">+0,1 s</button>
       <button class="btn peq sec" type="button" data-acao="vaba-passo" data-passo="1">+1 s</button></div>
     <label class="video-check"><input type="checkbox" id="vaba-previa-ligada"${a.previaLigada ? " checked" : ""}> Prévia com as mudanças (pula os cortes)</label>
-    <details class="vaba-quadros"><summary>Capa e quadros</summary>
-      ${pv.capa ? `<figure><img src="${h(pv.capa)}" alt="Capa do reel"><figcaption class="sub">Capa${numVideo(capa.em_ms) !== null ? `, aos ${segVideo(capa.em_ms / 1000)} s` : ""}</figcaption></figure>` : `<p class="sub">Sem capa escolhida.</p>`}
+    ${pv.capa ? `<figure class="vaba-capa-previa"><figcaption class="sub"><b>Capa do reel — é assim que vai sair no Instagram:</b></figcaption>
+      <img src="${h(pv.capa)}" alt="Capa do reel, como vai aparecer na publicação"></figure>` : ""}
+    <details class="vaba-quadros"><summary>${pv.capa ? "Quadros do vídeo" : "Capa e quadros"}</summary>
+      ${!pv.capa ? `<p class="sub">Sem capa-arte: o Instagram usa o primeiro quadro. Para gerar a capa, use o botão em “Capa do reel”, abaixo.</p>` : ""}
       <div class="video-quadros">${pv.quadros.map((q, i) => `<figure><img src="${h(q)}" alt="Quadro ${i + 1} do vídeo corrigido">
         <figcaption class="sub">Quadro ${i + 1}${numVideo(qms[i]) !== null ? `, aos ${segVideo(qms[i] / 1000)} s` : ""}</figcaption></figure>`).join("")}</div></details>
     <p class="sub">Aberto às ${h(new Date(pv.em).toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"}))}; o link vale 10 minutos (vencido, a tela pede outro sozinha). A prévia pula os cortes novos; o que volta ao vídeo (um corte desfeito, um trecho mantido) só aparece depois de montar.</p>`;

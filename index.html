@@ -406,6 +406,7 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 @media (max-width:860px){ .vaba-editor{grid-template-columns:minmax(0,1fr)} .vaba-player video{max-height:55vh} }
 .vaba-passos .btn{min-height:40px;min-width:44px} .vaba-quadros summary{cursor:pointer;margin:6px 0}
 .vaba-quadros figure,.vaba-capa{margin:6px 0} .vaba-quadros img,.vaba-capa img{max-width:135px;aspect-ratio:9/16;object-fit:cover;border-radius:6px;border:1px solid var(--linha);display:block}
+.vaba-capa-previa{margin:10px 0} .vaba-capa-previa img{max-width:220px;width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;border:2px solid var(--acento,#011F48);display:block;margin-top:4px}
 .vaba-secoes{min-width:0} .vaba-secao{margin:0 0 10px} .vaba-secao>summary{cursor:pointer} .vaba-secao>summary h2{display:inline;font-size:1.05rem;margin:0}
 .vaba-secao h3{margin:12px 0 6px;font-size:1rem} .vaba-secao .btn{white-space:normal}
 .vaba-linha{position:relative;height:28px;background:var(--azul-claro);border-radius:6px;margin:8px 0 4px;overflow:hidden;touch-action:none}
@@ -441,21 +442,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.81.0"></script>
-<script src="radar-video.js?v=0.81.0"></script>
-<script src="radar-setor.js?v=0.81.0"></script>
-<script src="radar-respostas.js?v=0.81.0"></script>
+<script src="radar-pauta.js?v=0.82.0"></script>
+<script src="radar-video.js?v=0.82.0"></script>
+<script src="radar-setor.js?v=0.82.0"></script>
+<script src="radar-respostas.js?v=0.82.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.81.0";
+const VERSAO = "0.82.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.82.0", "11/11/2026", [
+    "LEGENDA NO RODAPÉ e PRÉVIA DA CAPA (pedido do dono): 1) a legenda dos reels desce para o RODAPÉ do vídeo (a base passa de y=1220, que lia como meio, para y=1540 — o padrão “embaixo”); o gancho segue no alto. Vale para os próximos vídeos e para o que você remontar. 2) Na aba Vídeo, ao abrir a prévia, a CAPA aparece em DESTAQUE (“Capa do reel — é assim que vai sair no Instagram”), antes de aprovar; os quadros ficam logo abaixo.",
+    "Administrador: a legenda é do robô — publique e troque o RADAR_VIDEO_COMMIT pelo SHA desta versão. Faça o DEPLOY da função radar-video desta versão (só a versão mudou). Publique o index.html com os demais .js e aperte Ctrl+F5. Para a legenda descer num reel já pronto, remonte (o botão da capa ou “Montar de novo”). Passo a passo no LEIAME, “Da v0.81.0 para a v0.82.0”."]],
   ["0.81.0", "11/11/2026", [
     "UM CLIQUE para a capa do vídeo já gravado (pedido do dono): o botão da aba Vídeo virou “Gerar a capa com a IA e montar de novo” — a IA escreve o título e o robô JÁ REMONTA o vídeo com a capa-arte no molde e com a LEGENDA NO ESTILO ATUAL (o karaokê: palavra que acende quando é dita — o vídeo gravado antes saía com a legenda antiga até remontar). Depois é só aprovar (agendado, sai sozinho na hora marcada, com a capa no Instagram). Nos envios novos, nada disso é preciso: a capa já nasce sozinha no envio.",
     "Administrador: nada muda no banco, nenhuma função Edge e nenhum robô (RADAR_VIDEO_COMMIT fica). Publique o index.html com os demais .js (juntos) e aperte Ctrl+F5. Passo a passo no LEIAME, “Da v0.80.0 para a v0.81.0”."]],

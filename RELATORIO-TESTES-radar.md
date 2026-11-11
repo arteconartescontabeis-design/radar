@@ -1,4 +1,13 @@
-# Radar Artecon — Relatório de testes (v0.81.0)
+# Radar Artecon — Relatório de testes (v0.82.0)
+
+**v0.82.0 — Legenda no rodapé + prévia da capa (robô + função radar-video + telas)**
+(11/11/2026): pedido do dono. (1) `legenda.py`: `BASE_FALA` 1220 → 1540 — a base da legenda “embaixo” vai ao rodapé
+(MarginV do estilo Fala passa de 700 para 380); o gancho não muda (`base_gancho` continua 1010, pois 1540−caixa−vão
+> 1010). ROBO e a função radar-video sobem a 0.45.0 em par (o código da função não mudou, só a versão). (2)
+`radar-video.js`: a capa-arte sai do `<details>` recolhido e aparece em destaque no player da aba Vídeo (“Capa do reel
+— é assim que vai sair no Instagram”), com os quadros logo abaixo; CSS novo `.vaba-capa-previa`. Testes do robô: o
+MarginV 700→380 na linha de estilo Fala (o Gancho segue 910). Robô e repositório verdes nesta sessão; telas sem
+`postgrest` local.
 
 **v0.81.0 — Capa do vídeo já gravado em um clique (só telas)**
 (11/11/2026): pedido do dono ("apenas um botão… e depois apenas aprovação"). O "Montar de novo" do rodapé foi

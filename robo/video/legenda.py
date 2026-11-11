@@ -7,7 +7,7 @@ alinhamento já dava. O gancho não tem {\\k} e continua aceso do início ao fim
 
 A legenda só tem palavra que foi dita, no tempo em que foi dita (o texto de cada palavra vem do alinhamento: a grafia do roteiro nos
 trechos alinhados). Formato (desenho 4.1, item 7):
-  * `Fala`: DM Sans 70 (negrito), branca sobre caixa marinho #011F48 (20% transparente), embaixo e no centro, com a base em y=1220. A
+  * `Fala`: DM Sans 70 (negrito), branca sobre caixa marinho #011F48 (20% transparente), embaixo e no centro, com a base em y=1540 (rodapé). A
     área livre do Reels em 1080×1920 é x 65..1015 e y 269..1248 (a Meta pede livres 14% do topo, 35% da base e 6% de cada lado); a
     caixa (16 px em volta do texto) fica dentro dela. Blocos de até 2 linhas de 24 caracteres e até 3,2 s, fechados na pontuação, com
     as linhas equilibradas (sem artigo ou preposição no fim da 1ª, sem palavra curta ou número sozinho na 2ª);
@@ -41,10 +41,10 @@ FONTES = Path(__file__).resolve().parent / "fontes"
 FONTE_LEGENDA = FONTES / "DMSans-Bold.ttf"
 ESCALA_ASS = 1000 / (1012 + 310)       # tamanho no ASS → tamanho do eme (em px), como o libass faz com a DM Sans
 LARGURA, ALTURA = 1080, 1920
-AREA_LIVRE = (65, 269, 1015, 1248)     # x0, y0, x1, y1
+AREA_LIVRE = (65, 269, 1015, 1580)     # x0, y0, x1, y1 — v0.82.0: a base vai até o rodapé (1580; antes 1248), acima da faixa do Instagram
 MARGEM_H = 100                         # MarginL/MarginR: o texto vai de x 100 a 980
 LARGURA_TEXTO = LARGURA - 2 * MARGEM_H
-BASE_FALA, BASE_GANCHO = 1220, 1010
+BASE_FALA, BASE_GANCHO = 1540, 1010    # v0.82.0: a base da legenda "embaixo" vai ao rodapé (y=1540 de 1920; antes 1220, que lida como meio)
 ESTILOS = {"normal": {"fonte": 70, "linhas": 2, "car": 24}, "compacta": {"fonte": 58, "linhas": 1, "car": 30}}
 # v0.33.0: a aparência (a aba Vídeo). A paleta é a de radar_video_paleta() (texto, caixa: RRGGBB); o 1º de cada um é o padrão
 CORES = {"marinho": ("FFFFFF", "011F48"), "branco": ("011F48", "FFFFFF"), "vermelho": ("FFFFFF", "BC151B"), "azul": ("011F48", "569DCC"),
@@ -99,7 +99,7 @@ def _medidas(estilo: str, ap: dict) -> dict:
 
 def _posicoes(e: dict, ap: dict) -> dict:
     """O alinhamento (numpad do ASS) e a margem vertical da legenda (Fala) e do gancho. Embaixo (como antes): a base da legenda em
-    y=1220 e a do gancho acima da caixa de duas linhas dela (1010 em M, como antes; mais alta com a letra G); no meio: a legenda
+    y=1540 (rodapé) e a do gancho acima da caixa de duas linhas dela (1010 em M; mais alta com a letra G); no meio: a legenda
     centrada em y=960 e o gancho com o topo em y=300; em cima: a legenda com o topo em y=300 e o gancho logo abaixo da caixa dela."""
     caixa = e["linhas"] * e["fonte"] + 2 * CAIXA                       # a altura da caixa da legenda com todas as linhas
     if ap["posicao"] == "meio":

@@ -1,4 +1,4 @@
-# Radar Artecon — v0.81.0
+# Radar Artecon — v0.82.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.82.0 leva a **legenda ao rodapé** e mostra a **prévia da capa** antes de publicar (pedido do dono): a base da
+legenda “embaixo” desce de y=1220 (que lia como meio) para **y=1540** (rodapé), com o gancho ainda no alto; e a aba
+Vídeo passa a mostrar a **capa em destaque** ao abrir a prévia (“Capa do reel — é assim que vai sair no Instagram”).
+Muda o **robô** (`legenda.py`; troque o `RADAR_VIDEO_COMMIT`) e a função **radar-video** (só a versão, par com o robô;
+Deploy), mais as telas. Veja "Da v0.81.0 para a v0.82.0".
 
 A v0.81.0 deixa a capa do vídeo já gravado em **um clique** (pedido do dono): o botão da aba Vídeo virou
 **"Gerar a capa com a IA e montar de novo"** — a IA escreve o título e o robô **já remonta** o vídeo com a
@@ -3248,6 +3254,17 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.81.0 para a v0.82.0** (o **robô** da legenda, a função **radar-video** — só a versão — e as telas). Supõe a
+v0.81.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+2. **Deploy** da função **`radar-video`** desta versão (o número casa com o robô; o código em si não mudou).
+3. No repositório privado **radar-video**, troque **`RADAR_VIDEO_COMMIT`** pelo SHA desta versão (a legenda nova é
+   do robô).
+4. Para a legenda descer num reel **já pronto**, remonte-o (o botão “Gerar a capa…” ou “Montar de novo com estas
+   mudanças”): o robô regrava com a legenda no rodapé. Os reels gravados a partir de agora já saem assim.
+5. A prévia da capa aparece na aba Vídeo ao abrir “Ver o vídeo”.
 
 **Da v0.80.0 para a v0.81.0** (**só as telas**). Supõe a v0.80.0 (ou a v0.79.0) instalada:
 

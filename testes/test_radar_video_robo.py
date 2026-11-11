@@ -669,7 +669,7 @@ def test_legenda_tamanho_posicao_e_cor_na_area_livre(pastas):
         antes = (pastas.sai / f"antes-{estilo}.ass").read_text(encoding="utf-8")
         assert antes == (pastas.sai / f"padrao-{estilo}.ass").read_text(encoding="utf-8")
         # v0.45.0: o SecondaryColour da Fala é a cor de espera do karaokê; o do Gancho segue o texto (sem {\k}, nunca aparece)
-        assert f"Style: Fala,DM Sans,{fonte},&H00FFFFFF,&H00AFA39A,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,100,100,700,1" in antes
+        assert f"Style: Fala,DM Sans,{fonte},&H00FFFFFF,&H00AFA39A,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,100,100,380,1" in antes
         assert "Style: Gancho,DM Sans,64,&H00FFFFFF,&H00FFFFFF,&H33481F01,&H66000000,-1,0,0,0,100,100,0,0,3,16,0,2,100,100,910,1" in antes
     assert legenda.aparencia({"legenda_tamanho": "XG", "legenda_posicao": "lado", "legenda_cor": "roxo"}) == legenda.APARENCIA_PADRAO
     assert legenda.aparencia({"legenda_tamanho": "G", "legenda_posicao": "cima", "legenda_cor": "amarelo"}) == {
