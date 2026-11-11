@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.85.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.86.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -1819,7 +1819,7 @@ async function editorAbaVideo(id){
   const [v] = await ler("radar_videos", {select:ABA_VIDEO_CAMPOS, id:"eq." + id});
   if(!v){ a.id = null; return `<button class="voltar" data-acao="vaba-voltar">← Voltar à lista</button><div class="aviso erro">Vídeo não encontrado (foi substituído ou descartado).</div>`; }
   const avulso = v.peca_id === null;           // v0.36.0: a correção avulsa não tem peça
-  const [p] = avulso ? [null] : await ler("radar_pauta_pecas", {select:"id,data,hora,situacao,assunto,chamada,roteiro,pessoas,formato,aprovado_modo,video_id", id:"eq." + v.peca_id});
+  const [p] = avulso ? [null] : await ler("radar_pauta_pecas", {select:"id,data,hora,situacao,assunto,chamada,roteiro,pessoas,formato,tipo,aprovado_modo,video_id", id:"eq." + v.peca_id});
   const pessoas = await ler("radar_pessoas", {select:"id,nome_na_peca,area,categoria,crc,ativo,termo_corretor_em,quer_ver_peca,menor,socio", order:"nome_na_peca,id"});
   E.pauta.pessoas = Object.fromEntries(pessoas.map(x => [x.id, x]));
   const hash = avulso ? null : await hashTextoVideo(p?.roteiro || "");
@@ -2308,7 +2308,9 @@ const ACOES_ABA_VIDEO = {
     const v = editavelDaAba();
     if(!v.peca_id) throw new ErroApi("A capa-arte é do reel da Pauta: o vídeo avulso não leva o molde.");
     recado("⏳ Gerando o título da capa com a IA… aguarde alguns segundos.", "aviso");
-    const [pec] = await ler("radar_pauta_pecas", {select:"roteiro,assunto,tipo", id:"eq." + v.peca_id});
+    // v0.86.0: usa a peça JÁ carregada na aba (abaVideo().peca tem roteiro e assunto) — a busca separada estava
+    // voltando vazia; aqui o roteiro e o assunto chegam de verdade
+    const pec = abaVideo().peca;
     if(!pec) throw new ErroApi("A peça deste vídeo não está mais acessível: recarregue a página.");
     const c = await capaParaEnvio(pec.roteiro, pec.assunto, pec.tipo);
     const r = rascunhoMexidoVideo(v);

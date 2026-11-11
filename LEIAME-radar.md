@@ -1,4 +1,4 @@
-# Radar Artecon — v0.85.0
+# Radar Artecon — v0.86.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,10 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.86.0 corrige de vez o título da capa: a busca que o botão fazia para pegar o assunto/roteiro da peça voltava
+vazia (o título caía em “Conteúdo contábil”); agora ele usa a peça que a aba Vídeo já tem carregada. **Só as telas
+mudam**. Veja "Da v0.85.0 para a v0.86.0".
 
 A v0.85.0 garante que o **título da capa nunca fica “Artecon”**: quando o assunto da peça não chega à tela, a reserva
 usa a **primeira frase do roteiro** do reel (sempre presente). Com a IA no ar, o título vem dela; sem ela, do assunto;
@@ -3269,6 +3273,11 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.85.0 para a v0.86.0** (**só as telas**). Supõe a v0.85.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+2. Conferência: “Gerar a capa com a IA e montar de novo” dá um título do assunto/roteiro da peça, não “Conteúdo contábil”.
 
 **Da v0.84.0 para a v0.85.0** (**só as telas**). Supõe a v0.84.0 instalada:
 

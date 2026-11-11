@@ -1,4 +1,11 @@
-# Radar Artecon — Relatório de testes (v0.85.0)
+# Radar Artecon — Relatório de testes (v0.86.0)
+
+**v0.86.0 — Correção do título da capa: usa a peça já carregada na aba (só tela)**
+(11/11/2026): o título saiu “Conteúdo contábil” (o último recurso) — logo, nem o roteiro chegava. Causa: a busca
+separada `ler(radar_pauta_pecas, select:"roteiro,assunto,tipo")` dentro de `vaba-capa-ia` voltava sem roteiro/assunto;
+`editorAbaVideo` JÁ carrega a peça completa (com assunto e roteiro) em `abaVideo().peca`. Correção: `vaba-capa-ia`
+usa `abaVideo().peca` em vez da busca separada; e a busca da aba ganhou `tipo` para a categoria. Nada no banco, nas
+funções nem no robô; repositório verde nesta sessão.
 
 **v0.85.0 — Título da capa nunca “Artecon”: reserva pela primeira frase do roteiro (só tela)**
 (11/11/2026): o dono viu o título “Artecon” de novo. Diagnóstico (logs + reprodução): a IA deu 502 e, na reserva, o
