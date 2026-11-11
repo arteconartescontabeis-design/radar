@@ -1,4 +1,4 @@
-# Radar Artecon — Relatório de testes (v0.88.0)
+# Radar Artecon — Relatório de testes (v0.89.0)
 
 **v0.87.0 — Título da capa pela fala gravada do vídeo (só tela)**
 (11/11/2026): mesmo na v0.86 o título saiu “Conteúdo contábil”; o dono confirmou estar na v0.86 (rodapé). A peça
