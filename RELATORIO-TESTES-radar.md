@@ -1,4 +1,12 @@
-# Radar Artecon — Relatório de testes (v0.86.0)
+# Radar Artecon — Relatório de testes (v0.87.0)
+
+**v0.87.0 — Título da capa pela fala gravada do vídeo (só tela)**
+(11/11/2026): mesmo na v0.86 o título saiu “Conteúdo contábil”; o dono confirmou estar na v0.86 (rodapé). A peça
+tem roteiro e assunto no banco e a RLS libera a leitura, mas o valor não chegava à tela por esse caminho. Correção
+definitiva: `vaba-capa-ia` usa `v.fala_roteiro` (a fala gravada, já no objeto do vídeo — ABA_VIDEO_CAMPOS/CAMPOS_VIDEO
+a trazem; 882 caracteres na peça 1) como fonte do título quando o roteiro da peça não está carregado; o assunto/tipo
+entram quando a aba os tem. `fraseDoRoteiro` extrai a 1ª frase. Nada no banco, nas funções nem no robô; repositório
+verde nesta sessão.
 
 **v0.86.0 — Correção do título da capa: usa a peça já carregada na aba (só tela)**
 (11/11/2026): o título saiu “Conteúdo contábil” (o último recurso) — logo, nem o roteiro chegava. Causa: a busca
