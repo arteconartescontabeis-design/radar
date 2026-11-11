@@ -4490,6 +4490,54 @@ def test_pauta_iniciar_na_hora_uma_vez_e_problemas_viram_erro_sem_nome(pauta):
     assert db.execute("select count(*) from radar_redes_envios where erro like '%Ana%'").fetchone()[0] == 0
 
 
+def test_pauta_reel_aprovado_para_agendar_sai_pela_agenda(pauta):
+    """v0.79.0: o reel também sai pela agenda. A aprovação agendada aceita o formato reel (o vídeo amarrado pelo sha256); os envios
+    nascem sem imagem e sem lâminas; pode_sair confere o vídeo (não a imagem); iniciar devolve o caminho do vídeo aprovado, o da
+    capa desenhada e a duração; o vídeo apagado pela limpeza vira "erro" com o motivo; e o Facebook só aceita reel de até 90
+    segundos (na aprovação, RADAR318)."""
+    db = pauta
+    ana = pessoa_do_corretor(db)
+    conferidas = [{"informacao": "O prazo vence no dia 20", "fonte": "Receita Federal"}]
+    pid = nova_peca(db, dias=2, tipo="reel", formato="reel", roteiro=FALA_REEL + "\n" + IDENT, pessoas=[ana],
+                    legenda_facebook=LEG_PECA, conferidas=conferidas)
+    capa_sha = "c" * 64
+    vid = video_pronto(db, pid, ana, relatorio={"texto_final": "", "capa": {"q": 12, "em_ms": 400, "movida": False, "sha256": capa_sha}})
+    marcar_pronta(db, pid)
+    r = aprovar_peca(db, pid, modo="agendar", canais=("instagram", "facebook"), artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)
+    ig, fb = r["envios"]["instagram"], r["envios"]["facebook"]
+    assert situacao_envio(db, ig) == ("autorizado", None)
+    assert db.execute("select imagem, artes from radar_redes_envios where id = %s", (ig,)).fetchone() == (None, [])
+    assert db.execute("select radar_pauta_pode_sair(%s)", (ig,)).fetchone()[0] is None
+    vencer(db, ig)
+    e = iniciar(ig)
+    assert e["video_caminho"] == f"corrigido/{vid}/{SHA_VIDEO}.mp4"
+    assert e["video_capa"] == f"quadros/{vid}/{SHA_VIDEO}/capa-{capa_sha}.jpg"
+    assert e["video_duracao"] == 38.5 and e["imagem"] is None and e["imagens"] is None
+    with como("service_role") as c:                                               # a função registra como nas outras peças
+        assert c.execute("select radar_rede_concluir(%s, true, '17890001', 'https://www.instagram.com/reel/abc/', null, null)", (ig,)).fetchone()[0]
+    assert situacao_envio(db, ig)[0] == "publicado"
+    # o vídeo apagado pela limpeza (prazo de guarda): o outro canal não sai, com o motivo claro e sem nome
+    db.execute("update radar_videos set arquivos_apagados = array['corrigido'] where id = %s", (vid,))
+    vencer(db, fb)
+    sumiu = "O vídeo aprovado do reel não está mais disponível (foi substituído ou apagado): desfaça a aprovação, confira e aprove de novo."
+    assert iniciar(fb) == {"erro": sumiu}
+    assert situacao_envio(db, fb) == ("erro", sumiu)
+    # o reel de mais de 90 segundos não agenda com o Facebook marcado (RADAR318); sem o Facebook, agenda — e o iniciar sem capa
+    # no relatório devolve video_capa vazio
+    p2 = nova_peca(db, dias=3, tipo="reel", formato="reel", roteiro=FALA_REEL + "\n" + IDENT, pessoas=[ana],
+                   legenda_facebook=LEG_PECA, conferidas=conferidas)
+    v2 = video_pronto(db, p2, ana, sha="b" * 64)
+    db.execute("update radar_videos set duracao_final = 91 where id = %s", (v2,))
+    marcar_pronta(db, p2)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR318: o Facebook só aceita reel de até 90 segundos .este tem 91 s."):
+        aprovar_peca(db, p2, modo="agendar", canais=("instagram", "facebook"), artes=[], conferencias=("pessoas", "video"), video="b" * 64)
+    r2 = aprovar_peca(db, p2, modo="agendar", canais=("instagram",), artes=[], conferencias=("pessoas", "video"), video="b" * 64)
+    assert "facebook" not in r2["envios"]
+    vencer(db, r2["envios"]["instagram"])
+    i2 = iniciar(r2["envios"]["instagram"])
+    assert i2["video_caminho"] == f"corrigido/{v2}/{'b' * 64}.mp4" and i2["video_capa"] is None and i2["video_duracao"] == 91
+
+
 def test_iniciar_antigo_recusa_envio_da_pauta_sem_mudar_nada(pauta):
     db = pauta
     pid, r = peca_aprovada(db)

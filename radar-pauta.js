@@ -32,14 +32,14 @@
    v0.36.0: só a versão e o recado do banco (o setup então em uso); a correção avulsa fica na aba Vídeo (radar-video.js).
    v0.42.0: o carrossel (e o carrossel de fotos) também sai pela agenda — "Agendar" deixa de ser só da imagem única (blocoAprovar);
    quem publica as lâminas na Meta é a função radar-redes v0.42.0, e o banco (radar_pauta_aprovar) confere tudo como antes. Só o
-   reel continua saindo à mão. As lâminas da notícia em carrossel (tela do assunto) são desenhadas por desenharPeca daqui.
+   reel (v0.79.0) também sai pela agenda. As lâminas da notícia em carrossel (tela do assunto) são desenhadas por desenharPeca daqui.
    v0.43.0: só a versão e o recado do banco. A nova tentativa automática (a Meta recusou → o Radar marca outra tentativa, 5 e
    depois 15 minutos; na 3ª recusa, só à mão) é do banco (radar_rede_concluir, radar_agenda_vencidas) e da radar-redes v0.43.0;
    a hora marcada chega na própria mensagem de erro, que o quadro de andamento já mostra.
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.78.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.79.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -1094,10 +1094,12 @@ const ordemCanal = (x, y) => (x.canal === "instagram" ? 0 : 1) - (y.canal === "i
 /* A agenda automática não vai publicar sozinha? (desligada nas Configurações, sem o sql/radar-redes-agenda.sql, ou pausada no pg_cron) */
 const agendaParada = ag => ag?.agenda_ligada === false || ag?.instalada === false || ag?.ativa === false;
 /* O quadro de aprovação (só o administrador, peça pronta): os canais (os que têm legenda), o modo (agendar ou à mão; v0.42.0: o
-   carrossel e o carrossel de fotos também agendam — a radar-redes v0.42.0 publica as lâminas; só o reel continua à mão) e as
-   conferências obrigatórias. "Confirmar" confere tudo de novo, guarda as lâminas da tela e aprova (radar_pauta_aprovar). */
+   carrossel e o carrossel de fotos também agendam; v0.79.0: o reel também — a radar-redes v0.46.0 publica o vídeo aprovado na
+   Meta, e no Facebook só até 90 segundos, conferido pelo banco) e as conferências obrigatórias. "Confirmar" confere tudo de
+   novo, guarda as lâminas da tela e aprova (radar_pauta_aprovar). */
 function blocoAprovar(p){
-  const canais = ["instagram", "facebook"].filter(k => (p["legenda_" + k] || "").trim()), soMao = !["imagem", "foto", "carrossel", "carrossel_fotos"].includes(p.formato);
+  const canais = ["instagram", "facebook"].filter(k => (p["legenda_" + k] || "").trim()),
+        soMao = !["imagem", "foto", "carrossel", "carrossel_fotos", "reel"].includes(p.formato);
   // um envio caiu no meio (pode ter saído) ou a aprovação à mão foi desfeita (pode ter sido postada): o administrador confere na rede
   const caiu = (p.radar_redes_envios || []).some(e => e.situacao === "cancelado" && e.enviado_em && !e.post_id), mao = !!p.manual_desfeita_em;
   const caixa = (k, t) => `<label><input type="checkbox" class="aprovar-conf" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`;
@@ -1120,7 +1122,8 @@ function blocoAprovar(p){
     <fieldset class="checks"><legend>Como sai</legend>
       <label><input type="radio" name="aprovar-modo" value="agendar"${soMao ? " disabled" : " checked"}> Agendar para ${h(quandoPeca(p.data, p.hora))} (Brasília): a agenda do banco publica</label>
       <label><input type="radio" name="aprovar-modo" value="manual"${soMao ? " checked" : ""}> Vou publicar à mão (baixar ${p.formato === "reel" ? "o vídeo" : "as lâminas"} e copiar a legenda)</label>
-      ${soMao ? `<span class="sub">O reel sai à mão nesta versão.</span>` : ""}</fieldset>
+      ${soMao ? `<span class="sub">Este formato sai à mão.</span>` : ""}
+      ${p.formato === "reel" && !soMao ? `<span class="sub">Reel agendado: a agenda publica o vídeo aprovado como reel no Instagram e no Facebook (no Facebook, só vídeo de até 90 segundos — acima disso, desmarque o Facebook ou publique à mão).</span>` : ""}</fieldset>
     ${caixas ? `<fieldset class="checks"><legend>Conferências</legend>${caixas}</fieldset>` : ""}
     <div class="acoes"><button class="btn verde" type="button" data-acao="peca-aprovar" data-id="${p.id}">Confirmar a aprovação</button></div></details>`;
 }

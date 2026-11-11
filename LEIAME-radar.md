@@ -1,4 +1,4 @@
-# Radar Artecon — v0.78.0
+# Radar Artecon — v0.79.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,15 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.79.0 traz a **publicação automática do reel**: a peça de reel aprovada agora também pode ser **agendada** — na
+hora marcada, a agenda do banco (a mesma da foto e do carrossel) publica o **vídeo aprovado** como reel no
+**Instagram** (contêiner `REELS`, com a capa-arte como capa do post) e no **Facebook** (`video_reels` em 3 fases; só
+até **90 segundos** lá — o Instagram aceita até 15 minutos). A Meta baixa o vídeo por um **link assinado temporário**
+do bucket privado `radar-videos` (nada fica público e nenhum link é gravado); valem todas as travas de hoje (só o
+vídeo amarrado na aprovação pelo hash, termo das pessoas em dia, nunca duas vezes, "Não saíram" com o motivo). O
+"Vou publicar à mão" continua para quem preferir. **Muda o banco** (`sql/radar-reel-agenda-v0.79.0.sql`) e a função
+**radar-redes** (v0.46.0, Deploy); o robô **não** muda. Veja "Da v0.78.0 para a v0.79.0".
 
 A v0.78.0 traz a **capa automática do reel** no molde aprovado: toda gravação nova sai do corretor com a
 **capa-arte** pronta — a pessoa **recortada** (ISNet via onnxruntime, **local no robô**: a foto não sai para serviço
@@ -3225,6 +3234,21 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.78.0 para a v0.79.0** (um **SQL novo** — o reel pela agenda —, o **Deploy da radar-redes**, as telas;
+**nada no robô, nenhum segredo novo**). Supõe a v0.78.0 instalada:
+
+1. Rode no Supabase (**SQL Editor**) o **`sql/radar-reel-agenda-v0.79.0.sql`**: `radar_pauta_aprovar` aceita o
+   modo "agendar" no reel (no Facebook, só até 90 s — RADAR318), `radar_pauta_pode_sair` confere o vídeo amarrado
+   (não a imagem) e `radar_pauta_iniciar` devolve os caminhos do vídeo e da capa para a função assinar. Pode rodar
+   de novo.
+2. **Deploy** da função **`radar-redes`** (v0.46.0: contêiner REELS no Instagram, `video_reels` em 3 fases no
+   Facebook, links assinados de 60 min do bucket `radar-videos`).
+3. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**. O `RADAR_VIDEO_COMMIT` **fica como
+   está** (o robô não muda nesta versão).
+4. Conferência: numa peça de reel **pronta** (vídeo corrigido em dia), abra "Aprovar a peça" — o "Agendar para …"
+   vem marcado; aprove e, na hora marcada, a agenda publica (o link do post aparece na peça, como na foto). O reel
+   com mais de 90 s só agenda sem o Facebook (a aprovação explica).
 
 **Da v0.77.0 para a v0.78.0** (um **SQL novo** — a capa-arte —, o **Deploy da radar-video e da radar-ia**, as telas e
 o **robô**; **nenhum segredo novo**). Supõe a v0.77.0 instalada:

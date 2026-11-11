@@ -385,17 +385,24 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.78.0"
+    assert pagina.inner_text(".versao") == "v0.79.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.78.0: a entrada do topo é a da versão em uso (a capa automática) e conta ao dono, em 2 itens
+    # v0.79.0: a entrada do topo é a da versão em uso (o reel publicado sozinho) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.78.0" and data == "11/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.79.0" and data == "11/11/2026" and len(itens) == 2
     texto = " ".join(itens)
-    for trecho in ["CAPA AUTOMÁTICA", "RECORTADA", "LOGOTIPO", "AMARELO", "radar-capa-v0.78.0.sql",
-                   "RADAR_VIDEO_COMMIT", "Da v0.77.0 para a v0.78.0"]:
+    for trecho in ["AGENDADA", "90 segundos", "Não saíram", "radar-reel-agenda-v0.79.0.sql",
+                   "radar-redes", "RADAR_VIDEO_COMMIT", "Da v0.78.0 para a v0.79.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.78.0: a entrada seguinte (a capa automática) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.78.0")')
+    assert topo == "0.78.0" and data == "11/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["capa", "radar-capa-v0.78.0.sql", "RADAR_VIDEO_COMMIT", "Da v0.77.0 para a v0.78.0"]:
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.77.0: a entrada seguinte (a varredura de erros + o Excel por data) conta ao dono, em 2 itens
@@ -2383,7 +2390,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.45.0", "0.78.0"]       # v0.78.0: a capa é da radar-ia nova, mas a antiga só perde a capa da IA (sai a reserva); a exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.79.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3264,7 +3271,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.78.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.79.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7701,7 +7708,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.78.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.79.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -10676,6 +10683,14 @@ def test_video_previa_aprovacao_amarrada_ao_sha256_baixar_apaguei_e_registro(nav
         db.execute("update radar_videos set sha256 = %s where id = %s", (SHA_VIDEO, vid))
         pg.evaluate("() => desenhar()")
         pg.wait_for_selector("#video-reel")
+        # v0.79.0: o reel também AGENDA (o padrão, com o aviso dos 90 s do Facebook); este teste segue com o "à mão", que continua valendo
+        pg.click("#peca-aprovar summary")
+        assert pg.locator("#peca-aprovar input[name=aprovar-modo][value=agendar]").is_enabled()
+        assert pg.locator("#peca-aprovar input[name=aprovar-modo][value=agendar]").is_checked()
+        assert "no Facebook, só vídeo de até 90 segundos" in pg.inner_text("#peca-aprovar")
+        assert "Este formato sai à mão" not in pg.inner_text("#peca-aprovar")
+        pg.check("#peca-aprovar input[name=aprovar-modo][value=manual]")
+        pg.click("#peca-aprovar summary")
         aprovar_na_tela(pg, ["pessoas", "video", "viu"])
         pg.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão: baixe o vídeo")
         assert "O vídeo aprovado é o que você viu na prévia" in pg.evaluate("() => window.__perguntas")[-1]

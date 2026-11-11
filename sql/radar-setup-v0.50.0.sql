@@ -3847,7 +3847,8 @@ end $$;
 -- Aprovação (só o administrador). Confere de novo tudo (radar_pauta_problemas, com o dia da peça), as caixas de conferência, as
 -- lâminas desenhadas na tela dele e guardadas agora em radar_imagens (o que se aprova é o que ele viu) e a hora. Modo "agendar"
 -- (imagem única: Imagem 4:5 e Foto): um envio por canal, com a cópia da legenda e da lâmina, que a agenda do banco publica na
--- hora marcada. Modo "manual" (carrossel e reel nesta versão, ou quem preferir): não cria envio; libera baixar e copiar, só nos
+-- hora marcada (v0.42.0: também o carrossel; v0.79.0: também o reel, pelo vídeo amarrado na aprovação — no Facebook só até 90 s,
+-- RADAR318). Modo "manual" (quem preferir): não cria envio; libera baixar e copiar, só nos
 -- canais aprovados (aprovado_canais). Depois de uma aprovação à mão desfeita, pede a caixa "rede" (a peça pode ter sido postada).
 -- v0.22.0: no reel, p_video_sha256 é o hash do vídeo corrigido que a tela mostrou: tem de ser o do vídeo pronto, e a peça fica amarrada
 -- a ele (video_id, video_sha256); pede a caixa "video" e, se alguma pessoa marcada quer ver a peça antes (termo), a caixa "viu".
@@ -3886,9 +3887,10 @@ begin
   if p_modo is null or p_modo not in ('agendar','manual') then
     raise exception 'RADAR164: escolha entre agendar e publicar à mão' using errcode = 'P0001';
   end if;
-  -- v0.42.0: o carrossel (e o carrossel de fotos) também sai pela agenda (a função radar-redes v0.42.0 publica as lâminas na Meta)
-  if p_modo = 'agendar' and p.formato not in ('imagem','foto','carrossel','carrossel_fotos') then
-    raise exception 'RADAR164: o reel sai à mão nesta versão (escolha “Vou publicar à mão”)' using errcode = 'P0001';
+  -- v0.42.0: o carrossel (e o carrossel de fotos) também sai pela agenda; v0.79.0: o reel também (a função radar-redes v0.46.0
+  -- publica o vídeo aprovado na Meta: contêiner REELS no Instagram, video_reels no Facebook)
+  if p_modo = 'agendar' and p.formato not in ('imagem','foto','carrossel','carrossel_fotos','reel') then
+    raise exception 'RADAR164: este formato sai à mão (escolha “Vou publicar à mão”)' using errcode = 'P0001';
   end if;
   select coalesce(array_agg(distinct c), '{}') into v_canais from unnest(coalesce(p_canais, '{}')) c;
   v_prob := public.radar_pauta_problemas(p.id, v_canais, p.data);
@@ -3930,6 +3932,11 @@ begin
     if not 'viu' = any(v_conf) and exists (select 1 from public.radar_pessoas pe where pe.id = any(p.pessoas || v_vid.pessoas) and pe.quer_ver_peca) then
       raise exception 'RADAR314: uma pessoa da peça pediu, no termo, para ver a peça antes: mostre o vídeo final e marque “A pessoa viu o vídeo final”'
         using errcode = 'P0001';
+    end if;
+    -- v0.79.0: o Facebook só aceita reel de 3 a 90 segundos; o Instagram vai até 15 minutos (o teto do corretor)
+    if p_modo = 'agendar' and 'facebook' = any(v_canais) and coalesce(v_vid.duracao_final, 0) > 90 then
+      raise exception 'RADAR318: o Facebook só aceita reel de até 90 segundos (este tem % s): desmarque o Facebook (o Instagram aceita até 15 minutos) ou escolha publicar à mão',
+        round(coalesce(v_vid.duracao_final, 0)) using errcode = 'P0001';
     end if;
   end if;
   -- as lâminas: uma por imagem ou foto, capa + uma por cartão no carrossel, uma por foto no carrossel de fotos, nenhuma no reel;
@@ -3974,8 +3981,8 @@ begin
   perform set_config('radar.pauta', '', true);
   if p_modo = 'agendar' then
     -- v0.42.0: no carrossel, o envio leva as lâminas por referência (artes; a lâmina aprovada não muda e a faxina não a apaga);
-    -- na imagem única, a cópia da lâmina, como antes
-    if p.formato in ('carrossel','carrossel_fotos') then
+    -- na imagem única, a cópia da lâmina, como antes; v0.79.0: no reel, nada aqui (o vídeo sai pela amarra da peça: video_id + video_sha256)
+    if p.formato in ('carrossel','carrossel_fotos','reel') then
       v_img := null;
     else
       select i.dados into v_img from public.radar_imagens i where i.id = v_artes[1];
@@ -4250,6 +4257,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare
   e        public.radar_redes_envios%rowtype;
   p        public.radar_pauta_pecas%rowtype;
+  v        public.radar_videos%rowtype;
   v_hoje   date := public.radar_pauta_hoje();
   v_janela int := public.radar_pauta_janela();
   v_id     bigint;
@@ -4281,8 +4289,18 @@ begin
   if public.radar_marcas_verificar(e.legenda) is not null or e.legenda ~* '\{\s*confirmar[^}]*\}' or e.legenda ~ '\{[^{}\n]{1,120}\}' then
     return 'A legenda tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija.';
   end if;
+  -- v0.79.0: o reel sai com o vídeo amarrado na aprovação (não há imagem)
+  if p.formato = 'reel' then
+    select * into v from public.radar_videos where id = p.video_id;
+    if v.id is null or v.sha256 is null or v.sha256 is distinct from p.video_sha256 or v.situacao <> 'pronto'
+       or 'corrigido' = any(v.arquivos_apagados) then
+      return 'O vídeo aprovado do reel não está mais disponível (foi substituído ou apagado): desfaça a aprovação, confira e aprove de novo.';
+    end if;
+    if e.canal = 'facebook' and coalesce(v.duracao_final, 0) > 90 then
+      return 'O Facebook só aceita reel de até 90 segundos: desfaça a aprovação e publique à mão no Facebook (ou só no Instagram).';
+    end if;
   -- v0.42.0: no carrossel, as imagens do post são as lâminas (artes)
-  if cardinality(e.artes) > 0 then
+  elsif cardinality(e.artes) > 0 then
     if exists (select 1 from unnest(e.artes) a
                 where not exists (select 1 from public.radar_imagens i where i.id = a and i.dados like 'data:image/jpeg;base64,%')) then
       return 'As lâminas da publicação se perderam: desfaça a aprovação e aprove de novo.';
@@ -4394,15 +4412,19 @@ create or replace function public.radar_pauta_iniciar(p_envio bigint) returns js
 language plpgsql security definer set search_path = public as $$
 declare
   v_peca    bigint;
+  p         public.radar_pauta_pecas%rowtype;
+  v         public.radar_videos%rowtype;
   e         public.radar_redes_envios%rowtype;
   v_imagens jsonb;
+  v_video   text;
+  v_capa    text;
   v_motivo  text;
 begin
   select peca_id into v_peca from public.radar_redes_envios where id = p_envio;     -- sem trava: a ordem é peça, depois envio
   if v_peca is null then
     raise exception 'RADAR138: esta autorização não está aguardando envio (já saiu, foi cancelada ou está saindo)' using errcode = 'P0001';
   end if;
-  perform 1 from public.radar_pauta_pecas where id = v_peca for update;
+  select * into p from public.radar_pauta_pecas where id = v_peca for update;
   select * into e from public.radar_redes_envios where id = p_envio for update;
   if e.situacao is distinct from 'autorizado' then          -- "erro" só volta por radar_pauta_publicar_agora (do administrador)
     raise exception 'RADAR138: esta autorização não está aguardando envio (já saiu, foi cancelada ou está saindo)' using errcode = 'P0001';
@@ -4422,11 +4444,21 @@ begin
       from unnest(e.artes) with ordinality a(id, ord)
       join public.radar_imagens i on i.id = a.id;
   end if;
+  -- v0.79.0: o reel — o vídeo amarrado na aprovação (pode_sair, acima, conferiu que ele continua pronto e guardado) e a capa
+  if p.formato = 'reel' then
+    select * into v from public.radar_videos where id = p.video_id;
+    v_video := format('corrigido/%s/%s.mp4', v.id, v.sha256);
+    if (v.relatorio->'capa'->>'sha256') ~ '^[0-9a-f]{64}$' then
+      v_capa := format('quadros/%s/%s/capa-%s.jpg', v.id, v.sha256, v.relatorio->'capa'->>'sha256');
+    end if;
+  end if;
   update public.radar_redes_envios set situacao = 'enviando', enviado_em = now(), erro = null, retentar_em = null, atualizado_em = now()
    where id = p_envio;                                             -- v0.43.0: a nova tentativa marcada é esta (a marca sai)
   return jsonb_build_object('id', e.id, 'canal', e.canal, 'conteudo_id', null, 'peca_id', e.peca_id, 'legenda', e.legenda,
                             'imagem', e.imagem, 'imagem_url', e.imagem_url,
-                            'imagens', v_imagens, 'imagens_urls', case when cardinality(e.imagens_urls) > 0 then to_jsonb(e.imagens_urls) end);
+                            'imagens', v_imagens, 'imagens_urls', case when cardinality(e.imagens_urls) > 0 then to_jsonb(e.imagens_urls) end,
+                            'video_caminho', v_video, 'video_capa', v_capa,
+                            'video_duracao', case when p.formato = 'reel' then v.duracao_final end);
 end $$;
 
 -- v0.17.0: pedido de exclusão da notícia no site. Usa o registro mais recente em "Publicações no site" (link e título).

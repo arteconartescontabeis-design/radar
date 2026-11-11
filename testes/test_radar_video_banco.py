@@ -432,8 +432,8 @@ def test_pendencia_do_reel_e_aprovacao_amarrada_ao_sha256(corretor):
     db.execute("update radar_pessoas set quer_ver_peca = true where id = %s", (ana,))
     with pytest.raises(psycopg.errors.RaiseException, match="RADAR314: uma pessoa da peça pediu"):
         aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)
-    with pytest.raises(psycopg.errors.RaiseException, match="RADAR164"):                       # o reel continua saindo à mão
-        aprovar_peca(db, pid, artes=[], conferencias=("pessoas", "video", "viu"), video=SHA_VIDEO)
+    # v0.79.0: o reel também sai pela agenda (o agendar está coberto em test_radar_banco,
+    # test_pauta_reel_aprovado_para_agendar_sai_pela_agenda); aqui segue a aprovação à mão, que continua valendo
     aprovar_peca(db, pid, modo="manual", artes=[], conferencias=("pessoas", "video", "viu"), video=SHA_VIDEO)
     assert db.execute("select situacao, video_id::text, video_sha256, aprovado_conferencias from radar_pauta_pecas where id = %s", (pid,)).fetchone() == (
         "aprovada", vid, SHA_VIDEO, ["pessoas", "video", "viu"])

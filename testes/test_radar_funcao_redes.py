@@ -31,6 +31,8 @@ from conftest import ADMIN, API, EDITOR, RAIZ, SECRETA, VAULT_SIMULADO, como, ga
 from test_radar_banco import aprovar, cenario_publicavel, registrar_site
 # v0.21.0: a Pauta (a fixture pauta põe o CNPJ e o CRC de mentira nas Configurações, como a Pauta exige)
 from test_radar_banco import IDENT, LEG_PECA, aprovar_peca, lamina, marcar_pronta, nova_peca, pauta, situacao_envio, vencer  # noqa: F401
+# v0.46.0: o reel agendado (v0.79.0 do banco) sai pela própria função
+from test_radar_banco import FALA_REEL, SHA_VIDEO, pessoa_do_corretor, video_pronto
 
 PORTA_PONTE, PORTA_FUNCAO, PORTA_SEM_META, PORTA_TOKEN_PAGINA, PORTA_SEM_ACESSO = 3994, 3993, 3995, 3996, 3997
 PORTA_CHAVE_NOVA, PORTA_LISTA_NOVA = 3988, 3987
@@ -48,7 +50,8 @@ JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" *
 ESTADO = {"chaves": [], "bucket_get_falha": False, "busca_token": [], "meta": [], "storage": [], "buckets": set(), "erro_meta": None, "status_ig": ["IN_PROGRESS", "FINISHED"], "cai_publicar": False,
           "github": [], "github_status": 204, "workflows": {}, "github_wf": [],
           "publicos": set(), "upsert": [], "assinaturas": [], "assinar_falha": False, "apagados": [],   # v0.21.0: buckets públicos, x-upsert, links assinados
-          "filhos_ig": [], "carrossel_ig": [], "fotos_fb": [], "feed_fb": []}                           # v0.42.0: o carrossel
+          "filhos_ig": [], "carrossel_ig": [], "fotos_fb": [], "feed_fb": [],                           # v0.42.0: o carrossel
+          "rupload": []}                                                                                # v0.46.0: o envio do reel do Facebook
 LOGS: dict = {}                               # v0.21.0: a saída de cada instância da função (o que o Supabase mostra em Logs), por porta
 
 
@@ -126,6 +129,8 @@ class Ponte(BaseHTTPRequestHandler):
                 return self._responder(200, {"name": "Artecon Contábeis"})
             if caminho == "ig-1":
                 return self._responder(200, {"username": "arteconcontabeis"})
+            if caminho == "video-77":                                       # v0.46.0: o andamento do envio do reel do Facebook
+                return self._responder(200, {"status": {"uploading_phase": {"status": "complete"}, "video_status": "ready"}})
         if caminho == "ig-1/media":
             # v0.42.0: o carrossel — um contêiner por lâmina (is_carousel_item) e o contêiner CAROUSEL (children + caption)
             if params.get("is_carousel_item") == "true":
@@ -147,6 +152,10 @@ class Ponte(BaseHTTPRequestHandler):
         if caminho == "pagina-1/feed":                                       # v0.42.0: a publicação única com as fotos (attached_media)
             ESTADO["feed_fb"].append(params)
             return self._responder(200, {"id": "pagina-1_post-9"})
+        if caminho == "pagina-1/video_reels":                                # v0.46.0: o reel do Facebook em 3 fases
+            if params.get("upload_phase") == "start":
+                return self._responder(200, {"video_id": "video-77", "upload_url": PONTE + "/meta/rupload/video-77"})
+            return self._responder(200, {"success": True})
         self._responder(404, {"error": {"code": 803, "message": "não existe"}})
 
     def do_GET(self):
@@ -218,6 +227,9 @@ class Ponte(BaseHTTPRequestHandler):
             ESTADO["storage"].append((self.path, self.headers.get("Content-Type"), corpo))
             ESTADO["upsert"].append(self.headers.get("x-upsert"))
             return self._responder(200, {"Key": self.path})
+        if self.path == "/meta/rupload/video-77":                          # v0.46.0: o Facebook "baixa" o vídeo do link do cabeçalho
+            ESTADO["rupload"].append((self.headers.get("Authorization"), self.headers.get("file_url")))
+            return self._responder(200, {"success": True})
         if self.path.startswith("/meta/"):
             return self._meta({k: v[0] for k, v in parse_qs(corpo.decode()).items()})
         if self.path.startswith("/github/"):                               # v0.19.0: acionar o workflow (workflow_dispatch)
@@ -291,7 +303,7 @@ def funcao(api_postgrest, tmp_path_factory):
 def redes(funcao, limpo):
     ESTADO.update(chaves=[], bucket_get_falha=False, bucket_preso=0, busca_token=[], meta=[], storage=[], buckets=set(), erro_meta=None, status_ig=["IN_PROGRESS", "FINISHED"], cai_publicar=False,
                   github=[], github_status=204, publicos=set(), upsert=[], assinaturas=[], assinar_falha=False, apagados=[], workflows={}, github_wf=[],
-                  filhos_ig=[], carrossel_ig=[], fotos_fb=[], feed_fb=[])
+                  filhos_ig=[], carrossel_ig=[], fotos_fb=[], feed_fb=[], rupload=[])
     a, c1 = cenario_publicavel(limpo)
     aprovar(c1)
     registrar_site(c1)
@@ -895,6 +907,70 @@ def test_peca_carrossel_nova_tentativa_reassina_as_laminas_sem_reenviar(peca):
     assert len(ESTADO["storage"]) == 3                                              # nenhuma lâmina sobe de novo
     assert len(ESTADO["assinaturas"]) == 6                                          # cada tentativa assina as 3 de novo
     assert db.execute("select imagens_urls from radar_redes_envios where id = %s", (ig,)).fetchone()[0] == urls
+
+
+def reel_agendado(db, canais=("instagram",), capa=True):
+    """v0.46.0: peça de reel aprovada para a agenda (o vídeo 'pronto' gravado direto, como em test_radar_banco), já vencida.
+    Devolve (id do vídeo, {canal: envio})."""
+    ana = pessoa_do_corretor(db)
+    pid = nova_peca(db, dias=2, tipo="reel", formato="reel", roteiro=FALA_REEL + "\n" + IDENT, pessoas=[ana],
+                    legenda_facebook=LEG_PECA if "facebook" in canais else "",
+                    conferidas=[{"informacao": "O prazo vence no dia 20", "fonte": "Receita Federal"}])
+    rel = {"texto_final": "", **({"capa": {"q": 3, "em_ms": 100, "movida": False, "sha256": CAPA_SHA}} if capa else {})}
+    vid = video_pronto(db, pid, ana, relatorio=rel)
+    marcar_pronta(db, pid)
+    envios = aprovar_peca(db, pid, modo="agendar", canais=canais, artes=[], conferencias=("pessoas", "video"), video=SHA_VIDEO)["envios"]
+    for envio in envios.values():
+        vencer(db, envio)
+    return vid, envios
+
+
+CAPA_SHA = "d" * 64
+
+
+def test_peca_reel_instagram_conteiner_reels_com_video_e_capa_assinados(peca):
+    """v0.46.0 (v0.79.0 do app): o reel agendado sai pela própria função — contêiner REELS com o vídeo aprovado e a capa desenhada
+    do bucket radar-videos, por link assinado de 60 min; espera do processamento e media_publish. Nada sobe ao armazenamento (o
+    vídeo já está lá) e nenhum link assinado fica gravado."""
+    db, c1 = peca
+    vid, envios = reel_agendado(db)
+    status, r = pedir({"acao": "publicar", "envio": envios["instagram"]}, cab=AGENDA)
+    assert status == 200 and r == {"situacao": "publicado", "url": "https://www.instagram.com/p/ABC123/", "post_id": "midia-1"}, r
+    chamadas = [(m, p) for m, p, _ in ESTADO["meta"]]
+    assert chamadas == [("POST", "ig-1/media"), ("GET", "cont-1"), ("GET", "cont-1"), ("POST", "ig-1/media_publish"), ("GET", "midia-1")]
+    criar = ESTADO["meta"][0][2]
+    video = f"/storage/v1/object/sign/radar-videos/corrigido/{vid}/{SHA_VIDEO}.mp4"
+    capa = f"/storage/v1/object/sign/radar-videos/quadros/{vid}/{SHA_VIDEO}/capa-{CAPA_SHA}.jpg"
+    assert criar["media_type"] == "REELS" and criar["caption"] == LEG_PECA and criar["share_to_feed"] == "true"
+    assert criar["video_url"] == PONTE + video + "?token=assinado.1" and criar["cover_url"] == PONTE + capa + "?token=assinado.2"
+    assert ESTADO["assinaturas"] == [(video, {"expiresIn": 3600}), (capa, {"expiresIn": 3600})]
+    assert ESTADO["storage"] == [] and ESTADO["buckets"] == set()
+    linha = db.execute("select situacao, post_id, url, imagem, imagem_url from radar_redes_envios where id = %s", (envios["instagram"],)).fetchone()
+    assert linha == ("publicado", "midia-1", "https://www.instagram.com/p/ABC123/", None, None)
+    # de novo: nunca duas vezes
+    status, r = pedir({"acao": "publicar", "envio": envios["instagram"]}, cab=AGENDA)
+    assert status == 400 and "não está aguardando envio" in r["message"] and len(ESTADO["meta"]) == 5
+
+
+def test_peca_reel_facebook_video_reels_em_tres_fases(peca):
+    """v0.46.0: o reel do Facebook sai por video_reels — start, o envio por file_url (o Facebook baixa do link assinado; o token
+    vai no cabeçalho, só para o endereço que a própria Meta devolveu) e finish com video_state=PUBLISHED. O post registrado é
+    facebook.com/reel/<video_id>. Sem a capa no relatório, nada de cover é pedido (o Facebook escolhe o quadro)."""
+    db, c1 = peca
+    vid, envios = reel_agendado(db, canais=("facebook",), capa=False)
+    status, r = pedir({"acao": "publicar", "envio": envios["facebook"]}, cab=AGENDA)
+    assert status == 200 and r == {"situacao": "publicado", "url": "https://www.facebook.com/reel/video-77", "post_id": "video-77"}, r
+    fases = [prm.get("upload_phase") for m, p, prm in ESTADO["meta"] if p == "pagina-1/video_reels"]
+    assert fases == ["start", "finish"]
+    fim = [prm for m, p, prm in ESTADO["meta"] if prm.get("upload_phase") == "finish"][0]
+    assert fim["video_id"] == "video-77" and fim["video_state"] == "PUBLISHED" and fim["description"] == LEG_PECA
+    video = f"/storage/v1/object/sign/radar-videos/corrigido/{vid}/{SHA_VIDEO}.mp4"
+    assert ESTADO["rupload"] == [("OAuth " + TOKEN_PAGINA, PONTE + video + "?token=assinado.1")]
+    assert ESTADO["assinaturas"] == [(video, {"expiresIn": 3600})]                # sem capa: só o vídeo é assinado
+    assert ("GET", "video-77") in [(m, p) for m, p, _ in ESTADO["meta"]]          # o andamento foi conferido antes do finish
+    assert situacao_envio(db, envios["facebook"])[0] == "publicado"
+    linha = db.execute("select url, imagem_url from radar_redes_envios where id = %s", (envios["facebook"],)).fetchone()
+    assert linha == ("https://www.facebook.com/reel/video-77", None)
 
 
 def test_noticia_em_carrossel_autorizada_com_as_laminas_sai_como_carrossel(redes):

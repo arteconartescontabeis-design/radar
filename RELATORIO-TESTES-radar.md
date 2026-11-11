@@ -1,4 +1,24 @@
-# Radar Artecon — Relatório de testes (v0.78.0)
+# Radar Artecon — Relatório de testes (v0.79.0)
+
+**v0.79.0 — Publicação automática do reel (banco + radar-redes + tela)**
+(11/11/2026): pedido do dono ("quero sim" a publicação automática; prévia aprovada). (1) Banco
+(`sql/radar-reel-agenda-v0.79.0.sql`): `radar_pauta_aprovar` aceita "agendar" no formato reel (o envio nasce por
+canal, sem imagem e sem lâminas; o vídeo sai pela amarra da aprovação — `video_id` + `video_sha256`; no Facebook só
+até 90 s, RADAR318 com a duração na mensagem); `radar_pauta_pode_sair` confere o vídeo (pronto, mesmo sha256, sem
+`corrigido` apagado) em vez da imagem, e os 90 s de novo por canal; `radar_pauta_iniciar` devolve `video_caminho`
+(`corrigido/<id>/<sha>.mp4`), `video_capa` (`quadros/<id>/<sha>/capa-<sha>.jpg`, quando o relatório tem a capa) e
+`video_duracao`. (2) radar-redes v0.46.0: `assinarVideo` (bucket privado `radar-videos`, só os caminhos do banco,
+link de 3600 s); Instagram por contêiner `REELS` (`video_url` + `cover_url` + `share_to_feed`, espera própria
+`LIMITE_REEL_MS` = 110 s com o passo `PASSO_IG_MS`); Facebook por `video_reels` em 3 fases (start → upload por
+`file_url` no endereço que a própria Meta devolveu, token só no cabeçalho → espera do andamento → finish
+`PUBLISHED`; post `facebook.com/reel/<id>`); `media_publish`/finish seguem a regra do Incerto. (3) Tela: o radio
+"Agendar" liberado no reel com o aviso dos 90 s; textos atualizados. Testes: banco
+`test_pauta_reel_aprovado_para_agendar_sai_pela_agenda` (envios sem imagem, iniciar com caminhos/duração, vídeo
+apagado vira "erro" com o motivo, RADAR318 e o agendar só-Instagram) e função
+`test_peca_reel_instagram_conteiner_reels_com_video_e_capa_assinados` +
+`test_peca_reel_facebook_video_reels_em_tres_fases` (fases, links assinados de 3600 s, nada gravado, nunca duas
+vezes) — banco/agenda/corretor/repositório e `deno check` verdes nesta sessão; a suíte Deno da função e as telas
+não rodaram aqui (sem `postgrest`).
 
 **v0.78.0 — Capa automática do reel no molde aprovado (banco + funções + robô + tela)**
 (11/11/2026): pedido do dono, com os modelos aprovados em sequência (C: painel diagonal + estúdio). (1) Robô:

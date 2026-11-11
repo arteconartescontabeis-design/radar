@@ -1,5 +1,16 @@
 // =====================================================================
-// RADAR ARTECON — Edge Function "radar-redes" (v0.43.0)
+// RADAR ARTECON — Edge Function "radar-redes" (v0.46.0)
+//
+// v0.46.0 — o REEL sai pela agenda: a peça em formato reel aprovada com "agendar" (radar_pauta_aprovar v0.79.0) é publicada
+//   automaticamente na hora marcada, como a imagem e o carrossel. O banco (radar_pauta_iniciar) devolve o caminho do vídeo
+//   aprovado no bucket privado "radar-videos" (corrigido/<id>/<sha256>.mp4) e o da capa desenhada (quando há); a função assina
+//   os caminhos (link de 60 min, nunca gravado) e publica:
+//     Instagram: POST /{ig}/media (media_type=REELS + video_url + caption + cover_url) → espera FINISHED → media_publish
+//     Facebook:  POST /{page}/video_reels (upload_phase=start) → rupload com file_url (o Facebook baixa do link assinado)
+//                → espera o envio terminar → video_reels (upload_phase=finish, video_state=PUBLISHED); o post é
+//                https://www.facebook.com/reel/<video_id>. O Facebook só aceita reel de até 90 s (o banco trava antes).
+//   O vídeo demora mais que a foto: a espera do reel vai até LIMITE_REEL_MS (110 s) dentro do mesmo pedido; estourou, vira
+//   "erro" com "tente de novo" (nada foi publicado). O media_publish e o finish continuam com a regra do Incerto.
 //
 // Publica no Instagram e no Facebook da Artecon, pela API da Meta (Graph API), o conteúdo que o administrador
 // autorizou na tela do assunto (passos 6 e 7 da trilha) e, v0.21.0, a peça da Pauta que ele aprovou para sair pela agenda.
@@ -83,7 +94,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.45.0";
+const VERSAO = "0.46.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -103,6 +114,9 @@ const GRAPH = env("META_GRAPH_URL", "https://graph.facebook.com/v23.0").replace(
 const BUCKET = "radar-redes";
 // v0.21.0: a arte da peça da Pauta fica no bucket privado; a Meta baixa por um link assinado que vale 10 minutos
 const BUCKET_PAUTA = "radar-pauta", LINK_PAUTA_S = 600;
+// v0.46.0: o vídeo aprovado do reel fica no bucket privado "radar-videos" (quem grava lá é a função radar-video e o robô);
+// a Meta baixa por link assinado de 60 min — o download e o processamento do vídeo demoram mais que os da foto
+const BUCKET_VIDEOS = "radar-videos", LINK_VIDEO_S = 3600;
 /** Quem chamou: o administrador logado, o robô do site (chave interna) ou, v0.21.0, a agenda do banco (chave do Vault). */
 type Quem = "admin" | "robo" | "agenda";
 // a Meta às vezes demora para baixar a imagem: o contêiner do Instagram é consultado por até ~40 s
@@ -126,6 +140,10 @@ class Incerto extends Erro {}
 // O Supabase encerra a chamada perto de 150 s: a publicação só é pedida até 55 s depois do início do pedido, para caber
 // o pior caso depois dela (publicar 40 s + link 8 s + registro 2 × 15 s ≈ 135 s). A tela espera 150 s.
 const LIMITE_PUBLICAR_MS = 55_000, TEMPO_PUBLICAR_MS = 40_000;
+// v0.46.0: o reel espera mais (o vídeo é baixado e processado pela Meta), dentro do mesmo pedido: depois do limite ainda cabem
+// o finish/publish (40 s) e o registro (2 × 15 s); o chamador pode já ter desistido (150 s), mas a função termina e registra.
+// O passo entre as consultas é o mesmo da foto (PASSO_IG_MS)
+const LIMITE_REEL_MS = Number(env("RADAR_REDES_LIMITE_REEL_MS", "110000"));
 const responder = (status: number, corpo: unknown) =>
   new Response(JSON.stringify(corpo), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
@@ -373,6 +391,25 @@ async function assinar(url: string): Promise<string> {
   throw falhou;
 }
 
+/** v0.46.0: link assinado (60 min) de um arquivo do reel no bucket privado radar-videos. Só os caminhos que o banco monta
+ *  (radar_pauta_iniciar): o vídeo corrigido aprovado e a capa desenhada. */
+async function assinarVideo(caminho: string): Promise<string> {
+  const ok = /^corrigido\/[0-9a-f-]{36}\/[0-9a-f]{64}\.mp4$/.test(caminho) ||
+             /^quadros\/[0-9a-f-]{36}\/[0-9a-f]{64}\/capa-[0-9a-f]{64}\.jpg$/.test(caminho);
+  const falhou = new Erro(502, "Não foi possível preparar o link do vídeo para a Meta. Nada foi publicado.");
+  if (!ok) throw falhou;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${BUCKET_VIDEOS}/${caminho}`, {
+      method: "POST", headers: { ...comoServico(), "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresIn: LINK_VIDEO_S }), signal: AbortSignal.timeout(15_000),
+    });
+    const d: any = await r.json().catch(() => ({}));
+    const assinado = String(d?.signedURL ?? "");
+    if (r.ok && assinado.startsWith(`/object/sign/${BUCKET_VIDEOS}/`)) return `${SUPABASE_URL}/storage/v1${assinado}`;
+  } catch { /* o armazenamento não respondeu: a mesma recusa */ }
+  throw falhou;
+}
+
 // ------------------------------------------------------------------ publicar
 const dormir = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 const aindaDaTempo = (inicio: number) => {
@@ -461,6 +498,71 @@ async function publicarFacebookCarrossel(imagens: string[], legenda: string, ini
   return { post_id: post, url };
 }
 
+// ------------------------------------------------------------------ reel (v0.46.0)
+/** O reel do Instagram: contêiner REELS (video_url + caption + cover_url), espera do processamento (até LIMITE_REEL_MS) e
+ *  media_publish. share_to_feed: o reel também aparece no feed do perfil, como no post feito à mão. */
+async function publicarInstagramReel(videoUrl: string, capaUrl: string, legenda: string, inicio: number) {
+  const c = configMeta("instagram");
+  const cont = await metaIg("POST", `${c.ig}/media`, { media_type: "REELS", video_url: videoUrl, caption: legenda,
+    share_to_feed: "true", ...(capaUrl ? { cover_url: capaUrl } : {}) });
+  for (;;) {
+    const s = await metaIg("GET", cont.id, { fields: "status_code" });
+    if (s.status_code === "FINISHED") break;
+    if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new Erro(502, "O Instagram não aceitou o vídeo do reel (contêiner com erro).");
+    if (Date.now() - inicio >= LIMITE_REEL_MS) {
+      throw new Erro(504, "O Instagram demorou para processar o vídeo do reel. A publicação não saiu: use Tentar de novo em alguns minutos.");
+    }
+    await dormir(PASSO_IG_MS);
+  }
+  const pub = await metaIg("POST", `${c.ig}/media_publish`, { creation_id: cont.id }, true);
+  let url = "";
+  try { url = (await metaIg("GET", pub.id, { fields: "permalink" })).permalink ?? ""; } catch { /* o post saiu; o link é só conveniência */ }
+  return { post_id: String(pub.id), url };
+}
+
+/** O reel do Facebook, em 3 fases (video_reels): start (cria o vídeo), upload por file_url (o Facebook baixa do link assinado;
+ *  o token vai só para rupload.facebook.com, conferido antes) e finish (video_state=PUBLISHED). Se falhar depois do upload, o
+ *  vídeo fica lá sem aparecer para ninguém (como as fotos do carrossel); a nova tentativa cria outro. O post é o próprio vídeo:
+ *  https://www.facebook.com/reel/<video_id>. */
+async function publicarFacebookReel(videoUrl: string, legenda: string, inicio: number) {
+  const c = configMeta("facebook");
+  const { token } = await tokenDaPagina();
+  const ini = await meta("POST", `${c.pagina}/video_reels`, { upload_phase: "start" });
+  const videoId = String(ini?.video_id ?? ""), uploadUrl = String(ini?.upload_url ?? "");
+  // o token só vai para o endereço de envio da própria Meta (rupload; em teste, o META_GRAPH_URL de mentira)
+  if (!videoId || !(uploadUrl.startsWith("https://rupload.facebook.com/") || uploadUrl.startsWith(GRAPH + "/"))) {
+    throw new Erro(502, "O Facebook não abriu o envio do reel (resposta sem video_id/upload_url). Nada foi publicado: tente de novo.");
+  }
+  let up: Response;
+  try {
+    up = await fetch(uploadUrl, { method: "POST", signal: AbortSignal.timeout(30_000),
+      headers: { Authorization: `OAuth ${token}`, file_url: videoUrl } });
+  } catch { throw new Erro(504, "O Facebook não respondeu ao envio do vídeo do reel. Nada foi publicado: tente de novo."); }
+  const ud: any = await up.json().catch(() => ({}));
+  if (!up.ok || ud?.success !== true) {
+    const msg = String(ud?.debug_info?.message || ud?.error?.message || `erro ${up.status}`).split(token).join("***").slice(0, 300);
+    throw new Erro(502, `O Facebook recusou o vídeo do reel: ${msg}.`);
+  }
+  // espera o Facebook terminar de baixar o vídeo do link; se a leitura do andamento falhar 3 vezes, segue para o finish (a
+  // própria Meta recusa com clareza se o vídeo ainda não estiver pronto)
+  for (let nulos = 0;;) {
+    const s: any = await meta("GET", videoId, { fields: "status" }).catch(() => null);
+    if (s === null) { if (++nulos >= 3) break; }
+    else {
+      const fase = String(s?.status?.uploading_phase?.status ?? ""), video = String(s?.status?.video_status ?? "");
+      if (video === "error") throw new Erro(502, "O Facebook não aceitou o vídeo do reel (processamento com erro).");
+      if (fase === "complete" || video === "ready" || video === "upload_complete") break;
+    }
+    if (Date.now() - inicio >= LIMITE_REEL_MS) {
+      throw new Erro(504, "O Facebook demorou para processar o vídeo do reel. A publicação não saiu: use Tentar de novo em alguns minutos.");
+    }
+    await dormir(PASSO_IG_MS);
+  }
+  await meta("POST", `${c.pagina}/video_reels`,
+             { upload_phase: "finish", video_id: videoId, video_state: "PUBLISHED", description: legenda }, true);
+  return { post_id: videoId, url: `https://www.facebook.com/reel/${videoId}` };
+}
+
 /** v0.21.0: a autorização, com peca_id (a peça da Pauta). Com o banco de antes da v0.21.0 (sem a coluna), lê de novo sem ela:
  *  a notícia continua saindo se esta função for instalada antes do SQL. */
 async function lerEnvio(servico: Record<string, string>, envio: number) {
@@ -508,7 +610,14 @@ async function publicar(envio: number, inicio: number, quem: Quem) {
     // v0.22.0 (rodada 2): a notícia também vai para o bucket privado (nome aleatório, link de 10 min); só a nova tentativa de um
     // envio de antes desta versão, com o link público já gravado, manda esse link
     let r: { post_id: string; url: string };
-    if (imagens.length >= 2) {
+    if (typeof e.video_caminho === "string" && e.video_caminho) {
+      // v0.46.0: o reel — o banco devolveu os caminhos do vídeo aprovado e da capa (bucket privado radar-videos); a Meta
+      // baixa pelos links assinados, que não são gravados. Sem a capa (ou com ela indisponível), o reel sai sem cover_url
+      const videoUrl = await assinarVideo(e.video_caminho);
+      const capaUrl = typeof e.video_capa === "string" && e.video_capa ? await assinarVideo(e.video_capa).catch(() => "") : "";
+      r = e.canal === "instagram" ? await publicarInstagramReel(videoUrl, capaUrl, e.legenda, inicio)
+                                  : await publicarFacebookReel(videoUrl, e.legenda, inicio);
+    } else if (imagens.length >= 2) {
       // v0.42.0: cada lâmina no bucket privado (a tentativa anterior já pode ter guardado todas: assina de novo, sem reenviar)
       if (!imagensUrls.length) {
         const novas: string[] = [];
