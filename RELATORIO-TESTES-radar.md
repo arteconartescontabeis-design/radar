@@ -1,4 +1,13 @@
-# Radar Artecon — Relatório de testes (v0.82.0)
+# Radar Artecon — Relatório de testes (v0.83.0)
+
+**v0.83.0 — Geração da capa mais clara: processando + sempre remonta + “Visualizar a capa” (só telas)**
+(11/11/2026): pedido do dono (“cliquei e não aparece nada… mensagem que está processando… botão de visualizar capa”).
+(1) `montarDeNovoVideo(pergunta, forcar)`: com `forcar`, remonta mesmo sem mudança nos ajustes — o botão da capa passa
+`forcar=true`, então a capa-arte e a legenda nova (rodapé) são aplicadas num vídeo já pronto cujo título repete (antes
+dava “Nada mudou” e nada acontecia). (2) `vaba-capa-ia`: recado “⏳ Gerando…” imediato e, ao enviar, “✅ Enviado ao
+corretor! O robô está montando…”. (3) Ação/botão `vaba-capa-ver` (“Visualizar a capa”): abre a prévia e rola até a
+capa desenhada; só aparece com o vídeo pronto. Nada muda no banco, nas funções nem no robô; telas sem `postgrest`
+local.
 
 **v0.82.0 — Legenda no rodapé + prévia da capa (robô + função radar-video + telas)**
 (11/11/2026): pedido do dono. (1) `legenda.py`: `BASE_FALA` 1220 → 1540 — a base da legenda “embaixo” vai ao rodapé

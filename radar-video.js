@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.82.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.83.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -2023,7 +2023,8 @@ function htmlCapaAbaVideo(v, r, ed){
       ${r.capa_q !== null ? `<button class="btn peq sec" type="button" data-acao="vaba-capa-tirar">Tirar a capa escolhida</button>` : ""}</div>` : ""}
     <h4>Título da capa (a arte do molde)</h4>
     ${ed && v.peca_id ? `<div class="acoes"><button class="btn verde peq" type="button" data-acao="vaba-capa-ia">Gerar a capa com a IA e montar de novo</button>
-      <span class="sub">Um clique: a IA escreve o título a partir do roteiro da peça e o robô já remonta o vídeo com a capa-arte no molde (e a legenda no estilo atual). Depois é só aprovar. Para o vídeo gravado antes da capa automática — no envio novo, isso já acontece sozinho.</span></div>` : ""}
+      ${["pronto", "regravar"].includes(v.situacao) ? `<button class="btn peq sec" type="button" data-acao="vaba-capa-ver">Visualizar a capa</button>` : ""}
+      <span class="sub">Um clique: a IA escreve o título a partir do roteiro da peça e o robô já remonta o vídeo com a capa-arte no molde (e a legenda no rodapé). Depois é só aprovar. Para o vídeo gravado antes da capa automática — no envio novo, isso já acontece sozinho.</span></div>` : ""}
     ${[0, 1, 2].map(i => `<input id="vaba-capa-linha-${i}" type="text" maxlength="18" value="${h(r.capa.linhas[i])}" aria-label="Linha ${i + 1} do título da capa" placeholder="Linha ${i + 1}${i === 2 ? " (sai em amarelo)" : ""}"${ed ? "" : " disabled"}>`).join("")}
     <div class="grade"><div><label for="vaba-capa-categoria">Categoria (a faixa vermelha)</label>
       <input id="vaba-capa-categoria" type="text" maxlength="24" value="${h(r.capa.categoria)}"${ed ? "" : " disabled"}></div>
@@ -2283,16 +2284,26 @@ const ACOES_ABA_VIDEO = {
   async "vaba-capa-ia"(){
     const v = editavelDaAba();
     if(!v.peca_id) throw new ErroApi("A capa-arte é do reel da Pauta: o vídeo avulso não leva o molde.");
-    recado("Escrevendo o título da capa com a IA… (uns segundos)", "aviso");
+    recado("⏳ Gerando o título da capa com a IA… aguarde alguns segundos.", "aviso");
     const [pec] = await ler("radar_pauta_pecas", {select:"roteiro,assunto,tipo", id:"eq." + v.peca_id});
     if(!pec) throw new ErroApi("A peça deste vídeo não está mais acessível: recarregue a página.");
     const c = await capaParaEnvio(pec.roteiro, pec.assunto, pec.tipo);
     const r = rascunhoMexidoVideo(v);
     r.capa = {linhas:[0, 1, 2].map(i => textoDe(c.linhas[i])), categoria:c.categoria || "", subtitulo:c.subtitulo || ""};
     redesenharEditorVideo();
-    const robo = await montarDeNovoVideo(`A IA escreveu o título da capa:\n\n“${ajustesDoEditor(v, r).capa.linhas.join(" / ")}”\n\nMontar o vídeo de novo com a capa-arte (e a legenda no estilo atual)?`);
-    if(robo !== null) recado(`Capa gerada: o robô monta o vídeo com a capa-arte. Quando ficar pronto, é só aprovar. ${robo}`);
-    else recado("Título preenchido (nada foi montado): ajuste se quiser e clique em Montar de novo com estas mudanças.", "aviso");
+    // v0.83.0: sempre remonta (forcar), mesmo se o título repetir — assim a capa e a legenda nova (rodapé) são aplicadas
+    const robo = await montarDeNovoVideo(`A IA escreveu o título da capa:\n\n“${ajustesDoEditor(v, r).capa.linhas.join(" / ")}”\n\nMontar o vídeo agora com a capa-arte e a legenda atual?`, true);
+    if(robo !== null) recado(`✅ Enviado ao corretor! O robô está montando o vídeo com a capa (leva alguns minutos). Esta tela avisa quando ficar pronto — aí é só aprovar. ${robo}`);
+    else recado("Título preenchido (nada foi montado). Revise e clique de novo, ou use “Montar de novo com estas mudanças”.", "aviso");
+  },
+  /* v0.83.0: ver a capa desenhada (abre a prévia, que a carrega, e rola até a imagem) */
+  async "vaba-capa-ver"(){
+    const v = videoDaAba(), a = abaVideo();
+    if(!["pronto", "regravar"].includes(v.situacao)) throw new ErroApi("A capa aparece quando o vídeo fica pronto. Se acabou de mandar montar, aguarde o corretor terminar.");
+    if(!a.previa || a.previa.id !== v.id || !a.previa.capa) await abrirPreviaAbaVideo(false);
+    const fig = $(".vaba-capa-previa");
+    if(fig) fig.scrollIntoView({block:"center"});
+    else recado("Este vídeo não tem capa-arte ainda: use “Gerar a capa com a IA e montar de novo”.", "aviso");
   },
   "vaba-cortar-divergencia"(el){
     cortarTrechoRelatado(editavelDaAba(), "divergencias", Number(el.dataset.i), "O trecho desta divergência não está no relatório.");
@@ -2469,16 +2480,18 @@ const ACOES_VENDA = {
 
 const NAVEGACAO_ABA_VIDEO = ["video-aba", "vaba-filtro", "vaba-abrir", "vaba-voltar", "vaba-avulso-novo", "vaba-avulso-cancelar", "vaba-peca", "vaba-palavra", "vaba-limpar-selecao", "vaba-cortar",
   "vaba-comecar-palavra", "vaba-terminar-palavra", "vaba-marcar-de", "vaba-marcar-ate", "vaba-comecar-aqui", "vaba-terminar-aqui", "vaba-desfazer",
-  "vaba-desfazer-salvo", "vaba-refazer-salvo", "vaba-desfazer-bloco", "vaba-ouvir", "vaba-passo", "vaba-capa-aqui", "vaba-capa-tirar",
+  "vaba-desfazer-salvo", "vaba-refazer-salvo", "vaba-desfazer-bloco", "vaba-ouvir", "vaba-passo", "vaba-capa-aqui", "vaba-capa-tirar", "vaba-capa-ver",
   "vaba-cortar-divergencia", "vaba-cortar-fora", "vaba-descartar"];
 
 /* v0.81.0: o caminho único do "Montar de novo" (o botão do rodapé e o da capa com IA): as conferências da tela, a
    pergunta de confirmação e o pedido ao banco (radar_video_editar). Devolve o recado do acionamento do robô, ou
    null quando a pessoa cancelou na pergunta. */
-async function montarDeNovoVideo(pergunta){
+async function montarDeNovoVideo(pergunta, forcar){
   if(!ehAdmin()) throw new ErroApi("Só o administrador edita o vídeo do reel.");
   const v = editavelDaAba(), r = rascunhoMexidoVideo(v), m = mapaVideo(v);
-  if(!mudouAbaVideo(v, r)) throw new ErroApi("Nada mudou.");
+  // v0.83.0: forcar = remonta mesmo sem mudança nos ajustes (o botão da capa: aplica a capa-arte e a legenda nova mesmo
+  // quando o título repete). Sem forcar (o botão "Montar de novo"), ainda exige alguma mudança.
+  if(!forcar && !mudouAbaVideo(v, r)) throw new ErroApi("Nada mudou.");
   const aj = ajustesDoEditor(v, r), dur = m ? duracaoEstimadaVideo(m, aj) : null;
   if(m && falaEstimadaQVideo(m, aj) < ABA_VIDEO_LIMITES.fala * ABA_VIDEO_FPS) throw new ErroApi("Os cortes deixam menos de 2 s de fala: desfaça um corte.");
   if(dur !== null && (dur < ABA_VIDEO_LIMITES.min || dur > ABA_VIDEO_LIMITES.max))
