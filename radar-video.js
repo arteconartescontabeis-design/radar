@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.79.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.80.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -365,13 +365,16 @@ function capaReserva(assunto, tipo){
   return {linhas:linhas.length ? linhas.slice(0, 3) : ["Artecon"],
           categoria:CATEGORIA_CAPA[tipo] || "Conteúdo contábil", subtitulo:"Artecon Artes Contábeis"};
 }
+/* v0.80.0: o banco recusa { } \ e caracteres de controle no título (RADAR356) — a limpeza aqui garante que a capa
+   NUNCA derruba um envio nem um ajuste por causa de um caractere que veio da IA, do assunto ou da digitação */
+const capaLimpa = x => String(x ?? "").replace(/[{}\\\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
 function capaValida(c){
-  const linhas = listaVideo(c?.linhas).map(x => String(x).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 3).map(x => x.slice(0, 18));
+  const linhas = listaVideo(c?.linhas).map(x => capaLimpa(x).slice(0, 18).trim()).filter(Boolean).slice(0, 3);
   if(!linhas.length) return null;
-  const tudo = [...linhas, textoDe(c?.categoria), textoDe(c?.subtitulo)].join(" ");
+  const categoria = capaLimpa(c?.categoria).slice(0, 24).trim(), subtitulo = capaLimpa(c?.subtitulo).slice(0, 48).trim();
+  const tudo = [...linhas, categoria, subtitulo].join(" ");
   if(termosPublicidade(tudo).trava.length || termosPeca(tudo).length) return null;
-  return {linhas, ...(textoDe(c?.categoria) ? {categoria:textoDe(c?.categoria).slice(0, 24)} : {}),
-          ...(textoDe(c?.subtitulo) ? {subtitulo:textoDe(c?.subtitulo).slice(0, 48)} : {})};
+  return {linhas, ...(categoria ? {categoria} : {}), ...(subtitulo ? {subtitulo} : {})};
 }
 async function capaParaEnvio(roteiro, assunto, tipo){
   try{
@@ -1448,10 +1451,10 @@ function ajustesDoEditor(v, r){
   if(r.extra.modo === "sem") aj.cartela_extra = "";
   // v0.78.0: o título da capa-arte segue nos ajustes; apagar todas as linhas manda "capa": null (tira a arte — a
   // capa volta a ser só o quadro), porque o ajustar do banco mescla e manteria a de antes sem a marca
-  const capaLinhas = (r.capa?.linhas || []).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 3).map(l => l.slice(0, 18));
-  if(capaLinhas.length) aj.capa = {linhas:capaLinhas,
-    ...(r.capa.categoria.trim() ? {categoria:r.capa.categoria.replace(/\s+/g, " ").trim().slice(0, 24)} : {}),
-    ...(r.capa.subtitulo.trim() ? {subtitulo:r.capa.subtitulo.replace(/\s+/g, " ").trim().slice(0, 48)} : {})};
+  // v0.80.0: a mesma limpeza do envio (capaLimpa): { } \ e caractere de controle digitados não derrubam o ajuste no banco
+  const capaLinhas = (r.capa?.linhas || []).map(l => capaLimpa(l).slice(0, 18).trim()).filter(Boolean).slice(0, 3);
+  const capaCat = capaLimpa(r.capa?.categoria).slice(0, 24).trim(), capaSub = capaLimpa(r.capa?.subtitulo).slice(0, 48).trim();
+  if(capaLinhas.length) aj.capa = {linhas:capaLinhas, ...(capaCat ? {categoria:capaCat} : {}), ...(capaSub ? {subtitulo:capaSub} : {})};
   else if(listaVideo(objVideo(objVideo(v.ajustes).capa).linhas).length) aj.capa = null;
   return aj;
 }
@@ -2017,6 +2020,8 @@ function htmlCapaAbaVideo(v, r, ed){
     ${ed && m ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-capa-aqui"${a.previa ? "" : " disabled"}>Usar o quadro do player como capa (agora: <span id="vaba-capa-agora">0</span> s)</button>
       ${r.capa_q !== null ? `<button class="btn peq sec" type="button" data-acao="vaba-capa-tirar">Tirar a capa escolhida</button>` : ""}</div>` : ""}
     <h4>Título da capa (a arte do molde)</h4>
+    ${ed && v.peca_id ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-capa-ia">Escrever o título com a IA</button>
+      <span class="sub">A mesma IA do envio: título, categoria e subtítulo a partir do roteiro da peça (v0.80.0 — para o vídeo gravado antes da capa automática).</span></div>` : ""}
     ${[0, 1, 2].map(i => `<input id="vaba-capa-linha-${i}" type="text" maxlength="18" value="${h(r.capa.linhas[i])}" aria-label="Linha ${i + 1} do título da capa" placeholder="Linha ${i + 1}${i === 2 ? " (sai em amarelo)" : ""}"${ed ? "" : " disabled"}>`).join("")}
     <div class="grade"><div><label for="vaba-capa-categoria">Categoria (a faixa vermelha)</label>
       <input id="vaba-capa-categoria" type="text" maxlength="24" value="${h(r.capa.categoria)}"${ed ? "" : " disabled"}></div>
@@ -2269,6 +2274,21 @@ const ACOES_ABA_VIDEO = {
   "vaba-capa-aqui"(){ const v = editavelDaAba(), q = qDoVideo(mapaVideo(v), playerDaAba().currentTime);
     if(q === null) throw new ErroApi("A capa é um quadro da fala: a cartela não vira capa."); rascunhoMexidoVideo(v).capa_q = q; redesenharEditorVideo(); },
   "vaba-capa-tirar"(){ const v = editavelDaAba(); rascunhoMexidoVideo(v).capa_q = null; redesenharEditorVideo(); },
+  /* v0.80.0: o título da capa-arte do vídeo JÁ GRAVADO (antes da v0.78 ele não nascia no envio): a mesma IA do envio
+     escreve e preenche os campos; quem revisa e manda montar é o administrador (capaValida limpa e, com termo vetado
+     ou IA fora do ar, entra a reserva do assunto — nunca trava) */
+  async "vaba-capa-ia"(){
+    const v = editavelDaAba();
+    if(!v.peca_id) throw new ErroApi("A capa-arte é do reel da Pauta: o vídeo avulso não leva o molde.");
+    recado("Escrevendo o título da capa com a IA… (uns segundos)", "aviso");
+    const [pec] = await ler("radar_pauta_pecas", {select:"roteiro,assunto,tipo", id:"eq." + v.peca_id});
+    if(!pec) throw new ErroApi("A peça deste vídeo não está mais acessível: recarregue a página.");
+    const c = await capaParaEnvio(pec.roteiro, pec.assunto, pec.tipo);
+    const r = rascunhoMexidoVideo(v);
+    r.capa = {linhas:[0, 1, 2].map(i => textoDe(c.linhas[i])), categoria:c.categoria || "", subtitulo:c.subtitulo || ""};
+    redesenharEditorVideo();
+    recado("Título da capa preenchido pela IA: confira, ajuste se quiser e clique em Montar de novo — o robô desenha a capa-arte.");
+  },
   "vaba-cortar-divergencia"(el){
     cortarTrechoRelatado(editavelDaAba(), "divergencias", Number(el.dataset.i), "O trecho desta divergência não está no relatório.");
   },

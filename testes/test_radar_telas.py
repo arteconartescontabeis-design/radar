@@ -390,9 +390,16 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.79.0: a entrada do topo é a da versão em uso (o reel publicado sozinho) e conta ao dono, em 2 itens
+    # v0.80.0: a entrada do topo é a da versão em uso (a varredura) e conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.79.0" and data == "11/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.80.0" and data == "11/11/2026" and len(itens) == 2
+    texto = " ".join(itens)
+    for trecho in ["VARREDURA", "Escrever o título com a IA", "Montar de novo", "NÃO derruba", "Da v0.79.0 para a v0.80.0"]:
+        assert trecho in texto, trecho
+    assert itens[-1].startswith("Administrador:")
+    # v0.79.0: a entrada seguinte (o reel publicado sozinho) conta ao dono, em 2 itens
+    topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.79.0")')
+    assert topo == "0.79.0" and data == "11/11/2026" and len(itens) == 2
     texto = " ".join(itens)
     for trecho in ["AGENDADA", "90 segundos", "Não saíram", "radar-reel-agenda-v0.79.0.sql",
                    "radar-redes", "RADAR_VIDEO_COMMIT", "Da v0.78.0 para a v0.79.0"]:
@@ -2390,7 +2397,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.79.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.80.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3271,7 +3278,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.79.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.80.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7708,7 +7715,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.79.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.80.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -9761,6 +9768,10 @@ def test_video_envio_tus_em_pedacos_de_6_mib_com_queda_de_rede_e_na_fila(pagina,
     # v0.78.0: o título da capa-arte nasce no envio — aqui pela RESERVA (a radar-ia não roda no teste: 404 rápido)
     capa = db.execute("select ajustes->'capa' from radar_videos where id = %s::uuid", (vid,)).fetchone()[0]
     assert capa and 1 <= len(capa["linhas"]) <= 3 and all(1 <= len(l) <= 18 for l in capa["linhas"]) and capa["categoria"]
+    # v0.80.0: { } \ e caracteres de controle (que o banco recusa, RADAR356) são limpos pela tela — a capa nunca derruba um envio
+    assert pagina.evaluate("() => capaValida({linhas: ['Um {titulo}\\\\ ruim'], categoria: 'Cat {x}', subtitulo: 'Sub\\u0007tudo'})") == \
+        {"linhas": ["Um titulo ruim"], "categoria": "Cat x", "subtitulo": "Sub tudo"}
+    assert pagina.evaluate("() => capaValida({linhas: ['{}', '\\\\'], categoria: 'x'})") is None       # só caractere vetado: sem linha, a reserva assume
     assert sorted(decl) == sorted(vb.DECL)
     # no armazenamento, cada clipe inteiro, no caminho dele, com o tipo e o cache de 60 s
     objs = fv.ARM["objetos"]

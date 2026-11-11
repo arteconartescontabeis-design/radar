@@ -3933,7 +3933,8 @@ begin
       raise exception 'RADAR314: uma pessoa da peça pediu, no termo, para ver a peça antes: mostre o vídeo final e marque “A pessoa viu o vídeo final”'
         using errcode = 'P0001';
     end if;
-    -- v0.79.0: o Facebook só aceita reel de 3 a 90 segundos; o Instagram vai até 15 minutos (o teto do corretor)
+    -- v0.79.0: o Facebook só aceita reel de 3 a 90 segundos; o Instagram vai até 15 minutos — e os 15 minutos já são
+    -- travados antes (radar_video_pendencia: o vídeo acima de 900 s nem fica pronto, e radar_pauta_problemas reconfere aqui)
     if p_modo = 'agendar' and 'facebook' = any(v_canais) and coalesce(v_vid.duracao_final, 0) > 90 then
       raise exception 'RADAR318: o Facebook só aceita reel de até 90 segundos (este tem % s): desmarque o Facebook (o Instagram aceita até 15 minutos) ou escolha publicar à mão',
         round(coalesce(v_vid.duracao_final, 0)) using errcode = 'P0001';

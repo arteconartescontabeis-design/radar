@@ -1,4 +1,18 @@
-# Radar Artecon — Relatório de testes (v0.79.0)
+# Radar Artecon — Relatório de testes (v0.80.0)
+
+**v0.80.0 — Varredura das v0.78/v0.79 + capa-arte do vídeo já gravado (só telas)**
+(11/11/2026): revisão linha a linha das duas versões novas, a pedido do dono. (1) `capaLimpa` (radar-video.js):
+`{ } \` e caracteres de controle saem do título da capa em `capaValida` (envio) e em `ajustesDoEditor` (aba Vídeo) —
+o banco os recusa (RADAR356) e, sem a limpeza, um título com eles derrubava o envio inteiro, de novo a cada tentativa.
+(2) Botão "Escrever o título com a IA" (aba Vídeo, quadro Capa, só reel de peça): busca roteiro/assunto/tipo da peça,
+chama a mesma `capaParaEnvio` do envio (IA com reserva — nunca trava) e preenche o rascunho; o Montar de novo de
+sempre manda ao banco e o robô desenha. (3) A confirmação do reel AGENDADO também diz que o vídeo é o da prévia;
+textos "o reel sai à mão" atualizados. Achados da varredura SEM correção (já cobertos): os 15 minutos do Instagram
+já travam antes (radar_video_pendencia: acima de 900 s o vídeo nem fica pronto — virou assert no teste do agendar);
+vídeo antigo sem duração passa pelos 90 s do FB (a Meta recusa com clareza); Meta demorando ~110 s vira "erro" com
+nova tentativa automática (5/15 min). Testes: asserts novos de `capaValida` (limpa `{ } \`/controle; linha só de
+caractere vetado → reserva) nas telas; o teste do agendar ganhou o bloco do 901 s (RADAR165 na pronta). Banco/agenda/
+corretor/repositório verdes nesta sessão; telas sem `postgrest` local.
 
 **v0.79.0 — Publicação automática do reel (banco + radar-redes + tela)**
 (11/11/2026): pedido do dono ("quero sim" a publicação automática; prévia aprovada). (1) Banco

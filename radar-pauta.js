@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.79.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.80.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -1593,7 +1593,7 @@ const PAUTA = {
     },
     /* Aprovar (só o administrador): tudo salvo; as caixas; a conferência do banco e da tela sem nada a resolver; a confirmação com o dia
        e a hora (e o aviso da agenda desligada); as lâminas da tela guardadas uma por vez em radar_imagens; e radar_pauta_aprovar, que
-       confere tudo de novo. À mão (o reel nesta versão, ou quem preferir), não cria envio: libera baixar e copiar. */
+       confere tudo de novo. À mão (quem preferir), não cria envio: libera baixar e copiar. */
     async "peca-aprovar"(){
       const f = $("form[data-form=peca]"), painel = $("#peca-aprovar"); if(!f || !painel) return;
       if(pecaMudou(f)) throw new ErroApi(avisoPecaSuja(f));
@@ -1611,6 +1611,7 @@ const PAUTA = {
       const a = E.pauta.aberta, nomes = canais.map(k => NOME_REDE[k]).join(" e no "), ag = await rpc("radar_agenda_situacao").catch(() => ({}));
       const pergunta = modo === "agendar"
         ? `Vai ao ar exatamente o que está na tela, no ${nomes}, em ${quandoPeca(a.data, a.hora)} (horário de Brasília).` +
+          (sha ? "\n\nO vídeo que sai é o que você viu na prévia (ele fica amarrado à peça)." : "") +      // v0.80.0: no reel agendado também
           (passouDaHora(a.data, a.hora) ? "\n\nA hora marcada já passou: a peça sai na próxima rodada da agenda (em até 5 minutos)." : "") +
           (agendaParada(ag) ? "\n\nA agenda automática está DESLIGADA: a peça só sai se alguém clicar em Publicar agora." : "")
         : `Aprovar para publicar à mão no ${nomes}? Depois de aprovada, a peça libera baixar ${sha ? "o vídeo" : "as lâminas"} e copiar a legenda; quem postar registra o link aqui.` +

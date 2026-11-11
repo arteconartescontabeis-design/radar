@@ -1,4 +1,4 @@
-# Radar Artecon — v0.79.0
+# Radar Artecon — v0.80.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,14 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.80.0 é a **varredura das v0.78/v0.79** e a **capa-arte do vídeo já gravado**: a aba Vídeo ganhou o botão
+**"Escrever o título com a IA"** — no reel gravado antes da v0.78, a mesma IA do envio escreve o título, você confere
+e manda **Montar de novo** (o robô desenha a capa no molde, sem digitação). Correções: a tela **limpa `{ } \` e
+caracteres de controle** do título antes de mandar ao banco (a capa nunca mais derruba um envio nem um ajuste por
+RADAR356) e a confirmação do reel **agendado** também avisa que o vídeo que sai é o da prévia. Conferido na varredura:
+o limite de 15 minutos do Instagram já era travado antes (o vídeo acima disso nem fica pronto). **Só as telas mudam**
+— nada no banco, nenhuma função Edge, nenhum robô. Veja "Da v0.79.0 para a v0.80.0".
 
 A v0.79.0 traz a **publicação automática do reel**: a peça de reel aprovada agora também pode ser **agendada** — na
 hora marcada, a agenda do banco (a mesma da foto e do carrossel) publica o **vídeo aprovado** como reel no
@@ -3234,6 +3242,14 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.79.0 para a v0.80.0** (**só as telas** — nada no banco, nenhuma função Edge, nenhum robô, nenhum segredo
+novo). Supõe a v0.79.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5** (no celular, recarregue a página).
+2. Conferência: abra um reel gravado antes da v0.78 na aba **Vídeo** → quadro **Capa** → **"Escrever o título com a
+   IA"** preenche os campos; **Montar de novo** desenha a capa-arte. E digitar `{` numa linha do título não derruba
+   mais o ajuste nem o envio (o caractere sai sozinho).
 
 **Da v0.78.0 para a v0.79.0** (um **SQL novo** — o reel pela agenda —, o **Deploy da radar-redes**, as telas;
 **nada no robô, nenhum segredo novo**). Supõe a v0.78.0 instalada:

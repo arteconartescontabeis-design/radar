@@ -4536,6 +4536,14 @@ def test_pauta_reel_aprovado_para_agendar_sai_pela_agenda(pauta):
     vencer(db, r2["envios"]["instagram"])
     i2 = iniciar(r2["envios"]["instagram"])
     assert i2["video_caminho"] == f"corrigido/{v2}/{'b' * 64}.mp4" and i2["video_capa"] is None and i2["video_duracao"] == 91
+    # v0.80.0 (varredura): e os 15 minutos do Instagram? JÁ são travados antes da aprovação — acima de 900 s o vídeo
+    # nem deixa a peça ficar pronta (radar_video_pendencia), e a aprovação reconfere (radar_pauta_problemas)
+    p3 = nova_peca(db, dias=4, tipo="reel", formato="reel", roteiro=FALA_REEL + "\n" + IDENT, pessoas=[ana], conferidas=conferidas)
+    v3 = video_pronto(db, p3, ana, sha="e" * 64)
+    db.execute("update radar_videos set duracao_final = 901 where id = %s", (v3,))
+    assert any("passou de 15 minutos" in x for x in conferir(p3)), conferir(p3)
+    with pytest.raises(psycopg.errors.RaiseException, match="RADAR165"):
+        marcar_pronta(db, p3)
 
 
 def test_iniciar_antigo_recusa_envio_da_pauta_sem_mudar_nada(pauta):
