@@ -1,4 +1,4 @@
-# Radar Artecon — Relatório de testes (v0.91.0)
+# Radar Artecon — Relatório de testes (v0.92.0)
 
 **v0.90.0 — Título da capa: reserva sem o veto de termos (só tela)**
 (11/11/2026): o diagnóstico (v0.88/0.89) provou que a reserva montava o título certo (`["Conheça a equipe","que
