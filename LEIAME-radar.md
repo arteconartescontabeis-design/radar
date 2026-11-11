@@ -1,4 +1,4 @@
-# Radar Artecon — v0.80.0
+# Radar Artecon — v0.81.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.81.0 deixa a capa do vídeo já gravado em **um clique** (pedido do dono): o botão da aba Vídeo virou
+**"Gerar a capa com a IA e montar de novo"** — a IA escreve o título e o robô **já remonta** o vídeo com a
+capa-arte e com a **legenda no estilo atual** (o karaokê; o vídeo gravado antes ficava com a legenda antiga até
+remontar). Depois é só **aprovar**. O botão usa o mesmo caminho conferido do "Montar de novo" (as travas todas).
+**Só as telas mudam**. Veja "Da v0.80.0 para a v0.81.0".
 
 A v0.80.0 é a **varredura das v0.78/v0.79** e a **capa-arte do vídeo já gravado**: a aba Vídeo ganhou o botão
 **"Escrever o título com a IA"** — no reel gravado antes da v0.78, a mesma IA do envio escreve o título, você confere
@@ -3242,6 +3248,12 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.80.0 para a v0.81.0** (**só as telas**). Supõe a v0.80.0 (ou a v0.79.0) instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+2. Conferência: reel gravado antes da v0.78 → aba **Vídeo** → **"Gerar a capa com a IA e montar de novo"** →
+   confirmar → quando o robô terminar, aprovar (o agendado sai sozinho com a capa).
 
 **Da v0.79.0 para a v0.80.0** (**só as telas** — nada no banco, nenhuma função Edge, nenhum robô, nenhum segredo
 novo). Supõe a v0.79.0 instalada:

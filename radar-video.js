@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.80.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.81.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -2020,8 +2020,8 @@ function htmlCapaAbaVideo(v, r, ed){
     ${ed && m ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-capa-aqui"${a.previa ? "" : " disabled"}>Usar o quadro do player como capa (agora: <span id="vaba-capa-agora">0</span> s)</button>
       ${r.capa_q !== null ? `<button class="btn peq sec" type="button" data-acao="vaba-capa-tirar">Tirar a capa escolhida</button>` : ""}</div>` : ""}
     <h4>Título da capa (a arte do molde)</h4>
-    ${ed && v.peca_id ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-capa-ia">Escrever o título com a IA</button>
-      <span class="sub">A mesma IA do envio: título, categoria e subtítulo a partir do roteiro da peça (v0.80.0 — para o vídeo gravado antes da capa automática).</span></div>` : ""}
+    ${ed && v.peca_id ? `<div class="acoes"><button class="btn verde peq" type="button" data-acao="vaba-capa-ia">Gerar a capa com a IA e montar de novo</button>
+      <span class="sub">Um clique: a IA escreve o título a partir do roteiro da peça e o robô já remonta o vídeo com a capa-arte no molde (e a legenda no estilo atual). Depois é só aprovar. Para o vídeo gravado antes da capa automática — no envio novo, isso já acontece sozinho.</span></div>` : ""}
     ${[0, 1, 2].map(i => `<input id="vaba-capa-linha-${i}" type="text" maxlength="18" value="${h(r.capa.linhas[i])}" aria-label="Linha ${i + 1} do título da capa" placeholder="Linha ${i + 1}${i === 2 ? " (sai em amarelo)" : ""}"${ed ? "" : " disabled"}>`).join("")}
     <div class="grade"><div><label for="vaba-capa-categoria">Categoria (a faixa vermelha)</label>
       <input id="vaba-capa-categoria" type="text" maxlength="24" value="${h(r.capa.categoria)}"${ed ? "" : " disabled"}></div>
@@ -2274,9 +2274,10 @@ const ACOES_ABA_VIDEO = {
   "vaba-capa-aqui"(){ const v = editavelDaAba(), q = qDoVideo(mapaVideo(v), playerDaAba().currentTime);
     if(q === null) throw new ErroApi("A capa é um quadro da fala: a cartela não vira capa."); rascunhoMexidoVideo(v).capa_q = q; redesenharEditorVideo(); },
   "vaba-capa-tirar"(){ const v = editavelDaAba(); rascunhoMexidoVideo(v).capa_q = null; redesenharEditorVideo(); },
-  /* v0.80.0: o título da capa-arte do vídeo JÁ GRAVADO (antes da v0.78 ele não nascia no envio): a mesma IA do envio
-     escreve e preenche os campos; quem revisa e manda montar é o administrador (capaValida limpa e, com termo vetado
-     ou IA fora do ar, entra a reserva do assunto — nunca trava) */
+  /* v0.80.0 (v0.81.0: um clique só, pedido do dono): no vídeo JÁ GRAVADO (antes da v0.78 a capa não nascia no envio),
+     o botão gera o título com a mesma IA do envio e JÁ MANDA MONTAR — o robô desenha a capa-arte no molde e refaz a
+     legenda no estilo atual (karaokê). Depois é só aprovar. capaValida limpa e, com termo vetado ou IA fora do ar,
+     entra a reserva do assunto: nunca trava. */
   async "vaba-capa-ia"(){
     const v = editavelDaAba();
     if(!v.peca_id) throw new ErroApi("A capa-arte é do reel da Pauta: o vídeo avulso não leva o molde.");
@@ -2287,7 +2288,9 @@ const ACOES_ABA_VIDEO = {
     const r = rascunhoMexidoVideo(v);
     r.capa = {linhas:[0, 1, 2].map(i => textoDe(c.linhas[i])), categoria:c.categoria || "", subtitulo:c.subtitulo || ""};
     redesenharEditorVideo();
-    recado("Título da capa preenchido pela IA: confira, ajuste se quiser e clique em Montar de novo — o robô desenha a capa-arte.");
+    const robo = await montarDeNovoVideo(`A IA escreveu o título da capa:\n\n“${ajustesDoEditor(v, r).capa.linhas.join(" / ")}”\n\nMontar o vídeo de novo com a capa-arte (e a legenda no estilo atual)?`);
+    if(robo !== null) recado(`Capa gerada: o robô monta o vídeo com a capa-arte. Quando ficar pronto, é só aprovar. ${robo}`);
+    else recado("Título preenchido (nada foi montado): ajuste se quiser e clique em Montar de novo com estas mudanças.", "aviso");
   },
   "vaba-cortar-divergencia"(el){
     cortarTrechoRelatado(editavelDaAba(), "divergencias", Number(el.dataset.i), "O trecho desta divergência não está no relatório.");
@@ -2302,29 +2305,8 @@ const ACOES_ABA_VIDEO = {
   async "vaba-previa"(){ await abrirPreviaAbaVideo(false); },
   /* Montar de novo com estas mudanças (só o administrador): a tela confere o que sabe; o banco confere tudo de novo */
   async "vaba-montar"(){
-    if(!ehAdmin()) throw new ErroApi("Só o administrador edita o vídeo do reel.");
-    const v = editavelDaAba(), r = rascunhoMexidoVideo(v), m = mapaVideo(v);
-    if(!mudouAbaVideo(v, r)) throw new ErroApi("Nada mudou.");
-    const aj = ajustesDoEditor(v, r), dur = m ? duracaoEstimadaVideo(m, aj) : null;
-    if(m && falaEstimadaQVideo(m, aj) < ABA_VIDEO_LIMITES.fala * ABA_VIDEO_FPS) throw new ErroApi("Os cortes deixam menos de 2 s de fala: desfaça um corte.");
-    if(dur !== null && (dur < ABA_VIDEO_LIMITES.min || dur > ABA_VIDEO_LIMITES.max))
-      throw new ErroApi(`O vídeo ficaria com cerca de ${segVideo(dur)} s: ${dur < ABA_VIDEO_LIMITES.min ? "o mínimo é 5 s" : "o máximo é 15 minutos (o Instagram não aceita reel mais longo)"}.`);
-    const recusas = recusasLegendaVideo(v, r), blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista);
-    for(const [i, motivo] of Object.entries(recusas)) throw new ErroApi(`Legenda (aos ${segVideo(numVideo(blocos[Number(i)]?.em_s) ?? 0)} s): ${MOTIVOS_LEGENDA[motivo] || motivo}.`);
-    const termos = termosDoEditor(r);
-    if(termos.length) throw new ErroApi(msgTermosPeca(termos, "montar"));
-    if(m && aj.capa_q !== undefined && !quadroFicaVideo(m, aj, aj.capa_q)) throw new ErroApi("A capa caiu num trecho cortado: escolha outro quadro.");
-    if(r.refazer && faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.`);
-    const gancho = ganchoDoEditor(v, r);
-    if(!confirm("Montar o vídeo de novo com estas mudanças? Não transcreve de novo (não gasta minutos do mês) e leva alguns minutos." + (v.peca_id === null ? "" : " Enquanto o robô monta, o reel não pode ser aprovado.")
-      + (gancho !== null && gancho !== "" && v.peca_id !== null ? " O texto do gancho também muda na peça." : "")
-      + (dur !== null && dur > limiteDuracaoVideo() ? ` O vídeo fica com cerca de ${segVideo(dur)} s, acima da meta de ${segVideo(limiteDuracaoVideo())} s${dur > 90 ? " (acima de 90 s, o reel sai só no Instagram)" : ""}.` : ""))) return;
-    await rpc("radar_video_editar", {p_id:v.id, p_sha256:v.sha256, p_ajustes:aj, p_cartela:cartelaDoEditor(v, r), p_gancho:gancho});
-    const robo = await acionarCorretor();
-    delete abaVideo().rascunhos[v.id];
-    abaVideo().previa = null;
-    await desenhar();
-    recado(`Mudanças gravadas: o corretor monta o vídeo de novo. ${robo}`);
+    const robo = await montarDeNovoVideo("Montar o vídeo de novo com estas mudanças?");
+    if(robo !== null) recado(`Mudanças gravadas: o corretor monta o vídeo de novo. ${robo}`);
   },
   /* o vídeo do robô de antes (sem o mapa): monta de novo com os mesmos ajustes, para liberar os cortes e a capa (não transcreve) */
   async "vaba-liberar"(){
@@ -2487,6 +2469,35 @@ const NAVEGACAO_ABA_VIDEO = ["video-aba", "vaba-filtro", "vaba-abrir", "vaba-vol
   "vaba-comecar-palavra", "vaba-terminar-palavra", "vaba-marcar-de", "vaba-marcar-ate", "vaba-comecar-aqui", "vaba-terminar-aqui", "vaba-desfazer",
   "vaba-desfazer-salvo", "vaba-refazer-salvo", "vaba-desfazer-bloco", "vaba-ouvir", "vaba-passo", "vaba-capa-aqui", "vaba-capa-tirar",
   "vaba-cortar-divergencia", "vaba-cortar-fora", "vaba-descartar"];
+
+/* v0.81.0: o caminho único do "Montar de novo" (o botão do rodapé e o da capa com IA): as conferências da tela, a
+   pergunta de confirmação e o pedido ao banco (radar_video_editar). Devolve o recado do acionamento do robô, ou
+   null quando a pessoa cancelou na pergunta. */
+async function montarDeNovoVideo(pergunta){
+  if(!ehAdmin()) throw new ErroApi("Só o administrador edita o vídeo do reel.");
+  const v = editavelDaAba(), r = rascunhoMexidoVideo(v), m = mapaVideo(v);
+  if(!mudouAbaVideo(v, r)) throw new ErroApi("Nada mudou.");
+  const aj = ajustesDoEditor(v, r), dur = m ? duracaoEstimadaVideo(m, aj) : null;
+  if(m && falaEstimadaQVideo(m, aj) < ABA_VIDEO_LIMITES.fala * ABA_VIDEO_FPS) throw new ErroApi("Os cortes deixam menos de 2 s de fala: desfaça um corte.");
+  if(dur !== null && (dur < ABA_VIDEO_LIMITES.min || dur > ABA_VIDEO_LIMITES.max))
+    throw new ErroApi(`O vídeo ficaria com cerca de ${segVideo(dur)} s: ${dur < ABA_VIDEO_LIMITES.min ? "o mínimo é 5 s" : "o máximo é 15 minutos (o Instagram não aceita reel mais longo)"}.`);
+  const recusas = recusasLegendaVideo(v, r), blocos = listaVideo(objVideo(objVideo(v.relatorio).legenda).lista);
+  for(const [i, motivo] of Object.entries(recusas)) throw new ErroApi(`Legenda (aos ${segVideo(numVideo(blocos[Number(i)]?.em_s) ?? 0)} s): ${MOTIVOS_LEGENDA[motivo] || motivo}.`);
+  const termos = termosDoEditor(r);
+  if(termos.length) throw new ErroApi(msgTermosPeca(termos, "montar"));
+  if(m && aj.capa_q !== undefined && !quadroFicaVideo(m, aj, aj.capa_q)) throw new ErroApi("A capa caiu num trecho cortado: escolha outro quadro.");
+  if(r.refazer && faltaIdentificacao().length) throw new ErroApi(`A cartela leva a identificação legal: falta ${faltaIdentificacao().join(" e ")} em Configurações → Assinatura.`);
+  const gancho = ganchoDoEditor(v, r);
+  if(!confirm(pergunta + " Não transcreve de novo (não gasta minutos do mês) e leva alguns minutos." + (v.peca_id === null ? "" : " Enquanto o robô monta, o reel não pode ser aprovado.")
+    + (gancho !== null && gancho !== "" && v.peca_id !== null ? " O texto do gancho também muda na peça." : "")
+    + (dur !== null && dur > limiteDuracaoVideo() ? ` O vídeo fica com cerca de ${segVideo(dur)} s, acima da meta de ${segVideo(limiteDuracaoVideo())} s${dur > 90 ? " (acima de 90 s, o reel sai só no Instagram)" : ""}.` : ""))) return null;
+  await rpc("radar_video_editar", {p_id:v.id, p_sha256:v.sha256, p_ajustes:aj, p_cartela:cartelaDoEditor(v, r), p_gancho:gancho});
+  const robo = await acionarCorretor();
+  delete abaVideo().rascunhos[v.id];
+  abaVideo().previa = null;
+  await desenhar();
+  return robo;
+}
 
 /* ------------------------------------------------- ações (o index.html junta) */
 const pecaDoVideo = () => { const f = $("form[data-form=peca]"), p = estadoVideo().pecaDados;

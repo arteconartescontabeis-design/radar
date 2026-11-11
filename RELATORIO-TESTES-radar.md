@@ -1,4 +1,12 @@
-# Radar Artecon — Relatório de testes (v0.80.0)
+# Radar Artecon — Relatório de testes (v0.81.0)
+
+**v0.81.0 — Capa do vídeo já gravado em um clique (só telas)**
+(11/11/2026): pedido do dono ("apenas um botão… e depois apenas aprovação"). O "Montar de novo" do rodapé foi
+extraído para `montarDeNovoVideo(pergunta)` (as mesmas conferências da tela — fala mínima, duração, legenda, termos,
+capa_q em trecho cortado, identificação — a pergunta e o `radar_video_editar`); o botão da capa
+("vaba-capa-ia") agora gera o título pela IA, preenche o rascunho e chama esse mesmo caminho: um clique, uma
+confirmação, e o robô remonta com a capa-arte e a legenda atual (karaokê). Cancelou a pergunta? O título fica
+preenchido para ajustar e montar depois. Nada muda no banco, nas funções nem no robô; suítes locais verdes.
 
 **v0.80.0 — Varredura das v0.78/v0.79 + capa-arte do vídeo já gravado (só telas)**
 (11/11/2026): revisão linha a linha das duas versões novas, a pedido do dono. (1) `capaLimpa` (radar-video.js):
