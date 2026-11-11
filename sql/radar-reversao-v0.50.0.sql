@@ -352,7 +352,8 @@ drop function if exists public.radar_video_pessoas_falta(bigint, bigint);
 drop function if exists public.radar_video_cartela_falta(text[], bigint);
 drop function if exists public.radar_video_ajustes_falta(jsonb);
 drop function if exists public.radar_video_pendencia(bigint);
-drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric, boolean);   -- v0.74.0
+drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric, boolean);
+drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric, boolean, jsonb);  -- v0.78.0   -- v0.74.0
 drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric);
 drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[]);
 drop function if exists public.radar_video_cota();

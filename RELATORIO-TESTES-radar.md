@@ -1,4 +1,21 @@
-# Radar Artecon — Relatório de testes (v0.77.0)
+# Radar Artecon — Relatório de testes (v0.78.0)
+
+**v0.78.0 — Capa automática do reel no molde aprovado (banco + funções + robô + tela)**
+(11/11/2026): pedido do dono, com os modelos aprovados em sequência (C: painel diagonal + estúdio). (1) Robô:
+`capa_arte.py` — recorte da pessoa por ISNet/onnxruntime LOCAL (modelo 176 MB com sha256 fixo, baixado por execução;
+sem ele, PLANO B com véu marinho — a capa nunca falha), estúdio marinho com luz e sombra, painel/friso/logotipo/
+categoria/título (última linha amarela)/subtítulo; `montar.montar(capa_auto=...)` escolhe sozinho o quadro mais
+nítido (`candidatos_q` + `nitidez`, variância do laplaciano) quando o editor não marcou `capa_q`; `corrigir.montar`
+desenha a arte antes do sha256 e `relatorio.final` leva `capa.automatica`/`capa.arte`. `requirements.txt` ganhou
+numpy+onnxruntime (rodas cp312 com hash do PyPI; importam limpos num venv `--no-deps`, conferido). (2) Banco:
+`radar_video_criar(p_capa jsonb)` guarda em `ajustes.capa` (RADAR356 na forma errada); `radar_video_ajustes_falta`
+aceita `capa` ({linhas 1–3×18, categoria 24, subtitulo 48}; `null` = tirar, porque o ajustar MESCLA). (3) radar-ia:
+ação `capa` (Anthropic; JSON {linhas, categoria, subtitulo}; instrução anti-sensacionalismo + termos da publicidade
+conferidos). (4) Tela: `capaParaEnvio` no envio (IA com 25 s e RESERVA determinística do assunto; termo vetado →
+reserva); aba Vídeo edita título/categoria/subtítulo (comparação canônica — o jsonb reordena chaves — e remoção via
+`"capa": null`). Testes: robô `test_capa_arte_molde_e_plano_b` (sanitização, candidatos, nitidez ordena, molde por
+pixels no plano B) e banco `test_capa_arte_no_envio_e_no_ajuste` (guarda, recusas, mescla do ajustar, pegar carrega,
+tirar via null) — corretor (58), robô e repositório verdes nesta sessão; telas atualizadas (sem `postgrest` local).
 
 **v0.77.0 — Varredura de erros (7 correções) + Excel dos reels em ordem de data (tela + robô)**
 (10/11/2026): revisão linha a linha das v0.74–0.76 a pedido do dono. (1) O catch do "Enviar mesmo assim" reconhece a

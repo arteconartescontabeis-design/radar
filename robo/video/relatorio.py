@@ -218,6 +218,11 @@ def final(al: dict, plano: dict, infos: list[dict], montagem: dict, conferencia:
            "mapa": _mapa(plano), "unidades": [{"u": u.get("u"), "t": u["texto"], "a": round(u["ini"], 2), "b": round(u["fim"], 2)} for u in unidades],
            "edicao": _edicao(plano, leg, cartela_propria),
            **({"capa": {"q": int(capa["q"]), "em_ms": int(capa["em_ms"]), "movida": bool(capa.get("movida")),
+                        **({"automatica": True} if capa.get("automatica") else {}),      # v0.46.0: o quadro escolhido sozinho
+                        **({"arte": {"recorte": bool(capa["arte"].get("recorte")), "linhas": list(capa["arte"].get("linhas") or []),
+                                     "categoria": str(capa["arte"].get("categoria") or ""),
+                                     "subtitulo": str(capa["arte"].get("subtitulo") or "")}}
+                           if isinstance(capa.get("arte"), dict) else {}),               # v0.46.0: a capa-arte do molde
                         **({"sha256": str(capa["sha256"])} if capa.get("sha256") else {})}} if capa else {})}
     return caber(rel)
 

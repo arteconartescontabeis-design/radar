@@ -1,4 +1,4 @@
-# Radar Artecon — v0.77.0
+# Radar Artecon — v0.78.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,16 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.78.0 traz a **capa automática do reel** no molde aprovado: toda gravação nova sai do corretor com a
+**capa-arte** pronta — a pessoa **recortada** (ISNet via onnxruntime, **local no robô**: a foto não sai para serviço
+externo e nenhuma IA generativa toca o rosto) sobre o estúdio marinho, painel diagonal com friso amarelo, logotipo
+oficial, categoria, título em bloco (última linha amarela) e subtítulo. O título/categoria/subtítulo vêm da **IA
+Central** no envio (radar-ia, ação `capa`; reserva determinística se a IA falhar — a capa nunca trava um envio),
+nascem em `radar_videos.ajustes.capa` (`radar_video_criar` ganhou `p_capa`) e o **quadro é escolhido sozinho** (o
+mais nítido; `capa_q` do editor continua mandando). O administrador edita o título na aba Vídeo; apagar as linhas
+(`"capa": null`) volta à capa simples. **Muda o banco** (`sql/radar-capa-v0.78.0.sql`), as funções **radar-video** e
+**radar-ia** (Deploy) e o **robô** (troque `RADAR_VIDEO_COMMIT`). Veja "Da v0.77.0 para a v0.78.0".
 
 A v0.77.0 é a **varredura de erros** (7 correções da revisão linha a linha das v0.74–0.76) e o **Excel dos reels
 no formato pedido**. As principais: o **"Enviar mesmo assim"** das pendências que só o banco conhece agora é
@@ -3215,6 +3225,22 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.77.0 para a v0.78.0** (um **SQL novo** — a capa-arte —, o **Deploy da radar-video e da radar-ia**, as telas e
+o **robô**; **nenhum segredo novo**). Supõe a v0.77.0 instalada:
+
+1. Rode no Supabase (**SQL Editor**) o **`sql/radar-capa-v0.78.0.sql`**: `radar_video_criar` com `p_capa` e a régua
+   de ajustes aceitando a chave `capa` ({linhas, categoria, subtitulo}; `"capa": null` tira a arte). Pode rodar de
+   novo.
+2. **Deploy** das funções **`radar-video`** (repassa o `capa` do envio) e **`radar-ia`** (ação nova `capa`: o título
+   sem sensacionalismo, escrito pela IA Central a partir do roteiro).
+3. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+4. No repositório privado **radar-video**, troque **`RADAR_VIDEO_COMMIT`** pelo SHA desta versão (o robô ganhou o
+   desenhador da capa e o recorte local; a primeira execução baixa o modelo de 176 MB — sem ele, a capa sai no
+   plano B com véu marinho, nunca falha).
+5. Conferência: envie uma gravação nova — quando o corretor concluir, a prévia mostra a capa-arte no molde (pessoa
+   recortada, painel, logotipo, título com a última linha amarela); na aba Vídeo, o quadro "Capa" tem o título para
+   editar, e o relatório diz `capa.automatica` e `capa.arte`.
 
 **Da v0.76.0 para a v0.77.0** (só as telas e o robô do corretor — **nada no banco, nenhuma função Edge, nenhum
 segredo novo**). Supõe a v0.76.0 instalada (ou a v0.75.0: esta versão inclui o karaokê da v0.76.0 no robô):

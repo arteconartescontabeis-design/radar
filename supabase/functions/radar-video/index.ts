@@ -395,6 +395,9 @@ async function envioIniciar(sessao: string, p: any) {
     // v0.74.0: "Enviar mesmo assim" — o banco exige o administrador e registra quem assumiu.
     // Só vai no corpo quando pedido: assim o envio comum funciona mesmo antes de o banco ganhar o parâmetro.
     ...(p?.assumir === true ? { p_assumir: true } : {}),
+    // v0.78.0: o título da CAPA-ARTE (o banco valida a forma e o guarda em ajustes.capa; o robô desenha o molde).
+    // Também só vai quando veio: o envio comum funciona antes de o banco ganhar o parâmetro.
+    ...(p?.capa && typeof p.capa === "object" && !Array.isArray(p.capa) ? { p_capa: p.capa } : {}),
   });
   const id = uuid(r?.id);                                    // o banco conferiu os clipes: de 1 a 12, na ordem
   const envios = [];

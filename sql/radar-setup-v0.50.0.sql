@@ -5474,12 +5474,14 @@ end $$;
 -- bom junto; só o envio anterior que esperava os arquivos vira "substituido". Devolve {id, versao}.
 drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[]);
 drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric);
+drop function if exists public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric, boolean, jsonb);  -- v0.78.0
 -- v0.74.0: o "Enviar mesmo assim" (o administrador assume as pendências na confirmação da tela; fica registrado)
 alter table public.radar_videos add column if not exists assumido_em timestamptz;
 alter table public.radar_videos add column if not exists assumido_por uuid references auth.users(id) on delete set null;
 create or replace function public.radar_video_criar(p_peca bigint, p_partes jsonb, p_fala_pessoa bigint, p_fala_roteiro text,
                                                     p_cartela text[], p_gancho boolean, p_declaracoes text[], p_duracao numeric default null,
-                                                    p_assumir boolean default false)
+                                                    p_assumir boolean default false,
+                                                    p_capa jsonb default null)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -5503,6 +5505,13 @@ begin
   -- v0.74.0: "Enviar mesmo assim" (pendências assumidas) é só do administrador, sempre confirmado na tela
   if coalesce(p_assumir, false) and coalesce(public.radar_papel(), '') <> 'admin' then
     raise exception 'RADAR355: só o administrador envia com pendências (Enviar mesmo assim)' using errcode = 'P0001';
+  end if;
+  -- v0.78.0: a CAPA-ARTE automática (as linhas do título, a categoria e o subtítulo que o robô desenha no molde)
+  if p_capa is not null then
+    v_x := public.radar_video_ajustes_falta(jsonb_build_object('capa', p_capa));
+    if v_x is not null then
+      raise exception 'RADAR356: %', v_x using errcode = 'P0001';
+    end if;
   end if;
   -- 1. a peça
   select * into p from public.radar_pauta_pecas where id = p_peca for update;
@@ -5598,12 +5607,13 @@ begin
   update public.radar_videos set situacao = 'substituido', encerrado_em = now(), pego_em = null
    where peca_id = p.id and situacao = 'aguardando_envio';
   insert into public.radar_videos (peca_id, versao, partes, fala_pessoa, pessoas, fala_roteiro, roteiro_hash, cartela_linhas, gancho, declaracoes,
-                                   enviado_por, assumido_em, assumido_por)
+                                   enviado_por, assumido_em, assumido_por, ajustes)
   values (p.id, v_versao, v_partes, p_fala_pessoa, p.pessoas, v_fala, public.radar_hash_texto(p.roteiro),
           array(select btrim(l) from unnest(p_cartela) with ordinality t(l, o) order by o),
           case when coalesce(p_gancho, false) then btrim(p.chamada) end,
           array(select d from unnest(v_decl) d), auth.uid(),
-          case when coalesce(p_assumir, false) then now() end, case when coalesce(p_assumir, false) then auth.uid() end)
+          case when coalesce(p_assumir, false) then now() end, case when coalesce(p_assumir, false) then auth.uid() end,
+          coalesce(jsonb_strip_nulls(jsonb_build_object('capa', p_capa)), '{}'::jsonb))
   returning id into v_id;
   return jsonb_build_object('id', v_id, 'versao', v_versao);
 end $$;
@@ -7310,7 +7320,7 @@ grant execute on function public.radar_redes_conferir_agenda(text) to service_ro
 -- v0.22.0: corretor de vídeo. A tela chama as funções do vídeo (cada uma confere o papel); a função radar-video chama as do robô, da
 -- agenda e da limpeza pelo papel interno. As auxiliares (radar_video_pendencia, _pessoa_falta, _pessoas_falta, _cartela_falta,
 -- _travar…) e a reserva da agenda (radar_video_reserva, que o pg_cron roda como dono) ficam só com o dono.
-grant execute on function public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric, boolean) to authenticated;
+grant execute on function public.radar_video_criar(bigint, jsonb, bigint, text, text[], boolean, text[], numeric, boolean, jsonb) to authenticated;
 grant execute on function public.radar_video_cota() to authenticated;
 grant execute on function public.radar_video_para_envio(uuid) to authenticated;
 grant execute on function public.radar_video_enviado(uuid) to authenticated;
@@ -9778,7 +9788,7 @@ begin
   if p is null or jsonb_typeof(p) <> 'object' or length(p::text) > 20000 then return 'os ajustes vão num objeto de até 20.000 caracteres'; end if;
   if exists (select 1 from jsonb_object_keys(p) c
               where c not in ('manter','transcricao_errou','aceitas','legenda','estilo','sem_gancho',
-                              'cortar','inicio_q','fim_q','capa_q','legenda_tamanho','legenda_posicao','legenda_cor','cartela_extra')) then
+                              'cortar','inicio_q','fim_q','capa_q','legenda_tamanho','legenda_posicao','legenda_cor','cartela_extra','capa')) then
     return 'ajuste desconhecido';
   end if;
   -- (cada conferência só depois da forma: jsonb_array_elements e jsonb_each não rodam sobre o que não é lista nem objeto)
@@ -9853,6 +9863,25 @@ begin
   if p ? 'cartela_extra' and (jsonb_typeof(p->'cartela_extra') <> 'string' or length(p->>'cartela_extra') > 120
                               or (p->>'cartela_extra') ~ '[{}\\<>[:cntrl:]]') then
     return 'texto extra da cartela: até 120 caracteres, sem { } \ < > nem quebra de linha';
+  end if;
+  -- v0.46.0 do corretor: a CAPA-ARTE automática ({linhas, categoria, subtitulo}), escrita no envio (radar_video_criar)
+  -- e editável pelo administrador; o robô desenha o molde com ela
+  if p ? 'capa' then
+    x := p->'capa';
+    if jsonb_typeof(x) = 'null' then
+      null;                                            -- "capa": null tira a capa-arte (o ajustar mescla; sem a marca, a de antes ficaria)
+    elsif jsonb_typeof(x) <> 'object'
+       or exists (select 1 from jsonb_object_keys(x) c where c not in ('linhas','categoria','subtitulo'))
+       or jsonb_typeof(x->'linhas') <> 'array' or jsonb_array_length(x->'linhas') not between 1 and 3
+       or exists (select 1 from jsonb_array_elements(x->'linhas') y
+                   where jsonb_typeof(y) <> 'string' or length(btrim(y #>> '{}')) not between 1 and 18
+                      or (y #>> '{}') ~ '[{}\\[:cntrl:]]')
+       or (x ? 'categoria' and (jsonb_typeof(x->'categoria') <> 'string' or length(x->>'categoria') > 24
+                                or (x->>'categoria') ~ '[{}\\[:cntrl:]]'))
+       or (x ? 'subtitulo' and (jsonb_typeof(x->'subtitulo') <> 'string' or length(x->>'subtitulo') > 48
+                                or (x->>'subtitulo') ~ '[{}\\[:cntrl:]]')) then
+      return 'capa: linhas (1 a 3, cada uma de 1 a 18 caracteres), categoria (até 24) e subtitulo (até 48), sem { } \ nem caractere de controle';
+    end if;
   end if;
   return null;
 end $$;

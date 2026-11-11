@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.77.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.78.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -223,7 +223,8 @@ async function blocoVideo(p){
   catch(e){ if(semTabelaDoVideo(e)) return `<div class="aviso erro" id="video-sem-banco">O corretor de vídeo precisa do banco da v0.32.0 (ou mais nova): o administrador roda o <b>sql/radar-setup-v0.50.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`; throw e; }
   if(ev.peca !== p.id){ ev.nova = false; ev.previa = null; ev.visto = null; }
   ev.peca = p.id;
-  ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [], aprovado_modo:p.aprovado_modo};
+  ev.pecaDados = {id:p.id, data:p.data, situacao:p.situacao, roteiro:p.roteiro || "", chamada:p.chamada || "", pessoas:p.pessoas || [],
+    aprovado_modo:p.aprovado_modo, assunto:p.assunto || "", tipo:p.tipo || ""};   // v0.78.0: o assunto e o tipo alimentam a capa-arte
   await restaurarTomadas(p.id);                        // v0.74.0: as tomadas guardadas no aparelho voltam à lista
   // quanto o corretor ainda transcreve neste mês (o banco confere de novo no envio, com a duração dos clipes); sem a resposta, nada
   ev.cota = ["planejada", "em_producao", "pronta"].includes(p.situacao) ? await rpc("radar_video_cota", {}).catch(() => null) : null;
@@ -345,6 +346,40 @@ async function restaurarTomadas(pid){
                   aviso:t.aviso || "", chaveTomada:t.chave});
     }
   }catch(e){ /* sem IndexedDB: nada a restaurar */ }
+}
+/* v0.78.0: o TÍTULO DA CAPA-ARTE, gerado SOZINHO no envio — a IA Central escreve (radar-ia, ação "capa"); se ela não
+   responder, vier fora do formato ou com termo vetado da publicidade, a RESERVA determinística assume (das primeiras
+   palavras do assunto). A capa NUNCA trava nem atrasa um envio além do tempo da chamada. */
+const CATEGORIA_CAPA = {quem_cuida:"Nossa equipe", data_equipe:"Nossa equipe", captacao:"Artecon", agenda:"Agenda da semana",
+  noticia:"Notícia", educativo:"Conteúdo contábil", bastidor:"Bastidores", reel:"Conteúdo contábil"};
+function capaReserva(assunto, tipo){
+  const palavras = String(assunto || "").split(/[.!?|]/)[0].replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const linhas = [];
+  let atual = "";
+  for(const w of palavras){
+    const junta = atual ? atual + " " + w : w;
+    if(junta.length <= 16) atual = junta;
+    else{ if(atual) linhas.push(atual); atual = w.slice(0, 16); if(linhas.length === 2) break; }
+  }
+  if(atual && linhas.length < 3) linhas.push(atual);
+  return {linhas:linhas.length ? linhas.slice(0, 3) : ["Artecon"],
+          categoria:CATEGORIA_CAPA[tipo] || "Conteúdo contábil", subtitulo:"Artecon Artes Contábeis"};
+}
+function capaValida(c){
+  const linhas = listaVideo(c?.linhas).map(x => String(x).replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 3).map(x => x.slice(0, 18));
+  if(!linhas.length) return null;
+  const tudo = [...linhas, textoDe(c?.categoria), textoDe(c?.subtitulo)].join(" ");
+  if(termosPublicidade(tudo).trava.length || termosPeca(tudo).length) return null;
+  return {linhas, ...(textoDe(c?.categoria) ? {categoria:textoDe(c?.categoria).slice(0, 24)} : {}),
+          ...(textoDe(c?.subtitulo) ? {subtitulo:textoDe(c?.subtitulo).slice(0, 48)} : {})};
+}
+async function capaParaEnvio(roteiro, assunto, tipo){
+  try{
+    const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao:"capa", roteiro:String(roteiro || ""), assunto:String(assunto || "")}, tempo:25000});
+    const v = capaValida(r);
+    if(v) return v;
+  }catch(e){ /* a IA fora do ar ou no limite: a reserva assume */ }
+  return capaValida(capaReserva(assunto, tipo)) || {linhas:["Artecon"]};
 }
 // o tipo que o banco aceita: MP4 ou MOV (o iPhone manda "video/quicktime"; sem tipo, pela extensão);
 // v0.44.0: + o WEBM da gravação do teleprompter pelo navegador (o MediaRecorder do Chrome/Android; o do Safari grava MP4)
@@ -1197,9 +1232,13 @@ function ajustesDaTela(v){
 const edicoesLegenda = x => Array.isArray(x) ? x.filter(e => Array.isArray(e) && e.length === 2 && typeof e[0] === "string" && typeof e[1] === "string").map(([k, t]) => [k, t])
   : Object.entries(objVideo(x)).filter(([, t]) => typeof t === "string");
 const ajustesIguais = (a, b) => {
-  // manter e transcricao_errou em qualquer ordem; a legenda, na ordem (é a ordem em que o robô aplica)
-  const ord = x => JSON.stringify(Object.keys(x).sort().map(k => [k, k === "legenda" ? edicoesLegenda(x[k]) : Array.isArray(x[k]) ? x[k].map(String).sort() : x[k]]));
-  const sem = x => { const y = {...objVideo(x)}; if(y.estilo === "normal") delete y.estilo; if(y.sem_gancho === false) delete y.sem_gancho; return y; };
+  // manter e transcricao_errou em qualquer ordem; a legenda, na ordem (é a ordem em que o robô aplica);
+  // v0.78.0: a capa comparada pelo conteúdo (o jsonb do banco reordena as chaves) e o null dela vale como ausente
+  const capaCanon = c => c && typeof c === "object" ? [listaVideo(c.linhas), textoDe(c.categoria), textoDe(c.subtitulo)] : null;
+  const ord = x => JSON.stringify(Object.keys(x).sort().map(k => [k, k === "legenda" ? edicoesLegenda(x[k]) : k === "capa" ? capaCanon(x[k])
+    : Array.isArray(x[k]) ? x[k].map(String).sort() : x[k]]));
+  const sem = x => { const y = {...objVideo(x)}; if(y.estilo === "normal") delete y.estilo; if(y.sem_gancho === false) delete y.sem_gancho;
+    if(y.capa === null || y.capa === undefined) delete y.capa; return y; };
   return ord(sem(a)) === ord(sem(b)); };
 
 /* ------------------------------------------- depois de desenhar: a sondagem da situação */
@@ -1361,6 +1400,9 @@ function rascunhoNovoVideo(v){
     tamanho:aj.legenda_tamanho || "M", posicao:aj.legenda_posicao || "baixo", cor:aj.legenda_cor || "marinho", compacta:aj.estilo === "compacta",
     gancho:textoDe(v.gancho), sem_gancho:aj.sem_gancho === true,
     extra:typeof aj.cartela_extra === "string" ? {modo:aj.cartela_extra ? "proprio" : "sem", texto:aj.cartela_extra} : {modo:"config", texto:""},
+    // v0.78.0: o título da capa-arte (ajustes.capa); sem ele (envio antigo), os campos ficam vazios e nada muda
+    capa:{linhas:[0, 1, 2].map(i => textoDe(listaVideo(objVideo(aj.capa).linhas)[i])),
+          categoria:textoDe(objVideo(aj.capa).categoria), subtitulo:textoDe(objVideo(aj.capa).subtitulo)},
     refazer:false, legenda:{}, manter:listaMarcas(aj.manter, CHAVE_CORTE), errou:listaMarcas(aj.transcricao_errou, ID_DIVERGENCIA)};
 }
 function rascunhoVideo(v){
@@ -1404,6 +1446,13 @@ function ajustesDoEditor(v, r){
   if(r.cor !== "marinho") aj.legenda_cor = r.cor;
   if(r.extra.modo === "proprio") aj.cartela_extra = r.extra.texto.replace(/\s+/g, " ").trim();
   if(r.extra.modo === "sem") aj.cartela_extra = "";
+  // v0.78.0: o título da capa-arte segue nos ajustes; apagar todas as linhas manda "capa": null (tira a arte — a
+  // capa volta a ser só o quadro), porque o ajustar do banco mescla e manteria a de antes sem a marca
+  const capaLinhas = (r.capa?.linhas || []).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 3).map(l => l.slice(0, 18));
+  if(capaLinhas.length) aj.capa = {linhas:capaLinhas,
+    ...(r.capa.categoria.trim() ? {categoria:r.capa.categoria.replace(/\s+/g, " ").trim().slice(0, 24)} : {}),
+    ...(r.capa.subtitulo.trim() ? {subtitulo:r.capa.subtitulo.replace(/\s+/g, " ").trim().slice(0, 48)} : {})};
+  else if(listaVideo(objVideo(objVideo(v.ajustes).capa).linhas).length) aj.capa = null;
   return aj;
 }
 /* o texto do gancho que vai à função: null = não mexe; "" = sem o texto do gancho; texto = o novo (muda também a chamada da peça) */
@@ -1451,6 +1500,11 @@ function resumoMudancasVideo(v, r){
   if(extraAgora !== extraAntes) partes.push(extraAgora === null ? "texto extra das Configurações" : extraAgora === "" ? "sem texto extra na cartela" : "texto extra próprio na cartela");
   if(r.refazer) partes.push("cartela refeita");
   if(r.capa_q !== inteiroVideo(antes.capa_q)) partes.push(r.capa_q === null ? "sem a capa escolhida" : `capa aos ${segVideo(m ? tDoQ(m, r.capa_q)[0] : 0)} s`);
+  // v0.78.0: o título da capa-arte (comparado pelo conteúdo: o jsonb do banco reordena as chaves)
+  const capaTupla = c => c && typeof c === "object" ? JSON.stringify([listaVideo(c.linhas), textoDe(c.categoria), textoDe(c.subtitulo)]) : "null";
+  const capaAgora = ajustesDoEditor(v, r).capa ?? null, capaAntes = objVideo(antes.capa).linhas ? antes.capa : null;
+  if(capaTupla(capaAgora) !== capaTupla(capaAntes))
+    partes.push(capaAgora === null ? "sem a capa-arte (capa simples)" : "título da capa novo");
   if(JSON.stringify([...r.manter].sort()) !== JSON.stringify(listaMarcas(antes.manter, CHAVE_CORTE).sort())) partes.push("cortes do robô mantidos ou desfeitos");
   if(JSON.stringify([...r.errou].sort()) !== JSON.stringify(listaMarcas(antes.transcricao_errou, ID_DIVERGENCIA).sort())) partes.push("“a transcrição errou” marcada ou desmarcada");
   return partes;
@@ -1962,6 +2016,13 @@ function htmlCapaAbaVideo(v, r, ed){
     ${caiu ? `<div class="aviso erro" id="vaba-capa-cortada">A capa caiu num trecho cortado: escolha outro quadro.</div>` : ""}
     ${ed && m ? `<div class="acoes"><button class="btn peq" type="button" data-acao="vaba-capa-aqui"${a.previa ? "" : " disabled"}>Usar o quadro do player como capa (agora: <span id="vaba-capa-agora">0</span> s)</button>
       ${r.capa_q !== null ? `<button class="btn peq sec" type="button" data-acao="vaba-capa-tirar">Tirar a capa escolhida</button>` : ""}</div>` : ""}
+    <h4>Título da capa (a arte do molde)</h4>
+    ${[0, 1, 2].map(i => `<input id="vaba-capa-linha-${i}" type="text" maxlength="18" value="${h(r.capa.linhas[i])}" aria-label="Linha ${i + 1} do título da capa" placeholder="Linha ${i + 1}${i === 2 ? " (sai em amarelo)" : ""}"${ed ? "" : " disabled"}>`).join("")}
+    <div class="grade"><div><label for="vaba-capa-categoria">Categoria (a faixa vermelha)</label>
+      <input id="vaba-capa-categoria" type="text" maxlength="24" value="${h(r.capa.categoria)}"${ed ? "" : " disabled"}></div>
+    <div><label for="vaba-capa-subtitulo">Subtítulo</label>
+      <input id="vaba-capa-subtitulo" type="text" maxlength="48" value="${h(r.capa.subtitulo)}"${ed ? "" : " disabled"}></div></div>
+    <p class="sub">Com o título, o robô desenha a CAPA-ARTE no molde da Artecon (a pessoa recortada, o painel e o logotipo), no quadro escolhido acima ou no mais nítido. A última linha preenchida sai em amarelo. Apagar as linhas volta à capa simples (só o quadro). Sem escolher quadro, com o título, a capa sai mesmo assim.</p>
     <p class="sub">A capa é um quadro da fala, sem a legenda; na peça aprovada, baixe-a junto com o vídeo para postar.</p>`;
 }
 /* O rodapé: o resumo, a duração e os botões (só o administrador, com o vídeo editável) */
@@ -2057,6 +2118,9 @@ function ligarEditorVideo(){
     }
     if(t.id === "vaba-gancho"){ r().gancho = t.value; const c = $("#vaba-gancho-conta"); if(c) c.textContent = Array.from(t.value).length; }
     if(t.id === "vaba-extra-texto") r().extra.texto = t.value;
+    if(t.id.startsWith("vaba-capa-linha-")) r().capa.linhas[Number(t.id.slice(-1))] = t.value;      // v0.78.0
+    if(t.id === "vaba-capa-categoria") r().capa.categoria = t.value;
+    if(t.id === "vaba-capa-subtitulo") r().capa.subtitulo = t.value;
     atualizarRodapeVideo();
   });
   box.addEventListener("change", ev => {
@@ -2536,9 +2600,10 @@ const VIDEO = {
         // v0.77.0: as caixas ficam COMO ESTÃO — o assumir vai ao banco e as declarações continuam retratando o que
         // o usuário marcou (se o envio falhar no meio, a nova tentativa pergunta de novo, com o registro certo)
       }
+      const capa = await capaParaEnvio(p.roteiro, p.assunto, p.tipo);       // v0.78.0: o título da capa-arte, sozinho
       const corpo = {peca:p.id, partes:lista.map((c, i) => ({n:i + 1, tipo:c.tipo, bytes:c.bytes})), fala_pessoa:quem,
         fala_roteiro:fala, cartela:linhasCartela(quem), gancho, declaracoes:decl.map(c => c.value), duracao:duracaoClipes(lista),
-        ...(assumir ? {assumir:true} : {})};
+        ...(capa ? {capa} : {}), ...(assumir ? {assumir:true} : {})};
       let r;
       try{ r = await funcaoVideo("envio_iniciar", corpo, 90000); }
       catch(e){

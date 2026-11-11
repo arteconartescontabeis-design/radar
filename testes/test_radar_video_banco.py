@@ -42,6 +42,8 @@ PARTES = [{"n": 1, "tipo": "video/mp4", "bytes": 1000}, {"n": 2, "tipo": "video/
 DECL = ["so_marcadas", "sem_fundo", "so_voz", "fala_confere"]
 CRIAR = "select radar_video_criar(%s, %s, %s, %s, %s::text[], %s, %s::text[])"
 CRIAR_ASSUMIR = "select radar_video_criar(%s, %s, %s, %s, %s::text[], %s, %s::text[], null, true)"   # v0.74.0: o Enviar mesmo assim
+CRIAR_CAPA = "select radar_video_criar(%s, %s, %s, %s, %s::text[], %s, %s::text[], null, false, %s)"   # v0.78.0: a capa-arte
+CAPA = {"linhas": ["Quem cuida", "da sua", "empresa?"], "categoria": "Nossa equipe", "subtitulo": "Conheça a equipe da Artecon"}
 SHA2 = "b" * 64
 RELATORIO = {"versao": 2, "texto_final": FALA, "divergencias": [], "avisos": []}
 DIVERGENCIA = {"k": 0, "id": "0123456789abcdef", "falado": "dia 25", "roteiro": "dia 20", "tipo": "numero", "regravar": True,
@@ -1866,6 +1868,43 @@ def test_aceitar_no_avulso_libera_o_baixar_no_mesmo_clique(corretor):
 # v0.74.0: "Enviar mesmo assim" — o administrador assume as pendências (termo, boletim) com a confirmação da tela;
 # fica registrado quem assumiu e quando; menor de idade e o editor continuam travados; a chegada dos clipes
 # (radar_video_enviado) respeita o assumir gravado
+def test_capa_arte_no_envio_e_no_ajuste(corretor):
+    """v0.78.0: o envio leva o título da capa-arte (p_capa → ajustes.capa, que o robô recebe no pedido e desenha); a
+    forma errada é recusada (RADAR356, pela mesma régua de radar_video_ajustes_falta); o administrador troca o título
+    pela aba Vídeo (radar_video_ajustar) e pode tirá-lo (a capa volta a ser só o quadro); sem p_capa, nada muda."""
+    db = corretor
+    pid, ana = reel(db)
+    # o envio com a capa: ela nasce em ajustes.capa
+    with como("authenticated", EDITOR) as c:
+        r = c.execute(CRIAR_CAPA, (pid, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL, json.dumps(CAPA))).fetchone()[0]
+    vid = r["id"]
+    assert db.execute("select ajustes->'capa' from radar_videos where id = %s", (vid,)).fetchone()[0] == CAPA
+    # a forma errada é recusada antes de qualquer arquivo subir
+    for errada, motivo in [({"linhas": []}, "RADAR356"), ({"linhas": ["x" * 19]}, "RADAR356"),
+                           ({"linhas": ["ok"], "categoria": "c" * 25}, "RADAR356"),
+                           ({"linhas": ["ok"], "outra": 1}, "RADAR356"), ({"linhas": ["tem{chave}"]}, "RADAR356")]:
+        with como("authenticated", EDITOR) as c, pytest.raises(psycopg.errors.RaiseException, match=motivo):
+            c.execute(CRIAR_CAPA, (pid, json.dumps(PARTES), ana, FALA, [IDENT], False, DECL, json.dumps(errada)))
+    # o administrador troca o título na aba Vídeo (ajustar MESCLA: a capa fica mesmo num ajuste só da legenda) — e o
+    # pedido do robô o carrega
+    db.execute("update radar_videos set situacao = 'pronto' where id = %s", (vid,))
+    assert tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"estilo": "compacta"}), uid=ADMIN)["id"] == vid
+    assert db.execute("select ajustes->'capa' from radar_videos where id = %s", (vid,)).fetchone()[0] == CAPA
+    nova = {"linhas": ["Outro título"], "categoria": "Fiscal"}
+    db.execute("update radar_videos set situacao = 'pronto', pego_em = null where id = %s", (vid,))
+    assert tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"capa": nova}), uid=ADMIN)["id"] == vid
+    assert db.execute("select ajustes->'capa' from radar_videos where id = %s", (vid,)).fetchone()[0] == nova
+    pedido = robo("select radar_video_pegar()")
+    assert pedido["id"] == vid and pedido["ajustes"]["capa"] == nova
+    # tirar o título ("capa": null, porque o ajustar mescla): a arte sai e a capa volta a ser só o quadro
+    db.execute("update radar_videos set situacao = 'pronto', pego_em = null where id = %s", (vid,))
+    assert tela("select radar_video_ajustar(%s, %s, null)", vid, json.dumps({"capa": None}), uid=ADMIN)["id"] == vid
+    assert db.execute("select ajustes->'capa' = 'null'::jsonb from radar_videos where id = %s", (vid,)).fetchone()[0]
+    # sem p_capa, o envio comum nasce sem a chave
+    vid2 = criar(pid, ana)["id"]
+    assert db.execute("select ajustes = '{}'::jsonb from radar_videos where id = %s", (vid2,)).fetchone()[0]
+
+
 def test_enviar_mesmo_assim_assumir_do_administrador(corretor):
     db = corretor
     pid, ana = reel(db)

@@ -28,6 +28,7 @@ import re
 import audio
 import cortes
 import isolado
+from PIL import Image
 from segredo import ErroVideo
 from sondar import FPS, entrada
 
@@ -199,9 +200,10 @@ def capa(infos: list[dict], plano: dict, capa_q: int, pastas: isolado.Pastas, co
     return {"q": q, "em_ms": round(cortes.video_de(plano, q)[0] * 1000), "movida": movida}
 
 
-def montar(infos: list[dict], plano: dict, pastas: isolado.Pastas, cfg: dict, preset: str = "medium", capa_q: int | None = None) -> dict:
-    """Monta sai/reel.mp4 e os quadros (e, com capa_q, a capa). Devolve o pedaço do relatório: {saida, imagem, audio, quadros_ms,
-    capa?}."""
+def montar(infos: list[dict], plano: dict, pastas: isolado.Pastas, cfg: dict, preset: str = "medium", capa_q: int | None = None,
+           capa_auto: bool = False) -> dict:
+    """Monta sai/reel.mp4 e os quadros (e, com capa_q ou capa_auto, a capa). Devolve o pedaço do relatório: {saida, imagem,
+    audio, quadros_ms, capa?}; com capa_auto e sem capa_q, o quadro da capa é escolhido sozinho (o mais nítido)."""
     if not plano.get("trechos"):
         raise ErroVideo("sem_fala", "montar")
     lufs = float(cfg.get("lufs", -14))
@@ -217,7 +219,25 @@ def montar(infos: list[dict], plano: dict, pastas: isolado.Pastas, cfg: dict, pr
         if tamanho <= LIMITE_BYTES:
             break
     cartela_s = float(cfg.get("cartela_s", 3))
-    extra = {"capa": capa(infos, plano, capa_q, pastas, cores)} if isinstance(capa_q, int) and not isinstance(capa_q, bool) else {}
+    # v0.46.0: com a capa-arte (capa_auto) e sem capa_q do editor, o quadro é ESCOLHIDO SOZINHO — desenha cada
+    # candidato (o meio de cada trecho que fica) e fica com o mais nítido (capa_arte.nitidez)
+    if capa_auto and not (isinstance(capa_q, int) and not isinstance(capa_q, bool)):
+        import capa_arte
+        melhor, ultimo = None, None
+        for q in capa_arte.candidatos_q(plano):
+            info_c = capa(infos, plano, q, pastas, cores)
+            ultimo = q
+            nota = capa_arte.nitidez(Image.open(pastas.sai / "capa.jpg"))
+            if melhor is None or nota > melhor[0]:
+                melhor = (nota, q, info_c)
+        if melhor is not None:
+            if melhor[1] != ultimo:                            # o último desenhado não é o melhor: desenha o melhor de novo
+                melhor = (melhor[0], melhor[1], capa(infos, plano, melhor[1], pastas, cores))
+            extra = {"capa": {**melhor[2], "automatica": True}}
+        else:
+            extra = {}
+    else:
+        extra = {"capa": capa(infos, plano, capa_q, pastas, cores)} if isinstance(capa_q, int) and not isinstance(capa_q, bool) else {}
     return {**extra, "saida": {"duracao_s": round(fala + cartela_s - TRANSICAO, 2), "fala_s": round(fala, 2), "cartela_s": cartela_s,
                       "transicao_s": TRANSICAO, "mb": round(tamanho / 1024 / 1024, 1), "taxa": taxa[0]},
             "imagem": {"luz": {n: {k: (round(v, 1) if v is not None else None) for k, v in l.items()} for n, l in luzes.items()}},

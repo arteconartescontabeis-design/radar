@@ -2729,11 +2729,47 @@ async function roteiroVenda(reg: Registro, servico: unknown, destaque: unknown) 
   return { titulo, roteiro, duracao_s: Math.min(90, Math.max(20, Math.round(Number(json.duracao_s)) || 45)), avisos };
 }
 
+/* v0.63.0: o TÍTULO DA CAPA do reel (a capa-arte automática do corretor, no molde aprovado pelo dono): 2 ou 3 linhas
+ * curtas que juntas formam UMA pergunta ou frase ligada ao conteúdo (a última linha é a palavra-força, que sai em
+ * destaque), a categoria da faixa e o subtítulo. Sem sensacionalismo e sem prometer o que o roteiro não diz: a
+ * instrução manda, e os termos vetados da publicidade contábil são conferidos na saída (com eles, a tela descarta e
+ * usa o título de reserva). */
+async function capaReel(reg: Registro, roteiro: unknown, assunto: unknown) {
+  const limpar = (v: unknown, max: number) => semMarcasDeBloco(normalizarEspacos(semLinkNemDado(v))).slice(0, max);
+  const r = limpar(roteiro, 6000), a = limpar(assunto, 300);
+  if (r.length < 40) throw new Erro(400, "Mande o roteiro do reel (ao menos 40 caracteres) para a capa.");
+  const texto = { type: "string" };
+  const esquema = { type: "object", additionalProperties: false, required: ["linhas", "categoria", "subtitulo"],
+    properties: { linhas: { type: "array", items: texto }, categoria: texto, subtitulo: texto } };
+  const instrucoes = "Você escreve o TÍTULO DA CAPA de um vídeo curto e vertical (reel) da Artecon Artes Contábeis (Palhoça/SC), " +
+    "em português do Brasil. Responda só o JSON pedido. Regras OBRIGATÓRIAS: " +
+    "(a) 'linhas': 2 ou 3 linhas que, lidas em sequência, formam UMA pergunta ou frase curta, objetiva e DIRETAMENTE ligada ao " +
+    "conteúdo do roteiro; cada linha com ATÉ 16 CARACTERES (contando espaços); a ÚLTIMA linha é a palavra-força da frase (ela sai " +
+    "em destaque na arte); sem ponto final, sem aspas, sem emoji; " +
+    "(b) NADA de sensacionalismo, medo, urgência artificial, promessa ou número que NÃO esteja no roteiro: a capa desperta " +
+    "interesse contando a verdade do vídeo; " +
+    "(c) 'categoria': o assunto do vídeo em 1 ou 2 palavras (até 20 caracteres), ex.: 'Nossa equipe', 'Reforma tributária', " +
+    "'Folha de pagamento', 'Simples Nacional'; " +
+    "(d) 'subtitulo': uma linha de apoio factual de até 44 caracteres, sem convite comercial agressivo; " +
+    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_DADOS + blocoOrientacoes(reg);
+  const entrada = `<<<TEXTO pedido>>>\nAssunto da peça: ${a || "—"}\nRoteiro falado do reel:\n${r}\n<<<FIM>>>`;
+  const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "capa", esquema, 300);
+  const linhas = (Array.isArray(json.linhas) ? json.linhas : []).map((x: unknown) => normalizarEspacos(String(x ?? "")).slice(0, 18))
+    .filter((x: string) => x).slice(0, 3);
+  if (linhas.length < 2) throw new Erro(502, "O título da capa veio incompleto: tente de novo.");
+  const categoria = normalizarEspacos(String(json.categoria ?? "")).slice(0, 24);
+  const subtitulo = normalizarEspacos(String(json.subtitulo ?? "")).slice(0, 48);
+  const avisos: string[] = [], pub = termosPublicidade(categoria, subtitulo, ...linhas);
+  const trava = [...new Set([...pub.trava, ...termosPeca(categoria, subtitulo, ...linhas)])];
+  if (trava.length) avisos.push(`Termo que a publicidade contábil não admite: ${trava.join(", ")}.`);
+  return { linhas, categoria, subtitulo, avisos };
+}
+
 // ------------------------------------------------------------------ entrada
 // v0.24.0: as ações que levam as orientações do escritório (as que escrevem texto para publicar, a revisão editorial da etapa 5 e a
 // ilustração); "pagina" não usa IA, e
 // classificar, fundamentar, verificar e diagnostico não escrevem para publicar
-const ORIENTADAS = ["gerar", "titulos", "revisar", "kit", "peca", "ilustrar", "editorial", "roteiro_venda"];
+const ORIENTADAS = ["gerar", "titulos", "revisar", "kit", "peca", "ilustrar", "editorial", "roteiro_venda", "capa"];
 /** E-mail de quem pediu (para a IA Central mostrar quem usou). Se não der para saber, segue sem. */
 async function emailDoUsuario(token: string): Promise<string> {
   try {
@@ -2756,9 +2792,9 @@ async function tratar(req: Request): Promise<Response> {
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) throw new Erro(400, "Pedido inválido.");
     acao = String(pedido.acao ?? "");
     if (!["classificar", "fundamentar", "gerar", "titulos", "ilustrar", "diagnostico", "verificar", "pagina", "revisar", "kit", "peca",
-          "editorial", "foto_buscar", "foto_baixar", "roteiro_venda"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
+          "editorial", "foto_buscar", "foto_baixar", "roteiro_venda", "capa"].includes(acao)) throw new Erro(400, "Ação desconhecida.");
     // v0.21.0: a peça é da Pauta, não de um assunto; v0.39.0: a foto do banco de imagens também vai sem assunto
-    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca" || acao === "roteiro_venda" || acao.startsWith("foto_");
+    const diag = acao === "diagnostico", semAssunto = diag || acao === "peca" || acao === "roteiro_venda" || acao === "capa" || acao.startsWith("foto_");
     if (!semAssunto && (typeof pedido.assunto_id !== "number" || !Number.isSafeInteger(pedido.assunto_id) || pedido.assunto_id <= 0)) throw new Erro(400, "Assunto inválido.");
     assuntoId = semAssunto ? 0 : pedido.assunto_id;
 
@@ -2788,6 +2824,14 @@ async function tratar(req: Request): Promise<Response> {
       const [quem, ori] = await Promise.all([emailDoUsuario(token), orientacoes()]);
       reg = { uso: null, quem, orientacoes: ori };
       const r = await peca(token, reg, pedido.peca_id, pedido.lido), usado = reg.uso as Uso | null;
+      return responder(200, { ...r, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
+    }
+
+    // v0.63.0: o título da capa-arte do reel (sem assunto: o roteiro vem no pedido)
+    if (acao === "capa") {
+      const [quem, ori] = await Promise.all([emailDoUsuario(token), orientacoes()]);
+      reg = { uso: null, quem, orientacoes: ori };
+      const r = await capaReel(reg, pedido.roteiro, pedido.assunto), usado = reg.uso as Uso | null;
       return responder(200, { ...r, modelo: usado?.modelo, tokens: (usado?.entrada ?? 0) + (usado?.saida ?? 0), versao: VERSAO });
     }
 
@@ -2825,7 +2869,7 @@ async function tratar(req: Request): Promise<Response> {
     const usado = reg.uso;
     if (usado && token) {
       await banco(token, "POST", "rpc/radar_registrar_uso_ia", {
-        p_acao: ["titulos", "revisar", "kit", "peca", "editorial", "roteiro_venda"].includes(acao) ? "gerar" : acao === "verificar" ? "fundamentar" : acao,
+        p_acao: ["titulos", "revisar", "kit", "peca", "editorial", "roteiro_venda", "capa"].includes(acao) ? "gerar" : acao === "verificar" ? "fundamentar" : acao,
         p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
       }).catch((e) => console.error("uso da IA não registrado:", e?.message));
     }

@@ -310,10 +310,16 @@ def montar(trab: Trabalho) -> int:
         extra = str(ajustes["cartela_extra"] if propria else cfg.get("cartela_extra") or "")[:120]
         cartela.desenhar(trab.sai / "cartela.png", pedido["cartela_linhas"], extra)
         capa_q = ajustes.get("capa_q") if isinstance(ajustes.get("capa_q"), int) and not isinstance(ajustes.get("capa_q"), bool) else None
-        m = montagem.montar(infos, plano, pastas, cfg, preset=PRESET, capa_q=capa_q)
+        # v0.46.0: a CAPA-ARTE automática (ajustes.capa, escrito no envio): com ela, a capa sai sempre — no quadro do
+        # editor (capa_q) ou no escolhido sozinho (capa_auto) — e vira a arte do molde; sem ela, tudo como antes
+        import capa_arte
+        capa_dados = capa_arte.dados_de(ajustes)
+        m = montagem.montar(infos, plano, pastas, cfg, preset=PRESET, capa_q=capa_q, capa_auto=capa_dados is not None)
         if "capa" in m:
             if not (trab.sai / "capa.jpg").is_file():
                 raise ErroVideo("conferencia_falhou", "montar", ["capa"])
+            if capa_dados is not None:
+                m["capa"]["arte"] = capa_arte.desenhar(trab.sai / "capa.jpg", capa_dados)
             # a capa sobe com o sha256 DELA no nome (quadros/<id>/<sha256 do vídeo>/capa-<sha256 da capa>.jpg): trocar só a capa monta
             # o mesmo vídeo (o mesmo sha256), e o armazenamento nunca sobrescreve — com o nome fixo, ficaria a capa de antes
             m["capa"]["sha256"] = _sha256(trab.sai / "capa.jpg")

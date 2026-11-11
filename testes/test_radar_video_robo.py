@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 from conftest import RAIZ
 
@@ -715,6 +715,38 @@ def test_legenda_tamanho_posicao_e_cor_na_area_livre(pastas):
                 if posicao == "meio":
                     meio = [(c[1] + c[3]) / 2 for c in caixas]
                     assert all(abs(m - legenda.CENTRO_MEIO) <= 30 for m in meio), (nome, meio)
+
+
+def test_capa_arte_molde_e_plano_b(pastas, monkeypatch):
+    """v0.46.0: a CAPA-ARTE — dados_de sana o ajustes.capa (caixa alta e limites), candidatos_q aponta o meio dos
+    trechos, nitidez ordena nítido antes de borrado e desenhar grava o molde (aqui no PLANO B, sem o modelo de
+    recorte: o quadro com o véu marinho — a capa nunca falha por falta do modelo). Pixels conferidos: o painel
+    marinho, o friso amarelo e o cartão branco do logotipo."""
+    monkeypatch.setenv("RADAR_CAPA_MODELO", str(pastas.sai / "nao-existe.onnx"))
+    import capa_arte
+    capa_arte._sessao_onnx = None
+    assert capa_arte.dados_de({"capa": {"linhas": [" quem cuida ", "", "da sua empresa?"], "categoria": "nossa equipe",
+                                        "subtitulo": "x" * 60}}) == {
+        "linhas": ["QUEM CUIDA", "DA SUA EMPRESA?"], "categoria": "NOSSA EQUIPE", "subtitulo": "X" * 48}
+    assert capa_arte.dados_de({"capa": {"linhas": []}}) is None
+    assert capa_arte.dados_de({}) is None and capa_arte.dados_de({"capa": None}) is None and capa_arte.dados_de(None) is None
+    cand = capa_arte.candidatos_q({"trechos": [[0, 300], [400, 460]]})
+    assert {150, 430} <= set(cand) and all(any(qa <= q < qb for qa, qb in [(0, 300), (400, 460)]) for q in cand)
+    nit = Image.new("RGB", (270, 480))
+    dn = ImageDraw.Draw(nit)
+    for x in range(0, 270, 6):
+        dn.line([(x, 0), (x, 480)], fill=(255, 255, 255))
+    assert capa_arte.nitidez(nit) > capa_arte.nitidez(nit.filter(ImageFilter.GaussianBlur(4)))
+    q = pastas.sai / "capa.jpg"
+    Image.new("RGB", (1080, 1920), (120, 90, 60)).save(q, quality=90)
+    r = capa_arte.desenhar(q, capa_arte.dados_de({"capa": {"linhas": ["Quem cuida", "da sua", "empresa?"],
+                                                           "categoria": "Nossa equipe", "subtitulo": "Conheça a equipe"}}))
+    im = Image.open(q)
+    assert r["recorte"] is False and r["linhas"] == ["QUEM CUIDA", "DA SUA", "EMPRESA?"] and im.size == (1080, 1920)
+    perto = lambda px, cor, tol=24: all(abs(a - b) <= tol for a, b in zip(px, cor))
+    assert perto(im.getpixel((40, 960)), (1, 31, 72), 30)          # o painel marinho
+    assert perto(im.getpixel((521, 960)), (255, 215, 0), 40)       # o friso amarelo na borda do painel
+    assert perto(im.getpixel((300, 110)), (255, 255, 255), 20)     # o cartão branco do logotipo
 
 
 def test_legenda_karaoke_palavra_acende_quando_e_dita(pastas):
