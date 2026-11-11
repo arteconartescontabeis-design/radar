@@ -1,4 +1,4 @@
-# Radar Artecon — v0.89.0
+# Radar Artecon — v0.90.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -3276,6 +3276,10 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.89.0 para a v0.90.0** (**só as telas**): publique o `index.html` com os `.js` e aperte Ctrl+F5. A reserva do
+título da capa deixa de passar pelo veto de termos (que é para a IA e dava falso positivo em alguns navegadores).
+
 
 **Da v0.86.0 para a v0.87.0** (**só as telas**). Supõe a v0.86.0 instalada:
 

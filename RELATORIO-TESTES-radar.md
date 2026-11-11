@@ -1,4 +1,12 @@
-# Radar Artecon — Relatório de testes (v0.89.0)
+# Radar Artecon — Relatório de testes (v0.90.0)
+
+**v0.90.0 — Título da capa: reserva sem o veto de termos (só tela)**
+(11/11/2026): o diagnóstico (v0.88/0.89) provou que a reserva montava o título certo (`["Conheça a equipe","que
+acompanha"]`) mas `capaValida` retornava null no navegador do dono (vld:false) — um falso positivo do veto de termos
+de publicidade (não reproduz no Node com as mesmas listas; provável diferença de regex/acentuação no Chrome). Como o
+veto é para o texto que a IA escreve e a reserva vem do assunto/roteiro já conferidos na Pauta, criei `capaDaReserva`
+(limpa e recorta, sem o veto) e `capaParaEnvio` passou a usá-la na reserva; o veto segue no caminho da IA. Removido o
+diagnóstico do pop-up. Nada no banco, nas funções nem no robô; repositório verde nesta sessão.
 
 **v0.87.0 — Título da capa pela fala gravada do vídeo (só tela)**
 (11/11/2026): mesmo na v0.86 o título saiu “Conteúdo contábil”; o dono confirmou estar na v0.86 (rodapé). A peça

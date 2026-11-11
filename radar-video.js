@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.89.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.90.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -397,15 +397,25 @@ function fraseDoRoteiro(roteiro){
   const frase = (linhas[0] || "").split(/[.!?]/)[0].replace(/\s+/g, " ").trim();
   return frase.split(/\s+/).filter(Boolean).length >= 3 ? frase : "";
 }
+// v0.90.0: só a limpeza e o recorte da reserva (SEM o veto de termos de publicidade): o texto vem do assunto/roteiro
+// da própria peça, que já passaram pela conferência da Pauta. O veto de capaValida é para o que a IA escreve, não para
+// a reserva — e estava dando falso positivo em alguns navegadores, derrubando um título legítimo
+function capaDaReserva(assunto, tipo){
+  const rsv = capaReserva(assunto, tipo);
+  const linhas = listaVideo(rsv.linhas).map(x => capaLimpa(x).slice(0, 18).trim()).filter(Boolean).slice(0, 3);
+  if(!linhas.length) return null;
+  return {linhas, categoria:capaLimpa(rsv.categoria).slice(0, 24).trim() || undefined,
+          subtitulo:capaLimpa(rsv.subtitulo).slice(0, 48).trim() || undefined};
+}
 async function capaParaEnvio(roteiro, assunto, tipo){
   try{
     const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao:"capa", roteiro:String(roteiro || ""), assunto:String(assunto || "")}, tempo:25000});
-    const v = capaValida(r);
-    if(v){ v._fonte = "ia"; return v; }                      // v0.88.0: marca a origem (diagnóstico)
+    const v = capaValida(r);                                 // o VETO de termos vale para o texto da IA
+    if(v){ v._fonte = "ia"; return v; }
   }catch(e){ /* a IA fora do ar ou no limite: a reserva assume */ }
-  // v0.85.0: reserva do assunto; se vier vazio, da primeira frase do roteiro; só então o último recurso
+  // reserva do assunto; se vier vazio, da primeira frase do roteiro; só então o último recurso (sem veto: já é conteúdo da peça)
   const base = (assunto && assunto.trim()) ? assunto : fraseDoRoteiro(roteiro);
-  const res = capaValida(capaReserva(base, tipo));
+  const res = capaDaReserva(base, tipo);
   if(res){ res._fonte = (assunto && assunto.trim()) ? "reserva-assunto" : "reserva-fala"; return res; }
   return {linhas:[CATEGORIA_CAPA[tipo] || "Artecon"], _fonte:"ultimo-recurso"};
 }
@@ -2318,16 +2328,8 @@ const ACOES_ABA_VIDEO = {
     const r = rascunhoMexidoVideo(v);
     r.capa = {linhas:[0, 1, 2].map(i => textoDe(c.linhas[i])), categoria:c.categoria || "", subtitulo:c.subtitulo || ""};
     redesenharEditorVideo();
-    // v0.88.0 (diagnóstico temporário): mostra de onde veio o título, para achar a origem vazia
-    let diagExtra = "";
-    try{
-      const base = (pec.assunto && pec.assunto.trim()) ? pec.assunto : fraseDoRoteiro(roteiro);
-      const rsv = capaReserva(base, pec.tipo);
-      diagExtra = ` base:"${String(base).slice(0,20)}" rsvL:${JSON.stringify(rsv.linhas)} vld:${!!capaValida(rsv)} tp:${pec.tipo}`;
-    }catch(e){ diagExtra = " ERRO:" + (e && e.message ? e.message.slice(0,60) : "?"); }
-    const diag = `[diag fala:${(v.fala_roteiro || "").length} rot:${(pec.roteiro || "").length} ass:${(pec.assunto || "").length} peca:${pec.id || "-"} fonte:${c._fonte || "?"}${diagExtra}]`;
     // v0.83.0: sempre remonta (forcar), mesmo se o título repetir — assim a capa e a legenda nova (rodapé) são aplicadas
-    const robo = await montarDeNovoVideo(`A IA escreveu o título da capa:\n\n“${ajustesDoEditor(v, r).capa.linhas.join(" / ")}”\n\n${diag}\n\nMontar o vídeo agora com a capa-arte e a legenda atual?`, true);
+    const robo = await montarDeNovoVideo(`O título da capa ficou:\n\n“${ajustesDoEditor(v, r).capa.linhas.join(" / ")}”\n\nMontar o vídeo agora com a capa-arte e a legenda atual?`, true);
     if(robo !== null) recado(`✅ Enviado ao corretor! O robô está montando o vídeo com a capa (leva alguns minutos). Esta tela avisa quando ficar pronto — aí é só aprovar. ${robo}`);
     else recado("Título preenchido (nada foi montado). Revise e clique de novo, ou use “Montar de novo com estas mudanças”.", "aviso");
   },
