@@ -1,4 +1,4 @@
-# Radar Artecon — v0.83.0
+# Radar Artecon — v0.84.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -11,6 +11,12 @@ A v0.4.0 acrescenta o **Informativo Mensal** no padrão enviado aos clientes (ag
 obrigações, artigos, Fale Conosco e fecho, no papel timbrado, pronto para salvar em PDF),
 **imagem de capa, autor e fonte** nos conteúdos, e os botões para **copiar a notícia para o
 site** da Artecon. É o modo de trabalho até a parte oficial (robô e fontes) estar validada.
+
+A v0.84.0 deixa a capa mais confiável: o **título da IA** volta melhor (a função `radar-ia` aceita o que o modelo
+escrever, quebrando linha longa sozinha, em vez de dar erro e cair em “ARTECON”) e a **reserva** monta o título a
+partir do assunto sem terminar em palavra fraca (“…/ sua”). A **foto** da capa escolhe o quadro mais nítido — para
+trocar um quadro de boca aberta, use “Usar o quadro do player como capa” e remonte; o rosto nunca passa por IA
+generativa e nenhuma foto sai do Radar. Muda a tela e a função **radar-ia** (Deploy). Veja "Da v0.83.0 para a v0.84.0".
 
 A v0.83.0 deixa a geração da capa mais clara (pedido do dono): o botão “Gerar a capa com a IA e montar de novo”
 avisa “⏳ Gerando…” e, ao mandar ao corretor, “✅ Enviado ao corretor! O robô está montando (leva alguns minutos)…”;
@@ -3259,6 +3265,13 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.83.0 para a v0.84.0** (a tela e a função **radar-ia**; nada no banco nem no robô). Supõe a v0.83.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**.
+2. **Deploy** da função **`radar-ia`** desta versão (o título da capa mais tolerante).
+3. Para trocar o quadro da capa (boca aberta): aba **Vídeo** → abra a prévia → pare num quadro bom → **“Usar o quadro
+   do player como capa”** → **“Montar de novo”**.
 
 **Da v0.82.0 para a v0.83.0** (**só as telas**). Supõe a v0.82.0 instalada:
 

@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.83.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.84.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -352,6 +352,9 @@ async function restaurarTomadas(pid){
    palavras do assunto). A capa NUNCA trava nem atrasa um envio além do tempo da chamada. */
 const CATEGORIA_CAPA = {quem_cuida:"Nossa equipe", data_equipe:"Nossa equipe", captacao:"Artecon", agenda:"Agenda da semana",
   noticia:"Notícia", educativo:"Conteúdo contábil", bastidor:"Bastidores", reel:"Conteúdo contábil"};
+// v0.84.0: palavras fracas que não devem FECHAR o título (a última linha sai em amarelo, em destaque): artigos,
+// preposições, conjunções e pronomes curtos. "Conheça a equipe que acompanha sua empresa" → termina em "empresa", não "sua".
+const PALAVRA_FRACA = new Set("a o e as os um uma uns umas de da do das dos em no na nos nas que e ou se com por para pra sua seu suas seus meu minha nossa nosso ao aos à às".split(" "));
 function capaReserva(assunto, tipo){
   const palavras = String(assunto || "").split(/[.!?|]/)[0].replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   const linhas = [];
@@ -362,6 +365,15 @@ function capaReserva(assunto, tipo){
     else{ if(atual) linhas.push(atual); atual = w.slice(0, 16); if(linhas.length === 2) break; }
   }
   if(atual && linhas.length < 3) linhas.push(atual);
+  // v0.84.0: apara as palavras fracas do FIM do título (a última linha sai em amarelo, em destaque): a truncação em 3
+  // linhas não deixa o título fechar em "sua", "que", "de"… — some a linha que vira vazia
+  while(linhas.length){
+    const ws = linhas[linhas.length - 1].split(" ");
+    while(ws.length > (linhas.length > 1 ? 0 : 1) && PALAVRA_FRACA.has(ws[ws.length - 1].toLowerCase())) ws.pop();
+    if(!ws.length){ linhas.pop(); continue; }
+    linhas[linhas.length - 1] = ws.join(" ");
+    break;
+  }
   return {linhas:linhas.length ? linhas.slice(0, 3) : ["Artecon"],
           categoria:CATEGORIA_CAPA[tipo] || "Conteúdo contábil", subtitulo:"Artecon Artes Contábeis"};
 }

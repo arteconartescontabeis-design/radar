@@ -1,4 +1,13 @@
-# Radar Artecon — Relatório de testes (v0.83.0)
+# Radar Artecon — Relatório de testes (v0.84.0)
+
+**v0.84.0 — Capa mais confiável: título da IA tolerante + reserva sem palavra fraca (tela + radar-ia)**
+(11/11/2026): o dono relatou título “ARTECON” (a IA deu 502) e foto de boca aberta. (1) radar-ia `capaReel` (v0.63.0):
+aceita o que o modelo escreve — quebra linha longa em até 3 de ≤18 sem cortar palavra e exige só ≥1 linha (antes ≥2,
+que dava 502 “incompleto”); só cai na reserva da tela se vier VAZIO. (2) Tela `capaReserva`: apara palavras fracas do
+FIM do título montado (artigos, preposições, pronomes curtos) — “Conheça a equipe / que acompanha / sua” vira
+“Conheça a equipe / que acompanha”; conferido em três assuntos. (3) O quadro da capa segue escolhido pelo mais
+nítido, com a escolha manual (“Usar o quadro do player como capa”) para trocar boca aberta — sem mudar o robô. Nada
+no banco nem no robô; repositório verde nesta sessão.
 
 **v0.83.0 — Geração da capa mais clara: processando + sempre remonta + “Visualizar a capa” (só telas)**
 (11/11/2026): pedido do dono (“cliquei e não aparece nada… mensagem que está processando… botão de visualizar capa”).

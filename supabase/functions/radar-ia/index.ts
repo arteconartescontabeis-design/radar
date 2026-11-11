@@ -155,7 +155,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.62.0";
+const VERSAO = "0.63.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -2754,9 +2754,24 @@ async function capaReel(reg: Registro, roteiro: unknown, assunto: unknown) {
     REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_DADOS + blocoOrientacoes(reg);
   const entrada = `<<<TEXTO pedido>>>\nAssunto da peça: ${a || "—"}\nRoteiro falado do reel:\n${r}\n<<<FIM>>>`;
   const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "capa", esquema, 300);
-  const linhas = (Array.isArray(json.linhas) ? json.linhas : []).map((x: unknown) => normalizarEspacos(String(x ?? "")).slice(0, 18))
-    .filter((x: string) => x).slice(0, 3);
-  if (linhas.length < 2) throw new Erro(502, "O título da capa veio incompleto: tente de novo.");
+  // v0.47.0: tolerante — uma linha longa é quebrada em até 3 (até 18 caracteres, sem cortar palavra); aceita 1 linha ou mais
+  // (a tela só precisa de 1; o molde aceita 1 a 3). Só cai na reserva da tela se vier VAZIO.
+  const cru = (Array.isArray(json.linhas) ? json.linhas : [json.linhas])
+    .flatMap((x: unknown) => normalizarEspacos(String(x ?? "")).split("\n"))
+    .map((x: string) => normalizarEspacos(x)).filter((x: string) => x);
+  const linhas: string[] = [];
+  for (const parte of cru) {
+    if (linhas.length >= 3) break;
+    if (parte.length <= 18) { linhas.push(parte); continue; }
+    let atual = "";                                          // quebra a linha longa em pedaços de até 18, sem cortar palavra
+    for (const w of parte.split(" ")) {
+      const junta = atual ? atual + " " + w : w;
+      if (junta.length <= 18) atual = junta;
+      else { if (atual && linhas.length < 3) linhas.push(atual); atual = w.slice(0, 18); }
+    }
+    if (atual && linhas.length < 3) linhas.push(atual);
+  }
+  if (linhas.length < 1) throw new Erro(502, "O título da capa veio vazio: tente de novo.");
   const categoria = normalizarEspacos(String(json.categoria ?? "")).slice(0, 24);
   const subtitulo = normalizarEspacos(String(json.subtitulo ?? "")).slice(0, 48);
   const avisos: string[] = [], pub = termosPublicidade(categoria, subtitulo, ...linhas);
