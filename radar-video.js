@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.84.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.85.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -388,13 +388,24 @@ function capaValida(c){
   if(termosPublicidade(tudo).trava.length || termosPeca(tudo).length) return null;
   return {linhas, ...(categoria ? {categoria} : {}), ...(subtitulo ? {subtitulo} : {})};
 }
+// v0.85.0: a primeira frase do roteiro (sem as marcações de tempo/tabela), para a reserva quando o assunto vem vazio —
+// o roteiro do reel chega sempre; assim o título nunca cai no genérico "Artecon"
+function fraseDoRoteiro(roteiro){
+  const linhas = String(roteiro || "").replace(/\r/g, "").split("\n")
+    .map(l => l.replace(/^\s*\|.*$/, "").replace(/\b\d+\s*[aà]\s*\d+\s*s\b/gi, "").replace(/[|#>*_]+/g, " ").trim())
+    .filter(l => l.split(/\s+/).filter(Boolean).length >= 3 && !/^(gancho|fala|texto na tela|tempo|dura)/i.test(l));
+  const frase = (linhas[0] || "").split(/[.!?]/)[0].replace(/\s+/g, " ").trim();
+  return frase.split(/\s+/).filter(Boolean).length >= 3 ? frase : "";
+}
 async function capaParaEnvio(roteiro, assunto, tipo){
   try{
     const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao:"capa", roteiro:String(roteiro || ""), assunto:String(assunto || "")}, tempo:25000});
     const v = capaValida(r);
     if(v) return v;
   }catch(e){ /* a IA fora do ar ou no limite: a reserva assume */ }
-  return capaValida(capaReserva(assunto, tipo)) || {linhas:["Artecon"]};
+  // v0.85.0: reserva do assunto; se vier vazio, da primeira frase do roteiro; só então o último recurso
+  const base = (assunto && assunto.trim()) ? assunto : fraseDoRoteiro(roteiro);
+  return capaValida(capaReserva(base, tipo)) || {linhas:[CATEGORIA_CAPA[tipo] || "Artecon"]};
 }
 // o tipo que o banco aceita: MP4 ou MOV (o iPhone manda "video/quicktime"; sem tipo, pela extensão);
 // v0.44.0: + o WEBM da gravação do teleprompter pelo navegador (o MediaRecorder do Chrome/Android; o do Safari grava MP4)

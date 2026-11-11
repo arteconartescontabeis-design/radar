@@ -1,4 +1,13 @@
-# Radar Artecon — Relatório de testes (v0.84.0)
+# Radar Artecon — Relatório de testes (v0.85.0)
+
+**v0.85.0 — Título da capa nunca “Artecon”: reserva pela primeira frase do roteiro (só tela)**
+(11/11/2026): o dono viu o título “Artecon” de novo. Diagnóstico (logs + reprodução): a IA deu 502 e, na reserva, o
+ASSUNTO da peça chegou VAZIO à tela (um erro na busca da peça no editor), embora esteja preenchido no banco; a
+reserva com assunto vazio dá exatamente “Artecon”. Correção (radar-video.js): `fraseDoRoteiro(roteiro)` extrai a 1ª
+frase do roteiro (tira marcações de tempo/tabela) e `capaParaEnvio` usa `assunto || fraseDoRoteiro(roteiro)` — o
+roteiro do reel chega sempre; o último recurso passou a ser o nome da categoria, não “Artecon”. Conferido com o
+roteiro real da peça 1 (“Quando surge uma / dúvida / importante”) e as listas de termos reais. Nada no banco, nas
+funções nem no robô; repositório verde nesta sessão.
 
 **v0.84.0 — Capa mais confiável: título da IA tolerante + reserva sem palavra fraca (tela + radar-ia)**
 (11/11/2026): o dono relatou título “ARTECON” (a IA deu 502) e foto de boca aberta. (1) radar-ia `capaReel` (v0.63.0):
