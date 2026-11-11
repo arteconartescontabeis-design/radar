@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.90.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.91.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -408,10 +408,13 @@ function capaDaReserva(assunto, tipo){
           subtitulo:capaLimpa(rsv.subtitulo).slice(0, 48).trim() || undefined};
 }
 async function capaParaEnvio(roteiro, assunto, tipo){
+  const generico = new Set(Object.values(CATEGORIA_CAPA).map(x => x.toLowerCase()));   // "conteúdo contábil", "nossa equipe"…
   try{
     const r = await pedir("POST", "/functions/v1/radar-ia", {corpo:{acao:"capa", roteiro:String(roteiro || ""), assunto:String(assunto || "")}, tempo:25000});
     const v = capaValida(r);                                 // o VETO de termos vale para o texto da IA
-    if(v){ v._fonte = "ia"; return v; }
+    // v0.91.0: só aceita o título da IA se tiver 2+ linhas e não for só o nome genérico da categoria (o modelo às vezes
+    // devolve "Conteúdo contábil" como título); senão, cai na reserva do conteúdo da peça
+    if(v && v.linhas.length >= 2 && !generico.has(v.linhas.join(" ").toLowerCase())){ v._fonte = "ia"; return v; }
   }catch(e){ /* a IA fora do ar ou no limite: a reserva assume */ }
   // reserva do assunto; se vier vazio, da primeira frase do roteiro; só então o último recurso (sem veto: já é conteúdo da peça)
   const base = (assunto && assunto.trim()) ? assunto : fraseDoRoteiro(roteiro);
@@ -2329,7 +2332,7 @@ const ACOES_ABA_VIDEO = {
     r.capa = {linhas:[0, 1, 2].map(i => textoDe(c.linhas[i])), categoria:c.categoria || "", subtitulo:c.subtitulo || ""};
     redesenharEditorVideo();
     // v0.83.0: sempre remonta (forcar), mesmo se o título repetir — assim a capa e a legenda nova (rodapé) são aplicadas
-    const robo = await montarDeNovoVideo(`O título da capa ficou:\n\n“${ajustesDoEditor(v, r).capa.linhas.join(" / ")}”\n\nMontar o vídeo agora com a capa-arte e a legenda atual?`, true);
+    const robo = await montarDeNovoVideo(`O título da capa ficou:\n\n“${ajustesDoEditor(v, r).capa.linhas.join(" / ")}”  [f:${c._fonte || "?"}]\n\nMontar o vídeo agora com a capa-arte e a legenda atual?`, true);
     if(robo !== null) recado(`✅ Enviado ao corretor! O robô está montando o vídeo com a capa (leva alguns minutos). Esta tela avisa quando ficar pronto — aí é só aprovar. ${robo}`);
     else recado("Título preenchido (nada foi montado). Revise e clique de novo, ou use “Montar de novo com estas mudanças”.", "aviso");
   },
