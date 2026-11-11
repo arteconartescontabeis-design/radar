@@ -1,4 +1,4 @@
-# Radar Artecon — v0.93.0
+# Radar Artecon — v0.94.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -3276,6 +3276,17 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.93.0 para a v0.94.0** (telas + função `radar-video` + robô). Supõe a v0.93.0 instalada:
+
+1. **Função:** faça o DEPLOY da função `radar-video` desta versão (`VERSAO = "0.46.0"`). O que mudou: no pedido de
+   `links`, os caminhos de gravar que já estão no armazenamento com o mesmo `sha256` (o mesmo conteúdo) saem do pedido e
+   não ganham token — não é mais 409. Assim, remontar só para trocar o título da capa não tenta reenviar o vídeo nem os
+   quadros (que não mudam), e a montagem deixa de travar com erro de armazenamento.
+2. **Robô:** aponte a variável `RADAR_VIDEO_COMMIT` (repositório privado `radar-video`) para o commit novo do `radar`
+   publicado (a `main`). O robô passa a subir só o que recebeu token (p.ex. a capa nova).
+3. **Telas:** publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**. Não muda o banco.
+4. Conferência: gerar a capa de novo só para trocar o título conclui a montagem (a peça não fica mais em “erro”).
 
 **Da v0.89.0 para a v0.90.0** (**só as telas**): publique o `index.html` com os `.js` e aperte Ctrl+F5. A reserva do
 título da capa deixa de passar pelo veto de termos (que é para a IA e dava falso positivo em alguns navegadores).

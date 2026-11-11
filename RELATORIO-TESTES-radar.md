@@ -1,4 +1,14 @@
-# Radar Artecon — Relatório de testes (v0.93.0)
+# Radar Artecon — Relatório de testes (v0.94.0)
+
+**v0.94.0 — Remontar só a capa não reenvia o vídeo nem os quadros (robô + função radar-video)**
+(11/11/2026): a remontagem para trocar só o título da capa travava com `erro_codigo: storage`. Causa: o vídeo é o
+mesmo (o mesmo `sha256`) e os quadros `q1..q4` já estavam no armazenamento; a função recusava o pedido de `links` com
+409 (“nunca se sobrescreve”) e a entrega parava. Correção: no handler `links`, a função lista o que já existe nas
+pastas de destino e devolve token só para o que falta (`faltam`); o robô (`conversa.links`) tolera um caminho de
+gravar sem link — está no armazenamento, fica de fora sem erro — e o `_entregar` sobe só o que recebeu token (p.ex. a
+capa nova). O `concluir` segue conferindo o vídeo e os 4 quadros. Função `radar-video` → `VERSAO = "0.46.0"`, robô →
+`ROBO = "0.46.0"`. Testes do robô (corrigir, robo, repositório: 25 + 48) atualizados e passando; o teste da função de
+verdade reflete o novo 200 com `gravar` vazio no lugar do antigo 409 (roda só com o PostgREST, pulado nesta sessão).
 
 **v0.90.0 — Título da capa: reserva sem o veto de termos (só tela)**
 (11/11/2026): o diagnóstico (v0.88/0.89) provou que a reserva montava o título certo (`["Conheça a equipe","que
