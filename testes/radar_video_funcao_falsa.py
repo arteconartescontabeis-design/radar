@@ -168,10 +168,10 @@ class FuncaoFalsa:
             fora = [k for k in ler if not pode_ler(k)] + [k for k in gravar if not pode_gravar(k)]
             if fora:
                 return 403, {"message": f"{len(fora)} caminho(s) fora do pedido."}
-            if any(k.startswith("corrigido/") and k in self.objetos for k in gravar):
-                return 409, {"message": "O vídeo corrigido com este sha256 já está no armazenamento: o caminho nunca se sobrescreve."}
+            # v0.46.0: o que já está no armazenamento (o mesmo sha256 = o mesmo conteúdo) sai do pedido e não ganha token
+            faltam = [k for k in gravar if k not in self.objetos]
             return 200, {"ler": {k: self._ler(k) for k in ler}, "gravar": {k: {"url": (e := self._gravar(k))["url"], "token": e["token"]}
-                                                                          for k in gravar}, "expira_s": 600, "cache_s": 60}
+                                                                          for k in faltam}, "expira_s": 600, "cache_s": 60}
         if acao == "audio":
             o = self.objetos.get(f"trabalho/{vid}/{t}/palavras.json")
             guardou = bool(o and o["dados"] and o["tipo"].startswith("application/json"))

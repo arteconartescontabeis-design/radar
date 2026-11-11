@@ -373,9 +373,10 @@ def test_duracao_estimada_e_a_do_video_montado(completo, db, tmp_path):
 
 @FFMPEG
 def test_trocar_so_a_capa_sobe_a_capa_nova_do_mesmo_video(completo, tmp_path):
-    """Trocar SÓ a capa monta o mesmo vídeo (o mesmo sha256): o vídeo já está no armazenamento ("ja_existe") e o armazenamento nunca
-    sobrescreve. A capa sobe com o sha256 dela no nome: a nova fica ao lado da de antes, o relatório aponta a nova e o concluir confere
-    a nova (a de antes não passa por ela). Voltar à capa de antes reaproveita o arquivo que já está lá (o mesmo conteúdo)."""
+    """Trocar SÓ a capa monta o mesmo vídeo (o mesmo sha256): o vídeo já está no armazenamento e o armazenamento nunca sobrescreve.
+    Na v0.46.0 a função pula no pedido de links o que já está lá com o mesmo sha256, então o robô sobe só o que falta: a capa nova
+    (com o sha256 dela no nome, ao lado da de antes), e o vídeo e os quadros não sobem de novo. Voltar à capa de antes não sobe nada:
+    o arquivo já está lá (o mesmo conteúdo). O relatório aponta a capa da rodada e o concluir a confere no armazenamento."""
     f = completo.funcao
     feitas = []
     for k, capa_q in enumerate((27, 65, 27)):
@@ -392,7 +393,7 @@ def test_trocar_so_a_capa_sobe_a_capa_nova_do_mesmo_video(completo, tmp_path):
     (sha_a, capa_a, _), (sha_b, capa_b, puts_b), (sha_c, capa_c, puts_c) = feitas
     assert sha_a == sha_b == sha_c and capa_a != capa_b and capa_c == capa_a       # o mesmo vídeo; a capa nova, depois a de antes de volta
     assert capa_b in puts_b and f"corrigido/{VID}/{sha_b}.mp4" not in puts_b       # o vídeo não sobe de novo; a capa nova, sim
-    assert capa_a in puts_c and capa_a in f.objetos and capa_b in f.objetos         # a de antes: o PUT encontra o mesmo arquivo (não sobrescreve)
+    assert puts_c == [] and capa_a in f.objetos and capa_b in f.objetos             # voltar à capa de antes não sobe nada: ela já está lá
 
 
 @FFMPEG
@@ -620,8 +621,9 @@ def test_entregar_video_acima_do_limite_do_armazenamento_para_com_o_codigo_propr
 
 @FFMPEG
 def test_entregar_de_novo_com_o_mesmo_video_ja_no_armazenamento(completo, tmp_path):
-    """Uma rodada anterior subiu o vídeo (o mesmo sha256) e parou antes de concluir: os links recusam o corrigido (nunca se
-    sobrescreve), sobem só os quadros (o que já estava lá fica) e o concluir confere o que está no armazenamento."""
+    """Uma rodada anterior subiu o vídeo (o mesmo sha256) e um quadro, e parou antes de concluir. Na v0.46.0 o pedido de links
+    pede o corrigido e os 4 quadros, mas a função devolve token só para o que falta (o corrigido e o q1 já estão lá, o
+    armazenamento nunca sobrescreve): sobem só os quadros que faltavam e o concluir confere o que está no armazenamento."""
     f = _funcao()
     try:
         r = json.loads((completo.trab / "resultado.json").read_text())
@@ -629,9 +631,9 @@ def test_entregar_de_novo_com_o_mesmo_video_ja_no_armazenamento(completo, tmp_pa
         f.guardar(f"corrigido/{VID}/{sha}.mp4", (completo.trab / "sai" / "reel.mp4").read_bytes())
         f.guardar(f"quadros/{VID}/{sha}/q1.jpg", (completo.trab / "sai" / "q1.jpg").read_bytes(), "image/jpeg")
         (rc, _), _ = _entregar_de_novo(completo, tmp_path, f)
-        assert rc == 0 and f.acoes() == ["links", "links", "concluir"] and f.final[VID]["situacao"] == "pronto"
-        assert f.chamadas[1][1]["gravar"] == [f"quadros/{VID}/{sha}/q{k}.jpg" for k in range(1, 5)]
-        assert [c for c, _ in f.puts] == [f"quadros/{VID}/{sha}/q{k}.jpg" for k in range(1, 5)]
+        assert rc == 0 and f.acoes() == ["links", "concluir"] and f.final[VID]["situacao"] == "pronto"
+        assert f.chamadas[0][1]["gravar"] == [f"corrigido/{VID}/{sha}.mp4"] + [f"quadros/{VID}/{sha}/q{k}.jpg" for k in range(1, 5)]
+        assert [c for c, _ in f.puts] == [f"quadros/{VID}/{sha}/q{k}.jpg" for k in range(2, 5)]   # o corrigido e o q1 já estavam lá
     finally:
         f.fechar()
 

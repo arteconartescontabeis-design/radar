@@ -395,21 +395,20 @@ def _entregar(conversa: Conversa, trab: Trabalho, pedido: dict, resultado: dict)
             raise ErroVideo("erro_interno", "entregar")     # a capa mudou depois da montagem
         # o nome tem o sha256 da capa: o que já estiver lá com este nome é esta mesma imagem (subir() == False não esconde outra)
         quadros[f"quadros/{vid}/{sha}/capa-{capa}.jpg"] = trab.sai / "capa.jpg"
-    links, recusa = None, None
     try:
         links = conversa.links(vid, t, gravar=[caminho, *quadros])["gravar"]
     except ErroVideo as e:
-        recusa = e
-    if recusa is not None:
-        if recusa.codigo != "ja_existe":
-            raise recusa
-        # o mesmo vídeo (o mesmo sha256) já subiu numa rodada que parou antes de concluir: sobem só os quadros (o que já estiver lá
-        # fica) e o concluir confere o vídeo no armazenamento (tamanho e tipo)
+        if e.codigo != "ja_existe":
+            raise
+        # função antiga (antes da v0.46.0): o corrigido já existe e ela recusa o pedido inteiro com 409 → pede só os quadros/capa
         links = conversa.links(vid, t, gravar=list(quadros))["gravar"]
+    # v0.46.0: sobe só o que recebeu token — a função pula o que já está no armazenamento com o mesmo sha256 (o mesmo
+    # conteúdo), p.ex. os quadros numa remontagem que só mudou a capa; o concluir confere o vídeo no armazenamento
     if caminho in links:
         conversa.subir(links[caminho], video, "video/mp4")
     for q, arquivo in quadros.items():
-        conversa.subir(links[q], arquivo, "image/jpeg")
+        if q in links:
+            conversa.subir(links[q], arquivo, "image/jpeg")
     return conversa.concluir(vid, t, resultado["situacao"], resultado["relatorio"], sha, resultado["bytes"], resultado["duracao"])
 
 

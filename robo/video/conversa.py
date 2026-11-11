@@ -193,7 +193,9 @@ class Conversa:
         return {"pedido": pedido, "partes": partes, "palavras": palavras}
 
     def links(self, vid: str, t: int, ler=(), gravar=()) -> dict:
-        """{ler: {caminho: url}, gravar: {caminho: url}}, só dos caminhos pedidos e conferidos."""
+        """{ler: {caminho: url}, gravar: {caminho: url}}, só dos caminhos pedidos e conferidos. v0.46.0: um caminho de gravar que
+        volta sem link já está no armazenamento com o mesmo sha256 (o mesmo conteúdo) — a função o pula e ele fica de fora, sem erro;
+        quem gravar sobe só o que veio."""
         r = self.chamar("links", id=vid, tentativa=t, ler=list(ler), gravar=list(gravar))
         out = {"ler": {}, "gravar": {}}
         for tipo in ("ler", "gravar"):
@@ -201,6 +203,8 @@ class Conversa:
             for caminho in (ler if tipo == "ler" else gravar):
                 v = dados.get(caminho)
                 url = v.get("url") if tipo == "gravar" and isinstance(v, dict) else v
+                if tipo == "gravar" and url is None:
+                    continue                                # pulado: já está no armazenamento (o mesmo sha256)
                 out[tipo][caminho] = self._link(url, caminho, gravar=tipo == "gravar")
         return out
 

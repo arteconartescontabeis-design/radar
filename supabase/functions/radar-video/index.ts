@@ -85,7 +85,7 @@
 // A transcrição é do robô (ajustes do dono): os segredos da Azure ficam no repositório privado, não aqui.
 // =====================================================================
 
-const VERSAO = "0.45.0";
+const VERSAO = "0.46.0";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -577,16 +577,17 @@ async function links(servico: Record<string, string>, id: string, t: number, ler
     || new RegExp(`^quadros/${id}/[0-9a-f]{64}/(q[1-4]|capa-[0-9a-f]{64})\\.jpg$`).test(k);   // v0.33.0: + a capa (vídeo + 4 quadros + capa = 6)
   const recusados = [...paraLer.filter((k) => !podeLer(k)), ...paraGravar.filter((k) => !podeGravar(k))];
   if (recusados.length) throw new Erro(403, `${recusados.length} caminho(s) fora do pedido.`);
-  // o vídeo corrigido nunca se sobrescreve: o caminho tem o sha256, e o que já existe não ganha token
-  if (paraGravar.some((k) => k.startsWith("corrigido/"))) {
-    const { arquivos } = await listar(`corrigido/${id}`);
-    if (paraGravar.some((k) => arquivos.some((a) => k === `corrigido/${id}/${a.nome}`))) {
-      throw new Erro(409, "O vídeo corrigido com este sha256 já está no armazenamento: o caminho nunca se sobrescreve.");
-    }
-  }
+  // v0.46.0: nada se sobrescreve — o caminho tem o sha256, então o que já está lá é o MESMO conteúdo. Os que já existem
+  // (o vídeo corrigido, os quadros, a capa) saem do pedido e NÃO ganham token; o robô sobe só o que falta (p.ex. a capa
+  // nova numa remontagem que só mudou o título) e o concluir confere o vídeo no armazenamento. Antes, o corrigido
+  // existente dava 409 e um quadro/capa já existente dava 502 ao pedir o token de envio — travando a entrega.
+  const pastas = new Set(paraGravar.map((k) => k.replace(/\/[^/]+$/, "")));
+  const existentes = new Set<string>();
+  for (const pasta of pastas) { const { arquivos } = await listar(pasta); for (const a of arquivos) existentes.add(`${pasta}/${a.nome}`); }
+  const faltam = paraGravar.filter((k) => !existentes.has(k));
   const respostaLer: Record<string, string> = {}, respostaGravar: Record<string, { url: string; token: string }> = {};
   for (const k of paraLer) respostaLer[k] = await linkDeLeitura(k, LINK_ROBO_S);
-  for (const k of paraGravar) { const e = await tokenDeEnvio(k); respostaGravar[k] = { url: e.url, token: e.token }; }
+  for (const k of faltam) { const e = await tokenDeEnvio(k); respostaGravar[k] = { url: e.url, token: e.token }; }
   return { ler: respostaLer, gravar: respostaGravar, expira_s: LINK_ROBO_S, cache_s: CACHE_S };
 }
 

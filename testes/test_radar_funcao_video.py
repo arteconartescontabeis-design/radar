@@ -463,8 +463,9 @@ def test_robo_pega_le_os_clipes_grava_a_transcricao_e_conclui_conferido(vid):
     assert status == 200 and set(ln["gravar"]) == set(caminhos) and list(ln["ler"]) == [f"bruto/{v}/2"]
     assert all(e[1] is None for e in ARM["envios"])
     assert subir(ln["gravar"][caminhos[0]]["url"], b"m" * 4000, "video/mp4") == 200
-    assert pedir({"acao": "links", "id": v, "tentativa": 1, "gravar": caminhos[:1]}, cab=ROBO) == (409, {
-        "message": "O vídeo corrigido com este sha256 já está no armazenamento: o caminho nunca se sobrescreve."})
+    # v0.46.0: remontar só para trocar a capa não muda o vídeo (o mesmo sha256); o caminho que já está lá sai do pedido (sem token) e não é 409
+    assert pedir({"acao": "links", "id": v, "tentativa": 1, "gravar": caminhos[:1]}, cab=ROBO) == (200, {
+        "ler": {}, "gravar": {}, "expira_s": 600, "cache_s": 60})
     assert pedir({"acao": "parcial", "id": v, "tentativa": 1, "relatorio": {"divergencias": []}}, cab=ROBO) == (200, True)
     fim = {"acao": "concluir", "id": v, "tentativa": 1, "situacao": "pronto", "relatorio": RELATORIO, "sha256": SHA_VIDEO, "bytes": 4000, "duracao": 38.4}
     assert pedir(fim, cab=ROBO) == (409, {"message": "Faltam quadros no armazenamento (q1, q2, q3, q4): suba de novo."})
