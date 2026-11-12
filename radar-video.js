@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.97.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.98.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -2114,7 +2114,9 @@ function htmlRodapeAbaVideo(){
   return `<p class="vaba-resumo" id="vaba-resumo">${resumo.length ? "Mudanças: " + h(resumo.join(", ")) : "Nenhuma mudança ainda."}</p>
     ${dur !== null ? `<p id="vaba-duracao" class="${fora ? "vaba-fora" : acima ? "vaba-acima" : ""}">Duração depois de montar: cerca de ${segVideo(dur)} s (meta: até ${segVideo(meta)} s; mínimo 5 s, máximo 15 min)${acima ? " — acima da meta: aceito, e a aprovação pede confirmação" + (dur > 90 ? "; acima de 90 s o reel sai só no Instagram" : "") : ""}</p>` : ""}
     <div class="acoes">${mudou ? `<button class="btn peq sec" type="button" data-acao="vaba-descartar">Descartar as mudanças</button>` : ""}
-      <button class="btn verde" type="button" data-acao="vaba-montar"${mudou && !fora ? "" : " disabled"}>Montar de novo com estas mudanças</button></div>`;
+      <button class="btn verde" type="button" data-acao="vaba-montar"${mudou && !fora ? "" : " disabled"}>Montar de novo com estas mudanças</button>
+      ${v.situacao === "pronto" && a.peca ? `<button class="btn" type="button" data-acao="vaba-publicar" data-id="${h(a.peca.id)}">Aprovar e publicar →</button>` : ""}</div>
+    ${v.situacao === "pronto" && a.peca ? `<p class="sub" id="vaba-publicar-dica">Está bom? <b>Aprovar e publicar →</b> abre a peça na Pauta para conferir, aprovar e publicar — agora, em data e hora definida ou no próximo dia útil.</p>` : ""}`;
 }
 /* refaz as seções e o rodapé (o player fica: o vídeo não recarrega), com as seções abertas como estavam */
 function redesenharEditorVideo(){
@@ -2305,6 +2307,8 @@ const ACOES_ABA_VIDEO = {
   "vpolir-previa"(el){ previaPolir(Number(el.dataset.id)); },
   "vpolir-tirar"(el){ tirarPolir(Number(el.dataset.id)); },
   "vaba-peca"(el){ E.aba = "pauta"; E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; abaVideo().id = null; window.scrollTo(0, 0); return desenhar(); },
+  // v0.98.0 (Fase 4 do fluxo do reel): "Aprovar e publicar →" leva à peça na Pauta (onde se aprova e publica); mesmo destino que "Abrir a peça na Pauta"
+  "vaba-publicar"(el){ E.aba = "pauta"; E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; abaVideo().id = null; window.scrollTo(0, 0); return desenhar(); },
   "vaba-palavra"(el){
     const a = abaVideo(), i = Number(el.dataset.i), pl = $("#vaba-player");
     if(pl && Number.isFinite(Number(el.dataset.a))) pl.currentTime = Number(el.dataset.a);

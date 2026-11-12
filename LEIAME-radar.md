@@ -1,4 +1,4 @@
-# Radar Artecon — v0.97.0
+# Radar Artecon — v0.98.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -3276,6 +3276,13 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.97.0 para a v0.98.0** (**só a tela**). Supõe a v0.97.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**. Não muda o banco, as funções Edge nem o robô.
+2. O que mudou (fases 2 a 4 da simplificação do reel): o botão de envio virou “Enviar para correção (o corretor de vídeo)”; e no
+   editor, quando o vídeo está **pronto**, o rodapé ganha o botão **“Aprovar e publicar →”** (ação `vaba-publicar`, mesmo destino
+   que “Abrir a peça na Pauta”): leva à peça para conferir, aprovar e publicar. A publicação em si continua na Pauta (Opção B).
 
 **Da v0.96.0 para a v0.97.0** (**só a tela**). Supõe a v0.96.0 instalada:
 

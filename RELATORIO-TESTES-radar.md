@@ -1,4 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.97.0)
+# Radar Artecon — Relatório de testes (v0.98.0)
+
+**v0.98.0 — Fluxo do reel: botão de envio e “Aprovar e publicar →” (só tela — Fases 2 a 4)**
+(12/11/2026): Fases 2 a 4 da simplificação (desenho aprovado). Fase 2: o botão de envio da gravação passou de “Enviar a
+gravação” para “Enviar para correção (o corretor de vídeo)” — os testes clicam por `data-acao=video-enviar`, então o texto
+muda sem quebrá-los (as menções a “Enviar a gravação” nos testes são do histórico/ajuda, não do botão). Fase 3: a tela de
+“corrigindo” já era limpa (durante `na_fila`/`processando` o editor mostra só o aviso, sem seções) — sem mudança. Fase 4
+(Opção B escolhida pelo dono): no vídeo **pronto**, `htmlRodapeAbaVideo` ganha o botão “Aprovar e publicar →” com a ação
+nova `vaba-publicar` (mesmo destino que `vaba-peca`/“Abrir a peça na Pauta”). Usei um `data-acao` próprio para **não** criar
+dois `vaba-peca` (o teste em 13246 clica `vaba-peca` e exigiria um só). O botão “Montar de novo” segue igual (sempre
+presente, desabilitado sem mudanças), então os testes do rodapé não quebram. Não mexe na Pauta, no banco, nas funções nem no
+robô. `node --check` OK; os testes de tela rodam no CI (PostgREST não disponível nesta sessão).
 
 **v0.97.0 — Editor do vídeo com resumo de estado nas seções (só tela — Fase 1 da simplificação do reel)**
 (12/11/2026): 1º passo do fluxo do reel mais simples (desenho aprovado no mockup). No editor (`htmlSecoesAbaVideo`), cada
