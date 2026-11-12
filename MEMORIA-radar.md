@@ -5,12 +5,22 @@ agora e implantar depois**. Não é tarefa concluída — é lembrete para a ver
 
 ---
 
-## Pendente: 10 roteiros do departamento contábil (sugestão do Cleiver)
+## Implantado: 10 roteiros do departamento contábil (sugestão do Cleiver)
 
 **Pedido (11/11/2026):** guardar na memória os 10 roteiros abaixo (arquivo
 `Sugestão_video.docx`) para **implantar no lugar dos textos dos vídeos do
-departamento contábil**. Quando for implantar, localizar onde hoje ficam os
-textos/roteiros sugeridos do setor contábil e substituir por estes.
+departamento contábil**.
+
+**Status — IMPLANTADO em 12/11/2026** (direto no banco, tabela `radar_pauta_pecas`):
+- Substituído o roteiro + assunto das 4 peças de reel em produção: peça 2 (12/11 → roteiro 1),
+  peça 4 (13/11 → roteiro 2), peça 3 (13/11 → roteiro 3), peça 5 (18/11 → roteiro 4).
+- Criadas 6 peças de reel novas (planejadas, 14h): id 129 (19/11, roteiro 5), 130 (20/11, roteiro 6),
+  131 (24/11, roteiro 7), 132 (25/11, roteiro 8), 133 (26/11, roteiro 9), 134 (27/11, roteiro 10).
+- Peça 1 ("Conheça a equipe", já pronta/montada) foi mantida intacta.
+- Os reels de notícia/data (13º, DAS, reforma, MEI, etc.) não foram tocados.
+- As datas das 6 novas podem ser remanejadas na própria Pauta (Mudar o dia e a hora).
+
+Roteiros abaixo, verbatim, para referência.
 
 Os textos abaixo estão **verbatim**, como o Cleiver enviou. São falas prontas
 (gancho no fim de cada um), adequadas ao reel do escritório.
