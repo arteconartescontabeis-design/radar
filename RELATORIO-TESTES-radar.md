@@ -1,4 +1,14 @@
-# Radar Artecon — Relatório de testes (v0.96.0)
+# Radar Artecon — Relatório de testes (v0.97.0)
+
+**v0.97.0 — Editor do vídeo com resumo de estado nas seções (só tela — Fase 1 da simplificação do reel)**
+(12/11/2026): 1º passo do fluxo do reel mais simples (desenho aprovado no mockup). No editor (`htmlSecoesAbaVideo`), cada
+seção passa a mostrar um resumo do estado no título via `resumoSecaoVideo` (duração + cortes no meio; tamanho/posição/cor da
+legenda; nº de blocos; título da capa; gancho; cartela). As seções foram reordenadas (Cortes, Legenda, Capa primeiro; Gancho
+e Cartela ao fim) e renomeadas; a 1ª seção teve o `data-secao` de `cortar` para `cortes` (o `abertas` padrão acompanhou). Os
+**ids dos campos não mudaram**, então `ajustesDoEditor` e as ações `vaba-*` seguem iguais — nenhum teste de tela quebra (os
+testes acessam as seções por id: `legenda`, `estilo`, `gancho`, `cartela`, `capa`, que foram mantidos; as menções a `cortar`
+nos testes são o campo de dados do `ajustes`, não o id da seção). Validação: `node --check` + CSS balanceado; os testes de
+tela rodam no CI (PostgREST não disponível nesta sessão). Nada no banco, nas funções nem no robô.
 
 **v0.96.0 — Varredura de bugs: edição da capa + suíte toda verde (só tela/testes)**
 (12/11/2026): rodada a suíte completa (866 passam, 726 pulam) e feita uma varredura. Achados:

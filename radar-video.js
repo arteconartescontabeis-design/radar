@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.96.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.97.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -1397,7 +1397,7 @@ const ABA_VIDEO_FPS = 30;
 const ABA_VIDEO_LIMITES = {min:5, max:900, fala:2, cortes:30, corteMin:3};   // v0.33.0: o teto é o da API do Instagram (15 min); a meta das Configurações é só aviso
 const ABA_VIDEO_CAMPOS = CAMPOS_VIDEO + ",palavras_tentativa,rodada";
 const ABA_VIDEO_SEM_BANCO = `<div class="aviso erro" id="vaba-sem-banco">A aba Vídeo precisa do banco desta versão: o administrador roda o <b>sql/radar-setup-v0.50.0.sql</b> (Supabase → SQL Editor) e recarrega esta página.</div>`;
-const abaVideo = () => (estadoVideo().aba ||= {filtro:"futuro", rascunhos:{}, previaLigada:true, abertas:{cortar:true}});
+const abaVideo = () => (estadoVideo().aba ||= {filtro:"futuro", rascunhos:{}, previaLigada:true, abertas:{cortes:true}});
 const ehEditorVideo = v => CHAVES_EDITOR_VIDEO.some(k => Object.prototype.hasOwnProperty.call(objVideo(v?.ajustes), k));
 const inteiroVideo = x => Number.isInteger(x) ? x : null;
 
@@ -1929,15 +1929,32 @@ function htmlPlayerAbaVideo(){
         <figcaption class="sub">Quadro ${i + 1}${numVideo(qms[i]) !== null ? `, aos ${segVideo(qms[i] / 1000)} s` : ""}</figcaption></figure>`).join("")}</div></details>
     <p class="sub">Aberto às ${h(new Date(pv.em).toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"}))}; o link vale 10 minutos (vencido, a tela pede outro sozinha). A prévia pula os cortes novos; o que volta ao vídeo (um corte desfeito, um trecho mantido) só aparece depois de montar.</p>`;
 }
-const secaoAbaVideo = (id, titulo, corpo) => `<details class="painel vaba-secao" id="vaba-sec-${id}" data-secao="${id}"${abaVideo().abertas[id] ? " open" : ""}><summary><h2>${titulo}</h2></summary>${corpo}</details>`;
+const secaoAbaVideo = (id, titulo, corpo, resumo) => `<details class="painel vaba-secao" id="vaba-sec-${id}" data-secao="${id}"${abaVideo().abertas[id] ? " open" : ""}><summary><h2>${titulo}</h2>${resumo ? ` <span class="vaba-sec-resumo">${h(resumo)}</span>` : ""}</summary>${corpo}</details>`;
+// v0.97.0: o resumo do estado de cada seção, à vista no título — você vê como está sem precisar abrir
+function resumoSecaoVideo(v, r){
+  const pal = objVideo(abaVideo().paleta), rel = objVideo(v.relatorio);
+  const nome = (lista, chave, padrao) => (listaVideo(pal[lista]).find(x => x.chave === chave)?.nome || padrao).replace(/ \(padrão\)$/, "");
+  const cortesMeio = listaVideo(rel.cortes).filter(c => numVideo(c.em_s) !== null).length;
+  const blocos = listaVideo(objVideo(rel.legenda).lista).length;
+  const capaLinhas = textosVideo(r.capa?.linhas).filter(Boolean);
+  return {
+    cortes: [numVideo(v.duracao_final) !== null ? segVideo(v.duracao_final) + " s" : "", cortesMeio ? cortesMeio + " no meio" : "começo e fim"].filter(Boolean).join(" · "),
+    estilo: [nome("tamanhos", r.tamanho, "Média"), nome("posicoes", r.posicao, "Rodapé"), nome("cores", r.cor, "Marinho")].join(" · ") + (r.compacta ? " · compacta" : ""),
+    legenda: blocos ? blocos + " bloco" + (blocos > 1 ? "s" : "") : "",
+    capa: capaLinhas.length ? "“" + cortarPauta(capaLinhas.join(" "), 22) + "”" : "sem capa-arte",
+    gancho: r.sem_gancho ? "sem gancho" : (textoDe(r.gancho) ? "“" + cortarPauta(r.gancho, 18) + "”" : "—"),
+    cartela: r.extra && r.extra.modo === "sem" ? "sem texto extra" : r.extra && r.extra.modo === "proprio" ? "texto próprio" : "texto das Configurações"
+  };
+}
 function htmlSecoesAbaVideo(){
-  const a = abaVideo(), v = a.v, ed = editavelVideo(v, a.peca), r = rascunhoVideo(v);
-  return [secaoAbaVideo("cortar", "1. Cortar: começo, fim e trechos", htmlCortesAbaVideo(v, r, ed)),
-    secaoAbaVideo("legenda", "2. Texto da legenda (palavra por palavra)", htmlLegendaAbaVideo(v, r, ed)),
-    secaoAbaVideo("estilo", "3. Estilo da legenda", htmlEstiloAbaVideo(v, r, ed)),
-    secaoAbaVideo("gancho", "4. Gancho (0 a 3 s)", htmlGanchoAbaVideo(v, r, ed)),
-    secaoAbaVideo("cartela", "5. Cartela final", htmlCartelaAbaVideo(v, r, ed)),
-    secaoAbaVideo("capa", "6. Capa do reel", htmlCapaAbaVideo(v, r, ed))].join("");
+  const a = abaVideo(), v = a.v, ed = editavelVideo(v, a.peca), r = rascunhoVideo(v), s = resumoSecaoVideo(v, r);
+  // v0.97.0: os três principais primeiro (Cortes, Legenda, Capa) e os extras (gancho, cartela) ao fim; cada um com o resumo do estado
+  return [secaoAbaVideo("cortes", "Cortes — começo, fim e trechos", htmlCortesAbaVideo(v, r, ed), s.cortes),
+    secaoAbaVideo("estilo", "Legenda — tamanho, posição e cor", htmlEstiloAbaVideo(v, r, ed), s.estilo),
+    secaoAbaVideo("legenda", "Legenda — corrigir o texto", htmlLegendaAbaVideo(v, r, ed), s.legenda),
+    secaoAbaVideo("capa", "Capa do reel", htmlCapaAbaVideo(v, r, ed), s.capa),
+    secaoAbaVideo("gancho", "Gancho (0 a 3 s)", htmlGanchoAbaVideo(v, r, ed), s.gancho),
+    secaoAbaVideo("cartela", "Cartela final", htmlCartelaAbaVideo(v, r, ed), s.cartela)].join("");
 }
 /* 1. Cortar: a linha do tempo, as palavras, a seleção, os cortes novos, os já no vídeo, os do robô e as divergências */
 function htmlCortesAbaVideo(v, r, ed){

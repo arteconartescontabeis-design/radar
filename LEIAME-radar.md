@@ -1,4 +1,4 @@
-# Radar Artecon — v0.96.0
+# Radar Artecon — v0.97.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -3276,6 +3276,13 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.96.0 para a v0.97.0** (**só a tela**). Supõe a v0.96.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**. Não muda o banco, as funções Edge nem o robô.
+2. O que mudou (1º passo da simplificação do fluxo do reel): no editor do vídeo, cada seção (Cortes, Legenda, Capa, Gancho,
+   Cartela) mostra um **resumo do estado no título** (você vê como está sem abrir), e os três principais vêm primeiro. A seção
+   “1. Cortar” virou “Cortes” (o `data-secao` de `cortar` para `cortes`); os campos e as ações do editor continuam iguais.
 
 **Da v0.95.0 para a v0.96.0** (**só a tela e os testes**). Supõe a v0.95.0 instalada:
 
