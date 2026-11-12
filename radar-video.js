@@ -472,7 +472,7 @@ function formEnvio(p, v, envio){
     <fieldset class="checks video-declaracoes"><legend>Declarações (as quatro são obrigatórias)</legend>${DECLARACOES_VIDEO.map(([k, t]) =>
       `<label><input type="checkbox" class="video-declaracao" value="${k}" data-texto="${h(t)}"> ${h(t)}</label>`).join("")}</fieldset>
     <p class="sub"><b>${h(AVISO_NOVO_ENVIO)}</b></p>${vivo}
-    <div class="acoes"><button class="btn verde" type="button" data-acao="video-enviar">${v ? "Enviar a gravação nova" : "Enviar a gravação"}</button>
+    <div class="acoes"><button class="btn verde" type="button" data-acao="video-enviar">${v ? "Enviar a nova gravação para correção" : "Enviar para correção (o corretor de vídeo)"}</button>
       ${v ? `<button class="btn sec" type="button" data-acao="video-nova-cancelar">Cancelar</button>` : ""}</div></div>`;
 }
 const AVISO_NOVO_ENVIO = "Os clipes vão direto para o armazenamento privado do Radar. " + AVISO_NAO_FECHE + " Se a internet cair, o envio continua de onde parou.";
