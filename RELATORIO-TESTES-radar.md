@@ -1,4 +1,17 @@
-# Radar Artecon — Relatório de testes (v0.95.0)
+# Radar Artecon — Relatório de testes (v0.96.0)
+
+**v0.96.0 — Varredura de bugs: edição da capa + suíte toda verde (só tela/testes)**
+(12/11/2026): rodada a suíte completa (866 passam, 726 pulam) e feita uma varredura. Achados:
+- **Bug de produto — a capa salva "sumia" no editor.** As linhas do título da capa são texto, mas `listaVideo` (filtra o que
+  não é objeto) era aplicada a elas em 4 pontos: `rascunhoNovoVideo` (a capa salva voltava com linhas vazias), `ajustesDoEditor`
+  (apagar as linhas não removia a capa-arte), e `capaCanon`/`capaTupla` em `ajustesIguais` (a comparação ignorava o título, então
+  editar só o título podia ser barrado como "nada mudou"). Novo helper `textosVideo` (mantém strings) nesses 4 pontos. A GERAÇÃO
+  do título (`capaValida`/`capaDaReserva`) ficou como está de propósito (não alterar o título aprovado nem reativar o da IA).
+- **3 testes vermelhos (de teste, não de produto), corrigidos:** o ROBO esperado em `test_radar_video_alinhar` (0.44→0.46, uma
+  falha minha ao bumpar o robô nesta sessão); a versão e a contagem de tabelas do `radar-copia` em `test_radar_funcao_copia`
+  (0.60.0/40 → 0.63.0/41 — o commit v0.63.0 subiu a função sem atualizar o teste, vermelho no CI desde então); e a fragilidade de
+  `test_todo_pedido_a_meta_foi_so_de_leitura` (`test_radar_funcao_setor`), que falhava com lista vazia quando os testes da função
+  são pulados sem PostgREST — agora pula também. Nada no banco, nas funções nem no robô.
 
 **v0.95.0 — Teste de regressão do título da capa (só tela/testes)**
 (12/11/2026): a saga do título (v0.84–0.92) foi resolvida pela montagem inline da v0.92, mas não havia teste que impedisse

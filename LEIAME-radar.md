@@ -1,4 +1,4 @@
-# Radar Artecon — v0.95.0
+# Radar Artecon — v0.96.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -3276,6 +3276,17 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.95.0 para a v0.96.0** (**só a tela e os testes**). Supõe a v0.95.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**. Não muda o banco, as funções Edge nem o robô.
+2. O que mudou (varredura de bugs):
+   - **Edição da capa do vídeo:** as linhas do título da capa são texto, mas `listaVideo` (que só mantém objetos) era aplicada
+     a elas em quatro pontos do editor. Efeitos corrigidos: a capa já salva reaparece no editor (antes vinha vazia), apagar as
+     linhas remove a capa-arte, e editar só o título conta como mudança para remontar. Novo helper `textosVideo`.
+   - **Testes:** a suíte completa acusou 3 vermelhos de teste (não de produto), todos corrigidos: o ROBO esperado no
+     `test_radar_video_alinhar` (0.44→0.46), a versão/tabelas do `radar-copia` (0.60/40 → 0.63/41, que o commit v0.63.0 esqueceu
+     de atualizar) e a fragilidade do `test_radar_funcao_setor` sem PostgREST.
 
 **Da v0.94.0 para a v0.95.0** (**só a tela e os testes**). Supõe a v0.94.0 instalada:
 
