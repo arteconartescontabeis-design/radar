@@ -576,7 +576,10 @@ def test_so_leitura_e_registro_sem_nomes(meta, chave, funcao):
 
 def test_todo_pedido_a_meta_foi_so_de_leitura():
     """Todos os pedidos que chegaram à Meta de mentira neste arquivo: só GET e só nos caminhos de leitura (nada de /media,
-    /media_publish, /comments, /likes, seguir, POST ou DELETE)."""
+    /media_publish, /comments, /likes, seguir, POST ou DELETE). Se os testes que falam com a função foram pulados (sem o Deno
+    ou sem o PostgREST), nada chega à Meta e não há o que conferir: este é pulado também, senão acusaria lista vazia."""
+    if not TODOS:
+        pytest.skip("nenhum pedido à Meta coletado (os testes da função foram pulados)")
     assert len(TODOS) > 50
     for m in TODOS:
         assert m["metodo"] == "GET" and (m["caminho"] in (IG, "ig_hashtag_search") or re.fullmatch(rf"{HID}/(top|recent)_media", m["caminho"])), m
