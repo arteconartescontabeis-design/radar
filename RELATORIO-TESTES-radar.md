@@ -1,4 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.94.0)
+# Radar Artecon — Relatório de testes (v0.95.0)
+
+**v0.95.0 — Teste de regressão do título da capa (só tela/testes)**
+(12/11/2026): a saga do título (v0.84–0.92) foi resolvida pela montagem inline da v0.92, mas não havia teste que impedisse
+uma regressão. Ao revisar, confirmei em Node que `capaDaReserva` e `capaValida` sempre caem em `null` — `listaVideo` filtra
+o que não é objeto e as linhas são strings —, ou seja, quem monta o título hoje é sempre a montagem inline (não era um “quirk
+do navegador do dono”, como os comentários supunham, e sim o `listaVideo`). O comportamento visível está correto (o título
+vem do conteúdo da peça), então NÃO mexi nele. Adicionei `test_titulo_da_capa_sai_sempre_do_conteudo_da_peca`
+(`testes/test_radar_telas.py`): com a IA abortada, confere que `capaParaEnvio` devolve um título do conteúdo
+(assunto/roteiro), com linhas de até 18 caracteres, no máximo 3, e **nunca** o genérico “Conteúdo contábil”/“Artecon” quando
+há conteúdo — guardando o resultado, não o caminho interno (reserva ou inline). `capaReserva` segue aparando a palavra fraca
+do fim (“Conheça a equipe que acompanha sua empresa” → fecha em “acompanha”). Nada no banco, nas funções nem no robô.
 
 **v0.94.0 — Remontar só a capa não reenvia o vídeo nem os quadros (robô + função radar-video)**
 (11/11/2026): a remontagem para trocar só o título da capa travava com `erro_codigo: storage`. Causa: o vídeo é o

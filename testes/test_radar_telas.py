@@ -385,14 +385,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.94.0"
+    assert pagina.inner_text(".versao") == "v0.95.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
-    # v0.94.0: a entrada do topo é a da versão em uso (montagem da capa mais firme), em 2 itens
+    # v0.95.0: a entrada do topo é a da versão em uso (teste de regressão do título da capa), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.94.0" and data == "11/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.95.0" and data == "12/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2401,7 +2401,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.94.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.95.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3282,7 +3282,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.94.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.95.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7719,7 +7719,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.94.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.95.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
@@ -13418,3 +13418,38 @@ def test_avulso_envio_que_nao_terminou_continua_ou_descarta_na_aba(pagina, vtela
     assert "Descartar o envio deste avulso?" in pagina.evaluate("() => window.__perguntas")[-1]
     pagina.wait_for_selector("#vaba-avulsos-vazia")
     assert db.execute("select situacao from radar_videos where id = %s", (vid,)).fetchone()[0] == "descartado"
+
+
+def test_titulo_da_capa_sai_sempre_do_conteudo_da_peca(pagina):
+    """v0.95.0 — regressão da saga do título da capa (v0.84–0.92). O título da capa sai SEMPRE do conteúdo da peça
+    (assunto/roteiro) e NUNCA cai no genérico ("Conteúdo contábil"/"Artecon") quando há conteúdo. Guarda o RESULTADO
+    observável, não o caminho interno: capaParaEnvio pode montar pela reserva ou pela montagem inline da v0.92 (hoje é a
+    inline que assume, porque capaDaReserva/capaValida caem no listaVideo), e o teste tem de continuar passando em qualquer
+    um dos caminhos. Com a IA fora do ar (rota abortada), só o conteúdo da peça alimenta o título."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.route(re.compile(r"/functions/v1/radar-ia"), lambda rota: rota.abort())   # IA fora do ar: só a reserva/inline do conteúdo
+
+    # capaReserva: o caso que falhava na saga — 2 linhas do conteúdo, fechando em "acompanha", não na palavra fraca "sua"/"que"
+    rsv = pagina.evaluate('capaReserva("Conheça a equipe que acompanha sua empresa", "reel")')
+    assert rsv["linhas"] == ["Conheça a equipe", "que acompanha"], rsv
+    assert rsv["linhas"][-1].split()[-1].lower() not in ("sua", "que", "de", "a", "o")   # não fecha em palavra fraca
+
+    # capaParaEnvio (o que o botão "Gerar a capa com a IA e montar" usa): sempre um título do conteúdo, nunca o genérico
+    casos = [
+        ("reel", "Conheça a equipe que acompanha sua empresa", "", "equipe"),
+        ("reel", "Vender bem significa ter lucro?", "", "vender"),
+        ("reel", "Reforma tributária: atenção aos preços e contratos para 2027", "", "reforma"),
+        ("reel", "Por que enviar o extrato bancário completo?", "", "extrato"),
+        # assunto vazio: o título vem da 1ª frase do roteiro (em prosa), nunca do genérico
+        ("reel", "", "Você já precisou procurar um documento entre vários arquivos? Organize antes de enviar.", "documento"),
+    ]
+    for tipo, assunto, roteiro, palavra in casos:
+        c = pagina.evaluate("async ([r, a, t]) => await capaParaEnvio(r, a, t)", [roteiro, assunto, tipo])
+        linhas = c["linhas"]
+        junto = " ".join(linhas).lower()
+        assert 1 <= len(linhas) <= 3, (assunto, c)
+        assert all(isinstance(l, str) and 0 < len(l) <= 18 for l in linhas), (assunto, c)      # recorte/limpeza
+        assert junto not in ("conteúdo contábil", "artecon"), (assunto, c)                      # nunca o genérico com conteúdo
+        assert palavra in junto, (assunto, c)                                                   # veio do conteúdo da peça
+        assert c.get("_fonte") not in ("ia", "ultimo-recurso"), c                               # IA fora: do conteúdo, não do genérico

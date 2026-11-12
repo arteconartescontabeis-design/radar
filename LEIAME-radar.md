@@ -1,4 +1,4 @@
-# Radar Artecon — v0.94.0
+# Radar Artecon — v0.95.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -3276,6 +3276,13 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.94.0 para a v0.95.0** (**só a tela e os testes**). Supõe a v0.94.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**. Não muda o banco, as funções Edge nem o robô.
+2. O que mudou: um teste de regressão novo (`test_titulo_da_capa_sai_sempre_do_conteudo_da_peca`, em `testes/test_radar_telas.py`)
+   garante que o título da capa sai sempre do conteúdo da peça (assunto/roteiro) e nunca cai no genérico “Conteúdo contábil”.
+   É proteção para as próximas versões — o comportamento visível é o mesmo da v0.94.0.
 
 **Da v0.93.0 para a v0.94.0** (telas + função `radar-video` + robô). Supõe a v0.93.0 instalada:
 
