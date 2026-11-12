@@ -126,6 +126,9 @@ const VIVAS_VIDEO = "in.(aguardando_envio,na_fila,processando,pronto,regravar,er
 const estadoVideo = () => (E.video ||= {arquivos:{}});
 const objVideo = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
 const listaVideo = v => (Array.isArray(v) ? v : []).filter(x => x && typeof x === "object");
+// v0.96.0: as LINHAS da capa são texto, não objeto — listaVideo (que só mantém objetos) as descartava, deixando a capa salva
+// "sumir" no editor, a remoção da capa (apagar as linhas) não funcionar e a comparação de mudança da capa ignorar o título
+const textosVideo = v => (Array.isArray(v) ? v : []).filter(x => typeof x === "string");
 const numVideo = v => { const n = Number(v); return v !== null && v !== "" && Number.isFinite(n) ? n : null; };
 const segVideo = (v, casas = 1) => Number(v).toLocaleString("pt-BR", {minimumFractionDigits:0, maximumFractionDigits:casas});
 const mbVideo = b => (b / 1024 / 1024).toLocaleString("pt-BR", {maximumFractionDigits:1}) + " MB";
@@ -1288,7 +1291,7 @@ const edicoesLegenda = x => Array.isArray(x) ? x.filter(e => Array.isArray(e) &&
 const ajustesIguais = (a, b) => {
   // manter e transcricao_errou em qualquer ordem; a legenda, na ordem (é a ordem em que o robô aplica);
   // v0.78.0: a capa comparada pelo conteúdo (o jsonb do banco reordena as chaves) e o null dela vale como ausente
-  const capaCanon = c => c && typeof c === "object" ? [listaVideo(c.linhas), textoDe(c.categoria), textoDe(c.subtitulo)] : null;
+  const capaCanon = c => c && typeof c === "object" ? [textosVideo(c.linhas), textoDe(c.categoria), textoDe(c.subtitulo)] : null;
   const ord = x => JSON.stringify(Object.keys(x).sort().map(k => [k, k === "legenda" ? edicoesLegenda(x[k]) : k === "capa" ? capaCanon(x[k])
     : Array.isArray(x[k]) ? x[k].map(String).sort() : x[k]]));
   const sem = x => { const y = {...objVideo(x)}; if(y.estilo === "normal") delete y.estilo; if(y.sem_gancho === false) delete y.sem_gancho;
@@ -1455,7 +1458,7 @@ function rascunhoNovoVideo(v){
     gancho:textoDe(v.gancho), sem_gancho:aj.sem_gancho === true,
     extra:typeof aj.cartela_extra === "string" ? {modo:aj.cartela_extra ? "proprio" : "sem", texto:aj.cartela_extra} : {modo:"config", texto:""},
     // v0.78.0: o título da capa-arte (ajustes.capa); sem ele (envio antigo), os campos ficam vazios e nada muda
-    capa:{linhas:[0, 1, 2].map(i => textoDe(listaVideo(objVideo(aj.capa).linhas)[i])),
+    capa:{linhas:[0, 1, 2].map(i => textoDe(textosVideo(objVideo(aj.capa).linhas)[i])),
           categoria:textoDe(objVideo(aj.capa).categoria), subtitulo:textoDe(objVideo(aj.capa).subtitulo)},
     refazer:false, legenda:{}, manter:listaMarcas(aj.manter, CHAVE_CORTE), errou:listaMarcas(aj.transcricao_errou, ID_DIVERGENCIA)};
 }
@@ -1506,7 +1509,7 @@ function ajustesDoEditor(v, r){
   const capaLinhas = (r.capa?.linhas || []).map(l => capaLimpa(l).slice(0, 18).trim()).filter(Boolean).slice(0, 3);
   const capaCat = capaLimpa(r.capa?.categoria).slice(0, 24).trim(), capaSub = capaLimpa(r.capa?.subtitulo).slice(0, 48).trim();
   if(capaLinhas.length) aj.capa = {linhas:capaLinhas, ...(capaCat ? {categoria:capaCat} : {}), ...(capaSub ? {subtitulo:capaSub} : {})};
-  else if(listaVideo(objVideo(objVideo(v.ajustes).capa).linhas).length) aj.capa = null;
+  else if(textosVideo(objVideo(objVideo(v.ajustes).capa).linhas).length) aj.capa = null;
   return aj;
 }
 /* o texto do gancho que vai à função: null = não mexe; "" = sem o texto do gancho; texto = o novo (muda também a chamada da peça) */
@@ -1555,7 +1558,7 @@ function resumoMudancasVideo(v, r){
   if(r.refazer) partes.push("cartela refeita");
   if(r.capa_q !== inteiroVideo(antes.capa_q)) partes.push(r.capa_q === null ? "sem a capa escolhida" : `capa aos ${segVideo(m ? tDoQ(m, r.capa_q)[0] : 0)} s`);
   // v0.78.0: o título da capa-arte (comparado pelo conteúdo: o jsonb do banco reordena as chaves)
-  const capaTupla = c => c && typeof c === "object" ? JSON.stringify([listaVideo(c.linhas), textoDe(c.categoria), textoDe(c.subtitulo)]) : "null";
+  const capaTupla = c => c && typeof c === "object" ? JSON.stringify([textosVideo(c.linhas), textoDe(c.categoria), textoDe(c.subtitulo)]) : "null";
   const capaAgora = ajustesDoEditor(v, r).capa ?? null, capaAntes = objVideo(antes.capa).linhas ? antes.capa : null;
   if(capaTupla(capaAgora) !== capaTupla(capaAntes))
     partes.push(capaAgora === null ? "sem a capa-arte (capa simples)" : "título da capa novo");
