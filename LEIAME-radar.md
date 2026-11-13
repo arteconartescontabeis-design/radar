@@ -1,4 +1,4 @@
-# Radar Artecon — v0.98.0
+# Radar Artecon — v0.99.0
 
 Plataforma de Inteligência Contábil e Tributária — Fase 1 enxuta.
 
@@ -3276,6 +3276,14 @@ chave do robô, a sessão pelo banco). Faça a troca num dia útil, **antes de d
    confira o passo que faltou.
 
 ## Atualizações futuras
+
+**Da v0.98.0 para a v0.99.0** (**só a tela — correção importante**). Supõe a v0.98.0 instalada:
+
+1. Publique o `index.html` com os demais `.js` (juntos) e aperte **Ctrl+F5**. Não muda o banco, as funções Edge nem o robô.
+2. O que corrigiu: o **envio de um reel novo** ao corretor falhava com “capa: linhas…”. A `capaParaEnvio` devolvia a capa com
+   um campo `_fonte` (diagnóstico da saga do título), e o envio (`video-enviar` → `radar_video_criar`) mandava a capa como
+   veio; o banco recusa capa com chave fora de `linhas/categoria/subtitulo`. O `_fonte` foi removido (não era lido em lugar
+   nenhum). Só afetava o envio de uma gravação nova — remontar pelo editor (`ajustesDoEditor`) já mandava a capa limpa.
 
 **Da v0.97.0 para a v0.98.0** (**só a tela**). Supõe a v0.97.0 instalada:
 

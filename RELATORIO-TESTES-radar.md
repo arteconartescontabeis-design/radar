@@ -1,4 +1,15 @@
-# Radar Artecon — Relatório de testes (v0.98.0)
+# Radar Artecon — Relatório de testes (v0.99.0)
+
+**v0.99.0 — Correção: envio de reel novo recusado por “capa: linhas…” (só tela)**
+(13/11/2026): o dono tentou enviar uma gravação nova e tomou “capa: linhas (1 a 3, cada uma de 1 a 18 caracteres), categoria
+(até 24) e subtitulo (até 48), sem { } \ nem caractere de controle”. Causa: `capaParaEnvio` devolvia a capa com um campo
+`_fonte` (diagnóstico que sobrou da saga do título, v0.89–0.92) e `video-enviar` mandava a capa como veio (`...(capa ? {capa}
+: {})`); o validador do `ajustes` no banco (radar-capa-v0.78.0) recusa capa com qualquer chave fora de
+`linhas/categoria/subtitulo`. Só afetava o **envio de uma gravação nova** (`radar_video_criar`); remontar pelo editor já
+mandava a capa limpa, porque `ajustesDoEditor` reconstrói `{linhas, categoria, subtitulo}`. Correção: removido o `_fonte` dos
+quatro retornos de `capaParaEnvio` (não era lido em lugar nenhum). O teste de regressão do título da capa
+(`test_titulo_da_capa_sai_sempre_do_conteudo_da_peca`) trocou a asserção de `_fonte` por `set(c) <= {"linhas","categoria",
+"subtitulo"}` — garante que a capa nunca leva chave extra. `node --check` OK; testes de tela no CI (PostgREST ausente aqui).
 
 **v0.98.0 — Fluxo do reel: botão de envio e “Aprovar e publicar →” (só tela — Fases 2 a 4)**
 (12/11/2026): Fases 2 a 4 da simplificação (desenho aprovado). Fase 2: o botão de envio da gravação passou de “Enviar a

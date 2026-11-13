@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.98.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.99.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -417,12 +417,12 @@ async function capaParaEnvio(roteiro, assunto, tipo){
     const v = capaValida(r);                                 // o VETO de termos vale para o texto da IA
     // v0.91.0: só aceita o título da IA se tiver 2+ linhas e não for só o nome genérico da categoria (o modelo às vezes
     // devolve "Conteúdo contábil" como título); senão, cai na reserva do conteúdo da peça
-    if(v && v.linhas.length >= 2 && !generico.has(v.linhas.join(" ").toLowerCase())){ v._fonte = "ia"; return v; }
+    if(v && v.linhas.length >= 2 && !generico.has(v.linhas.join(" ").toLowerCase())){ return v; }   // v0.99.0: sem _fonte — o banco recusa capa com chave fora de linhas/categoria/subtitulo
   }catch(e){ /* a IA fora do ar ou no limite: a reserva assume */ }
   // reserva do assunto; se vier vazio, da primeira frase do roteiro; só então o último recurso (sem veto: já é conteúdo da peça)
   const base = (assunto && assunto.trim()) ? assunto : fraseDoRoteiro(roteiro);
   const res = capaDaReserva(base, tipo);
-  if(res){ res._fonte = (assunto && assunto.trim()) ? "reserva-assunto" : "reserva-fala"; return res; }
+  if(res){ return res; }
   // v0.92.0: montagem INLINE, sem funções intermediárias (à prova de qualquer quirk de navegador): as primeiras palavras
   // do assunto/roteiro em 1 a 3 linhas de até 16 caracteres
   const palavras = String(base || "").replace(/[{}\\]/g, " ").split(/\s+/).filter(Boolean).slice(0, 10);
@@ -434,9 +434,9 @@ async function capaParaEnvio(roteiro, assunto, tipo){
       else{ if(atual) linhas.push(atual); atual = w.slice(0, 16); if(linhas.length === 3) break; }
     }
     if(atual && linhas.length < 3) linhas.push(atual);
-    if(linhas.length) return {linhas:linhas.slice(0, 3), categoria:CATEGORIA_CAPA[tipo] || "Conteúdo contábil", _fonte:"inline"};
+    if(linhas.length) return {linhas:linhas.slice(0, 3), categoria:CATEGORIA_CAPA[tipo] || "Conteúdo contábil"};
   }
-  return {linhas:[CATEGORIA_CAPA[tipo] || "Artecon"], _fonte:"ultimo-recurso"};
+  return {linhas:[CATEGORIA_CAPA[tipo] || "Artecon"]};
 }
 // o tipo que o banco aceita: MP4 ou MOV (o iPhone manda "video/quicktime"; sem tipo, pela extensão);
 // v0.44.0: + o WEBM da gravação do teleprompter pelo navegador (o MediaRecorder do Chrome/Android; o do Safari grava MP4)
