@@ -749,6 +749,36 @@ def test_capa_arte_molde_e_plano_b(pastas, monkeypatch):
     assert perto(im.getpixel((300, 110)), (255, 255, 255), 20)     # o cartão branco do logotipo
 
 
+def test_capa_quadro_na_pausa_v0_47_0():
+    """v0.47.0: o quadro da capa sai de uma PAUSA (áudio baixo = boca fechada), não do meio da fala. energia_de_amostras
+    mede a energia por quadro (quadro cheio bem acima do quieto); candidatos_quietos escolhe os quadros mais quietos do
+    trecho, espaçados, e ignora o meio barulhento; sem energia, volta ao candidatos_q (o meio dos trechos, como antes)."""
+    import audio
+    import capa_arte
+    from array import array
+    # um quadro "cheio" (amplitude 10000) e um "quieto" (amplitude 10): a energia do cheio fica bem acima (em dB)
+    cheio = array("h", [10000 if k % 2 else -10000 for k in range(audio.AMOSTRAS_POR_QUADRO)])
+    quieto = array("h", [10 if k % 2 else -10 for k in range(audio.AMOSTRAS_POR_QUADRO)])
+    e = audio.energia_de_amostras(cheio + quieto)
+    assert len(e) == 2 and e[0] > e[1] + 30
+
+    # trecho 0..299: fala forte no meio (120..180) e duas PAUSAS (~55 e ~245) → a capa cai nas pausas, nunca no meio
+    energia = [-12.0] * 300
+    for q in range(120, 181):
+        energia[q] = -6.0
+    for q in range(50, 61):
+        energia[q] = -55.0
+    for q in range(240, 251):
+        energia[q] = -55.0
+    cand = capa_arte.candidatos_quietos({"trechos": [[0, 300]]}, energia, maximo=2)
+    assert len(cand) == 2
+    assert all(50 <= q <= 60 or 240 <= q <= 250 for q in cand), "só quadros nas pausas"
+    assert not any(120 <= q <= 180 for q in cand), "nunca o meio barulhento"
+    assert any(50 <= q <= 60 for q in cand) and any(240 <= q <= 250 for q in cand), "as duas pausas, espaçadas"
+    # sem energia (WAV não abriu): volta ao modo antigo, o meio dos trechos
+    assert capa_arte.candidatos_quietos({"trechos": [[0, 300]]}, []) == capa_arte.candidatos_q({"trechos": [[0, 300]]})
+
+
 def test_legenda_karaoke_palavra_acende_quando_e_dita(pastas):
     """v0.45.0: a legenda progressiva — o bloco inteiro na caixa, a palavra ainda não dita na cor de espera e ACESA na cor do
     texto no instante em que é dita. Medido nos quadros renderizados (libass): enquanto a 1ª palavra é dita, a 2ª espera (as

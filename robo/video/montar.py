@@ -219,12 +219,14 @@ def montar(infos: list[dict], plano: dict, pastas: isolado.Pastas, cfg: dict, pr
         if tamanho <= LIMITE_BYTES:
             break
     cartela_s = float(cfg.get("cartela_s", 3))
-    # v0.46.0: com a capa-arte (capa_auto) e sem capa_q do editor, o quadro é ESCOLHIDO SOZINHO — desenha cada
-    # candidato (o meio de cada trecho que fica) e fica com o mais nítido (capa_arte.nitidez)
+    # v0.46.0: com a capa-arte (capa_auto) e sem capa_q do editor, o quadro é ESCOLHIDO SOZINHO — desenha cada candidato e
+    # fica com o mais nítido (capa_arte.nitidez). v0.47.0: os candidatos saem das PAUSAS (áudio baixo = boca fechada), não
+    # mais do meio da fala; entre eles, ainda vence a nitidez. Sem o WAV (energia vazia), volta ao meio dos trechos.
     if capa_auto and not (isinstance(capa_q, int) and not isinstance(capa_q, bool)):
         import capa_arte
+        energia = audio.energia_por_quadro(pastas)
         melhor, ultimo = None, None
-        for q in capa_arte.candidatos_q(plano):
+        for q in capa_arte.candidatos_quietos(plano, energia):
             info_c = capa(infos, plano, q, pastas, cores)
             ultimo = q
             nota = capa_arte.nitidez(Image.open(pastas.sai / "capa.jpg"))

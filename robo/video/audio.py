@@ -80,6 +80,35 @@ def piso_ruido(a: array) -> float:
     return niveis[len(niveis) // 20] if niveis else -90.0
 
 
+def energia_de_amostras(a) -> list[float]:
+    """v0.47.0: a energia (RMS, dBFS) de cada quadro — AMOSTRAS_POR_QUADRO amostras a SR por quadro. Serve para achar as
+    PAUSAS (quadro quieto = sem voz = boca fechada) na escolha automática do quadro da capa. Numpy quando houver; senão, puro."""
+    n = AMOSTRAS_POR_QUADRO
+    try:
+        import numpy as np
+        x = np.asarray(a, dtype=np.float64)
+        m = (len(x) // n) * n
+        if m == 0:
+            return []
+        x = x[:m].reshape(-1, n)
+        return [_db(float(v)) for v in np.sqrt((x * x).mean(axis=1))]
+    except Exception:
+        out = []
+        for k in range(0, len(a) - n + 1, n):
+            w = a[k:k + n]
+            out.append(_db(math.sqrt(sum(x * x for x in w) / n)))
+        return out
+
+
+def energia_por_quadro(pastas: isolado.Pastas, wav: str = "/sai/fala48k.wav") -> list[float]:
+    """v0.47.0: a energia por quadro do WAV alinhado ao vídeo (quadro q = amostras q×AMOSTRAS_POR_QUADRO, SR=48 kHz).
+    Lista vazia quando o WAV não abre: a escolha da capa cai no modo antigo (o mais nítido do meio dos trechos)."""
+    try:
+        return energia_de_amostras(amostras(wav, pastas, sr=SR, etapa="energia_capa"))
+    except Exception:
+        return []
+
+
 def silencios(wav: str, pastas: isolado.Pastas, limiar_db: float, minimo_s: float = 0.25) -> list[tuple[float, float]]:
     """Trechos sem voz (silencedetect, depois de tirar o grave abaixo de 80 Hz). O último vai até o fim, se o arquivo acaba em silêncio."""
     err = isolado.rodar("silencios", "ffmpeg", ["-hide_banner", "-nostats", "-nostdin", "-loglevel", "info", "-i", wav,

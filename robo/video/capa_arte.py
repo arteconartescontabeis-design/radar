@@ -135,6 +135,43 @@ def candidatos_q(plano: dict, maximo: int = 5) -> list[int]:
     return saida[:maximo] or [qa for qa, _ in trechos[:1]]
 
 
+def candidatos_quietos(plano: dict, energia: list, maximo: int = 6, margem_q: int = 2, janela_q: int = 5) -> list[int]:
+    """v0.47.0: os quadros candidatos à capa nas PAUSAS (áudio baixo = boca fechada, não no meio da fala). O mais quieto de
+    cada trecho e, depois, os mais quietos no geral — espaçados, para variar. Sem energia (ou nenhum trecho com interior),
+    cai no candidatos_q (o modo antigo: o meio dos trechos). Depois, quem escolhe entre estes é a nitidez, no montar."""
+    trechos = sorted((qa, qb) for qa, qb in (plano.get("trechos") or []) if qb - qa >= 2 * margem_q + 1)
+    n = len(energia or [])
+    if not n or not trechos:
+        return candidatos_q(plano, maximo)
+    w = max(0, janela_q // 2)
+    def suave(q: int) -> float:                                   # energia média numa janelinha: pausa SUSTENTADA, não um vão de uma palavra
+        faixa = energia[max(0, q - w): min(n, q + w + 1)]
+        return sum(faixa) / len(faixa) if faixa else 0.0
+    por_trecho, todos = [], []
+    for qa, qb in trechos:
+        interior = [q for q in range(qa + margem_q, qb - margem_q) if q < n]
+        if not interior:
+            continue
+        pares = [(suave(q), q) for q in interior]
+        por_trecho.append(min(pares))                            # o quadro mais quieto deste trecho
+        todos.extend(pares)
+    if not todos:
+        return candidatos_q(plano, maximo)
+    min_gap, saida = 15, []                                       # 0,5 s: não amontoar candidatos na mesma pausa
+    longe = lambda q: all(abs(q - x) >= min_gap for x in saida)
+    for _, q in sorted(por_trecho):                              # variedade primeiro: um por trecho, do mais quieto
+        if q not in saida and longe(q):
+            saida.append(q)
+        if len(saida) >= maximo:
+            return saida
+    for _, q in sorted(todos):                                   # completa com os mais quietos no geral, espaçados
+        if q not in saida and longe(q):
+            saida.append(q)
+        if len(saida) >= maximo:
+            break
+    return saida or candidatos_q(plano, maximo)
+
+
 # ------------------------------------------------------------------ o desenho do molde
 def _fonte(caminho: Path, tam: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(caminho), tam)
