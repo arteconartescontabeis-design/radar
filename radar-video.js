@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.99.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.100.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -690,7 +690,7 @@ async function abrirTeleprompter(pid){
       // v0.74.0: a câmera lembrada da última gravação (quando o aparelho tem mais de uma frontal, ex.: a grande-angular)
       const lembrada = (() => { try{ return localStorage.getItem("radar_tele_cam") || ""; }catch(e){ return ""; } })();
       TELE.fluxo = await navigator.mediaDevices.getUserMedia({audio:true,
-        video:{facingMode:"user", ...(lembrada ? {deviceId:{ideal:lembrada}} : {}), width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9 / 16}}});
+        video:{facingMode:"user", ...(lembrada ? {deviceId:{ideal:lembrada}} : {}), width:{ideal:2160}, height:{ideal:3840}, aspectRatio:{ideal:9 / 16}}});
       await prepararQuadroTele();
       await popularMicsTele();                                        // v0.51.0: lista os microfones (lapela) e liga a troca
       const selMic = $("#tele-mic"); if(selMic) selMic.addEventListener("change", trocarMicTele);
@@ -765,7 +765,7 @@ async function trocarCamTele(modo){
   if(!TELE || !sel || (TELE.gravador && TELE.gravador.state === "recording")) return;
   const id = sel.value;
   try{
-    const novo = await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id}, width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9 / 16}}});
+    const novo = await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id}, width:{ideal:2160}, height:{ideal:3840}, aspectRatio:{ideal:9 / 16}}});
     const faixa = novo.getVideoTracks()[0];
     if(!faixa) return;
     (TELE.fluxo?.getVideoTracks?.() || []).forEach(t => { try{ TELE.fluxo.removeTrack(t); }catch(e){ /* já saiu */ } t.stop(); });
@@ -782,7 +782,10 @@ async function trocarCamTele(modo){
    VERTICAL: um <video> escondido recebe a câmera e um canvas 9:16 desenha o recorte central de cada quadro, 30 por
    segundo. O preview e a gravação usam o canvas: o que se vê no quadro é o que o corretor recebe, já de pé. */
 function montarRecorteTele(d){
-  const alt = Math.max(2, Math.floor((d.height || 720) / 2) * 2);
+  // v0.100.0: o recorte sai no tamanho NATIVO do corte central 9:16 (sem ampliar), até o teto do reel (1080×1920). Com a câmera
+  // em alta resolução (4K no S25 Ultra, pedido no getUserMedia) o corte tem ~1215 px de largura e REDUZ para 1080 → nítido. Com a
+  // frontal deitada em 1080p continua ~607 (e o robô avisa "resolução baixa"): o ganho vem de pedir resolução alta à câmera.
+  const alt = Math.max(2, Math.floor(Math.min(1920, d.height || 720) / 2) * 2);
   const larg = Math.max(2, Math.floor(alt * 9 / 16 / 2) * 2);
   const fonte = document.createElement("video");
   fonte.muted = true; fonte.playsInline = true; fonte.autoplay = true;
