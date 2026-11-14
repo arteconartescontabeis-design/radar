@@ -5306,7 +5306,8 @@ def test_hoje_e_de_brasilia_e_nenhuma_funcao_nova_usa_current_date(db):
                           where n.nspname = 'public' and (p.proname like 'radar\\_pauta\\_%' or p.proname like 'radar\\_agenda\\_%'
                                 or p.proname in ('radar_redes_conferir_agenda', 'radar_fn_pauta_peca', 'radar_fn_pessoa_apagar'))""").fetchall()
     # v0.64.0: + radar_pauta_mudar_data; v0.22.0: + radar_pauta_pecas_da_pessoa; v0.28.0: + radar_pauta_criar, radar_pauta_linha_invalida e radar_pauta_hora_padrao
-    assert len(novas) == 34
+    # v0.102.0: + radar_pauta_pessoas_conferir (o conjunto p.pessoas + quem está só no vídeo, para a reconferência do termo na publicação)
+    assert len(novas) == 35
     assert [n for n, src in novas if "current_date" in src.lower()] == []
 
 

@@ -361,7 +361,7 @@ def test_acoes_exigem_a_chave_ou_o_administrador(resp, funcao):
     assert acao({"acao": "agenda_teste"}).status_code == 401
     assert acao({"acao": "agenda_teste"}, chave="x" * 64).status_code == 401
     r = acao({"acao": "agenda_teste"}, chave=funcao)
-    assert (r.status_code, r.json()) == (200, {"ok": True, "versao": "0.35.4"})
+    assert (r.status_code, r.json()) == (200, {"ok": True, "versao": "0.35.5"})
     assert acao({"acao": "diagnostico"}, chave=funcao).status_code == 403            # o Testar conexão é só do administrador
     assert acao({"acao": "diagnostico"}, uid=EDITOR).status_code == 403
     assert acao({"acao": "qualquer"}, chave=funcao).status_code == 400

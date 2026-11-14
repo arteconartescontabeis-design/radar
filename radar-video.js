@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.101.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.102.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -419,8 +419,14 @@ async function capaParaEnvio(roteiro, assunto, tipo){
     // devolve "Conteúdo contábil" como título); senão, cai na reserva do conteúdo da peça
     if(v && v.linhas.length >= 2 && !generico.has(v.linhas.join(" ").toLowerCase())){ return v; }   // v0.99.0: sem _fonte — o banco recusa capa com chave fora de linhas/categoria/subtitulo
   }catch(e){ /* a IA fora do ar ou no limite: a reserva assume */ }
-  // reserva do assunto; se vier vazio, da primeira frase do roteiro; só então o último recurso (sem veto: já é conteúdo da peça)
-  const base = (assunto && assunto.trim()) ? assunto : fraseDoRoteiro(roteiro);
+  // reserva do assunto; se vier vazio, da primeira frase do roteiro; só então o último recurso
+  // v0.102.0: o assunto (o "Plano") NÃO passa pela conferência de termos da Pauta (só o roteiro e as legendas passam), então
+  // um assunto com termo vetado da publicidade contábil (superlativo, promessa) não pode virar o título da capa, que vai ao ar
+  // gravado no vídeo. Se o assunto tropeçar no veto, cai na frase do roteiro (que é conferida). O veto aqui é sobre o texto-fonte
+  // inteiro; a capaDaReserva segue SEM veto interno (o falso-positivo da v0.90.0 era no recorte curto de ≤18 caracteres).
+  let base = (assunto && assunto.trim()) ? assunto.trim() : "";
+  if(base && (termosPublicidade(base).trava.length || termosPeca(base).length)) base = "";
+  if(!base) base = fraseDoRoteiro(roteiro);
   const res = capaDaReserva(base, tipo);
   if(res){ return res; }
   // v0.92.0: montagem INLINE, sem funções intermediárias (à prova de qualquer quirk de navegador): as primeiras palavras

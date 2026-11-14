@@ -187,6 +187,30 @@ def test_limite_por_hora_fila_e_resultado(resp):
     assert servico("select radar_respostas_pendentes(10)") == []
 
 
+def test_fila_reivindica_para_nao_reenviar_e_recupera_o_preso(resp):
+    """v0.102.0: a fila REIVINDICA o item (pendente → enviando) ao devolvê-lo, para que uma resposta que já saiu na Meta não volte
+    à fila se a gravação do resultado falhar logo depois (antes era só um SELECT de 'pendente'). Um envio preso em 'enviando'
+    (a função caiu antes de gravar o resultado) vira 'erro' depois de 15 min — sem reenviar, pois responder não é idempotente."""
+    novo_gatilho(**{"limite_hora": 5})
+    r = receber(comentario="401")
+    assert r["acao"] == "responder"
+    fila = servico("select radar_respostas_pendentes(10)")
+    assert [f["comentario_id"] for f in fila] == ["401"]
+    # reivindicado: marcado 'enviando' e NÃO volta na próxima rodada (nunca resposta pública em dobro)
+    assert resp.execute("select situacao from radar_respostas_registro where id = %s", (r["registro"],)).fetchone()[0] == "enviando"
+    assert servico("select radar_respostas_pendentes(10)") == []
+    # preso em 'enviando' há mais de 15 min: vira 'erro' (confira na rede), sem voltar à fila
+    resp.execute("update radar_respostas_registro set enviado_em = now() - interval '16 minutes' where id = %s", (r["registro"],))
+    assert servico("select radar_respostas_pendentes(10)") == []
+    situacao, erro = resp.execute("select situacao, erro from radar_respostas_registro where id = %s", (r["registro"],)).fetchone()
+    assert situacao == "erro" and "preso" in erro
+    # quando NÃO fica preso, o resultado finaliza o 'enviando' normalmente
+    r2 = receber(comentario="402")
+    servico("select radar_respostas_pendentes(10)")
+    servico("select radar_respostas_resultado(%s, true, '890', true, '')", (r2["registro"],))
+    assert resp.execute("select situacao from radar_respostas_registro where id = %s", (r2["registro"],)).fetchone()[0] == "enviado"
+
+
 def test_fila_respeita_a_janela_de_7_dias_e_o_interruptor(resp):
     novo_gatilho(**{"limite_hora": 5})
     r = receber(comentario="301")

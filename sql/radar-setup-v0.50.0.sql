@@ -4051,6 +4051,19 @@ begin
   return v_em;
 end $$;
 
+-- v0.102.0: as pessoas cujo termo precisa valer na peça — p.pessoas E, no reel, as que estão só no vídeo (marcadas quando foi
+-- gravado e desmarcadas da peça depois: continuam no vídeo, amarrado por sha256). Antes, só a APROVAÇÃO (radar_pauta_problemas)
+-- conferia esse conjunto completo; a reconferência na hora de publicar (pode_sair, publicar_agora, à mão) olhava só p.pessoas, e
+-- uma revogação/vencimento do termo dessas pessoas entre a aprovação e a publicação escapava. Esta função iguala os dois caminhos.
+create or replace function public.radar_pauta_pessoas_conferir(p public.radar_pauta_pecas) returns bigint[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(p.pessoas, '{}') || case when p.formato = 'reel' then coalesce(
+           (select array_agg(x) from public.radar_videos v, unnest(coalesce(v.pessoas, '{}')) x
+             where v.id = p.video_id and not x = any(coalesce(p.pessoas, '{}'))), '{}')
+         else '{}'::bigint[] end;
+$$;
+revoke all on function public.radar_pauta_pessoas_conferir(public.radar_pauta_pecas) from public;
+
 -- "Publicar agora" e "Tentar de novo" (só o administrador): só remarcam a hora dos envios que esperam (ou que deram erro) para
 -- agora; quem publica é a agenda do banco (ou a tela, com a agenda desligada), que confere tudo de novo. O que deu erro só volta
 -- com a caixa "Conferi no Instagram e no Facebook: não saiu". Devolve os envios remarcados.
@@ -4086,7 +4099,7 @@ begin
     raise exception 'RADAR168: a agenda da semana ficou velha (passou a segunda-feira)' using errcode = 'P0001';
   end if;
   for r in select e.canal, e.legenda from public.radar_redes_envios e where e.peca_id = p.id and e.situacao in ('autorizado','erro') loop
-    foreach v_id in array p.pessoas loop
+    foreach v_id in array public.radar_pauta_pessoas_conferir(p) loop     -- v0.102.0: reel inclui quem está só no vídeo
       v_x := public.radar_pauta_termo_ok(v_id, p.tipo, r.canal, v_hoje);
       if v_x is not null then
         raise exception 'RADAR165: o termo de uso de imagem de uma pessoa da peça não vale hoje no % (%): confira em Pauta → Pessoas e termos',
@@ -4147,7 +4160,7 @@ begin
     return jsonb_build_object('motivo', 'O texto aprovado tem ponto marcado com [VERIFICAR], {confirmar} ou outro marcador entre chaves: desfaça a aprovação e corrija.');
   end if;
   foreach v_canal in array case when p_canal is null then p.aprovado_canais else array[p_canal] end loop
-    foreach v_id in array p.pessoas loop
+    foreach v_id in array public.radar_pauta_pessoas_conferir(p) loop     -- v0.102.0: reel inclui quem está só no vídeo
       v_x := public.radar_pauta_termo_ok(v_id, p.tipo, v_canal, v_hoje);
       if v_x is not null then
         return jsonb_build_object('motivo', format('O termo de uso de imagem de uma pessoa da peça não vale hoje no %s (%s): confira em Pauta → Pessoas e termos.',
@@ -4206,7 +4219,7 @@ begin
     raise exception 'RADAR175: a data da publicação vai do dia da aprovação até hoje' using errcode = 'P0001';
   end if;
   foreach v_canal in array array_remove(array[case when v_ig is not null then 'instagram' end, case when v_fb is not null then 'facebook' end], null) loop
-    foreach v_id in array p.pessoas loop
+    foreach v_id in array public.radar_pauta_pessoas_conferir(p) loop     -- v0.102.0: reel inclui quem está só no vídeo
       v_x := public.radar_pauta_termo_ok(v_id, p.tipo, v_canal, p_data);
       if v_x is not null then
         raise exception 'RADAR175: o termo de uso de imagem de uma pessoa da peça não valia nesse dia no % (%): confira em Pauta → Pessoas e termos',
@@ -4281,7 +4294,7 @@ begin
   if p.tipo = 'agenda' and v_hoje > p.data + 1 then
     return 'A agenda da semana ficou velha (passou a segunda-feira).';
   end if;
-  foreach v_id in array p.pessoas loop
+  foreach v_id in array public.radar_pauta_pessoas_conferir(p) loop       -- v0.102.0: reel inclui quem está só no vídeo
     v_x := public.radar_pauta_termo_ok(v_id, p.tipo, e.canal, v_hoje);
     if v_x is not null then
       return format('O termo de uso de imagem de uma pessoa da peça não vale em %s (%s): confira em Pauta → Pessoas e termos.', to_char(v_hoje, 'DD/MM/YYYY'), v_x);
@@ -8687,7 +8700,7 @@ create table if not exists public.radar_respostas_registro (
   autor_id         text        not null default '' check (char_length(autor_id) <= 40),
   autor_nome       text        not null default '' check (char_length(autor_nome) <= 120),
   texto_comentario text        not null default '' check (char_length(texto_comentario) <= 500),
-  situacao         text        not null check (situacao in ('enviado','pendente','erro','descartado')),
+  situacao         text        not null check (situacao in ('enviado','pendente','enviando','erro','descartado')),   -- v0.102.0: 'enviando' = reivindicado antes de sair na Meta
   motivo           text        not null default '' check (char_length(motivo) <= 120),
   erro             text        not null default '' check (char_length(erro) <= 300),
   resposta_id      text        not null default '' check (char_length(resposta_id) <= 60),
@@ -8950,26 +8963,48 @@ end $$;
 -- o que passou dos 7 dias vira erro aqui mesmo, com a explicação
 create or replace function public.radar_respostas_pendentes(p_max int) returns jsonb
 language plpgsql security definer set search_path = public as $$
+declare
+  v_fila jsonb;
 begin
   update public.radar_respostas_registro
      set situacao = 'erro', erro = 'A janela de 7 dias da Meta venceu: este comentário não pode mais ser respondido.'
    where situacao = 'pendente' and criado_em <= now() - interval '7 days';
+  -- v0.102.0: um envio reivindicado que ficou preso em 'enviando' (a função de envio caiu entre reivindicar e gravar o resultado)
+  -- vira 'erro' em vez de voltar à fila — responder comentário NÃO é idempotente na Meta, então NÃO se reenvia: o administrador
+  -- confere na rede (mesmo padrão de radar_redes_envios 'enviando' preso). enviado_em marca a hora da reivindicação.
+  update public.radar_respostas_registro
+     set situacao = 'erro', erro = 'O envio ficou preso: a resposta pode ou não ter saído — confira o comentário na rede antes de tentar de novo.'
+   where situacao = 'enviando' and enviado_em <= now() - interval '15 minutes';
   if not (public.radar_respostas_cfg()->>'ligado')::boolean then
     return '[]'::jsonb;
   end if;
-  return coalesce((
-    select jsonb_agg(jsonb_build_object('registro', f.id, 'rede', f.rede, 'comentario_id', f.comentario_id,
-                                        'resposta_publica', f.resposta_publica, 'mensagem_privada', f.mensagem_privada,
-                                        'link', f.link_material) order by f.criado_em)
-    from (select r.id, r.rede, r.comentario_id, r.criado_em, g.resposta_publica, g.mensagem_privada, g.link_material,
-                 row_number() over (partition by g.id order by r.criado_em) as n,
-                 g.limite_hora - (select count(*) from public.radar_respostas_registro e
-                                  where e.gatilho_id = g.id and e.situacao = 'enviado'
-                                    and e.enviado_em > now() - interval '1 hour') as folga
-            from public.radar_respostas_registro r
-            join public.radar_respostas_gatilhos g on g.id = r.gatilho_id and g.ativo
-           where r.situacao = 'pendente') f
-    where f.n <= f.folga limit least(greatest(coalesce(p_max, 25), 1), 100)), '[]'::jsonb);
+  -- v0.102.0: a fila REIVINDICA os escolhidos (pendente → enviando, enviado_em = agora) na mesma consulta que os devolve, para que
+  -- uma resposta que já saiu na Meta nunca volte à fila se a gravação do resultado falhar logo depois (antes era só um SELECT de
+  -- 'pendente', e um 5xx/timeout do banco após o envio reenviava a resposta pública). O 'enviando' também conta no limite por hora.
+  -- o CTE que modifica dados (reivindicados) tem de ficar no TOPO de um SELECT (não dentro de um coalesce/subconsulta)
+  with elegiveis as (
+    select r.id, row_number() over (partition by g.id order by r.criado_em) as n,
+           g.limite_hora - (select count(*) from public.radar_respostas_registro e
+                            where e.gatilho_id = g.id
+                              and ((e.situacao = 'enviado' and e.enviado_em > now() - interval '1 hour') or e.situacao = 'enviando')) as folga
+      from public.radar_respostas_registro r
+      join public.radar_respostas_gatilhos g on g.id = r.gatilho_id and g.ativo
+     where r.situacao = 'pendente'
+  ),
+  escolhidos as (
+    select id from elegiveis where n <= folga order by id limit least(greatest(coalesce(p_max, 25), 1), 100)
+  ),
+  reivindicados as (
+    update public.radar_respostas_registro r set situacao = 'enviando', enviado_em = now()
+     where r.id in (select id from escolhidos)
+    returning r.id, r.rede, r.comentario_id, r.gatilho_id
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('registro', r.id, 'rede', r.rede, 'comentario_id', r.comentario_id,
+                                      'resposta_publica', g.resposta_publica, 'mensagem_privada', g.mensagem_privada,
+                                      'link', g.link_material) order by r.id), '[]'::jsonb)
+    into v_fila
+    from reivindicados r join public.radar_respostas_gatilhos g on g.id = r.gatilho_id;
+  return v_fila;
 end $$;
 
 -- a agenda só chama a função quando há o que mandar (o guarda do pg_cron)

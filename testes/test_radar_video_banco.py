@@ -661,6 +661,27 @@ def test_desmarcar_quem_aparece_nao_tira_a_pessoa_do_video(corretor):
     assert video(db, v2, "pessoas") == sorted([ana, bruno, carla])
 
 
+def test_reel_agendado_reconfere_termo_de_quem_esta_so_no_video(corretor):
+    """v0.102.0: a reconferência na hora de publicar (radar_pauta_pode_sair) olha o MESMO conjunto da aprovação — p.pessoas E
+    quem está só no vídeo (marcada quando foi gravada e desmarcada da peça depois: continua no vídeo, amarrado por sha256).
+    Antes só p.pessoas era reconferido, e uma revogação do termo dessas pessoas entre a aprovação e a hora agendada escapava."""
+    db = corretor
+    ana = pessoa_do_corretor(db)
+    bruno = pessoa_do_corretor(db, "Bruno Exemplo", "Bruno")
+    pid, _ = reel(db, pessoa=ana, pessoas=[ana, bruno])
+    vid, _ = ate_pronto(db, pid, ana)
+    assert video(db, vid, "pessoas") == sorted([ana, bruno])
+    mudar_por_fora(db, pid, f"pessoas = '{{{ana}}}'")                     # Bruno desmarcado da peça; segue no vídeo
+    marcar_pronta(db, pid)
+    envio = aprovar_peca(db, pid, modo="agendar", canais=("instagram",), artes=[],
+                         conferencias=("pessoas", "video"), video=SHA_VIDEO)["envios"]["instagram"]
+    assert db.execute("select radar_pauta_pode_sair(%s)", (envio,)).fetchone()[0] is None   # tudo em dia na aprovação
+    # o termo de Bruno (só no vídeo) é revogado DEPOIS da aprovação: a agenda do banco não pode publicar o vídeo que o contém
+    db.execute("update radar_pessoas set termo_revogado_em = %s where id = %s", (hoje(db), bruno))
+    assert "O termo de uso de imagem de uma pessoa da peça não vale em" in \
+        db.execute("select radar_pauta_pode_sair(%s)", (envio,)).fetchone()[0]
+
+
 def test_pessoa_do_video_nao_se_apaga_e_a_apagada_conta_como_revogada(corretor):
     """Varredura geral (v0.22.0): desmarcada na peça, a pessoa continua no vídeo enviado. Apagar o cadastro dela não dá enquanto o
     vídeo guarda arquivos ou textos (RADAR174: o caminho é a revogação); e a apagada antes desta trava conta como revogada na

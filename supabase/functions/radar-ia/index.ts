@@ -2883,10 +2883,21 @@ async function tratar(req: Request): Promise<Response> {
     // ações que o banco aceita, e entra no limite do mês; v0.21.0: a peça também, sem assunto; v0.24.0, etapa 5: e a revisão editorial)
     const usado = reg.uso;
     if (usado && token) {
-      await banco(token, "POST", "rpc/radar_registrar_uso_ia", {
+      const corpo = {
         p_acao: ["titulos", "revisar", "kit", "peca", "editorial", "roteiro_venda", "capa"].includes(acao) ? "gerar" : acao === "verificar" ? "fundamentar" : acao,
         p_modelo: usado.modelo, p_entrada: usado.entrada, p_saida: usado.saida, p_assunto: assuntoId,
-      }).catch((e) => console.error("uso da IA não registrado:", e?.message));
+      };
+      // v0.102.0: o registro do uso é o que faz o TETO MENSAL crescer (radar_v_ia_mes); se ele não entrar, o limite não valer mais e
+      // o gasto fica sem freio. Antes um único .catch engolia a falha em silêncio — agora tenta algumas vezes (um 5xx/timeout do
+      // banco logo após a resposta da IA é transitório e comum) antes de desistir, e aí registra o alerta bem visível.
+      let registrado = false;
+      for (let i = 0; i < 3 && !registrado; i++) {
+        try { await banco(token, "POST", "rpc/radar_registrar_uso_ia", corpo); registrado = true; }
+        catch (e) {
+          if (i < 2) await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+          else console.error("radar-ia: uso NÃO registrado após 3 tentativas (o teto mensal não contou este consumo):", (e as { message?: string })?.message);
+        }
+      }
     }
   }
 }

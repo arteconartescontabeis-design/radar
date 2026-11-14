@@ -53,7 +53,7 @@
 // SUPABASE_SERVICE_ROLE_KEY) o Supabase já fornece.
 // =====================================================================
 
-const VERSAO = "0.35.4";
+const VERSAO = "0.35.5";
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -270,10 +270,18 @@ async function pendentes(): Promise<{ ok: boolean; versao: string; pendentes: nu
   const fila = await banco(comoServico(), "POST", "rpc/radar_respostas_pendentes", { p_max: PENDENTES_POR_VEZ });
   let enviados = 0, erros = 0;
   for (const p of Array.isArray(fila) ? fila : []) {
-    const r = await enviar(String(p.rede), String(p.comentario_id), String(p.resposta_publica), String(p.mensagem_privada), String(p.link ?? ""));
-    await banco(comoServico(), "POST", "rpc/radar_respostas_resultado",
-                { p_registro: p.registro, p_ok: r.ok, p_resposta_id: r.respostaId, p_privada: r.privadaOk, p_erro: r.erro });
-    r.ok ? enviados++ : erros++;
+    // v0.102.0: a fila já reivindicou o item ('enviando'), então uma resposta que saiu na Meta não volta à fila se a gravação do
+    // resultado falhar. O try/catch por item evita que a falha de UM aborte o lote (os demais, já reivindicados, ficariam presos e
+    // seriam recuperados para 'erro' sem sair); um item que falha aqui fica 'enviando' e a próxima rodada o recupera em 15 min.
+    try {
+      const r = await enviar(String(p.rede), String(p.comentario_id), String(p.resposta_publica), String(p.mensagem_privada), String(p.link ?? ""));
+      await banco(comoServico(), "POST", "rpc/radar_respostas_resultado",
+                  { p_registro: p.registro, p_ok: r.ok, p_resposta_id: r.respostaId, p_privada: r.privadaOk, p_erro: r.erro });
+      r.ok ? enviados++ : erros++;
+    } catch (e) {
+      erros++;
+      console.error("radar-meta-webhook: resposta pendente não concluída", p?.registro, e instanceof Error ? e.message : "");
+    }
   }
   return { ok: true, versao: VERSAO, pendentes: Array.isArray(fila) ? fila.length : 0, enviados, erros };
 }
