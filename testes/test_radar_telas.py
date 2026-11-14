@@ -693,7 +693,7 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
         assert trecho in texto, trecho
     assert itens[-1].startswith("Administrador:")
     # v0.44.0: a entrada seguinte (o teleprompter com gravação pelo navegador e as letras grandes) fica
-    v44 = pagina.evaluate("VERSOES[18]")
+    v44 = pagina.evaluate("VERSOES.find(x => x[0] === '0.44.0')")   # por versão, não por índice (a lista cresce no topo)
     assert v44[0] == "0.44.0" and len(v44[2]) == 4 and "Teleprompter com gravação pelo navegador" in " ".join(v44[2])
     # v0.43.0: a entrada seguinte conta ao dono, em 3 itens: a nova tentativa automática (5 e 15 minutos,
     # para na 3ª recusa, com a hora marcada na própria mensagem de erro), a segurança (só a recusa CLARA da Meta re-tenta; o

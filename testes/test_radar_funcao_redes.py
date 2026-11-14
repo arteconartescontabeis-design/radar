@@ -1148,7 +1148,7 @@ def test_agenda_teste_responde_sem_publicar(peca):
     db, c1 = peca
     ig = agendada(db)["instagram"]                                                  # há peça vencida: o teste não a toca
     for porta in (PORTA_FUNCAO, PORTA_SEM_META):                                    # nem precisa da Meta configurada
-        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.45.0"})
+        assert pedir({"acao": "agenda_teste"}, cab=AGENDA, porta=porta) == (200, {"ok": True, "versao": "0.46.0"})
     assert pedir({"acao": "agenda_teste"}) == (403, {"message": "Só a agenda do banco usa o teste da agenda."})
     assert pedir({"acao": "agenda_teste"}, uid=EDITOR)[0] == 403
     assert pedir({"acao": "agenda_teste"}, cab=ROBO)[0] == 403

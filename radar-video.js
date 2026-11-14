@@ -384,7 +384,7 @@ function capaReserva(assunto, tipo){
    NUNCA derruba um envio nem um ajuste por causa de um caractere que veio da IA, do assunto ou da digitação */
 const capaLimpa = x => String(x ?? "").replace(/[{}\\\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
 function capaValida(c){
-  const linhas = listaVideo(c?.linhas).map(x => capaLimpa(x).slice(0, 18).trim()).filter(Boolean).slice(0, 3);
+  const linhas = textosVideo(c?.linhas).map(x => capaLimpa(x).slice(0, 18).trim()).filter(Boolean).slice(0, 3);   // v0.101.0: as linhas são TEXTO (listaVideo, só objetos, devolvia sempre None → o título da IA nunca valia)
   if(!linhas.length) return null;
   const categoria = capaLimpa(c?.categoria).slice(0, 24).trim(), subtitulo = capaLimpa(c?.subtitulo).slice(0, 48).trim();
   const tudo = [...linhas, categoria, subtitulo].join(" ");
@@ -405,7 +405,7 @@ function fraseDoRoteiro(roteiro){
 // a reserva — e estava dando falso positivo em alguns navegadores, derrubando um título legítimo
 function capaDaReserva(assunto, tipo){
   const rsv = capaReserva(assunto, tipo);
-  const linhas = listaVideo(rsv.linhas).map(x => capaLimpa(x).slice(0, 18).trim()).filter(Boolean).slice(0, 3);
+  const linhas = textosVideo(rsv.linhas).map(x => capaLimpa(x).slice(0, 18).trim()).filter(Boolean).slice(0, 3);   // v0.101.0: texto, não objeto (ver capaValida)
   if(!linhas.length) return null;
   return {linhas, categoria:capaLimpa(rsv.categoria).slice(0, 24).trim() || undefined,
           subtitulo:capaLimpa(rsv.subtitulo).slice(0, 48).trim() || undefined};

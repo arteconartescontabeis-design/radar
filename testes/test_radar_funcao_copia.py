@@ -390,7 +390,7 @@ def test_copia_pequena_por_put_e_o_zip_confere(copia):
     assert all(i.flag_bits & 0x800 for i in z.infolist())                                       # nomes em UTF-8
     dados = ESTADO["arquivos"][arquivo]["dados"]
     assert 1_000_000 < len(dados) <= 4 * 1024 * 1024
-    assert registro(db) == [(True, arquivo, len(dados), man["bytes_brutos"], man["linhas"], 40,
+    assert registro(db) == [(True, arquivo, len(dados), man["bytes_brutos"], man["linhas"], 41,
                              hashlib.sha256(z.read("manifesto.json")).hexdigest(), None, "admin")]
     assert (r["bytes"], r["bytes_brutos"], r["linhas"]) == (len(dados), man["bytes_brutos"], man["linhas"])
 
