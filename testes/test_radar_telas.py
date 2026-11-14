@@ -5175,13 +5175,19 @@ def test_criar_peca_de_reel_na_pauta_leva_o_roteiro_do_kit(pagina, limpo):
     pagina.wait_for_selector("[data-acao=reel-pauta]")
     dia = pagina.input_value(f"#reel-dia-{c}")
     assert dia == limpo.execute("select (radar_pauta_hoje() + 1)::text").fetchone()[0]        # amanhã, de Brasília
+    # v0.75.0/v0.77.0: o reel cai no próximo dia útil livre (seg–sex, sem feriado) — o confirm é aceito pela página; aqui
+    # reproduzimos a mesma regra com as funções da própria tela, para o teste não depender do dia em que roda
+    esperado = pagina.evaluate("""(dia) => {
+      const fimDeSemana = x => [0, 6].includes(new Date(x + "T12:00:00Z").getUTCDay());
+      const fer = feriados(Number(dia.slice(0, 4)), CONF_AGENDA?.feriados_extras);
+      let x = dia; for(let i = 0; i < 90; i++){ if(!fimDeSemana(x) && !fer.has(x)) return x; x = somarDias(x, 1); } return x; }""", dia)
     limpar_recados(pagina)
     pagina.click("[data-acao=reel-pauta]")
     pagina.wait_for_selector("#recado >> text=Peça de reel criada para")
     pagina.wait_for_selector("text=Fala para conferência")                                    # a peça abre com o corretor de vídeo
     p = limpo.execute("""select data::text, tipo, formato, assunto, situacao, roteiro, legenda_instagram, legenda_facebook
                          from radar_pauta_pecas""").fetchone()
-    assert (p[0], p[1], p[2], p[4]) == (dia, "reel", "reel", "em_producao") or (p[0], p[1], p[2], p[4]) == (dia, "reel", "reel", "planejada")
+    assert (p[0], p[1], p[2], p[4]) == (esperado, "reel", "reel", "em_producao") or (p[0], p[1], p[2], p[4]) == (esperado, "reel", "reel", "planejada")
     assert p[3].startswith("Reel da notícia: ")
     assert p[5].startswith("Roteiro do reel (do kit das redes da notícia:") and "Gancho: Sua nota fiscal muda." in p[5]
     assert "0–3 s — Fala: Sua nota fiscal muda. | Na tela: Nota fiscal" in p[5]
@@ -7120,8 +7126,8 @@ def test_pauta_semana_navega_prontas_e_nao_sairam_e_cabe_no_celular(navegador, p
 def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta, tmp_path):
     """v0.28.0: nos dias da semana sem peça, de hoje em diante (de Brasília), o administrador vê “+ Nova peça”; o formulário curto (tipo,
     formato, assunto; objetivo, quem aparece e observação opcionais) cria a peça, que abre como qualquer outra (no reel, o roteiro e o
-    quadro do corretor de vídeo), planejada e sem nada agendado. O banco confere de novo: a peça gravada por outra tela no mesmo dia e o
-    dia que já passou voltam com o recado. A prévia da importação aberta fecha ao abrir o formulário (o efeito dela ficaria velho) e,
+    quadro do corretor de vídeo), planejada e sem nada agendado. O banco confere de novo: o dia que já passou volta com o recado (v0.64.0:
+    mais de uma peça por dia é permitido, então a gravada por outra tela no mesmo dia não barra a nova). A prévia da importação aberta fecha ao abrir o formulário (o efeito dela ficaria velho) e,
     escolhido o arquivo de novo, mostra o dia da peça nova como “alterada”. Cabe em 375 px. A editora não vê o botão nem o formulário."""
     db = pauta
     hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
@@ -7158,7 +7164,7 @@ def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta, 
     pagina.wait_for_selector("#recado .aviso >> text=A prévia da importação do calendário foi fechada, sem gravar nada")
     assert pagina.locator("#pauta-previa").count() == 0
     assert "não publica nem agenda nada" in form.inner_text() and pagina.locator("#pauta-nova-hoje").count() == 0
-    assert botoes.count() == 5                                                                    # o dia aberto mostra o formulário
+    assert botoes.count() == 6                                                                    # v0.64.0: 7 dias com botão, menos o dia aberto (mostra o formulário)
     limpar_recados(pagina)
     form.locator("button", has_text="Criar a peça").click()
     pagina.wait_for_selector("#recado .erro >> text=Escolha o tipo e o formato da peça.")
@@ -7197,7 +7203,7 @@ def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta, 
     assert "1 linha(s): 0 nova(s), 1 alterada(s)" in pagina.inner_text("#pauta-previa-resumo")
     pagina.click("[data-acao=pauta-importar-cancelar]")
     pagina.wait_for_selector("#pauta-previa", state="detached")
-    # a peça gravada por outra tela enquanto o formulário estava aberto: o banco recusa (uma peça por dia)
+    # v0.64.0: a trava "uma peça por dia" saiu — a peça gravada por outra tela no mesmo dia não barra a nova (o dia fica com duas)
     pagina.click(f".pauta-dia[data-dia='{dia(3)}'] [data-acao=pauta-nova]")
     form.wait_for()
     peca_db(db, dia(3), "bastidor", "foto", assunto="Gravada por outra tela (exemplo)")
@@ -7206,10 +7212,16 @@ def test_pauta_nova_peca_so_admin_em_dia_vazio_de_hoje_em_diante(pagina, pauta, 
     form.locator("[name=assunto]").fill("Bastidor (exemplo)")
     limpar_recados(pagina)
     form.locator("button", has_text="Criar a peça").click()
-    pagina.wait_for_selector(f"#recado .erro >> text=já existe uma peça em {(prox + timedelta(days=3)):%d/%m/%Y}")
-    assert db.execute("select count(*) from radar_pauta_pecas where data = %s", (dia(3),)).fetchone()[0] == 1
-    # o dia que já passou (a tela não mostra o botão; forçado, o banco recusa)
+    pagina.wait_for_selector("#recado >> text=Peça criada para")
+    assert db.execute("select count(*) from radar_pauta_pecas where data = %s", (dia(3),)).fetchone()[0] == 2
+    # o dia que já passou (a tela não mostra o botão; forçado, o banco recusa) — num formulário reaberto num dia livre
     ontem = hoje - timedelta(days=1)
+    abrir_pauta(pagina, prox.isoformat())
+    pagina.click(f".pauta-dia[data-dia='{dia(4)}'] [data-acao=pauta-nova]")
+    form.wait_for()
+    form.locator("[name=tipo]").select_option("bastidor")
+    form.locator("[name=formato]").select_option("foto")
+    form.locator("[name=assunto]").fill("Bastidor (exemplo)")
     pagina.evaluate("d => { document.querySelector('#pauta-nova').dataset.dia = d; }", ontem.isoformat())
     limpar_recados(pagina)
     form.locator("button", has_text="Criar a peça").click()
@@ -7439,8 +7451,9 @@ def test_cronograma_com_data_de_inicio_da_contagem(pagina):
       const depois = inicioCronograma();
       return {semInicio, comInicio, valida, ddmm, naPauta, invalida, depois};
     }""")
-    # sem o início: tudo conta (2 posts, 1 feito, 1 em atraso; 2 notícias achadas, as duas em atraso)
-    assert r["semInicio"]["posts"] == [2, 1, 1] and r["semInicio"]["noticias"] == [2, 0, 2]
+    # sem o início: tudo conta (2 posts — 1 publicado à mão e 1 dia de notícia coberto pela notícia que saiu nas redes em 03/09:
+    # 2 feitos, 0 em atraso; 2 notícias achadas, as duas em atraso)
+    assert r["semInicio"]["posts"] == [2, 2, 0] and r["semInicio"]["noticias"] == [2, 0, 2]
     # com o início em 08/09: as duas peças (02 e 04/09), a notícia nas redes (03/09) e a captura de 02/09 são
     # anteriores e saem da conta; fica só a captura de 10/09 (1 no mínimo, em atraso)
     assert r["comInicio"]["posts"] == [0, 0, 0] and r["comInicio"]["noticias"] == [1, 0, 1]
@@ -9898,7 +9911,7 @@ def test_video_envio_recusado_antes_de_qualquer_arquivo_sair(pagina, vtela, mp4_
     pagina.click("#video-clipes li[data-i='11'] [data-acao=video-clipe-tirar]")
     recusa("Escolha quem fala no vídeo.")
     pagina.select_option("#video-quem", str(ana))
-    recusa("Marque as quatro declarações")
+    recusa("Há pendências, e só o administrador envia mesmo assim")   # v0.74.0: a editora não marca as 4 declarações e não assume
     for c in pagina.locator("#video-envio .video-declaracao").all():
         c.check()
     pagina.fill("#peca-roteiro", vb.ROTEIRO + "\n")
@@ -10146,7 +10159,7 @@ def test_teleprompter_v59_enviar_para_correcao(pagina, vtela):
     fecha o teleprompter e dispara o MESMO envio da tela — faltando algo (quem fala, declarações), o aviso de sempre
     aparece, NADA sobe e a tomada fica guardada na lista de clipes."""
     db, fv = vtela
-    pid, ana = vb.reel(db, roteiro="0–3 s — Fala: Olá, o prazo do Simples mudou de novo. | Na tela: PRAZO NOVO")
+    pid, ana = vb.reel(db, roteiro="0–3 s — Fala: Olá, o prazo do Simples Nacional mudou de novo e muita gente ainda não percebeu essa virada. | Na tela: PRAZO NOVO")
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
     abrir_video(pagina, db, pid)
@@ -10171,7 +10184,7 @@ def test_teleprompter_v59_enviar_para_correcao(pagina, vtela):
     # faltando as declarações, o envio avisa o que falta: o teleprompter fecha, a tomada CONTINUA na lista e nada sobe
     # (com uma pessoa apta só, "quem fala" já vem escolhida no seletor)
     pagina.click("#tele-enviar")
-    pagina.wait_for_selector("#recado .erro >> text=Marque as quatro declarações")
+    pagina.wait_for_selector("#recado .erro >> text=Há pendências, e só o administrador envia mesmo assim")  # v0.74.0
     assert pagina.locator("#teleprompter").count() == 0
     assert pagina.evaluate("(estadoVideo().arquivos[%d] || []).length" % pid) == 1
     assert fv.ARM["tus_pedidos"] == [] and fv.ARM["objetos"] == {}
@@ -10647,7 +10660,9 @@ def test_video_previa_aprovacao_amarrada_ao_sha256_baixar_apaguei_e_registro(nav
         confirmacoes(pg)
         assert "Peça pronta" not in pg.inner_text("#video-reel") and pg.locator("#video-player").count() == 0
         pg.click("#peca-aprovar summary")
-        assert pg.locator("#peca-aprovar input[value=manual]").is_checked() and pg.locator("#peca-aprovar input[value=agendar]").is_disabled()
+        # v0.79.0: o reel agenda por padrão (agendar marcado e habilitado); o "à mão" continua disponível (este teste segue com ele adiante)
+        assert pg.locator("#peca-aprovar input[value=agendar]").is_checked() and pg.locator("#peca-aprovar input[value=manual]").is_enabled()
+        pg.check("#peca-aprovar input[name=aprovar-modo][value=manual]")
         for c in ("pessoas", "video", "viu"):
             pg.check(f"#peca-aprovar .aprovar-conf[value={c}]")
         limpar_recados(pg)
@@ -10778,7 +10793,13 @@ def test_video_termos_de_publicidade_na_fala_travam_e_a_duracao_pede_confirmacao
     confirmacoes(pagina)
     pagina.click("[data-acao=video-previa]")
     pagina.wait_for_selector("#video-player")
-    aprovar_na_tela(pagina, ["pessoas", "video"])
+    # v0.79.0: o reel agenda por padrão; este teste segue com o "à mão" (o aviso dos termos e da duração vale nos dois modos)
+    pagina.click("#peca-aprovar summary")
+    pagina.check("#peca-aprovar input[name=aprovar-modo][value=manual]")
+    for c in ("pessoas", "video"):
+        pagina.check(f"#peca-aprovar .aprovar-conf[value={c}]")
+    limpar_recados(pagina)
+    pagina.click("#peca-aprovar [data-acao=peca-aprovar]")
     pagina.wait_for_selector("#recado >> text=Peça aprovada para publicar à mão")
     pergunta = pagina.evaluate("() => window.__perguntas")[-1]
     assert "Termos que a publicidade contábil evita no que está gravado no vídeo (fala, gancho, cartela): “troca de contador”" in pergunta
@@ -11265,6 +11286,7 @@ def test_pessoas_termo_do_corretor_quer_ver_menor_e_pecas_publicadas(pagina, vte
     form = pagina.locator(f"form[data-form=pessoa][data-id='{ana}']")
     form.wait_for()
     assert form.locator(".pecas-da-pessoa").count() == 0                                           # ativa e com o termo valendo
+    form.locator("[name=area]").select_option("Contábil")                          # v0.67.0: a área é obrigatória
     form.locator("[name=quer_ver_peca]").check()
     form.locator("[name=menor]").check()
     limpar_recados(pagina)
