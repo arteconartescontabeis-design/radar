@@ -4974,7 +4974,7 @@ def test_redes_na_trilha_monta_imagem_e_legenda_publica_e_dispensa(pagina, limpo
     # v0.21.0: o teste mostra a versão da função; a anterior à v0.21.0 (a agenda da Pauta não publica com ela) recebe o aviso do Deploy
     assert "de versão anterior à v0.21.0" in pagina.inner_text("#redes-versao") and pagina.locator("#redes-versao-velha").count() == 1
     # v0.45.0: a notícia com hora marcada precisa da função nova — a mínima sobe para a 0.45.0 (a 0.43.0 passa a receber o aviso)
-    for versao, velha in (("0.19.0", True), ("0.21.0", True), ("0.29.0", True), ("0.42.0", True), ("0.43.0", True), ("0.45.0", False)):
+    for versao, velha in (("0.19.0", True), ("0.21.0", True), ("0.29.0", True), ("0.42.0", True), ("0.43.0", True), ("0.45.0", True), ("0.46.0", False)):
         pagina.unroute("**/functions/v1/radar-redes")
         corpo = json.dumps({"tudo_certo": True, "versao": versao, "itens": [{"item": "Página do Facebook", "ok": True, "detalhe": "Artecon"}]})
         pagina.route("**/functions/v1/radar-redes", (lambda c: lambda rota: rota.fulfill(status=200, content_type="application/json", body=c))(corpo))
@@ -10991,7 +10991,7 @@ def test_video_sem_radar_video_js_pede_ctrl_f5_e_o_leitor_nao_ve(pagina, limpo):
     abrir_peca(pagina, pid, "2026-11-11")
     assert "O arquivo radar-video.js (o corretor de vídeo) não carregou" in pagina.inner_text("#video-sem-arquivo")
     pagina.unroute("**/radar-video.js*")
-    antigo = (RAIZ / "radar-video.js").read_text(encoding="utf-8").replace('const VIDEO_VERSAO = "0.78.0"', 'const VIDEO_VERSAO = "0.21.9"')
+    antigo = re.sub(r'const VIDEO_VERSAO = "[^"]+"', 'const VIDEO_VERSAO = "0.21.9"', (RAIZ / "radar-video.js").read_text(encoding="utf-8"))   # pela versão atual (não um alvo fixo)
     pagina.route("**/radar-video.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
