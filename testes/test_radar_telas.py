@@ -6988,7 +6988,7 @@ def test_pauta_relatorios_dos_reels(pagina, limpo):
     pagina.wait_for_selector("text=Painel do dia")
     abrir_pauta(pagina)
     baixados = []
-    pagina.on("download", baixados.append)
+    pagina.on("download", lambda d: baixados.append(d))   # lambda (não list.append builtin): o Playwright atual não faz setattr em método builtin
     pagina.click("[data-acao=pauta-relatorios-reels]")
     pagina.wait_for_selector('#recado:has-text("2 reel(s) em 2 setor(es)")')
     for _ in range(100):                                         # os dois downloads chegam logo depois do recado
