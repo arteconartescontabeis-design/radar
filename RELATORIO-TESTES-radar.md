@@ -1,4 +1,4 @@
-# Radar Artecon — Relatório de testes (v0.100.0)
+# Radar Artecon — Relatório de testes (v0.101.0)
 
 **v0.99.0 — Correção: envio de reel novo recusado por “capa: linhas…” (só tela)**
 (13/11/2026): o dono tentou enviar uma gravação nova e tomou “capa: linhas (1 a 3, cada uma de 1 a 18 caracteres), categoria

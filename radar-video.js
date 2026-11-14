@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.100.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.101.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -1951,13 +1951,17 @@ function resumoSecaoVideo(v, r){
 }
 function htmlSecoesAbaVideo(){
   const a = abaVideo(), v = a.v, ed = editavelVideo(v, a.peca), r = rascunhoVideo(v), s = resumoSecaoVideo(v, r);
-  // v0.97.0: os três principais primeiro (Cortes, Legenda, Capa) e os extras (gancho, cartela) ao fim; cada um com o resumo do estado
-  return [secaoAbaVideo("cortes", "Cortes — começo, fim e trechos", htmlCortesAbaVideo(v, r, ed), s.cortes),
-    secaoAbaVideo("estilo", "Legenda — tamanho, posição e cor", htmlEstiloAbaVideo(v, r, ed), s.estilo),
-    secaoAbaVideo("legenda", "Legenda — corrigir o texto", htmlLegendaAbaVideo(v, r, ed), s.legenda),
-    secaoAbaVideo("capa", "Capa do reel", htmlCapaAbaVideo(v, r, ed), s.capa),
-    secaoAbaVideo("gancho", "Gancho (0 a 3 s)", htmlGanchoAbaVideo(v, r, ed), s.gancho),
-    secaoAbaVideo("cartela", "Cartela final", htmlCartelaAbaVideo(v, r, ed), s.cartela)].join("");
+  // v0.97.0: os três principais primeiro (Cortes, Legenda, Capa) e os extras (gancho, cartela) ao fim; cada um com o resumo do estado.
+  // v0.101.0 (fluxo do reel enxuto): a capa em DESTAQUE no topo; a Legenda vira um bloco só (estilo + “corrigir o texto” aninhado);
+  // emojis nos títulos. O que abre por padrão não muda (só Cortes) nem as funções: só a organização.
+  const capaTopo = a.previa?.capa ? `<figure class="vaba-capa-topo"><img src="${h(a.previa.capa)}" alt="Capa do reel"><figcaption class="sub">A capa que vai sair — abra “Capa” abaixo para trocar.</figcaption></figure>` : "";
+  const legenda = secaoAbaVideo("estilo", "📝 Legenda",
+    htmlEstiloAbaVideo(v, r, ed) + secaoAbaVideo("legenda", "Corrigir o texto palavra por palavra", htmlLegendaAbaVideo(v, r, ed), s.legenda), s.estilo);
+  return capaTopo + [secaoAbaVideo("cortes", "✂️ Cortes — começo, fim e trechos", htmlCortesAbaVideo(v, r, ed), s.cortes),
+    legenda,
+    secaoAbaVideo("capa", "🖼️ Capa do reel", htmlCapaAbaVideo(v, r, ed), s.capa),
+    secaoAbaVideo("gancho", "🎬 Gancho (0 a 3 s)", htmlGanchoAbaVideo(v, r, ed), s.gancho),
+    secaoAbaVideo("cartela", "🏷️ Cartela final", htmlCartelaAbaVideo(v, r, ed), s.cartela)].join("");
 }
 /* 1. Cortar: a linha do tempo, as palavras, a seleção, os cortes novos, os já no vídeo, os do robô e as divergências */
 function htmlCortesAbaVideo(v, r, ed){
