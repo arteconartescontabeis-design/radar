@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.102.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.103.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -218,6 +218,24 @@ function htmlCartela(pessoa){
 /* ---------------------------------------------------------- o bloco na peça */
 /* Chamado por telaPeca (radar-pauta.js) na peça reel, para quem edita: lê o vídeo vivo e o envio a caminho da peça e devolve o quadro
    "Corretor de vídeo" (fora do formulário da peça: os campos daqui não contam como mudança da peça). */
+/* v0.103.0: a TRILHA DOS 4 PASSOS do reel — uma barra no topo que mostra onde a gravação está e leva a cada parte. É só guia:
+   o passo sai do estado que já existe (nada novo no banco) e clicar num passo rola até a parte dele (não pula etapa). */
+const PASSOS_REEL = ["Gravar", "Correção", "Ajustar", "Aprovar"];
+function passoDoReel(p, v){
+  if(p.situacao === "aprovada" || p.situacao === "pronta") return 4;      // pronta: falta aprovar; aprovada: passo concluído
+  if(v && v.situacao === "pronto") return 3;                              // vídeo corrigido pronto: ajustar
+  if(v && ["na_fila", "processando", "erro", "regravar"].includes(v.situacao)) return 2;   // na correção (ou voltou com erro/regravar)
+  return 1;                                                               // sem vídeo, aguardando envio: gravar
+}
+function htmlBarraPassos(p, v){
+  const n = passoDoReel(p, v), fim = p.situacao === "aprovada";
+  const estado = s => (s < n || (s === 4 && fim)) ? "feito" : s === n ? "atual" : "";
+  const segs = PASSOS_REEL.map((_, i) => `<span class="rp-seg ${estado(i + 1)}"></span>`).join("");
+  const bts = PASSOS_REEL.map((rot, i) => { const s = i + 1, e = estado(s);
+    return `<button class="rp-btn ${e}" type="button" data-acao="reel-ir-passo" data-passo="${s}" aria-current="${s === n}">
+      <span class="rp-n">${e === "feito" ? "✓" : s}</span><span class="rp-t">${rot}</span></button>`; }).join("");
+  return `<nav class="reel-passos" id="reel-passos" aria-label="Passos do reel"><div class="rp-barra">${segs}</div><div class="rp-rot">${bts}</div></nav>`;
+}
 async function blocoVideo(p){
   const ev = estadoVideo();
   if(VIDEO_VERSAO !== VERSAO) return `<div class="aviso erro" id="video-versao">Esta tela (v${h(VERSAO)}) e o arquivo do corretor de vídeo (radar-video.js, v${h(VIDEO_VERSAO)}) são de versões diferentes: um deles ficou guardado no navegador. Aperte Ctrl+F5 (no celular, recarregue a página).</div>`;
@@ -232,7 +250,7 @@ async function blocoVideo(p){
   // quanto o corretor ainda transcreve neste mês (o banco confere de novo no envio, com a duração dos clipes); sem a resposta, nada
   ev.cota = ["planejada", "em_producao", "pronta"].includes(p.situacao) ? await rpc("radar_video_cota", {}).catch(() => null) : null;
   await guardarVideos(vivos);
-  return `<details class="painel video-reel" id="video-reel" data-peca="${p.id}" open><summary><h2>Corretor de vídeo</h2> <span id="video-selo">${seloVideo(ev.atual || ev.envio)}</span></summary>
+  return `${htmlBarraPassos(p, ev.atual)}<details class="painel video-reel" id="video-reel" data-peca="${p.id}" open><summary><h2>Corretor de vídeo</h2> <span id="video-selo">${seloVideo(ev.atual || ev.envio)}</span></summary>
     <div id="video-corpo">${corpoVideo()}</div></details>`;
 }
 /* O vídeo vivo da peça (na fila, com o robô, pronto, para regravar ou com erro) e, ao lado dele, o envio que espera os arquivos: o vivo
@@ -261,6 +279,7 @@ async function depoisDoVideo(pid){
   const c = $("#video-corpo"), s = $("#video-selo");
   if(c) c.innerHTML = corpoVideo();
   if(s) s.innerHTML = seloVideo(ev.atual || ev.envio);
+  const b = $("#reel-passos"); if(b && ev.pecaDados) b.outerHTML = htmlBarraPassos(ev.pecaDados, ev.atual);   // v0.103.0: a barra acompanha o corretor (passo 2→3)
   depoisDeDesenharVideo();
 }
 const seloVideo = v => v ? selo(`${deMapaVideo(SITUACOES_VIDEO, v.situacao) || v.situacao} (gravação ${v.versao})`, deMapaVideo(TIPO_SELO_VIDEO, v.situacao) ?? "neutro") : selo("Sem gravação", "neutro");
@@ -2618,6 +2637,12 @@ const VIDEO = {
     "tele-assistir",   // v0.52.0: rever a tomada gravada no próprio teleprompter
     ...NAVEGACAO_ABA_VIDEO],
   acoes:{
+    /* v0.103.0: a barra dos 4 passos leva até a parte de cada passo (só rola a tela; não pula etapa) */
+    "reel-ir-passo"(el){
+      const alvos = {1:["#video-envio", "#video-reel"], 2:["#video-trabalhando", "#video-reel"],
+        3:["#video-previa", "#video-reel"], 4:["#peca-aprovada-quadro", "#peca-aprovar", "#video-reel"]}[el.dataset.passo] || [];
+      for(const sel of alvos){ const t = $(sel); if(t){ if(t.tagName === "DETAILS") t.open = true; t.scrollIntoView({behavior:"smooth", block:"start"}); break; } }
+    },
     /* v0.44.0: o teleprompter (ler o roteiro em letras grandes e, se o navegador souber, gravar ali mesmo) */
     async "video-teleprompter"(el){ await abrirTeleprompter(Number(el.dataset.id)); },
     "tele-fechar"(){ fecharTeleprompter(); },
