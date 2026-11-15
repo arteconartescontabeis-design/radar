@@ -453,6 +453,12 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 .rp-btn.atual .rp-t{color:var(--marinho)}
 .rp-btn:focus-visible{outline:2px solid var(--marinho);outline-offset:2px;border-radius:8px}
 @media (max-width:420px){ .rp-btn .rp-t{font-size:.68rem} }
+/* v0.104.0: chip do passo da notícia na lista de Assuntos */
+.passo-chip{display:inline-flex;align-items:center;gap:4px;font-size:.78rem;font-weight:700;padding:2px 10px;border-radius:999px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.passo-chip.p1{background:#eef2f8;color:var(--cinza)}
+.passo-chip.p2{background:rgba(215,155,31,.18);color:#8a6d00}
+.passo-chip.p3{background:rgba(31,157,87,.16);color:var(--ok)}
+.passo-chip.feito{background:rgba(31,157,87,.16);color:var(--ok)}
 </style>
 </head>
 <body>
@@ -460,21 +466,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.103.0"></script>
-<script src="radar-video.js?v=0.103.0"></script>
-<script src="radar-setor.js?v=0.103.0"></script>
-<script src="radar-respostas.js?v=0.103.0"></script>
+<script src="radar-pauta.js?v=0.104.0"></script>
+<script src="radar-video.js?v=0.104.0"></script>
+<script src="radar-setor.js?v=0.104.0"></script>
+<script src="radar-respostas.js?v=0.104.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.103.0";
+const VERSAO = "0.104.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.104.0", "15/11/2026", [
+    "Onde a notícia está, de relance: na lista de Assuntos (Notícias → Assuntos), cada notícia agora mostra um selo do PASSO em que está — 1 · Preparar, 2 · Conferir e aprovar ou 3 · Publicar (e ✓ · Publicado quando já saiu) —, com a cor de cada passo. Assim, ao sair para outra coisa e voltar, você bate o olho e sabe em que pé está cada notícia, sem abrir uma a uma. O nome técnico do status continua embaixo, pequeno. Nada muda no funcionamento — é só orientação (primeira parte do Fluxo da Notícia).",
+    "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
   ["0.103.0", "14/11/2026", [
     "Fluxo do Reel guiado em 4 passos: no alto do quadro do reel aparece uma barra com os quatro passos — 1 Gravar, 2 Correção, 3 Ajustar, 4 Aprovar — mostrando em qual deles a gravação está (o passo de agora em destaque, os já feitos com ✓). Tocar num passo leva direto à parte dele na tela (não pula etapa; para voltar de verdade, os controles de sempre — regravar, Desfazer aprovação). Nada muda no que o reel faz: é só orientação, para achar cada coisa mais rápido.",
     "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
@@ -1837,7 +1846,7 @@ const TELAS = {
           <td class="sub">${h(a.orgaos || "—")}</td>
           <td>${selo(ROTULOS.relevancia[a.relevancia], a.relevancia==="alta" ? "erro" : a.relevancia==="media" ? "" : "neutro")}</td>
           <td>${seloSituacao(a.situacao_confirmacao)}</td>
-          <td>${selo(ROTULOS.status[a.status], a.status==="publicado" ? "ok" : "neutro")}${a.em_revisao ? " " + selo("aguarda aprovação","alerta") : ""}</td>
+          <td>${chipPasso(a.status)}<br><span class="sub">${h(ROTULOS.status[a.status])}</span>${a.em_revisao ? " " + selo("aguarda aprovação","alerta") : ""}</td>
           <td>${a.evidencias_conferidas}/${a.evidencias} conferidas</td></tr>`).join("")}</table></div>`
         : `<div class="painel"><p class="sub">Nenhum assunto nesta situação.</p></div>`}
       ${botaoMais("assuntos:" + f, itens.length, lim, "assuntos")}`;
@@ -2141,6 +2150,17 @@ const TELAS = {
   }
 };
 function seloSituacao(s){ return selo(ROTULOS.situacao[s], s==="confirmado_oficialmente" ? "ok" : s==="divergencia_identificada" || s==="nao_confirmado" ? "erro" : "alerta"); }
+// v0.104.0: o PASSO da notícia (1 Preparar · 2 Conferir e aprovar · 3 Publicar) a partir do status — para o chip na lista de Assuntos,
+// deixando claro em que pé está cada notícia ao voltar. Ignorado/arquivado ficam sem chip (saíram do andamento).
+function passoDoAssunto(status){
+  if(status === "publicado") return {n:3, nome:"Publicado", feito:true};
+  if(status === "aprovado") return {n:3, nome:"Publicar"};
+  if(status === "conteudo_gerado" || status === "revisao") return {n:2, nome:"Conferir e aprovar"};
+  if(status === "ignorado" || status === "arquivado") return null;
+  return {n:1, nome:"Preparar"};
+}
+function chipPasso(status){ const p = passoDoAssunto(status); if(!p) return "";
+  return `<span class="passo-chip p${p.n}${p.feito ? " feito" : ""}">${p.feito ? "✓" : p.n} · ${h(p.nome)}</span>`; }
 
 /* --------------------------------------------------- formulário da fonte */
 let FONTES_LISTA = [];
