@@ -231,7 +231,7 @@ def test_diagnostico_confere_as_fontes_ativas_do_banco_e_na_falta_usa_o_arquivo(
     assert fontes[0]["config"]["padrao_url"] == "/a/noticias/\\d{4}/"
     monkeypatch.setenv("SUPABASE_URL", "http://127.0.0.1:9")                  # banco fora do ar: segue com o arquivo
     fontes, origem = radar_diagnostico.carregar_fontes()
-    assert origem == "robo/radar_fontes.json" and len(fontes) == 6
+    assert origem == "robo/radar_fontes.json" and len(fontes) == 10   # v0.106.0: + 4 feeds RSS de entidade de classe (CFC, FENACON, SESCON-GF, IBPT)
     monkeypatch.delenv("SUPABASE_URL")
     assert radar_diagnostico.carregar_fontes()[1] == "robo/radar_fontes.json"
 

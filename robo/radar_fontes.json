@@ -98,5 +98,65 @@
       "data_do_texto": true,
       "seletor_texto": "article, main, #content, body"
     }
+  },
+  {
+    "slug": "cfc-noticias",
+    "nome": "CFC — Notícias",
+    "orgao": "Conselho Federal de Contabilidade",
+    "abrangencia": "federal",
+    "oficial": false,
+    "tipo_coletor": "rss",
+    "url": "https://cfc.org.br/feed/",
+    "categoria_padrao": "contabilidade",
+    "frequencia_horas": 12,
+    "config": {
+      "janela_dias": 30,
+      "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"
+    }
+  },
+  {
+    "slug": "fenacon-noticias",
+    "nome": "FENACON — Notícias",
+    "orgao": "Federação Nacional das Empresas de Serviços Contábeis e das Empresas de Assessoramento, Perícias, Informações e Pesquisas",
+    "abrangencia": "federal",
+    "oficial": false,
+    "tipo_coletor": "rss",
+    "url": "https://www.fenacon.org.br/feed/",
+    "categoria_padrao": "contabilidade",
+    "frequencia_horas": 12,
+    "config": {
+      "janela_dias": 30,
+      "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"
+    }
+  },
+  {
+    "slug": "sescongf-noticias",
+    "nome": "SESCON Grande Florianópolis — Notícias",
+    "orgao": "Sindicato das Empresas de Serviços Contábeis da Grande Florianópolis",
+    "abrangencia": "estadual_sc",
+    "oficial": false,
+    "tipo_coletor": "rss",
+    "url": "https://sescongf.com.br/feed/",
+    "categoria_padrao": "santa-catarina",
+    "frequencia_horas": 12,
+    "config": {
+      "janela_dias": 30,
+      "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"
+    }
+  },
+  {
+    "slug": "ibpt-noticias",
+    "nome": "IBPT — Notícias",
+    "orgao": "Instituto Brasileiro de Planejamento e Tributação",
+    "abrangencia": "federal",
+    "oficial": false,
+    "tipo_coletor": "rss",
+    "url": "https://ibpt.org.br/feed/",
+    "categoria_padrao": "reforma-tributaria",
+    "frequencia_horas": 24,
+    "config": {
+      "janela_dias": 30,
+      "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"
+    }
   }
 ]
