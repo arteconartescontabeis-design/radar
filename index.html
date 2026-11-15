@@ -480,21 +480,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.105.0"></script>
-<script src="radar-video.js?v=0.105.0"></script>
-<script src="radar-setor.js?v=0.105.0"></script>
-<script src="radar-respostas.js?v=0.105.0"></script>
+<script src="radar-pauta.js?v=0.106.0"></script>
+<script src="radar-video.js?v=0.106.0"></script>
+<script src="radar-setor.js?v=0.106.0"></script>
+<script src="radar-respostas.js?v=0.106.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.105.0";
+const VERSAO = "0.106.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.106.0", "15/11/2026", [
+    "Prévia do Instagram e do Facebook com o texto do momento: as prévias “Ver como fica no Instagram/Facebook” passaram a montar a legenda com o que está digitado AGORA na tela (título, texto e fonte), mesmo antes de salvar — igual à prévia do site. Antes, elas mostravam a última versão salva; agora, se você editar o texto e abrir a prévia, ela já reflete a edição (se o texto mudou, a legenda sai do texto novo, não da sugestão antiga da IA). A imagem continua sendo a da publicação salva.",
+    "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
   ["0.105.0", "15/11/2026", [
     "Ver como fica no Instagram e no Facebook: ao lado do “Ver como fica no site” (no passo 2, ao conferir, e no passo 3, ao publicar), agora há “Ver como fica no Instagram” e “Ver como fica no Facebook”. Cada um abre uma PRÉVIA aproximada do post — a imagem da publicação e a legenda que vão para aquela rede, montadas com o que está na tela —, para você conferir antes de autorizar. É só orientação: não publica nada e não muda a legenda nem a imagem (a aparência final depende do app da rede). Segunda parte do Fluxo da Notícia.",
     "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
@@ -3234,7 +3237,16 @@ function botoesPrevia(id, redes = true){
    que está na tela (como a prévia do site). Abre no mesmo quadro (#previa-site), fechado por Esc, pelo botão e pelo fundo. */
 function abrirPreviaRede(id, canal){
   const d = (E.conteudoDados || {})[id]; if(!d) return;
-  const {c, capa, categoria} = d, nome = NOME_REDE[canal] || canal;
+  const {capa, categoria} = d, nome = NOME_REDE[canal] || canal;
+  // v0.106.0: reflete as edições ainda não salvas do formulário (título, texto e fonte), como a prévia do site. Se o texto mudou,
+  // a legenda do kit da IA fica desatualizada (como acontece ao salvar): cai na legenda montada do texto vivo (legendaRede).
+  const f = $(`form[data-form=conteudo][data-id="${id}"]`);
+  let c = d.c;
+  if(f){
+    const corpo = f.corpo.value, titulo = f.titulo.value;
+    c = {...d.c, titulo, corpo, fonte_credito: f.fonte_credito ? f.fonte_credito.value.trim() : d.c.fonte_credito};
+    if(corpo !== (d.c.corpo || "")) c.kit_ia = null;
+  }
   const legenda = legendaIA(c, canal, "artecon.cnt.br/news", 2000) ?? legendaRede(c, canal, "artecon.cnt.br/news", categoria, 2000);
   const txt = h(legenda).replace(/\n/g, "<br>");
   const perfil = textoIdentificacao("empresa") || "Artecon";
