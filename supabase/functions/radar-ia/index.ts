@@ -884,6 +884,16 @@ const REGRA_FUNDAMENTACAO = "(14) BASE LEGAL COM NATURALIDADE: se o texto trouxe
 const AVISO_INFORMATIVO = (orgaos: string) => `INFORMATIVO (sem fundamentação legal específica)${orgaos ? `, escrito a partir de fonte NÃO oficial (${orgaos})` : ""}: ` +
   "só vai ao site e às redes depois que o administrador autoriza a publicação (“Autorizar a publicação do Informativo”, com o motivo). " +
   "Confira cada número, data e fonte antes de aprovar.";
+// item 12 do prompt do dono: respeitar o canal, o formato, o tamanho e a finalidade selecionados (vale no texto e no kit das redes)
+const REGRA_FORMATO = "(16) FORMATO, CANAL E FINALIDADE: respeite o formato e o tamanho pedidos; o tamanho adapta-se ao formato, sem número " +
+  "obrigatório — curto traz a informação principal e o indispensável; médio, o fato, o contexto, quem é afetado e os efeitos; longo, a " +
+  "explicação ampliada, com condições e subtítulos quando ajudarem. Em NOTÍCIA, destaque o fato confirmado e diferencie a DATA DE " +
+  "PUBLICAÇÃO da DATA DE VIGÊNCIA quando houver. Em REEL, escreva para a FALA: frases naturais, fáceis de pronunciar, no ritmo de quem " +
+  "fala, sem recitar dispositivos legais. Em CARROSSEL ou STORY, pense por TELAS, uma ideia por tela, sem blocos longos de texto. As " +
+  "fontes vão em lugar adequado (ao fim da notícia, na legenda do reel, na última tela ou legenda do carrossel/story), sem inventar " +
+  "referência. Finalidade INFORMATIVA: informe, não venda nem convide a contratar; finalidade COMERCIAL (divulgação dos serviços da " +
+  "Artecon): permite UMA chamada de contato ligada ao serviço informado, respeitando a veracidade e a regra (12) da publicidade contábil. ";
+
 async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, formato: string, analise = false) {
   if (!Object.hasOwn(FORMATOS, formato)) throw new Erro(400, "Formato inválido.");
   let { bloco, texto: oficial } = blocoOficial(ctx.capturas.filter((c) => c.oficial));
@@ -920,7 +930,7 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     "(6) formatação: só '## ' para subtítulo, '- ' para lista e **negrito**; sem HTML e sem tabelas; endereço (link) só na linha 'Fonte oficial'; " +
     "(7) título com até 110 caracteres, informativo, sem ponto final e sem sensacionalismo; " +
     REGRA_FONTE +
-    REGRA_ESTILO + REGRA_TITULOS + REGRA_VERIFICACAO + REGRA_FUNDAMENTACAO + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(ctx.reg);
+    REGRA_ESTILO + REGRA_TITULOS + REGRA_VERIFICACAO + REGRA_FUNDAMENTACAO + REGRA_FORMATO + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(ctx.reg);
   const entrada = `Assunto: ${ctx.assunto.titulo}\nCategoria: ${ctx.assunto.categoria ?? "—"}\nResumo da equipe: ${ctx.assunto.resumo ?? "—"}\n` +
     `Público afetado: ${ctx.assunto.publico_afetado ?? "—"}\n\nTrechos já conferidos pela equipe (use-os como base):\n` +
     (conferidas.map((e: any) => {
@@ -2003,7 +2013,7 @@ async function kit(token: string, ctx: Awaited<ReturnType<typeof carregar>>, con
     "pelo sistema) e o último diz o que fazer e onde ler mais ('matéria completa no site, link na bio'; sem convite comercial); " +
     (pretendido === "carrossel" ? "a notícia VAI sair como carrossel: UMA ideia só por cartão, na ordem que prende quem arrasta as lâminas; " : "") : "") +
     "(g) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
-    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_AUTOCONFERENCIA + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(ctx.reg);
+    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_AUTOCONFERENCIA + REGRA_FORMATO + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(ctx.reg);
   // só o que a Artecon escreveu (e o que a equipe já classificou no assunto): nada do texto oficial nem do boletim pago. Tudo o que
   // vem do banco (a classificação também: o público afetado pode ter saído da notícia) fica dentro de um bloco de dados, sem as marcas
   const dado = (v: unknown) => semMarcasDeBloco(normalizarEspacos(String(v ?? ""))) || "—";
@@ -2075,7 +2085,7 @@ async function kitSoCartoes(token: string, ctx: Awaited<ReturnType<typeof carreg
     "(c) o primeiro cartão NÃO repete o título da notícia (a capa do carrossel é a imagem da publicação com o título, montada pelo sistema) " +
     "e o último diz o que fazer e onde ler mais ('matéria completa no site, link na bio'; sem convite comercial); " +
     "(d) não escreva CNPJ, CRC, telefone, endereço nem link: a identificação da empresa é acrescentada depois, pelo sistema; " +
-    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_AUTOCONFERENCIA + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(ctx.reg);
+    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_AUTOCONFERENCIA + REGRA_FORMATO + REGRA_DIRETRIZES + REGRA_DADOS + blocoOrientacoes(ctx.reg);
   const dado = (v: unknown) => semMarcasDeBloco(normalizarEspacos(String(v ?? ""))) || "—";
   const entrada = `<<<TEXTO classificação do assunto>>>\nCategoria: ${dado(ctx.assunto.categoria)}\n` +
     `Abrangência: ${ABRANGENCIA[ctx.assunto.abrangencia] ?? "—"}\nPúblico afetado: ${dado(ctx.assunto.publico_afetado)}\n` +
