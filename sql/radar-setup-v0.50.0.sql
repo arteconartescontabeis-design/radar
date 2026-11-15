@@ -9134,6 +9134,18 @@ select v.* from (values
 where not exists (select 1 from public.radar_instalacoes i where i.depois is not null)
 on conflict (slug) do nothing;
 
+-- v0.106.0: feeds RSS de entidade de classe (CFC, FENACON, SESCON-GF, IBPT). NÃO-oficiais: trazem o assunto ao radar,
+-- mas a confirmação para publicar no site segue vindo das fontes de governo. O robô já lê RSS (listar_rss).
+insert into public.radar_fontes (slug, nome, orgao, abrangencia, oficial, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
+select v.* from (values
+  ('cfc-noticias', 'CFC — Notícias', 'Conselho Federal de Contabilidade', 'federal', false, 'rss', 'https://cfc.org.br/feed/', '{"janela_dias": 30, "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"}'::jsonb, 'contabilidade', 12),
+  ('fenacon-noticias', 'FENACON — Notícias', 'Federação Nacional das Empresas de Serviços Contábeis e das Empresas de Assessoramento, Perícias, Informações e Pesquisas', 'federal', false, 'rss', 'https://www.fenacon.org.br/feed/', '{"janela_dias": 30, "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"}'::jsonb, 'contabilidade', 12),
+  ('sescongf-noticias', 'SESCON Grande Florianópolis — Notícias', 'Sindicato das Empresas de Serviços Contábeis da Grande Florianópolis', 'estadual_sc', false, 'rss', 'https://sescongf.com.br/feed/', '{"janela_dias": 30, "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"}'::jsonb, 'santa-catarina', 12),
+  ('ibpt-noticias', 'IBPT — Notícias', 'Instituto Brasileiro de Planejamento e Tributação', 'federal', false, 'rss', 'https://ibpt.org.br/feed/', '{"janela_dias": 30, "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"}'::jsonb, 'reforma-tributaria', 24)
+) as v (slug, nome, orgao, abrangencia, oficial, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
+where not exists (select 1 from public.radar_instalacoes i where i.depois is not null)
+on conflict (slug) do nothing;
+
 
 -- Configurações iniciais (só na PRIMEIRA vez em que cada chave não existe; depois valem as suas)
 -- v0.20.0: "assinatura" leva também "cnpj" e "crc" (identificação legal na arte e na legenda das redes; vazios, a tela
