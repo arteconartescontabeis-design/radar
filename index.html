@@ -251,6 +251,20 @@ details.excluidas{margin:10px 0 0} details.excluidas summary{cursor:pointer}
 .caixa-previa{background:#fff;border-radius:12px;max-width:820px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25);overflow:hidden}
 .barra-previa{display:flex;gap:10px;align-items:center;justify-content:space-between;background:var(--azul-claro);color:var(--marinho);padding:8px 14px;font-size:.88rem}
 .caixa-previa .previa{border:0;border-radius:0;padding:22px 30px;overflow-wrap:anywhere}
+/* v0.105.0: prévia aproximada do post no Instagram/Facebook */
+.previa-rede-corpo{background:#eef1f4}
+.post-rede{max-width:420px;margin:0 auto;background:#fff;border:1px solid #DBE1E8;border-radius:10px;overflow:hidden;text-align:left}
+.post-rede .rede-top{display:flex;align-items:center;gap:9px;padding:10px 12px;font-size:.92rem}
+.post-rede .rede-ava{width:34px;height:34px;border-radius:50%;background:var(--marinho,#011f48);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;flex:0 0 auto}
+.post-rede .rede-img{background:#f3f5f7}
+.post-rede .rede-img img{display:block;width:100%;height:auto}
+.post-rede .rede-sem-img{padding:38px 16px;text-align:center}
+.post-rede .rede-legenda{padding:10px 12px;font-size:.9rem;line-height:1.45;white-space:normal}
+.post-rede .rede-legenda b{margin-right:4px}
+.post-ig .ig-acoes{display:flex;gap:16px;padding:8px 12px 0;font-size:1.15rem}
+.post-fb .rede-legenda{padding-bottom:8px}
+.post-fb .fb-link{background:#f0f2f5;border-top:1px solid #DBE1E8;padding:9px 12px}
+.post-fb .fb-link .sub{letter-spacing:.04em}
 /* v0.44.0: o teleprompter (fundo preto, letras grandes rolando; a câmera pequena no alto) */
 .caixa-tele{max-width:720px;background:#000;color:#fff;display:flex;flex-direction:column}
 .tele-topo{display:flex;gap:12px;padding:12px;align-items:flex-start;background:#101418;flex-wrap:wrap}
@@ -466,21 +480,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.104.0"></script>
-<script src="radar-video.js?v=0.104.0"></script>
-<script src="radar-setor.js?v=0.104.0"></script>
-<script src="radar-respostas.js?v=0.104.0"></script>
+<script src="radar-pauta.js?v=0.105.0"></script>
+<script src="radar-video.js?v=0.105.0"></script>
+<script src="radar-setor.js?v=0.105.0"></script>
+<script src="radar-respostas.js?v=0.105.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.104.0";
+const VERSAO = "0.105.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.105.0", "15/11/2026", [
+    "Ver como fica no Instagram e no Facebook: ao lado do “Ver como fica no site” (no passo 2, ao conferir, e no passo 3, ao publicar), agora há “Ver como fica no Instagram” e “Ver como fica no Facebook”. Cada um abre uma PRÉVIA aproximada do post — a imagem da publicação e a legenda que vão para aquela rede, montadas com o que está na tela —, para você conferir antes de autorizar. É só orientação: não publica nada e não muda a legenda nem a imagem (a aparência final depende do app da rede). Segunda parte do Fluxo da Notícia.",
+    "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
   ["0.104.0", "15/11/2026", [
     "Onde a notícia está, de relance: na lista de Assuntos (Notícias → Assuntos), cada notícia agora mostra um selo do PASSO em que está — 1 · Preparar, 2 · Conferir e aprovar ou 3 · Publicar (e ✓ · Publicado quando já saiu) —, com a cor de cada passo. Assim, ao sair para outra coisa e voltar, você bate o olho e sabe em que pé está cada notícia, sem abrir uma a uma. O nome técnico do status continua embaixo, pequeno. Nada muda no funcionamento — é só orientação (primeira parte do Fluxo da Notícia).",
     "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
@@ -2349,6 +2366,8 @@ async function telaAssunto(id){
   const [listaImg, listaIlu] = await Promise.all([idsImg.length ? ler("radar_imagens", {select:"id,dados,largura,altura", id:"in.(" + idsImg.join(",") + ")"}) : [],
     idsIlu.length ? ler("radar_imagens", {select:"id,largura,altura", id:"in.(" + idsIlu.join(",") + ")"}) : []]);
   const imgs = Object.fromEntries(listaImg.map(i => [i.id, i.dados]));
+  // v0.105.0: o conteúdo, a imagem da publicação e a categoria de cada notícia, para a prévia “Ver como fica no Instagram/Facebook”
+  E.conteudoDados = Object.fromEntries(cont.map(c => [c.id, {c, capa:imgs[c.imagem_id] || "", categoria:a.categoria}]));
   // o tamanho da imagem da publicação e da imagem da IA guardada (a proporção que o Instagram aceita; a imagem da IA desta versão ou a de antes)
   E.medidasImagem = Object.fromEntries([...listaImg, ...listaIlu].map(i => [i.id, {largura:i.largura, altura:i.altura}]));
   // v0.20.0: a capa desenhada pelo Radar (1200×630, com o logotipo, a categoria e o título). v0.25.0: é a que mostra o título (o aviso
@@ -2521,7 +2540,7 @@ async function telaAssunto(id){
       (liberado && ehInformativo(aprovavel) ? ` Este texto é Informativo (sem base legal específica) e já pode ser aprovado: a publicação deste assunto foi liberada pelo administrador em ${dataHora(a.liberado_sem_base_em)}.` : "") +
       (!ehAdmin() && cv.temX ? " Um ✗ no mesmo texto só sai quando o texto muda (corrija e salve) ou com o “Revisei e assumo” do administrador." : ""),
       `<button class="btn verde" type="button" data-acao="trilha-clicar" data-botao="aprovar" data-id="${aprovavel.id}"${cv.pode ? "" : ` disabled aria-disabled="true" title="${h(cv.travas[0])}"`}>✓ Aprovar</button>` +
-        conferir + assumir + `<button class="btn sec" type="button" data-acao="previa" data-id="${aprovavel.id}">Ver como fica no site</button>`, 1,
+        conferir + assumir + botoesPrevia(aprovavel.id), 1,
       fonteConferir() + listaConf(cv, !!conferir), irTexto(aprovavel.id)]; }
   // passo 3 (Publicar)
   else if(foraDoSite || (noSite && !redeAgora)) prox = null;
@@ -3165,7 +3184,7 @@ function blocoPublicar(c, envio, pubs, pronto, categoria, redes = [], capa = nul
       : `<p class="sub">Só o administrador autoriza a publicação no site (ou em todos de uma vez).</p>`);
   }
   return `<div class="publicar-item" data-conteudo="${c.id}"><h3>${h(c.titulo)}</h3>
-    <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>${corpo}
+    <div class="acoes">${botoesPrevia(c.id)}</div>${corpo}
     <p class="sub canais" style="margin:8px 0 0"><b>Canais:</b> Site — ${atual ? "publicado" : envio && ["autorizado","enviando"].includes(envio.situacao) ? "aguardando o robô" : pubs.length || envio?.situacao === "publicado" ? "já está no site" : "falta"} ·
       ${["instagram", "facebook"].map(k => NOME_REDE[k] + " — " + situacaoRede(redes.find(r => r.canal === k && r.situacao !== "cancelado"))).join(" · ")}</p></div>`;
 }
@@ -3204,6 +3223,43 @@ function blocoFaltam(c, categoria, capa, redes, urlSite){
         ${canceladaNoEnvio(redes, k) ? caixaConferiRede(`faltam-conferi-${k}-${c.id}`, k) : ""}`).join("")}
         <span class="sub">No Instagram o link da legenda não é clicável (a legenda indica o link na bio). Até 2.200 caracteres em cada legenda.</span></div></div>
     <div class="acoes"><button class="btn verde" type="button" data-acao="autorizar-faltam" data-id="${c.id}" data-lido="${h(c.atualizado_em)}">Publicar nos que faltam</button></div></div>`;
+}
+/* v0.105.0: os botões de prévia — “Ver como fica no site” e, quando a notícia vai às redes, “no Instagram” e “no Facebook”. */
+function botoesPrevia(id, redes = true){
+  return `<button class="btn sec" type="button" data-acao="previa" data-id="${id}">Ver como fica no site</button>` +
+    (redes ? ` <button class="btn sec" type="button" data-acao="previa-rede" data-rede="instagram" data-id="${id}">Ver como fica no Instagram</button>
+      <button class="btn sec" type="button" data-acao="previa-rede" data-rede="facebook" data-id="${id}">Ver como fica no Facebook</button>` : "");
+}
+/* v0.105.0: prévia aproximada do post no Instagram/Facebook — a imagem da publicação e a legenda que vão para a rede, montadas com o
+   que está na tela (como a prévia do site). Abre no mesmo quadro (#previa-site), fechado por Esc, pelo botão e pelo fundo. */
+function abrirPreviaRede(id, canal){
+  const d = (E.conteudoDados || {})[id]; if(!d) return;
+  const {c, capa, categoria} = d, nome = NOME_REDE[canal] || canal;
+  const legenda = legendaIA(c, canal, "artecon.cnt.br/news", 2000) ?? legendaRede(c, canal, "artecon.cnt.br/news", categoria, 2000);
+  const txt = h(legenda).replace(/\n/g, "<br>");
+  const perfil = textoIdentificacao("empresa") || "Artecon";
+  const ini = (perfil.replace(/[^\p{L}]+/gu, " ").trim().split(" ").filter(Boolean).slice(0, 2).map(p => p[0]).join("") || "A").toUpperCase();
+  const img = /^data:image\/(jpeg|png|webp);base64,/.test(capa) ? `<img src="${h(capa)}" alt="Imagem da publicação">`
+    : `<div class="rede-sem-img sub">A imagem da publicação aparece aqui. Escolha-a no passo 3 (ou gere a capa).</div>`;
+  const corpo = canal === "instagram"
+    ? `<div class="post-rede post-ig">
+        <div class="rede-top"><span class="rede-ava">${h(ini)}</span><b>${h(perfil)}</b></div>
+        <div class="rede-img">${img}</div>
+        <div class="ig-acoes" aria-hidden="true"><span>♡</span><span>💬</span><span>➤</span></div>
+        <div class="rede-legenda"><b>${h(perfil)}</b> ${txt}</div></div>`
+    : `<div class="post-rede post-fb">
+        <div class="rede-top"><span class="rede-ava">${h(ini)}</span><div><b>${h(perfil)}</b><div class="sub">Agora · 🌐 Público</div></div></div>
+        <div class="rede-legenda">${txt}</div>
+        <div class="rede-img">${img}</div>
+        <div class="fb-link"><div class="sub">ARTECON.CNT.BR</div><b>${h(tituloParaOSite(c.titulo || ""))}</b></div></div>`;
+  fecharPrevia();
+  document.body.insertAdjacentHTML("beforeend", `<div class="fundo-previa" id="previa-site">
+    <div class="caixa-previa" role="dialog" aria-modal="true" aria-label="Prévia da publicação no ${h(nome)}">
+      <div class="barra-previa"><span>Prévia aproximada — assim o post fica no ${h(nome)}</span><button class="btn peq" type="button" data-acao="fechar-previa">Fechar</button></div>
+      <div class="previa previa-rede-corpo">${corpo}
+        <p class="sub">É uma aproximação: a imagem e a legenda são as que vão para a rede. A aparência final (cortes, fonte, botões) depende do app do ${h(nome)}.</p></div>
+    </div></div>`);
+  $("#previa-site .barra-previa button").focus();
 }
 /* Prévia: monta a notícia como ela fica em artecon.cnt.br/news, com o que está digitado agora na tela. */
 function abrirPrevia(id){
@@ -3761,7 +3817,7 @@ function blocoConteudo(c, pubs, ed, imagem, pronto, fontes, categoria, urlFonte 
         <div class="rede-montagem"><img class="miniatura" src="${h(E.ilustracaoPendente.imagem)}" alt="Imagem criada pela IA, ainda não gravada">
         <div class="acoes"><button class="btn peq" type="button" data-acao="gravar-ilustracao" data-id="${c.id}">Gravar a imagem de novo</button>
         <span class="sub">Sem nova consulta à IA e sem nova cobrança.</span></div></div></div>` : ""}` : ""}
-    <div class="acoes"><button class="btn sec" type="button" data-acao="previa" data-id="${c.id}">Ver como fica no site</button></div>
+    <div class="acoes">${botoesPrevia(c.id, !analise)}</div>
     ${analise ? "" : blocoKit(c, ed, pubs.find(p => !p.versao_anterior)?.url || "")}
     ${c.status === "aprovado" ? `<div class="aviso info">Se você alterar o título, o texto, o autor, a fonte ou a imagem, o conteúdo volta para revisão e precisa ser aprovado de novo.</div>
       ${avisoTituloSite(c, `titulo-site-copiar-${c.id}`)}<div class="acoes para-site"><b class="sub">Para o site da Artecon:</b>
@@ -4701,6 +4757,7 @@ const ACOES = {
     await copiar(t); recado("Roteiro do reel copiado."); },
 
   previa(el){ abrirPrevia(el.dataset.id); },
+  "previa-rede"(el){ abrirPreviaRede(el.dataset.id, el.dataset.rede); },
   "fechar-previa"(){ fecharPrevia(); },
   "usar-titulo"(el){
     const f = $(`form[data-form=conteudo][data-id="${el.dataset.id}"]`); if(!f) return;
@@ -6168,7 +6225,7 @@ const FORMS = {
 /* ----------------------------------------------------------------- eventos */
 /* Navegar é sempre livre (o desenho mais recente é o que vale). Só as ações que GRAVAM
    são feitas uma por vez, para um clique duplo não repetir a operação. */
-const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
+const NAVEGACAO = new Set(["etapa","ir-conteudo","previa","previa-rede","fechar-previa","usar-titulo","filtro-fila","ir","aba","sair","voltar","recarregar","abrir-assunto","usar-trecho","cancelar-evidencia","estrutura","editar-fonte",
   "copiar-titulo","copiar-texto","copiar-legenda","copiar-roteiro","abrir-informativo","ag-linha","ag-remover","ag-recalcular","recuperar-rascunho","descartar-rascunho","mostrar-mais","nova-fonte","incluir-texto","abrir-motivo","fechar-motivo","abrir-assumir","fechar-assumir","trilha-clicar","redes-testar","publicar-todos-de","publicar-faltam-de",
   "venc-editar","venc-renovei","venc-cancelar","letras","quando-mudar","painel-periodo","dash-periodo-aplicar",
   "carrossel-previa-fechar","acervo-ver-fechar"]);  // v0.32.0: só abrem e fecham o formulário; v0.44.0: + letras grandes; v0.45.0: + quando publicar; v0.47.0: + o seletor dia/semana/mês do Painel; v0.48.0: + aplicar o período escolhido; v0.63.0: + fechar a prévia do carrossel e a foto do acervo

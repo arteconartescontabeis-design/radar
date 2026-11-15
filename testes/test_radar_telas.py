@@ -385,14 +385,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.104.0"
+    assert pagina.inner_text(".versao") == "v0.105.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.104.0" and data == "15/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.105.0" and data == "15/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -1067,6 +1067,33 @@ def test_versao_visivel_e_aba_de_versoes(pagina):
     # o limite de minutos do Radar no mês: 30 por padrão (radar_video_limite_s), o que sobra do F0 depois da Agenda — nunca outro número
     assert "30 por padrão: o que sobra das 5 horas da Azure depois dos 270 minutos da Agenda" in texto and "60 por padrão" not in texto
     assert set(re.findall(r"CRC-SC (\d{6})", pagina.inner_text("main"))) == {"007129"}   # o CRC de exemplo antigo (errado) saiu de todas as versões
+
+
+def test_previa_rede_instagram_e_facebook_v105(pagina):
+    """v0.105.0: ao lado do “Ver como fica no site”, a prévia do post no Instagram e no Facebook — a imagem da
+    publicação e a legenda da rede, montadas com o que está na tela (sem publicar nada)."""
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    # botoesPrevia: os três botões quando a notícia vai às redes; só o do site quando não (texto para análise)
+    com_redes = pagina.evaluate("botoesPrevia(7)")
+    assert 'data-acao="previa"' in com_redes and 'data-rede="instagram"' in com_redes and 'data-rede="facebook"' in com_redes
+    assert pagina.evaluate("botoesPrevia(7, false)").count('data-acao="previa') == 1   # só “no site”
+    # abrirPreviaRede monta o cartão de cada rede com a legenda da notícia, a partir do cache E.conteudoDados
+    r = pagina.evaluate(r"""() => {
+      E.conteudoDados = {7: {c:{id:7, titulo:'Novo prazo da DCTFWeb', corpo:'O prazo foi alterado.\nConfira na fonte oficial.',
+        fonte_credito:'Receita Federal'}, capa:'', categoria:''}};
+      E.identificacao = {empresa:'Artecon Artes Contábeis'};
+      abrirPreviaRede(7, 'instagram');
+      const ig = document.querySelector('#previa-site .post-ig');
+      const okIg = !!ig && /link na bio/i.test(ig.textContent) && /Artecon/.test(ig.textContent) && /Novo prazo da DCTFWeb/.test(ig.textContent);
+      abrirPreviaRede(7, 'facebook');
+      const fb = document.querySelector('#previa-site .post-fb');
+      const okFb = !!fb && /ARTECON\.CNT\.BR/.test(fb.textContent) && !document.querySelector('#previa-site .post-ig');
+      return [okIg, okFb];
+    }""")
+    assert r == [True, True]
+    pagina.keyboard.press("Escape")                     # fecha pelo Esc, como a prévia do site
+    assert pagina.evaluate("!document.querySelector('#previa-site')")
 
 
 def test_logo_preto_ou_branco_pela_luminancia(pagina):
@@ -2401,7 +2428,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.104.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.105.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3290,7 +3317,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.104.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.105.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -7740,7 +7767,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.104.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.105.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
