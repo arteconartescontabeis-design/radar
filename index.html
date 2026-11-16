@@ -480,21 +480,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.110.0"></script>
-<script src="radar-video.js?v=0.110.0"></script>
-<script src="radar-setor.js?v=0.110.0"></script>
-<script src="radar-respostas.js?v=0.110.0"></script>
+<script src="radar-pauta.js?v=0.111.0"></script>
+<script src="radar-video.js?v=0.111.0"></script>
+<script src="radar-setor.js?v=0.111.0"></script>
+<script src="radar-respostas.js?v=0.111.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.110.0";
+const VERSAO = "0.111.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.111.0", "16/11/2026", [
+    "Publicações vira o controle de TUDO que vai às redes: além das notícias, a aba <b>Publicações</b> ganhou o quadro <b>“Peças da Pauta nas redes”</b> — os <b>reels, carrosséis e fotos</b> da Pauta que já foram <b>agendados</b> ou <b>publicados</b> aparecem ali, com o status de <b>Instagram</b> e <b>Facebook</b> em cada um (agendada para tal hora, publicada com o link, ou “Não saiu” com o motivo). Antes, só as notícias apareciam nessa aba; as peças só davam para acompanhar pela Pauta. Agora é um lugar só para ver o que saiu e o que está agendado. O botão <b>“Abrir a peça”</b> leva direto à peça na Pauta para agir (aprovar, reagendar, publicar agora).",
+    "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco (os dados já existiam), as funções Edge nem o robô."]],
   ["0.110.0", "16/11/2026", [
     "Acertos da varredura (sistema mais redondo): no <b>Comercial da Pauta</b>, o bloco <b>“Roteiro de venda pela IA”</b> agora só aparece quando o formato é <b>Reel</b> (antes aparecia em qualquer comercial, mas o roteiro só existe no reel — dava para gastar uma consulta de IA à toa num comercial de foto). Ao gerar o roteiro, os <b>pontos de publicidade a conferir</b> que a IA devolve passam a ser mostrados na hora (como no “Vídeo de venda”). Nas <b>fontes do Legislativo</b> (Câmara e Senado), a busca ficou mais limpa: a ementa que a API traz vira o texto (a fonte não fica mais marcada “parcial” à toa) e o filtro de tema deixou de confundir siglas curtas (“ISS”, “MEI”) com pedaços de palavras (“com<i>iss</i>ão”, “pri<i>mei</i>ro”).",
     "Administrador: a tela muda (Pauta) e o robô muda (fontes Câmara/Senado). No BANCO, rode no Supabase (SQL Editor) o sql/radar-fontes-legislativo-config-v0.110.0.sql (ajusta a config das 2 fontes; pode rodar de novo, nada é criado nem apagado). Nenhuma função Edge muda. Publique o index.html com os demais .js e aperte Ctrl+F5."]],
@@ -1895,10 +1898,13 @@ const TELAS = {
   async publicacoes(){
     const SEL_CONT = "id,titulo,formato,status,assunto_id,aprovado_em,fora_do_site,radar_divulgacoes(id,url,publicado_em),radar_site_envios(id,situacao,autorizado_em,url)," +
       "radar_redes_envios(id,canal,situacao,url,publicado_em,excluido_em,erro),radar_site_exclusoes(id,situacao,pedido_em,excluido_em,erro,url)";
-    const [regs, aprovados, redesNoAr] = await Promise.all([
+    const [regs, aprovados, redesNoAr, pecasRaw] = await Promise.all([
       ler("radar_v_divulgacoes", {select:"*", order:"publicado_em.desc,id.desc", limit:String(limiteDe("site", 300))}),
       ler("radar_conteudos", {select:SEL_CONT, status:"eq.aprovado", fora_do_site:"eq.false", order:"aprovado_em.desc", limit:"300"}),
-      ler("radar_redes_envios", {select:"conteudo_id", situacao:"eq.publicado", conteudo_id:"not.is.null", limit:"1000"})]);   // v0.21.0: o envio da Pauta não tem conteúdo
+      ler("radar_redes_envios", {select:"conteudo_id", situacao:"eq.publicado", conteudo_id:"not.is.null", limit:"1000"}),   // v0.21.0: o envio da Pauta não tem conteúdo
+      // v0.111.0: as PEÇAS da Pauta (reel, carrossel, foto) agendadas ou publicadas também aparecem aqui — é o painel de controle do envio
+      ler("radar_pauta_pecas", {select:"id,data,tipo,formato,assunto,publicado_manual_em,link_instagram,link_facebook," +
+        "radar_redes_envios(id,canal,situacao,agendado_para,erro,url,publicado_em)", situacao:"eq.aprovada", order:"data.desc", limit:"200"})]);
     // v0.17.0: também o que está publicado e deixou de estar aprovado (texto em revisão, por exemplo): dá para excluir
     const jaListados = new Set(aprovados.map(c => c.id));
     const outros = [...new Set([...regs.map(r => r.conteudo_id), ...redesNoAr.map(r => r.conteudo_id)])].filter(id => !jaListados.has(id)).slice(0, 200);
@@ -1935,6 +1941,19 @@ const TELAS = {
         : `<span class="canal espera">${r.situacao === "enviando" ? "Publicando" : "Autorizado"}</span>`; };
     const nRede = k => lista.filter(c => (c.radar_redes_envios || []).some(x => x.canal === k && x.situacao === "publicado")).length;
     const nSite = lista.filter(c => c.radar_divulgacoes.length).length;
+    // v0.111.0: peças da Pauta no envio (agendadas ou publicadas); "aprovada" sem canal nem publicação manual não entra
+    const FORMATO_PECA = {reel:"Reel", carrossel:"Carrossel", carrossel_fotos:"Carrossel de fotos", foto:"Foto", story:"Story", nenhum:"—"};
+    const pecasEnvio = (pecasRaw || []).filter(p => p.publicado_manual_em || (p.radar_redes_envios || []).some(e => e.situacao !== "cancelado"));
+    const pecaNoCanal = (p, k) => {
+      const manual = k === "instagram" ? p.link_instagram : p.link_facebook;
+      const r = [...(p.radar_redes_envios || [])].filter(x => x.canal === k && x.situacao !== "cancelado").sort((x, y) => y.id - x.id)[0];
+      if(!r) return manual ? `<span class="canal ok">✓ à mão</span><br>${linkFonte(manual, "ver ↗")}` : `<span class="canal falta">—</span>`;
+      if(r.situacao === "publicado") return `<span class="canal ok">✓ ${data(r.publicado_em)}</span>${r.url ? `<br>${linkFonte(r.url, "ver ↗")}` : ""}`;
+      if(r.situacao === "erro") return `<span class="canal erro">Não saiu</span>${r.erro ? `<br><span class="sub">${h(r.erro)}</span>` : ""}`;
+      if(r.situacao === "enviando") return `<span class="canal espera">Publicando</span>`;
+      if(r.situacao === "dispensado") return `<span class="canal breve">Não vai</span>`;
+      return `<span class="canal espera">Agendada${r.agendado_para ? " para " + dataHora(r.agendado_para) : ""}</span>`;   // autorizado
+    };
     const excluidas = lista.flatMap(c => (c.radar_site_exclusoes || []).filter(x => x.situacao === "excluido").map(x => ({...x, titulo:c.titulo})))
       .sort((x, y) => String(y.excluido_em).localeCompare(String(x.excluido_em))).slice(0, 30);
     return `<h1>Publicações no site</h1>
@@ -1954,6 +1973,13 @@ const TELAS = {
           : `<p class="sub">Nenhum conteúdo aprovado para publicar.</p>`}
         ${excluidas.length ? `<details class="excluidas"><summary>Excluídas do site (${excluidas.length})</summary><ul>${excluidas.map(x =>
           `<li>${data(x.excluido_em)} — <b>${h(x.titulo)}</b> <span class="sub">(${h(x.url)})</span></li>`).join("")}</ul></details>` : ""}</div>
+      ${pecasEnvio.length ? `<div class="painel" id="pub-pecas"><h2>Peças da Pauta nas redes</h2>
+        <p class="sub">Reels, carrosséis e fotos da Pauta que já foram <b>agendados</b> ou <b>publicados</b> no Instagram e no Facebook. Para agir numa peça (aprovar, reagendar, publicar agora ou não publicar), abra-a na Pauta.</p>
+        <div class="rolagem"><table id="tab-pecas"><tr><th>Dia</th><th>Peça</th><th>Instagram</th><th>Facebook</th><th></th></tr>${pecasEnvio.map(p => `
+          <tr data-peca="${p.id}"><td>${data(p.data)}</td>
+            <td><b>${h(FORMATO_PECA[p.formato] || p.formato || "Peça")}</b>${p.assunto ? `<br><span class="sub">${h(String(p.assunto).slice(0, 60))}</span>` : ""}</td>
+            <td data-canal="instagram">${pecaNoCanal(p, "instagram")}</td><td data-canal="facebook">${pecaNoCanal(p, "facebook")}</td>
+            <td><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir a peça</button></td></tr>`).join("")}</table></div></div>` : ""}
       <div class="painel"><h2>Aprovados ainda não publicados no site</h2>
         ${pendentes.length ? `<div class="rolagem"><table id="tab-pendentes"><tr><th>Conteúdo</th><th>Aprovado em</th><th></th></tr>${pendentes.map(c => `
           <tr><td><b>${h(c.titulo)}</b><br><span class="sub">${h(ROTULOS.formato[c.formato] || "")}</span></td><td>${dataHora(c.aprovado_em)}</td>

@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.110.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.111.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -1509,7 +1509,7 @@ const PAUTA = {
   acoes:{
     "pauta-semana"(el){ const passo = Number(el.dataset.passo), base = E.pauta.semana || segundaDe(hojeBrasilia());
       E.pauta.semana = passo ? somarDias(base, 7 * passo) : segundaDe(hojeBrasilia()); E.pauta.nova = null; return desenhar(); },
-    "abrir-peca"(el){ E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },
+    "abrir-peca"(el){ E.aba = "pauta"; E.pauta.peca = Number(el.dataset.id); E.pauta.vista = "semana"; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },   // v0.111.0: E.aba para abrir a peça também vindo da aba Publicações
     "pauta-pessoas"(){ E.pauta.vista = "pessoas"; E.pauta.peca = null; E.pauta.nova = null; window.scrollTo(0, 0); return desenhar(); },
     // v0.75.0: os dois relatórios dos reels agendados (Excel e Word), baixados na hora
     "pauta-relatorios-reels"(){ return relatoriosDosReels(); },

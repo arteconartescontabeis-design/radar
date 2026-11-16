@@ -385,14 +385,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.110.0"
+    assert pagina.inner_text(".versao") == "v0.111.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.110.0" and data == "16/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.111.0" and data == "16/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2444,7 +2444,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.110.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.111.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3333,7 +3333,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.110.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.111.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -5319,6 +5319,32 @@ def test_pauta_comercial_roteiro_de_venda_pela_ia_v108(pagina, limpo):
     pagina.evaluate("desenhar()")
     pagina.wait_for_selector("form[data-form=peca]")
     assert pagina.locator("#peca-venda").count() == 0 and pagina.locator("[data-acao=peca-venda-gerar]").count() == 0
+
+
+def test_publicacoes_mostra_as_pecas_da_pauta_agendadas_e_publicadas_v111(pagina, limpo):
+    """v0.111.0: a aba Publicações passa a mostrar as PEÇAS da Pauta (reel, carrossel, foto) agendadas ou publicadas, com o
+    status de Instagram e Facebook; “Abrir a peça” leva à peça na Pauta (troca de aba inclusive)."""
+    pid = peca_db(limpo, "2026-11-20", "quem_cuida", "reel", assunto="Conheça a equipe")
+    mudar_situacao(limpo, pid, "aprovada", aprovado_modo="manual")
+    envio = """insert into radar_redes_envios (peca_id, canal, legenda, conteudo_lido_em, situacao, agendado_para, publicado_em, post_id, url)
+               values (%s, %s, 'Legenda da peça.', now(), %s, %s, %s, %s, %s)"""
+    limpo.execute(envio, (pid, "instagram", "autorizado", "2026-11-20 18:20+00", None, None, None))                               # agendada
+    limpo.execute(envio, (pid, "facebook", "publicado", "2026-11-18 12:00+00", "2026-11-18 12:00+00", "post-fb-1", "https://www.facebook.com/x/1"))  # publicada (peça sempre tem agendado_para)
+    # uma peça SEM canal (aprovada manual, sem envio) NÃO deve aparecer — só as que estão no envio
+    mudar_situacao(limpo, peca_db(limpo, "2026-11-21", "bastidor", "foto", assunto="Peça sem canal"), "aprovada", aprovado_modo="manual")
+    entrar(pagina, "admin@artecon.test")
+    pagina.wait_for_selector("text=Painel do dia")
+    pagina.click("nav.abas >> text=Publicações")
+    pagina.wait_for_selector("#pub-pecas")
+    assert "Peça sem canal" not in pagina.inner_text("#pub-pecas")
+    linha = pagina.locator("#tab-pecas tr", has_text="Conheça a equipe")
+    assert linha.count() == 1 and "Reel" in linha.inner_text()
+    assert "Agendada" in linha.locator("td[data-canal=instagram]").inner_text()      # Instagram agendado
+    assert "✓" in linha.locator("td[data-canal=facebook]").inner_text()              # Facebook publicado
+    # “Abrir a peça” troca para a aba Pauta e abre a peça
+    linha.get_by_text("Abrir a peça").click()
+    pagina.wait_for_selector("form[data-form=peca]")
+    assert "Peça de" in pagina.inner_text("h1")
 
 
 def test_redes_editor_ve_o_passo_sem_os_botoes(pagina, limpo):
@@ -7854,7 +7880,7 @@ def test_pauta_sem_radar_pauta_js_pede_ctrl_f5(pagina):
     ir_aba(pagina, "Assuntos")
     pagina.wait_for_selector("h1 >> text=Assuntos")
     pagina.unroute("**/radar-pauta.js*")
-    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.110.0"', 'const PAUTA_VERSAO = "0.20.9"')
+    antigo = (RAIZ / "radar-pauta.js").read_text(encoding="utf-8").replace('const PAUTA_VERSAO = "0.111.0"', 'const PAUTA_VERSAO = "0.20.9"')
     pagina.route("**/radar-pauta.js*", lambda rota: rota.fulfill(status=200, body=antigo, content_type="application/javascript"))
     pagina.reload()
     pagina.wait_for_selector("text=Painel do dia")
