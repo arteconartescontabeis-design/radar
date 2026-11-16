@@ -30,6 +30,7 @@ import radar_ciga
 import radar_ia
 import radar_dou_site
 import radar_inlabs
+import radar_legislativo
 import radar_normas
 import radar_rascunhos
 from radar_banco import Banco, ErroBanco
@@ -187,6 +188,8 @@ def coletar_fonte(banco: Banco, fonte: dict, sessao: requests.Session,
                 listagem, http = radar_ciga.listar_paginas(sessao, fonte, hoje)
             elif tipo == "normas_rfb":
                 listagem, http = radar_normas.listar_paginas(sessao, fonte, hoje, pausa=pausa)    # v0.31.0: a pesquisa nova (POST)
+            elif tipo == "api_legislativo":
+                listagem, http = radar_legislativo.listar_paginas(sessao, fonte, hoje)            # APIs da Câmara e do Senado
             else:
                 listagem, http = listar_paginas(lambda url: baixar(url, sessao), fonte, hoje)
             resultado["encontrados"] = len(listagem.itens)

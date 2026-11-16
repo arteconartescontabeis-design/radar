@@ -301,6 +301,32 @@ def test_tipo_de_coletor_desconhecido_e_erro():
         listar("x", {"tipo_coletor": "inexistente", "url": "u"})
 
 
+def test_api_legislativo_camara_e_senado(monkeypatch):
+    """v0.108.0: coletor das APIs da Câmara (proposições) e do Senado (/processo). Título pela sigla/identificação, data de
+    apresentação, URL pública da ficha/matéria e ementa; o filtro de "palavras" fica só com o tema tributário/trabalhista."""
+    import radar_legislativo as rl
+    hoje = date(2026, 11, 16)
+    camara = json.dumps({"dados": [
+        {"id": 2653937, "siglaTipo": "PLP", "numero": 303, "ano": 2026, "ementa": "Altera a LC 214 da reforma tributária.", "dataApresentacao": "2026-11-13T10:00"},
+        {"id": 2653123, "siglaTipo": "PL", "numero": 5832, "ano": 2026, "ementa": "Dispõe sobre o Simples Nacional.", "dataApresentacao": "2026-11-12T09:00"},
+        {"id": 2653999, "siglaTipo": "PL", "numero": 9, "ano": 2026, "ementa": "Cria um parque nacional.", "dataApresentacao": "2026-11-12T09:00"}],
+        "links": [{"rel": "self", "href": "x"}]})          # sem "next": uma página só
+    senado = json.dumps([
+        {"codigoMateria": 176369, "identificacao": "PLP 289/2026", "ementa": "Altera regra de ICMS.", "dataApresentacao": "2026-11-13", "tipoDocumento": "PLP"},
+        {"codigoMateria": 176400, "identificacao": "PL 1/2026", "ementa": "Institui dia nacional do café.", "dataApresentacao": "2026-11-13"}])
+    monkeypatch.setattr(rl, "baixar", lambda url, sessao=None, **kw: (200, camara if "camara" in url else senado))
+
+    cam, _ = rl.listar_paginas(None, FONTES["camara-proposicoes"], hoje)
+    assert {it.url for it in cam.itens} == {"https://www.camara.leg.br/propostas-legislativas/2653937",
+                                            "https://www.camara.leg.br/propostas-legislativas/2653123"}     # o parque ficou de fora do tema
+    plp = next(it for it in cam.itens if "2653937" in it.url)
+    assert plp.titulo.startswith("PLP 303/2026") and plp.data == date(2026, 11, 13) and "reforma tributária" in plp.resumo
+
+    sen, _ = rl.listar_paginas(None, FONTES["senado-materias"], hoje)
+    assert [it.url for it in sen.itens] == ["https://www25.senado.leg.br/web/atividade/materias/-/materia/176369"]   # só o de ICMS
+    assert sen.itens[0].titulo == "PLP 289/2026" and sen.itens[0].data == date(2026, 11, 13)
+
+
 # ----------------------------------------------------------------- utilidades
 @pytest.mark.parametrize("texto, esperado", [
     ("30/09/2026", date(2026, 9, 30)),

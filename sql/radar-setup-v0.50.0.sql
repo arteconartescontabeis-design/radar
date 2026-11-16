@@ -190,7 +190,7 @@ create table if not exists public.radar_fontes (
                        check (abrangencia in ('federal','estadual_sc','municipal','geral')),
   oficial              boolean     not null default true,
   tipo_coletor         text        not null
-                       check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados','dou_site')),
+                       check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados','dou_site','api_legislativo')),
   url                  text        not null,
   config               jsonb       not null default '{}'::jsonb,
   categoria_padrao     text        references public.radar_categorias(slug),
@@ -867,7 +867,7 @@ create unique index if not exists radar_site_exclusoes_aberta_uk on public.radar
 -- v0.65.0: + dou_site (a Leitura do Jornal do site oficial — as fontes entram pelo sql/radar-fontes-dou-2026-11.sql)
 alter table public.radar_fontes drop constraint if exists radar_fontes_tipo_coletor_check;
 alter table public.radar_fontes add constraint radar_fontes_tipo_coletor_check
-  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados','dou_site'));
+  check (tipo_coletor in ('rss','html_links','normas_rfb','inlabs','ciga_dados','dou_site','api_legislativo'));
 -- (o formato do cadastro de fontes é conferido pelo gatilho radar_fn_fonte_formato, mais abaixo)
 alter table public.radar_fontes drop constraint if exists radar_fontes_formato;
 
@@ -9143,6 +9143,16 @@ select v.* from (values
   ('fenacon-noticias', 'FENACON — Notícias', 'Federação Nacional das Empresas de Serviços Contábeis e das Empresas de Assessoramento, Perícias, Informações e Pesquisas', 'federal', false, 'rss', 'https://www.fenacon.org.br/feed/', '{"janela_dias": 30, "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"}'::jsonb, 'contabilidade', 12),
   ('sescongf-noticias', 'SESCON Grande Florianópolis — Notícias', 'Sindicato das Empresas de Serviços Contábeis da Grande Florianópolis', 'estadual_sc', false, 'rss', 'https://sescongf.com.br/feed/', '{"janela_dias": 30, "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"}'::jsonb, 'santa-catarina', 12),
   ('ibpt-noticias', 'IBPT — Notícias', 'Instituto Brasileiro de Planejamento e Tributação', 'federal', false, 'rss', 'https://ibpt.org.br/feed/', '{"janela_dias": 30, "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"}'::jsonb, 'reforma-tributaria', 24)
+) as v (slug, nome, orgao, abrangencia, oficial, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
+where not exists (select 1 from public.radar_instalacoes i where i.depois is not null)
+on conflict (slug) do nothing;
+
+-- v0.108.0: APIs de Dados Abertos do Legislativo (Câmara e Senado) — proposições/matérias tributárias e trabalhistas.
+-- NÃO-oficiais: proposição em tramitação não é norma vigente; trazem o tema ao radar. Coletor novo "api_legislativo".
+insert into public.radar_fontes (slug, nome, orgao, abrangencia, oficial, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
+select v.* from (values
+  ('camara-proposicoes', 'Câmara dos Deputados — Proposições (tributário/trabalhista)', 'Câmara dos Deputados', 'federal', false, 'api_legislativo', 'https://dadosabertos.camara.leg.br/api/v2/proposicoes', '{"casa": "camara", "janela_dias": 15, "temas": [70, 58], "paginas_max": 3, "palavras": "tribut|imposto|icms|iss|cbs|ibs|pis|cofins|reforma tribut|simples|mei|trabalh|clt|emprego|fgts|inss|previd|salario|folha"}'::jsonb, 'federal', 12),
+  ('senado-materias', 'Senado Federal — Matérias (tributário/trabalhista)', 'Senado Federal', 'federal', false, 'api_legislativo', 'https://legis.senado.leg.br/dadosabertos/processo', '{"casa": "senado", "janela_dias": 15, "paginas_max": 1, "palavras": "tribut|imposto|icms|iss|cbs|ibs|pis|cofins|reforma tribut|simples|mei|trabalh|clt|emprego|fgts|inss|previd|salario|folha"}'::jsonb, 'federal', 12)
 ) as v (slug, nome, orgao, abrangencia, oficial, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
 where not exists (select 1 from public.radar_instalacoes i where i.depois is not null)
 on conflict (slug) do nothing;

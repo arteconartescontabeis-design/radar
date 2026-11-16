@@ -174,5 +174,40 @@
       "janela_dias": 30,
       "excluir_url": "\\.(png|jpe?g|gif|pdf|mp4)$"
     }
+  },
+  {
+    "slug": "camara-proposicoes",
+    "nome": "Câmara dos Deputados — Proposições (tributário/trabalhista)",
+    "orgao": "Câmara dos Deputados",
+    "abrangencia": "federal",
+    "oficial": false,
+    "tipo_coletor": "api_legislativo",
+    "url": "https://dadosabertos.camara.leg.br/api/v2/proposicoes",
+    "categoria_padrao": "federal",
+    "frequencia_horas": 12,
+    "config": {
+      "casa": "camara",
+      "janela_dias": 15,
+      "temas": [70, 58],
+      "paginas_max": 3,
+      "palavras": "tribut|imposto|icms|iss|cbs|ibs|pis|cofins|reforma tribut|simples|mei|trabalh|clt|emprego|fgts|inss|previd|salario|folha"
+    }
+  },
+  {
+    "slug": "senado-materias",
+    "nome": "Senado Federal — Matérias (tributário/trabalhista)",
+    "orgao": "Senado Federal",
+    "abrangencia": "federal",
+    "oficial": false,
+    "tipo_coletor": "api_legislativo",
+    "url": "https://legis.senado.leg.br/dadosabertos/processo",
+    "categoria_padrao": "federal",
+    "frequencia_horas": 12,
+    "config": {
+      "casa": "senado",
+      "janela_dias": 15,
+      "paginas_max": 1,
+      "palavras": "tribut|imposto|icms|iss|cbs|ibs|pis|cofins|reforma tribut|simples|mei|trabalh|clt|emprego|fgts|inss|previd|salario|folha"
+    }
   }
 ]

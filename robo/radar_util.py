@@ -142,11 +142,12 @@ def extrair_texto(html: str, seletores: str | None = None) -> str:
 
 
 def baixar(url: str, sessao: requests.Session | None = None, tentativas: int = 3,
-           espera: float = 2.0, limite: int = 40) -> tuple[int, str]:
+           espera: float = 2.0, limite: int = 40, cabecalhos: dict | None = None) -> tuple[int, str]:
     """Baixa a URL com novas tentativas. Devolve (status HTTP, conteúdo em texto).
 
     Levanta ErroDownload em falha — o chamador registra o erro; uma falha de
     download nunca é tratada como "não há novidades".
+    `cabecalhos` sobrescreve os cabeçalhos padrão (ex.: {"Accept": "application/json"} para uma API que só devolve JSON com ele).
     """
     sessao = sessao or requests.Session()
     ultimo = None
@@ -156,6 +157,7 @@ def baixar(url: str, sessao: requests.Session | None = None, tentativas: int = 3
                 "User-Agent": AGENTE,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "pt-BR,pt;q=0.9",
+                **(cabecalhos or {}),
             })
             if r.status_code == 200:
                 declarado = (r.headers.get("content-type") or "").lower()

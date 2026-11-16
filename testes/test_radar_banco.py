@@ -147,7 +147,7 @@ def test_leitor_le_mas_nao_grava(limpo):
     a = novo_assunto(limpo)
     with como("authenticated", LEITOR) as c:
         assert c.execute("select count(*) from radar_capturas").fetchone()[0] == 1
-        assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 11
+        assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 13
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             c.execute("insert into radar_assuntos (titulo) values ('x')")
         assert c.execute("update radar_assuntos set titulo = 'alterado' where id = %s", (a,)).rowcount == 0
@@ -579,12 +579,12 @@ def test_fonte_apagada_nao_volta_ao_reexecutar_o_setup(db):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_m5").returncode == 0
         assert psql(SETUP, "radar_m5").returncode == 0
         with conectar("radar_m5") as c:
-            assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 11
+            assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 13
             c.execute("delete from radar_fontes where slug = 'cgibs-noticias'")
             c.execute("delete from radar_categorias where slug = 'informativos'")
         assert psql(SETUP, "radar_m5").returncode == 0
         with conectar("radar_m5") as c:
-            assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 10
+            assert c.execute("select count(*) from radar_fontes").fetchone()[0] == 12
             assert c.execute("select count(*) from radar_categorias").fetchone()[0] == 7
     finally:
         with conectar("postgres") as c:
@@ -736,7 +736,7 @@ def test_painel_e_lista_de_assuntos_trazem_os_numeros_certos(limpo):
     with como("authenticated", LEITOR) as c:
         p = c.execute("select fontes_ativas, na_fila, alta_relevancia, em_verificacao, aguardando_aprovacao, no_site "
                       "from radar_v_painel").fetchone()
-        assert p == (11, 1, 1, 1, 1, 1)
+        assert p == (13, 1, 1, 1, 1, 1)
         linha = c.execute("select evidencias, evidencias_conferidas, conteudos, orgaos, status, capturado_em "
                           "from radar_v_assuntos where id = %s", (a,)).fetchone()
         assert linha[:5] == (1, 1, 1, "Receita Federal do Brasil", "publicado")
@@ -1259,12 +1259,12 @@ def test_setup_instala_mesmo_sem_a_transacao_do_editor(tmp_path):
         assert psql(RAIZ / "testes" / "supabase_simulado.sql", "radar_sem_tx").returncode == 0
         r = psql(_sem_transacao(SETUP, tmp_path / "setup.sql"), "radar_sem_tx")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_sem_tx") == (41, 11, 8, 11, 1, 0)         # v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e "termo_imagem"; v0.57.0: + radar_polimento_uso e "polimento"
+        assert _resumo("radar_sem_tx") == (41, 13, 8, 11, 1, 0)         # v0.63.0: + radar_fotos_acervo; v0.60.0: + radar_venda_roteiros; v0.29.0: + radar_lembretes e a chave "lembretes"; v0.46.0: + radar_pessoas_termos e "termo_imagem"; v0.57.0: + radar_polimento_uso e "polimento"
         with conectar("radar_sem_tx") as c:
             assert c.execute("select versao, antes, jsonb_array_length(depois) from radar_instalacoes").fetchone() == ("v0.50.0", [], 41)
             # v0.31.0 (revisão): na instalação nova as fontes iniciais entram ligadas, a rfb-normas também (o Passo 1 da instalação
             # já roda o diagnóstico dela pelo GitHub), e o LEIAME ("Fontes iniciais") diz isso. v0.106.0: 6 + 4 feeds de classe = 10
-            assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (11, True)
+            assert c.execute("select count(*) filter (where ativo), bool_and(ativo) from radar_fontes").fetchone() == (13, True)
         leiame = (RAIZ / "LEIAME-radar.md").read_text(encoding="utf-8")
         linha = next(l for l in leiame.splitlines() if l.startswith("| Receita Federal — Atos normativos |"))
         assert "Na instalação nova ela entra **ligada**" in linha and "se o diagnóstico der HTTP 403, desligue-a" in linha
@@ -1288,7 +1288,7 @@ def test_setup_conclui_por_cima_da_instalacao_que_parou_no_erro_da_v0_4_0(tmp_pa
         for script in (SETUP, _sem_transacao(SETUP, tmp_path / "setup.sql")):          # com e sem transação
             r = psql(script, "radar_parcial")
             assert r.returncode == 0, r.stderr
-        assert _resumo("radar_parcial") == (41, 11, 8, 11, 2, 0)
+        assert _resumo("radar_parcial") == (41, 13, 8, 11, 2, 0)
         with conectar("radar_parcial") as c:
             assert c.execute("select frequencia_horas from radar_fontes where slug = 'pgfn-noticias'").fetchone()[0] == 3     # ajuste preservado
             # a atualização retira o acesso público que a v0.4 concedia (página pública extinta na v0.5.0)
@@ -1315,7 +1315,7 @@ def test_execucao_interrompida_fica_registrada_e_nao_conta_como_instalada(tmp_pa
             assert c.execute("select count(*), count(depois) from radar_instalacoes").fetchone() == (1, 0)
         r = psql(SETUP, "radar_meio")
         assert r.returncode == 0, r.stderr
-        assert _resumo("radar_meio") == (41, 11, 8, 11, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
+        assert _resumo("radar_meio") == (41, 13, 8, 11, 1, 1)       # as fontes e categorias iniciais entram na execução que conclui
     finally:
         with conectar("postgres") as c:
             c.execute("drop database if exists radar_meio with (force)")
@@ -1720,7 +1720,7 @@ def test_administrador_cadastra_altera_e_exclui_fonte_e_o_formato_e_conferido(li
         assert c.execute("delete from radar_fontes where id = %s returning id", (fid,)).fetchone() is None
     with como("authenticated", ADMIN) as c:
         assert c.execute("delete from radar_fontes where id = %s returning id", (fid,)).fetchone() == (fid,)
-    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 11
+    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 13
 
 
 def test_registro_no_site_mostra_a_fundamentacao_e_avisa_quando_a_base_cai(limpo):
