@@ -10,6 +10,8 @@
 // verificação é feita aqui dentro, nos passos 1 e 2.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
+const VERSAO = "0.1.0";   // metadado (função nova, à parte do versionamento da tela do Radar)
+
 const DP_URL = Deno.env.get("DP_URL") ?? "https://fbxelwhdiisfmnwrerbl.supabase.co";
 const DP_CHAVE = Deno.env.get("DP_PUBLISHABLE_KEY") ?? "sb_publishable_iRqjOGU1ialauv_wHYarbw_cRzspHH6";
 const ORIGENS = (Deno.env.get("ORIGENS_PERMITIDAS") ?? "https://arteconartescontabeis-design.github.io")
