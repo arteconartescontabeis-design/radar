@@ -3218,7 +3218,7 @@ def test_administrador_cadastra_fonte_nova_pela_tela_e_o_robo_passa_a_ver(pagina
     form.locator("[name=url]").fill("https://www.palhoca.sc.gov.br/noticias")
     form.locator("button", has_text="Cadastrar fonte").click()
     pagina.wait_for_selector("#recado .erro >> text=informe o padrão dos links")
-    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 10
+    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 11
     assert form.locator("[name=nome]").input_value() == "Prefeitura de Palhoça — Notícias"        # nada do que foi digitado se perdeu
     assert form.locator("[name=tipo_coletor] option").all_inner_texts() == ["Página com lista de links", "Feed RSS"]
     form.locator("[name=padrao_url]").fill("/noticias/(\\d+)+$")
@@ -3241,7 +3241,7 @@ def test_administrador_cadastra_fonte_nova_pela_tela_e_o_robo_passa_a_ver(pagina
         form.locator("[name=config]").fill(config)
         form.locator("button", has_text="Cadastrar fonte").click()
         pagina.wait_for_selector(f"#recado .erro >> text={erro}")
-    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 10
+    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 11
     form.locator("[name=config]").fill("{}")
     assert not form.locator("[name=oficial]").is_checked()                                   # v0.16.0: fonte nova começa como NÃO oficial
     form.locator("[name=oficial]").check()
@@ -3257,7 +3257,7 @@ def test_administrador_cadastra_fonte_nova_pela_tela_e_o_robo_passa_a_ver(pagina
     pagina.screenshot(path=str(FOTOS / "26-fontes-cadastro.png"), full_page=True)
     # o robô lê as fontes ativas do banco: a nova já entra na próxima coleta
     lidas = requests.get(f"{BASE}/rest/v1/radar_fontes?select=slug&ativo=eq.true&order=id", headers={"Authorization": "Bearer " + jwt("service_role")}).json()
-    assert lidas[-1]["slug"] == "prefeitura-de-palhoca-noticias" and len(lidas) == 11
+    assert lidas[-1]["slug"] == "prefeitura-de-palhoca-noticias" and len(lidas) == 12
     # mesmo nome de novo: recusado com explicação
     pagina.click("text=Nova fonte")
     form = pagina.locator("#nova-fonte form[data-form=fonte]")
@@ -3294,13 +3294,13 @@ def test_administrador_cadastra_fonte_nova_pela_tela_e_o_robo_passa_a_ver(pagina
     tr_nova.locator("text=Configurar").click()
     pagina.locator("#tab-fontes form[data-form=fonte] >> text=Excluir fonte").click()
     pagina.wait_for_selector("text=Fonte excluída.")
-    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 10
+    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 11
     # fonte que já tem captura não é excluída: a tela explica o que fazer
     captura(limpo)
     pagina.locator("#tab-fontes tr", has_text="Receita Federal — Atos normativos").locator("text=Configurar").click()
     pagina.locator("#tab-fontes form[data-form=fonte] >> text=Excluir fonte").click()
     pagina.wait_for_selector("#recado .erro >> text=desmarque “Fonte ativa”")
-    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 10
+    assert limpo.execute("select count(*) from radar_fontes").fetchone()[0] == 11
 
 
 def test_fonte_com_dados_maliciosos_aparece_como_texto(pagina, limpo):

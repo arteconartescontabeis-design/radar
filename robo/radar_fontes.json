@@ -100,6 +100,22 @@
     }
   },
   {
+    "slug": "sefsc-noticias",
+    "nome": "SEF/SC — Notícias",
+    "orgao": "Secretaria de Estado da Fazenda de Santa Catarina",
+    "abrangencia": "estadual_sc",
+    "tipo_coletor": "html_links",
+    "url": "https://www.sef.sc.gov.br/noticias",
+    "categoria_padrao": "santa-catarina",
+    "frequencia_horas": 6,
+    "config": {
+      "janela_dias": 30,
+      "padrao_url": "/noticias/[a-z0-9][a-z0-9-]*$",
+      "titulo_do_contexto": true,
+      "seletor_texto": "#conteudo-inicial, article, main"
+    }
+  },
+  {
     "slug": "cfc-noticias",
     "nome": "CFC — Notícias",
     "orgao": "Conselho Federal de Contabilidade",
