@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.111.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.112.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -1736,9 +1736,16 @@ const PAUTA = {
       if(!naTela()){ recado("A tela mudou enquanto a IA trabalhava: gere de novo na peça.", "aviso"); return; }
       const ta = $("#peca-roteiro");
       if(ta){ ta.value = String(r?.roteiro || ""); ta.dispatchEvent(new Event("input", {bubbles:true})); ta.scrollIntoView({block:"center"}); }
+      // v0.112.0: a IA também escreve a LEGENDA resumida do post (Instagram e Facebook) a partir do roteiro — para quem lê, não a fala
+      let legendas = 0;
+      for(const k of ["instagram", "facebook"]){
+        const leg = $("#peca-legenda-" + k), v = r?.["legenda_" + k];
+        if(leg && v){ leg.value = String(v); leg.dispatchEvent(new Event("input", {bubbles:true})); legendas++; }
+      }
       // v0.110.0: mostra os avisos de publicidade que a IA devolve (como no Vídeo de venda), em vez de descartá-los
       const avisos = Array.isArray(r?.avisos) ? r.avisos : [];
-      recado("Roteiro de venda escrito pela IA: revise no roteiro abaixo (e acrescente o fecho com o contato) antes de salvar e gravar pelo corretor." +
+      recado("Roteiro de venda escrito pela IA" + (legendas ? " (com a legenda resumida do Instagram e do Facebook)" : "") +
+        ": revise o roteiro e as legendas, acrescente o fecho com o contato e, nas legendas, “Pôr a identificação legal e as hashtags” antes de salvar." +
         (avisos.length ? ` Pontos a conferir: ${avisos.join("; ")}.` : ""), avisos.length ? "aviso" : false);
     },
     /* Usar a sugestão: a chamada, o apoio, os cartões e as legendas da tela dão lugar aos da IA, com o nome na peça no lugar de {PESSOA1}

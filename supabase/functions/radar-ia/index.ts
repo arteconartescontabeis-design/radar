@@ -155,7 +155,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.63.0";
+const VERSAO = "0.64.0";   // v0.64.0: roteiro_venda também devolve a legenda resumida do Instagram e do Facebook (do roteiro)
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -2716,8 +2716,8 @@ async function roteiroVenda(reg: Registro, servico: unknown, destaque: unknown) 
   const s = limpar(servico, 80), d = limpar(destaque, 300);
   if (s.length < 3) throw new Erro(400, "Diga o serviço do vídeo (de 3 a 80 caracteres).");
   const texto = { type: "string" };
-  const esquema = { type: "object", additionalProperties: false, required: ["titulo", "roteiro", "duracao_s"],
-    properties: { titulo: texto, roteiro: texto, duracao_s: { type: "integer" } } };
+  const esquema = { type: "object", additionalProperties: false, required: ["titulo", "roteiro", "duracao_s", "legenda_instagram", "legenda_facebook"],
+    properties: { titulo: texto, roteiro: texto, duracao_s: { type: "integer" }, legenda_instagram: texto, legenda_facebook: texto } };
   const instrucoes = "Você escreve o ROTEIRO FALADO de um vídeo curto e vertical (30 a 60 segundos) em que uma pessoa da equipe da " +
     "Artecon Artes Contábeis (Palhoça/SC) apresenta um serviço do escritório, em português do Brasil, para gravar lendo no teleprompter. " +
     "Regras OBRIGATÓRIAS: " +
@@ -2726,17 +2726,24 @@ async function roteiroVenda(reg: Registro, servico: unknown, destaque: unknown) 
     "e um fecho com convite moderado ('fale com a gente', 'agende uma conversa') — SEM telefone, link, endereço, preço ou CNPJ: o contato é acrescentado depois, pelo sistema; " +
     "(c) FATOS: nenhum número, data, prazo, valor, percentual, norma ou estatística — o vídeo apresenta o serviço, não dá consultoria nem promete resultado; " +
     "(d) 'titulo' com até 60 caracteres (o nome do roteiro na biblioteca) e 'duracao_s' com a duração estimada da fala, em segundos (30 a 60); " +
-    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_DADOS + blocoOrientacoes(reg);
+    "(e) 'legenda_instagram' e 'legenda_facebook': a LEGENDA do post, para quem LÊ no feed (NÃO é a fala do vídeo). Cada uma é um RESUMO " +
+    "curto e simples da mensagem do roteiro — a ideia principal, para quem é e um convite moderado ao contato —, SEM repetir o roteiro " +
+    "inteiro; até 400 caracteres; sem hashtag, sem link e sem CNPJ, CRC, telefone, endereço ou preço (a identificação legal e as hashtags " +
+    "o sistema acrescenta depois, no fim). A do Facebook pode ser igual ou um pouco mais curta. Valem as MESMAS travas de publicidade do roteiro; " +
+    REGRA_PUBLICIDADE + REGRA_ESTILO + REGRA_FORMATO + REGRA_DADOS + blocoOrientacoes(reg);
   const entrada = `<<<TEXTO pedido>>>\nServiço: ${s}\nO que destacar: ${d || "—"}\n<<<FIM>>>`;
   const { json } = await perguntar(reg, MODELO, instrucoes, entrada, "roteiro_venda", esquema, 1500);
   const titulo = normalizarEspacos(String(json.titulo ?? "")).slice(0, 60) || ("Vídeo de venda — " + s).slice(0, 60);
   const roteiro = semMarcasDeBloco(String(json.roteiro ?? "")).replace(/\r\n?/g, "\n").trim().slice(0, 2400);
   if (roteiro.split(/\s+/).length < 30) throw new Erro(502, "O roteiro veio curto demais: tente de novo.");
-  const avisos: string[] = [], pub = termosPublicidade(titulo, roteiro);
-  const trava = [...new Set([...pub.trava, ...termosPeca(titulo, roteiro)])];
+  // v0.112.0: a legenda do post é um RESUMO do roteiro (não a fala); até 600 caracteres, sem a identificação/hashtags (o sistema põe depois)
+  const legenda = (v: unknown) => semMarcasDeBloco(String(v ?? "")).replace(/\r\n?/g, "\n").trim().slice(0, 600);
+  const legenda_instagram = legenda(json.legenda_instagram), legenda_facebook = legenda(json.legenda_facebook);
+  const avisos: string[] = [], pub = termosPublicidade(titulo, roteiro, legenda_instagram, legenda_facebook);
+  const trava = [...new Set([...pub.trava, ...termosPeca(titulo, roteiro, legenda_instagram, legenda_facebook)])];
   if (trava.length) avisos.push(`Termo que a publicidade contábil não admite: ${trava.join(", ")}. Troque antes de gravar (o envio ao corretor trava com ele).`);
   if (pub.aviso.length) avisos.push(`Confira o tom destes termos (a publicidade da profissão contábil informa, não vende): ${pub.aviso.join(", ")}.`);
-  return { titulo, roteiro, duracao_s: Math.min(90, Math.max(20, Math.round(Number(json.duracao_s)) || 45)), avisos };
+  return { titulo, roteiro, duracao_s: Math.min(90, Math.max(20, Math.round(Number(json.duracao_s)) || 45)), legenda_instagram, legenda_facebook, avisos };
 }
 
 /* v0.63.0: o TÍTULO DA CAPA do reel (a capa-arte automática do corretor, no molde aprovado pelo dono): 2 ou 3 linhas
