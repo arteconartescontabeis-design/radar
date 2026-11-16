@@ -190,7 +190,8 @@
       "janela_dias": 15,
       "temas": [70, 58],
       "paginas_max": 3,
-      "palavras": "tribut|imposto|icms|iss|cbs|ibs|pis|cofins|reforma tribut|simples|mei|trabalh|clt|emprego|fgts|inss|previd|salario|folha"
+      "sem_pagina_de_texto": true,
+      "palavras": "tribut|imposto|icms|\\biss\\b|\\bcbs\\b|\\bibs\\b|\\bpis\\b|cofins|reforma tribut|simples|\\bmei\\b|trabalh|\\bclt\\b|emprego|fgts|inss|previd|salario|folha"
     }
   },
   {
@@ -207,7 +208,8 @@
       "casa": "senado",
       "janela_dias": 15,
       "paginas_max": 1,
-      "palavras": "tribut|imposto|icms|iss|cbs|ibs|pis|cofins|reforma tribut|simples|mei|trabalh|clt|emprego|fgts|inss|previd|salario|folha"
+      "sem_pagina_de_texto": true,
+      "palavras": "tribut|imposto|icms|\\biss\\b|\\bcbs\\b|\\bibs\\b|\\bpis\\b|cofins|reforma tribut|simples|\\bmei\\b|trabalh|\\bclt\\b|emprego|fgts|inss|previd|salario|folha"
     }
   }
 ]

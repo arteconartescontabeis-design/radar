@@ -327,6 +327,20 @@ def test_api_legislativo_camara_e_senado(monkeypatch):
     assert sen.itens[0].titulo == "PLP 289/2026" and sen.itens[0].data == date(2026, 11, 13)
 
 
+def test_filtro_de_tema_do_legislativo_ancora_siglas_curtas_v110():
+    """v0.110.0: as siglas curtas do tema (iss, mei, pis, ibs, cbs, clt) ficam ancoradas com \\b, então casam a sigla de
+    verdade (ICMS, CBS, MEI, CLT) mas não casam pedaço de palavra (comissão, primeiro, episódio, meio) num feed tributário/trabalhista.
+    Também confere que as fontes guardam a ementa da própria API (sem_pagina_de_texto), em vez de buscar a página SPA da ficha."""
+    cfg = FONTES["camara-proposicoes"]["config"]
+    assert cfg.get("sem_pagina_de_texto") is True and FONTES["senado-materias"]["config"].get("sem_pagina_de_texto") is True
+    passa = coletores.filtro_de_tema(cfg)
+    it = lambda titulo: coletores.Item(url="https://x/1", titulo=titulo)
+    for t in ["Altera o ICMS do estado", "Regras da CBS e do IBS", "Cria o Simples para o MEI", "Direitos pela CLT e o FGTS", "Reforma tributária"]:
+        assert passa(it(t)), t
+    for t in ["Cria comissão parlamentar de inquérito", "Primeiro dia de aula", "Institui o episódio nacional", "Dispõe sobre o meio ambiente"]:
+        assert not passa(it(t)), t
+
+
 # ----------------------------------------------------------------- utilidades
 @pytest.mark.parametrize("texto, esperado", [
     ("30/09/2026", date(2026, 9, 30)),

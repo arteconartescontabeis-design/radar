@@ -1012,6 +1012,8 @@ begin
 end $$;
 
 -- Trilha de auditoria (somente acréscimo)
+-- ATENÇÃO: esta função é redefinida mais abaixo (seção 6.46, v0.46.0 — com 'cpf' em radar_pessoas). As duas devem ficar IDÊNTICAS;
+-- esta existe só porque o gatilho radar_tg_auditar é criado antes daquela seção (a função precisa existir na hora). A que VALE é a 2ª.
 create or replace function public.radar_fn_auditar() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
@@ -1023,7 +1025,7 @@ declare
   v_tira text[] := case tg_table_name
                      when 'radar_redes_envios' then array['imagem']
                      when 'radar_pauta_pecas'  then array['ia','assunto','objetivo','observacao','quem_aparece']
-                     when 'radar_pessoas'      then array['nome','nome_na_peca','crc','area']
+                     when 'radar_pessoas'      then array['nome','nome_na_peca','crc','area','cpf']   -- v0.46.0: + cpf
                      -- v0.22.0: do vídeo, a fala (para conferência e transcrita, no relatório), os ajustes da legenda e a cartela (nome e
                      -- CRC de quem fala) ficam fora; ficam a situação, os clipes declarados, o hash e quem enviou
                      when 'radar_videos'       then array['relatorio','fala_roteiro','ajustes','cartela_linhas']
@@ -9161,8 +9163,8 @@ on conflict (slug) do nothing;
 -- NÃO-oficiais: proposição em tramitação não é norma vigente; trazem o tema ao radar. Coletor novo "api_legislativo".
 insert into public.radar_fontes (slug, nome, orgao, abrangencia, oficial, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
 select v.* from (values
-  ('camara-proposicoes', 'Câmara dos Deputados — Proposições (tributário/trabalhista)', 'Câmara dos Deputados', 'federal', false, 'api_legislativo', 'https://dadosabertos.camara.leg.br/api/v2/proposicoes', '{"casa": "camara", "janela_dias": 15, "temas": [70, 58], "paginas_max": 3, "palavras": "tribut|imposto|icms|iss|cbs|ibs|pis|cofins|reforma tribut|simples|mei|trabalh|clt|emprego|fgts|inss|previd|salario|folha"}'::jsonb, 'federal', 12),
-  ('senado-materias', 'Senado Federal — Matérias (tributário/trabalhista)', 'Senado Federal', 'federal', false, 'api_legislativo', 'https://legis.senado.leg.br/dadosabertos/processo', '{"casa": "senado", "janela_dias": 15, "paginas_max": 1, "palavras": "tribut|imposto|icms|iss|cbs|ibs|pis|cofins|reforma tribut|simples|mei|trabalh|clt|emprego|fgts|inss|previd|salario|folha"}'::jsonb, 'federal', 12)
+  ('camara-proposicoes', 'Câmara dos Deputados — Proposições (tributário/trabalhista)', 'Câmara dos Deputados', 'federal', false, 'api_legislativo', 'https://dadosabertos.camara.leg.br/api/v2/proposicoes', '{"casa": "camara", "janela_dias": 15, "temas": [70, 58], "paginas_max": 3, "sem_pagina_de_texto": true, "palavras": "tribut|imposto|icms|\\biss\\b|\\bcbs\\b|\\bibs\\b|\\bpis\\b|cofins|reforma tribut|simples|\\bmei\\b|trabalh|\\bclt\\b|emprego|fgts|inss|previd|salario|folha"}'::jsonb, 'federal', 12),
+  ('senado-materias', 'Senado Federal — Matérias (tributário/trabalhista)', 'Senado Federal', 'federal', false, 'api_legislativo', 'https://legis.senado.leg.br/dadosabertos/processo', '{"casa": "senado", "janela_dias": 15, "paginas_max": 1, "sem_pagina_de_texto": true, "palavras": "tribut|imposto|icms|\\biss\\b|\\bcbs\\b|\\bibs\\b|\\bpis\\b|cofins|reforma tribut|simples|\\bmei\\b|trabalh|\\bclt\\b|emprego|fgts|inss|previd|salario|folha"}'::jsonb, 'federal', 12)
 ) as v (slug, nome, orgao, abrangencia, oficial, tipo_coletor, url, config, categoria_padrao, frequencia_horas)
 where not exists (select 1 from public.radar_instalacoes i where i.depois is not null)
 on conflict (slug) do nothing;
@@ -11055,6 +11057,7 @@ join public.radar_pessoas pe on pe.id = u.pessoa_id;
 
 -- 7b) o CPF também fica FORA da trilha de auditoria (como o nome, o nome na peça, o CRC e a área): a prova completa (com o CPF e a
 --     imagem da assinatura) fica em radar_pessoas_termos, que não é auditada. A trilha de radar_pessoas segue sem dado pessoal.
+-- Esta é a definição que VALE de radar_fn_auditar (redefine a de cima); as duas devem ficar IDÊNTICAS (ver a nota lá em cima).
 create or replace function public.radar_fn_auditar() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare

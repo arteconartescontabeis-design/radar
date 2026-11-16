@@ -39,7 +39,7 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.109.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.110.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
   bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
@@ -573,7 +573,7 @@ async function telaPeca(id){
         ${comCartoes ? `<label>Cartões ${p.formato === "carrossel_fotos" ? "(um por foto, na mesma ordem)" : "(de 2 a 9, depois da capa)"}</label>
           <div class="cartao-linhas" id="peca-cartoes"${desAr ? ` data-travado="1"` : ""}>${cartoesDe(p).map(c => linhaCartao(c, desAr)).join("")}</div>
           ${desAr ? "" : `<div class="acoes"><button class="btn peq sec" type="button" data-acao="peca-cartao-linha">Acrescentar cartão</button></div>`}` : ""}
-        ${p.tipo === "comercial" && !desAr ? `<div class="painel peca-venda" id="peca-venda">
+        ${p.tipo === "comercial" && p.formato === "reel" && !desAr ? `<div class="painel peca-venda" id="peca-venda">
           <h3>Roteiro de venda pela IA</h3>
           <p class="sub">Escolha o serviço e, se quiser, o que destacar; a IA escreve o roteiro falado (30–60 s), com as travas de publicidade contábil. Ele cai no roteiro abaixo para você revisar e gravar pelo corretor de vídeo.</p>
           <div class="grade">
@@ -1736,7 +1736,10 @@ const PAUTA = {
       if(!naTela()){ recado("A tela mudou enquanto a IA trabalhava: gere de novo na peça.", "aviso"); return; }
       const ta = $("#peca-roteiro");
       if(ta){ ta.value = String(r?.roteiro || ""); ta.dispatchEvent(new Event("input", {bubbles:true})); ta.scrollIntoView({block:"center"}); }
-      recado("Roteiro de venda escrito pela IA: revise no roteiro abaixo (e acrescente o fecho com o contato) antes de salvar e gravar pelo corretor.");
+      // v0.110.0: mostra os avisos de publicidade que a IA devolve (como no Vídeo de venda), em vez de descartá-los
+      const avisos = Array.isArray(r?.avisos) ? r.avisos : [];
+      recado("Roteiro de venda escrito pela IA: revise no roteiro abaixo (e acrescente o fecho com o contato) antes de salvar e gravar pelo corretor." +
+        (avisos.length ? ` Pontos a conferir: ${avisos.join("; ")}.` : ""), avisos.length ? "aviso" : false);
     },
     /* Usar a sugestão: a chamada, o apoio, os cartões e as legendas da tela dão lugar aos da IA, com o nome na peça no lugar de {PESSOA1}
        (as legendas com a fonte das informações conferidas, a identificação legal e as hashtags fixas e a do tema, como no “Pôr a
