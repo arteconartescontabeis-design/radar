@@ -84,6 +84,8 @@ def _camara(sessao, config, hoje, maximo):
 
 
 def _senado(sessao, config, hoje):
+    # O /processo do Senado devolve TODO o período numa lista JSON só (sem envelope de paginação nem links "next"):
+    # uma requisição basta e "paginas_max" não se aplica aqui (é só da Câmara). A janela de dias já limita o tamanho.
     ini = (hoje - timedelta(days=int(config.get("janela_dias", 30)))).isoformat()
     url = f"{SENADO_PROCESSO}?dataInicioApresentacao={ini}&dataFimApresentacao={hoje.isoformat()}&tramitando=S"
     http, dados = _json(sessao, url, cabecalhos={"Accept": "application/json"})
