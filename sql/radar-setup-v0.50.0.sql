@@ -652,7 +652,7 @@ create table if not exists public.radar_pauta_pecas (
   id                 bigint generated always as identity primary key,
   data               date     not null,     -- v0.64.0: sem unique — pode haver mais de uma peça no mesmo dia
   hora               time     not null default '09:30',                      -- hora de Brasília
-  tipo               text     not null check (tipo in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post')),
+  tipo               text     not null check (tipo in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post','comercial')),
   formato            text     not null check (formato in ('imagem','foto','carrossel','carrossel_fotos','reel','story','nenhum')),
   assunto            text     not null default '' check (length(assunto) <= 1000),
   quem_aparece       text     not null default '' check (length(quem_aparece) <= 300),
@@ -3275,7 +3275,7 @@ declare
   v_uso text := case when p_tipo in ('quem_cuida','bastidor') then 'equipe'
                      when p_tipo in ('reel','educativo','agenda','noticia') then 'orientacao'
                      when p_tipo = 'data_equipe' then 'datas'
-                     when p_tipo = 'captacao' then 'captacao' end;
+                     when p_tipo in ('captacao','comercial') then 'captacao' end;   -- comercial (venda de serviços) usa o termo de captação
 begin
   select * into v from public.radar_pessoas where id = p_pessoa;
   if v.id is null then return 'pessoa não cadastrada'; end if;
@@ -3625,7 +3625,7 @@ begin
     when jsonb_typeof(x) is distinct from 'object' then 'linha'
     when coalesce(x->>'data', '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' or not public.radar_data_valida(x->>'data') then 'data'
     when (x->>'data')::date not between date '2020-01-01' and date '2100-12-31' then 'data'
-    when coalesce(x->>'tipo', '') not in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post') then 'tipo'
+    when coalesce(x->>'tipo', '') not in ('noticia','reel','quem_cuida','agenda','bastidor','educativo','captacao','data_equipe','sem_post','comercial') then 'tipo'
     when coalesce(x->>'formato', '') not in ('imagem','foto','carrossel','carrossel_fotos','reel','story','nenhum') then 'formato'
     when jsonb_typeof(x->'assunto') not in ('string','null') or length(coalesce(x->>'assunto', '')) > 1000 then 'assunto'
     when jsonb_typeof(x->'quem_aparece') not in ('string','null') or length(coalesce(x->>'quem_aparece', '')) > 300 then 'quem_aparece'
@@ -11006,7 +11006,7 @@ declare
   v_uso text := case when p_tipo in ('quem_cuida','bastidor') then 'equipe'
                      when p_tipo in ('reel','educativo','agenda','noticia') then 'orientacao'
                      when p_tipo = 'data_equipe' then 'datas'
-                     when p_tipo = 'captacao' then 'captacao' end;
+                     when p_tipo in ('captacao','comercial') then 'captacao' end;   -- comercial (venda de serviços) usa o termo de captação
 begin
   select * into v from public.radar_pessoas where id = p_pessoa;
   if v.id is null then return 'pessoa não cadastrada'; end if;

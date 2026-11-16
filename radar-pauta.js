@@ -39,10 +39,10 @@
    v0.44.0: só a versão e o recado do banco. O teleprompter com gravação pelo navegador fica em radar-video.js (o quadro do reel
    desta peça); as letras grandes, no index.html.
    ==================================================================== */
-const PAUTA_VERSAO = "0.107.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const PAUTA_VERSAO = "0.108.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 
 const TIPOS_PAUTA = {noticia:"Notícia do Radar", reel:"Reel da semana", quem_cuida:"Série Quem cuida", agenda:"Agenda da semana",
-  bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
+  bastidor:"Bastidor", educativo:"Educativo", captacao:"Captação", comercial:"Comercial (venda de serviços)", data_equipe:"Data com a equipe", sem_post:"Sem post no feed"};
 const FORMATOS_PAUTA = {imagem:"Imagem 4:5", foto:"Foto", carrossel:"Carrossel", carrossel_fotos:"Carrossel de fotos", reel:"Reel", story:"Story", nenhum:"—"};
 const SITUACOES_PAUTA = {planejada:"Planejada", em_producao:"Em produção", pronta:"Pronta", aprovada:"Aprovada", cancelada:"Cancelada"};
 const CATEGORIAS_PESSOA = {"":"Sem registro no CRC", contador:"Contador", contadora:"Contadora", tecnico:"Técnico em contabilidade", tecnica:"Técnica em contabilidade"};
@@ -573,6 +573,15 @@ async function telaPeca(id){
         ${comCartoes ? `<label>Cartões ${p.formato === "carrossel_fotos" ? "(um por foto, na mesma ordem)" : "(de 2 a 9, depois da capa)"}</label>
           <div class="cartao-linhas" id="peca-cartoes"${desAr ? ` data-travado="1"` : ""}>${cartoesDe(p).map(c => linhaCartao(c, desAr)).join("")}</div>
           ${desAr ? "" : `<div class="acoes"><button class="btn peq sec" type="button" data-acao="peca-cartao-linha">Acrescentar cartão</button></div>`}` : ""}
+        ${p.tipo === "comercial" && !desAr ? `<div class="painel peca-venda" id="peca-venda">
+          <h3>Roteiro de venda pela IA</h3>
+          <p class="sub">Escolha o serviço e, se quiser, o que destacar; a IA escreve o roteiro falado (30–60 s), com as travas de publicidade contábil. Ele cai no roteiro abaixo para você revisar e gravar pelo corretor de vídeo.</p>
+          <div class="grade">
+            <div><label for="peca-venda-servico">Serviço</label><select id="peca-venda-servico">${(typeof VENDA_SERVICOS !== "undefined" ? VENDA_SERVICOS : ["Departamento Pessoal", "Abertura de empresa", "Fiscal e Reforma Tributária", "Contábil", "Outro serviço"]).map(s => `<option>${h(s)}</option>`).join("")}</select></div>
+            <div><label for="peca-venda-outro">Se “Outro serviço”, qual?</label><input id="peca-venda-outro" maxlength="80"></div></div>
+          <label for="peca-venda-destaque">O que destacar (opcional: o problema do cliente, o diferencial, o público)</label>
+          <textarea id="peca-venda-destaque" rows="2" maxlength="300"></textarea>
+          <div class="acoes"><button class="btn verde" type="button" data-acao="peca-venda-gerar" data-id="${p.id}">Escrever o roteiro de venda com a IA</button></div></div>` : ""}
         ${comRoteiro ? `<label for="peca-roteiro">Roteiro do reel (colado do plano: a coluna “Fala” é o que o corretor de vídeo compara com a gravação; a cartela final com a identificação legal o corretor grava)</label>
           <textarea id="peca-roteiro" name="roteiro" maxlength="6000" rows="8"${desAr}>${h(p.roteiro)}</textarea>` : ""}
         <p class="sub">Legenda vazia: o canal não entra. Cada legenda leva no fim a identificação legal: ${faltaIdentificacao().length
@@ -1714,6 +1723,20 @@ const PAUTA = {
         formato:atual.elements.formato?.value || atual.dataset.formato}); box.scrollIntoView({block:"nearest"}); }
       const n = (Array.isArray(r?.avisos) ? r.avisos.length : 0) + (Array.isArray(r?.ia?.pendencias) ? r.ia.pendencias.length : 0);
       recado(`Sugestão da IA pronta${n ? `, com ${n} ponto(s) a conferir` : ""}: confira e use “Usar a sugestão” para levar os textos aos campos (nada foi salvo).`, n ? "aviso" : false);
+    },
+    /* v0.108.0: peça Comercial (venda de serviços) — a IA escreve o roteiro falado (ação roteiro_venda, a mesma do Vídeo de venda),
+       com as travas de publicidade; cai no campo do roteiro para revisar e gravar pelo corretor. Nada é salvo. */
+    async "peca-venda-gerar"(el){
+      const sel = $("#peca-venda-servico");
+      const servico = (sel?.value === "Outro serviço" ? ($("#peca-venda-outro")?.value || "") : (sel?.value || "")).trim();
+      if(servico.length < 3) throw new ErroApi("Diga o serviço do comercial (de 3 a 80 caracteres).");
+      const id = Number(el.dataset.id), naTela = () => E.aba === "pauta" && E.pauta.peca === id;
+      if(!(await liberarIA("venda-" + id, naTela))) return;
+      const r = await ia("roteiro_venda", {servico, destaque:($("#peca-venda-destaque")?.value || "").trim()});
+      if(!naTela()){ recado("A tela mudou enquanto a IA trabalhava: gere de novo na peça.", "aviso"); return; }
+      const ta = $("#peca-roteiro");
+      if(ta){ ta.value = String(r?.roteiro || ""); ta.dispatchEvent(new Event("input", {bubbles:true})); ta.scrollIntoView({block:"center"}); }
+      recado("Roteiro de venda escrito pela IA: revise no roteiro abaixo (e acrescente o fecho com o contato) antes de salvar e gravar pelo corretor.");
     },
     /* Usar a sugestão: a chamada, o apoio, os cartões e as legendas da tela dão lugar aos da IA, com o nome na peça no lugar de {PESSOA1}
        (as legendas com a fonte das informações conferidas, a identificação legal e as hashtags fixas e a do tema, como no “Pôr a
