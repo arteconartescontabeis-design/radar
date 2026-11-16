@@ -480,21 +480,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.112.0"></script>
-<script src="radar-video.js?v=0.112.0"></script>
-<script src="radar-setor.js?v=0.112.0"></script>
-<script src="radar-respostas.js?v=0.112.0"></script>
+<script src="radar-pauta.js?v=0.113.0"></script>
+<script src="radar-video.js?v=0.113.0"></script>
+<script src="radar-setor.js?v=0.113.0"></script>
+<script src="radar-respostas.js?v=0.113.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.112.0";
+const VERSAO = "0.113.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.113.0", "16/11/2026", [
+    "Publicações num quadro só, em ordem de publicação: a aba <b>Publicações</b> juntou os dois quadros num só — <b>“Conteúdo e Peças da Pauta nas redes”</b> —, com as <b>notícias</b> e as <b>peças da Pauta</b> (reels, carrosséis e fotos) na <b>mesma tabela</b>, ordenadas pela <b>data de publicação</b> (o mais recente no topo). Cada linha mostra o site, o Instagram e o Facebook (publicada com o link e a data, agendada para tal hora, aguardando o robô, ou “Não saiu” com o motivo). Antes eram dois quadros separados. O botão <b>“Abrir a peça”</b> continua levando à peça na Pauta.",
+    "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
   ["0.112.0", "16/11/2026", [
     "Legenda do reel comercial escrita pela IA (resumo, não a fala): no <b>Comercial da Pauta</b> (formato Reel), ao clicar em <b>“Escrever o roteiro de venda com a IA”</b>, além do roteiro falado a IA já escreve a <b>Legenda do Instagram</b> e a <b>Legenda do Facebook</b> — um <b>resumo curto</b> da mensagem do roteiro, para quem <b>lê</b> no feed (não é a fala do vídeo), e preenche os dois campos. Antes, a legenda tinha de ser montada à mão (e acabava virando o roteiro inteiro). Depois é só revisar e apertar <b>“Pôr a identificação legal e as hashtags”</b> em cada uma. Valem as mesmas travas de publicidade contábil do roteiro.",
     "Administrador: faça o <b>Deploy da função radar-ia</b> desta versão (a legenda nova sai dela). Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as outras funções Edge nem o robô."]],
@@ -1959,30 +1962,33 @@ const TELAS = {
     };
     const excluidas = lista.flatMap(c => (c.radar_site_exclusoes || []).filter(x => x.situacao === "excluido").map(x => ({...x, titulo:c.titulo})))
       .sort((x, y) => String(y.excluido_em).localeCompare(String(x.excluido_em))).slice(0, 30);
+    // v0.113.0: um quadro só — notícias (conteúdos) e peças da Pauta (reel/carrossel/foto) juntas, em ordem de publicação (mais recente primeiro)
+    const ultimaPub = ds => ds.filter(Boolean).map(String).sort().pop() || "";
+    const tsConteudo = c => ultimaPub([...(c.radar_divulgacoes || []).map(d => d.publicado_em), ...(c.radar_redes_envios || []).filter(e => e.situacao === "publicado").map(e => e.publicado_em)]) || c.aprovado_em || "";
+    const tsPeca = p => ultimaPub([...(p.radar_redes_envios || []).filter(e => e.situacao === "publicado").map(e => e.publicado_em), p.publicado_manual_em]) || ultimaPub((p.radar_redes_envios || []).map(e => e.agendado_para)) || p.data || "";
+    const linhaConteudo = c => `<tr data-conteudo="${c.id}">${adm ? `<td><input type="checkbox" class="sel-pub" value="${c.id}" aria-label="Selecionar ${h(c.titulo)}"></td>` : ""}
+            <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">${c.status === "aprovado" ? "aprovado em " + dataHora(c.aprovado_em) : "publicado; o texto agora está: " + h((ROTULOS.conteudo[c.status] || c.status).toLowerCase())}</span></td>
+            <td data-canal="site">${noSite(c)}</td><td data-canal="instagram">${naRede(c, "instagram")}</td><td data-canal="facebook">${naRede(c, "facebook")}</td></tr>`;
+    const linhaPeca = p => `<tr data-peca="${p.id}">${adm ? `<td></td>` : ""}
+            <td><b>${h(FORMATO_PECA[p.formato] || p.formato || "Peça")}</b>${p.assunto ? `<br><span class="sub">${h(String(p.assunto).slice(0, 60))}</span>` : ""}<br><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir a peça</button></td>
+            <td data-canal="site"><span class="canal breve">—</span></td><td data-canal="instagram">${pecaNoCanal(p, "instagram")}</td><td data-canal="facebook">${pecaNoCanal(p, "facebook")}</td></tr>`;
+    const linhas = [...lista.map(c => ({t:tsConteudo(c), html:linhaConteudo(c)})), ...pecasEnvio.map(p => ({t:tsPeca(p), html:linhaPeca(p)}))]
+      .sort((a, b) => String(b.t).localeCompare(String(a.t)));
     return `<h1>Publicações no site</h1>
       <p class="sub">A publicação é feita nas páginas da Artecon. Aqui fica o registro: o que já foi ao site (com o link e a data) e o que está aprovado esperando.</p>
-      <div class="painel"><h2>Onde cada conteúdo já foi publicado</h2>
+      <div class="painel"><h2>Conteúdo e Peças da Pauta nas redes</h2>
+        <p class="sub">Tudo o que vai ao site e às redes, em ordem de publicação (mais recente primeiro): as notícias e as peças da Pauta (reels, carrosséis e fotos). Em cada linha, onde já saiu (com o link e a data) ou o status — agendada, aguardando o robô, ou “Não saiu” com o motivo. “Abrir a peça” leva à Pauta para agir.</p>
         <p class="sub" id="resumo-canais">Site: <b>${nSite}</b> publicado(s) e <b>${pendentes.length}</b> faltando · Instagram: <b>${nRede("instagram")}</b> · Facebook: <b>${nRede("facebook")}</b>.</p>
         ${adm ? `<div class="acoes"><button class="btn peq sec" data-acao="redes-testar">Testar conexão com o Instagram e o Facebook</button></div><div id="redes-resultado"></div>` : ""}
         ${adm && lista.length ? `<div class="acoes excluir-grupo" id="excluir-grupo"><b>Excluir publicações selecionadas:</b>
             <label><input type="checkbox" id="exc-site" checked> site</label><label><input type="checkbox" id="exc-instagram" checked> Instagram</label>
             <label><input type="checkbox" id="exc-facebook" checked> Facebook</label>
             <button class="btn peq perigo" type="button" data-acao="excluir-selecionadas">Excluir as selecionadas</button></div>
-          <p class="sub">Marque os conteúdos na primeira coluna. No Instagram e no Facebook a exclusão é na hora; no site, o robô é acionado na hora e exclui em 1 a 2 minutos (se não der, na próxima rodada automática do GitHub).</p>` : ""}
-        ${lista.length ? `<div class="rolagem"><table id="tab-canais"><tr>${adm ? `<th><input type="checkbox" id="marcar-todas" aria-label="Selecionar todos"></th>` : ""}<th>Conteúdo</th><th>Site</th><th>Instagram</th><th>Facebook</th></tr>${lista.map(c => `
-          <tr data-conteudo="${c.id}">${adm ? `<td><input type="checkbox" class="sel-pub" value="${c.id}" aria-label="Selecionar ${h(c.titulo)}"></td>` : ""}
-            <td><button class="titulo-link" data-acao="abrir-assunto" data-id="${c.assunto_id}">${h(c.titulo)}</button><br><span class="sub">${c.status === "aprovado" ? "aprovado em " + dataHora(c.aprovado_em) : "publicado; o texto agora está: " + h((ROTULOS.conteudo[c.status] || c.status).toLowerCase())}</span></td>
-            <td data-canal="site">${noSite(c)}</td><td data-canal="instagram">${naRede(c, "instagram")}</td><td data-canal="facebook">${naRede(c, "facebook")}</td></tr>`).join("")}</table></div>`
-          : `<p class="sub">Nenhum conteúdo aprovado para publicar.</p>`}
+          <p class="sub">Marque na primeira coluna (só as notícias; para agir numa peça, use “Abrir a peça”). No Instagram e no Facebook a exclusão é na hora; no site, o robô é acionado na hora e exclui em 1 a 2 minutos (se não der, na próxima rodada automática do GitHub).</p>` : ""}
+        ${linhas.length ? `<div class="rolagem"><table id="tab-canais"><tr>${adm ? `<th><input type="checkbox" id="marcar-todas" aria-label="Selecionar todos"></th>` : ""}<th>Conteúdo / Peça</th><th>Site</th><th>Instagram</th><th>Facebook</th></tr>${linhas.map(x => x.html).join("")}</table></div>`
+          : `<p class="sub">Nenhum conteúdo nem peça para mostrar.</p>`}
         ${excluidas.length ? `<details class="excluidas"><summary>Excluídas do site (${excluidas.length})</summary><ul>${excluidas.map(x =>
           `<li>${data(x.excluido_em)} — <b>${h(x.titulo)}</b> <span class="sub">(${h(x.url)})</span></li>`).join("")}</ul></details>` : ""}</div>
-      ${pecasEnvio.length ? `<div class="painel" id="pub-pecas"><h2>Peças da Pauta nas redes</h2>
-        <p class="sub">Reels, carrosséis e fotos da Pauta que já foram <b>agendados</b> ou <b>publicados</b> no Instagram e no Facebook. Para agir numa peça (aprovar, reagendar, publicar agora ou não publicar), abra-a na Pauta.</p>
-        <div class="rolagem"><table id="tab-pecas"><tr><th>Dia</th><th>Peça</th><th>Instagram</th><th>Facebook</th><th></th></tr>${pecasEnvio.map(p => `
-          <tr data-peca="${p.id}"><td>${data(p.data)}</td>
-            <td><b>${h(FORMATO_PECA[p.formato] || p.formato || "Peça")}</b>${p.assunto ? `<br><span class="sub">${h(String(p.assunto).slice(0, 60))}</span>` : ""}</td>
-            <td data-canal="instagram">${pecaNoCanal(p, "instagram")}</td><td data-canal="facebook">${pecaNoCanal(p, "facebook")}</td>
-            <td><button class="btn peq sec" type="button" data-acao="abrir-peca" data-id="${p.id}">Abrir a peça</button></td></tr>`).join("")}</table></div></div>` : ""}
       <div class="painel"><h2>Aprovados ainda não publicados no site</h2>
         ${pendentes.length ? `<div class="rolagem"><table id="tab-pendentes"><tr><th>Conteúdo</th><th>Aprovado em</th><th></th></tr>${pendentes.map(c => `
           <tr><td><b>${h(c.titulo)}</b><br><span class="sub">${h(ROTULOS.formato[c.formato] || "")}</span></td><td>${dataHora(c.aprovado_em)}</td>
