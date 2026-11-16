@@ -385,14 +385,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.108.0"
+    assert pagina.inner_text(".versao") == "v0.109.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.108.0" and data == "16/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.109.0" and data == "16/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2444,7 +2444,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.108.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.109.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3333,7 +3333,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.108.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.109.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -3450,6 +3450,30 @@ def test_assunto_mostra_os_passos_e_o_proximo_passo(pagina, limpo):
     pagina.wait_for_selector(".autorizacao li[data-canal=site].c-feito")
     assert pagina.locator(".trilha li.feito").count() == 2                            # o passo 3 espera o Instagram e o Facebook
     assert limpo.execute("select situacao_confirmacao from radar_assuntos where id = %s", (a,)).fetchone()[0] == "confirmado_oficialmente"
+
+
+def test_selo_preparando_com_ia_fica_na_lista_de_assuntos_v109(pagina, limpo):
+    """v0.109.0: o "⏳ Preparando com IA" é guardado no banco (radar_assuntos.preparando_ia_em).
+    A lista de Assuntos mostra o selo enquanto a marca é recente (até 10 min) e some quando ela é
+    limpa ou envelhece — assim o aviso sobrevive a trocar de aba, recarregar ou abrir em outro aparelho."""
+    a, _ = assunto_com_texto(limpo)
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    # o ajudante da tela: marca recente → mostra; velha (11 min) ou vazia → não mostra
+    assert pagina.evaluate("preparandoAgora({preparando_ia_em: new Date().toISOString()})") is True
+    assert pagina.evaluate("preparandoAgora({preparando_ia_em: new Date(Date.now() - 11*60000).toISOString()})") is False
+    assert pagina.evaluate("preparandoAgora({})") is False
+    # marca no banco (como se o "Preparar com IA" tivesse começado) → o selo aparece na lista
+    limpo.execute("update radar_assuntos set preparando_ia_em = now() where id = %s", (a,))
+    ir_aba(pagina, "Assuntos")
+    pagina.wait_for_selector("text=CBS na transição")
+    assert "Preparando com IA" in pagina.inner_text("main")
+    # marca velha (11 min): a lista a trata como obsoleta e o selo some ao recarregar
+    limpo.execute("update radar_assuntos set preparando_ia_em = now() - interval '11 minutes' where id = %s", (a,))
+    pagina.reload()
+    ir_aba(pagina, "Assuntos")
+    pagina.wait_for_selector("text=CBS na transição")
+    assert "Preparando com IA" not in pagina.inner_text("main")
 
 
 def test_assunto_leitor_ve_os_passos_sem_botoes(pagina, limpo):

@@ -328,6 +328,9 @@ alter table public.radar_assuntos add column if not exists liberado_sem_base_mot
 -- encontradas, com o link). É só apoio: a fundamentação continua sendo o texto oficial incluído e o trecho conferido.
 alter table public.radar_assuntos add column if not exists verificacao   jsonb check (verificacao is null or jsonb_typeof(verificacao) = 'object');
 alter table public.radar_assuntos add column if not exists verificado_em timestamptz;
+-- v0.109.0: quando o "Preparar com IA" começou neste assunto (a tela mostra "⏳ Preparando com IA" até terminar; a lista o trata
+-- como obsoleto depois de ~10 min, para um preparo abandonado não ficar marcado para sempre)
+alter table public.radar_assuntos add column if not exists preparando_ia_em timestamptz;
 
 create table if not exists public.radar_assunto_capturas (
   assunto_id  bigint not null references public.radar_assuntos(id) on delete cascade,
@@ -7086,7 +7089,7 @@ create view public.radar_v_assuntos
 with (security_invoker = true) as
 -- colunas listadas (não a.*): coluna nova em radar_assuntos (ex.: a liberação da v0.12.0) não muda esta lista
 select a.id, a.titulo, a.categoria, a.subcategoria, a.abrangencia, a.relevancia, a.situacao_confirmacao, a.status,
-       a.resumo, a.publico_afetado, a.responsavel, a.criado_em, a.atualizado_em,
+       a.resumo, a.publico_afetado, a.responsavel, a.criado_em, a.atualizado_em, a.preparando_ia_em,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id) as evidencias,
        (select count(*) from public.radar_evidencias e where e.assunto_id = a.id and e.trecho_conferido) as evidencias_conferidas,
        (select count(*) from public.radar_conteudos c where c.assunto_id = a.id) as conteudos,

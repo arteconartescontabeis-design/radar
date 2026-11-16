@@ -480,21 +480,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.108.0"></script>
-<script src="radar-video.js?v=0.108.0"></script>
-<script src="radar-setor.js?v=0.108.0"></script>
-<script src="radar-respostas.js?v=0.108.0"></script>
+<script src="radar-pauta.js?v=0.109.0"></script>
+<script src="radar-video.js?v=0.109.0"></script>
+<script src="radar-setor.js?v=0.109.0"></script>
+<script src="radar-respostas.js?v=0.109.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.108.0";
+const VERSAO = "0.109.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.109.0", "16/11/2026", [
+    "“⏳ Preparando com IA” que não some: quando você aperta <b>“Preparar com IA”</b> numa notícia (ou prepara várias de uma vez em lote), a lista de Assuntos passa a mostrar o selo <b>⏳ Preparando com IA</b> ao lado da notícia, e esse aviso agora fica <b>guardado no banco</b> — não desaparece mais se você trocar de aba, recarregar a página ou abrir o Radar em outro computador ou celular. O selo some sozinho quando a IA termina (com sucesso ou com erro) e, por segurança, também some se o preparo passar de 10 minutos (travou). Nada é publicado: os textos continuam indo para “Conferir e aprovar”.",
+    "Administrador: além da tela, esta versão mexe no BANCO (acrescenta a coluna <code>preparando_ia_em</code> em radar_assuntos e refaz a view radar_v_assuntos). Rode no Supabase (SQL Editor) o sql/radar-preparando-ia-v0.109.0.sql (pode rodar de novo; nenhuma tabela nova, nada é apagado). Nenhuma função Edge muda. Publique o index.html com os demais .js e aperte Ctrl+F5."]],
   ["0.108.0", "16/11/2026", [
     "Comercial na Pauta (venda de serviços da Artecon): em Pauta → “+ Nova peça”, o tipo novo <b>Comercial (venda de serviços)</b>. Escolhendo Comercial com formato Reel, a peça mostra o bloco <b>“Roteiro de venda pela IA”</b>: você escolhe o serviço (Departamento Pessoal, Abertura de empresa, Fiscal/Reforma, Contábil ou outro) e, se quiser, o que destacar; a IA escreve o roteiro falado (30–60 s, com as travas de publicidade contábil), que cai no roteiro da peça para revisar e gravar pelo corretor de vídeo — e segue como qualquer reel até a agenda. É o mesmo “Vídeo de venda” que já existia na aba Vídeo, agora também dentro da Pauta.",
     "Administrador: além da tela, esta versão mexe no BANCO (acrescenta o tipo “comercial”). Rode no Supabase (SQL Editor) o sql/radar-correcoes-v0.108.0.sql (pode rodar de novo; nenhuma tabela nova, nada é apagado). Nenhuma função Edge muda (a IA roteiro_venda já estava no ar). Publique o index.html com os demais .js e aperte Ctrl+F5."]],
@@ -1340,6 +1343,14 @@ const IA_FAZENDO = {fundamentar:"buscando o trecho que comprova no texto oficial
   revisar:"conferindo o texto pelos 10 critérios das Diretrizes e corrigindo o que estiver marcado (até 2 minutos)"};
 /* v0.19.0: no “Gerar com IA” (várias chamadas seguidas), o aviso diz também em que etapa está (v0.26.0: “Preparar · etapa X de 4”) */
 let IA_PASSO = "";
+/* v0.109.0: marca no banco que o "Preparar com IA" começou (ou terminou) neste assunto, para a tela mostrar "⏳ Preparando com IA"
+   mesmo se a pessoa sair e voltar. Best-effort (não trava o preparo); a lista trata a marca como obsoleta depois de ~10 min. */
+const PREPARANDO_IA_MIN = 10;
+function marcarPreparando(assunto, ligado){
+  if(!assunto) return;
+  rest("PATCH", "radar_assuntos", {params:{id:"eq." + assunto}, corpo:{preparando_ia_em:ligado ? new Date().toISOString() : null}}).catch(() => {});
+}
+const preparandoAgora = a => !!a?.preparando_ia_em && (Date.now() - new Date(a.preparando_ia_em).getTime()) < PREPARANDO_IA_MIN * 60000;
 function avisoIA(texto){
   let a = $("#ia-trabalhando");
   if(!texto){ clearInterval(a?._relogio); a?.remove(); return; }
@@ -1872,7 +1883,7 @@ const TELAS = {
           <td class="sub">${h(a.orgaos || "—")}</td>
           <td>${selo(ROTULOS.relevancia[a.relevancia], a.relevancia==="alta" ? "erro" : a.relevancia==="media" ? "" : "neutro")}</td>
           <td>${seloSituacao(a.situacao_confirmacao)}</td>
-          <td>${chipPasso(a.status)}<br><span class="sub">${h(ROTULOS.status[a.status])}</span>${a.em_revisao ? " " + selo("aguarda aprovação","alerta") : ""}</td>
+          <td>${chipPasso(a.status)}<br><span class="sub">${h(ROTULOS.status[a.status])}</span>${preparandoAgora(a) ? " " + selo("⏳ Preparando com IA","alerta") : ""}${a.em_revisao ? " " + selo("aguarda aprovação","alerta") : ""}</td>
           <td>${a.evidencias_conferidas}/${a.evidencias} conferidas</td></tr>`).join("")}</table></div>`
         : `<div class="painel"><p class="sub">Nenhum assunto nesta situação.</p></div>`}
       ${botaoMais("assuntos:" + f, itens.length, lim, "assuntos")}`;
@@ -4047,6 +4058,7 @@ const ACOES = {
     }
     else if(ja && !confirm(`Já há ${ja} texto(s) neste assunto. Preparar outro texto com IA, com texto, capa e legendas novos?`)) return;
     if(!(await liberarIA())) return;
+    marcarPreparando(assunto, true);                 // v0.109.0: "⏳ Preparando com IA" fica no banco até terminar (abaixo, no finally)
     const etapa = n => { IA_PASSO = `${dado ? "Preparar este texto" : "Preparar"} · etapa ${n} de 4`; };
     let busca = "", r = null, trechoFalhou = "", g = null, id = dado, capa = true, capaFeita = false, capaVelha = false, rev = null, revFalhou = "", kit = null, kitFalhou = "", atual = null;
     let fotoUsada = null, imagemIa = null, imagemFalhou = "", fotoArtecon = false;   // v0.62.0: a imagem combinada no passo 1; v0.63.0: a foto do acervo da Artecon
@@ -4112,7 +4124,7 @@ const ACOES = {
       if(!kitDe(atual)){ try{ kit = await ia("kit", {conteudo_id:id, assunto_id:assunto, redes_formato:(redes === "reel" ? "foto" : redes)}); } catch(e){ kitFalhou = e.message || "erro"; } }
       // a capa padrão de antes (ou a de agora, se a nova não saiu), com o título antigo: fica o lembrete de refazer (como no “Revisar com IA”)
       if(capaVelha || (rev?.titulo_mudou && !capaFeita && E.capaDesenhada?.has(atual?.imagem_id))) E.capaAntiga = id;
-    }finally{ IA_PASSO = ""; }
+    }finally{ IA_PASSO = ""; marcarPreparando(assunto, false); }      // v0.109.0: terminou (ou falhou) — tira o "⏳ Preparando com IA"
     // o texto vai para o passo 2: só sai do rascunho (o filtro do status não deixa mexer no rejeitado nem no aprovado)
     let paraRevisao = false;
     try{ const linhas = await rest("PATCH", "radar_conteudos", {params:{id:"eq." + id, status:"eq.rascunho", select:"id"}, corpo:{status:"em_revisao"}, prefer:"return=representation"});
@@ -5557,6 +5569,7 @@ async function buscarFotosModal(){
    aberta). Devolve {ok, avisos} quando preparou, {pulado, motivo} quando não era para preparar e {motivo} quando falhou.
    v0.62.0: "imagem" ("foto", "ia" ou "padrao") e "redes" ("foto" ou "carrossel") — o que foi combinado nos seletores do lote. */
 async function prepararUmAssunto(assunto, formato, imagem, redes, passo){
+  marcarPreparando(assunto, true);                   // v0.109.0: "⏳ Preparando com IA" fica no banco durante o preparo em lote
   try{
     passo("conferindo o assunto");
     const [[a], vinc, evid, cont] = await Promise.all([
@@ -5633,7 +5646,7 @@ async function prepararUmAssunto(assunto, formato, imagem, redes, passo){
     return {ok:true, avisos};
   }catch(e){
     return {motivo:String(e.message || "erro inesperado").slice(0, 120)};
-  }
+  }finally{ marcarPreparando(assunto, false); }      // v0.109.0: terminou (ou falhou) — tira o "⏳ Preparando com IA"
 }
 
 /* Imagem da publicação pela IA (v0.25.0: com aparência de foto; opcional e cobrada; sem texto nem marca). Ela é
