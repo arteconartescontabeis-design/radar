@@ -1001,6 +1001,12 @@ begin
     new.atualizado_em := old.atualizado_em;
     return new;
   end if;
+  -- v0.109.0: marcar/desmarcar "⏳ Preparando com IA" (preparando_ia_em) é só um aviso da tela, não edição do assunto:
+  -- a data não muda (senão o item saltaria na lista ordenada por atualizado_em a cada preparo)
+  if tg_table_name = 'radar_assuntos' and (to_jsonb(new) - 'preparando_ia_em') = (to_jsonb(old) - 'preparando_ia_em') then
+    new.atualizado_em := old.atualizado_em;
+    return new;
+  end if;
   new.atualizado_em := now();
   return new;
 end $$;
@@ -1026,9 +1032,10 @@ begin
   if tg_op = 'DELETE' then v_reg := to_jsonb(old); else v_reg := to_jsonb(new); end if;
   -- atualização que só mexe nos campos de saúde/relógio (feita pelo próprio banco
   -- a cada execução do robô) não é decisão de ninguém: não entra na trilha
+  -- v0.109.0: preparando_ia_em (o aviso "⏳ Preparando com IA") é marca de tela, não decisão de ninguém — fora da trilha
   if tg_op = 'UPDATE'
-     and (to_jsonb(old) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em'])
-       = (to_jsonb(new) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em']) then
+     and (to_jsonb(old) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em','preparando_ia_em'])
+       = (to_jsonb(new) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em','preparando_ia_em']) then
     return new;
   end if;
   -- v0.21.0: nem a que só mexe no que não vai à trilha (o plano, a sugestão da IA, o nome, a cópia da imagem) ou nas marcas da
@@ -11060,9 +11067,10 @@ declare
                      else array[]::text[] end;
 begin
   if tg_op = 'DELETE' then v_reg := to_jsonb(old); else v_reg := to_jsonb(new); end if;
+  -- v0.109.0: preparando_ia_em (o aviso "⏳ Preparando com IA") é marca de tela, não decisão de ninguém — fora da trilha
   if tg_op = 'UPDATE'
-     and (to_jsonb(old) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em'])
-       = (to_jsonb(new) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em']) then
+     and (to_jsonb(old) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em','preparando_ia_em'])
+       = (to_jsonb(new) - array['ultimo_sucesso_em','ultima_falha_em','ultimo_erro','falhas_consecutivas','atualizado_em','preparando_ia_em']) then
     return new;
   end if;
   if tg_op = 'UPDATE' and tg_table_name in ('radar_redes_envios','radar_pauta_pecas','radar_pessoas','radar_videos')

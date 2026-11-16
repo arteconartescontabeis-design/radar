@@ -746,6 +746,27 @@ def test_painel_e_lista_de_assuntos_trazem_os_numeros_certos(limpo):
         assert c.execute("select count(*) from radar_v_assuntos").fetchone()[0] == 0
 
 
+def test_marcar_preparando_com_ia_nao_mexe_na_data_nem_na_trilha_v109(limpo):
+    """v0.109.0: o aviso "⏳ Preparando com IA" (radar_assuntos.preparando_ia_em) é marca de tela.
+    Ligá-lo/desligá-lo NÃO muda o atualizado_em do assunto (senão o item saltaria na lista, ordenada por
+    atualizado_em) e NÃO entra na trilha de auditoria (Histórico). Uma edição de verdade continua indo às duas."""
+    a = novo_assunto(limpo)
+    antes = limpo.execute("select atualizado_em from radar_assuntos where id = %s", (a,)).fetchone()[0]
+    trilha = lambda: limpo.execute("select count(*) from radar_auditoria where tabela = 'radar_assuntos' and registro_id = %s",
+                                   (str(a),)).fetchone()[0]
+    trilha0 = trilha()
+    with como("authenticated", EDITOR) as c:                       # o editor marca/desmarca, como a tela faz
+        c.execute("update radar_assuntos set preparando_ia_em = now() where id = %s", (a,))
+        c.execute("update radar_assuntos set preparando_ia_em = null where id = %s", (a,))
+    assert limpo.execute("select atualizado_em from radar_assuntos where id = %s", (a,)).fetchone()[0] == antes
+    assert trilha() == trilha0                                     # nada novo na trilha
+    # uma edição de verdade (relevância) continua mexendo na data e indo à trilha
+    with como("authenticated", EDITOR) as c:
+        c.execute("update radar_assuntos set relevancia = 'alta' where id = %s", (a,))
+    assert limpo.execute("select atualizado_em from radar_assuntos where id = %s", (a,)).fetchone()[0] > antes
+    assert trilha() == trilha0 + 1
+
+
 def test_sql_incremental_da_data_de_captura_da_v0540(limpo):
     """v0.54.0: o sql/radar-assunto-captura-data-v0.54.0.sql (que o administrador roda) acrescenta capturado_em na
     radar_v_assuntos — a data da PRIMEIRA captura do assunto. É um create or replace (pode rodar de novo)."""
