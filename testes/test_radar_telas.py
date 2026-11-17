@@ -385,14 +385,14 @@ def test_usuario_sem_perfil_nao_entra(pagina):
 def test_versao_visivel_e_aba_de_versoes(pagina):
     entrar(pagina)
     pagina.wait_for_selector("text=Painel do dia")
-    assert pagina.inner_text(".versao") == "v0.115.0"
+    assert pagina.inner_text(".versao") == "v0.116.0"
     pagina.click(".versao")
     pagina.wait_for_selector("text=Versão em uso")
     assert "Primeira versão das telas" in pagina.inner_text("main")
     assert "v0.1.0" in pagina.inner_text("main") and "v0.2.0" in pagina.inner_text("main")
     # v0.99.0: a entrada do topo é a da versão em uso (varredura: edição da capa + testes verdes), em 2 itens
     topo, data, itens = pagina.evaluate("VERSOES[0]")
-    assert topo == pagina.evaluate("VERSAO") == "0.115.0" and data == "16/11/2026" and len(itens) == 2
+    assert topo == pagina.evaluate("VERSAO") == "0.116.0" and data == "17/11/2026" and len(itens) == 2
     assert itens[-1].startswith("Administrador:")
     # v0.80.0: a entrada seguinte (a varredura) conta ao dono, em 2 itens
     topo, data, itens = pagina.evaluate('VERSOES.find(x => x[0] === "0.80.0")')
@@ -2444,7 +2444,7 @@ def test_regras_aceitam_termo_com_pontuacao_e_funcao_da_versao_anterior_nao_e_an
     # a v0.39.0 mudou a função de IA (modelos novos, cache e a foto do banco de imagens): a v0.36.0 e anteriores passam a ser
     # apontadas como antigas; a v0.39.0 serve
     assert pagina.evaluate("[versaoMenor('0.39.0', FUNCAO_MINIMA), versaoMenor('0.62.0', FUNCAO_MINIMA), versaoMenor('0.10.0', '0.9.9')]") == [True, False, False]
-    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.115.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
+    assert pagina.evaluate("[FUNCAO_MINIMA, REDES_MINIMA, VERSAO]") == ["0.62.0", "0.46.0", "0.116.0"]       # v0.79.0: o reel agendado precisa da radar-redes v0.46.0 (a antiga não conhece o vídeo); a radar-ia exigida continua a 0.62.0
 
 
 def test_listas_longas_carregam_mais_com_o_botao(pagina, limpo):
@@ -3333,7 +3333,7 @@ def test_visual_da_artecon_logotipo_faixa_rodape_e_aba_como_usar(pagina, limpo):
     assert pagina.get_attribute(".topo .logo", "alt") == "Artecon Artes Contábeis"
     assert pagina.locator(".faixa").count() == 1 and pagina.locator(".tricolor").count() == 1
     rodape = pagina.inner_text("footer.rodape")
-    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.115.0" in rodape
+    assert "Rua Livorno, nº 15, Sala 101" in rodape and "www.artecon.cnt.br" in rodape and "v0.116.0" in rodape
     pagina.screenshot(path=str(FOTOS / "27-painel-visual-artecon.png"), full_page=True)
     pagina.click("nav.abas >> text=Como usar")
     pagina.wait_for_selector("h1 >> text=Como usar o Radar")
@@ -10397,6 +10397,41 @@ def test_teleprompter_v59_enviar_para_correcao(pagina, vtela):
     assert pagina.locator("#teleprompter").count() == 0
     assert pagina.evaluate("(estadoVideo().arquivos[%d] || []).length" % pid) == 2
     assert fv.ARM["tus_pedidos"] == [] and fv.ARM["objetos"] == {}
+
+
+def test_teleprompter_troca_de_camera_que_so_abre_apos_soltar_a_anterior(pagina, vtela):
+    """v0.116.0: em muitos aparelhos a 2ª câmera frontal não abre enquanto a 1ª está aberta — a tela voltava sozinha
+    para a 1ª. Agora, ao falhar, o Radar SOLTA a câmera atual e tenta de novo; a troca passa a valer (sem recado vermelho)."""
+    db, fv = vtela
+    pid, ana = vb.reel(db, roteiro="0–3 s — Fala: Teste da troca de câmera do teleprompter. | Na tela: CAM")
+    entrar(pagina)
+    pagina.wait_for_selector("text=Painel do dia")
+    abrir_video(pagina, db, pid)
+    # duas frontais de mentira; a "cam2" FALHA na 1ª tentativa (como se a cam1 ainda estivesse aberta) e abre na 2ª
+    pagina.evaluate("""() => {
+      const faz = () => { const c = document.createElement("canvas"); c.width = 108; c.height = 192; c.getContext("2d").fillRect(0, 0, 108, 192);
+        const s = c.captureStream(30), ac = new AudioContext(), osc = ac.createOscillator(), dest = ac.createMediaStreamDestination();
+        osc.connect(dest); osc.start(); dest.stream.getAudioTracks().forEach(t => s.addTrack(t)); return s; };
+      window.__abriu = {cam2:0};
+      navigator.mediaDevices.getUserMedia = async (cfg) => {
+        const id = cfg && cfg.video && cfg.video.deviceId && cfg.video.deviceId.exact;
+        if(id === "cam2"){ window.__abriu.cam2++; if(window.__abriu.cam2 === 1) throw new DOMException("em uso", "NotReadableError"); }
+        return faz(); };
+      navigator.mediaDevices.enumerateDevices = async () => [
+        {kind:"audioinput", deviceId:"mic", label:"Microfone"},
+        {kind:"videoinput", deviceId:"cam1", label:"camera2 0, facing front"},
+        {kind:"videoinput", deviceId:"cam2", label:"camera2 2, facing front"}]; }""")
+    pagina.evaluate("MediaRecorder.isTypeSupported = t => String(t).startsWith('video/webm')")
+    pagina.click("[data-acao=video-teleprompter]")
+    pagina.wait_for_selector("#teleprompter #tele-rolo")
+    pagina.wait_for_function("() => !!document.querySelector('#tele-camera')?.srcObject")
+    pagina.wait_for_selector("#tele-cam")
+    limpar_recados(pagina)
+    pagina.select_option("#tele-cam", "cam2")
+    pagina.wait_for_function("() => window.__abriu && window.__abriu.cam2 >= 2")   # tentou de novo depois de soltar a atual
+    assert pagina.evaluate("$('#tele-cam').value") == "cam2"                       # ficou na 2, NÃO voltou para a 1
+    assert pagina.locator("#recado .erro").count() == 0                            # sem recado vermelho
+    pagina.click("[data-acao=tele-fechar]")
 
 
 def test_video_de_venda_roteiro_pela_ia_biblioteca_e_avulso(pagina, limpo):

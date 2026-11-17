@@ -44,7 +44,7 @@
    entrar na lista; o Safari grava MP4, que já entrava. Banco: radar_video_criar e radar_video_criar_avulso aceitam 'video/webm'
    (setup v0.44.0); função radar-video v0.44.0 (a lista TIPOS). As letras grandes do aplicativo ficam no index.html.
    ==================================================================== */
-const VIDEO_VERSAO = "0.115.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
+const VIDEO_VERSAO = "0.116.0";        // igual à VERSAO do index.html; diferente, um dos dois ficou guardado no navegador (Ctrl+F5)
 const VIDEO_PEDACO = 6 * 1024 * 1024;                 // TUS do Supabase: pedaços de 6 MiB (“must be set to 6MB”), o último menor
 const VIDEO_MAX_CLIPES = 12, VIDEO_MAX_BYTES = 500 * 1024 * 1024, VIDEO_MAX_SEGUNDOS = 960;   // v0.33.0: o Instagram aceita reel de 15 min pela API; 960 s dão folga
 // o envio retomável: o caminho com o token assinado (a rota "/sign" do Storage confere o x-signature, sem sessão); o segundo é a reserva
@@ -789,17 +789,35 @@ async function trocarCamTele(modo){
   const sel = $("#tele-cam");
   if(!TELE || !sel || (TELE.gravador && TELE.gravador.state === "recording")) return;
   const id = sel.value;
+  const altas = {deviceId:{exact:id}, width:{ideal:2160}, height:{ideal:3840}, aspectRatio:{ideal:9 / 16}};
+  const faixasVideo = () => TELE.fluxo?.getVideoTracks?.() || [];
+  const soltarVideo = () => faixasVideo().forEach(t => { try{ TELE.fluxo.removeTrack(t); }catch(e){ /* já saiu */ } t.stop(); });
+  const atual = faixasVideo()[0]?.getSettings?.().deviceId || "";
   try{
-    const novo = await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id}, width:{ideal:2160}, height:{ideal:3840}, aspectRatio:{ideal:9 / 16}}});
+    let novo;
+    try{
+      novo = await navigator.mediaDevices.getUserMedia({video:altas});          // caminho de sempre: abre a nova e depois solta a antiga
+    }catch(e1){
+      // v0.116.0: muitos aparelhos (Android) não mantêm duas câmeras frontais abertas ao mesmo tempo — a 2ª falhava e a
+      // tela voltava sozinha para a 1ª. Então SOLTA a câmera atual e tenta de novo (e, se ainda assim não vier, sem a 4K).
+      soltarVideo();
+      try{ novo = await navigator.mediaDevices.getUserMedia({video:altas}); }
+      catch(e2){ novo = await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id}}}); }
+    }
     const faixa = novo.getVideoTracks()[0];
-    if(!faixa) return;
-    (TELE.fluxo?.getVideoTracks?.() || []).forEach(t => { try{ TELE.fluxo.removeTrack(t); }catch(e){ /* já saiu */ } t.stop(); });
+    if(!faixa) throw new Error("sem faixa de vídeo");
+    soltarVideo();                                                              // garante que a antiga saiu (no caminho de sempre)
     TELE.fluxo?.addTrack(faixa);
     try{ localStorage.setItem("radar_tele_cam", id); }catch(e){ /* sem localStorage */ }
     await prepararQuadroTele();
   }catch(e){
-    const atual = TELE?.fluxo?.getVideoTracks?.()[0]?.getSettings?.().deviceId || "";
-    if(atual && sel.querySelector(`option[value="${CSS?.escape ? CSS.escape(atual) : atual}"]`)) sel.value = atual;
+    // não abriu a nova nem soltando a atual: tenta VOLTAR para a de antes, para o preview não ficar preto
+    if(!faixasVideo().length && atual){
+      try{ const v = await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:atual}}});
+           const f = v.getVideoTracks()[0]; if(f){ TELE.fluxo?.addTrack(f); await prepararQuadroTele(); } }catch(e3){ /* nem a antiga voltou */ }
+    }
+    const volta = faixasVideo()[0]?.getSettings?.().deviceId || atual;
+    if(volta && sel.querySelector(`option[value="${CSS?.escape ? CSS.escape(volta) : volta}"]`)) sel.value = volta;
     if(modo !== "auto") recado("Não consegui usar essa câmera (o aparelho pode não deixar): escolha outra.", true);
   }
 }
