@@ -721,7 +721,7 @@ def test_capa_arte_molde_e_plano_b(pastas, monkeypatch):
     """v0.48.0/v0.119.0: a CAPA-ARTE no molde PREMIUM — dados_de sana o ajustes.capa (caixa alta e limites),
     candidatos_q aponta o meio dos trechos, nitidez ordena nítido antes de borrado e desenhar grava o molde sobre o
     palco fotográfico fixo (capa-fundo.png; aqui sem o modelo de recorte: só o palco — a capa nunca falha). Pixels
-    conferidos: a tarja amarela da categoria, o destaque amarelo da última linha e as linhas brancas do título."""
+    conferidos: a última linha do título em amarelo (texto) e as linhas brancas do título (sem tarja de categoria)."""
     monkeypatch.setenv("RADAR_CAPA_MODELO", str(pastas.sai / "nao-existe.onnx"))
     import capa_arte
     capa_arte._sessao_onnx = None
@@ -746,9 +746,8 @@ def test_capa_arte_molde_e_plano_b(pastas, monkeypatch):
     perto = lambda px, cor, tol=30: all(abs(a - b) <= tol for a, b in zip(px, cor))
     def tem(cx0, cy0, cx1, cy1, cor, tol=36):                      # há algum pixel ~cor na caixa?
         return any(perto(im.getpixel((x, y)), cor, tol) for y in range(cy0, cy1, 4) for x in range(cx0, cx1, 4))
-    assert tem(80, 286, 470, 384, (255, 215, 0))                   # v0.119.0: a tarja amarela da categoria
-    assert tem(72, 400, 780, 1100, (255, 215, 0))                  # o destaque amarelo (última linha do título)
-    assert tem(72, 400, 780, 1000, (255, 255, 255), 24)           # as linhas brancas do título
+    assert tem(72, 300, 780, 1100, (255, 215, 0))                  # v0.119.0: a última linha do título em AMARELO (texto, sem caixa)
+    assert tem(72, 300, 780, 1000, (255, 255, 255), 24)           # as linhas brancas do título
 
 
 def test_capa_quadro_na_pausa_v0_47_0():

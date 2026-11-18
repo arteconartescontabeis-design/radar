@@ -7,9 +7,9 @@ O molde (fixo; só a pessoa, a categoria, o título e o destaque mudam de um ree
     dourada com área clara em baixo à direita e planos geométricos com fio dourado no alto à esquerda;
   * a PESSOA do quadro escolhido, recortada por segmentação (ISNet, ONNX local — a foto de ninguém sai para serviço
     externo e nenhuma IA generativa toca o rosto), tratada (luz, cor, nitidez) e com sombra projetada;
-  * a LOGO oficial BRANCA (radar-logo-artecon-branco.png) em marca-d'água no alto à esquerda, sem caixa branca;
-  * a tarja AMARELA arredondada com a CATEGORIA (texto marinho); o TÍTULO em bloco (caixa alta, Montserrat), com a
-    ÚLTIMA linha em DESTAQUE (tarja amarela, texto marinho itálico); a LINHA decorativa dourada e o subtítulo.
+  * a LOGO oficial (radar-logo-artecon-branco.png) em marca-d'água no alto à esquerda, sem caixa branca;
+  * o TÍTULO em bloco (caixa alta, Montserrat) logo abaixo da logo, com a ÚLTIMA linha em AMARELO (texto, sem caixa);
+    a LINHA decorativa dourada e o subtítulo, se houver. Sem tarja de categoria.
 
 Quem dá a categoria, as linhas do título e o subtítulo é a tela no envio (ajustes.capa, escrito por radar_video_criar:
 a IA Central escreve e o administrador pode trocar na aba Vídeo). O quadro é o capa_q do editor ou o ESCOLHIDO SOZINHO
@@ -254,9 +254,9 @@ def _tam_comum(dr: ImageDraw.ImageDraw, linhas: list, maxw: float, teto: int, ca
 def desenhar(caminho: Path, dados: dict) -> dict:
     """Transforma o quadro em `caminho` (o sai/capa.jpg, 1080×1920) na capa-arte do molde NOVO (v0.48.0) e o regrava.
     Sobre o palco fotográfico fixo (capa-fundo.jpg: fundo marinho premium, caduceu dourado desfocado, documentos e
-    caneta, curva dourada, planos geométricos) o robô compõe: a PESSOA recortada da gravação; a LOGO branca em
-    marca-d'água (sem caixa); a tarja AMARELA da categoria; o TÍTULO branco em caixa alta (Montserrat) com a ÚLTIMA
-    linha em DESTAQUE (tarja amarela, texto marinho itálico); a LINHA decorativa dourada; e o subtítulo, se houver.
+    caneta, curva dourada, planos geométricos) o robô compõe: a PESSOA recortada da gravação; a LOGO em marca-d'água
+    (sem caixa); o TÍTULO branco em caixa alta (Montserrat) logo abaixo da logo, com a ÚLTIMA linha em AMARELO (texto,
+    sem caixa); a LINHA decorativa dourada; e o subtítulo, se houver.
     Devolve o resumo para o relatório: {recorte: true|false (false = sem o modelo, só o palco), linhas, categoria,
     subtitulo}."""
     quadro = Image.open(caminho).convert("RGB")
@@ -291,31 +291,14 @@ def desenhar(caminho: Path, dados: dict) -> dict:
     dr = ImageDraw.Draw(im)
     X, MAXW = 76, 648
 
-    y = 286
-    if dados["categoria"]:                                     # a tarja AMARELA da categoria (texto marinho)
-        fb = _encher(dr, dados["categoria"], MAXW - 60, 44, MONT_XBOLD)
-        lb = dr.textlength(dados["categoria"], font=fb)
-        h = fb.size + 34
-        dr.rounded_rectangle([X, y, X + lb + 48, y + h], radius=12, fill=AMARELO)
-        dr.text((X + 24, y + (h - fb.size) / 2 - 4), dados["categoria"], font=fb, fill=TINTA)
-        y += h + 30
-
     linhas = dados["linhas"]
-    tam = _tam_comum(dr, linhas, MAXW, 128, MONT_BLACK)        # título uniforme
-    if len(linhas) >= 2:                                        # garante que a última linha cabe em itálico (destaque)
-        while tam > 40 and dr.textlength(linhas[-1], font=_fonte(MONT_XBOLD_IT, tam)) > MAXW - 40:
-            tam -= 2
-    ft, fti = _fonte(MONT_BLACK, tam), _fonte(MONT_XBOLD_IT, tam)
+    tam = _tam_comum(dr, linhas, MAXW, 128, MONT_BLACK)        # título uniforme (todas as linhas no mesmo tamanho)
+    ft = _fonte(MONT_BLACK, tam)
+    y = 300                                                    # logo abaixo da logomarca (sem tarja de categoria)
     for i, t in enumerate(linhas):
-        if i == len(linhas) - 1 and len(linhas) >= 2:          # DESTAQUE: tarja amarela + texto marinho itálico
-            w = dr.textlength(t, font=fti)
-            h = tam + 20
-            dr.rounded_rectangle([X - 4, y - 4, min(X + w + 28, L - 24), y + h], radius=10, fill=AMARELO)
-            dr.text((X + 12, y + 2), t, font=fti, fill=TINTA)
-            y += round(h * 1.04)
-        else:
-            dr.text((X, y), t, font=ft, fill=BRANCO)
-            y += round(tam * 1.14)
+        cor = AMARELO if (i == len(linhas) - 1 and len(linhas) >= 2) else BRANCO   # a última linha em AMARELO (texto, sem caixa)
+        dr.text((X, y), t, font=ft, fill=cor)
+        y += round(tam * 1.14)
 
     dr.rounded_rectangle([X, y + 16, X + 120, y + 28], radius=6, fill=OURO)   # a linha decorativa dourada
     if dados["subtitulo"]:
