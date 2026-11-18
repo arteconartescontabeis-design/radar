@@ -480,21 +480,24 @@ label.video-check{display:flex;gap:6px;align-items:flex-start;font-weight:400;fo
 <div id="recado" role="status" aria-live="polite"></div>
 
 <script src="radar-config.js"></script>
-<script src="radar-pauta.js?v=0.116.0"></script>
-<script src="radar-video.js?v=0.116.0"></script>
-<script src="radar-setor.js?v=0.116.0"></script>
-<script src="radar-respostas.js?v=0.116.0"></script>
+<script src="radar-pauta.js?v=0.117.0"></script>
+<script src="radar-video.js?v=0.117.0"></script>
+<script src="radar-setor.js?v=0.117.0"></script>
+<script src="radar-respostas.js?v=0.117.0"></script>
 <script>
 "use strict";
 /* ====================================================================
    RADAR ARTECON — Central de Curadoria
    ==================================================================== */
-const VERSAO = "0.116.0";
+const VERSAO = "0.117.0";
 const FUNCAO_MINIMA = "0.62.0";     // versão da função radar-ia que este painel exige (v0.62.0: o kit com o formato combinado — redes_formato — e o “só os cartões” — so_cartoes — do botão do passo 3: com a função antiga, o botão refaria o kit inteiro; o resto do painel funciona com a antiga, só sem a economia dos cartões; v0.39.0: modelos novos por padrão, cache das instruções e a foto real do banco de imagens — foto_buscar e foto_baixar; v0.25.0: a imagem com aparência de foto e a descrição até 500 caracteres; v0.25.1 não sobe: a tela aceita o kit com e sem a arte; v0.26.0 não sobe: o Preparar só usa ações que a função tem desde a 0.24.0 — fundamentar, verificar, gerar, revisar com a Conferência e kit; v0.27.0 não sobe: o cronograma da Pauta só lê o banco; v0.28.0 não sobe: a peça nova e a marca de sócio(a) são do banco e da tela; v0.28.1 não sobe: só a trava da peça, na tela; v0.29.0 não sobe: os lembretes são do banco, do robô e da radar-redes; v0.30.0 não sobe: o 13º, as anuais e o aviso de prorrogação são do banco, da tela e do robô dos avisos; v0.31.0 não sobe: as fontes novas são do robô da coleta e do banco; v0.32.0 não sobe: o quadro de vencimentos e a cópia no OneDrive são do banco, da tela, do robô dos lembretes e da função nova radar-copia; v0.42.0 não sobe: os cartões do carrossel saem no kit da função nova, mas a tela olha o kit gravado — sem cartões, a opção de carrossel pede para gerar o kit de novo; v0.43.0 não sobe: a nova tentativa automática é do banco e da radar-redes; v0.44.0 não sobe: o teleprompter é da tela, e o WEBM dele é do banco, do robô e da função radar-video; v0.45.0 não sobe: a busca de foto em dois bancos é da função nova, mas a antiga continua respondendo só com o Pixabay — a tela aceita os dois; a hora marcada e o título na ilustração são do banco e da tela; v0.46.0 não sobe: o termo de imagem com assinatura na tela é do banco e da tela)
 const REDES_MINIMA = "0.46.0";      // versão da função radar-redes que este painel exige (v0.46.0: o reel agendado — a função publica o vídeo aprovado por contêiner REELS/video_reels; v0.45.0: a notícia com hora marcada sai pela agenda — a função de antes recusaria o pedido da agenda — e a agenda aciona o robô do site na hora certa; v0.43.0: a nova tentativa automática da notícia sai pela agenda; v0.42.0: o carrossel — a função publica as lâminas que o banco devolve; antes, v0.21.0: a peça da Pauta e a agenda do banco; v0.44.0 não subiu: nada mudou na radar-redes; v0.46.0 não subiu: o termo com assinatura é do banco e da tela)
 const versaoMenor = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for(let i = 0; i < 3; i++){ if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 const VERSOES = [
+  ["0.117.0", "18/11/2026", [
+    "Nova aba <b>Legislação</b> em Notícias (ao lado de Captura e Assunto): mostra só as <b>normas</b> que o robô encontrou nas fontes oficiais — Diário Oficial da União, Receita Federal, SEF/SC e os diários dos municípios (Palhoça e São José) — que ainda não viraram assunto, as <b>mais recentes primeiro</b>, para a Artecon sair na frente com a legislação publicada. Cada norma traz o órgão, a data, a norma identificada e os botões “Abrir assunto” (leva ao preparo do texto com a IA) e “abrir a norma”. Separa a legislação das notícias dos sites — é só achar e preparar.",
+    "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
   ["0.116.0", "17/11/2026", [
     "Correção na TROCA DE CÂMERA do teleprompter: em muitos celulares, ao escolher a <b>Frontal 2</b> (a grande-angular), a tela voltava sozinha para a <b>Frontal 1</b> — porque o aparelho não deixa duas câmeras frontais abertas ao mesmo tempo. Agora, se a câmera nova não abrir de primeira, o Radar <b>solta a câmera atual e tenta de novo</b> (e, em último caso, sem a resolução 4K); só volta para a anterior se realmente não houver jeito. A troca de câmera passa a valer nesses aparelhos.",
     "Administrador: só a tela. Publique o index.html com os demais .js e aperte Ctrl+F5. Não muda o banco, as funções Edge nem o robô."]],
@@ -1502,12 +1505,12 @@ function papelDaChave(){ try{ return JSON.parse(atob(CHAVE.split(".")[1].replace
 
 /* ------------------------------------------------------------- estrutura */
 // v0.33.0: a aba Vídeo é da equipe que edita ("equipe": o editor e o administrador; o leitor não vê o vídeo, que tem o rosto e a voz da equipe)
-const ABAS = [["painel","Painel"],["fila","Capturas"],["assuntos","Assuntos"],["informativos","Informativos"],["publicacoes","Publicações"],["pauta","Pauta"],
+const ABAS = [["painel","Painel"],["fila","Capturas"],["assuntos","Assuntos"],["legislacao","Legislação"],["informativos","Informativos"],["publicacoes","Publicações"],["pauta","Pauta"],
               ["video","Vídeo","equipe"],["fontes","Fontes"],["usuarios","Usuários",true],["configuracoes","Configurações",true],["auditoria","Histórico",true],["ajuda","Como usar"],["versoes","Versões"]];
 // v0.49.0 (abas unidas): "Notícias" junta Capturas + Assuntos; "Administração" junta Configurações + Usuários + Histórico + Versões
 // (só o administrador, como as três já eram; Versões continua a um clique pelo número da versão, para todos). As abas continuam as
 // mesmas (mesmos ids e telas); só passam a morar dentro da família, com uma faixa de escolha (sub-navegação).
-const FAMILIAS = [{id:"noticias", nome:"Notícias", abas:["fila","assuntos"]},
+const FAMILIAS = [{id:"noticias", nome:"Notícias", abas:["fila","assuntos","legislacao"]},
                   {id:"administracao", nome:"Administração", abas:["configuracoes","usuarios","auditoria","versoes"], admin:true}];
 const FAMILIA_DE = {};  FAMILIAS.forEach(f => f.abas.forEach(a => FAMILIA_DE[a] = f));   // id da aba -> família
 const NOME_DA_ABA = Object.fromEntries(ABAS.map(([id, nome]) => [id, nome]));
@@ -1857,6 +1860,39 @@ const TELAS = {
         : `<div class="painel"><p class="sub">${vazio[f]}</p></div>`}
       ${f !== "emalta" ? botaoMais("fila:" + f, itens.length, lim, "capturas", total[f]) : ""}
       <p class="sub">As mais recentes aparecem primeiro. A nota da IA vem do robô, depois de cada coleta; antes dela, um filtro por palavras separa o que é de baixa relevância. ${ehAdmin() ? "As regras, a nota de corte e a quantidade ficam em Configurações → Relevância das capturas." : "O administrador ajusta as regras em Configurações."}</p>`;
+  },
+
+  // v0.117.0: a aba "Legislação" — só as NORMAS (Diário Oficial, Receita, SEF/SC e diários dos municípios) ainda não triadas, as mais
+  // recentes primeiro, para a Artecon sair na frente. Reusa a view radar_v_fila (filtrada pelo slug da fonte) e os botões da Captura.
+  async legislacao(){
+    const LEG = ["dou-confaz","dou-confaz-site","dou-fazenda-ministro","dou-inlabs","dou-inlabs-site","dou-presidencia","dou-presidencia-site",
+      "dou-trabalho-previdencia","dou-trabalho-previdencia-site","dou-destaques","rfb-normas","sefsc-legislacao",
+      "domsc-ciga","domsc-palhoca-leis","domsc-palhoca-decretos","domsc-saojose-leis","domsc-saojose-decretos"];
+    const lim = limiteDe("legislacao", 150);
+    const itens = await ler("radar_v_fila", {select:"*", fonte_slug:"in.(" + LEG.join(",") + ")", principal:"is.true",
+      order:"data_publicacao.desc.nullslast,capturado_em.desc,id.desc", limit:String(lim)});
+    const fontes = [...new Set(itens.map(i => i.fonte_nome))].sort();
+    const normas = i => { const b = i.base_legal; if(!b || !Array.isArray(b.normas)) return [];
+      return [...new Set([...(b.ato ? [b.ato] : []), ...b.normas.map(String)])]; };
+    const seloNorma = i => normas(i).length ? selo("norma identificada", "ok") : (i.tem_texto ? "" : selo("sem texto", "alerta"));
+    const linhaNorma = i => { const l = normas(i); return l.length ? `<p class="sub base-legal"><b>Norma:</b> ${h(l.slice(0, 6).join("; "))}${l.length > 6 ? ` e mais ${l.length - 6}` : ""}.</p>` : ""; };
+    return `<h1>Legislação nova</h1>
+      <p class="sub">As <b>normas</b> que o robô encontrou nas fontes oficiais — Diário Oficial da União, Receita Federal, SEF/SC e diários dos municípios (Palhoça e São José) — e que ainda não viraram assunto. As mais recentes primeiro, para a Artecon sair na frente. “Abrir assunto” leva ao preparo do texto com a IA.</p>
+      <div class="linha-filtros"><input type="text" id="busca-legislacao" placeholder="Buscar no título…" data-filtro="legislacao" aria-label="Buscar no título">
+        <select id="fonte-legislacao" data-filtro="legislacao" aria-label="Fonte"><option value="">Todas as fontes</option>${fontes.map(x => `<option>${h(x)}</option>`).join("")}</select></div>
+      ${itens.length ? `<div id="tab-legislacao">${itens.map(i => `
+        <article class="cap" data-fonte="${h(i.fonte_nome)}" data-texto="${h((i.titulo || "").toLowerCase())}" data-id="${i.id}">
+          <div>${seloNorma(i)} ${selo(i.orgao, "neutro")} ${selo(ROTULOS.abrangencia[i.abrangencia] || "", "neutro")}
+            <span class="sub">publicado em ${data(i.data_publicacao)} · capturado em ${dataHora(i.capturado_em)}</span></div>
+          <h3>${h(i.titulo)}</h3>
+          ${i.resumo_fonte ? `<p class="sub">${h(i.resumo_fonte.slice(0, 260))}</p>` : ""}
+          ${linhaNorma(i)}
+          <div class="acoes">${podeEditar() ? `<button class="btn peq" data-acao="abrir-da-captura" data-id="${i.id}">Abrir assunto</button>
+            <button class="btn peq sec" data-acao="ignorar-captura" data-id="${i.id}">Ignorar</button>` : ""}
+            ${linkFonte(i.url, "abrir a norma ↗")}</div></article>`).join("")}</div>`
+        : `<div class="painel"><p class="sub">Nenhuma norma nova aguardando triagem. Quando o robô capturar legislação nova (Diário Oficial, Receita, SEF/SC ou os municípios), ela aparece aqui.</p></div>`}
+      ${botaoMais("legislacao", itens.length, lim, "normas")}
+      <p class="sub">A mesma legislação pode também aparecer em Capturas; aqui fica só a parte oficial (as normas), separada das notícias, para você achar rápido o que acabou de ser publicado.</p>`;
   },
 
   async assuntos(){
@@ -6400,12 +6436,14 @@ document.addEventListener("input", ev => {
   if(ev.target.matches?.("textarea[data-limite]")) contarOrientacao(ev.target);                                     // v0.24.0: orientações para a IA
   const fc = ev.target.closest?.('form[data-form="conteudo"]');
   if(fc && (ev.target.name === "titulo" || ev.target.name === "corpo") && !ev.target.disabled) guardarRascunho(fc);
-  if(ev.target.dataset.filtro !== "fila") return;
-  const busca = $("#busca-fila").value.trim().toLowerCase(), fonte = $("#fonte-fila").value;
-  document.querySelectorAll("#tab-fila [data-fonte]").forEach(tr => {
+  // v0.117.0: a busca/fonte do fila vale também para a aba Legislação (mesmo formato de cartão)
+  const alvo = ev.target.dataset.filtro;
+  if(alvo !== "fila" && alvo !== "legislacao") return;
+  const busca = ($("#busca-" + alvo)?.value || "").trim().toLowerCase(), fonte = $("#fonte-" + alvo)?.value || "";
+  document.querySelectorAll("#tab-" + alvo + " [data-fonte]").forEach(tr => {
     tr.hidden = (busca && !tr.dataset.texto.includes(busca)) || (fonte && tr.dataset.fonte !== fonte); });
   const lote = $("#ignorar-lista");
-  if(lote){ const n = document.querySelectorAll("#tab-fila [data-fonte]:not([hidden])").length; lote.textContent = `Ignorar as ${n} desta lista`; lote.disabled = !n; }
+  if(alvo === "fila" && lote){ const n = document.querySelectorAll("#tab-fila [data-fonte]:not([hidden])").length; lote.textContent = `Ignorar as ${n} desta lista`; lote.disabled = !n; }
 });
 document.addEventListener("change", ev => {
   if(ev.target.dataset.imagem){
