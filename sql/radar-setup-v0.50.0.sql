@@ -4740,6 +4740,19 @@ begin
      where f.oficial and c.duplicata_de is null and c.hash_titulo = new.hash_titulo and c.fonte_id <> new.fonte_id
      order by c.id limit 1;
   end if;
+  -- v0.118.0: casa também pela NORMA (o ato que a captura É), não só pelo título igual: a mesma norma vinda de duas
+  -- fontes OFICIAIS com títulos diferentes (ex.: "Portaria RFB nº 754/2026" no rfb-normas e "PORTARIA RFB Nº 754, DE…"
+  -- no DOU) vira repetição da primeira. O "ato" só é preenchido quando o TÍTULO é a norma (a notícia que apenas CITA a
+  -- norma tem ato nulo), então isso não funde comentários diferentes sobre a mesma lei.
+  if tg_op = 'INSERT' and new.duplicata_de is null
+     and nullif(new.base_legal->>'ato', '') is not null
+     and coalesce((select f.oficial from public.radar_fontes f where f.id = new.fonte_id), false) then
+    select c.id into new.duplicata_de
+      from public.radar_capturas c join public.radar_fontes f on f.id = c.fonte_id
+     where f.oficial and c.duplicata_de is null and c.fonte_id <> new.fonte_id
+       and nullif(c.base_legal->>'ato', '') = new.base_legal->>'ato'
+     order by c.id limit 1;
+  end if;
   -- (se o boletim já virou assunto, o vínculo fica: a oficial entra nesse assunto ou mostra o aviso "parece o mesmo fato")
   if new.duplicata_de is not null
      and (select f.oficial from public.radar_fontes f where f.id = new.fonte_id)

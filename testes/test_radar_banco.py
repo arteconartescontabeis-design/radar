@@ -693,8 +693,13 @@ def test_abrir_assunto_simultaneo_nao_duplica(limpo):
 
 def test_abrir_assunto_a_partir_da_captura_e_fila_de_triagem(limpo):
     c1 = nova_captura(limpo, slug="sefsc-legislacao", url="https://x.gov.br/1")
-    c2 = nova_captura(limpo, url="https://x.gov.br/2")
-    c3 = nova_captura(limpo, url="https://x.gov.br/3")
+    # v0.118.0: c2/c3 são normas DISTINTAS (senão o casamento por ato juntaria as três, que são "IN RFB nº 2290")
+    outra = lambda url, titulo: limpo.execute(
+        "insert into radar_capturas (fonte_id, url, titulo, texto, hash_conteudo, hash_titulo) "
+        "select id, %s, %s, %s, md5(%s), md5(lower(%s)) from radar_fontes where slug = 'rfb-normas' returning id",
+        (url, titulo, TEXTO_OFICIAL, url, titulo)).fetchone()[0]
+    c2 = outra("https://x.gov.br/2", "Portaria RFB nº 811")
+    c3 = outra("https://x.gov.br/3", "Decreto nº 12.900")
     with como("authenticated", EDITOR) as c:
         assert c.execute("select count(*) from radar_v_fila").fetchone()[0] == 3
         a = c.execute("select radar_abrir_assunto(%s)", (c1,)).fetchone()[0]
@@ -2529,6 +2534,25 @@ def test_ia_que_junta_oficial_a_boletim_poe_o_boletim_atras_da_oficial(limpo):
         r = c.execute("select radar_gravar_avaliacao_ia(%s::jsonb)", (json.dumps([{"id": o, "nota": 8, "igual_a": b}]),)).fetchone()[0]
     assert r["gravadas"] == 1 and r["repetidas"] == 0
     assert limpo.execute("select id, duplicata_de from radar_capturas order by id").fetchall() == [(b, o), (o, None)]
+
+
+def test_mesma_norma_de_duas_fontes_oficiais_vira_repeticao_por_ato_v118(limpo):
+    """v0.118.0: a mesma NORMA vinda de duas fontes oficiais com títulos diferentes (ex.: 'Portaria RFB nº 754, de
+    03/11/2026' no rfb-normas e 'PORTARIA RFB Nº 754, DE 3 DE NOVEMBRO DE 2026' no DOU) entra como repetição da
+    primeira — casada pelo ato (número da norma), não só pelo título igual. A notícia que apenas CITA a norma (ato
+    nulo) NÃO é fundida."""
+    def cap(slug, titulo, url):
+        return limpo.execute("insert into radar_capturas (fonte_id, url, titulo, data_publicacao, texto, hash_titulo) "
+                             "select id, %s, %s, '2026-11-03', %s, md5(%s) from radar_fontes where slug = %s returning id",
+                             (url, titulo, titulo, titulo, slug)).fetchone()[0]
+    dup = lambda i: limpo.execute("select duplicata_de from radar_capturas where id = %s", (i,)).fetchone()[0]
+    ato = lambda i: limpo.execute("select base_legal->>'ato' from radar_capturas where id = %s", (i,)).fetchone()[0]
+    a = cap("rfb-normas", "Portaria RFB nº 754, de 03/11/2026", "https://www.gov.br/receita/754")
+    b = cap("sefsc-legislacao", "PORTARIA RFB Nº 754, DE 3 DE NOVEMBRO DE 2026", "https://sef.sc.gov.br/754")
+    assert ato(a) and ato(a) == ato(b)              # as duas são a mesma norma (mesmo ato), com títulos diferentes
+    assert dup(a) is None and dup(b) == a           # a 2ª vira repetição da 1ª (outra fonte oficial, mesma norma)
+    n = cap("rfb-noticias", "Receita publica portaria que muda o prazo do Simples", "https://www.gov.br/receita/noticia")
+    assert ato(n) is None and dup(n) is None         # a notícia que só cita a norma não é fundida
 
 
 def test_consumo_de_ia_do_mes_conta_o_mes_de_brasilia(limpo):
