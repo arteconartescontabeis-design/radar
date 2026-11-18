@@ -62,6 +62,7 @@ __pycache__/
 !/radar-logo-artecon-branco.png
 !/radar-timbrado-topo.png
 !/radar-timbrado-rodape.png
+!/robo/video/capa-fundo.png
 # os arquivos de trabalho do robô (robo/video/corrigir.py: o pedido com a fala e a cartela, o estado com o alinhamento e as palavras
 # com os tempos, o resultado com o relatório, o erro, os temporários de cada um, a transcrição e a luz de cada clipe), para quem rodar
 # o robô dentro do clone para depurar

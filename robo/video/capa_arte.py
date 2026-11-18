@@ -1,13 +1,15 @@
-"""Radar Artecon — corretor de vídeo (v0.46.0): a CAPA-ARTE automática do reel, no molde aprovado pelo dono em 10/11/2026.
+"""Radar Artecon — corretor de vídeo (v0.48.0): a CAPA-ARTE automática do reel, no molde PREMIUM aprovado pelo dono
+em 18/11/2026 (identidade azul-marinho + dourado + branco, a partir da referência enviada).
 
-O molde (fixo; só a pessoa, a categoria, o título e o subtítulo mudam de um reel para outro):
-  * fundo de ESTÚDIO marinho (gradiente com luz suave atrás da pessoa e sombra projetada);
+O molde (fixo; só a pessoa, a categoria, o título e o destaque mudam de um reel para outro):
+  * o PALCO fotográfico fixo (capa-fundo.jpg, 1080×1920): fundo marinho premium com gradiente e profundidade,
+    CADUCEU dourado desfocado no alto à direita, DOCUMENTOS + caneta executiva desfocados à esquerda, CURVA ampla
+    dourada com área clara em baixo à direita e planos geométricos com fio dourado no alto à esquerda;
   * a PESSOA do quadro escolhido, recortada por segmentação (ISNet, ONNX local — a foto de ninguém sai para serviço
-    externo e nenhuma IA generativa toca o rosto), tratada (luz, cor, nitidez) e com a borda suavizada;
-  * painel DIAGONAL marinho à esquerda com o friso AMARELO na borda e um painel secundário na base;
-  * cartão BRANCO no topo com o LOGOTIPO oficial colorido (radar-logo-artecon.png, sem modificação);
-  * faixa VERMELHA arredondada com a CATEGORIA; o TÍTULO em bloco (caixa alta, DM Sans), última linha em AMARELO;
-    o traço AZUL CLARO e o SUBTÍTULO.
+    externo e nenhuma IA generativa toca o rosto), tratada (luz, cor, nitidez) e com sombra projetada;
+  * a LOGO oficial BRANCA (radar-logo-artecon-branco.png) em marca-d'água no alto à esquerda, sem caixa branca;
+  * a tarja AMARELA arredondada com a CATEGORIA (texto marinho); o TÍTULO em bloco (caixa alta, Montserrat), com a
+    ÚLTIMA linha em DESTAQUE (tarja amarela, texto marinho itálico); a LINHA decorativa dourada e o subtítulo.
 
 Quem dá a categoria, as linhas do título e o subtítulo é a tela no envio (ajustes.capa, escrito por radar_video_criar:
 a IA Central escreve e o administrador pode trocar na aba Vídeo). O quadro é o capa_q do editor ou o ESCOLHIDO SOZINHO
@@ -28,16 +30,24 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 AQUI = Path(__file__).resolve().parent
-FONTE_B = AQUI / "fontes" / "DMSans-Bold.ttf"
+FONTE_B = AQUI / "fontes" / "DMSans-Bold.ttf"              # mantidas para a cartela e compatibilidade
 FONTE_M = AQUI / "fontes" / "DMSans-Medium.ttf"
-LOGO = AQUI.parent.parent / "radar-logo-artecon.png"
+MONT_BLACK = AQUI / "fontes" / "Montserrat-Black.ttf"     # v0.48.0: o sistema tipográfico do molde novo
+MONT_XBOLD = AQUI / "fontes" / "Montserrat-ExtraBold.ttf"
+MONT_XBOLD_IT = AQUI / "fontes" / "Montserrat-ExtraBoldItalic.ttf"
+MONT_MED = AQUI / "fontes" / "Montserrat-Medium.ttf"
+LOGO = AQUI.parent.parent / "radar-logo-artecon.png"               # colorido (preto/vermelho) — não usado no molde novo
+LOGO_BRANCO = AQUI.parent.parent / "radar-logo-artecon-branco.png"  # branco, para a marca-d'água sobre o marinho
+FUNDO = AQUI / "capa-fundo.png"                                     # o "palco" fotográfico fixo (1080×1920)
 
 L, A = 1080, 1920
 MARINHO = (1, 31, 72)
 MARINHO2 = (10, 49, 94)
-AMARELO = (255, 215, 0)
+AMARELO = (255, 215, 0)        # #FFD600 — tarja de categoria e destaque
 AZULCLARO = (86, 157, 204)
-VERMELHO = (188, 21, 27)
+VERMELHO = (188, 21, 27)       # (molde antigo; não usado no novo)
+OURO = (220, 163, 58)          # #DCA33A — linha decorativa
+TINTA = (6, 32, 63)            # azul-marinho escuro para texto sobre o amarelo
 BRANCO = (255, 255, 255)
 
 MODELO_URL = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx"
@@ -209,9 +219,46 @@ def _tratada(rgb: Image.Image) -> Image.Image:
     return rgb.filter(ImageFilter.UnsharpMask(radius=3, percent=80, threshold=2))
 
 
+def _fundo() -> Image.Image:
+    """O "palco" fotográfico fixo (capa-fundo.jpg) em 1080×1920. Sem o arquivo no checkout, cai no estúdio desenhado."""
+    try:
+        f = Image.open(FUNDO).convert("RGB")
+        if f.size != (L, A):
+            f = f.resize((L, A), Image.Resampling.LANCZOS)
+        return f.convert("RGBA")
+    except OSError:
+        return _estudio().convert("RGBA")
+
+
+def _marca(im: Image.Image, caminho: Path, x: int, y: int, larg: int, opac: float) -> None:
+    """A logomarca como marca-d'água (sem caixa branca): redimensiona para `larg` de largura e aplica a opacidade."""
+    try:
+        logo = Image.open(caminho).convert("RGBA")
+    except OSError:
+        return                                                 # sem o logo no checkout: a capa sai sem ele
+    f = larg / logo.width
+    logo = logo.resize((larg, round(logo.height * f)), Image.Resampling.LANCZOS)
+    logo.putalpha(logo.getchannel("A").point(lambda v: round(v * opac)))
+    im.alpha_composite(logo, (x, y))
+
+
+def _tam_comum(dr: ImageDraw.ImageDraw, linhas: list, maxw: float, teto: int, caminho: Path) -> int:
+    """O maior tamanho (até `teto`) em que TODAS as linhas cabem na largura `maxw` — título uniforme, não escadinha."""
+    tam = teto
+    for t in linhas:
+        while tam > 40 and dr.textlength(t, font=_fonte(caminho, tam)) > maxw:
+            tam -= 2
+    return max(40, tam)
+
+
 def desenhar(caminho: Path, dados: dict) -> dict:
-    """Transforma o quadro em `caminho` (o sai/capa.jpg, 1080×1920) na capa-arte do molde e o regrava. Devolve o
-    resumo para o relatório: {recorte: true|false (false = o plano B, sem o modelo), linhas, categoria, subtitulo}."""
+    """Transforma o quadro em `caminho` (o sai/capa.jpg, 1080×1920) na capa-arte do molde NOVO (v0.48.0) e o regrava.
+    Sobre o palco fotográfico fixo (capa-fundo.jpg: fundo marinho premium, caduceu dourado desfocado, documentos e
+    caneta, curva dourada, planos geométricos) o robô compõe: a PESSOA recortada da gravação; a LOGO branca em
+    marca-d'água (sem caixa); a tarja AMARELA da categoria; o TÍTULO branco em caixa alta (Montserrat) com a ÚLTIMA
+    linha em DESTAQUE (tarja amarela, texto marinho itálico); a LINHA decorativa dourada; e o subtítulo, se houver.
+    Devolve o resumo para o relatório: {recorte: true|false (false = sem o modelo, só o palco), linhas, categoria,
+    subtitulo}."""
     quadro = Image.open(caminho).convert("RGB")
     if quadro.size != (L, A):
         quadro = quadro.resize((L, A), Image.Resampling.LANCZOS)
@@ -219,8 +266,10 @@ def desenhar(caminho: Path, dados: dict) -> dict:
     if pessoa is not None:
         alfa = pessoa.getchannel("A").filter(ImageFilter.GaussianBlur(1.2))
         caixa = alfa.getbbox()
-        if caixa is None or (caixa[3] - caixa[1]) < A // 4:      # o recorte não achou gente: plano B
+        if caixa is None or (caixa[3] - caixa[1]) < A // 4:      # o recorte não achou gente: só o palco
             pessoa = None
+
+    im = _fundo()                                               # o palco fotográfico fixo
     if pessoa is not None:
         rgb = _tratada(pessoa.convert("RGB"))
         pessoa = rgb.convert("RGBA")
@@ -229,52 +278,49 @@ def desenhar(caminho: Path, dados: dict) -> dict:
         alvo_h = min(A, max(1200, round((caixa[3] - caixa[1]) * 1.02)))
         fp = alvo_h / recortada.height
         recortada = recortada.resize((round(recortada.width * fp), alvo_h), Image.Resampling.LANCZOS)
-        px, py = 710 - recortada.width // 2, A - alvo_h
-        im = _estudio().convert("RGBA")
+        px, py = 600 - recortada.width // 2, A - alvo_h
         sa = Image.new("L", (L, A), 0)
         sa.paste(recortada.getchannel("A"), (px + 26, py + 30))
-        sa = sa.filter(ImageFilter.GaussianBlur(28)).point(lambda v: round(v * 0.45))
+        sa = sa.filter(ImageFilter.GaussianBlur(30)).point(lambda v: round(v * 0.5))
         sombra = Image.new("RGBA", (L, A), (0, 0, 0, 0))
         sombra.putalpha(sa)
         im = Image.alpha_composite(im, sombra)
         im.alpha_composite(recortada, (px, py))
-    else:
-        # plano B: o quadro tratado com um véu marinho (a capa nunca falha por falta do modelo)
-        im = _tratada(quadro).convert("RGBA")
-        im = Image.alpha_composite(im, Image.new("RGBA", (L, A), MARINHO + (96,)))
 
-    borda_topo, borda_base = 600, 430
-    borda = lambda y: borda_topo - (borda_topo - borda_base) * y / A      # noqa: E731
-    im = _poligono(im, [(0, 0), (borda_topo, 0), (borda_base, A), (0, A)], MARINHO, 236)
-    im = _poligono(im, [(borda_topo, 0), (borda_topo + 14, 0), (borda_base + 14, A), (borda_base, A)], AMARELO)
-    im = _poligono(im, [(0, 1500), (360, 1430), (300, 1920), (0, 1920)], MARINHO2, 150)
-    im = _poligono(im, [(0, 90), (540, 90), (480, 330), (0, 330)], BRANCO)
+    _marca(im, LOGO_BRANCO, 66, 78, 336, 0.78)                 # a logomarca em marca-d'água (cores da marca), sem caixa
     dr = ImageDraw.Draw(im)
-    try:
-        logo = Image.open(LOGO).convert("RGBA")
-        fl = min(380 / logo.width, 170 / logo.height)
-        logo = logo.resize((round(logo.width * fl), round(logo.height * fl)), Image.Resampling.LANCZOS)
-        im.paste(logo, (70, 90 + (240 - logo.height) // 2), logo)
-        dr = ImageDraw.Draw(im)
-    except OSError:
-        pass                                                   # sem o logo no checkout: a capa sai sem ele
+    X, MAXW = 76, 648
 
-    X = 80
-    if dados["categoria"]:
-        fb = _encher(dr, dados["categoria"], 340, 46)
+    y = 286
+    if dados["categoria"]:                                     # a tarja AMARELA da categoria (texto marinho)
+        fb = _encher(dr, dados["categoria"], MAXW - 60, 44, MONT_XBOLD)
         lb = dr.textlength(dados["categoria"], font=fb)
-        dr.rounded_rectangle([X, 560, X + lb + 56, 646], radius=10, fill=VERMELHO)
-        dr.text((X + 28, 560 + (86 - fb.size) / 2 - 4), dados["categoria"], font=fb, fill=BRANCO)
-    y = 742
-    for i, t in enumerate(dados["linhas"]):
-        cor = AMARELO if i == len(dados["linhas"]) - 1 else BRANCO
-        f1 = _encher(dr, t, min(borda(y + 130) - X - 60, 400), 132)
-        dr.text((X, y), t, font=f1, fill=cor)
-        y += round(f1.size * 1.14)
-    dr.rectangle([X, y + 28, X + 230, y + 42], fill=AZULCLARO)
+        h = fb.size + 34
+        dr.rounded_rectangle([X, y, X + lb + 48, y + h], radius=12, fill=AMARELO)
+        dr.text((X + 24, y + (h - fb.size) / 2 - 4), dados["categoria"], font=fb, fill=TINTA)
+        y += h + 30
+
+    linhas = dados["linhas"]
+    tam = _tam_comum(dr, linhas, MAXW, 128, MONT_BLACK)        # título uniforme
+    if len(linhas) >= 2:                                        # garante que a última linha cabe em itálico (destaque)
+        while tam > 40 and dr.textlength(linhas[-1], font=_fonte(MONT_XBOLD_IT, tam)) > MAXW - 40:
+            tam -= 2
+    ft, fti = _fonte(MONT_BLACK, tam), _fonte(MONT_XBOLD_IT, tam)
+    for i, t in enumerate(linhas):
+        if i == len(linhas) - 1 and len(linhas) >= 2:          # DESTAQUE: tarja amarela + texto marinho itálico
+            w = dr.textlength(t, font=fti)
+            h = tam + 20
+            dr.rounded_rectangle([X - 4, y - 4, min(X + w + 28, L - 24), y + h], radius=10, fill=AMARELO)
+            dr.text((X + 12, y + 2), t, font=fti, fill=TINTA)
+            y += round(h * 1.04)
+        else:
+            dr.text((X, y), t, font=ft, fill=BRANCO)
+            y += round(tam * 1.14)
+
+    dr.rounded_rectangle([X, y + 16, X + 120, y + 28], radius=6, fill=OURO)   # a linha decorativa dourada
     if dados["subtitulo"]:
-        fs = _encher(dr, dados["subtitulo"], min(borda(y + 120) - X - 60, 360), 44, FONTE_M)
-        dr.text((X, y + 88), dados["subtitulo"], font=fs, fill=BRANCO)
+        fs = _encher(dr, dados["subtitulo"], MAXW, 40, MONT_MED)
+        dr.text((X, y + 56), dados["subtitulo"], font=fs, fill=BRANCO)
 
     im.convert("RGB").save(caminho, quality=92)
     return {"recorte": pessoa is not None, **dados}
