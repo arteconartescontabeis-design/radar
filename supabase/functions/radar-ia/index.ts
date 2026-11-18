@@ -155,7 +155,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.64.0";   // v0.64.0: roteiro_venda também devolve a legenda resumida do Instagram e do Facebook (do roteiro)
+const VERSAO = "0.65.0";   // v0.65.0: texto autoral da Artecon a partir da legislação (regra 8 reforçada) — cita a norma (número + DOU + lei) quando o material traz; v0.64.0: roteiro_venda também devolve a legenda resumida do Instagram e do Facebook (do roteiro)
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -552,8 +552,12 @@ async function perguntar(reg: Registro, modelo: string, instrucoes: string, entr
 // notícia). Frase igual à da fonte só quando indispensável (dispositivo legal, definição legal), o mínimo, entre aspas, e só o
 // parágrafo dela diz de quem é (pelo nome do órgão ou do veículo, como aparece em "órgão:" no material). O boletim pago
 // (assinatura) nunca tem as frases reproduzidas. A mesma regra está no robô de rascunhos (radar_rascunhos.py).
-const REGRA_FONTE = "(8) PALAVRAS PRÓPRIAS: organize a informação do ponto de vista da empresa cliente (o que muda, para quem, quando, o que fazer). " +
-  "Escreva com palavras e frases próprias; não diga em cada parágrafo de onde veio a informação (a fonte sai no fim da notícia). " +
+const REGRA_FONTE = "(8) PALAVRAS PRÓPRIAS: escreva o texto como se a ARTECON tivesse escrito — do ponto de vista da empresa cliente (o que muda, para quem, quando, o que fazer) —, " +
+  "a partir da LEGISLAÇÃO que o material cita; a notícia, o site ou o boletim são apenas a PAUTA, NUNCA o texto a copiar ou a resumir. Escreva do zero, " +
+  "com palavras e frases próprias; não diga em cada parágrafo de onde veio a informação (a fonte sai no fim da notícia). " +
+  "SEMPRE QUE O MATERIAL TROUXER, cite a norma de referência — o número, o órgão e a data de publicação no Diário Oficial — e a lei que a fundamenta " +
+  "(ex.: 'Portaria Cotec nº 342/2026, publicada no DOU de 12/11/2026'; 'Lei Complementar nº 214/2025'); se o material não trouxer o número ou a data exatos, " +
+  "NÃO invente (regra 2): cite só o que houver (o órgão e o fato). " +
   "Use frase igual à da fonte só quando for indispensável para a precisão (transcrição de dispositivo legal, definição legal): o mínimo " +
   "necessário, entre aspas, e SÓ o parágrafo que tiver a frase igual diz de quem ela é, pelo nome como aparece em 'órgão:' ou 'publicação:' " +
   "no material ('Segundo a Receita Federal do Brasil, …'); num item de lista, quem diz é a frase que apresenta a lista. " +
