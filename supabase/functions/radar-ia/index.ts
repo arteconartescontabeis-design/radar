@@ -155,7 +155,7 @@
 // Os modelos precisam estar liberados para o aplicativo "radar" na IA Central (core.ia_apps.modelos).
 // =====================================================================
 
-const VERSAO = "0.65.0";   // v0.65.0: texto autoral da Artecon a partir da legislação (regra 8 reforçada) — cita a norma (número + DOU + lei) quando o material traz; v0.64.0: roteiro_venda também devolve a legenda resumida do Instagram e do Facebook (do roteiro)
+const VERSAO = "0.66.0";   // v0.66.0: Análise Artecon volta a ser seção fixa no final da notícia (regra 4); v0.65.0: texto autoral a partir da legislação
 const env = (nome: string, padrao = "") => Deno.env.get(nome) ?? padrao;
 
 const SUPABASE_URL = env("SUPABASE_URL").replace(/\/+$/, "");
@@ -828,11 +828,11 @@ const FORMATOS: Record<string, string> = {
     "Abra com o fato principal (quem decidiu o quê e para quando), sem subtítulo. Organize o resto conforme a natureza do assunto: " +
     "subtítulos curtos e específicos do tema (linhas iniciadas por '## ', por exemplo 'Confira os principais prazos', 'Quem pode aderir') só quando ajudam a ler, com parágrafos curtos. " +
     "Prazos, condições e modalidades vão em lista ('- '), com o termo ou a data inicial em **negrito** seguido de dois-pontos. Destaque em **negrito** datas-limite e valores. " +
-    "Se acrescentar conhecimento técnico (regra (4)), feche com a seção '## Análise Artecon', em 2 a 4 parágrafos curtos (ou uma lista curta): " +
+    "Feche SEMPRE com a seção '## Análise Artecon' (regra (4)), em 2 a 4 parágrafos curtos (ou uma lista curta): " +
     "quem é afetado e de que forma, o que a empresa pode conferir ou providenciar e até quando, o que é obrigação legal e o que é boa prática. " +
     "Não repita a notícia e não comente a origem da informação.",
   artigo: "ARTIGO TÉCNICO: aprofundado, de 3.500 a 7.000 caracteres, organizado como a notícia média (o fato principal primeiro, seções " +
-    "temáticas e a Análise Artecon quando acrescentar) e, quando o texto oficial permitir, exemplos e orientações práticas.",
+    "temáticas e a Análise Artecon no fim) e, quando o texto oficial permitir, exemplos e orientações práticas.",
 };
 // v0.11.0: texto para análise, quando o assunto só tem fonte NÃO oficial (boletim, editora, portal). Nunca vai ao site
 // por este caminho: o banco continua exigindo texto oficial conferido para registrar ou autorizar a publicação.
@@ -925,11 +925,11 @@ async function gerar(token: string, ctx: Awaited<ReturnType<typeof carregar>>, f
     "(1) afirme como fato SOMENTE o que estiver no texto oficial fornecido; " +
     "(2) NÃO cite lei, decreto, instrução normativa, artigo, alíquota, valor, prazo ou data que não apareça no texto oficial — nada de conhecimento de memória; " +
     REGRA_PENDENCIAS +
-    // v0.24.0 (etapa 5, item 5 da Diretriz de Humanização): a Análise Artecon é opcional
-    "(4) a seção 'Análise Artecon' é OPCIONAL e é interpretação: só entra quando acrescenta conhecimento técnico real a partir dos fatos do " +
-    "material (impactos práticos para as empresas, setores ou atividades afetados, o que é obrigação legal e o que é boa prática " +
-    "administrativa, incertezas e limitações); senão, fica de fora. Nela, linguagem condicional ('pode', 'tende a', 'recomenda-se avaliar'), " +
-    "recomendação só quando tecnicamente justificada; nunca invente interpretação jurídica nem consequência econômica e não crie obrigações que o texto não traz; " +
+    // v0.66.0 (pedido do dono): a Análise Artecon volta a ser seção FIXA no final de toda notícia (antes, v0.24.0, era opcional)
+    "(4) TERMINE SEMPRE a notícia com a seção '## Análise Artecon': a leitura prática do escritório sobre o fato — o que muda para a empresa, " +
+    "o que fazer, prazos e riscos, o que é obrigação legal e o que é boa prática administrativa, e as incertezas e limitações. Mesmo num fato " +
+    "simples, traga ao menos o impacto prático e o que fazer. Nela, use linguagem condicional ('pode', 'tende a', 'recomenda-se avaliar') e só " +
+    "recomende quando tecnicamente justificado; nunca invente interpretação jurídica nem consequência econômica e não crie obrigações que o texto não traz; " +
     "(5) não prometa resultado, não dê orientação individual e não use superlativos; " +
     "(6) formatação: só '## ' para subtítulo, '- ' para lista e **negrito**; sem HTML e sem tabelas; endereço (link) só na linha 'Fonte oficial'; " +
     "(7) título com até 110 caracteres, informativo, sem ponto final e sem sensacionalismo; " +
@@ -1155,8 +1155,8 @@ const regraRevisaoEditorial = (informativo: boolean) => "REVISÃO EDITORIAL (ant
   "com a fonte que a apresenta; (c) a linha 'Fonte oficial' do fim (ou a seção 'Fundamentação legal' de texto antigo) fica como está, " +
   "com o mesmo endereço (nenhum link do texto sai ou é trocado); " +
   "(d) palavras próprias: não traga frase do material para o texto (do BOLETIM PAGO, nunca); (e) o que o material não confirma não se " +
-  "resolve inventando: reescreva a frase sem o detalhe e registre o ponto em 'pendencias'; (f) a seção 'Análise Artecon' fica só se " +
-  "acrescentar conhecimento técnico real (sem ela, o texto não perde nada)" +
+  "resolve inventando: reescreva a frase sem o detalhe e registre o ponto em 'pendencias'; (f) a seção 'Análise Artecon' do fim FICA e não é " +
+  "removida (regra (4)): se estiver fraca, melhore o impacto prático e o que fazer, sem inventar" +
   (informativo ? "; o texto é SEM BASE LEGAL (o modo Informativo): nada vira obrigação legal, e ele fica direto e resumido" : "") +
   "; (g) formatação: só '## ' para subtítulo, '- ' para lista e **negrito**, sem HTML. Em 'perguntas', uma resposta para cada pergunta, " +
   "de 1 a 10, cada uma uma vez: 'situacao' é 'ok' (nada a mudar nesse ponto) ou 'ajustado' (havia problema e o trecho foi reescrito), e " +
