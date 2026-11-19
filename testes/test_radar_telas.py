@@ -9128,10 +9128,8 @@ def test_peca_aprovar_termo_de_publicidade_o_admin_libera_com_motivo(pagina, pau
                     legenda_facebook="Blinde seu patrimônio: conheça a Artecon.\n\n" + IDENT)
     marcar_pronta(db, pid)
     dialogos = []
-    def responder(d):
-        dialogos.append(d.message)
-        d.accept("“promoção” é a data Black Friday, não uma oferta do escritório") if "Publicar assim mesmo" in d.message else d.accept()
-    pagina.on("dialog", responder)
+    pagina.on("dialog", lambda d: dialogos.append(d.message))                 # o fixture aceita; aqui só observamos
+    pagina.resposta_dialogo = "“promoção” é a data Black Friday, não uma oferta do escritório"   # o motivo da liberação (prompt)
     entrar(pagina, "admin@artecon.test")
     pagina.wait_for_selector("text=Painel do dia")
     abrir_peca(pagina, pid, data_peca(db, pid))
